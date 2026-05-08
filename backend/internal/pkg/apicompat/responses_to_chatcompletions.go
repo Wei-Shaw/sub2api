@@ -131,6 +131,8 @@ type ResponsesEventToChatState struct {
 	Finalized              bool        // true after finish chunk has been emitted
 	NextToolCallIndex      int         // next sequential tool_call index to assign
 	OutputIndexToToolIndex map[int]int // Responses output_index → Chat tool_calls index
+	OutputIndexNameSent    map[int]bool
+	OutputIndexArgsSeen    map[int]bool
 	IncludeUsage           bool
 	Usage                  *ChatUsage
 }
@@ -141,6 +143,8 @@ func NewResponsesEventToChatState() *ResponsesEventToChatState {
 		ID:                     generateChatCmplID(),
 		Created:                time.Now().Unix(),
 		OutputIndexToToolIndex: make(map[int]int),
+		OutputIndexNameSent:    make(map[int]bool),
+		OutputIndexArgsSeen:    make(map[int]bool),
 	}
 }
 
@@ -156,6 +160,10 @@ func ResponsesEventToChatChunks(evt *ResponsesStreamEvent, state *ResponsesEvent
 		return resToChatHandleOutputItemAdded(evt, state)
 	case "response.function_call_arguments.delta":
 		return resToChatHandleFuncArgsDelta(evt, state)
+	case "response.function_call_arguments.done":
+		return resToChatHandleFuncArgsDone(evt, state)
+	case "response.output_item.done":
+		return resToChatHandleOutputItemDone(evt, state)
 	case "response.reasoning_summary_text.delta":
 		return resToChatHandleReasoningDelta(evt, state)
 	case "response.reasoning_summary_text.done":
@@ -248,6 +256,7 @@ func resToChatHandleOutputItemAdded(evt *ResponsesStreamEvent, state *ResponsesE
 	idx := state.NextToolCallIndex
 	state.OutputIndexToToolIndex[evt.OutputIndex] = idx
 	state.NextToolCallIndex++
+	state.OutputIndexNameSent[evt.OutputIndex] = strings.TrimSpace(evt.Item.Name) != ""
 
 	return []ChatCompletionsChunk{makeChatDeltaChunk(state, ChatDelta{
 		ToolCalls: []ChatToolCall{{
@@ -270,6 +279,7 @@ func resToChatHandleFuncArgsDelta(evt *ResponsesStreamEvent, state *ResponsesEve
 	if !ok {
 		return nil
 	}
+	state.OutputIndexArgsSeen[evt.OutputIndex] = true
 
 	return []ChatCompletionsChunk{makeChatDeltaChunk(state, ChatDelta{
 		ToolCalls: []ChatToolCall{{
@@ -278,6 +288,70 @@ func resToChatHandleFuncArgsDelta(evt *ResponsesStreamEvent, state *ResponsesEve
 				Arguments: evt.Delta,
 			},
 		}},
+	})}
+}
+
+func resToChatHandleFuncArgsDone(evt *ResponsesStreamEvent, state *ResponsesEventToChatState) []ChatCompletionsChunk {
+	idx, ok := state.OutputIndexToToolIndex[evt.OutputIndex]
+	if !ok {
+		return nil
+	}
+
+	delta := ChatToolCall{Index: &idx}
+	if evt.CallID != "" {
+		delta.ID = evt.CallID
+	}
+
+	if name := strings.TrimSpace(evt.Name); name != "" && !state.OutputIndexNameSent[evt.OutputIndex] {
+		delta.Function.Name = name
+		state.OutputIndexNameSent[evt.OutputIndex] = true
+	}
+
+	if evt.Arguments != "" && !state.OutputIndexArgsSeen[evt.OutputIndex] {
+		delta.Function.Arguments = evt.Arguments
+		state.OutputIndexArgsSeen[evt.OutputIndex] = true
+	}
+
+	if delta.ID == "" && delta.Function.Name == "" && delta.Function.Arguments == "" {
+		return nil
+	}
+
+	return []ChatCompletionsChunk{makeChatDeltaChunk(state, ChatDelta{
+		ToolCalls: []ChatToolCall{delta},
+	})}
+}
+
+func resToChatHandleOutputItemDone(evt *ResponsesStreamEvent, state *ResponsesEventToChatState) []ChatCompletionsChunk {
+	if evt.Item == nil || evt.Item.Type != "function_call" {
+		return nil
+	}
+
+	idx, ok := state.OutputIndexToToolIndex[evt.OutputIndex]
+	if !ok {
+		return nil
+	}
+
+	delta := ChatToolCall{Index: &idx}
+	if evt.Item.CallID != "" {
+		delta.ID = evt.Item.CallID
+	}
+
+	if name := strings.TrimSpace(evt.Item.Name); name != "" && !state.OutputIndexNameSent[evt.OutputIndex] {
+		delta.Function.Name = name
+		state.OutputIndexNameSent[evt.OutputIndex] = true
+	}
+
+	if evt.Item.Arguments != "" && !state.OutputIndexArgsSeen[evt.OutputIndex] {
+		delta.Function.Arguments = evt.Item.Arguments
+		state.OutputIndexArgsSeen[evt.OutputIndex] = true
+	}
+
+	if delta.ID == "" && delta.Function.Name == "" && delta.Function.Arguments == "" {
+		return nil
+	}
+
+	return []ChatCompletionsChunk{makeChatDeltaChunk(state, ChatDelta{
+		ToolCalls: []ChatToolCall{delta},
 	})}
 }
 

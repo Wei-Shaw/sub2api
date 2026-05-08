@@ -685,6 +685,73 @@ func TestResponsesEventToChatChunks_ToolCallDelta(t *testing.T) {
 	assert.Equal(t, 0, *tc.Index, "first tool arg delta must still use index 0")
 }
 
+func TestResponsesEventToChatChunks_ToolCallBackfillsNameFromArgumentsDone(t *testing.T) {
+	state := NewResponsesEventToChatState()
+	state.Model = "gpt-4o"
+	state.SentRole = true
+
+	chunks := ResponsesEventToChatChunks(&ResponsesStreamEvent{
+		Type:        "response.output_item.added",
+		OutputIndex: 1,
+		Item: &ResponsesOutput{
+			Type:   "function_call",
+			CallID: "call_backfill_1",
+		},
+	}, state)
+	require.Len(t, chunks, 1)
+	require.Len(t, chunks[0].Choices[0].Delta.ToolCalls, 1)
+	assert.Equal(t, "", chunks[0].Choices[0].Delta.ToolCalls[0].Function.Name)
+
+	chunks = ResponsesEventToChatChunks(&ResponsesStreamEvent{
+		Type:        "response.function_call_arguments.done",
+		OutputIndex: 1,
+		CallID:      "call_backfill_1",
+		Name:        "get_weather",
+		Arguments:   `{"city":"NYC"}`,
+	}, state)
+	require.Len(t, chunks, 1)
+	tc := chunks[0].Choices[0].Delta.ToolCalls[0]
+	require.NotNil(t, tc.Index)
+	assert.Equal(t, 0, *tc.Index)
+	assert.Equal(t, "get_weather", tc.Function.Name)
+	assert.Equal(t, `{"city":"NYC"}`, tc.Function.Arguments)
+}
+
+func TestResponsesEventToChatChunks_ToolCallBackfillsNameFromOutputItemDone(t *testing.T) {
+	state := NewResponsesEventToChatState()
+	state.Model = "gpt-4o"
+	state.SentRole = true
+
+	chunks := ResponsesEventToChatChunks(&ResponsesStreamEvent{
+		Type:        "response.output_item.added",
+		OutputIndex: 2,
+		Item: &ResponsesOutput{
+			Type:   "function_call",
+			CallID: "call_backfill_2",
+		},
+	}, state)
+	require.Len(t, chunks, 1)
+	require.Len(t, chunks[0].Choices[0].Delta.ToolCalls, 1)
+	assert.Equal(t, "", chunks[0].Choices[0].Delta.ToolCalls[0].Function.Name)
+
+	chunks = ResponsesEventToChatChunks(&ResponsesStreamEvent{
+		Type:        "response.output_item.done",
+		OutputIndex: 2,
+		Item: &ResponsesOutput{
+			Type:      "function_call",
+			CallID:    "call_backfill_2",
+			Name:      "get_time",
+			Arguments: `{"tz":"UTC"}`,
+		},
+	}, state)
+	require.Len(t, chunks, 1)
+	tc := chunks[0].Choices[0].Delta.ToolCalls[0]
+	require.NotNil(t, tc.Index)
+	assert.Equal(t, 0, *tc.Index)
+	assert.Equal(t, "get_time", tc.Function.Name)
+	assert.Equal(t, `{"tz":"UTC"}`, tc.Function.Arguments)
+}
+
 func TestResponsesEventToChatChunks_Completed(t *testing.T) {
 	state := NewResponsesEventToChatState()
 	state.Model = "gpt-4o"
