@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -204,7 +205,139 @@ const (
 	defaultGoogleOAuthUserInfo   = "https://openidconnect.googleapis.com/v1/userinfo"
 	defaultGoogleOAuthScopes     = "openid email profile"
 	defaultGoogleOAuthFrontend   = "/auth/oauth/callback"
+	defaultLoginAgreementMode    = "modal"
+	defaultLoginAgreementDate    = "2026-03-31"
 )
+
+func normalizeLoginAgreementMode(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "checkbox":
+		return "checkbox"
+	default:
+		return defaultLoginAgreementMode
+	}
+}
+
+func defaultLoginAgreementDocuments() []LoginAgreementDocument {
+	return []LoginAgreementDocument{
+		{
+			ID:        "terms",
+			Title:     "服务条款",
+			ContentMD: "",
+		},
+		{
+			ID:        "usage-policy",
+			Title:     "使用政策",
+			ContentMD: "",
+		},
+		{
+			ID:        "supported-regions",
+			Title:     "支持的国家和地区",
+			ContentMD: "",
+		},
+		{
+			ID:        "service-specific-terms",
+			Title:     "服务特定条款",
+			ContentMD: "",
+		},
+	}
+}
+
+func normalizeLoginAgreementDocumentID(raw string) string {
+	raw = strings.ToLower(strings.TrimSpace(raw))
+	var b strings.Builder
+	lastSeparator := false
+	for _, r := range raw {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			_, _ = b.WriteRune(r)
+			lastSeparator = false
+			continue
+		}
+		if r == '-' || r == '_' || r == ' ' || r == '.' || r == '/' {
+			if !lastSeparator && b.Len() > 0 {
+				if r == '_' {
+					_, _ = b.WriteRune('_')
+				} else {
+					_, _ = b.WriteRune('-')
+				}
+				lastSeparator = true
+			}
+		}
+	}
+	return strings.Trim(b.String(), "-_")
+}
+
+func normalizeLoginAgreementDocuments(docs []LoginAgreementDocument) []LoginAgreementDocument {
+	normalized := make([]LoginAgreementDocument, 0, len(docs))
+	seen := make(map[string]int, len(docs))
+	for i, doc := range docs {
+		title := strings.TrimSpace(doc.Title)
+		content := strings.TrimSpace(doc.ContentMD)
+		if title == "" && content == "" {
+			continue
+		}
+		id := normalizeLoginAgreementDocumentID(doc.ID)
+		if id == "" {
+			sum := sha256.Sum256([]byte(fmt.Sprintf("%d:%s:%s", i, title, content)))
+			id = hex.EncodeToString(sum[:])[:12]
+		}
+		baseID := id
+		for suffix := 2; seen[id] > 0; suffix++ {
+			id = fmt.Sprintf("%s-%d", baseID, suffix)
+		}
+		seen[id]++
+		normalized = append(normalized, LoginAgreementDocument{
+			ID:        id,
+			Title:     title,
+			ContentMD: content,
+		})
+	}
+	return normalized
+}
+
+func parseLoginAgreementDocuments(raw string) []LoginAgreementDocument {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return defaultLoginAgreementDocuments()
+	}
+	var docs []LoginAgreementDocument
+	if err := json.Unmarshal([]byte(raw), &docs); err != nil {
+		return defaultLoginAgreementDocuments()
+	}
+	docs = normalizeLoginAgreementDocuments(docs)
+	if len(docs) == 0 {
+		return defaultLoginAgreementDocuments()
+	}
+	return docs
+}
+
+func marshalLoginAgreementDocuments(docs []LoginAgreementDocument) (string, error) {
+	normalized := normalizeLoginAgreementDocuments(docs)
+	if len(normalized) == 0 {
+		normalized = defaultLoginAgreementDocuments()
+	}
+	b, err := json.Marshal(normalized)
+	if err != nil {
+		return "", fmt.Errorf("marshal login agreement documents: %w", err)
+	}
+	return string(b), nil
+}
+
+func buildLoginAgreementRevision(updatedAt string, docs []LoginAgreementDocument) string {
+	normalized := normalizeLoginAgreementDocuments(docs)
+	payload, err := json.Marshal(struct {
+		UpdatedAt string                   `json:"updated_at"`
+		Documents []LoginAgreementDocument `json:"documents"`
+	}{
+		UpdatedAt: strings.TrimSpace(updatedAt),
+		Documents: normalized,
+	})
+	if err != nil {
+		payload = []byte(strings.TrimSpace(updatedAt))
+	}
+	sum := sha256.Sum256(payload)
+	return hex.EncodeToString(sum[:])[:16]
+}
 
 func normalizeWeChatConnectModeSetting(raw string) string {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
@@ -438,6 +571,10 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyPasswordResetEnabled,
 		SettingKeyInvitationCodeEnabled,
 		SettingKeyTotpEnabled,
+		SettingKeyLoginAgreementEnabled,
+		SettingKeyLoginAgreementMode,
+		SettingKeyLoginAgreementUpdatedAt,
+		SettingKeyLoginAgreementDocuments,
 		SettingKeyTurnstileEnabled,
 		SettingKeyTurnstileSiteKey,
 		SettingKeySiteName,
@@ -530,6 +667,11 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		settings[SettingKeyTableDefaultPageSize],
 		settings[SettingKeyTablePageSizeOptions],
 	)
+	loginAgreementDocuments := parseLoginAgreementDocuments(settings[SettingKeyLoginAgreementDocuments])
+	loginAgreementUpdatedAt := strings.TrimSpace(settings[SettingKeyLoginAgreementUpdatedAt])
+	if loginAgreementUpdatedAt == "" {
+		loginAgreementUpdatedAt = defaultLoginAgreementDate
+	}
 
 	var balanceLowNotifyThreshold float64
 	if v, err := strconv.ParseFloat(settings[SettingKeyBalanceLowNotifyThreshold], 64); err == nil && v >= 0 {
@@ -545,6 +687,11 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		PasswordResetEnabled:             passwordResetEnabled,
 		InvitationCodeEnabled:            settings[SettingKeyInvitationCodeEnabled] == "true",
 		TotpEnabled:                      settings[SettingKeyTotpEnabled] == "true",
+		LoginAgreementEnabled:            settings[SettingKeyLoginAgreementEnabled] == "true" && len(loginAgreementDocuments) > 0,
+		LoginAgreementMode:               normalizeLoginAgreementMode(settings[SettingKeyLoginAgreementMode]),
+		LoginAgreementUpdatedAt:          loginAgreementUpdatedAt,
+		LoginAgreementRevision:           buildLoginAgreementRevision(loginAgreementUpdatedAt, loginAgreementDocuments),
+		LoginAgreementDocuments:          loginAgreementDocuments,
 		TurnstileEnabled:                 settings[SettingKeyTurnstileEnabled] == "true",
 		TurnstileSiteKey:                 settings[SettingKeyTurnstileSiteKey],
 		SiteName:                         s.getStringOrDefault(settings, SettingKeySiteName, "Sub2API"),
@@ -687,45 +834,50 @@ func (s *SettingService) SetVersion(version string) {
 // A unit test diffs this struct's JSON keys against dto.PublicSettings to catch
 // drift automatically (see setting_service_injection_test.go).
 type PublicSettingsInjectionPayload struct {
-	RegistrationEnabled              bool            `json:"registration_enabled"`
-	EmailVerifyEnabled               bool            `json:"email_verify_enabled"`
-	RegistrationEmailSuffixWhitelist []string        `json:"registration_email_suffix_whitelist"`
-	PromoCodeEnabled                 bool            `json:"promo_code_enabled"`
-	PasswordResetEnabled             bool            `json:"password_reset_enabled"`
-	InvitationCodeEnabled            bool            `json:"invitation_code_enabled"`
-	TotpEnabled                      bool            `json:"totp_enabled"`
-	TurnstileEnabled                 bool            `json:"turnstile_enabled"`
-	TurnstileSiteKey                 string          `json:"turnstile_site_key"`
-	SiteName                         string          `json:"site_name"`
-	SiteLogo                         string          `json:"site_logo"`
-	SiteSubtitle                     string          `json:"site_subtitle"`
-	APIBaseURL                       string          `json:"api_base_url"`
-	ContactInfo                      string          `json:"contact_info"`
-	DocURL                           string          `json:"doc_url"`
-	HomeContent                      string          `json:"home_content"`
-	HideCcsImportButton              bool            `json:"hide_ccs_import_button"`
-	PurchaseSubscriptionEnabled      bool            `json:"purchase_subscription_enabled"`
-	PurchaseSubscriptionURL          string          `json:"purchase_subscription_url"`
-	TableDefaultPageSize             int             `json:"table_default_page_size"`
-	TablePageSizeOptions             []int           `json:"table_page_size_options"`
-	CustomMenuItems                  json.RawMessage `json:"custom_menu_items"`
-	CustomEndpoints                  json.RawMessage `json:"custom_endpoints"`
-	LinuxDoOAuthEnabled              bool            `json:"linuxdo_oauth_enabled"`
-	WeChatOAuthEnabled               bool            `json:"wechat_oauth_enabled"`
-	WeChatOAuthOpenEnabled           bool            `json:"wechat_oauth_open_enabled"`
-	WeChatOAuthMPEnabled             bool            `json:"wechat_oauth_mp_enabled"`
-	WeChatOAuthMobileEnabled         bool            `json:"wechat_oauth_mobile_enabled"`
-	OIDCOAuthEnabled                 bool            `json:"oidc_oauth_enabled"`
-	OIDCOAuthProviderName            string          `json:"oidc_oauth_provider_name"`
-	GitHubOAuthEnabled               bool            `json:"github_oauth_enabled"`
-	GoogleOAuthEnabled               bool            `json:"google_oauth_enabled"`
-	BackendModeEnabled               bool            `json:"backend_mode_enabled"`
-	PaymentEnabled                   bool            `json:"payment_enabled"`
-	Version                          string          `json:"version"`
-	BalanceLowNotifyEnabled          bool            `json:"balance_low_notify_enabled"`
-	AccountQuotaNotifyEnabled        bool            `json:"account_quota_notify_enabled"`
-	BalanceLowNotifyThreshold        float64         `json:"balance_low_notify_threshold"`
-	BalanceLowNotifyRechargeURL      string          `json:"balance_low_notify_recharge_url"`
+	RegistrationEnabled              bool                     `json:"registration_enabled"`
+	EmailVerifyEnabled               bool                     `json:"email_verify_enabled"`
+	RegistrationEmailSuffixWhitelist []string                 `json:"registration_email_suffix_whitelist"`
+	PromoCodeEnabled                 bool                     `json:"promo_code_enabled"`
+	PasswordResetEnabled             bool                     `json:"password_reset_enabled"`
+	InvitationCodeEnabled            bool                     `json:"invitation_code_enabled"`
+	TotpEnabled                      bool                     `json:"totp_enabled"`
+	LoginAgreementEnabled            bool                     `json:"login_agreement_enabled"`
+	LoginAgreementMode               string                   `json:"login_agreement_mode"`
+	LoginAgreementUpdatedAt          string                   `json:"login_agreement_updated_at"`
+	LoginAgreementRevision           string                   `json:"login_agreement_revision"`
+	LoginAgreementDocuments          []LoginAgreementDocument `json:"login_agreement_documents"`
+	TurnstileEnabled                 bool                     `json:"turnstile_enabled"`
+	TurnstileSiteKey                 string                   `json:"turnstile_site_key"`
+	SiteName                         string                   `json:"site_name"`
+	SiteLogo                         string                   `json:"site_logo"`
+	SiteSubtitle                     string                   `json:"site_subtitle"`
+	APIBaseURL                       string                   `json:"api_base_url"`
+	ContactInfo                      string                   `json:"contact_info"`
+	DocURL                           string                   `json:"doc_url"`
+	HomeContent                      string                   `json:"home_content"`
+	HideCcsImportButton              bool                     `json:"hide_ccs_import_button"`
+	PurchaseSubscriptionEnabled      bool                     `json:"purchase_subscription_enabled"`
+	PurchaseSubscriptionURL          string                   `json:"purchase_subscription_url"`
+	TableDefaultPageSize             int                      `json:"table_default_page_size"`
+	TablePageSizeOptions             []int                    `json:"table_page_size_options"`
+	CustomMenuItems                  json.RawMessage          `json:"custom_menu_items"`
+	CustomEndpoints                  json.RawMessage          `json:"custom_endpoints"`
+	LinuxDoOAuthEnabled              bool                     `json:"linuxdo_oauth_enabled"`
+	WeChatOAuthEnabled               bool                     `json:"wechat_oauth_enabled"`
+	WeChatOAuthOpenEnabled           bool                     `json:"wechat_oauth_open_enabled"`
+	WeChatOAuthMPEnabled             bool                     `json:"wechat_oauth_mp_enabled"`
+	WeChatOAuthMobileEnabled         bool                     `json:"wechat_oauth_mobile_enabled"`
+	OIDCOAuthEnabled                 bool                     `json:"oidc_oauth_enabled"`
+	OIDCOAuthProviderName            string                   `json:"oidc_oauth_provider_name"`
+	GitHubOAuthEnabled               bool                     `json:"github_oauth_enabled"`
+	GoogleOAuthEnabled               bool                     `json:"google_oauth_enabled"`
+	BackendModeEnabled               bool                     `json:"backend_mode_enabled"`
+	PaymentEnabled                   bool                     `json:"payment_enabled"`
+	Version                          string                   `json:"version"`
+	BalanceLowNotifyEnabled          bool                     `json:"balance_low_notify_enabled"`
+	AccountQuotaNotifyEnabled        bool                     `json:"account_quota_notify_enabled"`
+	BalanceLowNotifyThreshold        float64                  `json:"balance_low_notify_threshold"`
+	BalanceLowNotifyRechargeURL      string                   `json:"balance_low_notify_recharge_url"`
 
 	// Feature flags — MUST match the opt-in/opt-out registry in
 	// frontend/src/utils/featureFlags.ts. Missing a field here is the bug
@@ -753,6 +905,11 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		PasswordResetEnabled:             settings.PasswordResetEnabled,
 		InvitationCodeEnabled:            settings.InvitationCodeEnabled,
 		TotpEnabled:                      settings.TotpEnabled,
+		LoginAgreementEnabled:            settings.LoginAgreementEnabled,
+		LoginAgreementMode:               settings.LoginAgreementMode,
+		LoginAgreementUpdatedAt:          settings.LoginAgreementUpdatedAt,
+		LoginAgreementRevision:           settings.LoginAgreementRevision,
+		LoginAgreementDocuments:          settings.LoginAgreementDocuments,
 		TurnstileEnabled:                 settings.TurnstileEnabled,
 		TurnstileSiteKey:                 settings.TurnstileSiteKey,
 		SiteName:                         settings.SiteName,
@@ -1216,6 +1373,19 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyFrontendURL] = settings.FrontendURL
 	updates[SettingKeyInvitationCodeEnabled] = strconv.FormatBool(settings.InvitationCodeEnabled)
 	updates[SettingKeyTotpEnabled] = strconv.FormatBool(settings.TotpEnabled)
+	settings.LoginAgreementMode = normalizeLoginAgreementMode(settings.LoginAgreementMode)
+	settings.LoginAgreementUpdatedAt = strings.TrimSpace(settings.LoginAgreementUpdatedAt)
+	if settings.LoginAgreementUpdatedAt == "" {
+		settings.LoginAgreementUpdatedAt = defaultLoginAgreementDate
+	}
+	loginAgreementDocumentsJSON, err := marshalLoginAgreementDocuments(settings.LoginAgreementDocuments)
+	if err != nil {
+		return nil, err
+	}
+	updates[SettingKeyLoginAgreementEnabled] = strconv.FormatBool(settings.LoginAgreementEnabled)
+	updates[SettingKeyLoginAgreementMode] = settings.LoginAgreementMode
+	updates[SettingKeyLoginAgreementUpdatedAt] = settings.LoginAgreementUpdatedAt
+	updates[SettingKeyLoginAgreementDocuments] = loginAgreementDocumentsJSON
 
 	// 邮件服务设置（只有非空才更新密码）
 	updates[SettingKeySMTPHost] = settings.SMTPHost
@@ -2040,6 +2210,10 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 			oidcValidateIDTokenDefault = s.cfg.OIDC.ValidateIDToken
 		}
 	}
+	loginAgreementDocumentsJSON, err := marshalLoginAgreementDocuments(defaultLoginAgreementDocuments())
+	if err != nil {
+		return err
+	}
 
 	// 初始化默认设置
 	defaults := map[string]string{
@@ -2047,6 +2221,10 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyEmailVerifyEnabled:                       "false",
 		SettingKeyRegistrationEmailSuffixWhitelist:         "[]",
 		SettingKeyPromoCodeEnabled:                         "true", // 默认启用优惠码功能
+		SettingKeyLoginAgreementEnabled:                    "false",
+		SettingKeyLoginAgreementMode:                       defaultLoginAgreementMode,
+		SettingKeyLoginAgreementUpdatedAt:                  defaultLoginAgreementDate,
+		SettingKeyLoginAgreementDocuments:                  loginAgreementDocumentsJSON,
 		SettingKeySiteName:                                 "Sub2API",
 		SettingKeySiteLogo:                                 "",
 		SettingKeyPurchaseSubscriptionEnabled:              "false",
@@ -2193,6 +2371,11 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 // parseSettings 解析设置到结构体
 func (s *SettingService) parseSettings(settings map[string]string) *SystemSettings {
 	emailVerifyEnabled := settings[SettingKeyEmailVerifyEnabled] == "true"
+	loginAgreementDocuments := parseLoginAgreementDocuments(settings[SettingKeyLoginAgreementDocuments])
+	loginAgreementUpdatedAt := strings.TrimSpace(settings[SettingKeyLoginAgreementUpdatedAt])
+	if loginAgreementUpdatedAt == "" {
+		loginAgreementUpdatedAt = defaultLoginAgreementDate
+	}
 	result := &SystemSettings{
 		RegistrationEnabled:              settings[SettingKeyRegistrationEnabled] == "true",
 		EmailVerifyEnabled:               emailVerifyEnabled,
@@ -2202,6 +2385,10 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		FrontendURL:                      settings[SettingKeyFrontendURL],
 		InvitationCodeEnabled:            settings[SettingKeyInvitationCodeEnabled] == "true",
 		TotpEnabled:                      settings[SettingKeyTotpEnabled] == "true",
+		LoginAgreementEnabled:            settings[SettingKeyLoginAgreementEnabled] == "true",
+		LoginAgreementMode:               normalizeLoginAgreementMode(settings[SettingKeyLoginAgreementMode]),
+		LoginAgreementUpdatedAt:          loginAgreementUpdatedAt,
+		LoginAgreementDocuments:          loginAgreementDocuments,
 		SMTPHost:                         settings[SettingKeySMTPHost],
 		SMTPUsername:                     settings[SettingKeySMTPUsername],
 		SMTPFrom:                         settings[SettingKeySMTPFrom],

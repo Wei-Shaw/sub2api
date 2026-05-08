@@ -44,7 +44,7 @@
               required
               autofocus
               autocomplete="email"
-              :disabled="isLoading"
+              :disabled="registrationActionDisabled"
               class="input pl-11"
               :class="{ 'input-error': errors.email }"
               :placeholder="t('auth.emailPlaceholder')"
@@ -67,13 +67,14 @@
               :type="showPassword ? 'text' : 'password'"
               required
               autocomplete="new-password"
-              :disabled="isLoading"
+              :disabled="registrationActionDisabled"
               class="input pl-11 pr-11"
               :class="{ 'input-error': errors.password }"
               :placeholder="t('auth.createPasswordPlaceholder')"
             />
             <button
               type="button"
+              :disabled="registrationActionDisabled"
               @click="showPassword = !showPassword"
               class="absolute inset-y-0 right-0 flex items-center pr-3.5 text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-dark-300"
             >
@@ -99,7 +100,7 @@
               id="invitation_code"
               v-model="formData.invitation_code"
               type="text"
-              :disabled="isLoading"
+              :disabled="registrationActionDisabled"
               class="input pl-11 pr-10"
               :class="{
                 'border-green-500 focus:border-green-500 focus:ring-green-500': invitationValidation.valid,
@@ -147,7 +148,7 @@
               id="promo_code"
               v-model="formData.promo_code"
               type="text"
-              :disabled="isLoading"
+              :disabled="registrationActionDisabled"
               class="input pl-11 pr-10"
               :class="{
                 'border-green-500 focus:border-green-500 focus:ring-green-500': promoValidation.valid,
@@ -192,10 +193,22 @@
           />
         </div>
 
+        <LoginAgreementPrompt
+          v-if="loginAgreementEnabled"
+          :accepted="agreementAccepted"
+          :documents="loginAgreementDocuments"
+          :mode="loginAgreementMode"
+          :updated-at="loginAgreementUpdatedAt"
+          :visible="showAgreementModal"
+          @accept="acceptLoginAgreement"
+          @reject="rejectLoginAgreement"
+          @open="showAgreementModal = true"
+        />
+
         <!-- Submit Button -->
         <button
           type="submit"
-          :disabled="isLoading || (turnstileEnabled && !turnstileToken)"
+          :disabled="registrationActionDisabled || (turnstileEnabled && !turnstileToken)"
           class="btn btn-primary w-full"
         >
           <svg
@@ -240,7 +253,7 @@
         </div>
 
         <EmailOAuthButtons
-          :disabled="isLoading"
+          :disabled="registrationActionDisabled"
           :aff-code="formData.aff_code"
           :github-enabled="githubOAuthEnabled"
           :google-enabled="googleOAuthEnabled"
@@ -249,19 +262,19 @@
 
         <LinuxDoOAuthSection
           v-if="linuxdoOAuthEnabled"
-          :disabled="isLoading"
+          :disabled="registrationActionDisabled"
           :aff-code="formData.aff_code"
           :show-divider="false"
         />
         <WechatOAuthSection
           v-if="wechatOAuthEnabled"
-          :disabled="isLoading"
+          :disabled="registrationActionDisabled"
           :aff-code="formData.aff_code"
           :show-divider="false"
         />
         <OidcOAuthSection
           v-if="oidcOAuthEnabled"
-          :disabled="isLoading"
+          :disabled="registrationActionDisabled"
           :provider-name="oidcOAuthProviderName"
           :aff-code="formData.aff_code"
           :show-divider="false"
@@ -293,6 +306,7 @@ import LinuxDoOAuthSection from '@/components/auth/LinuxDoOAuthSection.vue'
 import OidcOAuthSection from '@/components/auth/OidcOAuthSection.vue'
 import WechatOAuthSection from '@/components/auth/WechatOAuthSection.vue'
 import EmailOAuthButtons from '@/components/auth/EmailOAuthButtons.vue'
+import LoginAgreementPrompt from '@/components/auth/LoginAgreementPrompt.vue'
 import Icon from '@/components/icons/Icon.vue'
 import TurnstileWidget from '@/components/TurnstileWidget.vue'
 import { useAuthStore, useAppStore } from '@/stores'
@@ -312,8 +326,10 @@ import {
   loadAffiliateReferralCode,
   resolveAffiliateReferralCode
 } from '@/utils/oauthAffiliate'
+import type { LoginAgreementDocument } from '@/types'
 
 const { t, locale } = useI18n()
+const LOGIN_AGREEMENT_STORAGE_KEY = 'sub2api_login_agreement_consent'
 
 // ==================== Router & Stores ====================
 
@@ -344,6 +360,13 @@ const oidcOAuthProviderName = ref<string>('OIDC')
 const githubOAuthEnabled = ref<boolean>(false)
 const googleOAuthEnabled = ref<boolean>(false)
 const registrationEmailSuffixWhitelist = ref<string[]>([])
+const loginAgreementEnabled = ref<boolean>(false)
+const loginAgreementMode = ref<'modal' | 'checkbox' | string>('modal')
+const loginAgreementUpdatedAt = ref<string>('')
+const loginAgreementRevision = ref<string>('')
+const loginAgreementDocuments = ref<LoginAgreementDocument[]>([])
+const agreementAccepted = ref<boolean>(false)
+const showAgreementModal = ref<boolean>(false)
 
 // Turnstile
 const turnstileRef = ref<InstanceType<typeof TurnstileWidget> | null>(null)
@@ -402,6 +425,14 @@ const showOAuthLogin = computed(
     googleOAuthEnabled.value
 )
 
+const agreementGateActive = computed(
+  () => loginAgreementEnabled.value && !agreementAccepted.value
+)
+
+const registrationActionDisabled = computed(
+  () => isLoading.value || !settingsLoaded.value || agreementGateActive.value
+)
+
 watch(validationToastMessage, (value, previousValue) => {
   if (value && value !== previousValue) {
     appStore.showError(value)
@@ -439,6 +470,7 @@ onMounted(async () => {
     registrationEmailSuffixWhitelist.value = normalizeRegistrationEmailSuffixWhitelist(
       settings.registration_email_suffix_whitelist || []
     )
+    applyLoginAgreementSettings(settings)
 
     // Read promo code from URL parameter only if promo code is enabled
     if (promoCodeEnabled.value) {
@@ -452,6 +484,8 @@ onMounted(async () => {
     syncAffiliateReferralCode()
   } catch (error) {
     console.error('Failed to load public settings:', error)
+    loginAgreementEnabled.value = false
+    agreementAccepted.value = true
   } finally {
     settingsLoaded.value = true
   }
@@ -472,6 +506,68 @@ onUnmounted(() => {
     clearTimeout(invitationValidateTimeout)
   }
 })
+
+// ==================== Login Agreement ====================
+
+function applyLoginAgreementSettings(settings: {
+  login_agreement_enabled?: boolean
+  login_agreement_mode?: string
+  login_agreement_updated_at?: string
+  login_agreement_revision?: string
+  login_agreement_documents?: LoginAgreementDocument[]
+}): void {
+  const documents = Array.isArray(settings.login_agreement_documents)
+    ? settings.login_agreement_documents.filter((doc) => doc.title?.trim())
+    : []
+  loginAgreementDocuments.value = documents
+  loginAgreementEnabled.value = settings.login_agreement_enabled === true && documents.length > 0
+  loginAgreementMode.value = settings.login_agreement_mode === 'checkbox' ? 'checkbox' : 'modal'
+  loginAgreementUpdatedAt.value = settings.login_agreement_updated_at || ''
+  loginAgreementRevision.value =
+    settings.login_agreement_revision ||
+    `${loginAgreementUpdatedAt.value}:${documents.map((doc) => `${doc.id}:${doc.title}`).join('|')}`
+
+  agreementAccepted.value = !loginAgreementEnabled.value || hasAcceptedLoginAgreement(loginAgreementRevision.value)
+  showAgreementModal.value =
+    loginAgreementEnabled.value && !agreementAccepted.value && loginAgreementMode.value !== 'checkbox'
+}
+
+function hasAcceptedLoginAgreement(revision: string): boolean {
+  if (!revision) {
+    return false
+  }
+  try {
+    const raw = localStorage.getItem(LOGIN_AGREEMENT_STORAGE_KEY)
+    if (!raw) {
+      return false
+    }
+    const parsed = JSON.parse(raw) as { revision?: string }
+    return parsed.revision === revision
+  } catch {
+    return false
+  }
+}
+
+function acceptLoginAgreement(): void {
+  if (loginAgreementRevision.value) {
+    localStorage.setItem(
+      LOGIN_AGREEMENT_STORAGE_KEY,
+      JSON.stringify({
+        revision: loginAgreementRevision.value,
+        accepted_at: new Date().toISOString()
+      })
+    )
+  }
+  agreementAccepted.value = true
+  showAgreementModal.value = false
+}
+
+function rejectLoginAgreement(): void {
+  localStorage.removeItem(LOGIN_AGREEMENT_STORAGE_KEY)
+  agreementAccepted.value = false
+  showAgreementModal.value = false
+  appStore.showWarning('未同意最新条款前，无法注册或使用快捷登录。')
+}
 
 // ==================== Promo Code Validation ====================
 
@@ -655,6 +751,14 @@ function validateForm(): boolean {
   errors.invitation_code = ''
 
   let isValid = true
+
+  if (agreementGateActive.value) {
+    appStore.showWarning('请先阅读并同意最新条款后再注册。')
+    if (loginAgreementMode.value !== 'checkbox') {
+      showAgreementModal.value = true
+    }
+    return false
+  }
 
   // Email validation
   if (!formData.email.trim()) {
