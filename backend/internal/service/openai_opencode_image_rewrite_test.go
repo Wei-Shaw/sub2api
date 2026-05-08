@@ -977,7 +977,7 @@ func TestBuildOpenCodeImageServerContinuationBody_RemovesImageGenerationToolForD
 
 	require.NoError(t, err)
 	require.True(t, changed)
-	require.False(t, gjson.GetBytes(patched, "tool_choice").Exists())
+	require.Equal(t, "required", gjson.GetBytes(patched, "tool_choice").String())
 	require.Equal(t, "function", gjson.GetBytes(patched, "tools.0.type").String())
 	require.Equal(t, "context_tool", gjson.GetBytes(patched, "tools.0.name").String())
 	require.Equal(t, "function", gjson.GetBytes(patched, "tools.1.type").String())
@@ -985,6 +985,52 @@ func TestBuildOpenCodeImageServerContinuationBody_RemovesImageGenerationToolForD
 	require.False(t, gjson.GetBytes(patched, `tools.#(type="image_generation")`).Exists())
 	require.Equal(t, openCodeImageServerContinuationToolName, gjson.GetBytes(patched, "input.1.name").String())
 	require.Equal(t, "function_call_output", gjson.GetBytes(patched, "input.2.type").String())
+}
+
+func TestBuildOpenCodeImageServerContinuationBody_RequiresAvailableToolForDownloadContinuation(t *testing.T) {
+	body := mustJSONBytes(t, map[string]any{
+		"input":       "draw a cat",
+		"tool_choice": map[string]any{"type": "image_generation"},
+		"tools": []any{
+			map[string]any{"type": "function", "name": "download_file"},
+			map[string]any{"type": "image_generation", "model": "gpt-image-2", "output_format": "png"},
+		},
+	})
+	messageText := "Generated image saved by sub2api.\nImage reference: " + openCodeSpecificImageMarkerForTest(testImageID) + "\nTemporary download URL: " + openCodeGeneratedImageDownloadURLForTest("https://example.com", testImageID)
+	generated := []openCodeImageGeneratedMessage{{
+		Message: openCodeSub2APIImageMessageForTest(testImageID, messageText),
+		Record:  &OpenAIGeneratedImageRecord{ID: testImageID, Filename: testImageID + ".png"},
+	}}
+
+	patched, changed, err := buildOpenCodeImageServerContinuationBody(body, generated)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, "required", gjson.GetBytes(patched, "tool_choice").String())
+	require.False(t, gjson.GetBytes(patched, `tools.#(type="image_generation")`).Exists())
+	require.Equal(t, "download_file", gjson.GetBytes(patched, "tools.0.name").String())
+}
+
+func TestBuildOpenCodeImageServerContinuationBody_DropsRequiredToolChoiceWithoutContinuationTool(t *testing.T) {
+	body := mustJSONBytes(t, map[string]any{
+		"input":       "draw a cat",
+		"tool_choice": "required",
+		"tools": []any{
+			map[string]any{"type": "image_generation", "model": "gpt-image-2", "output_format": "png"},
+		},
+	})
+	messageText := "Generated image saved by sub2api.\nImage reference: " + openCodeSpecificImageMarkerForTest(testImageID) + "\nTemporary download URL: " + openCodeGeneratedImageDownloadURLForTest("https://example.com", testImageID)
+	generated := []openCodeImageGeneratedMessage{{
+		Message: openCodeSub2APIImageMessageForTest(testImageID, messageText),
+		Record:  &OpenAIGeneratedImageRecord{ID: testImageID, Filename: testImageID + ".png"},
+	}}
+
+	patched, changed, err := buildOpenCodeImageServerContinuationBody(body, generated)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.False(t, gjson.GetBytes(patched, "tool_choice").Exists())
+	require.False(t, gjson.GetBytes(patched, "tools").Exists())
 }
 
 func TestRewriteOpenCodeImageGenerationOutput_ImageCallWithoutResultBecomesText(t *testing.T) {

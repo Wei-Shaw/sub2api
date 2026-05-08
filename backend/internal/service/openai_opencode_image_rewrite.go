@@ -235,6 +235,11 @@ func buildOpenCodeImageServerContinuationBody(body []byte, generated []openCodeI
 	if isOpenCodeImageGenerationToolChoice(reqBody["tool_choice"]) {
 		delete(reqBody, "tool_choice")
 	}
+	if hasOpenCodeImageServerContinuationFunctionTool(reqBody) {
+		reqBody["tool_choice"] = "required"
+	} else if isOpenCodeRequiredToolChoice(reqBody["tool_choice"]) {
+		delete(reqBody, "tool_choice")
+	}
 	patched, err := json.Marshal(reqBody)
 	if err != nil {
 		return body, false, err
@@ -266,6 +271,27 @@ func removeOpenCodeImageGenerationToolsForContinuation(reqBody map[string]any) b
 	}
 	reqBody["tools"] = filtered
 	return true
+}
+
+func hasOpenCodeImageServerContinuationFunctionTool(reqBody map[string]any) bool {
+	tools, ok := reqBody["tools"].([]any)
+	if !ok {
+		return false
+	}
+	for _, rawTool := range tools {
+		tool, ok := rawTool.(map[string]any)
+		if !ok || strings.TrimSpace(asStringMaybe(tool["type"])) != "function" {
+			continue
+		}
+		if strings.TrimSpace(asStringMaybe(tool["name"])) != "" {
+			return true
+		}
+		function, ok := tool["function"].(map[string]any)
+		if ok && strings.TrimSpace(asStringMaybe(function["name"])) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizeOpenCodeImageContinuationInput(raw any) ([]any, bool) {
@@ -315,6 +341,11 @@ func isOpenCodeImageGenerationToolChoice(raw any) bool {
 	default:
 		return false
 	}
+}
+
+func isOpenCodeRequiredToolChoice(raw any) bool {
+	value, ok := raw.(string)
+	return ok && strings.TrimSpace(value) == "required"
 }
 
 func (s *OpenAIGatewayService) resolveOpenCodeImageDownloadBaseURL(ctx context.Context, c *gin.Context) string {
@@ -431,7 +462,7 @@ func isOpenCodeRequestFromTrustedProxy(c *gin.Context, cfg *config.Config) bool 
 }
 
 func firstOpenCodeForwardedHeaderToken(value string) string {
-	for _, token := range strings.Split(value, ",") {
+	for token := range strings.SplitSeq(value, ",") {
 		if token = strings.TrimSpace(token); token != "" {
 			return token
 		}
