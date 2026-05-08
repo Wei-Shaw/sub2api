@@ -160,6 +160,11 @@ func (Group) Fields() []ent.Field {
 		field.Int("rpm_limit").
 			Default(0).
 			Comment("分组 RPM 上限，0 表示不限制；设置后接管该分组用户的限流"),
+
+		// 调度账号日志可见性（added by migration 136）
+		field.Bool("expose_scheduled_account_in_logs").
+			Default(false).
+			Comment("是否允许非管理员在日志/运维视图中看到该分组的调度账号"),
 	}
 }
 

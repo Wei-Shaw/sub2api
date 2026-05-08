@@ -2184,6 +2184,12 @@ export default {
         targetModelPlaceholder: '例如: gpt-5.4',
         removeExactMapping: '删除精确映射'
       },
+      opsVisibility: {
+        title: '运维日志可见性',
+        enabled: '向分组查看者公开',
+        disabled: '仅管理员可见',
+        hint: '管理员始终可见调度账号。启用后，查看该分组日志/运维视图的非管理员也会收到调度账号字段。'
+      },
       invalidRequestFallback: {
         title: '无效请求兜底分组',
         hint: '仅当上游明确返回 prompt too long 时才会触发，留空表示不兜底',

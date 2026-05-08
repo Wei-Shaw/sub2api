@@ -1726,6 +1726,8 @@ export default {
       creating: 'Creating...',
       updating: 'Updating...',
       form: {
+        roleLabel: 'Role',
+        selectRole: 'Select role',
         rpmLimit: 'Requests Per Minute (RPM)',
         rpmLimitPlaceholder: '0 = unlimited',
         rpmLimitHint: 'Max requests per minute for this user; 0 = unlimited. Acts as a fallback only when the group has no rpm_limit set.'
@@ -2099,6 +2101,12 @@ export default {
         targetModel: 'Target Model',
         targetModelPlaceholder: 'e.g., gpt-5.4',
         removeExactMapping: 'Remove Exact Mapping'
+      },
+      opsVisibility: {
+        title: 'Ops Log Visibility',
+        enabled: 'Visible to group viewers',
+        disabled: 'Admins only',
+        hint: 'Admins always see scheduled account attribution. Enable this if non-admin viewers of this group should also receive the scheduled account field in logs and ops views.'
       },
       invalidRequestFallback: {
         title: 'Invalid Request Fallback Group',

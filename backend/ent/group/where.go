@@ -210,6 +210,11 @@ func RpmLimit(v int) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldRpmLimit, v))
 }
 
+// ExposeScheduledAccountInLogs applies equality check predicate on the "expose_scheduled_account_in_logs" field. It's identical to ExposeScheduledAccountInLogsEQ.
+func ExposeScheduledAccountInLogs(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldExposeScheduledAccountInLogs, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldCreatedAt, v))
@@ -1438,6 +1443,16 @@ func RpmLimitLT(v int) predicate.Group {
 // RpmLimitLTE applies the LTE predicate on the "rpm_limit" field.
 func RpmLimitLTE(v int) predicate.Group {
 	return predicate.Group(sql.FieldLTE(FieldRpmLimit, v))
+}
+
+// ExposeScheduledAccountInLogsEQ applies the EQ predicate on the "expose_scheduled_account_in_logs" field.
+func ExposeScheduledAccountInLogsEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldExposeScheduledAccountInLogs, v))
+}
+
+// ExposeScheduledAccountInLogsNEQ applies the NEQ predicate on the "expose_scheduled_account_in_logs" field.
+func ExposeScheduledAccountInLogsNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldExposeScheduledAccountInLogs, v))
 }
 
 // HasAPIKeys applies the HasEdge predicate on the "api_keys" edge.

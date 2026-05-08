@@ -132,6 +132,43 @@ func TestUserHandlerEndpoints(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 }
 
+func TestUserHandlerCreateAndUpdateRoleMapping(t *testing.T) {
+	router, adminSvc := setupAdminRouter()
+
+	createBody := map[string]any{
+		"email":       "admin@example.com",
+		"password":    "pass123",
+		"role":        "admin",
+		"concurrency": 2,
+	}
+	body, err := json.Marshal(createBody)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/users", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.NotNil(t, adminSvc.lastCreateUser)
+	require.Equal(t, "admin", adminSvc.lastCreateUser.Role)
+
+	updateBody := map[string]any{
+		"email": "updated@example.com",
+		"role":  "admin",
+	}
+	body, err = json.Marshal(updateBody)
+	require.NoError(t, err)
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPut, "/api/v1/admin/users/1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.NotNil(t, adminSvc.lastUpdateUser)
+	require.NotNil(t, adminSvc.lastUpdateUser.Role)
+	require.Equal(t, "admin", *adminSvc.lastUpdateUser.Role)
+}
+
 func TestUserHandlerBindAuthIdentityMapsRequest(t *testing.T) {
 	router, adminSvc := setupAdminRouter()
 

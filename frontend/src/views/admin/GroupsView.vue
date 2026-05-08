@@ -512,6 +512,45 @@
           />
           <p class="input-hint">{{ t("admin.groups.form.rpmLimitHint") }}</p>
         </div>
+        <div class="border-t pt-4">
+          <div class="mb-1.5 flex items-center gap-1">
+            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t("admin.groups.opsVisibility.title") }}
+            </label>
+          </div>
+          <div class="flex items-center gap-3">
+            <button
+              type="button"
+              @click="
+                createForm.expose_scheduled_account_in_logs =
+                  !createForm.expose_scheduled_account_in_logs
+              "
+              :class="[
+                'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                createForm.expose_scheduled_account_in_logs
+                  ? 'bg-primary-500'
+                  : 'bg-gray-300 dark:bg-dark-600',
+              ]"
+            >
+              <span
+                :class="[
+                  'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                  createForm.expose_scheduled_account_in_logs
+                    ? 'translate-x-6'
+                    : 'translate-x-1',
+                ]"
+              />
+            </button>
+            <span class="text-sm text-gray-500 dark:text-gray-400">
+              {{
+                createForm.expose_scheduled_account_in_logs
+                  ? t("admin.groups.opsVisibility.enabled")
+                  : t("admin.groups.opsVisibility.disabled")
+              }}
+            </span>
+          </div>
+          <p class="input-hint">{{ t("admin.groups.opsVisibility.hint") }}</p>
+        </div>
         <div
           v-if="createForm.subscription_type !== 'subscription'"
           data-tour="group-form-exclusive"
@@ -1694,6 +1733,45 @@
             :placeholder="t('admin.groups.form.rpmLimitPlaceholder')"
           />
           <p class="input-hint">{{ t("admin.groups.form.rpmLimitHint") }}</p>
+        </div>
+        <div class="border-t pt-4">
+          <div class="mb-1.5 flex items-center gap-1">
+            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t("admin.groups.opsVisibility.title") }}
+            </label>
+          </div>
+          <div class="flex items-center gap-3">
+            <button
+              type="button"
+              @click="
+                editForm.expose_scheduled_account_in_logs =
+                  !editForm.expose_scheduled_account_in_logs
+              "
+              :class="[
+                'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                editForm.expose_scheduled_account_in_logs
+                  ? 'bg-primary-500'
+                  : 'bg-gray-300 dark:bg-dark-600',
+              ]"
+            >
+              <span
+                :class="[
+                  'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                  editForm.expose_scheduled_account_in_logs
+                    ? 'translate-x-6'
+                    : 'translate-x-1',
+                ]"
+              />
+            </button>
+            <span class="text-sm text-gray-500 dark:text-gray-400">
+              {{
+                editForm.expose_scheduled_account_in_logs
+                  ? t("admin.groups.opsVisibility.enabled")
+                  : t("admin.groups.opsVisibility.disabled")
+              }}
+            </span>
+          </div>
+          <p class="input-hint">{{ t("admin.groups.opsVisibility.hint") }}</p>
         </div>
         <div v-if="editForm.subscription_type !== 'subscription'">
           <div class="mb-1.5 flex items-center gap-1">
@@ -3139,6 +3217,8 @@ const createForm = reactive({
   copy_accounts_from_group_ids: [] as number[],
   // 分组级 RPM 限制（每用户每分钟最大请求数；0 = 不限制）
   rpm_limit: 0 as number,
+  // 调度账号日志可见性（管理员始终可见；此字段控制非管理员）
+  expose_scheduled_account_in_logs: false,
 });
 
 // 简单账号类型（用于模型路由选择）
@@ -3425,6 +3505,8 @@ const editForm = reactive({
   copy_accounts_from_group_ids: [] as number[],
   // 分组级 RPM 限制（每用户每分钟最大请求数；0 = 不限制）
   rpm_limit: 0 as number,
+  // 调度账号日志可见性（管理员始终可见；此字段控制非管理员）
+  expose_scheduled_account_in_logs: false,
 });
 
 type ImagePricingFormState = {
@@ -3656,6 +3738,7 @@ const closeCreateModal = () => {
   createForm.supported_model_scopes = ["claude", "gemini_text", "gemini_image"];
   createForm.mcp_xml_inject = true;
   createForm.copy_accounts_from_group_ids = [];
+  createForm.expose_scheduled_account_in_logs = false;
   createModelRoutingRules.value = [];
 };
 
@@ -3792,6 +3875,8 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.mcp_xml_inject = group.mcp_xml_inject ?? true;
   editForm.copy_accounts_from_group_ids = []; // 复制账号字段每次编辑时重置为空
   editForm.rpm_limit = group.rpm_limit ?? 0;
+  editForm.expose_scheduled_account_in_logs =
+    group.expose_scheduled_account_in_logs ?? false;
   // 加载模型路由规则（异步加载账号名称）
   editModelRoutingRules.value = await convertApiFormatToRoutingRules(
     group.model_routing,

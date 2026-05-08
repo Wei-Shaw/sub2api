@@ -120,6 +120,7 @@ type CreateUserInput struct {
 	Password      string
 	Username      string
 	Notes         string
+	Role          string
 	Balance       float64
 	Concurrency   int
 	RPMLimit      int
@@ -131,6 +132,7 @@ type UpdateUserInput struct {
 	Password      string
 	Username      *string
 	Notes         *string
+	Role          *string
 	Balance       *float64 // 使用指针区分"未提供"和"设置为0"
 	Concurrency   *int     // 使用指针区分"未提供"和"设置为0"
 	RPMLimit      *int     // 使用指针区分"未提供"和"设置为0"
@@ -214,6 +216,9 @@ type CreateGroupInput struct {
 	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig
 	// RPMLimit 分组 RPM 上限（0 = 不限制）
 	RPMLimit int
+	// ExposeScheduledAccountInLogs controls whether non-admin viewers can see
+	// scheduled account attribution for this group in ops/log views.
+	ExposeScheduledAccountInLogs bool
 	// 从指定分组复制账号（创建分组后在同一事务内绑定）
 	CopyAccountsFromGroupIDs []int64
 }
@@ -254,6 +259,9 @@ type UpdateGroupInput struct {
 	MessagesDispatchModelConfig *OpenAIMessagesDispatchModelConfig
 	// RPMLimit 分组 RPM 上限（0 = 不限制），nil 表示未提供不改动。
 	RPMLimit *int
+	// ExposeScheduledAccountInLogs controls whether non-admin viewers can see
+	// scheduled account attribution for this group in ops/log views.
+	ExposeScheduledAccountInLogs *bool
 	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
 	CopyAccountsFromGroupIDs []int64
 }
@@ -661,11 +669,15 @@ func (s *adminServiceImpl) GetUser(ctx context.Context, id int64) (*User, error)
 }
 
 func (s *adminServiceImpl) CreateUser(ctx context.Context, input *CreateUserInput) (*User, error) {
+	role, err := normalizeAdminManagedUserRole(input.Role)
+	if err != nil {
+		return nil, err
+	}
 	user := &User{
 		Email:         input.Email,
 		Username:      input.Username,
 		Notes:         input.Notes,
-		Role:          RoleUser, // Always create as regular user, never admin
+		Role:          role,
 		Balance:       input.Balance,
 		Concurrency:   input.Concurrency,
 		RPMLimit:      input.RPMLimit,
@@ -744,6 +756,14 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 		user.Status = input.Status
 	}
 
+	if input.Role != nil {
+		role, err := normalizeAdminManagedUserRole(*input.Role)
+		if err != nil {
+			return nil, err
+		}
+		user.Role = role
+	}
+
 	if input.Concurrency != nil {
 		user.Concurrency = *input.Concurrency
 	}
@@ -754,6 +774,10 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 
 	if input.AllowedGroups != nil {
 		user.AllowedGroups = *input.AllowedGroups
+	}
+
+	if err := ensureActiveAdminStillExists(ctx, s.userRepo, oldRole, oldStatus, user.Role, user.Status, id); err != nil {
+		return nil, err
 	}
 
 	if err := s.userRepo.Update(ctx, user); err != nil {
@@ -797,6 +821,51 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	}
 
 	return user, nil
+}
+
+func normalizeAdminManagedUserRole(role string) (string, error) {
+	normalized := strings.ToLower(strings.TrimSpace(role))
+	if normalized == "" {
+		return RoleUser, nil
+	}
+	switch normalized {
+	case RoleUser, RoleAdmin:
+		return normalized, nil
+	default:
+		return "", infraerrors.BadRequest("INVALID_USER_ROLE", "invalid user role")
+	}
+}
+
+func ensureActiveAdminStillExists(ctx context.Context, repo UserRepository, oldRole, oldStatus, newRole, newStatus string, userID int64) error {
+	if repo == nil {
+		return nil
+	}
+	if oldRole != RoleAdmin || oldStatus != StatusActive {
+		return nil
+	}
+	if newRole == RoleAdmin && newStatus == StatusActive {
+		return nil
+	}
+
+	admins, _, err := repo.ListWithFilters(ctx, pagination.PaginationParams{
+		Page:      1,
+		PageSize:  2,
+		SortBy:    "id",
+		SortOrder: pagination.SortOrderAsc,
+	}, UserListFilters{
+		Role:   RoleAdmin,
+		Status: StatusActive,
+	})
+	if err != nil {
+		return err
+	}
+
+	for _, admin := range admins {
+		if admin.ID != userID {
+			return nil
+		}
+	}
+	return infraerrors.Conflict("LAST_ACTIVE_ADMIN_REQUIRED", "at least one active admin must remain")
 }
 
 func (s *adminServiceImpl) DeleteUser(ctx context.Context, id int64) error {
@@ -1689,6 +1758,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		DefaultMappedModel:              input.DefaultMappedModel,
 		MessagesDispatchModelConfig:     normalizeOpenAIMessagesDispatchModelConfig(input.MessagesDispatchModelConfig),
 		RPMLimit:                        input.RPMLimit,
+		ExposeScheduledAccountInLogs:    input.ExposeScheduledAccountInLogs,
 	}
 	sanitizeGroupMessagesDispatchFields(group)
 	if err := s.groupRepo.Create(ctx, group); err != nil {
@@ -1937,6 +2007,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.RPMLimit != nil {
 		group.RPMLimit = *input.RPMLimit
+	}
+	if input.ExposeScheduledAccountInLogs != nil {
+		group.ExposeScheduledAccountInLogs = *input.ExposeScheduledAccountInLogs
 	}
 	sanitizeGroupMessagesDispatchFields(group)
 

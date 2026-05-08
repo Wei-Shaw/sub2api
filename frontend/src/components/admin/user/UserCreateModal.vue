@@ -25,6 +25,15 @@
         <label class="input-label">{{ t('admin.users.username') }}</label>
         <input v-model="form.username" type="text" class="input" :placeholder="t('admin.users.enterUsername')" />
       </div>
+      <div>
+        <label class="input-label">{{ t('admin.users.form.roleLabel') }}</label>
+        <Select v-model="form.role" :options="roleOptions" />
+      </div>
+      <div>
+        <label class="input-label">{{ t('admin.users.notes') }}</label>
+        <textarea v-model="form.notes" rows="3" class="input" :placeholder="t('admin.users.enterNotes')" />
+        <p class="input-hint">{{ t('admin.users.notesHint') }}</p>
+      </div>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label class="input-label">{{ t('admin.users.columns.balance') }}</label>
@@ -60,16 +69,31 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, watch } from 'vue'
+import { computed, reactive, watch } from 'vue'
 import { useI18n } from 'vue-i18n'; import { adminAPI } from '@/api/admin'
 import { useForm } from '@/composables/useForm'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
+import Select from '@/components/common/Select.vue'
 
 const props = defineProps<{ show: boolean }>()
 const emit = defineEmits(['close', 'success']); const { t } = useI18n()
 
-const form = reactive({ email: '', password: '', username: '', notes: '', balance: 0, concurrency: 1, rpm_limit: 0 })
+const form = reactive({
+  email: '',
+  password: '',
+  username: '',
+  notes: '',
+  role: 'user' as 'admin' | 'user',
+  balance: 0,
+  concurrency: 1,
+  rpm_limit: 0
+})
+
+const roleOptions = computed(() => [
+  { value: 'user', label: t('admin.users.roles.user') },
+  { value: 'admin', label: t('admin.users.roles.admin') }
+])
 
 const { loading, submit } = useForm({
   form,
@@ -80,7 +104,20 @@ const { loading, submit } = useForm({
   successMsg: t('admin.users.userCreated')
 })
 
-watch(() => props.show, (v) => { if(v) Object.assign(form, { email: '', password: '', username: '', notes: '', balance: 0, concurrency: 1, rpm_limit: 0 }) })
+watch(() => props.show, (v) => {
+  if (v) {
+    Object.assign(form, {
+      email: '',
+      password: '',
+      username: '',
+      notes: '',
+      role: 'user',
+      balance: 0,
+      concurrency: 1,
+      rpm_limit: 0
+    })
+  }
+})
 
 const generateRandomPassword = () => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%^&*'
