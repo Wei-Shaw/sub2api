@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"hash/fnv"
+	"log/slog"
 	"math"
 	"sort"
 	"strconv"
@@ -815,6 +816,12 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		}
 		return nil, nil
 	}
+	if !s.isAccountChannelRestrictionCompatible(ctx, account, req) {
+		if sticky != nil {
+			sticky.setEvalResult(openAIStickyEvalResultMissBindingRestricted)
+		}
+		return nil, nil
+	}
 	if !account.SupportsOpenAIImageCapability(req.RequiredImageCapability) || !accountSupportsOpenAIResponsesImageGenerationRequirement(account, req.RequiredResponsesImageGeneration) || (req.RequireCompact && openAICompactSupportTier(account) == 0) {
 		if sticky != nil {
 			sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
@@ -830,7 +837,7 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		return nil, nil
 	}
 	account = s.service.recheckSelectedProjectedOpenAIAccountFromDBWithView(ctx, req.GroupID, account, req.RequestedModel, selectedGroup, req.TargetGroup, projectionView)
-	if account == nil || !s.isAccountTransportCompatible(account, req.RequiredTransport) || !account.SupportsOpenAIImageCapability(req.RequiredImageCapability) || !accountSupportsOpenAIResponsesImageGenerationRequirement(account, req.RequiredResponsesImageGeneration) || (req.RequireCompact && openAICompactSupportTier(account) == 0) {
+	if account == nil || !s.isAccountTransportCompatible(account, req.RequiredTransport) || !s.isAccountChannelRestrictionCompatible(ctx, account, req) || !account.SupportsOpenAIImageCapability(req.RequiredImageCapability) || !accountSupportsOpenAIResponsesImageGenerationRequirement(account, req.RequiredResponsesImageGeneration) || (req.RequireCompact && openAICompactSupportTier(account) == 0) {
 		if sticky != nil {
 			sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
 		}
@@ -1204,7 +1211,15 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 				fmt.Sprintf("Privacy not set, required by group [%s]", schedGroup.Name))
 			return
 		}
-		if !s.isAccountRequestCompatible(account, req) {
+		requiresModelMappingCheck := projectionView == nil ||
+			selectedGroup == string(TargetGroupActive) ||
+			(selectedGroup != openAISelectedGroupReserve && (req.TargetGroup == TargetGroupAny || req.TargetGroup == TargetGroupActive))
+		if req.RequestedModel != "" && requiresModelMappingCheck && !account.IsModelSupported(req.RequestedModel) {
+			return
+		}
+		if !s.isAccountChannelRestrictionCompatible(ctx, account, req) ||
+			!account.SupportsOpenAIImageCapability(req.RequiredImageCapability) ||
+			!accountSupportsOpenAIResponsesImageGenerationRequirement(account, req.RequiredResponsesImageGeneration) {
 			return
 		}
 		if !s.isAccountTransportCompatible(account, req.RequiredTransport) {
@@ -1475,11 +1490,19 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 
 	prepareCandidate := func(candidate openAIAccountCandidateScore) (*Account, bool) {
 		fresh := s.service.resolveFreshProjectedOpenAIAccountWithView(ctx, req.GroupID, candidate.account, req.RequestedModel, candidate.selectedGroup, req.TargetGroup, req.RequireCompact, projectionView)
-		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !fresh.SupportsOpenAIImageCapability(req.RequiredImageCapability) || !accountSupportsOpenAIResponsesImageGenerationRequirement(fresh, req.RequiredResponsesImageGeneration) {
+		if fresh == nil ||
+			!s.isAccountTransportCompatible(fresh, req.RequiredTransport) ||
+			!s.isAccountChannelRestrictionCompatible(ctx, fresh, req) ||
+			!fresh.SupportsOpenAIImageCapability(req.RequiredImageCapability) ||
+			!accountSupportsOpenAIResponsesImageGenerationRequirement(fresh, req.RequiredResponsesImageGeneration) {
 			return nil, false
 		}
 		fresh = s.service.recheckSelectedProjectedOpenAIAccountFromDBWithView(ctx, req.GroupID, fresh, req.RequestedModel, candidate.selectedGroup, req.TargetGroup, projectionView)
-		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !fresh.SupportsOpenAIImageCapability(req.RequiredImageCapability) || !accountSupportsOpenAIResponsesImageGenerationRequirement(fresh, req.RequiredResponsesImageGeneration) {
+		if fresh == nil ||
+			!s.isAccountTransportCompatible(fresh, req.RequiredTransport) ||
+			!s.isAccountChannelRestrictionCompatible(ctx, fresh, req) ||
+			!fresh.SupportsOpenAIImageCapability(req.RequiredImageCapability) ||
+			!accountSupportsOpenAIResponsesImageGenerationRequirement(fresh, req.RequiredResponsesImageGeneration) {
 			return nil, false
 		}
 		if req.RequireCompact && openAICompactSupportTier(fresh) == 0 {
@@ -1571,15 +1594,30 @@ func (s *defaultOpenAIAccountScheduler) isAccountTransportCompatible(account *Ac
 	return s.service.isOpenAIAccountTransportCompatible(account, requiredTransport)
 }
 
-func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatible(account *Account, req OpenAIAccountScheduleRequest) bool {
+func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatible(ctx context.Context, account *Account, req OpenAIAccountScheduleRequest) bool {
 	if account == nil {
 		return false
 	}
 	if req.RequestedModel != "" && !account.IsModelSupported(req.RequestedModel) {
 		return false
 	}
+	if !s.isAccountChannelRestrictionCompatible(ctx, account, req) {
+		return false
+	}
 	return account.SupportsOpenAIImageCapability(req.RequiredImageCapability) &&
 		accountSupportsOpenAIResponsesImageGenerationRequirement(account, req.RequiredResponsesImageGeneration)
+}
+
+func (s *defaultOpenAIAccountScheduler) isAccountChannelRestrictionCompatible(ctx context.Context, account *Account, req OpenAIAccountScheduleRequest) bool {
+	if account == nil {
+		return false
+	}
+	if req.GroupID != nil && s != nil && s.service != nil &&
+		s.service.needsUpstreamChannelRestrictionCheck(ctx, req.GroupID) &&
+		s.service.isUpstreamModelRestrictedByChannel(ctx, *req.GroupID, account, req.RequestedModel, req.RequireCompact) {
+		return false
+	}
+	return true
 }
 
 func accountSupportsOpenAIResponsesImageGenerationRequirement(account *Account, requirement *OpenAIResponsesImageGenerationRequirement) bool {
@@ -1819,6 +1857,13 @@ func (s *OpenAIGatewayService) SelectAccountWithSchedulerRequest(
 				effectiveExcludedIDs[selection.Account.ID] = struct{}{}
 			}
 		}
+	}
+
+	if s.checkChannelPricingRestriction(ctx, req.GroupID, req.RequestedModel) {
+		slog.Warn("channel pricing restriction blocked request",
+			"group_id", derefGroupID(req.GroupID),
+			"model", req.RequestedModel)
+		return nil, decision, fmt.Errorf("%w supporting model: %s (channel pricing restriction)", ErrNoAvailableAccounts, req.RequestedModel)
 	}
 
 	var stickyAccountID int64

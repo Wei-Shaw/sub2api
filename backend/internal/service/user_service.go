@@ -96,6 +96,8 @@ type UserRepository interface {
 	UpdateBalance(ctx context.Context, id int64, amount float64) error
 	DeductBalance(ctx context.Context, id int64, amount float64) error
 	UpdateConcurrency(ctx context.Context, id int64, amount int) error
+	BatchSetConcurrency(ctx context.Context, userIDs []int64, value int) (int, error)
+	BatchAddConcurrency(ctx context.Context, userIDs []int64, delta int) (int, error)
 	ExistsByEmail(ctx context.Context, email string) (bool, error)
 	RemoveGroupFromAllowedGroups(ctx context.Context, groupID int64) (int64, error)
 	// AddGroupToAllowedGroups 将指定分组增量添加到用户的 allowed_groups（幂等，冲突忽略）

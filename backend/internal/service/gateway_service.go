@@ -11,6 +11,7 @@ import (
 	"io"
 	"log/slog"
 	mathrand "math/rand"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -20,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -58,6 +60,11 @@ const (
 
 const (
 	claudeMimicDebugInfoKey = "claude_mimic_debug_info"
+)
+
+const (
+	cacheTTLTarget5m = "5m"
+	cacheTTLTarget1h = "1h"
 )
 
 // ForceCacheBillingContextKey 强制缓存计费上下文键
@@ -699,15 +706,31 @@ func (s *GatewayService) GenerateSessionHash(parsed *ParsedRequest) string {
 
 	// 1. 最高优先级：从 metadata.user_id 提取 session_xxx
 	if parsed.MetadataUserID != "" {
-		if uid := ParseMetadataUserID(parsed.MetadataUserID); uid != nil && uid.SessionID != "" {
+		uid := ParseMetadataUserID(parsed.MetadataUserID)
+		if uid != nil && uid.SessionID != "" {
+			slog.Info("sticky.hash_source",
+				"source", "metadata_user_id",
+				"session_id", uid.SessionID,
+				"device_id", uid.DeviceID,
+				"is_new_format", uid.IsNewFormat,
+			)
 			return uid.SessionID
 		}
+		slog.Info("sticky.hash_metadata_parse_failed",
+			"metadata_user_id", parsed.MetadataUserID,
+			"parsed_nil", uid == nil,
+		)
 	}
 
 	// 2. 提取带 cache_control: {type: "ephemeral"} 的内容
 	cacheableContent := s.extractCacheableContent(parsed)
 	if cacheableContent != "" {
-		return s.hashContent(cacheableContent)
+		hash := s.hashContent(cacheableContent)
+		slog.Info("sticky.hash_source",
+			"source", "cacheable_content",
+			"hash", hash,
+		)
+		return hash
 	}
 
 	// 3. 最后 fallback: 使用 session上下文 + system + 所有消息的完整摘要串
@@ -747,7 +770,13 @@ func (s *GatewayService) GenerateSessionHash(parsed *ParsedRequest) string {
 		}
 	}
 	if combined.Len() > 0 {
-		return s.hashContent(combined.String())
+		hash := s.hashContent(combined.String())
+		slog.Info("sticky.hash_source",
+			"source", "message_content_fallback",
+			"hash", hash,
+			"content_len", combined.Len(),
+		)
+		return hash
 	}
 
 	return ""
@@ -1450,13 +1479,28 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	}
 
 	var stickyAccountID int64
+	var stickySource string
 	if prefetch := prefetchedStickyAccountIDFromContext(ctx, groupID); prefetch > 0 {
 		stickyAccountID = prefetch
+		stickySource = "prefetch"
 	} else if sessionHash != "" && s.cache != nil {
 		if accountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), sessionHash); err == nil {
 			stickyAccountID = accountID
+			stickySource = "cache"
 		}
 	}
+
+	// [DEBUG-STICKY] 调度器入口日志
+	slog.Info("sticky.scheduler_entry",
+		"group_id", derefGroupID(groupID),
+		"session_hash", shortSessionHash(sessionHash),
+		"sticky_account_id", stickyAccountID,
+		"sticky_source", stickySource,
+		"model", requestedModel,
+		"load_batch", cfg.LoadBatchEnabled,
+		"has_concurrency_svc", s.concurrencyService != nil,
+		"excluded_count", len(excludedIDs),
+	)
 
 	if s.debugModelRoutingEnabled() && requestedModel != "" {
 		groupPlatform := ""
@@ -1664,6 +1708,13 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		if len(routingCandidates) > 0 {
 			// 1.5. 在路由账号范围内检查粘性会话
 			if sessionHash != "" && stickyAccountID > 0 {
+				slog.Debug("sticky.layer1_5_checking",
+					"sticky_account_id", stickyAccountID,
+					"in_routing_list", containsInt64(routingAccountIDs, stickyAccountID),
+					"is_excluded", isExcluded(stickyAccountID),
+					"in_account_map", func() bool { _, ok := accountByID[stickyAccountID]; return ok }(),
+					"session", shortSessionHash(sessionHash),
+				)
 				if containsInt64(routingAccountIDs, stickyAccountID) && !isExcluded(stickyAccountID) {
 					// 粘性账号在路由列表中，优先使用
 					if stickyAccount, ok := accountByID[stickyAccountID]; ok {
@@ -1679,6 +1730,11 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 									stickyCacheMissReason = "session_limit"
 									// 继续到负载感知选择
 								} else {
+									slog.Debug("sticky.layer1_5_hit",
+										"account_id", stickyAccountID,
+										"session", shortSessionHash(sessionHash),
+										"result", "slot_acquired",
+									)
 									if s.debugModelRoutingEnabled() {
 										logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), stickyAccountID)
 									}
@@ -1825,20 +1881,42 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				// 检查账户是否需要清理粘性会话绑定
 				clearSticky := shouldClearStickySession(account, requestedModel)
 				if clearSticky {
+					slog.Debug("sticky.layer1_5_no_routing_clear",
+						"account_id", accountID,
+						"reason", "should_clear_sticky_session",
+						"session", shortSessionHash(sessionHash),
+					)
 					_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 				}
-				if !clearSticky && accountSelectionRejectReason(account, true) == "" { // 粘性会话窗口费用+RPM 检查
+				// accountByID 已经从按分组过滤的 accounts 列表构建；不要再用
+				// AccountGroups 字段做二次分组检查，scheduler snapshot 反序列化后该字段可能为空。
+				if rejectReason := accountSelectionRejectReason(account, true); !clearSticky && rejectReason == "" {
 					result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 					if err == nil && result.Acquired {
 						// 会话数量限制检查
 						if !s.checkAndRegisterSession(ctx, account, sessionHash) {
 							result.ReleaseFunc() // 释放槽位，继续到 Layer 2
+							slog.Debug("sticky.layer1_5_no_routing_miss",
+								"account_id", accountID,
+								"reason", "session_limit",
+								"session", shortSessionHash(sessionHash),
+							)
 						} else {
+							slog.Debug("sticky.layer1_5_no_routing_hit",
+								"account_id", accountID,
+								"session", shortSessionHash(sessionHash),
+								"result", "slot_acquired",
+							)
 							if s.cache != nil {
 								_ = s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, stickySessionTTL)
 							}
 							return s.newSelectionResult(ctx, account, true, result.ReleaseFunc, nil)
 						}
+					} else {
+						slog.Debug("sticky.layer1_5_no_routing_slot_busy",
+							"account_id", accountID,
+							"session", shortSessionHash(sessionHash),
+						)
 					}
 
 					waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, accountID)
@@ -1847,6 +1925,11 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 						if !s.checkAndRegisterSession(ctx, account, sessionHash) {
 							// 会话限制已满，继续到 Layer 2
 						} else {
+							slog.Debug("sticky.layer1_5_no_routing_hit",
+								"account_id", accountID,
+								"session", shortSessionHash(sessionHash),
+								"result", "wait_plan",
+							)
 							return s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
 								AccountID:      accountID,
 								MaxConcurrency: account.Concurrency,
@@ -1855,12 +1938,42 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 							})
 						}
 					}
+				} else if !clearSticky {
+					slog.Debug("sticky.layer1_5_no_routing_miss",
+						"account_id", accountID,
+						"reason", "gate_check_failed",
+						"session", shortSessionHash(sessionHash),
+					)
 				}
+			} else {
+				slog.Debug("sticky.layer1_5_no_routing_miss",
+					"account_id", accountID,
+					"reason", "account_not_in_map",
+					"session", shortSessionHash(sessionHash),
+				)
 			}
 		}
+	} else if len(routingAccountIDs) == 0 && sessionHash != "" {
+		slog.Debug("sticky.layer1_5_no_routing_skip",
+			"sticky_account_id", stickyAccountID,
+			"is_excluded", func() bool { return stickyAccountID > 0 && isExcluded(stickyAccountID) }(),
+			"session", shortSessionHash(sessionHash),
+			"reason", func() string {
+				if stickyAccountID == 0 {
+					return "no_sticky_binding"
+				}
+				return "sticky_account_excluded"
+			}(),
+		)
 	}
 
 	// ============ Layer 2: 负载感知选择 ============
+	slog.Debug("sticky.layer2_fallback",
+		"session", shortSessionHash(sessionHash),
+		"sticky_account_id", stickyAccountID,
+		"reason", "sticky_not_used_falling_back_to_load_balance",
+		"total_accounts", len(accounts),
+	)
 	candidates := make([]*Account, 0, len(accounts))
 	for i := range accounts {
 		acc := &accounts[i]
@@ -3690,7 +3803,11 @@ func (s *GatewayService) isModelSupportedByAccount(account *Account, requestedMo
 	}
 	// OAuth/SetupToken 账号使用 Anthropic 标准映射（短ID → 长ID）
 	if account.Platform == PlatformAnthropic && account.Type != AccountTypeAPIKey {
-		requestedModel = claude.NormalizeModelID(requestedModel)
+		if account.Type == AccountTypeServiceAccount {
+			requestedModel = normalizeVertexAnthropicModelID(claude.NormalizeModelID(requestedModel))
+		} else {
+			requestedModel = claude.NormalizeModelID(requestedModel)
+		}
 	}
 	// 其他平台使用账户的模型支持检查
 	return account.IsModelSupported(requestedModel)
@@ -3710,6 +3827,18 @@ func (s *GatewayService) GetAccessToken(ctx context.Context, account *Account) (
 		return apiKey, "apikey", nil
 	case AccountTypeBedrock:
 		return "", "bedrock", nil // Bedrock 使用 SigV4 签名或 API Key，由 forwardBedrock 处理
+	case AccountTypeServiceAccount:
+		if account.Platform != PlatformAnthropic {
+			return "", "", fmt.Errorf("unsupported service account platform: %s", account.Platform)
+		}
+		if s.claudeTokenProvider == nil {
+			return "", "", errors.New("claude token provider not configured")
+		}
+		accessToken, err := s.claudeTokenProvider.GetAccessToken(ctx, account)
+		if err != nil {
+			return "", "", err
+		}
+		return accessToken, "service_account", nil
 	default:
 		return "", "", fmt.Errorf("unsupported account type: %s", account.Type)
 	}
@@ -4179,6 +4308,87 @@ func enforceCacheControlLimit(body []byte) []byte {
 	return body
 }
 
+// injectAnthropicCacheControlTTL1h 将已有 ephemeral cache_control 块的 ttl 强制写为 1h。
+// 仅修改已经存在的 cache_control，不新增缓存断点。
+func injectAnthropicCacheControlTTL1h(body []byte) []byte {
+	return forceEphemeralCacheControlTTL(body, cacheTTLTarget1h)
+}
+
+func forceEphemeralCacheControlTTL(body []byte, ttl string) []byte {
+	if len(body) == 0 || ttl == "" {
+		return body
+	}
+	out := body
+	var paths []string
+	addPath := func(path string, value gjson.Result) {
+		cc := value.Get("cache_control")
+		if !cc.Exists() || cc.Get("type").String() != "ephemeral" {
+			return
+		}
+		if cc.Get("ttl").String() == ttl {
+			return
+		}
+		paths = append(paths, path+".cache_control.ttl")
+	}
+
+	if topCC := gjson.GetBytes(body, "cache_control"); topCC.Exists() && topCC.Get("type").String() == "ephemeral" && topCC.Get("ttl").String() != ttl {
+		paths = append(paths, "cache_control.ttl")
+	}
+
+	system := gjson.GetBytes(body, "system")
+	if system.IsArray() {
+		idx := -1
+		system.ForEach(func(_, block gjson.Result) bool {
+			idx++
+			addPath(fmt.Sprintf("system.%d", idx), block)
+			return true
+		})
+	}
+
+	messages := gjson.GetBytes(body, "messages")
+	if messages.IsArray() {
+		msgIdx := -1
+		messages.ForEach(func(_, msg gjson.Result) bool {
+			msgIdx++
+			content := msg.Get("content")
+			if !content.IsArray() {
+				return true
+			}
+			contentIdx := -1
+			content.ForEach(func(_, block gjson.Result) bool {
+				contentIdx++
+				addPath(fmt.Sprintf("messages.%d.content.%d", msgIdx, contentIdx), block)
+				return true
+			})
+			return true
+		})
+	}
+
+	tools := gjson.GetBytes(body, "tools")
+	if tools.IsArray() {
+		idx := -1
+		tools.ForEach(func(_, tool gjson.Result) bool {
+			idx++
+			addPath(fmt.Sprintf("tools.%d", idx), tool)
+			return true
+		})
+	}
+
+	for _, path := range paths {
+		if next, err := sjson.SetBytes(out, path, ttl); err == nil {
+			out = next
+		}
+	}
+	return out
+}
+
+func (s *GatewayService) shouldInjectAnthropicCacheTTL1h(ctx context.Context, account *Account) bool {
+	if account == nil || !account.IsAnthropicOAuthOrSetupToken() || s == nil || s.settingService == nil {
+		return false
+	}
+	return s.settingService.IsAnthropicCacheTTL1hInjectionEnabled(ctx)
+}
+
 // Forward 转发请求到Claude API
 func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, parsed *ParsedRequest) (*ForwardResult, error) {
 	startTime := time.Now()
@@ -4312,6 +4522,18 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			mappingSource = "account"
 		}
 	}
+	if mappingSource == "" && account.Platform == PlatformAnthropic && account.Type == AccountTypeServiceAccount {
+		if candidate, matched := account.ResolveMappedModel(reqModel); matched {
+			mappedModel = candidate
+			mappingSource = "account"
+		} else {
+			normalized := normalizeVertexAnthropicModelID(claude.NormalizeModelID(reqModel))
+			if normalized != reqModel {
+				mappedModel = normalized
+				mappingSource = "vertex"
+			}
+		}
+	}
 	if mappingSource == "" && account.Platform == PlatformAnthropic && account.Type != AccountTypeAPIKey {
 		normalized := claude.NormalizeModelID(reqModel)
 		if normalized != reqModel {
@@ -4324,6 +4546,10 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		body = s.replaceModelInBody(body, mappedModel)
 		reqModel = mappedModel
 		logger.LegacyPrintf("service.gateway", "Model mapping applied: %s -> %s (account: %s, source=%s)", originalModel, mappedModel, account.Name, mappingSource)
+	}
+
+	if s.shouldInjectAnthropicCacheTTL1h(ctx, account) {
+		body = injectAnthropicCacheControlTTL1h(body)
 	}
 
 	// 获取凭证
@@ -5197,6 +5423,12 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 					flusher.Flush()
 				}
 				if !sawTerminalEvent {
+					if clientDisconnected && streamInterval > 0 {
+						lastRead := time.Unix(0, atomic.LoadInt64(&lastReadAt))
+						if time.Since(lastRead) >= streamInterval {
+							return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: true}, fmt.Errorf("stream usage incomplete after timeout")
+						}
+					}
 					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, fmt.Errorf("stream usage incomplete: missing terminal event")
 				}
 				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, nil
@@ -5784,6 +6016,10 @@ func (s *GatewayService) handleBedrockNonStreamingResponse(
 }
 
 func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token, tokenType, modelID string, reqStream bool, mimicClaudeCode bool) (*http.Request, error) {
+	if account.Platform == PlatformAnthropic && account.Type == AccountTypeServiceAccount {
+		return s.buildUpstreamRequestAnthropicVertex(ctx, c, account, body, token, modelID, reqStream)
+	}
+
 	// 确定目标URL
 	targetURL := claudeAPIURL
 	if account.Type == AccountTypeAPIKey {
@@ -5966,6 +6202,60 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	if s.debugClaudeMimicEnabled() {
 		logClaudeMimicDebug(req, body, account, tokenType, mimicClaudeCode)
 	}
+
+	return req, nil
+}
+
+func (s *GatewayService) buildUpstreamRequestAnthropicVertex(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	body []byte,
+	token string,
+	modelID string,
+	reqStream bool,
+) (*http.Request, error) {
+	vertexBody, err := buildVertexAnthropicRequestBody(body)
+	if err != nil {
+		return nil, err
+	}
+	setOpsUpstreamRequestBody(c, vertexBody)
+	fullURL, err := buildVertexAnthropicURL(account.VertexProjectID(), account.VertexLocation(modelID), modelID, reqStream)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(vertexBody))
+	if err != nil {
+		return nil, err
+	}
+
+	if c != nil && c.Request != nil {
+		for key, values := range c.Request.Header {
+			lowerKey := strings.ToLower(strings.TrimSpace(key))
+			if !allowedHeaders[lowerKey] || lowerKey == "anthropic-version" {
+				continue
+			}
+			wireKey := resolveWireCasing(key)
+			for _, v := range values {
+				addHeaderRaw(req.Header, wireKey, v)
+			}
+		}
+	}
+
+	req.Header.Del("authorization")
+	req.Header.Del("x-api-key")
+	req.Header.Del("x-goog-api-key")
+	req.Header.Del("cookie")
+	req.Header.Del("anthropic-version")
+	setHeaderRaw(req.Header, "authorization", "Bearer "+token)
+	setHeaderRaw(req.Header, "content-type", "application/json")
+
+	s.debugLogGatewaySnapshot("UPSTREAM_FORWARD_VERTEX_ANTHROPIC", req.Header, vertexBody, map[string]string{
+		"url":        req.URL.String(),
+		"token_type": "service_account",
+		"model":      modelID,
+		"stream":     strconv.FormatBool(reqStream),
+	})
 
 	return req, nil
 }
@@ -6538,6 +6828,49 @@ func (s *GatewayService) shouldFailoverOn400(respBody []byte) bool {
 	return false
 }
 
+// sanitizeStreamError 返回不含网络地址的客户端可见错误描述。
+// 默认 (*net.OpError).Error() 会拼接 Source/Addr 字段，泄露内部 IP/端口与上游
+// 服务器地址（例如 "read tcp 10.0.0.1:54321->52.1.2.3:443: read: connection
+// reset by peer"）。该函数只保留可识别的错误类别，原始 err 仍在调用点写入日志。
+func sanitizeStreamError(err error) string {
+	if err == nil {
+		return ""
+	}
+	switch {
+	case errors.Is(err, io.ErrUnexpectedEOF):
+		return "unexpected EOF"
+	case errors.Is(err, io.EOF):
+		return "EOF"
+	case errors.Is(err, context.Canceled):
+		return "canceled"
+	case errors.Is(err, context.DeadlineExceeded):
+		return "deadline exceeded"
+	case errors.Is(err, syscall.ECONNRESET):
+		return "connection reset by peer"
+	case errors.Is(err, syscall.ECONNABORTED):
+		return "connection aborted"
+	case errors.Is(err, syscall.ETIMEDOUT):
+		return "connection timed out"
+	case errors.Is(err, syscall.EPIPE):
+		return "broken pipe"
+	case errors.Is(err, syscall.ECONNREFUSED):
+		return "connection refused"
+	}
+	var netErr *net.OpError
+	if errors.As(err, &netErr) {
+		if netErr.Timeout() {
+			if netErr.Op != "" {
+				return netErr.Op + " timeout"
+			}
+			return "i/o timeout"
+		}
+		if netErr.Op != "" {
+			return netErr.Op + " network error"
+		}
+	}
+	return "upstream connection error"
+}
+
 // ExtractUpstreamErrorMessage 从上游响应体中提取错误消息
 // 支持 Claude 风格的错误格式：{"type":"error","error":{"type":"...","message":"..."}}
 func ExtractUpstreamErrorMessage(body []byte) string {
@@ -6975,14 +7308,31 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 	}
 	lastDataAt := time.Now()
 
-	// 仅发送一次错误事件，避免多次写入导致协议混乱（写失败时尽力通知客户端）
+	// 仅发送一次错误事件，避免多次写入导致协议混乱（写失败时尽力通知客户端）。
+	// 事件格式遵循 Anthropic SSE 标准：{"type":"error","error":{"type":<reason>,"message":<message>}}
+	// 这样 Anthropic SDK / Claude Code 等客户端能按标准 error 类型解析，UI 能显示具体错误文案，
+	// 服务端 ExtractUpstreamErrorMessage 也能从透传的 body 中提取 message。
 	errorEventSent := false
-	sendErrorEvent := func(reason string) {
+	sendErrorEvent := func(reason, message string) {
 		if errorEventSent {
 			return
 		}
 		errorEventSent = true
-		_, _ = fmt.Fprintf(w, "event: error\ndata: {\"error\":\"%s\"}\n\n", reason)
+		if message == "" {
+			message = reason
+		}
+		body, err := json.Marshal(map[string]any{
+			"type": "error",
+			"error": map[string]string{
+				"type":    reason,
+				"message": message,
+			},
+		})
+		if err != nil {
+			// json.Marshal 不可能在已知 string-only 输入上失败，保守 fallback
+			body = []byte(fmt.Sprintf(`{"type":"error","error":{"type":%q,"message":%q}}`, reason, message))
+		}
+		_, _ = fmt.Fprintf(w, "event: error\ndata: %s\n\n", body)
 		flusher.Flush()
 	}
 
@@ -7059,9 +7409,9 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 			}
 		}
 
-		// Cache TTL Override: 重写 SSE 事件中的 cache_creation 分类
-		if account.IsCacheTTLOverrideEnabled() {
-			overrideTarget := account.GetCacheTTLOverrideTarget()
+		// Cache TTL Override: 重写 SSE 事件中的 cache_creation 分类。
+		// 账号级设置优先；全局 1h 请求注入开启时，默认把 usage 计费归回 5m。
+		if overrideTarget, ok := s.resolveCacheTTLUsageOverrideTarget(ctx, account); ok {
 			if eventType == "message_start" {
 				if msg, ok := event["message"].(map[string]any); ok {
 					if u, ok := msg["usage"].(map[string]any); ok {
@@ -7142,10 +7492,32 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 				// 客户端未断开，正常的错误处理
 				if errors.Is(ev.err, bufio.ErrTooLong) {
 					logger.LegacyPrintf("service.gateway", "SSE line too long: account=%d max_size=%d error=%v", account.ID, maxLineSize, ev.err)
-					sendErrorEvent("response_too_large")
+					sendErrorEvent("response_too_large", fmt.Sprintf("upstream SSE line exceeded %d bytes", maxLineSize))
 					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs}, ev.err
 				}
-				sendErrorEvent("stream_read_error")
+				// 上游中途读错误（unexpected EOF / connection reset 等，常见于 HTTP/2 GOAWAY）：
+				// 若尚未向客户端写过任何字节，包成 UpstreamFailoverError 让 handler 层走 failover/重试。
+				// 已经开始写流时 SSE 协议无 resume，只能透传错误事件给客户端。
+				// 注意:面向客户端的 disconnectMsg 必须用 sanitizeStreamError 剥离地址,
+				// 默认 *net.OpError 的 Error() 会泄露内部 IP/端口和上游地址。完整 ev.err
+				// 仅在下方 LegacyPrintf 内部日志中保留供运维诊断。
+				disconnectMsg := "upstream stream disconnected: " + sanitizeStreamError(ev.err)
+				if !c.Writer.Written() {
+					logger.LegacyPrintf("service.gateway", "Upstream stream read error before any client output (account=%d), failing over: %v", account.ID, ev.err)
+					body, _ := json.Marshal(map[string]any{
+						"type": "error",
+						"error": map[string]string{
+							"type":    "upstream_disconnected",
+							"message": disconnectMsg,
+						},
+					})
+					return nil, &UpstreamFailoverError{
+						StatusCode:             http.StatusBadGateway,
+						ResponseBody:           body,
+						RetryableOnSameAccount: true,
+					}
+				}
+				sendErrorEvent("stream_read_error", disconnectMsg)
 				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs}, fmt.Errorf("stream read error: %w", ev.err)
 			}
 			line := ev.line
@@ -7204,7 +7576,7 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 			if s.rateLimitService != nil {
 				s.rateLimitService.HandleStreamTimeout(ctx, account, originalModel)
 			}
-			sendErrorEvent("stream_timeout")
+			sendErrorEvent("stream_timeout", fmt.Sprintf("upstream stream idle for %s", streamInterval))
 			return &streamingResult{usage: usage, firstTokenMs: firstTokenMs}, fmt.Errorf("stream data interval timeout")
 
 		case <-keepaliveCh:
@@ -7446,6 +7818,19 @@ func rewriteCacheCreationJSON(usageObj map[string]any, target string) bool {
 	return true
 }
 
+func (s *GatewayService) resolveCacheTTLUsageOverrideTarget(ctx context.Context, account *Account) (string, bool) {
+	if account == nil {
+		return "", false
+	}
+	if account.IsCacheTTLOverrideEnabled() {
+		return account.GetCacheTTLOverrideTarget(), true
+	}
+	if account.IsAnthropicOAuthOrSetupToken() && s != nil && s.settingService != nil && s.settingService.IsAnthropicCacheTTL1hInjectionEnabled(ctx) {
+		return cacheTTLTarget5m, true
+	}
+	return "", false
+}
+
 func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, originalModel, mappedModel string) (*ClaudeUsage, error) {
 	// 更新5h窗口状态
 	s.rateLimitService.UpdateSessionWindow(ctx, account, resp.Header)
@@ -7482,9 +7867,9 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 		}
 	}
 
-	// Cache TTL Override: 重写 non-streaming 响应中的 cache_creation 分类
-	if account.IsCacheTTLOverrideEnabled() {
-		overrideTarget := account.GetCacheTTLOverrideTarget()
+	// Cache TTL Override: 重写 non-streaming 响应中的 cache_creation 分类。
+	// 账号级设置优先；全局 1h 请求注入开启时，默认把 usage 计费归回 5m。
+	if overrideTarget, ok := s.resolveCacheTTLUsageOverrideTarget(ctx, account); ok {
 		if applyCacheTTLOverride(&response.Usage, overrideTarget) {
 			// 同步更新 body JSON 中的嵌套 cache_creation 对象
 			if newBody, err := sjson.SetBytes(body, "usage.cache_creation.ephemeral_5m_input_tokens", response.Usage.CacheCreation5mTokens); err == nil {
@@ -7882,9 +8267,16 @@ func detachedBillingContext(ctx context.Context) (context.Context, context.Cance
 }
 
 func detachStreamUpstreamContext(ctx context.Context, stream bool) (context.Context, context.CancelFunc) {
+	if ctx == nil {
+		return context.Background(), func() {}
+	}
 	if !stream {
 		return ctx, func() {}
 	}
+	return context.WithoutCancel(ctx), func() {}
+}
+
+func detachUpstreamContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	if ctx == nil {
 		return context.Background(), func() {}
 	}
@@ -8034,9 +8426,11 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		result.Usage.InputTokens = 0
 	}
 
+	// Cache TTL Override: 确保计费时 token 分类与账号设置一致。
+	// 账号级设置优先；全局 1h 请求注入开启时，默认把 usage 计费归回 5m。
 	cacheTTLOverridden := false
-	if account.IsCacheTTLOverrideEnabled() {
-		applyCacheTTLOverride(&result.Usage, account.GetCacheTTLOverrideTarget())
+	if overrideTarget, ok := s.resolveCacheTTLUsageOverrideTarget(ctx, account); ok {
+		applyCacheTTLOverride(&result.Usage, overrideTarget)
 		cacheTTLOverridden = (result.Usage.CacheCreation5mTokens + result.Usage.CacheCreation1hTokens) > 0
 	}
 
@@ -8051,6 +8445,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	if multiplier <= 0 {
 		multiplier = 1.0
 	}
+	imageMultiplier := resolveImageRateMultiplier(apiKey, multiplier)
 
 	billingModel := resolveGatewayRecordUsageBillingModel(result, input)
 
@@ -8062,7 +8457,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		billingModel = input.OriginalModel
 	}
 
-	cost, resolvedPricing := s.calculateRecordUsageCost(ctx, result, apiKey, billingModel, multiplier, opts)
+	cost, resolvedPricing := s.calculateRecordUsageCost(ctx, result, apiKey, billingModel, multiplier, imageMultiplier, opts)
 
 	isSubscriptionBilling := subscription != nil && apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
 	billingType := BillingTypeBalance
@@ -8071,7 +8466,8 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	}
 
 	accountRateMultiplier := account.BillingRateMultiplier()
-	usageLog := s.buildRecordUsageLog(ctx, input, result, apiKey, account, subscription, requestedModel, multiplier, accountRateMultiplier, billingType, cacheTTLOverridden, cost, resolvedPricing, opts)
+	usageLog := s.buildRecordUsageLog(ctx, input, result, apiKey, account, subscription,
+		requestedModel, multiplier, imageMultiplier, accountRateMultiplier, billingType, cacheTTLOverridden, cost, resolvedPricing, opts)
 
 	// 计算账号统计定价费用（使用最终上游模型匹配自定义规则）
 	if apiKey.GroupID != nil {
@@ -8117,11 +8513,94 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	return nil
 }
 
-func (s *GatewayService) calculateRecordUsageCost(ctx context.Context, result *ForwardResult, apiKey *APIKey, billingModel string, multiplier float64, opts *recordUsageOpts) (*CostBreakdown, *ResolvedPricing) {
+// calculateRecordUsageCost 根据请求类型和选项计算费用。
+func (s *GatewayService) calculateRecordUsageCost(
+	ctx context.Context,
+	result *ForwardResult,
+	apiKey *APIKey,
+	billingModel string,
+	multiplier float64,
+	imageMultiplier float64,
+	opts *recordUsageOpts,
+) (*CostBreakdown, *ResolvedPricing) {
 	if result.MediaType == "prompt" {
 		return &CostBreakdown{}, nil
 	}
 
+	if result.ImageCount > 0 {
+		return s.calculateImageCost(ctx, result, apiKey, billingModel, imageMultiplier)
+	}
+
+	return s.calculateTokenCost(ctx, result, apiKey, billingModel, multiplier, opts)
+}
+
+// resolveChannelPricing 检查指定模型是否存在渠道级别定价。
+// 返回非 nil 的 ResolvedPricing 表示有渠道定价，nil 表示走默认定价路径。
+func (s *GatewayService) resolveChannelPricing(ctx context.Context, billingModel string, apiKey *APIKey) *ResolvedPricing {
+	if s.resolver == nil || apiKey == nil || apiKey.Group == nil {
+		return nil
+	}
+	gid := apiKey.Group.ID
+	resolved := s.resolver.Resolve(ctx, PricingInput{Model: billingModel, GroupID: &gid})
+	if resolved != nil && resolved.Source == PricingSourceChannel {
+		return resolved
+	}
+	return nil
+}
+
+// calculateImageCost 计算图片生成费用：渠道级别定价优先，否则走按次计费。
+func (s *GatewayService) calculateImageCost(
+	ctx context.Context,
+	result *ForwardResult,
+	apiKey *APIKey,
+	billingModel string,
+	multiplier float64,
+) (*CostBreakdown, *ResolvedPricing) {
+	if resolved := s.resolveChannelPricing(ctx, billingModel, apiKey); resolved != nil {
+		tokens := UsageTokens{
+			InputTokens:       result.Usage.InputTokens,
+			OutputTokens:      result.Usage.OutputTokens,
+			ImageOutputTokens: result.Usage.ImageOutputTokens,
+		}
+		gid := apiKey.Group.ID
+		cost, err := s.billingService.CalculateCostUnified(CostInput{
+			Ctx:            ctx,
+			Model:          billingModel,
+			GroupID:        &gid,
+			Tokens:         tokens,
+			RequestCount:   result.ImageCount,
+			SizeTier:       result.ImageSize,
+			RateMultiplier: multiplier,
+			Resolver:       s.resolver,
+			Resolved:       resolved,
+		})
+		if err != nil {
+			logger.LegacyPrintf("service.gateway", "Calculate image token cost failed: %v", err)
+			return &CostBreakdown{ActualCost: 0}, resolved
+		}
+		return cost, resolved
+	}
+
+	var groupConfig *ImagePriceConfig
+	if apiKey != nil && apiKey.Group != nil {
+		groupConfig = &ImagePriceConfig{
+			Price1K: apiKey.Group.ImagePrice1K,
+			Price2K: apiKey.Group.ImagePrice2K,
+			Price4K: apiKey.Group.ImagePrice4K,
+		}
+	}
+	return s.billingService.CalculateImageCost(billingModel, result.ImageSize, result.ImageCount, groupConfig, multiplier), nil
+}
+
+// calculateTokenCost 计算 Token 计费：根据 opts 决定走普通/长上下文/渠道统一计费。
+func (s *GatewayService) calculateTokenCost(
+	ctx context.Context,
+	result *ForwardResult,
+	apiKey *APIKey,
+	billingModel string,
+	multiplier float64,
+	opts *recordUsageOpts,
+) (*CostBreakdown, *ResolvedPricing) {
 	tokens := UsageTokens{
 		InputTokens:           result.Usage.InputTokens,
 		OutputTokens:          result.Usage.OutputTokens,
@@ -8139,7 +8618,7 @@ func (s *GatewayService) calculateRecordUsageCost(ctx context.Context, result *F
 			Model:          billingModel,
 			GroupID:        apiKey.GroupID,
 			Tokens:         tokens,
-			RequestCount:   result.ImageCount,
+			RequestCount:   1,
 			SizeTier:       result.ImageSize,
 			RateMultiplier: multiplier,
 			Resolver:       s.resolver,
@@ -8152,19 +8631,11 @@ func (s *GatewayService) calculateRecordUsageCost(ctx context.Context, result *F
 		return cost, resolvedPricing
 	}
 
-	if result.ImageCount > 0 {
-		var groupConfig *ImagePriceConfig
-		if apiKey.Group != nil {
-			groupConfig = &ImagePriceConfig{Price1K: apiKey.Group.ImagePrice1K, Price2K: apiKey.Group.ImagePrice2K, Price4K: apiKey.Group.ImagePrice4K}
-		}
-		return s.billingService.CalculateImageCost(billingModel, result.ImageSize, result.ImageCount, groupConfig, multiplier), nil
-	}
-
 	var (
 		cost *CostBreakdown
 		err  error
 	)
-	if opts.LongContextThreshold > 0 {
+	if opts != nil && opts.LongContextThreshold > 0 {
 		cost, err = s.billingService.CalculateCostWithLongContext(billingModel, tokens, multiplier, opts.LongContextThreshold, opts.LongContextMultiplier)
 	} else {
 		cost, err = s.billingService.CalculateCost(billingModel, tokens, multiplier)
@@ -8176,10 +8647,34 @@ func (s *GatewayService) calculateRecordUsageCost(ctx context.Context, result *F
 	return cost, nil
 }
 
-func (s *GatewayService) buildRecordUsageLog(ctx context.Context, input *recordUsageCoreInput, result *ForwardResult, apiKey *APIKey, account *Account, subscription *UserSubscription, requestedModel string, multiplier, accountRateMultiplier float64, billingType int8, cacheTTLOverridden bool, cost *CostBreakdown, resolvedPricing *ResolvedPricing, opts *recordUsageOpts) *UsageLog {
+// buildRecordUsageLog 构建使用日志并设置计费模式。
+func (s *GatewayService) buildRecordUsageLog(
+	ctx context.Context,
+	input *recordUsageCoreInput,
+	result *ForwardResult,
+	apiKey *APIKey,
+	account *Account,
+	subscription *UserSubscription,
+	requestedModel string,
+	multiplier float64,
+	imageMultiplier float64,
+	accountRateMultiplier float64,
+	billingType int8,
+	cacheTTLOverridden bool,
+	cost *CostBreakdown,
+	resolvedPricing *ResolvedPricing,
+	opts *recordUsageOpts,
+) *UsageLog {
 	durationMs := int(result.Duration.Milliseconds())
 	requestID := resolveUsageBillingRequestID(ctx, result.RequestID)
-	pricingMetadata := s.buildRecordUsagePricingMetadata(result, input, multiplier, cost, resolvedPricing, opts)
+	if cost == nil {
+		cost = &CostBreakdown{}
+	}
+	logMultiplier := multiplier
+	if result.ImageCount > 0 {
+		logMultiplier = imageMultiplier
+	}
+	pricingMetadata := s.buildRecordUsagePricingMetadata(result, input, logMultiplier, cost, resolvedPricing, opts)
 	usageLog := &UsageLog{
 		UserID:            input.User.ID,
 		APIKeyID:          apiKey.ID,
@@ -8214,7 +8709,7 @@ func (s *GatewayService) buildRecordUsageLog(ctx context.Context, input *recordU
 		CacheReadCost:               cost.CacheReadCost,
 		TotalCost:                   cost.TotalCost,
 		ActualCost:                  cost.ActualCost,
-		RateMultiplier:              multiplier,
+		RateMultiplier:              logMultiplier,
 		AccountRateMultiplier:       &accountRateMultiplier,
 		EffectiveMultiplier:         pricingMetadata.effectiveMultiplier,
 		EffectiveInputUnitPrice:     pricingMetadata.effectiveInputUnitPrice,
@@ -8235,7 +8730,7 @@ func (s *GatewayService) buildRecordUsageLog(ctx context.Context, input *recordU
 		SubscriptionID:              optionalSubscriptionID(subscription),
 		CreatedAt:                   time.Now(),
 	}
-	if opts.IncludeMediaType && strings.TrimSpace(result.MediaType) != "" {
+	if opts != nil && opts.IncludeMediaType && strings.TrimSpace(result.MediaType) != "" {
 		usageLog.MediaType = optionalTrimmedStringPtr(result.MediaType)
 	}
 	return usageLog

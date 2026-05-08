@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -82,10 +83,11 @@ const backendModeDBTimeout = 5 * time.Second
 
 // cachedGatewayForwardingSettings 缓存网关转发行为设置（进程内缓存，60s TTL）
 type cachedGatewayForwardingSettings struct {
-	fingerprintUnification bool
-	metadataPassthrough    bool
-	cchSigning             bool
-	expiresAt              int64 // unix nano
+	fingerprintUnification       bool
+	metadataPassthrough          bool
+	cchSigning                   bool
+	anthropicCacheTTL1hInjection bool
+	expiresAt                    int64 // unix nano
 }
 
 var gatewayForwardingCache atomic.Value // *cachedGatewayForwardingSettings
@@ -128,6 +130,8 @@ type AuthSourceDefaultSettings struct {
 	LinuxDo                      ProviderDefaultGrantSettings
 	OIDC                         ProviderDefaultGrantSettings
 	WeChat                       ProviderDefaultGrantSettings
+	GitHub                       ProviderDefaultGrantSettings
+	Google                       ProviderDefaultGrantSettings
 	ForceEmailOnThirdPartySignup bool
 }
 
@@ -168,6 +172,20 @@ var (
 		grantOnSignup:    SettingKeyAuthSourceDefaultWeChatGrantOnSignup,
 		grantOnFirstBind: SettingKeyAuthSourceDefaultWeChatGrantOnFirstBind,
 	}
+	gitHubAuthSourceDefaultKeys = authSourceDefaultKeySet{
+		balance:          SettingKeyAuthSourceDefaultGitHubBalance,
+		concurrency:      SettingKeyAuthSourceDefaultGitHubConcurrency,
+		subscriptions:    SettingKeyAuthSourceDefaultGitHubSubscriptions,
+		grantOnSignup:    SettingKeyAuthSourceDefaultGitHubGrantOnSignup,
+		grantOnFirstBind: SettingKeyAuthSourceDefaultGitHubGrantOnFirstBind,
+	}
+	googleAuthSourceDefaultKeys = authSourceDefaultKeySet{
+		balance:          SettingKeyAuthSourceDefaultGoogleBalance,
+		concurrency:      SettingKeyAuthSourceDefaultGoogleConcurrency,
+		subscriptions:    SettingKeyAuthSourceDefaultGoogleSubscriptions,
+		grantOnSignup:    SettingKeyAuthSourceDefaultGoogleGrantOnSignup,
+		grantOnFirstBind: SettingKeyAuthSourceDefaultGoogleGrantOnFirstBind,
+	}
 )
 
 const (
@@ -176,7 +194,150 @@ const (
 	defaultWeChatConnectMode     = "open"
 	defaultWeChatConnectScopes   = "snsapi_login"
 	defaultWeChatConnectFrontend = "/auth/wechat/callback"
+	defaultGitHubOAuthAuthorize  = "https://github.com/login/oauth/authorize"
+	defaultGitHubOAuthToken      = "https://github.com/login/oauth/access_token"
+	defaultGitHubOAuthUserInfo   = "https://api.github.com/user"
+	defaultGitHubOAuthEmails     = "https://api.github.com/user/emails"
+	defaultGitHubOAuthScopes     = "read:user user:email"
+	defaultGitHubOAuthFrontend   = "/auth/oauth/callback"
+	defaultGoogleOAuthAuthorize  = "https://accounts.google.com/o/oauth2/v2/auth"
+	defaultGoogleOAuthToken      = "https://oauth2.googleapis.com/token"
+	defaultGoogleOAuthUserInfo   = "https://openidconnect.googleapis.com/v1/userinfo"
+	defaultGoogleOAuthScopes     = "openid email profile"
+	defaultGoogleOAuthFrontend   = "/auth/oauth/callback"
+	defaultLoginAgreementMode    = "modal"
+	defaultLoginAgreementDate    = "2026-03-31"
 )
+
+func normalizeLoginAgreementMode(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "checkbox":
+		return "checkbox"
+	default:
+		return defaultLoginAgreementMode
+	}
+}
+
+func defaultLoginAgreementDocuments() []LoginAgreementDocument {
+	return []LoginAgreementDocument{
+		{
+			ID:        "terms",
+			Title:     "服务条款",
+			ContentMD: "",
+		},
+		{
+			ID:        "usage-policy",
+			Title:     "使用政策",
+			ContentMD: "",
+		},
+		{
+			ID:        "supported-regions",
+			Title:     "支持的国家和地区",
+			ContentMD: "",
+		},
+		{
+			ID:        "service-specific-terms",
+			Title:     "服务特定条款",
+			ContentMD: "",
+		},
+	}
+}
+
+func normalizeLoginAgreementDocumentID(raw string) string {
+	raw = strings.ToLower(strings.TrimSpace(raw))
+	var b strings.Builder
+	lastSeparator := false
+	for _, r := range raw {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			_, _ = b.WriteRune(r)
+			lastSeparator = false
+			continue
+		}
+		if r == '-' || r == '_' || r == ' ' || r == '.' || r == '/' {
+			if !lastSeparator && b.Len() > 0 {
+				if r == '_' {
+					_, _ = b.WriteRune('_')
+				} else {
+					_, _ = b.WriteRune('-')
+				}
+				lastSeparator = true
+			}
+		}
+	}
+	return strings.Trim(b.String(), "-_")
+}
+
+func normalizeLoginAgreementDocuments(docs []LoginAgreementDocument) []LoginAgreementDocument {
+	normalized := make([]LoginAgreementDocument, 0, len(docs))
+	seen := make(map[string]int, len(docs))
+	for i, doc := range docs {
+		title := strings.TrimSpace(doc.Title)
+		content := strings.TrimSpace(doc.ContentMD)
+		if title == "" && content == "" {
+			continue
+		}
+		id := normalizeLoginAgreementDocumentID(doc.ID)
+		if id == "" {
+			sum := sha256.Sum256([]byte(fmt.Sprintf("%d:%s:%s", i, title, content)))
+			id = hex.EncodeToString(sum[:])[:12]
+		}
+		baseID := id
+		for suffix := 2; seen[id] > 0; suffix++ {
+			id = fmt.Sprintf("%s-%d", baseID, suffix)
+		}
+		seen[id]++
+		normalized = append(normalized, LoginAgreementDocument{
+			ID:        id,
+			Title:     title,
+			ContentMD: content,
+		})
+	}
+	return normalized
+}
+
+func parseLoginAgreementDocuments(raw string) []LoginAgreementDocument {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return defaultLoginAgreementDocuments()
+	}
+	var docs []LoginAgreementDocument
+	if err := json.Unmarshal([]byte(raw), &docs); err != nil {
+		return defaultLoginAgreementDocuments()
+	}
+	docs = normalizeLoginAgreementDocuments(docs)
+	if len(docs) == 0 {
+		return defaultLoginAgreementDocuments()
+	}
+	return docs
+}
+
+func marshalLoginAgreementDocuments(docs []LoginAgreementDocument) (string, error) {
+	normalized := normalizeLoginAgreementDocuments(docs)
+	if len(normalized) == 0 {
+		normalized = defaultLoginAgreementDocuments()
+	}
+	b, err := json.Marshal(normalized)
+	if err != nil {
+		return "", fmt.Errorf("marshal login agreement documents: %w", err)
+	}
+	return string(b), nil
+}
+
+func buildLoginAgreementRevision(updatedAt string, docs []LoginAgreementDocument) string {
+	normalized := normalizeLoginAgreementDocuments(docs)
+	payload, err := json.Marshal(struct {
+		UpdatedAt string                   `json:"updated_at"`
+		Documents []LoginAgreementDocument `json:"documents"`
+	}{
+		UpdatedAt: strings.TrimSpace(updatedAt),
+		Documents: normalized,
+	})
+	if err != nil {
+		payload = []byte(strings.TrimSpace(updatedAt))
+	}
+	sum := sha256.Sum256(payload)
+	return hex.EncodeToString(sum[:])[:16]
+}
 
 func normalizeWeChatConnectModeSetting(raw string) string {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
@@ -410,6 +571,10 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyPasswordResetEnabled,
 		SettingKeyInvitationCodeEnabled,
 		SettingKeyTotpEnabled,
+		SettingKeyLoginAgreementEnabled,
+		SettingKeyLoginAgreementMode,
+		SettingKeyLoginAgreementUpdatedAt,
+		SettingKeyLoginAgreementDocuments,
 		SettingKeyTurnstileEnabled,
 		SettingKeyTurnstileSiteKey,
 		SettingKeySiteName,
@@ -447,6 +612,12 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingPaymentEnabled,
 		SettingKeyOIDCConnectEnabled,
 		SettingKeyOIDCConnectProviderName,
+		SettingKeyGitHubOAuthEnabled,
+		SettingKeyGitHubOAuthClientID,
+		SettingKeyGitHubOAuthClientSecret,
+		SettingKeyGoogleOAuthEnabled,
+		SettingKeyGoogleOAuthClientID,
+		SettingKeyGoogleOAuthClientSecret,
 		SettingKeyBalanceLowNotifyEnabled,
 		SettingKeyBalanceLowNotifyThreshold,
 		SettingKeyBalanceLowNotifyRechargeURL,
@@ -455,6 +626,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyChannelMonitorDefaultIntervalSeconds,
 		SettingKeyAvailableChannelsEnabled,
 		SettingKeyAffiliateEnabled,
+		SettingKeyRiskControlEnabled,
 	}
 
 	settings, err := s.settingRepo.GetMultiple(ctx, keys)
@@ -481,6 +653,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 	if oidcProviderName == "" {
 		oidcProviderName = "OIDC"
 	}
+	gitHubEnabled := s.emailOAuthPublicEnabled(settings, "github")
+	googleEnabled := s.emailOAuthPublicEnabled(settings, "google")
 	weChatEnabled, weChatOpenEnabled, weChatMPEnabled, weChatMobileEnabled := s.weChatOAuthCapabilitiesFromSettings(settings)
 
 	// Password reset requires email verification to be enabled
@@ -493,6 +667,11 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		settings[SettingKeyTableDefaultPageSize],
 		settings[SettingKeyTablePageSizeOptions],
 	)
+	loginAgreementDocuments := parseLoginAgreementDocuments(settings[SettingKeyLoginAgreementDocuments])
+	loginAgreementUpdatedAt := strings.TrimSpace(settings[SettingKeyLoginAgreementUpdatedAt])
+	if loginAgreementUpdatedAt == "" {
+		loginAgreementUpdatedAt = defaultLoginAgreementDate
+	}
 
 	var balanceLowNotifyThreshold float64
 	if v, err := strconv.ParseFloat(settings[SettingKeyBalanceLowNotifyThreshold], 64); err == nil && v >= 0 {
@@ -508,6 +687,11 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		PasswordResetEnabled:             passwordResetEnabled,
 		InvitationCodeEnabled:            settings[SettingKeyInvitationCodeEnabled] == "true",
 		TotpEnabled:                      settings[SettingKeyTotpEnabled] == "true",
+		LoginAgreementEnabled:            settings[SettingKeyLoginAgreementEnabled] == "true" && len(loginAgreementDocuments) > 0,
+		LoginAgreementMode:               normalizeLoginAgreementMode(settings[SettingKeyLoginAgreementMode]),
+		LoginAgreementUpdatedAt:          loginAgreementUpdatedAt,
+		LoginAgreementRevision:           buildLoginAgreementRevision(loginAgreementUpdatedAt, loginAgreementDocuments),
+		LoginAgreementDocuments:          loginAgreementDocuments,
 		TurnstileEnabled:                 settings[SettingKeyTurnstileEnabled] == "true",
 		TurnstileSiteKey:                 settings[SettingKeyTurnstileSiteKey],
 		SiteName:                         s.getStringOrDefault(settings, SettingKeySiteName, "Sub2API"),
@@ -533,6 +717,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		PaymentEnabled:                   settings[SettingPaymentEnabled] == "true",
 		OIDCOAuthEnabled:                 oidcEnabled,
 		OIDCOAuthProviderName:            oidcProviderName,
+		GitHubOAuthEnabled:               gitHubEnabled,
+		GoogleOAuthEnabled:               googleEnabled,
 		BalanceLowNotifyEnabled:          settings[SettingKeyBalanceLowNotifyEnabled] == "true",
 		AccountQuotaNotifyEnabled:        settings[SettingKeyAccountQuotaNotifyEnabled] == "true",
 		BalanceLowNotifyThreshold:        balanceLowNotifyThreshold,
@@ -544,6 +730,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		AvailableChannelsEnabled: settings[SettingKeyAvailableChannelsEnabled] == "true",
 
 		AffiliateEnabled: settings[SettingKeyAffiliateEnabled] == "true",
+
+		RiskControlEnabled: settings[SettingKeyRiskControlEnabled] == "true",
 	}, nil
 }
 
@@ -646,43 +834,50 @@ func (s *SettingService) SetVersion(version string) {
 // A unit test diffs this struct's JSON keys against dto.PublicSettings to catch
 // drift automatically (see setting_service_injection_test.go).
 type PublicSettingsInjectionPayload struct {
-	RegistrationEnabled              bool            `json:"registration_enabled"`
-	EmailVerifyEnabled               bool            `json:"email_verify_enabled"`
-	RegistrationEmailSuffixWhitelist []string        `json:"registration_email_suffix_whitelist"`
-	PromoCodeEnabled                 bool            `json:"promo_code_enabled"`
-	PasswordResetEnabled             bool            `json:"password_reset_enabled"`
-	InvitationCodeEnabled            bool            `json:"invitation_code_enabled"`
-	TotpEnabled                      bool            `json:"totp_enabled"`
-	TurnstileEnabled                 bool            `json:"turnstile_enabled"`
-	TurnstileSiteKey                 string          `json:"turnstile_site_key"`
-	SiteName                         string          `json:"site_name"`
-	SiteLogo                         string          `json:"site_logo"`
-	SiteSubtitle                     string          `json:"site_subtitle"`
-	APIBaseURL                       string          `json:"api_base_url"`
-	ContactInfo                      string          `json:"contact_info"`
-	DocURL                           string          `json:"doc_url"`
-	HomeContent                      string          `json:"home_content"`
-	HideCcsImportButton              bool            `json:"hide_ccs_import_button"`
-	PurchaseSubscriptionEnabled      bool            `json:"purchase_subscription_enabled"`
-	PurchaseSubscriptionURL          string          `json:"purchase_subscription_url"`
-	TableDefaultPageSize             int             `json:"table_default_page_size"`
-	TablePageSizeOptions             []int           `json:"table_page_size_options"`
-	CustomMenuItems                  json.RawMessage `json:"custom_menu_items"`
-	CustomEndpoints                  json.RawMessage `json:"custom_endpoints"`
-	LinuxDoOAuthEnabled              bool            `json:"linuxdo_oauth_enabled"`
-	WeChatOAuthEnabled               bool            `json:"wechat_oauth_enabled"`
-	WeChatOAuthOpenEnabled           bool            `json:"wechat_oauth_open_enabled"`
-	WeChatOAuthMPEnabled             bool            `json:"wechat_oauth_mp_enabled"`
-	WeChatOAuthMobileEnabled         bool            `json:"wechat_oauth_mobile_enabled"`
-	OIDCOAuthEnabled                 bool            `json:"oidc_oauth_enabled"`
-	OIDCOAuthProviderName            string          `json:"oidc_oauth_provider_name"`
-	BackendModeEnabled               bool            `json:"backend_mode_enabled"`
-	PaymentEnabled                   bool            `json:"payment_enabled"`
-	Version                          string          `json:"version"`
-	BalanceLowNotifyEnabled          bool            `json:"balance_low_notify_enabled"`
-	AccountQuotaNotifyEnabled        bool            `json:"account_quota_notify_enabled"`
-	BalanceLowNotifyThreshold        float64         `json:"balance_low_notify_threshold"`
-	BalanceLowNotifyRechargeURL      string          `json:"balance_low_notify_recharge_url"`
+	RegistrationEnabled              bool                     `json:"registration_enabled"`
+	EmailVerifyEnabled               bool                     `json:"email_verify_enabled"`
+	RegistrationEmailSuffixWhitelist []string                 `json:"registration_email_suffix_whitelist"`
+	PromoCodeEnabled                 bool                     `json:"promo_code_enabled"`
+	PasswordResetEnabled             bool                     `json:"password_reset_enabled"`
+	InvitationCodeEnabled            bool                     `json:"invitation_code_enabled"`
+	TotpEnabled                      bool                     `json:"totp_enabled"`
+	LoginAgreementEnabled            bool                     `json:"login_agreement_enabled"`
+	LoginAgreementMode               string                   `json:"login_agreement_mode"`
+	LoginAgreementUpdatedAt          string                   `json:"login_agreement_updated_at"`
+	LoginAgreementRevision           string                   `json:"login_agreement_revision"`
+	LoginAgreementDocuments          []LoginAgreementDocument `json:"login_agreement_documents"`
+	TurnstileEnabled                 bool                     `json:"turnstile_enabled"`
+	TurnstileSiteKey                 string                   `json:"turnstile_site_key"`
+	SiteName                         string                   `json:"site_name"`
+	SiteLogo                         string                   `json:"site_logo"`
+	SiteSubtitle                     string                   `json:"site_subtitle"`
+	APIBaseURL                       string                   `json:"api_base_url"`
+	ContactInfo                      string                   `json:"contact_info"`
+	DocURL                           string                   `json:"doc_url"`
+	HomeContent                      string                   `json:"home_content"`
+	HideCcsImportButton              bool                     `json:"hide_ccs_import_button"`
+	PurchaseSubscriptionEnabled      bool                     `json:"purchase_subscription_enabled"`
+	PurchaseSubscriptionURL          string                   `json:"purchase_subscription_url"`
+	TableDefaultPageSize             int                      `json:"table_default_page_size"`
+	TablePageSizeOptions             []int                    `json:"table_page_size_options"`
+	CustomMenuItems                  json.RawMessage          `json:"custom_menu_items"`
+	CustomEndpoints                  json.RawMessage          `json:"custom_endpoints"`
+	LinuxDoOAuthEnabled              bool                     `json:"linuxdo_oauth_enabled"`
+	WeChatOAuthEnabled               bool                     `json:"wechat_oauth_enabled"`
+	WeChatOAuthOpenEnabled           bool                     `json:"wechat_oauth_open_enabled"`
+	WeChatOAuthMPEnabled             bool                     `json:"wechat_oauth_mp_enabled"`
+	WeChatOAuthMobileEnabled         bool                     `json:"wechat_oauth_mobile_enabled"`
+	OIDCOAuthEnabled                 bool                     `json:"oidc_oauth_enabled"`
+	OIDCOAuthProviderName            string                   `json:"oidc_oauth_provider_name"`
+	GitHubOAuthEnabled               bool                     `json:"github_oauth_enabled"`
+	GoogleOAuthEnabled               bool                     `json:"google_oauth_enabled"`
+	BackendModeEnabled               bool                     `json:"backend_mode_enabled"`
+	PaymentEnabled                   bool                     `json:"payment_enabled"`
+	Version                          string                   `json:"version"`
+	BalanceLowNotifyEnabled          bool                     `json:"balance_low_notify_enabled"`
+	AccountQuotaNotifyEnabled        bool                     `json:"account_quota_notify_enabled"`
+	BalanceLowNotifyThreshold        float64                  `json:"balance_low_notify_threshold"`
+	BalanceLowNotifyRechargeURL      string                   `json:"balance_low_notify_recharge_url"`
 
 	// Feature flags — MUST match the opt-in/opt-out registry in
 	// frontend/src/utils/featureFlags.ts. Missing a field here is the bug
@@ -691,6 +886,7 @@ type PublicSettingsInjectionPayload struct {
 	ChannelMonitorDefaultIntervalSeconds int  `json:"channel_monitor_default_interval_seconds"`
 	AvailableChannelsEnabled             bool `json:"available_channels_enabled"`
 	AffiliateEnabled                     bool `json:"affiliate_enabled"`
+	RiskControlEnabled                   bool `json:"risk_control_enabled"`
 }
 
 // GetPublicSettingsForInjection returns public settings in a format suitable for HTML injection.
@@ -709,6 +905,11 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		PasswordResetEnabled:             settings.PasswordResetEnabled,
 		InvitationCodeEnabled:            settings.InvitationCodeEnabled,
 		TotpEnabled:                      settings.TotpEnabled,
+		LoginAgreementEnabled:            settings.LoginAgreementEnabled,
+		LoginAgreementMode:               settings.LoginAgreementMode,
+		LoginAgreementUpdatedAt:          settings.LoginAgreementUpdatedAt,
+		LoginAgreementRevision:           settings.LoginAgreementRevision,
+		LoginAgreementDocuments:          settings.LoginAgreementDocuments,
 		TurnstileEnabled:                 settings.TurnstileEnabled,
 		TurnstileSiteKey:                 settings.TurnstileSiteKey,
 		SiteName:                         settings.SiteName,
@@ -732,6 +933,8 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		WeChatOAuthMobileEnabled:         settings.WeChatOAuthMobileEnabled,
 		OIDCOAuthEnabled:                 settings.OIDCOAuthEnabled,
 		OIDCOAuthProviderName:            settings.OIDCOAuthProviderName,
+		GitHubOAuthEnabled:               settings.GitHubOAuthEnabled,
+		GoogleOAuthEnabled:               settings.GoogleOAuthEnabled,
 		BackendModeEnabled:               settings.BackendModeEnabled,
 		PaymentEnabled:                   settings.PaymentEnabled,
 		Version:                          s.version,
@@ -744,6 +947,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
 		AvailableChannelsEnabled:             settings.AvailableChannelsEnabled,
 		AffiliateEnabled:                     settings.AffiliateEnabled,
+		RiskControlEnabled:                   settings.RiskControlEnabled,
 	}, nil
 }
 
@@ -803,6 +1007,98 @@ func (s *SettingService) weChatOAuthCapabilitiesFromSettings(settings map[string
 	mobileReady := cfg.MobileEnabled && cfg.AppIDForMode("mobile") != "" && cfg.AppSecretForMode("mobile") != ""
 
 	return openReady || mpReady, openReady, mpReady, mobileReady
+}
+
+func (s *SettingService) emailOAuthBaseConfig(provider string) config.EmailOAuthProviderConfig {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "github":
+		cfg := config.EmailOAuthProviderConfig{
+			AuthorizeURL:        defaultGitHubOAuthAuthorize,
+			TokenURL:            defaultGitHubOAuthToken,
+			UserInfoURL:         defaultGitHubOAuthUserInfo,
+			EmailsURL:           defaultGitHubOAuthEmails,
+			Scopes:              defaultGitHubOAuthScopes,
+			FrontendRedirectURL: defaultGitHubOAuthFrontend,
+		}
+		if s != nil && s.cfg != nil {
+			cfg = mergeEmailOAuthBaseConfig(cfg, s.cfg.GitHubOAuth)
+		}
+		return cfg
+	case "google":
+		cfg := config.EmailOAuthProviderConfig{
+			AuthorizeURL:        defaultGoogleOAuthAuthorize,
+			TokenURL:            defaultGoogleOAuthToken,
+			UserInfoURL:         defaultGoogleOAuthUserInfo,
+			Scopes:              defaultGoogleOAuthScopes,
+			FrontendRedirectURL: defaultGoogleOAuthFrontend,
+		}
+		if s != nil && s.cfg != nil {
+			cfg = mergeEmailOAuthBaseConfig(cfg, s.cfg.GoogleOAuth)
+		}
+		return cfg
+	default:
+		return config.EmailOAuthProviderConfig{}
+	}
+}
+
+func mergeEmailOAuthBaseConfig(base, override config.EmailOAuthProviderConfig) config.EmailOAuthProviderConfig {
+	base.Enabled = override.Enabled
+	if strings.TrimSpace(override.ClientID) != "" {
+		base.ClientID = strings.TrimSpace(override.ClientID)
+	}
+	if strings.TrimSpace(override.ClientSecret) != "" {
+		base.ClientSecret = strings.TrimSpace(override.ClientSecret)
+	}
+	if strings.TrimSpace(override.AuthorizeURL) != "" {
+		base.AuthorizeURL = strings.TrimSpace(override.AuthorizeURL)
+	}
+	if strings.TrimSpace(override.TokenURL) != "" {
+		base.TokenURL = strings.TrimSpace(override.TokenURL)
+	}
+	if strings.TrimSpace(override.UserInfoURL) != "" {
+		base.UserInfoURL = strings.TrimSpace(override.UserInfoURL)
+	}
+	if strings.TrimSpace(override.EmailsURL) != "" {
+		base.EmailsURL = strings.TrimSpace(override.EmailsURL)
+	}
+	if strings.TrimSpace(override.Scopes) != "" {
+		base.Scopes = strings.TrimSpace(override.Scopes)
+	}
+	if strings.TrimSpace(override.RedirectURL) != "" {
+		base.RedirectURL = strings.TrimSpace(override.RedirectURL)
+	}
+	if strings.TrimSpace(override.FrontendRedirectURL) != "" {
+		base.FrontendRedirectURL = strings.TrimSpace(override.FrontendRedirectURL)
+	}
+	return base
+}
+
+func (s *SettingService) emailOAuthPublicEnabled(settings map[string]string, provider string) bool {
+	cfg := s.effectiveEmailOAuthConfig(settings, provider)
+	return cfg.Enabled && strings.TrimSpace(cfg.ClientID) != "" && strings.TrimSpace(cfg.ClientSecret) != ""
+}
+
+func (s *SettingService) effectiveEmailOAuthConfig(settings map[string]string, provider string) config.EmailOAuthProviderConfig {
+	cfg := s.emailOAuthBaseConfig(provider)
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "github":
+		if raw, ok := settings[SettingKeyGitHubOAuthEnabled]; ok {
+			cfg.Enabled = raw == "true"
+		}
+		cfg.ClientID = firstNonEmpty(settings[SettingKeyGitHubOAuthClientID], cfg.ClientID)
+		cfg.ClientSecret = firstNonEmpty(settings[SettingKeyGitHubOAuthClientSecret], cfg.ClientSecret)
+		cfg.RedirectURL = firstNonEmpty(settings[SettingKeyGitHubOAuthRedirectURL], cfg.RedirectURL)
+		cfg.FrontendRedirectURL = firstNonEmpty(settings[SettingKeyGitHubOAuthFrontendRedirectURL], cfg.FrontendRedirectURL, defaultGitHubOAuthFrontend)
+	case "google":
+		if raw, ok := settings[SettingKeyGoogleOAuthEnabled]; ok {
+			cfg.Enabled = raw == "true"
+		}
+		cfg.ClientID = firstNonEmpty(settings[SettingKeyGoogleOAuthClientID], cfg.ClientID)
+		cfg.ClientSecret = firstNonEmpty(settings[SettingKeyGoogleOAuthClientSecret], cfg.ClientSecret)
+		cfg.RedirectURL = firstNonEmpty(settings[SettingKeyGoogleOAuthRedirectURL], cfg.RedirectURL)
+		cfg.FrontendRedirectURL = firstNonEmpty(settings[SettingKeyGoogleOAuthFrontendRedirectURL], cfg.FrontendRedirectURL, defaultGoogleOAuthFrontend)
+	}
+	return cfg
 }
 
 // filterUserVisibleMenuItems filters out admin-only menu items from a raw JSON
@@ -1051,6 +1347,16 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	if settings.WeChatConnectFrontendRedirectURL == "" {
 		settings.WeChatConnectFrontendRedirectURL = defaultWeChatConnectFrontend
 	}
+	settings.GitHubOAuthRedirectURL = strings.TrimSpace(settings.GitHubOAuthRedirectURL)
+	settings.GitHubOAuthFrontendRedirectURL = strings.TrimSpace(settings.GitHubOAuthFrontendRedirectURL)
+	if settings.GitHubOAuthFrontendRedirectURL == "" {
+		settings.GitHubOAuthFrontendRedirectURL = defaultGitHubOAuthFrontend
+	}
+	settings.GoogleOAuthRedirectURL = strings.TrimSpace(settings.GoogleOAuthRedirectURL)
+	settings.GoogleOAuthFrontendRedirectURL = strings.TrimSpace(settings.GoogleOAuthFrontendRedirectURL)
+	if settings.GoogleOAuthFrontendRedirectURL == "" {
+		settings.GoogleOAuthFrontendRedirectURL = defaultGoogleOAuthFrontend
+	}
 
 	updates := make(map[string]string)
 
@@ -1067,6 +1373,19 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyFrontendURL] = settings.FrontendURL
 	updates[SettingKeyInvitationCodeEnabled] = strconv.FormatBool(settings.InvitationCodeEnabled)
 	updates[SettingKeyTotpEnabled] = strconv.FormatBool(settings.TotpEnabled)
+	settings.LoginAgreementMode = normalizeLoginAgreementMode(settings.LoginAgreementMode)
+	settings.LoginAgreementUpdatedAt = strings.TrimSpace(settings.LoginAgreementUpdatedAt)
+	if settings.LoginAgreementUpdatedAt == "" {
+		settings.LoginAgreementUpdatedAt = defaultLoginAgreementDate
+	}
+	loginAgreementDocumentsJSON, err := marshalLoginAgreementDocuments(settings.LoginAgreementDocuments)
+	if err != nil {
+		return nil, err
+	}
+	updates[SettingKeyLoginAgreementEnabled] = strconv.FormatBool(settings.LoginAgreementEnabled)
+	updates[SettingKeyLoginAgreementMode] = settings.LoginAgreementMode
+	updates[SettingKeyLoginAgreementUpdatedAt] = settings.LoginAgreementUpdatedAt
+	updates[SettingKeyLoginAgreementDocuments] = loginAgreementDocumentsJSON
 
 	// 邮件服务设置（只有非空才更新密码）
 	updates[SettingKeySMTPHost] = settings.SMTPHost
@@ -1118,6 +1437,22 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyOIDCConnectUserInfoUsernamePath] = settings.OIDCConnectUserInfoUsernamePath
 	if settings.OIDCConnectClientSecret != "" {
 		updates[SettingKeyOIDCConnectClientSecret] = settings.OIDCConnectClientSecret
+	}
+
+	// GitHub / Google 邮箱快捷登录
+	updates[SettingKeyGitHubOAuthEnabled] = strconv.FormatBool(settings.GitHubOAuthEnabled)
+	updates[SettingKeyGitHubOAuthClientID] = strings.TrimSpace(settings.GitHubOAuthClientID)
+	updates[SettingKeyGitHubOAuthRedirectURL] = settings.GitHubOAuthRedirectURL
+	updates[SettingKeyGitHubOAuthFrontendRedirectURL] = settings.GitHubOAuthFrontendRedirectURL
+	if settings.GitHubOAuthClientSecret != "" {
+		updates[SettingKeyGitHubOAuthClientSecret] = strings.TrimSpace(settings.GitHubOAuthClientSecret)
+	}
+	updates[SettingKeyGoogleOAuthEnabled] = strconv.FormatBool(settings.GoogleOAuthEnabled)
+	updates[SettingKeyGoogleOAuthClientID] = strings.TrimSpace(settings.GoogleOAuthClientID)
+	updates[SettingKeyGoogleOAuthRedirectURL] = settings.GoogleOAuthRedirectURL
+	updates[SettingKeyGoogleOAuthFrontendRedirectURL] = settings.GoogleOAuthFrontendRedirectURL
+	if settings.GoogleOAuthClientSecret != "" {
+		updates[SettingKeyGoogleOAuthClientSecret] = strings.TrimSpace(settings.GoogleOAuthClientSecret)
 	}
 
 	// WeChat Connect OAuth 登录
@@ -1231,6 +1566,9 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	// Affiliate (邀请返利) feature switch
 	updates[SettingKeyAffiliateEnabled] = strconv.FormatBool(settings.AffiliateEnabled)
 
+	// 风控中心功能开关
+	updates[SettingKeyRiskControlEnabled] = strconv.FormatBool(settings.RiskControlEnabled)
+
 	// Claude Code version check
 	updates[SettingKeyMinClaudeCodeVersion] = settings.MinClaudeCodeVersion
 	updates[SettingKeyMaxClaudeCodeVersion] = settings.MaxClaudeCodeVersion
@@ -1245,6 +1583,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyEnableFingerprintUnification] = strconv.FormatBool(settings.EnableFingerprintUnification)
 	updates[SettingKeyEnableMetadataPassthrough] = strconv.FormatBool(settings.EnableMetadataPassthrough)
 	updates[SettingKeyEnableCCHSigning] = strconv.FormatBool(settings.EnableCCHSigning)
+	updates[SettingKeyEnableAnthropicCacheTTL1hInjection] = strconv.FormatBool(settings.EnableAnthropicCacheTTL1hInjection)
 	updates[SettingPaymentVisibleMethodAlipaySource] = settings.PaymentVisibleMethodAlipaySource
 	updates[SettingPaymentVisibleMethodWxpaySource] = settings.PaymentVisibleMethodWxpaySource
 	updates[SettingPaymentVisibleMethodAlipayEnabled] = strconv.FormatBool(settings.PaymentVisibleMethodAlipayEnabled)
@@ -1271,17 +1610,21 @@ func (s *SettingService) buildAuthSourceDefaultUpdates(ctx context.Context, sett
 		settings.LinuxDo.Subscriptions,
 		settings.OIDC.Subscriptions,
 		settings.WeChat.Subscriptions,
+		settings.GitHub.Subscriptions,
+		settings.Google.Subscriptions,
 	} {
 		if err := s.validateDefaultSubscriptionGroups(ctx, subscriptions); err != nil {
 			return nil, err
 		}
 	}
 
-	updates := make(map[string]string, 21)
+	updates := make(map[string]string, 31)
 	writeProviderDefaultGrantUpdates(updates, emailAuthSourceDefaultKeys, settings.Email)
 	writeProviderDefaultGrantUpdates(updates, linuxDoAuthSourceDefaultKeys, settings.LinuxDo)
 	writeProviderDefaultGrantUpdates(updates, oidcAuthSourceDefaultKeys, settings.OIDC)
 	writeProviderDefaultGrantUpdates(updates, weChatAuthSourceDefaultKeys, settings.WeChat)
+	writeProviderDefaultGrantUpdates(updates, gitHubAuthSourceDefaultKeys, settings.GitHub)
+	writeProviderDefaultGrantUpdates(updates, googleAuthSourceDefaultKeys, settings.Google)
 	updates[SettingKeyForceEmailOnThirdPartySignup] = strconv.FormatBool(settings.ForceEmailOnThirdPartySignup)
 	return updates, nil
 }
@@ -1305,10 +1648,11 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	})
 	gatewayForwardingSF.Forget("gateway_forwarding")
 	gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{
-		fingerprintUnification: settings.EnableFingerprintUnification,
-		metadataPassthrough:    settings.EnableMetadataPassthrough,
-		cchSigning:             settings.EnableCCHSigning,
-		expiresAt:              time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
+		fingerprintUnification:       settings.EnableFingerprintUnification,
+		metadataPassthrough:          settings.EnableMetadataPassthrough,
+		cchSigning:                   settings.EnableCCHSigning,
+		anthropicCacheTTL1hInjection: settings.EnableAnthropicCacheTTL1hInjection,
+		expiresAt:                    time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
 	})
 	openAIAdvancedSchedulerSettingSF.Forget(openAIAdvancedSchedulerSettingKey)
 	openAIAdvancedSchedulerSettingCache.Store(&cachedOpenAIAdvancedSchedulerSetting{
@@ -1357,6 +1701,61 @@ func (s *SettingService) validateDefaultSubscriptionGroups(ctx context.Context, 
 	}
 
 	return nil
+}
+
+func (s *SettingService) GetEmailOAuthProviderConfig(ctx context.Context, provider string) (config.EmailOAuthProviderConfig, error) {
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	if provider != "github" && provider != "google" {
+		return config.EmailOAuthProviderConfig{}, infraerrors.NotFound("OAUTH_PROVIDER_NOT_FOUND", "oauth provider not found")
+	}
+	keys := []string{
+		SettingKeyGitHubOAuthEnabled,
+		SettingKeyGitHubOAuthClientID,
+		SettingKeyGitHubOAuthClientSecret,
+		SettingKeyGitHubOAuthRedirectURL,
+		SettingKeyGitHubOAuthFrontendRedirectURL,
+		SettingKeyGoogleOAuthEnabled,
+		SettingKeyGoogleOAuthClientID,
+		SettingKeyGoogleOAuthClientSecret,
+		SettingKeyGoogleOAuthRedirectURL,
+		SettingKeyGoogleOAuthFrontendRedirectURL,
+	}
+	settings, err := s.settingRepo.GetMultiple(ctx, keys)
+	if err != nil {
+		return config.EmailOAuthProviderConfig{}, fmt.Errorf("get email oauth settings: %w", err)
+	}
+	cfg := s.effectiveEmailOAuthConfig(settings, provider)
+	if !cfg.Enabled {
+		return config.EmailOAuthProviderConfig{}, infraerrors.NotFound("OAUTH_DISABLED", "oauth login is disabled")
+	}
+	if strings.TrimSpace(cfg.ClientID) == "" {
+		return config.EmailOAuthProviderConfig{}, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth client id not configured")
+	}
+	if strings.TrimSpace(cfg.ClientSecret) == "" {
+		return config.EmailOAuthProviderConfig{}, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth client secret not configured")
+	}
+	for label, rawURL := range map[string]string{
+		"authorize": cfg.AuthorizeURL,
+		"token":     cfg.TokenURL,
+		"userinfo":  cfg.UserInfoURL,
+		"redirect":  cfg.RedirectURL,
+	} {
+		if strings.TrimSpace(rawURL) == "" {
+			return config.EmailOAuthProviderConfig{}, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth "+label+" url not configured")
+		}
+		if err := config.ValidateAbsoluteHTTPURL(rawURL); err != nil {
+			return config.EmailOAuthProviderConfig{}, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth "+label+" url invalid")
+		}
+	}
+	if strings.TrimSpace(cfg.EmailsURL) != "" {
+		if err := config.ValidateAbsoluteHTTPURL(cfg.EmailsURL); err != nil {
+			return config.EmailOAuthProviderConfig{}, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth emails url invalid")
+		}
+	}
+	if err := config.ValidateFrontendRedirectURL(cfg.FrontendRedirectURL); err != nil {
+		return config.EmailOAuthProviderConfig{}, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth frontend redirect url invalid")
+	}
+	return cfg, nil
 }
 
 // IsRegistrationEnabled 检查是否开放注册
@@ -1415,22 +1814,30 @@ func (s *SettingService) IsBackendModeEnabled(ctx context.Context) bool {
 	return false
 }
 
-// GetGatewayForwardingSettings returns cached gateway forwarding settings.
-// Uses in-process atomic.Value cache with 60s TTL, zero-lock hot path.
-// Returns (fingerprintUnification, metadataPassthrough, cchSigning).
-func (s *SettingService) GetGatewayForwardingSettings(ctx context.Context) (fingerprintUnification, metadataPassthrough, cchSigning bool) {
+type gatewayForwardingSettingsResult struct {
+	fp, mp, cch, cacheTTL1h bool
+}
+
+func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context) gatewayForwardingSettingsResult {
 	if cached, ok := gatewayForwardingCache.Load().(*cachedGatewayForwardingSettings); ok && cached != nil {
 		if time.Now().UnixNano() < cached.expiresAt {
-			return cached.fingerprintUnification, cached.metadataPassthrough, cached.cchSigning
+			return gatewayForwardingSettingsResult{
+				fp:         cached.fingerprintUnification,
+				mp:         cached.metadataPassthrough,
+				cch:        cached.cchSigning,
+				cacheTTL1h: cached.anthropicCacheTTL1hInjection,
+			}
 		}
-	}
-	type gwfResult struct {
-		fp, mp, cch bool
 	}
 	val, _, _ := gatewayForwardingSF.Do("gateway_forwarding", func() (any, error) {
 		if cached, ok := gatewayForwardingCache.Load().(*cachedGatewayForwardingSettings); ok && cached != nil {
 			if time.Now().UnixNano() < cached.expiresAt {
-				return gwfResult{cached.fingerprintUnification, cached.metadataPassthrough, cached.cchSigning}, nil
+				return gatewayForwardingSettingsResult{
+					fp:         cached.fingerprintUnification,
+					mp:         cached.metadataPassthrough,
+					cch:        cached.cchSigning,
+					cacheTTL1h: cached.anthropicCacheTTL1hInjection,
+				}, nil
 			}
 		}
 		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), gatewayForwardingDBTimeout)
@@ -1439,16 +1846,18 @@ func (s *SettingService) GetGatewayForwardingSettings(ctx context.Context) (fing
 			SettingKeyEnableFingerprintUnification,
 			SettingKeyEnableMetadataPassthrough,
 			SettingKeyEnableCCHSigning,
+			SettingKeyEnableAnthropicCacheTTL1hInjection,
 		})
 		if err != nil {
 			slog.Warn("failed to get gateway forwarding settings", "error", err)
 			gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{
-				fingerprintUnification: true,
-				metadataPassthrough:    false,
-				cchSigning:             false,
-				expiresAt:              time.Now().Add(gatewayForwardingErrorTTL).UnixNano(),
+				fingerprintUnification:       true,
+				metadataPassthrough:          false,
+				cchSigning:                   false,
+				anthropicCacheTTL1hInjection: false,
+				expiresAt:                    time.Now().Add(gatewayForwardingErrorTTL).UnixNano(),
 			})
-			return gwfResult{true, false, false}, nil
+			return gatewayForwardingSettingsResult{fp: true}, nil
 		}
 		fp := true
 		if v, ok := values[SettingKeyEnableFingerprintUnification]; ok && v != "" {
@@ -1456,18 +1865,33 @@ func (s *SettingService) GetGatewayForwardingSettings(ctx context.Context) (fing
 		}
 		mp := values[SettingKeyEnableMetadataPassthrough] == "true"
 		cch := values[SettingKeyEnableCCHSigning] == "true"
+		cacheTTL1h := values[SettingKeyEnableAnthropicCacheTTL1hInjection] == "true"
 		gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{
-			fingerprintUnification: fp,
-			metadataPassthrough:    mp,
-			cchSigning:             cch,
-			expiresAt:              time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
+			fingerprintUnification:       fp,
+			metadataPassthrough:          mp,
+			cchSigning:                   cch,
+			anthropicCacheTTL1hInjection: cacheTTL1h,
+			expiresAt:                    time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
 		})
-		return gwfResult{fp, mp, cch}, nil
+		return gatewayForwardingSettingsResult{fp: fp, mp: mp, cch: cch, cacheTTL1h: cacheTTL1h}, nil
 	})
-	if r, ok := val.(gwfResult); ok {
-		return r.fp, r.mp, r.cch
+	if r, ok := val.(gatewayForwardingSettingsResult); ok {
+		return r
 	}
-	return true, false, false // fail-open defaults
+	return gatewayForwardingSettingsResult{fp: true}
+}
+
+// GetGatewayForwardingSettings returns cached gateway forwarding settings.
+// Uses in-process atomic.Value cache with 60s TTL, zero-lock hot path.
+// Returns (fingerprintUnification, metadataPassthrough, cchSigning).
+func (s *SettingService) GetGatewayForwardingSettings(ctx context.Context) (fingerprintUnification, metadataPassthrough, cchSigning bool) {
+	result := s.getGatewayForwardingSettingsCached(ctx)
+	return result.fp, result.mp, result.cch
+}
+
+// IsAnthropicCacheTTL1hInjectionEnabled 检查是否对 Anthropic OAuth/SetupToken 请求体注入 1h cache_control ttl。
+func (s *SettingService) IsAnthropicCacheTTL1hInjectionEnabled(ctx context.Context) bool {
+	return s.getGatewayForwardingSettingsCached(ctx).cacheTTL1h
 }
 
 // IsEmailVerifyEnabled 检查是否开启邮件验证
@@ -1504,6 +1928,15 @@ func (s *SettingService) IsInvitationCodeEnabled(ctx context.Context) bool {
 		return false // 默认关闭
 	}
 	return value == "true"
+}
+
+// GetCustomMenuItemsRaw returns the raw JSON string of custom_menu_items setting.
+func (s *SettingService) GetCustomMenuItemsRaw(ctx context.Context) string {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyCustomMenuItems)
+	if err != nil {
+		return "[]"
+	}
+	return value
 }
 
 // IsAffiliateEnabled 检查是否启用邀请返利功能（总开关）
@@ -1683,6 +2116,16 @@ func (s *SettingService) GetAuthSourceDefaultSettings(ctx context.Context) (*Aut
 		SettingKeyAuthSourceDefaultWeChatSubscriptions,
 		SettingKeyAuthSourceDefaultWeChatGrantOnSignup,
 		SettingKeyAuthSourceDefaultWeChatGrantOnFirstBind,
+		SettingKeyAuthSourceDefaultGitHubBalance,
+		SettingKeyAuthSourceDefaultGitHubConcurrency,
+		SettingKeyAuthSourceDefaultGitHubSubscriptions,
+		SettingKeyAuthSourceDefaultGitHubGrantOnSignup,
+		SettingKeyAuthSourceDefaultGitHubGrantOnFirstBind,
+		SettingKeyAuthSourceDefaultGoogleBalance,
+		SettingKeyAuthSourceDefaultGoogleConcurrency,
+		SettingKeyAuthSourceDefaultGoogleSubscriptions,
+		SettingKeyAuthSourceDefaultGoogleGrantOnSignup,
+		SettingKeyAuthSourceDefaultGoogleGrantOnFirstBind,
 		SettingKeyForceEmailOnThirdPartySignup,
 	}
 
@@ -1696,6 +2139,8 @@ func (s *SettingService) GetAuthSourceDefaultSettings(ctx context.Context) (*Aut
 		LinuxDo:                      parseProviderDefaultGrantSettings(settings, linuxDoAuthSourceDefaultKeys),
 		OIDC:                         parseProviderDefaultGrantSettings(settings, oidcAuthSourceDefaultKeys),
 		WeChat:                       parseProviderDefaultGrantSettings(settings, weChatAuthSourceDefaultKeys),
+		GitHub:                       parseProviderDefaultGrantSettings(settings, gitHubAuthSourceDefaultKeys),
+		Google:                       parseProviderDefaultGrantSettings(settings, googleAuthSourceDefaultKeys),
 		ForceEmailOnThirdPartySignup: settings[SettingKeyForceEmailOnThirdPartySignup] == "true",
 	}, nil
 }
@@ -1765,6 +2210,10 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 			oidcValidateIDTokenDefault = s.cfg.OIDC.ValidateIDToken
 		}
 	}
+	loginAgreementDocumentsJSON, err := marshalLoginAgreementDocuments(defaultLoginAgreementDocuments())
+	if err != nil {
+		return err
+	}
 
 	// 初始化默认设置
 	defaults := map[string]string{
@@ -1772,6 +2221,10 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyEmailVerifyEnabled:                       "false",
 		SettingKeyRegistrationEmailSuffixWhitelist:         "[]",
 		SettingKeyPromoCodeEnabled:                         "true", // 默认启用优惠码功能
+		SettingKeyLoginAgreementEnabled:                    "false",
+		SettingKeyLoginAgreementMode:                       defaultLoginAgreementMode,
+		SettingKeyLoginAgreementUpdatedAt:                  defaultLoginAgreementDate,
+		SettingKeyLoginAgreementDocuments:                  loginAgreementDocumentsJSON,
 		SettingKeySiteName:                                 "Sub2API",
 		SettingKeySiteLogo:                                 "",
 		SettingKeyPurchaseSubscriptionEnabled:              "false",
@@ -1796,6 +2249,16 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyWeChatConnectScopes:                      "snsapi_login",
 		SettingKeyWeChatConnectRedirectURL:                 "",
 		SettingKeyWeChatConnectFrontendRedirectURL:         defaultWeChatConnectFrontend,
+		SettingKeyGitHubOAuthEnabled:                       "false",
+		SettingKeyGitHubOAuthClientID:                      "",
+		SettingKeyGitHubOAuthClientSecret:                  "",
+		SettingKeyGitHubOAuthRedirectURL:                   "",
+		SettingKeyGitHubOAuthFrontendRedirectURL:           defaultGitHubOAuthFrontend,
+		SettingKeyGoogleOAuthEnabled:                       "false",
+		SettingKeyGoogleOAuthClientID:                      "",
+		SettingKeyGoogleOAuthClientSecret:                  "",
+		SettingKeyGoogleOAuthRedirectURL:                   "",
+		SettingKeyGoogleOAuthFrontendRedirectURL:           defaultGoogleOAuthFrontend,
 		SettingKeyOIDCConnectEnabled:                       "false",
 		SettingKeyOIDCConnectProviderName:                  "OIDC",
 		SettingKeyOIDCConnectClientID:                      "",
@@ -1846,6 +2309,16 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyAuthSourceDefaultWeChatSubscriptions:     "[]",
 		SettingKeyAuthSourceDefaultWeChatGrantOnSignup:     "false",
 		SettingKeyAuthSourceDefaultWeChatGrantOnFirstBind:  "false",
+		SettingKeyAuthSourceDefaultGitHubBalance:           "0",
+		SettingKeyAuthSourceDefaultGitHubConcurrency:       "5",
+		SettingKeyAuthSourceDefaultGitHubSubscriptions:     "[]",
+		SettingKeyAuthSourceDefaultGitHubGrantOnSignup:     "false",
+		SettingKeyAuthSourceDefaultGitHubGrantOnFirstBind:  "false",
+		SettingKeyAuthSourceDefaultGoogleBalance:           "0",
+		SettingKeyAuthSourceDefaultGoogleConcurrency:       "5",
+		SettingKeyAuthSourceDefaultGoogleSubscriptions:     "[]",
+		SettingKeyAuthSourceDefaultGoogleGrantOnSignup:     "false",
+		SettingKeyAuthSourceDefaultGoogleGrantOnFirstBind:  "false",
 		SettingKeyForceEmailOnThirdPartySignup:             "false",
 		SettingKeySMTPPort:                                 "587",
 		SettingKeySMTPUseTLS:                               "false",
@@ -1875,17 +2348,21 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		// Affiliate (邀请返利) feature (default disabled; opt-in)
 		SettingKeyAffiliateEnabled: "false",
 
+		// 风控中心功能（默认关闭，显式启用）
+		SettingKeyRiskControlEnabled: "false",
+
 		// Claude Code version check (default: empty = disabled)
 		SettingKeyMinClaudeCodeVersion: "",
 		SettingKeyMaxClaudeCodeVersion: "",
 
 		// 分组隔离（默认不允许未分组 Key 调度）
-		SettingKeyAllowUngroupedKeyScheduling:    "false",
-		SettingPaymentVisibleMethodAlipaySource:  "",
-		SettingPaymentVisibleMethodWxpaySource:   "",
-		SettingPaymentVisibleMethodAlipayEnabled: "false",
-		SettingPaymentVisibleMethodWxpayEnabled:  "false",
-		openAIAdvancedSchedulerSettingKey:        "false",
+		SettingKeyAllowUngroupedKeyScheduling:        "false",
+		SettingKeyEnableAnthropicCacheTTL1hInjection: "false",
+		SettingPaymentVisibleMethodAlipaySource:      "",
+		SettingPaymentVisibleMethodWxpaySource:       "",
+		SettingPaymentVisibleMethodAlipayEnabled:     "false",
+		SettingPaymentVisibleMethodWxpayEnabled:      "false",
+		openAIAdvancedSchedulerSettingKey:            "false",
 	}
 
 	return s.settingRepo.SetMultiple(ctx, defaults)
@@ -1894,6 +2371,11 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 // parseSettings 解析设置到结构体
 func (s *SettingService) parseSettings(settings map[string]string) *SystemSettings {
 	emailVerifyEnabled := settings[SettingKeyEmailVerifyEnabled] == "true"
+	loginAgreementDocuments := parseLoginAgreementDocuments(settings[SettingKeyLoginAgreementDocuments])
+	loginAgreementUpdatedAt := strings.TrimSpace(settings[SettingKeyLoginAgreementUpdatedAt])
+	if loginAgreementUpdatedAt == "" {
+		loginAgreementUpdatedAt = defaultLoginAgreementDate
+	}
 	result := &SystemSettings{
 		RegistrationEnabled:              settings[SettingKeyRegistrationEnabled] == "true",
 		EmailVerifyEnabled:               emailVerifyEnabled,
@@ -1903,6 +2385,10 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		FrontendURL:                      settings[SettingKeyFrontendURL],
 		InvitationCodeEnabled:            settings[SettingKeyInvitationCodeEnabled] == "true",
 		TotpEnabled:                      settings[SettingKeyTotpEnabled] == "true",
+		LoginAgreementEnabled:            settings[SettingKeyLoginAgreementEnabled] == "true",
+		LoginAgreementMode:               normalizeLoginAgreementMode(settings[SettingKeyLoginAgreementMode]),
+		LoginAgreementUpdatedAt:          loginAgreementUpdatedAt,
+		LoginAgreementDocuments:          loginAgreementDocuments,
 		SMTPHost:                         settings[SettingKeySMTPHost],
 		SMTPUsername:                     settings[SettingKeySMTPUsername],
 		SMTPFrom:                         settings[SettingKeySMTPFrom],
@@ -2144,6 +2630,22 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	}
 	result.OIDCConnectClientSecretConfigured = result.OIDCConnectClientSecret != ""
 
+	gitHubEffective := s.effectiveEmailOAuthConfig(settings, "github")
+	result.GitHubOAuthEnabled = gitHubEffective.Enabled
+	result.GitHubOAuthClientID = strings.TrimSpace(gitHubEffective.ClientID)
+	result.GitHubOAuthClientSecret = strings.TrimSpace(gitHubEffective.ClientSecret)
+	result.GitHubOAuthClientSecretConfigured = result.GitHubOAuthClientSecret != ""
+	result.GitHubOAuthRedirectURL = strings.TrimSpace(gitHubEffective.RedirectURL)
+	result.GitHubOAuthFrontendRedirectURL = strings.TrimSpace(gitHubEffective.FrontendRedirectURL)
+
+	googleEffective := s.effectiveEmailOAuthConfig(settings, "google")
+	result.GoogleOAuthEnabled = googleEffective.Enabled
+	result.GoogleOAuthClientID = strings.TrimSpace(googleEffective.ClientID)
+	result.GoogleOAuthClientSecret = strings.TrimSpace(googleEffective.ClientSecret)
+	result.GoogleOAuthClientSecretConfigured = result.GoogleOAuthClientSecret != ""
+	result.GoogleOAuthRedirectURL = strings.TrimSpace(googleEffective.RedirectURL)
+	result.GoogleOAuthFrontendRedirectURL = strings.TrimSpace(googleEffective.FrontendRedirectURL)
+
 	// WeChat Connect 设置：
 	// - 优先读取 DB 系统设置
 	// - 缺失时回退到 config/env，保持升级兼容
@@ -2213,6 +2715,9 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	// Affiliate (邀请返利) feature (default: disabled; strict true)
 	result.AffiliateEnabled = settings[SettingKeyAffiliateEnabled] == "true"
 
+	// 风控中心功能（默认关闭，严格 true 才启用）
+	result.RiskControlEnabled = settings[SettingKeyRiskControlEnabled] == "true"
+
 	// Claude Code version check
 	result.MinClaudeCodeVersion = settings[SettingKeyMinClaudeCodeVersion]
 	result.MaxClaudeCodeVersion = settings[SettingKeyMaxClaudeCodeVersion]
@@ -2228,6 +2733,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	}
 	result.EnableMetadataPassthrough = settings[SettingKeyEnableMetadataPassthrough] == "true"
 	result.EnableCCHSigning = settings[SettingKeyEnableCCHSigning] == "true"
+	result.EnableAnthropicCacheTTL1hInjection = settings[SettingKeyEnableAnthropicCacheTTL1hInjection] == "true"
 
 	// Web search emulation: quick enabled check from the JSON config
 	if raw := settings[SettingKeyWebSearchEmulationConfig]; raw != "" {
@@ -2748,6 +3254,55 @@ func (s *SettingService) SetOverloadCooldownSettings(ctx context.Context, settin
 	return s.settingRepo.Set(ctx, SettingKeyOverloadCooldownSettings, string(data))
 }
 
+// GetRateLimit429CooldownSettings 获取429默认回避配置
+func (s *SettingService) GetRateLimit429CooldownSettings(ctx context.Context) (*RateLimit429CooldownSettings, error) {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyRateLimit429CooldownSettings)
+	if err != nil {
+		if errors.Is(err, ErrSettingNotFound) {
+			return DefaultRateLimit429CooldownSettings(), nil
+		}
+		return nil, fmt.Errorf("get 429 cooldown settings: %w", err)
+	}
+	if value == "" {
+		return DefaultRateLimit429CooldownSettings(), nil
+	}
+
+	var settings RateLimit429CooldownSettings
+	if err := json.Unmarshal([]byte(value), &settings); err != nil {
+		return DefaultRateLimit429CooldownSettings(), nil
+	}
+
+	if settings.CooldownSeconds < 1 {
+		settings.CooldownSeconds = 1
+	}
+	if settings.CooldownSeconds > 7200 {
+		settings.CooldownSeconds = 7200
+	}
+
+	return &settings, nil
+}
+
+// SetRateLimit429CooldownSettings 设置429默认回避配置
+func (s *SettingService) SetRateLimit429CooldownSettings(ctx context.Context, settings *RateLimit429CooldownSettings) error {
+	if settings == nil {
+		return fmt.Errorf("settings cannot be nil")
+	}
+
+	if settings.CooldownSeconds < 1 || settings.CooldownSeconds > 7200 {
+		if settings.Enabled {
+			return fmt.Errorf("cooldown_seconds must be between 1-7200")
+		}
+		settings.CooldownSeconds = 5
+	}
+
+	data, err := json.Marshal(settings)
+	if err != nil {
+		return fmt.Errorf("marshal 429 cooldown settings: %w", err)
+	}
+
+	return s.settingRepo.Set(ctx, SettingKeyRateLimit429CooldownSettings, string(data))
+}
+
 // GetOIDCConnectOAuthConfig 返回用于登录的“最终生效” OIDC 配置。
 //
 // 优先级：
@@ -3257,6 +3812,84 @@ func (s *SettingService) SetBetaPolicySettings(ctx context.Context, settings *Be
 	}
 
 	return s.settingRepo.Set(ctx, SettingKeyBetaPolicySettings, string(data))
+}
+
+// GetOpenAIFastPolicySettings 获取 OpenAI fast 策略配置
+func (s *SettingService) GetOpenAIFastPolicySettings(ctx context.Context) (*OpenAIFastPolicySettings, error) {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyOpenAIFastPolicySettings)
+	if err != nil {
+		if errors.Is(err, ErrSettingNotFound) {
+			return DefaultOpenAIFastPolicySettings(), nil
+		}
+		return nil, fmt.Errorf("get openai fast policy settings: %w", err)
+	}
+	if value == "" {
+		return DefaultOpenAIFastPolicySettings(), nil
+	}
+
+	var settings OpenAIFastPolicySettings
+	if err := json.Unmarshal([]byte(value), &settings); err != nil {
+		// JSON 损坏时静默 fallback 到默认配置会让策略意外失效（管理员配
+		// 置的 block/filter 规则被忽略）。记录 Warn 让运维能在出现异常
+		// 行为时定位到 settings 表里的脏数据。
+		slog.Warn("failed to unmarshal openai fast policy settings, falling back to defaults",
+			"error", err,
+			"key", SettingKeyOpenAIFastPolicySettings)
+		return DefaultOpenAIFastPolicySettings(), nil
+	}
+
+	return &settings, nil
+}
+
+// SetOpenAIFastPolicySettings 设置 OpenAI fast 策略配置
+func (s *SettingService) SetOpenAIFastPolicySettings(ctx context.Context, settings *OpenAIFastPolicySettings) error {
+	if settings == nil {
+		return fmt.Errorf("settings cannot be nil")
+	}
+
+	validActions := map[string]bool{
+		BetaPolicyActionPass: true, BetaPolicyActionFilter: true, BetaPolicyActionBlock: true,
+	}
+	validScopes := map[string]bool{
+		BetaPolicyScopeAll: true, BetaPolicyScopeOAuth: true, BetaPolicyScopeAPIKey: true, BetaPolicyScopeBedrock: true,
+	}
+	validTiers := map[string]bool{
+		OpenAIFastTierAny: true, OpenAIFastTierPriority: true, OpenAIFastTierFlex: true,
+	}
+
+	for i, rule := range settings.Rules {
+		tier := strings.ToLower(strings.TrimSpace(rule.ServiceTier))
+		if tier == "" {
+			tier = OpenAIFastTierAny
+		}
+		if !validTiers[tier] {
+			return fmt.Errorf("rule[%d]: invalid service_tier %q", i, rule.ServiceTier)
+		}
+		settings.Rules[i].ServiceTier = tier
+		if !validActions[rule.Action] {
+			return fmt.Errorf("rule[%d]: invalid action %q", i, rule.Action)
+		}
+		if !validScopes[rule.Scope] {
+			return fmt.Errorf("rule[%d]: invalid scope %q", i, rule.Scope)
+		}
+		for j, pattern := range rule.ModelWhitelist {
+			trimmed := strings.TrimSpace(pattern)
+			if trimmed == "" {
+				return fmt.Errorf("rule[%d]: model_whitelist[%d] cannot be empty", i, j)
+			}
+			settings.Rules[i].ModelWhitelist[j] = trimmed
+		}
+		if rule.FallbackAction != "" && !validActions[rule.FallbackAction] {
+			return fmt.Errorf("rule[%d]: invalid fallback_action %q", i, rule.FallbackAction)
+		}
+	}
+
+	data, err := json.Marshal(settings)
+	if err != nil {
+		return fmt.Errorf("marshal openai fast policy settings: %w", err)
+	}
+
+	return s.settingRepo.Set(ctx, SettingKeyOpenAIFastPolicySettings, string(data))
 }
 
 // SetStreamTimeoutSettings 设置流超时处理配置

@@ -94,9 +94,12 @@ type Group struct {
 	MonthlyLimitUSD  *float64 `json:"monthly_limit_usd"`
 
 	// 图片生成计费配置（仅 antigravity 平台使用）
-	ImagePrice1K *float64 `json:"image_price_1k"`
-	ImagePrice2K *float64 `json:"image_price_2k"`
-	ImagePrice4K *float64 `json:"image_price_4k"`
+	AllowImageGeneration bool     `json:"allow_image_generation"`
+	ImageRateIndependent bool     `json:"image_rate_independent"`
+	ImageRateMultiplier  float64  `json:"image_rate_multiplier"`
+	ImagePrice1K         *float64 `json:"image_price_1k"`
+	ImagePrice2K         *float64 `json:"image_price_2k"`
+	ImagePrice4K         *float64 `json:"image_price_4k"`
 
 	// Claude Code 客户端限制
 	ClaudeCodeOnly  bool   `json:"claude_code_only"`

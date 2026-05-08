@@ -45,6 +45,7 @@ type GatewayHandler struct {
 	apiKeyService             *service.APIKeyService
 	usageRecordWorkerPool     *service.UsageRecordWorkerPool
 	errorPassthroughService   *service.ErrorPassthroughService
+	contentModerationService  *service.ContentModerationService
 	concurrencyHelper         *ConcurrencyHelper
 	userMsgQueueHelper        *UserMsgQueueHelper
 	maxAccountSwitches        int
@@ -65,6 +66,7 @@ func NewGatewayHandler(
 	apiKeyService *service.APIKeyService,
 	usageRecordWorkerPool *service.UsageRecordWorkerPool,
 	errorPassthroughService *service.ErrorPassthroughService,
+	contentModerationService *service.ContentModerationService,
 	userMsgQueueService *service.UserMessageQueueService,
 	cfg *config.Config,
 	settingService *service.SettingService,
@@ -98,6 +100,7 @@ func NewGatewayHandler(
 		apiKeyService:             apiKeyService,
 		usageRecordWorkerPool:     usageRecordWorkerPool,
 		errorPassthroughService:   errorPassthroughService,
+		contentModerationService:  contentModerationService,
 		concurrencyHelper:         NewConcurrencyHelper(concurrencyService, SSEPingFormatClaude, pingInterval),
 		userMsgQueueHelper:        umqHelper,
 		maxAccountSwitches:        maxAccountSwitches,
@@ -194,6 +197,11 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		return
 	}
 
+	if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolAnthropicMessages, reqModel, body); decision != nil && decision.Blocked {
+		h.errorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
+		return
+	}
+
 	// Track if we've started streaming (for error handling)
 	streamStarted := false
 
@@ -267,6 +275,12 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	}
 	sessionHash := h.gatewayService.GenerateSessionHash(parsedReq)
 
+	// [DEBUG-STICKY] 打印会话 hash 生成结果
+	reqLog.Info("sticky.session_hash_generated",
+		zap.String("session_hash", sessionHash),
+		zap.String("metadata_user_id_raw", parsedReq.MetadataUserID),
+	)
+
 	// 获取平台：优先使用强制平台（/antigravity 路由，中间件已设置 request.Context），否则使用分组平台
 	platform := ""
 	if forcePlatform, ok := middleware2.GetForcePlatformFromContext(c); ok {
@@ -283,6 +297,11 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	var sessionBoundAccountID int64
 	if sessionKey != "" {
 		sessionBoundAccountID, _ = h.gatewayService.GetCachedSessionAccountID(c.Request.Context(), apiKey.GroupID, sessionKey)
+		// [DEBUG-STICKY] 打印粘性会话查询结果
+		reqLog.Info("sticky.cache_lookup",
+			zap.String("session_key", sessionKey),
+			zap.Int64("bound_account_id", sessionBoundAccountID),
+		)
 		if sessionBoundAccountID > 0 {
 			prefetchedGroupID := int64(0)
 			if apiKey.GroupID != nil {
@@ -291,6 +310,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			ctx := service.WithPrefetchedStickySession(c.Request.Context(), sessionBoundAccountID, prefetchedGroupID, h.metadataBridgeEnabled())
 			c.Request = c.Request.WithContext(ctx)
 		}
+	} else {
+		reqLog.Info("sticky.no_session_key", zap.String("session_hash", sessionHash))
 	}
 	// 判断是否真的绑定了粘性会话：有 sessionKey 且已经绑定到某个账号
 	hasBoundSession := sessionKey != "" && sessionBoundAccountID > 0
@@ -540,6 +561,12 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 		for {
 			// 选择支持该模型的账号
+			reqLog.Info("sticky.selecting_account",
+				zap.String("session_key", sessionKey),
+				zap.Int64("sticky_bound_account_id", sessionBoundAccountID),
+				zap.Bool("has_bound_session", hasBoundSession),
+				zap.Int("failed_account_count", len(fs.FailedAccountIDs)),
+			)
 			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), currentAPIKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, parsedReq.MetadataUserID, subject.UserID)
 			if err != nil {
 				if len(fs.FailedAccountIDs) == 0 {
@@ -572,6 +599,16 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			}
 			account := selection.Account
 			setOpsSelectedAccount(c, account.ID, account.Platform)
+
+			// [DEBUG-STICKY] 打印账号选择结果
+			reqLog.Info("sticky.account_selected",
+				zap.Int64("selected_account_id", account.ID),
+				zap.String("account_name", account.Name),
+				zap.Bool("slot_acquired", selection.Acquired),
+				zap.Bool("has_wait_plan", selection.WaitPlan != nil),
+				zap.Int64("sticky_bound_account_id", sessionBoundAccountID),
+				zap.Bool("sticky_honored", sessionBoundAccountID > 0 && sessionBoundAccountID == account.ID),
+			)
 
 			// 检查请求拦截（预热请求、SUGGESTION MODE等）
 			if account.IsInterceptWarmupEnabled() {
@@ -639,6 +676,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				}
 				// Slot acquired: no longer waiting in queue.
 				releaseWait()
+				reqLog.Info("sticky.bind_after_wait",
+					zap.String("session_key", sessionKey),
+					zap.Int64("account_id", account.ID),
+				)
 				if err := h.gatewayService.BindStickySession(c.Request.Context(), currentAPIKey.GroupID, sessionKey, account.ID); err != nil {
 					reqLog.Warn("gateway.bind_sticky_session_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 				}
@@ -830,6 +871,17 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			if account.IsAnthropicOAuthOrSetupToken() && account.GetBaseRPM() > 0 {
 				if err := h.gatewayService.IncrementAccountRPM(c.Request.Context(), account.ID); err != nil {
 					reqLog.Warn("gateway.rpm_increment_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+				}
+			}
+
+			// 绑定粘性会话（成功转发后绑定/刷新）
+			// - 无现有绑定（首次请求）：创建绑定
+			// - 选中账号与粘性账号一致：刷新 TTL
+			// - 粘性账号因负载/RPM 被跳过、选中了其他账号：不覆盖原绑定，
+			//   下次请求粘性账号恢复后仍可命中
+			if sessionKey != "" && (sessionBoundAccountID == 0 || sessionBoundAccountID == account.ID) {
+				if err := h.gatewayService.BindStickySession(c.Request.Context(), currentAPIKey.GroupID, sessionKey, account.ID); err != nil {
+					reqLog.Warn("gateway.bind_sticky_session_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 				}
 			}
 

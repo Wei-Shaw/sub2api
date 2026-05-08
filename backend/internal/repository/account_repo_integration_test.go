@@ -74,6 +74,10 @@ func (s *schedulerCacheRecorder) TryLockBucket(ctx context.Context, bucket servi
 	return true, nil
 }
 
+func (s *schedulerCacheRecorder) UnlockBucket(ctx context.Context, bucket service.SchedulerBucket) error {
+	return nil
+}
+
 func (s *schedulerCacheRecorder) ListBuckets(ctx context.Context) ([]service.SchedulerBucket, error) {
 	return nil, nil
 }

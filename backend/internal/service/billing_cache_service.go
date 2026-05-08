@@ -508,6 +508,18 @@ func (s *BillingCacheService) InvalidateSubscription(ctx context.Context, userID
 	return nil
 }
 
+// InvalidateAPIKeyRateLimit invalidates the Redis rate-limit usage cache for an API key.
+func (s *BillingCacheService) InvalidateAPIKeyRateLimit(ctx context.Context, keyID int64) error {
+	if s == nil || s.cache == nil {
+		return nil
+	}
+	if err := s.cache.InvalidateAPIKeyRateLimit(ctx, keyID); err != nil {
+		logger.LegacyPrintf("service.billing_cache", "Warning: invalidate api key rate limit cache failed for key %d: %v", keyID, err)
+		return err
+	}
+	return nil
+}
+
 // ============================================
 // API Key 限速缓存方法
 // ============================================
@@ -641,14 +653,6 @@ func (s *BillingCacheService) QueueUpdateAPIKeyRateLimitUsage(apiKeyID int64, co
 		apiKeyID: apiKeyID,
 		amount:   cost,
 	})
-}
-
-// InvalidateAPIKeyRateLimit invalidates the cached API key rate-limit snapshot.
-func (s *BillingCacheService) InvalidateAPIKeyRateLimit(ctx context.Context, keyID int64) error {
-	if s == nil || s.cache == nil {
-		return nil
-	}
-	return s.cache.InvalidateAPIKeyRateLimit(ctx, keyID)
 }
 
 // ============================================

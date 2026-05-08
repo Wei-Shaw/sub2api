@@ -291,6 +291,113 @@
             </div>
           </div>
 
+          <!-- Rate Limit Cooldown (429) Settings -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.rateLimit429Cooldown.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.rateLimit429Cooldown.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div
+                v-if="rateLimit429CooldownLoading"
+                class="flex items-center gap-2 text-gray-500"
+              >
+                <div
+                  class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"
+                ></div>
+                {{ t("common.loading") }}
+              </div>
+
+              <template v-else>
+                <div class="flex items-center justify-between">
+                  <div>
+                    <label class="font-medium text-gray-900 dark:text-white">{{
+                      t("admin.settings.rateLimit429Cooldown.enabled")
+                    }}</label>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.rateLimit429Cooldown.enabledHint") }}
+                    </p>
+                  </div>
+                  <Toggle v-model="rateLimit429CooldownForm.enabled" />
+                </div>
+
+                <div
+                  v-if="rateLimit429CooldownForm.enabled"
+                  class="space-y-4 border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <div>
+                    <label
+                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{
+                        t(
+                          "admin.settings.rateLimit429Cooldown.cooldownSeconds",
+                        )
+                      }}
+                    </label>
+                    <input
+                      v-model.number="rateLimit429CooldownForm.cooldown_seconds"
+                      type="number"
+                      min="1"
+                      max="7200"
+                      class="input w-32"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{
+                        t(
+                          "admin.settings.rateLimit429Cooldown.cooldownSecondsHint",
+                        )
+                      }}
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  class="flex justify-end border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <button
+                    type="button"
+                    @click="saveRateLimit429CooldownSettings"
+                    :disabled="rateLimit429CooldownSaving"
+                    class="btn btn-primary btn-sm"
+                  >
+                    <svg
+                      v-if="rateLimit429CooldownSaving"
+                      class="mr-1 h-4 w-4 animate-spin"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        class="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        stroke-width="4"
+                      ></circle>
+                      <path
+                        class="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
+                    </svg>
+                    {{
+                      rateLimit429CooldownSaving
+                        ? t("common.saving")
+                        : t("common.save")
+                    }}
+                  </button>
+                </div>
+              </template>
+            </div>
+          </div>
+
           <!-- Stream Timeout Settings -->
           <div class="card">
             <div
@@ -949,6 +1056,285 @@
               </template>
             </div>
           </div>
+          <!-- OpenAI Fast/Flex Policy Settings -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.openaiFastPolicy.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.openaiFastPolicy.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <!-- Empty state -->
+              <div
+                v-if="openaiFastPolicyForm.rules.length === 0"
+                class="rounded-lg border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500 dark:border-dark-600 dark:text-gray-400"
+              >
+                {{ t("admin.settings.openaiFastPolicy.empty") }}
+              </div>
+
+              <!-- Rule Cards -->
+              <div
+                v-for="(rule, ruleIndex) in openaiFastPolicyForm.rules"
+                :key="ruleIndex"
+                class="rounded-lg border border-gray-200 p-4 dark:border-dark-600"
+              >
+                <div class="mb-3 flex items-center justify-between">
+                  <span
+                    class="text-sm font-medium text-gray-900 dark:text-white"
+                  >
+                    {{
+                      t("admin.settings.openaiFastPolicy.ruleHeader", {
+                        index: ruleIndex + 1,
+                      })
+                    }}
+                  </span>
+                  <button
+                    type="button"
+                    @click="removeOpenAIFastPolicyRule(ruleIndex)"
+                    class="rounded p-1 text-red-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                    :title="t('admin.settings.openaiFastPolicy.removeRule')"
+                  >
+                    <svg
+                      class="h-4 w-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
+
+                <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+                  <!-- Service Tier -->
+                  <div>
+                    <label
+                      class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                    >
+                      {{ t("admin.settings.openaiFastPolicy.serviceTier") }}
+                    </label>
+                    <Select
+                      :modelValue="rule.service_tier"
+                      @update:modelValue="
+                        rule.service_tier = $event as
+                          | 'all'
+                          | 'priority'
+                          | 'flex'
+                      "
+                      :options="openaiFastPolicyTierOptions"
+                    />
+                  </div>
+
+                  <!-- Action -->
+                  <div>
+                    <label
+                      class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                    >
+                      {{ t("admin.settings.openaiFastPolicy.action") }}
+                    </label>
+                    <Select
+                      :modelValue="rule.action"
+                      @update:modelValue="
+                        rule.action = $event as 'pass' | 'filter' | 'block'
+                      "
+                      :options="openaiFastPolicyActionOptions"
+                    />
+                  </div>
+
+                  <!-- Scope -->
+                  <div>
+                    <label
+                      class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                    >
+                      {{ t("admin.settings.openaiFastPolicy.scope") }}
+                    </label>
+                    <Select
+                      :modelValue="rule.scope"
+                      @update:modelValue="
+                        rule.scope = $event as
+                          | 'all'
+                          | 'oauth'
+                          | 'apikey'
+                          | 'bedrock'
+                      "
+                      :options="openaiFastPolicyScopeOptions"
+                    />
+                  </div>
+                </div>
+
+                <!-- Error Message (only when action=block) -->
+                <div v-if="rule.action === 'block'" class="mt-3">
+                  <label
+                    class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                  >
+                    {{ t("admin.settings.openaiFastPolicy.errorMessage") }}
+                  </label>
+                  <input
+                    v-model="rule.error_message"
+                    type="text"
+                    class="input"
+                    :placeholder="
+                      t(
+                        'admin.settings.openaiFastPolicy.errorMessagePlaceholder',
+                      )
+                    "
+                  />
+                  <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                    {{ t("admin.settings.openaiFastPolicy.errorMessageHint") }}
+                  </p>
+                </div>
+
+                <!-- Model Whitelist -->
+                <div class="mt-3">
+                  <label
+                    class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                  >
+                    {{ t("admin.settings.openaiFastPolicy.modelWhitelist") }}
+                  </label>
+                  <p class="mb-2 text-xs text-gray-400 dark:text-gray-500">
+                    {{
+                      t("admin.settings.openaiFastPolicy.modelWhitelistHint")
+                    }}
+                  </p>
+                  <div
+                    v-for="(_, patternIdx) in rule.model_whitelist || []"
+                    :key="patternIdx"
+                    class="mb-1.5 flex items-center gap-2"
+                  >
+                    <input
+                      v-model="rule.model_whitelist![patternIdx]"
+                      type="text"
+                      class="input input-sm flex-1"
+                      :placeholder="
+                        t(
+                          'admin.settings.openaiFastPolicy.modelPatternPlaceholder',
+                        )
+                      "
+                    />
+                    <button
+                      type="button"
+                      @click="
+                        removeOpenAIFastPolicyModelPattern(rule, patternIdx)
+                      "
+                      class="shrink-0 rounded p-1 text-red-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                    >
+                      <svg
+                        class="h-4 w-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        stroke-width="2"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M6 18L18 6M6 6l12 12"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    @click="addOpenAIFastPolicyModelPattern(rule)"
+                    class="mb-2 inline-flex items-center gap-1 text-xs text-primary-600 transition-colors hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+                  >
+                    <svg
+                      class="h-3.5 w-3.5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M12 4v16m8-8H4"
+                      />
+                    </svg>
+                    {{ t("admin.settings.openaiFastPolicy.addModelPattern") }}
+                  </button>
+                </div>
+
+                <!-- Fallback Action (only when model_whitelist is non-empty) -->
+                <div
+                  v-if="
+                    rule.model_whitelist && rule.model_whitelist.length > 0
+                  "
+                  class="mt-3"
+                >
+                  <label
+                    class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                  >
+                    {{ t("admin.settings.openaiFastPolicy.fallbackAction") }}
+                  </label>
+                  <Select
+                    :modelValue="rule.fallback_action || 'pass'"
+                    @update:modelValue="
+                      rule.fallback_action = $event as
+                        | 'pass'
+                        | 'filter'
+                        | 'block'
+                    "
+                    :options="openaiFastPolicyActionOptions"
+                  />
+                  <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                    {{
+                      t("admin.settings.openaiFastPolicy.fallbackActionHint")
+                    }}
+                  </p>
+                  <div v-if="rule.fallback_action === 'block'" class="mt-2">
+                    <input
+                      v-model="rule.fallback_error_message"
+                      type="text"
+                      class="input"
+                      :placeholder="
+                        t(
+                          'admin.settings.openaiFastPolicy.fallbackErrorMessagePlaceholder',
+                        )
+                      "
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <!-- Add Rule Button -->
+              <div>
+                <button
+                  type="button"
+                  @click="addOpenAIFastPolicyRule"
+                  class="btn btn-secondary btn-sm inline-flex items-center gap-1"
+                >
+                  <svg
+                    class="h-4 w-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M12 4v16m8-8H4"
+                    />
+                  </svg>
+                  {{ t("admin.settings.openaiFastPolicy.addRule") }}
+                </button>
+                <p class="mt-2 text-xs text-gray-400 dark:text-gray-500">
+                  {{ t("admin.settings.openaiFastPolicy.saveHint") }}
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
         <!-- /Tab: Gateway -->
 
@@ -1360,6 +1746,232 @@
                     <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                       {{ t("admin.settings.linuxdo.redirectUrlHint") }}
                     </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- GitHub / Google 邮箱快捷登录 -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ localText("邮箱快捷登录", "Email OAuth Sign-in") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{
+                  localText(
+                    "开启 GitHub 或 Google 邮箱授权登录后，系统会读取已验证邮箱，存在则直接登录，不存在则自动注册。",
+                    "After GitHub or Google email OAuth is enabled, the system reads a verified email, signs in matching users, and auto-registers missing users.",
+                  )
+                }}
+              </p>
+            </div>
+            <div class="space-y-6 p-6">
+              <div class="grid grid-cols-1 gap-6 xl:grid-cols-2">
+                <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-700">
+                  <div class="flex items-start justify-between gap-4">
+                    <div>
+                      <h3 class="font-medium text-gray-900 dark:text-white">
+                        GitHub
+                      </h3>
+                      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                        {{
+                          localText(
+                            "GitHub OAuth App 需要 read:user user:email 权限，回调地址填写下方后端地址。",
+                            "GitHub OAuth App needs read:user user:email scopes. Use the backend callback URL below.",
+                          )
+                        }}
+                      </p>
+                    </div>
+                    <Toggle v-model="form.github_oauth_enabled" />
+                  </div>
+
+                  <div v-if="form.github_oauth_enabled" class="mt-4 space-y-4">
+                    <div class="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:bg-dark-800 dark:text-gray-300">
+                      <template v-if="isZhLocale">
+                        开通引导：GitHub Settings → Developer settings →
+                        <a
+                          data-testid="github-oauth-apps-guide-link"
+                          href="https://github.com/settings/developers"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="font-medium text-primary-600 hover:underline dark:text-primary-400"
+                        >OAuth Apps</a>
+                        → New OAuth App；Homepage URL 填站点域名，Authorization callback URL 填下面的后端回调地址。
+                      </template>
+                      <template v-else>
+                        Setup guide: GitHub Settings → Developer settings →
+                        <a
+                          data-testid="github-oauth-apps-guide-link"
+                          href="https://github.com/settings/developers"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="font-medium text-primary-600 hover:underline dark:text-primary-400"
+                        >OAuth Apps</a>
+                        → New OAuth App. Use your site origin as Homepage URL and the backend callback URL below as Authorization callback URL.
+                      </template>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                      <div>
+                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Client ID</label>
+                        <input
+                          v-model="form.github_oauth_client_id"
+                          type="text"
+                          class="input font-mono text-sm"
+                          placeholder="GitHub OAuth Client ID"
+                        />
+                      </div>
+                      <div>
+                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Client Secret</label>
+                        <input
+                          v-model="form.github_oauth_client_secret"
+                          type="password"
+                          class="input font-mono text-sm"
+                          :placeholder="
+                            form.github_oauth_client_secret_configured
+                              ? localText('密钥已配置，留空以保留当前值。', 'Secret configured. Leave empty to keep the current value.')
+                              : 'GitHub OAuth Client Secret'
+                          "
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        {{ localText("后端回调地址", "Backend Callback URL") }}
+                      </label>
+                      <input
+                        v-model="form.github_oauth_redirect_url"
+                        type="url"
+                        class="input font-mono text-sm"
+                        placeholder="https://your-domain.com/api/v1/auth/oauth/github/callback"
+                      />
+                      <div class="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                        <button
+                          type="button"
+                          class="btn btn-secondary btn-sm w-fit"
+                          @click="setAndCopyEmailOAuthRedirectUrl('github')"
+                        >
+                          {{ localText("生成并复制", "Generate and copy") }}
+                        </button>
+                        <code
+                          v-if="githubOAuthRedirectUrlSuggestion"
+                          class="select-all break-all rounded bg-gray-50 px-2 py-1 font-mono text-xs text-gray-600 dark:bg-dark-800 dark:text-gray-300"
+                        >
+                          {{ githubOAuthRedirectUrlSuggestion }}
+                        </code>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        {{ localText("前端回跳地址", "Frontend Callback URL") }}
+                      </label>
+                      <input
+                        v-model="form.github_oauth_frontend_redirect_url"
+                        type="text"
+                        class="input font-mono text-sm"
+                        placeholder="/auth/oauth/callback"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-700">
+                  <div class="flex items-start justify-between gap-4">
+                    <div>
+                      <h3 class="font-medium text-gray-900 dark:text-white">
+                        Google
+                      </h3>
+                      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                        {{
+                          localText(
+                            "Google OAuth 客户端需要 openid email profile 范围，并在凭据里登记后端回调地址。",
+                            "Google OAuth client needs openid email profile scopes and the backend callback URL registered in credentials.",
+                          )
+                        }}
+                      </p>
+                    </div>
+                    <Toggle v-model="form.google_oauth_enabled" />
+                  </div>
+
+                  <div v-if="form.google_oauth_enabled" class="mt-4 space-y-4">
+                    <div class="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:bg-dark-800 dark:text-gray-300">
+                      {{
+                        localText(
+                          "开通引导：Google Cloud Console → APIs & Services → OAuth consent screen 完成同意屏幕；Credentials → Create Credentials → OAuth client ID，类型选择 Web application，并把下面地址加入 Authorized redirect URIs。",
+                          "Setup guide: Google Cloud Console → APIs & Services → OAuth consent screen, then Credentials → Create Credentials → OAuth client ID, choose Web application, and add the URL below to Authorized redirect URIs.",
+                        )
+                      }}
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                      <div>
+                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Client ID</label>
+                        <input
+                          v-model="form.google_oauth_client_id"
+                          type="text"
+                          class="input font-mono text-sm"
+                          placeholder="Google OAuth Client ID"
+                        />
+                      </div>
+                      <div>
+                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Client Secret</label>
+                        <input
+                          v-model="form.google_oauth_client_secret"
+                          type="password"
+                          class="input font-mono text-sm"
+                          :placeholder="
+                            form.google_oauth_client_secret_configured
+                              ? localText('密钥已配置，留空以保留当前值。', 'Secret configured. Leave empty to keep the current value.')
+                              : 'Google OAuth Client Secret'
+                          "
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        {{ localText("后端回调地址", "Backend Callback URL") }}
+                      </label>
+                      <input
+                        v-model="form.google_oauth_redirect_url"
+                        type="url"
+                        class="input font-mono text-sm"
+                        placeholder="https://your-domain.com/api/v1/auth/oauth/google/callback"
+                      />
+                      <div class="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                        <button
+                          type="button"
+                          class="btn btn-secondary btn-sm w-fit"
+                          @click="setAndCopyEmailOAuthRedirectUrl('google')"
+                        >
+                          {{ localText("生成并复制", "Generate and copy") }}
+                        </button>
+                        <code
+                          v-if="googleOAuthRedirectUrlSuggestion"
+                          class="select-all break-all rounded bg-gray-50 px-2 py-1 font-mono text-xs text-gray-600 dark:bg-dark-800 dark:text-gray-300"
+                        >
+                          {{ googleOAuthRedirectUrlSuggestion }}
+                        </code>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        {{ localText("前端回跳地址", "Frontend Callback URL") }}
+                      </label>
+                      <input
+                        v-model="form.google_oauth_frontend_redirect_url"
+                        type="text"
+                        class="input font-mono text-sm"
+                        placeholder="/auth/oauth/callback"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2778,6 +3390,31 @@
                 </div>
                 <Toggle v-model="form.enable_cch_signing" />
               </div>
+
+              <!-- Anthropic Cache TTL 1h Injection -->
+              <div class="flex items-center justify-between">
+                <div>
+                  <label
+                    class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{
+                      t(
+                        "admin.settings.gatewayForwarding.anthropicCacheTTL1hInjection",
+                      )
+                    }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{
+                      t(
+                        "admin.settings.gatewayForwarding.anthropicCacheTTL1hInjectionHint",
+                      )
+                    }}
+                  </p>
+                </div>
+                <Toggle
+                  v-model="form.enable_anthropic_cache_ttl_1h_injection"
+                />
+              </div>
             </div>
           </div>
           <!-- Web Search Emulation -->
@@ -3244,11 +3881,11 @@
                   <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                     {{ t("admin.settings.site.backendModeDescription") }}
                   </p>
-                </div>
-                <Toggle v-model="form.backend_mode_enabled" />
-              </div>
+	                </div>
+	                <Toggle v-model="form.backend_mode_enabled" />
+	              </div>
 
-              <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+	              <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
                 <div>
                   <label
                     class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
@@ -3764,10 +4401,212 @@
               </button>
             </div>
           </div>
-        </div>
-        <!-- /Tab: General -->
+	        </div>
+	        <!-- /Tab: General -->
 
-        <!-- Tab: Features (功能开关) -->
+	        <!-- Tab: Login Agreement -->
+	        <div v-show="activeTab === 'agreement'" class="space-y-6">
+	          <div class="card">
+	            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+	              <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+	                <div>
+	                  <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+	                    {{ localText("登录条款确认", "Login agreement") }}
+	                  </h2>
+	                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+	                    {{
+	                      localText(
+	                        "控制登录页是否要求用户先阅读并同意服务条款、隐私政策或其他 Markdown 文档。",
+	                        "Control whether the login page requires users to accept Markdown policy documents first.",
+	                      )
+	                    }}
+	                  </p>
+	                </div>
+	                <div class="flex items-center gap-3">
+	                  <span class="text-sm text-gray-600 dark:text-gray-300">
+	                    {{ form.login_agreement_enabled ? localText("已启用", "Enabled") : localText("未启用", "Disabled") }}
+	                  </span>
+	                  <Toggle v-model="form.login_agreement_enabled" />
+	                </div>
+	              </div>
+	            </div>
+
+	            <div class="space-y-6 p-6">
+	              <div class="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_220px]">
+	                <div>
+	                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+	                    {{ localText("展示形式", "Display mode") }}
+	                  </label>
+	                  <div class="grid grid-cols-2 gap-2 rounded-lg bg-gray-100 p-1 dark:bg-dark-700">
+                    <button
+                      type="button"
+                      class="inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition"
+                      :class="
+                        form.login_agreement_mode === 'modal'
+                          ? 'bg-white text-primary-700 shadow-sm dark:bg-dark-800 dark:text-primary-300'
+                          : 'text-gray-600 hover:text-gray-900 dark:text-dark-300 dark:hover:text-white'
+                      "
+                      @click="form.login_agreement_mode = 'modal'"
+                    >
+                      <Icon name="shield" size="sm" />
+                      {{ localText("弹窗", "Modal") }}
+                    </button>
+                    <button
+                      type="button"
+                      class="inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition"
+                      :class="
+                        form.login_agreement_mode === 'checkbox'
+                          ? 'bg-white text-primary-700 shadow-sm dark:bg-dark-800 dark:text-primary-300'
+                          : 'text-gray-600 hover:text-gray-900 dark:text-dark-300 dark:hover:text-white'
+                      "
+                      @click="form.login_agreement_mode = 'checkbox'"
+                    >
+                      <Icon name="checkCircle" size="sm" />
+                      {{ localText("复选框", "Checkbox") }}
+                    </button>
+                  </div>
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{
+                      form.login_agreement_mode === "checkbox"
+                        ? localText("复选框会显示在登录按钮下方，未勾选前所有登录入口禁用。", "The checkbox appears below the login button and gates all login actions.")
+                        : localText("弹窗会在登录页打开，用户拒绝后所有登录入口保持禁用。", "The modal opens on the login page and gates all login actions until accepted.")
+                    }}
+                  </p>
+                </div>
+
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ localText("条款更新日期", "Updated date") }}
+                  </label>
+                  <input
+                    v-model="form.login_agreement_updated_at"
+                    type="date"
+                    class="input"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ localText("日期或文档内容变化后，用户需要重新同意。", "Changing the date or content requires fresh consent.") }}
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h3 class="text-sm font-medium text-gray-900 dark:text-white">
+                      {{ localText("协议文档", "Agreement documents") }}
+                    </h3>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      {{
+                        localText(
+                          "文档名称可自定义，内容按 Markdown 保存。可参考：服务条款、使用政策、支持的国家和地区、服务特定条款。",
+                          "Document titles are customizable and content is saved as Markdown.",
+                        )
+                      }}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    class="btn btn-primary btn-sm inline-flex items-center gap-1.5"
+                    @click="addLoginAgreementDocument"
+                  >
+                    <Icon name="plus" size="sm" />
+                    {{ localText("添加文档", "Add document") }}
+                  </button>
+                </div>
+
+                <div class="mt-4 space-y-3">
+                  <div
+                    v-for="(doc, index) in form.login_agreement_documents"
+                    :key="doc.id || index"
+                    class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800/60"
+                  >
+                    <div class="mb-3 flex items-center justify-between gap-3">
+                      <div class="flex min-w-0 items-center gap-3">
+                        <span class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-700 dark:bg-dark-700 dark:text-dark-200">
+                          <Icon
+                            :name="
+                              index === 1
+                                ? 'shield'
+                                : index === 2
+                                  ? 'globe'
+                                  : index === 3
+                                    ? 'cog'
+                                    : 'document'
+                            "
+                            size="sm"
+                          />
+                        </span>
+                        <div class="min-w-0">
+                          <p class="truncate text-sm font-semibold text-gray-900 dark:text-white">
+                            {{ doc.title || localText("未命名文档", "Untitled document") }}
+                          </p>
+                          <p class="truncate text-xs text-gray-500 dark:text-gray-400">
+                            {{ loginAgreementRoutePath(doc, index) }}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        class="rounded-md p-2 text-red-400 transition hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-red-900/20"
+                        :disabled="
+                          form.login_agreement_enabled &&
+                          form.login_agreement_documents.length <= 1
+                        "
+                        @click="removeLoginAgreementDocument(index)"
+                      >
+                        <Icon name="trash" size="sm" />
+                      </button>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                          {{ localText("文档名称", "Document title") }}
+                        </label>
+                        <input
+                          v-model="doc.title"
+                          type="text"
+                          class="input text-sm"
+                          :placeholder="localText('例如：服务条款', 'Example: Terms of Service')"
+                        />
+                      </div>
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                          {{ localText("路由标识", "Route slug") }}
+                        </label>
+                        <div class="flex overflow-hidden rounded-lg border border-gray-300 bg-white focus-within:border-primary-500 focus-within:ring-1 focus-within:ring-primary-500 dark:border-dark-600 dark:bg-dark-900">
+                          <span class="inline-flex flex-shrink-0 items-center border-r border-gray-200 bg-gray-50 px-3 text-sm text-gray-500 dark:border-dark-700 dark:bg-dark-800 dark:text-dark-400">
+                            /legal/
+                          </span>
+                          <input
+                            v-model="doc.id"
+                            type="text"
+                            class="min-w-0 flex-1 border-0 bg-transparent px-3 py-2 text-sm text-gray-900 outline-none placeholder:text-gray-400 focus:ring-0 dark:text-white dark:placeholder:text-dark-500"
+                            placeholder="usage-policy"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div class="mt-3">
+                      <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                        {{ localText("Markdown 内容", "Markdown content") }}
+                      </label>
+                        <textarea
+                          v-model="doc.content_md"
+                          rows="8"
+                          class="input font-mono text-sm"
+                          :placeholder="localText('在这里填写正式 Markdown 内容。', 'Write the final Markdown content here.')"
+                        ></textarea>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- /Tab: Login Agreement -->
+
+	        <!-- Tab: Features (功能开关) -->
         <div v-show="activeTab === 'features'" class="space-y-6">
 
         <div class="card">
@@ -3849,6 +4688,39 @@
                 </p>
               </div>
               <Toggle v-model="form.available_channels_enabled" />
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.features.riskControl.title') }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.features.riskControl.description') }}
+            </p>
+            <p class="mt-1.5 text-xs">
+              <router-link
+                to="/admin/risk-control"
+                class="inline-flex items-center gap-1 text-primary-600 hover:underline dark:text-primary-400"
+              >
+                {{ t('admin.settings.features.riskControl.configureLink') }}
+                <span aria-hidden="true">→</span>
+              </router-link>
+            </p>
+          </div>
+          <div class="space-y-5 p-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.features.riskControl.enabled') }}
+                </label>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.features.riskControl.enabledHint') }}
+                </p>
+              </div>
+              <Toggle v-model="form.risk_control_enabled" />
             </div>
           </div>
         </div>
@@ -5199,12 +6071,18 @@ import type {
   SystemSettings,
   UpdateSettingsRequest,
   DefaultSubscriptionSetting,
+  OpenAIFastPolicyRule,
   WeChatConnectMode,
   WebSearchEmulationConfig,
   WebSearchProviderConfig,
   WebSearchTestResult,
 } from "@/api/admin/settings";
-import type { AdminGroup, Proxy, NotifyEmailEntry } from "@/types";
+import type {
+  AdminGroup,
+  LoginAgreementDocument,
+  NotifyEmailEntry,
+  Proxy,
+} from "@/types";
 import type { ProviderInstance } from "@/types/payment";
 import AppLayout from "@/components/layout/AppLayout.vue";
 import Icon from "@/components/icons/Icon.vue";
@@ -5234,9 +6112,10 @@ import {
 const { t, locale } = useI18n();
 const appStore = useAppStore();
 const adminSettingsStore = useAdminSettingsStore();
+const isZhLocale = computed(() => locale.value.startsWith("zh"));
 
 function localText(zh: string, en: string): string {
-  return locale.value.startsWith("zh") ? zh : en;
+  return isZhLocale.value ? zh : en;
 }
 
 const paymentGuideHref = computed(() =>
@@ -5253,6 +6132,7 @@ const paymentMethodsHref = computed(() =>
 
 type SettingsTab =
   | "general"
+  | "agreement"
   | "features"
   | "security"
   | "users"
@@ -5263,6 +6143,7 @@ type SettingsTab =
 const activeTab = ref<SettingsTab>("general");
 const settingsTabs = [
   { key: "general" as SettingsTab, icon: "home" as const },
+  { key: "agreement" as SettingsTab, icon: "document" as const },
   { key: "features" as SettingsTab, icon: "bolt" as const },
   { key: "security" as SettingsTab, icon: "shield" as const },
   { key: "users" as SettingsTab, icon: "user" as const },
@@ -5298,6 +6179,14 @@ const overloadCooldownSaving = ref(false);
 const overloadCooldownForm = reactive({
   enabled: true,
   cooldown_minutes: 10,
+});
+
+// Rate Limit Cooldown (429) 状态
+const rateLimit429CooldownLoading = ref(true);
+const rateLimit429CooldownSaving = ref(false);
+const rateLimit429CooldownForm = reactive({
+  enabled: true,
+  cooldown_seconds: 5,
 });
 
 // Stream Timeout 状态
@@ -5337,9 +6226,60 @@ const betaPolicyForm = reactive({
   }>,
 });
 
+// OpenAI Fast/Flex Policy 状态
+const openaiFastPolicyForm = reactive({
+  rules: [] as OpenAIFastPolicyRule[],
+});
+// 标记 openai_fast_policy_settings 是否已成功从后端加载，
+// 避免后端 GET 出错或字段缺失时，保存把默认规则覆盖成空数组。
+const openaiFastPolicyLoaded = ref(false);
+
 const tablePageSizeMin = 5;
 const tablePageSizeMax = 1000;
 const tablePageSizeDefault = 20;
+
+function defaultLoginAgreementDocuments(): LoginAgreementDocument[] {
+  return [
+    {
+      id: "terms",
+      title: "服务条款",
+      content_md: "",
+    },
+    {
+      id: "usage-policy",
+      title: "使用政策",
+      content_md: "",
+    },
+    {
+      id: "supported-regions",
+      title: "支持的国家和地区",
+      content_md: "",
+    },
+    {
+      id: "service-specific-terms",
+      title: "服务特定条款",
+      content_md: "",
+    },
+  ];
+}
+
+function normalizeLoginAgreementDocumentId(raw: string): string {
+  return raw
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/[-_]{2,}/g, "-")
+    .replace(/^[-_]+|[-_]+$/g, "");
+}
+
+function loginAgreementRoutePath(
+  doc: LoginAgreementDocument,
+  index: number,
+): string {
+  const id =
+    normalizeLoginAgreementDocumentId(doc.id || doc.title) || `doc-${index + 1}`;
+  return `/legal/${id}`;
+}
 
 interface DefaultSubscriptionGroupOption {
   value: number;
@@ -5368,6 +6308,8 @@ type SettingsForm = Omit<
   wechat_connect_mp_enabled: boolean;
   wechat_connect_mobile_enabled: boolean;
   oidc_connect_client_secret: string;
+  github_oauth_client_secret: string;
+  google_oauth_client_secret: string;
   force_email_on_third_party_signup: boolean;
   openai_advanced_scheduler_enabled: boolean;
 };
@@ -5381,6 +6323,10 @@ const form = reactive<SettingsForm>({
   password_reset_enabled: false,
   totp_enabled: false,
   totp_encryption_key_configured: false,
+  login_agreement_enabled: false,
+  login_agreement_mode: "modal",
+  login_agreement_updated_at: "2026-03-31",
+  login_agreement_documents: defaultLoginAgreementDocuments(),
   default_balance: 0,
   affiliate_rebate_rate: 20,
   affiliate_rebate_freeze_hours: 0,
@@ -5400,6 +6346,7 @@ const form = reactive<SettingsForm>({
   backend_mode_enabled: false,
   hide_ccs_import_button: false,
   payment_enabled: false,
+  risk_control_enabled: false,
   payment_min_amount: 1,
   payment_max_amount: 10000,
   payment_daily_limit: 50000,
@@ -5498,6 +6445,19 @@ const form = reactive<SettingsForm>({
   oidc_connect_userinfo_email_path: "",
   oidc_connect_userinfo_id_path: "",
   oidc_connect_userinfo_username_path: "",
+  // GitHub / Google 邮箱快捷登录
+  github_oauth_enabled: false,
+  github_oauth_client_id: "",
+  github_oauth_client_secret: "",
+  github_oauth_client_secret_configured: false,
+  github_oauth_redirect_url: "",
+  github_oauth_frontend_redirect_url: "/auth/oauth/callback",
+  google_oauth_enabled: false,
+  google_oauth_client_id: "",
+  google_oauth_client_secret: "",
+  google_oauth_client_secret_configured: false,
+  google_oauth_redirect_url: "",
+  google_oauth_frontend_redirect_url: "/auth/oauth/callback",
   // Model fallback
   enable_model_fallback: false,
   fallback_model_anthropic: "claude-3-5-sonnet-20241022",
@@ -5522,6 +6482,7 @@ const form = reactive<SettingsForm>({
   enable_fingerprint_unification: true,
   enable_metadata_passthrough: false,
   enable_cch_signing: false,
+  enable_anthropic_cache_ttl_1h_injection: false,
   // Balance & quota notification
   balance_low_notify_enabled: false,
   balance_low_notify_threshold: 0,
@@ -5561,6 +6522,22 @@ const authSourceDefaultsMeta = computed(() => [
     source: "wechat" as AuthSourceType,
     title: t("admin.settings.authSourceDefaults.sources.wechat.title"),
     description: t("admin.settings.authSourceDefaults.sources.wechat.description"),
+  },
+  {
+    source: "github" as AuthSourceType,
+    title: "GitHub",
+    description: localText(
+      "通过 GitHub 已验证邮箱首次注册或首次绑定时应用。",
+      "Applied on first signup or first bind through a verified GitHub email.",
+    ),
+  },
+  {
+    source: "google" as AuthSourceType,
+    title: "Google",
+    description: localText(
+      "通过 Google 已验证邮箱首次注册或首次绑定时应用。",
+      "Applied on first signup or first bind through a verified Google email.",
+    ),
   },
 ]);
 
@@ -5869,6 +6846,42 @@ async function setAndCopyLinuxdoRedirectUrl() {
   );
 }
 
+type EmailOAuthProvider = "github" | "google";
+
+const githubOAuthRedirectUrlSuggestion = computed(() => {
+  if (typeof window === "undefined") return "";
+  const origin =
+    window.location.origin ||
+    `${window.location.protocol}//${window.location.host}`;
+  return `${origin}/api/v1/auth/oauth/github/callback`;
+});
+
+const googleOAuthRedirectUrlSuggestion = computed(() => {
+  if (typeof window === "undefined") return "";
+  const origin =
+    window.location.origin ||
+    `${window.location.protocol}//${window.location.host}`;
+  return `${origin}/api/v1/auth/oauth/google/callback`;
+});
+
+async function setAndCopyEmailOAuthRedirectUrl(provider: EmailOAuthProvider) {
+  const url =
+    provider === "github"
+      ? githubOAuthRedirectUrlSuggestion.value
+      : googleOAuthRedirectUrlSuggestion.value;
+  if (!url) return;
+
+  if (provider === "github") {
+    form.github_oauth_redirect_url = url;
+  } else {
+    form.google_oauth_redirect_url = url;
+  }
+  await copyToClipboard(
+    url,
+    localText("回调地址已写入并复制。", "Callback URL set and copied."),
+  );
+}
+
 const wechatRedirectUrlSuggestion = computed(() => {
   if (typeof window === "undefined") return "";
   const origin =
@@ -5996,6 +7009,43 @@ function removeEndpoint(index: number) {
   form.custom_endpoints.splice(index, 1);
 }
 
+function addLoginAgreementDocument() {
+  form.login_agreement_documents.push({
+    id: `custom-${Date.now().toString(36)}`,
+    title: "",
+    content_md: "",
+  });
+}
+
+function removeLoginAgreementDocument(index: number) {
+  form.login_agreement_documents.splice(index, 1);
+}
+
+function normalizeLoginAgreementDocumentsForSave(): LoginAgreementDocument[] {
+  return form.login_agreement_documents
+    .map((doc, index) => ({
+      id:
+        normalizeLoginAgreementDocumentId(doc.id || doc.title) ||
+        `doc-${index + 1}`,
+      title: doc.title.trim(),
+      content_md: doc.content_md.trim(),
+    }))
+    .filter((doc) => doc.title || doc.content_md);
+}
+
+function findDuplicateLoginAgreementDocumentId(
+  documents: LoginAgreementDocument[],
+): string | null {
+  const seen = new Set<string>();
+  for (const doc of documents) {
+    if (seen.has(doc.id)) {
+      return doc.id;
+    }
+    seen.add(doc.id);
+  }
+  return null;
+}
+
 function formatTablePageSizeOptions(options: number[]): string {
   return options.join(", ");
 }
@@ -6040,6 +7090,19 @@ async function loadSettings() {
         (form as Record<string, unknown>)[key] = value;
       }
     }
+    form.login_agreement_mode =
+      settings.login_agreement_mode === "checkbox" ? "checkbox" : "modal";
+    form.login_agreement_updated_at =
+      settings.login_agreement_updated_at || "2026-03-31";
+    form.login_agreement_documents =
+      Array.isArray(settings.login_agreement_documents) &&
+      settings.login_agreement_documents.length > 0
+        ? settings.login_agreement_documents.map((doc) => ({
+            id: doc.id || "",
+            title: doc.title || "",
+            content_md: doc.content_md || "",
+          }))
+        : defaultLoginAgreementDocuments();
     Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(settings));
     form.backend_mode_enabled = settings.backend_mode_enabled;
     form.default_subscriptions = normalizeDefaultSubscriptionSettings(
@@ -6059,6 +7122,8 @@ async function loadSettings() {
     smtpPasswordManuallyEdited.value = false;
     form.turnstile_secret_key = "";
     form.linuxdo_connect_client_secret = "";
+    form.github_oauth_client_secret = "";
+    form.google_oauth_client_secret = "";
     form.wechat_connect_app_secret = "";
     form.wechat_connect_open_app_secret = "";
     form.wechat_connect_mp_app_secret = "";
@@ -6115,6 +7180,23 @@ async function loadSettings() {
       form.wechat_connect_mode,
     );
     form.oidc_connect_client_secret = "";
+
+    // Load OpenAI fast/flex policy rules from bulk settings.
+    // 仅当 payload 真的包含该字段时填充并标记为已加载；否则保持表单空值，
+    // 让 saveSettings 在未加载时跳过该字段，防止覆盖后端默认规则。
+    if (
+      settings.openai_fast_policy_settings &&
+      Array.isArray(settings.openai_fast_policy_settings.rules)
+    ) {
+      openaiFastPolicyForm.rules =
+        settings.openai_fast_policy_settings.rules.map((rule) => ({
+          ...rule,
+          model_whitelist: rule.model_whitelist
+            ? [...rule.model_whitelist]
+            : [],
+        }));
+      openaiFastPolicyLoaded.value = true;
+    }
 
     // Load web search emulation config separately
     await loadWebSearchConfig();
@@ -6232,6 +7314,44 @@ async function saveSettings() {
     form.table_default_page_size = normalizedTableDefaultPageSize;
     form.table_page_size_options = normalizedTablePageSizeOptions;
 
+    const normalizedLoginAgreementDocuments =
+      normalizeLoginAgreementDocumentsForSave();
+    if (form.login_agreement_enabled && normalizedLoginAgreementDocuments.length === 0) {
+      appStore.showError(
+        localText(
+          "启用登录条款确认时，至少需要保留一份文档。",
+          "At least one document is required when login agreement is enabled.",
+        ),
+      );
+      return;
+    }
+    const emptyTitleDocument = normalizedLoginAgreementDocuments.find(
+      (doc) => !doc.title,
+    );
+    if (emptyTitleDocument) {
+      appStore.showError(
+        localText(
+          "登录条款文档名称不能为空。",
+          "Login agreement document title cannot be empty.",
+        ),
+      );
+      return;
+    }
+    const duplicateLoginAgreementDocumentId =
+      findDuplicateLoginAgreementDocumentId(normalizedLoginAgreementDocuments);
+    if (duplicateLoginAgreementDocumentId) {
+      appStore.showError(
+        localText(
+          `登录条款文档路由不能重复：/legal/${duplicateLoginAgreementDocumentId}`,
+          `Login agreement document routes cannot be duplicated: /legal/${duplicateLoginAgreementDocumentId}`,
+        ),
+      );
+      return;
+    }
+    form.login_agreement_mode =
+      form.login_agreement_mode === "checkbox" ? "checkbox" : "modal";
+    form.login_agreement_documents = normalizedLoginAgreementDocuments;
+
     const normalizedDefaultSubscriptions = normalizeDefaultSubscriptionSettings(
       form.default_subscriptions,
     );
@@ -6309,6 +7429,10 @@ async function saveSettings() {
       invitation_code_enabled: form.invitation_code_enabled,
       password_reset_enabled: form.password_reset_enabled,
       totp_enabled: form.totp_enabled,
+      login_agreement_enabled: form.login_agreement_enabled,
+      login_agreement_mode: form.login_agreement_mode,
+      login_agreement_updated_at: form.login_agreement_updated_at,
+      login_agreement_documents: form.login_agreement_documents,
       default_balance: form.default_balance,
       affiliate_rebate_rate: Math.min(
         100,
@@ -6400,6 +7524,20 @@ async function saveSettings() {
       oidc_connect_userinfo_id_path: form.oidc_connect_userinfo_id_path,
       oidc_connect_userinfo_username_path:
         form.oidc_connect_userinfo_username_path,
+      github_oauth_enabled: form.github_oauth_enabled,
+      github_oauth_client_id: form.github_oauth_client_id,
+      github_oauth_client_secret:
+        form.github_oauth_client_secret || undefined,
+      github_oauth_redirect_url: form.github_oauth_redirect_url,
+      github_oauth_frontend_redirect_url:
+        form.github_oauth_frontend_redirect_url,
+      google_oauth_enabled: form.google_oauth_enabled,
+      google_oauth_client_id: form.google_oauth_client_id,
+      google_oauth_client_secret:
+        form.google_oauth_client_secret || undefined,
+      google_oauth_redirect_url: form.google_oauth_redirect_url,
+      google_oauth_frontend_redirect_url:
+        form.google_oauth_frontend_redirect_url,
       enable_model_fallback: form.enable_model_fallback,
       fallback_model_anthropic: form.fallback_model_anthropic,
       fallback_model_openai: form.fallback_model_openai,
@@ -6413,7 +7551,11 @@ async function saveSettings() {
       enable_fingerprint_unification: form.enable_fingerprint_unification,
       enable_metadata_passthrough: form.enable_metadata_passthrough,
       enable_cch_signing: form.enable_cch_signing,
+      enable_anthropic_cache_ttl_1h_injection:
+        form.enable_anthropic_cache_ttl_1h_injection,
+      // Payment configuration
       payment_enabled: form.payment_enabled,
+      risk_control_enabled: form.risk_control_enabled,
       payment_min_amount: Number(form.payment_min_amount) || 0,
       payment_max_amount: Number(form.payment_max_amount) || 0,
       payment_daily_limit: Number(form.payment_daily_limit) || 0,
@@ -6459,10 +7601,39 @@ async function saveSettings() {
       affiliate_enabled: form.affiliate_enabled,
     };
 
+    // 仅当 openai_fast_policy_settings 已成功从后端加载时才回写，
+    // 否则省略整个字段，让后端保留既有规则（含默认值）。
+    if (openaiFastPolicyLoaded.value) {
+      payload.openai_fast_policy_settings = {
+        rules: openaiFastPolicyForm.rules.map((rule) => {
+          const whitelist = (rule.model_whitelist || [])
+            .map((p) => p.trim())
+            .filter((p) => p !== "");
+          const hasWhitelist = whitelist.length > 0;
+          return {
+            service_tier: rule.service_tier,
+            action: rule.action,
+            scope: rule.scope,
+            error_message:
+              rule.action === "block" ? rule.error_message : undefined,
+            model_whitelist: hasWhitelist ? whitelist : undefined,
+            fallback_action: hasWhitelist
+              ? rule.fallback_action || "pass"
+              : undefined,
+            fallback_error_message:
+              hasWhitelist && rule.fallback_action === "block"
+                ? rule.fallback_error_message
+                : undefined,
+          };
+        }),
+      };
+    }
+
     appendAuthSourceDefaultsToUpdateRequest(payload, authSourceDefaults);
 
     const updated = await adminAPI.settings.updateSettings(payload);
     for (const [key, value] of Object.entries(updated)) {
+      if (key === "openai_fast_policy_settings") continue;
       if (value !== null && value !== undefined) {
         (form as Record<string, unknown>)[key] = value;
       }
@@ -6482,6 +7653,8 @@ async function saveSettings() {
     smtpPasswordManuallyEdited.value = false;
     form.turnstile_secret_key = "";
     form.linuxdo_connect_client_secret = "";
+    form.github_oauth_client_secret = "";
+    form.google_oauth_client_secret = "";
     form.wechat_connect_app_secret = "";
     form.wechat_connect_open_app_secret = "";
     form.wechat_connect_mp_app_secret = "";
@@ -6506,6 +7679,20 @@ async function saveSettings() {
       form.wechat_connect_mode,
     );
     form.oidc_connect_client_secret = "";
+    // Refresh OpenAI fast/flex policy from server response
+    if (
+      updated.openai_fast_policy_settings &&
+      Array.isArray(updated.openai_fast_policy_settings.rules)
+    ) {
+      openaiFastPolicyForm.rules =
+        updated.openai_fast_policy_settings.rules.map((rule) => ({
+          ...rule,
+          model_whitelist: rule.model_whitelist
+            ? [...rule.model_whitelist]
+            : [],
+        }));
+      openaiFastPolicyLoaded.value = true;
+    }
     // Save web search emulation config separately (errors handled internally)
     const wsOk = await saveWebSearchConfig();
     // Refresh cached settings so sidebar/header update immediately
@@ -6677,6 +7864,40 @@ async function saveOverloadCooldownSettings() {
   }
 }
 
+// Rate Limit Cooldown (429) 方法
+async function loadRateLimit429CooldownSettings() {
+  rateLimit429CooldownLoading.value = true;
+  try {
+    const settings = await adminAPI.settings.getRateLimit429CooldownSettings();
+    Object.assign(rateLimit429CooldownForm, settings);
+  } catch (_error: unknown) {
+    // Silent fail - settings will use defaults
+  } finally {
+    rateLimit429CooldownLoading.value = false;
+  }
+}
+
+async function saveRateLimit429CooldownSettings() {
+  rateLimit429CooldownSaving.value = true;
+  try {
+    const updated = await adminAPI.settings.updateRateLimit429CooldownSettings({
+      enabled: rateLimit429CooldownForm.enabled,
+      cooldown_seconds: rateLimit429CooldownForm.cooldown_seconds,
+    });
+    Object.assign(rateLimit429CooldownForm, updated);
+    appStore.showSuccess(t("admin.settings.rateLimit429Cooldown.saved"));
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(
+        error,
+        t("admin.settings.rateLimit429Cooldown.saveFailed"),
+      ),
+    );
+  } finally {
+    rateLimit429CooldownSaving.value = false;
+  }
+}
+
 // Stream Timeout 方法
 async function loadStreamTimeoutSettings() {
   streamTimeoutLoading.value = true;
@@ -6843,6 +8064,61 @@ async function loadBetaPolicySettings() {
   } finally {
     betaPolicyLoading.value = false;
   }
+}
+
+// ==================== OpenAI Fast/Flex Policy ====================
+
+const openaiFastPolicyTierOptions = computed(() => [
+  { value: "all", label: t("admin.settings.openaiFastPolicy.tierAll") },
+  {
+    value: "priority",
+    label: t("admin.settings.openaiFastPolicy.tierPriority"),
+  },
+  { value: "flex", label: t("admin.settings.openaiFastPolicy.tierFlex") },
+]);
+
+const openaiFastPolicyActionOptions = computed(() => [
+  { value: "pass", label: t("admin.settings.openaiFastPolicy.actionPass") },
+  { value: "filter", label: t("admin.settings.openaiFastPolicy.actionFilter") },
+  { value: "block", label: t("admin.settings.openaiFastPolicy.actionBlock") },
+]);
+
+const openaiFastPolicyScopeOptions = computed(() => [
+  { value: "all", label: t("admin.settings.openaiFastPolicy.scopeAll") },
+  { value: "oauth", label: t("admin.settings.openaiFastPolicy.scopeOAuth") },
+  { value: "apikey", label: t("admin.settings.openaiFastPolicy.scopeAPIKey") },
+  {
+    value: "bedrock",
+    label: t("admin.settings.openaiFastPolicy.scopeBedrock"),
+  },
+]);
+
+function addOpenAIFastPolicyRule() {
+  openaiFastPolicyForm.rules.push({
+    service_tier: "priority",
+    action: "filter",
+    scope: "all",
+    error_message: "",
+    model_whitelist: [],
+    fallback_action: "pass",
+    fallback_error_message: "",
+  });
+}
+
+function removeOpenAIFastPolicyRule(index: number) {
+  openaiFastPolicyForm.rules.splice(index, 1);
+}
+
+function addOpenAIFastPolicyModelPattern(rule: OpenAIFastPolicyRule) {
+  if (!rule.model_whitelist) rule.model_whitelist = [];
+  rule.model_whitelist.push("");
+}
+
+function removeOpenAIFastPolicyModelPattern(
+  rule: OpenAIFastPolicyRule,
+  idx: number,
+) {
+  rule.model_whitelist?.splice(idx, 1);
 }
 
 async function saveBetaPolicySettings() {
@@ -7233,6 +8509,7 @@ onMounted(() => {
   loadSubscriptionGroups();
   loadAdminApiKey();
   loadOverloadCooldownSettings();
+  loadRateLimit429CooldownSettings();
   loadStreamTimeoutSettings();
   loadRectifierSettings();
   loadBetaPolicySettings();

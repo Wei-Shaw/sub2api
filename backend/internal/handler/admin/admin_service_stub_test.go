@@ -175,6 +175,10 @@ func (s *stubAdminService) UpdateUserBalance(ctx context.Context, userID int64, 
 	return &user, nil
 }
 
+func (s *stubAdminService) BatchUpdateConcurrency(ctx context.Context, userIDs []int64, value int, mode string) (int, error) {
+	return len(userIDs), nil
+}
+
 func (s *stubAdminService) GetUserAPIKeys(ctx context.Context, userID int64, page, pageSize int, sortBy, sortOrder string) ([]service.APIKey, int64, error) {
 	return s.apiKeys, int64(len(s.apiKeys)), nil
 }
@@ -560,6 +564,22 @@ func (s *stubAdminService) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID i
 				}
 			}
 			return &service.AdminUpdateAPIKeyGroupIDResult{APIKey: &k}, nil
+		}
+	}
+	return nil, service.ErrAPIKeyNotFound
+}
+
+func (s *stubAdminService) AdminResetAPIKeyRateLimitUsage(ctx context.Context, keyID int64) (*service.APIKey, error) {
+	for i := range s.apiKeys {
+		if s.apiKeys[i].ID == keyID {
+			s.apiKeys[i].Usage5h = 0
+			s.apiKeys[i].Usage1d = 0
+			s.apiKeys[i].Usage7d = 0
+			s.apiKeys[i].Window5hStart = nil
+			s.apiKeys[i].Window1dStart = nil
+			s.apiKeys[i].Window7dStart = nil
+			k := s.apiKeys[i]
+			return &k, nil
 		}
 	}
 	return nil, service.ErrAPIKeyNotFound
