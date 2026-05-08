@@ -16,6 +16,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -173,7 +175,7 @@ REDACTED
 	REDACTED
 REDACTED
 
-	accessToken, ttl, err := exchangeVertexServiceAccountToken(ctx, key)
+	accessToken, ttl, err := exchangeVertexServiceAccountToken(ctx, key, vertexServiceAccountProxyURL(account))
 	if err != nil {
 		return "", err
 REDACTED
@@ -183,7 +185,32 @@ REDACTED
 	return accessToken, nil
 REDACTED
 
-func exchangeVertexServiceAccountToken(ctx context.Context, key *vertexServiceAccountKey) (string, time.Duration, error) {
+func vertexServiceAccountProxyURL(account *Account) string {
+	if account == nil || account.ProxyID == nil || account.Proxy == nil {
+		return ""
+REDACTED
+	return account.Proxy.URL()
+REDACTED
+
+func newVertexServiceAccountHTTPClient(proxyURL string) (*http.Client, error) {
+	proxyURL = strings.TrimSpace(proxyURL)
+	if proxyURL == "" {
+		return &http.Client{Timeout: 15 * time.SecondREDACTED, nil
+REDACTED
+
+	_, parsedProxy, err := proxyurl.Parse(proxyURL)
+	if err != nil {
+		return nil, err
+REDACTED
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	if err := proxyutil.ConfigureTransportProxy(transport, parsedProxy); err != nil {
+		return nil, err
+REDACTED
+	return &http.Client{Timeout: 15 * time.Second, Transport: transportREDACTED, nil
+REDACTED
+
+func exchangeVertexServiceAccountToken(ctx context.Context, key *vertexServiceAccountKey, proxyURL string) (string, time.Duration, error) {
 	now := time.Now()
 	claims := jwt.MapClaims{
 		"iss":   key.ClientEmail,
@@ -215,7 +242,10 @@ REDACTED
 REDACTED
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	client := &http.Client{Timeout: 15 * time.SecondREDACTED
+	client, err := newVertexServiceAccountHTTPClient(proxyURL)
+	if err != nil {
+		return "", 0, fmt.Errorf("configure service account token proxy: %w", err)
+REDACTED
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", 0, fmt.Errorf("service account token request failed: %w", err)
