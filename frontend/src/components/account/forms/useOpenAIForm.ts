@@ -30,6 +30,8 @@ export function useOpenAIForm() {
   const openaiOAuthWSMode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
   const openaiAPIKeyWSMode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
   const codexCLIOnlyEnabled = ref(false)
+  const apiKeyBaseUrl = ref('https://api.openai.com')
+  const apiKeyValue = ref('')
   const openAICompactModelMappings = ref<ModelMapping[]>([])
   const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
   const allowedModels = ref<string[]>([])
@@ -79,11 +81,23 @@ export function useOpenAIForm() {
     const cm = buildCompactModelMapping(); if (cm) creds.compact_model_mapping = cm
   }
 
-  const validate = (): PlatformFormValidation => ({ valid: true })
+  const validate = (category?: string): PlatformFormValidation => {
+    if (category === 'apikey' && !apiKeyValue.value.trim()) {
+      return { valid: false, error: t('admin.accounts.pleaseEnterApiKey') }
+    }
+    return { valid: true }
+  }
 
   function getPayload(category: string): PlatformFormPayload {
     if (category === 'oauth-based') return { credentials: {}, extra: buildExtra(category), needsOAuthFlow: true }
-    return { credentials: {}, extra: buildExtra(category) }
+    const credentials: Record<string, unknown> = {
+      base_url: apiKeyBaseUrl.value.trim() || 'https://api.openai.com',
+      api_key: apiKeyValue.value.trim()
+    }
+    applyModelRestriction(credentials)
+    if (poolModeEnabled.value) { credentials.pool_mode = true; credentials.pool_mode_retry_count = poolModeRetryCount.value }
+    if (customErrorCodesEnabled.value) { credentials.custom_error_codes_enabled = true; credentials.custom_error_codes = [...selectedErrorCodes.value] }
+    return { credentials, extra: buildExtra(category) }
   }
 
   async function handleOAuthExchange(code: string, oauthState?: string): Promise<CreateAccountRequest | null> {
@@ -127,6 +141,7 @@ export function useOpenAIForm() {
     codexCLIOnlyEnabled.value = account.type === 'oauth' ? (extra?.codex_cli_only === true) : false
     editH.loadCompactModelMappingsFromCredentials(credentials, openAICompactModelMappings)
     if (account.type === 'apikey') {
+      apiKeyBaseUrl.value = (credentials?.base_url as string) || 'https://api.openai.com'
       editH.loadModelMappingFromCredentials(credentials, modelRestrictionMode, allowedModels, modelMappings)
       editH.loadPoolModeFromCredentials(credentials, poolModeEnabled, poolModeRetryCount)
       editH.loadCustomErrorCodesFromCredentials(credentials, customErrorCodesEnabled, selectedErrorCodes)
@@ -146,7 +161,11 @@ export function useOpenAIForm() {
       editH.applyModelMappingToCredentials(newCreds, modelRestrictionMode.value, allowedModels.value, modelMappings.value, !shouldApply, currentCreds.model_mapping)
       const cm = buildCompactModelMapping(); if (cm) newCreds.compact_model_mapping = cm; else delete newCreds.compact_model_mapping
     }
-    if (account.type === 'apikey') { editH.applyPoolModeToCredentials(newCreds, poolModeEnabled.value, poolModeRetryCount.value); editH.applyCustomErrorCodesToCredentials(newCreds, customErrorCodesEnabled.value, selectedErrorCodes.value) }
+    if (account.type === 'apikey') {
+      newCreds.base_url = apiKeyBaseUrl.value.trim() || 'https://api.openai.com'
+      editH.applyPoolModeToCredentials(newCreds, poolModeEnabled.value, poolModeRetryCount.value)
+      editH.applyCustomErrorCodesToCredentials(newCreds, customErrorCodesEnabled.value, selectedErrorCodes.value)
+    }
     if (account.type === 'oauth') { newExtra.openai_oauth_responses_websockets_v2_mode = openaiOAuthWSMode.value; newExtra.openai_oauth_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(openaiOAuthWSMode.value) }
     else if (account.type === 'apikey') { newExtra.openai_apikey_responses_websockets_v2_mode = openaiAPIKeyWSMode.value; newExtra.openai_apikey_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(openaiAPIKeyWSMode.value) }
     delete newExtra.responses_websockets_v2_enabled; delete newExtra.openai_ws_enabled
@@ -157,6 +176,7 @@ export function useOpenAIForm() {
   }
 
   function reset() {
+    apiKeyBaseUrl.value = 'https://api.openai.com'; apiKeyValue.value = ''
     openaiPassthroughEnabled.value = false; openAICompactMode.value = 'auto'
     openaiOAuthWSMode.value = OPENAI_WS_MODE_OFF; openaiAPIKeyWSMode.value = OPENAI_WS_MODE_OFF
     codexCLIOnlyEnabled.value = false; openAICompactModelMappings.value = []
@@ -168,6 +188,7 @@ export function useOpenAIForm() {
   }
 
   return {
+    apiKeyBaseUrl, apiKeyValue,
     openaiPassthroughEnabled, openAICompactMode, openaiOAuthWSMode, openaiAPIKeyWSMode,
     codexCLIOnlyEnabled, openAICompactModelMappings, modelRestrictionMode, allowedModels,
     modelMappings, poolModeEnabled, poolModeRetryCount, customErrorCodesEnabled,

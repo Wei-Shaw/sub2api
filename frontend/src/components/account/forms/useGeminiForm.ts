@@ -1,7 +1,7 @@
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useGeminiOAuth } from '@/composables/useGeminiOAuth'
-import { getPresetMappingsByPlatform } from '@/composables/useModelWhitelist'
+import { buildModelMappingObject, getPresetMappingsByPlatform } from '@/composables/useModelWhitelist'
 import type { PlatformFormPayload, PlatformFormValidation, OAuthFlowConfig, EditFormPayload } from './types'
 import type { Account, CreateAccountRequest } from '@/types'
 import * as editH from './editHelpers'
@@ -16,6 +16,8 @@ export function useGeminiForm() {
   const geminiAIStudioOAuthEnabled = ref(false)
   const showAdvancedOAuth = ref(false)
   const showGeminiHelpDialog = ref(false)
+  const apiKeyBaseUrl = ref('https://generativelanguage.googleapis.com')
+  const apiKeyValue = ref('')
   const geminiTierGoogleOne = ref<'google_one_free' | 'google_ai_pro' | 'google_ai_ultra'>('google_one_free')
   const geminiTierGcp = ref<'gcp_standard' | 'gcp_enterprise'>('gcp_standard')
   const geminiTierAIStudio = ref<'aistudio_free' | 'aistudio_paid'>('aistudio_free')
@@ -56,6 +58,9 @@ export function useGeminiForm() {
   }
 
   function validate(accountCategory: string): PlatformFormValidation {
+    if (accountCategory === 'apikey' && !apiKeyValue.value.trim()) {
+      return { valid: false, error: t('admin.accounts.pleaseEnterApiKey') }
+    }
     if (accountCategory === 'service_account') {
       if (!vertexServiceAccountJson.value.trim()) return { valid: false, error: t('admin.accounts.vertexSaJsonMissingFields') }
       if (!vertexLocation.value.trim()) return { valid: false, error: t('admin.accounts.vertexLocationRequired') }
@@ -68,7 +73,16 @@ export function useGeminiForm() {
       return { credentials: { service_account_json: vertexServiceAccountJson.value.trim(), project_id: vertexProjectId.value.trim(), client_email: vertexClientEmail.value.trim(), location: vertexLocation.value.trim(), tier_id: 'vertex' }, typeOverride: 'service_account' as any }
     }
     if (accountCategory === 'oauth-based') return { credentials: {}, needsOAuthFlow: true }
-    return { credentials: { tier_id: geminiTierAIStudio.value } }
+    const credentials: Record<string, unknown> = {
+      base_url: apiKeyBaseUrl.value.trim() || 'https://generativelanguage.googleapis.com',
+      api_key: apiKeyValue.value.trim(),
+      tier_id: geminiTierAIStudio.value
+    }
+    const mm = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+    if (mm) credentials.model_mapping = mm
+    if (poolModeEnabled.value) { credentials.pool_mode = true; credentials.pool_mode_retry_count = poolModeRetryCount.value }
+    if (customErrorCodesEnabled.value) { credentials.custom_error_codes_enabled = true; credentials.custom_error_codes = [...selectedErrorCodes.value] }
+    return { credentials }
   }
 
   async function handleOAuthExchange(code: string, oauthState?: string, _projectId?: string): Promise<CreateAccountRequest | null> {
@@ -92,6 +106,7 @@ export function useGeminiForm() {
       vertexLocation.value = (credentials?.location as string) || (credentials?.vertex_location as string) || 'us-central1'
       editH.loadModelMappingFromCredentials(credentials, modelRestrictionMode, allowedModels, modelMappings)
     } else if (account.type === 'apikey') {
+      apiKeyBaseUrl.value = (credentials?.base_url as string) || 'https://generativelanguage.googleapis.com'
       editH.loadModelMappingFromCredentials(credentials, modelRestrictionMode, allowedModels, modelMappings)
       editH.loadPoolModeFromCredentials(credentials, poolModeEnabled, poolModeRetryCount)
       editH.loadCustomErrorCodesFromCredentials(credentials, customErrorCodesEnabled, selectedErrorCodes)
@@ -110,6 +125,7 @@ export function useGeminiForm() {
       newCreds.location = vertexLocation.value.trim(); newCreds.tier_id = 'vertex'
       editH.applyModelMappingToCredentials(newCreds, modelRestrictionMode.value, allowedModels.value, modelMappings.value)
     } else if (account.type === 'apikey') {
+      newCreds.base_url = apiKeyBaseUrl.value.trim() || 'https://generativelanguage.googleapis.com'
       editH.applyModelMappingToCredentials(newCreds, modelRestrictionMode.value, allowedModels.value, modelMappings.value)
       editH.applyPoolModeToCredentials(newCreds, poolModeEnabled.value, poolModeRetryCount.value)
       editH.applyCustomErrorCodesToCredentials(newCreds, customErrorCodesEnabled.value, selectedErrorCodes.value)
@@ -121,6 +137,7 @@ export function useGeminiForm() {
 
   function reset() {
     geminiOAuthType.value = 'google_one'; geminiAIStudioOAuthEnabled.value = false; showAdvancedOAuth.value = false; showGeminiHelpDialog.value = false
+    apiKeyBaseUrl.value = 'https://generativelanguage.googleapis.com'; apiKeyValue.value = ''
     geminiTierGoogleOne.value = 'google_one_free'; geminiTierGcp.value = 'gcp_standard'; geminiTierAIStudio.value = 'aistudio_free'
     vertexServiceAccountJson.value = ''; vertexProjectId.value = ''; vertexClientEmail.value = ''; vertexLocation.value = 'global'
     modelRestrictionMode.value = 'whitelist'; allowedModels.value = []; modelMappings.value = []
@@ -130,6 +147,7 @@ export function useGeminiForm() {
   }
 
   return {
+    apiKeyBaseUrl, apiKeyValue,
     geminiOAuthType, geminiAIStudioOAuthEnabled, showAdvancedOAuth, showGeminiHelpDialog,
     geminiTierGoogleOne, geminiTierGcp, geminiTierAIStudio, geminiSelectedTier,
     vertexServiceAccountJson, vertexProjectId, vertexClientEmail, vertexLocation,

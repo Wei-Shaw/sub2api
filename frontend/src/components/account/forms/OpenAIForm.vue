@@ -1,7 +1,15 @@
 ﻿<template>
   <div class="space-y-5">
-    <!-- apikey: Model Restriction + Pool Mode + Custom Error Codes -->
+    <!-- apikey: API Key credentials + Model Restriction + Pool Mode + Custom Error Codes -->
     <template v-if="context.accountCategory === 'apikey'">
+      <div>
+        <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
+        <input v-model="apiKeyBaseUrl" type="text" class="input" placeholder="https://api.openai.com" />
+      </div>
+      <div>
+        <label class="input-label">{{ t('admin.accounts.apiKey') }}</label>
+        <input v-model="apiKeyValue" type="password" required class="input font-mono" placeholder="sk-..." />
+      </div>
       <ModelRestrictionSection
         platform="openai"
         :mode="modelRestrictionMode"
@@ -145,6 +153,7 @@ interface ModelMapping { from: string; to: string }
 const props = defineProps<{ context: PlatformFormContext }>()
 const { t } = useI18n()
 const {
+  apiKeyBaseUrl, apiKeyValue,
   openaiPassthroughEnabled, openAICompactMode,
   codexCLIOnlyEnabled, openAICompactModelMappings,
   modelRestrictionMode, allowedModels, modelMappings,
@@ -161,7 +170,7 @@ const {
 const getCompactKey = createStableObjectKeyResolver<ModelMapping>('openai-compact-mm')
 
 defineExpose({
-  validate: () => validate(),
+  validate: () => validate(props.context.accountCategory),
   getPayload: () => getPayload(props.context.accountCategory),
   isOAuthFlow: () => props.context.accountCategory === 'oauth-based',
   reset: () => reset(),
