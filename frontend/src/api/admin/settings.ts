@@ -367,6 +367,13 @@ export interface SystemSettings {
   contact_info: string;
   doc_url: string;
   home_content: string;
+  seo_default_title?: string;
+  seo_home_title?: string;
+  seo_default_description?: string;
+  seo_home_description?: string;
+  seo_default_og_image?: string;
+  seo_default_robots?: string;
+  seo_home_robots?: string;
   hide_ccs_import_button: boolean;
   table_default_page_size: number;
   table_page_size_options: number[];
@@ -576,6 +583,13 @@ export interface UpdateSettingsRequest {
   contact_info?: string;
   doc_url?: string;
   home_content?: string;
+  seo_default_title?: string;
+  seo_home_title?: string;
+  seo_default_description?: string;
+  seo_home_description?: string;
+  seo_default_og_image?: string;
+  seo_default_robots?: string;
+  seo_home_robots?: string;
   hide_ccs_import_button?: boolean;
   table_default_page_size?: number;
   table_page_size_options?: number[];

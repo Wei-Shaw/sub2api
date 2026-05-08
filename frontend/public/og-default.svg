@@ -1,0 +1,21 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="630" fill="#F8FAFC"/>
+  <rect x="56" y="56" width="1088" height="518" rx="32" fill="url(#bg)"/>
+  <circle cx="974" cy="122" r="88" fill="#14B8A6" fill-opacity="0.12"/>
+  <circle cx="1056" cy="204" r="48" fill="#0F766E" fill-opacity="0.16"/>
+  <rect x="120" y="140" width="92" height="92" rx="24" fill="#0F766E"/>
+  <path d="M148 186H184" stroke="white" stroke-width="14" stroke-linecap="round"/>
+  <path d="M166 168V204" stroke="white" stroke-width="14" stroke-linecap="round"/>
+  <text x="120" y="302" fill="#E2FDF8" font-family="system-ui, sans-serif" font-size="28" font-weight="600">Unified AI Gateway</text>
+  <text x="120" y="382" fill="white" font-family="system-ui, sans-serif" font-size="64" font-weight="800">Sub2API</text>
+  <text x="120" y="448" fill="#D1FAF5" font-family="system-ui, sans-serif" font-size="30" font-weight="500">One API key for Claude, GPT, Gemini, routing, billing and operations.</text>
+  <rect x="120" y="488" width="220" height="52" rx="26" fill="white" fill-opacity="0.12"/>
+  <text x="152" y="522" fill="white" font-family="system-ui, sans-serif" font-size="24" font-weight="700">SEO Ready</text>
+  <text x="382" y="522" fill="#D1FAF5" font-family="system-ui, sans-serif" font-size="24" font-weight="600">Open Graph • Sitemap • Canonical</text>
+  <defs>
+    <linearGradient id="bg" x1="120" y1="80" x2="1080" y2="550" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0F766E"/>
+      <stop offset="1" stop-color="#115E59"/>
+    </linearGradient>
+  </defs>
+</svg>

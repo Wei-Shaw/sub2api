@@ -169,7 +169,7 @@ services:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy
+        condition: service_started
     networks:
       - sub2api-network
     healthcheck:

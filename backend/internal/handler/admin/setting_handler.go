@@ -180,6 +180,13 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		ContactInfo:                            settings.ContactInfo,
 		DocURL:                                 settings.DocURL,
 		HomeContent:                            settings.HomeContent,
+		SEODefaultTitle:                        settings.SEODefaultTitle,
+		SEOHomeTitle:                           settings.SEOHomeTitle,
+		SEODefaultDescription:                  settings.SEODefaultDescription,
+		SEOHomeDescription:                     settings.SEOHomeDescription,
+		SEODefaultOGImage:                      settings.SEODefaultOGImage,
+		SEODefaultRobots:                       settings.SEODefaultRobots,
+		SEOHomeRobots:                          settings.SEOHomeRobots,
 		HideCcsImportButton:                    settings.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:            settings.PurchaseSubscriptionEnabled,
 		PurchaseSubscriptionURL:                settings.PurchaseSubscriptionURL,
@@ -296,9 +303,13 @@ func loginAgreementDocumentsToDTO(items []service.LoginAgreementDocument) []dto.
 	result := make([]dto.LoginAgreementDocument, 0, len(items))
 	for _, item := range items {
 		result = append(result, dto.LoginAgreementDocument{
-			ID:        item.ID,
-			Title:     item.Title,
-			ContentMD: item.ContentMD,
+			ID:             item.ID,
+			Title:          item.Title,
+			ContentMD:      item.ContentMD,
+			SEOTitle:       item.SEOTitle,
+			SEODescription: item.SEODescription,
+			SEOOGImage:     item.SEOOGImage,
+			SEORobots:      item.SEORobots,
 		})
 	}
 	return result
@@ -313,9 +324,13 @@ func loginAgreementDocumentsToService(items []dto.LoginAgreementDocument) []serv
 			continue
 		}
 		result = append(result, service.LoginAgreementDocument{
-			ID:        strings.TrimSpace(item.ID),
-			Title:     title,
-			ContentMD: content,
+			ID:             strings.TrimSpace(item.ID),
+			Title:          title,
+			ContentMD:      content,
+			SEOTitle:       strings.TrimSpace(item.SEOTitle),
+			SEODescription: strings.TrimSpace(item.SEODescription),
+			SEOOGImage:     strings.TrimSpace(item.SEOOGImage),
+			SEORobots:      strings.TrimSpace(item.SEORobots),
 		})
 	}
 	return result
@@ -407,6 +422,13 @@ type UpdateSettingsRequest struct {
 	ContactInfo                 string                `json:"contact_info"`
 	DocURL                      string                `json:"doc_url"`
 	HomeContent                 string                `json:"home_content"`
+	SEODefaultTitle             string                `json:"seo_default_title"`
+	SEOHomeTitle                string                `json:"seo_home_title"`
+	SEODefaultDescription       string                `json:"seo_default_description"`
+	SEOHomeDescription          string                `json:"seo_home_description"`
+	SEODefaultOGImage           string                `json:"seo_default_og_image"`
+	SEODefaultRobots            string                `json:"seo_default_robots"`
+	SEOHomeRobots               string                `json:"seo_home_robots"`
 	HideCcsImportButton         bool                  `json:"hide_ccs_import_button"`
 	PurchaseSubscriptionEnabled *bool                 `json:"purchase_subscription_enabled"`
 	PurchaseSubscriptionURL     *string               `json:"purchase_subscription_url"`
@@ -1027,7 +1049,27 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				response.BadRequest(c, "Custom menu item URL is too long (max 2048 characters)")
 				return
 			}
-			if err := config.ValidateAbsoluteHTTPURL(strings.TrimSpace(item.URL)); err != nil {
+			trimmedURL := strings.TrimSpace(item.URL)
+			pageSlug := strings.TrimSpace(item.PageSlug)
+			isMarkdownURL := strings.HasPrefix(trimmedURL, "md:") && strings.TrimSpace(strings.TrimPrefix(trimmedURL, "md:")) != ""
+			if !isMarkdownURL && pageSlug == "" {
+				if err := config.ValidateAbsoluteHTTPURL(trimmedURL); err != nil {
+					response.BadRequest(c, "Custom menu item URL must be an absolute http(s) URL")
+					return
+				}
+			} else if isMarkdownURL && pageSlug == "" {
+				pageSlug = strings.TrimSpace(strings.TrimPrefix(trimmedURL, "md:"))
+				items[i].PageSlug = pageSlug
+			}
+			if pageSlug != "" && strings.ContainsAny(pageSlug, `/\ `) {
+				response.BadRequest(c, "Custom menu item page_slug contains invalid characters")
+				return
+			}
+			if !isMarkdownURL && pageSlug != "" && trimmedURL == "" {
+				response.BadRequest(c, "Custom menu item URL is required")
+				return
+			}
+			if !isMarkdownURL && pageSlug == "" && trimmedURL == "" {
 				response.BadRequest(c, "Custom menu item URL must be an absolute http(s) URL")
 				return
 			}
@@ -1038,6 +1080,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			if len(item.IconSVG) > maxMenuItemIconSVGLen {
 				response.BadRequest(c, "Custom menu item icon SVG is too large (max 10KB)")
 				return
+			}
+			if strings.TrimSpace(item.SEOOGImage) != "" {
+				if err := config.ValidateAbsoluteHTTPURL(strings.TrimSpace(item.SEOOGImage)); err != nil {
+					response.BadRequest(c, "Custom menu item SEO OG image must be an absolute http(s) URL")
+					return
+				}
 			}
 			// Auto-generate ID if missing
 			if strings.TrimSpace(item.ID) == "" {
@@ -1236,6 +1284,13 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ContactInfo:                      req.ContactInfo,
 		DocURL:                           req.DocURL,
 		HomeContent:                      req.HomeContent,
+		SEODefaultTitle:                  req.SEODefaultTitle,
+		SEOHomeTitle:                     req.SEOHomeTitle,
+		SEODefaultDescription:            req.SEODefaultDescription,
+		SEOHomeDescription:               req.SEOHomeDescription,
+		SEODefaultOGImage:                req.SEODefaultOGImage,
+		SEODefaultRobots:                 req.SEODefaultRobots,
+		SEOHomeRobots:                    req.SEOHomeRobots,
 		HideCcsImportButton:              req.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:      purchaseEnabled,
 		PurchaseSubscriptionURL:          purchaseURL,
@@ -1568,6 +1623,13 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ContactInfo:                            updatedSettings.ContactInfo,
 		DocURL:                                 updatedSettings.DocURL,
 		HomeContent:                            updatedSettings.HomeContent,
+		SEODefaultTitle:                        updatedSettings.SEODefaultTitle,
+		SEOHomeTitle:                           updatedSettings.SEOHomeTitle,
+		SEODefaultDescription:                  updatedSettings.SEODefaultDescription,
+		SEOHomeDescription:                     updatedSettings.SEOHomeDescription,
+		SEODefaultOGImage:                      updatedSettings.SEODefaultOGImage,
+		SEODefaultRobots:                       updatedSettings.SEODefaultRobots,
+		SEOHomeRobots:                          updatedSettings.SEOHomeRobots,
 		HideCcsImportButton:                    updatedSettings.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:            updatedSettings.PurchaseSubscriptionEnabled,
 		PurchaseSubscriptionURL:                updatedSettings.PurchaseSubscriptionURL,

@@ -5459,21 +5459,37 @@ function defaultLoginAgreementDocuments(): LoginAgreementDocument[] {
       id: "terms",
       title: "服务条款",
       content_md: "",
+      seo_title: "",
+      seo_description: "",
+      seo_og_image: "",
+      seo_robots: "",
     },
     {
       id: "usage-policy",
       title: "使用政策",
       content_md: "",
+      seo_title: "",
+      seo_description: "",
+      seo_og_image: "",
+      seo_robots: "",
     },
     {
       id: "supported-regions",
       title: "支持的国家和地区",
       content_md: "",
+      seo_title: "",
+      seo_description: "",
+      seo_og_image: "",
+      seo_robots: "",
     },
     {
       id: "service-specific-terms",
       title: "服务特定条款",
       content_md: "",
+      seo_title: "",
+      seo_description: "",
+      seo_og_image: "",
+      seo_robots: "",
     },
   ];
 }
@@ -5581,6 +5597,11 @@ const form = reactive<SettingsForm>({
     label: string;
     icon_svg: string;
     url: string;
+    page_slug?: string;
+    seo_title?: string;
+    seo_description?: string;
+    seo_og_image?: string;
+    seo_robots?: string;
     visibility: "user" | "admin";
     sort_order: number;
   }>,
@@ -6126,6 +6147,11 @@ function addMenuItem() {
     label: "",
     icon_svg: "",
     url: "",
+    page_slug: "",
+    seo_title: "",
+    seo_description: "",
+    seo_og_image: "",
+    seo_robots: "",
     visibility: "user",
     sort_order: form.custom_menu_items.length,
   });
@@ -6166,6 +6192,10 @@ function addLoginAgreementDocument() {
     id: `custom-${Date.now().toString(36)}`,
     title: "",
     content_md: "",
+    seo_title: "",
+    seo_description: "",
+    seo_og_image: "",
+    seo_robots: "",
   });
 }
 
@@ -6181,6 +6211,10 @@ function normalizeLoginAgreementDocumentsForSave(): LoginAgreementDocument[] {
         `doc-${index + 1}`,
       title: doc.title.trim(),
       content_md: doc.content_md.trim(),
+      seo_title: (doc.seo_title || "").trim(),
+      seo_description: (doc.seo_description || "").trim(),
+      seo_og_image: (doc.seo_og_image || "").trim(),
+      seo_robots: (doc.seo_robots || "").trim(),
     }))
     .filter((doc) => doc.title || doc.content_md);
 }
@@ -6253,6 +6287,10 @@ async function loadSettings() {
             id: doc.id || "",
             title: doc.title || "",
             content_md: doc.content_md || "",
+            seo_title: doc.seo_title || "",
+            seo_description: doc.seo_description || "",
+            seo_og_image: doc.seo_og_image || "",
+            seo_robots: doc.seo_robots || "",
           }))
         : defaultLoginAgreementDocuments();
     Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(settings));

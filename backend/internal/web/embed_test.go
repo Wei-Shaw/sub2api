@@ -7,6 +7,8 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -20,76 +22,80 @@ func init() {
 	gin.SetMode(gin.TestMode)
 }
 
-func TestInjectSiteTitle(t *testing.T) {
-	t.Run("replaces_title_with_site_name", func(t *testing.T) {
+func TestInjectSEOTitle(t *testing.T) {
+	t.Run("replaces_title", func(t *testing.T) {
 		html := []byte(`<html><head><title>Sub2API - AI API Gateway</title></head><body></body></html>`)
-		settingsJSON := []byte(`{"site_name":"MyCustomSite"}`)
-
-		result := injectSiteTitle(html, settingsJSON)
-
+		result := injectSEOTitle(html, "MyCustomSite - AI API Gateway")
 		assert.Contains(t, string(result), "<title>MyCustomSite - AI API Gateway</title>")
-		assert.NotContains(t, string(result), "Sub2API")
+		assert.NotContains(t, string(result), "<title>Sub2API - AI API Gateway</title>")
 	})
 
-	t.Run("returns_unchanged_when_site_name_empty", func(t *testing.T) {
-		html := []byte(`<html><head><title>Sub2API - AI API Gateway</title></head><body></body></html>`)
-		settingsJSON := []byte(`{"site_name":""}`)
-
-		result := injectSiteTitle(html, settingsJSON)
-
-		assert.Equal(t, string(html), string(result))
-	})
-
-	t.Run("returns_unchanged_when_site_name_missing", func(t *testing.T) {
-		html := []byte(`<html><head><title>Sub2API - AI API Gateway</title></head><body></body></html>`)
-		settingsJSON := []byte(`{"other_field":"value"}`)
-
-		result := injectSiteTitle(html, settingsJSON)
-
-		assert.Equal(t, string(html), string(result))
-	})
-
-	t.Run("returns_unchanged_when_invalid_json", func(t *testing.T) {
-		html := []byte(`<html><head><title>Sub2API - AI API Gateway</title></head><body></body></html>`)
-		settingsJSON := []byte(`{invalid json}`)
-
-		result := injectSiteTitle(html, settingsJSON)
-
-		assert.Equal(t, string(html), string(result))
-	})
-
-	t.Run("returns_unchanged_when_no_title_tag", func(t *testing.T) {
+	t.Run("returns_unchanged_without_title_tag", func(t *testing.T) {
 		html := []byte(`<html><head></head><body></body></html>`)
-		settingsJSON := []byte(`{"site_name":"MyCustomSite"}`)
-
-		result := injectSiteTitle(html, settingsJSON)
-
+		result := injectSEOTitle(html, "MyCustomSite - AI API Gateway")
 		assert.Equal(t, string(html), string(result))
 	})
 
-	t.Run("returns_unchanged_when_title_has_attributes", func(t *testing.T) {
-		// The function looks for "<title>" literally, so attributes are not supported
-		// This is acceptable since index.html uses plain <title> without attributes
-		html := []byte(`<html><head><title lang="en">Sub2API</title></head><body></body></html>`)
-		settingsJSON := []byte(`{"site_name":"NewSite"}`)
+	t.Run("escapes_html", func(t *testing.T) {
+		html := []byte(`<html><head><title>Sub2API</title></head><body></body></html>`)
+		result := injectSEOTitle(html, `A&B <Test>`)
+		assert.Contains(t, string(result), "<title>A&amp;B &lt;Test&gt;</title>")
+	})
+}
 
-		result := injectSiteTitle(html, settingsJSON)
+func TestBuildSEOData(t *testing.T) {
+	settingsJSON := []byte(`{
+		"site_name":"MyCustomSite",
+		"site_subtitle":"Unified AI Gateway",
+		"frontend_url":"https://example.com",
+		"site_logo":"/logo.png",
+		"login_agreement_documents":[{"id":"terms","title":"Terms of Service"}],
+		"custom_menu_items":[{"id":"pricing","label":"Pricing","visibility":"user"}]
+	}`)
 
-		// Should return unchanged since <title> with attributes is not matched
-		assert.Equal(t, string(html), string(result))
+	t.Run("home_is_indexable", func(t *testing.T) {
+		seo := buildSEOData("/home", settingsJSON)
+		assert.Equal(t, "MyCustomSite - AI API Gateway", seo.Title)
+		assert.Equal(t, "index, follow", seo.Robots)
+		assert.Equal(t, "https://example.com/", seo.CanonicalURL)
+		assert.Equal(t, "https://example.com/og/home.svg", seo.ImageURL)
+		assert.NotEmpty(t, seo.JSONLD)
 	})
 
-	t.Run("preserves_rest_of_html", func(t *testing.T) {
-		html := []byte(`<html><head><meta charset="UTF-8"><title>Sub2API</title><script src="app.js"></script></head><body><div id="app"></div></body></html>`)
-		settingsJSON := []byte(`{"site_name":"TestSite"}`)
-
-		result := injectSiteTitle(html, settingsJSON)
-
-		assert.Contains(t, string(result), `<meta charset="UTF-8">`)
-		assert.Contains(t, string(result), `<script src="app.js"></script>`)
-		assert.Contains(t, string(result), `<div id="app"></div>`)
-		assert.Contains(t, string(result), "<title>TestSite - AI API Gateway</title>")
+	t.Run("legal_document_uses_document_title", func(t *testing.T) {
+		seo := buildSEOData("/legal/terms", settingsJSON)
+		assert.Equal(t, "Terms of Service - MyCustomSite", seo.Title)
+		assert.Equal(t, "article", seo.Type)
+		assert.Equal(t, "noindex, follow", seo.Robots)
 	})
+
+	t.Run("private_routes_are_noindex", func(t *testing.T) {
+		seo := buildSEOData("/dashboard", settingsJSON)
+		assert.Equal(t, "noindex, nofollow", seo.Robots)
+	})
+}
+
+func TestBuildRobotsAndSitemap(t *testing.T) {
+	settingsJSON := []byte(`{
+		"frontend_url":"https://example.com",
+		"login_agreement_documents":[{"id":"terms","title":"Terms of Service"}],
+		"custom_menu_items":[
+			{"id":"pricing","label":"Pricing","visibility":"user"},
+			{"id":"admin","label":"Admin","visibility":"admin"}
+		]
+	}`)
+
+	robots := string(buildRobotsTXT(settingsJSON))
+	assert.Contains(t, robots, "Sitemap: https://example.com/sitemap.xml")
+	assert.Contains(t, robots, "Disallow: /admin")
+	assert.Contains(t, robots, "Disallow: /login")
+
+	sitemap := string(buildSitemapXML(settingsJSON))
+	assert.Contains(t, sitemap, "<loc>https://example.com/</loc>")
+	assert.Contains(t, sitemap, "<loc>https://example.com/home</loc>")
+	assert.Contains(t, sitemap, "<loc>https://example.com/custom/pricing</loc>")
+	assert.NotContains(t, sitemap, "<loc>https://example.com/legal/terms</loc>")
+	assert.NotContains(t, sitemap, "/custom/admin")
 }
 
 func TestReplaceNoncePlaceholder(t *testing.T) {
@@ -169,12 +175,13 @@ func TestFrontendServer_InjectSettings(t *testing.T) {
 		require.NoError(t, err)
 
 		settingsJSON := []byte(`{"test":"data"}`)
-		result := server.injectSettings(settingsJSON)
+		result, seo := server.injectSettings("/home", settingsJSON)
 
 		// Should contain the script with nonce placeholder
 		assert.Contains(t, string(result), `<script nonce="__CSP_NONCE_VALUE__">`)
 		assert.Contains(t, string(result), `window.__APP_CONFIG__={"test":"data"};`)
 		assert.Contains(t, string(result), `</script></head>`)
+		assert.Equal(t, "index, follow", seo.Robots)
 	})
 
 	t.Run("injects_before_head_close", func(t *testing.T) {
@@ -186,7 +193,7 @@ func TestFrontendServer_InjectSettings(t *testing.T) {
 		require.NoError(t, err)
 
 		settingsJSON := []byte(`{}`)
-		result := server.injectSettings(settingsJSON)
+		result, _ := server.injectSettings("/home", settingsJSON)
 
 		// Script should be injected before </head>
 		headCloseIndex := bytes.Index(result, []byte("</head>"))
@@ -208,7 +215,7 @@ func TestFrontendServer_InjectSettings(t *testing.T) {
 		require.NoError(t, err)
 
 		settingsJSON := []byte(`{"nested":{"array":[1,2,3]},"special":"<>&"}`)
-		result := server.injectSettings(settingsJSON)
+		result, _ := server.injectSettings("/home", settingsJSON)
 
 		assert.Contains(t, string(result), `window.__APP_CONFIG__={"nested":{"array":[1,2,3]},"special":"<>&"};`)
 	})
@@ -522,6 +529,135 @@ func TestFrontendServer_Middleware(t *testing.T) {
 		}
 	})
 
+	t.Run("serves_robots_and_sitemap", func(t *testing.T) {
+		provider := &mockSettingsProvider{
+			settings: map[string]any{
+				"frontend_url": "https://example.com",
+				"login_agreement_documents": []map[string]string{
+					{"id": "terms", "title": "Terms of Service"},
+				},
+			},
+		}
+
+		server, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+
+		router := gin.New()
+		router.Use(server.Middleware())
+
+		wRobots := httptest.NewRecorder()
+		reqRobots := httptest.NewRequest(http.MethodGet, "/robots.txt", nil)
+		router.ServeHTTP(wRobots, reqRobots)
+		assert.Equal(t, http.StatusOK, wRobots.Code)
+		assert.Contains(t, wRobots.Body.String(), "Sitemap: https://example.com/sitemap.xml")
+
+		wSitemap := httptest.NewRecorder()
+		reqSitemap := httptest.NewRequest(http.MethodGet, "/sitemap.xml", nil)
+		router.ServeHTTP(wSitemap, reqSitemap)
+		assert.Equal(t, http.StatusOK, wSitemap.Code)
+		assert.Contains(t, wSitemap.Body.String(), "<loc>https://example.com/</loc>")
+		assert.Contains(t, wSitemap.Body.String(), "<loc>https://example.com/home</loc>")
+		assert.NotContains(t, wSitemap.Body.String(), "<loc>https://example.com/legal/terms</loc>")
+	})
+
+	t.Run("serves_dynamic_og_image", func(t *testing.T) {
+		provider := &mockSettingsProvider{
+			settings: map[string]any{
+				"site_name": "MyCustomSite",
+				"frontend_url": "https://example.com",
+				"site_subtitle": "Unified AI Gateway",
+			},
+		}
+
+		server, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+
+		router := gin.New()
+		router.Use(server.Middleware())
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/og/home.svg", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Header().Get("Content-Type"), "image/svg+xml")
+		assert.Contains(t, w.Body.String(), "MyCustomSite")
+	})
+
+	t.Run("caches_per_route", func(t *testing.T) {
+		provider := &mockSettingsProvider{
+			settings: map[string]any{
+				"site_name": "MyCustomSite",
+				"frontend_url": "https://example.com",
+				"login_agreement_documents": []map[string]string{
+					{"id": "terms", "title": "Terms of Service"},
+				},
+			},
+		}
+
+		server, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+
+		router := gin.New()
+		router.Use(func(c *gin.Context) {
+			c.Set(middleware.CSPNonceKey, "test-nonce")
+			c.Next()
+		})
+		router.Use(server.Middleware())
+
+		wHome := httptest.NewRecorder()
+		router.ServeHTTP(wHome, httptest.NewRequest(http.MethodGet, "/home", nil))
+		wLegal := httptest.NewRecorder()
+		router.ServeHTTP(wLegal, httptest.NewRequest(http.MethodGet, "/legal/terms", nil))
+
+		assert.Contains(t, wHome.Body.String(), "<title>MyCustomSite - AI API Gateway</title>")
+		assert.Contains(t, wLegal.Body.String(), "<title>Terms of Service - MyCustomSite</title>")
+		assert.NotEqual(t, wHome.Header().Get("ETag"), wLegal.Header().Get("ETag"))
+	})
+
+	t.Run("renders_public_markdown_page_server_side", func(t *testing.T) {
+		provider := &mockSettingsProvider{
+			settings: map[string]any{
+				"site_name": "MyCustomSite",
+				"frontend_url": "https://example.com",
+				"custom_menu_items": []map[string]any{
+					{"id": "guide", "label": "Guide", "visibility": "user", "page_slug": "guide"},
+				},
+			},
+		}
+
+		server, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+		require.NoError(t, os.MkdirAll(server.pagesDir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(server.pagesDir, "guide.md"), []byte("# Guide\n\nHello world"), 0o644))
+
+		router := gin.New()
+		router.Use(server.Middleware())
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/custom/guide", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), "<h1>Guide</h1>")
+		assert.Contains(t, w.Body.String(), "<p>Hello world</p>")
+	})
+
+	t.Run("renders_markdown_lists_and_inline_elements", func(t *testing.T) {
+		rendered, err := renderMarkdownToHTML("# Title\n\n- item one\n- item two\n\n1. first\n2. second\n\n**bold** and *em* and `code`", "")
+		require.NoError(t, err)
+		assert.Contains(t, rendered, ">Title</h1>")
+		assert.Contains(t, rendered, "<ul>")
+		assert.Contains(t, rendered, "<li>item one</li>")
+		assert.Contains(t, rendered, "<li>item two</li>")
+		assert.Contains(t, rendered, "<ol>")
+		assert.Contains(t, rendered, "<li>first</li>")
+		assert.Contains(t, rendered, "<li>second</li>")
+		assert.Contains(t, rendered, "<strong>bold</strong>")
+		assert.Contains(t, rendered, "<em>em</em>")
+		assert.Contains(t, rendered, "<code>code</code>")
+	})
+
 	t.Run("serves_static_files", func(t *testing.T) {
 		provider := &mockSettingsProvider{
 			settings: map[string]string{"test": "value"},
@@ -671,7 +807,7 @@ func TestServeEmbeddedFrontend(t *testing.T) {
 func TestHTMLCache(t *testing.T) {
 	t.Run("new_cache_returns_nil", func(t *testing.T) {
 		cache := NewHTMLCache()
-		assert.Nil(t, cache.Get())
+		assert.Nil(t, cache.Get("/"))
 	})
 
 	t.Run("set_and_get", func(t *testing.T) {
@@ -680,9 +816,9 @@ func TestHTMLCache(t *testing.T) {
 
 		html := []byte("<html><body>test</body></html>")
 		settings := []byte(`{"key":"value"}`)
-		cache.Set(html, settings)
+		cache.Set("/", html, settings)
 
-		result := cache.Get()
+		result := cache.Get("/")
 		require.NotNil(t, result)
 		assert.Equal(t, html, result.Content)
 		assert.NotEmpty(t, result.ETag)
@@ -694,13 +830,13 @@ func TestHTMLCache(t *testing.T) {
 
 		html := []byte("<html><body>test</body></html>")
 		settings := []byte(`{"key":"value"}`)
-		cache.Set(html, settings)
+		cache.Set("/", html, settings)
 
-		require.NotNil(t, cache.Get())
+		require.NotNil(t, cache.Get("/"))
 
 		cache.Invalidate()
 
-		assert.Nil(t, cache.Get())
+		assert.Nil(t, cache.Get("/"))
 	})
 
 	t.Run("etag_changes_with_settings", func(t *testing.T) {
@@ -709,12 +845,12 @@ func TestHTMLCache(t *testing.T) {
 
 		html := []byte("<html><body>test</body></html>")
 
-		cache.Set(html, []byte(`{"v":1}`))
-		etag1 := cache.Get().ETag
+		cache.Set("/home", html, []byte(`{"v":1}`))
+		etag1 := cache.Get("/home").ETag
 
 		cache.Invalidate()
-		cache.Set(html, []byte(`{"v":2}`))
-		etag2 := cache.Get().ETag
+		cache.Set("/home", html, []byte(`{"v":2}`))
+		etag2 := cache.Get("/home").ETag
 
 		assert.NotEqual(t, etag1, etag2)
 	})
@@ -723,8 +859,8 @@ func TestHTMLCache(t *testing.T) {
 		cache := NewHTMLCache()
 		cache.SetBaseHTML([]byte("<html></html>"))
 
-		cache.Set([]byte("<html></html>"), []byte(`{}`))
-		result := cache.Get()
+		cache.Set("/", []byte("<html></html>"), []byte(`{}`))
+		result := cache.Get("/")
 
 		// ETag should be quoted
 		assert.True(t, strings.HasPrefix(result.ETag, `"`))

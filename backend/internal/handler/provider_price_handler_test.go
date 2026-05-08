@@ -171,6 +171,7 @@ func TestProviderPriceHandler_OpenAIGroupExportsExpectedCNYPrices(t *testing.T) 
 		values: map[string]string{
 			service.SettingBalanceRechargeMult: "2",
 			service.SettingKeySiteName:         "Test Site",
+			service.SettingKeyFrontendURL:      "https://pricing.example.com",
 		},
 	}
 	cfg := &config.Config{}
@@ -216,7 +217,7 @@ func TestProviderPriceHandler_OpenAIGroupExportsExpectedCNYPrices(t *testing.T) 
 	if resp.Data.SiteName != "Test Site" {
 		t.Fatalf("site name mismatch: got %q", resp.Data.SiteName)
 	}
-	if resp.Data.SiteDomain != "example.com" {
+	if resp.Data.SiteDomain != "pricing.example.com" {
 		t.Fatalf("site domain mismatch: got %q", resp.Data.SiteDomain)
 	}
 
@@ -239,6 +240,12 @@ func TestProviderPriceHandler_OpenAIGroupExportsExpectedCNYPrices(t *testing.T) 
 	}
 	if got54.OutputPrice == nil || *got54.OutputPrice != 7.5 {
 		t.Fatalf("gpt-5.4 output mismatch: got %+v", got54.OutputPrice)
+	}
+	if got54.CacheCreatePrice != nil {
+		t.Fatalf("gpt-5.4 cache_create_price should be nil, got %+v", got54.CacheCreatePrice)
+	}
+	if got54.CacheCreatePrice1h != nil {
+		t.Fatalf("gpt-5.4 cache_create_price_1h should be nil, got %+v", got54.CacheCreatePrice1h)
 	}
 
 	if got55 == nil {

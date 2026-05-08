@@ -286,9 +286,13 @@ func normalizeLoginAgreementDocuments(docs []LoginAgreementDocument) []LoginAgre
 		}
 		seen[id]++
 		normalized = append(normalized, LoginAgreementDocument{
-			ID:        id,
-			Title:     title,
-			ContentMD: content,
+			ID:             id,
+			Title:          title,
+			ContentMD:      content,
+			SEOTitle:       strings.TrimSpace(doc.SEOTitle),
+			SEODescription: strings.TrimSpace(doc.SEODescription),
+			SEOOGImage:     strings.TrimSpace(doc.SEOOGImage),
+			SEORobots:      strings.TrimSpace(doc.SEORobots),
 		})
 	}
 	return normalized
@@ -569,6 +573,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyPromoCodeEnabled,
 		SettingKeyPasswordResetEnabled,
 		SettingKeyInvitationCodeEnabled,
+		SettingKeyFrontendURL,
 		SettingKeyTotpEnabled,
 		SettingKeyLoginAgreementEnabled,
 		SettingKeyLoginAgreementMode,
@@ -583,6 +588,13 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyContactInfo,
 		SettingKeyDocURL,
 		SettingKeyHomeContent,
+		SettingKeySEODefaultTitle,
+		SettingKeySEOHomeTitle,
+		SettingKeySEODefaultDescription,
+		SettingKeySEOHomeDescription,
+		SettingKeySEODefaultOGImage,
+		SettingKeySEODefaultRobots,
+		SettingKeySEOHomeRobots,
 		SettingKeyHideCcsImportButton,
 		SettingKeyPurchaseSubscriptionEnabled,
 		SettingKeyPurchaseSubscriptionURL,
@@ -700,6 +712,13 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		ContactInfo:                      settings[SettingKeyContactInfo],
 		DocURL:                           settings[SettingKeyDocURL],
 		HomeContent:                      settings[SettingKeyHomeContent],
+		SEODefaultTitle:                  settings[SettingKeySEODefaultTitle],
+		SEOHomeTitle:                     settings[SettingKeySEOHomeTitle],
+		SEODefaultDescription:            settings[SettingKeySEODefaultDescription],
+		SEOHomeDescription:               settings[SettingKeySEOHomeDescription],
+		SEODefaultOGImage:                settings[SettingKeySEODefaultOGImage],
+		SEODefaultRobots:                 settings[SettingKeySEODefaultRobots],
+		SEOHomeRobots:                    settings[SettingKeySEOHomeRobots],
 		HideCcsImportButton:              settings[SettingKeyHideCcsImportButton] == "true",
 		PurchaseSubscriptionEnabled:      settings[SettingKeyPurchaseSubscriptionEnabled] == "true",
 		PurchaseSubscriptionURL:          strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
@@ -833,10 +852,12 @@ func (s *SettingService) SetVersion(version string) {
 type PublicSettingsInjectionPayload struct {
 	RegistrationEnabled              bool                     `json:"registration_enabled"`
 	EmailVerifyEnabled               bool                     `json:"email_verify_enabled"`
+	ForceEmailOnThirdPartySignup     bool                     `json:"force_email_on_third_party_signup"`
 	RegistrationEmailSuffixWhitelist []string                 `json:"registration_email_suffix_whitelist"`
 	PromoCodeEnabled                 bool                     `json:"promo_code_enabled"`
 	PasswordResetEnabled             bool                     `json:"password_reset_enabled"`
 	InvitationCodeEnabled            bool                     `json:"invitation_code_enabled"`
+	FrontendURL                      string                   `json:"frontend_url"`
 	TotpEnabled                      bool                     `json:"totp_enabled"`
 	LoginAgreementEnabled            bool                     `json:"login_agreement_enabled"`
 	LoginAgreementMode               string                   `json:"login_agreement_mode"`
@@ -852,6 +873,13 @@ type PublicSettingsInjectionPayload struct {
 	ContactInfo                      string                   `json:"contact_info"`
 	DocURL                           string                   `json:"doc_url"`
 	HomeContent                      string                   `json:"home_content"`
+	SEODefaultTitle                  string                   `json:"seo_default_title,omitempty"`
+	SEOHomeTitle                     string                   `json:"seo_home_title,omitempty"`
+	SEODefaultDescription            string                   `json:"seo_default_description,omitempty"`
+	SEOHomeDescription               string                   `json:"seo_home_description,omitempty"`
+	SEODefaultOGImage                string                   `json:"seo_default_og_image,omitempty"`
+	SEODefaultRobots                 string                   `json:"seo_default_robots,omitempty"`
+	SEOHomeRobots                    string                   `json:"seo_home_robots,omitempty"`
 	HideCcsImportButton              bool                     `json:"hide_ccs_import_button"`
 	PurchaseSubscriptionEnabled      bool                     `json:"purchase_subscription_enabled"`
 	PurchaseSubscriptionURL          string                   `json:"purchase_subscription_url"`
@@ -897,10 +925,12 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 	return &PublicSettingsInjectionPayload{
 		RegistrationEnabled:              settings.RegistrationEnabled,
 		EmailVerifyEnabled:               settings.EmailVerifyEnabled,
+		ForceEmailOnThirdPartySignup:     settings.ForceEmailOnThirdPartySignup,
 		RegistrationEmailSuffixWhitelist: settings.RegistrationEmailSuffixWhitelist,
 		PromoCodeEnabled:                 settings.PromoCodeEnabled,
 		PasswordResetEnabled:             settings.PasswordResetEnabled,
 		InvitationCodeEnabled:            settings.InvitationCodeEnabled,
+		FrontendURL:                      s.GetFrontendURL(ctx),
 		TotpEnabled:                      settings.TotpEnabled,
 		LoginAgreementEnabled:            settings.LoginAgreementEnabled,
 		LoginAgreementMode:               settings.LoginAgreementMode,
@@ -916,6 +946,13 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		ContactInfo:                      settings.ContactInfo,
 		DocURL:                           settings.DocURL,
 		HomeContent:                      settings.HomeContent,
+		SEODefaultTitle:                  settings.SEODefaultTitle,
+		SEOHomeTitle:                     settings.SEOHomeTitle,
+		SEODefaultDescription:            settings.SEODefaultDescription,
+		SEOHomeDescription:               settings.SEOHomeDescription,
+		SEODefaultOGImage:                settings.SEODefaultOGImage,
+		SEODefaultRobots:                 settings.SEODefaultRobots,
+		SEOHomeRobots:                    settings.SEOHomeRobots,
 		HideCcsImportButton:              settings.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:      settings.PurchaseSubscriptionEnabled,
 		PurchaseSubscriptionURL:          settings.PurchaseSubscriptionURL,
@@ -1460,6 +1497,13 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyContactInfo] = settings.ContactInfo
 	updates[SettingKeyDocURL] = settings.DocURL
 	updates[SettingKeyHomeContent] = settings.HomeContent
+	updates[SettingKeySEODefaultTitle] = settings.SEODefaultTitle
+	updates[SettingKeySEOHomeTitle] = settings.SEOHomeTitle
+	updates[SettingKeySEODefaultDescription] = settings.SEODefaultDescription
+	updates[SettingKeySEOHomeDescription] = settings.SEOHomeDescription
+	updates[SettingKeySEODefaultOGImage] = settings.SEODefaultOGImage
+	updates[SettingKeySEODefaultRobots] = settings.SEODefaultRobots
+	updates[SettingKeySEOHomeRobots] = settings.SEOHomeRobots
 	updates[SettingKeyHideCcsImportButton] = strconv.FormatBool(settings.HideCcsImportButton)
 	updates[SettingKeyPurchaseSubscriptionEnabled] = strconv.FormatBool(settings.PurchaseSubscriptionEnabled)
 	updates[SettingKeyPurchaseSubscriptionURL] = strings.TrimSpace(settings.PurchaseSubscriptionURL)

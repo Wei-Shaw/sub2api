@@ -367,6 +367,7 @@ export default {
     redeemCodes: 'Redeem Codes',
     ops: 'Ops',
     promoCodes: 'Promo Codes',
+    seoSettings: 'SEO Configuration',
     settings: 'Settings',
     myAccount: 'My Account',
     lightMode: 'Light Mode',

@@ -114,10 +114,14 @@
     <main class="relative z-10 flex-1 px-6 py-16">
       <div class="mx-auto max-w-6xl">
         <!-- Hero Section - Left/Right Layout -->
-        <div class="mb-12 flex flex-col items-center justify-between gap-12 lg:flex-row lg:gap-16">
+        <section
+          class="mb-12 flex flex-col items-center justify-between gap-12 lg:flex-row lg:gap-16"
+          aria-labelledby="home-hero-title"
+        >
           <!-- Left: Text Content -->
-          <div class="flex-1 text-center lg:text-left">
+          <article class="flex-1 text-center lg:text-left">
             <h1
+              id="home-hero-title"
               class="mb-4 text-4xl font-bold text-gray-900 dark:text-white md:text-5xl lg:text-6xl"
             >
               {{ siteName }}
@@ -136,10 +140,10 @@
                 <Icon name="arrowRight" size="md" class="ml-2" :stroke-width="2" />
               </router-link>
             </div>
-          </div>
+          </article>
 
           <!-- Right: Terminal Animation -->
-          <div class="flex flex-1 justify-center lg:justify-end">
+          <aside class="flex flex-1 justify-center lg:justify-end" aria-label="API example preview">
             <div class="terminal-container">
               <div class="terminal-window">
                 <!-- Window header -->
@@ -173,11 +177,11 @@
                 </div>
               </div>
             </div>
-          </div>
-        </div>
+          </aside>
+        </section>
 
         <!-- Feature Tags - Centered -->
-        <div class="mb-12 flex flex-wrap items-center justify-center gap-4 md:gap-6">
+        <section class="mb-12 flex flex-wrap items-center justify-center gap-4 md:gap-6" aria-label="Core highlights">
           <div
             class="inline-flex items-center gap-2.5 rounded-full border border-gray-200/50 bg-white/80 px-5 py-2.5 shadow-sm backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/80"
           >
@@ -202,12 +206,13 @@
               t('home.tags.realtimeBilling')
             }}</span>
           </div>
-        </div>
+        </section>
 
         <!-- Features Grid -->
-        <div class="mb-12 grid gap-6 md:grid-cols-3">
+        <section class="mb-12 grid gap-6 md:grid-cols-3" aria-labelledby="home-features-title">
+          <h2 id="home-features-title" class="sr-only">Platform features</h2>
           <!-- Feature 1: Unified Gateway -->
-          <div
+          <article
             class="group rounded-2xl border border-gray-200/50 bg-white/60 p-6 backdrop-blur-sm transition-all duration-300 hover:shadow-xl hover:shadow-primary-500/10 dark:border-dark-700/50 dark:bg-dark-800/60"
           >
             <div
@@ -221,10 +226,10 @@
             <p class="text-sm leading-relaxed text-gray-600 dark:text-dark-400">
               {{ t('home.features.unifiedGatewayDesc') }}
             </p>
-          </div>
+          </article>
 
           <!-- Feature 2: Account Pool -->
-          <div
+          <article
             class="group rounded-2xl border border-gray-200/50 bg-white/60 p-6 backdrop-blur-sm transition-all duration-300 hover:shadow-xl hover:shadow-primary-500/10 dark:border-dark-700/50 dark:bg-dark-800/60"
           >
             <div
@@ -250,10 +255,10 @@
             <p class="text-sm leading-relaxed text-gray-600 dark:text-dark-400">
               {{ t('home.features.multiAccountDesc') }}
             </p>
-          </div>
+          </article>
 
           <!-- Feature 3: Billing & Quota -->
-          <div
+          <article
             class="group rounded-2xl border border-gray-200/50 bg-white/60 p-6 backdrop-blur-sm transition-all duration-300 hover:shadow-xl hover:shadow-primary-500/10 dark:border-dark-700/50 dark:bg-dark-800/60"
           >
             <div
@@ -279,20 +284,20 @@
             <p class="text-sm leading-relaxed text-gray-600 dark:text-dark-400">
               {{ t('home.features.balanceQuotaDesc') }}
             </p>
-          </div>
-        </div>
+          </article>
+        </section>
 
         <!-- Supported Providers -->
-        <div class="mb-8 text-center">
+        <section class="mb-8 text-center" aria-labelledby="home-providers-title">
           <h2 class="mb-3 text-2xl font-bold text-gray-900 dark:text-white">
-            {{ t('home.providers.title') }}
+            <span id="home-providers-title">{{ t('home.providers.title') }}</span>
           </h2>
           <p class="text-sm text-gray-600 dark:text-dark-400">
             {{ t('home.providers.description') }}
           </p>
-        </div>
+        </section>
 
-        <div class="mb-16 flex flex-wrap items-center justify-center gap-4">
+        <section class="mb-16 flex flex-wrap items-center justify-center gap-4" aria-label="Supported AI providers">
           <!-- Claude - Supported -->
           <div
             class="flex items-center gap-2 rounded-xl border border-primary-200 bg-white/60 px-5 py-3 ring-1 ring-primary-500/20 backdrop-blur-sm dark:border-primary-800 dark:bg-dark-800/60"
@@ -368,7 +373,7 @@
               >{{ t('home.providers.soon') }}</span
             >
           </div>
-        </div>
+        </section>
       </div>
     </main>
 

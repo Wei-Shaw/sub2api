@@ -6,12 +6,11 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
-import { useAdminSettingsStore } from '@/stores/adminSettings'
 import { useReferralStore } from '@/stores/referral'
 import { useNavigationLoadingState } from '@/composables/useNavigationLoading'
 import { useRoutePrefetch } from '@/composables/useRoutePrefetch'
 import { captureAffiliateCodeFromQuery } from '@/utils/affiliateCookie'
-import { resolveDocumentTitle } from './title'
+import { updateRouteSEO } from '@/utils/seo'
 
 /**
  * Route definitions with lazy loading
@@ -363,9 +362,9 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/custom/:id',
     name: 'CustomPage',
-    component: () => import('@/views/user/CustomPageView.vue'),
+    component: () => import('@/views/CustomPageRouteView.vue'),
     meta: {
-      requiresAuth: true,
+      requiresAuth: false,
       requiresAdmin: false,
       title: 'Custom Page',
       titleKey: 'customPage.title',
@@ -613,6 +612,16 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/seo',
+    name: 'AdminSEOSettings',
+    component: () => import('@/views/admin/SEOSettingsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'SEO配置'
+    }
+  },
+  {
     path: '/admin/risk-control',
     name: 'AdminRiskControl',
     component: () => import('@/views/admin/RiskControlView.vue'),
@@ -754,22 +763,7 @@ router.beforeEach(async (to, _from, next) => {
 
   // Set page title
   const appStore = useAppStore()
-  // For custom pages, use menu item label as document title
-  if (to.name === 'CustomPage') {
-    const id = to.params.id as string
-    const publicItems = appStore.cachedPublicSettings?.custom_menu_items ?? []
-    const adminSettingsStore = useAdminSettingsStore()
-    const menuItem = publicItems.find((item) => item.id === id)
-      ?? (authStore.isAdmin ? adminSettingsStore.customMenuItems.find((item) => item.id === id) : undefined)
-    if (menuItem?.label) {
-      const siteName = appStore.siteName || 'Sub2API'
-      document.title = `${menuItem.label} - ${siteName}`
-    } else {
-      document.title = resolveDocumentTitle(to.meta.title, appStore.siteName, to.meta.titleKey as string)
-    }
-  } else {
-    document.title = resolveDocumentTitle(to.meta.title, appStore.siteName, to.meta.titleKey as string)
-  }
+  updateRouteSEO(to, appStore.cachedPublicSettings)
 
   // Check if route requires authentication
   const requiresAuth = to.meta.requiresAuth !== false // Default to true
@@ -890,6 +884,8 @@ router.beforeEach(async (to, _from, next) => {
  * Navigation guard: End loading and trigger prefetch
  */
 router.afterEach((to) => {
+  const appStore = useAppStore()
+  updateRouteSEO(to, appStore.cachedPublicSettings)
   // 结束导航加载状态
   navigationLoading.endNavigation()
 

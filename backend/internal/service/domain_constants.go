@@ -190,6 +190,13 @@ const (
 	SettingKeyContactInfo                 = "contact_info"                  // 客服联系方式
 	SettingKeyDocURL                      = "doc_url"                       // 文档链接
 	SettingKeyHomeContent                 = "home_content"                  // 首页内容（支持 Markdown/HTML，或 URL 作为 iframe src）
+	SettingKeySEODefaultTitle             = "seo_default_title"             // 默认 SEO 标题
+	SettingKeySEOHomeTitle                = "seo_home_title"                // 首页 SEO 标题
+	SettingKeySEODefaultDescription       = "seo_default_description"       // 默认 SEO 描述
+	SettingKeySEOHomeDescription          = "seo_home_description"          // 首页 SEO 描述
+	SettingKeySEODefaultOGImage           = "seo_default_og_image"          // 默认 OG 图片
+	SettingKeySEODefaultRobots            = "seo_default_robots"            // 默认 robots
+	SettingKeySEOHomeRobots               = "seo_home_robots"               // 首页 robots
 	SettingKeyHideCcsImportButton         = "hide_ccs_import_button"        // 是否隐藏 API Keys 页面的导入 CCS 按钮
 	SettingKeyPurchaseSubscriptionEnabled = "purchase_subscription_enabled" // 是否展示"购买订阅"页面入口
 	SettingKeyPurchaseSubscriptionURL     = "purchase_subscription_url"     // "购买订阅"页面 URL（作为 iframe src）

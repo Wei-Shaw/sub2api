@@ -17,8 +17,8 @@ type SystemSettings struct {
 	RegistrationEmailSuffixWhitelist []string
 	PromoCodeEnabled                 bool
 	PasswordResetEnabled             bool
-	FrontendURL                      string
 	InvitationCodeEnabled            bool
+	FrontendURL                      string
 	TotpEnabled                      bool // TOTP 双因素认证
 	LoginAgreementEnabled            bool
 	LoginAgreementMode               string
@@ -112,6 +112,13 @@ type SystemSettings struct {
 	ContactInfo                 string
 	DocURL                      string
 	HomeContent                 string
+	SEODefaultTitle             string
+	SEOHomeTitle                string
+	SEODefaultDescription       string
+	SEOHomeDescription          string
+	SEODefaultOGImage           string
+	SEODefaultRobots            string
+	SEOHomeRobots               string
 	HideCcsImportButton         bool
 	PurchaseSubscriptionEnabled bool
 	PurchaseSubscriptionURL     string
@@ -217,6 +224,13 @@ type PublicSettings struct {
 	ContactInfo                      string
 	DocURL                           string
 	HomeContent                      string
+	SEODefaultTitle                  string
+	SEOHomeTitle                     string
+	SEODefaultDescription            string
+	SEOHomeDescription               string
+	SEODefaultOGImage                string
+	SEODefaultRobots                 string
+	SEOHomeRobots                    string
 	HideCcsImportButton              bool
 
 	PurchaseSubscriptionEnabled bool
@@ -255,9 +269,13 @@ type PublicSettings struct {
 }
 
 type LoginAgreementDocument struct {
-	ID        string `json:"id"`
-	Title     string `json:"title"`
-	ContentMD string `json:"content_md"`
+	ID             string `json:"id"`
+	Title          string `json:"title"`
+	ContentMD      string `json:"content_md"`
+	SEOTitle       string `json:"seo_title,omitempty"`
+	SEODescription string `json:"seo_description,omitempty"`
+	SEOOGImage     string `json:"seo_og_image,omitempty"`
+	SEORobots      string `json:"seo_robots,omitempty"`
 }
 
 type WeChatConnectOAuthConfig struct {

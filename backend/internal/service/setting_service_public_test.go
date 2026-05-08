@@ -151,3 +151,26 @@ func TestSettingService_GetPublicSettings_FallsBackToConfigForWeChatOAuthCapabil
 	require.False(t, settings.WeChatOAuthMPEnabled)
 	require.False(t, settings.WeChatOAuthMobileEnabled)
 }
+
+func TestSettingService_GetPublicSettings_ExposesSEOSettings(t *testing.T) {
+	repo := &settingPublicRepoStub{
+		values: map[string]string{
+			SettingKeySEODefaultTitle:       "DEFAULT_TITLE",
+			SettingKeySEOHomeTitle:          "HOME_TITLE",
+			SettingKeySEODefaultDescription: "DEFAULT_DESCRIPTION",
+			SettingKeySEOHomeDescription:    "HOME_DESCRIPTION",
+			SettingKeySEODefaultOGImage:     "/og/default.png",
+			SettingKeySEODefaultRobots:      "index, follow",
+		},
+	}
+	svc := NewSettingService(repo, &config.Config{})
+
+	settings, err := svc.GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "DEFAULT_TITLE", settings.SEODefaultTitle)
+	require.Equal(t, "HOME_TITLE", settings.SEOHomeTitle)
+	require.Equal(t, "DEFAULT_DESCRIPTION", settings.SEODefaultDescription)
+	require.Equal(t, "HOME_DESCRIPTION", settings.SEOHomeDescription)
+	require.Equal(t, "/og/default.png", settings.SEODefaultOGImage)
+	require.Equal(t, "index, follow", settings.SEODefaultRobots)
+}

@@ -76,5 +76,10 @@ declare module 'vue-router' {
      * i18n key for the page description
      */
     descriptionKey?: string
+
+    /**
+     * SEO description override for the route
+     */
+    description?: string
   }
 }

@@ -120,3 +120,74 @@ func TestSettingHandler_GetPublicSettings_ExposesWeChatOAuthModeCapabilities(t *
 	require.True(t, resp.Data.WeChatOAuthOpenEnabled)
 	require.True(t, resp.Data.WeChatOAuthMPEnabled)
 }
+
+func TestSettingHandler_GetPublicSettings_ExposesFrontendURL(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	cfg := &config.Config{}
+	cfg.Server.FrontendURL = "https://example.com"
+	h := NewSettingHandler(service.NewSettingService(&settingHandlerPublicRepoStub{
+		values: map[string]string{},
+	}, cfg), "test-version")
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/settings/public", nil)
+
+	h.GetPublicSettings(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	var resp struct {
+		Code int `json:"code"`
+		Data struct {
+			FrontendURL string `json:"frontend_url"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
+	require.Equal(t, 0, resp.Code)
+	require.Equal(t, "https://example.com", resp.Data.FrontendURL)
+}
+
+func TestSettingHandler_GetPublicSettings_ExposesSEOFields(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	h := NewSettingHandler(service.NewSettingService(&settingHandlerPublicRepoStub{
+		values: map[string]string{
+			service.SettingKeySEODefaultTitle:       "DEFAULT_TITLE",
+			service.SettingKeySEOHomeTitle:          "HOME_TITLE",
+			service.SettingKeySEODefaultDescription: "DEFAULT_DESCRIPTION",
+			service.SettingKeySEOHomeDescription:    "HOME_DESCRIPTION",
+			service.SettingKeySEODefaultOGImage:     "/og/custom.png",
+			service.SettingKeySEODefaultRobots:      "index, follow",
+		},
+	}, &config.Config{}), "test-version")
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/settings/public", nil)
+
+	h.GetPublicSettings(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	var resp struct {
+		Code int `json:"code"`
+		Data struct {
+			SEODefaultTitle       string `json:"seo_default_title"`
+			SEOHomeTitle          string `json:"seo_home_title"`
+			SEODefaultDescription string `json:"seo_default_description"`
+			SEOHomeDescription    string `json:"seo_home_description"`
+			SEODefaultOGImage     string `json:"seo_default_og_image"`
+			SEODefaultRobots      string `json:"seo_default_robots"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
+	require.Equal(t, 0, resp.Code)
+	require.Equal(t, "DEFAULT_TITLE", resp.Data.SEODefaultTitle)
+	require.Equal(t, "HOME_TITLE", resp.Data.SEOHomeTitle)
+	require.Equal(t, "DEFAULT_DESCRIPTION", resp.Data.SEODefaultDescription)
+	require.Equal(t, "HOME_DESCRIPTION", resp.Data.SEOHomeDescription)
+	require.Equal(t, "/og/custom.png", resp.Data.SEODefaultOGImage)
+	require.Equal(t, "index, follow", resp.Data.SEODefaultRobots)
+}

@@ -72,6 +72,42 @@ func (h *PageHandler) GetPageContent(c *gin.Context) {
 	c.Data(http.StatusOK, "text/markdown; charset=utf-8", content)
 }
 
+// GetPublicPageContent serves raw markdown content for a public page slug.
+// GET /api/v1/public/pages/:slug
+func (h *PageHandler) GetPublicPageContent(c *gin.Context) {
+	slug := c.Param("slug")
+	if !validSlugPattern.MatchString(slug) || len(slug) > 64 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "page not found"})
+		return
+	}
+
+	if !h.isUserVisibleSlug(c, slug) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "page not found"})
+		return
+	}
+
+	filePath := filepath.Join(h.pagesDir, slug+".md")
+	cleaned := filepath.Clean(filePath)
+	if !strings.HasPrefix(cleaned, filepath.Clean(h.pagesDir)) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "page not found"})
+		return
+	}
+
+	info, err := os.Stat(cleaned)
+	if err != nil || info.IsDir() || info.Size() > maxPageFileSize {
+		c.JSON(http.StatusNotFound, gin.H{"error": "page not found"})
+		return
+	}
+
+	content, err := os.ReadFile(cleaned)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read page"})
+		return
+	}
+
+	c.Data(http.StatusOK, "text/markdown; charset=utf-8", content)
+}
+
 // ListPages returns available page slugs.
 // GET /api/v1/pages
 func (h *PageHandler) ListPages(c *gin.Context) {
@@ -257,6 +293,14 @@ func (h *PageHandler) checkImageSlugVisibility(c *gin.Context, slug string) bool
 	return visibility != "admin"
 }
 
+func (h *PageHandler) isUserVisibleSlug(c *gin.Context, slug string) bool {
+	visibility, found := h.findSlugVisibility(c, slug)
+	if !found {
+		return false
+	}
+	return visibility != "admin"
+}
+
 // RegisterPageRoutes registers page routes on a router group.
 func RegisterPageRoutes(v1 *gin.RouterGroup, dataDir string, jwtAuth gin.HandlerFunc, adminAuth gin.HandlerFunc, settingService *service.SettingService) {
 	h := NewPageHandler(dataDir, settingService)
@@ -272,6 +316,11 @@ func RegisterPageRoutes(v1 *gin.RouterGroup, dataDir string, jwtAuth gin.Handler
 	pageImages := v1.Group("/pages")
 	{
 		pageImages.GET("/:slug/images/*filename", h.ServePageImage)
+	}
+
+	publicPages := v1.Group("/public/pages")
+	{
+		publicPages.GET("/:slug", h.GetPublicPageContent)
 	}
 
 	// Admin-only: list all available pages

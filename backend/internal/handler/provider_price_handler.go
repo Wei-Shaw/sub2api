@@ -62,15 +62,15 @@ type providerPricingData struct {
 }
 
 type providerPricingModel struct {
-	ModelName             string   `json:"model_name"`
-	GroupName             string   `json:"group_name"`
-	InputPrice            *float64 `json:"input_price,omitempty"`
-	OutputPrice           *float64 `json:"output_price,omitempty"`
-	CacheInputPrice       *float64 `json:"cache_input_price,omitempty"`
-	CacheCreatePrice      *float64 `json:"cache_create_price,omitempty"`
-	CacheCreatePrice1h    *float64 `json:"cache_create_price_1h,omitempty"`
-	Enabled               bool     `json:"enabled"`
-	Note                  string   `json:"note,omitempty"`
+	ModelName          string   `json:"model_name"`
+	GroupName          string   `json:"group_name"`
+	InputPrice         *float64 `json:"input_price"`
+	OutputPrice        *float64 `json:"output_price"`
+	CacheInputPrice    *float64 `json:"cache_input_price"`
+	CacheCreatePrice   *float64 `json:"cache_create_price"`
+	CacheCreatePrice1h *float64 `json:"cache_create_price_1h"`
+	Enabled            bool     `json:"enabled"`
+	Note               string   `json:"note,omitempty"`
 }
 
 type providerPriceEntry struct {
@@ -89,6 +89,13 @@ type modelExportPrice struct {
 
 func (h *ProviderPriceHandler) GetProviderPricing(c *gin.Context) {
 	ctx := c.Request.Context()
+	c.Header("Access-Control-Allow-Origin", "*")
+	c.Header("Access-Control-Allow-Methods", "GET, OPTIONS")
+	c.Header("Access-Control-Allow-Headers", "Content-Type, Accept")
+	if c.Request.Method == http.MethodOptions {
+		c.Status(http.StatusNoContent)
+		return
+	}
 
 	groups, err := h.groupService.ListActive(ctx)
 	if err != nil {
@@ -128,7 +135,7 @@ func (h *ProviderPriceHandler) GetProviderPricing(c *gin.Context) {
 			Currency:   "CNY",
 			PriceUnit:  "per_1m_tokens",
 			SiteName:   h.siteName(ctx),
-			SiteDomain: requestSiteDomain(c),
+			SiteDomain: h.siteDomain(ctx),
 			UpdatedAt:  time.Now().UTC().Format(time.RFC3339),
 			Models:     models,
 		},
@@ -184,6 +191,10 @@ func (h *ProviderPriceHandler) buildProviderPriceEntries(
 				CacheCreatePrice:   usdPerTokenToCnyPerMTokPtr(exportPrice.cacheCreate5m, group.RateMultiplier, rechargeMultiplier),
 				CacheCreatePrice1h: usdPerTokenToCnyPerMTokPtr(exportPrice.cacheCreate1h, group.RateMultiplier, rechargeMultiplier),
 				Enabled:            true,
+			}
+			if strings.EqualFold(group.Platform, service.PlatformOpenAI) {
+				model.CacheCreatePrice = nil
+				model.CacheCreatePrice1h = nil
 			}
 
 			if model.InputPrice == nil {
@@ -319,17 +330,19 @@ func (h *ProviderPriceHandler) siteName(ctx context.Context) string {
 	return h.settingService.GetSiteName(ctx)
 }
 
-func requestSiteDomain(c *gin.Context) string {
-	host := strings.TrimSpace(c.Request.Host)
-	if host == "" {
+func (h *ProviderPriceHandler) siteDomain(ctx context.Context) string {
+	if h.settingService == nil {
 		return ""
 	}
-	if strings.Contains(host, "://") {
-		if parsed, err := url.Parse(host); err == nil {
-			return parsed.Host
-		}
+	raw := strings.TrimSpace(h.settingService.GetFrontendURL(ctx))
+	if raw == "" {
+		return ""
 	}
-	return host
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(parsed.Hostname())
 }
 
 func filterModelsByGroupScope(group *service.Group, models []string) []string {

@@ -1,9 +1,16 @@
 package handler
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/gin-gonic/gin"
 )
 
 func TestCleanPageImageRelativePath(t *testing.T) {
@@ -114,5 +121,79 @@ func TestResolvePageImagePathRejectsSymlinkEscape(t *testing.T) {
 
 	if got, ok := resolvePageImagePath(pagesDir, base, "images/secret.png"); ok {
 		t.Fatalf("expected symlink escape to be rejected, got %q", got)
+	}
+}
+
+type pageHandlerSettingRepoStub struct {
+	values map[string]string
+}
+
+func (s *pageHandlerSettingRepoStub) Get(_ context.Context, _ string) (*service.Setting, error) {
+	panic("unexpected call")
+}
+func (s *pageHandlerSettingRepoStub) GetValue(_ context.Context, key string) (string, error) {
+	if value, ok := s.values[key]; ok {
+		return value, nil
+	}
+	return "", nil
+}
+func (s *pageHandlerSettingRepoStub) Set(_ context.Context, _, _ string) error {
+	panic("unexpected call")
+}
+func (s *pageHandlerSettingRepoStub) SetMultiple(_ context.Context, _ map[string]string) error {
+	panic("unexpected call")
+}
+func (s *pageHandlerSettingRepoStub) GetAll(_ context.Context) (map[string]string, error) {
+	panic("unexpected call")
+}
+func (s *pageHandlerSettingRepoStub) Delete(_ context.Context, _ string) error {
+	panic("unexpected call")
+}
+func (s *pageHandlerSettingRepoStub) GetMultiple(_ context.Context, keys []string) (map[string]string, error) {
+	out := make(map[string]string, len(keys))
+	for _, key := range keys {
+		if value, ok := s.values[key]; ok {
+			out[key] = value
+		}
+	}
+	return out, nil
+}
+
+func TestGetPublicPageContentHonorsVisibility(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	root := t.TempDir()
+	pagesDir := filepath.Join(root, "pages")
+	if err := os.MkdirAll(pagesDir, 0o755); err != nil {
+		t.Fatalf("create pages dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(pagesDir, "guide.md"), []byte("# Guide"), 0o644); err != nil {
+		t.Fatalf("create page: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(pagesDir, "admin-guide.md"), []byte("# Admin"), 0o644); err != nil {
+		t.Fatalf("create admin page: %v", err)
+	}
+
+	repo := &pageHandlerSettingRepoStub{
+		values: map[string]string{
+			service.SettingKeyCustomMenuItems: `[{"id":"guide","page_slug":"guide","visibility":"user"},{"id":"admin-guide","page_slug":"admin-guide","visibility":"admin"}]`,
+		},
+	}
+	handler := NewPageHandler(root, service.NewSettingService(repo, &config.Config{}))
+
+	router := gin.New()
+	router.GET("/api/v1/public/pages/:slug", handler.GetPublicPageContent)
+
+	wPublic := httptest.NewRecorder()
+	reqPublic := httptest.NewRequest(http.MethodGet, "/api/v1/public/pages/guide", nil)
+	router.ServeHTTP(wPublic, reqPublic)
+	if wPublic.Code != http.StatusOK {
+		t.Fatalf("public page status = %d, want %d", wPublic.Code, http.StatusOK)
+	}
+
+	wAdmin := httptest.NewRecorder()
+	reqAdmin := httptest.NewRequest(http.MethodGet, "/api/v1/public/pages/admin-guide", nil)
+	router.ServeHTTP(wAdmin, reqAdmin)
+	if wAdmin.Code != http.StatusNotFound {
+		t.Fatalf("admin page status = %d, want %d", wAdmin.Code, http.StatusNotFound)
 	}
 }
