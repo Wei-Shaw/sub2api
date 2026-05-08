@@ -1,7 +1,7 @@
 ﻿<template>
   <div class="space-y-5">
-    <!-- API Key inputs -->
-    <template v-if="context.accountCategory === 'apikey'">
+    <!-- API Key inputs (create mode only - edit modal has its own) -->
+    <template v-if="context.accountCategory === 'apikey' && context.mode !== 'edit'">
       <div>
         <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
         <input v-model="apiKeyBaseUrl" type="text" class="input"

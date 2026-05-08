@@ -1,7 +1,8 @@
 ﻿<template>
   <div class="space-y-5">
-    <!-- apikey: API Key credentials + Model Restriction + Pool Mode + Custom Error Codes -->
+    <!-- apikey: credentials (create only) + Model Restriction + Pool Mode + Custom Error Codes -->
     <template v-if="context.accountCategory === 'apikey'">
+      <template v-if="context.mode !== 'edit'">
       <div>
         <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
         <input v-model="apiKeyBaseUrl" type="text" class="input" placeholder="https://api.openai.com" />
@@ -10,6 +11,7 @@
         <label class="input-label">{{ t('admin.accounts.apiKey') }}</label>
         <input v-model="apiKeyValue" type="password" required class="input font-mono" placeholder="sk-..." />
       </div>
+      </template>
       <ModelRestrictionSection
         platform="openai"
         :mode="modelRestrictionMode"
