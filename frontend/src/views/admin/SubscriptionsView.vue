@@ -208,20 +208,23 @@
                 </div>
                 <div class="flex min-w-0 flex-wrap items-center gap-1.5">
                   <span class="text-xs text-gray-500 dark:text-gray-400">#{{ row.user_id }}</span>
-                  <span
-                    v-if="getSubscriptionIdentityCode(row)"
-                    class="inline-flex max-w-[16rem] items-center rounded bg-blue-50 px-1.5 py-0.5 font-mono text-xs text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
-                    :title="getSubscriptionIdentityCode(row) || undefined"
-                  >
-                    <span class="mr-1 shrink-0 text-[10px] uppercase tracking-wide text-blue-500 dark:text-blue-400">{{ t('admin.subscriptions.deviceCode') }}</span>
-                    <span class="truncate">{{ getSubscriptionIdentityCode(row) }}</span>
-                  </span>
-                  <span
-                    v-else-if="row.has_device_binding"
-                    class="inline-flex items-center rounded bg-emerald-50 px-1.5 py-0.5 text-xs text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
-                  >
-                    {{ t('admin.subscriptions.deviceBound') }}
-                  </span>
+                  <template v-if="getSubscriptionIdentityCode(row)">
+                    <span
+                      class="inline-flex max-w-[16rem] items-center rounded bg-blue-50 px-1.5 py-0.5 font-mono text-xs text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+                      :title="getSubscriptionIdentityCode(row) || undefined"
+                    >
+                      <span class="break-all">{{ getSubscriptionIdentityCode(row) }}</span>
+                    </span>
+                    <button
+                      type="button"
+                      class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
+                      :title="t('common.copy')"
+                      :aria-label="t('common.copy')"
+                      @click="copySubscriptionIdentityCode(row)"
+                    >
+                      <Icon name="copy" size="xs" />
+                    </button>
+                  </template>
                 </div>
               </div>
             </div>
@@ -804,6 +807,7 @@ import type { UserSubscription, Group, GroupPlatform, SubscriptionType } from '@
 import type { SimpleUser } from '@/api/admin/usage'
 import type { Column } from '@/components/common/types'
 import { formatDateTimeToMinute } from '@/utils/format'
+import { useClipboard } from '@/composables/useClipboard'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
@@ -825,6 +829,7 @@ import {
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const { copyToClipboard } = useClipboard()
 
 interface GroupOption {
   value: number
@@ -988,6 +993,12 @@ const getUserSearchDisplay = (user: SimpleUser) => {
 
 const getSubscriptionIdentityCode = (subscription: UserSubscription) =>
   subscription.device_identity_code?.trim() || ''
+
+const copySubscriptionIdentityCode = async (subscription: UserSubscription) => {
+  const identityCode = getSubscriptionIdentityCode(subscription)
+  if (!identityCode) return
+  await copyToClipboard(identityCode)
+}
 
 const getSubscriptionUserTitle = (subscription: UserSubscription) => {
   const identityCode = getSubscriptionIdentityCode(subscription)

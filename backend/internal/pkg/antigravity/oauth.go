@@ -94,7 +94,20 @@ func NormalizeUserAgentVersion(version string) string {
 
 // GetDefaultUserAgentVersion 返回配置文件/环境变量层面的默认版本号。
 func GetDefaultUserAgentVersion() string {
-	return defaultUserAgentVersion
+	return strings.TrimSpace(defaultUserAgentVersion)
+}
+
+// UserAgentVersionProvider returns the runtime Antigravity version used in User-Agent.
+type UserAgentVersionProvider func() string
+
+// SetUserAgentVersionProvider configures a runtime version provider. Empty provider
+// results are ignored so callers keep the env/default fallback behavior.
+func SetUserAgentVersionProvider(provider UserAgentVersionProvider) {
+	if provider == nil {
+		SetUserAgentVersionResolver(nil)
+		return
+	}
+	SetUserAgentVersionResolver(func(context.Context) string { return provider() })
 }
 
 // SetUserAgentVersionResolver 设置运行时版本号解析器，通常由后台 settings 注入。
@@ -117,7 +130,7 @@ func GetUserAgentVersionForContext(ctx context.Context) string {
 			return version
 		}
 	}
-	return defaultUserAgentVersion
+	return GetDefaultUserAgentVersion()
 }
 
 // BuildUserAgent 使用指定版本号构造 User-Agent；版本为空或非法时回退默认值。
@@ -125,7 +138,7 @@ func BuildUserAgent(version string) string {
 	if normalized := NormalizeUserAgentVersion(version); normalized != "" {
 		return fmt.Sprintf("antigravity/%s windows/amd64", normalized)
 	}
-	return fmt.Sprintf("antigravity/%s windows/amd64", defaultUserAgentVersion)
+	return fmt.Sprintf("antigravity/%s windows/amd64", GetDefaultUserAgentVersion())
 }
 
 // GetUserAgentForContext 返回当前请求应使用的 User-Agent。
