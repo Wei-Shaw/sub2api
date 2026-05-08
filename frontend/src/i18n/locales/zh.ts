@@ -2856,6 +2856,9 @@ export default {
           quotaLink: '配额说明'
         },
         oauthType: {
+          googleOneDesc: '个人账号，享受 Google One 订阅配额',
+          codeAssistDesc: '企业级，需要 GCP 项目',
+          advancedToggle: '高级选项',
           builtInTitle: '内置授权（Gemini CLI / Code Assist）',
           builtInDesc: '使用 Google 内置客户端 ID，无需管理员配置。',
           builtInRequirement: '需要 GCP 项目并填写 Project ID。',

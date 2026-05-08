@@ -2716,6 +2716,9 @@ export default {
           quotaLink: 'Quota guide'
         },
         oauthType: {
+          googleOneDesc: 'Personal accounts with Google One subscription quota',
+          codeAssistDesc: 'Enterprise, requires GCP project',
+          advancedToggle: 'Advanced options',
           builtInTitle: 'Built-in OAuth (Gemini CLI / Code Assist)',
           builtInDesc: 'Uses Google built-in client ID. No admin configuration required.',
           builtInRequirement: 'Requires a GCP project and Project ID.',
