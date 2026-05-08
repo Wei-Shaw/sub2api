@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="/logo.png" />
+
+    <title>Claude Code Proxy vs Official Subscription (2026): Which Is Cheaper? | TokenProvider</title>
+    <meta name="description" content="Should you pay Anthropic's flat Claude Code subscription or route through a pay-as-you-go proxy? Real cost math for light, medium, and heavy users — plus latency, model access, and team billing." />
+    <meta name="keywords" content="claude code proxy, claude code subscription, claude code pricing, claude code cost, claude pro vs api, anthropic subscription cost" />
+    <meta name="robots" content="index,follow" />
+    <meta name="theme-color" content="#14b8a6" />
+
+    <link rel="canonical" href="https://tokenprovider.store/en/compare/claude-code-relay-vs-subscription.html" />
+    <link rel="alternate" hreflang="en" href="https://tokenprovider.store/en/compare/claude-code-relay-vs-subscription.html" />
+    <link rel="alternate" hreflang="x-default" href="https://tokenprovider.store/en/compare/claude-code-relay-vs-subscription.html" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content="https://tokenprovider.store/en/compare/claude-code-relay-vs-subscription.html" />
+    <meta property="og:title" content="Claude Code Proxy vs Official Subscription (2026)" />
+    <meta property="og:description" content="Real cost math: pay-as-you-go proxy vs Anthropic's flat subscription for Claude Code. Which one wins for your usage pattern?" />
+    <meta property="og:image" content="https://tokenprovider.store/logo.png" />
+    <meta property="og:site_name" content="TokenProvider" />
+    <meta property="og:locale" content="en_US" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Claude Code Proxy vs Official Subscription (2026)" />
+    <meta name="twitter:description" content="Pay-as-you-go proxy or flat Anthropic subscription? Cost breakdown for light, medium, and heavy Claude Code users." />
+    <meta name="twitter:image" content="https://tokenprovider.store/logo.png" />
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Article",
+      "headline": "Claude Code Proxy vs Official Subscription (2026)",
+      "description": "Cost, latency, and feature comparison between Anthropic's official Claude Code subscription and a pay-as-you-go proxy.",
+      "author": {
+        "@type": "Person",
+        "name": "TokenProvider Engineering Team",
+        "worksFor": {
+          "@id": "https://tokenprovider.store/#organization"
+        },
+        "knowsAbout": [
+          "Claude API",
+          "ChatGPT API",
+          "AI API gateways",
+          "API integration"
+        ]
+      },
+      "publisher": {
+        "@type": "Organization",
+        "name": "TokenProvider",
+        "logo": {
+          "@type": "ImageObject",
+          "url": "https://tokenprovider.store/logo.png"
+        }
+      },
+      "datePublished": "2026-05-07",
+      "dateModified": "2026-05-07",
+      "inLanguage": "en",
+      "mainEntityOfPage": "https://tokenprovider.store/en/compare/claude-code-relay-vs-subscription.html"
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "When does the official Claude Code subscription win?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Heavy daily users (8+ hours, large multi-file refactors) who consistently consume more than the equivalent token cost of $20/month. For everyone else, pay-as-you-go is cheaper."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Will a proxy throttle me?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "A pooled proxy spreads load across many upstream accounts. Per-key limits are generally higher than the single-account caps imposed by the official subscription on heavy days."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Do I lose any Claude Code features?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. Tool calls, file edits, MCP servers, and shell execution all work identically. The proxy only changes the network destination of API requests."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can I switch back if I don't like it?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes — unset ANTHROPIC_BASE_URL and Claude Code routes back to api.anthropic.com. There is no lock-in."
+          }
+        }
+      ],
+      "speakable": {
+        "@type": "SpeakableSpecification",
+        "cssSelector": [
+          ".seo-tldr",
+          ".seo-faq h3",
+          ".seo-faq p:first-of-type"
+        ]
+      }
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "TokenProvider",
+          "item": "https://tokenprovider.store/en.html"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "Claude Code proxy vs subscription",
+          "item": "https://tokenprovider.store/en/compare/claude-code-relay-vs-subscription.html"
+        }
+      ]
+    }
+    </script>
+
+    <link rel="stylesheet" href="/assets/seo.css" />
+  </head>
+  <body>
+    <div class="seo-bg-decor"></div>
+
+    <header class="seo-header">
+      <div class="seo-container-wide">
+        <nav class="seo-nav">
+          <a class="seo-logo" href="/en.html">
+            <img src="/logo.png" alt="TokenProvider logo" width="36" height="36" />
+            <span class="seo-logo-text">TokenProvider</span>
+          </a>
+          <div class="seo-nav-links">
+            <a class="seo-nav-link" href="/en.html">Home</a>
+            <a class="seo-nav-link" href="/login">Log in</a>
+            <a class="seo-btn-primary" href="/register">Sign up →</a>
+          </div>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <div class="seo-container">
+        <article>
+          <h1>Claude Code Proxy vs Official Subscription (2026)</h1>
+          <p class="seo-lede">
+            Anthropic offers Claude Code two ways: a flat <strong>Pro / Max subscription</strong>
+            or pay-as-you-go via the API. A pooled proxy is a third option — same protocol, no flat
+            fee, transparent token billing. Below: when each model wins, with real numbers.
+          </p>
+
+          <div class="seo-tldr">
+            <p><strong>TL;DR:</strong> If you use Claude Code &lt; 6 hours a day, a pay-as-you-go
+            proxy is cheaper. If you run multi-hour Opus refactors daily, a Max subscription may
+            win on a per-token basis but locks you to a single account's rate limits.</p>
+          </div>
+
+          <h2>The three pricing models</h2>
+          <div class="seo-table-wrap">
+            <table class="seo-table">
+              <thead>
+                <tr><th>Model</th><th>Monthly cost</th><th>Bills by</th><th>Good for</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Anthropic Pro</td><td>$20 flat</td><td>Subscription</td><td>Casual chat + light coding</td></tr>
+                <tr><td>Anthropic Max</td><td>$100–200 flat</td><td>Subscription, daily caps</td><td>Heavy daily users on a single account</td></tr>
+                <tr><td>Official API</td><td>~$0 base</td><td>Per token (Sonnet $3/$15 per 1M)</td><td>Programmatic use, no flat fee</td></tr>
+                <tr><td>Pooled proxy (TokenProvider)</td><td>~$0 base</td><td>Per token, ~30–60% off official</td><td>Variable usage, multi-tool workflows</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>Real cost math (typical Claude Code session)</h2>
+          <p>One realistic session — "edit a file, fix the test, commit" — burns roughly
+          <strong>40k input tokens</strong> (project context + file edits) and
+          <strong>6k output tokens</strong> (responses + diffs). At Sonnet pricing:</p>
+          <ul>
+            <li>Official API: 40 × $0.003 + 6 × $0.015 ≈ <strong>$0.21 per session</strong></li>
+            <li>TokenProvider (typical 50% off): ≈ <strong>$0.10 per session</strong></li>
+          </ul>
+          <p>Multiply by your daily session count to get monthly spend:</p>
+          <div class="seo-table-wrap">
+            <table class="seo-table">
+              <thead>
+                <tr><th>Daily sessions</th><th>Monthly (proxy)</th><th>Monthly (official API)</th><th>Pro $20 worth it?</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>5 (light)</td><td>~$15</td><td>~$31</td><td>Maybe</td></tr>
+                <tr><td>15 (medium)</td><td>~$45</td><td>~$94</td><td>No — proxy wins</td></tr>
+                <tr><td>40 (heavy)</td><td>~$120</td><td>~$252</td><td>No — Max may, but pooled proxy still cheaper</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Numbers are approximate; your token counts vary with project size and prompt style.</p>
+
+          <h2>Beyond price: what else matters?</h2>
+
+          <h3>Rate limits</h3>
+          <p>The official subscription has per-account daily limits — Max users hit a 5-hour
+          rolling cap on heavy days and have to wait. A pooled proxy spreads requests across many
+          accounts, so a single user's burst rarely trips a limit.</p>
+
+          <h3>Model access</h3>
+          <p>Subscription tiers gate Opus and the longest contexts. The API path (and a proxy on
+          top of it) gives you all models with one key — Sonnet 4 by default, Opus when you flip a
+          flag, Haiku for cheap small tasks.</p>
+
+          <h3>Multi-tool reuse</h3>
+          <p>One <code>ANTHROPIC_API_KEY</code> from a proxy works in Claude Code, Cursor, Cline,
+          your Python scripts, and your IDE plugins simultaneously. The official subscription is
+          tied to a single Anthropic account login per surface.</p>
+
+          <h3>Latency</h3>
+          <p>A well-run proxy adds 20–80 ms over direct API. TTFB is dominated by Anthropic's
+          model servers, not the proxy hop. Subscription routes through the same upstreams.</p>
+
+          <h3>Billing transparency</h3>
+          <p>Pay-as-you-go shows you input/output tokens, model used, and cost per request in real
+          time. Subscription is opaque — you pay $20 whether you used $5 or $80 of value.</p>
+
+          <h2>When the official subscription still wins</h2>
+          <ul>
+            <li>You only ever use Claude through the official Anthropic chat UI (proxy is API-only)</li>
+            <li>You consistently hit 200k+ output tokens/day every weekday — Max may amortize</li>
+            <li>You need the official Claude.ai web/app conversation history sync (not API)</li>
+            <li>Your company forbids third-party API gateways for compliance reasons</li>
+          </ul>
+
+          <h2>How to switch in under a minute</h2>
+          <p>Already paying for Pro? Test the proxy without canceling — Claude Code reads
+          environment variables, so you can A/B by toggling them per terminal:</p>
+<pre><code># In your shell, pick the proxy
+export ANTHROPIC_BASE_URL="https://tokenprovider.store"
+export ANTHROPIC_API_KEY="your_proxy_key"
+claude
+
+# Switch back to official Anthropic
+unset ANTHROPIC_BASE_URL
+claude</code></pre>
+          <p>Watch the dashboard for one week of real usage, then decide whether to cancel Pro.
+          Detailed setup: <a href="/en/guides/claude-code-setup.html">Claude Code Setup with a Cheap Claude API</a>.</p>
+
+          <section class="seo-cta-block">
+            <h2 class="seo-mt-0">Try the proxy alongside your subscription — no commitment</h2>
+            <p>$1 minimum top-up. Pay per token. Cancel anytime. Compare your real bill in 7 days.</p>
+            <a class="seo-btn-cta" href="/register">Sign up free →</a>
+            <a class="seo-btn-ghost" href="/login">Already a member</a>
+          </section>
+
+          <h2>FAQ</h2>
+          <div class="seo-faq">
+            <div class="seo-faq-item">
+              <h3>When does the official subscription win?</h3>
+              <p>Heavy daily users (8+ hours, large multi-file refactors) who consistently consume more than the equivalent token cost of $20/month. For everyone else, pay-as-you-go is cheaper.</p>
+            </div>
+            <div class="seo-faq-item">
+              <h3>Will a proxy throttle me?</h3>
+              <p>A pooled proxy spreads load across many upstream accounts. Per-key limits are generally higher than the single-account caps imposed by the official subscription on heavy days.</p>
+            </div>
+            <div class="seo-faq-item">
+              <h3>Do I lose any Claude Code features?</h3>
+              <p>No. Tool calls, file edits, MCP servers, and shell execution all work identically. The proxy only changes the network destination of API requests.</p>
+            </div>
+            <div class="seo-faq-item">
+              <h3>Can I switch back if I don't like it?</h3>
+              <p>Yes — unset <code>ANTHROPIC_BASE_URL</code> and Claude Code routes back to <code>api.anthropic.com</code>. There is no lock-in.</p>
+            </div>
+          </div>
+
+          <section class="seo-related">
+            <h2>Related reading</h2>
+            <ul class="seo-related-list">
+              <li><a href="/en/guides/claude-code-setup.html"><strong>Claude Code Setup Guide</strong><span>5-minute proxy install</span></a></li>
+              <li><a href="/en/compare/tokenprovider-vs-official-claude.html"><strong>TokenProvider vs Official Claude API</strong><span>Side-by-side</span></a></li>
+              <li><a href="/en/compare/claude-vs-chatgpt-api.html"><strong>Claude vs ChatGPT API</strong><span>Cross-vendor comparison</span></a></li>
+              <li><a href="/en/glossary/what-is-claude-code.html"><strong>What Is Claude Code?</strong><span>Primer</span></a></li>
+            </ul>
+          </section>
+        </article>
+      </div>
+    </main>
+
+    <footer class="seo-footer">
+      <div class="seo-container">
+        <p>
+          <a href="/en.html">Home</a> ·
+          <a href="/login">Log in</a> ·
+          <a href="/register">Sign up</a>
+        </p>
+        <p>© TokenProvider · Claude / Claude Code / ChatGPT API gateway</p>
+      </div>
+    </footer>
+  </body>
+</html>

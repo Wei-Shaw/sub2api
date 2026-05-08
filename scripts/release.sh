@@ -3,6 +3,12 @@
 # scripts/release.sh
 # Build sub2api binary locally (Mac) and publish as a GitHub Release.
 #
+# Published assets (must stay in sync with deploy/install-custom.sh fast upgrade):
+#   - sub2api-linux-amd64.tar.gz  — tarball contains executable "server"
+#   - checksums.txt
+# CI GoReleaser (.goreleaser.yaml) instead publishes:
+#   - sub2api_${VERSION}_linux_amd64.tar.gz — contains "sub2api"; install-custom tries both names.
+#
 # Usage:
 #   ./scripts/release.sh v1.2.3       # explicit version
 #   ./scripts/release.sh              # read backend/cmd/server/VERSION
@@ -158,7 +164,7 @@ publish_release() {
     print_success "Released $version"
     echo ""
     echo "  To upgrade a production server, run there:"
-    echo "  curl -sSL https://raw.githubusercontent.com/qiangweihewu/sub2api/main/deploy/install-custom.sh | sudo bash -s -- upgrade"
+    echo "  curl -sSL https://raw.githubusercontent.com/qiangweihewu/sub2api/i18n-seo/deploy/install-custom.sh | sudo bash -s -- upgrade"
     echo ""
 }
 

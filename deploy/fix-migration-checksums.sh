@@ -214,5 +214,5 @@ done
 
 echo ""
 print_success "Done. Retry the upgrade:"
-echo "  curl -sSL https://raw.githubusercontent.com/qiangweihewu/sub2api/main/deploy/install-custom.sh \\"
+echo "  curl -sSL https://raw.githubusercontent.com/qiangweihewu/sub2api/i18n-seo/deploy/install-custom.sh \\"
 echo "    | sudo bash -s -- upgrade"

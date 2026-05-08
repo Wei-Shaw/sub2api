@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="/logo.png" />
+
+    <title>What Is Claude Code? Anthropic's CLI Coding Agent (2026 Primer) | TokenProvider</title>
+    <meta name="description" content="Claude Code is Anthropic's official terminal-native coding agent. This page explains what it does, how it differs from Cursor and Copilot, what it costs, and how to install it in 2 minutes." />
+    <meta name="keywords" content="what is claude code, claude code cli, anthropic coding agent, claude code vs cursor, claude code install, claude terminal" />
+    <meta name="robots" content="index,follow" />
+    <meta name="theme-color" content="#14b8a6" />
+
+    <link rel="canonical" href="https://tokenprovider.store/en/glossary/what-is-claude-code.html" />
+    <link rel="alternate" hreflang="en" href="https://tokenprovider.store/en/glossary/what-is-claude-code.html" />
+    <link rel="alternate" hreflang="x-default" href="https://tokenprovider.store/en/glossary/what-is-claude-code.html" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content="https://tokenprovider.store/en/glossary/what-is-claude-code.html" />
+    <meta property="og:title" content="What Is Claude Code? (2026 Primer)" />
+    <meta property="og:description" content="Anthropic's terminal-native coding agent — what it does, how it differs from Cursor / Copilot, what it costs, how to install." />
+    <meta property="og:image" content="https://tokenprovider.store/logo.png" />
+    <meta property="og:site_name" content="TokenProvider" />
+    <meta property="og:locale" content="en_US" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="What Is Claude Code? (2026 Primer)" />
+    <meta name="twitter:description" content="Anthropic's terminal-native coding agent — what, why, and how." />
+    <meta name="twitter:image" content="https://tokenprovider.store/logo.png" />
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "DefinedTerm",
+      "name": "Claude Code",
+      "description": "Anthropic's official command-line interface coding agent. Reads, writes, and runs code in any project, using Claude Sonnet / Opus / Haiku as the underlying LLM.",
+      "url": "https://tokenprovider.store/en/glossary/what-is-claude-code.html"
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Article",
+      "headline": "What Is Claude Code?",
+      "description": "Plain-English primer on Anthropic's CLI coding agent — capabilities, comparison, cost, install.",
+      "author": {
+        "@type": "Person",
+        "name": "TokenProvider Engineering Team",
+        "worksFor": {
+          "@id": "https://tokenprovider.store/#organization"
+        },
+        "knowsAbout": [
+          "Claude API",
+          "ChatGPT API",
+          "AI API gateways",
+          "API integration"
+        ]
+      },
+      "publisher": {
+        "@type": "Organization",
+        "name": "TokenProvider",
+        "logo": {
+          "@type": "ImageObject",
+          "url": "https://tokenprovider.store/logo.png"
+        }
+      },
+      "datePublished": "2026-05-07",
+      "dateModified": "2026-05-07",
+      "inLanguage": "en",
+      "mainEntityOfPage": "https://tokenprovider.store/en/glossary/what-is-claude-code.html"
+    }
+    </script>
+
+    <link rel="stylesheet" href="/assets/seo.css" />
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "TokenProvider",
+          "item": "https://tokenprovider.store/en.html"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "What Is Claude Code? Anthropic's CLI Coding Agent (2026 Primer)",
+          "item": "https://tokenprovider.store/en/glossary/what-is-claude-code.html"
+        }
+      ]
+    }
+    </script>
+
+  </head>
+  <body>
+    <div class="seo-bg-decor"></div>
+
+    <header class="seo-header">
+      <div class="seo-container-wide">
+        <nav class="seo-nav">
+          <a class="seo-logo" href="/en.html">
+            <img src="/logo.png" alt="TokenProvider logo" width="36" height="36" />
+            <span class="seo-logo-text">TokenProvider</span>
+          </a>
+          <div class="seo-nav-links">
+            <a class="seo-nav-link" href="/en.html">Home</a>
+            <a class="seo-nav-link" href="/login">Log in</a>
+            <a class="seo-btn-primary" href="/register">Sign up →</a>
+          </div>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <div class="seo-container">
+        <article>
+          <h1>What Is Claude Code?</h1>
+          <p class="seo-lede">
+            <strong>Claude Code</strong> is Anthropic's official terminal-native coding agent.
+            You run <code>claude</code> inside any project directory and it can read files, run
+            shell commands, edit code, run tests, and explain its reasoning — all backed by Claude
+            Sonnet 4 (or Opus / Haiku, your choice). Think of it as the missing CLI between you
+            and the model.
+          </p>
+
+          <div class="seo-tldr">
+            <p><strong>What it is:</strong> a Node.js CLI (<code>@anthropic-ai/claude-code</code>)
+            that gives Claude full read/write access to your local repo, with permission prompts
+            for destructive actions. Conversation lives in your terminal, not a browser tab.</p>
+          </div>
+
+          <h2>What Claude Code can do</h2>
+          <ul>
+            <li><strong>Read any file in the repo</strong> — it indexes your project on first run.</li>
+            <li><strong>Edit files in place</strong> — applies diffs, asks before overwriting.</li>
+            <li><strong>Run shell commands</strong> — <code>npm test</code>, <code>git diff</code>, <code>grep</code>, etc.</li>
+            <li><strong>Run tests in a loop</strong> — fix until green.</li>
+            <li><strong>Use external tools (MCP servers)</strong> — connect to your DB, your linter, your custom CLI.</li>
+            <li><strong>Multi-file refactors</strong> — long-context model holds the whole module set.</li>
+            <li><strong>Interactive mode + headless (<code>claude -p</code>) mode</strong> — chat or one-shot.</li>
+          </ul>
+
+          <h2>How it differs from Cursor, Copilot, Aider</h2>
+          <div class="seo-table-wrap">
+            <table class="seo-table">
+              <thead>
+                <tr><th>Tool</th><th>Surface</th><th>Model</th><th>Best at</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Claude Code</td><td>Terminal CLI</td><td>Claude (Sonnet/Opus/Haiku)</td><td>Long-running multi-file tasks, agentic loops</td></tr>
+                <tr><td>Cursor</td><td>VS Code fork (IDE)</td><td>Claude / GPT / others</td><td>Inline edits while you type</td></tr>
+                <tr><td>GitHub Copilot</td><td>IDE extension</td><td>OpenAI</td><td>Autocomplete + chat</td></tr>
+                <tr><td>Cline</td><td>VS Code extension</td><td>Bring-your-own (Claude/GPT)</td><td>Visual agent inside VS Code</td></tr>
+                <tr><td>Aider</td><td>Terminal CLI (Python)</td><td>Bring-your-own</td><td>Git-integrated AI commits</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Most people end up with two: an <em>inline editor</em> (Cursor or Copilot) for
+          while-you-type completions, and a <em>terminal agent</em> (Claude Code) for long tasks
+          like "make all 14 tests pass" or "migrate this module to TypeScript."</p>
+
+          <h2>How it bills</h2>
+          <p>Two pricing surfaces:</p>
+          <ul>
+            <li><strong>Anthropic Pro / Max subscription</strong> — flat $20–200/month, daily caps,
+              tied to your Anthropic login.</li>
+            <li><strong>API key (pay-as-you-go)</strong> — pay only the tokens you actually
+              consume. Required <code>ANTHROPIC_API_KEY</code> env var.</li>
+          </ul>
+          <p>Cost comparison: <a href="/en/compare/claude-code-relay-vs-subscription.html">Claude Code Proxy vs Official Subscription</a>.</p>
+
+          <h2>Install in 2 commands</h2>
+<pre><code>npm install -g @anthropic-ai/claude-code
+
+cd your-project
+claude</code></pre>
+          <p>First run asks for your API key (or signs you into Anthropic Pro). After that,
+          everything is one <code>claude</code> command away. Full guide:
+          <a href="/en/guides/claude-code-setup.html">Claude Code Setup</a>.</p>
+
+          <h2>What a typical session looks like</h2>
+<pre><code>$ cd my-app
+$ claude
+
+claude&gt; the user signup endpoint is throwing 500. Find and fix.
+
+[claude reads server/auth.ts]
+[claude reads server/db.ts]
+[claude runs: npm test --grep signup]
+…
+claude&gt; The bcrypt comparison was using `===` instead of `bcrypt.compare`.
+        I edited server/auth.ts (lines 47–52) and the test now passes.
+        Want me to commit?
+
+claude&gt; yes
+
+[claude runs: git add . && git commit -m "fix(auth): use bcrypt.compare"]</code></pre>
+
+          <h2>Tips for using it well</h2>
+          <ul>
+            <li><strong>Keep prompts specific.</strong> "Fix the bug in /api/users" beats "fix bugs."</li>
+            <li><strong>Let it run shell commands.</strong> Auto-approve <code>npm test</code> and <code>git status</code> — most of its value is in the loop.</li>
+            <li><strong>Use <code>claude -p</code> for one-shot scripts.</strong> Great in CI / makefiles.</li>
+            <li><strong>Watch token spend</strong> — multi-file edits in long projects can burn tokens fast. Sonnet is the sweet spot; Opus only when you need it.</li>
+            <li><strong>Add a CLAUDE.md to your repo</strong> — Claude reads it as a project manual on every session.</li>
+          </ul>
+
+          <h2>When NOT to use Claude Code</h2>
+          <ul>
+            <li>Tiny ad-hoc scripts where the IDE plugin is faster (<code>tab</code>, done).</li>
+            <li>Air-gapped environments where you can't reach the API.</li>
+            <li>Code that requires GUI inspection (Cursor's preview is better for UI work).</li>
+          </ul>
+
+          <section class="seo-cta-block">
+            <h2 class="seo-mt-0">Get a key, halve your Claude Code bill</h2>
+            <p>TokenProvider = pay-as-you-go Claude API at proxy rates. Same CLI, same features, ~50% off.</p>
+            <a class="seo-btn-cta" href="/register">Sign up free →</a>
+            <a class="seo-btn-ghost" href="/login">Already a member</a>
+          </section>
+
+          <section class="seo-related">
+            <h2>Related reading</h2>
+            <ul class="seo-related-list">
+              <li><a href="/en/guides/claude-code-setup.html"><strong>Claude Code Setup Guide</strong><span>5-minute install</span></a></li>
+              <li><a href="/en/compare/claude-code-relay-vs-subscription.html"><strong>Proxy vs Subscription</strong><span>Cost math</span></a></li>
+              <li><a href="/en/glossary/what-is-claude-relay.html"><strong>What Is a Claude API Proxy?</strong><span>How proxies save money</span></a></li>
+              <li><a href="/en/glossary/what-is-an-ai-token.html"><strong>What Is an AI Token?</strong><span>Billing basics</span></a></li>
+            </ul>
+          </section>
+        </article>
+      </div>
+    </main>
+
+    <footer class="seo-footer">
+      <div class="seo-container">
+        <p>
+          <a href="/en.html">Home</a> ·
+          <a href="/login">Log in</a> ·
+          <a href="/register">Sign up</a>
+        </p>
+        <p>© TokenProvider · Claude / Claude Code / ChatGPT API gateway</p>
+      </div>
+    </footer>
+  </body>
+</html>

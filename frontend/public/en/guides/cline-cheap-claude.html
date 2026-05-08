@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="/logo.png" />
+
+    <title>Cline + Cheap Claude API: VS Code Setup in 3 Minutes (2026) | TokenProvider</title>
+    <meta name="description" content="Configure Cline (the open-source VS Code AI agent) with a pay-as-you-go Claude API proxy. Cuts your Claude bill 30-60% with zero loss of features. Step-by-step with screenshots." />
+    <meta name="keywords" content="cline cheap claude, cline anthropic api, cline vs code setup, cline proxy, cline claude api key, cline tutorial" />
+    <meta name="robots" content="index,follow" />
+    <meta name="theme-color" content="#14b8a6" />
+
+    <link rel="canonical" href="https://tokenprovider.store/en/guides/cline-cheap-claude.html" />
+    <link rel="alternate" hreflang="en" href="https://tokenprovider.store/en/guides/cline-cheap-claude.html" />
+    <link rel="alternate" hreflang="x-default" href="https://tokenprovider.store/en/guides/cline-cheap-claude.html" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content="https://tokenprovider.store/en/guides/cline-cheap-claude.html" />
+    <meta property="og:title" content="Cline + Cheap Claude API (2026)" />
+    <meta property="og:description" content="Cut Cline's Claude bill 30-60% by routing through a pay-as-you-go proxy. 3-minute setup." />
+    <meta property="og:image" content="https://tokenprovider.store/logo.png" />
+    <meta property="og:site_name" content="TokenProvider" />
+    <meta property="og:locale" content="en_US" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Cline + Cheap Claude API (2026)" />
+    <meta name="twitter:description" content="Cut Cline's Claude bill 30-60% by routing through a pay-as-you-go proxy." />
+    <meta name="twitter:image" content="https://tokenprovider.store/logo.png" />
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "HowTo",
+      "name": "Set up Cline with a Cheap Claude API",
+      "description": "Point Cline (VS Code agent) at a pay-as-you-go Claude proxy in under 3 minutes.",
+      "inLanguage": "en",
+      "totalTime": "PT3M",
+      "supply": [
+        {
+          "@type": "HowToSupply",
+          "name": "VS Code 1.85+"
+        },
+        {
+          "@type": "HowToSupply",
+          "name": "TokenProvider account + API key"
+        }
+      ],
+      "step": [
+        {
+          "@type": "HowToStep",
+          "name": "Install Cline",
+          "text": "Search 'Cline' in VS Code Extensions and install"
+        },
+        {
+          "@type": "HowToStep",
+          "name": "Open Cline settings",
+          "text": "Click the Cline icon in the sidebar, then the gear icon"
+        },
+        {
+          "@type": "HowToStep",
+          "name": "Choose Anthropic provider",
+          "text": "Pick Anthropic and enable the custom base URL field"
+        },
+        {
+          "@type": "HowToStep",
+          "name": "Set base URL and key",
+          "text": "Base URL = https://tokenprovider.store ; API key = your proxy key"
+        },
+        {
+          "@type": "HowToStep",
+          "name": "Test",
+          "text": "Open the Cline panel and ask anything to confirm routing works"
+        }
+      ]
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "TokenProvider",
+          "item": "https://tokenprovider.store/en.html"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "Cline + cheap Claude API",
+          "item": "https://tokenprovider.store/en/guides/cline-cheap-claude.html"
+        }
+      ]
+    }
+    </script>
+
+    <link rel="stylesheet" href="/assets/seo.css" />
+  </head>
+  <body>
+    <div class="seo-bg-decor"></div>
+
+    <header class="seo-header">
+      <div class="seo-container-wide">
+        <nav class="seo-nav">
+          <a class="seo-logo" href="/en.html">
+            <img src="/logo.png" alt="TokenProvider logo" width="36" height="36" />
+            <span class="seo-logo-text">TokenProvider</span>
+          </a>
+          <div class="seo-nav-links">
+            <a class="seo-nav-link" href="/en.html">Home</a>
+            <a class="seo-nav-link" href="/login">Log in</a>
+            <a class="seo-btn-primary" href="/register">Sign up →</a>
+          </div>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <div class="seo-container">
+        <article>
+          <h1>Cline + Cheap Claude API</h1>
+          <p class="seo-lede">
+            <a href="https://github.com/cline/cline" rel="nofollow noopener">Cline</a> is the
+            open-source autonomous coding agent for VS Code. It's powerful — and on Claude Sonnet 4
+            it can burn $5–10 a day if you let it run agent loops. Pointing it at a pay-as-you-go
+            proxy <strong>cuts that bill 30–60%</strong> with zero feature loss.
+          </p>
+
+          <div class="seo-tldr">
+            <p><strong>Two fields to change:</strong> Provider = "Anthropic", Base URL =
+            <code>https://tokenprovider.store</code>, API Key = your proxy key. Done in under 3 minutes.</p>
+          </div>
+
+          <h2>Why bother?</h2>
+          <p>Cline is agentic — it reads files, runs commands, edits code in long loops. Each
+          iteration sends the full context window back to Claude, which means token spend grows
+          fast. A 30-minute coding session can easily push 500k tokens. At official Sonnet rates
+          that's around $3–5; at proxy rates it's $1.50–$2.50.</p>
+
+          <h2>Prerequisites</h2>
+          <ul>
+            <li>VS Code 1.85+</li>
+            <li>A TokenProvider account and an active API key (<a href="/register">sign up here</a>)</li>
+          </ul>
+
+          <h2>Step-by-step</h2>
+          <ol class="seo-steps">
+            <li>
+              <h3>Install Cline</h3>
+              <p>VS Code → Extensions tab → search <strong>"Cline"</strong> → Install. The
+              extension adds a robot icon to the activity bar.</p>
+            </li>
+
+            <li>
+              <h3>Open Cline settings</h3>
+              <p>Click the Cline robot icon → click the gear icon in the top-right of the panel.
+              You'll see a provider dropdown.</p>
+            </li>
+
+            <li>
+              <h3>Pick Anthropic, then "Use custom base URL"</h3>
+              <p>Provider = <strong>Anthropic</strong>. Tick <strong>"Use custom base URL"</strong>
+              (or the equivalent field — Cline updates this UI occasionally).</p>
+            </li>
+
+            <li>
+              <h3>Fill in base URL + key</h3>
+              <p>
+                <strong>Base URL:</strong> <code>https://tokenprovider.store</code><br>
+                <strong>API Key:</strong> your TokenProvider key (starts with <code>sk-</code>)<br>
+                <strong>Model:</strong> <code>claude-sonnet-4-20250514</code>
+              </p>
+              <div class="seo-warn">
+                <p>Don't include <code>/v1</code> at the end of the base URL — Cline appends the
+                Anthropic path itself. Trailing slash optional.</p>
+              </div>
+            </li>
+
+            <li>
+              <h3>Test</h3>
+              <p>Open the Cline panel, type "list the files in this repo", and watch it call the
+              tool. If you see a normal response, routing is working.</p>
+            </li>
+
+            <li>
+              <h3>Watch the spend</h3>
+              <p>The Cline status bar shows tokens-per-task. Cross-reference with your
+              <a href="/usage">TokenProvider dashboard</a> — per-request log with model, tokens, cost.</p>
+            </li>
+          </ol>
+
+          <h2>Recommended Cline settings for cost</h2>
+          <ul>
+            <li><strong>Auto-approve safe tools:</strong> read_file, list_files, search_files. Don't auto-approve write_to_file or execute_command.</li>
+            <li><strong>Cap "max requests per task"</strong> at 50 — prevents runaway loops.</li>
+            <li><strong>Disable "always read full files"</strong> for large repos — let Cline pick what to read.</li>
+            <li><strong>Use Haiku for triage tasks</strong> — switch model to <code>claude-haiku-4-20250514</code> for simple lookups, then switch back to Sonnet for the actual edit.</li>
+          </ul>
+
+          <h2>Common issues</h2>
+          <div class="seo-table-wrap">
+            <table class="seo-table">
+              <thead><tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr></thead>
+              <tbody>
+                <tr><td>401 Unauthorized</td><td>Wrong key or provider</td><td>Double-check Provider = Anthropic and key is the proxy key, not Anthropic's</td></tr>
+                <tr><td>404 model_not_found</td><td>Model name typo</td><td>Use the full versioned name e.g. <code>claude-sonnet-4-20250514</code></td></tr>
+                <tr><td>"Failed to fetch"</td><td>Base URL has wrong scheme or trailing path</td><td>Must be <code>https://tokenprovider.store</code> exactly</td></tr>
+                <tr><td>402 Insufficient Balance</td><td>Account out of funds</td><td>Top up — minimum $1</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>One key, three tools</h2>
+          <p>The same key works in Cline, <a href="/en/guides/cursor-claude-proxy.html">Cursor</a>,
+          and <a href="/en/guides/claude-code-setup.html">Claude Code</a> simultaneously — and
+          can also drive ChatGPT and Gemini if you change the model field. No reason to juggle three
+          accounts.</p>
+
+          <section class="seo-cta-block">
+            <h2 class="seo-mt-0">Cut your Cline bill in half — same workflow</h2>
+            <p>$1 minimum top-up. Pay per token. Cancel anytime.</p>
+            <a class="seo-btn-cta" href="/register">Sign up free →</a>
+            <a class="seo-btn-ghost" href="/login">Already a member</a>
+          </section>
+
+          <section class="seo-related">
+            <h2>Related guides</h2>
+            <ul class="seo-related-list">
+              <li><a href="/en/guides/claude-code-setup.html"><strong>Claude Code Setup</strong><span>Anthropic CLI</span></a></li>
+              <li><a href="/en/guides/cursor-claude-proxy.html"><strong>Cursor + Claude Proxy</strong><span>IDE integration</span></a></li>
+              <li><a href="/en/examples/claude-api-nodejs.html"><strong>Claude API Node.js Example</strong><span>Programmatic use</span></a></li>
+              <li><a href="/en/glossary/what-is-claude-relay.html"><strong>What Is a Claude API Proxy?</strong><span>How proxies save money</span></a></li>
+            </ul>
+          </section>
+        </article>
+      </div>
+    </main>
+
+    <footer class="seo-footer">
+      <div class="seo-container">
+        <p>
+          <a href="/en.html">Home</a> ·
+          <a href="/login">Log in</a> ·
+          <a href="/register">Sign up</a>
+        </p>
+        <p>© TokenProvider · Claude / Claude Code / ChatGPT API gateway</p>
+      </div>
+    </footer>
+  </body>
+</html>

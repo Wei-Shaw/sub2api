@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="/logo.png" />
+
+    <title>Gemini API Example (2026): Python, Node.js, curl with Streaming | TokenProvider</title>
+    <meta name="description" content="Working Gemini 2.5 / Flash API examples in Python, Node.js, and curl. Covers basic generation, streaming, multimodal (image + audio + video), and the OpenAI-compatible endpoint." />
+    <meta name="keywords" content="gemini api example, gemini 2.5 pro api, gemini flash api, google ai studio, gemini python example, gemini openai compatible" />
+    <meta name="robots" content="index,follow" />
+    <meta name="theme-color" content="#14b8a6" />
+
+    <link rel="canonical" href="https://tokenprovider.store/en/examples/gemini-api-example.html" />
+    <link rel="alternate" hreflang="en" href="https://tokenprovider.store/en/examples/gemini-api-example.html" />
+    <link rel="alternate" hreflang="x-default" href="https://tokenprovider.store/en/examples/gemini-api-example.html" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content="https://tokenprovider.store/en/examples/gemini-api-example.html" />
+    <meta property="og:title" content="Gemini API Example (2026)" />
+    <meta property="og:description" content="Python, Node.js, and curl examples for Google Gemini — basic, streaming, and multimodal." />
+    <meta property="og:image" content="https://tokenprovider.store/logo.png" />
+    <meta property="og:site_name" content="TokenProvider" />
+    <meta property="og:locale" content="en_US" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Gemini API Example (2026)" />
+    <meta name="twitter:description" content="Python, Node.js, and curl examples for Google Gemini." />
+    <meta name="twitter:image" content="https://tokenprovider.store/logo.png" />
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "TechArticle",
+      "headline": "Gemini API Example (2026)",
+      "description": "Quickstart for Google Gemini 2.5 Pro and Flash with Python, Node.js, and curl, including streaming and multimodal input.",
+      "author": {
+        "@type": "Person",
+        "name": "TokenProvider Engineering Team",
+        "worksFor": {
+          "@id": "https://tokenprovider.store/#organization"
+        },
+        "knowsAbout": [
+          "Claude API",
+          "ChatGPT API",
+          "AI API gateways",
+          "API integration"
+        ]
+      },
+      "publisher": {
+        "@type": "Organization",
+        "name": "TokenProvider",
+        "logo": {
+          "@type": "ImageObject",
+          "url": "https://tokenprovider.store/logo.png"
+        }
+      },
+      "datePublished": "2026-05-07",
+      "dateModified": "2026-05-07",
+      "inLanguage": "en",
+      "proficiencyLevel": "Beginner",
+      "mainEntityOfPage": "https://tokenprovider.store/en/examples/gemini-api-example.html"
+    }
+    </script>
+
+    <link rel="stylesheet" href="/assets/seo.css" />
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "TokenProvider",
+          "item": "https://tokenprovider.store/en.html"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "Gemini API Example (2026): Python, Node.js, curl with Streaming",
+          "item": "https://tokenprovider.store/en/examples/gemini-api-example.html"
+        }
+      ]
+    }
+    </script>
+
+  </head>
+  <body>
+    <div class="seo-bg-decor"></div>
+
+    <header class="seo-header">
+      <div class="seo-container-wide">
+        <nav class="seo-nav">
+          <a class="seo-logo" href="/en.html">
+            <img src="/logo.png" alt="TokenProvider logo" width="36" height="36" />
+            <span class="seo-logo-text">TokenProvider</span>
+          </a>
+          <div class="seo-nav-links">
+            <a class="seo-nav-link" href="/en.html">Home</a>
+            <a class="seo-nav-link" href="/login">Log in</a>
+            <a class="seo-btn-primary" href="/register">Sign up →</a>
+          </div>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <div class="seo-container">
+        <article>
+          <h1>Gemini API Example (2026)</h1>
+          <p class="seo-lede">
+            Google's Gemini 2.5 Pro and Flash are competitive on context length (1M+ tokens) and
+            multimodal input (image, audio, video, PDF). Below: working calls in Python, Node.js,
+            and curl, plus the OpenAI-compatible endpoint that lets existing OpenAI client code
+            target Gemini with one line changed.
+          </p>
+
+          <div class="seo-tldr">
+            <p><strong>Two ways to call Gemini:</strong> the native
+            <code>generativelanguage.googleapis.com</code> endpoint, or the
+            <strong>OpenAI-compatible</strong> endpoint that mimics
+            <code>/v1/chat/completions</code>. Pick OpenAI-compatible if you already have OpenAI client code.</p>
+          </div>
+
+          <h2>1. Get an API key</h2>
+          <p>Get a free key from <a href="https://aistudio.google.com" rel="nofollow noopener">Google AI Studio</a>.
+          Free tier is generous for prototyping; paid tier kicks in beyond rate limits. Save it as an env var:</p>
+<pre><code>export GEMINI_API_KEY="AIza…"</code></pre>
+
+          <h2>2. Python (native SDK)</h2>
+<pre><code>pip install google-genai</code></pre>
+<pre><code>from google import genai
+
+client = genai.Client(api_key=GEMINI_API_KEY)
+
+response = client.models.generate_content(
+    model="gemini-2.5-flash",
+    contents="Explain quantum entanglement in one paragraph.",
+)
+print(response.text)</code></pre>
+
+          <h2>3. Streaming</h2>
+<pre><code>stream = client.models.generate_content_stream(
+    model="gemini-2.5-flash",
+    contents="Count from 1 to 10 with one number per line.",
+)
+
+for chunk in stream:
+    print(chunk.text, end="", flush=True)</code></pre>
+
+          <h2>4. Multimodal: image + text</h2>
+<pre><code>from PIL import Image
+
+img = Image.open("./screenshot.png")
+
+response = client.models.generate_content(
+    model="gemini-2.5-flash",
+    contents=[img, "What does this UI mockup show?"],
+)
+print(response.text)</code></pre>
+          <p>The same pattern accepts audio (<code>.mp3</code>), video, and PDF. For files larger
+          than ~20 MB use the File API to upload first, then reference by URI.</p>
+
+          <h2>5. Node.js / TypeScript</h2>
+<pre><code>npm install @google/genai</code></pre>
+<pre><code>import { GoogleGenAI } from "@google/genai";
+
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+
+const response = await ai.models.generateContent({
+  model: "gemini-2.5-flash",
+  contents: "Write a one-line haiku about TypeScript.",
+});
+
+console.log(response.text);</code></pre>
+
+          <h2>6. curl (raw HTTP)</h2>
+<pre><code>curl -sS \
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent" \
+  -H "x-goog-api-key: $GEMINI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "contents": [{
+      "parts": [{"text": "Capital of Brazil?"}]
+    }]
+  }'</code></pre>
+
+          <h2>7. OpenAI-compatible endpoint (drop-in)</h2>
+          <p>Gemini also exposes an OpenAI-shaped endpoint. Existing OpenAI Python / JS code
+          works by changing two lines:</p>
+<pre><code>from openai import OpenAI
+
+client = OpenAI(
+    api_key=GEMINI_API_KEY,
+    base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+)
+
+response = client.chat.completions.create(
+    model="gemini-2.5-flash",
+    messages=[{"role": "user", "content": "Hello in Portuguese."}],
+)
+print(response.choices[0].message.content)</code></pre>
+
+          <h2>8. Long context (1M tokens)</h2>
+          <p>Gemini 2.5 Pro accepts up to 2M input tokens — large enough to drop an entire
+          codebase or a multi-hour transcript in one prompt. Best practice is to chunk and use
+          context caching for repeat queries (substantial cost savings).</p>
+
+          <h2>Pricing snapshot (May 2026)</h2>
+          <div class="seo-table-wrap">
+            <table class="seo-table">
+              <thead><tr><th>Model</th><th>Input / 1M</th><th>Output / 1M</th><th>Best for</th></tr></thead>
+              <tbody>
+                <tr><td>gemini-2.5-flash</td><td>$0.075</td><td>$0.30</td><td>Cheap default</td></tr>
+                <tr><td>gemini-2.5-pro</td><td>$1.25</td><td>$5.00</td><td>Reasoning + long context</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Verify current rates on Google AI Studio.</p>
+
+          <h2>One key for all three vendors</h2>
+          <p>TokenProvider forwards Gemini requests through the same key you use for Claude and
+          ChatGPT. Switch model in the request body — no second account, no separate billing.</p>
+<pre><code># OpenAI client → Gemini via TokenProvider
+client = OpenAI(
+    api_key="your_proxy_key",
+    base_url="https://tokenprovider.store/v1",
+)
+client.chat.completions.create(model="gemini-2.5-flash", messages=...)</code></pre>
+
+          <section class="seo-cta-block">
+            <h2 class="seo-mt-0">Claude + ChatGPT + Gemini in one key</h2>
+            <p>Same SDK, change the model field. Pay per token, no monthly fee.</p>
+            <a class="seo-btn-cta" href="/register">Sign up free →</a>
+            <a class="seo-btn-ghost" href="/login">Already a member</a>
+          </section>
+
+          <section class="seo-related">
+            <h2>More examples</h2>
+            <ul class="seo-related-list">
+              <li><a href="/en/examples/claude-api-python.html"><strong>Claude API Python Example</strong><span>Anthropic SDK</span></a></li>
+              <li><a href="/en/examples/claude-api-nodejs.html"><strong>Claude API Node.js Example</strong><span>TypeScript</span></a></li>
+              <li><a href="/en/examples/chatgpt-api-curl.html"><strong>ChatGPT API curl</strong><span>Quick verification</span></a></li>
+              <li><a href="/en/glossary/what-is-an-ai-token.html"><strong>What Is an AI Token?</strong><span>Billing basics</span></a></li>
+            </ul>
+          </section>
+        </article>
+      </div>
+    </main>
+
+    <footer class="seo-footer">
+      <div class="seo-container">
+        <p>
+          <a href="/en.html">Home</a> ·
+          <a href="/login">Log in</a> ·
+          <a href="/register">Sign up</a>
+        </p>
+        <p>© TokenProvider · Claude / Claude Code / ChatGPT API gateway</p>
+      </div>
+    </footer>
+  </body>
+</html>

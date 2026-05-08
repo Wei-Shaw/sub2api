@@ -9,7 +9,7 @@
 #   1) Environment GITHUB_DEPLOY_BRANCH (use sudo -E or sudo env ... bash if needed)
 #   2) Flags before subcommands: --deploy-branch main | i18n-seo
 #   3) Existing install at INSTALL_DIR: current git branch of that checkout
-#   4) DEFAULT_GITHUB_DEPLOY_BRANCH below (this file on GitHub main defaults to main; on i18n-seo defaults to i18n-seo)
+#   4) DEFAULT_GITHUB_DEPLOY_BRANCH below (this copy on GitHub branch main → main; branch i18n-seo → i18n-seo)
 #
 # Note: with "curl ... | bash" the script cannot see the URL you curled; (4) matches whichever raw path you used.
 #
@@ -27,7 +27,7 @@ set -e
 # =============================================================================
 GITHUB_REPO="qiangweihewu/sub2api"
 # Last-resort branch when env / flags / existing checkout don't set it (see apply_default_deploy_branch).
-DEFAULT_GITHUB_DEPLOY_BRANCH="main"
+DEFAULT_GITHUB_DEPLOY_BRANCH="i18n-seo"
 INSTALL_DIR="/opt/sub2api"
 IMAGE_NAME="sub2api-custom"
 COMPOSE_PROJECT="sub2api"
@@ -521,28 +521,35 @@ _upgrade_fast_resolve_versions() {
 # Aborts on checksum failure (does NOT fall back — signals tampering or corruption).
 _upgrade_fast_download() {
     STAGE_DIR=$(mktemp -d -t sub2api-upgrade-XXXXXX)
-    local asset="sub2api-linux-amd64.tar.gz"
+    local version_num="${TARGET_VERSION#v}"
     local base_url="https://github.com/${GITHUB_REPO}/releases/download/${TARGET_VERSION}"
-    local tarball_url="${base_url}/${asset}"
     local checksums_url="${base_url}/checksums.txt"
+    # Two release paths must both work:
+    # - GitHub Actions + .goreleaser.yaml → sub2api_${ver}_linux_amd64.tar.gz (binary "sub2api")
+    # - scripts/release.sh (local)        → sub2api-linux-amd64.tar.gz (binary "server")
+    #
+    # Mixed releases can expose BOTH tarballs on GitHub while checksums.txt only lists one
+    # (e.g. local release overwrites checksums). Always download checksums first, then pick
+    # a tarball name that appears in that file; otherwise fall back to trying downloads.
 
-    print_info "Downloading $asset ..."
+    print_info "Downloading checksums.txt ..."
     local attempt=0
     while [ $attempt -lt 3 ]; do
-        if curl -fsSL --max-time 300 -o "$STAGE_DIR/$asset" "$tarball_url" \
-           && curl -fsSL --max-time 60 -o "$STAGE_DIR/checksums.txt" "$checksums_url"; then
+        rm -f "$STAGE_DIR/checksums.txt"
+        if curl -fsSL --max-time 60 -o "$STAGE_DIR/checksums.txt" "$checksums_url" \
+           && [ -s "$STAGE_DIR/checksums.txt" ]; then
             break
         fi
         attempt=$((attempt + 1))
         if [ $attempt -lt 3 ]; then
-            print_warning "Download failed (attempt $attempt/3), retrying in 5s..."
+            print_warning "checksums.txt download failed (attempt $attempt/3), retrying in 5s..."
             sleep 5
         fi
     done
 
-    if [ ! -s "$STAGE_DIR/$asset" ] || [ ! -s "$STAGE_DIR/checksums.txt" ]; then
+    if [ ! -s "$STAGE_DIR/checksums.txt" ]; then
         rm -rf "$STAGE_DIR"
-        print_warning "Failed to download release assets after 3 attempts."
+        print_warning "Failed to download checksums.txt."
         if [ "${NO_RELEASE_FALLBACK:-0}" = "1" ]; then
             print_error "NO_RELEASE_FALLBACK=1 set; not falling back."
             exit 1
@@ -552,8 +559,88 @@ _upgrade_fast_download() {
         exit $?
     fi
 
+    local asset=""
+    local cand
+    for cand in "sub2api_${version_num}_linux_amd64.tar.gz" "sub2api-linux-amd64.tar.gz"; do
+        if grep -qF "$cand" "$STAGE_DIR/checksums.txt"; then
+            asset="$cand"
+            print_info "Checksums lists asset: $cand"
+            break
+        fi
+    done
+
+    if [ -z "$asset" ]; then
+        print_warning "No known tarball name found in checksums.txt; trying downloads in preference order."
+    fi
+
+    _upgrade_fast_curl_tarball() {
+        local name="$1"
+        local tries=0
+        while [ $tries -lt 3 ]; do
+            rm -f "$STAGE_DIR/$name"
+            if curl -fsSL --max-time 300 -o "$STAGE_DIR/$name" "${base_url}/${name}" \
+               && [ -s "$STAGE_DIR/$name" ]; then
+                return 0
+            fi
+            tries=$((tries + 1))
+            if [ $tries -lt 3 ]; then
+                print_warning "Download $name failed (attempt $tries/3), retrying in 5s..."
+                sleep 5
+            fi
+        done
+        return 1
+    }
+
+    if [ -n "$asset" ]; then
+        print_info "Downloading $asset ..."
+        if ! _upgrade_fast_curl_tarball "$asset"; then
+            asset=""
+        fi
+    fi
+
+    if [ -z "$asset" ]; then
+        for cand in "sub2api_${version_num}_linux_amd64.tar.gz" "sub2api-linux-amd64.tar.gz"; do
+            print_info "Trying release asset: $cand ..."
+            if _upgrade_fast_curl_tarball "$cand"; then
+                asset="$cand"
+                break
+            fi
+            print_warning "Could not download $cand (missing on release or network error)."
+        done
+    fi
+
+    if [ -z "$asset" ] || [ ! -s "$STAGE_DIR/$asset" ] || [ ! -s "$STAGE_DIR/checksums.txt" ]; then
+        rm -rf "$STAGE_DIR"
+        print_warning "Failed to download release assets after trying all known filenames."
+        if [ "${NO_RELEASE_FALLBACK:-0}" = "1" ]; then
+            print_error "NO_RELEASE_FALLBACK=1 set; not falling back."
+            exit 1
+        fi
+        print_info "Falling back to source build..."
+        do_upgrade
+        exit $?
+    fi
+
+    print_info "Using asset: $asset"
     print_info "Verifying sha256..."
-    (cd "$STAGE_DIR" && grep "  ${asset}$" checksums.txt | sha256sum -c -) || {
+    # GoReleaser uses GNU-style lines: "hash  name" or "hash *name"; piping to sha256sum -c
+    # fails if grep does not match the asterisk form. Compare digests explicitly.
+    (
+        cd "$STAGE_DIR" || exit 1
+        _ck_line="$(grep -F "$asset" checksums.txt | head -1 | tr -d '\r')"
+        if [ -z "$_ck_line" ]; then
+            print_error "No checksum line containing '$asset' in checksums.txt."
+            exit 1
+        fi
+        _expected="$(printf '%s\n' "$_ck_line" | awk '{print $1}')"
+        _actual="$(sha256sum "$asset" | awk '{print $1}')"
+        if [ "$_expected" != "$_actual" ]; then
+            print_error "Checksum mismatch for $asset."
+            print_error "Expected (from release): $_expected"
+            print_error "Actual (downloaded):    $_actual"
+            exit 1
+        fi
+    ) || {
         rm -rf "$STAGE_DIR"
         print_error "Checksum verification failed. Possible tampering or corruption."
         print_error "Not falling back — please investigate."
@@ -563,9 +650,13 @@ _upgrade_fast_download() {
 
     print_info "Extracting binary..."
     tar -xzf "$STAGE_DIR/$asset" -C "$STAGE_DIR"
+    # GoReleaser binary name is sub2api; Dockerfile.runtime expects build context file "server"
+    if [ -x "$STAGE_DIR/sub2api" ]; then
+        mv "$STAGE_DIR/sub2api" "$STAGE_DIR/server"
+    fi
     if [ ! -x "$STAGE_DIR/server" ]; then
         rm -rf "$STAGE_DIR"
-        print_error "Extracted tarball did not contain executable 'server'."
+        print_error "Extracted tarball did not contain executable 'sub2api' (or 'server')."
         exit 1
     fi
 
@@ -791,6 +882,14 @@ main() {
             cd "$INSTALL_DIR"
             print_info "Syncing code (for Dockerfile.runtime and script updates)..."
             sync_repo_to_deploy_branch
+            # curl|bash keeps functions in this process; git pull only updates files on disk.
+            # Re-exec the checkout copy so upgrade uses the same script as HEAD (avoids stale fast-download URLs).
+            local _pulled _running
+            _pulled="$(readlink -f "$INSTALL_DIR/deploy/install-custom.sh" 2>/dev/null || echo "$INSTALL_DIR/deploy/install-custom.sh")"
+            _running="$(readlink -f "${BASH_SOURCE[0]:-}" 2>/dev/null || true)"
+            if [ -z "$_running" ] || [ "$_running" != "$_pulled" ]; then
+                exec bash "$INSTALL_DIR/deploy/install-custom.sh" "$@"
+            fi
             do_upgrade_fast
             exit 0
             ;;

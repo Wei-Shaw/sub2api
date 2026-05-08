@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="/logo.png" />
+
+    <title>Claude API Python 调用示例（2026，含流式 & 工具调用） | TokenProvider</title>
+    <meta name="description" content="Claude API Python 完整示例：官方 SDK 与 OpenAI SDK 两种调用方式，包含流式输出、工具调用、系统提示、多轮对话、错误处理。可复制即跑。" />
+    <keywords name="keywords" content="claude api python, claude api 示例, anthropic python sdk, claude 调用示例, claude python, claude api 教程" />
+    <meta name="robots" content="index,follow" />
+    <meta name="theme-color" content="#14b8a6" />
+
+    <link rel="canonical" href="https://tokenprovider.store/examples/claude-api-python.html" />
+    <link rel="alternate" hreflang="zh-CN" href="https://tokenprovider.store/examples/claude-api-python.html" />
+    <link rel="alternate" hreflang="en" href="https://tokenprovider.store/en/examples/claude-api-python.html" />
+    <link rel="alternate" hreflang="x-default" href="https://tokenprovider.store/en/examples/claude-api-python.html" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content="https://tokenprovider.store/examples/claude-api-python.html" />
+    <meta property="og:title" content="Claude API Python 调用示例（2026）" />
+    <meta property="og:description" content="可复制即跑的 Python 示例：流式输出、工具调用、多轮对话、错误处理。" />
+    <meta property="og:image" content="https://tokenprovider.store/logo.png" />
+    <meta property="og:site_name" content="TokenProvider" />
+    <meta property="og:locale" content="zh_CN" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Claude API Python 调用示例（2026）" />
+    <meta name="twitter:description" content="可复制即跑的 Python 示例：流式输出、工具调用、多轮对话、错误处理。" />
+    <meta name="twitter:image" content="https://tokenprovider.store/logo.png" />
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "TechArticle",
+      "headline": "Claude API Python 调用示例",
+      "description": "Claude API 的 Python 调用方式，官方 SDK 与 OpenAI SDK 双示例。",
+      "author": {
+        "@type": "Person",
+        "name": "TokenProvider 工程团队",
+        "worksFor": {
+          "@id": "https://tokenprovider.store/#organization"
+        },
+        "knowsAbout": [
+          "Claude API",
+          "ChatGPT API",
+          "AI API gateways",
+          "API integration"
+        ]
+      },
+      "publisher": {
+        "@type": "Organization",
+        "name": "TokenProvider",
+        "logo": {
+          "@type": "ImageObject",
+          "url": "https://tokenprovider.store/logo.png"
+        }
+      },
+      "datePublished": "2026-04-18",
+      "dateModified": "2026-05-07",
+      "inLanguage": "zh-CN",
+      "proficiencyLevel": "Beginner",
+      "programmingLanguage": "Python"
+    }
+    </script>
+
+    <link rel="stylesheet" href="/assets/seo.css" />
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "TokenProvider",
+          "item": "https://tokenprovider.store/"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "Claude API Python 调用示例（2026，含流式 & 工具调用）",
+          "item": "https://tokenprovider.store/examples/claude-api-python.html"
+        }
+      ]
+    }
+    </script>
+
+  </head>
+  <body>
+    <div class="seo-bg-decor"></div>
+
+    <header class="seo-header">
+      <div class="seo-container-wide">
+        <nav class="seo-nav">
+          <a class="seo-logo" href="/">
+            <img src="/logo.png" alt="TokenProvider logo" width="36" height="36" />
+            <span class="seo-logo-text">TokenProvider</span>
+          </a>
+          <div class="seo-nav-links">
+            <a class="seo-nav-link" href="/en/examples/claude-api-python.html" hreflang="en" rel="alternate">English</a>
+            <a class="seo-nav-link" href="/login">登录</a>
+            <a class="seo-btn-primary" href="/register">注册 →</a>
+          </div>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <div class="seo-container">
+        <article>
+          <h1>Claude API Python 调用示例（2026）</h1>
+          <p class="seo-lede">
+            Claude API 在 Python 里怎么调？本文给你可复制即跑的示例：两种调用方式、流式输出、
+            工具调用（Function Calling）、多轮对话、常见错误处理。默认使用
+            <a href="/register">TokenProvider</a> 作为 base_url，直接比官方便宜一半以上。
+          </p>
+
+          <div class="seo-tldr">
+            <p><strong>最简版 3 行代码：</strong>安装 openai SDK，把 base_url 指到 tokenprovider.store，
+            model 写 <code>claude-sonnet-4</code>。下方每个段落都是可运行的脚本。</p>
+          </div>
+
+          <h2>准备工作</h2>
+          <ul>
+            <li>Python ≥ 3.8</li>
+            <li>一个 <a href="/register">TokenProvider API 密钥</a>（免费注册，$1 起充）</li>
+            <li>选一个 SDK：<code>openai</code>（推荐，通用）或 <code>anthropic</code>（官方）</li>
+          </ul>
+          <pre><code>pip install openai       # 方式 A：OpenAI SDK（同时支持 Claude / GPT / Gemini）
+pip install anthropic    # 方式 B：Anthropic 官方 SDK（只用 Claude 时推荐）</code></pre>
+
+          <h2>方式 A：OpenAI SDK（推荐）</h2>
+          <p>一个 SDK 调所有模型，切换只改 <code>model</code> 参数：</p>
+<pre><code>from openai import OpenAI
+
+client = OpenAI(
+    api_key="你的 TokenProvider密钥",
+    base_url="https://tokenprovider.store/v1",
+)
+
+resp = client.chat.completions.create(
+    model="claude-sonnet-4",   # 或 claude-opus, claude-haiku, gpt-4o, gemini-2-flash
+    messages=[
+        {"role": "system", "content": "你是资深 Python 工程师。"},
+        {"role": "user", "content": "写一个高效的快速排序，含类型标注。"},
+    ],
+    max_tokens=800,
+)
+
+print(resp.choices[0].message.content)
+print(f"花了 {resp.usage.total_tokens} token")</code></pre>
+          <p><strong>关键点：</strong></p>
+          <ul>
+            <li><code>base_url</code> 末尾带 <code>/v1</code>，这是 OpenAI 协议的固定前缀</li>
+            <li><code>model</code> 直接写 Anthropic 的模型名（不要加 <code>anthropic/</code> 前缀）</li>
+            <li><code>resp.usage</code> 会返回实际计费的 token 数</li>
+          </ul>
+
+          <h2>方式 B：Anthropic 官方 SDK</h2>
+          <p>只调 Claude、用官方的 Messages 协议：</p>
+<pre><code>import anthropic
+
+client = anthropic.Anthropic(
+    api_key="你的 TokenProvider密钥",
+    base_url="https://tokenprovider.store",   # 注意：不带 /v1
+)
+
+msg = client.messages.create(
+    model="claude-sonnet-4",
+    max_tokens=800,
+    system="你是资深 Python 工程师。",
+    messages=[
+        {"role": "user", "content": "写一个高效的快速排序，含类型标注。"},
+    ],
+)
+
+print(msg.content[0].text)
+print(f"输入 {msg.usage.input_tokens} 输出 {msg.usage.output_tokens}")</code></pre>
+          <div class="seo-warn">
+            <p><strong>注意 base_url 的差异：</strong> OpenAI SDK 用 <code>/v1</code> 后缀，
+            Anthropic SDK 不带后缀。搞反了会收到 404。</p>
+          </div>
+
+          <h2>流式输出（边生成边显示）</h2>
+          <p>适合做聊天界面、CLI 工具：</p>
+<pre><code>from openai import OpenAI
+
+client = OpenAI(
+    api_key="你的密钥",
+    base_url="https://tokenprovider.store/v1",
+)
+
+stream = client.chat.completions.create(
+    model="claude-sonnet-4",
+    messages=[{"role": "user", "content": "用 3 段话介绍 Python asyncio。"}],
+    stream=True,
+)
+
+for chunk in stream:
+    if chunk.choices[0].delta.content:
+        print(chunk.choices[0].delta.content, end="", flush=True)
+print()</code></pre>
+          <p>流式模式下 <code>resp.usage</code> 一般在最后一个 chunk 里给出。</p>
+
+          <h2>工具调用（Function Calling）</h2>
+          <p>让 Claude 返回结构化函数调用：</p>
+<pre><code>import json
+from openai import OpenAI
+
+client = OpenAI(api_key="你的密钥", base_url="https://tokenprovider.store/v1")
+
+tools = [{
+    "type": "function",
+    "function": {
+        "name": "get_weather",
+        "description": "查询城市当前天气",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "city": {"type": "string", "description": "城市拼音或中文名"}
+            },
+            "required": ["city"],
+        },
+    },
+}]
+
+resp = client.chat.completions.create(
+    model="claude-sonnet-4",
+    messages=[{"role": "user", "content": "北京今天天气怎么样？"}],
+    tools=tools,
+)
+
+tool_call = resp.choices[0].message.tool_calls[0]
+args = json.loads(tool_call.function.arguments)
+print(f"Claude 请求调用 {tool_call.function.name}({args})")</code></pre>
+          <p>后续把真实天气结果作为 <code>tool</code> 角色消息喂回去，Claude 会整合成最终答复。</p>
+
+          <h2>多轮对话（维持上下文）</h2>
+<pre><code>history = [
+    {"role": "system", "content": "你是一个 Python 助教，回答要精炼。"},
+]
+
+def ask(question: str) -> str:
+    history.append({"role": "user", "content": question})
+    resp = client.chat.completions.create(
+        model="claude-sonnet-4",
+        messages=history,
+    )
+    answer = resp.choices[0].message.content
+    history.append({"role": "assistant", "content": answer})
+    return answer
+
+print(ask("asyncio 里 await 和 yield from 有什么区别？"))
+print(ask("那 asyncio.gather 和 wait 呢？"))   # 第二轮自动带上下文</code></pre>
+
+          <h2>错误处理</h2>
+<pre><code>from openai import OpenAI, RateLimitError, AuthenticationError, APIError
+
+client = OpenAI(api_key="你的密钥", base_url="https://tokenprovider.store/v1")
+
+try:
+    resp = client.chat.completions.create(
+        model="claude-sonnet-4",
+        messages=[{"role": "user", "content": "hello"}],
+        timeout=30,
+    )
+except AuthenticationError:
+    print("密钥错误 — 检查 API key 是否过期或写错")
+except RateLimitError:
+    print("频率限制 — 稍后重试或联系 TokenProvider 提额")
+except APIError as e:
+    print(f"API 错误: {e.status_code} {e.message}")</code></pre>
+
+          <h2>省钱技巧</h2>
+          <ol>
+            <li><strong>长系统提示用 Haiku</strong>：分类、摘要类任务用 Haiku 3.5 足够，单价只有 Sonnet 的 1/10</li>
+            <li><strong>开启提示缓存</strong>：同一段长系统提示重复请求时，缓存命中后输入成本降到约 10%</li>
+            <li><strong>控制 max_tokens</strong>：Claude 输出按 token 计费，设合理上限避免过度生成</li>
+            <li><strong>粘性会话</strong>：同密钥连续请求自动落到同一上游账号，缓存复用率更高</li>
+          </ol>
+
+          <section class="seo-cta-block">
+            <h2 class="seo-mt-0">拿密钥，把上面的代码跑起来</h2>
+            <p>注册送测试额度，无月费，按量扣费，支持 Sonnet 4 / Opus / Haiku。</p>
+            <a class="seo-btn-cta" href="/register">免费注册 →</a>
+            <a class="seo-btn-ghost" href="/login">已有账号登录</a>
+          </section>
+
+          <h2>常见问题</h2>
+          <div class="seo-faq">
+            <div class="seo-faq-item">
+              <h3>用哪个 SDK 更好？</h3>
+              <p>如果项目里同时会调 GPT/Gemini，用 <code>openai</code> SDK 最省事。纯 Claude 项目且要用 MessagePart（图像、文档）等原生特性，用 <code>anthropic</code> SDK。</p>
+            </div>
+            <div class="seo-faq-item">
+              <h3>支持 Claude Vision 图像输入吗？</h3>
+              <p>支持。OpenAI SDK 用 <code>{"type": "image_url"}</code>，Anthropic SDK 用 <code>{"type": "image", "source": {...}}</code>。</p>
+            </div>
+            <div class="seo-faq-item">
+              <h3>并发怎么控制？</h3>
+              <p>用 <code>httpx.AsyncClient</code> 或 <code>asyncio.Semaphore</code> 限制并发数。TokenProvider账号限流宽松，但突发太大仍会 429。</p>
+            </div>
+            <div class="seo-faq-item">
+              <h3>能调 Claude Code 吗？</h3>
+              <p>Claude Code 是 CLI，不是直接的 API。接入方式看 <a href="/guides/claude-code-setup.html">Claude Code 配置教程</a>。</p>
+            </div>
+          </div>
+
+          <section class="seo-related">
+            <h2>更多代码示例</h2>
+            <ul class="seo-related-list">
+              <li><a href="/compare/claude-vs-chatgpt-api.html"><strong>Claude vs ChatGPT API 对比</strong><span>价格与能力</span></a></li>
+              <li><a href="/glossary/what-is-claude-relay.html"><strong>什么是 Claude 中转？</strong><span>原理与省钱机制</span></a></li>
+              <li><a href="/guides/claude-code-setup.html"><strong>Claude Code 中转配置</strong><span>5 分钟接入</span></a></li>
+              <li><a href="/en/examples/claude-api-python.html" hreflang="en" rel="alternate"><strong>English version</strong><span>Claude API Python example</span></a></li>
+            </ul>
+          </section>
+        </article>
+      </div>
+    </main>
+
+    <footer class="seo-footer">
+      <div class="seo-container">
+        <p>
+          <a href="/">首页</a> ·
+          <a href="/en/examples/claude-api-python.html" hreflang="en" rel="alternate">English</a> ·
+          <a href="/login">登录</a> ·
+          <a href="/register">注册</a>
+        </p>
+        <p>© TokenProvider · Claude / Claude Code / ChatGPT 中转站</p>
+      </div>
+    </footer>
+  </body>
+</html>

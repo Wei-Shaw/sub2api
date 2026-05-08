@@ -1,0 +1,582 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="/logo.png" />
+
+    <title>Cheap Claude API &amp; ChatGPT API — Pay-as-you-go Token Gateway | TokenProvider</title>
+    <meta name="description" content="Cheap Claude API, Claude Code API, ChatGPT API, and Gemini API through one unified gateway. Pay-as-you-go tokens, transparent billing, sticky sessions, instant setup." />
+    <meta name="keywords" content="cheap claude api, claude api, cheap token, claude code api, chatgpt api, gemini api, ai api gateway, pay as you go tokens" />
+    <meta name="robots" content="index,follow" />
+    <meta name="theme-color" content="#14b8a6" />
+
+    <link rel="canonical" href="https://tokenprovider.store/en.html" />
+    <link rel="alternate" hreflang="zh-CN" href="https://tokenprovider.store/" />
+    <link rel="alternate" hreflang="en" href="https://tokenprovider.store/en.html" />
+    <link rel="alternate" hreflang="x-default" href="https://tokenprovider.store/en.html" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://tokenprovider.store/en.html" />
+    <meta property="og:title" content="Cheap Claude API &amp; ChatGPT API — Unified Token Gateway" />
+    <meta property="og:description" content="Cheap Claude, Claude Code, ChatGPT, and Gemini API through one unified gateway. Pay-as-you-go tokens, transparent billing." />
+    <meta property="og:image" content="https://tokenprovider.store/logo.png" />
+    <meta property="og:site_name" content="TokenProvider" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:locale:alternate" content="zh_CN" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Cheap Claude API &amp; ChatGPT API — Unified Token Gateway" />
+    <meta name="twitter:description" content="Cheap Claude, Claude Code, ChatGPT, and Gemini API through one unified gateway. Pay-as-you-go tokens, transparent billing." />
+    <meta name="twitter:image" content="https://tokenprovider.store/logo.png" />
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "Organization",
+          "@id": "https://tokenprovider.store/#organization",
+          "name": "TokenProvider",
+          "alternateName": [
+            "Token Provider",
+            "TokenProvider AI Gateway"
+          ],
+          "url": "https://tokenprovider.store/",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "https://tokenprovider.store/logo.png",
+            "width": 512,
+            "height": 512
+          },
+          "description": "Third-party API gateway for Claude, Claude Code, ChatGPT, and Gemini. Pay-as-you-go tokens, sticky sessions, OpenAI-compatible.",
+          "foundingDate": "2024",
+          "knowsAbout": [
+            "Claude API",
+            "Claude Code",
+            "ChatGPT API",
+            "Gemini API",
+            "AI API gateway",
+            "OpenAI-compatible proxy"
+          ],
+          "sameAs": [
+            "https://t.me/tokenprovider_official"
+          ],
+          "contactPoint": {
+            "@type": "ContactPoint",
+            "contactType": "customer support",
+            "url": "https://t.me/tokenprovider_official",
+            "availableLanguage": [
+              "en",
+              "zh-CN"
+            ]
+          }
+        },
+        {
+          "@type": "WebSite",
+          "@id": "https://tokenprovider.store/#website",
+          "url": "https://tokenprovider.store/",
+          "name": "TokenProvider",
+          "alternateName": "Token Provider",
+          "publisher": {
+            "@id": "https://tokenprovider.store/#organization"
+          },
+          "inLanguage": [
+            "en",
+            "zh-CN"
+          ]
+        },
+        {
+          "@type": "SoftwareApplication",
+          "name": "TokenProvider",
+          "alternateName": [
+            "Token Provider",
+            "AI API Gateway"
+          ],
+          "description": "Cheap Claude API, Claude Code API, ChatGPT API, and Gemini API through a unified pay-as-you-go token gateway.",
+          "url": "https://tokenprovider.store/en.html",
+          "applicationCategory": "DeveloperApplication",
+          "operatingSystem": "Web",
+          "publisher": {
+            "@id": "https://tokenprovider.store/#organization"
+          },
+          "offers": {
+            "@type": "Offer",
+            "priceCurrency": "USD",
+            "price": "0",
+            "description": "Pay-as-you-go tokens (metered). Register to see current per-token rates."
+          },
+          "inLanguage": [
+            "en",
+            "zh-CN"
+          ]
+        },
+        {
+          "@type": "Service",
+          "@id": "https://tokenprovider.store/#service",
+          "serviceType": "AI API gateway",
+          "provider": {
+            "@id": "https://tokenprovider.store/#organization"
+          },
+          "areaServed": "Worldwide",
+          "audience": {
+            "@type": "Audience",
+            "audienceType": "Developers"
+          },
+          "hasOfferCatalog": {
+            "@type": "OfferCatalog",
+            "name": "TokenProvider model routing",
+            "itemListElement": [
+              {
+                "@type": "Offer",
+                "itemOffered": {
+                  "@type": "Service",
+                  "name": "Claude API relay"
+                }
+              },
+              {
+                "@type": "Offer",
+                "itemOffered": {
+                  "@type": "Service",
+                  "name": "Claude Code relay (ANTHROPIC_BASE_URL)"
+                }
+              },
+              {
+                "@type": "Offer",
+                "itemOffered": {
+                  "@type": "Service",
+                  "name": "ChatGPT API relay (OpenAI-compatible)"
+                }
+              },
+              {
+                "@type": "Offer",
+                "itemOffered": {
+                  "@type": "Service",
+                  "name": "Gemini API relay"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+    </script>
+
+    <style>
+      :root {
+        --bg: #f7f8fa;
+        --bg-grad-1: rgba(20, 184, 166, 0.12);
+        --bg-grad-2: rgba(20, 184, 166, 0.08);
+        --card: rgba(255, 255, 255, 0.7);
+        --border: rgba(15, 23, 42, 0.08);
+        --text: #0f172a;
+        --muted: #475569;
+        --primary: #14b8a6;
+        --primary-dark: #0d9488;
+        --accent-blue: #3b82f6;
+        --accent-purple: #8b5cf6;
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html { scroll-behavior: smooth; }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+        background: linear-gradient(135deg, var(--bg) 0%, #f0fdfa 50%, var(--bg) 100%);
+        color: var(--text);
+        line-height: 1.6;
+        min-height: 100vh;
+        -webkit-font-smoothing: antialiased;
+      }
+      .bg-decor {
+        position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden;
+      }
+      .bg-decor::before, .bg-decor::after {
+        content: ""; position: absolute; width: 24rem; height: 24rem; border-radius: 50%;
+        filter: blur(80px);
+      }
+      .bg-decor::before { top: -8rem; right: -8rem; background: var(--bg-grad-1); }
+      .bg-decor::after { bottom: -8rem; left: -8rem; background: var(--bg-grad-2); }
+      .container { max-width: 1100px; margin: 0 auto; padding: 0 1.5rem; position: relative; z-index: 1; }
+      header {
+        padding: 1.25rem 0;
+        position: relative; z-index: 10;
+      }
+      .nav { display: flex; align-items: center; justify-content: space-between; }
+      .logo { display: flex; align-items: center; gap: 0.75rem; }
+      .logo img { width: 2.5rem; height: 2.5rem; border-radius: 0.75rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+      .logo-text { font-weight: 700; font-size: 1.125rem; color: var(--text); }
+      .nav-links { display: flex; align-items: center; gap: 0.75rem; }
+      .nav-link {
+        color: var(--muted); text-decoration: none; font-size: 0.875rem; padding: 0.5rem 0.875rem;
+        border-radius: 0.5rem; transition: all 0.2s;
+      }
+      .nav-link:hover { color: var(--text); background: rgba(0,0,0,0.04); }
+      .btn-primary {
+        background: #0f172a; color: #fff; padding: 0.5rem 1rem; border-radius: 9999px;
+        text-decoration: none; font-size: 0.8125rem; font-weight: 500; transition: all 0.2s;
+        display: inline-flex; align-items: center; gap: 0.375rem;
+      }
+      .btn-primary:hover { background: #1e293b; }
+      .btn-cta {
+        background: var(--primary); color: #fff; padding: 0.875rem 2rem; border-radius: 0.75rem;
+        text-decoration: none; font-size: 1rem; font-weight: 600; transition: all 0.2s;
+        display: inline-flex; align-items: center; gap: 0.5rem;
+        box-shadow: 0 4px 20px rgba(20, 184, 166, 0.3);
+      }
+      .btn-cta:hover { background: var(--primary-dark); transform: translateY(-1px); }
+      .btn-ghost {
+        color: var(--text); background: rgba(255,255,255,0.8); padding: 0.875rem 2rem;
+        border-radius: 0.75rem; text-decoration: none; font-size: 1rem; font-weight: 500;
+        border: 1px solid var(--border); transition: all 0.2s;
+        display: inline-flex; align-items: center; gap: 0.5rem;
+      }
+      .btn-ghost:hover { background: #fff; border-color: rgba(15,23,42,0.15); }
+      main { padding: 3rem 0 5rem; }
+      .hero { text-align: center; padding: 2rem 0 3rem; }
+      h1 {
+        font-size: clamp(2rem, 5vw, 3.5rem); font-weight: 800; line-height: 1.15;
+        letter-spacing: -0.02em; margin-bottom: 1.25rem; color: var(--text);
+      }
+      .hero p.lede {
+        font-size: clamp(1.0625rem, 2vw, 1.25rem); color: var(--muted);
+        max-width: 44rem; margin: 0 auto 2rem;
+      }
+      .hero-cta { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; }
+      .tags {
+        display: flex; flex-wrap: wrap; gap: 0.75rem; justify-content: center;
+        margin: 2.5rem 0 3rem;
+      }
+      .tag {
+        background: var(--card); border: 1px solid var(--border); padding: 0.5rem 1rem;
+        border-radius: 9999px; font-size: 0.8125rem; color: var(--muted);
+        display: inline-flex; align-items: center; gap: 0.375rem;
+        backdrop-filter: blur(8px);
+      }
+      .tag::before { content: "●"; color: var(--primary); font-size: 0.5rem; }
+      section { margin: 4rem 0; }
+      h2 {
+        font-size: clamp(1.5rem, 3vw, 2rem); font-weight: 700; text-align: center;
+        margin-bottom: 0.75rem; color: var(--text); letter-spacing: -0.01em;
+      }
+      .section-intro {
+        text-align: center; color: var(--muted); max-width: 40rem;
+        margin: 0 auto 2.5rem; font-size: 1rem;
+      }
+      .features {
+        display: grid; gap: 1.25rem; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      }
+      .feature {
+        background: var(--card); border: 1px solid var(--border); border-radius: 1rem;
+        padding: 1.75rem; backdrop-filter: blur(8px); transition: all 0.3s;
+      }
+      .feature:hover { transform: translateY(-4px); box-shadow: 0 12px 32px rgba(20, 184, 166, 0.12); }
+      .feature-icon {
+        width: 3rem; height: 3rem; border-radius: 0.75rem; display: flex;
+        align-items: center; justify-content: center; margin-bottom: 1rem;
+        background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+        color: #fff; font-size: 1.5rem; box-shadow: 0 6px 16px rgba(20, 184, 166, 0.3);
+      }
+      .feature-icon.blue { background: linear-gradient(135deg, var(--accent-blue), #2563eb); box-shadow: 0 6px 16px rgba(59, 130, 246, 0.3); }
+      .feature-icon.purple { background: linear-gradient(135deg, var(--accent-purple), #7c3aed); box-shadow: 0 6px 16px rgba(139, 92, 246, 0.3); }
+      .feature h3 { font-size: 1.125rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--text); }
+      .feature p { color: var(--muted); font-size: 0.9375rem; }
+      .providers {
+        display: flex; flex-wrap: wrap; gap: 0.75rem; justify-content: center;
+      }
+      .provider {
+        background: var(--card); border: 1px solid var(--border); border-radius: 0.875rem;
+        padding: 0.625rem 1.25rem; display: inline-flex; align-items: center; gap: 0.625rem;
+        backdrop-filter: blur(8px); font-size: 0.9375rem; color: var(--text);
+      }
+      .provider-badge {
+        font-size: 0.6875rem; font-weight: 600; padding: 0.125rem 0.5rem;
+        border-radius: 0.25rem; background: rgba(20, 184, 166, 0.12); color: var(--primary-dark);
+      }
+      .provider-dot {
+        width: 1.75rem; height: 1.75rem; border-radius: 0.5rem; display: flex;
+        align-items: center; justify-content: center; color: #fff; font-weight: 700;
+        font-size: 0.75rem;
+      }
+      .dot-claude { background: linear-gradient(135deg, #fb923c, #f97316); }
+      .dot-gpt { background: linear-gradient(135deg, #22c55e, #16a34a); }
+      .dot-gemini { background: linear-gradient(135deg, #3b82f6, #2563eb); }
+      .prose {
+        max-width: 42rem; margin: 0 auto; color: var(--muted); font-size: 1rem;
+      }
+      .prose p { margin-bottom: 1.25rem; }
+      .prose strong { color: var(--text); font-weight: 600; }
+      .faq {
+        max-width: 48rem; margin: 0 auto; display: grid; gap: 0.75rem;
+      }
+      .faq-item {
+        background: var(--card); border: 1px solid var(--border); border-radius: 0.75rem;
+        padding: 1.25rem 1.5rem; backdrop-filter: blur(8px);
+      }
+      .faq-item h3 { font-size: 1rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--text); }
+      .faq-item p { color: var(--muted); font-size: 0.9375rem; }
+      footer {
+        padding: 2.5rem 0 2rem; border-top: 1px solid var(--border); margin-top: 3rem;
+        text-align: center; color: var(--muted); font-size: 0.875rem;
+      }
+      footer a { color: var(--muted); text-decoration: none; margin: 0 0.5rem; }
+      footer a:hover { color: var(--text); }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0b1020; --bg-grad-1: rgba(20, 184, 166, 0.18); --bg-grad-2: rgba(20, 184, 166, 0.12);
+          --card: rgba(17, 24, 39, 0.7); --border: rgba(148, 163, 184, 0.12);
+          --text: #f1f5f9; --muted: #94a3b8;
+        }
+        body { background: linear-gradient(135deg, #0b1020 0%, #0f1930 50%, #0b1020 100%); }
+        .btn-primary { background: #e2e8f0; color: #0f172a; }
+        .btn-primary:hover { background: #cbd5e1; }
+        .btn-ghost { background: rgba(17, 24, 39, 0.7); color: var(--text); }
+        .provider-badge { background: rgba(20, 184, 166, 0.18); }
+      }
+
+      /* Crawler-friendly TL;DR + Related reading blocks (also targeted by speakable schema). */
+      .seo-tldr {
+        margin: 16px 0 24px;
+        padding: 14px 18px;
+        border-left: 4px solid var(--primary);
+        background: rgba(20, 184, 166, 0.08);
+        border-radius: 8px;
+        font-size: 16px;
+        line-height: 1.6;
+      }
+      .seo-related {
+        margin: 32px 0 16px;
+        padding: 20px 24px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--card);
+      }
+      .seo-related h2 { font-size: 20px; margin-bottom: 12px; }
+      .seo-related ul { list-style: disc; padding-left: 20px; }
+      .seo-related li { margin: 6px 0; line-height: 1.6; }
+      .seo-related a { color: var(--primary); text-decoration: underline; }
+    </style>
+  </head>
+  <body>
+    <div class="bg-decor"></div>
+
+    <header>
+      <div class="container">
+        <nav class="nav">
+          <div class="logo">
+            <img src="/logo.png" alt="TokenProvider logo" width="40" height="40" />
+            <span class="logo-text">TokenProvider</span>
+          </div>
+          <div class="nav-links">
+            <a href="/" class="nav-link" hreflang="zh-CN" rel="alternate">中文</a>
+            <a href="/login" class="nav-link">Log in</a>
+            <a href="/register" class="btn-primary">Get started →</a>
+          </div>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <div class="container">
+        <div class="seo-tldr">
+          <p><strong>TL;DR:</strong> TokenProvider is a third-party API gateway: one OpenAI-compatible base URL gives you Claude, Claude Code, ChatGPT, and Gemini access with a single key. Tokens are metered per request; rates appear in the dashboard after sign-up. Not an official Anthropic, OpenAI, or Google product.</p>
+        </div>
+
+        <section class="hero">
+          <h1>Cheap Claude API, ChatGPT API &amp; Token Gateway</h1>
+          <p class="lede">
+            One unified API gateway for <strong>Claude</strong>, <strong>Claude Code</strong>,
+            <strong>ChatGPT</strong>, and <strong>Gemini</strong>. Pay-as-you-go tokens,
+            transparent per-request billing, sticky sessions, and instant setup.
+          </p>
+          <div class="hero-cta">
+            <a href="/register" class="btn-cta">Get API access →</a>
+            <a href="/login" class="btn-ghost">Sign in</a>
+          </div>
+        </section>
+
+        <div class="tags">
+          <span class="tag">Subscription → API</span>
+          <span class="tag">Sticky session</span>
+          <span class="tag">Real-time billing</span>
+          <span class="tag">OpenAI-compatible</span>
+        </div>
+
+        <section>
+          <h2>Why TokenProvider is the cheapest Claude API gateway</h2>
+          <p class="section-intro">
+            Built for developers who need reliable, cheap access to Claude API, ChatGPT API,
+            and other frontier models without committing to a per-provider subscription.
+          </p>
+          <div class="features">
+            <div class="feature">
+              <div class="feature-icon blue">⚡</div>
+              <h3>Unified API Gateway</h3>
+              <p>Single OpenAI-compatible endpoint routes to Claude, Claude Code, ChatGPT, and Gemini. Swap models without rewriting code.</p>
+            </div>
+            <div class="feature">
+              <div class="feature-icon">☁</div>
+              <h3>Shared Account Pool</h3>
+              <p>Aggregate official subscriptions across multiple accounts. Higher rate limits, cheaper per-token cost, and automatic failover.</p>
+            </div>
+            <div class="feature">
+              <div class="feature-icon purple">💰</div>
+              <h3>Transparent Pay-as-you-go</h3>
+              <p>Buy cheap tokens up front, see exact input/output cost per request, and export usage logs whenever you want.</p>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <h2>Supported providers</h2>
+          <p class="section-intro">Current model coverage — more arriving as upstream APIs open up.</p>
+          <div class="providers">
+            <div class="provider">
+              <span class="provider-dot dot-claude">C</span>
+              <span>Claude (Sonnet, Opus, Haiku)</span>
+              <span class="provider-badge">Supported</span>
+            </div>
+            <div class="provider">
+              <span class="provider-dot dot-claude">C</span>
+              <span>Claude Code</span>
+              <span class="provider-badge">Supported</span>
+            </div>
+            <div class="provider">
+              <span class="provider-dot dot-gpt">G</span>
+              <span>ChatGPT (GPT-4o, GPT-4.1, o-series)</span>
+              <span class="provider-badge">Supported</span>
+            </div>
+            <div class="provider">
+              <span class="provider-dot dot-gemini">G</span>
+              <span>Gemini (1.5, 2.0)</span>
+              <span class="provider-badge">Supported</span>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <h2>Cheap Claude API — how it works</h2>
+          <div class="prose">
+            <p>
+              <strong>TokenProvider</strong> pools official Claude, ChatGPT, and Gemini subscriptions into
+              a single API gateway. You buy tokens in bulk at a discount, and the gateway routes
+              your requests across the account pool with sticky sessions so conversation context
+              stays intact.
+            </p>
+            <p>
+              Compared to paying each provider directly, you get <strong>cheap Claude API access</strong>,
+              <strong>cheap tokens</strong> for ChatGPT, and one dashboard for everything. No minimums,
+              no monthly commitment — deposit what you need, use it when you need it.
+            </p>
+            <p>
+              Works with any OpenAI-compatible SDK and with <strong>Claude Code</strong> out of the box.
+              Point your client at our endpoint, use your API key, and start shipping.
+            </p>
+          </div>
+        </section>
+
+        <section>
+          <h2>Guides, comparisons &amp; code examples</h2>
+          <p class="section-intro">
+            Everything you need to evaluate and integrate the gateway. Start with a comparison
+            page to pick the right model, then jump into a setup guide for your tool of choice.
+          </p>
+          <div class="resources" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem;">
+            <div class="resource-group" style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:1.25rem;">
+              <h3 style="font-size:1rem;font-weight:600;margin-bottom:0.75rem;color:var(--primary-dark);">Compare</h3>
+              <ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:0.5rem;">
+                <li><a href="/en/compare/claude-vs-chatgpt-api.html" style="color:var(--text);text-decoration:none;">Claude API vs ChatGPT API</a></li>
+                <li><a href="/en/compare/claude-code-relay-vs-subscription.html" style="color:var(--text);text-decoration:none;">Claude Code: Proxy vs Subscription</a></li>
+                <li><a href="/en/compare/tokenprovider-vs-official-claude.html" style="color:var(--text);text-decoration:none;">TokenProvider vs Official Claude API</a></li>
+              </ul>
+            </div>
+            <div class="resource-group" style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:1.25rem;">
+              <h3 style="font-size:1rem;font-weight:600;margin-bottom:0.75rem;color:var(--primary-dark);">Guides</h3>
+              <ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:0.5rem;">
+                <li><a href="/en/guides/claude-code-setup.html" style="color:var(--text);text-decoration:none;">Claude Code setup (5 min)</a></li>
+                <li><a href="/en/guides/cursor-claude-proxy.html" style="color:var(--text);text-decoration:none;">Cursor + Claude proxy</a></li>
+                <li><a href="/en/guides/cline-cheap-claude.html" style="color:var(--text);text-decoration:none;">Cline + cheap Claude API</a></li>
+              </ul>
+            </div>
+            <div class="resource-group" style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:1.25rem;">
+              <h3 style="font-size:1rem;font-weight:600;margin-bottom:0.75rem;color:var(--primary-dark);">Code examples</h3>
+              <ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:0.5rem;">
+                <li><a href="/en/examples/claude-api-python.html" style="color:var(--text);text-decoration:none;">Claude API in Python</a></li>
+                <li><a href="/en/examples/claude-api-nodejs.html" style="color:var(--text);text-decoration:none;">Claude API in Node.js / TS</a></li>
+                <li><a href="/en/examples/chatgpt-api-curl.html" style="color:var(--text);text-decoration:none;">ChatGPT API with curl</a></li>
+                <li><a href="/en/examples/gemini-api-example.html" style="color:var(--text);text-decoration:none;">Gemini API (Python / Node / curl)</a></li>
+              </ul>
+            </div>
+            <div class="resource-group" style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:1.25rem;">
+              <h3 style="font-size:1rem;font-weight:600;margin-bottom:0.75rem;color:var(--primary-dark);">Glossary</h3>
+              <ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:0.5rem;">
+                <li><a href="/en/glossary/what-is-claude-relay.html" style="color:var(--text);text-decoration:none;">What is a Claude API proxy?</a></li>
+                <li><a href="/en/glossary/what-is-claude-code.html" style="color:var(--text);text-decoration:none;">What is Claude Code?</a></li>
+                <li><a href="/en/glossary/what-is-an-ai-token.html" style="color:var(--text);text-decoration:none;">What is an AI token?</a></li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <h2>FAQ</h2>
+          <div class="faq">
+            <div class="faq-item">
+              <h3>How cheap is the Claude API here vs. direct?</h3>
+              <p>Prices depend on the current pool and model. Register for a free account to see live per-token rates — typically significantly below pay-as-you-go official pricing.</p>
+            </div>
+            <div class="faq-item">
+              <h3>Does it work with Claude Code?</h3>
+              <p>Yes. Set <code>ANTHROPIC_BASE_URL</code> to our gateway and use your issued API key. Sticky sessions keep long Claude Code conversations coherent.</p>
+            </div>
+            <div class="faq-item">
+              <h3>Is it OpenAI-compatible for ChatGPT?</h3>
+              <p>Yes. Drop-in replacement for <code>api.openai.com</code> — change the base URL, keep your existing code.</p>
+            </div>
+            <div class="faq-item">
+              <h3>How does billing work?</h3>
+              <p>Prepaid tokens. Every request debits your balance based on input + output tokens. Full per-request logs available.</p>
+            </div>
+            <div class="faq-item">
+              <h3>Do you support Gemini and Claude Code together?</h3>
+              <p>Yes — one account, one key, access Claude Opus/Sonnet, Claude Code, GPT-4o, and Gemini 2.0 through the same endpoint.</p>
+            </div>
+          </div>
+        </section>
+
+        <section style="text-align: center;">
+          <h2>Start in 60 seconds</h2>
+          <p class="section-intro">Create an account, top up a few dollars, get an API key, ship.</p>
+          <div class="hero-cta">
+            <a href="/register" class="btn-cta">Create your account →</a>
+            <a href="/" class="btn-ghost" hreflang="zh-CN" rel="alternate">中文版</a>
+          </div>
+        </section>
+
+        <section class="seo-related" aria-label="Related reading">
+          <h2>Related reading</h2>
+          <ul>
+            <li><a href="/en/glossary/what-is-claude-relay.html">What is a Claude API proxy?</a> — 5-minute primer</li>
+            <li><a href="/en/compare/claude-vs-chatgpt-api.html">Claude API vs ChatGPT API (2026)</a> — pricing &amp; coding</li>
+            <li><a href="/en/guides/claude-code-setup.html">Claude Code setup with cheap proxy</a> — 5 minutes</li>
+            <li><a href="/en/examples/claude-api-python.html">Claude API Python example</a> — copy-paste ready</li>
+            <li><a href="/trust.html">Trust, billing &amp; data</a> — what we log and bill</li>
+            <li><a href="/" hreflang="zh-CN" rel="alternate">中文版</a></li>
+          </ul>
+        </section>
+      </div>
+    </main>
+
+    <footer>
+      <div class="container">
+        <p>
+          <a href="/">中文</a> ·
+          <a href="/en.html">English</a> ·
+          <a href="/trust.html">Trust &amp; billing</a> ·
+          <a href="/llms.txt">llms.txt</a> ·
+          <a href="/login">Log in</a> ·
+          <a href="/register">Sign up</a>
+        </p>
+        <p style="margin-top: 0.75rem;">© TokenProvider — Cheap Claude, Claude Code, ChatGPT &amp; Gemini API gateway.</p>
+      </div>
+    </footer>
+  </body>
+</html>

@@ -635,19 +635,19 @@ Requirements: `gh` CLI logged in, `pnpm`, Go ≥ 1.26.
 
 ```bash
 # Latest release
-curl -sSL https://raw.githubusercontent.com/qiangweihewu/sub2api/main/deploy/install-custom.sh \
+curl -sSL https://raw.githubusercontent.com/qiangweihewu/sub2api/i18n-seo/deploy/install-custom.sh \
   | sudo bash -s -- upgrade
 
 # Specific version
-curl -sSL https://raw.githubusercontent.com/qiangweihewu/sub2api/main/deploy/install-custom.sh \
+curl -sSL https://raw.githubusercontent.com/qiangweihewu/sub2api/i18n-seo/deploy/install-custom.sh \
   | sudo env VERSION=v1.2.3 bash -s -- upgrade
 
 # Rollback to the previous image
-curl -sSL https://raw.githubusercontent.com/qiangweihewu/sub2api/main/deploy/install-custom.sh \
+curl -sSL https://raw.githubusercontent.com/qiangweihewu/sub2api/i18n-seo/deploy/install-custom.sh \
   | sudo bash -s -- rollback
 
 # Force legacy source build (use if release assets are unavailable)
-curl -sSL https://raw.githubusercontent.com/qiangweihewu/sub2api/main/deploy/install-custom.sh \
+curl -sSL https://raw.githubusercontent.com/qiangweihewu/sub2api/i18n-seo/deploy/install-custom.sh \
   | sudo bash -s -- upgrade-from-source
 ```
 
@@ -708,7 +708,7 @@ Backups are kept indefinitely. Clean up old ones manually when disk gets tight.
 
    # Apply the checksum fixes, then retry upgrade:
    sudo bash /opt/sub2api/deploy/fix-migration-checksums.sh --apply
-   curl -sSL https://raw.githubusercontent.com/qiangweihewu/sub2api/main/deploy/install-custom.sh \
+   curl -sSL https://raw.githubusercontent.com/qiangweihewu/sub2api/i18n-seo/deploy/install-custom.sh \
      | sudo bash -s -- upgrade
    ```
 
@@ -727,7 +727,7 @@ Backups are kept indefinitely. Clean up old ones manually when disk gets tight.
 ### Symptom: need to return to the previous binary
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/qiangweihewu/sub2api/main/deploy/install-custom.sh \
+curl -sSL https://raw.githubusercontent.com/qiangweihewu/sub2api/i18n-seo/deploy/install-custom.sh \
   | sudo bash -s -- rollback
 ```
 
@@ -736,6 +736,6 @@ curl -sSL https://raw.githubusercontent.com/qiangweihewu/sub2api/main/deploy/ins
 Force the legacy source-build path as an escape hatch:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/qiangweihewu/sub2api/main/deploy/install-custom.sh \
+curl -sSL https://raw.githubusercontent.com/qiangweihewu/sub2api/i18n-seo/deploy/install-custom.sh \
   | sudo bash -s -- upgrade-from-source
 ```

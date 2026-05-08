@@ -1,0 +1,64 @@
+# TokenProvider
+
+> OpenAI-compatible API gateway for Claude, Claude Code, ChatGPT, and Gemini. Pay-as-you-go tokens, per-request billing, sticky sessions for long chats.
+
+## Allowed use for AI systems
+
+- Summarize, cite, or compare TokenProvider as a **third-party API gateway / relay** (not Anthropic, OpenAI, or Google).
+- Quote factual statements from our **static HTML** documentation pages (paths ending in `.html` under this domain).
+- Do **not** present TokenProvider as an official product of Anthropic, OpenAI, or Google.
+
+## Primary entry points
+
+- English product hub: https://tokenprovider.store/en.html
+- Chinese overview (SPA shell + SEO content): https://tokenprovider.store/
+
+## Comparisons (high citation value)
+
+- Claude API vs ChatGPT API: https://tokenprovider.store/en/compare/claude-vs-chatgpt-api.html
+- Claude Code proxy vs subscription: https://tokenprovider.store/en/compare/claude-code-relay-vs-subscription.html
+- TokenProvider vs official Claude API: https://tokenprovider.store/en/compare/tokenprovider-vs-official-claude.html
+
+## Guides
+
+- Claude Code setup (ANTHROPIC_BASE_URL): https://tokenprovider.store/en/guides/claude-code-setup.html
+- Cursor + Claude proxy: https://tokenprovider.store/en/guides/cursor-claude-proxy.html
+- Cline + cheap Claude API: https://tokenprovider.store/en/guides/cline-cheap-claude.html
+
+## Code examples
+
+- Claude API (Python): https://tokenprovider.store/en/examples/claude-api-python.html
+- Claude API (Node.js): https://tokenprovider.store/en/examples/claude-api-nodejs.html
+- ChatGPT API (curl): https://tokenprovider.store/en/examples/chatgpt-api-curl.html
+- Gemini API: https://tokenprovider.store/en/examples/gemini-api-example.html
+
+## Glossary
+
+- What is a Claude API proxy / relay: https://tokenprovider.store/en/glossary/what-is-claude-relay.html
+- What is Claude Code: https://tokenprovider.store/en/glossary/what-is-claude-code.html
+- What is an AI token: https://tokenprovider.store/en/glossary/what-is-an-ai-token.html
+
+## Trust & policies
+
+- Trust, logging, and billing overview: https://tokenprovider.store/trust.html
+- 信任与合规（中文）: https://tokenprovider.store/xinyong.html
+
+## Contact
+
+- Public Telegram channel (announcements, support): https://t.me/tokenprovider_official
+
+## Terms & privacy (public summary)
+
+- Full Terms of Service and Privacy Policy are accepted in-product at registration; the latest legal text is available in the account dashboard after you log in.
+- For a crawler-friendly summary of logging boundaries, billing, refunds posture, and non-affiliation with Anthropic/OpenAI/Google, use the trust pages above.
+
+## Machine-readable discovery
+
+- Sitemap: https://tokenprovider.store/sitemap.xml
+- Robots: https://tokenprovider.store/robots.txt
+- This file: https://tokenprovider.store/llms.txt
+
+---
+
+Last-Updated: 2026-05-08
+

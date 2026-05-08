@@ -1,0 +1,63 @@
+# TokenProvider — default rules
+User-agent: *
+Allow: /
+Allow: /en.html
+Allow: /login
+Allow: /register
+Allow: /home
+Disallow: /admin/
+Disallow: /dashboard
+Disallow: /keys
+Disallow: /usage
+Disallow: /orders
+Disallow: /profile
+Disallow: /subscriptions
+Disallow: /purchase
+Disallow: /payment/
+Disallow: /redeem
+Disallow: /auth/
+Disallow: /email-verify
+Disallow: /reset-password
+Disallow: /forgot-password
+Disallow: /key-usage
+Disallow: /setup
+Disallow: /api/
+Disallow: /v1/
+
+# Major AI / training crawlers — same boundaries (public marketing + static docs only)
+User-agent: GPTBot
+User-agent: ChatGPT-User
+User-agent: OAI-SearchBot
+User-agent: ClaudeBot
+User-agent: Claude-Web
+User-agent: anthropic-ai
+User-agent: Google-Extended
+User-agent: PerplexityBot
+User-agent: Amazonbot
+User-agent: CCBot
+User-agent: Applebot-Extended
+Allow: /
+Allow: /en.html
+Allow: /trust.html
+Allow: /xinyong.html
+Disallow: /admin/
+Disallow: /dashboard
+Disallow: /keys
+Disallow: /usage
+Disallow: /orders
+Disallow: /profile
+Disallow: /subscriptions
+Disallow: /purchase
+Disallow: /payment/
+Disallow: /redeem
+Disallow: /auth/
+Disallow: /email-verify
+Disallow: /reset-password
+Disallow: /forgot-password
+Disallow: /key-usage
+Disallow: /setup
+Disallow: /api/
+Disallow: /v1/
+
+# Optional: curated paths for LLM tooling (see https://tokenprovider.store/llms.txt)
+Sitemap: https://tokenprovider.store/sitemap.xml

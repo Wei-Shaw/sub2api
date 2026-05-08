@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="/logo.png" />
+
+    <title>信任说明：计费、日志与合规 | TokenProvider</title>
+    <meta name="description" content="TokenProvider 作为第三方 API 网关的计费方式、日志边界、与官方服务的关系说明，便于开发者与检索系统引用事实性描述。" />
+    <meta name="robots" content="index,follow" />
+    <meta name="theme-color" content="#14b8a6" />
+
+    <link rel="canonical" href="https://tokenprovider.store/xinyong.html" />
+    <link rel="alternate" hreflang="zh-CN" href="https://tokenprovider.store/xinyong.html" />
+    <link rel="alternate" hreflang="en" href="https://tokenprovider.store/trust.html" />
+    <link rel="alternate" hreflang="x-default" href="https://tokenprovider.store/trust.html" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content="https://tokenprovider.store/xinyong.html" />
+    <meta property="og:title" content="信任说明 | TokenProvider" />
+    <meta property="og:description" content="计费、日志边界、与官方 API 的关系。" />
+    <meta property="og:image" content="https://tokenprovider.store/logo.png" />
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      "name": "信任说明：计费、日志与合规",
+      "description": "TokenProvider 信任与计费概述。",
+      "url": "https://tokenprovider.store/xinyong.html",
+      "inLanguage": "zh-CN",
+      "publisher": {
+        "@type": "Organization",
+        "name": "TokenProvider",
+        "url": "https://tokenprovider.store/"
+      }
+    }
+    </script>
+
+    <link rel="stylesheet" href="/assets/seo.css" />
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "TokenProvider",
+          "item": "https://tokenprovider.store/"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "信任说明：计费、日志与合规",
+          "item": "https://tokenprovider.store/xinyong.html"
+        }
+      ]
+    }
+    </script>
+
+  </head>
+  <body>
+    <div class="seo-bg-decor"></div>
+    <header class="seo-header">
+      <div class="seo-container-wide">
+        <nav class="seo-nav">
+          <a class="seo-logo" href="/">
+            <img src="/logo.png" alt="TokenProvider logo" width="36" height="36" />
+            <span class="seo-logo-text">TokenProvider</span>
+          </a>
+          <div class="seo-nav-links">
+            <a class="seo-nav-link" href="/trust.html" hreflang="en" rel="alternate">English</a>
+            <a class="seo-nav-link" href="/">首页</a>
+            <a class="seo-btn-primary" href="/register">注册 →</a>
+          </div>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <div class="seo-container">
+        <article>
+          <h1>信任说明：计费、日志与合规</h1>
+          <p class="seo-lede">
+            TokenProvider 是 <strong>第三方 API 网关（中转）</strong>，并非 Anthropic、OpenAI 或 Google 官方产品。
+            本页用可引用的事实性语言说明计费单位与责任边界；与注册流程中的<strong>服务条款与隐私政策</strong>不一致时，以条款全文为准。
+          </p>
+
+          <div class="seo-tldr">
+            <p><strong>三句话：</strong>① 预购代币余额，按每次调用的输入/输出 token 扣费。② 请求经网关路由至上游官方 API 账号池。
+            ③ 具体日志字段、保存时长与法务文本以应用内公示为准。</p>
+          </div>
+
+          <h2>计费单位</h2>
+          <p>
+            按 <strong>token 计量</strong>（由上游模型返回的用量统计汇总）。单价与最小充值以<strong>登录后的控制台展示</strong>为准，
+            并可能随上游官方调价而调整。本站不宣称与任何官方厂商存在隶属关系。
+          </p>
+
+          <h2>日志与数据</h2>
+          <p>
+            网关为实现计费、排错与安全风控，会处理必要的请求元数据；<strong>是否存储完整 prompt、保留多久</strong>等细节，
+            以应用内《隐私政策》为准。本营销页不构成合同承诺。
+          </p>
+
+          <h2>上游可用性</h2>
+          <p>
+            若上游出现限流、故障或政策变更，通过网关的调用同样可能失败；我们<strong>不保证</strong>与直连官方 API 完全相同的 SLA。
+          </p>
+
+          <h2>滥用与封号</h2>
+          <p>
+            违反条款的共享密钥、批量滥用或违法用途可能导致停用；细则见产品内条款。
+          </p>
+
+          <h2>延伸阅读</h2>
+          <ul>
+            <li><a href="/en.html">English 产品总览</a></li>
+            <li><a href="/compare/claude-vs-chatgpt-api.html">Claude API 与 ChatGPT API 对比（中文）</a></li>
+            <li><a href="/glossary/what-is-claude-relay.html">什么是 Claude 中转站</a></li>
+            <li><a href="/llms.txt">llms.txt（机器可读索引）</a></li>
+          </ul>
+        </article>
+      </div>
+    </main>
+  </body>
+</html>
