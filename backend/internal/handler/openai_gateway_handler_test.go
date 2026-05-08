@@ -163,6 +163,58 @@ func TestResolveOpenAIMessagesMetadataSession_PreservesExplicitPromptCacheKey(t 
 	require.Equal(t, "explicit-cache", promptCacheKey)
 }
 
+func TestImageAsyncTaskError_ExtractsFailoverMessage(t *testing.T) {
+	err := imageAsyncTaskError(&service.UpstreamFailoverError{
+		StatusCode:   http.StatusForbidden,
+		ResponseBody: []byte(`{"error":{"message":"Your request was rejected as a result of our safety system."}}`),
+	})
+
+	require.EqualError(t, err, "Your request was rejected as a result of our safety system.")
+}
+
+func TestImageAsyncTaskError_ExtractsNestedPolicyViolationMessage(t *testing.T) {
+	err := imageAsyncTaskError(&service.UpstreamFailoverError{
+		StatusCode: http.StatusForbidden,
+		ResponseBody: []byte(`{
+			"error": {
+				"message": "{\"error\":{\"message\":\"This prompt may violate our content policy.\",\"type\":\"invalid_request_error\",\"code\":\"content_policy_violation\"}}",
+				"type": "upstream_error"
+			}
+		}`),
+	})
+
+	require.EqualError(t, err, "This prompt may violate our content policy.")
+}
+
+func TestImageAsyncTaskError_MapsPolicyViolationCodeWhenMessageIsGeneric(t *testing.T) {
+	err := imageAsyncTaskError(&service.UpstreamFailoverError{
+		StatusCode: http.StatusForbidden,
+		ResponseBody: []byte(`{
+			"error": {
+				"message": "Upstream request failed",
+				"type": "upstream_error",
+				"code": "content_policy_violation"
+			}
+		}`),
+	})
+
+	require.EqualError(t, err, "Prompt violates content policy")
+}
+
+func TestImageAsyncFinalError_PreservesPreviousUpstreamError(t *testing.T) {
+	previous := errors.New("Upstream request failed")
+	selected := imageAsyncFinalError(errors.New("no available accounts"), previous)
+
+	require.Same(t, previous, selected)
+}
+
+func TestImageAsyncFinalError_PreservesPreviousPolicyErrorWhenSchedulerAddsModelContext(t *testing.T) {
+	previous := errors.New("Prompt violates content policy")
+	selected := imageAsyncFinalError(errors.New("no available OpenAI accounts supporting model: gpt-image-2"), previous)
+
+	require.Same(t, previous, selected)
+}
+
 func TestOpenAIHandleStreamingAwareError_NonStreaming(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
