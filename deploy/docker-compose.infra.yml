@@ -1,0 +1,61 @@
+# =============================================================================
+# Sub2API - Local Development Infrastructure (PostgreSQL + Redis only)
+# =============================================================================
+# 本地二开专用，仅启动 PG 和 Redis，不包含 sub2api 应用服务。
+# 应用在宿主机（WSL2 或 Windows）直接运行，连接这里的 PG 和 Redis。
+#
+# Usage:
+#   cd deploy
+#   docker compose -f docker-compose.infra.yml up -d
+#
+# Connect from host:
+#   PostgreSQL: localhost:5432  user=sub2api  password=sub2api  db=sub2api
+#   Redis:      localhost:6379  (no password)
+# =============================================================================
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: sub2api-infra-postgres
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${PG_PORT:-5432}:5432"
+    volumes:
+      - ./infra_postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-sub2api}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-sub2api}
+      - POSTGRES_DB=${POSTGRES_DB:-sub2api}
+      - PGDATA=/var/lib/postgresql/data
+      - TZ=${TZ:-Asia/Shanghai}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sub2api} -d ${POSTGRES_DB:-sub2api}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  redis:
+    image: redis:8-alpine
+    container_name: sub2api-infra-redis
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - ./infra_redis_data:/data
+    command: >
+        sh -c '
+          redis-server
+          --save 60 1
+          --appendonly yes
+          --appendfsync everysec
+          ${REDIS_PASSWORD:+--requirepass "$REDIS_PASSWORD"}'
+    environment:
+      - TZ=${TZ:-Asia/Shanghai}
+      - REDISCLI_AUTH=${REDIS_PASSWORD:-}
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
