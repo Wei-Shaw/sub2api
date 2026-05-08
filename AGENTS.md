@@ -10,7 +10,7 @@
 
 ## 长期保留的本地语义
 
-以下几条不是“还没同步 upstream”，而是当前仓库已经确认要保留的本地主线差异。后续同步 upstream、解冲突、做重构时，默认要保住它们：
+以下几条不是“还没同步 upstream”，而是当前仓库已经确认要保留的本地主线差异。后续同步 upstream、解冲突、做重构时，默认要保住它们；如果 upstream 代码看起来“更干净”，也不能直接覆盖这些本地产品语义。
 
 1. OpenAI `active / exhausted / any / -Sys` guardrail 语义
 - `-Sys` 请求与 exhausted-class 路由、tool continuation、相关错误码/调度语义已经是本地基线。
@@ -26,7 +26,8 @@
 
 4. `sub2api-openai` OpenCode 推荐配置链
 - 这是本地产品能力，不是 upstream 原生内建配置。
-- 不要把它误改成 `provider.openai`，也不要假设 upstream 会直接消费我们的私有字段。
+- 当前推荐配置不只是 provider 名称，还包括 OpenCode 展示入口、`GPT-5.5 Fast (Sys)` / `GPT-5.5 Image (Sys)` 这类本地模型命名、`variant: image` 语义，以及配套的 OpenAI / Codex 路由提示。
+- 不要把它误改成 `provider.openai`，也不要假设 upstream 会直接消费我们的私有字段或 runtime materialization 结构。
 
 5. OpenAI model-subset projection 语义
 - OpenAI exhausted / reserve 现在不是纯账号级静态分桶；本地主线已经引入“`scheduler bucket + canonical routing model`”维度的 projection。
@@ -44,6 +45,37 @@
 - reserve 身份的唯一来源必须是**当前 canonical projection view 的 `ReserveOverflowIDs`**，不是 live `IsOpenAIReserveCandidate()`，也不是 legacy overlay 临时推导。
 - 旧 binding 兼容规则也已是本地主线语义：`selected_group=reserve + affinity_domain=exhausted` 的历史 binding 在 projection 元数据仍匹配时必须可读；不要在同步 upstream 时把 active/any reserve binding 兼容逻辑删掉。
 
+7. OpenAI / OpenCode `image_generation` 本地 carrier 链
+- `builtin_tools` / `metadata.builtin_tools` 是本地 carrier，不是 upstream 原生字段；它负责把 OpenCode 推荐配置里的生图意图转换成上游可接受的 `tools` / `tool_choice`。
+- `/v1/responses` 和 Chat Completions 两条入口都已经接入生图 carrier；同步 upstream 时不要只保留其中一条，也不要把 Chat Completions 的 carrier / 约束注入删掉。
+- `image_generation` 是否可用受账号能力、model-subset projection、`-Sys` 入口和 OpenCode image variant 共同约束；不能因为 upstream 新增了类似字段，就绕过本地 gating 直接全局开启。
+
+8. OpenCode 生图结果改写、回填和下载链
+- OpenCode 不能直接消费上游 `image_generation_call.result` 的 base64；本地主线会把结果写入 `OpenAIGeneratedImageStore`，再通过 `/sub2api/generated-images/...` 这类短期下载 URL 交给 OpenCode 工具链。
+- `openai_opencode_image_rewrite.go`、`openai_opencode_image_sse.go`、`openai_opencode_image_rehydrate.go`、`openai_generated_image_store.go`、`generated_image_handler.go` 及相关 route / middleware / redaction 测试属于同一条能力链，不能在同步 upstream 时按“清理未使用代码”拆掉。
+- 这条链还负责避免把 base64、服务端本地路径或敏感图片输出写进客户端最终文本、请求日志和 ops upstream context。
+
+9. OpenCode 生图服务端续接与下载工具调用链
+- 第一轮生图完成后，本地主线会服务端发起第二轮 `/v1/responses` 续接，并在 `input` 中追加 synthetic `function_call` / `function_call_output`（工具名为 `sub2api_image_generation_result`），让 OpenCode 继续执行可下载工具。
+- 第二轮续接必须移除 `image_generation` tool，避免再次生图；如果仍有普通 `function` tool，必须把 `tool_choice` 设为 `"required"`，强制模型先输出工具调用再总结。
+- 如果第二轮没有任何可用 function tool，必须删除无效的 `required`，退回“明确说明无法下载并提供临时 URL + marker”的 fallback；不要改回纯 prompt-only、`previous_response_id + function_call_output` 增量续接或硬编码 `bash`。
+
+10. OpenAI `-Sys` / 非 `-Sys` 模型访问保护
+- 普通用户侧的公开入口应优先暴露 `-Sys` 模型；非 `-Sys` 模型访问限制、错误文案和 handler 层测试是本地 guardrail。
+- 非 `-Sys` 入口的路由语义不是 exhausted-class 入口；当前本地主线已经让它走 active 路由。同步 upstream 时不要把非 `-Sys` 请求重新接回 exhausted / reserve 溢出语义。
+
+11. 错误与图片输出脱敏链
+- gateway handler、Gemini handler、error passthrough runtime、ops upstream context 中的错误与图片输出脱敏是本地安全基线。
+- 不要为了贴近 upstream，把上游原始错误、图片 base64、临时下载 URL、服务端路径或账号细节重新写回客户端、日志、ops dashboard 或 usage 记录。
+
+12. 支付与邀请返利本地产品链
+- 邀请返利系统、feature toggle、按用户自定义邀请设置、Zpay refund endpoint 兼容，以及 Stripe 支付页绕过 router auth guard 都是本地产品能力或支付兼容修复。
+- 同步 upstream 时不要只看后端 handler，也要一起保住 schema / repository / DTO / 前端入口 / 路由守卫测试；这些改动经常跨目录出现，不能按“非网关代码”误删。
+
+13. 真实 Claude Code 客户端 prompt caching 兼容
+- 真实 Claude Code 客户端需要跳过 body mimicry，才能保住 prompt caching 语义。
+- 同步 upstream 的网关 body transform、Anthropic 兼容或请求 mimicry 代码时，不要把这条客户端识别与跳过逻辑覆盖掉。
+
 ## OpenAI / Codex 兼容经验
 
 1. `tool_choice` 标准对象形态需要兼容转换
@@ -56,7 +88,7 @@
 2. built-in tools 当前稳定边界
 - `web_search`：当前稳定可用。
 - `code_interpreter`：当前不支持，不要在 phase 1 假设能用。
-- `image_generation`：在当前 Codex OAuth/provider 链上不能当作稳定可用 built-in tool；不要轻易承诺。
+- `image_generation`：只能通过本地 carrier + 能力过滤 + OpenCode image variant 受控启用；在当前 Codex OAuth/provider 链上不能当作所有账号都稳定可用的 built-in tool。
 
 3. `/v1/responses` continuation 的现实边界
 - 当前不支持 `previous_response_id + function_call_output` 增量 continuation。
