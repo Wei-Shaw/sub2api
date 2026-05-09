@@ -251,6 +251,9 @@ func TestAPIKeyService_SnapshotRoundTrip_PreservesMessagesDispatchModelConfig(t 
 			Status:                StatusActive,
 			SubscriptionType:      SubscriptionTypeStandard,
 			RateMultiplier:        1,
+			AllowImageGeneration:  true,
+			ImageRateIndependent:  true,
+			ImageRateMultiplier:   1.75,
 			AllowMessagesDispatch: true,
 			DefaultMappedModel:    "gpt-5.4",
 			MessagesDispatchModelConfig: OpenAIMessagesDispatchModelConfig{
@@ -270,6 +273,9 @@ func TestAPIKeyService_SnapshotRoundTrip_PreservesMessagesDispatchModelConfig(t 
 	require.NotNil(t, roundTrip)
 	require.Equal(t, apiKey.Name, roundTrip.Name)
 	require.NotNil(t, roundTrip.Group)
+	require.True(t, roundTrip.Group.AllowImageGeneration)
+	require.True(t, roundTrip.Group.ImageRateIndependent)
+	require.Equal(t, 1.75, roundTrip.Group.ImageRateMultiplier)
 	require.Equal(t, apiKey.Group.MessagesDispatchModelConfig, roundTrip.Group.MessagesDispatchModelConfig)
 }
 
@@ -320,6 +326,7 @@ func TestAPIKeyService_GetByKey_IgnoresLegacyAuthCacheSnapshotWithoutMessagesDis
 	cache.getAuthCache = func(ctx context.Context, key string) (*APIKeyAuthCacheEntry, error) {
 		return &APIKeyAuthCacheEntry{
 			Snapshot: &APIKeyAuthSnapshot{
+				Version:  apiKeyAuthSnapshotVersion - 1,
 				APIKeyID: 1,
 				UserID:   2,
 				GroupID:  &groupID,
