@@ -17,7 +17,7 @@
               platformGradientClass
             ]"
           >
-            <Icon name="sparkles" size="md" class="text-white" />
+            <PlatformIcon :platform="account.platform" size="md" class="text-white" />
           </div>
           <div>
             <span class="block font-semibold text-gray-900 dark:text-white">{{
@@ -102,24 +102,41 @@
         </div>
       </div>
 
-      <OAuthAuthorizationFlow
-        ref="oauthFlowRef"
-        :add-method="addMethod"
-        :auth-url="currentAuthUrl"
-        :session-id="currentSessionId"
-        :loading="currentLoading"
-        :error="currentError"
-        :show-help="isAnthropic"
-        :show-proxy-warning="isAnthropic"
-        :show-cookie-option="isAnthropic"
-        :allow-multiple="false"
-        :method-label="t('admin.accounts.inputMethod')"
-        :platform="isOpenAI ? 'openai' : isGemini ? 'gemini' : isAntigravity ? 'antigravity' : 'anthropic'"
-        :show-project-id="isGemini && geminiOAuthType === 'code_assist'"
-        @generate-url="handleGenerateUrl"
-        @cookie-auth="handleCookieAuth"
+      <!-- Hidden platform form component (provides OAuth methods) -->
+      <component
+        v-show="showCredentialForm"
+        :is="platformFormComponent"
+        ref="platformFormRef"
+        :context="platformFormContext"
+        v-bind="platformFormExtraProps"
       />
 
+      <!-- OAuth Authorization Flow (only for OAuth-capable platforms) -->
+      <OAuthAuthorizationFlow
+        v-if="hasOAuthFlow"
+        ref="oauthFlowRef"
+        :add-method="addMethod"
+        :auth-url="oauthState.authUrl"
+        :session-id="oauthState.sessionId"
+        :loading="oauthState.loading"
+        :error="oauthState.error"
+        :show-help="oauthCfg?.showHelp ?? false"
+        :show-proxy-warning="oauthCfg?.showProxyWarning ?? false"
+        :show-cookie-option="oauthCfg?.showCookieOption ?? false"
+        :show-refresh-token-option="oauthCfg?.showRefreshTokenOption ?? false"
+        :show-mobile-refresh-token-option="oauthCfg?.showMobileRefreshTokenOption ?? false"
+        :show-session-token-option="oauthCfg?.showSessionTokenOption ?? false"
+        :show-access-token-option="oauthCfg?.showAccessTokenOption ?? false"
+        :allow-multiple="false"
+        :method-label="t('admin.accounts.inputMethod')"
+        :platform="account.platform"
+        :show-project-id="oauthCfg?.showProjectId ?? false"
+        @generate-url="handleGenerateUrl"
+        @cookie-auth="handleCookieAuth"
+        @validate-refresh-token="handleRefreshToken"
+        @validate-mobile-refresh-token="handleMobileRefreshToken"
+        @validate-session-token="handleSessionToken"
+      />
     </div>
 
     <template #footer>
@@ -128,14 +145,23 @@
           {{ t('common.cancel') }}
         </button>
         <button
-          v-if="isManualInputMethod"
+          v-if="showCredentialForm"
+          type="button"
+          :disabled="saving"
+          class="btn btn-primary"
+          @click="handleSaveCredentials"
+        >
+          {{ saving ? t('common.saving') : t('common.save') }}
+        </button>
+        <button
+          v-else-if="isManualInputMethod"
           type="button"
           :disabled="!canExchangeCode"
           class="btn btn-primary"
           @click="handleExchangeCode"
         >
           <svg
-            v-if="currentLoading"
+            v-if="oauthState.loading"
             class="-ml-1 mr-2 h-4 w-4 animate-spin"
             fill="none"
             viewBox="0 0 24 24"
@@ -155,7 +181,7 @@
             ></path>
           </svg>
           {{
-            currentLoading
+            oauthState.loading
               ? t('admin.accounts.oauth.verifying')
               : t('admin.accounts.oauth.completeAuth')
           }}
@@ -166,31 +192,36 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, nextTick, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
-import {
-  useAccountOAuth,
-  type AddMethod,
-  type AuthInputMethod
-} from '@/composables/useAccountOAuth'
-import { useOpenAIOAuth } from '@/composables/useOpenAIOAuth'
-import { useGeminiOAuth } from '@/composables/useGeminiOAuth'
-import { useAntigravityOAuth } from '@/composables/useAntigravityOAuth'
+import type { AddMethod, AuthInputMethod } from '@/composables/useAccountOAuth'
 import { usePlatforms } from '@/composables/usePlatforms'
-import type { Account } from '@/types'
+import { resolvePlatformForm } from './forms/platformFormRegistry'
+import type {
+  PlatformFormContext, PlatformFormExposed,
+  OAuthFlowConfig, OAuthComposableState,
+} from './forms/types'
+import type { Account, CreateAccountRequest } from '@/types'
 import { BaseDialog } from '@sub2api/plugin-sdk'
+import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
 import OAuthAuthorizationFlow from './OAuthAuthorizationFlow.vue'
+import { extractApiErrorMessage } from '@/utils/apiError'
 
-// Type for exposed OAuthAuthorizationFlow component
-// Note: defineExpose automatically unwraps refs, so we use the unwrapped types
+const BUILTIN_PLATFORMS = new Set(['anthropic', 'openai', 'gemini', 'antigravity'])
+
+// ---------------------------------------------------------------------------
+// OAuthAuthorizationFlow exposed interface
+// ---------------------------------------------------------------------------
 interface OAuthFlowExposed {
   authCode: string
   oauthState: string
   projectId: string
   sessionKey: string
+  refreshToken: string
+  sessionToken: string
   inputMethod: AuthInputMethod
   reset: () => void
 }
@@ -210,11 +241,25 @@ const appStore = useAppStore()
 const { t } = useI18n()
 const { getPlatformDecl } = usePlatforms()
 
-// OAuth composables
-const claudeOAuth = useAccountOAuth()
-const openaiOAuth = useOpenAIOAuth()
-const geminiOAuth = useGeminiOAuth()
-const antigravityOAuth = useAntigravityOAuth()
+// ---------------------------------------------------------------------------
+// Platform form component (delegates OAuth to the right platform)
+// ---------------------------------------------------------------------------
+const platformFormRef = ref<PlatformFormExposed | null>(null)
+const platformFormComponent = computed<Component | null>(() =>
+  props.account ? resolvePlatformForm(props.account.platform) : null
+)
+
+const platformFormContext = computed<PlatformFormContext>(() => ({
+  accountCategory: resolveAccountCategory(),
+  accountTypeId: props.account?.type ?? 'oauth',
+  proxyId: props.account?.proxy_id ?? null,
+  mode: 'edit',
+}))
+
+const platformFormExtraProps = computed(() => {
+  if (!props.account || BUILTIN_PLATFORMS.has(props.account.platform)) return {}
+  return { platform: props.account.platform }
+})
 
 // Refs
 const oauthFlowRef = ref<OAuthFlowExposed | null>(null)
@@ -222,25 +267,49 @@ const oauthFlowRef = ref<OAuthFlowExposed | null>(null)
 // State
 const addMethod = ref<AddMethod>('oauth')
 const geminiOAuthType = ref<'code_assist' | 'google_one' | 'ai_studio'>('code_assist')
+const saving = ref(false)
 
-// Computed - check platform
-const isOpenAI = computed(() => props.account?.platform === 'openai')
-const isOpenAILike = computed(() => isOpenAI.value)
-const isGemini = computed(() => props.account?.platform === 'gemini')
+// ---------------------------------------------------------------------------
+// Computed - platform checks
+// ---------------------------------------------------------------------------
 const isAnthropic = computed(() => props.account?.platform === 'anthropic')
-const isAntigravity = computed(() => props.account?.platform === 'antigravity')
+const isGemini = computed(() => props.account?.platform === 'gemini')
 
-// Dynamic theme from plugin declarations (with hardcoded fallbacks)
+// ---------------------------------------------------------------------------
+// OAuth delegation (mirror CreateAccountModal pattern)
+// ---------------------------------------------------------------------------
+const defaultOAuthState: OAuthComposableState = {
+  authUrl: '', sessionId: '', loading: false, error: ''
+}
+
+const oauthState = computed<OAuthComposableState>(() =>
+  platformFormRef.value?.getOAuthState?.() ?? defaultOAuthState
+)
+
+const oauthCfg = computed<OAuthFlowConfig | undefined>(() =>
+  platformFormRef.value?.oauthConfig
+)
+
+const hasOAuthFlow = computed(() =>
+  platformFormRef.value?.isOAuthFlow?.() ?? false
+)
+
+/** Show credential form for non-OAuth platforms (e.g. plugin apikey) */
+const showCredentialForm = computed(() =>
+  !!props.account && !hasOAuthFlow.value
+)
+
+// ---------------------------------------------------------------------------
+// Theme / display
+// ---------------------------------------------------------------------------
 const platformGradientClass = computed(() => {
   const decl = props.account ? getPlatformDecl(props.account.platform) : undefined
   if (decl?.theme_color) {
-    // theme_color is e.g. "green", "blue", "purple", "orange"
     return `from-${decl.theme_color}-500 to-${decl.theme_color}-600`
   }
-  // Legacy fallback
-  if (isOpenAILike.value) return 'from-green-500 to-green-600'
-  if (isGemini.value) return 'from-blue-500 to-blue-600'
-  if (isAntigravity.value) return 'from-purple-500 to-purple-600'
+  if (props.account?.platform === 'openai') return 'from-green-500 to-green-600'
+  if (props.account?.platform === 'gemini') return 'from-blue-500 to-blue-600'
+  if (props.account?.platform === 'antigravity') return 'from-purple-500 to-purple-600'
   return 'from-orange-500 to-orange-600'
 })
 
@@ -249,87 +318,78 @@ const platformAccountLabel = computed(() => {
   if (decl?.display_name) {
     return `${decl.display_name} ${t('admin.accounts.account')}`
   }
-  // Legacy fallback
-  if (isOpenAI.value) return t('admin.accounts.openaiAccount')
-  if (isGemini.value) return t('admin.accounts.geminiAccount')
-  if (isAntigravity.value) return t('admin.accounts.antigravityAccount')
+  if (props.account?.platform === 'openai') return t('admin.accounts.openaiAccount')
+  if (props.account?.platform === 'gemini') return t('admin.accounts.geminiAccount')
+  if (props.account?.platform === 'antigravity') return t('admin.accounts.antigravityAccount')
   return t('admin.accounts.claudeCodeAccount')
 })
 
-// Computed - current OAuth state based on platform
-const currentAuthUrl = computed(() => {
-  if (isOpenAILike.value) return openaiOAuth.authUrl.value
-  if (isGemini.value) return geminiOAuth.authUrl.value
-  if (isAntigravity.value) return antigravityOAuth.authUrl.value
-  return claudeOAuth.authUrl.value
-})
-const currentSessionId = computed(() => {
-  if (isOpenAILike.value) return openaiOAuth.sessionId.value
-  if (isGemini.value) return geminiOAuth.sessionId.value
-  if (isAntigravity.value) return antigravityOAuth.sessionId.value
-  return claudeOAuth.sessionId.value
-})
-const currentLoading = computed(() => {
-  if (isOpenAILike.value) return openaiOAuth.loading.value
-  if (isGemini.value) return geminiOAuth.loading.value
-  if (isAntigravity.value) return antigravityOAuth.loading.value
-  return claudeOAuth.loading.value
-})
-const currentError = computed(() => {
-  if (isOpenAILike.value) return openaiOAuth.error.value
-  if (isGemini.value) return geminiOAuth.error.value
-  if (isAntigravity.value) return antigravityOAuth.error.value
-  return claudeOAuth.error.value
-})
-
-// Computed
-const isManualInputMethod = computed(() => {
-  // OpenAI/Gemini/Antigravity always use manual input (no cookie auth option)
-  return isOpenAILike.value || isGemini.value || isAntigravity.value || oauthFlowRef.value?.inputMethod === 'manual'
-})
+// ---------------------------------------------------------------------------
+// Computed helpers
+// ---------------------------------------------------------------------------
+const isManualInputMethod = computed(() =>
+  oauthFlowRef.value?.inputMethod === 'manual'
+)
 
 const canExchangeCode = computed(() => {
-  const authCode = oauthFlowRef.value?.authCode || ''
-  const sessionId = currentSessionId.value
-  const loading = currentLoading.value
-  return authCode.trim() && sessionId && !loading
+  const code = oauthFlowRef.value?.authCode || ''
+  return code.trim().length > 0 && !!oauthState.value.sessionId && !oauthState.value.loading
 })
 
+// ---------------------------------------------------------------------------
 // Watchers
+// ---------------------------------------------------------------------------
 watch(
   () => props.show,
   (newVal) => {
     if (newVal && props.account) {
-      // Initialize addMethod based on current account type (Claude only)
-      if (
-        isAnthropic.value &&
-        (props.account.type === 'oauth' || props.account.type === 'setup-token')
-      ) {
-        addMethod.value = props.account.type as AddMethod
-      }
-      if (isGemini.value) {
-        const creds = (props.account.credentials || {}) as Record<string, unknown>
-        geminiOAuthType.value =
-          creds.oauth_type === 'google_one'
-            ? 'google_one'
-            : creds.oauth_type === 'ai_studio'
-              ? 'ai_studio'
-              : 'code_assist'
-      }
+      initializeFromAccount(props.account)
     } else {
       resetState()
     }
   }
 )
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+function resolveAccountCategory(): string {
+  const type = props.account?.type
+  if (type === 'oauth' || type === 'setup-token') return 'oauth-based'
+  if (type === 'bedrock') return 'bedrock'
+  if (type === 'service_account') return 'service_account'
+  return 'apikey'
+}
+
+function initializeFromAccount(account: Account) {
+  if (account.platform === 'anthropic') {
+    if (account.type === 'oauth' || account.type === 'setup-token') {
+      addMethod.value = account.type as AddMethod
+    }
+  }
+  if (account.platform === 'gemini') {
+    const creds = (account.credentials || {}) as Record<string, unknown>
+    geminiOAuthType.value =
+      creds.oauth_type === 'google_one'
+        ? 'google_one'
+        : creds.oauth_type === 'ai_studio'
+          ? 'ai_studio'
+          : 'code_assist'
+  }
+  // Initialize the form component after it mounts
+  void nextTick(() => {
+    platformFormRef.value?.initFromAccount?.(account)
+  })
+}
+
+// ---------------------------------------------------------------------------
 // Methods
+// ---------------------------------------------------------------------------
 const resetState = () => {
   addMethod.value = 'oauth'
   geminiOAuthType.value = 'code_assist'
-  claudeOAuth.resetState()
-  openaiOAuth.resetState()
-  geminiOAuth.resetState()
-  antigravityOAuth.resetState()
+  platformFormRef.value?.reset?.()
+  platformFormRef.value?.resetOAuth?.()
   oauthFlowRef.value?.reset()
 }
 
@@ -337,220 +397,96 @@ const handleClose = () => {
   emit('close')
 }
 
-const handleGenerateUrl = async () => {
-  if (!props.account) return
-
-  if (isOpenAILike.value) {
-    await openaiOAuth.generateAuthUrl(props.account.proxy_id)
-  } else if (isGemini.value) {
-    const creds = (props.account.credentials || {}) as Record<string, unknown>
-    const tierId = typeof creds.tier_id === 'string' ? creds.tier_id : undefined
-    const projectId = geminiOAuthType.value === 'code_assist' ? oauthFlowRef.value?.projectId : undefined
-    await geminiOAuth.generateAuthUrl(props.account.proxy_id, projectId, geminiOAuthType.value, tierId)
-  } else if (isAntigravity.value) {
-    await antigravityOAuth.generateAuthUrl(props.account.proxy_id)
-  } else {
-    await claudeOAuth.generateAuthUrl(addMethod.value, props.account.proxy_id)
-  }
+async function handleGenerateUrl() {
+  await platformFormRef.value?.generateOAuthUrl?.(
+    props.account?.proxy_id ?? null,
+    oauthFlowRef.value?.projectId
+  )
 }
 
-const handleExchangeCode = async () => {
+async function handleExchangeCode() {
   if (!props.account) return
+  const code = oauthFlowRef.value?.authCode?.trim()
+  if (!code) return
 
-  const authCode = oauthFlowRef.value?.authCode || ''
-  if (!authCode.trim()) return
-
-  if (isOpenAILike.value) {
-    // OpenAI OAuth flow
-    const oauthClient = openaiOAuth
-    const sessionId = oauthClient.sessionId.value
-    if (!sessionId) return
-    const stateToUse = (oauthFlowRef.value?.oauthState || oauthClient.oauthState.value || '').trim()
-    if (!stateToUse) {
-      oauthClient.error.value = t('admin.accounts.oauth.authFailed')
-      appStore.showError(oauthClient.error.value)
-      return
-    }
-
-    const tokenInfo = await oauthClient.exchangeAuthCode(
-      authCode.trim(),
-      sessionId,
-      stateToUse,
-      props.account.proxy_id
-    )
-    if (!tokenInfo) return
-
-    // Build credentials and extra info
-    const credentials = oauthClient.buildCredentials(tokenInfo)
-    const extra = oauthClient.buildExtraInfo(tokenInfo)
-
-    try {
-      // Update account with new credentials
-      await adminAPI.accounts.update(props.account.id, {
-        type: 'oauth', // OpenAI OAuth is always 'oauth' type
-        credentials,
-        extra
-      })
-
-      // Clear error status after successful re-authorization
-      const updatedAccount = await adminAPI.accounts.clearError(props.account.id)
-
-      appStore.showSuccess(t('admin.accounts.reAuthorizedSuccess'))
-      emit('reauthorized', updatedAccount)
-      handleClose()
-    } catch (error: any) {
-      oauthClient.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
-      appStore.showError(oauthClient.error.value)
-    }
-  } else if (isGemini.value) {
-    const sessionId = geminiOAuth.sessionId.value
-    if (!sessionId) return
-
-    const stateFromInput = oauthFlowRef.value?.oauthState || ''
-    const stateToUse = stateFromInput || geminiOAuth.state.value
-    if (!stateToUse) return
-
-    const tokenInfo = await geminiOAuth.exchangeAuthCode({
-      code: authCode.trim(),
-      sessionId,
-      state: stateToUse,
-      proxyId: props.account.proxy_id,
-      oauthType: geminiOAuthType.value,
-      tierId: typeof (props.account.credentials as any)?.tier_id === 'string' ? ((props.account.credentials as any).tier_id as string) : undefined
-    })
-    if (!tokenInfo) return
-
-    const credentials = geminiOAuth.buildCredentials(tokenInfo)
-
-    try {
-      await adminAPI.accounts.update(props.account.id, {
-        type: 'oauth',
-        credentials
-      })
-      const updatedAccount = await adminAPI.accounts.clearError(props.account.id)
-      appStore.showSuccess(t('admin.accounts.reAuthorizedSuccess'))
-      emit('reauthorized', updatedAccount)
-      handleClose()
-    } catch (error: any) {
-      geminiOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
-      appStore.showError(geminiOAuth.error.value)
-    }
-  } else if (isAntigravity.value) {
-    // Antigravity OAuth flow
-    const sessionId = antigravityOAuth.sessionId.value
-    if (!sessionId) return
-
-    const stateFromInput = oauthFlowRef.value?.oauthState || ''
-    const stateToUse = stateFromInput || antigravityOAuth.state.value
-    if (!stateToUse) return
-
-    const tokenInfo = await antigravityOAuth.exchangeAuthCode({
-      code: authCode.trim(),
-      sessionId,
-      state: stateToUse,
-      proxyId: props.account.proxy_id
-    })
-    if (!tokenInfo) return
-
-    const credentials = antigravityOAuth.buildCredentials(tokenInfo)
-
-    try {
-      await adminAPI.accounts.update(props.account.id, {
-        type: 'oauth',
-        credentials
-      })
-      const updatedAccount = await adminAPI.accounts.clearError(props.account.id)
-      appStore.showSuccess(t('admin.accounts.reAuthorizedSuccess'))
-      emit('reauthorized', updatedAccount)
-      handleClose()
-    } catch (error: any) {
-      antigravityOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
-      appStore.showError(antigravityOAuth.error.value)
-    }
-  } else {
-    // Claude OAuth flow
-    const sessionId = claudeOAuth.sessionId.value
-    if (!sessionId) return
-
-    claudeOAuth.loading.value = true
-    claudeOAuth.error.value = ''
-
-    try {
-      const proxyConfig = props.account.proxy_id ? { proxy_id: props.account.proxy_id } : {}
-      const endpoint =
-        addMethod.value === 'oauth'
-          ? '/admin/accounts/exchange-code'
-          : '/admin/accounts/exchange-setup-token-code'
-
-      const tokenInfo = await adminAPI.accounts.exchangeCode(endpoint, {
-        session_id: sessionId,
-        code: authCode.trim(),
-        ...proxyConfig
-      })
-
-      const extra = claudeOAuth.buildExtraInfo(tokenInfo)
-
-      // Update account with new credentials and type
-      await adminAPI.accounts.update(props.account.id, {
-        type: addMethod.value, // Update type based on selected method
-        credentials: tokenInfo,
-        extra
-      })
-
-      // Clear error status after successful re-authorization
-      const updatedAccount = await adminAPI.accounts.clearError(props.account.id)
-
-      appStore.showSuccess(t('admin.accounts.reAuthorizedSuccess'))
-      emit('reauthorized', updatedAccount)
-      handleClose()
-    } catch (error: any) {
-      claudeOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
-      appStore.showError(claudeOAuth.error.value)
-    } finally {
-      claudeOAuth.loading.value = false
-    }
-  }
+  const result = await platformFormRef.value?.handleOAuthExchange?.(
+    code,
+    oauthFlowRef.value?.oauthState,
+    oauthFlowRef.value?.projectId
+  )
+  if (result) await finalizeOAuthResult(result)
 }
 
-const handleCookieAuth = async (sessionKey: string) => {
-  if (!props.account || isOpenAILike.value) return
+async function handleCookieAuth(sessionKey: string) {
+  if (!props.account) return
+  const result = await platformFormRef.value?.handleCookieAuth?.(sessionKey)
+  if (result) await finalizeOAuthResult(result)
+}
 
-  claudeOAuth.loading.value = true
-  claudeOAuth.error.value = ''
+async function handleRefreshToken(rt: string) {
+  if (!props.account) return
+  const result = await platformFormRef.value?.handleRefreshToken?.(rt)
+  if (result) await finalizeOAuthResult(result)
+}
+
+async function handleMobileRefreshToken(rt: string) {
+  if (!props.account) return
+  const result = await platformFormRef.value?.handleMobileRefreshToken?.(rt)
+  if (result) await finalizeOAuthResult(result)
+}
+
+async function handleSessionToken(token: string) {
+  if (!props.account) return
+  const result = await platformFormRef.value?.handleSessionToken?.(token)
+  if (result) await finalizeOAuthResult(result)
+}
+
+async function finalizeOAuthResult(
+  result: CreateAccountRequest | CreateAccountRequest[]
+) {
+  if (!props.account) return
+  const request = Array.isArray(result) ? result[0] : result
+  if (!request) return
 
   try {
-    const proxyConfig = props.account.proxy_id ? { proxy_id: props.account.proxy_id } : {}
-    const endpoint =
-      addMethod.value === 'oauth'
-        ? '/admin/accounts/cookie-auth'
-        : '/admin/accounts/setup-token-cookie-auth'
-
-    const tokenInfo = await adminAPI.accounts.exchangeCode(endpoint, {
-      session_id: '',
-      code: sessionKey.trim(),
-      ...proxyConfig
-    })
-
-    const extra = claudeOAuth.buildExtraInfo(tokenInfo)
-
-    // Update account with new credentials and type
     await adminAPI.accounts.update(props.account.id, {
-      type: addMethod.value, // Update type based on selected method
-      credentials: tokenInfo,
-      extra
+      type: request.type,
+      credentials: request.credentials,
+      extra: request.extra,
     })
-
-    // Clear error status after successful re-authorization
     const updatedAccount = await adminAPI.accounts.clearError(props.account.id)
-
     appStore.showSuccess(t('admin.accounts.reAuthorizedSuccess'))
     emit('reauthorized', updatedAccount)
     handleClose()
-  } catch (error: any) {
-    claudeOAuth.error.value =
-      error.response?.data?.detail || t('admin.accounts.oauth.cookieAuthFailed')
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('admin.accounts.oauth.authFailed')))
+  }
+}
+
+/** Save credentials directly (non-OAuth flow, e.g. plugin platforms) */
+async function handleSaveCredentials() {
+  if (!props.account || !platformFormRef.value) return
+  const validation = platformFormRef.value.validate()
+  if (!validation.valid) {
+    appStore.showError(validation.error || t('common.error'))
+    return
+  }
+  saving.value = true
+  try {
+    const editPayload = platformFormRef.value.getEditPayload?.(props.account)
+    if (!editPayload) return
+    await adminAPI.accounts.update(props.account.id, {
+      credentials: editPayload.credentials,
+      extra: editPayload.extra,
+    })
+    const updatedAccount = await adminAPI.accounts.clearError(props.account.id)
+    appStore.showSuccess(t('admin.accounts.reAuthorizedSuccess'))
+    emit('reauthorized', updatedAccount)
+    handleClose()
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('common.error')))
   } finally {
-    claudeOAuth.loading.value = false
+    saving.value = false
   }
 }
 </script>

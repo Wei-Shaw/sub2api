@@ -297,15 +297,12 @@ const previewImageUrl = ref('')
 const prioritizedGeminiModels = ['gemini-3.1-flash-image', 'gemini-2.5-flash-image', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-3-flash-preview', 'gemini-3-pro-preview', 'gemini-2.0-flash']
 const supportsGeminiImageTest = computed(() => {
   const modelID = selectedModelId.value.toLowerCase()
-  if (!modelID.startsWith('gemini-') || !modelID.includes('-image')) return false
-
-  return props.account?.platform === 'gemini' || (props.account?.platform === 'antigravity' && props.account?.type === 'apikey')
+  return modelID.startsWith('gemini-') && modelID.includes('-image')
 })
 
 const supportsOpenAIImageTest = computed(() => {
   const modelID = selectedModelId.value.toLowerCase()
-  if (!modelID.startsWith('gpt-image-')) return false
-  return props.account?.platform === 'openai'
+  return modelID.startsWith('gpt-image-')
 })
 
 const supportsImageTest = computed(() => supportsGeminiImageTest.value || supportsOpenAIImageTest.value)
@@ -350,22 +347,16 @@ const loadAvailableModels = async () => {
   selectedModelId.value = '' // Reset selection before loading
   try {
     const models = await adminAPI.accounts.getAvailableModels(props.account.id)
-    availableModels.value = props.account.platform === 'gemini' || props.account.platform === 'antigravity'
-      ? sortTestModels(models)
-      : models
-    // Default selection: prefer plugin declaration, then fallback to legacy heuristics
+    availableModels.value = sortTestModels(models)
+    // Default selection: prefer PlatformDecl default_test_model, then first model
     if (availableModels.value.length > 0) {
       const platformDecl = getPlatformDecl(props.account.platform)
       const pluginDefaultModel = platformDecl?.test_config?.default_test_model
       if (pluginDefaultModel) {
         const match = availableModels.value.find((m) => m.id === pluginDefaultModel)
         selectedModelId.value = match?.id || availableModels.value[0].id
-      } else if (props.account.platform === 'gemini') {
-        selectedModelId.value = availableModels.value[0].id
       } else {
-        // Try to select Sonnet as default, otherwise use first model
-        const sonnetModel = availableModels.value.find((m) => m.id.includes('sonnet'))
-        selectedModelId.value = sonnetModel?.id || availableModels.value[0].id
+        selectedModelId.value = availableModels.value[0].id
       }
     }
   } catch (error) {
