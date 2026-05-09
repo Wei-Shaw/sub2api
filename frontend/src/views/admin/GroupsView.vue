@@ -318,6 +318,13 @@
                 }}</span>
               </button>
               <button
+                @click="handleQuotaSummary(row)"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-emerald-50 hover:text-emerald-600 dark:hover:bg-emerald-900/20 dark:hover:text-emerald-400"
+              >
+                <Icon name="chartBar" size="sm" />
+                <span class="text-xs">{{ t("admin.groups.quotaSummary") }}</span>
+              </button>
+              <button
                 @click="handleDelete(row)"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
               >
@@ -2823,6 +2830,12 @@
       @success="loadGroups"
     />
 
+    <GroupQuotaSummaryModal
+      :show="showQuotaSummaryModal"
+      :group="quotaSummaryGroup"
+      @close="showQuotaSummaryModal = false"
+    />
+
     <!-- Group RPM Overrides Modal -->
     <GroupRPMOverridesModal
       :show="showRPMOverridesModal"
@@ -2851,6 +2864,7 @@ import EmptyState from "@/components/common/EmptyState.vue";
 import Select from "@/components/common/Select.vue";
 import PlatformIcon from "@/components/common/PlatformIcon.vue";
 import Icon from "@/components/icons/Icon.vue";
+import GroupQuotaSummaryModal from "@/components/admin/group/GroupQuotaSummaryModal.vue";
 import GroupRateMultipliersModal from "@/components/admin/group/GroupRateMultipliersModal.vue";
 import GroupRPMOverridesModal from "@/components/admin/group/GroupRPMOverridesModal.vue";
 import GroupCapacityBadge from "@/components/common/GroupCapacityBadge.vue";
@@ -3093,6 +3107,8 @@ const editingGroup = ref<AdminGroup | null>(null);
 const deletingGroup = ref<AdminGroup | null>(null);
 const showRateMultipliersModal = ref(false);
 const rateMultipliersGroup = ref<AdminGroup | null>(null);
+const showQuotaSummaryModal = ref(false);
+const quotaSummaryGroup = ref<AdminGroup | null>(null);
 const showRPMOverridesModal = ref(false);
 const rpmOverridesGroup = ref<AdminGroup | null>(null);
 const sortableGroups = ref<AdminGroup[]>([]);
@@ -3901,6 +3917,11 @@ const removeEditMessagesDispatchMapping = (row: MessagesDispatchMappingRow) => {
 const handleRateMultipliers = (group: AdminGroup) => {
   rateMultipliersGroup.value = group;
   showRateMultipliersModal.value = true;
+};
+
+const handleQuotaSummary = (group: AdminGroup) => {
+  quotaSummaryGroup.value = group;
+  showQuotaSummaryModal.value = true;
 };
 
 const handleRPMOverrides = (group: AdminGroup) => {

@@ -279,6 +279,10 @@ func (s *stubAdminService) GetGroupAPIKeys(ctx context.Context, groupID int64, p
 	return s.apiKeys, int64(len(s.apiKeys)), nil
 }
 
+func (s *stubAdminService) GetGroupQuotaSummary(_ context.Context, groupID int64) (*service.GroupQuotaSummary, error) {
+	return &service.GroupQuotaSummary{GroupID: groupID}, nil
+}
+
 func (s *stubAdminService) GetGroupRateMultipliers(_ context.Context, _ int64) ([]service.UserGroupRateEntry, error) {
 	return nil, nil
 }

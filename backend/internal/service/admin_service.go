@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"sort"
 	"strconv"
@@ -52,6 +53,7 @@ type AdminService interface {
 	UpdateGroup(ctx context.Context, id int64, input *UpdateGroupInput) (*Group, error)
 	DeleteGroup(ctx context.Context, id int64) error
 	GetGroupAPIKeys(ctx context.Context, groupID int64, page, pageSize int) ([]APIKey, int64, error)
+	GetGroupQuotaSummary(ctx context.Context, groupID int64) (*GroupQuotaSummary, error)
 	GetGroupRateMultipliers(ctx context.Context, groupID int64) ([]UserGroupRateEntry, error)
 	ClearGroupRateMultipliers(ctx context.Context, groupID int64) error
 	BatchSetGroupRateMultipliers(ctx context.Context, groupID int64, entries []GroupRateMultiplierInput) error
@@ -256,6 +258,25 @@ type UpdateGroupInput struct {
 	RPMLimit *int
 	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
 	CopyAccountsFromGroupIDs []int64
+}
+
+type GroupQuotaBucket struct {
+	UsedPercent  int `json:"used_percent"`
+	AccountCount int `json:"account_count"`
+}
+
+type GroupQuotaTabSummary struct {
+	Window              string             `json:"window"`
+	BucketCounts        []GroupQuotaBucket `json:"bucket_counts"`
+	MatchedAccountCount int                `json:"matched_account_count"`
+	SkippedAccountCount int                `json:"skipped_account_count"`
+}
+
+type GroupQuotaSummary struct {
+	GroupID   int64                  `json:"group_id"`
+	Platform  string                 `json:"platform"`
+	Supported bool                   `json:"supported"`
+	Tabs      []GroupQuotaTabSummary `json:"tabs"`
 }
 
 type CreateAccountInput struct {
@@ -2063,6 +2084,115 @@ func (s *adminServiceImpl) GetGroupAPIKeys(ctx context.Context, groupID int64, p
 		return nil, 0, err
 	}
 	return keys, result.Total, nil
+}
+
+type accountGroupAllStatusesReader interface {
+	ListByGroupAllStatuses(ctx context.Context, groupID int64) ([]Account, error)
+}
+
+func (s *adminServiceImpl) GetGroupQuotaSummary(ctx context.Context, groupID int64) (*GroupQuotaSummary, error) {
+	group, err := s.groupRepo.GetByID(ctx, groupID)
+	if err != nil {
+		return nil, err
+	}
+
+	summary := &GroupQuotaSummary{
+		GroupID:   groupID,
+		Platform:  group.Platform,
+		Supported: group.Platform == PlatformOpenAI,
+	}
+	if !summary.Supported {
+		return summary, nil
+	}
+
+	accounts, err := s.accountRepo.ListByGroup(ctx, groupID)
+	if reader, ok := s.accountRepo.(accountGroupAllStatusesReader); ok {
+		accounts, err = reader.ListByGroupAllStatuses(ctx, groupID)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	summary.Tabs = []GroupQuotaTabSummary{
+		buildGroupQuotaTabSummary(accounts, "5h", "prefer_5h", "codex_5h_used_percent"),
+		buildGroupQuotaTabSummary(accounts, "7d", "prefer_7d", "codex_7d_used_percent"),
+	}
+	return summary, nil
+}
+
+func buildGroupQuotaTabSummary(accounts []Account, window, strategy, usedKey string) GroupQuotaTabSummary {
+	counts := make(map[int]int)
+	matched := 0
+	skipped := 0
+
+	for _, account := range accounts {
+		if account.Extra == nil {
+			if getOpenAIQuotaStrategyForSummary(account.Extra) == strategy {
+				skipped++
+			}
+			continue
+		}
+
+		raw, ok := account.Extra[usedKey]
+		if ok && raw != nil {
+			used := parseExtraFloat64(raw)
+			if used < 0 {
+				used = 0
+			}
+			if used > 100 {
+				used = 100
+			}
+			bucket := bucketOpenAIQuotaUsedPercent(used)
+			counts[bucket]++
+			matched++
+			continue
+		}
+
+		if getOpenAIQuotaStrategyForSummary(account.Extra) == strategy {
+			skipped++
+		}
+	}
+
+	bucketCounts := make([]GroupQuotaBucket, 0, len(counts))
+	for usedPercent, accountCount := range counts {
+		bucketCounts = append(bucketCounts, GroupQuotaBucket{
+			UsedPercent:  usedPercent,
+			AccountCount: accountCount,
+		})
+	}
+	sort.Slice(bucketCounts, func(i, j int) bool {
+		return bucketCounts[i].UsedPercent > bucketCounts[j].UsedPercent
+	})
+
+	return GroupQuotaTabSummary{
+		Window:              window,
+		BucketCounts:        bucketCounts,
+		MatchedAccountCount: matched,
+		SkippedAccountCount: skipped,
+	}
+}
+
+func bucketOpenAIQuotaUsedPercent(used float64) int {
+	if used >= 100 {
+		return 100
+	}
+	if used <= 0 {
+		return 0
+	}
+	return int(math.Floor(used/10) * 10)
+}
+
+func getOpenAIQuotaStrategyForSummary(extra map[string]any) string {
+	value, ok := extra["openai_quota_strategy"].(string)
+	if !ok {
+		return ""
+	}
+	switch strings.TrimSpace(value) {
+	case "prefer_5h", "prefer_7d":
+		return strings.TrimSpace(value)
+	default:
+		return ""
+	}
 }
 
 func (s *adminServiceImpl) GetGroupRateMultipliers(ctx context.Context, groupID int64) ([]UserGroupRateEntry, error) {
