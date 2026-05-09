@@ -8,10 +8,28 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-func TestBuildDynamicToolMap_BelowThreshold(t *testing.T) {
-	// Parrot 行为：tools 数量 ≤ 5 时不做动态映射。
-	names := []string{"bash", "edit", "read", "write", "search"}
-	require.Nil(t, buildDynamicToolMap(names))
+func TestBuildDynamicToolMap_EmptyReturnsNil(t *testing.T) {
+	// 空输入：没有可混淆的工具，直接返回 nil。
+	require.Nil(t, buildDynamicToolMap(nil))
+	require.Nil(t, buildDynamicToolMap([]string{}))
+}
+
+func TestBuildDynamicToolMap_AlwaysObfuscatesNonEmpty(t *testing.T) {
+	// 偏离 Parrot：threshold = 0，任何 tools.length >= 1 都做动态映射。
+	// 见 dynamicToolMapThreshold 注释里的 "out of extra usage" 复现。
+	for _, names := range [][]string{
+		{"bash"},
+		{"bash", "edit"},
+		{"bash", "edit", "read", "write", "search"}, // 5 个，旧版 Parrot/sub2api 会跳过
+	} {
+		m := buildDynamicToolMap(names)
+		require.NotNil(t, m, "tools=%v should produce dynamic mapping", names)
+		require.Len(t, m, len(names))
+		for _, n := range names {
+			require.Contains(t, m, n)
+			require.NotEqual(t, n, m[n], "real name %q should be remapped", n)
+		}
+	}
 }
 
 func TestBuildDynamicToolMap_AboveThresholdIsStable(t *testing.T) {
@@ -74,13 +92,19 @@ func TestApplyToolNameRewriteToBody_RenamesToolsAndToolChoice(t *testing.T) {
 
 	out := applyToolNameRewriteToBody(body, rw)
 
-	// tools[0].name and tools[1].name rewritten; tools[2].name untouched
-	require.Equal(t, "cc_sess_list", gjson.GetBytes(out, "tools.0.name").String())
-	require.Equal(t, "cc_ses_get", gjson.GetBytes(out, "tools.1.name").String())
+	// dynamic 映射启用（threshold = 0），具体假名形如 "modify_ses00"，
+	// 不同前缀池组合会变；这里只验证 (a) 两个工具被重写、(b) 与 Forward 一致、
+	// (c) server tool 不动、(d) tool_choice.name 与 tools[0].name 一致。
+	fakeList := rw.Forward["sessions_list"]
+	fakeGet := rw.Forward["session_get"]
+	require.NotEqual(t, "sessions_list", fakeList)
+	require.NotEqual(t, "session_get", fakeGet)
+	require.Equal(t, fakeList, gjson.GetBytes(out, "tools.0.name").String())
+	require.Equal(t, fakeGet, gjson.GetBytes(out, "tools.1.name").String())
 	require.Equal(t, "web_search", gjson.GetBytes(out, "tools.2.name").String())
 
-	// tool_choice.name rewritten
-	require.Equal(t, "cc_sess_list", gjson.GetBytes(out, "tool_choice.name").String())
+	// tool_choice.name rewritten consistently with the matching tool
+	require.Equal(t, fakeList, gjson.GetBytes(out, "tool_choice.name").String())
 	require.Equal(t, "tool", gjson.GetBytes(out, "tool_choice.type").String())
 }
 

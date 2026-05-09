@@ -32,9 +32,24 @@ var fakeToolNamePrefixes = []string{
 	"review_", "search_", "transform_", "handle_", "invoke_", "notify_",
 }
 
-// dynamicToolMapThreshold 与 Parrot 一致：tools 数量超过 5 才启用动态映射。
-// 少量工具不需要混淆（一般是 Claude Code 自己的核心工具 bash/edit/read 等）。
-const dynamicToolMapThreshold = 5
+// dynamicToolMapThreshold 是触发动态混淆的最小 tools 数量。设为 0 → 只要有
+// 可混淆的工具就做映射（emptyToolNames 仍由 buildDynamicToolMap 顶部短路返回 nil）。
+//
+// Parrot 原值是 5，假设是「工具少时往往是 Claude Code 自带的核心工具
+// bash/edit/read 等，Anthropic 接受原名」。但对接 sub2api 的客户端不一定如此：
+// 比如 hermes-agent / opencode 的 delegate 子 agent 只带 2–5 个工具，其中
+// `delegate_task` / `skill_manage` / `session_search` 等名字不在 Anthropic 的
+// 核心工具白名单里，会触发上游 validator 误分类，返回:
+//
+//	{"type":"invalid_request_error",
+//	 "message":"You're out of extra usage. Add more at claude.ai/settings/usage..."}
+//
+// 哪怕账号额度充裕。复现：tools.length=5 中含 `skill_manage`/`delegate_task`
+// → 400；同样 body 加一个 dummy tool 凑到 6 → 200（threshold 之上 → 触发混淆 → 通过）。
+//
+// 0 的代价：响应侧每个 SSE chunk 多 N 次 bytes.Replace（N=tools 数）；请求侧
+// 多构造一个 map。换来的好处：任何工具组合都不会把"非 CLI 指纹"漏给上游。
+const dynamicToolMapThreshold = 0
 
 // ToolNameRewrite 是单次请求内的工具名混淆映射。
 //   - Forward: real → fake，请求阶段在 body 上应用。
@@ -51,8 +66,11 @@ type ToolNameRewrite struct {
 
 // buildDynamicToolMap 构造 tools 的动态假名映射。
 //
-// 与 Parrot _build_dynamic_tool_map 语义等价：
-//   - tools 数量 ≤ dynamicToolMapThreshold 时返回 nil（不做动态映射，走静态 fallback）
+// 与 Parrot _build_dynamic_tool_map 大体一致，唯一差异是 dynamicToolMapThreshold
+// 默认 0（Parrot 是 5）。差异原因见 dynamicToolMapThreshold 的注释。
+//
+// 不变量：
+//   - 空 toolNames 返回 nil（无东西可映射）
 //   - 同一组 tool_names 在同进程内映射稳定（保证 cache 命中）
 //
 // Parrot 用 `random.Random(hash(tuple(tool_names)))` 作 seed + shuffle 前缀池；
