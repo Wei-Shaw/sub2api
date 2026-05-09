@@ -15,7 +15,7 @@
           <div
             class="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-primary-500 to-primary-600"
           >
-            <Icon name="chartBar" size="md" class="text-white" :stroke-width="2" />
+            <Icon name="chartBar" size="md" class="text-white" />
           </div>
           <div>
             <div class="font-semibold text-gray-900 dark:text-gray-100">{{ account.name }}</div>
@@ -53,19 +53,7 @@
                 t('admin.accounts.stats.totalCost')
               }}</span>
               <div class="rounded-lg bg-emerald-100 p-1.5 dark:bg-emerald-900/30">
-                <svg
-                  class="h-4 w-4 text-emerald-600 dark:text-emerald-400"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
+                <Icon name="dollar" size="sm" class="text-emerald-600 dark:text-emerald-400" />
               </div>
             </div>
             <p class="text-2xl font-bold text-gray-900 dark:text-white">
@@ -91,7 +79,7 @@
                 t('admin.accounts.stats.totalRequests')
               }}</span>
               <div class="rounded-lg bg-blue-100 p-1.5 dark:bg-blue-900/30">
-                <Icon name="bolt" size="sm" class="text-blue-600 dark:text-blue-400" :stroke-width="2" />
+                <Icon name="bolt" size="sm" class="text-blue-600 dark:text-blue-400" />
               </div>
             </div>
             <p class="text-2xl font-bold text-gray-900 dark:text-white">
@@ -115,7 +103,6 @@
                   name="calculator"
                   size="sm"
                   class="text-amber-600 dark:text-amber-400"
-                  :stroke-width="2"
                 />
               </div>
             </div>
@@ -173,19 +160,7 @@
           <div class="card p-4">
             <div class="mb-3 flex items-center gap-2">
               <div class="rounded-lg bg-cyan-100 p-1.5 dark:bg-cyan-900/30">
-                <svg
-                  class="h-4 w-4 text-cyan-600 dark:text-cyan-400"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
+                <Icon name="clock" size="sm" class="text-cyan-600 dark:text-cyan-400" />
               </div>
               <span class="text-sm font-semibold text-gray-900 dark:text-white">{{
                 t('admin.accounts.stats.todayOverview')
@@ -227,12 +202,7 @@
           <div class="card p-4">
             <div class="mb-3 flex items-center gap-2">
               <div class="rounded-lg bg-orange-100 p-1.5 dark:bg-orange-900/30">
-                <Icon
-                  name="fire"
-                  size="sm"
-                  class="text-orange-600 dark:text-orange-400"
-                  :stroke-width="2"
-                />
+                <Icon name="fire" size="sm" class="text-orange-600 dark:text-orange-400" />
               </div>
               <span class="text-sm font-semibold text-gray-900 dark:text-white">{{
                 t('admin.accounts.stats.highestCostDay')
@@ -278,7 +248,6 @@
                   name="trendingUp"
                   size="sm"
                   class="text-indigo-600 dark:text-indigo-400"
-                  :stroke-width="2"
                 />
               </div>
               <span class="text-sm font-semibold text-gray-900 dark:text-white">{{
@@ -324,7 +293,7 @@
           <div class="card p-4">
             <div class="mb-3 flex items-center gap-2">
               <div class="rounded-lg bg-teal-100 p-1.5 dark:bg-teal-900/30">
-                <Icon name="cube" size="sm" class="text-teal-600 dark:text-teal-400" :stroke-width="2" />
+                <Icon name="cube" size="sm" class="text-teal-600 dark:text-teal-400" />
               </div>
               <span class="text-sm font-semibold text-gray-900 dark:text-white">{{
                 t('admin.accounts.stats.accumulatedTokens')
@@ -354,7 +323,7 @@
           <div class="card p-4">
             <div class="mb-3 flex items-center gap-2">
               <div class="rounded-lg bg-rose-100 p-1.5 dark:bg-rose-900/30">
-                <Icon name="bolt" size="sm" class="text-rose-600 dark:text-rose-400" :stroke-width="2" />
+                <Icon name="bolt" size="sm" class="text-rose-600 dark:text-rose-400" />
               </div>
               <span class="text-sm font-semibold text-gray-900 dark:text-white">{{
                 t('admin.accounts.stats.performance')
@@ -388,7 +357,6 @@
                   name="clipboard"
                   size="sm"
                   class="text-lime-600 dark:text-lime-400"
-                  :stroke-width="2"
                 />
               </div>
               <span class="text-sm font-semibold text-gray-900 dark:text-white">{{
@@ -413,15 +381,11 @@
                 }}</span>
               </div>
               <div class="flex items-center justify-between">
-                <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('usage.accountBilled') }}</span>
+                <span class="text-xs text-gray-500 dark:text-gray-400">{{
+                  t('admin.accounts.stats.todayCost')
+                }}</span>
                 <span class="text-sm font-semibold text-gray-900 dark:text-white"
                   >${{ formatCost(stats.summary.today?.cost || 0) }}</span
-                >
-              </div>
-              <div class="flex items-center justify-between">
-                <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('usage.userBilled') }}</span>
-                <span class="text-sm font-semibold text-gray-900 dark:text-white"
-                  >${{ formatCost(stats.summary.today?.user_cost || 0) }}</span
                 >
               </div>
             </div>
@@ -465,7 +429,7 @@
         v-else-if="!loading"
         class="flex flex-col items-center justify-center py-12 text-gray-500 dark:text-gray-400"
       >
-        <Icon name="chartBar" size="xl" class="mb-4 h-12 w-12" :stroke-width="1.5" />
+        <Icon name="chartBar" size="xl" class="mb-4 h-12 w-12" />
         <p class="text-sm">{{ t('admin.accounts.stats.noData') }}</p>
       </div>
     </div>

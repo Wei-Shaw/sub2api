@@ -7,11 +7,9 @@ import {
 } from '@/composables/useModelWhitelist'
 import { applyInterceptWarmup } from '@/components/account/credentialsBuilder'
 import { adminAPI } from '@/api/admin'
-import type { PlatformFormPayload, PlatformFormValidation, OAuthFlowConfig, EditFormPayload } from './types'
+import type { PlatformFormPayload, PlatformFormValidation, OAuthFlowConfig, EditFormPayload, ModelMapping } from './types'
 import type { Account, CreateAccountRequest, AccountType } from '@/types'
 import * as editH from './editHelpers'
-
-interface ModelMapping { from: string; to: string }
 
 export function useAnthropicForm() {
   const { t } = useI18n()
@@ -62,19 +60,7 @@ export function useAnthropicForm() {
   const customErrorCodesEnabled = ref(false)
   const selectedErrorCodes = ref<number[]>([])
   const tempUnschedEnabled = ref(false)
-  const tempUnschedRules = ref<{
-    error_code: number | null; keywords: string
-    duration_minutes: number | null; description: string
-  }[]>([])
-  const editQuotaLimit = ref<number | null>(null)
-  const editQuotaDailyLimit = ref<number | null>(null)
-  const editQuotaWeeklyLimit = ref<number | null>(null)
-  const editDailyResetMode = ref<'rolling' | 'fixed' | null>(null)
-  const editDailyResetHour = ref<number | null>(null)
-  const editWeeklyResetMode = ref<'rolling' | 'fixed' | null>(null)
-  const editWeeklyResetDay = ref<number | null>(null)
-  const editWeeklyResetHour = ref<number | null>(null)
-  const editResetTimezone = ref<string | null>(null)
+  const tempUnschedRules = ref<editH.TempUnschedRuleForm[]>([])
   const presetMappings = computed(() => getPresetMappingsByPlatform('anthropic'))
   const bedrockPresets = computed(() => getPresetMappingsByPlatform('bedrock'))
   const umqModeOptions = computed(() => [
@@ -154,23 +140,12 @@ export function useAnthropicForm() {
     return buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value) ?? undefined
   }
 
-  const MAX_POOL_MODE_RETRY_COUNT = 10
-  const DEFAULT_POOL_MODE_RETRY_COUNT = 3
-
-  function normalizePoolRetry(value: number): number {
-    if (!Number.isFinite(value)) return DEFAULT_POOL_MODE_RETRY_COUNT
-    const n = Math.trunc(value)
-    if (n < 0) return 0
-    if (n > MAX_POOL_MODE_RETRY_COUNT) return MAX_POOL_MODE_RETRY_COUNT
-    return n
-  }
-
   function applySharedCredentials(creds: Record<string, unknown>): void {
     const mapping = buildModelMapping()
     if (mapping) creds.model_mapping = mapping
     if (poolModeEnabled.value) {
       creds.pool_mode = true
-      creds.pool_mode_retry_count = normalizePoolRetry(poolModeRetryCount.value)
+      creds.pool_mode_retry_count = editH.normalizePoolModeRetryCount(poolModeRetryCount.value)
     }
     if (customErrorCodesEnabled.value) {
       creds.custom_error_codes_enabled = true
@@ -295,15 +270,6 @@ export function useAnthropicForm() {
     selectedErrorCodes.value = []
     tempUnschedEnabled.value = false
     tempUnschedRules.value = []
-    editQuotaLimit.value = null
-    editQuotaDailyLimit.value = null
-    editQuotaWeeklyLimit.value = null
-    editDailyResetMode.value = null
-    editDailyResetHour.value = null
-    editWeeklyResetMode.value = null
-    editWeeklyResetDay.value = null
-    editWeeklyResetHour.value = null
-    editResetTimezone.value = null
     oauth.resetState()
   }
 
@@ -316,19 +282,6 @@ export function useAnthropicForm() {
 
     editH.loadTempUnschedFromCredentials(credentials, tempUnschedEnabled, tempUnschedRules)
     editH.loadInterceptWarmupFromCredentials(credentials, interceptWarmupRequests)
-
-    // Quota
-    editH.loadQuotaFromExtra(extra, {
-      quotaLimit: editQuotaLimit,
-      quotaDailyLimit: editQuotaDailyLimit,
-      quotaWeeklyLimit: editQuotaWeeklyLimit,
-      dailyResetMode: editDailyResetMode,
-      dailyResetHour: editDailyResetHour,
-      weeklyResetMode: editWeeklyResetMode,
-      weeklyResetDay: editWeeklyResetDay,
-      weeklyResetHour: editWeeklyResetHour,
-      resetTimezone: editResetTimezone
-    })
 
     if (account.type === 'apikey') {
       apiKeyBaseUrl.value = (credentials?.base_url as string) || 'https://api.anthropic.com'
@@ -375,19 +328,6 @@ export function useAnthropicForm() {
 
     editH.applyTempUnschedToCredentials(newCreds, tempUnschedEnabled.value, tempUnschedRules.value)
     editH.applyInterceptWarmup(newCreds, interceptWarmupRequests.value, 'edit')
-
-    // Quota
-    editH.applyQuotaToExtra(newExtra, {
-      quotaLimit: editQuotaLimit.value,
-      quotaDailyLimit: editQuotaDailyLimit.value,
-      quotaWeeklyLimit: editQuotaWeeklyLimit.value,
-      dailyResetMode: editDailyResetMode.value,
-      dailyResetHour: editDailyResetHour.value,
-      weeklyResetMode: editWeeklyResetMode.value,
-      weeklyResetDay: editWeeklyResetDay.value,
-      weeklyResetHour: editWeeklyResetHour.value,
-      resetTimezone: editResetTimezone.value
-    })
 
     if (account.type === 'apikey') {
       newCreds.base_url = apiKeyBaseUrl.value.trim() || 'https://api.anthropic.com'
@@ -481,10 +421,6 @@ export function useAnthropicForm() {
     poolModeEnabled, poolModeRetryCount,
     customErrorCodesEnabled, selectedErrorCodes,
     tempUnschedEnabled, tempUnschedRules,
-    editQuotaLimit, editQuotaDailyLimit, editQuotaWeeklyLimit,
-    editDailyResetMode, editDailyResetHour,
-    editWeeklyResetMode, editWeeklyResetDay, editWeeklyResetHour,
-    editResetTimezone,
     presetMappings, bedrockPresets,
     oauth, oauthConfig,
     isOAuthFlow, loadTlsProfiles, loadWebSearchEnabled,

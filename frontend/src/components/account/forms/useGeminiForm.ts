@@ -2,11 +2,9 @@ import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useGeminiOAuth } from '@/composables/useGeminiOAuth'
 import { buildModelMappingObject, getPresetMappingsByPlatform } from '@/composables/useModelWhitelist'
-import type { PlatformFormPayload, PlatformFormValidation, OAuthFlowConfig, EditFormPayload } from './types'
+import type { PlatformFormPayload, PlatformFormValidation, OAuthFlowConfig, EditFormPayload, ModelMapping } from './types'
 import type { Account, CreateAccountRequest } from '@/types'
 import * as editH from './editHelpers'
-
-interface ModelMapping { from: string; to: string }
 
 export function useGeminiForm() {
   const { t } = useI18n()
@@ -33,7 +31,7 @@ export function useGeminiForm() {
   const customErrorCodesEnabled = ref(false)
   const selectedErrorCodes = ref<number[]>([])
   const tempUnschedEnabled = ref(false)
-  const tempUnschedRules = ref<{ error_code: number | null; keywords: string; duration_minutes: number | null; description: string }[]>([])
+  const tempUnschedRules = ref<editH.TempUnschedRuleForm[]>([])
 
   const presetMappings = computed(() => getPresetMappingsByPlatform('gemini'))
   const geminiSelectedTier = computed(() => {

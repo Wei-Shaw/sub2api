@@ -108,11 +108,7 @@ import { getPresetMappingsByPlatform } from '@/composables/useModelWhitelist'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import Icon from '@/components/icons/Icon.vue'
-
-interface ModelMapping {
-  from: string
-  to: string
-}
+import type { ModelMapping } from '../forms/types'
 
 interface PresetMapping {
   label: string

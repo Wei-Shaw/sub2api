@@ -1780,7 +1780,16 @@ export default {
         tooltipEdit: 'Select one or more groups of the same platform. After saving, current group accounts will be replaced with accounts from these groups (deduplicated).',
         selectPlaceholder: 'Select groups to copy accounts from...',
         hint: 'Multiple groups can be selected, accounts will be deduplicated',
-        hintEdit: '⚠️ Warning: This will replace all existing account bindings'
+        hintEdit: '⚠️ Warning: This will replace all existing account bindings',
+        accountUnit: 'accounts'
+      },
+      accountFilters: {
+        title: 'Account Filters',
+        oauthOnly: 'OAuth Accounts Only',
+        oauthOnlyEnabled: 'Enabled — API Key type accounts excluded',
+        privacySet: 'Privacy-Protected Accounts Only',
+        privacySetEnabled: 'Enabled — Accounts without Privacy settings will be excluded',
+        disabled: 'Disabled'
       },
       modelRouting: {
         title: 'Model Routing',

@@ -1,5 +1,10 @@
 ﻿import type { Account, AccountPlatform, AccountType, CreateAccountRequest } from '@/types'
 
+export interface ModelMapping {
+  from: string
+  to: string
+}
+
 export interface PlatformFormContext {
   /** 'oauth-based' | 'apikey' | 'bedrock' | 'service_account' */
   accountCategory: string

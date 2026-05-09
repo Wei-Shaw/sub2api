@@ -106,9 +106,7 @@ import ToggleCard from '../widgets/ToggleCard.vue'
 import TempUnschedSection from '../widgets/TempUnschedSection.vue'
 import CheckboxWithTooltip from './CheckboxWithTooltip.vue'
 import { useAntigravityForm } from './useAntigravityForm'
-import type { PlatformFormContext } from './types'
-
-interface ModelMapping { from: string; to: string }
+import type { PlatformFormContext, ModelMapping } from './types'
 
 defineProps<{ context: PlatformFormContext }>()
 const { t } = useI18n()

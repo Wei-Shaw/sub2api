@@ -7,11 +7,9 @@ import {
   getPresetMappingsByPlatform
 } from '@/composables/useModelWhitelist'
 import { applyInterceptWarmup } from '@/components/account/credentialsBuilder'
-import type { PlatformFormPayload, PlatformFormValidation, OAuthFlowConfig, EditFormPayload } from './types'
+import type { PlatformFormPayload, PlatformFormValidation, OAuthFlowConfig, EditFormPayload, ModelMapping } from './types'
 import type { Account, CreateAccountRequest } from '@/types'
 import * as editH from './editHelpers'
-
-interface ModelMapping { from: string; to: string }
 
 export function useAntigravityForm() {
   const { t } = useI18n()
@@ -25,8 +23,7 @@ export function useAntigravityForm() {
   const allowOverages = ref(false)
   const interceptWarmupRequests = ref(false)
   const tempUnschedEnabled = ref(false)
-  type TempRule = { error_code: number | null; keywords: string; duration_minutes: number | null; description: string }
-  const tempUnschedRules = ref<TempRule[]>([])
+  const tempUnschedRules = ref<editH.TempUnschedRuleForm[]>([])
 
   const antigravityPresetMappings = computed(() => getPresetMappingsByPlatform('antigravity'))
   const isOAuthFlow = () => antigravityAccountType.value === 'oauth'

@@ -1032,6 +1032,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
 import type { Proxy as ProxyConfig, AdminGroup, AccountPlatform, AccountType } from '@/types'
+import type { ModelMapping } from './forms/types'
 import { BaseDialog } from '@sub2api/plugin-sdk'
 import { ConfirmDialog } from '@sub2api/plugin-sdk'
 import { Select } from '@sub2api/plugin-sdk'
@@ -1139,12 +1140,6 @@ const filteredPresets = computed(() => {
 
   return Array.from(dedupedPresets.values())
 })
-
-// Model mapping type
-interface ModelMapping {
-  from: string
-  to: string
-}
 
 // State - field enable flags
 const enableBaseUrl = ref(false)

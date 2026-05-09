@@ -5,10 +5,10 @@
 import type { Ref } from 'vue'
 import { buildModelMappingObject } from '@/composables/useModelWhitelist'
 import { applyInterceptWarmup } from '@/components/account/credentialsBuilder'
+import type { ModelMapping } from './types'
 
 // ---------- Model mapping ----------
 
-interface ModelMapping { from: string; to: string }
 
 /**
  * Load model_mapping from credentials into restriction mode + refs.

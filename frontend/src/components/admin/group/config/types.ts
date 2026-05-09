@@ -9,5 +9,7 @@ export interface GroupConfigProps {
 }
 
 export interface GroupConfigExposed {
-  validate?(): { valid: boolean; error?: string }
+  getRoutingRulesApiFormat?(): Record<string, number[]> | null
+  loadRoutingRules?(data: Record<string, number[]> | null): Promise<void>
+  resetRoutingRules?(): void
 }

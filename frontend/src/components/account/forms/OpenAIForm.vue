@@ -148,9 +148,7 @@ import CustomErrorCodesSection from '../widgets/CustomErrorCodesSection.vue'
 import TempUnschedSection from '../widgets/TempUnschedSection.vue'
 import ToggleCard from '../widgets/ToggleCard.vue'
 import { useOpenAIForm } from './useOpenAIForm'
-import type { PlatformFormContext } from './types'
-
-interface ModelMapping { from: string; to: string }
+import type { PlatformFormContext, ModelMapping } from './types'
 
 const props = defineProps<{ context: PlatformFormContext }>()
 const { t } = useI18n()

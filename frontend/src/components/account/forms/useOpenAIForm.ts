@@ -14,11 +14,9 @@ import {
   resolveOpenAIWSModeFromExtra,
   type OpenAIWSMode
 } from '@/utils/openaiWsMode'
-import type { PlatformFormPayload, PlatformFormValidation, OAuthFlowConfig, EditFormPayload } from './types'
+import type { PlatformFormPayload, PlatformFormValidation, OAuthFlowConfig, EditFormPayload, ModelMapping } from './types'
 import type { Account, CreateAccountRequest, OpenAICompactMode } from '@/types'
 import * as editH from './editHelpers'
-
-interface ModelMapping { from: string; to: string }
 
 const OPENAI_MOBILE_RT_CLIENT_ID = 'app_LlGpXReQgckcGGUo2JrYvtJK'
 
@@ -41,8 +39,7 @@ export function useOpenAIForm() {
   const customErrorCodesEnabled = ref(false)
   const selectedErrorCodes = ref<number[]>([])
   const tempUnschedEnabled = ref(false)
-  type TempRule = { error_code: number | null; keywords: string; duration_minutes: number | null; description: string }
-  const tempUnschedRules = ref<TempRule[]>([])
+  const tempUnschedRules = ref<editH.TempUnschedRuleForm[]>([])
   const presetMappings = computed(() => getPresetMappingsByPlatform('openai'))
   const openAICompactModeOptions = computed(() => [
     { value: 'auto', label: t('admin.accounts.openai.compactModeAuto') },

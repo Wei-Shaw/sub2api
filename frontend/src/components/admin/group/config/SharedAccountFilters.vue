@@ -3,20 +3,20 @@
     class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4 space-y-4"
   >
     <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-      账号过滤控制
+      {{ t("admin.groups.accountFilters.title") }}
     </h4>
 
     <!-- require_oauth_only toggle -->
     <div class="flex items-center justify-between">
       <div>
-        <label class="text-sm text-gray-600 dark:text-gray-400"
-          >仅允许 OAuth 账号</label
-        >
+        <label class="text-sm text-gray-600 dark:text-gray-400">{{
+          t("admin.groups.accountFilters.oauthOnly")
+        }}</label>
         <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
           {{
             formData.require_oauth_only
-              ? "已启用 — 排除 API Key 类型账号"
-              : "未启用"
+              ? t("admin.groups.accountFilters.oauthOnlyEnabled")
+              : t("admin.groups.accountFilters.disabled")
           }}
         </p>
       </div>
@@ -44,14 +44,14 @@
     <!-- require_privacy_set toggle -->
     <div class="flex items-center justify-between">
       <div>
-        <label class="text-sm text-gray-600 dark:text-gray-400"
-          >仅允许隐私保护已设置的账号</label
-        >
+        <label class="text-sm text-gray-600 dark:text-gray-400">{{
+          t("admin.groups.accountFilters.privacySet")
+        }}</label>
         <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
           {{
             formData.require_privacy_set
-              ? "已启用 — Privacy 未设置的账号将被排除"
-              : "未启用"
+              ? t("admin.groups.accountFilters.privacySetEnabled")
+              : t("admin.groups.accountFilters.disabled")
           }}
         </p>
       </div>
@@ -81,7 +81,11 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from "vue-i18n";
+
 defineProps<{
   formData: Record<string, any>;
 }>();
+
+const { t } = useI18n();
 </script>
