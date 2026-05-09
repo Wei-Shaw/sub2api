@@ -141,6 +141,31 @@ function buildAccount() {
   } as any
 }
 
+function buildOAuthAccount() {
+  return {
+    id: 2,
+    name: 'OpenAI OAuth',
+    notes: '',
+    platform: 'openai',
+    type: 'oauth',
+    credentials: {
+      access_token: 'token'
+    },
+    extra: {
+      openai_quota_strategy: 'prefer_5h',
+      openai_quota_stop_threshold_percent: 15
+    },
+    proxy_id: null,
+    concurrency: 1,
+    priority: 1,
+    rate_multiplier: 1,
+    status: 'active',
+    group_ids: [],
+    expires_at: null,
+    auto_pause_on_expired: false
+  } as any
+}
+
 function mountModal(account = buildAccount()) {
   return mount(EditAccountModal, {
     props: {
@@ -236,5 +261,28 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.codex_image_generation_bridge).toBe(true)
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('codex_image_generation_bridge_enabled')
+  })
+
+  it('OpenAI OAuth 编辑可以保存额度策略和阈值', async () => {
+    const account = buildOAuthAccount()
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+
+    expect((wrapper.get('#edit-openai-quota-stop-threshold').element as HTMLInputElement).value).toBe('15')
+
+    const prefer7dButton = wrapper.findAll('button')
+      .find((btn) => btn.text().includes('admin.accounts.openai.quotaStrategyPrefer7d'))
+    expect(prefer7dButton).toBeTruthy()
+    await prefer7dButton!.trigger('click')
+    await wrapper.get('#edit-openai-quota-stop-threshold').setValue(12)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_quota_strategy).toBe('prefer_7d')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_quota_stop_threshold_percent).toBe(12)
   })
 })
