@@ -1772,7 +1772,6 @@ export interface UserErrorListParams {
 export interface UsageQueryParams {
   page?: number
   page_size?: number
-  period?: string
   api_key_id?: number
   user_id?: number
   account_id?: number
@@ -1782,6 +1781,7 @@ export interface UsageQueryParams {
   stream?: boolean
   billing_type?: number | null
   billing_mode?: string | null
+  period?: string
   start_date?: string
   end_date?: string
   timezone?: string

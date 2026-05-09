@@ -164,9 +164,10 @@ func (h *UsageHandler) List(c *gin.Context) {
 		t = t.AddDate(0, 0, 1)
 		endTime = &t
 	}
-
 	if startTime == nil && endTime == nil && timezone.IsLast24HoursPeriod(c.Query("period")) {
-		start, end := timezone.Last24HoursInUserLocation(userTZ)
+		now := timezone.NowInUserLocation(userTZ)
+		start := now.Add(-24 * time.Hour)
+		end := now
 		startTime = &start
 		endTime = &end
 	}
@@ -305,20 +306,20 @@ func (h *UsageHandler) Stats(c *gin.Context) {
 		period := c.DefaultQuery("period", "today")
 		switch {
 		case timezone.IsLast24HoursPeriod(period):
-			startTime, endTime = timezone.Last24HoursInUserLocation(userTZ)
-		case period == "today":
-			startTime = timezone.StartOfDayInUserLocation(now, userTZ)
-			endTime = now
-		case period == "week":
-			startTime = now.AddDate(0, 0, -7)
-			endTime = now
-		case period == "month":
-			startTime = now.AddDate(0, -1, 0)
-			endTime = now
+			startTime = now.Add(-24 * time.Hour)
 		default:
-			startTime = timezone.StartOfDayInUserLocation(now, userTZ)
-			endTime = now
+			switch period {
+			case "today":
+				startTime = timezone.StartOfDayInUserLocation(now, userTZ)
+			case "week":
+				startTime = now.AddDate(0, 0, -7)
+			case "month":
+				startTime = now.AddDate(0, -1, 0)
+			default:
+				startTime = timezone.StartOfDayInUserLocation(now, userTZ)
+			}
 		}
+		endTime = now
 	}
 
 	// Build filters and call GetStatsWithFilters

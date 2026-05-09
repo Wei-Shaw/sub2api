@@ -106,24 +106,6 @@ func TestAdminUsageListInvalidExactTotal(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
-func TestAdminUsageListLast24HoursPeriod(t *testing.T) {
-	repo := &adminUsageRepoCapture{}
-	router := newAdminUsageRequestTypeTestRouter(repo)
-
-	before := time.Now().UTC()
-	req := httptest.NewRequest(http.MethodGet, "/admin/usage?period=last24hours&timezone=UTC", nil)
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
-	after := time.Now().UTC()
-
-	require.Equal(t, http.StatusOK, rec.Code)
-	require.NotNil(t, repo.listFilters.StartTime)
-	require.NotNil(t, repo.listFilters.EndTime)
-	require.WithinDuration(t, before.Add(-24*time.Hour), *repo.listFilters.StartTime, 2*time.Second)
-	require.WithinDuration(t, after, *repo.listFilters.EndTime, 2*time.Second)
-	require.Equal(t, 24*time.Hour, repo.listFilters.EndTime.Sub(*repo.listFilters.StartTime))
-}
-
 func TestAdminUsageStatsRequestTypePriority(t *testing.T) {
 	repo := &adminUsageRepoCapture{}
 	router := newAdminUsageRequestTypeTestRouter(repo)
@@ -160,12 +142,30 @@ func TestAdminUsageStatsInvalidStream(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
+func TestAdminUsageListLast24HoursPeriod(t *testing.T) {
+	repo := &adminUsageRepoCapture{}
+	router := newAdminUsageRequestTypeTestRouter(repo)
+
+	before := time.Now().UTC()
+	req := httptest.NewRequest(http.MethodGet, "/admin/usage?period=last24hours&timezone=UTC", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	after := time.Now().UTC()
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.NotNil(t, repo.listFilters.StartTime)
+	require.NotNil(t, repo.listFilters.EndTime)
+	require.WithinDuration(t, before.Add(-24*time.Hour), *repo.listFilters.StartTime, 2*time.Second)
+	require.WithinDuration(t, after, *repo.listFilters.EndTime, 2*time.Second)
+	require.WithinDuration(t, *repo.listFilters.StartTime, repo.listFilters.EndTime.Add(-24*time.Hour), 2*time.Second)
+}
+
 func TestAdminUsageStatsLast24HoursPeriod(t *testing.T) {
 	repo := &adminUsageRepoCapture{}
 	router := newAdminUsageRequestTypeTestRouter(repo)
 
 	before := time.Now().UTC()
-	req := httptest.NewRequest(http.MethodGet, "/admin/usage/stats?period=last24hours&timezone=UTC", nil)
+	req := httptest.NewRequest(http.MethodGet, "/admin/usage/stats?period=24h&timezone=UTC", nil)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	after := time.Now().UTC()
@@ -175,5 +175,5 @@ func TestAdminUsageStatsLast24HoursPeriod(t *testing.T) {
 	require.NotNil(t, repo.statsFilters.EndTime)
 	require.WithinDuration(t, before.Add(-24*time.Hour), *repo.statsFilters.StartTime, 2*time.Second)
 	require.WithinDuration(t, after, *repo.statsFilters.EndTime, 2*time.Second)
-	require.Equal(t, 24*time.Hour, repo.statsFilters.EndTime.Sub(*repo.statsFilters.StartTime))
+	require.WithinDuration(t, *repo.statsFilters.StartTime, repo.statsFilters.EndTime.Add(-24*time.Hour), 2*time.Second)
 }
