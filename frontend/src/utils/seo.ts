@@ -62,13 +62,15 @@ export function resolveRouteSEO(
   const homeTitle = settings?.seo_home_title?.trim()
   const defaultDescription = settings?.seo_default_description?.trim()
   const homeDescription = settings?.seo_home_description?.trim()
-  const defaultRobots = settings?.seo_default_robots?.trim() || 'noindex, nofollow'
-  const homeRobots = settings?.seo_home_robots?.trim() || defaultRobots
+  const publicDefaultRobots = settings?.seo_default_robots?.trim() || 'index, follow'
+  const defaultRobots = publicDefaultRobots
+  const homeRobots = settings?.seo_home_robots?.trim() || publicDefaultRobots
 
   if (route.name === 'Home') {
     const description =
       homeDescription ||
       defaultDescription ||
+      extractTextSummary(settings?.home_content) ||
       settings?.site_subtitle?.trim() ||
       i18n.global.t('home.heroDescription') ||
       DEFAULT_DESCRIPTION
@@ -94,9 +96,12 @@ export function resolveRouteSEO(
     const matchedDocument = settings?.login_agreement_documents?.find((item) => item.id === documentId)
     const pageTitle = matchedDocument?.title?.trim()
       || (typeof route.meta.title === 'string' ? route.meta.title : 'Legal Document')
-    const title = matchedDocument?.seo_title?.trim() || `${pageTitle} - ${siteName}`
+    const title = matchedDocument?.seo_title?.trim() || buildPageTitle(pageTitle, defaultTitle, siteName)
     const description =
-      matchedDocument?.seo_description?.trim() || `Read ${pageTitle} on ${siteName}.`
+      matchedDocument?.seo_description?.trim() ||
+      defaultDescription ||
+      extractTextSummary(matchedDocument?.content_md) ||
+      `Read ${pageTitle} on ${siteName}.`
     return {
       title,
       description,
@@ -107,14 +112,39 @@ export function resolveRouteSEO(
     }
   }
 
+  if (route.name === 'TutorialDocument') {
+    const pageTitle = '教程文档'
+    const description =
+      defaultDescription ||
+      `阅读 ${pageTitle}，了解 ${siteName} 的接入说明、使用方式与常见问题。`
+    return {
+      title: buildPageTitle(pageTitle, defaultTitle, siteName),
+      description,
+      canonicalUrl,
+      imageUrl: settings?.seo_default_og_image?.trim() || imageUrl || (baseUrl ? `${baseUrl}/og/custom-tutorial.svg` : undefined),
+      robots: defaultRobots || 'index, follow',
+      type: 'article',
+      jsonLD: {
+        '@context': 'https://schema.org',
+        '@type': 'Article',
+        name: pageTitle,
+        description,
+        url: canonicalUrl,
+      },
+    }
+  }
+
   if (route.name === 'CustomPage') {
     const pageId = String(route.params.id || '').trim()
     const page = settings?.custom_menu_items?.find((item) => item.id === pageId && item.visibility !== 'admin')
     const pageTitle = page?.label?.trim() || 'Custom Page'
-    const description = page?.seo_description?.trim() || `Learn more about ${pageTitle} on ${siteName}.`
+    const description =
+      page?.seo_description?.trim() ||
+      defaultDescription ||
+      `Learn more about ${pageTitle} on ${siteName}.`
     const isMarkdown = Boolean(page?.page_slug || page?.url?.startsWith('md:'))
     return {
-      title: page?.seo_title?.trim() || `${pageTitle} - ${siteName}`,
+      title: page?.seo_title?.trim() || buildPageTitle(pageTitle, defaultTitle, siteName),
       description,
       canonicalUrl,
       imageUrl: page?.seo_og_image?.trim() || imageUrl,
@@ -138,9 +168,39 @@ export function resolveRouteSEO(
     description: description || defaultDescription || DEFAULT_DESCRIPTION,
     canonicalUrl,
     imageUrl: settings?.seo_default_og_image?.trim() || imageUrl,
-    robots: route.meta.requiresAuth === false ? defaultRobots : 'noindex, nofollow',
+    robots: route.meta.requiresAuth === false ? publicDefaultRobots : 'noindex, nofollow',
     type: 'website',
   }
+}
+
+function buildPageTitle(pageTitle: string, defaultTitle: string | undefined, siteName: string): string {
+  const cleanPageTitle = pageTitle.trim()
+  const cleanDefaultTitle = defaultTitle?.trim() || ''
+  if (cleanDefaultTitle) {
+    if (cleanPageTitle && cleanPageTitle !== cleanDefaultTitle && !cleanDefaultTitle.includes(cleanPageTitle)) {
+      return `${cleanPageTitle} - ${cleanDefaultTitle}`
+    }
+    return cleanDefaultTitle
+  }
+  if (cleanPageTitle) {
+    return `${cleanPageTitle} - ${siteName}`
+  }
+  return siteName
+}
+
+function extractTextSummary(value: string | undefined | null): string {
+  const text = String(value ?? '')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/!\[[^\]]*]\(([^)]+)\)/g, ' ')
+    .replace(/\[([^\]]+)]\(([^)]+)\)/g, '$1')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[#>*`_-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!text) {
+    return ''
+  }
+  return text
 }
 
 export function getFrontendBaseURL(settings: PublicSettings | null | undefined): string {
@@ -163,7 +223,8 @@ function resolveCanonicalUrl(baseUrl: string, fullPath: string): string | undefi
     return undefined
   }
   const [pathname] = (fullPath || '/').split(/[?#]/, 1)
-  return `${baseUrl}${pathname.startsWith('/') ? pathname : `/${pathname}`}`
+  const normalizedPath = pathname === '/home' ? '/' : pathname
+  return `${baseUrl}${normalizedPath.startsWith('/') ? normalizedPath : `/${normalizedPath}`}`
 }
 
 function resolveImageUrl(baseUrl: string, logo?: string): string | undefined {

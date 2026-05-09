@@ -30,4 +30,31 @@ describe('prerender content injection', () => {
     expect(html).toContain('<h1>Guide</h1>')
     expect(html).toContain('<p>Custom page content.</p>')
   })
+
+  it('injects tutorial html body into prerendered html', () => {
+    const html = injectPrerenderContent(baseHTML, {
+      route: '/docs/tutorial',
+      title: 'Tutorial Document',
+      source: 'tutorial',
+      html: '<h2>Tutorial</h2><p>Use prerendered HTML content.</p>',
+    })
+
+    expect(html).toContain('Tutorial Document')
+    expect(html).toContain('<h2>Tutorial</h2>')
+    expect(html).toContain('<p>Use prerendered HTML content.</p>')
+  })
+
+  it('escapes title and sanitizes prerendered body html', () => {
+    const html = injectPrerenderContent(baseHTML, {
+      route: '/custom/unsafe',
+      title: '<img src=x onerror=alert(1)>Unsafe',
+      source: 'custom-markdown',
+      html: '<p>Hello</p><script>alert(1)</script><img src="/ok.png" onerror="alert(1)">',
+    })
+
+    expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;Unsafe')
+    expect(html).not.toContain('<script>alert(1)</script>')
+    expect(html).not.toContain('onerror="alert(1)"')
+    expect(html).toContain('<img src="/ok.png">')
+  })
 })

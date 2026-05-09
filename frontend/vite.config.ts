@@ -4,7 +4,6 @@ import checker from 'vite-plugin-checker'
 import { mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { join, resolve } from 'path'
 import {
-  BASE_PUBLIC_PRERENDER_ROUTES,
   buildPrerenderManifest,
   collectPrerenderRoutes,
   injectPrerenderContent,
@@ -89,9 +88,31 @@ function normalizeText(value?: string): string {
     .trim()
 }
 
+function extractSummary(value?: string): string {
+  return String(value ?? '')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/!\[[^\]]*]\(([^)]+)\)/g, ' ')
+    .replace(/\[([^\]]+)]\(([^)]+)\)/g, '$1')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[#>*`_-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function buildPageTitle(pageTitle: string, defaultTitle: string, siteName: string): string {
+  if (defaultTitle) {
+    if (pageTitle && pageTitle !== defaultTitle && !defaultTitle.includes(pageTitle)) {
+      return `${pageTitle} - ${defaultTitle}`
+    }
+    return defaultTitle
+  }
+  return pageTitle ? `${pageTitle} - ${siteName}` : `${siteName} - AI API Gateway`
+}
+
 function buildCanonicalUrl(baseUrl: string, route: string): string {
   if (!baseUrl) return ''
-  const path = route === '/' ? '/' : `/${route.replace(/^\/+/, '')}`
+  const normalizedRoute = route === '/home' ? '/' : route
+  const path = normalizedRoute === '/' ? '/' : `/${normalizedRoute.replace(/^\/+/, '')}`
   return `${baseUrl}${path === '/' ? '/' : path}`
 }
 
@@ -115,6 +136,15 @@ function buildJsonLd(type: 'WebSite' | 'Article' | 'WebPage', title: string, des
     payload.image = image
   }
   return JSON.stringify(payload)
+}
+
+function escapeJSONForHTML(json: string): string {
+  return json
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029')
 }
 
 function buildSeoBlock(
@@ -143,28 +173,55 @@ function buildSeoBlock(
   let robots = defaultRobots
   let type: 'website' | 'article' = 'website'
   let jsonLdType: 'WebSite' | 'Article' | 'WebPage' = 'WebPage'
+  let jsonLdTitle = siteName
 
   if (entry.route === '/home') {
     title = homeTitle || defaultTitle || `${siteName} - AI API Gateway`
-    description = homeDescription || defaultDescription || description
+    description =
+      homeDescription ||
+      defaultDescription ||
+      extractSummary((data as Record<string, unknown> | undefined)?.home_content as string | undefined) ||
+      description
     image = defaultImage
     robots = homeRobots
     type = 'website'
     jsonLdType = 'WebSite'
+    jsonLdTitle = siteName
   } else if (entry.route.startsWith('/legal/')) {
-    title = entry.seoTitle?.trim() || `${entry.title} - ${siteName}`
-    description = normalizeText(entry.seoDescription) || `Read ${entry.title} on ${siteName}.`
+    title = entry.seoTitle?.trim() || buildPageTitle(entry.title, defaultTitle, siteName)
+    description =
+      normalizeText(entry.seoDescription) ||
+      defaultDescription ||
+      extractSummary(entry.markdown) ||
+      `Read ${entry.title} on ${siteName}.`
     image = resolveAbsoluteUrl(baseUrl, entry.seoOGImage, `/og/legal-${entry.route.replace('/legal/', '')}.svg`)
     robots = entry.seoRobots?.trim() || defaultRobots
     type = 'article'
     jsonLdType = 'Article'
+    jsonLdTitle = title
   } else if (entry.route.startsWith('/custom/')) {
-    title = entry.seoTitle?.trim() || `${entry.title} - ${siteName}`
-    description = normalizeText(entry.seoDescription) || `Learn more about ${entry.title} on ${siteName}.`
+    title = entry.seoTitle?.trim() || buildPageTitle(entry.title, defaultTitle, siteName)
+    description =
+      normalizeText(entry.seoDescription) ||
+      defaultDescription ||
+      extractSummary(entry.markdown) ||
+      `Learn more about ${entry.title} on ${siteName}.`
     image = resolveAbsoluteUrl(baseUrl, entry.seoOGImage, `/og/custom-${entry.route.replace('/custom/', '')}.svg`)
     robots = entry.seoRobots?.trim() || defaultRobots
     type = entry.markdown ? 'article' : 'website'
     jsonLdType = entry.markdown ? 'Article' : 'WebPage'
+    jsonLdTitle = title
+  } else if (entry.route === '/docs/tutorial') {
+    title = buildPageTitle('教程文档', defaultTitle, siteName)
+    description =
+      defaultDescription ||
+      extractSummary(entry.markdown) ||
+      `阅读教程文档，了解 ${siteName} 的接入说明、使用方式与常见问题。`
+    image = resolveAbsoluteUrl(baseUrl, entry.seoOGImage, '/og/custom-tutorial.svg')
+    robots = defaultRobots
+    type = 'article'
+    jsonLdType = 'Article'
+    jsonLdTitle = title
   }
 
   const tags = [
@@ -182,7 +239,7 @@ function buildSeoBlock(
     `<meta name="twitter:title" content="${escapeHtml(title)}">`,
     `<meta name="twitter:description" content="${escapeHtml(description)}">`,
     image ? `<meta name="twitter:image" content="${escapeHtml(image)}">` : '',
-    `<script type="application/ld+json">${buildJsonLd(jsonLdType, entry.title || siteName, description, canonical, image)}</script>`,
+    `<script type="application/ld+json">${escapeJSONForHTML(buildJsonLd(jsonLdType, jsonLdTitle || title || entry.title || siteName, description, canonical, image))}</script>`,
   ].filter(Boolean)
 
   return tags.join('')
@@ -199,7 +256,14 @@ function replaceHeadSeo(indexHtml: string, seoBlock: string): string {
   return html.replace('</head>', `${seoBlock}</head>`)
 }
 
-function staticPrerenderRoutes(settingsURL: string, publicPagesURL: string): Plugin {
+const DEFAULT_TUTORIAL_MARKDOWN = `# 教程文档
+
+欢迎使用 Sub2API。
+
+你可以在后台的“系统设置”页面直接编辑这份教程文档正文，保存后会立即影响公开页和用户侧边栏固定入口对应的内容。
+`
+
+function staticPrerenderRoutes(settingsURL: string, publicPagesURL: string, tutorialDocumentURL: string): Plugin {
   return {
     name: 'static-prerender-routes',
     apply: 'build',
@@ -207,11 +271,7 @@ function staticPrerenderRoutes(settingsURL: string, publicPagesURL: string): Plu
       const outDir = resolve(__dirname, '../backend/internal/web/dist')
       const indexHtml = readFileSync(join(outDir, 'index.html'), 'utf8')
       let settingsPayload: PrerenderSettingsPayload | null = null
-      let routes: PrerenderRouteEntry[] = BASE_PUBLIC_PRERENDER_ROUTES.map((route) => ({
-        route,
-        title: '',
-        source: 'base',
-      }))
+      let routes: PrerenderRouteEntry[] = collectPrerenderRoutes(null)
 
       try {
         const response = await fetch(settingsURL, {
@@ -221,25 +281,55 @@ function staticPrerenderRoutes(settingsURL: string, publicPagesURL: string): Plu
         if (response.ok) {
           settingsPayload = (await response.json()) as PrerenderSettingsPayload
           routes = collectPrerenderRoutes(settingsPayload)
-          for (const entry of routes) {
-            if (entry.markdown || !entry.markdownSlug) continue
-            const markdownResponse = await fetch(
-              `${publicPagesURL}/${encodeURIComponent(entry.markdownSlug)}`,
-              {
-                signal: AbortSignal.timeout(3000),
-                headers: { accept: 'text/markdown' },
-              }
-            )
-            if (markdownResponse.ok) {
-              entry.markdown = await markdownResponse.text()
-            }
-          }
         }
       } catch (error) {
         console.warn(
           '[vite] failed to enumerate public prerender routes from settings API, only /home will be prerendered:',
           (error as Error).message
         )
+      }
+
+      for (const entry of routes) {
+        if (entry.markdown || !entry.markdownSlug) continue
+        if (entry.route === '/docs/tutorial') {
+          try {
+            const tutorialResponse = await fetch(tutorialDocumentURL, {
+              signal: AbortSignal.timeout(3000),
+              headers: { accept: 'application/json' },
+            })
+            if (tutorialResponse.ok) {
+              const payload = (await tutorialResponse.json()) as {
+                code?: number
+                data?: { content_html?: string }
+              }
+              const contentHTML = String(payload?.data?.content_html ?? '').trim()
+              if (contentHTML) {
+                entry.html = contentHTML
+                continue
+              }
+            }
+          } catch {
+            // fall through to markdown/default fallback when API is unavailable
+          }
+        }
+        try {
+          const markdownResponse = await fetch(
+            `${publicPagesURL}/${encodeURIComponent(entry.markdownSlug)}`,
+            {
+              signal: AbortSignal.timeout(3000),
+              headers: { accept: 'text/markdown' },
+            }
+          )
+          if (markdownResponse.ok) {
+            entry.markdown = await markdownResponse.text()
+            continue
+          }
+        } catch {
+          // fall through to tutorial default content when API is unavailable
+        }
+        if (entry.route === '/docs/tutorial') {
+          entry.markdown = DEFAULT_TUTORIAL_MARKDOWN
+        }
       }
 
       const legalDocs = settingsPayload?.data?.login_agreement_documents ?? []
@@ -258,6 +348,10 @@ function staticPrerenderRoutes(settingsURL: string, publicPagesURL: string): Plu
       )
 
       for (const entry of routes) {
+        if (entry.route === '/home') {
+          const homeWithSeo = replaceHeadSeo(indexHtml, buildSeoBlock(settingsPayload, entry))
+          writeFileSync(join(outDir, 'index.html'), homeWithSeo, 'utf8')
+        }
         if (entry.route.startsWith('/legal/')) {
           const doc = legalById.get(entry.route.replace('/legal/', ''))
           entry.title = entry.title || String((doc as Record<string, unknown> | undefined)?.title ?? '').trim()
@@ -301,6 +395,8 @@ export default defineConfig(({ mode }) => {
     env.VITE_PRERENDER_SETTINGS_URL || `${backendUrl.replace(/\/+$/, '')}/api/v1/settings/public`
   const prerenderPublicPagesURL =
     env.VITE_PRERENDER_PUBLIC_PAGES_URL || `${backendUrl.replace(/\/+$/, '')}/api/v1/public/pages`
+  const prerenderTutorialDocumentURL =
+    env.VITE_PRERENDER_TUTORIAL_DOCUMENT_URL || `${backendUrl.replace(/\/+$/, '')}/api/v1/tutorial-document`
 
   return {
     plugins: [
@@ -309,7 +405,7 @@ export default defineConfig(({ mode }) => {
         vueTsc: true,
       }),
       injectPublicSettings(backendUrl),
-      staticPrerenderRoutes(prerenderSettingsURL, prerenderPublicPagesURL),
+      staticPrerenderRoutes(prerenderSettingsURL, prerenderPublicPagesURL, prerenderTutorialDocumentURL),
     ],
     resolve: {
       alias: {

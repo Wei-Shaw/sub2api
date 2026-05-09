@@ -24,6 +24,14 @@ const (
 var (
 	whitespacePattern = regexp.MustCompile(`\s+`)
 	htmlTagPattern    = regexp.MustCompile(`<[^>]+>`)
+	hanCharacterPattern = regexp.MustCompile(`[\p{Han}]`)
+	descriptionMetaPattern = regexp.MustCompile(`(?is)<meta[^>]+name=["']description["'][^>]*>`)
+	robotsMetaPattern      = regexp.MustCompile(`(?is)<meta[^>]+name=["']robots["'][^>]*>`)
+	ogMetaPattern          = regexp.MustCompile(`(?is)<meta[^>]+property=["']og:[^"']+["'][^>]*>`)
+	twitterMetaPattern     = regexp.MustCompile(`(?is)<meta[^>]+name=["']twitter:[^"']+["'][^>]*>`)
+	canonicalLinkPattern   = regexp.MustCompile(`(?is)<link[^>]+rel=["']canonical["'][^>]*>`)
+	jsonLDScriptPattern    = regexp.MustCompile(`(?is)<script[^>]+type=["']application/ld\+json["'][^>]*>[\s\S]*?</script>`)
+	paragraphSplitPattern  = regexp.MustCompile(`\n\s*\n+`)
 )
 
 type seoConfig struct {
@@ -143,16 +151,13 @@ func buildSEOData(requestPath string, settingsJSON []byte) seoData {
 		data.JSONLD = buildWebsiteJSONLD(siteName, data.Description, canonicalURL, data.ImageURL)
 	case strings.HasPrefix(requestPath, "/legal/"):
 		if doc, ok := findLegalDocument(cfg, strings.TrimPrefix(requestPath, "/legal/")); ok {
-			if title := strings.TrimSpace(doc.SEOTitle); title != "" {
-				data.Title = title
-			} else {
-				data.Title = fmt.Sprintf("%s - %s", doc.Title, siteName)
-			}
-			if desc := strings.TrimSpace(doc.SEODescription); desc != "" {
-				data.Description = desc
-			} else {
-				data.Description = fmt.Sprintf("Read %s on %s.", doc.Title, siteName)
-			}
+			data.Title = buildPageSEOTitle(doc.SEOTitle, doc.Title, cfg.SEODefaultTitle, siteName)
+			data.Description = buildPageSEODescription(
+				doc.SEODescription,
+				cfg.SEODefaultDescription,
+				extractContentSummary(doc.ContentMD),
+				fmt.Sprintf("Read %s on %s.", doc.Title, siteName),
+			)
 			if robots := strings.TrimSpace(doc.SEORobots); robots != "" {
 				data.Robots = robots
 			} else {
@@ -169,16 +174,13 @@ func buildSEOData(requestPath string, settingsJSON []byte) seoData {
 		}
 	case strings.HasPrefix(requestPath, "/custom/"):
 		if page, ok := findPublicCustomPage(cfg, strings.TrimPrefix(requestPath, "/custom/")); ok {
-			if title := strings.TrimSpace(page.SEOTitle); title != "" {
-				data.Title = title
-			} else {
-				data.Title = fmt.Sprintf("%s - %s", page.Label, siteName)
-			}
-			if desc := strings.TrimSpace(page.SEODescription); desc != "" {
-				data.Description = desc
-			} else {
-				data.Description = fmt.Sprintf("Learn more about %s on %s.", page.Label, siteName)
-			}
+			data.Title = buildPageSEOTitle(page.SEOTitle, page.Label, cfg.SEODefaultTitle, siteName)
+			data.Description = buildPageSEODescription(
+				page.SEODescription,
+				cfg.SEODefaultDescription,
+				"",
+				fmt.Sprintf("Learn more about %s on %s.", page.Label, siteName),
+			)
 			if robots := strings.TrimSpace(page.SEORobots); robots != "" {
 				data.Robots = robots
 			} else {
@@ -197,10 +199,27 @@ func buildSEOData(requestPath string, settingsJSON []byte) seoData {
 				data.JSONLD = buildWebPageJSONLD(data.Title, data.Description, canonicalURL, data.ImageURL)
 			}
 		}
+	case requestPath == "/docs/tutorial":
+		data.Title = buildPageSEOTitle("", "教程文档", cfg.SEODefaultTitle, siteName)
+		data.Description = buildPageSEODescription(
+			"",
+			cfg.SEODefaultDescription,
+			"",
+			fmt.Sprintf("阅读教程文档，了解 %s 的接入说明、使用方式与常见问题。", siteName),
+		)
+		data.Robots = resolvePublicRobots(cfg)
+		data.XRobotsTag = data.Robots
+		data.Type = "article"
+		if baseURL != "" {
+			data.ImageURL = strings.TrimRight(baseURL, "/") + "/og/custom-tutorial.svg"
+		}
+		data.JSONLD = buildArticleJSONLD(data.Title, data.Description, canonicalURL, data.ImageURL, cfg.LoginAgreementUpdatedAt)
 	default:
 		data.Robots = resolveDefaultRobots(cfg)
 		data.XRobotsTag = data.Robots
 	}
+
+	data.OpenGraphLocale = detectOpenGraphLocale(siteName, data.Title, data.Description)
 
 	return data
 }
@@ -219,7 +238,7 @@ func buildNotFoundSEOData(requestPath string, settingsJSON []byte) seoData {
 		Robots:           "noindex, nofollow",
 		XRobotsTag:       "noindex, nofollow",
 		Type:             "website",
-		OpenGraphLocale:  "en_US",
+		OpenGraphLocale:  detectOpenGraphLocale(siteName, cfg.SEODefaultTitle, cfg.SEODefaultDescription),
 		TwitterCard:      "summary_large_image",
 		ShouldInjectHead: true,
 	}
@@ -304,12 +323,24 @@ func buildSitemapXML(settingsJSON []byte) []byte {
 			ChangeFreq: "daily",
 			Priority:   "1.0",
 		},
+		{
+			Loc:        strings.TrimRight(baseURL, "/") + "/docs/tutorial",
+			ChangeFreq: "weekly",
+			Priority:   "0.8",
+		},
 	}
 
 	lastMod := normalizeDate(cfg.LoginAgreementUpdatedAt)
 	for _, doc := range cfg.LoginAgreementDocuments {
 		id := strings.TrimSpace(doc.ID)
 		if id == "" {
+			continue
+		}
+		robots := strings.TrimSpace(doc.SEORobots)
+		if robots == "" {
+			robots = resolveLegalRobots(cfg)
+		}
+		if strings.Contains(strings.ToLower(robots), "noindex") {
 			continue
 		}
 		urls = append(urls, sitemapURLEntry{
@@ -325,6 +356,13 @@ func buildSitemapXML(settingsJSON []byte) []byte {
 			continue
 		}
 		if strings.TrimSpace(item.ID) == "" {
+			continue
+		}
+		robots := strings.TrimSpace(item.SEORobots)
+		if robots == "" {
+			robots = resolvePublicRobots(cfg)
+		}
+		if strings.Contains(strings.ToLower(robots), "noindex") {
 			continue
 		}
 		urls = append(urls, sitemapURLEntry{
@@ -350,6 +388,12 @@ func injectSEOTags(htmlDoc []byte, metaTags []byte) []byte {
 	if len(metaTags) == 0 {
 		return htmlDoc
 	}
+	htmlDoc = descriptionMetaPattern.ReplaceAll(htmlDoc, nil)
+	htmlDoc = robotsMetaPattern.ReplaceAll(htmlDoc, nil)
+	htmlDoc = ogMetaPattern.ReplaceAll(htmlDoc, nil)
+	htmlDoc = twitterMetaPattern.ReplaceAll(htmlDoc, nil)
+	htmlDoc = canonicalLinkPattern.ReplaceAll(htmlDoc, nil)
+	htmlDoc = jsonLDScriptPattern.ReplaceAll(htmlDoc, nil)
 	headClose := []byte("</head>")
 	return bytes.Replace(htmlDoc, headClose, append(metaTags, headClose...), 1)
 }
@@ -448,10 +492,13 @@ func buildHomeDescription(cfg seoConfig) string {
 	if desc := normalizePlainText(cfg.SEOHomeDescription); desc != "" {
 		return desc
 	}
+	if desc := normalizePlainText(cfg.SEODefaultDescription); desc != "" {
+		return desc
+	}
 	if desc := normalizePlainText(cfg.SiteSubtitle); desc != "" {
 		return desc
 	}
-	if desc := normalizePlainText(cfg.HomeContent); desc != "" {
+	if desc := extractContentSummary(cfg.HomeContent); desc != "" {
 		return desc
 	}
 	return defaultSiteDescription
@@ -518,6 +565,9 @@ func resolveHomeSEOTitle(cfg seoConfig, siteName string) string {
 	if title := strings.TrimSpace(cfg.SEOHomeTitle); title != "" {
 		return title
 	}
+	if title := strings.TrimSpace(cfg.SEODefaultTitle); title != "" {
+		return title
+	}
 	return siteName + " - AI API Gateway"
 }
 
@@ -551,12 +601,9 @@ func resolveHomeRobots(cfg seoConfig) string {
 
 func resolveLegalRobots(cfg seoConfig) string {
 	if robots := strings.TrimSpace(cfg.SEODefaultRobots); robots != "" {
-		if strings.EqualFold(strings.ReplaceAll(robots, " ", ""), "noindex,nofollow") {
-			return "noindex, nofollow"
-		}
-		return "noindex, follow"
+		return robots
 	}
-	return "noindex, follow"
+	return resolvePublicRobots(cfg)
 }
 
 func buildArticleJSONLD(title, description, canonicalURL, imageURL, updatedAt string) string {
@@ -595,7 +642,18 @@ func marshalJSONLD(payload map[string]any) string {
 	if err != nil {
 		return ""
 	}
-	return string(data)
+	return escapeJSONForHTML(string(data))
+}
+
+func escapeJSONForHTML(raw string) string {
+	replacer := strings.NewReplacer(
+		"<", "\\u003c",
+		">", "\\u003e",
+		"&", "\\u0026",
+		"\u2028", "\\u2028",
+		"\u2029", "\\u2029",
+	)
+	return replacer.Replace(raw)
 }
 
 func writeMetaTag(buf *strings.Builder, name, content string) {
@@ -649,4 +707,74 @@ func normalizeDate(raw string) string {
 		return parsed.Format("2006-01-02")
 	}
 	return ""
+}
+
+func extractContentSummary(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	for _, paragraph := range paragraphSplitPattern.Split(raw, -1) {
+		if summary := normalizePlainText(paragraph); summary != "" {
+			return summary
+		}
+	}
+	return normalizePlainText(raw)
+}
+
+func buildPageSEOTitle(explicitTitle, pageTitle, defaultTitle, siteName string) string {
+	if title := strings.TrimSpace(explicitTitle); title != "" {
+		return title
+	}
+	pageTitle = strings.TrimSpace(pageTitle)
+	defaultTitle = strings.TrimSpace(defaultTitle)
+	siteName = strings.TrimSpace(siteName)
+	if defaultTitle != "" {
+		if pageTitle != "" && !strings.EqualFold(pageTitle, defaultTitle) && !strings.Contains(defaultTitle, pageTitle) {
+			return fmt.Sprintf("%s - %s", pageTitle, defaultTitle)
+		}
+		return defaultTitle
+	}
+	if pageTitle != "" {
+		if siteName == "" {
+			siteName = defaultSiteName
+		}
+		return fmt.Sprintf("%s - %s", pageTitle, siteName)
+	}
+	if siteName == "" {
+		siteName = defaultSiteName
+	}
+	return siteName + " - AI API Gateway"
+}
+
+func buildPageSEODescription(explicitDescription, defaultDescription, contentSummary, hardFallback string) string {
+	if desc := normalizePlainText(explicitDescription); desc != "" {
+		return desc
+	}
+	if desc := normalizePlainText(defaultDescription); desc != "" {
+		return desc
+	}
+	if desc := normalizePlainText(contentSummary); desc != "" {
+		return desc
+	}
+	if desc := normalizePlainText(hardFallback); desc != "" {
+		return desc
+	}
+	return defaultSiteDescription
+}
+
+func detectHTMLLang(values ...string) string {
+	for _, value := range values {
+		if hanCharacterPattern.MatchString(value) {
+			return "zh-CN"
+		}
+	}
+	return "en"
+}
+
+func detectOpenGraphLocale(values ...string) string {
+	if detectHTMLLang(values...) == "zh-CN" {
+		return "zh_CN"
+	}
+	return "en_US"
 }

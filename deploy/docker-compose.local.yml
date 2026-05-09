@@ -27,10 +27,16 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
+      network: host
+      extra_hosts:
+        - "host.docker.internal:host-gateway"
       args:
         VERSION: ${BUILD_VERSION:-}
         COMMIT: ${BUILD_COMMIT:-docker}
         DATE: ${BUILD_DATE:-}
+        VITE_PRERENDER_SETTINGS_URL: ${VITE_PRERENDER_SETTINGS_URL:-http://host.docker.internal:${SERVER_PORT:-8080}/api/v1/settings/public}
+        VITE_PRERENDER_PUBLIC_PAGES_URL: ${VITE_PRERENDER_PUBLIC_PAGES_URL:-http://host.docker.internal:${SERVER_PORT:-8080}/api/v1/public/pages}
+        VITE_PRERENDER_TUTORIAL_DOCUMENT_URL: ${VITE_PRERENDER_TUTORIAL_DOCUMENT_URL:-http://host.docker.internal:${SERVER_PORT:-8080}/api/v1/tutorial-document}
     image: weishaw/sub2api:latest
     container_name: sub2api
     restart: unless-stopped

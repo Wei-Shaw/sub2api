@@ -8,11 +8,13 @@ import (
 	"fmt"
 	"html"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tutorialhtml"
 	"github.com/gin-gonic/gin"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
@@ -40,7 +42,7 @@ var (
 
 func (s *FrontendServer) tryServePublicRenderedPage(c *gin.Context, requestPath string) bool {
 	requestPath = normalizeRequestPath(requestPath)
-	if !strings.HasPrefix(requestPath, "/legal/") && !strings.HasPrefix(requestPath, "/custom/") {
+	if !strings.HasPrefix(requestPath, "/legal/") && !strings.HasPrefix(requestPath, "/custom/") && requestPath != "/docs/tutorial" {
 		return false
 	}
 
@@ -77,9 +79,40 @@ func (s *FrontendServer) tryServePublicRenderedPage(c *gin.Context, requestPath 
 			}
 			return s.serveRenderedMarkdownPage(c, settingsJSON, requestPath, item.Label, string(raw), slug)
 		}
+	case requestPath == "/docs/tutorial":
+		if htmlDoc, ok := s.loadTutorialHTML(); ok {
+			return s.serveRenderedHTMLPage(c, settingsJSON, requestPath, "教程文档", htmlDoc)
+		}
+		raw, err := s.loadMarkdownFile("tutorial")
+		if err != nil {
+			return false
+		}
+		return s.serveRenderedMarkdownPage(c, settingsJSON, requestPath, "教程文档", string(raw), "tutorial")
 	}
 
 	return false
+}
+
+func (s *FrontendServer) serveRenderedHTMLPage(
+	c *gin.Context,
+	settingsJSON []byte,
+	requestPath string,
+	title string,
+	bodyHTML string,
+) bool {
+	seo := buildSEOData(requestPath, settingsJSON)
+	cfg := parseSEOConfig(settingsJSON)
+	if strings.TrimSpace(title) != "" {
+		seo.Title = fmt.Sprintf("%s - %s", strings.TrimSpace(title), normalizeSiteName(cfg.SiteName))
+	}
+	pageHTML := buildPublicMarkdownHTML(cfg, seo, title, bodyHTML)
+	c.Header("Cache-Control", "no-cache")
+	if seo.XRobotsTag != "" {
+		c.Header("X-Robots-Tag", seo.XRobotsTag)
+	}
+	c.Data(http.StatusOK, "text/html; charset=utf-8", pageHTML)
+	c.Abort()
+	return true
 }
 
 func (s *FrontendServer) serveRenderedMarkdownPage(
@@ -101,6 +134,10 @@ func (s *FrontendServer) serveRenderedMarkdownPage(
 		if page, ok := findPublicCustomPage(cfg, strings.TrimPrefix(requestPath, "/custom/")); ok && strings.TrimSpace(page.SEOTitle) == "" && strings.TrimSpace(title) != "" {
 			seo.Title = fmt.Sprintf("%s - %s", strings.TrimSpace(title), normalizeSiteName(cfg.SiteName))
 		}
+	case requestPath == "/docs/tutorial":
+		if strings.TrimSpace(title) != "" {
+			seo.Title = fmt.Sprintf("%s - %s", strings.TrimSpace(title), normalizeSiteName(cfg.SiteName))
+		}
 	}
 
 	bodyHTML, err := renderMarkdownToHTML(markdown, pageSlug)
@@ -120,15 +157,41 @@ func (s *FrontendServer) serveRenderedMarkdownPage(
 func (s *FrontendServer) loadMarkdownFile(slug string) ([]byte, error) {
 	filePath := filepath.Join(s.pagesDir, slug+".md")
 	cleaned := filepath.Clean(filePath)
-	return os.ReadFile(cleaned)
+	raw, err := os.ReadFile(cleaned)
+	if err == nil {
+		return raw, nil
+	}
+	if slug == "tutorial" && os.IsNotExist(err) {
+		return []byte("# 教程文档\n\n欢迎使用 Sub2API。"), nil
+	}
+	return nil, err
+}
+
+func (s *FrontendServer) loadTutorialHTML() (string, bool) {
+	filePath := filepath.Join(s.pagesDir, "tutorial.html")
+	cleaned := filepath.Clean(filePath)
+	raw, err := os.ReadFile(cleaned)
+	if err != nil {
+		return "", false
+	}
+	sanitized := tutorialhtml.SanitizeTutorialHTML(string(raw))
+	if strings.TrimSpace(sanitized) == "" {
+		return "", false
+	}
+	return sanitized, true
 }
 
 func buildPublicMarkdownHTML(cfg seoConfig, seo seoData, pageTitle, bodyHTML string) []byte {
 	siteName := normalizeSiteName(cfg.SiteName)
 	siteLogo := html.EscapeString(resolveSEOImageURL(normalizeFrontendBaseURL(cfg.FrontendURL), cfg.SiteLogo))
 	pageTitle = html.EscapeString(strings.TrimSpace(pageTitle))
+	htmlLang := detectHTMLLang(siteName, seo.Title, seo.Description, pageTitle)
+	loginLabel := "Login"
+	if htmlLang == "zh-CN" {
+		loginLabel = "登录"
+	}
 	var buf bytes.Buffer
-	buf.WriteString(`<!doctype html><html lang="en"><head><meta charset="UTF-8">`)
+	buf.WriteString(`<!doctype html><html lang="` + htmlLang + `"><head><meta charset="UTF-8">`)
 	buf.WriteString(`<meta name="viewport" content="width=device-width, initial-scale=1.0">`)
 	buf.WriteString(`<title>` + html.EscapeString(seo.Title) + `</title>`)
 	buf.Write(buildSEOMetaTags(seo))
@@ -138,7 +201,7 @@ func buildPublicMarkdownHTML(cfg seoConfig, seo seoData, pageTitle, bodyHTML str
 	if siteLogo != "" {
 		buf.WriteString(`<img src="` + siteLogo + `" alt="Logo">`)
 	}
-	buf.WriteString(`</div><a class="brand-name" href="/home">` + html.EscapeString(siteName) + `</a></div><a class="login" href="/login">Login</a></div></header>`)
+	buf.WriteString(`</div><a class="brand-name" href="/home">` + html.EscapeString(siteName) + `</a></div><a class="login" href="/login">` + loginLabel + `</a></div></header>`)
 	buf.WriteString(`<main><article><div class="hero"><p>` + html.EscapeString(siteName) + `</p><h1>` + pageTitle + `</h1></div><div class="content">`)
 	buf.WriteString(bodyHTML)
 	buf.WriteString(`</div></article></main></body></html>`)
@@ -151,7 +214,7 @@ func renderMarkdownToHTML(markdown string, pageSlug string) (string, error) {
 	if err := serverMarkdownRenderer.Convert([]byte(markdown), &buf); err != nil {
 		return "", err
 	}
-	return buf.String(), nil
+	return tutorialhtml.SanitizeTutorialHTML(buf.String()), nil
 }
 
 func rewriteRelativeMarkdownImages(markdown string, pageSlug string) string {
@@ -203,7 +266,7 @@ func buildPageImageURL(pageSlug, src string) string {
 		if part == "" || part == "." {
 			continue
 		}
-		encodedParts = append(encodedParts, part)
+		encodedParts = append(encodedParts, url.PathEscape(part))
 	}
 	return fmt.Sprintf("/api/v1/pages/%s/images/%s%s", pageSlug, strings.Join(encodedParts, "/"), query)
 }
@@ -217,15 +280,27 @@ func (s *FrontendServer) serveOGImage(c *gin.Context) {
 		return
 	}
 	cfg := parseSEOConfig(settingsJSON)
-	image := buildDynamicOGSVG(cfg, kind)
+	image, found := buildDynamicOGSVG(cfg, kind)
+	if !found {
+		c.Status(http.StatusNotFound)
+		c.Abort()
+		return
+	}
+	c.Header("Cache-Control", "public, max-age=300")
 	c.Data(http.StatusOK, "image/svg+xml; charset=utf-8", image)
 	c.Abort()
 }
 
-func buildDynamicOGSVG(cfg seoConfig, kind string) []byte {
+func buildDynamicOGSVG(cfg seoConfig, kind string) ([]byte, bool) {
+	kind = strings.TrimSpace(kind)
+	if kind == "" {
+		return nil, false
+	}
 	siteName := html.EscapeString(normalizeSiteName(cfg.SiteName))
 	subtitle := html.EscapeString(buildHomeDescription(cfg))
 	title := siteName
+	badge := "SEO Ready"
+	footer := "Open Graph · Sitemap · Canonical"
 	if kind != "" && kind != "home.svg" {
 		title = siteName + " / " + html.EscapeString(strings.TrimSuffix(kind, ".svg"))
 	}
@@ -233,16 +308,29 @@ func buildDynamicOGSVG(cfg seoConfig, kind string) []byte {
 	if strings.HasPrefix(kind, "legal-") {
 		id := strings.TrimSuffix(strings.TrimPrefix(kind, "legal-"), ".svg")
 		if doc, ok := findLegalDocument(cfg, id); ok {
-			title = html.EscapeString(doc.Title)
-			subtitle = html.EscapeString(fmt.Sprintf("Legal document on %s", normalizeSiteName(cfg.SiteName)))
+			title = html.EscapeString(firstNonEmpty(strings.TrimSpace(doc.SEOTitle), strings.TrimSpace(doc.Title)))
+			subtitle = html.EscapeString(buildPageSEODescription(doc.SEODescription, cfg.SEODefaultDescription, doc.ContentMD, ""))
+		} else {
+			return nil, false
 		}
 	}
 	if strings.HasPrefix(kind, "custom-") {
 		id := strings.TrimSuffix(strings.TrimPrefix(kind, "custom-"), ".svg")
-		if page, ok := findPublicCustomPage(cfg, id); ok {
-			title = html.EscapeString(page.Label)
-			subtitle = html.EscapeString(fmt.Sprintf("Public page on %s", normalizeSiteName(cfg.SiteName)))
+		if id == "tutorial" {
+			title = html.EscapeString("教程文档")
+			subtitle = html.EscapeString(buildPageSEODescription("", cfg.SEODefaultDescription, "", fmt.Sprintf("阅读教程文档，了解 %s 的接入说明、使用方式与常见问题。", normalizeSiteName(cfg.SiteName))))
+		} else if page, ok := findPublicCustomPage(cfg, id); ok {
+			title = html.EscapeString(firstNonEmpty(strings.TrimSpace(page.SEOTitle), strings.TrimSpace(page.Label)))
+			subtitle = html.EscapeString(buildPageSEODescription(page.SEODescription, cfg.SEODefaultDescription, "", ""))
+		} else {
+			return nil, false
 		}
+	}
+	if kind != "home.svg" && !strings.HasPrefix(kind, "legal-") && !strings.HasPrefix(kind, "custom-") {
+		return nil, false
+	}
+	if detectHTMLLang(siteName, title, subtitle) == "zh-CN" {
+		badge = "SEO 已就绪"
 	}
 	logoData := ""
 	if raw := strings.TrimSpace(cfg.SiteLogo); raw != "" && strings.HasPrefix(raw, "data:image/") {
@@ -266,17 +354,17 @@ func buildDynamicOGSVG(cfg seoConfig, kind string) []byte {
 <text x="120" y="382" fill="white" font-family="system-ui, sans-serif" font-size="64" font-weight="800">%s</text>
 <text x="120" y="448" fill="#D1FAF5" font-family="system-ui, sans-serif" font-size="30" font-weight="500">%s</text>
 <rect x="120" y="488" width="220" height="52" rx="26" fill="white" fill-opacity="0.12"/>
-<text x="152" y="522" fill="white" font-family="system-ui, sans-serif" font-size="24" font-weight="700">SEO Ready</text>
-<text x="382" y="522" fill="#D1FAF5" font-family="system-ui, sans-serif" font-size="24" font-weight="600">Open Graph • Sitemap • Canonical</text>
+<text x="152" y="522" fill="white" font-family="system-ui, sans-serif" font-size="24" font-weight="700">%s</text>
+<text x="382" y="522" fill="#D1FAF5" font-family="system-ui, sans-serif" font-size="24" font-weight="600">%s</text>
 <defs>
   <linearGradient id="bg" x1="120" y1="80" x2="1080" y2="550" gradientUnits="userSpaceOnUse">
     <stop stop-color="#0F766E"/>
     <stop offset="1" stop-color="#115E59"/>
   </linearGradient>
 </defs>
-</svg>`, logo, title, subtitle)
+</svg>`, logo, title, subtitle, html.EscapeString(badge), html.EscapeString(footer))
 
-	return []byte(svg)
+	return []byte(svg), true
 }
 
 func encodeInlineSVG(svg []byte) string {

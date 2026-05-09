@@ -66,7 +66,7 @@ func TestBuildSEOData(t *testing.T) {
 		seo := buildSEOData("/legal/terms", settingsJSON)
 		assert.Equal(t, "Terms of Service - MyCustomSite", seo.Title)
 		assert.Equal(t, "article", seo.Type)
-		assert.Equal(t, "noindex, follow", seo.Robots)
+		assert.Equal(t, "index, follow", seo.Robots)
 	})
 
 	t.Run("private_routes_are_noindex", func(t *testing.T) {
@@ -92,9 +92,9 @@ func TestBuildRobotsAndSitemap(t *testing.T) {
 
 	sitemap := string(buildSitemapXML(settingsJSON))
 	assert.Contains(t, sitemap, "<loc>https://example.com/</loc>")
-	assert.Contains(t, sitemap, "<loc>https://example.com/home</loc>")
+	assert.Contains(t, sitemap, "<loc>https://example.com/docs/tutorial</loc>")
 	assert.Contains(t, sitemap, "<loc>https://example.com/custom/pricing</loc>")
-	assert.NotContains(t, sitemap, "<loc>https://example.com/legal/terms</loc>")
+	assert.Contains(t, sitemap, "<loc>https://example.com/legal/terms</loc>")
 	assert.NotContains(t, sitemap, "/custom/admin")
 }
 
@@ -556,8 +556,8 @@ func TestFrontendServer_Middleware(t *testing.T) {
 		router.ServeHTTP(wSitemap, reqSitemap)
 		assert.Equal(t, http.StatusOK, wSitemap.Code)
 		assert.Contains(t, wSitemap.Body.String(), "<loc>https://example.com/</loc>")
-		assert.Contains(t, wSitemap.Body.String(), "<loc>https://example.com/home</loc>")
-		assert.NotContains(t, wSitemap.Body.String(), "<loc>https://example.com/legal/terms</loc>")
+		assert.Contains(t, wSitemap.Body.String(), "<loc>https://example.com/docs/tutorial</loc>")
+		assert.Contains(t, wSitemap.Body.String(), "<loc>https://example.com/legal/terms</loc>")
 	})
 
 	t.Run("serves_dynamic_og_image", func(t *testing.T) {
@@ -582,6 +582,27 @@ func TestFrontendServer_Middleware(t *testing.T) {
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Header().Get("Content-Type"), "image/svg+xml")
 		assert.Contains(t, w.Body.String(), "MyCustomSite")
+	})
+
+	t.Run("returns_not_found_for_unknown_og_image", func(t *testing.T) {
+		provider := &mockSettingsProvider{
+			settings: map[string]any{
+				"site_name": "MyCustomSite",
+				"frontend_url": "https://example.com",
+			},
+		}
+
+		server, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+
+		router := gin.New()
+		router.Use(server.Middleware())
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/og/not-found.svg", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusNotFound, w.Code)
 	})
 
 	t.Run("caches_per_route", func(t *testing.T) {
@@ -641,6 +662,28 @@ func TestFrontendServer_Middleware(t *testing.T) {
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Body.String(), "<h1>Guide</h1>")
 		assert.Contains(t, w.Body.String(), "<p>Hello world</p>")
+	})
+
+	t.Run("renders_builtin_tutorial_markdown_page", func(t *testing.T) {
+		provider := &mockSettingsProvider{
+			settings: map[string]any{
+				"site_name": "MyCustomSite",
+				"frontend_url": "https://example.com",
+			},
+		}
+
+		server, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+
+		router := gin.New()
+		router.Use(server.Middleware())
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/docs/tutorial", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), "<h1>教程文档</h1>")
 	})
 
 	t.Run("renders_markdown_lists_and_inline_elements", func(t *testing.T) {
@@ -707,6 +750,18 @@ func TestNewFrontendServer(t *testing.T) {
 		assert.NotEmpty(t, server.baseHTML)
 		assert.Contains(t, string(server.baseHTML), "<!doctype html>")
 	})
+}
+
+func TestBuildSEODataEscapesJSONLDScriptClosingSequence(t *testing.T) {
+	settingsJSON := []byte(`{
+		"site_name":"MyCustomSite",
+		"frontend_url":"https://example.com",
+		"login_agreement_documents":[{"id":"terms","title":"</script><script>alert(1)</script>"}]
+	}`)
+
+	seo := buildSEOData("/legal/terms", settingsJSON)
+	assert.NotContains(t, seo.JSONLD, "</script>")
+	assert.Contains(t, seo.JSONLD, "\\u003c/script\\u003e")
 }
 
 func TestHasEmbeddedFrontend(t *testing.T) {

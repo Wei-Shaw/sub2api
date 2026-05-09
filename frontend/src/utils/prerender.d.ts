@@ -32,9 +32,10 @@ export type PrerenderSettingsPayload = {
 export type PrerenderRouteEntry = {
     route: string;
     title: string;
+    html?: string;
     markdown?: string;
     markdownSlug?: string;
-    source?: 'base' | 'legal' | 'custom-markdown';
+    source?: 'base' | 'legal' | 'custom-markdown' | 'tutorial';
     seoTitle?: string;
     seoDescription?: string;
     seoOGImage?: string;
@@ -50,8 +51,9 @@ export declare function buildPrerenderManifest(entries: PrerenderRouteEntry[]): 
     routes: {
         route: string;
         title: string;
-        source: "base" | "legal" | "custom-markdown";
+        source: "base" | "legal" | "custom-markdown" | "tutorial";
         has_markdown: boolean;
+        has_html: boolean;
         markdown_slug: string;
         output: string;
     }[];

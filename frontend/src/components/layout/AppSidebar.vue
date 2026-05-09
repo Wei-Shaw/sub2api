@@ -209,6 +209,9 @@ interface NavItem {
   featureFlag?: () => boolean | undefined
 }
 
+const BUILT_IN_TUTORIAL_PATH = '/docs/tutorial'
+const BUILT_IN_TUTORIAL_LABEL = '教程文档'
+
 // applyFeatureFlags 递归过滤掉 featureFlag() === false 的节点（含子节点）。
 // 使用 `!== false` 宽容语义：undefined（设置未加载）或 true 都视为显示。
 function applyFeatureFlags(items: NavItem[]): NavItem[] {
@@ -419,6 +422,26 @@ const GlobeIcon = {
           'stroke-linecap': 'round',
           'stroke-linejoin': 'round',
           d: 'M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418'
+        })
+      ]
+    )
+}
+
+const BookOpenIcon = {
+  render: () =>
+    h(
+      'svg',
+      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
+      [
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M12 6.75C10.544 5.89 8.84 5.438 7.125 5.438c-1.582 0-3.1.385-4.458 1.11A.75.75 0 002.25 7.2v10.05a.75.75 0 001.092.667 8.214 8.214 0 013.783-.917c1.71 0 3.41.43 4.875 1.25m0-11.5c1.456-.86 3.16-1.312 4.875-1.312 1.582 0 3.1.385 4.458 1.11a.75.75 0 01.417.652v10.05a.75.75 0 01-1.092.667A8.214 8.214 0 0016.875 17c-1.71 0-3.41.43-4.875 1.25m0-11.5V18.25'
+        }),
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M6.75 9.75h1.5m-1.5 3h2.25m6-3h1.5m-1.5 3h2.25'
         })
       ]
     )
@@ -675,7 +698,8 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/orders', label: t('nav.myOrders'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment },
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
     { path: '/profile', label: t('nav.profile'), icon: UserIcon },
-    ...customMenuItemsForUser.value.map((item): NavItem => ({
+    { path: BUILT_IN_TUTORIAL_PATH, label: BUILT_IN_TUTORIAL_LABEL, icon: BookOpenIcon },
+    ...customMenuItemsForUserWithoutGuide.value.map((item): NavItem => ({
       path: `/custom/${item.id}`,
       label: item.label,
       icon: null,
@@ -705,9 +729,19 @@ const personalNavItems = computed((): NavItem[] => finalizeNav(buildSelfNavItems
 // Custom menu items filtered by visibility
 const customMenuItemsForUser = computed(() => {
   const items = appStore.cachedPublicSettings?.custom_menu_items ?? []
-  return items
+  const sorted = items
     .filter((item) => item.visibility === 'user')
     .sort((a, b) => a.sort_order - b.sort_order)
+  const guideIndex = sorted.findIndex((item) => item.id === 'guide' || item.page_slug === 'guide')
+  if (guideIndex <= 0) {
+    return sorted
+  }
+  const guideItem = sorted[guideIndex]
+  return [guideItem, ...sorted.slice(0, guideIndex), ...sorted.slice(guideIndex + 1)]
+})
+
+const customMenuItemsForUserWithoutGuide = computed(() => {
+  return customMenuItemsForUser.value.filter((item) => item.id !== 'guide' && item.page_slug !== 'guide')
 })
 
 const customMenuItemsForAdmin = computed(() => {
@@ -778,6 +812,7 @@ const adminNavItems = computed((): NavItem[] => {
   if (authStore.isSimpleMode) {
     const filtered = visible.filter(item => !item.hideInSimpleMode)
     filtered.push({ path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon })
+    filtered.push({ path: '/admin/tutorial', label: BUILT_IN_TUTORIAL_LABEL, icon: BookOpenIcon })
     filtered.push({ path: '/admin/seo', label: t('nav.seoSettings'), icon: GlobeIcon })
     filtered.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon })
     for (const cm of customMenuItemsForAdmin.value) {
@@ -786,6 +821,7 @@ const adminNavItems = computed((): NavItem[] => {
     return filtered
   }
 
+  visible.push({ path: '/admin/tutorial', label: BUILT_IN_TUTORIAL_LABEL, icon: BookOpenIcon })
   visible.push({ path: '/admin/seo', label: t('nav.seoSettings'), icon: GlobeIcon })
   visible.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon })
   for (const cm of customMenuItemsForAdmin.value) {

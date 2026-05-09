@@ -69,7 +69,7 @@ describe('seo utils', () => {
     const seo = resolveRouteSEO(router.currentRoute.value, settings)
     expect(seo.title).toBe('Sub2API - AI API Gateway')
     expect(seo.robots).toBe('index, follow')
-    expect(seo.canonicalUrl).toBe('https://example.com/home')
+    expect(seo.canonicalUrl).toBe('https://example.com/')
   })
 
   it('updates document head tags', async () => {

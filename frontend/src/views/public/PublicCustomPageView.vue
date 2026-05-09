@@ -25,7 +25,7 @@
       </div>
 
       <section
-        v-else-if="!menuItem"
+        v-else-if="!resolvedPage"
         class="rounded-lg border border-gray-200 bg-white p-6 dark:border-dark-700 dark:bg-dark-900"
       >
         <h1 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('customPage.notFoundTitle') }}</h1>
@@ -35,7 +35,7 @@
       <article v-else-if="isMarkdownMode" class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-dark-700 dark:bg-dark-900">
         <div class="border-b border-gray-200 px-6 py-5 dark:border-dark-700">
           <p class="text-sm font-medium text-primary-700 dark:text-primary-300">{{ siteName }}</p>
-          <h1 class="mt-2 text-3xl font-bold text-gray-950 dark:text-white">{{ menuItem.label }}</h1>
+          <h1 class="mt-2 text-3xl font-bold text-gray-950 dark:text-white">{{ resolvedPage.label }}</h1>
         </div>
         <div
           ref="markdownContainer"
@@ -55,7 +55,7 @@
       <section v-else class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-dark-700 dark:bg-dark-900">
         <div class="flex items-center justify-between gap-4 border-b border-gray-200 px-6 py-4 dark:border-dark-700">
           <div>
-            <h1 class="text-2xl font-bold text-gray-950 dark:text-white">{{ menuItem.label }}</h1>
+            <h1 class="text-2xl font-bold text-gray-950 dark:text-white">{{ resolvedPage.label }}</h1>
             <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ siteSubtitle }}</p>
           </div>
           <a
@@ -84,6 +84,16 @@ import { buildEmbeddedUrl } from '@/utils/embedded-url'
 import { updateRouteSEO } from '@/utils/seo'
 import type { CustomMenuItem, PublicSettings } from '@/types'
 
+const props = withDefaults(defineProps<{
+  slug?: string
+  fixedLabel?: string
+  canonicalPath?: string
+}>(), {
+  slug: '',
+  fixedLabel: '',
+  canonicalPath: '',
+})
+
 const route = useRoute()
 const { t, locale } = useI18n()
 
@@ -96,13 +106,24 @@ const menuItemId = computed(() => String(route.params.id || ''))
 const siteName = computed(() => settings.value?.site_name || 'Sub2API')
 const siteLogo = computed(() => settings.value?.site_logo || '')
 const siteSubtitle = computed(() => settings.value?.site_subtitle || '')
+const fixedSlug = computed(() => props.slug.trim())
 const menuItem = computed<CustomMenuItem | null>(() => {
   const items = settings.value?.custom_menu_items ?? []
   return items.find((item) => item.id === menuItemId.value && item.visibility !== 'admin') ?? null
 })
+const resolvedPage = computed<CustomMenuItem | { label: string; page_slug?: string; url?: string } | null>(() => {
+  if (fixedSlug.value) {
+    return {
+      label: props.fixedLabel || '教程文档',
+      page_slug: fixedSlug.value,
+      url: `md:${fixedSlug.value}`,
+    }
+  }
+  return menuItem.value
+})
 
 const markdownSlug = computed(() => {
-  const item = menuItem.value
+  const item = resolvedPage.value
   if (!item) return ''
   if (item.page_slug) return item.page_slug
   if (item.url?.startsWith('md:')) return item.url.slice(3)
@@ -111,10 +132,33 @@ const markdownSlug = computed(() => {
 
 const isMarkdownMode = computed(() => !!markdownSlug.value)
 const embeddedUrl = computed(() => {
-  if (!menuItem.value || isMarkdownMode.value) return ''
-  return buildEmbeddedUrl(menuItem.value.url, undefined, undefined, 'light', locale.value)
+  if (!resolvedPage.value || isMarkdownMode.value) return ''
+  return buildEmbeddedUrl(resolvedPage.value.url || '', undefined, undefined, 'light', locale.value)
 })
 const isValidUrl = computed(() => embeddedUrl.value.startsWith('http://') || embeddedUrl.value.startsWith('https://'))
+
+function isRelativeMarkdownAsset(src: string): boolean {
+  const trimmed = src.trim()
+  if (!trimmed || /^[a-z][a-z0-9+.-]*:/i.test(trimmed) || trimmed.startsWith('//') || trimmed.startsWith('/')) {
+    return false
+  }
+  const [pathPart] = trimmed.split(/([?#].*)/, 2)
+  return pathPart
+    .split('/')
+    .filter((part) => part && part !== '.')
+    .every((part) => part !== '..' && !part.includes('\\'))
+}
+
+function buildPageImageUrl(slug: string, src: string): string {
+  const trimmed = src.trim()
+  const [pathPart, suffix = ''] = trimmed.split(/([?#].*)/, 2)
+  const encodedPath = pathPart
+    .split('/')
+    .filter((part) => part && part !== '.')
+    .map((part) => encodeURIComponent(part))
+    .join('/')
+  return `/api/v1/pages/${encodeURIComponent(slug)}/images/${encodedPath}${suffix}`
+}
 
 async function fetchAndRenderMarkdown(slug: string) {
   const resp = await fetch(`/api/v1/public/pages/${encodeURIComponent(slug)}`)
@@ -122,7 +166,11 @@ async function fetchAndRenderMarkdown(slug: string) {
     renderedHtml.value = '<p class="text-red-500">Page not found</p>'
     return
   }
-  const raw = await resp.text()
+  let raw = await resp.text()
+  raw = raw.replace(
+    /!\[([^\]]*)\]\(([^)]+)\)/g,
+    (match, alt, src) => isRelativeMarkdownAsset(src) ? `![${alt}](${buildPageImageUrl(slug, src)})` : match
+  )
   const html = marked.parse(raw) as string
   renderedHtml.value = DOMPurify.sanitize(html)
   await nextTick()

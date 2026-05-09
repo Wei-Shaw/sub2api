@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -195,5 +197,96 @@ func TestGetPublicPageContentHonorsVisibility(t *testing.T) {
 	router.ServeHTTP(wAdmin, reqAdmin)
 	if wAdmin.Code != http.StatusNotFound {
 		t.Fatalf("admin page status = %d, want %d", wAdmin.Code, http.StatusNotFound)
+	}
+}
+
+func TestBuiltInTutorialPageIsPublicWithoutCustomMenu(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	root := t.TempDir()
+	repo := &pageHandlerSettingRepoStub{
+		values: map[string]string{
+			service.SettingKeyCustomMenuItems: `[]`,
+		},
+	}
+	handler := NewPageHandler(root, service.NewSettingService(repo, &config.Config{}))
+
+	router := gin.New()
+	router.GET("/api/v1/public/pages/:slug", handler.GetPublicPageContent)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/public/pages/tutorial", nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("tutorial status = %d, want %d", w.Code, http.StatusOK)
+	}
+	if body := w.Body.String(); body == "" || body[:1] != "#" {
+		t.Fatalf("unexpected tutorial body: %q", body)
+	}
+}
+
+func TestGetTutorialDocumentRendersMarkdownFallbackAsHTML(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	root := t.TempDir()
+	repo := &pageHandlerSettingRepoStub{
+		values: map[string]string{
+			service.SettingKeyCustomMenuItems: `[]`,
+		},
+	}
+	handler := NewPageHandler(root, service.NewSettingService(repo, &config.Config{}))
+
+	router := gin.New()
+	router.GET("/api/v1/tutorial-document", handler.GetTutorialDocument)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/tutorial-document", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	var resp struct {
+		Code int `json:"code"`
+		Data struct {
+			ContentHTML string `json:"content_html"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if resp.Code != 0 {
+		t.Fatalf("code = %d, want 0", resp.Code)
+	}
+	if resp.Data.ContentHTML == "" {
+		t.Fatalf("expected content_html to be non-empty, raw body: %s", w.Body.String())
+	}
+	if resp.Data.ContentHTML[0] == '#' {
+		t.Fatalf("content_html should be rendered HTML, got markdown: %q", resp.Data.ContentHTML)
+	}
+	if want := "<h1"; len(resp.Data.ContentHTML) < len(want) || resp.Data.ContentHTML[:len(want)] != want {
+		t.Fatalf("expected rendered heading HTML, got %q", resp.Data.ContentHTML)
+	}
+}
+
+func TestRenderTutorialMarkdownToHTML_DefaultTutorialNotEmpty(t *testing.T) {
+	var raw bytes.Buffer
+	if err := tutorialMarkdownRenderer.Convert([]byte(defaultTutorialMarkdown), &raw); err != nil {
+		t.Fatalf("render markdown raw: %v", err)
+	}
+	html, err := renderTutorialMarkdownToHTML(defaultTutorialMarkdown)
+	if err != nil {
+		t.Fatalf("render markdown: %v", err)
+	}
+	if html == "" {
+		t.Fatalf("expected rendered html to be non-empty; raw=%q sanitized=%q", raw.String(), html)
+	}
+}
+
+func TestDetectPageImageExtensionRejectsSVG(t *testing.T) {
+	t.Parallel()
+
+	svg := []byte(`<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>`)
+	if ext, ok := detectPageImageExtension(svg, "image/svg+xml", "demo.svg"); ok || ext != "" {
+		t.Fatalf("expected svg upload to be rejected, got ext=%q ok=%v", ext, ok)
 	}
 }

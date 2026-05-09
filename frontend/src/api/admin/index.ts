@@ -31,6 +31,7 @@ import channelMonitorTemplateAPI from './channelMonitorTemplate'
 import adminPaymentAPI from './payment'
 import adminReferralAPI from './referral'
 import riskControlAPI from './riskControl'
+import pagesAPI from './pages'
 
 /**
  * Unified admin API object for convenient access
@@ -63,7 +64,8 @@ export const adminAPI = {
   channelMonitorTemplate: channelMonitorTemplateAPI,
   payment: adminPaymentAPI,
   referral: adminReferralAPI,
-  riskControl: riskControlAPI
+  riskControl: riskControlAPI,
+  pages: pagesAPI,
 }
 
 export {
@@ -94,7 +96,8 @@ export {
   channelMonitorTemplateAPI,
   adminPaymentAPI,
   adminReferralAPI,
-  riskControlAPI
+  riskControlAPI,
+  pagesAPI,
 }
 
 export default adminAPI

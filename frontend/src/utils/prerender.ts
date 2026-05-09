@@ -1,3 +1,6 @@
+import createDOMPurify from 'dompurify'
+import { JSDOM } from 'jsdom'
+
 export type PrerenderSettingsPayload = {
   code?: number
   data?: {
@@ -29,9 +32,10 @@ export type PrerenderSettingsPayload = {
 export type PrerenderRouteEntry = {
   route: string
   title: string
+  html?: string
   markdown?: string
   markdownSlug?: string
-  source?: 'base' | 'legal' | 'custom-markdown'
+  source?: 'base' | 'legal' | 'custom-markdown' | 'tutorial'
   seoTitle?: string
   seoDescription?: string
   seoOGImage?: string
@@ -40,7 +44,28 @@ export type PrerenderRouteEntry = {
 
 export const BASE_PUBLIC_PRERENDER_ROUTES = [
   '/home',
+  '/docs/tutorial',
 ]
+
+const prerenderWindow = new JSDOM('').window
+const prerenderDOMPurify = createDOMPurify(
+  prerenderWindow as unknown as Parameters<typeof createDOMPurify>[0]
+)
+
+function escapeHTML(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function sanitizePrerenderHTML(raw: string): string {
+  return prerenderDOMPurify.sanitize(raw, {
+    ADD_ATTR: ['style', 'target', 'rel', 'class'],
+  })
+}
 
 export function collectPrerenderRoutes(
   payload: PrerenderSettingsPayload | null | undefined
@@ -50,6 +75,13 @@ export function collectPrerenderRoutes(
     routes.set(route, { route, title: '', source: 'base' })
   }
   const data = payload?.data
+
+  routes.set('/docs/tutorial', {
+    route: '/docs/tutorial',
+    title: '教程文档',
+    markdownSlug: 'tutorial',
+    source: 'tutorial',
+  })
 
   for (const item of data?.login_agreement_documents ?? []) {
     const id = String(item?.id ?? '').trim()
@@ -92,10 +124,7 @@ export function renderSimpleMarkdownHTML(markdown: string): string {
   let paragraph: string[] = []
 
   const inline = (value: string) =>
-    value
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
+    escapeHTML(value)
       .replace(/`([^`]+)`/g, '<code>$1</code>')
       .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
       .replace(/\*([^*]+)\*/g, '<em>$1</em>')
@@ -190,17 +219,17 @@ export function renderSimpleMarkdownHTML(markdown: string): string {
 }
 
 export function injectPrerenderContent(indexHTML: string, entry: PrerenderRouteEntry): string {
-  if (!entry.markdown) {
+  if (!entry.markdown && !entry.html) {
     return indexHTML
   }
   const safeTitle = entry.title || 'Document'
-  const contentHTML = renderSimpleMarkdownHTML(entry.markdown)
+  const contentHTML = sanitizePrerenderHTML(entry.html || renderSimpleMarkdownHTML(entry.markdown || ''))
   const body = `
   <div class="min-h-screen bg-gray-50 text-gray-900">
     <main class="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:py-10">
       <article class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
         <div class="border-b border-gray-200 px-6 py-5">
-          <h1 class="mt-2 text-3xl font-bold text-gray-950">${safeTitle}</h1>
+          <h1 class="mt-2 text-3xl font-bold text-gray-950">${escapeHTML(safeTitle)}</h1>
         </div>
         <div class="public-markdown-content p-6 md:p-10">${contentHTML}</div>
       </article>
@@ -218,6 +247,7 @@ export function buildPrerenderManifest(entries: PrerenderRouteEntry[]) {
       title: entry.title,
       source: entry.source || 'base',
       has_markdown: Boolean(entry.markdown),
+      has_html: Boolean(entry.html),
       markdown_slug: entry.markdownSlug || '',
       output: `${entry.route.replace(/^\/+/, '') || 'index.html'}/index.html`,
     })),

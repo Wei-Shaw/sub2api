@@ -123,7 +123,7 @@ func (s *FrontendServer) Middleware() gin.HandlerFunc {
 		// admin SEO changes are reflected immediately in the first HTML response.
 		if !strings.Contains(filepath.Base(cleanPath), ".") &&
 			path != "/home" &&
-			(strings.HasPrefix(path, "/legal/") || strings.HasPrefix(path, "/custom/")) {
+			(strings.HasPrefix(path, "/legal/") || strings.HasPrefix(path, "/custom/") || path == "/docs/tutorial") {
 			prerenderedPath := filepath.ToSlash(filepath.Join(cleanPath, "index.html"))
 			if s.fileExists(prerenderedPath) {
 				if s.tryServeOverride(c, prerenderedPath) {
@@ -136,7 +136,7 @@ func (s *FrontendServer) Middleware() gin.HandlerFunc {
 			}
 		}
 
-		if strings.HasPrefix(path, "/legal/") || strings.HasPrefix(path, "/custom/") {
+		if strings.HasPrefix(path, "/legal/") || strings.HasPrefix(path, "/custom/") || path == "/docs/tutorial" {
 			if !s.publicPageExists(c, path) {
 				s.serveNotFoundHTML(c)
 				return
@@ -194,6 +194,11 @@ func (s *FrontendServer) publicPageExists(c *gin.Context, requestPath string) bo
 			return true
 		}
 		if _, err := s.loadMarkdownFile(slug); err != nil {
+			return false
+		}
+		return true
+	case requestPath == "/docs/tutorial":
+		if _, err := s.loadMarkdownFile("tutorial"); err != nil {
 			return false
 		}
 		return true
@@ -336,6 +341,7 @@ func isKnownSPARoute(path string) bool {
 		"/key-usage",
 		"/auth",
 		"/legal",
+		"/docs",
 		"/custom",
 		"/admin",
 		"/keys",

@@ -1,6 +1,24 @@
+import createDOMPurify from 'dompurify';
+import { JSDOM } from 'jsdom';
 export var BASE_PUBLIC_PRERENDER_ROUTES = [
     '/home',
+    '/docs/tutorial',
 ];
+var prerenderWindow = new JSDOM('').window;
+var prerenderDOMPurify = createDOMPurify(prerenderWindow);
+function escapeHTML(value) {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+function sanitizePrerenderHTML(raw) {
+    return prerenderDOMPurify.sanitize(raw, {
+        ADD_ATTR: ['style', 'target', 'rel', 'class'],
+    });
+}
 export function collectPrerenderRoutes(payload) {
     var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
     var routes = new Map();
@@ -9,6 +27,12 @@ export function collectPrerenderRoutes(payload) {
         routes.set(route, { route: route, title: '', source: 'base' });
     }
     var data = payload === null || payload === void 0 ? void 0 : payload.data;
+    routes.set('/docs/tutorial', {
+        route: '/docs/tutorial',
+        title: '教程文档',
+        markdownSlug: 'tutorial',
+        source: 'tutorial',
+    });
     for (var _l = 0, _m = (_a = data === null || data === void 0 ? void 0 : data.login_agreement_documents) !== null && _a !== void 0 ? _a : []; _l < _m.length; _l++) {
         var item = _m[_l];
         var id = String((_b = item === null || item === void 0 ? void 0 : item.id) !== null && _b !== void 0 ? _b : '').trim();
@@ -48,10 +72,7 @@ export function renderSimpleMarkdownHTML(markdown) {
     var inCodeBlock = false;
     var paragraph = [];
     var inline = function (value) {
-        return value
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
+        return escapeHTML(value)
             .replace(/`([^`]+)`/g, '<code>$1</code>')
             .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
             .replace(/\*([^*]+)\*/g, '<em>$1</em>')
@@ -138,12 +159,12 @@ export function renderSimpleMarkdownHTML(markdown) {
     return html.join('\n');
 }
 export function injectPrerenderContent(indexHTML, entry) {
-    if (!entry.markdown) {
+    if (!entry.markdown && !entry.html) {
         return indexHTML;
     }
     var safeTitle = entry.title || 'Document';
-    var contentHTML = renderSimpleMarkdownHTML(entry.markdown);
-    var body = "\n  <div class=\"min-h-screen bg-gray-50 text-gray-900\">\n    <main class=\"mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:py-10\">\n      <article class=\"overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm\">\n        <div class=\"border-b border-gray-200 px-6 py-5\">\n          <h1 class=\"mt-2 text-3xl font-bold text-gray-950\">".concat(safeTitle, "</h1>\n        </div>\n        <div class=\"public-markdown-content p-6 md:p-10\">").concat(contentHTML, "</div>\n      </article>\n    </main>\n  </div>");
+    var contentHTML = sanitizePrerenderHTML(entry.html || renderSimpleMarkdownHTML(entry.markdown || ''));
+    var body = "\n  <div class=\"min-h-screen bg-gray-50 text-gray-900\">\n    <main class=\"mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:py-10\">\n      <article class=\"overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm\">\n        <div class=\"border-b border-gray-200 px-6 py-5\">\n          <h1 class=\"mt-2 text-3xl font-bold text-gray-950\">".concat(escapeHTML(safeTitle), "</h1>\n        </div>\n        <div class=\"public-markdown-content p-6 md:p-10\">").concat(contentHTML, "</div>\n      </article>\n    </main>\n  </div>");
     return indexHTML.replace('<div id="app"></div>', "<div id=\"app\">".concat(body, "</div>"));
 }
 export function buildPrerenderManifest(entries) {
@@ -155,6 +176,7 @@ export function buildPrerenderManifest(entries) {
             title: entry.title,
             source: entry.source || 'base',
             has_markdown: Boolean(entry.markdown),
+            has_html: Boolean(entry.html),
             markdown_slug: entry.markdownSlug || '',
             output: "".concat(entry.route.replace(/^\/+/, '') || 'index.html', "/index.html"),
         }); }),

@@ -18,6 +18,7 @@
               <div>
                 <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">默认 SEO 标题</label>
                 <input
+                  ref="seoDefaultTitleInput"
                   v-model="form.seo_default_title"
                   type="text"
                   class="input"
@@ -27,6 +28,7 @@
               <div>
                 <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">首页 SEO 标题</label>
                 <input
+                  ref="seoHomeTitleInput"
                   v-model="form.seo_home_title"
                   type="text"
                   class="input"
@@ -39,6 +41,7 @@
               <div>
                 <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">默认 SEO 描述</label>
                 <textarea
+                  ref="seoDefaultDescriptionInput"
                   v-model="form.seo_default_description"
                   rows="4"
                   class="input"
@@ -48,6 +51,7 @@
               <div>
                 <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">首页 SEO 描述</label>
                 <textarea
+                  ref="seoHomeDescriptionInput"
                   v-model="form.seo_home_description"
                   rows="4"
                   class="input"
@@ -60,6 +64,7 @@
               <div>
                 <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">公开站点域名</label>
                 <input
+                  ref="frontendUrlInput"
                   v-model="form.frontend_url"
                   type="url"
                   class="input"
@@ -71,7 +76,7 @@
               </div>
               <div>
                 <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">默认搜索引擎抓取规则</label>
-                <select v-model="form.seo_default_robots" class="input">
+                <select ref="seoDefaultRobotsSelect" v-model="form.seo_default_robots" class="input">
                   <option value="index, follow">允许收录并跟踪链接（推荐公开页面）</option>
                   <option value="noindex, nofollow">禁止收录且不跟踪链接（推荐隐藏页面）</option>
                   <option value="index, nofollow">允许收录但不跟踪链接</option>
@@ -83,7 +88,7 @@
               </div>
               <div>
                 <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">首页搜索引擎抓取规则</label>
-                <select v-model="form.seo_home_robots" class="input">
+                <select ref="seoHomeRobotsSelect" v-model="form.seo_home_robots" class="input">
                   <option value="">继承默认配置</option>
                   <option value="index, follow">允许收录并跟踪链接</option>
                   <option value="noindex, nofollow">禁止收录且不跟踪链接</option>
@@ -268,7 +273,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, type Ref } from 'vue'
 import { adminAPI } from '@/api'
 import type { SystemSettings, UpdateSettingsRequest } from '@/api/admin/settings'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -278,6 +283,13 @@ import { useAppStore } from '@/stores'
 const appStore = useAppStore()
 const loading = ref(true)
 const saving = ref(false)
+const seoDefaultTitleInput = ref<HTMLInputElement | null>(null)
+const seoHomeTitleInput = ref<HTMLInputElement | null>(null)
+const seoDefaultDescriptionInput = ref<HTMLTextAreaElement | null>(null)
+const seoHomeDescriptionInput = ref<HTMLTextAreaElement | null>(null)
+const frontendUrlInput = ref<HTMLInputElement | null>(null)
+const seoDefaultRobotsSelect = ref<HTMLSelectElement | null>(null)
+const seoHomeRobotsSelect = ref<HTMLSelectElement | null>(null)
 
 const form = reactive<SystemSettings>({
   registration_enabled: true,
@@ -435,9 +447,42 @@ async function load() {
   }
 }
 
+function syncFormFieldFromElement(target: Ref<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null>, setter: (value: string) => void) {
+  const element = target.value
+  if (!element) {
+    return
+  }
+  setter(element.value)
+}
+
+function syncFormFromInputs() {
+  syncFormFieldFromElement(seoDefaultTitleInput, (value) => {
+    form.seo_default_title = value
+  })
+  syncFormFieldFromElement(seoHomeTitleInput, (value) => {
+    form.seo_home_title = value
+  })
+  syncFormFieldFromElement(seoDefaultDescriptionInput, (value) => {
+    form.seo_default_description = value
+  })
+  syncFormFieldFromElement(seoHomeDescriptionInput, (value) => {
+    form.seo_home_description = value
+  })
+  syncFormFieldFromElement(frontendUrlInput, (value) => {
+    form.frontend_url = value
+  })
+  syncFormFieldFromElement(seoDefaultRobotsSelect, (value) => {
+    form.seo_default_robots = value
+  })
+  syncFormFieldFromElement(seoHomeRobotsSelect, (value) => {
+    form.seo_home_robots = value
+  })
+}
+
 async function save() {
   saving.value = true
   try {
+    syncFormFromInputs()
     const payload: UpdateSettingsRequest = {
       ...form,
       frontend_url: form.frontend_url,
@@ -452,6 +497,7 @@ async function save() {
       custom_menu_items: form.custom_menu_items,
     }
     Object.assign(form, await adminAPI.settings.updateSettings(payload))
+    await appStore.fetchPublicSettings(true)
     appStore.showSuccess('SEO配置保存成功')
   } finally {
     saving.value = false

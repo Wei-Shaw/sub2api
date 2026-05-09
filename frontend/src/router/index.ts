@@ -360,6 +360,16 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/docs/tutorial',
+    name: 'TutorialDocument',
+    component: () => import('@/views/TutorialDocumentRouteView.vue'),
+    meta: {
+      requiresAuth: false,
+      requiresAdmin: false,
+      title: '教程文档'
+    }
+  },
+  {
     path: '/custom/:id',
     name: 'CustomPage',
     component: () => import('@/views/CustomPageRouteView.vue'),
@@ -622,6 +632,16 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/tutorial',
+    name: 'AdminTutorialEditor',
+    component: () => import('@/views/admin/TutorialEditorView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: '教程文档'
+    }
+  },
+  {
     path: '/admin/risk-control',
     name: 'AdminRiskControl',
     component: () => import('@/views/admin/RiskControlView.vue'),
@@ -720,7 +740,7 @@ let authInitialized = false
 const navigationLoading = useNavigationLoadingState()
 // 延迟初始化预加载，传入 router 实例
 let routePrefetch: ReturnType<typeof useRoutePrefetch> | null = null
-const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/setup', '/payment/result', '/legal']
+const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/setup', '/payment/result', '/legal', '/docs', '/custom']
 const BACKEND_MODE_CALLBACK_PATHS = [
   '/auth/callback',
   '/auth/linuxdo/callback',

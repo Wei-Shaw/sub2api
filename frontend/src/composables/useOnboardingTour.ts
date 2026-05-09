@@ -1,9 +1,10 @@
-import { onMounted, onUnmounted, nextTick } from 'vue'
+import { onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { driver, type Driver, type DriveStep } from 'driver.js'
 import 'driver.js/dist/driver.css'
 import { useAuthStore as useUserStore } from '@/stores/auth'
 import { useOnboardingStore } from '@/stores/onboarding'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 import { getAdminSteps, getUserSteps } from '@/components/Guide/steps'
 
 export interface OnboardingOptions {
@@ -15,6 +16,7 @@ export function useOnboardingTour(options: OnboardingOptions) {
   const { t } = useI18n()
   const userStore = useUserStore()
   const onboardingStore = useOnboardingStore()
+  const route = useRoute()
   const storageVersion = 'v4_interactive' // Bump version for new tour type
 
   // Timing constants for better maintainability
@@ -62,6 +64,46 @@ export function useOnboardingTour(options: OnboardingOptions) {
     const userId = userStore.user?.id ?? 'guest'
     const role = userStore.user?.role ?? 'user'
     return `${baseKey}_${userId}_${role}_${storageVersion}`
+  }
+
+  const adminAutoStartWhitelist = new Set([
+    '/admin/dashboard',
+    '/admin/groups',
+    '/admin/accounts',
+  ])
+
+  const adminOverlayBlocklist = new Set([
+    '/admin/seo',
+    '/admin/settings',
+  ])
+
+  const userAutoStartWhitelist = new Set([
+    '/keys',
+  ])
+
+  const normalizeRoutePath = (value: string | undefined): string => {
+    if (!value) return '/'
+    const trimmed = value.trim()
+    if (!trimmed) return '/'
+    return trimmed.replace(/\/+$/, '') || '/'
+  }
+
+  const shouldAutoStartOnCurrentRoute = (): boolean => {
+    const currentPath = normalizeRoutePath(route.path)
+    const isAdmin = userStore.user?.role === 'admin'
+    if (isAdmin) {
+      return adminAutoStartWhitelist.has(currentPath)
+    }
+    return userAutoStartWhitelist.has(currentPath)
+  }
+
+  const shouldBlockActiveOverlayOnCurrentRoute = (): boolean => {
+    const currentPath = normalizeRoutePath(route.path)
+    const isAdmin = userStore.user?.role === 'admin'
+    if (isAdmin) {
+      return adminOverlayBlocklist.has(currentPath)
+    }
+    return false
   }
 
   const hasSeen = () => {
@@ -528,6 +570,11 @@ export function useOnboardingTour(options: OnboardingOptions) {
 
     if (onboardingStore.isDriverActive()) {
       driverInstance = onboardingStore.getDriverInstance()
+      if (driverInstance?.isActive() && shouldBlockActiveOverlayOnCurrentRoute()) {
+        driverInstance.destroy()
+        onboardingStore.setDriverInstance(null)
+        driverInstance = null
+      }
       return
     }
 
@@ -542,11 +589,26 @@ export function useOnboardingTour(options: OnboardingOptions) {
       return
     }
 
+    if (!shouldAutoStartOnCurrentRoute()) {
+      return
+    }
+
     if (!options.autoStart || hasSeen()) return
     autoStartTimer = setTimeout(() => {
       void startTour()
     }, TIMING.AUTO_START_DELAY_MS)
   })
+
+  watch(
+    () => route.path,
+    () => {
+      if (driverInstance?.isActive() && shouldBlockActiveOverlayOnCurrentRoute()) {
+        driverInstance.destroy()
+        onboardingStore.setDriverInstance(null)
+        driverInstance = null
+      }
+    }
+  )
 
   onUnmounted(() => {
     if (autoStartTimer) {
