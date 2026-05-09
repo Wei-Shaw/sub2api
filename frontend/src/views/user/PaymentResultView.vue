@@ -137,13 +137,17 @@ const refreshAttempts = ref(0)
 
 /** 充值金额 = pay_amount / (1 + fee_rate/100)，fee_rate=0 时等于 pay_amount */
 const baseAmount = computed(() => {
-  if (!order.value || order.value.fee_rate <= 0) return order.value?.pay_amount ?? 0
-  return Math.round((order.value.pay_amount / (1 + order.value.fee_rate / 100)) * 100) / 100
+  if (!order.value) return 0
+  const feeRate = Number(order.value.fee_rate) || 0
+  if (feeRate <= 0) return order.value.pay_amount ?? 0
+  return Math.round((order.value.pay_amount / (1 + feeRate / 100)) * 100) / 100
 REDACTED)
 
 /** 手续费 = pay_amount - baseAmount */
 const feeAmount = computed(() => {
-  if (!order.value || order.value.fee_rate <= 0) return 0
+  if (!order.value) return 0
+  const feeRate = Number(order.value.fee_rate) || 0
+  if (feeRate <= 0) return 0
   return Math.round((order.value.pay_amount - baseAmount.value) * 100) / 100
 REDACTED)
 
