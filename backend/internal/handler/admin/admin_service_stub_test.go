@@ -30,6 +30,7 @@ type stubAdminService struct {
 	createdUsers                        []*service.CreateUserInput
 	updatedUserIDs                      []int64
 	updatedUsers                        []*service.UpdateUserInput
+	activatedUserIDs                    []int64
 	updatedProxyIDs                     []int64
 	updatedProxies                      []*service.UpdateProxyInput
 	testedProxyIDs                      []int64
@@ -817,7 +818,8 @@ func (s *stubAdminService) CreateShadow(ctx context.Context, parentID int64, opt
 }
 
 func (s *stubAdminService) ActivateUserDevices(ctx context.Context, userID int64) (*service.User, int64, error) {
-	return &service.User{ID: userID}, 0, nil
+	s.activatedUserIDs = append(s.activatedUserIDs, userID)
+	return &service.User{ID: userID, Status: service.StatusActive}, 1, nil
 }
 
 // Ensure stub implements interface.
