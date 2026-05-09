@@ -131,6 +131,7 @@ func (h *ProviderPriceHandler) GetProviderPricing(c *gin.Context) {
 	c.JSON(http.StatusOK, providerPricingResponse{
 		SchemaVersion: providerPricingSchemaVersion,
 		Success:       true,
+		Message:       "",
 		Data: &providerPricingData{
 			Currency:   "CNY",
 			PriceUnit:  "per_1m_tokens",
@@ -181,10 +182,11 @@ func (h *ProviderPriceHandler) buildProviderPriceEntries(
 			if !ok {
 				continue
 			}
+			channelPricing := h.channelPricingForModel(ctx, group.ID, modelID)
 
 			model := providerPricingModel{
 				ModelName:          modelID,
-				GroupName:          group.Name,
+				GroupName:          publicGroupName(group.Name),
 				InputPrice:         usdPerTokenToCnyPerMTokPtr(exportPrice.input, group.RateMultiplier, rechargeMultiplier),
 				OutputPrice:        usdPerTokenToCnyPerMTokPtr(exportPrice.output, group.RateMultiplier, rechargeMultiplier),
 				CacheInputPrice:    usdPerTokenToCnyPerMTokPtr(exportPrice.cacheInput, group.RateMultiplier, rechargeMultiplier),
@@ -192,8 +194,10 @@ func (h *ProviderPriceHandler) buildProviderPriceEntries(
 				CacheCreatePrice1h: usdPerTokenToCnyPerMTokPtr(exportPrice.cacheCreate1h, group.RateMultiplier, rechargeMultiplier),
 				Enabled:            true,
 			}
-			if strings.EqualFold(group.Platform, service.PlatformOpenAI) {
-				model.CacheCreatePrice = nil
+			if channelPricing != nil && channelPricing.CacheWritePrice != nil {
+				model.CacheCreatePrice = usdPerTokenToCnyPerMTokPtr(*channelPricing.CacheWritePrice, group.RateMultiplier, rechargeMultiplier)
+			}
+			if strings.EqualFold(group.Platform, service.PlatformOpenAI) && model.CacheCreatePrice1h != nil && model.CacheCreatePrice != nil && *model.CacheCreatePrice1h == *model.CacheCreatePrice {
 				model.CacheCreatePrice1h = nil
 			}
 
@@ -243,6 +247,13 @@ func (h *ProviderPriceHandler) availableModelsForGroup(ctx context.Context, grou
 	}
 
 	return dedupeModelIDs(filterModelsByGroupScope(group, models))
+}
+
+func (h *ProviderPriceHandler) channelPricingForModel(ctx context.Context, groupID int64, modelID string) *service.ChannelModelPricing {
+	if h.channelService == nil {
+		return nil
+	}
+	return h.channelService.GetChannelModelPricing(ctx, groupID, modelID)
 }
 
 func dedupeModelIDs(models []string) []string {
@@ -342,7 +353,11 @@ func (h *ProviderPriceHandler) siteDomain(ctx context.Context) string {
 	if err != nil {
 		return ""
 	}
-	return strings.TrimSpace(parsed.Hostname())
+	return strings.TrimSpace(parsed.Host)
+}
+
+func publicGroupName(value string) string {
+	return strings.TrimSpace(value)
 }
 
 func filterModelsByGroupScope(group *service.Group, models []string) []string {

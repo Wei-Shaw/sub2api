@@ -241,8 +241,8 @@ func TestProviderPriceHandler_OpenAIGroupExportsExpectedCNYPrices(t *testing.T) 
 	if got54.OutputPrice == nil || *got54.OutputPrice != 7.5 {
 		t.Fatalf("gpt-5.4 output mismatch: got %+v", got54.OutputPrice)
 	}
-	if got54.CacheCreatePrice != nil {
-		t.Fatalf("gpt-5.4 cache_create_price should be nil, got %+v", got54.CacheCreatePrice)
+	if got54.CacheCreatePrice == nil || *got54.CacheCreatePrice != 1.25 {
+		t.Fatalf("gpt-5.4 cache_create_price mismatch: got %+v", got54.CacheCreatePrice)
 	}
 	if got54.CacheCreatePrice1h != nil {
 		t.Fatalf("gpt-5.4 cache_create_price_1h should be nil, got %+v", got54.CacheCreatePrice1h)
@@ -256,6 +256,9 @@ func TestProviderPriceHandler_OpenAIGroupExportsExpectedCNYPrices(t *testing.T) 
 	}
 	if got55.OutputPrice == nil || *got55.OutputPrice != 15 {
 		t.Fatalf("gpt-5.5 output mismatch: got %+v", got55.OutputPrice)
+	}
+	if got55.CacheCreatePrice == nil || *got55.CacheCreatePrice != 2.5 {
+		t.Fatalf("gpt-5.5 cache_create_price mismatch: got %+v", got55.CacheCreatePrice)
 	}
 }
 
