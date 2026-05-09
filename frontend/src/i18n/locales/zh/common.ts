@@ -58,6 +58,7 @@ export default {
     copiedToClipboard: '已复制到剪贴板',
     copied: '已复制',
     copyFailed: '复制失败',
+    failed: '失败',
     verifying: '验证中...',
     processing: '处理中...',
     contactSupport: '联系客服',
@@ -146,6 +147,16 @@ export default {
       registerRejectedWarning: '未同意最新条款前，无法注册或使用快捷登录。',
       registerRequiredWarning: '请先阅读并同意最新条款后再注册。'
     }
+  },
+
+  legalDocument: {
+    loadFailedTitle: '文档加载失败',
+    loadFailedDesc: '请刷新页面后稍后重试。',
+    notFoundTitle: '文档不存在',
+    notFoundDesc: '当前条款文档不存在或已被管理员移除。',
+    loginTerms: '登录条款',
+    updatedAt: '更新日期：{date}',
+    emptyContent: '暂无正文内容'
   },
 
   // Navigation
@@ -291,6 +302,22 @@ export default {
     redeemCodeRequired: '请输入登录代码',
     redeemLoginSuccess: '代码登录成功！',
     redeemLoginFailed: '代码登录失败，请检查代码后重试。',
+    loginAgreement: {
+      readAndAgree: '我已阅读并同意',
+      pendingTitle: '继续登录前需要先同意最新条款。',
+      pendingDescription: '未同意前，账号密码输入和快捷登录会保持禁用。',
+      viewTerms: '查看条款',
+      updateTitle: '条款更新通知',
+      updateDescription: '我们的服务条款已于 {date} 更新。在继续使用服务之前，请仔细阅读并同意以下条款。',
+      recently: '近期',
+      relatedDocuments: '相关文档',
+      reject: '拒绝',
+      acceptAndContinue: '同意并继续',
+      passwordSignInBlocked: '未同意最新条款前，无法输入账号密码或使用快捷登录。',
+      signInRequired: '请先阅读并同意最新条款后再登录。',
+      registerBlocked: '未同意最新条款前，无法注册或使用快捷登录。',
+      registerRequired: '请先阅读并同意最新条款后再注册。'
+    },
     linuxdo: {
       signIn: '使用 Linux.do 登录',
       orContinue: '或使用邮箱密码继续',

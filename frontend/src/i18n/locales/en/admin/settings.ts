@@ -259,7 +259,10 @@ export default {
         syncCorpEmailTargetHint: 'Defaults to dingtalk_email / DingTalk Corporate Email. Saving settings auto-creates the user attribute by the key and display name above (existing definition only has its display name synced).',
         syncDeptTarget: 'Attribute key',
         syncDeptTargetHint: 'Defaults to dingtalk_department / DingTalk Department. Saving settings auto-creates the user attribute by the key and display name above (existing definition only has its display name synced).',
-        syncAttrDisplayName: 'Display name'
+        syncAttrDisplayName: 'Display name',
+        syncDisplayNameDefaultName: 'DingTalk Name',
+        syncCorpEmailDefaultName: 'DingTalk Corporate Email',
+        syncDeptDefaultName: 'DingTalk Department'
       },
       oidc: {
         title: 'OIDC Login',
@@ -1206,6 +1209,17 @@ export default {
         fallbackActionHint: 'Action for models not matching the whitelist.',
         fallbackErrorMessagePlaceholder: 'Custom error message when non-whitelisted models are blocked'
       },
+      emailOAuthSettings: {
+        title: 'Email OAuth Login',
+        description: 'Configure email OAuth sign-in providers such as GitHub and Google.',
+        githubHint: 'Allow users to sign in or register with a verified GitHub email.',
+        githubSetupPrefix: 'Create an ',
+        githubSetupSuffix: ' entry in GitHub Developer Settings, then fill in the Client ID / Secret below.',
+        googleHint: 'Allow users to sign in or register with a verified Google email.',
+        googleSetupGuide: 'Create an OAuth Client in Google Cloud Console and configure the callback URL.',
+        secretConfiguredPlaceholder: 'Secret configured. Leave empty to keep the current value.',
+        callbackUrlSetAndCopied: 'Callback URL set and copied.'
+      },
       wechatConnect: {
         title: 'WeChat Connect',
         description: 'Third-party login configuration for WeChat Open Platform or Official Account / Mini Program.',
@@ -1253,6 +1267,18 @@ export default {
           wechat: {
             title: 'WeChat signup',
             description: 'Default quota grants for WeChat signups.'
+          },
+          github: {
+            title: 'GitHub',
+            description: 'Applied on first signup or first bind through a verified GitHub email.'
+          },
+          google: {
+            title: 'Google',
+            description: 'Applied on first signup or first bind through a verified Google email.'
+          },
+          dingtalk: {
+            title: 'DingTalk',
+            description: 'Applied on first signup or first bind through DingTalk.'
           }
         },
         grantOnFirstBindLabel: 'Grant on first bind',
@@ -1262,6 +1288,35 @@ export default {
         noSourceSubscriptions: 'No source-specific default subscriptions configured.',
         platformQuotasOverride: 'Platform Quota Overrides',
         platformQuotasOverrideHint: 'Blank fields inherit the system default. Set to 0 to fully block that window for this auth source.',
+      },
+      loginAgreementSettings: {
+        title: 'Login agreement',
+        description: 'Control whether the login page requires users to accept Markdown policy documents first.',
+        displayMode: 'Display mode',
+        modal: 'Modal',
+        checkbox: 'Checkbox',
+        checkboxHint: 'The checkbox appears below the login button and gates all login actions.',
+        modalHint: 'The modal opens on the login page and gates all login actions until accepted.',
+        updatedDate: 'Updated date',
+        updatedDateHint: 'Changing the date or content requires fresh consent.',
+        documents: 'Agreement documents',
+        documentsHint: 'Document titles are customizable and content is saved as Markdown.',
+        addDocument: 'Add document',
+        untitledDocument: 'Untitled document',
+        documentTitle: 'Document title',
+        documentTitlePlaceholder: 'Example: Terms of Service',
+        routeSlug: 'Route slug',
+        markdownContent: 'Markdown content',
+        markdownContentPlaceholder: 'Write the final Markdown content here.',
+        documentRequiredError: 'At least one document is required when login agreement is enabled.',
+        documentTitleRequiredError: 'Login agreement document title cannot be empty.',
+        duplicateRouteError: 'Login agreement document routes cannot be duplicated: {path}',
+        defaultDocuments: {
+          terms: 'Terms of Service',
+          usagePolicy: 'Usage Policy',
+          supportedRegions: 'Supported Countries and Regions',
+          serviceSpecificTerms: 'Service-Specific Terms'
+        }
       },
       paymentVisibleMethods: {
         methodLabel: '{title} visible method',

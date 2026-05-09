@@ -509,7 +509,7 @@ function rejectLoginAgreement(): void {
   localStorage.removeItem(LOGIN_AGREEMENT_STORAGE_KEY)
   agreementAccepted.value = false
   showAgreementModal.value = false
-  appStore.showWarning(t('legal.loginAgreementPrompt.loginRejectedWarning'))
+  appStore.showWarning(t('auth.loginAgreement.passwordSignInBlocked'))
 }
 
 function modeButtonClass(mode: 'password' | 'redeem'): string {
@@ -560,7 +560,7 @@ function validateForm(): boolean {
   let isValid = true
 
   if (agreementGateActive.value) {
-    appStore.showWarning(t('legal.loginAgreementPrompt.loginRequiredWarning'))
+    appStore.showWarning(t('auth.loginAgreement.signInRequired'))
     if (loginAgreementMode.value !== 'checkbox') {
       showAgreementModal.value = true
     }

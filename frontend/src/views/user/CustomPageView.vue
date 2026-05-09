@@ -230,7 +230,7 @@ async function fetchAndRenderMarkdown(slug: string) {
       headers: authStore.token ? { Authorization: `Bearer ${authStore.token}` } : {},
     })
     if (!resp.ok) {
-      renderedHtml.value = `<p class="text-red-500">${t('common.pageNotFound')}</p>`
+      renderedHtml.value = `<p class="text-red-500">${t('customPage.markdownNotFound')}</p>`
       return
     }
     let raw = await resp.text()
@@ -263,7 +263,7 @@ async function fetchAndRenderMarkdown(slug: string) {
     renderedHtml.value = withIds
     tocItems.value = toc
   } catch {
-    renderedHtml.value = '<p class="text-red-500">Failed to load page</p>'
+    renderedHtml.value = `<p class="text-red-500">${t('customPage.markdownLoadFailed')}</p>`
   } finally {
     loading.value = false
     await nextTick()
@@ -317,16 +317,16 @@ function injectCopyButtons() {
     if (pre.querySelector('.copy-btn')) return
     const btn = document.createElement('button')
     btn.className = 'copy-btn'
-    btn.textContent = t('customPage.copyCode')
+    btn.textContent = t('common.copy')
     btn.addEventListener('click', async () => {
       const code = pre.querySelector('code')?.textContent ?? pre.textContent ?? ''
       try {
         await navigator.clipboard.writeText(code)
-        btn.textContent = t('customPage.copiedCode')
-        setTimeout(() => { btn.textContent = t('customPage.copyCode') }, 2000)
+        btn.textContent = `${t('common.copied')} ✓`
+        setTimeout(() => { btn.textContent = t('common.copy') }, 2000)
       } catch {
-        btn.textContent = t('customPage.copyCodeFailed')
-        setTimeout(() => { btn.textContent = t('customPage.copyCode') }, 2000)
+        btn.textContent = t('common.failed')
+        setTimeout(() => { btn.textContent = t('common.copy') }, 2000)
       }
     })
     pre.style.position = 'relative'

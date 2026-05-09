@@ -82,7 +82,9 @@ export default {
     tableOfContents: 'Contents',
     copyCode: 'Copy',
     copiedCode: 'Copied',
-    copyCodeFailed: 'Failed'
+    copyCodeFailed: 'Failed',
+    markdownNotFound: 'Page not found',
+    markdownLoadFailed: 'Failed to load page'
   },
 
   // Announcements Page

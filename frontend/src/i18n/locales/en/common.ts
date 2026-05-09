@@ -58,6 +58,7 @@ export default {
     copiedToClipboard: 'Copied to clipboard',
     copied: 'Copied',
     copyFailed: 'Failed to copy',
+    failed: 'Failed',
     verifying: 'Verifying...',
     processing: 'Processing...',
     contactSupport: 'Contact Support',
@@ -146,6 +147,16 @@ export default {
       registerRejectedWarning: 'Registration and quick sign-in are disabled until you accept the latest terms.',
       registerRequiredWarning: 'Please read and accept the latest terms before registering.'
     }
+  },
+
+  legalDocument: {
+    loadFailedTitle: 'Failed to load document',
+    loadFailedDesc: 'Please refresh the page and try again later.',
+    notFoundTitle: 'Document not found',
+    notFoundDesc: 'The current terms document does not exist or has been removed by the administrator.',
+    loginTerms: 'Login terms',
+    updatedAt: 'Updated at: {date}',
+    emptyContent: 'No content yet'
   },
 
   // Navigation
@@ -292,6 +303,22 @@ export default {
     redeemCodeRequired: 'Login code is required',
     redeemLoginSuccess: 'Code login successful!',
     redeemLoginFailed: 'Code login failed. Please check your code and try again.',
+    loginAgreement: {
+      readAndAgree: 'I have read and agree to',
+      pendingTitle: 'You must agree to the latest terms before continuing to sign in.',
+      pendingDescription: 'Email/password input and quick sign-in will remain disabled until you agree.',
+      viewTerms: 'View terms',
+      updateTitle: 'Terms update notice',
+      updateDescription: 'Our service terms were updated on {date}. Please read and agree to the following terms before continuing to use the service.',
+      recently: 'recently',
+      relatedDocuments: 'Related documents',
+      reject: 'Decline',
+      acceptAndContinue: 'Agree and continue',
+      passwordSignInBlocked: 'Account/password login and quick sign-in are disabled until you accept the latest terms.',
+      signInRequired: 'Please read and accept the latest terms before logging in.',
+      registerBlocked: 'Registration and quick sign-in are disabled until you accept the latest terms.',
+      registerRequired: 'Please read and accept the latest terms before registering.'
+    },
     linuxdo: {
       signIn: 'Continue with Linux.do',
       orContinue: 'or continue with email',

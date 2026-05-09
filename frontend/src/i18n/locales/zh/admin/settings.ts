@@ -256,7 +256,10 @@ export default {
         syncCorpEmailTargetHint: '默认 dingtalk_email / 钉钉企业邮箱；保存设置时按上述属性键和显示名称自动创建用户属性（已存在则仅同步显示名称）',
         syncDeptTarget: '属性键',
         syncDeptTargetHint: '默认 dingtalk_department / 钉钉部门；保存设置时按上述属性键和显示名称自动创建用户属性（已存在则仅同步显示名称）',
-        syncAttrDisplayName: '显示名称'
+        syncAttrDisplayName: '显示名称',
+        syncDisplayNameDefaultName: '钉钉姓名',
+        syncCorpEmailDefaultName: '钉钉企业邮箱',
+        syncDeptDefaultName: '钉钉部门'
       },
       oidc: {
         title: 'OIDC 登录',
@@ -1199,6 +1202,17 @@ export default {
         fallbackActionHint: '当请求模型不在白名单中时的处理方式。',
         fallbackErrorMessagePlaceholder: '未匹配模型被拦截时返回的自定义错误消息'
       },
+      emailOAuthSettings: {
+        title: '邮箱 OAuth 登录',
+        description: '配置 GitHub / Google 等邮箱 OAuth 登录入口。',
+        githubHint: '允许用户使用 GitHub 已验证邮箱快捷登录或注册。',
+        githubSetupPrefix: '在 GitHub Developer Settings 中创建 ',
+        githubSetupSuffix: '，并填写以下 Client ID / Secret。',
+        googleHint: '允许用户使用 Google 已验证邮箱快捷登录或注册。',
+        googleSetupGuide: '在 Google Cloud Console 创建 OAuth Client，并配置回调地址。',
+        secretConfiguredPlaceholder: '密钥已配置，留空以保留当前值。',
+        callbackUrlSetAndCopied: '回调地址已写入并复制。'
+      },
       wechatConnect: {
         title: '微信登录',
         description: '用于微信开放平台或公众号/小程序的第三方登录配置。',
@@ -1246,6 +1260,18 @@ export default {
           wechat: {
             title: '微信登录',
             description: '适用于微信第三方注册的新用户默认配额。'
+          },
+          github: {
+            title: 'GitHub',
+            description: '通过 GitHub 已验证邮箱首次注册或首次绑定时应用。'
+          },
+          google: {
+            title: 'Google',
+            description: '通过 Google 已验证邮箱首次注册或首次绑定时应用。'
+          },
+          dingtalk: {
+            title: '钉钉',
+            description: '通过钉钉首次注册或首次绑定时应用。'
           }
         },
         grantOnFirstBindLabel: '首次绑定时授权',
@@ -1255,6 +1281,35 @@ export default {
         noSourceSubscriptions: '当前来源未配置专属默认订阅。',
         platformQuotasOverride: '平台限额覆盖',
         platformQuotasOverrideHint: '留空的字段继承「系统默认平台限额」；填 0 表示禁止该窗口使用。',
+      },
+      loginAgreementSettings: {
+        title: '登录条款确认',
+        description: '控制登录页是否要求用户先阅读并同意服务条款、隐私政策或其他 Markdown 文档。',
+        displayMode: '展示形式',
+        modal: '弹窗',
+        checkbox: '复选框',
+        checkboxHint: '复选框会显示在登录按钮下方，未勾选前所有登录入口禁用。',
+        modalHint: '弹窗会在登录页打开，用户拒绝后所有登录入口保持禁用。',
+        updatedDate: '条款更新日期',
+        updatedDateHint: '日期或文档内容变化后，用户需要重新同意。',
+        documents: '协议文档',
+        documentsHint: '文档名称可自定义，内容按 Markdown 保存。可参考：服务条款、使用政策、支持的国家和地区、服务特定条款。',
+        addDocument: '添加文档',
+        untitledDocument: '未命名文档',
+        documentTitle: '文档名称',
+        documentTitlePlaceholder: '例如：服务条款',
+        routeSlug: '路由标识',
+        markdownContent: 'Markdown 内容',
+        markdownContentPlaceholder: '在这里填写正式 Markdown 内容。',
+        documentRequiredError: '启用登录条款确认时，至少需要保留一份文档。',
+        documentTitleRequiredError: '登录条款文档名称不能为空。',
+        duplicateRouteError: '登录条款文档路由不能重复：{path}',
+        defaultDocuments: {
+          terms: '服务条款',
+          usagePolicy: '使用政策',
+          supportedRegions: '支持的国家和地区',
+          serviceSpecificTerms: '服务特定条款'
+        }
       },
       paymentVisibleMethods: {
         methodLabel: '{title} 可见方式',
