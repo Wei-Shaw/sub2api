@@ -18,6 +18,22 @@ func RegisterCommonRoutes(r *gin.Engine, h *handler.Handlers) {
 		r.GET("/sub2api/generated-images/:filename", h.GeneratedImage.Get)
 	}
 
+	if h != nil && h.ConfigGuide != nil {
+		configGuides := r.Group("/config-guides")
+		{
+			omp := configGuides.Group("/omp-openai")
+			omp.GET("/manifest.json", h.ConfigGuide.GetOMPManifest)
+			omp.GET("/plugin.txt", h.ConfigGuide.GetOMPPluginInstructions)
+			omp.GET("/models.yml", h.ConfigGuide.GetOMPModelsYAML)
+			omp.GET("/config.yml", h.ConfigGuide.GetOMPConfigYAML)
+			omp.GET("/image-generator.md", h.ConfigGuide.GetOMPImageGenerator)
+
+			opencode := configGuides.Group("/opencode-openai")
+			opencode.GET("/manifest.json", h.ConfigGuide.GetOpenCodeManifest)
+			opencode.GET("/opencode.json", h.ConfigGuide.GetOpenCodeJSON)
+		}
+	}
+
 	// Claude Code 遥测日志（忽略，直接返回200）
 	r.POST("/api/event_logging/batch", func(c *gin.Context) {
 		c.Status(http.StatusOK)

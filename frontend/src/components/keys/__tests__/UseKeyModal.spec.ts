@@ -230,7 +230,7 @@ const { openaiModelsMock } = vi.hoisted(() => ({
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
-    t: (key: string) => key
+    t: (key: string, params?: Record<string, string>) => params?.url ? `${key} ${params.url}` : key
   })
 }))
 
@@ -241,6 +241,14 @@ vi.mock('@/composables/useClipboard', () => ({
 }))
 
 vi.mock('@/api/keys', () => ({
+  buildAgentConfigGuidePath: (client: 'omp' | 'opencode', apiKey: string, baseUrl?: string) => {
+    const clientPath = client === 'omp' ? 'omp-openai' : 'opencode-openai'
+    const params = new URLSearchParams()
+    params.set('api_key', apiKey)
+    const trimmedBaseURL = baseUrl?.trim()
+    if (trimmedBaseURL) params.set('base_url', trimmedBaseURL)
+    return `/config-guides/${clientPath}/manifest.json?${params.toString()}`
+  },
   keysAPI: {
     getOpenCodeOpenAIModels: vi.fn().mockResolvedValue({
       models: openaiModelsMock,
@@ -266,12 +274,21 @@ const defaultOpenCodeOpenAIModelsResponse = () => ({
   }
 })
 
-const mountOpenAIUseKeyModal = () => mount(UseKeyModal, {
+type UseKeyModalProps = {
+  show: boolean
+  apiKey: string
+  baseUrl: string
+  platform: 'openai'
+  allowMessagesDispatch?: boolean
+}
+
+const mountOpenAIUseKeyModal = (props: Partial<UseKeyModalProps> = {}) => mount(UseKeyModal, {
   props: {
     show: true,
     apiKey: 'sk-test',
     baseUrl: 'https://example.com/v1',
-    platform: 'openai'
+    platform: 'openai',
+    ...props
   },
   global: {
     stubs: {
@@ -635,6 +652,8 @@ describe('UseKeyModal', () => {
     codeBlocks = getCodeBlocks(wrapper)
     expect(codeBlocks.join('\n')).toContain('"sub2api-openai"')
     expect(codeBlocks.join('\n')).toContain('"gpt-5.4"')
+    expect(wrapper.find('[data-testid="agent-config-guide"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('/config-guides/opencode-openai/manifest.json?api_key=sk-test')
   })
 
   it('does not render OMP provider YAML when metadata loading fails', async () => {
@@ -649,6 +668,94 @@ describe('UseKeyModal', () => {
     expect(combinedBlocks).not.toContain('apiKey: sk-test')
   })
 
+  it('shows short OMP agent config guide link without base_url by default', async () => {
+    const wrapper = mountOpenAIUseKeyModal()
+
+    await clickClientTab(wrapper, 'keys.useKeyModal.cliTabs.omp')
+
+    const text = wrapper.text()
+    expect(text).toContain('keys.useKeyModal.agentConfig.hint')
+    expect(text).toContain('keys.useKeyModal.agentConfig.instruction')
+    expect(text).toContain('/config-guides/omp-openai/manifest.json?api_key=sk-test')
+    expect(text).not.toContain('base_url=')
+
+    const agentBlock = wrapper.find('[data-testid="agent-config-guide"]')
+    expect(agentBlock.exists()).toBe(true)
+    expect(agentBlock.text()).not.toContain('providers:')
+    expect(getCodeBlocks(wrapper)).toHaveLength(3)
+  })
+
+  it('uses api base origin instead of window origin for the agent link', async () => {
+    const wrapper = mountOpenAIUseKeyModal({ baseUrl: 'https://example.com/v1' })
+
+    await clickClientTab(wrapper, 'keys.useKeyModal.cliTabs.omp')
+
+    expect(wrapper.text()).toContain('https://example.com/config-guides/omp-openai/manifest.json?api_key=sk-test')
+  })
+
+  it('falls back to the page origin when api base url is relative', async () => {
+    const wrapper = mountOpenAIUseKeyModal({ baseUrl: '/api/v1' })
+
+    await clickClientTab(wrapper, 'keys.useKeyModal.cliTabs.omp')
+
+    expect(wrapper.text()).toContain('/config-guides/omp-openai/manifest.json?api_key=sk-test')
+    expect(wrapper.text()).not.toContain('/api/config-guides/')
+  })
+
+  it('hides OMP agent config guide link when required model metadata is missing', async () => {
+    getOpenCodeModelsMock().mockResolvedValueOnce({
+      models: { 'gpt-5.5': openaiModelsMock['gpt-5.5'] },
+      omp_openai_provider_tools: {
+        package: 'omp-openai-provider-tools',
+        latest_version: '0.1.2',
+        status: 'ok'
+      }
+    })
+    const wrapper = mountOpenAIUseKeyModal()
+
+    await clickClientTab(wrapper, 'keys.useKeyModal.cliTabs.omp')
+
+    expect(wrapper.find('[data-testid="agent-config-guide"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('/config-guides/omp-openai/manifest.json')
+  })
+
+  it('hides OpenCode agent config guide link when required model metadata is incomplete', async () => {
+    getOpenCodeModelsMock().mockResolvedValueOnce({
+      models: { 'gpt-5.5': openaiModelsMock['gpt-5.5'] },
+      omp_openai_provider_tools: {
+        package: 'omp-openai-provider-tools',
+        latest_version: '0.1.2',
+        status: 'ok'
+      }
+    })
+    const wrapper = mountOpenAIUseKeyModal()
+
+    await clickClientTab(wrapper, 'keys.useKeyModal.cliTabs.opencode')
+
+    expect(wrapper.find('[data-testid="agent-config-guide"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('/config-guides/opencode-openai/manifest.json')
+  })
+
+  it('shows short OpenCode agent config guide link when OpenCode metadata is loaded', async () => {
+    const wrapper = mountOpenAIUseKeyModal()
+
+    await clickClientTab(wrapper, 'keys.useKeyModal.cliTabs.opencode')
+
+    expect(wrapper.text()).toContain('/config-guides/opencode-openai/manifest.json?api_key=sk-test')
+    expect(wrapper.text()).not.toContain('base_url=')
+    expect(getCodeBlocks(wrapper)).toHaveLength(1)
+    expect(getCodeBlocks(wrapper).join('\n')).toContain('"sub2api-openai"')
+  })
+
+  it('hides OMP agent config guide link when OMP metadata loading fails', async () => {
+    getOpenCodeModelsMock().mockRejectedValueOnce(new Error('network down'))
+    const wrapper = mountOpenAIUseKeyModal()
+
+    await clickClientTab(wrapper, 'keys.useKeyModal.cliTabs.omp')
+
+    expect(wrapper.find('[data-testid="agent-config-guide"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('/config-guides/omp-openai/manifest.json')
+  })
   it('describes OpenCode config as custom provider based', async () => {
     const zhLocale = readFileSync(resolve(__dirname, '../../../i18n/locales/zh.ts'), 'utf8')
     const enLocale = readFileSync(resolve(__dirname, '../../../i18n/locales/en.ts'), 'utf8')

@@ -72,6 +72,26 @@
           </nav>
         </div>
 
+        <!-- Agent Configuration Guide -->
+        <div
+          v-if="showAgentConfigGuide"
+          data-testid="agent-config-guide"
+          class="p-3 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20"
+        >
+          <p class="text-xs text-emerald-700 dark:text-emerald-300 mb-2">
+            {{ t('keys.useKeyModal.agentConfig.hint') }}
+          </p>
+          <div class="flex items-start gap-2">
+            <code class="flex-1 text-xs break-all text-emerald-900 dark:text-emerald-100">{{ agentConfigGuideInstruction }}</code>
+            <button
+              @click="copyAgentConfigGuide"
+              class="px-2.5 py-1 text-xs font-medium rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
+            >
+              {{ copiedAgentConfig ? t('keys.useKeyModal.agentConfig.copied') : t('keys.useKeyModal.agentConfig.copy') }}
+            </button>
+          </div>
+        </div>
+
         <!-- Code Blocks (Stacked for multi-file platforms) -->
         <div class="space-y-4">
           <div
@@ -140,7 +160,7 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useClipboard } from '@/composables/useClipboard'
 import type { GroupPlatform } from '@/types'
-import { keysAPI, type OpenCodeOpenAIModel, type OpenCodeOpenAIModelsResponse } from '@/api/keys'
+import { keysAPI, buildAgentConfigGuidePath, type AgentConfigGuideClient, type OpenCodeOpenAIModel, type OpenCodeOpenAIModelsResponse } from '@/api/keys'
 
 interface Props {
   show: boolean
@@ -192,6 +212,7 @@ const { t } = useI18n()
 const { copyToClipboard: clipboardCopy } = useClipboard()
 
 const copiedIndex = ref<number | null>(null)
+const copiedAgentConfig = ref(false)
 const activeTab = ref<string>('unix')
 const activeClientTab = ref<string>('claude')
 const openCodeModels = ref<Record<string, OpenCodeOpenAIModel> | null>(null)
@@ -223,6 +244,59 @@ watch(activeClientTab, () => {
   activeTab.value = 'unix'
 })
 
+
+const requiredOMPAgentConfigModelIds = ['gpt-5.5', 'gpt-5.4-mini']
+const requiredOpenCodeAgentConfigModelIds = ['gpt-5.5', 'gpt-5.5-fast']
+
+const agentConfigGuideClient = computed<AgentConfigGuideClient | null>(() => {
+  if (props.platform !== 'openai') return null
+  if (activeClientTab.value === 'omp') return 'omp'
+  if (activeClientTab.value === 'opencode') return 'opencode'
+  return null
+})
+
+const showAgentConfigGuide = computed(() => {
+  if (!agentConfigGuideClient.value) return false
+  if (openCodeLoading.value || !openCodeModels.value) return false
+  if (agentConfigGuideClient.value === 'omp') {
+    if (openCodeError.value) return false
+    const plugin = openCodeMetadata.value?.omp_openai_provider_tools
+    const hasRequiredModels = requiredOMPAgentConfigModelIds.every((id) => Boolean(openCodeModels.value?.[id]))
+    return Boolean(hasRequiredModels && plugin && ['ok', 'cached'].includes(plugin.status) && plugin.latest_version.trim())
+  }
+  return requiredOpenCodeAgentConfigModelIds.every((id) => Boolean(openCodeModels.value?.[id]))
+})
+
+function getAgentConfigGuideOrigin(): string {
+  const trimmed = props.baseUrl.trim()
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      const url = new URL(trimmed)
+      if (url.username || url.password || url.search || url.hash) {
+        throw new Error('Unsupported agent config guide origin')
+      }
+      const trimmedPath = url.pathname.replace(/\/+$/, '')
+      url.pathname = trimmedPath.replace(/\/v1$/i, '')
+      return url.toString().replace(/\/+$/, '')
+    } catch {
+      // Fall back to page origin for malformed absolute URLs.
+    }
+  }
+  if (typeof window !== 'undefined' && window.location?.origin) return window.location.origin
+  return ''
+}
+
+const agentConfigGuideURL = computed(() => {
+  if (!showAgentConfigGuide.value || !agentConfigGuideClient.value) return ''
+  const path = buildAgentConfigGuidePath(agentConfigGuideClient.value, props.apiKey)
+  const origin = getAgentConfigGuideOrigin()
+  return origin ? `${origin}${path}` : path
+})
+
+const agentConfigGuideInstruction = computed(() => {
+  if (!agentConfigGuideURL.value) return ''
+  return t('keys.useKeyModal.agentConfig.instruction', { url: agentConfigGuideURL.value })
+})
 const loadOpenCodeModels = async () => {
   if (props.platform !== 'openai') return
   if (openCodeLoading.value) return
@@ -484,7 +558,7 @@ const currentFiles = computed((): FileConfig[] => {
   if (activeClientTab.value === 'omp') {
     const pluginMetadata = openCodeMetadata.value?.omp_openai_provider_tools
     const pluginVersion = pluginMetadata?.latest_version?.trim() ?? ''
-    const requiredOMPModelIds = ['gpt-5.5', 'gpt-5.4-mini']
+    const requiredOMPModelIds = requiredOMPAgentConfigModelIds
     if (openCodeLoading.value) {
       return [{ path: '1. Install OMP provider tools plugin', content: '# Loading OMP metadata...', hint: t('keys.useKeyModal.omp.loadingHint') }]
     }
@@ -1385,6 +1459,17 @@ const copyContent = async (content: string, index: number) => {
     copiedIndex.value = index
     setTimeout(() => {
       copiedIndex.value = null
+    }, 2000)
+  }
+}
+
+const copyAgentConfigGuide = async () => {
+  if (!agentConfigGuideInstruction.value) return
+  const success = await clipboardCopy(agentConfigGuideInstruction.value, t('keys.copied'))
+  if (success) {
+    copiedAgentConfig.value = true
+    setTimeout(() => {
+      copiedAgentConfig.value = false
     }, 2000)
   }
 }

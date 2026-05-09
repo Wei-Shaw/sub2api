@@ -724,6 +724,12 @@ export default {
         subtitle: 'opencode.json',
         hint: 'Config path: ~/.config/opencode/opencode.json (or opencode.jsonc). Create it manually if missing. This example adds a custom provider_id (for example sub2api-openai) and does not replace OpenCode\'s built-in openai provider. The API key is written directly for convenience and can later be moved to /connect or env vars.',
       },
+      agentConfig: {
+        hint: 'Short configuration entry for agents. The link contains this API key; only share it with a trusted agent.',
+        instruction: 'Use this link to complete the configuration: {url}',
+        copy: 'Copy agent link',
+        copied: 'Copied'
+      },
       omp: {
         description:
           'Manually copy the recommended OMP configuration. Run the first plugin command block before using the config; this page does not install plugins or write ~/.omp/agent/models.yml / ~/.omp/agent/config.yml automatically.',

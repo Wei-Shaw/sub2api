@@ -19,6 +19,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
+	"github.com/Wei-Shaw/sub2api/internal/server/routes"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -114,6 +115,75 @@ func TestAPIContract_OpenCodeOpenAIModels(t *testing.T) {
 	require.Empty(t, resp.Data.OMPProviderTools.Error)
 	require.NotContains(t, body, "npm_token")
 	require.NotContains(t, body, "NPM_TOKEN")
+}
+
+func TestAPIContract_ConfigGuideOMPManifest(t *testing.T) {
+	deps := newContractDeps(t)
+	installModelsDevTransport(t, configGuideContractModelsPayload())
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/config-guides/omp-openai/manifest.json?api_key=sk-test", nil)
+	req.Host = "example.com"
+	req.Header.Set("X-Forwarded-Proto", "https")
+	deps.router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, "no-store", w.Header().Get("Cache-Control"))
+	body := w.Body.String()
+	require.Contains(t, body, `"client":"omp"`)
+	require.Contains(t, body, "models.yml")
+	require.Contains(t, body, "api_key=sk-test")
+	require.NotContains(t, body, "npm_token")
+	require.NotContains(t, body, "NPM_TOKEN")
+}
+
+func configGuideContractModelsPayload() map[string]any {
+	return map[string]any{
+		"openai": map[string]any{
+			"models": map[string]any{
+				"gpt-5.5": map[string]any{
+					"id":                "gpt-5.5",
+					"name":              "GPT-5.5",
+					"reasoning":         true,
+					"attachment":        true,
+					"tool_call":         true,
+					"structured_output": true,
+					"temperature":       false,
+					"modalities": map[string]any{
+						"input":  []any{"text", "image", "pdf"},
+						"output": []any{"text"},
+					},
+					"cost":  map[string]any{"input": 2.5, "output": 15.0, "cache_read": 0.25},
+					"limit": map[string]any{"context": 400000, "input": 272000, "output": 128000},
+					"experimental": map[string]any{
+						"modes": map[string]any{
+							"fast": map[string]any{
+								"provider": map[string]any{
+									"body":    map[string]any{"service_tier": "priority"},
+									"headers": map[string]any{"x-test-header": "fast-mode"},
+								},
+							},
+						},
+					},
+				},
+				"gpt-5.4-mini": map[string]any{
+					"id":                "gpt-5.4-mini",
+					"name":              "GPT-5.4 Mini",
+					"reasoning":         true,
+					"attachment":        true,
+					"tool_call":         true,
+					"structured_output": true,
+					"temperature":       false,
+					"modalities": map[string]any{
+						"input":  []any{"text", "image", "pdf"},
+						"output": []any{"text"},
+					},
+					"cost":  map[string]any{"input": 0.25, "output": 2.0, "cache_read": 0.025},
+					"limit": map[string]any{"context": 400000, "input": 272000, "output": 128000},
+				},
+			},
+		},
+	}
 }
 
 func TestAPIContracts(t *testing.T) {
@@ -1282,6 +1352,7 @@ func newContractDeps(t *testing.T) *contractDeps {
 	settingRepo := newStubSettingRepo()
 	settingService := service.NewSettingService(settingRepo, cfg)
 	openCodeMetadataService := service.NewOpenCodeMetadataService()
+	configGuideHandler := handler.NewConfigGuideHandler(openCodeMetadataService)
 
 	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil, redeemService, nil)
@@ -1308,6 +1379,7 @@ func newContractDeps(t *testing.T) *contractDeps {
 	}
 
 	r := gin.New()
+	routes.RegisterCommonRoutes(r, &handler.Handlers{ConfigGuide: configGuideHandler})
 
 	v1 := r.Group("/api/v1")
 

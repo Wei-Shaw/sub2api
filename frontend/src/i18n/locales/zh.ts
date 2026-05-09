@@ -727,6 +727,12 @@ export default {
         subtitle: 'opencode.json',
         hint: '配置文件路径：~/.config/opencode/opencode.json（或 opencode.jsonc），不存在需手动创建。当前示例会新增一个自定义 provider_id（例如 sub2api-openai），不会占用 OpenCode 官方 openai provider。API Key 可直接写入配置，后续也可自行改成 /connect 或环境变量。'
       },
+      agentConfig: {
+        hint: '给 Agent 使用的短配置入口。链接包含当前 API Key，请只发给可信 Agent。',
+        instruction: '请按此链接完成配置：{url}',
+        copy: '复制 Agent 链接',
+        copied: '已复制'
+      },
       omp: {
         description:
           '为 OMP 手动复制推荐配置。请先执行第一块插件命令；系统不会自动安装插件，也不会自动写入 ~/.omp/agent/models.yml 或 ~/.omp/agent/config.yml。',

@@ -56,6 +56,17 @@ export type OpenCodeOpenAIModelsResponse = {
   omp_openai_provider_tools?: OMPProviderToolsMetadata
 }
 
+export type AgentConfigGuideClient = 'omp' | 'opencode'
+
+export function buildAgentConfigGuidePath(client: AgentConfigGuideClient, apiKey: string, baseUrl?: string): string {
+  const clientPath = client === 'omp' ? 'omp-openai' : 'opencode-openai'
+  const params = new URLSearchParams()
+  params.set('api_key', apiKey)
+  const trimmedBaseURL = baseUrl?.trim()
+  if (trimmedBaseURL) params.set('base_url', trimmedBaseURL)
+  return `/config-guides/${clientPath}/manifest.json?${params.toString()}`
+}
+
 /**
  * List all API keys for current user
  * @param page - Page number (default: 1)
