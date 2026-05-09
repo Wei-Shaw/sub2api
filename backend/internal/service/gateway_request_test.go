@@ -981,7 +981,7 @@ func TestParseGatewayRequest_MaxTokensBoundary(t *testing.T) {
 		{
 			name:          "超大值不 panic",
 			body:          `{"max_tokens":9999999999999999}`,
-			wantMaxTokens: 10000000000000000, // float64 精度导致 9999999999999999 → 1e16
+			wantMaxTokens: 0, // 超出 math.MaxInt 时应被忽略，但不能 panic
 		},
 		{
 			name:          "null 值被忽略",

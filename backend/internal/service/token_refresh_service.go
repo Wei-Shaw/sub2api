@@ -357,8 +357,9 @@ func (s *TokenRefreshService) postRefreshActions(ctx context.Context, account *A
 			slog.Info("token_refresh.cleared_missing_project_id_error", "account_id", account.ID)
 		}
 	}
-	// 刷新成功后清除临时不可调度状态（处理 OAuth 401 恢复场景）
-	if account.TempUnschedulableUntil != nil && time.Now().Before(*account.TempUnschedulableUntil) {
+	// 刷新成功后清除临时不可调度状态（处理 OAuth 401 恢复场景 + 已过期 Redis 残留）
+	// 不再依赖 DB 时间判断，因为 Redis 侧可能仍残留 temp_unsched 缓存。
+	if account.TempUnschedulableUntil != nil {
 		if clearErr := s.accountRepo.ClearTempUnschedulable(ctx, account.ID); clearErr != nil {
 			slog.Warn("token_refresh.clear_temp_unschedulable_failed",
 				"account_id", account.ID,
