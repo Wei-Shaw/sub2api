@@ -20,6 +20,11 @@ import (
 // This converts Chat Completions requests to Anthropic format (via Responses format chain),
 // forwards to Anthropic upstream, and converts responses back to Chat Completions format.
 func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
+	if h.PipelineEnabled() {
+		h.chatCompletionsPipeline(c)
+		return
+	}
+
 	streamStarted := false
 
 	requestStart := time.Now()

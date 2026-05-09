@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -36,6 +38,7 @@ func (p *GatewayPipeline) executePreFlight(
 		return nil, nil, err
 	}
 	p.resolveSessionHash(c, req)
+	p.setOpsContext(c, req)
 	return req, slotRelease, nil
 }
 
@@ -165,5 +168,56 @@ func (p *GatewayPipeline) resolveSessionHash(c *gin.Context, req *ForwardRequest
 			"session_hash", req.SessionHash,
 			"bound_account_id", cachedID,
 		)
+	}
+}
+
+// Ops context key constants matching handler/ops_error_logger.go.
+// Defined here to avoid importing the handler package.
+const (
+	opsModelKey       = "ops_model"
+	opsStreamKey      = "ops_stream"
+	opsRequestBodyKey = "ops_request_body"
+	opsAccountIDKey   = "ops_account_id"
+	opsRequestTypeKey = "ops_request_type"
+)
+
+// setOpsContext populates gin.Context keys required by the ops error
+// logging middleware. These values are normally set by the legacy
+// handler functions (setOpsRequestContext / setOpsEndpointContext);
+// the pipeline sets them in a single pass after pre-flight completes.
+func (p *GatewayPipeline) setOpsContext(c *gin.Context, req *ForwardRequest) {
+	if c == nil || req == nil {
+		return
+	}
+	model := strings.TrimSpace(req.Model)
+	c.Set(opsModelKey, model)
+	c.Set(opsStreamKey, req.Stream)
+	if len(req.RawBody) > 0 {
+		c.Set(opsRequestBodyKey, req.RawBody)
+	}
+	reqType := int16(service.RequestTypeFromLegacy(req.Stream, false))
+	c.Set(opsRequestTypeKey, reqType)
+	// Set model in request context for structured logging
+	if c.Request != nil && model != "" {
+		ctx := context.WithValue(c.Request.Context(), ctxkey.Model, model)
+		c.Request = c.Request.WithContext(ctx)
+	}
+}
+
+// setOpsSelectedAccount populates gin.Context keys for the selected
+// account, matching the legacy setOpsSelectedAccount function.
+// Called from pipeline_forward.go after account selection.
+func setOpsSelectedAccount(c *gin.Context, accountID int64, platform string) {
+	if c == nil || accountID <= 0 {
+		return
+	}
+	c.Set(opsAccountIDKey, accountID)
+	if c.Request != nil {
+		ctx := context.WithValue(c.Request.Context(), ctxkey.AccountID, accountID)
+		p := strings.TrimSpace(platform)
+		if p != "" {
+			ctx = context.WithValue(ctx, ctxkey.Platform, p)
+		}
+		c.Request = c.Request.WithContext(ctx)
 	}
 }

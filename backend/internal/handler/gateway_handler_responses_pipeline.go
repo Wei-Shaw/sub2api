@@ -1,0 +1,131 @@
+package handler
+
+import (
+	"context"
+	"errors"
+	"net/http"
+
+	"github.com/Wei-Shaw/sub2api/internal/gateway"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
+	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
+	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
+	"go.uber.org/zap"
+)
+
+// responsesPipeline handles Responses requests through the
+// GatewayPipeline. This is the pipeline-based replacement for the legacy
+// inline handler. Activated by the PipelineEnabled() feature flag.
+func (h *GatewayHandler) responsesPipeline(c *gin.Context) {
+	// Pre-pipeline setup: error passthrough + Claude Code only check
+	if h.errorPassthroughService != nil {
+		service.BindErrorPassthroughService(c, h.errorPassthroughService)
+	}
+	if apiKey, ok := middleware2.GetAPIKeyFromContext(c); ok {
+		if apiKey.Group != nil && apiKey.Group.ClaudeCodeOnly {
+			h.responsesErrorResponse(c, http.StatusForbidden,
+				"permission_error",
+				"This group is restricted to Claude Code clients (/v1/messages only)")
+			return
+		}
+	}
+
+	parse := h.buildResponsesParseFunc(c)
+	record := h.buildResponsesRecordFunc(c)
+
+	err := h.pipeline.Execute(c, gateway.ProtocolResponses, "", parse, record)
+	if err != nil {
+		h.handleResponsesPipelineError(c, err)
+	}
+}
+
+// buildResponsesParseFunc builds the ParseRequestFunc for Responses.
+func (h *GatewayHandler) buildResponsesParseFunc(c *gin.Context) gateway.ParseRequestFunc {
+	return func(body []byte) (*gateway.ForwardRequest, error) {
+		if !gjson.ValidBytes(body) {
+			return nil, errors.New("invalid JSON")
+		}
+
+		modelResult := gjson.GetBytes(body, "model")
+		if !modelResult.Exists() || modelResult.Type != gjson.String || modelResult.String() == "" {
+			return nil, errors.New("model is required")
+		}
+		model := modelResult.String()
+		stream := gjson.GetBytes(body, "stream").Bool()
+
+		return &gateway.ForwardRequest{
+			Model:      model,
+			Stream:     stream,
+			RawBody:    body,
+			GinContext: c,
+		}, nil
+	}
+}
+
+// buildResponsesRecordFunc builds the RecordUsageFunc for Responses.
+func (h *GatewayHandler) buildResponsesRecordFunc(c *gin.Context) gateway.RecordUsageFunc {
+	return func(ctx context.Context, account *service.Account, result *gateway.ForwardResult) error {
+		apiKey, _ := middleware2.GetAPIKeyFromContext(c)
+		subscription, _ := middleware2.GetSubscriptionFromContext(c)
+
+		userAgent := c.GetHeader("User-Agent")
+		clientIP := ip.GetClientIP(c)
+		inboundEndpoint := GetInboundEndpoint(c)
+		upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
+
+		reqModel := result.Model
+		body := []byte(nil)
+		if raw, ok := c.Get("ops_request_body"); ok {
+			if b, ok := raw.([]byte); ok {
+				body = b
+				if m := gjson.GetBytes(b, "model"); m.Exists() {
+					reqModel = m.String()
+				}
+			}
+		}
+		requestPayloadHash := service.HashUsageRequestPayload(body)
+
+		channelMapping := h.resolveChannelMappingFromContext(c, apiKey, reqModel)
+
+		h.submitUsageRecordTask(func(recordCtx context.Context) {
+			if err := h.gatewayService.RecordUsage(recordCtx, &service.RecordUsageInput{
+				Result:              toServiceForwardResult(result),
+				APIKey:              apiKey,
+				User:                apiKey.User,
+				Account:             account,
+				Subscription:        subscription,
+				InboundEndpoint:     inboundEndpoint,
+				UpstreamEndpoint:    upstreamEndpoint,
+				UserAgent:           userAgent,
+				IPAddress:           clientIP,
+				RequestPayloadHash:  requestPayloadHash,
+				APIKeyService:       h.apiKeyService,
+				ChannelUsageFields:  channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
+				ServiceQuotaRequest: service.ServiceQuotaCheckRequest{Model: reqModel, AccountID: account.ID, ChannelID: channelMapping.ChannelID},
+			}); err != nil {
+				requestLogger(c, "handler.gateway.responses.pipeline").
+					Error("gateway.responses.pipeline.record_usage_failed",
+						zap.Int64("account_id", account.ID),
+						zap.Error(err),
+					)
+			}
+		})
+		return nil
+	}
+}
+
+// handleResponsesPipelineError translates pipeline errors into Responses
+// error responses.
+func (h *GatewayHandler) handleResponsesPipelineError(c *gin.Context, err error) {
+	if c.Writer.Size() > 0 {
+		return // bytes already written to client, cannot send error
+	}
+
+	status, code, message, metadata := classifyPipelineError(err)
+	if len(metadata) > 0 {
+		h.responsesErrorResponseWithMetadata(c, status, code, message, metadata)
+	} else {
+		h.responsesErrorResponse(c, status, code, message)
+	}
+}

@@ -185,10 +185,11 @@ func TestHandleForwardError_Failover(t *testing.T) {
 	}
 	p := newMinimalPipeline(newTestRegistry(provider), 3)
 	req := &ForwardRequest{Account: makeAccount(42, "plat")}
-	excluded := make(map[int64]struct{})
+	w := httptest.NewRecorder()
+	fs := newTestFailoverState(3)
 
 	_, done, err := p.handleForwardError(
-		context.Background(), req, excluded, errors.New("bad"),
+		context.Background(), w, req, fs, errors.New("bad"),
 	)
 	if done {
 		t.Fatal("expected done=false to signal retry")
@@ -196,7 +197,7 @@ func TestHandleForwardError_Failover(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected nil error on failover, got %v", err)
 	}
-	if _, ok := excluded[42]; !ok {
+	if _, ok := fs.excludedIDs[42]; !ok {
 		t.Fatal("account 42 should be in excluded set")
 	}
 }
@@ -212,10 +213,11 @@ func TestHandleForwardError_NoFailover(t *testing.T) {
 	}
 	p := newMinimalPipeline(newTestRegistry(provider), 3)
 	req := &ForwardRequest{Account: makeAccount(1, "plat")}
-	excluded := make(map[int64]struct{})
+	w := httptest.NewRecorder()
+	fs := newTestFailoverState(3)
 
 	_, done, err := p.handleForwardError(
-		context.Background(), req, excluded, errors.New("fatal"),
+		context.Background(), w, req, fs, errors.New("fatal"),
 	)
 	if !done {
 		t.Fatal("expected done=true for non-failover error")
@@ -239,10 +241,11 @@ func TestHandleForwardError_UpstreamAccepted(t *testing.T) {
 		Account:          makeAccount(1, "plat"),
 		UpstreamAccepted: true,
 	}
-	excluded := make(map[int64]struct{})
+	w := httptest.NewRecorder()
+	fs := newTestFailoverState(3)
 
 	_, done, err := p.handleForwardError(
-		context.Background(), req, excluded, errors.New("mid-stream"),
+		context.Background(), w, req, fs, errors.New("mid-stream"),
 	)
 	if !done {
 		t.Fatal("expected done=true when upstream already accepted")
@@ -259,10 +262,11 @@ func TestHandleForwardError_ProviderGone(t *testing.T) {
 	// Provider unregistered between Forward and handleForwardError
 	p := newMinimalPipeline(NewProviderRegistry(), 3)
 	req := &ForwardRequest{Account: makeAccount(1, "gone")}
-	excluded := make(map[int64]struct{})
+	w := httptest.NewRecorder()
+	fs := newTestFailoverState(3)
 
 	_, done, err := p.handleForwardError(
-		context.Background(), req, excluded, errors.New("err"),
+		context.Background(), w, req, fs, errors.New("err"),
 	)
 	if !done {
 		t.Fatal("expected done=true when provider not found")
@@ -396,7 +400,7 @@ func TestFailoverLoop_SuccessOnSecondAttempt(t *testing.T) {
 	reg := newTestRegistry(provider)
 	p := newMinimalPipeline(reg, 5)
 	w := httptest.NewRecorder()
-	excluded := make(map[int64]struct{})
+	fs := newTestFailoverState(5)
 
 	// Simulate the loop: attempt 1 fails with failover
 	accounts := []*service.Account{
@@ -412,7 +416,7 @@ func TestFailoverLoop_SuccessOnSecondAttempt(t *testing.T) {
 		t.Fatal("first forward should fail")
 	}
 	_, done1, _ := p.handleForwardError(
-		context.Background(), req, excluded, err1,
+		context.Background(), w, req, fs, err1,
 	)
 	if done1 {
 		t.Fatal("first attempt should signal retry")
@@ -453,7 +457,7 @@ func TestFailoverLoop_MaxFailoversReached(t *testing.T) {
 	reg := newTestRegistry(provider)
 	p := newMinimalPipeline(reg, maxAttempts)
 	w := httptest.NewRecorder()
-	excluded := make(map[int64]struct{})
+	fs := newTestFailoverState(maxAttempts)
 
 	// Simulate maxAttempts iterations all triggering failover
 	for i := 0; i < maxAttempts; i++ {
@@ -466,7 +470,7 @@ func TestFailoverLoop_MaxFailoversReached(t *testing.T) {
 			t.Fatalf("attempt %d should fail", i)
 		}
 		_, done, _ := p.handleForwardError(
-			context.Background(), req, excluded, fwdErr,
+			context.Background(), w, req, fs, fwdErr,
 		)
 		if done {
 			t.Fatalf("attempt %d should signal retry", i)
@@ -474,9 +478,9 @@ func TestFailoverLoop_MaxFailoversReached(t *testing.T) {
 	}
 	// After maxAttempts failovers, the real selectAndForward
 	// would return "failover limit reached"
-	if len(excluded) != maxAttempts {
+	if len(fs.excludedIDs) != maxAttempts {
 		t.Fatalf("expected %d excluded accounts, got %d",
-			maxAttempts, len(excluded))
+			maxAttempts, len(fs.excludedIDs))
 	}
 }
 
@@ -542,6 +546,10 @@ func TestPipeline_RegistryAccessor(t *testing.T) {
 }
 
 // --- helper ---
+
+func newTestFailoverState(maxSwitches int) *pipelineFailoverState {
+	return newPipelineFailoverState(maxSwitches)
+}
 
 func containsSubstring(s, sub string) bool {
 	return len(s) >= len(sub) && searchSubstring(s, sub)

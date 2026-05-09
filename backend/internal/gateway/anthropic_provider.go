@@ -10,6 +10,11 @@ import (
 
 // AnthropicProvider wraps GatewayService.Forward as a GatewayProvider.
 // Phase 1 thin adapter: no business logic, only type conversion.
+//
+// Supported protocols:
+//   - "anthropic"        -> GatewayService.Forward                  (/v1/messages)
+//   - "chat_completions" -> GatewayService.ForwardAsChatCompletions (/v1/chat/completions)
+//   - "responses"        -> GatewayService.ForwardAsResponses       (/v1/responses)
 type AnthropicProvider struct {
 	gatewayService *service.GatewayService
 }
@@ -20,18 +25,59 @@ func NewAnthropicProvider(gw *service.GatewayService) *AnthropicProvider {
 	return &AnthropicProvider{gatewayService: gw}
 }
 
-func (p *AnthropicProvider) Platform() string    { return domain.PlatformAnthropic }
-func (p *AnthropicProvider) Protocols() []string { return []string{domain.PlatformAnthropic} }
+func (p *AnthropicProvider) Platform() string { return domain.PlatformAnthropic }
+func (p *AnthropicProvider) Protocols() []string {
+	return []string{ProtocolAnthropic, ProtocolChatCompletions, ProtocolResponses}
+}
 
-// Forward converts ForwardRequest to service.ParsedRequest and delegates
-// to GatewayService.Forward, then maps the result back.
+// Forward dispatches to the appropriate GatewayService method based on
+// req.Protocol, then maps the result to gateway.ForwardResult.
 func (p *AnthropicProvider) Forward(
 	ctx context.Context,
 	_ http.ResponseWriter,
 	req *ForwardRequest,
 ) (*ForwardResult, error) {
+	switch req.Protocol {
+	case ProtocolChatCompletions:
+		return p.forwardChatCompletions(ctx, req)
+	case ProtocolResponses:
+		return p.forwardResponses(ctx, req)
+	default:
+		return p.forwardMessages(ctx, req)
+	}
+}
+
+func (p *AnthropicProvider) forwardMessages(
+	ctx context.Context, req *ForwardRequest,
+) (*ForwardResult, error) {
 	parsed := toServiceParsedRequest(req)
 	result, err := p.gatewayService.Forward(ctx, req.GinContext, req.Account, parsed)
+	if err != nil {
+		return nil, err
+	}
+	return ServiceResultToForwardResult(result), nil
+}
+
+func (p *AnthropicProvider) forwardChatCompletions(
+	ctx context.Context, req *ForwardRequest,
+) (*ForwardResult, error) {
+	parsed := toServiceParsedRequest(req)
+	result, err := p.gatewayService.ForwardAsChatCompletions(
+		ctx, req.GinContext, req.Account, req.RawBody, parsed,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return ServiceResultToForwardResult(result), nil
+}
+
+func (p *AnthropicProvider) forwardResponses(
+	ctx context.Context, req *ForwardRequest,
+) (*ForwardResult, error) {
+	parsed := toServiceParsedRequest(req)
+	result, err := p.gatewayService.ForwardAsResponses(
+		ctx, req.GinContext, req.Account, req.RawBody, parsed,
+	)
 	if err != nil {
 		return nil, err
 	}

@@ -712,6 +712,10 @@ type GatewayConfig struct {
 	// UserMessageQueue: 用户消息串行队列配置
 	// 对 role:"user" 的真实用户消息实施账号级串行化 + RPM 自适应延迟
 	UserMessageQueue UserMessageQueueConfig `mapstructure:"user_message_queue"`
+
+	// PipelineEnabled enables the new GatewayPipeline request lifecycle
+	// for supported endpoints. When false (default), legacy handlers are used.
+	PipelineEnabled bool `mapstructure:"pipeline_enabled"`
 }
 
 // UserMessageQueueConfig 用户消息串行队列配置

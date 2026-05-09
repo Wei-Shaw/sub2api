@@ -120,6 +120,7 @@ func ProvideHandlers(
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 ) *Handlers {
+	gatewayHandler.SetPipeline(gatewayPipeline)
 	return &Handlers{
 		Auth:             authHandler,
 		User:             userHandler,

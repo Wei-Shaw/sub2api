@@ -6,38 +6,71 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
+
+const (
+	// maxSameAccountRetries is the per-account retry limit for
+	// RetryableOnSameAccount errors before switching accounts.
+	maxSameAccountRetries = 3
+	// sameAccountRetryDelay is the pause between same-account retries.
+	sameAccountRetryDelay = 500 * time.Millisecond
+)
+
+// pipelineFailoverState tracks cross-iteration failover state within
+// a single request lifecycle. It mirrors the critical parts of the
+// legacy handler.FailoverState without the platform-specific delays.
+type pipelineFailoverState struct {
+	switchCount           int
+	maxSwitches           int
+	excludedIDs           map[int64]struct{}
+	sameAccountRetryCount map[int64]int
+	lastFailoverErr       *service.UpstreamFailoverError
+	forceCacheBilling     bool
+}
+
+func newPipelineFailoverState(maxSwitches int) *pipelineFailoverState {
+	return &pipelineFailoverState{
+		maxSwitches:           maxSwitches,
+		excludedIDs:           make(map[int64]struct{}),
+		sameAccountRetryCount: make(map[int64]int),
+	}
+}
 
 func (p *GatewayPipeline) selectAndForward(
 	ctx context.Context,
 	w http.ResponseWriter,
 	req *ForwardRequest,
 ) (*ForwardResult, error) {
-	excludedIDs := make(map[int64]struct{})
+	fs := newPipelineFailoverState(p.maxFailovers)
 
-	for i := 0; i < p.maxFailovers; i++ {
-		result, done, err := p.tryOneAccount(ctx, w, req, excludedIDs)
+	for {
+		result, done, err := p.tryOneAccount(ctx, w, req, fs)
 		if done {
 			return result, err
 		}
-		req.SwitchCount++
+		// Loop continues for retry/failover
 	}
-	return nil, errors.New("gateway: failover limit reached, no account succeeded")
 }
 
 func (p *GatewayPipeline) tryOneAccount(
 	ctx context.Context,
 	w http.ResponseWriter,
 	req *ForwardRequest,
-	excludedIDs map[int64]struct{},
+	fs *pipelineFailoverState,
 ) (*ForwardResult, bool, error) {
-	account, releaseFunc, err := p.selectAccount(ctx, req, excludedIDs)
+	account, releaseFunc, err := p.selectAccount(ctx, req, fs.excludedIDs)
 	if err != nil {
-		return nil, true, fmt.Errorf("gateway: select account: %w", err)
+		return p.handleSelectionError(ctx, fs, err)
 	}
 	req.Account = account
+	if req.GinContext != nil {
+		setOpsSelectedAccount(req.GinContext, account.ID, account.Platform)
+	}
+	releaseFunc = wrapReleaseOnDone(ctx, releaseFunc)
 	defer func() {
 		if releaseFunc != nil {
 			releaseFunc()
@@ -47,11 +80,25 @@ func (p *GatewayPipeline) tryOneAccount(
 	if err := p.consumeBilling(ctx, req); err != nil {
 		return nil, true, err
 	}
+
+	// Replace model in body if channel mapping is active
+	p.applyModelReplacement(req)
+
 	result, err := p.forwardToProvider(ctx, w, req)
 	if err != nil {
-		return p.handleForwardError(ctx, req, excludedIDs, err)
+		return p.handleForwardError(ctx, w, req, fs, err)
 	}
 	return result, true, nil
+}
+
+// applyModelReplacement replaces the model name in the request body
+// when channel mapping is active. This must happen after channel
+// mapping resolution and before forwarding to the upstream provider.
+func (p *GatewayPipeline) applyModelReplacement(req *ForwardRequest) {
+	if req.ChannelMapping == nil || !req.ChannelMapping.Mapped {
+		return
+	}
+	req.RawBody = service.ReplaceModelInBody(req.RawBody, req.ChannelMapping.MappedModel)
 }
 
 func (p *GatewayPipeline) selectAccount(
@@ -107,30 +154,115 @@ func (p *GatewayPipeline) forwardToProvider(
 	return provider.Forward(ctx, w, req)
 }
 
-func (p *GatewayPipeline) handleForwardError(
+// handleSelectionError handles account selection failures. When all
+// candidates are excluded after a 503, it clears the exclusion list
+// and retries (single-account backoff pattern from legacy).
+func (p *GatewayPipeline) handleSelectionError(
 	ctx context.Context,
-	req *ForwardRequest,
-	excludedIDs map[int64]struct{},
+	fs *pipelineFailoverState,
 	err error,
 ) (*ForwardResult, bool, error) {
+	if len(fs.excludedIDs) == 0 {
+		return nil, true, fmt.Errorf("gateway: select account: %w", err)
+	}
+	// Single-account backoff: if the last error was 503 and we
+	// haven't exhausted switches, clear exclusions and retry.
+	if fs.lastFailoverErr != nil &&
+		fs.lastFailoverErr.StatusCode == http.StatusServiceUnavailable &&
+		fs.switchCount <= fs.maxSwitches {
+		slog.Warn("pipeline.single_account_backoff",
+			"switch_count", fs.switchCount,
+			"max_switches", fs.maxSwitches,
+		)
+		if !sleepWithContext(ctx, 2*time.Second) {
+			return nil, true, ctx.Err()
+		}
+		fs.excludedIDs = make(map[int64]struct{})
+		return nil, false, nil // retry
+	}
+	return nil, true, fmt.Errorf("gateway: failover limit reached, no account succeeded")
+}
+
+// handleForwardError processes a forward error, deciding whether to
+// retry on the same account, switch accounts, or abort.
+func (p *GatewayPipeline) handleForwardError(
+	ctx context.Context,
+	w http.ResponseWriter,
+	req *ForwardRequest,
+	fs *pipelineFailoverState,
+	err error,
+) (*ForwardResult, bool, error) {
+	// If bytes have been written to the client, we cannot failover.
+	if writerHasData(w) {
+		return nil, true, fmt.Errorf("gateway: forward failed after data written: %w", err)
+	}
 	if req.UpstreamAccepted {
 		return nil, true, fmt.Errorf("gateway: forward failed after upstream accepted: %w", err)
 	}
-	provider, ok := p.registry.Get(req.Account.Platform)
-	if !ok {
-		return nil, true, err
-	}
-	if provider.ShouldFailover(ctx, req, err) {
-		excludedIDs[req.Account.ID] = struct{}{}
-		slog.Info("pipeline.failover",
-			"account_id", req.Account.ID,
-			"platform", req.Account.Platform,
-			"switch_count", req.SwitchCount+1,
-			"error", err,
-		)
+
+	// Check if the error is a failover-eligible upstream error
+	var failoverErr *service.UpstreamFailoverError
+	if !errors.As(err, &failoverErr) {
+		// Not a failover error: check provider's ShouldFailover as fallback
+		provider, ok := p.registry.Get(req.Account.Platform)
+		if !ok || !provider.ShouldFailover(ctx, req, err) {
+			return nil, true, err
+		}
+		// Provider says failover but no UpstreamFailoverError detail;
+		// treat as a simple account switch.
+		fs.excludedIDs[req.Account.ID] = struct{}{}
+		fs.switchCount++
+		if fs.switchCount > fs.maxSwitches {
+			return nil, true, fmt.Errorf("gateway: failover limit reached: %w", err)
+		}
+		req.SwitchCount = fs.switchCount
 		return nil, false, nil
 	}
-	return nil, true, err
+
+	fs.lastFailoverErr = failoverErr
+
+	// Cache billing: when sticky session switches account or upstream
+	// explicitly marks it, convert input_tokens to cache_read billing.
+	if failoverErr.ForceCacheBilling {
+		fs.forceCacheBilling = true
+		req.ForceCacheBilling = true
+	}
+
+	// Same-account retry for transient errors
+	if failoverErr.RetryableOnSameAccount {
+		retries := fs.sameAccountRetryCount[req.Account.ID]
+		if retries < maxSameAccountRetries {
+			fs.sameAccountRetryCount[req.Account.ID]++
+			slog.Warn("pipeline.same_account_retry",
+				"account_id", req.Account.ID,
+				"retry_count", retries+1,
+				"max_retries", maxSameAccountRetries,
+				"status_code", failoverErr.StatusCode,
+			)
+			if !sleepWithContext(ctx, sameAccountRetryDelay) {
+				return nil, true, ctx.Err()
+			}
+			// Retry on the same account (don't exclude, don't increment switch)
+			return nil, false, nil
+		}
+		// Same-account retries exhausted: temp-unschedule the account
+		p.gatewayService.TempUnscheduleRetryableError(ctx, req.Account.ID, failoverErr)
+	}
+
+	// Switch to a different account
+	fs.excludedIDs[req.Account.ID] = struct{}{}
+	fs.switchCount++
+	if fs.switchCount > fs.maxSwitches {
+		return nil, true, fmt.Errorf("gateway: failover limit reached: %w", err)
+	}
+	req.SwitchCount = fs.switchCount
+	slog.Info("pipeline.failover_switch",
+		"account_id", req.Account.ID,
+		"platform", req.Account.Platform,
+		"switch_count", fs.switchCount,
+		"status_code", failoverErr.StatusCode,
+	)
+	return nil, false, nil
 }
 
 func (p *GatewayPipeline) recordUsage(
@@ -143,4 +275,54 @@ func (p *GatewayPipeline) recordUsage(
 		return nil
 	}
 	return record(ctx, req.Account, result)
+}
+
+// writerHasData checks if the http.ResponseWriter has already
+// written data to the client. Supports gin.ResponseWriter and
+// the standard interface.
+func writerHasData(w http.ResponseWriter) bool {
+	type sizer interface {
+		Size() int
+	}
+	if sw, ok := w.(sizer); ok {
+		return sw.Size() > 0
+	}
+	return false
+}
+
+// wrapReleaseOnDone wraps a slot release function so it fires
+// automatically when the request context is done (client disconnect).
+// This ensures slots are released even if the handler returns
+// without explicitly calling the release function.
+func wrapReleaseOnDone(ctx context.Context, releaseFunc func()) func() {
+	if releaseFunc == nil {
+		return nil
+	}
+	var once sync.Once
+	var stop func() bool
+
+	release := func() {
+		once.Do(func() {
+			if stop != nil {
+				_ = stop()
+			}
+			releaseFunc()
+		})
+	}
+	stop = context.AfterFunc(ctx, release)
+	return release
+}
+
+// sleepWithContext pauses for the given duration, returning false
+// if the context is cancelled before the sleep completes.
+func sleepWithContext(ctx context.Context, d time.Duration) bool {
+	if d <= 0 {
+		return true
+	}
+	select {
+	case <-ctx.Done():
+		return false
+	case <-time.After(d):
+		return true
+	}
 }

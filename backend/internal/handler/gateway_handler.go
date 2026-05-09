@@ -14,6 +14,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/gateway"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
@@ -51,6 +52,7 @@ type GatewayHandler struct {
 	maxAccountSwitchesGemini  int
 	cfg                       *config.Config
 	settingService            *service.SettingService
+	pipeline                  *gateway.GatewayPipeline
 }
 
 // NewGatewayHandler creates a new GatewayHandler
@@ -105,6 +107,18 @@ func NewGatewayHandler(
 		cfg:                       cfg,
 		settingService:            settingService,
 	}
+}
+
+// SetPipeline injects the GatewayPipeline for Phase 1 activation.
+// Called after construction when the pipeline is available.
+func (h *GatewayHandler) SetPipeline(p *gateway.GatewayPipeline) {
+	h.pipeline = p
+}
+
+// PipelineEnabled returns true when the pipeline feature flag is on
+// and a pipeline instance is available.
+func (h *GatewayHandler) PipelineEnabled() bool {
+	return h.pipeline != nil && h.cfg != nil && h.cfg.Gateway.PipelineEnabled
 }
 
 // Messages handles Claude API compatible messages endpoint

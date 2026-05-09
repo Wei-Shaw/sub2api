@@ -20,6 +20,11 @@ import (
 // This converts Responses API requests to Anthropic format, forwards to Anthropic
 // upstream, and converts responses back to Responses format.
 func (h *GatewayHandler) Responses(c *gin.Context) {
+	if h.PipelineEnabled() {
+		h.responsesPipeline(c)
+		return
+	}
+
 	streamStarted := false
 
 	requestStart := time.Now()

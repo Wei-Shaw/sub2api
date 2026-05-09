@@ -5,6 +5,15 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// Protocol constants for pipeline dispatch.
+const (
+	ProtocolAnthropic       = "anthropic"
+	ProtocolChatCompletions = "chat_completions"
+	ProtocolResponses       = "responses"
+	ProtocolOpenAI          = "openai"
+	ProtocolGemini          = "gemini"
+)
+
 // ForwardRequest is the protocol-agnostic request context passed to
 // GatewayProvider.Forward. It is built by the Pipeline from the raw HTTP
 // body and enriched with scheduling / billing state at each pipeline stage.
@@ -36,10 +45,11 @@ type ForwardRequest struct {
 
 	// --- updated per select-account iteration ---
 
-	Account        *service.Account
-	ChannelMapping *service.ChannelMappingResult
-	BillingTicket  *service.BillingTicket
-	SwitchCount    int // failover counter
+	Account           *service.Account
+	ChannelMapping    *service.ChannelMappingResult
+	BillingTicket     *service.BillingTicket
+	SwitchCount       int  // failover counter
+	ForceCacheBilling bool // set when failover occurs after billing was consumed
 
 	// --- Phase 1 adapter bridge fields ---
 
