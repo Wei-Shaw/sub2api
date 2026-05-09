@@ -558,6 +558,7 @@ type GatewayService struct {
 	rpmCache              RPMCache          // RPM 计数缓存（仅 Anthropic OAuth/SetupToken）
 	userGroupRateResolver *userGroupRateResolver
 	userGroupRateCache    *gocache.Cache
+	quotaBalanceCache     *gocache.Cache
 	userGroupRateSF       singleflight.Group
 	modelsListCache       *gocache.Cache
 	modelsListCacheTTL    time.Duration
@@ -627,6 +628,7 @@ func NewGatewayService(
 		sessionLimitCache:    sessionLimitCache,
 		rpmCache:             rpmCache,
 		userGroupRateCache:   gocache.New(userGroupRateTTL, time.Minute),
+		quotaBalanceCache:    gocache.New(time.Minute, time.Minute),
 		settingService:       settingService,
 		modelsListCache:      gocache.New(modelsListTTL, time.Minute),
 		modelsListCacheTTL:   modelsListTTL,
@@ -1848,6 +1850,18 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 					"rpm_ok", rpmOK,
 				)
 
+				if !clearSticky && s.shouldReleaseOpenAIStickySessionForQuotaGapFromCandidates(account, accountsForQuotaGap(accountByID, excludedIDs)) {
+					clearSticky = true
+					slog.Debug("sticky.layer1_5_no_routing_clear",
+						"account_id", accountID,
+						"reason", "quota_gap",
+						"session", shortSessionHash(sessionHash),
+					)
+					if s.cache != nil {
+						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
+					}
+				}
+
 				if !clearSticky && platformOK && modelSupported && modelSchedulable && quotaOK && windowCostOK && rpmOK && schedulable {
 					result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 					if err == nil && result.Acquired {
@@ -2006,6 +2020,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		for len(available) > 0 {
 			// 1. 取优先级最小的集合
 			candidates := filterByMinPriority(available)
+			candidates = s.filterByMaxRemainingQuota(candidates)
 			// 2. 取负载率最低的集合
 			candidates = filterByMinLoadRate(candidates)
 			// 3. LRU 选择最久未用的账号
@@ -2058,7 +2073,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 
 func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates []*Account, groupID *int64, sessionHash string, preferOAuth bool) (*AccountSelectionResult, bool, error) {
 	ordered := append([]*Account(nil), candidates...)
-	sortAccountsByPriorityAndLastUsed(ordered, preferOAuth)
+	s.sortAccountsForSelection(ordered, preferOAuth)
 
 	for _, acc := range ordered {
 		result, err := s.tryAcquireAccountSlot(ctx, acc.ID, acc.Concurrency)
@@ -2087,13 +2102,304 @@ func (s *GatewayService) schedulingConfig() config.GatewaySchedulingConfig {
 		return s.cfg.Gateway.Scheduling
 	}
 	return config.GatewaySchedulingConfig{
-		StickySessionMaxWaiting:  3,
-		StickySessionWaitTimeout: 45 * time.Second,
-		FallbackWaitTimeout:      30 * time.Second,
-		FallbackMaxWaiting:       100,
-		LoadBatchEnabled:         true,
-		SlotCleanupInterval:      30 * time.Second,
+		StickySessionMaxWaiting:      3,
+		StickySessionWaitTimeout:     45 * time.Second,
+		AccountSelectionMode:         "last_used",
+		QuotaBalanceSnapshotInterval: 0,
+		FallbackWaitTimeout:          30 * time.Second,
+		FallbackMaxWaiting:           100,
+		LoadBatchEnabled:             true,
+		SlotCleanupInterval:          30 * time.Second,
 	}
+}
+
+func effectiveRemainingQuota(account *Account) (float64, bool) {
+	if account == nil {
+		return 0, false
+	}
+
+	var remaining float64
+	found := false
+
+	if limit := account.GetQuotaLimit(); limit > 0 {
+		value := limit - account.GetQuotaUsed()
+		if value < 0 {
+			value = 0
+		}
+		remaining = value
+		found = true
+	}
+
+	if limit := account.GetQuotaDailyLimit(); limit > 0 {
+		used := account.GetQuotaDailyUsed()
+		start := account.getExtraTime("quota_daily_start")
+		expired := false
+		if account.GetQuotaDailyResetMode() == "fixed" {
+			expired = account.isFixedDailyPeriodExpired(start)
+		} else {
+			expired = isPeriodExpired(start, 24*time.Hour)
+		}
+		if expired {
+			used = 0
+		}
+		value := limit - used
+		if value < 0 {
+			value = 0
+		}
+		if !found || value < remaining {
+			remaining = value
+		}
+		found = true
+	}
+
+	if limit := account.GetQuotaWeeklyLimit(); limit > 0 {
+		used := account.GetQuotaWeeklyUsed()
+		start := account.getExtraTime("quota_weekly_start")
+		expired := false
+		if account.GetQuotaWeeklyResetMode() == "fixed" {
+			expired = account.isFixedWeeklyPeriodExpired(start)
+		} else {
+			expired = isPeriodExpired(start, 7*24*time.Hour)
+		}
+		if expired {
+			used = 0
+		}
+		value := limit - used
+		if value < 0 {
+			value = 0
+		}
+		if !found || value < remaining {
+			remaining = value
+		}
+		found = true
+	}
+
+	if found {
+		return remaining, true
+	}
+	if strategyRemaining, ok := account.GetOpenAIQuotaRemainingPercentByStrategy(); ok {
+		return strategyRemaining, true
+	}
+
+	// OpenAI OAuth 账号通常维护的是 Codex 5h/7d 使用百分比，而不是 quota_limit 系列额度字段。
+	// 当传统额度字段缺失时，回退到“剩余百分比”比较，避免继续退回 last_used。
+	if account.Extra != nil {
+		percentKeys := []string{
+			"codex_primary_used_percent",
+			"codex_secondary_used_percent",
+			"codex_5h_used_percent",
+			"codex_7d_used_percent",
+		}
+		for _, key := range percentKeys {
+			raw, ok := account.Extra[key]
+			if !ok || raw == nil {
+				continue
+			}
+			used := parseExtraFloat64(raw)
+			if used < 0 {
+				used = 0
+			}
+			if used > 100 {
+				used = 100
+			}
+			value := 100 - used
+			if !found || value < remaining {
+				remaining = value
+			}
+			found = true
+		}
+	}
+
+	return remaining, found
+}
+
+func shouldTreatOpenAIQuotaStrategyAccountAsFullBalanceForScheduling(account *Account) bool {
+	if account == nil || !account.IsOpenAIOAuth() {
+		return false
+	}
+	return account.GetOpenAIQuotaStrategy() != ""
+}
+
+func effectiveRemainingQuotaForScheduling(account *Account) (float64, bool) {
+	score, found := effectiveRemainingQuota(account)
+	if found {
+		return score, true
+	}
+	if shouldTreatOpenAIQuotaStrategyAccountAsFullBalanceForScheduling(account) {
+		return 100, true
+	}
+	return 0, false
+}
+
+func (s *GatewayService) accountSelectionMode() string {
+	mode := strings.TrimSpace(s.schedulingConfig().AccountSelectionMode)
+	if mode == "" {
+		return "last_used"
+	}
+	return mode
+}
+
+func (s *GatewayService) quotaBalanceSnapshotInterval() time.Duration {
+	interval := s.schedulingConfig().QuotaBalanceSnapshotInterval
+	if interval < 0 {
+		return 0
+	}
+	return interval
+}
+
+func (s *GatewayService) accountRemainingQuotaScore(account *Account) (float64, bool) {
+	if account == nil {
+		return 0, false
+	}
+
+	interval := s.quotaBalanceSnapshotInterval()
+	if interval > 0 && s.quotaBalanceCache != nil {
+		cacheKey := fmt.Sprintf("quota-balance:%d", account.ID)
+		if cached, ok := s.quotaBalanceCache.Get(cacheKey); ok {
+			if score, ok := cached.(float64); ok {
+				return score, true
+			}
+		}
+		score, found := effectiveRemainingQuotaForScheduling(account)
+		if found {
+			s.quotaBalanceCache.Set(cacheKey, score, interval)
+		}
+		return score, found
+	}
+
+	return effectiveRemainingQuotaForScheduling(account)
+}
+
+func (s *GatewayService) compareRemainingQuotaPreference(a, b *Account) int {
+	if s.accountSelectionMode() != "quota_remaining" {
+		return 0
+	}
+	aScore, aOK := s.accountRemainingQuotaScore(a)
+	bScore, bOK := s.accountRemainingQuotaScore(b)
+	if !aOK || !bOK {
+		return 0
+	}
+	switch {
+	case aScore > bScore:
+		return -1
+	case aScore < bScore:
+		return 1
+	default:
+		return 0
+	}
+}
+
+func (s *GatewayService) stickyQuotaGapReleaseThresholdPercent() float64 {
+	threshold := s.schedulingConfig().StickyQuotaGapReleaseThresholdPercent
+	if threshold < 0 {
+		return 0
+	}
+	return threshold
+}
+
+func accountsForQuotaGap(accountByID map[int64]*Account, excludedIDs map[int64]struct{}) []*Account {
+	accounts := make([]*Account, 0, len(accountByID))
+	for id, account := range accountByID {
+		if excludedIDs != nil {
+			if _, excluded := excludedIDs[id]; excluded {
+				continue
+			}
+		}
+		accounts = append(accounts, account)
+	}
+	return accounts
+}
+
+func (s *GatewayService) shouldReleaseOpenAIStickySessionForQuotaGapFromCandidates(sticky *Account, candidates []*Account) bool {
+	threshold := s.stickyQuotaGapReleaseThresholdPercent()
+	if threshold <= 0 || sticky == nil || !sticky.IsOpenAIOAuth() || len(candidates) == 0 {
+		return false
+	}
+	stickyScore, ok := s.accountRemainingQuotaScore(sticky)
+	if !ok {
+		return false
+	}
+
+	bestScore := stickyScore
+	for _, candidate := range candidates {
+		if candidate == nil || candidate.ID == sticky.ID || candidate.Priority != sticky.Priority || !candidate.IsOpenAIOAuth() {
+			continue
+		}
+		score, ok := s.accountRemainingQuotaScore(candidate)
+		if ok && score > bestScore {
+			bestScore = score
+		}
+	}
+	return bestScore-stickyScore >= threshold
+}
+
+func (s *GatewayService) shouldPreferAccountCandidate(candidate *Account, selected *Account, preferOAuth bool) bool {
+	if candidate == nil {
+		return false
+	}
+	if selected == nil {
+		return true
+	}
+	if candidate.Priority != selected.Priority {
+		return candidate.Priority < selected.Priority
+	}
+	if cmp := s.compareRemainingQuotaPreference(candidate, selected); cmp != 0 {
+		return cmp < 0
+	}
+	switch {
+	case candidate.LastUsedAt == nil && selected.LastUsedAt != nil:
+		return true
+	case candidate.LastUsedAt != nil && selected.LastUsedAt == nil:
+		return false
+	case candidate.LastUsedAt == nil && selected.LastUsedAt == nil:
+		return preferOAuth && candidate.Platform == PlatformGemini && selected.Platform == PlatformGemini && candidate.Type != selected.Type && candidate.Type == AccountTypeOAuth
+	default:
+		return candidate.LastUsedAt.Before(*selected.LastUsedAt)
+	}
+}
+
+func (s *GatewayService) filterByMaxRemainingQuota(accounts []accountWithLoad) []accountWithLoad {
+	if s.accountSelectionMode() != "quota_remaining" || len(accounts) == 0 {
+		return accounts
+	}
+
+	var maxScore float64
+	found := false
+	for _, acc := range accounts {
+		score, ok := s.accountRemainingQuotaScore(acc.account)
+		if !ok {
+			continue
+		}
+		if !found || score > maxScore {
+			maxScore = score
+			found = true
+		}
+	}
+	if !found {
+		return accounts
+	}
+
+	filtered := make([]accountWithLoad, 0, len(accounts))
+	for _, acc := range accounts {
+		score, ok := s.accountRemainingQuotaScore(acc.account)
+		if ok && score == maxScore {
+			filtered = append(filtered, acc)
+		}
+	}
+	if len(filtered) == 0 {
+		return accounts
+	}
+	return filtered
+}
+
+func (s *GatewayService) sortAccountsForSelection(accounts []*Account, preferOAuth bool) {
+	if s.accountSelectionMode() != "quota_remaining" {
+		sortAccountsByPriorityAndLastUsed(accounts, preferOAuth)
+		return
+	}
+	sort.SliceStable(accounts, func(i, j int) bool {
+		return s.shouldPreferAccountCandidate(accounts[i], accounts[j], preferOAuth)
+	})
 }
 
 func (s *GatewayService) withGroupContext(ctx context.Context, group *Group) context.Context {
@@ -2942,16 +3248,50 @@ func sameLastUsedAt(a, b *time.Time) bool {
 }
 
 // sortCandidatesForFallback 根据配置选择排序策略
-// mode: "last_used"(按最后使用时间) 或 "random"(随机)
+// mode: "last_used"(按最后使用时间) / "random"(随机) / "quota_remaining"(同优先级优先剩余额度最高)
 func (s *GatewayService) sortCandidatesForFallback(accounts []*Account, preferOAuth bool, mode string) {
 	if mode == "random" {
 		// 先按优先级排序，然后在同优先级内随机打乱
 		sortAccountsByPriorityOnly(accounts, preferOAuth)
 		shuffleWithinPriority(accounts)
-	} else {
-		// 默认按最后使用时间排序
-		sortAccountsByPriorityAndLastUsed(accounts, preferOAuth)
+		return
 	}
+	if mode == "quota_remaining" {
+		sort.SliceStable(accounts, func(i, j int) bool {
+			a, b := accounts[i], accounts[j]
+			if a.Priority != b.Priority {
+				return a.Priority < b.Priority
+			}
+			aScore, aOK := s.accountRemainingQuotaScore(a)
+			bScore, bOK := s.accountRemainingQuotaScore(b)
+			switch {
+			case aOK && bOK && aScore != bScore:
+				return aScore > bScore
+			case aOK != bOK:
+				return aOK
+			case a.LastUsedAt == nil && b.LastUsedAt != nil:
+				return true
+			case a.LastUsedAt != nil && b.LastUsedAt == nil:
+				return false
+			case a.LastUsedAt == nil && b.LastUsedAt == nil:
+				if preferOAuth && a.Platform == PlatformGemini && b.Platform == PlatformGemini && a.Type != b.Type {
+					return a.Type == AccountTypeOAuth
+				}
+				return false
+			case a.LastUsedAt.Before(*b.LastUsedAt):
+				return true
+			case b.LastUsedAt.Before(*a.LastUsedAt):
+				return false
+			default:
+				if preferOAuth && a.Platform == PlatformGemini && b.Platform == PlatformGemini && a.Type != b.Type {
+					return a.Type == AccountTypeOAuth
+				}
+				return false
+			}
+		})
+		return
+	}
+	sortAccountsByPriorityAndLastUsed(accounts, preferOAuth)
 }
 
 // sortAccountsByPriorityOnly 仅按优先级排序

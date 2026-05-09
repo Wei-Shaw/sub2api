@@ -64,6 +64,15 @@ func TestLoadDefaultSchedulingConfig(t *testing.T) {
 	if cfg.Gateway.Scheduling.StickySessionWaitTimeout != 120*time.Second {
 		t.Fatalf("StickySessionWaitTimeout = %v, want 120s", cfg.Gateway.Scheduling.StickySessionWaitTimeout)
 	}
+	if cfg.Gateway.Scheduling.AccountSelectionMode != "last_used" {
+		t.Fatalf("AccountSelectionMode = %q, want %q", cfg.Gateway.Scheduling.AccountSelectionMode, "last_used")
+	}
+	if cfg.Gateway.Scheduling.QuotaBalanceSnapshotInterval != 0 {
+		t.Fatalf("QuotaBalanceSnapshotInterval = %v, want 0", cfg.Gateway.Scheduling.QuotaBalanceSnapshotInterval)
+	}
+	if cfg.Gateway.Scheduling.StickyQuotaGapReleaseThresholdPercent != 0 {
+		t.Fatalf("StickyQuotaGapReleaseThresholdPercent = %v, want 0", cfg.Gateway.Scheduling.StickyQuotaGapReleaseThresholdPercent)
+	}
 	if cfg.Gateway.Scheduling.FallbackWaitTimeout != 30*time.Second {
 		t.Fatalf("FallbackWaitTimeout = %v, want 30s", cfg.Gateway.Scheduling.FallbackWaitTimeout)
 	}
@@ -214,6 +223,10 @@ func TestLoadIdempotencyConfigFromEnv(t *testing.T) {
 func TestLoadSchedulingConfigFromEnv(t *testing.T) {
 	resetViperWithJWTSecret(t)
 	t.Setenv("GATEWAY_SCHEDULING_STICKY_SESSION_MAX_WAITING", "5")
+	t.Setenv("GATEWAY_SCHEDULING_ACCOUNT_SELECTION_MODE", "quota_remaining")
+	t.Setenv("GATEWAY_SCHEDULING_QUOTA_BALANCE_SNAPSHOT_INTERVAL", "60s")
+	t.Setenv("GATEWAY_SCHEDULING_STICKY_QUOTA_GAP_RELEASE_THRESHOLD_PERCENT", "30")
+	t.Setenv("GATEWAY_SCHEDULING_FALLBACK_SELECTION_MODE", "quota_remaining")
 
 	cfg, err := Load()
 	if err != nil {
@@ -222,6 +235,18 @@ func TestLoadSchedulingConfigFromEnv(t *testing.T) {
 
 	if cfg.Gateway.Scheduling.StickySessionMaxWaiting != 5 {
 		t.Fatalf("StickySessionMaxWaiting = %d, want 5", cfg.Gateway.Scheduling.StickySessionMaxWaiting)
+	}
+	if cfg.Gateway.Scheduling.AccountSelectionMode != "quota_remaining" {
+		t.Fatalf("AccountSelectionMode = %q, want %q", cfg.Gateway.Scheduling.AccountSelectionMode, "quota_remaining")
+	}
+	if cfg.Gateway.Scheduling.QuotaBalanceSnapshotInterval != time.Minute {
+		t.Fatalf("QuotaBalanceSnapshotInterval = %v, want 1m", cfg.Gateway.Scheduling.QuotaBalanceSnapshotInterval)
+	}
+	if cfg.Gateway.Scheduling.StickyQuotaGapReleaseThresholdPercent != 30 {
+		t.Fatalf("StickyQuotaGapReleaseThresholdPercent = %v, want 30", cfg.Gateway.Scheduling.StickyQuotaGapReleaseThresholdPercent)
+	}
+	if cfg.Gateway.Scheduling.FallbackSelectionMode != "quota_remaining" {
+		t.Fatalf("FallbackSelectionMode = %q, want %q", cfg.Gateway.Scheduling.FallbackSelectionMode, "quota_remaining")
 	}
 }
 
