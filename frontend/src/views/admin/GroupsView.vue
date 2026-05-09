@@ -1886,10 +1886,6 @@ watch(
     if (newVal !== "openai") {
       resetMessagesDispatchFormState(createForm);
     }
-    if (!["openai", "antigravity", "anthropic", "gemini"].includes(newVal)) {
-      createForm.require_oauth_only = false;
-      createForm.require_privacy_set = false;
-    }
   },
 );
 
@@ -1903,10 +1899,6 @@ watch(
       resetMessagesDispatchFormState(editForm);
       editForm.allow_messages_dispatch = false;
       editForm.default_mapped_model = '';
-    }
-    if (!["openai", "antigravity", "anthropic", "gemini"].includes(newVal)) {
-      editForm.require_oauth_only = false;
-      editForm.require_privacy_set = false;
     }
   },
 );

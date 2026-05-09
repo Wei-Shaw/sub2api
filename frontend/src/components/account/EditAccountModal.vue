@@ -248,14 +248,14 @@ const defaultBaseUrlPlaceholder = computed(() => {
   if (p === 'openai') return 'https://api.openai.com'
   if (p === 'gemini') return 'https://generativelanguage.googleapis.com'
   if (p === 'antigravity') return 'https://cloudcode-pa.googleapis.com'
-  return 'https://api.anthropic.com'
+  return ''
 })
 const apiKeyPlaceholder = computed(() => {
   const p = props.account?.platform
   if (p === 'openai') return 'sk-proj-...'
   if (p === 'gemini') return 'AIza...'
   if (p === 'antigravity') return 'sk-...'
-  return 'sk-ant-...'
+  return ''
 })
 const baseUrlHint = computed(() => {
   const p = props.account?.platform

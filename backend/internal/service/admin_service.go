@@ -82,6 +82,8 @@ type AdminService interface {
 	ForceOpenAIPrivacy(ctx context.Context, account *Account) string
 	// ForceAntigravityPrivacy 强制重新设置 Antigravity OAuth 账号隐私，无论当前状态。
 	ForceAntigravityPrivacy(ctx context.Context, account *Account) string
+	// SetAccountPrivacyMode stores a privacy mode value for any platform (used by plugin platforms).
+	SetAccountPrivacyMode(ctx context.Context, accountID int64, mode string) error
 	SetAccountSchedulable(ctx context.Context, id int64, schedulable bool) (*Account, error)
 	BulkUpdateAccounts(ctx context.Context, input *BulkUpdateAccountsInput) (*BulkUpdateAccountsResult, error)
 	CheckMixedChannelRisk(ctx context.Context, currentAccountID int64, currentAccountPlatform string, groupIDs []int64) error
@@ -3443,4 +3445,10 @@ func (s *adminServiceImpl) ForceAntigravityPrivacy(ctx context.Context, account 
 	}
 	applyAntigravityPrivacyMode(account, mode)
 	return mode
+}
+
+// SetAccountPrivacyMode stores a privacy mode value directly in the account's extra field.
+// Used for plugin platforms where the privacy enforcement is handled by the plugin itself.
+func (s *adminServiceImpl) SetAccountPrivacyMode(ctx context.Context, accountID int64, mode string) error {
+	return s.accountRepo.UpdateExtra(ctx, accountID, map[string]any{"privacy_mode": mode})
 }

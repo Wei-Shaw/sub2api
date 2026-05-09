@@ -77,6 +77,7 @@
       :form-data="formData"
       :groups="groups"
       :editing-group-id="editingGroupId"
+      :platform="formData.platform || 'anthropic'"
     />
 
     <!-- Account Filters -->

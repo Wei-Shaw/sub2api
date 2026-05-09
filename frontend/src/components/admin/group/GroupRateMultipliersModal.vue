@@ -249,6 +249,8 @@ import { BaseDialog } from '@sub2api/plugin-sdk'
 import { Pagination } from '@sub2api/plugin-sdk'
 import Icon from '@/components/icons/Icon.vue'
 import { PlatformIcon } from '@sub2api/plugin-sdk'
+import { usePlatforms } from '@/composables/usePlatforms'
+import { dynamicTextClass } from '@/utils/platformColors'
 
 interface LocalEntry extends GroupRateMultiplierEntry {}
 
@@ -280,7 +282,13 @@ const batchFactor = ref<number | null>(null)
 
 let searchTimeout: ReturnType<typeof setTimeout>
 
+const { getPlatformDecl } = usePlatforms()
+
 const platformColorClass = computed(() => {
+  const decl = getPlatformDecl(props.group?.platform || '')
+  if (decl?.theme_color) {
+    return dynamicTextClass(decl.theme_color)
+  }
   switch (props.group?.platform) {
     case 'anthropic': return 'text-orange-700 dark:text-orange-400'
     case 'openai': return 'text-emerald-700 dark:text-emerald-400'

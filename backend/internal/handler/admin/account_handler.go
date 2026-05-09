@@ -122,7 +122,7 @@ type CreateAccountRequest struct {
 	Name                    string         `json:"name" binding:"required"`
 	Notes                   *string        `json:"notes"`
 	Platform                string         `json:"platform" binding:"required"`
-	Type                    string         `json:"type" binding:"required,oneof=oauth setup-token apikey upstream bedrock service_account"`
+	Type                    string         `json:"type" binding:"required"`
 	Credentials             map[string]any `json:"credentials" binding:"required"`
 	Extra                   map[string]any `json:"extra"`
 	ProxyID                 *int64         `json:"proxy_id"`
@@ -141,7 +141,7 @@ type CreateAccountRequest struct {
 type UpdateAccountRequest struct {
 	Name                    string         `json:"name"`
 	Notes                   *string        `json:"notes"`
-	Type                    string         `json:"type" binding:"omitempty,oneof=oauth setup-token apikey upstream bedrock service_account"`
+	Type                    string         `json:"type" binding:"omitempty"`
 	Credentials             map[string]any `json:"credentials"`
 	Extra                   map[string]any `json:"extra"`
 	ProxyID                 *int64         `json:"proxy_id"`
@@ -2027,8 +2027,13 @@ func (h *AccountHandler) SetPrivacy(c *gin.Context) {
 	case service.PlatformAntigravity:
 		mode = h.adminService.ForceAntigravityPrivacy(c.Request.Context(), account)
 	default:
-		response.ErrorFrom(c, infraerrors.BadRequest(errReasonAccountPrivacyUnsupported, "only OpenAI and Antigravity OAuth accounts support privacy setting"))
-		return
+		// Plugin/other platforms: store privacy_mode directly.
+		// The platform plugin is responsible for actual privacy enforcement.
+		mode = "enabled"
+		if err := h.adminService.SetAccountPrivacyMode(c.Request.Context(), accountID, mode); err != nil {
+			response.ErrorFrom(c, infraerrors.InternalServer("SET_PRIVACY_FAILED", "failed to set privacy mode"))
+			return
+		}
 	}
 	if mode == "" {
 		response.ErrorFrom(c, infraerrors.BadRequest(errReasonAccountMissingAccessToken, "cannot set privacy: missing access_token"))

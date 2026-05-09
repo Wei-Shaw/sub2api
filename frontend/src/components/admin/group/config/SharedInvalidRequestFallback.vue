@@ -24,6 +24,7 @@ const props = defineProps<{
   formData: Record<string, any>;
   groups: AdminGroup[];
   editingGroupId?: number | null;
+  platform: string;
 }>();
 
 const { t } = useI18n();
@@ -35,7 +36,7 @@ const fallbackOptions = computed(() => {
   const currentId = props.editingGroupId;
   const eligibleGroups = props.groups.filter(
     (g) =>
-      g.platform === "anthropic" &&
+      g.platform === props.platform &&
       g.status === "active" &&
       g.subscription_type !== "subscription" &&
       g.fallback_group_id_on_invalid_request === null &&

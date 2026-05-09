@@ -97,13 +97,7 @@ const concurrencyClass = computed(() => {
 })
 
 // ====== Window cost ======
-const isAnthropicOAuthOrSetupToken = computed(() =>
-  props.account.platform === 'anthropic' &&
-  (props.account.type === 'oauth' || props.account.type === 'setup-token')
-)
-
 const showWindowCost = computed(() =>
-  isAnthropicOAuthOrSetupToken.value &&
   props.account.window_cost_limit != null &&
   props.account.window_cost_limit > 0
 )
@@ -133,7 +127,6 @@ const windowCostTooltip = computed(() => {
 
 // ====== Session limit ======
 const showSessionLimit = computed(() =>
-  isAnthropicOAuthOrSetupToken.value &&
   props.account.max_sessions != null &&
   props.account.max_sessions > 0
 )
@@ -160,7 +153,6 @@ const sessionLimitTooltip = computed(() => {
 
 // ====== RPM ======
 const showRpmLimit = computed(() =>
-  isAnthropicOAuthOrSetupToken.value &&
   props.account.base_rpm != null &&
   props.account.base_rpm > 0
 )

@@ -53,6 +53,8 @@
 import { computed } from 'vue'
 import GroupBadge from './GroupBadge.vue'
 import type { SubscriptionType, GroupPlatform } from '@/types'
+import { usePlatforms } from '@/composables/usePlatforms'
+import { dynamicGroupStdBadgeClass } from '@/utils/platformColors'
 
 interface Props {
   name: string
@@ -72,6 +74,8 @@ const props = withDefaults(defineProps<Props>(), {
   userRateMultiplier: null
 })
 
+const { getPlatformDecl } = usePlatforms()
+
 // Whether user has a custom rate different from default
 const hasCustomRate = computed(() => {
   return (
@@ -84,6 +88,11 @@ const hasCustomRate = computed(() => {
 
 // Rate pill color matches platform badge color
 const ratePillClass = computed(() => {
+  const decl = getPlatformDecl(props.platform || '')
+  if (decl?.theme_color) {
+    return dynamicGroupStdBadgeClass(decl.theme_color)
+  }
+  // Fallback for when API hasn't loaded
   switch (props.platform) {
     case 'anthropic':
       return 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400'

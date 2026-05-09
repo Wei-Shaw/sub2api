@@ -165,6 +165,6 @@ const showUsageWindows = computed(() => {
 const usageComponent = computed((): Component => {
   const key = `${props.account.platform}:${props.account.type}`
   const wildcard = `${props.account.platform}:*`
-  return USAGE_COMPONENT_REGISTRY[key] || USAGE_COMPONENT_REGISTRY[wildcard] || GeminiUsageSection
+  return USAGE_COMPONENT_REGISTRY[key] || USAGE_COMPONENT_REGISTRY[wildcard] || KeyAccountStats
 })
 </script>
