@@ -1433,6 +1433,7 @@ export default {
       enterNotes: 'Enter notes (admin only)',
       notesHint: 'This note is only visible to administrators',
       enterNewPassword: 'Enter new password (optional)',
+      personalAccount: 'Personal Account',
       leaveEmptyToKeep: 'Leave empty to keep current password',
       generatePassword: 'Generate random password',
       copyPassword: 'Copy password',
@@ -2522,6 +2523,7 @@ export default {
       credentials: 'Credentials',
       extra: 'Extra Config',
       noFieldsDeclared: 'No form fields declared by this plugin',
+      personalAccount: 'Personal Account',
       leaveEmptyToKeep: 'Leave empty to keep current key',
       // Upstream type
       upstream: {
@@ -3069,6 +3071,7 @@ export default {
       password: 'Password (Optional)',
       status: 'Status',
       enterProxyName: 'Enter proxy name',
+      personalAccount: 'Personal Account',
       leaveEmptyToKeep: 'Leave empty to keep current',
       optionalAuth: 'Optional authentication',
       form: {

@@ -1459,6 +1459,7 @@ export default {
       enterNotes: '请输入备注（仅管理员可见）',
       notesHint: '此备注仅对管理员可见',
       enterNewPassword: '请输入新密码（选填）',
+      personalAccount: '个人账号',
       leaveEmptyToKeep: '留空则保持原密码不变',
       generatePassword: '生成随机密码',
       copyPassword: '复制密码',
@@ -2673,6 +2674,7 @@ export default {
       credentials: '凭证',
       extra: '额外配置',
       noFieldsDeclared: '此插件未声明表单字段',
+      personalAccount: '个人账号',
       leaveEmptyToKeep: '留空以保持当前密钥',
       // Upstream type
       upstream: {
@@ -3176,6 +3178,7 @@ export default {
       status: '状态',
       enterProxyName: '请输入代理名称',
       optionalAuth: '可选认证信息',
+      personalAccount: '个人账号',
       leaveEmptyToKeep: '留空保持不变',
       form: {
         hostPlaceholder: '请输入主机地址',

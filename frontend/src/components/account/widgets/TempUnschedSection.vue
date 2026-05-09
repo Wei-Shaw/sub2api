@@ -151,12 +151,7 @@ import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 
-export interface TempUnschedRuleForm {
-  error_code: number | null
-  keywords: string
-  duration_minutes: number | null
-  description: string
-}
+import type { TempUnschedRuleForm } from '../forms/editHelpers'
 
 const props = defineProps<{
   enabled: boolean
