@@ -242,6 +242,57 @@ REDACTED
 	require.Zero(t, billingRepo.lastCmd.AccountQuotaCost)
 REDACTED
 
+func TestOpenAIGatewayServiceRecordUsage_MissingPricingRecordsZeroCostUsageLog(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: trueREDACTED
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: trueREDACTEDREDACTED
+	userRepo := &openAIRecordUsageUserRepoStub{REDACTED
+	subRepo := &openAIRecordUsageSubRepoStub{REDACTED
+	quotaSvc := &openAIRecordUsageAPIKeyQuotaStub{REDACTED
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, userRepo, subRepo, nil)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "resp_missing_pricing",
+			Usage: OpenAIUsage{
+				InputTokens:  1200,
+				OutputTokens: 300,
+		REDACTED,
+			Model:    "deepseek-v4-flash",
+			Duration: time.Second,
+	REDACTED,
+		APIKey:        &APIKey{ID: 1002, Quota: 100, Group: &Group{RateMultiplier: 1REDACTEDREDACTED,
+		User:          &User{ID: 2002REDACTED,
+		Account:       &Account{ID: 3002, Type: AccountTypeAPIKeyREDACTED,
+		APIKeyService: quotaSvc,
+REDACTED)
+
+REDACTED
+	require.Equal(t, 1, billingRepo.calls)
+	require.Equal(t, 1, usageRepo.calls)
+	require.Equal(t, 0, userRepo.deductCalls)
+	require.Equal(t, 0, subRepo.incrementCalls)
+	require.Equal(t, 0, quotaSvc.quotaCalls)
+	require.Equal(t, 0, quotaSvc.rateLimitCalls)
+
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, "resp_missing_pricing", usageRepo.lastLog.RequestID)
+	require.Equal(t, "deepseek-v4-flash", usageRepo.lastLog.Model)
+	require.Equal(t, "deepseek-v4-flash", usageRepo.lastLog.RequestedModel)
+	require.Equal(t, 1200, usageRepo.lastLog.InputTokens)
+	require.Equal(t, 300, usageRepo.lastLog.OutputTokens)
+	require.Zero(t, usageRepo.lastLog.TotalCost)
+	require.Zero(t, usageRepo.lastLog.ActualCost)
+	require.NotNil(t, usageRepo.lastLog.BillingMode)
+	require.Equal(t, string(BillingModeToken), *usageRepo.lastLog.BillingMode)
+
+	require.NotNil(t, billingRepo.lastCmd)
+	require.Zero(t, billingRepo.lastCmd.BalanceCost)
+	require.Zero(t, billingRepo.lastCmd.SubscriptionCost)
+	require.Zero(t, billingRepo.lastCmd.APIKeyQuotaCost)
+	require.Zero(t, billingRepo.lastCmd.APIKeyRateLimitCost)
+	require.Zero(t, billingRepo.lastCmd.AccountQuotaCost)
+REDACTED
+
 func TestOpenAIGatewayServiceRecordUsage_UsesUserSpecificGroupRate(t *testing.T) {
 	groupID := int64(11)
 	groupRate := 1.4
@@ -1157,7 +1208,7 @@ REDACTED
 	require.InDelta(t, expectedCost.ActualCost, userRepo.lastAmount, 1e-12)
 REDACTED
 
-func TestOpenAIGatewayServiceRecordUsage_ReturnsErrorWhenTokenModelCannotBePriced(t *testing.T) {
+func TestOpenAIGatewayServiceRecordUsage_UnpricedTokenModelFallsBackToZeroCostUsageLog(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: trueREDACTED
 	userRepo := &openAIRecordUsageUserRepoStub{REDACTED
 	subRepo := &openAIRecordUsageSubRepoStub{REDACTED
@@ -1176,8 +1227,13 @@ func TestOpenAIGatewayServiceRecordUsage_ReturnsErrorWhenTokenModelCannotBePrice
 REDACTED)
 
 REDACTED
-	require.Contains(t, err.Error(), "calculate OpenAI usage cost failed")
-	require.Equal(t, 0, usageRepo.calls)
+	require.Equal(t, 1, usageRepo.calls)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, "not-priceable-alias", usageRepo.lastLog.Model)
+	require.Equal(t, 20, usageRepo.lastLog.InputTokens)
+	require.Equal(t, 10, usageRepo.lastLog.OutputTokens)
+	require.Zero(t, usageRepo.lastLog.TotalCost)
+	require.Zero(t, usageRepo.lastLog.ActualCost)
 	require.Equal(t, 0, userRepo.deductCalls)
 	require.Equal(t, 0, subRepo.incrementCalls)
 REDACTED
