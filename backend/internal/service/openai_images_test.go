@@ -470,7 +470,7 @@ func findOpenAIImageTestSSEEvent(events []openAIImageTestSSEEvent, name string) 
 	return openAIImageTestSSEEvent{}, false
 }
 
-func TestOpenAIGatewayServiceForwardImages_OAuthUsesResponsesAPI(t *testing.T) {
+func TestOpenAIGatewayServiceForwardImages_OAuthUsesChatGPTPictureConversation(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","size":"1024x1024","quality":"high","n":2}`)
 
@@ -486,16 +486,30 @@ func TestOpenAIGatewayServiceForwardImages_OAuthUsesResponsesAPI(t *testing.T) {
 	require.NoError(t, err)
 
 	upstream := &httpUpstreamRecorder{
-		resp: &http.Response{
-			StatusCode: http.StatusOK,
-			Header: http.Header{
-				"Content-Type": []string{"text/event-stream"},
-				"X-Request-Id": []string{"req_img_123"},
+		responses: []*http.Response{
+			{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"text/html"}},
+				Body:       io.NopCloser(strings.NewReader(`<html data-build="test-build"><script src="/c/test/_/sdk.js"></script></html>`)),
 			},
-			Body: io.NopCloser(strings.NewReader(
-				"data: {\"type\":\"response.completed\",\"response\":{\"created_at\":1710000000,\"usage\":{\"input_tokens\":11,\"output_tokens\":22,\"input_tokens_details\":{\"cached_tokens\":3},\"output_tokens_details\":{\"image_tokens\":7}},\"tool_usage\":{\"image_gen\":{\"images\":1}},\"output\":[{\"type\":\"image_generation_call\",\"result\":\"aGVsbG8=\",\"revised_prompt\":\"draw a cat\",\"output_format\":\"png\",\"quality\":\"high\",\"size\":\"1024x1024\"}]}}\n\n" +
-					"data: [DONE]\n\n",
-			)),
+			{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"token":"requirements-token"}`)),
+			},
+			{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"conduit_token":"conduit-token"}`)),
+			},
+			{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": []string{"text/event-stream"},
+					"X-Request-Id": []string{"req_img_123"},
+				},
+				Body: io.NopCloser(strings.NewReader(`{"conversation_id":"conv_123","create_time":1710000000,"b64_json":"aGVsbG8=","mime_type":"image/png","revised_prompt":"draw a cat"}`)),
+			},
 		},
 	}
 	svc.httpUpstream = upstream
@@ -517,27 +531,25 @@ func TestOpenAIGatewayServiceForwardImages_OAuthUsesResponsesAPI(t *testing.T) {
 	require.Equal(t, "gpt-image-2", result.Model)
 	require.Equal(t, "gpt-image-2", result.UpstreamModel)
 	require.Equal(t, 1, result.ImageCount)
-	require.Equal(t, 11, result.Usage.InputTokens)
-	require.Equal(t, 22, result.Usage.OutputTokens)
-	require.Equal(t, 7, result.Usage.ImageOutputTokens)
+	require.Len(t, upstream.requests, 4)
 
-	require.NotNil(t, upstream.lastReq)
-	require.Equal(t, chatgptCodexURL, upstream.lastReq.URL.String())
-	require.Equal(t, "chatgpt.com", upstream.lastReq.Host)
-	require.Equal(t, "application/json", upstream.lastReq.Header.Get("Content-Type"))
-	require.Equal(t, "text/event-stream", upstream.lastReq.Header.Get("Accept"))
-	require.Equal(t, "acct-123", upstream.lastReq.Header.Get("chatgpt-account-id"))
-	require.Equal(t, "responses=experimental", upstream.lastReq.Header.Get("OpenAI-Beta"))
+	require.Equal(t, openAIChatGPTConversationPrepareURL, upstream.requests[2].URL.String())
+	require.Equal(t, "chatgpt.com", upstream.requests[2].Host)
+	require.Equal(t, "acct-123", upstream.requests[2].Header.Get("chatgpt-account-id"))
+	require.Equal(t, "requirements-token", upstream.requests[2].Header.Get("OpenAI-Sentinel-Chat-Requirements-Token"))
+	require.Equal(t, "gpt-5-3", gjson.GetBytes(upstream.bodies[2], "model").String())
+	require.Equal(t, "success", gjson.GetBytes(upstream.bodies[2], "client_prepare_state").String())
+	require.Equal(t, "picture_v2", gjson.GetBytes(upstream.bodies[2], "system_hints.0").String())
+	require.Equal(t, "draw a cat", gjson.GetBytes(upstream.bodies[2], "partial_query.content.parts.0").String())
 
-	require.Equal(t, openAIImagesResponsesMainModel, gjson.GetBytes(upstream.lastBody, "model").String())
-	require.True(t, gjson.GetBytes(upstream.lastBody, "stream").Bool())
-	require.Equal(t, "image_generation", gjson.GetBytes(upstream.lastBody, "tools.0.type").String())
-	require.Equal(t, "generate", gjson.GetBytes(upstream.lastBody, "tools.0.action").String())
-	require.Equal(t, "gpt-image-2", gjson.GetBytes(upstream.lastBody, "tools.0.model").String())
-	require.Equal(t, "1024x1024", gjson.GetBytes(upstream.lastBody, "tools.0.size").String())
-	require.Equal(t, "high", gjson.GetBytes(upstream.lastBody, "tools.0.quality").String())
-	require.False(t, gjson.GetBytes(upstream.lastBody, "tools.0.n").Exists())
-	require.Equal(t, "draw a cat", gjson.GetBytes(upstream.lastBody, "input.0.content.0.text").String())
+	require.Equal(t, openAIChatGPTConversationURL, upstream.requests[3].URL.String())
+	require.Equal(t, "text/event-stream", upstream.requests[3].Header.Get("Accept"))
+	require.Equal(t, "conduit-token", upstream.requests[3].Header.Get("X-Conduit-Token"))
+	require.Empty(t, upstream.requests[3].Header.Get("OpenAI-Beta"))
+	require.Equal(t, "gpt-5-3", gjson.GetBytes(upstream.bodies[3], "model").String())
+	require.Equal(t, "sent", gjson.GetBytes(upstream.bodies[3], "client_prepare_state").String())
+	require.Equal(t, "picture_v2", gjson.GetBytes(upstream.bodies[3], "system_hints.0").String())
+	require.Equal(t, "draw a cat", gjson.GetBytes(upstream.bodies[3], "messages.0.content.parts.0").String())
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "gpt-image-2", gjson.Get(rec.Body.String(), "model").String())

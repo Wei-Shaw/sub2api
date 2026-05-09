@@ -5,9 +5,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -15,8 +18,11 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"github.com/imroc/req/v3"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
+	"golang.org/x/crypto/sha3"
 )
 
 type openAIResponsesImageResult struct {
@@ -284,6 +290,644 @@ func buildOpenAIImagesResponsesRequest(parsed *OpenAIImagesRequest, toolModel st
 	req, _ = sjson.SetRawBytes(req, "tools", []byte(`[]`))
 	req, _ = sjson.SetRawBytes(req, "tools.-1", tool)
 	return req, nil
+}
+
+const (
+	openAIChatGPTConversationPrepareURL = "https://chatgpt.com/backend-api/f/conversation/prepare"
+	openAIChatGPTConversationURL        = "https://chatgpt.com/backend-api/f/conversation"
+	openAIChatGPTRequirementsURL        = "https://chatgpt.com/backend-api/sentinel/chat-requirements"
+	openAIChatGPTDefaultPOWScript       = "https://chatgpt.com/backend-api/sentinel/sdk.js"
+)
+
+type openAIChatRequirements struct {
+	Token       string
+	ProofToken  string
+	Turnstile   string
+	SOToken     string
+	RawFinalize []byte
+}
+
+func openAIImagesChatGPTModelSlug(model string) string {
+	switch strings.TrimSpace(model) {
+	case "":
+		return "auto"
+	case "gpt-image-2":
+		return "gpt-5-3"
+	case "codex-gpt-image-2":
+		return "codex-gpt-image-2"
+	default:
+		return "auto"
+	}
+}
+
+func buildOpenAIImagesChatGPTPrepareRequest(parsed *OpenAIImagesRequest, requestModel string) ([]byte, error) {
+	if parsed == nil {
+		return nil, fmt.Errorf("parsed images request is required")
+	}
+	prompt := strings.TrimSpace(parsed.Prompt)
+	if prompt == "" {
+		return nil, fmt.Errorf("prompt is required")
+	}
+	payload := []byte(`{"action":"next","fork_from_shared_post":false,"parent_message_id":"","model":"","client_prepare_state":"success","timezone_offset_min":-480,"timezone":"Asia/Shanghai","conversation_mode":{"kind":"primary_assistant"},"system_hints":["picture_v2"],"partial_query":{"id":"","author":{"role":"user"},"content":{"content_type":"text","parts":[""]}},"supports_buffering":true,"supported_encodings":["v1"],"client_contextual_info":{"app_name":"chatgpt.com"}}`)
+	payload, _ = sjson.SetBytes(payload, "parent_message_id", uuid.NewString())
+	payload, _ = sjson.SetBytes(payload, "model", openAIImagesChatGPTModelSlug(requestModel))
+	payload, _ = sjson.SetBytes(payload, "partial_query.id", uuid.NewString())
+	payload, _ = sjson.SetBytes(payload, "partial_query.content.parts.0", prompt)
+	return payload, nil
+}
+
+func buildOpenAIImagesChatGPTConversationRequest(parsed *OpenAIImagesRequest, requestModel string, references []map[string]any) ([]byte, error) {
+	if parsed == nil {
+		return nil, fmt.Errorf("parsed images request is required")
+	}
+	prompt := strings.TrimSpace(parsed.Prompt)
+	if prompt == "" {
+		return nil, fmt.Errorf("prompt is required")
+	}
+
+	parts := make([]any, 0, len(references)+1)
+	attachments := make([]any, 0, len(references))
+	for _, ref := range references {
+		fileID := strings.TrimSpace(fmt.Sprint(ref["file_id"]))
+		if fileID == "" {
+			continue
+		}
+		parts = append(parts, map[string]any{
+			"content_type":  "image_asset_pointer",
+			"asset_pointer": "file-service://" + fileID,
+			"width":         ref["width"],
+			"height":        ref["height"],
+			"size_bytes":    ref["file_size"],
+		})
+		attachments = append(attachments, map[string]any{
+			"id":       fileID,
+			"mimeType": ref["mime_type"],
+			"name":     ref["file_name"],
+			"size":     ref["file_size"],
+			"width":    ref["width"],
+			"height":   ref["height"],
+		})
+	}
+	parts = append(parts, prompt)
+	contentType := "text"
+	if len(parts) > 1 {
+		contentType = "multimodal_text"
+	}
+	metadata := map[string]any{
+		"developer_mode_connector_ids": []any{},
+		"selected_github_repos":        []any{},
+		"selected_all_github_repos":    false,
+		"system_hints":                 []string{"picture_v2"},
+		"serialization_metadata":       map[string]any{"custom_symbol_offsets": []any{}},
+	}
+	if len(attachments) > 0 {
+		metadata["attachments"] = attachments
+	}
+	payload := map[string]any{
+		"action": "next",
+		"messages": []any{map[string]any{
+			"id":          uuid.NewString(),
+			"author":      map[string]any{"role": "user"},
+			"create_time": float64(time.Now().UnixNano()) / float64(time.Second),
+			"content":     map[string]any{"content_type": contentType, "parts": parts},
+			"metadata":    metadata,
+		}},
+		"parent_message_id":                    uuid.NewString(),
+		"model":                                openAIImagesChatGPTModelSlug(requestModel),
+		"client_prepare_state":                 "sent",
+		"timezone_offset_min":                  -480,
+		"timezone":                             "Asia/Shanghai",
+		"conversation_mode":                    map[string]any{"kind": "primary_assistant"},
+		"enable_message_followups":             true,
+		"system_hints":                         []string{"picture_v2"},
+		"supports_buffering":                   true,
+		"supported_encodings":                  []string{"v1"},
+		"client_contextual_info":               map[string]any{"is_dark_mode": false, "time_since_loaded": 1200, "page_height": 1072, "page_width": 1724, "pixel_ratio": 1.2, "screen_height": 1440, "screen_width": 2560, "app_name": "chatgpt.com"},
+		"paragen_cot_summary_display_override": "allow",
+		"force_parallel_switch":                "auto",
+	}
+	return json.Marshal(payload)
+}
+
+func openAIImagesChatGPTHeaders(account *Account, token, path string, extra http.Header) http.Header {
+	headers := http.Header{}
+	headers.Set("Authorization", "Bearer "+token)
+	headers.Set("User-Agent", openAIImageBackendUserAgent)
+	headers.Set("Origin", "https://chatgpt.com")
+	headers.Set("Referer", "https://chatgpt.com/")
+	headers.Set("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8,en-US;q=0.7")
+	headers.Set("Cache-Control", "no-cache")
+	headers.Set("Pragma", "no-cache")
+	headers.Set("OAI-Language", "zh-CN")
+	headers.Set("OAI-Device-Id", uuid.NewString())
+	headers.Set("OAI-Session-Id", uuid.NewString())
+	headers.Set("X-OpenAI-Target-Path", path)
+	headers.Set("X-OpenAI-Target-Route", path)
+	if account != nil {
+		if chatgptAccountID := account.GetChatGPTAccountID(); chatgptAccountID != "" {
+			headers.Set("chatgpt-account-id", chatgptAccountID)
+		}
+		if ua := account.GetOpenAIUserAgent(); ua != "" {
+			headers.Set("User-Agent", ua)
+		}
+	}
+	for key, values := range extra {
+		headers.Del(key)
+		for _, value := range values {
+			headers.Add(key, value)
+		}
+	}
+	return headers
+}
+
+func buildOpenAIImagesLegacyRequirementsToken(userAgent string) string {
+	seed := fmt.Sprintf("%0.16f", rand.Float64())
+	config := []any{
+		3000,
+		time.Now().UTC().Format("Mon Jan 02 2006 15:04:05") + " GMT-0500 (Eastern Standard Time)",
+		4294705152,
+		0,
+		userAgent,
+		openAIChatGPTDefaultPOWScript,
+		"",
+		"en-US",
+		"en-US,es-US,en,es",
+		0,
+		"hardwareConcurrency-32",
+		"location",
+		"navigator",
+		float64(time.Now().UnixMilli()),
+		uuid.NewString(),
+		"",
+		32,
+		float64(time.Now().UnixMilli()),
+	}
+	answer, _ := generateOpenAIImagesPOW(seed, "0fffff", config, 500000)
+	return "gAAAAAC" + answer
+}
+
+func buildOpenAIImagesProofToken(seed, difficulty, userAgent string) (string, error) {
+	if strings.TrimSpace(seed) == "" || strings.TrimSpace(difficulty) == "" {
+		return "", fmt.Errorf("missing proof token challenge")
+	}
+	config := []any{
+		3000,
+		time.Now().UTC().Format("Mon Jan 02 2006 15:04:05") + " GMT-0500 (Eastern Standard Time)",
+		4294705152,
+		0,
+		userAgent,
+		openAIChatGPTDefaultPOWScript,
+		"",
+		"en-US",
+		"en-US,es-US,en,es",
+		0,
+		"hardwareConcurrency-32",
+		"location",
+		"navigator",
+		float64(time.Now().UnixMilli()),
+		uuid.NewString(),
+		"",
+		32,
+		float64(time.Now().UnixMilli()),
+	}
+	answer, solved := generateOpenAIImagesPOW(strings.TrimSpace(seed), strings.TrimSpace(difficulty), config, 500000)
+	if !solved {
+		return "", fmt.Errorf("failed to solve proof token challenge")
+	}
+	return "gAAAAAB" + answer, nil
+}
+
+func generateOpenAIImagesPOW(seed string, difficulty string, config []any, limit int) (string, bool) {
+	target, err := hexStringBytes(difficulty)
+	if err != nil || len(target) == 0 {
+		return "", false
+	}
+	diffLen := len(target)
+	seedBytes := []byte(seed)
+	static1 := mustMarshalOpenAIPOWJSONPrefix(config[:3], true)
+	static2 := mustMarshalOpenAIPOWJSONMiddle(config[4:9])
+	static3 := mustMarshalOpenAIPOWJSONSuffix(config[10:])
+	for i := 0; i < limit; i++ {
+		finalJSON := append([]byte{}, static1...)
+		finalJSON = append(finalJSON, []byte(fmt.Sprintf("%d", i))...)
+		finalJSON = append(finalJSON, static2...)
+		finalJSON = append(finalJSON, []byte(fmt.Sprintf("%d", i>>1))...)
+		finalJSON = append(finalJSON, static3...)
+		encoded := []byte(base64.StdEncoding.EncodeToString(finalJSON))
+		h := sha3.New512()
+		_, _ = h.Write(seedBytes)
+		_, _ = h.Write(encoded)
+		if bytes.Compare(h.Sum(nil)[:diffLen], target) <= 0 {
+			return string(encoded), true
+		}
+	}
+	return "wQ8Lk5FbGpA2NcR9dShT6gYjU7VxZ4D" + base64.StdEncoding.EncodeToString([]byte(`"`+seed+`"`)), false
+}
+
+func mustMarshalOpenAIPOWJSONPrefix(values []any, trailingComma bool) []byte {
+	raw, _ := json.Marshal(values)
+	if trailingComma && len(raw) > 0 {
+		raw = raw[:len(raw)-1]
+		raw = append(raw, ',')
+	}
+	return raw
+}
+
+func mustMarshalOpenAIPOWJSONMiddle(values []any) []byte {
+	raw, _ := json.Marshal(values)
+	if len(raw) >= 2 {
+		raw = raw[1 : len(raw)-1]
+	}
+	out := []byte{','}
+	out = append(out, raw...)
+	return append(out, ',')
+}
+
+func mustMarshalOpenAIPOWJSONSuffix(values []any) []byte {
+	raw, _ := json.Marshal(values)
+	if len(raw) >= 1 {
+		raw = raw[1:]
+	}
+	out := []byte{','}
+	return append(out, raw...)
+}
+
+func hexStringBytes(raw string) ([]byte, error) {
+	if len(raw)%2 != 0 {
+		raw = "0" + raw
+	}
+	out := make([]byte, len(raw)/2)
+	for i := 0; i < len(out); i++ {
+		var b byte
+		for j := 0; j < 2; j++ {
+			ch := raw[i*2+j]
+			switch {
+			case ch >= '0' && ch <= '9':
+				b = b*16 + ch - '0'
+			case ch >= 'a' && ch <= 'f':
+				b = b*16 + ch - 'a' + 10
+			case ch >= 'A' && ch <= 'F':
+				b = b*16 + ch - 'A' + 10
+			default:
+				return nil, fmt.Errorf("invalid hex")
+			}
+		}
+		out[i] = b
+	}
+	return out, nil
+}
+
+func extractOpenAIImagesConversationID(payload []byte) string {
+	if !gjson.ValidBytes(payload) {
+		return ""
+	}
+	for _, path := range []string{"conversation_id", "conversation.id", "message.conversation_id"} {
+		if value := strings.TrimSpace(gjson.GetBytes(payload, path).String()); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func extractOpenAIImagesPOWResources(html string) ([]string, string) {
+	matches := regexp.MustCompile(`<script[^>]+src=["']([^"']+)["']`).FindAllStringSubmatch(html, -1)
+	sources := make([]string, 0, len(matches))
+	dataBuild := ""
+	for _, match := range matches {
+		if len(match) < 2 || strings.TrimSpace(match[1]) == "" {
+			continue
+		}
+		sources = append(sources, strings.TrimSpace(match[1]))
+		if dataBuild == "" {
+			if hit := regexp.MustCompile(`c/[^/]*/_`).FindString(match[1]); hit != "" {
+				dataBuild = hit
+			}
+		}
+	}
+	if len(sources) == 0 {
+		sources = []string{openAIChatGPTDefaultPOWScript}
+	}
+	if dataBuild == "" {
+		if match := regexp.MustCompile(`<html[^>]*data-build=["']([^"']*)["']`).FindStringSubmatch(html); len(match) > 1 {
+			dataBuild = match[1]
+		}
+	}
+	return sources, dataBuild
+}
+
+func (s *OpenAIGatewayService) doOpenAIImagesChatGPTRequest(ctx context.Context, account *Account, method, targetURL, path string, body []byte, token string, headers http.Header) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, method, targetURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Host = "chatgpt.com"
+	for key, values := range openAIImagesChatGPTHeaders(account, token, path, headers) {
+		for _, value := range values {
+			req.Header.Add(key, value)
+		}
+	}
+	proxyURL := ""
+	if account != nil && account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+	return s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
+}
+
+func (s *OpenAIGatewayService) getOpenAIImagesChatRequirements(ctx context.Context, account *Account, token string) (openAIChatRequirements, error) {
+	bootstrapResp, err := s.doOpenAIImagesChatGPTRequest(ctx, account, http.MethodGet, openAIChatGPTStartURL, "/", nil, token, http.Header{
+		"Accept": {"text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"},
+	})
+	if err != nil {
+		return openAIChatRequirements{}, err
+	}
+	bootstrapBody, _ := io.ReadAll(io.LimitReader(bootstrapResp.Body, 2<<20))
+	_ = bootstrapResp.Body.Close()
+	if bootstrapResp.StatusCode >= 400 {
+		return openAIChatRequirements{}, fmt.Errorf("chatgpt bootstrap failed: status %d", bootstrapResp.StatusCode)
+	}
+	_, _ = extractOpenAIImagesPOWResources(string(bootstrapBody))
+
+	userAgent := openAIImagesChatGPTHeaders(account, token, "/", nil).Get("User-Agent")
+	requirementsBody, _ := json.Marshal(map[string]string{"p": buildOpenAIImagesLegacyRequirementsToken(userAgent)})
+	resp, err := s.doOpenAIImagesChatGPTRequest(ctx, account, http.MethodPost, openAIChatGPTRequirementsURL, "/backend-api/sentinel/chat-requirements", requirementsBody, token, http.Header{
+		"Content-Type": {"application/json"},
+		"Accept":       {"application/json"},
+	})
+	if err != nil {
+		return openAIChatRequirements{}, err
+	}
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	_ = resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return openAIChatRequirements{}, fmt.Errorf("chat requirements failed: status %d", resp.StatusCode)
+	}
+	requirements := openAIChatRequirements{
+		Token:       strings.TrimSpace(gjson.GetBytes(body, "token").String()),
+		SOToken:     strings.TrimSpace(gjson.GetBytes(body, "so_token").String()),
+		RawFinalize: append([]byte(nil), body...),
+	}
+	if requirements.Token == "" {
+		return openAIChatRequirements{}, fmt.Errorf("missing chat requirements token")
+	}
+	if gjson.GetBytes(body, "arkose.required").Bool() {
+		return openAIChatRequirements{}, fmt.Errorf("chat requirements requires arkose token")
+	}
+	if gjson.GetBytes(body, "turnstile.required").Bool() {
+		return openAIChatRequirements{}, fmt.Errorf("chat requirements requires turnstile token")
+	}
+	if gjson.GetBytes(body, "proofofwork.required").Bool() {
+		proofToken, err := buildOpenAIImagesProofToken(
+			gjson.GetBytes(body, "proofofwork.seed").String(),
+			gjson.GetBytes(body, "proofofwork.difficulty").String(),
+			userAgent,
+		)
+		if err != nil {
+			return openAIChatRequirements{}, err
+		}
+		requirements.ProofToken = proofToken
+	}
+	return requirements, nil
+}
+
+func (r openAIChatRequirements) headers(accept string) http.Header {
+	if accept == "" {
+		accept = "*/*"
+	}
+	headers := http.Header{
+		"Content-Type": {"application/json"},
+		"Accept":       {accept},
+		"OpenAI-Sentinel-Chat-Requirements-Token": {r.Token},
+	}
+	if r.ProofToken != "" {
+		headers.Set("OpenAI-Sentinel-Proof-Token", r.ProofToken)
+	}
+	if r.Turnstile != "" {
+		headers.Set("OpenAI-Sentinel-Turnstile-Token", r.Turnstile)
+	}
+	if r.SOToken != "" {
+		headers.Set("OpenAI-Sentinel-SO-Token", r.SOToken)
+	}
+	if accept == "text/event-stream" {
+		headers.Set("X-Oai-Turn-Trace-Id", uuid.NewString())
+	}
+	return headers
+}
+
+func (s *OpenAIGatewayService) prepareOpenAIImagesChatGPTConversation(
+	ctx context.Context,
+	account *Account,
+	token string,
+	parsed *OpenAIImagesRequest,
+	requestModel string,
+	requirements openAIChatRequirements,
+) (string, []byte, error) {
+	body, err := buildOpenAIImagesChatGPTPrepareRequest(parsed, requestModel)
+	if err != nil {
+		return "", nil, err
+	}
+	resp, err := s.doOpenAIImagesChatGPTRequest(ctx, account, http.MethodPost, openAIChatGPTConversationPrepareURL, "/backend-api/f/conversation/prepare", body, token, requirements.headers("*/*"))
+	if err != nil {
+		return "", body, err
+	}
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	_ = resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return "", body, fmt.Errorf("prepare image conversation failed: status %d: %s", resp.StatusCode, sanitizeUpstreamErrorMessage(extractUpstreamErrorMessage(respBody)))
+	}
+	conduitToken := strings.TrimSpace(gjson.GetBytes(respBody, "conduit_token").String())
+	if conduitToken == "" {
+		return "", body, fmt.Errorf("prepare image conversation did not return conduit token")
+	}
+	return conduitToken, body, nil
+}
+
+func (s *OpenAIGatewayService) startOpenAIImagesChatGPTConversation(
+	ctx context.Context,
+	account *Account,
+	token string,
+	parsed *OpenAIImagesRequest,
+	requestModel string,
+	requirements openAIChatRequirements,
+	conduitToken string,
+) (*http.Response, []byte, error) {
+	body, err := buildOpenAIImagesChatGPTConversationRequest(parsed, requestModel, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	headers := requirements.headers("text/event-stream")
+	headers.Set("X-Conduit-Token", conduitToken)
+	resp, err := s.doOpenAIImagesChatGPTRequest(ctx, account, http.MethodPost, openAIChatGPTConversationURL, "/backend-api/f/conversation", body, token, headers)
+	if err != nil {
+		return nil, body, err
+	}
+	return resp, body, nil
+}
+
+func (s *OpenAIGatewayService) collectOpenAIImagesFromChatGPTConversationBody(
+	ctx context.Context,
+	body []byte,
+	account *Account,
+	token string,
+	fallbackPrompt string,
+) ([]openAIResponsesImageResult, int64, OpenAIUsage, error) {
+	var (
+		pointers       []openAIImagePointerInfo
+		conversationID string
+		usage          OpenAIUsage
+		createdAt      int64
+	)
+	forEachOpenAISSEDataPayload(string(body), func(payload []byte) {
+		if !gjson.ValidBytes(payload) {
+			return
+		}
+		mergeOpenAIUsage(&usage, payload)
+		if conversationID == "" {
+			conversationID = extractOpenAIImagesConversationID(payload)
+		}
+		if createdAt <= 0 {
+			if t := gjson.GetBytes(payload, "message.create_time").Float(); t > 0 {
+				createdAt = int64(t)
+			}
+		}
+		pointers = mergeOpenAIImagePointerInfos(pointers, collectOpenAIImagePointers(payload))
+	})
+	if len(pointers) == 0 && gjson.ValidBytes(body) {
+		conversationID = extractOpenAIImagesConversationID(body)
+		pointers = collectOpenAIImagePointers(body)
+		mergeOpenAIUsage(&usage, body)
+	}
+	hasUsablePointer := false
+	for _, pointer := range pointers {
+		if strings.TrimSpace(pointer.Pointer) != "" ||
+			strings.TrimSpace(pointer.DownloadURL) != "" ||
+			strings.TrimSpace(pointer.B64JSON) != "" {
+			hasUsablePointer = true
+			break
+		}
+	}
+	if !hasUsablePointer && gjson.ValidBytes(body) {
+		if b64 := strings.TrimSpace(gjson.GetBytes(body, "b64_json").String()); b64 != "" {
+			pointers = append(pointers, openAIImagePointerInfo{
+				B64JSON:  b64,
+				MimeType: strings.TrimSpace(gjson.GetBytes(body, "mime_type").String()),
+				Prompt:   strings.TrimSpace(gjson.GetBytes(body, "revised_prompt").String()),
+			})
+		}
+	}
+	if len(pointers) == 0 {
+		return nil, createdAt, usage, fmt.Errorf("upstream did not return image output")
+	}
+
+	headers := openAIImagesChatGPTHeaders(account, token, "/", http.Header{"Accept": {"application/json"}})
+	client := req.C()
+	results := make([]openAIResponsesImageResult, 0, len(pointers))
+	for _, pointer := range pointers {
+		if strings.TrimSpace(pointer.Pointer) == "" &&
+			strings.TrimSpace(pointer.DownloadURL) == "" &&
+			strings.TrimSpace(pointer.B64JSON) == "" {
+			continue
+		}
+		if b64 := strings.TrimSpace(pointer.B64JSON); b64 != "" {
+			revisedPrompt := strings.TrimSpace(pointer.Prompt)
+			if revisedPrompt == "" {
+				revisedPrompt = strings.TrimSpace(fallbackPrompt)
+			}
+			results = append(results, openAIResponsesImageResult{
+				Result:        b64,
+				RevisedPrompt: revisedPrompt,
+				OutputFormat:  strings.TrimPrefix(openAIImageOutputMIMEType(pointer.MimeType), "image/"),
+			})
+			continue
+		}
+		data, err := resolveOpenAIImageBytes(ctx, client, headers, conversationID, pointer)
+		if err != nil {
+			return nil, createdAt, usage, err
+		}
+		revisedPrompt := strings.TrimSpace(pointer.Prompt)
+		if revisedPrompt == "" {
+			revisedPrompt = strings.TrimSpace(fallbackPrompt)
+		}
+		result := openAIResponsesImageResult{
+			Result:        base64.StdEncoding.EncodeToString(data),
+			RevisedPrompt: revisedPrompt,
+			OutputFormat:  strings.TrimPrefix(openAIImageOutputMIMEType(pointer.MimeType), "image/"),
+		}
+		results = append(results, result)
+	}
+	if len(results) == 0 {
+		return nil, createdAt, usage, fmt.Errorf("upstream did not return image output")
+	}
+	return results, createdAt, usage, nil
+}
+
+func (s *OpenAIGatewayService) handleOpenAIImagesChatGPTNonStreamingResponse(
+	ctx context.Context,
+	resp *http.Response,
+	c *gin.Context,
+	account *Account,
+	token string,
+	parsed *OpenAIImagesRequest,
+	fallbackModel string,
+) (OpenAIUsage, int, error) {
+	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
+	if err != nil {
+		return OpenAIUsage{}, 0, err
+	}
+	results, createdAt, usage, err := s.collectOpenAIImagesFromChatGPTConversationBody(ctx, body, account, token, parsed.Prompt)
+	if err != nil {
+		return OpenAIUsage{}, 0, err
+	}
+	firstMeta := openAIResponsesImageResult{Model: strings.TrimSpace(fallbackModel)}
+	if len(results) > 0 {
+		firstMeta = results[0]
+		firstMeta.Model = strings.TrimSpace(fallbackModel)
+	}
+	responseBody, err := buildOpenAIImagesAPIResponse(results, createdAt, nil, firstMeta, parsed.ResponseFormat)
+	if err != nil {
+		return OpenAIUsage{}, 0, err
+	}
+	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+	c.Data(resp.StatusCode, "application/json; charset=utf-8", responseBody)
+	return usage, len(results), nil
+}
+
+func (s *OpenAIGatewayService) handleOpenAIImagesChatGPTStreamingResponse(
+	ctx context.Context,
+	resp *http.Response,
+	c *gin.Context,
+	account *Account,
+	token string,
+	parsed *OpenAIImagesRequest,
+	startTime time.Time,
+	streamPrefix string,
+	fallbackModel string,
+) (OpenAIUsage, int, *int, error) {
+	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
+	if err != nil {
+		return OpenAIUsage{}, 0, nil, err
+	}
+	firstTokenMs := int(time.Since(startTime).Milliseconds())
+	results, createdAt, usage, err := s.collectOpenAIImagesFromChatGPTConversationBody(ctx, body, account, token, parsed.Prompt)
+	if err != nil {
+		return usage, 0, &firstTokenMs, err
+	}
+	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Status(resp.StatusCode)
+	flusher, ok := c.Writer.(http.Flusher)
+	if !ok {
+		return usage, 0, &firstTokenMs, fmt.Errorf("streaming is not supported by response writer")
+	}
+	eventName := streamPrefix + ".completed"
+	for _, img := range results {
+		img.Model = strings.TrimSpace(fallbackModel)
+		if err := s.writeOpenAIImagesStreamEvent(c, flusher, eventName, buildOpenAIImagesStreamCompletedPayload(eventName, img, parsed.ResponseFormat, createdAt, nil)); err != nil {
+			return usage, 0, &firstTokenMs, err
+		}
+	}
+	return usage, len(results), &firstTokenMs, nil
 }
 
 func extractOpenAIImagesFromResponsesCompleted(payload []byte) ([]openAIResponsesImageResult, int64, []byte, openAIResponsesImageResult, error) {
@@ -912,42 +1556,14 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 	}
 }
 
-func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
+func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthResponses(
 	ctx context.Context,
 	c *gin.Context,
 	account *Account,
 	parsed *OpenAIImagesRequest,
-	channelMappedModel string,
+	requestModel string,
+	startTime time.Time,
 ) (*OpenAIForwardResult, error) {
-	startTime := time.Now()
-	requestModel := strings.TrimSpace(parsed.Model)
-	if mapped := strings.TrimSpace(channelMappedModel); mapped != "" {
-		requestModel = mapped
-	}
-	if requestModel == "" {
-		requestModel = "gpt-image-2"
-	}
-	if err := validateOpenAIImagesModel(requestModel); err != nil {
-		return nil, err
-	}
-	logger.LegacyPrintf(
-		"service.openai_gateway",
-		"[OpenAI] Images request routing request_model=%s endpoint=%s account_type=%s uploads=%d",
-		requestModel,
-		parsed.Endpoint,
-		account.Type,
-		len(parsed.Uploads),
-	)
-	if parsed.N > 1 {
-		logger.LegacyPrintf(
-			"service.openai_gateway",
-			"[Warning] Codex /responses image tool requested n=%d; falling back to n=1 request_model=%s endpoint=%s",
-			parsed.N,
-			requestModel,
-			parsed.Endpoint,
-		)
-	}
-
 	upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, parsed.Stream)
 	defer releaseUpstreamCtx()
 
@@ -1044,6 +1660,158 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 		}
 	} else {
 		usage, imageCount, err = s.handleOpenAIImagesOAuthNonStreamingResponse(resp, c, parsed.ResponseFormat, requestModel)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if imageCount <= 0 {
+		imageCount = parsed.N
+	}
+	return &OpenAIForwardResult{
+		RequestID:       resp.Header.Get("x-request-id"),
+		Usage:           usage,
+		Model:           requestModel,
+		UpstreamModel:   requestModel,
+		Stream:          parsed.Stream,
+		ResponseHeaders: resp.Header.Clone(),
+		Duration:        time.Since(startTime),
+		FirstTokenMs:    firstTokenMs,
+		ImageCount:      imageCount,
+		ImageSize:       parsed.SizeTier,
+	}, nil
+}
+
+func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	parsed *OpenAIImagesRequest,
+	channelMappedModel string,
+) (*OpenAIForwardResult, error) {
+	startTime := time.Now()
+	requestModel := strings.TrimSpace(parsed.Model)
+	if mapped := strings.TrimSpace(channelMappedModel); mapped != "" {
+		requestModel = mapped
+	}
+	if requestModel == "" {
+		requestModel = "gpt-image-2"
+	}
+	if err := validateOpenAIImagesModel(requestModel); err != nil {
+		return nil, err
+	}
+	logger.LegacyPrintf(
+		"service.openai_gateway",
+		"[OpenAI] Images request routing request_model=%s endpoint=%s account_type=%s uploads=%d",
+		requestModel,
+		parsed.Endpoint,
+		account.Type,
+		len(parsed.Uploads),
+	)
+	if parsed.N > 1 {
+		logger.LegacyPrintf(
+			"service.openai_gateway",
+			"[Warning] Codex /responses image tool requested n=%d; falling back to n=1 request_model=%s endpoint=%s",
+			parsed.N,
+			requestModel,
+			parsed.Endpoint,
+		)
+	}
+	if parsed.Stream || parsed.IsEdits() {
+		return s.forwardOpenAIImagesOAuthResponses(ctx, c, account, parsed, requestModel, startTime)
+	}
+
+	upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, parsed.Stream)
+	defer releaseUpstreamCtx()
+
+	token, _, err := s.GetAccessToken(upstreamCtx, account)
+	if err != nil {
+		return nil, err
+	}
+
+	requirements, err := s.getOpenAIImagesChatRequirements(upstreamCtx, account, token)
+	if err != nil {
+		return nil, err
+	}
+	conduitToken, prepareBody, err := s.prepareOpenAIImagesChatGPTConversation(upstreamCtx, account, token, parsed, requestModel, requirements)
+	if err != nil {
+		return nil, err
+	}
+	setOpsUpstreamRequestBody(c, prepareBody)
+
+	upstreamStart := time.Now()
+	resp, startBody, err := s.startOpenAIImagesChatGPTConversation(upstreamCtx, account, token, parsed, requestModel, requirements, conduitToken)
+	if len(startBody) > 0 {
+		setOpsUpstreamRequestBody(c, startBody)
+	}
+	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
+	if err != nil {
+		safeErr := sanitizeUpstreamErrorMessage(err.Error())
+		setOpsUpstreamError(c, 0, safeErr, "")
+		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+			Platform:           account.Platform,
+			AccountID:          account.ID,
+			AccountName:        account.Name,
+			UpstreamStatusCode: 0,
+			UpstreamURL:        safeUpstreamURL(openAIChatGPTConversationURL),
+			Kind:               "request_error",
+			Message:            safeErr,
+		})
+		return nil, fmt.Errorf("upstream request failed: %s", safeErr)
+	}
+	if resp.StatusCode >= 400 {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		_ = resp.Body.Close()
+		resp.Body = io.NopCloser(bytes.NewReader(respBody))
+		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
+		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+		if s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMsg, respBody) {
+			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+				Platform:           account.Platform,
+				AccountID:          account.ID,
+				AccountName:        account.Name,
+				UpstreamStatusCode: resp.StatusCode,
+				UpstreamRequestID:  resp.Header.Get("x-request-id"),
+				UpstreamURL:        safeUpstreamURL(openAIChatGPTConversationURL),
+				Kind:               "failover",
+				Message:            upstreamMsg,
+			})
+			s.handleFailoverSideEffects(upstreamCtx, resp, account)
+			return nil, &UpstreamFailoverError{
+				StatusCode:             resp.StatusCode,
+				ResponseBody:           respBody,
+				RetryableOnSameAccount: account.IsPoolMode() && isPoolModeRetryableStatus(resp.StatusCode),
+			}
+		}
+		return s.handleErrorResponse(upstreamCtx, resp, c, account, startBody)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	var (
+		usage        OpenAIUsage
+		imageCount   int
+		firstTokenMs *int
+	)
+	if parsed.Stream {
+		usage, imageCount, firstTokenMs, err = s.handleOpenAIImagesChatGPTStreamingResponse(upstreamCtx, resp, c, account, token, parsed, startTime, openAIImagesStreamPrefix(parsed), requestModel)
+		if err != nil {
+			if imageCount > 0 {
+				return &OpenAIForwardResult{
+					RequestID:       resp.Header.Get("x-request-id"),
+					Usage:           usage,
+					Model:           requestModel,
+					UpstreamModel:   requestModel,
+					Stream:          parsed.Stream,
+					ResponseHeaders: resp.Header.Clone(),
+					Duration:        time.Since(startTime),
+					FirstTokenMs:    firstTokenMs,
+					ImageCount:      imageCount,
+					ImageSize:       parsed.SizeTier,
+				}, err
+			}
+			return nil, err
+		}
+	} else {
+		usage, imageCount, err = s.handleOpenAIImagesChatGPTNonStreamingResponse(upstreamCtx, resp, c, account, token, parsed, requestModel)
 		if err != nil {
 			return nil, err
 		}
