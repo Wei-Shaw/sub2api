@@ -218,12 +218,48 @@ export function renderSimpleMarkdownHTML(markdown: string): string {
   return html.join('\n')
 }
 
+export function rewriteRelativeMarkdownImages(markdown: string, pageSlug?: string): string {
+  const slug = String(pageSlug ?? '').trim()
+  if (!slug) {
+    return markdown
+  }
+  return markdown.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_match, alt: string, src: string) => {
+    if (!isRelativeMarkdownAsset(src)) {
+      return `![${alt}](${src})`
+    }
+    return `![${alt}](${buildPageImageURL(slug, src)})`
+  })
+}
+
+function isRelativeMarkdownAsset(src: string): boolean {
+  const trimmed = String(src ?? '').trim()
+  if (!trimmed || trimmed.startsWith('/') || trimmed.startsWith('//') || trimmed.includes('\\')) {
+    return false
+  }
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)) {
+    return false
+  }
+  return !trimmed.split('/').some((part) => part === '..')
+}
+
+export function buildPageImageURL(pageSlug: string, src: string): string {
+  const trimmed = String(src ?? '').trim()
+  const [pathPart, queryPart] = trimmed.split('?', 2)
+  const encodedParts = pathPart
+    .split('/')
+    .filter((part) => part && part !== '.')
+    .map((part) => encodeURIComponent(part))
+  const query = queryPart ? `?${queryPart}` : ''
+  return `/api/v1/pages/${encodeURIComponent(pageSlug)}/images/${encodedParts.join('/')}${query}`
+}
+
 export function injectPrerenderContent(indexHTML: string, entry: PrerenderRouteEntry): string {
   if (!entry.markdown && !entry.html) {
     return indexHTML
   }
   const safeTitle = entry.title || 'Document'
-  const contentHTML = sanitizePrerenderHTML(entry.html || renderSimpleMarkdownHTML(entry.markdown || ''))
+  const rewrittenMarkdown = rewriteRelativeMarkdownImages(entry.markdown || '', entry.markdownSlug)
+  const contentHTML = sanitizePrerenderHTML(entry.html || renderSimpleMarkdownHTML(rewrittenMarkdown))
   const body = `
   <div class="min-h-screen bg-gray-50 text-gray-900">
     <main class="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:py-10">

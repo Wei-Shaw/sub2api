@@ -34,13 +34,13 @@ export function collectPrerenderRoutes(payload) {
         source: 'tutorial',
     });
     for (var _l = 0, _m = (_a = data === null || data === void 0 ? void 0 : data.login_agreement_documents) !== null && _a !== void 0 ? _a : []; _l < _m.length; _l++) {
-        var item = _m[_l];
-        var id = String((_b = item === null || item === void 0 ? void 0 : item.id) !== null && _b !== void 0 ? _b : '').trim();
-        if (id) {
-            routes.set("/legal/".concat(id), {
-                route: "/legal/".concat(id),
-                title: String((_c = item === null || item === void 0 ? void 0 : item.title) !== null && _c !== void 0 ? _c : '').trim(),
-                markdown: String((_d = item === null || item === void 0 ? void 0 : item.content_md) !== null && _d !== void 0 ? _d : ''),
+        var legalItem = _m[_l];
+        var legalID = String((_b = legalItem === null || legalItem === void 0 ? void 0 : legalItem.id) !== null && _b !== void 0 ? _b : '').trim();
+        if (legalID) {
+            routes.set("/legal/".concat(legalID), {
+                route: "/legal/".concat(legalID),
+                title: String((_c = legalItem === null || legalItem === void 0 ? void 0 : legalItem.title) !== null && _c !== void 0 ? _c : '').trim(),
+                markdown: String((_d = legalItem === null || legalItem === void 0 ? void 0 : legalItem.content_md) !== null && _d !== void 0 ? _d : ''),
                 source: 'legal',
             });
         }
@@ -158,12 +158,45 @@ export function renderSimpleMarkdownHTML(markdown) {
     }
     return html.join('\n');
 }
+export function rewriteRelativeMarkdownImages(markdown, pageSlug) {
+    var slug = String(pageSlug !== null && pageSlug !== void 0 ? pageSlug : '').trim();
+    if (!slug) {
+        return markdown;
+    }
+    return markdown.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, function (_match, alt, src) {
+        if (!isRelativeMarkdownAsset(src)) {
+            return "![".concat(alt, "](").concat(src, ")");
+        }
+        return "![".concat(alt, "](").concat(buildPageImageURL(slug, src), ")");
+    });
+}
+function isRelativeMarkdownAsset(src) {
+    var trimmed = String(src !== null && src !== void 0 ? src : '').trim();
+    if (!trimmed || trimmed.startsWith('/') || trimmed.startsWith('//') || trimmed.includes('\\')) {
+        return false;
+    }
+    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)) {
+        return false;
+    }
+    return !trimmed.split('/').some(function (part) { return part === '..'; });
+}
+export function buildPageImageURL(pageSlug, src) {
+    var trimmed = String(src !== null && src !== void 0 ? src : '').trim();
+    var _a = trimmed.split('?', 2), pathPart = _a[0], queryPart = _a[1];
+    var encodedParts = pathPart
+        .split('/')
+        .filter(function (part) { return part && part !== '.'; })
+        .map(function (part) { return encodeURIComponent(part); });
+    var query = queryPart ? "?".concat(queryPart) : '';
+    return "/api/v1/pages/".concat(encodeURIComponent(pageSlug), "/images/").concat(encodedParts.join('/')).concat(query);
+}
 export function injectPrerenderContent(indexHTML, entry) {
     if (!entry.markdown && !entry.html) {
         return indexHTML;
     }
     var safeTitle = entry.title || 'Document';
-    var contentHTML = sanitizePrerenderHTML(entry.html || renderSimpleMarkdownHTML(entry.markdown || ''));
+    var rewrittenMarkdown = rewriteRelativeMarkdownImages(entry.markdown || '', entry.markdownSlug);
+    var contentHTML = sanitizePrerenderHTML(entry.html || renderSimpleMarkdownHTML(rewrittenMarkdown));
     var body = "\n  <div class=\"min-h-screen bg-gray-50 text-gray-900\">\n    <main class=\"mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:py-10\">\n      <article class=\"overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm\">\n        <div class=\"border-b border-gray-200 px-6 py-5\">\n          <h1 class=\"mt-2 text-3xl font-bold text-gray-950\">".concat(escapeHTML(safeTitle), "</h1>\n        </div>\n        <div class=\"public-markdown-content p-6 md:p-10\">").concat(contentHTML, "</div>\n      </article>\n    </main>\n  </div>");
     return indexHTML.replace('<div id="app"></div>', "<div id=\"app\">".concat(body, "</div>"));
 }

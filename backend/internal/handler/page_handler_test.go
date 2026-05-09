@@ -294,6 +294,15 @@ func TestDetectPageImageExtensionRejectsSVG(t *testing.T) {
 	}
 }
 
+func TestDetectPageImageExtensionRejectsOctetStreamDisguisedAsImage(t *testing.T) {
+	t.Parallel()
+
+	fake := []byte("not an image")
+	if ext, ok := detectPageImageExtension(fake, "application/octet-stream", "demo.png"); ok || ext != "" {
+		t.Fatalf("expected disguised upload to be rejected, got ext=%q ok=%v", ext, ok)
+	}
+}
+
 func TestSanitizePageAssetBaseName_PreservesSafeChineseFilename(t *testing.T) {
 	t.Parallel()
 

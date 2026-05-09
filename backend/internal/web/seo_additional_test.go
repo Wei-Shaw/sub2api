@@ -61,3 +61,28 @@ func TestBuildDynamicOGSVG_UsesChineseTutorialCopy(t *testing.T) {
 	assert.NotContains(t, svg, "onload=")
 	assert.NotContains(t, svg, "foreignObject")
 }
+
+func TestBuildDynamicOGSVG_RejectsUnsafeInlineLogoData(t *testing.T) {
+	image, ok := buildDynamicOGSVG(seoConfig{
+		SiteName: "示例站点",
+		SiteLogo: `data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9YWxlcnQoMSk+`,
+	}, "home.svg")
+	require.True(t, ok)
+
+	svg := string(image)
+	assert.NotContains(t, svg, `href="data:image/svg+xml`)
+	assert.NotContains(t, svg, "onload=")
+}
+
+func TestBuildSitemapXML_ExcludesHomeAndTutorialWhenNoindex(t *testing.T) {
+	settingsJSON := []byte(`{
+		"site_name":"示例站点",
+		"frontend_url":"https://example.com",
+		"seo_default_robots":"noindex, nofollow",
+		"seo_home_robots":"noindex, nofollow"
+	}`)
+
+	sitemap := string(buildSitemapXML(settingsJSON))
+	assert.NotContains(t, sitemap, "<loc>https://example.com/</loc>")
+	assert.NotContains(t, sitemap, "<loc>https://example.com/docs/tutorial</loc>")
+}

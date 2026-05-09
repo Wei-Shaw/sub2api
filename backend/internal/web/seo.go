@@ -324,17 +324,21 @@ func buildSitemapXML(settingsJSON []byte) []byte {
 		return nil
 	}
 
-	urls := []sitemapURLEntry{
-		{
+	urls := make([]sitemapURLEntry, 0, 2+len(cfg.LoginAgreementDocuments)+len(cfg.CustomMenuItems))
+
+	if !strings.Contains(strings.ToLower(resolveHomeRobots(cfg)), "noindex") {
+		urls = append(urls, sitemapURLEntry{
 			Loc:        strings.TrimRight(baseURL, "/") + "/",
 			ChangeFreq: "daily",
 			Priority:   "1.0",
-		},
-		{
+		})
+	}
+	if !strings.Contains(strings.ToLower(resolvePublicRobots(cfg)), "noindex") {
+		urls = append(urls, sitemapURLEntry{
 			Loc:        strings.TrimRight(baseURL, "/") + "/docs/tutorial",
 			ChangeFreq: "weekly",
 			Priority:   "0.8",
-		},
+		})
 	}
 
 	lastMod := normalizeDate(cfg.LoginAgreementUpdatedAt)

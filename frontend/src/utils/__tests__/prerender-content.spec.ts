@@ -31,6 +31,18 @@ describe('prerender content injection', () => {
     expect(html).toContain('<p>Custom page content.</p>')
   })
 
+  it('rewrites relative markdown image paths for prerendered public pages', () => {
+    const html = injectPrerenderContent(baseHTML, {
+      route: '/custom/guide',
+      title: 'Guide',
+      source: 'custom-markdown',
+      markdownSlug: 'guide',
+      markdown: '![截图](images/教程截图 中文.png)',
+    })
+
+    expect(html).toContain('/api/v1/pages/guide/images/images/%E6%95%99%E7%A8%8B%E6%88%AA%E5%9B%BE%20%E4%B8%AD%E6%96%87.png')
+  })
+
   it('injects tutorial html body into prerendered html', () => {
     const html = injectPrerenderContent(baseHTML, {
       route: '/docs/tutorial',

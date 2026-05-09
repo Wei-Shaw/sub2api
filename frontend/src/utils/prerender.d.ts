@@ -44,6 +44,8 @@ export type PrerenderRouteEntry = {
 export declare const BASE_PUBLIC_PRERENDER_ROUTES: string[];
 export declare function collectPrerenderRoutes(payload: PrerenderSettingsPayload | null | undefined): PrerenderRouteEntry[];
 export declare function renderSimpleMarkdownHTML(markdown: string): string;
+export declare function rewriteRelativeMarkdownImages(markdown: string, pageSlug?: string): string;
+export declare function buildPageImageURL(pageSlug: string, src: string): string;
 export declare function injectPrerenderContent(indexHTML: string, entry: PrerenderRouteEntry): string;
 export declare function buildPrerenderManifest(entries: PrerenderRouteEntry[]): {
     generated_at: string;

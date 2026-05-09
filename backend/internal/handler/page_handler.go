@@ -578,12 +578,6 @@ func detectPageImageExtension(data []byte, contentType, fileName string) (string
 		return ".jpg", declared == "" || declared == "image/jpeg"
 	case "image/gif":
 		return ".gif", declared == "" || declared == "image/gif"
-	case "application/octet-stream":
-		ext := strings.ToLower(filepath.Ext(fileName))
-		switch ext {
-		case ".png", ".jpg", ".jpeg", ".gif", ".webp":
-			return ext, true
-		}
 	}
 	if len(data) >= 12 && string(data[:4]) == "RIFF" && string(data[8:12]) == "WEBP" {
 		return ".webp", declared == "" || declared == "image/webp"

@@ -24,6 +24,7 @@ import (
 
 var (
 	markdownImagePattern   = regexp.MustCompile(`!\[([^\]]*)\]\(([^)]+)\)`)
+	inlineOGLogoDataURLRE  = regexp.MustCompile(`(?i)^data:image/(png|jpeg|gif|webp);base64,[a-z0-9+/=\s]+$`)
 	serverMarkdownRenderer = goldmark.New(
 		goldmark.WithExtensions(
 			extension.GFM,
@@ -333,13 +334,13 @@ func buildDynamicOGSVG(cfg seoConfig, kind string) ([]byte, bool) {
 		badge = "SEO 已就绪"
 	}
 	logoData := ""
-	if raw := strings.TrimSpace(cfg.SiteLogo); raw != "" && strings.HasPrefix(raw, "data:image/") {
+	if raw := strings.TrimSpace(cfg.SiteLogo); raw != "" && inlineOGLogoDataURLRE.MatchString(raw) {
 		logoData = raw
 	}
 
 	var logo string
 	if logoData != "" {
-		logo = `<image x="120" y="120" width="88" height="88" href="` + logoData + `" />`
+		logo = `<image x="120" y="120" width="88" height="88" href="` + html.EscapeString(logoData) + `" />`
 	} else {
 		logo = `<rect x="120" y="120" width="88" height="88" rx="22" fill="#0F766E"/><path d="M146 164H182" stroke="white" stroke-width="14" stroke-linecap="round"/><path d="M164 146V182" stroke="white" stroke-width="14" stroke-linecap="round"/>`
 	}
