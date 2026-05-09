@@ -377,6 +377,81 @@ func TestAuthServiceInviteLoginAllowsWebLoginWithoutDeviceHash(t *testing.T) {
 	require.Empty(t, bootstrapSvc.createdKeys)
 }
 
+func TestAuthServiceInviteLoginAllowsMissingOrRotatedInstallIDForSameDeviceHash(t *testing.T) {
+	const (
+		loginCode        = "DLG-FN7Y-NJQJ-XNV6"
+		deviceHash       = "ac0addf134d4ac9d6ac98ffdb1f4796dd2b27d6ab2b66ec0bab9e181a007b668"
+		boundInstallID   = "000f0c66-0a84-4a72-a7bb-a82249dbc3c7"
+		rotatedInstallID = "7b11936b-9bc4-4c69-9d9b-ae0e6d8d84a1"
+	)
+
+	usedAt := time.Now().UTC().Add(-24 * time.Hour)
+	loginRedeem := &RedeemCode{
+		ID:     50,
+		Code:   loginCode,
+		Type:   RedeemTypeDeviceLogin,
+		Status: StatusUsed,
+		UsedAt: &usedAt,
+	}
+
+	for _, tc := range []struct {
+		name      string
+		installID string
+	}{
+		{name: "missing install_id after app data deletion"},
+		{name: "rotated install_id after reinstall", installID: rotatedInstallID},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			userRepo := &userRepoStub{user: &User{ID: 51, Email: "bound@example.com", Username: "bound-user", Role: RoleUser, Status: StatusActive}}
+			userDeviceRepo := &inviteLoginUserDeviceRepoStub{
+				deviceByLoginCodeID: map[int64]*UserDevice{
+					50: {
+						ID:                2,
+						UserID:            51,
+						DeviceHash:        deviceHash,
+						InstallID:         stringPtr(boundInstallID),
+						LoginRedeemCodeID: 50,
+						Status:            UserDeviceStatusActive,
+					},
+				},
+			}
+			bootstrapSvc := &inviteBootstrapAPIKeyServiceStub{
+				groups: []Group{
+					{
+						ID:                 101,
+						Platform:           "openai",
+						Status:             StatusActive,
+						SubscriptionType:   SubscriptionTypeStandard,
+						RateMultiplier:     0.8,
+						ActiveAccountCount: 1,
+					},
+				},
+			}
+			authService := newAuthServiceForInviteLoginTest(
+				userRepo,
+				&redeemCodeRepoStub{codesByCode: map[string]*RedeemCode{loginCode: loginRedeem}},
+				userDeviceRepo,
+				map[string]string{SettingKeyRegistrationEnabled: "false"},
+				bootstrapSvc,
+			)
+
+			result, err := authService.InviteLogin(context.Background(), InviteLoginInput{
+				InvitationCode: loginCode,
+				DeviceHash:     deviceHash,
+				InstallID:      tc.installID,
+				ClientKind:     "desktop",
+			})
+
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.NotNil(t, result.TokenPair)
+			require.Equal(t, int64(51), result.User.ID)
+			require.Equal(t, []int64{2}, userDeviceRepo.updatedLoginIDs)
+			require.Len(t, result.BootstrapAPIKeys, 1)
+		})
+	}
+}
+
 func TestAuthServiceInviteLoginRejectsDeviceMismatch(t *testing.T) {
 	const loginCode = "DLG-FN7Y-NJQJ-XNV6"
 	usedAt := time.Now().UTC().Add(-24 * time.Hour)

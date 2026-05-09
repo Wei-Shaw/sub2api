@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 )
 
 func (s *AuthService) completeDeviceInviteLogin(ctx context.Context, input InviteLoginInput, code *RedeemCode) (*InviteLoginResult, error) {
@@ -48,8 +50,8 @@ func (s *AuthService) completeDeviceInviteLogin(ctx context.Context, input Invit
 	inputInstallID := strings.TrimSpace(input.InstallID)
 	if device.InstallID != nil {
 		boundInstallID := strings.TrimSpace(*device.InstallID)
-		if boundInstallID != "" && inputInstallID != "" && !strings.EqualFold(boundInstallID, inputInstallID) {
-			return nil, ErrDeviceMismatch
+		if boundInstallID != "" && (inputInstallID == "" || !strings.EqualFold(boundInstallID, inputInstallID)) {
+			logger.LegacyPrintf("service.auth", "[DeviceInviteLogin] install_id missing or changed for matching device_hash: user_device_id=%d user_id=%d", device.ID, device.UserID)
 		}
 	}
 
