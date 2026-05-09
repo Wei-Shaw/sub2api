@@ -1232,8 +1232,12 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 			MaxConcurrency: account.EffectiveLoadFactor(),
 		})
 	}
+	primarySelectedGroup := string(TargetGroupExhausted)
+	if req.TargetGroup == TargetGroupAny || req.TargetGroup == TargetGroupActive {
+		primarySelectedGroup = string(TargetGroupActive)
+	}
 	for i := range accounts {
-		appendFilteredAccount(&accounts[i], string(TargetGroupExhausted), &filtered, &filteredValues)
+		appendFilteredAccount(&accounts[i], primarySelectedGroup, &filtered, &filteredValues)
 	}
 	for i := range reserveAccounts {
 		appendFilteredAccount(&reserveAccounts[i], openAISelectedGroupReserve, &reserveFiltered, &reserveFilteredValues)

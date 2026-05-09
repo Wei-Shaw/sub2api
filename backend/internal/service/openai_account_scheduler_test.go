@@ -3249,6 +3249,53 @@ func TestSelectByLoadBalance_TargetGroupAnyCanSelectReserveFromProjection(t *tes
 	}
 }
 
+func TestSelectByLoadBalance_TargetGroupActiveKeepsProjectedActiveSelectedGroup(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(13070)
+	exhaustedBase := newOpenAIProjectionExhaustedAccount(37081, 4, []string{"gpt-5.5"})
+	activeAccount := newOpenAIProjectionActiveAccount(37082, 4, 20, []string{"gpt-5.5"})
+	snapshotCache := &openAISnapshotCacheStub{
+		accountsByID: map[int64]*Account{exhaustedBase.ID: &exhaustedBase, activeAccount.ID: &activeAccount},
+		openAIState: newOpenAIBucketStateForTest([]Account{exhaustedBase, activeAccount}, 8, map[string]OpenAIModelRoleView{
+			"gpt-5.5": {
+				CanonicalModel:   "gpt-5.5",
+				ExhaustedBaseIDs: []int64{exhaustedBase.ID},
+			},
+		}),
+	}
+	loadMap := map[int64]*AccountLoadInfo{
+		exhaustedBase.ID: {AccountID: exhaustedBase.ID, CurrentConcurrency: 0, LoadRate: 0},
+		activeAccount.ID: {AccountID: activeAccount.ID, CurrentConcurrency: 0, LoadRate: 0},
+	}
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.LBTopK = 1
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Load = 1
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: []Account{exhaustedBase, activeAccount}},
+		cache:              &schedulerTestGatewayCache{},
+		cfg:                cfg,
+		schedulerSnapshot:  &SchedulerSnapshotService{cache: snapshotCache},
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{loadMap: loadMap}),
+		rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true"),
+	}
+
+	selection, decision, err := svc.SelectAccountWithSchedulerRequest(ctx, OpenAIAccountScheduleRequest{
+		GroupID:        &groupID,
+		TargetGroup:    TargetGroupActive,
+		SessionHash:    "session_hash_active_projection_keeps_active",
+		RequestedModel: "gpt-5.5",
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, activeAccount.ID, selection.Account.ID)
+	require.Equal(t, string(TargetGroupActive), requireDecisionStringField(t, decision, "SelectedGroup"))
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
 func TestSelectByLoadBalance_ReserveSelectedGroupWritesReserveForActiveAny(t *testing.T) {
 	ctx := context.Background()
 	accounts := []Account{
