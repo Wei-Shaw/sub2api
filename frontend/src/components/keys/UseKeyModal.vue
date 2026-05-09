@@ -140,7 +140,7 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useClipboard } from '@/composables/useClipboard'
 import type { GroupPlatform } from '@/types'
-import { keysAPI, type OpenCodeOpenAIModel } from '@/api/keys'
+import { keysAPI, type OpenCodeOpenAIModel, type OpenCodeOpenAIModelsResponse } from '@/api/keys'
 
 interface Props {
   show: boolean
@@ -167,6 +167,24 @@ interface FileConfig {
   highlighted?: string
 }
 
+interface OMPModelCost {
+  input?: number
+  output?: number
+  cacheRead?: number
+  cacheWrite?: number
+}
+
+interface OMPModelConfig {
+  id: string
+  name: string
+  api: 'openai-responses'
+  reasoning: boolean
+  input: Array<'text' | 'image'>
+  contextWindow?: number
+  maxTokens?: number
+  cost?: OMPModelCost
+}
+
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
@@ -177,6 +195,7 @@ const copiedIndex = ref<number | null>(null)
 const activeTab = ref<string>('unix')
 const activeClientTab = ref<string>('claude')
 const openCodeModels = ref<Record<string, OpenCodeOpenAIModel> | null>(null)
+const openCodeMetadata = ref<OpenCodeOpenAIModelsResponse | null>(null)
 const openCodeLoading = ref(false)
 const openCodeError = ref<string | null>(null)
 
@@ -207,14 +226,21 @@ watch(activeClientTab, () => {
 const loadOpenCodeModels = async () => {
   if (props.platform !== 'openai') return
   if (openCodeLoading.value) return
-  if (openCodeModels.value) return
+  const hadOpenCodeModels = Boolean(openCodeModels.value)
+  const hasOMPProviderToolsMetadata = Boolean(openCodeMetadata.value?.omp_openai_provider_tools)
+  if (hadOpenCodeModels && (activeClientTab.value !== 'omp' || hasOMPProviderToolsMetadata)) return
 
   openCodeLoading.value = true
   openCodeError.value = null
   try {
     const resp = await keysAPI.getOpenCodeOpenAIModels()
+    openCodeMetadata.value = resp
     openCodeModels.value = resp.models
   } catch (err) {
+    openCodeMetadata.value = null
+    if (!hadOpenCodeModels) {
+      openCodeModels.value = null
+    }
     console.error('Failed to load OpenCode OpenAI metadata:', err)
     openCodeError.value = 'Failed to load OpenCode OpenAI metadata'
   } finally {
@@ -227,7 +253,7 @@ watch(
   ([show, platform, client]) => {
     if (!show) return
     if (platform !== 'openai') return
-    if (client !== 'opencode') return
+    if (!['opencode', 'omp'].includes(client)) return
     void loadOpenCodeModels()
   },
   { immediate: true }
@@ -308,6 +334,7 @@ const clientTabs = computed((): TabConfig[] => {
         tabs.push({ id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon })
       }
       tabs.push({ id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon })
+      tabs.push({ id: 'omp', label: t('keys.useKeyModal.cliTabs.omp'), icon: TerminalIcon })
       return tabs
     }
     case 'gemini':
@@ -339,7 +366,7 @@ const openaiTabs: TabConfig[] = [
   { id: 'windows', label: 'Windows', icon: WindowsIcon }
 ]
 
-const showShellTabs = computed(() => activeClientTab.value !== 'opencode')
+const showShellTabs = computed(() => !['opencode', 'omp'].includes(activeClientTab.value))
 
 const currentTabs = computed(() => {
   if (!showShellTabs.value) return []
@@ -352,6 +379,9 @@ const currentTabs = computed(() => {
 const platformDescription = computed(() => {
   switch (props.platform) {
     case 'openai':
+      if (activeClientTab.value === 'omp') {
+        return t('keys.useKeyModal.omp.description')
+      }
       if (activeClientTab.value === 'claude') {
         return t('keys.useKeyModal.description')
       }
@@ -385,7 +415,7 @@ const platformNote = computed(() => {
   }
 })
 
-const showPlatformNote = computed(() => activeClientTab.value !== 'opencode')
+const showPlatformNote = computed(() => !['opencode', 'omp'].includes(activeClientTab.value))
 
 const escapeHtml = (value: string) => value
   .replace(/&/g, '&amp;')
@@ -432,13 +462,13 @@ const currentFiles = computed((): FileConfig[] => {
         if (openCodeLoading.value) {
           return [{ path: 'opencode.json', content: '{}', hint: 'Loading OpenCode OpenAI metadata...' }]
         }
+        if (openCodeModels.value) {
+          return [generateOpenCodeConfig('sub2api-openai', apiBase, apiKey, undefined, openCodeModels.value)]
+        }
         if (openCodeError.value) {
           return [{ path: 'opencode.json', content: '{}', hint: openCodeError.value }]
         }
-        if (!openCodeModels.value) {
-          return [{ path: 'opencode.json', content: '{}', hint: 'OpenCode OpenAI metadata unavailable' }]
-        }
-        return [generateOpenCodeConfig('sub2api-openai', apiBase, apiKey, undefined, openCodeModels.value)]
+        return [{ path: 'opencode.json', content: '{}', hint: 'OpenCode OpenAI metadata unavailable' }]
       case 'gemini':
         return [generateOpenCodeConfig('gemini', geminiBase, apiKey)]
       case 'antigravity':
@@ -449,6 +479,30 @@ const currentFiles = computed((): FileConfig[] => {
       default:
         return []
     }
+  }
+
+  if (activeClientTab.value === 'omp') {
+    const pluginMetadata = openCodeMetadata.value?.omp_openai_provider_tools
+    const pluginVersion = pluginMetadata?.latest_version?.trim() ?? ''
+    const requiredOMPModelIds = ['gpt-5.5', 'gpt-5.4-mini']
+    if (openCodeLoading.value) {
+      return [{ path: '1. Install OMP provider tools plugin', content: '# Loading OMP metadata...', hint: t('keys.useKeyModal.omp.loadingHint') }]
+    }
+    if (openCodeError.value || !openCodeModels.value) {
+      return [{ path: '1. Install OMP provider tools plugin', content: '# OMP metadata unavailable', hint: openCodeError.value || t('keys.useKeyModal.omp.metadataErrorHint') }]
+    }
+    if (!pluginMetadata || !['ok', 'cached'].includes(pluginMetadata.status) || !pluginVersion) {
+      return [{ path: '1. Install OMP provider tools plugin', content: '# OMP provider tools version unavailable', hint: t('keys.useKeyModal.omp.pluginVersionErrorHint') }]
+    }
+    const missingOMPModelIds = requiredOMPModelIds.filter((id) => !openCodeModels.value?.[id])
+    if (missingOMPModelIds.length > 0) {
+      return [{ path: '1. Install OMP provider tools plugin', content: `# OMP model metadata unavailable: ${missingOMPModelIds.join(', ')}`, hint: t('keys.useKeyModal.omp.metadataErrorHint') }]
+    }
+    return [
+      generateOMPProviderToolsPluginInstructions(pluginVersion),
+      generateOMPModelsConfig(apiBase, apiKey, openCodeModels.value, pluginVersion),
+      generateOMPSettingsConfig()
+    ]
   }
 
   switch (props.platform) {
@@ -1139,6 +1193,190 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
     content,
     hint: t('keys.useKeyModal.opencode.hint')
   }
+}
+
+function generateOMPProviderToolsPluginInstructions(latestVersion: string): FileConfig {
+  const content = `# 1. Install or upgrade provider-native tools plugin
+omp plugin install npm:omp-openai-provider-tools@${latestVersion}
+
+# 2. Check plugin health
+omp plugin doctor
+
+# 3. Preview the recommended image subagent template
+npx omp-openai-provider-tools configure-image-agent --model sub2api-openai-image/gpt-5.5-Sys --dry-run
+
+# 4. After reviewing the preview, write ~/.omp/agent/agents/image-generator.md
+npx omp-openai-provider-tools configure-image-agent --model sub2api-openai-image/gpt-5.5-Sys
+
+# If image_generator already exists, the command refuses to overwrite it.
+# Use --print to inspect and merge manually; use --force only when you intentionally replace it.
+npx omp-openai-provider-tools configure-image-agent --model sub2api-openai-image/gpt-5.5-Sys --print`
+
+  return {
+    path: '1. Install OMP provider tools plugin',
+    content,
+    hint: t('keys.useKeyModal.omp.pluginHint')
+  }
+}
+
+function normalizeOMPModelConfig(model: OpenCodeOpenAIModel): OMPModelConfig {
+  const allowedInput = model.modalities?.input?.filter((item): item is 'text' | 'image' => item === 'text' || item === 'image') ?? []
+  const input: Array<'text' | 'image'> = allowedInput.length > 0 ? allowedInput : ['text']
+  const costEntries = Object.entries({
+    input: model.cost?.input,
+    output: model.cost?.output,
+    cacheRead: model.cost?.cache_read,
+    cacheWrite: model.cost?.cache_write
+  }).filter((entry): entry is [keyof OMPModelCost, number] => typeof entry[1] === 'number')
+
+  return {
+    id: model.id,
+    name: model.name,
+    api: 'openai-responses',
+    reasoning: model.reasoning,
+    input,
+    contextWindow: model.limit?.context,
+    maxTokens: model.limit?.output,
+    ...(costEntries.length > 0 ? { cost: Object.fromEntries(costEntries) as OMPModelCost } : {})
+  }
+}
+
+function withOMPSysVariants(models: Record<string, OMPModelConfig>): Record<string, OMPModelConfig> {
+  const expanded: Record<string, OMPModelConfig> = {}
+  for (const [id, model] of Object.entries(models)) {
+    expanded[id] = {
+      ...model,
+      input: [...model.input],
+      ...(model.cost ? { cost: { ...model.cost } } : {})
+    }
+    expanded[`${id}-Sys`] = {
+      ...model,
+      id: `${model.id}-Sys`,
+      name: `${model.name} (Sys)`,
+      input: [...model.input],
+      ...(model.cost ? { cost: { ...model.cost } } : {})
+    }
+  }
+  return expanded
+}
+
+function yamlScalar(value: string): string {
+  return value
+}
+
+function renderOMPModelYaml(model: OMPModelConfig, indent = '      ', extraLines: string[] = []): string {
+  const lines = [
+    `${indent}- id: ${yamlScalar(model.id)}`,
+    `${indent}  name: ${yamlScalar(model.name)}`,
+    `${indent}  api: ${model.api}`,
+    `${indent}  reasoning: ${model.reasoning ? 'true' : 'false'}`,
+    `${indent}  input:`,
+    ...model.input.map((item) => `${indent}    - ${item}`)
+  ]
+  if (model.contextWindow !== undefined) lines.push(`${indent}  contextWindow: ${model.contextWindow}`)
+  if (model.maxTokens !== undefined) lines.push(`${indent}  maxTokens: ${model.maxTokens}`)
+  const costEntries = Object.entries({
+    input: model.cost?.input,
+    output: model.cost?.output,
+    cacheRead: model.cost?.cacheRead,
+    cacheWrite: model.cost?.cacheWrite
+  }).filter((entry): entry is [string, number] => typeof entry[1] === 'number')
+  if (costEntries.length > 0) {
+    lines.push(`${indent}  cost:`)
+    for (const [key, value] of costEntries) {
+      lines.push(`${indent}    ${key}: ${value}`)
+    }
+  }
+  lines.push(...extraLines)
+  return lines.join('\n')
+}
+
+function buildOMPEquivalenceOverrides(models: Record<string, OMPModelConfig>): string {
+  const canonicalByModelId: Record<string, string> = {
+    'gpt-5.5': 'gpt-5.5',
+    'gpt-5.5-Sys': 'gpt-5.5-sys',
+    'gpt-5.4-mini': 'gpt-5.4-mini',
+    'gpt-5.4-mini-Sys': 'gpt-5.4-mini-sys'
+  }
+  const lines = Object.entries(canonicalByModelId)
+    .filter(([id]) => models[id])
+    .map(([id, canonical]) => `    sub2api-openai/${id}: ${canonical}`)
+  lines.push('    sub2api-openai-image/gpt-5.5-Sys: gpt-5.5-image-sys')
+  return lines.join('\n')
+}
+
+function generateOMPModelsConfig(baseUrl: string, apiKey: string, openaiSource: Record<string, OpenCodeOpenAIModel>, pluginVersion: string): FileConfig {
+  const baseModels = Object.fromEntries(
+    Object.entries(openaiSource).map(([id, model]) => [id, normalizeOMPModelConfig(model)])
+  )
+  const models = withOMPSysVariants(baseModels)
+  const selectedIds = ['gpt-5.5', 'gpt-5.5-Sys', 'gpt-5.4-mini', 'gpt-5.4-mini-Sys'].filter((id) => models[id])
+  const selectedModelYaml = selectedIds.map((id) => renderOMPModelYaml(models[id])).join('\n')
+  const imageSource = models['gpt-5.5-Sys'] ?? normalizeOMPModelConfig(openaiSource['gpt-5.5'])
+  const imageYaml = renderOMPModelYaml(
+    { ...imageSource, id: 'gpt-5.5-Sys', name: 'GPT-5.5 Image (Sys)' },
+    '      ',
+    [
+      '        compat:',
+      '          openaiProviderTools:',
+      '            imageGeneration: true'
+    ]
+  )
+
+  const content = `# Image generation and provider-native web_search require this plugin:
+#   omp plugin install npm:omp-openai-provider-tools@${pluginVersion}
+#   omp plugin doctor
+# Recommended image subagent command:
+#   npx omp-openai-provider-tools configure-image-agent --model sub2api-openai-image/gpt-5.5-Sys --dry-run
+# Restart OMP after installing or upgrading the plugin.
+providers:
+  sub2api-openai:
+    api: openai-responses
+    baseUrl: ${baseUrl}
+    apiKey: ${apiKey}
+    compat:
+      openaiProviderTools:
+        enabled: true
+    models:
+${selectedModelYaml}
+
+  sub2api-openai-image:
+    api: openai-responses
+    baseUrl: ${baseUrl}
+    apiKey: ${apiKey}
+    compat:
+      openaiProviderTools:
+        enabled: true
+    models:
+${imageYaml}
+
+equivalence:
+  overrides:
+${buildOMPEquivalenceOverrides(models)}`
+
+  return { path: '~/.omp/agent/models.yml', content, hint: t('keys.useKeyModal.omp.modelsHint') }
+}
+
+function generateOMPSettingsConfig(): FileConfig {
+  const content = `defaultThinkingLevel: xhigh
+serviceTier: priority
+
+modelRoles:
+  default: sub2api-openai/gpt-5.5-Sys
+  slow: sub2api-openai/gpt-5.5-Sys
+  smol: sub2api-openai/gpt-5.4-mini-Sys
+  plan: sub2api-openai/gpt-5.5-Sys
+  task: sub2api-openai/gpt-5.5-Sys:xhigh
+  vision: sub2api-openai/gpt-5.5-Sys
+
+task:
+  agentModelOverrides:
+    explore: sub2api-openai/gpt-5.4-mini-Sys:xhigh
+    librarian: sub2api-openai/gpt-5.4-mini-Sys:xhigh
+    reviewer: sub2api-openai/gpt-5.5-Sys:xhigh
+    plan: sub2api-openai/gpt-5.5-Sys:xhigh`
+
+  return { path: '~/.omp/agent/config.yml', content, hint: t('keys.useKeyModal.omp.configHint') }
 }
 
 const copyContent = async (content: string, index: number) => {

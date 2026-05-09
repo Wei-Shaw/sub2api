@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { readFileSync } from 'node:fs'
@@ -243,43 +243,78 @@ vi.mock('@/composables/useClipboard', () => ({
 vi.mock('@/api/keys', () => ({
   keysAPI: {
     getOpenCodeOpenAIModels: vi.fn().mockResolvedValue({
-      models: openaiModelsMock
+      models: openaiModelsMock,
+      omp_openai_provider_tools: {
+        package: 'omp-openai-provider-tools',
+        latest_version: '0.1.2',
+        status: 'ok'
+      }
     })
   }
 }))
 
+import { keysAPI } from '@/api/keys'
+
 import UseKeyModal from '../UseKeyModal.vue'
 
-describe('UseKeyModal', () => {
-  it('renders GPT-5.4 small-model entries in OpenCode config', async () => {
-    const wrapper = mount(UseKeyModal, {
-      props: {
-        show: true,
-        apiKey: 'sk-test',
-        baseUrl: 'https://example.com/v1',
-        platform: 'openai'
+const defaultOpenCodeOpenAIModelsResponse = () => ({
+  models: openaiModelsMock,
+  omp_openai_provider_tools: {
+    package: 'omp-openai-provider-tools',
+    latest_version: '0.1.2',
+    status: 'ok' as const
+  }
+})
+
+const mountOpenAIUseKeyModal = () => mount(UseKeyModal, {
+  props: {
+    show: true,
+    apiKey: 'sk-test',
+    baseUrl: 'https://example.com/v1',
+    platform: 'openai'
+  },
+  global: {
+    stubs: {
+      BaseDialog: {
+        template: '<div><slot /><slot name="footer" /></div>'
       },
-      global: {
-        stubs: {
-          BaseDialog: {
-            template: '<div><slot /><slot name="footer" /></div>'
-          },
-          Icon: {
-            template: '<span />'
-          }
-        }
+      Icon: {
+        template: '<span />'
       }
-    })
+    }
+  }
+})
 
-    const opencodeTab = wrapper.findAll('button').find((button) =>
-      button.text().includes('keys.useKeyModal.cliTabs.opencode')
-    )
+type UseKeyModalWrapper = ReturnType<typeof mountOpenAIUseKeyModal>
 
-    expect(opencodeTab).toBeDefined()
-    await opencodeTab!.trigger('click')
-    await nextTick()
-    await Promise.resolve()
-    await nextTick()
+const flushModalAsync = async () => {
+  await nextTick()
+  await Promise.resolve()
+  await nextTick()
+}
+
+const clickClientTab = async (wrapper: UseKeyModalWrapper, label: string) => {
+  const tab = wrapper.findAll('button').find((button) => button.text().includes(label))
+  expect(tab).toBeDefined()
+  await tab!.trigger('click')
+  await flushModalAsync()
+}
+
+const getCodeBlocks = (wrapper: UseKeyModalWrapper) => wrapper.findAll('pre code').map((code) => code.text())
+
+const getOpenCodeModelsMock = () => vi.mocked(keysAPI.getOpenCodeOpenAIModels)
+
+describe('UseKeyModal', () => {
+  beforeEach(() => {
+    const getModels = getOpenCodeModelsMock()
+    getModels.mockReset()
+    getModels.mockResolvedValue(defaultOpenCodeOpenAIModelsResponse())
+  })
+
+  it('renders GPT-5.4 small-model entries in OpenCode config', async () => {
+    const wrapper = mountOpenAIUseKeyModal()
+
+    await clickClientTab(wrapper, 'keys.useKeyModal.cliTabs.opencode')
 
     const codeBlock = wrapper.find('pre code')
     expect(codeBlock.exists()).toBe(true)
@@ -288,34 +323,9 @@ describe('UseKeyModal', () => {
   })
 
   it('renders sub2api-openai provider config with Sys models in OpenCode example', async () => {
-    const wrapper = mount(UseKeyModal, {
-      props: {
-        show: true,
-        apiKey: 'sk-test',
-        baseUrl: 'https://example.com/v1',
-        platform: 'openai'
-      },
-      global: {
-        stubs: {
-          BaseDialog: {
-            template: '<div><slot /><slot name="footer" /></div>'
-          },
-          Icon: {
-            template: '<span />'
-          }
-        }
-      }
-    })
+    const wrapper = mountOpenAIUseKeyModal()
 
-    const opencodeTab = wrapper.findAll('button').find((button) =>
-      button.text().includes('keys.useKeyModal.cliTabs.opencode')
-    )
-
-    expect(opencodeTab).toBeDefined()
-    await opencodeTab!.trigger('click')
-    await nextTick()
-    await Promise.resolve()
-    await nextTick()
+    await clickClientTab(wrapper, 'keys.useKeyModal.cliTabs.opencode')
 
     const codeBlock = wrapper.find('pre code')
     expect(codeBlock.exists()).toBe(true)
@@ -456,6 +466,187 @@ describe('UseKeyModal', () => {
       options: { store: false }
     })
     expect(models[parsed.agent.image.model.replace('sub2api-openai/', '')].variants.image).toBeDefined()
+  })
+
+  it('shows OMP tab with OMP-specific description and loads OpenAI metadata', async () => {
+    const getModels = getOpenCodeModelsMock()
+    getModels.mockClear()
+    const wrapper = mountOpenAIUseKeyModal()
+
+    await clickClientTab(wrapper, 'keys.useKeyModal.cliTabs.omp')
+
+    expect(getModels).toHaveBeenCalledTimes(1)
+    const description = wrapper.find('p.text-sm.text-gray-600').text()
+    expect(description).toContain('keys.useKeyModal.omp.description')
+    expect(description).not.toContain('Codex')
+    expect(description).not.toContain('.codex')
+    expect(description).not.toContain('keys.useKeyModal.openai.description')
+    expect(wrapper.text()).not.toContain('keys.useKeyModal.openai.note')
+  })
+
+  it('renders OMP plugin, models.yml, and config.yml blocks with dynamic plugin version', async () => {
+    const getModels = getOpenCodeModelsMock()
+    getModels.mockResolvedValueOnce({
+      models: openaiModelsMock,
+      omp_openai_provider_tools: {
+        package: 'omp-openai-provider-tools',
+        latest_version: '9.9.9',
+        status: 'ok'
+      }
+    })
+    const wrapper = mountOpenAIUseKeyModal()
+
+    await clickClientTab(wrapper, 'keys.useKeyModal.cliTabs.omp')
+
+    const codeBlocks = getCodeBlocks(wrapper)
+    expect(codeBlocks).toHaveLength(3)
+    expect(wrapper.text()).toContain('1. Install OMP provider tools plugin')
+    expect(wrapper.text()).toContain('~/.omp/agent/models.yml')
+    expect(wrapper.text()).toContain('~/.omp/agent/config.yml')
+    expect(wrapper.text().indexOf('1. Install OMP provider tools plugin')).toBeLessThan(wrapper.text().indexOf('~/.omp/agent/models.yml'))
+    expect(wrapper.text().indexOf('~/.omp/agent/models.yml')).toBeLessThan(wrapper.text().indexOf('~/.omp/agent/config.yml'))
+
+    expect(codeBlocks[0]).toContain('omp plugin install npm:omp-openai-provider-tools@9.9.9')
+    expect(codeBlocks[0]).toContain('omp plugin doctor')
+    expect(codeBlocks[0]).toContain('npx omp-openai-provider-tools configure-image-agent --model sub2api-openai-image/gpt-5.5-Sys --dry-run')
+    expect(codeBlocks[0]).toContain('npx omp-openai-provider-tools configure-image-agent --model sub2api-openai-image/gpt-5.5-Sys')
+    expect(codeBlocks[0]).toContain('--print')
+    expect(codeBlocks[0]).not.toContain('omp-openai-provider-tools@latest')
+    expect(codeBlocks[0]).not.toContain('omp plugin install npm:omp-openai-provider-tools\n')
+    expect(codeBlocks[0]).not.toContain('omp-openai-provider-tools@0.1.2')
+
+    expect(codeBlocks[1]).toContain('providers:')
+    expect(codeBlocks[1]).toContain('sub2api-openai:')
+    expect(codeBlocks[1]).toContain('sub2api-openai-image:')
+    expect(codeBlocks[1]).toContain('api: openai-responses')
+    expect(codeBlocks[1]).toContain('baseUrl: https://example.com/v1')
+    expect(codeBlocks[1]).toContain('apiKey: sk-test')
+    expect(codeBlocks[1]).toContain('openaiProviderTools:')
+    expect(codeBlocks[1]).toContain('enabled: true')
+    expect(codeBlocks[1]).toContain('imageGeneration: true')
+    expect(codeBlocks[1]).toContain('sub2api-openai-image/gpt-5.5-Sys: gpt-5.5-image-sys')
+    expect(codeBlocks[1]).not.toContain('attachment')
+    expect(codeBlocks[1]).not.toContain('tool_call')
+    expect(codeBlocks[1]).not.toContain('structured_output')
+    expect(codeBlocks[1]).not.toContain('temperature')
+    expect(codeBlocks[1]).not.toContain('release_date')
+    expect(codeBlocks[1]).not.toContain('variants')
+    expect(codeBlocks[1]).not.toContain('modalities')
+    expect(codeBlocks[1]).not.toContain('pdf')
+    expect(codeBlocks[1]).not.toContain('experimental')
+    expect(codeBlocks[1]).not.toMatch(/^\s+provider:/m)
+    expect(codeBlocks[1]).not.toMatch(/^\s+tools:/m)
+
+    const ordinaryProvider = codeBlocks[1].slice(
+      codeBlocks[1].indexOf('  sub2api-openai:'),
+      codeBlocks[1].indexOf('  sub2api-openai-image:')
+    )
+    expect(ordinaryProvider).not.toContain('imageGeneration: true')
+
+    expect(codeBlocks[2]).toContain('default: sub2api-openai/gpt-5.5-Sys')
+    expect(codeBlocks[2]).toContain('smol: sub2api-openai/gpt-5.4-mini-Sys')
+    expect(codeBlocks[2]).toContain('plan: sub2api-openai/gpt-5.5-Sys')
+    expect(codeBlocks[2]).toContain('task: sub2api-openai/gpt-5.5-Sys:xhigh')
+    expect(codeBlocks[2]).not.toContain('task: gpt-5.5-sys:xhigh')
+    expect(codeBlocks[2]).not.toContain('smol: gpt-5.4-mini-sys')
+  })
+
+  it('does not render a half plugin install command when OMP plugin version is unavailable', async () => {
+    getOpenCodeModelsMock().mockResolvedValueOnce({
+      models: openaiModelsMock,
+      omp_openai_provider_tools: {
+        package: 'omp-openai-provider-tools',
+        latest_version: '',
+        status: 'unavailable',
+        error: 'npm registry unavailable'
+      }
+    })
+    const wrapper = mountOpenAIUseKeyModal()
+
+    await clickClientTab(wrapper, 'keys.useKeyModal.cliTabs.omp')
+
+    const text = wrapper.text()
+    const combinedBlocks = getCodeBlocks(wrapper).join('\n')
+    expect(text).toContain('keys.useKeyModal.omp.pluginVersionErrorHint')
+    expect(combinedBlocks).not.toContain('omp plugin install npm:omp-openai-provider-tools@')
+    expect(combinedBlocks).not.toContain('providers:')
+  })
+
+  it('does not render OMP success configs when a required role model is missing', async () => {
+    getOpenCodeModelsMock().mockResolvedValueOnce({
+      models: {
+        'gpt-5.5': openaiModelsMock['gpt-5.5']
+      },
+      omp_openai_provider_tools: {
+        package: 'omp-openai-provider-tools',
+        latest_version: '0.1.2',
+        status: 'ok'
+      }
+    })
+    const wrapper = mountOpenAIUseKeyModal()
+
+    await clickClientTab(wrapper, 'keys.useKeyModal.cliTabs.omp')
+
+    const combinedBlocks = getCodeBlocks(wrapper).join('\n')
+    expect(wrapper.text()).toContain('keys.useKeyModal.omp.metadataErrorHint')
+    expect(combinedBlocks).not.toContain('providers:')
+    expect(combinedBlocks).not.toContain('smol: sub2api-openai/gpt-5.4-mini-Sys')
+    expect(combinedBlocks).not.toContain('apiKey: sk-test')
+  })
+
+  it('refetches OMP metadata after loading legacy OpenCode metadata without plugin details', async () => {
+    const getModels = getOpenCodeModelsMock()
+    getModels
+      .mockResolvedValueOnce({ models: openaiModelsMock })
+      .mockResolvedValueOnce(defaultOpenCodeOpenAIModelsResponse())
+    const wrapper = mountOpenAIUseKeyModal()
+
+    await clickClientTab(wrapper, 'keys.useKeyModal.cliTabs.opencode')
+    expect(getModels).toHaveBeenCalledTimes(1)
+
+    await clickClientTab(wrapper, 'keys.useKeyModal.cliTabs.omp')
+
+    expect(getModels).toHaveBeenCalledTimes(2)
+    expect(getCodeBlocks(wrapper).join('\n')).toContain('omp plugin install npm:omp-openai-provider-tools@0.1.2')
+  })
+
+  it('preserves cached OpenCode models when OMP metadata refetch fails after a legacy response', async () => {
+    const getModels = getOpenCodeModelsMock()
+    getModels
+      .mockRejectedValue(new Error('unexpected refetch'))
+      .mockResolvedValueOnce({ models: openaiModelsMock })
+      .mockRejectedValueOnce(new Error('npm down'))
+    const wrapper = mountOpenAIUseKeyModal()
+
+    await clickClientTab(wrapper, 'keys.useKeyModal.cliTabs.opencode')
+    expect(getModels).toHaveBeenCalledTimes(1)
+    let codeBlocks = getCodeBlocks(wrapper)
+    expect(codeBlocks.join('\n')).toContain('"sub2api-openai"')
+    expect(codeBlocks.join('\n')).toContain('"gpt-5.4"')
+
+    await clickClientTab(wrapper, 'keys.useKeyModal.cliTabs.omp')
+    expect(getModels).toHaveBeenCalledTimes(2)
+    codeBlocks = getCodeBlocks(wrapper)
+    expect(wrapper.text()).toContain('Failed to load OpenCode OpenAI metadata')
+    expect(codeBlocks.join('\n')).not.toContain('providers:')
+
+    await clickClientTab(wrapper, 'keys.useKeyModal.cliTabs.opencode')
+    expect(getModels).toHaveBeenCalledTimes(2)
+    codeBlocks = getCodeBlocks(wrapper)
+    expect(codeBlocks.join('\n')).toContain('"sub2api-openai"')
+    expect(codeBlocks.join('\n')).toContain('"gpt-5.4"')
+  })
+
+  it('does not render OMP provider YAML when metadata loading fails', async () => {
+    getOpenCodeModelsMock().mockRejectedValueOnce(new Error('network down'))
+    const wrapper = mountOpenAIUseKeyModal()
+
+    await clickClientTab(wrapper, 'keys.useKeyModal.cliTabs.omp')
+
+    const combinedBlocks = getCodeBlocks(wrapper).join('\n')
+    expect(wrapper.text()).toContain('Failed to load OpenCode OpenAI metadata')
+    expect(combinedBlocks).not.toContain('providers:')
+    expect(combinedBlocks).not.toContain('apiKey: sk-test')
   })
 
   it('describes OpenCode config as custom provider based', async () => {

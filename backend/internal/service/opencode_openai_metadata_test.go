@@ -261,6 +261,113 @@ func TestOpenCodeMetadataServiceGetOpenAIModels_UsesCacheOnFailure(t *testing.T)
 	require.True(t, models["gpt-5.4"].Attachment)
 }
 
+func TestOpenCodeMetadataServiceGetOMPProviderToolsMetadata_Success(t *testing.T) {
+	npm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/omp-openai-provider-tools/latest", r.URL.Path)
+		_ = json.NewEncoder(w).Encode(map[string]any{"version": "0.1.2"})
+	}))
+	defer npm.Close()
+
+	svc := &OpenCodeMetadataService{
+		client:       npm.Client(),
+		npmLatestURL: npm.URL + "/omp-openai-provider-tools/latest",
+		npmTTL:       time.Minute,
+	}
+
+	metadata := svc.GetOMPProviderToolsMetadata(context.Background())
+
+	require.Equal(t, "omp-openai-provider-tools", metadata.Package)
+	require.Equal(t, "0.1.2", metadata.LatestVersion)
+	require.Equal(t, "ok", metadata.Status)
+	require.Empty(t, metadata.Error)
+}
+
+func TestOpenCodeMetadataServiceGetOMPProviderToolsMetadata_RefreshesAfterTTL(t *testing.T) {
+	versions := []string{"0.1.2", "9.9.9"}
+	requestCount := 0
+	npm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/omp-openai-provider-tools/latest", r.URL.Path)
+		idx := requestCount
+		if idx >= len(versions) {
+			idx = len(versions) - 1
+		}
+		requestCount++
+		_ = json.NewEncoder(w).Encode(map[string]any{"version": versions[idx]})
+	}))
+	defer npm.Close()
+
+	svc := &OpenCodeMetadataService{
+		client:       npm.Client(),
+		npmLatestURL: npm.URL + "/omp-openai-provider-tools/latest",
+		npmTTL:       time.Nanosecond,
+	}
+
+	first := svc.GetOMPProviderToolsMetadata(context.Background())
+	time.Sleep(time.Millisecond)
+	second := svc.GetOMPProviderToolsMetadata(context.Background())
+
+	require.Equal(t, "0.1.2", first.LatestVersion)
+	require.Equal(t, "ok", first.Status)
+	require.Equal(t, "9.9.9", second.LatestVersion)
+	require.Equal(t, "ok", second.Status)
+	require.Equal(t, 2, requestCount)
+}
+
+func TestOpenCodeMetadataServiceGetOMPProviderToolsMetadata_UsesStaleCacheOnFailure(t *testing.T) {
+	ok := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/omp-openai-provider-tools/latest", r.URL.Path)
+		_ = json.NewEncoder(w).Encode(map[string]any{"version": "0.1.2"})
+	}))
+	defer ok.Close()
+
+	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/omp-openai-provider-tools/latest", r.URL.Path)
+		http.Error(w, "boom", http.StatusBadGateway)
+	}))
+	defer bad.Close()
+
+	svc := &OpenCodeMetadataService{
+		client:       ok.Client(),
+		npmLatestURL: ok.URL + "/omp-openai-provider-tools/latest",
+		npmTTL:       time.Nanosecond,
+	}
+
+	first := svc.GetOMPProviderToolsMetadata(context.Background())
+	require.Equal(t, "0.1.2", first.LatestVersion)
+	require.Equal(t, "ok", first.Status)
+	require.Empty(t, first.Error)
+
+	time.Sleep(time.Millisecond)
+	svc.npmLatestURL = bad.URL + "/omp-openai-provider-tools/latest"
+	stale := svc.GetOMPProviderToolsMetadata(context.Background())
+
+	require.Equal(t, "omp-openai-provider-tools", stale.Package)
+	require.Equal(t, "0.1.2", stale.LatestVersion)
+	require.Equal(t, "cached", stale.Status)
+	require.NotEmpty(t, stale.Error)
+}
+
+func TestOpenCodeMetadataServiceGetOMPProviderToolsMetadata_UnavailableWithoutCache(t *testing.T) {
+	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/omp-openai-provider-tools/latest", r.URL.Path)
+		http.Error(w, "boom", http.StatusBadGateway)
+	}))
+	defer bad.Close()
+
+	svc := &OpenCodeMetadataService{
+		client:       bad.Client(),
+		npmLatestURL: bad.URL + "/omp-openai-provider-tools/latest",
+		npmTTL:       time.Minute,
+	}
+
+	metadata := svc.GetOMPProviderToolsMetadata(context.Background())
+
+	require.Equal(t, "omp-openai-provider-tools", metadata.Package)
+	require.Empty(t, metadata.LatestVersion)
+	require.Equal(t, "unavailable", metadata.Status)
+	require.NotEmpty(t, metadata.Error)
+}
+
 func TestFilterOpenCodeOpenAIModelsForCodexOAuth(t *testing.T) {
 	models := map[string]OpenCodeOpenAIModel{
 		"gpt-4o":             {ID: "gpt-4o", Name: "GPT-4o"},

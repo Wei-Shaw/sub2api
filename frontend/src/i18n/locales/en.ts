@@ -705,6 +705,7 @@ export default {
         codexCli: 'Codex CLI',
         codexCliWs: 'Codex CLI (WebSocket)',
         opencode: 'OpenCode',
+        omp: 'OMP',
       },
       antigravity: {
         description: 'Configure API access for Antigravity group. Select the configuration method based on your client.',
@@ -723,6 +724,16 @@ export default {
         subtitle: 'opencode.json',
         hint: 'Config path: ~/.config/opencode/opencode.json (or opencode.jsonc). Create it manually if missing. This example adds a custom provider_id (for example sub2api-openai) and does not replace OpenCode\'s built-in openai provider. The API key is written directly for convenience and can later be moved to /connect or env vars.',
       },
+      omp: {
+        description:
+          'Manually copy the recommended OMP configuration. Run the first plugin command block before using the config; this page does not install plugins or write ~/.omp/agent/models.yml / ~/.omp/agent/config.yml automatically.',
+        pluginHint: 'Install or upgrade omp-openai-provider-tools first, then generate the image_generator subagent if needed. The plugin does not read or store API keys. Restart the OMP session after installing or upgrading the plugin and writing the agent.',
+        modelsHint: 'Copy to ~/.omp/agent/models.yml. Image generation and provider-native web_search depend on the first plugin command block.',
+        configHint: 'Copy to ~/.omp/agent/config.yml. All model roles use full provider/model selectors.',
+        loadingHint: 'Loading OpenAI model metadata and OMP plugin version metadata...',
+        metadataErrorHint: 'Unable to load OpenAI model metadata, so usable OMP config cannot be generated yet.',
+        pluginVersionErrorHint: 'Unable to fetch the latest omp-openai-provider-tools version, so the plugin install command cannot be generated yet.'
+      }
     },
     customKeyLabel: 'Custom Key',
     customKeyPlaceholder: 'Enter your custom key (min 16 chars)',

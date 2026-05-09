@@ -43,8 +43,17 @@ export interface OpenCodeOpenAIModel {
   headers?: Record<string, string>
 }
 
+export interface OMPProviderToolsMetadata {
+  package: string
+  latest_version: string
+  status: 'ok' | 'cached' | 'unavailable'
+  error?: string
+}
+
+
 export type OpenCodeOpenAIModelsResponse = {
   models: Record<string, OpenCodeOpenAIModel>
+  omp_openai_provider_tools?: OMPProviderToolsMetadata
 }
 
 /**

@@ -326,5 +326,10 @@ func (h *APIKeyHandler) GetOpenCodeOpenAIModels(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, gin.H{"models": models})
+	providerTools := h.openCodeMetadataService.GetOMPProviderToolsMetadata(c.Request.Context())
+
+	response.Success(c, gin.H{
+		"models":                    models,
+		"omp_openai_provider_tools": providerTools,
+	})
 }

@@ -85,7 +85,13 @@ func TestAPIContract_OpenCodeOpenAIModels(t *testing.T) {
 		Code    int    `json:"code"`
 		Message string `json:"message"`
 		Data    struct {
-			Models map[string]map[string]any `json:"models"`
+			Models           map[string]map[string]any `json:"models"`
+			OMPProviderTools struct {
+				Package       string `json:"package"`
+				LatestVersion string `json:"latest_version"`
+				Status        string `json:"status"`
+				Error         string `json:"error,omitempty"`
+			} `json:"omp_openai_provider_tools"`
 		} `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(body), &resp))
@@ -102,6 +108,12 @@ func TestAPIContract_OpenCodeOpenAIModels(t *testing.T) {
 	require.NotContains(t, fast, "provider")
 	require.Equal(t, "priority", requireContractMap(t, fast, "options")["serviceTier"])
 	require.Equal(t, "fast-mode", requireContractMap(t, fast, "headers")["x-test-header"])
+	require.Equal(t, "omp-openai-provider-tools", resp.Data.OMPProviderTools.Package)
+	require.Equal(t, "0.1.2", resp.Data.OMPProviderTools.LatestVersion)
+	require.Equal(t, "ok", resp.Data.OMPProviderTools.Status)
+	require.Empty(t, resp.Data.OMPProviderTools.Error)
+	require.NotContains(t, body, "npm_token")
+	require.NotContains(t, body, "NPM_TOKEN")
 }
 
 func TestAPIContracts(t *testing.T) {
@@ -1360,12 +1372,25 @@ func doRequest(t *testing.T, router http.Handler, method, path, body string, hea
 
 func installModelsDevTransport(t *testing.T, payload map[string]any) {
 	t.Helper()
-	body, err := json.Marshal(payload)
+	installModelsDevTransportWithNpmLatest(t, payload, "0.1.2")
+}
+
+func installModelsDevTransportWithNpmLatest(t *testing.T, payload map[string]any, npmLatestVersion string) {
+	t.Helper()
+	modelsBody, err := json.Marshal(payload)
+	require.NoError(t, err)
+	npmLatestBody, err := json.Marshal(map[string]string{"version": npmLatestVersion})
 	require.NoError(t, err)
 
 	old := http.DefaultTransport
 	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		if req.URL.String() != "https://models.dev/api.json" {
+		var body []byte
+		switch req.URL.String() {
+		case "https://models.dev/api.json":
+			body = modelsBody
+		case "https://registry.npmjs.org/omp-openai-provider-tools/latest":
+			body = npmLatestBody
+		default:
 			return old.RoundTrip(req)
 		}
 		return &http.Response{

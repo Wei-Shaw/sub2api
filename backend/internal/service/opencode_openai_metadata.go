@@ -13,8 +13,11 @@ import (
 )
 
 const (
-	openCodeModelsDevURL = "https://models.dev/api.json"
-	openCodeModelsTTL    = 15 * time.Minute
+	openCodeModelsDevURL         = "https://models.dev/api.json"
+	openCodeModelsTTL            = 15 * time.Minute
+	ompProviderToolsPackage      = "omp-openai-provider-tools"
+	ompProviderToolsNpmLatestURL = "https://registry.npmjs.org/omp-openai-provider-tools/latest"
+	ompProviderToolsTTL          = 15 * time.Minute
 )
 
 var openCodeCodexOAuthVersionIDPattern = regexp.MustCompile(`^gpt-(\d+)\.(\d+)$`)
@@ -70,20 +73,33 @@ type OpenCodeOpenAIModelLimit struct {
 	Output  int `json:"output,omitempty"`
 }
 
+type OMPProviderToolsMetadata struct {
+	Package       string `json:"package"`
+	LatestVersion string `json:"latest_version"`
+	Status        string `json:"status"`
+	Error         string `json:"error,omitempty"`
+}
+
 type OpenCodeMetadataService struct {
-	client *http.Client
-	url    string
-	ttl    time.Duration
-	mu     sync.RWMutex
-	cache  map[string]OpenCodeOpenAIModel
-	exp    time.Time
+	client       *http.Client
+	url          string
+	ttl          time.Duration
+	npmLatestURL string
+	npmTTL       time.Duration
+	mu           sync.RWMutex
+	cache        map[string]OpenCodeOpenAIModel
+	exp          time.Time
+	npmCache     OMPProviderToolsMetadata
+	npmExp       time.Time
 }
 
 func NewOpenCodeMetadataService() *OpenCodeMetadataService {
 	return &OpenCodeMetadataService{
-		client: &http.Client{Timeout: 15 * time.Second},
-		url:    openCodeModelsDevURL,
-		ttl:    openCodeModelsTTL,
+		client:       &http.Client{Timeout: 15 * time.Second},
+		url:          openCodeModelsDevURL,
+		ttl:          openCodeModelsTTL,
+		npmLatestURL: ompProviderToolsNpmLatestURL,
+		npmTTL:       ompProviderToolsTTL,
 	}
 }
 
@@ -144,6 +160,88 @@ func (s *OpenCodeMetadataService) GetOpenAIModels(ctx context.Context) (map[stri
 	s.mu.Unlock()
 
 	return models, nil
+}
+
+func (s *OpenCodeMetadataService) GetOMPProviderToolsMetadata(ctx context.Context) OMPProviderToolsMetadata {
+	if s == nil {
+		return OMPProviderToolsMetadata{
+			Package: ompProviderToolsPackage,
+			Status:  "unavailable",
+			Error:   "opencode metadata service unavailable",
+		}
+	}
+
+	s.mu.RLock()
+	if s.npmCache.LatestVersion != "" && time.Now().Before(s.npmExp) {
+		cached := s.npmCache
+		s.mu.RUnlock()
+		return cached
+	}
+	stale := s.npmCache
+	s.mu.RUnlock()
+
+	version, err := s.fetchOMPProviderToolsLatest(ctx)
+	if err != nil {
+		if stale.LatestVersion != "" {
+			stale.Status = "cached"
+			stale.Error = err.Error()
+			return stale
+		}
+		return OMPProviderToolsMetadata{
+			Package: ompProviderToolsPackage,
+			Status:  "unavailable",
+			Error:   err.Error(),
+		}
+	}
+
+	metadata := OMPProviderToolsMetadata{
+		Package:       ompProviderToolsPackage,
+		LatestVersion: version,
+		Status:        "ok",
+	}
+	s.mu.Lock()
+	s.npmCache = metadata
+	s.npmExp = time.Now().Add(s.npmTTL)
+	s.mu.Unlock()
+
+	return metadata
+}
+
+func (s *OpenCodeMetadataService) fetchOMPProviderToolsLatest(ctx context.Context) (string, error) {
+	latestURL := s.npmLatestURL
+	if latestURL == "" {
+		latestURL = ompProviderToolsNpmLatestURL
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, latestURL, nil)
+	if err != nil {
+		return "", err
+	}
+
+	client := s.client
+	if client == nil {
+		client = http.DefaultClient
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("npm latest status: %d", resp.StatusCode)
+	}
+
+	var payload struct {
+		Version string `json:"version"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return "", err
+	}
+	version := strings.TrimSpace(payload.Version)
+	if version == "" {
+		return "", fmt.Errorf("npm latest version missing")
+	}
+	return version, nil
 }
 
 func extractOpenCodeOpenAIModels(payload map[string]any) (map[string]OpenCodeOpenAIModel, error) {

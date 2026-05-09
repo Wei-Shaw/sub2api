@@ -704,7 +704,8 @@ export default {
         geminiCli: 'Gemini CLI',
         codexCli: 'Codex CLI',
         codexCliWs: 'Codex CLI (WebSocket)',
-        opencode: 'OpenCode'
+        opencode: 'OpenCode',
+        omp: 'OMP'
       },
       antigravity: {
         description: '为 Antigravity 分组配置 API 访问。请根据您使用的客户端选择对应的配置方式。',
@@ -725,6 +726,16 @@ export default {
         title: 'OpenCode 配置示例',
         subtitle: 'opencode.json',
         hint: '配置文件路径：~/.config/opencode/opencode.json（或 opencode.jsonc），不存在需手动创建。当前示例会新增一个自定义 provider_id（例如 sub2api-openai），不会占用 OpenCode 官方 openai provider。API Key 可直接写入配置，后续也可自行改成 /connect 或环境变量。'
+      },
+      omp: {
+        description:
+          '为 OMP 手动复制推荐配置。请先执行第一块插件命令；系统不会自动安装插件，也不会自动写入 ~/.omp/agent/models.yml 或 ~/.omp/agent/config.yml。',
+        pluginHint: '先安装或升级 omp-openai-provider-tools，并按需生成 image_generator 子代理；插件不会读取或保存 API Key。安装或升级插件、写入 agent 后请重启 OMP 会话。',
+        modelsHint: '复制到 ~/.omp/agent/models.yml。生图和 provider-native web_search 依赖第一块插件命令。',
+        configHint: '复制到 ~/.omp/agent/config.yml。所有模型角色使用完整 provider/model 名称。',
+        loadingHint: '正在加载 OpenAI 模型与 OMP 插件版本元数据...',
+        metadataErrorHint: '无法加载 OpenAI 模型元数据，暂不能生成可用的 OMP 配置。',
+        pluginVersionErrorHint: '无法获取 omp-openai-provider-tools 最新版本，暂不能生成插件安装命令。'
       }
     },
     customKeyLabel: '自定义密钥',
