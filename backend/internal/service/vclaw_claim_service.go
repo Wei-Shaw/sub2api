@@ -68,12 +68,13 @@ type VClawClaimRequest struct {
 }
 
 type VClawClaimResult struct {
-	Status          string    `json:"status"`
-	Mode            string    `json:"mode"`
-	UserID          int64     `json:"user_id,omitempty"`
-	DeviceLoginCode string    `json:"device_login_code,omitempty"`
-	DeviceBindingID int64     `json:"device_binding_id,omitempty"`
-	ClaimedAt       time.Time `json:"claimed_at,omitempty"`
+	Status                 string    `json:"status"`
+	Mode                   string    `json:"mode"`
+	UserID                 int64     `json:"user_id,omitempty"`
+	DeviceLoginCode        string    `json:"device_login_code,omitempty"`
+	DeviceBindingID        int64     `json:"device_binding_id,omitempty"`
+	DeviceActivationStatus string    `json:"device_activation_status,omitempty"`
+	ClaimedAt              time.Time `json:"claimed_at,omitempty"`
 }
 
 func (s *VClawClaimService) Claim(ctx context.Context, req VClawClaimRequest) (*VClawClaimResult, error) {
@@ -147,7 +148,8 @@ func (s *VClawClaimService) resumeExistingClaim(ctx context.Context, binding *Us
 	if binding == nil {
 		return nil, ErrUserDeviceNotFound
 	}
-	if binding.Status != UserDeviceStatusActive {
+	deviceStatus := strings.TrimSpace(binding.Status)
+	if deviceStatus != UserDeviceStatusActive && deviceStatus != UserDeviceStatusPendingActivation {
 		return nil, ErrDeviceRevoked
 	}
 	loginCode, err := s.redeemRepo.GetByID(ctx, binding.LoginRedeemCodeID)
@@ -158,12 +160,13 @@ func (s *VClawClaimService) resumeExistingClaim(ctx context.Context, binding *Us
 		return nil, ErrServiceUnavailable
 	}
 	return &VClawClaimResult{
-		Status:          "ok",
-		Mode:            "resume",
-		UserID:          binding.UserID,
-		DeviceLoginCode: loginCode.Code,
-		DeviceBindingID: binding.ID,
-		ClaimedAt:       now,
+		Status:                 "ok",
+		Mode:                   "resume",
+		UserID:                 binding.UserID,
+		DeviceLoginCode:        loginCode.Code,
+		DeviceBindingID:        binding.ID,
+		DeviceActivationStatus: deviceStatus,
+		ClaimedAt:              now,
 	}, nil
 }
 
@@ -184,6 +187,7 @@ func (s *VClawClaimService) createFirstClaim(ctx context.Context, req VClawClaim
 		if err := s.applyDeviceClaimBonus(runCtx, user, deviceHash, now); err != nil {
 			return nil, err
 		}
+		deviceStatus := s.firstClaimDeviceStatus(runCtx, req.AffCode)
 		s.bindFirstClaimAffiliate(runCtx, user.ID, req.AffCode)
 		s.assignFirstDeviceClaimSubscriptions(runCtx, user.ID)
 		loginCodeText, err := GenerateRedeemCodeForType(RedeemTypeDeviceLogin)
@@ -220,7 +224,7 @@ func (s *VClawClaimService) createFirstClaim(ctx context.Context, req VClawClaim
 			AppVersion:         appVersion,
 			ClaimRedeemCodeID:  claimRedeemCodeID,
 			LoginRedeemCodeID:  loginRedeemCode.ID,
-			Status:             UserDeviceStatusActive,
+			Status:             deviceStatus,
 			FirstClaimedAt:     now,
 			LastClaimedAt:      &now,
 		}
@@ -229,12 +233,13 @@ func (s *VClawClaimService) createFirstClaim(ctx context.Context, req VClawClaim
 		}
 
 		return &VClawClaimResult{
-			Status:          "ok",
-			Mode:            "first_claim",
-			UserID:          user.ID,
-			DeviceLoginCode: loginRedeemCode.Code,
-			DeviceBindingID: binding.ID,
-			ClaimedAt:       now,
+			Status:                 "ok",
+			Mode:                   "first_claim",
+			UserID:                 user.ID,
+			DeviceLoginCode:        loginRedeemCode.Code,
+			DeviceBindingID:        binding.ID,
+			DeviceActivationStatus: deviceStatus,
+			ClaimedAt:              now,
 		}, nil
 	}
 
@@ -271,6 +276,16 @@ func (s *VClawClaimService) assignFirstDeviceClaimSubscriptions(ctx context.Cont
 			logger.LegacyPrintf("service.vclaw_claim", "[VClawClaim] Failed to assign first device claim subscription: user_id=%d group_id=%d err=%v", userID, item.GroupID, err)
 		}
 	}
+}
+
+func (s *VClawClaimService) firstClaimDeviceStatus(ctx context.Context, affCode string) string {
+	if s == nil || s.affiliateService == nil {
+		return UserDeviceStatusActive
+	}
+	if s.affiliateService.IsDeviceAutoActivationCode(ctx, affCode) {
+		return UserDeviceStatusActive
+	}
+	return UserDeviceStatusPendingActivation
 }
 
 func (s *VClawClaimService) bindFirstClaimAffiliate(ctx context.Context, userID int64, affCode string) {

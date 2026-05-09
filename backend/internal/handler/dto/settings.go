@@ -154,6 +154,7 @@ type SystemSettings struct {
 	DefaultConcurrency           int                          `json:"default_concurrency"`
 	DefaultBalance               float64                      `json:"default_balance"`
 	DeviceClaimBonusBalance      float64                      `json:"device_claim_bonus_balance"`
+	DeviceAutoActivationAffCodes string                       `json:"device_auto_activation_aff_codes"`
 	AffiliateRebateRate          float64                      `json:"affiliate_rebate_rate"`
 	AffiliateRebateFreezeHours   int                          `json:"affiliate_rebate_freeze_hours"`
 	AffiliateRebateDurationDays  int                          `json:"affiliate_rebate_duration_days"`
@@ -398,7 +399,8 @@ type PublicSettings struct {
 	ModelPlazaEnabled     bool `json:"model_plaza_enabled"`
 	ModelPlazaRequireAuth bool `json:"model_plaza_require_auth"`
 
-	AffiliateEnabled bool `json:"affiliate_enabled"`
+	AffiliateEnabled             bool   `json:"affiliate_enabled"`
+	DeviceAutoActivationAffCodes string `json:"device_auto_activation_aff_codes"`
 
 	RiskControlEnabled bool `json:"risk_control_enabled"`
 

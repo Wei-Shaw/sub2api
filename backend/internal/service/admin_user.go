@@ -1321,3 +1321,24 @@ func (s *adminServiceImpl) ExpireRedeemCode(ctx context.Context, id int64) (*Red
 	}
 	return code, nil
 }
+
+func (s *adminServiceImpl) ActivateUserDevices(ctx context.Context, userID int64) (*User, int64, error) {
+	if userID <= 0 {
+		return nil, 0, ErrUserNotFound
+	}
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, 0, err
+	}
+	activator, ok := any(s.userRepo).(interface {
+		ActivatePendingDevicesByUserID(ctx context.Context, userID int64) (int64, error)
+	})
+	if !ok || activator == nil {
+		return user, 0, nil
+	}
+	updated, err := activator.ActivatePendingDevicesByUserID(ctx, userID)
+	if err != nil {
+		return nil, 0, err
+	}
+	return user, updated, nil
+}

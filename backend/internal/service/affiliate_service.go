@@ -227,6 +227,54 @@ func (s *AffiliateService) IsEnabled(ctx context.Context) bool {
 	}
 	return s.settingService.IsAffiliateEnabled(ctx)
 }
+func (s *AffiliateService) IsDeviceAutoActivationCode(ctx context.Context, code string) bool {
+	code = strings.ToUpper(strings.TrimSpace(code))
+	if code == "" {
+		return false
+	}
+	for _, allowed := range s.DeviceAutoActivationCodes(ctx) {
+		if code == allowed {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *AffiliateService) DeviceAutoActivationCodes(ctx context.Context) []string {
+	const fallback = "AUTO_APPROVE"
+	if s == nil || s.settingService == nil || s.settingService.settingRepo == nil {
+		return []string{fallback}
+	}
+	raw, err := s.settingService.settingRepo.GetValue(ctx, SettingKeyDeviceAutoActivationAffCodes)
+	if err != nil || strings.TrimSpace(raw) == "" {
+		return []string{fallback}
+	}
+	parts := strings.FieldsFunc(raw, func(r rune) bool {
+		switch r {
+		case ',', '\n', '\r', '\t', ' ':
+			return true
+		default:
+			return false
+		}
+	})
+	out := make([]string, 0, len(parts))
+	seen := make(map[string]struct{}, len(parts))
+	for _, part := range parts {
+		code := strings.ToUpper(strings.TrimSpace(part))
+		if code == "" {
+			continue
+		}
+		if _, ok := seen[code]; ok {
+			continue
+		}
+		seen[code] = struct{}{}
+		out = append(out, code)
+	}
+	if len(out) == 0 {
+		return []string{fallback}
+	}
+	return out
+}
 
 func (s *AffiliateService) EnsureUserAffiliate(ctx context.Context, userID int64) (*AffiliateSummary, error) {
 	if userID <= 0 {

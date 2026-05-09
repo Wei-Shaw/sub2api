@@ -893,6 +893,13 @@ func (s *PaymentService) AdminListOrders(ctx context.Context, userID int64, p Or
 	if userID > 0 {
 		q = q.Where(paymentorder.UserIDEQ(userID))
 	}
+	if p.UserIDs != nil {
+		if len(p.UserIDs) == 0 {
+			q = q.Where(paymentorder.UserIDEQ(0))
+		} else {
+			q = q.Where(paymentorder.UserIDIn(p.UserIDs...))
+		}
+	}
 	if p.Status != "" {
 		q = q.Where(paymentorder.StatusEQ(p.Status))
 	}

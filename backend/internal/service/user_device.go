@@ -12,19 +12,21 @@ const (
 	RedeemTypeDeviceClaim = "device_claim"
 	RedeemTypeDeviceLogin = "device_login"
 
-	UserDeviceStatusActive  = "active"
-	UserDeviceStatusRevoked = "revoked"
-	UserDeviceStatusBlocked = "blocked"
+	UserDeviceStatusActive            = "active"
+	UserDeviceStatusPendingActivation = "pending_activation"
+	UserDeviceStatusRevoked           = "revoked"
+	UserDeviceStatusBlocked           = "blocked"
 )
 
 var (
-	ErrUserDeviceNotFound = infraerrors.NotFound("USER_DEVICE_NOT_FOUND", "user device not found")
-	ErrClaimCodeRequired  = infraerrors.BadRequest("CLAIM_CODE_REQUIRED", "claim_code is required for first claim")
-	ErrClaimCodeInvalid   = infraerrors.BadRequest("CLAIM_CODE_INVALID", "invalid or used claim code")
-	ErrDeviceHashRequired = infraerrors.BadRequest("DEVICE_HASH_REQUIRED", "device_hash is required")
-	ErrDeviceHashInvalid  = infraerrors.BadRequest("DEVICE_HASH_INVALID", "device_hash must be a 64-character hex string")
-	ErrDeviceRevoked      = infraerrors.Forbidden("DEVICE_REVOKED", "device binding has been revoked")
-	ErrDeviceMismatch     = infraerrors.Forbidden("DEVICE_MISMATCH", "device does not match bound login code")
+	ErrUserDeviceNotFound      = infraerrors.NotFound("USER_DEVICE_NOT_FOUND", "user device not found")
+	ErrClaimCodeRequired       = infraerrors.BadRequest("CLAIM_CODE_REQUIRED", "claim_code is required for first claim")
+	ErrClaimCodeInvalid        = infraerrors.BadRequest("CLAIM_CODE_INVALID", "invalid or used claim code")
+	ErrDeviceHashRequired      = infraerrors.BadRequest("DEVICE_HASH_REQUIRED", "device_hash is required")
+	ErrDeviceHashInvalid       = infraerrors.BadRequest("DEVICE_HASH_INVALID", "device_hash must be a 64-character hex string")
+	ErrDeviceActivationPending = infraerrors.Forbidden("DEVICE_ACTIVATION_PENDING", "device activation is pending admin approval")
+	ErrDeviceRevoked           = infraerrors.Forbidden("DEVICE_REVOKED", "device binding has been revoked")
+	ErrDeviceMismatch          = infraerrors.Forbidden("DEVICE_MISMATCH", "device does not match bound login code")
 )
 
 type UserDevice struct {

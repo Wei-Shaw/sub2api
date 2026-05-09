@@ -74,8 +74,11 @@ type UserListFilters struct {
 	// APIKeyGroupID filters users who own at least one non-soft-deleted API key
 	// bound to this group (api_keys.group_id). 0 = no filter. Covers all three
 	// group types since it matches the key's group directly, not allowed_groups.
-	APIKeyGroupID int64
-	Attributes    map[int64]string // Custom attribute filters: attributeID -> value
+	APIKeyGroupID          int64
+	DeviceActivationStatus string           // Filter by latest/bound user device status
+	AffiliateInviterID     *int64           // Restrict to users invited by this affiliate owner
+	UserID                 *int64           // Restrict to a single user ID
+	Attributes             map[int64]string // Custom attribute filters: attributeID -> value
 	// IncludeSubscriptions controls whether ListWithFilters should load active subscriptions.
 	// For large datasets this can be expensive; admin list pages should enable it on demand.
 	// nil means not specified (default: load subscriptions for backward compatibility).

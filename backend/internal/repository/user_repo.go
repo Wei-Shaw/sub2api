@@ -581,6 +581,9 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 	if filters.Role != "" {
 		q = q.Where(dbuser.RoleEQ(filters.Role))
 	}
+	if filters.UserID != nil {
+		q = q.Where(dbuser.IDEQ(*filters.UserID))
+	}
 	if filters.Search != "" {
 		q = q.Where(
 			dbuser.Or(
@@ -600,6 +603,20 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 		q = q.Where(dbuser.HasAllowedGroupsWith(
 			dbgroup.NameContainsFold(filters.GroupName),
 		))
+	}
+	deviceActivationStatus := strings.TrimSpace(filters.DeviceActivationStatus)
+	if deviceActivationStatus != "" {
+		q = q.Where(dbuser.HasDevicesWith(userdevice.StatusEQ(deviceActivationStatus)))
+	}
+	if filters.AffiliateInviterID != nil {
+		inviteeUserIDs, scopeErr := r.filterUsersByAffiliateInviter(ctx, *filters.AffiliateInviterID)
+		if scopeErr != nil {
+			return nil, nil, scopeErr
+		}
+		if len(inviteeUserIDs) == 0 {
+			return []service.User{}, paginationResultFromTotal(0, params), nil
+		}
+		q = q.Where(dbuser.IDIn(inviteeUserIDs...))
 	}
 
 	if filters.APIKeyGroupID > 0 {
@@ -694,6 +711,10 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 	if err != nil {
 		return nil, nil, err
 	}
+	deviceStatusesByUser, err := r.loadUserDeviceActivationStatuses(ctx, userIDs)
+	if err != nil {
+		return nil, nil, err
+	}
 	deviceBindingsByUser, err := r.loadUserDeviceBindings(ctx, userIDs)
 	if err != nil {
 		return nil, nil, err
@@ -706,9 +727,44 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 			u.PrimaryRedeemType = redeemType
 		}
 		u.HasDeviceBinding = deviceBindingsByUser[id]
+		if status, ok := deviceStatusesByUser[id]; ok {
+			u.DeviceActivationStatus = status
+		}
 	}
 
 	return outUsers, paginationResultFromTotal(int64(total), params), nil
+}
+
+func (r *userRepository) filterUsersByAffiliateInviter(ctx context.Context, inviterID int64) ([]int64, error) {
+	if inviterID <= 0 {
+		return nil, nil
+	}
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return nil, fmt.Errorf("sql executor is not configured")
+	}
+
+	rows, err := exec.QueryContext(ctx, `
+		SELECT ua.user_id
+		FROM user_affiliates ua
+		WHERE ua.inviter_id = $1`, inviterID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	result := make([]int64, 0)
+	for rows.Next() {
+		var userID int64
+		if scanErr := rows.Scan(&userID); scanErr != nil {
+			return nil, scanErr
+		}
+		result = append(result, userID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func userListOrder(params pagination.PaginationParams) []func(*entsql.Selector) {
@@ -1487,6 +1543,46 @@ func (r *userRepository) loadPrimaryRedeemCodes(ctx context.Context, userIDs []i
 		typesByUser[userID] = &redeemType
 	}
 	return codesByUser, typesByUser, nil
+}
+
+func (r *userRepository) loadUserDeviceActivationStatuses(ctx context.Context, userIDs []int64) (map[int64]*string, error) {
+	statusesByUser := make(map[int64]*string, len(userIDs))
+	if len(userIDs) == 0 {
+		return statusesByUser, nil
+	}
+	devices, err := r.client.UserDevice.Query().
+		Where(userdevice.UserIDIn(userIDs...)).
+		Order(dbent.Desc(userdevice.FieldLastLoginAt), dbent.Desc(userdevice.FieldLastClaimedAt), dbent.Desc(userdevice.FieldCreatedAt), dbent.Desc(userdevice.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, device := range devices {
+		if _, exists := statusesByUser[device.UserID]; exists {
+			continue
+		}
+		status := device.Status
+		statusesByUser[device.UserID] = &status
+	}
+	return statusesByUser, nil
+}
+
+func (r *userRepository) ActivatePendingDevicesByUserID(ctx context.Context, userID int64) (int64, error) {
+	if userID <= 0 {
+		return 0, service.ErrUserNotFound
+	}
+	client := clientFromContext(ctx, r.client)
+	n, err := client.UserDevice.Update().
+		Where(
+			userdevice.UserIDEQ(userID),
+			userdevice.StatusEQ(service.UserDeviceStatusPendingActivation),
+		).
+		SetStatus(service.UserDeviceStatusActive).
+		Save(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return int64(n), nil
 }
 
 func (r *userRepository) loadUserDeviceBindings(ctx context.Context, userIDs []int64) (map[int64]bool, error) {

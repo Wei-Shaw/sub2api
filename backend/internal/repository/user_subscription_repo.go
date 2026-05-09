@@ -225,12 +225,19 @@ func (r *userSubscriptionRepository) ListByGroupID(ctx context.Context, groupID 
 	return userSubscriptionEntitiesToService(subs), paginationResultFromTotal(int64(total), params), nil
 }
 
-func (r *userSubscriptionRepository) List(ctx context.Context, params pagination.PaginationParams, userID, groupID *int64, status, platform, sortBy, sortOrder string) ([]service.UserSubscription, *pagination.PaginationResult, error) {
+func (r *userSubscriptionRepository) List(ctx context.Context, params pagination.PaginationParams, userID, groupID *int64, scopedUserIDs []int64, status, platform, sortBy, sortOrder string) ([]service.UserSubscription, *pagination.PaginationResult, error) {
 	client := clientFromContext(ctx, r.client)
 	q := client.UserSubscription.Query()
 	includeSoftDeleted := status == "" || status == service.SubscriptionStatusRevoked
 	if userID != nil {
 		q = q.Where(usersubscription.UserIDEQ(*userID))
+	}
+	if scopedUserIDs != nil {
+		if len(scopedUserIDs) == 0 {
+			q = q.Where(usersubscription.UserIDEQ(0))
+		} else {
+			q = q.Where(usersubscription.UserIDIn(scopedUserIDs...))
+		}
 	}
 	if groupID != nil {
 		q = q.Where(usersubscription.GroupIDEQ(*groupID))

@@ -67,6 +67,11 @@ func isMarketingAdminPathAllowed(method, requestPath string) bool {
 		return true
 	}
 
+	// Marketing can activate only users scoped by its own affiliate code.
+	if method == "POST" && hasAnyPrefix(path, "/admin/users") && strings.HasSuffix(path, "/activate-devices") {
+		return true
+	}
+
 	// Subscription administration is the primary marketing operation: grant,
 	// extend, reset, or revoke package access for customer-care workflows.
 	if hasAnyPrefix(path, "/admin/subscriptions") {

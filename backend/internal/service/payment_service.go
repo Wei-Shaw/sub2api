@@ -133,6 +133,7 @@ type CreateOrderResponse struct {
 type OrderListParams struct {
 	Page        int
 	PageSize    int
+	UserIDs     []int64
 	Status      string
 	OrderType   string
 	PaymentType string

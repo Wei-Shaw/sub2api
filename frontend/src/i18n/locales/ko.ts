@@ -5197,6 +5197,8 @@ export default {
           freezeHoursDesc: 'New rebates will be frozen for this period before becoming available for withdrawal. 0 = no freeze.',
           perInviteeCap: 'Per-Invitee Rebate Cap',
           perInviteeCapDesc: 'Maximum total rebate from a single invitee. 0 = no limit.',
+          deviceAutoActivationCodes: '자동 활성화 장치 초대 코드',
+          deviceAutoActivationCodesHint: '쉼표로 구분한 affiliate code 목록입니다. 예: AUTO_APPROVE. 이 코드로 claim한 장치는 즉시 활성화되고, 나머지는 사용자 관리에서 admin/marketing이 수동 활성화할 때까지 대기합니다.',
     },
 
         riskControl: {

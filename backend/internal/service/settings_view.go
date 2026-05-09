@@ -155,6 +155,7 @@ type SystemSettings struct {
 	CyberSessionBlockTTLSeconds  int
 	DeviceClaimBonusBalance      float64
 	AffiliateEnabled             bool
+	DeviceAutoActivationAffCodes string
 	AffiliateRebateRate          float64
 	AffiliateRebateFreezeHours   int
 	AffiliateRebateDurationDays  int
@@ -348,7 +349,8 @@ type PublicSettings struct {
 	ModelPlazaRequireAuth bool `json:"model_plaza_require_auth"`
 
 	// Affiliate (邀请返利) feature toggle
-	AffiliateEnabled bool `json:"affiliate_enabled"`
+	AffiliateEnabled             bool   `json:"affiliate_enabled"`
+	DeviceAutoActivationAffCodes string `json:"device_auto_activation_aff_codes"`
 
 	// 风控中心功能开关
 	RiskControlEnabled bool `json:"risk_control_enabled"`

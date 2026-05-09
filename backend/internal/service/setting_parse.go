@@ -199,6 +199,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		// Affiliate (邀请返利) feature (default disabled; opt-in)
 		SettingKeyAffiliateEnabled:              "false",
 		SettingKeyAffiliateAdminRechargeEnabled: strconv.FormatBool(AdminRechargeRebateEnabledDefault),
+		SettingKeyDeviceAutoActivationAffCodes:  "AUTO_APPROVE",
 
 		// 风控中心功能（默认关闭，显式启用）
 		SettingKeyRiskControlEnabled: "false",
@@ -369,6 +370,10 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	}
 	if bonus, err := strconv.ParseFloat(settings[SettingKeyDeviceClaimBonusBalance], 64); err == nil && bonus >= 0 {
 		result.DeviceClaimBonusBalance = bonus
+	}
+	result.DeviceAutoActivationAffCodes = strings.TrimSpace(settings[SettingKeyDeviceAutoActivationAffCodes])
+	if result.DeviceAutoActivationAffCodes == "" {
+		result.DeviceAutoActivationAffCodes = "AUTO_APPROVE"
 	}
 	if rebateRate, err := strconv.ParseFloat(settings[SettingKeyAffiliateRebateRate], 64); err == nil {
 		result.AffiliateRebateRate = clampAffiliateRebateRate(rebateRate)
@@ -780,6 +785,10 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 
 	// Affiliate (邀请返利) feature (default: disabled; strict true)
 	result.AffiliateEnabled = settings[SettingKeyAffiliateEnabled] == "true"
+	result.DeviceAutoActivationAffCodes = strings.TrimSpace(settings[SettingKeyDeviceAutoActivationAffCodes])
+	if result.DeviceAutoActivationAffCodes == "" {
+		result.DeviceAutoActivationAffCodes = "AUTO_APPROVE"
+	}
 
 	// 风控中心功能（默认关闭，严格 true 才启用）
 	result.RiskControlEnabled = settings[SettingKeyRiskControlEnabled] == "true"

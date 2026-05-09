@@ -26,17 +26,18 @@ type User struct {
 	TokenVersion   int64 // Incremented on password change to invalidate existing tokens
 	// TokenVersionResolved indicates TokenVersion already contains the fingerprint-derived
 	// value expected in JWT claims and refresh-token state.
-	TokenVersionResolved bool
-	SignupSource         string
-	PrimaryRedeemCode    *string
-	PrimaryRedeemType    *string
-	HasDeviceBinding     bool
-	LastLoginAt          *time.Time
-	LastActiveAt         *time.Time
-	LastUsedAt           *time.Time
-	CreatedAt            time.Time
-	UpdatedAt            time.Time
-	DeletedAt            *time.Time // 非 nil 表示用户已软删除
+	TokenVersionResolved   bool
+	SignupSource           string
+	PrimaryRedeemCode      *string
+	PrimaryRedeemType      *string
+	HasDeviceBinding       bool
+	DeviceActivationStatus *string
+	LastLoginAt            *time.Time
+	LastActiveAt           *time.Time
+	LastUsedAt             *time.Time
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+	DeletedAt              *time.Time // 非 nil 表示用户已软删除
 
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]rateMultiplier

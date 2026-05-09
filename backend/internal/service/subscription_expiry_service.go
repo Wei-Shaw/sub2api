@@ -130,7 +130,7 @@ func (s *SubscriptionExpiryService) sendExpiryReminders(ctx context.Context) {
 	}
 	defer release()
 	for page := 1; ; page++ {
-		subs, pag, err := s.userSubRepo.List(ctx, pagination.PaginationParams{Page: page, PageSize: 200}, nil, nil, SubscriptionStatusActive, "", "expires_at", "asc")
+		subs, pag, err := s.userSubRepo.List(ctx, pagination.PaginationParams{Page: page, PageSize: 200}, nil, nil, nil, SubscriptionStatusActive, "", "expires_at", "asc")
 		if err != nil {
 			log.Printf("[SubscriptionExpiry] List active subscriptions for reminder failed: %v", err)
 			return

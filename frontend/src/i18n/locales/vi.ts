@@ -5196,6 +5196,8 @@ export default {
           freezeHoursDesc: 'Các khoản hoàn tiền mới sẽ bị đóng băng trong khoảng thời gian này trước khi có thể rút. 0 = không đóng băng.',
           perInviteeCap: 'Giới hạn hoàn tiền cho mỗi người được mời',
           perInviteeCapDesc: 'Tổng hoàn tiền tối đa từ một người được mời. 0 = không giới hạn.',
+          deviceAutoActivationCodes: 'Mã mời tự động kích hoạt thiết bị',
+          deviceAutoActivationCodesHint: 'Danh sách affiliate code phân tách bằng dấu phẩy; thiết bị claim bằng các mã này sẽ active ngay, ví dụ AUTO_APPROVE. Các mã khác sẽ ở trạng thái chờ admin/marketing kích hoạt trong Quản lý người dùng.',
     },
 
         riskControl: {

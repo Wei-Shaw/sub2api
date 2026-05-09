@@ -111,6 +111,7 @@ export interface AdminUser extends User {
   primary_redeem_code?: string | null
   primary_redeem_type?: string | null
   has_device_binding?: boolean
+  device_activation_status?: 'active' | 'pending_activation' | 'revoked' | 'blocked' | string | null
   // 用户专属分组倍率配置 (group_id -> rate_multiplier)
   group_rates?: Record<number, number>
   // 当前并发数（仅管理员列表接口返回）
@@ -264,6 +265,7 @@ export interface PublicSettings {
   service_quota_enabled: boolean
   affiliate_enabled: boolean
   allow_user_view_error_requests?: boolean
+  device_auto_activation_aff_codes: string
 }
 
 export interface AuthResponse {

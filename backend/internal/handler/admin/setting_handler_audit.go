@@ -314,6 +314,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.DeviceClaimBonusBalance != after.DeviceClaimBonusBalance {
 		changed = append(changed, "device_claim_bonus_balance")
 	}
+	if before.DeviceAutoActivationAffCodes != after.DeviceAutoActivationAffCodes {
+		changed = append(changed, "device_auto_activation_aff_codes")
+	}
 	if before.AffiliateRebateRate != after.AffiliateRebateRate {
 		changed = append(changed, "affiliate_rebate_rate")
 	}

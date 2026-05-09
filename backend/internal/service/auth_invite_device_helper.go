@@ -40,7 +40,14 @@ func (s *AuthService) completeDeviceInviteLogin(ctx context.Context, input Invit
 		}
 		return nil, ErrServiceUnavailable
 	}
-	if device == nil || !device.IsActive() {
+	if device == nil {
+		return nil, ErrDeviceRevoked
+	}
+	switch strings.TrimSpace(device.Status) {
+	case UserDeviceStatusActive:
+	case UserDeviceStatusPendingActivation:
+		return nil, ErrDeviceActivationPending
+	default:
 		return nil, ErrDeviceRevoked
 	}
 	if deviceHash != "" && normalizeDeviceHash(device.DeviceHash) != deviceHash {

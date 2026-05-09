@@ -792,8 +792,13 @@ func (s *SubscriptionService) ListGroupSubscriptions(ctx context.Context, groupI
 
 // List 获取所有订阅（分页，支持筛选和排序）
 func (s *SubscriptionService) List(ctx context.Context, page, pageSize int, userID, groupID *int64, status, platform, sortBy, sortOrder string) ([]UserSubscription, *pagination.PaginationResult, error) {
+	return s.ListScoped(ctx, page, pageSize, userID, groupID, nil, status, platform, sortBy, sortOrder)
+}
+
+// ListScoped 获取所有订阅（分页，支持筛选、排序和调用方用户范围限制）。
+func (s *SubscriptionService) ListScoped(ctx context.Context, page, pageSize int, userID, groupID *int64, scopedUserIDs []int64, status, platform, sortBy, sortOrder string) ([]UserSubscription, *pagination.PaginationResult, error) {
 	params := pagination.PaginationParams{Page: page, PageSize: pageSize}
-	subs, pag, err := s.userSubRepo.List(ctx, params, userID, groupID, status, platform, sortBy, sortOrder)
+	subs, pag, err := s.userSubRepo.List(ctx, params, userID, groupID, scopedUserIDs, status, platform, sortBy, sortOrder)
 	if err != nil {
 		return nil, nil, err
 	}

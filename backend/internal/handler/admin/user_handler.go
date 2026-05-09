@@ -131,11 +131,15 @@ func (h *UserHandler) List(c *gin.Context) {
 	}
 
 	filters := service.UserListFilters{
-		Status:     c.Query("status"),
-		Role:       c.Query("role"),
-		Search:     search,
-		GroupName:  strings.TrimSpace(c.Query("group_name")),
-		Attributes: parseAttributeFilters(c),
+		Status:                 c.Query("status"),
+		Role:                   c.Query("role"),
+		Search:                 search,
+		GroupName:              strings.TrimSpace(c.Query("group_name")),
+		DeviceActivationStatus: strings.TrimSpace(c.Query("device_activation_status")),
+		Attributes:             parseAttributeFilters(c),
+	}
+	if !applyMarketingUserScope(c, &filters) {
+		return
 	}
 	if raw := strings.TrimSpace(c.Query("api_key_group_id")); raw != "" {
 		if id, parseErr := strconv.ParseInt(raw, 10, 64); parseErr == nil && id > 0 {
@@ -180,6 +184,43 @@ func (h *UserHandler) List(c *gin.Context) {
 	}
 
 	response.Paginated(c, out, total, page, pageSize)
+}
+
+// ActivateDevices approves pending device bindings for a user.
+// POST /api/v1/admin/users/:id/activate-devices
+func (h *UserHandler) ActivateDevices(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid user ID")
+		return
+	}
+
+	if !ensureMarketingCanManageUser(c, h.adminService, userID) {
+		return
+	}
+
+	user, activated, err := h.adminService.ActivateUserDevices(c.Request.Context(), userID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, gin.H{
+		"user":      dto.UserFromServiceAdmin(user),
+		"activated": activated,
+	})
+}
+
+func applyMarketingUserScope(c *gin.Context, filters *service.UserListFilters) bool {
+	if !isMarketingRequest(c) {
+		return true
+	}
+	marketingUserID, ok := marketingSubjectUserID(c)
+	if !ok {
+		return false
+	}
+	filters.AffiliateInviterID = &marketingUserID
+	return true
 }
 
 // parseAttributeFilters extracts attribute filters from query params
