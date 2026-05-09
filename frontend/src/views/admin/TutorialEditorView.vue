@@ -71,10 +71,10 @@
                 <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ formatBytes(image.size) }}</p>
                 <div class="mt-3 flex gap-2">
                   <button type="button" class="btn btn-secondary btn-sm flex-1" @click="insertImage(image.url)">
-                    鎻掑叆鍥剧墖
+                    插入图片
                   </button>
                   <button type="button" class="btn btn-secondary btn-sm flex-1" @click="copyImageURL(image.url)">
-                    澶嶅埗鍦板潃
+                    复制地址
                   </button>
                 </div>
               </div>

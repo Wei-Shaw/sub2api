@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tutorialhtml"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -591,11 +592,11 @@ func detectPageImageExtension(data []byte, contentType, fileName string) (string
 }
 
 func sanitizePageAssetBaseName(name string) string {
-	name = strings.TrimSpace(strings.ToLower(name))
+	name = strings.TrimSpace(name)
 	name = strings.ReplaceAll(name, " ", "-")
 	var b strings.Builder
 	for _, ch := range name {
-		if (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '-' || ch == '_' {
+		if unicode.IsLetter(ch) || unicode.IsDigit(ch) || ch == '-' || ch == '_' {
 			b.WriteRune(ch)
 		}
 	}

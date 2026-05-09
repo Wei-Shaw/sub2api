@@ -25,6 +25,7 @@ var (
 	languageClassPattern = regexp.MustCompile(`^language-[a-z0-9_-]+$`)
 	rgbColorPattern      = regexp.MustCompile(`^rgba?\(\s*(\d{1,3}\s*,\s*){2}\d{1,3}(\s*,\s*(0|0?\.\d+|1(\.0+)?))?\s*\)$`)
 	hslColorPattern      = regexp.MustCompile(`^hsla?\(\s*\d{1,3}(\.\d+)?\s*,\s*\d{1,3}%\s*,\s*\d{1,3}%(\s*,\s*(0|0?\.\d+|1(\.0+)?))?\s*\)$`)
+	htmlTagPattern       = regexp.MustCompile(`(?is)<[^>]+>`)
 )
 
 func SanitizeTutorialHTML(raw string) string {
@@ -35,54 +36,109 @@ func SanitizeTutorialHTML(raw string) string {
 	}
 	var b strings.Builder
 	for _, node := range nodes {
-		sanitizeNode(&b, node)
+		b.WriteString(sanitizeNodeString(node))
 	}
 	return b.String()
 }
 
-func sanitizeNode(b *strings.Builder, node *xhtml.Node) {
+func sanitizeNodeString(node *xhtml.Node) string {
 	switch node.Type {
 	case xhtml.DocumentNode:
-		for child := node.FirstChild; child != nil; child = child.NextSibling {
-			sanitizeNode(b, child)
-		}
+		return sanitizeChildren(node)
 	case xhtml.TextNode:
-		b.WriteString(html.EscapeString(node.Data))
+		return html.EscapeString(node.Data)
 	case xhtml.ElementNode:
 		tag := strings.ToLower(strings.TrimSpace(node.Data))
 		if tag == "" {
-			return
+			return ""
 		}
 		if stripNodeTags[tag] {
-			return
+			return ""
 		}
 		if !allowedTags[tag] {
-			for child := node.FirstChild; child != nil; child = child.NextSibling {
-				sanitizeNode(b, child)
+			return sanitizeChildren(node)
+		}
+
+		attrs := sanitizeAttrs(tag, node.Attr)
+		if tag == "img" {
+			if !hasAttr(attrs, "src") {
+				return ""
 			}
-			return
+			return renderStartTag(tag, attrs)
 		}
-		b.WriteString("<")
-		b.WriteString(tag)
-		for _, attr := range sanitizeAttrs(tag, node.Attr) {
-			b.WriteString(" ")
-			b.WriteString(attr.Key)
-			b.WriteString(`="`)
-			b.WriteString(html.EscapeString(attr.Val))
-			b.WriteString(`"`)
+		if tag == "br" || tag == "hr" {
+			return renderStartTag(tag, attrs)
 		}
-		if tag == "img" || tag == "br" || tag == "hr" {
-			b.WriteString(">")
-			return
+
+		childHTML := sanitizeChildren(node)
+		if tag == "a" && !hasAttr(attrs, "href") {
+			return childHTML
 		}
-		b.WriteString(">")
-		for child := node.FirstChild; child != nil; child = child.NextSibling {
-			sanitizeNode(b, child)
+		if shouldDropEmptyElement(tag, childHTML) {
+			return ""
 		}
-		b.WriteString("</")
-		b.WriteString(tag)
-		b.WriteString(">")
+		return renderElement(tag, attrs, childHTML)
 	}
+	return ""
+}
+
+func sanitizeChildren(node *xhtml.Node) string {
+	var b strings.Builder
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		b.WriteString(sanitizeNodeString(child))
+	}
+	return b.String()
+}
+
+func renderStartTag(tag string, attrs []xhtml.Attribute) string {
+	var b strings.Builder
+	b.WriteString("<")
+	b.WriteString(tag)
+	for _, attr := range attrs {
+		b.WriteString(" ")
+		b.WriteString(attr.Key)
+		b.WriteString(`="`)
+		b.WriteString(html.EscapeString(attr.Val))
+		b.WriteString(`"`)
+	}
+	b.WriteString(">")
+	return b.String()
+}
+
+func renderElement(tag string, attrs []xhtml.Attribute, childHTML string) string {
+	var b strings.Builder
+	b.WriteString(renderStartTag(tag, attrs))
+	b.WriteString(childHTML)
+	b.WriteString("</")
+	b.WriteString(tag)
+	b.WriteString(">")
+	return b.String()
+}
+
+func hasAttr(attrs []xhtml.Attribute, key string) bool {
+	for _, attr := range attrs {
+		if strings.EqualFold(strings.TrimSpace(attr.Key), key) && strings.TrimSpace(attr.Val) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func shouldDropEmptyElement(tag, childHTML string) bool {
+	switch tag {
+	case "a", "p", "span", "div", "blockquote", "li", "h1", "h2", "h3", "h4", "h5", "h6", "pre", "code", "ul", "ol", "table", "thead", "tbody", "tr", "th", "td":
+		return !hasMeaningfulContent(childHTML)
+	default:
+		return false
+	}
+}
+
+func hasMeaningfulContent(content string) bool {
+	plain := strings.TrimSpace(html.UnescapeString(htmlTagPattern.ReplaceAllString(content, " ")))
+	if plain != "" {
+		return true
+	}
+	return strings.Contains(content, "<img") || strings.Contains(content, "<br") || strings.Contains(content, "<hr")
 }
 
 func sanitizeAttrs(tag string, attrs []xhtml.Attribute) []xhtml.Attribute {

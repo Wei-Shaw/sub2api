@@ -160,6 +160,33 @@ export function resolveRouteSEO(
     }
   }
 
+  if (route.name === 'NotFound') {
+    const translatedTitle = i18n.global.t('errors.pageNotFound')
+    const translatedDescription = i18n.global.t('errors.pageNotFoundDescription')
+    const titleLabel = translatedTitle && translatedTitle !== 'errors.pageNotFound'
+      ? translatedTitle
+      : 'Page not found'
+    const description = translatedDescription && translatedDescription !== 'errors.pageNotFoundDescription'
+      ? translatedDescription
+      : 'Page not found.'
+    const title = `${siteName} - ${titleLabel}`
+    return {
+      title,
+      description,
+      canonicalUrl,
+      imageUrl: settings?.seo_default_og_image?.trim() || imageUrl,
+      robots: 'noindex, nofollow',
+      type: 'website',
+      jsonLD: {
+        '@context': 'https://schema.org',
+        '@type': 'WebPage',
+        name: title,
+        description,
+        url: canonicalUrl,
+      },
+    }
+  }
+
   const pageTitle = resolveTitle(route, siteName)
   const description = resolveDescription(route, settings)
 

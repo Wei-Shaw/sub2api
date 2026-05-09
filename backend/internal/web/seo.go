@@ -229,16 +229,23 @@ func buildNotFoundSEOData(requestPath string, settingsJSON []byte) seoData {
 	siteName := normalizeSiteName(cfg.SiteName)
 	baseURL := normalizeFrontendBaseURL(cfg.FrontendURL)
 	canonicalURL := resolveCanonicalURL(baseURL, requestPath)
+	locale := detectOpenGraphLocale(siteName, cfg.SEODefaultTitle, cfg.SEODefaultDescription)
+	titleSuffix := "404"
+	description := "Page not found."
+	if locale == "zh_CN" {
+		titleSuffix = "页面未找到"
+		description = "页面不存在。"
+	}
 	return seoData{
 		SiteName:         siteName,
-		Title:            firstNonEmpty(strings.TrimSpace(cfg.SEODefaultTitle), siteName) + " - 404",
-		Description:      firstNonEmpty(normalizePlainText(cfg.SEODefaultDescription), "Page not found."),
+		Title:            firstNonEmpty(strings.TrimSpace(cfg.SEODefaultTitle), siteName) + " - " + titleSuffix,
+		Description:      description,
 		CanonicalURL:     canonicalURL,
 		ImageURL:         resolveDefaultSEOImage(baseURL, cfg),
 		Robots:           "noindex, nofollow",
 		XRobotsTag:       "noindex, nofollow",
 		Type:             "website",
-		OpenGraphLocale:  detectOpenGraphLocale(siteName, cfg.SEODefaultTitle, cfg.SEODefaultDescription),
+		OpenGraphLocale:  locale,
 		TwitterCard:      "summary_large_image",
 		ShouldInjectHead: true,
 	}

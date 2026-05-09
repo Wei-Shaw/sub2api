@@ -1227,12 +1227,16 @@ export default {
   errors: {
     somethingWentWrong: 'Something went wrong',
     pageNotFound: 'Page not found',
+    pageNotFoundDescription: "The page you are looking for doesn't exist or has been moved.",
     unauthorized: 'Unauthorized',
     forbidden: 'Forbidden',
     serverError: 'Server error',
     networkError: 'Network error',
     timeout: 'Request timeout',
-    tryAgain: 'Please try again'
+    tryAgain: 'Please try again',
+    goBack: 'Go Back',
+    needHelp: 'Need help?',
+    contactSupport: 'Contact support'
   },
 
   // Dates

@@ -27,6 +27,9 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
+      # Prerender depends on live settings/page data fetched during build, so
+      # reusing the frontend build cache can leave prerender output stale.
+      no_cache: true
       network: host
       extra_hosts:
         - "host.docker.internal:host-gateway"

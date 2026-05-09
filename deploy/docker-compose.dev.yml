@@ -13,6 +13,9 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
+      # Prerender depends on live settings/page data fetched during build, so
+      # reusing the frontend build cache can leave prerender output stale.
+      no_cache: true
     container_name: sub2api-dev
     restart: unless-stopped
     ports:

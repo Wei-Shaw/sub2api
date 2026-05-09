@@ -56,6 +56,10 @@ describe('seo utils', () => {
     i18n.global.setLocaleMessage('en', {
       home: { heroDescription: 'One API key for every model.' },
       common: { login: 'Login' },
+      errors: {
+        pageNotFound: 'Page not found',
+        pageNotFoundDescription: "The page you are looking for doesn't exist or has been moved.",
+      },
     })
     i18n.global.locale.value = 'en'
   })
@@ -85,5 +89,21 @@ describe('seo utils', () => {
     expect(document.head.querySelector('meta[name="description"]')?.getAttribute('content')).toContain('Terms of Service')
     expect(document.head.querySelector('link[rel="canonical"]')?.getAttribute('href')).toBe('https://example.com/legal/terms')
     expect(document.head.querySelector('meta[property="og:title"]')?.getAttribute('content')).toBe('Terms of Service - Sub2API')
+  })
+
+  it('marks 404 route as noindex', async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/:pathMatch(.*)*', name: 'NotFound', component: { template: '<div />' }, meta: { requiresAuth: false, title: '404 Not Found' } }],
+    })
+    await router.push('/does-not-exist')
+
+    const seo = resolveRouteSEO(router.currentRoute.value, settings)
+    expect(seo.robots).toBe('noindex, nofollow')
+    expect(seo.title).toBe('Sub2API - Page not found')
+    expect(seo.description).toBeTruthy()
+
+    updateRouteSEO(router.currentRoute.value, settings)
+    expect(document.head.querySelector('meta[name="robots"]')?.getAttribute('content')).toBe('noindex, nofollow')
   })
 })

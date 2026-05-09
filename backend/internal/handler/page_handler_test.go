@@ -6,8 +6,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -288,5 +291,136 @@ func TestDetectPageImageExtensionRejectsSVG(t *testing.T) {
 	svg := []byte(`<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>`)
 	if ext, ok := detectPageImageExtension(svg, "image/svg+xml", "demo.svg"); ok || ext != "" {
 		t.Fatalf("expected svg upload to be rejected, got ext=%q ok=%v", ext, ok)
+	}
+}
+
+func TestSanitizePageAssetBaseName_PreservesSafeChineseFilename(t *testing.T) {
+	t.Parallel()
+
+	got := sanitizePageAssetBaseName("教程截图-中文文件名 01")
+	if got != "教程截图-中文文件名-01" {
+		t.Fatalf("sanitizePageAssetBaseName = %q, want %q", got, "教程截图-中文文件名-01")
+	}
+}
+
+func TestServePageImage_SupportsChineseFilename(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	root := t.TempDir()
+	pagesDir := filepath.Join(root, "pages")
+	imageDir := filepath.Join(pagesDir, "tutorial")
+	if err := os.MkdirAll(imageDir, 0o755); err != nil {
+		t.Fatalf("create image dir: %v", err)
+	}
+
+	imageName := "教程截图-中文文件名.png"
+	imagePath := filepath.Join(imageDir, imageName)
+	imageBytes := []byte("png")
+	if err := os.WriteFile(imagePath, imageBytes, 0o644); err != nil {
+		t.Fatalf("write image: %v", err)
+	}
+
+	repo := &pageHandlerSettingRepoStub{
+		values: map[string]string{
+			service.SettingKeyCustomMenuItems: `[]`,
+		},
+	}
+	handler := NewPageHandler(root, service.NewSettingService(repo, &config.Config{}))
+
+	router := gin.New()
+	router.GET("/api/v1/pages/:slug/images/*filename", handler.ServePageImage)
+
+	encoded := url.PathEscape(imageName)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/pages/tutorial/images/"+encoded, nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body=%q", w.Code, http.StatusOK, w.Body.String())
+	}
+	if string(w.Body.Bytes()) != string(imageBytes) {
+		t.Fatalf("image body = %q, want %q", w.Body.String(), string(imageBytes))
+	}
+}
+
+func TestTutorialDocumentRoundTripStable(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	root := t.TempDir()
+	repo := &pageHandlerSettingRepoStub{
+		values: map[string]string{
+			service.SettingKeyCustomMenuItems: `[]`,
+		},
+	}
+	handler := NewPageHandler(root, service.NewSettingService(repo, &config.Config{}))
+
+	router := gin.New()
+	router.GET("/api/v1/tutorial-document", handler.GetTutorialDocument)
+	router.PUT("/api/v1/tutorial-document", handler.UpdateTutorialDocument)
+
+	input := `<h1>sub2api 接入教程：中文显示测试</h1><p>这是一个用于验证中文显示的教程页面。</p><p><a href="https://example.com">查看完整中文接入说明</a></p><blockquote>“这是一个中文引用块。”</blockquote><pre><code class="language-javascript">console.log('safe code')</code></pre>`
+
+	putBody := `{"content_html":` + strconv.Quote(input) + `}`
+	w1 := httptest.NewRecorder()
+	req1 := httptest.NewRequest(http.MethodPut, "/api/v1/tutorial-document", strings.NewReader(putBody))
+	req1.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w1, req1)
+	if w1.Code != http.StatusOK {
+		t.Fatalf("first put status = %d, want %d, body=%s", w1.Code, http.StatusOK, w1.Body.String())
+	}
+
+	var putResp1 struct {
+		Code int `json:"code"`
+		Data struct {
+			ContentHTML string `json:"content_html"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w1.Body.Bytes(), &putResp1); err != nil {
+		t.Fatalf("unmarshal first put response: %v", err)
+	}
+
+	w2 := httptest.NewRecorder()
+	req2 := httptest.NewRequest(http.MethodGet, "/api/v1/tutorial-document", nil)
+	router.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusOK {
+		t.Fatalf("get status = %d, want %d, body=%s", w2.Code, http.StatusOK, w2.Body.String())
+	}
+	var getResp struct {
+		Code int `json:"code"`
+		Data struct {
+			ContentHTML string `json:"content_html"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w2.Body.Bytes(), &getResp); err != nil {
+		t.Fatalf("unmarshal get response: %v", err)
+	}
+
+	putBody2 := `{"content_html":` + strconv.Quote(getResp.Data.ContentHTML) + `}`
+	w3 := httptest.NewRecorder()
+	req3 := httptest.NewRequest(http.MethodPut, "/api/v1/tutorial-document", strings.NewReader(putBody2))
+	req3.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w3, req3)
+	if w3.Code != http.StatusOK {
+		t.Fatalf("second put status = %d, want %d, body=%s", w3.Code, http.StatusOK, w3.Body.String())
+	}
+	var putResp2 struct {
+		Code int `json:"code"`
+		Data struct {
+			ContentHTML string `json:"content_html"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w3.Body.Bytes(), &putResp2); err != nil {
+		t.Fatalf("unmarshal second put response: %v", err)
+	}
+
+	if putResp1.Data.ContentHTML != getResp.Data.ContentHTML {
+		t.Fatalf("stored content should match first sanitized response\nput=%s\nget=%s", putResp1.Data.ContentHTML, getResp.Data.ContentHTML)
+	}
+	if getResp.Data.ContentHTML != putResp2.Data.ContentHTML {
+		t.Fatalf("tutorial document should be stable on save-read-save\nget=%s\nput2=%s", getResp.Data.ContentHTML, putResp2.Data.ContentHTML)
+	}
+	if !strings.Contains(putResp2.Data.ContentHTML, "<h1>sub2api 接入教程：中文显示测试</h1>") {
+		t.Fatalf("expected heading to survive round trip, got %s", putResp2.Data.ContentHTML)
+	}
+	if !strings.Contains(putResp2.Data.ContentHTML, "查看完整中文接入说明") {
+		t.Fatalf("expected safe link text to survive round trip, got %s", putResp2.Data.ContentHTML)
 	}
 }

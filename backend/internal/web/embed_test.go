@@ -684,6 +684,7 @@ func TestFrontendServer_Middleware(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Body.String(), "<h1>教程文档</h1>")
+		assert.Contains(t, w.Body.String(), "你可以在后台的“系统设置”页面直接编辑这份教程文档正文")
 	})
 
 	t.Run("renders_markdown_lists_and_inline_elements", func(t *testing.T) {
