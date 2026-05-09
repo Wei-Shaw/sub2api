@@ -56,6 +56,27 @@ describe('prerender content injection', () => {
     expect(html).toContain('<p>Use prerendered HTML content.</p>')
   })
 
+  it('keeps safe style and strips dangerous attributes in prerendered html', () => {
+    const html = injectPrerenderContent(baseHTML, {
+      route: '/docs/tutorial',
+      title: '教程文档',
+      source: 'tutorial',
+      html: `
+        <p style="color:#0f766e" onclick="alert(1)">中文正文</p>
+        <img src="/ok.png" onerror="alert(1)">
+        <svg onload="alert(1)"><circle cx="10" cy="10" r="10"></circle></svg>
+        <div style="position:fixed;top:0;left:0;width:100%;height:100%">overlay</div>
+      `,
+    })
+
+    expect(html).toContain('style="color: #0f766e"')
+    expect(html).not.toContain('onclick=')
+    expect(html).not.toContain('onerror=')
+    expect(html).not.toContain('<svg')
+    expect(html).not.toContain('position:fixed')
+    expect(html).toContain('中文正文')
+  })
+
   it('escapes title and sanitizes prerendered body html', () => {
     const html = injectPrerenderContent(baseHTML, {
       route: '/custom/unsafe',

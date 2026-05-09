@@ -77,12 +77,11 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { marked } from 'marked'
-import DOMPurify from 'dompurify'
 import { getPublicSettings } from '@/api/auth'
 import { buildEmbeddedUrl } from '@/utils/embedded-url'
 import { updateRouteSEO } from '@/utils/seo'
 import type { CustomMenuItem, PublicSettings } from '@/types'
+import { renderPublicMarkdown } from '@/utils/publicContent'
 
 const props = withDefaults(defineProps<{
   slug?: string
@@ -163,7 +162,7 @@ function buildPageImageUrl(slug: string, src: string): string {
 async function fetchAndRenderMarkdown(slug: string) {
   const resp = await fetch(`/api/v1/public/pages/${encodeURIComponent(slug)}`)
   if (!resp.ok) {
-    renderedHtml.value = '<p class="text-red-500">Page not found</p>'
+    renderedHtml.value = '<p class="text-red-500">页面未找到。</p>'
     return
   }
   let raw = await resp.text()
@@ -171,8 +170,7 @@ async function fetchAndRenderMarkdown(slug: string) {
     /!\[([^\]]*)\]\(([^)]+)\)/g,
     (match, alt, src) => isRelativeMarkdownAsset(src) ? `![${alt}](${buildPageImageUrl(slug, src)})` : match
   )
-  const html = marked.parse(raw) as string
-  renderedHtml.value = DOMPurify.sanitize(html)
+  renderedHtml.value = renderPublicMarkdown(raw)
   await nextTick()
 }
 

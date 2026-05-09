@@ -72,7 +72,11 @@ func (s *FrontendServer) tryServePublicRenderedPage(c *gin.Context, requestPath 
 				slug = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(item.URL), "md:"))
 			}
 			if slug == "" {
-				return false
+				embeddedURL, ok := buildPublicEmbeddedURL(item.URL)
+				if !ok {
+					return false
+				}
+				return s.serveRenderedEmbeddedPage(c, settingsJSON, requestPath, item.Label, embeddedURL)
 			}
 			raw, err := s.loadMarkdownFile(slug)
 			if err != nil {
@@ -94,6 +98,29 @@ func (s *FrontendServer) tryServePublicRenderedPage(c *gin.Context, requestPath 
 	return false
 }
 
+func buildPublicEmbeddedURL(raw string) (string, bool) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", false
+	}
+
+	parsed, err := url.Parse(trimmed)
+	if err != nil || parsed.Host == "" {
+		return "", false
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return "", false
+	}
+
+	if parsed.Query().Get("ui_mode") == "" {
+		query := parsed.Query()
+		query.Set("ui_mode", "embedded")
+		parsed.RawQuery = query.Encode()
+	}
+
+	return parsed.String(), true
+}
+
 func (s *FrontendServer) serveRenderedHTMLPage(
 	c *gin.Context,
 	settingsJSON []byte,
@@ -107,6 +134,28 @@ func (s *FrontendServer) serveRenderedHTMLPage(
 		seo.Title = fmt.Sprintf("%s - %s", strings.TrimSpace(title), normalizeSiteName(cfg.SiteName))
 	}
 	pageHTML := buildPublicMarkdownHTML(cfg, seo, title, bodyHTML)
+	c.Header("Cache-Control", "no-cache")
+	if seo.XRobotsTag != "" {
+		c.Header("X-Robots-Tag", seo.XRobotsTag)
+	}
+	c.Data(http.StatusOK, "text/html; charset=utf-8", pageHTML)
+	c.Abort()
+	return true
+}
+
+func (s *FrontendServer) serveRenderedEmbeddedPage(
+	c *gin.Context,
+	settingsJSON []byte,
+	requestPath string,
+	title string,
+	embeddedURL string,
+) bool {
+	seo := buildSEOData(requestPath, settingsJSON)
+	cfg := parseSEOConfig(settingsJSON)
+	if strings.TrimSpace(title) != "" && strings.TrimSpace(seo.Title) == "" {
+		seo.Title = fmt.Sprintf("%s - %s", strings.TrimSpace(title), normalizeSiteName(cfg.SiteName))
+	}
+	pageHTML := buildPublicEmbeddedHTML(cfg, seo, title, embeddedURL)
 	c.Header("Cache-Control", "no-cache")
 	if seo.XRobotsTag != "" {
 		c.Header("X-Robots-Tag", seo.XRobotsTag)
@@ -206,6 +255,35 @@ func buildPublicMarkdownHTML(cfg seoConfig, seo seoData, pageTitle, bodyHTML str
 	buf.WriteString(`<main><article><div class="hero"><p>` + html.EscapeString(siteName) + `</p><h1>` + pageTitle + `</h1></div><div class="content">`)
 	buf.WriteString(bodyHTML)
 	buf.WriteString(`</div></article></main></body></html>`)
+	return buf.Bytes()
+}
+
+func buildPublicEmbeddedHTML(cfg seoConfig, seo seoData, pageTitle, embeddedURL string) []byte {
+	siteName := normalizeSiteName(cfg.SiteName)
+	siteLogo := html.EscapeString(resolveSEOImageURL(normalizeFrontendBaseURL(cfg.FrontendURL), cfg.SiteLogo))
+	pageTitle = html.EscapeString(strings.TrimSpace(pageTitle))
+	embeddedURL = html.EscapeString(strings.TrimSpace(embeddedURL))
+	htmlLang := detectHTMLLang(siteName, seo.Title, seo.Description, pageTitle)
+	loginLabel := "Login"
+	openLabel := "Open in a new tab"
+	if htmlLang == "zh-CN" {
+		loginLabel = "登录"
+		openLabel = "打开原始页面"
+	}
+
+	var buf bytes.Buffer
+	buf.WriteString(`<!doctype html><html lang="` + htmlLang + `"><head><meta charset="UTF-8">`)
+	buf.WriteString(`<meta name="viewport" content="width=device-width, initial-scale=1.0">`)
+	buf.WriteString(`<title>` + html.EscapeString(seo.Title) + `</title>`)
+	buf.Write(buildSEOMetaTags(seo))
+	buf.WriteString(`<style>body{margin:0;font-family:ui-sans-serif,system-ui,sans-serif;background:#f8fafc;color:#111827}header{background:#fff;border-bottom:1px solid #e5e7eb}main{max-width:1100px;margin:0 auto;padding:32px 16px}.shell{background:#fff;border:1px solid #e5e7eb;border-radius:20px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.04)}.hero{padding:24px;border-bottom:1px solid #e5e7eb}.hero p{margin:0;color:#0f766e;font-size:14px;font-weight:600}.hero h1{margin:12px 0 0;font-size:32px;line-height:1.2}.hero a{display:inline-flex;margin-top:16px;padding:10px 16px;border-radius:10px;background:#0f766e;color:#fff;text-decoration:none;font-weight:600}.frame-wrap{padding:0 24px 24px}.frame-note{padding:24px 0 16px;line-height:1.7;color:#4b5563}.frame{width:100%;min-height:70vh;border:0;border-top:1px solid #e5e7eb;background:#fff}.brand{max-width:1100px;margin:0 auto;padding:16px;display:flex;align-items:center;justify-content:space-between;gap:16px}.brand-left{display:flex;align-items:center;gap:12px}.brand-logo{width:40px;height:40px;border-radius:12px;overflow:hidden;background:#fff;border:1px solid #e5e7eb}.brand-logo img{width:100%;height:100%;object-fit:contain}.brand-name{font-weight:700;color:#111827;text-decoration:none}.login{display:inline-flex;align-items:center;justify-content:center;padding:10px 16px;border-radius:10px;background:#0f766e;color:#fff;text-decoration:none;font-weight:600}</style>`)
+	buf.WriteString(`</head><body>`)
+	buf.WriteString(`<header><div class="brand"><div class="brand-left"><div class="brand-logo">`)
+	if siteLogo != "" {
+		buf.WriteString(`<img src="` + siteLogo + `" alt="Logo">`)
+	}
+	buf.WriteString(`</div><a class="brand-name" href="/home">` + html.EscapeString(siteName) + `</a></div><a class="login" href="/login">` + loginLabel + `</a></div></header>`)
+	buf.WriteString(`<main><article class="shell"><div class="hero"><p>` + html.EscapeString(siteName) + `</p><h1>` + pageTitle + `</h1><a href="` + embeddedURL + `" target="_blank" rel="noopener noreferrer">` + openLabel + `</a></div><div class="frame-wrap"><p class="frame-note">` + html.EscapeString(seo.Description) + `</p><iframe class="frame" src="` + embeddedURL + `" loading="lazy" referrerpolicy="strict-origin-when-cross-origin"></iframe></div></article></main></body></html>`)
 	return buf.Bytes()
 }
 

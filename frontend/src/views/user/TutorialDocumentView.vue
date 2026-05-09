@@ -18,11 +18,11 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import DOMPurify from 'dompurify'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import { useAppStore } from '@/stores'
 import { updateRouteSEO } from '@/utils/seo'
 import { useRoute } from 'vue-router'
+import { sanitizePublicHTML } from '@/utils/publicContent'
 
 interface TutorialDocumentPayload {
   content_html: string
@@ -32,12 +32,6 @@ const appStore = useAppStore()
 const route = useRoute()
 const loading = ref(true)
 const renderedHtml = ref('')
-
-function normalizeHTML(raw: string) {
-  return DOMPurify.sanitize(raw, {
-    ADD_ATTR: ['style', 'target', 'rel', 'class'],
-  })
-}
 
 onMounted(async () => {
   loading.value = true
@@ -52,7 +46,7 @@ onMounted(async () => {
 
     if (resp.ok) {
       const payload = await resp.json() as { code?: number; data?: TutorialDocumentPayload }
-      renderedHtml.value = normalizeHTML(payload?.data?.content_html || '')
+      renderedHtml.value = sanitizePublicHTML(payload?.data?.content_html || '')
     } else {
       renderedHtml.value = '<p class="text-red-500">页面未找到。</p>'
     }

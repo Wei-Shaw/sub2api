@@ -159,7 +159,6 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import pagesAPI, { type AdminPageImage } from '@/api/admin/pages'
 import { useAppStore } from '@/stores'
 import { useClipboard } from '@/composables/useClipboard'
-import DOMPurify from 'dompurify'
 import { Editor, EditorContent } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
@@ -169,6 +168,7 @@ import Color from '@tiptap/extension-color'
 import Image from '@tiptap/extension-image'
 import TextAlign from '@tiptap/extension-text-align'
 import Placeholder from '@tiptap/extension-placeholder'
+import { sanitizePublicHTML } from '@/utils/publicContent'
 
 const appStore = useAppStore()
 const { copyToClipboard } = useClipboard()
@@ -184,12 +184,6 @@ const previewHTML = ref('')
 const currentColor = ref('#111827')
 const editor = shallowRef<Editor | null>(null)
 
-function normalizeHTML(raw: string) {
-  return DOMPurify.sanitize(raw, {
-    ADD_ATTR: ['style', 'target', 'rel', 'class'],
-  })
-}
-
 function formatBytes(size: number) {
   if (size < 1024) return `${size} B`
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
@@ -198,7 +192,7 @@ function formatBytes(size: number) {
 
 function updatePreview() {
   const html = editor.value?.getHTML() || ''
-  previewHTML.value = normalizeHTML(html)
+  previewHTML.value = sanitizePublicHTML(html)
 }
 
 async function loadDocument() {

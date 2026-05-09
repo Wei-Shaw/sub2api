@@ -125,8 +125,7 @@ import { useAdminSettingsStore } from '@/stores/adminSettings'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { buildEmbeddedUrl, detectTheme } from '@/utils/embedded-url'
-import { marked } from 'marked'
-import DOMPurify from 'dompurify'
+import { renderPublicMarkdown } from '@/utils/publicContent'
 
 interface TocItem {
   id: string
@@ -229,7 +228,7 @@ async function fetchAndRenderMarkdown(slug: string) {
       headers: authStore.token ? { Authorization: `Bearer ${authStore.token}` } : {},
     })
     if (!resp.ok) {
-      renderedHtml.value = '<p class="text-red-500">Page not found</p>'
+      renderedHtml.value = '<p class="text-red-500">页面未找到。</p>'
       return
     }
     let raw = await resp.text()
@@ -239,11 +238,7 @@ async function fetchAndRenderMarkdown(slug: string) {
       (match, alt, src) => isRelativeMarkdownAsset(src) ? `![${alt}](${buildPageImageUrl(slug, src)})` : match
     )
 
-    const html = marked.parse(raw) as string
-    const sanitized = DOMPurify.sanitize(html, {
-      ADD_TAGS: ['iframe'],
-      ADD_ATTR: ['allowfullscreen', 'frameborder', 'src'],
-    })
+    const sanitized = renderPublicMarkdown(raw)
 
     // Inject IDs into headings and build TOC
     const toc: TocItem[] = []
@@ -262,7 +257,7 @@ async function fetchAndRenderMarkdown(slug: string) {
     renderedHtml.value = withIds
     tocItems.value = toc
   } catch {
-    renderedHtml.value = '<p class="text-red-500">Failed to load page</p>'
+    renderedHtml.value = '<p class="text-red-500">页面加载失败，请稍后重试。</p>'
   } finally {
     loading.value = false
     await nextTick()

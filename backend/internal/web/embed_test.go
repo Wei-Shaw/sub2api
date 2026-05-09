@@ -664,6 +664,34 @@ func TestFrontendServer_Middleware(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "<p>Hello world</p>")
 	})
 
+	t.Run("renders_public_embedded_page_server_side", func(t *testing.T) {
+		provider := &mockSettingsProvider{
+			settings: map[string]any{
+				"site_name": "MyCustomSite",
+				"frontend_url": "https://example.com",
+				"custom_menu_items": []map[string]any{
+					{"id": "pricing", "label": "Pricing", "visibility": "user", "url": "https://billing.example.com/embed"},
+				},
+			},
+		}
+
+		server, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+
+		router := gin.New()
+		router.Use(server.Middleware())
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/custom/pricing", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), "<iframe")
+		assert.Contains(t, w.Body.String(), "https://billing.example.com/embed?ui_mode=embedded")
+		assert.Contains(t, w.Body.String(), "<title>Pricing - MyCustomSite</title>")
+		assert.Equal(t, "text/html; charset=utf-8", w.Header().Get("Content-Type"))
+	})
+
 	t.Run("renders_builtin_tutorial_markdown_page", func(t *testing.T) {
 		provider := &mockSettingsProvider{
 			settings: map[string]any{
@@ -685,6 +713,35 @@ func TestFrontendServer_Middleware(t *testing.T) {
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Body.String(), "<h1>教程文档</h1>")
 		assert.Contains(t, w.Body.String(), "你可以在后台的“系统设置”页面直接编辑这份教程文档正文")
+	})
+
+	t.Run("sitemap_excludes_missing_markdown_custom_page", func(t *testing.T) {
+		provider := &mockSettingsProvider{
+			settings: map[string]any{
+				"site_name": "MyCustomSite",
+				"frontend_url": "https://example.com",
+				"custom_menu_items": []map[string]any{
+					{"id": "guide", "label": "Guide", "visibility": "user", "page_slug": "guide"},
+					{"id": "missing", "label": "Missing", "visibility": "user", "page_slug": "missing"},
+				},
+			},
+		}
+
+		server, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+		require.NoError(t, os.MkdirAll(server.pagesDir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(server.pagesDir, "guide.md"), []byte("# Guide"), 0o644))
+
+		router := gin.New()
+		router.Use(server.Middleware())
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/sitemap.xml", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), "https://example.com/custom/guide")
+		assert.NotContains(t, w.Body.String(), "https://example.com/custom/missing")
 	})
 
 	t.Run("renders_markdown_lists_and_inline_elements", func(t *testing.T) {

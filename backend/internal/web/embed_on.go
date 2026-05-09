@@ -7,9 +7,11 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"encoding/xml"
 	"io"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -408,7 +410,7 @@ func (s *FrontendServer) serveSitemapXML(c *gin.Context) {
 		c.Abort()
 		return
 	}
-	content := buildSitemapXML(settingsJSON)
+	content := s.buildSitemapXML(settingsJSON)
 	if len(content) == 0 {
 		c.Status(http.StatusNotFound)
 		c.Abort()
@@ -456,6 +458,88 @@ func extractSettingsJSON(htmlDoc []byte) []byte {
 		return nil
 	}
 	return htmlDoc[start : start+end]
+}
+
+func (s *FrontendServer) buildSitemapXML(settingsJSON []byte) []byte {
+	content := buildSitemapXML(settingsJSON)
+	if len(content) == 0 {
+		return nil
+	}
+
+	cfg := parseSEOConfig(settingsJSON)
+	baseURL := normalizeFrontendBaseURL(cfg.FrontendURL)
+	if baseURL == "" {
+		return content
+	}
+
+	allowed := make(map[string]struct{})
+	if !strings.Contains(strings.ToLower(resolveHomeRobots(cfg)), "noindex") {
+		allowed[strings.TrimRight(baseURL, "/")+"/"] = struct{}{}
+	}
+	if !strings.Contains(strings.ToLower(resolvePublicRobots(cfg)), "noindex") {
+		if _, err := s.loadMarkdownFile("tutorial"); err == nil {
+			allowed[strings.TrimRight(baseURL, "/")+"/docs/tutorial"] = struct{}{}
+		}
+	}
+	for _, doc := range cfg.LoginAgreementDocuments {
+		id := strings.TrimSpace(doc.ID)
+		if id == "" {
+			continue
+		}
+		robots := strings.TrimSpace(doc.SEORobots)
+		if robots == "" {
+			robots = resolveLegalRobots(cfg)
+		}
+		if strings.Contains(strings.ToLower(robots), "noindex") {
+			continue
+		}
+		allowed[strings.TrimRight(baseURL, "/")+"/legal/"+url.PathEscape(id)] = struct{}{}
+	}
+	for _, item := range cfg.CustomMenuItems {
+		if item.Visibility == "admin" {
+			continue
+		}
+		id := strings.TrimSpace(item.ID)
+		if id == "" {
+			continue
+		}
+		robots := strings.TrimSpace(item.SEORobots)
+		if robots == "" {
+			robots = resolvePublicRobots(cfg)
+		}
+		if strings.Contains(strings.ToLower(robots), "noindex") {
+			continue
+		}
+		slug := strings.TrimSpace(item.PageSlug)
+		if slug == "" && strings.HasPrefix(strings.TrimSpace(item.URL), "md:") {
+			slug = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(item.URL), "md:"))
+		}
+		if slug == "" {
+			allowed[strings.TrimRight(baseURL, "/")+"/custom/"+url.PathEscape(id)] = struct{}{}
+			continue
+		}
+		if _, err := s.loadMarkdownFile(slug); err == nil {
+			allowed[strings.TrimRight(baseURL, "/")+"/custom/"+url.PathEscape(id)] = struct{}{}
+		}
+	}
+
+	var payload sitemapURLSet
+	if err := xml.Unmarshal(content, &payload); err != nil {
+		return content
+	}
+	filtered := make([]sitemapURLEntry, 0, len(payload.URLs))
+	for _, entry := range payload.URLs {
+		if _, ok := allowed[strings.TrimSpace(entry.Loc)]; ok {
+			filtered = append(filtered, entry)
+		}
+	}
+	payload.URLs = filtered
+
+	out, err := xml.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		return content
+	}
+	return append([]byte(xml.Header), out...)
 }
 
 // ServeEmbeddedFrontend returns a middleware for serving embedded frontend

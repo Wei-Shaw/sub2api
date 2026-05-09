@@ -42,10 +42,10 @@
 import { onMounted, ref } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import DOMPurify from 'dompurify'
 import { getPublicSettings } from '@/api/auth'
 import type { PublicSettings } from '@/types'
 import { updateRouteSEO } from '@/utils/seo'
+import { sanitizePublicHTML } from '@/utils/publicContent'
 
 interface TutorialDocumentPayload {
   content_html: string
@@ -60,12 +60,6 @@ const renderedHtml = ref('')
 
 const siteName = ref('Sub2API')
 const siteLogo = ref('')
-
-function normalizeHTML(raw: string) {
-  return DOMPurify.sanitize(raw, {
-    ADD_ATTR: ['style', 'target', 'rel', 'class'],
-  })
-}
 
 onMounted(async () => {
   loading.value = true
@@ -83,7 +77,7 @@ onMounted(async () => {
 
     if (tutorialResp.ok) {
       const payload = await tutorialResp.json() as { code?: number; data?: TutorialDocumentPayload }
-      renderedHtml.value = normalizeHTML(payload?.data?.content_html || '')
+      renderedHtml.value = sanitizePublicHTML(payload?.data?.content_html || '')
     } else {
       renderedHtml.value = '<p class="text-red-500">页面未找到。</p>'
     }

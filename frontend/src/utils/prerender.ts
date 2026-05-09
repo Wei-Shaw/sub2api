@@ -1,5 +1,6 @@
 import createDOMPurify from 'dompurify'
 import { JSDOM } from 'jsdom'
+import { renderPublicMarkdownWithPurifier, sanitizePublicHTMLWithPurifier } from './publicContent'
 
 export type PrerenderSettingsPayload = {
   code?: number
@@ -59,12 +60,6 @@ function escapeHTML(value: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
-}
-
-function sanitizePrerenderHTML(raw: string): string {
-  return prerenderDOMPurify.sanitize(raw, {
-    ADD_ATTR: ['style', 'target', 'rel', 'class'],
-  })
 }
 
 export function collectPrerenderRoutes(
@@ -259,7 +254,9 @@ export function injectPrerenderContent(indexHTML: string, entry: PrerenderRouteE
   }
   const safeTitle = entry.title || 'Document'
   const rewrittenMarkdown = rewriteRelativeMarkdownImages(entry.markdown || '', entry.markdownSlug)
-  const contentHTML = sanitizePrerenderHTML(entry.html || renderSimpleMarkdownHTML(rewrittenMarkdown))
+  const contentHTML = entry.html
+    ? sanitizePublicHTMLWithPurifier(entry.html, prerenderDOMPurify, prerenderWindow.document)
+    : renderPublicMarkdownWithPurifier(rewrittenMarkdown, prerenderDOMPurify, prerenderWindow.document)
   const body = `
   <div class="min-h-screen bg-gray-50 text-gray-900">
     <main class="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:py-10">

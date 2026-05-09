@@ -1,3 +1,1 @@
 # Guide
-
-Hello world

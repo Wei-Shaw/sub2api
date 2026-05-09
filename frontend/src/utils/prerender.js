@@ -1,5 +1,6 @@
 import createDOMPurify from 'dompurify';
 import { JSDOM } from 'jsdom';
+import { renderPublicMarkdownWithPurifier, sanitizePublicHTMLWithPurifier } from './publicContent';
 export var BASE_PUBLIC_PRERENDER_ROUTES = [
     '/home',
     '/docs/tutorial',
@@ -13,11 +14,6 @@ function escapeHTML(value) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
-}
-function sanitizePrerenderHTML(raw) {
-    return prerenderDOMPurify.sanitize(raw, {
-        ADD_ATTR: ['style', 'target', 'rel', 'class'],
-    });
 }
 export function collectPrerenderRoutes(payload) {
     var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
@@ -34,13 +30,13 @@ export function collectPrerenderRoutes(payload) {
         source: 'tutorial',
     });
     for (var _l = 0, _m = (_a = data === null || data === void 0 ? void 0 : data.login_agreement_documents) !== null && _a !== void 0 ? _a : []; _l < _m.length; _l++) {
-        var legalItem = _m[_l];
-        var legalID = String((_b = legalItem === null || legalItem === void 0 ? void 0 : legalItem.id) !== null && _b !== void 0 ? _b : '').trim();
-        if (legalID) {
-            routes.set("/legal/".concat(legalID), {
-                route: "/legal/".concat(legalID),
-                title: String((_c = legalItem === null || legalItem === void 0 ? void 0 : legalItem.title) !== null && _c !== void 0 ? _c : '').trim(),
-                markdown: String((_d = legalItem === null || legalItem === void 0 ? void 0 : legalItem.content_md) !== null && _d !== void 0 ? _d : ''),
+        var item = _m[_l];
+        var id = String((_b = item === null || item === void 0 ? void 0 : item.id) !== null && _b !== void 0 ? _b : '').trim();
+        if (id) {
+            routes.set("/legal/".concat(id), {
+                route: "/legal/".concat(id),
+                title: String((_c = item === null || item === void 0 ? void 0 : item.title) !== null && _c !== void 0 ? _c : '').trim(),
+                markdown: String((_d = item === null || item === void 0 ? void 0 : item.content_md) !== null && _d !== void 0 ? _d : ''),
                 source: 'legal',
             });
         }
@@ -196,7 +192,9 @@ export function injectPrerenderContent(indexHTML, entry) {
     }
     var safeTitle = entry.title || 'Document';
     var rewrittenMarkdown = rewriteRelativeMarkdownImages(entry.markdown || '', entry.markdownSlug);
-    var contentHTML = sanitizePrerenderHTML(entry.html || renderSimpleMarkdownHTML(rewrittenMarkdown));
+    var contentHTML = entry.html
+        ? sanitizePublicHTMLWithPurifier(entry.html, prerenderDOMPurify, prerenderWindow.document)
+        : renderPublicMarkdownWithPurifier(rewrittenMarkdown, prerenderDOMPurify, prerenderWindow.document);
     var body = "\n  <div class=\"min-h-screen bg-gray-50 text-gray-900\">\n    <main class=\"mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:py-10\">\n      <article class=\"overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm\">\n        <div class=\"border-b border-gray-200 px-6 py-5\">\n          <h1 class=\"mt-2 text-3xl font-bold text-gray-950\">".concat(escapeHTML(safeTitle), "</h1>\n        </div>\n        <div class=\"public-markdown-content p-6 md:p-10\">").concat(contentHTML, "</div>\n      </article>\n    </main>\n  </div>");
     return indexHTML.replace('<div id="app"></div>', "<div id=\"app\">".concat(body, "</div>"));
 }
