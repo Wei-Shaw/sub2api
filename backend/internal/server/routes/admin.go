@@ -62,9 +62,6 @@ func RegisterAdminRoutes(
 		// 运维监控（Ops）
 		registerOpsRoutes(admin, h)
 
-		// 系统管理
-		registerSystemRoutes(admin, h)
-
 		// 订阅管理
 		registerSubscriptionRoutes(admin, h)
 
@@ -499,17 +496,6 @@ func registerBackupRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 
 		// 恢复操作
 		backup.POST("/:id/restore", h.Admin.Backup.RestoreBackup)
-	}
-}
-
-func registerSystemRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
-	system := admin.Group("/system")
-	{
-		system.GET("/version", h.Admin.System.GetVersion)
-		system.GET("/check-updates", h.Admin.System.CheckUpdates)
-		system.POST("/update", h.Admin.System.PerformUpdate)
-		system.POST("/rollback", h.Admin.System.Rollback)
-		system.POST("/restart", h.Admin.System.RestartService)
 	}
 }
 
