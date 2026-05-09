@@ -208,6 +208,56 @@
 - `Exec format error` 优先怀疑上传了错误平台二进制。
 - 这类问题不要继续硬重启；应先立刻回滚到最近备份二进制，恢复 `active + /health ok`，再重新构建正确产物。
 
+8. 正式部署验收不能只看 `systemd + /health`
+- 对当前这类 OpenAI 网关实例，`systemctl is-active` 和 `/health` 只能证明服务起来了，不能证明关键模型路由可用。
+- 如果本次改动涉及 OpenAI 调度、projection、`-Sys`、reserve、tool continuation 或模型兼容链，正式验收至少补一条真实模型请求。
+- 当前生产侧已经验证过的最小三模型探针是：
+  - `GPT-5.4-Sys`
+  - `gpt-5.5`
+  - `GPT-5.5-Sys`
+- 这三者必须分别记录 `HTTP status` 与错误体；不要只记“好像能用”。
+
+9. `gpt-5.5` 与 `GPT-5.5-Sys` 的排障必须分开看
+- 当前本地主线语义里，`GPT-5.5-Sys` 会先去掉 `-Sys`，再按 exhausted-class / projection 语义调度；plain `gpt-5.5` 则走 active 语义。
+- 因此线上现象如果是：
+  - `GPT-5.5-Sys = 200`
+  - `gpt-5.5 = 503`
+  不能直接下结论说“上游账号整体坏了”或“部署失败了”。
+- 先区分：
+  - plain active 路由无可用账号
+  - exhausted / reserve 路由可用
+  - 还是账号本身完全不可用
+
+10. 线上 `503` 要先抓 request id，再回看日志与 Redis bundle
+- 对 `/v1/responses` 的 `503`，优先保留：
+  - 请求模型
+  - `request_id`
+  - 返回错误体
+- 当前实例中，`request_id` 能直接在 `journalctl -u sub2api.service` 中反查到 `openai.account_select_failed` 等日志，足够先判断是“无可用账号”还是别的错误。
+- 如果错误体是：
+  - `No available accounts in target group (active)`
+  或日志里是：
+  - `no available OpenAI accounts supporting model: ...`
+  先查当前 scheduler bucket 的 Redis 活跃 bundle，而不是先怀疑 deploy 没生效。
+
+11. 当前生产侧 OpenAI bundle 的关键观察点
+- 当前 Redis key 约定已经确认：
+  - active version: `sched:active:<group>:openai:single`
+  - bundle payload: `sched:openai:<group>:openai:single:v<version>`
+- 对 group `2` 的生产实例，排查 `gpt-5.5` / `GPT-5.5-Sys` 时，至少看：
+  - `projection_version`
+  - `built_at`
+  - `projection.Models.<canonical model>.ExhaustedBaseIDs`
+  - `projection.Models.<canonical model>.ReserveOverflowIDs`
+  - `accounts`
+  - `projection_accounts`
+- 如果 `accounts` 里有账号、`projection_accounts` 里也有账号，但某模型视图把它排除，优先怀疑调度 / projection 语义问题，不要直接归因到账号离线。
+
+12. 排查 team 账号是否属于 exhausted 时，不要只看 `status=active`
+- `TEAM-*` 这类 OpenAI OAuth team 账号在排障时，不能只看 `status=active` / `schedulable=true` 就断定它属于 active 路由。
+- 应先核当前 exhausted 判定所依赖的 quota / usage 字段，再判断它在当前模型请求里应落在 active 还是 exhausted 语义下。
+- 换句话说：账号“活着”不等于该模型请求一定会按 active 身份命中它。
+
 ## 磁盘与运维经验
 
 生产机曾出现 `No space left on device`，根因不是数据库，而是：
