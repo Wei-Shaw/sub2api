@@ -115,6 +115,34 @@ func (_c *UserCreate) SetNillableBalance(v *float64) *UserCreate {
 	return _c
 }
 
+// SetTrialBalance sets the "trial_balance" field.
+func (_c *UserCreate) SetTrialBalance(v float64) *UserCreate {
+	_c.mutation.SetTrialBalance(v)
+	return _c
+}
+
+// SetNillableTrialBalance sets the "trial_balance" field if the given value is not nil.
+func (_c *UserCreate) SetNillableTrialBalance(v *float64) *UserCreate {
+	if v != nil {
+		_c.SetTrialBalance(*v)
+	}
+	return _c
+}
+
+// SetTrialBalanceExpiresAt sets the "trial_balance_expires_at" field.
+func (_c *UserCreate) SetTrialBalanceExpiresAt(v time.Time) *UserCreate {
+	_c.mutation.SetTrialBalanceExpiresAt(v)
+	return _c
+}
+
+// SetNillableTrialBalanceExpiresAt sets the "trial_balance_expires_at" field if the given value is not nil.
+func (_c *UserCreate) SetNillableTrialBalanceExpiresAt(v *time.Time) *UserCreate {
+	if v != nil {
+		_c.SetTrialBalanceExpiresAt(*v)
+	}
+	return _c
+}
+
 // SetConcurrency sets the "concurrency" field.
 func (_c *UserCreate) SetConcurrency(v int) *UserCreate {
 	_c.mutation.SetConcurrency(v)
@@ -139,6 +167,20 @@ func (_c *UserCreate) SetStatus(v string) *UserCreate {
 func (_c *UserCreate) SetNillableStatus(v *string) *UserCreate {
 	if v != nil {
 		_c.SetStatus(*v)
+	}
+	return _c
+}
+
+// SetRegistrationIP sets the "registration_ip" field.
+func (_c *UserCreate) SetRegistrationIP(v string) *UserCreate {
+	_c.mutation.SetRegistrationIP(v)
+	return _c
+}
+
+// SetNillableRegistrationIP sets the "registration_ip" field if the given value is not nil.
+func (_c *UserCreate) SetNillableRegistrationIP(v *string) *UserCreate {
+	if v != nil {
+		_c.SetRegistrationIP(*v)
 	}
 	return _c
 }
@@ -578,6 +620,10 @@ func (_c *UserCreate) defaults() error {
 		v := user.DefaultBalance
 		_c.mutation.SetBalance(v)
 	}
+	if _, ok := _c.mutation.TrialBalance(); !ok {
+		v := user.DefaultTrialBalance
+		_c.mutation.SetTrialBalance(v)
+	}
 	if _, ok := _c.mutation.Concurrency(); !ok {
 		v := user.DefaultConcurrency
 		_c.mutation.SetConcurrency(v)
@@ -585,6 +631,10 @@ func (_c *UserCreate) defaults() error {
 	if _, ok := _c.mutation.Status(); !ok {
 		v := user.DefaultStatus
 		_c.mutation.SetStatus(v)
+	}
+	if _, ok := _c.mutation.RegistrationIP(); !ok {
+		v := user.DefaultRegistrationIP
+		_c.mutation.SetRegistrationIP(v)
 	}
 	if _, ok := _c.mutation.Username(); !ok {
 		v := user.DefaultUsername
@@ -660,6 +710,9 @@ func (_c *UserCreate) check() error {
 	if _, ok := _c.mutation.Balance(); !ok {
 		return &ValidationError{Name: "balance", err: errors.New(`ent: missing required field "User.balance"`)}
 	}
+	if _, ok := _c.mutation.TrialBalance(); !ok {
+		return &ValidationError{Name: "trial_balance", err: errors.New(`ent: missing required field "User.trial_balance"`)}
+	}
 	if _, ok := _c.mutation.Concurrency(); !ok {
 		return &ValidationError{Name: "concurrency", err: errors.New(`ent: missing required field "User.concurrency"`)}
 	}
@@ -669,6 +722,14 @@ func (_c *UserCreate) check() error {
 	if v, ok := _c.mutation.Status(); ok {
 		if err := user.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "User.status": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.RegistrationIP(); !ok {
+		return &ValidationError{Name: "registration_ip", err: errors.New(`ent: missing required field "User.registration_ip"`)}
+	}
+	if v, ok := _c.mutation.RegistrationIP(); ok {
+		if err := user.RegistrationIPValidator(v); err != nil {
+			return &ValidationError{Name: "registration_ip", err: fmt.Errorf(`ent: validator failed for field "User.registration_ip": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.Username(); !ok {
@@ -763,6 +824,14 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 		_spec.SetField(user.FieldBalance, field.TypeFloat64, value)
 		_node.Balance = value
 	}
+	if value, ok := _c.mutation.TrialBalance(); ok {
+		_spec.SetField(user.FieldTrialBalance, field.TypeFloat64, value)
+		_node.TrialBalance = value
+	}
+	if value, ok := _c.mutation.TrialBalanceExpiresAt(); ok {
+		_spec.SetField(user.FieldTrialBalanceExpiresAt, field.TypeTime, value)
+		_node.TrialBalanceExpiresAt = &value
+	}
 	if value, ok := _c.mutation.Concurrency(); ok {
 		_spec.SetField(user.FieldConcurrency, field.TypeInt, value)
 		_node.Concurrency = value
@@ -770,6 +839,10 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(user.FieldStatus, field.TypeString, value)
 		_node.Status = value
+	}
+	if value, ok := _c.mutation.RegistrationIP(); ok {
+		_spec.SetField(user.FieldRegistrationIP, field.TypeString, value)
+		_node.RegistrationIP = value
 	}
 	if value, ok := _c.mutation.Username(); ok {
 		_spec.SetField(user.FieldUsername, field.TypeString, value)
@@ -1159,6 +1232,42 @@ func (u *UserUpsert) AddBalance(v float64) *UserUpsert {
 	return u
 }
 
+// SetTrialBalance sets the "trial_balance" field.
+func (u *UserUpsert) SetTrialBalance(v float64) *UserUpsert {
+	u.Set(user.FieldTrialBalance, v)
+	return u
+}
+
+// UpdateTrialBalance sets the "trial_balance" field to the value that was provided on create.
+func (u *UserUpsert) UpdateTrialBalance() *UserUpsert {
+	u.SetExcluded(user.FieldTrialBalance)
+	return u
+}
+
+// AddTrialBalance adds v to the "trial_balance" field.
+func (u *UserUpsert) AddTrialBalance(v float64) *UserUpsert {
+	u.Add(user.FieldTrialBalance, v)
+	return u
+}
+
+// SetTrialBalanceExpiresAt sets the "trial_balance_expires_at" field.
+func (u *UserUpsert) SetTrialBalanceExpiresAt(v time.Time) *UserUpsert {
+	u.Set(user.FieldTrialBalanceExpiresAt, v)
+	return u
+}
+
+// UpdateTrialBalanceExpiresAt sets the "trial_balance_expires_at" field to the value that was provided on create.
+func (u *UserUpsert) UpdateTrialBalanceExpiresAt() *UserUpsert {
+	u.SetExcluded(user.FieldTrialBalanceExpiresAt)
+	return u
+}
+
+// ClearTrialBalanceExpiresAt clears the value of the "trial_balance_expires_at" field.
+func (u *UserUpsert) ClearTrialBalanceExpiresAt() *UserUpsert {
+	u.SetNull(user.FieldTrialBalanceExpiresAt)
+	return u
+}
+
 // SetConcurrency sets the "concurrency" field.
 func (u *UserUpsert) SetConcurrency(v int) *UserUpsert {
 	u.Set(user.FieldConcurrency, v)
@@ -1186,6 +1295,18 @@ func (u *UserUpsert) SetStatus(v string) *UserUpsert {
 // UpdateStatus sets the "status" field to the value that was provided on create.
 func (u *UserUpsert) UpdateStatus() *UserUpsert {
 	u.SetExcluded(user.FieldStatus)
+	return u
+}
+
+// SetRegistrationIP sets the "registration_ip" field.
+func (u *UserUpsert) SetRegistrationIP(v string) *UserUpsert {
+	u.Set(user.FieldRegistrationIP, v)
+	return u
+}
+
+// UpdateRegistrationIP sets the "registration_ip" field to the value that was provided on create.
+func (u *UserUpsert) UpdateRegistrationIP() *UserUpsert {
+	u.SetExcluded(user.FieldRegistrationIP)
 	return u
 }
 
@@ -1548,6 +1669,48 @@ func (u *UserUpsertOne) UpdateBalance() *UserUpsertOne {
 	})
 }
 
+// SetTrialBalance sets the "trial_balance" field.
+func (u *UserUpsertOne) SetTrialBalance(v float64) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetTrialBalance(v)
+	})
+}
+
+// AddTrialBalance adds v to the "trial_balance" field.
+func (u *UserUpsertOne) AddTrialBalance(v float64) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.AddTrialBalance(v)
+	})
+}
+
+// UpdateTrialBalance sets the "trial_balance" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateTrialBalance() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateTrialBalance()
+	})
+}
+
+// SetTrialBalanceExpiresAt sets the "trial_balance_expires_at" field.
+func (u *UserUpsertOne) SetTrialBalanceExpiresAt(v time.Time) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetTrialBalanceExpiresAt(v)
+	})
+}
+
+// UpdateTrialBalanceExpiresAt sets the "trial_balance_expires_at" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateTrialBalanceExpiresAt() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateTrialBalanceExpiresAt()
+	})
+}
+
+// ClearTrialBalanceExpiresAt clears the value of the "trial_balance_expires_at" field.
+func (u *UserUpsertOne) ClearTrialBalanceExpiresAt() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.ClearTrialBalanceExpiresAt()
+	})
+}
+
 // SetConcurrency sets the "concurrency" field.
 func (u *UserUpsertOne) SetConcurrency(v int) *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
@@ -1580,6 +1743,20 @@ func (u *UserUpsertOne) SetStatus(v string) *UserUpsertOne {
 func (u *UserUpsertOne) UpdateStatus() *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetRegistrationIP sets the "registration_ip" field.
+func (u *UserUpsertOne) SetRegistrationIP(v string) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetRegistrationIP(v)
+	})
+}
+
+// UpdateRegistrationIP sets the "registration_ip" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateRegistrationIP() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateRegistrationIP()
 	})
 }
 
@@ -2144,6 +2321,48 @@ func (u *UserUpsertBulk) UpdateBalance() *UserUpsertBulk {
 	})
 }
 
+// SetTrialBalance sets the "trial_balance" field.
+func (u *UserUpsertBulk) SetTrialBalance(v float64) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetTrialBalance(v)
+	})
+}
+
+// AddTrialBalance adds v to the "trial_balance" field.
+func (u *UserUpsertBulk) AddTrialBalance(v float64) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.AddTrialBalance(v)
+	})
+}
+
+// UpdateTrialBalance sets the "trial_balance" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateTrialBalance() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateTrialBalance()
+	})
+}
+
+// SetTrialBalanceExpiresAt sets the "trial_balance_expires_at" field.
+func (u *UserUpsertBulk) SetTrialBalanceExpiresAt(v time.Time) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetTrialBalanceExpiresAt(v)
+	})
+}
+
+// UpdateTrialBalanceExpiresAt sets the "trial_balance_expires_at" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateTrialBalanceExpiresAt() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateTrialBalanceExpiresAt()
+	})
+}
+
+// ClearTrialBalanceExpiresAt clears the value of the "trial_balance_expires_at" field.
+func (u *UserUpsertBulk) ClearTrialBalanceExpiresAt() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.ClearTrialBalanceExpiresAt()
+	})
+}
+
 // SetConcurrency sets the "concurrency" field.
 func (u *UserUpsertBulk) SetConcurrency(v int) *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
@@ -2176,6 +2395,20 @@ func (u *UserUpsertBulk) SetStatus(v string) *UserUpsertBulk {
 func (u *UserUpsertBulk) UpdateStatus() *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetRegistrationIP sets the "registration_ip" field.
+func (u *UserUpsertBulk) SetRegistrationIP(v string) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetRegistrationIP(v)
+	})
+}
+
+// UpdateRegistrationIP sets the "registration_ip" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateRegistrationIP() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateRegistrationIP()
 	})
 }
 

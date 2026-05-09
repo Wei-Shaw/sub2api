@@ -29,10 +29,16 @@ const (
 	FieldRole = "role"
 	// FieldBalance holds the string denoting the balance field in the database.
 	FieldBalance = "balance"
+	// FieldTrialBalance holds the string denoting the trial_balance field in the database.
+	FieldTrialBalance = "trial_balance"
+	// FieldTrialBalanceExpiresAt holds the string denoting the trial_balance_expires_at field in the database.
+	FieldTrialBalanceExpiresAt = "trial_balance_expires_at"
 	// FieldConcurrency holds the string denoting the concurrency field in the database.
 	FieldConcurrency = "concurrency"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
+	// FieldRegistrationIP holds the string denoting the registration_ip field in the database.
+	FieldRegistrationIP = "registration_ip"
 	// FieldUsername holds the string denoting the username field in the database.
 	FieldUsername = "username"
 	// FieldNotes holds the string denoting the notes field in the database.
@@ -190,8 +196,11 @@ var Columns = []string{
 	FieldPasswordHash,
 	FieldRole,
 	FieldBalance,
+	FieldTrialBalance,
+	FieldTrialBalanceExpiresAt,
 	FieldConcurrency,
 	FieldStatus,
+	FieldRegistrationIP,
 	FieldUsername,
 	FieldNotes,
 	FieldTotpSecretEncrypted,
@@ -248,12 +257,18 @@ var (
 	RoleValidator func(string) error
 	// DefaultBalance holds the default value on creation for the "balance" field.
 	DefaultBalance float64
+	// DefaultTrialBalance holds the default value on creation for the "trial_balance" field.
+	DefaultTrialBalance float64
 	// DefaultConcurrency holds the default value on creation for the "concurrency" field.
 	DefaultConcurrency int
 	// DefaultStatus holds the default value on creation for the "status" field.
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	StatusValidator func(string) error
+	// DefaultRegistrationIP holds the default value on creation for the "registration_ip" field.
+	DefaultRegistrationIP string
+	// RegistrationIPValidator is a validator for the "registration_ip" field. It is called by the builders before save.
+	RegistrationIPValidator func(string) error
 	// DefaultUsername holds the default value on creation for the "username" field.
 	DefaultUsername string
 	// UsernameValidator is a validator for the "username" field. It is called by the builders before save.
@@ -321,6 +336,16 @@ func ByBalance(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldBalance, opts...).ToFunc()
 }
 
+// ByTrialBalance orders the results by the trial_balance field.
+func ByTrialBalance(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTrialBalance, opts...).ToFunc()
+}
+
+// ByTrialBalanceExpiresAt orders the results by the trial_balance_expires_at field.
+func ByTrialBalanceExpiresAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTrialBalanceExpiresAt, opts...).ToFunc()
+}
+
 // ByConcurrency orders the results by the concurrency field.
 func ByConcurrency(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldConcurrency, opts...).ToFunc()
@@ -329,6 +354,11 @@ func ByConcurrency(opts ...sql.OrderTermOption) OrderOption {
 // ByStatus orders the results by the status field.
 func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
+}
+
+// ByRegistrationIP orders the results by the registration_ip field.
+func ByRegistrationIP(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRegistrationIP, opts...).ToFunc()
 }
 
 // ByUsername orders the results by the username field.

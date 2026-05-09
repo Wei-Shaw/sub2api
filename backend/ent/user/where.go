@@ -90,6 +90,16 @@ func Balance(v float64) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldBalance, v))
 }
 
+// TrialBalance applies equality check predicate on the "trial_balance" field. It's identical to TrialBalanceEQ.
+func TrialBalance(v float64) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldTrialBalance, v))
+}
+
+// TrialBalanceExpiresAt applies equality check predicate on the "trial_balance_expires_at" field. It's identical to TrialBalanceExpiresAtEQ.
+func TrialBalanceExpiresAt(v time.Time) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldTrialBalanceExpiresAt, v))
+}
+
 // Concurrency applies equality check predicate on the "concurrency" field. It's identical to ConcurrencyEQ.
 func Concurrency(v int) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldConcurrency, v))
@@ -98,6 +108,11 @@ func Concurrency(v int) predicate.User {
 // Status applies equality check predicate on the "status" field. It's identical to StatusEQ.
 func Status(v string) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldStatus, v))
+}
+
+// RegistrationIP applies equality check predicate on the "registration_ip" field. It's identical to RegistrationIPEQ.
+func RegistrationIP(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldRegistrationIP, v))
 }
 
 // Username applies equality check predicate on the "username" field. It's identical to UsernameEQ.
@@ -535,6 +550,96 @@ func BalanceLTE(v float64) predicate.User {
 	return predicate.User(sql.FieldLTE(FieldBalance, v))
 }
 
+// TrialBalanceEQ applies the EQ predicate on the "trial_balance" field.
+func TrialBalanceEQ(v float64) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldTrialBalance, v))
+}
+
+// TrialBalanceNEQ applies the NEQ predicate on the "trial_balance" field.
+func TrialBalanceNEQ(v float64) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldTrialBalance, v))
+}
+
+// TrialBalanceIn applies the In predicate on the "trial_balance" field.
+func TrialBalanceIn(vs ...float64) predicate.User {
+	return predicate.User(sql.FieldIn(FieldTrialBalance, vs...))
+}
+
+// TrialBalanceNotIn applies the NotIn predicate on the "trial_balance" field.
+func TrialBalanceNotIn(vs ...float64) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldTrialBalance, vs...))
+}
+
+// TrialBalanceGT applies the GT predicate on the "trial_balance" field.
+func TrialBalanceGT(v float64) predicate.User {
+	return predicate.User(sql.FieldGT(FieldTrialBalance, v))
+}
+
+// TrialBalanceGTE applies the GTE predicate on the "trial_balance" field.
+func TrialBalanceGTE(v float64) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldTrialBalance, v))
+}
+
+// TrialBalanceLT applies the LT predicate on the "trial_balance" field.
+func TrialBalanceLT(v float64) predicate.User {
+	return predicate.User(sql.FieldLT(FieldTrialBalance, v))
+}
+
+// TrialBalanceLTE applies the LTE predicate on the "trial_balance" field.
+func TrialBalanceLTE(v float64) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldTrialBalance, v))
+}
+
+// TrialBalanceExpiresAtEQ applies the EQ predicate on the "trial_balance_expires_at" field.
+func TrialBalanceExpiresAtEQ(v time.Time) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldTrialBalanceExpiresAt, v))
+}
+
+// TrialBalanceExpiresAtNEQ applies the NEQ predicate on the "trial_balance_expires_at" field.
+func TrialBalanceExpiresAtNEQ(v time.Time) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldTrialBalanceExpiresAt, v))
+}
+
+// TrialBalanceExpiresAtIn applies the In predicate on the "trial_balance_expires_at" field.
+func TrialBalanceExpiresAtIn(vs ...time.Time) predicate.User {
+	return predicate.User(sql.FieldIn(FieldTrialBalanceExpiresAt, vs...))
+}
+
+// TrialBalanceExpiresAtNotIn applies the NotIn predicate on the "trial_balance_expires_at" field.
+func TrialBalanceExpiresAtNotIn(vs ...time.Time) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldTrialBalanceExpiresAt, vs...))
+}
+
+// TrialBalanceExpiresAtGT applies the GT predicate on the "trial_balance_expires_at" field.
+func TrialBalanceExpiresAtGT(v time.Time) predicate.User {
+	return predicate.User(sql.FieldGT(FieldTrialBalanceExpiresAt, v))
+}
+
+// TrialBalanceExpiresAtGTE applies the GTE predicate on the "trial_balance_expires_at" field.
+func TrialBalanceExpiresAtGTE(v time.Time) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldTrialBalanceExpiresAt, v))
+}
+
+// TrialBalanceExpiresAtLT applies the LT predicate on the "trial_balance_expires_at" field.
+func TrialBalanceExpiresAtLT(v time.Time) predicate.User {
+	return predicate.User(sql.FieldLT(FieldTrialBalanceExpiresAt, v))
+}
+
+// TrialBalanceExpiresAtLTE applies the LTE predicate on the "trial_balance_expires_at" field.
+func TrialBalanceExpiresAtLTE(v time.Time) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldTrialBalanceExpiresAt, v))
+}
+
+// TrialBalanceExpiresAtIsNil applies the IsNil predicate on the "trial_balance_expires_at" field.
+func TrialBalanceExpiresAtIsNil() predicate.User {
+	return predicate.User(sql.FieldIsNull(FieldTrialBalanceExpiresAt))
+}
+
+// TrialBalanceExpiresAtNotNil applies the NotNil predicate on the "trial_balance_expires_at" field.
+func TrialBalanceExpiresAtNotNil() predicate.User {
+	return predicate.User(sql.FieldNotNull(FieldTrialBalanceExpiresAt))
+}
+
 // ConcurrencyEQ applies the EQ predicate on the "concurrency" field.
 func ConcurrencyEQ(v int) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldConcurrency, v))
@@ -638,6 +743,71 @@ func StatusEqualFold(v string) predicate.User {
 // StatusContainsFold applies the ContainsFold predicate on the "status" field.
 func StatusContainsFold(v string) predicate.User {
 	return predicate.User(sql.FieldContainsFold(FieldStatus, v))
+}
+
+// RegistrationIPEQ applies the EQ predicate on the "registration_ip" field.
+func RegistrationIPEQ(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldRegistrationIP, v))
+}
+
+// RegistrationIPNEQ applies the NEQ predicate on the "registration_ip" field.
+func RegistrationIPNEQ(v string) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldRegistrationIP, v))
+}
+
+// RegistrationIPIn applies the In predicate on the "registration_ip" field.
+func RegistrationIPIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldIn(FieldRegistrationIP, vs...))
+}
+
+// RegistrationIPNotIn applies the NotIn predicate on the "registration_ip" field.
+func RegistrationIPNotIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldRegistrationIP, vs...))
+}
+
+// RegistrationIPGT applies the GT predicate on the "registration_ip" field.
+func RegistrationIPGT(v string) predicate.User {
+	return predicate.User(sql.FieldGT(FieldRegistrationIP, v))
+}
+
+// RegistrationIPGTE applies the GTE predicate on the "registration_ip" field.
+func RegistrationIPGTE(v string) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldRegistrationIP, v))
+}
+
+// RegistrationIPLT applies the LT predicate on the "registration_ip" field.
+func RegistrationIPLT(v string) predicate.User {
+	return predicate.User(sql.FieldLT(FieldRegistrationIP, v))
+}
+
+// RegistrationIPLTE applies the LTE predicate on the "registration_ip" field.
+func RegistrationIPLTE(v string) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldRegistrationIP, v))
+}
+
+// RegistrationIPContains applies the Contains predicate on the "registration_ip" field.
+func RegistrationIPContains(v string) predicate.User {
+	return predicate.User(sql.FieldContains(FieldRegistrationIP, v))
+}
+
+// RegistrationIPHasPrefix applies the HasPrefix predicate on the "registration_ip" field.
+func RegistrationIPHasPrefix(v string) predicate.User {
+	return predicate.User(sql.FieldHasPrefix(FieldRegistrationIP, v))
+}
+
+// RegistrationIPHasSuffix applies the HasSuffix predicate on the "registration_ip" field.
+func RegistrationIPHasSuffix(v string) predicate.User {
+	return predicate.User(sql.FieldHasSuffix(FieldRegistrationIP, v))
+}
+
+// RegistrationIPEqualFold applies the EqualFold predicate on the "registration_ip" field.
+func RegistrationIPEqualFold(v string) predicate.User {
+	return predicate.User(sql.FieldEqualFold(FieldRegistrationIP, v))
+}
+
+// RegistrationIPContainsFold applies the ContainsFold predicate on the "registration_ip" field.
+func RegistrationIPContainsFold(v string) predicate.User {
+	return predicate.User(sql.FieldContainsFold(FieldRegistrationIP, v))
 }
 
 // UsernameEQ applies the EQ predicate on the "username" field.

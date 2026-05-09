@@ -332,7 +332,7 @@ func (s *BillingCacheService) getUserBalanceFromDB(ctx context.Context, userID i
 	if err != nil {
 		return 0, fmt.Errorf("get user balance: %w", err)
 	}
-	return user.Balance, nil
+	return user.AvailableBalance(), nil
 }
 
 // setBalanceCache 设置余额缓存
@@ -371,6 +371,23 @@ func (s *BillingCacheService) QueueDeductBalance(userID int64, amount float64) {
 	if err := s.DeductBalanceCache(ctx, userID, amount); err != nil {
 		logger.LegacyPrintf("service.billing_cache", "Warning: deduct balance cache fallback failed for user %d: %v", userID, err)
 	}
+}
+
+// QueueSetBalance asynchronously writes an exact available balance snapshot.
+func (s *BillingCacheService) QueueSetBalance(userID int64, balance float64) {
+	if s.cache == nil {
+		return
+	}
+	if s.enqueueCacheWrite(cacheWriteTask{
+		kind:    cacheWriteSetBalance,
+		userID:  userID,
+		balance: balance,
+	}) {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), cacheWriteTimeout)
+	defer cancel()
+	s.setBalanceCache(ctx, userID, balance)
 }
 
 // InvalidateUserBalance 失效用户余额缓存

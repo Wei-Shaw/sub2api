@@ -8084,7 +8084,11 @@ func finalizePostUsageBilling(p *postUsageBillingParams, deps *billingDeps, resu
 			deps.billingCacheService.QueueUpdateSubscriptionUsage(p.User.ID, *p.APIKey.GroupID, p.Cost.ActualCost)
 		}
 	} else if p.Cost.ActualCost > 0 && p.User != nil {
-		deps.billingCacheService.QueueDeductBalance(p.User.ID, p.Cost.ActualCost)
+		if result != nil && result.NewBalance != nil {
+			deps.billingCacheService.QueueSetBalance(p.User.ID, *result.NewBalance)
+		} else {
+			deps.billingCacheService.QueueDeductBalance(p.User.ID, p.Cost.ActualCost)
+		}
 	}
 
 	if p.Cost.ActualCost > 0 && p.APIKey != nil && p.APIKey.HasRateLimits() {
@@ -8137,7 +8141,7 @@ func resolveOldBalance(p *postUsageBillingParams, result *UsageBillingApplyResul
 		return *result.NewBalance + p.Cost.ActualCost
 	}
 	// Legacy fallback: snapshot balance from request context
-	return p.User.Balance
+	return p.User.AvailableBalance()
 }
 
 // notifyAccountQuota sends account quota threshold notification after increment.

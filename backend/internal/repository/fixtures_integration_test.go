@@ -38,7 +38,10 @@ func mustCreateUser(t *testing.T, client *dbent.Client, u *service.User) *servic
 		SetRole(u.Role).
 		SetStatus(u.Status).
 		SetBalance(u.Balance).
+		SetTrialBalance(u.TrialBalance).
+		SetNillableTrialBalanceExpiresAt(u.TrialBalanceExpiresAt).
 		SetConcurrency(u.Concurrency).
+		SetRegistrationIP(u.RegistrationIP).
 		SetUsername(u.Username).
 		SetNotes(u.Notes)
 	if !u.CreatedAt.IsZero() {

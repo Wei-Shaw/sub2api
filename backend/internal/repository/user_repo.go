@@ -23,6 +23,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
 
+	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 )
 
@@ -88,8 +89,11 @@ func (r *userRepository) Create(ctx context.Context, userIn *service.User) error
 		SetPasswordHash(userIn.PasswordHash).
 		SetRole(userIn.Role).
 		SetBalance(userIn.Balance).
+		SetTrialBalance(userIn.TrialBalance).
+		SetNillableTrialBalanceExpiresAt(userIn.TrialBalanceExpiresAt).
 		SetConcurrency(userIn.Concurrency).
 		SetStatus(userIn.Status).
+		SetRegistrationIP(userIn.RegistrationIP).
 		SetSignupSource(userSignupSourceOrDefault(userIn.SignupSource)).
 		SetNillableLastLoginAt(userIn.LastLoginAt).
 		SetNillableLastActiveAt(userIn.LastActiveAt).
@@ -214,8 +218,11 @@ func (r *userRepository) Update(ctx context.Context, userIn *service.User) error
 		SetPasswordHash(userIn.PasswordHash).
 		SetRole(userIn.Role).
 		SetBalance(userIn.Balance).
+		SetTrialBalance(userIn.TrialBalance).
+		SetNillableTrialBalanceExpiresAt(userIn.TrialBalanceExpiresAt).
 		SetConcurrency(userIn.Concurrency).
 		SetStatus(userIn.Status).
+		SetRegistrationIP(userIn.RegistrationIP).
 		SetBalanceNotifyEnabled(userIn.BalanceNotifyEnabled).
 		SetBalanceNotifyThresholdType(userIn.BalanceNotifyThresholdType).
 		SetNillableBalanceNotifyThreshold(userIn.BalanceNotifyThreshold).
@@ -233,6 +240,9 @@ func (r *userRepository) Update(ctx context.Context, userIn *service.User) error
 	}
 	if userIn.BalanceNotifyThreshold == nil {
 		updateOp = updateOp.ClearBalanceNotifyThreshold()
+	}
+	if userIn.TrialBalanceExpiresAt == nil {
+		updateOp = updateOp.ClearTrialBalanceExpiresAt()
 	}
 	updated, err := updateOp.Save(txCtx)
 	if err != nil {
@@ -533,6 +543,8 @@ func userListOrder(params pagination.PaginationParams) []func(*entsql.Selector) 
 	case "balance":
 		field = dbuser.FieldBalance
 		defaultField = false
+	case "available_balance":
+		return userAvailableBalanceOrder(sortOrder)
 	case "concurrency":
 		field = dbuser.FieldConcurrency
 		defaultField = false
@@ -640,6 +652,24 @@ func userLastUsedAtOrder(sortOrder string) []func(*entsql.Selector) {
 	}
 }
 
+func userAvailableBalanceOrder(sortOrder string) []func(*entsql.Selector) {
+	orderExpr := "balance + CASE WHEN trial_balance_expires_at IS NOT NULL AND trial_balance_expires_at > NOW() THEN GREATEST(trial_balance, 0) ELSE 0 END"
+	orderBy := func(direction string, tieOrder func(string) string) func(*entsql.Selector) {
+		return func(s *entsql.Selector) {
+			s.OrderExpr(entsql.Expr(orderExpr + " " + direction))
+			s.OrderBy(tieOrder(s.C(dbuser.FieldID)))
+		}
+	}
+	if sortOrder == pagination.SortOrderAsc {
+		return []func(*entsql.Selector){
+			orderBy("ASC", entsql.Asc),
+		}
+	}
+	return []func(*entsql.Selector){
+		orderBy("DESC", entsql.Desc),
+	}
+}
+
 // filterUsersByAttributes returns user IDs that match ALL the given attribute filters
 func (r *userRepository) filterUsersByAttributes(ctx context.Context, attrs map[int64]string) ([]int64, error) {
 	if len(attrs) == 0 {
@@ -712,14 +742,70 @@ func (r *userRepository) UpdateBalance(ctx context.Context, id int64, amount flo
 // 中间件会阻止余额 <= 0 的用户发起后续请求
 func (r *userRepository) DeductBalance(ctx context.Context, id int64, amount float64) error {
 	client := clientFromContext(ctx, r.client)
-	n, err := client.User.Update().
-		Where(dbuser.IDEQ(id)).
-		AddBalance(-amount).
-		Save(ctx)
+	if client == nil {
+		return service.ErrUserNotFound
+	}
+	if client.Driver().Dialect() != dialect.Postgres {
+		n, err := client.User.Update().
+			Where(dbuser.IDEQ(id)).
+			AddBalance(-amount).
+			Save(ctx)
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return service.ErrUserNotFound
+		}
+		return nil
+	}
+
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return fmt.Errorf("sql executor is not configured")
+	}
+	res, err := exec.ExecContext(ctx, `
+WITH locked AS (
+	SELECT
+		id,
+		balance,
+		trial_balance,
+		CASE
+			WHEN trial_balance_expires_at IS NOT NULL AND trial_balance_expires_at > NOW()
+			THEN GREATEST(trial_balance, 0)
+			ELSE 0
+		END AS active_trial
+	FROM users
+	WHERE id = $2 AND deleted_at IS NULL
+	FOR UPDATE
+),
+calc AS (
+	SELECT
+		id,
+		balance,
+		trial_balance,
+		LEAST(active_trial, CAST($1 AS NUMERIC)) AS trial_deduct,
+		CAST($1 AS NUMERIC) - LEAST(active_trial, CAST($1 AS NUMERIC)) AS real_deduct
+	FROM locked
+)
+UPDATE users AS u
+SET
+	trial_balance = CASE
+		WHEN calc.trial_deduct > 0 THEN calc.trial_balance - calc.trial_deduct
+		ELSE calc.trial_balance
+	END,
+	balance = calc.balance - calc.real_deduct,
+	updated_at = NOW()
+FROM calc
+WHERE u.id = calc.id
+`, amount, id)
 	if err != nil {
 		return err
 	}
-	if n == 0 {
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
 		return service.ErrUserNotFound
 	}
 	return nil
@@ -956,7 +1042,7 @@ func userSignupSourceOrDefault(signupSource string) string {
 	switch strings.TrimSpace(strings.ToLower(signupSource)) {
 	case "", "email":
 		return "email"
-	case "linuxdo", "wechat", "oidc":
+	case "linuxdo", "wechat", "oidc", "github", "google":
 		return strings.TrimSpace(strings.ToLower(signupSource))
 	default:
 		return "email"

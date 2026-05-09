@@ -128,6 +128,47 @@ func (_u *UserUpdate) AddBalance(v float64) *UserUpdate {
 	return _u
 }
 
+// SetTrialBalance sets the "trial_balance" field.
+func (_u *UserUpdate) SetTrialBalance(v float64) *UserUpdate {
+	_u.mutation.ResetTrialBalance()
+	_u.mutation.SetTrialBalance(v)
+	return _u
+}
+
+// SetNillableTrialBalance sets the "trial_balance" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableTrialBalance(v *float64) *UserUpdate {
+	if v != nil {
+		_u.SetTrialBalance(*v)
+	}
+	return _u
+}
+
+// AddTrialBalance adds value to the "trial_balance" field.
+func (_u *UserUpdate) AddTrialBalance(v float64) *UserUpdate {
+	_u.mutation.AddTrialBalance(v)
+	return _u
+}
+
+// SetTrialBalanceExpiresAt sets the "trial_balance_expires_at" field.
+func (_u *UserUpdate) SetTrialBalanceExpiresAt(v time.Time) *UserUpdate {
+	_u.mutation.SetTrialBalanceExpiresAt(v)
+	return _u
+}
+
+// SetNillableTrialBalanceExpiresAt sets the "trial_balance_expires_at" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableTrialBalanceExpiresAt(v *time.Time) *UserUpdate {
+	if v != nil {
+		_u.SetTrialBalanceExpiresAt(*v)
+	}
+	return _u
+}
+
+// ClearTrialBalanceExpiresAt clears the value of the "trial_balance_expires_at" field.
+func (_u *UserUpdate) ClearTrialBalanceExpiresAt() *UserUpdate {
+	_u.mutation.ClearTrialBalanceExpiresAt()
+	return _u
+}
+
 // SetConcurrency sets the "concurrency" field.
 func (_u *UserUpdate) SetConcurrency(v int) *UserUpdate {
 	_u.mutation.ResetConcurrency()
@@ -159,6 +200,20 @@ func (_u *UserUpdate) SetStatus(v string) *UserUpdate {
 func (_u *UserUpdate) SetNillableStatus(v *string) *UserUpdate {
 	if v != nil {
 		_u.SetStatus(*v)
+	}
+	return _u
+}
+
+// SetRegistrationIP sets the "registration_ip" field.
+func (_u *UserUpdate) SetRegistrationIP(v string) *UserUpdate {
+	_u.mutation.SetRegistrationIP(v)
+	return _u
+}
+
+// SetNillableRegistrationIP sets the "registration_ip" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableRegistrationIP(v *string) *UserUpdate {
+	if v != nil {
+		_u.SetRegistrationIP(*v)
 	}
 	return _u
 }
@@ -911,6 +966,11 @@ func (_u *UserUpdate) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "User.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.RegistrationIP(); ok {
+		if err := user.RegistrationIPValidator(v); err != nil {
+			return &ValidationError{Name: "registration_ip", err: fmt.Errorf(`ent: validator failed for field "User.registration_ip": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Username(); ok {
 		if err := user.UsernameValidator(v); err != nil {
 			return &ValidationError{Name: "username", err: fmt.Errorf(`ent: validator failed for field "User.username": %w`, err)}
@@ -960,6 +1020,18 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AddedBalance(); ok {
 		_spec.AddField(user.FieldBalance, field.TypeFloat64, value)
 	}
+	if value, ok := _u.mutation.TrialBalance(); ok {
+		_spec.SetField(user.FieldTrialBalance, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedTrialBalance(); ok {
+		_spec.AddField(user.FieldTrialBalance, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.TrialBalanceExpiresAt(); ok {
+		_spec.SetField(user.FieldTrialBalanceExpiresAt, field.TypeTime, value)
+	}
+	if _u.mutation.TrialBalanceExpiresAtCleared() {
+		_spec.ClearField(user.FieldTrialBalanceExpiresAt, field.TypeTime)
+	}
 	if value, ok := _u.mutation.Concurrency(); ok {
 		_spec.SetField(user.FieldConcurrency, field.TypeInt, value)
 	}
@@ -968,6 +1040,9 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(user.FieldStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.RegistrationIP(); ok {
+		_spec.SetField(user.FieldRegistrationIP, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.Username(); ok {
 		_spec.SetField(user.FieldUsername, field.TypeString, value)
@@ -1696,6 +1771,47 @@ func (_u *UserUpdateOne) AddBalance(v float64) *UserUpdateOne {
 	return _u
 }
 
+// SetTrialBalance sets the "trial_balance" field.
+func (_u *UserUpdateOne) SetTrialBalance(v float64) *UserUpdateOne {
+	_u.mutation.ResetTrialBalance()
+	_u.mutation.SetTrialBalance(v)
+	return _u
+}
+
+// SetNillableTrialBalance sets the "trial_balance" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableTrialBalance(v *float64) *UserUpdateOne {
+	if v != nil {
+		_u.SetTrialBalance(*v)
+	}
+	return _u
+}
+
+// AddTrialBalance adds value to the "trial_balance" field.
+func (_u *UserUpdateOne) AddTrialBalance(v float64) *UserUpdateOne {
+	_u.mutation.AddTrialBalance(v)
+	return _u
+}
+
+// SetTrialBalanceExpiresAt sets the "trial_balance_expires_at" field.
+func (_u *UserUpdateOne) SetTrialBalanceExpiresAt(v time.Time) *UserUpdateOne {
+	_u.mutation.SetTrialBalanceExpiresAt(v)
+	return _u
+}
+
+// SetNillableTrialBalanceExpiresAt sets the "trial_balance_expires_at" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableTrialBalanceExpiresAt(v *time.Time) *UserUpdateOne {
+	if v != nil {
+		_u.SetTrialBalanceExpiresAt(*v)
+	}
+	return _u
+}
+
+// ClearTrialBalanceExpiresAt clears the value of the "trial_balance_expires_at" field.
+func (_u *UserUpdateOne) ClearTrialBalanceExpiresAt() *UserUpdateOne {
+	_u.mutation.ClearTrialBalanceExpiresAt()
+	return _u
+}
+
 // SetConcurrency sets the "concurrency" field.
 func (_u *UserUpdateOne) SetConcurrency(v int) *UserUpdateOne {
 	_u.mutation.ResetConcurrency()
@@ -1727,6 +1843,20 @@ func (_u *UserUpdateOne) SetStatus(v string) *UserUpdateOne {
 func (_u *UserUpdateOne) SetNillableStatus(v *string) *UserUpdateOne {
 	if v != nil {
 		_u.SetStatus(*v)
+	}
+	return _u
+}
+
+// SetRegistrationIP sets the "registration_ip" field.
+func (_u *UserUpdateOne) SetRegistrationIP(v string) *UserUpdateOne {
+	_u.mutation.SetRegistrationIP(v)
+	return _u
+}
+
+// SetNillableRegistrationIP sets the "registration_ip" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableRegistrationIP(v *string) *UserUpdateOne {
+	if v != nil {
+		_u.SetRegistrationIP(*v)
 	}
 	return _u
 }
@@ -2492,6 +2622,11 @@ func (_u *UserUpdateOne) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "User.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.RegistrationIP(); ok {
+		if err := user.RegistrationIPValidator(v); err != nil {
+			return &ValidationError{Name: "registration_ip", err: fmt.Errorf(`ent: validator failed for field "User.registration_ip": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Username(); ok {
 		if err := user.UsernameValidator(v); err != nil {
 			return &ValidationError{Name: "username", err: fmt.Errorf(`ent: validator failed for field "User.username": %w`, err)}
@@ -2558,6 +2693,18 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	if value, ok := _u.mutation.AddedBalance(); ok {
 		_spec.AddField(user.FieldBalance, field.TypeFloat64, value)
 	}
+	if value, ok := _u.mutation.TrialBalance(); ok {
+		_spec.SetField(user.FieldTrialBalance, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedTrialBalance(); ok {
+		_spec.AddField(user.FieldTrialBalance, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.TrialBalanceExpiresAt(); ok {
+		_spec.SetField(user.FieldTrialBalanceExpiresAt, field.TypeTime, value)
+	}
+	if _u.mutation.TrialBalanceExpiresAtCleared() {
+		_spec.ClearField(user.FieldTrialBalanceExpiresAt, field.TypeTime)
+	}
 	if value, ok := _u.mutation.Concurrency(); ok {
 		_spec.SetField(user.FieldConcurrency, field.TypeInt, value)
 	}
@@ -2566,6 +2713,9 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(user.FieldStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.RegistrationIP(); ok {
+		_spec.SetField(user.FieldRegistrationIP, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.Username(); ok {
 		_spec.SetField(user.FieldUsername, field.TypeString, value)

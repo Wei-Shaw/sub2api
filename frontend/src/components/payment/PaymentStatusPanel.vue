@@ -71,52 +71,155 @@
 
     <!-- QR Code Mode -->
     <template v-else-if="qrUrl">
-      <div class="card p-6">
-        <div class="flex flex-col items-center space-y-4">
-          <p class="text-lg font-semibold text-gray-900 dark:text-white">{{ scanTitle }}</p>
-          <div :class="['relative rounded-lg border-2 p-4', qrBorderClass]">
-            <canvas ref="qrCanvas" class="mx-auto"></canvas>
-            <!-- Brand logo overlay -->
-            <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
-              <span :class="['rounded-full p-2 shadow ring-2 ring-white', qrLogoBgClass]">
-                <img :src="isAlipay ? alipayIcon : wxpayIcon" alt="" class="h-5 w-5 brightness-0 invert" />
+      <div class="card overflow-hidden">
+        <div :class="['border-b px-5 py-4 sm:px-6', providerHeaderClass]">
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div class="flex min-w-0 items-center gap-3">
+              <span :class="['flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white shadow-sm ring-1 dark:bg-dark-800', providerIconRingClass]">
+                <img v-if="hasProviderLogo" :src="paymentProviderIcon" alt="" class="h-7 w-7" />
+                <Icon v-else name="creditCard" size="lg" :class="providerTextClass" />
+              </span>
+              <div class="min-w-0">
+                <p class="text-xs font-semibold text-gray-500 dark:text-gray-400">{{ t('payment.qr.cashierTitle') }}</p>
+                <h2 class="mt-1 truncate text-lg font-semibold text-gray-900 dark:text-white">{{ scanTitle }}</h2>
+              </div>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="inline-flex items-center gap-1.5 rounded-full border border-green-200 bg-green-50 px-3 py-1 text-xs font-semibold text-green-700 dark:border-green-500/25 dark:bg-green-500/10 dark:text-green-300">
+                <span class="h-2 w-2 rounded-full bg-green-500"></span>
+                {{ t('payment.qr.pendingStatus') }}
+              </span>
+              <span class="inline-flex items-center rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-600 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300">
+                {{ t('payment.qr.orderLabel', { id: props.orderId }) }}
               </span>
             </div>
           </div>
-          <p v-if="scanHint" class="text-center text-sm text-gray-500 dark:text-gray-400">{{ scanHint }}</p>
-          <button v-if="payUrl" class="btn btn-secondary text-sm" @click="reopenPopup">
-            {{ t('payment.qr.openPayWindow') }}
-          </button>
+        </div>
+
+        <div class="grid gap-6 p-5 sm:p-6 lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.85fr)]">
+          <div class="flex flex-col items-center rounded-2xl border border-gray-100 bg-gray-50/70 p-5 dark:border-dark-700 dark:bg-dark-900/30">
+            <p class="text-sm font-semibold text-gray-800 dark:text-gray-100">{{ t('payment.qr.qrCodeLabel') }}</p>
+            <div class="mt-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-200 dark:ring-dark-700">
+              <div :class="['relative rounded-xl border p-3', qrBorderClass]">
+                <canvas ref="qrCanvas" class="mx-auto"></canvas>
+                <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
+                  <span :class="['flex h-11 w-11 items-center justify-center rounded-full bg-white shadow-md ring-2', qrLogoRingClass]">
+                    <img v-if="hasProviderLogo" :src="paymentProviderIcon" alt="" class="h-7 w-7" />
+                    <Icon v-else name="creditCard" size="md" class="text-gray-500" />
+                  </span>
+                </div>
+              </div>
+            </div>
+            <p v-if="scanHint" class="mt-4 max-w-xs text-center text-sm leading-6 text-gray-500 dark:text-gray-400">{{ scanHint }}</p>
+            <div class="mt-4 flex w-full max-w-xs items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300">
+              <Icon name="shield" size="sm" class="shrink-0 text-green-500" />
+              <span>{{ t('payment.qr.securePayment') }}</span>
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-4">
+            <div class="rounded-2xl border border-gray-100 bg-white p-4 dark:border-dark-700 dark:bg-dark-800/70">
+              <div class="flex items-start justify-between gap-4">
+                <div>
+                  <p class="text-sm font-medium text-gray-500 dark:text-gray-400">{{ t('payment.qr.expiresIn') }}</p>
+                  <p class="mt-1 text-3xl font-bold tabular-nums text-gray-900 dark:text-white">{{ countdownDisplay }}</p>
+                </div>
+                <span class="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600 dark:bg-dark-700 dark:text-gray-300">
+                  <Icon name="clock" size="xs" />
+                  {{ t('payment.qr.pendingStatus') }}
+                </span>
+              </div>
+              <div class="mt-4 h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-dark-700">
+                <div class="h-full rounded-full transition-all duration-500" :class="countdownBarClass" :style="{ width: countdownProgressStyle }"></div>
+              </div>
+              <p class="mt-3 text-xs leading-5 text-gray-500 dark:text-gray-400">{{ t('payment.qr.autoConfirmHint') }}</p>
+            </div>
+
+            <div class="rounded-2xl border border-gray-100 bg-gray-50/60 p-4 dark:border-dark-700 dark:bg-dark-900/25">
+              <div class="flex items-center gap-2 text-sm font-semibold text-gray-800 dark:text-gray-100">
+                <Icon name="clipboard" size="sm" class="text-gray-500" />
+                <span>{{ t('payment.qr.stepsTitle') }}</span>
+              </div>
+              <div class="mt-4 space-y-3">
+                <div v-for="(step, index) in paymentSteps" :key="step" class="flex items-start gap-3">
+                  <span :class="['mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white', providerStepClass]">{{ index + 1 }}</span>
+                  <p class="pt-0.5 text-sm leading-5 text-gray-600 dark:text-gray-300">{{ step }}</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-100">
+              <div class="flex gap-2">
+                <Icon name="infoCircle" size="sm" class="mt-0.5 shrink-0 text-amber-500 dark:text-amber-300" />
+                <span>{{ t('payment.qr.expireWarning') }}</span>
+              </div>
+            </div>
+
+            <div class="flex flex-col-reverse gap-3 pt-1 sm:flex-row sm:justify-end">
+              <button class="btn btn-secondary w-full sm:w-auto" :disabled="cancelling" @click="handleCancel">
+                {{ cancelling ? t('common.processing') : t('payment.qr.cancelOrder') }}
+              </button>
+              <button v-if="payUrl" :class="['btn w-full sm:w-auto', providerButtonClass]" @click="reopenPopup">
+                <Icon name="externalLink" size="sm" />
+                <span>{{ t('payment.qr.openPayWindow') }}</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
-      <div class="card p-4 text-center">
-        <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('payment.qr.expiresIn') }}</p>
-        <p class="mt-1 text-2xl font-bold tabular-nums text-gray-900 dark:text-white">{{ countdownDisplay }}</p>
-        <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">{{ t('payment.qr.waitingPayment') }}</p>
-      </div>
-      <button class="btn btn-secondary w-full" :disabled="cancelling" @click="handleCancel">
-        {{ cancelling ? t('common.processing') : t('payment.qr.cancelOrder') }}
-      </button>
     </template>
 
     <!-- Waiting for Popup/Redirect Mode -->
     <template v-else>
-      <div class="card p-6">
-        <div class="flex flex-col items-center space-y-4 py-4">
-          <div class="h-10 w-10 animate-spin rounded-full border-4 border-primary-500 border-t-transparent"></div>
-          <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('payment.qr.payInNewWindowHint') }}</p>
-          <button v-if="payUrl" class="btn btn-secondary text-sm" @click="reopenPopup">
-            {{ t('payment.qr.openPayWindow') }}
-          </button>
+      <div class="card overflow-hidden">
+        <div :class="['border-b px-5 py-4 sm:px-6', providerHeaderClass]">
+          <div class="flex items-center justify-between gap-4">
+            <div class="flex min-w-0 items-center gap-3">
+              <span :class="['flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white shadow-sm ring-1 dark:bg-dark-800', providerIconRingClass]">
+                <img v-if="hasProviderLogo" :src="paymentProviderIcon" alt="" class="h-7 w-7" />
+                <Icon v-else name="creditCard" size="lg" :class="providerTextClass" />
+              </span>
+              <div class="min-w-0">
+                <p class="text-xs font-semibold text-gray-500 dark:text-gray-400">{{ t('payment.qr.cashierTitle') }}</p>
+                <h2 class="mt-1 truncate text-lg font-semibold text-gray-900 dark:text-white">{{ t('payment.qr.redirectTitle') }}</h2>
+              </div>
+            </div>
+            <span class="hidden shrink-0 items-center gap-1.5 rounded-full border border-green-200 bg-green-50 px-3 py-1 text-xs font-semibold text-green-700 dark:border-green-500/25 dark:bg-green-500/10 dark:text-green-300 sm:inline-flex">
+              <span class="h-2 w-2 rounded-full bg-green-500"></span>
+              {{ t('payment.qr.pendingStatus') }}
+            </span>
+          </div>
+        </div>
+
+        <div class="p-5 sm:p-6">
+          <div class="flex flex-col items-center rounded-2xl border border-gray-100 bg-gray-50/70 px-5 py-8 text-center dark:border-dark-700 dark:bg-dark-900/30">
+            <div class="flex h-16 w-16 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-gray-200 dark:bg-dark-800 dark:ring-dark-700">
+              <div class="h-9 w-9 animate-spin rounded-full border-4 border-primary-500 border-t-transparent"></div>
+            </div>
+            <p class="mt-5 text-base font-semibold text-gray-900 dark:text-white">{{ t('payment.qr.redirectDesc') }}</p>
+            <p class="mt-2 max-w-md text-sm leading-6 text-gray-500 dark:text-gray-400">{{ t('payment.qr.payInNewWindowHint') }}</p>
+            <div class="mt-6 w-full max-w-md rounded-2xl border border-gray-100 bg-white p-4 dark:border-dark-700 dark:bg-dark-800/70">
+              <div class="flex items-center justify-between gap-4">
+                <span class="text-sm font-medium text-gray-500 dark:text-gray-400">{{ t('payment.qr.expiresIn') }}</span>
+                <span class="text-2xl font-bold tabular-nums text-gray-900 dark:text-white">{{ countdownDisplay }}</span>
+              </div>
+              <div class="mt-4 h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-dark-700">
+                <div class="h-full rounded-full transition-all duration-500" :class="countdownBarClass" :style="{ width: countdownProgressStyle }"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-4 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <button class="btn btn-secondary w-full sm:w-auto" :disabled="cancelling" @click="handleCancel">
+              {{ cancelling ? t('common.processing') : t('payment.qr.cancelOrder') }}
+            </button>
+            <button v-if="payUrl" :class="['btn w-full sm:w-auto', providerButtonClass]" @click="reopenPopup">
+              <Icon name="externalLink" size="sm" />
+              <span>{{ t('payment.qr.openPayWindow') }}</span>
+            </button>
+          </div>
         </div>
       </div>
-      <div class="card p-4 text-center">
-        <p class="mt-1 text-2xl font-bold tabular-nums text-gray-900 dark:text-white">{{ countdownDisplay }}</p>
-        <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">{{ t('payment.qr.waitingPayment') }}</p>
-      </div>
-      <button class="btn btn-secondary w-full" :disabled="cancelling" @click="handleCancel">
-        {{ cancelling ? t('common.processing') : t('payment.qr.cancelOrder') }}
-      </button>
     </template>
   </div>
 </template>
@@ -155,6 +258,7 @@ const appStore = useAppStore()
 const qrCanvas = ref<HTMLCanvasElement | null>(null)
 const qrUrl = ref('')
 const remainingSeconds = ref(0)
+const initialSeconds = ref(30 * 60)
 const cancelling = ref(false)
 const paidOrder = ref<PaymentOrder | null>(null)
 
@@ -166,17 +270,56 @@ let countdownTimer: ReturnType<typeof setInterval> | null = null
 
 const isAlipay = computed(() => props.paymentType.includes('alipay'))
 const isWxpay = computed(() => props.paymentType.includes('wxpay'))
+const hasProviderLogo = computed(() => isAlipay.value || isWxpay.value)
 
-const qrBorderClass = computed(() => {
-  if (isAlipay.value) return 'border-[#00AEEF] bg-blue-50 dark:border-[#00AEEF]/70 dark:bg-blue-950/20'
-  if (isWxpay.value) return 'border-[#2BB741] bg-green-50 dark:border-[#2BB741]/70 dark:bg-green-950/20'
-  return 'border-gray-200 bg-white dark:border-dark-600 dark:bg-dark-800'
+const paymentProviderIcon = computed(() => (isAlipay.value ? alipayIcon : wxpayIcon))
+
+const providerName = computed(() => {
+  if (isAlipay.value) return t('payment.methods.alipay')
+  if (isWxpay.value) return t('payment.methods.wxpay')
+  return t('payment.orders.paymentMethod')
 })
 
-const qrLogoBgClass = computed(() => {
+const providerHeaderClass = computed(() => {
+  if (isAlipay.value) return 'border-[#00AEEF]/15 bg-[#00AEEF]/5 dark:bg-[#00AEEF]/10'
+  if (isWxpay.value) return 'border-[#2BB741]/15 bg-[#2BB741]/5 dark:bg-[#2BB741]/10'
+  return 'border-gray-100 bg-gray-50/80 dark:border-dark-700 dark:bg-dark-900/30'
+})
+
+const providerIconRingClass = computed(() => {
+  if (isAlipay.value) return 'ring-[#00AEEF]/20'
+  if (isWxpay.value) return 'ring-[#2BB741]/20'
+  return 'ring-gray-200 dark:ring-dark-600'
+})
+
+const providerTextClass = computed(() => {
+  if (isAlipay.value) return 'text-[#00AEEF]'
+  if (isWxpay.value) return 'text-[#2BB741]'
+  return 'text-gray-500'
+})
+
+const qrBorderClass = computed(() => {
+  if (isAlipay.value) return 'border-[#00AEEF]/30 bg-white'
+  if (isWxpay.value) return 'border-[#2BB741]/30 bg-white'
+  return 'border-gray-200 bg-white'
+})
+
+const qrLogoRingClass = computed(() => {
+  if (isAlipay.value) return 'ring-[#00AEEF]/20'
+  if (isWxpay.value) return 'ring-[#2BB741]/20'
+  return 'ring-gray-200'
+})
+
+const providerStepClass = computed(() => {
   if (isAlipay.value) return 'bg-[#00AEEF]'
   if (isWxpay.value) return 'bg-[#2BB741]'
-  return 'bg-gray-400'
+  return 'bg-primary-500'
+})
+
+const providerButtonClass = computed(() => {
+  if (isAlipay.value) return 'btn-alipay'
+  if (isWxpay.value) return 'btn-wxpay'
+  return 'btn-primary'
 })
 
 const scanTitle = computed(() => {
@@ -196,6 +339,26 @@ const countdownDisplay = computed(() => {
   const s = remainingSeconds.value % 60
   return m.toString().padStart(2, '0') + ':' + s.toString().padStart(2, '0')
 })
+
+const countdownProgressStyle = computed(() => {
+  if (initialSeconds.value <= 0) return '0%'
+  const percent = Math.max(0, Math.min(100, (remainingSeconds.value / initialSeconds.value) * 100))
+  return percent + '%'
+})
+
+const countdownBarClass = computed(() => {
+  if (remainingSeconds.value <= 60) return 'bg-red-500'
+  if (remainingSeconds.value <= 5 * 60) return 'bg-amber-500'
+  if (isAlipay.value) return 'bg-[#00AEEF]'
+  if (isWxpay.value) return 'bg-[#2BB741]'
+  return 'bg-primary-500'
+})
+
+const paymentSteps = computed(() => [
+  t('payment.qr.stepOpenApp', { provider: providerName.value }),
+  t('payment.qr.stepScan'),
+  t('payment.qr.stepConfirm'),
+])
 
 function isSuccessStatus(status: string | null | undefined): boolean {
   return status === 'COMPLETED' || status === 'PAID' || status === 'RECHARGING'
@@ -244,7 +407,9 @@ async function pollStatus() {
 }
 
 function startCountdown(seconds: number) {
-  remainingSeconds.value = Math.max(0, seconds)
+  const safeSeconds = Math.max(0, seconds)
+  initialSeconds.value = safeSeconds || 30 * 60
+  remainingSeconds.value = safeSeconds
   if (remainingSeconds.value <= 0) { setOutcome('expired'); return }
   countdownTimer = setInterval(() => {
     remainingSeconds.value--

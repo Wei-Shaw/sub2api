@@ -12,7 +12,10 @@
         <div>
           <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('dashboard.balance') }}</p>
           <p class="text-xl font-bold text-emerald-600 dark:text-emerald-400">${{ formatBalance(balance) }}</p>
-          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('common.available') }}</p>
+          <p v-if="trialBalance > 0" class="text-xs text-gray-500 dark:text-gray-400">
+            {{ t('common.realBalance') }} ${{ formatBalance(realBalance) }} · {{ t('common.trialBalance') }} ${{ formatBalance(trialBalance) }}
+          </p>
+          <p v-else class="text-xs text-gray-500 dark:text-gray-400">{{ t('common.available') }}</p>
         </div>
       </div>
     </div>
@@ -141,6 +144,8 @@ import type { UserDashboardStats as UserStatsType } from '@/api/usage'
 defineProps<{
   stats: UserStatsType
   balance: number
+  realBalance: number
+  trialBalance: number
   isSimple: boolean
 }>()
 const { t } = useI18n()

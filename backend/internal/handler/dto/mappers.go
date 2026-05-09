@@ -12,12 +12,19 @@ func UserFromServiceShallow(u *service.User) *User {
 	if u == nil {
 		return nil
 	}
+	now := time.Now()
+	activeTrialBalance := u.ActiveTrialBalanceAt(now)
+	availableBalance := u.Balance + activeTrialBalance
 	return &User{
 		ID:                         u.ID,
 		Email:                      u.Email,
 		Username:                   u.Username,
 		Role:                       u.Role,
-		Balance:                    u.Balance,
+		Balance:                    availableBalance,
+		RealBalance:                u.Balance,
+		TrialBalance:               activeTrialBalance,
+		AvailableBalance:           availableBalance,
+		TrialBalanceExpiresAt:      u.TrialBalanceExpiresAt,
 		Concurrency:                u.Concurrency,
 		Status:                     u.Status,
 		AllowedGroups:              u.AllowedGroups,
@@ -66,10 +73,11 @@ func UserFromServiceAdmin(u *service.User) *AdminUser {
 		return nil
 	}
 	return &AdminUser{
-		User:       *base,
-		Notes:      u.Notes,
-		LastUsedAt: u.LastUsedAt,
-		GroupRates: u.GroupRates,
+		User:           *base,
+		Notes:          u.Notes,
+		LastUsedAt:     u.LastUsedAt,
+		RegistrationIP: u.RegistrationIP,
+		GroupRates:     u.GroupRates,
 	}
 }
 

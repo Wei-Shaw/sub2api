@@ -18,11 +18,16 @@ type User struct {
 	AvatarSHA256   string
 	PasswordHash   string
 	Role           string
-	Balance        float64
-	Concurrency    int
-	Status         string
-	AllowedGroups  []int64
-	TokenVersion   int64 // Incremented on password change to invalidate existing tokens
+	// Balance is the user's real, rechargeable balance. Trial balance is kept
+	// separately so it can expire without touching purchased funds.
+	Balance               float64
+	TrialBalance          float64
+	TrialBalanceExpiresAt *time.Time
+	Concurrency           int
+	Status                string
+	RegistrationIP        string
+	AllowedGroups         []int64
+	TokenVersion          int64 // Incremented on password change to invalidate existing tokens
 	// TokenVersionResolved indicates TokenVersion already contains the fingerprint-derived
 	// value expected in JWT claims and refresh-token state.
 	TokenVersionResolved bool
@@ -68,6 +73,31 @@ func (u *User) IsAdmin() bool {
 
 func (u *User) IsActive() bool {
 	return u.Status == StatusActive
+}
+
+func (u *User) ActiveTrialBalanceAt(now time.Time) float64 {
+	if u == nil || u.TrialBalance <= 0 || u.TrialBalanceExpiresAt == nil {
+		return 0
+	}
+	if !now.Before(*u.TrialBalanceExpiresAt) {
+		return 0
+	}
+	return u.TrialBalance
+}
+
+func (u *User) ActiveTrialBalance() float64 {
+	return u.ActiveTrialBalanceAt(time.Now())
+}
+
+func (u *User) AvailableBalanceAt(now time.Time) float64 {
+	if u == nil {
+		return 0
+	}
+	return u.Balance + u.ActiveTrialBalanceAt(now)
+}
+
+func (u *User) AvailableBalance() float64 {
+	return u.AvailableBalanceAt(time.Now())
 }
 
 // CanBindGroup checks whether a user can bind to a given group.

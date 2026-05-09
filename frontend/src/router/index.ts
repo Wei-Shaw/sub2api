@@ -184,6 +184,30 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/image-generator',
+    name: 'ImageGenerator',
+    component: () => import('@/views/user/ImageGeneratorView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Image Generator',
+      titleKey: 'imageGenerator.title',
+      descriptionKey: 'imageGenerator.subtitle'
+    }
+  },
+  {
+    path: '/models',
+    name: 'ModelList',
+    component: () => import('@/views/user/ModelListView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Model List',
+      titleKey: 'modelList.title',
+      descriptionKey: 'modelList.description'
+    }
+  },
+  {
     path: '/usage',
     name: 'Usage',
     component: () => import('@/views/user/UsageView.vue'),

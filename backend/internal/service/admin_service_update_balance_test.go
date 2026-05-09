@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -94,4 +95,51 @@ func TestAdminService_UpdateUserBalance_NoChangeNoInvalidate(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, invalidator.userIDs)
 	require.Empty(t, redeemRepo.created)
+}
+
+func TestAdminService_UpdateUserBalance_SubtractUsesTrialBalanceFirst(t *testing.T) {
+	expiresAt := time.Now().Add(time.Hour)
+	baseRepo := &userRepoStub{user: &User{
+		ID:                    7,
+		Balance:               1,
+		TrialBalance:          2,
+		TrialBalanceExpiresAt: &expiresAt,
+	}}
+	repo := &balanceUserRepoStub{userRepoStub: baseRepo}
+	redeemRepo := &balanceRedeemRepoStub{redeemRepoStub: &redeemRepoStub{}}
+	invalidator := &authCacheInvalidatorStub{}
+	svc := &adminServiceImpl{
+		userRepo:             repo,
+		redeemCodeRepo:       redeemRepo,
+		authCacheInvalidator: invalidator,
+	}
+
+	user, err := svc.UpdateUserBalance(context.Background(), 7, 3, "subtract", "")
+
+	require.NoError(t, err)
+	require.Zero(t, user.Balance)
+	require.Zero(t, user.TrialBalance)
+	require.Equal(t, []int64{7}, invalidator.userIDs)
+	require.Len(t, redeemRepo.created, 1)
+	require.InDelta(t, -3, redeemRepo.created[0].Value, 1e-9)
+}
+
+func TestAdminService_UpdateUserBalance_SubtractRejectsMoreThanAvailableBalance(t *testing.T) {
+	expiresAt := time.Now().Add(time.Hour)
+	baseRepo := &userRepoStub{user: &User{
+		ID:                    7,
+		Balance:               1,
+		TrialBalance:          2,
+		TrialBalanceExpiresAt: &expiresAt,
+	}}
+	repo := &balanceUserRepoStub{userRepoStub: baseRepo}
+	svc := &adminServiceImpl{
+		userRepo:       repo,
+		redeemCodeRepo: &balanceRedeemRepoStub{redeemRepoStub: &redeemRepoStub{}},
+	}
+
+	_, err := svc.UpdateUserBalance(context.Background(), 7, 3.01, "subtract", "")
+
+	require.Error(t, err)
+	require.Empty(t, repo.updated)
 }

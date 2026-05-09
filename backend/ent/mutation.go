@@ -37630,9 +37630,13 @@ type UserMutation struct {
 	role                          *string
 	balance                       *float64
 	addbalance                    *float64
+	trial_balance                 *float64
+	addtrial_balance              *float64
+	trial_balance_expires_at      *time.Time
 	concurrency                   *int
 	addconcurrency                *int
 	status                        *string
+	registration_ip               *string
 	username                      *string
 	notes                         *string
 	totp_secret_encrypted         *string
@@ -38075,6 +38079,111 @@ func (m *UserMutation) ResetBalance() {
 	m.addbalance = nil
 }
 
+// SetTrialBalance sets the "trial_balance" field.
+func (m *UserMutation) SetTrialBalance(f float64) {
+	m.trial_balance = &f
+	m.addtrial_balance = nil
+}
+
+// TrialBalance returns the value of the "trial_balance" field in the mutation.
+func (m *UserMutation) TrialBalance() (r float64, exists bool) {
+	v := m.trial_balance
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTrialBalance returns the old "trial_balance" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldTrialBalance(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTrialBalance is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTrialBalance requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTrialBalance: %w", err)
+	}
+	return oldValue.TrialBalance, nil
+}
+
+// AddTrialBalance adds f to the "trial_balance" field.
+func (m *UserMutation) AddTrialBalance(f float64) {
+	if m.addtrial_balance != nil {
+		*m.addtrial_balance += f
+	} else {
+		m.addtrial_balance = &f
+	}
+}
+
+// AddedTrialBalance returns the value that was added to the "trial_balance" field in this mutation.
+func (m *UserMutation) AddedTrialBalance() (r float64, exists bool) {
+	v := m.addtrial_balance
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetTrialBalance resets all changes to the "trial_balance" field.
+func (m *UserMutation) ResetTrialBalance() {
+	m.trial_balance = nil
+	m.addtrial_balance = nil
+}
+
+// SetTrialBalanceExpiresAt sets the "trial_balance_expires_at" field.
+func (m *UserMutation) SetTrialBalanceExpiresAt(t time.Time) {
+	m.trial_balance_expires_at = &t
+}
+
+// TrialBalanceExpiresAt returns the value of the "trial_balance_expires_at" field in the mutation.
+func (m *UserMutation) TrialBalanceExpiresAt() (r time.Time, exists bool) {
+	v := m.trial_balance_expires_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTrialBalanceExpiresAt returns the old "trial_balance_expires_at" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldTrialBalanceExpiresAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTrialBalanceExpiresAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTrialBalanceExpiresAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTrialBalanceExpiresAt: %w", err)
+	}
+	return oldValue.TrialBalanceExpiresAt, nil
+}
+
+// ClearTrialBalanceExpiresAt clears the value of the "trial_balance_expires_at" field.
+func (m *UserMutation) ClearTrialBalanceExpiresAt() {
+	m.trial_balance_expires_at = nil
+	m.clearedFields[user.FieldTrialBalanceExpiresAt] = struct{}{}
+}
+
+// TrialBalanceExpiresAtCleared returns if the "trial_balance_expires_at" field was cleared in this mutation.
+func (m *UserMutation) TrialBalanceExpiresAtCleared() bool {
+	_, ok := m.clearedFields[user.FieldTrialBalanceExpiresAt]
+	return ok
+}
+
+// ResetTrialBalanceExpiresAt resets all changes to the "trial_balance_expires_at" field.
+func (m *UserMutation) ResetTrialBalanceExpiresAt() {
+	m.trial_balance_expires_at = nil
+	delete(m.clearedFields, user.FieldTrialBalanceExpiresAt)
+}
+
 // SetConcurrency sets the "concurrency" field.
 func (m *UserMutation) SetConcurrency(i int) {
 	m.concurrency = &i
@@ -38165,6 +38274,42 @@ func (m *UserMutation) OldStatus(ctx context.Context) (v string, err error) {
 // ResetStatus resets all changes to the "status" field.
 func (m *UserMutation) ResetStatus() {
 	m.status = nil
+}
+
+// SetRegistrationIP sets the "registration_ip" field.
+func (m *UserMutation) SetRegistrationIP(s string) {
+	m.registration_ip = &s
+}
+
+// RegistrationIP returns the value of the "registration_ip" field in the mutation.
+func (m *UserMutation) RegistrationIP() (r string, exists bool) {
+	v := m.registration_ip
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRegistrationIP returns the old "registration_ip" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldRegistrationIP(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRegistrationIP is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRegistrationIP requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRegistrationIP: %w", err)
+	}
+	return oldValue.RegistrationIP, nil
+}
+
+// ResetRegistrationIP resets all changes to the "registration_ip" field.
+func (m *UserMutation) ResetRegistrationIP() {
+	m.registration_ip = nil
 }
 
 // SetUsername sets the "username" field.
@@ -39479,7 +39624,7 @@ func (m *UserMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserMutation) Fields() []string {
-	fields := make([]string, 0, 23)
+	fields := make([]string, 0, 26)
 	if m.created_at != nil {
 		fields = append(fields, user.FieldCreatedAt)
 	}
@@ -39501,11 +39646,20 @@ func (m *UserMutation) Fields() []string {
 	if m.balance != nil {
 		fields = append(fields, user.FieldBalance)
 	}
+	if m.trial_balance != nil {
+		fields = append(fields, user.FieldTrialBalance)
+	}
+	if m.trial_balance_expires_at != nil {
+		fields = append(fields, user.FieldTrialBalanceExpiresAt)
+	}
 	if m.concurrency != nil {
 		fields = append(fields, user.FieldConcurrency)
 	}
 	if m.status != nil {
 		fields = append(fields, user.FieldStatus)
+	}
+	if m.registration_ip != nil {
+		fields = append(fields, user.FieldRegistrationIP)
 	}
 	if m.username != nil {
 		fields = append(fields, user.FieldUsername)
@@ -39571,10 +39725,16 @@ func (m *UserMutation) Field(name string) (ent.Value, bool) {
 		return m.Role()
 	case user.FieldBalance:
 		return m.Balance()
+	case user.FieldTrialBalance:
+		return m.TrialBalance()
+	case user.FieldTrialBalanceExpiresAt:
+		return m.TrialBalanceExpiresAt()
 	case user.FieldConcurrency:
 		return m.Concurrency()
 	case user.FieldStatus:
 		return m.Status()
+	case user.FieldRegistrationIP:
+		return m.RegistrationIP()
 	case user.FieldUsername:
 		return m.Username()
 	case user.FieldNotes:
@@ -39626,10 +39786,16 @@ func (m *UserMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldRole(ctx)
 	case user.FieldBalance:
 		return m.OldBalance(ctx)
+	case user.FieldTrialBalance:
+		return m.OldTrialBalance(ctx)
+	case user.FieldTrialBalanceExpiresAt:
+		return m.OldTrialBalanceExpiresAt(ctx)
 	case user.FieldConcurrency:
 		return m.OldConcurrency(ctx)
 	case user.FieldStatus:
 		return m.OldStatus(ctx)
+	case user.FieldRegistrationIP:
+		return m.OldRegistrationIP(ctx)
 	case user.FieldUsername:
 		return m.OldUsername(ctx)
 	case user.FieldNotes:
@@ -39716,6 +39882,20 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetBalance(v)
 		return nil
+	case user.FieldTrialBalance:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTrialBalance(v)
+		return nil
+	case user.FieldTrialBalanceExpiresAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTrialBalanceExpiresAt(v)
+		return nil
 	case user.FieldConcurrency:
 		v, ok := value.(int)
 		if !ok {
@@ -39729,6 +39909,13 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetStatus(v)
+		return nil
+	case user.FieldRegistrationIP:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRegistrationIP(v)
 		return nil
 	case user.FieldUsername:
 		v, ok := value.(string)
@@ -39839,6 +40026,9 @@ func (m *UserMutation) AddedFields() []string {
 	if m.addbalance != nil {
 		fields = append(fields, user.FieldBalance)
 	}
+	if m.addtrial_balance != nil {
+		fields = append(fields, user.FieldTrialBalance)
+	}
 	if m.addconcurrency != nil {
 		fields = append(fields, user.FieldConcurrency)
 	}
@@ -39861,6 +40051,8 @@ func (m *UserMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
 	case user.FieldBalance:
 		return m.AddedBalance()
+	case user.FieldTrialBalance:
+		return m.AddedTrialBalance()
 	case user.FieldConcurrency:
 		return m.AddedConcurrency()
 	case user.FieldBalanceNotifyThreshold:
@@ -39884,6 +40076,13 @@ func (m *UserMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddBalance(v)
+		return nil
+	case user.FieldTrialBalance:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddTrialBalance(v)
 		return nil
 	case user.FieldConcurrency:
 		v, ok := value.(int)
@@ -39924,6 +40123,9 @@ func (m *UserMutation) ClearedFields() []string {
 	if m.FieldCleared(user.FieldDeletedAt) {
 		fields = append(fields, user.FieldDeletedAt)
 	}
+	if m.FieldCleared(user.FieldTrialBalanceExpiresAt) {
+		fields = append(fields, user.FieldTrialBalanceExpiresAt)
+	}
 	if m.FieldCleared(user.FieldTotpSecretEncrypted) {
 		fields = append(fields, user.FieldTotpSecretEncrypted)
 	}
@@ -39955,6 +40157,9 @@ func (m *UserMutation) ClearField(name string) error {
 	switch name {
 	case user.FieldDeletedAt:
 		m.ClearDeletedAt()
+		return nil
+	case user.FieldTrialBalanceExpiresAt:
+		m.ClearTrialBalanceExpiresAt()
 		return nil
 	case user.FieldTotpSecretEncrypted:
 		m.ClearTotpSecretEncrypted()
@@ -40000,11 +40205,20 @@ func (m *UserMutation) ResetField(name string) error {
 	case user.FieldBalance:
 		m.ResetBalance()
 		return nil
+	case user.FieldTrialBalance:
+		m.ResetTrialBalance()
+		return nil
+	case user.FieldTrialBalanceExpiresAt:
+		m.ResetTrialBalanceExpiresAt()
+		return nil
 	case user.FieldConcurrency:
 		m.ResetConcurrency()
 		return nil
 	case user.FieldStatus:
 		m.ResetStatus()
+		return nil
+	case user.FieldRegistrationIP:
+		m.ResetRegistrationIP()
 		return nil
 	case user.FieldUsername:
 		m.ResetUsername()

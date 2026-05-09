@@ -32,9 +32,32 @@
           <template v-if="activeTab === 'recharge'">
             <!-- Recharge Account Card -->
             <div class="card p-5">
-              <p class="text-xs font-medium text-gray-400 dark:text-gray-500">{{ t('payment.rechargeAccount') }}</p>
-              <p class="mt-1 text-base font-semibold text-gray-900 dark:text-white">{{ user?.username || '' }}</p>
-              <p class="mt-0.5 text-sm font-medium text-green-600 dark:text-green-400">{{ t('payment.currentBalance') }}: {{ user?.balance?.toFixed(2) || '0.00' }}</p>
+              <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div class="min-w-0">
+                  <p class="text-xs font-medium text-gray-400 dark:text-gray-500">{{ t('payment.rechargeAccount') }}</p>
+                  <p class="mt-1 text-base font-semibold text-gray-900 dark:text-white">{{ user?.username || '' }}</p>
+                  <p class="mt-0.5 text-sm font-medium text-green-600 dark:text-green-400">{{ t('payment.currentBalance') }}: {{ availableBalance.toFixed(2) }}</p>
+                  <p v-if="trialBalance > 0" class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('common.realBalance') }}: {{ realBalance.toFixed(2) }} · {{ t('common.trialBalance') }}: {{ trialBalance.toFixed(2) }}
+                  </p>
+                </div>
+                <div class="flex shrink-0 flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-100 sm:flex-row sm:items-center">
+                  <div class="flex items-start gap-2">
+                    <Icon name="infoCircle" size="sm" class="mt-0.5 shrink-0 text-amber-500 dark:text-amber-300" />
+                    <div>
+                      <p class="text-sm font-semibold">{{ t('payment.rechargeSupportTitle') }}</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    class="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 text-sm font-medium text-amber-800 transition-colors hover:bg-amber-100 dark:border-amber-400/40 dark:bg-amber-400/10 dark:text-amber-100 dark:hover:bg-amber-400/20"
+                    @click="copyWechatContact"
+                  >
+                    <Icon name="copy" size="sm" />
+                    <span>{{ t('payment.copyWechat') }}</span>
+                  </button>
+                </div>
+              </div>
             </div>
             <div v-if="enabledMethods.length === 0" class="card py-16 text-center">
               <p class="text-gray-500 dark:text-gray-400">{{ t('payment.notAvailable') }}</p>
@@ -278,6 +301,8 @@ import type { PaymentMethodOption } from '@/components/payment/PaymentMethodSele
 import { buildPaymentErrorToastMessage, describePaymentScenarioError } from './paymentUx'
 import { hasWechatResumeQuery, parseWechatResumeRoute, stripWechatResumeQuery } from './paymentWechatResume'
 
+const WECHAT_CONTACT_ID = 'wokie2521'
+
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
@@ -287,6 +312,9 @@ const subscriptionStore = useSubscriptionStore()
 const appStore = useAppStore()
 
 const user = computed(() => authStore.user)
+const realBalance = computed(() => user.value?.real_balance ?? user.value?.balance ?? 0)
+const trialBalance = computed(() => user.value?.trial_balance ?? 0)
+const availableBalance = computed(() => user.value?.available_balance ?? (realBalance.value + trialBalance.value))
 const activeSubscriptions = computed(() => subscriptionStore.activeSubscriptions)
 
 function getDaysRemaining(expiresAt: string): number {
@@ -651,6 +679,15 @@ function selectPlanFromModal(plan: SubscriptionPlan) {
 function closeRenewalModal() {
   showRenewalModal.value = false
   renewGroupId.value = null
+}
+
+async function copyWechatContact() {
+  try {
+    await navigator.clipboard.writeText(WECHAT_CONTACT_ID)
+    appStore.showSuccess(t('payment.wechatCopied'))
+  } catch {
+    appStore.showError(t('common.copyFailed'))
+  }
 }
 
 async function handleSubmitRecharge() {

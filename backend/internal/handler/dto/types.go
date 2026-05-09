@@ -7,17 +7,21 @@ import (
 )
 
 type User struct {
-	ID            int64      `json:"id"`
-	Email         string     `json:"email"`
-	Username      string     `json:"username"`
-	Role          string     `json:"role"`
-	Balance       float64    `json:"balance"`
-	Concurrency   int        `json:"concurrency"`
-	Status        string     `json:"status"`
-	AllowedGroups []int64    `json:"allowed_groups"`
-	LastActiveAt  *time.Time `json:"last_active_at,omitempty"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
+	ID                    int64      `json:"id"`
+	Email                 string     `json:"email"`
+	Username              string     `json:"username"`
+	Role                  string     `json:"role"`
+	Balance               float64    `json:"balance"`
+	RealBalance           float64    `json:"real_balance"`
+	TrialBalance          float64    `json:"trial_balance"`
+	AvailableBalance      float64    `json:"available_balance"`
+	TrialBalanceExpiresAt *time.Time `json:"trial_balance_expires_at,omitempty"`
+	Concurrency           int        `json:"concurrency"`
+	Status                string     `json:"status"`
+	AllowedGroups         []int64    `json:"allowed_groups"`
+	LastActiveAt          *time.Time `json:"last_active_at,omitempty"`
+	CreatedAt             time.Time  `json:"created_at"`
+	UpdatedAt             time.Time  `json:"updated_at"`
 
 	// 余额不足通知
 	BalanceNotifyEnabled       bool               `json:"balance_notify_enabled"`
@@ -38,8 +42,9 @@ type User struct {
 type AdminUser struct {
 	User
 
-	Notes      string     `json:"notes"`
-	LastUsedAt *time.Time `json:"last_used_at"`
+	Notes          string     `json:"notes"`
+	LastUsedAt     *time.Time `json:"last_used_at"`
+	RegistrationIP string     `json:"registration_ip,omitempty"`
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]rateMultiplier
 	GroupRates map[int64]float64 `json:"group_rates,omitempty"`

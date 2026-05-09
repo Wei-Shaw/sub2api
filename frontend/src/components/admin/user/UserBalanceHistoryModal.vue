@@ -28,7 +28,10 @@
           <div class="flex-shrink-0 text-right">
             <p class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.users.currentBalance') }}</p>
             <p class="text-xl font-bold text-gray-900 dark:text-white">
-              ${{ user.balance?.toFixed(2) || '0.00' }}
+              ${{ formatMoney(availableBalance) }}
+            </p>
+            <p v-if="trialBalance > 0" class="text-xs text-gray-500 dark:text-dark-400">
+              {{ t('common.realBalance') }} ${{ formatMoney(realBalance) }} · {{ t('common.trialBalance') }} ${{ formatMoney(trialBalance) }}
             </p>
           </div>
         </div>
@@ -181,6 +184,13 @@ import Icon from '@/components/icons/Icon.vue'
 const props = defineProps<{ show: boolean; user: AdminUser | null; hideActions?: boolean }>()
 const emit = defineEmits(['close', 'deposit', 'withdraw'])
 const { t } = useI18n()
+const realBalance = computed(() => props.user?.real_balance ?? props.user?.balance ?? 0)
+const trialBalance = computed(() => props.user?.trial_balance ?? 0)
+const availableBalance = computed(() => props.user?.available_balance ?? (realBalance.value + trialBalance.value))
+
+function formatMoney(value?: number | null) {
+  return Number(value || 0).toFixed(2)
+}
 
 const history = ref<BalanceHistoryItem[]>([])
 const loading = ref(false)

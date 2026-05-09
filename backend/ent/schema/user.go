@@ -49,11 +49,21 @@ func (User) Fields() []ent.Field {
 		field.Float("balance").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
 			Default(0),
+		field.Float("trial_balance").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
+			Default(0),
+		field.Time("trial_balance_expires_at").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 		field.Int("concurrency").
 			Default(5),
 		field.String("status").
 			MaxLen(20).
 			Default(domain.StatusActive),
+		field.String("registration_ip").
+			MaxLen(64).
+			Default(""),
 
 		// Optional profile fields (added later; default '' in DB migration)
 		field.String("username").
@@ -138,6 +148,7 @@ func (User) Indexes() []ent.Index {
 	return []ent.Index{
 		// email 字段已在 Fields() 中声明 Unique()，无需重复索引
 		index.Fields("status"),
+		index.Fields("registration_ip"),
 		index.Fields("deleted_at"),
 	}
 }

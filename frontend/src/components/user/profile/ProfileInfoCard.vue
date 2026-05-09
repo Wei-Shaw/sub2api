@@ -67,7 +67,10 @@
                   {{ t('profile.accountBalance') }}
                 </p>
                 <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
-                  {{ formatCurrency(user?.balance || 0) }}
+                  {{ formatCurrency(availableBalance) }}
+                </p>
+                <p v-if="trialBalance > 0" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('common.realBalance') }} {{ formatCurrency(realBalance) }} · {{ t('common.trialBalance') }} {{ formatCurrency(trialBalance) }}
                 </p>
               </div>
               <div
@@ -231,6 +234,9 @@ function isEmailBound(user: User | null | undefined): boolean {
 
 const avatarUrl = computed(() => props.user?.avatar_url?.trim() || '')
 const displayName = computed(() => props.user?.username?.trim() || props.user?.email?.trim() || t('profile.user'))
+const realBalance = computed(() => props.user?.real_balance ?? props.user?.balance ?? 0)
+const trialBalance = computed(() => props.user?.trial_balance ?? 0)
+const availableBalance = computed(() => props.user?.available_balance ?? (realBalance.value + trialBalance.value))
 const primaryEmailDisplay = computed(() => {
   const email = props.user?.email?.trim() || ''
   if (!email) {

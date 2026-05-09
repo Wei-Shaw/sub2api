@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/mail"
 	"strings"
+	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
@@ -171,19 +172,22 @@ func (s *AuthService) createEmailOAuthUser(ctx context.Context, email, username,
 		Username:     strings.TrimSpace(username),
 		PasswordHash: hashedPassword,
 		Role:         RoleUser,
-		Balance:      grantPlan.Balance,
 		Concurrency:  grantPlan.Concurrency,
 		RPMLimit:     defaultRPMLimit,
 		Status:       StatusActive,
 		SignupSource: providerType,
 	}
-	if err := s.userRepo.Create(ctx, user); err != nil {
+	applySignupTrialBalance(user, grantPlan, time.Now())
+	if err := s.createSignupUser(ctx, user); err != nil {
 		if errors.Is(err, ErrEmailExists) {
 			existing, loadErr := s.userRepo.GetByEmail(ctx, email)
 			if loadErr != nil {
 				return nil, ErrServiceUnavailable
 			}
 			return existing, nil
+		}
+		if errors.Is(err, ErrRegistrationIPLimitExceeded) {
+			return nil, ErrRegistrationIPLimitExceeded
 		}
 		return nil, ErrServiceUnavailable
 	}

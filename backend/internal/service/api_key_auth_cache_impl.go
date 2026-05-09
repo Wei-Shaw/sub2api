@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 9 // v9: added API Key name for audit logs
+const apiKeyAuthSnapshotVersion = 10 // v10: user trial balance fields
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -225,6 +225,8 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			Status:                     apiKey.User.Status,
 			Role:                       apiKey.User.Role,
 			Balance:                    apiKey.User.Balance,
+			TrialBalance:               apiKey.User.TrialBalance,
+			TrialBalanceExpiresAt:      apiKey.User.TrialBalanceExpiresAt,
 			Concurrency:                apiKey.User.Concurrency,
 			Email:                      apiKey.User.Email,
 			Username:                   apiKey.User.Username,
@@ -302,6 +304,8 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			Status:                     snapshot.User.Status,
 			Role:                       snapshot.User.Role,
 			Balance:                    snapshot.User.Balance,
+			TrialBalance:               snapshot.User.TrialBalance,
+			TrialBalanceExpiresAt:      snapshot.User.TrialBalanceExpiresAt,
 			Concurrency:                snapshot.User.Concurrency,
 			Email:                      snapshot.User.Email,
 			Username:                   snapshot.User.Username,

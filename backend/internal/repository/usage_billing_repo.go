@@ -176,11 +176,44 @@ func incrementUsageBillingSubscription(ctx context.Context, tx *sql.Tx, subscrip
 func deductUsageBillingBalance(ctx context.Context, tx *sql.Tx, userID int64, amount float64) (float64, error) {
 	var newBalance float64
 	err := tx.QueryRowContext(ctx, `
-		UPDATE users
-		SET balance = balance - $1,
+		WITH locked AS (
+			SELECT
+				id,
+				balance,
+				trial_balance,
+				CASE
+					WHEN trial_balance_expires_at IS NOT NULL AND trial_balance_expires_at > NOW()
+					THEN GREATEST(trial_balance, 0)
+					ELSE 0
+				END AS active_trial
+			FROM users
+			WHERE id = $2 AND deleted_at IS NULL
+			FOR UPDATE
+		),
+		calc AS (
+			SELECT
+				id,
+				balance,
+				trial_balance,
+				LEAST(active_trial, CAST($1 AS NUMERIC)) AS trial_deduct,
+				CAST($1 AS NUMERIC) - LEAST(active_trial, CAST($1 AS NUMERIC)) AS real_deduct
+			FROM locked
+		)
+		UPDATE users AS u
+		SET
+			trial_balance = CASE
+				WHEN calc.trial_deduct > 0 THEN calc.trial_balance - calc.trial_deduct
+				ELSE calc.trial_balance
+			END,
+			balance = calc.balance - calc.real_deduct,
 			updated_at = NOW()
-		WHERE id = $2 AND deleted_at IS NULL
-		RETURNING balance
+		FROM calc
+		WHERE u.id = calc.id
+		RETURNING u.balance + CASE
+			WHEN u.trial_balance_expires_at IS NOT NULL AND u.trial_balance_expires_at > NOW()
+			THEN GREATEST(u.trial_balance, 0)
+			ELSE 0
+		END
 	`, amount, userID).Scan(&newBalance)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, service.ErrUserNotFound

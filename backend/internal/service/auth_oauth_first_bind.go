@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 
@@ -78,7 +79,11 @@ ON CONFLICT (user_id, provider_type, grant_reason) DO NOTHING`,
 	}
 
 	if providerDefaults.Balance != 0 {
-		if err := client.User.UpdateOneID(userID).AddBalance(providerDefaults.Balance).Exec(ctx); err != nil {
+		expiresAt := time.Now().Add(signupTrialBalanceTTL)
+		if err := client.User.UpdateOneID(userID).
+			AddTrialBalance(providerDefaults.Balance).
+			SetTrialBalanceExpiresAt(expiresAt).
+			Exec(ctx); err != nil {
 			return fmt.Errorf("apply first bind balance default: %w", err)
 		}
 	}

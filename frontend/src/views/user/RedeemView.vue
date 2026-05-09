@@ -11,7 +11,10 @@
           </div>
           <p class="text-sm font-medium text-primary-100">{{ t('redeem.currentBalance') }}</p>
           <p class="mt-2 text-4xl font-bold text-white">
-            ${{ user?.balance?.toFixed(2) || '0.00' }}
+            ${{ availableBalance.toFixed(2) }}
+          </p>
+          <p v-if="trialBalance > 0" class="mt-2 text-sm text-primary-100">
+            {{ t('common.realBalance') }} ${{ realBalance.toFixed(2) }} · {{ t('common.trialBalance') }} ${{ trialBalance.toFixed(2) }}
           </p>
           <p class="mt-2 text-sm text-primary-100">
             {{ t('redeem.concurrency') }}: {{ user?.concurrency || 0 }} {{ t('redeem.requests') }}
@@ -358,6 +361,9 @@ const appStore = useAppStore()
 const subscriptionStore = useSubscriptionStore()
 
 const user = computed(() => authStore.user)
+const realBalance = computed(() => user.value?.real_balance ?? user.value?.balance ?? 0)
+const trialBalance = computed(() => user.value?.trial_balance ?? 0)
+const availableBalance = computed(() => user.value?.available_balance ?? (realBalance.value + trialBalance.value))
 
 const redeemCode = ref('')
 const submitting = ref(false)

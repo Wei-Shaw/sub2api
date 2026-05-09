@@ -148,15 +148,18 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 		Email:        email,
 		PasswordHash: hashedPassword,
 		Role:         RoleUser,
-		Balance:      grantPlan.Balance,
 		Concurrency:  grantPlan.Concurrency,
 		Status:       StatusActive,
 		SignupSource: signupSource,
 	}
+	applySignupTrialBalance(user, grantPlan, time.Now())
 
-	if err := s.userRepo.Create(ctx, user); err != nil {
+	if err := s.createSignupUser(ctx, user); err != nil {
 		if errors.Is(err, ErrEmailExists) {
 			return nil, nil, ErrEmailExists
+		}
+		if errors.Is(err, ErrRegistrationIPLimitExceeded) {
+			return nil, nil, ErrRegistrationIPLimitExceeded
 		}
 		return nil, nil, ErrServiceUnavailable
 	}
@@ -228,16 +231,19 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 		Email:        email,
 		PasswordHash: hashedPassword,
 		Role:         RoleUser,
-		Balance:      grantPlan.Balance,
 		Concurrency:  grantPlan.Concurrency,
 		RPMLimit:     defaultRPMLimit,
 		Status:       StatusActive,
 		SignupSource: signupSource,
 	}
+	applySignupTrialBalance(user, grantPlan, time.Now())
 
-	if err := s.userRepo.Create(ctx, user); err != nil {
+	if err := s.createSignupUser(ctx, user); err != nil {
 		if errors.Is(err, ErrEmailExists) {
 			return nil, nil, ErrEmailExists
+		}
+		if errors.Is(err, ErrRegistrationIPLimitExceeded) {
+			return nil, nil, ErrRegistrationIPLimitExceeded
 		}
 		return nil, nil, ErrServiceUnavailable
 	}

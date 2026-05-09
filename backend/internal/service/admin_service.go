@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"sort"
 	"strconv"
@@ -857,25 +858,42 @@ func (s *adminServiceImpl) UpdateUserBalance(ctx context.Context, userID int64, 
 		return nil, err
 	}
 
-	oldBalance := user.Balance
+	now := time.Now()
+	oldRealBalance := user.Balance
+	oldTrialBalance := user.ActiveTrialBalanceAt(now)
+	oldAvailableBalance := oldRealBalance + oldTrialBalance
 
 	switch operation {
 	case "set":
 		user.Balance = balance
+		user.TrialBalance = 0
+		user.TrialBalanceExpiresAt = nil
 	case "add":
 		user.Balance += balance
 	case "subtract":
-		user.Balance -= balance
+		trialDeduct := minFloat64(oldTrialBalance, balance)
+		realDeduct := balance - trialDeduct
+		if trialDeduct > 0 {
+			user.TrialBalance -= trialDeduct
+			if user.TrialBalance < 1e-10 {
+				user.TrialBalance = 0
+			}
+		}
+		user.Balance -= realDeduct
 	}
 
-	if user.Balance < 0 {
-		return nil, fmt.Errorf("balance cannot be negative, current balance: %.2f, requested operation would result in: %.2f", oldBalance, user.Balance)
+	newAvailableBalance := user.AvailableBalanceAt(now)
+	if newAvailableBalance < -1e-10 {
+		return nil, fmt.Errorf("balance cannot be negative, current balance: %.2f, requested operation would result in: %.2f", oldAvailableBalance, newAvailableBalance)
+	}
+	if math.Abs(newAvailableBalance) < 1e-10 {
+		newAvailableBalance = 0
 	}
 
 	if err := s.userRepo.Update(ctx, user); err != nil {
 		return nil, err
 	}
-	balanceDiff := user.Balance - oldBalance
+	balanceDiff := newAvailableBalance - oldAvailableBalance
 	if s.authCacheInvalidator != nil && balanceDiff != 0 {
 		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
 	}
@@ -914,6 +932,13 @@ func (s *adminServiceImpl) UpdateUserBalance(ctx context.Context, userID int64, 
 	}
 
 	return user, nil
+}
+
+func minFloat64(a, b float64) float64 {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func (s *adminServiceImpl) GetUserAPIKeys(ctx context.Context, userID int64, page, pageSize int, sortBy, sortOrder string) ([]APIKey, int64, error) {

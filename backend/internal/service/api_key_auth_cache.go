@@ -30,11 +30,13 @@ type APIKeyAuthSnapshot struct {
 
 // APIKeyAuthUserSnapshot 用户快照
 type APIKeyAuthUserSnapshot struct {
-	ID          int64   `json:"id"`
-	Status      string  `json:"status"`
-	Role        string  `json:"role"`
-	Balance     float64 `json:"balance"`
-	Concurrency int     `json:"concurrency"`
+	ID                    int64      `json:"id"`
+	Status                string     `json:"status"`
+	Role                  string     `json:"role"`
+	Balance               float64    `json:"balance"`
+	TrialBalance          float64    `json:"trial_balance"`
+	TrialBalanceExpiresAt *time.Time `json:"trial_balance_expires_at,omitempty"`
+	Concurrency           int        `json:"concurrency"`
 
 	// Balance notification fields (required for CheckBalanceAfterDeduction)
 	Email                      string             `json:"email"`
