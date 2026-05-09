@@ -6,7 +6,7 @@
     <JsonSchemaForm
       :schema="schema"
       :model-value="formData.group_extra || {}"
-      @update:model-value="$emit('update:formData', { ...formData, group_extra: $event })"
+      @update:model-value="formData.group_extra = $event"
     />
   </div>
   <div v-else class="border-t border-gray-200 pt-4 dark:border-dark-600">
@@ -30,7 +30,7 @@ const props = defineProps<{
   editingGroupId?: number | null
 }>()
 
-defineEmits<{ 'update:formData': [value: Record<string, any>] }>()
+
 
 const { t } = useI18n()
 const { getPlatformDecl } = usePlatforms()
