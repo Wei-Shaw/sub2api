@@ -1,6 +1,6 @@
 <template>
   <!-- Custom Home Content: Full Page Mode -->
-  <div v-if="homeContent" class="min-h-screen">
+  <div v-if="homeContent.trim()" class="min-h-screen">
     <!-- iframe mode -->
     <iframe
       v-if="isHomeContentUrl"
