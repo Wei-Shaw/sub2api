@@ -13,13 +13,10 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/gateway"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	pkgerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
@@ -670,118 +667,7 @@ func (h *GatewayHandler) errorResponseWithMetadata(c *gin.Context, status int, e
 // POST /v1/messages/count_tokens
 // 特点：校验订阅/余额，但不计算并发、不记录使用量
 func (h *GatewayHandler) CountTokens(c *gin.Context) {
-	// 从context获取apiKey和user（ApiKeyAuth中间件已设置）
-	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
-	if !ok {
-		h.errorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
-		return
-	}
-
-	_, ok = middleware2.GetAuthSubjectFromContext(c)
-	if !ok {
-		h.errorResponse(c, http.StatusInternalServerError, "api_error", "User context not found")
-		return
-	}
-	reqLog := requestLogger(
-		c,
-		"handler.gateway.count_tokens",
-		zap.Int64("api_key_id", apiKey.ID),
-		zap.Any("group_id", apiKey.GroupID),
-	)
-	defer h.maybeLogCompatibilityFallbackMetrics(reqLog)
-
-	// 读取请求体
-	body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
-	if err != nil {
-		if maxErr, ok := extractMaxBytesError(err); ok {
-			h.errorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
-			return
-		}
-		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to read request body")
-		return
-	}
-
-	if len(body) == 0 {
-		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Request body is empty")
-		return
-	}
-
-	setOpsRequestContext(c, "", false, body)
-
-	parsedReq, err := service.ParseGatewayRequest(body, domain.PlatformAnthropic)
-	if err != nil {
-		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
-		return
-	}
-	// count_tokens 走 messages 严格校验时，复用已解析请求，避免二次反序列化。
-	SetClaudeCodeClientContext(c, body, parsedReq)
-	reqLog = reqLog.With(zap.String("model", parsedReq.Model), zap.Bool("stream", parsedReq.Stream))
-	// 在请求上下文中记录 thinking 状态，供 Antigravity 最终模型 key 推导/模型维度限流使用
-	c.Request = c.Request.WithContext(service.WithThinkingEnabled(c.Request.Context(), parsedReq.ThinkingEnabled, h.metadataBridgeEnabled()))
-
-	// 验证 model 必填
-	if parsedReq.Model == "" {
-		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
-		return
-	}
-
-	setOpsRequestContext(c, parsedReq.Model, parsedReq.Stream, body)
-	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(parsedReq.Stream, false)))
-
-	// 获取订阅信息（可能为nil）
-	subscription, _ := middleware2.GetSubscriptionFromContext(c)
-
-	// 校验 billing eligibility（订阅/余额）
-	// 【注意】不计算并发，但需要校验订阅/余额
-	// billingTicket：两阶段计费检查（详见 service.BillingTicket 注释），caller 必须 defer Close。
-	billingTicket, err := h.billingCacheService.PrepareBillingCheckForRequest(
-		c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription,
-		service.ServiceQuotaCheckRequest{Model: parsedReq.Model},
-	)
-	if err != nil {
-		status, code, message, metadata := billingErrorDetails(err)
-		h.errorResponseWithMetadata(c, status, code, message, metadata)
-		return
-	}
-	defer billingTicket.Close()
-	c.Request = c.Request.WithContext(service.WithBillingTicket(c.Request.Context(), billingTicket))
-
-	// 计算粘性会话 hash
-	parsedReq.SessionContext = &service.SessionContext{
-		ClientIP:  ip.GetClientIP(c),
-		UserAgent: c.GetHeader("User-Agent"),
-		APIKeyID:  apiKey.ID,
-	}
-	sessionHash := h.gatewayService.GenerateSessionHash(parsedReq)
-
-	// 解析渠道级模型映射：count_tokens 不抢账号并发槽位，但服务限额仍要按 channel/account scope
-	// 检查，因此需要把 channelID 传给 BillingTicket.Consume（与主请求路径一致）。
-	// 仅做映射，restricted 检查已移至调度阶段，这里忽略 bool 返回值。
-	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, apiKey.GroupPlatform(), parsedReq.Model)
-
-	// 选择支持该模型的账号
-	account, err := h.gatewayService.SelectAccountForModel(c.Request.Context(), apiKey.GroupID, sessionHash, parsedReq.Model)
-	if err != nil {
-		reqLog.Warn("gateway.count_tokens_select_account_failed", zap.Error(err))
-		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable")
-		return
-	}
-	setOpsSelectedAccount(c, account.ID, account.Platform)
-
-	// service quota 第二阶段：count_tokens 不抢账号并发槽位，但服务限额仍要按 channel/account scope 检查。
-	if err := billingTicket.Consume(c.Request.Context(), channelMapping.ChannelID, account.ID); err != nil {
-		reqLog.Info("gateway.count_tokens_service_quota_consume_failed", zap.Int64("account_id", account.ID), zap.Error(err))
-		status, code, message, metadata := billingErrorDetails(err)
-		h.errorResponseWithMetadata(c, status, code, message, metadata)
-		return
-	}
-
-	// 转发请求（不记录使用量）
-	if err := h.gatewayService.ForwardCountTokens(c.Request.Context(), c, account, parsedReq); err != nil {
-		reqLog.Error("gateway.count_tokens_forward_failed", zap.Int64("account_id", account.ID), zap.Error(err))
-		// 错误响应已在 ForwardCountTokens 中处理
-		return
-	}
+	h.countTokensPipeline(c)
 }
 
 // InterceptType 表示请求拦截类型

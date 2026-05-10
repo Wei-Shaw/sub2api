@@ -15,6 +15,7 @@ import (
 //   - "anthropic"        -> GatewayService.Forward                  (/v1/messages)
 //   - "chat_completions" -> GatewayService.ForwardAsChatCompletions (/v1/chat/completions)
 //   - "responses"        -> GatewayService.ForwardAsResponses       (/v1/responses)
+//   - "count_tokens"     -> GatewayService.ForwardCountTokens       (/v1/messages/count_tokens)
 type AnthropicProvider struct {
 	gatewayService *service.GatewayService
 }
@@ -27,7 +28,7 @@ func NewAnthropicProvider(gw *service.GatewayService) *AnthropicProvider {
 
 func (p *AnthropicProvider) Platform() string { return domain.PlatformAnthropic }
 func (p *AnthropicProvider) Protocols() []string {
-	return []string{ProtocolAnthropic, ProtocolChatCompletions, ProtocolResponses}
+	return []string{ProtocolAnthropic, ProtocolChatCompletions, ProtocolResponses, ProtocolCountTokens}
 }
 
 // Forward dispatches to the appropriate GatewayService method based on
@@ -42,6 +43,8 @@ func (p *AnthropicProvider) Forward(
 		return p.forwardChatCompletions(ctx, req)
 	case ProtocolResponses:
 		return p.forwardResponses(ctx, req)
+	case ProtocolCountTokens:
+		return p.forwardCountTokens(ctx, req)
 	default:
 		return p.forwardMessages(ctx, req)
 	}
@@ -82,6 +85,20 @@ func (p *AnthropicProvider) forwardResponses(
 		return nil, err
 	}
 	return ServiceResultToForwardResult(result), nil
+}
+
+// forwardCountTokens wraps GatewayService.ForwardCountTokens.
+// CountTokens writes the response directly to gin.Context and produces
+// no usage result, so we return a nil ForwardResult on success.
+func (p *AnthropicProvider) forwardCountTokens(
+	ctx context.Context, req *ForwardRequest,
+) (*ForwardResult, error) {
+	parsed := toServiceParsedRequest(req)
+	err := p.gatewayService.ForwardCountTokens(ctx, req.GinContext, req.Account, parsed)
+	if err != nil {
+		return nil, err
+	}
+	return nil, nil
 }
 
 // ShouldFailover returns true when the error is an UpstreamFailoverError,

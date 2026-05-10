@@ -106,6 +106,23 @@ func (p *GatewayPipeline) selectAccount(
 	req *ForwardRequest,
 	excludedIDs map[int64]struct{},
 ) (*service.Account, func(), error) {
+	// Images protocol: loop until we find an account that supports the
+	// required image capability, mirroring the legacy
+	// SelectAccountWithSchedulerForImages filtering behaviour.
+	if req.Protocol == ProtocolImages && req.ImagesRequest != nil {
+		return p.selectAccountForImages(ctx, req, excludedIDs)
+	}
+
+	return p.selectAccountGeneric(ctx, req, excludedIDs)
+}
+
+// selectAccountGeneric performs the standard load-aware account selection
+// used by all non-images protocols.
+func (p *GatewayPipeline) selectAccountGeneric(
+	ctx context.Context,
+	req *ForwardRequest,
+	excludedIDs map[int64]struct{},
+) (*service.Account, func(), error) {
 	selection, err := p.gatewayService.SelectAccountWithLoadAwareness(
 		ctx, req.GroupID, req.SessionHash, req.Model,
 		excludedIDs, req.MetadataUserID, req.UserID,
@@ -113,6 +130,70 @@ func (p *GatewayPipeline) selectAccount(
 	if err != nil {
 		return nil, nil, err
 	}
+	return p.acquireSlotIfNeeded(ctx, req, selection)
+}
+
+// selectAccountForImages wraps selectAccountGeneric with image-capability
+// filtering, matching the legacy SelectAccountWithSchedulerForImages logic:
+// try with the required capability first, then fall back to Basic if the
+// required capability was Native.
+func (p *GatewayPipeline) selectAccountForImages(
+	ctx context.Context,
+	req *ForwardRequest,
+	excludedIDs map[int64]struct{},
+) (*service.Account, func(), error) {
+	capability := req.ImagesRequest.RequiredCapability
+	localExcluded := cloneExcludedIDs(excludedIDs)
+
+	account, release, err := p.selectAccountWithImageCapability(ctx, req, localExcluded, capability)
+	if err == nil {
+		return account, release, nil
+	}
+	// Fall back from Native to Basic (OAuth accounts support both).
+	if capability == service.OpenAIImagesCapabilityNative {
+		return p.selectAccountWithImageCapability(ctx, req, excludedIDs, service.OpenAIImagesCapabilityBasic)
+	}
+	return nil, nil, err
+}
+
+// selectAccountWithImageCapability repeatedly selects accounts, skipping
+// those that don't support the given capability.
+func (p *GatewayPipeline) selectAccountWithImageCapability(
+	ctx context.Context,
+	req *ForwardRequest,
+	excludedIDs map[int64]struct{},
+	capability service.OpenAIImagesCapability,
+) (*service.Account, func(), error) {
+	localExcluded := cloneExcludedIDs(excludedIDs)
+	for {
+		account, release, err := p.selectAccountGeneric(ctx, req, localExcluded)
+		if err != nil {
+			return nil, nil, err
+		}
+		if account.SupportsOpenAIImageCapability(capability) {
+			return account, release, nil
+		}
+		// Account doesn't support the capability; release and exclude.
+		if release != nil {
+			release()
+		}
+		if localExcluded == nil {
+			localExcluded = make(map[int64]struct{})
+		}
+		if _, exists := localExcluded[account.ID]; exists {
+			return nil, nil, service.ErrNoAvailableAccounts
+		}
+		localExcluded[account.ID] = struct{}{}
+	}
+}
+
+// acquireSlotIfNeeded handles the wait-plan slot acquisition that was
+// previously inlined in selectAccount.
+func (p *GatewayPipeline) acquireSlotIfNeeded(
+	ctx context.Context,
+	req *ForwardRequest,
+	selection *service.AccountSelectionResult,
+) (*service.Account, func(), error) {
 	account := selection.Account
 	releaseFunc := selection.ReleaseFunc
 	if !selection.Acquired && selection.WaitPlan != nil {
@@ -126,6 +207,17 @@ func (p *GatewayPipeline) selectAccount(
 		_ = p.gatewayService.BindStickySession(ctx, req.GroupID, req.SessionHash, account.ID)
 	}
 	return account, releaseFunc, nil
+}
+
+func cloneExcludedIDs(src map[int64]struct{}) map[int64]struct{} {
+	if len(src) == 0 {
+		return nil
+	}
+	dst := make(map[int64]struct{}, len(src))
+	for k := range src {
+		dst[k] = struct{}{}
+	}
+	return dst
 }
 
 func (p *GatewayPipeline) consumeBilling(ctx context.Context, req *ForwardRequest) error {

@@ -247,12 +247,12 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	gatewayService := service.NewGatewayService(accountRepository, groupRepository, usageLogRepository, usageBillingRepository, userRepository, userSubscriptionRepository, userGroupRateRepository, gatewayCache, configConfig, schedulerSnapshotService, concurrencyService, billingService, rateLimitService, billingCacheService, identityService, httpUpstream, deferredService, claudeTokenProvider, sessionLimitCache, rpmCache, digestSessionStore, settingService, tlsFingerprintProfileService, channelCacheReader, modelPricingResolver, balanceNotifyService)
 	openAITokenProvider := service.ProvideOpenAITokenProvider(accountRepository, geminiTokenCache, openAIOAuthService, oAuthRefreshAPI)
 	openAIGatewayService := service.NewOpenAIGatewayService(accountRepository, usageLogRepository, usageBillingRepository, userRepository, userSubscriptionRepository, userGroupRateRepository, gatewayCache, configConfig, schedulerSnapshotService, concurrencyService, billingService, rateLimitService, billingCacheService, httpUpstream, deferredService, openAITokenProvider, modelPricingResolver, channelCacheReader, balanceNotifyService, settingService)
+	geminiMessagesCompatService := service.NewGeminiMessagesCompatService(accountRepository, groupRepository, gatewayCache, schedulerSnapshotService, geminiTokenProvider, rateLimitService, httpUpstream, antigravityGatewayService, configConfig)
 	// Gateway Pipeline (Phase 1 M5): registry + pipeline injected into Handlers for
 	// compile-time validation and diagnostic endpoints. Handler methods still use their
 	// existing per-platform dispatch; progressive switchover is planned for later milestones.
-	providerRegistry := gateway.ProvideProviderRegistry(gatewayService, openAIGatewayService, antigravityGatewayService)
+	providerRegistry := gateway.ProvideProviderRegistry(gatewayService, openAIGatewayService, antigravityGatewayService, geminiMessagesCompatService)
 	gatewayPipeline := gateway.ProvideGatewayPipeline(providerRegistry, gatewayService, billingCacheService, concurrencyService, settingService, configConfig)
-	geminiMessagesCompatService := service.NewGeminiMessagesCompatService(accountRepository, groupRepository, gatewayCache, schedulerSnapshotService, geminiTokenProvider, rateLimitService, httpUpstream, antigravityGatewayService, configConfig)
 	opsSystemLogSink := service.ProvideOpsSystemLogSink(opsRepository)
 	opsService := service.NewOpsService(opsRepository, settingRepository, configConfig, accountRepository, userRepository, concurrencyService, gatewayService, openAIGatewayService, geminiMessagesCompatService, antigravityGatewayService, opsSystemLogSink)
 	// payment registry / encryptionKey / paymentConfigService / paymentService 已迁移到 plugins/payment/

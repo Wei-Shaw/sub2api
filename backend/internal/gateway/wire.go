@@ -6,17 +6,19 @@ import (
 )
 
 // ProvideProviderRegistry creates a ProviderRegistry and registers
-// the three host-internal platform adapters (Anthropic, OpenAI,
-// Antigravity). Phase 2+ will add dynamic registration from plugins.
+// the four host-internal platform adapters (Anthropic, OpenAI,
+// Antigravity, Gemini). Phase 2+ will add dynamic registration from plugins.
 func ProvideProviderRegistry(
 	gw *service.GatewayService,
 	openai *service.OpenAIGatewayService,
 	antigravity *service.AntigravityGatewayService,
+	gemini *service.GeminiMessagesCompatService,
 ) *ProviderRegistry {
 	reg := NewProviderRegistry()
 	reg.Register(NewAnthropicProvider(gw))
 	reg.Register(NewOpenAIProvider(openai))
 	reg.Register(NewAntigravityProvider(antigravity))
+	reg.Register(NewGeminiProvider(gemini))
 	return reg
 }
 

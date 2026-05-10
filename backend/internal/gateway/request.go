@@ -12,6 +12,19 @@ const (
 	ProtocolResponses       = "responses"
 	ProtocolOpenAI          = "openai"
 	ProtocolGemini          = "gemini"
+
+	// ProtocolAnthropicViaOpenAI dispatches Anthropic-format Messages
+	// requests through OpenAI accounts (ForwardAsAnthropic).
+	ProtocolAnthropicViaOpenAI = "anthropic_via_openai"
+
+	// ProtocolImages dispatches OpenAI Images API requests
+	// (ForwardImages for /v1/images/generations and /v1/images/edits).
+	ProtocolImages = "images"
+
+	// ProtocolCountTokens dispatches Anthropic count_tokens requests.
+	// No usage recording or failover; only billing eligibility and
+	// account selection are required.
+	ProtocolCountTokens = "count_tokens"
 )
 
 // ForwardRequest is the protocol-agnostic request context passed to
@@ -79,6 +92,11 @@ type ForwardRequest struct {
 	// existing sticky-session binding. Antigravity uses this to decide
 	// cache billing on session switches.
 	IsStickySession bool
+
+	// ImagesRequest carries the parsed OpenAI Images request metadata
+	// (endpoint, model, multipart data, capability). Only set when
+	// Protocol == ProtocolImages.
+	ImagesRequest *service.OpenAIImagesRequest
 
 	// --- writable by provider ---
 

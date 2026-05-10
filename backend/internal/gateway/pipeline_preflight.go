@@ -51,16 +51,21 @@ func (p *GatewayPipeline) readAndParse(
 	if err != nil {
 		return nil, fmt.Errorf("gateway: read body: %w", err)
 	}
-	if len(body) == 0 {
-		return nil, errors.New("gateway: empty request body")
-	}
+	// Body may be empty when the handler pre-read it (e.g. Messages,
+	// CountTokens). In that case the ParseRequestFunc supplies its own
+	// copy via the closure; we pass whatever we got and let it decide.
 	req, err := parse(body)
 	if err != nil {
 		return nil, fmt.Errorf("gateway: parse request: %w", err)
 	}
 	req.Protocol = protocol
 	req.ForcePlatform = forcePlatform
-	req.RawBody = body
+	// Only overwrite RawBody when the pipeline actually read data.
+	// Pre-read handlers set RawBody in the ParseRequestFunc; clobbering
+	// it with an empty slice would break forwarding.
+	if len(body) > 0 {
+		req.RawBody = body
+	}
 	p.extractAuthContext(c, req)
 	return req, nil
 }
