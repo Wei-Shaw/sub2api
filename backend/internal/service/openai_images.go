@@ -582,6 +582,61 @@ func classifyUnknownOpenAIImageSizeTier(width int, height int) string {
 	return "2K"
 }
 
+const (
+	openAIImagesStreamPrimerStopperKey = "openai_images_stream_primer_stopper"
+	openAIImagesStreamWrittenKey       = "openai_images_stream_written"
+)
+
+// BindOpenAIImagesStreamPrimerStopper registers a handler-owned stream primer
+// stopper. ForwardImages stops it immediately before service code writes to the
+// downstream response, so the primer cannot race with upstream forwarding.
+func BindOpenAIImagesStreamPrimerStopper(c *gin.Context, stop func()) {
+	if c == nil || stop == nil {
+		return
+	}
+	c.Set(openAIImagesStreamPrimerStopperKey, stop)
+	c.Set(openAIImagesStreamWrittenKey, false)
+}
+
+func StopOpenAIImagesStreamPrimer(c *gin.Context) {
+	if c == nil {
+		return
+	}
+	value, ok := c.Get(openAIImagesStreamPrimerStopperKey)
+	if !ok {
+		return
+	}
+	stop, ok := value.(func())
+	if !ok || stop == nil {
+		return
+	}
+	c.Set(openAIImagesStreamPrimerStopperKey, func() {})
+	stop()
+}
+
+// MarkOpenAIImagesStreamResponseWritten records that service code has written
+// a downstream Images stream event/body after the handler primer. Handler-level
+// fallback errors use this marker so primer keepalive comments do not suppress
+// the final SSE error, while service-written errors are not duplicated.
+func MarkOpenAIImagesStreamResponseWritten(c *gin.Context) {
+	if c == nil {
+		return
+	}
+	c.Set(openAIImagesStreamWrittenKey, true)
+}
+
+func HasOpenAIImagesStreamResponseWritten(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	value, ok := c.Get(openAIImagesStreamWrittenKey)
+	if !ok {
+		return false
+	}
+	written, ok := value.(bool)
+	return ok && written
+}
+
 func (s *OpenAIGatewayService) ForwardImages(
 	ctx context.Context,
 	c *gin.Context,
@@ -672,6 +727,9 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 		})
 		return nil, fmt.Errorf("upstream request failed: %s", safeErr)
 	}
+	if resp.StatusCode < 400 {
+		StopOpenAIImagesStreamPrimer(c)
+	}
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 		_ = resp.Body.Close()
@@ -695,6 +753,10 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 				ResponseBody:           respBody,
 				RetryableOnSameAccount: account.IsPoolMode() && isPoolModeRetryableStatus(resp.StatusCode),
 			}
+		}
+		StopOpenAIImagesStreamPrimer(c)
+		if parsed.Stream && c.Writer.Written() {
+			return nil, s.writeOpenAIImagesStreamError(c, upstreamMsg)
 		}
 		return s.handleErrorResponse(upstreamCtx, resp, c, account, forwardBody)
 	}
@@ -726,6 +788,9 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 		imageCount = streamCount
 		firstTokenMs = ttft
 	} else {
+		if parsed.Stream && c.Writer.Written() {
+			return nil, s.writeOpenAIImagesStreamError(c, "upstream image stream did not return text/event-stream")
+		}
 		nonStreamUsage, nonStreamCount, err := s.handleOpenAIImagesNonStreamingResponse(resp, c)
 		if err != nil {
 			return nil, err
@@ -905,6 +970,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(resp *http
 		}
 	}
 	c.Data(resp.StatusCode, contentType, body)
+	MarkOpenAIImagesStreamResponseWritten(c)
 
 	usage, _ := extractOpenAIUsageFromJSONBytes(body)
 	return usage, extractOpenAIImageCountFromJSONBytes(body), nil
@@ -920,8 +986,17 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 	if contentType == "" {
 		contentType = "text/event-stream"
 	}
-	c.Status(resp.StatusCode)
+	if !c.Writer.Written() {
+		c.Status(resp.StatusCode)
+	}
 	c.Header("Content-Type", contentType)
+	if c.Writer.Header().Get("Cache-Control") == "" {
+		c.Header("Cache-Control", "no-cache")
+	}
+	if c.Writer.Header().Get("Connection") == "" {
+		c.Header("Connection", "keep-alive")
+	}
+	c.Header("X-Accel-Buffering", "no")
 
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
@@ -965,6 +1040,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 				clientDisconnected = true
 				logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Images stream client disconnected, continue draining upstream for billing")
 			} else {
+				MarkOpenAIImagesStreamResponseWritten(c)
 				flusher.Flush()
 				lastDownstreamWriteAt = time.Now()
 			}
@@ -1098,6 +1174,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 				return usage, imageCounter.Count(), firstTokenMs, fmt.Errorf("image stream incomplete after timeout")
 			}
 			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Images stream data interval timeout: interval=%s", streamInterval)
+			MarkOpenAIImagesStreamResponseWritten(c)
 			_ = s.writeOpenAIImagesStreamEvent(c, flusher, "error", buildOpenAIImagesStreamErrorBody(fmt.Sprintf("upstream image stream idle for %s", streamInterval)))
 			return usage, imageCounter.Count(), firstTokenMs, fmt.Errorf("image stream data interval timeout")
 		case <-keepaliveCh:
