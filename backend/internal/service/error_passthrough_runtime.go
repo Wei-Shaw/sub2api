@@ -12,6 +12,13 @@ func BindErrorPassthroughService(c *gin.Context, svc *ErrorPassthroughService) {
 	c.Set(errorPassthroughServiceContextKey, svc)
 }
 
+// GetBoundErrorPassthroughService returns the ErrorPassthroughService bound
+// to the gin context, or nil if none is bound. Exported for use by the
+// pipeline error classification helpers in the handler package.
+func GetBoundErrorPassthroughService(c *gin.Context) *ErrorPassthroughService {
+	return getBoundErrorPassthroughService(c)
+}
+
 func getBoundErrorPassthroughService(c *gin.Context) *ErrorPassthroughService {
 	if c == nil {
 		return nil

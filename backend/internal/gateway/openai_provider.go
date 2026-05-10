@@ -131,5 +131,6 @@ func openaiResultToForwardResult(r *service.OpenAIForwardResult) *ForwardResult 
 		ImageOutputTokens:   int64(r.Usage.ImageOutputTokens),
 		ImageCount:          r.ImageCount,
 		ImageSize:           r.ImageSize,
+		ResponseHeaders:     r.ResponseHeaders,
 	}
 }

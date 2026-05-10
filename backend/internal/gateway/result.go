@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"net/http"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -58,4 +59,9 @@ type ForwardResult struct {
 	// Image generation billing fields
 	ImageCount int
 	ImageSize  string // "1K" / "2K" / "4K"
+
+	// ResponseHeaders carries upstream response headers for post-forward
+	// processing (e.g. Codex usage snapshot extraction). Only populated
+	// by the OpenAI provider.
+	ResponseHeaders http.Header
 }

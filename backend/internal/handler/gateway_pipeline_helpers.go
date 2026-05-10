@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -15,6 +16,13 @@ import (
 // for the error response. This is shared by CC and Responses pipeline
 // handlers to avoid duplicating error classification logic.
 func classifyPipelineError(err error) (status int, code, message string, metadata map[string]string) {
+	return classifyPipelineErrorWithContext(nil, "", err)
+}
+
+// classifyPipelineErrorWithContext is the context-aware variant that also
+// consults error passthrough rules and applies upstream status code mapping
+// (e.g. 401/403 → 502) matching the legacy handleFailoverExhausted behaviour.
+func classifyPipelineErrorWithContext(c *gin.Context, platform string, err error) (status int, code, message string, metadata map[string]string) {
 	if err == nil {
 		return http.StatusInternalServerError, "api_error", "Unknown error", nil
 	}
@@ -34,11 +42,7 @@ func classifyPipelineError(err error) (status int, code, message string, metadat
 	// Check for upstream failover errors (may be wrapped)
 	var failoverErr *service.UpstreamFailoverError
 	if errors.As(err, &failoverErr) {
-		statusCode := http.StatusBadGateway
-		if failoverErr.StatusCode > 0 {
-			statusCode = failoverErr.StatusCode
-		}
-		return statusCode, "server_error", "All available accounts exhausted", nil
+		return classifyFailoverError(c, platform, failoverErr)
 	}
 
 	// Pattern match on pipeline error prefixes
@@ -76,6 +80,79 @@ func classifyPipelineError(err error) (status int, code, message string, metadat
 	default:
 		return http.StatusInternalServerError, "api_error", msg, nil
 	}
+}
+
+// classifyFailoverError handles UpstreamFailoverError with error passthrough
+// rule consultation and upstream status code mapping (401/403 → 502).
+// This matches the legacy handleFailoverExhausted + mapUpstreamError behaviour.
+func classifyFailoverError(c *gin.Context, platform string, failoverErr *service.UpstreamFailoverError) (status int, code, message string, metadata map[string]string) {
+	statusCode := failoverErr.StatusCode
+	responseBody := failoverErr.ResponseBody
+
+	// Consult error passthrough rules (Bug 9)
+	if c != nil && len(responseBody) > 0 {
+		svc := service.GetBoundErrorPassthroughService(c)
+		if svc != nil {
+			if rule := svc.MatchRule(platform, statusCode, responseBody); rule != nil {
+				respCode := statusCode
+				if !rule.PassthroughCode && rule.ResponseCode != nil {
+					respCode = *rule.ResponseCode
+				}
+				msg := service.ExtractUpstreamErrorMessage(responseBody)
+				if !rule.PassthroughBody && rule.CustomMessage != nil {
+					msg = *rule.CustomMessage
+				}
+				if rule.SkipMonitoring {
+					c.Set(service.OpsSkipPassthroughKey, true)
+				}
+				return respCode, "upstream_error", msg, nil
+			}
+		}
+	}
+
+	// Record original upstream error for ops logging
+	if c != nil && statusCode > 0 {
+		upstreamMsg := service.ExtractUpstreamErrorMessage(responseBody)
+		service.SetOpsUpstreamError(c, statusCode, upstreamMsg, "")
+	}
+
+	// Map upstream status codes to client-facing codes (Bug 8)
+	return mapPipelineUpstreamError(statusCode)
+}
+
+// mapPipelineUpstreamError maps upstream HTTP status codes to client-facing
+// error responses, matching the legacy mapUpstreamError behaviour.
+func mapPipelineUpstreamError(statusCode int) (status int, code, message string, metadata map[string]string) {
+	switch statusCode {
+	case 401:
+		return http.StatusBadGateway, "upstream_error", "Upstream authentication failed, please contact administrator", nil
+	case 403:
+		return http.StatusBadGateway, "upstream_error", "Upstream access forbidden, please contact administrator", nil
+	case 429:
+		return http.StatusTooManyRequests, "rate_limit_error", "Upstream rate limit exceeded, please retry later", nil
+	case 529:
+		return http.StatusServiceUnavailable, "overloaded_error", "Upstream service overloaded, please retry later", nil
+	case 500, 502, 503, 504:
+		return http.StatusBadGateway, "upstream_error", "Upstream service temporarily unavailable", nil
+	default:
+		return http.StatusBadGateway, "upstream_error", "Upstream request failed", nil
+	}
+}
+
+// writeSSEErrorEvent writes an SSE error event to the client when streaming
+// has already started (c.Writer.Size() > 0). This ensures the client receives
+// a structured error instead of a silent stream termination.
+// Reuses the existing streamingErrorEvent helper from gateway_handler.go.
+func writeSSEErrorEvent(c *gin.Context, errType, message string, metadata map[string]string) {
+	flusher, ok := c.Writer.(http.Flusher)
+	if !ok {
+		return
+	}
+	errorEvent := streamingErrorEvent(errType, message, metadata)
+	if _, err := fmt.Fprint(c.Writer, errorEvent); err != nil {
+		_ = c.Error(err)
+	}
+	flusher.Flush()
 }
 
 // toServiceForwardResult converts a gateway.ForwardResult to

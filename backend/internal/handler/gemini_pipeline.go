@@ -315,11 +315,14 @@ func (h *GatewayHandler) resolveGeminiForcePlatform(c *gin.Context) string {
 // handleGeminiPipelineError translates pipeline errors into Google API
 // error format responses.
 func (h *GatewayHandler) handleGeminiPipelineError(c *gin.Context, err error) {
+	status, _, message, metadata := classifyGeminiPipelineErrorWithContext(c, err)
+
+	// Gemini streaming uses JSON lines, not SSE; if bytes were already written
+	// we cannot reliably inject a Google-format error, so we silently return.
 	if c.Writer.Size() > 0 {
-		return // bytes already written to client, cannot send error
+		return
 	}
 
-	status, _, message, metadata := classifyGeminiPipelineError(err)
 	if len(metadata) > 0 {
 		googleErrorWithReason(c, status, "", message, metadata)
 	} else {
@@ -327,10 +330,9 @@ func (h *GatewayHandler) handleGeminiPipelineError(c *gin.Context, err error) {
 	}
 }
 
-// classifyGeminiPipelineError inspects a pipeline error and returns the
-// appropriate Google API error response fields.
-func classifyGeminiPipelineError(err error) (status int, code, message string, metadata map[string]string) {
-	// Reuse the shared classifier, then remap codes to Google API style
-	httpStatus, _, msg, md := classifyPipelineError(err)
+// classifyGeminiPipelineErrorWithContext inspects a pipeline error with
+// context-aware error passthrough and upstream error mapping.
+func classifyGeminiPipelineErrorWithContext(c *gin.Context, err error) (status int, code, message string, metadata map[string]string) {
+	httpStatus, _, msg, md := classifyPipelineErrorWithContext(c, service.PlatformGemini, err)
 	return httpStatus, "", msg, md
 }

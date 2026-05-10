@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/google/uuid"
 )
 
 const (
@@ -67,6 +68,9 @@ func (p *GatewayPipeline) tryOneAccount(
 		return p.handleSelectionError(ctx, fs, err)
 	}
 	req.Account = account
+	// For OpenAI pool-mode accounts without a session hash, generate a
+	// one-time sticky key so same-account retries don't re-balance.
+	req.SessionHash = ensurePoolModeSessionHash(req.SessionHash, account)
 	if req.GinContext != nil {
 		setOpsSelectedAccount(req.GinContext, account.ID, account.Platform)
 	}
@@ -417,4 +421,14 @@ func sleepWithContext(ctx context.Context, d time.Duration) bool {
 	case <-time.After(d):
 		return true
 	}
+}
+
+// ensurePoolModeSessionHash generates a one-time sticky session key for
+// OpenAI pool-mode accounts that have no session hash. This prevents
+// same-account retries from re-balancing to a different account.
+func ensurePoolModeSessionHash(sessionHash string, account *service.Account) string {
+	if sessionHash != "" || account == nil || !account.IsPoolMode() {
+		return sessionHash
+	}
+	return "openai-pool-retry-" + uuid.NewString()
 }

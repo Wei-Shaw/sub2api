@@ -127,11 +127,14 @@ func (h *GatewayHandler) buildCCRecordFunc(c *gin.Context) gateway.RecordUsageFu
 // error responses. It inspects the error chain to produce the appropriate
 // HTTP status code and error type.
 func (h *GatewayHandler) handleCCPipelineError(c *gin.Context, err error) {
+	status, code, message, metadata := classifyPipelineErrorWithContext(c, service.PlatformAnthropic, err)
+
+	// If streaming already started, write an SSE error event instead of an HTTP error
 	if c.Writer.Size() > 0 {
-		return // bytes already written to client, cannot send error
+		writeSSEErrorEvent(c, code, message, metadata)
+		return
 	}
 
-	status, code, message, metadata := classifyPipelineError(err)
 	if len(metadata) > 0 {
 		h.chatCompletionsErrorResponseWithMetadata(c, status, code, message, metadata)
 	} else {

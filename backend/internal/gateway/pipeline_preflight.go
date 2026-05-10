@@ -5,7 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/rand"
+	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
@@ -99,12 +102,24 @@ func (p *GatewayPipeline) resolveChannelMapping(c *gin.Context, req *ForwardRequ
 	return nil
 }
 
+// Slot acquisition constants matching handler/gateway_helper.go.
+const (
+	slotMaxWait         = 30 * time.Second
+	slotPingInterval    = 10 * time.Second
+	slotInitialBackoff  = 100 * time.Millisecond
+	slotBackoffMult     = 1.5
+	slotMaxBackoff      = 2 * time.Second
+	ssePingClaude       = "data: {\"type\": \"ping\"}\n\n"
+	ssePingComment      = ":\n\n"
+)
+
 func (p *GatewayPipeline) acquireUserSlot(c *gin.Context, req *ForwardRequest) (func(), error) {
 	ctx := c.Request.Context()
 	waitCounted, err := p.incrementWaitCount(ctx, req)
 	if err != nil {
 		return nil, err
 	}
+
 	slot, err := p.concurrency.AcquireUserSlot(ctx, req.UserID, req.Concurrency)
 	if err != nil {
 		if waitCounted {
@@ -112,15 +127,123 @@ func (p *GatewayPipeline) acquireUserSlot(c *gin.Context, req *ForwardRequest) (
 		}
 		return nil, fmt.Errorf("gateway: acquire user slot: %w", err)
 	}
+
+	if slot.Acquired {
+		if waitCounted {
+			p.concurrency.DecrementWaitCount(ctx, req.UserID)
+		}
+		release := slot.ReleaseFunc
+		return func() {
+			if release != nil {
+				release()
+			}
+		}, nil
+	}
+
+	// Slot not immediately available — wait with SSE ping for streaming requests
+	release, err := p.waitForUserSlotWithPing(c, req)
 	if waitCounted {
 		p.concurrency.DecrementWaitCount(ctx, req.UserID)
 	}
-	release := slot.ReleaseFunc
+	if err != nil {
+		return nil, fmt.Errorf("gateway: acquire user slot: %w", err)
+	}
 	return func() {
 		if release != nil {
 			release()
 		}
 	}, nil
+}
+
+// waitForUserSlotWithPing retries slot acquisition with exponential backoff,
+// sending SSE ping events for streaming requests to keep the connection alive.
+func (p *GatewayPipeline) waitForUserSlotWithPing(c *gin.Context, req *ForwardRequest) (func(), error) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), slotMaxWait)
+	defer cancel()
+
+	pingFormat := p.pingFormatForProtocol(req.Protocol)
+	needPing := req.Stream && pingFormat != ""
+
+	var flusher http.Flusher
+	if needPing {
+		var ok bool
+		flusher, ok = c.Writer.(http.Flusher)
+		if !ok {
+			needPing = false
+		}
+	}
+
+	var pingCh <-chan time.Time
+	if needPing {
+		pingTicker := time.NewTicker(slotPingInterval)
+		defer pingTicker.Stop()
+		pingCh = pingTicker.C
+	}
+
+	streamStarted := false
+	backoff := slotInitialBackoff
+	timer := time.NewTimer(backoff)
+	defer timer.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, errors.New("timeout waiting for user concurrency slot")
+
+		case <-pingCh:
+			if !streamStarted {
+				c.Header("Content-Type", "text/event-stream")
+				c.Header("Cache-Control", "no-cache")
+				c.Header("Connection", "keep-alive")
+				c.Header("X-Accel-Buffering", "no")
+				streamStarted = true
+			}
+			if _, err := fmt.Fprint(c.Writer, pingFormat); err != nil {
+				return nil, err
+			}
+			flusher.Flush()
+
+		case <-timer.C:
+			slot, err := p.concurrency.AcquireUserSlot(ctx, req.UserID, req.Concurrency)
+			if err != nil {
+				return nil, err
+			}
+			if slot.Acquired {
+				return slot.ReleaseFunc, nil
+			}
+			backoff = nextSlotBackoff(backoff)
+			timer.Reset(backoff)
+		}
+	}
+}
+
+// pingFormatForProtocol returns the SSE ping format string for the given protocol.
+func (p *GatewayPipeline) pingFormatForProtocol(protocol string) string {
+	switch protocol {
+	case ProtocolAnthropic, ProtocolAnthropicViaOpenAI:
+		return ssePingClaude
+	case ProtocolChatCompletions, ProtocolResponses, ProtocolOpenAI, ProtocolImages:
+		return ssePingComment
+	default:
+		return ""
+	}
+}
+
+// nextSlotBackoff computes the next backoff duration with jitter.
+func nextSlotBackoff(current time.Duration) time.Duration {
+	next := time.Duration(float64(current) * slotBackoffMult)
+	if next > slotMaxBackoff {
+		next = slotMaxBackoff
+	}
+	jitter := 0.8 + rand.Float64()*0.4
+	jittered := time.Duration(float64(next) * jitter)
+	if jittered < slotInitialBackoff {
+		return slotInitialBackoff
+	}
+	if jittered > slotMaxBackoff {
+		return slotMaxBackoff
+	}
+	return jittered
 }
 
 func (p *GatewayPipeline) incrementWaitCount(ctx context.Context, req *ForwardRequest) (bool, error) {
@@ -173,6 +296,12 @@ func (p *GatewayPipeline) resolveSessionHash(c *gin.Context, req *ForwardRequest
 			"session_hash", req.SessionHash,
 			"bound_account_id", cachedID,
 		)
+		groupID := int64(0)
+		if req.GroupID != nil {
+			groupID = *req.GroupID
+		}
+		ctx = service.WithPrefetchedStickySession(ctx, cachedID, groupID, false)
+		c.Request = c.Request.WithContext(ctx)
 	}
 }
 

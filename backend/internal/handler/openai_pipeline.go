@@ -159,12 +159,19 @@ func (h *OpenAIGatewayHandler) openaiRecordUsage(
 	inboundEndpoint := GetInboundEndpoint(c)
 	upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 
+	// Update Codex usage snapshot from response headers (OAuth accounts only)
+	if account.Type == service.AccountTypeOAuth && result.ResponseHeaders != nil {
+		h.gatewayService.UpdateCodexUsageSnapshotFromHeaders(c.Request.Context(), account.ID, result.ResponseHeaders)
+	}
+
 	reqModel := result.Model
+	var requestPayloadHash string
 	if raw, ok := c.Get("ops_request_body"); ok {
 		if b, ok := raw.([]byte); ok {
 			if m := gjson.GetBytes(b, "model"); m.Exists() {
 				reqModel = m.String()
 			}
+			requestPayloadHash = service.HashUsageRequestPayload(b)
 		}
 	}
 
@@ -181,6 +188,7 @@ func (h *OpenAIGatewayHandler) openaiRecordUsage(
 			UpstreamEndpoint:    upstreamEndpoint,
 			UserAgent:           userAgent,
 			IPAddress:           clientIP,
+			RequestPayloadHash:  requestPayloadHash,
 			APIKeyService:       h.apiKeyService,
 			ChannelUsageFields:  channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
 			ServiceQuotaRequest: service.ServiceQuotaCheckRequest{Model: reqModel, AccountID: account.ID, ChannelID: channelMapping.ChannelID},
@@ -451,11 +459,14 @@ func (h *OpenAIGatewayHandler) openaiImagesRecordUsage(
 // handleAnthropicPipelineError translates pipeline errors into Anthropic
 // Messages error format for the OpenAI Messages dispatch path.
 func (h *OpenAIGatewayHandler) handleAnthropicPipelineError(c *gin.Context, err error) {
+	status, code, message, metadata := classifyPipelineErrorWithContext(c, service.PlatformOpenAI, err)
+
+	// If streaming already started, write an SSE error event instead of an HTTP error
 	if c.Writer.Size() > 0 {
-		return // bytes already written to client, cannot send error
+		writeSSEErrorEvent(c, code, message, metadata)
+		return
 	}
 
-	status, code, message, metadata := classifyPipelineError(err)
 	if len(metadata) > 0 {
 		h.anthropicErrorResponseWithMetadata(c, status, code, message, metadata)
 	} else {
@@ -464,14 +475,17 @@ func (h *OpenAIGatewayHandler) handleAnthropicPipelineError(c *gin.Context, err 
 }
 
 // handleOpenAIPipelineError translates pipeline errors into OpenAI-format
-// error responses. Uses the shared classifyPipelineError from
+// error responses. Uses the shared classifyPipelineErrorWithContext from
 // gateway_pipeline_helpers.go.
 func (h *OpenAIGatewayHandler) handleOpenAIPipelineError(c *gin.Context, err error) {
+	status, code, message, metadata := classifyPipelineErrorWithContext(c, service.PlatformOpenAI, err)
+
+	// If streaming already started, write an SSE error event instead of an HTTP error
 	if c.Writer.Size() > 0 {
-		return // bytes already written to client, cannot send error
+		writeSSEErrorEvent(c, code, message, metadata)
+		return
 	}
 
-	status, code, message, metadata := classifyPipelineError(err)
 	if len(metadata) > 0 {
 		h.errorResponseWithMetadata(c, status, code, message, metadata)
 	} else {

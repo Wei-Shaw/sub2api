@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -63,6 +64,8 @@ func (p *GatewayPipeline) Execute(
 	parse ParseRequestFunc,
 	record RecordUsageFunc,
 ) error {
+	requestStart := time.Now()
+
 	req, slotRelease, err := p.executePreFlight(c, protocol, forcePlatform, parse)
 	if err != nil {
 		return err
@@ -70,9 +73,29 @@ func (p *GatewayPipeline) Execute(
 	defer slotRelease()
 	defer req.BillingTicket.Close()
 
+	// Auth latency: time from request start through pre-flight (auth + billing)
+	service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
+	routingStart := time.Now()
+
 	result, err := p.selectAndForward(c.Request.Context(), c.Writer, req)
 	if err != nil {
 		return err
 	}
+
+	// Routing latency: time spent in account selection + forwarding
+	forwardDurationMs := time.Since(routingStart).Milliseconds()
+	service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
+
+	// Response latency: forward duration minus upstream processing time
+	var responseLatencyMs int64
+	if result != nil && result.FirstTokenMs != nil {
+		upstreamMs := int64(*result.FirstTokenMs)
+		if forwardDurationMs > upstreamMs {
+			responseLatencyMs = forwardDurationMs - upstreamMs
+		}
+		service.SetOpsLatencyMs(c, service.OpsTimeToFirstTokenMsKey, upstreamMs)
+	}
+	service.SetOpsLatencyMs(c, service.OpsResponseLatencyMsKey, responseLatencyMs)
+
 	return p.recordUsage(c.Request.Context(), req, result, record)
 }

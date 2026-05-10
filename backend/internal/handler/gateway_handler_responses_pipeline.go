@@ -122,11 +122,14 @@ func (h *GatewayHandler) buildResponsesRecordFunc(c *gin.Context) gateway.Record
 // handleResponsesPipelineError translates pipeline errors into Responses
 // error responses.
 func (h *GatewayHandler) handleResponsesPipelineError(c *gin.Context, err error) {
+	status, code, message, metadata := classifyPipelineErrorWithContext(c, service.PlatformAnthropic, err)
+
+	// If streaming already started, write an SSE error event instead of an HTTP error
 	if c.Writer.Size() > 0 {
-		return // bytes already written to client, cannot send error
+		writeSSEErrorEvent(c, code, message, metadata)
+		return
 	}
 
-	status, code, message, metadata := classifyPipelineError(err)
 	if len(metadata) > 0 {
 		h.responsesErrorResponseWithMetadata(c, status, code, message, metadata)
 	} else {
