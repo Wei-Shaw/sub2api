@@ -136,12 +136,11 @@ Backend trả envelope:
   "code": 0,
   "message": "success",
   "data": {
-    "status": "ok",
+    "status": "active",
     "mode": "first_claim",
     "user_id": 123,
     "device_login_code": "DLG-AAAA-BBBB-CCCC",
     "device_binding_id": 456,
-    "device_activation_status": "pending_activation",
     "claimed_at": "2026-05-09T08:00:00Z"
   }
 }
@@ -151,15 +150,14 @@ Field trong `data`:
 
 | Field | Type | Giá trị |
 |---|---:|---|
-| `status` | string | Backend đang trả cố định `"ok"` khi claim success. Không dùng field này để quyết định active/pending. |
+| `status` | string | `"active"` hoặc `"pending_activation"`. Đây là field client dùng để quyết định flow. |
 | `mode` | string | `"first_claim"` hoặc `"resume"`. |
 | `user_id` | number | User ID được bind với device. |
 | `device_login_code` | string | DLG code. Đây là mã user gửi admin/marketing khi cần active device. |
 | `device_binding_id` | number | ID binding device trong backend. |
-| `device_activation_status` | string | `"active"` hoặc `"pending_activation"`. Đây là field client phải dùng để quyết định flow. |
 | `claimed_at` | string | Timestamp claim/resume. |
 
-### 2.4 Claim response khi device active
+### 2.4 Claim response khi account/app status active
 
 Ví dụ exact shape:
 
@@ -168,12 +166,11 @@ Ví dụ exact shape:
   "code": 0,
   "message": "success",
   "data": {
-    "status": "ok",
+    "status": "active",
     "mode": "first_claim",
     "user_id": 123,
     "device_login_code": "DLG-AAAA-BBBB-CCCC",
     "device_binding_id": 456,
-    "device_activation_status": "active",
     "claimed_at": "2026-05-09T08:00:00Z"
   }
 }
@@ -181,7 +178,7 @@ Ví dụ exact shape:
 
 Client behavior:
 
-1. Đọc `data.device_activation_status`.
+1. Đọc `data.status`.
 2. Nếu là `"active"`, lấy `data.device_login_code`.
 3. Gọi tiếp `POST /api/v1/auth/invite-login` với:
 
@@ -205,12 +202,11 @@ Ví dụ exact shape:
   "code": 0,
   "message": "success",
   "data": {
-    "status": "ok",
+    "status": "pending_activation",
     "mode": "first_claim",
     "user_id": 123,
     "device_login_code": "DLG-AAAA-BBBB-CCCC",
     "device_binding_id": 456,
-    "device_activation_status": "pending_activation",
     "claimed_at": "2026-05-09T08:00:00Z"
   }
 }
@@ -218,13 +214,13 @@ Ví dụ exact shape:
 
 Client behavior:
 
-1. Đọc `data.device_activation_status`.
+1. Đọc `data.status`.
 2. Nếu là `"pending_activation"`, lấy `data.device_login_code`.
 3. Lưu lại local pending state gồm tối thiểu:
    - `device_hash`
    - `install_id` nếu có
    - `device_login_code`
-   - `device_activation_status = "pending_activation"`
+   - `status = "pending_activation"`
 4. Hiển thị màn hình chờ active.
 5. Hiển thị rõ DLG code cho user copy/gửi admin/marketing.
 6. Không gọi tiếp `/auth/invite-login` ngay trong path này.
@@ -252,12 +248,11 @@ Response có:
   "code": 0,
   "message": "success",
   "data": {
-    "status": "ok",
+    "status": "pending_activation",
     "mode": "resume",
     "user_id": 123,
     "device_login_code": "DLG-AAAA-BBBB-CCCC",
     "device_binding_id": 456,
-    "device_activation_status": "pending_activation",
     "claimed_at": "2026-05-09T08:05:00Z"
   }
 }
@@ -265,8 +260,8 @@ Response có:
 
 Client behavior khi resume:
 
-- Nếu `device_activation_status === "pending_activation"`: tiếp tục show pending + DLG cũ.
-- Nếu `device_activation_status === "active"`: gọi `/auth/invite-login` bằng DLG đó.
+- Nếu `status === "pending_activation"`: tiếp tục show pending + DLG cũ.
+- Nếu `status === "active"`: gọi `/auth/invite-login` bằng DLG đó.
 
 ---
 
@@ -480,12 +475,11 @@ Client behavior: thiết bị đã bị revoke/blocked. Không show pending acti
 
 ```ts
 type ClaimResponseData = {
-  status: 'ok'
+  status: 'active' | 'pending_activation'
   mode: 'first_claim' | 'resume'
   user_id?: number
   device_login_code?: string
   device_binding_id?: number
-  device_activation_status?: 'active' | 'pending_activation'
   claimed_at?: string
 }
 
@@ -505,7 +499,7 @@ async function claimAndMaybeLogin(input: ClaimInput) {
 
   const data = claim.data
   const dlg = data.device_login_code
-  const activationStatus = data.device_activation_status
+  const activationStatus = data.status
 
   if (!dlg) {
     showFatalError('Server không trả device login code.')
@@ -643,7 +637,7 @@ Không đọc DLG từ response của `/auth/invite-login` vì API này không t
 
 ## 6. Những điều client không được làm
 
-- Không mở OpenClaw khi `device_activation_status === "pending_activation"`.
+- Không mở OpenClaw khi `status === "pending_activation"`.
 - Không mở OpenClaw khi `/auth/invite-login` trả `DEVICE_ACTIVATION_PENDING`.
 - Không coi `DEVICE_ACTIVATION_PENDING` là sai mã.
 - Không xóa DLG/local pending state khi pending.
@@ -658,9 +652,9 @@ Không đọc DLG từ response của `/auth/invite-login` vì API này không t
 
 1. Client gọi `/api/v1/vclaw/claim` với JSON có nested `device` object.
 2. Client lấy DLG từ `/vclaw/claim` response field `data.device_login_code`.
-3. Client lấy trạng thái activation từ `/vclaw/claim` response field `data.device_activation_status`.
-4. Nếu `device_activation_status === "active"`, client gọi `/api/v1/auth/invite-login` với `invitation_code = DLG`.
-5. Nếu `device_activation_status === "pending_activation"`, client không login tiếp và show DLG cho user gửi admin/marketing.
+3. Client lấy trạng thái activation từ `/vclaw/claim` response field `data.status`.
+4. Nếu `status === "active"`, client gọi `/api/v1/auth/invite-login` với `invitation_code = DLG`.
+5. Nếu `status === "pending_activation"`, client không login tiếp và show DLG cho user gửi admin/marketing.
 6. Nếu `/auth/invite-login` success, client lưu token và mở OpenClaw.
 7. Nếu `/auth/invite-login` trả `reason === "DEVICE_ACTIVATION_PENDING"`, client show pending screen bằng DLG đang submit trong request.
 8. Client phân biệt rõ pending với `DEVICE_REVOKED`, `DEVICE_MISMATCH`, `INVITATION_CODE_INVALID`.
@@ -696,12 +690,11 @@ Response:
   "code": 0,
   "message": "success",
   "data": {
-    "status": "ok",
+    "status": "pending_activation",
     "mode": "first_claim",
     "user_id": 123,
     "device_login_code": "DLG-WXYZ-2345-ABCD",
     "device_binding_id": 456,
-    "device_activation_status": "pending_activation",
     "claimed_at": "2026-05-09T08:00:00Z"
   }
 }

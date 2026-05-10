@@ -118,7 +118,13 @@ func (s *userRepoStub) List(ctx context.Context, params pagination.PaginationPar
 }
 
 func (s *userRepoStub) ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters UserListFilters) ([]User, *pagination.PaginationResult, error) {
-	panic("unexpected ListWithFilters call")
+	if s.user == nil {
+		return nil, &pagination.PaginationResult{Total: 0, Page: params.Page, PageSize: params.PageSize}, nil
+	}
+	if filters.UserID != nil && *filters.UserID != s.user.ID {
+		return nil, &pagination.PaginationResult{Total: 0, Page: params.Page, PageSize: params.PageSize}, nil
+	}
+	return []User{*s.user}, &pagination.PaginationResult{Total: 1, Page: params.Page, PageSize: params.PageSize}, nil
 }
 
 func (s *userRepoStub) GetLatestUsedAtByUserIDs(ctx context.Context, userIDs []int64) (map[int64]*time.Time, error) {
@@ -126,7 +132,7 @@ func (s *userRepoStub) GetLatestUsedAtByUserIDs(ctx context.Context, userIDs []i
 }
 
 func (s *userRepoStub) GetLatestUsedAtByUserID(ctx context.Context, userID int64) (*time.Time, error) {
-	panic("unexpected GetLatestUsedAtByUserID call")
+	return nil, nil
 }
 
 func (s *userRepoStub) UpdateUserLastActiveAt(ctx context.Context, userID int64, activeAt time.Time) error {

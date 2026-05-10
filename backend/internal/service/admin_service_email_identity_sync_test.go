@@ -89,8 +89,15 @@ func (s *emailSyncRepoStub) List(context.Context, pagination.PaginationParams) (
 	return nil, nil, fmt.Errorf("unexpected List call")
 }
 
-func (s *emailSyncRepoStub) ListWithFilters(context.Context, pagination.PaginationParams, UserListFilters) ([]User, *pagination.PaginationResult, error) {
-	return nil, nil, fmt.Errorf("unexpected ListWithFilters call")
+func (s *emailSyncRepoStub) ListWithFilters(_ context.Context, params pagination.PaginationParams, filters UserListFilters) ([]User, *pagination.PaginationResult, error) {
+	if s.user == nil {
+		return nil, &pagination.PaginationResult{Total: 0, Page: params.Page, PageSize: params.PageSize}, nil
+	}
+	if filters.UserID != nil && *filters.UserID != s.user.ID {
+		return nil, &pagination.PaginationResult{Total: 0, Page: params.Page, PageSize: params.PageSize}, nil
+	}
+	cloned := *s.user
+	return []User{cloned}, &pagination.PaginationResult{Total: 1, Page: params.Page, PageSize: params.PageSize}, nil
 }
 
 func (s *emailSyncRepoStub) GetLatestUsedAtByUserIDs(context.Context, []int64) (map[int64]*time.Time, error) {

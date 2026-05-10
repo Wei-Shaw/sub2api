@@ -12,10 +12,9 @@ const (
 	RedeemTypeDeviceClaim = "device_claim"
 	RedeemTypeDeviceLogin = "device_login"
 
-	UserDeviceStatusActive            = "active"
-	UserDeviceStatusPendingActivation = "pending_activation"
-	UserDeviceStatusRevoked           = "revoked"
-	UserDeviceStatusBlocked           = "blocked"
+	UserDeviceStatusActive  = "active"
+	UserDeviceStatusRevoked = "revoked"
+	UserDeviceStatusBlocked = "blocked"
 )
 
 var (

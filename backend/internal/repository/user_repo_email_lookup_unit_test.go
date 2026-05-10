@@ -196,7 +196,7 @@ func TestUserRepositoryListWithFiltersSearchesDeviceLoginCodeWithoutRedeemUsedBy
 	require.Equal(t, "DLG-DEVICE-SEARCH-0001", *users[0].PrimaryRedeemCode)
 	require.NotNil(t, users[0].PrimaryRedeemType)
 	require.Equal(t, service.RedeemTypeDeviceLogin, *users[0].PrimaryRedeemType)
-	require.True(t, users[0].HasDeviceBinding)
+	require.Equal(t, service.StatusActive, users[0].Status)
 }
 
 func TestUserRepositoryCreateSerializesNormalizedEmailConflictsUnderConcurrency(t *testing.T) {

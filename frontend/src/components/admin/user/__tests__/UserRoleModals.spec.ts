@@ -5,11 +5,15 @@ import type { AdminUser } from '@/types'
 import UserCreateModal from '../UserCreateModal.vue'
 import UserEditModal from '../UserEditModal.vue'
 
-const { createUser, updateUser, showError, showSuccess } = vi.hoisted(() => ({
+const { createUser, updateUser, showError, showSuccess, authState } = vi.hoisted(() => ({
   createUser: vi.fn(),
   updateUser: vi.fn(),
   showError: vi.fn(),
-  showSuccess: vi.fn()
+  showSuccess: vi.fn(),
+  authState: {
+    isAdmin: true,
+    isMarketing: false
+  }
 }))
 
 vi.mock('@/api/admin', () => ({
@@ -31,6 +35,13 @@ vi.mock('@/stores/app', () => ({
   })
 }))
 
+vi.mock('@/stores/auth', () => ({
+  useAuthStore: () => ({
+    get isAdmin() { return authState.isAdmin },
+    get isMarketing() { return authState.isMarketing }
+  })
+}))
+
 vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
   return {
@@ -48,12 +59,13 @@ const BaseDialogStub = {
 }
 
 const SelectStub = {
-  props: ['modelValue', 'options'],
+  props: ['modelValue', 'options', 'disabled'],
   emits: ['update:modelValue'],
   template: `
     <select
-      data-test="role-select"
+      :data-test="options.some((option) => option.value === 'marketing') ? 'role-select' : 'status-select'"
       :value="modelValue"
+      :disabled="disabled"
       @change="$emit('update:modelValue', $event.target.value)"
     >
       <option v-for="option in options" :key="option.value" :value="option.value">{{ option.label }}</option>
@@ -92,6 +104,8 @@ describe('admin user role modals', () => {
     updateUser.mockReset()
     showError.mockReset()
     showSuccess.mockReset()
+    authState.isAdmin = true
+    authState.isMarketing = false
     createUser.mockResolvedValue(adminUser())
     updateUser.mockResolvedValue(adminUser())
   })
@@ -141,5 +155,33 @@ describe('admin user role modals', () => {
     expect(updateUser).toHaveBeenCalledWith(7, expect.objectContaining({
       role: 'admin'
     }))
+  })
+
+  it('hides role editing and omits role when marketing updates a managed user', async () => {
+    authState.isAdmin = false
+    authState.isMarketing = true
+
+    const wrapper = mount(UserEditModal, {
+      props: { show: true, user: adminUser({ role: 'user', status: 'active' }) },
+      global: {
+        stubs: {
+          BaseDialog: BaseDialogStub,
+          Select: SelectStub,
+          UserAttributeForm: UserAttributeFormStub,
+          Icon: true
+        }
+      }
+    })
+
+    expect(wrapper.find('[data-test="role-select"]').exists()).toBe(false)
+    await wrapper.find('input[type="email"]').setValue('edited@example.com')
+    await wrapper.find('[data-test="status-select"]').setValue('blocked')
+    await wrapper.find('form').trigger('submit.prevent')
+
+    expect(updateUser).toHaveBeenCalledWith(7, expect.objectContaining({
+      email: 'edited@example.com',
+      status: 'blocked'
+    }))
+    expect(updateUser.mock.calls[0][1]).not.toHaveProperty('role')
   })
 })

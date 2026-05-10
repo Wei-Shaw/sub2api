@@ -575,8 +575,9 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 
 	q := r.client.User.Query()
 
-	if filters.Status != "" {
-		q = q.Where(dbuser.StatusEQ(filters.Status))
+	status := strings.TrimSpace(filters.Status)
+	if status != "" {
+		q = q.Where(dbuser.StatusEQ(status))
 	}
 	if filters.Role != "" {
 		q = q.Where(dbuser.RoleEQ(filters.Role))
@@ -603,10 +604,6 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 		q = q.Where(dbuser.HasAllowedGroupsWith(
 			dbgroup.NameContainsFold(filters.GroupName),
 		))
-	}
-	deviceActivationStatus := strings.TrimSpace(filters.DeviceActivationStatus)
-	if deviceActivationStatus != "" {
-		q = q.Where(dbuser.HasDevicesWith(userdevice.StatusEQ(deviceActivationStatus)))
 	}
 	if filters.AffiliateInviterID != nil {
 		inviteeUserIDs, scopeErr := r.filterUsersByAffiliateInviter(ctx, *filters.AffiliateInviterID)
@@ -711,24 +708,12 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 	if err != nil {
 		return nil, nil, err
 	}
-	deviceStatusesByUser, err := r.loadUserDeviceActivationStatuses(ctx, userIDs)
-	if err != nil {
-		return nil, nil, err
-	}
-	deviceBindingsByUser, err := r.loadUserDeviceBindings(ctx, userIDs)
-	if err != nil {
-		return nil, nil, err
-	}
 	for id, u := range userMap {
 		if code, ok := redeemCodesByUser[id]; ok {
 			u.PrimaryRedeemCode = code
 		}
 		if redeemType, ok := redeemTypesByUser[id]; ok {
 			u.PrimaryRedeemType = redeemType
-		}
-		u.HasDeviceBinding = deviceBindingsByUser[id]
-		if status, ok := deviceStatusesByUser[id]; ok {
-			u.DeviceActivationStatus = status
 		}
 	}
 
@@ -1543,64 +1528,6 @@ func (r *userRepository) loadPrimaryRedeemCodes(ctx context.Context, userIDs []i
 		typesByUser[userID] = &redeemType
 	}
 	return codesByUser, typesByUser, nil
-}
-
-func (r *userRepository) loadUserDeviceActivationStatuses(ctx context.Context, userIDs []int64) (map[int64]*string, error) {
-	statusesByUser := make(map[int64]*string, len(userIDs))
-	if len(userIDs) == 0 {
-		return statusesByUser, nil
-	}
-	devices, err := r.client.UserDevice.Query().
-		Where(userdevice.UserIDIn(userIDs...)).
-		Order(dbent.Desc(userdevice.FieldLastLoginAt), dbent.Desc(userdevice.FieldLastClaimedAt), dbent.Desc(userdevice.FieldCreatedAt), dbent.Desc(userdevice.FieldID)).
-		All(ctx)
-	if err != nil {
-		return nil, err
-	}
-	for _, device := range devices {
-		if _, exists := statusesByUser[device.UserID]; exists {
-			continue
-		}
-		status := device.Status
-		statusesByUser[device.UserID] = &status
-	}
-	return statusesByUser, nil
-}
-
-func (r *userRepository) ActivatePendingDevicesByUserID(ctx context.Context, userID int64) (int64, error) {
-	if userID <= 0 {
-		return 0, service.ErrUserNotFound
-	}
-	client := clientFromContext(ctx, r.client)
-	n, err := client.UserDevice.Update().
-		Where(
-			userdevice.UserIDEQ(userID),
-			userdevice.StatusEQ(service.UserDeviceStatusPendingActivation),
-		).
-		SetStatus(service.UserDeviceStatusActive).
-		Save(ctx)
-	if err != nil {
-		return 0, err
-	}
-	return int64(n), nil
-}
-
-func (r *userRepository) loadUserDeviceBindings(ctx context.Context, userIDs []int64) (map[int64]bool, error) {
-	bindingsByUser := make(map[int64]bool, len(userIDs))
-	if len(userIDs) == 0 {
-		return bindingsByUser, nil
-	}
-
-	devices, err := r.client.UserDevice.Query().
-		Where(userdevice.UserIDIn(userIDs...)).
-		All(ctx)
-	if err != nil {
-		return nil, err
-	}
-	for _, device := range devices {
-		bindingsByUser[device.UserID] = true
-	}
-	return bindingsByUser, nil
 }
 
 func applyUserEntityToService(dst *service.User, src *dbent.User) {

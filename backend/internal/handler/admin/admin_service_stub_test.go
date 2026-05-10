@@ -30,7 +30,6 @@ type stubAdminService struct {
 	createdUsers                        []*service.CreateUserInput
 	updatedUserIDs                      []int64
 	updatedUsers                        []*service.UpdateUserInput
-	activatedUserIDs                    []int64
 	updatedProxyIDs                     []int64
 	updatedProxies                      []*service.UpdateProxyInput
 	testedProxyIDs                      []int64
@@ -159,7 +158,18 @@ func (s *stubAdminService) ListUsers(ctx context.Context, page, pageSize int, fi
 	s.lastListUsers.sortBy = sortBy
 	s.lastListUsers.sortOrder = sortOrder
 	s.lastListUsers.calls++
-	return s.users, int64(len(s.users)), nil
+
+	users := make([]service.User, 0, len(s.users))
+	for _, user := range s.users {
+		if filters.UserID != nil && user.ID != *filters.UserID {
+			continue
+		}
+		if filters.Status != "" && user.Status != filters.Status {
+			continue
+		}
+		users = append(users, user)
+	}
+	return users, int64(len(users)), nil
 }
 
 func (s *stubAdminService) GetUser(ctx context.Context, id int64) (*service.User, error) {
@@ -815,11 +825,6 @@ func (s *stubAdminService) CreateShadow(ctx context.Context, parentID int64, opt
 		Credentials:     map[string]any{},
 		Extra:           map[string]any{},
 	}, nil
-}
-
-func (s *stubAdminService) ActivateUserDevices(ctx context.Context, userID int64) (*service.User, int64, error) {
-	s.activatedUserIDs = append(s.activatedUserIDs, userID)
-	return &service.User{ID: userID, Status: service.StatusActive}, 1, nil
 }
 
 // Ensure stub implements interface.

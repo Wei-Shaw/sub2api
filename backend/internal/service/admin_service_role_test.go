@@ -93,9 +93,12 @@ type roleGuardUserRepoStub struct {
 	listCalls  int
 }
 
-func (s *roleGuardUserRepoStub) ListWithFilters(_ context.Context, _ pagination.PaginationParams, _ UserListFilters) ([]User, *pagination.PaginationResult, error) {
-	s.listCalls++
-	return nil, &pagination.PaginationResult{Total: s.adminTotal}, nil
+func (s *roleGuardUserRepoStub) ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters UserListFilters) ([]User, *pagination.PaginationResult, error) {
+	if filters.Role == RoleAdmin && filters.UserID == nil {
+		s.listCalls++
+		return nil, &pagination.PaginationResult{Total: s.adminTotal, Page: params.Page, PageSize: params.PageSize}, nil
+	}
+	return s.rpmUserRepoStub.ListWithFilters(ctx, params, filters)
 }
 
 func TestAdminService_UpdateUser_DemoteLastAdminRejected(t *testing.T) {

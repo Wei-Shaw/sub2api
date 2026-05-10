@@ -42,8 +42,10 @@
                 v-model="filters.status"
                 :options="[
                   { value: '', label: t('admin.users.allStatus') },
-                  { value: 'active', label: t('common.active') },
-                  { value: 'disabled', label: t('admin.users.disabled') }
+                  { value: 'active', label: userStatusLabel('active') },
+                  { value: 'pending_activation', label: userStatusLabel('pending_activation') },
+                  { value: 'blocked', label: userStatusLabel('blocked') },
+                  { value: 'disabled', label: userStatusLabel('disabled') }
                 ]"
                 @change="applyFilter"
               />
@@ -607,18 +609,14 @@
             />
           </template>
 
-          <template #cell-status="{ value }">
-            <div class="flex items-center gap-1.5">
-              <span
-                :class="[
-                  'inline-block h-2 w-2 rounded-full',
-                  value === 'active' ? 'bg-green-500' : 'bg-red-500'
-                ]"
-              ></span>
-              <span class="text-sm text-gray-700 dark:text-gray-300">
-                {{ value === 'active' ? t('common.active') : t('admin.users.disabled') }}
-              </span>
-            </div>
+          <template #cell-status="{ row, value }">
+            <Select
+              :model-value="row?.status ?? value"
+              :options="userStatusOptions"
+              :disabled="!canManageUserStatus(row)"
+              class="min-w-[9.5rem]"
+              @update:model-value="(status) => handleStatusChange(row, status)"
+            />
           </template>
 
           <template #cell-device_activation="{ row }">
@@ -652,32 +650,6 @@
               >
                 <Icon name="edit" size="sm" />
                 <span class="text-xs">{{ t('common.edit') }}</span>
-              </button>
-
-              <!-- Toggle Status Button (not for admin) -->
-              <button
-                v-if="row.role !== 'admin'"
-                @click="handleToggleStatus(row)"
-                :class="[
-                  'flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors',
-                  row.status === 'active'
-                    ? 'hover:bg-orange-50 hover:text-orange-600 dark:hover:bg-orange-900/20 dark:hover:text-orange-400'
-                    : 'hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400'
-                ]"
-              >
-                <Icon v-if="row.status === 'active'" name="ban" size="sm" />
-                <Icon v-else name="checkCircle" size="sm" />
-                <span class="text-xs">{{ row.status === 'active' ? t('admin.users.disable') : t('admin.users.enable') }}</span>
-              </button>
-
-              <!-- Activate pending device binding -->
-              <button
-                v-if="isDeviceActivationPending(row)"
-                @click="handleActivateDevices(row)"
-                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400"
-              >
-                <Icon name="checkCircle" size="sm" />
-                <span class="text-xs">{{ t('admin.users.activateDevice') }}</span>
               </button>
 
               <!-- More Actions Menu Trigger -->
@@ -829,6 +801,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
+import { useAuthStore } from '@/stores/auth'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { useTableSelection } from '@/composables/useTableSelection'
 import { formatDateTime } from '@/utils/format'
@@ -836,7 +809,7 @@ import Icon from '@/components/icons/Icon.vue'
 
 const { t } = useI18n()
 import { adminAPI } from '@/api/admin'
-import type { AdminUser, AdminGroup, UserAttributeDefinition } from '@/types'
+import type { AdminUser, AdminGroup, UserAttributeDefinition, UserStatus } from '@/types'
 import type { BatchUserUsageStats } from '@/api/admin/dashboard'
 import type { PlatformQuotaItem } from '@/api/admin/users'
 import type { Column } from '@/components/common/types'
@@ -866,6 +839,7 @@ import UserBalanceHistoryModal from '@/components/admin/user/UserBalanceHistoryM
 import GroupReplaceModal from '@/components/admin/user/GroupReplaceModal.vue'
 
 const appStore = useAppStore()
+const authStore = useAuthStore()
 
 const roleBadgeClass = (role: string) => {
   if (role === 'admin') return 'badge-purple'
@@ -885,7 +859,25 @@ const deviceActivationBadgeClass = (status?: string | null) => {
   return 'badge-gray'
 }
 
-const isDeviceActivationPending = (user: AdminUser) => user.device_activation_status === 'pending_activation'
+const USER_STATUS_VALUES: UserStatus[] = ['active', 'pending_activation', 'blocked', 'disabled']
+
+const isUserStatus = (status: unknown): status is UserStatus =>
+  typeof status === 'string' && USER_STATUS_VALUES.includes(status as UserStatus)
+
+const userStatusLabel = (status?: UserStatus | string | null) => {
+  if (!status) return t('admin.users.allStatus')
+  if (status === 'disabled') return t('admin.users.disabled')
+  return t(`admin.users.status.${status}`, String(status))
+}
+
+const userStatusOptions = computed<SelectOption[]>(() =>
+  USER_STATUS_VALUES.map((status) => ({ value: status, label: userStatusLabel(status) }))
+)
+
+const canManageUserStatus = (user?: AdminUser | null) => {
+  if (!user || user.role === 'admin') return false
+  return authStore.isAdmin || authStore.isMarketing
+}
 
 const DEVICE_ACTIVATION_COLUMN_KEY = 'device_activation'
 const DEVICE_ACTIVATION_VISIBILITY_MIGRATION_KEY = 'user-device-activation-visible-v1'
@@ -1843,32 +1835,20 @@ const closeEditModal = () => {
   editingUser.value = null
 }
 
-const handleToggleStatus = async (user: AdminUser) => {
-  const newStatus = user.status === 'active' ? 'disabled' : 'active'
+const handleStatusChange = async (
+  user: AdminUser | undefined,
+  rawStatus: string | number | boolean | null
+) => {
+  if (!user || !canManageUserStatus(user)) return
+  if (!isUserStatus(rawStatus) || rawStatus === user.status) return
+
   try {
-    await adminAPI.users.toggleStatus(user.id, newStatus)
-    appStore.showSuccess(
-      newStatus === 'active' ? t('admin.users.userEnabled') : t('admin.users.userDisabled')
-    )
+    await adminAPI.users.update(user.id, { status: rawStatus })
+    appStore.showSuccess(t('admin.users.statusUpdated'))
     loadUsers()
   } catch (error: any) {
     appStore.showError(error.response?.data?.detail || t('admin.users.failedToToggle'))
-    console.error('Error toggling user status:', error)
-  }
-}
-
-const handleActivateDevices = async (user: AdminUser) => {
-  try {
-    const response = await adminAPI.users.activateDevices(user.id)
-    appStore.showSuccess(t('admin.users.deviceActivated', { count: response.activated }))
-    if (filters.deviceActivation === 'pending_activation') {
-      filters.deviceActivation = ''
-      saveFiltersToStorage()
-    }
-    loadUsers()
-  } catch (error: any) {
-    appStore.showError(error.response?.data?.detail || t('admin.users.failedToActivateDevice'))
-    console.error('Error activating user devices:', error)
+    console.error('Error updating user status:', error)
   }
 }
 

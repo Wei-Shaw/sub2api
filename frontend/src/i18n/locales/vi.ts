@@ -1740,16 +1740,16 @@ export default {
       allRoles: 'Tất cả vai trò',
       allStatus: 'Tất cả trạng thái',
       allGroups: 'Tất cả nhóm',
-      activateDevice: 'Kích hoạt',
-      deviceActivated: 'Đã kích hoạt {count} thiết bị đang chờ',
-      failedToActivateDevice: 'Kích hoạt thiết bị thất bại',
-      deviceActivation: {
-        all: 'Tất cả trạng thái thiết bị',
-        none: 'Chưa có thiết bị',
+      status: {
         active: 'Đã kích hoạt',
         pending_activation: 'Chờ kích hoạt',
-        revoked: 'Đã thu hồi',
         blocked: 'Đã chặn'
+      },
+      activationHints: {
+        active: 'Đã cho phép mở OpenClaw.',
+        pending: 'Bật switch để duyệt bản ghi invite này.',
+        none: 'Chưa có claim app/device gắn với bản ghi này.',
+        blocked: 'Quyền truy cập đang bị chặn và không thể bật lại tại đây.'
       },
       searchGroups: 'Tìm nhóm...',
       fuzzySearch: 'Tìm kiếm mờ',
@@ -1787,7 +1787,7 @@ export default {
         usage: 'Mức sử dụng',
         concurrency: 'Số lượng đồng thời',
         status: 'Trạng thái',
-        deviceActivation: 'Kích hoạt thiết bị',
+        activation: 'Kích hoạt',
         lastActive: 'Lần hoạt động cuối',
         lastUsed: 'Lần sử dụng cuối',
         created: 'Thời gian tạo',
@@ -1822,6 +1822,7 @@ export default {
       userDeleted: 'Xóa người dùng thành công',
       userEnabled: 'Đã kích hoạt người dùng',
       userDisabled: 'Đã vô hiệu hóa người dùng',
+      statusUpdated: 'Đã cập nhật trạng thái người dùng',
       identityCodeUser: 'Người dùng có mã định danh',
       copyIdentityCode: 'Sao chép mã định danh',
       identityCodeCopied: 'Đã sao chép mã định danh',
@@ -1850,6 +1851,9 @@ export default {
         passwordPlaceholder: 'Vui lòng nhập mật khẩu (để trống nếu không thay đổi)',
         role: 'Vai trò',
         roleHint: 'Chọn cấp quyền cho người dùng này.',
+        appActivation: 'Quyền mở OpenClaw',
+        accountStatus: 'Trạng thái tài khoản',
+        activationCode: 'Mã kích hoạt',
         roleLabel: 'Vai trò',
         selectRole: 'Chọn vai trò',
         balanceLabel: 'Số dư',
@@ -2043,7 +2047,7 @@ export default {
         userName: 'Tên người dùng',
         userEmail: 'Email',
         userNotes: 'Ghi chú',
-        userStatus: 'Trạng thái'
+        memberStatus: 'Trạng thái'
       },
       usageToday: 'Hôm nay',
       usageTotal: 'Lũy kế',

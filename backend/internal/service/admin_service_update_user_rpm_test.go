@@ -101,3 +101,60 @@ func TestAdminService_UpdateUser_InvalidRole(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, repo.lastUpdated)
 }
+
+type userStatusUpdateUserRepoStub struct {
+	*userRepoStubForListUsers
+	lastUpdated *User
+}
+
+func (s *userStatusUpdateUserRepoStub) Update(_ context.Context, user *User) error {
+	if user == nil {
+		return nil
+	}
+	clone := *user
+	s.lastUpdated = &clone
+	if s.userRepoStubForListUsers != nil {
+		s.userRepoStubForListUsers.user = &clone
+		for i := range s.userRepoStubForListUsers.users {
+			if s.userRepoStubForListUsers.users[i].ID == clone.ID {
+				s.userRepoStubForListUsers.users[i] = clone
+				break
+			}
+		}
+	}
+	return nil
+}
+
+func TestAdminService_UpdateUserStatusStoresUserStatus(t *testing.T) {
+	repo := &userStatusUpdateUserRepoStub{userRepoStubForListUsers: &userRepoStubForListUsers{
+		userRepoStub: userRepoStub{user: &User{ID: 42, Email: "pending@example.com", Status: StatusActive, Role: RoleUser}},
+		users:        []User{{ID: 42, Email: "pending@example.com", Status: StatusActive, Role: RoleUser}},
+	}}
+	svc := &adminServiceImpl{userRepo: repo, groupRepo: &groupRepoStubForAdmin{listWithFiltersGroups: []Group{{ID: 1, Name: "default"}}}}
+
+	updated, err := svc.UpdateUser(context.Background(), 42, &UpdateUserInput{
+		Status: StatusPendingActivation,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, updated)
+	require.Equal(t, StatusPendingActivation, updated.Status)
+	require.NotNil(t, repo.lastUpdated)
+	require.Equal(t, StatusPendingActivation, repo.lastUpdated.Status)
+}
+
+func TestAdminService_UpdateUserRejectsAdminPromotionWithDisabledUserStatus(t *testing.T) {
+	repo := &userStatusUpdateUserRepoStub{
+		userRepoStubForListUsers: &userRepoStubForListUsers{
+			userRepoStub: userRepoStub{user: &User{ID: 42, Email: "u@example.com", Role: RoleUser, Status: StatusActive}},
+			users:        []User{{ID: 42, Email: "u@example.com", Role: RoleUser, Status: StatusActive}},
+		},
+	}
+	svc := &adminServiceImpl{userRepo: repo}
+
+	_, err := svc.UpdateUser(context.Background(), 42, &UpdateUserInput{
+		Role:   RoleAdmin,
+		Status: StatusDisabled,
+	})
+	require.Error(t, err)
+	require.Nil(t, repo.lastUpdated)
+}

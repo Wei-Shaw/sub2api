@@ -477,7 +477,7 @@ func (s *UserRepoSuite) TestListWithFilters_SearchByRedeemCodeLoadsRedeemAndDevi
 	s.Require().Equal("DLG-SEARCH-1234-ABCD", *users[0].PrimaryRedeemCode)
 	s.Require().NotNil(users[0].PrimaryRedeemType)
 	s.Require().Equal(service.RedeemTypeDeviceLogin, *users[0].PrimaryRedeemType)
-	s.Require().True(users[0].HasDeviceBinding)
+	s.Require().Equal(service.StatusActive, users[0].Status)
 }
 
 func (s *UserRepoSuite) TestListWithFilters_PrimaryRedeemIgnoresBalanceTopups() {

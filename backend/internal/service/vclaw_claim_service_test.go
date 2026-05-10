@@ -281,7 +281,7 @@ func TestVClawClaimServiceResumesUsedClaimCodeByBinding(t *testing.T) {
 		byClaimRedeemCodeID: map[int64]*UserDevice{claimCode.ID: binding},
 	}
 
-	svc := NewVClawClaimService(nil, &mockUserRepo{}, redeemRepo, deviceRepo, nil, nil, nil, nil)
+	svc := NewVClawClaimService(nil, &mockUserRepo{getByIDUser: &User{ID: binding.UserID, Status: StatusActive}}, redeemRepo, deviceRepo, nil, nil, nil, nil)
 	result, err := svc.Claim(context.Background(), VClawClaimRequest{
 		ClaimCode: claimCode.Code,
 		Device: VClawDeviceInput{
@@ -295,6 +295,8 @@ func TestVClawClaimServiceResumesUsedClaimCodeByBinding(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Equal(t, "resume", result.Mode)
+	require.Equal(t, StatusActive, result.Status)
+	require.Equal(t, UserDeviceStatusActive, result.DeviceStatus)
 	require.Equal(t, binding.UserID, result.UserID)
 	require.Equal(t, loginCode.Code, result.DeviceLoginCode)
 	require.Equal(t, binding.ID, result.DeviceBindingID)
@@ -357,6 +359,8 @@ func TestVClawClaimServiceFirstClaimAssignsDefaultSubscriptionOnce(t *testing.T)
 	require.NoError(t, err)
 	require.NotNil(t, first)
 	require.Equal(t, "first_claim", first.Mode)
+	require.Equal(t, StatusActive, first.Status)
+	require.Equal(t, UserDeviceStatusActive, first.DeviceStatus)
 	require.Equal(t, int64(102), first.UserID)
 	require.Len(t, assigner.calls, 1)
 	require.Equal(t, int64(8), assigner.calls[0].GroupID)
@@ -368,6 +372,8 @@ func TestVClawClaimServiceFirstClaimAssignsDefaultSubscriptionOnce(t *testing.T)
 	require.NoError(t, err)
 	require.NotNil(t, resume)
 	require.Equal(t, "resume", resume.Mode)
+	require.Equal(t, StatusActive, resume.Status)
+	require.Equal(t, UserDeviceStatusActive, resume.DeviceStatus)
 	require.Equal(t, first.DeviceLoginCode, resume.DeviceLoginCode)
 	require.Len(t, assigner.calls, 1)
 }
@@ -402,6 +408,8 @@ func TestVClawClaimServiceFirstClaimBindsAffiliateCodeOnce(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, first)
 	require.Equal(t, "first_claim", first.Mode)
+	require.Equal(t, StatusPendingActivation, first.Status)
+	require.Equal(t, UserDeviceStatusActive, first.DeviceStatus)
 	require.Equal(t, int64(202), first.UserID)
 	require.Equal(t, []vclawClaimAffiliateBinding{{UserID: 202, InviterID: 901}}, affiliateRepo.bindings)
 
@@ -410,6 +418,8 @@ func TestVClawClaimServiceFirstClaimBindsAffiliateCodeOnce(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, resume)
 	require.Equal(t, "resume", resume.Mode)
+	require.Equal(t, StatusPendingActivation, resume.Status)
+	require.Equal(t, UserDeviceStatusActive, resume.DeviceStatus)
 	require.Equal(t, first.DeviceLoginCode, resume.DeviceLoginCode)
 	require.Equal(t, []vclawClaimAffiliateBinding{{UserID: 202, InviterID: 901}}, affiliateRepo.bindings)
 }

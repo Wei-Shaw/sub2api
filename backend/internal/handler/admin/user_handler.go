@@ -12,6 +12,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/handler/quotaview"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -81,7 +82,7 @@ type UpdateUserRequest struct {
 	Balance       *float64 `json:"balance"`
 	Concurrency   *int     `json:"concurrency"`
 	RPMLimit      *int     `json:"rpm_limit"`
-	Status        string   `json:"status" binding:"omitempty,oneof=active disabled"`
+	Status        string   `json:"status" binding:"omitempty,oneof=active pending_activation blocked disabled"`
 	AllowedGroups *[]int64 `json:"allowed_groups"`
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]*rate，nil 表示删除该分组的专属倍率
@@ -131,12 +132,11 @@ func (h *UserHandler) List(c *gin.Context) {
 	}
 
 	filters := service.UserListFilters{
-		Status:                 c.Query("status"),
-		Role:                   c.Query("role"),
-		Search:                 search,
-		GroupName:              strings.TrimSpace(c.Query("group_name")),
-		DeviceActivationStatus: strings.TrimSpace(c.Query("device_activation_status")),
-		Attributes:             parseAttributeFilters(c),
+		Status:     c.Query("status"),
+		Role:       c.Query("role"),
+		Search:     search,
+		GroupName:  strings.TrimSpace(c.Query("group_name")),
+		Attributes: parseAttributeFilters(c),
 	}
 	if !applyMarketingUserScope(c, &filters) {
 		return
@@ -184,31 +184,6 @@ func (h *UserHandler) List(c *gin.Context) {
 	}
 
 	response.Paginated(c, out, total, page, pageSize)
-}
-
-// ActivateDevices approves pending device bindings for a user.
-// POST /api/v1/admin/users/:id/activate-devices
-func (h *UserHandler) ActivateDevices(c *gin.Context) {
-	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		response.BadRequest(c, "Invalid user ID")
-		return
-	}
-
-	if !ensureMarketingCanManageUser(c, h.adminService, userID) {
-		return
-	}
-
-	user, activated, err := h.adminService.ActivateUserDevices(c.Request.Context(), userID)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-
-	response.Success(c, gin.H{
-		"user":      dto.UserFromServiceAdmin(user),
-		"activated": activated,
-	})
 }
 
 func applyMarketingUserScope(c *gin.Context, filters *service.UserListFilters) bool {
@@ -359,9 +334,16 @@ func (h *UserHandler) Update(c *gin.Context) {
 		return
 	}
 
-	// 防锁死保护：管理员不能把自己降级为非管理员角色(会失去完整后台管理权限)。
-	// 与既有"不能禁用/删除 admin"保护一致。降级其他管理员仍然允许。
-	if req.Role != "" && req.Role != service.RoleAdmin && userID == getAdminIDFromContext(c) {
+	if isMarketingRequest(c) {
+		if !validateMarketingUserUpdate(c, req) {
+			return
+		}
+		if !ensureMarketingCanManageUser(c, h.adminService, userID) {
+			return
+		}
+	} else if req.Role != "" && req.Role != service.RoleAdmin && userID == getAdminIDFromContext(c) {
+		// 防锁死保护：管理员不能把自己降级为非管理员角色(会失去完整后台管理权限)。
+		// 与既有"不能禁用/删除 admin"保护一致。降级其他管理员仍然允许。
 		response.BadRequest(c, "cannot demote yourself from admin")
 		return
 	}
@@ -402,6 +384,15 @@ func (h *UserHandler) Update(c *gin.Context) {
 	}
 
 	response.Success(c, dto.UserFromServiceAdmin(user))
+}
+
+func validateMarketingUserUpdate(c *gin.Context, req UpdateUserRequest) bool {
+	if req.Role != "" {
+		response.ErrorFrom(c, infraerrors.Forbidden("FORBIDDEN", "Marketing role cannot update user roles"))
+		return false
+	}
+
+	return true
 }
 
 // Delete handles deleting a user

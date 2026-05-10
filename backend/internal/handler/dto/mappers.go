@@ -67,15 +67,14 @@ func UserFromServiceAdmin(u *service.User) *AdminUser {
 	if base == nil {
 		return nil
 	}
+	base.Status = u.Status
 	return &AdminUser{
-		User:                   *base,
-		Notes:                  u.Notes,
-		LastUsedAt:             u.LastUsedAt,
-		PrimaryRedeemCode:      u.PrimaryRedeemCode,
-		PrimaryRedeemType:      u.PrimaryRedeemType,
-		HasDeviceBinding:       u.HasDeviceBinding,
-		DeviceActivationStatus: u.DeviceActivationStatus,
-		GroupRates:             u.GroupRates,
+		User:              *base,
+		Notes:             u.Notes,
+		LastUsedAt:        u.LastUsedAt,
+		PrimaryRedeemCode: u.PrimaryRedeemCode,
+		PrimaryRedeemType: u.PrimaryRedeemType,
+		GroupRates:        u.GroupRates,
 	}
 }
 

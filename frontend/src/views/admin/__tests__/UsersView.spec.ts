@@ -11,7 +11,9 @@ const {
   listEnabledDefinitions,
   getBatchUserAttributes,
   showError,
-  showSuccess
+  showSuccess,
+  updateUser,
+  authState
 } = vi.hoisted(() => ({
   listUsers: vi.fn(),
   getAllGroups: vi.fn(),
@@ -19,13 +21,19 @@ const {
   listEnabledDefinitions: vi.fn(),
   getBatchUserAttributes: vi.fn(),
   showError: vi.fn(),
-  showSuccess: vi.fn()
+  showSuccess: vi.fn(),
+  updateUser: vi.fn(),
+  authState: {
+    isAdmin: true,
+    isMarketing: false
+  }
 }))
 
 vi.mock('@/api/admin', () => ({
   adminAPI: {
     users: {
       list: listUsers,
+      update: updateUser,
       toggleStatus: vi.fn(),
       delete: vi.fn()
     },
@@ -46,6 +54,13 @@ vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
     showError,
     showSuccess
+  })
+}))
+
+vi.mock('@/stores/auth', () => ({
+  useAuthStore: () => ({
+    get isAdmin() { return authState.isAdmin },
+    get isMarketing() { return authState.isMarketing }
   })
 }))
 
@@ -136,6 +151,9 @@ describe('admin UsersView', () => {
     getBatchUserAttributes.mockReset()
     showError.mockReset()
     showSuccess.mockReset()
+    updateUser.mockReset()
+    authState.isAdmin = true
+    authState.isMarketing = false
 
     Object.assign(navigator, {
       clipboard: {
@@ -154,6 +172,7 @@ describe('admin UsersView', () => {
     getBatchUsersUsage.mockResolvedValue({ stats: {} })
     listEnabledDefinitions.mockResolvedValue([])
     getBatchUserAttributes.mockResolvedValue({ values: {} })
+    updateUser.mockImplementation(async (_id: number, updates: Partial<AdminUser>) => createAdminUser({ ...updates }))
   })
 
   afterEach(() => {
@@ -447,14 +466,12 @@ describe('admin UsersView', () => {
           signup_source: 'invite',
           primary_redeem_code: 'DLG-FN7Y-NJQJ-XNV6',
           primary_redeem_type: 'device_login',
-          has_device_binding: true
         }),
         createAdminUser({
           id: 43,
           email: 'balance-topup@example.invalid.local',
           primary_redeem_code: 'PAY-SHOULD-NOT-RENDER',
           primary_redeem_type: 'balance',
-          has_device_binding: false
         })
       ],
       total: 2,
@@ -504,5 +521,70 @@ describe('admin UsersView', () => {
 
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('DLG-FN7Y-NJQJ-XNV6')
     expect(showSuccess).toHaveBeenCalledWith('admin.users.identityCodeCopied')
+  })
+
+  it('lets marketing edit and block managed users from user management', async () => {
+    authState.isAdmin = false
+    authState.isMarketing = true
+    listUsers.mockResolvedValue({
+      items: [createAdminUser({ status: 'active' })],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1
+    })
+
+    const wrapper = mount(UsersView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          TablePageLayout: {
+            template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>'
+          },
+          DataTable: {
+            props: ['columns', 'data'],
+            template: `
+              <div>
+                <div v-for="row in data" :key="row.id">
+                  <div data-test="row-status"><slot name="cell-status" :row="row" /></div>
+                  <slot name="cell-actions" :row="row" />
+                </div>
+              </div>
+            `
+          },
+          Pagination: true,
+          ConfirmDialog: true,
+          EmptyState: true,
+          GroupBadge: true,
+          Select: {
+            props: ['modelValue', 'options', 'disabled'],
+            emits: ['update:modelValue'],
+            template: `<button data-test="status-select" :disabled="disabled" @click="$emit('update:modelValue', 'blocked')">status</button>`
+          },
+          UserAttributesConfigModal: true,
+          UserConcurrencyCell: true,
+          UserCreateModal: true,
+          UserEditModal: true,
+          UserApiKeysModal: true,
+          UserAllowedGroupsModal: true,
+          UserBalanceModal: true,
+          UserBalanceHistoryModal: true,
+          GroupReplaceModal: true,
+          Icon: true,
+          Teleport: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('common.edit')
+    const statusSelect = wrapper.get('[data-test="row-status"] [data-test="status-select"]')
+    expect(statusSelect.attributes('disabled')).toBeUndefined()
+    await statusSelect.trigger('click')
+    await flushPromises()
+
+    expect(updateUser).toHaveBeenCalledWith(42, { status: 'blocked' })
+    expect(showSuccess).toHaveBeenCalledWith('admin.users.statusUpdated')
   })
 })

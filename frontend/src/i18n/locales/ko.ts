@@ -1741,16 +1741,16 @@ export default {
       allRoles: '모든 역할',
       allStatus: '모든 상태',
       allGroups: '모든 그룹',
-      activateDevice: '활성화',
-      deviceActivated: '대기 중인 기기 {count}개가 활성화되었습니다',
-      failedToActivateDevice: '기기 활성화 실패',
-      deviceActivation: {
-        all: '모든 기기 상태',
-        none: '기기 없음',
+      status: {
         active: '활성화됨',
         pending_activation: '활성화 대기',
-        revoked: '철회됨',
         blocked: '차단됨'
+      },
+      activationHints: {
+        active: 'OpenClaw 접근이 허용되었습니다.',
+        pending: '스위치를 켜서 이 초대 레코드를 승인하세요.',
+        none: '이 레코드에는 아직 앱/기기 claim이 연결되지 않았습니다.',
+        blocked: '접근 권한이 차단되어 여기서 다시 활성화할 수 없습니다.'
       },
       searchGroups: '그룹 검색...',
       fuzzySearch: '퍼지 검색',
@@ -1788,7 +1788,7 @@ export default {
         usage: '사용량',
         concurrency: '동시성 수',
         status: '상태',
-        deviceActivation: '기기 활성화',
+        activation: '활성화',
         lastActive: '마지막 활성 시간',
         lastUsed: '마지막 사용 시간',
         created: '생성 시간',
@@ -1823,6 +1823,7 @@ export default {
       userDeleted: '사용자가 삭제되었습니다',
       userEnabled: '사용자가 활성화되었습니다',
       userDisabled: '사용자가 비활성화되었습니다',
+      statusUpdated: '사용자 상태가 업데이트되었습니다',
       identityCodeUser: '식별 코드 사용자',
       copyIdentityCode: '식별 코드 복사',
       identityCodeCopied: '식별 코드가 복사되었습니다',
@@ -1851,6 +1852,9 @@ export default {
         passwordPlaceholder: '비밀번호를 입력하세요(비워 두면 변경하지 않음)',
         role: '역할',
         roleHint: '이 사용자의 권한 수준을 선택합니다.',
+        appActivation: 'OpenClaw 접근 권한',
+        accountStatus: '계정 상태',
+        activationCode: '활성화 코드',
         roleLabel: '역할',
         selectRole: '역할 선택',
         balanceLabel: '잔액',
@@ -2044,7 +2048,7 @@ export default {
         userName: '사용자명',
         userEmail: '이메일',
         userNotes: '메모',
-        userStatus: '상태'
+        memberStatus: '상태'
       },
       usageToday: '오늘',
       usageTotal: '누적',
@@ -7215,7 +7219,6 @@ export default {
       subsStatus: {
         active: '활성 중',
         expired: '만료됨',
-        revoked: '취소됨',
       },
 
       allowUserRefund: 'Allow User Refund',

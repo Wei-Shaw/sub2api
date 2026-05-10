@@ -258,12 +258,12 @@ func TestJWTAuth_UserNotFound(t *testing.T) {
 	require.Equal(t, "USER_NOT_FOUND", body.Code)
 }
 
-func TestJWTAuth_UserInactive(t *testing.T) {
+func TestJWTAuth_PendingActivationAllowedForFrontendJWT(t *testing.T) {
 	user := &service.User{
 		ID:           1,
-		Email:        "disabled@example.com",
+		Email:        "pending@example.com",
 		Role:         "user",
-		Status:       service.StatusDisabled,
+		Status:       service.StatusPendingActivation,
 		TokenVersion: 1,
 	}
 	router, authSvc := newJWTTestEnv(map[int64]*service.User{1: user})
@@ -276,10 +276,43 @@ func TestJWTAuth_UserInactive(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer "+token)
 	router.ServeHTTP(w, req)
 
-	require.Equal(t, http.StatusUnauthorized, w.Code)
-	var body ErrorResponse
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
-	require.Equal(t, "USER_INACTIVE", body.Code)
+	require.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestJWTAuth_UserInactive(t *testing.T) {
+	tests := []struct {
+		name   string
+		status string
+	}{
+		{name: "disabled", status: service.StatusDisabled},
+		{name: "blocked", status: service.StatusBlocked},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			user := &service.User{
+				ID:           1,
+				Email:        "inactive@example.com",
+				Role:         "user",
+				Status:       tt.status,
+				TokenVersion: 1,
+			}
+			router, authSvc := newJWTTestEnv(map[int64]*service.User{1: user})
+
+			token, err := authSvc.GenerateToken(user)
+			require.NoError(t, err)
+
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+			req.Header.Set("Authorization", "Bearer "+token)
+			router.ServeHTTP(w, req)
+
+			require.Equal(t, http.StatusUnauthorized, w.Code)
+			var body ErrorResponse
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+			require.Equal(t, "USER_INACTIVE", body.Code)
+		})
+	}
 }
 
 func TestJWTAuth_TokenVersionMismatch(t *testing.T) {

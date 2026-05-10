@@ -43,11 +43,7 @@ func (s *AuthService) completeDeviceInviteLogin(ctx context.Context, input Invit
 	if device == nil {
 		return nil, ErrDeviceRevoked
 	}
-	switch strings.TrimSpace(device.Status) {
-	case UserDeviceStatusActive:
-	case UserDeviceStatusPendingActivation:
-		return nil, ErrDeviceActivationPending
-	default:
+	if strings.TrimSpace(device.Status) != UserDeviceStatusActive {
 		return nil, ErrDeviceRevoked
 	}
 	if deviceHash != "" && normalizeDeviceHash(device.DeviceHash) != deviceHash {
@@ -68,6 +64,12 @@ func (s *AuthService) completeDeviceInviteLogin(ctx context.Context, input Invit
 			return nil, ErrInvitationCodeInvalid
 		}
 		return nil, ErrServiceUnavailable
+	}
+	if user.Status == StatusPendingActivation && !allowWebLoginWithoutDeviceHash {
+		return nil, ErrDeviceActivationPending
+	}
+	if !user.IsActive() && !allowWebLoginWithoutDeviceHash {
+		return nil, ErrUserNotActive
 	}
 
 	var bootstrapKeys []InviteBootstrapAPIKey

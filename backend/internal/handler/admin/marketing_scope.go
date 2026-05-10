@@ -51,6 +51,10 @@ func marketingOwnedUserIDs(c *gin.Context, adminService service.AdminService) ([
 }
 
 func ensureMarketingCanManageUser(c *gin.Context, adminService service.AdminService, userID int64) bool {
+	return ensureMarketingCanManageUserWithStatus(c, adminService, userID, "")
+}
+
+func ensureMarketingCanManageUserWithStatus(c *gin.Context, adminService service.AdminService, userID int64, requiredStatus string) bool {
 	if !isMarketingRequest(c) {
 		return true
 	}
@@ -62,7 +66,7 @@ func ensureMarketingCanManageUser(c *gin.Context, adminService service.AdminServ
 	if !ok {
 		return false
 	}
-	filters := service.UserListFilters{AffiliateInviterID: &marketingUserID, UserID: &userID}
+	filters := service.UserListFilters{AffiliateInviterID: &marketingUserID, UserID: &userID, Status: requiredStatus}
 	users, _, err := adminService.ListUsers(c.Request.Context(), 1, 1, filters, "created_at", "desc")
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -72,6 +76,10 @@ func ensureMarketingCanManageUser(c *gin.Context, adminService service.AdminServ
 		if users[i].ID == userID {
 			return true
 		}
+	}
+	if requiredStatus != "" {
+		response.ErrorFrom(c, infraerrors.Forbidden("FORBIDDEN", "Marketing role can only activate pending users in its affiliate scope"))
+		return false
 	}
 	response.ErrorFrom(c, infraerrors.Forbidden("FORBIDDEN", "Marketing role cannot manage users outside its affiliate scope"))
 	return false

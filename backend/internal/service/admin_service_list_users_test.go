@@ -17,12 +17,14 @@ type userRepoStubForListUsers struct {
 	users                 []User
 	err                   error
 	listWithFiltersParams pagination.PaginationParams
+	listWithFiltersFilter UserListFilters
 	lastUsedByUserID      map[int64]*time.Time
 	lastUsedErr           error
 }
 
-func (s *userRepoStubForListUsers) ListWithFilters(_ context.Context, params pagination.PaginationParams, _ UserListFilters) ([]User, *pagination.PaginationResult, error) {
+func (s *userRepoStubForListUsers) ListWithFilters(_ context.Context, params pagination.PaginationParams, filters UserListFilters) ([]User, *pagination.PaginationResult, error) {
 	s.listWithFiltersParams = params
+	s.listWithFiltersFilter = filters
 	if s.err != nil {
 		return nil, nil, s.err
 	}
@@ -182,4 +184,19 @@ func TestAdminService_ListUsers_PopulatesLastUsedAt(t *testing.T) {
 	require.Len(t, users, 1)
 	require.NotNil(t, users[0].LastUsedAt)
 	require.WithinDuration(t, lastUsed, *users[0].LastUsedAt, time.Second)
+}
+
+func TestAdminService_GetUserUsesUserStatus(t *testing.T) {
+	userRepo := &userRepoStubForListUsers{
+		users: []User{{ID: 42, Email: "pending@example.com", Status: StatusPendingActivation}},
+	}
+	svc := &adminServiceImpl{userRepo: userRepo}
+
+	user, err := svc.getAdminUser(context.Background(), 42)
+	require.NoError(t, err)
+	require.NotNil(t, user)
+	require.Equal(t, StatusPendingActivation, user.Status)
+	require.Equal(t, pagination.PaginationParams{Page: 1, PageSize: 1}, userRepo.listWithFiltersParams)
+	require.NotNil(t, userRepo.listWithFiltersFilter.UserID)
+	require.Equal(t, int64(42), *userRepo.listWithFiltersFilter.UserID)
 }

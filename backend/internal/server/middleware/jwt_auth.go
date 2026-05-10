@@ -75,8 +75,14 @@ func jwtAuth(
 			return
 		}
 
-		// 检查用户状态
-		if !user.IsActive() {
+		// 检查用户状态：pending_activation 仍允许进入前端、checkout/pay 等 JWT 页面；
+		// OpenClaw/API key 使用在 APIKeyService / device invite flow 继续要求 active。
+		switch user.Status {
+		case service.StatusActive, service.StatusPendingActivation:
+		case service.StatusBlocked, service.StatusDisabled:
+			AbortWithError(c, 401, "USER_INACTIVE", "User account is not active")
+			return
+		default:
 			AbortWithError(c, 401, "USER_INACTIVE", "User account is not active")
 			return
 		}

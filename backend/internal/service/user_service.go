@@ -67,7 +67,7 @@ var (
 
 // UserListFilters contains all filter options for listing users
 type UserListFilters struct {
-	Status    string // User status filter
+	Status    string // Effective user status filter; includes activation states for merged account/device rows
 	Role      string // User role filter
 	Search    string // Search in email, username, notes, API key, redeem/device code
 	GroupName string // Filter by allowed group name (fuzzy match)
