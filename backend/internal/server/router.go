@@ -60,7 +60,11 @@ func SetupRouter(
     }))
 
     if web.HasEmbeddedFrontend() {
-        frontendServer, err := web.NewFrontendServer(settingService)
+        frontendServer, err := web.NewFrontendServer(
+            settingService,
+            gin.HandlerFunc(jwtAuth),
+            gin.HandlerFunc(adminAuth),
+        )
         if err != nil {
             log.Printf("Warning: Failed to create frontend server with settings injection: %v, using legacy mode", err)
             r.Use(web.ServeEmbeddedFrontend())

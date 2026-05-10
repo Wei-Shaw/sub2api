@@ -14,7 +14,7 @@
           to="/login"
           class="inline-flex flex-shrink-0 items-center justify-center rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-primary-600/20 transition hover:bg-primary-700"
         >
-          登录
+          {{ t('common.login') }}
         </RouterLink>
       </div>
     </header>
@@ -85,7 +85,8 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, RouterLink } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import { getPublicSettings } from '@/api/auth'
 import { updateRouteSEO } from '@/utils/seo'
@@ -96,6 +97,7 @@ import { renderPublicMarkdown } from '@/utils/publicContent'
 type LegalDocumentIcon = 'document' | 'shield' | 'globe' | 'cog'
 
 const route = useRoute()
+const { t } = useI18n()
 const settings = ref<PublicSettings | null>(null)
 const loading = ref(true)
 const loadError = ref(false)

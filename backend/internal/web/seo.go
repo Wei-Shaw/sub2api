@@ -251,6 +251,29 @@ func buildNotFoundSEOData(requestPath string, settingsJSON []byte) seoData {
 	}
 }
 
+func buildPrivateSEOData(requestPath string, settingsJSON []byte) seoData {
+	cfg := parseSEOConfig(settingsJSON)
+	siteName := normalizeSiteName(cfg.SiteName)
+	baseURL := normalizeFrontendBaseURL(cfg.FrontendURL)
+	canonicalURL := resolveCanonicalURL(baseURL, requestPath)
+	locale := detectOpenGraphLocale(siteName, cfg.SEODefaultTitle, cfg.SEODefaultDescription)
+	title := firstNonEmpty(strings.TrimSpace(cfg.SEODefaultTitle), siteName)
+	description := buildDefaultDescription(cfg)
+	return seoData{
+		SiteName:         siteName,
+		Title:            title,
+		Description:      description,
+		CanonicalURL:     canonicalURL,
+		ImageURL:         resolveDefaultSEOImage(baseURL, cfg),
+		Robots:           "noindex, nofollow",
+		XRobotsTag:       "noindex, nofollow",
+		Type:             "website",
+		OpenGraphLocale:  locale,
+		TwitterCard:      "summary_large_image",
+		ShouldInjectHead: true,
+	}
+}
+
 func buildSEOMetaTags(data seoData) []byte {
 	if !data.ShouldInjectHead {
 		return nil

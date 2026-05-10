@@ -1,6 +1,8 @@
 # 忽略编译后的文件
 vite.config.js
 vite.config.d.ts
+src/utils/*.js
+src/utils/*.d.ts
 
 # 忽略依赖
 node_modules/

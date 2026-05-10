@@ -54,6 +54,11 @@ pnpm-debug.log*
 .env.*.local
 *.env
 !.env.example
+deploy/.env.audit
+frontend/vite.config.js
+frontend/vite.config.d.ts
+frontend/src/utils/*.js
+frontend/src/utils/*.d.ts
 docker-compose.override.yml
 
 # ===================

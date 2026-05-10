@@ -895,7 +895,15 @@ type PublicSettingsInjectionPayload struct {
 	OIDCOAuthEnabled                 bool                     `json:"oidc_oauth_enabled"`
 	OIDCOAuthProviderName            string                   `json:"oidc_oauth_provider_name"`
 	GitHubOAuthEnabled               bool                     `json:"github_oauth_enabled"`
+	GitHubOAuthClientID              string                   `json:"github_oauth_client_id"`
+	GitHubOAuthClientSecretConfigured bool                    `json:"github_oauth_client_secret_configured"`
+	GitHubOAuthRedirectURL           string                   `json:"github_oauth_redirect_url"`
+	GitHubOAuthFrontendRedirectURL   string                   `json:"github_oauth_frontend_redirect_url"`
 	GoogleOAuthEnabled               bool                     `json:"google_oauth_enabled"`
+	GoogleOAuthClientID              string                   `json:"google_oauth_client_id"`
+	GoogleOAuthClientSecretConfigured bool                    `json:"google_oauth_client_secret_configured"`
+	GoogleOAuthRedirectURL           string                   `json:"google_oauth_redirect_url"`
+	GoogleOAuthFrontendRedirectURL   string                   `json:"google_oauth_frontend_redirect_url"`
 	BackendModeEnabled               bool                     `json:"backend_mode_enabled"`
 	PaymentEnabled                   bool                     `json:"payment_enabled"`
 	Version                          string                   `json:"version"`
@@ -1461,6 +1469,22 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyOIDCConnectUserInfoUsernamePath] = settings.OIDCConnectUserInfoUsernamePath
 	if settings.OIDCConnectClientSecret != "" {
 		updates[SettingKeyOIDCConnectClientSecret] = settings.OIDCConnectClientSecret
+	}
+
+	updates[SettingKeyGitHubOAuthEnabled] = strconv.FormatBool(settings.GitHubOAuthEnabled)
+	updates[SettingKeyGitHubOAuthClientID] = strings.TrimSpace(settings.GitHubOAuthClientID)
+	updates[SettingKeyGitHubOAuthRedirectURL] = strings.TrimSpace(settings.GitHubOAuthRedirectURL)
+	updates[SettingKeyGitHubOAuthFrontendRedirectURL] = strings.TrimSpace(settings.GitHubOAuthFrontendRedirectURL)
+	if settings.GitHubOAuthClientSecret != "" {
+		updates[SettingKeyGitHubOAuthClientSecret] = settings.GitHubOAuthClientSecret
+	}
+
+	updates[SettingKeyGoogleOAuthEnabled] = strconv.FormatBool(settings.GoogleOAuthEnabled)
+	updates[SettingKeyGoogleOAuthClientID] = strings.TrimSpace(settings.GoogleOAuthClientID)
+	updates[SettingKeyGoogleOAuthRedirectURL] = strings.TrimSpace(settings.GoogleOAuthRedirectURL)
+	updates[SettingKeyGoogleOAuthFrontendRedirectURL] = strings.TrimSpace(settings.GoogleOAuthFrontendRedirectURL)
+	if settings.GoogleOAuthClientSecret != "" {
+		updates[SettingKeyGoogleOAuthClientSecret] = settings.GoogleOAuthClientSecret
 	}
 
 	// WeChat Connect OAuth 登录
@@ -2159,6 +2183,16 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyOIDCConnectUserInfoEmailPath:             "",
 		SettingKeyOIDCConnectUserInfoIDPath:                "",
 		SettingKeyOIDCConnectUserInfoUsernamePath:          "",
+		SettingKeyGitHubOAuthEnabled:                       "false",
+		SettingKeyGitHubOAuthClientID:                      "",
+		SettingKeyGitHubOAuthClientSecret:                  "",
+		SettingKeyGitHubOAuthRedirectURL:                   "",
+		SettingKeyGitHubOAuthFrontendRedirectURL:           defaultGitHubOAuthFrontend,
+		SettingKeyGoogleOAuthEnabled:                       "false",
+		SettingKeyGoogleOAuthClientID:                      "",
+		SettingKeyGoogleOAuthClientSecret:                  "",
+		SettingKeyGoogleOAuthRedirectURL:                   "",
+		SettingKeyGoogleOAuthFrontendRedirectURL:           defaultGoogleOAuthFrontend,
 		SettingKeyDefaultConcurrency:                       strconv.Itoa(s.cfg.Default.UserConcurrency),
 		SettingKeyDefaultBalance:                           strconv.FormatFloat(s.cfg.Default.UserBalance, 'f', 8, 64),
 		SettingKeyDefaultUserRPMLimit:                      "0",
@@ -2474,6 +2508,22 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		result.OIDCConnectClientSecret = strings.TrimSpace(oidcBase.ClientSecret)
 	}
 	result.OIDCConnectClientSecretConfigured = result.OIDCConnectClientSecret != ""
+
+	gitHubCfg := s.effectiveEmailOAuthConfig(settings, "github")
+	result.GitHubOAuthEnabled = gitHubCfg.Enabled
+	result.GitHubOAuthClientID = strings.TrimSpace(gitHubCfg.ClientID)
+	result.GitHubOAuthClientSecret = strings.TrimSpace(gitHubCfg.ClientSecret)
+	result.GitHubOAuthClientSecretConfigured = result.GitHubOAuthClientSecret != ""
+	result.GitHubOAuthRedirectURL = strings.TrimSpace(gitHubCfg.RedirectURL)
+	result.GitHubOAuthFrontendRedirectURL = strings.TrimSpace(gitHubCfg.FrontendRedirectURL)
+
+	googleCfg := s.effectiveEmailOAuthConfig(settings, "google")
+	result.GoogleOAuthEnabled = googleCfg.Enabled
+	result.GoogleOAuthClientID = strings.TrimSpace(googleCfg.ClientID)
+	result.GoogleOAuthClientSecret = strings.TrimSpace(googleCfg.ClientSecret)
+	result.GoogleOAuthClientSecretConfigured = result.GoogleOAuthClientSecret != ""
+	result.GoogleOAuthRedirectURL = strings.TrimSpace(googleCfg.RedirectURL)
+	result.GoogleOAuthFrontendRedirectURL = strings.TrimSpace(googleCfg.FrontendRedirectURL)
 
 	// WeChat Connect 设置：
 	// - 优先读取 DB 系统设置

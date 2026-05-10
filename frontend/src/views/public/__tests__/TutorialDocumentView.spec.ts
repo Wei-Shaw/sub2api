@@ -66,6 +66,7 @@ describe('public TutorialDocumentView', () => {
       headers: { Accept: 'application/json' },
     })
     expect(wrapper.html()).toContain('MyCustomSite')
+    expect(wrapper.html()).toContain('教程文档')
     expect(wrapper.html()).toContain('<h2>教程标题</h2>')
     expect(wrapper.html()).toContain('<p>富文本正文</p>')
     expect(updateRouteSEO).toHaveBeenCalled()

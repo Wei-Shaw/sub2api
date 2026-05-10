@@ -59,3 +59,26 @@ func TestAuthHandlerRevokeAllSessionsInvalidatesAccessTokens(t *testing.T) {
 	require.Equal(t, 0, resp.Code)
 	require.Equal(t, "All sessions have been revoked. Please log in again.", resp.Data.Message)
 }
+
+func TestLogoutClearsAuthTokenCookie(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	handler := &AuthHandler{}
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil)
+
+	handler.Logout(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	cookieFound := false
+	for _, cookie := range recorder.Result().Cookies() {
+		if cookie.Name == accessTokenCookieName {
+			cookieFound = true
+			require.Equal(t, -1, cookie.MaxAge)
+			require.True(t, cookie.HttpOnly)
+			require.Equal(t, "/", cookie.Path)
+		}
+	}
+	require.True(t, cookieFound)
+}

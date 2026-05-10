@@ -3,6 +3,8 @@ package handler
 import (
 	"context"
 	"log/slog"
+	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -90,6 +92,42 @@ type AuthResponse struct {
 	User         *dto.User `json:"user"`
 }
 
+const accessTokenCookieName = "auth_token"
+
+func setAccessTokenCookie(c *gin.Context, token string, expiresIn int) {
+	if c == nil || strings.TrimSpace(token) == "" {
+		return
+	}
+	maxAge := expiresIn
+	if maxAge <= 0 {
+		maxAge = 24 * 60 * 60
+	}
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     accessTokenCookieName,
+		Value:    url.QueryEscape(strings.TrimSpace(token)),
+		Path:     "/",
+		MaxAge:   maxAge,
+		HttpOnly: true,
+		Secure:   isRequestHTTPS(c),
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+func clearAccessTokenCookie(c *gin.Context) {
+	if c == nil {
+		return
+	}
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     accessTokenCookieName,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   isRequestHTTPS(c),
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
 func ensureLoginUserActive(user *service.User) error {
 	if user == nil {
 		return infraerrors.Unauthorized("INVALID_USER", "user not found")
@@ -118,6 +156,7 @@ func (h *AuthHandler) respondWithTokenPair(c *gin.Context, user *service.User) {
 			return
 		}
 		h.clearCustomReferralCookie(c)
+		setAccessTokenCookie(c, token, 24*60*60)
 		response.Success(c, AuthResponse{
 			AccessToken: token,
 			TokenType:   "Bearer",
@@ -126,6 +165,7 @@ func (h *AuthHandler) respondWithTokenPair(c *gin.Context, user *service.User) {
 		return
 	}
 	h.clearCustomReferralCookie(c)
+	setAccessTokenCookie(c, tokenPair.AccessToken, tokenPair.ExpiresIn)
 	response.Success(c, AuthResponse{
 		AccessToken:  tokenPair.AccessToken,
 		RefreshToken: tokenPair.RefreshToken,
@@ -788,6 +828,7 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 		return
 	}
 
+	setAccessTokenCookie(c, result.AccessToken, result.ExpiresIn)
 	response.Success(c, RefreshTokenResponse{
 		AccessToken:  result.AccessToken,
 		RefreshToken: result.RefreshToken,
@@ -822,6 +863,7 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	}
 	h.consumePendingOAuthSessionOnLogout(c)
 	clearOAuthLogoutCookies(c)
+	clearAccessTokenCookie(c)
 
 	response.Success(c, LogoutResponse{
 		Message: "Logged out successfully",
@@ -847,6 +889,7 @@ func (h *AuthHandler) RevokeAllSessions(c *gin.Context) {
 		response.InternalError(c, "Failed to revoke sessions")
 		return
 	}
+	clearAccessTokenCookie(c)
 
 	response.Success(c, RevokeAllSessionsResponse{
 		Message: "All sessions have been revoked. Please log in again.",

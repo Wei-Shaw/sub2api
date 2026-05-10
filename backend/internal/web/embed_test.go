@@ -7,6 +7,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -512,7 +513,6 @@ func TestFrontendServer_Middleware(t *testing.T) {
 
 		spaPaths := []string{
 			"/",
-			"/dashboard",
 			"/users/123",
 			"/settings/profile",
 		}
@@ -820,6 +820,51 @@ func TestBuildSEODataEscapesJSONLDScriptClosingSequence(t *testing.T) {
 	seo := buildSEOData("/legal/terms", settingsJSON)
 	assert.NotContains(t, seo.JSONLD, "</script>")
 	assert.Contains(t, seo.JSONLD, "\\u003c/script\\u003e")
+}
+
+func TestFrontendServer_PrivateHTMLRoutesRequireAuth(t *testing.T) {
+	provider := &mockSettingsProvider{
+		settings: map[string]any{
+			"site_name": "MyCustomSite",
+			"frontend_url": "https://example.com",
+		},
+	}
+
+	userAuth := func(c *gin.Context) {
+		authHeader := strings.TrimSpace(c.GetHeader("Authorization"))
+		if authHeader != "Bearer user-token" && authHeader != "Bearer admin-token" {
+			c.AbortWithStatus(http.StatusUnauthorized)
+			return
+		}
+		c.Next()
+	}
+	adminAuth := func(c *gin.Context) {
+		authHeader := strings.TrimSpace(c.GetHeader("Authorization"))
+		if authHeader != "Bearer admin-token" {
+			c.AbortWithStatus(http.StatusUnauthorized)
+			return
+		}
+		c.Next()
+	}
+
+	server, err := NewFrontendServer(provider, userAuth, adminAuth)
+	require.NoError(t, err)
+
+	router := gin.New()
+	router.Use(server.Middleware())
+
+	wGuest := httptest.NewRecorder()
+	reqGuest := httptest.NewRequest(http.MethodGet, "/admin/tutorial", nil)
+	router.ServeHTTP(wGuest, reqGuest)
+	require.Equal(t, http.StatusFound, wGuest.Code)
+	require.Contains(t, wGuest.Header().Get("Location"), "/login")
+
+	wUser := httptest.NewRecorder()
+	reqUser := httptest.NewRequest(http.MethodGet, "/admin/tutorial", nil)
+	reqUser.AddCookie(&http.Cookie{Name: "auth_token", Value: url.QueryEscape("user-token")})
+	router.ServeHTTP(wUser, reqUser)
+	require.Equal(t, http.StatusFound, wUser.Code)
+	require.Contains(t, wUser.Header().Get("Location"), "/login")
 }
 
 func TestHasEmbeddedFrontend(t *testing.T) {

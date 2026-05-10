@@ -10,6 +10,7 @@ import (
 	"encoding/xml"
 	"io"
 	"io/fs"
+	"net/http/httptest"
 	"net/http"
 	"net/url"
 	"os"
@@ -27,6 +28,7 @@ const (
 	NonceHTMLPlaceholder = "__CSP_NONCE_VALUE__"
 	frontendStatusCodeKey = "frontend_status_code"
 	frontendNotFoundKey   = "frontend_not_found"
+	frontendPrivateKey    = "frontend_private_route"
 )
 
 //go:embed all:dist
@@ -46,10 +48,12 @@ type FrontendServer struct {
 	settings    PublicSettingsProvider
 	overrideDir string // local file override directory
 	pagesDir    string
+	htmlUserAuth  gin.HandlerFunc
+	htmlAdminAuth gin.HandlerFunc
 }
 
 // NewFrontendServer creates a new frontend server with settings injection
-func NewFrontendServer(settingsProvider PublicSettingsProvider) (*FrontendServer, error) {
+func NewFrontendServer(settingsProvider PublicSettingsProvider, authGuards ...gin.HandlerFunc) (*FrontendServer, error) {
 	distFS, err := fs.Sub(frontendFS, "dist")
 	if err != nil {
 		return nil, err
@@ -70,14 +74,25 @@ func NewFrontendServer(settingsProvider PublicSettingsProvider) (*FrontendServer
 	cache := NewHTMLCache()
 	cache.SetBaseHTML(baseHTML)
 
+	var userAuth gin.HandlerFunc
+	var adminAuth gin.HandlerFunc
+	if len(authGuards) > 0 {
+		userAuth = authGuards[0]
+	}
+	if len(authGuards) > 1 {
+		adminAuth = authGuards[1]
+	}
+
 	return &FrontendServer{
-		distFS:      distFS,
-		fileServer:  http.FileServer(http.FS(distFS)),
-		baseHTML:    baseHTML,
-		cache:       cache,
-		settings:    settingsProvider,
-		overrideDir: filepath.Join(setup.GetDataDir(), "public"),
-		pagesDir:    filepath.Join(setup.GetDataDir(), "pages"),
+		distFS:        distFS,
+		fileServer:    http.FileServer(http.FS(distFS)),
+		baseHTML:      baseHTML,
+		cache:         cache,
+		settings:      settingsProvider,
+		overrideDir:   filepath.Join(setup.GetDataDir(), "public"),
+		pagesDir:      filepath.Join(setup.GetDataDir(), "pages"),
+		htmlUserAuth:  userAuth,
+		htmlAdminAuth: adminAuth,
 	}, nil
 }
 
@@ -145,6 +160,23 @@ func (s *FrontendServer) Middleware() gin.HandlerFunc {
 			}
 		}
 
+		if requiresHTMLAuth(path) {
+			allowed, status := s.authorizeHTMLRoute(c, path)
+			if !allowed {
+				if status == http.StatusForbidden {
+					c.String(http.StatusForbidden, "Forbidden")
+				} else {
+					redirect := "/login"
+					if path != "" && path != "/" {
+						redirect = "/login?redirect=" + url.QueryEscape(path)
+					}
+					c.Redirect(http.StatusFound, redirect)
+				}
+				c.Abort()
+				return
+			}
+		}
+
 		if strings.Contains(filepath.Base(cleanPath), ".") && !s.fileExists(cleanPath) {
 			c.String(http.StatusNotFound, "Frontend not found")
 			c.Abort()
@@ -156,6 +188,9 @@ func (s *FrontendServer) Middleware() gin.HandlerFunc {
 			if !isKnownSPARoute(path) {
 				s.serveNotFoundHTML(c)
 				return
+			}
+			if requiresHTMLAuth(path) {
+				c.Set(frontendPrivateKey, true)
 			}
 			s.serveIndexHTML(c)
 			return
@@ -170,6 +205,77 @@ func (s *FrontendServer) Middleware() gin.HandlerFunc {
 		s.fileServer.ServeHTTP(c.Writer, c.Request)
 		c.Abort()
 	}
+}
+
+func requiresHTMLAuth(path string) bool {
+	switch {
+	case strings.HasPrefix(path, "/admin"):
+		return true
+	case path == "/dashboard":
+		return true
+	case hasKnownRoutePrefix(path,
+		"/keys",
+		"/usage",
+		"/redeem",
+		"/affiliate",
+		"/available-channels",
+		"/profile",
+		"/subscriptions",
+		"/purchase",
+		"/orders",
+		"/payment",
+		"/monitor",
+	):
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *FrontendServer) authorizeHTMLRoute(c *gin.Context, path string) (bool, int) {
+	if c == nil || c.Request == nil {
+		return false, http.StatusUnauthorized
+	}
+	var guard gin.HandlerFunc
+	if strings.HasPrefix(path, "/admin") {
+		guard = s.htmlAdminAuth
+	} else {
+		guard = s.htmlUserAuth
+	}
+	if guard == nil {
+		return true, http.StatusOK
+	}
+
+	req := c.Request.Clone(c.Request.Context())
+	if strings.TrimSpace(req.Header.Get("Authorization")) == "" {
+		for _, cookieName := range []string{"auth_token", "oauth_bind_access_token"} {
+			ck, err := req.Cookie(cookieName)
+			if err != nil {
+				continue
+			}
+			value, decodeErr := url.QueryUnescape(strings.TrimSpace(ck.Value))
+			if decodeErr == nil && value != "" {
+				req.Header.Set("Authorization", "Bearer "+value)
+				break
+			}
+			if strings.TrimSpace(ck.Value) != "" {
+				req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(ck.Value))
+				break
+			}
+		}
+	}
+
+	rec := httptest.NewRecorder()
+	testCtx, _ := gin.CreateTestContext(rec)
+	testCtx.Request = req
+	guard(testCtx)
+	if testCtx.IsAborted() {
+		return false, rec.Code
+	}
+	for key, value := range testCtx.Keys {
+		c.Set(key, value)
+	}
+	return true, http.StatusOK
 }
 
 func (s *FrontendServer) publicPageExists(c *gin.Context, requestPath string) bool {
@@ -258,6 +364,8 @@ func (s *FrontendServer) serveIndexHTML(c *gin.Context) {
 	}
 	isNotFound, _ := c.Get(frontendNotFoundKey)
 	notFound := isNotFound == true
+	isPrivate, _ := c.Get(frontendPrivateKey)
+	privateRoute := isPrivate == true
 
 	// Check cache first
 	cached := s.cache.Get(cacheKey)
@@ -275,8 +383,12 @@ func (s *FrontendServer) serveIndexHTML(c *gin.Context) {
 		c.Header("ETag", cached.ETag)
 		c.Header("Cache-Control", "no-cache") // Must revalidate
 		seo := buildSEOData(requestPath, extractSettingsJSON(cached.Content))
-		if notFound {
-			seo = buildNotFoundSEOData(requestPath, extractSettingsJSON(cached.Content))
+		if notFound || requiresHTMLAuth(requestPath) {
+			if privateRoute {
+				seo = buildPrivateSEOData(requestPath, extractSettingsJSON(cached.Content))
+			} else {
+				seo = buildNotFoundSEOData(requestPath, extractSettingsJSON(cached.Content))
+			}
 		}
 		c.Header("X-Robots-Tag", seo.XRobotsTag)
 		c.Data(statusCode, "text/html; charset=utf-8", content)
@@ -305,8 +417,12 @@ func (s *FrontendServer) serveIndexHTML(c *gin.Context) {
 	}
 
 	seo := buildSEOData(requestPath, settingsJSON)
-	if notFound {
-		seo = buildNotFoundSEOData(requestPath, settingsJSON)
+	if notFound || requiresHTMLAuth(requestPath) {
+		if privateRoute {
+			seo = buildPrivateSEOData(requestPath, settingsJSON)
+		} else {
+			seo = buildNotFoundSEOData(requestPath, settingsJSON)
+		}
 	}
 	rendered := s.injectSettingsWithSEO(settingsJSON, seo)
 	s.cache.Set(cacheKey, rendered, settingsJSON)

@@ -106,4 +106,40 @@ describe('seo utils', () => {
     updateRouteSEO(router.currentRoute.value, settings)
     expect(document.head.querySelector('meta[name="robots"]')?.getAttribute('content')).toBe('noindex, nofollow')
   })
+
+  it('resolves tutorial seo with readable chinese title and description', async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/docs/tutorial', name: 'TutorialDocument', component: { template: '<div />' }, meta: { requiresAuth: false, title: 'Tutorial Document' } }],
+    })
+    await router.push('/docs/tutorial')
+
+    const seo = resolveRouteSEO(router.currentRoute.value, {
+      ...settings,
+      seo_default_title: '',
+      seo_default_description: '',
+    })
+
+    expect(seo.title).toBe('教程文档 - Sub2API')
+    expect(seo.description).toContain('阅读 教程文档')
+    expect(seo.canonicalUrl).toBe('https://example.com/docs/tutorial')
+    expect(seo.imageUrl).toBe('https://example.com/og/custom-tutorial.svg')
+    expect(seo.robots).toBe('index, follow')
+  })
+
+  it('reuses existing SSR json-ld script instead of duplicating it', async () => {
+    document.head.innerHTML = '<script type="application/ld+json">{"@type":"Article"}</script>'
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/home', name: 'Home', component: { template: '<div />' }, meta: { requiresAuth: false, title: 'Home' } }],
+    })
+    await router.push('/home')
+
+    updateRouteSEO(router.currentRoute.value, settings)
+
+    const scripts = document.head.querySelectorAll('script[type="application/ld+json"]')
+    expect(scripts).toHaveLength(1)
+    expect(scripts[0].id).toBe('route-jsonld')
+    expect(scripts[0].textContent).toContain('"@type":"WebSite"')
+  })
 })

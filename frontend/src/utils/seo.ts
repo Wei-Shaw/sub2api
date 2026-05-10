@@ -277,6 +277,9 @@ function resolveRouteImageUrl(
   logo?: string
 ): string | undefined {
   if (baseUrl) {
+    if (route.name === 'TutorialDocument') {
+      return `${baseUrl}/og/custom-tutorial.svg`
+    }
     if (route.name === 'LegalDocument') {
       const id = String(route.params.documentId || '').trim()
       if (id) return `${baseUrl}/og/legal-${id}.svg`
@@ -378,6 +381,7 @@ function setLinkCanonical(href?: string): void {
 
 function setJSONLD(payload: Record<string, unknown> | null | undefined): void {
   const existing = document.getElementById('route-jsonld')
+    ?? document.head.querySelector<HTMLScriptElement>('script[type="application/ld+json"]')
   if (!payload) {
     existing?.remove()
     return

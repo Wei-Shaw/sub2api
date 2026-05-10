@@ -21,7 +21,7 @@ type PublicSettingsProvider interface {
 type FrontendServer struct{}
 
 // NewFrontendServer returns an error when frontend is not embedded
-func NewFrontendServer(settingsProvider PublicSettingsProvider) (*FrontendServer, error) {
+func NewFrontendServer(settingsProvider PublicSettingsProvider, _ ...gin.HandlerFunc) (*FrontendServer, error) {
 	return nil, errors.New("frontend not embedded")
 }
 

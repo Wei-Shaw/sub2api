@@ -173,6 +173,16 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		OIDCConnectUserInfoEmailPath:           settings.OIDCConnectUserInfoEmailPath,
 		OIDCConnectUserInfoIDPath:              settings.OIDCConnectUserInfoIDPath,
 		OIDCConnectUserInfoUsernamePath:        settings.OIDCConnectUserInfoUsernamePath,
+		GitHubOAuthEnabled:                     settings.GitHubOAuthEnabled,
+		GitHubOAuthClientID:                    settings.GitHubOAuthClientID,
+		GitHubOAuthClientSecretConfigured:      settings.GitHubOAuthClientSecretConfigured,
+		GitHubOAuthRedirectURL:                 settings.GitHubOAuthRedirectURL,
+		GitHubOAuthFrontendRedirectURL:         settings.GitHubOAuthFrontendRedirectURL,
+		GoogleOAuthEnabled:                     settings.GoogleOAuthEnabled,
+		GoogleOAuthClientID:                    settings.GoogleOAuthClientID,
+		GoogleOAuthClientSecretConfigured:      settings.GoogleOAuthClientSecretConfigured,
+		GoogleOAuthRedirectURL:                 settings.GoogleOAuthRedirectURL,
+		GoogleOAuthFrontendRedirectURL:         settings.GoogleOAuthFrontendRedirectURL,
 		SiteName:                               settings.SiteName,
 		SiteLogo:                               settings.SiteLogo,
 		SiteSubtitle:                           settings.SiteSubtitle,
@@ -413,6 +423,16 @@ type UpdateSettingsRequest struct {
 	OIDCConnectUserInfoEmailPath    string `json:"oidc_connect_userinfo_email_path"`
 	OIDCConnectUserInfoIDPath       string `json:"oidc_connect_userinfo_id_path"`
 	OIDCConnectUserInfoUsernamePath string `json:"oidc_connect_userinfo_username_path"`
+	GitHubOAuthEnabled              bool   `json:"github_oauth_enabled"`
+	GitHubOAuthClientID             string `json:"github_oauth_client_id"`
+	GitHubOAuthClientSecret         string `json:"github_oauth_client_secret"`
+	GitHubOAuthRedirectURL          string `json:"github_oauth_redirect_url"`
+	GitHubOAuthFrontendRedirectURL  string `json:"github_oauth_frontend_redirect_url"`
+	GoogleOAuthEnabled              bool   `json:"google_oauth_enabled"`
+	GoogleOAuthClientID             string `json:"google_oauth_client_id"`
+	GoogleOAuthClientSecret         string `json:"google_oauth_client_secret"`
+	GoogleOAuthRedirectURL          string `json:"google_oauth_redirect_url"`
+	GoogleOAuthFrontendRedirectURL  string `json:"google_oauth_frontend_redirect_url"`
 
 	// OEM设置
 	SiteName                    string                `json:"site_name"`
@@ -979,6 +999,24 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		}
 	}
 
+	if req.GitHubOAuthEnabled {
+		req.GitHubOAuthClientID = strings.TrimSpace(firstNonEmpty(req.GitHubOAuthClientID, previousSettings.GitHubOAuthClientID))
+		req.GitHubOAuthRedirectURL = strings.TrimSpace(firstNonEmpty(req.GitHubOAuthRedirectURL, previousSettings.GitHubOAuthRedirectURL))
+		req.GitHubOAuthFrontendRedirectURL = strings.TrimSpace(firstNonEmpty(req.GitHubOAuthFrontendRedirectURL, previousSettings.GitHubOAuthFrontendRedirectURL))
+		if req.GitHubOAuthClientSecret == "" {
+			req.GitHubOAuthClientSecret = previousSettings.GitHubOAuthClientSecret
+		}
+	}
+
+	if req.GoogleOAuthEnabled {
+		req.GoogleOAuthClientID = strings.TrimSpace(firstNonEmpty(req.GoogleOAuthClientID, previousSettings.GoogleOAuthClientID))
+		req.GoogleOAuthRedirectURL = strings.TrimSpace(firstNonEmpty(req.GoogleOAuthRedirectURL, previousSettings.GoogleOAuthRedirectURL))
+		req.GoogleOAuthFrontendRedirectURL = strings.TrimSpace(firstNonEmpty(req.GoogleOAuthFrontendRedirectURL, previousSettings.GoogleOAuthFrontendRedirectURL))
+		if req.GoogleOAuthClientSecret == "" {
+			req.GoogleOAuthClientSecret = previousSettings.GoogleOAuthClientSecret
+		}
+	}
+
 	// “购买订阅”页面配置验证
 	purchaseEnabled := previousSettings.PurchaseSubscriptionEnabled
 	if req.PurchaseSubscriptionEnabled != nil {
@@ -1277,6 +1315,16 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		OIDCConnectUserInfoEmailPath:     req.OIDCConnectUserInfoEmailPath,
 		OIDCConnectUserInfoIDPath:        req.OIDCConnectUserInfoIDPath,
 		OIDCConnectUserInfoUsernamePath:  req.OIDCConnectUserInfoUsernamePath,
+		GitHubOAuthEnabled:               req.GitHubOAuthEnabled,
+		GitHubOAuthClientID:              req.GitHubOAuthClientID,
+		GitHubOAuthClientSecret:          req.GitHubOAuthClientSecret,
+		GitHubOAuthRedirectURL:           req.GitHubOAuthRedirectURL,
+		GitHubOAuthFrontendRedirectURL:   req.GitHubOAuthFrontendRedirectURL,
+		GoogleOAuthEnabled:               req.GoogleOAuthEnabled,
+		GoogleOAuthClientID:              req.GoogleOAuthClientID,
+		GoogleOAuthClientSecret:          req.GoogleOAuthClientSecret,
+		GoogleOAuthRedirectURL:           req.GoogleOAuthRedirectURL,
+		GoogleOAuthFrontendRedirectURL:   req.GoogleOAuthFrontendRedirectURL,
 		SiteName:                         req.SiteName,
 		SiteLogo:                         req.SiteLogo,
 		SiteSubtitle:                     req.SiteSubtitle,
@@ -1616,6 +1664,16 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		OIDCConnectUserInfoEmailPath:           updatedSettings.OIDCConnectUserInfoEmailPath,
 		OIDCConnectUserInfoIDPath:              updatedSettings.OIDCConnectUserInfoIDPath,
 		OIDCConnectUserInfoUsernamePath:        updatedSettings.OIDCConnectUserInfoUsernamePath,
+		GitHubOAuthEnabled:                     updatedSettings.GitHubOAuthEnabled,
+		GitHubOAuthClientID:                    updatedSettings.GitHubOAuthClientID,
+		GitHubOAuthClientSecretConfigured:      updatedSettings.GitHubOAuthClientSecretConfigured,
+		GitHubOAuthRedirectURL:                 updatedSettings.GitHubOAuthRedirectURL,
+		GitHubOAuthFrontendRedirectURL:         updatedSettings.GitHubOAuthFrontendRedirectURL,
+		GoogleOAuthEnabled:                     updatedSettings.GoogleOAuthEnabled,
+		GoogleOAuthClientID:                    updatedSettings.GoogleOAuthClientID,
+		GoogleOAuthClientSecretConfigured:      updatedSettings.GoogleOAuthClientSecretConfigured,
+		GoogleOAuthRedirectURL:                 updatedSettings.GoogleOAuthRedirectURL,
+		GoogleOAuthFrontendRedirectURL:         updatedSettings.GoogleOAuthFrontendRedirectURL,
 		SiteName:                               updatedSettings.SiteName,
 		SiteLogo:                               updatedSettings.SiteLogo,
 		SiteSubtitle:                           updatedSettings.SiteSubtitle,
