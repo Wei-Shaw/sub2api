@@ -174,6 +174,9 @@ func buildSEOData(requestPath string, settingsJSON []byte) seoData {
 		}
 	case strings.HasPrefix(requestPath, "/custom/"):
 		if page, ok := findPublicCustomPage(cfg, strings.TrimPrefix(requestPath, "/custom/")); ok {
+			if strings.TrimSpace(page.PageSlug) == "" && !strings.HasPrefix(strings.TrimSpace(page.URL), "md:") {
+				break
+			}
 			data.Title = buildPageSEOTitle(page.SEOTitle, page.Label, cfg.SEODefaultTitle, siteName)
 			data.Description = buildPageSEODescription(
 				page.SEODescription,
@@ -390,6 +393,9 @@ func buildSitemapXML(settingsJSON []byte) []byte {
 			continue
 		}
 		if strings.TrimSpace(item.ID) == "" {
+			continue
+		}
+		if strings.TrimSpace(item.PageSlug) == "" && !strings.HasPrefix(strings.TrimSpace(item.URL), "md:") {
 			continue
 		}
 		robots := strings.TrimSpace(item.SEORobots)

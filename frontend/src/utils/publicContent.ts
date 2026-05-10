@@ -215,7 +215,12 @@ function postProcessSanitizedHTML(root: HTMLElement): void {
 }
 
 export function buildPageImageURL(pageSlug: string, src: string): string {
-  const trimmed = String(src ?? '').trim()
+  let trimmed = String(src ?? '').trim()
+  try {
+    trimmed = decodeURIComponent(trimmed)
+  } catch {
+    // Keep the original path when it is not valid percent-encoding.
+  }
   const match = trimmed.match(/^([^?#]*)([?#].*)?$/)
   const pathPart = match?.[1] ?? trimmed
   const suffix = match?.[2] ?? ''

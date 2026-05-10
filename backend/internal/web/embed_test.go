@@ -273,7 +273,7 @@ func TestFrontendServer_InjectSettings(t *testing.T) {
 		settingsJSON := []byte(`{"nested":{"array":[1,2,3]},"special":"<>&"}`)
 		result, _ := server.injectSettings("/home", settingsJSON)
 
-		assert.Contains(t, string(result), `window.__APP_CONFIG__={"nested":{"array":[1,2,3]},"special":"<>&"};`)
+		assert.Contains(t, string(result), `window.__APP_CONFIG__={"nested":{"array":[1,2,3]},"special":"\u003c\u003e\u0026"};`)
 	})
 }
 
@@ -809,7 +809,7 @@ func TestFrontendServer_Middleware(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "Configured data dir body")
 	})
 
-	t.Run("renders_public_embedded_page_server_side", func(t *testing.T) {
+	t.Run("rejects_public_custom_page_without_markdown_source", func(t *testing.T) {
 		provider := &mockSettingsProvider{
 			settings: map[string]any{
 				"site_name": "MyCustomSite",
@@ -830,11 +830,8 @@ func TestFrontendServer_Middleware(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/custom/pricing", nil)
 		router.ServeHTTP(w, req)
 
-		assert.Equal(t, http.StatusOK, w.Code)
-		assert.Contains(t, w.Body.String(), "<iframe")
-		assert.Contains(t, w.Body.String(), "https://billing.example.com/embed?ui_mode=embedded")
-		assert.Contains(t, w.Body.String(), "<title>Pricing - MyCustomSite</title>")
-		assert.Equal(t, "text/html; charset=utf-8", w.Header().Get("Content-Type"))
+		assert.Equal(t, http.StatusNotFound, w.Code)
+		assert.NotContains(t, w.Body.String(), "<iframe")
 	})
 
 	t.Run("renders_builtin_tutorial_markdown_page", func(t *testing.T) {

@@ -730,7 +730,7 @@ const personalNavItems = computed((): NavItem[] => finalizeNav(buildSelfNavItems
 const customMenuItemsForUser = computed(() => {
   const items = appStore.cachedPublicSettings?.custom_menu_items ?? []
   const sorted = items
-    .filter((item) => item.visibility === 'user')
+    .filter((item) => item.visibility === 'user' && (Boolean(item.page_slug) || item.url?.startsWith('md:')))
     .sort((a, b) => a.sort_order - b.sort_order)
   const guideIndex = sorted.findIndex((item) => item.id === 'guide' || item.page_slug === 'guide')
   if (guideIndex <= 0) {

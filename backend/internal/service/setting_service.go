@@ -1191,8 +1191,9 @@ func safeRawJSONArray(raw string) json.RawMessage {
 	return json.RawMessage("[]")
 }
 
-// GetFrameSrcOrigins returns deduplicated http(s) origins from home_content URL,
-// purchase_subscription_url, and all custom_menu_items URLs. Used by the router layer for CSP frame-src injection.
+// GetFrameSrcOrigins returns deduplicated http(s) origins from purchase_subscription_url.
+// Public content pages no longer allow external iframe embedding, so public content
+// settings are intentionally excluded from frame-src.
 func (s *SettingService) GetFrameSrcOrigins(ctx context.Context) ([]string, error) {
 	settings, err := s.GetPublicSettings(ctx)
 	if err != nil {
@@ -1211,17 +1212,9 @@ func (s *SettingService) GetFrameSrcOrigins(ctx context.Context) ([]string, erro
 		}
 	}
 
-	// home content URL (when home_content is set to a URL for iframe embedding)
-	addOrigin(settings.HomeContent)
-
 	// purchase subscription URL
 	if settings.PurchaseSubscriptionEnabled {
 		addOrigin(settings.PurchaseSubscriptionURL)
-	}
-
-	// all custom menu items (including admin-only, since CSP must allow all iframes)
-	for _, item := range parseCustomMenuItemURLs(settings.CustomMenuItems) {
-		addOrigin(item)
 	}
 
 	return origins, nil
@@ -1242,27 +1235,6 @@ func extractOriginFromURL(rawURL string) string {
 		return ""
 	}
 	return u.Scheme + "://" + u.Host
-}
-
-// parseCustomMenuItemURLs extracts URLs from a raw JSON array of custom menu items.
-func parseCustomMenuItemURLs(raw string) []string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" || raw == "[]" {
-		return nil
-	}
-	var items []struct {
-		URL string `json:"url"`
-	}
-	if err := json.Unmarshal([]byte(raw), &items); err != nil {
-		return nil
-	}
-	urls := make([]string, 0, len(items))
-	for _, item := range items {
-		if item.URL != "" {
-			urls = append(urls, item.URL)
-		}
-	}
-	return urls
 }
 
 func oidcUsePKCECompatibilityDefault(base config.OIDCConnectConfig) bool {

@@ -638,6 +638,21 @@ func TestSettingHandler_UpdateSettings_RejectsInvalidSEOImageAndRobotsValues(t *
 				},
 			},
 		},
+		{
+			"promo_code_enabled": true,
+			"home_content":       "https://evil.example/embed",
+		},
+		{
+			"promo_code_enabled": true,
+			"custom_menu_items": []map[string]any{
+				{
+					"id":         "pricing",
+					"label":      "Pricing",
+					"url":        "https://billing.example.com/embed",
+					"visibility": "user",
+				},
+			},
+		},
 	}
 
 	for _, body := range tests {

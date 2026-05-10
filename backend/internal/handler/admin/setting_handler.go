@@ -1135,6 +1135,11 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		response.BadRequest(c, "Home SEO robots value is invalid")
 		return
 	}
+	req.HomeContent = strings.TrimSpace(req.HomeContent)
+	if strings.HasPrefix(req.HomeContent, "http://") || strings.HasPrefix(req.HomeContent, "https://") {
+		response.BadRequest(c, "Home content must be inline public content, not an external URL")
+		return
+	}
 
 	// 自定义菜单项验证
 	const (
@@ -1173,10 +1178,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			pageSlug := strings.TrimSpace(item.PageSlug)
 			isMarkdownURL := strings.HasPrefix(trimmedURL, "md:") && strings.TrimSpace(strings.TrimPrefix(trimmedURL, "md:")) != ""
 			if !isMarkdownURL && pageSlug == "" {
-				if err := config.ValidateAbsoluteHTTPURL(trimmedURL); err != nil {
-					response.BadRequest(c, "Custom menu item URL must be an absolute http(s) URL")
-					return
-				}
+				response.BadRequest(c, "Custom menu item must reference markdown content via page_slug or md: URL")
+				return
 			} else if isMarkdownURL && pageSlug == "" {
 				pageSlug = strings.TrimSpace(strings.TrimPrefix(trimmedURL, "md:"))
 				items[i].PageSlug = pageSlug

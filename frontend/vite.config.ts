@@ -27,7 +27,7 @@ function injectPublicSettings(backendUrl: string): Plugin {
           }
           const data = await response.json()
           if (data.code === 0 && data.data) {
-            const script = `<script>window.__APP_CONFIG__=${JSON.stringify(data.data)};</script>`
+            const script = `<script>window.__APP_CONFIG__=${escapeJSONForHTML(JSON.stringify(data.data))};</script>`
             return html.replace('</head>', `${script}\n</head>`)
           }
         } catch (error) {

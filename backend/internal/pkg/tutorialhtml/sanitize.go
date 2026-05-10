@@ -79,6 +79,9 @@ func RewriteRelativePageImageSources(rawHTML string, pageSlug string) string {
 
 func BuildPageImageURL(pageSlug string, src string) string {
 	trimmed := strings.TrimSpace(src)
+	if decoded, err := url.PathUnescape(trimmed); err == nil {
+		trimmed = decoded
+	}
 	pathPart := trimmed
 	suffix := ""
 	if idx := strings.IndexAny(trimmed, "?#"); idx >= 0 {

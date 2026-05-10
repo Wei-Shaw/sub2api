@@ -326,7 +326,7 @@ func (s *FrontendServer) publicPageExists(c *gin.Context, requestPath string) bo
 			slug = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(page.URL), "md:"))
 		}
 		if slug == "" {
-			return true
+			return false
 		}
 		if _, err := s.loadMarkdownFile(slug); err != nil {
 			return false
@@ -517,7 +517,7 @@ func hasKnownRoutePrefix(path string, prefixes ...string) bool {
 }
 
 func (s *FrontendServer) injectSettingsWithSEO(settingsJSON []byte, seo seoData) []byte {
-	script := []byte(`<script nonce="` + NonceHTMLPlaceholder + `">window.__APP_CONFIG__=` + string(settingsJSON) + `;</script>`)
+	script := []byte(`<script nonce="` + NonceHTMLPlaceholder + `">window.__APP_CONFIG__=` + escapeJSONForHTML(string(settingsJSON)) + `;</script>`)
 	headClose := []byte("</head>")
 	result := bytes.Replace(s.baseHTML, headClose, append(script, headClose...), 1)
 	result = injectSEOTitle(result, seo.Title)
@@ -664,7 +664,6 @@ func (s *FrontendServer) buildSitemapXML(settingsJSON []byte) []byte {
 			slug = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(item.URL), "md:"))
 		}
 		if slug == "" {
-			allowed[strings.TrimRight(baseURL, "/")+"/custom/"+url.PathEscape(id)] = struct{}{}
 			continue
 		}
 		if _, err := s.loadMarkdownFile(slug); err == nil {

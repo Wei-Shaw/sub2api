@@ -386,7 +386,7 @@ func ParseUserVisibleMenuItems(raw string) []CustomMenuItem {
 	items := ParseCustomMenuItems(raw)
 	filtered := make([]CustomMenuItem, 0, len(items))
 	for _, item := range items {
-		if item.Visibility != "admin" {
+		if item.Visibility != "admin" && (strings.TrimSpace(item.PageSlug) != "" || strings.HasPrefix(strings.TrimSpace(item.URL), "md:")) {
 			filtered = append(filtered, item)
 		}
 	}

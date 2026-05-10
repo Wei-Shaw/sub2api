@@ -248,7 +248,12 @@ function isRelativeMarkdownAsset(src: string): boolean {
 }
 
 export function buildPageImageURL(pageSlug: string, src: string): string {
-  const trimmed = String(src ?? '').trim()
+  let trimmed = String(src ?? '').trim()
+  try {
+    trimmed = decodeURIComponent(trimmed)
+  } catch {
+    // Keep the original path when it is not valid percent-encoding.
+  }
   const [pathPart, queryPart] = trimmed.split('?', 2)
   const encodedParts = pathPart
     .split('/')

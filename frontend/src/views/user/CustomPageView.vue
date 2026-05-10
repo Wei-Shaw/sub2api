@@ -77,7 +77,7 @@
         </div>
 
         <!-- URL not configured -->
-        <div v-else-if="!isValidUrl" class="flex h-full items-center justify-center p-10 text-center">
+        <div v-else class="flex h-full items-center justify-center p-10 text-center">
           <div class="max-w-md">
             <div
               class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-dark-700"
@@ -93,23 +93,6 @@
           </div>
         </div>
 
-        <!-- Iframe embed mode -->
-        <div v-else class="custom-embed-shell">
-          <a
-            :href="embeddedUrl"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="btn btn-secondary btn-sm custom-open-fab"
-          >
-            <Icon name="externalLink" size="sm" class="mr-1.5" :stroke-width="2" />
-            {{ t('customPage.openInNewTab') }}
-          </a>
-          <iframe
-            :src="embeddedUrl"
-            class="custom-embed-frame"
-            allowfullscreen
-          ></iframe>
-        </div>
       </div>
     </div>
   </AppLayout>
@@ -124,7 +107,6 @@ import { useAuthStore } from '@/stores/auth'
 import { useAdminSettingsStore } from '@/stores/adminSettings'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
-import { buildEmbeddedUrl, detectTheme } from '@/utils/embedded-url'
 import { renderPublicMarkdown } from '@/utils/publicContent'
 
 interface TocItem {
@@ -133,20 +115,18 @@ interface TocItem {
   level: number
 }
 
-const { t, locale } = useI18n()
+const { t } = useI18n()
 const route = useRoute()
 const appStore = useAppStore()
 const authStore = useAuthStore()
 const adminSettingsStore = useAdminSettingsStore()
 
 const loading = ref(false)
-const pageTheme = ref<'light' | 'dark'>('light')
 const renderedHtml = ref('')
 const markdownContainer = ref<HTMLElement | null>(null)
 const tocItems = ref<TocItem[]>([])
 const tocVisible = ref(typeof window !== 'undefined' ? window.innerWidth > 768 : true)
 const activeHeadingId = ref('')
-let themeObserver: MutationObserver | null = null
 
 const menuItemId = computed(() => route.params.id as string)
 
@@ -170,23 +150,6 @@ const markdownSlug = computed(() => {
 })
 
 const isMarkdownMode = computed(() => !!markdownSlug.value)
-
-const embeddedUrl = computed(() => {
-  if (!menuItem.value || isMarkdownMode.value) return ''
-  return buildEmbeddedUrl(
-    menuItem.value.url,
-    authStore.user?.id,
-    authStore.token,
-    pageTheme.value,
-    locale.value,
-  )
-})
-
-const isValidUrl = computed(() => {
-  if (isMarkdownMode.value) return false
-  const url = embeddedUrl.value
-  return url.startsWith('http://') || url.startsWith('https://')
-})
 
 function generateHeadingId(text: string, index: number): string {
   const base = text
@@ -338,18 +301,6 @@ watch(markdownSlug, (slug) => {
 }, { immediate: true })
 
 onMounted(async () => {
-  pageTheme.value = detectTheme()
-
-  if (typeof document !== 'undefined') {
-    themeObserver = new MutationObserver(() => {
-      pageTheme.value = detectTheme()
-    })
-    themeObserver.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['class'],
-    })
-  }
-
   if (appStore.publicSettingsLoaded) return
   loading.value = true
   try {
@@ -360,10 +311,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  if (themeObserver) {
-    themeObserver.disconnect()
-    themeObserver = null
-  }
+  return
 })
 </script>
 
