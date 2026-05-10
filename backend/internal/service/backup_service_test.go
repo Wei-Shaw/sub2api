@@ -188,6 +188,24 @@ func (m *mockObjectStore) Download(_ context.Context, key string) (io.ReadCloser
 	return io.NopCloser(bytes.NewReader(data)), nil
 }
 
+func (m *mockObjectStore) List(_ context.Context, prefix string) ([]BackupObjectInfo, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	items := make([]BackupObjectInfo, 0, len(m.objects))
+	for key, data := range m.objects {
+		if prefix != "" && !strings.HasPrefix(key, prefix) {
+			continue
+		}
+		items = append(items, BackupObjectInfo{
+			Key:          key,
+			SizeBytes:    int64(len(data)),
+			LastModified: time.Date(2026, 5, 10, 10, 0, 0, 0, time.UTC).Format(time.RFC3339),
+		})
+	}
+	return items, nil
+}
+
 func (m *mockObjectStore) Delete(_ context.Context, key string) error {
 	m.mu.Lock()
 	delete(m.objects, key)
@@ -700,4 +718,206 @@ func TestStartRestore_Async(t *testing.T) {
 	final, err := svc.GetBackupRecord(context.Background(), record.ID)
 	require.NoError(t, err)
 	require.Equal(t, "completed", final.RestoreStatus)
+}
+
+func TestStartRestore_AsyncFailure(t *testing.T) {
+	repo := newMockSettingRepo()
+	seedS3Config(t, repo)
+
+	dumper := &mockDumper{
+		dumpData: []byte("-- PostgreSQL dump\nSELECT 1;\n"),
+		restErr:  fmt.Errorf("psql: relation already exists"),
+	}
+	store := newMockObjectStore()
+	svc := newTestBackupService(repo, dumper, store)
+
+	record, err := svc.CreateBackup(context.Background(), "manual", 14)
+	require.NoError(t, err)
+
+	restored, err := svc.StartRestore(context.Background(), record.ID)
+	require.NoError(t, err)
+	require.Equal(t, "running", restored.RestoreStatus)
+
+	svc.wg.Wait()
+
+	final, err := svc.GetBackupRecord(context.Background(), record.ID)
+	require.NoError(t, err)
+	require.Equal(t, "failed", final.RestoreStatus)
+	require.Contains(t, final.RestoreError, "psql: relation already exists")
+}
+
+func TestBackupService_PreviewImportBackups(t *testing.T) {
+	repo := newMockSettingRepo()
+	seedS3Config(t, repo)
+
+	store := newMockObjectStore()
+	store.objects["backups/2026/05/10/existing.sql.gz"] = []byte("existing")
+	store.objects["backups/2026/05/10/missing.sql.gz"] = []byte("missing")
+	store.objects["backups/2026/05/10/readme.txt"] = []byte("skip")
+
+	svc := newTestBackupService(repo, &mockDumper{}, store)
+	require.NoError(t, svc.saveRecord(context.Background(), &BackupRecord{
+		ID:        "rec-existing",
+		Status:    "completed",
+		S3Key:     "backups/2026/05/10/existing.sql.gz",
+		FileName:  "existing.sql.gz",
+		StartedAt: time.Now().Format(time.RFC3339),
+	}))
+
+	preview, err := svc.PreviewImportBackups(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "backups/", preview.Prefix)
+	require.Equal(t, 3, preview.TotalObjects)
+	require.Equal(t, 1, preview.ExistingCount)
+	require.Equal(t, 2, preview.MissingCount)
+	require.Equal(t, 1, preview.ImportableCount)
+
+	byKey := make(map[string]BackupImportPreviewItem, len(preview.Items))
+	for _, item := range preview.Items {
+		byKey[item.S3Key] = item
+	}
+
+	require.True(t, byKey["backups/2026/05/10/existing.sql.gz"].HasRecord)
+	require.Equal(t, "rec-existing", byKey["backups/2026/05/10/existing.sql.gz"].RecordID)
+	require.True(t, byKey["backups/2026/05/10/missing.sql.gz"].CanImport)
+	require.Equal(t, "unsupported_file_type", byKey["backups/2026/05/10/readme.txt"].Reason)
+}
+
+func TestBackupService_ImportMissingBackups(t *testing.T) {
+	repo := newMockSettingRepo()
+	seedS3Config(t, repo)
+
+	store := newMockObjectStore()
+	store.objects["backups/2026/05/10/existing.sql.gz"] = []byte("existing")
+	store.objects["backups/2026/05/10/missing.sql.gz"] = []byte("missing")
+	store.objects["backups/2026/05/10/readme.txt"] = []byte("skip")
+
+	svc := newTestBackupService(repo, &mockDumper{}, store)
+	_, err := svc.UpdateSchedule(context.Background(), BackupScheduleConfig{
+		RetainDays: 7,
+	})
+	require.NoError(t, err)
+	require.NoError(t, svc.saveRecord(context.Background(), &BackupRecord{
+		ID:          "rec-existing",
+		Status:      "completed",
+		BackupType:  "postgres",
+		S3Key:       "backups/2026/05/10/existing.sql.gz",
+		FileName:    "existing.sql.gz",
+		TriggeredBy: "manual",
+		StartedAt:   time.Now().Format(time.RFC3339),
+	}))
+
+	result, err := svc.ImportMissingBackups(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, 1, result.ImportedCount)
+	require.Equal(t, 2, result.SkippedCount)
+	require.Len(t, result.Items, 1)
+	require.Equal(t, "missing.sql.gz", result.Items[0].FileName)
+	require.Equal(t, "completed", result.Items[0].Status)
+	require.Equal(t, "postgres", result.Items[0].BackupType)
+	require.Equal(t, "imported", result.Items[0].TriggeredBy)
+
+	records, err := svc.ListBackups(context.Background())
+	require.NoError(t, err)
+	require.Len(t, records, 2)
+
+	var imported *BackupRecord
+	for i := range records {
+		if records[i].S3Key == "backups/2026/05/10/missing.sql.gz" {
+			imported = &records[i]
+			break
+		}
+	}
+	require.NotNil(t, imported)
+	require.Equal(t, "missing.sql.gz", imported.FileName)
+	require.Equal(t, "completed", imported.Status)
+	require.Equal(t, "imported", imported.TriggeredBy)
+	require.NotEmpty(t, imported.StartedAt)
+	require.NotEmpty(t, imported.FinishedAt)
+	require.Equal(t, "2026-05-17T10:00:00Z", imported.ExpiresAt)
+
+	secondRun, err := svc.ImportMissingBackups(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, 0, secondRun.ImportedCount)
+	require.Equal(t, 3, secondRun.SkippedCount)
+}
+
+func TestBackupService_ImportMissingBackups_BackfillsImportedExpiry(t *testing.T) {
+	repo := newMockSettingRepo()
+	seedS3Config(t, repo)
+
+	store := newMockObjectStore()
+	store.objects["backups/2026/05/10/imported.sql.gz"] = []byte("imported")
+
+	svc := newTestBackupService(repo, &mockDumper{}, store)
+	_, err := svc.UpdateSchedule(context.Background(), BackupScheduleConfig{
+		RetainDays: 7,
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, svc.saveRecord(context.Background(), &BackupRecord{
+		ID:          "imported-1",
+		Status:      "completed",
+		BackupType:  "postgres",
+		FileName:    "imported.sql.gz",
+		S3Key:       "backups/2026/05/10/imported.sql.gz",
+		TriggeredBy: "imported",
+		StartedAt:   "2026-05-10T10:00:00Z",
+		FinishedAt:  "2026-05-10T10:00:00Z",
+	}))
+
+	result, err := svc.ImportMissingBackups(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, 0, result.ImportedCount)
+	require.Equal(t, 1, result.SkippedCount)
+
+	record, err := svc.GetBackupRecord(context.Background(), "imported-1")
+	require.NoError(t, err)
+	require.Equal(t, "2026-05-17T10:00:00Z", record.ExpiresAt)
+}
+
+func TestCleanupOldBackups_KeepsImportedRecords(t *testing.T) {
+	repo := newMockSettingRepo()
+	seedS3Config(t, repo)
+
+	store := newMockObjectStore()
+	store.objects["backups/2026/05/10/imported.sql.gz"] = []byte("imported")
+	store.objects["backups/2026/05/10/manual.sql.gz"] = []byte("manual")
+	svc := newTestBackupService(repo, &mockDumper{}, store)
+
+	require.NoError(t, svc.saveRecord(context.Background(), &BackupRecord{
+		ID:          "imported-1",
+		Status:      "completed",
+		BackupType:  "postgres",
+		FileName:    "imported.sql.gz",
+		S3Key:       "backups/2026/05/10/imported.sql.gz",
+		TriggeredBy: "imported",
+		StartedAt:   time.Now().Add(-30 * 24 * time.Hour).Format(time.RFC3339),
+	}))
+	require.NoError(t, svc.saveRecord(context.Background(), &BackupRecord{
+		ID:          "manual-1",
+		Status:      "completed",
+		BackupType:  "postgres",
+		FileName:    "manual.sql.gz",
+		S3Key:       "backups/2026/05/10/manual.sql.gz",
+		TriggeredBy: "manual",
+		StartedAt:   time.Now().Add(-30 * 24 * time.Hour).Format(time.RFC3339),
+	}))
+
+	err := svc.cleanupOldBackups(context.Background(), &BackupScheduleConfig{
+		RetainDays: 7,
+	})
+	require.NoError(t, err)
+
+	records, err := svc.ListBackups(context.Background())
+	require.NoError(t, err)
+	require.Len(t, records, 1)
+	require.Equal(t, "imported-1", records[0].ID)
+
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	_, importedExists := store.objects["backups/2026/05/10/imported.sql.gz"]
+	_, manualExists := store.objects["backups/2026/05/10/manual.sql.gz"]
+	require.True(t, importedExists)
+	require.False(t, manualExists)
 }

@@ -117,6 +117,96 @@
           </div>
         </div>
 
+        <div class="mb-6 rounded-xl border border-dashed border-gray-200 bg-gray-50/70 p-4 dark:border-dark-700 dark:bg-dark-900/40">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h4 class="text-sm font-semibold text-gray-900 dark:text-white">
+                {{ t('admin.backup.importRecords.title') }}
+              </h4>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.backup.importRecords.description') }}
+              </p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <button type="button" class="btn btn-secondary btn-sm" :disabled="loadingImportPreview" @click="scanImportPreview">
+                {{ loadingImportPreview ? t('admin.backup.importRecords.scanning') : t('admin.backup.importRecords.scan') }}
+              </button>
+              <button
+                v-if="importPreview"
+                type="button"
+                class="btn btn-primary btn-sm"
+                :disabled="importingMissingBackups || importPreview.importable_count === 0"
+                @click="importMissingBackupRecords"
+              >
+                {{ importingMissingBackups ? t('admin.backup.importRecords.importing') : t('admin.backup.importRecords.importMissing') }}
+              </button>
+            </div>
+          </div>
+
+          <div v-if="importPreview" class="mt-4 space-y-4">
+            <p class="text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.backup.importRecords.prefixLabel') }} <code>{{ importPreview.prefix }}</code>
+            </p>
+
+            <div class="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <div class="rounded-lg bg-white p-3 shadow-sm dark:bg-dark-800">
+                <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.backup.importRecords.summary.totalObjects') }}</div>
+                <div class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{{ importPreview.total_objects }}</div>
+              </div>
+              <div class="rounded-lg bg-white p-3 shadow-sm dark:bg-dark-800">
+                <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.backup.importRecords.summary.existing') }}</div>
+                <div class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{{ importPreview.existing_count }}</div>
+              </div>
+              <div class="rounded-lg bg-white p-3 shadow-sm dark:bg-dark-800">
+                <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.backup.importRecords.summary.missing') }}</div>
+                <div class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{{ importPreview.missing_count }}</div>
+              </div>
+              <div class="rounded-lg bg-white p-3 shadow-sm dark:bg-dark-800">
+                <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.backup.importRecords.summary.importable') }}</div>
+                <div class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{{ importPreview.importable_count }}</div>
+              </div>
+            </div>
+
+            <div class="overflow-x-auto">
+              <table class="w-full min-w-[980px] text-sm">
+                <thead>
+                  <tr class="border-b border-gray-200 text-left text-xs uppercase tracking-wide text-gray-500 dark:border-dark-700 dark:text-gray-400">
+                    <th class="py-2 pr-4">{{ t('admin.backup.importRecords.columns.status') }}</th>
+                    <th class="py-2 pr-4">{{ t('admin.backup.importRecords.columns.fileName') }}</th>
+                    <th class="py-2 pr-4">{{ t('admin.backup.importRecords.columns.s3Key') }}</th>
+                    <th class="py-2 pr-4">{{ t('admin.backup.importRecords.columns.size') }}</th>
+                    <th class="py-2 pr-4">{{ t('admin.backup.importRecords.columns.lastModified') }}</th>
+                    <th class="py-2 pr-4">{{ t('admin.backup.importRecords.columns.recordId') }}</th>
+                    <th class="py-2">{{ t('admin.backup.importRecords.columns.reason') }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="item in importPreview.items" :key="item.s3_key" class="border-b border-gray-100 align-top dark:border-dark-800">
+                    <td class="py-3 pr-4">
+                      <span class="rounded px-2 py-0.5 text-xs" :class="importPreviewStatusClass(item)">
+                        {{ importPreviewStatusLabel(item) }}
+                      </span>
+                    </td>
+                    <td class="py-3 pr-4 text-xs">{{ item.file_name || '-' }}</td>
+                    <td class="py-3 pr-4 font-mono text-[11px] break-all text-gray-600 dark:text-gray-300">{{ item.s3_key }}</td>
+                    <td class="py-3 pr-4 text-xs">{{ formatSize(item.size_bytes) }}</td>
+                    <td class="py-3 pr-4 text-xs">{{ formatDate(item.last_modified) }}</td>
+                    <td class="py-3 pr-4 font-mono text-xs">{{ item.record_id || '-' }}</td>
+                    <td class="py-3 text-xs text-gray-500 dark:text-gray-400">
+                      {{ item.reason ? t(`admin.backup.importRecords.reasons.${item.reason}`) : '-' }}
+                    </td>
+                  </tr>
+                  <tr v-if="importPreview.items.length === 0">
+                    <td colspan="7" class="py-6 text-center text-sm text-gray-500 dark:text-gray-400">
+                      {{ t('admin.backup.importRecords.empty') }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
         <div class="overflow-x-auto">
           <table class="w-full min-w-[800px] text-sm">
             <thead>
@@ -150,7 +240,7 @@
                   {{ record.expires_at ? formatDate(record.expires_at) : t('admin.backup.neverExpire') }}
                 </td>
                 <td class="py-3 pr-4 text-xs">
-                  {{ record.triggered_by === 'scheduled' ? t('admin.backup.trigger.scheduled') : t('admin.backup.trigger.manual') }}
+                  {{ formatTriggeredBy(record.triggered_by) }}
                 </td>
                 <td class="py-3 pr-4 text-xs">{{ formatDate(record.started_at) }}</td>
                 <td class="py-3 text-xs">
@@ -283,7 +373,13 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api'
 import { useAppStore } from '@/stores'
-import type { BackupS3Config, BackupScheduleConfig, BackupRecord } from '@/api/admin/backup'
+import type {
+  BackupImportPreview,
+  BackupImportPreviewItem,
+  BackupRecord,
+  BackupS3Config,
+  BackupScheduleConfig,
+} from '@/api/admin/backup'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -317,6 +413,9 @@ const loadingBackups = ref(false)
 const creatingBackup = ref(false)
 const restoringId = ref('')
 const manualExpireDays = ref(14)
+const importPreview = ref<BackupImportPreview | null>(null)
+const loadingImportPreview = ref(false)
+const importingMissingBackups = ref(false)
 
 // Polling
 const pollingTimer = ref<ReturnType<typeof setInterval> | null>(null)
@@ -520,6 +619,17 @@ async function loadBackups() {
   }
 }
 
+async function scanImportPreview() {
+  loadingImportPreview.value = true
+  try {
+    importPreview.value = await adminAPI.backup.previewImportBackups()
+  } catch (error) {
+    appStore.showError((error as { message?: string })?.message || t('errors.networkError'))
+  } finally {
+    loadingImportPreview.value = false
+  }
+}
+
 async function createBackup() {
   creatingBackup.value = true
   try {
@@ -534,6 +644,29 @@ async function createBackup() {
       appStore.showError(error?.message || t('errors.networkError'))
     }
     creatingBackup.value = false
+  }
+}
+
+async function importMissingBackupRecords() {
+  if (!importPreview.value || importPreview.value.importable_count <= 0) {
+    appStore.showWarning(t('admin.backup.importRecords.nothingToImport'))
+    return
+  }
+  if (!window.confirm(t('admin.backup.importRecords.importConfirm', { count: importPreview.value.importable_count }))) return
+
+  importingMissingBackups.value = true
+  try {
+    const result = await adminAPI.backup.importMissingBackups()
+    if (result.imported_count > 0) {
+      appStore.showSuccess(t('admin.backup.importRecords.importSuccess', { count: result.imported_count }))
+    } else {
+      appStore.showWarning(t('admin.backup.importRecords.nothingToImport'))
+    }
+    await Promise.all([loadBackups(), scanImportPreview()])
+  } catch (error) {
+    appStore.showError((error as { message?: string })?.message || t('errors.networkError'))
+  } finally {
+    importingMissingBackups.value = false
   }
 }
 
@@ -576,6 +709,22 @@ async function removeBackup(id: string) {
   }
 }
 
+function importPreviewStatusLabel(item: BackupImportPreviewItem): string {
+  if (item.has_record) return t('admin.backup.importRecords.status.recorded')
+  if (item.can_import) return t('admin.backup.importRecords.status.missing')
+  return t('admin.backup.importRecords.status.skipped')
+}
+
+function importPreviewStatusClass(item: BackupImportPreviewItem): string {
+  if (item.has_record) {
+    return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+  }
+  if (item.can_import) {
+    return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+  }
+  return 'bg-gray-100 text-gray-700 dark:bg-dark-800 dark:text-gray-300'
+}
+
 function statusClass(status: string): string {
   switch (status) {
     case 'completed':
@@ -601,6 +750,12 @@ function formatDate(value?: string): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
   return date.toLocaleString()
+}
+
+function formatTriggeredBy(triggeredBy: string): string {
+  if (triggeredBy === 'scheduled') return t('admin.backup.trigger.scheduled')
+  if (triggeredBy === 'imported') return t('admin.backup.trigger.imported')
+  return t('admin.backup.trigger.manual')
 }
 
 onMounted(async () => {

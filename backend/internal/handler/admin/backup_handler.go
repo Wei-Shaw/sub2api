@@ -159,6 +159,24 @@ func (h *BackupHandler) GetDownloadURL(c *gin.Context) {
 	response.Success(c, gin.H{"url": url})
 }
 
+func (h *BackupHandler) PreviewImportBackups(c *gin.Context) {
+	preview, err := h.backupService.PreviewImportBackups(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, preview)
+}
+
+func (h *BackupHandler) ImportMissingBackups(c *gin.Context) {
+	result, err := h.backupService.ImportMissingBackups(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
 // ─── 恢复操作（需要重新输入管理员密码） ───
 
 type RestoreBackupRequest struct {
