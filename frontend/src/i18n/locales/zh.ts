@@ -46,6 +46,7 @@ export default {
       subtitle: '简单三步，开始省心使用 AI'
     },
     features: {
+      title: '核心功能',
       unifiedGateway: '一键接入',
       unifiedGatewayDesc: '获取一个 API 密钥，即可调用所有已接入的 AI 模型，无需分别申请。',
       multiAccount: '稳定可靠',
@@ -383,6 +384,8 @@ export default {
     channelMonitor: '渠道监控',
     channelStatus: '渠道状态',
     riskControl: '风控中心',
+    monitoring: '平台监控',
+    modelPricing: '模型定价',
   },
 
   // Auth
@@ -1080,6 +1083,49 @@ export default {
     failedToRedeem: '兑换失败，请检查兑换码后重试。',
     subscriptionRefreshFailed: '兑换成功，但订阅状态刷新失败。',
     pleaseEnterCode: '请输入兑换码'
+  },
+
+  // Public Monitoring
+  monitoring: {
+    title: '平台监控',
+    subtitle: '实时查看平台运行状态',
+    overview: '24小时概览',
+    totalRequests: '总请求',
+    successRate: '成功率',
+    errorRate: '错误率',
+    avgLatency: '平均延迟',
+    activeGroups: '活跃分组',
+    groupModels: '分组 × 模型',
+    modelLatency: '模型延迟',
+    noData: '暂无数据',
+    hour: '{h}:00',
+    requests: '请求',
+    latency: '延迟',
+    success: '成功',
+    errors: '错误',
+    model: '模型',
+    group: '分组',
+    p50: 'P50',
+    p95: 'P95',
+    p99: 'P99',
+    ttft: 'TTFT',
+    ms: 'ms',
+  },
+
+  // Public Pricing
+  pricing: {
+    title: '模型定价',
+    description: '查看所有分组及其模型的计费价格（每百万 Token）',
+    perMillionTokens: '每百万 Token',
+    modelName: '模型名称',
+    inputPrice: '输入价格',
+    outputPrice: '输出价格',
+    effectiveInput: '实际输入',
+    effectiveOutput: '实际输出',
+    model: '个模型',
+    models: '个模型',
+    noModelsInGroup: '该分组暂无可用模型',
+    noData: '暂无定价数据',
   },
 
   // Profile
@@ -4452,6 +4498,69 @@ export default {
           canceled: '已取消'
         }
       }
+    },
+
+    monitoring: {
+      title: '平台监控',
+      description: '账号健康状态、模型延迟与请求量监控',
+      todayRequests: '24小时请求',
+      avgLatency: '平均延迟',
+      errorAccounts: '异常账号',
+      totalGroups: '监控分组',
+      groupHealth: '分组账号健康',
+      groupName: '分组',
+      total: '总计',
+      active: '正常',
+      error: '错误',
+      rateLimited: '限流',
+      overload: '过载',
+      disabled: '禁用',
+      modelLatency: '模型延迟 (24h)',
+      model: '模型',
+      requests: '请求数',
+      success: '成功',
+      errors: '错误',
+      successRate: '成功率',
+      errorAccountsList: '异常账号详情',
+      accountName: '账号',
+      status: '状态',
+      errorMessage: '错误信息',
+      noData: '暂无数据',
+      last24h: '近 24 小时数据',
+      hourlySuccessRate: '24小时成功率趋势'
+    },
+
+    modelPricing: {
+      title: '模型定价',
+      description: '管理所有模型的默认计费价格',
+      search: '搜索模型...',
+      add: '添加定价',
+      edit: '编辑定价',
+      delete: '删除',
+      sync: '从远程同步',
+      syncing: '同步中...',
+      model: '模型',
+      provider: '提供商',
+      inputCost: '输入 ($/百万Token)',
+      outputCost: '输出 ($/百万Token)',
+      source: '来源',
+      locked: '锁定',
+      actions: '操作',
+      remote: '远程',
+      manual: '手动',
+      autoSync: '自动同步',
+      syncNow: '立即同步',
+      lastSynced: '上次同步',
+      createSuccess: '定价条目已创建',
+      updateSuccess: '定价条目已更新',
+      deleteSuccess: '定价条目已删除',
+      syncSuccess: '已从远程同步 {count} 个模型',
+      confirmDelete: '确定删除此定价条目？',
+      confirmBulkDelete: '确定删除选中的 {count} 个条目？',
+      noData: '暂无定价数据',
+      save: '保存',
+      cancel: '取消',
+      bulkDelete: '批量删除',
     },
 
     // Ops Monitoring

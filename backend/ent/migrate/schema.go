@@ -778,6 +778,45 @@ var (
 			},
 		},
 	}
+	// ModelPricingsColumns holds the columns for the "model_pricings" table.
+	ModelPricingsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "model", Type: field.TypeString, Size: 200},
+		{Name: "input_cost_per_token", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "double precision"}},
+		{Name: "output_cost_per_token", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "double precision"}},
+		{Name: "cache_creation_input_token_cost", Type: field.TypeFloat64, Nullable: true, Default: 0, SchemaType: map[string]string{"postgres": "double precision"}},
+		{Name: "cache_creation_input_token_cost_above_1hr", Type: field.TypeFloat64, Nullable: true, Default: 0, SchemaType: map[string]string{"postgres": "double precision"}},
+		{Name: "cache_read_input_token_cost", Type: field.TypeFloat64, Nullable: true, Default: 0, SchemaType: map[string]string{"postgres": "double precision"}},
+		{Name: "input_cost_per_token_priority", Type: field.TypeFloat64, Nullable: true, Default: 0, SchemaType: map[string]string{"postgres": "double precision"}},
+		{Name: "output_cost_per_token_priority", Type: field.TypeFloat64, Nullable: true, Default: 0, SchemaType: map[string]string{"postgres": "double precision"}},
+		{Name: "cache_read_input_token_cost_priority", Type: field.TypeFloat64, Nullable: true, Default: 0, SchemaType: map[string]string{"postgres": "double precision"}},
+		{Name: "output_cost_per_image", Type: field.TypeFloat64, Nullable: true, Default: 0, SchemaType: map[string]string{"postgres": "double precision"}},
+		{Name: "output_cost_per_image_token", Type: field.TypeFloat64, Nullable: true, Default: 0, SchemaType: map[string]string{"postgres": "double precision"}},
+		{Name: "long_context_input_token_threshold", Type: field.TypeInt, Nullable: true, Default: 0},
+		{Name: "long_context_input_cost_multiplier", Type: field.TypeFloat64, Nullable: true, Default: 0, SchemaType: map[string]string{"postgres": "double precision"}},
+		{Name: "long_context_output_cost_multiplier", Type: field.TypeFloat64, Nullable: true, Default: 0, SchemaType: map[string]string{"postgres": "double precision"}},
+		{Name: "supports_service_tier", Type: field.TypeBool, Nullable: true, Default: false},
+		{Name: "litellm_provider", Type: field.TypeString, Nullable: true, Size: 100, Default: ""},
+		{Name: "mode", Type: field.TypeString, Nullable: true, Size: 50, Default: "chat"},
+		{Name: "supports_prompt_caching", Type: field.TypeBool, Nullable: true, Default: false},
+		{Name: "locked", Type: field.TypeBool, Default: false},
+		{Name: "source", Type: field.TypeString, Nullable: true, Size: 20, Default: "remote"},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// ModelPricingsTable holds the schema information for the "model_pricings" table.
+	ModelPricingsTable = &schema.Table{
+		Name:       "model_pricings",
+		Columns:    ModelPricingsColumns,
+		PrimaryKey: []*schema.Column{ModelPricingsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "modelpricing_model",
+				Unique:  true,
+				Columns: []*schema.Column{ModelPricingsColumns[1]},
+			},
+		},
+	}
 	// PaymentAuditLogsColumns holds the columns for the "payment_audit_logs" table.
 	PaymentAuditLogsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1696,6 +1735,7 @@ var (
 		GroupsTable,
 		IdempotencyRecordsTable,
 		IdentityAdoptionDecisionsTable,
+		ModelPricingsTable,
 		PaymentAuditLogsTable,
 		PaymentOrdersTable,
 		PaymentProviderInstancesTable,
@@ -1777,6 +1817,9 @@ func init() {
 	IdentityAdoptionDecisionsTable.ForeignKeys[1].RefTable = PendingAuthSessionsTable
 	IdentityAdoptionDecisionsTable.Annotation = &entsql.Annotation{
 		Table: "identity_adoption_decisions",
+	}
+	ModelPricingsTable.Annotation = &entsql.Annotation{
+		Table: "model_pricings",
 	}
 	PaymentAuditLogsTable.Annotation = &entsql.Annotation{
 		Table: "payment_audit_logs",

@@ -20,6 +20,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
+	"github.com/Wei-Shaw/sub2api/ent/modelpricing"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
@@ -923,6 +924,118 @@ func init() {
 	identityadoptiondecisionDescDecidedAt := identityadoptiondecisionFields[4].Descriptor()
 	// identityadoptiondecision.DefaultDecidedAt holds the default value on creation for the decided_at field.
 	identityadoptiondecision.DefaultDecidedAt = identityadoptiondecisionDescDecidedAt.Default.(func() time.Time)
+	modelpricingFields := schema.ModelPricing{}.Fields()
+	_ = modelpricingFields
+	// modelpricingDescModel is the schema descriptor for model field.
+	modelpricingDescModel := modelpricingFields[0].Descriptor()
+	// modelpricing.ModelValidator is a validator for the "model" field. It is called by the builders before save.
+	modelpricing.ModelValidator = func() func(string) error {
+		validators := modelpricingDescModel.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(model string) error {
+			for _, fn := range fns {
+				if err := fn(model); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// modelpricingDescInputCostPerToken is the schema descriptor for input_cost_per_token field.
+	modelpricingDescInputCostPerToken := modelpricingFields[1].Descriptor()
+	// modelpricing.DefaultInputCostPerToken holds the default value on creation for the input_cost_per_token field.
+	modelpricing.DefaultInputCostPerToken = modelpricingDescInputCostPerToken.Default.(float64)
+	// modelpricingDescOutputCostPerToken is the schema descriptor for output_cost_per_token field.
+	modelpricingDescOutputCostPerToken := modelpricingFields[2].Descriptor()
+	// modelpricing.DefaultOutputCostPerToken holds the default value on creation for the output_cost_per_token field.
+	modelpricing.DefaultOutputCostPerToken = modelpricingDescOutputCostPerToken.Default.(float64)
+	// modelpricingDescCacheCreationInputTokenCost is the schema descriptor for cache_creation_input_token_cost field.
+	modelpricingDescCacheCreationInputTokenCost := modelpricingFields[3].Descriptor()
+	// modelpricing.DefaultCacheCreationInputTokenCost holds the default value on creation for the cache_creation_input_token_cost field.
+	modelpricing.DefaultCacheCreationInputTokenCost = modelpricingDescCacheCreationInputTokenCost.Default.(float64)
+	// modelpricingDescCacheCreationInputTokenCostAbove1hr is the schema descriptor for cache_creation_input_token_cost_above_1hr field.
+	modelpricingDescCacheCreationInputTokenCostAbove1hr := modelpricingFields[4].Descriptor()
+	// modelpricing.DefaultCacheCreationInputTokenCostAbove1hr holds the default value on creation for the cache_creation_input_token_cost_above_1hr field.
+	modelpricing.DefaultCacheCreationInputTokenCostAbove1hr = modelpricingDescCacheCreationInputTokenCostAbove1hr.Default.(float64)
+	// modelpricingDescCacheReadInputTokenCost is the schema descriptor for cache_read_input_token_cost field.
+	modelpricingDescCacheReadInputTokenCost := modelpricingFields[5].Descriptor()
+	// modelpricing.DefaultCacheReadInputTokenCost holds the default value on creation for the cache_read_input_token_cost field.
+	modelpricing.DefaultCacheReadInputTokenCost = modelpricingDescCacheReadInputTokenCost.Default.(float64)
+	// modelpricingDescInputCostPerTokenPriority is the schema descriptor for input_cost_per_token_priority field.
+	modelpricingDescInputCostPerTokenPriority := modelpricingFields[6].Descriptor()
+	// modelpricing.DefaultInputCostPerTokenPriority holds the default value on creation for the input_cost_per_token_priority field.
+	modelpricing.DefaultInputCostPerTokenPriority = modelpricingDescInputCostPerTokenPriority.Default.(float64)
+	// modelpricingDescOutputCostPerTokenPriority is the schema descriptor for output_cost_per_token_priority field.
+	modelpricingDescOutputCostPerTokenPriority := modelpricingFields[7].Descriptor()
+	// modelpricing.DefaultOutputCostPerTokenPriority holds the default value on creation for the output_cost_per_token_priority field.
+	modelpricing.DefaultOutputCostPerTokenPriority = modelpricingDescOutputCostPerTokenPriority.Default.(float64)
+	// modelpricingDescCacheReadInputTokenCostPriority is the schema descriptor for cache_read_input_token_cost_priority field.
+	modelpricingDescCacheReadInputTokenCostPriority := modelpricingFields[8].Descriptor()
+	// modelpricing.DefaultCacheReadInputTokenCostPriority holds the default value on creation for the cache_read_input_token_cost_priority field.
+	modelpricing.DefaultCacheReadInputTokenCostPriority = modelpricingDescCacheReadInputTokenCostPriority.Default.(float64)
+	// modelpricingDescOutputCostPerImage is the schema descriptor for output_cost_per_image field.
+	modelpricingDescOutputCostPerImage := modelpricingFields[9].Descriptor()
+	// modelpricing.DefaultOutputCostPerImage holds the default value on creation for the output_cost_per_image field.
+	modelpricing.DefaultOutputCostPerImage = modelpricingDescOutputCostPerImage.Default.(float64)
+	// modelpricingDescOutputCostPerImageToken is the schema descriptor for output_cost_per_image_token field.
+	modelpricingDescOutputCostPerImageToken := modelpricingFields[10].Descriptor()
+	// modelpricing.DefaultOutputCostPerImageToken holds the default value on creation for the output_cost_per_image_token field.
+	modelpricing.DefaultOutputCostPerImageToken = modelpricingDescOutputCostPerImageToken.Default.(float64)
+	// modelpricingDescLongContextInputTokenThreshold is the schema descriptor for long_context_input_token_threshold field.
+	modelpricingDescLongContextInputTokenThreshold := modelpricingFields[11].Descriptor()
+	// modelpricing.DefaultLongContextInputTokenThreshold holds the default value on creation for the long_context_input_token_threshold field.
+	modelpricing.DefaultLongContextInputTokenThreshold = modelpricingDescLongContextInputTokenThreshold.Default.(int)
+	// modelpricingDescLongContextInputCostMultiplier is the schema descriptor for long_context_input_cost_multiplier field.
+	modelpricingDescLongContextInputCostMultiplier := modelpricingFields[12].Descriptor()
+	// modelpricing.DefaultLongContextInputCostMultiplier holds the default value on creation for the long_context_input_cost_multiplier field.
+	modelpricing.DefaultLongContextInputCostMultiplier = modelpricingDescLongContextInputCostMultiplier.Default.(float64)
+	// modelpricingDescLongContextOutputCostMultiplier is the schema descriptor for long_context_output_cost_multiplier field.
+	modelpricingDescLongContextOutputCostMultiplier := modelpricingFields[13].Descriptor()
+	// modelpricing.DefaultLongContextOutputCostMultiplier holds the default value on creation for the long_context_output_cost_multiplier field.
+	modelpricing.DefaultLongContextOutputCostMultiplier = modelpricingDescLongContextOutputCostMultiplier.Default.(float64)
+	// modelpricingDescSupportsServiceTier is the schema descriptor for supports_service_tier field.
+	modelpricingDescSupportsServiceTier := modelpricingFields[14].Descriptor()
+	// modelpricing.DefaultSupportsServiceTier holds the default value on creation for the supports_service_tier field.
+	modelpricing.DefaultSupportsServiceTier = modelpricingDescSupportsServiceTier.Default.(bool)
+	// modelpricingDescLitellmProvider is the schema descriptor for litellm_provider field.
+	modelpricingDescLitellmProvider := modelpricingFields[15].Descriptor()
+	// modelpricing.DefaultLitellmProvider holds the default value on creation for the litellm_provider field.
+	modelpricing.DefaultLitellmProvider = modelpricingDescLitellmProvider.Default.(string)
+	// modelpricing.LitellmProviderValidator is a validator for the "litellm_provider" field. It is called by the builders before save.
+	modelpricing.LitellmProviderValidator = modelpricingDescLitellmProvider.Validators[0].(func(string) error)
+	// modelpricingDescMode is the schema descriptor for mode field.
+	modelpricingDescMode := modelpricingFields[16].Descriptor()
+	// modelpricing.DefaultMode holds the default value on creation for the mode field.
+	modelpricing.DefaultMode = modelpricingDescMode.Default.(string)
+	// modelpricing.ModeValidator is a validator for the "mode" field. It is called by the builders before save.
+	modelpricing.ModeValidator = modelpricingDescMode.Validators[0].(func(string) error)
+	// modelpricingDescSupportsPromptCaching is the schema descriptor for supports_prompt_caching field.
+	modelpricingDescSupportsPromptCaching := modelpricingFields[17].Descriptor()
+	// modelpricing.DefaultSupportsPromptCaching holds the default value on creation for the supports_prompt_caching field.
+	modelpricing.DefaultSupportsPromptCaching = modelpricingDescSupportsPromptCaching.Default.(bool)
+	// modelpricingDescLocked is the schema descriptor for locked field.
+	modelpricingDescLocked := modelpricingFields[18].Descriptor()
+	// modelpricing.DefaultLocked holds the default value on creation for the locked field.
+	modelpricing.DefaultLocked = modelpricingDescLocked.Default.(bool)
+	// modelpricingDescSource is the schema descriptor for source field.
+	modelpricingDescSource := modelpricingFields[19].Descriptor()
+	// modelpricing.DefaultSource holds the default value on creation for the source field.
+	modelpricing.DefaultSource = modelpricingDescSource.Default.(string)
+	// modelpricing.SourceValidator is a validator for the "source" field. It is called by the builders before save.
+	modelpricing.SourceValidator = modelpricingDescSource.Validators[0].(func(string) error)
+	// modelpricingDescCreatedAt is the schema descriptor for created_at field.
+	modelpricingDescCreatedAt := modelpricingFields[20].Descriptor()
+	// modelpricing.DefaultCreatedAt holds the default value on creation for the created_at field.
+	modelpricing.DefaultCreatedAt = modelpricingDescCreatedAt.Default.(func() time.Time)
+	// modelpricingDescUpdatedAt is the schema descriptor for updated_at field.
+	modelpricingDescUpdatedAt := modelpricingFields[21].Descriptor()
+	// modelpricing.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	modelpricing.DefaultUpdatedAt = modelpricingDescUpdatedAt.Default.(func() time.Time)
+	// modelpricing.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	modelpricing.UpdateDefaultUpdatedAt = modelpricingDescUpdatedAt.UpdateDefault.(func() time.Time)
 	paymentauditlogFields := schema.PaymentAuditLog{}.Fields()
 	_ = paymentauditlogFields
 	// paymentauditlogDescOrderID is the schema descriptor for order_id field.

@@ -46,6 +46,7 @@ export default {
       subtitle: 'Three simple steps to stress-free AI access'
     },
     features: {
+      title: 'Core Features',
       unifiedGateway: 'One-Click Access',
       unifiedGatewayDesc: 'Get a single API key to call all connected AI models. No separate applications needed.',
       multiAccount: 'Always Reliable',
@@ -383,6 +384,8 @@ export default {
     channelMonitor: 'Channel Monitor',
     channelStatus: 'Channel Status',
     riskControl: 'Risk Control',
+    monitoring: 'Monitoring',
+    modelPricing: 'Model Pricing',
   },
 
   // Auth
@@ -1076,6 +1079,49 @@ export default {
     failedToRedeem: 'Failed to redeem code. Please check the code and try again.',
     subscriptionRefreshFailed: 'Redeemed successfully, but failed to refresh subscription status.',
     pleaseEnterCode: 'Please enter a redeem code'
+  },
+
+  // Public Monitoring
+  monitoring: {
+    title: 'Platform Monitoring',
+    subtitle: 'Real-time platform health and performance',
+    overview: '24h Overview',
+    totalRequests: 'Total Requests',
+    successRate: 'Success Rate',
+    errorRate: 'Error Rate',
+    avgLatency: 'Avg Latency',
+    activeGroups: 'Active Groups',
+    groupModels: 'Group × Model',
+    modelLatency: 'Model Latency',
+    noData: 'No data available',
+    hour: '{h}:00',
+    requests: 'Requests',
+    latency: 'Latency',
+    success: 'Success',
+    errors: 'Errors',
+    model: 'Model',
+    group: 'Group',
+    p50: 'P50',
+    p95: 'P95',
+    p99: 'P99',
+    ttft: 'TTFT',
+    ms: 'ms',
+  },
+
+  // Public Pricing
+  pricing: {
+    title: 'Model Pricing',
+    description: 'View pricing for all groups and their models (per million tokens)',
+    perMillionTokens: 'Per Million Tokens',
+    modelName: 'Model Name',
+    inputPrice: 'Input Price',
+    outputPrice: 'Output Price',
+    effectiveInput: 'Effective Input',
+    effectiveOutput: 'Effective Output',
+    model: 'model',
+    models: 'models',
+    noModelsInGroup: 'No models available in this group',
+    noData: 'No pricing data available',
   },
 
   // Profile
@@ -4296,6 +4342,69 @@ export default {
           canceled: 'Canceled'
         }
       }
+    },
+
+    monitoring: {
+      title: 'Platform Monitoring',
+      description: 'Account health, model latency and request monitoring',
+      todayRequests: '24h Requests',
+      avgLatency: 'Avg Latency',
+      errorAccounts: 'Error Accounts',
+      totalGroups: 'Monitored Groups',
+      groupHealth: 'Group Account Health',
+      groupName: 'Group',
+      total: 'Total',
+      active: 'Active',
+      error: 'Error',
+      rateLimited: 'Rate Limited',
+      overload: 'Overloaded',
+      disabled: 'Disabled',
+      modelLatency: 'Model Latency (24h)',
+      model: 'Model',
+      requests: 'Requests',
+      success: 'Success',
+      errors: 'Errors',
+      successRate: 'Success Rate',
+      errorAccountsList: 'Error Account Details',
+      accountName: 'Account',
+      status: 'Status',
+      errorMessage: 'Error Message',
+      noData: 'No data available',
+      last24h: 'Last 24 hours',
+      hourlySuccessRate: '24h Success Rate Trend'
+    },
+
+    modelPricing: {
+      title: 'Model Pricing',
+      description: 'Manage default pricing for all models',
+      search: 'Search models...',
+      add: 'Add Pricing',
+      edit: 'Edit Pricing',
+      delete: 'Delete',
+      sync: 'Sync from Remote',
+      syncing: 'Syncing...',
+      model: 'Model',
+      provider: 'Provider',
+      inputCost: 'Input ($/M Tokens)',
+      outputCost: 'Output ($/M Tokens)',
+      source: 'Source',
+      locked: 'Locked',
+      actions: 'Actions',
+      remote: 'Remote',
+      manual: 'Manual',
+      autoSync: 'Auto Sync',
+      syncNow: 'Sync Now',
+      lastSynced: 'Last Synced',
+      createSuccess: 'Pricing entry created',
+      updateSuccess: 'Pricing entry updated',
+      deleteSuccess: 'Pricing entry deleted',
+      syncSuccess: 'Synced {count} models from remote',
+      confirmDelete: 'Delete this pricing entry?',
+      confirmBulkDelete: 'Delete {count} selected entries?',
+      noData: 'No pricing data available',
+      save: 'Save',
+      cancel: 'Cancel',
+      bulkDelete: 'Bulk Delete',
     },
 
     // Ops Monitoring

@@ -1,5 +1,5 @@
 <template>
-  <div class="relative">
+  <div class="relative" @click.stop>
     <!-- Admin: Full version badge with dropdown -->
     <template v-if="isAdmin">
       <button
