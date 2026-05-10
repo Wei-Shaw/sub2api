@@ -16,8 +16,12 @@ import (
 
 // chatCompletionsPipeline handles ChatCompletions requests through the
 // GatewayPipeline. This is the pipeline-based replacement for the legacy
-// inline handler. Activated by the PipelineEnabled() feature flag.
+// inline handler. This is the sole request path (legacy handler code has been removed).
 func (h *GatewayHandler) chatCompletionsPipeline(c *gin.Context) {
+	if h.pipeline == nil {
+		h.chatCompletionsErrorResponse(c, http.StatusInternalServerError, "api_error", "Gateway pipeline not initialized")
+		return
+	}
 	// Pre-pipeline setup: error passthrough + Claude Code only check
 	if h.errorPassthroughService != nil {
 		service.BindErrorPassthroughService(c, h.errorPassthroughService)

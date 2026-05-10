@@ -17,7 +17,7 @@ import (
 
 // messagesPipeline handles Messages requests through the GatewayPipeline.
 // This is the pipeline-based replacement for the legacy inline Messages
-// handler. Activated by the PipelineEnabled() feature flag.
+// handler. This is the sole request path (legacy handler code has been removed).
 //
 // Differences from chatCompletionsPipeline/responsesPipeline:
 //   - Pre-pipeline intercept detection (warmup / suggestion / maxTokens1)
@@ -25,6 +25,10 @@ import (
 //   - Thinking-enabled context propagation
 //   - Fallback group retry on PromptTooLongError
 func (h *GatewayHandler) messagesPipeline(c *gin.Context) {
+	if h.pipeline == nil {
+		h.errorResponse(c, http.StatusInternalServerError, "api_error", "Gateway pipeline not initialized")
+		return
+	}
 	// Pre-pipeline setup: error passthrough
 	if h.errorPassthroughService != nil {
 		service.BindErrorPassthroughService(c, h.errorPassthroughService)

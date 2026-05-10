@@ -2,7 +2,10 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
+	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/gateway"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
@@ -14,8 +17,12 @@ import (
 )
 
 // openaiChatCompletionsPipeline handles OpenAI ChatCompletions requests
-// through the GatewayPipeline. Activated by PipelineEnabled().
+// through the GatewayPipeline. This is the sole request path (legacy handler code has been removed).
 func (h *OpenAIGatewayHandler) openaiChatCompletionsPipeline(c *gin.Context) {
+	if h.pipeline == nil {
+		h.errorResponse(c, http.StatusInternalServerError, "api_error", "Gateway pipeline not initialized")
+		return
+	}
 	if h.errorPassthroughService != nil {
 		service.BindErrorPassthroughService(c, h.errorPassthroughService)
 	}
@@ -30,8 +37,12 @@ func (h *OpenAIGatewayHandler) openaiChatCompletionsPipeline(c *gin.Context) {
 }
 
 // openaiResponsesPipeline handles OpenAI Responses requests through
-// the GatewayPipeline. Activated by PipelineEnabled().
+// the GatewayPipeline. This is the sole request path (legacy handler code has been removed).
 func (h *OpenAIGatewayHandler) openaiResponsesPipeline(c *gin.Context) {
+	if h.pipeline == nil {
+		h.errorResponse(c, http.StatusInternalServerError, "api_error", "Gateway pipeline not initialized")
+		return
+	}
 	if h.errorPassthroughService != nil {
 		service.BindErrorPassthroughService(c, h.errorPassthroughService)
 	}
@@ -78,7 +89,8 @@ func (h *OpenAIGatewayHandler) buildOpenAICCParseFunc(c *gin.Context) gateway.Pa
 }
 
 // buildOpenAIResponsesParseFunc builds the ParseRequestFunc for OpenAI
-// Responses. It validates JSON and extracts model/stream.
+// Responses. It validates JSON, extracts model/stream, and performs
+// HTTP-specific pre-validations (previous_response_id, function_call_output).
 func (h *OpenAIGatewayHandler) buildOpenAIResponsesParseFunc(c *gin.Context) gateway.ParseRequestFunc {
 	return func(body []byte) (*gateway.ForwardRequest, error) {
 		if !gjson.ValidBytes(body) {
@@ -91,6 +103,20 @@ func (h *OpenAIGatewayHandler) buildOpenAIResponsesParseFunc(c *gin.Context) gat
 		}
 		model := modelResult.String()
 		stream := gjson.GetBytes(body, "stream").Bool()
+
+		// Reject previous_response_id on HTTP (only supported on WebSocket v2)
+		if pid := strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String()); pid != "" {
+			kind := service.ClassifyOpenAIPreviousResponseIDKind(pid)
+			if kind == service.OpenAIPreviousResponseIDKindMessageID {
+				return nil, errors.New("previous_response_id must be a response.id (resp_*), not a message id")
+			}
+			return nil, errors.New("previous_response_id is only supported on Responses WebSocket v2")
+		}
+
+		// Validate function_call_output context (HTTP requires call_id + item_reference)
+		if err := h.validateFunctionCallOutputForPipeline(c, body); err != nil {
+			return nil, err
+		}
 
 		return &gateway.ForwardRequest{
 			Model:      model,
@@ -183,6 +209,35 @@ func (h *OpenAIGatewayHandler) resolveOpenAIChannelMapping(
 		c.Request.Context(), apiKey.GroupID, apiKey.GroupPlatform(), reqModel,
 	)
 	return mapping
+}
+
+// validateFunctionCallOutputForPipeline checks function_call_output validity
+// and returns an error instead of writing the response directly (unlike
+// validateFunctionCallOutputRequest which is used by non-pipeline code).
+func (h *OpenAIGatewayHandler) validateFunctionCallOutputForPipeline(c *gin.Context, body []byte) error {
+	if !gjson.GetBytes(body, `input.#(type=="function_call_output")`).Exists() {
+		return nil
+	}
+	var reqBody map[string]any
+	if err := json.Unmarshal(body, &reqBody); err != nil {
+		return nil // parse failure: fall through to upstream validation
+	}
+	c.Set(service.OpenAIParsedRequestBodyKey, reqBody)
+	validation := service.ValidateFunctionCallOutputContext(reqBody)
+	if !validation.HasFunctionCallOutput {
+		return nil
+	}
+	previousResponseID, _ := reqBody["previous_response_id"].(string)
+	if strings.TrimSpace(previousResponseID) != "" || validation.HasToolCallContext {
+		return nil
+	}
+	if validation.HasFunctionCallOutputMissingCallID {
+		return errors.New("function_call_output requires call_id on HTTP requests; continuation via previous_response_id is only supported on Responses WebSocket v2")
+	}
+	if validation.HasItemReferenceForAllCallIDs {
+		return nil
+	}
+	return errors.New("function_call_output requires item_reference ids matching each call_id on HTTP requests; continuation via previous_response_id is only supported on Responses WebSocket v2")
 }
 
 // handleOpenAIPipelineError translates pipeline errors into OpenAI-format
