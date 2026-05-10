@@ -32,17 +32,23 @@ describe('AppSidebar header styles', () => {
 })
 
 describe('AppSidebar secondary-development navigation contract', () => {
-  it('keeps profile, hides user channel status, and adds unified user entries', () => {
+  it('keeps profile and adds unified user entries', () => {
     expect(componentSource).toContain("path: '/profile'")
     expect(componentSource).toContain("path: '/models'")
-    expect(componentSource).toContain("path: '/images', label: t('nav.imageGeneration')")
+    expect(componentSource).toContain("path: '/monitor', label: t('nav.channelMonitor'), icon: SignalIcon, featureFlag: flagChannelMonitor")
+    expect(componentSource).toContain("path: '/images', label: t('nav.imageGeneration'), icon: PhotoIcon, featureFlag: flagImageGeneration")
     expect(componentSource).toContain('const flagImageGeneration = makeSidebarFlag(FeatureFlags.imageGeneration)')
     expect(componentSource).not.toContain("path: '/docs'")
     expect(componentSource).toContain("path: '/recharge-subscription'")
-    expect(componentSource).not.toContain("path: '/monitor', label: t('nav.channelStatus')")
   })
 
   it('uses a home-style label for the user dashboard item', () => {
     expect(componentSource).toContain("path: '/dashboard', label: t('nav.home')")
+  })
+
+  it('keeps channel monitor reachable in simple mode while hiding channel pricing', () => {
+    expect(componentSource).toContain('function applySimpleModeFilter(items: NavItem[]): NavItem[]')
+    expect(componentSource).toContain("path: '/admin/channels/pricing', label: t('nav.channelPricing'), icon: PriceTagIcon, hideInSimpleMode: true")
+    expect(componentSource).toContain("path: '/admin/channels/monitor', label: t('nav.channelMonitor'), icon: SignalIcon, featureFlag: flagChannelMonitor")
   })
 })

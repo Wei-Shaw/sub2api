@@ -224,6 +224,16 @@ function applyFeatureFlags(items: NavItem[]): NavItem[] {
   return out
 }
 
+function applySimpleModeFilter(items: NavItem[]): NavItem[] {
+  const out: NavItem[] = []
+  for (const item of items) {
+    const children = item.children ? applySimpleModeFilter(item.children) : undefined
+    if (item.hideInSimpleMode && (!children || children.length === 0)) continue
+    out.push(children ? { ...item, children } : item)
+  }
+  return out
+}
+
 const { t } = useI18n()
 
 const route = useRoute()
@@ -662,7 +672,8 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
   items.push(
     { path: '/models', label: t('nav.modelPlaza'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
-    { path: '/images', label: t('nav.imageGeneration'), icon: PhotoIcon, hideInSimpleMode: true, featureFlag: flagImageGeneration },
+    { path: '/monitor', label: t('nav.channelMonitor'), icon: SignalIcon, featureFlag: flagChannelMonitor },
+    { path: '/images', label: t('nav.imageGeneration'), icon: PhotoIcon, featureFlag: flagImageGeneration },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
     { path: '/recharge-subscription', label: t('nav.rechargeSubscription'), icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment },
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
@@ -681,7 +692,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
 // finalizeNav 合并三重过滤：featureFlag 过滤 + simple 模式过滤。
 function finalizeNav(items: NavItem[]): NavItem[] {
   const visible = applyFeatureFlags(items)
-  return authStore.isSimpleMode ? visible.filter(item => !item.hideInSimpleMode) : visible
+  return authStore.isSimpleMode ? applySimpleModeFilter(visible) : visible
 }
 
 // User navigation items (for regular users)
@@ -720,7 +731,7 @@ const adminNavItems = computed((): NavItem[] => {
       hideInSimpleMode: true,
       expandOnly: true,
       children: [
-        { path: '/admin/channels/pricing', label: t('nav.channelPricing'), icon: PriceTagIcon },
+        { path: '/admin/channels/pricing', label: t('nav.channelPricing'), icon: PriceTagIcon, hideInSimpleMode: true },
         { path: '/admin/channels/monitor', label: t('nav.channelMonitor'), icon: SignalIcon, featureFlag: flagChannelMonitor },
       ],
     },
@@ -763,7 +774,7 @@ const adminNavItems = computed((): NavItem[] => {
 
   // 简单模式下，在系统设置前插入 API密钥
   if (authStore.isSimpleMode) {
-    const filtered = visible.filter(item => !item.hideInSimpleMode)
+    const filtered = applySimpleModeFilter(visible)
     filtered.push({ path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon })
     filtered.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon })
     for (const cm of customMenuItemsForAdmin.value) {
