@@ -19,6 +19,11 @@ import (
 // ChatCompletions handles OpenAI Chat Completions API requests.
 // POST /v1/chat/completions
 func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
+	if h.PipelineEnabled() {
+		h.openaiChatCompletionsPipeline(c)
+		return
+	}
+
 	streamStarted := false
 	defer h.recoverResponsesPanic(c, &streamStarted)
 

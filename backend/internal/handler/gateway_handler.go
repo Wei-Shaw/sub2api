@@ -124,6 +124,11 @@ func (h *GatewayHandler) PipelineEnabled() bool {
 // Messages handles Claude API compatible messages endpoint
 // POST /v1/messages
 func (h *GatewayHandler) Messages(c *gin.Context) {
+	if h.PipelineEnabled() {
+		h.messagesPipeline(c)
+		return
+	}
+
 	// 从context获取apiKey和user（ApiKeyAuth中间件已设置）
 	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
 	if !ok {

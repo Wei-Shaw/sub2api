@@ -60,6 +60,16 @@ type ForwardRequest struct {
 	// use this field; it will be nil for out-of-process providers.
 	GinContext *gin.Context
 
+	// PromptCacheKey is the OpenAI prompt cache key extracted from the
+	// request body or headers. Used by the OpenAI ChatCompletions path
+	// (ForwardAsChatCompletions) for session affinity.
+	PromptCacheKey string
+
+	// DefaultMappedModel is the fallback model resolved from the group's
+	// default_mapped_model setting. Used by the OpenAI ChatCompletions
+	// path when the requested model is unavailable.
+	DefaultMappedModel string
+
 	// GeminiAction is the Gemini API action extracted from the URL path
 	// (e.g. "generateContent", "streamGenerateContent"). Only set when
 	// Protocol == "gemini".

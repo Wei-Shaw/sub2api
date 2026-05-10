@@ -104,6 +104,31 @@ func toServiceForwardResult(r *gateway.ForwardResult) *service.ForwardResult {
 	}
 }
 
+// toOpenAIForwardResult converts a gateway.ForwardResult to
+// service.OpenAIForwardResult for the OpenAI RecordUsage call.
+func toOpenAIForwardResult(r *gateway.ForwardResult) *service.OpenAIForwardResult {
+	if r == nil {
+		return nil
+	}
+	return &service.OpenAIForwardResult{
+		RequestID:     r.RequestID,
+		Model:         r.Model,
+		UpstreamModel: r.UpstreamModel,
+		Stream:        r.Stream,
+		Duration:      r.Duration,
+		FirstTokenMs:  r.FirstTokenMs,
+		Usage: service.OpenAIUsage{
+			InputTokens:              int(r.InputTokens),
+			OutputTokens:             int(r.OutputTokens),
+			CacheCreationInputTokens: int(r.CacheCreationTokens),
+			CacheReadInputTokens:     int(r.CacheReadTokens),
+			ImageOutputTokens:        int(r.ImageOutputTokens),
+		},
+		ImageCount: r.ImageCount,
+		ImageSize:  r.ImageSize,
+	}
+}
+
 // resolveChannelMappingFromContext resolves the channel mapping for usage
 // recording. This is extracted as a shared helper because both CC and
 // Responses pipeline record functions need the same logic.

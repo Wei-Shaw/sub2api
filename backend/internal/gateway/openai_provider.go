@@ -10,6 +10,11 @@ import (
 
 // OpenAIProvider wraps OpenAIGatewayService.Forward as a GatewayProvider.
 // Phase 1 thin adapter: no business logic, only type conversion.
+//
+// Supported protocols:
+//   - "openai"            -> OpenAIGatewayService.Forward              (/openai/v1/responses)
+//   - "chat_completions"  -> OpenAIGatewayService.ForwardAsChatCompletions (/v1/chat/completions)
+//   - "responses"         -> OpenAIGatewayService.Forward              (alias for openai)
 type OpenAIProvider struct {
 	openaiService *service.OpenAIGatewayService
 }
@@ -20,15 +25,41 @@ func NewOpenAIProvider(svc *service.OpenAIGatewayService) *OpenAIProvider {
 	return &OpenAIProvider{openaiService: svc}
 }
 
-func (p *OpenAIProvider) Platform() string    { return domain.PlatformOpenAI }
-func (p *OpenAIProvider) Protocols() []string { return []string{domain.PlatformOpenAI} }
+func (p *OpenAIProvider) Platform() string { return domain.PlatformOpenAI }
+func (p *OpenAIProvider) Protocols() []string {
+	return []string{ProtocolOpenAI, ProtocolChatCompletions, ProtocolResponses}
+}
 
-// Forward delegates to OpenAIGatewayService.Forward with the raw body
-// and maps the OpenAIForwardResult back to the common ForwardResult.
+// Forward dispatches to the appropriate OpenAIGatewayService method based on
+// req.Protocol, then maps the result to gateway.ForwardResult.
 func (p *OpenAIProvider) Forward(
 	ctx context.Context,
 	_ http.ResponseWriter,
 	req *ForwardRequest,
+) (*ForwardResult, error) {
+	switch req.Protocol {
+	case ProtocolChatCompletions:
+		return p.forwardChatCompletions(ctx, req)
+	default:
+		return p.forwardResponses(ctx, req)
+	}
+}
+
+func (p *OpenAIProvider) forwardChatCompletions(
+	ctx context.Context, req *ForwardRequest,
+) (*ForwardResult, error) {
+	result, err := p.openaiService.ForwardAsChatCompletions(
+		ctx, req.GinContext, req.Account, req.RawBody,
+		req.PromptCacheKey, req.DefaultMappedModel,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return openaiResultToForwardResult(result), nil
+}
+
+func (p *OpenAIProvider) forwardResponses(
+	ctx context.Context, req *ForwardRequest,
 ) (*ForwardResult, error) {
 	result, err := p.openaiService.Forward(
 		ctx, req.GinContext, req.Account, req.RawBody,

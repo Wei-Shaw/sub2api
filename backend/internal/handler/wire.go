@@ -74,7 +74,7 @@ func ProvideAdminHandlers(
 		Plugin:                pluginHandler,
 		PluginSettings:        pluginSettingsHandler,
 		Upload:                uploadHandler,
-		Platform:            platformHandler,
+		Platform:              platformHandler,
 	}
 }
 
@@ -121,6 +121,7 @@ func ProvideHandlers(
 	_ *service.IdempotencyCleanupService,
 ) *Handlers {
 	gatewayHandler.SetPipeline(gatewayPipeline)
+	openaiGatewayHandler.SetPipeline(gatewayPipeline)
 	return &Handlers{
 		Auth:             authHandler,
 		User:             userHandler,
@@ -140,7 +141,6 @@ func ProvideHandlers(
 	}
 }
 
-
 // ProvidePlatformHandler creates admin.PlatformHandler.
 // When plugins are disabled (manager is nil), the handler returns empty lists.
 func ProvidePlatformHandler(manager *plugin.PluginManager) *admin.PlatformHandler {
@@ -149,6 +149,7 @@ func ProvidePlatformHandler(manager *plugin.PluginManager) *admin.PlatformHandle
 	}
 	return admin.NewPlatformHandler(manager.PlatformRegistry())
 }
+
 // ProviderSet is the Wire provider set for all handlers
 var ProviderSet = wire.NewSet(
 	// Top-level handlers

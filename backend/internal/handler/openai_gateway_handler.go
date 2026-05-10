@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/gateway"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -35,6 +36,19 @@ type OpenAIGatewayHandler struct {
 	concurrencyHelper       *ConcurrencyHelper
 	maxAccountSwitches      int
 	cfg                     *config.Config
+	pipeline                *gateway.GatewayPipeline
+}
+
+// SetPipeline injects the GatewayPipeline for Phase 1 activation.
+// Called after construction when the pipeline is available.
+func (h *OpenAIGatewayHandler) SetPipeline(p *gateway.GatewayPipeline) {
+	h.pipeline = p
+}
+
+// PipelineEnabled returns true when the pipeline feature flag is on
+// and a pipeline instance is available.
+func (h *OpenAIGatewayHandler) PipelineEnabled() bool {
+	return h.pipeline != nil && h.cfg != nil && h.cfg.Gateway.PipelineEnabled
 }
 
 func resolveOpenAIForwardDefaultMappedModel(apiKey *service.APIKey, fallbackModel string) string {
@@ -87,6 +101,11 @@ func NewOpenAIGatewayHandler(
 // Responses handles OpenAI Responses API endpoint
 // POST /openai/v1/responses
 func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
+	if h.PipelineEnabled() {
+		h.openaiResponsesPipeline(c)
+		return
+	}
+
 	// 局部兜底：确保该 handler 内部任何 panic 都不会击穿到进程级。
 	streamStarted := false
 	defer h.recoverResponsesPanic(c, &streamStarted)
