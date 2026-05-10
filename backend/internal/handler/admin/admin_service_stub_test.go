@@ -17,6 +17,7 @@ type stubAdminService struct {
 	proxies              []service.Proxy
 	proxyCounts          []service.ProxyWithAccountCount
 	redeems              []service.RedeemCode
+	groupQuotaSummary    *service.GroupQuotaSummary
 	boundAuthIdentity    *service.AdminBindAuthIdentityInput
 	boundAuthIdentityFor int64
 	createdAccounts      []*service.CreateAccountInput
@@ -280,6 +281,9 @@ func (s *stubAdminService) GetGroupAPIKeys(ctx context.Context, groupID int64, p
 }
 
 func (s *stubAdminService) GetGroupQuotaSummary(_ context.Context, groupID int64) (*service.GroupQuotaSummary, error) {
+	if s.groupQuotaSummary != nil {
+		return s.groupQuotaSummary, nil
+	}
 	return &service.GroupQuotaSummary{GroupID: groupID}, nil
 }
 
