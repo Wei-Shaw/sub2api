@@ -6616,19 +6616,66 @@
                 </p>
               </div>
 
-              <div>
-                <label class="input-label">
-                  {{ t('admin.settings.features.affiliate.deviceAutoActivationCodes') }}
-                </label>
-                <input
-                  v-model.trim="form.device_auto_activation_aff_codes"
-                  type="text"
-                  class="input"
-                  placeholder="AUTO_APPROVE"
-                />
-                <p class="mt-1 text-xs text-gray-400">
-                  {{ t('admin.settings.features.affiliate.deviceAutoActivationCodesHint') }}
-                </p>
+              <div class="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-dark-700 dark:bg-dark-800/50">
+                <div class="mb-3">
+                  <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                    {{ t('admin.settings.features.affiliate.activationPolicyTitle') }}
+                  </h3>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('admin.settings.features.affiliate.activationPolicyHint') }}
+                  </p>
+                </div>
+
+                <div class="space-y-3">
+                  <label class="flex cursor-pointer gap-3 rounded-lg border border-gray-200 bg-white p-3 transition hover:border-primary-300 dark:border-dark-600 dark:bg-dark-900/60 dark:hover:border-primary-600">
+                    <input
+                      v-model="affiliateDeviceAutoActivationEnabled"
+                      type="radio"
+                      class="mt-1 h-4 w-4 border-gray-300 text-primary-600 focus:ring-primary-500"
+                      :value="true"
+                    />
+                    <span>
+                      <span class="block text-sm font-medium text-gray-800 dark:text-gray-200">
+                        {{ t('admin.settings.features.affiliate.autoActivationTitle') }}
+                      </span>
+                      <span class="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">
+                        {{ t('admin.settings.features.affiliate.autoActivationDesc') }}
+                      </span>
+                    </span>
+                  </label>
+
+                  <label class="flex cursor-pointer gap-3 rounded-lg border border-gray-200 bg-white p-3 transition hover:border-primary-300 dark:border-dark-600 dark:bg-dark-900/60 dark:hover:border-primary-600">
+                    <input
+                      v-model="affiliateDeviceAutoActivationEnabled"
+                      type="radio"
+                      class="mt-1 h-4 w-4 border-gray-300 text-primary-600 focus:ring-primary-500"
+                      :value="false"
+                    />
+                    <span>
+                      <span class="block text-sm font-medium text-gray-800 dark:text-gray-200">
+                        {{ t('admin.settings.features.affiliate.manualActivationTitle') }}
+                      </span>
+                      <span class="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">
+                        {{ t('admin.settings.features.affiliate.manualActivationDesc') }}
+                      </span>
+                    </span>
+                  </label>
+                </div>
+
+                <div v-if="affiliateDeviceAutoActivationEnabled" class="mt-4">
+                  <label class="input-label">
+                    {{ t('admin.settings.features.affiliate.deviceAutoActivationCodes') }}
+                  </label>
+                  <input
+                    v-model.trim="form.device_auto_activation_aff_codes"
+                    type="text"
+                    class="input"
+                    placeholder="AUTO_APPROVE, CN_TEST"
+                  />
+                  <p class="mt-1 text-xs text-gray-400">
+                    {{ t('admin.settings.features.affiliate.deviceAutoActivationCodesHint') }}
+                  </p>
+                </div>
               </div>
 
               <!-- 专属用户管理 -->
@@ -9476,6 +9523,37 @@ const openAIAdvancedSchedulerWeightFields = computed<
   ];
 });
 
+const defaultDeviceAutoActivationAffCodes = "AUTO_APPROVE";
+
+function normalizeDeviceAutoActivationAffCodes(value: string): string {
+  const seen = new Set<string>();
+  const codes: string[] = [];
+  for (const raw of value.split(/[\s,]+/)) {
+    const code = raw.trim().toUpperCase();
+    if (!code || seen.has(code)) continue;
+    seen.add(code);
+    codes.push(code);
+  }
+  return codes.join(", ");
+}
+
+const affiliateDeviceAutoActivationEnabled = computed({
+  get: () =>
+    normalizeDeviceAutoActivationAffCodes(form.device_auto_activation_aff_codes) !== "",
+  set: (enabled: boolean) => {
+    if (enabled) {
+      if (
+        normalizeDeviceAutoActivationAffCodes(form.device_auto_activation_aff_codes) === ""
+      ) {
+        form.device_auto_activation_aff_codes = defaultDeviceAutoActivationAffCodes;
+      }
+      return;
+    }
+    form.device_auto_activation_aff_codes = "";
+  },
+});
+
+
 type PaymentCurrencyCapabilityScope = "methods" | "providers" | "instances";
 
 interface PaymentCurrencyCapabilityRow {
@@ -11295,7 +11373,9 @@ async function saveSettings() {
       affiliate_rebate_duration_days: Math.max(0, Math.min(3650, Math.floor(Number(form.affiliate_rebate_duration_days) || 0))),
       affiliate_rebate_per_invitee_cap: Math.max(0, Number(form.affiliate_rebate_per_invitee_cap) || 0),
       affiliate_admin_recharge_enabled: form.affiliate_admin_recharge_enabled,
-      device_auto_activation_aff_codes: form.device_auto_activation_aff_codes.trim() || "AUTO_APPROVE",
+      device_auto_activation_aff_codes: normalizeDeviceAutoActivationAffCodes(
+        form.device_auto_activation_aff_codes,
+      ),
       default_concurrency: form.default_concurrency,
       device_claim_bonus_balance: Number(form.device_claim_bonus_balance) || 0,
       default_subscriptions: normalizedDefaultSubscriptions,

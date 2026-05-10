@@ -246,8 +246,11 @@ func (s *AffiliateService) DeviceAutoActivationCodes(ctx context.Context) []stri
 		return []string{fallback}
 	}
 	raw, err := s.settingService.settingRepo.GetValue(ctx, SettingKeyDeviceAutoActivationAffCodes)
-	if err != nil || strings.TrimSpace(raw) == "" {
+	if err != nil {
 		return []string{fallback}
+	}
+	if strings.TrimSpace(raw) == "" {
+		return []string{}
 	}
 	parts := strings.FieldsFunc(raw, func(r rune) bool {
 		switch r {
@@ -269,9 +272,6 @@ func (s *AffiliateService) DeviceAutoActivationCodes(ctx context.Context) []stri
 		}
 		seen[code] = struct{}{}
 		out = append(out, code)
-	}
-	if len(out) == 0 {
-		return []string{fallback}
 	}
 	return out
 }

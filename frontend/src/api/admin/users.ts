@@ -411,7 +411,6 @@ export const usersAPI = {
   updateBalance,
   updateConcurrency,
   batchUpdateLimits,
-  activateDevices,
   updateStatus,
   getUserApiKeys,
   getUserUsageStats,

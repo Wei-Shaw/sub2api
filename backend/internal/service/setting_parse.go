@@ -371,10 +371,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	if bonus, err := strconv.ParseFloat(settings[SettingKeyDeviceClaimBonusBalance], 64); err == nil && bonus >= 0 {
 		result.DeviceClaimBonusBalance = bonus
 	}
-	result.DeviceAutoActivationAffCodes = strings.TrimSpace(settings[SettingKeyDeviceAutoActivationAffCodes])
-	if result.DeviceAutoActivationAffCodes == "" {
-		result.DeviceAutoActivationAffCodes = "AUTO_APPROVE"
-	}
+	result.DeviceAutoActivationAffCodes = deviceAutoActivationAffCodesSetting(settings)
 	if rebateRate, err := strconv.ParseFloat(settings[SettingKeyAffiliateRebateRate], 64); err == nil {
 		result.AffiliateRebateRate = clampAffiliateRebateRate(rebateRate)
 	} else {
@@ -785,10 +782,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 
 	// Affiliate (邀请返利) feature (default: disabled; strict true)
 	result.AffiliateEnabled = settings[SettingKeyAffiliateEnabled] == "true"
-	result.DeviceAutoActivationAffCodes = strings.TrimSpace(settings[SettingKeyDeviceAutoActivationAffCodes])
-	if result.DeviceAutoActivationAffCodes == "" {
-		result.DeviceAutoActivationAffCodes = "AUTO_APPROVE"
-	}
+	result.DeviceAutoActivationAffCodes = deviceAutoActivationAffCodesSetting(settings)
 
 	// 风控中心功能（默认关闭，严格 true 才启用）
 	result.RiskControlEnabled = settings[SettingKeyRiskControlEnabled] == "true"
@@ -919,6 +913,14 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.AllowUserViewErrorRequests = settings[SettingKeyAllowUserViewErrorRequests] == "true" // default false
 
 	return result
+}
+
+func deviceAutoActivationAffCodesSetting(settings map[string]string) string {
+	raw, ok := settings[SettingKeyDeviceAutoActivationAffCodes]
+	if !ok {
+		return "AUTO_APPROVE"
+	}
+	return strings.TrimSpace(raw)
 }
 
 func clampAffiliateRebateRate(value float64) float64 {

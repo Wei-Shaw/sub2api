@@ -343,7 +343,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		ModelPlazaRequireAuth: settings[SettingKeyModelPlazaRequireAuth] == "true",
 
 		AffiliateEnabled:             settings[SettingKeyAffiliateEnabled] == "true",
-		DeviceAutoActivationAffCodes: strings.TrimSpace(settings[SettingKeyDeviceAutoActivationAffCodes]),
+		DeviceAutoActivationAffCodes: deviceAutoActivationAffCodesSetting(settings),
 
 		RiskControlEnabled: settings[SettingKeyRiskControlEnabled] == "true",
 

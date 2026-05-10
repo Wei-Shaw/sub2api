@@ -5240,8 +5240,14 @@ export default {
           freezeHoursDesc: 'Các khoản hoàn tiền mới sẽ bị đóng băng trong khoảng thời gian này trước khi có thể rút. 0 = không đóng băng.',
           perInviteeCap: 'Giới hạn hoàn tiền cho mỗi người được mời',
           perInviteeCapDesc: 'Tổng hoàn tiền tối đa từ một người được mời. 0 = không giới hạn.',
-          deviceAutoActivationCodes: 'Mã mời tự động kích hoạt thiết bị',
-          deviceAutoActivationCodesHint: 'Danh sách affiliate code phân tách bằng dấu phẩy; thiết bị claim bằng các mã này sẽ active ngay, ví dụ AUTO_APPROVE. Các mã khác sẽ ở trạng thái chờ admin/marketing kích hoạt trong Quản lý người dùng.',
+          activationPolicyTitle: 'Chính sách kích hoạt theo mã mời',
+          activationPolicyHint: 'Chọn mã mời nào được auto-active khi claim thiết bị. Các mã không nằm trong danh sách sẽ theo luồng manual/pending.',
+          autoActivationTitle: 'Auto approval cho mã mời chỉ định',
+          autoActivationDesc: 'Thiết bị claim bằng các mã bên dưới sẽ active ngay. Dùng để test hoặc whitelist campaign.',
+          manualActivationTitle: 'Manual approval cho tất cả mã mời',
+          manualActivationDesc: 'Không mã mời nào tự active; user vẫn đăng nhập/checkout/pay nhưng API key/OpenClaw chờ admin hoặc marketing kích hoạt.',
+          deviceAutoActivationCodes: 'Mã mời auto-active',
+          deviceAutoActivationCodesHint: 'Nhập affiliate code phân tách bằng dấu phẩy/khoảng trắng, ví dụ AUTO_APPROVE, CN_TEST. Hệ thống tự chuẩn hóa chữ hoa và loại bỏ mã trùng.',
     },
 
         riskControl: {

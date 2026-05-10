@@ -5241,8 +5241,14 @@ export default {
           freezeHoursDesc: 'New rebates will be frozen for this period before becoming available for withdrawal. 0 = no freeze.',
           perInviteeCap: 'Per-Invitee Rebate Cap',
           perInviteeCapDesc: 'Maximum total rebate from a single invitee. 0 = no limit.',
-          deviceAutoActivationCodes: '자동 활성화 장치 초대 코드',
-          deviceAutoActivationCodesHint: '쉼표로 구분한 affiliate code 목록입니다. 예: AUTO_APPROVE. 이 코드로 claim한 장치는 즉시 활성화되고, 나머지는 사용자 관리에서 admin/marketing이 수동 활성화할 때까지 대기합니다.',
+          activationPolicyTitle: '초대 코드 활성화 정책',
+          activationPolicyHint: '디바이스 claim 시 자동 활성화할 초대 코드를 선택합니다. 목록 밖 코드는 수동/대기 흐름을 사용합니다.',
+          autoActivationTitle: '선택한 초대 코드 자동 승인',
+          autoActivationDesc: '아래 코드로 claim한 디바이스는 즉시 active 됩니다. 테스트 또는 화이트리스트 캠페인에 사용하세요.',
+          manualActivationTitle: '모든 초대 코드 수동 승인',
+          manualActivationDesc: '어떤 초대 코드도 자동 active 되지 않습니다. 사용자는 로그인/체크아웃/결제할 수 있지만 API Key/OpenClaw는 관리자 또는 마케팅 활성화를 기다립니다.',
+          deviceAutoActivationCodes: '자동 active 초대 코드',
+          deviceAutoActivationCodesHint: '쉼표 또는 공백으로 affiliate code를 입력하세요. 예: AUTO_APPROVE, CN_TEST. 저장 시 대문자로 정규화하고 중복을 제거합니다.',
     },
 
         riskControl: {

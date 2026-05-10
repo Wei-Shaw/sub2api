@@ -183,3 +183,29 @@ func TestSettingService_GetPublicSettings_FallsBackToConfigForWeChatOAuthCapabil
 	require.False(t, settings.WeChatOAuthMPEnabled)
 	require.False(t, settings.WeChatOAuthMobileEnabled)
 }
+
+func TestSettingService_GetPublicSettings_ExposesDeviceAutoActivationCodes(t *testing.T) {
+	repo := &settingPublicRepoStub{
+		values: map[string]string{
+			SettingKeyDeviceAutoActivationAffCodes: "vip_auto, cn-test",
+		},
+	}
+	svc := NewSettingService(repo, &config.Config{})
+
+	settings, err := svc.GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "vip_auto, cn-test", settings.DeviceAutoActivationAffCodes)
+}
+
+func TestSettingService_GetPublicSettings_AllowsManualOnlyDeviceActivation(t *testing.T) {
+	repo := &settingPublicRepoStub{
+		values: map[string]string{
+			SettingKeyDeviceAutoActivationAffCodes: "",
+		},
+	}
+	svc := NewSettingService(repo, &config.Config{})
+
+	settings, err := svc.GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "", settings.DeviceAutoActivationAffCodes)
+}
