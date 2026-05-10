@@ -28,6 +28,96 @@ var (
 	htmlTagPattern       = regexp.MustCompile(`(?is)<[^>]+>`)
 )
 
+func RewriteRelativePageImageSources(rawHTML string, pageSlug string) string {
+	pageSlug = strings.TrimSpace(pageSlug)
+	if pageSlug == "" || strings.TrimSpace(rawHTML) == "" {
+		return rawHTML
+	}
+
+	context := &xhtml.Node{Type: xhtml.ElementNode, Data: "div", DataAtom: atom.Div}
+	nodes, err := xhtml.ParseFragment(strings.NewReader(rawHTML), context)
+	if err != nil {
+		return rawHTML
+	}
+
+	changed := false
+	var walk func(node *xhtml.Node)
+	walk = func(node *xhtml.Node) {
+		if node.Type == xhtml.ElementNode && strings.EqualFold(strings.TrimSpace(node.Data), "img") {
+			for i := range node.Attr {
+				if !strings.EqualFold(strings.TrimSpace(node.Attr[i].Key), "src") {
+					continue
+				}
+				src := strings.TrimSpace(node.Attr[i].Val)
+				if isRelativePageImageSource(src) {
+					node.Attr[i].Val = BuildPageImageURL(pageSlug, src)
+					changed = true
+				}
+				break
+			}
+		}
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			walk(child)
+		}
+	}
+
+	for _, node := range nodes {
+		walk(node)
+	}
+	if !changed {
+		return rawHTML
+	}
+
+	var b strings.Builder
+	for _, node := range nodes {
+		if err := xhtml.Render(&b, node); err != nil {
+			return rawHTML
+		}
+	}
+	return b.String()
+}
+
+func BuildPageImageURL(pageSlug string, src string) string {
+	trimmed := strings.TrimSpace(src)
+	pathPart := trimmed
+	suffix := ""
+	if idx := strings.IndexAny(trimmed, "?#"); idx >= 0 {
+		pathPart = trimmed[:idx]
+		suffix = trimmed[idx:]
+	}
+
+	encodedParts := make([]string, 0, len(strings.Split(pathPart, "/")))
+	for _, part := range strings.Split(pathPart, "/") {
+		part = strings.TrimSpace(part)
+		if part == "" || part == "." {
+			continue
+		}
+		encodedParts = append(encodedParts, url.PathEscape(part))
+	}
+
+	return "/api/v1/pages/" + url.PathEscape(strings.TrimSpace(pageSlug)) + "/images/" + strings.Join(encodedParts, "/") + suffix
+}
+
+func isRelativePageImageSource(raw string) bool {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" || strings.HasPrefix(trimmed, "/") || strings.HasPrefix(trimmed, "//") {
+		return false
+	}
+	if strings.Contains(trimmed, `\`) {
+		return false
+	}
+	if parsed, err := url.Parse(trimmed); err == nil && strings.TrimSpace(parsed.Scheme) != "" {
+		return false
+	}
+	for _, part := range strings.Split(trimmed, "/") {
+		part = strings.TrimSpace(part)
+		if part == ".." {
+			return false
+		}
+	}
+	return true
+}
+
 func SanitizeTutorialHTML(raw string) string {
 	context := &xhtml.Node{Type: xhtml.ElementNode, Data: "div", DataAtom: atom.Div}
 	nodes, err := xhtml.ParseFragment(strings.NewReader(raw), context)

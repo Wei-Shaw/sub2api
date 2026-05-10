@@ -285,6 +285,16 @@ func TestRenderTutorialMarkdownToHTML_DefaultTutorialNotEmpty(t *testing.T) {
 	}
 }
 
+func TestRenderTutorialMarkdownToHTML_RewritesRelativeHTMLImages(t *testing.T) {
+	html, err := renderTutorialMarkdownToHTML(`<img src="images/教程截图-中文.png" alt="教程图">`)
+	if err != nil {
+		t.Fatalf("render markdown: %v", err)
+	}
+	if !strings.Contains(html, `/api/v1/pages/tutorial/images/images/%E6%95%99%E7%A8%8B%E6%88%AA%E5%9B%BE-%E4%B8%AD%E6%96%87.png`) {
+		t.Fatalf("expected relative image to be rewritten, got %s", html)
+	}
+}
+
 func TestDetectPageImageExtensionRejectsSVG(t *testing.T) {
 	t.Parallel()
 
@@ -340,6 +350,43 @@ func TestServePageImage_SupportsChineseFilename(t *testing.T) {
 
 	encoded := url.PathEscape(imageName)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/pages/tutorial/images/"+encoded, nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body=%q", w.Code, http.StatusOK, w.Body.String())
+	}
+	if string(w.Body.Bytes()) != string(imageBytes) {
+		t.Fatalf("image body = %q, want %q", w.Body.String(), string(imageBytes))
+	}
+}
+
+func TestServePageImage_AllowsLegalDocumentSlug(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	root := t.TempDir()
+	imageDir := filepath.Join(root, "pages", "legal-terms")
+	if err := os.MkdirAll(imageDir, 0o755); err != nil {
+		t.Fatalf("create image dir: %v", err)
+	}
+
+	imagePath := filepath.Join(imageDir, "legal-demo.png")
+	imageBytes := []byte("png")
+	if err := os.WriteFile(imagePath, imageBytes, 0o644); err != nil {
+		t.Fatalf("write image: %v", err)
+	}
+
+	repo := &pageHandlerSettingRepoStub{
+		values: map[string]string{
+			service.SettingKeyCustomMenuItems:        `[]`,
+			service.SettingKeyLoginAgreementDocuments: `[{"id":"terms","title":"Terms","content_md":"# Terms"}]`,
+		},
+	}
+	handler := NewPageHandler(root, service.NewSettingService(repo, &config.Config{}))
+
+	router := gin.New()
+	router.GET("/api/v1/pages/:slug/images/*filename", handler.ServePageImage)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/pages/legal-terms/images/legal-demo.png", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 

@@ -19,8 +19,8 @@ export function sanitizeUrl(value: string, options: SanitizeOptions = {}): strin
     return trimmed
   }
 
-  // 允许 data:image/ 开头的 data URL（仅限图片类型）
-  if (options.allowDataUrl && trimmed.startsWith('data:image/')) {
+  // Only allow raster image data URLs; inline SVG remains blocked.
+  if (options.allowDataUrl && trimmed.match(/^data:image\/(?:png|jpeg|jpg|gif|webp);/i)) {
     return trimmed
   }
 

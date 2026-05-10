@@ -1115,6 +1115,11 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			return
 		}
 	}
+	req.SiteLogo = strings.TrimSpace(req.SiteLogo)
+	if err := validateSEOImageURL(req.SiteLogo); err != nil {
+		response.BadRequest(c, "Site logo must be an absolute http(s) URL, a site-relative path, or a supported image data URL")
+		return
+	}
 	req.SEODefaultOGImage = strings.TrimSpace(req.SEODefaultOGImage)
 	if err := validateSEOImageURL(req.SEODefaultOGImage); err != nil {
 		response.BadRequest(c, "Default SEO OG image must be an absolute http(s) URL, a site-relative path, or a supported image data URL")

@@ -37,13 +37,14 @@ var (
 	),
 	goldmark.WithRendererOptions(
 		rendererhtml.WithXHTML(),
+		rendererhtml.WithUnsafe(),
 	),
 	)
 )
 
 func (s *FrontendServer) tryServePublicRenderedPage(c *gin.Context, requestPath string) bool {
 	requestPath = normalizeRequestPath(requestPath)
-	if !strings.HasPrefix(requestPath, "/legal/") && !strings.HasPrefix(requestPath, "/custom/") && requestPath != "/docs/tutorial" {
+	if requestPath != "/" && requestPath != "/home" && !strings.HasPrefix(requestPath, "/legal/") && !strings.HasPrefix(requestPath, "/custom/") && requestPath != "/docs/tutorial" {
 		return false
 	}
 
@@ -54,11 +55,13 @@ func (s *FrontendServer) tryServePublicRenderedPage(c *gin.Context, requestPath 
 	cfg := parseSEOConfig(settingsJSON)
 
 	switch {
+	case requestPath == "/" || requestPath == "/home":
+		return s.serveRenderedHomePage(c, settingsJSON, requestPath)
 	case strings.HasPrefix(requestPath, "/legal/"):
 		docID := strings.TrimPrefix(requestPath, "/legal/")
 		for _, doc := range cfg.LoginAgreementDocuments {
 			if strings.TrimSpace(doc.ID) == strings.TrimSpace(docID) {
-				return s.serveRenderedMarkdownPage(c, settingsJSON, requestPath, doc.Title, doc.ContentMD, "")
+				return s.serveRenderedMarkdownPage(c, settingsJSON, requestPath, doc.Title, doc.ContentMD, "legal-"+strings.TrimSpace(doc.ID))
 			}
 		}
 	case strings.HasPrefix(requestPath, "/custom/"):
@@ -96,6 +99,30 @@ func (s *FrontendServer) tryServePublicRenderedPage(c *gin.Context, requestPath 
 	}
 
 	return false
+}
+
+func (s *FrontendServer) serveRenderedHomePage(c *gin.Context, settingsJSON []byte, requestPath string) bool {
+	seo := buildSEOData(requestPath, settingsJSON)
+	cfg := parseSEOConfig(settingsJSON)
+
+	homeContent := strings.TrimSpace(cfg.HomeContent)
+	if embeddedURL, ok := buildPublicEmbeddedURL(homeContent); ok {
+		return s.serveRenderedEmbeddedPage(c, settingsJSON, requestPath, normalizeSiteName(cfg.SiteName), embeddedURL)
+	}
+
+	bodyHTML := tutorialhtml.SanitizeTutorialHTML(homeContent)
+	if strings.TrimSpace(bodyHTML) == "" {
+		bodyHTML = `<p>` + html.EscapeString(buildHomeDescription(cfg)) + `</p><p><a href="/docs/tutorial">查看教程文档</a></p>`
+	}
+
+	pageHTML := buildPublicMarkdownHTML(cfg, seo, normalizeSiteName(cfg.SiteName), bodyHTML)
+	c.Header("Cache-Control", "no-cache")
+	if seo.XRobotsTag != "" {
+		c.Header("X-Robots-Tag", seo.XRobotsTag)
+	}
+	c.Data(http.StatusOK, "text/html; charset=utf-8", pageHTML)
+	c.Abort()
+	return true
 }
 
 func buildPublicEmbeddedURL(raw string) (string, bool) {
@@ -212,7 +239,7 @@ func (s *FrontendServer) loadMarkdownFile(slug string) ([]byte, error) {
 		return raw, nil
 	}
 	if slug == "tutorial" && os.IsNotExist(err) {
-		return []byte("# 教程文档\n\n欢迎使用 Sub2API。\n\n你可以在后台的“系统设置”页面直接编辑这份教程文档正文，保存后会立即影响公开页和用户侧边栏固定入口对应的内容。"), nil
+		return []byte("# 教程文档\n\n欢迎使用 Sub2API。\n\n你可以在后台的“教程文档”页面直接编辑这份教程文档正文，保存后会立即影响公开页和用户侧边栏固定入口对应的内容。"), nil
 	}
 	return nil, err
 }
@@ -288,12 +315,12 @@ func buildPublicEmbeddedHTML(cfg seoConfig, seo seoData, pageTitle, embeddedURL 
 }
 
 func renderMarkdownToHTML(markdown string, pageSlug string) (string, error) {
-	markdown = rewriteRelativeMarkdownImages(markdown, pageSlug)
 	var buf bytes.Buffer
 	if err := serverMarkdownRenderer.Convert([]byte(markdown), &buf); err != nil {
 		return "", err
 	}
-	return tutorialhtml.SanitizeTutorialHTML(buf.String()), nil
+	html := tutorialhtml.RewriteRelativePageImageSources(buf.String(), pageSlug)
+	return tutorialhtml.SanitizeTutorialHTML(html), nil
 }
 
 func rewriteRelativeMarkdownImages(markdown string, pageSlug string) string {

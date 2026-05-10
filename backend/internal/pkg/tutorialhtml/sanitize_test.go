@@ -93,3 +93,23 @@ func TestSanitizeTutorialHTML_DropsEmptyUnsafeWrappers(t *testing.T) {
 		t.Fatalf("sanitized html should preserve dangerous link text as plain text: %s", got)
 	}
 }
+
+func TestRewriteRelativePageImageSources_RewritesMarkdownAndRawHTMLImageSources(t *testing.T) {
+	raw := `
+<p><img src="images/教程截图-中文.png" alt="教程图"></p>
+<p><img src="https://example.com/absolute.png" alt="外链图"></p>
+<p><img src="/already/absolute.png" alt="绝对路径图"></p>
+`
+
+	got := RewriteRelativePageImageSources(raw, "tutorial")
+
+	if !strings.Contains(got, `/api/v1/pages/tutorial/images/images/%E6%95%99%E7%A8%8B%E6%88%AA%E5%9B%BE-%E4%B8%AD%E6%96%87.png`) {
+		t.Fatalf("expected relative image src to be rewritten, got: %s", got)
+	}
+	if !strings.Contains(got, `https://example.com/absolute.png`) {
+		t.Fatalf("expected absolute image src to be preserved, got: %s", got)
+	}
+	if !strings.Contains(got, `/already/absolute.png`) {
+		t.Fatalf("expected site-relative image src to be preserved, got: %s", got)
+	}
+}

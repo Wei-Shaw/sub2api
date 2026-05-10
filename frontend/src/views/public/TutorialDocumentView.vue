@@ -46,6 +46,7 @@ import { getPublicSettings } from '@/api/auth'
 import type { PublicSettings } from '@/types'
 import { updateRouteSEO } from '@/utils/seo'
 import { sanitizePublicHTML } from '@/utils/publicContent'
+import { sanitizeUrl } from '@/utils/url'
 
 interface TutorialDocumentPayload {
   content_html: string
@@ -73,7 +74,7 @@ onMounted(async () => {
 
     settings.value = publicSettingsResp
     siteName.value = publicSettingsResp.site_name || 'Sub2API'
-    siteLogo.value = publicSettingsResp.site_logo || ''
+    siteLogo.value = sanitizeUrl(publicSettingsResp.site_logo || '', { allowRelative: true })
 
     if (tutorialResp.ok) {
       const payload = await tutorialResp.json() as { code?: number; data?: TutorialDocumentPayload }

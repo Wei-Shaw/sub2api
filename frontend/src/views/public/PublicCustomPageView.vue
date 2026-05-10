@@ -82,6 +82,7 @@ import { buildEmbeddedUrl } from '@/utils/embedded-url'
 import { updateRouteSEO } from '@/utils/seo'
 import type { CustomMenuItem, PublicSettings } from '@/types'
 import { renderPublicMarkdown } from '@/utils/publicContent'
+import { sanitizeUrl } from '@/utils/url'
 
 const props = withDefaults(defineProps<{
   slug?: string
@@ -103,7 +104,7 @@ const markdownContainer = ref<HTMLElement | null>(null)
 
 const menuItemId = computed(() => String(route.params.id || ''))
 const siteName = computed(() => settings.value?.site_name || 'Sub2API')
-const siteLogo = computed(() => settings.value?.site_logo || '')
+const siteLogo = computed(() => sanitizeUrl(settings.value?.site_logo || '', { allowRelative: true }))
 const siteSubtitle = computed(() => settings.value?.site_subtitle || '')
 const fixedSlug = computed(() => props.slug.trim())
 const menuItem = computed<CustomMenuItem | null>(() => {
@@ -170,7 +171,7 @@ async function fetchAndRenderMarkdown(slug: string) {
     /!\[([^\]]*)\]\(([^)]+)\)/g,
     (match, alt, src) => isRelativeMarkdownAsset(src) ? `![${alt}](${buildPageImageUrl(slug, src)})` : match
   )
-  renderedHtml.value = renderPublicMarkdown(raw)
+  renderedHtml.value = renderPublicMarkdown(raw, { pageSlug: slug })
   await nextTick()
 }
 

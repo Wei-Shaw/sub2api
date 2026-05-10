@@ -608,6 +608,10 @@ func TestSettingHandler_UpdateSettings_RejectsInvalidSEOImageAndRobotsValues(t *
 		},
 		{
 			"promo_code_enabled": true,
+			"site_logo":          "data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9YWxlcnQoMSk+",
+		},
+		{
+			"promo_code_enabled": true,
 			"seo_default_robots": "index, maybe",
 		},
 		{

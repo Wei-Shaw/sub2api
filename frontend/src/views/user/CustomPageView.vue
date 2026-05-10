@@ -238,7 +238,7 @@ async function fetchAndRenderMarkdown(slug: string) {
       (match, alt, src) => isRelativeMarkdownAsset(src) ? `![${alt}](${buildPageImageUrl(slug, src)})` : match
     )
 
-    const sanitized = renderPublicMarkdown(raw)
+    const sanitized = renderPublicMarkdown(raw, { pageSlug: slug })
 
     // Inject IDs into headings and build TOC
     const toc: TocItem[] = []

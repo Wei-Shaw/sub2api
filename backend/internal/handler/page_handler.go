@@ -43,6 +43,7 @@ var tutorialMarkdownRenderer = goldmark.New(
 	),
 	goldmark.WithRendererOptions(
 		rendererhtml.WithXHTML(),
+		rendererhtml.WithUnsafe(),
 	),
 )
 
@@ -499,6 +500,19 @@ func (h *PageHandler) findSlugVisibility(c *gin.Context, slug string) (string, b
 	if h.settingService == nil {
 		return "", false
 	}
+	if strings.HasPrefix(slug, "legal-") {
+		id := strings.TrimSpace(strings.TrimPrefix(slug, "legal-"))
+		if id != "" {
+			settings, err := h.settingService.GetPublicSettings(c.Request.Context())
+			if err == nil {
+				for _, doc := range settings.LoginAgreementDocuments {
+					if strings.TrimSpace(doc.ID) == id {
+						return "user", true
+					}
+				}
+			}
+		}
+	}
 
 	raw := h.settingService.GetCustomMenuItemsRaw(c.Request.Context())
 	if raw == "" || raw == "[]" {
@@ -727,7 +741,8 @@ func renderTutorialMarkdownToHTML(markdown string) (string, error) {
 	if err := tutorialMarkdownRenderer.Convert([]byte(markdown), &buf); err != nil {
 		return "", err
 	}
-	return tutorialhtml.SanitizeTutorialHTML(buf.String()), nil
+	html := tutorialhtml.RewriteRelativePageImageSources(buf.String(), builtInTutorialSlug)
+	return tutorialhtml.SanitizeTutorialHTML(html), nil
 }
 
 func (h *PageHandler) readPageContent(slug string) ([]byte, error) {

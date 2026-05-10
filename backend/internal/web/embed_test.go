@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -159,6 +161,51 @@ type mockSettingsProvider struct {
 	settings any
 	err      error
 	called   int
+}
+
+type embedTestSettingRepoStub struct {
+	values map[string]string
+}
+
+func (s *embedTestSettingRepoStub) Get(_ context.Context, _ string) (*service.Setting, error) {
+	panic("unexpected Get call")
+}
+
+func (s *embedTestSettingRepoStub) GetValue(_ context.Context, key string) (string, error) {
+	if value, ok := s.values[key]; ok {
+		return value, nil
+	}
+	return "", nil
+}
+
+func (s *embedTestSettingRepoStub) Set(_ context.Context, _, _ string) error {
+	panic("unexpected Set call")
+}
+
+func (s *embedTestSettingRepoStub) GetMultiple(_ context.Context, keys []string) (map[string]string, error) {
+	out := make(map[string]string, len(keys))
+	for _, key := range keys {
+		if value, ok := s.values[key]; ok {
+			out[key] = value
+		}
+	}
+	return out, nil
+}
+
+func (s *embedTestSettingRepoStub) SetMultiple(_ context.Context, _ map[string]string) error {
+	panic("unexpected SetMultiple call")
+}
+
+func (s *embedTestSettingRepoStub) GetAll(_ context.Context) (map[string]string, error) {
+	out := make(map[string]string, len(s.values))
+	for key, value := range s.values {
+		out[key] = value
+	}
+	return out, nil
+}
+
+func (s *embedTestSettingRepoStub) Delete(_ context.Context, _ string) error {
+	panic("unexpected Delete call")
 }
 
 func (m *mockSettingsProvider) GetPublicSettingsForInjection(ctx context.Context) (any, error) {
@@ -313,7 +360,10 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 
 	t.Run("returns_304_for_matching_etag", func(t *testing.T) {
 		provider := &mockSettingsProvider{
-			settings: map[string]string{"test": "value"},
+			settings: map[string]string{
+				"test": "value",
+				"frontend_url": "https://example.com",
+			},
 		}
 
 		server, err := NewFrontendServer(provider)
@@ -329,14 +379,14 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 
 		// First request to populate cache and get ETag
 		w1 := httptest.NewRecorder()
-		req1 := httptest.NewRequest(http.MethodGet, "/", nil)
+		req1 := httptest.NewRequest(http.MethodGet, "/login", nil)
 		router.ServeHTTP(w1, req1)
 		etag := w1.Header().Get("ETag")
 		require.NotEmpty(t, etag)
 
 		// Second request with If-None-Match
 		w2 := httptest.NewRecorder()
-		req2 := httptest.NewRequest(http.MethodGet, "/", nil)
+		req2 := httptest.NewRequest(http.MethodGet, "/login", nil)
 		req2.Header.Set("If-None-Match", etag)
 		router.ServeHTTP(w2, req2)
 
@@ -660,14 +710,15 @@ func TestFrontendServer_Middleware(t *testing.T) {
 		})
 		router.Use(server.Middleware())
 
-		wHome := httptest.NewRecorder()
-		router.ServeHTTP(wHome, httptest.NewRequest(http.MethodGet, "/home", nil))
+		wLogin := httptest.NewRecorder()
+		router.ServeHTTP(wLogin, httptest.NewRequest(http.MethodGet, "/login", nil))
 		wLegal := httptest.NewRecorder()
 		router.ServeHTTP(wLegal, httptest.NewRequest(http.MethodGet, "/legal/terms", nil))
 
-		assert.Contains(t, wHome.Body.String(), "<title>MyCustomSite - AI API Gateway</title>")
+		assert.Contains(t, wLogin.Body.String(), "<title>MyCustomSite - AI API Gateway</title>")
 		assert.Contains(t, wLegal.Body.String(), "<title>Terms of Service - MyCustomSite</title>")
-		assert.NotEqual(t, wHome.Header().Get("ETag"), wLegal.Header().Get("ETag"))
+		assert.NotEmpty(t, wLogin.Header().Get("ETag"))
+		assert.NotEqual(t, wLogin.Header().Get("ETag"), wLegal.Header().Get("ETag"))
 	})
 
 	t.Run("renders_public_markdown_page_server_side", func(t *testing.T) {
@@ -696,6 +747,66 @@ func TestFrontendServer_Middleware(t *testing.T) {
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Body.String(), "<h1>Guide</h1>")
 		assert.Contains(t, w.Body.String(), "<p>Hello world</p>")
+	})
+
+	t.Run("renders_home_page_server_side", func(t *testing.T) {
+		provider := &mockSettingsProvider{
+			settings: map[string]any{
+				"site_name": "MyCustomSite",
+				"frontend_url": "https://example.com",
+				"site_subtitle": "Readable public home page",
+			},
+		}
+
+		server, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+
+		router := gin.New()
+		router.Use(server.Middleware())
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/home", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), "Readable public home page")
+		assert.Contains(t, w.Body.String(), "查看教程文档")
+		assert.NotContains(t, w.Body.String(), `<div id="app"></div>`)
+	})
+
+	t.Run("frontend server uses configured pricing data dir for public markdown pages", func(t *testing.T) {
+		root := t.TempDir()
+		dataDir := filepath.Join(root, "runtime-data")
+		require.NoError(t, os.MkdirAll(filepath.Join(dataDir, "pages"), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dataDir, "pages", "guide.md"), []byte("# Guide\n\nConfigured data dir body"), 0o644))
+		origWD, err := os.Getwd()
+		require.NoError(t, err)
+		require.NoError(t, os.Chdir(root))
+		t.Cleanup(func() {
+			_ = os.Chdir(origWD)
+		})
+		require.NoError(t, os.WriteFile(filepath.Join(root, "config.yaml"), []byte("pricing:\n  data_dir: "+filepath.ToSlash(dataDir)+"\n"), 0o644))
+
+		repo := &embedTestSettingRepoStub{
+			values: map[string]string{
+				service.SettingKeyFrontendURL: "https://example.com",
+				service.SettingKeyCustomMenuItems: `[{"id":"guide","label":"Guide","visibility":"user","page_slug":"guide"}]`,
+			},
+		}
+		settingSvc := service.NewSettingService(repo, &config.Config{Pricing: config.PricingConfig{DataDir: dataDir}})
+
+		server, err := NewFrontendServer(settingSvc)
+		require.NoError(t, err)
+
+		router := gin.New()
+		router.Use(server.Middleware())
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/custom/guide", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), "Configured data dir body")
 	})
 
 	t.Run("renders_public_embedded_page_server_side", func(t *testing.T) {
@@ -746,7 +857,13 @@ func TestFrontendServer_Middleware(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Body.String(), "<h1>教程文档</h1>")
-		assert.Contains(t, w.Body.String(), "你可以在后台的“系统设置”页面直接编辑这份教程文档正文")
+		assert.Contains(t, w.Body.String(), "你可以在后台的“教程文档”页面直接编辑这份教程文档正文")
+	})
+
+	t.Run("rewrites_legal_relative_images_to_scoped_public_image_urls", func(t *testing.T) {
+		rendered, err := renderMarkdownToHTML("![法律图](images/legal-demo.png)", "legal-terms")
+		require.NoError(t, err)
+		assert.Contains(t, rendered, `/api/v1/pages/legal-terms/images/images/legal-demo.png`)
 	})
 
 	t.Run("sitemap_excludes_missing_markdown_custom_page", func(t *testing.T) {
@@ -791,6 +908,13 @@ func TestFrontendServer_Middleware(t *testing.T) {
 		assert.Contains(t, rendered, "<strong>bold</strong>")
 		assert.Contains(t, rendered, "<em>em</em>")
 		assert.Contains(t, rendered, "<code>code</code>")
+	})
+
+	t.Run("rewrites_relative_html_images_for_markdown_pages", func(t *testing.T) {
+		rendered, err := renderMarkdownToHTML(`<img src="assets/教程截图-中文.png" alt="教程图">`, "guide")
+		require.NoError(t, err)
+		assert.Contains(t, rendered, `/api/v1/pages/guide/images/assets/%E6%95%99%E7%A8%8B%E6%88%AA%E5%9B%BE-%E4%B8%AD%E6%96%87.png`)
+		assert.Contains(t, rendered, `alt="教程图"`)
 	})
 
 	t.Run("serves_static_files", func(t *testing.T) {

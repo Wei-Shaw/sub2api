@@ -28,6 +28,10 @@ type DOMPurifyLike = {
   sanitize: (dirty: string, config?: Record<string, unknown>) => string
 }
 
+type PublicContentOptions = {
+  pageSlug?: string
+}
+
 let browserPurifier: DOMPurifyLike | null = null
 
 function getBrowserPurifier(): DOMPurifyLike {
@@ -210,8 +214,57 @@ function postProcessSanitizedHTML(root: HTMLElement): void {
   }
 }
 
-export function sanitizePublicHTMLWithPurifier(raw: string, purifier: DOMPurifyLike, document: Document): string {
-  const sanitized = purifier.sanitize(raw, {
+export function buildPageImageURL(pageSlug: string, src: string): string {
+  const trimmed = String(src ?? '').trim()
+  const match = trimmed.match(/^([^?#]*)([?#].*)?$/)
+  const pathPart = match?.[1] ?? trimmed
+  const suffix = match?.[2] ?? ''
+  const encodedParts = pathPart
+    .split('/')
+    .filter((part) => part && part !== '.')
+    .map((part) => encodeURIComponent(part))
+  return `/api/v1/pages/${encodeURIComponent(pageSlug)}/images/${encodedParts.join('/')}${suffix}`
+}
+
+function isRelativePageImageSource(src: string): boolean {
+  const trimmed = src.trim()
+  if (!trimmed || trimmed.startsWith('/') || trimmed.startsWith('//') || trimmed.includes('\\')) {
+    return false
+  }
+  try {
+    const parsed = new URL(trimmed)
+    return !parsed.protocol
+  } catch {
+    return !trimmed.split('/').some((part) => part === '..') && !/^[a-z][a-z0-9+.-]*:/i.test(trimmed)
+  }
+}
+
+function rewriteRelativeHTMLImageSources(raw: string, document: Document, pageSlug?: string): string {
+  const slug = String(pageSlug ?? '').trim()
+  if (!slug || !raw.trim()) {
+    return raw
+  }
+
+  const root = document.createElement('div')
+  root.innerHTML = raw
+  root.querySelectorAll('img[src]').forEach((element) => {
+    const src = element.getAttribute('src')?.trim() ?? ''
+    if (!isRelativePageImageSource(src)) {
+      return
+    }
+    element.setAttribute('src', buildPageImageURL(slug, src))
+  })
+  return root.innerHTML
+}
+
+export function sanitizePublicHTMLWithPurifier(
+  raw: string,
+  purifier: DOMPurifyLike,
+  document: Document,
+  options: PublicContentOptions = {}
+): string {
+  const rewritten = rewriteRelativeHTMLImageSources(raw, document, options.pageSlug)
+  const sanitized = purifier.sanitize(rewritten, {
     ALLOWED_TAGS: [...PUBLIC_CONTENT_ALLOWED_TAGS],
     ALLOWED_ATTR: [...PUBLIC_CONTENT_ALLOWED_ATTR],
     ALLOW_DATA_ATTR: false,
@@ -225,15 +278,20 @@ export function sanitizePublicHTMLWithPurifier(raw: string, purifier: DOMPurifyL
   return root.innerHTML
 }
 
-export function sanitizePublicHTML(raw: string): string {
-  return sanitizePublicHTMLWithPurifier(raw, getBrowserPurifier(), document)
+export function sanitizePublicHTML(raw: string, options: PublicContentOptions = {}): string {
+  return sanitizePublicHTMLWithPurifier(raw, getBrowserPurifier(), document, options)
 }
 
-export function renderPublicMarkdownWithPurifier(markdown: string, purifier: DOMPurifyLike, document: Document): string {
+export function renderPublicMarkdownWithPurifier(
+  markdown: string,
+  purifier: DOMPurifyLike,
+  document: Document,
+  options: PublicContentOptions = {}
+): string {
   const html = marked.parse(markdown) as string
-  return sanitizePublicHTMLWithPurifier(html, purifier, document)
+  return sanitizePublicHTMLWithPurifier(html, purifier, document, options)
 }
 
-export function renderPublicMarkdown(markdown: string): string {
-  return renderPublicMarkdownWithPurifier(markdown, getBrowserPurifier(), document)
+export function renderPublicMarkdown(markdown: string, options: PublicContentOptions = {}): string {
+  return renderPublicMarkdownWithPurifier(markdown, getBrowserPurifier(), document, options)
 }

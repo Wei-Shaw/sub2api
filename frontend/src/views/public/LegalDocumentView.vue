@@ -107,7 +107,6 @@ const documents = computed(() => settings.value?.login_agreement_documents ?? []
 const siteName = computed(() => settings.value?.site_name || 'Sub2API')
 const siteLogo = computed(() => sanitizeUrl(settings.value?.site_logo || '', {
   allowRelative: true,
-  allowDataUrl: true,
 }))
 const updatedAt = computed(() => settings.value?.login_agreement_updated_at || '')
 

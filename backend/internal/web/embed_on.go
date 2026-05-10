@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"gopkg.in/yaml.v3"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/setup"
 	"github.com/gin-gonic/gin"
@@ -83,14 +84,16 @@ func NewFrontendServer(settingsProvider PublicSettingsProvider, authGuards ...gi
 		adminAuth = authGuards[1]
 	}
 
+	dataDir := frontendDataDir()
+
 	return &FrontendServer{
 		distFS:        distFS,
 		fileServer:    http.FileServer(http.FS(distFS)),
 		baseHTML:      baseHTML,
 		cache:         cache,
 		settings:      settingsProvider,
-		overrideDir:   filepath.Join(setup.GetDataDir(), "public"),
-		pagesDir:      filepath.Join(setup.GetDataDir(), "pages"),
+		overrideDir:   filepath.Join(dataDir, "public"),
+		pagesDir:      filepath.Join(dataDir, "pages"),
 		htmlUserAuth:  userAuth,
 		htmlAdminAuth: adminAuth,
 	}, nil
@@ -101,6 +104,30 @@ func (s *FrontendServer) InvalidateCache() {
 	if s != nil && s.cache != nil {
 		s.cache.Invalidate()
 	}
+}
+
+func frontendDataDir() string {
+	base := setup.GetDataDir()
+	type pricingConfig struct {
+		DataDir string `yaml:"data_dir"`
+	}
+	type appConfig struct {
+		Pricing pricingConfig `yaml:"pricing"`
+	}
+
+	cfgPath := filepath.Join(base, setup.ConfigFileName)
+	raw, err := os.ReadFile(cfgPath)
+	if err != nil {
+		return base
+	}
+	var cfg appConfig
+	if err := yaml.Unmarshal(raw, &cfg); err != nil {
+		return base
+	}
+	if trimmed := strings.TrimSpace(cfg.Pricing.DataDir); trimmed != "" {
+		return trimmed
+	}
+	return base
 }
 
 // Middleware returns the Gin middleware handler

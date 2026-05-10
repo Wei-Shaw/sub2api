@@ -8,6 +8,7 @@ export type PrerenderSettingsPayload = {
     frontend_url?: string
     site_name?: string
     site_subtitle?: string
+    home_content?: string
     seo_default_title?: string
     seo_home_title?: string
     seo_default_description?: string
@@ -70,6 +71,15 @@ export function collectPrerenderRoutes(
     routes.set(route, { route, title: '', source: 'base' })
   }
   const data = payload?.data
+
+  const homeContent = String(data?.home_content ?? '').trim()
+  const homeDescription = String(data?.seo_home_description ?? '').trim()
+    || String(data?.site_subtitle ?? '').trim()
+  const homeEntry = routes.get('/home')
+  if (homeEntry) {
+    homeEntry.title = String(data?.site_name ?? '').trim() || 'Sub2API'
+    homeEntry.html = homeContent || `<p>${escapeHTML(homeDescription || 'Sub2API is an AI API gateway platform.')}</p><p><a href="/docs/tutorial">查看教程文档</a></p>`
+  }
 
   routes.set('/docs/tutorial', {
     route: '/docs/tutorial',
@@ -255,8 +265,8 @@ export function injectPrerenderContent(indexHTML: string, entry: PrerenderRouteE
   const safeTitle = entry.title || 'Document'
   const rewrittenMarkdown = rewriteRelativeMarkdownImages(entry.markdown || '', entry.markdownSlug)
   const contentHTML = entry.html
-    ? sanitizePublicHTMLWithPurifier(entry.html, prerenderDOMPurify, prerenderWindow.document)
-    : renderPublicMarkdownWithPurifier(rewrittenMarkdown, prerenderDOMPurify, prerenderWindow.document)
+    ? sanitizePublicHTMLWithPurifier(entry.html, prerenderDOMPurify, prerenderWindow.document, { pageSlug: entry.markdownSlug })
+    : renderPublicMarkdownWithPurifier(rewrittenMarkdown, prerenderDOMPurify, prerenderWindow.document, { pageSlug: entry.markdownSlug })
   const body = `
   <div class="min-h-screen bg-gray-50 text-gray-900">
     <main class="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:py-10">
