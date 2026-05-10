@@ -728,7 +728,7 @@ export default {
         hint: '配置文件路径：~/.config/opencode/opencode.json（或 opencode.jsonc），不存在需手动创建。当前示例会新增一个自定义 provider_id（例如 sub2api-openai），不会占用 OpenCode 官方 openai provider。API Key 可直接写入配置，后续也可自行改成 /connect 或环境变量。'
       },
       agentConfig: {
-        hint: '给 Agent 使用的短配置入口。链接包含当前 API Key，请只发给可信 Agent。',
+        hint: '给 Agent 使用的短配置入口。Agent 应按 manifest 逐项下载独立文件到本地临时副本；配置文件不存在时直接复制下载到的完整好配置；已有配置时先对比合并，可按两边内容多少选择把少的一侧并入多的一侧。完成后先检查本地文件与下载副本、再运行诊断命令。链接包含当前 API Key，请只发给可信 Agent。',
         instruction: '请按此链接完成配置：{url}',
         copy: '复制 Agent 链接',
         copied: '已复制'

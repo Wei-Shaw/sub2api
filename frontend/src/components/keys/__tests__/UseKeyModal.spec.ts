@@ -230,7 +230,11 @@ const { openaiModelsMock } = vi.hoisted(() => ({
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
-    t: (key: string, params?: Record<string, string>) => params?.url ? `${key} ${params.url}` : key
+    t: (key: string, params?: Record<string, string>) => {
+      if (params?.url) return `${key} ${params.url}`
+      if (key === 'keys.useKeyModal.agentConfig.hint') return '逐项下载到本地临时副本；配置文件不存在时直接复制；已有配置时先对比合并；完成后先检查。'
+      return key
+    }
   })
 }))
 
@@ -674,11 +678,14 @@ describe('UseKeyModal', () => {
     await clickClientTab(wrapper, 'keys.useKeyModal.cliTabs.omp')
 
     const text = wrapper.text()
-    expect(text).toContain('keys.useKeyModal.agentConfig.hint')
     expect(text).toContain('keys.useKeyModal.agentConfig.instruction')
     expect(text).toContain('/config-guides/omp-openai/manifest.json?api_key=sk-test')
     expect(text).not.toContain('base_url=')
 
+    expect(text).toContain('逐项下载')
+    expect(text).toContain('本地临时副本')
+    expect(text).toContain('已有配置时先对比合并')
+    expect(text).toContain('完成后先检查')
     const agentBlock = wrapper.find('[data-testid="agent-config-guide"]')
     expect(agentBlock.exists()).toBe(true)
     expect(agentBlock.text()).not.toContain('providers:')

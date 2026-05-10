@@ -160,6 +160,9 @@ func TestConfigGuideOMPManifest(t *testing.T) {
 	require.Equal(t, "~/.omp/agent/models.yml", *manifest.Items[1].TargetPath)
 	require.Contains(t, manifest.Items[1].URL, "/config-guides/omp-openai/models.yml?api_key=sk-test")
 	require.NotContains(t, manifest.Items[1].URL, "base_url=")
+	require.Contains(t, manifest.Notes, "Download every item to a local temporary copy before editing existing files; do not transcribe YAML or JSON from chat output.")
+	require.Contains(t, manifest.Notes, "If a target file is missing, copy the downloaded file to that path. If it exists, compare both files and merge the smaller side into the larger side when that is safer than replacing.")
+	require.Contains(t, manifest.Notes, "After writing files, compare them with the downloaded copies and run the listed plugin doctor/check commands before reporting completion.")
 }
 
 func TestConfigGuideOMPManifestWithExplicitBaseURL(t *testing.T) {
@@ -336,6 +339,10 @@ func TestConfigGuideOpenCodeManifest(t *testing.T) {
 	require.NotNil(t, manifest.Items[0].TargetPath)
 	require.Equal(t, "~/.config/opencode/opencode.json", *manifest.Items[0].TargetPath)
 	require.Contains(t, manifest.Items[0].URL, "/config-guides/opencode-openai/opencode.json?api_key=sk-test")
+	require.Contains(t, manifest.Notes, "Download every item to a local temporary copy before editing existing files; do not transcribe YAML or JSON from chat output.")
+	require.Contains(t, manifest.Notes, "If a target file is missing, copy the downloaded file to that path. If it exists, compare both files and merge the smaller side into the larger side when that is safer than replacing.")
+	require.Contains(t, manifest.Notes, "After writing opencode.json, compare it with the downloaded copy and run an OpenCode configuration parse/check command if available before reporting completion.")
+	require.NotContains(t, manifest.Notes, "plugin doctor")
 }
 
 func TestConfigGuideOpenCodeJSONPreservesLocalSemantics(t *testing.T) {

@@ -150,6 +150,9 @@ func (h *ConfigGuideHandler) GetOMPManifest(c *gin.Context) {
 			},
 		},
 		Notes: []string{
+			"Download every item to a local temporary copy before editing existing files; do not transcribe YAML or JSON from chat output.",
+			"If a target file is missing, copy the downloaded file to that path. If it exists, compare both files and merge the smaller side into the larger side when that is safer than replacing.",
+			"After writing files, compare them with the downloaded copies and run the listed plugin doctor/check commands before reporting completion.",
 			"Run plugin.txt commands before using provider-native web_search or image_generation.",
 			"Restart OMP after installing or upgrading plugins and writing agent files.",
 		},
@@ -247,6 +250,9 @@ func (h *ConfigGuideHandler) GetOpenCodeManifest(c *gin.Context) {
 			},
 		},
 		Notes: []string{
+			"Download every item to a local temporary copy before editing existing files; do not transcribe YAML or JSON from chat output.",
+			"If a target file is missing, copy the downloaded file to that path. If it exists, compare both files and merge the smaller side into the larger side when that is safer than replacing.",
+			"After writing opencode.json, compare it with the downloaded copy and run an OpenCode configuration parse/check command if available before reporting completion.",
 			"This config adds provider sub2api-openai and does not replace OpenCode built-in openai provider.",
 		},
 	})

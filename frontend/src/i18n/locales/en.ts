@@ -725,7 +725,7 @@ export default {
         hint: 'Config path: ~/.config/opencode/opencode.json (or opencode.jsonc). Create it manually if missing. This example adds a custom provider_id (for example sub2api-openai) and does not replace OpenCode\'s built-in openai provider. The API key is written directly for convenience and can later be moved to /connect or env vars.',
       },
       agentConfig: {
-        hint: 'Short configuration entry for agents. The link contains this API key; only share it with a trusted agent.',
+        hint: 'Short configuration entry for agents. The agent should read the manifest, download each file to a local temporary copy, copy the complete downloaded config when the target file is missing, and compare/merge when it already exists. It may merge the smaller side into the larger side when safer than replacing. After writing files, check the local files against the downloaded copies and run the diagnostic commands. The link contains this API key; only share it with a trusted agent.',
         instruction: 'Use this link to complete the configuration: {url}',
         copy: 'Copy agent link',
         copied: 'Copied'
