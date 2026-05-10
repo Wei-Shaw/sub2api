@@ -140,7 +140,7 @@ func (s *providerPriceSettingRepoStub) GetMultiple(_ context.Context, keys []str
 	return out, nil
 }
 func (s *providerPriceSettingRepoStub) Set(context.Context, string, string) error {
-	panic("unexpected call")
+	return nil
 }
 func (s *providerPriceSettingRepoStub) SetMultiple(context.Context, map[string]string) error {
 	panic("unexpected call")
@@ -375,6 +375,113 @@ func TestFilterModelsByGroupScope_RespectsImageGenerationGate(t *testing.T) {
 
 	if len(models) != 1 || models[0] != "gemini-2.5-flash" {
 		t.Fatalf("unexpected filtered models: %+v", models)
+	}
+}
+
+func TestProviderPriceHandler_PrefersOverridePrices(t *testing.T) {
+	groupRepo := &providerPriceGroupRepoStub{
+		groups: []service.Group{
+			{
+				ID:               1,
+				Name:             "default",
+				Platform:         service.PlatformOpenAI,
+				RateMultiplier:   1,
+				Status:           service.StatusActive,
+				SubscriptionType: service.SubscriptionTypeStandard,
+			},
+		},
+	}
+
+	settingRepo := &providerPriceSettingRepoStub{
+		values: map[string]string{
+			service.SettingBalanceRechargeMult: "2",
+			service.SettingKeySiteName:         "Test Site",
+			service.SettingKeyFrontendURL:      "https://pricing.example.com",
+			service.SettingKeyProviderPriceOverrides: `[{"id":"ovr-1","group_name":"公开组","model_name":"gpt-5.4","input_price":99.5,"output_price":199.5,"enabled":true,"sort_order":0}]`,
+		},
+	}
+	cfg := &config.Config{}
+	h := NewProviderPriceHandler(
+		service.NewGroupService(groupRepo, nil),
+		service.NewPaymentConfigService(nil, settingRepo, nil),
+		service.NewBillingService(cfg, nil),
+		nil,
+		service.NewSettingService(settingRepo, cfg),
+		nil,
+		service.NewModelPricingResolver(&service.ChannelService{}, service.NewBillingService(cfg, nil)),
+	)
+	h.modelLister = func(context.Context, *service.Group) []string {
+		return []string{"gpt-5.4"}
+	}
+
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.GET("/api/provider/pricing", h.GetProviderPricing)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/provider/pricing", nil)
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unexpected status: %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var resp providerPricingResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if resp.Data == nil || len(resp.Data.Models) != 1 {
+		t.Fatalf("unexpected data: %+v", resp)
+	}
+	got := resp.Data.Models[0]
+	if got.GroupName != "公开组" || got.ModelName != "gpt-5.4" {
+		t.Fatalf("unexpected model identity: %+v", got)
+	}
+	if got.InputPrice == nil || *got.InputPrice != 99.5 {
+		t.Fatalf("unexpected input price: %+v", got.InputPrice)
+	}
+	if got.OutputPrice == nil || *got.OutputPrice != 199.5 {
+		t.Fatalf("unexpected output price: %+v", got.OutputPrice)
+	}
+}
+
+func TestProviderPriceHandler_FallbacksToAutoWhenOverrideEmpty(t *testing.T) {
+	groupRepo := &providerPriceGroupRepoStub{
+		groups: []service.Group{
+			{
+				ID:               1,
+				Name:             "default",
+				Platform:         service.PlatformOpenAI,
+				RateMultiplier:   1,
+				Status:           service.StatusActive,
+				SubscriptionType: service.SubscriptionTypeStandard,
+			},
+		},
+	}
+	settingRepo := &providerPriceSettingRepoStub{
+		values: map[string]string{
+			service.SettingBalanceRechargeMult: "2",
+			service.SettingKeyProviderPriceOverrides: `[]`,
+		},
+	}
+	cfg := &config.Config{}
+	billingService := service.NewBillingService(cfg, nil)
+	h := NewProviderPriceHandler(
+		service.NewGroupService(groupRepo, nil),
+		service.NewPaymentConfigService(nil, settingRepo, nil),
+		billingService,
+		nil,
+		service.NewSettingService(settingRepo, cfg),
+		nil,
+		service.NewModelPricingResolver(&service.ChannelService{}, billingService),
+	)
+	h.modelLister = func(context.Context, *service.Group) []string {
+		return []string{"gpt-5.4"}
+	}
+
+	entries := h.buildProviderPriceEntries(context.Background(), groupRepo.groups, 2)
+	if len(entries) == 0 {
+		t.Fatal("expected auto pricing entries")
 	}
 }
 

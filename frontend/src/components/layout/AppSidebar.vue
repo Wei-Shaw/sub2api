@@ -813,6 +813,7 @@ const adminNavItems = computed((): NavItem[] => {
     const filtered = visible.filter(item => !item.hideInSimpleMode)
     filtered.push({ path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon })
     filtered.push({ path: '/admin/tutorial', label: BUILT_IN_TUTORIAL_LABEL, icon: BookOpenIcon })
+    filtered.push({ path: '/admin/provider-pricing', label: '公开价格导出', icon: PriceTagIcon })
     filtered.push({ path: '/admin/seo', label: t('nav.seoSettings'), icon: GlobeIcon })
     filtered.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon })
     for (const cm of customMenuItemsForAdmin.value) {
@@ -822,6 +823,7 @@ const adminNavItems = computed((): NavItem[] => {
   }
 
   visible.push({ path: '/admin/tutorial', label: BUILT_IN_TUTORIAL_LABEL, icon: BookOpenIcon })
+  visible.push({ path: '/admin/provider-pricing', label: '公开价格导出', icon: PriceTagIcon })
   visible.push({ path: '/admin/seo', label: t('nav.seoSettings'), icon: GlobeIcon })
   visible.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon })
   for (const cm of customMenuItemsForAdmin.value) {

@@ -53,12 +53,12 @@ type providerPricingResponse struct {
 }
 
 type providerPricingData struct {
-	Currency  string                 `json:"currency"`
-	PriceUnit string                 `json:"price_unit"`
-	SiteName  string                 `json:"site_name,omitempty"`
-	SiteDomain string                `json:"site_domain,omitempty"`
-	UpdatedAt string                 `json:"updated_at"`
-	Models    []providerPricingModel `json:"models"`
+	Currency   string                 `json:"currency"`
+	PriceUnit  string                 `json:"price_unit"`
+	SiteName   string                 `json:"site_name,omitempty"`
+	SiteDomain string                 `json:"site_domain,omitempty"`
+	UpdatedAt  string                 `json:"updated_at"`
+	Models     []providerPricingModel `json:"models"`
 }
 
 type providerPricingModel struct {
@@ -69,6 +69,7 @@ type providerPricingModel struct {
 	CacheInputPrice    *float64 `json:"cache_input_price"`
 	CacheCreatePrice   *float64 `json:"cache_create_price"`
 	CacheCreatePrice1h *float64 `json:"cache_create_price_1h"`
+	ImageOutputPrice   *float64 `json:"image_output_price,omitempty"`
 	Enabled            bool     `json:"enabled"`
 	Note               string   `json:"note,omitempty"`
 }
@@ -85,6 +86,24 @@ type modelExportPrice struct {
 	cacheInput     float64
 	cacheCreate5m  float64
 	cacheCreate1h  float64
+}
+
+func hasAnyProviderPriceValue(item service.ProviderPriceOverride) bool {
+	for _, value := range []*float64{
+		item.InputPrice,
+		item.OutputPrice,
+		item.CacheWritePrice,
+		item.CacheReadPrice,
+		item.ImageOutputPrice,
+		item.CacheInputPrice,
+		item.CacheCreatePrice,
+		item.CacheCreatePrice1h,
+	} {
+		if value != nil && *value > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *ProviderPriceHandler) GetProviderPricing(c *gin.Context) {
@@ -123,6 +142,13 @@ func (h *ProviderPriceHandler) GetProviderPricing(c *gin.Context) {
 	}
 
 	entries := h.buildProviderPriceEntries(ctx, groups, rechargeMultiplier)
+	if len(entries) == 0 && h.settingService != nil {
+		entries = h.buildProviderPriceOverrideEntries(ctx)
+	} else if h.settingService != nil {
+		if overrideEntries := h.buildProviderPriceOverrideEntries(ctx); len(overrideEntries) > 0 {
+			entries = overrideEntries
+		}
+	}
 	models := make([]providerPricingModel, 0, len(entries))
 	for _, entry := range entries {
 		models = append(models, entry.model)
@@ -221,6 +247,57 @@ func (h *ProviderPriceHandler) buildProviderPriceEntries(
 		return strings.ToLower(entries[i].groupName) < strings.ToLower(entries[j].groupName)
 	})
 
+	return entries
+}
+
+func (h *ProviderPriceHandler) buildProviderPriceOverrideEntries(ctx context.Context) []providerPriceEntry {
+	if h.settingService == nil {
+		return nil
+	}
+	items, err := h.settingService.GetProviderPriceOverrides(ctx)
+	if err != nil || len(items) == 0 {
+		return nil
+	}
+	entries := make([]providerPriceEntry, 0, len(items))
+	for _, item := range items {
+		if !item.Enabled {
+			continue
+		}
+		if !hasAnyProviderPriceValue(item) {
+			continue
+		}
+		cacheInput := item.CacheReadPrice
+		if cacheInput == nil {
+			cacheInput = item.CacheInputPrice
+		}
+		cacheCreate := item.CacheWritePrice
+		if cacheCreate == nil {
+			cacheCreate = item.CacheCreatePrice
+		}
+		model := providerPricingModel{
+			ModelName:          item.ModelName,
+			GroupName:          item.GroupName,
+			InputPrice:         item.InputPrice,
+			OutputPrice:        item.OutputPrice,
+			CacheInputPrice:    cacheInput,
+			CacheCreatePrice:   cacheCreate,
+			CacheCreatePrice1h: item.CacheCreatePrice1h,
+			ImageOutputPrice:   item.ImageOutputPrice,
+			Enabled:            item.Enabled,
+			Note:               item.Note,
+		}
+		entries = append(entries, providerPriceEntry{
+			groupName: item.GroupName,
+			modelName: item.ModelName,
+			model:     model,
+		})
+	}
+	sort.SliceStable(entries, func(i, j int) bool {
+		if strings.EqualFold(entries[i].groupName, entries[j].groupName) {
+			return strings.ToLower(entries[i].modelName) < strings.ToLower(entries[j].modelName)
+		}
+		return strings.ToLower(entries[i].groupName) < strings.ToLower(entries[j].groupName)
+	})
 	return entries
 }
 

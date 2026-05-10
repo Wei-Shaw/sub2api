@@ -642,6 +642,16 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/provider-pricing',
+    name: 'AdminProviderPricing',
+    component: () => import('@/views/admin/ProviderPricingView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: '公开价格导出配置'
+    }
+  },
+  {
     path: '/admin/risk-control',
     name: 'AdminRiskControl',
     component: () => import('@/views/admin/RiskControlView.vue'),

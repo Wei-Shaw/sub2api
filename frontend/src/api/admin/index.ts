@@ -32,6 +32,7 @@ import adminPaymentAPI from './payment'
 import adminReferralAPI from './referral'
 import riskControlAPI from './riskControl'
 import pagesAPI from './pages'
+import providerPricingAPI from './providerPricing'
 
 /**
  * Unified admin API object for convenient access
@@ -66,6 +67,7 @@ export const adminAPI = {
   referral: adminReferralAPI,
   riskControl: riskControlAPI,
   pages: pagesAPI,
+  providerPricing: providerPricingAPI,
 }
 
 export {
@@ -98,6 +100,7 @@ export {
   adminReferralAPI,
   riskControlAPI,
   pagesAPI,
+  providerPricingAPI,
 }
 
 export default adminAPI
