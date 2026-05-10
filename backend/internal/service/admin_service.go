@@ -265,11 +265,19 @@ type GroupQuotaBucket struct {
 	AccountCount int `json:"account_count"`
 }
 
+type GroupQuotaRefreshCount struct {
+	Date         string `json:"date"`
+	DateLabel    string `json:"date_label"`
+	DaysFromNow  int    `json:"days_from_now"`
+	AccountCount int    `json:"account_count"`
+}
+
 type GroupQuotaTabSummary struct {
-	Window              string             `json:"window"`
-	BucketCounts        []GroupQuotaBucket `json:"bucket_counts"`
-	MatchedAccountCount int                `json:"matched_account_count"`
-	SkippedAccountCount int                `json:"skipped_account_count"`
+	Window              string                   `json:"window"`
+	BucketCounts        []GroupQuotaBucket       `json:"bucket_counts"`
+	RefreshCounts       []GroupQuotaRefreshCount `json:"refresh_counts,omitempty"`
+	MatchedAccountCount int                      `json:"matched_account_count"`
+	SkippedAccountCount int                      `json:"skipped_account_count"`
 }
 
 type GroupQuotaSummary struct {
@@ -2116,6 +2124,7 @@ func (s *adminServiceImpl) GetGroupQuotaSummary(ctx context.Context, groupID int
 	summary.Tabs = []GroupQuotaTabSummary{
 		buildGroupQuotaTabSummary(accounts, "5h", "prefer_5h", "codex_5h_used_percent"),
 		buildGroupQuotaTabSummary(accounts, "7d", "prefer_7d", "codex_7d_used_percent"),
+		buildGroupQuotaRefreshTabSummary(accounts, time.Now()),
 	}
 	return summary, nil
 }
@@ -2193,6 +2202,93 @@ func getOpenAIQuotaStrategyForSummary(extra map[string]any) string {
 	default:
 		return ""
 	}
+}
+
+func buildGroupQuotaRefreshTabSummary(accounts []Account, now time.Time) GroupQuotaTabSummary {
+	loc := groupQuotaBeijingLocation()
+	today := groupQuotaStartOfDay(now.In(loc))
+	counts := make([]int, 8)
+	matched := 0
+	skipped := 0
+
+	for _, account := range accounts {
+		resetAt, ok := openAISevenDayResetAt(account.Extra, now)
+		if !ok {
+			skipped++
+			continue
+		}
+
+		resetDate := groupQuotaStartOfDay(resetAt.In(loc))
+		daysFromNow := int(resetDate.Sub(today).Hours() / 24)
+		if daysFromNow < 0 || daysFromNow >= len(counts) {
+			skipped++
+			continue
+		}
+
+		counts[daysFromNow]++
+		matched++
+	}
+
+	refreshCounts := make([]GroupQuotaRefreshCount, 0, len(counts))
+	for dayOffset, accountCount := range counts {
+		date := today.AddDate(0, 0, dayOffset)
+		refreshCounts = append(refreshCounts, GroupQuotaRefreshCount{
+			Date:         date.Format("2006-01-02"),
+			DateLabel:    formatChineseDate(date),
+			DaysFromNow:  dayOffset,
+			AccountCount: accountCount,
+		})
+	}
+
+	return GroupQuotaTabSummary{
+		Window:              "refresh",
+		BucketCounts:        []GroupQuotaBucket{},
+		RefreshCounts:       refreshCounts,
+		MatchedAccountCount: matched,
+		SkippedAccountCount: skipped,
+	}
+}
+
+func openAISevenDayResetAt(extra map[string]any, now time.Time) (time.Time, bool) {
+	if len(extra) == 0 {
+		return time.Time{}, false
+	}
+
+	if raw, ok := extra["codex_7d_reset_at"]; ok && raw != nil {
+		resetAt, err := parseTime(fmt.Sprint(raw))
+		if err == nil {
+			return resetAt, true
+		}
+	}
+
+	resetAfterSeconds := parseExtraInt(extra["codex_7d_reset_after_seconds"])
+	if resetAfterSeconds <= 0 {
+		return time.Time{}, false
+	}
+
+	base := now
+	if updatedAtRaw, ok := extra["codex_usage_updated_at"]; ok && updatedAtRaw != nil {
+		if updatedAt, err := parseTime(fmt.Sprint(updatedAtRaw)); err == nil {
+			base = updatedAt
+		}
+	}
+	return base.Add(time.Duration(resetAfterSeconds) * time.Second), true
+}
+
+func groupQuotaBeijingLocation() *time.Location {
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err == nil {
+		return loc
+	}
+	return time.FixedZone("Asia/Shanghai", 8*60*60)
+}
+
+func groupQuotaStartOfDay(t time.Time) time.Time {
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+}
+
+func formatChineseDate(t time.Time) string {
+	return fmt.Sprintf("%d年%d月%d日", t.Year(), int(t.Month()), t.Day())
 }
 
 func (s *adminServiceImpl) GetGroupRateMultipliers(ctx context.Context, groupID int64) ([]UserGroupRateEntry, error) {

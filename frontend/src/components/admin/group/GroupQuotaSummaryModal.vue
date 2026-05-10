@@ -56,7 +56,23 @@
               <span>{{ t('admin.groups.quotaSummarySkippedAccounts') }}: {{ activeSummary?.skipped_account_count ?? 0 }}</span>
             </div>
 
-            <div class="space-y-2">
+            <div v-if="isRefreshSummary" class="space-y-2">
+              <div
+                v-for="item in refreshCounts"
+                :key="item.date"
+                :data-testid="`quota-refresh-row-${item.date}`"
+                class="grid grid-cols-[minmax(9rem,auto)_4rem_auto] items-center justify-center gap-x-2 rounded-lg bg-gray-50 px-4 py-3 text-sm dark:bg-dark-700"
+              >
+                <span class="text-right text-gray-700 dark:text-gray-300">
+                  <span class="font-medium text-gray-900 dark:text-white">{{ item.date_label }}</span>
+                  {{ t('admin.groups.quotaSummaryRefreshAccountPrefix') }}
+                </span>
+                <span class="text-center font-semibold tabular-nums text-gray-900 dark:text-white">{{ item.account_count }}</span>
+                <span class="text-left text-gray-700 dark:text-gray-300">{{ t('admin.groups.quotaSummaryBucketUnit') }}</span>
+              </div>
+            </div>
+
+            <div v-else class="space-y-2">
               <div
                 v-for="bucket in normalizedBucketCounts"
                 :key="bucket.used_percent"
@@ -84,7 +100,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
-import type { GroupQuotaSummaryResponse } from '@/api/admin/groups'
+import type { GroupQuotaSummaryResponse, GroupQuotaWindow } from '@/api/admin/groups'
 import type { AdminGroup } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
@@ -103,7 +119,7 @@ const appStore = useAppStore()
 
 const loading = ref(false)
 const summary = ref<GroupQuotaSummaryResponse | null>(null)
-const activeTab = ref<'5h' | '7d'>('5h')
+const activeTab = ref<GroupQuotaWindow>('5h')
 const bucketPercents = [100, 90, 80, 70, 60, 50, 40, 30, 20, 10, 0] as const
 
 const dialogTitle = computed(() => t('admin.groups.quotaSummaryTitle', { name: props.group?.name || '' }))
@@ -119,6 +135,8 @@ const platformColorClass = computed(() => {
 
 const tabs = computed(() => summary.value?.tabs ?? [])
 const activeSummary = computed(() => tabs.value.find((tab) => tab.window === activeTab.value) ?? tabs.value[0] ?? null)
+const isRefreshSummary = computed(() => activeSummary.value?.window === 'refresh')
+const refreshCounts = computed(() => activeSummary.value?.refresh_counts ?? [])
 const normalizedBucketCounts = computed(() => {
   const counts = new Map((activeSummary.value?.bucket_counts ?? []).map((bucket) => [bucket.used_percent, bucket.account_count]))
   return bucketPercents.map((usedPercent) => ({
@@ -127,10 +145,17 @@ const normalizedBucketCounts = computed(() => {
   }))
 })
 
-const tabLabel = (window: '5h' | '7d') => {
-  return window === '5h'
-    ? t('admin.groups.quotaSummaryWindows.fiveHour')
-    : t('admin.groups.quotaSummaryWindows.sevenDay')
+const tabLabel = (window: GroupQuotaWindow) => {
+  switch (window) {
+    case '5h':
+      return t('admin.groups.quotaSummaryWindows.fiveHour')
+    case '7d':
+      return t('admin.groups.quotaSummaryWindows.sevenDay')
+    case 'refresh':
+      return t('admin.groups.quotaSummaryWindows.refresh')
+    default:
+      return window
+  }
 }
 
 const loadSummary = async () => {

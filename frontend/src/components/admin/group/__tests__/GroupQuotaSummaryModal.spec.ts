@@ -118,6 +118,17 @@ describe('GroupQuotaSummaryModal', () => {
           ],
           matched_account_count: 1,
           skipped_account_count: 0
+        },
+        {
+          window: 'refresh',
+          bucket_counts: [],
+          refresh_counts: [
+            { date: '2026-05-10', date_label: '2026年5月10日', days_from_now: 0, account_count: 2 },
+            { date: '2026-05-11', date_label: '2026年5月11日', days_from_now: 1, account_count: 0 },
+            { date: '2026-05-12', date_label: '2026年5月12日', days_from_now: 2, account_count: 1 }
+          ],
+          matched_account_count: 3,
+          skipped_account_count: 1
         }
       ]
     })
@@ -160,6 +171,26 @@ describe('GroupQuotaSummaryModal', () => {
     expect(wrapper.get('[data-testid="quota-bucket-row-60"]').text()).toContain('0')
   })
 
+  it('切换到额度刷新 tab 后按日期展示 D+0 到 D+7 刷新账号数', async () => {
+    const wrapper = mountModal(openAIGroup)
+    await flushPromises()
+
+    const refreshTab = wrapper.findAll('button').find((button) =>
+      button.text().includes('admin.groups.quotaSummaryWindows.refresh')
+    )
+
+    expect(refreshTab).toBeTruthy()
+    await refreshTab!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="quota-bucket-row-100"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="quota-refresh-row-2026-05-10"]').text()).toContain('2026年5月10日')
+    expect(wrapper.get('[data-testid="quota-refresh-row-2026-05-10"]').text()).toContain('2')
+    expect(wrapper.get('[data-testid="quota-refresh-row-2026-05-11"]').text()).toContain('0')
+    expect(wrapper.get('[data-testid="quota-refresh-row-2026-05-12"]').text()).toContain('1')
+    expect(wrapper.text()).toContain('admin.groups.quotaSummaryRefreshAccountPrefix')
+  })
+
   it('非 OpenAI 分组显示暂未适配', async () => {
     getQuotaSummaryMock.mockResolvedValue({
       group_id: 2,
@@ -191,6 +222,13 @@ describe('GroupQuotaSummaryModal', () => {
         {
           window: '7d',
           bucket_counts: [],
+          matched_account_count: 0,
+          skipped_account_count: 0
+        },
+        {
+          window: 'refresh',
+          bucket_counts: [],
+          refresh_counts: [],
           matched_account_count: 0,
           skipped_account_count: 0
         }

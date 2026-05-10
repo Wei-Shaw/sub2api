@@ -306,9 +306,19 @@ export interface GroupQuotaBucket {
   account_count: number
 }
 
+export interface GroupQuotaRefreshCount {
+  date: string
+  date_label: string
+  days_from_now: number
+  account_count: number
+}
+
+export type GroupQuotaWindow = '5h' | '7d' | 'refresh'
+
 export interface GroupQuotaTabSummary {
-  window: '5h' | '7d'
+  window: GroupQuotaWindow
   bucket_counts: GroupQuotaBucket[]
+  refresh_counts?: GroupQuotaRefreshCount[]
   matched_account_count: number
   skipped_account_count: number
 }

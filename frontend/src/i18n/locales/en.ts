@@ -2011,7 +2011,7 @@ export default {
       rateMultipliersTitle: 'Group Rate Multipliers',
       quotaSummary: 'Quota Summary',
       quotaSummaryTitle: 'Quota Summary - {name}',
-      quotaSummaryDescription: 'Current statistics are grouped from OpenAI account 5H / 7D usage snapshots within this group.',
+      quotaSummaryDescription: 'Current statistics are grouped from OpenAI account 5H / 7D usage snapshots within this group, with the next 8 days of 7D quota refresh counts shown in Beijing time.',
       quotaSummaryUnsupported: 'Not yet supported',
       quotaSummaryOnlyOpenAI: 'Only OpenAI groups are currently supported for quota summary.',
       quotaSummaryNoData: 'No eligible accounts to summarize',
@@ -2020,9 +2020,11 @@ export default {
       quotaSummaryBucketPrefix: 'Used',
       quotaSummaryBucketSuffix: 'accounts:',
       quotaSummaryBucketUnit: 'items',
+      quotaSummaryRefreshAccountPrefix: 'quota refresh accounts:',
       quotaSummaryWindows: {
         fiveHour: '5H',
-        sevenDay: '7D'
+        sevenDay: '7D',
+        refresh: 'Quota Refresh'
       },
       addUserRate: 'Add User Rate Multiplier',
       rpmOverrides: 'RPM Overrides',
