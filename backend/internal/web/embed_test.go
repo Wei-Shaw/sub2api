@@ -166,6 +166,14 @@ func (m *mockSettingsProvider) GetPublicSettingsForInjection(ctx context.Context
 	return m.settings, m.err
 }
 
+type emptySitemapFrontendServer struct {
+	*FrontendServer
+}
+
+func (s *emptySitemapFrontendServer) buildSitemapXML(_ []byte) []byte {
+	return nil
+}
+
 func TestFrontendServer_InjectSettings(t *testing.T) {
 	t.Run("injects_settings_with_nonce_placeholder", func(t *testing.T) {
 		provider := &mockSettingsProvider{
@@ -558,6 +566,32 @@ func TestFrontendServer_Middleware(t *testing.T) {
 		assert.Contains(t, wSitemap.Body.String(), "<loc>https://example.com/</loc>")
 		assert.Contains(t, wSitemap.Body.String(), "<loc>https://example.com/docs/tutorial</loc>")
 		assert.Contains(t, wSitemap.Body.String(), "<loc>https://example.com/legal/terms</loc>")
+	})
+
+	t.Run("sitemap_falls_back_to_base_generator_when_runtime_filter_returns_empty", func(t *testing.T) {
+		provider := &mockSettingsProvider{
+			settings: map[string]any{
+				"frontend_url": "https://example.com",
+				"login_agreement_documents": []map[string]string{
+					{"id": "terms", "title": "Terms of Service"},
+				},
+			},
+		}
+
+		baseServer, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+		server := &emptySitemapFrontendServer{FrontendServer: baseServer}
+
+		router := gin.New()
+		router.GET("/sitemap.xml", server.serveSitemapXML)
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/sitemap.xml", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), "<loc>https://example.com/</loc>")
+		assert.Contains(t, w.Body.String(), "<loc>https://example.com/docs/tutorial</loc>")
 	})
 
 	t.Run("serves_dynamic_og_image", func(t *testing.T) {

@@ -31,6 +31,10 @@ function updateFavicon(logoUrl: string) {
   link.href = logoUrl
 }
 
+function handleLocaleChanged() {
+  updateRouteSEO(route, appStore.cachedPublicSettings)
+}
+
 // Watch for site settings changes and update favicon/title
 watch(
   () => appStore.siteLogo,
@@ -89,6 +93,7 @@ router.afterEach(() => {
 
 onBeforeUnmount(() => {
   document.removeEventListener('visibilitychange', onVisibilityChange)
+  window.removeEventListener('sub2api:locale-changed', handleLocaleChanged)
 })
 
 onMounted(async () => {
@@ -107,6 +112,7 @@ onMounted(async () => {
   await appStore.fetchPublicSettings()
 
   updateRouteSEO(route, appStore.cachedPublicSettings)
+  window.addEventListener('sub2api:locale-changed', handleLocaleChanged)
 })
 </script>
 

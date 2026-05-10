@@ -514,6 +514,150 @@ func TestSettingHandler_UpdateSettings_DoesNotPersistPartialSystemSettingsWhenAu
 	require.Equal(t, "9.5", repo.values[service.SettingKeyAuthSourceDefaultEmailBalance])
 }
 
+func TestSettingHandler_UpdateSettings_RejectsFrontendURLWithQueryOrUserinfo(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	for _, frontendURL := range []string{
+		"https://example.com?utm=1",
+		"https://user:pass@example.com",
+	} {
+		repo := &settingHandlerRepoStub{
+			values: map[string]string{
+				service.SettingKeyPromoCodeEnabled: "true",
+			},
+		}
+		svc := service.NewSettingService(repo, &config.Config{Default: config.DefaultConfig{UserConcurrency: 5}})
+		handler := NewSettingHandler(svc, nil, nil, nil, nil, nil)
+
+		body := map[string]any{
+			"promo_code_enabled": true,
+			"frontend_url":       frontendURL,
+		}
+		rawBody, err := json.Marshal(body)
+		require.NoError(t, err)
+
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(rawBody))
+		c.Request.Header.Set("Content-Type", "application/json")
+
+		handler.UpdateSettings(c)
+		require.Equal(t, http.StatusBadRequest, rec.Code)
+	}
+}
+
+func TestSettingHandler_UpdateSettings_AcceptsSupportedSEOImageAndRobotsValues(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &settingHandlerRepoStub{
+		values: map[string]string{
+			service.SettingKeyPromoCodeEnabled: "true",
+		},
+	}
+	svc := service.NewSettingService(repo, &config.Config{Default: config.DefaultConfig{UserConcurrency: 5}})
+	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil)
+
+	body := map[string]any{
+		"promo_code_enabled":   true,
+		"seo_default_og_image": "/og/home.svg",
+		"seo_default_robots":   "index, follow",
+		"seo_home_robots":      "noindex, nofollow",
+		"login_agreement_documents": []map[string]any{
+			{
+				"id":           "terms",
+				"title":        "服务条款",
+				"content_md":   "# 条款",
+				"seo_og_image": "https://example.com/legal.png",
+				"seo_robots":   "index, follow",
+			},
+		},
+		"custom_menu_items": []map[string]any{
+			{
+				"id":           "guide",
+				"label":        "Guide",
+				"url":          "md:guide",
+				"page_slug":    "guide",
+				"visibility":   "user",
+				"seo_og_image": "/og/custom-guide.svg",
+				"seo_robots":   "index, nofollow",
+			},
+		},
+	}
+	rawBody, err := json.Marshal(body)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(rawBody))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.UpdateSettings(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "/og/home.svg", repo.values[service.SettingKeySEODefaultOGImage])
+	require.Equal(t, "index, follow", repo.values[service.SettingKeySEODefaultRobots])
+	require.Equal(t, "noindex, nofollow", repo.values[service.SettingKeySEOHomeRobots])
+}
+
+func TestSettingHandler_UpdateSettings_RejectsInvalidSEOImageAndRobotsValues(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []map[string]any{
+		{
+			"promo_code_enabled":   true,
+			"seo_default_og_image": "//evil.example/x.png",
+		},
+		{
+			"promo_code_enabled": true,
+			"seo_default_robots": "index, maybe",
+		},
+		{
+			"promo_code_enabled": true,
+			"login_agreement_documents": []map[string]any{
+				{
+					"id":           "terms",
+					"title":        "服务条款",
+					"content_md":   "# 条款",
+					"seo_og_image": "javascript:alert(1)",
+				},
+			},
+		},
+		{
+			"promo_code_enabled": true,
+			"custom_menu_items": []map[string]any{
+				{
+					"id":         "guide",
+					"label":      "Guide",
+					"url":        "md:guide",
+					"page_slug":  "guide",
+					"visibility": "user",
+					"seo_robots": "bad-value",
+				},
+			},
+		},
+	}
+
+	for _, body := range tests {
+		repo := &settingHandlerRepoStub{
+			values: map[string]string{
+				service.SettingKeyPromoCodeEnabled: "true",
+			},
+		}
+		svc := service.NewSettingService(repo, &config.Config{Default: config.DefaultConfig{UserConcurrency: 5}})
+		handler := NewSettingHandler(svc, nil, nil, nil, nil, nil)
+
+		rawBody, err := json.Marshal(body)
+		require.NoError(t, err)
+
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(rawBody))
+		c.Request.Header.Set("Content-Type", "application/json")
+
+		handler.UpdateSettings(c)
+		require.Equal(t, http.StatusBadRequest, rec.Code)
+	}
+}
+
 func TestDiffSettings_IncludesAuthSourceDefaultsAndForceEmail(t *testing.T) {
 	changed := diffSettings(
 		&service.SystemSettings{},

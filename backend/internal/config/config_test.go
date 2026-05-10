@@ -818,6 +818,15 @@ func TestValidateServerFrontendURL(t *testing.T) {
 	}
 }
 
+func TestValidateAbsoluteHTTPURLAllowsGenericAbsoluteURL(t *testing.T) {
+	if err := ValidateAbsoluteHTTPURL("https://example.com/path?utm=1"); err != nil {
+		t.Fatalf("ValidateAbsoluteHTTPURL path+query should remain valid generic url: %v", err)
+	}
+	if err := ValidateAbsoluteHTTPURL("https://user:pass@example.com/path"); err != nil {
+		t.Fatalf("ValidateAbsoluteHTTPURL userinfo should remain valid generic url: %v", err)
+	}
+}
+
 func TestValidateFrontendRedirectURL(t *testing.T) {
 	if err := ValidateFrontendRedirectURL("/auth/callback"); err != nil {
 		t.Fatalf("ValidateFrontendRedirectURL relative error: %v", err)

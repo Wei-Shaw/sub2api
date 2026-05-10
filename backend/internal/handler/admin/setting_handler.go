@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 
@@ -50,6 +51,59 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+var allowedSEORobotsValues = map[string]struct{}{
+	"":                  {},
+	"index, follow":     {},
+	"noindex, nofollow": {},
+	"index, nofollow":   {},
+	"noindex, follow":   {},
+}
+
+var seoInlineImagePattern = regexp.MustCompile(`^data:image/(png|jpeg|jpg|gif|webp);base64,[a-z0-9+/=\s]+$`)
+
+func validatePublicSiteBaseURL(raw string) error {
+	if err := config.ValidateAbsoluteHTTPURL(raw); err != nil {
+		return err
+	}
+
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return err
+	}
+	if parsed.RawQuery != "" {
+		return fmt.Errorf("must not include query")
+	}
+	if parsed.User != nil {
+		return fmt.Errorf("must not include userinfo")
+	}
+	return nil
+}
+
+func validateSEOImageURL(raw string) error {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	if strings.HasPrefix(raw, "/") {
+		if strings.HasPrefix(raw, "//") {
+			return fmt.Errorf("must not start with //")
+		}
+		return nil
+	}
+	if seoInlineImagePattern.MatchString(strings.ToLower(raw)) {
+		return nil
+	}
+	return config.ValidateAbsoluteHTTPURL(raw)
+}
+
+func validateSEORobotsValue(raw string) error {
+	raw = strings.TrimSpace(strings.ToLower(raw))
+	if _, ok := allowedSEORobotsValues[raw]; ok {
+		return nil
+	}
+	return fmt.Errorf("unsupported robots value")
 }
 
 // SettingHandler 系统设置处理器
@@ -695,6 +749,14 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			response.BadRequest(c, "Login agreement document content is too large (max 200KB)")
 			return
 		}
+		if err := validateSEOImageURL(doc.SEOOGImage); err != nil {
+			response.BadRequest(c, "Login agreement document SEO OG image must be an absolute http(s) URL, a site-relative path, or a supported image data URL")
+			return
+		}
+		if err := validateSEORobotsValue(doc.SEORobots); err != nil {
+			response.BadRequest(c, "Login agreement document SEO robots value is invalid")
+			return
+		}
 	}
 	if req.LoginAgreementEnabled && len(loginAgreementDocuments) == 0 {
 		response.BadRequest(c, "Login agreement documents are required when enabled")
@@ -1048,10 +1110,25 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	// Frontend URL 验证
 	req.FrontendURL = strings.TrimSpace(req.FrontendURL)
 	if req.FrontendURL != "" {
-		if err := config.ValidateAbsoluteHTTPURL(req.FrontendURL); err != nil {
+		if err := validatePublicSiteBaseURL(req.FrontendURL); err != nil {
 			response.BadRequest(c, "Frontend URL must be an absolute http(s) URL")
 			return
 		}
+	}
+	req.SEODefaultOGImage = strings.TrimSpace(req.SEODefaultOGImage)
+	if err := validateSEOImageURL(req.SEODefaultOGImage); err != nil {
+		response.BadRequest(c, "Default SEO OG image must be an absolute http(s) URL, a site-relative path, or a supported image data URL")
+		return
+	}
+	req.SEODefaultRobots = strings.TrimSpace(req.SEODefaultRobots)
+	if err := validateSEORobotsValue(req.SEODefaultRobots); err != nil {
+		response.BadRequest(c, "Default SEO robots value is invalid")
+		return
+	}
+	req.SEOHomeRobots = strings.TrimSpace(req.SEOHomeRobots)
+	if err := validateSEORobotsValue(req.SEOHomeRobots); err != nil {
+		response.BadRequest(c, "Home SEO robots value is invalid")
+		return
 	}
 
 	// 自定义菜单项验证
@@ -1119,11 +1196,13 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				response.BadRequest(c, "Custom menu item icon SVG is too large (max 10KB)")
 				return
 			}
-			if strings.TrimSpace(item.SEOOGImage) != "" {
-				if err := config.ValidateAbsoluteHTTPURL(strings.TrimSpace(item.SEOOGImage)); err != nil {
-					response.BadRequest(c, "Custom menu item SEO OG image must be an absolute http(s) URL")
-					return
-				}
+			if err := validateSEOImageURL(item.SEOOGImage); err != nil {
+				response.BadRequest(c, "Custom menu item SEO OG image must be an absolute http(s) URL, a site-relative path, or a supported image data URL")
+				return
+			}
+			if err := validateSEORobotsValue(item.SEORobots); err != nil {
+				response.BadRequest(c, "Custom menu item SEO robots value is invalid")
+				return
 			}
 			// Auto-generate ID if missing
 			if strings.TrimSpace(item.ID) == "" {

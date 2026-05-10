@@ -296,9 +296,8 @@ func (h *PageHandler) UploadPageImage(c *gin.Context) {
 		return
 	}
 
-	fileName := ensureUniquePageImageName(targetDir, baseName, ext)
-	targetPath := filepath.Join(targetDir, fileName)
-	if err := os.WriteFile(targetPath, data, 0o644); err != nil {
+	fileName, err := writeUniquePageImage(targetDir, baseName, ext, data)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save image"})
 		return
 	}
@@ -607,6 +606,37 @@ func ensureUniquePageImageName(dir, baseName, ext string) string {
 		if _, err := os.Stat(filepath.Join(dir, candidate)); errors.Is(err, os.ErrNotExist) {
 			return candidate
 		}
+	}
+}
+
+func writeUniquePageImage(dir, baseName, ext string, data []byte) (string, error) {
+	for i := 1; ; i++ {
+		fileName := baseName + ext
+		if i > 1 {
+			fileName = baseName + "-" + strconv.Itoa(i) + ext
+		}
+
+		targetPath := filepath.Join(dir, fileName)
+		file, err := os.OpenFile(targetPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+		if err != nil {
+			if errors.Is(err, os.ErrExist) {
+				continue
+			}
+			return "", err
+		}
+
+		writeErr := func() error {
+			defer func() { _ = file.Close() }()
+			if _, err := file.Write(data); err != nil {
+				return err
+			}
+			return file.Sync()
+		}()
+		if writeErr != nil {
+			_ = os.Remove(targetPath)
+			return "", writeErr
+		}
+		return fileName, nil
 	}
 }
 

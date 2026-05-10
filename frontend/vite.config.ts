@@ -283,8 +283,8 @@ function staticPrerenderRoutes(settingsURL: string, publicPagesURL: string, tuto
           routes = collectPrerenderRoutes(settingsPayload)
         }
       } catch (error) {
-        console.warn(
-          '[vite] failed to enumerate public prerender routes from settings API, only /home will be prerendered:',
+        console.info(
+          '[vite] settings API unavailable during prerender enumeration, falling back to base public routes:',
           (error as Error).message
         )
       }

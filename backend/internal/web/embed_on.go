@@ -528,6 +528,12 @@ func (s *FrontendServer) serveSitemapXML(c *gin.Context) {
 	}
 	content := s.buildSitemapXML(settingsJSON)
 	if len(content) == 0 {
+		// Fall back to the base generator if the runtime visibility filter
+		// cannot build a narrowed sitemap. Returning a valid sitemap is better
+		// than turning public crawl discovery into a 404.
+		content = buildSitemapXML(settingsJSON)
+	}
+	if len(content) == 0 {
 		c.Status(http.StatusNotFound)
 		c.Abort()
 		return

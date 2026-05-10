@@ -69,13 +69,9 @@ export async function setLocale(locale: string): Promise<void> {
   localStorage.setItem(LOCALE_KEY, locale)
   document.documentElement.setAttribute('lang', locale)
 
-  // 同步更新浏览器页签标题，使其跟随语言切换
-  const { default: router } = await import('@/router')
-  const { useAppStore } = await import('@/stores/app')
-  const { updateRouteSEO } = await import('@/utils/seo')
-  const route = router.currentRoute.value
-  const appStore = useAppStore()
-  updateRouteSEO(route, appStore.cachedPublicSettings)
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('sub2api:locale-changed'))
+  }
 }
 
 export function getLocale(): LocaleCode {

@@ -351,6 +351,42 @@ func TestServePageImage_SupportsChineseFilename(t *testing.T) {
 	}
 }
 
+func TestWriteUniquePageImage_DoesNotOverwriteExistingFile(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	first, err := writeUniquePageImage(dir, "教程截图-中文文件名", ".png", []byte("one"))
+	if err != nil {
+		t.Fatalf("write first image: %v", err)
+	}
+	second, err := writeUniquePageImage(dir, "教程截图-中文文件名", ".png", []byte("two"))
+	if err != nil {
+		t.Fatalf("write second image: %v", err)
+	}
+
+	if first != "教程截图-中文文件名.png" {
+		t.Fatalf("first name = %q", first)
+	}
+	if second != "教程截图-中文文件名-2.png" {
+		t.Fatalf("second name = %q", second)
+	}
+
+	rawFirst, err := os.ReadFile(filepath.Join(dir, first))
+	if err != nil {
+		t.Fatalf("read first image: %v", err)
+	}
+	rawSecond, err := os.ReadFile(filepath.Join(dir, second))
+	if err != nil {
+		t.Fatalf("read second image: %v", err)
+	}
+	if string(rawFirst) != "one" {
+		t.Fatalf("first body = %q", rawFirst)
+	}
+	if string(rawSecond) != "two" {
+		t.Fatalf("second body = %q", rawSecond)
+	}
+}
+
 func TestTutorialDocumentRoundTripStable(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	root := t.TempDir()
