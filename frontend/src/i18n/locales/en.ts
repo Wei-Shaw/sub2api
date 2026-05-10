@@ -6431,6 +6431,8 @@ export default {
       payInNewWindowHint: 'The payment page has opened in a new window. Please complete the payment there and return to this page.',
       openPayWindow: 'Reopen Payment Page',
       expiresIn: 'Expires in',
+      amountDue: 'Amount Due',
+      exactAmountWarning: 'Pay the exact amount or it cannot be credited automatically',
       expired: 'Order Expired',
       expiredDesc: 'This order has expired. Please create a new one.',
       cancelled: 'Order Cancelled',

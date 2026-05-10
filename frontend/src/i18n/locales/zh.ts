@@ -6616,6 +6616,8 @@ export default {
       payInNewWindowHint: '支付页面已在新窗口打开，请在新窗口中完成支付后返回此页面',
       openPayWindow: '重新打开支付页面',
       expiresIn: '剩余支付时间',
+      amountDue: '应付金额',
+      exactAmountWarning: '务必支付准确金额，否则无法自动到账',
       expired: '订单已过期',
       expiredDesc: '订单已超时，请重新创建订单',
       cancelled: '订单已取消',

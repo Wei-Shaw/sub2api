@@ -74,6 +74,13 @@
       <div class="card p-6">
         <div class="flex flex-col items-center space-y-4">
           <p class="text-lg font-semibold text-gray-900 dark:text-white">{{ scanTitle }}</p>
+          <div v-if="displayPayAmount" class="rounded-2xl bg-primary-50 px-5 py-3 text-center dark:bg-primary-900/20">
+            <p class="text-xs font-medium uppercase tracking-wide text-primary-500 dark:text-primary-300">{{ t('payment.qr.amountDue') }}</p>
+            <p class="mt-1 text-3xl font-bold tabular-nums text-primary-600 dark:text-primary-300">¥{{ displayPayAmount }}</p>
+            <p class="mt-3 rounded-lg bg-amber-100 px-3 py-2 text-sm font-semibold text-amber-800 dark:bg-amber-500/15 dark:text-amber-200">
+              {{ t('payment.qr.exactAmountWarning') }}
+            </p>
+          </div>
           <div :class="['relative rounded-lg border-2 p-4', qrBorderClass]">
             <canvas ref="qrCanvas" class="mx-auto"></canvas>
             <!-- Brand logo overlay -->
@@ -104,6 +111,13 @@
       <div class="card p-6">
         <div class="flex flex-col items-center space-y-4 py-4">
           <div class="h-10 w-10 animate-spin rounded-full border-4 border-primary-500 border-t-transparent"></div>
+          <div v-if="displayPayAmount" class="rounded-2xl bg-primary-50 px-5 py-3 text-center dark:bg-primary-900/20">
+            <p class="text-xs font-medium uppercase tracking-wide text-primary-500 dark:text-primary-300">{{ t('payment.qr.amountDue') }}</p>
+            <p class="mt-1 text-3xl font-bold tabular-nums text-primary-600 dark:text-primary-300">¥{{ displayPayAmount }}</p>
+            <p class="mt-3 rounded-lg bg-amber-100 px-3 py-2 text-sm font-semibold text-amber-800 dark:bg-amber-500/15 dark:text-amber-200">
+              {{ t('payment.qr.exactAmountWarning') }}
+            </p>
+          </div>
           <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('payment.qr.payInNewWindowHint') }}</p>
           <button v-if="payUrl" class="btn btn-secondary text-sm" @click="reopenPopup">
             {{ t('payment.qr.openPayWindow') }}
@@ -142,6 +156,7 @@ const props = defineProps<{
   paymentType: string
   payUrl?: string
   orderType?: string
+  payAmount?: number
 }>()
 
 type PaymentOutcome = 'success' | 'cancelled' | 'expired'
@@ -166,6 +181,10 @@ let countdownTimer: ReturnType<typeof setInterval> | null = null
 
 const isAlipay = computed(() => props.paymentType.includes('alipay'))
 const isWxpay = computed(() => props.paymentType.includes('wxpay'))
+const displayPayAmount = computed(() => {
+  const amount = Number(props.payAmount || 0)
+  return amount > 0 ? amount.toFixed(2) : ''
+})
 
 const qrBorderClass = computed(() => {
   if (isAlipay.value) return 'border-[#00AEEF] bg-blue-50 dark:border-[#00AEEF]/70 dark:bg-blue-950/20'

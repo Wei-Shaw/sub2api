@@ -21,6 +21,7 @@
             :payment-type="paymentState.paymentType"
             :pay-url="paymentState.payUrl"
             :order-type="paymentState.orderType"
+            :pay-amount="paymentState.payAmount"
             @done="onPaymentDone"
             @success="onPaymentSuccess"
             @settled="onPaymentSettled"
