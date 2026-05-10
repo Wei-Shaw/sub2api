@@ -1,8 +1,9 @@
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useOpenAIOAuth } from '@/composables/useOpenAIOAuth'
 import {
   buildModelMappingObject,
+  getModelsByPlatform,
   getPresetMappingsByPlatform
 } from '@/composables/useModelWhitelist'
 import {
@@ -51,6 +52,12 @@ export function useOpenAIForm() {
     { value: OPENAI_WS_MODE_CTX_POOL, label: t('admin.accounts.openai.wsModeCtxPool') },
     { value: OPENAI_WS_MODE_PASSTHROUGH, label: t('admin.accounts.openai.wsModePassthrough') }
   ])
+  watch(modelRestrictionMode, (newMode) => {
+    if (newMode === 'whitelist') {
+      allowedModels.value = [...getModelsByPlatform('openai')]
+    }
+  })
+
   const isModelRestrictionDisabled = computed(() => openaiPassthroughEnabled.value)
   const oauthConfig: OAuthFlowConfig = { showRefreshTokenOption: true, showMobileRefreshTokenOption: true, showProxyWarning: false, platform: 'openai' }
 
@@ -177,7 +184,7 @@ export function useOpenAIForm() {
     openaiPassthroughEnabled.value = false; openAICompactMode.value = 'auto'
     openaiOAuthWSMode.value = OPENAI_WS_MODE_OFF; openaiAPIKeyWSMode.value = OPENAI_WS_MODE_OFF
     codexCLIOnlyEnabled.value = false; openAICompactModelMappings.value = []
-    modelRestrictionMode.value = 'whitelist'; allowedModels.value = []; modelMappings.value = []
+    modelRestrictionMode.value = 'whitelist'; allowedModels.value = [...getModelsByPlatform('openai')]; modelMappings.value = []
     poolModeEnabled.value = false; poolModeRetryCount.value = 3
     customErrorCodesEnabled.value = false; selectedErrorCodes.value = []
     tempUnschedEnabled.value = false; tempUnschedRules.value = []

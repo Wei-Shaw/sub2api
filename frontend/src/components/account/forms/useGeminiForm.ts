@@ -1,7 +1,7 @@
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useGeminiOAuth } from '@/composables/useGeminiOAuth'
-import { buildModelMappingObject, getPresetMappingsByPlatform } from '@/composables/useModelWhitelist'
+import { buildModelMappingObject, getModelsByPlatform, getPresetMappingsByPlatform } from '@/composables/useModelWhitelist'
 import type { PlatformFormPayload, PlatformFormValidation, OAuthFlowConfig, EditFormPayload, ModelMapping } from './types'
 import type { Account, CreateAccountRequest } from '@/types'
 import * as editH from './editHelpers'
@@ -41,6 +41,12 @@ export function useGeminiForm() {
       default: return geminiTierAIStudio.value
     }
   })
+  watch(modelRestrictionMode, (newMode) => {
+    if (newMode === 'whitelist') {
+      allowedModels.value = [...getModelsByPlatform('gemini')]
+    }
+  })
+
   const oauthConfig: OAuthFlowConfig = { showProjectId: true, platform: 'gemini' }
   const geminiHelpLinks = { apiKey: 'https://aistudio.google.com/app/apikey', aiStudioPricing: 'https://ai.google.dev/pricing', gcpProject: 'https://console.cloud.google.com/welcome/new' }
 
@@ -138,7 +144,7 @@ export function useGeminiForm() {
     apiKeyBaseUrl.value = 'https://generativelanguage.googleapis.com'; apiKeyValue.value = ''
     geminiTierGoogleOne.value = 'google_one_free'; geminiTierGcp.value = 'gcp_standard'; geminiTierAIStudio.value = 'aistudio_free'
     vertexServiceAccountJson.value = ''; vertexProjectId.value = ''; vertexClientEmail.value = ''; vertexLocation.value = 'global'
-    modelRestrictionMode.value = 'whitelist'; allowedModels.value = []; modelMappings.value = []
+    modelRestrictionMode.value = 'whitelist'; allowedModels.value = [...getModelsByPlatform('gemini')]; modelMappings.value = []
     poolModeEnabled.value = false; poolModeRetryCount.value = 3; customErrorCodesEnabled.value = false; selectedErrorCodes.value = []
     tempUnschedEnabled.value = false; tempUnschedRules.value = []
     geminiOAuth.resetState()

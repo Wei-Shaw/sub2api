@@ -1,8 +1,9 @@
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAccountOAuth, type AddMethod } from '@/composables/useAccountOAuth'
 import {
   buildModelMappingObject,
+  getModelsByPlatform,
   getPresetMappingsByPlatform
 } from '@/composables/useModelWhitelist'
 import { applyInterceptWarmup } from '@/components/account/credentialsBuilder'
@@ -68,6 +69,12 @@ export function useAnthropicForm() {
     { value: 'throttle', label: t('admin.accounts.quotaControl.rpmLimit.umqModeThrottle') },
     { value: 'serialize', label: t('admin.accounts.quotaControl.rpmLimit.umqModeSerialize') },
   ])
+
+  watch(modelRestrictionMode, (newMode) => {
+    if (newMode === 'whitelist') {
+      allowedModels.value = [...getModelsByPlatform('anthropic')]
+    }
+  })
 
   const oauthConfig: OAuthFlowConfig = {
     showCookieOption: true,
@@ -262,7 +269,7 @@ export function useAnthropicForm() {
     webSearchEmulationMode.value = 'default'
     interceptWarmupRequests.value = false
     modelRestrictionMode.value = 'whitelist'
-    allowedModels.value = []
+    allowedModels.value = [...getModelsByPlatform('anthropic')]
     modelMappings.value = []
     poolModeEnabled.value = false
     poolModeRetryCount.value = 3
