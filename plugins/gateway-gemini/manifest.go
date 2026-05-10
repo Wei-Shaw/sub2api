@@ -60,6 +60,12 @@ func buildManifest() *pluginsdk.Manifest {
 				TestConfig: &pluginsdk.TestConnectionConfig{
 					ModelSelector:    true,
 					DefaultTestModel: "gemini-2.5-flash",
+					ImageModelPatterns: []string{"gemini-", "-image"},
+					PrioritizedModels: []string{
+						"gemini-3.1-flash-image", "gemini-2.5-flash-image",
+						"gemini-2.5-flash", "gemini-2.5-pro",
+						"gemini-3-flash-preview", "gemini-3-pro-preview", "gemini-2.0-flash",
+					},
 				},
 			},
 		},

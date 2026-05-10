@@ -41,9 +41,12 @@ func platformDeclToProto(d *PlatformDecl) *pb.PlatformDeclaration {
 	}
 	if d.TestConfig != nil {
 		p.TestConfig = &pb.TestConnectionConfig{
-			ModelSelector:     d.TestConfig.ModelSelector,
-			TestComponentPath: d.TestConfig.TestComponentPath,
-			DefaultTestModel:  d.TestConfig.DefaultTestModel,
+			ModelSelector:      d.TestConfig.ModelSelector,
+			TestComponentPath:  d.TestConfig.TestComponentPath,
+			DefaultTestModel:   d.TestConfig.DefaultTestModel,
+			TestModes:          testModesToProto(d.TestConfig.TestModes),
+			ImageModelPatterns: d.TestConfig.ImageModelPatterns,
+			PrioritizedModels:  d.TestConfig.PrioritizedModels,
 		}
 	}
 	return p
@@ -171,9 +174,12 @@ func PlatformDeclFromProto(p *pb.PlatformDeclaration) PlatformDecl {
 	}
 	if p.TestConfig != nil {
 		d.TestConfig = &TestConnectionConfig{
-			ModelSelector:     p.TestConfig.ModelSelector,
-			TestComponentPath: p.TestConfig.TestComponentPath,
-			DefaultTestModel:  p.TestConfig.DefaultTestModel,
+			ModelSelector:      p.TestConfig.ModelSelector,
+			TestComponentPath:  p.TestConfig.TestComponentPath,
+			DefaultTestModel:   p.TestConfig.DefaultTestModel,
+			TestModes:          testModesFromProto(p.TestConfig.TestModes),
+			ImageModelPatterns: p.TestConfig.ImageModelPatterns,
+			PrioritizedModels:  p.TestConfig.PrioritizedModels,
 		}
 	}
 	for _, ps := range p.PrivacyStates {
@@ -233,4 +239,26 @@ func customActionFromProto(p *pb.CustomActionDeclaration) CustomActionDecl {
 		ComponentPath: p.ComponentPath,
 		SortOrder:     int(p.SortOrder),
 	}
+}
+
+func testModesToProto(modes []TestModeOption) []*pb.TestModeOption {
+	if len(modes) == 0 {
+		return nil
+	}
+	out := make([]*pb.TestModeOption, len(modes))
+	for i := range modes {
+		out[i] = &pb.TestModeOption{Value: modes[i].Value, Label: modes[i].Label}
+	}
+	return out
+}
+
+func testModesFromProto(modes []*pb.TestModeOption) []TestModeOption {
+	if len(modes) == 0 {
+		return nil
+	}
+	out := make([]TestModeOption, len(modes))
+	for i, m := range modes {
+		out[i] = TestModeOption{Value: m.Value, Label: m.Label}
+	}
+	return out
 }

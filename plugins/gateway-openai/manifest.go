@@ -68,6 +68,11 @@ func buildManifest() *pluginsdk.Manifest {
 				TestConfig: &pluginsdk.TestConnectionConfig{
 					ModelSelector:    true,
 					DefaultTestModel: "gpt-4o",
+					TestModes: []pluginsdk.TestModeOption{
+						{Value: "default", Label: "Default"},
+						{Value: "compact", Label: "Compact"},
+					},
+					ImageModelPatterns: []string{"gpt-image-"},
 				},
 			},
 		},

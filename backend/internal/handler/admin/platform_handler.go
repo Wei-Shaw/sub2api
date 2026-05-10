@@ -115,9 +115,17 @@ type customActionResponse struct {
 }
 
 type testConfigResponse struct {
-	ModelSelector     bool   `json:"model_selector"`
-	TestComponentPath string `json:"test_component_path,omitempty"`
-	DefaultTestModel  string `json:"default_test_model,omitempty"`
+	ModelSelector      bool               `json:"model_selector"`
+	TestComponentPath  string             `json:"test_component_path,omitempty"`
+	DefaultTestModel   string             `json:"default_test_model,omitempty"`
+	TestModes          []testModeOption   `json:"test_modes,omitempty"`
+	ImageModelPatterns []string           `json:"image_model_patterns,omitempty"`
+	PrioritizedModels  []string           `json:"prioritized_models,omitempty"`
+}
+
+type testModeOption struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
 }
 
 type privacyStateResponse struct {
@@ -170,9 +178,12 @@ func toPlatformResponse(e *plugin.RegisteredPlatform) platformResponse {
 	}
 	if d.TestConfig != nil {
 		r.TestConfig = &testConfigResponse{
-			ModelSelector:     d.TestConfig.ModelSelector,
-			TestComponentPath: d.TestConfig.TestComponentPath,
-			DefaultTestModel:  d.TestConfig.DefaultTestModel,
+			ModelSelector:      d.TestConfig.ModelSelector,
+			TestComponentPath:  d.TestConfig.TestComponentPath,
+			DefaultTestModel:   d.TestConfig.DefaultTestModel,
+			TestModes:          toTestModeOptions(d.TestConfig.TestModes),
+			ImageModelPatterns: d.TestConfig.ImageModelPatterns,
+			PrioritizedModels:  d.TestConfig.PrioritizedModels,
 		}
 	}
 	for _, ps := range d.PrivacyStates {
@@ -220,6 +231,17 @@ func toDisplayRows(rows []pluginsdk.DisplayRow) []displayRowResp {
 	out := make([]displayRowResp, len(rows))
 	for i, r := range rows {
 		out[i] = displayRowResp{Label: r.Label, Source: r.Source, Format: r.Format}
+	}
+	return out
+}
+
+func toTestModeOptions(opts []pluginsdk.TestModeOption) []testModeOption {
+	if len(opts) == 0 {
+		return nil
+	}
+	out := make([]testModeOption, len(opts))
+	for i, o := range opts {
+		out[i] = testModeOption{Value: o.Value, Label: o.Label}
 	}
 	return out
 }

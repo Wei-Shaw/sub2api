@@ -59,10 +59,18 @@ export interface CustomActionDeclaration {
   sort_order: number
 }
 
+export interface TestModeOption {
+  value: string
+  label: string
+}
+
 export interface TestConnectionConfig {
   model_selector: boolean
   test_component_path?: string
   default_test_model?: string
+  test_modes?: TestModeOption[]
+  image_model_patterns?: string[]
+  prioritized_models?: string[]
 }
 
 export interface GroupConfigDeclaration {

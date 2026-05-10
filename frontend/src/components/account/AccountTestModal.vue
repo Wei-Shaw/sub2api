@@ -55,13 +55,13 @@
         />
       </div>
 
-      <div v-if="isOpenAIAccount" class="space-y-1.5">
+      <div v-if="hasTestModes" class="space-y-1.5">
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
-          {{ t('admin.accounts.openai.testMode') }}
+          {{ t('admin.accounts.testMode') }}
         </label>
         <Select
           v-model="testMode"
-          :options="openAITestModeOptions"
+          :options="testModeOptions"
           :disabled="status === 'connecting'"
         />
       </div>
@@ -287,35 +287,37 @@ const testPrompt = ref('')
 const loadingModels = ref(false)
 let abortController: AbortController | null = null
 const generatedImages = ref<PreviewImage[]>([])
-const testMode = ref<'default' | 'compact'>('default')
-const isOpenAIAccount = computed(() => props.account?.platform === 'openai')
-const openAITestModeOptions = computed(() => [
-  { value: 'default', label: t('admin.accounts.openai.testModeDefault') },
-  { value: 'compact', label: t('admin.accounts.openai.testModeCompact') }
-])
+const testMode = ref('default')
 const previewImageUrl = ref('')
-const prioritizedGeminiModels = ['gemini-3.1-flash-image', 'gemini-2.5-flash-image', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-3-flash-preview', 'gemini-3-pro-preview', 'gemini-2.0-flash']
-const supportsGeminiImageTest = computed(() => {
+
+const platformDecl = computed(() => getPlatformDecl(props.account?.platform ?? ''))
+const testConfig = computed(() => platformDecl.value?.test_config)
+
+// test_modes from plugin declaration
+const testModeOptions = computed(() => {
+  const modes = testConfig.value?.test_modes
+  if (!modes || modes.length === 0) return []
+  return modes.map(m => ({ value: m.value, label: m.label }))
+})
+const hasTestModes = computed(() => testModeOptions.value.length > 0)
+
+// Image test: determined by image_model_patterns
+const supportsImageTest = computed(() => {
+  const patterns = testConfig.value?.image_model_patterns
+  if (!patterns || patterns.length === 0) return false
   const modelID = selectedModelId.value.toLowerCase()
-  return modelID.startsWith('gemini-') && modelID.includes('-image')
+  return patterns.every(p => modelID.includes(p.toLowerCase()))
 })
 
-const supportsOpenAIImageTest = computed(() => {
-  const modelID = selectedModelId.value.toLowerCase()
-  return modelID.startsWith('gpt-image-')
-})
-
-const supportsImageTest = computed(() => supportsGeminiImageTest.value || supportsOpenAIImageTest.value)
-
-/** Sort models using the prioritized Gemini model list (fallback for gemini/antigravity). */
+// Model sorting: determined by prioritized_models
 const sortTestModels = (models: ClaudeModel[]) => {
-  const priorityMap = new Map(prioritizedGeminiModels.map((id, index) => [id, index]))
-
+  const prioritized = testConfig.value?.prioritized_models
+  if (!prioritized || prioritized.length === 0) return models
+  const priorityMap = new Map(prioritized.map((id, index) => [id, index]))
   return [...models].sort((a, b) => {
     const aPriority = priorityMap.get(a.id) ?? Number.MAX_SAFE_INTEGER
     const bPriority = priorityMap.get(b.id) ?? Number.MAX_SAFE_INTEGER
-    if (aPriority !== bPriority) return aPriority - bPriority
-    return 0
+    return aPriority - bPriority
   })
 }
 
@@ -429,7 +431,7 @@ const startTest = async () => {
       body: JSON.stringify({
         model_id: selectedModelId.value,
         prompt: supportsImageTest.value ? testPrompt.value.trim() : '',
-        mode: isOpenAIAccount.value ? testMode.value : 'default'
+        mode: hasTestModes.value ? testMode.value : 'default'
       }),
       signal: abortController.signal
     })

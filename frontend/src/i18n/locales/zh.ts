@@ -3010,6 +3010,7 @@ export default {
       testAccountTypeLabel: '账号类型：{type}',
       selectTestModel: '选择测试模型',
       testModel: '测试模型',
+      testMode: '测试模式',
       testPrompt: '提示词："hi"',
       geminiImagePromptLabel: '生图提示词',
       geminiImagePromptPlaceholder: '例如：生成一只戴宇航员头盔的橘猫，像素插画风格，纯色背景。',

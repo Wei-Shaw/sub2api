@@ -449,10 +449,18 @@ message CustomActionDeclaration {
   int32 sort_order = 7;
 }
 
+message TestModeOption {
+  string value = 1;
+  string label = 2;
+}
+
 message TestConnectionConfig {
   bool model_selector = 1;
   string test_component_path = 2;
   string default_test_model = 3;
+  repeated TestModeOption test_modes = 4;
+  repeated string image_model_patterns = 5;
+  repeated string prioritized_models = 6;
 }
 
 message PrivacyState {

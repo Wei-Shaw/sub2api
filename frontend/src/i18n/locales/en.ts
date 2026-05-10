@@ -2872,6 +2872,7 @@ export default {
       testAccountTypeLabel: 'Account type: {type}',
       selectTestModel: 'Select Test Model',
       testModel: 'Test model',
+      testMode: 'Test Mode',
       testPrompt: 'Prompt: "hi"',
       geminiImagePromptLabel: 'Image prompt',
       geminiImagePromptPlaceholder: 'Example: Generate an orange cat astronaut sticker in pixel-art style on a solid background.',

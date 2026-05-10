@@ -75,11 +75,20 @@ type CustomActionDecl struct {
 	SortOrder     int
 }
 
+// TestModeOption represents a selectable test mode in the test dialog.
+type TestModeOption struct {
+	Value string
+	Label string
+}
+
 // TestConnectionConfig customizes the test connection dialog.
 type TestConnectionConfig struct {
-	ModelSelector     bool
-	TestComponentPath string
-	DefaultTestModel  string
+	ModelSelector      bool
+	TestComponentPath  string
+	DefaultTestModel   string
+	TestModes          []TestModeOption
+	ImageModelPatterns []string
+	PrioritizedModels  []string
 }
 
 // PrivacyStateDecl declares a privacy state for the platform.
