@@ -196,7 +196,10 @@ export function useAnthropicForm() {
   }
 
   function buildServiceAccountPayload(): PlatformFormPayload {
-    return { credentials: { service_account_json: vertexServiceAccountJson.value.trim(), project_id: vertexProjectId.value.trim(), client_email: vertexClientEmail.value.trim(), location: vertexLocation.value.trim(), tier_id: 'vertex' }, typeOverride: 'service_account' as AccountType }
+    const credentials: Record<string, unknown> = { service_account_json: vertexServiceAccountJson.value.trim(), project_id: vertexProjectId.value.trim(), client_email: vertexClientEmail.value.trim(), location: vertexLocation.value.trim(), tier_id: 'vertex' }
+    const mapping = buildModelMapping()
+    if (mapping) credentials.model_mapping = mapping
+    return { credentials, typeOverride: 'service_account' as AccountType }
   }
 
   function buildApiKeyPayload(): PlatformFormPayload {
@@ -304,6 +307,9 @@ export function useAnthropicForm() {
       editH.loadModelMappingFromCredentials(credentials, modelRestrictionMode, allowedModels, modelMappings)
       editH.loadPoolModeFromCredentials(credentials, poolModeEnabled, poolModeRetryCount)
       editH.loadCustomErrorCodesFromCredentials(credentials, customErrorCodesEnabled, selectedErrorCodes)
+    } else if (account.type === 'service_account') {
+      vertexLocation.value = (credentials?.location as string) || 'us-east5'
+      editH.loadModelMappingFromCredentials(credentials, modelRestrictionMode, allowedModels, modelMappings)
     } else if (account.type === 'oauth' || account.type === 'setup-token') {
       // OAuth extra
       windowCostEnabled.value = (extra?.window_cost_limit as number) > 0
@@ -352,6 +358,9 @@ export function useAnthropicForm() {
       editH.applyModelMappingToCredentials(newCreds, modelRestrictionMode.value, allowedModels.value, modelMappings.value)
       editH.applyPoolModeToCredentials(newCreds, poolModeEnabled.value, poolModeRetryCount.value)
       editH.applyCustomErrorCodesToCredentials(newCreds, customErrorCodesEnabled.value, selectedErrorCodes.value)
+    } else if (account.type === 'service_account') {
+      newCreds.location = vertexLocation.value.trim() || 'us-east5'
+      editH.applyModelMappingToCredentials(newCreds, modelRestrictionMode.value, allowedModels.value, modelMappings.value)
     } else if (account.type === 'oauth' || account.type === 'setup-token') {
       // OAuth extra fields
       if (windowCostEnabled.value && windowCostLimit.value != null && windowCostLimit.value > 0) {

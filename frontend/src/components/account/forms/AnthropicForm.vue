@@ -102,6 +102,15 @@
         @update:location="vertexLocation = $event"
         @parse-error="appStore.showError($event)"
       />
+      <ModelRestrictionSection
+        platform="anthropic"
+        :mode="modelRestrictionMode"
+        :allowed-models="allowedModels"
+        :mappings="modelMappings"
+        @update:mode="modelRestrictionMode = $event"
+        @update:allowed-models="allowedModels = $event"
+        @update:mappings="modelMappings = $event"
+      />
     </template>
 
     <!-- OAuth-based: Add method selector -->

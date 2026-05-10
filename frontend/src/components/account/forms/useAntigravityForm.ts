@@ -1,10 +1,12 @@
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useAppStore } from '@/stores/app'
 import { useAntigravityOAuth } from '@/composables/useAntigravityOAuth'
 import {
   buildModelMappingObject,
   isValidWildcardPattern,
-  getPresetMappingsByPlatform
+  getPresetMappingsByPlatform,
+  fetchAntigravityDefaultMappings
 } from '@/composables/useModelWhitelist'
 import { applyInterceptWarmup } from '@/components/account/credentialsBuilder'
 import type { PlatformFormPayload, PlatformFormValidation, OAuthFlowConfig, EditFormPayload, ModelMapping } from './types'
@@ -13,6 +15,7 @@ import * as editH from './editHelpers'
 
 export function useAntigravityForm() {
   const { t } = useI18n()
+  const appStore = useAppStore()
   const antigravityOAuth = useAntigravityOAuth()
 
   const antigravityAccountType = ref<'oauth' | 'upstream'>('oauth')
@@ -129,13 +132,22 @@ export function useAntigravityForm() {
     antigravityModelMappings.value = []; mixedScheduling.value = false; allowOverages.value = false
     interceptWarmupRequests.value = false; tempUnschedEnabled.value = false; tempUnschedRules.value = []
     antigravityOAuth.resetState()
+    // Fire-and-forget default mappings fetch for create mode
+    fetchAntigravityDefaultMappings().then(defaults => {
+      if (defaults && defaults.length > 0) {
+        antigravityModelMappings.value = defaults
+      }
+    })
   }
 
   function addModelMapping() { antigravityModelMappings.value.push({ from: '', to: '' }) }
   function removeModelMapping(index: number) { antigravityModelMappings.value.splice(index, 1) }
   function addPresetMapping(from: string, to: string) {
-    const exists = antigravityModelMappings.value.some(m => m.from === from && m.to === to)
-    if (!exists) antigravityModelMappings.value.push({ from, to })
+    if (antigravityModelMappings.value.some(m => m.from === from)) {
+      appStore.showInfo(t('admin.accounts.mappingExists', { model: from }))
+      return
+    }
+    antigravityModelMappings.value.push({ from, to })
   }
 
   return {

@@ -91,15 +91,6 @@
           <input v-model="apiKeyValue" type="password" required class="input font-mono" placeholder="AIza..." />
         </div>
       </template>
-      <ModelRestrictionSection
-        platform="gemini"
-        :mode="modelRestrictionMode"
-        :allowed-models="allowedModels"
-        :mappings="modelMappings"
-        @update:mode="modelRestrictionMode = $event"
-        @update:allowed-models="allowedModels = $event"
-        @update:mappings="modelMappings = $event"
-      />
       <PoolModeSection
         :enabled="poolModeEnabled"
         :retry-count="poolModeRetryCount"
@@ -113,6 +104,18 @@
         @update:codes="selectedErrorCodes = $event"
       />
     </template>
+
+    <!-- Model restriction for apikey and service_account -->
+    <ModelRestrictionSection
+      v-if="context.accountCategory === 'apikey' || context.accountCategory === 'service_account'"
+      platform="gemini"
+      :mode="modelRestrictionMode"
+      :allowed-models="allowedModels"
+      :mappings="modelMappings"
+      @update:mode="modelRestrictionMode = $event"
+      @update:allowed-models="allowedModels = $event"
+      @update:mappings="modelMappings = $event"
+    />
 
     <!-- Temp Unsched -->
     <TempUnschedSection

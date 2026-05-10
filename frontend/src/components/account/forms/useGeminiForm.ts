@@ -74,7 +74,10 @@ export function useGeminiForm() {
 
   function getPayload(accountCategory: string): PlatformFormPayload {
     if (accountCategory === 'service_account') {
-      return { credentials: { service_account_json: vertexServiceAccountJson.value.trim(), project_id: vertexProjectId.value.trim(), client_email: vertexClientEmail.value.trim(), location: vertexLocation.value.trim(), tier_id: 'vertex' }, typeOverride: 'service_account' as any }
+      const credentials: Record<string, unknown> = { service_account_json: vertexServiceAccountJson.value.trim(), project_id: vertexProjectId.value.trim(), client_email: vertexClientEmail.value.trim(), location: vertexLocation.value.trim(), tier_id: 'vertex' }
+      const mm = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+      if (mm) credentials.model_mapping = mm
+      return { credentials, typeOverride: 'service_account' as any }
     }
     if (accountCategory === 'oauth-based') return { credentials: {}, needsOAuthFlow: true }
     const credentials: Record<string, unknown> = {
