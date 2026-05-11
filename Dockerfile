@@ -20,14 +20,12 @@ FROM ${NODE_IMAGE} AS frontend-builder
 
 WORKDIR /app/frontend
 
-# Install pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# Install pnpm (pin version to ensure consistency with lockfile)
+RUN corepack enable && corepack prepare pnpm@10.23.0 --activate
 
 # Install dependencies first (better caching)
 COPY frontend/package.json frontend/pnpm-lock.yaml frontend/.npmrc ./
-
-# Approve build scripts for pnpm 10+ (pnpm 10 blocks build scripts by default)
-RUN node -e "const fs=require('fs'),p=JSON.parse(fs.readFileSync('package.json','utf8'));p.pnpm={onlyBuiltDependencies:['esbuild','vue-demi']};fs.writeFileSync('package.json',JSON.stringify(p,null,2))" && pnpm install
+RUN pnpm install --frozen-lockfile
 
 # Copy frontend source and build
 COPY frontend/ ./
