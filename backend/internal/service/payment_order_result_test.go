@@ -91,6 +91,53 @@ func TestBuildCreateOrderResponseCopiesJSAPIPayload(t *testing.T) {
 	}
 }
 
+func TestValidateSelectedCreateOrderAmountCurrencyRejectsFractionalZeroDecimal(t *testing.T) {
+	t.Parallel()
+
+	err := validateSelectedCreateOrderAmountCurrency("100.50", &payment.InstanceSelection{
+		ProviderKey: payment.TypeStripe,
+		Config:      map[string]string{"currency": "JPY"},
+	})
+	if err == nil {
+		t.Fatal("expected fractional JPY amount to fail")
+	}
+	if appErr := infraerrors.FromError(err); appErr.Reason != "INVALID_AMOUNT" {
+		t.Fatalf("reason = %q, want INVALID_AMOUNT", appErr.Reason)
+	}
+}
+
+func TestCalculateCreateOrderPayAmountUsesCurrencyPrecision(t *testing.T) {
+	t.Parallel()
+
+	amountStr, amount, err := calculateCreateOrderPayAmount(100, 2.5, "JPY")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if amountStr != "103" || amount != 103 {
+		t.Fatalf("JPY pay amount = (%q, %v), want (103, 103)", amountStr, amount)
+	}
+
+	amountStr, amount, err = calculateCreateOrderPayAmount(12.345, 1, "KWD")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if amountStr != "12.469" || amount != 12.469 {
+		t.Fatalf("KWD pay amount = (%q, %v), want (12.469, 12.469)", amountStr, amount)
+	}
+}
+
+func TestCalculateCreateOrderPayAmountRejectsFractionalZeroDecimal(t *testing.T) {
+	t.Parallel()
+
+	_, _, err := calculateCreateOrderPayAmount(100.5, 0, "JPY")
+	if err == nil {
+		t.Fatal("expected fractional JPY amount to fail")
+	}
+	if appErr := infraerrors.FromError(err); appErr.Reason != "INVALID_AMOUNT" {
+		t.Fatalf("reason = %q, want INVALID_AMOUNT", appErr.Reason)
+	}
+}
+
 func TestMaybeBuildWeChatOAuthRequiredResponse(t *testing.T) {
 	t.Setenv("PAYMENT_RESUME_SIGNING_KEY", "0123456789abcdef0123456789abcdef")
 
