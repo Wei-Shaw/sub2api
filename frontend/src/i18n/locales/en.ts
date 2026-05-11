@@ -359,6 +359,7 @@ export default {
     subscriptions: 'Subscriptions',
     accounts: 'Accounts',
     proxies: 'Proxies',
+    adminTools: 'Admin Tools',
     redeemCodes: 'Redeem Codes',
     ops: 'Ops',
     promoCodes: 'Promo Codes',
@@ -1307,6 +1308,10 @@ export default {
 
   // Admin
   admin: {
+    tools: {
+      title: 'Admin Tools',
+      description: 'Proxy import, OpenAI RT import, and Codex config script'
+    },
     // Dashboard
     dashboard: {
       title: 'Admin Dashboard',

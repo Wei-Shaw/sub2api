@@ -12,8 +12,39 @@ import type {
   UpdateProxyRequest,
   PaginatedResponse,
   AdminDataPayload,
-  AdminDataImportResult
+  AdminDataImportResult,
+  AdminDataProxy
 } from '@/types'
+
+export interface ClashProxyPreviewRow {
+  index: number
+  name: string
+  duplicate: boolean
+  valid: boolean
+  errors: string[]
+  proxy: AdminDataProxy
+}
+
+export interface ClashProxyPreviewResponse {
+  source: 'content' | 'url' | string
+  rows: ClashProxyPreviewRow[]
+  summary: {
+    total: number
+    valid: number
+    invalid: number
+    duplicates: number
+  }
+  data_payload: AdminDataPayload
+  batch_payload: {
+    proxies: Array<{
+      protocol: string
+      host: string
+      port: number
+      username?: string
+      password?: string
+    }>
+  }
+}
 
 /**
  * List all proxies with pagination
@@ -255,6 +286,14 @@ export async function importData(payload: {
   return data
 }
 
+export async function previewClashImport(payload: {
+  url?: string
+  content?: string
+}): Promise<ClashProxyPreviewResponse> {
+  const { data } = await apiClient.post<ClashProxyPreviewResponse>('/admin/proxies/clash/preview', payload)
+  return data
+}
+
 export const proxiesAPI = {
   list,
   getAll,
@@ -271,7 +310,8 @@ export const proxiesAPI = {
   batchCreate,
   batchDelete,
   exportData,
-  importData
+  importData,
+  previewClashImport
 }
 
 export default proxiesAPI

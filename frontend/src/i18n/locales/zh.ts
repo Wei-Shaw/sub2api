@@ -359,6 +359,7 @@ export default {
     subscriptions: '订阅管理',
     accounts: '账号管理',
     proxies: 'IP管理',
+    adminTools: '管理工具',
     redeemCodes: '兑换码',
     ops: '运维监控',
     promoCodes: '优惠码',
@@ -1311,6 +1312,10 @@ export default {
 
   // Admin
   admin: {
+    tools: {
+      title: '管理工具',
+      description: '代理导入、OpenAI RT 导入和 Codex 配置脚本'
+    },
     // Dashboard
     dashboard: {
       title: '管理控制台',
