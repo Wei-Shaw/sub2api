@@ -37,10 +37,7 @@ REDACTED
 		return
 REDACTED
 
-	start := len(items) - 1
-	for start > 0 && items[start].Type == "function_call_output" {
-		start--
-REDACTED
+	start := latestAnthropicCompatResponsesInputTurnStart(items)
 	trimmed := append([]apicompat.ResponsesInputItem(nil), items[start:]...)
 	if len(trimmed) == len(items) {
 		return
@@ -48,6 +45,63 @@ REDACTED
 	if input, err := json.Marshal(trimmed); err == nil {
 		req.Input = input
 REDACTED
+REDACTED
+
+func latestAnthropicCompatResponsesInputTurnStart(items []apicompat.ResponsesInputItem) int {
+	if len(items) == 0 {
+		return 0
+REDACTED
+
+	start := len(items) - 1
+	last := items[start]
+	switch {
+	case last.Type == "function_call_output":
+		for start > 0 && items[start-1].Type == "function_call_output" {
+			start--
+	REDACTED
+	case last.Type == "message" && last.Role == "user":
+		for start > 0 && items[start-1].Type == "function_call_output" {
+			start--
+	REDACTED
+	default:
+		return start
+REDACTED
+
+	return expandAnthropicCompatResponsesInputToolCallStart(items, start)
+REDACTED
+
+func expandAnthropicCompatResponsesInputToolCallStart(items []apicompat.ResponsesInputItem, start int) int {
+	if start < 0 || start >= len(items) {
+		return start
+REDACTED
+
+	needed := make(map[string]struct{REDACTED)
+	for i := start; i < len(items); i++ {
+		if items[i].Type != "function_call_output" {
+			continue
+	REDACTED
+		callID := strings.TrimSpace(items[i].CallID)
+		if callID != "" {
+			needed[callID] = struct{REDACTED{REDACTED
+	REDACTED
+REDACTED
+	if len(needed) == 0 {
+		return start
+REDACTED
+
+	expandedStart := start
+	for i := start - 1; i >= 0 && len(needed) > 0; i-- {
+		if items[i].Type != "function_call" {
+			continue
+	REDACTED
+		callID := strings.TrimSpace(items[i].CallID)
+		if _, ok := needed[callID]; !ok {
+			continue
+	REDACTED
+		delete(needed, callID)
+		expandedStart = i
+REDACTED
+	return expandedStart
 REDACTED
 
 func isOpenAICompatPreviousResponseNotFound(statusCode int, upstreamMsg string, upstreamBody []byte) bool {
