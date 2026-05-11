@@ -125,6 +125,9 @@ func (s *FrontendServer) serveRenderedHTMLPage(
 ) bool {
 	seo := buildSEOData(requestPath, settingsJSON)
 	cfg := parseSEOConfig(settingsJSON)
+	if requestPath == "/docs/tutorial" {
+		bodyHTML = tutorialhtml.RewriteRelativePageImageSources(bodyHTML, "tutorial")
+	}
 	pageHTML := buildPublicMarkdownHTML(cfg, seo, title, bodyHTML)
 	c.Header("Cache-Control", "no-cache")
 	if seo.XRobotsTag != "" {
@@ -190,7 +193,7 @@ func (s *FrontendServer) loadTutorialHTML() (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	sanitized := tutorialhtml.SanitizeTutorialHTML(string(raw))
+	sanitized := tutorialhtml.SanitizeTutorialHTML(tutorialhtml.RewriteRelativePageImageSources(string(raw), "tutorial"))
 	if strings.TrimSpace(sanitized) == "" {
 		return "", false
 	}

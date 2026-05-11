@@ -47,6 +47,12 @@
                   :aria-hidden="sidebarCollapsed ? 'true' : 'false'"
                 >
                   <span class="min-w-0 truncate">{{ item.label }}</span>
+                  <span
+                    v-if="showBadge(item.badgeCount)"
+                    class="sidebar-badge"
+                  >
+                    {{ formatBadgeCount(item.badgeCount) }}
+                  </span>
                   <ChevronDownIcon
                     class="h-4 w-4 flex-shrink-0 transition-transform duration-200"
                     :class="isGroupExpanded(item) ? 'rotate-180' : ''"
@@ -64,7 +70,15 @@
                   @click="handleMenuItemClick(child.path)"
                 >
                   <component :is="child.icon" class="h-4 w-4 flex-shrink-0" />
-                  <span>{{ child.label }}</span>
+                  <span class="flex min-w-0 flex-1 items-center justify-between gap-2">
+                    <span class="truncate">{{ child.label }}</span>
+                    <span
+                      v-if="showBadge(child.badgeCount)"
+                      class="sidebar-badge"
+                    >
+                      {{ formatBadgeCount(child.badgeCount) }}
+                    </span>
+                  </span>
                 </router-link>
               </div>
             </template>
@@ -88,7 +102,19 @@
             >
               <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
               <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
-              <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
+              <span
+                class="sidebar-label sidebar-label-flex"
+                :class="{ 'sidebar-label-collapsed': sidebarCollapsed }"
+                :aria-hidden="sidebarCollapsed ? 'true' : 'false'"
+              >
+                <span class="min-w-0 truncate">{{ item.label }}</span>
+                <span
+                  v-if="showBadge(item.badgeCount)"
+                  class="sidebar-badge"
+                >
+                  {{ formatBadgeCount(item.badgeCount) }}
+                </span>
+              </span>
             </router-link>
           </template>
         </div>
@@ -183,6 +209,7 @@
 import { computed, h, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { adminAPI } from '@/api'
 import { useAdminSettingsStore, useAppStore, useAuthStore, useOnboardingStore, useReferralStore } from '@/stores'
 import VersionBadge from '@/components/common/VersionBadge.vue'
 import { sanitizeSvg } from '@/utils/sanitize'
@@ -200,6 +227,7 @@ interface NavItem {
    * does NOT navigate to its `path`. The `path` is purely a stable key.
    */
   expandOnly?: boolean
+  badgeCount?: number
   /**
    * 可选的功能开关 getter。返回 false 时菜单项被隐藏；返回 undefined/true 时显示。
    * 宽容策略（undefined → 显示）避免 public settings 未加载完成时菜单闪烁消失。
@@ -250,6 +278,9 @@ const siteName = computed(() => appStore.siteName)
 const siteLogo = computed(() => appStore.siteLogo)
 const siteVersion = computed(() => appStore.siteVersion)
 const settingsLoaded = computed(() => appStore.publicSettingsLoaded)
+const pendingAffiliateBadgeCount = ref(0)
+const pendingWithdrawalBadgeCount = ref(0)
+const referralBadgeRequestToken = ref(0)
 
 // SVG Icon Components
 const DashboardIcon = {
@@ -779,10 +810,10 @@ const adminNavItems = computed((): NavItem[] => {
       children: [
         { path: '/admin/referral/overview', label: t('nav.referralManagement'), icon: DashboardIcon },
         { path: '/admin/referral/settings', label: t('nav.referralSettings'), icon: CogIcon },
-        { path: '/admin/referral/pending', label: t('nav.referralPending'), icon: BellIcon },
+        { path: '/admin/referral/pending', label: t('nav.referralPending'), icon: BellIcon, badgeCount: pendingAffiliateBadgeCount.value },
         { path: '/admin/referral/affiliates', label: t('nav.referralAffiliates'), icon: UsersIcon },
         { path: '/admin/referral/commissions', label: t('nav.referralCommissionLedger'), icon: ChartIcon },
-        { path: '/admin/referral/withdrawals', label: t('nav.referralWithdrawalReview'), icon: OrderListIcon },
+        { path: '/admin/referral/withdrawals', label: t('nav.referralWithdrawalReview'), icon: OrderListIcon, badgeCount: pendingWithdrawalBadgeCount.value },
       ],
     },
     { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon },
@@ -831,6 +862,45 @@ const adminNavItems = computed((): NavItem[] => {
   }
   return visible
 })
+
+function showBadge(count?: number): boolean {
+  return typeof count === 'number' && count > 0
+}
+
+function formatBadgeCount(count?: number): string {
+  if (!count || count <= 0) return ''
+  return count > 99 ? '99+' : String(count)
+}
+
+async function loadAdminReferralBadges() {
+  if (!isAdmin.value) {
+    pendingAffiliateBadgeCount.value = 0
+    pendingWithdrawalBadgeCount.value = 0
+    return
+  }
+
+  const requestToken = referralBadgeRequestToken.value + 1
+  referralBadgeRequestToken.value = requestToken
+
+  try {
+    const [affiliates, withdrawals] = await Promise.all([
+      adminAPI.referral.listAffiliates({ status: 'pending', page: 1, page_size: 1 }),
+      adminAPI.referral.listWithdrawals({ status: 'pending', page: 1, page_size: 1 }),
+    ])
+
+    if (referralBadgeRequestToken.value !== requestToken) {
+      return
+    }
+
+    pendingAffiliateBadgeCount.value = affiliates.total
+    pendingWithdrawalBadgeCount.value = withdrawals.total
+  } catch (error) {
+    if (referralBadgeRequestToken.value !== requestToken) {
+      return
+    }
+    console.warn('[AppSidebar] failed to load referral badges', error)
+  }
+}
 
 function toggleSidebar() {
   appStore.toggleSidebar()
@@ -933,6 +1003,7 @@ watch(
 onMounted(() => {
   if (isAdmin.value) {
     adminSettingsStore.fetch()
+    loadAdminReferralBadges()
   } else if (authStore.isAuthenticated) {
     referralStore.ensureLoaded().catch(() => undefined)
   }
@@ -949,9 +1020,45 @@ watch(
   },
   { immediate: true }
 )
+
+watch(
+  () => authStore.isAdmin,
+  (admin) => {
+    if (admin) {
+      loadAdminReferralBadges()
+      return
+    }
+    pendingAffiliateBadgeCount.value = 0
+    pendingWithdrawalBadgeCount.value = 0
+  },
+  { immediate: true }
+)
+
+watch(
+  () => route.path,
+  (path) => {
+    if (path.startsWith('/admin/referral/')) {
+      loadAdminReferralBadges()
+    }
+  }
+)
 </script>
 
 <style scoped>
+.sidebar-badge {
+  display: inline-flex;
+  min-width: 1.25rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: rgb(239 68 68);
+  padding: 0.125rem 0.375rem;
+  font-size: 0.625rem;
+  font-weight: 600;
+  line-height: 1;
+  color: white;
+}
+
 .sidebar-logo {
   flex: 0 0 2.25rem;
   min-width: 2.25rem;

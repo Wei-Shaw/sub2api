@@ -57,7 +57,8 @@ export function resolveRouteSEO(
   const siteName = getSiteName(settings)
   const baseUrl = getFrontendBaseURL(settings)
   const canonicalUrl = resolveCanonicalUrl(baseUrl, route.fullPath || route.path)
-  const imageUrl = resolveRouteImageUrl(route, baseUrl, settings?.site_logo)
+  const routeImageUrl = resolveRouteImageUrl(route, baseUrl, settings?.site_logo)
+  const defaultImageUrl = resolveConfiguredImageUrl(baseUrl, settings?.seo_default_og_image) || routeImageUrl
   const defaultTitle = settings?.seo_default_title?.trim()
   const homeTitle = settings?.seo_home_title?.trim()
   const defaultDescription = settings?.seo_default_description?.trim()
@@ -78,7 +79,7 @@ export function resolveRouteSEO(
       title: homeTitle || defaultTitle || `${siteName} - AI API Gateway`,
       description,
       canonicalUrl,
-      imageUrl: settings?.seo_default_og_image?.trim() || imageUrl,
+      imageUrl: defaultImageUrl,
       robots: homeRobots,
       type: 'website',
       jsonLD: {
@@ -94,21 +95,35 @@ export function resolveRouteSEO(
   if (route.name === 'LegalDocument') {
     const documentId = String(route.params.documentId || '').trim()
     const matchedDocument = settings?.login_agreement_documents?.find((item) => item.id === documentId)
-    const pageTitle = matchedDocument?.title?.trim()
+    if (!matchedDocument) {
+      return buildNotFoundSEO(siteName, canonicalUrl, defaultImageUrl)
+    }
+
+    const pageTitle = matchedDocument.title?.trim()
       || (typeof route.meta.title === 'string' ? route.meta.title : 'Legal Document')
-    const title = matchedDocument?.seo_title?.trim() || buildPageTitle(pageTitle, defaultTitle, siteName)
+    const title = matchedDocument.seo_title?.trim() || buildPageTitle(pageTitle, defaultTitle, siteName)
     const description =
-      matchedDocument?.seo_description?.trim() ||
+      matchedDocument.seo_description?.trim() ||
       defaultDescription ||
-      extractTextSummary(matchedDocument?.content_md) ||
+      extractTextSummary(matchedDocument.content_md) ||
       `Read ${pageTitle} on ${siteName}.`
+    const pageImageUrl = resolveConfiguredImageUrl(baseUrl, matchedDocument.seo_og_image) || routeImageUrl
+
     return {
       title,
       description,
       canonicalUrl,
-      imageUrl: matchedDocument?.seo_og_image?.trim() || imageUrl,
-      robots: matchedDocument?.seo_robots?.trim() || defaultRobots || 'index, follow',
+      imageUrl: pageImageUrl,
+      robots: matchedDocument.seo_robots?.trim() || defaultRobots || 'index, follow',
       type: 'article',
+      jsonLD: {
+        '@context': 'https://schema.org',
+        '@type': 'Article',
+        headline: title,
+        description,
+        mainEntityOfPage: canonicalUrl,
+        image: pageImageUrl,
+      },
     }
   }
 
@@ -117,11 +132,12 @@ export function resolveRouteSEO(
     const description =
       defaultDescription ||
       `阅读 ${pageTitle}，了解 ${siteName} 的接入说明、使用方式与常见问题。`
+
     return {
       title: buildPageTitle(pageTitle, defaultTitle, siteName),
       description,
       canonicalUrl,
-      imageUrl: settings?.seo_default_og_image?.trim() || imageUrl || (baseUrl ? `${baseUrl}/og/custom-tutorial.svg` : undefined),
+      imageUrl: defaultImageUrl || resolveConfiguredImageUrl(baseUrl, undefined, '/og/custom-tutorial.svg'),
       robots: defaultRobots || 'index, follow',
       type: 'article',
       jsonLD: {
@@ -137,54 +153,42 @@ export function resolveRouteSEO(
   if (route.name === 'CustomPage') {
     const pageId = String(route.params.id || '').trim()
     const page = settings?.custom_menu_items?.find((item) => item.id === pageId && item.visibility !== 'admin')
-    const pageTitle = page?.label?.trim() || 'Custom Page'
+    if (!page) {
+      return buildNotFoundSEO(siteName, canonicalUrl, defaultImageUrl)
+    }
+
+    const isMarkdown = Boolean(page.page_slug || page.url?.startsWith('md:'))
+    if (!isMarkdown) {
+      return buildNotFoundSEO(siteName, canonicalUrl, defaultImageUrl)
+    }
+
+    const pageTitle = page.label?.trim() || 'Custom Page'
     const description =
-      page?.seo_description?.trim() ||
+      page.seo_description?.trim() ||
       defaultDescription ||
       `Learn more about ${pageTitle} on ${siteName}.`
-    const isMarkdown = Boolean(page?.page_slug || page?.url?.startsWith('md:'))
+    const pageImageUrl = resolveConfiguredImageUrl(baseUrl, page.seo_og_image) || routeImageUrl
+
     return {
-      title: page?.seo_title?.trim() || buildPageTitle(pageTitle, defaultTitle, siteName),
+      title: page.seo_title?.trim() || buildPageTitle(pageTitle, defaultTitle, siteName),
       description,
       canonicalUrl,
-      imageUrl: page?.seo_og_image?.trim() || imageUrl,
-      robots: page?.seo_robots?.trim() || defaultRobots || 'index, follow',
-      type: isMarkdown ? 'article' : 'website',
+      imageUrl: pageImageUrl,
+      robots: page.seo_robots?.trim() || defaultRobots || 'index, follow',
+      type: 'article',
       jsonLD: {
         '@context': 'https://schema.org',
-        '@type': isMarkdown ? 'Article' : 'WebPage',
-        name: pageTitle,
+        '@type': 'Article',
+        headline: pageTitle,
         description,
-        url: canonicalUrl,
+        mainEntityOfPage: canonicalUrl,
+        image: pageImageUrl,
       },
     }
   }
 
   if (route.name === 'NotFound') {
-    const translatedTitle = i18n.global.t('errors.pageNotFound')
-    const translatedDescription = i18n.global.t('errors.pageNotFoundDescription')
-    const titleLabel = translatedTitle && translatedTitle !== 'errors.pageNotFound'
-      ? translatedTitle
-      : 'Page not found'
-    const description = translatedDescription && translatedDescription !== 'errors.pageNotFoundDescription'
-      ? translatedDescription
-      : 'Page not found.'
-    const title = `${siteName} - ${titleLabel}`
-    return {
-      title,
-      description,
-      canonicalUrl,
-      imageUrl: settings?.seo_default_og_image?.trim() || imageUrl,
-      robots: 'noindex, nofollow',
-      type: 'website',
-      jsonLD: {
-        '@context': 'https://schema.org',
-        '@type': 'WebPage',
-        name: title,
-        description,
-        url: canonicalUrl,
-      },
-    }
+    return buildNotFoundSEO(siteName, canonicalUrl, defaultImageUrl)
   }
 
   const pageTitle = resolveTitle(route, siteName)
@@ -194,9 +198,41 @@ export function resolveRouteSEO(
     title: pageTitle || defaultTitle || siteName,
     description: description || defaultDescription || DEFAULT_DESCRIPTION,
     canonicalUrl,
-    imageUrl: settings?.seo_default_og_image?.trim() || imageUrl,
+    imageUrl: defaultImageUrl,
     robots: route.meta.requiresAuth === false ? publicDefaultRobots : 'noindex, nofollow',
     type: 'website',
+  }
+}
+
+function buildNotFoundSEO(
+  siteName: string,
+  canonicalUrl: string | undefined,
+  imageUrl: string | undefined
+): SEOInput {
+  const translatedTitle = i18n.global.t('errors.pageNotFound')
+  const translatedDescription = i18n.global.t('errors.pageNotFoundDescription')
+  const titleLabel = translatedTitle && translatedTitle !== 'errors.pageNotFound'
+    ? translatedTitle
+    : 'Page not found'
+  const description = translatedDescription && translatedDescription !== 'errors.pageNotFoundDescription'
+    ? translatedDescription
+    : 'Page not found.'
+  const title = `${siteName} - ${titleLabel}`
+
+  return {
+    title,
+    description,
+    canonicalUrl,
+    imageUrl,
+    robots: 'noindex, nofollow',
+    type: 'website',
+    jsonLD: {
+      '@context': 'https://schema.org',
+      '@type': 'WebPage',
+      name: title,
+      description,
+      url: canonicalUrl,
+    },
   }
 }
 
@@ -235,9 +271,6 @@ export function getFrontendBaseURL(settings: PublicSettings | null | undefined):
   if (configured) {
     return configured.replace(/\/+$/, '')
   }
-  if (typeof window !== 'undefined' && window.location?.origin) {
-    return window.location.origin.replace(/\/+$/, '')
-  }
   return ''
 }
 
@@ -254,21 +287,28 @@ function resolveCanonicalUrl(baseUrl: string, fullPath: string): string | undefi
   return `${baseUrl}${normalizedPath.startsWith('/') ? normalizedPath : `/${normalizedPath}`}`
 }
 
-function resolveImageUrl(baseUrl: string, logo?: string): string | undefined {
-  const trimmed = logo?.trim()
+function resolveConfiguredImageUrl(baseUrl: string, raw?: string, fallbackPath?: string): string | undefined {
+  const trimmed = raw?.trim()
   if (trimmed) {
     if (/^https?:\/\//i.test(trimmed)) {
       return trimmed
     }
-    if (baseUrl) {
-      return `${baseUrl}${trimmed.startsWith('/') ? trimmed : `/${trimmed}`}`
+    if (/^data:image\/(?:png|jpeg|jpg|gif|webp);/i.test(trimmed)) {
+      return trimmed
     }
-    return trimmed
-  }
-  if (!baseUrl) {
+    if (baseUrl && trimmed.startsWith('/') && !trimmed.startsWith('//')) {
+      return `${baseUrl}${trimmed}`
+    }
     return undefined
   }
-  return `${baseUrl}/og/home.svg`
+  if (!baseUrl || !fallbackPath) {
+    return undefined
+  }
+  return `${baseUrl}${fallbackPath.startsWith('/') ? fallbackPath : `/${fallbackPath}`}`
+}
+
+function resolveImageUrl(baseUrl: string, logo?: string): string | undefined {
+  return resolveConfiguredImageUrl(baseUrl, logo, '/og/home.svg')
 }
 
 function resolveRouteImageUrl(

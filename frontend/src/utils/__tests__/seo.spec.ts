@@ -74,6 +74,7 @@ describe('seo utils', () => {
     expect(seo.title).toBe('Sub2API - AI API Gateway')
     expect(seo.robots).toBe('index, follow')
     expect(seo.canonicalUrl).toBe('https://example.com/')
+    expect(seo.imageUrl).toBe('https://example.com/logo.png')
   })
 
   it('updates document head tags', async () => {
@@ -89,9 +90,10 @@ describe('seo utils', () => {
     expect(document.head.querySelector('meta[name="description"]')?.getAttribute('content')).toContain('Terms of Service')
     expect(document.head.querySelector('link[rel="canonical"]')?.getAttribute('href')).toBe('https://example.com/legal/terms')
     expect(document.head.querySelector('meta[property="og:title"]')?.getAttribute('content')).toBe('Terms of Service - Sub2API')
+    expect(document.head.querySelector('meta[property="og:image"]')?.getAttribute('content')).toBe('https://example.com/og/legal-terms.svg')
   })
 
-  it('marks 404 route as noindex', async () => {
+  it('marks explicit 404 route as noindex', async () => {
     const router = createRouter({
       history: createMemoryHistory(),
       routes: [{ path: '/:pathMatch(.*)*', name: 'NotFound', component: { template: '<div />' }, meta: { requiresAuth: false, title: '404 Not Found' } }],
@@ -105,6 +107,30 @@ describe('seo utils', () => {
 
     updateRouteSEO(router.currentRoute.value, settings)
     expect(document.head.querySelector('meta[name="robots"]')?.getAttribute('content')).toBe('noindex, nofollow')
+  })
+
+  it('marks missing legal document route as noindex', async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/legal/:documentId', name: 'LegalDocument', component: { template: '<div />' }, meta: { requiresAuth: false, title: 'Legal Document' } }],
+    })
+    await router.push('/legal/missing')
+
+    const seo = resolveRouteSEO(router.currentRoute.value, settings)
+    expect(seo.robots).toBe('noindex, nofollow')
+    expect(seo.title).toBe('Sub2API - Page not found')
+  })
+
+  it('marks missing custom page route as noindex', async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/custom/:id', name: 'CustomPage', component: { template: '<div />' }, meta: { requiresAuth: false, title: 'Custom Page' } }],
+    })
+    await router.push('/custom/missing')
+
+    const seo = resolveRouteSEO(router.currentRoute.value, settings)
+    expect(seo.robots).toBe('noindex, nofollow')
+    expect(seo.title).toBe('Sub2API - Page not found')
   })
 
   it('resolves tutorial seo with readable chinese title and description', async () => {
@@ -125,6 +151,25 @@ describe('seo utils', () => {
     expect(seo.canonicalUrl).toBe('https://example.com/docs/tutorial')
     expect(seo.imageUrl).toBe('https://example.com/og/custom-tutorial.svg')
     expect(seo.robots).toBe('index, follow')
+  })
+
+  it('omits canonical and og:url when frontend_url is not configured', async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/home', name: 'Home', component: { template: '<div />' }, meta: { requiresAuth: false, title: 'Home' } }],
+    })
+    await router.push('/home')
+
+    updateRouteSEO(router.currentRoute.value, {
+      ...settings,
+      frontend_url: '',
+      site_logo: '/logo.png',
+      seo_default_og_image: '',
+    })
+
+    expect(document.head.querySelector('link[rel="canonical"]')).toBeNull()
+    expect(document.head.querySelector('meta[property="og:url"]')).toBeNull()
+    expect(document.head.querySelector('meta[property="og:image"]')).toBeNull()
   })
 
   it('reuses existing SSR json-ld script instead of duplicating it', async () => {

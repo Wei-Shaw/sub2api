@@ -96,9 +96,9 @@ func TestBuildRobotsAndSitemap(t *testing.T) {
 	sitemap := string(buildSitemapXML(settingsJSON))
 	assert.Contains(t, sitemap, "<loc>https://example.com/</loc>")
 	assert.Contains(t, sitemap, "<loc>https://example.com/docs/tutorial</loc>")
-	assert.Contains(t, sitemap, "<loc>https://example.com/custom/pricing</loc>")
 	assert.Contains(t, sitemap, "<loc>https://example.com/legal/terms</loc>")
 	assert.NotContains(t, sitemap, "/custom/admin")
+	assert.NotContains(t, sitemap, "/custom/pricing")
 }
 
 func TestReplaceNoncePlaceholder(t *testing.T) {

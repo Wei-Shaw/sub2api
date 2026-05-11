@@ -125,7 +125,7 @@ const renderedHtml = computed(() => {
   if (!content) {
     return ''
   }
-  return renderPublicMarkdown(content)
+  return renderPublicMarkdown(content, { pageSlug: `legal-${documentId.value}` })
 })
 
 const documentIcon = computed<LegalDocumentIcon>(() => {

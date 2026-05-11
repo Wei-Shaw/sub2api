@@ -192,7 +192,7 @@ function formatBytes(size: number) {
 
 function updatePreview() {
   const html = editor.value?.getHTML() || ''
-  previewHTML.value = sanitizePublicHTML(html)
+  previewHTML.value = sanitizePublicHTML(html, { pageSlug: 'tutorial' })
 }
 
 async function loadDocument() {

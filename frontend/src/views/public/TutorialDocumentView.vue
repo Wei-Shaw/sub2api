@@ -78,7 +78,7 @@ onMounted(async () => {
 
     if (tutorialResp.ok) {
       const payload = await tutorialResp.json() as { code?: number; data?: TutorialDocumentPayload }
-      renderedHtml.value = sanitizePublicHTML(payload?.data?.content_html || '')
+      renderedHtml.value = sanitizePublicHTML(payload?.data?.content_html || '', { pageSlug: 'tutorial' })
     } else {
       renderedHtml.value = '<p class="text-red-500">页面未找到。</p>'
     }

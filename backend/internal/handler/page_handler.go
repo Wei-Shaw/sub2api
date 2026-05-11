@@ -203,7 +203,7 @@ func (h *PageHandler) UpdateTutorialDocument(c *gin.Context) {
 		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "document too large"})
 		return
 	}
-	sanitized := tutorialhtml.SanitizeTutorialHTML(req.ContentHTML)
+	sanitized := tutorialhtml.SanitizeTutorialHTML(tutorialhtml.RewriteRelativePageImageSources(req.ContentHTML, builtInTutorialSlug))
 	if len([]byte(sanitized)) > maxPageFileSize {
 		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "document too large"})
 		return
@@ -281,13 +281,18 @@ func (h *PageHandler) UploadPageImage(c *gin.Context) {
 		return
 	}
 
-	ext, ok := detectPageImageExtension(data, fileHeader.Header.Get("Content-Type"), fileHeader.Filename)
+	originalName := strings.TrimSpace(c.PostForm("filename"))
+	if originalName == "" {
+		originalName = fileHeader.Filename
+	}
+
+	ext, ok := detectPageImageExtension(data, fileHeader.Header.Get("Content-Type"), originalName)
 	if !ok {
 		response.BadRequest(c, "Unsupported image type")
 		return
 	}
 
-	baseName := sanitizePageAssetBaseName(strings.TrimSuffix(fileHeader.Filename, filepath.Ext(fileHeader.Filename)))
+	baseName := sanitizePageAssetBaseName(strings.TrimSuffix(originalName, filepath.Ext(originalName)))
 	if baseName == "" {
 		baseName = "image"
 	}
@@ -693,7 +698,7 @@ func (h *PageHandler) loadTutorialDocumentHTML() (string, error) {
 		return "", os.ErrInvalid
 	}
 	if raw, err := os.ReadFile(htmlPath); err == nil {
-		sanitized := tutorialhtml.SanitizeTutorialHTML(string(raw))
+		sanitized := tutorialhtml.SanitizeTutorialHTML(tutorialhtml.RewriteRelativePageImageSources(string(raw), builtInTutorialSlug))
 		if strings.TrimSpace(sanitized) != "" {
 			return sanitized, nil
 		}

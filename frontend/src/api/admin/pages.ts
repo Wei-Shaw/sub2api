@@ -37,6 +37,7 @@ async function listPageImages(slug: string): Promise<AdminPageImage[]> {
 async function uploadPageImage(slug: string, file: File): Promise<AdminPageImage> {
   const formData = new FormData()
   formData.append('file', file)
+  formData.append('filename', file.name)
   const { data } = await apiClient.post<AdminPageImage>(`/pages/${encodeURIComponent(slug)}/images`, formData)
   return data
 }
