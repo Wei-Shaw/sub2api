@@ -179,6 +179,12 @@ export interface CustomEndpoint {
   description: string
 }
 
+export interface LoginAgreementDocument {
+  id: string
+  title: string
+  content_md: string
+}
+
 export interface PublicSettings {
   registration_enabled: boolean
   email_verify_enabled: boolean
@@ -187,6 +193,11 @@ export interface PublicSettings {
   promo_code_enabled: boolean
   password_reset_enabled: boolean
   invitation_code_enabled: boolean
+  login_agreement_enabled?: boolean
+  login_agreement_mode?: 'modal' | 'checkbox' | string
+  login_agreement_updated_at?: string
+  login_agreement_revision?: string
+  login_agreement_documents?: LoginAgreementDocument[]
   turnstile_enabled: boolean
   turnstile_site_key: string
   site_name: string
@@ -1092,6 +1103,51 @@ export interface AdminDataImportResult {
   account_created: number
   account_failed: number
   errors?: AdminDataImportError[]
+}
+
+export interface CodexSessionImportRequest {
+  content?: string
+  contents?: string[]
+  name?: string
+  notes?: string | null
+  group_ids?: number[]
+  proxy_id?: number | null
+  concurrency?: number
+  priority?: number
+  rate_multiplier?: number
+  load_factor?: number | null
+  expires_at?: number | null
+  auto_pause_on_expired?: boolean
+  credential_extras?: Record<string, unknown>
+  extra?: Record<string, unknown>
+  update_existing?: boolean
+  skip_default_group_bind?: boolean
+  confirm_mixed_channel_risk?: boolean
+}
+
+export interface CodexSessionImportMessage {
+  index: number
+  name?: string
+  message: string
+}
+
+export interface CodexSessionImportItem {
+  index: number
+  name?: string
+  action: 'created' | 'updated' | 'skipped' | 'failed'
+  account_id?: number
+  message?: string
+}
+
+export interface CodexSessionImportResult {
+  total: number
+  created: number
+  updated: number
+  skipped: number
+  failed: number
+  items?: CodexSessionImportItem[]
+  warnings?: CodexSessionImportMessage[]
+  errors?: CodexSessionImportMessage[]
 }
 
 // ==================== Usage & Redeem Types ====================
