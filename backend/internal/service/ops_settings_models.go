@@ -66,6 +66,11 @@ type OpsMetricThresholds struct {
 	TTFTp99MsMax                *float64 `json:"ttft_p99_ms_max,omitempty"`                 // TTFT P99高于此值变红
 	RequestErrorRatePercentMax  *float64 `json:"request_error_rate_percent_max,omitempty"`  // 请求错误率高于此值变红
 	UpstreamErrorRatePercentMax *float64 `json:"upstream_error_rate_percent_max,omitempty"` // 上游错误率高于此值变红
+
+	HealthScoreErrorRateFullPercent *float64 `json:"health_score_error_rate_full_percent,omitempty"` // 业务健康评分错误率满分点
+	HealthScoreErrorRateZeroPercent *float64 `json:"health_score_error_rate_zero_percent,omitempty"` // 业务健康评分错误率零分点
+	HealthScoreTTFTP99FullMs        *float64 `json:"health_score_ttft_p99_full_ms,omitempty"`        // 业务健康评分 TTFT P99 满分点
+	HealthScoreTTFTP99ZeroMs        *float64 `json:"health_score_ttft_p99_zero_ms,omitempty"`        // 业务健康评分 TTFT P99 零分点
 }
 
 type OpsRuntimeLogConfig struct {

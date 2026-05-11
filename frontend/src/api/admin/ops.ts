@@ -809,6 +809,10 @@ export interface OpsMetricThresholds {
   ttft_p99_ms_max?: number | null                 // TTFT P99高于此值变红
   request_error_rate_percent_max?: number | null  // 请求错误率高于此值变红
   upstream_error_rate_percent_max?: number | null // 上游错误率高于此值变红
+  health_score_error_rate_full_percent?: number | null // 业务健康评分错误率满分点
+  health_score_error_rate_zero_percent?: number | null // 业务健康评分错误率零分点
+  health_score_ttft_p99_full_ms?: number | null        // 业务健康评分 TTFT P99 满分点
+  health_score_ttft_p99_zero_ms?: number | null        // 业务健康评分 TTFT P99 零分点
 }
 
 export interface OpsDistributedLockSettings {

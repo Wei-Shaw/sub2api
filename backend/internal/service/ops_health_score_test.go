@@ -12,7 +12,7 @@ import (
 func TestComputeDashboardHealthScore_IdleReturns100(t *testing.T) {
 	t.Parallel()
 
-	score := computeDashboardHealthScore(time.Now().UTC(), &OpsDashboardOverview{})
+	score := computeDashboardHealthScore(time.Now().UTC(), &OpsDashboardOverview{}, nil)
 	require.Equal(t, 100, score)
 }
 
@@ -50,7 +50,7 @@ func TestComputeDashboardHealthScore_DegradesOnBadSignals(t *testing.T) {
 		},
 	}
 
-	score := computeDashboardHealthScore(time.Now().UTC(), ov)
+	score := computeDashboardHealthScore(time.Now().UTC(), ov, nil)
 	require.Less(t, score, 80)
 	require.GreaterOrEqual(t, score, 0)
 }
@@ -229,7 +229,7 @@ func TestComputeDashboardHealthScore_Comprehensive(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			score := computeDashboardHealthScore(time.Now().UTC(), tt.overview)
+			score := computeDashboardHealthScore(time.Now().UTC(), tt.overview, nil)
 			require.GreaterOrEqual(t, score, tt.wantMin, "score should be >= %d", tt.wantMin)
 			require.LessOrEqual(t, score, tt.wantMax, "score should be <= %d", tt.wantMax)
 			require.GreaterOrEqual(t, score, 0, "score must be >= 0")
@@ -328,11 +328,105 @@ func TestComputeBusinessHealth(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			score := computeBusinessHealth(tt.overview)
+			score := computeBusinessHealth(tt.overview, nil)
 			require.GreaterOrEqual(t, score, tt.wantMin, "score should be >= %.1f", tt.wantMin)
 			require.LessOrEqual(t, score, tt.wantMax, "score should be <= %.1f", tt.wantMax)
 			require.GreaterOrEqual(t, score, 0.0, "score must be >= 0")
 			require.LessOrEqual(t, score, 100.0, "score must be <= 100")
+		})
+	}
+}
+
+func TestComputeBusinessHealth_ConfigurableThresholds(t *testing.T) {
+	t.Parallel()
+
+	overview := &OpsDashboardOverview{
+		ErrorRate:         0,
+		UpstreamErrorRate: 0,
+		TTFT:              OpsPercentiles{P99: intPtr(4594)},
+	}
+
+	defaultScore := computeBusinessHealth(overview, nil)
+	require.Equal(t, 50.0, defaultScore)
+
+	custom := &OpsMetricThresholds{
+		HealthScoreErrorRateFullPercent: float64Ptr(1),
+		HealthScoreErrorRateZeroPercent: float64Ptr(10),
+		HealthScoreTTFTP99FullMs:        float64Ptr(1000),
+		HealthScoreTTFTP99ZeroMs:        float64Ptr(6000),
+	}
+	customScore := computeBusinessHealth(overview, custom)
+	require.InDelta(t, 64.1, customScore, 0.1)
+}
+
+func TestComputeBusinessHealth_ConfigurableErrorThresholds(t *testing.T) {
+	t.Parallel()
+
+	overview := &OpsDashboardOverview{
+		ErrorRate:         0.05,
+		UpstreamErrorRate: 0.02,
+		TTFT:              OpsPercentiles{P99: intPtr(500)},
+	}
+
+	custom := &OpsMetricThresholds{
+		HealthScoreErrorRateFullPercent: float64Ptr(2),
+		HealthScoreErrorRateZeroPercent: float64Ptr(8),
+	}
+	score := computeBusinessHealth(overview, custom)
+	require.InDelta(t, 75.0, score, 0.1)
+}
+
+func TestValidateOpsMetricThresholds_HealthScoreRanges(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		cfg     *OpsMetricThresholds
+		wantErr string
+	}{
+		{
+			name: "valid full zero ranges",
+			cfg: &OpsMetricThresholds{
+				HealthScoreErrorRateFullPercent: float64Ptr(1),
+				HealthScoreErrorRateZeroPercent: float64Ptr(10),
+				HealthScoreTTFTP99FullMs:        float64Ptr(1000),
+				HealthScoreTTFTP99ZeroMs:        float64Ptr(5000),
+			},
+		},
+		{
+			name: "error full must be below zero",
+			cfg: &OpsMetricThresholds{
+				HealthScoreErrorRateFullPercent: float64Ptr(10),
+				HealthScoreErrorRateZeroPercent: float64Ptr(10),
+			},
+			wantErr: "health_score_error_rate_full_percent",
+		},
+		{
+			name: "ttft full must be below zero",
+			cfg: &OpsMetricThresholds{
+				HealthScoreTTFTP99FullMs: float64Ptr(3000),
+				HealthScoreTTFTP99ZeroMs: float64Ptr(1000),
+			},
+			wantErr: "health_score_ttft_p99_full_ms",
+		},
+		{
+			name: "error rate must be within percent range",
+			cfg: &OpsMetricThresholds{
+				HealthScoreErrorRateFullPercent: float64Ptr(-1),
+			},
+			wantErr: "health_score_error_rate_full_percent",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateOpsMetricThresholds(tt.cfg)
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tt.wantErr)
 		})
 	}
 }

@@ -883,7 +883,7 @@ export default {
   monitorCommon: {
     status: {
       operational: '正常',
-      degraded: '降级',
+      degraded: '响应慢',
       failed: '失败',
       error: '错误',
       unknown: '-'
@@ -5057,8 +5057,22 @@ export default {
           slaMinPercentRange: 'SLA 最低值必须在 0-100 之间',
           ttftP99MaxRange: 'TTFT P99 最大值必须大于或等于 0',
           requestErrorRateMaxRange: '请求错误率最大值必须在 0-100 之间',
-          upstreamErrorRateMaxRange: '上游错误率最大值必须在 0-100 之间'
-        }
+          upstreamErrorRateMaxRange: '上游错误率最大值必须在 0-100 之间',
+          healthScoreErrorRateRange: '健康评分错误率阈值必须在 0-100 之间',
+          healthScoreErrorRateOrder: '健康评分错误率满分点必须小于零分点',
+          healthScoreTTFTRange: '健康评分 TTFT P99 阈值必须大于或等于 0',
+          healthScoreTTFTOrder: '健康评分 TTFT P99 满分点必须小于零分点'
+        },
+        healthScoreThresholds: '业务健康评分阈值',
+        healthScoreThresholdsHint: '仅影响综合健康分，不影响卡片红黄展示和告警阈值。',
+        healthScoreErrorRateFullPercent: '错误率满分点（%）',
+        healthScoreErrorRateFullPercentHint: '错误率低于或等于此值时，业务健康中的错误率部分为满分（默认：1%）。',
+        healthScoreErrorRateZeroPercent: '错误率零分点（%）',
+        healthScoreErrorRateZeroPercentHint: '错误率高于或等于此值时，业务健康中的错误率部分为零分（默认：10%）。',
+        healthScoreTTFTP99FullMs: 'TTFT P99 满分点（毫秒）',
+        healthScoreTTFTP99FullMsHint: 'TTFT P99 低于或等于此值时，业务健康中的 TTFT 部分为满分（默认：1000ms）。',
+        healthScoreTTFTP99ZeroMs: 'TTFT P99 零分点（毫秒）',
+        healthScoreTTFTP99ZeroMsHint: 'TTFT P99 高于或等于此值时，业务健康中的 TTFT 部分为零分（默认：3000ms）。'
       },
       email: {
         title: '邮件通知配置',
@@ -5119,7 +5133,7 @@ export default {
         dailySummary: '每日摘要',
         weeklySummary: '每周摘要',
         metricThresholds: '指标阈值配置',
-        metricThresholdsHint: '配置各项指标的告警阈值，超出阈值时将以红色显示',
+        metricThresholdsHint: '配置展示/告警阈值，以及独立的综合健康评分阈值',
         slaMinPercent: 'SLA最低百分比',
         slaMinPercentHint: 'SLA低于此值时显示为红色（默认：99.5%）',
         ttftP99MaxMs: 'TTFT P99最大值（毫秒）',
@@ -5128,6 +5142,16 @@ export default {
         requestErrorRateMaxPercentHint: '请求错误率高于此值时显示为红色（默认：5%）',
         upstreamErrorRateMaxPercent: '上游错误率最大值（%）',
         upstreamErrorRateMaxPercentHint: '上游错误率高于此值时显示为红色（默认：5%）',
+        healthScoreThresholds: '业务健康评分阈值',
+        healthScoreThresholdsHint: '仅影响综合健康分，不影响上方展示/告警阈值。',
+        healthScoreErrorRateFullPercent: '错误率满分点（%）',
+        healthScoreErrorRateFullPercentHint: '错误率低于或等于此值时，业务健康中的错误率部分为满分（默认：1%）',
+        healthScoreErrorRateZeroPercent: '错误率零分点（%）',
+        healthScoreErrorRateZeroPercentHint: '错误率高于或等于此值时，业务健康中的错误率部分为零分（默认：10%）',
+        healthScoreTTFTP99FullMs: 'TTFT P99 满分点（毫秒）',
+        healthScoreTTFTP99FullMsHint: 'TTFT P99 低于或等于此值时，业务健康中的 TTFT 部分为满分（默认：1000ms）',
+        healthScoreTTFTP99ZeroMs: 'TTFT P99 零分点（毫秒）',
+        healthScoreTTFTP99ZeroMsHint: 'TTFT P99 高于或等于此值时，业务健康中的 TTFT 部分为零分（默认：3000ms）',
         advancedSettings: '高级设置',
         dataRetention: '数据保留策略',
         enableCleanup: '启用数据清理',
@@ -5171,7 +5195,11 @@ export default {
           slaMinPercentRange: 'SLA最低百分比必须在0-100之间',
           ttftP99MaxRange: 'TTFT P99最大值必须大于等于0',
           requestErrorRateMaxRange: '请求错误率最大值必须在0-100之间',
-          upstreamErrorRateMaxRange: '上游错误率最大值必须在0-100之间'
+          upstreamErrorRateMaxRange: '上游错误率最大值必须在0-100之间',
+          healthScoreErrorRateRange: '健康评分错误率阈值必须在0-100之间',
+          healthScoreErrorRateOrder: '健康评分错误率满分点必须小于零分点',
+          healthScoreTTFTRange: '健康评分 TTFT P99 阈值必须大于等于0',
+          healthScoreTTFTOrder: '健康评分 TTFT P99 满分点必须小于零分点'
         }
       },
       concurrency: {

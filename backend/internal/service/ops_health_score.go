@@ -5,6 +5,13 @@ import (
 	"time"
 )
 
+type dashboardHealthScoreThresholds struct {
+	errorRateFullPercent float64
+	errorRateZeroPercent float64
+	ttftP99FullMs        float64
+	ttftP99ZeroMs        float64
+}
+
 // computeDashboardHealthScore computes a 0-100 health score from the metrics returned by the dashboard overview.
 //
 // Design goals:
@@ -12,7 +19,7 @@ import (
 // - Layered scoring: Business Health (70%) + Infrastructure Health (30%)
 // - Avoids double-counting (e.g., DB failure affects both infra and business metrics)
 // - Conservative + stable: penalize clear degradations; avoid overreacting to missing/idle data.
-func computeDashboardHealthScore(now time.Time, overview *OpsDashboardOverview) int {
+func computeDashboardHealthScore(now time.Time, overview *OpsDashboardOverview, thresholds *OpsMetricThresholds) int {
 	if overview == nil {
 		return 0
 	}
@@ -23,7 +30,7 @@ func computeDashboardHealthScore(now time.Time, overview *OpsDashboardOverview) 
 		return 100
 	}
 
-	businessHealth := computeBusinessHealth(overview)
+	businessHealth := computeBusinessHealth(overview, thresholds)
 	infraHealth := computeInfraHealth(now, overview)
 
 	// Weighted combination: 70% business + 30% infrastructure
@@ -33,37 +40,74 @@ func computeDashboardHealthScore(now time.Time, overview *OpsDashboardOverview) 
 
 // computeBusinessHealth calculates business health score (0-100)
 // Components: Error Rate (50%) + TTFT (50%)
-func computeBusinessHealth(overview *OpsDashboardOverview) float64 {
-	// Error rate score: 1% → 100, 10% → 0 (linear)
+func computeBusinessHealth(overview *OpsDashboardOverview, thresholds *OpsMetricThresholds) float64 {
+	scoreThresholds := resolveDashboardHealthScoreThresholds(thresholds)
+
+	// Error rate score defaults to 1% → 100, 10% → 0 (linear)
 	// Combines request errors and upstream errors
-	errorScore := 100.0
 	errorPct := clampFloat64(overview.ErrorRate*100, 0, 100)
 	upstreamPct := clampFloat64(overview.UpstreamErrorRate*100, 0, 100)
 	combinedErrorPct := math.Max(errorPct, upstreamPct) // Use worst case
-	if combinedErrorPct > 1.0 {
-		if combinedErrorPct <= 10.0 {
-			errorScore = (10.0 - combinedErrorPct) / 9.0 * 100
-		} else {
-			errorScore = 0
-		}
-	}
+	errorScore := scoreDescendingRange(
+		combinedErrorPct,
+		scoreThresholds.errorRateFullPercent,
+		scoreThresholds.errorRateZeroPercent,
+	)
 
-	// TTFT score: 1s → 100, 3s → 0 (linear)
+	// TTFT score defaults to 1s → 100, 3s → 0 (linear)
 	// Time to first token is critical for user experience
 	ttftScore := 100.0
 	if overview.TTFT.P99 != nil {
-		p99 := float64(*overview.TTFT.P99)
-		if p99 > 1000 {
-			if p99 <= 3000 {
-				ttftScore = (3000 - p99) / 2000 * 100
-			} else {
-				ttftScore = 0
-			}
-		}
+		ttftScore = scoreDescendingRange(
+			float64(*overview.TTFT.P99),
+			scoreThresholds.ttftP99FullMs,
+			scoreThresholds.ttftP99ZeroMs,
+		)
 	}
 
 	// Weighted combination: 50% error rate + 50% TTFT
 	return errorScore*0.5 + ttftScore*0.5
+}
+
+func resolveDashboardHealthScoreThresholds(thresholds *OpsMetricThresholds) dashboardHealthScoreThresholds {
+	defaults := defaultOpsMetricThresholds()
+	return dashboardHealthScoreThresholds{
+		errorRateFullPercent: metricThresholdValue(thresholds, defaults, func(v *OpsMetricThresholds) *float64 {
+			return v.HealthScoreErrorRateFullPercent
+		}),
+		errorRateZeroPercent: metricThresholdValue(thresholds, defaults, func(v *OpsMetricThresholds) *float64 {
+			return v.HealthScoreErrorRateZeroPercent
+		}),
+		ttftP99FullMs: metricThresholdValue(thresholds, defaults, func(v *OpsMetricThresholds) *float64 {
+			return v.HealthScoreTTFTP99FullMs
+		}),
+		ttftP99ZeroMs: metricThresholdValue(thresholds, defaults, func(v *OpsMetricThresholds) *float64 {
+			return v.HealthScoreTTFTP99ZeroMs
+		}),
+	}
+}
+
+func metricThresholdValue(
+	thresholds *OpsMetricThresholds,
+	defaults *OpsMetricThresholds,
+	selectValue func(*OpsMetricThresholds) *float64,
+) float64 {
+	if thresholds != nil {
+		if value := selectValue(thresholds); value != nil {
+			return *value
+		}
+	}
+	return *selectValue(defaults)
+}
+
+func scoreDescendingRange(value float64, fullScoreAt float64, zeroScoreAt float64) float64 {
+	if value <= fullScoreAt {
+		return 100
+	}
+	if value >= zeroScoreAt {
+		return 0
+	}
+	return (zeroScoreAt - value) / (zeroScoreAt - fullScoreAt) * 100
 }
 
 // computeInfraHealth calculates infrastructure health score (0-100)

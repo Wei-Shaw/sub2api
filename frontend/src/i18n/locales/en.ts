@@ -4895,8 +4895,22 @@ export default {
           slaMinPercentRange: 'SLA minimum percentage must be between 0 and 100',
           ttftP99MaxRange: 'TTFT P99 maximum must be a number ≥ 0',
           requestErrorRateMaxRange: 'Request error rate maximum must be between 0 and 100',
-          upstreamErrorRateMaxRange: 'Upstream error rate maximum must be between 0 and 100'
-        }
+          upstreamErrorRateMaxRange: 'Upstream error rate maximum must be between 0 and 100',
+          healthScoreErrorRateRange: 'Health score error rate thresholds must be between 0 and 100',
+          healthScoreErrorRateOrder: 'Health score error rate full-score threshold must be lower than zero-score threshold',
+          healthScoreTTFTRange: 'Health score TTFT P99 thresholds must be a number ≥ 0',
+          healthScoreTTFTOrder: 'Health score TTFT P99 full-score threshold must be lower than zero-score threshold'
+        },
+        healthScoreThresholds: 'Business Health Score Thresholds',
+        healthScoreThresholdsHint: 'Only affects the overall health score, not card colors or alert thresholds.',
+        healthScoreErrorRateFullPercent: 'Error rate full score (%)',
+        healthScoreErrorRateFullPercentHint: 'At or below this value, the error-rate part of business health gets full score (default: 1%).',
+        healthScoreErrorRateZeroPercent: 'Error rate zero score (%)',
+        healthScoreErrorRateZeroPercentHint: 'At or above this value, the error-rate part of business health gets zero score (default: 10%).',
+        healthScoreTTFTP99FullMs: 'TTFT P99 full score (ms)',
+        healthScoreTTFTP99FullMsHint: 'At or below this value, the TTFT part of business health gets full score (default: 1000ms).',
+        healthScoreTTFTP99ZeroMs: 'TTFT P99 zero score (ms)',
+        healthScoreTTFTP99ZeroMsHint: 'At or above this value, the TTFT part of business health gets zero score (default: 3000ms).'
       },
       email: {
         title: 'Email Notification',
@@ -4957,7 +4971,7 @@ export default {
         dailySummary: 'Daily Summary',
         weeklySummary: 'Weekly Summary',
         metricThresholds: 'Metric Thresholds',
-        metricThresholdsHint: 'Configure alert thresholds for metrics, values exceeding thresholds will be displayed in red',
+        metricThresholdsHint: 'Configure display/alert thresholds and independent overall health score thresholds',
         slaMinPercent: 'SLA Minimum Percentage',
         slaMinPercentHint: 'SLA below this value will be displayed in red (default: 99.5%)',
         ttftP99MaxMs: 'TTFT P99 Maximum (ms)',
@@ -4966,6 +4980,16 @@ export default {
         requestErrorRateMaxPercentHint: 'Request error rate above this value will be displayed in red (default: 5%)',
         upstreamErrorRateMaxPercent: 'Upstream Error Rate Maximum (%)',
         upstreamErrorRateMaxPercentHint: 'Upstream error rate above this value will be displayed in red (default: 5%)',
+        healthScoreThresholds: 'Business Health Score Thresholds',
+        healthScoreThresholdsHint: 'Only affects the overall health score, not the display/alert thresholds above.',
+        healthScoreErrorRateFullPercent: 'Error rate full score (%)',
+        healthScoreErrorRateFullPercentHint: 'At or below this value, the error-rate part of business health gets full score (default: 1%)',
+        healthScoreErrorRateZeroPercent: 'Error rate zero score (%)',
+        healthScoreErrorRateZeroPercentHint: 'At or above this value, the error-rate part of business health gets zero score (default: 10%)',
+        healthScoreTTFTP99FullMs: 'TTFT P99 full score (ms)',
+        healthScoreTTFTP99FullMsHint: 'At or below this value, the TTFT part of business health gets full score (default: 1000ms)',
+        healthScoreTTFTP99ZeroMs: 'TTFT P99 zero score (ms)',
+        healthScoreTTFTP99ZeroMsHint: 'At or above this value, the TTFT part of business health gets zero score (default: 3000ms)',
         advancedSettings: 'Advanced Settings',
         dataRetention: 'Data Retention Policy',
         enableCleanup: 'Enable Data Cleanup',
@@ -5008,7 +5032,11 @@ export default {
           slaMinPercentRange: 'SLA minimum percentage must be between 0 and 100',
           ttftP99MaxRange: 'TTFT P99 maximum must be a number ≥ 0',
           requestErrorRateMaxRange: 'Request error rate maximum must be between 0 and 100',
-          upstreamErrorRateMaxRange: 'Upstream error rate maximum must be between 0 and 100'
+          upstreamErrorRateMaxRange: 'Upstream error rate maximum must be between 0 and 100',
+          healthScoreErrorRateRange: 'Health score error rate thresholds must be between 0 and 100',
+          healthScoreErrorRateOrder: 'Health score error rate full-score threshold must be lower than zero-score threshold',
+          healthScoreTTFTRange: 'Health score TTFT P99 thresholds must be a number ≥ 0',
+          healthScoreTTFTOrder: 'Health score TTFT P99 full-score threshold must be lower than zero-score threshold'
         }
       },
       concurrency: {

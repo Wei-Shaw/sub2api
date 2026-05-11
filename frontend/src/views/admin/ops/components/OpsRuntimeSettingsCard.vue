@@ -5,6 +5,7 @@ import { useAppStore } from '@/stores/app'
 import { opsAPI } from '@/api/admin/ops'
 import type { OpsAlertRuntimeSettings } from '../types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import { collectOpsMetricThresholdErrors, normalizeOpsMetricThresholds } from '../metricThresholds'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -45,30 +46,7 @@ function validateRuntimeSettings(settings: OpsAlertRuntimeSettings): ValidationR
     errors.push(t('admin.ops.runtime.validation.evalIntervalRange'))
   }
 
-  // Thresholds validation
-  const thresholds = settings.thresholds
-  if (thresholds) {
-    if (thresholds.sla_percent_min != null) {
-      if (!Number.isFinite(thresholds.sla_percent_min) || thresholds.sla_percent_min < 0 || thresholds.sla_percent_min > 100) {
-        errors.push(t('admin.ops.runtime.validation.slaMinPercentRange'))
-      }
-    }
-    if (thresholds.ttft_p99_ms_max != null) {
-      if (!Number.isFinite(thresholds.ttft_p99_ms_max) || thresholds.ttft_p99_ms_max < 0) {
-        errors.push(t('admin.ops.runtime.validation.ttftP99MaxRange'))
-      }
-    }
-    if (thresholds.request_error_rate_percent_max != null) {
-      if (!Number.isFinite(thresholds.request_error_rate_percent_max) || thresholds.request_error_rate_percent_max < 0 || thresholds.request_error_rate_percent_max > 100) {
-        errors.push(t('admin.ops.runtime.validation.requestErrorRateMaxRange'))
-      }
-    }
-    if (thresholds.upstream_error_rate_percent_max != null) {
-      if (!Number.isFinite(thresholds.upstream_error_rate_percent_max) || thresholds.upstream_error_rate_percent_max < 0 || thresholds.upstream_error_rate_percent_max > 100) {
-        errors.push(t('admin.ops.runtime.validation.upstreamErrorRateMaxRange'))
-      }
-    }
-  }
+  errors.push(...collectOpsMetricThresholdErrors(settings.thresholds, (key) => t(`admin.ops.runtime.${key}`)))
 
   const lock = settings.distributed_lock
   if (lock?.enabled) {
@@ -155,14 +133,7 @@ function openAlertEditor() {
     if (!Array.isArray(draftAlert.value.silencing.entries)) {
       draftAlert.value.silencing.entries = []
     }
-    if (!draftAlert.value.thresholds) {
-      draftAlert.value.thresholds = {
-        sla_percent_min: 99.5,
-        ttft_p99_ms_max: 500,
-        request_error_rate_percent_max: 5,
-        upstream_error_rate_percent_max: 5
-      }
-    }
+    draftAlert.value.thresholds = normalizeOpsMetricThresholds(draftAlert.value.thresholds)
   }
 
   showAlertEditor.value = true
@@ -389,6 +360,65 @@ onMounted(() => {
             />
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.ops.runtime.upstreamErrorRateMaxPercentHint') }}</p>
           </div>
+
+          <div class="border-t border-gray-200 pt-4 dark:border-dark-600 md:col-span-2">
+            <div class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.ops.runtime.healthScoreThresholds') }}</div>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.ops.runtime.healthScoreThresholdsHint') }}</p>
+          </div>
+
+          <div>
+            <div class="mb-1 text-xs font-medium text-gray-600 dark:text-gray-300">{{ t('admin.ops.runtime.healthScoreErrorRateFullPercent') }}</div>
+            <input
+              v-model.number="draftAlert.thresholds.health_score_error_rate_full_percent"
+              type="number"
+              min="0"
+              max="100"
+              step="0.1"
+              class="input"
+              placeholder="1"
+            />
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.ops.runtime.healthScoreErrorRateFullPercentHint') }}</p>
+          </div>
+
+          <div>
+            <div class="mb-1 text-xs font-medium text-gray-600 dark:text-gray-300">{{ t('admin.ops.runtime.healthScoreErrorRateZeroPercent') }}</div>
+            <input
+              v-model.number="draftAlert.thresholds.health_score_error_rate_zero_percent"
+              type="number"
+              min="0"
+              max="100"
+              step="0.1"
+              class="input"
+              placeholder="10"
+            />
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.ops.runtime.healthScoreErrorRateZeroPercentHint') }}</p>
+          </div>
+
+          <div>
+            <div class="mb-1 text-xs font-medium text-gray-600 dark:text-gray-300">{{ t('admin.ops.runtime.healthScoreTTFTP99FullMs') }}</div>
+            <input
+              v-model.number="draftAlert.thresholds.health_score_ttft_p99_full_ms"
+              type="number"
+              min="0"
+              step="100"
+              class="input"
+              placeholder="1000"
+            />
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.ops.runtime.healthScoreTTFTP99FullMsHint') }}</p>
+          </div>
+
+          <div>
+            <div class="mb-1 text-xs font-medium text-gray-600 dark:text-gray-300">{{ t('admin.ops.runtime.healthScoreTTFTP99ZeroMs') }}</div>
+            <input
+              v-model.number="draftAlert.thresholds.health_score_ttft_p99_zero_ms"
+              type="number"
+              min="0"
+              step="100"
+              class="input"
+              placeholder="3000"
+            />
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.ops.runtime.healthScoreTTFTP99ZeroMsHint') }}</p>
+          </div>
         </div>
       </div>
 
@@ -533,4 +563,3 @@ onMounted(() => {
     </template>
   </BaseDialog>
 </template>
-

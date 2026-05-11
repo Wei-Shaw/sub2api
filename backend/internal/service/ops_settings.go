@@ -210,6 +210,7 @@ func defaultOpsAlertRuntimeSettings() *OpsAlertRuntimeSettings {
 			GlobalReason:       "",
 			Entries:            []OpsAlertSilenceEntry{},
 		},
+		Thresholds: *defaultOpsMetricThresholds(),
 	}
 }
 
@@ -306,6 +307,7 @@ func (s *OpsService) GetOpsAlertRuntimeSettings(ctx context.Context) (*OpsAlertR
 	}
 	normalizeOpsDistributedLockSettings(&cfg.DistributedLock, opsAlertEvaluatorLeaderLockKeyDefault, defaultCfg.DistributedLock.TTLSeconds)
 	normalizeOpsAlertSilencingSettings(&cfg.Silencing)
+	normalizeOpsMetricThresholds(&cfg.Thresholds)
 
 	return cfg, nil
 }
@@ -334,10 +336,13 @@ func (s *OpsService) UpdateOpsAlertRuntimeSettings(ctx context.Context, cfg *Ops
 			return nil, err
 		}
 	}
-
 	defaultCfg := defaultOpsAlertRuntimeSettings()
 	normalizeOpsDistributedLockSettings(&cfg.DistributedLock, opsAlertEvaluatorLeaderLockKeyDefault, defaultCfg.DistributedLock.TTLSeconds)
 	normalizeOpsAlertSilencingSettings(&cfg.Silencing)
+	normalizeOpsMetricThresholds(&cfg.Thresholds)
+	if err := validateOpsMetricThresholds(&cfg.Thresholds); err != nil {
+		return nil, err
+	}
 
 	raw, err := json.Marshal(cfg)
 	if err != nil {
@@ -502,12 +507,119 @@ func defaultOpsMetricThresholds() *OpsMetricThresholds {
 	ttftMax := 500.0
 	reqErrMax := 5.0
 	upstreamErrMax := 5.0
+	healthErrFull := 1.0
+	healthErrZero := 10.0
+	healthTTFTFull := 1000.0
+	healthTTFTZero := 3000.0
 	return &OpsMetricThresholds{
-		SLAPercentMin:               &slaMin,
-		TTFTp99MsMax:                &ttftMax,
-		RequestErrorRatePercentMax:  &reqErrMax,
-		UpstreamErrorRatePercentMax: &upstreamErrMax,
+		SLAPercentMin:                     &slaMin,
+		TTFTp99MsMax:                      &ttftMax,
+		RequestErrorRatePercentMax:        &reqErrMax,
+		UpstreamErrorRatePercentMax:       &upstreamErrMax,
+		HealthScoreErrorRateFullPercent:   &healthErrFull,
+		HealthScoreErrorRateZeroPercent:   &healthErrZero,
+		HealthScoreTTFTP99FullMs:          &healthTTFTFull,
+		HealthScoreTTFTP99ZeroMs:          &healthTTFTZero,
 	}
+}
+
+func normalizeOpsMetricThresholds(cfg *OpsMetricThresholds) *OpsMetricThresholds {
+	defaultCfg := defaultOpsMetricThresholds()
+	if cfg == nil {
+		return defaultCfg
+	}
+	if cfg.SLAPercentMin == nil {
+		cfg.SLAPercentMin = defaultCfg.SLAPercentMin
+	}
+	if cfg.TTFTp99MsMax == nil {
+		cfg.TTFTp99MsMax = defaultCfg.TTFTp99MsMax
+	}
+	if cfg.RequestErrorRatePercentMax == nil {
+		cfg.RequestErrorRatePercentMax = defaultCfg.RequestErrorRatePercentMax
+	}
+	if cfg.UpstreamErrorRatePercentMax == nil {
+		cfg.UpstreamErrorRatePercentMax = defaultCfg.UpstreamErrorRatePercentMax
+	}
+	if cfg.HealthScoreErrorRateFullPercent == nil {
+		cfg.HealthScoreErrorRateFullPercent = defaultCfg.HealthScoreErrorRateFullPercent
+	}
+	if cfg.HealthScoreErrorRateZeroPercent == nil {
+		cfg.HealthScoreErrorRateZeroPercent = defaultCfg.HealthScoreErrorRateZeroPercent
+	}
+	if cfg.HealthScoreTTFTP99FullMs == nil {
+		cfg.HealthScoreTTFTP99FullMs = defaultCfg.HealthScoreTTFTP99FullMs
+	}
+	if cfg.HealthScoreTTFTP99ZeroMs == nil {
+		cfg.HealthScoreTTFTP99ZeroMs = defaultCfg.HealthScoreTTFTP99ZeroMs
+	}
+	return cfg
+}
+
+func validateOpsMetricThresholds(cfg *OpsMetricThresholds) error {
+	if cfg == nil {
+		return errors.New("invalid config")
+	}
+	if err := validateOpsDisplayMetricThresholds(cfg); err != nil {
+		return err
+	}
+	if err := validateOpsHealthScoreThresholds(cfg); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateOpsDisplayMetricThresholds(cfg *OpsMetricThresholds) error {
+	if err := validateOptionalPercent(cfg.SLAPercentMin, "sla_percent_min"); err != nil {
+		return err
+	}
+	if err := validateOptionalNonNegative(cfg.TTFTp99MsMax, "ttft_p99_ms_max"); err != nil {
+		return err
+	}
+	if err := validateOptionalPercent(cfg.RequestErrorRatePercentMax, "request_error_rate_percent_max"); err != nil {
+		return err
+	}
+	if err := validateOptionalPercent(cfg.UpstreamErrorRatePercentMax, "upstream_error_rate_percent_max"); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateOpsHealthScoreThresholds(cfg *OpsMetricThresholds) error {
+	if err := validateOptionalPercent(cfg.HealthScoreErrorRateFullPercent, "health_score_error_rate_full_percent"); err != nil {
+		return err
+	}
+	if err := validateOptionalPercent(cfg.HealthScoreErrorRateZeroPercent, "health_score_error_rate_zero_percent"); err != nil {
+		return err
+	}
+	if err := validateOptionalNonNegative(cfg.HealthScoreTTFTP99FullMs, "health_score_ttft_p99_full_ms"); err != nil {
+		return err
+	}
+	if err := validateOptionalNonNegative(cfg.HealthScoreTTFTP99ZeroMs, "health_score_ttft_p99_zero_ms"); err != nil {
+		return err
+	}
+	if cfg.HealthScoreErrorRateFullPercent != nil && cfg.HealthScoreErrorRateZeroPercent != nil &&
+		*cfg.HealthScoreErrorRateFullPercent >= *cfg.HealthScoreErrorRateZeroPercent {
+		return errors.New("health_score_error_rate_full_percent must be less than health_score_error_rate_zero_percent")
+	}
+	if cfg.HealthScoreTTFTP99FullMs != nil && cfg.HealthScoreTTFTP99ZeroMs != nil &&
+		*cfg.HealthScoreTTFTP99FullMs >= *cfg.HealthScoreTTFTP99ZeroMs {
+		return errors.New("health_score_ttft_p99_full_ms must be less than health_score_ttft_p99_zero_ms")
+	}
+	return nil
+}
+
+func validateOptionalPercent(value *float64, field string) error {
+	if value != nil && (*value < 0 || *value > 100) {
+		return errors.New(field + " must be between 0 and 100")
+	}
+	return nil
+}
+
+func validateOptionalNonNegative(value *float64, field string) error {
+	if value != nil && *value < 0 {
+		return errors.New(field + " must be >= 0")
+	}
+	return nil
 }
 
 func (s *OpsService) GetMetricThresholds(ctx context.Context) (*OpsMetricThresholds, error) {
@@ -530,11 +642,15 @@ func (s *OpsService) GetMetricThresholds(ctx context.Context) (*OpsMetricThresho
 		return nil, err
 	}
 
-	cfg := &OpsMetricThresholds{}
+	cfg := defaultCfg
 	if err := json.Unmarshal([]byte(raw), cfg); err != nil {
 		return defaultCfg, nil
 	}
 
+	normalizeOpsMetricThresholds(cfg)
+	if err := validateOpsMetricThresholds(cfg); err != nil {
+		return nil, err
+	}
 	return cfg, nil
 }
 
@@ -549,18 +665,9 @@ func (s *OpsService) UpdateMetricThresholds(ctx context.Context, cfg *OpsMetricT
 		return nil, errors.New("invalid config")
 	}
 
-	// Validate thresholds
-	if cfg.SLAPercentMin != nil && (*cfg.SLAPercentMin < 0 || *cfg.SLAPercentMin > 100) {
-		return nil, errors.New("sla_percent_min must be between 0 and 100")
-	}
-	if cfg.TTFTp99MsMax != nil && *cfg.TTFTp99MsMax < 0 {
-		return nil, errors.New("ttft_p99_ms_max must be >= 0")
-	}
-	if cfg.RequestErrorRatePercentMax != nil && (*cfg.RequestErrorRatePercentMax < 0 || *cfg.RequestErrorRatePercentMax > 100) {
-		return nil, errors.New("request_error_rate_percent_max must be between 0 and 100")
-	}
-	if cfg.UpstreamErrorRatePercentMax != nil && (*cfg.UpstreamErrorRatePercentMax < 0 || *cfg.UpstreamErrorRatePercentMax > 100) {
-		return nil, errors.New("upstream_error_rate_percent_max must be between 0 and 100")
+	normalizeOpsMetricThresholds(cfg)
+	if err := validateOpsMetricThresholds(cfg); err != nil {
+		return nil, err
 	}
 
 	raw, err := json.Marshal(cfg)
