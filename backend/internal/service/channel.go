@@ -8,6 +8,16 @@ import (
 	"github.com/tidwall/sjson"
 )
 
+// Channel is a minimal stub retained for code that references channel-level
+// feature overrides (e.g. CodexImageGenerationBridgeOverride). The full channel
+// management has been migrated to plugins/channel-management; this struct is
+// only used by the host for feature-flag resolution on the hot path.
+type Channel struct {
+	ID             int64
+	Status         string
+	FeaturesConfig map[string]any
+}
+
 // BillingMode 计费模式
 type BillingMode string
 

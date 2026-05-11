@@ -37,7 +37,7 @@
                 class="sidebar-link mb-1 w-full"
                 :class="{ 'sidebar-link-active': isGroupActive(item) && !isGroupExpanded(item) }"
                 :title="sidebarCollapsed ? item.label : undefined"
-                @click="sidebarCollapsed ? undefined : toggleGroup(item)"
+                @click="handleGroupClick(item)"
               >
                 <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
                 <component v-else-if="item.icon" :is="item.icon" class="h-5 w-5 flex-shrink-0" />
@@ -186,12 +186,13 @@
 
 <script setup lang="ts">
 import { computed, h, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAdminSettingsStore, useAppStore, useAuthStore, useOnboardingStore } from '@/stores'
 import VersionBadge from '@/components/common/VersionBadge.vue'
 import { sanitizeSvg } from '@/utils/sanitize'
 import { getPluginMenuItems, type PluginNavItem } from '@/plugins/loader'
+import { FeatureFlags, makeSidebarFlag } from '@/utils/featureFlags'
 
 interface NavItem {
   path: string
@@ -200,6 +201,16 @@ interface NavItem {
   iconSvg?: string
   hideInSimpleMode?: boolean
   children?: NavItem[]
+  /**
+   * When true, the parent item only toggles the expand/collapse state and
+   * does NOT navigate to its `path`. The `path` is purely a stable key.
+   */
+  expandOnly?: boolean
+  /**
+   * Optional feature flag getter. Returns false to hide the item; undefined/true to show.
+   * Uses lenient semantics (undefined -> show) to avoid menu flicker before settings load.
+   */
+  featureFlag?: () => boolean | undefined
   /**
    * V5/W7 Placement DSL bucket the host chose for this entry. Plugin items
    * carry their plugin-supplied placement_group; host items carry one of the
@@ -367,6 +378,7 @@ function mergeByPlacement(
 const { t, locale } = useI18n()
 
 const route = useRoute()
+const router = useRouter()
 const appStore = useAppStore()
 const authStore = useAuthStore()
 const onboardingStore = useOnboardingStore()
@@ -387,6 +399,22 @@ const siteVersion = computed(() => appStore.siteVersion)
 const settingsLoaded = computed(() => appStore.publicSettingsLoaded)
 
 // SVG Icon Components
+
+// applyFeatureFlags recursively filters out items where featureFlag() === false (including children).
+// Uses !== false lenient semantics: undefined (settings not loaded) or true both count as visible.
+function applyFeatureFlags(items: NavItem[]): NavItem[] {
+  const out: NavItem[] = []
+  for (const item of items) {
+    if (item.featureFlag && item.featureFlag() === false) continue
+    if (item.children) {
+      out.push({ ...item, children: applyFeatureFlags(item.children) })
+    } else {
+      out.push(item)
+    }
+  }
+  return out
+}
+
 const DashboardIcon = {
   render: () =>
     h(
@@ -663,6 +691,106 @@ const ChevronDoubleRightIcon = {
     )
 }
 
+const ChannelIcon = {
+  render: () =>
+    h(
+      'svg',
+      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
+      [
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M6.429 9.75L2.25 12l4.179 2.25m0-4.5l5.571 3 5.571-3m-11.142 0L2.25 7.5 12 2.25l9.75 5.25-4.179 2.25m0 0l4.179 2.25L12 17.25 2.25 12m15.321-2.25l4.179 2.25L12 17.25l-9.75-5.25'
+        })
+      ]
+    )
+}
+
+const RechargeSubscriptionIcon = {
+  render: () =>
+    h(
+      'svg',
+      { fill: 'currentColor', viewBox: '0 0 1024 1024' },
+      [
+        h('path', {
+          d: 'M512 992C247.3 992 32 776.7 32 512S247.3 32 512 32s480 215.3 480 480c0 84.4-22.2 167.4-64.2 240-8.9 15.3-28.4 20.6-43.7 11.7-15.3-8.8-20.5-28.4-11.7-43.7 36.4-62.9 55.6-134.8 55.6-208 0-229.4-186.6-416-416-416S96 282.6 96 512s186.6 416 416 416c17.7 0 32 14.3 32 32s-14.3 32-32 32z'
+        }),
+        h('path', {
+          d: 'M640 512H384c-17.7 0-32-14.3-32-32s14.3-32 32-32h256c17.7 0 32 14.3 32 32s-14.3 32-32 32zM640 640H384c-17.7 0-32-14.3-32-32s14.3-32 32-32h256c17.7 0 32 14.3 32 32s-14.3 32-32 32z'
+        }),
+        h('path', {
+          d: 'M512 480c-8.2 0-16.4-3.1-22.6-9.4l-128-128c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l128 128c12.5 12.5 12.5 32.8 0 45.3-6.3 6.3-14.5 9.4-22.7 9.4z'
+        }),
+        h('path', {
+          d: 'M512 480c-8.2 0-16.4-3.1-22.6-9.4-12.5-12.5-12.5-32.8 0-45.3l128-128c12.5-12.5 32.8-12.5 45.3 0s12.5 32.8 0 45.3l-128 128c-6.3 6.3-14.5 9.4-22.7 9.4z'
+        }),
+        h('path', {
+          d: 'M512 736c-17.7 0-32-14.3-32-32V448c0-17.7 14.3-32 32-32s32 14.3 32 32v256c0 17.7-14.3 32-32 32zM896 992H512c-17.7 0-32-14.3-32-32s14.3-32 32-32h306.8l-73.4-73.4c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l128 128c9.2 9.2 11.9 22.9 6.9 34.9S908.9 992 896 992z'
+        })
+      ]
+    )
+}
+
+const OrderIcon = {
+  render: () =>
+    h(
+      'svg',
+      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
+      [
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15a2.25 2.25 0 012.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z'
+        })
+      ]
+    )
+}
+
+const OrderListIcon = {
+  render: () =>
+    h(
+      'svg',
+      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
+      [
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z'
+        })
+      ]
+    )
+}
+
+const SignalIcon = {
+  render: () =>
+    h(
+      'svg',
+      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
+      [
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M9.348 14.651a3.75 3.75 0 010-5.303m5.304 0a3.75 3.75 0 010 5.303m-7.425 2.122a6.75 6.75 0 010-9.546m9.546 0a6.75 6.75 0 010 9.546M5.106 18.894c-3.808-3.807-3.808-9.98 0-13.788m13.788 0c3.808 3.807 3.808 9.98 0 13.788M12 12h.008v.008H12V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z'
+        })
+      ]
+    )
+}
+
+const ShieldIcon = {
+  render: () =>
+    h(
+      'svg',
+      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
+      [
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z'
+        })
+      ]
+    )
+}
+
 const ChevronDownIcon = {
   render: () =>
     h(
@@ -678,18 +806,30 @@ const ChevronDownIcon = {
     )
 }
 
+// Public-settings flags go through the registry in utils/featureFlags.ts,
+// which handles the opt-in vs opt-out fallback when settings haven't loaded
+// yet. Admin-only flags (not in public settings) stay inline below.
+const flagChannelMonitor = makeSidebarFlag(FeatureFlags.channelMonitor)
+const flagPayment = makeSidebarFlag(FeatureFlags.payment)
+const flagAvailableChannels = makeSidebarFlag(FeatureFlags.availableChannels)
+const flagAffiliate = makeSidebarFlag(FeatureFlags.affiliate)
+const flagRiskControl = makeSidebarFlag(FeatureFlags.riskControl)
+const flagOpsMonitoring = () => adminSettingsStore.opsMonitoringEnabled
+const flagAdminPayment = () => adminSettingsStore.paymentEnabled
+
 // User navigation items (for regular users)
 const userNavItems = computed((): NavItem[] => {
-  // V5/W7 Placement DSL: host 项硬编码 group 字段, 插件项通过 mergeByPlacement
-  // 按 placement_group 合并; 自定义菜单与插件同属 user/end 末尾段。
-  // Bug C: 每条 base 项预留 step=10, 插件可在缝隙里插入 (placementOrder 25,
-  //         55, 85 等). 同 group 内 __order 决定顺序。
   const baseItems: NavItem[] = [
     { path: '/dashboard', label: t('nav.dashboard'), icon: DashboardIcon, group: 'user/main', placementOrder: 10 },
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon, group: 'user/main', placementOrder: 20 },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true, group: 'user/main', placementOrder: 30 },
+    { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels, group: 'user/main', placementOrder: 35 },
+    { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelMonitor, group: 'user/main', placementOrder: 37 },
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, group: 'user/main', placementOrder: 40 },
+    { path: '/purchase', label: t('nav.buySubscription'), icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment, group: 'user/main', placementOrder: 45 },
+    { path: '/orders', label: t('nav.myOrders'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment, group: 'user/main', placementOrder: 47 },
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true, group: 'user/end', placementOrder: 20 },
+    { path: '/affiliate', label: t('nav.affiliate'), icon: UsersIcon, hideInSimpleMode: true, featureFlag: flagAffiliate, group: 'user/end', placementOrder: 25 },
     { path: '/profile', label: t('nav.profile'), icon: UserIcon, group: 'user/end', placementOrder: 30 },
     ...customMenuItemsForUser.value.map((item, idx): NavItem => ({
       path: `/custom/${item.id}`,
@@ -703,8 +843,9 @@ const userNavItems = computed((): NavItem[] => {
       placementOrder: 100 + idx,
     })),
   ]
-  const items = mergeByPlacement(baseItems, pluginUserNavItems.value, 'user')
-  return authStore.isSimpleMode ? items.filter(item => !item.hideInSimpleMode) : items
+  const merged = mergeByPlacement(baseItems, pluginUserNavItems.value, 'user')
+  const filtered = applyFeatureFlags(merged)
+  return authStore.isSimpleMode ? filtered.filter(item => !item.hideInSimpleMode) : filtered
 })
 
 // 插件菜单项,启动时从 window.__PLUGIN_MANIFESTS__ 读取一次,后续不会变化。
@@ -717,8 +858,13 @@ const personalNavItems = computed((): NavItem[] => {
   const baseItems: NavItem[] = [
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon, group: 'user/main', placementOrder: 20 },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true, group: 'user/main', placementOrder: 30 },
+    { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels, group: 'user/main', placementOrder: 35 },
+    { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelMonitor, group: 'user/main', placementOrder: 37 },
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, group: 'user/main', placementOrder: 40 },
+    { path: '/purchase', label: t('nav.buySubscription'), icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment, group: 'user/main', placementOrder: 45 },
+    { path: '/orders', label: t('nav.myOrders'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment, group: 'user/main', placementOrder: 47 },
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true, group: 'user/end', placementOrder: 20 },
+    { path: '/affiliate', label: t('nav.affiliate'), icon: UsersIcon, hideInSimpleMode: true, featureFlag: flagAffiliate, group: 'user/end', placementOrder: 25 },
     { path: '/profile', label: t('nav.profile'), icon: UserIcon, group: 'user/end', placementOrder: 30 },
     ...customMenuItemsForUser.value.map((item, idx): NavItem => ({
       path: `/custom/${item.id}`,
@@ -729,8 +875,9 @@ const personalNavItems = computed((): NavItem[] => {
       placementOrder: 100 + idx,
     })),
   ]
-  const items = mergeByPlacement(baseItems, pluginUserNavItems.value, 'user')
-  return authStore.isSimpleMode ? items.filter(item => !item.hideInSimpleMode) : items
+  const merged = mergeByPlacement(baseItems, pluginUserNavItems.value, 'user')
+  const filtered = applyFeatureFlags(merged)
+  return authStore.isSimpleMode ? filtered.filter(item => !item.hideInSimpleMode) : filtered
 })
 
 // Custom menu items filtered by visibility
@@ -760,19 +907,48 @@ const adminNavItems = computed((): NavItem[] => {
   // (NAV_ADMIN_DASHBOARD_ORDER=10 等), 让插件 import 引用而非硬编码数字。
   const baseItems: NavItem[] = [
     { path: '/admin/dashboard', label: t('nav.dashboard'), icon: DashboardIcon, group: 'admin/main', placementOrder: 10 },
-    ...(adminSettingsStore.opsMonitoringEnabled
-      ? [{ path: '/admin/ops', label: t('nav.ops'), icon: ChartIcon, group: 'admin/main', placementOrder: 20 } as NavItem]
-      : []),
+    { path: '/admin/ops', label: t('nav.ops'), icon: ChartIcon, featureFlag: flagOpsMonitoring, group: 'admin/main', placementOrder: 20 },
     { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true, group: 'admin/main', placementOrder: 30 },
     { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon, hideInSimpleMode: true, group: 'admin/main', placementOrder: 40 },
-    // /admin/channels 入口由 channel-management 插件 manifest 提供 (含 渠道定价 + 渠道监控 子菜单).
-    // 插件未启用时不显示, host 不再硬编码副本. 插件用 placementOrder=70 排在 accounts(60) 与 announcements(80) 之间.
+    // /admin/channels entry provided by channel-management plugin manifest (with pricing + monitor submenus).
+    // When plugin is not loaded, host provides a fallback entry here. Plugin uses placementOrder=70.
     { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, group: 'admin/main', placementOrder: 50 },
     { path: '/admin/accounts', label: t('nav.accounts'), icon: GlobeIcon, group: 'admin/main', placementOrder: 60 },
     { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon, group: 'admin/main', placementOrder: 80 },
     { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon, group: 'admin/main', placementOrder: 90 },
+    { path: '/admin/risk-control', label: t('nav.riskControl'), icon: ShieldIcon, hideInSimpleMode: true, featureFlag: flagRiskControl, group: 'admin/main', placementOrder: 95 },
     { path: '/admin/redeem', label: t('nav.redeemCodes'), icon: TicketIcon, hideInSimpleMode: true, group: 'admin/main', placementOrder: 100 },
     { path: '/admin/promo-codes', label: t('nav.promoCodes'), icon: GiftIcon, hideInSimpleMode: true, group: 'admin/main', placementOrder: 110 },
+    {
+      path: '/admin/affiliates',
+      label: t('nav.affiliateManagement'),
+      icon: UsersIcon,
+      hideInSimpleMode: true,
+      expandOnly: true,
+      featureFlag: flagAffiliate,
+      group: 'admin/main',
+      placementOrder: 120,
+      children: [
+        { path: '/admin/affiliates/invites', label: t('nav.affiliateInviteRecords'), icon: UsersIcon },
+        { path: '/admin/affiliates/rebates', label: t('nav.affiliateRebateRecords'), icon: OrderIcon },
+        { path: '/admin/affiliates/transfers', label: t('nav.affiliateTransferRecords'), icon: CreditCardIcon },
+      ],
+    },
+    {
+      path: '/admin/orders',
+      label: t('nav.orderManagement'),
+      icon: OrderIcon,
+      hideInSimpleMode: true,
+      expandOnly: true,
+      featureFlag: flagAdminPayment,
+      group: 'admin/main',
+      placementOrder: 130,
+      children: [
+        { path: '/admin/orders/dashboard', label: t('nav.paymentDashboard'), icon: ChartIcon },
+        { path: '/admin/orders', label: t('nav.orderManagement'), icon: OrderIcon },
+        { path: '/admin/orders/plans', label: t('nav.paymentPlans'), icon: CreditCardIcon },
+      ],
+    },
     { path: '/admin/plugins', label: t('nav.plugins'), icon: PluginIcon, hideInSimpleMode: true, group: 'admin/system', placementOrder: 10 },
     { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon, group: 'admin/system', placementOrder: 20 },
   ]
@@ -783,7 +959,7 @@ const adminNavItems = computed((): NavItem[] => {
   if (authStore.isSimpleMode) {
     const visiblePlugins = pluginAdminNavItems.value.filter((pl) => !pl.hideInSimpleMode)
     const visibleBase = baseItems.filter(item => !item.hideInSimpleMode)
-    const merged = mergeByPlacement(visibleBase, visiblePlugins, 'admin')
+    const merged = applyFeatureFlags(mergeByPlacement(visibleBase, visiblePlugins, 'admin'))
     merged.push({ path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon, group: 'admin/end' })
     merged.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon, group: 'admin/end' })
     for (const cm of customMenuItemsForAdmin.value) {
@@ -795,7 +971,7 @@ const adminNavItems = computed((): NavItem[] => {
   // 完整模式: 先合并 base + plugin, 再在 admin/end 桶尾追加系统设置 / 自定义
   // 菜单。系统设置语义上属于 admin/end, 但既有界面期待"始终在末尾", 所以仍
   // 用 push 而非声明在 baseItems 里。
-  const merged = mergeByPlacement(baseItems, pluginAdminNavItems.value, 'admin')
+  const merged = applyFeatureFlags(mergeByPlacement(baseItems, pluginAdminNavItems.value, 'admin'))
   merged.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon, group: 'admin/end' })
   for (const cm of customMenuItemsForAdmin.value) {
     merged.push({ path: `/custom/${cm.id}`, label: cm.label, icon: null, iconSvg: cm.icon_svg, group: 'admin/end' })
@@ -877,6 +1053,27 @@ function isGroupActive(item: NavItem): boolean {
 
 function isGroupExpanded(item: NavItem): boolean {
   return expandedGroups.value.has(item.path) || isGroupActive(item)
+}
+
+/**
+ * Click handler for collapsible parent items.
+ * - When sidebar is collapsed: do nothing (children are not visible).
+ * - When `expandOnly` is true: only toggle expand state.
+ * - Otherwise: navigate to the parent path and ensure the group is expanded.
+ */
+function handleGroupClick(item: NavItem) {
+  if (sidebarCollapsed.value) return
+  if (item.expandOnly) {
+    toggleGroup(item)
+    return
+  }
+  // Push to path and ensure expanded
+  if (route.path !== item.path) {
+    router.push(item.path)
+  }
+  if (!expandedGroups.value.has(item.path)) {
+    expandedGroups.value.add(item.path)
+  }
 }
 
 function toggleGroup(item: NavItem) {

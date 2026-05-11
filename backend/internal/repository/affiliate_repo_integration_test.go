@@ -78,6 +78,26 @@ VALUES ($1, $2, $3, $3, NOW(), NOW())`, u.ID, affCode, 12.34)
 	ledgerCount := querySingleInt(t, txCtx, client,
 		"SELECT COUNT(*) FROM user_affiliate_ledger WHERE user_id = $1 AND action = 'transfer'", u.ID)
 	require.Equal(t, 1, ledgerCount)
+
+	rows, err := client.QueryContext(txCtx, `
+SELECT amount::double precision,
+       balance_after::double precision,
+       aff_quota_after::double precision,
+       aff_frozen_quota_after::double precision,
+       aff_history_quota_after::double precision
+FROM user_affiliate_ledger
+WHERE user_id = $1 AND action = 'transfer'
+LIMIT 1`, u.ID)
+	require.NoError(t, err)
+	defer func() { _ = rows.Close() }()
+	require.True(t, rows.Next(), "expected transfer ledger")
+	var amount, balanceAfter, quotaAfter, frozenAfter, historyAfter float64
+	require.NoError(t, rows.Scan(&amount, &balanceAfter, &quotaAfter, &frozenAfter, &historyAfter))
+	require.InDelta(t, 12.34, amount, 1e-9)
+	require.InDelta(t, 17.84, balanceAfter, 1e-9)
+	require.InDelta(t, 0.0, quotaAfter, 1e-9)
+	require.InDelta(t, 0.0, frozenAfter, 1e-9)
+	require.InDelta(t, 12.34, historyAfter, 1e-9)
 }
 
 // TestAffiliateRepository_AccrueQuota_ReusesOuterTransaction guards the
@@ -125,7 +145,7 @@ func TestAffiliateRepository_AccrueQuota_ReusesOuterTransaction(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, bound, "invitee must bind to inviter")
 
-	applied, err := repo.AccrueQuota(txCtx, inviter.ID, invitee.ID, 3.5, 0)
+	applied, err := repo.AccrueQuota(txCtx, inviter.ID, invitee.ID, 3.5, 0, nil)
 	require.NoError(t, err)
 	require.True(t, applied, "AccrueQuota must report applied=true")
 

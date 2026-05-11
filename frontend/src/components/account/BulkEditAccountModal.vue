@@ -925,6 +925,110 @@
         </div>
       </div>
 
+      <!-- OpenAI Compact mode -->
+      <div v-if="allOpenAIPassthroughCapable" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="mb-3 flex items-center justify-between">
+          <div class="flex-1 pr-4">
+            <label
+              id="bulk-edit-openai-compact-mode-label"
+              class="input-label mb-0"
+              for="bulk-edit-openai-compact-mode-enabled"
+            >
+              {{ t('admin.accounts.openai.compactMode') }}
+            </label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.compactModeDesc') }}
+            </p>
+          </div>
+          <input
+            v-model="enableOpenAICompactMode"
+            id="bulk-edit-openai-compact-mode-enabled"
+            type="checkbox"
+            aria-controls="bulk-edit-openai-compact-mode"
+            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+        </div>
+        <div
+          id="bulk-edit-openai-compact-mode"
+          :class="!enableOpenAICompactMode && 'pointer-events-none opacity-50'"
+        >
+          <Select
+            v-model="openAICompactMode"
+            data-testid="bulk-edit-openai-compact-mode-select"
+            :options="openAICompactModeOptions"
+            aria-labelledby="bulk-edit-openai-compact-mode-label"
+          />
+        </div>
+      </div>
+
+      <!-- OpenAI Compact model mapping -->
+      <div v-if="allOpenAIPassthroughCapable" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="mb-3 flex items-center justify-between">
+          <div class="flex-1 pr-4">
+            <label
+              id="bulk-edit-openai-compact-model-mapping-label"
+              class="input-label mb-0"
+              for="bulk-edit-openai-compact-model-mapping-enabled"
+            >
+              {{ t('admin.accounts.openai.compactModelMapping') }}
+            </label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.compactModelMappingDesc') }}
+            </p>
+          </div>
+          <input
+            v-model="enableOpenAICompactModelMapping"
+            id="bulk-edit-openai-compact-model-mapping-enabled"
+            type="checkbox"
+            aria-controls="bulk-edit-openai-compact-model-mapping"
+            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+        </div>
+        <div
+          id="bulk-edit-openai-compact-model-mapping"
+          :class="!enableOpenAICompactModelMapping && 'pointer-events-none opacity-50'"
+        >
+          <div v-if="openAICompactModelMappings.length > 0" class="mb-3 space-y-2">
+            <div
+              v-for="(mapping, index) in openAICompactModelMappings"
+              :key="index"
+              class="flex items-center gap-2"
+            >
+              <input
+                v-model="mapping.from"
+                type="text"
+                class="input flex-1"
+                :placeholder="t('admin.accounts.fromModel')"
+                data-testid="bulk-edit-openai-compact-model-mapping-input"
+              />
+              <span class="text-gray-400">→</span>
+              <input
+                v-model="mapping.to"
+                type="text"
+                class="input flex-1"
+                :placeholder="t('admin.accounts.toModel')"
+                data-testid="bulk-edit-openai-compact-model-mapping-input"
+              />
+              <button
+                type="button"
+                class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                @click="removeOpenAICompactModelMapping(index)"
+              >
+                <Icon name="trash" size="sm" />
+              </button>
+            </div>
+          </div>
+          <button
+            type="button"
+            class="mb-3 w-full rounded-lg border-2 border-dashed border-gray-300 px-4 py-2 text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-700 dark:border-dark-500 dark:text-gray-400 dark:hover:border-dark-400 dark:hover:text-gray-300"
+            data-testid="bulk-edit-openai-compact-model-mapping-add"
+            @click="addOpenAICompactModelMapping"
+          >
+            + {{ t('admin.accounts.addMapping') }}
+          </button>
+        </div>
+      </div>
+
       <!-- RPM Limit (仅全部为 Anthropic OAuth/SetupToken 时显示) -->
       <div v-if="allAnthropicOAuthOrSetupToken" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">

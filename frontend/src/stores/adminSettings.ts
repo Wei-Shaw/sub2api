@@ -49,6 +49,7 @@ export const useAdminSettingsStore = defineStore('adminSettings', () => {
   const opsRealtimeMonitoringEnabled = ref(readCachedBool('ops_realtime_monitoring_enabled_cached', true))
   const opsQueryModeDefault = ref(readCachedString('ops_query_mode_default_cached', 'auto'))
   const customMenuItems = ref<CustomMenuItem[]>([])
+  const paymentEnabled = ref(readCachedBool('payment_enabled_cached', false))
 
   async function fetch(force = false): Promise<void> {
     if (loaded.value && !force) return
@@ -67,6 +68,9 @@ export const useAdminSettingsStore = defineStore('adminSettings', () => {
       writeCachedString('ops_query_mode_default_cached', opsQueryModeDefault.value)
 
       customMenuItems.value = Array.isArray(settings.custom_menu_items) ? settings.custom_menu_items : []
+
+      paymentEnabled.value = settings.payment_enabled ?? false
+      writeCachedBool('payment_enabled_cached', paymentEnabled.value)
 
       loaded.value = true
     } catch (err) {
@@ -127,6 +131,7 @@ export const useAdminSettingsStore = defineStore('adminSettings', () => {
     opsRealtimeMonitoringEnabled,
     opsQueryModeDefault,
     customMenuItems,
+    paymentEnabled,
     fetch,
     setOpsMonitoringEnabledLocal,
     setOpsRealtimeMonitoringEnabledLocal,

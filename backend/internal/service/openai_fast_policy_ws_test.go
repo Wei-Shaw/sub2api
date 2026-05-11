@@ -972,6 +972,62 @@ func TestPassthroughBilling_MultiTurnServiceTierFollowsFilteredFrames(t *testing
 		"turn 3: response.create without service_tier overwrites billing to nil to match upstream default")
 }
 
+func TestPassthroughUsageMeta_TracksReasoningEffortAcrossTurns(t *testing.T) {
+	svc := newOpenAIGatewayServiceWithSettings(t, DefaultOpenAIFastPolicySettings())
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+
+	firstFrame := []byte(`{"type":"response.create","model":"gpt-5.5","reasoning":{"effort":"medium"},"service_tier":"priority"}`)
+	meta := newOpenAIWSPassthroughUsageMeta("", firstFrame)
+	capturedSessionModel := openAIWSPassthroughPolicyModelForFrame(account, firstFrame)
+	firstOut, firstBlocked, firstErr := svc.applyOpenAIFastPolicyToWSResponseCreate(context.Background(), account, capturedSessionModel, firstFrame)
+	require.NoError(t, firstErr)
+	require.Nil(t, firstBlocked)
+	meta.initFromFirstFrame(firstOut)
+	require.NotNil(t, meta.reasoningEffort.Load())
+	require.Equal(t, "medium", *meta.reasoningEffort.Load())
+
+	process := func(payload []byte) ([]byte, *OpenAIFastBlockedError, error) {
+		if updated := openAIWSPassthroughPolicyModelFromSessionFrame(account, payload); updated != "" {
+			capturedSessionModel = updated
+		}
+		meta.updateSessionRequestModel(payload)
+		requestModelForThisFrame := meta.requestModelForFrame(payload)
+		model := openAIWSPassthroughPolicyModelForFrame(account, payload)
+		if model == "" {
+			model = capturedSessionModel
+		}
+		out, blocked, policyErr := svc.applyOpenAIFastPolicyToWSResponseCreate(context.Background(), account, model, payload)
+		if policyErr == nil && blocked == nil &&
+			strings.TrimSpace(gjson.GetBytes(payload, "type").String()) == "response.create" {
+			meta.updateFromResponseCreate(out, requestModelForThisFrame)
+		}
+		return out, blocked, policyErr
+	}
+
+	_, blockedSession, errSession := process([]byte(`{"type":"session.update","session":{"model":"gpt-5-high"}}`))
+	require.NoError(t, errSession)
+	require.Nil(t, blockedSession)
+	require.NotNil(t, meta.reasoningEffort.Load())
+	require.Equal(t, "medium", *meta.reasoningEffort.Load(), "session.update 只刷新后续 fallback model，不覆盖当前 turn metadata")
+
+	_, blockedCancel, errCancel := process([]byte(`{"type":"response.cancel","reasoning_effort":"x-high"}`))
+	require.NoError(t, errCancel)
+	require.Nil(t, blockedCancel)
+	require.NotNil(t, meta.reasoningEffort.Load())
+	require.Equal(t, "medium", *meta.reasoningEffort.Load(), "非 response.create 帧不能污染当前 turn metadata")
+
+	_, blockedFlat, errFlat := process([]byte(`{"type":"response.create","reasoning_effort":"x-high"}`))
+	require.NoError(t, errFlat)
+	require.Nil(t, blockedFlat)
+	require.NotNil(t, meta.reasoningEffort.Load())
+	require.Equal(t, "xhigh", *meta.reasoningEffort.Load(), "flat reasoning_effort 必须进入 passthrough usage metadata")
+
+	_, blockedClear, errClear := process([]byte(`{"type":"response.create","model":"gpt-4o"}`))
+	require.NoError(t, errClear)
+	require.Nil(t, blockedClear)
+	require.Nil(t, meta.reasoningEffort.Load(), "新的 response.create 无 effort 且无可推导后缀时必须清空旧值")
+}
+
 // TestPassthroughBilling_BlockedFrameDoesNotMutateServiceTier locks in the
 // "block keeps previous" semantic: when policy returns block on a
 // response.create frame, that frame is never sent upstream, so billing tier

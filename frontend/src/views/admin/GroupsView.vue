@@ -789,7 +789,10 @@ const createForm = reactive({
   daily_limit_usd: null as number | null,
   weekly_limit_usd: null as number | null,
   monthly_limit_usd: null as number | null,
-  // 图片生成计费配置（仅 antigravity 平台使用）
+  // 图片生成计费配置
+  allow_image_generation: false,
+  image_rate_independent: false,
+  image_rate_multiplier: 1,
   image_price_1k: null as number | null,
   image_price_2k: null as number | null,
   image_price_4k: null as number | null,
@@ -829,7 +832,10 @@ const editForm = reactive({
   daily_limit_usd: null as number | null,
   weekly_limit_usd: null as number | null,
   monthly_limit_usd: null as number | null,
-  // 图片生成计费配置（仅 antigravity 平台使用）
+  // 图片生成计费配置
+  allow_image_generation: false,
+  image_rate_independent: false,
+  image_rate_multiplier: 1,
   image_price_1k: null as number | null,
   image_price_2k: null as number | null,
   image_price_4k: null as number | null,
@@ -858,6 +864,9 @@ const editForm = reactive({
   // 分组级 RPM 限制（每用户每分钟最大请求数；0 = 不限制）
   rpm_limit: 0 as number,
 });
+
+
+
 
 // 根据分组类型返回不同的删除确认消息
 const deleteConfirmMessage = computed(() => {
@@ -1017,6 +1026,9 @@ const closeCreateModal = () => {
   createForm.daily_limit_usd = null;
   createForm.weekly_limit_usd = null;
   createForm.monthly_limit_usd = null;
+  createForm.allow_image_generation = false;
+  createForm.image_rate_independent = false;
+  createForm.image_rate_multiplier = 1;
   createForm.image_price_1k = null;
   createForm.image_price_2k = null;
   createForm.image_price_4k = null;
@@ -1048,6 +1060,16 @@ const normalizeOptionalLimit = (
   }
 
   return Number.isFinite(value) && value > 0 ? value : null;
+};
+
+const normalizeImageRateMultiplier = (
+  value: number | string | null | undefined,
+): number => {
+  if (value === null || value === undefined || value === "") {
+    return 1;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 1;
 };
 
 /** Build API payload from form data + config ref (shared by create & update) */
@@ -1084,6 +1106,9 @@ const handleCreateGroup = async () => {
   submitting.value = true;
   try {
     const requestData = buildGroupPayload(createForm, createFormFieldsRef.value);
+    requestData.image_rate_multiplier = normalizeImageRateMultiplier(
+      (requestData as Record<string, unknown>).image_rate_multiplier as number | string | null,
+    );
     await adminAPI.groups.create(requestData as unknown as CreateGroupRequest);
     appStore.showSuccess(t("admin.groups.groupCreated"));
     closeCreateModal();
@@ -1115,6 +1140,9 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.daily_limit_usd = group.daily_limit_usd;
   editForm.weekly_limit_usd = group.weekly_limit_usd;
   editForm.monthly_limit_usd = group.monthly_limit_usd;
+  editForm.allow_image_generation = group.allow_image_generation ?? false;
+  editForm.image_rate_independent = group.image_rate_independent ?? false;
+  editForm.image_rate_multiplier = group.image_rate_multiplier ?? 1;
   editForm.image_price_1k = group.image_price_1k;
   editForm.image_price_2k = group.image_price_2k;
   editForm.image_price_4k = group.image_price_4k;
@@ -1176,6 +1204,9 @@ const handleUpdateGroup = async () => {
       editForm.fallback_group_id_on_invalid_request === null
         ? 0
         : editForm.fallback_group_id_on_invalid_request;
+    payload.image_rate_multiplier = normalizeImageRateMultiplier(
+      (payload as Record<string, unknown>).image_rate_multiplier as number | string | null,
+    );
     await adminAPI.groups.update(editingGroup.value.id, payload as unknown as UpdateGroupRequest);
     appStore.showSuccess(t("admin.groups.groupUpdated"));
     closeEditModal();

@@ -33,6 +33,7 @@ type AdminHandlers struct {
 	ScheduledTest         *admin.ScheduledTestHandler
 	// Channel/ChannelMonitor/ChannelMonitorTemplate handlers 已迁移到 plugins/channel-management/
 	// Payment handler 已迁移到 plugins/payment/
+	ContentModeration   *admin.ContentModerationHandler
 	ServiceQuota        *admin.ServiceQuotaHandler
 	ServiceQuotaMonitor *admin.ServiceQuotaMonitorHandler
 	Affiliate           *admin.AffiliateHandler

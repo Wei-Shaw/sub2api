@@ -32,6 +32,7 @@ import channelsAPI from './channels'
 import channelMonitorAPI from './channelMonitor'
 import channelMonitorTemplateAPI from './channelMonitorTemplate'
 import affiliatesAPI from './affiliates'
+import riskControlAPI from './riskControl'
 
 /**
  * Unified admin API object for convenient access
@@ -62,7 +63,8 @@ export const adminAPI = {
   channels: channelsAPI,
   channelMonitor: channelMonitorAPI,
   channelMonitorTemplate: channelMonitorTemplateAPI,
-  affiliates: affiliatesAPI
+  affiliates: affiliatesAPI,
+  riskControl: riskControlAPI
 }
 
 export {
@@ -91,7 +93,8 @@ export {
   channelsAPI,
   channelMonitorAPI,
   channelMonitorTemplateAPI,
-  affiliatesAPI
+  affiliatesAPI,
+  riskControlAPI
 }
 
 export default adminAPI
@@ -102,3 +105,4 @@ export type { ErrorPassthroughRule, CreateRuleRequest, UpdateRuleRequest } from 
 export type { BackupAgentHealth, DataManagementConfig } from './dataManagement'
 export type { TLSFingerprintProfile, CreateProfileRequest, UpdateProfileRequest } from './tlsFingerprintProfile'
 export * as platforms from './platforms'
+export type { ContentModerationConfig, ContentModerationLog, ModerationMode } from './riskControl'

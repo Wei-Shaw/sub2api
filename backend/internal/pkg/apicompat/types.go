@@ -53,6 +53,8 @@ type AnthropicMessage struct {
 type AnthropicContentBlock struct {
 	Type string `json:"type"`
 
+	CacheControl *AnthropicCacheControl `json:"cache_control,omitempty"`
+
 	// type=text
 	Text string `json:"text,omitempty"`
 
@@ -165,19 +167,23 @@ type AnthropicDelta struct {
 
 // ResponsesRequest is the request body for POST /v1/responses.
 type ResponsesRequest struct {
-	Model           string              `json:"model"`
-	Instructions    string              `json:"instructions,omitempty"`
-	Input           json.RawMessage     `json:"input"` // string or []ResponsesInputItem
-	MaxOutputTokens *int                `json:"max_output_tokens,omitempty"`
-	Temperature     *float64            `json:"temperature,omitempty"`
-	TopP            *float64            `json:"top_p,omitempty"`
-	Stream          bool                `json:"stream,omitempty"`
-	Tools           []ResponsesTool     `json:"tools,omitempty"`
-	Include         []string            `json:"include,omitempty"`
-	Store           *bool               `json:"store,omitempty"`
-	Reasoning       *ResponsesReasoning `json:"reasoning,omitempty"`
-	ToolChoice      json.RawMessage     `json:"tool_choice,omitempty"`
-	ServiceTier     string              `json:"service_tier,omitempty"`
+	Model              string              `json:"model"`
+	Instructions       string              `json:"instructions,omitempty"`
+	Input              json.RawMessage     `json:"input"` // string or []ResponsesInputItem
+	MaxOutputTokens    *int                `json:"max_output_tokens,omitempty"`
+	Temperature        *float64            `json:"temperature,omitempty"`
+	TopP               *float64            `json:"top_p,omitempty"`
+	Stream             bool                `json:"stream,omitempty"`
+	Tools              []ResponsesTool     `json:"tools,omitempty"`
+	Include            []string            `json:"include,omitempty"`
+	Store              *bool               `json:"store,omitempty"`
+	ParallelToolCalls  *bool               `json:"parallel_tool_calls,omitempty"`
+	Reasoning          *ResponsesReasoning `json:"reasoning,omitempty"`
+	Text               *ResponsesText      `json:"text,omitempty"`
+	ToolChoice         json.RawMessage     `json:"tool_choice,omitempty"`
+	ServiceTier        string              `json:"service_tier,omitempty"`
+	PromptCacheKey     string              `json:"prompt_cache_key,omitempty"`
+	PreviousResponseID string              `json:"previous_response_id,omitempty"`
 }
 
 // ResponsesReasoning configures reasoning effort in the Responses API.
@@ -186,13 +192,18 @@ type ResponsesReasoning struct {
 	Summary string `json:"summary,omitempty"` // "auto" | "concise" | "detailed"
 }
 
+// ResponsesText configures text output options in the Responses API.
+type ResponsesText struct {
+	Verbosity string `json:"verbosity,omitempty"` // "low" | "medium" | "high"
+}
+
 // ResponsesInputItem is one item in the Responses API input array.
 // The Type field determines which other fields are populated.
 type ResponsesInputItem struct {
 	// Common
 	Type string `json:"type,omitempty"` // "" for role-based messages
 
-	// Role-based messages (system/user/assistant)
+	// Role-based messages (developer/system/user/assistant)
 	Role    string          `json:"role,omitempty"`
 	Content json.RawMessage `json:"content,omitempty"` // string or []ResponsesContentPart
 
@@ -314,7 +325,7 @@ type ResponsesOutputTokensDetails struct {
 type ResponsesStreamEvent struct {
 	Type string `json:"type"`
 
-	// response.created / response.completed / response.failed / response.incomplete
+	// response.created / response.completed / response.done / response.failed / response.incomplete
 	Response *ResponsesResponse `json:"response,omitempty"`
 
 	// response.output_item.added / response.output_item.done
