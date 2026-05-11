@@ -1713,6 +1713,8 @@ export default {
       sortOrderUpdated: 'Sort order updated',
       failedToUpdateSortOrder: 'Failed to update sort order',
       allPlatforms: 'All Platforms',
+      gatewayType: 'Gateway Type',
+      allGatewayTypes: 'All Gateway Types',
       allStatus: 'All Status',
       allGroups: 'All Groups',
       exclusive: 'Exclusive',
@@ -1721,6 +1723,7 @@ export default {
       columns: {
         name: 'Name',
         platform: 'Platform',
+        gatewayType: 'Gateway',
         rateMultiplier: 'Rate Multiplier',
         type: 'Type',
         accounts: 'Accounts',
@@ -1746,6 +1749,7 @@ export default {
         name: 'Name',
         description: 'Description',
         platform: 'Platform',
+        gatewayType: 'Gateway Type',
         rateMultiplier: 'Rate Multiplier',
         status: 'Status',
         exclusive: 'Exclusive Group'
@@ -1754,6 +1758,8 @@ export default {
       optionalDescription: 'Optional description',
       platformHint: 'Select the platform this group is associated with',
       platformNotEditable: 'Platform cannot be changed after creation',
+      gatewayTypeHint: 'Select the API protocol type for this group. Accounts compatible with this gateway will be schedulable.',
+      gatewayTypeNotEditable: 'Gateway type cannot be changed after creation',
       rateMultiplierHint: 'Cost multiplier for this group (e.g., 1.5 = 150% of base cost)',
       exclusiveHint: 'Exclusive group, manually assign to specific users',
       exclusiveTooltip: {

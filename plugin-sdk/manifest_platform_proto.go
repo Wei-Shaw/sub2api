@@ -22,7 +22,8 @@ func platformDeclToProto(d *PlatformDecl) *pb.PlatformDeclaration {
 		AccountTypes:  accountTypesToProto(d.AccountTypes),
 		CustomActions: customActionsToProto(d.CustomActions),
 		SortOrder:     int32(d.SortOrder),
-		PrivacyStates: privacyStatesToProto(d.PrivacyStates),
+		PrivacyStates:      privacyStatesToProto(d.PrivacyStates),
+		CompatibleGateways: append([]string(nil), d.CompatibleGateways...),
 	}
 	if d.CapacityDisplay != nil {
 		p.CapacityDisplay = &pb.CapacityDisplayConfig{
@@ -149,7 +150,8 @@ func PlatformDeclFromProto(p *pb.PlatformDeclaration) PlatformDecl {
 		DisplayName: p.DisplayName,
 		IconSVG:     p.IconSvg,
 		ThemeColor:  p.ThemeColor,
-		SortOrder:   int(p.SortOrder),
+		SortOrder:          int(p.SortOrder),
+		CompatibleGateways: append([]string(nil), p.CompatibleGateways...),
 	}
 	for _, at := range p.AccountTypes {
 		d.AccountTypes = append(d.AccountTypes, accountTypeDeclFromProto(at))

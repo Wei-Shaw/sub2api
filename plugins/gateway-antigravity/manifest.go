@@ -19,8 +19,9 @@ func buildManifest() *pluginsdk.Manifest {
 				Platform:    "antigravity",
 				DisplayName: "Antigravity",
 				IconSVG:     antigravityIconSVG,
-				ThemeColor:  "#7c3aed",
-				SortOrder:   3,
+				ThemeColor:         "#7c3aed",
+				SortOrder:          3,
+				CompatibleGateways: []string{"antigravity"},
 				AccountTypes: []pluginsdk.AccountTypeDecl{
 					{
 						Type:        "oauth",

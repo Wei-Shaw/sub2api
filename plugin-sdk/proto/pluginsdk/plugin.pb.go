@@ -39,7 +39,7 @@ type PluginInitRequest struct {
 	// block-list, allowed-host list, redirect / timeout / body caps). The SDK
 	// caches these on Init so plugin code can call NewSafeHTTPClient without
 	// re-fetching them. Plugins may layer per-call overrides on top via
-	// OutboundConfig. See V5-DESIGN §W4 (SafeOutboundHTTPCapability).
+	// OutboundConfig. See V5-DESIGN 搂W4 (SafeOutboundHTTPCapability).
 	OutboundDefaults *OutboundDefaults `protobuf:"bytes,50,opt,name=outbound_defaults,json=outboundDefaults,proto3" json:"outbound_defaults,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
@@ -110,18 +110,18 @@ func (x *PluginInitRequest) GetOutboundDefaults() *OutboundDefaults {
 type OutboundDefaults struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// blocked_cidrs lists CIDR ranges the SDK MUST refuse to dial. Empty means
-	// "use SDK defaults" — the SDK never falls back to "no block list".
+	// "use SDK defaults" 鈥?the SDK never falls back to "no block list".
 	BlockedCidrs []string `protobuf:"bytes,1,rep,name=blocked_cidrs,json=blockedCidrs,proto3" json:"blocked_cidrs,omitempty"`
 	// allowed_hosts is an optional global allow-list of hostnames. When
 	// non-empty the SDK rejects any host not in the list. Empty means "no
 	// host-level allow-list" (block-list still applies).
 	AllowedHosts []string `protobuf:"bytes,2,rep,name=allowed_hosts,json=allowedHosts,proto3" json:"allowed_hosts,omitempty"`
-	// max_redirects caps the number of HTTP redirects followed. 0 → SDK
+	// max_redirects caps the number of HTTP redirects followed. 0 鈫?SDK
 	// default (3).
 	MaxRedirects int32 `protobuf:"varint,3,opt,name=max_redirects,json=maxRedirects,proto3" json:"max_redirects,omitempty"`
-	// timeout_nanos is the per-request timeout. 0 → SDK default (30s).
+	// timeout_nanos is the per-request timeout. 0 鈫?SDK default (30s).
 	TimeoutNanos int64 `protobuf:"varint,4,opt,name=timeout_nanos,json=timeoutNanos,proto3" json:"timeout_nanos,omitempty"`
-	// max_body_bytes caps response body size. 0 → SDK default (1 MiB).
+	// max_body_bytes caps response body size. 0 鈫?SDK default (1 MiB).
 	MaxBodyBytes  int64 `protobuf:"varint,5,opt,name=max_body_bytes,json=maxBodyBytes,proto3" json:"max_body_bytes,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -446,7 +446,7 @@ type ManifestResponse struct {
 	// can rely on Settings.Get returning a value immediately after install.
 	SettingsDefaultsJson []byte `protobuf:"bytes,43,opt,name=settings_defaults_json,json=settingsDefaultsJson,proto3" json:"settings_defaults_json,omitempty"`
 	// settings_schema_version mirrors Manifest.SettingsSchema.Version (see
-	// SETTINGS-V2-DESIGN §3.3). Plugins should bump this whenever a property's
+	// SETTINGS-V2-DESIGN 搂3.3). Plugins should bump this whenever a property's
 	// type changes shape; the host stamps the value into
 	// plugin_settings.schema_version_at_write on every write so plugin SDKs
 	// can detect stale values via SchemaVersionMismatchError. Empty string is
@@ -454,11 +454,11 @@ type ManifestResponse struct {
 	SettingsSchemaVersion string `protobuf:"bytes,44,opt,name=settings_schema_version,json=settingsSchemaVersion,proto3" json:"settings_schema_version,omitempty"`
 	// settings_properties_meta_json is a JSON object keyed by top-level
 	// schema property name. Each value is the marker triple
-	// {visibility, deprecated, requires_reload} — see SETTINGS-V2-DESIGN
-	// §1.4 for the precise shape. The plugin SDK derives this from the
+	// {visibility, deprecated, requires_reload} 鈥?see SETTINGS-V2-DESIGN
+	// 搂1.4 for the precise shape. The plugin SDK derives this from the
 	// SettingsSchemaDoc.PropertyMeta map; plugins may also set the markers
 	// inline as JSON Schema vendor extensions (`x-visibility` etc.) and
-	// leave this field empty — the host will re-derive it from
+	// leave this field empty 鈥?the host will re-derive it from
 	// settings_schema_json. When both sources disagree, this field wins
 	// (it is the SDK's authoritative serialization).
 	SettingsPropertiesMetaJson []byte `protobuf:"bytes,45,opt,name=settings_properties_meta_json,json=settingsPropertiesMetaJson,proto3" json:"settings_properties_meta_json,omitempty"`
@@ -476,7 +476,7 @@ type ManifestResponse struct {
 	// "events.subscribe.gateway" (legacy alias: "events.gateway").
 	SubscribedEvents []string `protobuf:"bytes,47,rep,name=subscribed_events,json=subscribedEvents,proto3" json:"subscribed_events,omitempty"`
 	// owned_tables lists the host DB tables this plugin owns / reads / writes.
-	// The SQL gate (P12·B-1) rejects plugin SQL touching tables not listed
+	// The SQL gate (P12路B-1) rejects plugin SQL touching tables not listed
 	// here unless the plugin also holds db.core.read or db.core.write and
 	// the table is in the host shared whitelist.
 	//
@@ -964,7 +964,7 @@ type MenuItem struct {
 	//
 	// Plugins ship descriptions through the manifest so plugin views no
 	// longer need to repeat title/description in a per-view
-	// PluginPageLayout header — the host AppHeader becomes the single
+	// PluginPageLayout header 鈥?the host AppHeader becomes the single
 	// source of truth, matching how host pages already work.
 	Descriptions  map[string]string `protobuf:"bytes,14,rep,name=descriptions,proto3" json:"descriptions,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
@@ -1183,7 +1183,7 @@ type MigrationDecl struct {
 	// CREATE INDEX CONCURRENTLY). The host applies these outside BEGIN/COMMIT.
 	NonTransactional bool `protobuf:"varint,3,opt,name=non_transactional,json=nonTransactional,proto3" json:"non_transactional,omitempty"`
 	// DownFilename names the down migration the plugin ships alongside the up
-	// body. Empty string means the migration is irreversible — the host skips
+	// body. Empty string means the migration is irreversible 鈥?the host skips
 	// executing it during plugin Purge and only deletes bookkeeping rows.
 	// When non-empty, the host fetches the body via PluginLifecycle.GetMigration
 	// (same RPC, different filename) and caches it on plugin enable so Purge
@@ -1191,7 +1191,7 @@ type MigrationDecl struct {
 	DownFilename string `protobuf:"bytes,4,opt,name=down_filename,json=downFilename,proto3" json:"down_filename,omitempty"`
 	// DownChecksumSha256 is the hex-encoded SHA-256 of the down SQL body. The
 	// host re-verifies it against the fetched body to detect supply-chain
-	// tampering — same contract as ChecksumSha256 above.
+	// tampering 鈥?same contract as ChecksumSha256 above.
 	DownChecksumSha256 string `protobuf:"bytes,5,opt,name=down_checksum_sha256,json=downChecksumSha256,proto3" json:"down_checksum_sha256,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
@@ -1402,8 +1402,13 @@ type PlatformDeclaration struct {
 	SortOrder int32 `protobuf:"varint,10,opt,name=sort_order,json=sortOrder,proto3" json:"sort_order,omitempty"`
 	// privacy_states for the Privacy filter dropdown. Empty = N/A.
 	PrivacyStates []*PrivacyState `protobuf:"bytes,11,rep,name=privacy_states,json=privacyStates,proto3" json:"privacy_states,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// compatible_gateways declares which gateway protocols this platform
+	// supports. When non-empty the host registers the plugin as a provider
+	// for each listed protocol. When empty the host falls back to
+	// [platform] (single-protocol default).
+	CompatibleGateways []string `protobuf:"bytes,12,rep,name=compatible_gateways,json=compatibleGateways,proto3" json:"compatible_gateways,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *PlatformDeclaration) Reset() {
@@ -1509,6 +1514,13 @@ func (x *PlatformDeclaration) GetSortOrder() int32 {
 func (x *PlatformDeclaration) GetPrivacyStates() []*PrivacyState {
 	if x != nil {
 		return x.PrivacyStates
+	}
+	return nil
+}
+
+func (x *PlatformDeclaration) GetCompatibleGateways() []string {
+	if x != nil {
+		return x.CompatibleGateways
 	}
 	return nil
 }
@@ -2297,7 +2309,7 @@ const file_plugin_proto_rawDesc = "" +
 	"\bfilename\x18\x01 \x01(\tR\bfilename\x12\x10\n" +
 	"\x03sql\x18\x02 \x01(\fR\x03sql\x12'\n" +
 	"\x0fchecksum_sha256\x18\x03 \x01(\tR\x0echecksumSha256\x12+\n" +
-	"\x11non_transactional\x18\x04 \x01(\bR\x10nonTransactional\"\xd5\x04\n" +
+	"\x11non_transactional\x18\x04 \x01(\bR\x10nonTransactional\"\x86\x05\n" +
 	"\x13PlatformDeclaration\x12\x1a\n" +
 	"\bplatform\x18\x01 \x01(\tR\bplatform\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12\x19\n" +
@@ -2313,7 +2325,8 @@ const file_plugin_proto_rawDesc = "" +
 	"\n" +
 	"sort_order\x18\n" +
 	" \x01(\x05R\tsortOrder\x12>\n" +
-	"\x0eprivacy_states\x18\v \x03(\v2\x17.pluginsdk.PrivacyStateR\rprivacyStates\"\xa4\x03\n" +
+	"\x0eprivacy_states\x18\v \x03(\v2\x17.pluginsdk.PrivacyStateR\rprivacyStates\x12/\n" +
+	"\x13compatible_gateways\x18\f \x03(\tR\x12compatibleGateways\"\xa4\x03\n" +
 	"\x16AccountTypeDeclaration\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12 \n" +

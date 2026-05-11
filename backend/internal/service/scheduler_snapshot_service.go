@@ -29,17 +29,18 @@ type batchSeenKey struct {
 }
 
 type SchedulerSnapshotService struct {
-	cache         SchedulerCache
-	outboxRepo    SchedulerOutboxRepository
-	accountRepo   AccountRepository
-	groupRepo     GroupRepository
-	cfg           *config.Config
-	stopCh        chan struct{}
-	stopOnce      sync.Once
-	wg            sync.WaitGroup
-	fallbackLimit *fallbackLimiter
-	lagMu         sync.Mutex
-	lagFailures   int
+	cache          SchedulerCache
+	outboxRepo     SchedulerOutboxRepository
+	accountRepo    AccountRepository
+	groupRepo      GroupRepository
+	cfg            *config.Config
+	stopCh         chan struct{}
+	stopOnce       sync.Once
+	wg             sync.WaitGroup
+	fallbackLimit  *fallbackLimiter
+	lagMu          sync.Mutex
+	lagFailures    int
+	compatResolver CompatiblePlatformResolver
 }
 
 func NewSchedulerSnapshotService(
@@ -54,13 +55,14 @@ func NewSchedulerSnapshotService(
 		maxQPS = cfg.Gateway.Scheduling.DbFallbackMaxQPS
 	}
 	return &SchedulerSnapshotService{
-		cache:         cache,
-		outboxRepo:    outboxRepo,
-		accountRepo:   accountRepo,
-		groupRepo:     groupRepo,
-		cfg:           cfg,
-		stopCh:        make(chan struct{}),
-		fallbackLimit: newFallbackLimiter(maxQPS),
+		cache:          cache,
+		outboxRepo:     outboxRepo,
+		accountRepo:    accountRepo,
+		groupRepo:      groupRepo,
+		cfg:            cfg,
+		stopCh:         make(chan struct{}),
+		fallbackLimit:  newFallbackLimiter(maxQPS),
+		compatResolver: defaultCompatiblePlatformResolver(),
 	}
 }
 
@@ -104,8 +106,20 @@ func (s *SchedulerSnapshotService) Stop() {
 	s.wg.Wait()
 }
 
+// SetCompatiblePlatformResolver wires a plugin-supplied resolver. Pass nil
+// to revert to the default static resolver (legacy Antigravity rules).
+func (s *SchedulerSnapshotService) SetCompatiblePlatformResolver(r CompatiblePlatformResolver) {
+	if s == nil {
+		return
+	}
+	if r == nil {
+		r = defaultCompatiblePlatformResolver()
+	}
+	s.compatResolver = r
+}
+
 func (s *SchedulerSnapshotService) ListSchedulableAccounts(ctx context.Context, groupID *int64, platform string, hasForcePlatform bool) ([]Account, bool, error) {
-	useMixed := (platform == PlatformAnthropic || platform == PlatformGemini) && !hasForcePlatform
+	useMixed := len(s.compatResolver.CompatiblePlatforms(platform)) > 0 && !hasForcePlatform
 	mode := s.resolveMode(platform, hasForcePlatform)
 	bucket := s.bucketFor(groupID, platform, mode)
 
@@ -465,12 +479,18 @@ func (s *SchedulerSnapshotService) rebuildByAccount(ctx context.Context, account
 	if err := s.rebuildBucketsForPlatform(ctx, account.Platform, groupIDs, reason, seen); err != nil && firstErr == nil {
 		firstErr = err
 	}
-	if account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled() {
-		if err := s.rebuildBucketsForPlatform(ctx, PlatformAnthropic, groupIDs, reason, seen); err != nil && firstErr == nil {
-			firstErr = err
-		}
-		if err := s.rebuildBucketsForPlatform(ctx, PlatformGemini, groupIDs, reason, seen); err != nil && firstErr == nil {
-			firstErr = err
+	// If this platform is compatible with any gateway protocols, also rebuild
+	// those gateway buckets so mixed scheduling picks up the change.
+	if s.compatResolver.IsMixedSchedulingPlatform(account.Platform) {
+		for _, gw := range s.allKnownPlatforms() {
+			if gw == account.Platform {
+				continue
+			}
+			if s.compatResolver.SupportsProtocol(account.Platform, gw) {
+				if err := s.rebuildBucketsForPlatform(ctx, gw, groupIDs, reason, seen); err != nil && firstErr == nil {
+					firstErr = err
+				}
+			}
 		}
 	}
 	return firstErr
@@ -481,7 +501,7 @@ func (s *SchedulerSnapshotService) rebuildByGroupIDs(ctx context.Context, groupI
 	if len(groupIDs) == 0 {
 		return nil
 	}
-	platforms := []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity}
+	platforms := s.allKnownPlatforms()
 	var firstErr error
 	for _, platform := range platforms {
 		if err := s.rebuildBucketsForPlatform(ctx, platform, groupIDs, reason, seen); err != nil && firstErr == nil {
@@ -514,7 +534,7 @@ func (s *SchedulerSnapshotService) rebuildBucketsForPlatform(ctx context.Context
 		if err := s.rebuildBucket(ctx, SchedulerBucket{GroupID: gid, Platform: platform, Mode: SchedulerModeForced}, reason); err != nil && firstErr == nil {
 			firstErr = err
 		}
-		if platform == PlatformAnthropic || platform == PlatformGemini {
+		if len(s.compatResolver.CompatiblePlatforms(platform)) > 0 {
 			if err := s.rebuildBucket(ctx, SchedulerBucket{GroupID: gid, Platform: platform, Mode: SchedulerModeMixed}, reason); err != nil && firstErr == nil {
 				firstErr = err
 			}
@@ -643,7 +663,8 @@ func (s *SchedulerSnapshotService) loadAccountsFromDB(ctx context.Context, bucke
 	}
 
 	if useMixed {
-		platforms := []string{bucket.Platform, PlatformAntigravity}
+		compatPlatforms := s.compatResolver.CompatiblePlatforms(bucket.Platform)
+		platforms := append([]string{bucket.Platform}, compatPlatforms...)
 		var accounts []Account
 		var err error
 		if groupID > 0 {
@@ -658,7 +679,7 @@ func (s *SchedulerSnapshotService) loadAccountsFromDB(ctx context.Context, bucke
 		}
 		filtered := make([]Account, 0, len(accounts))
 		for _, acc := range accounts {
-			if acc.Platform == PlatformAntigravity && !acc.IsMixedSchedulingEnabled() {
+			if acc.Platform != bucket.Platform && !s.isAccountEligibleForMixedScheduling(&acc, bucket.Platform) {
 				continue
 			}
 			filtered = append(filtered, acc)
@@ -722,7 +743,7 @@ func (s *SchedulerSnapshotService) resolveMode(platform string, hasForcePlatform
 	if hasForcePlatform {
 		return SchedulerModeForced
 	}
-	if platform == PlatformAnthropic || platform == PlatformGemini {
+	if len(s.compatResolver.CompatiblePlatforms(platform)) > 0 {
 		return SchedulerModeMixed
 	}
 	return SchedulerModeSingle
@@ -755,6 +776,22 @@ func (s *SchedulerSnapshotService) withFallbackTimeout(ctx context.Context) (con
 	return context.WithTimeout(ctx, timeout)
 }
 
+// isAccountEligibleForMixedScheduling checks whether an account from a
+// non-native platform is eligible to participate in mixed scheduling for
+// the given gateway protocol.
+func (s *SchedulerSnapshotService) isAccountEligibleForMixedScheduling(acc *Account, gatewayProtocol string) bool {
+	if s.compatResolver.SupportsProtocol(acc.Platform, gatewayProtocol) {
+		return true
+	}
+	return acc.IsMixedSchedulingEnabled()
+}
+
+// allKnownPlatforms returns the built-in platform IDs. Used to enumerate
+// potential gateway protocols when rebuilding scheduler buckets.
+func (s *SchedulerSnapshotService) allKnownPlatforms() []string {
+	return []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity}
+}
+
 func (s *SchedulerSnapshotService) isRunModeSimple() bool {
 	return s.cfg != nil && s.cfg.RunMode == config.RunModeSimple
 }
@@ -783,11 +820,11 @@ func (s *SchedulerSnapshotService) fullRebuildInterval() time.Duration {
 
 func (s *SchedulerSnapshotService) defaultBuckets(ctx context.Context) ([]SchedulerBucket, error) {
 	buckets := make([]SchedulerBucket, 0)
-	platforms := []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity}
+	platforms := s.allKnownPlatforms()
 	for _, platform := range platforms {
 		buckets = append(buckets, SchedulerBucket{GroupID: 0, Platform: platform, Mode: SchedulerModeSingle})
 		buckets = append(buckets, SchedulerBucket{GroupID: 0, Platform: platform, Mode: SchedulerModeForced})
-		if platform == PlatformAnthropic || platform == PlatformGemini {
+		if len(s.compatResolver.CompatiblePlatforms(platform)) > 0 {
 			buckets = append(buckets, SchedulerBucket{GroupID: 0, Platform: platform, Mode: SchedulerModeMixed})
 		}
 	}
@@ -806,7 +843,7 @@ func (s *SchedulerSnapshotService) defaultBuckets(ctx context.Context) ([]Schedu
 		}
 		buckets = append(buckets, SchedulerBucket{GroupID: group.ID, Platform: group.Platform, Mode: SchedulerModeSingle})
 		buckets = append(buckets, SchedulerBucket{GroupID: group.ID, Platform: group.Platform, Mode: SchedulerModeForced})
-		if group.Platform == PlatformAnthropic || group.Platform == PlatformGemini {
+		if len(s.compatResolver.CompatiblePlatforms(group.Platform)) > 0 {
 			buckets = append(buckets, SchedulerBucket{GroupID: group.ID, Platform: group.Platform, Mode: SchedulerModeMixed})
 		}
 	}

@@ -1,4 +1,4 @@
-syntax = "proto3";
+﻿syntax = "proto3";
 
 package pluginsdk;
 
@@ -7,7 +7,7 @@ option go_package = "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk";
 import "google/protobuf/empty.proto";
 
 // ============================================================
-// PluginLifecycle — 插件提供，核心调用（仅生命周期管理）
+// PluginLifecycle 鈥?鎻掍欢鎻愪緵锛屾牳蹇冭皟鐢紙浠呯敓鍛藉懆鏈熺鐞嗭級
 // ============================================================
 
 service PluginLifecycle {
@@ -29,9 +29,9 @@ service PluginLifecycle {
 
 message PluginInitRequest {
   string sdk_address = 1;
-  // reserved: was `map<string, string> config = 2;` — host-only ops fields
+  // reserved: was `map<string, string> config = 2;` 鈥?host-only ops fields
   // were dropped from the SDK in V5/W6 SETTINGS-V2 (see docs/plugin-
-  // architecture/SETTINGS-V2-DESIGN.md §3). The host still uses
+  // architecture/SETTINGS-V2-DESIGN.md 搂3). The host still uses
   // PluginRecord.Config for ops escape hatches but it is no longer wired
   // through the plugin process. Do NOT reuse field number 2 or name "config".
   reserved 2;
@@ -50,7 +50,7 @@ message PluginInitRequest {
   // block-list, allowed-host list, redirect / timeout / body caps). The SDK
   // caches these on Init so plugin code can call NewSafeHTTPClient without
   // re-fetching them. Plugins may layer per-call overrides on top via
-  // OutboundConfig. See V5-DESIGN §W4 (SafeOutboundHTTPCapability).
+  // OutboundConfig. See V5-DESIGN 搂W4 (SafeOutboundHTTPCapability).
   OutboundDefaults outbound_defaults = 50;
 }
 
@@ -60,18 +60,18 @@ message PluginInitRequest {
 // 3 redirects) when the host leaves them empty.
 message OutboundDefaults {
   // blocked_cidrs lists CIDR ranges the SDK MUST refuse to dial. Empty means
-  // "use SDK defaults" — the SDK never falls back to "no block list".
+  // "use SDK defaults" 鈥?the SDK never falls back to "no block list".
   repeated string blocked_cidrs = 1;
   // allowed_hosts is an optional global allow-list of hostnames. When
   // non-empty the SDK rejects any host not in the list. Empty means "no
   // host-level allow-list" (block-list still applies).
   repeated string allowed_hosts = 2;
-  // max_redirects caps the number of HTTP redirects followed. 0 → SDK
+  // max_redirects caps the number of HTTP redirects followed. 0 鈫?SDK
   // default (3).
   int32 max_redirects = 3;
-  // timeout_nanos is the per-request timeout. 0 → SDK default (30s).
+  // timeout_nanos is the per-request timeout. 0 鈫?SDK default (30s).
   int64 timeout_nanos = 4;
-  // max_body_bytes caps response body size. 0 → SDK default (1 MiB).
+  // max_body_bytes caps response body size. 0 鈫?SDK default (1 MiB).
   int64 max_body_bytes = 5;
 }
 
@@ -151,7 +151,7 @@ message ManifestResponse {
   bytes settings_defaults_json = 43;
 
   // settings_schema_version mirrors Manifest.SettingsSchema.Version (see
-  // SETTINGS-V2-DESIGN §3.3). Plugins should bump this whenever a property's
+  // SETTINGS-V2-DESIGN 搂3.3). Plugins should bump this whenever a property's
   // type changes shape; the host stamps the value into
   // plugin_settings.schema_version_at_write on every write so plugin SDKs
   // can detect stale values via SchemaVersionMismatchError. Empty string is
@@ -160,11 +160,11 @@ message ManifestResponse {
 
   // settings_properties_meta_json is a JSON object keyed by top-level
   // schema property name. Each value is the marker triple
-  // {visibility, deprecated, requires_reload} — see SETTINGS-V2-DESIGN
-  // §1.4 for the precise shape. The plugin SDK derives this from the
+  // {visibility, deprecated, requires_reload} 鈥?see SETTINGS-V2-DESIGN
+  // 搂1.4 for the precise shape. The plugin SDK derives this from the
   // SettingsSchemaDoc.PropertyMeta map; plugins may also set the markers
   // inline as JSON Schema vendor extensions (`x-visibility` etc.) and
-  // leave this field empty — the host will re-derive it from
+  // leave this field empty 鈥?the host will re-derive it from
   // settings_schema_json. When both sources disagree, this field wins
   // (it is the SDK's authoritative serialization).
   bytes settings_properties_meta_json = 45;
@@ -185,7 +185,7 @@ message ManifestResponse {
   repeated string subscribed_events = 47;
 
   // owned_tables lists the host DB tables this plugin owns / reads / writes.
-  // The SQL gate (P12·B-1) rejects plugin SQL touching tables not listed
+  // The SQL gate (P12路B-1) rejects plugin SQL touching tables not listed
   // here unless the plugin also holds db.core.read or db.core.write and
   // the table is in the host shared whitelist.
   //
@@ -309,7 +309,7 @@ message MenuItem {
   //
   // Plugins ship descriptions through the manifest so plugin views no
   // longer need to repeat title/description in a per-view
-  // PluginPageLayout header — the host AppHeader becomes the single
+  // PluginPageLayout header 鈥?the host AppHeader becomes the single
   // source of truth, matching how host pages already work.
   map<string, string> descriptions = 14;
 }
@@ -336,7 +336,7 @@ message MigrationDecl {
   // CREATE INDEX CONCURRENTLY). The host applies these outside BEGIN/COMMIT.
   bool   non_transactional = 3;
   // DownFilename names the down migration the plugin ships alongside the up
-  // body. Empty string means the migration is irreversible — the host skips
+  // body. Empty string means the migration is irreversible 鈥?the host skips
   // executing it during plugin Purge and only deletes bookkeeping rows.
   // When non-empty, the host fetches the body via PluginLifecycle.GetMigration
   // (same RPC, different filename) and caches it on plugin enable so Purge
@@ -344,7 +344,7 @@ message MigrationDecl {
   string down_filename         = 4;
   // DownChecksumSha256 is the hex-encoded SHA-256 of the down SQL body. The
   // host re-verifies it against the fetched body to detect supply-chain
-  // tampering — same contract as ChecksumSha256 above.
+  // tampering 鈥?same contract as ChecksumSha256 above.
   string down_checksum_sha256  = 5;
 }
 
@@ -367,7 +367,7 @@ message GetMigrationResponse {
 }
 
 // ============================================================
-// Platform Declaration — account platforms provided by plugins
+// Platform Declaration 鈥?account platforms provided by plugins
 // ============================================================
 
 // PlatformDeclaration describes an account platform a gateway plugin provides.
@@ -390,6 +390,11 @@ message PlatformDeclaration {
   int32 sort_order = 10;
   // privacy_states for the Privacy filter dropdown. Empty = N/A.
   repeated PrivacyState privacy_states = 11;
+  // compatible_gateways declares which gateway protocols this platform
+  // supports. When non-empty the host registers the plugin as a provider
+  // for each listed protocol. When empty the host falls back to
+  // [platform] (single-protocol default).
+  repeated string compatible_gateways = 12;
 }
 
 // AccountTypeDeclaration describes an account type within a platform.

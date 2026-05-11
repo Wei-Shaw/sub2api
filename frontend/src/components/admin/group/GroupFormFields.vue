@@ -32,10 +32,10 @@
       ></textarea>
     </div>
 
-    <!-- Platform -->
+    <!-- Gateway Type -->
     <div>
       <label class="input-label">{{
-        t("admin.groups.form.platform")
+        t("admin.groups.form.gatewayType")
       }}</label>
       <Select
         v-model="formData.platform"
@@ -47,8 +47,8 @@
       <p class="input-hint">
         {{
           mode === 'edit'
-            ? t("admin.groups.platformNotEditable")
-            : t("admin.groups.platformHint")
+            ? t("admin.groups.gatewayTypeNotEditable")
+            : t("admin.groups.gatewayTypeHint")
         }}
       </p>
     </div>

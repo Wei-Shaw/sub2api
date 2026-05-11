@@ -1,4 +1,4 @@
-﻿package plugin
+package plugin
 
 import (
 	"context"
@@ -177,7 +177,7 @@ func (m *PluginManager) spawnRegisterPlatforms(sc *spawnCtx) error {
 			)
 			// Register a gateway provider so the pipeline can forward
 			// requests to this plugin's platform.
-			m.registerGatewayProvider(sc, decl.Platform)
+			m.registerGatewayProvider(sc, decl.Platform, decl.CompatibleGateways)
 		}
 	}
 	m.invalidateFrontendCache()
@@ -188,16 +188,19 @@ func (m *PluginManager) spawnRegisterPlatforms(sc *spawnCtx) error {
 // the given platform. The protocols default to [platform] (same convention
 // as the host-internal adapters). No-op if SetGatewayProviderRegistry was
 // not called.
-func (m *PluginManager) registerGatewayProvider(sc *spawnCtx, platform string) {
+func (m *PluginManager) registerGatewayProvider(sc *spawnCtx, platform string, compatibleGateways []string) {
 	m.mu.RLock()
 	registry := m.gatewayProviderRegistry
 	m.mu.RUnlock()
 	if registry == nil {
 		return
 	}
-	// Plugins declare which protocols they handle. Default: the platform
-	// itself (e.g. "anthropic" platform handles "anthropic" protocol).
-	protocols := []string{platform}
+	// Use the plugin's declared compatible gateways if provided;
+	// otherwise fall back to the platform name itself.
+	protocols := compatibleGateways
+	if len(protocols) == 0 {
+		protocols = []string{platform}
+	}
 	registry.RegisterPlugin(platform, protocols, sc.inst.Name, sc.conn)
 	m.logger.Info("gateway provider registered",
 		"plugin", sc.inst.Name,

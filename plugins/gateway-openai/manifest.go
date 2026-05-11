@@ -19,8 +19,9 @@ func buildManifest() *pluginsdk.Manifest {
 				Platform:    "openai",
 				DisplayName: "OpenAI",
 				IconSVG:     openaiIconSVG,
-				ThemeColor:  "#10b981",
-				SortOrder:   2,
+				ThemeColor:         "#10b981",
+				SortOrder:          2,
+				CompatibleGateways: []string{"openai", "chat_completions", "responses", "anthropic_via_openai", "images"},
 				AccountTypes: []pluginsdk.AccountTypeDecl{
 					{
 						Type:        "oauth",

@@ -24,7 +24,7 @@
             <Select
               v-model="filters.platform"
               :options="platformFilterOptions"
-              :placeholder="t('admin.groups.allPlatforms')"
+              :placeholder="t('admin.groups.allGatewayTypes')"
               class="w-44"
               @change="loadGroups"
             />
@@ -663,7 +663,7 @@ const columns = computed<Column[]>(() => [
   { key: "name", label: t("admin.groups.columns.name"), sortable: true },
   {
     key: "platform",
-    label: t("admin.groups.columns.platform"),
+    label: t("admin.groups.columns.gatewayType"),
     sortable: true,
   },
   {
@@ -714,7 +714,7 @@ const platformOptions = computed(() =>
 );
 
 const platformFilterOptions = computed(() => [
-  { value: "", label: t("admin.groups.allPlatforms") },
+  { value: "", label: t("admin.groups.allGatewayTypes") },
   ...dynamicPlatformList.value.map((p) => ({ value: p.value, label: p.label })),
 ]);
 

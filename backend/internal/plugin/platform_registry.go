@@ -24,10 +24,16 @@ type RegisteredPlatform struct {
 type PlatformRegistry struct {
 	mu        sync.RWMutex
 	platforms map[string]*RegisteredPlatform
+	// compatMap caches gateway-protocol -> compatible platform IDs.
+	// Rebuilt on every Register/Unregister under the write lock.
+	compatMap map[string][]string
 }
 
 func NewPlatformRegistry() *PlatformRegistry {
-	return &PlatformRegistry{platforms: make(map[string]*RegisteredPlatform)}
+	return &PlatformRegistry{
+		platforms: make(map[string]*RegisteredPlatform),
+		compatMap: make(map[string][]string),
+	}
 }
 
 // Register adds all platforms declared by a plugin. Duplicate platform IDs
@@ -44,6 +50,7 @@ func (r *PlatformRegistry) Register(pluginName string, decl pluginsdk.PlatformDe
 		PluginName: pluginName,
 		Conn:       conn,
 	}
+	r.rebuildCompatMapLocked()
 	return true
 }
 
@@ -56,6 +63,7 @@ func (r *PlatformRegistry) Unregister(pluginName string) {
 			delete(r.platforms, k)
 		}
 	}
+	r.rebuildCompatMapLocked()
 }
 
 // Get returns the registered platform for the given ID.
@@ -110,4 +118,61 @@ func (r *PlatformRegistry) AccountTypesFor(platform string) []pluginsdk.AccountT
 		return nil
 	}
 	return p.Decl.AccountTypes
+}
+
+// ---------------------------------------------------------------------------
+// CompatiblePlatformResolver implementation
+// ---------------------------------------------------------------------------
+
+// CompatiblePlatforms returns all platform IDs that declared compatibility
+// with the given gateway protocol via PlatformDecl.CompatibleGateways.
+func (r *PlatformRegistry) CompatiblePlatforms(gatewayProtocol string) []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.compatMap[gatewayProtocol]
+}
+
+// IsMixedSchedulingPlatform returns true if the platform declared
+// compatibility with any gateway protocol.
+func (r *PlatformRegistry) IsMixedSchedulingPlatform(platform string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	p, ok := r.platforms[platform]
+	if !ok {
+		return false
+	}
+	return len(p.Decl.CompatibleGateways) > 0
+}
+
+// SupportsProtocol returns true if the platform declared compatibility
+// with the specified gateway protocol.
+func (r *PlatformRegistry) SupportsProtocol(platform, gatewayProtocol string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	p, ok := r.platforms[platform]
+	if !ok {
+		return false
+	}
+	for _, gw := range p.Decl.CompatibleGateways {
+		if gw == gatewayProtocol {
+			return true
+		}
+	}
+	return false
+}
+
+// rebuildCompatMapLocked reconstructs the compatMap from all registered
+// platforms. Must be called under the write lock.
+func (r *PlatformRegistry) rebuildCompatMapLocked() {
+	m := make(map[string][]string)
+	for _, p := range r.platforms {
+		for _, gw := range p.Decl.CompatibleGateways {
+			m[gw] = append(m[gw], p.Decl.Platform)
+		}
+	}
+	// Sort each list for deterministic ordering.
+	for gw := range m {
+		sort.Strings(m[gw])
+	}
+	r.compatMap = m
 }

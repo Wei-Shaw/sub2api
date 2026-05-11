@@ -1,4 +1,4 @@
-package pluginsdk
+﻿package pluginsdk
 
 import "encoding/json"
 
@@ -16,8 +16,9 @@ type PlatformDecl struct {
 	UsageDisplay    *UsageDisplayConfig
 	CustomActions   []CustomActionDecl
 	TestConfig      *TestConnectionConfig
-	SortOrder       int
-	PrivacyStates   []PrivacyStateDecl
+	SortOrder          int
+	PrivacyStates      []PrivacyStateDecl
+	CompatibleGateways []string
 }
 
 // AccountTypeDecl describes an account type within a platform.

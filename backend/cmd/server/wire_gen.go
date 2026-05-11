@@ -301,6 +301,11 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	pluginSettingsService := service.NewPluginSettingsService(db)
 	if pluginManager != nil {
 		accountHandler.SetPlatformRegistry(pluginManager.PlatformRegistry())
+		// Inject the plugin-backed compatible platform resolver so the
+		// scheduler uses PlatformDecl.CompatibleGateways instead of
+		// hardcoded Antigravity rules.
+		gatewayService.SetCompatiblePlatformResolver(pluginManager.PlatformRegistry())
+		schedulerSnapshotService.SetCompatiblePlatformResolver(pluginManager.PlatformRegistry())
 	}
 	pluginSettingsHandler := handler.ProvidePluginSettingsHandler(pluginSettingsService)
 	if pluginManager != nil {

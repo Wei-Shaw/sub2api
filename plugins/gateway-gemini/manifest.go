@@ -19,8 +19,9 @@ func buildManifest() *pluginsdk.Manifest {
 				Platform:    "gemini",
 				DisplayName: "Gemini",
 				IconSVG:     geminiIconSVG,
-				ThemeColor:  "#2563eb",
-				SortOrder:   3,
+				ThemeColor:         "#2563eb",
+				SortOrder:          3,
+				CompatibleGateways: []string{"gemini"},
 				AccountTypes: []pluginsdk.AccountTypeDecl{
 					{
 						Type:        "oauth",

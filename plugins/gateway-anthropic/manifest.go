@@ -19,8 +19,9 @@ func buildManifest() *pluginsdk.Manifest {
 				Platform:    "anthropic",
 				DisplayName: "Anthropic",
 				IconSVG:     anthropicIconSVG,
-				ThemeColor:  "#ea580c",
-				SortOrder:   1,
+				ThemeColor:         "#ea580c",
+				SortOrder:          1,
+				CompatibleGateways: []string{"anthropic"},
 				AccountTypes: []pluginsdk.AccountTypeDecl{
 					{
 						Type:        "oauth",

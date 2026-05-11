@@ -571,6 +571,7 @@ type GatewayService struct {
 	debugGatewayBodyFile  atomic.Pointer[os.File] // non-nil when SUB2API_DEBUG_GATEWAY_BODY is set
 	tlsFPProfileService   *TLSFingerprintProfileService
 	balanceNotifyService  *BalanceNotifyService
+	compatResolver        CompatiblePlatformResolver
 
 	// accountStatsResolver is the optional plugin hook invoked after the
 	// host computes the customer cost. The plugin may return a custom
@@ -645,6 +646,7 @@ func NewGatewayService(
 		channelCacheReader:   channelCacheReader,
 		resolver:             resolver,
 		balanceNotifyService: balanceNotifyService,
+		compatResolver:       defaultCompatiblePlatformResolver(),
 	}
 	svc.userGroupRateResolver = newUserGroupRateResolver(
 		userGroupRateRepo,
@@ -1391,7 +1393,7 @@ func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context
 
 	// anthropic/gemini 分组支持混合调度（包含启用了 mixed_scheduling 的 antigravity 账户）
 	// 注意：强制平台模式不走混合调度
-	if (platform == PlatformAnthropic || platform == PlatformGemini) && !hasForcePlatform {
+	if len(s.compatResolver.CompatiblePlatforms(platform)) > 0 && !hasForcePlatform {
 		account, err := s.selectAccountWithMixedScheduling(ctx, groupID, sessionHash, requestedModel, excludedIDs, platform)
 		if err != nil {
 			return nil, err
@@ -2276,9 +2278,10 @@ func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *i
 		}
 		return accounts, useMixed, err
 	}
-	useMixed := (platform == PlatformAnthropic || platform == PlatformGemini) && !hasForcePlatform
+	useMixed := len(s.compatResolver.CompatiblePlatforms(platform)) > 0 && !hasForcePlatform
 	if useMixed {
-		platforms := []string{platform, PlatformAntigravity}
+		compatPlatforms := s.compatResolver.CompatiblePlatforms(platform)
+		platforms := append([]string{platform}, compatPlatforms...)
 		var accounts []Account
 		var err error
 		if groupID != nil {
@@ -2297,7 +2300,7 @@ func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *i
 		}
 		filtered := make([]Account, 0, len(accounts))
 		for _, acc := range accounts {
-			if acc.Platform == PlatformAntigravity && !acc.IsMixedSchedulingEnabled() {
+			if acc.Platform != platform && !s.isAccountEligibleForMixedScheduling(&acc, platform) {
 				continue
 			}
 			filtered = append(filtered, acc)
@@ -2371,7 +2374,7 @@ func (s *GatewayService) isAccountAllowedForPlatform(account *Account, platform 
 		if account.Platform == platform {
 			return true
 		}
-		return account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()
+		return s.isAccountEligibleForMixedScheduling(account, platform)
 	}
 	return account.Platform == platform
 }
@@ -3316,7 +3319,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 							_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 						}
 						if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
-							if account.Platform == nativePlatform || (account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()) {
+							if account.Platform == nativePlatform || s.isAccountEligibleForMixedScheduling(account, nativePlatform) {
 								if s.debugModelRoutingEnabled() {
 									logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] legacy mixed routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), accountID)
 								}
@@ -3368,7 +3371,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 				continue
 			}
 			// 过滤：原生平台直接通过，antigravity 需要启用混合调度
-			if acc.Platform == PlatformAntigravity && !acc.IsMixedSchedulingEnabled() {
+			if acc.Platform != nativePlatform && !s.isAccountEligibleForMixedScheduling(acc, nativePlatform) {
 				continue
 			}
 			if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel) {
@@ -3437,7 +3440,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 					}
 					if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) && !s.isStickyAccountUpstreamRestricted(ctx, groupID, account, requestedModel) {
-						if account.Platform == nativePlatform || (account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()) {
+						if account.Platform == nativePlatform || s.isAccountEligibleForMixedScheduling(account, nativePlatform) {
 							return account, nil
 						}
 					}
@@ -3480,7 +3483,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 			continue
 		}
 		// 过滤：原生平台直接通过，antigravity 需要启用混合调度
-		if acc.Platform == PlatformAntigravity && !acc.IsMixedSchedulingEnabled() {
+		if acc.Platform != nativePlatform && !s.isAccountEligibleForMixedScheduling(acc, nativePlatform) {
 			continue
 		}
 		if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel) {
@@ -3648,7 +3651,7 @@ func (s *GatewayService) diagnoseSelectionFailure(
 	if !s.isAccountSchedulableForSelection(acc) {
 		return selectionFailureDiagnosis{Category: "unschedulable", Detail: "generic_unschedulable"}
 	}
-	if isPlatformFilteredForSelection(acc, platform, allowMixedScheduling) {
+	if s.isPlatformFilteredForSelection(acc, platform, allowMixedScheduling) {
 		return selectionFailureDiagnosis{
 			Category: "platform_filtered",
 			Detail:   fmt.Sprintf("account_platform=%s requested_platform=%s", acc.Platform, strings.TrimSpace(platform)),
@@ -3670,15 +3673,15 @@ func (s *GatewayService) diagnoseSelectionFailure(
 	return selectionFailureDiagnosis{Category: "eligible"}
 }
 
-func isPlatformFilteredForSelection(acc *Account, platform string, allowMixedScheduling bool) bool {
+func (s *GatewayService) isPlatformFilteredForSelection(acc *Account, platform string, allowMixedScheduling bool) bool {
 	if acc == nil {
 		return true
 	}
 	if allowMixedScheduling {
-		if acc.Platform == PlatformAntigravity {
-			return !acc.IsMixedSchedulingEnabled()
+		if acc.Platform == platform {
+			return false
 		}
-		return acc.Platform != platform
+		return !s.isAccountEligibleForMixedScheduling(acc, platform)
 	}
 	if strings.TrimSpace(platform) == "" {
 		return false
@@ -8521,6 +8524,30 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 		LongContextThreshold:  input.LongContextThreshold,
 		LongContextMultiplier: input.LongContextMultiplier,
 	})
+}
+
+// SetCompatiblePlatformResolver wires a plugin-supplied resolver that
+// determines cross-platform scheduling compatibility. Pass nil to revert
+// to the default static resolver (legacy Antigravity rules).
+func (s *GatewayService) SetCompatiblePlatformResolver(r CompatiblePlatformResolver) {
+	if s == nil {
+		return
+	}
+	if r == nil {
+		r = defaultCompatiblePlatformResolver()
+	}
+	s.compatResolver = r
+}
+
+// isAccountEligibleForMixedScheduling checks whether an account from a
+// non-native platform is eligible to participate in mixed scheduling for
+// the given gateway protocol. Checks the resolver first, then falls back
+// to the legacy IsMixedSchedulingEnabled flag for backward compatibility.
+func (s *GatewayService) isAccountEligibleForMixedScheduling(acc *Account, gatewayProtocol string) bool {
+	if s.compatResolver.SupportsProtocol(acc.Platform, gatewayProtocol) {
+		return true
+	}
+	return acc.IsMixedSchedulingEnabled()
 }
 
 // SetAccountStatsResolver wires an optional plugin-supplied account-stats
