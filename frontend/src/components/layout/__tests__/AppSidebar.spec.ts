@@ -38,6 +38,7 @@ describe('AppSidebar secondary-development navigation contract', () => {
     expect(componentSource).toContain("path: '/docs'")
     expect(componentSource).toContain("path: '/monitor', label: t('nav.channelMonitor'), icon: SignalIcon, featureFlag: flagChannelMonitor")
     expect(componentSource).toContain("path: '/images', label: t('nav.imageGeneration'), icon: PhotoIcon, featureFlag: flagImageGeneration")
+    expect(componentSource).toContain("path: '/recharge-subscription', label: t('nav.rechargeSubscription'), icon: RechargeSubscriptionIcon, featureFlag: flagPayment")
     expect(componentSource).toContain('const flagImageGeneration = makeSidebarFlag(FeatureFlags.imageGeneration)')
     expect(componentSource).toContain("path: '/recharge-subscription'")
     expect(componentSource).not.toContain("path: '/monitor', label: t('nav.channelStatus')")

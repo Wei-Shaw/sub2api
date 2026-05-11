@@ -830,7 +830,6 @@ router.beforeEach((to, _from, next) => {
       '/admin/subscriptions',
       '/admin/redeem',
       '/subscriptions',
-      '/recharge-subscription',
       '/redeem'
     ]
 
