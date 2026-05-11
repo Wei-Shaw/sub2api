@@ -104,7 +104,7 @@ backend/internal/web/dist/*
 
 # 后端运行时缓存数据
 backend/data/
-
+sub2api-server
 # ===================
 # 本地配置文件（包含敏感信息）
 # ===================
