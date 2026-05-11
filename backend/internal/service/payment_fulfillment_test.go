@@ -366,3 +366,55 @@ REDACTED
 REDACTED)
 	assert.ErrorContains(t, err, "easypay pid mismatch")
 REDACTED
+
+func TestValidateProviderNotificationMetadataRejectsAirwallexSnapshotMismatch(t *testing.T) {
+	t.Parallel()
+
+	order := &dbent.PaymentOrder{
+		PaymentType: payment.TypeAirwallex,
+		ProviderSnapshot: map[string]any{
+			"schema_version": 2,
+			"merchant_id":    "acct_expected",
+			"currency":       "CNY",
+	REDACTED,
+REDACTED
+
+	err := validateProviderNotificationMetadata(order, payment.TypeAirwallex, map[string]string{
+		"account_id": "acct_other",
+		"currency":   "CNY",
+		"status":     "SUCCEEDED",
+REDACTED)
+	assert.ErrorContains(t, err, "airwallex account_id mismatch")
+
+	err = validateProviderNotificationMetadata(order, payment.TypeAirwallex, map[string]string{
+		"account_id": "acct_expected",
+		"currency":   "USD",
+		"status":     "SUCCEEDED",
+REDACTED)
+	assert.ErrorContains(t, err, "airwallex currency mismatch")
+REDACTED
+
+func TestValidateProviderNotificationMetadataRejectsStripeCurrencyMismatch(t *testing.T) {
+	t.Parallel()
+
+	order := &dbent.PaymentOrder{
+		PaymentType: payment.TypeStripe,
+		ProviderSnapshot: map[string]any{
+			"schema_version": 2,
+			"currency":       "HKD",
+	REDACTED,
+REDACTED
+
+	err := validateProviderNotificationMetadata(order, payment.TypeStripe, map[string]string{
+		"currency": "USD",
+REDACTED)
+	assert.ErrorContains(t, err, "stripe currency mismatch")
+REDACTED
+
+func TestPaymentAmountToleranceForThreeDecimalCurrency(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, amountToleranceCNY, paymentAmountToleranceForCurrency("CNY"))
+	assert.Equal(t, amountToleranceCNY, paymentAmountToleranceForCurrency("JPY"))
+	assert.InDelta(t, 0.0005, paymentAmountToleranceForCurrency("KWD"), 1e-12)
+REDACTED

@@ -21,6 +21,7 @@
             :payment-type="paymentState.paymentType"
             :pay-url="paymentState.payUrl"
             :order-type="paymentState.orderType"
+            :currency="paymentState.currency || selectedCurrency"
             @done="onPaymentDone"
             @success="onPaymentSuccess"
             @settled="onPaymentSettled"
@@ -60,15 +61,15 @@
               <div class="space-y-2 text-sm">
                 <div class="flex justify-between">
                   <span class="text-gray-500 dark:text-gray-400">{{ t('payment.paymentAmount') REDACTEDREDACTED</span>
-                  <span class="text-gray-900 dark:text-white">¥{{ validAmount.toFixed(2) REDACTEDREDACTED</span>
+                  <span class="text-gray-900 dark:text-white">{{ formatSelectedPaymentAmount(validAmount) REDACTEDREDACTED</span>
                 </div>
                 <div v-if="feeRate > 0" class="flex justify-between">
                   <span class="text-gray-500 dark:text-gray-400">{{ t('payment.fee') REDACTEDREDACTED ({{ feeRate REDACTEDREDACTED%)</span>
-                  <span class="text-gray-900 dark:text-white">¥{{ feeAmount.toFixed(2) REDACTEDREDACTED</span>
+                  <span class="text-gray-900 dark:text-white">{{ formatSelectedPaymentAmount(feeAmount) REDACTEDREDACTED</span>
                 </div>
                 <div v-if="feeRate > 0" class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600">
                   <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.actualPay') REDACTEDREDACTED</span>
-                  <span class="text-lg font-bold text-primary-600 dark:text-primary-400">¥{{ totalAmount.toFixed(2) REDACTEDREDACTED</span>
+                  <span class="text-lg font-bold text-primary-600 dark:text-primary-400">{{ formatSelectedPaymentAmount(totalAmount) REDACTEDREDACTED</span>
                 </div>
                 <div v-if="balanceRechargeMultiplier !== 1" class="flex justify-between" :class="{ 'border-t border-gray-200 pt-2 dark:border-dark-600': feeRate <= 0 REDACTED">
                   <span class="text-gray-500 dark:text-gray-400">{{ t('payment.creditedBalance') REDACTEDREDACTED</span>
@@ -84,7 +85,7 @@
                 <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
                 {{ t('common.processing') REDACTEDREDACTED
               </span>
-              <span v-else>{{ t('payment.createOrder') REDACTEDREDACTED ¥{{ totalAmount.toFixed(2) REDACTEDREDACTED</span>
+              <span v-else>{{ t('payment.createOrder') REDACTEDREDACTED {{ formatSelectedPaymentAmount(totalAmount) REDACTEDREDACTED</span>
             </button>
             </template>
           </template>
@@ -103,9 +104,9 @@
                 <!-- Price -->
                 <div class="flex items-baseline gap-2">
                   <span v-if="selectedPlan.original_price" class="text-sm text-gray-400 line-through dark:text-gray-500">
-                    ¥{{ selectedPlan.original_price REDACTEDREDACTED
+                    {{ formatSelectedPaymentAmount(selectedPlan.original_price) REDACTEDREDACTED
                   </span>
-                  <span :class="['text-3xl font-bold', planTextClass]">¥{{ selectedPlan.price REDACTEDREDACTED</span>
+                  <span :class="['text-3xl font-bold', planTextClass]">{{ formatSelectedPaymentAmount(selectedPlan.price) REDACTEDREDACTED</span>
                   <span class="text-sm text-gray-500 dark:text-gray-400">/ {{ planValiditySuffix REDACTEDREDACTED</span>
                 </div>
                 <!-- Description -->
@@ -149,15 +150,15 @@
                 <div class="space-y-2 text-sm">
                   <div class="flex justify-between">
                     <span class="text-gray-500 dark:text-gray-400">{{ t('payment.amountLabel') REDACTEDREDACTED</span>
-                    <span class="text-gray-900 dark:text-white">¥{{ selectedPlan.price.toFixed(2) REDACTEDREDACTED</span>
+                    <span class="text-gray-900 dark:text-white">{{ formatSelectedPaymentAmount(selectedPlan.price) REDACTEDREDACTED</span>
                   </div>
                   <div class="flex justify-between">
                     <span class="text-gray-500 dark:text-gray-400">{{ t('payment.fee') REDACTEDREDACTED ({{ feeRate REDACTEDREDACTED%)</span>
-                    <span class="text-gray-900 dark:text-white">¥{{ subFeeAmount.toFixed(2) REDACTEDREDACTED</span>
+                    <span class="text-gray-900 dark:text-white">{{ formatSelectedPaymentAmount(subFeeAmount) REDACTEDREDACTED</span>
                   </div>
                   <div class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600">
                     <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.actualPay') REDACTEDREDACTED</span>
-                    <span class="text-lg font-bold text-primary-600 dark:text-primary-400">¥{{ subTotalAmount.toFixed(2) REDACTEDREDACTED</span>
+                    <span class="text-lg font-bold text-primary-600 dark:text-primary-400">{{ formatSelectedPaymentAmount(subTotalAmount) REDACTEDREDACTED</span>
                   </div>
                 </div>
               </div>
@@ -166,7 +167,7 @@
                   <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
                   {{ t('common.processing') REDACTEDREDACTED
                 </span>
-                <span v-else>{{ t('payment.createOrder') REDACTEDREDACTED ¥{{ (feeRate > 0 ? subTotalAmount : selectedPlan.price).toFixed(2) REDACTEDREDACTED</span>
+                <span v-else>{{ t('payment.createOrder') REDACTEDREDACTED {{ formatSelectedPaymentAmount(feeRate > 0 ? subTotalAmount : selectedPlan.price) REDACTEDREDACTED</span>
               </button>
               <button class="btn btn-secondary w-full" @click="selectedPlan = null">{{ t('common.cancel') REDACTEDREDACTED</button>
             </template>
@@ -274,11 +275,13 @@ import { platformAccentBarClass, platformBadgeLightClass, platformBadgeClass, pl
 import SubscriptionPlanCard from '@/components/payment/SubscriptionPlanCard.vue'
 import PaymentStatusPanel from '@/components/payment/PaymentStatusPanel.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { formatPaymentAmount, normalizePaymentCurrency REDACTED from '@/components/payment/currency'
 import type { PaymentMethodOption REDACTED from '@/components/payment/PaymentMethodSelector.vue'
 import { buildPaymentErrorToastMessage, describePaymentScenarioError REDACTED from './paymentUx'
 import { hasWechatResumeQuery, parseWechatResumeRoute, stripWechatResumeQuery REDACTED from './paymentWechatResume'
 
-const { t REDACTED = useI18n()
+const i18n = useI18n()
+const { t REDACTED = i18n
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
@@ -332,6 +335,10 @@ function emptyPaymentState(): PaymentRecoverySnapshot {
     payUrl: '',
     outTradeNo: '',
     clientSecret: '',
+    intentId: '',
+    currency: '',
+    countryCode: '',
+    paymentEnv: '',
     payAmount: 0,
     orderType: '',
     paymentMode: '',
@@ -523,6 +530,19 @@ REDACTED)
 
 // Selected method's limits (for validation and error messages)
 const selectedLimit = computed(() => visibleMethods.value[selectedMethod.value])
+const selectedCurrency = computed(() => normalizePaymentCurrency(selectedLimit.value?.currency))
+const localeCode = computed(() => {
+  const raw = i18n.locale as unknown
+  if (typeof raw === 'string') return raw
+  if (raw && typeof raw === 'object' && 'value' in raw) {
+    return String((raw as { value?: string REDACTED).value || '')
+  REDACTED
+  return undefined
+REDACTED)
+
+function formatSelectedPaymentAmount(value: number): string {
+  return formatPaymentAmount(value, selectedCurrency.value, localeCode.value)
+REDACTED
 
 const methodOptions = computed<PaymentMethodOption[]>(() =>
   enabledMethods.value.map((type) => {
@@ -556,8 +576,8 @@ const amountError = computed(() => {
   // Selected method can't handle this amount (but others can)
   const ml = selectedLimit.value
   if (ml) {
-    if (ml.single_min > 0 && validAmount.value < ml.single_min) return t('payment.amountTooLow', { min: ml.single_min REDACTED)
-    if (ml.single_max > 0 && validAmount.value > ml.single_max) return t('payment.amountTooHigh', { max: ml.single_max REDACTED)
+    if (ml.single_min > 0 && validAmount.value < ml.single_min) return t('payment.amountTooLow', { min: formatSelectedPaymentAmount(ml.single_min) REDACTED)
+    if (ml.single_max > 0 && validAmount.value > ml.single_max) return t('payment.amountTooHigh', { max: formatSelectedPaymentAmount(ml.single_max) REDACTED)
   REDACTED
   return ''
 REDACTED)
@@ -613,6 +633,7 @@ const paymentButtonClass = computed(() => {
   if (m.includes('alipay')) return 'btn-alipay'
   if (m.includes('wxpay')) return 'btn-wxpay'
   if (m === 'stripe') return 'btn-stripe'
+  if (m === 'airwallex') return 'btn-airwallex'
   return 'btn-primary'
 REDACTED)
 
@@ -698,13 +719,23 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
     const stripeMethod = visibleMethod === 'stripe'
       ? ''
       : visibleMethod === 'wxpay' ? 'wechat_pay' : 'alipay'
-    const stripeRouteUrl = result.client_secret
+    const stripeRouteUrl = result.client_secret && visibleMethod !== 'airwallex'
       ? router.resolve({
         path: '/payment/stripe',
         query: {
           order_id: String(result.order_id),
           client_secret: result.client_secret,
           method: stripeMethod || undefined,
+          resume_token: result.resume_token || undefined,
+        REDACTED,
+      REDACTED).href
+      : ''
+    const airwallexRouteUrl = result.client_secret && result.intent_id
+      ? router.resolve({
+        path: '/payment/airwallex',
+        query: {
+          order_id: String(result.order_id),
+          out_trade_no: result.out_trade_no || undefined,
           resume_token: result.resume_token || undefined,
         REDACTED,
       REDACTED).href
@@ -716,6 +747,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
       isWechatBrowser: typeof window !== 'undefined' && /MicroMessenger/i.test(window.navigator.userAgent),
       stripePopupUrl: stripeRouteUrl,
       stripeRouteUrl,
+      airwallexRouteUrl,
     REDACTED)
 
     if (decision.kind === 'wechat_oauth' && decision.oauth?.authorize_url) {
@@ -742,6 +774,10 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
       return
     REDACTED
     if (decision.kind === 'stripe_route') {
+      window.location.href = decision.paymentState.payUrl
+      return
+    REDACTED
+    if (decision.kind === 'airwallex_route') {
       window.location.href = decision.paymentState.payUrl
       return
     REDACTED

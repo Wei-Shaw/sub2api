@@ -45,19 +45,19 @@
             </div>
             <div class="flex justify-between">
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.baseAmount') REDACTEDREDACTED</span>
-              <span class="font-medium text-gray-900 dark:text-white">&#165;{{ baseAmount.toFixed(2) REDACTEDREDACTED</span>
+              <span class="font-medium text-gray-900 dark:text-white">{{ formatGatewayAmount(baseAmount) REDACTEDREDACTED</span>
             </div>
             <div v-if="order.fee_rate > 0" class="flex justify-between">
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.fee') REDACTEDREDACTED ({{ order.fee_rate REDACTEDREDACTED%)</span>
-              <span class="font-medium text-gray-900 dark:text-white">&#165;{{ feeAmount.toFixed(2) REDACTEDREDACTED</span>
+              <span class="font-medium text-gray-900 dark:text-white">{{ formatGatewayAmount(feeAmount) REDACTEDREDACTED</span>
             </div>
             <div class="flex justify-between">
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.payAmount') REDACTEDREDACTED</span>
-              <span class="font-bold text-primary-600 dark:text-primary-400">&#165;{{ order.pay_amount.toFixed(2) REDACTEDREDACTED</span>
+              <span class="font-bold text-primary-600 dark:text-primary-400">{{ formatGatewayAmount(order.pay_amount) REDACTEDREDACTED</span>
             </div>
             <div v-if="order.amount !== order.pay_amount" class="flex justify-between">
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.creditedAmount') REDACTEDREDACTED</span>
-              <span class="font-medium text-gray-900 dark:text-white">{{ order.order_type === 'balance' ? '$' : '¥' REDACTEDREDACTED{{ order.amount.toFixed(2) REDACTEDREDACTED</span>
+              <span class="font-medium text-gray-900 dark:text-white">{{ order.order_type === 'balance' ? '$' + order.amount.toFixed(2) : formatGatewayAmount(order.amount) REDACTEDREDACTED</span>
             </div>
             <div class="flex justify-between">
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.paymentMethod') REDACTEDREDACTED</span>
@@ -78,7 +78,7 @@
             </div>
             <div v-if="returnInfo.money" class="flex justify-between">
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.payAmount') REDACTEDREDACTED</span>
-              <span class="font-medium text-gray-900 dark:text-white">&#165;{{ returnInfo.money REDACTEDREDACTED</span>
+              <span class="font-medium text-gray-900 dark:text-white">{{ formatGatewayAmount(Number(returnInfo.money) || 0) REDACTEDREDACTED</span>
             </div>
             <div v-if="returnInfo.type" class="flex justify-between">
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.paymentMethod') REDACTEDREDACTED</span>
@@ -109,15 +109,18 @@ REDACTED from '@/components/payment/paymentFlow'
 import { usePaymentStore REDACTED from '@/stores/payment'
 import { paymentAPI REDACTED from '@/api/payment'
 import type { PaymentOrder REDACTED from '@/types/payment'
+import { formatPaymentAmount, normalizePaymentCurrency REDACTED from '@/components/payment/currency'
 import { normalizePaymentMethodForDisplay, paymentMethodI18nKey REDACTED from './paymentUx'
 
-const { t REDACTED = useI18n()
+const i18n = useI18n()
+const { t REDACTED = i18n
 const route = useRoute()
 const router = useRouter()
 const paymentStore = usePaymentStore()
 
 const order = ref<PaymentOrder | null>(null)
 const loading = ref(true)
+const currency = ref('CNY')
 
 interface ReturnInfo {
   outTradeNo: string
@@ -137,14 +140,27 @@ const refreshAttempts = ref(0)
 
 /** 充值金额 = pay_amount / (1 + fee_rate/100)，fee_rate=0 时等于 pay_amount */
 const baseAmount = computed(() => {
-  if (!order.value || order.value.fee_rate <= 0) return order.value?.pay_amount ?? 0
-  return Math.round((order.value.pay_amount / (1 + order.value.fee_rate / 100)) * 100) / 100
+  if (!order.value) return 0
+  const feeRate = Number(order.value.fee_rate) || 0
+  if (feeRate <= 0) return order.value.pay_amount ?? 0
+  return Math.round((order.value.pay_amount / (1 + feeRate / 100)) * 100) / 100
 REDACTED)
 
 /** 手续费 = pay_amount - baseAmount */
 const feeAmount = computed(() => {
-  if (!order.value || order.value.fee_rate <= 0) return 0
+  if (!order.value) return 0
+  const feeRate = Number(order.value.fee_rate) || 0
+  if (feeRate <= 0) return 0
   return Math.round((order.value.pay_amount - baseAmount.value) * 100) / 100
+REDACTED)
+
+const localeCode = computed(() => {
+  const raw = i18n.locale as unknown
+  if (typeof raw === 'string') return raw
+  if (raw && typeof raw === 'object' && 'value' in raw) {
+    return String((raw as { value?: string REDACTED).value || '')
+  REDACTED
+  return undefined
 REDACTED)
 
 const isSuccess = computed(() => {
@@ -167,6 +183,17 @@ REDACTED)
 
 function normalizedOrderPaymentType(paymentType: string): string {
   return normalizePaymentMethodForDisplay(paymentType) || paymentType
+REDACTED
+
+function formatGatewayAmount(value: number): string {
+  return formatPaymentAmount(value, currency.value, localeCode.value)
+REDACTED
+
+function setResolvedOrder(nextOrder: PaymentOrder | null): void {
+  order.value = nextOrder
+  if (nextOrder?.currency) {
+    currency.value = normalizePaymentCurrency(nextOrder.currency)
+  REDACTED
 REDACTED
 
 function normalizeOrderStatus(status: string | null | undefined): string {
@@ -276,7 +303,7 @@ function scheduleStatusRefresh(refreshOrder: (() => Promise<PaymentOrder | null>
     refreshAttempts.value += 1
     const refreshedOrder = await refreshOrder()
     if (refreshedOrder) {
-      order.value = refreshedOrder
+      setResolvedOrder(refreshedOrder)
       clearRecoverySnapshotForTerminalStatus(refreshedOrder.status)
     REDACTED
 
@@ -301,6 +328,9 @@ onMounted(async () => {
   if (restored?.orderId) {
     orderId = restored.orderId
   REDACTED
+  if (restored?.currency) {
+    currency.value = normalizePaymentCurrency(restored.currency)
+  REDACTED
   if (!outTradeNo && restored?.outTradeNo) {
     outTradeNo = restored.outTradeNo
   REDACTED
@@ -308,7 +338,7 @@ onMounted(async () => {
   if (resumeToken) {
     const resolvedOrder = await resolveOrderFromResumeToken(resumeToken)
     if (resolvedOrder) {
-      order.value = resolvedOrder
+      setResolvedOrder(resolvedOrder)
       if (!orderId) {
         orderId = resolvedOrder.id
       REDACTED
@@ -327,7 +357,7 @@ onMounted(async () => {
 
   if (!order.value && orderId && (!resumeToken || routeOrderId > 0)) {
     try {
-      order.value = await paymentStore.pollOrderStatus(orderId)
+      setResolvedOrder(await paymentStore.pollOrderStatus(orderId))
     REDACTED catch (_err: unknown) {
       // Order lookup failed, will try legacy fallback below when possible.
     REDACTED
@@ -336,7 +366,7 @@ onMounted(async () => {
   if (!order.value && shouldUsePublicOutTradeNo && (!resumeToken || resumeTokenLookupFailed)) {
     const legacyOrder = await resolveOrderFromOutTradeNo(outTradeNo)
     if (legacyOrder) {
-      order.value = legacyOrder
+      setResolvedOrder(legacyOrder)
       if (!orderId) {
         orderId = legacyOrder.id
       REDACTED

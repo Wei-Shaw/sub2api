@@ -114,6 +114,7 @@ REDACTED
 		SetExpiresAt(time.Now().Add(time.Hour)).
 		SetClientIP("127.0.0.1").
 		SetSrcHost("api.example.com").
+		SetProviderSnapshot(map[string]any{"currency": "HKD"REDACTED).
 		Save(context.Background())
 REDACTED
 
@@ -141,6 +142,7 @@ REDACTED
 			Amount       float64 `json:"amount"`
 			PayAmount    float64 `json:"pay_amount"`
 			FeeRate      float64 `json:"fee_rate"`
+			Currency     string  `json:"currency"`
 			PaymentType  string  `json:"payment_type"`
 			OrderType    string  `json:"order_type"`
 			Status       string  `json:"status"`
@@ -155,6 +157,7 @@ REDACTED
 	require.Equal(t, "legacy-order-no", resp.Data.OutTradeNo)
 	require.Equal(t, 90.64, resp.Data.PayAmount)
 	require.Equal(t, 0.03, resp.Data.FeeRate)
+	require.Equal(t, "HKD", resp.Data.Currency)
 	require.Equal(t, payment.TypeAlipay, resp.Data.PaymentType)
 	require.Equal(t, payment.OrderTypeBalance, resp.Data.OrderType)
 	require.Equal(t, service.OrderStatusPending, resp.Data.Status)
@@ -202,6 +205,7 @@ REDACTED
 		SetPaidAt(time.Now()).
 		SetClientIP("127.0.0.1").
 		SetSrcHost("api.example.com").
+		SetProviderSnapshot(map[string]any{"currency": "USD"REDACTED).
 		Save(context.Background())
 REDACTED
 
@@ -242,6 +246,7 @@ REDACTED
 	require.Equal(t, 100.0, resp.Data["amount"])
 	require.Equal(t, 103.0, resp.Data["pay_amount"])
 	require.Equal(t, 0.03, resp.Data["fee_rate"])
+	require.Equal(t, "USD", resp.Data["currency"])
 	require.Equal(t, payment.TypeAlipay, resp.Data["payment_type"])
 	require.Equal(t, payment.OrderTypeBalance, resp.Data["order_type"])
 	require.Equal(t, service.OrderStatusPaid, resp.Data["status"])
