@@ -205,11 +205,13 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import adminReferralAPI from '@/api/admin/referral'
 import type { CustomReferralWithdrawal } from '@/types'
+import { useAdminReferralBadgeStore } from '@/stores'
 import { useAppStore } from '@/stores/app'
 import { formatDateTime } from '@/utils/format'
 import { extractApiErrorMessage } from '@/utils/apiError'
 
 const appStore = useAppStore()
+const adminReferralBadgeStore = useAdminReferralBadgeStore()
 const loading = ref(false)
 const submitting = ref(false)
 const items = ref<CustomReferralWithdrawal[]>([])
@@ -366,7 +368,8 @@ async function submitDialog(): Promise<void> {
       appStore.showSuccess('提现已标记为已打款')
     }
     closeDialog()
-    loadWithdrawals()
+    await loadWithdrawals()
+    await adminReferralBadgeStore.refresh(true)
   } catch (error) {
     appStore.showError(extractApiErrorMessage(error, '处理提现失败'))
   } finally {

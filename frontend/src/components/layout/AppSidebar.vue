@@ -209,8 +209,7 @@
 import { computed, h, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { adminAPI } from '@/api'
-import { useAdminSettingsStore, useAppStore, useAuthStore, useOnboardingStore, useReferralStore } from '@/stores'
+import { useAdminReferralBadgeStore, useAdminSettingsStore, useAppStore, useAuthStore, useOnboardingStore, useReferralStore } from '@/stores'
 import VersionBadge from '@/components/common/VersionBadge.vue'
 import { sanitizeSvg } from '@/utils/sanitize'
 import { FeatureFlags, makeSidebarFlag } from '@/utils/featureFlags'
@@ -262,6 +261,7 @@ const router = useRouter()
 const appStore = useAppStore()
 const authStore = useAuthStore()
 const referralStore = useReferralStore()
+const adminReferralBadgeStore = useAdminReferralBadgeStore()
 const onboardingStore = useOnboardingStore()
 const adminSettingsStore = useAdminSettingsStore()
 
@@ -278,9 +278,6 @@ const siteName = computed(() => appStore.siteName)
 const siteLogo = computed(() => appStore.siteLogo)
 const siteVersion = computed(() => appStore.siteVersion)
 const settingsLoaded = computed(() => appStore.publicSettingsLoaded)
-const pendingAffiliateBadgeCount = ref(0)
-const pendingWithdrawalBadgeCount = ref(0)
-const referralBadgeRequestToken = ref(0)
 
 // SVG Icon Components
 const DashboardIcon = {
@@ -810,10 +807,10 @@ const adminNavItems = computed((): NavItem[] => {
       children: [
         { path: '/admin/referral/overview', label: t('nav.referralManagement'), icon: DashboardIcon },
         { path: '/admin/referral/settings', label: t('nav.referralSettings'), icon: CogIcon },
-        { path: '/admin/referral/pending', label: t('nav.referralPending'), icon: BellIcon, badgeCount: pendingAffiliateBadgeCount.value },
+        { path: '/admin/referral/pending', label: t('nav.referralPending'), icon: BellIcon, badgeCount: adminReferralBadgeStore.pendingAffiliateCount },
         { path: '/admin/referral/affiliates', label: t('nav.referralAffiliates'), icon: UsersIcon },
         { path: '/admin/referral/commissions', label: t('nav.referralCommissionLedger'), icon: ChartIcon },
-        { path: '/admin/referral/withdrawals', label: t('nav.referralWithdrawalReview'), icon: OrderListIcon, badgeCount: pendingWithdrawalBadgeCount.value },
+        { path: '/admin/referral/withdrawals', label: t('nav.referralWithdrawalReview'), icon: OrderListIcon, badgeCount: adminReferralBadgeStore.pendingWithdrawalCount },
       ],
     },
     { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon },
@@ -870,36 +867,6 @@ function showBadge(count?: number): boolean {
 function formatBadgeCount(count?: number): string {
   if (!count || count <= 0) return ''
   return count > 99 ? '99+' : String(count)
-}
-
-async function loadAdminReferralBadges() {
-  if (!isAdmin.value) {
-    pendingAffiliateBadgeCount.value = 0
-    pendingWithdrawalBadgeCount.value = 0
-    return
-  }
-
-  const requestToken = referralBadgeRequestToken.value + 1
-  referralBadgeRequestToken.value = requestToken
-
-  try {
-    const [affiliates, withdrawals] = await Promise.all([
-      adminAPI.referral.listAffiliates({ status: 'pending', page: 1, page_size: 1 }),
-      adminAPI.referral.listWithdrawals({ status: 'pending', page: 1, page_size: 1 }),
-    ])
-
-    if (referralBadgeRequestToken.value !== requestToken) {
-      return
-    }
-
-    pendingAffiliateBadgeCount.value = affiliates.total
-    pendingWithdrawalBadgeCount.value = withdrawals.total
-  } catch (error) {
-    if (referralBadgeRequestToken.value !== requestToken) {
-      return
-    }
-    console.warn('[AppSidebar] failed to load referral badges', error)
-  }
 }
 
 function toggleSidebar() {
@@ -1003,7 +970,9 @@ watch(
 onMounted(() => {
   if (isAdmin.value) {
     adminSettingsStore.fetch()
-    loadAdminReferralBadges()
+    adminReferralBadgeStore.refresh().catch((error) => {
+      console.warn('[AppSidebar] failed to load referral badges', error)
+    })
   } else if (authStore.isAuthenticated) {
     referralStore.ensureLoaded().catch(() => undefined)
   }
@@ -1025,11 +994,12 @@ watch(
   () => authStore.isAdmin,
   (admin) => {
     if (admin) {
-      loadAdminReferralBadges()
+      adminReferralBadgeStore.refresh().catch((error) => {
+        console.warn('[AppSidebar] failed to load referral badges', error)
+      })
       return
     }
-    pendingAffiliateBadgeCount.value = 0
-    pendingWithdrawalBadgeCount.value = 0
+    adminReferralBadgeStore.clear()
   },
   { immediate: true }
 )
@@ -1038,7 +1008,9 @@ watch(
   () => route.path,
   (path) => {
     if (path.startsWith('/admin/referral/')) {
-      loadAdminReferralBadges()
+      adminReferralBadgeStore.refresh(true).catch((error) => {
+        console.warn('[AppSidebar] failed to refresh referral badges', error)
+      })
     }
   }
 )

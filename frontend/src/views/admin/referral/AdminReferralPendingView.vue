@@ -81,10 +81,12 @@ import Pagination from '@/components/common/Pagination.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import adminReferralAPI from '@/api/admin/referral'
 import type { CustomAffiliate } from '@/types'
+import { useAdminReferralBadgeStore } from '@/stores'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 
 const appStore = useAppStore()
+const adminReferralBadgeStore = useAdminReferralBadgeStore()
 const loading = ref(false)
 const approving = ref(false)
 const items = ref<CustomAffiliate[]>([])
@@ -149,7 +151,8 @@ async function approveSelected(): Promise<void> {
     await adminReferralAPI.approveAffiliate(approveDialog.target.user_id, { rate_override: normalizeApproveRate() })
     appStore.showSuccess('推广员已批准')
     closeApproveDialog()
-    loadItems()
+    await loadItems()
+    await adminReferralBadgeStore.refresh(true)
   } catch (error) {
     appStore.showError(extractApiErrorMessage(error, '批准推广员失败'))
   } finally {
@@ -161,7 +164,8 @@ async function reject(item: CustomAffiliate): Promise<void> {
   try {
     await adminReferralAPI.rejectAffiliate(item.user_id, { reason: '管理员驳回' })
     appStore.showSuccess('推广员已驳回')
-    loadItems()
+    await loadItems()
+    await adminReferralBadgeStore.refresh(true)
   } catch (error) {
     appStore.showError(extractApiErrorMessage(error, '驳回推广员失败'))
   }
