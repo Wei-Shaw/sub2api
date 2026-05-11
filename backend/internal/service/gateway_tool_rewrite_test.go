@@ -69,26 +69,25 @@ func TestApplyToolNameRewriteToBody_RenamesToolsAndToolChoice(t *testing.T) {
 	require.NotNil(t, rw)
 	require.Contains(t, rw.Forward, "sessions_list")
 	require.Contains(t, rw.Forward, "session_get")
-	// web_search is a server tool, not rewritten
+	// web_search 是 server tool，不参与工具名改写
 	require.NotContains(t, rw.Forward, "web_search")
 
 	out := applyToolNameRewriteToBody(body, rw)
 
-	// tools[0].name and tools[1].name rewritten; tools[2].name untouched
+	// tools[0].name 和 tools[1].name 被改写，tools[2].name 保持不变
 	require.Equal(t, "cc_sess_list", gjson.GetBytes(out, "tools.0.name").String())
 	require.Equal(t, "cc_ses_get", gjson.GetBytes(out, "tools.1.name").String())
 	require.Equal(t, "web_search", gjson.GetBytes(out, "tools.2.name").String())
 
-	// tool_choice.name rewritten
+	// tool_choice.name 被同步改写
 	require.Equal(t, "cc_sess_list", gjson.GetBytes(out, "tool_choice.name").String())
 	require.Equal(t, "tool", gjson.GetBytes(out, "tool_choice.type").String())
 REDACTED
 
-
 func TestApplyToolNameRewriteToBody_RenamesToolUseInMessages(t *testing.T) {
-	// sessions_list -> cc_sess_list (static prefix: sessions_ -> sessions_)
-	// web_search is a server tool (type != ""), not rewritten
-	// messages tool_use names must be rewritten to match tools[]
+	// sessions_list 通过静态前缀规则改写为 cc_sess_list
+	// web_search 是 server tool（type != ""），不参与工具名改写
+	// messages 中的 tool_use.name 必须同步改写，才能和 tools[] 保持一致
 	body := []byte(`{"tools":[{"name":"sessions_list","input_schema":{REDACTEDREDACTED,{"name":"web_search","type":"web_search_20250305"REDACTED],"messages":[{"role":"user","content":[{"type":"text","text":"hi"REDACTED]REDACTED,{"role":"assistant","content":[{"type":"tool_use","id":"tu_01","name":"sessions_list","input":{REDACTEDREDACTED,{"type":"text","text":"thinking"REDACTED]REDACTED,{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu_01","content":"ok"REDACTED]REDACTED]REDACTED`)
 	rw := buildToolNameRewriteFromBody(body)
 	require.NotNil(t, rw)
@@ -96,16 +95,40 @@ func TestApplyToolNameRewriteToBody_RenamesToolUseInMessages(t *testing.T) {
 
 	out := applyToolNameRewriteToBody(body, rw)
 
-	// tools[0].name rewritten
+	// tools[0].name 被改写
 	require.Equal(t, "cc_sess_list", gjson.GetBytes(out, "tools.0.name").String())
-	// tools[1].name untouched (server tool)
+	// tools[1].name 是 server tool，保持不变
 	require.Equal(t, "web_search", gjson.GetBytes(out, "tools.1.name").String())
-	// messages[1].content[0].name (tool_use) also rewritten to match tools
+	// messages[1].content[0].name 是 tool_use，必须同步改写以匹配 tools[]
 	require.Equal(t, "cc_sess_list", gjson.GetBytes(out, "messages.1.content.0.name").String())
-	// messages[1].content[1] (text) untouched
+	// messages[1].content[1] 是 text，保持不变
 	require.Equal(t, "thinking", gjson.GetBytes(out, "messages.1.content.1.text").String())
-	// messages[2].content[0] (tool_result) untouched — no name field in tool_result
+	// messages[2].content[0] 是 tool_result，不包含 name 字段，保持不变
 	require.Equal(t, "ok", gjson.GetBytes(out, "messages.2.content.0.content").String())
+REDACTED
+
+func TestApplyToolNameRewriteToBody_RenamesToolUseWithDynamicMapping(t *testing.T) {
+	body := []byte(`{"tools":[{"name":"alpha_search","input_schema":{REDACTEDREDACTED,{"name":"beta_lookup","input_schema":{REDACTEDREDACTED,{"name":"gamma_fetch","input_schema":{REDACTEDREDACTED,{"name":"delta_update","input_schema":{REDACTEDREDACTED,{"name":"epsilon_parse","input_schema":{REDACTEDREDACTED,{"name":"zeta_render","input_schema":{REDACTEDREDACTED,{"name":"web_search","type":"web_search_20250305"REDACTED],"tool_choice":{"type":"tool","name":"gamma_fetch"REDACTED,"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"tu_dyn","name":"gamma_fetch","input":{REDACTEDREDACTED,{"type":"tool_use","id":"tu_srv","name":"web_search","input":{REDACTEDREDACTED,{"type":"text","text":"done"REDACTED]REDACTED,{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu_dyn","content":"ok"REDACTED]REDACTED]REDACTED`)
+	rw := buildToolNameRewriteFromBody(body)
+	require.NotNil(t, rw)
+	require.Len(t, rw.Forward, 6)
+
+	fakeGamma := rw.Forward["gamma_fetch"]
+	require.NotEmpty(t, fakeGamma)
+	require.NotEqual(t, "gamma_fetch", fakeGamma)
+	require.NotContains(t, rw.Forward, "web_search")
+
+	out := applyToolNameRewriteToBody(body, rw)
+
+	// 动态映射会改写 tools[]、tool_choice 和历史 tool_use 中的同一个工具名
+	require.Equal(t, fakeGamma, gjson.GetBytes(out, "tools.2.name").String())
+	require.Equal(t, fakeGamma, gjson.GetBytes(out, "tool_choice.name").String())
+	require.Equal(t, fakeGamma, gjson.GetBytes(out, "messages.0.content.0.name").String())
+	// server tool 不参与动态映射，历史 tool_use 中同名引用也保持不变
+	require.Equal(t, "web_search", gjson.GetBytes(out, "tools.6.name").String())
+	require.Equal(t, "web_search", gjson.GetBytes(out, "messages.0.content.1.name").String())
+	// tool_result 依靠 tool_use_id 关联，不需要 name 字段
+	require.Equal(t, "ok", gjson.GetBytes(out, "messages.1.content.0.content").String())
 REDACTED
 
 func TestApplyToolsLastCacheBreakpoint_InjectsDefault(t *testing.T) {

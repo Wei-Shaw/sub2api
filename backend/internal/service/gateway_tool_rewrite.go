@@ -169,10 +169,10 @@ REDACTED
 
 // applyToolNameRewriteToBody 把已构造的 ToolNameRewrite 应用到 body 上：
 //
-//	- 改写 $.tools[*].name（仅对 shouldMimicToolName 通过的 tool）
-//	- 改写 $.tool_choice.name（仅当 $.tool_choice.type == "tool"）
-//	- 改写 $.messages[*].content[*].name（仅当 type == "tool_use"）
-//	- 在 $.tools[last].cache_control 上打 ephemeral 缓存断点
+//   - 改写 $.tools[*].name（仅对 shouldMimicToolName 通过的 tool）
+//   - 改写 $.tool_choice.name（仅当 $.tool_choice.type == "tool"）
+//   - 改写 $.messages[*].content[*].name（仅当 type == "tool_use"）
+//   - 在 $.tools[last].cache_control 上打 ephemeral 缓存断点
 //
 // 响应侧 bytes.Replace 会连带还原假名 → 真名。
 func applyToolNameRewriteToBody(body []byte, rw *ToolNameRewrite) []byte {
@@ -213,9 +213,8 @@ REDACTED
 	REDACTED
 REDACTED
 
-	// Rewrite tool_use names in messages to match the renamed tools.
-	// Without this, Anthropic rejects requests where messages reference tools
-	// by their original name but tools[] declares the renamed (fake) name.
+	// 同步改写历史消息中的 tool_use.name，确保它和 tools[] 中的假名一致。
+	// 否则 Anthropic 会因为 tool_use 引用了未声明的原始工具名而拒绝请求。
 	messages := gjson.GetBytes(body, "messages")
 	if messages.IsArray() {
 		messages.ForEach(func(msgKey, msg gjson.Result) bool {
