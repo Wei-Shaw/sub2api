@@ -897,7 +897,7 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatible(ctx context.C
 		return false
 	}
 	if req.GroupID != nil && s != nil && s.service != nil &&
-		s.service.needsUpstreamChannelRestrictionCheck(ctx, req.GroupID) &&
+		s.service.needsUpstreamChannelRestrictionCheck(ctx, req.GroupID, PlatformOpenAI) &&
 		s.service.isUpstreamModelRestrictedByChannel(ctx, *req.GroupID, account, req.RequestedModel, req.RequireCompact) {
 		return false
 	}
@@ -1112,7 +1112,7 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 		}
 	}
 
-	if s.checkChannelPricingRestriction(ctx, groupID, requestedModel) {
+	if s.checkChannelPricingRestriction(ctx, groupID, PlatformOpenAI, requestedModel) {
 		slog.Warn("channel pricing restriction blocked request",
 			"group_id", derefGroupID(groupID),
 			"model", requestedModel)

@@ -887,6 +887,11 @@ type PublicSettingsInjectionPayload struct {
 	PasswordResetEnabled             bool            `json:"password_reset_enabled"`
 	InvitationCodeEnabled            bool            `json:"invitation_code_enabled"`
 	TotpEnabled                      bool            `json:"totp_enabled"`
+	LoginAgreementEnabled            bool                     `json:"login_agreement_enabled"`
+	LoginAgreementMode               string                   `json:"login_agreement_mode"`
+	LoginAgreementUpdatedAt          string                   `json:"login_agreement_updated_at"`
+	LoginAgreementRevision           string                   `json:"login_agreement_revision"`
+	LoginAgreementDocuments          []LoginAgreementDocument `json:"login_agreement_documents"`
 	TurnstileEnabled                 bool            `json:"turnstile_enabled"`
 	TurnstileSiteKey                 string          `json:"turnstile_site_key"`
 	SiteName                         string          `json:"site_name"`
@@ -910,6 +915,8 @@ type PublicSettingsInjectionPayload struct {
 	WeChatOAuthMobileEnabled         bool            `json:"wechat_oauth_mobile_enabled"`
 	OIDCOAuthEnabled                 bool            `json:"oidc_oauth_enabled"`
 	OIDCOAuthProviderName            string          `json:"oidc_oauth_provider_name"`
+	GitHubOAuthEnabled               bool            `json:"github_oauth_enabled"`
+	GoogleOAuthEnabled               bool            `json:"google_oauth_enabled"`
 	BackendModeEnabled               bool            `json:"backend_mode_enabled"`
 	// PaymentEnabled 已迁移到 plugin（payment plugin 自带 PluginSettings）。
 	Version                          string          `json:"version"`
@@ -927,7 +934,7 @@ type PublicSettingsInjectionPayload struct {
 	AvailableChannelsEnabled             bool `json:"available_channels_enabled"`
 	ServiceQuotaEnabled                  bool `json:"service_quota_enabled"`
 	AffiliateEnabled                     bool `json:"affiliate_enabled"`
-	RiskControlEnabled                   bool json:"risk_control_enabled"
+	RiskControlEnabled                   bool `json:"risk_control_enabled"`
 
 	// PluginFlags carries the union of plugin-declared PublicFlags. Tagged
 	// "-" so the schema-drift test (public_settings_injection_schema_test.go)
@@ -1547,20 +1554,16 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	u.SetStringIfNotEmpty(SettingKeyOIDCConnectClientSecret, settings.OIDCConnectClientSecret)
 
 	// GitHub / Google 邮箱快捷登录
-	updates[SettingKeyGitHubOAuthEnabled] = strconv.FormatBool(settings.GitHubOAuthEnabled)
-	updates[SettingKeyGitHubOAuthClientID] = strings.TrimSpace(settings.GitHubOAuthClientID)
-	updates[SettingKeyGitHubOAuthRedirectURL] = settings.GitHubOAuthRedirectURL
-	updates[SettingKeyGitHubOAuthFrontendRedirectURL] = settings.GitHubOAuthFrontendRedirectURL
-	if settings.GitHubOAuthClientSecret != "" {
-		updates[SettingKeyGitHubOAuthClientSecret] = strings.TrimSpace(settings.GitHubOAuthClientSecret)
-	}
-	updates[SettingKeyGoogleOAuthEnabled] = strconv.FormatBool(settings.GoogleOAuthEnabled)
-	updates[SettingKeyGoogleOAuthClientID] = strings.TrimSpace(settings.GoogleOAuthClientID)
-	updates[SettingKeyGoogleOAuthRedirectURL] = settings.GoogleOAuthRedirectURL
-	updates[SettingKeyGoogleOAuthFrontendRedirectURL] = settings.GoogleOAuthFrontendRedirectURL
-	if settings.GoogleOAuthClientSecret != "" {
-		updates[SettingKeyGoogleOAuthClientSecret] = strings.TrimSpace(settings.GoogleOAuthClientSecret)
-	}
+	u.SetBool(SettingKeyGitHubOAuthEnabled, settings.GitHubOAuthEnabled)
+	u.SetString(SettingKeyGitHubOAuthClientID, strings.TrimSpace(settings.GitHubOAuthClientID))
+	u.SetString(SettingKeyGitHubOAuthRedirectURL, settings.GitHubOAuthRedirectURL)
+	u.SetString(SettingKeyGitHubOAuthFrontendRedirectURL, settings.GitHubOAuthFrontendRedirectURL)
+	u.SetStringIfNotEmpty(SettingKeyGitHubOAuthClientSecret, settings.GitHubOAuthClientSecret)
+	u.SetBool(SettingKeyGoogleOAuthEnabled, settings.GoogleOAuthEnabled)
+	u.SetString(SettingKeyGoogleOAuthClientID, strings.TrimSpace(settings.GoogleOAuthClientID))
+	u.SetString(SettingKeyGoogleOAuthRedirectURL, settings.GoogleOAuthRedirectURL)
+	u.SetString(SettingKeyGoogleOAuthFrontendRedirectURL, settings.GoogleOAuthFrontendRedirectURL)
+	u.SetStringIfNotEmpty(SettingKeyGoogleOAuthClientSecret, settings.GoogleOAuthClientSecret)
 
 	// WeChat Connect OAuth 登录
 	u.SetBool(SettingKeyWeChatConnectEnabled, settings.WeChatConnectEnabled)
@@ -1680,7 +1683,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	u.SetBool(SettingKeyAffiliateEnabled, settings.AffiliateEnabled)
 
 	// 风控中心功能开关
-	updates[SettingKeyRiskControlEnabled] = strconv.FormatBool(settings.RiskControlEnabled)
+	u.SetBool(SettingKeyRiskControlEnabled, settings.RiskControlEnabled)
 
 	// Claude Code version check
 	u.SetString(SettingKeyMinClaudeCodeVersion, settings.MinClaudeCodeVersion)

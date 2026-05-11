@@ -5318,6 +5318,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	// 导致上游不返回 usage 的模型（如 gpt-5.4-pro）下 RPM/TPD 等服务限额完全不计数。
 	// "跳过 DB usage_log 写入"的旧语义改到 cost 计算之后再判定（见下方 zero-usage skip-db 块）。
 
+	result := input.Result
 	apiKey := input.APIKey
 	user := input.User
 	account := input.Account
@@ -5365,7 +5366,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if input.BillingModelSource == BillingModelSourceRequested && input.OriginalModel != "" {
 		billingModel = input.OriginalModel
 	}
-	billingModels := usageBillingModelCandidates(
+	_ = usageBillingModelCandidates(
 		billingModel,
 		result.BillingModel,
 		input.ChannelMappedModel,

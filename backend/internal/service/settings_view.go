@@ -262,15 +262,15 @@ type PublicSettings struct {
 	AffiliateEnabled bool `json:"affiliate_enabled"`
 
 	// 风控中心功能开关
-	RiskControlEnabled bool json:"risk_control_enabled"
+	RiskControlEnabled bool `json:"risk_control_enabled"`
 
-	PluginFlags map[string]any json:"-"
+	PluginFlags map[string]any `json:"-"`
 }
 
 type LoginAgreementDocument struct {
-	ID        string json:"id"
-	Title     string json:"title"
-	ContentMD string json:"content_md"
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	ContentMD string `json:"content_md"`
 }
 
 type WeChatConnectOAuthConfig struct {

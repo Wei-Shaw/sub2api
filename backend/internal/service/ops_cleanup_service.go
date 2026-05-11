@@ -40,12 +40,11 @@ type PluginMaintenanceRunner interface {
 // - Multi-instance: best-effort Redis leader lock so only one node runs cleanup.
 // - Safety: deletes in batches to avoid long transactions.
 type OpsCleanupService struct {
-	opsRepo           OpsRepository
-	db                *sql.DB
-	redisClient       *redis.Client
-	cfg               *config.Config
-	channelMonitorSvc *ChannelMonitorService
-	settingRepo       SettingRepository
+	opsRepo     OpsRepository
+	db          *sql.DB
+	redisClient *redis.Client
+	cfg         *config.Config
+	settingRepo SettingRepository
 
 	instanceID string
 
@@ -66,17 +65,15 @@ func NewOpsCleanupService(
 	db *sql.DB,
 	redisClient *redis.Client,
 	cfg *config.Config,
-	channelMonitorSvc *ChannelMonitorService,
 	settingRepo SettingRepository,
 ) *OpsCleanupService {
 	return &OpsCleanupService{
-		opsRepo:           opsRepo,
-		db:                db,
-		redisClient:       redisClient,
-		cfg:               cfg,
-		channelMonitorSvc: channelMonitorSvc,
-		settingRepo:       settingRepo,
-		instanceID:        uuid.NewString(),
+		opsRepo:     opsRepo,
+		db:          db,
+		redisClient: redisClient,
+		cfg:         cfg,
+		settingRepo: settingRepo,
+		instanceID:  uuid.NewString(),
 	}
 }
 
