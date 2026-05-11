@@ -24,10 +24,8 @@ WORKDIR /app/frontend
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
 # Install dependencies first (better caching)
-COPY frontend/package.json frontend/pnpm-lock.yaml ./
-# Approve build scripts for esbuild and vue-demi (pnpm 10+ requirement)
-RUN node -e "const f=require('fs');const p=JSON.parse(f.readFileSync('package.json','utf8'));p.pnpm=p.pnpm||{};p.pnpm.onlyBuiltDependencies=['esbuild','vue-demi'];f.writeFileSync('package.json',JSON.stringify(p,null,2))" && \
-    pnpm install --frozen-lockfile
+COPY frontend/package.json frontend/pnpm-lock.yaml frontend/.npmrc ./
+RUN pnpm install --frozen-lockfile
 
 # Copy frontend source and build
 COPY frontend/ ./
