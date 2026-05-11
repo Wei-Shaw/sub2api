@@ -71,9 +71,8 @@ func isMarketingAdminPathAllowed(method, requestPath string) bool {
 	if method == "PUT" && hasAnyPrefix(path, "/admin/users") {
 		return true
 	}
-	// Marketing can activate devices or adjust balance only for users scoped by its own affiliate code;
-	// handlers enforce the actual affiliate scope.
-	if method == "POST" && hasAnyPrefix(path, "/admin/users") && (strings.HasSuffix(path, "/activate-devices") || strings.HasSuffix(path, "/balance")) {
+	// Marketing can adjust balance only for users scoped by its own affiliate code.
+	if method == "POST" && hasAnyPrefix(path, "/admin/users") && strings.HasSuffix(path, "/balance") {
 		return true
 	}
 

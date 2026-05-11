@@ -1752,6 +1752,10 @@ export default {
         none: '이 레코드에는 아직 앱/기기 claim이 연결되지 않았습니다.',
         blocked: '접근 권한이 차단되어 여기서 다시 활성화할 수 없습니다.'
       },
+      statusHints: {
+        active: '계정이 활성화되어 API 키를 사용할 수 있습니다.',
+        disabled: '계정이 비활성화되어 API 키를 사용할 수 없습니다.'
+      },
       activateDevice: '활성화',
       deviceActivated: '대기 중인 기기 {count}개를 활성화했습니다',
       failedToActivateDevice: '기기 활성화 실패',
@@ -5181,6 +5185,35 @@ export default {
         backup: '데이터 백업',
         payment: '결제 설정',
       },
+      loginAgreementSettings: {
+        title: '로그인 약관 설정',
+        description: '로그인 전에 사용자가 최신 서비스 약관을 확인하고 동의하도록 요구합니다.',
+        displayMode: '표시 방식',
+        modal: '모달',
+        checkbox: '체크박스',
+        modalHint: '로그인을 계속하기 전에 약관 문서를 포함한 필수 모달을 표시합니다.',
+        checkboxHint: '로그인 및 회원가입 폼에 약관 동의 체크박스를 표시합니다.',
+        updatedDate: '업데이트 날짜',
+        updatedDateHint: '이 날짜를 변경하면 사용자가 최신 약관에 다시 동의해야 합니다.',
+        documents: '약관 문서',
+        documentsHint: '로그인 약관 안내에 표시할 법적 문서를 설정합니다.',
+        addDocument: '문서 추가',
+        untitledDocument: '제목 없는 문서',
+        documentTitle: '문서 제목',
+        documentTitlePlaceholder: '예: 서비스 약관',
+        routeSlug: '경로 슬러그',
+        markdownContent: 'Markdown 내용',
+        markdownContentPlaceholder: 'Markdown으로 문서 내용을 입력하세요. 비워 두면 공개 법적 문서 페이지에 빈 상태 메시지가 표시됩니다.',
+        documentRequiredError: '로그인 약관을 활성화하기 전에 약관 문서를 하나 이상 추가하세요.',
+        documentTitleRequiredError: '모든 약관 문서에는 제목이 필요합니다.',
+        duplicateRouteError: '중복된 약관 문서 경로: {path}',
+        defaultDocuments: {
+          terms: '서비스 약관',
+          usagePolicy: '이용 정책',
+          supportedRegions: '지원 지역',
+          serviceSpecificTerms: '서비스별 약관',
+        },
+      },
       features: {
         channelMonitor: {
           title: '채널 모니터링',
@@ -7237,6 +7270,7 @@ export default {
       subsStatus: {
         active: '활성 중',
         expired: '만료됨',
+        revoked: '취소됨',
       },
 
       allowUserRefund: 'Allow User Refund',

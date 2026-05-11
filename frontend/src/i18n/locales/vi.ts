@@ -1751,6 +1751,10 @@ export default {
         none: 'Chưa có claim app/device gắn với bản ghi này.',
         blocked: 'Quyền truy cập đang bị chặn và không thể bật lại tại đây.'
       },
+      statusHints: {
+        active: 'Tài khoản đang hoạt động và có thể dùng khóa API.',
+        disabled: 'Tài khoản đã bị vô hiệu hóa và không thể dùng khóa API.'
+      },
       activateDevice: 'Kích hoạt',
       deviceActivated: 'Đã kích hoạt {count} thiết bị đang chờ',
       failedToActivateDevice: 'Kích hoạt thiết bị thất bại',
@@ -5179,6 +5183,35 @@ export default {
         email: 'Cài đặt email',
         backup: 'Sao lưu dữ liệu',
         payment: 'Cài đặt thanh toán',
+      },
+      loginAgreementSettings: {
+        title: 'Cài đặt điều khoản đăng nhập',
+        description: 'Yêu cầu người dùng xem và đồng ý với điều khoản dịch vụ mới nhất trước khi đăng nhập.',
+        displayMode: 'Chế độ hiển thị',
+        modal: 'Hộp thoại',
+        checkbox: 'Checkbox',
+        modalHint: 'Hiển thị hộp thoại bắt buộc với các tài liệu điều khoản trước khi tiếp tục đăng nhập.',
+        checkboxHint: 'Hiển thị checkbox đồng ý điều khoản trên form đăng nhập và đăng ký.',
+        updatedDate: 'Ngày cập nhật',
+        updatedDateHint: 'Khi đổi ngày này, người dùng sẽ phải đồng ý lại với điều khoản mới nhất.',
+        documents: 'Tài liệu điều khoản',
+        documentsHint: 'Cấu hình các tài liệu pháp lý hiển thị trong thông báo điều khoản đăng nhập.',
+        addDocument: 'Thêm tài liệu',
+        untitledDocument: 'Tài liệu chưa đặt tên',
+        documentTitle: 'Tiêu đề tài liệu',
+        documentTitlePlaceholder: 'Ví dụ: Điều khoản dịch vụ',
+        routeSlug: 'Slug đường dẫn',
+        markdownContent: 'Nội dung Markdown',
+        markdownContentPlaceholder: 'Nhập nội dung tài liệu bằng Markdown. Để trống nếu muốn trang pháp lý công khai hiển thị trạng thái chưa có nội dung.',
+        documentRequiredError: 'Hãy thêm ít nhất một tài liệu điều khoản trước khi bật điều khoản đăng nhập.',
+        documentTitleRequiredError: 'Mỗi tài liệu điều khoản cần có tiêu đề.',
+        duplicateRouteError: 'Đường dẫn tài liệu điều khoản bị trùng: {path}',
+        defaultDocuments: {
+          terms: 'Điều khoản dịch vụ',
+          usagePolicy: 'Chính sách sử dụng',
+          supportedRegions: 'Khu vực hỗ trợ',
+          serviceSpecificTerms: 'Điều khoản riêng theo dịch vụ',
+        },
       },
       features: {
         channelMonitor: {

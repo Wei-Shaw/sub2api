@@ -44,10 +44,10 @@ func TestAdminRoleAccessMiddleware(t *testing.T) {
 			wantStatus: http.StatusOK,
 		},
 		{
-			name:       "marketing_can_activate_affiliate_scoped_user_devices",
+			name:       "marketing_can_activate_affiliate_scoped_user_status",
 			role:       service.RoleMarketing,
-			method:     http.MethodPost,
-			path:       "/api/v1/admin/users/7/activate-devices",
+			method:     http.MethodPut,
+			path:       "/api/v1/admin/users/7",
 			wantStatus: http.StatusOK,
 		},
 		{

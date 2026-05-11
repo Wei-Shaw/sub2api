@@ -470,6 +470,10 @@ export default {
         none: '此记录尚未绑定应用/设备 claim。',
         blocked: '访问权限已阻止，不能在此重新启用。'
       },
+      statusHints: {
+        active: '账号已激活，可以使用 API 密钥。',
+        disabled: '账号已禁用，无法使用 API 密钥。'
+      },
       activateDevice: '激活',
       deviceActivated: '已激活 {count} 个待激活设备',
       failedToActivateDevice: '激活设备失败',

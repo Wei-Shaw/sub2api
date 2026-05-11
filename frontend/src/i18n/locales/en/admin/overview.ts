@@ -470,13 +470,17 @@ export default {
         none: 'No linked app/device claim yet.',
         blocked: 'Access is blocked and cannot be re-enabled here.'
       },
+      statusHints: {
+        active: 'Account is active and can use API keys.',
+        disabled: 'Account is disabled and cannot use API keys.'
+      },
       activateDevice: 'Activate',
       deviceActivated: 'Activated {count} pending devices',
       failedToActivateDevice: 'Failed to activate device',
       deviceActivation: {
         all: 'All device statuses',
         none: 'No device',
-        active: 'Activated',
+        active: 'Active',
         pending_activation: 'Pending activation',
         revoked: 'Revoked',
         blocked: 'Blocked'
@@ -558,7 +562,7 @@ export default {
         concurrency: 'Concurrency',
         status: 'Status',
         activation: 'Activation',
-        deviceActivation: 'Device Activation',
+        deviceActivation: 'Device activation',
         lastActive: 'Last Active',
         lastUsed: 'Last Used',
         created: 'Created',
