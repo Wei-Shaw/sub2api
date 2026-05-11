@@ -2,8 +2,9 @@
   <AppLayout>
     <TablePageLayout>
       <template #filters>
-        <div class="flex flex-wrap-reverse items-start justify-between gap-3">
+        <div class="flex min-w-0 flex-col-reverse gap-3 xl:flex-row xl:items-start xl:justify-between">
           <AccountTableFilters
+            class="min-w-0 flex-1"
             v-model:searchQuery="params.search"
             :filters="params"
             :groups="groups"
@@ -12,6 +13,7 @@
             @update:searchQuery="debouncedReload"
           />
           <AccountTableActions
+            class="shrink-0"
             :loading="loading"
             @refresh="handleManualRefresh"
             @create="showCreate = true"

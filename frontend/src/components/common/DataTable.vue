@@ -204,7 +204,7 @@ import Icon from '@/components/icons/Icon.vue'
 
 const { t } = useI18n()
 
-const desktopViewportQuery = '(min-width: 768px)'
+const desktopViewportQuery = '(min-width: 1024px)'
 const isDesktopViewport = ref(
   typeof window === 'undefined' ? true : window.matchMedia(desktopViewportQuery).matches
 )

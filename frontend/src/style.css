@@ -198,6 +198,28 @@
   }
 
   /* ============ 玻璃效果 ============ */
+  .app-main {
+    --app-main-padding-y: 1.5rem;
+  }
+
+  @media (min-width: 640px) {
+    .app-main {
+      --app-main-padding-y: 2rem;
+    }
+  }
+
+  @media (min-width: 768px) {
+    .app-main {
+      --app-main-padding-y: 2.5rem;
+    }
+  }
+
+  @media (min-width: 1536px) {
+    .app-main {
+      --app-main-padding-y: 3rem;
+    }
+  }
+
   .glass {
     @apply bg-white/80 backdrop-blur-xl dark:bg-dark-800/80;
   }

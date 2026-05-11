@@ -2,17 +2,17 @@
   <aside
     class="sidebar"
     :class="[
-      sidebarCollapsed ? 'w-[72px]' : 'w-64',
-      { '-translate-x-full lg:translate-x-0': !mobileOpen }
+      visualSidebarCollapsed ? 'w-[72px]' : 'w-64',
+      { '-translate-x-full xl:translate-x-0': !mobileOpen }
     ]"
   >
     <!-- Logo/Brand -->
-    <div class="sidebar-header" :class="{ 'sidebar-header-collapsed': sidebarCollapsed }">
+    <div class="sidebar-header" :class="{ 'sidebar-header-collapsed': visualSidebarCollapsed }">
       <!-- Custom Logo or Default Logo -->
       <div class="sidebar-logo flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl shadow-glow">
         <img v-if="settingsLoaded" :src="siteLogo || '/logo.png'" alt="Logo" class="h-full w-full object-contain" />
       </div>
-      <div class="sidebar-brand" :class="{ 'sidebar-brand-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">
+      <div class="sidebar-brand" :class="{ 'sidebar-brand-collapsed': visualSidebarCollapsed }" :aria-hidden="visualSidebarCollapsed ? 'true' : 'false'">
         <span class="sidebar-brand-title text-lg font-bold text-gray-900 dark:text-white">
           {{ siteName }}
         </span>
@@ -35,16 +35,16 @@
                 class="sidebar-link mb-1 w-full"
                 :class="{
                   'sidebar-link-active': isGroupActive(item) && !isGroupExpanded(item),
-                  'sidebar-link-collapsed': sidebarCollapsed
+                  'sidebar-link-collapsed': visualSidebarCollapsed
                 }"
-                :title="sidebarCollapsed ? item.label : undefined"
+                :title="visualSidebarCollapsed ? item.label : undefined"
                 @click="handleGroupClick(item)"
               >
                 <component :is="item.icon" class="h-5 w-5 flex-shrink-0" />
                 <span
                   class="sidebar-label sidebar-label-flex"
-                  :class="{ 'sidebar-label-collapsed': sidebarCollapsed }"
-                  :aria-hidden="sidebarCollapsed ? 'true' : 'false'"
+                  :class="{ 'sidebar-label-collapsed': visualSidebarCollapsed }"
+                  :aria-hidden="visualSidebarCollapsed ? 'true' : 'false'"
                 >
                   <span class="min-w-0 truncate">{{ item.label }}</span>
                   <ChevronDownIcon
@@ -54,7 +54,7 @@
                 </span>
               </button>
               <!-- Children -->
-              <div v-if="!sidebarCollapsed && isGroupExpanded(item)" class="mb-1 ml-4 border-l border-gray-200 pl-2 dark:border-dark-600">
+              <div v-if="!visualSidebarCollapsed && isGroupExpanded(item)" class="mb-1 ml-4 border-l border-gray-200 pl-2 dark:border-dark-600">
                 <router-link
                   v-for="child in item.children"
                   :key="child.path"
@@ -73,8 +73,8 @@
               v-else
               :to="item.path"
               class="sidebar-link mb-1"
-              :class="{ 'sidebar-link-active': isActive(item.path), 'sidebar-link-collapsed': sidebarCollapsed }"
-              :title="sidebarCollapsed ? item.label : undefined"
+              :class="{ 'sidebar-link-active': isActive(item.path), 'sidebar-link-collapsed': visualSidebarCollapsed }"
+              :title="visualSidebarCollapsed ? item.label : undefined"
               :id="
                 item.path === '/admin/accounts'
                   ? 'sidebar-channel-manage'
@@ -88,15 +88,15 @@
             >
               <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
               <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
-              <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
+              <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': visualSidebarCollapsed }" :aria-hidden="visualSidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
             </router-link>
           </template>
         </div>
 
         <!-- Personal Section for Admin (hidden in simple mode) -->
         <div v-if="!authStore.isSimpleMode" class="sidebar-section">
-          <div class="sidebar-section-title" :class="{ 'sidebar-section-title-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">
-            <span class="sidebar-section-title-text" :class="{ 'sidebar-section-title-text-collapsed': sidebarCollapsed }">
+          <div class="sidebar-section-title" :class="{ 'sidebar-section-title-collapsed': visualSidebarCollapsed }" :aria-hidden="visualSidebarCollapsed ? 'true' : 'false'">
+            <span class="sidebar-section-title-text" :class="{ 'sidebar-section-title-text-collapsed': visualSidebarCollapsed }">
               {{ t('nav.myAccount') }}
             </span>
           </div>
@@ -106,14 +106,14 @@
             :key="item.path"
             :to="item.path"
             class="sidebar-link mb-1"
-            :class="{ 'sidebar-link-active': isActive(item.path), 'sidebar-link-collapsed': sidebarCollapsed }"
-            :title="sidebarCollapsed ? item.label : undefined"
+            :class="{ 'sidebar-link-active': isActive(item.path), 'sidebar-link-collapsed': visualSidebarCollapsed }"
+            :title="visualSidebarCollapsed ? item.label : undefined"
             :data-tour="item.path === '/keys' ? 'sidebar-my-keys' : undefined"
             @click="handleMenuItemClick(item.path)"
           >
             <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
             <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
-            <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
+            <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': visualSidebarCollapsed }" :aria-hidden="visualSidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
           </router-link>
         </div>
       </template>
@@ -126,14 +126,14 @@
             :key="item.path"
             :to="item.path"
             class="sidebar-link mb-1"
-            :class="{ 'sidebar-link-active': isActive(item.path), 'sidebar-link-collapsed': sidebarCollapsed }"
-            :title="sidebarCollapsed ? item.label : undefined"
+            :class="{ 'sidebar-link-active': isActive(item.path), 'sidebar-link-collapsed': visualSidebarCollapsed }"
+            :title="visualSidebarCollapsed ? item.label : undefined"
             :data-tour="item.path === '/keys' ? 'sidebar-my-keys' : undefined"
             @click="handleMenuItemClick(item.path)"
           >
             <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
             <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
-            <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
+            <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': visualSidebarCollapsed }" :aria-hidden="visualSidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
           </router-link>
         </div>
       </template>
@@ -145,12 +145,12 @@
       <button
         @click="toggleTheme"
         class="sidebar-link mb-2 w-full"
-        :class="{ 'sidebar-link-collapsed': sidebarCollapsed }"
-        :title="sidebarCollapsed ? (isDark ? t('nav.lightMode') : t('nav.darkMode')) : undefined"
+        :class="{ 'sidebar-link-collapsed': visualSidebarCollapsed }"
+        :title="visualSidebarCollapsed ? (isDark ? t('nav.lightMode') : t('nav.darkMode')) : undefined"
       >
         <SunIcon v-if="isDark" class="h-5 w-5 flex-shrink-0 text-amber-500" />
         <MoonIcon v-else class="h-5 w-5 flex-shrink-0" />
-        <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{
+        <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': visualSidebarCollapsed }" :aria-hidden="visualSidebarCollapsed ? 'true' : 'false'">{{
           isDark ? t('nav.lightMode') : t('nav.darkMode')
         }}</span>
       </button>
@@ -158,13 +158,13 @@
       <!-- Collapse Button -->
       <button
         @click="toggleSidebar"
-        class="sidebar-link w-full"
-        :class="{ 'sidebar-link-collapsed': sidebarCollapsed }"
-        :title="sidebarCollapsed ? t('nav.expand') : t('nav.collapse')"
+        class="sidebar-link hidden w-full 2xl:flex"
+        :class="{ 'sidebar-link-collapsed': visualSidebarCollapsed }"
+        :title="visualSidebarCollapsed ? t('nav.expand') : t('nav.collapse')"
       >
-        <ChevronDoubleLeftIcon v-if="!sidebarCollapsed" class="h-5 w-5 flex-shrink-0" />
+        <ChevronDoubleLeftIcon v-if="!visualSidebarCollapsed" class="h-5 w-5 flex-shrink-0" />
         <ChevronDoubleRightIcon v-else class="h-5 w-5 flex-shrink-0" />
-        <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ t('nav.collapse') }}</span>
+        <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': visualSidebarCollapsed }" :aria-hidden="visualSidebarCollapsed ? 'true' : 'false'">{{ t('nav.collapse') }}</span>
       </button>
     </div>
   </aside>
@@ -173,14 +173,14 @@
   <transition name="fade">
     <div
       v-if="mobileOpen"
-      class="fixed inset-0 z-30 bg-black/50 lg:hidden"
+      class="fixed inset-0 z-30 bg-black/50 xl:hidden"
       @click="closeMobile"
     ></div>
   </transition>
 </template>
 
 <script setup lang="ts">
-import { computed, h, onMounted, ref, watch } from 'vue'
+import { computed, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAdminSettingsStore, useAppStore, useAuthStore, useOnboardingStore } from '@/stores'
@@ -235,6 +235,11 @@ const adminSettingsStore = useAdminSettingsStore()
 
 const sidebarCollapsed = computed(() => appStore.sidebarCollapsed)
 const mobileOpen = computed(() => appStore.mobileOpen)
+const isDesktopSidebarViewport = ref(false)
+const isRailSidebarViewport = ref(false)
+const visualSidebarCollapsed = computed(() =>
+  isDesktopSidebarViewport.value && (sidebarCollapsed.value || isRailSidebarViewport.value)
+)
 const isAdmin = computed(() => authStore.isAdmin)
 const isDark = ref(document.documentElement.classList.contains('dark'))
 
@@ -801,6 +806,12 @@ function closeMobile() {
   appStore.setMobileOpen(false)
 }
 
+function updateSidebarViewportMode() {
+  const width = window.innerWidth
+  isDesktopSidebarViewport.value = width >= 1280
+  isRailSidebarViewport.value = width >= 1280 && width < 1536
+}
+
 function handleMenuItemClick(itemPath: string) {
   if (mobileOpen.value) {
     setTimeout(() => {
@@ -850,7 +861,7 @@ function toggleGroup(item: NavItem) {
  *   (router-link semantics) and ensure the group is expanded.
  */
 function handleGroupClick(item: NavItem) {
-  if (sidebarCollapsed.value) return
+  if (visualSidebarCollapsed.value) return
   if (item.expandOnly) {
     toggleGroup(item)
     return
@@ -886,9 +897,15 @@ watch(
 )
 
 onMounted(() => {
+  updateSidebarViewportMode()
+  window.addEventListener('resize', updateSidebarViewportMode)
   if (isAdmin.value) {
     adminSettingsStore.fetch()
   }
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', updateSidebarViewportMode)
 })
 </script>
 
