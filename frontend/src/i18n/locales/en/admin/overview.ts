@@ -470,6 +470,17 @@ export default {
         none: 'No linked app/device claim yet.',
         blocked: 'Access is blocked and cannot be re-enabled here.'
       },
+      activateDevice: 'Activate',
+      deviceActivated: 'Activated {count} pending devices',
+      failedToActivateDevice: 'Failed to activate device',
+      deviceActivation: {
+        all: 'All device statuses',
+        none: 'No device',
+        active: 'Activated',
+        pending_activation: 'Pending activation',
+        revoked: 'Revoked',
+        blocked: 'Blocked'
+      },
       searchGroups: 'Search groups...',
       fuzzySearch: 'Fuzzy search',
       apiKeyGroupFilter: 'API Key Group',
@@ -547,6 +558,7 @@ export default {
         concurrency: 'Concurrency',
         status: 'Status',
         activation: 'Activation',
+        deviceActivation: 'Device Activation',
         lastActive: 'Last Active',
         lastUsed: 'Last Used',
         created: 'Created',

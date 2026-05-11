@@ -1751,6 +1751,17 @@ export default {
         none: 'Chưa có claim app/device gắn với bản ghi này.',
         blocked: 'Quyền truy cập đang bị chặn và không thể bật lại tại đây.'
       },
+      activateDevice: 'Kích hoạt',
+      deviceActivated: 'Đã kích hoạt {count} thiết bị đang chờ',
+      failedToActivateDevice: 'Kích hoạt thiết bị thất bại',
+      deviceActivation: {
+        all: 'Tất cả trạng thái thiết bị',
+        none: 'Không có thiết bị',
+        active: 'Đã kích hoạt',
+        pending_activation: 'Đang chờ kích hoạt',
+        revoked: 'Đã thu hồi',
+        blocked: 'Đã chặn'
+      },
       searchGroups: 'Tìm nhóm...',
       fuzzySearch: 'Tìm kiếm mờ',
       statusFilter: 'Lọc theo trạng thái',
@@ -1788,6 +1799,7 @@ export default {
         concurrency: 'Số lượng đồng thời',
         status: 'Trạng thái',
         activation: 'Kích hoạt',
+        deviceActivation: 'Kích hoạt thiết bị',
         lastActive: 'Lần hoạt động cuối',
         lastUsed: 'Lần sử dụng cuối',
         created: 'Thời gian tạo',

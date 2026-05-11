@@ -470,6 +470,17 @@ export default {
         none: '此记录尚未绑定应用/设备 claim。',
         blocked: '访问权限已阻止，不能在此重新启用。'
       },
+      activateDevice: '激活',
+      deviceActivated: '已激活 {count} 个待激活设备',
+      failedToActivateDevice: '激活设备失败',
+      deviceActivation: {
+        all: '全部设备状态',
+        none: '无设备',
+        active: '已激活',
+        pending_activation: '待激活',
+        revoked: '已撤销',
+        blocked: '已封禁'
+      },
       searchGroups: '搜索分组...',
       fuzzySearch: '模糊搜索',
       apiKeyGroupFilter: 'API Key 分组',
@@ -522,6 +533,7 @@ export default {
         concurrency: '并发数',
         status: '状态',
         activation: '激活',
+        deviceActivation: '设备激活',
         lastActive: '最后活跃时间',
         lastUsed: '最后使用时间',
         created: '创建时间',

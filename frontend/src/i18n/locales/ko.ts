@@ -1752,6 +1752,17 @@ export default {
         none: '이 레코드에는 아직 앱/기기 claim이 연결되지 않았습니다.',
         blocked: '접근 권한이 차단되어 여기서 다시 활성화할 수 없습니다.'
       },
+      activateDevice: '활성화',
+      deviceActivated: '대기 중인 기기 {count}개를 활성화했습니다',
+      failedToActivateDevice: '기기 활성화 실패',
+      deviceActivation: {
+        all: '모든 기기 상태',
+        none: '기기 없음',
+        active: '활성화됨',
+        pending_activation: '활성화 대기 중',
+        revoked: '취소됨',
+        blocked: '차단됨'
+      },
       searchGroups: '그룹 검색...',
       fuzzySearch: '퍼지 검색',
       statusFilter: '상태 필터',
@@ -1789,6 +1800,7 @@ export default {
         concurrency: '동시성 수',
         status: '상태',
         activation: '활성화',
+        deviceActivation: '기기 활성화',
         lastActive: '마지막 활성 시간',
         lastUsed: '마지막 사용 시간',
         created: '생성 시간',
