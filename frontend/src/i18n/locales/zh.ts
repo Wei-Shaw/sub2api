@@ -15,8 +15,12 @@ export default {
     heroDescription: '无需管理多个订阅账号，一站式接入 Claude、GPT、Gemini 等主流 AI 服务',
     tags: {
       subscriptionToApi: '订阅转 API',
+      heroTag: 'AI API Gateway · 企业级中转',
       stickySession: '会话保持',
       realtimeBilling: '按量计费'
+    },
+    nav: {
+      home: '首页',
     },
     // 用户痛点区块
     painPoints: {
@@ -107,7 +111,11 @@ export default {
       button: '免费注册'
     },
     footer: {
-      allRightsReserved: '保留所有权利。'
+      allRightsReserved: '保留所有权利。',
+      terms: '服务条款',
+      privacy: '隐私政策',
+      usagePolicy: '使用政策',
+      supportedRegions: '支持国家和地区'
     }
   },
 

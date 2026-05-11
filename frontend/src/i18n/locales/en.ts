@@ -15,8 +15,12 @@ export default {
     heroDescription: 'No need to manage multiple subscriptions. Access Claude, GPT, Gemini and more with a single API key',
     tags: {
       subscriptionToApi: 'Subscription to API',
+      heroTag: 'AI API Gateway · Enterprise Relay',
       stickySession: 'Session Persistence',
       realtimeBilling: 'Pay As You Go'
+    },
+    nav: {
+      home: 'Home',
     },
     // Pain points section
     painPoints: {
@@ -107,7 +111,11 @@ export default {
       button: 'Sign Up Free'
     },
     footer: {
-      allRightsReserved: 'All rights reserved.'
+      allRightsReserved: 'All rights reserved.',
+      terms: 'Terms of Service',
+      privacy: 'Privacy Policy',
+      usagePolicy: 'Usage Policy',
+      supportedRegions: 'Supported Regions'
     }
   },
 
