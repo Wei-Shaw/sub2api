@@ -472,13 +472,35 @@ const (
 	OpenAIFastTierAny      = "all"      // 匹配任意已识别的 service_tier
 	OpenAIFastTierPriority = "priority" // 仅匹配 fast（priority）
 	OpenAIFastTierFlex     = "flex"     // 仅匹配 flex
+	OpenAIFastTierDefault  = "default"  // 仅匹配普通 default
+	OpenAIFastTierAuto     = "auto"     // 仅匹配 OpenAI auto
+	OpenAIFastTierScale    = "scale"    // 仅匹配 OpenAI scale
+)
+
+const (
+	OpenAIFastPolicyActionForcePriority = "force_priority"
+	OpenAIFastPolicyActionForceDefault  = "force_default"
+	OpenAIFastPolicyActionForceFlex     = "force_flex"
+)
+
+const (
+	OpenAIFastPolicyEndpointAny                 = "all"
+	OpenAIFastPolicyEndpointResponses           = "responses"
+	OpenAIFastPolicyEndpointChatCompletions     = "chat_completions"
+	OpenAIFastPolicyEndpointMessagesToResponses = "messages_to_responses"
+	OpenAIFastPolicyEndpointResponsesWebSocket  = "responses_websocket"
 )
 
 // OpenAIFastPolicyRule 单条 OpenAI fast/flex 策略规则
 type OpenAIFastPolicyRule struct {
 	ServiceTier          string   `json:"service_tier"`                     // "priority" | "flex" | "auto" | "default" | "scale" | "all"
-	Action               string   `json:"action"`                           // "pass" | "filter" | "block"
+	Action               string   `json:"action"`                           // "pass" | "filter" | "block" | "force_priority" | "force_default" | "force_flex"
 	Scope                string   `json:"scope"`                            // "all" | "oauth" | "apikey" | "bedrock"
+	AccountIDs           []int64  `json:"account_ids,omitempty"`            // 指定上游账号 ID；为空=不限制
+	AccountPoolIDs       []int64  `json:"account_pool_ids,omitempty"`       // 指定上游账号所属账号池/账号分组 ID；为空=不限制
+	GroupIDs             []int64  `json:"group_ids,omitempty"`              // 指定 API Key 所属用户分组 ID；为空=不限制
+	Endpoints            []string `json:"endpoints,omitempty"`              // responses/chat_completions/messages_to_responses/responses_websocket；为空=全部
+	ReasoningEffort      string   `json:"reasoning_effort,omitempty"`       // 可选强制 reasoning effort: low|medium|high|xhigh
 	ErrorMessage         string   `json:"error_message,omitempty"`          // 自定义错误消息 (action=block 时生效)
 	ModelWhitelist       []string `json:"model_whitelist,omitempty"`        // 模型匹配模式列表（为空=对所有模型生效）
 	FallbackAction       string   `json:"fallback_action,omitempty"`        // 未匹配白名单的模型的处理方式

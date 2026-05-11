@@ -1128,7 +1128,7 @@
                   </button>
                 </div>
 
-                <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
                   <!-- Service Tier -->
                   <div>
                     <label
@@ -1143,6 +1143,9 @@
                           | 'all'
                           | 'priority'
                           | 'flex'
+                          | 'default'
+                          | 'auto'
+                          | 'scale'
                       "
                       :options="openaiFastPolicyTierOptions"
                     />
@@ -1158,7 +1161,16 @@
                     <Select
                       :modelValue="rule.action"
                       @update:modelValue="
-                        rule.action = $event as 'pass' | 'filter' | 'block'
+                        updateOpenAIFastPolicyAction(
+                          rule,
+                          $event as
+                            | 'pass'
+                            | 'filter'
+                            | 'block'
+                            | 'force_priority'
+                            | 'force_default'
+                            | 'force_flex',
+                        )
                       "
                       :options="openaiFastPolicyActionOptions"
                     />
@@ -1181,6 +1193,129 @@
                           | 'bedrock'
                       "
                       :options="openaiFastPolicyScopeOptions"
+                    />
+                  </div>
+
+                  <!-- Reasoning Effort -->
+                  <div>
+                    <label
+                      class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                    >
+                      {{ t("admin.settings.openaiFastPolicy.reasoningEffort") }}
+                    </label>
+                    <Select
+                      :modelValue="rule.reasoning_effort || ''"
+                      @update:modelValue="
+                        rule.reasoning_effort = $event as
+                          | ''
+                          | 'low'
+                          | 'medium'
+                          | 'high'
+                          | 'xhigh'
+                      "
+                      :options="openaiFastPolicyReasoningEffortOptions"
+                    />
+                  </div>
+                </div>
+
+                <!-- Endpoint Scope -->
+                <div class="mt-3">
+                  <label
+                    class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                  >
+                    {{ t("admin.settings.openaiFastPolicy.endpoints") }}
+                  </label>
+                  <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                    <label
+                      v-for="endpoint in openaiFastPolicyEndpointOptions"
+                      :key="endpoint.value"
+                      class="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300"
+                    >
+                      <input
+                        type="checkbox"
+                        class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                        :checked="
+                          isOpenAIFastPolicyEndpointSelected(
+                            rule,
+                            endpoint.value,
+                          )
+                        "
+                        @change="
+                          toggleOpenAIFastPolicyEndpoint(
+                            rule,
+                            endpoint.value,
+                            $event,
+                          )
+                        "
+                      />
+                      <span>{{ endpoint.label }}</span>
+                    </label>
+                  </div>
+                  <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                    {{ t("admin.settings.openaiFastPolicy.endpointsHint") }}
+                  </p>
+                </div>
+
+                <!-- ID Scope -->
+                <div class="mt-3 grid grid-cols-1 gap-4 md:grid-cols-3">
+                  <div>
+                    <label
+                      class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                    >
+                      {{ t("admin.settings.openaiFastPolicy.accountIds") }}
+                    </label>
+                    <input
+                      :value="formatNumberList(rule.account_ids)"
+                      type="text"
+                      class="input input-sm"
+                      :placeholder="
+                        t('admin.settings.openaiFastPolicy.idsPlaceholder')
+                      "
+                      @input="
+                        rule.account_ids = parseNumberList(
+                          ($event.target as HTMLInputElement).value,
+                        )
+                      "
+                    />
+                  </div>
+                  <div>
+                    <label
+                      class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                    >
+                      {{ t("admin.settings.openaiFastPolicy.accountPoolIds") }}
+                    </label>
+                    <input
+                      :value="formatNumberList(rule.account_pool_ids)"
+                      type="text"
+                      class="input input-sm"
+                      :placeholder="
+                        t('admin.settings.openaiFastPolicy.idsPlaceholder')
+                      "
+                      @input="
+                        rule.account_pool_ids = parseNumberList(
+                          ($event.target as HTMLInputElement).value,
+                        )
+                      "
+                    />
+                  </div>
+                  <div>
+                    <label
+                      class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                    >
+                      {{ t("admin.settings.openaiFastPolicy.groupIds") }}
+                    </label>
+                    <input
+                      :value="formatNumberList(rule.group_ids)"
+                      type="text"
+                      class="input input-sm"
+                      :placeholder="
+                        t('admin.settings.openaiFastPolicy.idsPlaceholder')
+                      "
+                      @input="
+                        rule.group_ids = parseNumberList(
+                          ($event.target as HTMLInputElement).value,
+                        )
+                      "
                     />
                   </div>
                 </div>
@@ -1297,6 +1432,9 @@
                         | 'pass'
                         | 'filter'
                         | 'block'
+                        | 'force_priority'
+                        | 'force_default'
+                        | 'force_flex'
                     "
                     :options="openaiFastPolicyActionOptions"
                   />
@@ -6179,6 +6317,9 @@ const { t, locale } = useI18n();
 const appStore = useAppStore();
 const adminSettingsStore = useAdminSettingsStore();
 const isZhLocale = computed(() => locale.value.startsWith("zh"));
+type OpenAIFastPolicyEndpoint = NonNullable<
+  OpenAIFastPolicyRule["endpoints"]
+>[number];
 
 function localText(zh: string, en: string): string {
   return isZhLocale.value ? zh : en;
@@ -7308,12 +7449,9 @@ async function loadSettings() {
       Array.isArray(settings.openai_fast_policy_settings.rules)
     ) {
       openaiFastPolicyForm.rules =
-        settings.openai_fast_policy_settings.rules.map((rule) => ({
-          ...rule,
-          model_whitelist: rule.model_whitelist
-            ? [...rule.model_whitelist]
-            : [],
-        }));
+        settings.openai_fast_policy_settings.rules.map((rule) =>
+          cloneOpenAIFastPolicyRule(rule),
+        );
       openaiFastPolicyLoaded.value = true;
     }
 
@@ -7732,10 +7870,23 @@ async function saveSettings() {
             .map((p) => p.trim())
             .filter((p) => p !== "");
           const hasWhitelist = whitelist.length > 0;
+          const endpoints = normalizeOpenAIFastPolicyEndpoints(rule.endpoints);
+          const accountIds = normalizeNumberList(rule.account_ids);
+          const accountPoolIds = normalizeNumberList(rule.account_pool_ids);
+          const groupIds = normalizeNumberList(rule.group_ids);
+          const action = rule.action || "pass";
           return {
-            service_tier: rule.service_tier,
-            action: rule.action,
+            service_tier: isOpenAIFastPolicyForceAction(action)
+              ? "all"
+              : rule.service_tier,
+            action,
             scope: rule.scope,
+            account_ids: accountIds.length > 0 ? accountIds : undefined,
+            account_pool_ids:
+              accountPoolIds.length > 0 ? accountPoolIds : undefined,
+            group_ids: groupIds.length > 0 ? groupIds : undefined,
+            endpoints: endpoints.length > 0 ? endpoints : undefined,
+            reasoning_effort: rule.reasoning_effort || undefined,
             error_message:
               rule.action === "block" ? rule.error_message : undefined,
             model_whitelist: hasWhitelist ? whitelist : undefined,
@@ -7807,12 +7958,9 @@ async function saveSettings() {
       Array.isArray(updated.openai_fast_policy_settings.rules)
     ) {
       openaiFastPolicyForm.rules =
-        updated.openai_fast_policy_settings.rules.map((rule) => ({
-          ...rule,
-          model_whitelist: rule.model_whitelist
-            ? [...rule.model_whitelist]
-            : [],
-        }));
+        updated.openai_fast_policy_settings.rules.map((rule) =>
+          cloneOpenAIFastPolicyRule(rule),
+        );
       openaiFastPolicyLoaded.value = true;
     }
     // Save web search emulation config separately (errors handled internally)
@@ -8197,12 +8345,30 @@ const openaiFastPolicyTierOptions = computed(() => [
     label: t("admin.settings.openaiFastPolicy.tierPriority"),
   },
   { value: "flex", label: t("admin.settings.openaiFastPolicy.tierFlex") },
+  {
+    value: "default",
+    label: t("admin.settings.openaiFastPolicy.tierDefault"),
+  },
+  { value: "auto", label: t("admin.settings.openaiFastPolicy.tierAuto") },
+  { value: "scale", label: t("admin.settings.openaiFastPolicy.tierScale") },
 ]);
 
 const openaiFastPolicyActionOptions = computed(() => [
   { value: "pass", label: t("admin.settings.openaiFastPolicy.actionPass") },
   { value: "filter", label: t("admin.settings.openaiFastPolicy.actionFilter") },
   { value: "block", label: t("admin.settings.openaiFastPolicy.actionBlock") },
+  {
+    value: "force_priority",
+    label: t("admin.settings.openaiFastPolicy.actionForcePriority"),
+  },
+  {
+    value: "force_default",
+    label: t("admin.settings.openaiFastPolicy.actionForceDefault"),
+  },
+  {
+    value: "force_flex",
+    label: t("admin.settings.openaiFastPolicy.actionForceFlex"),
+  },
 ]);
 
 const openaiFastPolicyScopeOptions = computed(() => [
@@ -8215,11 +8381,153 @@ const openaiFastPolicyScopeOptions = computed(() => [
   },
 ]);
 
+const openaiFastPolicyEndpointOptions = computed<
+  { value: OpenAIFastPolicyEndpoint; label: string }[]
+>(() => [
+  {
+    value: "responses",
+    label: t("admin.settings.openaiFastPolicy.endpointResponses"),
+  },
+  {
+    value: "chat_completions",
+    label: t("admin.settings.openaiFastPolicy.endpointChatCompletions"),
+  },
+  {
+    value: "messages_to_responses",
+    label: t("admin.settings.openaiFastPolicy.endpointMessagesToResponses"),
+  },
+  {
+    value: "responses_websocket",
+    label: t("admin.settings.openaiFastPolicy.endpointResponsesWebSocket"),
+  },
+]);
+
+const openaiFastPolicyReasoningEffortOptions = computed(() => [
+  {
+    value: "",
+    label: t("admin.settings.openaiFastPolicy.reasoningEffortNone"),
+  },
+  { value: "low", label: "low" },
+  { value: "medium", label: "medium" },
+  { value: "high", label: "high" },
+  { value: "xhigh", label: "xhigh" },
+]);
+
+function cloneOpenAIFastPolicyRule(
+  rule: OpenAIFastPolicyRule,
+): OpenAIFastPolicyRule {
+  const action = rule.action || "pass";
+  return {
+    ...rule,
+    service_tier: isOpenAIFastPolicyForceAction(action)
+      ? "all"
+      : rule.service_tier || "all",
+    action,
+    scope: rule.scope || "all",
+    model_whitelist: rule.model_whitelist ? [...rule.model_whitelist] : [],
+    endpoints: normalizeOpenAIFastPolicyEndpoints(rule.endpoints),
+    reasoning_effort: rule.reasoning_effort || "",
+    account_ids: normalizeNumberList(rule.account_ids),
+    account_pool_ids: normalizeNumberList(rule.account_pool_ids),
+    group_ids: normalizeNumberList(rule.group_ids),
+  };
+}
+
+function normalizeNumberList(values?: number[]): number[] {
+  const seen = new Set<number>();
+  for (const value of values || []) {
+    const normalized = Math.trunc(Number(value));
+    if (Number.isFinite(normalized) && normalized > 0) {
+      seen.add(normalized);
+    }
+  }
+  return [...seen];
+}
+
+function parseNumberList(raw: string): number[] {
+  return normalizeNumberList(
+    raw
+      .split(/[\s,，;；]+/)
+      .map((part) => Number.parseInt(part, 10))
+      .filter((value) => Number.isFinite(value)),
+  );
+}
+
+function formatNumberList(values?: number[]): string {
+  return normalizeNumberList(values).join(", ");
+}
+
+function normalizeOpenAIFastPolicyEndpoints(
+  endpoints?: OpenAIFastPolicyRule["endpoints"],
+): OpenAIFastPolicyEndpoint[] {
+  const allowed = new Set<OpenAIFastPolicyEndpoint>([
+    "responses",
+    "chat_completions",
+    "messages_to_responses",
+    "responses_websocket",
+  ]);
+  const seen = new Set<OpenAIFastPolicyEndpoint>();
+  for (const endpoint of endpoints || []) {
+    if (endpoint === "all") {
+      continue;
+    }
+    if (allowed.has(endpoint)) {
+      seen.add(endpoint);
+    }
+  }
+  return [...seen];
+}
+
+function isOpenAIFastPolicyEndpointSelected(
+  rule: OpenAIFastPolicyRule,
+  endpoint: OpenAIFastPolicyEndpoint,
+): boolean {
+  return normalizeOpenAIFastPolicyEndpoints(rule.endpoints).includes(endpoint);
+}
+
+function toggleOpenAIFastPolicyEndpoint(
+  rule: OpenAIFastPolicyRule,
+  endpoint: OpenAIFastPolicyEndpoint,
+  event: Event,
+) {
+  const checked = (event.target as HTMLInputElement).checked;
+  const current = new Set(normalizeOpenAIFastPolicyEndpoints(rule.endpoints));
+  if (checked) {
+    current.add(endpoint);
+  } else {
+    current.delete(endpoint);
+  }
+  rule.endpoints = [...current];
+}
+
+function isOpenAIFastPolicyForceAction(action?: string): boolean {
+  return (
+    action === "force_priority" ||
+    action === "force_default" ||
+    action === "force_flex"
+  );
+}
+
+function updateOpenAIFastPolicyAction(
+  rule: OpenAIFastPolicyRule,
+  action: OpenAIFastPolicyRule["action"],
+) {
+  rule.action = action;
+  if (isOpenAIFastPolicyForceAction(action)) {
+    rule.service_tier = "all";
+  }
+}
+
 function addOpenAIFastPolicyRule() {
   openaiFastPolicyForm.rules.push({
-    service_tier: "priority",
-    action: "filter",
+    service_tier: "all",
+    action: "force_priority",
     scope: "all",
+    account_ids: [],
+    account_pool_ids: [],
+    group_ids: [],
+    endpoints: [],
+    reasoning_effort: "",
     error_message: "",
     model_whitelist: [],
     fallback_action: "pass",

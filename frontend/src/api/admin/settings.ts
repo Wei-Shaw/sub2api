@@ -981,12 +981,35 @@ export async function updateRectifierSettings(
  * Matches backend dto.OpenAIFastPolicyRule.
  */
 export interface OpenAIFastPolicyRule {
-  service_tier: "all" | "priority" | "flex";
-  action: "pass" | "filter" | "block";
+  service_tier: "all" | "priority" | "flex" | "default" | "auto" | "scale";
+  action:
+    | "pass"
+    | "filter"
+    | "block"
+    | "force_priority"
+    | "force_default"
+    | "force_flex";
   scope: "all" | "oauth" | "apikey" | "bedrock";
+  account_ids?: number[];
+  account_pool_ids?: number[];
+  group_ids?: number[];
+  endpoints?: (
+    | "all"
+    | "responses"
+    | "chat_completions"
+    | "messages_to_responses"
+    | "responses_websocket"
+  )[];
+  reasoning_effort?: "" | "low" | "medium" | "high" | "xhigh";
   error_message?: string;
   model_whitelist?: string[];
-  fallback_action?: "pass" | "filter" | "block";
+  fallback_action?:
+    | "pass"
+    | "filter"
+    | "block"
+    | "force_priority"
+    | "force_default"
+    | "force_flex";
   fallback_error_message?: string;
 }
 

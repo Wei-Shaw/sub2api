@@ -3956,12 +3956,23 @@ func (s *SettingService) SetOpenAIFastPolicySettings(ctx context.Context, settin
 
 	validActions := map[string]bool{
 		BetaPolicyActionPass: true, BetaPolicyActionFilter: true, BetaPolicyActionBlock: true,
+		OpenAIFastPolicyActionForcePriority: true,
+		OpenAIFastPolicyActionForceDefault:  true,
+		OpenAIFastPolicyActionForceFlex:     true,
 	}
 	validScopes := map[string]bool{
 		BetaPolicyScopeAll: true, BetaPolicyScopeOAuth: true, BetaPolicyScopeAPIKey: true, BetaPolicyScopeBedrock: true,
 	}
 	validTiers := map[string]bool{
 		OpenAIFastTierAny: true, OpenAIFastTierPriority: true, OpenAIFastTierFlex: true,
+		OpenAIFastTierDefault: true, OpenAIFastTierAuto: true, OpenAIFastTierScale: true,
+	}
+	validEndpoints := map[string]bool{
+		OpenAIFastPolicyEndpointAny:                 true,
+		OpenAIFastPolicyEndpointResponses:           true,
+		OpenAIFastPolicyEndpointChatCompletions:     true,
+		OpenAIFastPolicyEndpointMessagesToResponses: true,
+		OpenAIFastPolicyEndpointResponsesWebSocket:  true,
 	}
 
 	for i, rule := range settings.Rules {
@@ -3973,12 +3984,28 @@ func (s *SettingService) SetOpenAIFastPolicySettings(ctx context.Context, settin
 			return fmt.Errorf("rule[%d]: invalid service_tier %q", i, rule.ServiceTier)
 		}
 		settings.Rules[i].ServiceTier = tier
-		if !validActions[rule.Action] {
+
+		action := strings.ToLower(strings.TrimSpace(rule.Action))
+		if action == "" {
+			action = BetaPolicyActionPass
+		}
+		if !validActions[action] {
 			return fmt.Errorf("rule[%d]: invalid action %q", i, rule.Action)
 		}
-		if !validScopes[rule.Scope] {
+		settings.Rules[i].Action = action
+		if isOpenAIFastPolicyForceAction(action) {
+			settings.Rules[i].ServiceTier = OpenAIFastTierAny
+		}
+
+		scope := strings.ToLower(strings.TrimSpace(rule.Scope))
+		if scope == "" {
+			scope = BetaPolicyScopeAll
+		}
+		if !validScopes[scope] {
 			return fmt.Errorf("rule[%d]: invalid scope %q", i, rule.Scope)
 		}
+		settings.Rules[i].Scope = scope
+
 		for j, pattern := range rule.ModelWhitelist {
 			trimmed := strings.TrimSpace(pattern)
 			if trimmed == "" {
@@ -3986,8 +4013,48 @@ func (s *SettingService) SetOpenAIFastPolicySettings(ctx context.Context, settin
 			}
 			settings.Rules[i].ModelWhitelist[j] = trimmed
 		}
-		if rule.FallbackAction != "" && !validActions[rule.FallbackAction] {
-			return fmt.Errorf("rule[%d]: invalid fallback_action %q", i, rule.FallbackAction)
+
+		for j, endpoint := range rule.Endpoints {
+			normalizedEndpoint := strings.ToLower(strings.TrimSpace(endpoint))
+			if normalizedEndpoint == "" {
+				return fmt.Errorf("rule[%d]: endpoints[%d] cannot be empty", i, j)
+			}
+			if !validEndpoints[normalizedEndpoint] {
+				return fmt.Errorf("rule[%d]: invalid endpoint %q", i, endpoint)
+			}
+			settings.Rules[i].Endpoints[j] = normalizedEndpoint
+		}
+
+		for j, id := range rule.AccountIDs {
+			if id <= 0 {
+				return fmt.Errorf("rule[%d]: account_ids[%d] must be positive", i, j)
+			}
+		}
+		for j, id := range rule.AccountPoolIDs {
+			if id <= 0 {
+				return fmt.Errorf("rule[%d]: account_pool_ids[%d] must be positive", i, j)
+			}
+		}
+		for j, id := range rule.GroupIDs {
+			if id <= 0 {
+				return fmt.Errorf("rule[%d]: group_ids[%d] must be positive", i, j)
+			}
+		}
+
+		if rule.ReasoningEffort != "" {
+			normalizedEffort := normalizeOpenAIReasoningEffort(rule.ReasoningEffort)
+			if normalizedEffort == "" {
+				return fmt.Errorf("rule[%d]: invalid reasoning_effort %q", i, rule.ReasoningEffort)
+			}
+			settings.Rules[i].ReasoningEffort = normalizedEffort
+		}
+
+		if rule.FallbackAction != "" {
+			fallbackAction := strings.ToLower(strings.TrimSpace(rule.FallbackAction))
+			if !validActions[fallbackAction] {
+				return fmt.Errorf("rule[%d]: invalid fallback_action %q", i, rule.FallbackAction)
+			}
+			settings.Rules[i].FallbackAction = fallbackAction
 		}
 	}
 

@@ -189,7 +189,17 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	}
 
 	// 4b. Apply OpenAI fast policy (may filter service_tier or block the request).
-	updatedBody, policyErr := s.applyOpenAIFastPolicyToBody(ctx, account, upstreamModel, responsesBody)
+	updatedBody, policyErr := s.applyOpenAIFastPolicyToBodyForEndpoint(
+		ctx,
+		c,
+		account,
+		upstreamModel,
+		OpenAIFastPolicyEndpointChatCompletions,
+		openAIFastPolicyBodyShapeResponses,
+		responsesBody,
+		originalModel,
+		billingModel,
+	)
 	if policyErr != nil {
 		var blocked *OpenAIFastBlockedError
 		if errors.As(policyErr, &blocked) {
@@ -289,12 +299,12 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 
 	// Propagate ServiceTier and ReasoningEffort to result for billing
 	if handleErr == nil && result != nil {
-		if responsesReq.ServiceTier != "" {
-			st := responsesReq.ServiceTier
+		if serviceTier := extractOpenAIServiceTierFromBody(responsesBody); serviceTier != nil {
+			st := *serviceTier
 			result.ServiceTier = &st
 		}
-		if responsesReq.Reasoning != nil && responsesReq.Reasoning.Effort != "" {
-			re := responsesReq.Reasoning.Effort
+		if reasoningEffort := extractOpenAIReasoningEffortFromBody(responsesBody, originalModel); reasoningEffort != nil {
+			re := *reasoningEffort
 			result.ReasoningEffort = &re
 		}
 	}

@@ -2393,6 +2393,8 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		return errors.New("token is empty")
 	}
 
+	ctx = withOpenAIFastPolicyAPIKeyContext(ctx, getAPIKeyFromContext(c))
+
 	// 预取一次 OpenAI Fast Policy settings，绑定到 ctx，让该 WS session
 	// 内所有帧的 evaluateOpenAIFastPolicy 调用复用同一份快照，避免每帧
 	// 进入 DB / settingRepo。Trade-off 见 withOpenAIFastPolicyContext 注释。
