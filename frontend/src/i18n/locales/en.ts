@@ -3053,9 +3053,27 @@ export default {
         disableScheduling: 'Disable Scheduling',
         resetStatus: 'Reset Status',
         refreshToken: 'Refresh Token',
+        batchTest: 'Batch Account Test',
+        batchTesting: 'Testing accounts...',
         resetStatusSuccess: 'Successfully reset {count} account(s) status',
         refreshTokenSuccess: 'Successfully refreshed {count} account(s) token',
+        batchTestSuccess: 'Batch account test completed: {success} succeeded, {failed} failed, {unauthorized} unauthorized',
+        batchTestFailed: 'Batch account test failed',
         partialSuccess: 'Partially completed: {success} succeeded, {failed} failed'
+      },
+      batchTestResults: {
+        title: 'Batch Account Test Results',
+        total: 'Total',
+        success: 'Success',
+        failed: 'Failed',
+        unauthorized: '401',
+        account: 'Account',
+        status: 'Status',
+        latency: 'Latency',
+        message: 'Response / Error',
+        ok: 'OK',
+        error: 'Error',
+        unknownAccount: 'Unknown account'
       },
       bulkEdit: {
         title: 'Bulk Edit Accounts',

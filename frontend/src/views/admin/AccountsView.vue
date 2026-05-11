@@ -174,6 +174,7 @@
       <template #table>
         <AccountBulkActionsBar
           :selected-ids="selIds"
+          :batch-testing="batchTesting"
           @delete="handleBulkDelete"
           @reset-status="handleBulkResetStatus"
           @refresh-token="handleBulkRefreshToken"
@@ -182,6 +183,7 @@
           @clear="clearSelection"
           @select-page="selectPage"
           @toggle-schedulable="handleBulkToggleSchedulable"
+          @batch-test="handleBulkTest"
         />
         <div ref="accountTableRef" class="flex min-h-0 flex-1 flex-col overflow-hidden">
         <DataTable
@@ -345,6 +347,15 @@
     <EditAccountModal :show="showEdit" :account="edAcc" :proxies="proxies" :groups="groups" @close="showEdit = false" @updated="handleAccountUpdated" />
     <ReAuthAccountModal :show="showReAuth" :account="reAuthAcc" @close="closeReAuthModal" @reauthorized="handleAccountUpdated" />
     <AccountTestModal :show="showTest" :account="testingAcc" @close="closeTestModal" />
+    <AccountBatchTestModal
+      :show="showBatchTestResults"
+      :result="batchTestResult"
+      :accounts="batchAccountTestAccounts"
+      :running="batchTesting"
+      :completed="batchTestCompleted"
+      @close="showBatchTestResults = false"
+      @cancel="cancelBatchTest"
+    />
     <AccountStatsModal :show="showStats" :account="statsAcc" @close="closeStatsModal" />
     <ScheduledTestsPanel :show="showSchedulePanel" :account-id="scheduleAcc?.id ?? null" :model-options="scheduleModelOptions" @close="closeSchedulePanel" />
     <AccountActionMenu :show="menu.show" :account="menu.acc" :position="menu.pos" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" />
@@ -397,6 +408,7 @@ import AccountActionMenu from '@/components/admin/account/AccountActionMenu.vue'
 import ImportDataModal from '@/components/admin/account/ImportDataModal.vue'
 import ReAuthAccountModal from '@/components/admin/account/ReAuthAccountModal.vue'
 import AccountTestModal from '@/components/admin/account/AccountTestModal.vue'
+import AccountBatchTestModal from '@/components/admin/account/AccountBatchTestModal.vue'
 import AccountStatsModal from '@/components/admin/account/AccountStatsModal.vue'
 import ScheduledTestsPanel from '@/components/admin/account/ScheduledTestsPanel.vue'
 import type { SelectOption } from '@/components/common/Select.vue'
@@ -411,7 +423,7 @@ import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRules
 import TLSFingerprintProfilesModal from '@/components/admin/TLSFingerprintProfilesModal.vue'
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
-import type { Account, AccountPlatform, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel } from '@/types'
+import type { Account, AccountPlatform, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, BatchAccountTestResponse } from '@/types'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -472,6 +484,8 @@ const showTempUnsched = ref(false)
 const showDeleteDialog = ref(false)
 const showReAuth = ref(false)
 const showTest = ref(false)
+const showBatchTestResults = ref(false)
+const batchTesting = ref(false)
 const showStats = ref(false)
 const showErrorPassthrough = ref(false)
 const showTLSFingerprintProfiles = ref(false)
@@ -480,6 +494,11 @@ const tempUnschedAcc = ref<Account | null>(null)
 const deletingAcc = ref<Account | null>(null)
 const reAuthAcc = ref<Account | null>(null)
 const testingAcc = ref<Account | null>(null)
+const batchTestResult = ref<BatchAccountTestResponse | null>(null)
+const batchAccountTestAccounts = ref<Account[]>([])
+const batchTestCompleted = ref(0)
+const batchTestAbortController = ref<AbortController | null>(null)
+const selectedAccountCache = ref<Map<number, Account>>(new Map())
 const statsAcc = ref<Account | null>(null)
 const showSchedulePanel = ref(false)
 const scheduleAcc = ref<Account | null>(null)
@@ -764,6 +783,18 @@ useSwipeSelect(accountTableRef, {
   batchUpdate
 }, swipeVirtualContext)
 
+const syncSelectedAccountCache = () => {
+  const selectedSet = new Set(selIds.value)
+  const next = new Map<number, Account>()
+  for (const [id, account] of selectedAccountCache.value) {
+    if (selectedSet.has(id)) next.set(id, account)
+  }
+  accounts.value.forEach((account) => {
+    if (selectedSet.has(account.id)) next.set(account.id, account)
+  })
+  selectedAccountCache.value = next
+}
+
 const resetAutoRefreshCache = () => {
   autoRefreshETag.value = null
 }
@@ -837,6 +868,8 @@ watch(loading, (isLoading, wasLoading) => {
   }
 })
 
+watch([selIds, accounts], syncSelectedAccountCache, { immediate: true })
+
 const isAnyModalOpen = computed(() => {
   return (
     showCreate.value ||
@@ -849,6 +882,7 @@ const isAnyModalOpen = computed(() => {
     showDeleteDialog.value ||
     showReAuth.value ||
     showTest.value ||
+    showBatchTestResults.value ||
     showStats.value ||
     showSchedulePanel.value ||
     showErrorPassthrough.value ||
@@ -1234,6 +1268,83 @@ const handleBulkRefreshToken = async () => {
     console.error('Failed to bulk refresh token:', error)
     appStore.showError(String(error))
   }
+}
+const handleBulkTest = async () => {
+  const accountIds = [...selIds.value]
+  if (accountIds.length === 0 || batchTesting.value) return
+  batchTesting.value = true
+  batchTestCompleted.value = 0
+  syncSelectedAccountCache()
+  batchAccountTestAccounts.value = accountIds
+    .map(id => selectedAccountCache.value.get(id))
+    .filter((account): account is Account => Boolean(account))
+  batchTestResult.value = {
+    total: accountIds.length,
+    success: 0,
+    failed: 0,
+    unauthorized: 0,
+    results: []
+  }
+  showBatchTestResults.value = true
+  const abortController = new AbortController()
+  batchTestAbortController.value = abortController
+  try {
+    await adminAPI.accounts.streamBatchAccountTest(accountIds, (event) => {
+      if (!batchTestResult.value) return
+      if (event.type === 'start') {
+        batchTestResult.value.total = event.total ?? accountIds.length
+        return
+      }
+      if (event.type === 'result' && event.result) {
+        const existingIndex = batchTestResult.value.results.findIndex(item => item.account_id === event.result?.account_id)
+        if (existingIndex >= 0) {
+          batchTestResult.value.results.splice(existingIndex, 1, event.result)
+        } else {
+          batchTestResult.value.results.push(event.result)
+        }
+        batchTestCompleted.value = event.completed ?? batchTestResult.value.results.length
+        batchTestResult.value.success = event.success ?? batchTestResult.value.results.filter(item => item.success).length
+        batchTestResult.value.failed = event.failed ?? batchTestResult.value.results.filter(item => !item.success).length
+        batchTestResult.value.unauthorized = event.unauthorized ?? batchTestResult.value.unauthorized
+        return
+      }
+      if (event.type === 'complete') {
+        batchTestCompleted.value = event.completed ?? event.total ?? batchTestResult.value.results.length
+        batchTestResult.value.total = event.total ?? batchTestResult.value.total
+        batchTestResult.value.success = event.success ?? batchTestResult.value.success
+        batchTestResult.value.failed = event.failed ?? batchTestResult.value.failed
+        batchTestResult.value.unauthorized = event.unauthorized ?? batchTestResult.value.unauthorized
+        if (event.results) {
+          batchTestResult.value.results = event.results
+        }
+        return
+      }
+    }, { signal: abortController.signal })
+    const result = batchTestResult.value
+    showBatchTestResults.value = true
+    appStore.showSuccess(t('admin.accounts.bulkActions.batchTestSuccess', {
+      success: result.success,
+      failed: result.failed,
+      unauthorized: result.unauthorized
+    }))
+    reload().catch((error) => {
+      console.error('Failed to refresh accounts after batch test:', error)
+    })
+  } catch (error: any) {
+    if (abortController.signal.aborted || error?.name === 'AbortError') {
+      showBatchTestResults.value = false
+      return
+    }
+    console.error('Failed to batch test accounts:', error)
+    appStore.showError(error?.message || t('admin.accounts.bulkActions.batchTestFailed'))
+  } finally {
+    batchTesting.value = false
+    batchTestAbortController.value = null
+  }
+}
+const cancelBatchTest = () => {
+  batchTestAbortController.value?.abort()
+  showBatchTestResults.value = false
 }
 const updateSchedulableInList = (accountIds: number[], schedulable: boolean) => {
   if (accountIds.length === 0) return

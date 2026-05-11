@@ -15,6 +15,7 @@ import (
 	"net/http/httptest"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -25,6 +26,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"golang.org/x/sync/errgroup"
 )
 
 // sseDataPrefix matches SSE data lines with optional whitespace after colon.
@@ -55,6 +57,51 @@ const (
 	defaultGeminiImageTestPrompt = "Generate a cute orange cat astronaut sticker on a clean pastel background."
 	defaultOpenAIImageTestPrompt = "Generate a cute orange cat astronaut sticker on a clean pastel background."
 )
+
+const (
+	batchAccountTestStatusSuccess = "success"
+	batchAccountTestStatusFailed  = "failed"
+)
+
+// BatchAccountTestRequest describes a batch connectivity test request.
+type BatchAccountTestRequest struct {
+	AccountIDs  []int64 `json:"account_ids"`
+	ModelID     string  `json:"model_id"`
+	Concurrency int     `json:"concurrency"`
+}
+
+// BatchAccountTestResult is the per-account result for a batch test.
+type BatchAccountTestResult struct {
+	AccountID    int64  `json:"account_id"`
+	Success      bool   `json:"success"`
+	Status       string `json:"status"`
+	LatencyMs    int64  `json:"latency_ms"`
+	ErrorMessage string `json:"error_message,omitempty"`
+	ResponseText string `json:"response_text,omitempty"`
+	HTTPStatus   int    `json:"-"`
+}
+
+// BatchAccountTestProgress tracks batch test completion counts.
+type BatchAccountTestProgress struct {
+	Completed    int
+	Success      int
+	Failed       int
+	Unauthorized int
+}
+
+type accountTestHTTPStatusError struct {
+	statusCode int
+	message    string
+}
+
+func (e *accountTestHTTPStatusError) Error() string {
+	return e.message
+}
+
+type accountTestBackgroundResult struct {
+	result     *ScheduledTestResult
+	httpStatus int
+}
 
 // isOpenAIImageModel checks if the model is an OpenAI image generation model (e.g. gpt-image-2).
 func isOpenAIImageModel(model string) bool {
@@ -313,7 +360,7 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
 		}
 
-		return s.sendErrorAndEnd(c, errMsg)
+		return s.sendHTTPStatusErrorAndEnd(c, resp.StatusCode, errMsg)
 	}
 
 	// Process SSE stream
@@ -382,7 +429,7 @@ func (s *AccountTestService) testClaudeVertexServiceAccountConnection(c *gin.Con
 		if resp.StatusCode == http.StatusForbidden {
 			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
 		}
-		return s.sendErrorAndEnd(c, errMsg)
+		return s.sendHTTPStatusErrorAndEnd(c, resp.StatusCode, errMsg)
 	}
 
 	return s.processClaudeStream(c, resp.Body)
@@ -465,7 +512,7 @@ func (s *AccountTestService) testBedrockAccountConnection(c *gin.Context, ctx co
 	body, _ := io.ReadAll(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
-		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
+		return s.sendHTTPStatusErrorAndEnd(c, resp.StatusCode, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
 	}
 
 	// Bedrock non-streaming response is standard Claude JSON, extract the text
@@ -630,7 +677,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 			errMsg := fmt.Sprintf("Authentication failed (401): %s", string(body))
 			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
 		}
-		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
+		return s.sendHTTPStatusErrorAndEnd(c, resp.StatusCode, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
 	}
 
 	// Process SSE stream
@@ -744,7 +791,7 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 			errMsg := fmt.Sprintf("Authentication failed (401): %s", string(body))
 			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
 		}
-		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
+		return s.sendHTTPStatusErrorAndEnd(c, resp.StatusCode, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
 	}
 
 	s.sendEvent(c, TestEvent{Type: "content", Text: "Compact probe succeeded"})
@@ -851,7 +898,7 @@ func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
+		return s.sendHTTPStatusErrorAndEnd(c, resp.StatusCode, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
 	}
 
 	// Process SSE stream
@@ -898,6 +945,10 @@ func (s *AccountTestService) testAntigravityAccountConnection(c *gin.Context, ac
 	// 调用 AntigravityGatewayService.TestConnection（复用协议转换逻辑）
 	result, err := s.antigravityGatewayService.TestConnection(ctx, account, testModelID)
 	if err != nil {
+		var httpStatusErr *antigravityTestConnectionHTTPStatusError
+		if errors.As(err, &httpStatusErr) {
+			return s.sendHTTPStatusErrorAndEnd(c, httpStatusErr.statusCode, err.Error())
+		}
 		return s.sendErrorAndEnd(c, err.Error())
 	}
 
@@ -1377,7 +1428,7 @@ func (s *AccountTestService) testOpenAIImageAPIKey(c *gin.Context, ctx context.C
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
+		return s.sendHTTPStatusErrorAndEnd(c, resp.StatusCode, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
 	}
 
 	// Parse {"data": [{"b64_json": "...", "revised_prompt": "..."}]}
@@ -1479,7 +1530,7 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 		if message == "" {
 			message = fmt.Sprintf("Responses API returned %d", resp.StatusCode)
 		}
-		return s.sendErrorAndEnd(c, message)
+		return s.sendHTTPStatusErrorAndEnd(c, resp.StatusCode, message)
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -1527,9 +1578,26 @@ func (s *AccountTestService) sendErrorAndEnd(c *gin.Context, errorMsg string) er
 	return fmt.Errorf("%s", errorMsg)
 }
 
+func (s *AccountTestService) sendHTTPStatusErrorAndEnd(c *gin.Context, statusCode int, errorMsg string) error {
+	log.Printf("Account test error: %s", errorMsg)
+	s.sendEvent(c, TestEvent{Type: "error", Error: errorMsg})
+	return &accountTestHTTPStatusError{
+		statusCode: statusCode,
+		message:    errorMsg,
+	}
+}
+
 // RunTestBackground executes an account test in-memory (no real HTTP client),
 // capturing SSE output via httptest.NewRecorder, then parses the result.
 func (s *AccountTestService) RunTestBackground(ctx context.Context, accountID int64, modelID string) (*ScheduledTestResult, error) {
+	backgroundResult, err := s.runTestBackground(ctx, accountID, modelID)
+	if err != nil || backgroundResult == nil {
+		return nil, err
+	}
+	return backgroundResult.result, nil
+}
+
+func (s *AccountTestService) runTestBackground(ctx context.Context, accountID int64, modelID string) (*accountTestBackgroundResult, error) {
 	startedAt := time.Now()
 
 	w := httptest.NewRecorder()
@@ -1543,21 +1611,130 @@ func (s *AccountTestService) RunTestBackground(ctx context.Context, accountID in
 	responseText, errMsg := parseTestSSEOutput(body)
 
 	status := "success"
+	httpStatus := 0
 	if testErr != nil || errMsg != "" {
 		status = "failed"
 		if errMsg == "" && testErr != nil {
 			errMsg = testErr.Error()
 		}
+		var httpStatusErr *accountTestHTTPStatusError
+		if errors.As(testErr, &httpStatusErr) {
+			httpStatus = httpStatusErr.statusCode
+		}
 	}
 
-	return &ScheduledTestResult{
-		Status:       status,
-		ResponseText: responseText,
-		ErrorMessage: errMsg,
-		LatencyMs:    finishedAt.Sub(startedAt).Milliseconds(),
-		StartedAt:    startedAt,
-		FinishedAt:   finishedAt,
+	return &accountTestBackgroundResult{
+		result: &ScheduledTestResult{
+			Status:       status,
+			ResponseText: responseText,
+			ErrorMessage: errMsg,
+			LatencyMs:    finishedAt.Sub(startedAt).Milliseconds(),
+			StartedAt:    startedAt,
+			FinishedAt:   finishedAt,
+		},
+		httpStatus: httpStatus,
 	}, nil
+}
+
+// RunBatchAccountTest runs account connectivity tests concurrently and reports progress per result.
+func (s *AccountTestService) RunBatchAccountTest(
+	ctx context.Context,
+	req BatchAccountTestRequest,
+	onResult func(BatchAccountTestResult, BatchAccountTestProgress),
+) ([]BatchAccountTestResult, BatchAccountTestProgress, error) {
+	cfg := s.batchAccountTestConfig()
+	concurrency := ResolveBatchAccountTestConcurrency(req.Concurrency, len(req.AccountIDs), cfg)
+
+	results := make([]BatchAccountTestResult, len(req.AccountIDs))
+	var progress BatchAccountTestProgress
+	var progressMu sync.Mutex
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(concurrency)
+
+	for i, id := range req.AccountIDs {
+		index := i
+		accountID := id
+		g.Go(func() error {
+			resultItem := BatchAccountTestResult{
+				AccountID: accountID,
+				Status:    batchAccountTestStatusFailed,
+			}
+
+			testCtx, cancel := context.WithTimeout(gctx, time.Duration(cfg.PerAccountTimeoutSeconds)*time.Second)
+			defer cancel()
+
+			testResult, err := s.runTestBackground(testCtx, accountID, req.ModelID)
+			if err != nil {
+				resultItem.ErrorMessage = err.Error()
+			} else if testResult == nil {
+				resultItem.ErrorMessage = "empty test result"
+			} else {
+				resultItem.Status = testResult.result.Status
+				resultItem.Success = testResult.result.Status == batchAccountTestStatusSuccess
+				resultItem.LatencyMs = testResult.result.LatencyMs
+				resultItem.ErrorMessage = testResult.result.ErrorMessage
+				resultItem.ResponseText = testResult.result.ResponseText
+				resultItem.HTTPStatus = testResult.httpStatus
+			}
+
+			results[index] = resultItem
+			progressMu.Lock()
+			updateBatchAccountTestProgress(&progress, resultItem)
+			currentProgress := progress
+			progressMu.Unlock()
+
+			if onResult != nil {
+				onResult(resultItem, currentProgress)
+			}
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, BatchAccountTestProgress{}, err
+	}
+
+	return results, progress, nil
+}
+
+func updateBatchAccountTestProgress(progress *BatchAccountTestProgress, result BatchAccountTestResult) {
+	progress.Completed++
+	if result.Success {
+		progress.Success++
+		return
+	}
+	progress.Failed++
+	if result.HTTPStatus == http.StatusUnauthorized {
+		progress.Unauthorized++
+	}
+}
+
+func (s *AccountTestService) BatchAccountTestConfig() config.BatchAccountTestConfig {
+	return s.batchAccountTestConfig()
+}
+
+func (s *AccountTestService) batchAccountTestConfig() config.BatchAccountTestConfig {
+	if s.cfg != nil {
+		return s.cfg.BatchAccountTest
+	}
+	return config.DefaultBatchAccountTestConfig()
+}
+
+// ResolveBatchAccountTestConcurrency applies the configured batch test concurrency limits.
+func ResolveBatchAccountTestConcurrency(requested int, accountCount int, cfg config.BatchAccountTestConfig) int {
+	if accountCount <= 0 {
+		return 0
+	}
+	if requested <= 0 {
+		requested = cfg.DefaultConcurrency
+	}
+	if requested > cfg.MaxConcurrency {
+		requested = cfg.MaxConcurrency
+	}
+	if requested > accountCount {
+		requested = accountCount
+	}
+	return requested
 }
 
 // parseTestSSEOutput extracts response text and error message from captured SSE output.

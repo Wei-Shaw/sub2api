@@ -3200,9 +3200,27 @@ export default {
         disableScheduling: '批量停止调度',
         resetStatus: '批量重置状态',
         refreshToken: '批量刷新令牌',
+        batchTest: '批量账号测试',
+        batchTesting: '账号测试中...',
         resetStatusSuccess: '已成功重置 {count} 个账号状态',
         refreshTokenSuccess: '已成功刷新 {count} 个账号令牌',
+        batchTestSuccess: '批量账号测试完成：成功 {success} 个，失败 {failed} 个，401 {unauthorized} 个',
+        batchTestFailed: '批量账号测试失败',
         partialSuccess: '操作部分完成：{success} 成功，{failed} 失败'
+      },
+      batchTestResults: {
+        title: '批量账号测试结果',
+        total: '总数',
+        success: '成功',
+        failed: '失败',
+        unauthorized: '401',
+        account: '账号',
+        status: '状态',
+        latency: '耗时',
+        message: '响应 / 错误',
+        ok: '正常',
+        error: '异常',
+        unknownAccount: '未知账号'
       },
       bulkEdit: {
         title: '批量编辑账号',

@@ -666,6 +666,56 @@ func TestLoadDefaultUsageCleanupConfig(t *testing.T) {
 	}
 }
 
+func TestLoadDefaultBatchAccountTestConfig(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+
+	if cfg.BatchAccountTest.DefaultConcurrency != BatchAccountTestDefaultConcurrency {
+		t.Fatalf("BatchAccountTest.DefaultConcurrency = %d, want %d", cfg.BatchAccountTest.DefaultConcurrency, BatchAccountTestDefaultConcurrency)
+	}
+	if cfg.BatchAccountTest.MaxConcurrency != BatchAccountTestMaxConcurrency {
+		t.Fatalf("BatchAccountTest.MaxConcurrency = %d, want %d", cfg.BatchAccountTest.MaxConcurrency, BatchAccountTestMaxConcurrency)
+	}
+	if cfg.BatchAccountTest.MaxAccounts != BatchAccountTestMaxAccounts {
+		t.Fatalf("BatchAccountTest.MaxAccounts = %d, want %d", cfg.BatchAccountTest.MaxAccounts, BatchAccountTestMaxAccounts)
+	}
+	if cfg.BatchAccountTest.PerAccountTimeoutSeconds != BatchAccountTestPerAccountTimeoutSeconds {
+		t.Fatalf("BatchAccountTest.PerAccountTimeoutSeconds = %d, want %d", cfg.BatchAccountTest.PerAccountTimeoutSeconds, BatchAccountTestPerAccountTimeoutSeconds)
+	}
+}
+
+func TestValidateBatchAccountTestConfig(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+
+	cfg.BatchAccountTest.MaxConcurrency = cfg.BatchAccountTest.DefaultConcurrency - 1
+	err = cfg.Validate()
+	if err == nil {
+		t.Fatalf("Validate() expected error for batch_account_test.max_concurrency, got nil")
+	}
+	if !strings.Contains(err.Error(), "batch_account_test.max_concurrency") {
+		t.Fatalf("Validate() expected max_concurrency error, got: %v", err)
+	}
+
+	cfg.BatchAccountTest.MaxConcurrency = cfg.BatchAccountTest.DefaultConcurrency
+	cfg.BatchAccountTest.PerAccountTimeoutSeconds = 0
+	err = cfg.Validate()
+	if err == nil {
+		t.Fatalf("Validate() expected error for batch_account_test.per_account_timeout_seconds, got nil")
+	}
+	if !strings.Contains(err.Error(), "batch_account_test.per_account_timeout_seconds") {
+		t.Fatalf("Validate() expected per_account_timeout_seconds error, got: %v", err)
+	}
+}
+
 func TestValidateUsageCleanupConfigEnabled(t *testing.T) {
 	resetViperWithJWTSecret(t)
 
