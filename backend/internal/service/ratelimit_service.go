@@ -824,6 +824,7 @@ REDACTED
 func (s *RateLimitService) handle429(ctx context.Context, account *Account, headers http.Header, responseBody []byte) {
 	// 1. OpenAI 平台：优先尝试解析 x-codex-* 响应头（用于 rate_limit_exceeded）
 	if account.Platform == PlatformOpenAI {
+		persistOpenAI429PlanType(ctx, s.accountRepo, account, responseBody)
 		s.persistOpenAICodexSnapshot(ctx, account, headers)
 		if resetAt := s.calculateOpenAI429ResetTime(headers); resetAt != nil {
 			if err := s.accountRepo.SetRateLimited(ctx, account.ID, *resetAt); err != nil {
@@ -1196,6 +1197,55 @@ REDACTED
 REDACTED
 
 	return nil
+REDACTED
+
+func parseOpenAIRateLimitPlanType(body []byte) string {
+	var parsed map[string]any
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return ""
+REDACTED
+
+	errObj, ok := parsed["error"].(map[string]any)
+	if !ok {
+		return ""
+REDACTED
+
+	errType, _ := errObj["type"].(string)
+	if errType != "usage_limit_reached" && errType != "rate_limit_exceeded" {
+		return ""
+REDACTED
+
+	planType, _ := errObj["plan_type"].(string)
+	return strings.ToLower(strings.TrimSpace(planType))
+REDACTED
+
+func persistOpenAI429PlanType(ctx context.Context, repo AccountRepository, account *Account, body []byte) {
+	if repo == nil || account == nil || account.Platform != PlatformOpenAI {
+		return
+REDACTED
+
+	planType := parseOpenAIRateLimitPlanType(body)
+	if planType == "" {
+		return
+REDACTED
+
+	current := strings.TrimSpace(account.GetCredential("plan_type"))
+	if strings.EqualFold(current, planType) {
+		return
+REDACTED
+
+	if _, err := repo.BulkUpdate(ctx, []int64{account.IDREDACTED, AccountBulkUpdate{
+REDACTED"plan_type": planTypeREDACTED,
+REDACTED); err != nil {
+		slog.Warn("openai_429_plan_type_sync_failed", "account_id", account.ID, "plan_type", planType, "error", err)
+		return
+REDACTED
+
+	if account.Credentials == nil {
+		account.Credentials = make(map[string]any, 1)
+REDACTED
+	account.Credentials["plan_type"] = planType
+	slog.Info("openai_429_plan_type_synced", "account_id", account.ID, "previous_plan_type", current, "plan_type", planType)
 REDACTED
 
 // handle529 处理529过载错误

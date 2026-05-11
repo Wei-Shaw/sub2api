@@ -149,8 +149,10 @@ REDACTED
 
 type openAI429SnapshotRepo struct {
 	mockAccountRepoForGemini
-	rateLimitedID int64
-	updatedExtra  map[string]any
+	rateLimitedID      int64
+	updatedExtra       map[string]any
+	bulkUpdatedIDs     []int64
+	bulkUpdatedPayload AccountBulkUpdate
 REDACTED
 
 func (r *openAI429SnapshotRepo) SetRateLimited(_ context.Context, id int64, _ time.Time) error {
@@ -161,6 +163,12 @@ REDACTED
 func (r *openAI429SnapshotRepo) UpdateExtra(_ context.Context, _ int64, updates map[string]any) error {
 	r.updatedExtra = updates
 	return nil
+REDACTED
+
+func (r *openAI429SnapshotRepo) BulkUpdate(_ context.Context, ids []int64, updates AccountBulkUpdate) (int64, error) {
+	r.bulkUpdatedIDs = append([]int64(nil), ids...)
+	r.bulkUpdatedPayload = updates
+	return int64(len(ids)), nil
 REDACTED
 
 func TestHandle429_OpenAIPersistsCodexSnapshotImmediately(t *testing.T) {
@@ -190,6 +198,25 @@ REDACTED
 	if got := repo.updatedExtra["codex_7d_used_percent"]; got != 100.0 {
 		t.Fatalf("codex_7d_used_percent = %v, want 100", got)
 REDACTED
+REDACTED
+
+func TestHandle429_OpenAISyncsObservedPlanType(t *testing.T) {
+	repo := &openAI429SnapshotRepo{REDACTED
+	svc := NewRateLimitService(repo, nil, nil, nil, nil)
+	account := &Account{
+		ID:          124,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+REDACTED"plan_type": "plus"REDACTED,
+REDACTED
+	body := []byte(`{"error":{"type":"usage_limit_reached","message":"limit reached","plan_type":"free","resets_at":1777283883REDACTEDREDACTED`)
+
+	svc.handle429(context.Background(), account, http.Header{REDACTED, body)
+
+	require.Equal(t, []int64{account.IDREDACTED, repo.bulkUpdatedIDs)
+	require.Equal(t, "free", repo.bulkUpdatedPayload.Credentials["plan_type"])
+	require.Equal(t, "free", account.Credentials["plan_type"])
+	require.Equal(t, account.ID, repo.rateLimitedID)
 REDACTED
 
 func TestNormalizedCodexLimits(t *testing.T) {

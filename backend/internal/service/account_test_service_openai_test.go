@@ -61,17 +61,25 @@ REDACTED
 
 type openAIAccountTestRepo struct {
 	mockAccountRepoForGemini
-	updatedExtra   map[string]any
-	rateLimitedID  int64
-	rateLimitedAt  *time.Time
-	clearedErrorID int64
-	setErrorID     int64
-	setErrorMsg    string
+	updatedExtra       map[string]any
+	bulkUpdatedIDs     []int64
+	bulkUpdatedPayload AccountBulkUpdate
+	rateLimitedID      int64
+	rateLimitedAt      *time.Time
+	clearedErrorID     int64
+	setErrorID         int64
+	setErrorMsg        string
 REDACTED
 
 func (r *openAIAccountTestRepo) UpdateExtra(_ context.Context, _ int64, updates map[string]any) error {
 	r.updatedExtra = updates
 	return nil
+REDACTED
+
+func (r *openAIAccountTestRepo) BulkUpdate(_ context.Context, ids []int64, updates AccountBulkUpdate) (int64, error) {
+	r.bulkUpdatedIDs = append([]int64(nil), ids...)
+	r.bulkUpdatedPayload = updates
+	return int64(len(ids)), nil
 REDACTED
 
 func (r *openAIAccountTestRepo) SetRateLimited(_ context.Context, id int64, resetAt time.Time) error {
@@ -214,6 +222,33 @@ REDACTED
 	require.Empty(t, account.ErrorMessage)
 	require.NotNil(t, account.RateLimitResetAt)
 	require.Empty(t, repo.updatedExtra)
+REDACTED
+
+func TestAccountTestService_OpenAI429SyncsObservedPlanType(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := newTestContext()
+
+	resp := newJSONResponse(http.StatusTooManyRequests, `{"error":{"type":"usage_limit_reached","message":"limit reached","plan_type":"free","resets_at":1777283883REDACTEDREDACTED`)
+
+	repo := &openAIAccountTestRepo{REDACTED
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{respREDACTEDREDACTED
+	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstreamREDACTED
+	account := &Account{
+		ID:          81,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Concurrency: 1,
+REDACTED"access_token": "test-token", "plan_type": "plus"REDACTED,
+REDACTED
+
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "")
+REDACTED
+	require.Equal(t, []int64{account.IDREDACTED, repo.bulkUpdatedIDs)
+	require.Equal(t, "free", repo.bulkUpdatedPayload.Credentials["plan_type"])
+	require.Equal(t, "free", account.Credentials["plan_type"])
+	require.Equal(t, account.ID, repo.rateLimitedID)
+	require.NotNil(t, account.RateLimitResetAt)
 REDACTED
 
 func TestAccountTestService_OpenAI429ActiveAccountDoesNotClearError(t *testing.T) {
