@@ -45,6 +45,13 @@ REDACTED{
 			wantErr:        false,
 	REDACTED,
 		{
+			name:           "valid airwallex provider",
+			providerKey:    payment.TypeAirwallex,
+			providerName:   "Airwallex Provider",
+			supportedTypes: payment.TypeAirwallex,
+			wantErr:        false,
+	REDACTED,
+		{
 			name:           "valid alipay provider",
 			providerKey:    "alipay",
 			providerName:   "Alipay Direct",
@@ -120,6 +127,7 @@ REDACTED{
 		{"stripe", "webhookSecret", trueREDACTED,
 		{"stripe", "SecretKey", trueREDACTED, // case-insensitive
 		{"stripe", "publishableKey", falseREDACTED,
+		{"stripe", "currency", falseREDACTED,
 		{"stripe", "appId", falseREDACTED,
 
 		// Alipay
@@ -141,6 +149,14 @@ REDACTED{
 		{"easypay", "pkey", trueREDACTED,
 		{"easypay", "pid", falseREDACTED,
 		{"easypay", "apiBase", falseREDACTED,
+
+		// Airwallex
+		{payment.TypeAirwallex, "apiKey", trueREDACTED,
+		{payment.TypeAirwallex, "webhookSecret", trueREDACTED,
+		{payment.TypeAirwallex, "clientId", falseREDACTED,
+		{payment.TypeAirwallex, "apiBase", falseREDACTED,
+		{payment.TypeAirwallex, "accountId", falseREDACTED,
+		{payment.TypeAirwallex, "currency", falseREDACTED,
 
 		// Unknown provider: never sensitive
 		{"unknown", "secretKey", falseREDACTED,
@@ -395,6 +411,42 @@ REDACTED{
 			fieldName:     "pid",
 			wantValue:     "pid-test",
 	REDACTED,
+		{
+			name:          "stripe currency",
+			providerKey:   payment.TypeStripe,
+			createConfig:  validStripeProviderConfig,
+			supportedType: []string{payment.TypeStripeREDACTED,
+			updateConfig:  map[string]string{"currency": "HKD"REDACTED,
+			fieldName:     "currency",
+			wantValue:     "CNY",
+	REDACTED,
+		{
+			name:          "airwallex accountId",
+			providerKey:   payment.TypeAirwallex,
+			createConfig:  validAirwallexProviderConfig,
+			supportedType: []string{payment.TypeAirwallexREDACTED,
+			updateConfig:  map[string]string{"accountId": "acct-updated"REDACTED,
+			fieldName:     "accountId",
+			wantValue:     "acct-test",
+	REDACTED,
+		{
+			name:          "airwallex currency",
+			providerKey:   payment.TypeAirwallex,
+			createConfig:  validAirwallexProviderConfig,
+			supportedType: []string{payment.TypeAirwallexREDACTED,
+			updateConfig:  map[string]string{"currency": "HKD"REDACTED,
+			fieldName:     "currency",
+			wantValue:     "CNY",
+	REDACTED,
+		{
+			name:          "airwallex webhookSecret",
+			providerKey:   payment.TypeAirwallex,
+			createConfig:  validAirwallexProviderConfig,
+			supportedType: []string{payment.TypeAirwallexREDACTED,
+			updateConfig:  map[string]string{"webhookSecret": "whsec-updated"REDACTED,
+			fieldName:     "webhookSecret",
+			wantValue:     "whsec-test",
+	REDACTED,
 REDACTED
 
 	for _, tc := range tests {
@@ -506,6 +558,39 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestUpdateProviderInstanceClearsAirwallexAccountID(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	svc := &PaymentConfigService{
+		entClient:     client,
+		encryptionKey: []byte("REDACTED"),
+REDACTED
+
+	instance, err := svc.CreateProviderInstance(ctx, CreateProviderInstanceRequest{
+		ProviderKey:    payment.TypeAirwallex,
+		Name:           "airwallex-clear-account",
+		Config:         validAirwallexProviderConfig(t),
+		SupportedTypes: []string{payment.TypeAirwallexREDACTED,
+		Enabled:        true,
+REDACTED)
+REDACTED
+
+	updated, err := svc.UpdateProviderInstance(ctx, instance.ID, UpdateProviderInstanceRequest{
+		Config: map[string]string{"accountId": ""REDACTED,
+REDACTED)
+REDACTED
+	require.NotNil(t, updated)
+
+	saved, err := client.PaymentProviderInstance.Get(ctx, instance.ID)
+REDACTED
+	cfg, err := svc.decryptConfig(saved.Config)
+REDACTED
+	require.Empty(t, cfg["accountId"])
+	require.Equal(t, "client-id-test", cfg["clientId"])
+REDACTED
+
 func createPendingProviderConfigOrder(t *testing.T, ctx context.Context, client *dbent.Client, instance *dbent.PaymentProviderInstance) {
 REDACTED
 
@@ -545,8 +630,23 @@ func providerPendingOrderPaymentType(providerKey string) string {
 		return payment.TypeWxpay
 	case payment.TypeAlipay:
 		return payment.TypeAlipay
+	case payment.TypeAirwallex:
+		return payment.TypeAirwallex
+	case payment.TypeStripe:
+		return payment.TypeStripe
 	default:
 		return payment.TypeAlipay
+REDACTED
+REDACTED
+
+func validStripeProviderConfig(t *testing.T) map[string]string {
+REDACTED
+
+	return map[string]string{
+		"secretKey":      "sk_test_123",
+		"publishableKey": "pk_test_123",
+		"webhookSecret":  "whsec-test",
+		"currency":       "CNY",
 REDACTED
 REDACTED
 
@@ -574,6 +674,19 @@ REDACTED
 		"apiBase":   "https://pay.example.com",
 		"notifyUrl": "https://merchant.example.com/easypay/notify",
 		"returnUrl": "https://merchant.example.com/easypay/return",
+REDACTED
+REDACTED
+
+func validAirwallexProviderConfig(t *testing.T) map[string]string {
+REDACTED
+
+	return map[string]string{
+		"clientId":      "client-id-test",
+		"apiKey":        "api-key-test",
+		"webhookSecret": "whsec-test",
+		"apiBase":       "https://api-demo.airwallex.com/api/v1",
+		"accountId":     "acct-test",
+		"currency":      "CNY",
 REDACTED
 REDACTED
 

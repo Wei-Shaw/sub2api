@@ -110,10 +110,11 @@ REDACTED
 // Key matching is case-insensitive. Non-listed keys (e.g. appId, notifyUrl,
 // stripe publishableKey) are returned in plaintext by the admin GET API.
 var providerSensitiveConfigFields = map[string]map[string]struct{REDACTED{
-	payment.TypeEasyPay: {"pkey": {REDACTEDREDACTED,
-	payment.TypeAlipay:  {"privatekey": {REDACTED, "publickey": {REDACTED, "alipaypublickey": {REDACTEDREDACTED,
-	payment.TypeWxpay:   {"privatekey": {REDACTED, "apiv3key": {REDACTED, "publickey": {REDACTEDREDACTED,
-	payment.TypeStripe:  {"secretkey": {REDACTED, "webhooksecret": {REDACTEDREDACTED,
+	payment.TypeEasyPay:   {"pkey": {REDACTEDREDACTED,
+	payment.TypeAlipay:    {"privatekey": {REDACTED, "publickey": {REDACTED, "alipaypublickey": {REDACTEDREDACTED,
+	payment.TypeWxpay:     {"privatekey": {REDACTED, "apiv3key": {REDACTED, "publickey": {REDACTEDREDACTED,
+	payment.TypeStripe:    {"secretkey": {REDACTED, "webhooksecret": {REDACTEDREDACTED,
+	payment.TypeAirwallex: {"apikey": {REDACTED, "webhooksecret": {REDACTEDREDACTED,
 REDACTED
 
 // providerPendingOrderProtectedConfigFields lists config keys that cannot be
@@ -121,10 +122,11 @@ REDACTED
 // all provider identity fields that are snapshotted into orders or used by
 // webhook/refund verification.
 var providerPendingOrderProtectedConfigFields = map[string]map[string]struct{REDACTED{
-	payment.TypeEasyPay: {"pkey": {REDACTED, "pid": {REDACTEDREDACTED,
-	payment.TypeAlipay:  {"privatekey": {REDACTED, "publickey": {REDACTED, "alipaypublickey": {REDACTED, "appid": {REDACTEDREDACTED,
-	payment.TypeWxpay:   {"privatekey": {REDACTED, "apiv3key": {REDACTED, "publickey": {REDACTED, "appid": {REDACTED, "mpappid": {REDACTED, "mchid": {REDACTED, "publickeyid": {REDACTED, "certserial": {REDACTEDREDACTED,
-	payment.TypeStripe:  {"secretkey": {REDACTED, "webhooksecret": {REDACTEDREDACTED,
+	payment.TypeEasyPay:   {"pkey": {REDACTED, "pid": {REDACTEDREDACTED,
+	payment.TypeAlipay:    {"privatekey": {REDACTED, "publickey": {REDACTED, "alipaypublickey": {REDACTED, "appid": {REDACTEDREDACTED,
+	payment.TypeWxpay:     {"privatekey": {REDACTED, "apiv3key": {REDACTED, "publickey": {REDACTED, "appid": {REDACTED, "mpappid": {REDACTED, "mchid": {REDACTED, "publickeyid": {REDACTED, "certserial": {REDACTEDREDACTED,
+	payment.TypeStripe:    {"secretkey": {REDACTED, "webhooksecret": {REDACTED, "currency": {REDACTEDREDACTED,
+	payment.TypeAirwallex: {"clientid": {REDACTED, "apikey": {REDACTED, "webhooksecret": {REDACTED, "apibase": {REDACTED, "accountid": {REDACTED, "currency": {REDACTEDREDACTED,
 REDACTED
 
 func isSensitiveProviderConfigField(providerKey, fieldName string) bool {
@@ -175,7 +177,7 @@ func (s *PaymentConfigService) countPendingOrdersByPlan(ctx context.Context, pla
 REDACTED
 
 var validProviderKeys = map[string]bool{
-	payment.TypeEasyPay: true, payment.TypeAlipay: true, payment.TypeWxpay: true, payment.TypeStripe: true,
+	payment.TypeEasyPay: true, payment.TypeAlipay: true, payment.TypeWxpay: true, payment.TypeStripe: true, payment.TypeAirwallex: true,
 REDACTED
 
 func (s *PaymentConfigService) CreateProviderInstance(ctx context.Context, req CreateProviderInstanceRequest) (*dbent.PaymentProviderInstance, error) {

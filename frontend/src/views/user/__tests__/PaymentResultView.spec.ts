@@ -44,6 +44,7 @@ REDACTED))
 
 import PaymentResultView from '../PaymentResultView.vue'
 import { PAYMENT_RECOVERY_STORAGE_KEY REDACTED from '@/components/payment/paymentFlow'
+import { formatPaymentAmount REDACTED from '@/components/payment/currency'
 
 const orderFactory = (status: string) => ({
   id: 42,
@@ -69,6 +70,10 @@ const recoverySnapshotFactory = (resumeToken: string) => ({
   payUrl: 'https://pay.example.com/session/42',
   outTradeNo: 'sub2_20260420abcd1234',
   clientSecret: '',
+  intentId: '',
+  currency: '',
+  countryCode: '',
+  paymentEnv: '',
   payAmount: 88,
   orderType: 'balance',
   paymentMode: 'popup',
@@ -105,6 +110,10 @@ describe('PaymentResultView', () => {
       payUrl: 'https://pay.example.com/session/42',
       outTradeNo: 'sub2_20260420abcd1234',
       clientSecret: '',
+      intentId: '',
+      currency: '',
+      countryCode: '',
+      paymentEnv: '',
       payAmount: 88,
       orderType: 'balance',
       paymentMode: 'redirect',
@@ -147,6 +156,10 @@ describe('PaymentResultView', () => {
       payUrl: 'https://pay.example.com/session/42',
       outTradeNo: 'sub2_20260420abcd1234',
       clientSecret: '',
+      intentId: '',
+      currency: '',
+      countryCode: '',
+      paymentEnv: '',
       payAmount: 88,
       orderType: 'balance',
       paymentMode: 'popup',
@@ -373,6 +386,33 @@ describe('PaymentResultView', () => {
 
     expect(resolveOrderPublicByResumeToken).toHaveBeenCalledWith('resume-77')
     expect(wrapper.text()).toContain('payment.result.success')
+  REDACTED)
+
+  it('uses the currency returned by the order API when rendering amounts', async () => {
+    routeState.query = {
+      resume_token: 'resume-hkd',
+    REDACTED
+    resolveOrderPublicByResumeToken.mockResolvedValue({
+      data: {
+        ...orderFactory('PAID'),
+        currency: 'HKD',
+        amount: 100,
+        pay_amount: 103,
+        fee_rate: 3,
+      REDACTED,
+    REDACTED)
+
+    const wrapper = mount(PaymentResultView, {
+      global: {
+        stubs: {
+          OrderStatusBadge: true,
+        REDACTED,
+      REDACTED,
+    REDACTED)
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain(formatPaymentAmount(103, 'HKD'))
   REDACTED)
 
   it('normalizes aliased payment methods before rendering the label', async () => {

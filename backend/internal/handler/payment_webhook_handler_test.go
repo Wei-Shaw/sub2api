@@ -48,6 +48,13 @@ REDACTED{
 			wantBody:        "",
 	REDACTED,
 		{
+			name:            "airwallex returns empty 200",
+			providerKey:     payment.TypeAirwallex,
+			wantCode:        http.StatusOK,
+			wantContentType: "text/plain",
+			wantBody:        "",
+	REDACTED,
+		{
 			name:            "easypay returns plain text success",
 			providerKey:     "easypay",
 			wantCode:        http.StatusOK,
@@ -165,6 +172,12 @@ REDACTED{
 			rawBody:     "{REDACTED",
 			want:        "",
 	REDACTED,
+		{
+			name:        "airwallex payment intent payload",
+			providerKey: payment.TypeAirwallex,
+			rawBody:     `{"name":"payment_intent.succeeded","data":{"object":{"merchant_order_id":"sub2_awx_123"REDACTEDREDACTEDREDACTED`,
+			want:        "sub2_awx_123",
+	REDACTED,
 REDACTED
 
 	for _, tt := range tests {
@@ -220,7 +233,7 @@ type webhookHandlerProviderStub struct {
 	verifyErr    error
 REDACTED
 
-func (p webhookHandlerProviderStub) Name() string { return p.key REDACTED
+func (p webhookHandlerProviderStub) Name() string        { return p.key REDACTED
 func (p webhookHandlerProviderStub) ProviderKey() string { return p.key REDACTED
 func (p webhookHandlerProviderStub) SupportedTypes() []payment.PaymentType {
 	return []payment.PaymentType{payment.PaymentType(p.key)REDACTED

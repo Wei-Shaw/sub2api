@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/stretchr/testify/require"
@@ -183,4 +184,27 @@ REDACTED
 		Reason:        "snapshot mismatch",
 REDACTED)
 	require.ErrorContains(t, err, "alipay app_id mismatch")
+REDACTED
+
+func TestCalculateGatewayRefundAmountUsesCurrencyPrecision(t *testing.T) {
+	require.InDelta(t, 6.173, calculateGatewayRefundAmount(100, 12.345, 50, "KWD"), 1e-12)
+	require.InDelta(t, 12.345, calculateGatewayRefundAmount(100, 12.345, 100, "KWD"), 1e-12)
+	require.InDelta(t, 52, calculateGatewayRefundAmount(100, 103, 50, "JPY"), 1e-12)
+REDACTED
+
+func TestFormatGatewayRefundAmountUsesOrderCurrency(t *testing.T) {
+	order := &dbent.PaymentOrder{
+		ProviderSnapshot: map[string]any{
+			"currency": "KWD",
+	REDACTED,
+REDACTED
+
+	require.Equal(t, "12.345", formatGatewayRefundAmount(12.345, order))
+REDACTED
+
+func TestValidateRefundProviderResponseAcceptsPending(t *testing.T) {
+	require.NoError(t, validateRefundProviderResponse(&payment.RefundResponse{Status: payment.ProviderStatusPendingREDACTED))
+	require.NoError(t, validateRefundProviderResponse(&payment.RefundResponse{Status: payment.ProviderStatusSuccessREDACTED))
+	require.Error(t, validateRefundProviderResponse(&payment.RefundResponse{Status: payment.ProviderStatusFailedREDACTED))
+	require.Error(t, validateRefundProviderResponse(nil))
 REDACTED
