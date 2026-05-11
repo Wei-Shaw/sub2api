@@ -320,6 +320,25 @@
       </ToggleCard>
     </template>
 
+    <!-- Sync to Stream (all Anthropic except Bedrock) -->
+    <div
+      v-if="context.accountCategory !== 'bedrock'"
+      class="border-t border-gray-200 pt-4 dark:border-dark-600"
+    >
+      <div class="flex items-center justify-between">
+        <div>
+          <label class="input-label mb-0">{{ t('admin.accounts.anthropic.syncToStream') }}</label>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.anthropic.syncToStreamDesc') }}
+          </p>
+        </div>
+        <select v-model="syncToStreamMode" class="input w-24 text-sm">
+          <option value="default">{{ t('admin.accounts.anthropic.syncToStreamDefault') }}</option>
+          <option value="enabled">{{ t('admin.accounts.anthropic.syncToStreamEnabled') }}</option>
+        </select>
+      </div>
+    </div>
+
     <!-- Intercept warmup -->
     <ToggleCard
       v-if="context.accountCategory !== 'service_account'"
@@ -371,7 +390,7 @@ const {
   sessionIdMaskingEnabled,
   cacheTTLOverrideEnabled, cacheTTLOverrideTarget,
   customBaseUrlEnabled, customBaseUrl,
-  anthropicPassthroughEnabled, webSearchEmulationMode, webSearchGlobalEnabled,
+  anthropicPassthroughEnabled, webSearchEmulationMode, syncToStreamMode, webSearchGlobalEnabled,
   interceptWarmupRequests,
   modelRestrictionMode, allowedModels, modelMappings,
   poolModeEnabled, poolModeRetryCount,

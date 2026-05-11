@@ -56,7 +56,7 @@ export function useOpenAIForm() {
     if (newMode === 'whitelist') {
       allowedModels.value = [...getModelsByPlatform('openai')]
     }
-  })
+  }, { immediate: true })
 
   const isModelRestrictionDisabled = computed(() => openaiPassthroughEnabled.value)
   const oauthConfig: OAuthFlowConfig = { showRefreshTokenOption: true, showMobileRefreshTokenOption: true, showProxyWarning: false, platform: 'openai' }

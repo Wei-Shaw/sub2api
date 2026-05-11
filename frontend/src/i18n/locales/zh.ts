@@ -2499,7 +2499,12 @@ export default {
       anthropic: {
         apiKeyPassthrough: '自动透传（仅替换认证）',
         apiKeyPassthroughDesc:
-          '仅对 Anthropic API Key 生效。开启后，messages/count_tokens 请求将透传上游并仅替换认证，保留计费/并发/审计及必要安全过滤；关闭即可回滚到现有兼容链路。'
+          '仅对 Anthropic API Key 生效。开启后，messages/count_tokens 请求将透传上游并仅替换认证，保留计费/并发/审计及必要安全过滤；关闭即可回滚到现有兼容链路。',
+        syncToStream: '同步转流式',
+        syncToStreamDesc:
+          '开启后，所有同步（非流式）请求将以流式发送到上游，收集完整响应后以非流式格式返回。',
+        syncToStreamDefault: '默认',
+        syncToStreamEnabled: '开启',
       },
       modelRestriction: '模型限制（可选）',
       modelWhitelist: '模型白名单',

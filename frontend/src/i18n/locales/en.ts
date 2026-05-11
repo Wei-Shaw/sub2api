@@ -2344,7 +2344,12 @@ export default {
       anthropic: {
         apiKeyPassthrough: 'Auto passthrough (auth only)',
         apiKeyPassthroughDesc:
-          'Only applies to Anthropic API Key accounts. When enabled, messages/count_tokens are forwarded in passthrough mode with auth replacement only, while billing/concurrency/audit and safety filtering are preserved. Disable to roll back immediately.'
+          'Only applies to Anthropic API Key accounts. When enabled, messages/count_tokens are forwarded in passthrough mode with auth replacement only, while billing/concurrency/audit and safety filtering are preserved. Disable to roll back immediately.',
+        syncToStream: 'Sync to Stream',
+        syncToStreamDesc:
+          'When enabled, all synchronous (non-streaming) requests are sent to upstream as streaming, and the complete response is assembled before returning as a non-streaming response.',
+        syncToStreamDefault: 'Default',
+        syncToStreamEnabled: 'Enabled',
       },
       modelRestriction: 'Model Restriction (Optional)',
       modelWhitelist: 'Model Whitelist',

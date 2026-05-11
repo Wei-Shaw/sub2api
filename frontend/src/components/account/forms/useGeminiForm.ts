@@ -45,7 +45,7 @@ export function useGeminiForm() {
     if (newMode === 'whitelist') {
       allowedModels.value = [...getModelsByPlatform('gemini')]
     }
-  })
+  }, { immediate: true })
 
   const oauthConfig: OAuthFlowConfig = { showProjectId: true, platform: 'gemini' }
   const geminiHelpLinks = { apiKey: 'https://aistudio.google.com/app/apikey', aiStudioPricing: 'https://ai.google.dev/pricing', gcpProject: 'https://console.cloud.google.com/welcome/new' }

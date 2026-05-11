@@ -28,9 +28,21 @@ export function useAntigravityForm() {
   const tempUnschedEnabled = ref(false)
   const tempUnschedRules = ref<editH.TempUnschedRuleForm[]>([])
 
+  // Guard: when true, the async default-mappings fetch is suppressed
+  // to avoid overwriting values loaded by initFromAccount() in edit mode.
+  let editModeActive = false
+
   const antigravityPresetMappings = computed(() => getPresetMappingsByPlatform('antigravity'))
   const isOAuthFlow = () => antigravityAccountType.value === 'oauth'
   const oauthConfig: OAuthFlowConfig = { showRefreshTokenOption: true, needsMixedChannelCheck: true, platform: 'antigravity' }
+
+  // Auto-fetch default mappings on composable init (create mode).
+  // In edit mode, initFromAccount() sets editModeActive before the promise resolves.
+  fetchAntigravityDefaultMappings().then(defaults => {
+    if (!editModeActive && defaults && defaults.length > 0 && antigravityModelMappings.value.length === 0) {
+      antigravityModelMappings.value = defaults
+    }
+  })
 
   function buildExtra(): Record<string, unknown> | undefined {
     const extra: Record<string, unknown> = {}
@@ -93,6 +105,7 @@ export function useAntigravityForm() {
   // ---- Edit mode ----
 
   function initFromAccount(account: Account): void {
+    editModeActive = true
     reset()
     const credentials = account.credentials as Record<string, unknown> | undefined
     const extra = account.extra as Record<string, unknown> | undefined
@@ -134,7 +147,7 @@ export function useAntigravityForm() {
     antigravityOAuth.resetState()
     // Fire-and-forget default mappings fetch for create mode
     fetchAntigravityDefaultMappings().then(defaults => {
-      if (defaults && defaults.length > 0) {
+      if (!editModeActive && defaults && defaults.length > 0) {
         antigravityModelMappings.value = defaults
       }
     })

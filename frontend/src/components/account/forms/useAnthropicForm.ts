@@ -51,6 +51,7 @@ export function useAnthropicForm() {
   const customBaseUrl = ref('')
   const anthropicPassthroughEnabled = ref(false)
   const webSearchEmulationMode = ref('default')
+  const syncToStreamMode = ref('default')
   const webSearchGlobalEnabled = ref(false)
   const interceptWarmupRequests = ref(false)
   const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
@@ -74,7 +75,7 @@ export function useAnthropicForm() {
     if (newMode === 'whitelist') {
       allowedModels.value = [...getModelsByPlatform('anthropic')]
     }
-  })
+  }, { immediate: true })
 
   const oauthConfig: OAuthFlowConfig = {
     showCookieOption: true,
@@ -133,6 +134,7 @@ export function useAnthropicForm() {
       extra.custom_base_url_enabled = true
       extra.custom_base_url = customBaseUrl.value.trim()
     }
+    if (syncToStreamMode.value !== 'default') extra.sync_to_stream = syncToStreamMode.value
     return extra
   }
 
@@ -140,6 +142,7 @@ export function useAnthropicForm() {
     const extra: Record<string, unknown> = {}
     if (anthropicPassthroughEnabled.value) extra.anthropic_passthrough = true
     if (webSearchEmulationMode.value !== 'default') extra.web_search_emulation = webSearchEmulationMode.value
+    if (syncToStreamMode.value !== 'default') extra.sync_to_stream = syncToStreamMode.value
     return Object.keys(extra).length > 0 ? extra : undefined
   }
 
@@ -270,6 +273,7 @@ export function useAnthropicForm() {
     customBaseUrl.value = ''
     anthropicPassthroughEnabled.value = false
     webSearchEmulationMode.value = 'default'
+    syncToStreamMode.value = 'default'
     interceptWarmupRequests.value = false
     modelRestrictionMode.value = 'whitelist'
     allowedModels.value = [...getModelsByPlatform('anthropic')]
@@ -292,6 +296,9 @@ export function useAnthropicForm() {
 
     editH.loadTempUnschedFromCredentials(credentials, tempUnschedEnabled, tempUnschedRules)
     editH.loadInterceptWarmupFromCredentials(credentials, interceptWarmupRequests)
+
+    // sync_to_stream applies to all Anthropic types except bedrock
+    syncToStreamMode.value = extra?.sync_to_stream === 'enabled' ? 'enabled' : 'default'
 
     if (account.type === 'apikey') {
       apiKeyBaseUrl.value = (credentials?.base_url as string) || 'https://api.anthropic.com'
@@ -415,6 +422,12 @@ export function useAnthropicForm() {
       }
     }
 
+    // sync_to_stream applies to all Anthropic types except bedrock
+    if (account.type !== 'bedrock') {
+      if (syncToStreamMode.value === 'default') delete newExtra.sync_to_stream
+      else newExtra.sync_to_stream = syncToStreamMode.value
+    }
+
     return { credentials: newCreds, extra: newExtra }
   }
 
@@ -431,7 +444,7 @@ export function useAnthropicForm() {
     sessionIdMaskingEnabled,
     cacheTTLOverrideEnabled, cacheTTLOverrideTarget,
     customBaseUrlEnabled, customBaseUrl,
-    anthropicPassthroughEnabled, webSearchEmulationMode, webSearchGlobalEnabled,
+    anthropicPassthroughEnabled, webSearchEmulationMode, syncToStreamMode, webSearchGlobalEnabled,
     interceptWarmupRequests,
     modelRestrictionMode, allowedModels, modelMappings,
     poolModeEnabled, poolModeRetryCount,
