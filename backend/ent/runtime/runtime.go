@@ -859,7 +859,7 @@ func init() {
 	// group.DefaultRpmLimit holds the default value on creation for the rpm_limit field.
 	group.DefaultRpmLimit = groupDescRpmLimit.Default.(int)
 	// groupDescGroupExtra is the schema descriptor for group_extra field.
-	groupDescGroupExtra := groupFields[28].Descriptor()
+	groupDescGroupExtra := groupFields[31].Descriptor()
 	// group.DefaultGroupExtra holds the default value on creation for the group_extra field.
 	group.DefaultGroupExtra = groupDescGroupExtra.Default.(map[string]interface{})
 	idempotencyrecordMixin := schema.IdempotencyRecord{}.Mixin()
