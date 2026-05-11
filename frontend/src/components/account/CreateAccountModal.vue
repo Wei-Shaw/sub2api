@@ -146,6 +146,58 @@
         v-bind="platformFormExtraProps"
       />
 
+      <!-- Quota Control (for apikey/bedrock types) -->
+      <div
+        v-if="form.type === 'apikey' || form.type === 'bedrock'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
+      >
+        <div class="mb-3">
+          <h3 class="input-label mb-0 text-base font-semibold">{{ t('admin.accounts.quotaControl.title') }}</h3>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {{ form.platform === 'anthropic' ? t('admin.accounts.quotaControl.hint') : t('admin.accounts.quotaLimitHint') }}
+          </p>
+        </div>
+        <QuotaLimitCard
+          :totalLimit="editQuotaLimit"
+          :dailyLimit="editQuotaDailyLimit"
+          :weeklyLimit="editQuotaWeeklyLimit"
+          :quotaNotifyGlobalEnabled="quotaNotifyGlobalEnabled"
+          :quotaNotifyDailyEnabled="quotaNotifyState.daily.enabled"
+          :quotaNotifyDailyThreshold="quotaNotifyState.daily.threshold"
+          :quotaNotifyDailyThresholdType="quotaNotifyState.daily.thresholdType"
+          :quotaNotifyWeeklyEnabled="quotaNotifyState.weekly.enabled"
+          :quotaNotifyWeeklyThreshold="quotaNotifyState.weekly.threshold"
+          :quotaNotifyWeeklyThresholdType="quotaNotifyState.weekly.thresholdType"
+          :quotaNotifyTotalEnabled="quotaNotifyState.total.enabled"
+          :quotaNotifyTotalThreshold="quotaNotifyState.total.threshold"
+          :quotaNotifyTotalThresholdType="quotaNotifyState.total.thresholdType"
+          :dailyResetMode="editDailyResetMode"
+          :dailyResetHour="editDailyResetHour"
+          :weeklyResetMode="editWeeklyResetMode"
+          :weeklyResetDay="editWeeklyResetDay"
+          :weeklyResetHour="editWeeklyResetHour"
+          :resetTimezone="editResetTimezone"
+          @update:totalLimit="editQuotaLimit = $event"
+          @update:dailyLimit="editQuotaDailyLimit = $event"
+          @update:weeklyLimit="editQuotaWeeklyLimit = $event"
+          @update:quotaNotifyDailyEnabled="quotaNotifyState.daily.enabled = $event"
+          @update:quotaNotifyDailyThreshold="quotaNotifyState.daily.threshold = $event"
+          @update:quotaNotifyDailyThresholdType="quotaNotifyState.daily.thresholdType = $event"
+          @update:quotaNotifyWeeklyEnabled="quotaNotifyState.weekly.enabled = $event"
+          @update:quotaNotifyWeeklyThreshold="quotaNotifyState.weekly.threshold = $event"
+          @update:quotaNotifyWeeklyThresholdType="quotaNotifyState.weekly.thresholdType = $event"
+          @update:quotaNotifyTotalEnabled="quotaNotifyState.total.enabled = $event"
+          @update:quotaNotifyTotalThreshold="quotaNotifyState.total.threshold = $event"
+          @update:quotaNotifyTotalThresholdType="quotaNotifyState.total.thresholdType = $event"
+          @update:dailyResetMode="editDailyResetMode = $event"
+          @update:dailyResetHour="editDailyResetHour = $event"
+          @update:weeklyResetMode="editWeeklyResetMode = $event"
+          @update:weeklyResetDay="editWeeklyResetDay = $event"
+          @update:weeklyResetHour="editWeeklyResetHour = $event"
+          @update:resetTimezone="editResetTimezone = $event"
+        />
+      </div>
+
       <!-- Common fields -->
       <div>
         <label class="input-label">{{ t('admin.accounts.proxy') }}</label>
@@ -276,6 +328,8 @@ import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import OAuthAuthorizationFlow from './OAuthAuthorizationFlow.vue'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
+import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
+import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import { usePlatforms } from '@/composables/usePlatforms'
 import { resolvePlatformForm } from './forms/platformFormRegistry'
 import type {
@@ -285,6 +339,7 @@ import type {
 import type { AddMethod, AuthInputMethod } from '@/composables/useAccountOAuth'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { extractApiErrorMessage } from '@/utils/apiError'
+import type { QuotaResetMode } from '@/constants/account'
 
 // ---------------------------------------------------------------------------
 // OAuthAuthorizationFlow exposed interface
@@ -347,6 +402,25 @@ const currentPlatformDecl = computed(() => getPlatformDecl(form.platform))
 const step = ref(1)
 const submitting = ref(false)
 const autoPauseOnExpired = ref(true)
+
+// Quota limit refs (for apikey/bedrock accounts)
+const editQuotaLimit = ref<number | null>(null)
+const editQuotaDailyLimit = ref<number | null>(null)
+const editQuotaWeeklyLimit = ref<number | null>(null)
+const editDailyResetMode = ref<QuotaResetMode | null>(null)
+const editDailyResetHour = ref<number | null>(null)
+const editWeeklyResetMode = ref<QuotaResetMode | null>(null)
+const editWeeklyResetDay = ref<number | null>(null)
+const editWeeklyResetHour = ref<number | null>(null)
+const editResetTimezone = ref<string | null>(null)
+const {
+  globalEnabled: quotaNotifyGlobalEnabled,
+  state: quotaNotifyState,
+  loadGlobalState: loadQuotaNotifyGlobal,
+  writeToExtra: writeQuotaNotifyToExtra,
+} = useQuotaNotifyState()
+loadQuotaNotifyGlobal()
+
 const accountCategory = ref<'oauth-based' | 'apikey' | 'bedrock' | 'service_account'>('oauth-based')
 const addMethod = ref<AddMethod>('oauth')
 const antigravityAccountType = ref<'oauth' | 'upstream'>('oauth')
@@ -569,6 +643,19 @@ function buildCommonFields(): Partial<CreateAccountRequest> {
   }
 }
 
+function mergeQuotaExtra(extra: Record<string, unknown> | undefined, accountType: string): Record<string, unknown> | undefined {
+  if (accountType !== 'apikey' && accountType !== 'bedrock') return extra
+  const quotaExtra: Record<string, unknown> = { ...(extra || {}) }
+  if (editQuotaLimit.value != null && editQuotaLimit.value > 0) quotaExtra.quota_limit = editQuotaLimit.value
+  if (editQuotaDailyLimit.value != null && editQuotaDailyLimit.value > 0) quotaExtra.quota_daily_limit = editQuotaDailyLimit.value
+  if (editQuotaWeeklyLimit.value != null && editQuotaWeeklyLimit.value > 0) quotaExtra.quota_weekly_limit = editQuotaWeeklyLimit.value
+  if (editDailyResetMode.value === 'fixed') { quotaExtra.quota_daily_reset_mode = 'fixed'; quotaExtra.quota_daily_reset_hour = editDailyResetHour.value ?? 0 }
+  if (editWeeklyResetMode.value === 'fixed') { quotaExtra.quota_weekly_reset_mode = 'fixed'; quotaExtra.quota_weekly_reset_day = editWeeklyResetDay.value ?? 1; quotaExtra.quota_weekly_reset_hour = editWeeklyResetHour.value ?? 0 }
+  if (editDailyResetMode.value === 'fixed' || editWeeklyResetMode.value === 'fixed') quotaExtra.quota_reset_timezone = editResetTimezone.value || 'UTC'
+  writeQuotaNotifyToExtra(quotaExtra, 'create')
+  return Object.keys(quotaExtra).length > 0 ? quotaExtra : undefined
+}
+
 async function handleSubmit() {
   if (!form.name.trim()) { appStore.showError(t('admin.accounts.pleaseEnterAccountName')); return }
   const validation = platformFormRef.value?.validate()
@@ -581,12 +668,13 @@ async function handleSubmit() {
     step.value = 2
     return
   }
+  const resolvedType = payload.typeOverride || form.type
   const request: CreateAccountRequest = {
     ...buildCommonFields(),
     platform: form.platform,
-    type: payload.typeOverride || form.type,
+    type: resolvedType,
     credentials: payload.credentials,
-    extra: payload.extra,
+    extra: mergeQuotaExtra(payload.extra, resolvedType),
   } as CreateAccountRequest
   await doCreateAccount(request)
 }
@@ -706,6 +794,15 @@ function resetForm() {
   addMethod.value = 'oauth'
   antigravityAccountType.value = 'oauth'
   autoPauseOnExpired.value = true
+  editQuotaLimit.value = null
+  editQuotaDailyLimit.value = null
+  editQuotaWeeklyLimit.value = null
+  editDailyResetMode.value = null
+  editDailyResetHour.value = null
+  editWeeklyResetMode.value = null
+  editWeeklyResetDay.value = null
+  editWeeklyResetHour.value = null
+  editResetTimezone.value = null
   antigravityMixedChannelConfirmed.value = false
   clearMixedChannelDialog()
   platformFormRef.value?.reset?.()

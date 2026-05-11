@@ -9,7 +9,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const defaultMaxFailovers = 10
+const (
+	defaultMaxFailovers       = 10
+	defaultMaxFailoversGemini = 3
+)
 
 // ParseRequestFunc extracts a ForwardRequest from the raw body.
 type ParseRequestFunc func(body []byte) (*ForwardRequest, error)
@@ -28,7 +31,8 @@ type GatewayPipeline struct {
 	billingCache   *service.BillingCacheService
 	concurrency    *service.ConcurrencyService
 	settings       *service.SettingService
-	maxFailovers   int
+	maxFailovers       int
+	maxFailoversGemini int
 }
 
 func NewGatewayPipeline(
@@ -40,8 +44,14 @@ func NewGatewayPipeline(
 	cfg *config.Config,
 ) *GatewayPipeline {
 	maxFailovers := defaultMaxFailovers
-	if cfg != nil && cfg.Gateway.MaxAccountSwitches > 0 {
-		maxFailovers = cfg.Gateway.MaxAccountSwitches
+	maxFailoversGemini := defaultMaxFailoversGemini
+	if cfg != nil {
+		if cfg.Gateway.MaxAccountSwitches > 0 {
+			maxFailovers = cfg.Gateway.MaxAccountSwitches
+		}
+		if cfg.Gateway.MaxAccountSwitchesGemini > 0 {
+			maxFailoversGemini = cfg.Gateway.MaxAccountSwitchesGemini
+		}
 	}
 	return &GatewayPipeline{
 		registry:       registry,
@@ -49,12 +59,22 @@ func NewGatewayPipeline(
 		billingCache:   billing,
 		concurrency:    conc,
 		settings:       settings,
-		maxFailovers:   maxFailovers,
+		maxFailovers:       maxFailovers,
+		maxFailoversGemini: maxFailoversGemini,
 	}
 }
 
 // Registry returns the provider registry for diagnostics.
 func (p *GatewayPipeline) Registry() *ProviderRegistry { return p.registry }
+
+// effectiveMaxFailovers returns the failover limit for the given protocol.
+// Gemini uses a lower limit due to stricter API rate limits.
+func (p *GatewayPipeline) effectiveMaxFailovers(protocol string) int {
+	if protocol == ProtocolGemini {
+		return p.maxFailoversGemini
+	}
+	return p.maxFailovers
+}
 
 // Execute runs the full gateway request lifecycle.
 func (p *GatewayPipeline) Execute(

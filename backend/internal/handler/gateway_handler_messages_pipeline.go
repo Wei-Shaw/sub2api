@@ -23,6 +23,7 @@ import (
 //   - Pre-pipeline intercept detection (warmup / suggestion / maxTokens1)
 //   - Claude Code client detection and version check
 //   - Thinking-enabled context propagation
+//   - Single-account retry context for Antigravity groups
 //   - Fallback group retry on PromptTooLongError
 func (h *GatewayHandler) messagesPipeline(c *gin.Context) {
 	if h.pipeline == nil {
@@ -60,13 +61,24 @@ func (h *GatewayHandler) messagesPipeline(c *gin.Context) {
 		service.WithThinkingEnabled(c.Request.Context(), parsedReq.ThinkingEnabled, h.metadataBridgeEnabled()),
 	)
 
+	// Single-account retry context for Antigravity groups:
+	// prevents 29s rate-limit flag on first 503 in single-account groups.
+	apiKey, _ := middleware2.GetAPIKeyFromContext(c)
+	if apiKey != nil && h.gatewayService.IsSingleAntigravityAccountGroup(c.Request.Context(), apiKey.GroupID) {
+		ctx := service.WithSingleAccountRetry(c.Request.Context(), true, h.metadataBridgeEnabled())
+		c.Request = c.Request.WithContext(ctx)
+	}
+
 	// Intercept detection: warmup / suggestion / maxTokens1
 	if h.shouldInterceptMessages(c, body, parsedReq, isClaudeCodeClient) {
 		return
 	}
 
-	parse := h.buildMessagesParseFunc(c, body, parsedReq)
-	record := h.buildMessagesRecordFunc(c, parsedReq)
+	// Share ForwardRequest pointer between parse and record closures so
+	// record can read pipeline-mutated fields (e.g. ForceCacheBilling).
+	var fwdReq *gateway.ForwardRequest
+	parse := h.buildMessagesParseFunc(c, body, parsedReq, &fwdReq)
+	record := h.buildMessagesRecordFunc(c, parsedReq, &fwdReq)
 	forcePlatform := h.resolveMessagesForcePlatform(c)
 
 	err = h.pipeline.Execute(c, gateway.ProtocolAnthropic, forcePlatform, parse, record)
@@ -139,6 +151,7 @@ func (h *GatewayHandler) buildMessagesParseFunc(
 	c *gin.Context,
 	body []byte,
 	parsed *service.ParsedRequest,
+	fwdReqOut **gateway.ForwardRequest,
 ) gateway.ParseRequestFunc {
 	return func(_ []byte) (*gateway.ForwardRequest, error) {
 		apiKey, _ := middleware2.GetAPIKeyFromContext(c)
@@ -156,14 +169,16 @@ func (h *GatewayHandler) buildMessagesParseFunc(
 		}
 		sessionHash := h.gatewayService.GenerateSessionHash(parsed)
 
-		return &gateway.ForwardRequest{
+		req := &gateway.ForwardRequest{
 			Model:          parsed.Model,
 			Stream:         parsed.Stream,
 			RawBody:        body,
 			GinContext:     c,
 			MetadataUserID: parsed.MetadataUserID,
 			SessionHash:    sessionHash,
-		}, nil
+		}
+		*fwdReqOut = req
+		return req, nil
 	}
 }
 
@@ -171,6 +186,7 @@ func (h *GatewayHandler) buildMessagesParseFunc(
 func (h *GatewayHandler) buildMessagesRecordFunc(
 	c *gin.Context,
 	parsed *service.ParsedRequest,
+	fwdReq **gateway.ForwardRequest,
 ) gateway.RecordUsageFunc {
 	return func(ctx context.Context, account *service.Account, result *gateway.ForwardResult) error {
 		apiKey, _ := middleware2.GetAPIKeyFromContext(c)
@@ -221,6 +237,7 @@ func (h *GatewayHandler) buildMessagesRecordFunc(
 				UserAgent:           userAgent,
 				IPAddress:           clientIP,
 				RequestPayloadHash:  requestPayloadHash,
+				ForceCacheBilling:   *fwdReq != nil && (*fwdReq).ForceCacheBilling,
 				APIKeyService:       h.apiKeyService,
 				ChannelUsageFields:  channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
 				ServiceQuotaRequest: service.ServiceQuotaCheckRequest{Model: reqModel, AccountID: account.ID, ChannelID: channelMapping.ChannelID},
@@ -302,7 +319,8 @@ func (h *GatewayHandler) retryWithFallbackGroup(
 	}
 
 	// Re-execute pipeline with fallback group
-	fallbackParse := h.buildMessagesParseFunc(c, body, parsed)
+	var fallbackFwdReq *gateway.ForwardRequest
+	fallbackParse := h.buildMessagesParseFunc(c, body, parsed, &fallbackFwdReq)
 	fallbackErr := h.pipeline.Execute(c, gateway.ProtocolAnthropic, "", fallbackParse, record)
 	if fallbackErr != nil {
 		h.handleMessagesPipelineError(c, fallbackErr)

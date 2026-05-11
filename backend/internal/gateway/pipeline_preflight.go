@@ -17,8 +17,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// executePreFlight runs parse → channel mapping → user slot → billing
-// check → session hash. Returns the request, a slot-release func, and
+// executePreFlight runs parse 鈫?channel mapping 鈫?user slot 鈫?billing
+// check 鈫?session hash. Returns the request, a slot-release func, and
 // any error. Caller must defer slotRelease() on success.
 func (p *GatewayPipeline) executePreFlight(
 	c *gin.Context,
@@ -140,7 +140,7 @@ func (p *GatewayPipeline) acquireUserSlot(c *gin.Context, req *ForwardRequest) (
 		}, nil
 	}
 
-	// Slot not immediately available — wait with SSE ping for streaming requests
+	// Slot not immediately available 鈥?wait with SSE ping for streaming requests
 	release, err := p.waitForUserSlotWithPing(c, req)
 	if waitCounted {
 		p.concurrency.DecrementWaitCount(ctx, req.UserID)
@@ -296,6 +296,7 @@ func (p *GatewayPipeline) resolveSessionHash(c *gin.Context, req *ForwardRequest
 			"session_hash", req.SessionHash,
 			"bound_account_id", cachedID,
 		)
+		req.IsStickySession = true
 		groupID := int64(0)
 		if req.GroupID != nil {
 			groupID = *req.GroupID

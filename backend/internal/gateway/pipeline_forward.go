@@ -46,7 +46,7 @@ func (p *GatewayPipeline) selectAndForward(
 	w http.ResponseWriter,
 	req *ForwardRequest,
 ) (*ForwardResult, error) {
-	fs := newPipelineFailoverState(p.maxFailovers)
+	fs := newPipelineFailoverState(p.effectiveMaxFailovers(req.Protocol))
 
 	for {
 		result, done, err := p.tryOneAccount(ctx, w, req, fs)
@@ -192,7 +192,9 @@ func (p *GatewayPipeline) selectAccountWithImageCapability(
 }
 
 // acquireSlotIfNeeded handles the wait-plan slot acquisition that was
-// previously inlined in selectAccount.
+// previously inlined in selectAccount. It increments the account wait
+// queue counter before waiting and decrements it after (matching the
+// legacy IncrementAccountWaitCount / DecrementAccountWaitCount flow).
 func (p *GatewayPipeline) acquireSlotIfNeeded(
 	ctx context.Context,
 	req *ForwardRequest,
@@ -201,9 +203,34 @@ func (p *GatewayPipeline) acquireSlotIfNeeded(
 	account := selection.Account
 	releaseFunc := selection.ReleaseFunc
 	if !selection.Acquired && selection.WaitPlan != nil {
+		// Increment account wait queue; reject with 429 if full.
+		accountWaitCounted := false
+		canWait, err := p.concurrency.IncrementAccountWaitCount(
+			ctx, account.ID, selection.WaitPlan.MaxWaiting,
+		)
+		if err != nil {
+			slog.Warn("pipeline.account_wait_counter_increment_failed",
+				"account_id", account.ID, "error", err,
+			)
+			// On error, allow through (best-effort, matches legacy behaviour).
+		} else if !canWait {
+			slog.Info("pipeline.account_wait_queue_full",
+				"account_id", account.ID,
+				"max_waiting", selection.WaitPlan.MaxWaiting,
+			)
+			return nil, nil, fmt.Errorf("account wait queue full")
+		}
+		if err == nil && canWait {
+			accountWaitCounted = true
+		}
+
 		slot, err := p.concurrency.AcquireAccountSlot(
 			ctx, account.ID, selection.WaitPlan.MaxConcurrency,
 		)
+		// Always decrement wait count after acquisition attempt.
+		if accountWaitCounted {
+			p.concurrency.DecrementAccountWaitCount(ctx, account.ID)
+		}
 		if err != nil {
 			return nil, nil, fmt.Errorf("account slot: %w", err)
 		}

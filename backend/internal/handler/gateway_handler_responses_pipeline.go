@@ -35,8 +35,11 @@ func (h *GatewayHandler) responsesPipeline(c *gin.Context) {
 		}
 	}
 
-	parse := h.buildResponsesParseFunc(c)
-	record := h.buildResponsesRecordFunc(c)
+	// Share ForwardRequest pointer between parse and record closures so
+	// record can read pipeline-mutated fields (e.g. ForceCacheBilling).
+	var fwdReq *gateway.ForwardRequest
+	parse := h.buildResponsesParseFunc(c, &fwdReq)
+	record := h.buildResponsesRecordFunc(c, &fwdReq)
 
 	err := h.pipeline.Execute(c, gateway.ProtocolResponses, "", parse, record)
 	if err != nil {
@@ -45,7 +48,7 @@ func (h *GatewayHandler) responsesPipeline(c *gin.Context) {
 }
 
 // buildResponsesParseFunc builds the ParseRequestFunc for Responses.
-func (h *GatewayHandler) buildResponsesParseFunc(c *gin.Context) gateway.ParseRequestFunc {
+func (h *GatewayHandler) buildResponsesParseFunc(c *gin.Context, fwdReqOut **gateway.ForwardRequest) gateway.ParseRequestFunc {
 	return func(body []byte) (*gateway.ForwardRequest, error) {
 		if !gjson.ValidBytes(body) {
 			return nil, errors.New("invalid JSON")
@@ -58,17 +61,19 @@ func (h *GatewayHandler) buildResponsesParseFunc(c *gin.Context) gateway.ParseRe
 		model := modelResult.String()
 		stream := gjson.GetBytes(body, "stream").Bool()
 
-		return &gateway.ForwardRequest{
+		req := &gateway.ForwardRequest{
 			Model:      model,
 			Stream:     stream,
 			RawBody:    body,
 			GinContext: c,
-		}, nil
+		}
+		*fwdReqOut = req
+		return req, nil
 	}
 }
 
 // buildResponsesRecordFunc builds the RecordUsageFunc for Responses.
-func (h *GatewayHandler) buildResponsesRecordFunc(c *gin.Context) gateway.RecordUsageFunc {
+func (h *GatewayHandler) buildResponsesRecordFunc(c *gin.Context, fwdReq **gateway.ForwardRequest) gateway.RecordUsageFunc {
 	return func(ctx context.Context, account *service.Account, result *gateway.ForwardResult) error {
 		apiKey, _ := middleware2.GetAPIKeyFromContext(c)
 		subscription, _ := middleware2.GetSubscriptionFromContext(c)
@@ -104,6 +109,7 @@ func (h *GatewayHandler) buildResponsesRecordFunc(c *gin.Context) gateway.Record
 				UserAgent:           userAgent,
 				IPAddress:           clientIP,
 				RequestPayloadHash:  requestPayloadHash,
+				ForceCacheBilling:   *fwdReq != nil && (*fwdReq).ForceCacheBilling,
 				APIKeyService:       h.apiKeyService,
 				ChannelUsageFields:  channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
 				ServiceQuotaRequest: service.ServiceQuotaCheckRequest{Model: reqModel, AccountID: account.ID, ChannelID: channelMapping.ChannelID},

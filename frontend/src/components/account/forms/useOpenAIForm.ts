@@ -29,6 +29,8 @@ export function useOpenAIForm() {
   const openaiOAuthWSMode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
   const openaiAPIKeyWSMode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
   const codexCLIOnlyEnabled = ref(false)
+  type CodexImageGenerationBridgeMode = 'inherit' | 'enabled' | 'disabled'
+  const codexImageGenerationBridgeMode = ref<CodexImageGenerationBridgeMode>('inherit')
   const apiKeyBaseUrl = ref('https://api.openai.com')
   const apiKeyValue = ref('')
   const openAICompactModelMappings = ref<ModelMapping[]>([])
@@ -52,6 +54,27 @@ export function useOpenAIForm() {
     { value: OPENAI_WS_MODE_CTX_POOL, label: t('admin.accounts.openai.wsModeCtxPool') },
     { value: OPENAI_WS_MODE_PASSTHROUGH, label: t('admin.accounts.openai.wsModePassthrough') }
   ])
+  const codexImageGenerationBridgeOptions = computed<Array<{
+    value: CodexImageGenerationBridgeMode; label: string; description: string
+  }>>(() => [
+    { value: 'inherit', label: t('admin.accounts.openai.codexImageGenerationBridgeInherit'), description: t('admin.accounts.openai.codexImageGenerationBridgeInheritDesc') },
+    { value: 'enabled', label: t('admin.accounts.openai.codexImageGenerationBridgeEnabled'), description: t('admin.accounts.openai.codexImageGenerationBridgeEnabledDesc') },
+    { value: 'disabled', label: t('admin.accounts.openai.codexImageGenerationBridgeDisabled'), description: t('admin.accounts.openai.codexImageGenerationBridgeDisabledDesc') },
+  ])
+  const codexImageGenerationBridgeBadgeLabel = computed(() => {
+    switch (codexImageGenerationBridgeMode.value) {
+      case 'enabled': return t('admin.accounts.openai.codexImageGenerationBridgeBadgeEnabled')
+      case 'disabled': return t('admin.accounts.openai.codexImageGenerationBridgeBadgeDisabled')
+      default: return t('admin.accounts.openai.codexImageGenerationBridgeBadgeInherit')
+    }
+  })
+  const codexImageGenerationBridgeBadgeClass = computed(() => {
+    switch (codexImageGenerationBridgeMode.value) {
+      case 'enabled': return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+      case 'disabled': return 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300'
+      default: return 'bg-slate-100 text-slate-600 dark:bg-dark-600 dark:text-slate-300'
+    }
+  })
   watch(modelRestrictionMode, (newMode) => {
     if (newMode === 'whitelist') {
       allowedModels.value = [...getModelsByPlatform('openai')]
@@ -143,6 +166,10 @@ export function useOpenAIForm() {
     openaiOAuthWSMode.value = resolveOpenAIWSModeFromExtra(extra, { modeKey: 'openai_oauth_responses_websockets_v2_mode', enabledKey: 'openai_oauth_responses_websockets_v2_enabled', fallbackEnabledKeys: ['responses_websockets_v2_enabled', 'openai_ws_enabled'], defaultMode: OPENAI_WS_MODE_OFF })
     openaiAPIKeyWSMode.value = resolveOpenAIWSModeFromExtra(extra, { modeKey: 'openai_apikey_responses_websockets_v2_mode', enabledKey: 'openai_apikey_responses_websockets_v2_enabled', fallbackEnabledKeys: ['responses_websockets_v2_enabled', 'openai_ws_enabled'], defaultMode: OPENAI_WS_MODE_OFF })
     codexCLIOnlyEnabled.value = account.type === 'oauth' ? (extra?.codex_cli_only === true) : false
+    const bridgeVal = typeof extra?.codex_image_generation_bridge === 'boolean' ? extra.codex_image_generation_bridge : extra?.codex_image_generation_bridge_enabled
+    if (bridgeVal === true) codexImageGenerationBridgeMode.value = 'enabled'
+    else if (bridgeVal === false) codexImageGenerationBridgeMode.value = 'disabled'
+    else codexImageGenerationBridgeMode.value = 'inherit'
     editH.loadCompactModelMappingsFromCredentials(credentials, openAICompactModelMappings)
     if (account.type === 'apikey') {
       apiKeyBaseUrl.value = (credentials?.base_url as string) || 'https://api.openai.com'
@@ -175,6 +202,8 @@ export function useOpenAIForm() {
     delete newExtra.responses_websockets_v2_enabled; delete newExtra.openai_ws_enabled
     if (openaiPassthroughEnabled.value) newExtra.openai_passthrough = true; else { delete newExtra.openai_passthrough; delete newExtra.openai_oauth_passthrough }
     if (openAICompactMode.value !== 'auto') newExtra.openai_compact_mode = openAICompactMode.value; else delete newExtra.openai_compact_mode
+    delete newExtra.codex_image_generation_bridge_enabled
+    if (codexImageGenerationBridgeMode.value === 'inherit') { delete newExtra.codex_image_generation_bridge } else { newExtra.codex_image_generation_bridge = codexImageGenerationBridgeMode.value === 'enabled' }
     if (account.type === 'oauth') { const hadCodex = currentExtra.codex_cli_only === true; if (codexCLIOnlyEnabled.value) newExtra.codex_cli_only = true; else if (hadCodex) newExtra.codex_cli_only = false; else delete newExtra.codex_cli_only }
     return { credentials: newCreds, extra: newExtra }
   }
@@ -183,7 +212,7 @@ export function useOpenAIForm() {
     apiKeyBaseUrl.value = 'https://api.openai.com'; apiKeyValue.value = ''
     openaiPassthroughEnabled.value = false; openAICompactMode.value = 'auto'
     openaiOAuthWSMode.value = OPENAI_WS_MODE_OFF; openaiAPIKeyWSMode.value = OPENAI_WS_MODE_OFF
-    codexCLIOnlyEnabled.value = false; openAICompactModelMappings.value = []
+    codexCLIOnlyEnabled.value = false; codexImageGenerationBridgeMode.value = 'inherit'; openAICompactModelMappings.value = []
     modelRestrictionMode.value = 'whitelist'; allowedModels.value = [...getModelsByPlatform('openai')]; modelMappings.value = []
     poolModeEnabled.value = false; poolModeRetryCount.value = 3
     customErrorCodesEnabled.value = false; selectedErrorCodes.value = []
@@ -194,7 +223,9 @@ export function useOpenAIForm() {
   return {
     apiKeyBaseUrl, apiKeyValue,
     openaiPassthroughEnabled, openAICompactMode, openaiOAuthWSMode, openaiAPIKeyWSMode,
-    codexCLIOnlyEnabled, openAICompactModelMappings, modelRestrictionMode, allowedModels,
+    codexCLIOnlyEnabled, codexImageGenerationBridgeMode,
+    codexImageGenerationBridgeOptions, codexImageGenerationBridgeBadgeLabel, codexImageGenerationBridgeBadgeClass,
+    openAICompactModelMappings, modelRestrictionMode, allowedModels,
     modelMappings, poolModeEnabled, poolModeRetryCount, customErrorCodesEnabled,
     selectedErrorCodes, tempUnschedEnabled, tempUnschedRules, presetMappings,
     openAICompactModeOptions, openAIWSModeOptions, isModelRestrictionDisabled,

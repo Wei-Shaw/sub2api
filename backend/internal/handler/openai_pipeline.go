@@ -38,6 +38,9 @@ func (h *OpenAIGatewayHandler) openaiChatCompletionsPipeline(c *gin.Context) {
 
 // openaiResponsesPipeline handles OpenAI Responses requests through
 // the GatewayPipeline. This is the sole request path (legacy handler code has been removed).
+//
+// Compact path (/responses/compact): normalizes the request body and extracts
+// the prompt_cache_key session seed before entering the pipeline.
 func (h *OpenAIGatewayHandler) openaiResponsesPipeline(c *gin.Context) {
 	if h.pipeline == nil {
 		h.errorResponse(c, http.StatusInternalServerError, "api_error", "Gateway pipeline not initialized")
@@ -52,6 +55,13 @@ func (h *OpenAIGatewayHandler) openaiResponsesPipeline(c *gin.Context) {
 
 	err := h.pipeline.Execute(c, gateway.ProtocolOpenAI, "", parse, record)
 	if err != nil {
+		// Compact-specific error: no available accounts support /responses/compact
+		if errors.Is(err, service.ErrNoAvailableCompactAccounts) {
+			h.errorResponse(c, http.StatusServiceUnavailable,
+				"compact_not_supported",
+				"No available OpenAI accounts support /responses/compact")
+			return
+		}
 		h.handleOpenAIPipelineError(c, err)
 	}
 }
@@ -91,8 +101,22 @@ func (h *OpenAIGatewayHandler) buildOpenAICCParseFunc(c *gin.Context) gateway.Pa
 // buildOpenAIResponsesParseFunc builds the ParseRequestFunc for OpenAI
 // Responses. It validates JSON, extracts model/stream, and performs
 // HTTP-specific pre-validations (previous_response_id, function_call_output).
+// For /responses/compact paths, normalizes the request body and extracts
+// the prompt_cache_key session seed.
 func (h *OpenAIGatewayHandler) buildOpenAIResponsesParseFunc(c *gin.Context) gateway.ParseRequestFunc {
 	return func(body []byte) (*gateway.ForwardRequest, error) {
+		// Compact path: extract session seed and normalize body
+		if service.IsOpenAIResponsesCompactPathForTest(c) {
+			if seed := strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String()); seed != "" {
+				c.Set(service.OpenAICompactSessionSeedKeyForTest(), seed)
+			}
+			if normalized, changed, err := service.NormalizeOpenAICompactRequestBodyForTest(body); err != nil {
+				return nil, errors.New("failed to normalize compact request body")
+			} else if changed {
+				body = normalized
+			}
+		}
+
 		if !gjson.ValidBytes(body) {
 			return nil, errors.New("invalid JSON")
 		}

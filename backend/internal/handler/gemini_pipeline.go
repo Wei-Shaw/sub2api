@@ -71,8 +71,11 @@ func (h *GatewayHandler) geminiV1BetaPipeline(c *gin.Context) {
 		c.Request = c.Request.WithContext(ctx)
 	}
 
-	parse := h.buildGeminiParseFunc(c, modelName, action, stream)
-	record := h.buildGeminiRecordFunc(c)
+	// Share ForwardRequest pointer between parse and record closures so
+	// record can read pipeline-mutated fields (e.g. ForceCacheBilling).
+	var fwdReq *gateway.ForwardRequest
+	parse := h.buildGeminiParseFunc(c, modelName, action, stream, &fwdReq)
+	record := h.buildGeminiRecordFunc(c, &fwdReq)
 	forcePlatform := h.resolveGeminiForcePlatform(c)
 
 	err = h.pipeline.Execute(c, gateway.ProtocolGemini, forcePlatform, parse, record)
@@ -88,6 +91,7 @@ func (h *GatewayHandler) buildGeminiParseFunc(
 	c *gin.Context,
 	modelName, action string,
 	stream bool,
+	fwdReqOut **gateway.ForwardRequest,
 ) gateway.ParseRequestFunc {
 	return func(body []byte) (*gateway.ForwardRequest, error) {
 		apiKey, _ := middleware2.GetAPIKeyFromContext(c)
@@ -127,14 +131,16 @@ func (h *GatewayHandler) buildGeminiParseFunc(
 			}
 		}
 
-		return &gateway.ForwardRequest{
+		req := &gateway.ForwardRequest{
 			Model:        modelName,
 			Stream:       stream,
 			RawBody:      body,
 			GinContext:    c,
 			SessionHash:  sessionHash,
 			GeminiAction: action,
-		}, nil
+		}
+		*fwdReqOut = req
+		return req, nil
 	}
 }
 
@@ -220,7 +226,7 @@ func (h *GatewayHandler) resolveGeminiDigestSession(
 
 // buildGeminiRecordFunc builds the RecordUsageFunc for Gemini V1Beta.
 // Uses RecordUsageWithLongContext for Gemini's 200K double-billing.
-func (h *GatewayHandler) buildGeminiRecordFunc(c *gin.Context) gateway.RecordUsageFunc {
+func (h *GatewayHandler) buildGeminiRecordFunc(c *gin.Context, fwdReq **gateway.ForwardRequest) gateway.RecordUsageFunc {
 	return func(ctx context.Context, account *service.Account, result *gateway.ForwardResult) error {
 		apiKey, _ := middleware2.GetAPIKeyFromContext(c)
 		subscription, _ := middleware2.GetSubscriptionFromContext(c)
@@ -258,6 +264,7 @@ func (h *GatewayHandler) buildGeminiRecordFunc(c *gin.Context) gateway.RecordUsa
 				UserAgent:             userAgent,
 				IPAddress:             clientIP,
 				RequestPayloadHash:    requestPayloadHash,
+				ForceCacheBilling:     *fwdReq != nil && (*fwdReq).ForceCacheBilling,
 				LongContextThreshold:  200000, // Gemini 200K 阈值
 				LongContextMultiplier: 2.0,    // 超出部分双倍计费
 				APIKeyService:         h.apiKeyService,
