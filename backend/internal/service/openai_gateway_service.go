@@ -5273,7 +5273,19 @@ REDACTED
 REDACTED
 	cost, err = s.calculateOpenAIRecordUsageCost(ctx, result, apiKey, billingModels, multiplier, imageMultiplier, tokens, serviceTier)
 	if err != nil {
-		return err
+		if !isUsagePricingUnavailableError(err) {
+			return err
+	REDACTED
+		logger.L().With(
+			zap.String("component", "service.openai_gateway"),
+			zap.Strings("billing_models", billingModels),
+			zap.String("requested_model", input.OriginalModel),
+			zap.String("mapped_model", input.ChannelMappedModel),
+			zap.String("upstream_model", result.UpstreamModel),
+			zap.Int64("api_key_id", apiKey.ID),
+			zap.Int64("account_id", account.ID),
+		).Warn("openai_usage.pricing_missing_record_zero_cost", zap.Error(err))
+		cost = &CostBreakdown{BillingMode: string(BillingModeToken)REDACTED
 REDACTED
 
 	// Determine billing type
@@ -5437,6 +5449,17 @@ REDACTED
 		lastErr = errors.New("no non-empty billing model candidates")
 REDACTED
 	return nil, fmt.Errorf("calculate OpenAI usage cost failed for billing models %s: %w", strings.Join(billingModels, ","), lastErr)
+REDACTED
+
+func isUsagePricingUnavailableError(err error) bool {
+	if err == nil {
+		return false
+REDACTED
+	if errors.Is(err, ErrModelPricingUnavailable) {
+		return true
+REDACTED
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "no pricing available") || strings.Contains(msg, "pricing not found")
 REDACTED
 
 func (s *OpenAIGatewayService) calculateOpenAIRecordUsageTokenCost(
