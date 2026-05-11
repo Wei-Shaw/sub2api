@@ -421,6 +421,9 @@ func (h *UserHandler) UpdateBalance(c *gin.Context) {
 		response.BadRequest(c, "Invalid user ID")
 		return
 	}
+	if !ensureMarketingCanManageUser(c, h.adminService, userID) {
+		return
+	}
 
 	var req UpdateBalanceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

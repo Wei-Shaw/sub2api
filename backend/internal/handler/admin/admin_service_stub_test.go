@@ -9,6 +9,13 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
+type stubBalanceUpdateCall struct {
+	UserID    int64
+	Balance   float64
+	Operation string
+	Notes     string
+}
+
 type stubAdminService struct {
 	users                               []service.User
 	apiKeys                             []service.APIKey
@@ -30,6 +37,7 @@ type stubAdminService struct {
 	createdUsers                        []*service.CreateUserInput
 	updatedUserIDs                      []int64
 	updatedUsers                        []*service.UpdateUserInput
+	updatedBalanceCalls                 []stubBalanceUpdateCall
 	updatedProxyIDs                     []int64
 	updatedProxies                      []*service.UpdateProxyInput
 	testedProxyIDs                      []int64
@@ -207,6 +215,12 @@ func (s *stubAdminService) DeleteUser(ctx context.Context, id int64) error {
 }
 
 func (s *stubAdminService) UpdateUserBalance(ctx context.Context, userID int64, balance float64, operation string, notes string) (*service.User, error) {
+	s.updatedBalanceCalls = append(s.updatedBalanceCalls, stubBalanceUpdateCall{
+		UserID:    userID,
+		Balance:   balance,
+		Operation: operation,
+		Notes:     notes,
+	})
 	user := service.User{ID: userID, Balance: balance, Status: service.StatusActive}
 	return &user, nil
 }

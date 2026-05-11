@@ -305,6 +305,15 @@ func (h *SubscriptionHandler) Revoke(c *gin.Context) {
 		return
 	}
 
+	subscription, err := h.subscriptionService.GetByID(c.Request.Context(), subscriptionID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if !ensureMarketingCanManageUser(c, h.adminService, subscription.UserID) {
+		return
+	}
+
 	err = h.subscriptionService.RevokeSubscription(c.Request.Context(), subscriptionID)
 	if err != nil {
 		response.ErrorFrom(c, err)

@@ -224,3 +224,59 @@ func TestUserHandlerUpdateMarketingRejectsRolePayload(t *testing.T) {
 	require.Empty(t, adminSvc.updatedUserIDs)
 	require.Zero(t, adminSvc.lastListUsers.calls, "invalid marketing payload should be rejected before affiliate scope lookup")
 }
+
+func TestUserHandlerMarketingUpdateBalanceAllowsAffiliateScopedUser(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	marketingUserID := int64(91)
+	adminSvc := newStubAdminService()
+	adminSvc.users = []service.User{{ID: 7, Email: "scoped@example.com", Status: service.StatusActive}}
+	handler := NewUserHandler(adminSvc, nil, nil, nil)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Params = gin.Params{{Key: "id", Value: "7"}}
+	c.Request = httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/admin/users/7/balance",
+		bytes.NewBufferString(`{"balance":25,"operation":"add","notes":"affiliate deposit"}`),
+	)
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set(string(middleware.ContextKeyUserRole), service.RoleMarketing)
+	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: marketingUserID})
+
+	handler.UpdateBalance(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Len(t, adminSvc.updatedBalanceCalls, 1)
+	require.Equal(t, stubBalanceUpdateCall{UserID: 7, Balance: 25, Operation: "add", Notes: "affiliate deposit"}, adminSvc.updatedBalanceCalls[0])
+	require.NotNil(t, adminSvc.lastListUsers.filters.AffiliateInviterID)
+	require.Equal(t, marketingUserID, *adminSvc.lastListUsers.filters.AffiliateInviterID)
+	require.NotNil(t, adminSvc.lastListUsers.filters.UserID)
+	require.Equal(t, int64(7), *adminSvc.lastListUsers.filters.UserID)
+}
+
+func TestUserHandlerMarketingUpdateBalanceRejectsUserOutsideAffiliateScope(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	adminSvc := newStubAdminService()
+	adminSvc.users = nil
+	handler := NewUserHandler(adminSvc, nil, nil, nil)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Params = gin.Params{{Key: "id", Value: "7"}}
+	c.Request = httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/admin/users/7/balance",
+		bytes.NewBufferString(`{"balance":25,"operation":"add"}`),
+	)
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set(string(middleware.ContextKeyUserRole), service.RoleMarketing)
+	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 91})
+
+	handler.UpdateBalance(c)
+
+	require.Equal(t, http.StatusForbidden, recorder.Code)
+	require.Empty(t, adminSvc.updatedBalanceCalls)
+}
