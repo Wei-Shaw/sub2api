@@ -563,9 +563,7 @@ func normalizeCodexImportEntry(entry codexImportEntry) (*codexImportAccount, err
 	}
 	if item.IDToken != "" {
 		item.Credentials["id_token"] = item.IDToken
-		if err := enrichCodexImportAccountFromJWT(item, item.IDToken, false, now); err != nil {
-			return nil, err
-		}
+		_ = enrichCodexImportAccountFromJWT(item, item.IDToken, false, now)
 	}
 	if err := enrichCodexImportAccountFromJWT(item, item.AccessToken, true, now); err != nil {
 		return nil, err
