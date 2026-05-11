@@ -137,7 +137,7 @@ importers:
     dependencies:
       axios:
         specifier: ^1.0.0
-        version: 1.15.0
+        version: 1.16.0
       lucide-vue-next:
         specifier: ^0.300.0
         version: 0.300.0(vue@3.5.26(typescript@5.6.3))
