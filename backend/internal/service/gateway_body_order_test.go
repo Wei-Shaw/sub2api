@@ -150,6 +150,34 @@ func TestEnforceCacheControlLimit_PreservesTopLevelFieldOrder(t *testing.T) {
 	require.Equal(t, 4, strings.Count(resultStr, `"cache_control"`))
 }
 
+func TestEnforceCacheControlLimit_CountsTopLevelAndTools(t *testing.T) {
+	body := []byte(`{"alpha":1,"cache_control":{"type":"ephemeral"},"system":[{"type":"text","text":"sys","cache_control":{"type":"ephemeral"}}],"messages":[{"role":"user","content":[{"type":"text","text":"m1","cache_control":{"type":"ephemeral"}}]},{"role":"assistant","content":[{"type":"text","text":"a1"}]},{"role":"user","content":[{"type":"text","text":"m2","cache_control":{"type":"ephemeral"}}]}],"tools":[{"name":"a","input_schema":{},"cache_control":{"type":"ephemeral"}}],"omega":2}`)
+
+	result := enforceCacheControlLimit(body)
+	resultStr := string(result)
+
+	assertJSONTokenOrder(t, resultStr, `"alpha"`, `"cache_control"`, `"system"`, `"messages"`, `"tools"`, `"omega"`)
+	require.Equal(t, 4, strings.Count(resultStr, `"cache_control"`))
+	require.False(t, gjson.GetBytes(result, "messages.0.content.0.cache_control").Exists())
+	require.True(t, gjson.GetBytes(result, "cache_control").Exists())
+	require.True(t, gjson.GetBytes(result, "system.0.cache_control").Exists())
+	require.True(t, gjson.GetBytes(result, "messages.2.content.0.cache_control").Exists())
+	require.True(t, gjson.GetBytes(result, "tools.0.cache_control").Exists())
+}
+
+func TestEnforceCacheControlLimit_RemovesTopLevelBeforeStableBlocks(t *testing.T) {
+	body := []byte(`{"cache_control":{"type":"ephemeral"},"system":[{"type":"text","text":"s1","cache_control":{"type":"ephemeral"}},{"type":"text","text":"s2","cache_control":{"type":"ephemeral"}},{"type":"text","text":"s3","cache_control":{"type":"ephemeral"}}],"tools":[{"name":"a","input_schema":{},"cache_control":{"type":"ephemeral"}}]}`)
+
+	result := enforceCacheControlLimit(body)
+
+	require.Equal(t, 4, strings.Count(string(result), `"cache_control"`))
+	require.False(t, gjson.GetBytes(result, "cache_control").Exists())
+	require.True(t, gjson.GetBytes(result, "tools.0.cache_control").Exists())
+	require.True(t, gjson.GetBytes(result, "system.0.cache_control").Exists())
+	require.True(t, gjson.GetBytes(result, "system.1.cache_control").Exists())
+	require.True(t, gjson.GetBytes(result, "system.2.cache_control").Exists())
+}
+
 func TestInjectAnthropicCacheControlTTL1h_OnlyUpdatesExistingEphemeralCacheControl(t *testing.T) {
 	body := []byte(`{"alpha":1,"cache_control":{"type":"ephemeral"},"system":[{"type":"text","text":"sys","cache_control":{"type":"ephemeral","ttl":"5m"}},{"type":"text","text":"plain"}],"messages":[{"role":"user","content":[{"type":"text","text":"hi","cache_control":{"type":"ephemeral"}},{"type":"text","text":"non","cache_control":{"type":"persistent","ttl":"5m"}}]}],"tools":[{"name":"a","input_schema":{},"cache_control":{"type":"ephemeral"}}],"omega":2}`)
 
