@@ -183,7 +183,7 @@
     <BaseDialog
       :show="completeDialogOpen"
       :title="t('invoice.admin.completeTitle')"
-      width="medium"
+      width="normal"
       @close="closeCompleteDialog"
     >
       <form class="space-y-4" @submit.prevent="submitComplete">
@@ -230,7 +230,7 @@
     <BaseDialog
       :show="rejectDialogOpen"
       :title="t('invoice.admin.rejectTitle')"
-      width="medium"
+      width="normal"
       @close="closeRejectDialog"
     >
       <form class="space-y-4" @submit.prevent="submitReject">
