@@ -697,7 +697,7 @@ export default {
         configTomlHint: '请确保以下内容位于 config.toml 文件的开头部分',
         note: '请确保配置目录存在。macOS/Linux 用户可运行 mkdir -p ~/.codex 创建目录。',
         noteWindows:
-          '按 Win+R，输入 %userprofile%\\.codex 打开配置目录。如目录不存在，请先手动创建。'
+          '按 Win+R，输入 %userprofile%\\.codex 打开配置目录��如目录不存在，请先手动创建。'
       },
       cliTabs: {
         claudeCode: 'Claude Code',
@@ -821,7 +821,7 @@ export default {
     timeRange: '时间范围',
     exportCsv: '导出 CSV',
     exportExcel: '导出 Excel',
-    exportingProgress: '正在导出数据...',
+    exportingProgress: '正在�����数据...',
     exportedCount: '已导出 {current}/{total} 条',
     estimatedTime: '预计剩余时间：{time}',
     cancelExport: '取消导出',
@@ -1067,7 +1067,7 @@ export default {
     balanceAddedRedeem: '余额充值（兑换）',
     balanceAddedAffiliate: '余额充值（返利转入）',
     balanceAddedAdmin: '余额充值（管理员）',
-    balanceDeductedAdmin: '余额扣除（管理员）',
+    balanceDeductedAdmin: '余额扣除（管��员）',
     concurrencyAddedRedeem: '并发增加（兑换）',
     concurrencyAddedAdmin: '并发增加（管理员）',
     concurrencyReducedAdmin: '并发减少（管理员）',
@@ -1282,7 +1282,7 @@ export default {
   errors: {
     somethingWentWrong: '出错了',
     pageNotFound: '页面未找到',
-    unauthorized: '未授权',
+    unauthorized: '未��权',
     forbidden: '禁止访问',
     serverError: '服务器错误',
     networkError: '网络错误',
@@ -1380,6 +1380,37 @@ export default {
       systemSettings: '系统设置',
       configureSystem: '配置系统设置',
       failedToLoad: '加载仪表盘数据失败'
+    },
+
+    // Cluster
+    cluster: {
+      title: '集群状态',
+      description: '主从模式分布式部署状态监控',
+      totalInstances: '实例总数',
+      masterSlaveCount: '主/从节点',
+      clusterMode: '集群模式',
+      clusterHealth: '集群健康',
+      enabled: '已启用',
+      disabled: '已禁用',
+      healthy: '健康',
+      unhealthy: '异常',
+      currentInstance: '当前实例',
+      master: '主节点',
+      slave: '从节点',
+      standalone: '单机',
+      instanceId: '实例 ID',
+      hostname: '主机名',
+      ip: 'IP 地址',
+      version: '版本',
+      status: '状态',
+      role: '角色',
+      lastHeartbeat: '最后心跳',
+      runningTasks: '运行任务',
+      allInstances: '所有实例',
+      singleInstanceMode: '单实例模式运行中，未启用集群功能',
+      loadError: '加载集群状态失败',
+      masterNote: '主节点运行后台任务，不接收流量',
+      slaveNote: '从节点接收流量，不运行后台任务'
     },
 
     backup: {
@@ -1680,7 +1711,7 @@ export default {
         loadFailed: '加载邀请返利记录失败'
       },
       records: {
-        search: '搜索',
+        search: '搜���',
         searchPlaceholder: '邮箱、用户名、用户 ID、订单号',
         startAt: '开始日期',
         endAt: '结束日期',
@@ -2138,7 +2169,7 @@ export default {
         dailyLimit: '每日限额（USD）',
         weeklyLimit: '每周限额（USD）',
         monthlyLimit: '每月限额（USD）',
-        defaultValidityDays: '默认有效期（天）',
+        defaultValidityDays: '默认有效期��天）',
         validityHint: '分配给用户时订阅的有效天数',
         noLimit: '无限制'
       },
@@ -2362,7 +2393,7 @@ export default {
         searchGroups: '搜索分组...',
         noGroupsMatch: '没有匹配的分组',
         restrictModels: '限制模型',
-        restrictModelsHint: '开启后，仅允许模型定价列表中的模型。不在列表中的模型请求将被拒绝。',
+        restrictModelsHint: '开启后，仅允许模型定价列表中的模型。不在列表���的模型请求将被拒绝。',
         defaultPerRequestPrice: '默认单次价格（未命中层级时使用）',
         defaultImagePrice: '默认图片价格（未命中层级时使用）',
         platformConfig: '平台配置',
@@ -2649,7 +2680,7 @@ export default {
         useMyKey: '使用我的 Key',
         selectKeyTitle: '选择我的 API Key',
         selectKeyHint: '仅显示当前账号下处于「启用」状态且未过期的 Key。',
-        noActiveKey: '没有可用的启用状态 Key',
+        noActiveKey: '没有可用���启用状态 Key',
         primaryModel: '主模型',
         primaryModelPlaceholder: 'gpt-4o-mini',
         extraModels: '附加模型',
@@ -2968,7 +2999,7 @@ export default {
           normal: '5h窗口费用正常'
         },
         sessions: {
-          full: '活跃会话已满，新会话需等待（空闲超时：{idle}分钟）',
+          full: '活跃会话��满，新会话需等待（空闲超时：{idle}分钟）',
           normal: '活跃会话正常（空闲超时：{idle}分钟）'
         },
         rpm: {
@@ -3181,7 +3212,7 @@ export default {
       saving: '保存中...',
       refreshing: '刷新中...',
       testing: '测试中...',
-      noAccounts: '暂无账号',
+      noAccounts: '暂无账���',
       noAccountsDescription: '添加 AI 平台账号以开始使用 API 网关。',
       accountCreatedSuccess: '账号添加成功',
       accountUpdatedSuccess: '账号更新成功',
@@ -3397,7 +3428,7 @@ export default {
           hint: '限制账号在5小时窗口内的费用使用',
           limit: '费用阈值',
           limitPlaceholder: '50',
-          limitHint: '达到阈值后不参与新请求调度',
+          limitHint: '达到阈值后不参与新请���调度',
           stickyReserve: '粘性预留额度',
           stickyReservePlaceholder: '10',
           stickyReserveHint: '为粘性会话预留的额外额度'
@@ -3463,7 +3494,7 @@ export default {
       affinityClients: '{count} 个亲和客户端：',
       affinitySection: '客户端亲和',
       affinitySectionHint: '控制客户端在账号间的分布。通过配置区域阈值来平衡负载。',
-      affinityToggle: '启用客户端亲和',
+      affinityToggle: '启用客���端亲和',
       affinityToggleHint: '新会话优先调度到该客户端之前使用过的账号',
       affinityBase: '基础限额（绿区）',
       affinityBasePlaceholder: '留空表示不限制',
@@ -3725,7 +3756,7 @@ export default {
         apiKeyHint: '您的 Gemini API Key（以 AIza 开头）',
         tier: {
           label: '账号等级',
-          hint: '提示：系统会优先尝试自动识别账号等级；若自动识别不可用或失败，则使用你选择的等级作为回退（本地模拟配额）。',
+          hint: '提示：系统会优先尝试自动识别账号等级；若自动识别不可用或失败，��使用你选择的等级作为回退（本地模拟配额）。',
           aiStudioHint:
             'AI Studio 的配额是按模型分别限流（Pro/Flash 独立）。若已绑卡（按量付费），请选 Pay-as-you-go。',
           googleOne: {
@@ -3771,7 +3802,7 @@ export default {
           title: 'Gemini 使用准备',
           checklistTitle: '准备工作',
           checklistItems: {
-            usIp: '使用美国 IP，并确保账号归属地为美国。',
+            usIp: '使用美国 IP，并确保账号归属地为美��。',
             age: '账号需满 18 岁。'
           },
           activationTitle: '服务激活',
@@ -3790,7 +3821,7 @@ export default {
           note: '注意：Gemini 官方未提供用量查询接口。此处显示的“每日配额”是由系统根据账号等级模拟计算的估算值，仅供调度参考，请以 Google 官方实际报错为准。',
           columns: {
             channel: '授权通道',
-            account: '账号状态',
+            account: '账号状��',
             limits: '限流政策',
             docs: '官方文档'
           },
@@ -3907,7 +3938,7 @@ export default {
         totalTokens: '30天总计',
         dailyAvgTokens: '日均 Token',
         performance: '性能',
-        avgResponseTime: '平均响应',
+        avgResponseTime: '平均响���',
         daysActive: '活跃天数',
         recentActivity: '最近统计',
         todayRequests: '今日请求',
@@ -4521,7 +4552,7 @@ export default {
       other: '其他',
       errorsSla: '错误（SLA范围）',
       upstreamExcl429529: '上游（排除429/529）',
-      failedToLoadData: '加载运维数据失败',
+      failedToLoadData: '加载运维���据失败',
       failedToLoadOverview: '加载概览数据失败',
       failedToLoadThroughputTrend: '加载吞吐趋势失败',
       failedToLoadSwitchTrend: '加载平均账号切换趋势失败',
@@ -4946,7 +4977,7 @@ export default {
           errorRate: '统计窗口内失败请求占比（0~100）。',
           upstreamErrorRate: '统计窗口内上游错误占比（0~100）。',
           p95: '统计窗口内 P95 请求耗时（毫秒）。',
-          p99: '统计窗口内 P99 请求耗时（毫秒）。',
+          p99: '统计窗口内 P99 请求耗时（毫��）。',
           cpu: '当前实例 CPU 使用率（0~100）。',
           memory: '当前实例内存使用率（0~100）。',
           queueDepth: '统计窗口内并发队列排队深度（等待中的请求数）。',
@@ -5225,7 +5256,7 @@ export default {
         db: '数据库连接池状态，包括活跃连接、空闲连接和等待连接数。',
         redis: 'Redis 连接池状态，显示活跃和空闲的连接数。',
         jobs: '后台任务执行状态，包括最近运行时间、成功时间和错误信息。',
-        qps: '每秒查询数（QPS）和每秒Token数（TPS），实时显示系统吞吐量。',
+        qps: '每秒查询数（QPS）和每秒Token数（TPS），实时显示系统吞吐量���',
         tokens: '当前时间窗口内处理的总Token数量。',
         sla: '服务等级协议达成率，排除业务限制（如余额不足、配额超限）的成功请求占比。',
         errors: '错误统计，包括总错误数、错误率和上游错误率。',
@@ -5717,7 +5748,7 @@ export default {
         field_cidWxpay: '微信渠道 ID',
         stripeWebhookHint: '请在 Stripe Dashboard 中将以下地址配置为 Webhook 端点：',
         stripeWebhookApiVersionHint: 'Webhook 端点的 API 版本请与当前集成的 Stripe SDK 对齐，建议选择 {version}；版本不一致可能导致回调事件解析失败。',
-        airwallexWebhookHint: '请在 Airwallex 后台将以下地址配置为 Webhook 端点；事件至少选择 Payment Intent -> Succeeded（payment_intent.succeeded），建议同时选择 Payment Intent -> Cancelled（payment_intent.cancelled）；API version 选择账户默认或最新稳定版本。',
+        airwallexWebhookHint: '请在 Airwallex 后台将以下地址配置为 Webhook 端点；事件至少选择 Payment Intent -> Succeeded（payment_intent.succeeded）��建议同时选择 Payment Intent -> Cancelled（payment_intent.cancelled）；API version 选择账户默认或最新稳定版本。',
         airwallexGuideSummary: '创建 Airwallex Scoped API 密钥时，建议只在账户级权限中为 Payment Acceptance 勾选读取和写入。',
         airwallexGuideNote: '不需要勾选 Spend、Payouts、Transfers、Funds Splits、POS 终端等与在线收款无关的权限。Webhook 事件至少选择 payment_intent.succeeded，建议同时选择 payment_intent.cancelled；API version 选择账户默认或最新稳定版本。',
         limitsTitle: '限额配置',
@@ -5831,7 +5862,7 @@ export default {
         recipientEmailPlaceholder: "test{'@'}example.com",
         sendTestEmail: '发送测试邮件',
         sending: '发送中...',
-        enterRecipientHint: '请输入收件人邮箱地址'
+        enterRecipientHint: '请��入收件人邮箱地址'
       },
       opsMonitoring: {
         title: '运维监控',
@@ -6171,7 +6202,7 @@ export default {
       editRule: '编辑规则',
       deleteRule: '删除规则',
       noRules: '暂无规则',
-      createFirstRule: '创建第一条错误透传规则',
+      createFirstRule: '创建��一条错误透传规则',
       allPlatforms: '所有平台',
       passthrough: '透传',
       custom: '自定义',
@@ -6380,7 +6411,7 @@ export default {
     total: '条公告',
     emptyDescription: '暂时没有任何系统公告',
     readStatus: '您已阅读此公告',
-    markReadHint: '点击"已读"标记此公告'
+    markReadHint: '点击"已读"���记此公告'
   },
 
   // User Subscriptions Page
@@ -6468,7 +6499,7 @@ export default {
       groupSubmit: {
         title: '✅ 保存分组',
         description:
-          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">确认信息无误后，点击创建按钮保存分组。</p><p style="padding: 8px 12px; background: #fef3c7; border-left: 3px solid #f59e0b; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚠️ 注意：</b>分组创建后，平台类型不可修改，其他信息可以随时编辑</p><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>📌 下一步：</b>创建成功后，我们将添加上游账号到这个分组</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击"创建"按钮</p></div>'
+          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">确认信息无误后，点击创��按钮保存分组。</p><p style="padding: 8px 12px; background: #fef3c7; border-left: 3px solid #f59e0b; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚠️ 注意：</b>分组创建后，平台类型不可修改，其他信息可以随时编辑</p><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>📌 下一步：</b>创建成功后，我们将添加上游账号到这个分组</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击"创建"按钮</p></div>'
       },
       accountManage: {
         title: '🔗 第二步：添加账号',
@@ -6540,7 +6571,7 @@ export default {
       keySubmit: {
         title: '🎉 生成并复制',
         description:
-          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">点击创建后，系统会生成完整的 API Key。</p><div style="padding: 8px 12px; background: #fee2e2; border-left: 3px solid #ef4444; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚠️ 重要提醒：</b><ul style="margin: 8px 0 0 16px;"><li>密钥只显示一次，请立即复制</li><li>丢失后需要重新生成</li><li>妥善保管，不要泄露给他人</li></ul></div><div style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>🚀 下一步：</b><ul style="margin: 8px 0 0 16px;"><li>复制生成的 sk-xxx 密钥</li><li>在支持 OpenAI 接口的客户端中使用</li><li>开始体验 AI 服务！</li></ul></div><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击"创建"按钮</p></div>'
+          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">点击创建后，系统会生成完整的 API Key。</p><div style="padding: 8px 12px; background: #fee2e2; border-left: 3px solid #ef4444; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚠️ 重要提醒：</b><ul style="margin: 8px 0 0 16px;"><li>密钥只显示一次，请立即复制</li><li>丢失��需要重新生成</li><li>妥善保管，不要泄露给他人</li></ul></div><div style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>🚀 下一步：</b><ul style="margin: 8px 0 0 16px;"><li>复制生成的 sk-xxx 密钥</li><li>在支持 OpenAI 接口的客户端中使用</li><li>开始体验 AI 服务！</li></ul></div><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击"创建"按钮</p></div>'
       }
     },
     // User tour steps
@@ -6548,7 +6579,7 @@ export default {
       welcome: {
         title: '👋 欢迎使用 Sub2API',
         description:
-          '<div style="line-height: 1.8;"><p style="margin-bottom: 16px;">您好！欢迎来到 Sub2API AI 服务平台。</p><p style="margin-bottom: 12px;"><b>🎯 快速开始：</b></p><ul style="margin-left: 20px; margin-bottom: 16px;"><li>🔑 创建 API 密钥</li><li>📋 复制密钥到您的应用</li><li>🚀 开始使用 AI 服务</li></ul><p style="color: #10b981; font-weight: 600;">只需 1 分钟，让我们开始吧 →</p></div>',
+          '<div style="line-height: 1.8;"><p style="margin-bottom: 16px;">您好！欢迎来到 Sub2API AI 服务平台。</p><p style="margin-bottom: 12px;"><b>🎯 快速开始：</b></p><ul style="margin-left: 20px; margin-bottom: 16px;"><li>🔑 创建 API 密钥</li><li>���� 复制密钥到您的应用</li><li>🚀 开始使用 AI 服务</li></ul><p style="color: #10b981; font-weight: 600;">只需 1 分钟，让我们开始吧 →</p></div>',
         nextBtn: '开始 🚀',
         prevBtn: '跳过'
       },
@@ -6662,7 +6693,7 @@ export default {
       subscriptionSuccess: '订阅成功',
       processing: '支付处理中',
       processingHint: '支付结果仍在确认中，页面会自动刷新。',
-      failed: '支付失败',
+      failed: '支付��败',
       backToRecharge: '返回充值',
       viewOrders: '查看订单',
     },

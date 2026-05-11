@@ -91,6 +91,7 @@ type Config struct {
 	Gemini                  GeminiConfig                  `mapstructure:"gemini"`
 	Update                  UpdateConfig                  `mapstructure:"update"`
 	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
+	Cluster                 ClusterConfig                 `mapstructure:"cluster"`
 }
 
 type LogConfig struct {
@@ -519,7 +520,7 @@ type ServerConfig struct {
 type H2CConfig struct {
 	Enabled                      bool   `mapstructure:"enabled"`                          // 是否启用 H2C
 	MaxConcurrentStreams         uint32 `mapstructure:"max_concurrent_streams"`           // 最大并发流数量
-	IdleTimeout                  int    `mapstructure:"idle_timeout"`                     // 空闲超时（秒）
+	IdleTimeout                  int    `mapstructure:"idle_timeout"`                     // 空��超时（秒）
 	MaxReadFrameSize             int    `mapstructure:"max_read_frame_size"`              // 最大帧大小（字节）
 	MaxUploadBufferPerConnection int    `mapstructure:"max_upload_buffer_per_connection"` // 每个连接的上传缓冲区（字节）
 	MaxUploadBufferPerStream     int    `mapstructure:"max_upload_buffer_per_stream"`     // 每个流的上传缓冲区（字节）
@@ -658,8 +659,8 @@ type GatewayConfig struct {
 	// 建议值：预估的活跃账户数 * 1.2（留有余量）
 	MaxUpstreamClients int `mapstructure:"max_upstream_clients"`
 	// ClientIdleTTLSeconds: 上游连接池客户端空闲回收阈值（秒）
-	// 超过此时间未使用的客户端会被标记为可回收
-	// 建议值：根据用户访问频率设置，一般 10-30 分钟
+	// 超过此时间��使用的客户端会被标记为可回收
+	// 建议值：根据用户访问频���设置，一般 10-30 分钟
 	ClientIdleTTLSeconds int `mapstructure:"client_idle_ttl_seconds"`
 	// ConcurrencySlotTTLMinutes: 并发槽位过期时间（分钟）
 	// 应大于最长 LLM 请求时间，防止请求完成前槽位过期
@@ -943,7 +944,7 @@ type GatewaySchedulingConfig struct {
 
 	// 负载计算
 	LoadBatchEnabled bool `mapstructure:"load_batch_enabled"`
-	// 快照桶读取时的 MGET 分块大小
+	// 快照桶���取时的 MGET 分块大小
 	SnapshotMGetChunkSize int `mapstructure:"snapshot_mget_chunk_size"`
 	// 快照重建时的缓存写入分块大小
 	SnapshotWriteChunkSize int `mapstructure:"snapshot_write_chunk_size"`
@@ -1117,7 +1118,7 @@ type TotpConfig struct {
 	// 如果为空，将自动生成一个随机密钥（仅适用于开发环境）
 	EncryptionKey string `mapstructure:"encryption_key"`
 	// EncryptionKeyConfigured 标记加密密钥是否为手动配置（非自动生成）
-	// 只有手动配置了密钥才允许在管理后台启用 TOTP 功能
+	// 只有���动配置了密钥才允许在管理后台启用 TOTP 功能
 	EncryptionKeyConfigured bool `mapstructure:"-"`
 }
 
@@ -2762,5 +2763,45 @@ func warnIfInsecureURL(field, raw string) {
 	}
 	if strings.EqualFold(u.Scheme, "http") {
 		slog.Warn("url uses http scheme; use https in production to avoid token leakage", "field", field)
+	}
+}
+
+// ClusterConfig holds configuration for distributed cluster deployment.
+// Uses a simple master-slave model where master runs background tasks
+// and slaves handle API traffic.
+type ClusterConfig struct {
+	// Enabled indicates whether cluster mode is enabled.
+	// When disabled, runs in standalone mode (single instance).
+	Enabled bool `mapstructure:"enabled"`
+
+	// Role specifies this instance's role: "master" or "slave".
+	// Master: runs background tasks, should NOT receive API traffic.
+	// Slave: handles API traffic, does NOT run background tasks.
+	// Only used when Enabled is true.
+	Role string `mapstructure:"role"`
+
+	// InstanceID is a unique identifier for this instance.
+	// If empty, a short UUID will be generated automatically.
+	InstanceID string `mapstructure:"instance_id"`
+
+	// HeartbeatIntervalSeconds is how often instances send heartbeats.
+	HeartbeatIntervalSeconds int `mapstructure:"heartbeat_interval_seconds"`
+
+	// HeartbeatTTLSeconds is the TTL for instance heartbeat records.
+	HeartbeatTTLSeconds int `mapstructure:"heartbeat_ttl_seconds"`
+
+	// InstanceRegistryKey is the Redis key prefix for instance registry.
+	InstanceRegistryKey string `mapstructure:"instance_registry_key"`
+}
+
+// DefaultClusterConfig returns the default cluster configuration.
+func DefaultClusterConfig() ClusterConfig {
+	return ClusterConfig{
+		Enabled:                  false,
+		Role:                     "",
+		InstanceID:               "",
+		HeartbeatIntervalSeconds: 5,
+		HeartbeatTTLSeconds:      15,
+		InstanceRegistryKey:      "cluster:instances",
 	}
 }

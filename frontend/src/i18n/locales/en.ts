@@ -1361,6 +1361,37 @@ export default {
       failedToLoad: 'Failed to load dashboard statistics'
     },
 
+    // Cluster
+    cluster: {
+      title: 'Cluster Status',
+      description: 'Master-slave distributed deployment monitoring',
+      totalInstances: 'Total Instances',
+      masterSlaveCount: 'Master/Slave',
+      clusterMode: 'Cluster Mode',
+      clusterHealth: 'Cluster Health',
+      enabled: 'Enabled',
+      disabled: 'Disabled',
+      healthy: 'Healthy',
+      unhealthy: 'Unhealthy',
+      currentInstance: 'Current Instance',
+      master: 'Master',
+      slave: 'Slave',
+      standalone: 'Standalone',
+      instanceId: 'Instance ID',
+      hostname: 'Hostname',
+      ip: 'IP Address',
+      version: 'Version',
+      status: 'Status',
+      role: 'Role',
+      lastHeartbeat: 'Last Heartbeat',
+      runningTasks: 'Running Tasks',
+      allInstances: 'All Instances',
+      singleInstanceMode: 'Running in single instance mode, cluster features are disabled',
+      loadError: 'Failed to load cluster status',
+      masterNote: 'Master runs background tasks and does not receive traffic',
+      slaveNote: 'Slave handles traffic and does not run background tasks'
+    },
+
     backup: {
       title: 'Database Backup',
       description: 'Full database backup to S3-compatible storage with scheduled backup and restore',
