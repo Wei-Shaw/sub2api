@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
@@ -45,6 +46,41 @@ func (s *settingUpdateRepoStub) GetAll(ctx context.Context) (map[string]string, 
 REDACTED
 
 func (s *settingUpdateRepoStub) Delete(ctx context.Context, key string) error {
+	panic("unexpected Delete call")
+REDACTED
+
+type settingAntigravityUARepoStub struct {
+	values map[string]string
+REDACTED
+
+func (s *settingAntigravityUARepoStub) Get(ctx context.Context, key string) (*Setting, error) {
+	panic("unexpected Get call")
+REDACTED
+
+func (s *settingAntigravityUARepoStub) GetValue(ctx context.Context, key string) (string, error) {
+	if value, ok := s.values[key]; ok {
+		return value, nil
+REDACTED
+	return "", ErrSettingNotFound
+REDACTED
+
+func (s *settingAntigravityUARepoStub) Set(ctx context.Context, key, value string) error {
+	panic("unexpected Set call")
+REDACTED
+
+func (s *settingAntigravityUARepoStub) GetMultiple(ctx context.Context, keys []string) (map[string]string, error) {
+	panic("unexpected GetMultiple call")
+REDACTED
+
+func (s *settingAntigravityUARepoStub) SetMultiple(ctx context.Context, settings map[string]string) error {
+	panic("unexpected SetMultiple call")
+REDACTED
+
+func (s *settingAntigravityUARepoStub) GetAll(ctx context.Context) (map[string]string, error) {
+	panic("unexpected GetAll call")
+REDACTED
+
+func (s *settingAntigravityUARepoStub) Delete(ctx context.Context, key string) error {
 	panic("unexpected Delete call")
 REDACTED
 
@@ -241,6 +277,41 @@ REDACTED
 	require.Equal(t, "true", repo.updates[SettingPaymentVisibleMethodAlipayEnabled])
 	require.Equal(t, "false", repo.updates[SettingPaymentVisibleMethodWxpayEnabled])
 	require.Equal(t, "true", repo.updates[openAIAdvancedSchedulerSettingKey])
+REDACTED
+
+func TestSettingService_UpdateSettings_AntigravityUserAgentVersion(t *testing.T) {
+	repo := &settingUpdateRepoStub{REDACTED
+	svc := NewSettingService(repo, &config.Config{REDACTED)
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		AntigravityUserAgentVersion: "1.23.2",
+REDACTED)
+REDACTED
+	require.Equal(t, "1.23.2", repo.updates[SettingKeyAntigravityUserAgentVersion])
+REDACTED
+
+func TestSettingService_GetAntigravityUserAgentVersion_Precedence(t *testing.T) {
+	t.Run("后台设置优先", func(t *testing.T) {
+		svc := NewSettingService(&settingAntigravityUARepoStub{values: map[string]string{
+			SettingKeyAntigravityUserAgentVersion: "1.24.0",
+REDACTED &config.Config{REDACTED)
+
+		require.Equal(t, "1.24.0", svc.GetAntigravityUserAgentVersion(context.Background()))
+REDACTED)
+
+	t.Run("空值回退配置默认值", func(t *testing.T) {
+		svc := NewSettingService(&settingAntigravityUARepoStub{values: map[string]string{
+			SettingKeyAntigravityUserAgentVersion: "",
+REDACTED &config.Config{REDACTED)
+
+		require.Equal(t, antigravity.GetDefaultUserAgentVersion(), svc.GetAntigravityUserAgentVersion(context.Background()))
+REDACTED)
+
+	t.Run("缺失回退配置默认值", func(t *testing.T) {
+		svc := NewSettingService(&settingAntigravityUARepoStub{values: map[string]string{REDACTEDREDACTED, &config.Config{REDACTED)
+
+		require.Equal(t, antigravity.GetDefaultUserAgentVersion(), svc.GetAntigravityUserAgentVersion(context.Background()))
+REDACTED)
 REDACTED
 
 func TestSettingService_UpdateSettings_RejectsInvalidPaymentVisibleMethodSource(t *testing.T) {
