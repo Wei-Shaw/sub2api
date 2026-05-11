@@ -306,6 +306,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 		// hardcoded Antigravity rules.
 		gatewayService.SetCompatiblePlatformResolver(pluginManager.PlatformRegistry())
 		schedulerSnapshotService.SetCompatiblePlatformResolver(pluginManager.PlatformRegistry())
+		adminService.SetCompatiblePlatformResolver(pluginManager.PlatformRegistry())
 	}
 	pluginSettingsHandler := handler.ProvidePluginSettingsHandler(pluginSettingsService)
 	if pluginManager != nil {

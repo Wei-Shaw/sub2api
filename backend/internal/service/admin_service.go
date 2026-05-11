@@ -90,6 +90,10 @@ type AdminService interface {
 	BulkUpdateAccounts(ctx context.Context, input *BulkUpdateAccountsInput) (*BulkUpdateAccountsResult, error)
 	CheckMixedChannelRisk(ctx context.Context, currentAccountID int64, currentAccountPlatform string, groupIDs []int64) error
 
+	// SetCompatiblePlatformResolver wires a plugin-supplied resolver for
+	// group-platform compatibility checks. Pass nil to revert to the static fallback.
+	SetCompatiblePlatformResolver(r CompatiblePlatformResolver)
+
 	// Proxy management
 	ListProxies(ctx context.Context, page, pageSize int, protocol, status, search string, sortBy, sortOrder string) ([]Proxy, int64, error)
 	ListProxiesWithAccountCount(ctx context.Context, page, pageSize int, protocol, status, search string, sortBy, sortOrder string) ([]ProxyWithAccountCount, int64, error)
@@ -536,6 +540,7 @@ type adminServiceImpl struct {
 	defaultSubAssigner   DefaultSubscriptionAssigner
 	userSubRepo          UserSubscriptionRepository
 	privacyClientFactory PrivacyClientFactory
+	compatResolver       CompatiblePlatformResolver
 }
 
 type userGroupRateBatchReader interface {
@@ -580,7 +585,17 @@ func NewAdminService(
 		defaultSubAssigner:   defaultSubAssigner,
 		userSubRepo:          userSubRepo,
 		privacyClientFactory: privacyClientFactory,
+		compatResolver:       defaultCompatiblePlatformResolver(),
 	}
+}
+
+// SetCompatiblePlatformResolver wires a plugin-supplied resolver that
+// replaces the static fallback used for group-platform compatibility checks.
+func (s *adminServiceImpl) SetCompatiblePlatformResolver(r CompatiblePlatformResolver) {
+	if r == nil {
+		r = defaultCompatiblePlatformResolver()
+	}
+	s.compatResolver = r
 }
 
 // User management implementations
@@ -2364,15 +2379,13 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	groupIDs := input.GroupIDs
 	// 如果没有指定分组,自动绑定对应平台的默认分组
 	if len(groupIDs) == 0 && !input.SkipDefaultGroupBind {
-		defaultGroupName := input.Platform + "-default"
-		groups, err := s.groupRepo.ListActiveByPlatform(ctx, input.Platform)
-		if err == nil {
-			for _, g := range groups {
-				if g.Name == defaultGroupName {
-					groupIDs = []int64{g.ID}
-					break
-				}
-			}
+		groupIDs = s.resolveDefaultGroup(ctx, input.Platform)
+	}
+
+	// 校验分组平台兼容性
+	if len(groupIDs) > 0 {
+		if err := s.validateGroupPlatformCompatibility(ctx, input.Platform, groupIDs); err != nil {
+			return nil, err
 		}
 	}
 
@@ -2562,6 +2575,11 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			return nil, err
 		}
 
+		// 校验分组平台兼容性
+		if err := s.validateGroupPlatformCompatibility(ctx, account.Platform, *input.GroupIDs); err != nil {
+			return nil, err
+		}
+
 		// 检查混合渠道风险（除非用户已确认）
 		if !input.SkipMixedChannelCheck {
 			if err := s.checkMixedChannelRisk(ctx, account.ID, account.Platform, *input.GroupIDs); err != nil {
@@ -2615,11 +2633,12 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 		}
 	}
 
-	needMixedChannelCheck := input.GroupIDs != nil && !input.SkipMixedChannelCheck
+	needGroupCheck := input.GroupIDs != nil
+	needMixedChannelCheck := needGroupCheck && !input.SkipMixedChannelCheck
 
-	// 预加载账号平台信息（混合渠道检查需要）。
+	// 预加载账号平台信息（兼容性校验和混合渠道检查都需要）。
 	platformByID := map[int64]string{}
-	if needMixedChannelCheck {
+	if needGroupCheck {
 		accounts, err := s.accountRepo.GetByIDs(ctx, input.AccountIDs)
 		if err != nil {
 			return nil, err
@@ -2627,6 +2646,19 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 		for _, account := range accounts {
 			if account != nil {
 				platformByID[account.ID] = account.Platform
+			}
+		}
+	}
+
+	// 预检查分组平台兼容性：在任何写操作之前校验。
+	if needGroupCheck {
+		for _, accountID := range input.AccountIDs {
+			platform := platformByID[accountID]
+			if platform == "" {
+				continue
+			}
+			if err := s.validateGroupPlatformCompatibility(ctx, platform, *input.GroupIDs); err != nil {
+				return nil, fmt.Errorf("account %d: %w", accountID, err)
 			}
 		}
 	}
@@ -3381,53 +3413,68 @@ func (s *adminServiceImpl) probeProxyLatency(ctx context.Context, proxy *Proxy) 
 	})
 }
 
-// checkMixedChannelRisk 检查分组中是否存在混合渠道（Antigravity + Anthropic）
-// 如果存在混合，返回错误提示用户确认
+// checkMixedChannelRisk checks whether target groups contain accounts whose
+// gateway protocol is incompatible with the current account.  Two accounts are
+// considered compatible if they share the same platform or one declares
+// compatibility with the other's gateway protocol via CompatiblePlatformResolver.
 func (s *adminServiceImpl) checkMixedChannelRisk(ctx context.Context, currentAccountID int64, currentAccountPlatform string, groupIDs []int64) error {
-	// 判断当前账号的渠道类型（基于 platform 字段，而不是 type 字段）
-	currentPlatform := getAccountPlatform(currentAccountPlatform)
-	if currentPlatform == "" {
-		// 不是 Antigravity 或 Anthropic，无需检查
+	if currentAccountPlatform == "" {
 		return nil
 	}
-
-	// 检查每个分组中的其他账号
 	for _, groupID := range groupIDs {
-		accounts, err := s.accountRepo.ListByGroup(ctx, groupID)
-		if err != nil {
-			return fmt.Errorf("get accounts in group %d: %w", groupID, err)
-		}
-
-		// 检查是否存在不同渠道的账号
-		for _, account := range accounts {
-			if currentAccountID > 0 && account.ID == currentAccountID {
-				continue // 跳过当前账号
-			}
-
-			otherPlatform := getAccountPlatform(account.Platform)
-			if otherPlatform == "" {
-				continue // 不是 Antigravity 或 Anthropic，跳过
-			}
-
-			// 检测混合渠道
-			if currentPlatform != otherPlatform {
-				group, _ := s.groupRepo.GetByID(ctx, groupID)
-				groupName := fmt.Sprintf("Group %d", groupID)
-				if group != nil {
-					groupName = group.Name
-				}
-
-				return &MixedChannelError{
-					GroupID:         groupID,
-					GroupName:       groupName,
-					CurrentPlatform: currentPlatform,
-					OtherPlatform:   otherPlatform,
-				}
-			}
+		if err := s.checkGroupMixedRisk(ctx, currentAccountID, currentAccountPlatform, groupID); err != nil {
+			return err
 		}
 	}
-
 	return nil
+}
+
+// checkGroupMixedRisk checks a single group for incompatible accounts.
+func (s *adminServiceImpl) checkGroupMixedRisk(ctx context.Context, currentAccountID int64, currentPlatform string, groupID int64) error {
+	group, _ := s.groupRepo.GetByID(ctx, groupID)
+	groupPlatform := ""
+	groupName := fmt.Sprintf("Group %d", groupID)
+	if group != nil {
+		groupPlatform = group.Platform
+		groupName = group.Name
+	}
+
+	accounts, err := s.accountRepo.ListByGroup(ctx, groupID)
+	if err != nil {
+		return fmt.Errorf("get accounts in group %d: %w", groupID, err)
+	}
+
+	for _, account := range accounts {
+		if currentAccountID > 0 && account.ID == currentAccountID {
+			continue
+		}
+		if s.arePlatformsCompatible(currentPlatform, account.Platform, groupPlatform) {
+			continue
+		}
+		return &MixedChannelError{
+			GroupID:         groupID,
+			GroupName:       groupName,
+			CurrentPlatform: currentPlatform,
+			OtherPlatform:   account.Platform,
+		}
+	}
+	return nil
+}
+
+// arePlatformsCompatible returns true when two account platforms can coexist in
+// the same group.  They are compatible when they are the same, or both can
+// serve the group's gateway protocol according to CompatiblePlatformResolver.
+func (s *adminServiceImpl) arePlatformsCompatible(platformA, platformB, groupPlatform string) bool {
+	if platformA == platformB {
+		return true
+	}
+	// Both must be able to serve the group's gateway protocol.
+	if groupPlatform != "" && s.compatResolver != nil {
+		aOK := platformA == groupPlatform || s.compatResolver.SupportsProtocol(platformA, groupPlatform)
+		bOK := platformB == groupPlatform || s.compatResolver.SupportsProtocol(platformB, groupPlatform)
+		return aOK && bOK
+	}
+	return false
 }
 
 func (s *adminServiceImpl) validateGroupIDsExist(ctx context.Context, groupIDs []int64) error {
@@ -3457,6 +3504,101 @@ func (s *adminServiceImpl) validateGroupIDsExist(ctx context.Context, groupIDs [
 		}
 	}
 	return nil
+}
+
+// validateGroupPlatformCompatibility checks that accountPlatform is compatible
+// with every target group's platform.  Two platforms are compatible when they
+// are identical or the account's platform declares support for the group's
+// gateway protocol via CompatiblePlatformResolver.SupportsProtocol.
+func (s *adminServiceImpl) validateGroupPlatformCompatibility(ctx context.Context, accountPlatform string, groupIDs []int64) error {
+	if len(groupIDs) == 0 || accountPlatform == "" {
+		return nil
+	}
+	for _, gid := range groupIDs {
+		g, err := s.groupRepo.GetByID(ctx, gid)
+		if err != nil {
+			return fmt.Errorf("get group %d: %w", gid, err)
+		}
+		if s.isPlatformCompatibleWithGroup(accountPlatform, g.Platform) {
+			continue
+		}
+		return fmt.Errorf("platform %q is not compatible with group %q (platform %q)", accountPlatform, g.Name, g.Platform)
+	}
+	return nil
+}
+
+// isPlatformCompatibleWithGroup returns true when an account platform can be
+// scheduled through a group whose platform (gateway protocol) is groupPlatform.
+func (s *adminServiceImpl) isPlatformCompatibleWithGroup(accountPlatform, groupPlatform string) bool {
+	if accountPlatform == groupPlatform {
+		return true
+	}
+	if s.compatResolver != nil && s.compatResolver.SupportsProtocol(accountPlatform, groupPlatform) {
+		return true
+	}
+	return false
+}
+
+// resolveDefaultGroup finds the default group for the given account platform.
+// It first looks for "{platform}-default"; if not found and the platform
+// declares compatible gateways, it tries "{compatibleGateway}-default" as a
+// fallback.
+func (s *adminServiceImpl) resolveDefaultGroup(ctx context.Context, platform string) []int64 {
+	if gid := s.findDefaultGroupByPlatform(ctx, platform); gid > 0 {
+		return []int64{gid}
+	}
+	// Fallback: try compatible gateway platforms.
+	if s.compatResolver != nil {
+		for _, gw := range s.compatibleGatewaysFor(platform) {
+			if gid := s.findDefaultGroupByPlatform(ctx, gw); gid > 0 {
+				return []int64{gid}
+			}
+		}
+	}
+	return nil
+}
+
+// findDefaultGroupByPlatform scans active groups for one named "{platform}-default".
+func (s *adminServiceImpl) findDefaultGroupByPlatform(ctx context.Context, platform string) int64 {
+	defaultName := platform + "-default"
+	groups, err := s.groupRepo.ListActiveByPlatform(ctx, platform)
+	if err != nil {
+		return 0
+	}
+	for _, g := range groups {
+		if g.Name == defaultName {
+			return g.ID
+		}
+	}
+	return 0
+}
+
+// compatibleGatewaysFor returns the gateway protocols the platform supports.
+// It iterates known gateways from the resolver to find which ones the platform
+// is compatible with, providing a best-effort fallback list.
+func (s *adminServiceImpl) compatibleGatewaysFor(platform string) []string {
+	if s.compatResolver == nil {
+		return nil
+	}
+	// The CompatiblePlatformResolver interface does not expose a direct
+	// "platform -> gateways" lookup.  We check the well-known gateway list
+	// plus any gateways that list this platform as compatible.
+	var gateways []string
+	for _, gw := range knownGatewayProtocols {
+		if s.compatResolver.SupportsProtocol(platform, gw) {
+			gateways = append(gateways, gw)
+		}
+	}
+	return gateways
+}
+
+// knownGatewayProtocols enumerates the built-in gateway protocol identifiers
+// used to probe CompatiblePlatformResolver for fallback default-group lookup.
+var knownGatewayProtocols = []string{
+	PlatformAnthropic,
+	PlatformOpenAI,
+	PlatformGemini,
+	PlatformAntigravity,
 }
 
 // CheckMixedChannelRisk checks whether target groups contain mixed channels for the current account platform.
@@ -3531,18 +3673,6 @@ func (s *adminServiceImpl) saveProxyLatency(ctx context.Context, proxyID int64, 
 
 	if err := s.proxyLatencyCache.SetProxyLatency(ctx, proxyID, &merged); err != nil {
 		logger.LegacyPrintf("service.admin", "Warning: store proxy latency cache failed: %v", err)
-	}
-}
-
-// getAccountPlatform 根据账号 platform 判断混合渠道检查用的平台标识
-func getAccountPlatform(accountPlatform string) string {
-	switch strings.ToLower(strings.TrimSpace(accountPlatform)) {
-	case PlatformAntigravity:
-		return "Antigravity"
-	case PlatformAnthropic, "claude":
-		return "Anthropic"
-	default:
-		return ""
 	}
 }
 

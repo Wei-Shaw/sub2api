@@ -14,6 +14,7 @@ export interface PlatformDeclaration {
   test_config?: TestConnectionConfig
   privacy_states?: PrivacyStateDeclaration[]
   group_config?: GroupConfigDeclaration
+  compatible_gateways?: string[]
 }
 
 export interface AccountTypeDeclaration {

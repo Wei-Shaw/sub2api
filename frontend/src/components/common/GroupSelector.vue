@@ -65,7 +65,7 @@ import type { AdminGroup, GroupPlatform } from '@/types'
 import { usePlatforms } from '@/composables/usePlatforms'
 
 const { t } = useI18n()
-const { platforms } = usePlatforms()
+const { getPlatformDecl } = usePlatforms()
 
 interface Props {
   modelValue: number[]
@@ -82,18 +82,6 @@ const emit = defineEmits<{
   'update:modelValue': [value: number[]]
 }>()
 
-// Platforms compatible with antigravity mixed scheduling.
-// TODO: replace with plugin declaration compatible_platforms when available.
-const FALLBACK_MIXED_PLATFORMS = ['antigravity', 'anthropic', 'gemini']
-
-const mixedSchedulingPlatforms = computed<string[]>(() => {
-  // Read all known platform IDs dynamically; fall back to hardcoded list
-  if (platforms.value.length > 0) {
-    return platforms.value.map((p) => p.platform)
-  }
-  return FALLBACK_MIXED_PLATFORMS
-})
-
 const searchText = ref('')
 
 const isSearchable = computed(() => {
@@ -101,24 +89,20 @@ const isSearchable = computed(() => {
   return props.searchable
 })
 
-// Filter groups by platform if specified
+// Filter groups by platform if specified.
+// Uses compatible_gateways from the plugin declaration to determine
+// which additional group platforms are selectable.
 const filteredGroups = computed(() => {
   let result: AdminGroup[] = props.groups
   if (props.platform) {
-    // antigravity 账户启用混合调度后，可选择 anthropic/gemini 分组
-    if (props.platform === 'antigravity' && props.mixedScheduling) {
-      result = result.filter(
-        (g) => g.platform === 'antigravity' || g.platform === 'anthropic' || g.platform === 'gemini'
-      )
+    const decl = getPlatformDecl(props.platform)
+    const compatGateways = decl?.compatible_gateways ?? []
+    if (props.mixedScheduling && compatGateways.length > 0) {
+      const allowed = new Set([props.platform, ...compatGateways])
+      result = result.filter((g) => allowed.has(g.platform))
     } else {
-      // 默认：只能选择同 platform 的分组
       result = result.filter((g) => g.platform === props.platform)
     }
-  }
-  // 启用混合调度后，可选择 compatible 平台的分组
-  if (props.mixedScheduling) {
-    const allowed = new Set(mixedSchedulingPlatforms.value)
-    result = props.groups.filter((g) => allowed.has(g.platform))
   }
   if (isSearchable.value && searchText.value) {
     const q = searchText.value.toLowerCase()

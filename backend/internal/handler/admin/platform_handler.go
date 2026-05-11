@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 
-	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/plugin"
+	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
 
 	"github.com/gin-gonic/gin"
 )
@@ -58,12 +58,13 @@ type platformResponse struct {
 	PluginName  string `json:"plugin_name"`
 	SortOrder   int    `json:"sort_order"`
 
-	AccountTypes    []accountTypeResponse    `json:"account_types"`
-	CapacityDisplay *capacityDisplayResponse `json:"capacity_display,omitempty"`
-	UsageDisplay    *usageDisplayResponse    `json:"usage_display,omitempty"`
-	CustomActions   []customActionResponse   `json:"custom_actions,omitempty"`
-	TestConfig      *testConfigResponse      `json:"test_config,omitempty"`
-	PrivacyStates   []privacyStateResponse   `json:"privacy_states,omitempty"`
+	AccountTypes       []accountTypeResponse    `json:"account_types"`
+	CapacityDisplay    *capacityDisplayResponse `json:"capacity_display,omitempty"`
+	UsageDisplay       *usageDisplayResponse    `json:"usage_display,omitempty"`
+	CustomActions      []customActionResponse   `json:"custom_actions,omitempty"`
+	TestConfig         *testConfigResponse      `json:"test_config,omitempty"`
+	PrivacyStates      []privacyStateResponse   `json:"privacy_states,omitempty"`
+	CompatibleGateways []string                 `json:"compatible_gateways,omitempty"`
 }
 
 type accountTypeResponse struct {
@@ -115,12 +116,12 @@ type customActionResponse struct {
 }
 
 type testConfigResponse struct {
-	ModelSelector      bool               `json:"model_selector"`
-	TestComponentPath  string             `json:"test_component_path,omitempty"`
-	DefaultTestModel   string             `json:"default_test_model,omitempty"`
-	TestModes          []testModeOption   `json:"test_modes,omitempty"`
-	ImageModelPatterns []string           `json:"image_model_patterns,omitempty"`
-	PrioritizedModels  []string           `json:"prioritized_models,omitempty"`
+	ModelSelector      bool             `json:"model_selector"`
+	TestComponentPath  string           `json:"test_component_path,omitempty"`
+	DefaultTestModel   string           `json:"default_test_model,omitempty"`
+	TestModes          []testModeOption `json:"test_modes,omitempty"`
+	ImageModelPatterns []string         `json:"image_model_patterns,omitempty"`
+	PrioritizedModels  []string         `json:"prioritized_models,omitempty"`
 }
 
 type testModeOption struct {
@@ -194,6 +195,7 @@ func toPlatformResponse(e *plugin.RegisteredPlatform) platformResponse {
 			IsSet:       ps.IsSet,
 		})
 	}
+	r.CompatibleGateways = d.CompatibleGateways
 	return r
 }
 
