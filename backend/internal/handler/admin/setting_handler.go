@@ -26,6 +26,9 @@ var semverPattern = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 // menuItemIDPattern validates custom menu item IDs: alphanumeric, hyphens, underscores only.
 var menuItemIDPattern = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
+// publicPageSlugPattern must stay aligned with handler/page_handler.go validSlugPattern.
+var publicPageSlugPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
+
 // generateMenuItemID generates a short random hex ID for a custom menu item.
 func generateMenuItemID() (string, error) {
 	b := make([]byte, 8)
@@ -33,6 +36,11 @@ func generateMenuItemID() (string, error) {
 		return "", fmt.Errorf("generate menu item ID: %w", err)
 	}
 	return hex.EncodeToString(b), nil
+}
+
+func isValidPublicPageSlug(slug string) bool {
+	slug = strings.TrimSpace(slug)
+	return slug != "" && len(slug) <= 64 && publicPageSlugPattern.MatchString(slug)
 }
 
 func scopesContainOpenID(scopes string) bool {
@@ -1186,7 +1194,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				pageSlug = strings.TrimSpace(strings.TrimPrefix(trimmedURL, "md:"))
 				items[i].PageSlug = pageSlug
 			}
-			if pageSlug != "" && strings.ContainsAny(pageSlug, `/\ `) {
+			if pageSlug != "" && !isValidPublicPageSlug(pageSlug) {
 				response.BadRequest(c, "Custom menu item page_slug contains invalid characters")
 				return
 			}
