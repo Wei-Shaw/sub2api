@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix",
     "lint:check": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts",
-    "typecheck": "vue-tsc --noEmit",
+    "typecheck": "vue-tsc -b",
     "typecheck:wsl": "powershell -ExecutionPolicy Bypass -File ./tools/run-vue-tsc.ps1",
     "test": "vitest",
     "test:run": "vitest run",
