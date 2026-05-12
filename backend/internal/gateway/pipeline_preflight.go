@@ -99,6 +99,9 @@ func (p *GatewayPipeline) resolveChannelMapping(c *gin.Context, req *ForwardRequ
 		c.Request.Context(), req.GroupID, platform, req.Model,
 	)
 	req.ChannelMapping = &mapping
+	if mapping.Mapped {
+		req.ChannelMappedModel = mapping.MappedModel
+	}
 	return nil
 }
 

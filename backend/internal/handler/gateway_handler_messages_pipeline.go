@@ -170,12 +170,14 @@ func (h *GatewayHandler) buildMessagesParseFunc(
 		sessionHash := h.gatewayService.GenerateSessionHash(parsed)
 
 		req := &gateway.ForwardRequest{
-			Model:          parsed.Model,
-			Stream:         parsed.Stream,
-			RawBody:        body,
-			GinContext:     c,
-			MetadataUserID: parsed.MetadataUserID,
-			SessionHash:    sessionHash,
+			Model:              parsed.Model,
+			Stream:             parsed.Stream,
+			RawBody:            body,
+			GinContext:         c,
+			MetadataUserID:     parsed.MetadataUserID,
+			SessionHash:        sessionHash,
+			IsClaudeCodeClient: service.IsClaudeCodeClient(c.Request.Context()),
+			ThinkingEnabled:    parsed.ThinkingEnabled,
 		}
 		*fwdReqOut = req
 		return req, nil

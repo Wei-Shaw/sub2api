@@ -8281,8 +8281,32 @@ type GatewayForwardRequest struct {
 	// --- platform-specific ---
 	GeminiAction    string `protobuf:"bytes,15,opt,name=gemini_action,json=geminiAction,proto3" json:"gemini_action,omitempty"` // only when protocol == "gemini"
 	IsStickySession bool   `protobuf:"varint,16,opt,name=is_sticky_session,json=isStickySession,proto3" json:"is_sticky_session,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// client_headers carries the downstream client's HTTP headers
+	// (anthropic-beta, user-agent, content-type, x-api-key, etc.).
+	// Plugins use these to forward or inspect client-originated headers
+	// that are not part of the canonical upstream header set in `headers`.
+	ClientHeaders map[string]string `protobuf:"bytes,17,rep,name=client_headers,json=clientHeaders,proto3" json:"client_headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// is_claude_code_client is true when the request originates from a
+	// Claude Code CLI session (detected via user-agent + body heuristics).
+	IsClaudeCodeClient bool `protobuf:"varint,18,opt,name=is_claude_code_client,json=isClaudeCodeClient,proto3" json:"is_claude_code_client,omitempty"`
+	// thinking_enabled indicates whether extended thinking / chain-of-thought
+	// is enabled for this request (parsed from the request body).
+	ThinkingEnabled bool `protobuf:"varint,19,opt,name=thinking_enabled,json=thinkingEnabled,proto3" json:"thinking_enabled,omitempty"`
+	// prompt_cache_key is the OpenAI prompt cache key extracted from the
+	// request body or headers, used for session affinity.
+	PromptCacheKey string `protobuf:"bytes,20,opt,name=prompt_cache_key,json=promptCacheKey,proto3" json:"prompt_cache_key,omitempty"`
+	// channel_mapped_model is the model name after channel mapping has been
+	// applied by the host pipeline. Empty when no mapping is active.
+	ChannelMappedModel string `protobuf:"bytes,21,opt,name=channel_mapped_model,json=channelMappedModel,proto3" json:"channel_mapped_model,omitempty"`
+	// force_cache_billing is set when a failover occurs after billing was
+	// already consumed, forcing input_tokens to be billed as cache_read.
+	ForceCacheBilling bool `protobuf:"varint,22,opt,name=force_cache_billing,json=forceCacheBilling,proto3" json:"force_cache_billing,omitempty"`
+	// images_request_json carries the JSON-encoded OpenAI Images request
+	// metadata (endpoint, model, multipart data, capability). Only set
+	// when protocol == "images".
+	ImagesRequestJson []byte `protobuf:"bytes,23,opt,name=images_request_json,json=imagesRequestJson,proto3" json:"images_request_json,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *GatewayForwardRequest) Reset() {
@@ -8425,6 +8449,55 @@ func (x *GatewayForwardRequest) GetIsStickySession() bool {
 		return x.IsStickySession
 	}
 	return false
+}
+
+func (x *GatewayForwardRequest) GetClientHeaders() map[string]string {
+	if x != nil {
+		return x.ClientHeaders
+	}
+	return nil
+}
+
+func (x *GatewayForwardRequest) GetIsClaudeCodeClient() bool {
+	if x != nil {
+		return x.IsClaudeCodeClient
+	}
+	return false
+}
+
+func (x *GatewayForwardRequest) GetThinkingEnabled() bool {
+	if x != nil {
+		return x.ThinkingEnabled
+	}
+	return false
+}
+
+func (x *GatewayForwardRequest) GetPromptCacheKey() string {
+	if x != nil {
+		return x.PromptCacheKey
+	}
+	return ""
+}
+
+func (x *GatewayForwardRequest) GetChannelMappedModel() string {
+	if x != nil {
+		return x.ChannelMappedModel
+	}
+	return ""
+}
+
+func (x *GatewayForwardRequest) GetForceCacheBilling() bool {
+	if x != nil {
+		return x.ForceCacheBilling
+	}
+	return false
+}
+
+func (x *GatewayForwardRequest) GetImagesRequestJson() []byte {
+	if x != nil {
+		return x.ImagesRequestJson
+	}
+	return nil
 }
 
 // GatewayAccountInfo carries the account credentials and metadata the
@@ -8857,8 +8930,13 @@ type GatewayForwardResult struct {
 	// Client behaviour
 	ClientDisconnect bool `protobuf:"varint,20,opt,name=client_disconnect,json=clientDisconnect,proto3" json:"client_disconnect,omitempty"`
 	// Image generation billing fields
-	ImageCount    int32  `protobuf:"varint,21,opt,name=image_count,json=imageCount,proto3" json:"image_count,omitempty"`
-	ImageSize     string `protobuf:"bytes,22,opt,name=image_size,json=imageSize,proto3" json:"image_size,omitempty"` // "1K" / "2K" / "4K"
+	ImageCount int32  `protobuf:"varint,21,opt,name=image_count,json=imageCount,proto3" json:"image_count,omitempty"`
+	ImageSize  string `protobuf:"bytes,22,opt,name=image_size,json=imageSize,proto3" json:"image_size,omitempty"` // "1K" / "2K" / "4K"
+	// upstream_error carries structured error information when the upstream
+	// returned an error. Non-nil means the forward encountered an upstream
+	// error; the host uses the structured fields to decide failover strategy
+	// without parsing error strings.
+	UpstreamError *GatewayUpstreamError `protobuf:"bytes,30,opt,name=upstream_error,json=upstreamError,proto3" json:"upstream_error,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -8991,6 +9069,110 @@ func (x *GatewayForwardResult) GetImageSize() string {
 	return ""
 }
 
+func (x *GatewayForwardResult) GetUpstreamError() *GatewayUpstreamError {
+	if x != nil {
+		return x.UpstreamError
+	}
+	return nil
+}
+
+// GatewayUpstreamError carries structured error information from the
+// upstream API. This replaces string-based error signalling in
+// GatewayResponseDone.error, giving the host enough detail to make
+// failover decisions without parsing free-form error strings.
+type GatewayUpstreamError struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// status_code is the upstream HTTP response status code (e.g. 429, 503).
+	StatusCode int32 `protobuf:"varint,1,opt,name=status_code,json=statusCode,proto3" json:"status_code,omitempty"`
+	// retry_on_same_account indicates a transient error (e.g. Google
+	// intermittent 400, empty response) where retrying on the same account
+	// may succeed. Maps to UpstreamFailoverError.RetryableOnSameAccount.
+	RetryOnSameAccount bool `protobuf:"varint,2,opt,name=retry_on_same_account,json=retryOnSameAccount,proto3" json:"retry_on_same_account,omitempty"`
+	// force_cache_billing signals that input tokens should be re-billed as
+	// cache_read tokens (e.g. Antigravity sticky session account switch).
+	// Maps to UpstreamFailoverError.ForceCacheBilling.
+	ForceCacheBilling bool `protobuf:"varint,3,opt,name=force_cache_billing,json=forceCacheBilling,proto3" json:"force_cache_billing,omitempty"`
+	// error_type classifies the error for routing decisions:
+	//   "rate_limit"   — upstream 429
+	//   "overloaded"   — upstream 529 / 503
+	//   "auth_error"   — upstream 401 / 403
+	//   "server_error" — upstream 500 / 502 / 504
+	//   "prompt_too_long" — input exceeded upstream limits
+	//   ""             — unclassified
+	ErrorType string `protobuf:"bytes,4,opt,name=error_type,json=errorType,proto3" json:"error_type,omitempty"`
+	// response_body is the raw upstream error response body (truncated to
+	// a reasonable size by the plugin). Used by the host for error
+	// passthrough rule matching.
+	ResponseBody  []byte `protobuf:"bytes,5,opt,name=response_body,json=responseBody,proto3" json:"response_body,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GatewayUpstreamError) Reset() {
+	*x = GatewayUpstreamError{}
+	mi := &file_sdk_proto_msgTypes[128]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GatewayUpstreamError) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GatewayUpstreamError) ProtoMessage() {}
+
+func (x *GatewayUpstreamError) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[128]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GatewayUpstreamError.ProtoReflect.Descriptor instead.
+func (*GatewayUpstreamError) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{128}
+}
+
+func (x *GatewayUpstreamError) GetStatusCode() int32 {
+	if x != nil {
+		return x.StatusCode
+	}
+	return 0
+}
+
+func (x *GatewayUpstreamError) GetRetryOnSameAccount() bool {
+	if x != nil {
+		return x.RetryOnSameAccount
+	}
+	return false
+}
+
+func (x *GatewayUpstreamError) GetForceCacheBilling() bool {
+	if x != nil {
+		return x.ForceCacheBilling
+	}
+	return false
+}
+
+func (x *GatewayUpstreamError) GetErrorType() string {
+	if x != nil {
+		return x.ErrorType
+	}
+	return ""
+}
+
+func (x *GatewayUpstreamError) GetResponseBody() []byte {
+	if x != nil {
+		return x.ResponseBody
+	}
+	return nil
+}
+
 // GatewayFailoverRequest is sent to ShouldFailover after a forward failure.
 // It carries the request context and the error that caused the failure so
 // the plugin can decide whether to retry with another account.
@@ -9005,7 +9187,7 @@ type GatewayFailoverRequest struct {
 
 func (x *GatewayFailoverRequest) Reset() {
 	*x = GatewayFailoverRequest{}
-	mi := &file_sdk_proto_msgTypes[128]
+	mi := &file_sdk_proto_msgTypes[129]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9017,7 +9199,7 @@ func (x *GatewayFailoverRequest) String() string {
 func (*GatewayFailoverRequest) ProtoMessage() {}
 
 func (x *GatewayFailoverRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[128]
+	mi := &file_sdk_proto_msgTypes[129]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9030,7 +9212,7 @@ func (x *GatewayFailoverRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GatewayFailoverRequest.ProtoReflect.Descriptor instead.
 func (*GatewayFailoverRequest) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{128}
+	return file_sdk_proto_rawDescGZIP(), []int{129}
 }
 
 func (x *GatewayFailoverRequest) GetRequest() *GatewayForwardRequest {
@@ -9065,7 +9247,7 @@ type GatewayFailoverResponse struct {
 
 func (x *GatewayFailoverResponse) Reset() {
 	*x = GatewayFailoverResponse{}
-	mi := &file_sdk_proto_msgTypes[129]
+	mi := &file_sdk_proto_msgTypes[130]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9077,7 +9259,7 @@ func (x *GatewayFailoverResponse) String() string {
 func (*GatewayFailoverResponse) ProtoMessage() {}
 
 func (x *GatewayFailoverResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[129]
+	mi := &file_sdk_proto_msgTypes[130]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9090,7 +9272,7 @@ func (x *GatewayFailoverResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GatewayFailoverResponse.ProtoReflect.Descriptor instead.
 func (*GatewayFailoverResponse) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{129}
+	return file_sdk_proto_rawDescGZIP(), []int{130}
 }
 
 func (x *GatewayFailoverResponse) GetShouldFailover() bool {
@@ -9098,6 +9280,230 @@ func (x *GatewayFailoverResponse) GetShouldFailover() bool {
 		return x.ShouldFailover
 	}
 	return false
+}
+
+type GetAccessTokenRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AccountId     int64                  `protobuf:"varint,1,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetAccessTokenRequest) Reset() {
+	*x = GetAccessTokenRequest{}
+	mi := &file_sdk_proto_msgTypes[131]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetAccessTokenRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetAccessTokenRequest) ProtoMessage() {}
+
+func (x *GetAccessTokenRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[131]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetAccessTokenRequest.ProtoReflect.Descriptor instead.
+func (*GetAccessTokenRequest) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{131}
+}
+
+func (x *GetAccessTokenRequest) GetAccountId() int64 {
+	if x != nil {
+		return x.AccountId
+	}
+	return 0
+}
+
+type GetAccessTokenResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// access_token is the bearer token or API key to use.
+	AccessToken string `protobuf:"bytes,1,opt,name=access_token,json=accessToken,proto3" json:"access_token,omitempty"`
+	// token_type describes how to use the token: "bearer" means
+	// Authorization: Bearer <token>; "api-key" means x-api-key: <token>.
+	TokenType string `protobuf:"bytes,2,opt,name=token_type,json=tokenType,proto3" json:"token_type,omitempty"`
+	// extra_headers are additional headers the host requires on the upstream
+	// request (e.g. anthropic-beta, x-org-id). The plugin should merge
+	// these into its outgoing request headers.
+	ExtraHeaders  map[string]string `protobuf:"bytes,3,rep,name=extra_headers,json=extraHeaders,proto3" json:"extra_headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetAccessTokenResponse) Reset() {
+	*x = GetAccessTokenResponse{}
+	mi := &file_sdk_proto_msgTypes[132]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetAccessTokenResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetAccessTokenResponse) ProtoMessage() {}
+
+func (x *GetAccessTokenResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[132]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetAccessTokenResponse.ProtoReflect.Descriptor instead.
+func (*GetAccessTokenResponse) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{132}
+}
+
+func (x *GetAccessTokenResponse) GetAccessToken() string {
+	if x != nil {
+		return x.AccessToken
+	}
+	return ""
+}
+
+func (x *GetAccessTokenResponse) GetTokenType() string {
+	if x != nil {
+		return x.TokenType
+	}
+	return ""
+}
+
+func (x *GetAccessTokenResponse) GetExtraHeaders() map[string]string {
+	if x != nil {
+		return x.ExtraHeaders
+	}
+	return nil
+}
+
+type ReportOpsErrorRequest struct {
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	RequestId    string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	AccountId    int64                  `protobuf:"varint,2,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	StatusCode   int32                  `protobuf:"varint,3,opt,name=status_code,json=statusCode,proto3" json:"status_code,omitempty"`
+	ErrorMessage string                 `protobuf:"bytes,4,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
+	// error_type classifies the error for dashboard filtering:
+	// "rate_limit", "overloaded", "auth_error", "server_error", etc.
+	ErrorType     string `protobuf:"bytes,5,opt,name=error_type,json=errorType,proto3" json:"error_type,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReportOpsErrorRequest) Reset() {
+	*x = ReportOpsErrorRequest{}
+	mi := &file_sdk_proto_msgTypes[133]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReportOpsErrorRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReportOpsErrorRequest) ProtoMessage() {}
+
+func (x *ReportOpsErrorRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[133]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReportOpsErrorRequest.ProtoReflect.Descriptor instead.
+func (*ReportOpsErrorRequest) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{133}
+}
+
+func (x *ReportOpsErrorRequest) GetRequestId() string {
+	if x != nil {
+		return x.RequestId
+	}
+	return ""
+}
+
+func (x *ReportOpsErrorRequest) GetAccountId() int64 {
+	if x != nil {
+		return x.AccountId
+	}
+	return 0
+}
+
+func (x *ReportOpsErrorRequest) GetStatusCode() int32 {
+	if x != nil {
+		return x.StatusCode
+	}
+	return 0
+}
+
+func (x *ReportOpsErrorRequest) GetErrorMessage() string {
+	if x != nil {
+		return x.ErrorMessage
+	}
+	return ""
+}
+
+func (x *ReportOpsErrorRequest) GetErrorType() string {
+	if x != nil {
+		return x.ErrorType
+	}
+	return ""
+}
+
+type ReportOpsErrorResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReportOpsErrorResponse) Reset() {
+	*x = ReportOpsErrorResponse{}
+	mi := &file_sdk_proto_msgTypes[134]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReportOpsErrorResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReportOpsErrorResponse) ProtoMessage() {}
+
+func (x *ReportOpsErrorResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[134]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReportOpsErrorResponse.ProtoReflect.Descriptor instead.
+func (*ReportOpsErrorResponse) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{134}
 }
 
 var File_sdk_proto protoreflect.FileDescriptor
@@ -9762,7 +10168,7 @@ const file_sdk_proto_rawDesc = "" +
 	"\x1aprocessed_group_extra_json\x18\x03 \x01(\fR\x17processedGroupExtraJson\x1a>\n" +
 	"\x10FieldErrorsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xfa\x04\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xb2\b\n" +
 	"\x15GatewayForwardRequest\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x14\n" +
@@ -9781,8 +10187,18 @@ const file_sdk_proto_rawDesc = "" +
 	"\auser_id\x18\r \x01(\x03R\x06userId\x12!\n" +
 	"\fswitch_count\x18\x0e \x01(\x05R\vswitchCount\x12#\n" +
 	"\rgemini_action\x18\x0f \x01(\tR\fgeminiAction\x12*\n" +
-	"\x11is_sticky_session\x18\x10 \x01(\bR\x0fisStickySession\x1a:\n" +
+	"\x11is_sticky_session\x18\x10 \x01(\bR\x0fisStickySession\x12Z\n" +
+	"\x0eclient_headers\x18\x11 \x03(\v23.pluginsdk.GatewayForwardRequest.ClientHeadersEntryR\rclientHeaders\x121\n" +
+	"\x15is_claude_code_client\x18\x12 \x01(\bR\x12isClaudeCodeClient\x12)\n" +
+	"\x10thinking_enabled\x18\x13 \x01(\bR\x0fthinkingEnabled\x12(\n" +
+	"\x10prompt_cache_key\x18\x14 \x01(\tR\x0epromptCacheKey\x120\n" +
+	"\x14channel_mapped_model\x18\x15 \x01(\tR\x12channelMappedModel\x12.\n" +
+	"\x13force_cache_billing\x18\x16 \x01(\bR\x11forceCacheBilling\x12.\n" +
+	"\x13images_request_json\x18\x17 \x01(\fR\x11imagesRequestJson\x1a:\n" +
 	"\fHeadersEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a@\n" +
+	"\x12ClientHeadersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xd0\x01\n" +
 	"\x12GatewayAccountInfo\x12\x1d\n" +
@@ -9816,7 +10232,7 @@ const file_sdk_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"d\n" +
 	"\x13GatewayResponseDone\x127\n" +
 	"\x06result\x18\x01 \x01(\v2\x1f.pluginsdk.GatewayForwardResultR\x06result\x12\x14\n" +
-	"\x05error\x18\x02 \x01(\tR\x05error\"\x96\x04\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error\"\xde\x04\n" +
 	"\x14GatewayForwardResult\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x14\n" +
@@ -9836,14 +10252,45 @@ const file_sdk_proto_rawDesc = "" +
 	"\vimage_count\x18\x15 \x01(\x05R\n" +
 	"imageCount\x12\x1d\n" +
 	"\n" +
-	"image_size\x18\x16 \x01(\tR\timageSize\"\x98\x01\n" +
+	"image_size\x18\x16 \x01(\tR\timageSize\x12F\n" +
+	"\x0eupstream_error\x18\x1e \x01(\v2\x1f.pluginsdk.GatewayUpstreamErrorR\rupstreamError\"\xde\x01\n" +
+	"\x14GatewayUpstreamError\x12\x1f\n" +
+	"\vstatus_code\x18\x01 \x01(\x05R\n" +
+	"statusCode\x121\n" +
+	"\x15retry_on_same_account\x18\x02 \x01(\bR\x12retryOnSameAccount\x12.\n" +
+	"\x13force_cache_billing\x18\x03 \x01(\bR\x11forceCacheBilling\x12\x1d\n" +
+	"\n" +
+	"error_type\x18\x04 \x01(\tR\terrorType\x12#\n" +
+	"\rresponse_body\x18\x05 \x01(\fR\fresponseBody\"\x98\x01\n" +
 	"\x16GatewayFailoverRequest\x12:\n" +
 	"\arequest\x18\x01 \x01(\v2 .pluginsdk.GatewayForwardRequestR\arequest\x12#\n" +
 	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage\x12\x1d\n" +
 	"\n" +
 	"error_type\x18\x03 \x01(\tR\terrorType\"B\n" +
 	"\x17GatewayFailoverResponse\x12'\n" +
-	"\x0fshould_failover\x18\x01 \x01(\bR\x0eshouldFailover2\xa9\x03\n" +
+	"\x0fshould_failover\x18\x01 \x01(\bR\x0eshouldFailover\"6\n" +
+	"\x15GetAccessTokenRequest\x12\x1d\n" +
+	"\n" +
+	"account_id\x18\x01 \x01(\x03R\taccountId\"\xf5\x01\n" +
+	"\x16GetAccessTokenResponse\x12!\n" +
+	"\faccess_token\x18\x01 \x01(\tR\vaccessToken\x12\x1d\n" +
+	"\n" +
+	"token_type\x18\x02 \x01(\tR\ttokenType\x12X\n" +
+	"\rextra_headers\x18\x03 \x03(\v23.pluginsdk.GetAccessTokenResponse.ExtraHeadersEntryR\fextraHeaders\x1a?\n" +
+	"\x11ExtraHeadersEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xba\x01\n" +
+	"\x15ReportOpsErrorRequest\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x01 \x01(\tR\trequestId\x12\x1d\n" +
+	"\n" +
+	"account_id\x18\x02 \x01(\x03R\taccountId\x12\x1f\n" +
+	"\vstatus_code\x18\x03 \x01(\x05R\n" +
+	"statusCode\x12#\n" +
+	"\rerror_message\x18\x04 \x01(\tR\ferrorMessage\x12\x1d\n" +
+	"\n" +
+	"error_type\x18\x05 \x01(\tR\terrorType\"\x18\n" +
+	"\x16ReportOpsErrorResponse2\xa9\x03\n" +
 	"\bSQLProxy\x126\n" +
 	"\x05Query\x12\x15.pluginsdk.SQLRequest\x1a\x16.pluginsdk.SQLResponse\x126\n" +
 	"\x04Exec\x12\x15.pluginsdk.SQLRequest\x1a\x17.pluginsdk.ExecResponse\x12;\n" +
@@ -9921,7 +10368,10 @@ const file_sdk_proto_rawDesc = "" +
 	"\x13ValidateGroupConfig\x12%.pluginsdk.ValidateGroupConfigRequest\x1a&.pluginsdk.ValidateGroupConfigResponse2\xc2\x01\n" +
 	"\x18GatewayProviderExtension\x12M\n" +
 	"\aForward\x12 .pluginsdk.GatewayForwardRequest\x1a\x1e.pluginsdk.GatewayForwardChunk0\x01\x12W\n" +
-	"\x0eShouldFailover\x12!.pluginsdk.GatewayFailoverRequest\x1a\".pluginsdk.GatewayFailoverResponseB8Z6github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdkb\x06proto3"
+	"\x0eShouldFailover\x12!.pluginsdk.GatewayFailoverRequest\x1a\".pluginsdk.GatewayFailoverResponse2\xc3\x01\n" +
+	"\x13GatewayHostCallback\x12U\n" +
+	"\x0eGetAccessToken\x12 .pluginsdk.GetAccessTokenRequest\x1a!.pluginsdk.GetAccessTokenResponse\x12U\n" +
+	"\x0eReportOpsError\x12 .pluginsdk.ReportOpsErrorRequest\x1a!.pluginsdk.ReportOpsErrorResponseB8Z6github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdkb\x06proto3"
 
 var (
 	file_sdk_proto_rawDescOnce sync.Once
@@ -9936,7 +10386,7 @@ func file_sdk_proto_rawDescGZIP() []byte {
 }
 
 var file_sdk_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_sdk_proto_msgTypes = make([]protoimpl.MessageInfo, 140)
+var file_sdk_proto_msgTypes = make([]protoimpl.MessageInfo, 147)
 var file_sdk_proto_goTypes = []any{
 	(PricingOverrideEvent_Op)(0),            // 0: pluginsdk.PricingOverrideEvent.Op
 	(*LogRecord)(nil),                       // 1: pluginsdk.LogRecord
@@ -10067,19 +10517,26 @@ var file_sdk_proto_goTypes = []any{
 	(*GatewayResponseTrailers)(nil),         // 126: pluginsdk.GatewayResponseTrailers
 	(*GatewayResponseDone)(nil),             // 127: pluginsdk.GatewayResponseDone
 	(*GatewayForwardResult)(nil),            // 128: pluginsdk.GatewayForwardResult
-	(*GatewayFailoverRequest)(nil),          // 129: pluginsdk.GatewayFailoverRequest
-	(*GatewayFailoverResponse)(nil),         // 130: pluginsdk.GatewayFailoverResponse
-	nil,                                     // 131: pluginsdk.RedisMapResponse.FieldsEntry
-	nil,                                     // 132: pluginsdk.ValidateAccountDataResponse.FieldErrorsEntry
-	nil,                                     // 133: pluginsdk.GetSchedulingHintsResponse.HintsEntry
-	nil,                                     // 134: pluginsdk.GenerateAuthURLRequest.ParamsEntry
-	nil,                                     // 135: pluginsdk.ExchangeOAuthCodeRequest.ParamsEntry
-	nil,                                     // 136: pluginsdk.ValidateRefreshTokenRequest.ParamsEntry
-	nil,                                     // 137: pluginsdk.ValidateGroupConfigResponse.FieldErrorsEntry
-	nil,                                     // 138: pluginsdk.GatewayForwardRequest.HeadersEntry
-	nil,                                     // 139: pluginsdk.GatewayResponseHeaders.HeadersEntry
-	nil,                                     // 140: pluginsdk.GatewayResponseTrailers.TrailersEntry
-	(*emptypb.Empty)(nil),                   // 141: google.protobuf.Empty
+	(*GatewayUpstreamError)(nil),            // 129: pluginsdk.GatewayUpstreamError
+	(*GatewayFailoverRequest)(nil),          // 130: pluginsdk.GatewayFailoverRequest
+	(*GatewayFailoverResponse)(nil),         // 131: pluginsdk.GatewayFailoverResponse
+	(*GetAccessTokenRequest)(nil),           // 132: pluginsdk.GetAccessTokenRequest
+	(*GetAccessTokenResponse)(nil),          // 133: pluginsdk.GetAccessTokenResponse
+	(*ReportOpsErrorRequest)(nil),           // 134: pluginsdk.ReportOpsErrorRequest
+	(*ReportOpsErrorResponse)(nil),          // 135: pluginsdk.ReportOpsErrorResponse
+	nil,                                     // 136: pluginsdk.RedisMapResponse.FieldsEntry
+	nil,                                     // 137: pluginsdk.ValidateAccountDataResponse.FieldErrorsEntry
+	nil,                                     // 138: pluginsdk.GetSchedulingHintsResponse.HintsEntry
+	nil,                                     // 139: pluginsdk.GenerateAuthURLRequest.ParamsEntry
+	nil,                                     // 140: pluginsdk.ExchangeOAuthCodeRequest.ParamsEntry
+	nil,                                     // 141: pluginsdk.ValidateRefreshTokenRequest.ParamsEntry
+	nil,                                     // 142: pluginsdk.ValidateGroupConfigResponse.FieldErrorsEntry
+	nil,                                     // 143: pluginsdk.GatewayForwardRequest.HeadersEntry
+	nil,                                     // 144: pluginsdk.GatewayForwardRequest.ClientHeadersEntry
+	nil,                                     // 145: pluginsdk.GatewayResponseHeaders.HeadersEntry
+	nil,                                     // 146: pluginsdk.GatewayResponseTrailers.TrailersEntry
+	nil,                                     // 147: pluginsdk.GetAccessTokenResponse.ExtraHeadersEntry
+	(*emptypb.Empty)(nil),                   // 148: google.protobuf.Empty
 }
 var file_sdk_proto_depIdxs = []int32{
 	2,   // 0: pluginsdk.LogRecord.attrs:type_name -> pluginsdk.LogAttr
@@ -10087,7 +10544,7 @@ var file_sdk_proto_depIdxs = []int32{
 	9,   // 2: pluginsdk.TxSQLRequest.args:type_name -> pluginsdk.SQLValue
 	11,  // 3: pluginsdk.SQLResponse.rows:type_name -> pluginsdk.SQLRow
 	9,   // 4: pluginsdk.SQLRow.values:type_name -> pluginsdk.SQLValue
-	131, // 5: pluginsdk.RedisMapResponse.fields:type_name -> pluginsdk.RedisMapResponse.FieldsEntry
+	136, // 5: pluginsdk.RedisMapResponse.fields:type_name -> pluginsdk.RedisMapResponse.FieldsEntry
 	26,  // 6: pluginsdk.DoReply.array:type_name -> pluginsdk.DoReply
 	35,  // 7: pluginsdk.JobMessage.register:type_name -> pluginsdk.JobRegistration
 	38,  // 8: pluginsdk.JobMessage.ack:type_name -> pluginsdk.JobAck
@@ -10110,150 +10567,157 @@ var file_sdk_proto_depIdxs = []int32{
 	65,  // 25: pluginsdk.AdjustCostResponse.final_cost:type_name -> pluginsdk.PricingCostBreakdown
 	66,  // 26: pluginsdk.ResolveAccountStatsCostRequest.tokens:type_name -> pluginsdk.PricingUsageTokens
 	71,  // 27: pluginsdk.RunMaintenanceResponse.results:type_name -> pluginsdk.MaintenanceTaskResult
-	132, // 28: pluginsdk.ValidateAccountDataResponse.field_errors:type_name -> pluginsdk.ValidateAccountDataResponse.FieldErrorsEntry
+	137, // 28: pluginsdk.ValidateAccountDataResponse.field_errors:type_name -> pluginsdk.ValidateAccountDataResponse.FieldErrorsEntry
 	96,  // 29: pluginsdk.GetAvailableModelsResponse.models:type_name -> pluginsdk.AvailableModelInfo
 	102, // 30: pluginsdk.GetSchedulingHintsRequest.accounts:type_name -> pluginsdk.SchedulingHintAccount
-	133, // 31: pluginsdk.GetSchedulingHintsResponse.hints:type_name -> pluginsdk.GetSchedulingHintsResponse.HintsEntry
-	134, // 32: pluginsdk.GenerateAuthURLRequest.params:type_name -> pluginsdk.GenerateAuthURLRequest.ParamsEntry
-	135, // 33: pluginsdk.ExchangeOAuthCodeRequest.params:type_name -> pluginsdk.ExchangeOAuthCodeRequest.ParamsEntry
-	136, // 34: pluginsdk.ValidateRefreshTokenRequest.params:type_name -> pluginsdk.ValidateRefreshTokenRequest.ParamsEntry
-	137, // 35: pluginsdk.ValidateGroupConfigResponse.field_errors:type_name -> pluginsdk.ValidateGroupConfigResponse.FieldErrorsEntry
+	138, // 31: pluginsdk.GetSchedulingHintsResponse.hints:type_name -> pluginsdk.GetSchedulingHintsResponse.HintsEntry
+	139, // 32: pluginsdk.GenerateAuthURLRequest.params:type_name -> pluginsdk.GenerateAuthURLRequest.ParamsEntry
+	140, // 33: pluginsdk.ExchangeOAuthCodeRequest.params:type_name -> pluginsdk.ExchangeOAuthCodeRequest.ParamsEntry
+	141, // 34: pluginsdk.ValidateRefreshTokenRequest.params:type_name -> pluginsdk.ValidateRefreshTokenRequest.ParamsEntry
+	142, // 35: pluginsdk.ValidateGroupConfigResponse.field_errors:type_name -> pluginsdk.ValidateGroupConfigResponse.FieldErrorsEntry
 	122, // 36: pluginsdk.GatewayForwardRequest.account:type_name -> pluginsdk.GatewayAccountInfo
-	138, // 37: pluginsdk.GatewayForwardRequest.headers:type_name -> pluginsdk.GatewayForwardRequest.HeadersEntry
-	124, // 38: pluginsdk.GatewayForwardChunk.headers:type_name -> pluginsdk.GatewayResponseHeaders
-	125, // 39: pluginsdk.GatewayForwardChunk.body:type_name -> pluginsdk.GatewayResponseBody
-	126, // 40: pluginsdk.GatewayForwardChunk.trailers:type_name -> pluginsdk.GatewayResponseTrailers
-	127, // 41: pluginsdk.GatewayForwardChunk.done:type_name -> pluginsdk.GatewayResponseDone
-	139, // 42: pluginsdk.GatewayResponseHeaders.headers:type_name -> pluginsdk.GatewayResponseHeaders.HeadersEntry
-	140, // 43: pluginsdk.GatewayResponseTrailers.trailers:type_name -> pluginsdk.GatewayResponseTrailers.TrailersEntry
-	128, // 44: pluginsdk.GatewayResponseDone.result:type_name -> pluginsdk.GatewayForwardResult
-	121, // 45: pluginsdk.GatewayFailoverRequest.request:type_name -> pluginsdk.GatewayForwardRequest
-	104, // 46: pluginsdk.GetSchedulingHintsResponse.HintsEntry.value:type_name -> pluginsdk.SchedulingHint
-	4,   // 47: pluginsdk.SQLProxy.Query:input_type -> pluginsdk.SQLRequest
-	4,   // 48: pluginsdk.SQLProxy.Exec:input_type -> pluginsdk.SQLRequest
-	6,   // 49: pluginsdk.SQLProxy.BeginTx:input_type -> pluginsdk.BeginTxRequest
-	5,   // 50: pluginsdk.SQLProxy.TxQuery:input_type -> pluginsdk.TxSQLRequest
-	5,   // 51: pluginsdk.SQLProxy.TxExec:input_type -> pluginsdk.TxSQLRequest
-	8,   // 52: pluginsdk.SQLProxy.CommitTx:input_type -> pluginsdk.TxIDRequest
-	8,   // 53: pluginsdk.SQLProxy.RollbackTx:input_type -> pluginsdk.TxIDRequest
-	25,  // 54: pluginsdk.RedisProxy.Do:input_type -> pluginsdk.DoRequest
-	13,  // 55: pluginsdk.RedisProxy.Get:input_type -> pluginsdk.RedisKeyRequest
-	15,  // 56: pluginsdk.RedisProxy.Set:input_type -> pluginsdk.RedisSetRequest
-	16,  // 57: pluginsdk.RedisProxy.SetEx:input_type -> pluginsdk.RedisSetExRequest
-	17,  // 58: pluginsdk.RedisProxy.Del:input_type -> pluginsdk.RedisDelRequest
-	18,  // 59: pluginsdk.RedisProxy.HGet:input_type -> pluginsdk.RedisHGetRequest
-	19,  // 60: pluginsdk.RedisProxy.HSet:input_type -> pluginsdk.RedisHSetRequest
-	13,  // 61: pluginsdk.RedisProxy.HGetAll:input_type -> pluginsdk.RedisKeyRequest
-	21,  // 62: pluginsdk.RedisProxy.HDel:input_type -> pluginsdk.RedisHDelRequest
-	22,  // 63: pluginsdk.RedisProxy.Publish:input_type -> pluginsdk.RedisPubRequest
-	23,  // 64: pluginsdk.RedisProxy.Subscribe:input_type -> pluginsdk.RedisSubRequest
-	27,  // 65: pluginsdk.EventBus.Publish:input_type -> pluginsdk.EventRequest
-	28,  // 66: pluginsdk.EventBus.Subscribe:input_type -> pluginsdk.EventFilter
-	1,   // 67: pluginsdk.LogProxy.PushLogs:input_type -> pluginsdk.LogRecord
-	30,  // 68: pluginsdk.SecretEncryption.Encrypt:input_type -> pluginsdk.EncryptRequest
-	32,  // 69: pluginsdk.SecretEncryption.Decrypt:input_type -> pluginsdk.DecryptRequest
-	34,  // 70: pluginsdk.JobScheduler.Subscribe:input_type -> pluginsdk.JobMessage
-	40,  // 71: pluginsdk.SettingsExtension.Get:input_type -> pluginsdk.SettingsGetRequest
-	42,  // 72: pluginsdk.SettingsExtension.Set:input_type -> pluginsdk.SettingsSetRequest
-	44,  // 73: pluginsdk.SettingsExtension.Watch:input_type -> pluginsdk.SettingsWatchRequest
-	49,  // 74: pluginsdk.EventsExtension.Subscribe:input_type -> pluginsdk.EventSubscribeRequest
-	49,  // 75: pluginsdk.EventsExtension.ProbeSubscription:input_type -> pluginsdk.EventSubscribeRequest
-	46,  // 76: pluginsdk.EventsExtension.Publish:input_type -> pluginsdk.PublishEventRequest
-	59,  // 77: pluginsdk.PricingExtension.ListPricingOverrides:input_type -> pluginsdk.ListPricingOverridesRequest
-	61,  // 78: pluginsdk.PricingExtension.WatchPricingOverrides:input_type -> pluginsdk.WatchPricingOverridesRequest
-	63,  // 79: pluginsdk.PricingExtension.AdjustCost:input_type -> pluginsdk.AdjustCostRequest
-	67,  // 80: pluginsdk.PricingExtension.ResolveAccountStatsCost:input_type -> pluginsdk.ResolveAccountStatsCostRequest
-	69,  // 81: pluginsdk.MaintenanceExtension.RunMaintenance:input_type -> pluginsdk.RunMaintenanceRequest
-	84,  // 82: pluginsdk.HostService.ResolveModelPricing:input_type -> pluginsdk.ResolveModelPricingRequest
-	72,  // 83: pluginsdk.HostService.CreditBalance:input_type -> pluginsdk.CreditBalanceRequest
-	74,  // 84: pluginsdk.HostService.DeductBalance:input_type -> pluginsdk.DeductBalanceRequest
-	76,  // 85: pluginsdk.HostService.AssignSubscription:input_type -> pluginsdk.AssignSubscriptionRequest
-	78,  // 86: pluginsdk.HostService.RevokeSubscriptionDays:input_type -> pluginsdk.RevokeSubscriptionDaysRequest
-	80,  // 87: pluginsdk.HostService.AccrueRebate:input_type -> pluginsdk.AccrueRebateRequest
-	82,  // 88: pluginsdk.HostService.GetUserByID:input_type -> pluginsdk.GetUserByIDRequest
-	86,  // 89: pluginsdk.AccountPlatformExtension.ValidateAccountData:input_type -> pluginsdk.ValidateAccountDataRequest
-	88,  // 90: pluginsdk.AccountPlatformExtension.TestConnection:input_type -> pluginsdk.TestConnectionRequest
-	90,  // 91: pluginsdk.AccountPlatformExtension.RefreshToken:input_type -> pluginsdk.RefreshTokenRequest
-	92,  // 92: pluginsdk.AccountPlatformExtension.RefreshTier:input_type -> pluginsdk.RefreshTierRequest
-	94,  // 93: pluginsdk.AccountPlatformExtension.GetAvailableModels:input_type -> pluginsdk.GetAvailableModelsRequest
-	97,  // 94: pluginsdk.AccountPlatformExtension.ExecuteCustomAction:input_type -> pluginsdk.ExecuteCustomActionRequest
-	99,  // 95: pluginsdk.AccountPlatformExtension.IsModelSupported:input_type -> pluginsdk.IsModelSupportedRequest
-	101, // 96: pluginsdk.AccountPlatformExtension.GetSchedulingHints:input_type -> pluginsdk.GetSchedulingHintsRequest
-	105, // 97: pluginsdk.AccountPlatformExtension.CheckSchedulability:input_type -> pluginsdk.CheckSchedulabilityRequest
-	107, // 98: pluginsdk.AccountPlatformExtension.GenerateAuthURL:input_type -> pluginsdk.GenerateAuthURLRequest
-	109, // 99: pluginsdk.AccountPlatformExtension.ExchangeOAuthCode:input_type -> pluginsdk.ExchangeOAuthCodeRequest
-	111, // 100: pluginsdk.AccountPlatformExtension.ValidateRefreshToken:input_type -> pluginsdk.ValidateRefreshTokenRequest
-	113, // 101: pluginsdk.AccountPlatformExtension.CookieAuth:input_type -> pluginsdk.CookieAuthRequest
-	115, // 102: pluginsdk.AccountPlatformExtension.SetPrivacy:input_type -> pluginsdk.SetPrivacyRequest
-	117, // 103: pluginsdk.AccountPlatformExtension.PostAccountCreate:input_type -> pluginsdk.PostAccountCreateRequest
-	119, // 104: pluginsdk.AccountPlatformExtension.ValidateGroupConfig:input_type -> pluginsdk.ValidateGroupConfigRequest
-	121, // 105: pluginsdk.GatewayProviderExtension.Forward:input_type -> pluginsdk.GatewayForwardRequest
-	129, // 106: pluginsdk.GatewayProviderExtension.ShouldFailover:input_type -> pluginsdk.GatewayFailoverRequest
-	10,  // 107: pluginsdk.SQLProxy.Query:output_type -> pluginsdk.SQLResponse
-	12,  // 108: pluginsdk.SQLProxy.Exec:output_type -> pluginsdk.ExecResponse
-	7,   // 109: pluginsdk.SQLProxy.BeginTx:output_type -> pluginsdk.TxResponse
-	10,  // 110: pluginsdk.SQLProxy.TxQuery:output_type -> pluginsdk.SQLResponse
-	12,  // 111: pluginsdk.SQLProxy.TxExec:output_type -> pluginsdk.ExecResponse
-	141, // 112: pluginsdk.SQLProxy.CommitTx:output_type -> google.protobuf.Empty
-	141, // 113: pluginsdk.SQLProxy.RollbackTx:output_type -> google.protobuf.Empty
-	26,  // 114: pluginsdk.RedisProxy.Do:output_type -> pluginsdk.DoReply
-	14,  // 115: pluginsdk.RedisProxy.Get:output_type -> pluginsdk.RedisValueResponse
-	141, // 116: pluginsdk.RedisProxy.Set:output_type -> google.protobuf.Empty
-	141, // 117: pluginsdk.RedisProxy.SetEx:output_type -> google.protobuf.Empty
-	141, // 118: pluginsdk.RedisProxy.Del:output_type -> google.protobuf.Empty
-	14,  // 119: pluginsdk.RedisProxy.HGet:output_type -> pluginsdk.RedisValueResponse
-	141, // 120: pluginsdk.RedisProxy.HSet:output_type -> google.protobuf.Empty
-	20,  // 121: pluginsdk.RedisProxy.HGetAll:output_type -> pluginsdk.RedisMapResponse
-	141, // 122: pluginsdk.RedisProxy.HDel:output_type -> google.protobuf.Empty
-	141, // 123: pluginsdk.RedisProxy.Publish:output_type -> google.protobuf.Empty
-	24,  // 124: pluginsdk.RedisProxy.Subscribe:output_type -> pluginsdk.RedisMessage
-	141, // 125: pluginsdk.EventBus.Publish:output_type -> google.protobuf.Empty
-	29,  // 126: pluginsdk.EventBus.Subscribe:output_type -> pluginsdk.Event
-	3,   // 127: pluginsdk.LogProxy.PushLogs:output_type -> pluginsdk.LogPushSummary
-	31,  // 128: pluginsdk.SecretEncryption.Encrypt:output_type -> pluginsdk.EncryptResponse
-	33,  // 129: pluginsdk.SecretEncryption.Decrypt:output_type -> pluginsdk.DecryptResponse
-	37,  // 130: pluginsdk.JobScheduler.Subscribe:output_type -> pluginsdk.JobTrigger
-	41,  // 131: pluginsdk.SettingsExtension.Get:output_type -> pluginsdk.SettingsGetResponse
-	43,  // 132: pluginsdk.SettingsExtension.Set:output_type -> pluginsdk.SettingsSetResponse
-	45,  // 133: pluginsdk.SettingsExtension.Watch:output_type -> pluginsdk.SettingsChangeEvent
-	50,  // 134: pluginsdk.EventsExtension.Subscribe:output_type -> pluginsdk.HostEvent
-	48,  // 135: pluginsdk.EventsExtension.ProbeSubscription:output_type -> pluginsdk.ProbeSubscriptionResponse
-	47,  // 136: pluginsdk.EventsExtension.Publish:output_type -> pluginsdk.PublishEventResponse
-	60,  // 137: pluginsdk.PricingExtension.ListPricingOverrides:output_type -> pluginsdk.ListPricingOverridesResponse
-	62,  // 138: pluginsdk.PricingExtension.WatchPricingOverrides:output_type -> pluginsdk.PricingOverrideEvent
-	64,  // 139: pluginsdk.PricingExtension.AdjustCost:output_type -> pluginsdk.AdjustCostResponse
-	68,  // 140: pluginsdk.PricingExtension.ResolveAccountStatsCost:output_type -> pluginsdk.ResolveAccountStatsCostResponse
-	70,  // 141: pluginsdk.MaintenanceExtension.RunMaintenance:output_type -> pluginsdk.RunMaintenanceResponse
-	85,  // 142: pluginsdk.HostService.ResolveModelPricing:output_type -> pluginsdk.ResolveModelPricingResponse
-	73,  // 143: pluginsdk.HostService.CreditBalance:output_type -> pluginsdk.CreditBalanceResponse
-	75,  // 144: pluginsdk.HostService.DeductBalance:output_type -> pluginsdk.DeductBalanceResponse
-	77,  // 145: pluginsdk.HostService.AssignSubscription:output_type -> pluginsdk.AssignSubscriptionResponse
-	79,  // 146: pluginsdk.HostService.RevokeSubscriptionDays:output_type -> pluginsdk.RevokeSubscriptionDaysResponse
-	81,  // 147: pluginsdk.HostService.AccrueRebate:output_type -> pluginsdk.AccrueRebateResponse
-	83,  // 148: pluginsdk.HostService.GetUserByID:output_type -> pluginsdk.GetUserByIDResponse
-	87,  // 149: pluginsdk.AccountPlatformExtension.ValidateAccountData:output_type -> pluginsdk.ValidateAccountDataResponse
-	89,  // 150: pluginsdk.AccountPlatformExtension.TestConnection:output_type -> pluginsdk.TestConnectionEvent
-	91,  // 151: pluginsdk.AccountPlatformExtension.RefreshToken:output_type -> pluginsdk.RefreshTokenResponse
-	93,  // 152: pluginsdk.AccountPlatformExtension.RefreshTier:output_type -> pluginsdk.RefreshTierResponse
-	95,  // 153: pluginsdk.AccountPlatformExtension.GetAvailableModels:output_type -> pluginsdk.GetAvailableModelsResponse
-	98,  // 154: pluginsdk.AccountPlatformExtension.ExecuteCustomAction:output_type -> pluginsdk.ExecuteCustomActionResponse
-	100, // 155: pluginsdk.AccountPlatformExtension.IsModelSupported:output_type -> pluginsdk.IsModelSupportedResponse
-	103, // 156: pluginsdk.AccountPlatformExtension.GetSchedulingHints:output_type -> pluginsdk.GetSchedulingHintsResponse
-	106, // 157: pluginsdk.AccountPlatformExtension.CheckSchedulability:output_type -> pluginsdk.CheckSchedulabilityResponse
-	108, // 158: pluginsdk.AccountPlatformExtension.GenerateAuthURL:output_type -> pluginsdk.GenerateAuthURLResponse
-	110, // 159: pluginsdk.AccountPlatformExtension.ExchangeOAuthCode:output_type -> pluginsdk.ExchangeOAuthCodeResponse
-	112, // 160: pluginsdk.AccountPlatformExtension.ValidateRefreshToken:output_type -> pluginsdk.ValidateRefreshTokenResponse
-	114, // 161: pluginsdk.AccountPlatformExtension.CookieAuth:output_type -> pluginsdk.CookieAuthResponse
-	116, // 162: pluginsdk.AccountPlatformExtension.SetPrivacy:output_type -> pluginsdk.SetPrivacyResponse
-	118, // 163: pluginsdk.AccountPlatformExtension.PostAccountCreate:output_type -> pluginsdk.PostAccountCreateResponse
-	120, // 164: pluginsdk.AccountPlatformExtension.ValidateGroupConfig:output_type -> pluginsdk.ValidateGroupConfigResponse
-	123, // 165: pluginsdk.GatewayProviderExtension.Forward:output_type -> pluginsdk.GatewayForwardChunk
-	130, // 166: pluginsdk.GatewayProviderExtension.ShouldFailover:output_type -> pluginsdk.GatewayFailoverResponse
-	107, // [107:167] is the sub-list for method output_type
-	47,  // [47:107] is the sub-list for method input_type
-	47,  // [47:47] is the sub-list for extension type_name
-	47,  // [47:47] is the sub-list for extension extendee
-	0,   // [0:47] is the sub-list for field type_name
+	143, // 37: pluginsdk.GatewayForwardRequest.headers:type_name -> pluginsdk.GatewayForwardRequest.HeadersEntry
+	144, // 38: pluginsdk.GatewayForwardRequest.client_headers:type_name -> pluginsdk.GatewayForwardRequest.ClientHeadersEntry
+	124, // 39: pluginsdk.GatewayForwardChunk.headers:type_name -> pluginsdk.GatewayResponseHeaders
+	125, // 40: pluginsdk.GatewayForwardChunk.body:type_name -> pluginsdk.GatewayResponseBody
+	126, // 41: pluginsdk.GatewayForwardChunk.trailers:type_name -> pluginsdk.GatewayResponseTrailers
+	127, // 42: pluginsdk.GatewayForwardChunk.done:type_name -> pluginsdk.GatewayResponseDone
+	145, // 43: pluginsdk.GatewayResponseHeaders.headers:type_name -> pluginsdk.GatewayResponseHeaders.HeadersEntry
+	146, // 44: pluginsdk.GatewayResponseTrailers.trailers:type_name -> pluginsdk.GatewayResponseTrailers.TrailersEntry
+	128, // 45: pluginsdk.GatewayResponseDone.result:type_name -> pluginsdk.GatewayForwardResult
+	129, // 46: pluginsdk.GatewayForwardResult.upstream_error:type_name -> pluginsdk.GatewayUpstreamError
+	121, // 47: pluginsdk.GatewayFailoverRequest.request:type_name -> pluginsdk.GatewayForwardRequest
+	147, // 48: pluginsdk.GetAccessTokenResponse.extra_headers:type_name -> pluginsdk.GetAccessTokenResponse.ExtraHeadersEntry
+	104, // 49: pluginsdk.GetSchedulingHintsResponse.HintsEntry.value:type_name -> pluginsdk.SchedulingHint
+	4,   // 50: pluginsdk.SQLProxy.Query:input_type -> pluginsdk.SQLRequest
+	4,   // 51: pluginsdk.SQLProxy.Exec:input_type -> pluginsdk.SQLRequest
+	6,   // 52: pluginsdk.SQLProxy.BeginTx:input_type -> pluginsdk.BeginTxRequest
+	5,   // 53: pluginsdk.SQLProxy.TxQuery:input_type -> pluginsdk.TxSQLRequest
+	5,   // 54: pluginsdk.SQLProxy.TxExec:input_type -> pluginsdk.TxSQLRequest
+	8,   // 55: pluginsdk.SQLProxy.CommitTx:input_type -> pluginsdk.TxIDRequest
+	8,   // 56: pluginsdk.SQLProxy.RollbackTx:input_type -> pluginsdk.TxIDRequest
+	25,  // 57: pluginsdk.RedisProxy.Do:input_type -> pluginsdk.DoRequest
+	13,  // 58: pluginsdk.RedisProxy.Get:input_type -> pluginsdk.RedisKeyRequest
+	15,  // 59: pluginsdk.RedisProxy.Set:input_type -> pluginsdk.RedisSetRequest
+	16,  // 60: pluginsdk.RedisProxy.SetEx:input_type -> pluginsdk.RedisSetExRequest
+	17,  // 61: pluginsdk.RedisProxy.Del:input_type -> pluginsdk.RedisDelRequest
+	18,  // 62: pluginsdk.RedisProxy.HGet:input_type -> pluginsdk.RedisHGetRequest
+	19,  // 63: pluginsdk.RedisProxy.HSet:input_type -> pluginsdk.RedisHSetRequest
+	13,  // 64: pluginsdk.RedisProxy.HGetAll:input_type -> pluginsdk.RedisKeyRequest
+	21,  // 65: pluginsdk.RedisProxy.HDel:input_type -> pluginsdk.RedisHDelRequest
+	22,  // 66: pluginsdk.RedisProxy.Publish:input_type -> pluginsdk.RedisPubRequest
+	23,  // 67: pluginsdk.RedisProxy.Subscribe:input_type -> pluginsdk.RedisSubRequest
+	27,  // 68: pluginsdk.EventBus.Publish:input_type -> pluginsdk.EventRequest
+	28,  // 69: pluginsdk.EventBus.Subscribe:input_type -> pluginsdk.EventFilter
+	1,   // 70: pluginsdk.LogProxy.PushLogs:input_type -> pluginsdk.LogRecord
+	30,  // 71: pluginsdk.SecretEncryption.Encrypt:input_type -> pluginsdk.EncryptRequest
+	32,  // 72: pluginsdk.SecretEncryption.Decrypt:input_type -> pluginsdk.DecryptRequest
+	34,  // 73: pluginsdk.JobScheduler.Subscribe:input_type -> pluginsdk.JobMessage
+	40,  // 74: pluginsdk.SettingsExtension.Get:input_type -> pluginsdk.SettingsGetRequest
+	42,  // 75: pluginsdk.SettingsExtension.Set:input_type -> pluginsdk.SettingsSetRequest
+	44,  // 76: pluginsdk.SettingsExtension.Watch:input_type -> pluginsdk.SettingsWatchRequest
+	49,  // 77: pluginsdk.EventsExtension.Subscribe:input_type -> pluginsdk.EventSubscribeRequest
+	49,  // 78: pluginsdk.EventsExtension.ProbeSubscription:input_type -> pluginsdk.EventSubscribeRequest
+	46,  // 79: pluginsdk.EventsExtension.Publish:input_type -> pluginsdk.PublishEventRequest
+	59,  // 80: pluginsdk.PricingExtension.ListPricingOverrides:input_type -> pluginsdk.ListPricingOverridesRequest
+	61,  // 81: pluginsdk.PricingExtension.WatchPricingOverrides:input_type -> pluginsdk.WatchPricingOverridesRequest
+	63,  // 82: pluginsdk.PricingExtension.AdjustCost:input_type -> pluginsdk.AdjustCostRequest
+	67,  // 83: pluginsdk.PricingExtension.ResolveAccountStatsCost:input_type -> pluginsdk.ResolveAccountStatsCostRequest
+	69,  // 84: pluginsdk.MaintenanceExtension.RunMaintenance:input_type -> pluginsdk.RunMaintenanceRequest
+	84,  // 85: pluginsdk.HostService.ResolveModelPricing:input_type -> pluginsdk.ResolveModelPricingRequest
+	72,  // 86: pluginsdk.HostService.CreditBalance:input_type -> pluginsdk.CreditBalanceRequest
+	74,  // 87: pluginsdk.HostService.DeductBalance:input_type -> pluginsdk.DeductBalanceRequest
+	76,  // 88: pluginsdk.HostService.AssignSubscription:input_type -> pluginsdk.AssignSubscriptionRequest
+	78,  // 89: pluginsdk.HostService.RevokeSubscriptionDays:input_type -> pluginsdk.RevokeSubscriptionDaysRequest
+	80,  // 90: pluginsdk.HostService.AccrueRebate:input_type -> pluginsdk.AccrueRebateRequest
+	82,  // 91: pluginsdk.HostService.GetUserByID:input_type -> pluginsdk.GetUserByIDRequest
+	86,  // 92: pluginsdk.AccountPlatformExtension.ValidateAccountData:input_type -> pluginsdk.ValidateAccountDataRequest
+	88,  // 93: pluginsdk.AccountPlatformExtension.TestConnection:input_type -> pluginsdk.TestConnectionRequest
+	90,  // 94: pluginsdk.AccountPlatformExtension.RefreshToken:input_type -> pluginsdk.RefreshTokenRequest
+	92,  // 95: pluginsdk.AccountPlatformExtension.RefreshTier:input_type -> pluginsdk.RefreshTierRequest
+	94,  // 96: pluginsdk.AccountPlatformExtension.GetAvailableModels:input_type -> pluginsdk.GetAvailableModelsRequest
+	97,  // 97: pluginsdk.AccountPlatformExtension.ExecuteCustomAction:input_type -> pluginsdk.ExecuteCustomActionRequest
+	99,  // 98: pluginsdk.AccountPlatformExtension.IsModelSupported:input_type -> pluginsdk.IsModelSupportedRequest
+	101, // 99: pluginsdk.AccountPlatformExtension.GetSchedulingHints:input_type -> pluginsdk.GetSchedulingHintsRequest
+	105, // 100: pluginsdk.AccountPlatformExtension.CheckSchedulability:input_type -> pluginsdk.CheckSchedulabilityRequest
+	107, // 101: pluginsdk.AccountPlatformExtension.GenerateAuthURL:input_type -> pluginsdk.GenerateAuthURLRequest
+	109, // 102: pluginsdk.AccountPlatformExtension.ExchangeOAuthCode:input_type -> pluginsdk.ExchangeOAuthCodeRequest
+	111, // 103: pluginsdk.AccountPlatformExtension.ValidateRefreshToken:input_type -> pluginsdk.ValidateRefreshTokenRequest
+	113, // 104: pluginsdk.AccountPlatformExtension.CookieAuth:input_type -> pluginsdk.CookieAuthRequest
+	115, // 105: pluginsdk.AccountPlatformExtension.SetPrivacy:input_type -> pluginsdk.SetPrivacyRequest
+	117, // 106: pluginsdk.AccountPlatformExtension.PostAccountCreate:input_type -> pluginsdk.PostAccountCreateRequest
+	119, // 107: pluginsdk.AccountPlatformExtension.ValidateGroupConfig:input_type -> pluginsdk.ValidateGroupConfigRequest
+	121, // 108: pluginsdk.GatewayProviderExtension.Forward:input_type -> pluginsdk.GatewayForwardRequest
+	130, // 109: pluginsdk.GatewayProviderExtension.ShouldFailover:input_type -> pluginsdk.GatewayFailoverRequest
+	132, // 110: pluginsdk.GatewayHostCallback.GetAccessToken:input_type -> pluginsdk.GetAccessTokenRequest
+	134, // 111: pluginsdk.GatewayHostCallback.ReportOpsError:input_type -> pluginsdk.ReportOpsErrorRequest
+	10,  // 112: pluginsdk.SQLProxy.Query:output_type -> pluginsdk.SQLResponse
+	12,  // 113: pluginsdk.SQLProxy.Exec:output_type -> pluginsdk.ExecResponse
+	7,   // 114: pluginsdk.SQLProxy.BeginTx:output_type -> pluginsdk.TxResponse
+	10,  // 115: pluginsdk.SQLProxy.TxQuery:output_type -> pluginsdk.SQLResponse
+	12,  // 116: pluginsdk.SQLProxy.TxExec:output_type -> pluginsdk.ExecResponse
+	148, // 117: pluginsdk.SQLProxy.CommitTx:output_type -> google.protobuf.Empty
+	148, // 118: pluginsdk.SQLProxy.RollbackTx:output_type -> google.protobuf.Empty
+	26,  // 119: pluginsdk.RedisProxy.Do:output_type -> pluginsdk.DoReply
+	14,  // 120: pluginsdk.RedisProxy.Get:output_type -> pluginsdk.RedisValueResponse
+	148, // 121: pluginsdk.RedisProxy.Set:output_type -> google.protobuf.Empty
+	148, // 122: pluginsdk.RedisProxy.SetEx:output_type -> google.protobuf.Empty
+	148, // 123: pluginsdk.RedisProxy.Del:output_type -> google.protobuf.Empty
+	14,  // 124: pluginsdk.RedisProxy.HGet:output_type -> pluginsdk.RedisValueResponse
+	148, // 125: pluginsdk.RedisProxy.HSet:output_type -> google.protobuf.Empty
+	20,  // 126: pluginsdk.RedisProxy.HGetAll:output_type -> pluginsdk.RedisMapResponse
+	148, // 127: pluginsdk.RedisProxy.HDel:output_type -> google.protobuf.Empty
+	148, // 128: pluginsdk.RedisProxy.Publish:output_type -> google.protobuf.Empty
+	24,  // 129: pluginsdk.RedisProxy.Subscribe:output_type -> pluginsdk.RedisMessage
+	148, // 130: pluginsdk.EventBus.Publish:output_type -> google.protobuf.Empty
+	29,  // 131: pluginsdk.EventBus.Subscribe:output_type -> pluginsdk.Event
+	3,   // 132: pluginsdk.LogProxy.PushLogs:output_type -> pluginsdk.LogPushSummary
+	31,  // 133: pluginsdk.SecretEncryption.Encrypt:output_type -> pluginsdk.EncryptResponse
+	33,  // 134: pluginsdk.SecretEncryption.Decrypt:output_type -> pluginsdk.DecryptResponse
+	37,  // 135: pluginsdk.JobScheduler.Subscribe:output_type -> pluginsdk.JobTrigger
+	41,  // 136: pluginsdk.SettingsExtension.Get:output_type -> pluginsdk.SettingsGetResponse
+	43,  // 137: pluginsdk.SettingsExtension.Set:output_type -> pluginsdk.SettingsSetResponse
+	45,  // 138: pluginsdk.SettingsExtension.Watch:output_type -> pluginsdk.SettingsChangeEvent
+	50,  // 139: pluginsdk.EventsExtension.Subscribe:output_type -> pluginsdk.HostEvent
+	48,  // 140: pluginsdk.EventsExtension.ProbeSubscription:output_type -> pluginsdk.ProbeSubscriptionResponse
+	47,  // 141: pluginsdk.EventsExtension.Publish:output_type -> pluginsdk.PublishEventResponse
+	60,  // 142: pluginsdk.PricingExtension.ListPricingOverrides:output_type -> pluginsdk.ListPricingOverridesResponse
+	62,  // 143: pluginsdk.PricingExtension.WatchPricingOverrides:output_type -> pluginsdk.PricingOverrideEvent
+	64,  // 144: pluginsdk.PricingExtension.AdjustCost:output_type -> pluginsdk.AdjustCostResponse
+	68,  // 145: pluginsdk.PricingExtension.ResolveAccountStatsCost:output_type -> pluginsdk.ResolveAccountStatsCostResponse
+	70,  // 146: pluginsdk.MaintenanceExtension.RunMaintenance:output_type -> pluginsdk.RunMaintenanceResponse
+	85,  // 147: pluginsdk.HostService.ResolveModelPricing:output_type -> pluginsdk.ResolveModelPricingResponse
+	73,  // 148: pluginsdk.HostService.CreditBalance:output_type -> pluginsdk.CreditBalanceResponse
+	75,  // 149: pluginsdk.HostService.DeductBalance:output_type -> pluginsdk.DeductBalanceResponse
+	77,  // 150: pluginsdk.HostService.AssignSubscription:output_type -> pluginsdk.AssignSubscriptionResponse
+	79,  // 151: pluginsdk.HostService.RevokeSubscriptionDays:output_type -> pluginsdk.RevokeSubscriptionDaysResponse
+	81,  // 152: pluginsdk.HostService.AccrueRebate:output_type -> pluginsdk.AccrueRebateResponse
+	83,  // 153: pluginsdk.HostService.GetUserByID:output_type -> pluginsdk.GetUserByIDResponse
+	87,  // 154: pluginsdk.AccountPlatformExtension.ValidateAccountData:output_type -> pluginsdk.ValidateAccountDataResponse
+	89,  // 155: pluginsdk.AccountPlatformExtension.TestConnection:output_type -> pluginsdk.TestConnectionEvent
+	91,  // 156: pluginsdk.AccountPlatformExtension.RefreshToken:output_type -> pluginsdk.RefreshTokenResponse
+	93,  // 157: pluginsdk.AccountPlatformExtension.RefreshTier:output_type -> pluginsdk.RefreshTierResponse
+	95,  // 158: pluginsdk.AccountPlatformExtension.GetAvailableModels:output_type -> pluginsdk.GetAvailableModelsResponse
+	98,  // 159: pluginsdk.AccountPlatformExtension.ExecuteCustomAction:output_type -> pluginsdk.ExecuteCustomActionResponse
+	100, // 160: pluginsdk.AccountPlatformExtension.IsModelSupported:output_type -> pluginsdk.IsModelSupportedResponse
+	103, // 161: pluginsdk.AccountPlatformExtension.GetSchedulingHints:output_type -> pluginsdk.GetSchedulingHintsResponse
+	106, // 162: pluginsdk.AccountPlatformExtension.CheckSchedulability:output_type -> pluginsdk.CheckSchedulabilityResponse
+	108, // 163: pluginsdk.AccountPlatformExtension.GenerateAuthURL:output_type -> pluginsdk.GenerateAuthURLResponse
+	110, // 164: pluginsdk.AccountPlatformExtension.ExchangeOAuthCode:output_type -> pluginsdk.ExchangeOAuthCodeResponse
+	112, // 165: pluginsdk.AccountPlatformExtension.ValidateRefreshToken:output_type -> pluginsdk.ValidateRefreshTokenResponse
+	114, // 166: pluginsdk.AccountPlatformExtension.CookieAuth:output_type -> pluginsdk.CookieAuthResponse
+	116, // 167: pluginsdk.AccountPlatformExtension.SetPrivacy:output_type -> pluginsdk.SetPrivacyResponse
+	118, // 168: pluginsdk.AccountPlatformExtension.PostAccountCreate:output_type -> pluginsdk.PostAccountCreateResponse
+	120, // 169: pluginsdk.AccountPlatformExtension.ValidateGroupConfig:output_type -> pluginsdk.ValidateGroupConfigResponse
+	123, // 170: pluginsdk.GatewayProviderExtension.Forward:output_type -> pluginsdk.GatewayForwardChunk
+	131, // 171: pluginsdk.GatewayProviderExtension.ShouldFailover:output_type -> pluginsdk.GatewayFailoverResponse
+	133, // 172: pluginsdk.GatewayHostCallback.GetAccessToken:output_type -> pluginsdk.GetAccessTokenResponse
+	135, // 173: pluginsdk.GatewayHostCallback.ReportOpsError:output_type -> pluginsdk.ReportOpsErrorResponse
+	112, // [112:174] is the sub-list for method output_type
+	50,  // [50:112] is the sub-list for method input_type
+	50,  // [50:50] is the sub-list for extension type_name
+	50,  // [50:50] is the sub-list for extension extendee
+	0,   // [0:50] is the sub-list for field type_name
 }
 
 func init() { file_sdk_proto_init() }
@@ -10303,9 +10767,9 @@ func file_sdk_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_sdk_proto_rawDesc), len(file_sdk_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   140,
+			NumMessages:   147,
 			NumExtensions: 0,
-			NumServices:   13,
+			NumServices:   14,
 		},
 		GoTypes:           file_sdk_proto_goTypes,
 		DependencyIndexes: file_sdk_proto_depIdxs,

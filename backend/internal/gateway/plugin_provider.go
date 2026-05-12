@@ -9,10 +9,12 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 )
 
@@ -129,21 +131,52 @@ func (p *PluginGatewayProvider) ShouldFailover(
 // JSON bytes.
 func (p *PluginGatewayProvider) buildGRPCRequest(req *ForwardRequest) (*pb.GatewayForwardRequest, error) {
 	grpcReq := &pb.GatewayForwardRequest{
-		RequestId:      req.RequestID,
-		Model:          req.Model,
-		Stream:         req.Stream,
-		Protocol:       req.Protocol,
-		RawBody:        req.RawBody,
-		SessionHash:    req.SessionHash,
-		MetadataUserId: req.MetadataUserID,
-		UserId:         req.UserID,
-		SwitchCount:    int32(req.SwitchCount),
-		GeminiAction:   req.GeminiAction,
+		RequestId:       req.RequestID,
+		Model:           req.Model,
+		Stream:          req.Stream,
+		Protocol:        req.Protocol,
+		RawBody:         req.RawBody,
+		SessionHash:     req.SessionHash,
+		MetadataUserId:  req.MetadataUserID,
+		UserId:          req.UserID,
+		SwitchCount:     int32(req.SwitchCount),
+		GeminiAction:    req.GeminiAction,
 		IsStickySession: req.IsStickySession,
+
+		// Fields added for god-object migration
+		IsClaudeCodeClient: req.IsClaudeCodeClient,
+		ThinkingEnabled:    req.ThinkingEnabled,
+		PromptCacheKey:     req.PromptCacheKey,
+		ForceCacheBilling:  req.ForceCacheBilling,
 	}
 
 	if req.GroupID != nil {
 		grpcReq.GroupId = *req.GroupID
+	}
+
+	// Channel mapped model (from channel mapping result)
+	if req.ChannelMapping != nil && req.ChannelMapping.Mapped {
+		grpcReq.ChannelMappedModel = req.ChannelMapping.MappedModel
+	} else if req.ChannelMappedModel != "" {
+		grpcReq.ChannelMappedModel = req.ChannelMappedModel
+	}
+
+	// Client headers and HTTP method/path from gin context
+	if req.GinContext != nil {
+		grpcReq.ClientHeaders = extractClientHeaders(req.GinContext)
+		grpcReq.Method = req.GinContext.Request.Method
+		grpcReq.Path = req.GinContext.Request.URL.Path
+	}
+
+	// Images request metadata
+	if req.ImagesRequest != nil {
+		imagesJSON, err := json.Marshal(req.ImagesRequest)
+		if err != nil {
+			p.logger.Warn("buildGRPCRequest: marshal images request failed",
+				"error", err)
+		} else {
+			grpcReq.ImagesRequestJson = imagesJSON
+		}
 	}
 
 	if req.Account != nil {
@@ -155,6 +188,45 @@ func (p *PluginGatewayProvider) buildGRPCRequest(req *ForwardRequest) (*pb.Gatew
 	}
 
 	return grpcReq, nil
+}
+
+// clientHeaderKeys lists the HTTP headers to forward from the client
+// request to the plugin. Only headers relevant to upstream forwarding
+// or request classification are included; auth headers (x-api-key,
+// Authorization) are excluded because account credentials are passed
+// separately via GatewayAccountInfo.
+var clientHeaderKeys = []string{
+	"User-Agent",
+	"Content-Type",
+	"Accept",
+	"Anthropic-Beta",
+	"Anthropic-Version",
+	"X-Request-Id",
+	"X-Stainless-Arch",
+	"X-Stainless-Lang",
+	"X-Stainless-Os",
+	"X-Stainless-Package-Version",
+	"X-Stainless-Runtime",
+	"X-Stainless-Runtime-Version",
+}
+
+// extractClientHeaders extracts relevant client headers from the gin
+// context for inclusion in the gRPC request. Returns nil when no
+// relevant headers are present.
+func extractClientHeaders(c *gin.Context) map[string]string {
+	if c == nil || c.Request == nil {
+		return nil
+	}
+	headers := make(map[string]string, len(clientHeaderKeys))
+	for _, key := range clientHeaderKeys {
+		if val := c.GetHeader(key); val != "" {
+			headers[key] = val
+		}
+	}
+	if len(headers) == 0 {
+		return nil
+	}
+	return headers
 }
 
 // buildAccountInfo serializes account credentials and extra fields into
@@ -231,6 +303,9 @@ func (p *PluginGatewayProvider) consumeStream(
 
 		case *pb.GatewayForwardChunk_Done:
 			result = p.doneToForwardResult(c.Done)
+			if upstreamErr := p.doneToUpstreamError(c.Done); upstreamErr != nil {
+				return result, upstreamErr
+			}
 			if c.Done.GetError() != "" {
 				return result, fmt.Errorf("plugin gateway: upstream error: %s", c.Done.GetError())
 			}
@@ -292,4 +367,23 @@ func (p *PluginGatewayProvider) doneToForwardResult(done *pb.GatewayResponseDone
 		result.FirstTokenMs = &v
 	}
 	return result
+}
+
+// doneToUpstreamError converts the plugin's structured upstream error
+// into a host-side UpstreamFailoverError. Returns nil when the done
+// message carries no upstream error information.
+func (p *PluginGatewayProvider) doneToUpstreamError(done *pb.GatewayResponseDone) error {
+	if done == nil || done.GetResult() == nil {
+		return nil
+	}
+	ue := done.GetResult().GetUpstreamError()
+	if ue == nil {
+		return nil
+	}
+	return &service.UpstreamFailoverError{
+		StatusCode:             int(ue.GetStatusCode()),
+		ResponseBody:           ue.GetResponseBody(),
+		ForceCacheBilling:      ue.GetForceCacheBilling(),
+		RetryableOnSameAccount: ue.GetRetryOnSameAccount(),
+	}
 }

@@ -98,6 +98,22 @@ type ForwardRequest struct {
 	// Protocol == ProtocolImages.
 	ImagesRequest *service.OpenAIImagesRequest
 
+	// --- detection / scheduling context (set by handler pipeline) ---
+
+	// IsClaudeCodeClient is true when the request originates from a
+	// Claude Code CLI session. Set by Messages handler pipeline via
+	// SetClaudeCodeClientContext detection.
+	IsClaudeCodeClient bool
+
+	// ThinkingEnabled indicates whether extended thinking is enabled
+	// for this request. Set by Messages handler pipeline from parsed
+	// request body.
+	ThinkingEnabled bool
+
+	// ChannelMappedModel is the model name after channel mapping. Empty
+	// when no mapping is active or before channel mapping runs.
+	ChannelMappedModel string
+
 	// --- writable by provider ---
 
 	// UpstreamAccepted is set to true by the provider once the upstream

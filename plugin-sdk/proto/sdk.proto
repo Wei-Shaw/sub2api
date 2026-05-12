@@ -1623,6 +1623,45 @@ message GatewayForwardRequest {
   // --- platform-specific ---
   string gemini_action = 15;         // only when protocol == "gemini"
   bool is_sticky_session = 16;
+
+  // --- client request context (added for god-object migration) ---
+
+  // client_headers carries the downstream client's HTTP headers
+  // (anthropic-beta, user-agent, content-type, x-api-key, etc.).
+  // Plugins use these to forward or inspect client-originated headers
+  // that are not part of the canonical upstream header set in `headers`.
+  map<string, string> client_headers = 17;
+
+  // --- scheduling / detection context ---
+
+  // is_claude_code_client is true when the request originates from a
+  // Claude Code CLI session (detected via user-agent + body heuristics).
+  bool is_claude_code_client = 18;
+
+  // thinking_enabled indicates whether extended thinking / chain-of-thought
+  // is enabled for this request (parsed from the request body).
+  bool thinking_enabled = 19;
+
+  // prompt_cache_key is the OpenAI prompt cache key extracted from the
+  // request body or headers, used for session affinity.
+  string prompt_cache_key = 20;
+
+  // channel_mapped_model is the model name after channel mapping has been
+  // applied by the host pipeline. Empty when no mapping is active.
+  string channel_mapped_model = 21;
+
+  // --- billing context ---
+
+  // force_cache_billing is set when a failover occurs after billing was
+  // already consumed, forcing input_tokens to be billed as cache_read.
+  bool force_cache_billing = 22;
+
+  // --- image request context (OpenAI Images API) ---
+
+  // images_request_json carries the JSON-encoded OpenAI Images request
+  // metadata (endpoint, model, multipart data, capability). Only set
+  // when protocol == "images".
+  bytes images_request_json = 23;
 }
 
 // GatewayAccountInfo carries the account credentials and metadata the
@@ -1705,6 +1744,45 @@ message GatewayForwardResult {
   // Image generation billing fields
   int32 image_count = 21;
   string image_size = 22;     // "1K" / "2K" / "4K"
+
+  // upstream_error carries structured error information when the upstream
+  // returned an error. Non-nil means the forward encountered an upstream
+  // error; the host uses the structured fields to decide failover strategy
+  // without parsing error strings.
+  GatewayUpstreamError upstream_error = 30;
+}
+
+// GatewayUpstreamError carries structured error information from the
+// upstream API. This replaces string-based error signalling in
+// GatewayResponseDone.error, giving the host enough detail to make
+// failover decisions without parsing free-form error strings.
+message GatewayUpstreamError {
+  // status_code is the upstream HTTP response status code (e.g. 429, 503).
+  int32 status_code = 1;
+
+  // retry_on_same_account indicates a transient error (e.g. Google
+  // intermittent 400, empty response) where retrying on the same account
+  // may succeed. Maps to UpstreamFailoverError.RetryableOnSameAccount.
+  bool retry_on_same_account = 2;
+
+  // force_cache_billing signals that input tokens should be re-billed as
+  // cache_read tokens (e.g. Antigravity sticky session account switch).
+  // Maps to UpstreamFailoverError.ForceCacheBilling.
+  bool force_cache_billing = 3;
+
+  // error_type classifies the error for routing decisions:
+  //   "rate_limit"   — upstream 429
+  //   "overloaded"   — upstream 529 / 503
+  //   "auth_error"   — upstream 401 / 403
+  //   "server_error" — upstream 500 / 502 / 504
+  //   "prompt_too_long" — input exceeded upstream limits
+  //   ""             — unclassified
+  string error_type = 4;
+
+  // response_body is the raw upstream error response body (truncated to
+  // a reasonable size by the plugin). Used by the host for error
+  // passthrough rule matching.
+  bytes response_body = 5;
 }
 
 // GatewayFailoverRequest is sent to ShouldFailover after a forward failure.
@@ -1721,4 +1799,68 @@ message GatewayFailoverRequest {
 message GatewayFailoverResponse {
   bool should_failover = 1;
 }
+
+// ============================================================
+// GatewayHostCallback — host-provided, plugin-called (reverse RPC)
+// ============================================================
+//
+// GatewayHostCallback provides host capabilities that gateway plugins
+// need during request forwarding. Unlike HostService (which provides
+// business lookups), GatewayHostCallback is specific to the gateway
+// forwarding lifecycle — token acquisition, error reporting, etc.
+//
+// The host registers this service on its gRPC server; the plugin SDK
+// creates a GatewayHostCallbackClient from the same connection used
+// for other core services (SQLProxy, RedisProxy, etc.).
+//
+// Availability model:
+//   - Registered unconditionally when the host has gateway plugins.
+//   - Plugins must treat RPC failures (Unimplemented from older hosts,
+//     Unavailable during restart) as non-fatal and degrade gracefully.
+service GatewayHostCallback {
+  // GetAccessToken retrieves a fresh access token for the given account.
+  // The host manages token refresh internally (OAuth refresh flow,
+  // session key rotation, etc.); plugins call this instead of managing
+  // their own token lifecycle.
+  //
+  // Returns the token and its type so the plugin can construct the
+  // Authorization header. extra_headers carries any additional headers
+  // the host needs added to upstream requests (e.g. anthropic-beta).
+  rpc GetAccessToken(GetAccessTokenRequest) returns (GetAccessTokenResponse);
+
+  // ReportOpsError reports an operational error to the host's ops error
+  // logging infrastructure. Plugins call this when they encounter errors
+  // that should appear in the admin ops dashboard but that the host
+  // cannot observe directly (e.g. errors during plugin-managed upstream
+  // communication).
+  rpc ReportOpsError(ReportOpsErrorRequest) returns (ReportOpsErrorResponse);
+}
+
+message GetAccessTokenRequest {
+  int64 account_id = 1;
+}
+
+message GetAccessTokenResponse {
+  // access_token is the bearer token or API key to use.
+  string access_token = 1;
+  // token_type describes how to use the token: "bearer" means
+  // Authorization: Bearer <token>; "api-key" means x-api-key: <token>.
+  string token_type = 2;
+  // extra_headers are additional headers the host requires on the upstream
+  // request (e.g. anthropic-beta, x-org-id). The plugin should merge
+  // these into its outgoing request headers.
+  map<string, string> extra_headers = 3;
+}
+
+message ReportOpsErrorRequest {
+  string request_id = 1;
+  int64 account_id = 2;
+  int32 status_code = 3;
+  string error_message = 4;
+  // error_type classifies the error for dashboard filtering:
+  // "rate_limit", "overloaded", "auth_error", "server_error", etc.
+  string error_type = 5;
+}
+
+message ReportOpsErrorResponse {}
 

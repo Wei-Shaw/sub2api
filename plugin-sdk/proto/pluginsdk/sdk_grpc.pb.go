@@ -3917,3 +3917,205 @@ var GatewayProviderExtension_ServiceDesc = grpc.ServiceDesc{
 	},
 	Metadata: "sdk.proto",
 }
+
+const (
+	GatewayHostCallback_GetAccessToken_FullMethodName = "/pluginsdk.GatewayHostCallback/GetAccessToken"
+	GatewayHostCallback_ReportOpsError_FullMethodName = "/pluginsdk.GatewayHostCallback/ReportOpsError"
+)
+
+// GatewayHostCallbackClient is the client API for GatewayHostCallback service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// ============================================================
+// GatewayHostCallback — host-provided, plugin-called (reverse RPC)
+// ============================================================
+//
+// GatewayHostCallback provides host capabilities that gateway plugins
+// need during request forwarding. Unlike HostService (which provides
+// business lookups), GatewayHostCallback is specific to the gateway
+// forwarding lifecycle — token acquisition, error reporting, etc.
+//
+// The host registers this service on its gRPC server; the plugin SDK
+// creates a GatewayHostCallbackClient from the same connection used
+// for other core services (SQLProxy, RedisProxy, etc.).
+//
+// Availability model:
+//   - Registered unconditionally when the host has gateway plugins.
+//   - Plugins must treat RPC failures (Unimplemented from older hosts,
+//     Unavailable during restart) as non-fatal and degrade gracefully.
+type GatewayHostCallbackClient interface {
+	// GetAccessToken retrieves a fresh access token for the given account.
+	// The host manages token refresh internally (OAuth refresh flow,
+	// session key rotation, etc.); plugins call this instead of managing
+	// their own token lifecycle.
+	//
+	// Returns the token and its type so the plugin can construct the
+	// Authorization header. extra_headers carries any additional headers
+	// the host needs added to upstream requests (e.g. anthropic-beta).
+	GetAccessToken(ctx context.Context, in *GetAccessTokenRequest, opts ...grpc.CallOption) (*GetAccessTokenResponse, error)
+	// ReportOpsError reports an operational error to the host's ops error
+	// logging infrastructure. Plugins call this when they encounter errors
+	// that should appear in the admin ops dashboard but that the host
+	// cannot observe directly (e.g. errors during plugin-managed upstream
+	// communication).
+	ReportOpsError(ctx context.Context, in *ReportOpsErrorRequest, opts ...grpc.CallOption) (*ReportOpsErrorResponse, error)
+}
+
+type gatewayHostCallbackClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewGatewayHostCallbackClient(cc grpc.ClientConnInterface) GatewayHostCallbackClient {
+	return &gatewayHostCallbackClient{cc}
+}
+
+func (c *gatewayHostCallbackClient) GetAccessToken(ctx context.Context, in *GetAccessTokenRequest, opts ...grpc.CallOption) (*GetAccessTokenResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetAccessTokenResponse)
+	err := c.cc.Invoke(ctx, GatewayHostCallback_GetAccessToken_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gatewayHostCallbackClient) ReportOpsError(ctx context.Context, in *ReportOpsErrorRequest, opts ...grpc.CallOption) (*ReportOpsErrorResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReportOpsErrorResponse)
+	err := c.cc.Invoke(ctx, GatewayHostCallback_ReportOpsError_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// GatewayHostCallbackServer is the server API for GatewayHostCallback service.
+// All implementations must embed UnimplementedGatewayHostCallbackServer
+// for forward compatibility.
+//
+// ============================================================
+// GatewayHostCallback — host-provided, plugin-called (reverse RPC)
+// ============================================================
+//
+// GatewayHostCallback provides host capabilities that gateway plugins
+// need during request forwarding. Unlike HostService (which provides
+// business lookups), GatewayHostCallback is specific to the gateway
+// forwarding lifecycle — token acquisition, error reporting, etc.
+//
+// The host registers this service on its gRPC server; the plugin SDK
+// creates a GatewayHostCallbackClient from the same connection used
+// for other core services (SQLProxy, RedisProxy, etc.).
+//
+// Availability model:
+//   - Registered unconditionally when the host has gateway plugins.
+//   - Plugins must treat RPC failures (Unimplemented from older hosts,
+//     Unavailable during restart) as non-fatal and degrade gracefully.
+type GatewayHostCallbackServer interface {
+	// GetAccessToken retrieves a fresh access token for the given account.
+	// The host manages token refresh internally (OAuth refresh flow,
+	// session key rotation, etc.); plugins call this instead of managing
+	// their own token lifecycle.
+	//
+	// Returns the token and its type so the plugin can construct the
+	// Authorization header. extra_headers carries any additional headers
+	// the host needs added to upstream requests (e.g. anthropic-beta).
+	GetAccessToken(context.Context, *GetAccessTokenRequest) (*GetAccessTokenResponse, error)
+	// ReportOpsError reports an operational error to the host's ops error
+	// logging infrastructure. Plugins call this when they encounter errors
+	// that should appear in the admin ops dashboard but that the host
+	// cannot observe directly (e.g. errors during plugin-managed upstream
+	// communication).
+	ReportOpsError(context.Context, *ReportOpsErrorRequest) (*ReportOpsErrorResponse, error)
+	mustEmbedUnimplementedGatewayHostCallbackServer()
+}
+
+// UnimplementedGatewayHostCallbackServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedGatewayHostCallbackServer struct{}
+
+func (UnimplementedGatewayHostCallbackServer) GetAccessToken(context.Context, *GetAccessTokenRequest) (*GetAccessTokenResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetAccessToken not implemented")
+}
+func (UnimplementedGatewayHostCallbackServer) ReportOpsError(context.Context, *ReportOpsErrorRequest) (*ReportOpsErrorResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ReportOpsError not implemented")
+}
+func (UnimplementedGatewayHostCallbackServer) mustEmbedUnimplementedGatewayHostCallbackServer() {}
+func (UnimplementedGatewayHostCallbackServer) testEmbeddedByValue()                             {}
+
+// UnsafeGatewayHostCallbackServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to GatewayHostCallbackServer will
+// result in compilation errors.
+type UnsafeGatewayHostCallbackServer interface {
+	mustEmbedUnimplementedGatewayHostCallbackServer()
+}
+
+func RegisterGatewayHostCallbackServer(s grpc.ServiceRegistrar, srv GatewayHostCallbackServer) {
+	// If the following call panics, it indicates UnimplementedGatewayHostCallbackServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&GatewayHostCallback_ServiceDesc, srv)
+}
+
+func _GatewayHostCallback_GetAccessToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetAccessTokenRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GatewayHostCallbackServer).GetAccessToken(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GatewayHostCallback_GetAccessToken_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GatewayHostCallbackServer).GetAccessToken(ctx, req.(*GetAccessTokenRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _GatewayHostCallback_ReportOpsError_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReportOpsErrorRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GatewayHostCallbackServer).ReportOpsError(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GatewayHostCallback_ReportOpsError_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GatewayHostCallbackServer).ReportOpsError(ctx, req.(*ReportOpsErrorRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// GatewayHostCallback_ServiceDesc is the grpc.ServiceDesc for GatewayHostCallback service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var GatewayHostCallback_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "pluginsdk.GatewayHostCallback",
+	HandlerType: (*GatewayHostCallbackServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "GetAccessToken",
+			Handler:    _GatewayHostCallback_GetAccessToken_Handler,
+		},
+		{
+			MethodName: "ReportOpsError",
+			Handler:    _GatewayHostCallback_ReportOpsError_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "sdk.proto",
+}
