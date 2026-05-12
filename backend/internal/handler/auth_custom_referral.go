@@ -31,11 +31,6 @@ func (h *AuthHandler) resolveAffiliateAttribution(c *gin.Context, raw string) (s
 	}
 }
 
-func (h *AuthHandler) resolveAffiliateCode(c *gin.Context, raw string) string {
-	code, _ := h.resolveAffiliateAttribution(c, raw)
-	return code
-}
-
 func (h *AuthHandler) resolveAffiliateCookieCode(c *gin.Context) string {
 	if h == nil || h.customReferralService == nil || c == nil {
 		return ""

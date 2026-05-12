@@ -583,8 +583,8 @@ FOR UPDATE`, affiliate.ID)
 			deltaDec = moneyx.Commission(input.Delta)
 		}
 		deltaDec = deltaDec.Round(moneyx.ScaleCommission)
-		availableDeltaDec := moneyx.Commission(0)
-		debtDeltaDec := moneyx.Commission(0)
+		var availableDeltaDec decimal.Decimal
+		var debtDeltaDec decimal.Decimal
 		if deltaDec.GreaterThan(moneyx.Commission(0)) {
 			debtAmountDec := moneyx.NonNegative(moneyx.Commission(debtAmount))
 			debtRepaidDec := moneyx.Min(deltaDec, debtAmountDec)
@@ -1319,9 +1319,9 @@ FOR UPDATE`, affiliateID)
 		pendingBalanceDec := moneyx.NonNegative(moneyx.Commission(pendingBalance))
 		availableBalanceDec := moneyx.NonNegative(moneyx.Commission(availableBalance))
 
-		pendingDecreaseDec := moneyx.Commission(0)
-		availableDecreaseDec := moneyx.Commission(0)
-		debtIncreaseDec := moneyx.Commission(0)
+		var pendingDecreaseDec decimal.Decimal
+		var availableDecreaseDec decimal.Decimal
+		var debtIncreaseDec decimal.Decimal
 		switch status {
 		case service.CustomReferralCommissionStatusPending:
 			pendingDecreaseDec = moneyx.Min(reverseAmountDec, pendingBalanceDec)
@@ -3894,8 +3894,4 @@ func customRoundTo(v float64, scale int) float64 {
 func isPQUniqueViolation(err error) bool {
 	var pqErr *pq.Error
 	return errors.As(err, &pqErr) && pqErr.Code == "23505"
-}
-
-func nearlyEqual(a, b float64) bool {
-	return moneyx.Equal(a, b, moneyx.ScaleCommission)
 }

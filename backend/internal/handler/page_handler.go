@@ -615,19 +615,6 @@ func sanitizePageAssetBaseName(name string) string {
 	return strings.Trim(b.String(), "-_")
 }
 
-func ensureUniquePageImageName(dir, baseName, ext string) string {
-	candidate := baseName + ext
-	if _, err := os.Stat(filepath.Join(dir, candidate)); errors.Is(err, os.ErrNotExist) {
-		return candidate
-	}
-	for i := 2; ; i++ {
-		candidate = baseName + "-" + strconv.Itoa(i) + ext
-		if _, err := os.Stat(filepath.Join(dir, candidate)); errors.Is(err, os.ErrNotExist) {
-			return candidate
-		}
-	}
-}
-
 func writeUniquePageImage(dir, baseName, ext string, data []byte) (string, error) {
 	for i := 1; ; i++ {
 		fileName := baseName + ext

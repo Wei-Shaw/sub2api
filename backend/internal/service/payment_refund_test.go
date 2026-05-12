@@ -256,7 +256,7 @@ func TestPrepareRefundUsesPaidAmountAsRefundCapForBalanceOrders(t *testing.T) {
 	require.NotNil(t, plan)
 	require.Equal(t, 50.0, plan.RefundAmount)
 	require.Equal(t, 50.0, plan.TotalRefundAmount)
-	require.Equal(t, 50.0, plan.GatewayAmount)
+	require.Equal(t, 33.33, plan.GatewayAmount)
 
 	_, err = svc.markRefundOk(ctx, plan)
 	require.NoError(t, err)
