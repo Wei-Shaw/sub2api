@@ -182,6 +182,24 @@ docker save sub2api:${TAG} | gzip > sub2api-${TAG}.tar.gz
 scp sub2api-${TAG}.tar.gz ali-vps:/root/
 ```
 
+如果本机没有 Docker CLI，使用源码包上传到 `ali-vps` 后远端构建：
+
+```bash
+TAG=oceanway-YYYYMMDD-HHMM
+COMMIT=$(git rev-parse --short HEAD)
+git archive --format=tar HEAD | gzip > /tmp/sub2api-source-${TAG}-${COMMIT}.tar.gz
+scp /tmp/sub2api-source-${TAG}-${COMMIT}.tar.gz ali-vps:/root/
+ssh ali-vps
+mkdir -p /root/sub2api-backups/pre-deploy-${TAG}
+cp -a /opt/sub2api/docker-compose.yml /root/sub2api-backups/pre-deploy-${TAG}/docker-compose.yml
+cp -a /opt/sub2api/source /root/sub2api-backups/pre-deploy-${TAG}/source
+rm -rf /opt/sub2api/source
+mkdir -p /opt/sub2api/source
+tar -xzf /root/sub2api-source-${TAG}-${COMMIT}.tar.gz -C /opt/sub2api/source
+cd /opt/sub2api/source
+docker build -t sub2api:${TAG} --build-arg VERSION=${TAG} --build-arg COMMIT=${COMMIT} .
+```
+
 在 `ali-vps` 上加载镜像并重启应用：
 
 ```bash
@@ -193,7 +211,7 @@ cd /opt/sub2api
 # 修改 docker-compose.yml 中的 image：
 # image: sub2api:oceanway-YYYYMMDD-HHMM
 
-docker compose up -d
+docker compose up -d --no-build
 docker compose ps
 docker logs --tail=100 sub2api
 ```
