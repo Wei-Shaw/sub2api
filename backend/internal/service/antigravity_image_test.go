@@ -46,15 +46,15 @@ func TestExtractImageSize_ValidSizes(t *testing.T) {
 
 	// 1K
 	body := []byte(`{"generationConfig":{"imageConfig":{"imageSize":"1K"REDACTEDREDACTEDREDACTED`)
-	require.Equal(t, "1K", svc.extractImageSize(body))
+	require.Equal(t, "1K", NormalizeImageBillingTierOrDefault(svc.extractImageInputSize(body)))
 
 	// 2K
 	body = []byte(`{"generationConfig":{"imageConfig":{"imageSize":"2K"REDACTEDREDACTEDREDACTED`)
-	require.Equal(t, "2K", svc.extractImageSize(body))
+	require.Equal(t, "2K", NormalizeImageBillingTierOrDefault(svc.extractImageInputSize(body)))
 
 	// 4K
 	body = []byte(`{"generationConfig":{"imageConfig":{"imageSize":"4K"REDACTEDREDACTEDREDACTED`)
-	require.Equal(t, "4K", svc.extractImageSize(body))
+	require.Equal(t, "4K", NormalizeImageBillingTierOrDefault(svc.extractImageInputSize(body)))
 REDACTED
 
 // TestExtractImageSize_CaseInsensitive 测试大小写不敏感
@@ -62,10 +62,10 @@ func TestExtractImageSize_CaseInsensitive(t *testing.T) {
 	svc := &AntigravityGatewayService{REDACTED
 
 	body := []byte(`{"generationConfig":{"imageConfig":{"imageSize":"1k"REDACTEDREDACTEDREDACTED`)
-	require.Equal(t, "1K", svc.extractImageSize(body))
+	require.Equal(t, "1K", NormalizeImageBillingTierOrDefault(svc.extractImageInputSize(body)))
 
 	body = []byte(`{"generationConfig":{"imageConfig":{"imageSize":"4k"REDACTEDREDACTEDREDACTED`)
-	require.Equal(t, "4K", svc.extractImageSize(body))
+	require.Equal(t, "4K", NormalizeImageBillingTierOrDefault(svc.extractImageInputSize(body)))
 REDACTED
 
 // TestExtractImageSize_Default 测试无 imageConfig 返回默认 2K
@@ -74,15 +74,15 @@ func TestExtractImageSize_Default(t *testing.T) {
 
 	// 无 generationConfig
 	body := []byte(`{"contents":[]REDACTED`)
-	require.Equal(t, "2K", svc.extractImageSize(body))
+	require.Equal(t, "2K", NormalizeImageBillingTierOrDefault(svc.extractImageInputSize(body)))
 
 	// 有 generationConfig 但无 imageConfig
 	body = []byte(`{"generationConfig":{"temperature":0.7REDACTEDREDACTED`)
-	require.Equal(t, "2K", svc.extractImageSize(body))
+	require.Equal(t, "2K", NormalizeImageBillingTierOrDefault(svc.extractImageInputSize(body)))
 
 	// 有 imageConfig 但无 imageSize
 	body = []byte(`{"generationConfig":{"imageConfig":{REDACTEDREDACTEDREDACTED`)
-	require.Equal(t, "2K", svc.extractImageSize(body))
+	require.Equal(t, "2K", NormalizeImageBillingTierOrDefault(svc.extractImageInputSize(body)))
 REDACTED
 
 // TestExtractImageSize_InvalidJSON 测试非法 JSON 返回默认 2K
@@ -90,10 +90,10 @@ func TestExtractImageSize_InvalidJSON(t *testing.T) {
 	svc := &AntigravityGatewayService{REDACTED
 
 	body := []byte(`not valid json`)
-	require.Equal(t, "2K", svc.extractImageSize(body))
+	require.Equal(t, "2K", NormalizeImageBillingTierOrDefault(svc.extractImageInputSize(body)))
 
 	body = []byte(`{"broken":`)
-	require.Equal(t, "2K", svc.extractImageSize(body))
+	require.Equal(t, "2K", NormalizeImageBillingTierOrDefault(svc.extractImageInputSize(body)))
 REDACTED
 
 // TestExtractImageSize_EmptySize 测试空 imageSize 返回默认 2K
@@ -101,11 +101,11 @@ func TestExtractImageSize_EmptySize(t *testing.T) {
 	svc := &AntigravityGatewayService{REDACTED
 
 	body := []byte(`{"generationConfig":{"imageConfig":{"imageSize":""REDACTEDREDACTEDREDACTED`)
-	require.Equal(t, "2K", svc.extractImageSize(body))
+	require.Equal(t, "2K", NormalizeImageBillingTierOrDefault(svc.extractImageInputSize(body)))
 
 	// 空格
 	body = []byte(`{"generationConfig":{"imageConfig":{"imageSize":"   "REDACTEDREDACTEDREDACTED`)
-	require.Equal(t, "2K", svc.extractImageSize(body))
+	require.Equal(t, "2K", NormalizeImageBillingTierOrDefault(svc.extractImageInputSize(body)))
 REDACTED
 
 // TestExtractImageSize_InvalidSize 测试无效尺寸返回默认 2K
@@ -113,11 +113,11 @@ func TestExtractImageSize_InvalidSize(t *testing.T) {
 	svc := &AntigravityGatewayService{REDACTED
 
 	body := []byte(`{"generationConfig":{"imageConfig":{"imageSize":"3K"REDACTEDREDACTEDREDACTED`)
-	require.Equal(t, "2K", svc.extractImageSize(body))
+	require.Equal(t, "2K", NormalizeImageBillingTierOrDefault(svc.extractImageInputSize(body)))
 
 	body = []byte(`{"generationConfig":{"imageConfig":{"imageSize":"8K"REDACTEDREDACTEDREDACTED`)
-	require.Equal(t, "2K", svc.extractImageSize(body))
+	require.Equal(t, "2K", NormalizeImageBillingTierOrDefault(svc.extractImageInputSize(body)))
 
 	body = []byte(`{"generationConfig":{"imageConfig":{"imageSize":"invalid"REDACTEDREDACTEDREDACTED`)
-	require.Equal(t, "2K", svc.extractImageSize(body))
+	require.Equal(t, "2K", NormalizeImageBillingTierOrDefault(svc.extractImageInputSize(body)))
 REDACTED
