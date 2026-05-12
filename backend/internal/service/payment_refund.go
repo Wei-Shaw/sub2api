@@ -587,9 +587,10 @@ func (s *PaymentService) RollbackRefund(ctx context.Context, p *RefundPlan, gErr
 
 func (s *PaymentService) restoreStatus(ctx context.Context, p *RefundPlan) {
 	rs := OrderStatusCompleted
-	if p.Order.Status == OrderStatusRefundRequested {
+	switch p.Order.Status {
+	case OrderStatusRefundRequested:
 		rs = OrderStatusRefundRequested
-	} else if p.Order.Status == OrderStatusPartiallyRefunded {
+	case OrderStatusPartiallyRefunded:
 		rs = OrderStatusPartiallyRefunded
 	}
 	_, _ = s.entClient.PaymentOrder.UpdateOneID(p.OrderID).SetStatus(rs).Save(ctx)
