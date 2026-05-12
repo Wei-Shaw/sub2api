@@ -15,9 +15,6 @@ type AdminHandlers struct {
 	DataManagement        *admin.DataManagementHandler
 	Backup                *admin.BackupHandler
 	OAuth                 *admin.OAuthHandler
-	OpenAIOAuth           *admin.OpenAIOAuthHandler
-	GeminiOAuth           *admin.GeminiOAuthHandler
-	AntigravityOAuth      *admin.AntigravityOAuthHandler
 	Proxy                 *admin.ProxyHandler
 	Redeem                *admin.RedeemHandler
 	Promo                 *admin.PromoHandler

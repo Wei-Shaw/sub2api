@@ -18,11 +18,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/plugin"
@@ -63,19 +59,15 @@ func NewOAuthHandler(oauthService *service.OAuthService) *OAuthHandler {
 
 // AccountHandler handles admin account management
 type AccountHandler struct {
-	adminService            service.AdminService
-	oauthService            *service.OAuthService
-	openaiOAuthService      *service.OpenAIOAuthService
-	geminiOAuthService      *service.GeminiOAuthService
-	antigravityOAuthService *service.AntigravityOAuthService
-	rateLimitService        *service.RateLimitService
-	accountUsageService     *service.AccountUsageService
-	accountTestService      *service.AccountTestService
-	concurrencyService      *service.ConcurrencyService
-	crsSyncService          *service.CRSSyncService
-	sessionLimitCache       service.SessionLimitCache
-	rpmCache                service.RPMCache
-	tokenCacheInvalidator   service.TokenCacheInvalidator
+	adminService          service.AdminService
+	rateLimitService      *service.RateLimitService
+	accountUsageService   *service.AccountUsageService
+	accountTestService    *service.AccountTestService
+	concurrencyService    *service.ConcurrencyService
+	crsSyncService        *service.CRSSyncService
+	sessionLimitCache     service.SessionLimitCache
+	rpmCache              service.RPMCache
+	tokenCacheInvalidator service.TokenCacheInvalidator
 	// serviceQuotaSvc 用于在删除 account 后失效服务限额缓存（FK CASCADE 自动删除关联，但缓存不感知）。
 	serviceQuotaSvc  service.ServiceQuotaService
 	platformRegistry *plugin.PlatformRegistry
@@ -84,10 +76,6 @@ type AccountHandler struct {
 // NewAccountHandler creates a new admin account handler
 func NewAccountHandler(
 	adminService service.AdminService,
-	oauthService *service.OAuthService,
-	openaiOAuthService *service.OpenAIOAuthService,
-	geminiOAuthService *service.GeminiOAuthService,
-	antigravityOAuthService *service.AntigravityOAuthService,
 	rateLimitService *service.RateLimitService,
 	accountUsageService *service.AccountUsageService,
 	accountTestService *service.AccountTestService,
@@ -100,21 +88,17 @@ func NewAccountHandler(
 	platformRegistry *plugin.PlatformRegistry,
 ) *AccountHandler {
 	return &AccountHandler{
-		adminService:            adminService,
-		oauthService:            oauthService,
-		openaiOAuthService:      openaiOAuthService,
-		geminiOAuthService:      geminiOAuthService,
-		antigravityOAuthService: antigravityOAuthService,
-		rateLimitService:        rateLimitService,
-		accountUsageService:     accountUsageService,
-		accountTestService:      accountTestService,
-		concurrencyService:      concurrencyService,
-		crsSyncService:          crsSyncService,
-		sessionLimitCache:       sessionLimitCache,
-		rpmCache:                rpmCache,
-		tokenCacheInvalidator:   tokenCacheInvalidator,
-		serviceQuotaSvc:         serviceQuotaSvc,
-		platformRegistry:        platformRegistry,
+		adminService:          adminService,
+		rateLimitService:      rateLimitService,
+		accountUsageService:   accountUsageService,
+		accountTestService:    accountTestService,
+		concurrencyService:    concurrencyService,
+		crsSyncService:        crsSyncService,
+		sessionLimitCache:     sessionLimitCache,
+		rpmCache:              rpmCache,
+		tokenCacheInvalidator: tokenCacheInvalidator,
+		serviceQuotaSvc:       serviceQuotaSvc,
+		platformRegistry:      platformRegistry,
 	}
 }
 
@@ -926,130 +910,18 @@ func (h *AccountHandler) PreviewFromCRS(c *gin.Context) {
 }
 
 // refreshSingleAccount refreshes credentials for a single OAuth account.
-// Returns (updatedAccount, warning, error) where warning is used for Antigravity ProjectIDMissing scenario.
+// All per-platform refresh logic has been migrated to plugins.
 func (h *AccountHandler) refreshSingleAccount(ctx context.Context, account *service.Account) (*service.Account, string, error) {
 	if !account.IsOAuth() {
 		return nil, "", infraerrors.BadRequest("NOT_OAUTH", "cannot refresh non-OAuth account")
 	}
 
-	// Try plugin delegation first
+	// Delegate to plugin; all platforms are now handled by plugins.
 	if updated, handled, err := h.tryPluginRefreshToken(ctx, account); handled {
 		return updated, "", err
 	}
 
-	var newCredentials map[string]any
-
-	if account.IsOpenAI() {
-		tokenInfo, err := h.openaiOAuthService.RefreshAccountToken(ctx, account)
-		if err != nil {
-			// 刷新失败但 access_token 可能仍有效，尝试设置隐私
-			h.adminService.EnsureOpenAIPrivacy(ctx, account)
-			return nil, "", err
-		}
-
-		newCredentials = h.openaiOAuthService.BuildAccountCredentials(tokenInfo)
-		for k, v := range account.Credentials {
-			if _, exists := newCredentials[k]; !exists {
-				newCredentials[k] = v
-			}
-		}
-	} else if account.Platform == service.PlatformGemini {
-		tokenInfo, err := h.geminiOAuthService.RefreshAccountToken(ctx, account)
-		if err != nil {
-			return nil, "", fmt.Errorf("failed to refresh credentials: %w", err)
-		}
-
-		newCredentials = h.geminiOAuthService.BuildAccountCredentials(tokenInfo)
-		for k, v := range account.Credentials {
-			if _, exists := newCredentials[k]; !exists {
-				newCredentials[k] = v
-			}
-		}
-	} else if account.Platform == service.PlatformAntigravity {
-		tokenInfo, err := h.antigravityOAuthService.RefreshAccountToken(ctx, account)
-		if err != nil {
-			return nil, "", err
-		}
-
-		newCredentials = h.antigravityOAuthService.BuildAccountCredentials(tokenInfo)
-		for k, v := range account.Credentials {
-			if _, exists := newCredentials[k]; !exists {
-				newCredentials[k] = v
-			}
-		}
-
-		// 特殊处理 project_id：如果新值为空但旧值非空，保留旧值
-		// 这确保了即使 LoadCodeAssist 失败，project_id 也不会丢失
-		if newProjectID, _ := newCredentials["project_id"].(string); newProjectID == "" {
-			if oldProjectID := strings.TrimSpace(account.GetCredential("project_id")); oldProjectID != "" {
-				newCredentials["project_id"] = oldProjectID
-			}
-		}
-
-		// 如果 project_id 获取失败，更新凭证但不标记为 error
-		if tokenInfo.ProjectIDMissing {
-			updatedAccount, updateErr := h.adminService.UpdateAccount(ctx, account.ID, &service.UpdateAccountInput{
-				Credentials: newCredentials,
-			})
-			if updateErr != nil {
-				return nil, "", fmt.Errorf("failed to update credentials: %w", updateErr)
-			}
-			h.adminService.EnsureAntigravityPrivacy(ctx, updatedAccount)
-			return updatedAccount, "missing_project_id_temporary", nil
-		}
-
-		// 成功获取到 project_id，如果之前是 missing_project_id 错误则清除
-		if account.Status == service.StatusError && strings.Contains(account.ErrorMessage, "missing_project_id:") {
-			if _, clearErr := h.adminService.ClearAccountError(ctx, account.ID); clearErr != nil {
-				return nil, "", fmt.Errorf("failed to clear account error: %w", clearErr)
-			}
-		}
-	} else {
-		// Use Anthropic/Claude OAuth service to refresh token
-		tokenInfo, err := h.oauthService.RefreshAccountToken(ctx, account)
-		if err != nil {
-			return nil, "", err
-		}
-
-		// Copy existing credentials to preserve non-token settings (e.g., intercept_warmup_requests)
-		newCredentials = make(map[string]any)
-		for k, v := range account.Credentials {
-			newCredentials[k] = v
-		}
-
-		// Update token-related fields
-		newCredentials["access_token"] = tokenInfo.AccessToken
-		newCredentials["token_type"] = tokenInfo.TokenType
-		newCredentials["expires_in"] = strconv.FormatInt(tokenInfo.ExpiresIn, 10)
-		newCredentials["expires_at"] = strconv.FormatInt(tokenInfo.ExpiresAt, 10)
-		if strings.TrimSpace(tokenInfo.RefreshToken) != "" {
-			newCredentials["refresh_token"] = tokenInfo.RefreshToken
-		}
-		if strings.TrimSpace(tokenInfo.Scope) != "" {
-			newCredentials["scope"] = tokenInfo.Scope
-		}
-	}
-
-	updatedAccount, err := h.adminService.UpdateAccount(ctx, account.ID, &service.UpdateAccountInput{
-		Credentials: newCredentials,
-	})
-	if err != nil {
-		return nil, "", err
-	}
-
-	// 刷新成功后，清除 token 缓存，确保下次请求使用新 token
-	if h.tokenCacheInvalidator != nil {
-		if invalidateErr := h.tokenCacheInvalidator.InvalidateToken(ctx, updatedAccount); invalidateErr != nil {
-			log.Printf("[WARN] Failed to invalidate token cache for account %d: %v", updatedAccount.ID, invalidateErr)
-		}
-	}
-
-	// OpenAI OAuth: 刷新成功后检查并设置 privacy_mode
-	h.adminService.EnsureOpenAIPrivacy(ctx, updatedAccount)
-	// Antigravity OAuth: 刷新成功后检查并设置 privacy_mode
-	h.adminService.EnsureAntigravityPrivacy(ctx, updatedAccount)
-
-	return updatedAccount, "", nil
+	return nil, "", infraerrors.BadRequest("PLUGIN_NOT_AVAILABLE", "no plugin available to refresh credentials for platform: "+account.Platform)
 }
 
 // Refresh handles refreshing account credentials
@@ -1633,13 +1505,7 @@ func (h *OAuthHandler) GenerateAuthURL(c *gin.Context) {
 		return
 	}
 
-	result, err := h.oauthService.GenerateAuthURL(c.Request.Context(), req.ProxyID)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-
-	response.Success(c, result)
+	response.ErrorFrom(c, infraerrors.BadRequest("PLUGIN_NOT_AVAILABLE", "no plugin available for anthropic OAuth"))
 }
 
 // GenerateSetupTokenURL generates OAuth authorization URL for setup token (inference only)
@@ -1700,17 +1566,7 @@ func (h *OAuthHandler) ExchangeCode(c *gin.Context) {
 		return
 	}
 
-	tokenInfo, err := h.oauthService.ExchangeCode(c.Request.Context(), &service.ExchangeCodeInput{
-		SessionID: req.SessionID,
-		Code:      req.Code,
-		ProxyID:   req.ProxyID,
-	})
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-
-	response.Success(c, tokenInfo)
+	response.ErrorFrom(c, infraerrors.BadRequest("PLUGIN_NOT_AVAILABLE", "no plugin available for anthropic OAuth code exchange"))
 }
 
 // ExchangeSetupTokenCode exchanges authorization code for setup token
@@ -1770,17 +1626,7 @@ func (h *OAuthHandler) CookieAuth(c *gin.Context) {
 		return
 	}
 
-	tokenInfo, err := h.oauthService.CookieAuth(c.Request.Context(), &service.CookieAuthInput{
-		SessionKey: req.SessionKey,
-		ProxyID:    req.ProxyID,
-		Scope:      "full",
-	})
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-
-	response.Success(c, tokenInfo)
+	response.ErrorFrom(c, infraerrors.BadRequest("PLUGIN_NOT_AVAILABLE", "no plugin available for anthropic cookie auth"))
 }
 
 // SetupTokenCookieAuth performs OAuth using sessionKey for setup token (inference only)
@@ -2020,6 +1866,7 @@ func (h *AccountHandler) SetSchedulable(c *gin.Context) {
 
 // GetAvailableModels handles getting available models for an account
 // GET /api/v1/admin/accounts/:id/models
+// All per-platform model lists have been migrated to plugins.
 func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 	accountID, err := ParseInt64Param(c, "id", errReasonAccountInvalidID)
 	if err != nil {
@@ -2033,136 +1880,18 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 		return
 	}
 
-	// Try plugin delegation first
+	// Delegate to plugin; all platforms are now handled by plugins.
 	if h.tryPluginGetModels(c, account) {
 		return
 	}
-	// Handle OpenAI accounts
-	if account.IsOpenAI() {
-		// OpenAI 自动透传会绕过常规模型改写，测试/模型列表也应回落到默认模型集。
-		if account.IsOpenAIPassthroughEnabled() {
-			response.Success(c, openai.DefaultModels)
-			return
-		}
 
-		mapping := account.GetModelMapping()
-		if len(mapping) == 0 {
-			response.Success(c, openai.DefaultModels)
-			return
-		}
-
-		// Return mapped models
-		var models []openai.Model
-		for requestedModel := range mapping {
-			var found bool
-			for _, dm := range openai.DefaultModels {
-				if dm.ID == requestedModel {
-					models = append(models, dm)
-					found = true
-					break
-				}
-			}
-			if !found {
-				models = append(models, openai.Model{
-					ID:          requestedModel,
-					Object:      "model",
-					Type:        "model",
-					DisplayName: requestedModel,
-				})
-			}
-		}
-		response.Success(c, models)
-		return
-	}
-
-	// Handle Gemini accounts
-	if account.IsGemini() {
-		// For OAuth accounts: return default Gemini models
-		if account.IsOAuth() {
-			response.Success(c, geminicli.DefaultModels)
-			return
-		}
-
-		// For API Key accounts: return models based on model_mapping
-		mapping := account.GetModelMapping()
-		if len(mapping) == 0 {
-			response.Success(c, geminicli.DefaultModels)
-			return
-		}
-
-		var models []geminicli.Model
-		for requestedModel := range mapping {
-			var found bool
-			for _, dm := range geminicli.DefaultModels {
-				if dm.ID == requestedModel {
-					models = append(models, dm)
-					found = true
-					break
-				}
-			}
-			if !found {
-				models = append(models, geminicli.Model{
-					ID:          requestedModel,
-					Type:        "model",
-					DisplayName: requestedModel,
-					CreatedAt:   "",
-				})
-			}
-		}
-		response.Success(c, models)
-		return
-	}
-
-	// Handle Antigravity accounts: return Claude + Gemini models
-	if account.Platform == service.PlatformAntigravity {
-		// 直接复用 antigravity.DefaultModels()，与 /v1/models 端点保持同步
-		response.Success(c, antigravity.DefaultModels())
-		return
-	}
-
-	// Handle Claude/Anthropic accounts
-	// For OAuth and Setup-Token accounts: return default models
-	if account.IsOAuth() {
-		response.Success(c, claude.DefaultModels)
-		return
-	}
-
-	// For API Key accounts: return models based on model_mapping
-	mapping := account.GetModelMapping()
-	if len(mapping) == 0 {
-		// No mapping configured, return default models
-		response.Success(c, claude.DefaultModels)
-		return
-	}
-
-	// Return mapped models (keys of the mapping are the available model IDs)
-	var models []claude.Model
-	for requestedModel := range mapping {
-		// Try to find display info from default models
-		var found bool
-		for _, dm := range claude.DefaultModels {
-			if dm.ID == requestedModel {
-				models = append(models, dm)
-				found = true
-				break
-			}
-		}
-		// If not found in defaults, create a basic entry
-		if !found {
-			models = append(models, claude.Model{
-				ID:          requestedModel,
-				Type:        "model",
-				DisplayName: requestedModel,
-				CreatedAt:   "",
-			})
-		}
-	}
-
-	response.Success(c, models)
+	// No plugin handled this platform; return empty list.
+	response.Success(c, []any{})
 }
 
 // SetPrivacy handles setting privacy for a single OAuth account.
 // POST /api/v1/admin/accounts/:id/set-privacy
+// All per-platform privacy logic has been migrated to plugins.
 func (h *AccountHandler) SetPrivacy(c *gin.Context) {
 	accountID, err := ParseInt64Param(c, "id", errReasonAccountInvalidID)
 	if err != nil {
@@ -2179,46 +1908,18 @@ func (h *AccountHandler) SetPrivacy(c *gin.Context) {
 		return
 	}
 
-	// Try plugin delegation first (force=true for explicit SetPrivacy action).
+	// Delegate to plugin; all platforms are now handled by plugins.
 	if h.tryPluginSetPrivacy(c, account, true) {
 		return
 	}
 
-	// Fallback to core per-platform privacy logic.
-	var mode string
-	switch account.Platform {
-	case service.PlatformOpenAI:
-		mode = h.adminService.ForceOpenAIPrivacy(c.Request.Context(), account)
-	case service.PlatformAntigravity:
-		mode = h.adminService.ForceAntigravityPrivacy(c.Request.Context(), account)
-	default:
-		// Unknown platform without a plugin: store privacy_mode directly.
-		mode = "enabled"
-		if err := h.adminService.SetAccountPrivacyMode(c.Request.Context(), accountID, mode); err != nil {
-			response.ErrorFrom(c, infraerrors.InternalServer("SET_PRIVACY_FAILED", "failed to set privacy mode"))
-			return
-		}
-	}
-	if mode == "" {
-		response.ErrorFrom(c, infraerrors.BadRequest(errReasonAccountMissingAccessToken, "cannot set privacy: missing access_token"))
-		return
-	}
-	// 从 DB 重新读取以确保返回最新状态
-	updated, err := h.adminService.GetAccount(c.Request.Context(), accountID)
-	if err != nil {
-		// 隐私已设置成功但读取失败，回退到内存更新
-		if account.Extra == nil {
-			account.Extra = make(map[string]any)
-		}
-		account.Extra["privacy_mode"] = mode
-		response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
-		return
-	}
-	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), updated))
+	// No plugin available for this platform.
+	response.ErrorFrom(c, infraerrors.BadRequest("PLUGIN_NOT_AVAILABLE", "no plugin available for privacy on platform: "+account.Platform))
 }
 
 // RefreshTier handles refreshing Google One tier for a single account
 // POST /api/v1/admin/accounts/:id/refresh-tier
+// All tier refresh logic has been migrated to plugins.
 func (h *AccountHandler) RefreshTier(c *gin.Context) {
 	accountID, err := ParseInt64Param(c, "id", errReasonAccountInvalidID)
 	if err != nil {
@@ -2233,43 +1934,12 @@ func (h *AccountHandler) RefreshTier(c *gin.Context) {
 		return
 	}
 
-	// Try plugin delegation first
+	// Delegate to plugin; all platforms are now handled by plugins.
 	if h.tryPluginRefreshTier(c, account) {
 		return
 	}
-	if account.Platform != service.PlatformGemini || account.Type != service.AccountTypeOAuth {
-		response.ErrorFrom(c, infraerrors.BadRequest(errReasonAccountTierRefreshUnsupported, "only Gemini OAuth accounts support tier refresh"))
-		return
-	}
 
-	oauthType, _ := account.Credentials["oauth_type"].(string)
-	if oauthType != "google_one" {
-		response.ErrorFrom(c, infraerrors.BadRequest(errReasonAccountTierRefreshUnsupported, "only google_one OAuth accounts support tier refresh"))
-		return
-	}
-
-	tierID, extra, creds, err := h.geminiOAuthService.RefreshAccountGoogleOneTier(ctx, account)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-
-	_, updateErr := h.adminService.UpdateAccount(ctx, accountID, &service.UpdateAccountInput{
-		Credentials: creds,
-		Extra:       extra,
-	})
-	if updateErr != nil {
-		response.ErrorFrom(c, updateErr)
-		return
-	}
-
-	response.Success(c, gin.H{
-		"tier_id":             tierID,
-		"storage_info":        extra,
-		"drive_storage_limit": extra["drive_storage_limit"],
-		"drive_storage_usage": extra["drive_storage_usage"],
-		"updated_at":          extra["drive_tier_updated_at"],
-	})
+	response.ErrorFrom(c, infraerrors.BadRequest(errReasonAccountTierRefreshUnsupported, "no plugin available for tier refresh on platform: "+account.Platform))
 }
 
 // BatchRefreshTierRequest represents batch tier refresh request
@@ -2279,107 +1949,9 @@ type BatchRefreshTierRequest struct {
 
 // BatchRefreshTier handles batch refreshing Google One tier
 // POST /api/v1/admin/accounts/batch-refresh-tier
+// Tier refresh has been migrated to plugins; batch is no longer supported.
 func (h *AccountHandler) BatchRefreshTier(c *gin.Context) {
-	var req BatchRefreshTierRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		req = BatchRefreshTierRequest{}
-	}
-
-	ctx := c.Request.Context()
-	accounts := make([]*service.Account, 0)
-
-	if len(req.AccountIDs) == 0 {
-		allAccounts, _, err := h.adminService.ListAccounts(ctx, 1, 10000, "gemini", "oauth", "", "", 0, "", "name", "asc")
-		if err != nil {
-			response.ErrorFrom(c, err)
-			return
-		}
-		for i := range allAccounts {
-			acc := &allAccounts[i]
-			oauthType, _ := acc.Credentials["oauth_type"].(string)
-			if oauthType == "google_one" {
-				accounts = append(accounts, acc)
-			}
-		}
-	} else {
-		fetched, err := h.adminService.GetAccountsByIDs(ctx, req.AccountIDs)
-		if err != nil {
-			response.ErrorFrom(c, err)
-			return
-		}
-
-		for _, acc := range fetched {
-			if acc == nil {
-				continue
-			}
-			if acc.Platform != service.PlatformGemini || acc.Type != service.AccountTypeOAuth {
-				continue
-			}
-			oauthType, _ := acc.Credentials["oauth_type"].(string)
-			if oauthType != "google_one" {
-				continue
-			}
-			accounts = append(accounts, acc)
-		}
-	}
-
-	const maxConcurrency = 10
-	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(maxConcurrency)
-
-	var mu sync.Mutex
-	var successCount, failedCount int
-	var errors []gin.H
-
-	for _, account := range accounts {
-		acc := account // 闭包捕获
-		g.Go(func() error {
-			_, extra, creds, err := h.geminiOAuthService.RefreshAccountGoogleOneTier(gctx, acc)
-			if err != nil {
-				mu.Lock()
-				failedCount++
-				errors = append(errors, gin.H{
-					"account_id": acc.ID,
-					"error":      err.Error(),
-				})
-				mu.Unlock()
-				return nil
-			}
-
-			_, updateErr := h.adminService.UpdateAccount(gctx, acc.ID, &service.UpdateAccountInput{
-				Credentials: creds,
-				Extra:       extra,
-			})
-
-			mu.Lock()
-			if updateErr != nil {
-				failedCount++
-				errors = append(errors, gin.H{
-					"account_id": acc.ID,
-					"error":      updateErr.Error(),
-				})
-			} else {
-				successCount++
-			}
-			mu.Unlock()
-
-			return nil
-		})
-	}
-
-	if err := g.Wait(); err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-
-	results := gin.H{
-		"total":   len(accounts),
-		"success": successCount,
-		"failed":  failedCount,
-		"errors":  errors,
-	}
-
-	response.Success(c, results)
+	response.ErrorFrom(c, infraerrors.BadRequest("NOT_SUPPORTED", "batch tier refresh is no longer supported; use per-account refresh-tier endpoint"))
 }
 
 // GetAntigravityDefaultModelMapping 获取 Antigravity 平台的默认模型映射

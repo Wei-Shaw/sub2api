@@ -5,21 +5,13 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
-// ProvideProviderRegistry creates a ProviderRegistry and registers
-// the four host-internal platform adapters (Anthropic, OpenAI,
-// Antigravity, Gemini). Phase 2+ will add dynamic registration from plugins.
-func ProvideProviderRegistry(
-	gw *service.GatewayService,
-	openai *service.OpenAIGatewayService,
-	antigravity *service.AntigravityGatewayService,
-	gemini *service.GeminiMessagesCompatService,
-) *ProviderRegistry {
-	reg := NewProviderRegistry()
-	reg.Register(NewAnthropicProvider(gw))
-	reg.Register(NewOpenAIProvider(openai))
-	reg.Register(NewAntigravityProvider(antigravity))
-	reg.Register(NewGeminiProvider(gemini))
-	return reg
+// ProvideProviderRegistry creates an empty ProviderRegistry. Platform
+// providers are registered dynamically by plugins at spawn time via
+// PluginRegistryAdapter.RegisterPlugin. If no plugin is enabled for a
+// given platform, the Pipeline returns a clear "no provider for platform"
+// error instead of panicking.
+func ProvideProviderRegistry() *ProviderRegistry {
+	return NewProviderRegistry()
 }
 
 // ProvideGatewayPipeline creates a GatewayPipeline with all required

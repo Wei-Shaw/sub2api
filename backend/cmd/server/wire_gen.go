@@ -213,7 +213,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	antigravityGatewayService := service.NewAntigravityGatewayService(accountRepository, gatewayCache, schedulerSnapshotService, antigravityTokenProvider, rateLimitService, httpUpstream, settingService, internal500CounterCache, accountUsageService)
 	accountTestService := service.NewAccountTestService(accountRepository, geminiTokenProvider, claudeTokenProvider, antigravityGatewayService, httpUpstream, configConfig, tlsFingerprintProfileService)
 	crsSyncService := service.NewCRSSyncService(accountRepository, proxyRepository, oAuthService, openAIOAuthService, geminiOAuthService, configConfig)
-	accountHandler := admin.NewAccountHandler(adminService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, rateLimitService, accountUsageService, accountTestService, concurrencyService, crsSyncService, sessionLimitCache, rpmCache, compositeTokenCacheInvalidator, serviceQuotaService, nil)
+	accountHandler := admin.NewAccountHandler(adminService, rateLimitService, accountUsageService, accountTestService, concurrencyService, crsSyncService, sessionLimitCache, rpmCache, compositeTokenCacheInvalidator, serviceQuotaService, nil)
 	adminAnnouncementHandler := admin.NewAnnouncementHandler(announcementService)
 	dataManagementService := service.NewDataManagementService()
 	dataManagementHandler := admin.NewDataManagementHandler(dataManagementService)
@@ -222,9 +222,6 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	backupService := service.ProvideBackupService(settingRepository, configConfig, secretEncryptor, backupObjectStoreFactory, dbDumper)
 	backupHandler := admin.NewBackupHandler(backupService, userService)
 	oAuthHandler := admin.NewOAuthHandler(oAuthService)
-	openAIOAuthHandler := admin.NewOpenAIOAuthHandler(openAIOAuthService, adminService)
-	geminiOAuthHandler := admin.NewGeminiOAuthHandler(geminiOAuthService)
-	antigravityOAuthHandler := admin.NewAntigravityOAuthHandler(antigravityOAuthService)
 	proxyHandler := admin.NewProxyHandler(adminService)
 	adminRedeemHandler := admin.NewRedeemHandler(adminService, redeemService)
 	promoHandler := admin.NewPromoHandler(promoService)
@@ -248,10 +245,8 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	openAITokenProvider := service.ProvideOpenAITokenProvider(accountRepository, geminiTokenCache, openAIOAuthService, oAuthRefreshAPI)
 	openAIGatewayService := service.NewOpenAIGatewayService(accountRepository, usageLogRepository, usageBillingRepository, userRepository, userSubscriptionRepository, userGroupRateRepository, gatewayCache, configConfig, schedulerSnapshotService, concurrencyService, billingService, rateLimitService, billingCacheService, httpUpstream, deferredService, openAITokenProvider, modelPricingResolver, channelCacheReader, balanceNotifyService, settingService)
 	geminiMessagesCompatService := service.NewGeminiMessagesCompatService(accountRepository, groupRepository, gatewayCache, schedulerSnapshotService, geminiTokenProvider, rateLimitService, httpUpstream, antigravityGatewayService, configConfig)
-	// Gateway Pipeline (Phase 1 M5): registry + pipeline injected into Handlers for
-	// compile-time validation and diagnostic endpoints. Handler methods still use their
-	// existing per-platform dispatch; progressive switchover is planned for later milestones.
-	providerRegistry := gateway.ProvideProviderRegistry(gatewayService, openAIGatewayService, antigravityGatewayService, geminiMessagesCompatService)
+	// Gateway Pipeline: empty ProviderRegistry populated dynamically by plugins at spawn time.
+	providerRegistry := gateway.ProvideProviderRegistry()
 	gatewayPipeline := gateway.ProvideGatewayPipeline(providerRegistry, gatewayService, billingCacheService, concurrencyService, settingService, configConfig)
 	opsSystemLogSink := service.ProvideOpsSystemLogSink(opsRepository)
 	opsService := service.NewOpsService(opsRepository, settingRepository, configConfig, accountRepository, userRepository, concurrencyService, gatewayService, openAIGatewayService, geminiMessagesCompatService, antigravityGatewayService, opsSystemLogSink)
@@ -302,9 +297,6 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	if pluginManager != nil {
 		accountHandler.SetPlatformRegistry(pluginManager.PlatformRegistry())
 		oAuthHandler.SetPlatformRegistry(pluginManager.PlatformRegistry())
-		openAIOAuthHandler.SetPlatformRegistry(pluginManager.PlatformRegistry())
-		geminiOAuthHandler.SetPlatformRegistry(pluginManager.PlatformRegistry())
-		antigravityOAuthHandler.SetPlatformRegistry(pluginManager.PlatformRegistry())
 		// Inject the plugin-backed compatible platform resolver so the
 		// scheduler uses PlatformDecl.CompatibleGateways instead of
 		// hardcoded Antigravity rules.
@@ -390,7 +382,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	uploadService := service.ProvideUploadService(configConfig)
 	adminUploadHandler := admin.NewUploadHandler(uploadService)
 	platformHandler := handler.ProvidePlatformHandler(pluginManager)
-	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, adminAnnouncementHandler, dataManagementHandler, backupHandler, oAuthHandler, openAIOAuthHandler, geminiOAuthHandler, antigravityOAuthHandler, proxyHandler, adminRedeemHandler, promoHandler, settingHandler, opsHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler, userAttributeHandler, errorPassthroughHandler, tlsFingerprintProfileHandler, adminAPIKeyHandler, scheduledTestHandler, serviceQuotaHandler, serviceQuotaMonitorHandler, contentModerationHandler, affiliateHandler, pluginHandler, pluginSettingsHandler, adminUploadHandler, platformHandler)
+	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, adminAnnouncementHandler, dataManagementHandler, backupHandler, oAuthHandler, proxyHandler, adminRedeemHandler, promoHandler, settingHandler, opsHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler, userAttributeHandler, errorPassthroughHandler, tlsFingerprintProfileHandler, adminAPIKeyHandler, scheduledTestHandler, serviceQuotaHandler, serviceQuotaMonitorHandler, contentModerationHandler, affiliateHandler, pluginHandler, pluginSettingsHandler, adminUploadHandler, platformHandler)
 	usageRecordWorkerPool := service.NewUsageRecordWorkerPool(configConfig)
 	userMsgQueueCache := repository.NewUserMsgQueueCache(redisClient)
 	userMessageQueueService := service.ProvideUserMessageQueueService(userMsgQueueCache, rpmCache, configConfig)

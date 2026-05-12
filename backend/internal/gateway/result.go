@@ -3,32 +3,7 @@ package gateway
 import (
 	"net/http"
 	"time"
-
-	"github.com/Wei-Shaw/sub2api/internal/service"
 )
-
-// ServiceResultToForwardResult maps a service.ForwardResult (used by
-// Anthropic and Antigravity providers) to the protocol-agnostic
-// gateway.ForwardResult. Both providers share the same service result
-// type, so this single function replaces the per-provider copies.
-func ServiceResultToForwardResult(r *service.ForwardResult) *ForwardResult {
-	return &ForwardResult{
-		RequestID:           r.RequestID,
-		Model:               r.Model,
-		UpstreamModel:       r.UpstreamModel,
-		Stream:              r.Stream,
-		Duration:            r.Duration,
-		FirstTokenMs:        r.FirstTokenMs,
-		InputTokens:         int64(r.Usage.InputTokens),
-		OutputTokens:        int64(r.Usage.OutputTokens),
-		CacheCreationTokens: int64(r.Usage.CacheCreationInputTokens),
-		CacheReadTokens:     int64(r.Usage.CacheReadInputTokens),
-		ImageOutputTokens:   int64(r.Usage.ImageOutputTokens),
-		ClientDisconnect:    r.ClientDisconnect,
-		ImageCount:          r.ImageCount,
-		ImageSize:           r.ImageSize,
-	}
-}
 
 // ForwardResult carries usage and timing data produced by
 // GatewayProvider.Forward. The Pipeline passes it to the host-side
