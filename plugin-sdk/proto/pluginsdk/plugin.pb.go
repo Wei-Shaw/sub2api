@@ -1407,8 +1407,12 @@ type PlatformDeclaration struct {
 	// for each listed protocol. When empty the host falls back to
 	// [platform] (single-protocol default).
 	CompatibleGateways []string `protobuf:"bytes,12,rep,name=compatible_gateways,json=compatibleGateways,proto3" json:"compatible_gateways,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	// group_config declares the group-level configuration schema. When set,
+	// the admin group form renders either a JSON-schema form or a custom Vue
+	// component for platform-specific group settings.
+	GroupConfig   *GroupConfigDeclaration `protobuf:"bytes,13,opt,name=group_config,json=groupConfig,proto3" json:"group_config,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *PlatformDeclaration) Reset() {
@@ -1525,6 +1529,70 @@ func (x *PlatformDeclaration) GetCompatibleGateways() []string {
 	return nil
 }
 
+func (x *PlatformDeclaration) GetGroupConfig() *GroupConfigDeclaration {
+	if x != nil {
+		return x.GroupConfig
+	}
+	return nil
+}
+
+// GroupConfigDeclaration declares group-level configuration for a platform.
+type GroupConfigDeclaration struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// group_extra_schema is a JSON Schema (Draft-07) describing the
+	// platform-specific extra fields stored in group_extra.
+	GroupExtraSchema []byte `protobuf:"bytes,1,opt,name=group_extra_schema,json=groupExtraSchema,proto3" json:"group_extra_schema,omitempty"`
+	// form_component_path names a custom Vue component the plugin ships for
+	// the group config form. Empty = use the JSON schema renderer.
+	FormComponentPath string `protobuf:"bytes,2,opt,name=form_component_path,json=formComponentPath,proto3" json:"form_component_path,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *GroupConfigDeclaration) Reset() {
+	*x = GroupConfigDeclaration{}
+	mi := &file_plugin_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GroupConfigDeclaration) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GroupConfigDeclaration) ProtoMessage() {}
+
+func (x *GroupConfigDeclaration) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GroupConfigDeclaration.ProtoReflect.Descriptor instead.
+func (*GroupConfigDeclaration) Descriptor() ([]byte, []int) {
+	return file_plugin_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *GroupConfigDeclaration) GetGroupExtraSchema() []byte {
+	if x != nil {
+		return x.GroupExtraSchema
+	}
+	return nil
+}
+
+func (x *GroupConfigDeclaration) GetFormComponentPath() string {
+	if x != nil {
+		return x.FormComponentPath
+	}
+	return ""
+}
+
 // AccountTypeDeclaration describes an account type within a platform.
 type AccountTypeDeclaration struct {
 	state       protoimpl.MessageState `protogen:"open.v1"`
@@ -1552,7 +1620,7 @@ type AccountTypeDeclaration struct {
 
 func (x *AccountTypeDeclaration) Reset() {
 	*x = AccountTypeDeclaration{}
-	mi := &file_plugin_proto_msgTypes[16]
+	mi := &file_plugin_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1564,7 +1632,7 @@ func (x *AccountTypeDeclaration) String() string {
 func (*AccountTypeDeclaration) ProtoMessage() {}
 
 func (x *AccountTypeDeclaration) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[16]
+	mi := &file_plugin_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1577,7 +1645,7 @@ func (x *AccountTypeDeclaration) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AccountTypeDeclaration.ProtoReflect.Descriptor instead.
 func (*AccountTypeDeclaration) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{16}
+	return file_plugin_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *AccountTypeDeclaration) GetType() string {
@@ -1667,7 +1735,7 @@ type SubTypeOption struct {
 
 func (x *SubTypeOption) Reset() {
 	*x = SubTypeOption{}
-	mi := &file_plugin_proto_msgTypes[17]
+	mi := &file_plugin_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1679,7 +1747,7 @@ func (x *SubTypeOption) String() string {
 func (*SubTypeOption) ProtoMessage() {}
 
 func (x *SubTypeOption) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[17]
+	mi := &file_plugin_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1692,7 +1760,7 @@ func (x *SubTypeOption) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubTypeOption.ProtoReflect.Descriptor instead.
 func (*SubTypeOption) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{17}
+	return file_plugin_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *SubTypeOption) GetValue() string {
@@ -1719,7 +1787,7 @@ type CapacityDisplayConfig struct {
 
 func (x *CapacityDisplayConfig) Reset() {
 	*x = CapacityDisplayConfig{}
-	mi := &file_plugin_proto_msgTypes[18]
+	mi := &file_plugin_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1731,7 +1799,7 @@ func (x *CapacityDisplayConfig) String() string {
 func (*CapacityDisplayConfig) ProtoMessage() {}
 
 func (x *CapacityDisplayConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[18]
+	mi := &file_plugin_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1744,7 +1812,7 @@ func (x *CapacityDisplayConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CapacityDisplayConfig.ProtoReflect.Descriptor instead.
 func (*CapacityDisplayConfig) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{18}
+	return file_plugin_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *CapacityDisplayConfig) GetShowConcurrency() bool {
@@ -1774,7 +1842,7 @@ type UsageDisplayConfig struct {
 
 func (x *UsageDisplayConfig) Reset() {
 	*x = UsageDisplayConfig{}
-	mi := &file_plugin_proto_msgTypes[19]
+	mi := &file_plugin_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1786,7 +1854,7 @@ func (x *UsageDisplayConfig) String() string {
 func (*UsageDisplayConfig) ProtoMessage() {}
 
 func (x *UsageDisplayConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[19]
+	mi := &file_plugin_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1799,7 +1867,7 @@ func (x *UsageDisplayConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UsageDisplayConfig.ProtoReflect.Descriptor instead.
 func (*UsageDisplayConfig) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{19}
+	return file_plugin_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *UsageDisplayConfig) GetComponentPath() string {
@@ -1848,7 +1916,7 @@ type DisplayRow struct {
 
 func (x *DisplayRow) Reset() {
 	*x = DisplayRow{}
-	mi := &file_plugin_proto_msgTypes[20]
+	mi := &file_plugin_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1860,7 +1928,7 @@ func (x *DisplayRow) String() string {
 func (*DisplayRow) ProtoMessage() {}
 
 func (x *DisplayRow) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[20]
+	mi := &file_plugin_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1873,7 +1941,7 @@ func (x *DisplayRow) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DisplayRow.ProtoReflect.Descriptor instead.
 func (*DisplayRow) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{20}
+	return file_plugin_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *DisplayRow) GetLabel() string {
@@ -1913,7 +1981,7 @@ type CustomActionDeclaration struct {
 
 func (x *CustomActionDeclaration) Reset() {
 	*x = CustomActionDeclaration{}
-	mi := &file_plugin_proto_msgTypes[21]
+	mi := &file_plugin_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1925,7 +1993,7 @@ func (x *CustomActionDeclaration) String() string {
 func (*CustomActionDeclaration) ProtoMessage() {}
 
 func (x *CustomActionDeclaration) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[21]
+	mi := &file_plugin_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1938,7 +2006,7 @@ func (x *CustomActionDeclaration) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CustomActionDeclaration.ProtoReflect.Descriptor instead.
 func (*CustomActionDeclaration) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{21}
+	return file_plugin_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *CustomActionDeclaration) GetActionId() string {
@@ -2000,7 +2068,7 @@ type TestModeOption struct {
 
 func (x *TestModeOption) Reset() {
 	*x = TestModeOption{}
-	mi := &file_plugin_proto_msgTypes[22]
+	mi := &file_plugin_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2012,7 +2080,7 @@ func (x *TestModeOption) String() string {
 func (*TestModeOption) ProtoMessage() {}
 
 func (x *TestModeOption) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[22]
+	mi := &file_plugin_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2025,7 +2093,7 @@ func (x *TestModeOption) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TestModeOption.ProtoReflect.Descriptor instead.
 func (*TestModeOption) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{22}
+	return file_plugin_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *TestModeOption) GetValue() string {
@@ -2056,7 +2124,7 @@ type TestConnectionConfig struct {
 
 func (x *TestConnectionConfig) Reset() {
 	*x = TestConnectionConfig{}
-	mi := &file_plugin_proto_msgTypes[23]
+	mi := &file_plugin_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2068,7 +2136,7 @@ func (x *TestConnectionConfig) String() string {
 func (*TestConnectionConfig) ProtoMessage() {}
 
 func (x *TestConnectionConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[23]
+	mi := &file_plugin_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2081,7 +2149,7 @@ func (x *TestConnectionConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TestConnectionConfig.ProtoReflect.Descriptor instead.
 func (*TestConnectionConfig) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{23}
+	return file_plugin_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *TestConnectionConfig) GetModelSelector() bool {
@@ -2138,7 +2206,7 @@ type PrivacyState struct {
 
 func (x *PrivacyState) Reset() {
 	*x = PrivacyState{}
-	mi := &file_plugin_proto_msgTypes[24]
+	mi := &file_plugin_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2150,7 +2218,7 @@ func (x *PrivacyState) String() string {
 func (*PrivacyState) ProtoMessage() {}
 
 func (x *PrivacyState) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[24]
+	mi := &file_plugin_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2163,7 +2231,7 @@ func (x *PrivacyState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PrivacyState.ProtoReflect.Descriptor instead.
 func (*PrivacyState) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{24}
+	return file_plugin_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *PrivacyState) GetValue() string {
@@ -2309,7 +2377,7 @@ const file_plugin_proto_rawDesc = "" +
 	"\bfilename\x18\x01 \x01(\tR\bfilename\x12\x10\n" +
 	"\x03sql\x18\x02 \x01(\fR\x03sql\x12'\n" +
 	"\x0fchecksum_sha256\x18\x03 \x01(\tR\x0echecksumSha256\x12+\n" +
-	"\x11non_transactional\x18\x04 \x01(\bR\x10nonTransactional\"\x86\x05\n" +
+	"\x11non_transactional\x18\x04 \x01(\bR\x10nonTransactional\"\xcc\x05\n" +
 	"\x13PlatformDeclaration\x12\x1a\n" +
 	"\bplatform\x18\x01 \x01(\tR\bplatform\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12\x19\n" +
@@ -2326,7 +2394,11 @@ const file_plugin_proto_rawDesc = "" +
 	"sort_order\x18\n" +
 	" \x01(\x05R\tsortOrder\x12>\n" +
 	"\x0eprivacy_states\x18\v \x03(\v2\x17.pluginsdk.PrivacyStateR\rprivacyStates\x12/\n" +
-	"\x13compatible_gateways\x18\f \x03(\tR\x12compatibleGateways\"\xa4\x03\n" +
+	"\x13compatible_gateways\x18\f \x03(\tR\x12compatibleGateways\x12D\n" +
+	"\fgroup_config\x18\r \x01(\v2!.pluginsdk.GroupConfigDeclarationR\vgroupConfig\"v\n" +
+	"\x16GroupConfigDeclaration\x12,\n" +
+	"\x12group_extra_schema\x18\x01 \x01(\fR\x10groupExtraSchema\x12.\n" +
+	"\x13form_component_path\x18\x02 \x01(\tR\x11formComponentPath\"\xa4\x03\n" +
 	"\x16AccountTypeDeclaration\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12 \n" +
@@ -2412,7 +2484,7 @@ func file_plugin_proto_rawDescGZIP() []byte {
 	return file_plugin_proto_rawDescData
 }
 
-var file_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
+var file_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
 var file_plugin_proto_goTypes = []any{
 	(*PluginInitRequest)(nil),       // 0: pluginsdk.PluginInitRequest
 	(*OutboundDefaults)(nil),        // 1: pluginsdk.OutboundDefaults
@@ -2430,20 +2502,21 @@ var file_plugin_proto_goTypes = []any{
 	(*GetMigrationRequest)(nil),     // 13: pluginsdk.GetMigrationRequest
 	(*GetMigrationResponse)(nil),    // 14: pluginsdk.GetMigrationResponse
 	(*PlatformDeclaration)(nil),     // 15: pluginsdk.PlatformDeclaration
-	(*AccountTypeDeclaration)(nil),  // 16: pluginsdk.AccountTypeDeclaration
-	(*SubTypeOption)(nil),           // 17: pluginsdk.SubTypeOption
-	(*CapacityDisplayConfig)(nil),   // 18: pluginsdk.CapacityDisplayConfig
-	(*UsageDisplayConfig)(nil),      // 19: pluginsdk.UsageDisplayConfig
-	(*DisplayRow)(nil),              // 20: pluginsdk.DisplayRow
-	(*CustomActionDeclaration)(nil), // 21: pluginsdk.CustomActionDeclaration
-	(*TestModeOption)(nil),          // 22: pluginsdk.TestModeOption
-	(*TestConnectionConfig)(nil),    // 23: pluginsdk.TestConnectionConfig
-	(*PrivacyState)(nil),            // 24: pluginsdk.PrivacyState
-	nil,                             // 25: pluginsdk.MenuItem.LabelsEntry
-	nil,                             // 26: pluginsdk.MenuItem.DescriptionsEntry
-	nil,                             // 27: pluginsdk.RouteDefinition.MetaEntry
-	nil,                             // 28: pluginsdk.CustomActionDeclaration.LabelsEntry
-	(*emptypb.Empty)(nil),           // 29: google.protobuf.Empty
+	(*GroupConfigDeclaration)(nil),  // 16: pluginsdk.GroupConfigDeclaration
+	(*AccountTypeDeclaration)(nil),  // 17: pluginsdk.AccountTypeDeclaration
+	(*SubTypeOption)(nil),           // 18: pluginsdk.SubTypeOption
+	(*CapacityDisplayConfig)(nil),   // 19: pluginsdk.CapacityDisplayConfig
+	(*UsageDisplayConfig)(nil),      // 20: pluginsdk.UsageDisplayConfig
+	(*DisplayRow)(nil),              // 21: pluginsdk.DisplayRow
+	(*CustomActionDeclaration)(nil), // 22: pluginsdk.CustomActionDeclaration
+	(*TestModeOption)(nil),          // 23: pluginsdk.TestModeOption
+	(*TestConnectionConfig)(nil),    // 24: pluginsdk.TestConnectionConfig
+	(*PrivacyState)(nil),            // 25: pluginsdk.PrivacyState
+	nil,                             // 26: pluginsdk.MenuItem.LabelsEntry
+	nil,                             // 27: pluginsdk.MenuItem.DescriptionsEntry
+	nil,                             // 28: pluginsdk.RouteDefinition.MetaEntry
+	nil,                             // 29: pluginsdk.CustomActionDeclaration.LabelsEntry
+	(*emptypb.Empty)(nil),           // 30: google.protobuf.Empty
 }
 var file_plugin_proto_depIdxs = []int32{
 	1,  // 0: pluginsdk.PluginInitRequest.outbound_defaults:type_name -> pluginsdk.OutboundDefaults
@@ -2456,37 +2529,38 @@ var file_plugin_proto_depIdxs = []int32{
 	10, // 7: pluginsdk.FrontendManifest.menu_items:type_name -> pluginsdk.MenuItem
 	11, // 8: pluginsdk.FrontendManifest.routes:type_name -> pluginsdk.RouteDefinition
 	10, // 9: pluginsdk.MenuItem.children:type_name -> pluginsdk.MenuItem
-	25, // 10: pluginsdk.MenuItem.labels:type_name -> pluginsdk.MenuItem.LabelsEntry
-	26, // 11: pluginsdk.MenuItem.descriptions:type_name -> pluginsdk.MenuItem.DescriptionsEntry
-	27, // 12: pluginsdk.RouteDefinition.meta:type_name -> pluginsdk.RouteDefinition.MetaEntry
-	16, // 13: pluginsdk.PlatformDeclaration.account_types:type_name -> pluginsdk.AccountTypeDeclaration
-	18, // 14: pluginsdk.PlatformDeclaration.capacity_display:type_name -> pluginsdk.CapacityDisplayConfig
-	19, // 15: pluginsdk.PlatformDeclaration.usage_display:type_name -> pluginsdk.UsageDisplayConfig
-	21, // 16: pluginsdk.PlatformDeclaration.custom_actions:type_name -> pluginsdk.CustomActionDeclaration
-	23, // 17: pluginsdk.PlatformDeclaration.test_config:type_name -> pluginsdk.TestConnectionConfig
-	24, // 18: pluginsdk.PlatformDeclaration.privacy_states:type_name -> pluginsdk.PrivacyState
-	17, // 19: pluginsdk.AccountTypeDeclaration.sub_types:type_name -> pluginsdk.SubTypeOption
-	20, // 20: pluginsdk.CapacityDisplayConfig.extra_rows:type_name -> pluginsdk.DisplayRow
-	20, // 21: pluginsdk.UsageDisplayConfig.extra_rows:type_name -> pluginsdk.DisplayRow
-	28, // 22: pluginsdk.CustomActionDeclaration.labels:type_name -> pluginsdk.CustomActionDeclaration.LabelsEntry
-	22, // 23: pluginsdk.TestConnectionConfig.test_modes:type_name -> pluginsdk.TestModeOption
-	0,  // 24: pluginsdk.PluginLifecycle.Init:input_type -> pluginsdk.PluginInitRequest
-	29, // 25: pluginsdk.PluginLifecycle.GetManifest:input_type -> google.protobuf.Empty
-	29, // 26: pluginsdk.PluginLifecycle.HealthCheck:input_type -> google.protobuf.Empty
-	29, // 27: pluginsdk.PluginLifecycle.Shutdown:input_type -> google.protobuf.Empty
-	4,  // 28: pluginsdk.PluginLifecycle.GetFrontendBundle:input_type -> pluginsdk.FrontendBundleRequest
-	13, // 29: pluginsdk.PluginLifecycle.GetMigration:input_type -> pluginsdk.GetMigrationRequest
-	2,  // 30: pluginsdk.PluginLifecycle.Init:output_type -> pluginsdk.PluginInitResponse
-	6,  // 31: pluginsdk.PluginLifecycle.GetManifest:output_type -> pluginsdk.ManifestResponse
-	3,  // 32: pluginsdk.PluginLifecycle.HealthCheck:output_type -> pluginsdk.HealthResponse
-	29, // 33: pluginsdk.PluginLifecycle.Shutdown:output_type -> google.protobuf.Empty
-	5,  // 34: pluginsdk.PluginLifecycle.GetFrontendBundle:output_type -> pluginsdk.FileChunk
-	14, // 35: pluginsdk.PluginLifecycle.GetMigration:output_type -> pluginsdk.GetMigrationResponse
-	30, // [30:36] is the sub-list for method output_type
-	24, // [24:30] is the sub-list for method input_type
-	24, // [24:24] is the sub-list for extension type_name
-	24, // [24:24] is the sub-list for extension extendee
-	0,  // [0:24] is the sub-list for field type_name
+	26, // 10: pluginsdk.MenuItem.labels:type_name -> pluginsdk.MenuItem.LabelsEntry
+	27, // 11: pluginsdk.MenuItem.descriptions:type_name -> pluginsdk.MenuItem.DescriptionsEntry
+	28, // 12: pluginsdk.RouteDefinition.meta:type_name -> pluginsdk.RouteDefinition.MetaEntry
+	17, // 13: pluginsdk.PlatformDeclaration.account_types:type_name -> pluginsdk.AccountTypeDeclaration
+	19, // 14: pluginsdk.PlatformDeclaration.capacity_display:type_name -> pluginsdk.CapacityDisplayConfig
+	20, // 15: pluginsdk.PlatformDeclaration.usage_display:type_name -> pluginsdk.UsageDisplayConfig
+	22, // 16: pluginsdk.PlatformDeclaration.custom_actions:type_name -> pluginsdk.CustomActionDeclaration
+	24, // 17: pluginsdk.PlatformDeclaration.test_config:type_name -> pluginsdk.TestConnectionConfig
+	25, // 18: pluginsdk.PlatformDeclaration.privacy_states:type_name -> pluginsdk.PrivacyState
+	16, // 19: pluginsdk.PlatformDeclaration.group_config:type_name -> pluginsdk.GroupConfigDeclaration
+	18, // 20: pluginsdk.AccountTypeDeclaration.sub_types:type_name -> pluginsdk.SubTypeOption
+	21, // 21: pluginsdk.CapacityDisplayConfig.extra_rows:type_name -> pluginsdk.DisplayRow
+	21, // 22: pluginsdk.UsageDisplayConfig.extra_rows:type_name -> pluginsdk.DisplayRow
+	29, // 23: pluginsdk.CustomActionDeclaration.labels:type_name -> pluginsdk.CustomActionDeclaration.LabelsEntry
+	23, // 24: pluginsdk.TestConnectionConfig.test_modes:type_name -> pluginsdk.TestModeOption
+	0,  // 25: pluginsdk.PluginLifecycle.Init:input_type -> pluginsdk.PluginInitRequest
+	30, // 26: pluginsdk.PluginLifecycle.GetManifest:input_type -> google.protobuf.Empty
+	30, // 27: pluginsdk.PluginLifecycle.HealthCheck:input_type -> google.protobuf.Empty
+	30, // 28: pluginsdk.PluginLifecycle.Shutdown:input_type -> google.protobuf.Empty
+	4,  // 29: pluginsdk.PluginLifecycle.GetFrontendBundle:input_type -> pluginsdk.FrontendBundleRequest
+	13, // 30: pluginsdk.PluginLifecycle.GetMigration:input_type -> pluginsdk.GetMigrationRequest
+	2,  // 31: pluginsdk.PluginLifecycle.Init:output_type -> pluginsdk.PluginInitResponse
+	6,  // 32: pluginsdk.PluginLifecycle.GetManifest:output_type -> pluginsdk.ManifestResponse
+	3,  // 33: pluginsdk.PluginLifecycle.HealthCheck:output_type -> pluginsdk.HealthResponse
+	30, // 34: pluginsdk.PluginLifecycle.Shutdown:output_type -> google.protobuf.Empty
+	5,  // 35: pluginsdk.PluginLifecycle.GetFrontendBundle:output_type -> pluginsdk.FileChunk
+	14, // 36: pluginsdk.PluginLifecycle.GetMigration:output_type -> pluginsdk.GetMigrationResponse
+	31, // [31:37] is the sub-list for method output_type
+	25, // [25:31] is the sub-list for method input_type
+	25, // [25:25] is the sub-list for extension type_name
+	25, // [25:25] is the sub-list for extension extendee
+	0,  // [0:25] is the sub-list for field type_name
 }
 
 func init() { file_plugin_proto_init() }
@@ -2500,7 +2574,7 @@ func file_plugin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_plugin_proto_rawDesc), len(file_plugin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   29,
+			NumMessages:   30,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

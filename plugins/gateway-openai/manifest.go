@@ -75,6 +75,9 @@ func buildManifest() *pluginsdk.Manifest {
 					},
 					ImageModelPatterns: []string{"gpt-image-"},
 				},
+				GroupConfig: &pluginsdk.GroupConfigDecl{
+					FormComponentPath: "OpenAIGroupConfig",
+				},
 			},
 		},
 	}

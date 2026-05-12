@@ -19,6 +19,15 @@ type PlatformDecl struct {
 	SortOrder          int
 	PrivacyStates      []PrivacyStateDecl
 	CompatibleGateways []string
+	GroupConfig        *GroupConfigDecl
+}
+
+// GroupConfigDecl declares the group-level configuration schema for a platform.
+// The host renders either a JSON-schema-driven form or mounts a custom Vue
+// component on the group management page.
+type GroupConfigDecl struct {
+	GroupExtraSchema  json.RawMessage // JSON Schema (Draft-07)
+	FormComponentPath string          // custom Vue component path; empty = schema renderer
 }
 
 // AccountTypeDecl describes an account type within a platform.

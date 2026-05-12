@@ -76,6 +76,9 @@ func buildManifest() *pluginsdk.Manifest {
 					ModelSelector:    true,
 					DefaultTestModel: defaultTestModel,
 				},
+				GroupConfig: &pluginsdk.GroupConfigDecl{
+					FormComponentPath: "AnthropicGroupConfig",
+				},
 			},
 		},
 	}

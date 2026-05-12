@@ -549,6 +549,27 @@ func (h *AccountHandler) Create(c *gin.Context) {
 	// base_rpm 输入校验：负值归零，超过 10000 截断
 	sanitizeExtraBaseRPM(req.Extra)
 
+	// Plugin-side validation for plugin-owned platforms.
+	if vr, handled := h.tryPluginValidateAccountData(
+		c.Request.Context(), req.Platform, req.Type,
+		req.Credentials, req.Extra, false, 0,
+	); handled {
+		if len(vr.FieldErrors) > 0 {
+			metadata := make(map[string]string, len(vr.FieldErrors))
+			for field, msg := range vr.FieldErrors {
+				metadata["field."+field] = msg
+			}
+			response.ErrorWithDetails(c, http.StatusBadRequest, "plugin validation failed", "PLUGIN_VALIDATION_ERROR", metadata)
+			return
+		}
+		if vr.ProcessedCredentials != nil {
+			req.Credentials = vr.ProcessedCredentials
+		}
+		if vr.ProcessedExtra != nil {
+			req.Extra = vr.ProcessedExtra
+		}
+	}
+
 	// 确定是否跳过混合渠道检查
 	skipCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
 
@@ -632,6 +653,35 @@ func (h *AccountHandler) Update(c *gin.Context) {
 	}
 	// base_rpm 输入校验：负值归零，超过 10000 截断
 	sanitizeExtraBaseRPM(req.Extra)
+
+	// Plugin-side validation for plugin-owned platforms (only when
+	// credentials or extra are being changed to avoid unnecessary fetch).
+	if len(req.Credentials) > 0 || len(req.Extra) > 0 {
+		if existing, fetchErr := h.adminService.GetAccount(c.Request.Context(), accountID); fetchErr == nil {
+			acctType := existing.Type
+			if req.Type != "" {
+				acctType = req.Type
+			}
+			if vr, handled := h.tryPluginValidateAccountData(
+				c.Request.Context(), existing.Platform, acctType,
+				req.Credentials, req.Extra, true, accountID,
+			); handled && len(vr.FieldErrors) > 0 {
+				metadata := make(map[string]string, len(vr.FieldErrors))
+				for field, msg := range vr.FieldErrors {
+					metadata["field."+field] = msg
+				}
+				response.ErrorWithDetails(c, http.StatusBadRequest, "plugin validation failed", "PLUGIN_VALIDATION_ERROR", metadata)
+				return
+			} else if handled {
+				if vr.ProcessedCredentials != nil {
+					req.Credentials = vr.ProcessedCredentials
+				}
+				if vr.ProcessedExtra != nil {
+					req.Extra = vr.ProcessedExtra
+				}
+			}
+		}
+	}
 
 	// 确定是否跳过混合渠道检查
 	skipCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
@@ -769,7 +819,18 @@ func (h *AccountHandler) Test(c *gin.Context) {
 	// Allow empty body, model_id is optional
 	_ = c.ShouldBindJSON(&req)
 
-	// Use AccountTestService to test the account with SSE streaming
+	// Try plugin delegation first (plugin-owned platforms handle test
+	// connection via gRPC streaming instead of the core test service).
+	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
+	if err != nil {
+		response.NotFound(c, "Account not found")
+		return
+	}
+	if h.tryPluginTestConnection(c, account, req.ModelID) {
+		return
+	}
+
+	// Fallback to core AccountTestService for built-in platforms.
 	if err := h.accountTestService.TestAccountConnection(c, accountID, req.ModelID, req.Prompt, req.Mode); err != nil {
 		// Error already sent via SSE, just log
 		return

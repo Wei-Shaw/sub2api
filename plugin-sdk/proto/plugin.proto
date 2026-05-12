@@ -395,6 +395,20 @@ message PlatformDeclaration {
   // for each listed protocol. When empty the host falls back to
   // [platform] (single-protocol default).
   repeated string compatible_gateways = 12;
+  // group_config declares the group-level configuration schema. When set,
+  // the admin group form renders either a JSON-schema form or a custom Vue
+  // component for platform-specific group settings.
+  GroupConfigDeclaration group_config = 13;
+}
+
+// GroupConfigDeclaration declares group-level configuration for a platform.
+message GroupConfigDeclaration {
+  // group_extra_schema is a JSON Schema (Draft-07) describing the
+  // platform-specific extra fields stored in group_extra.
+  bytes group_extra_schema = 1;
+  // form_component_path names a custom Vue component the plugin ships for
+  // the group config form. Empty = use the JSON schema renderer.
+  string form_component_path = 2;
 }
 
 // AccountTypeDeclaration describes an account type within a platform.

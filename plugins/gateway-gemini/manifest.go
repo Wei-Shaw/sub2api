@@ -68,6 +68,9 @@ func buildManifest() *pluginsdk.Manifest {
 						"gemini-3-flash-preview", "gemini-3-pro-preview", "gemini-2.0-flash",
 					},
 				},
+				GroupConfig: &pluginsdk.GroupConfigDecl{
+					FormComponentPath: "GeminiGroupConfig",
+				},
 			},
 		},
 	}

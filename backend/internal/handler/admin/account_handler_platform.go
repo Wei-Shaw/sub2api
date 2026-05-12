@@ -12,6 +12,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func (h *AccountHandler) platformClient(platform string) *plugin.AccountPlatformClient {
@@ -257,6 +259,64 @@ func sendPluginSSEError(c *gin.Context, msg string) {
 	c.Writer.WriteHeader(http.StatusOK)
 	writePluginSSEEvent(c, gin.H{"type": "error", "error": msg})
 	writePluginSSEEvent(c, gin.H{"type": "test_end", "success": false, "error": msg})
+}
+
+// validateAccountDataResult holds the outcome of plugin-side validation.
+type validateAccountDataResult struct {
+	FieldErrors          map[string]string
+	ProcessedCredentials map[string]any
+	ProcessedExtra       map[string]any
+}
+
+// tryPluginValidateAccountData delegates credential/extra validation to the
+// plugin for plugin-owned platforms. Returns (result, handled):
+//   - handled=true, result.FieldErrors non-empty → validation failed
+//   - handled=true, result.FieldErrors empty → validation passed (use ProcessedCredentials/Extra if set)
+//   - handled=false → plugin unavailable or returned Unimplemented/error; skip validation
+func (h *AccountHandler) tryPluginValidateAccountData(
+	ctx context.Context,
+	platform, accountType string,
+	credentials, extra map[string]any,
+	isUpdate bool,
+	accountID int64,
+) (*validateAccountDataResult, bool) {
+	client := h.platformClient(platform)
+	if client == nil {
+		return nil, false
+	}
+
+	credsJSON, _ := json.Marshal(credentials)
+	extraJSON, _ := json.Marshal(extra)
+
+	resp, err := client.ValidateAccountData(
+		ctx, platform, accountType,
+		credsJSON, extraJSON,
+		isUpdate, accountID,
+	)
+	if err != nil {
+		// Unimplemented or any other error → silently skip validation.
+		if s, ok := status.FromError(err); ok && s.Code() == codes.Unimplemented {
+			return nil, false
+		}
+		return nil, false
+	}
+
+	result := &validateAccountDataResult{
+		FieldErrors: resp.GetFieldErrors(),
+	}
+	if len(resp.GetProcessedCredentialsJson()) > 0 {
+		var processed map[string]any
+		if err := json.Unmarshal(resp.GetProcessedCredentialsJson(), &processed); err == nil {
+			result.ProcessedCredentials = processed
+		}
+	}
+	if len(resp.GetProcessedExtraJson()) > 0 {
+		var processed map[string]any
+		if err := json.Unmarshal(resp.GetProcessedExtraJson(), &processed); err == nil {
+			result.ProcessedExtra = processed
+		}
+	}
+	return result, true
 }
 
 // SetPlatformRegistry sets the platform registry after construction.

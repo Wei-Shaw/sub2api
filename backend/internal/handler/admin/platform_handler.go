@@ -64,6 +64,7 @@ type platformResponse struct {
 	CustomActions      []customActionResponse   `json:"custom_actions,omitempty"`
 	TestConfig         *testConfigResponse      `json:"test_config,omitempty"`
 	PrivacyStates      []privacyStateResponse   `json:"privacy_states,omitempty"`
+	GroupConfig        *groupConfigResponse     `json:"group_config,omitempty"`
 	CompatibleGateways []string                 `json:"compatible_gateways,omitempty"`
 }
 
@@ -136,6 +137,11 @@ type privacyStateResponse struct {
 	IsSet       bool   `json:"is_set"`
 }
 
+type groupConfigResponse struct {
+	GroupExtraSchema  json.RawMessage `json:"group_extra_schema,omitempty"`
+	FormComponentPath string          `json:"form_component_path,omitempty"`
+}
+
 // --- converters ---
 
 func toPlatformResponse(e *plugin.RegisteredPlatform) platformResponse {
@@ -194,6 +200,12 @@ func toPlatformResponse(e *plugin.RegisteredPlatform) platformResponse {
 			BadgeColor:  ps.BadgeColor,
 			IsSet:       ps.IsSet,
 		})
+	}
+	if d.GroupConfig != nil {
+		r.GroupConfig = &groupConfigResponse{
+			GroupExtraSchema:  d.GroupConfig.GroupExtraSchema,
+			FormComponentPath: d.GroupConfig.FormComponentPath,
+		}
 	}
 	r.CompatibleGateways = d.CompatibleGateways
 	return r

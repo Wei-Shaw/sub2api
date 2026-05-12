@@ -50,6 +50,12 @@ func platformDeclToProto(d *PlatformDecl) *pb.PlatformDeclaration {
 			PrioritizedModels:  d.TestConfig.PrioritizedModels,
 		}
 	}
+	if d.GroupConfig != nil {
+		p.GroupConfig = &pb.GroupConfigDeclaration{
+			GroupExtraSchema:  d.GroupConfig.GroupExtraSchema,
+			FormComponentPath: d.GroupConfig.FormComponentPath,
+		}
+	}
 	return p
 }
 
@@ -191,6 +197,12 @@ func PlatformDeclFromProto(p *pb.PlatformDeclaration) PlatformDecl {
 			BadgeColor:  ps.BadgeColor,
 			IsSet:       ps.IsSet,
 		})
+	}
+	if p.GroupConfig != nil {
+		d.GroupConfig = &GroupConfigDecl{
+			GroupExtraSchema:  append([]byte(nil), p.GroupConfig.GroupExtraSchema...),
+			FormComponentPath: p.GroupConfig.FormComponentPath,
+		}
 	}
 	return d
 }

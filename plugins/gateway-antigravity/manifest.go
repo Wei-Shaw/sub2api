@@ -70,6 +70,9 @@ func buildManifest() *pluginsdk.Manifest {
 					ModelSelector:    true,
 					DefaultTestModel: "claude-sonnet-4-5",
 				},
+				GroupConfig: &pluginsdk.GroupConfigDecl{
+					FormComponentPath: "AntigravityGroupConfig",
+				},
 			},
 		},
 	}
