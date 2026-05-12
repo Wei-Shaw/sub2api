@@ -30,10 +30,6 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 
 	tokenRefreshSvc := service.NewTokenRefreshService(
 		nil,
-		oauthSvc,
-		openAIOAuthSvc,
-		geminiOAuthSvc,
-		antigravityOAuthSvc,
 		nil,
 		nil,
 		cfg,

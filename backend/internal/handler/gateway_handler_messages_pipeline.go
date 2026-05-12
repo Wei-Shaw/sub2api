@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/gateway"
@@ -299,9 +300,7 @@ func (h *GatewayHandler) retryWithFallbackGroup(
 			zap.Int64("fallback_group_id", *fallbackGroupID),
 			zap.Error(err),
 		)
-		_ = h.antigravityGatewayService.WriteMappedClaudeError(
-			c, nil, promptTooLongErr.StatusCode, promptTooLongErr.RequestID, promptTooLongErr.Body,
-		)
+		writePromptTooLongClaudeError(c, promptTooLongErr)
 		return true
 	}
 
@@ -314,9 +313,7 @@ func (h *GatewayHandler) retryWithFallbackGroup(
 			zap.String("fallback_platform", fallbackGroup.Platform),
 			zap.String("fallback_subscription_type", fallbackGroup.SubscriptionType),
 		)
-		_ = h.antigravityGatewayService.WriteMappedClaudeError(
-			c, nil, promptTooLongErr.StatusCode, promptTooLongErr.RequestID, promptTooLongErr.Body,
-		)
+		writePromptTooLongClaudeError(c, promptTooLongErr)
 		return true
 	}
 
@@ -346,4 +343,53 @@ func (h *GatewayHandler) handleMessagesPipelineError(c *gin.Context, err error) 
 	} else {
 		h.errorResponse(c, status, code, message)
 	}
+}
+
+// writePromptTooLongClaudeError writes a Claude API error response for a
+// PromptTooLongError. This is a local helper that replaces the previous
+// dependency on AntigravityGatewayService.WriteMappedClaudeError, which
+// required a non-nil Account and pulled in Antigravity-specific ops logging.
+//
+// The upstream body typically contains a "prompt is too long" message.
+// We extract the upstream message, map the status code to the appropriate
+// Claude error type, and write the response in Claude API format.
+func writePromptTooLongClaudeError(c *gin.Context, ptErr *service.PromptTooLongError) {
+	upstreamMsg := strings.TrimSpace(service.ExtractUpstreamErrorMessage(ptErr.Body))
+	errType, errMsg := mapUpstreamStatusToClaudeError(ptErr.StatusCode, upstreamMsg)
+	c.JSON(ptErr.StatusCode, gin.H{
+		"type":  "error",
+		"error": gin.H{"type": errType, "message": errMsg},
+	})
+}
+
+// mapUpstreamStatusToClaudeError maps an upstream HTTP status code to the
+// corresponding Claude API error type and message. If the upstream message
+// is non-empty it is used as-is (passthrough); otherwise a generic default
+// is returned.
+func mapUpstreamStatusToClaudeError(status int, upstreamMsg string) (errType, errMsg string) {
+	switch status {
+	case http.StatusBadRequest:
+		errType = "invalid_request_error"
+		if upstreamMsg != "" {
+			errMsg = upstreamMsg
+		} else {
+			errMsg = "Invalid request"
+		}
+	case http.StatusUnauthorized:
+		errType = "authentication_error"
+		errMsg = "Upstream authentication failed"
+	case http.StatusForbidden:
+		errType = "permission_error"
+		errMsg = "Upstream access forbidden"
+	case http.StatusTooManyRequests:
+		errType = "rate_limit_error"
+		errMsg = "Upstream rate limit exceeded"
+	case 529:
+		errType = "overloaded_error"
+		errMsg = "Upstream service overloaded"
+	default:
+		errType = "upstream_error"
+		errMsg = "Upstream request failed"
+	}
+	return errType, errMsg
 }

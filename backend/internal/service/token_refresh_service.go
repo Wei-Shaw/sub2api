@@ -38,18 +38,16 @@ type TokenRefreshService struct {
 }
 
 // NewTokenRefreshService 创建token刷新服务
+// Call SetPluginTokenRefresher before Start to register the plugin-based
+// refresher. Without it, no platforms will be refreshed.
 func NewTokenRefreshService(
 	accountRepo AccountRepository,
-	oauthService *OAuthService,
-	openaiOAuthService *OpenAIOAuthService,
-	geminiOAuthService *GeminiOAuthService,
-	antigravityOAuthService *AntigravityOAuthService,
 	cacheInvalidator TokenCacheInvalidator,
 	schedulerCache SchedulerCache,
 	cfg *config.Config,
 	tempUnschedCache TempUnschedCache,
 ) *TokenRefreshService {
-	s := &TokenRefreshService{
+	return &TokenRefreshService{
 		accountRepo:      accountRepo,
 		refreshPolicy:    DefaultBackgroundRefreshPolicy(),
 		cfg:              &cfg.TokenRefresh,
@@ -58,30 +56,15 @@ func NewTokenRefreshService(
 		tempUnschedCache: tempUnschedCache,
 		stopCh:           make(chan struct{}),
 	}
+}
 
-	openAIRefresher := NewOpenAITokenRefresher(openaiOAuthService, accountRepo)
-
-	claudeRefresher := NewClaudeTokenRefresher(oauthService)
-	geminiRefresher := NewGeminiTokenRefresher(geminiOAuthService)
-	agRefresher := NewAntigravityTokenRefresher(antigravityOAuthService)
-
-	// 注册平台特定的刷新器（TokenRefresher 接口）
-	s.refreshers = []TokenRefresher{
-		claudeRefresher,
-		openAIRefresher,
-		geminiRefresher,
-		agRefresher,
-	}
-
-	// 注册对应的 OAuthRefreshExecutor（带 CacheKey 方法）
-	s.executors = []OAuthRefreshExecutor{
-		claudeRefresher,
-		openAIRefresher,
-		geminiRefresher,
-		agRefresher,
-	}
-
-	return s
+// SetPluginTokenRefresher injects the plugin-based token refresher.
+// Must be called before Start. The plugin refresher replaces all legacy
+// per-platform OAuth service refreshers.
+func (s *TokenRefreshService) SetPluginTokenRefresher(refresher PluginTokenRefresher) {
+	pluginAdapter := NewPluginBasedTokenRefresher(refresher)
+	s.refreshers = []TokenRefresher{pluginAdapter}
+	s.executors = []OAuthRefreshExecutor{pluginAdapter}
 }
 
 // SetPrivacyDeps 注入 OpenAI privacy opt-out 所需依赖

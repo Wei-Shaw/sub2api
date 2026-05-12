@@ -61,6 +61,7 @@ func (h *PaymentWebhookHandler) RegisterRoutes(webhook *gin.RouterGroup) {
 	webhook.POST("/alipay", h.AlipayNotify)
 	webhook.POST("/wxpay", h.WxpayNotify)
 	webhook.POST("/stripe", h.StripeWebhook)
+	webhook.POST("/airwallex", h.AirwallexWebhook)
 }
 
 // EasyPayNotify handles EasyPay payment notifications.
