@@ -98,6 +98,17 @@ func TestInstanceSupportsType(t *testing.T) {
 	}
 }
 
+func TestEasyPayCustomTypeMatches(t *testing.T) {
+	t.Parallel()
+
+	if !EasyPayCustomTypeMatches(`{"customType":"ldc","customUpstreamType":"epay"}`, "ldc") {
+		t.Fatal("expected custom EasyPay type to match")
+	}
+	if EasyPayCustomTypeMatches(`{"customType":"ldc","customUpstreamType":"epay"}`, TypeWxpay) {
+		t.Fatal("did not expect custom EasyPay type to match wxpay")
+	}
+}
+
 func TestGetInstanceChannelLimitsFallsBackToLegacyDirectAliases(t *testing.T) {
 	t.Parallel()
 

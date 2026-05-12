@@ -368,6 +368,13 @@ const paymentModeOptions = computed(() => {
 
 const availableTypes = computed(() => {
   const base = getAvailableTypes(form.provider_key, props.allPaymentTypes, props.redirectLabel)
+  const customType = normalizeCustomEasyPayType(config.customType)
+  if (form.provider_key === 'easypay' && customType && !base.some(opt => opt.value === customType)) {
+    base.push({
+      value: customType,
+      label: config.customDisplayName?.trim() || customType,
+    })
+  }
   // Resolve i18n labels for types not in allPaymentTypes (e.g. card, link inside stripe)
   return base.map(opt =>
     opt.label === opt.value
@@ -480,6 +487,22 @@ function onKeyChange() {
   applyDefaults()
 }
 
+function normalizeCustomEasyPayType(value: string | undefined): string {
+  return (value || '').trim().toLowerCase()
+}
+
+function syncCustomEasyPayType() {
+  if (form.provider_key !== 'easypay') return
+  const customType = normalizeCustomEasyPayType(config.customType)
+  const defaultTypes = new Set(PROVIDER_SUPPORTED_TYPES.easypay || [])
+  form.supported_types = form.supported_types.filter(type => defaultTypes.has(type) || type === customType)
+  if (!customType) return
+  config.customType = customType
+  if (!form.supported_types.includes(customType)) {
+    form.supported_types = [...form.supported_types, customType]
+  }
+}
+
 function clearConfig() {
   Object.keys(config).forEach(k => delete config[k])
   Object.keys(limits).forEach(k => delete limits[k])
@@ -539,10 +562,27 @@ function serializeLimits(): string {
 }
 
 function handleSave() {
+  syncCustomEasyPayType()
   // Validate required fields
   if (!form.name.trim()) {
     emitValidationError(t('admin.settings.payment.validationNameRequired'))
     return
+  }
+  if (form.provider_key === 'easypay') {
+    const customType = normalizeCustomEasyPayType(config.customType)
+    const customUpstreamType = normalizeCustomEasyPayType(config.customUpstreamType)
+    if (customType && !/^[a-z0-9_-]+$/.test(customType)) {
+      emitValidationError(t('admin.settings.payment.validationEasyPayCustomTypeInvalid'))
+      return
+    }
+    if (customUpstreamType && !/^[a-z0-9_-]+$/.test(customUpstreamType)) {
+      emitValidationError(t('admin.settings.payment.validationEasyPayCustomUpstreamTypeInvalid'))
+      return
+    }
+    if (customType && !customUpstreamType) {
+      emitValidationError(t('admin.settings.payment.validationEasyPayCustomUpstreamTypeRequired'))
+      return
+    }
   }
   // Validate required config fields — all non-optional fields must be filled.
   // In edit mode, sensitive fields may be left blank to preserve the stored

@@ -156,6 +156,8 @@ func (lb *DefaultLoadBalancer) queryEnabledInstances(
 				}
 			}
 			matched = append(matched, inst)
+		} else if inst.ProviderKey == TypeEasyPay && EasyPayCustomTypeMatches(inst.Config, paymentType) {
+			matched = append(matched, inst)
 		}
 	}
 	if len(matched) == 0 {
@@ -388,6 +390,25 @@ func InstanceSupportsType(supportedTypes string, target PaymentType) bool {
 		}
 	}
 	return false
+}
+
+func EasyPayCustomTypeMatches(config string, target PaymentType) bool {
+	cfg, ok := parsePlainProviderConfig(config)
+	if !ok {
+		return false
+	}
+	return strings.TrimSpace(cfg["customType"]) == strings.TrimSpace(target)
+}
+
+func parsePlainProviderConfig(stored string) (map[string]string, bool) {
+	if strings.TrimSpace(stored) == "" {
+		return nil, false
+	}
+	var config map[string]string
+	if err := json.Unmarshal([]byte(stored), &config); err != nil {
+		return nil, false
+	}
+	return config, true
 }
 
 func normalizeVisibleMethodSupportType(paymentType PaymentType) PaymentType {

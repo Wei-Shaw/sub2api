@@ -179,6 +179,41 @@ func TestEasyPayRefundResponseErrors(t *testing.T) {
 	}
 }
 
+func TestEasyPayCustomPaymentTypeUsesUpstreamType(t *testing.T) {
+	t.Parallel()
+
+	provider, err := NewEasyPay("test-instance", map[string]string{
+		"pid":                "pid-1",
+		"pkey":               "pkey-1",
+		"apiBase":            "https://pay.example.com",
+		"notifyUrl":          "https://example.com/notify",
+		"returnUrl":          "https://example.com/return",
+		"paymentMode":        paymentModePopup,
+		"customType":         "ldc",
+		"customUpstreamType": "epay",
+	})
+	if err != nil {
+		t.Fatalf("NewEasyPay: %v", err)
+	}
+
+	resp, err := provider.CreatePayment(context.Background(), payment.CreatePaymentRequest{
+		OrderID:     "sub2-custom-1",
+		Amount:      "1.00",
+		PaymentType: "ldc",
+		Subject:     "Custom EasyPay",
+	})
+	if err != nil {
+		t.Fatalf("CreatePayment: %v", err)
+	}
+	payURL, err := url.Parse(resp.PayURL)
+	if err != nil {
+		t.Fatalf("parse pay url: %v", err)
+	}
+	if got := payURL.Query().Get("type"); got != "epay" {
+		t.Fatalf("pay url type = %q, want epay (%s)", got, resp.PayURL)
+	}
+}
+
 func newTestEasyPay(t *testing.T, apiBase string) *EasyPay {
 	t.Helper()
 
