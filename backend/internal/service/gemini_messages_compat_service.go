@@ -3434,11 +3434,6 @@ REDACTED
 	return out
 REDACTED
 
-// extractImageSize 从 Gemini 请求中提取 image_size 参数
-func (s *GeminiMessagesCompatService) extractImageSize(body []byte) string {
-	return normalizeOpenAIImageSizeTier(s.extractImageInputSize(body))
-REDACTED
-
 func (s *GeminiMessagesCompatService) extractImageInputSize(body []byte) string {
 	var req struct {
 		GenerationConfig *struct {

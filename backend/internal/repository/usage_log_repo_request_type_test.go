@@ -263,7 +263,9 @@ REDACTED)
 	require.Equal(t, sql.NullString{String: inputSize, Valid: trueREDACTED, prepared.args[35])
 	require.Equal(t, sql.NullString{String: outputSize, Valid: trueREDACTED, prepared.args[36])
 	require.Equal(t, sql.NullString{String: source, Valid: trueREDACTED, prepared.args[37])
-	require.JSONEq(t, `{"1K":1,"4K":1REDACTED`, prepared.args[38].(string))
+	breakdownJSON, ok := prepared.args[38].(string)
+	require.True(t, ok)
+	require.JSONEq(t, `{"1K":1,"4K":1REDACTED`, breakdownJSON)
 REDACTED
 
 func TestCoalesceTrimmedString(t *testing.T) {
