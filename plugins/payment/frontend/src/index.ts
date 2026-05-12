@@ -38,6 +38,7 @@ import PaymentQRCodeView from './views/user/PaymentQRCodeView.vue'
 import PaymentResultView from './views/user/PaymentResultView.vue'
 import StripePaymentView from './views/user/StripePaymentView.vue'
 import StripePopupView from './views/user/StripePopupView.vue'
+import AirwallexPaymentView from './views/user/AirwallexPaymentView.vue'
 
 // Auth callback (no-auth route — host must allow public render for it)
 import WechatPaymentCallbackView from './views/auth/WechatPaymentCallbackView.vue'
@@ -82,6 +83,7 @@ const VIEWS: Record<string, Component> = {
   'PaymentResultView.vue': PaymentResultView,
   'StripePaymentView.vue': StripePaymentView,
   'StripePopupView.vue': StripePopupView,
+  'AirwallexPaymentView.vue': AirwallexPaymentView,
   'WechatPaymentCallbackView.vue': WechatPaymentCallbackView,
 }
 

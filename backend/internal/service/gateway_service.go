@@ -533,6 +533,25 @@ func (s *GatewayService) TempUnscheduleRetryableError(ctx context.Context, accou
 	}
 }
 
+// HandlePipelineUpstreamError processes upstream errors from the gateway
+// pipeline's failover path. Unlike HandleUpstreamError in RateLimitService
+// (which receives full HTTP headers), the pipeline only has the response body
+// and status code. This method delegates to RateLimitService for account
+// state management (rate-limiting, error marking, 429 plan_type sync, etc.).
+//
+// Called by pipeline_forward.go after failover decisions are made.
+func (s *GatewayService) HandlePipelineUpstreamError(
+	ctx context.Context, account *Account, failoverErr *UpstreamFailoverError,
+) {
+	if s == nil || failoverErr == nil || account == nil || s.rateLimitService == nil {
+		return
+	}
+	s.rateLimitService.HandleUpstreamError(
+		ctx, account, failoverErr.StatusCode,
+		failoverErr.ResponseHeaders, failoverErr.ResponseBody,
+	)
+}
+
 // GatewayService handles API gateway operations
 type GatewayService struct {
 	accountRepo           AccountRepository

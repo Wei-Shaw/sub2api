@@ -70,6 +70,13 @@
     @apply dark:shadow-[#2BB741]/20;
   }
 
+  .btn-airwallex {
+    @apply bg-[#14171A] text-white shadow-md shadow-emerald-500/20;
+    @apply hover:bg-[#20252a] hover:shadow-lg hover:shadow-emerald-500/25;
+    @apply dark:bg-[#7AF0C4] dark:text-gray-950 dark:shadow-emerald-500/20;
+    @apply dark:hover:bg-[#62d9ad];
+  }
+
   .btn-sm {
     @apply rounded-lg px-3 py-1.5 text-xs;
   }

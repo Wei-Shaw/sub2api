@@ -201,7 +201,8 @@ func (s *accountPlatformServer) testVertexConnection(
 	creds := parseVertexCredentialsRaw(req.GetCredentialsJson())
 
 	// Exchange service account credentials for access token.
-	accessToken, err := exchangeVertexServiceAccountToken(ctx, s.httpClient, creds.serviceAccountJSON)
+	// Use the account's proxy URL for the token endpoint request.
+	accessToken, err := exchangeVertexServiceAccountToken(ctx, req.GetProxyUrl(), creds.serviceAccountJSON)
 	if err != nil {
 		return sendErrorEnd(stream, "token exchange failed: "+err.Error())
 	}

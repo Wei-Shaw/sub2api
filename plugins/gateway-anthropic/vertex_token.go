@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"golang.org/x/net/proxy"
 )
 
 // --- Vertex token constants ---
@@ -67,15 +69,68 @@ type vertexTokenResponse struct {
 	ErrorDesc   string `json:"error_description"`
 }
 
+// newVertexTokenHTTPClient creates an HTTP client for the token exchange.
+// When proxyURL is non-empty, the client routes requests through the proxy
+// (HTTP/HTTPS/SOCKS5/SOCKS5H). This mirrors the core's
+// newVertexServiceAccountHTTPClient.
+func newVertexTokenHTTPClient(proxyURL string) (*http.Client, error) {
+	proxyURL = strings.TrimSpace(proxyURL)
+	if proxyURL == "" {
+		return &http.Client{Timeout: vertexTokenTimeout}, nil
+	}
+
+	parsed, err := url.Parse(proxyURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid proxy URL: %v", err)
+	}
+	if parsed.Host == "" {
+		return nil, fmt.Errorf("proxy URL missing host")
+	}
+
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+
+	scheme := strings.ToLower(parsed.Scheme)
+	switch scheme {
+	case "http", "https":
+		transport.Proxy = http.ProxyURL(parsed)
+	case "socks5":
+		// Upgrade to socks5h so DNS is resolved by the proxy.
+		parsed.Scheme = "socks5h"
+		fallthrough
+	case "socks5h":
+		dialer, dialErr := proxy.FromURL(parsed, proxy.Direct)
+		if dialErr != nil {
+			return nil, fmt.Errorf("create socks5 dialer: %w", dialErr)
+		}
+		if cd, ok := dialer.(proxy.ContextDialer); ok {
+			transport.DialContext = cd.DialContext
+		} else {
+			transport.DialContext = func(_ context.Context, network, addr string) (net.Conn, error) {
+				return dialer.Dial(network, addr)
+			}
+		}
+	default:
+		return nil, fmt.Errorf("unsupported proxy scheme %q", scheme)
+	}
+
+	return &http.Client{Timeout: vertexTokenTimeout, Transport: transport}, nil
+}
+
 // exchangeVertexServiceAccountToken creates a JWT assertion from the service
 // account key and exchanges it for a Google OAuth2 access token.
 //
+// When proxyURL is non-empty, the token request is routed through the proxy.
 // This is a simplified version of the core's token exchange without Redis
 // caching or distributed locking. Each call makes a fresh token request.
-func exchangeVertexServiceAccountToken(ctx context.Context, client *http.Client, saJSON string) (string, error) {
+func exchangeVertexServiceAccountToken(ctx context.Context, proxyURL string, saJSON string) (string, error) {
 	key, err := parseVertexServiceAccountKey(saJSON)
 	if err != nil {
 		return "", err
+	}
+	client, err := newVertexTokenHTTPClient(proxyURL)
+	if err != nil {
+		return "", fmt.Errorf("configure token proxy: %w", err)
 	}
 	return exchangeWithKey(ctx, client, key)
 }

@@ -45,6 +45,7 @@ var endpointDecls = []pluginsdk.EndpointDecl{
 	{Path: userRoutePrefix + "/webhook/alipay", Methods: []string{http.MethodPost}, AuthType: pluginsdk.AuthTypeNone},
 	{Path: userRoutePrefix + "/webhook/wxpay", Methods: []string{http.MethodPost}, AuthType: pluginsdk.AuthTypeNone},
 	{Path: userRoutePrefix + "/webhook/stripe", Methods: []string{http.MethodPost}, AuthType: pluginsdk.AuthTypeNone},
+	{Path: userRoutePrefix + "/webhook/airwallex", Methods: []string{http.MethodPost}, AuthType: pluginsdk.AuthTypeNone},
 
 	// -------- Admin (auth=admin) --------
 	{Path: adminRoutePrefix + "/dashboard", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeAdmin},
@@ -226,5 +227,6 @@ var routeDecls = []pluginsdk.RouteDecl{
 	{Path: "/payment/result", Name: "PaymentResult", ComponentPath: "PaymentResultView.vue", Meta: standaloneCallbackMeta},
 	{Path: "/payment/stripe", Name: "PaymentStripe", ComponentPath: "StripePaymentView.vue", Meta: standaloneCallbackMeta},
 	{Path: "/payment/stripe-popup", Name: "PaymentStripePopup", ComponentPath: "StripePopupView.vue", Meta: standaloneCallbackMeta},
+	{Path: "/payment/airwallex", Name: "PaymentAirwallex", ComponentPath: "AirwallexPaymentView.vue", Meta: standaloneCallbackMeta},
 	{Path: "/auth/wechat/payment/callback", Name: "WechatPaymentCallback", ComponentPath: "WechatPaymentCallbackView.vue", Meta: standaloneCallbackMeta},
 }

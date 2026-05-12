@@ -31,7 +31,8 @@ func (s *gatewayProviderServer) forwardVertex(
 	creds := parseVertexCredentialsRaw(acct.GetCredentialsJson())
 
 	// Obtain access token via service account JWT exchange.
-	accessToken, err := exchangeVertexServiceAccountToken(ctx, s.httpClient, creds.serviceAccountJSON)
+	// Use the account's proxy URL for the token endpoint request.
+	accessToken, err := exchangeVertexServiceAccountToken(ctx, acct.GetProxyUrl(), creds.serviceAccountJSON)
 	if err != nil {
 		return fmt.Errorf("vertex token exchange: %w", err)
 	}

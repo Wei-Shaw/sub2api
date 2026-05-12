@@ -57,6 +57,7 @@ func (c *AccountPlatformClient) TestConnection(
 	platform, accountType string,
 	credentials, extra json.RawMessage,
 	modelID string,
+	proxyURL string,
 ) (pb.AccountPlatformExtension_TestConnectionClient, error) {
 	return c.stub.TestConnection(ctx, &pb.TestConnectionRequest{
 		AccountId:       accountID,
@@ -65,6 +66,7 @@ func (c *AccountPlatformClient) TestConnection(
 		CredentialsJson: credentials,
 		ExtraJson:       extra,
 		ModelId:         modelID,
+		ProxyUrl:        proxyURL,
 	})
 }
 

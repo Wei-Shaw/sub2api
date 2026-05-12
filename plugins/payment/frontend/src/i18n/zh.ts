@@ -21,6 +21,7 @@ export default {
       alipay: '支付宝',
       wxpay: '微信支付',
       stripe: 'Stripe',
+      airwallex: 'Airwallex',
       card: '银行卡',
       link: 'Link',
       alipay_direct: '支付宝（直连）',
@@ -107,6 +108,9 @@ export default {
     stripeLoadFailed: '支付组件加载失败，请刷新页面重试',
     stripeMissingParams: '缺少订单ID或支付密钥',
     stripeNotConfigured: 'Stripe 未配置',
+    airwallexLoadFailed: 'Airwallex 支付组件加载失败，请刷新页面重试',
+    airwallexMissingParams: '缺少 Airwallex 支付参数',
+    airwallexPay: 'Airwallex 支付',
     errors: {
       tooManyPending: '待支付订单过多（最多 {max} 个），请先完成或取消现有订单',
       cancelRateLimited: '取消订单过于频繁，请稍后再试',

@@ -240,6 +240,12 @@ func (p *PluginGatewayProvider) buildAccountInfo(req *ForwardRequest) (*pb.Gatew
 		Name:        acct.Name,
 	}
 
+	// Pass the account's proxy URL so plugins can route outbound requests
+	// (e.g. Vertex SA token exchange) through the configured proxy.
+	if acct.ProxyID != nil && acct.Proxy != nil {
+		info.ProxyUrl = acct.Proxy.URL()
+	}
+
 	if acct.Credentials != nil {
 		creds, err := json.Marshal(acct.Credentials)
 		if err != nil {

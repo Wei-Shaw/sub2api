@@ -151,10 +151,16 @@ func (h *AccountHandler) tryPluginTestConnection(c *gin.Context, account *servic
 	creds, _ := json.Marshal(account.Credentials)
 	extra, _ := json.Marshal(account.Extra)
 
+	// Resolve account proxy URL for the plugin.
+	var proxyURL string
+	if account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+
 	stream, err := client.TestConnection(
 		c.Request.Context(),
 		account.ID, account.Platform, account.Type,
-		creds, extra, modelID,
+		creds, extra, modelID, proxyURL,
 	)
 	if err != nil {
 		sendPluginSSEError(c, "plugin test connection: "+err.Error())

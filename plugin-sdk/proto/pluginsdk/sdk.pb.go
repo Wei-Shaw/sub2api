@@ -6043,8 +6043,10 @@ type TestConnectionRequest struct {
 	CredentialsJson []byte                 `protobuf:"bytes,4,opt,name=credentials_json,json=credentialsJson,proto3" json:"credentials_json,omitempty"`
 	ExtraJson       []byte                 `protobuf:"bytes,5,opt,name=extra_json,json=extraJson,proto3" json:"extra_json,omitempty"`
 	ModelId         string                 `protobuf:"bytes,6,opt,name=model_id,json=modelId,proto3" json:"model_id,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// proxy_url is the account's configured proxy URL. Empty = no proxy.
+	ProxyUrl      string `protobuf:"bytes,7,opt,name=proxy_url,json=proxyUrl,proto3" json:"proxy_url,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *TestConnectionRequest) Reset() {
@@ -6115,6 +6117,13 @@ func (x *TestConnectionRequest) GetExtraJson() []byte {
 func (x *TestConnectionRequest) GetModelId() string {
 	if x != nil {
 		return x.ModelId
+	}
+	return ""
+}
+
+func (x *TestConnectionRequest) GetProxyUrl() string {
+	if x != nil {
+		return x.ProxyUrl
 	}
 	return ""
 }
@@ -8512,8 +8521,11 @@ type GatewayAccountInfo struct {
 	CredentialsJson []byte                 `protobuf:"bytes,4,opt,name=credentials_json,json=credentialsJson,proto3" json:"credentials_json,omitempty"` // JSON-encoded map[string]any
 	ExtraJson       []byte                 `protobuf:"bytes,5,opt,name=extra_json,json=extraJson,proto3" json:"extra_json,omitempty"`                   // JSON-encoded map[string]any
 	Name            string                 `protobuf:"bytes,6,opt,name=name,proto3" json:"name,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// proxy_url is the fully-qualified proxy URL (e.g. "socks5h://user:pass@host:port")
+	// for this account's configured proxy. Empty when no proxy is assigned.
+	ProxyUrl      string `protobuf:"bytes,7,opt,name=proxy_url,json=proxyUrl,proto3" json:"proxy_url,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GatewayAccountInfo) Reset() {
@@ -8584,6 +8596,13 @@ func (x *GatewayAccountInfo) GetExtraJson() []byte {
 func (x *GatewayAccountInfo) GetName() string {
 	if x != nil {
 		return x.Name
+	}
+	return ""
+}
+
+func (x *GatewayAccountInfo) GetProxyUrl() string {
+	if x != nil {
+		return x.ProxyUrl
 	}
 	return ""
 }
@@ -9962,7 +9981,7 @@ const file_sdk_proto_rawDesc = "" +
 	"\x14processed_extra_json\x18\x04 \x01(\fR\x12processedExtraJson\x1a>\n" +
 	"\x10FieldErrorsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xda\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xf7\x01\n" +
 	"\x15TestConnectionRequest\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x01 \x01(\x03R\taccountId\x12\x1a\n" +
@@ -9971,7 +9990,8 @@ const file_sdk_proto_rawDesc = "" +
 	"\x10credentials_json\x18\x04 \x01(\fR\x0fcredentialsJson\x12\x1d\n" +
 	"\n" +
 	"extra_json\x18\x05 \x01(\fR\textraJson\x12\x19\n" +
-	"\bmodel_id\x18\x06 \x01(\tR\amodelId\"\xa0\x01\n" +
+	"\bmodel_id\x18\x06 \x01(\tR\amodelId\x12\x1b\n" +
+	"\tproxy_url\x18\a \x01(\tR\bproxyUrl\"\xa0\x01\n" +
 	"\x13TestConnectionEvent\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12\x12\n" +
 	"\x04text\x18\x02 \x01(\tR\x04text\x12\x14\n" +
@@ -10200,7 +10220,7 @@ const file_sdk_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a@\n" +
 	"\x12ClientHeadersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xd0\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xed\x01\n" +
 	"\x12GatewayAccountInfo\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x01 \x01(\x03R\taccountId\x12\x1a\n" +
@@ -10209,7 +10229,8 @@ const file_sdk_proto_rawDesc = "" +
 	"\x10credentials_json\x18\x04 \x01(\fR\x0fcredentialsJson\x12\x1d\n" +
 	"\n" +
 	"extra_json\x18\x05 \x01(\fR\textraJson\x12\x12\n" +
-	"\x04name\x18\x06 \x01(\tR\x04name\"\x8b\x02\n" +
+	"\x04name\x18\x06 \x01(\tR\x04name\x12\x1b\n" +
+	"\tproxy_url\x18\a \x01(\tR\bproxyUrl\"\x8b\x02\n" +
 	"\x13GatewayForwardChunk\x12=\n" +
 	"\aheaders\x18\x01 \x01(\v2!.pluginsdk.GatewayResponseHeadersH\x00R\aheaders\x124\n" +
 	"\x04body\x18\x02 \x01(\v2\x1e.pluginsdk.GatewayResponseBodyH\x00R\x04body\x12@\n" +

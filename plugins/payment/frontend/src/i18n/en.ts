@@ -21,6 +21,7 @@ export default {
       alipay: 'Alipay',
       wxpay: 'WeChat Pay',
       stripe: 'Stripe',
+      airwallex: 'Airwallex',
       card: 'Card',
       link: 'Link',
       alipay_direct: 'Alipay (Direct)',
@@ -107,6 +108,9 @@ export default {
     stripeLoadFailed: 'Failed to load payment component. Please refresh and try again.',
     stripeMissingParams: 'Missing order ID or client secret',
     stripeNotConfigured: 'Stripe is not configured',
+    airwallexLoadFailed: 'Failed to load Airwallex payment component. Please refresh and try again.',
+    airwallexMissingParams: 'Missing Airwallex payment parameters',
+    airwallexPay: 'Airwallex Payment',
     errors: {
       tooManyPending: 'Too many pending orders (max {max}). Please complete or cancel existing orders first.',
       cancelRateLimited: 'Too many cancellations. Please try again later.',

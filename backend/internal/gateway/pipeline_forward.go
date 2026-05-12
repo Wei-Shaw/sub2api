@@ -344,6 +344,13 @@ func (p *GatewayPipeline) handleForwardError(
 
 	fs.lastFailoverErr = failoverErr
 
+	// Delegate upstream error processing to the host service layer so that
+	// account state management (rate-limiting, 429 plan_type sync, 403
+	// counter, etc.) works for plugin-handled requests. The pipeline
+	// handles failover separately; this call ensures side-effects like
+	// persistOpenAI429PlanType are not lost.
+	p.gatewayService.HandlePipelineUpstreamError(ctx, req.Account, failoverErr)
+
 	// Cache billing: when sticky session switches account or upstream
 	// explicitly marks it, convert input_tokens to cache_read billing.
 	if failoverErr.ForceCacheBilling {

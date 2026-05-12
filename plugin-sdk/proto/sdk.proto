@@ -1329,6 +1329,8 @@ message TestConnectionRequest {
   bytes credentials_json = 4;
   bytes extra_json = 5;
   string model_id = 6;
+  // proxy_url is the account's configured proxy URL. Empty = no proxy.
+  string proxy_url = 7;
 }
 
 message TestConnectionEvent {
@@ -1675,6 +1677,9 @@ message GatewayAccountInfo {
   bytes credentials_json = 4;   // JSON-encoded map[string]any
   bytes extra_json = 5;         // JSON-encoded map[string]any
   string name = 6;
+  // proxy_url is the fully-qualified proxy URL (e.g. "socks5h://user:pass@host:port")
+  // for this account's configured proxy. Empty when no proxy is assigned.
+  string proxy_url = 7;
 }
 
 // GatewayForwardChunk is a single piece of the streamed response from the
