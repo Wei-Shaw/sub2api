@@ -42,12 +42,15 @@ func (s *gatewayProviderServer) Forward(
 	startTime := time.Now()
 	ctx := stream.Context()
 
-	// Build the upstream HTTP request. Bedrock accounts use a dedicated
-	// forwarding path with SigV4 signing and EventStream decoding.
+	// Build the upstream HTTP request. Bedrock and Vertex accounts use
+	// dedicated forwarding paths with provider-specific auth and URLs.
 	upstream, err := buildUpstreamRequest(ctx, req)
 	if err != nil {
 		if errors.Is(err, errBedrockAccount) {
 			return s.forwardBedrock(req, stream)
+		}
+		if errors.Is(err, errVertexAccount) {
+			return s.forwardVertex(req, stream)
 		}
 		return fmt.Errorf("build upstream request: %w", err)
 	}

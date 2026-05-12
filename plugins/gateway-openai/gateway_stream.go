@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -13,14 +12,21 @@ import (
 	"google.golang.org/grpc"
 )
 
-// openaiUsage mirrors the token usage fields from OpenAI API responses.
-// Kept minimal — only the fields needed for billing.
-type openaiUsage struct {
-	InputTokens              int `json:"input_tokens"`
-	OutputTokens             int `json:"output_tokens"`
-	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
-	CacheReadInputTokens     int `json:"cache_read_input_tokens,omitempty"`
-	ImageOutputTokens        int `json:"image_output_tokens,omitempty"`
+const (
+	// maxSSELineSize is the maximum size of a single SSE line (1 MB).
+	maxSSELineSize = 1 << 20
+)
+
+// streamResult holds accumulated usage data from a completed SSE stream
+// or non-streaming response.
+type streamResult struct {
+	inputTokens      int64
+	outputTokens     int64
+	cacheReadTokens  int64
+	imageOutputTokens int64
+	firstTokenMs     int32
+	clientDisconnect bool
+	sawTerminalEvent bool // true when response.completed / [DONE] was seen
 }
 
 // sendResponseHeaders sends the initial GatewayResponseHeaders chunk
@@ -64,93 +70,92 @@ var responseHeaderWhitelist = []string{
 }
 
 // proxySSEStream reads the upstream SSE stream line by line, forwarding
-// each line as a GatewayResponseBody chunk. It also extracts usage data
-// from the terminal event for billing.
+// each line as a GatewayResponseBody chunk. It extracts usage data from
+// terminal events for billing, and continues draining the upstream after
+// client disconnect to capture final usage.
 //
-// Returns the extracted usage, first-token latency (ms), and any error.
+// Supports both OpenAI Responses API (response.completed) and Chat
+// Completions API (choices[].delta) SSE formats.
 func proxySSEStream(
 	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
 	resp *http.Response,
 	startTime time.Time,
-) (*openaiUsage, int32, error) {
+	originalModel, mappedModel string,
+) (*streamResult, error) {
 	scanner := bufio.NewScanner(resp.Body)
-	// Allow up to 1 MB per SSE line (image responses can be large)
 	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 1<<20)
+	scanner.Buffer(buf, maxSSELineSize)
 
-	var usage *openaiUsage
-	var firstTokenMs int32
+	result := &streamResult{}
+	needModelReplace := originalModel != mappedModel
 	firstTokenRecorded := false
 
 	for scanner.Scan() {
 		line := scanner.Text()
 
-		// Forward every line (including empty lines as SSE separators)
-		chunk := line + "\n"
-		if err := sendBodyChunk(stream, []byte(chunk)); err != nil {
-			return usage, firstTokenMs, fmt.Errorf("send body: %w", err)
-		}
-
-		// Extract data from SSE data lines
+		// Extract data from SSE data lines for usage tracking.
 		data, isData := extractSSEData(line)
-		if !isData {
-			continue
+		if isData {
+			// Record first-token latency on the first content delta.
+			if !firstTokenRecorded && isContentDelta(data) {
+				result.firstTokenMs = int32(time.Since(startTime).Milliseconds())
+				firstTokenRecorded = true
+			}
+
+			// Extract usage from terminal events.
+			if u := extractUsageFromSSEData(data); u != nil {
+				applyUsageToResult(u, result)
+				result.sawTerminalEvent = true
+			}
+
+			// Replace model in response if mapping was applied.
+			if needModelReplace {
+				if replaced := replaceModelInSSEData(data, mappedModel, originalModel); replaced != "" {
+					line = "data: " + replaced
+				}
+			}
 		}
 
-		// Record first-token latency on the first content delta
-		if !firstTokenRecorded && isContentDelta(data) {
-			firstTokenMs = int32(time.Since(startTime).Milliseconds())
-			firstTokenRecorded = true
-		}
-
-		// Extract usage from the terminal event
-		if u := extractUsageFromSSEData(data); u != nil {
-			usage = u
+		// Forward every line (including empty lines as SSE separators).
+		chunk := line + "\n"
+		if !result.clientDisconnect {
+			if err := sendBodyChunk(stream, []byte(chunk)); err != nil {
+				result.clientDisconnect = true
+				// Continue draining to capture usage from terminal event.
+			}
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		return usage, firstTokenMs, fmt.Errorf("scan stream: %w", err)
+		if result.sawTerminalEvent {
+			return result, nil
+		}
+		return result, err
 	}
-
-	return usage, firstTokenMs, nil
+	return result, nil
 }
 
-// proxyFullResponse reads the entire non-streaming response body,
-// forwards it as a single body chunk, and extracts usage.
-func proxyFullResponse(
+// proxyNonStreamResponse reads the entire non-streaming response body,
+// extracts usage, optionally replaces the model, and sends it as a
+// single body chunk.
+func proxyNonStreamResponse(
 	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
 	resp *http.Response,
-) (*openaiUsage, error) {
+	originalModel, mappedModel string,
+) (*streamResult, error) {
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodySize))
 	if err != nil {
-		return nil, fmt.Errorf("read body: %w", err)
+		return nil, err
 	}
 
-	if err := sendBodyChunk(stream, body); err != nil {
-		return nil, fmt.Errorf("send body: %w", err)
+	result := &streamResult{}
+	extractNonStreamUsage(body, result)
+
+	if originalModel != mappedModel {
+		body = replaceModelInResponseJSON(body, mappedModel, originalModel)
 	}
 
-	usage := extractUsageFromJSON(body)
-	return usage, nil
-}
-
-// proxyErrorResponse reads an error response body and forwards it.
-// Usage is not expected in error responses.
-func proxyErrorResponse(
-	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
-	resp *http.Response,
-) (*openaiUsage, error) {
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodySize))
-	if err != nil {
-		return nil, fmt.Errorf("read error body: %w", err)
-	}
-
-	if err := sendBodyChunk(stream, body); err != nil {
-		return nil, fmt.Errorf("send error body: %w", err)
-	}
-
-	return nil, nil
+	return result, sendBodyChunk(stream, body)
 }
 
 // sendBodyChunk sends a single GatewayResponseBody chunk to the stream.
@@ -183,30 +188,92 @@ func extractSSEData(line string) (string, bool) {
 
 // isContentDelta returns true if the SSE data represents a content delta
 // event (first text output from the model).
+//
+// Covers both OpenAI Responses API format (response.output_text.delta)
+// and Chat Completions format (choices[].delta.content).
 func isContentDelta(data string) bool {
-	// Fast check: look for output_text.delta without full JSON parse
-	return strings.Contains(data, `"response.output_text.delta"`) ||
-		strings.Contains(data, `"type":"response.output_text.delta"`)
+	// Responses API format
+	if strings.Contains(data, `"response.output_text.delta"`) ||
+		strings.Contains(data, `"type":"response.output_text.delta"`) {
+		return true
+	}
+	// Chat Completions format: {"choices":[{"delta":{"content":"..."}}]}
+	if strings.Contains(data, `"delta"`) && strings.Contains(data, `"content"`) {
+		return true
+	}
+	return false
 }
 
-// extractUsageFromSSEData extracts usage from a terminal SSE event
-// (response.completed or response.done). Returns nil if the event
-// does not contain usage data.
+// --- usage extraction ---
+
+// openaiUsage mirrors the token usage fields from OpenAI API responses.
+type openaiUsage struct {
+	InputTokens              int `json:"input_tokens"`
+	OutputTokens             int `json:"output_tokens"`
+	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
+	CacheReadInputTokens     int `json:"cache_read_input_tokens,omitempty"`
+	ImageOutputTokens        int `json:"image_output_tokens,omitempty"`
+	// Chat Completions format fields
+	PromptTokens     int `json:"prompt_tokens,omitempty"`
+	CompletionTokens int `json:"completion_tokens,omitempty"`
+	// Chat Completions cache detail
+	PromptTokensDetails *promptTokensDetails `json:"prompt_tokens_details,omitempty"`
+}
+
+// promptTokensDetails holds the nested cache detail from Chat Completions.
+type promptTokensDetails struct {
+	CachedTokens int `json:"cached_tokens,omitempty"`
+}
+
+// applyUsageToResult writes the parsed openaiUsage into the streamResult.
+func applyUsageToResult(u *openaiUsage, result *streamResult) {
+	// Responses API fields take priority.
+	if u.InputTokens > 0 {
+		result.inputTokens = int64(u.InputTokens)
+	}
+	if u.OutputTokens > 0 {
+		result.outputTokens = int64(u.OutputTokens)
+	}
+	if u.CacheReadInputTokens > 0 {
+		result.cacheReadTokens = int64(u.CacheReadInputTokens)
+	}
+	if u.ImageOutputTokens > 0 {
+		result.imageOutputTokens = int64(u.ImageOutputTokens)
+	}
+	// Fallback: Chat Completions format fields.
+	if result.inputTokens == 0 && u.PromptTokens > 0 {
+		result.inputTokens = int64(u.PromptTokens)
+	}
+	if result.outputTokens == 0 && u.CompletionTokens > 0 {
+		result.outputTokens = int64(u.CompletionTokens)
+	}
+	if result.cacheReadTokens == 0 && u.PromptTokensDetails != nil && u.PromptTokensDetails.CachedTokens > 0 {
+		result.cacheReadTokens = int64(u.PromptTokensDetails.CachedTokens)
+	}
+}
+
+// extractUsageFromSSEData extracts usage from a terminal SSE event.
+// Supports:
+//   - Responses API: response.completed / response.done events
+//   - Chat Completions: final chunk with usage field
+//
+// Returns nil if the event does not contain usage data.
 func extractUsageFromSSEData(data string) *openaiUsage {
-	// Only parse terminal events that contain usage
 	if !strings.Contains(data, `"usage"`) {
 		return nil
 	}
-	// Must be a terminal event type
-	if !strings.Contains(data, `"response.completed"`) &&
-		!strings.Contains(data, `"response.done"`) {
-		return nil
+	// Responses API terminal events.
+	if strings.Contains(data, `"response.completed"`) ||
+		strings.Contains(data, `"response.done"`) {
+		return extractUsageFromTerminalEvent([]byte(data))
 	}
-
-	return extractUsageFromTerminalEvent([]byte(data))
+	// Chat Completions: usage appears in a chunk with no content delta,
+	// typically the last chunk before [DONE].
+	return extractUsageFromJSON([]byte(data))
 }
 
-// extractUsageFromJSON extracts usage from a full JSON response body.
+// extractUsageFromJSON extracts usage from a flat JSON object with a
+// top-level "usage" field (Chat Completions format).
 func extractUsageFromJSON(body []byte) *openaiUsage {
 	var envelope struct {
 		Usage *openaiUsage `json:"usage"`
@@ -217,8 +284,9 @@ func extractUsageFromJSON(body []byte) *openaiUsage {
 	return envelope.Usage
 }
 
-// extractUsageFromTerminalEvent parses usage from a terminal SSE event.
-// The event structure is: {"type":"response.completed","response":{...,"usage":{...}}}
+// extractUsageFromTerminalEvent parses usage from a Responses API
+// terminal SSE event. Structure:
+// {"type":"response.completed","response":{...,"usage":{...}}}
 func extractUsageFromTerminalEvent(data []byte) *openaiUsage {
 	var event struct {
 		Response struct {
@@ -231,7 +299,79 @@ func extractUsageFromTerminalEvent(data []byte) *openaiUsage {
 	if event.Response.Usage != nil {
 		return event.Response.Usage
 	}
-
-	// Fallback: try top-level usage (some upstream variants)
+	// Fallback: try top-level usage (some upstream variants).
 	return extractUsageFromJSON(data)
+}
+
+// extractNonStreamUsage parses a full JSON response body and extracts
+// usage fields. Handles both Responses API and Chat Completions formats.
+func extractNonStreamUsage(body []byte, result *streamResult) {
+	// Try Responses API format first (nested response.usage).
+	var responsesEnvelope struct {
+		Usage *openaiUsage `json:"usage"`
+	}
+	if err := json.Unmarshal(body, &responsesEnvelope); err != nil {
+		return
+	}
+	if responsesEnvelope.Usage != nil {
+		applyUsageToResult(responsesEnvelope.Usage, result)
+	}
+}
+
+// --- model replacement helpers ---
+
+// replaceModelInSSEData replaces the model field in an SSE data JSON
+// payload. Returns the modified JSON string, or "" if no replacement.
+func replaceModelInSSEData(data, from, to string) string {
+	if !strings.Contains(data, from) {
+		return ""
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(data), &parsed); err != nil {
+		return ""
+	}
+	replaced := false
+	// Responses API: response.model
+	if resp, ok := parsed["response"].(map[string]any); ok {
+		if model, ok := resp["model"].(string); ok && model == from {
+			resp["model"] = to
+			replaced = true
+		}
+	}
+	// Chat Completions: top-level model
+	if model, ok := parsed["model"].(string); ok && model == from {
+		parsed["model"] = to
+		replaced = true
+	}
+	if !replaced {
+		return ""
+	}
+	out, err := json.Marshal(parsed)
+	if err != nil {
+		return ""
+	}
+	return string(out)
+}
+
+// replaceModelInResponseJSON replaces the top-level "model" field in a
+// non-streaming JSON response body.
+func replaceModelInResponseJSON(body []byte, from, to string) []byte {
+	var parsed map[string]json.RawMessage
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return body
+	}
+	var model string
+	if err := json.Unmarshal(parsed["model"], &model); err != nil || model != from {
+		return body
+	}
+	modelBytes, err := json.Marshal(to)
+	if err != nil {
+		return body
+	}
+	parsed["model"] = modelBytes
+	result, err := json.Marshal(parsed)
+	if err != nil {
+		return body
+	}
+	return result
 }

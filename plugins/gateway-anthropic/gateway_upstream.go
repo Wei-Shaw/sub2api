@@ -17,6 +17,11 @@ import (
 // instead of the standard Anthropic Messages API path.
 var errBedrockAccount = errors.New("bedrock account")
 
+// errVertexAccount is returned by resolveForwardAuth when the account is
+// a Vertex (service_account) type, signalling that the caller should use
+// forwardVertex instead of the standard Anthropic Messages API path.
+var errVertexAccount = errors.New("vertex account")
+
 // --- upstream request construction ---
 
 // upstreamRequest holds a fully-built HTTP request ready to send to the
@@ -129,6 +134,11 @@ func resolveForwardAuth(
 		// sentinel error so buildUpstreamRequest callers know to branch.
 		return "", "", false, errBedrockAccount
 
+	case accountTypeServiceAccount:
+		// Vertex AI uses a dedicated forwarding path (forwardVertex) that
+		// handles Google OAuth2 token exchange and Vertex URL construction.
+		return "", "", false, errVertexAccount
+
 	default:
 		return "", "", false, fmt.Errorf("unsupported account type: %s", accountType)
 	}
@@ -137,9 +147,14 @@ func resolveForwardAuth(
 
 // resolveModel applies model mapping from account credentials.
 // For API key and Bedrock accounts, explicit model_mapping is checked.
+// For Vertex (service_account), resolveVertexModel handles both mapping
+// and Vertex date normalization (hyphen -> @).
 // For OAuth/setup-token, the model is passed through unchanged
 // (host-side mimicry and NormalizeModelID are not replicated here).
 func resolveModel(requestedModel, accountType string, credentialsJSON []byte) string {
+	if accountType == accountTypeServiceAccount {
+		return resolveVertexModel(requestedModel, credentialsJSON)
+	}
 	if accountType != accountTypeAPIKey && accountType != accountTypeBedrock {
 		return requestedModel
 	}

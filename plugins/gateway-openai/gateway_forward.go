@@ -4,13 +4,26 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
 	"strings"
 	"time"
 
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
+
+// supportedProtocols lists the gateway protocols this plugin can handle
+// directly. Unsupported protocols return Unimplemented so the host falls
+// back to core handling.
+var supportedProtocols = map[string]bool{
+	"openai":           true,
+	"chat_completions": true,
+	"":                 true, // empty = default to openai
+}
 
 // gatewayProviderServer implements GatewayProviderExtensionServer to handle
 // upstream OpenAI API forwarding over gRPC. The host calls Forward for each
@@ -29,28 +42,31 @@ func newGatewayProviderServer(logFn func() *slog.Logger) *gatewayProviderServer 
 // upstream and streaming the response back to the host.
 //
 // Protocol:
-//  1. Send GatewayResponseHeaders (status + headers)
-//  2. Send one or more GatewayResponseBody chunks
-//  3. Send GatewayResponseDone with usage data
+//  1. Validate the protocol is supported (return Unimplemented otherwise)
+//  2. Build upstream request with model mapping and client headers
+//  3. Send GatewayResponseHeaders (status + headers)
+//  4. For errors: send body + structured GatewayUpstreamError in Done
+//  5. For success: send body chunks + usage in Done
 func (s *gatewayProviderServer) Forward(
 	req *pb.GatewayForwardRequest,
 	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
 ) error {
+	// Protocol gate: unsupported protocols fall back to core.
+	protocol := req.GetProtocol()
+	if !supportedProtocols[protocol] {
+		return status.Errorf(codes.Unimplemented,
+			"gateway-openai: protocol %q not supported, falling back to core", protocol)
+	}
+
 	startTime := time.Now()
 	ctx := stream.Context()
 
-	acct, err := decodeAccountInfo(req.GetAccount())
-	if err != nil {
-		return fmt.Errorf("gateway-openai: decode account: %w", err)
-	}
-
-	isStream := req.GetStream()
-	upstreamReq, err := buildUpstreamHTTPRequest(ctx, req, acct)
+	upstream, err := buildUpstreamRequest(ctx, req)
 	if err != nil {
 		return fmt.Errorf("gateway-openai: build request: %w", err)
 	}
 
-	resp, err := defaultHTTPClient.Do(upstreamReq)
+	resp, err := defaultHTTPClient.Do(upstream.httpReq)
 	if err != nil {
 		return fmt.Errorf("gateway-openai: upstream request: %w", err)
 	}
@@ -60,22 +76,76 @@ func (s *gatewayProviderServer) Forward(
 		return fmt.Errorf("gateway-openai: send headers: %w", err)
 	}
 
-	var usage *openaiUsage
-	var firstTokenMs int32
+	isStream := req.GetStream()
+
+	// Error responses: structured upstream error for failover.
 	if resp.StatusCode >= 400 {
-		usage, err = proxyErrorResponse(stream, resp)
-	} else if isStream {
-		usage, firstTokenMs, err = proxySSEStream(stream, resp, startTime)
-	} else {
-		usage, err = proxyFullResponse(stream, resp)
-	}
-	if err != nil {
-		_ = sendDone(stream, nil, err.Error())
-		return nil
+		return s.handleErrorResponse(stream, resp, upstream, isStream, startTime)
 	}
 
-	result := buildForwardResult(req, usage, startTime, firstTokenMs)
-	return sendDone(stream, result, "")
+	// Success responses: proxy body and extract usage.
+	var result *streamResult
+	if isStream {
+		result, err = proxySSEStream(stream, resp, startTime,
+			upstream.originalModel, upstream.mappedModel)
+	} else {
+		result, err = proxyNonStreamResponse(stream, resp,
+			upstream.originalModel, upstream.mappedModel)
+	}
+
+	done := buildDoneChunk(resp, upstream, result, isStream, startTime, err)
+	if sendErr := stream.Send(done); sendErr != nil {
+		return sendErr
+	}
+	return nil
+}
+
+// handleErrorResponse processes upstream 4xx/5xx responses. It sends
+// the error body downstream and attaches a structured GatewayUpstreamError
+// to the Done chunk so the host can decide failover strategy without
+// parsing error message strings.
+func (s *gatewayProviderServer) handleErrorResponse(
+	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
+	resp *http.Response,
+	upstream *upstreamRequestInfo,
+	isStream bool,
+	startTime time.Time,
+) error {
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodySize))
+
+	if len(body) > 0 {
+		if err := sendBodyChunk(stream, body); err != nil {
+			return err
+		}
+	}
+
+	result := &pb.GatewayForwardResult{
+		RequestId:     resp.Header.Get("x-request-id"),
+		Model:         upstream.originalModel,
+		UpstreamModel: upstream.mappedModel,
+		Stream:        isStream,
+		DurationMs:    time.Since(startTime).Milliseconds(),
+	}
+
+	// Attach structured upstream error for failover-eligible codes.
+	if shouldFailoverStatus(resp.StatusCode) {
+		result.UpstreamError = &pb.GatewayUpstreamError{
+			StatusCode:   int32(resp.StatusCode),
+			ErrorType:    classifyErrorType(resp.StatusCode),
+			ResponseBody: truncateBytes(body, maxErrorBodyForProto),
+		}
+	}
+
+	errMsg := fmt.Sprintf("upstream returned %d", resp.StatusCode)
+	done := &pb.GatewayForwardChunk{
+		Chunk: &pb.GatewayForwardChunk_Done{
+			Done: &pb.GatewayResponseDone{
+				Error:  errMsg,
+				Result: result,
+			},
+		},
+	}
+	return stream.Send(done)
 }
 
 // ShouldFailover determines whether a failed forward should be retried
@@ -129,7 +199,7 @@ func decodeAccountInfo(info *pb.GatewayAccountInfo) (*decodedAccount, error) {
 	return acct, nil
 }
 
-// --- done helper ---
+// --- done helpers ---
 
 func sendDone(
 	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
@@ -146,25 +216,54 @@ func sendDone(
 	})
 }
 
-// buildForwardResult constructs the GatewayForwardResult from usage data.
-func buildForwardResult(
-	req *pb.GatewayForwardRequest,
-	usage *openaiUsage,
+// buildDoneChunk constructs the terminal GatewayForwardChunk_Done message
+// with usage data from the stream processing result.
+func buildDoneChunk(
+	resp *http.Response,
+	upstream *upstreamRequestInfo,
+	result *streamResult,
+	isStream bool,
 	startTime time.Time,
-	firstTokenMs int32,
-) *pb.GatewayForwardResult {
-	result := &pb.GatewayForwardResult{
-		RequestId:    req.GetRequestId(),
-		Model:        req.GetModel(),
-		Stream:       req.GetStream(),
-		DurationMs:   time.Since(startTime).Milliseconds(),
-		FirstTokenMs: firstTokenMs,
+	streamErr error,
+) *pb.GatewayForwardChunk {
+	done := &pb.GatewayResponseDone{
+		Result: &pb.GatewayForwardResult{
+			RequestId:     resp.Header.Get("x-request-id"),
+			Model:         upstream.originalModel,
+			UpstreamModel: upstream.mappedModel,
+			Stream:        isStream,
+			DurationMs:    time.Since(startTime).Milliseconds(),
+		},
 	}
-	if usage != nil {
-		result.InputTokens = int64(usage.InputTokens)
-		result.OutputTokens = int64(usage.OutputTokens)
-		result.CacheReadTokens = int64(usage.CacheReadInputTokens)
-		result.ImageOutputTokens = int64(usage.ImageOutputTokens)
+
+	if result != nil {
+		done.Result.InputTokens = result.inputTokens
+		done.Result.OutputTokens = result.outputTokens
+		done.Result.CacheReadTokens = result.cacheReadTokens
+		done.Result.ImageOutputTokens = result.imageOutputTokens
+		done.Result.ClientDisconnect = result.clientDisconnect
+		if result.firstTokenMs > 0 {
+			done.Result.FirstTokenMs = result.firstTokenMs
+		}
 	}
-	return result
+
+	if streamErr != nil {
+		done.Error = streamErr.Error()
+	}
+
+	return &pb.GatewayForwardChunk{
+		Chunk: &pb.GatewayForwardChunk_Done{Done: done},
+	}
+}
+
+// maxErrorBodyForProto caps the upstream error body embedded in the proto
+// message to avoid excessive gRPC message sizes.
+const maxErrorBodyForProto = 8 << 10 // 8 KB
+
+// truncateBytes returns b truncated to at most maxLen bytes.
+func truncateBytes(b []byte, maxLen int) []byte {
+	if len(b) <= maxLen {
+		return b
+	}
+	return b[:maxLen]
 }

@@ -4,6 +4,7 @@ go 1.26.2
 
 require (
 	github.com/Wei-Shaw/sub2api/plugin-sdk v0.0.0
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	google.golang.org/grpc v1.79.3
 )
 

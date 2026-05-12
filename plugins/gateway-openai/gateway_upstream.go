@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -43,21 +44,44 @@ var defaultHTTPClient = &http.Client{
 	},
 }
 
-// buildUpstreamHTTPRequest constructs the HTTP request to send to the
-// OpenAI upstream API. URL routing, auth headers, and host-specific
-// headers are set based on account type (OAuth vs API key).
-func buildUpstreamHTTPRequest(
+// upstreamRequestInfo holds a fully-built HTTP request ready to send to
+// the upstream, along with model metadata needed for billing and response
+// rewriting.
+type upstreamRequestInfo struct {
+	httpReq       *http.Request
+	originalModel string // model as requested by the client (for billing)
+	mappedModel   string // model after mapping (actually sent upstream)
+}
+
+// buildUpstreamRequest constructs the HTTP request to send to the OpenAI
+// upstream API. It handles:
+//   - credential resolution (OAuth Bearer vs API key)
+//   - custom base URL
+//   - model mapping from credentials
+//   - client header forwarding (allowlisted)
+func buildUpstreamRequest(
 	ctx context.Context,
 	req *pb.GatewayForwardRequest,
-	acct *decodedAccount,
-) (*http.Request, error) {
+) (*upstreamRequestInfo, error) {
+	acct, err := decodeAccountInfo(req.GetAccount())
+	if err != nil {
+		return nil, fmt.Errorf("decode account: %w", err)
+	}
+
 	targetURL := resolveUpstreamURL(acct, req.GetPath())
 	authToken := resolveAuthToken(acct)
 	if authToken == "" {
-		return nil, fmt.Errorf("no auth token available for account %d", acct.ID)
+		return nil, fmt.Errorf("no auth token for account %d", acct.ID)
 	}
 
+	originalModel := req.GetModel()
+	mappedModel := resolveModelMapping(originalModel, acct, req.GetAccount())
+
 	body := req.GetRawBody()
+	if mappedModel != originalModel {
+		body = replaceModelInBody(body, mappedModel)
+	}
+
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
@@ -67,9 +91,14 @@ func buildUpstreamHTTPRequest(
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	applyAccountHeaders(httpReq, acct)
-	applyPassthroughHeaders(httpReq, req.GetHeaders())
+	forwardClientHeaders(httpReq, req.GetHeaders())
+	forwardClientHeaders(httpReq, req.GetClientHeaders())
 
-	return httpReq, nil
+	return &upstreamRequestInfo{
+		httpReq:       httpReq,
+		originalModel: originalModel,
+		mappedModel:   mappedModel,
+	}, nil
 }
 
 // resolveUpstreamURL determines the target URL based on account type.
@@ -106,6 +135,46 @@ func resolveAuthToken(acct *decodedAccount) string {
 	}
 }
 
+// resolveModelMapping applies model_mapping from account credentials.
+// API key / upstream accounts may define explicit mappings; OAuth accounts
+// pass through unchanged.
+func resolveModelMapping(
+	requestedModel string,
+	acct *decodedAccount,
+	info *pb.GatewayAccountInfo,
+) string {
+	if acct.AccountType != accountTypeAPIKey && acct.AccountType != accountTypeUpstream {
+		return requestedModel
+	}
+	mapping := extractModelMapping(info.GetCredentialsJson())
+	if len(mapping) == 0 {
+		return requestedModel
+	}
+	if mapped, ok := mapping[requestedModel]; ok {
+		return mapped
+	}
+	return requestedModel
+}
+
+// replaceModelInBody replaces the "model" field in the JSON body with the
+// mapped model name.
+func replaceModelInBody(body []byte, newModel string) []byte {
+	var parsed map[string]json.RawMessage
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return body
+	}
+	modelBytes, err := json.Marshal(newModel)
+	if err != nil {
+		return body
+	}
+	parsed["model"] = modelBytes
+	result, err := json.Marshal(parsed)
+	if err != nil {
+		return body
+	}
+	return result
+}
+
 // applyAccountHeaders sets headers specific to the account type.
 // OAuth accounts require Host=chatgpt.com and chatgpt-account-id.
 func applyAccountHeaders(req *http.Request, acct *decodedAccount) {
@@ -122,27 +191,74 @@ func applyAccountHeaders(req *http.Request, acct *decodedAccount) {
 	}
 }
 
-// upstreamPassthroughHeaders is the whitelist of headers forwarded from
-// the original client request to the upstream. Only low-risk headers are
-// allowed to avoid leaking environment noise or triggering upstream
-// rate-limiting heuristics.
-var upstreamPassthroughHeaders = map[string]bool{
-	"accept":          true,
-	"accept-language": true,
-	"content-type":    true,
-	"user-agent":      true,
-	"openai-beta":     true,
+// clientHeadersAllowList lists headers from the client that may be
+// forwarded to the upstream OpenAI API. Auth headers (authorization,
+// cookie) are always overwritten by buildUpstreamRequest and excluded.
+var clientHeadersAllowList = map[string]bool{
+	"accept":                true,
+	"accept-language":       true,
+	"content-type":          true,
+	"user-agent":            true,
+	"openai-beta":           true,
+	"originator":            true,
+	"session_id":            true,
+	"conversation_id":       true,
+	"x-codex-turn-state":    true,
+	"x-codex-turn-metadata": true,
+	"x-client-request-id":   true,
+	"x-request-id":          true,
 }
 
-// applyPassthroughHeaders forwards whitelisted headers from the original
-// request to the upstream.
-func applyPassthroughHeaders(req *http.Request, headers map[string]string) {
-	for k, v := range headers {
-		if upstreamPassthroughHeaders[strings.ToLower(k)] {
-			// Don't override headers already set by applyAccountHeaders
-			if req.Header.Get(k) == "" {
-				req.Header.Set(k, v)
-			}
+// forwardClientHeaders copies allowed client headers to the upstream
+// request. It merges OpenAI-Beta rather than overwriting.
+func forwardClientHeaders(httpReq *http.Request, clientHeaders map[string]string) {
+	for key, value := range clientHeaders {
+		lower := strings.ToLower(key)
+		if !clientHeadersAllowList[lower] {
+			continue
+		}
+		if lower == "openai-beta" {
+			existing := httpReq.Header.Get("OpenAI-Beta")
+			merged := mergeBetaHeaders(existing, value)
+			httpReq.Header.Set("OpenAI-Beta", merged)
+			continue
+		}
+		if httpReq.Header.Get(key) == "" {
+			httpReq.Header.Set(key, value)
 		}
 	}
+}
+
+// mergeBetaHeaders merges two comma-separated beta header values,
+// deduplicating entries.
+func mergeBetaHeaders(existing, additional string) string {
+	if existing == "" {
+		return additional
+	}
+	if additional == "" {
+		return existing
+	}
+	seen := make(map[string]struct{})
+	var parts []string
+	for _, part := range strings.Split(existing, ",") {
+		t := strings.TrimSpace(part)
+		if t == "" {
+			continue
+		}
+		if _, ok := seen[t]; !ok {
+			seen[t] = struct{}{}
+			parts = append(parts, t)
+		}
+	}
+	for _, part := range strings.Split(additional, ",") {
+		t := strings.TrimSpace(part)
+		if t == "" {
+			continue
+		}
+		if _, ok := seen[t]; !ok {
+			seen[t] = struct{}{}
+			parts = append(parts, t)
+		}
+	}
+	return strings.Join(parts, ",")
 }

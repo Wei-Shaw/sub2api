@@ -110,6 +110,19 @@ func validateCredentialsByType(accountType string, creds map[string]any) map[str
 		if apiKey == "" && (accessKeyID == "" || secretKey == "") {
 			errs["credentials.aws_access_key_id"] = "bedrock requires api_key (cross-region) or aws_access_key_id + aws_secret_access_key"
 		}
+	case accountTypeServiceAccount:
+		saJSON := credStr(creds, "service_account_json")
+		if saJSON == "" {
+			saJSON = credStr(creds, "service_account")
+		}
+		if saJSON == "" {
+			// Also accept nested object form.
+			if _, ok := creds["service_account_json"].(map[string]any); !ok {
+				if _, ok := creds["service_account"].(map[string]any); !ok {
+					errs["credentials.service_account_json"] = "service_account requires service_account_json"
+				}
+			}
+		}
 	}
 	return errs
 }
@@ -125,19 +138,24 @@ func credStr(creds map[string]any, key string) string {
 
 // TestConnection performs a connectivity test against the Anthropic Messages API.
 // It sends a minimal streaming request and relays the SSE events back through
-// the gRPC stream.
+// the gRPC stream. Vertex accounts use a dedicated test path with Google
+// OAuth2 token exchange and the Vertex rawPredict endpoint.
 func (s *accountPlatformServer) TestConnection(
 	req *pb.TestConnectionRequest,
 	stream grpc.ServerStreamingServer[pb.TestConnectionEvent],
 ) error {
-	creds, err := parseCredentials(req.GetCredentialsJson())
-	if err != nil {
-		return sendErrorEnd(stream, "failed to parse credentials: "+err.Error())
-	}
-
 	model := req.GetModelId()
 	if model == "" {
 		model = defaultTestModel
+	}
+
+	if req.GetAccountType() == accountTypeServiceAccount {
+		return s.testVertexConnection(req, stream, model)
+	}
+
+	creds, err := parseCredentials(req.GetCredentialsJson())
+	if err != nil {
+		return sendErrorEnd(stream, "failed to parse credentials: "+err.Error())
 	}
 
 	authToken, apiURL, useBearer, err := resolveAuth(req.GetAccountType(), creds)
@@ -164,6 +182,73 @@ func (s *accountPlatformServer) TestConnection(
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 		return sendErrorEnd(stream, fmt.Sprintf(
 			"API returned %d: %s", resp.StatusCode, string(body),
+		))
+	}
+
+	return processClaudeStream(stream, resp.Body)
+}
+
+// testVertexConnection performs a connectivity test against the Vertex AI
+// endpoint. It exchanges the service account credentials for an access
+// token and sends a minimal streaming request to the Vertex rawPredict API.
+func (s *accountPlatformServer) testVertexConnection(
+	req *pb.TestConnectionRequest,
+	stream grpc.ServerStreamingServer[pb.TestConnectionEvent],
+	model string,
+) error {
+	ctx := stream.Context()
+
+	creds := parseVertexCredentialsRaw(req.GetCredentialsJson())
+
+	// Exchange service account credentials for access token.
+	accessToken, err := exchangeVertexServiceAccountToken(ctx, s.httpClient, creds.serviceAccountJSON)
+	if err != nil {
+		return sendErrorEnd(stream, "token exchange failed: "+err.Error())
+	}
+
+	// Normalize model for Vertex.
+	vertexModel := normalizeVertexAnthropicModelID(model)
+
+	_ = stream.Send(&pb.TestConnectionEvent{Type: "test_start", Model: model})
+
+	// Build test payload and transform for Vertex.
+	payload := buildTestPayload(vertexModel)
+	payloadBytes, _ := json.Marshal(payload)
+	vertexBody, err := buildVertexAnthropicRequestBody(payloadBytes)
+	if err != nil {
+		return sendErrorEnd(stream, "failed to build vertex body: "+err.Error())
+	}
+
+	// Resolve project ID and location.
+	projectID, err := creds.resolveProjectID()
+	if err != nil {
+		return sendErrorEnd(stream, "vertex credentials: "+err.Error())
+	}
+	location := creds.locationForModel(vertexModel)
+
+	// Build URL (streaming test).
+	targetURL, err := buildVertexAnthropicURL(projectID, location, vertexModel, true)
+	if err != nil {
+		return sendErrorEnd(stream, "failed to build vertex url: "+err.Error())
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(vertexBody))
+	if err != nil {
+		return sendErrorEnd(stream, "failed to create request: "+err.Error())
+	}
+	httpReq.Header.Set("Authorization", "Bearer "+accessToken)
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.httpClient.Do(httpReq)
+	if err != nil {
+		return sendErrorEnd(stream, "request failed: "+err.Error())
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		return sendErrorEnd(stream, fmt.Sprintf(
+			"Vertex API returned %d: %s", resp.StatusCode, string(body),
 		))
 	}
 

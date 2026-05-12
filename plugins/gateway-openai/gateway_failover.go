@@ -1,50 +1,92 @@
 package main
 
 import (
-	"strconv"
 	"strings"
 
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 )
 
-// failoverStatusCodes are HTTP status codes that indicate transient
-// upstream issues where retrying with a different account may succeed.
-var failoverStatusCodes = []int{429, 500, 502, 503, 504}
+// --- failover decision ---
 
-// noFailoverStatusCodes indicate credential or request problems that
-// won't be fixed by switching accounts.
-var noFailoverStatusCodes = []int{401, 403}
+// failoverStatusCodes are upstream HTTP status codes that indicate the
+// request should be retried with a different account. These match the
+// host's shouldFailoverUpstreamError logic.
+var failoverStatusCodes = map[int]bool{
+	429: true, // rate limited
+	500: true, // internal server error
+	502: true, // bad gateway
+	503: true, // service unavailable
+	504: true, // gateway timeout
+}
 
 // classifyShouldFailover determines whether a failed forward should be
 // retried with a different account based on the error context.
 //
 // Policy:
-//   - 429 (rate limit), 5xx (server errors) -> failover
-//   - 401, 403 (auth/permission) -> do NOT failover
-//   - Unknown/network errors -> failover (benefit of the doubt)
+//   - UpstreamFailoverError from our own Forward: always failover
+//   - Network/connection errors: failover
+//   - Other errors: no failover (likely client error)
 func classifyShouldFailover(req *pb.GatewayFailoverRequest) bool {
-	errMsg := req.GetErrorMessage()
 	errType := req.GetErrorType()
+	errMsg := req.GetErrorMessage()
 
-	// If the error type explicitly indicates a failover error, honor it
+	// UpstreamFailoverError from our own Forward: always failover.
 	if errType == "UpstreamFailoverError" || errType == "*service.UpstreamFailoverError" {
 		return true
 	}
 
-	// Check non-failover codes first (more specific)
-	for _, code := range noFailoverStatusCodes {
-		if strings.Contains(errMsg, strconv.Itoa(code)) {
-			return false
-		}
+	// Network/connection errors: failover.
+	if isNetworkError(errMsg) {
+		return true
 	}
 
-	// Check failover-eligible codes
-	for _, code := range failoverStatusCodes {
-		if strings.Contains(errMsg, strconv.Itoa(code)) {
+	return false
+}
+
+// shouldFailoverStatus returns true for status codes that warrant failover.
+// Used by handleErrorResponse to attach GatewayUpstreamError.
+func shouldFailoverStatus(statusCode int) bool {
+	if failoverStatusCodes[statusCode] {
+		return true
+	}
+	// Also failover on auth errors (credential may be expired).
+	return statusCode == 401 || statusCode == 403
+}
+
+// classifyErrorType maps an upstream HTTP status code to a structured error
+// type string for the host's routing decisions. Matches the host-side
+// UpstreamFailoverError classification.
+func classifyErrorType(statusCode int) string {
+	switch statusCode {
+	case 429:
+		return "rate_limit"
+	case 503:
+		return "overloaded"
+	case 401, 403:
+		return "auth_error"
+	case 500, 502, 504:
+		return "server_error"
+	default:
+		return ""
+	}
+}
+
+// isNetworkError detects connection-level failures from error messages.
+func isNetworkError(msg string) bool {
+	lower := strings.ToLower(msg)
+	patterns := []string{
+		"connection refused",
+		"connection reset",
+		"no such host",
+		"dial tcp",
+		"tls handshake",
+		"i/o timeout",
+		"eof",
+	}
+	for _, p := range patterns {
+		if strings.Contains(lower, p) {
 			return true
 		}
 	}
-
-	// Default: failover on unknown errors (network timeouts, etc.)
-	return true
+	return false
 }

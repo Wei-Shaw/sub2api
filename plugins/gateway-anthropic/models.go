@@ -45,8 +45,8 @@ func (s *accountPlatformServer) GetAvailableModels(
 ) (*pb.GetAvailableModelsResponse, error) {
 	accountType := req.GetAccountType()
 
-	// OAuth and setup-token accounts always get the full model set.
-	if accountType == accountTypeOAuth || accountType == accountTypeSetupToken {
+	// OAuth, setup-token, and Vertex accounts always get the full model set.
+	if accountType == accountTypeOAuth || accountType == accountTypeSetupToken || accountType == accountTypeServiceAccount {
 		return &pb.GetAvailableModelsResponse{Models: defaultModels}, nil
 	}
 
