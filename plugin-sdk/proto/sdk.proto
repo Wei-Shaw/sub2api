@@ -1255,6 +1255,53 @@ service AccountPlatformExtension {
   // causing the host to treat the account as schedulable (default pass).
   rpc CheckSchedulability(CheckSchedulabilityRequest)
       returns (CheckSchedulabilityResponse);
+
+  // GenerateAuthURL generates an OAuth authorization URL for a platform.
+  // Called by the host when a user initiates OAuth account creation.
+  // Plugins that do not implement this RPC return codes.Unimplemented.
+  rpc GenerateAuthURL(GenerateAuthURLRequest)
+      returns (GenerateAuthURLResponse);
+
+  // ExchangeOAuthCode exchanges an OAuth authorization code for credentials.
+  // Called by the host after the user completes the OAuth flow and returns
+  // with a code. Plugins that do not implement this RPC return
+  // codes.Unimplemented.
+  rpc ExchangeOAuthCode(ExchangeOAuthCodeRequest)
+      returns (ExchangeOAuthCodeResponse);
+
+  // ValidateRefreshToken validates a refresh token and returns fresh
+  // credentials. Used for account creation via direct refresh token input.
+  // Plugins that do not implement this RPC return codes.Unimplemented.
+  rpc ValidateRefreshToken(ValidateRefreshTokenRequest)
+      returns (ValidateRefreshTokenResponse);
+
+  // CookieAuth authenticates using a session cookie (e.g. Claude session_key).
+  // Platform-specific; plugins that do not support cookie auth return
+  // codes.Unimplemented.
+  rpc CookieAuth(CookieAuthRequest)
+      returns (CookieAuthResponse);
+
+  // SetPrivacy sets the privacy/data-collection mode for an account on the
+  // upstream platform. Plugins that do not support privacy management
+  // return codes.Unimplemented.
+  rpc SetPrivacy(SetPrivacyRequest)
+      returns (SetPrivacyResponse);
+
+  // PostAccountCreate is a hook called by the host after persisting a new
+  // account. Plugins can use it to perform post-creation setup (e.g.
+  // fetching organization info, setting initial privacy mode). Plugins
+  // that do not implement this RPC return codes.Unimplemented.
+  rpc PostAccountCreate(PostAccountCreateRequest)
+      returns (PostAccountCreateResponse);
+
+  // ValidateGroupConfig validates group_extra data before the host persists
+  // a group create or update. Called only when group_extra is non-empty and
+  // the group's platform has a registered plugin.
+  //
+  // Plugins that do not implement this RPC return codes.Unimplemented,
+  // causing the host to silently skip validation (backward compatible).
+  rpc ValidateGroupConfig(ValidateGroupConfigRequest)
+      returns (ValidateGroupConfigResponse);
 }
 message ValidateAccountDataRequest {
   string platform = 1;
@@ -1410,6 +1457,106 @@ message CheckSchedulabilityResponse {
   bool schedulable = 1;
   string reason = 2;  // reason when not schedulable (for logging)
 }
+
+message GenerateAuthURLRequest {
+  string platform = 1;
+  string oauth_type = 2;       // "oauth"/"setup-token"/"cookie" etc.
+  int64 proxy_id = 3;
+  string redirect_uri = 4;
+  map<string, string> params = 5;  // platform-specific params (project_id, tier_id, etc.)
+}
+
+message GenerateAuthURLResponse {
+  string auth_url = 1;
+  string session_id = 2;       // plugin-managed session ID
+}
+
+message ExchangeOAuthCodeRequest {
+  string platform = 1;
+  string oauth_type = 2;
+  string session_id = 3;
+  string code = 4;
+  string state = 5;
+  int64 proxy_id = 6;
+  string redirect_uri = 7;
+  map<string, string> params = 8;
+}
+
+message ExchangeOAuthCodeResponse {
+  bytes credentials_json = 1;   // ready-to-persist credentials
+  bytes extra_json = 2;         // ready-to-persist extra
+  string account_name = 3;      // suggested account name
+  string tier_id = 4;           // detected tier
+}
+
+message ValidateRefreshTokenRequest {
+  string platform = 1;
+  string refresh_token = 2;
+  int64 proxy_id = 3;
+  map<string, string> params = 4;
+}
+
+message ValidateRefreshTokenResponse {
+  bytes credentials_json = 1;
+  bytes extra_json = 2;
+  string account_name = 3;
+  string tier_id = 4;
+}
+
+message CookieAuthRequest {
+  string session_key = 1;
+  int64 proxy_id = 2;
+  string scope = 3;
+}
+
+message CookieAuthResponse {
+  bytes credentials_json = 1;
+  bytes extra_json = 2;
+  string account_name = 3;
+}
+
+message SetPrivacyRequest {
+  int64 account_id = 1;
+  string platform = 2;
+  bytes credentials_json = 3;
+  bytes extra_json = 4;
+  bool force = 5;
+}
+
+message SetPrivacyResponse {
+  bool success = 1;
+  string privacy_mode = 2;
+  string error = 3;
+}
+
+message PostAccountCreateRequest {
+  int64 account_id = 1;
+  string platform = 2;
+  string account_type = 3;
+  bytes credentials_json = 4;
+  bytes extra_json = 5;
+}
+
+message PostAccountCreateResponse {
+  bytes updated_credentials_json = 1;  // optional, empty = no update
+  bytes updated_extra_json = 2;        // optional
+}
+
+message ValidateGroupConfigRequest {
+  string platform = 1;
+  bytes group_extra_json = 2;   // frontend-submitted group_extra data
+  bool is_update = 3;
+}
+
+message ValidateGroupConfigResponse {
+  bool valid = 1;
+  // field_errors maps field path to error message (e.g. "max_tokens" -> "must be positive").
+  map<string, string> field_errors = 2;
+  // processed_group_extra_json is the optional post-processed group_extra
+  // (e.g. defaults filled in). Empty = use original input.
+  bytes processed_group_extra_json = 3;
+}
+
 // ============================================================
 // GatewayProviderExtension — plugin-provided, host-called
 // ============================================================

@@ -31,6 +31,28 @@ type AccountPlatformExtension interface {
 	// single account during the host's scheduling filter loop. Return an error
 	// to signal the plugin does not implement this check (default: schedulable).
 	CheckSchedulability(ctx context.Context, req *CheckSchedulabilityReq) (*CheckSchedulabilityResp, error)
+	// GenerateAuthURL generates an OAuth authorization URL for the platform.
+	// Return an error to signal the plugin does not support OAuth.
+	GenerateAuthURL(ctx context.Context, req *GenerateAuthURLReq) (*GenerateAuthURLResp, error)
+	// ExchangeOAuthCode exchanges an OAuth code for credentials.
+	// Return an error to signal the plugin does not support OAuth.
+	ExchangeOAuthCode(ctx context.Context, req *ExchangeOAuthCodeReq) (*ExchangeOAuthCodeResp, error)
+	// ValidateRefreshToken validates a refresh token and returns credentials.
+	// Return an error to signal the plugin does not support this flow.
+	ValidateRefreshToken(ctx context.Context, req *ValidateRefreshTokenReq) (*ValidateRefreshTokenResp, error)
+	// CookieAuth authenticates using a session cookie (e.g. Claude session_key).
+	// Return an error to signal the plugin does not support cookie auth.
+	CookieAuth(ctx context.Context, req *CookieAuthReq) (*CookieAuthResp, error)
+	// SetPrivacy sets the privacy/data-collection mode for an account.
+	// Return an error to signal the plugin does not support privacy management.
+	SetPrivacy(ctx context.Context, req *SetPrivacyReq) (*SetPrivacyResp, error)
+	// PostAccountCreate is called after the host persists a new account.
+	// Return an error to signal the plugin does not implement this hook.
+	PostAccountCreate(ctx context.Context, req *PostAccountCreateReq) (*PostAccountCreateResp, error)
+	// ValidateGroupConfig validates group_extra data before a group is
+	// created or updated. Return an error to signal the plugin does not
+	// implement this check (host silently skips validation).
+	ValidateGroupConfig(ctx context.Context, req *ValidateGroupConfigReq) (*ValidateGroupConfigResp, error)
 }
 
 // ValidateAccountDataReq is the input for ValidateAccountData.
@@ -199,4 +221,114 @@ type CheckSchedulabilityReq struct {
 type CheckSchedulabilityResp struct {
 	Schedulable bool
 	Reason      string // reason when not schedulable (for logging)
+}
+
+// GenerateAuthURLReq is the input for GenerateAuthURL.
+type GenerateAuthURLReq struct {
+	Platform    string
+	OAuthType   string // "oauth"/"setup-token"/"cookie" etc.
+	ProxyID     int64
+	RedirectURI string
+	Params      map[string]string // platform-specific params
+}
+
+// GenerateAuthURLResp is the output of GenerateAuthURL.
+type GenerateAuthURLResp struct {
+	AuthURL   string
+	SessionID string // plugin-managed session ID
+}
+
+// ExchangeOAuthCodeReq is the input for ExchangeOAuthCode.
+type ExchangeOAuthCodeReq struct {
+	Platform    string
+	OAuthType   string
+	SessionID   string
+	Code        string
+	State       string
+	ProxyID     int64
+	RedirectURI string
+	Params      map[string]string
+}
+
+// ExchangeOAuthCodeResp is the output of ExchangeOAuthCode.
+type ExchangeOAuthCodeResp struct {
+	Credentials json.RawMessage // ready-to-persist credentials
+	Extra       json.RawMessage // ready-to-persist extra
+	AccountName string          // suggested account name
+	TierID      string          // detected tier
+}
+
+// ValidateRefreshTokenReq is the input for ValidateRefreshToken.
+type ValidateRefreshTokenReq struct {
+	Platform     string
+	RefreshToken string
+	ProxyID      int64
+	Params       map[string]string
+}
+
+// ValidateRefreshTokenResp is the output of ValidateRefreshToken.
+type ValidateRefreshTokenResp struct {
+	Credentials json.RawMessage
+	Extra       json.RawMessage
+	AccountName string
+	TierID      string
+}
+
+// CookieAuthReq is the input for CookieAuth.
+type CookieAuthReq struct {
+	SessionKey string
+	ProxyID    int64
+	Scope      string
+}
+
+// CookieAuthResp is the output of CookieAuth.
+type CookieAuthResp struct {
+	Credentials json.RawMessage
+	Extra       json.RawMessage
+	AccountName string
+}
+
+// SetPrivacyReq is the input for SetPrivacy.
+type SetPrivacyReq struct {
+	AccountID   int64
+	Platform    string
+	Credentials json.RawMessage
+	Extra       json.RawMessage
+	Force       bool
+}
+
+// SetPrivacyResp is the output of SetPrivacy.
+type SetPrivacyResp struct {
+	Success     bool
+	PrivacyMode string
+	Error       string
+}
+
+// PostAccountCreateReq is the input for PostAccountCreate.
+type PostAccountCreateReq struct {
+	AccountID   int64
+	Platform    string
+	AccountType string
+	Credentials json.RawMessage
+	Extra       json.RawMessage
+}
+
+// PostAccountCreateResp is the output of PostAccountCreate.
+type PostAccountCreateResp struct {
+	UpdatedCredentials json.RawMessage // optional, nil = no update
+	UpdatedExtra       json.RawMessage // optional
+}
+
+// ValidateGroupConfigReq is the input for ValidateGroupConfig.
+type ValidateGroupConfigReq struct {
+	Platform       string
+	GroupExtraJSON json.RawMessage
+	IsUpdate       bool
+}
+
+// ValidateGroupConfigResp is the output of ValidateGroupConfig.
+type ValidateGroupConfigResp struct {
+	Valid                    bool
+	FieldErrors              map[string]string
+	ProcessedGroupExtraJSON json.RawMessage // optional: processed group_extra with defaults filled
 }

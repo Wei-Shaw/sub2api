@@ -11,6 +11,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
+	"github.com/Wei-Shaw/sub2api/internal/plugin"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -30,7 +31,8 @@ type GroupHandler struct {
 	dashboardService     *service.DashboardService
 	groupCapacityService *service.GroupCapacityService
 	// serviceQuotaSvc 用于在删除 group 后失效服务限额缓存（FK CASCADE 自动删除关联，但缓存不感知）。
-	serviceQuotaSvc service.ServiceQuotaService
+	serviceQuotaSvc      service.ServiceQuotaService
+	platformRegistry     *plugin.PlatformRegistry
 }
 
 type optionalLimitField struct {
@@ -261,6 +263,17 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		return
 	}
 
+	// Plugin-side group_extra validation for plugin-owned platforms.
+	if len(req.GroupExtra) > 0 && req.Platform != "" {
+		if processed, abort := h.applyGroupConfigValidation(
+			c, req.Platform, req.GroupExtra, false,
+		); abort {
+			return
+		} else if processed != nil {
+			req.GroupExtra = processed
+		}
+	}
+
 	group, err := h.adminService.CreateGroup(c.Request.Context(), &service.CreateGroupInput{
 		Name:                            req.Name,
 		Description:                     req.Description,
@@ -314,6 +327,26 @@ func (h *GroupHandler) Update(c *gin.Context) {
 	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
 		return
+	}
+
+	// Plugin-side group_extra validation for plugin-owned platforms.
+	// For updates we need the platform; if not in request, fetch existing group.
+	if len(req.GroupExtra) > 0 {
+		platform := req.Platform
+		if platform == "" {
+			if existing, fetchErr := h.adminService.GetGroup(c.Request.Context(), groupID); fetchErr == nil {
+				platform = existing.Platform
+			}
+		}
+		if platform != "" {
+			if processed, abort := h.applyGroupConfigValidation(
+				c, platform, req.GroupExtra, true,
+			); abort {
+				return
+			} else if processed != nil {
+				req.GroupExtra = processed
+			}
+		}
 	}
 
 	group, err := h.adminService.UpdateGroup(c.Request.Context(), groupID, &service.UpdateGroupInput{

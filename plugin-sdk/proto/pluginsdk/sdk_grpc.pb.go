@@ -2929,15 +2929,22 @@ var HostService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	AccountPlatformExtension_ValidateAccountData_FullMethodName = "/pluginsdk.AccountPlatformExtension/ValidateAccountData"
-	AccountPlatformExtension_TestConnection_FullMethodName      = "/pluginsdk.AccountPlatformExtension/TestConnection"
-	AccountPlatformExtension_RefreshToken_FullMethodName        = "/pluginsdk.AccountPlatformExtension/RefreshToken"
-	AccountPlatformExtension_RefreshTier_FullMethodName         = "/pluginsdk.AccountPlatformExtension/RefreshTier"
-	AccountPlatformExtension_GetAvailableModels_FullMethodName  = "/pluginsdk.AccountPlatformExtension/GetAvailableModels"
-	AccountPlatformExtension_ExecuteCustomAction_FullMethodName = "/pluginsdk.AccountPlatformExtension/ExecuteCustomAction"
-	AccountPlatformExtension_IsModelSupported_FullMethodName    = "/pluginsdk.AccountPlatformExtension/IsModelSupported"
-	AccountPlatformExtension_GetSchedulingHints_FullMethodName  = "/pluginsdk.AccountPlatformExtension/GetSchedulingHints"
-	AccountPlatformExtension_CheckSchedulability_FullMethodName = "/pluginsdk.AccountPlatformExtension/CheckSchedulability"
+	AccountPlatformExtension_ValidateAccountData_FullMethodName  = "/pluginsdk.AccountPlatformExtension/ValidateAccountData"
+	AccountPlatformExtension_TestConnection_FullMethodName       = "/pluginsdk.AccountPlatformExtension/TestConnection"
+	AccountPlatformExtension_RefreshToken_FullMethodName         = "/pluginsdk.AccountPlatformExtension/RefreshToken"
+	AccountPlatformExtension_RefreshTier_FullMethodName          = "/pluginsdk.AccountPlatformExtension/RefreshTier"
+	AccountPlatformExtension_GetAvailableModels_FullMethodName   = "/pluginsdk.AccountPlatformExtension/GetAvailableModels"
+	AccountPlatformExtension_ExecuteCustomAction_FullMethodName  = "/pluginsdk.AccountPlatformExtension/ExecuteCustomAction"
+	AccountPlatformExtension_IsModelSupported_FullMethodName     = "/pluginsdk.AccountPlatformExtension/IsModelSupported"
+	AccountPlatformExtension_GetSchedulingHints_FullMethodName   = "/pluginsdk.AccountPlatformExtension/GetSchedulingHints"
+	AccountPlatformExtension_CheckSchedulability_FullMethodName  = "/pluginsdk.AccountPlatformExtension/CheckSchedulability"
+	AccountPlatformExtension_GenerateAuthURL_FullMethodName      = "/pluginsdk.AccountPlatformExtension/GenerateAuthURL"
+	AccountPlatformExtension_ExchangeOAuthCode_FullMethodName    = "/pluginsdk.AccountPlatformExtension/ExchangeOAuthCode"
+	AccountPlatformExtension_ValidateRefreshToken_FullMethodName = "/pluginsdk.AccountPlatformExtension/ValidateRefreshToken"
+	AccountPlatformExtension_CookieAuth_FullMethodName           = "/pluginsdk.AccountPlatformExtension/CookieAuth"
+	AccountPlatformExtension_SetPrivacy_FullMethodName           = "/pluginsdk.AccountPlatformExtension/SetPrivacy"
+	AccountPlatformExtension_PostAccountCreate_FullMethodName    = "/pluginsdk.AccountPlatformExtension/PostAccountCreate"
+	AccountPlatformExtension_ValidateGroupConfig_FullMethodName  = "/pluginsdk.AccountPlatformExtension/ValidateGroupConfig"
 )
 
 // AccountPlatformExtensionClient is the client API for AccountPlatformExtension service.
@@ -2981,6 +2988,39 @@ type AccountPlatformExtensionClient interface {
 	// Plugins that do not implement this RPC return codes.Unimplemented,
 	// causing the host to treat the account as schedulable (default pass).
 	CheckSchedulability(ctx context.Context, in *CheckSchedulabilityRequest, opts ...grpc.CallOption) (*CheckSchedulabilityResponse, error)
+	// GenerateAuthURL generates an OAuth authorization URL for a platform.
+	// Called by the host when a user initiates OAuth account creation.
+	// Plugins that do not implement this RPC return codes.Unimplemented.
+	GenerateAuthURL(ctx context.Context, in *GenerateAuthURLRequest, opts ...grpc.CallOption) (*GenerateAuthURLResponse, error)
+	// ExchangeOAuthCode exchanges an OAuth authorization code for credentials.
+	// Called by the host after the user completes the OAuth flow and returns
+	// with a code. Plugins that do not implement this RPC return
+	// codes.Unimplemented.
+	ExchangeOAuthCode(ctx context.Context, in *ExchangeOAuthCodeRequest, opts ...grpc.CallOption) (*ExchangeOAuthCodeResponse, error)
+	// ValidateRefreshToken validates a refresh token and returns fresh
+	// credentials. Used for account creation via direct refresh token input.
+	// Plugins that do not implement this RPC return codes.Unimplemented.
+	ValidateRefreshToken(ctx context.Context, in *ValidateRefreshTokenRequest, opts ...grpc.CallOption) (*ValidateRefreshTokenResponse, error)
+	// CookieAuth authenticates using a session cookie (e.g. Claude session_key).
+	// Platform-specific; plugins that do not support cookie auth return
+	// codes.Unimplemented.
+	CookieAuth(ctx context.Context, in *CookieAuthRequest, opts ...grpc.CallOption) (*CookieAuthResponse, error)
+	// SetPrivacy sets the privacy/data-collection mode for an account on the
+	// upstream platform. Plugins that do not support privacy management
+	// return codes.Unimplemented.
+	SetPrivacy(ctx context.Context, in *SetPrivacyRequest, opts ...grpc.CallOption) (*SetPrivacyResponse, error)
+	// PostAccountCreate is a hook called by the host after persisting a new
+	// account. Plugins can use it to perform post-creation setup (e.g.
+	// fetching organization info, setting initial privacy mode). Plugins
+	// that do not implement this RPC return codes.Unimplemented.
+	PostAccountCreate(ctx context.Context, in *PostAccountCreateRequest, opts ...grpc.CallOption) (*PostAccountCreateResponse, error)
+	// ValidateGroupConfig validates group_extra data before the host persists
+	// a group create or update. Called only when group_extra is non-empty and
+	// the group's platform has a registered plugin.
+	//
+	// Plugins that do not implement this RPC return codes.Unimplemented,
+	// causing the host to silently skip validation (backward compatible).
+	ValidateGroupConfig(ctx context.Context, in *ValidateGroupConfigRequest, opts ...grpc.CallOption) (*ValidateGroupConfigResponse, error)
 }
 
 type accountPlatformExtensionClient struct {
@@ -3090,6 +3130,76 @@ func (c *accountPlatformExtensionClient) CheckSchedulability(ctx context.Context
 	return out, nil
 }
 
+func (c *accountPlatformExtensionClient) GenerateAuthURL(ctx context.Context, in *GenerateAuthURLRequest, opts ...grpc.CallOption) (*GenerateAuthURLResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GenerateAuthURLResponse)
+	err := c.cc.Invoke(ctx, AccountPlatformExtension_GenerateAuthURL_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *accountPlatformExtensionClient) ExchangeOAuthCode(ctx context.Context, in *ExchangeOAuthCodeRequest, opts ...grpc.CallOption) (*ExchangeOAuthCodeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ExchangeOAuthCodeResponse)
+	err := c.cc.Invoke(ctx, AccountPlatformExtension_ExchangeOAuthCode_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *accountPlatformExtensionClient) ValidateRefreshToken(ctx context.Context, in *ValidateRefreshTokenRequest, opts ...grpc.CallOption) (*ValidateRefreshTokenResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ValidateRefreshTokenResponse)
+	err := c.cc.Invoke(ctx, AccountPlatformExtension_ValidateRefreshToken_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *accountPlatformExtensionClient) CookieAuth(ctx context.Context, in *CookieAuthRequest, opts ...grpc.CallOption) (*CookieAuthResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CookieAuthResponse)
+	err := c.cc.Invoke(ctx, AccountPlatformExtension_CookieAuth_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *accountPlatformExtensionClient) SetPrivacy(ctx context.Context, in *SetPrivacyRequest, opts ...grpc.CallOption) (*SetPrivacyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetPrivacyResponse)
+	err := c.cc.Invoke(ctx, AccountPlatformExtension_SetPrivacy_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *accountPlatformExtensionClient) PostAccountCreate(ctx context.Context, in *PostAccountCreateRequest, opts ...grpc.CallOption) (*PostAccountCreateResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PostAccountCreateResponse)
+	err := c.cc.Invoke(ctx, AccountPlatformExtension_PostAccountCreate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *accountPlatformExtensionClient) ValidateGroupConfig(ctx context.Context, in *ValidateGroupConfigRequest, opts ...grpc.CallOption) (*ValidateGroupConfigResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ValidateGroupConfigResponse)
+	err := c.cc.Invoke(ctx, AccountPlatformExtension_ValidateGroupConfig_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AccountPlatformExtensionServer is the server API for AccountPlatformExtension service.
 // All implementations must embed UnimplementedAccountPlatformExtensionServer
 // for forward compatibility.
@@ -3131,6 +3241,39 @@ type AccountPlatformExtensionServer interface {
 	// Plugins that do not implement this RPC return codes.Unimplemented,
 	// causing the host to treat the account as schedulable (default pass).
 	CheckSchedulability(context.Context, *CheckSchedulabilityRequest) (*CheckSchedulabilityResponse, error)
+	// GenerateAuthURL generates an OAuth authorization URL for a platform.
+	// Called by the host when a user initiates OAuth account creation.
+	// Plugins that do not implement this RPC return codes.Unimplemented.
+	GenerateAuthURL(context.Context, *GenerateAuthURLRequest) (*GenerateAuthURLResponse, error)
+	// ExchangeOAuthCode exchanges an OAuth authorization code for credentials.
+	// Called by the host after the user completes the OAuth flow and returns
+	// with a code. Plugins that do not implement this RPC return
+	// codes.Unimplemented.
+	ExchangeOAuthCode(context.Context, *ExchangeOAuthCodeRequest) (*ExchangeOAuthCodeResponse, error)
+	// ValidateRefreshToken validates a refresh token and returns fresh
+	// credentials. Used for account creation via direct refresh token input.
+	// Plugins that do not implement this RPC return codes.Unimplemented.
+	ValidateRefreshToken(context.Context, *ValidateRefreshTokenRequest) (*ValidateRefreshTokenResponse, error)
+	// CookieAuth authenticates using a session cookie (e.g. Claude session_key).
+	// Platform-specific; plugins that do not support cookie auth return
+	// codes.Unimplemented.
+	CookieAuth(context.Context, *CookieAuthRequest) (*CookieAuthResponse, error)
+	// SetPrivacy sets the privacy/data-collection mode for an account on the
+	// upstream platform. Plugins that do not support privacy management
+	// return codes.Unimplemented.
+	SetPrivacy(context.Context, *SetPrivacyRequest) (*SetPrivacyResponse, error)
+	// PostAccountCreate is a hook called by the host after persisting a new
+	// account. Plugins can use it to perform post-creation setup (e.g.
+	// fetching organization info, setting initial privacy mode). Plugins
+	// that do not implement this RPC return codes.Unimplemented.
+	PostAccountCreate(context.Context, *PostAccountCreateRequest) (*PostAccountCreateResponse, error)
+	// ValidateGroupConfig validates group_extra data before the host persists
+	// a group create or update. Called only when group_extra is non-empty and
+	// the group's platform has a registered plugin.
+	//
+	// Plugins that do not implement this RPC return codes.Unimplemented,
+	// causing the host to silently skip validation (backward compatible).
+	ValidateGroupConfig(context.Context, *ValidateGroupConfigRequest) (*ValidateGroupConfigResponse, error)
 	mustEmbedUnimplementedAccountPlatformExtensionServer()
 }
 
@@ -3167,6 +3310,27 @@ func (UnimplementedAccountPlatformExtensionServer) GetSchedulingHints(context.Co
 }
 func (UnimplementedAccountPlatformExtensionServer) CheckSchedulability(context.Context, *CheckSchedulabilityRequest) (*CheckSchedulabilityResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CheckSchedulability not implemented")
+}
+func (UnimplementedAccountPlatformExtensionServer) GenerateAuthURL(context.Context, *GenerateAuthURLRequest) (*GenerateAuthURLResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GenerateAuthURL not implemented")
+}
+func (UnimplementedAccountPlatformExtensionServer) ExchangeOAuthCode(context.Context, *ExchangeOAuthCodeRequest) (*ExchangeOAuthCodeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ExchangeOAuthCode not implemented")
+}
+func (UnimplementedAccountPlatformExtensionServer) ValidateRefreshToken(context.Context, *ValidateRefreshTokenRequest) (*ValidateRefreshTokenResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ValidateRefreshToken not implemented")
+}
+func (UnimplementedAccountPlatformExtensionServer) CookieAuth(context.Context, *CookieAuthRequest) (*CookieAuthResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CookieAuth not implemented")
+}
+func (UnimplementedAccountPlatformExtensionServer) SetPrivacy(context.Context, *SetPrivacyRequest) (*SetPrivacyResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetPrivacy not implemented")
+}
+func (UnimplementedAccountPlatformExtensionServer) PostAccountCreate(context.Context, *PostAccountCreateRequest) (*PostAccountCreateResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method PostAccountCreate not implemented")
+}
+func (UnimplementedAccountPlatformExtensionServer) ValidateGroupConfig(context.Context, *ValidateGroupConfigRequest) (*ValidateGroupConfigResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ValidateGroupConfig not implemented")
 }
 func (UnimplementedAccountPlatformExtensionServer) mustEmbedUnimplementedAccountPlatformExtensionServer() {
 }
@@ -3345,6 +3509,132 @@ func _AccountPlatformExtension_CheckSchedulability_Handler(srv interface{}, ctx 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AccountPlatformExtension_GenerateAuthURL_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GenerateAuthURLRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AccountPlatformExtensionServer).GenerateAuthURL(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AccountPlatformExtension_GenerateAuthURL_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AccountPlatformExtensionServer).GenerateAuthURL(ctx, req.(*GenerateAuthURLRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AccountPlatformExtension_ExchangeOAuthCode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ExchangeOAuthCodeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AccountPlatformExtensionServer).ExchangeOAuthCode(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AccountPlatformExtension_ExchangeOAuthCode_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AccountPlatformExtensionServer).ExchangeOAuthCode(ctx, req.(*ExchangeOAuthCodeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AccountPlatformExtension_ValidateRefreshToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ValidateRefreshTokenRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AccountPlatformExtensionServer).ValidateRefreshToken(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AccountPlatformExtension_ValidateRefreshToken_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AccountPlatformExtensionServer).ValidateRefreshToken(ctx, req.(*ValidateRefreshTokenRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AccountPlatformExtension_CookieAuth_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CookieAuthRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AccountPlatformExtensionServer).CookieAuth(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AccountPlatformExtension_CookieAuth_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AccountPlatformExtensionServer).CookieAuth(ctx, req.(*CookieAuthRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AccountPlatformExtension_SetPrivacy_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetPrivacyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AccountPlatformExtensionServer).SetPrivacy(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AccountPlatformExtension_SetPrivacy_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AccountPlatformExtensionServer).SetPrivacy(ctx, req.(*SetPrivacyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AccountPlatformExtension_PostAccountCreate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PostAccountCreateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AccountPlatformExtensionServer).PostAccountCreate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AccountPlatformExtension_PostAccountCreate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AccountPlatformExtensionServer).PostAccountCreate(ctx, req.(*PostAccountCreateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AccountPlatformExtension_ValidateGroupConfig_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ValidateGroupConfigRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AccountPlatformExtensionServer).ValidateGroupConfig(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AccountPlatformExtension_ValidateGroupConfig_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AccountPlatformExtensionServer).ValidateGroupConfig(ctx, req.(*ValidateGroupConfigRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AccountPlatformExtension_ServiceDesc is the grpc.ServiceDesc for AccountPlatformExtension service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -3383,6 +3673,34 @@ var AccountPlatformExtension_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CheckSchedulability",
 			Handler:    _AccountPlatformExtension_CheckSchedulability_Handler,
+		},
+		{
+			MethodName: "GenerateAuthURL",
+			Handler:    _AccountPlatformExtension_GenerateAuthURL_Handler,
+		},
+		{
+			MethodName: "ExchangeOAuthCode",
+			Handler:    _AccountPlatformExtension_ExchangeOAuthCode_Handler,
+		},
+		{
+			MethodName: "ValidateRefreshToken",
+			Handler:    _AccountPlatformExtension_ValidateRefreshToken_Handler,
+		},
+		{
+			MethodName: "CookieAuth",
+			Handler:    _AccountPlatformExtension_CookieAuth_Handler,
+		},
+		{
+			MethodName: "SetPrivacy",
+			Handler:    _AccountPlatformExtension_SetPrivacy_Handler,
+		},
+		{
+			MethodName: "PostAccountCreate",
+			Handler:    _AccountPlatformExtension_PostAccountCreate_Handler,
+		},
+		{
+			MethodName: "ValidateGroupConfig",
+			Handler:    _AccountPlatformExtension_ValidateGroupConfig_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

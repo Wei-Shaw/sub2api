@@ -153,7 +153,12 @@ func ClientForPlatform(registry *PlatformRegistry, platform string) (*AccountPla
 	return NewAccountPlatformClient(rp.Conn), nil
 }
 
-const accountModelSupportTimeout = 3 * time.Second
+const (
+	accountModelSupportTimeout = 3 * time.Second
+	accountOAuthTimeout        = 15 * time.Second
+	accountPrivacyTimeout      = 10 * time.Second
+	accountPostCreateTimeout   = 10 * time.Second
+)
 
 // IsModelSupported asks the plugin whether the given account supports
 // the requested model. Returns (supported, mappedModel, error).
@@ -219,5 +224,137 @@ func (c *AccountPlatformClient) CheckSchedulability(
 		ExtraJson:       extra,
 		RequestedModel:  requestedModel,
 		GatewayProtocol: gatewayProtocol,
+	})
+}
+
+// GenerateAuthURL asks the plugin to generate an OAuth authorization URL.
+func (c *AccountPlatformClient) GenerateAuthURL(
+	ctx context.Context,
+	platform, oauthType string,
+	proxyID int64,
+	redirectURI string,
+	params map[string]string,
+) (*pb.GenerateAuthURLResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, accountOAuthTimeout)
+	defer cancel()
+	return c.stub.GenerateAuthURL(ctx, &pb.GenerateAuthURLRequest{
+		Platform:    platform,
+		OauthType:   oauthType,
+		ProxyId:     proxyID,
+		RedirectUri: redirectURI,
+		Params:      params,
+	})
+}
+
+// ExchangeOAuthCode asks the plugin to exchange an OAuth code for credentials.
+func (c *AccountPlatformClient) ExchangeOAuthCode(
+	ctx context.Context,
+	platform, oauthType, sessionID, code, state string,
+	proxyID int64,
+	redirectURI string,
+	params map[string]string,
+) (*pb.ExchangeOAuthCodeResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, accountOAuthTimeout)
+	defer cancel()
+	return c.stub.ExchangeOAuthCode(ctx, &pb.ExchangeOAuthCodeRequest{
+		Platform:    platform,
+		OauthType:   oauthType,
+		SessionId:   sessionID,
+		Code:        code,
+		State:       state,
+		ProxyId:     proxyID,
+		RedirectUri: redirectURI,
+		Params:      params,
+	})
+}
+
+// ValidateRefreshToken asks the plugin to validate a refresh token
+// and return fresh credentials.
+func (c *AccountPlatformClient) ValidateRefreshToken(
+	ctx context.Context,
+	platform, refreshToken string,
+	proxyID int64,
+	params map[string]string,
+) (*pb.ValidateRefreshTokenResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, accountOAuthTimeout)
+	defer cancel()
+	return c.stub.ValidateRefreshToken(ctx, &pb.ValidateRefreshTokenRequest{
+		Platform:     platform,
+		RefreshToken: refreshToken,
+		ProxyId:      proxyID,
+		Params:       params,
+	})
+}
+
+// CookieAuth asks the plugin to authenticate using a session cookie.
+func (c *AccountPlatformClient) CookieAuth(
+	ctx context.Context,
+	sessionKey string,
+	proxyID int64,
+	scope string,
+) (*pb.CookieAuthResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, accountOAuthTimeout)
+	defer cancel()
+	return c.stub.CookieAuth(ctx, &pb.CookieAuthRequest{
+		SessionKey: sessionKey,
+		ProxyId:    proxyID,
+		Scope:      scope,
+	})
+}
+
+// SetPrivacy asks the plugin to set the privacy mode for an account.
+func (c *AccountPlatformClient) SetPrivacy(
+	ctx context.Context,
+	accountID int64,
+	platform string,
+	credentials, extra json.RawMessage,
+	force bool,
+) (*pb.SetPrivacyResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, accountPrivacyTimeout)
+	defer cancel()
+	return c.stub.SetPrivacy(ctx, &pb.SetPrivacyRequest{
+		AccountId:       accountID,
+		Platform:        platform,
+		CredentialsJson: credentials,
+		ExtraJson:       extra,
+		Force:           force,
+	})
+}
+
+// PostAccountCreate notifies the plugin that a new account was created.
+func (c *AccountPlatformClient) PostAccountCreate(
+	ctx context.Context,
+	accountID int64,
+	platform, accountType string,
+	credentials, extra json.RawMessage,
+) (*pb.PostAccountCreateResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, accountPostCreateTimeout)
+	defer cancel()
+	return c.stub.PostAccountCreate(ctx, &pb.PostAccountCreateRequest{
+		AccountId:       accountID,
+		Platform:        platform,
+		AccountType:     accountType,
+		CredentialsJson: credentials,
+		ExtraJson:       extra,
+	})
+}
+
+const groupConfigValidateTimeout = 10 * time.Second
+
+// ValidateGroupConfig delegates group_extra validation to the plugin.
+// A codes.Unimplemented error signals the plugin does not implement
+// this check; the caller should silently skip validation.
+func (c *AccountPlatformClient) ValidateGroupConfig(
+	ctx context.Context,
+	platform string,
+	groupExtraJSON json.RawMessage,
+	isUpdate bool,
+) (*pb.ValidateGroupConfigResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, groupConfigValidateTimeout)
+	defer cancel()
+	return c.stub.ValidateGroupConfig(ctx, &pb.ValidateGroupConfigRequest{
+		Platform:       platform,
+		GroupExtraJson: groupExtraJSON,
+		IsUpdate:       isUpdate,
 	})
 }
