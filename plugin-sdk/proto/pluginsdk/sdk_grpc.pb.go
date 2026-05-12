@@ -2935,6 +2935,7 @@ const (
 	AccountPlatformExtension_RefreshTier_FullMethodName         = "/pluginsdk.AccountPlatformExtension/RefreshTier"
 	AccountPlatformExtension_GetAvailableModels_FullMethodName  = "/pluginsdk.AccountPlatformExtension/GetAvailableModels"
 	AccountPlatformExtension_ExecuteCustomAction_FullMethodName = "/pluginsdk.AccountPlatformExtension/ExecuteCustomAction"
+	AccountPlatformExtension_IsModelSupported_FullMethodName    = "/pluginsdk.AccountPlatformExtension/IsModelSupported"
 )
 
 // AccountPlatformExtensionClient is the client API for AccountPlatformExtension service.
@@ -2958,6 +2959,12 @@ type AccountPlatformExtensionClient interface {
 	GetAvailableModels(ctx context.Context, in *GetAvailableModelsRequest, opts ...grpc.CallOption) (*GetAvailableModelsResponse, error)
 	// ExecuteCustomAction handles plugin-defined custom actions.
 	ExecuteCustomAction(ctx context.Context, in *ExecuteCustomActionRequest, opts ...grpc.CallOption) (*ExecuteCustomActionResponse, error)
+	// IsModelSupported asks the plugin whether a specific account supports
+	// a requested model. Called during scheduling to let plugins do runtime
+	// model-support checks beyond static credentials.model_mapping.
+	// Plugins that do not implement this RPC return codes.Unimplemented,
+	// causing the host to fall back to the static account.IsModelSupported().
+	IsModelSupported(ctx context.Context, in *IsModelSupportedRequest, opts ...grpc.CallOption) (*IsModelSupportedResponse, error)
 }
 
 type accountPlatformExtensionClient struct {
@@ -3037,6 +3044,16 @@ func (c *accountPlatformExtensionClient) ExecuteCustomAction(ctx context.Context
 	return out, nil
 }
 
+func (c *accountPlatformExtensionClient) IsModelSupported(ctx context.Context, in *IsModelSupportedRequest, opts ...grpc.CallOption) (*IsModelSupportedResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(IsModelSupportedResponse)
+	err := c.cc.Invoke(ctx, AccountPlatformExtension_IsModelSupported_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AccountPlatformExtensionServer is the server API for AccountPlatformExtension service.
 // All implementations must embed UnimplementedAccountPlatformExtensionServer
 // for forward compatibility.
@@ -3058,6 +3075,12 @@ type AccountPlatformExtensionServer interface {
 	GetAvailableModels(context.Context, *GetAvailableModelsRequest) (*GetAvailableModelsResponse, error)
 	// ExecuteCustomAction handles plugin-defined custom actions.
 	ExecuteCustomAction(context.Context, *ExecuteCustomActionRequest) (*ExecuteCustomActionResponse, error)
+	// IsModelSupported asks the plugin whether a specific account supports
+	// a requested model. Called during scheduling to let plugins do runtime
+	// model-support checks beyond static credentials.model_mapping.
+	// Plugins that do not implement this RPC return codes.Unimplemented,
+	// causing the host to fall back to the static account.IsModelSupported().
+	IsModelSupported(context.Context, *IsModelSupportedRequest) (*IsModelSupportedResponse, error)
 	mustEmbedUnimplementedAccountPlatformExtensionServer()
 }
 
@@ -3085,6 +3108,9 @@ func (UnimplementedAccountPlatformExtensionServer) GetAvailableModels(context.Co
 }
 func (UnimplementedAccountPlatformExtensionServer) ExecuteCustomAction(context.Context, *ExecuteCustomActionRequest) (*ExecuteCustomActionResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ExecuteCustomAction not implemented")
+}
+func (UnimplementedAccountPlatformExtensionServer) IsModelSupported(context.Context, *IsModelSupportedRequest) (*IsModelSupportedResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method IsModelSupported not implemented")
 }
 func (UnimplementedAccountPlatformExtensionServer) mustEmbedUnimplementedAccountPlatformExtensionServer() {
 }
@@ -3209,6 +3235,24 @@ func _AccountPlatformExtension_ExecuteCustomAction_Handler(srv interface{}, ctx 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AccountPlatformExtension_IsModelSupported_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(IsModelSupportedRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AccountPlatformExtensionServer).IsModelSupported(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AccountPlatformExtension_IsModelSupported_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AccountPlatformExtensionServer).IsModelSupported(ctx, req.(*IsModelSupportedRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AccountPlatformExtension_ServiceDesc is the grpc.ServiceDesc for AccountPlatformExtension service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -3235,6 +3279,10 @@ var AccountPlatformExtension_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ExecuteCustomAction",
 			Handler:    _AccountPlatformExtension_ExecuteCustomAction_Handler,
+		},
+		{
+			MethodName: "IsModelSupported",
+			Handler:    _AccountPlatformExtension_IsModelSupported_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

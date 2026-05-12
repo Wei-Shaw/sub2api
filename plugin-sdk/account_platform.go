@@ -19,6 +19,10 @@ type AccountPlatformExtension interface {
 	RefreshTier(ctx context.Context, req *RefreshTierReq) (*RefreshTierResp, error)
 	GetAvailableModels(ctx context.Context, req *GetAvailableModelsReq) ([]AvailableModel, error)
 	ExecuteCustomAction(ctx context.Context, req *ExecuteCustomActionReq) (*ExecuteCustomActionResp, error)
+	// IsModelSupported checks whether the account supports the requested model
+	// at runtime. Return an error to signal that the plugin does not implement
+	// this check, causing the host to fall back to static model_mapping.
+	IsModelSupported(ctx context.Context, req *IsModelSupportedReq) (*IsModelSupportedResp, error)
 }
 
 // ValidateAccountDataReq is the input for ValidateAccountData.
@@ -129,4 +133,19 @@ type ExecuteCustomActionResp struct {
 	Result             json.RawMessage
 	UpdatedCredentials json.RawMessage
 	UpdatedExtra       json.RawMessage
+}
+
+// IsModelSupportedReq is the input for IsModelSupported.
+type IsModelSupportedReq struct {
+	AccountID   int64
+	Platform    string
+	Model       string
+	Credentials json.RawMessage
+	Extra       json.RawMessage
+}
+
+// IsModelSupportedResp is the output of IsModelSupported.
+type IsModelSupportedResp struct {
+	Supported   bool
+	MappedModel string // optional: plugin can return the upstream model name
 }

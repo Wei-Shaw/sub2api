@@ -332,3 +332,36 @@ func (m *PluginManager) SDKAddr() string {
 func (m *PluginManager) PlatformRegistry() *PlatformRegistry {
 	return m.platformRegistry
 }
+
+// ModelSupportCheckerRegistrar is the minimal surface PluginManager needs
+// to install the plugin-backed PluginModelSupportChecker on the host's
+// gateway services. The host implementation typically wraps both
+// GatewayService.SetPluginModelSupportChecker and (if applicable)
+// OpenAIGatewayService.SetPluginModelSupportChecker behind a single call.
+type ModelSupportCheckerRegistrar interface {
+	SetPluginModelSupportChecker(checker service.PluginModelSupportChecker)
+}
+
+// SetModelSupportCheckerRegistrar wires the host-side seam used to install
+// the plugin-backed model support checker. Pass nil to disable.
+// Must be called before Start.
+func (m *PluginManager) SetModelSupportCheckerRegistrar(registrar ModelSupportCheckerRegistrar) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.modelSupportCheckerRegistrar = registrar
+}
+
+// wireModelSupportChecker creates a PluginModelSupportChecker backed by
+// the manager's PlatformRegistry and installs it via the registrar.
+// Called once during Start; no-op if no registrar is wired.
+func (m *PluginManager) wireModelSupportChecker() {
+	m.mu.RLock()
+	registrar := m.modelSupportCheckerRegistrar
+	m.mu.RUnlock()
+	if registrar == nil {
+		return
+	}
+	registrar.SetPluginModelSupportChecker(
+		NewPluginModelSupportChecker(m.platformRegistry),
+	)
+}

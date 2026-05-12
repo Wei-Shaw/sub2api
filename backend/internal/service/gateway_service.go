@@ -581,6 +581,13 @@ type GatewayService struct {
 	// keeps account_stats_cost NULL).
 	accountStatsMu       sync.RWMutex
 	accountStatsResolver AccountStatsCostResolver
+
+	// pluginModelSupportChecker is the optional plugin hook called during
+	// scheduling to check if a plugin-owned platform account supports a
+	// requested model. Wired via SetPluginModelSupportChecker. nil means
+	// fall back to static account.IsModelSupported().
+	pluginModelSupportMu      sync.RWMutex
+	pluginModelSupportChecker PluginModelSupportChecker
 }
 
 // NewGatewayService creates a new GatewayService
@@ -3739,6 +3746,14 @@ func (s *GatewayService) isModelSupportedByAccountWithContext(ctx context.Contex
 			return account.IsModelSupported(finalModel)
 		}
 		return true
+	}
+	// Try plugin IsModelSupported RPC for plugin-owned platforms.
+	// If the plugin returns an answer, use it; on error (including
+	// codes.Unimplemented), fall back to the static check.
+	if checker := s.loadPluginModelSupportChecker(); checker != nil {
+		if supported, err := checker.Check(ctx, account, requestedModel); err == nil {
+			return supported
+		}
 	}
 	return s.isModelSupportedByAccount(account, requestedModel)
 }
@@ -8576,6 +8591,29 @@ func (s *GatewayService) loadAccountStatsResolver() AccountStatsCostResolver {
 	s.accountStatsMu.RLock()
 	defer s.accountStatsMu.RUnlock()
 	return s.accountStatsResolver
+}
+
+// SetPluginModelSupportChecker wires an optional plugin-supplied model
+// support checker. Passing nil disables the hook so the host falls back
+// to the static account.IsModelSupported() check.
+func (s *GatewayService) SetPluginModelSupportChecker(checker PluginModelSupportChecker) {
+	if s == nil {
+		return
+	}
+	s.pluginModelSupportMu.Lock()
+	defer s.pluginModelSupportMu.Unlock()
+	s.pluginModelSupportChecker = checker
+}
+
+// loadPluginModelSupportChecker returns the currently registered checker
+// (possibly nil).
+func (s *GatewayService) loadPluginModelSupportChecker() PluginModelSupportChecker {
+	if s == nil {
+		return nil
+	}
+	s.pluginModelSupportMu.RLock()
+	defer s.pluginModelSupportMu.RUnlock()
+	return s.pluginModelSupportChecker
 }
 
 // resolveAccountStatsCost calls the registered AccountStatsCostResolver

@@ -37,6 +37,9 @@ func (m *PluginManager) Start(ctx context.Context) error {
 		return err
 	}
 
+	// Wire the plugin model support checker — it wraps PlatformRegistry
+	// so it dynamically resolves to whichever plugin owns each platform.
+	m.wireModelSupportChecker()
 	if err := m.startSDKServer(); err != nil {
 		return err
 	}

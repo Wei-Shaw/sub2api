@@ -153,6 +153,10 @@ type PluginManager struct {
 	// usage_logs.account_stats_cost NULL).
 	accountStatsResolverRegistrar AccountStatsResolverRegistrar
 
+	// modelSupportCheckerRegistrar wires the plugin-backed model support
+	// checker into the gateway services. nil disables the hook.
+	modelSupportCheckerRegistrar ModelSupportCheckerRegistrar
+
 	// hostService holds the HostService gRPC server (plugin→host reverse
 	// RPCs, see ADR-UPSTREAM-SYNC-115-121 §4). Wired via
 	// SetHostPricingResolver before Start; nil disables the service

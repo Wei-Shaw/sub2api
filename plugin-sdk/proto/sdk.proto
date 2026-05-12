@@ -1229,6 +1229,14 @@ service AccountPlatformExtension {
   // ExecuteCustomAction handles plugin-defined custom actions.
   rpc ExecuteCustomAction(ExecuteCustomActionRequest)
       returns (ExecuteCustomActionResponse);
+
+  // IsModelSupported asks the plugin whether a specific account supports
+  // a requested model. Called during scheduling to let plugins do runtime
+  // model-support checks beyond static credentials.model_mapping.
+  // Plugins that do not implement this RPC return codes.Unimplemented,
+  // causing the host to fall back to the static account.IsModelSupported().
+  rpc IsModelSupported(IsModelSupportedRequest)
+      returns (IsModelSupportedResponse);
 }
 
 message ValidateAccountDataRequest {
@@ -1331,6 +1339,22 @@ message ExecuteCustomActionResponse {
   bytes result_json = 3;
   bytes updated_credentials_json = 4;
   bytes updated_extra_json = 5;
+}
+
+message IsModelSupportedRequest {
+  int64 account_id = 1;
+  string account_platform = 2;
+  string requested_model = 3;
+  bytes credentials_json = 4;
+  bytes extra_json = 5;
+}
+
+message IsModelSupportedResponse {
+  bool supported = 1;
+  // mapped_model is optional: the plugin may return the actual upstream
+  // model name (e.g. "gpt-4o" -> "gpt-4o-2024-08-06") for the host to
+  // use during forwarding. Empty string means no mapping.
+  string mapped_model = 2;
 }
 
 // ============================================================

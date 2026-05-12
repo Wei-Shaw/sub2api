@@ -344,6 +344,11 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 			gateway:       gatewayService,
 			openaiGateway: openAIGatewayService,
 		})
+		// Model support checker hook: let plugins override the static
+		// account.IsModelSupported check during scheduling.
+		pluginManager.SetModelSupportCheckerRegistrar(&modelSupportCheckerFanout{
+			gateway: gatewayService,
+		})
 		// HostService wire (ADR-UPSTREAM-SYNC-115-121 §4): let plugins call
 		// BillingService.GetModelPricing over the reverse gRPC channel so
 		// channel-management can render a global-pricing fallback for the
@@ -694,5 +699,22 @@ func (a *accountStatsResolverFanout) SetAccountStatsResolver(resolver service.Ac
 	}
 	if a.openaiGateway != nil {
 		a.openaiGateway.SetAccountStatsResolver(resolver)
+	}
+}
+
+// modelSupportCheckerFanout forwards the plugin-backed model support
+// checker to the GatewayService (and potentially OpenAIGatewayService
+// in the future).
+type modelSupportCheckerFanout struct {
+	gateway *service.GatewayService
+}
+
+// SetPluginModelSupportChecker forwards to the gateway service.
+func (f *modelSupportCheckerFanout) SetPluginModelSupportChecker(checker service.PluginModelSupportChecker) {
+	if f == nil {
+		return
+	}
+	if f.gateway != nil {
+		f.gateway.SetPluginModelSupportChecker(checker)
 	}
 }

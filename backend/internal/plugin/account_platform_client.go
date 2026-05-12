@@ -152,3 +152,27 @@ func ClientForPlatform(registry *PlatformRegistry, platform string) (*AccountPla
 	}
 	return NewAccountPlatformClient(rp.Conn), nil
 }
+
+const accountModelSupportTimeout = 3 * time.Second
+
+// IsModelSupported asks the plugin whether the given account supports
+// the requested model. Returns (supported, mappedModel, error).
+// A codes.Unimplemented error from the plugin signals "not implemented"
+// and the caller should fall back to the static model_mapping check.
+func (c *AccountPlatformClient) IsModelSupported(
+	ctx context.Context,
+	accountID int64,
+	platform string,
+	credentials, extra json.RawMessage,
+	requestedModel string,
+) (*pb.IsModelSupportedResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, accountModelSupportTimeout)
+	defer cancel()
+	return c.stub.IsModelSupported(ctx, &pb.IsModelSupportedRequest{
+		AccountId:       accountID,
+		AccountPlatform: platform,
+		RequestedModel:  requestedModel,
+		CredentialsJson: credentials,
+		ExtraJson:       extra,
+	})
+}
