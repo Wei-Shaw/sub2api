@@ -82,7 +82,7 @@ export function useOpenAIForm() {
   }, { immediate: true })
 
   const isModelRestrictionDisabled = computed(() => openaiPassthroughEnabled.value)
-  const oauthConfig: OAuthFlowConfig = { showRefreshTokenOption: true, showMobileRefreshTokenOption: true, showProxyWarning: false, platform: 'openai' }
+  const oauthConfig: OAuthFlowConfig = { showRefreshTokenOption: true, showMobileRefreshTokenOption: true, showCodexSessionImportOption: true, showProxyWarning: false, platform: 'openai' }
 
   const getWSMode = (category: string): OpenAIWSMode => category === 'apikey' ? openaiAPIKeyWSMode.value : openaiOAuthWSMode.value
   const setWSMode = (category: string, mode: OpenAIWSMode) => { if (category === 'apikey') openaiAPIKeyWSMode.value = mode; else openaiOAuthWSMode.value = mode }

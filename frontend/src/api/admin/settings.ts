@@ -400,6 +400,8 @@ export interface SystemSettings {
   enable_metadata_passthrough: boolean;
   enable_cch_signing: boolean;
   enable_anthropic_cache_ttl_1h_injection: boolean;
+  rewrite_message_cache_control: boolean;
+  antigravity_user_agent_version: string;
   web_search_emulation_enabled?: boolean;
 
   // Payment configuration
@@ -599,6 +601,8 @@ export interface UpdateSettingsRequest {
   enable_metadata_passthrough?: boolean;
   enable_cch_signing?: boolean;
   enable_anthropic_cache_ttl_1h_injection?: boolean;
+  rewrite_message_cache_control?: boolean;
+  antigravity_user_agent_version?: string;
   // Payment configuration
   payment_enabled?: boolean;
   risk_control_enabled?: boolean;

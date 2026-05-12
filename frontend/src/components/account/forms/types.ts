@@ -46,6 +46,7 @@ export interface OAuthFlowConfig {
   showProxyWarning?: boolean
   allowMultiple?: boolean
   needsMixedChannelCheck?: boolean
+  showCodexSessionImportOption?: boolean
   platform: AccountPlatform
 }
 

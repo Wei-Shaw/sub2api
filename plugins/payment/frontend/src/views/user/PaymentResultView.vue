@@ -45,19 +45,19 @@
             </div>
             <div class="flex justify-between">
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.baseAmount') }}</span>
-              <span class="font-medium text-gray-900 dark:text-white">&#165;{{ formatMoney(baseAmount) }}</span>
+              <span class="font-medium text-gray-900 dark:text-white">{{ formatGatewayAmount(baseAmount) }}</span>
             </div>
             <div v-if="hasFee" class="flex justify-between">
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.fee') }} ({{ order.fee_rate }}%)</span>
-              <span class="font-medium text-gray-900 dark:text-white">&#165;{{ formatMoney(feeAmount) }}</span>
+              <span class="font-medium text-gray-900 dark:text-white">{{ formatGatewayAmount(feeAmount) }}</span>
             </div>
             <div class="flex justify-between">
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.payAmount') }}</span>
-              <span class="font-bold text-primary-600 dark:text-primary-400">&#165;{{ formatMoney(order.pay_amount) }}</span>
+              <span class="font-bold text-primary-600 dark:text-primary-400">{{ formatGatewayAmount(order.pay_amount) }}</span>
             </div>
             <div v-if="order.amount !== order.pay_amount" class="flex justify-between">
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.creditedAmount') }}</span>
-              <span class="font-medium text-gray-900 dark:text-white">{{ order.order_type === 'balance' ? '$' : '¥' }}{{ formatMoney(order.amount) }}</span>
+              <span class="font-medium text-gray-900 dark:text-white">{{ order.order_type === 'balance' ? '$' + formatMoney(order.amount) : formatGatewayAmount(order.amount) }}</span>
             </div>
             <div class="flex justify-between">
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.paymentMethod') }}</span>
@@ -78,7 +78,7 @@
             </div>
             <div v-if="returnInfo.money" class="flex justify-between">
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.payAmount') }}</span>
-              <span class="font-medium text-gray-900 dark:text-white">&#165;{{ returnInfo.money }}</span>
+              <span class="font-medium text-gray-900 dark:text-white">{{ formatGatewayAmount(Number(returnInfo.money) || 0) }}</span>
             </div>
             <div v-if="returnInfo.type" class="flex justify-between">
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.paymentMethod') }}</span>
@@ -110,15 +110,18 @@ import { usePaymentStore } from '../../stores/payment'
 import { paymentAPI } from '../../api/payment'
 import type { PaymentOrder } from '../../types/payment'
 import { money, formatMoney, Decimal } from '../../utils/decimal'
+import { formatPaymentAmount, normalizePaymentCurrency } from '../../components/payment/currency'
 import { normalizePaymentMethodForDisplay, paymentMethodI18nKey } from './paymentUx'
 
-const { t } = useI18n()
+const i18n = useI18n()
+const { t } = i18n
 const route = useRoute()
 const router = useRouter()
 const paymentStore = usePaymentStore()
 
 const order = ref<PaymentOrder | null>(null)
 const loading = ref(true)
+const currency = ref('CNY')
 
 interface ReturnInfo {
   outTradeNo: string
@@ -158,6 +161,15 @@ const feeAmount = computed<Decimal>(() => {
   return money(order.value.pay_amount).minus(baseAmount.value).toDecimalPlaces(2)
 })
 
+const localeCode = computed(() => {
+  const raw = i18n.locale as unknown
+  if (typeof raw === 'string') return raw
+  if (raw && typeof raw === 'object' && 'value' in raw) {
+    return String((raw as { value?: string }).value || '')
+  }
+  return undefined
+})
+
 const isSuccess = computed(() => {
   return isSuccessStatus(order.value?.status)
 })
@@ -178,6 +190,18 @@ const statusTitle = computed(() => {
 
 function normalizedOrderPaymentType(paymentType: string): string {
   return normalizePaymentMethodForDisplay(paymentType) || paymentType
+}
+
+function formatGatewayAmount(value: number | Decimal | string): string {
+  const num = typeof value === 'number' ? value : Number(String(value))
+  return formatPaymentAmount(num, currency.value, localeCode.value)
+}
+
+function setResolvedOrder(nextOrder: PaymentOrder | null): void {
+  order.value = nextOrder
+  if (nextOrder?.currency) {
+    currency.value = normalizePaymentCurrency(nextOrder.currency)
+  }
 }
 
 function normalizeOrderStatus(status: string | null | undefined): string {
@@ -287,7 +311,7 @@ function scheduleStatusRefresh(refreshOrder: (() => Promise<PaymentOrder | null>
     refreshAttempts.value += 1
     const refreshedOrder = await refreshOrder()
     if (refreshedOrder) {
-      order.value = refreshedOrder
+      setResolvedOrder(refreshedOrder)
       clearRecoverySnapshotForTerminalStatus(refreshedOrder.status)
     }
 
@@ -312,6 +336,9 @@ onMounted(async () => {
   if (restored?.orderId) {
     orderId = restored.orderId
   }
+  if (restored?.currency) {
+    currency.value = normalizePaymentCurrency(restored.currency)
+  }
   if (!outTradeNo && restored?.outTradeNo) {
     outTradeNo = restored.outTradeNo
   }
@@ -319,7 +346,7 @@ onMounted(async () => {
   if (resumeToken) {
     const resolvedOrder = await resolveOrderFromResumeToken(resumeToken)
     if (resolvedOrder) {
-      order.value = resolvedOrder
+      setResolvedOrder(resolvedOrder)
       if (!orderId) {
         orderId = resolvedOrder.id
       }
@@ -338,7 +365,7 @@ onMounted(async () => {
 
   if (!order.value && orderId && (!resumeToken || routeOrderId > 0)) {
     try {
-      order.value = await paymentStore.pollOrderStatus(orderId)
+      setResolvedOrder(await paymentStore.pollOrderStatus(orderId))
     } catch (_err: unknown) {
       // Order lookup failed, will try legacy fallback below when possible.
     }
@@ -347,7 +374,7 @@ onMounted(async () => {
   if (!order.value && shouldUsePublicOutTradeNo && (!resumeToken || resumeTokenLookupFailed)) {
     const legacyOrder = await resolveOrderFromOutTradeNo(outTradeNo)
     if (legacyOrder) {
-      order.value = legacyOrder
+      setResolvedOrder(legacyOrder)
       if (!orderId) {
         orderId = legacyOrder.id
       }

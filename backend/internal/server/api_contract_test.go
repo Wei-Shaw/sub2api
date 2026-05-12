@@ -777,6 +777,8 @@ func TestAPIContracts(t *testing.T) {
 					"backend_mode_enabled": false,
 					"enable_cch_signing": false,
 					"enable_anthropic_cache_ttl_1h_injection": false,
+					"rewrite_message_cache_control": false,
+					"antigravity_user_agent_version": "",
 					"enable_fingerprint_unification": true,
 					"enable_metadata_passthrough": false,
 					"web_search_emulation_enabled": false,
@@ -969,6 +971,8 @@ func TestAPIContracts(t *testing.T) {
 					"enable_metadata_passthrough": false,
 					"enable_cch_signing": false,
 					"enable_anthropic_cache_ttl_1h_injection": false,
+					"rewrite_message_cache_control": false,
+					"antigravity_user_agent_version": "",
 					"web_search_emulation_enabled": false,
 					"openai_advanced_scheduler_enabled": false,
 					"openai_fast_policy_settings": {

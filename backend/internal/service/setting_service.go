@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/imroc/req/v3"
 	"golang.org/x/sync/singleflight"
@@ -87,6 +88,7 @@ type cachedGatewayForwardingSettings struct {
 	metadataPassthrough          bool
 	cchSigning                   bool
 	anthropicCacheTTL1hInjection bool
+	rewriteMessageCacheControl   bool
 	expiresAt                    int64 // unix nano
 }
 
@@ -109,6 +111,16 @@ type RectifierSettingsCache interface {
 	Invalidate(ctx context.Context) error
 }
 
+// cachedAntigravityUserAgentVersion 缓存 Antigravity UA 版本号（进程内缓存，60s TTL）
+type cachedAntigravityUserAgentVersion struct {
+	version   string
+	expiresAt int64 // unix nano
+}
+
+const antigravityUserAgentVersionCacheTTL = 60 * time.Second
+const antigravityUserAgentVersionErrorTTL = 5 * time.Second
+const antigravityUserAgentVersionDBTimeout = 5 * time.Second
+
 // DefaultSubscriptionGroupReader validates group references used by default subscriptions.
 type DefaultSubscriptionGroupReader interface {
 	GetByID(ctx context.Context, id int64) (*Group, error)
@@ -120,15 +132,17 @@ type WebSearchManagerBuilder func(cfg *WebSearchEmulationConfig, proxyURLs map[i
 
 // SettingService 系统设置服务
 type SettingService struct {
-	settingRepo             SettingRepository
-	defaultSubGroupReader   DefaultSubscriptionGroupReader
-	proxyRepo               ProxyRepository // for resolving websearch provider proxy URLs
-	cfg                     *config.Config
-	onUpdate                func() // Callback when settings are updated (for cache invalidation)
-	version                 string // Application version
-	webSearchManagerBuilder WebSearchManagerBuilder
-	rectifierCache          RectifierSettingsCache // 可选：跨实例 rectifier 设置缓存，nil 时退化为直查 DB
-	pluginFlagProvider      PluginPublicFlagProvider // 可选：插件公共标志聚合器（plugin manager 实现）
+	settingRepo               SettingRepository
+	defaultSubGroupReader     DefaultSubscriptionGroupReader
+	proxyRepo                 ProxyRepository // for resolving websearch provider proxy URLs
+	cfg                       *config.Config
+	onUpdate                  func() // Callback when settings are updated (for cache invalidation)
+	version                   string // Application version
+	webSearchManagerBuilder   WebSearchManagerBuilder
+	rectifierCache            RectifierSettingsCache // 可选：跨实例 rectifier 设置缓存，nil 时退化为直查 DB
+	antigravityUAVersionCache atomic.Value           // *cachedAntigravityUserAgentVersion
+	antigravityUAVersionSF    singleflight.Group
+	pluginFlagProvider        PluginPublicFlagProvider // 可选：插件公共标志聚合器（plugin manager 实现）
 }
 
 type ProviderDefaultGrantSettings struct {
@@ -751,14 +765,14 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		WeChatOAuthMobileEnabled:         weChatMobileEnabled,
 		BackendModeEnabled:               settings[SettingKeyBackendModeEnabled] == "true",
 		// PaymentEnabled 已迁移到 plugin（payment plugin 自带 PluginSettings）。
-		OIDCOAuthEnabled:                 oidcEnabled,
-		OIDCOAuthProviderName:            oidcProviderName,
-		GitHubOAuthEnabled:               gitHubEnabled,
-		GoogleOAuthEnabled:               googleEnabled,
-		BalanceLowNotifyEnabled:          settings[SettingKeyBalanceLowNotifyEnabled] == "true",
-		AccountQuotaNotifyEnabled:        settings[SettingKeyAccountQuotaNotifyEnabled] == "true",
-		BalanceLowNotifyThreshold:        balanceLowNotifyThreshold,
-		BalanceLowNotifyRechargeURL:      settings[SettingKeyBalanceLowNotifyRechargeURL],
+		OIDCOAuthEnabled:            oidcEnabled,
+		OIDCOAuthProviderName:       oidcProviderName,
+		GitHubOAuthEnabled:          gitHubEnabled,
+		GoogleOAuthEnabled:          googleEnabled,
+		BalanceLowNotifyEnabled:     settings[SettingKeyBalanceLowNotifyEnabled] == "true",
+		AccountQuotaNotifyEnabled:   settings[SettingKeyAccountQuotaNotifyEnabled] == "true",
+		BalanceLowNotifyThreshold:   balanceLowNotifyThreshold,
+		BalanceLowNotifyRechargeURL: settings[SettingKeyBalanceLowNotifyRechargeURL],
 
 		ChannelMonitorEnabled:                !isFalseSettingValue(settings[SettingKeyChannelMonitorEnabled]),
 		ChannelMonitorDefaultIntervalSeconds: parseChannelMonitorInterval(settings[SettingKeyChannelMonitorDefaultIntervalSeconds]),
@@ -855,6 +869,55 @@ func (s *SettingService) GetAvailableChannelsRuntime(ctx context.Context) Availa
 	}
 }
 
+// GetAntigravityUserAgentVersion 返回 Antigravity 上游请求使用的版本号。
+// 后台设置优先；为空、缺失或非法时回退到 ANTIGRAVITY_USER_AGENT_VERSION / 内置默认值。
+func (s *SettingService) GetAntigravityUserAgentVersion(ctx context.Context) string {
+	fallback := antigravity.GetDefaultUserAgentVersion()
+	if s == nil || s.settingRepo == nil {
+		return fallback
+	}
+	if cached, ok := s.antigravityUAVersionCache.Load().(*cachedAntigravityUserAgentVersion); ok && cached != nil {
+		if time.Now().UnixNano() < cached.expiresAt {
+			return cached.version
+		}
+	}
+
+	result, _, _ := s.antigravityUAVersionSF.Do("antigravity_user_agent_version", func() (any, error) {
+		if cached, ok := s.antigravityUAVersionCache.Load().(*cachedAntigravityUserAgentVersion); ok && cached != nil {
+			if time.Now().UnixNano() < cached.expiresAt {
+				return cached.version, nil
+			}
+		}
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), antigravityUserAgentVersionDBTimeout)
+		defer cancel()
+		value, err := s.settingRepo.GetValue(dbCtx, SettingKeyAntigravityUserAgentVersion)
+		if err != nil && !errors.Is(err, ErrSettingNotFound) {
+			slog.Warn("failed to get antigravity user agent version setting", "error", err)
+			s.antigravityUAVersionCache.Store(&cachedAntigravityUserAgentVersion{
+				version:   fallback,
+				expiresAt: time.Now().Add(antigravityUserAgentVersionErrorTTL).UnixNano(),
+			})
+			return fallback, nil
+		}
+		version := antigravity.NormalizeUserAgentVersion(value)
+		if version == "" {
+			version = fallback
+		}
+		s.antigravityUAVersionCache.Store(&cachedAntigravityUserAgentVersion{
+			version:   version,
+			expiresAt: time.Now().Add(antigravityUserAgentVersionCacheTTL).UnixNano(),
+		})
+		return version, nil
+	})
+	if version, ok := result.(string); ok && version != "" {
+		return version
+	}
+	return fallback
+}
+
 // SetOnUpdateCallback sets a callback function to be called when settings are updated
 // This is used for cache invalidation (e.g., HTML cache in frontend server)
 func (s *SettingService) SetOnUpdateCallback(callback func()) {
@@ -880,50 +943,50 @@ func (s *SettingService) SetVersion(version string) {
 // A unit test diffs this struct's JSON keys against dto.PublicSettings to catch
 // drift automatically (see setting_service_injection_test.go).
 type PublicSettingsInjectionPayload struct {
-	RegistrationEnabled              bool            `json:"registration_enabled"`
-	EmailVerifyEnabled               bool            `json:"email_verify_enabled"`
-	RegistrationEmailSuffixWhitelist []string        `json:"registration_email_suffix_whitelist"`
-	PromoCodeEnabled                 bool            `json:"promo_code_enabled"`
-	PasswordResetEnabled             bool            `json:"password_reset_enabled"`
-	InvitationCodeEnabled            bool            `json:"invitation_code_enabled"`
-	TotpEnabled                      bool            `json:"totp_enabled"`
+	RegistrationEnabled              bool                     `json:"registration_enabled"`
+	EmailVerifyEnabled               bool                     `json:"email_verify_enabled"`
+	RegistrationEmailSuffixWhitelist []string                 `json:"registration_email_suffix_whitelist"`
+	PromoCodeEnabled                 bool                     `json:"promo_code_enabled"`
+	PasswordResetEnabled             bool                     `json:"password_reset_enabled"`
+	InvitationCodeEnabled            bool                     `json:"invitation_code_enabled"`
+	TotpEnabled                      bool                     `json:"totp_enabled"`
 	LoginAgreementEnabled            bool                     `json:"login_agreement_enabled"`
 	LoginAgreementMode               string                   `json:"login_agreement_mode"`
 	LoginAgreementUpdatedAt          string                   `json:"login_agreement_updated_at"`
 	LoginAgreementRevision           string                   `json:"login_agreement_revision"`
 	LoginAgreementDocuments          []LoginAgreementDocument `json:"login_agreement_documents"`
-	TurnstileEnabled                 bool            `json:"turnstile_enabled"`
-	TurnstileSiteKey                 string          `json:"turnstile_site_key"`
-	SiteName                         string          `json:"site_name"`
-	SiteLogo                         string          `json:"site_logo"`
-	SiteSubtitle                     string          `json:"site_subtitle"`
-	APIBaseURL                       string          `json:"api_base_url"`
-	ContactInfo                      string          `json:"contact_info"`
-	DocURL                           string          `json:"doc_url"`
-	HomeContent                      string          `json:"home_content"`
-	HideCcsImportButton              bool            `json:"hide_ccs_import_button"`
-	PurchaseSubscriptionEnabled      bool            `json:"purchase_subscription_enabled"`
-	PurchaseSubscriptionURL          string          `json:"purchase_subscription_url"`
-	TableDefaultPageSize             int             `json:"table_default_page_size"`
-	TablePageSizeOptions             []int           `json:"table_page_size_options"`
-	CustomMenuItems                  json.RawMessage `json:"custom_menu_items"`
-	CustomEndpoints                  json.RawMessage `json:"custom_endpoints"`
-	LinuxDoOAuthEnabled              bool            `json:"linuxdo_oauth_enabled"`
-	WeChatOAuthEnabled               bool            `json:"wechat_oauth_enabled"`
-	WeChatOAuthOpenEnabled           bool            `json:"wechat_oauth_open_enabled"`
-	WeChatOAuthMPEnabled             bool            `json:"wechat_oauth_mp_enabled"`
-	WeChatOAuthMobileEnabled         bool            `json:"wechat_oauth_mobile_enabled"`
-	OIDCOAuthEnabled                 bool            `json:"oidc_oauth_enabled"`
-	OIDCOAuthProviderName            string          `json:"oidc_oauth_provider_name"`
-	GitHubOAuthEnabled               bool            `json:"github_oauth_enabled"`
-	GoogleOAuthEnabled               bool            `json:"google_oauth_enabled"`
-	BackendModeEnabled               bool            `json:"backend_mode_enabled"`
+	TurnstileEnabled                 bool                     `json:"turnstile_enabled"`
+	TurnstileSiteKey                 string                   `json:"turnstile_site_key"`
+	SiteName                         string                   `json:"site_name"`
+	SiteLogo                         string                   `json:"site_logo"`
+	SiteSubtitle                     string                   `json:"site_subtitle"`
+	APIBaseURL                       string                   `json:"api_base_url"`
+	ContactInfo                      string                   `json:"contact_info"`
+	DocURL                           string                   `json:"doc_url"`
+	HomeContent                      string                   `json:"home_content"`
+	HideCcsImportButton              bool                     `json:"hide_ccs_import_button"`
+	PurchaseSubscriptionEnabled      bool                     `json:"purchase_subscription_enabled"`
+	PurchaseSubscriptionURL          string                   `json:"purchase_subscription_url"`
+	TableDefaultPageSize             int                      `json:"table_default_page_size"`
+	TablePageSizeOptions             []int                    `json:"table_page_size_options"`
+	CustomMenuItems                  json.RawMessage          `json:"custom_menu_items"`
+	CustomEndpoints                  json.RawMessage          `json:"custom_endpoints"`
+	LinuxDoOAuthEnabled              bool                     `json:"linuxdo_oauth_enabled"`
+	WeChatOAuthEnabled               bool                     `json:"wechat_oauth_enabled"`
+	WeChatOAuthOpenEnabled           bool                     `json:"wechat_oauth_open_enabled"`
+	WeChatOAuthMPEnabled             bool                     `json:"wechat_oauth_mp_enabled"`
+	WeChatOAuthMobileEnabled         bool                     `json:"wechat_oauth_mobile_enabled"`
+	OIDCOAuthEnabled                 bool                     `json:"oidc_oauth_enabled"`
+	OIDCOAuthProviderName            string                   `json:"oidc_oauth_provider_name"`
+	GitHubOAuthEnabled               bool                     `json:"github_oauth_enabled"`
+	GoogleOAuthEnabled               bool                     `json:"google_oauth_enabled"`
+	BackendModeEnabled               bool                     `json:"backend_mode_enabled"`
 	// PaymentEnabled 已迁移到 plugin（payment plugin 自带 PluginSettings）。
-	Version                          string          `json:"version"`
-	BalanceLowNotifyEnabled          bool            `json:"balance_low_notify_enabled"`
-	AccountQuotaNotifyEnabled        bool            `json:"account_quota_notify_enabled"`
-	BalanceLowNotifyThreshold        float64         `json:"balance_low_notify_threshold"`
-	BalanceLowNotifyRechargeURL      string          `json:"balance_low_notify_recharge_url"`
+	Version                     string  `json:"version"`
+	BalanceLowNotifyEnabled     bool    `json:"balance_low_notify_enabled"`
+	AccountQuotaNotifyEnabled   bool    `json:"account_quota_notify_enabled"`
+	BalanceLowNotifyThreshold   float64 `json:"balance_low_notify_threshold"`
+	BalanceLowNotifyRechargeURL string  `json:"balance_low_notify_recharge_url"`
 
 	// Feature flags — MUST match the opt-in/opt-out registry in
 	// frontend/src/utils/featureFlags.ts. Missing a field here is the bug
@@ -1023,11 +1086,11 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		GoogleOAuthEnabled:               settings.GoogleOAuthEnabled,
 		BackendModeEnabled:               settings.BackendModeEnabled,
 		// PaymentEnabled 已迁移到 plugin（payment plugin 自带 PluginSettings）。
-		Version:                          s.version,
-		BalanceLowNotifyEnabled:          settings.BalanceLowNotifyEnabled,
-		AccountQuotaNotifyEnabled:        settings.AccountQuotaNotifyEnabled,
-		BalanceLowNotifyThreshold:        settings.BalanceLowNotifyThreshold,
-		BalanceLowNotifyRechargeURL:      settings.BalanceLowNotifyRechargeURL,
+		Version:                     s.version,
+		BalanceLowNotifyEnabled:     settings.BalanceLowNotifyEnabled,
+		AccountQuotaNotifyEnabled:   settings.AccountQuotaNotifyEnabled,
+		BalanceLowNotifyThreshold:   settings.BalanceLowNotifyThreshold,
+		BalanceLowNotifyRechargeURL: settings.BalanceLowNotifyRechargeURL,
 
 		ForceEmailOnThirdPartySignup:         settings.ForceEmailOnThirdPartySignup,
 		ChannelMonitorEnabled:                settings.ChannelMonitorEnabled,
@@ -1036,7 +1099,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		ServiceQuotaEnabled:                  settings.ServiceQuotaEnabled,
 		AffiliateEnabled:                     settings.AffiliateEnabled,
 
-		RiskControlEnabled:                   settings.RiskControlEnabled,
+		RiskControlEnabled: settings.RiskControlEnabled,
 
 		PluginFlags: settings.PluginFlags,
 	}, nil
@@ -1700,6 +1763,8 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	u.SetBool(SettingKeyEnableMetadataPassthrough, settings.EnableMetadataPassthrough)
 	u.SetBool(SettingKeyEnableCCHSigning, settings.EnableCCHSigning)
 	u.SetBool(SettingKeyEnableAnthropicCacheTTL1hInjection, settings.EnableAnthropicCacheTTL1hInjection)
+	u.SetBool(SettingKeyRewriteMessageCacheControl, settings.RewriteMessageCacheControl)
+	u.SetString(SettingKeyAntigravityUserAgentVersion, antigravity.NormalizeUserAgentVersion(settings.AntigravityUserAgentVersion))
 	// payment_visible_method_* 已迁移到 plugins/payment/，host 不再写这些 key。
 	u.SetBool(openAIAdvancedSchedulerSettingKey, settings.OpenAIAdvancedSchedulerEnabled)
 
@@ -1765,7 +1830,17 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 		metadataPassthrough:          settings.EnableMetadataPassthrough,
 		cchSigning:                   settings.EnableCCHSigning,
 		anthropicCacheTTL1hInjection: settings.EnableAnthropicCacheTTL1hInjection,
+		rewriteMessageCacheControl:   settings.RewriteMessageCacheControl,
 		expiresAt:                    time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
+	})
+	s.antigravityUAVersionSF.Forget("antigravity_user_agent_version")
+	antigravityUserAgentVersion := antigravity.NormalizeUserAgentVersion(settings.AntigravityUserAgentVersion)
+	if antigravityUserAgentVersion == "" {
+		antigravityUserAgentVersion = antigravity.GetDefaultUserAgentVersion()
+	}
+	s.antigravityUAVersionCache.Store(&cachedAntigravityUserAgentVersion{
+		version:   antigravityUserAgentVersion,
+		expiresAt: time.Now().Add(antigravityUserAgentVersionCacheTTL).UnixNano(),
 	})
 	openAIAdvancedSchedulerSettingSF.Forget(openAIAdvancedSchedulerSettingKey)
 	openAIAdvancedSchedulerSettingCache.Store(&cachedOpenAIAdvancedSchedulerSetting{
@@ -1775,6 +1850,10 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	if s.onUpdate != nil {
 		s.onUpdate() // Invalidate cache after settings update
 	}
+}
+
+func (s *SettingService) defaultRewriteMessageCacheControl() bool {
+	return false
 }
 
 func (s *SettingService) validateDefaultSubscriptionGroups(ctx context.Context, items []DefaultSubscriptionSetting) error {
@@ -1928,17 +2007,18 @@ func (s *SettingService) IsBackendModeEnabled(ctx context.Context) bool {
 }
 
 type gatewayForwardingSettingsResult struct {
-	fp, mp, cch, cacheTTL1h bool
+	fp, mp, cch, cacheTTL1h, rewriteMessageCacheControl bool
 }
 
 func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context) gatewayForwardingSettingsResult {
 	if cached, ok := gatewayForwardingCache.Load().(*cachedGatewayForwardingSettings); ok && cached != nil {
 		if time.Now().UnixNano() < cached.expiresAt {
 			return gatewayForwardingSettingsResult{
-				fp:         cached.fingerprintUnification,
-				mp:         cached.metadataPassthrough,
-				cch:        cached.cchSigning,
-				cacheTTL1h: cached.anthropicCacheTTL1hInjection,
+				fp:                         cached.fingerprintUnification,
+				mp:                         cached.metadataPassthrough,
+				cch:                        cached.cchSigning,
+				cacheTTL1h:                 cached.anthropicCacheTTL1hInjection,
+				rewriteMessageCacheControl: cached.rewriteMessageCacheControl,
 			}
 		}
 	}
@@ -1946,10 +2026,11 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 		if cached, ok := gatewayForwardingCache.Load().(*cachedGatewayForwardingSettings); ok && cached != nil {
 			if time.Now().UnixNano() < cached.expiresAt {
 				return gatewayForwardingSettingsResult{
-					fp:         cached.fingerprintUnification,
-					mp:         cached.metadataPassthrough,
-					cch:        cached.cchSigning,
-					cacheTTL1h: cached.anthropicCacheTTL1hInjection,
+					fp:                         cached.fingerprintUnification,
+					mp:                         cached.metadataPassthrough,
+					cch:                        cached.cchSigning,
+					cacheTTL1h:                 cached.anthropicCacheTTL1hInjection,
+					rewriteMessageCacheControl: cached.rewriteMessageCacheControl,
 				}, nil
 			}
 		}
@@ -1960,6 +2041,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			SettingKeyEnableMetadataPassthrough,
 			SettingKeyEnableCCHSigning,
 			SettingKeyEnableAnthropicCacheTTL1hInjection,
+			SettingKeyRewriteMessageCacheControl,
 		})
 		if err != nil {
 			slog.Warn("failed to get gateway forwarding settings", "error", err)
@@ -1968,9 +2050,10 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 				metadataPassthrough:          false,
 				cchSigning:                   false,
 				anthropicCacheTTL1hInjection: false,
+				rewriteMessageCacheControl:   s.defaultRewriteMessageCacheControl(),
 				expiresAt:                    time.Now().Add(gatewayForwardingErrorTTL).UnixNano(),
 			})
-			return gatewayForwardingSettingsResult{fp: true}, nil
+			return gatewayForwardingSettingsResult{fp: true, rewriteMessageCacheControl: s.defaultRewriteMessageCacheControl()}, nil
 		}
 		fp := true
 		if v, ok := values[SettingKeyEnableFingerprintUnification]; ok && v != "" {
@@ -1979,14 +2062,25 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 		mp := values[SettingKeyEnableMetadataPassthrough] == "true"
 		cch := values[SettingKeyEnableCCHSigning] == "true"
 		cacheTTL1h := values[SettingKeyEnableAnthropicCacheTTL1hInjection] == "true"
+		rewriteMessageCacheControl := s.defaultRewriteMessageCacheControl()
+		if v, ok := values[SettingKeyRewriteMessageCacheControl]; ok && v != "" {
+			rewriteMessageCacheControl = v == "true"
+		}
 		gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{
 			fingerprintUnification:       fp,
 			metadataPassthrough:          mp,
 			cchSigning:                   cch,
 			anthropicCacheTTL1hInjection: cacheTTL1h,
+			rewriteMessageCacheControl:   rewriteMessageCacheControl,
 			expiresAt:                    time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
 		})
-		return gatewayForwardingSettingsResult{fp: fp, mp: mp, cch: cch, cacheTTL1h: cacheTTL1h}, nil
+		return gatewayForwardingSettingsResult{
+			fp:                         fp,
+			mp:                         mp,
+			cch:                        cch,
+			cacheTTL1h:                 cacheTTL1h,
+			rewriteMessageCacheControl: rewriteMessageCacheControl,
+		}, nil
 	})
 	if r, ok := val.(gatewayForwardingSettingsResult); ok {
 		return r
@@ -2005,6 +2099,11 @@ func (s *SettingService) GetGatewayForwardingSettings(ctx context.Context) (fing
 // IsAnthropicCacheTTL1hInjectionEnabled 检查是否对 Anthropic OAuth/SetupToken 请求体注入 1h cache_control ttl。
 func (s *SettingService) IsAnthropicCacheTTL1hInjectionEnabled(ctx context.Context) bool {
 	return s.getGatewayForwardingSettingsCached(ctx).cacheTTL1h
+}
+
+// IsRewriteMessageCacheControlEnabled 检查是否启用 messages cache_control 改写。
+func (s *SettingService) IsRewriteMessageCacheControlEnabled(ctx context.Context) bool {
+	return s.getGatewayForwardingSettingsCached(ctx).rewriteMessageCacheControl
 }
 
 // IsEmailVerifyEnabled 检查是否开启邮件验证
@@ -2502,6 +2601,8 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		// 分组隔离（默认不允许未分组 Key 调度）
 		SettingKeyAllowUngroupedKeyScheduling:        "false",
 		SettingKeyEnableAnthropicCacheTTL1hInjection: "false",
+		SettingKeyRewriteMessageCacheControl:         strconv.FormatBool(s.defaultRewriteMessageCacheControl()),
+		SettingKeyAntigravityUserAgentVersion:        "",
 		// payment_visible_method_* 默认值由 plugins/payment 自身维护。
 		openAIAdvancedSchedulerSettingKey: "false",
 	}
@@ -2876,6 +2977,12 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.EnableMetadataPassthrough = settings[SettingKeyEnableMetadataPassthrough] == "true"
 	result.EnableCCHSigning = settings[SettingKeyEnableCCHSigning] == "true"
 	result.EnableAnthropicCacheTTL1hInjection = settings[SettingKeyEnableAnthropicCacheTTL1hInjection] == "true"
+	if v, ok := settings[SettingKeyRewriteMessageCacheControl]; ok && v != "" {
+		result.RewriteMessageCacheControl = v == "true"
+	} else {
+		result.RewriteMessageCacheControl = s.defaultRewriteMessageCacheControl()
+	}
+	result.AntigravityUserAgentVersion = antigravity.NormalizeUserAgentVersion(settings[SettingKeyAntigravityUserAgentVersion])
 
 	// Web search emulation: quick enabled check from the JSON config
 	if raw := settings[SettingKeyWebSearchEmulationConfig]; raw != "" {

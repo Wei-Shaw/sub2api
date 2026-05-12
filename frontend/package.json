@@ -17,6 +17,7 @@
     "lint:plugins": "eslint --no-eslintrc --config ../plugins/.eslintrc.cjs --resolve-plugins-relative-to . --ext .vue ../plugins"
   },
   "dependencies": {
+    "@airwallex/components-sdk": "^1.30.2",
     "@lobehub/icons": "^4.0.2",
     "@stripe/stripe-js": "^9.0.1",
     "@sub2api/plugin-sdk": "workspace:*",

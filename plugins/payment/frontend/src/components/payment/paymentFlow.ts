@@ -15,15 +15,17 @@ const VISIBLE_METHOD_ALIASES = {
   wxpay: 'wxpay',
   wxpay_direct: 'wxpay',
   stripe: 'stripe',
+  airwallex: 'airwallex',
 } as const
 
-export type VisiblePaymentMethod = 'alipay' | 'wxpay' | 'stripe'
+export type VisiblePaymentMethod = 'alipay' | 'wxpay' | 'stripe' | 'airwallex'
 export type StripeVisibleMethod = 'alipay' | 'wechat_pay'
 export type PaymentLaunchKind =
   | 'qr_waiting'
   | 'redirect_waiting'
   | 'stripe_popup'
   | 'stripe_route'
+  | 'airwallex_route'
   | 'wechat_oauth'
   | 'wechat_jsapi'
   | 'unhandled'
@@ -40,6 +42,10 @@ export interface PaymentRecoverySnapshot {
   payUrl: string
   outTradeNo: string
   clientSecret: string
+  intentId: string
+  currency: string
+  countryCode: string
+  paymentEnv: string
   payAmount: string
   orderType: OrderType | ''
   paymentMode: string
@@ -55,6 +61,7 @@ export interface PaymentLaunchContext {
   now?: number
   stripePopupUrl?: string
   stripeRouteUrl?: string
+  airwallexRouteUrl?: string
 }
 
 export interface PaymentLaunchDecision {
@@ -143,11 +150,23 @@ export function decidePaymentLaunch(
     payUrl: result.pay_url || '',
     outTradeNo: result.out_trade_no || '',
     clientSecret: result.client_secret || '',
+    intentId: result.intent_id || '',
+    currency: result.currency || '',
+    countryCode: result.country_code || '',
+    paymentEnv: result.payment_env || '',
     payAmount: result.pay_amount,
     orderType: context.orderType,
     paymentMode: (result.payment_mode || '').trim(),
     resumeToken: result.resume_token || '',
   }, context.now)
+
+  if (visibleMethod === 'airwallex' && baseState.clientSecret && baseState.intentId) {
+    if (!context.airwallexRouteUrl) {
+      return { kind: 'unhandled', paymentState: baseState, recovery: baseState }
+    }
+    const paymentState = { ...baseState, payUrl: context.airwallexRouteUrl || '' }
+    return { kind: 'airwallex_route', paymentState, recovery: paymentState }
+  }
 
   if (baseState.clientSecret) {
     // visibleMethod === 'stripe' means the user clicked the dedicated Stripe button
@@ -248,6 +267,10 @@ export function readPaymentRecoverySnapshot(
       || typeof parsed.payUrl !== 'string'
       || (parsed.outTradeNo != null && typeof parsed.outTradeNo !== 'string')
       || typeof parsed.clientSecret !== 'string'
+      || (parsed.intentId != null && typeof parsed.intentId !== 'string')
+      || (parsed.currency != null && typeof parsed.currency !== 'string')
+      || (parsed.countryCode != null && typeof parsed.countryCode !== 'string')
+      || (parsed.paymentEnv != null && typeof parsed.paymentEnv !== 'string')
       || typeof parsed.payAmount !== 'string'
       || typeof parsed.paymentMode !== 'string'
       || typeof parsed.resumeToken !== 'string'
@@ -274,6 +297,10 @@ export function readPaymentRecoverySnapshot(
       payUrl: parsed.payUrl,
       outTradeNo: parsed.outTradeNo || '',
       clientSecret: parsed.clientSecret,
+      intentId: parsed.intentId || '',
+      currency: parsed.currency || '',
+      countryCode: parsed.countryCode || '',
+      paymentEnv: parsed.paymentEnv || '',
       payAmount: parsed.payAmount,
       orderType: parsed.orderType === 'subscription' ? 'subscription' : 'balance',
       paymentMode: parsed.paymentMode,

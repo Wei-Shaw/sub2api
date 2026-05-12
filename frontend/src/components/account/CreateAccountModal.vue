@@ -265,6 +265,7 @@
         :show-mobile-refresh-token-option="oauthCfg?.showMobileRefreshTokenOption ?? false"
         :show-session-token-option="oauthCfg?.showSessionTokenOption ?? false"
         :show-access-token-option="oauthCfg?.showAccessTokenOption ?? false"
+        :show-codex-session-import-option="oauthCfg?.showCodexSessionImportOption ?? false"
         :platform="form.platform"
         :show-project-id="oauthCfg?.showProjectId ?? false"
         @generate-url="handleGenerateUrl"
@@ -272,6 +273,7 @@
         @validate-refresh-token="handleRefreshToken"
         @validate-mobile-refresh-token="handleMobileRefreshToken"
         @validate-session-token="handleSessionToken"
+        @import-codex-session="handleCodexSessionImport"
       />
     </div>
 
@@ -351,6 +353,7 @@ interface OAuthFlowExposed {
   sessionKey: string
   refreshToken: string
   sessionToken: string
+  codexSession: string
   inputMethod: AuthInputMethod
   reset: () => void
 }
@@ -711,6 +714,45 @@ async function handleMobileRefreshToken(rt: string) {
 async function handleSessionToken(token: string) {
   const result = await platformFormRef.value?.handleSessionToken?.(token)
   if (result) await finalizeOAuthResult(result)
+}
+
+async function handleCodexSessionImport(content: string) {
+  const trimmed = content.trim()
+  if (!trimmed) return
+
+  try {
+    const common = buildCommonFields()
+    const payload = platformFormRef.value?.getPayload()
+    const result = await adminAPI.accounts.importCodexSession({
+      content: trimmed,
+      name: common.name,
+      notes: common.notes ?? undefined,
+      proxy_id: common.proxy_id,
+      concurrency: common.concurrency,
+      load_factor: common.load_factor ?? undefined,
+      priority: common.priority,
+      rate_multiplier: common.rate_multiplier,
+      group_ids: common.group_ids,
+      expires_at: common.expires_at,
+      auto_pause_on_expired: common.auto_pause_on_expired,
+      extra: payload?.extra,
+      update_existing: true,
+    })
+
+    const params = { created: result.created, updated: result.updated, skipped: result.skipped, failed: result.failed }
+    if (result.created + result.updated > 0 && result.failed === 0) {
+      appStore.showSuccess(t("admin.accounts.oauth.openai.codexSessionImportSuccess", params))
+      emit("created")
+      handleClose()
+    } else if (result.failed > 0 && result.created + result.updated > 0) {
+      appStore.showWarning(t("admin.accounts.oauth.openai.codexSessionImportPartial", params))
+      emit("created")
+    } else if (result.failed > 0) {
+      appStore.showError(t("admin.accounts.oauth.openai.codexSessionImportFailed"))
+    }
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t("admin.accounts.oauth.openai.codexSessionImportFailed")))
+  }
 }
 
 async function finalizeOAuthResult(result: CreateAccountRequest | CreateAccountRequest[]) {
