@@ -9,7 +9,7 @@ import {
   injectPrerenderContent,
   type PrerenderRouteEntry,
   type PrerenderSettingsPayload,
-} from './src/utils/prerender.ts'
+} from './src/utils/prerender'
 
 function injectPublicSettings(backendUrl: string): Plugin {
   return {
