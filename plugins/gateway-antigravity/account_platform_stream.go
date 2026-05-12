@@ -10,8 +10,17 @@ import (
 	"google.golang.org/grpc"
 )
 
-// antigravityUserAgent mirrors the user agent used by the Antigravity client.
-const antigravityUserAgent = "antigravity/1.21.9 windows/amd64"
+// defaultUserAgentVersion is the Antigravity client version used in the
+// User-Agent header. Must stay in sync with
+// backend/internal/pkg/antigravity.DefaultUserAgentVersion in core.
+//
+// TODO(plugin-settings): once the plugin declares a SettingsSchema with
+// "antigravity_user_agent_version" and the host seeds the admin-configured
+// value, read it via PluginContext.Settings().Get() instead of hard-coding.
+const defaultUserAgentVersion = "1.23.2"
+
+// antigravityUserAgent is the full User-Agent string sent to Antigravity APIs.
+var antigravityUserAgent = "antigravity/" + defaultUserAgentVersion + " windows/amd64"
 
 // buildAntigravityTestPayload builds a minimal Gemini-format request for
 // the v1internal streamGenerateContent endpoint. This is the native format
