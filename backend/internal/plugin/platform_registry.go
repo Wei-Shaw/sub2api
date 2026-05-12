@@ -120,6 +120,19 @@ func (r *PlatformRegistry) AccountTypesFor(platform string) []pluginsdk.AccountT
 	return p.Decl.AccountTypes
 }
 
+// AllPlatforms returns all registered platform IDs sorted by SortOrder then
+// name. Implements CompatiblePlatformResolver.AllPlatforms.
+func (r *PlatformRegistry) AllPlatforms() []string {
+	return r.AllPlatformIDs()
+}
+
+// AllGatewayProtocols returns all registered platform IDs. In the current
+// architecture every platform also acts as a gateway protocol identifier.
+// Implements CompatiblePlatformResolver.AllGatewayProtocols.
+func (r *PlatformRegistry) AllGatewayProtocols() []string {
+	return r.AllPlatformIDs()
+}
+
 // ---------------------------------------------------------------------------
 // CompatiblePlatformResolver implementation
 // ---------------------------------------------------------------------------

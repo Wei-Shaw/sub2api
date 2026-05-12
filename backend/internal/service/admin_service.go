@@ -3639,31 +3639,19 @@ func (s *adminServiceImpl) findDefaultGroupByPlatform(ctx context.Context, platf
 }
 
 // compatibleGatewaysFor returns the gateway protocols the platform supports.
-// It iterates known gateways from the resolver to find which ones the platform
-// is compatible with, providing a best-effort fallback list.
+// It queries the resolver for all known gateway protocols and checks which
+// ones the platform is compatible with.
 func (s *adminServiceImpl) compatibleGatewaysFor(platform string) []string {
 	if s.compatResolver == nil {
 		return nil
 	}
-	// The CompatiblePlatformResolver interface does not expose a direct
-	// "platform -> gateways" lookup.  We check the well-known gateway list
-	// plus any gateways that list this platform as compatible.
 	var gateways []string
-	for _, gw := range knownGatewayProtocols {
+	for _, gw := range s.compatResolver.AllGatewayProtocols() {
 		if s.compatResolver.SupportsProtocol(platform, gw) {
 			gateways = append(gateways, gw)
 		}
 	}
 	return gateways
-}
-
-// knownGatewayProtocols enumerates the built-in gateway protocol identifiers
-// used to probe CompatiblePlatformResolver for fallback default-group lookup.
-var knownGatewayProtocols = []string{
-	PlatformAnthropic,
-	PlatformOpenAI,
-	PlatformGemini,
-	PlatformAntigravity,
 }
 
 // CheckMixedChannelRisk checks whether target groups contain mixed channels for the current account platform.

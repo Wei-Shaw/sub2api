@@ -17,6 +17,16 @@ type CompatiblePlatformResolver interface {
 	// SupportsProtocol returns true if the platform declared compatibility
 	// with the specified gateway protocol.
 	SupportsProtocol(platform, gatewayProtocol string) bool
+
+	// AllPlatforms returns all known platform IDs (both native and
+	// plugin-provided). Used to enumerate platforms for scheduler bucket
+	// rebuilds and snapshot operations.
+	AllPlatforms() []string
+
+	// AllGatewayProtocols returns all known gateway protocol identifiers.
+	// Used to probe cross-platform compatibility without hardcoding a
+	// static list of protocols.
+	AllGatewayProtocols() []string
 }
 
 // defaultCompatiblePlatformResolver returns a backward-compatible static
@@ -46,4 +56,12 @@ func (r *staticCompatiblePlatformResolver) SupportsProtocol(p, gw string) bool {
 		return gw == PlatformAnthropic || gw == PlatformGemini
 	}
 	return false
+}
+
+func (r *staticCompatiblePlatformResolver) AllPlatforms() []string {
+	return []string{PlatformAnthropic, PlatformOpenAI, PlatformGemini, PlatformAntigravity}
+}
+
+func (r *staticCompatiblePlatformResolver) AllGatewayProtocols() []string {
+	return []string{PlatformAnthropic, PlatformOpenAI, PlatformGemini, PlatformAntigravity}
 }

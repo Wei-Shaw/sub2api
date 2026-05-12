@@ -61,10 +61,10 @@ func (h *GatewayHandler) messagesPipeline(c *gin.Context) {
 		service.WithThinkingEnabled(c.Request.Context(), parsedReq.ThinkingEnabled, h.metadataBridgeEnabled()),
 	)
 
-	// Single-account retry context for Antigravity groups:
+	// Single-account retry context for mixed-scheduling groups:
 	// prevents 29s rate-limit flag on first 503 in single-account groups.
 	apiKey, _ := middleware2.GetAPIKeyFromContext(c)
-	if apiKey != nil && h.gatewayService.IsSingleAntigravityAccountGroup(c.Request.Context(), apiKey.GroupID) {
+	if apiKey != nil && h.gatewayService.IsSingleCompatibleAccountGroup(c.Request.Context(), apiKey.GroupID) {
 		ctx := service.WithSingleAccountRetry(c.Request.Context(), true, h.metadataBridgeEnabled())
 		c.Request = c.Request.WithContext(ctx)
 	}

@@ -1409,8 +1409,8 @@ func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context
 		return nil, fmt.Errorf("%w supporting model: %s (channel pricing restriction)", ErrNoAvailableAccounts, requestedModel)
 	}
 
-	// anthropic/gemini 分组支持混合调度（包含启用了 mixed_scheduling 的 antigravity 账户）
-	// 注意：强制平台模式不走混合调度
+	// 当本网关协议存在兼容平台（由 compatResolver 动态解析）时走混合调度，
+	// 强制平台模式除外。
 	if len(s.compatResolver.CompatiblePlatforms(platform)) > 0 && !hasForcePlatform {
 		account, err := s.selectAccountWithMixedScheduling(ctx, groupID, sessionHash, requestedModel, excludedIDs, platform)
 		if err != nil {
@@ -1419,8 +1419,8 @@ func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context
 		return s.hydrateSelectedAccount(ctx, account)
 	}
 
-	// antigravity 分组、强制平台模式或无分组使用单平台选择
-	// 注意：强制平台模式也必须遵守分组限制，不再回退到全平台查询
+	// 无兼容平台、强制平台模式或无分组时使用单平台选择。
+	// 注意：强制平台模式也必须遵守分组限制，不再回退到全平台查询。
 	account, err := s.selectAccountForModelWithPlatform(ctx, groupID, sessionHash, requestedModel, excludedIDs, platform)
 	if err != nil {
 		return nil, err
@@ -2394,15 +2394,27 @@ func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *i
 	return accounts, useMixed, nil
 }
 
-// IsSingleAntigravityAccountGroup 检查指定分组是否只有一个 antigravity 平台的可调度账号。
-// 用于 Handler 层在首次请求时提前设置 SingleAccountRetry context，
-// 避免单账号分组收到 503 时错误地设置模型限流标记导致后续请求连续快速失败。
-func (s *GatewayService) IsSingleAntigravityAccountGroup(ctx context.Context, groupID *int64) bool {
-	accounts, _, err := s.listSchedulableAccounts(ctx, groupID, PlatformAntigravity, true)
+// IsSingleCompatibleAccountGroup checks whether the specified group contains
+// exactly one schedulable account whose platform is a mixed-scheduling
+// platform (i.e. compatResolver.IsMixedSchedulingPlatform returns true).
+// Used by handlers to set the SingleAccountRetry context on first request,
+// preventing erroneous model rate-limit marking when a single mixed-scheduling
+// account receives a 503.
+func (s *GatewayService) IsSingleCompatibleAccountGroup(ctx context.Context, groupID *int64) bool {
+	if groupID == nil {
+		return false
+	}
+	accounts, err := s.accountRepo.ListSchedulableByGroupID(ctx, *groupID)
 	if err != nil {
 		return false
 	}
-	return len(accounts) == 1
+	var mixedCount int
+	for i := range accounts {
+		if s.compatResolver.IsMixedSchedulingPlatform(accounts[i].Platform) {
+			mixedCount++
+		}
+	}
+	return len(accounts) == 1 && mixedCount == 1
 }
 
 func (s *GatewayService) isAccountAllowedForPlatform(account *Account, platform string, useMixed bool) bool {

@@ -786,10 +786,14 @@ func (s *SchedulerSnapshotService) isAccountEligibleForMixedScheduling(acc *Acco
 	return acc.IsMixedSchedulingEnabled()
 }
 
-// allKnownPlatforms returns the built-in platform IDs. Used to enumerate
-// potential gateway protocols when rebuilding scheduler buckets.
+// allKnownPlatforms returns all registered platform IDs from the
+// compatResolver. Used to enumerate potential gateway protocols when
+// rebuilding scheduler buckets.
 func (s *SchedulerSnapshotService) allKnownPlatforms() []string {
-	return []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity}
+	if s.compatResolver != nil {
+		return s.compatResolver.AllPlatforms()
+	}
+	return nil
 }
 
 func (s *SchedulerSnapshotService) isRunModeSimple() bool {

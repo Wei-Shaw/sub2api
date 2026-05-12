@@ -268,9 +268,6 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 		}
 	}
 
-	// 收集需要异步设置隐私的 Antigravity OAuth 账号
-	var privacyAccounts []*service.Account
-
 	for i := range dataPayload.Accounts {
 		item := dataPayload.Accounts[i]
 		if err := validateDataAccount(item); err != nil {
@@ -328,28 +325,10 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 			})
 			continue
 		}
-		// 收集 Antigravity OAuth 账号，稍后异步设置隐私
-		if created.Platform == service.PlatformAntigravity && created.Type == service.AccountTypeOAuth {
-			privacyAccounts = append(privacyAccounts, created)
-		}
+		// Plugin post-create hook (fire-and-forget).
+		// Handles probe and privacy setting via plugin PostAccountCreate RPC.
+		h.tryPluginPostAccountCreate(created)
 		result.AccountCreated++
-	}
-
-	// 异步设置 Antigravity 隐私，避免大量导入时阻塞请求
-	if len(privacyAccounts) > 0 {
-		adminSvc := h.adminService
-		go func() {
-			defer func() {
-				if r := recover(); r != nil {
-					slog.Error("import_antigravity_privacy_panic", "recover", r)
-				}
-			}()
-			bgCtx := context.Background()
-			for _, acc := range privacyAccounts {
-				adminSvc.ForceAntigravityPrivacy(bgCtx, acc)
-			}
-			slog.Info("import_antigravity_privacy_done", "count", len(privacyAccounts))
-		}()
 	}
 
 	return result, nil

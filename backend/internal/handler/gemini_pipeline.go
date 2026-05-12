@@ -65,8 +65,8 @@ func (h *GatewayHandler) geminiV1BetaPipeline(c *gin.Context) {
 	}
 	stream := action == "streamGenerateContent"
 
-	// Single-account retry context for Antigravity groups
-	if h.gatewayService.IsSingleAntigravityAccountGroup(c.Request.Context(), apiKey.GroupID) {
+	// Single-account retry context for mixed-scheduling groups
+	if h.gatewayService.IsSingleCompatibleAccountGroup(c.Request.Context(), apiKey.GroupID) {
 		ctx := service.WithSingleAccountRetry(c.Request.Context(), true, h.metadataBridgeEnabled())
 		c.Request = c.Request.WithContext(ctx)
 	}
