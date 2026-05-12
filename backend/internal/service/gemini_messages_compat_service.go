@@ -91,7 +91,7 @@ func (s *GeminiMessagesCompatService) SelectAccountForModel(ctx context.Context,
 }
 
 func (s *GeminiMessagesCompatService) SelectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) (*Account, error) {
-	// 1. 纭畾鐩爣骞冲彴鍜岃皟搴︽ā寮?	// Determine target platform and scheduling mode
+	// 1. 绾喖鐣鹃惄顔界垼楠炲啿褰撮崪宀冪殶鎼达附膩瀵?	// Determine target platform and scheduling mode
 	platform, useMixedScheduling, hasForcePlatform, err := s.resolvePlatformAndSchedulingMode(ctx, groupID)
 	if err != nil {
 		return nil, err
@@ -99,17 +99,17 @@ func (s *GeminiMessagesCompatService) SelectAccountForModelWithExclusions(ctx co
 
 	cacheKey := "gemini:" + sessionHash
 
-	// 2. 灏濊瘯绮樻€т細璇濆懡涓?	// Try sticky session hit
+	// 2. 鐏忔繆鐦划妯烩偓褌绱扮拠婵嗘嚒娑?	// Try sticky session hit
 	if account := s.tryStickySessionHit(ctx, groupID, sessionHash, cacheKey, requestedModel, excludedIDs, platform, useMixedScheduling); account != nil {
 		return account, nil
 	}
 
-	// 3. 鏌ヨ鍙皟搴﹁处鎴凤紙寮哄埗骞冲彴妯″紡锛氫紭鍏堟寜鍒嗙粍鏌ユ壘锛屾壘涓嶅埌鍐嶆煡鍏ㄩ儴锛?	// Query schedulable accounts (force platform mode: try group first, fallback to all)
+	// 3. 閺屻儴顕楅崣顖濈殶鎼达箒澶勯幋鍑ょ礄瀵搫鍩楅獮鍐插酱濡€崇础閿涙矮绱崗鍫熷瘻閸掑棛绮嶉弻銉﹀閿涘本澹樻稉宥呭煂閸愬秵鐓￠崗銊╁劥閿?	// Query schedulable accounts (force platform mode: try group first, fallback to all)
 	accounts, err := s.listSchedulableAccountsOnce(ctx, groupID, platform, hasForcePlatform)
 	if err != nil {
 		return nil, fmt.Errorf("query accounts failed: %w", err)
 	}
-	// 寮哄埗骞冲彴妯″紡涓嬶紝鍒嗙粍涓壘涓嶅埌璐︽埛鏃跺洖閫€鏌ヨ鍏ㄩ儴
+	// 瀵搫鍩楅獮鍐插酱濡€崇础娑撳绱濋崚鍡欑矋娑擃厽澹樻稉宥呭煂鐠愶附鍩涢弮璺烘礀闁偓閺屻儴顕楅崗銊╁劥
 	if len(accounts) == 0 && groupID != nil && hasForcePlatform {
 		accounts, err = s.listSchedulableAccountsOnce(ctx, nil, platform, hasForcePlatform)
 		if err != nil {
@@ -117,7 +117,7 @@ func (s *GeminiMessagesCompatService) SelectAccountForModelWithExclusions(ctx co
 		}
 	}
 
-	// 4. 鎸変紭鍏堢骇 + LRU 閫夋嫨鏈€浣宠处鍙?	// Select best account by priority + LRU
+	// 4. 閹稿绱崗鍫㈤獓 + LRU 闁瀚ㄩ張鈧担瀹犲閸?	// Select best account by priority + LRU
 	selected := s.selectBestGeminiAccount(ctx, accounts, requestedModel, excludedIDs, platform, useMixedScheduling)
 
 	if selected == nil {
@@ -127,7 +127,7 @@ func (s *GeminiMessagesCompatService) SelectAccountForModelWithExclusions(ctx co
 		return nil, errors.New("no available Gemini accounts")
 	}
 
-	// 5. 璁剧疆绮樻€т細璇濈粦瀹?	// Set sticky session binding
+	// 5. 鐠佸墽鐤嗙划妯烩偓褌绱扮拠婵堢拨鐎?	// Set sticky session binding
 	if sessionHash != "" {
 		_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), cacheKey, selected.ID, geminiStickySessionTTL)
 	}
@@ -135,18 +135,17 @@ func (s *GeminiMessagesCompatService) SelectAccountForModelWithExclusions(ctx co
 	return s.hydrateSelectedAccount(ctx, selected)
 }
 
-// resolvePlatformAndSchedulingMode 瑙ｆ瀽鐩爣骞冲彴鍜岃皟搴︽ā寮忋€?// 杩斿洖锛氬钩鍙板悕绉般€佹槸鍚︿娇鐢ㄦ贩鍚堣皟搴︺€佹槸鍚﹀己鍒跺钩鍙般€侀敊璇€?//
+// resolvePlatformAndSchedulingMode 鐟欙絾鐎介惄顔界垼楠炲啿褰撮崪宀冪殶鎼达附膩瀵繈鈧?// 鏉╂柨娲栭敍姘挬閸欐澘鎮曠粔鑸偓浣规Ц閸氾缚濞囬悽銊﹁穿閸氬牐鐨熸惔锔衡偓浣规Ц閸氾箑宸遍崚璺洪挬閸欒埇鈧線鏁婄拠顖樷偓?//
 // resolvePlatformAndSchedulingMode resolves target platform and scheduling mode.
 // Returns: platform name, whether to use mixed scheduling, whether force platform, error.
 func (s *GeminiMessagesCompatService) resolvePlatformAndSchedulingMode(ctx context.Context, groupID *int64) (platform string, useMixedScheduling bool, hasForcePlatform bool, err error) {
-	// 浼樺厛妫€鏌?context 涓殑寮哄埗骞冲彴锛?antigravity 璺敱锛?	forcePlatform, hasForcePlatform := ctx.Value(ctxkey.ForcePlatform).(string)
+	// 娴兼ê鍘涘Λ鈧弻?context 娑擃厾娈戝鍝勫煑楠炲啿褰撮敍?antigravity 鐠侯垳鏁遍敍?	forcePlatform, hasForcePlatform := ctx.Value(ctxkey.ForcePlatform).(string)
 	if hasForcePlatform && forcePlatform != "" {
 		return forcePlatform, false, true, nil
 	}
 
 	if groupID != nil {
-		// 鏍规嵁鍒嗙粍 platform 鍐冲畾鏌ヨ鍝璐﹀彿
-		var group *Group
+		// 閺嶈宓侀崚鍡欑矋 platform 閸愬啿鐣鹃弻銉嚄閸濐亞顫掔拹锕€褰?		var group *Group
 		if ctxGroup, ok := ctx.Value(ctxkey.Group).(*Group); ok && IsGroupContextValid(ctxGroup) && ctxGroup.ID == *groupID {
 			group = ctxGroup
 		} else {
@@ -155,14 +154,13 @@ func (s *GeminiMessagesCompatService) resolvePlatformAndSchedulingMode(ctx conte
 				return "", false, false, fmt.Errorf("get group failed: %w", err)
 			}
 		}
-		// gemini 鍒嗙粍鏀寔娣峰悎璋冨害锛堝寘鍚惎鐢ㄤ簡 mixed_scheduling 鐨?antigravity 璐︽埛锛?		return group.Platform, group.Platform == PlatformGemini, false, nil
+		// gemini 閸掑棛绮嶉弨顖涘瘮濞ｅ嘲鎮庣拫鍐ㄥ閿涘牆瀵橀崥顐㈡儙閻劋绨?mixed_scheduling 閻?antigravity 鐠愶附鍩涢敍?		return group.Platform, group.Platform == PlatformGemini, false, nil
 	}
 
-	// 鏃犲垎缁勬椂鍙娇鐢ㄥ師鐢?gemini 骞冲彴
-	return PlatformGemini, true, false, nil
+	// 閺冪姴鍨庣紒鍕閸欘亙濞囬悽銊ュ斧閻?gemini 楠炲啿褰?	return PlatformGemini, true, false, nil
 }
 
-// tryStickySessionHit 灏濊瘯浠庣矘鎬т細璇濊幏鍙栬处鍙枫€?// 濡傛灉鍛戒腑涓旇处鍙峰彲鐢ㄥ垯杩斿洖璐﹀彿锛涘鏋滆处鍙蜂笉鍙敤鍒欐竻鐞嗕細璇濆苟杩斿洖 nil銆?//
+// tryStickySessionHit 鐏忔繆鐦禒搴ｇ煒閹傜窗鐠囨繆骞忛崣鏍閸欐灚鈧?// 婵″倹鐏夐崨鎴掕厬娑撴棁澶勯崣宄板讲閻劌鍨潻鏂挎礀鐠愶箑褰块敍娑橆洤閺嬫粏澶勯崣铚傜瑝閸欘垳鏁ら崚娆愮閻炲棔绱扮拠婵嗚嫙鏉╂柨娲?nil閵?//
 // tryStickySessionHit attempts to get account from sticky session.
 // Returns account if hit and usable; clears session and returns nil if account unavailable.
 func (s *GeminiMessagesCompatService) tryStickySessionHit(
@@ -191,23 +189,23 @@ func (s *GeminiMessagesCompatService) tryStickySessionHit(
 		return nil
 	}
 
-	// 妫€鏌ヨ处鍙锋槸鍚﹂渶瑕佹竻鐞嗙矘鎬т細璇?	// Check if sticky session should be cleared
+	// 濡偓閺屻儴澶勯崣閿嬫Ц閸氾箓娓剁憰浣圭閻炲棛鐭橀幀褌绱扮拠?	// Check if sticky session should be cleared
 	if shouldClearStickySession(account, requestedModel) {
 		_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), cacheKey)
 		return nil
 	}
 
-	// 楠岃瘉璐﹀彿鏄惁鍙敤浜庡綋鍓嶈姹?	// Verify account is usable for current request
+	// 妤犲矁鐦夌拹锕€褰块弰顖氭儊閸欘垳鏁ゆ禍搴＄秼閸撳秷顕Ч?	// Verify account is usable for current request
 	if !s.isAccountUsableForRequest(ctx, account, requestedModel, platform, useMixedScheduling) {
 		return nil
 	}
 
-	// 鍒锋柊浼氳瘽 TTL 骞惰繑鍥炶处鍙?	// Refresh session TTL and return account
+	// 閸掗攱鏌婃导姘崇樈 TTL 楠炴儼绻戦崶鐐跺閸?	// Refresh session TTL and return account
 	_ = s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), cacheKey, geminiStickySessionTTL)
 	return account
 }
 
-// isAccountUsableForRequest 妫€鏌ヨ处鍙锋槸鍚﹀彲鐢ㄤ簬褰撳墠璇锋眰銆?// 楠岃瘉锛氭ā鍨嬭皟搴︺€佹ā鍨嬫敮鎸併€佸钩鍙板尮閰嶃€侀€熺巼闄愬埗棰勬銆?//
+// isAccountUsableForRequest 濡偓閺屻儴澶勯崣閿嬫Ц閸氾箑褰查悽銊ょ艾瑜版挸澧犵拠閿嬬湴閵?// 妤犲矁鐦夐敍姘侀崹瀣殶鎼达负鈧焦膩閸ㄥ鏁幐浣碘偓浣搁挬閸欐澘灏柊宥冣偓渚€鈧喓宸奸梽鎰煑妫板嫭顥呴妴?//
 // isAccountUsableForRequest checks if account is usable for current request.
 // Validates: model scheduling, model support, platform matching, rate limit precheck.
 func (s *GeminiMessagesCompatService) isAccountUsableForRequest(
@@ -226,23 +224,22 @@ func (s *GeminiMessagesCompatService) isAccountUsableForRequestWithPrecheck(
 	useMixedScheduling bool,
 	precheckResult map[int64]bool,
 ) bool {
-	// 妫€鏌ユā鍨嬭皟搴﹁兘鍔?	// Check model scheduling capability
+	// 濡偓閺屻儲膩閸ㄥ鐨熸惔锕佸厴閸?	// Check model scheduling capability
 	if !account.IsSchedulableForModelWithContext(ctx, requestedModel) {
 		return false
 	}
 
-	// 妫€鏌ユā鍨嬫敮鎸?	// Check model support
+	// 濡偓閺屻儲膩閸ㄥ鏁幐?	// Check model support
 	if requestedModel != "" && !s.isModelSupportedByAccount(account, requestedModel) {
 		return false
 	}
 
-	// 妫€鏌ュ钩鍙板尮閰?	// Check platform matching
+	// 濡偓閺屻儱閽╅崣鏉垮爱闁?	// Check platform matching
 	if !s.isAccountValidForPlatform(account, platform, useMixedScheduling) {
 		return false
 	}
 
-	// 閫熺巼闄愬埗棰勬
-	// Rate limit precheck
+	// 闁喓宸奸梽鎰煑妫板嫭顥?	// Rate limit precheck
 	if !s.passesRateLimitPreCheckWithCache(ctx, account, requestedModel, precheckResult) {
 		return false
 	}
@@ -250,7 +247,7 @@ func (s *GeminiMessagesCompatService) isAccountUsableForRequestWithPrecheck(
 	return true
 }
 
-// isAccountValidForPlatform 妫€鏌ヨ处鍙锋槸鍚﹀尮閰嶇洰鏍囧钩鍙般€?// 鍘熺敓骞冲彴鐩存帴鍖归厤锛涙贩鍚堣皟搴︽ā寮忎笅 antigravity 闇€瑕佸惎鐢?mixed_scheduling銆?//
+// isAccountValidForPlatform 濡偓閺屻儴澶勯崣閿嬫Ц閸氾箑灏柊宥囨窗閺嶅洤閽╅崣鑸偓?// 閸樼喓鏁撻獮鍐插酱閻╁瓨甯撮崠褰掑帳閿涙稒璐╅崥鍫ｇ殶鎼达附膩瀵繋绗?antigravity 闂団偓鐟曚礁鎯庨悽?mixed_scheduling閵?//
 // isAccountValidForPlatform checks if account matches target platform.
 // Native platform matches directly; mixed scheduling mode requires antigravity to enable mixed_scheduling.
 func (s *GeminiMessagesCompatService) isAccountValidForPlatform(account *Account, platform string, useMixedScheduling bool) bool {
@@ -281,7 +278,7 @@ func (s *GeminiMessagesCompatService) passesRateLimitPreCheckWithCache(ctx conte
 	return ok
 }
 
-// selectBestGeminiAccount 浠庡€欓€夎处鍙蜂腑閫夋嫨鏈€浣宠处鍙凤紙浼樺厛绾?+ LRU + OAuth 浼樺厛锛夈€?// 杩斿洖 nil 琛ㄧず鏃犲彲鐢ㄨ处鍙枫€?//
+// selectBestGeminiAccount 娴犲骸鈧瑩鈧澶勯崣铚傝厬闁瀚ㄩ張鈧担瀹犲閸欏嚖绱欐导妯哄帥缁?+ LRU + OAuth 娴兼ê鍘涢敍澶堚偓?// 鏉╂柨娲?nil 鐞涖劎銇氶弮鐘插讲閻劏澶勯崣鏋偓?//
 // selectBestGeminiAccount selects best account from candidates (priority + LRU + OAuth preferred).
 // Returns nil if no available account.
 func (s *GeminiMessagesCompatService) selectBestGeminiAccount(
@@ -298,17 +295,16 @@ func (s *GeminiMessagesCompatService) selectBestGeminiAccount(
 	for i := range accounts {
 		acc := &accounts[i]
 
-		// 璺宠繃琚帓闄ょ殑璐﹀彿
-		if _, excluded := excludedIDs[acc.ID]; excluded {
+		// 鐠哄疇绻冪悮顐ｅ笓闂勩倗娈戠拹锕€褰?		if _, excluded := excludedIDs[acc.ID]; excluded {
 			continue
 		}
 
-		// 妫€鏌ヨ处鍙锋槸鍚﹀彲鐢ㄤ簬褰撳墠璇锋眰
+		// 濡偓閺屻儴澶勯崣閿嬫Ц閸氾箑褰查悽銊ょ艾瑜版挸澧犵拠閿嬬湴
 		if !s.isAccountUsableForRequestWithPrecheck(ctx, acc, requestedModel, platform, useMixedScheduling, precheckResult) {
 			continue
 		}
 
-		// 閫夋嫨鏈€浣宠处鍙?		if selected == nil {
+		// 闁瀚ㄩ張鈧担瀹犲閸?		if selected == nil {
 			selected = acc
 			continue
 		}
@@ -338,11 +334,11 @@ func (s *GeminiMessagesCompatService) buildPreCheckUsageResultMap(ctx context.Co
 	return result
 }
 
-// isBetterGeminiAccount 鍒ゆ柇 candidate 鏄惁姣?current 鏇翠紭銆?// 瑙勫垯锛氫紭鍏堢骇鏇撮珮锛堟暟鍊兼洿灏忥級浼樺厛锛涘悓浼樺厛绾ф椂锛屾湭浣跨敤杩囩殑浼樺厛锛圤Auth > 闈?OAuth锛夛紝鍏舵鏄渶涔呮湭浣跨敤鐨勩€?//
+// isBetterGeminiAccount 閸掋倖鏌?candidate 閺勵垰鎯佸В?current 閺囩繝绱妴?// 鐟欏嫬鍨敍姘喘閸忓牏楠囬弴鎾彯閿涘牊鏆熼崐鍏兼纯鐏忓骏绱氭导妯哄帥閿涙稑鎮撴导妯哄帥缁狙勬閿涘本婀担璺ㄦ暏鏉╁洨娈戞导妯哄帥閿涘湦Auth > 闂?OAuth閿涘绱濋崗鑸殿偧閺勵垱娓舵稊鍛弓娴ｈ法鏁ら惃鍕┾偓?//
 // isBetterGeminiAccount checks if candidate is better than current.
 // Rules: higher priority (lower value) wins; same priority: never used (OAuth > non-OAuth) > least recently used.
 func (s *GeminiMessagesCompatService) isBetterGeminiAccount(candidate, current *Account) bool {
-	// 浼樺厛绾ф洿楂橈紙鏁板€兼洿灏忥級
+	// 娴兼ê鍘涚痪褎娲挎姗堢礄閺佹澘鈧吋娲跨亸蹇ョ礆
 	if candidate.Priority < current.Priority {
 		return true
 	}
@@ -350,19 +346,19 @@ func (s *GeminiMessagesCompatService) isBetterGeminiAccount(candidate, current *
 		return false
 	}
 
-	// 鍚屼紭鍏堢骇锛屾瘮杈冩渶鍚庝娇鐢ㄦ椂闂?	switch {
+	// 閸氬奔绱崗鍫㈤獓閿涘本鐦潏鍐╂付閸氬簼濞囬悽銊︽闂?	switch {
 	case candidate.LastUsedAt == nil && current.LastUsedAt != nil:
-		// candidate 浠庢湭浣跨敤锛屼紭鍏?		return true
+		// candidate 娴犲孩婀担璺ㄦ暏閿涘奔绱崗?		return true
 	case candidate.LastUsedAt != nil && current.LastUsedAt == nil:
-		// current 浠庢湭浣跨敤锛屼繚鎸?		return false
+		// current 娴犲孩婀担璺ㄦ暏閿涘奔绻氶幐?		return false
 	case candidate.LastUsedAt == nil && current.LastUsedAt == nil:
-		// 閮芥湭浣跨敤锛屼紭鍏堥€夋嫨 OAuth 璐﹀彿锛堟洿鍏煎 Code Assist 娴佺▼锛?		return candidate.Type == AccountTypeOAuth && current.Type != AccountTypeOAuth
+		// 闁姤婀担璺ㄦ暏閿涘奔绱崗鍫モ偓澶嬪 OAuth 鐠愶箑褰块敍鍫熸纯閸忕厧顔?Code Assist 濞翠胶鈻奸敍?		return candidate.Type == AccountTypeOAuth && current.Type != AccountTypeOAuth
 	default:
-		// 閮戒娇鐢ㄨ繃锛岄€夋嫨鏈€涔呮湭浣跨敤鐨?		return candidate.LastUsedAt.Before(*current.LastUsedAt)
+		// 闁垝濞囬悽銊ㄧ箖閿涘矂鈧瀚ㄩ張鈧稊鍛弓娴ｈ法鏁ら惃?		return candidate.LastUsedAt.Before(*current.LastUsedAt)
 	}
 }
 
-// isModelSupportedByAccount 鏍规嵁璐︽埛骞冲彴妫€鏌ユā鍨嬫敮鎸?func (s *GeminiMessagesCompatService) isModelSupportedByAccount(account *Account, requestedModel string) bool {
+// isModelSupportedByAccount 閺嶈宓佺拹锔藉煕楠炲啿褰村Λ鈧弻銉δ侀崹瀣暜閹?func (s *GeminiMessagesCompatService) isModelSupportedByAccount(account *Account, requestedModel string) bool {
 	if account.Platform == PlatformAntigravity {
 		if strings.TrimSpace(requestedModel) == "" {
 			return true
@@ -372,7 +368,7 @@ func (s *GeminiMessagesCompatService) isBetterGeminiAccount(candidate, current *
 	return account.IsModelSupported(requestedModel)
 }
 
-// GetAntigravityGatewayService 杩斿洖 AntigravityGatewayService
+// GetAntigravityGatewayService 鏉╂柨娲?AntigravityGatewayService
 func (s *GeminiMessagesCompatService) GetAntigravityGatewayService() *AntigravityGatewayService {
 	return s.antigravityGatewayService
 }
@@ -438,8 +434,7 @@ func (s *GeminiMessagesCompatService) validateUpstreamBaseURL(raw string) (strin
 	return normalized, nil
 }
 
-// HasAntigravityAccounts 妫€鏌ユ槸鍚︽湁鍙敤鐨?antigravity 璐︽埛
-func (s *GeminiMessagesCompatService) HasAntigravityAccounts(ctx context.Context, groupID *int64) (bool, error) {
+// HasAntigravityAccounts 濡偓閺屻儲妲搁崥锔芥箒閸欘垳鏁ら惃?antigravity 鐠愶附鍩?func (s *GeminiMessagesCompatService) HasAntigravityAccounts(ctx context.Context, groupID *int64) (bool, error) {
 	accounts, err := s.listSchedulableAccountsOnce(ctx, groupID, PlatformAntigravity, false)
 	if err != nil {
 		return false, err
@@ -825,7 +820,7 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 			break
 		}
 
-		// 閿欒绛栫暐浼樺厛锛氬尮閰嶅垯璺宠繃閲嶈瘯鐩存帴澶勭悊銆?		if matched, rebuilt := s.checkErrorPolicyInLoop(ctx, account, resp); matched {
+		// 闁挎瑨顕ょ粵鏍殣娴兼ê鍘涢敍姘爱闁板秴鍨捄瀹犵箖闁插秷鐦惄瀛樺复婢跺嫮鎮婇妴?		if matched, rebuilt := s.checkErrorPolicyInLoop(ctx, account, resp); matched {
 			resp = rebuilt
 			break
 		} else {
@@ -893,8 +888,7 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-		// 缁熶竴閿欒绛栫暐锛氳嚜瀹氫箟閿欒鐮?+ 涓存椂涓嶅彲璋冨害
-		if s.rateLimitService != nil {
+		// 缂佺喍绔撮柨娆掝嚖缁涙牜鏆愰敍姘冲殰鐎规矮绠熼柨娆掝嚖閻?+ 娑撳瓨妞傛稉宥呭讲鐠嬪啫瀹?		if s.rateLimitService != nil {
 			switch s.rateLimitService.CheckErrorPolicy(ctx, account, resp.StatusCode, respBody) {
 			case ErrorPolicySkipped:
 				upstreamReqID := resp.Header.Get(requestIDHeader)
@@ -932,9 +926,9 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 			}
 		}
 
-		// ErrorPolicyNone 鈫?鍘熸湁閫昏緫
+		// ErrorPolicyNone 閳?閸樼喐婀侀柅鏄忕帆
 		s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
-		// 绮剧‘鍖归厤鏈嶅姟绔厤缃被 400 閿欒锛岃Е鍙?failover + 涓存椂灏佺
+		// 缁墽鈥橀崠褰掑帳閺堝秴濮熺粩顖炲帳缂冾喚琚?400 闁挎瑨顕ら敍宀冃曢崣?failover + 娑撳瓨妞傜亸浣侯洣
 		if resp.StatusCode == http.StatusBadRequest {
 			msg400 := strings.ToLower(strings.TrimSpace(extractUpstreamErrorMessage(respBody)))
 			if isGoogleProjectConfigError(msg400) {
@@ -1037,7 +1031,7 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 		}
 	}
 
-	// 鍥剧墖鐢熸垚璁¤垂
+	// 閸ュ墽澧栭悽鐔稿灇鐠伮ゅ瀭
 	imageCount := 0
 	imageSize := s.extractImageSize(body)
 	if isImageGenerationModel(originalModel) {
@@ -1078,7 +1072,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 		return nil, s.writeGoogleError(c, http.StatusBadRequest, "Request body is empty")
 	}
 
-	// 杩囨护鎺?parts 涓虹┖鐨勬秷鎭紙Gemini API 涓嶆帴鍙楃┖ parts锛?	if filteredBody, err := filterEmptyPartsFromGeminiRequest(body); err == nil {
+	// 鏉╁洦鎶ら幒?parts 娑撹櫣鈹栭惃鍕Х閹垽绱橤emini API 娑撳秵甯撮崣妤冣敄 parts閿?	if filteredBody, err := filterEmptyPartsFromGeminiRequest(body); err == nil {
 		body = filteredBody
 	}
 
@@ -1296,7 +1290,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 			return nil, s.writeGoogleError(c, http.StatusBadGateway, "Upstream request failed after retries: "+safeErr)
 		}
 
-		// 閿欒绛栫暐浼樺厛锛氬尮閰嶅垯璺宠繃閲嶈瘯鐩存帴澶勭悊銆?		if matched, rebuilt := s.checkErrorPolicyInLoop(ctx, account, resp); matched {
+		// 闁挎瑨顕ょ粵鏍殣娴兼ê鍘涢敍姘爱闁板秴鍨捄瀹犵箖闁插秷鐦惄瀛樺复婢跺嫮鎮婇妴?		if matched, rebuilt := s.checkErrorPolicyInLoop(ctx, account, resp); matched {
 			resp = rebuilt
 			break
 		} else {
@@ -1403,8 +1397,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 			}, nil
 		}
 
-		// 缁熶竴閿欒绛栫暐锛氳嚜瀹氫箟閿欒鐮?+ 涓存椂涓嶅彲璋冨害
-		if s.rateLimitService != nil {
+		// 缂佺喍绔撮柨娆掝嚖缁涙牜鏆愰敍姘冲殰鐎规矮绠熼柨娆掝嚖閻?+ 娑撳瓨妞傛稉宥呭讲鐠嬪啫瀹?		if s.rateLimitService != nil {
 			switch s.rateLimitService.CheckErrorPolicy(ctx, account, resp.StatusCode, respBody) {
 			case ErrorPolicySkipped:
 				respBody = unwrapIfNeeded(isOAuth, respBody)
@@ -1441,9 +1434,9 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 			}
 		}
 
-		// ErrorPolicyNone 鈫?鍘熸湁閫昏緫
+		// ErrorPolicyNone 閳?閸樼喐婀侀柅鏄忕帆
 		s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
-		// 绮剧‘鍖归厤鏈嶅姟绔厤缃被 400 閿欒锛岃Е鍙?failover + 涓存椂灏佺
+		// 缁墽鈥橀崠褰掑帳閺堝秴濮熺粩顖炲帳缂冾喚琚?400 闁挎瑨顕ら敍宀冃曢崣?failover + 娑撳瓨妞傜亸浣侯洣
 		if resp.StatusCode == http.StatusBadRequest {
 			msg400 := strings.ToLower(strings.TrimSpace(extractUpstreamErrorMessage(respBody)))
 			if isGoogleProjectConfigError(msg400) {
@@ -1563,7 +1556,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 		usage = &ClaudeUsage{}
 	}
 
-	// 鍥剧墖鐢熸垚璁¤垂
+	// 閸ュ墽澧栭悽鐔稿灇鐠伮ゅ瀭
 	imageCount := 0
 	imageSize := s.extractImageSize(body)
 	if isImageGenerationModel(originalModel) {
@@ -1583,7 +1576,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 	}, nil
 }
 
-// checkErrorPolicyInLoop 鍦ㄩ噸璇曞惊鐜唴棰勬鏌ラ敊璇瓥鐣ャ€?// 杩斿洖 true 琛ㄧず绛栫暐宸插尮閰嶏紙璋冪敤鑰呭簲 break锛夛紝resp 宸查噸寤哄彲鐩存帴浣跨敤銆?// 杩斿洖 false 琛ㄧず ErrorPolicyNone锛宺esp 宸查噸寤猴紝璋冪敤鑰呯户缁蛋閲嶈瘯閫昏緫銆?func (s *GeminiMessagesCompatService) checkErrorPolicyInLoop(
+// checkErrorPolicyInLoop 閸︺劑鍣哥拠鏇炴儕閻滎垰鍞存０鍕梾閺屻儵鏁婄拠顖滅摜閻ｃ儯鈧?// 鏉╂柨娲?true 鐞涖劎銇氱粵鏍殣瀹告彃灏柊宥忕礄鐠嬪啰鏁ら懓鍛安 break閿涘绱漴esp 瀹告煡鍣稿鍝勫讲閻╁瓨甯存担璺ㄦ暏閵?// 鏉╂柨娲?false 鐞涖劎銇?ErrorPolicyNone閿涘esp 瀹告煡鍣稿鐚寸礉鐠嬪啰鏁ら懓鍛埛缂侇叀铔嬮柌宥堢槸闁槒绶妴?func (s *GeminiMessagesCompatService) checkErrorPolicyInLoop(
 	ctx context.Context, account *Account, resp *http.Response,
 ) (matched bool, rebuilt *http.Response) {
 	if resp.StatusCode < 400 || s.rateLimitService == nil {
@@ -2635,8 +2628,7 @@ func (s *GeminiMessagesCompatService) ForwardAIStudioGET(ctx context.Context, ac
 	}, nil
 }
 
-// unwrapGeminiResponse 瑙ｅ寘 Gemini OAuth 鍝嶅簲涓殑 response 瀛楁
-// 浣跨敤 gjson 闆舵嫹璐濇彁鍙栵紝閬垮厤瀹屾暣 Unmarshal+Marshal
+// unwrapGeminiResponse 鐟欙絽瀵?Gemini OAuth 閸濆秴绨叉稉顓犳畱 response 鐎涙顔?// 娴ｈ法鏁?gjson 闂嗚埖瀚圭拹婵囧絹閸欐牭绱濋柆鍨帳鐎瑰本鏆?Unmarshal+Marshal
 func unwrapGeminiResponse(raw []byte) ([]byte, error) {
 	result := gjson.GetBytes(raw, "response")
 	if result.Exists() && result.Type == gjson.JSON {
@@ -2720,7 +2712,7 @@ func extractGeminiUsage(data []byte) *ClaudeUsage {
 	cached := int(usage.Get("cachedContentTokenCount").Int())
 	thoughts := int(usage.Get("thoughtsTokenCount").Int())
 
-	// 浠?candidatesTokensDetails 鎻愬彇 IMAGE 妯℃€?token 鏁?	imageTokens := 0
+	// 娴?candidatesTokensDetails 閹绘劕褰?IMAGE 濡剝鈧?token 閺?	imageTokens := 0
 	candidateDetails := usage.Get("candidatesTokensDetails")
 	if candidateDetails.Exists() {
 		candidateDetails.ForEach(func(_, detail gjson.Result) bool {
@@ -2732,7 +2724,7 @@ func extractGeminiUsage(data []byte) *ClaudeUsage {
 		})
 	}
 
-	// 娉ㄦ剰锛欸emini 鐨?promptTokenCount 鍖呭惈 cachedContentTokenCount锛?	// 浣?Claude 鐨?input_tokens 涓嶅寘鍚?cache_read_input_tokens锛岄渶瑕佸噺鍘?	return &ClaudeUsage{
+	// 濞夈劍鍓伴敍娆竐mini 閻?promptTokenCount 閸栧懎鎯?cachedContentTokenCount閿?	// 娴?Claude 閻?input_tokens 娑撳秴瀵橀崥?cache_read_input_tokens閿涘矂娓剁憰浣稿櫤閸?	return &ClaudeUsage{
 		InputTokens:          prompt - cached,
 		OutputTokens:         cand + thoughts,
 		CacheReadInputTokens: cached,
@@ -2760,7 +2752,7 @@ func asInt(v any) (int, bool) {
 }
 
 func (s *GeminiMessagesCompatService) handleGeminiUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, body []byte) {
-	// 閬靛畧鑷畾涔夐敊璇爜绛栫暐锛氭湭鍛戒腑鍒欒烦杩囨墍鏈夐檺娴佸鐞?	if !account.ShouldHandleErrorCode(statusCode) {
+	// 闁潧鐣ч懛顏勭暰娑斿鏁婄拠顖滅垳缁涙牜鏆愰敍姘弓閸涙垝鑵戦崚娆掔儲鏉╁洦澧嶉張澶愭濞翠礁顦╅悶?	if !account.ShouldHandleErrorCode(statusCode) {
 		return
 	}
 	if s.rateLimitService != nil && (statusCode == 401 || statusCode == 403 || statusCode == 529) {
@@ -2785,7 +2777,7 @@ oauthType := account.GeminiOAuthType()
 
 	resetAt := ParseGeminiRateLimitResetTime(body)
 	if resetAt == nil {
-		// 鏍规嵁璐﹀彿绫诲瀷浣跨敤涓嶅悓鐨勯粯璁ら噸缃椂闂?		var ra time.Time
+		// 閺嶈宓佺拹锕€褰跨猾璇茬€锋担璺ㄦ暏娑撳秴鎮撻惃鍕帛鐠併倝鍣哥純顔芥闂?		var ra time.Time
 		if isCodeAssist {
 			// Code Assist: fallback cooldown by tier
 			cooldown := geminiCooldownForTier(tierID)
@@ -2795,13 +2787,11 @@ oauthType := account.GeminiOAuthType()
 			ra = time.Now().Add(cooldown)
 			logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini 429] Account %d (Code Assist, tier=%s, project=%s) rate limited, cooldown=%v", account.ID, tierID, projectID, time.Until(ra).Truncate(time.Second))
 		} else {
-			// API Key / AI Studio OAuth: PST 鍗堝
-			if ts := nextGeminiDailyResetUnix(); ts != nil {
+			// API Key / AI Studio OAuth: PST 閸楀牆顧?			if ts := nextGeminiDailyResetUnix(); ts != nil {
 				ra = time.Unix(*ts, 0)
 				logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini 429] Account %d (API Key/AI Studio, type=%s) rate limited, reset at PST midnight (%v)", account.ID, account.Type, ra)
 			} else {
-				// 鍏滃簳锛? 鍒嗛挓
-				ra = time.Now().Add(5 * time.Minute)
+				// 閸忔粌绨抽敍? 閸掑棝鎸?				ra = time.Now().Add(5 * time.Minute)
 				logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini 429] Account %d rate limited, fallback to 5min", account.ID)
 			}
 		}
@@ -2809,7 +2799,7 @@ oauthType := account.GeminiOAuthType()
 		return
 	}
 
-	// 浣跨敤瑙ｆ瀽鍒扮殑閲嶇疆鏃堕棿
+	// 娴ｈ法鏁ょ憴锝嗙€介崚鎵畱闁插秶鐤嗛弮鍫曟？
 	resetTime := time.Unix(*resetAt, 0)
 	_ = s.accountRepo.SetRateLimited(ctx, account.ID, resetTime)
 	logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini 429] Account %d rate limited until %v (oauth_type=%s, tier=%s)",
@@ -2823,15 +2813,16 @@ func isGeminiModelCapacityExhausted(body []byte) bool {
 	}
 	return strings.Contains(lowerBody, "no capacity available for model")
 }
-// ParseGeminiRateLimitResetTime 瑙ｆ瀽 Gemini 鏍煎紡鐨?429 鍝嶅簲锛岃繑鍥為噸缃椂闂寸殑 Unix 鏃堕棿鎴?func ParseGeminiRateLimitResetTime(body []byte) *int64 {
-	// 绗竴闃舵锛歡json 缁撴瀯鍖栨彁鍙?	errMsg := gjson.GetBytes(body, "error.message").String()
+// ParseGeminiRateLimitResetTime 鐟欙絾鐎?Gemini 閺嶇厧绱￠惃?429 閸濆秴绨查敍宀冪箲閸ョ偤鍣哥純顔芥闂傚娈?Unix 閺冨爼妫块幋?
+func ParseGeminiRateLimitResetTime(body []byte) *int64 {
+	// 缁楊兛绔撮梼鑸殿唽閿涙json 缂佹挻鐎崠鏍ㄥ絹閸?	errMsg := gjson.GetBytes(body, "error.message").String()
 	if looksLikeGeminiDailyQuota(errMsg) {
 		if ts := nextGeminiDailyResetUnix(); ts != nil {
 			return ts
 		}
 	}
 
-	// 閬嶅巻 error.details 鏌ユ壘 quotaResetDelay
+	// 闁秴宸?error.details 閺屻儲澹?quotaResetDelay
 	var found *int64
 	gjson.GetBytes(body, "error.details").ForEach(func(_, detail gjson.Result) bool {
 		v := detail.Get("metadata.quotaResetDelay").String()
@@ -2851,7 +2842,7 @@ func isGeminiModelCapacityExhausted(body []byte) bool {
 		return found
 	}
 
-	// 绗簩闃舵锛歳egex 鍥為€€鍖归厤 "Please retry in Xs"
+	// 缁楊兛绨╅梼鑸殿唽閿涙egex 閸ョ偤鈧偓閸栧綊鍘?"Please retry in Xs"
 	matches := retryInRegex.FindStringSubmatch(string(body))
 	if len(matches) == 2 {
 		if dur, err := time.ParseDuration(matches[1] + "s"); err == nil {
@@ -3101,9 +3092,9 @@ func convertClaudeMessagesToGeminiContents(messages any, toolUseIDToName map[str
 		parts := make([]any, 0)
 		switch content := mm["content"].(type) {
 		case string:
-			// 瀛楃涓插舰寮忕殑 content锛屼繚鐣欐墍鏈夊唴瀹癸紙鍖呮嫭绌虹櫧锛?			parts = append(parts, map[string]any{"text": content})
+			// 鐎涙顑佹稉鎻掕埌瀵繒娈?content閿涘奔绻氶悾娆愬閺堝鍞寸€圭櫢绱欓崠鍛缁岃櫣娅ч敍?			parts = append(parts, map[string]any{"text": content})
 		case []any:
-			// 濡傛灉鍙湁涓€涓?block锛屼笉杩囨护绌虹櫧锛堣涓婃父 API 鎶ラ敊锛?			singleBlock := len(content) == 1
+			// 婵″倹鐏夐崣顏呮箒娑撯偓娑?block閿涘奔绗夋潻鍥ㄦ姢缁岃櫣娅ч敍鍫ｎ唨娑撳﹥鐖?API 閹躲儵鏁婇敍?			singleBlock := len(content) == 1
 
 			for _, block := range content {
 				bm, ok := block.(map[string]any)
@@ -3114,8 +3105,7 @@ func convertClaudeMessagesToGeminiContents(messages any, toolUseIDToName map[str
 				switch bt {
 				case "text":
 					if text, ok := bm["text"].(string); ok {
-						// 鍗曚釜 block 鏃朵繚鐣欐墍鏈夊唴瀹癸紙鍖呮嫭绌虹櫧锛?						// 澶氫釜 blocks 鏃惰繃婊ゆ帀绌虹櫧
-						if singleBlock || strings.TrimSpace(text) != "" {
+						// 閸楁洑閲?block 閺冩湹绻氶悾娆愬閺堝鍞寸€圭櫢绱欓崠鍛缁岃櫣娅ч敍?						// 婢舵矮閲?blocks 閺冩儼绻冨銈嗗竴缁岃櫣娅?						if singleBlock || strings.TrimSpace(text) != "" {
 							parts = append(parts, map[string]any{"text": text})
 						}
 					}
@@ -3230,10 +3220,10 @@ func convertClaudeToolsToGeminiTools(tools any) []any {
 		var name, desc string
 		var params any
 
-		// 妫€鏌ユ槸鍚︿负 custom 绫诲瀷宸ュ叿 (MCP)
+		// 濡偓閺屻儲妲搁崥锔胯礋 custom 缁鐎峰銉ュ徔 (MCP)
 		toolType, _ := tm["type"].(string)
 		if toolType == "custom" {
-			// Custom 鏍煎紡: 浠?custom 瀛楁鑾峰彇 description 鍜?input_schema
+			// Custom 閺嶇厧绱? 娴?custom 鐎涙顔岄懢宄板絿 description 閸?input_schema
 			custom, ok := tm["custom"].(map[string]any)
 			if !ok {
 				continue
@@ -3242,7 +3232,7 @@ func convertClaudeToolsToGeminiTools(tools any) []any {
 			desc, _ = custom["description"].(string)
 			params = custom["input_schema"]
 		} else {
-			// 鏍囧噯鏍煎紡: 浠庨《灞傚瓧娈佃幏鍙?			name, _ = tm["name"].(string)
+			// 閺嶅洤鍣弽鐓庣础: 娴犲酣銆婄仦鍌氱摟濞堜絻骞忛崣?			name, _ = tm["name"].(string)
 			desc, _ = tm["description"].(string)
 			params = tm["input_schema"]
 		}
@@ -3251,13 +3241,13 @@ func convertClaudeToolsToGeminiTools(tools any) []any {
 			continue
 		}
 
-		// 涓?nil params 鎻愪緵榛樿鍊?		if params == nil {
+		// 娑?nil params 閹绘劒绶垫妯款吇閸?		if params == nil {
 			params = map[string]any{
 				"type":       "object",
 				"properties": map[string]any{},
 			}
 		}
-		// 娓呯悊 JSON Schema
+		// 濞撳懐鎮?JSON Schema
 		cleanedParams := cleanToolSchema(params)
 
 		funcDecls = append(funcDecls, map[string]any{
@@ -3339,8 +3329,7 @@ func isClaudeWebSearchToolMap(tool map[string]any) bool {
 	}
 }
 
-// cleanToolSchema 娓呯悊宸ュ叿鐨?JSON Schema锛岀Щ闄?Gemini 涓嶆敮鎸佺殑瀛楁
-func cleanToolSchema(schema any) any {
+// cleanToolSchema 濞撳懐鎮婂銉ュ徔閻?JSON Schema閿涘瞼些闂?Gemini 娑撳秵鏁幐浣烘畱鐎涙顔?func cleanToolSchema(schema any) any {
 	if schema == nil {
 		return nil
 	}
@@ -3349,16 +3338,14 @@ func cleanToolSchema(schema any) any {
 	case map[string]any:
 		cleaned := make(map[string]any)
 		for key, value := range v {
-			// 璺宠繃涓嶆敮鎸佺殑瀛楁
-			if key == "$schema" || key == "$id" || key == "$ref" ||
+			// 鐠哄疇绻冩稉宥嗘暜閹镐胶娈戠€涙顔?			if key == "$schema" || key == "$id" || key == "$ref" ||
 				key == "additionalProperties" || key == "patternProperties" || key == "minLength" ||
 				key == "maxLength" || key == "minItems" || key == "maxItems" {
 				continue
 			}
-			// 閫掑綊娓呯悊宓屽瀵硅薄
-			cleaned[key] = cleanToolSchema(value)
+			// 闁帒缍婂〒鍛倞瀹撳苯顨滅€电钖?			cleaned[key] = cleanToolSchema(value)
 		}
-		// 瑙勮寖鍖?type 瀛楁涓哄ぇ鍐?		if typeVal, ok := cleaned["type"].(string); ok {
+		// 鐟欏嫯瀵栭崠?type 鐎涙顔屾稉鍝勩亣閸?		if typeVal, ok := cleaned["type"].(string); ok {
 			cleaned["type"] = strings.ToUpper(typeVal)
 		}
 		return cleaned
@@ -3393,8 +3380,7 @@ func convertClaudeGenerationConfig(req map[string]any) map[string]any {
 	return out
 }
 
-// extractImageSize 浠?Gemini 璇锋眰涓彁鍙?image_size 鍙傛暟
-func (s *GeminiMessagesCompatService) extractImageSize(body []byte) string {
+// extractImageSize 娴?Gemini 鐠囬攱鐪版稉顓熷絹閸?image_size 閸欏倹鏆?func (s *GeminiMessagesCompatService) extractImageSize(body []byte) string {
 	var req struct {
 		GenerationConfig *struct {
 			ImageConfig *struct {
