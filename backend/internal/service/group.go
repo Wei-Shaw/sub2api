@@ -18,6 +18,15 @@ type GroupImageConfig struct {
 	Price4K         *float64 `json:"image_price_4k,omitempty"`
 }
 
+// GroupAnthropicConfig Anthropic 平台专属配置（封装在 GroupExtra["anthropic_config"] 中）
+type GroupAnthropicConfig struct {
+	ClaudeCodeOnly                  bool               `json:"claude_code_only"`
+	FallbackGroupID                 *int64             `json:"fallback_group_id,omitempty"`
+	FallbackGroupIDOnInvalidRequest *int64             `json:"fallback_group_id_on_invalid_request,omitempty"`
+	ModelRoutingEnabled             bool               `json:"model_routing_enabled"`
+	ModelRouting                    map[string][]int64 `json:"model_routing,omitempty"`
+}
+
 type OpenAIMessagesDispatchModelConfig = domain.OpenAIMessagesDispatchModelConfig
 
 type Group struct {
@@ -130,6 +139,26 @@ func (g *Group) ImageConfig() GroupImageConfig {
 	}
 }
 
+// AnthropicConfig 返回 Anthropic 平台专属配置。
+// 优先从 GroupExtra["anthropic_config"] 读取，fallback 到一级字段（兼容旧数据）。
+func (g *Group) AnthropicConfig() GroupAnthropicConfig {
+	if raw, ok := g.GroupExtra["anthropic_config"]; ok {
+		if data, err := json.Marshal(raw); err == nil {
+			var cfg GroupAnthropicConfig
+			if json.Unmarshal(data, &cfg) == nil {
+				return cfg
+			}
+		}
+	}
+	return GroupAnthropicConfig{
+		ClaudeCodeOnly:                  g.ClaudeCodeOnly,
+		FallbackGroupID:                 g.FallbackGroupID,
+		FallbackGroupIDOnInvalidRequest: g.FallbackGroupIDOnInvalidRequest,
+		ModelRoutingEnabled:             g.ModelRoutingEnabled,
+		ModelRouting:                    g.ModelRouting,
+	}
+}
+
 // GetImagePrice 根据 image_size 返回对应的图片生成价格
 // 如果分组未配置价格，返回 nil（调用方应使用默认值）
 func (g *Group) GetImagePrice(imageSize string) *float64 {
@@ -167,17 +196,18 @@ func IsGroupContextValid(group *Group) bool {
 // GetRoutingAccountIDs 根据请求模型获取路由账号 ID 列表
 // 返回匹配的优先账号 ID 列表，如果没有匹配规则则返回 nil
 func (g *Group) GetRoutingAccountIDs(requestedModel string) []int64 {
-	if !g.ModelRoutingEnabled || len(g.ModelRouting) == 0 || requestedModel == "" {
+	cfg := g.AnthropicConfig()
+	if !cfg.ModelRoutingEnabled || len(cfg.ModelRouting) == 0 || requestedModel == "" {
 		return nil
 	}
 
 	// 1. 精确匹配优先
-	if accountIDs, ok := g.ModelRouting[requestedModel]; ok && len(accountIDs) > 0 {
+	if accountIDs, ok := cfg.ModelRouting[requestedModel]; ok && len(accountIDs) > 0 {
 		return accountIDs
 	}
 
 	// 2. 通配符匹配（前缀匹配）
-	for pattern, accountIDs := range g.ModelRouting {
+	for pattern, accountIDs := range cfg.ModelRouting {
 		if matchModelPattern(pattern, requestedModel) && len(accountIDs) > 0 {
 			return accountIDs
 		}
@@ -209,5 +239,15 @@ func mergeImageConfigIntoExtra(extra map[string]interface{}, cfg GroupImageConfi
 		extra = make(map[string]interface{})
 	}
 	extra["image_config"] = &cfg
+	return extra
+}
+
+// mergeAnthropicConfigIntoExtra 将 Anthropic 配置合并到 GroupExtra 的 "anthropic_config" 键中。
+// 如果 extra 为 nil 则创建新 map。
+func mergeAnthropicConfigIntoExtra(extra map[string]interface{}, cfg GroupAnthropicConfig) map[string]interface{} {
+	if extra == nil {
+		extra = make(map[string]interface{})
+	}
+	extra["anthropic_config"] = &cfg
 	return extra
 }

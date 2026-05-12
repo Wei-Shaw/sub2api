@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 10 // v10: added ImageConfigExtra for GroupExtra image_config migration
+const apiKeyAuthSnapshotVersion = 11 // v11: added AnthropicConfigExtra for GroupExtra anthropic_config migration
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -247,6 +247,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 	}
 	if apiKey.Group != nil {
 		imgCfg := apiKey.Group.ImageConfig()
+		antCfg := apiKey.Group.AnthropicConfig()
 		snapshot.Group = &APIKeyAuthGroupSnapshot{
 			ID:                              apiKey.Group.ID,
 			Name:                            apiKey.Group.Name,
@@ -264,11 +265,12 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			ImagePrice2K:                    imgCfg.Price2K,
 			ImagePrice4K:                    imgCfg.Price4K,
 			ImageConfigExtra:                &imgCfg,
-			ClaudeCodeOnly:                  apiKey.Group.ClaudeCodeOnly,
-			FallbackGroupID:                 apiKey.Group.FallbackGroupID,
-			FallbackGroupIDOnInvalidRequest: apiKey.Group.FallbackGroupIDOnInvalidRequest,
-			ModelRouting:                    apiKey.Group.ModelRouting,
-			ModelRoutingEnabled:             apiKey.Group.ModelRoutingEnabled,
+			AnthropicConfigExtra:            &antCfg,
+			ClaudeCodeOnly:                  antCfg.ClaudeCodeOnly,
+			FallbackGroupID:                 antCfg.FallbackGroupID,
+			FallbackGroupIDOnInvalidRequest: antCfg.FallbackGroupIDOnInvalidRequest,
+			ModelRouting:                    antCfg.ModelRouting,
+			ModelRoutingEnabled:             antCfg.ModelRoutingEnabled,
 			MCPXMLInject:                    apiKey.Group.MCPXMLInject,
 			SupportedModelScopes:            apiKey.Group.SupportedModelScopes,
 			AllowMessagesDispatch:           apiKey.Group.AllowMessagesDispatch,
@@ -353,13 +355,23 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 	return apiKey
 }
 
-// buildGroupExtraFromSnapshot 从快照的 ImageConfigExtra 重建 GroupExtra，
-// 使得 ImageConfig() accessor 在 cache-restored Group 上能正确命中 GroupExtra 路径。
+// buildGroupExtraFromSnapshot 从快照的 ImageConfigExtra/AnthropicConfigExtra 重建 GroupExtra，
+// 使得 ImageConfig()/AnthropicConfig() accessor 在 cache-restored Group 上能正确命中 GroupExtra 路径。
 func buildGroupExtraFromSnapshot(gs *APIKeyAuthGroupSnapshot) map[string]interface{} {
-	if gs == nil || gs.ImageConfigExtra == nil {
+	if gs == nil {
 		return nil
 	}
-	return map[string]interface{}{
-		"image_config": gs.ImageConfigExtra,
+	hasImage := gs.ImageConfigExtra != nil
+	hasAnthropic := gs.AnthropicConfigExtra != nil
+	if !hasImage && !hasAnthropic {
+		return nil
 	}
+	extra := make(map[string]interface{}, 2)
+	if hasImage {
+		extra["image_config"] = gs.ImageConfigExtra
+	}
+	if hasAnthropic {
+		extra["anthropic_config"] = gs.AnthropicConfigExtra
+	}
+	return extra
 }

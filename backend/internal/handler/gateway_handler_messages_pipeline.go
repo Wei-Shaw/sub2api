@@ -282,7 +282,7 @@ func (h *GatewayHandler) retryWithFallbackGroup(
 	if apiKey == nil || apiKey.Group == nil {
 		return false
 	}
-	fallbackGroupID := apiKey.Group.FallbackGroupIDOnInvalidRequest
+	fallbackGroupID := apiKey.Group.AnthropicConfig().FallbackGroupIDOnInvalidRequest
 	if fallbackGroupID == nil || *fallbackGroupID <= 0 {
 		return false
 	}
@@ -308,7 +308,7 @@ func (h *GatewayHandler) retryWithFallbackGroup(
 	// Validate fallback group constraints
 	if fallbackGroup.Platform != service.PlatformAnthropic ||
 		fallbackGroup.SubscriptionType == service.SubscriptionTypeSubscription ||
-		fallbackGroup.FallbackGroupIDOnInvalidRequest != nil {
+		fallbackGroup.AnthropicConfig().FallbackGroupIDOnInvalidRequest != nil {
 		reqLog.Warn("gateway.messages.pipeline.fallback_group_invalid",
 			zap.Int64("fallback_group_id", fallbackGroup.ID),
 			zap.String("fallback_platform", fallbackGroup.Platform),

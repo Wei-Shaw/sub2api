@@ -140,10 +140,11 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 	if g == nil {
 		return nil
 	}
+	antCfg := g.AnthropicConfig()
 	out := &AdminGroup{
 		Group:                       groupFromServiceBase(g),
-		ModelRouting:                g.ModelRouting,
-		ModelRoutingEnabled:         g.ModelRoutingEnabled,
+		ModelRouting:                antCfg.ModelRouting,
+		ModelRoutingEnabled:         antCfg.ModelRoutingEnabled,
 		MCPXMLInject:                g.MCPXMLInject,
 		DefaultMappedModel:          g.DefaultMappedModel,
 		MessagesDispatchModelConfig: g.MessagesDispatchModelConfig,
@@ -166,6 +167,7 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 
 func groupFromServiceBase(g *service.Group) Group {
 	imgCfg := g.ImageConfig()
+	antCfg := g.AnthropicConfig()
 	return Group{
 		ID:                              g.ID,
 		Name:                            g.Name,
@@ -184,9 +186,9 @@ func groupFromServiceBase(g *service.Group) Group {
 		ImagePrice1K:                    imgCfg.Price1K,
 		ImagePrice2K:                    imgCfg.Price2K,
 		ImagePrice4K:                    imgCfg.Price4K,
-		ClaudeCodeOnly:                  g.ClaudeCodeOnly,
-		FallbackGroupID:                 g.FallbackGroupID,
-		FallbackGroupIDOnInvalidRequest: g.FallbackGroupIDOnInvalidRequest,
+		ClaudeCodeOnly:                  antCfg.ClaudeCodeOnly,
+		FallbackGroupID:                 antCfg.FallbackGroupID,
+		FallbackGroupIDOnInvalidRequest: antCfg.FallbackGroupIDOnInvalidRequest,
 		AllowMessagesDispatch:           g.AllowMessagesDispatch,
 		RequireOAuthOnly:                g.RequireOAuthOnly,
 		RequirePrivacySet:               g.RequirePrivacySet,

@@ -27,7 +27,7 @@ func (h *GatewayHandler) responsesPipeline(c *gin.Context) {
 		service.BindErrorPassthroughService(c, h.errorPassthroughService)
 	}
 	if apiKey, ok := middleware2.GetAPIKeyFromContext(c); ok {
-		if apiKey.Group != nil && apiKey.Group.ClaudeCodeOnly {
+		if apiKey.Group != nil && apiKey.Group.AnthropicConfig().ClaudeCodeOnly {
 			h.responsesErrorResponse(c, http.StatusForbidden,
 				"permission_error",
 				"This group is restricted to Claude Code clients (/v1/messages only)")

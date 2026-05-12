@@ -1681,7 +1681,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		}
 	}
 
-	// 双写：同时写入一级字段（兼容旧代码/DB列）和 GroupExtra["image_config"]
+	// 双写：同时写入一级字段（兼容旧代码/DB列）和 GroupExtra
 	groupExtra := input.GroupExtra
 	groupExtra = mergeImageConfigIntoExtra(groupExtra, GroupImageConfig{
 		AllowGeneration: input.AllowImageGeneration,
@@ -1690,6 +1690,13 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		Price1K:         imagePrice1K,
 		Price2K:         imagePrice2K,
 		Price4K:         imagePrice4K,
+	})
+	groupExtra = mergeAnthropicConfigIntoExtra(groupExtra, GroupAnthropicConfig{
+		ClaudeCodeOnly:                  input.ClaudeCodeOnly,
+		FallbackGroupID:                 input.FallbackGroupID,
+		FallbackGroupIDOnInvalidRequest: fallbackOnInvalidRequest,
+		ModelRoutingEnabled:             input.ModelRoutingEnabled,
+		ModelRouting:                    input.ModelRouting,
 	})
 
 	group := &Group{
@@ -1803,14 +1810,15 @@ func (s *adminServiceImpl) validateFallbackGroup(ctx context.Context, currentGro
 		}
 
 		// 降级分组不能启用 claude_code_only，否则会造成死循环
-		if nextID == fallbackGroupID && fallbackGroup.ClaudeCodeOnly {
+		fallbackAntCfg := fallbackGroup.AnthropicConfig()
+		if nextID == fallbackGroupID && fallbackAntCfg.ClaudeCodeOnly {
 			return fmt.Errorf("fallback group cannot have claude_code_only enabled")
 		}
 
-		if fallbackGroup.FallbackGroupID == nil {
+		if fallbackAntCfg.FallbackGroupID == nil {
 			return nil
 		}
-		nextID = *fallbackGroup.FallbackGroupID
+		nextID = *fallbackAntCfg.FallbackGroupID
 	}
 }
 
@@ -1839,7 +1847,7 @@ func (s *adminServiceImpl) validateFallbackGroupOnInvalidRequest(ctx context.Con
 	if fallbackGroup.SubscriptionType == SubscriptionTypeSubscription {
 		return fmt.Errorf("fallback group cannot be subscription type")
 	}
-	if fallbackGroup.FallbackGroupIDOnInvalidRequest != nil {
+	if fallbackGroup.AnthropicConfig().FallbackGroupIDOnInvalidRequest != nil {
 		return fmt.Errorf("fallback group cannot have invalid request fallback configured")
 	}
 	return nil
@@ -1952,6 +1960,14 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.ModelRoutingEnabled != nil {
 		group.ModelRoutingEnabled = *input.ModelRoutingEnabled
 	}
+	// 双写：同步更新 GroupExtra["anthropic_config"]
+	group.GroupExtra = mergeAnthropicConfigIntoExtra(group.GroupExtra, GroupAnthropicConfig{
+		ClaudeCodeOnly:                  group.ClaudeCodeOnly,
+		FallbackGroupID:                 group.FallbackGroupID,
+		FallbackGroupIDOnInvalidRequest: group.FallbackGroupIDOnInvalidRequest,
+		ModelRoutingEnabled:             group.ModelRoutingEnabled,
+		ModelRouting:                    group.ModelRouting,
+	})
 	if input.MCPXMLInject != nil {
 		group.MCPXMLInject = *input.MCPXMLInject
 	}
