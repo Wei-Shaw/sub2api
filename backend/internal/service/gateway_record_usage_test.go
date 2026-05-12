@@ -192,6 +192,46 @@ REDACTED
 	require.Equal(t, mappedModel, *usageRepo.lastLog.UpstreamModel)
 REDACTED
 
+func TestGatewayServiceRecordUsage_EmptyImageSizeDefaultsBeforeBillingAndPersistence(t *testing.T) {
+	imagePrice2K := 0.19
+	groupID := int64(901)
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: trueREDACTED
+	svc := newGatewayRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{REDACTED, &openAIRecordUsageSubRepoStub{REDACTED)
+
+	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID:      "gateway_image_default_size",
+			Model:          "gemini-image",
+			ImageCount:     1,
+			ImageInputSize: "auto",
+			Duration:       time.Second,
+	REDACTED,
+		APIKey: &APIKey{
+			ID:      801,
+			GroupID: i64p(groupID),
+			Group: &Group{
+				ID:             groupID,
+				RateMultiplier: 1.0,
+				ImagePrice2K:   &imagePrice2K,
+		REDACTED,
+	REDACTED,
+		User:    &User{ID: 601REDACTED,
+		Account: &Account{ID: 701REDACTED,
+REDACTED)
+
+REDACTED
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, 1, usageRepo.lastLog.ImageCount)
+	require.NotNil(t, usageRepo.lastLog.ImageSize)
+	require.Equal(t, ImageBillingSize2K, *usageRepo.lastLog.ImageSize)
+	require.NotNil(t, usageRepo.lastLog.ImageInputSize)
+	require.Equal(t, "auto", *usageRepo.lastLog.ImageInputSize)
+	require.NotNil(t, usageRepo.lastLog.ImageSizeSource)
+	require.Equal(t, ImageSizeSourceDefault, *usageRepo.lastLog.ImageSizeSource)
+	require.InDelta(t, 0.19, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, 0.19, usageRepo.lastLog.ActualCost, 1e-12)
+REDACTED
+
 func TestGatewayServiceRecordUsage_UsageLogWriteErrorDoesNotSkipBilling(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: false, err: MarkUsageLogCreateNotPersisted(context.Canceled)REDACTED
 	userRepo := &openAIRecordUsageUserRepoStub{REDACTED

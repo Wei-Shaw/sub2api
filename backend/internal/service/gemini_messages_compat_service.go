@@ -1072,21 +1072,23 @@ REDACTED
 
 	// 图片生成计费
 	imageCount := 0
-	imageSize := s.extractImageSize(body)
+	imageInputSize := s.extractImageInputSize(body)
+	imageSize := normalizeOpenAIImageSizeTier(imageInputSize)
 	if isImageGenerationModel(originalModel) {
 		imageCount = 1
 REDACTED
 
 	return &ForwardResult{
-		RequestID:     requestID,
-		Usage:         *usage,
-		Model:         originalModel,
-		UpstreamModel: mappedModel,
-		Stream:        req.Stream,
-		Duration:      time.Since(startTime),
-		FirstTokenMs:  firstTokenMs,
-		ImageCount:    imageCount,
-		ImageSize:     imageSize,
+		RequestID:      requestID,
+		Usage:          *usage,
+		Model:          originalModel,
+		UpstreamModel:  mappedModel,
+		Stream:         req.Stream,
+		Duration:       time.Since(startTime),
+		FirstTokenMs:   firstTokenMs,
+		ImageCount:     imageCount,
+		ImageSize:      imageSize,
+		ImageInputSize: imageInputSize,
 REDACTED, nil
 REDACTED
 
@@ -1600,21 +1602,23 @@ REDACTED
 
 	// 图片生成计费
 	imageCount := 0
-	imageSize := s.extractImageSize(body)
+	imageInputSize := s.extractImageInputSize(body)
+	imageSize := normalizeOpenAIImageSizeTier(imageInputSize)
 	if isImageGenerationModel(originalModel) {
 		imageCount = 1
 REDACTED
 
 	return &ForwardResult{
-		RequestID:     requestID,
-		Usage:         *usage,
-		Model:         originalModel,
-		UpstreamModel: mappedModel,
-		Stream:        stream,
-		Duration:      time.Since(startTime),
-		FirstTokenMs:  firstTokenMs,
-		ImageCount:    imageCount,
-		ImageSize:     imageSize,
+		RequestID:      requestID,
+		Usage:          *usage,
+		Model:          originalModel,
+		UpstreamModel:  mappedModel,
+		Stream:         stream,
+		Duration:       time.Since(startTime),
+		FirstTokenMs:   firstTokenMs,
+		ImageCount:     imageCount,
+		ImageSize:      imageSize,
+		ImageInputSize: imageInputSize,
 REDACTED, nil
 REDACTED
 
@@ -3432,6 +3436,10 @@ REDACTED
 
 // extractImageSize 从 Gemini 请求中提取 image_size 参数
 func (s *GeminiMessagesCompatService) extractImageSize(body []byte) string {
+	return normalizeOpenAIImageSizeTier(s.extractImageInputSize(body))
+REDACTED
+
+func (s *GeminiMessagesCompatService) extractImageInputSize(body []byte) string {
 	var req struct {
 		GenerationConfig *struct {
 			ImageConfig *struct {
@@ -3440,15 +3448,12 @@ func (s *GeminiMessagesCompatService) extractImageSize(body []byte) string {
 	REDACTED `json:"generationConfig"`
 REDACTED
 	if err := json.Unmarshal(body, &req); err != nil {
-		return "2K"
+		return ""
 REDACTED
 
 	if req.GenerationConfig != nil && req.GenerationConfig.ImageConfig != nil {
-		size := strings.ToUpper(strings.TrimSpace(req.GenerationConfig.ImageConfig.ImageSize))
-		if size == "1K" || size == "2K" || size == "4K" {
-			return size
-	REDACTED
+		return strings.TrimSpace(req.GenerationConfig.ImageConfig.ImageSize)
 REDACTED
 
-	return "2K"
+	return ""
 REDACTED
