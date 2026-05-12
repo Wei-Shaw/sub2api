@@ -373,6 +373,8 @@ export default {
     channelPricing: '渠道定价',
     channelMonitor: '渠道监控',
     channelStatus: '渠道状态',
+    availableChannels: '可用渠道',
+    buySubscription: '充值/订阅',
     riskControl: '风控中心',
   },
 

@@ -373,6 +373,8 @@ export default {
     channelPricing: 'Channel Pricing',
     channelMonitor: 'Channel Monitor',
     channelStatus: 'Channel Status',
+    availableChannels: 'Available Channels',
+    buySubscription: 'Purchase',
     riskControl: 'Risk Control',
   },
 
