@@ -561,27 +561,27 @@ func isMobile(c *gin.Context) bool {
 }
 
 type PaymentOrderResult struct {
-	ID                  int64      `json:"id"`
-	UserID              int64      `json:"user_id"`
-	Amount              float64    `json:"amount"`
-	PayAmount           float64    `json:"pay_amount"`
-	FeeRate             float64    `json:"fee_rate"`
-	Currency            string     `json:"currency"`
-	PaymentType         string     `json:"payment_type"`
-	OutTradeNo          string     `json:"out_trade_no"`
-	Status              string     `json:"status"`
-	OrderType           string     `json:"order_type"`
-	CreatedAt           time.Time  `json:"created_at"`
-	ExpiresAt           time.Time  `json:"expires_at"`
-	PaidAt              *time.Time `json:"paid_at,omitempty"`
-	CompletedAt         *time.Time `json:"completed_at,omitempty"`
-	RefundAmount        float64    `json:"refund_amount"`
-	RefundReason        *string    `json:"refund_reason,omitempty"`
-	RefundRequestedAt   *time.Time `json:"refund_requested_at,omitempty"`
-	RefundRequestedBy   *string    `json:"refund_requested_by,omitempty"`
-	RefundRequestReason *string    `json:"refund_request_reason,omitempty"`
-	PlanID              *int64     `json:"plan_id,omitempty"`
-	ProviderInstanceID  *string    `json:"provider_instance_id,omitempty"`
+	ID                  int             `json:"id"`
+	UserID              int64           `json:"user_id"`
+	Amount              decimal.Decimal `json:"amount"`
+	PayAmount           decimal.Decimal `json:"pay_amount"`
+	FeeRate             decimal.Decimal `json:"fee_rate"`
+	Currency            string          `json:"currency"`
+	PaymentType         string          `json:"payment_type"`
+	OutTradeNo          string          `json:"out_trade_no"`
+	Status              string          `json:"status"`
+	OrderType           string          `json:"order_type"`
+	CreatedAt           time.Time       `json:"created_at"`
+	ExpiresAt           time.Time       `json:"expires_at"`
+	PaidAt              *time.Time      `json:"paid_at,omitempty"`
+	CompletedAt         *time.Time      `json:"completed_at,omitempty"`
+	RefundAmount        decimal.Decimal `json:"refund_amount"`
+	RefundReason        *string         `json:"refund_reason,omitempty"`
+	RefundRequestedAt   *time.Time      `json:"refund_requested_at,omitempty"`
+	RefundRequestedBy   *string         `json:"refund_requested_by,omitempty"`
+	RefundRequestReason *string         `json:"refund_request_reason,omitempty"`
+	PlanID              *int64          `json:"plan_id,omitempty"`
+	ProviderInstanceID  *string         `json:"provider_instance_id,omitempty"`
 }
 
 func sanitizePaymentOrdersForResponse(orders []*dbent.PaymentOrder) []PaymentOrderResult {

@@ -7,9 +7,9 @@ import (
 
 	"github.com/shopspring/decimal"
 
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	pluginent "github.com/Wei-Shaw/sub2api/plugins/payment/ent"
 	"github.com/Wei-Shaw/sub2api/plugins/payment/ent/paymentproviderinstance"
+	infraerrors "github.com/Wei-Shaw/sub2api/plugins/payment/internal/errors"
 	"github.com/Wei-Shaw/sub2api/plugins/payment/internal/payment"
 )
 
@@ -31,7 +31,7 @@ func (s *PaymentConfigService) GetAvailableMethodLimits(ctx context.Context) (*M
 		Methods: make(map[string]MethodLimits, len(typeInstances)),
 	}
 	for pt, insts := range typeInstances {
-		currency, ok := s.pcAggregateMethodCurrency(insts)
+		currency, ok := s.pcAggregateMethodCurrency(ctx, insts)
 		if !ok {
 			continue
 		}
@@ -102,7 +102,7 @@ func (s *PaymentConfigService) GetMethodLimits(ctx context.Context, types []stri
 				matching = append(matching, inst)
 			}
 		}
-		currency, ok := s.pcAggregateMethodCurrency(matching)
+		currency, ok := s.pcAggregateMethodCurrency(ctx, matching)
 		if !ok {
 			continue
 		}
@@ -132,7 +132,7 @@ func (s *PaymentConfigService) ValidateMethodCurrencyConsistency(ctx context.Con
 		return payment.DefaultPaymentCurrency, nil
 	}
 
-	currency, ok := s.pcAggregateMethodCurrency(matching)
+	currency, ok := s.pcAggregateMethodCurrency(ctx, matching)
 	if !ok {
 		return "", infraerrors.ServiceUnavailable(
 			"PAYMENT_METHOD_CURRENCY_CONFLICT",
@@ -142,10 +142,10 @@ func (s *PaymentConfigService) ValidateMethodCurrencyConsistency(ctx context.Con
 	return currency, nil
 }
 
-func (s *PaymentConfigService) pcAggregateMethodCurrency(instances []*pluginent.PaymentProviderInstance) (string, bool) {
+func (s *PaymentConfigService) pcAggregateMethodCurrency(ctx context.Context, instances []*pluginent.PaymentProviderInstance) (string, bool) {
 	currency := ""
 	for _, inst := range instances {
-		next := s.pcInstancePaymentCurrency(inst)
+		next := s.pcInstancePaymentCurrency(ctx, inst)
 		if next == "" {
 			continue
 		}
@@ -163,13 +163,13 @@ func (s *PaymentConfigService) pcAggregateMethodCurrency(instances []*pluginent.
 	return currency, true
 }
 
-func (s *PaymentConfigService) pcInstancePaymentCurrency(inst *pluginent.PaymentProviderInstance) string {
+func (s *PaymentConfigService) pcInstancePaymentCurrency(ctx context.Context, inst *pluginent.PaymentProviderInstance) string {
 	if inst == nil {
 		return payment.DefaultPaymentCurrency
 	}
 	cfg := map[string]string{}
 	if s != nil {
-		decrypted, err := s.decryptConfig(inst.Config)
+		decrypted, err := s.decryptConfig(ctx, inst.Config)
 		if err == nil && decrypted != nil {
 			cfg = decrypted
 		}

@@ -125,6 +125,7 @@ type UpdatePaymentConfigRequest struct {
 // float64.
 type MethodLimits struct {
 	PaymentType string          `json:"payment_type"`
+	Currency    string          `json:"currency"`
 	FeeRate     decimal.Decimal `json:"fee_rate"`
 	DailyLimit  decimal.Decimal `json:"daily_limit"`
 	SingleMin   decimal.Decimal `json:"single_min"`
