@@ -91,7 +91,8 @@ func (s *GeminiMessagesCompatService) SelectAccountForModel(ctx context.Context,
 }
 
 func (s *GeminiMessagesCompatService) SelectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) (*Account, error) {
-	// 1. 纭畾鐩爣骞冲彴鍜岃皟搴︽ā寮?	// Determine target platform and scheduling mode
+	// 1. 确定目标平台和调度模式
+	// Determine target platform and scheduling mode
 	platform, useMixedScheduling, hasForcePlatform, err := s.resolvePlatformAndSchedulingMode(ctx, groupID)
 	if err != nil {
 		return nil, err
@@ -99,17 +100,19 @@ func (s *GeminiMessagesCompatService) SelectAccountForModelWithExclusions(ctx co
 
 	cacheKey := "gemini:" + sessionHash
 
-	// 2. 灏濊瘯绮樻€т細璇濆懡涓?	// Try sticky session hit
+	// 2. 尝试粘性会话命中
+	// Try sticky session hit
 	if account := s.tryStickySessionHit(ctx, groupID, sessionHash, cacheKey, requestedModel, excludedIDs, platform, useMixedScheduling); account != nil {
 		return account, nil
 	}
 
-	// 3. 鏌ヨ鍙皟搴﹁处鎴凤紙寮哄埗骞冲彴妯″紡锛氫紭鍏堟寜鍒嗙粍鏌ユ壘锛屾壘涓嶅埌鍐嶆煡鍏ㄩ儴锛?	// Query schedulable accounts (force platform mode: try group first, fallback to all)
+	// 3. 查询可调度账户（强制平台模式：优先按分组查找，找不到再查全部）
+	// Query schedulable accounts (force platform mode: try group first, fallback to all)
 	accounts, err := s.listSchedulableAccountsOnce(ctx, groupID, platform, hasForcePlatform)
 	if err != nil {
 		return nil, fmt.Errorf("query accounts failed: %w", err)
 	}
-	// 寮哄埗骞冲彴妯″紡涓嬶紝鍒嗙粍涓壘涓嶅埌璐︽埛鏃跺洖閫€鏌ヨ鍏ㄩ儴
+	// 强制平台模式下，分组中找不到账户时回退查询全部
 	if len(accounts) == 0 && groupID != nil && hasForcePlatform {
 		accounts, err = s.listSchedulableAccountsOnce(ctx, nil, platform, hasForcePlatform)
 		if err != nil {
@@ -117,7 +120,8 @@ func (s *GeminiMessagesCompatService) SelectAccountForModelWithExclusions(ctx co
 		}
 	}
 
-	// 4. 鎸変紭鍏堢骇 + LRU 閫夋嫨鏈€浣宠处鍙?	// Select best account by priority + LRU
+	// 4. 按优先级 + LRU 选择最佳账号
+	// Select best account by priority + LRU
 	selected := s.selectBestGeminiAccount(ctx, accounts, requestedModel, excludedIDs, platform, useMixedScheduling)
 
 	if selected == nil {
@@ -127,7 +131,8 @@ func (s *GeminiMessagesCompatService) SelectAccountForModelWithExclusions(ctx co
 		return nil, errors.New("no available Gemini accounts")
 	}
 
-	// 5. 璁剧疆绮樻€т細璇濈粦瀹?	// Set sticky session binding
+	// 5. 设置粘性会话绑定
+	// Set sticky session binding
 	if sessionHash != "" {
 		_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), cacheKey, selected.ID, geminiStickySessionTTL)
 	}
@@ -135,17 +140,20 @@ func (s *GeminiMessagesCompatService) SelectAccountForModelWithExclusions(ctx co
 	return s.hydrateSelectedAccount(ctx, selected)
 }
 
-// resolvePlatformAndSchedulingMode 瑙ｆ瀽鐩爣骞冲彴鍜岃皟搴︽ā寮忋€?// 杩斿洖锛氬钩鍙板悕绉般€佹槸鍚︿娇鐢ㄦ贩鍚堣皟搴︺€佹槸鍚﹀己鍒跺钩鍙般€侀敊璇€?//
+// resolvePlatformAndSchedulingMode 解析目标平台和调度模式。
+// 返回：平台名称、是否使用混合调度、是否强制平台、错误。
+//
 // resolvePlatformAndSchedulingMode resolves target platform and scheduling mode.
 // Returns: platform name, whether to use mixed scheduling, whether force platform, error.
 func (s *GeminiMessagesCompatService) resolvePlatformAndSchedulingMode(ctx context.Context, groupID *int64) (platform string, useMixedScheduling bool, hasForcePlatform bool, err error) {
-	// 浼樺厛妫€鏌?context 涓殑寮哄埗骞冲彴锛?antigravity 璺敱锛?	forcePlatform, hasForcePlatform := ctx.Value(ctxkey.ForcePlatform).(string)
+	// 优先检查 context 中的强制平台（/antigravity 路由）
+	forcePlatform, hasForcePlatform := ctx.Value(ctxkey.ForcePlatform).(string)
 	if hasForcePlatform && forcePlatform != "" {
 		return forcePlatform, false, true, nil
 	}
 
 	if groupID != nil {
-		// 鏍规嵁鍒嗙粍 platform 鍐冲畾鏌ヨ鍝璐﹀彿
+		// 根据分组 platform 决定查询哪种账号
 		var group *Group
 		if ctxGroup, ok := ctx.Value(ctxkey.Group).(*Group); ok && IsGroupContextValid(ctxGroup) && ctxGroup.ID == *groupID {
 			group = ctxGroup
@@ -155,14 +163,17 @@ func (s *GeminiMessagesCompatService) resolvePlatformAndSchedulingMode(ctx conte
 				return "", false, false, fmt.Errorf("get group failed: %w", err)
 			}
 		}
-		// gemini 鍒嗙粍鏀寔娣峰悎璋冨害锛堝寘鍚惎鐢ㄤ簡 mixed_scheduling 鐨?antigravity 璐︽埛锛?		return group.Platform, group.Platform == PlatformGemini, false, nil
+		// gemini 分组支持混合调度（包含启用了 mixed_scheduling 的 antigravity 账户）
+		return group.Platform, group.Platform == PlatformGemini, false, nil
 	}
 
-	// 鏃犲垎缁勬椂鍙娇鐢ㄥ師鐢?gemini 骞冲彴
+	// 无分组时只使用原生 gemini 平台
 	return PlatformGemini, true, false, nil
 }
 
-// tryStickySessionHit 灏濊瘯浠庣矘鎬т細璇濊幏鍙栬处鍙枫€?// 濡傛灉鍛戒腑涓旇处鍙峰彲鐢ㄥ垯杩斿洖璐﹀彿锛涘鏋滆处鍙蜂笉鍙敤鍒欐竻鐞嗕細璇濆苟杩斿洖 nil銆?//
+// tryStickySessionHit 尝试从粘性会话获取账号。
+// 如果命中且账号可用则返回账号；如果账号不可用则清理会话并返回 nil。
+//
 // tryStickySessionHit attempts to get account from sticky session.
 // Returns account if hit and usable; clears session and returns nil if account unavailable.
 func (s *GeminiMessagesCompatService) tryStickySessionHit(
@@ -191,23 +202,28 @@ func (s *GeminiMessagesCompatService) tryStickySessionHit(
 		return nil
 	}
 
-	// 妫€鏌ヨ处鍙锋槸鍚﹂渶瑕佹竻鐞嗙矘鎬т細璇?	// Check if sticky session should be cleared
+	// 检查账号是否需要清理粘性会话
+	// Check if sticky session should be cleared
 	if shouldClearStickySession(account, requestedModel) {
 		_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), cacheKey)
 		return nil
 	}
 
-	// 楠岃瘉璐﹀彿鏄惁鍙敤浜庡綋鍓嶈姹?	// Verify account is usable for current request
+	// 验证账号是否可用于当前请求
+	// Verify account is usable for current request
 	if !s.isAccountUsableForRequest(ctx, account, requestedModel, platform, useMixedScheduling) {
 		return nil
 	}
 
-	// 鍒锋柊浼氳瘽 TTL 骞惰繑鍥炶处鍙?	// Refresh session TTL and return account
+	// 刷新会话 TTL 并返回账号
+	// Refresh session TTL and return account
 	_ = s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), cacheKey, geminiStickySessionTTL)
 	return account
 }
 
-// isAccountUsableForRequest 妫€鏌ヨ处鍙锋槸鍚﹀彲鐢ㄤ簬褰撳墠璇锋眰銆?// 楠岃瘉锛氭ā鍨嬭皟搴︺€佹ā鍨嬫敮鎸併€佸钩鍙板尮閰嶃€侀€熺巼闄愬埗棰勬銆?//
+// isAccountUsableForRequest 检查账号是否可用于当前请求。
+// 验证：模型调度、模型支持、平台匹配、速率限制预检。
+//
 // isAccountUsableForRequest checks if account is usable for current request.
 // Validates: model scheduling, model support, platform matching, rate limit precheck.
 func (s *GeminiMessagesCompatService) isAccountUsableForRequest(
@@ -226,22 +242,25 @@ func (s *GeminiMessagesCompatService) isAccountUsableForRequestWithPrecheck(
 	useMixedScheduling bool,
 	precheckResult map[int64]bool,
 ) bool {
-	// 妫€鏌ユā鍨嬭皟搴﹁兘鍔?	// Check model scheduling capability
+	// 检查模型调度能力
+	// Check model scheduling capability
 	if !account.IsSchedulableForModelWithContext(ctx, requestedModel) {
 		return false
 	}
 
-	// 妫€鏌ユā鍨嬫敮鎸?	// Check model support
+	// 检查模型支持
+	// Check model support
 	if requestedModel != "" && !s.isModelSupportedByAccount(account, requestedModel) {
 		return false
 	}
 
-	// 妫€鏌ュ钩鍙板尮閰?	// Check platform matching
+	// 检查平台匹配
+	// Check platform matching
 	if !s.isAccountValidForPlatform(account, platform, useMixedScheduling) {
 		return false
 	}
 
-	// 閫熺巼闄愬埗棰勬
+	// 速率限制预检
 	// Rate limit precheck
 	if !s.passesRateLimitPreCheckWithCache(ctx, account, requestedModel, precheckResult) {
 		return false
@@ -250,7 +269,9 @@ func (s *GeminiMessagesCompatService) isAccountUsableForRequestWithPrecheck(
 	return true
 }
 
-// isAccountValidForPlatform 妫€鏌ヨ处鍙锋槸鍚﹀尮閰嶇洰鏍囧钩鍙般€?// 鍘熺敓骞冲彴鐩存帴鍖归厤锛涙贩鍚堣皟搴︽ā寮忎笅 antigravity 闇€瑕佸惎鐢?mixed_scheduling銆?//
+// isAccountValidForPlatform 检查账号是否匹配目标平台。
+// 原生平台直接匹配；混合调度模式下 antigravity 需要启用 mixed_scheduling。
+//
 // isAccountValidForPlatform checks if account matches target platform.
 // Native platform matches directly; mixed scheduling mode requires antigravity to enable mixed_scheduling.
 func (s *GeminiMessagesCompatService) isAccountValidForPlatform(account *Account, platform string, useMixedScheduling bool) bool {
@@ -281,7 +302,9 @@ func (s *GeminiMessagesCompatService) passesRateLimitPreCheckWithCache(ctx conte
 	return ok
 }
 
-// selectBestGeminiAccount 浠庡€欓€夎处鍙蜂腑閫夋嫨鏈€浣宠处鍙凤紙浼樺厛绾?+ LRU + OAuth 浼樺厛锛夈€?// 杩斿洖 nil 琛ㄧず鏃犲彲鐢ㄨ处鍙枫€?//
+// selectBestGeminiAccount 从候选账号中选择最佳账号（优先级 + LRU + OAuth 优先）。
+// 返回 nil 表示无可用账号。
+//
 // selectBestGeminiAccount selects best account from candidates (priority + LRU + OAuth preferred).
 // Returns nil if no available account.
 func (s *GeminiMessagesCompatService) selectBestGeminiAccount(
@@ -298,17 +321,18 @@ func (s *GeminiMessagesCompatService) selectBestGeminiAccount(
 	for i := range accounts {
 		acc := &accounts[i]
 
-		// 璺宠繃琚帓闄ょ殑璐﹀彿
+		// 跳过被排除的账号
 		if _, excluded := excludedIDs[acc.ID]; excluded {
 			continue
 		}
 
-		// 妫€鏌ヨ处鍙锋槸鍚﹀彲鐢ㄤ簬褰撳墠璇锋眰
+		// 检查账号是否可用于当前请求
 		if !s.isAccountUsableForRequestWithPrecheck(ctx, acc, requestedModel, platform, useMixedScheduling, precheckResult) {
 			continue
 		}
 
-		// 閫夋嫨鏈€浣宠处鍙?		if selected == nil {
+		// 选择最佳账号
+		if selected == nil {
 			selected = acc
 			continue
 		}
@@ -338,11 +362,13 @@ func (s *GeminiMessagesCompatService) buildPreCheckUsageResultMap(ctx context.Co
 	return result
 }
 
-// isBetterGeminiAccount 鍒ゆ柇 candidate 鏄惁姣?current 鏇翠紭銆?// 瑙勫垯锛氫紭鍏堢骇鏇撮珮锛堟暟鍊兼洿灏忥級浼樺厛锛涘悓浼樺厛绾ф椂锛屾湭浣跨敤杩囩殑浼樺厛锛圤Auth > 闈?OAuth锛夛紝鍏舵鏄渶涔呮湭浣跨敤鐨勩€?//
+// isBetterGeminiAccount 判断 candidate 是否比 current 更优。
+// 规则：优先级更高（数值更小）优先；同优先级时，未使用过的优先（OAuth > 非 OAuth），其次是最久未使用的。
+//
 // isBetterGeminiAccount checks if candidate is better than current.
 // Rules: higher priority (lower value) wins; same priority: never used (OAuth > non-OAuth) > least recently used.
 func (s *GeminiMessagesCompatService) isBetterGeminiAccount(candidate, current *Account) bool {
-	// 浼樺厛绾ф洿楂橈紙鏁板€兼洿灏忥級
+	// 优先级更高（数值更小）
 	if candidate.Priority < current.Priority {
 		return true
 	}
@@ -350,19 +376,25 @@ func (s *GeminiMessagesCompatService) isBetterGeminiAccount(candidate, current *
 		return false
 	}
 
-	// 鍚屼紭鍏堢骇锛屾瘮杈冩渶鍚庝娇鐢ㄦ椂闂?	switch {
+	// 同优先级，比较最后使用时间
+	switch {
 	case candidate.LastUsedAt == nil && current.LastUsedAt != nil:
-		// candidate 浠庢湭浣跨敤锛屼紭鍏?		return true
+		// candidate 从未使用，优先
+		return true
 	case candidate.LastUsedAt != nil && current.LastUsedAt == nil:
-		// current 浠庢湭浣跨敤锛屼繚鎸?		return false
+		// current 从未使用，保持
+		return false
 	case candidate.LastUsedAt == nil && current.LastUsedAt == nil:
-		// 閮芥湭浣跨敤锛屼紭鍏堥€夋嫨 OAuth 璐﹀彿锛堟洿鍏煎 Code Assist 娴佺▼锛?		return candidate.Type == AccountTypeOAuth && current.Type != AccountTypeOAuth
+		// 都未使用，优先选择 OAuth 账号（更兼容 Code Assist 流程）
+		return candidate.Type == AccountTypeOAuth && current.Type != AccountTypeOAuth
 	default:
-		// 閮戒娇鐢ㄨ繃锛岄€夋嫨鏈€涔呮湭浣跨敤鐨?		return candidate.LastUsedAt.Before(*current.LastUsedAt)
+		// 都使用过，选择最久未使用的
+		return candidate.LastUsedAt.Before(*current.LastUsedAt)
 	}
 }
 
-// isModelSupportedByAccount 鏍规嵁璐︽埛骞冲彴妫€鏌ユā鍨嬫敮鎸?func (s *GeminiMessagesCompatService) isModelSupportedByAccount(account *Account, requestedModel string) bool {
+// isModelSupportedByAccount 根据账户平台检查模型支持
+func (s *GeminiMessagesCompatService) isModelSupportedByAccount(account *Account, requestedModel string) bool {
 	if account.Platform == PlatformAntigravity {
 		if strings.TrimSpace(requestedModel) == "" {
 			return true
@@ -372,7 +404,7 @@ func (s *GeminiMessagesCompatService) isBetterGeminiAccount(candidate, current *
 	return account.IsModelSupported(requestedModel)
 }
 
-// GetAntigravityGatewayService 杩斿洖 AntigravityGatewayService
+// GetAntigravityGatewayService 返回 AntigravityGatewayService
 func (s *GeminiMessagesCompatService) GetAntigravityGatewayService() *AntigravityGatewayService {
 	return s.antigravityGatewayService
 }
@@ -438,7 +470,7 @@ func (s *GeminiMessagesCompatService) validateUpstreamBaseURL(raw string) (strin
 	return normalized, nil
 }
 
-// HasAntigravityAccounts 妫€鏌ユ槸鍚︽湁鍙敤鐨?antigravity 璐︽埛
+// HasAntigravityAccounts 检查是否有可用的 antigravity 账户
 func (s *GeminiMessagesCompatService) HasAntigravityAccounts(ctx context.Context, groupID *int64) (bool, error) {
 	accounts, err := s.listSchedulableAccountsOnce(ctx, groupID, PlatformAntigravity, false)
 	if err != nil {
@@ -825,7 +857,8 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 			break
 		}
 
-		// 閿欒绛栫暐浼樺厛锛氬尮閰嶅垯璺宠繃閲嶈瘯鐩存帴澶勭悊銆?		if matched, rebuilt := s.checkErrorPolicyInLoop(ctx, account, resp); matched {
+		// 错误策略优先：匹配则跳过重试直接处理。
+		if matched, rebuilt := s.checkErrorPolicyInLoop(ctx, account, resp); matched {
 			resp = rebuilt
 			break
 		} else {
@@ -893,7 +926,7 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-		// 缁熶竴閿欒绛栫暐锛氳嚜瀹氫箟閿欒鐮?+ 涓存椂涓嶅彲璋冨害
+		// 统一错误策略：自定义错误码 + 临时不可调度
 		if s.rateLimitService != nil {
 			switch s.rateLimitService.CheckErrorPolicy(ctx, account, resp.StatusCode, respBody) {
 			case ErrorPolicySkipped:
@@ -932,9 +965,9 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 			}
 		}
 
-		// ErrorPolicyNone 鈫?鍘熸湁閫昏緫
+		// ErrorPolicyNone → 原有逻辑
 		s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
-		// 绮剧‘鍖归厤鏈嶅姟绔厤缃被 400 閿欒锛岃Е鍙?failover + 涓存椂灏佺
+		// 精确匹配服务端配置类 400 错误，触发 failover + 临时封禁
 		if resp.StatusCode == http.StatusBadRequest {
 			msg400 := strings.ToLower(strings.TrimSpace(extractUpstreamErrorMessage(respBody)))
 			if isGoogleProjectConfigError(msg400) {
@@ -1037,7 +1070,7 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 		}
 	}
 
-	// 鍥剧墖鐢熸垚璁¤垂
+	// 图片生成计费
 	imageCount := 0
 	imageSize := s.extractImageSize(body)
 	if isImageGenerationModel(originalModel) {
@@ -1078,7 +1111,8 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 		return nil, s.writeGoogleError(c, http.StatusBadRequest, "Request body is empty")
 	}
 
-	// 杩囨护鎺?parts 涓虹┖鐨勬秷鎭紙Gemini API 涓嶆帴鍙楃┖ parts锛?	if filteredBody, err := filterEmptyPartsFromGeminiRequest(body); err == nil {
+	// 过滤掉 parts 为空的消息（Gemini API 不接受空 parts）
+	if filteredBody, err := filterEmptyPartsFromGeminiRequest(body); err == nil {
 		body = filteredBody
 	}
 
@@ -1296,7 +1330,8 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 			return nil, s.writeGoogleError(c, http.StatusBadGateway, "Upstream request failed after retries: "+safeErr)
 		}
 
-		// 閿欒绛栫暐浼樺厛锛氬尮閰嶅垯璺宠繃閲嶈瘯鐩存帴澶勭悊銆?		if matched, rebuilt := s.checkErrorPolicyInLoop(ctx, account, resp); matched {
+		// 错误策略优先：匹配则跳过重试直接处理。
+		if matched, rebuilt := s.checkErrorPolicyInLoop(ctx, account, resp); matched {
 			resp = rebuilt
 			break
 		} else {
@@ -1403,7 +1438,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 			}, nil
 		}
 
-		// 缁熶竴閿欒绛栫暐锛氳嚜瀹氫箟閿欒鐮?+ 涓存椂涓嶅彲璋冨害
+		// 统一错误策略：自定义错误码 + 临时不可调度
 		if s.rateLimitService != nil {
 			switch s.rateLimitService.CheckErrorPolicy(ctx, account, resp.StatusCode, respBody) {
 			case ErrorPolicySkipped:
@@ -1441,9 +1476,9 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 			}
 		}
 
-		// ErrorPolicyNone 鈫?鍘熸湁閫昏緫
+		// ErrorPolicyNone → 原有逻辑
 		s.handleGeminiUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
-		// 绮剧‘鍖归厤鏈嶅姟绔厤缃被 400 閿欒锛岃Е鍙?failover + 涓存椂灏佺
+		// 精确匹配服务端配置类 400 错误，触发 failover + 临时封禁
 		if resp.StatusCode == http.StatusBadRequest {
 			msg400 := strings.ToLower(strings.TrimSpace(extractUpstreamErrorMessage(respBody)))
 			if isGoogleProjectConfigError(msg400) {
@@ -1563,7 +1598,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 		usage = &ClaudeUsage{}
 	}
 
-	// 鍥剧墖鐢熸垚璁¤垂
+	// 图片生成计费
 	imageCount := 0
 	imageSize := s.extractImageSize(body)
 	if isImageGenerationModel(originalModel) {
@@ -1583,7 +1618,10 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 	}, nil
 }
 
-// checkErrorPolicyInLoop 鍦ㄩ噸璇曞惊鐜唴棰勬鏌ラ敊璇瓥鐣ャ€?// 杩斿洖 true 琛ㄧず绛栫暐宸插尮閰嶏紙璋冪敤鑰呭簲 break锛夛紝resp 宸查噸寤哄彲鐩存帴浣跨敤銆?// 杩斿洖 false 琛ㄧず ErrorPolicyNone锛宺esp 宸查噸寤猴紝璋冪敤鑰呯户缁蛋閲嶈瘯閫昏緫銆?func (s *GeminiMessagesCompatService) checkErrorPolicyInLoop(
+// checkErrorPolicyInLoop 在重试循环内预检查错误策略。
+// 返回 true 表示策略已匹配（调用者应 break），resp 已重建可直接使用。
+// 返回 false 表示 ErrorPolicyNone，resp 已重建，调用者继续走重试逻辑。
+func (s *GeminiMessagesCompatService) checkErrorPolicyInLoop(
 	ctx context.Context, account *Account, resp *http.Response,
 ) (matched bool, rebuilt *http.Response) {
 	if resp.StatusCode < 400 || s.rateLimitService == nil {
@@ -1646,7 +1684,7 @@ func sleepGeminiBackoff(attempt int) {
 }
 
 var (
-	sensitiveQueryParamRegex = regexp.MustCompile(`(?i)([?&](?:key|client_secret|access_token|refresh_token)=)[^&"\\s]+`)
+	sensitiveQueryParamRegex = regexp.MustCompile(`(?i)([?&](?:key|client_secret|access_token|refresh_token)=)[^&"\s]+`)
 	retryInRegex             = regexp.MustCompile(`Please retry in ([0-9.]+)s`)
 )
 
@@ -1965,7 +2003,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 
 	reader := bufio.NewReader(resp.Body)
 	for {
-		line, err := reader.ReadString('\\n')
+		line, err := reader.ReadString('\n')
 		if err != nil && !errors.Is(err, io.EOF) {
 			return nil, fmt.Errorf("stream read error: %w", err)
 		}
@@ -2172,10 +2210,10 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 
 func writeSSE(w io.Writer, event string, data any) {
 	if event != "" {
-		_, _ = fmt.Fprintf(w, "event: %s\\n", event)
+		_, _ = fmt.Fprintf(w, "event: %s\n", event)
 	}
 	b, _ := json.Marshal(data)
-	_, _ = fmt.Fprintf(w, "data: %s\\n\\n", string(b))
+	_, _ = fmt.Fprintf(w, "data: %s\n\n", string(b))
 }
 
 func randomHex(nBytes int) string {
@@ -2223,9 +2261,9 @@ func collectGeminiSSE(body io.Reader, isOAuth bool) (map[string]any, *ClaudeUsag
 	usage := &ClaudeUsage{}
 
 	for {
-		line, err := reader.ReadString('\\n')
+		line, err := reader.ReadString('\n')
 		if len(line) > 0 {
-			trimmed := strings.TrimRight(line, "\\r\\n")
+			trimmed := strings.TrimRight(line, "\r\n")
 			if strings.HasPrefix(trimmed, "data:") {
 				payload := strings.TrimSpace(strings.TrimPrefix(trimmed, "data:"))
 				switch payload {
@@ -2507,9 +2545,9 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 	var firstTokenMs *int
 
 	for {
-		line, err := reader.ReadString('\\n')
+		line, err := reader.ReadString('\n')
 		if len(line) > 0 {
-			trimmed := strings.TrimRight(line, "\\r\\n")
+			trimmed := strings.TrimRight(line, "\r\n")
 			if strings.HasPrefix(trimmed, "data:") {
 				payload := strings.TrimSpace(strings.TrimPrefix(trimmed, "data:"))
 				// Keepalive / done markers
@@ -2541,8 +2579,8 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 					}
 
 					if isOAuth {
-						// SSE format requires double newline (\\n\\n) to separate events
-						_, _ = fmt.Fprintf(c.Writer, "data: %s\\n\\n", rawToWrite)
+						// SSE format requires double newline (\n\n) to separate events
+						_, _ = fmt.Fprintf(c.Writer, "data: %s\n\n", rawToWrite)
 					} else {
 						// Pass-through for AI Studio responses.
 						_, _ = io.WriteString(c.Writer, line)
@@ -2635,8 +2673,8 @@ func (s *GeminiMessagesCompatService) ForwardAIStudioGET(ctx context.Context, ac
 	}, nil
 }
 
-// unwrapGeminiResponse 瑙ｅ寘 Gemini OAuth 鍝嶅簲涓殑 response 瀛楁
-// 浣跨敤 gjson 闆舵嫹璐濇彁鍙栵紝閬垮厤瀹屾暣 Unmarshal+Marshal
+// unwrapGeminiResponse 解包 Gemini OAuth 响应中的 response 字段
+// 使用 gjson 零拷贝提取，避免完整 Unmarshal+Marshal
 func unwrapGeminiResponse(raw []byte) ([]byte, error) {
 	result := gjson.GetBytes(raw, "response")
 	if result.Exists() && result.Type == gjson.JSON {
@@ -2720,7 +2758,8 @@ func extractGeminiUsage(data []byte) *ClaudeUsage {
 	cached := int(usage.Get("cachedContentTokenCount").Int())
 	thoughts := int(usage.Get("thoughtsTokenCount").Int())
 
-	// 浠?candidatesTokensDetails 鎻愬彇 IMAGE 妯℃€?token 鏁?	imageTokens := 0
+	// 从 candidatesTokensDetails 提取 IMAGE 模态 token 数
+	imageTokens := 0
 	candidateDetails := usage.Get("candidatesTokensDetails")
 	if candidateDetails.Exists() {
 		candidateDetails.ForEach(func(_, detail gjson.Result) bool {
@@ -2732,7 +2771,9 @@ func extractGeminiUsage(data []byte) *ClaudeUsage {
 		})
 	}
 
-	// 娉ㄦ剰锛欸emini 鐨?promptTokenCount 鍖呭惈 cachedContentTokenCount锛?	// 浣?Claude 鐨?input_tokens 涓嶅寘鍚?cache_read_input_tokens锛岄渶瑕佸噺鍘?	return &ClaudeUsage{
+	// 注意：Gemini 的 promptTokenCount 包含 cachedContentTokenCount，
+	// 但 Claude 的 input_tokens 不包含 cache_read_input_tokens，需要减去
+	return &ClaudeUsage{
 		InputTokens:          prompt - cached,
 		OutputTokens:         cand + thoughts,
 		CacheReadInputTokens: cached,
@@ -2760,7 +2801,8 @@ func asInt(v any) (int, bool) {
 }
 
 func (s *GeminiMessagesCompatService) handleGeminiUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, body []byte) {
-	// 閬靛畧鑷畾涔夐敊璇爜绛栫暐锛氭湭鍛戒腑鍒欒烦杩囨墍鏈夐檺娴佸鐞?	if !account.ShouldHandleErrorCode(statusCode) {
+	// 遵守自定义错误码策略：未命中则跳过所有限流处理
+	if !account.ShouldHandleErrorCode(statusCode) {
 		return
 	}
 	if s.rateLimitService != nil && (statusCode == 401 || statusCode == 403 || statusCode == 529) {
@@ -2785,7 +2827,8 @@ oauthType := account.GeminiOAuthType()
 
 	resetAt := ParseGeminiRateLimitResetTime(body)
 	if resetAt == nil {
-		// 鏍规嵁璐﹀彿绫诲瀷浣跨敤涓嶅悓鐨勯粯璁ら噸缃椂闂?		var ra time.Time
+		// 根据账号类型使用不同的默认重置时间
+		var ra time.Time
 		if isCodeAssist {
 			// Code Assist: fallback cooldown by tier
 			cooldown := geminiCooldownForTier(tierID)
@@ -2795,12 +2838,12 @@ oauthType := account.GeminiOAuthType()
 			ra = time.Now().Add(cooldown)
 			logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini 429] Account %d (Code Assist, tier=%s, project=%s) rate limited, cooldown=%v", account.ID, tierID, projectID, time.Until(ra).Truncate(time.Second))
 		} else {
-			// API Key / AI Studio OAuth: PST 鍗堝
+			// API Key / AI Studio OAuth: PST 午夜
 			if ts := nextGeminiDailyResetUnix(); ts != nil {
 				ra = time.Unix(*ts, 0)
 				logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini 429] Account %d (API Key/AI Studio, type=%s) rate limited, reset at PST midnight (%v)", account.ID, account.Type, ra)
 			} else {
-				// 鍏滃簳锛? 鍒嗛挓
+				// 兜底：5 分钟
 				ra = time.Now().Add(5 * time.Minute)
 				logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini 429] Account %d rate limited, fallback to 5min", account.ID)
 			}
@@ -2809,13 +2852,14 @@ oauthType := account.GeminiOAuthType()
 		return
 	}
 
-	// 浣跨敤瑙ｆ瀽鍒扮殑閲嶇疆鏃堕棿
+	// 使用解析到的重置时间
 	resetTime := time.Unix(*resetAt, 0)
 	_ = s.accountRepo.SetRateLimited(ctx, account.ID, resetTime)
 	logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini 429] Account %d rate limited until %v (oauth_type=%s, tier=%s)",
 		account.ID, resetTime, oauthType, tierID)
 }
 
+// ParseGeminiRateLimitResetTime 解析 Gemini 格式的 429 响应，返回重置时间的 Unix 时间戳
 func isGeminiModelCapacityExhausted(body []byte) bool {
 	lowerBody := strings.ToLower(string(body))
 	if strings.Contains(lowerBody, "model_capacity_exhausted") {
@@ -2823,15 +2867,16 @@ func isGeminiModelCapacityExhausted(body []byte) bool {
 	}
 	return strings.Contains(lowerBody, "no capacity available for model")
 }
-// ParseGeminiRateLimitResetTime 瑙ｆ瀽 Gemini 鏍煎紡鐨?429 鍝嶅簲锛岃繑鍥為噸缃椂闂寸殑 Unix 鏃堕棿鎴?func ParseGeminiRateLimitResetTime(body []byte) *int64 {
-	// 绗竴闃舵锛歡json 缁撴瀯鍖栨彁鍙?	errMsg := gjson.GetBytes(body, "error.message").String()
+func ParseGeminiRateLimitResetTime(body []byte) *int64 {
+	// 第一阶段：gjson 结构化提取
+	errMsg := gjson.GetBytes(body, "error.message").String()
 	if looksLikeGeminiDailyQuota(errMsg) {
 		if ts := nextGeminiDailyResetUnix(); ts != nil {
 			return ts
 		}
 	}
 
-	// 閬嶅巻 error.details 鏌ユ壘 quotaResetDelay
+	// 遍历 error.details 查找 quotaResetDelay
 	var found *int64
 	gjson.GetBytes(body, "error.details").ForEach(func(_, detail gjson.Result) bool {
 		v := detail.Get("metadata.quotaResetDelay").String()
@@ -2851,7 +2896,7 @@ func isGeminiModelCapacityExhausted(body []byte) bool {
 		return found
 	}
 
-	// 绗簩闃舵锛歳egex 鍥為€€鍖归厤 "Please retry in Xs"
+	// 第二阶段：regex 回退匹配 "Please retry in Xs"
 	matches := retryInRegex.FindStringSubmatch(string(body))
 	if len(matches) == 2 {
 		if dur, err := time.ParseDuration(matches[1] + "s"); err == nil {
@@ -2962,7 +3007,7 @@ func extractGeminiParts(geminiResp map[string]any) []map[string]any {
 }
 
 func computeGeminiTextDelta(seen, incoming string) (delta, newSeen string) {
-	incoming = strings.TrimSuffix(incoming, "\\u0000")
+	incoming = strings.TrimSuffix(incoming, "\u0000")
 	if incoming == "" {
 		return "", seen
 	}
@@ -3073,7 +3118,7 @@ func extractClaudeSystemText(system any) string {
 				parts = append(parts, text)
 			}
 		}
-		return strings.TrimSpace(strings.Join(parts, "\\n"))
+		return strings.TrimSpace(strings.Join(parts, "\n"))
 	default:
 		return ""
 	}
@@ -3101,9 +3146,11 @@ func convertClaudeMessagesToGeminiContents(messages any, toolUseIDToName map[str
 		parts := make([]any, 0)
 		switch content := mm["content"].(type) {
 		case string:
-			// 瀛楃涓插舰寮忕殑 content锛屼繚鐣欐墍鏈夊唴瀹癸紙鍖呮嫭绌虹櫧锛?			parts = append(parts, map[string]any{"text": content})
+			// 字符串形式的 content，保留所有内容（包括空白）
+			parts = append(parts, map[string]any{"text": content})
 		case []any:
-			// 濡傛灉鍙湁涓€涓?block锛屼笉杩囨护绌虹櫧锛堣涓婃父 API 鎶ラ敊锛?			singleBlock := len(content) == 1
+			// 如果只有一个 block，不过滤空白（让上游 API 报错）
+			singleBlock := len(content) == 1
 
 			for _, block := range content {
 				bm, ok := block.(map[string]any)
@@ -3114,7 +3161,8 @@ func convertClaudeMessagesToGeminiContents(messages any, toolUseIDToName map[str
 				switch bt {
 				case "text":
 					if text, ok := bm["text"].(string); ok {
-						// 鍗曚釜 block 鏃朵繚鐣欐墍鏈夊唴瀹癸紙鍖呮嫭绌虹櫧锛?						// 澶氫釜 blocks 鏃惰繃婊ゆ帀绌虹櫧
+						// 单个 block 时保留所有内容（包括空白）
+						// 多个 blocks 时过滤掉空白
 						if singleBlock || strings.TrimSpace(text) != "" {
 							parts = append(parts, map[string]any{"text": text})
 						}
@@ -3230,10 +3278,10 @@ func convertClaudeToolsToGeminiTools(tools any) []any {
 		var name, desc string
 		var params any
 
-		// 妫€鏌ユ槸鍚︿负 custom 绫诲瀷宸ュ叿 (MCP)
+		// 检查是否为 custom 类型工具 (MCP)
 		toolType, _ := tm["type"].(string)
 		if toolType == "custom" {
-			// Custom 鏍煎紡: 浠?custom 瀛楁鑾峰彇 description 鍜?input_schema
+			// Custom 格式: 从 custom 字段获取 description 和 input_schema
 			custom, ok := tm["custom"].(map[string]any)
 			if !ok {
 				continue
@@ -3242,7 +3290,8 @@ func convertClaudeToolsToGeminiTools(tools any) []any {
 			desc, _ = custom["description"].(string)
 			params = custom["input_schema"]
 		} else {
-			// 鏍囧噯鏍煎紡: 浠庨《灞傚瓧娈佃幏鍙?			name, _ = tm["name"].(string)
+			// 标准格式: 从顶层字段获取
+			name, _ = tm["name"].(string)
 			desc, _ = tm["description"].(string)
 			params = tm["input_schema"]
 		}
@@ -3251,13 +3300,14 @@ func convertClaudeToolsToGeminiTools(tools any) []any {
 			continue
 		}
 
-		// 涓?nil params 鎻愪緵榛樿鍊?		if params == nil {
+		// 为 nil params 提供默认值
+		if params == nil {
 			params = map[string]any{
 				"type":       "object",
 				"properties": map[string]any{},
 			}
 		}
-		// 娓呯悊 JSON Schema
+		// 清理 JSON Schema
 		cleanedParams := cleanToolSchema(params)
 
 		funcDecls = append(funcDecls, map[string]any{
@@ -3339,7 +3389,7 @@ func isClaudeWebSearchToolMap(tool map[string]any) bool {
 	}
 }
 
-// cleanToolSchema 娓呯悊宸ュ叿鐨?JSON Schema锛岀Щ闄?Gemini 涓嶆敮鎸佺殑瀛楁
+// cleanToolSchema 清理工具的 JSON Schema，移除 Gemini 不支持的字段
 func cleanToolSchema(schema any) any {
 	if schema == nil {
 		return nil
@@ -3349,16 +3399,17 @@ func cleanToolSchema(schema any) any {
 	case map[string]any:
 		cleaned := make(map[string]any)
 		for key, value := range v {
-			// 璺宠繃涓嶆敮鎸佺殑瀛楁
+			// 跳过不支持的字段
 			if key == "$schema" || key == "$id" || key == "$ref" ||
 				key == "additionalProperties" || key == "patternProperties" || key == "minLength" ||
 				key == "maxLength" || key == "minItems" || key == "maxItems" {
 				continue
 			}
-			// 閫掑綊娓呯悊宓屽瀵硅薄
+			// 递归清理嵌套对象
 			cleaned[key] = cleanToolSchema(value)
 		}
-		// 瑙勮寖鍖?type 瀛楁涓哄ぇ鍐?		if typeVal, ok := cleaned["type"].(string); ok {
+		// 规范化 type 字段为大写
+		if typeVal, ok := cleaned["type"].(string); ok {
 			cleaned["type"] = strings.ToUpper(typeVal)
 		}
 		return cleaned
@@ -3393,7 +3444,7 @@ func convertClaudeGenerationConfig(req map[string]any) map[string]any {
 	return out
 }
 
-// extractImageSize 浠?Gemini 璇锋眰涓彁鍙?image_size 鍙傛暟
+// extractImageSize 从 Gemini 请求中提取 image_size 参数
 func (s *GeminiMessagesCompatService) extractImageSize(body []byte) string {
 	var req struct {
 		GenerationConfig *struct {
