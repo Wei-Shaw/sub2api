@@ -273,7 +273,11 @@ async function save() {
 
   saving.value = true
   try {
-    const updated = await adminAPI.providerPricing.updateOverrides(nonBlankRows.map(({ local_id, ...item }) => item))
+    const updated = await adminAPI.providerPricing.updateOverrides(nonBlankRows.map((item) => {
+      const { local_id, ...rest } = item
+      void local_id
+      return rest
+    }))
     rows.value = updated.map((item, index) => rowToEditable(item, index))
     const savedAt = new Date().toLocaleTimeString('zh-CN', { hour12: false })
     saveSuccessMessage.value = ignoredBlankCount > 0
