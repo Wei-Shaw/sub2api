@@ -213,26 +213,7 @@ func (s *BackupService) recoverStaleRecords() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	records, err := s.loadRecords(ctx)
-	if err != nil {
-		return
-	}
-	for i := range records {
-		if records[i].Status == "running" {
-			records[i].Status = "failed"
-			records[i].ErrorMsg = "interrupted by server restart"
-			records[i].Progress = ""
-			records[i].FinishedAt = time.Now().Format(time.RFC3339)
-			_ = s.saveRecord(ctx, &records[i])
-			logger.LegacyPrintf("service.backup", "[Backup] recovered stale running record: %s", records[i].ID)
-		}
-		if records[i].RestoreStatus == "running" {
-			records[i].RestoreStatus = "failed"
-			records[i].RestoreError = "interrupted by server restart"
-			_ = s.saveRecord(ctx, &records[i])
-			logger.LegacyPrintf("service.backup", "[Backup] recovered stale restoring record: %s", records[i].ID)
-		}
-	}
+	_ = s.failStaleRunningRecords(ctx, "interrupted by server restart")
 }
 
 // Stop 停止定时备份并等待活跃操作完成
@@ -793,6 +774,10 @@ func (s *BackupService) RestoreBackup(ctx context.Context, backupID string) erro
 		return fmt.Errorf("pg restore: %w", err)
 	}
 
+	if err := s.failStaleRunningRecords(ctx, "interrupted by database restore"); err != nil {
+		logger.LegacyPrintf("service.backup", "[Backup] 清理恢复后的孤立 running 记录失败: %v", err)
+	}
+
 	return nil
 }
 
@@ -899,6 +884,9 @@ func (s *BackupService) executeRestore(record *BackupRecord, objectStore BackupO
 	record.RestoredAt = time.Now().Format(time.RFC3339)
 	if err := s.saveRecord(context.Background(), record); err != nil {
 		logger.LegacyPrintf("service.backup", "[Backup] 保存恢复记录失败: %v", err)
+	}
+	if err := s.failStaleRunningRecords(context.Background(), "interrupted by database restore"); err != nil {
+		logger.LegacyPrintf("service.backup", "[Backup] 清理恢复后的孤立 running 记录失败: %v", err)
 	}
 }
 
@@ -1282,6 +1270,42 @@ func (s *BackupService) saveRecord(ctx context.Context, record *BackupRecord) er
 	}
 
 	records = trimBackupRecords(records)
+
+	return s.saveRecordsLocked(ctx, records)
+}
+
+func (s *BackupService) failStaleRunningRecords(ctx context.Context, reason string) error {
+	s.recordsMu.Lock()
+	defer s.recordsMu.Unlock()
+
+	records, err := s.loadRecordsLocked(ctx)
+	if err != nil {
+		return err
+	}
+
+	now := time.Now().Format(time.RFC3339)
+	changed := false
+	for i := range records {
+		if records[i].Status == "running" {
+			records[i].Status = "failed"
+			records[i].ErrorMsg = reason
+			records[i].Progress = ""
+			if records[i].FinishedAt == "" {
+				records[i].FinishedAt = now
+			}
+			changed = true
+			logger.LegacyPrintf("service.backup", "[Backup] recovered stale running record: %s", records[i].ID)
+		}
+		if records[i].RestoreStatus == "running" {
+			records[i].RestoreStatus = "failed"
+			records[i].RestoreError = reason
+			changed = true
+			logger.LegacyPrintf("service.backup", "[Backup] recovered stale restoring record: %s", records[i].ID)
+		}
+	}
+	if !changed {
+		return nil
+	}
 
 	return s.saveRecordsLocked(ctx, records)
 }

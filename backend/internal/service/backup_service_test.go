@@ -134,6 +134,24 @@ func (m *mockDumper) Restore(_ context.Context, data io.Reader) error {
 	return nil
 }
 
+type restoreRecordsDumper struct {
+	repo    *mockSettingRepo
+	records []BackupRecord
+}
+
+func (d *restoreRecordsDumper) Dump(_ context.Context) (io.ReadCloser, error) {
+	return io.NopCloser(bytes.NewReader([]byte("-- PostgreSQL dump\nSELECT 1;\n"))), nil
+}
+
+func (d *restoreRecordsDumper) Restore(ctx context.Context, data io.Reader) error {
+	_, _ = io.ReadAll(data)
+	raw, err := json.Marshal(d.records)
+	if err != nil {
+		return err
+	}
+	return d.repo.Set(ctx, settingKeyBackupRecords, string(raw))
+}
+
 // blockingDumper 可控延迟的 dumper，用于测试异步行为
 type blockingDumper struct {
 	blockCh chan struct{}
@@ -744,6 +762,65 @@ func TestStartRestore_AsyncFailure(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "failed", final.RestoreStatus)
 	require.Contains(t, final.RestoreError, "psql: relation already exists")
+}
+
+func TestStartRestore_CleansRunningRecordsRestoredFromBackup(t *testing.T) {
+	repo := newMockSettingRepo()
+	seedS3Config(t, repo)
+
+	store := newMockObjectStore()
+	svc := newTestBackupService(repo, &mockDumper{dumpData: []byte("-- PostgreSQL dump\nSELECT 1;\n")}, store)
+
+	record, err := svc.CreateBackup(context.Background(), "manual", 14)
+	require.NoError(t, err)
+
+	svc.dumper = &restoreRecordsDumper{
+		repo: repo,
+		records: []BackupRecord{
+			{
+				ID:          "old-running",
+				Status:      "running",
+				BackupType:  "postgres",
+				FileName:    "old.sql.gz",
+				S3Key:       "backups/2026/05/01/old.sql.gz",
+				TriggeredBy: "manual",
+				StartedAt:   "2026-05-01T00:00:00Z",
+				Progress:    "uploading",
+			},
+			{
+				ID:            "old-restore",
+				Status:        "completed",
+				BackupType:    "postgres",
+				FileName:      "restore.sql.gz",
+				S3Key:         "backups/2026/05/02/restore.sql.gz",
+				TriggeredBy:   "manual",
+				StartedAt:     "2026-05-02T00:00:00Z",
+				RestoreStatus: "running",
+			},
+		},
+	}
+
+	restored, err := svc.StartRestore(context.Background(), record.ID)
+	require.NoError(t, err)
+	require.Equal(t, "running", restored.RestoreStatus)
+
+	svc.wg.Wait()
+
+	oldRunning, err := svc.GetBackupRecord(context.Background(), "old-running")
+	require.NoError(t, err)
+	require.Equal(t, "failed", oldRunning.Status)
+	require.Empty(t, oldRunning.Progress)
+	require.Contains(t, oldRunning.ErrorMsg, "database restore")
+
+	oldRestore, err := svc.GetBackupRecord(context.Background(), "old-restore")
+	require.NoError(t, err)
+	require.Equal(t, "failed", oldRestore.RestoreStatus)
+	require.Contains(t, oldRestore.RestoreError, "database restore")
+
+	current, err := svc.GetBackupRecord(context.Background(), record.ID)
+	require.NoError(t, err)
+	require.Equal(t, "completed", current.RestoreStatus)
+	require.NotEmpty(t, current.RestoredAt)
 }
 
 func TestBackupService_PreviewImportBackups(t *testing.T) {
