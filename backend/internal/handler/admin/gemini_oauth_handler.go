@@ -1,10 +1,12 @@
 package admin
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/plugin"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -12,6 +14,7 @@ import (
 
 type GeminiOAuthHandler struct {
 	geminiOAuthService *service.GeminiOAuthService
+	platformRegistry   *plugin.PlatformRegistry
 }
 
 func NewGeminiOAuthHandler(geminiOAuthService *service.GeminiOAuthService) *GeminiOAuthHandler {
@@ -54,9 +57,23 @@ func (h *GeminiOAuthHandler) GenerateAuthURL(c *gin.Context) {
 		return
 	}
 
-	// Always pass the "hosted" callback URI; the OAuth service may override it depending on
-	// oauth_type and whether the built-in Gemini CLI OAuth client is used.
 	redirectURI := deriveGeminiRedirectURI(c)
+
+	// Try plugin delegation first.
+	var proxyID int64
+	if req.ProxyID != nil {
+		proxyID = *req.ProxyID
+	}
+	params := map[string]string{"project_id": req.ProjectID, "tier_id": req.TierID}
+	if authURL, sessionID, handled := tryPluginGenerateAuthURL(
+		c.Request.Context(), h.platformRegistry,
+		service.PlatformGemini, oauthType, proxyID, redirectURI, params,
+	); handled {
+		response.Success(c, gin.H{"auth_url": authURL, "session_id": sessionID})
+		return
+	}
+
+	// Fallback to core Gemini OAuth service.
 	result, err := h.geminiOAuthService.GenerateAuthURL(c.Request.Context(), req.ProxyID, redirectURI, req.ProjectID, oauthType, req.TierID)
 	if err != nil {
 		msg := err.Error()
@@ -107,6 +124,31 @@ func (h *GeminiOAuthHandler) ExchangeCode(c *gin.Context) {
 		return
 	}
 
+	// Try plugin delegation first.
+	var proxyID int64
+	if req.ProxyID != nil {
+		proxyID = *req.ProxyID
+	}
+	params := map[string]string{"tier_id": req.TierID}
+	if credsJSON, extraJSON, accountName, tierID, handled := tryPluginExchangeOAuthCode(
+		c.Request.Context(), h.platformRegistry,
+		service.PlatformGemini, oauthType, req.SessionID, req.Code, req.State,
+		proxyID, "", params,
+	); handled {
+		result := gin.H{"credentials_json": json.RawMessage(credsJSON)}
+		if len(extraJSON) > 0 {
+			result["extra_json"] = json.RawMessage(extraJSON)
+		}
+		if accountName != "" {
+			result["account_name"] = accountName
+		}
+		if tierID != "" {
+			result["tier_id"] = tierID
+		}
+		response.Success(c, result)
+		return
+	}
+
 	tokenInfo, err := h.geminiOAuthService.ExchangeCode(c.Request.Context(), &service.GeminiExchangeCodeInput{
 		SessionID: req.SessionID,
 		State:     req.State,
@@ -143,4 +185,9 @@ func deriveGeminiRedirectURI(c *gin.Context) string {
 	}
 
 	return fmt.Sprintf("%s://%s/auth/callback", scheme, host)
+}
+
+// SetPlatformRegistry sets the platform registry after construction.
+func (h *GeminiOAuthHandler) SetPlatformRegistry(registry *plugin.PlatformRegistry) {
+	h.platformRegistry = registry
 }

@@ -1,6 +1,10 @@
-package main
+﻿package main
 
-import pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
+import (
+	"encoding/json"
+
+	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
+)
 
 // buildManifest constructs the static Manifest for the OpenAI gateway plugin.
 func buildManifest() *pluginsdk.Manifest {
@@ -77,6 +81,75 @@ func buildManifest() *pluginsdk.Manifest {
 				},
 				GroupConfig: &pluginsdk.GroupConfigDecl{
 					FormComponentPath: "OpenAIGroupConfig",
+					GroupExtraSchema: json.RawMessage(`{
+						"type": "object",
+						"properties": {
+							"allow_messages_dispatch": {
+								"type": "boolean",
+								"title": "Allow Messages Dispatch",
+								"description": "Enable Anthropic-to-OpenAI messages dispatch with model mapping",
+								"default": false
+							},
+							"messages_dispatch_model_config": {
+								"type": "object",
+								"title": "Messages Dispatch Model Config",
+								"description": "Model mapping configuration for messages dispatch",
+								"properties": {
+									"opus_mapped_model": {
+										"type": "string",
+										"title": "Opus Mapped Model",
+										"description": "OpenAI model to use for Claude Opus family requests"
+									},
+									"sonnet_mapped_model": {
+										"type": "string",
+										"title": "Sonnet Mapped Model",
+										"description": "OpenAI model to use for Claude Sonnet family requests"
+									},
+									"haiku_mapped_model": {
+										"type": "string",
+										"title": "Haiku Mapped Model",
+										"description": "OpenAI model to use for Claude Haiku family requests"
+									},
+									"exact_model_mappings": {
+										"type": "object",
+										"title": "Exact Model Mappings",
+										"description": "Map of exact Claude model ID to target OpenAI model ID",
+										"additionalProperties": { "type": "string" }
+									}
+								}
+							},
+							"image_price_1k": {
+								"type": "number",
+								"title": "Image Price 1K ($)",
+								"description": "Cost per 1K-resolution generated image in USD",
+								"minimum": 0
+							},
+							"image_price_2k": {
+								"type": "number",
+								"title": "Image Price 2K ($)",
+								"description": "Cost per 2K-resolution generated image in USD",
+								"minimum": 0
+							},
+							"image_price_4k": {
+								"type": "number",
+								"title": "Image Price 4K ($)",
+								"description": "Cost per 4K-resolution generated image in USD",
+								"minimum": 0
+							},
+							"require_oauth_only": {
+								"type": "boolean",
+								"title": "Require OAuth Only",
+								"description": "Only dispatch to OAuth-type accounts in this group",
+								"default": false
+							},
+							"require_privacy_set": {
+								"type": "boolean",
+								"title": "Require Privacy Set",
+								"description": "Only dispatch to accounts that have privacy/training opt-out confirmed",
+								"default": false
+							}
+						}
+					}`),
 				},
 			},
 		},

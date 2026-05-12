@@ -1,6 +1,10 @@
-package main
+﻿package main
 
-import pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
+import (
+	"encoding/json"
+
+	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
+)
 
 // buildManifest constructs the static Manifest for the Antigravity gateway plugin.
 func buildManifest() *pluginsdk.Manifest {
@@ -72,6 +76,62 @@ func buildManifest() *pluginsdk.Manifest {
 				},
 				GroupConfig: &pluginsdk.GroupConfigDecl{
 					FormComponentPath: "AntigravityGroupConfig",
+					GroupExtraSchema: json.RawMessage(`{
+						"type": "object",
+						"properties": {
+							"image_price_1k": {
+								"type": "number",
+								"title": "Image Price 1K ($)",
+								"description": "Cost per 1K-resolution generated image in USD",
+								"minimum": 0
+							},
+							"image_price_2k": {
+								"type": "number",
+								"title": "Image Price 2K ($)",
+								"description": "Cost per 2K-resolution generated image in USD",
+								"minimum": 0
+							},
+							"image_price_4k": {
+								"type": "number",
+								"title": "Image Price 4K ($)",
+								"description": "Cost per 4K-resolution generated image in USD",
+								"minimum": 0
+							},
+							"supported_model_scopes": {
+								"type": "array",
+								"title": "Supported Model Scopes",
+								"description": "Which model families this group supports (claude, gemini_text, gemini_image)",
+								"items": {
+									"type": "string",
+									"enum": ["claude", "gemini_text", "gemini_image"]
+								},
+								"uniqueItems": true
+							},
+							"mcp_xml_inject": {
+								"type": "boolean",
+								"title": "MCP XML Inject",
+								"description": "Enable MCP XML protocol injection for requests in this group",
+								"default": false
+							},
+							"fallback_group_id_on_invalid_request": {
+								"type": ["integer", "null"],
+								"title": "Fallback Group (Invalid Request)",
+								"description": "Group to forward requests that fail validation (e.g. unsupported model)"
+							},
+							"require_oauth_only": {
+								"type": "boolean",
+								"title": "Require OAuth Only",
+								"description": "Only dispatch to OAuth-type accounts in this group",
+								"default": false
+							},
+							"require_privacy_set": {
+								"type": "boolean",
+								"title": "Require Privacy Set",
+								"description": "Only dispatch to accounts that have privacy/training opt-out confirmed",
+								"default": false
+							}
+						}
+					}`),
 				},
 			},
 		},

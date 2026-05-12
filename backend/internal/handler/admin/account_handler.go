@@ -24,8 +24,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
-	"github.com/Wei-Shaw/sub2api/internal/plugin"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
+	"github.com/Wei-Shaw/sub2api/internal/plugin"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -50,7 +50,8 @@ const (
 
 // OAuthHandler handles OAuth-related operations for accounts
 type OAuthHandler struct {
-	oauthService *service.OAuthService
+	oauthService     *service.OAuthService
+	platformRegistry *plugin.PlatformRegistry
 }
 
 // NewOAuthHandler creates a new OAuth handler
@@ -76,7 +77,7 @@ type AccountHandler struct {
 	rpmCache                service.RPMCache
 	tokenCacheInvalidator   service.TokenCacheInvalidator
 	// serviceQuotaSvc 用于在删除 account 后失效服务限额缓存（FK CASCADE 自动删除关联，但缓存不感知）。
-	serviceQuotaSvc service.ServiceQuotaService
+	serviceQuotaSvc  service.ServiceQuotaService
 	platformRegistry *plugin.PlatformRegistry
 }
 
@@ -113,7 +114,7 @@ func NewAccountHandler(
 		rpmCache:                rpmCache,
 		tokenCacheInvalidator:   tokenCacheInvalidator,
 		serviceQuotaSvc:         serviceQuotaSvc,
-		platformRegistry:    platformRegistry,
+		platformRegistry:        platformRegistry,
 	}
 }
 
@@ -599,10 +600,6 @@ func (h *AccountHandler) Create(c *gin.Context) {
 			return nil, execErr
 		}
 		createdAccount = account
-		// Antigravity OAuth: 新账号直接设置隐私
-		h.adminService.ForceAntigravityPrivacy(ctx, account)
-		// OpenAI OAuth: 新账号直接设置隐私
-		h.adminService.ForceOpenAIPrivacy(ctx, account)
 		return h.buildAccountResponseWithRuntime(ctx, account), nil
 	})
 	if err != nil {
@@ -630,6 +627,8 @@ func (h *AccountHandler) Create(c *gin.Context) {
 	// OpenAI APIKey 账号创建后异步探测上游 /v1/responses 能力。
 	// 探测失败不影响账号创建响应。
 	h.scheduleOpenAIResponsesProbe(createdAccount)
+	// Plugin post-create hook (fire-and-forget).
+	h.tryPluginPostAccountCreate(createdAccount)
 	response.Success(c, result.Data)
 }
 
@@ -1376,6 +1375,8 @@ func (h *AccountHandler) BatchCreate(c *gin.Context) {
 			}
 			// OpenAI APIKey 账号异步探测 /v1/responses 能力。
 			h.scheduleOpenAIResponsesProbe(account)
+			// Plugin post-create hook (fire-and-forget).
+			h.tryPluginPostAccountCreate(account)
 			success++
 			results = append(results, gin.H{
 				"name":    item.Name,
@@ -1619,6 +1620,19 @@ func (h *OAuthHandler) GenerateAuthURL(c *gin.Context) {
 		req = GenerateAuthURLRequest{}
 	}
 
+	// Try plugin delegation first.
+	var proxyID int64
+	if req.ProxyID != nil {
+		proxyID = *req.ProxyID
+	}
+	if authURL, sessionID, handled := tryPluginGenerateAuthURL(
+		c.Request.Context(), h.platformRegistry,
+		service.PlatformAnthropic, "full", proxyID, "", nil,
+	); handled {
+		response.Success(c, gin.H{"auth_url": authURL, "session_id": sessionID})
+		return
+	}
+
 	result, err := h.oauthService.GenerateAuthURL(c.Request.Context(), req.ProxyID)
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -1659,6 +1673,30 @@ func (h *OAuthHandler) ExchangeCode(c *gin.Context) {
 	var req ExchangeCodeRequest
 	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
+		return
+	}
+
+	// Try plugin delegation first.
+	var proxyID int64
+	if req.ProxyID != nil {
+		proxyID = *req.ProxyID
+	}
+	if credsJSON, extraJSON, accountName, tierID, handled := tryPluginExchangeOAuthCode(
+		c.Request.Context(), h.platformRegistry,
+		service.PlatformAnthropic, "full", req.SessionID, req.Code, "",
+		proxyID, "", nil,
+	); handled {
+		result := gin.H{"credentials_json": json.RawMessage(credsJSON)}
+		if len(extraJSON) > 0 {
+			result["extra_json"] = json.RawMessage(extraJSON)
+		}
+		if accountName != "" {
+			result["account_name"] = accountName
+		}
+		if tierID != "" {
+			result["tier_id"] = tierID
+		}
+		response.Success(c, result)
 		return
 	}
 
@@ -1709,6 +1747,26 @@ func (h *OAuthHandler) CookieAuth(c *gin.Context) {
 	var req CookieAuthRequest
 	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
+		return
+	}
+
+	// Try plugin delegation first.
+	var proxyID int64
+	if req.ProxyID != nil {
+		proxyID = *req.ProxyID
+	}
+	if credsJSON, extraJSON, accountName, handled := tryPluginCookieAuth(
+		c.Request.Context(), h.platformRegistry,
+		service.PlatformAnthropic, req.SessionKey, proxyID, "full",
+	); handled {
+		result := gin.H{"credentials_json": json.RawMessage(credsJSON)}
+		if len(extraJSON) > 0 {
+			result["extra_json"] = json.RawMessage(extraJSON)
+		}
+		if accountName != "" {
+			result["account_name"] = accountName
+		}
+		response.Success(c, result)
 		return
 	}
 
@@ -1975,7 +2033,6 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 		return
 	}
 
-
 	// Try plugin delegation first
 	if h.tryPluginGetModels(c, account) {
 		return
@@ -2104,7 +2161,7 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 	response.Success(c, models)
 }
 
-// SetPrivacy handles setting privacy for a single OpenAI/Antigravity OAuth account
+// SetPrivacy handles setting privacy for a single OAuth account.
 // POST /api/v1/admin/accounts/:id/set-privacy
 func (h *AccountHandler) SetPrivacy(c *gin.Context) {
 	accountID, err := ParseInt64Param(c, "id", errReasonAccountInvalidID)
@@ -2121,6 +2178,13 @@ func (h *AccountHandler) SetPrivacy(c *gin.Context) {
 		response.ErrorFrom(c, infraerrors.BadRequest(errReasonAccountPrivacyUnsupported, "only OAuth accounts support privacy setting"))
 		return
 	}
+
+	// Try plugin delegation first (force=true for explicit SetPrivacy action).
+	if h.tryPluginSetPrivacy(c, account, true) {
+		return
+	}
+
+	// Fallback to core per-platform privacy logic.
 	var mode string
 	switch account.Platform {
 	case service.PlatformOpenAI:
@@ -2128,8 +2192,7 @@ func (h *AccountHandler) SetPrivacy(c *gin.Context) {
 	case service.PlatformAntigravity:
 		mode = h.adminService.ForceAntigravityPrivacy(c.Request.Context(), account)
 	default:
-		// Plugin/other platforms: store privacy_mode directly.
-		// The platform plugin is responsible for actual privacy enforcement.
+		// Unknown platform without a plugin: store privacy_mode directly.
 		mode = "enabled"
 		if err := h.adminService.SetAccountPrivacyMode(c.Request.Context(), accountID, mode); err != nil {
 			response.ErrorFrom(c, infraerrors.InternalServer("SET_PRIVACY_FAILED", "failed to set privacy mode"))
@@ -2169,7 +2232,6 @@ func (h *AccountHandler) RefreshTier(c *gin.Context) {
 		response.NotFound(c, "Account not found")
 		return
 	}
-
 
 	// Try plugin delegation first
 	if h.tryPluginRefreshTier(c, account) {
@@ -2328,6 +2390,11 @@ func (h *AccountHandler) GetAntigravityDefaultModelMapping(c *gin.Context) {
 
 // sanitizeExtraBaseRPM 对 extra map 中的 base_rpm 值进行范围校验和归一化。
 // 负值归零，超过 10000 截断为 10000。extra 为 nil 或不含 base_rpm 时无操作。
+// SetOAuthPlatformRegistry sets the platform registry for OAuthHandler.
+func (h *OAuthHandler) SetPlatformRegistry(registry *plugin.PlatformRegistry) {
+	h.platformRegistry = registry
+}
+
 func sanitizeExtraBaseRPM(extra map[string]any) {
 	if extra == nil {
 		return

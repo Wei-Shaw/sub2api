@@ -1,6 +1,10 @@
-package main
+﻿package main
 
-import pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
+import (
+	"encoding/json"
+
+	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
+)
 
 // buildManifest constructs the static Manifest for the Anthropic gateway plugin.
 func buildManifest() *pluginsdk.Manifest {
@@ -78,6 +82,54 @@ func buildManifest() *pluginsdk.Manifest {
 				},
 				GroupConfig: &pluginsdk.GroupConfigDecl{
 					FormComponentPath: "AnthropicGroupConfig",
+					GroupExtraSchema: json.RawMessage(`{
+						"type": "object",
+						"properties": {
+							"claude_code_only": {
+								"type": "boolean",
+								"title": "Claude Code Only",
+								"description": "Only allow Claude Code requests; non-CC traffic is rejected or falls back",
+								"default": false
+							},
+							"fallback_group_id": {
+								"type": ["integer", "null"],
+								"title": "Fallback Group (Claude Code)",
+								"description": "Group to forward non-Claude-Code requests when claude_code_only is enabled"
+							},
+							"fallback_group_id_on_invalid_request": {
+								"type": ["integer", "null"],
+								"title": "Fallback Group (Invalid Request)",
+								"description": "Group to forward requests that fail validation (e.g. unsupported model)"
+							},
+							"model_routing_enabled": {
+								"type": "boolean",
+								"title": "Model Routing Enabled",
+								"description": "Enable per-model routing rules to dispatch requests to specific groups",
+								"default": false
+							},
+							"model_routing": {
+								"type": "object",
+								"title": "Model Routing Rules",
+								"description": "Map of model pattern to target group IDs (e.g. {\"claude-opus-4*\": [1,2]})",
+								"additionalProperties": {
+									"type": "array",
+									"items": { "type": "integer" }
+								}
+							},
+							"require_oauth_only": {
+								"type": "boolean",
+								"title": "Require OAuth Only",
+								"description": "Only dispatch to OAuth-type accounts in this group",
+								"default": false
+							},
+							"require_privacy_set": {
+								"type": "boolean",
+								"title": "Require Privacy Set",
+								"description": "Only dispatch to accounts that have privacy/training opt-out confirmed",
+								"default": false
+							}
+						}
+					}`),
 				},
 			},
 		},

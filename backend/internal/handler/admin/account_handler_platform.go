@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -270,9 +271,9 @@ type validateAccountDataResult struct {
 
 // tryPluginValidateAccountData delegates credential/extra validation to the
 // plugin for plugin-owned platforms. Returns (result, handled):
-//   - handled=true, result.FieldErrors non-empty → validation failed
-//   - handled=true, result.FieldErrors empty → validation passed (use ProcessedCredentials/Extra if set)
-//   - handled=false → plugin unavailable or returned Unimplemented/error; skip validation
+//   - handled=true, result.FieldErrors non-empty -> validation failed
+//   - handled=true, result.FieldErrors empty -> validation passed (use ProcessedCredentials/Extra if set)
+//   - handled=false -> plugin unavailable or returned Unimplemented/error; skip validation
 func (h *AccountHandler) tryPluginValidateAccountData(
 	ctx context.Context,
 	platform, accountType string,
@@ -294,10 +295,7 @@ func (h *AccountHandler) tryPluginValidateAccountData(
 		isUpdate, accountID,
 	)
 	if err != nil {
-		// Unimplemented or any other error → silently skip validation.
-		if s, ok := status.FromError(err); ok && s.Code() == codes.Unimplemented {
-			return nil, false
-		}
+		// Unimplemented or any other error -> silently skip validation.
 		return nil, false
 	}
 
@@ -323,4 +321,121 @@ func (h *AccountHandler) tryPluginValidateAccountData(
 // Used by wire_gen.go when pluginManager is created after AccountHandler.
 func (h *AccountHandler) SetPlatformRegistry(registry *plugin.PlatformRegistry) {
 	h.platformRegistry = registry
+}
+
+// tryPluginSetPrivacy delegates privacy setting to the plugin.
+// Returns true if the plugin handled the request (success or error).
+// Returns false if the plugin is unavailable or returned Unimplemented.
+func (h *AccountHandler) tryPluginSetPrivacy(c *gin.Context, account *service.Account, force bool) bool {
+	client := h.platformClient(account.Platform)
+	if client == nil {
+		return false
+	}
+	creds, _ := json.Marshal(account.Credentials)
+	extra, _ := json.Marshal(account.Extra)
+
+	resp, err := client.SetPrivacy(
+		c.Request.Context(),
+		account.ID, account.Platform,
+		creds, extra, force,
+	)
+	if err != nil {
+		if isUnimplemented(err) {
+			return false
+		}
+		slog.WarnContext(c.Request.Context(), "plugin set privacy failed, falling back to core",
+			"account_id", account.ID, "platform", account.Platform, "err", err)
+		return false
+	}
+	if !resp.Success {
+		response.Error(c, http.StatusBadRequest, resp.Error)
+		return true
+	}
+
+	mode := resp.PrivacyMode
+	if mode == "" {
+		mode = "enabled"
+	}
+	if err := h.adminService.SetAccountPrivacyMode(c.Request.Context(), account.ID, mode); err != nil {
+		slog.WarnContext(c.Request.Context(), "failed to persist plugin privacy mode",
+			"account_id", account.ID, "mode", mode, "err", err)
+	}
+
+	updated, err := h.adminService.GetAccount(c.Request.Context(), account.ID)
+	if err != nil {
+		if account.Extra == nil {
+			account.Extra = make(map[string]any)
+		}
+		account.Extra["privacy_mode"] = mode
+		response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
+		return true
+	}
+	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), updated))
+	return true
+}
+
+// tryPluginPostAccountCreate fires a PostAccountCreate RPC to the plugin.
+// This is fire-and-forget: runs in a goroutine, errors only logged.
+func (h *AccountHandler) tryPluginPostAccountCreate(account *service.Account) {
+	if account == nil {
+		return
+	}
+	client := h.platformClient(account.Platform)
+	if client == nil {
+		return
+	}
+	creds, _ := json.Marshal(account.Credentials)
+	extra, _ := json.Marshal(account.Extra)
+	accountID := account.ID
+	platform := account.Platform
+	accountType := account.Type
+
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("plugin_post_account_create_panic",
+					"account_id", accountID, "recover", r)
+			}
+		}()
+		resp, err := client.PostAccountCreate(
+			context.Background(),
+			accountID, platform, accountType,
+			creds, extra,
+		)
+		if err != nil {
+			if !isUnimplemented(err) {
+				slog.Warn("plugin post account create failed",
+					"account_id", accountID, "err", err)
+			}
+			return
+		}
+		updates := &service.UpdateAccountInput{}
+		hasUpdates := false
+		if len(resp.UpdatedCredentialsJson) > 0 {
+			var newCreds map[string]any
+			if err := json.Unmarshal(resp.UpdatedCredentialsJson, &newCreds); err == nil {
+				updates.Credentials = newCreds
+				hasUpdates = true
+			}
+		}
+		if len(resp.UpdatedExtraJson) > 0 {
+			var newExtra map[string]any
+			if err := json.Unmarshal(resp.UpdatedExtraJson, &newExtra); err == nil {
+				updates.Extra = newExtra
+				hasUpdates = true
+			}
+		}
+		if hasUpdates {
+			if _, err := h.adminService.UpdateAccount(context.Background(), accountID, updates); err != nil {
+				slog.Warn("failed to apply plugin post-create updates",
+					"account_id", accountID, "err", err)
+			}
+		}
+	}()
+}
+
+// isUnimplemented returns true when the gRPC error code is Unimplemented.
+func isUnimplemented(err error) bool {
+	s, ok := status.FromError(err)
+	return ok && s.Code() == codes.Unimplemented
 }

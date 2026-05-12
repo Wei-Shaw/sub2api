@@ -301,6 +301,10 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	pluginSettingsService := service.NewPluginSettingsService(db)
 	if pluginManager != nil {
 		accountHandler.SetPlatformRegistry(pluginManager.PlatformRegistry())
+		oAuthHandler.SetPlatformRegistry(pluginManager.PlatformRegistry())
+		openAIOAuthHandler.SetPlatformRegistry(pluginManager.PlatformRegistry())
+		geminiOAuthHandler.SetPlatformRegistry(pluginManager.PlatformRegistry())
+		antigravityOAuthHandler.SetPlatformRegistry(pluginManager.PlatformRegistry())
 		// Inject the plugin-backed compatible platform resolver so the
 		// scheduler uses PlatformDecl.CompatibleGateways instead of
 		// hardcoded Antigravity rules.

@@ -1,6 +1,10 @@
-package main
+﻿package main
 
-import pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
+import (
+	"encoding/json"
+
+	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
+)
 
 // buildManifest constructs the static Manifest for the Gemini gateway plugin.
 func buildManifest() *pluginsdk.Manifest {
@@ -70,6 +74,41 @@ func buildManifest() *pluginsdk.Manifest {
 				},
 				GroupConfig: &pluginsdk.GroupConfigDecl{
 					FormComponentPath: "GeminiGroupConfig",
+					GroupExtraSchema: json.RawMessage(`{
+						"type": "object",
+						"properties": {
+							"image_price_1k": {
+								"type": "number",
+								"title": "Image Price 1K ($)",
+								"description": "Cost per 1K-resolution generated image in USD",
+								"minimum": 0
+							},
+							"image_price_2k": {
+								"type": "number",
+								"title": "Image Price 2K ($)",
+								"description": "Cost per 2K-resolution generated image in USD",
+								"minimum": 0
+							},
+							"image_price_4k": {
+								"type": "number",
+								"title": "Image Price 4K ($)",
+								"description": "Cost per 4K-resolution generated image in USD",
+								"minimum": 0
+							},
+							"require_oauth_only": {
+								"type": "boolean",
+								"title": "Require OAuth Only",
+								"description": "Only dispatch to OAuth-type accounts in this group",
+								"default": false
+							},
+							"require_privacy_set": {
+								"type": "boolean",
+								"title": "Require Privacy Set",
+								"description": "Only dispatch to accounts that have privacy/training opt-out confirmed",
+								"default": false
+							}
+						}
+					}`),
 				},
 			},
 		},

@@ -1,12 +1,14 @@
 package admin
 
 import (
+	"encoding/json"
 	"strconv"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/plugin"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -16,6 +18,7 @@ import (
 type OpenAIOAuthHandler struct {
 	openaiOAuthService *service.OpenAIOAuthService
 	adminService       service.AdminService
+	platformRegistry   *plugin.PlatformRegistry
 }
 
 func oauthPlatformFromPath(c *gin.Context) string {
@@ -45,11 +48,25 @@ func (h *OpenAIOAuthHandler) GenerateAuthURL(c *gin.Context) {
 		req = OpenAIGenerateAuthURLRequest{}
 	}
 
+	platform := oauthPlatformFromPath(c)
+	// Try plugin delegation first.
+	var proxyID int64
+	if req.ProxyID != nil {
+		proxyID = *req.ProxyID
+	}
+	if authURL, sessionID, handled := tryPluginGenerateAuthURL(
+		c.Request.Context(), h.platformRegistry,
+		platform, "openai", proxyID, req.RedirectURI, nil,
+	); handled {
+		response.Success(c, gin.H{"auth_url": authURL, "session_id": sessionID})
+		return
+	}
+
 	result, err := h.openaiOAuthService.GenerateAuthURL(
 		c.Request.Context(),
 		req.ProxyID,
 		req.RedirectURI,
-		oauthPlatformFromPath(c),
+		platform,
 	)
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -74,6 +91,30 @@ func (h *OpenAIOAuthHandler) ExchangeCode(c *gin.Context) {
 	var req OpenAIExchangeCodeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	// Try plugin delegation first.
+	var proxyID int64
+	if req.ProxyID != nil {
+		proxyID = *req.ProxyID
+	}
+	if credsJSON, extraJSON, accountName, tierID, handled := tryPluginExchangeOAuthCode(
+		c.Request.Context(), h.platformRegistry,
+		service.PlatformOpenAI, "openai", req.SessionID, req.Code, req.State,
+		proxyID, req.RedirectURI, nil,
+	); handled {
+		result := gin.H{"credentials_json": json.RawMessage(credsJSON)}
+		if len(extraJSON) > 0 {
+			result["extra_json"] = json.RawMessage(extraJSON)
+		}
+		if accountName != "" {
+			result["account_name"] = accountName
+		}
+		if tierID != "" {
+			result["tier_id"] = tierID
+		}
+		response.Success(c, result)
 		return
 	}
 
@@ -261,4 +302,9 @@ func (h *OpenAIOAuthHandler) CreateAccountFromOAuth(c *gin.Context) {
 	}
 
 	response.Success(c, dto.AccountFromService(account))
+}
+
+// SetPlatformRegistry sets the platform registry after construction.
+func (h *OpenAIOAuthHandler) SetPlatformRegistry(registry *plugin.PlatformRegistry) {
+	h.platformRegistry = registry
 }

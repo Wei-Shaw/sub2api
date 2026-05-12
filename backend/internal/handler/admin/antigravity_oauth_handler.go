@@ -1,13 +1,17 @@
 package admin
 
 import (
+	"encoding/json"
+
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/plugin"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 )
 
 type AntigravityOAuthHandler struct {
 	antigravityOAuthService *service.AntigravityOAuthService
+	platformRegistry        *plugin.PlatformRegistry
 }
 
 func NewAntigravityOAuthHandler(antigravityOAuthService *service.AntigravityOAuthService) *AntigravityOAuthHandler {
@@ -24,6 +28,19 @@ func (h *AntigravityOAuthHandler) GenerateAuthURL(c *gin.Context) {
 	var req AntigravityGenerateAuthURLRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "请求无效: "+err.Error())
+		return
+	}
+
+	// Try plugin delegation first.
+	var proxyID int64
+	if req.ProxyID != nil {
+		proxyID = *req.ProxyID
+	}
+	if authURL, sessionID, handled := tryPluginGenerateAuthURL(
+		c.Request.Context(), h.platformRegistry,
+		service.PlatformAntigravity, "antigravity", proxyID, "", nil,
+	); handled {
+		response.Success(c, gin.H{"auth_url": authURL, "session_id": sessionID})
 		return
 	}
 
@@ -49,6 +66,30 @@ func (h *AntigravityOAuthHandler) ExchangeCode(c *gin.Context) {
 	var req AntigravityExchangeCodeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "请求无效: "+err.Error())
+		return
+	}
+
+	// Try plugin delegation first.
+	var proxyID int64
+	if req.ProxyID != nil {
+		proxyID = *req.ProxyID
+	}
+	if credsJSON, extraJSON, accountName, tierID, handled := tryPluginExchangeOAuthCode(
+		c.Request.Context(), h.platformRegistry,
+		service.PlatformAntigravity, "antigravity", req.SessionID, req.Code, req.State,
+		proxyID, "", nil,
+	); handled {
+		result := gin.H{"credentials_json": json.RawMessage(credsJSON)}
+		if len(extraJSON) > 0 {
+			result["extra_json"] = json.RawMessage(extraJSON)
+		}
+		if accountName != "" {
+			result["account_name"] = accountName
+		}
+		if tierID != "" {
+			result["tier_id"] = tierID
+		}
+		response.Success(c, result)
 		return
 	}
 
@@ -81,6 +122,29 @@ func (h *AntigravityOAuthHandler) RefreshToken(c *gin.Context) {
 		return
 	}
 
+	// Try plugin delegation first.
+	var proxyID int64
+	if req.ProxyID != nil {
+		proxyID = *req.ProxyID
+	}
+	if credsJSON, extraJSON, accountName, tierID, handled := tryPluginValidateRefreshToken(
+		c.Request.Context(), h.platformRegistry,
+		service.PlatformAntigravity, req.RefreshToken, proxyID, nil,
+	); handled {
+		result := gin.H{"credentials_json": json.RawMessage(credsJSON)}
+		if len(extraJSON) > 0 {
+			result["extra_json"] = json.RawMessage(extraJSON)
+		}
+		if accountName != "" {
+			result["account_name"] = accountName
+		}
+		if tierID != "" {
+			result["tier_id"] = tierID
+		}
+		response.Success(c, result)
+		return
+	}
+
 	tokenInfo, err := h.antigravityOAuthService.ValidateRefreshToken(c.Request.Context(), req.RefreshToken, req.ProxyID)
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -88,4 +152,9 @@ func (h *AntigravityOAuthHandler) RefreshToken(c *gin.Context) {
 	}
 
 	response.Success(c, tokenInfo)
+}
+
+// SetPlatformRegistry sets the platform registry after construction.
+func (h *AntigravityOAuthHandler) SetPlatformRegistry(registry *plugin.PlatformRegistry) {
+	h.platformRegistry = registry
 }
