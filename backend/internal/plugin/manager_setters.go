@@ -365,3 +365,65 @@ func (m *PluginManager) wireModelSupportChecker() {
 		NewPluginModelSupportChecker(m.platformRegistry),
 	)
 }
+
+// SchedulingHintsRegistrar is the minimal surface PluginManager needs
+// to install the plugin-backed PluginSchedulingHintsProvider on the
+// host's gateway services.
+type SchedulingHintsRegistrar interface {
+	SetPluginSchedulingHintsProvider(provider service.PluginSchedulingHintsProvider)
+}
+
+// SetSchedulingHintsRegistrar wires the host-side seam used to install
+// the plugin-backed scheduling hints provider. Pass nil to disable.
+// Must be called before Start.
+func (m *PluginManager) SetSchedulingHintsRegistrar(registrar SchedulingHintsRegistrar) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.schedulingHintsRegistrar = registrar
+}
+
+// wireSchedulingHintsProvider creates a PluginSchedulingHintsProvider
+// backed by the manager's PlatformRegistry and installs it via the
+// registrar. Called once during Start; no-op if no registrar is wired.
+func (m *PluginManager) wireSchedulingHintsProvider() {
+	m.mu.RLock()
+	registrar := m.schedulingHintsRegistrar
+	m.mu.RUnlock()
+	if registrar == nil {
+		return
+	}
+	registrar.SetPluginSchedulingHintsProvider(
+		NewPluginSchedulingHintsProvider(m.platformRegistry),
+	)
+}
+
+// SchedulabilityCheckerRegistrar is the minimal surface PluginManager needs
+// to install the plugin-backed PluginSchedulabilityChecker on the host's
+// GatewayService.
+type SchedulabilityCheckerRegistrar interface {
+	SetPluginSchedulabilityChecker(checker service.PluginSchedulabilityChecker)
+}
+
+// SetSchedulabilityCheckerRegistrar wires the host-side seam used to install
+// the plugin-backed schedulability checker. Pass nil to disable.
+// Must be called before Start.
+func (m *PluginManager) SetSchedulabilityCheckerRegistrar(registrar SchedulabilityCheckerRegistrar) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.schedulabilityCheckerRegistrar = registrar
+}
+
+// wireSchedulabilityChecker creates a PluginSchedulabilityChecker backed by
+// the manager's PlatformRegistry and installs it via the registrar.
+// Called once during Start; no-op if no registrar is wired.
+func (m *PluginManager) wireSchedulabilityChecker() {
+	m.mu.RLock()
+	registrar := m.schedulabilityCheckerRegistrar
+	m.mu.RUnlock()
+	if registrar == nil {
+		return
+	}
+	registrar.SetPluginSchedulabilityChecker(
+		NewPluginSchedulabilityChecker(m.platformRegistry),
+	)
+}

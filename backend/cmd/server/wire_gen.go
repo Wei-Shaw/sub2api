@@ -349,6 +349,16 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 		pluginManager.SetModelSupportCheckerRegistrar(&modelSupportCheckerFanout{
 			gateway: gatewayService,
 		})
+		// Scheduling hints hook: let plugins dynamically adjust account
+		// priority and availability during scheduling.
+		pluginManager.SetSchedulingHintsRegistrar(&schedulingHintsFanout{
+			gateway: gatewayService,
+		})
+		// Schedulability checker hook: let plugins inject custom
+		// schedulability checks during account selection.
+		pluginManager.SetSchedulabilityCheckerRegistrar(&schedulabilityCheckerFanout{
+			gateway: gatewayService,
+		})
 		// HostService wire (ADR-UPSTREAM-SYNC-115-121 §4): let plugins call
 		// BillingService.GetModelPricing over the reverse gRPC channel so
 		// channel-management can render a global-pricing fallback for the
@@ -716,5 +726,37 @@ func (f *modelSupportCheckerFanout) SetPluginModelSupportChecker(checker service
 	}
 	if f.gateway != nil {
 		f.gateway.SetPluginModelSupportChecker(checker)
+	}
+}
+
+// schedulingHintsFanout forwards the plugin-backed scheduling hints
+// provider to the GatewayService.
+type schedulingHintsFanout struct {
+	gateway *service.GatewayService
+}
+
+// SetPluginSchedulingHintsProvider forwards to the gateway service.
+func (f *schedulingHintsFanout) SetPluginSchedulingHintsProvider(provider service.PluginSchedulingHintsProvider) {
+	if f == nil {
+		return
+	}
+	if f.gateway != nil {
+		f.gateway.SetPluginSchedulingHintsProvider(provider)
+	}
+}
+
+// schedulabilityCheckerFanout forwards the plugin-backed schedulability
+// checker to the GatewayService.
+type schedulabilityCheckerFanout struct {
+	gateway *service.GatewayService
+}
+
+// SetPluginSchedulabilityChecker forwards to the gateway service.
+func (f *schedulabilityCheckerFanout) SetPluginSchedulabilityChecker(checker service.PluginSchedulabilityChecker) {
+	if f == nil {
+		return
+	}
+	if f.gateway != nil {
+		f.gateway.SetPluginSchedulabilityChecker(checker)
 	}
 }

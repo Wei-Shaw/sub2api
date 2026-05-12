@@ -1237,8 +1237,25 @@ service AccountPlatformExtension {
   // causing the host to fall back to the static account.IsModelSupported().
   rpc IsModelSupported(IsModelSupportedRequest)
       returns (IsModelSupportedResponse);
-}
 
+  // GetSchedulingHints lets plugins dynamically adjust account priority
+  // and availability during scheduling. The host calls this in batch
+  // (all candidate accounts for the platform at once) before sorting.
+  // Plugins that do not implement this RPC return codes.Unimplemented,
+  // causing the host to silently skip hint application.
+  rpc GetSchedulingHints(GetSchedulingHintsRequest)
+      returns (GetSchedulingHintsResponse);
+
+  // CheckSchedulability performs a plugin-defined schedulability check on
+  // a single account. Called per-account during the host's scheduling
+  // filter loop, after the built-in checks (active, schedulable, overload,
+  // rate-limit) pass. Only invoked for plugin-owned platforms.
+  //
+  // Plugins that do not implement this RPC return codes.Unimplemented,
+  // causing the host to treat the account as schedulable (default pass).
+  rpc CheckSchedulability(CheckSchedulabilityRequest)
+      returns (CheckSchedulabilityResponse);
+}
 message ValidateAccountDataRequest {
   string platform = 1;
   string account_type = 2;
@@ -1357,6 +1374,42 @@ message IsModelSupportedResponse {
   string mapped_model = 2;
 }
 
+
+message GetSchedulingHintsRequest {
+  repeated SchedulingHintAccount accounts = 1;
+  string gateway_protocol = 2;  // current gateway protocol (e.g. "anthropic")
+  string requested_model = 3;
+}
+
+message SchedulingHintAccount {
+  int64 account_id = 1;
+  bytes credentials_json = 2;
+  bytes extra_json = 3;
+}
+
+message GetSchedulingHintsResponse {
+  map<int64, SchedulingHint> hints = 1;  // key = account_id
+}
+
+message SchedulingHint {
+  int32 priority_modifier = 1;      // added to priority (positive = lower priority, negative = higher)
+  bool temporarily_unavailable = 2;  // true = skip this account for this scheduling round
+  string reason = 3;                 // for logging
+}
+
+message CheckSchedulabilityRequest {
+  int64 account_id = 1;
+  string account_platform = 2;
+  bytes credentials_json = 3;
+  bytes extra_json = 4;
+  string requested_model = 5;
+  string gateway_protocol = 6;
+}
+
+message CheckSchedulabilityResponse {
+  bool schedulable = 1;
+  string reason = 2;  // reason when not schedulable (for logging)
+}
 // ============================================================
 // GatewayProviderExtension — plugin-provided, host-called
 // ============================================================

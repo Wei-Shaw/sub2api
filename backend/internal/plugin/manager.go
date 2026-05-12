@@ -157,6 +157,14 @@ type PluginManager struct {
 	// checker into the gateway services. nil disables the hook.
 	modelSupportCheckerRegistrar ModelSupportCheckerRegistrar
 
+	// schedulingHintsRegistrar wires the plugin-backed scheduling hints
+	// provider into the gateway services. nil disables the hook.
+	schedulingHintsRegistrar SchedulingHintsRegistrar
+
+	// schedulabilityCheckerRegistrar wires the plugin-backed schedulability
+	// checker into the gateway services. nil disables the hook.
+	schedulabilityCheckerRegistrar SchedulabilityCheckerRegistrar
+
 	// hostService holds the HostService gRPC server (plugin→host reverse
 	// RPCs, see ADR-UPSTREAM-SYNC-115-121 §4). Wired via
 	// SetHostPricingResolver before Start; nil disables the service

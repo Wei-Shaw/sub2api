@@ -588,6 +588,18 @@ type GatewayService struct {
 	// fall back to static account.IsModelSupported().
 	pluginModelSupportMu      sync.RWMutex
 	pluginModelSupportChecker PluginModelSupportChecker
+
+	// pluginSchedulingHintsProvider is the optional plugin hook called
+	// during scheduling to get dynamic priority/availability hints.
+	// Wired via SetPluginSchedulingHintsProvider. nil means no hints.
+	pluginSchedulingHintsMu       sync.RWMutex
+	pluginSchedulingHintsProvider PluginSchedulingHintsProvider
+
+	// pluginSchedulabilityChecker is the optional plugin hook called during
+	// scheduling to check if a plugin-owned platform account is schedulable.
+	// Wired via SetPluginSchedulabilityChecker. nil means default pass.
+	pluginSchedulabilityMu      sync.RWMutex
+	pluginSchedulabilityChecker PluginSchedulabilityChecker
 }
 
 // NewGatewayService creates a new GatewayService
@@ -1575,6 +1587,13 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	ctx = s.withWindowCostPrefetch(ctx, accounts)
 	ctx = s.withRPMPrefetch(ctx, accounts)
 
+	// Apply plugin scheduling hints: adjust priorities and remove
+	// temporarily unavailable accounts before sorting.
+	accounts = s.applyPluginSchedulingHints(ctx, accounts, platform, requestedModel)
+	if len(accounts) == 0 {
+		return nil, ErrNoAvailableAccounts
+	}
+
 	// 提前构建 accountByID（供 Layer 1 和 Layer 1.5 使用）
 	accountByID := make(map[int64]*Account, len(accounts))
 	for i := range accounts {
@@ -1656,6 +1675,10 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			if !s.isAccountSchedulableForRPM(ctx, account, false) {
 				continue
 			}
+			// Plugin schedulability check
+			if !s.isAccountSchedulableForPlugin(ctx, account, requestedModel, account.Platform) {
+				continue
+			}
 			routingCandidates = append(routingCandidates, account)
 		}
 
@@ -1691,7 +1714,8 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 							s.isAccountSchedulableForQuota(stickyAccount) &&
 							s.isAccountSchedulableForWindowCost(ctx, stickyAccount, true)
 
-						rpmPass := gatePass && s.isAccountSchedulableForRPM(ctx, stickyAccount, true)
+						rpmPass := gatePass && s.isAccountSchedulableForRPM(ctx, stickyAccount, true) &&
+							s.isAccountSchedulableForPlugin(ctx, stickyAccount, requestedModel, stickyAccount.Platform)
 
 						if rpmPass { // 粘性会话窗口费用+RPM 检查
 							result, err := s.tryAcquireAccountSlot(ctx, stickyAccountID, stickyAccount.Concurrency)
@@ -1874,6 +1898,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				quotaOK := s.isAccountSchedulableForQuota(account)
 				windowCostOK := s.isAccountSchedulableForWindowCost(ctx, account, true)
 				rpmOK := s.isAccountSchedulableForRPM(ctx, account, true)
+				pluginOK := s.isAccountSchedulableForPlugin(ctx, account, requestedModel, account.Platform)
 				schedulable := s.isAccountSchedulableForSelection(account)
 
 				slog.Debug("sticky.layer1_5_no_routing_checks",
@@ -1887,6 +1912,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 					"quota_ok", quotaOK,
 					"window_cost_ok", windowCostOK,
 					"rpm_ok", rpmOK,
+					"plugin_ok", pluginOK,
 				)
 
 				if !clearSticky && platformOK && modelSupported && modelSchedulable && quotaOK && windowCostOK && rpmOK && schedulable {
@@ -2004,6 +2030,10 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		}
 		// RPM 检查（非粘性会话路径）
 		if !s.isAccountSchedulableForRPM(ctx, acc, false) {
+			continue
+		}
+		// Plugin schedulability check
+		if !s.isAccountSchedulableForPlugin(ctx, acc, requestedModel, acc.Platform) {
 			continue
 		}
 		candidates = append(candidates, acc)
@@ -2687,6 +2717,31 @@ func (s *GatewayService) isAccountSchedulableForRPM(ctx context.Context, account
 	}
 	return true
 }
+// isAccountSchedulableForPlugin delegates to the plugin's CheckSchedulability
+// RPC for non-builtin platforms. Returns true for builtin platforms (no-op) and
+// for plugin platforms when the checker is nil, unimplemented, or returns error.
+func (s *GatewayService) isAccountSchedulableForPlugin(ctx context.Context, account *Account, requestedModel, gatewayProtocol string) bool {
+	if IsBuiltinPlatform(account.Platform) {
+		return true
+	}
+	checker := s.loadPluginSchedulabilityChecker()
+	if checker == nil {
+		return true
+	}
+	schedulable, reason, err := checker.Check(ctx, account, requestedModel, gatewayProtocol)
+	if err != nil {
+		return true // Unimplemented or error -> default schedulable
+	}
+	if !schedulable {
+		slog.Debug("plugin_schedulability_check_failed",
+			"account_id", account.ID,
+			"platform", account.Platform,
+			"reason", reason,
+		)
+	}
+	return schedulable
+}
+
 
 // IncrementAccountRPM increments the RPM counter for the given account.
 // 已知 TOCTOU 竞态：调度时读取 RPM 计数与此处递增之间存在时间窗口，
@@ -3067,7 +3122,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 						if clearSticky {
 							_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 						}
-						if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) && !s.isStickyAccountUpstreamRestricted(ctx, groupID, account, requestedModel) {
+						if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) && s.isAccountSchedulableForPlugin(ctx, account, requestedModel, account.Platform) && !s.isStickyAccountUpstreamRestricted(ctx, groupID, account, requestedModel) {
 							if s.debugModelRoutingEnabled() {
 								logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] legacy routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), accountID)
 							}
@@ -3136,6 +3191,9 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 			if !s.isAccountSchedulableForRPM(ctx, acc, false) {
 				continue
 			}
+			if !s.isAccountSchedulableForPlugin(ctx, acc, requestedModel, acc.Platform) {
+				continue
+			}
 			if selected == nil {
 				selected = acc
 				continue
@@ -3186,7 +3244,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 					if clearSticky {
 						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 					}
-					if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
+					if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) && s.isAccountSchedulableForPlugin(ctx, account, requestedModel, account.Platform) {
 						return account, nil
 					}
 				}
@@ -3248,6 +3306,9 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 			continue
 		}
 		if !s.isAccountSchedulableForRPM(ctx, acc, false) {
+			continue
+		}
+		if !s.isAccountSchedulableForPlugin(ctx, acc, requestedModel, acc.Platform) {
 			continue
 		}
 		if selected == nil {
@@ -3325,7 +3386,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 						if clearSticky {
 							_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 						}
-						if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
+						if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) && s.isAccountSchedulableForPlugin(ctx, account, requestedModel, account.Platform) {
 							if account.Platform == nativePlatform || s.isAccountEligibleForMixedScheduling(account, nativePlatform) {
 								if s.debugModelRoutingEnabled() {
 									logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] legacy mixed routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), accountID)
@@ -3396,6 +3457,9 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 			if !s.isAccountSchedulableForRPM(ctx, acc, false) {
 				continue
 			}
+			if !s.isAccountSchedulableForPlugin(ctx, acc, requestedModel, acc.Platform) {
+				continue
+			}
 			if selected == nil {
 				selected = acc
 				continue
@@ -3446,7 +3510,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 					if clearSticky {
 						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 					}
-					if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) && !s.isStickyAccountUpstreamRestricted(ctx, groupID, account, requestedModel) {
+					if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) && s.isAccountSchedulableForPlugin(ctx, account, requestedModel, account.Platform) && !s.isStickyAccountUpstreamRestricted(ctx, groupID, account, requestedModel) {
 						if account.Platform == nativePlatform || s.isAccountEligibleForMixedScheduling(account, nativePlatform) {
 							return account, nil
 						}
@@ -3509,6 +3573,9 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 			continue
 		}
 		if !s.isAccountSchedulableForRPM(ctx, acc, false) {
+			continue
+		}
+		if !s.isAccountSchedulableForPlugin(ctx, acc, requestedModel, acc.Platform) {
 			continue
 		}
 		if selected == nil {
@@ -8614,6 +8681,50 @@ func (s *GatewayService) loadPluginModelSupportChecker() PluginModelSupportCheck
 	s.pluginModelSupportMu.RLock()
 	defer s.pluginModelSupportMu.RUnlock()
 	return s.pluginModelSupportChecker
+}
+
+// SetPluginSchedulingHintsProvider wires an optional plugin-supplied
+// scheduling hints provider. Passing nil disables the hook.
+func (s *GatewayService) SetPluginSchedulingHintsProvider(provider PluginSchedulingHintsProvider) {
+	if s == nil {
+		return
+	}
+	s.pluginSchedulingHintsMu.Lock()
+	defer s.pluginSchedulingHintsMu.Unlock()
+	s.pluginSchedulingHintsProvider = provider
+}
+
+// loadPluginSchedulingHintsProvider returns the currently registered
+// provider (possibly nil).
+func (s *GatewayService) loadPluginSchedulingHintsProvider() PluginSchedulingHintsProvider {
+	if s == nil {
+		return nil
+	}
+	s.pluginSchedulingHintsMu.RLock()
+	defer s.pluginSchedulingHintsMu.RUnlock()
+	return s.pluginSchedulingHintsProvider
+}
+
+// SetPluginSchedulabilityChecker wires an optional plugin-supplied
+// schedulability checker. Passing nil disables the hook.
+func (s *GatewayService) SetPluginSchedulabilityChecker(checker PluginSchedulabilityChecker) {
+	if s == nil {
+		return
+	}
+	s.pluginSchedulabilityMu.Lock()
+	defer s.pluginSchedulabilityMu.Unlock()
+	s.pluginSchedulabilityChecker = checker
+}
+
+// loadPluginSchedulabilityChecker returns the currently registered
+// checker (possibly nil).
+func (s *GatewayService) loadPluginSchedulabilityChecker() PluginSchedulabilityChecker {
+	if s == nil {
+		return nil
+	}
+	s.pluginSchedulabilityMu.RLock()
+	defer s.pluginSchedulabilityMu.RUnlock()
+	return s.pluginSchedulabilityChecker
 }
 
 // resolveAccountStatsCost calls the registered AccountStatsCostResolver

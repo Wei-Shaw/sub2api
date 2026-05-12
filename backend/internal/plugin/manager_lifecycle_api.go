@@ -40,6 +40,10 @@ func (m *PluginManager) Start(ctx context.Context) error {
 	// Wire the plugin model support checker — it wraps PlatformRegistry
 	// so it dynamically resolves to whichever plugin owns each platform.
 	m.wireModelSupportChecker()
+	// Wire the plugin scheduling hints provider — same pattern.
+	m.wireSchedulingHintsProvider()
+	// Wire the plugin schedulability checker — same pattern.
+	m.wireSchedulabilityChecker()
 	if err := m.startSDKServer(); err != nil {
 		return err
 	}

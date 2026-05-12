@@ -23,6 +23,14 @@ type AccountPlatformExtension interface {
 	// at runtime. Return an error to signal that the plugin does not implement
 	// this check, causing the host to fall back to static model_mapping.
 	IsModelSupported(ctx context.Context, req *IsModelSupportedReq) (*IsModelSupportedResp, error)
+	// GetSchedulingHints lets the plugin dynamically adjust account priority
+	// and availability during scheduling. Return an error (including
+	// codes.Unimplemented) to signal the plugin does not implement this.
+	GetSchedulingHints(ctx context.Context, req *GetSchedulingHintsReq) (*GetSchedulingHintsResp, error)
+	// CheckSchedulability performs a plugin-defined schedulability check on a
+	// single account during the host's scheduling filter loop. Return an error
+	// to signal the plugin does not implement this check (default: schedulable).
+	CheckSchedulability(ctx context.Context, req *CheckSchedulabilityReq) (*CheckSchedulabilityResp, error)
 }
 
 // ValidateAccountDataReq is the input for ValidateAccountData.
@@ -148,4 +156,47 @@ type IsModelSupportedReq struct {
 type IsModelSupportedResp struct {
 	Supported   bool
 	MappedModel string // optional: plugin can return the upstream model name
+}
+
+// GetSchedulingHintsReq is the input for GetSchedulingHints.
+type GetSchedulingHintsReq struct {
+	Accounts        []SchedulingHintAccountInfo
+	GatewayProtocol string
+	RequestedModel  string
+}
+
+// SchedulingHintAccountInfo carries per-account data for the scheduling
+// hints batch request.
+type SchedulingHintAccountInfo struct {
+	AccountID   int64
+	Credentials json.RawMessage
+	Extra       json.RawMessage
+}
+
+// GetSchedulingHintsResp is the output of GetSchedulingHints.
+type GetSchedulingHintsResp struct {
+	Hints map[int64]SchedulingHint
+}
+
+// SchedulingHint is the per-account hint returned by GetSchedulingHints.
+type SchedulingHint struct {
+	PriorityModifier      int32
+	TemporarilyUnavailable bool
+	Reason                string
+}
+
+// CheckSchedulabilityReq is the input for CheckSchedulability.
+type CheckSchedulabilityReq struct {
+	AccountID       int64
+	Platform        string
+	Credentials     json.RawMessage
+	Extra           json.RawMessage
+	RequestedModel  string
+	GatewayProtocol string
+}
+
+// CheckSchedulabilityResp is the output of CheckSchedulability.
+type CheckSchedulabilityResp struct {
+	Schedulable bool
+	Reason      string // reason when not schedulable (for logging)
 }

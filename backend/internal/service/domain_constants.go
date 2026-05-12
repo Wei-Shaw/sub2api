@@ -386,3 +386,20 @@ const (
 
 // AdminAPIKeyPrefix is the prefix for admin API keys (distinct from user "sk-" keys).
 const AdminAPIKeyPrefix = "admin-"
+
+// builtinPlatforms is the set of platform identifiers handled by the host's
+// built-in scheduling logic (window cost, RPM, quota checks). Plugin-owned
+// platforms are not in this set and may delegate scheduling checks to their
+// plugin via PluginSchedulabilityChecker.
+var builtinPlatforms = map[string]bool{
+	PlatformAnthropic:   true,
+	PlatformOpenAI:      true,
+	PlatformGemini:      true,
+	PlatformAntigravity: true,
+}
+
+// IsBuiltinPlatform returns true if the platform is handled by the host's
+// built-in scheduling logic.
+func IsBuiltinPlatform(platform string) bool {
+	return builtinPlatforms[platform]
+}

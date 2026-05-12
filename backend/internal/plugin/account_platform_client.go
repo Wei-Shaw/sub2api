@@ -176,3 +176,48 @@ func (c *AccountPlatformClient) IsModelSupported(
 		ExtraJson:       extra,
 	})
 }
+
+const accountSchedulingHintsTimeout = 3 * time.Second
+
+// GetSchedulingHints asks the plugin to provide dynamic scheduling hints
+// for a batch of candidate accounts. Returns hints keyed by account ID.
+// A codes.Unimplemented error signals the plugin does not implement this
+// RPC; the caller should silently skip hint application.
+func (c *AccountPlatformClient) GetSchedulingHints(
+	ctx context.Context,
+	accounts []*pb.SchedulingHintAccount,
+	gatewayProtocol string,
+	requestedModel string,
+) (*pb.GetSchedulingHintsResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, accountSchedulingHintsTimeout)
+	defer cancel()
+	return c.stub.GetSchedulingHints(ctx, &pb.GetSchedulingHintsRequest{
+		Accounts:        accounts,
+		GatewayProtocol: gatewayProtocol,
+		RequestedModel:  requestedModel,
+	})
+}
+
+const accountSchedulabilityTimeout = 3 * time.Second
+
+// CheckSchedulability asks the plugin whether the given account is
+// schedulable. Returns the response or an error (including
+// codes.Unimplemented when the plugin does not implement this check).
+func (c *AccountPlatformClient) CheckSchedulability(
+	ctx context.Context,
+	accountID int64,
+	platform string,
+	credentials, extra json.RawMessage,
+	requestedModel, gatewayProtocol string,
+) (*pb.CheckSchedulabilityResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, accountSchedulabilityTimeout)
+	defer cancel()
+	return c.stub.CheckSchedulability(ctx, &pb.CheckSchedulabilityRequest{
+		AccountId:       accountID,
+		AccountPlatform: platform,
+		CredentialsJson: credentials,
+		ExtraJson:       extra,
+		RequestedModel:  requestedModel,
+		GatewayProtocol: gatewayProtocol,
+	})
+}
