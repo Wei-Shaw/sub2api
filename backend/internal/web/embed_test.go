@@ -862,6 +862,36 @@ func TestFrontendServer_Middleware(t *testing.T) {
 		assert.NotContains(t, w.Body.String(), "<iframe")
 	})
 
+	t.Run("serves_admin_custom_page_without_markdown_file", func(t *testing.T) {
+		provider := &mockSettingsProvider{
+			settings: map[string]any{
+				"site_name": "MyCustomSite",
+				"frontend_url": "https://example.com",
+				"custom_menu_items": []map[string]any{
+					{"id": "admin-guide", "label": "Admin Guide", "visibility": "admin", "page_slug": "admin-guide"},
+				},
+			},
+		}
+
+		server, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+
+		router := gin.New()
+		router.Use(func(c *gin.Context) {
+			c.Set(middleware.CSPNonceKey, "test-nonce")
+			c.Next()
+		})
+		router.Use(server.Middleware())
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/custom/admin-guide", nil)
+		req.AddCookie(&http.Cookie{Name: "auth_token", Value: "admin-token"})
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), "<meta name=\"robots\" content=\"noindex, nofollow\">")
+	})
+
 	t.Run("renders_builtin_tutorial_markdown_page", func(t *testing.T) {
 		provider := &mockSettingsProvider{
 			settings: map[string]any{

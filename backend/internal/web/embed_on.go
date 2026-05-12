@@ -317,7 +317,16 @@ func (s *FrontendServer) publicPageExists(c *gin.Context, requestPath string) bo
 		_, found := findLegalDocument(cfg, strings.TrimPrefix(requestPath, "/legal/"))
 		return found
 	case strings.HasPrefix(requestPath, "/custom/"):
-		page, found := findPublicCustomPage(cfg, strings.TrimPrefix(requestPath, "/custom/"))
+		pageID := strings.TrimPrefix(requestPath, "/custom/")
+		var page seoCustomMenu
+		found := false
+		for _, item := range cfg.CustomMenuItems {
+			if strings.TrimSpace(item.ID) == strings.TrimSpace(pageID) {
+				page = item
+				found = true
+				break
+			}
+		}
 		if !found {
 			return false
 		}
@@ -327,6 +336,14 @@ func (s *FrontendServer) publicPageExists(c *gin.Context, requestPath string) bo
 		}
 		if slug == "" {
 			return false
+		}
+		if strings.TrimSpace(page.Visibility) == "admin" {
+			allowed, _ := s.authorizeHTMLRoute(c, "/admin")
+			if !allowed {
+				return false
+			}
+			c.Set(frontendPrivateKey, true)
+			return true
 		}
 		if _, err := s.loadMarkdownFile(slug); err != nil {
 			return false
@@ -410,7 +427,7 @@ func (s *FrontendServer) serveIndexHTML(c *gin.Context) {
 		c.Header("ETag", cached.ETag)
 		c.Header("Cache-Control", "no-cache") // Must revalidate
 		seo := buildSEOData(requestPath, extractSettingsJSON(cached.Content))
-		if notFound || requiresHTMLAuth(requestPath) {
+		if notFound || privateRoute || requiresHTMLAuth(requestPath) {
 			if privateRoute {
 				seo = buildPrivateSEOData(requestPath, extractSettingsJSON(cached.Content))
 			} else {
@@ -444,7 +461,7 @@ func (s *FrontendServer) serveIndexHTML(c *gin.Context) {
 	}
 
 	seo := buildSEOData(requestPath, settingsJSON)
-	if notFound || requiresHTMLAuth(requestPath) {
+	if notFound || privateRoute || requiresHTMLAuth(requestPath) {
 		if privateRoute {
 			seo = buildPrivateSEOData(requestPath, settingsJSON)
 		} else {

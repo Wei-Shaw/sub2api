@@ -347,7 +347,7 @@ func isAllowedHref(raw string) bool {
 	if raw == "" {
 		return false
 	}
-	if strings.HasPrefix(raw, "#") || strings.HasPrefix(raw, "/") {
+	if strings.HasPrefix(raw, "#") || (strings.HasPrefix(raw, "/") && !strings.HasPrefix(raw, "//")) {
 		return true
 	}
 	parsed, err := url.Parse(raw)
@@ -367,7 +367,7 @@ func isAllowedImageSrc(raw string) bool {
 	if raw == "" {
 		return false
 	}
-	if strings.HasPrefix(raw, "/api/v1/pages/tutorial/images/") || strings.HasPrefix(raw, "/") {
+	if strings.HasPrefix(raw, "/api/v1/pages/tutorial/images/") || (strings.HasPrefix(raw, "/") && !strings.HasPrefix(raw, "//")) {
 		return true
 	}
 	parsed, err := url.Parse(raw)
