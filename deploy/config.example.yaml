@@ -67,6 +67,20 @@ server:
 run_mode: "standard"
 
 # =============================================================================
+# Deployment Role Configuration
+# 部署角色配置
+# =============================================================================
+deployment:
+  # Role: standalone | master | slave
+  # - standalone: 默认单机模式，保持现有行为
+  # - master: 启动管理面与自治型后台任务
+  # - slave: 仅承接对外业务流量，不启动自治型后台任务
+  role: "standalone"
+  # Instance ID for distributed WS/OAuth state ownership.
+  # 留空时回退 HOSTNAME；在静态主从部署中建议显式配置。
+  instance_id: ""
+
+# =============================================================================
 # CORS Configuration
 # 跨域资源共享 (CORS) 配置
 # =============================================================================

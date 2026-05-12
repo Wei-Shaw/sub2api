@@ -15,6 +15,8 @@ This directory contains files for deploying Sub2API on Linux servers.
 |------|-------------|
 | `docker-compose.yml` | Docker Compose configuration (named volumes) |
 | `docker-compose.local.yml` | Docker Compose configuration (local directories, easy migration) |
+| `docker-compose.master-slave.yml` | Static master/slave sample with shared PostgreSQL/Redis + nginx |
+| `nginx/static-master-slave.conf` | Example nginx path-based split for master/slave deployment |
 | `docker-deploy.sh` | **One-click Docker deployment script (recommended)** |
 | `.env.example` | Docker environment variables template |
 | `DOCKER.md` | Docker Hub documentation |
@@ -105,6 +107,40 @@ docker compose -f docker-compose.local.yml logs -f sub2api
 | **docker-compose.yml** | Named volumes (/var/lib/docker/volumes/) | ⚠️ Requires docker commands | Simple setup, don't need migration |
 
 **Recommendation:** Use `docker-compose.local.yml` (deployed by `docker-deploy.sh`) for easier data management and migration.
+
+### Static Master/Slave Sample
+
+Use `docker-compose.master-slave.yml` when you want explicit static roles instead of single-instance mode:
+
+```bash
+cd deploy
+mkdir -p cluster_data postgres_data redis_data
+cp .env.example .env
+
+# First bootstrap: only master should auto-setup.
+docker compose -f docker-compose.master-slave.yml up --build -d master postgres redis
+
+# After config/data is initialized, start the full topology.
+docker compose -f docker-compose.master-slave.yml up --build -d
+```
+
+Key deployment rules:
+- `DEPLOYMENT_ROLE` must be explicitly set to `master` or `slave` for static split deployment.
+- `DEPLOYMENT_INSTANCE_ID` must be stable and unique per instance. Reusing one ID across two live containers will merge them into one cluster node in ops monitoring.
+- Only the first `master` bootstrap should use `AUTO_SETUP=true`. After shared config/data is written, bring up `slave` and `nginx`.
+- `master` runs admin APIs and autonomous background jobs; `slave` serves public gateway and user traffic.
+
+Routing expectations in the bundled nginx example:
+- `/api/v1/admin/` -> `master`
+- `/v1/`, `/openai/v1/`, `/antigravity/v1/` and regular user/API traffic -> `slave`
+- WebSocket upgrade headers and long-lived timeouts are enabled
+
+Suggested verification flow:
+1. Visit `/api/v1/admin/ops` through nginx and confirm the Ops dashboard shows a `Cluster Status` card.
+2. Verify the card reports one online `Master` and one online `Slave`, with distinct `instance_id` values.
+3. Confirm `master` shows background jobs enabled, while `slave` shows background jobs disabled.
+4. Stop the `slave` container for longer than 45 seconds and verify the card marks it offline.
+5. Call an admin API through nginx and confirm it reaches `master`; call `/v1/*` or gateway APIs and confirm they reach `slave`.
 
 ### How Auto-Setup Works
 

@@ -398,6 +398,17 @@ type GatewayCache interface {
 	// DeleteSessionAccountID 删除粘性会话绑定，用于账号不可用时主动清理
 	// Delete sticky session binding, used to proactively clean up when account becomes unavailable
 	DeleteSessionAccountID(ctx context.Context, groupID int64, sessionHash string) error
+	// OpenAI WS turn-state shared storage
+	SetOpenAIWSSessionTurnState(ctx context.Context, groupID int64, sessionHash, turnState string, ttl time.Duration) error
+	GetOpenAIWSSessionTurnState(ctx context.Context, groupID int64, sessionHash string) (string, error)
+	DeleteOpenAIWSSessionTurnState(ctx context.Context, groupID int64, sessionHash string) error
+	// OpenAI WS connection binding shared storage
+	SetOpenAIWSResponseConnBinding(ctx context.Context, responseID, binding string, ttl time.Duration) error
+	GetOpenAIWSResponseConnBinding(ctx context.Context, responseID string) (string, error)
+	DeleteOpenAIWSResponseConnBinding(ctx context.Context, responseID string) error
+	SetOpenAIWSSessionConnBinding(ctx context.Context, groupID int64, sessionHash, binding string, ttl time.Duration) error
+	GetOpenAIWSSessionConnBinding(ctx context.Context, groupID int64, sessionHash string) (string, error)
+	DeleteOpenAIWSSessionConnBinding(ctx context.Context, groupID int64, sessionHash string) error
 }
 
 // derefGroupID safely dereferences *int64 to int64, returning 0 if nil

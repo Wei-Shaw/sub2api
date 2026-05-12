@@ -144,6 +144,42 @@ func (s *stickyGatewayCacheHotpathStub) DeleteSessionAccountID(ctx context.Conte
 	return nil
 }
 
+func (s *stickyGatewayCacheHotpathStub) SetOpenAIWSSessionTurnState(context.Context, int64, string, string, time.Duration) error {
+	return nil
+}
+
+func (s *stickyGatewayCacheHotpathStub) GetOpenAIWSSessionTurnState(context.Context, int64, string) (string, error) {
+	return "", errors.New("not found")
+}
+
+func (s *stickyGatewayCacheHotpathStub) DeleteOpenAIWSSessionTurnState(context.Context, int64, string) error {
+	return nil
+}
+
+func (s *stickyGatewayCacheHotpathStub) SetOpenAIWSResponseConnBinding(context.Context, string, string, time.Duration) error {
+	return nil
+}
+
+func (s *stickyGatewayCacheHotpathStub) GetOpenAIWSResponseConnBinding(context.Context, string) (string, error) {
+	return "", errors.New("not found")
+}
+
+func (s *stickyGatewayCacheHotpathStub) DeleteOpenAIWSResponseConnBinding(context.Context, string) error {
+	return nil
+}
+
+func (s *stickyGatewayCacheHotpathStub) SetOpenAIWSSessionConnBinding(context.Context, int64, string, string, time.Duration) error {
+	return nil
+}
+
+func (s *stickyGatewayCacheHotpathStub) GetOpenAIWSSessionConnBinding(context.Context, int64, string) (string, error) {
+	return "", errors.New("not found")
+}
+
+func (s *stickyGatewayCacheHotpathStub) DeleteOpenAIWSSessionConnBinding(context.Context, int64, string) error {
+	return nil
+}
+
 func (s *modelsListAccountRepoStub) ListSchedulableByGroupID(ctx context.Context, groupID int64) ([]Account, error) {
 	s.listByGroupCalls.Add(1)
 	if s.err != nil {

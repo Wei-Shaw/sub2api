@@ -423,6 +423,94 @@ ORDER BY job_name ASC`
 	return out, nil
 }
 
+func (r *opsRepository) UpsertInstanceHeartbeat(ctx context.Context, input *service.OpsUpsertInstanceHeartbeatInput) error {
+	if r == nil || r.db == nil {
+		return fmt.Errorf("nil ops repository")
+	}
+	if input == nil {
+		return fmt.Errorf("nil input")
+	}
+	if input.InstanceID == "" {
+		return fmt.Errorf("instance_id required")
+	}
+	if input.Role == "" {
+		return fmt.Errorf("role required")
+	}
+
+	q := `
+INSERT INTO ops_instance_heartbeats (
+  instance_id,
+  role,
+  hostname,
+  autonomous_background_enabled,
+  started_at,
+  last_seen_at
+) VALUES (
+  $1,$2,$3,$4,$5,$6
+)
+ON CONFLICT (instance_id) DO UPDATE SET
+  role = EXCLUDED.role,
+  hostname = EXCLUDED.hostname,
+  autonomous_background_enabled = EXCLUDED.autonomous_background_enabled,
+  started_at = EXCLUDED.started_at,
+  last_seen_at = EXCLUDED.last_seen_at`
+
+	_, err := r.db.ExecContext(
+		ctx,
+		q,
+		input.InstanceID,
+		input.Role,
+		input.Hostname,
+		input.AutonomousBackgroundEnabled,
+		input.StartedAt,
+		input.LastSeenAt,
+	)
+	return err
+}
+
+func (r *opsRepository) ListInstanceHeartbeats(ctx context.Context) ([]*service.OpsInstanceHeartbeat, error) {
+	if r == nil || r.db == nil {
+		return nil, fmt.Errorf("nil ops repository")
+	}
+
+	q := `
+SELECT
+  instance_id,
+  role,
+  hostname,
+  autonomous_background_enabled,
+  started_at,
+  last_seen_at
+FROM ops_instance_heartbeats
+ORDER BY last_seen_at DESC, instance_id ASC`
+
+	rows, err := r.db.QueryContext(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := make([]*service.OpsInstanceHeartbeat, 0, 4)
+	for rows.Next() {
+		var item service.OpsInstanceHeartbeat
+		if err := rows.Scan(
+			&item.InstanceID,
+			&item.Role,
+			&item.Hostname,
+			&item.AutonomousBackgroundEnabled,
+			&item.StartedAt,
+			&item.LastSeenAt,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, &item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func opsNullBool(v *bool) any {
 	if v == nil {
 		return sql.NullBool{}

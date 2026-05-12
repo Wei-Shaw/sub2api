@@ -9,6 +9,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
@@ -45,6 +46,52 @@ func ProvideOAuthRefreshAPI(accountRepo AccountRepository, tokenCache GeminiToke
 	return NewOAuthRefreshAPI(accountRepo, tokenCache)
 }
 
+func ProvideClaudeOAuthSessionStore(redisClient *redis.Client) ClaudeOAuthSessionStore {
+	return NewClaudeOAuthSessionStore(redisClient)
+}
+
+func ProvideOpenAIOAuthSessionStore(redisClient *redis.Client) OpenAIOAuthSessionStore {
+	return NewOpenAIOAuthSessionStore(redisClient)
+}
+
+func ProvideGeminiOAuthSessionStore(redisClient *redis.Client) GeminiOAuthSessionStore {
+	return NewGeminiOAuthSessionStore(redisClient)
+}
+
+func ProvideAntigravityOAuthSessionStore(redisClient *redis.Client) AntigravityOAuthSessionStore {
+	return NewAntigravityOAuthSessionStore(redisClient)
+}
+
+func ProvideOAuthService(proxyRepo ProxyRepository, oauthClient ClaudeOAuthClient, sessionStore ClaudeOAuthSessionStore) *OAuthService {
+	return NewOAuthServiceWithStore(proxyRepo, oauthClient, sessionStore)
+}
+
+func ProvideOpenAIOAuthService(proxyRepo ProxyRepository, oauthClient OpenAIOAuthClient, sessionStore OpenAIOAuthSessionStore) *OpenAIOAuthService {
+	return NewOpenAIOAuthServiceWithStore(proxyRepo, oauthClient, sessionStore)
+}
+
+func ProvideGeminiOAuthService(
+	proxyRepo ProxyRepository,
+	oauthClient GeminiOAuthClient,
+	codeAssist GeminiCliCodeAssistClient,
+	driveClient geminicli.DriveClient,
+	cfg *config.Config,
+	sessionStore GeminiOAuthSessionStore,
+) *GeminiOAuthService {
+	return NewGeminiOAuthServiceWithStore(proxyRepo, oauthClient, codeAssist, driveClient, cfg, sessionStore)
+}
+
+func ProvideAntigravityOAuthService(proxyRepo ProxyRepository, sessionStore AntigravityOAuthSessionStore) *AntigravityOAuthService {
+	return NewAntigravityOAuthServiceWithStore(proxyRepo, sessionStore)
+}
+
+func shouldStartAutonomousBackgroundServices(cfg *config.Config) bool {
+	if cfg == nil {
+		return true
+	}
+	return config.NormalizeDeploymentRole(cfg.Deployment.Role) != config.DeploymentRoleSlave
+}
+
 // ProvideTokenRefreshService creates and starts TokenRefreshService
 func ProvideTokenRefreshService(
 	accountRepo AccountRepository,
@@ -67,7 +114,9 @@ func ProvideTokenRefreshService(
 	svc.SetRefreshAPI(refreshAPI)
 	// 调用侧显式注入后台刷新策略，避免策略漂移
 	svc.SetRefreshPolicy(DefaultBackgroundRefreshPolicy())
-	svc.Start()
+	if shouldStartAutonomousBackgroundServices(cfg) {
+		svc.Start()
+	}
 	return svc
 }
 
@@ -132,28 +181,36 @@ func ProvideAntigravityTokenProvider(
 // ProvideDashboardAggregationService 创建并启动仪表盘聚合服务
 func ProvideDashboardAggregationService(repo DashboardAggregationRepository, timingWheel *TimingWheelService, cfg *config.Config) *DashboardAggregationService {
 	svc := NewDashboardAggregationService(repo, timingWheel, cfg)
-	svc.Start()
+	if shouldStartAutonomousBackgroundServices(cfg) {
+		svc.Start()
+	}
 	return svc
 }
 
 // ProvideUsageCleanupService 创建并启动使用记录清理任务服务
 func ProvideUsageCleanupService(repo UsageCleanupRepository, timingWheel *TimingWheelService, dashboardAgg *DashboardAggregationService, cfg *config.Config) *UsageCleanupService {
 	svc := NewUsageCleanupService(repo, timingWheel, dashboardAgg, cfg)
-	svc.Start()
+	if shouldStartAutonomousBackgroundServices(cfg) {
+		svc.Start()
+	}
 	return svc
 }
 
 // ProvideAccountExpiryService creates and starts AccountExpiryService.
-func ProvideAccountExpiryService(accountRepo AccountRepository) *AccountExpiryService {
+func ProvideAccountExpiryService(accountRepo AccountRepository, cfg *config.Config) *AccountExpiryService {
 	svc := NewAccountExpiryService(accountRepo, time.Minute)
-	svc.Start()
+	if shouldStartAutonomousBackgroundServices(cfg) {
+		svc.Start()
+	}
 	return svc
 }
 
 // ProvideSubscriptionExpiryService creates and starts SubscriptionExpiryService.
-func ProvideSubscriptionExpiryService(userSubRepo UserSubscriptionRepository) *SubscriptionExpiryService {
+func ProvideSubscriptionExpiryService(userSubRepo UserSubscriptionRepository, cfg *config.Config) *SubscriptionExpiryService {
 	svc := NewSubscriptionExpiryService(userSubRepo, time.Minute)
-	svc.Start()
+	if shouldStartAutonomousBackgroundServices(cfg) {
+		svc.Start()
+	}
 	return svc
 }
 
@@ -168,19 +225,21 @@ func ProvideTimingWheelService() (*TimingWheelService, error) {
 }
 
 // ProvideDeferredService creates and starts DeferredService
-func ProvideDeferredService(accountRepo AccountRepository, timingWheel *TimingWheelService) *DeferredService {
+func ProvideDeferredService(accountRepo AccountRepository, timingWheel *TimingWheelService, cfg *config.Config) *DeferredService {
 	svc := NewDeferredService(accountRepo, timingWheel, 10*time.Second)
-	svc.Start()
+	if shouldStartAutonomousBackgroundServices(cfg) {
+		svc.Start()
+	}
 	return svc
 }
 
 // ProvideConcurrencyService creates ConcurrencyService and starts slot cleanup worker.
 func ProvideConcurrencyService(cache ConcurrencyCache, accountRepo AccountRepository, cfg *config.Config) *ConcurrencyService {
 	svc := NewConcurrencyService(cache)
-	if err := svc.CleanupStaleProcessSlots(context.Background()); err != nil {
-		logger.LegacyPrintf("service.concurrency", "Warning: startup cleanup stale process slots failed: %v", err)
-	}
-	if cfg != nil {
+	if shouldStartAutonomousBackgroundServices(cfg) {
+		if err := svc.CleanupStaleProcessSlots(context.Background()); err != nil {
+			logger.LegacyPrintf("service.concurrency", "Warning: startup cleanup stale process slots failed: %v", err)
+		}
 		svc.StartSlotCleanupWorker(accountRepo, cfg.Gateway.Scheduling.SlotCleanupInterval)
 	}
 	return svc
@@ -189,7 +248,7 @@ func ProvideConcurrencyService(cache ConcurrencyCache, accountRepo AccountReposi
 // ProvideUserMessageQueueService 创建用户消息串行队列服务并启动清理 worker
 func ProvideUserMessageQueueService(cache UserMsgQueueCache, rpmCache RPMCache, cfg *config.Config) *UserMessageQueueService {
 	svc := NewUserMessageQueueService(cache, rpmCache, &cfg.Gateway.UserMessageQueue)
-	if cfg.Gateway.UserMessageQueue.CleanupIntervalSeconds > 0 {
+	if shouldStartAutonomousBackgroundServices(cfg) && cfg.Gateway.UserMessageQueue.CleanupIntervalSeconds > 0 {
 		svc.StartCleanupWorker(time.Duration(cfg.Gateway.UserMessageQueue.CleanupIntervalSeconds) * time.Second)
 	}
 	return svc
@@ -204,7 +263,9 @@ func ProvideSchedulerSnapshotService(
 	cfg *config.Config,
 ) *SchedulerSnapshotService {
 	svc := NewSchedulerSnapshotService(cache, outboxRepo, accountRepo, groupRepo, cfg)
-	svc.Start()
+	if shouldStartAutonomousBackgroundServices(cfg) {
+		svc.Start()
+	}
 	return svc
 }
 
@@ -239,8 +300,16 @@ func ProvideOpsMetricsCollector(
 	cfg *config.Config,
 ) *OpsMetricsCollector {
 	collector := NewOpsMetricsCollector(opsRepo, settingRepo, accountRepo, concurrencyService, db, redisClient, cfg)
-	collector.Start()
+	if shouldStartAutonomousBackgroundServices(cfg) {
+		collector.Start()
+	}
 	return collector
+}
+
+func ProvideOpsInstanceHeartbeatService(opsRepo OpsRepository, settingRepo SettingRepository, cfg *config.Config) *OpsInstanceHeartbeatService {
+	svc := NewOpsInstanceHeartbeatService(opsRepo, settingRepo, cfg)
+	svc.Start()
+	return svc
 }
 
 // ProvideOpsAggregationService creates and starts OpsAggregationService (hourly/daily pre-aggregation).
@@ -252,7 +321,9 @@ func ProvideOpsAggregationService(
 	cfg *config.Config,
 ) *OpsAggregationService {
 	svc := NewOpsAggregationService(opsRepo, settingRepo, db, redisClient, cfg)
-	svc.Start()
+	if shouldStartAutonomousBackgroundServices(cfg) {
+		svc.Start()
+	}
 	return svc
 }
 
@@ -265,7 +336,9 @@ func ProvideOpsAlertEvaluatorService(
 	cfg *config.Config,
 ) *OpsAlertEvaluatorService {
 	svc := NewOpsAlertEvaluatorService(opsService, opsRepo, emailService, redisClient, cfg)
-	svc.Start()
+	if shouldStartAutonomousBackgroundServices(cfg) {
+		svc.Start()
+	}
 	return svc
 }
 
@@ -284,8 +357,10 @@ func ProvideOpsCleanupService(
 	opsService *OpsService,
 ) *OpsCleanupService {
 	svc := NewOpsCleanupService(opsRepo, db, redisClient, cfg, channelMonitorSvc, settingRepo)
-	svc.Start()
-	if opsService != nil {
+	if shouldStartAutonomousBackgroundServices(cfg) {
+		svc.Start()
+	}
+	if opsService != nil && shouldStartAutonomousBackgroundServices(cfg) {
 		opsService.SetCleanupReloader(svc)
 	}
 	return svc
@@ -333,7 +408,9 @@ func ProvideSystemOperationLockService(repo IdempotencyRepository, cfg *config.C
 
 func ProvideIdempotencyCleanupService(repo IdempotencyRepository, cfg *config.Config) *IdempotencyCleanupService {
 	svc := NewIdempotencyCleanupService(repo, cfg)
-	svc.Start()
+	if shouldStartAutonomousBackgroundServices(cfg) {
+		svc.Start()
+	}
 	return svc
 }
 
@@ -354,7 +431,9 @@ func ProvideScheduledTestRunnerService(
 	cfg *config.Config,
 ) *ScheduledTestRunnerService {
 	svc := NewScheduledTestRunnerService(planRepo, scheduledSvc, accountTestSvc, rateLimitSvc, cfg)
-	svc.Start()
+	if shouldStartAutonomousBackgroundServices(cfg) {
+		svc.Start()
+	}
 	return svc
 }
 
@@ -367,7 +446,9 @@ func ProvideOpsScheduledReportService(
 	cfg *config.Config,
 ) *OpsScheduledReportService {
 	svc := NewOpsScheduledReportService(opsService, userService, emailService, redisClient, cfg)
-	svc.Start()
+	if shouldStartAutonomousBackgroundServices(cfg) {
+		svc.Start()
+	}
 	return svc
 }
 
@@ -387,7 +468,9 @@ func ProvideBackupService(
 	dumper DBDumper,
 ) *BackupService {
 	svc := NewBackupService(settingRepo, cfg, encryptor, storeFactory, dumper)
-	svc.Start()
+	if shouldStartAutonomousBackgroundServices(cfg) {
+		svc.Start()
+	}
 	return svc
 }
 
@@ -450,13 +533,17 @@ var ProviderSet = wire.NewSet(
 	NewAdminService,
 	NewGatewayService,
 	NewOpenAIGatewayService,
-	NewOAuthService,
-	NewOpenAIOAuthService,
-	NewGeminiOAuthService,
+	ProvideClaudeOAuthSessionStore,
+	ProvideOpenAIOAuthSessionStore,
+	ProvideGeminiOAuthSessionStore,
+	ProvideAntigravityOAuthSessionStore,
+	ProvideOAuthService,
+	ProvideOpenAIOAuthService,
+	ProvideGeminiOAuthService,
 	NewGeminiQuotaService,
 	NewCompositeTokenCacheInvalidator,
 	wire.Bind(new(TokenCacheInvalidator), new(*CompositeTokenCacheInvalidator)),
-	NewAntigravityOAuthService,
+	ProvideAntigravityOAuthService,
 	ProvideOAuthRefreshAPI,
 	ProvideGeminiTokenProvider,
 	NewGeminiMessagesCompatService,
@@ -472,6 +559,7 @@ var ProviderSet = wire.NewSet(
 	ProvideBackupService,
 	ProvideOpsSystemLogSink,
 	NewOpsService,
+	ProvideOpsInstanceHeartbeatService,
 	ProvideOpsMetricsCollector,
 	ProvideOpsAggregationService,
 	ProvideOpsAlertEvaluatorService,
@@ -534,9 +622,11 @@ func ProvideBalanceNotifyService(emailService *EmailService, settingRepo Setting
 }
 
 // ProvidePaymentOrderExpiryService creates and starts PaymentOrderExpiryService.
-func ProvidePaymentOrderExpiryService(paymentSvc *PaymentService) *PaymentOrderExpiryService {
+func ProvidePaymentOrderExpiryService(paymentSvc *PaymentService, cfg *config.Config) *PaymentOrderExpiryService {
 	svc := NewPaymentOrderExpiryService(paymentSvc, 60*time.Second)
-	svc.Start()
+	if shouldStartAutonomousBackgroundServices(cfg) {
+		svc.Start()
+	}
 	return svc
 }
 
@@ -553,9 +643,11 @@ func ProvideChannelMonitorService(
 // 通过 SetScheduler 注入回 service 后再 Start，确保启动时加载所有 enabled monitor，
 // 后续 CRUD 也能即时同步任务表。Runner.Stop 由 cleanup function 调用。
 // settingService 用于 runner 每次 fire 读取功能开关。
-func ProvideChannelMonitorRunner(svc *ChannelMonitorService, settingService *SettingService) *ChannelMonitorRunner {
+func ProvideChannelMonitorRunner(svc *ChannelMonitorService, settingService *SettingService, cfg *config.Config) *ChannelMonitorRunner {
 	r := NewChannelMonitorRunner(svc, settingService)
 	svc.SetScheduler(r)
-	r.Start()
+	if shouldStartAutonomousBackgroundServices(cfg) {
+		r.Start()
+	}
 	return r
 }

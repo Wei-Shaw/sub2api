@@ -19,6 +19,12 @@ const (
 	RunModeSimple   = "simple"
 )
 
+const (
+	DeploymentRoleStandalone = "standalone"
+	DeploymentRoleMaster     = "master"
+	DeploymentRoleSlave      = "slave"
+)
+
 // 使用量记录队列溢出策略
 const (
 	UsageRecordOverflowPolicyDrop   = "drop"
@@ -91,6 +97,52 @@ type Config struct {
 	Gemini                  GeminiConfig                  `mapstructure:"gemini"`
 	Update                  UpdateConfig                  `mapstructure:"update"`
 	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
+	Deployment              DeploymentConfig              `mapstructure:"deployment"`
+}
+
+type DeploymentConfig struct {
+	Role       string `mapstructure:"role"`
+	InstanceID string `mapstructure:"instance_id"`
+}
+
+func NormalizeDeploymentRole(role string) string {
+	switch strings.ToLower(strings.TrimSpace(role)) {
+	case DeploymentRoleMaster:
+		return DeploymentRoleMaster
+	case DeploymentRoleSlave:
+		return DeploymentRoleSlave
+	default:
+		return DeploymentRoleStandalone
+	}
+}
+
+func IsValidDeploymentRole(role string) bool {
+	switch strings.ToLower(strings.TrimSpace(role)) {
+	case "", DeploymentRoleStandalone, DeploymentRoleMaster, DeploymentRoleSlave:
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeDeploymentInstanceID(instanceID, role string) string {
+	if trimmed := strings.TrimSpace(instanceID); trimmed != "" {
+		return trimmed
+	}
+	if hostname := strings.TrimSpace(os.Getenv("HOSTNAME")); hostname != "" {
+		return hostname
+	}
+	if hostname, err := os.Hostname(); err == nil && strings.TrimSpace(hostname) != "" {
+		return strings.TrimSpace(hostname)
+	}
+	switch NormalizeDeploymentRole(role) {
+	case DeploymentRoleMaster:
+		return "master-local"
+	case DeploymentRoleSlave:
+		return "slave-local"
+	default:
+		return "standalone-local"
+	}
 }
 
 type LogConfig struct {
@@ -1277,6 +1329,11 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	}
 
 	cfg.RunMode = NormalizeRunMode(cfg.RunMode)
+	if !IsValidDeploymentRole(cfg.Deployment.Role) {
+		return nil, fmt.Errorf("deployment.role must be one of: standalone/master/slave")
+	}
+	cfg.Deployment.Role = NormalizeDeploymentRole(cfg.Deployment.Role)
+	cfg.Deployment.InstanceID = normalizeDeploymentInstanceID(cfg.Deployment.InstanceID, cfg.Deployment.Role)
 	cfg.Server.Mode = strings.ToLower(strings.TrimSpace(cfg.Server.Mode))
 	if cfg.Server.Mode == "" {
 		cfg.Server.Mode = "debug"
@@ -1400,6 +1457,8 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 
 func setDefaults() {
 	viper.SetDefault("run_mode", RunModeStandard)
+	viper.SetDefault("deployment.role", DeploymentRoleStandalone)
+	viper.SetDefault("deployment.instance_id", "")
 
 	// Server
 	viper.SetDefault("server.host", "0.0.0.0")
@@ -1816,6 +1875,14 @@ func (c *Config) Validate() error {
 	// 选择 bytes 而不是 rune 计数，确保二进制/随机串的长度语义更接近“熵”而非“字符数”。
 	if len([]byte(jwtSecret)) < 32 {
 		return fmt.Errorf("jwt.secret must be at least 32 bytes")
+	}
+	switch NormalizeDeploymentRole(c.Deployment.Role) {
+	case DeploymentRoleStandalone, DeploymentRoleMaster, DeploymentRoleSlave:
+	default:
+		return fmt.Errorf("deployment.role must be one of: standalone/master/slave")
+	}
+	if strings.TrimSpace(c.Deployment.InstanceID) == "" {
+		return fmt.Errorf("deployment.instance_id must not be empty")
 	}
 	switch c.Log.Level {
 	case "debug", "info", "warn", "error":

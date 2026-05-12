@@ -6,7 +6,14 @@ import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { adminAPI } from '@/api'
-import { opsAPI, type OpsDashboardOverview, type OpsMetricThresholds, type OpsRealtimeTrafficSummary } from '@/api/admin/ops'
+import {
+  opsAPI,
+  type OpsClusterInstanceStatus,
+  type OpsClusterStatusSummary,
+  type OpsDashboardOverview,
+  type OpsMetricThresholds,
+  type OpsRealtimeTrafficSummary
+} from '@/api/admin/ops'
 import type { OpsRequestDetailsPreset } from './OpsRequestDetailsModal.vue'
 import { useAdminSettingsStore } from '@/stores'
 import { formatNumber } from '@/utils/format'
@@ -54,6 +61,7 @@ const realtimeWindow = ref<RealtimeWindow>('1min')
 
 const overview = computed(() => props.overview ?? null)
 const systemMetrics = computed(() => overview.value?.system_metrics ?? null)
+const clusterStatus = computed<OpsClusterStatusSummary | null>(() => overview.value?.cluster_status ?? null)
 
 const REALTIME_WINDOW_MINUTES: Record<RealtimeWindow, number> = {
   '1min': 1,
@@ -644,6 +652,13 @@ function formatTimeShort(ts?: string | null): string {
   return d.toLocaleTimeString()
 }
 
+function formatDateTimeShort(ts?: string | null): string {
+  if (!ts) return '-'
+  const d = new Date(ts)
+  if (Number.isNaN(d.getTime())) return '-'
+  return d.toLocaleString()
+}
+
 const cpuPercentValue = computed<number | null>(() => {
   const v = systemMetrics.value?.cpu_usage_percent
   return typeof v === 'number' && Number.isFinite(v) ? v : null
@@ -804,6 +819,7 @@ const goroutineStatusClass = computed(() => {
 })
 
 const jobHeartbeats = computed(() => overview.value?.job_heartbeats ?? [])
+const clusterInstances = computed<OpsClusterInstanceStatus[]>(() => clusterStatus.value?.instances ?? [])
 
 const jobsStatus = computed<'ok' | 'warn' | 'unknown'>(() => {
   const list = jobHeartbeats.value
@@ -850,6 +866,75 @@ const showJobsDetails = ref(false)
 
 function openJobsDetails() {
   showJobsDetails.value = true
+}
+
+const clusterSummaryStatus = computed(() => clusterStatus.value?.status ?? 'unknown')
+
+const clusterSummaryLabel = computed(() => {
+  switch (clusterSummaryStatus.value) {
+    case 'healthy':
+      return t('admin.ops.cluster.healthy')
+    case 'warning':
+      return t('common.warning')
+    case 'critical':
+      return t('common.critical')
+    default:
+      return t('admin.ops.cluster.unknown')
+  }
+})
+
+const clusterSummaryClass = computed(() => {
+  switch (clusterSummaryStatus.value) {
+    case 'healthy':
+      return 'text-emerald-600 dark:text-emerald-400'
+    case 'warning':
+      return 'text-yellow-600 dark:text-yellow-400'
+    case 'critical':
+      return 'text-rose-600 dark:text-rose-400'
+    default:
+      return 'text-gray-900 dark:text-white'
+  }
+})
+
+const clusterOnlineInstances = computed(() => clusterStatus.value?.online_instances ?? 0)
+const clusterTotalInstances = computed(() => clusterStatus.value?.total_instances ?? 0)
+const clusterOnlineMasters = computed(() => clusterStatus.value?.online_masters ?? 0)
+const clusterOnlineSlaves = computed(() => clusterStatus.value?.online_slaves ?? 0)
+const clusterJobWarnings = computed(() => clusterStatus.value?.job_warning_count ?? 0)
+
+function clusterRoleLabel(role?: string | null): string {
+  switch (role) {
+    case 'master':
+      return t('admin.ops.cluster.master')
+    case 'slave':
+      return t('admin.ops.cluster.slave')
+    case 'standalone':
+      return t('admin.ops.cluster.standalone')
+    default:
+      return role || '-'
+  }
+}
+
+function clusterInstanceDotClass(status?: string | null): string {
+  switch (status) {
+    case 'online':
+      return 'bg-emerald-500'
+    case 'offline':
+      return 'bg-gray-300 dark:bg-dark-500'
+    default:
+      return 'bg-yellow-500'
+  }
+}
+
+function clusterInstanceStatusLabel(status?: string | null): string {
+  switch (status) {
+    case 'online':
+      return t('admin.ops.ready')
+    case 'offline':
+      return t('admin.ops.cluster.offline')
+    default:
+      return t('admin.ops.cluster.unknown')
+  }
 }
 
 function handleToolbarRefresh() {
@@ -1433,7 +1518,78 @@ function handleToolbarRefresh() {
 
     <!-- Integrated: System health (cards) -->
     <div v-if="overview" class="mt-2 border-t border-gray-100 pt-4 dark:border-dark-700">
-      <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-8">
+        <!-- Cluster -->
+        <div class="group/cluster relative rounded-xl bg-gray-50 p-3 sm:col-span-3 lg:col-span-2 dark:bg-dark-900">
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-1">
+              <div class="text-[10px] font-bold uppercase tracking-wider text-gray-400">{{ t('admin.ops.cluster.title') }}</div>
+              <HelpTooltip v-if="!props.fullscreen" :content="t('admin.ops.cluster.help')" />
+            </div>
+            <div class="text-[10px] font-semibold" :class="clusterSummaryClass">
+              {{ clusterSummaryLabel }}
+            </div>
+          </div>
+
+          <div class="mt-1 flex items-baseline gap-2">
+            <div class="text-lg font-black" :class="clusterSummaryClass">
+              {{ clusterOnlineInstances }} / {{ clusterTotalInstances }}
+            </div>
+            <span class="text-[10px] font-bold uppercase tracking-wider text-gray-400">{{ t('admin.ops.cluster.onlineInstances') }}</span>
+          </div>
+
+          <div class="mt-2 text-[10px] text-gray-500 dark:text-gray-400">
+            {{ t('admin.ops.cluster.onlineMasters') }} {{ clusterOnlineMasters }}
+            · {{ t('admin.ops.cluster.onlineSlaves') }} {{ clusterOnlineSlaves }}
+            <span v-if="clusterJobWarnings > 0"> · {{ t('admin.ops.cluster.jobWarnings') }} {{ clusterJobWarnings }} </span>
+          </div>
+
+          <div v-if="!clusterInstances.length" class="mt-3 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.ops.cluster.noHeartbeats') }}
+          </div>
+
+          <div v-else class="mt-3 text-[10px] text-gray-500 dark:text-gray-400">
+            {{ t('admin.ops.cluster.hoverForDetails') }}
+          </div>
+
+          <div
+            v-if="clusterInstances.length"
+            class="pointer-events-none absolute left-0 top-full z-30 mt-2 w-[22rem] max-w-[calc(100vw-2rem)] translate-y-1 rounded-xl border border-slate-200 bg-white p-3 opacity-0 shadow-[0_14px_36px_-20px_rgba(15,23,42,0.35)] ring-1 ring-slate-200/80 transition-all duration-150 group-hover/cluster:translate-y-0 group-hover/cluster:opacity-100 dark:border-slate-700 dark:bg-slate-900 dark:ring-slate-700/70"
+          >
+            <div class="mb-2 flex items-center justify-between gap-2">
+              <div class="text-[11px] font-semibold text-slate-900 dark:text-slate-100">{{ t('admin.ops.cluster.title') }}</div>
+              <div class="text-[10px]" :class="clusterSummaryClass">{{ clusterSummaryLabel }}</div>
+            </div>
+
+            <div class="space-y-2">
+              <div
+                v-for="instance in clusterInstances"
+                :key="instance.instance_id"
+                class="rounded-lg bg-slate-50 p-2 text-xs dark:bg-slate-800/90"
+              >
+                <div class="flex items-center justify-between gap-2">
+                  <div class="flex min-w-0 items-center gap-2">
+                    <span class="h-2 w-2 shrink-0 rounded-full" :class="clusterInstanceDotClass(instance.status)"></span>
+                    <span class="shrink-0 font-semibold text-slate-900 dark:text-slate-100">{{ clusterRoleLabel(instance.role) }}</span>
+                    <span class="truncate font-mono text-slate-600 dark:text-slate-300">{{ instance.instance_id }}</span>
+                  </div>
+                  <span class="shrink-0 text-[10px] text-slate-500 dark:text-slate-400">{{ clusterInstanceStatusLabel(instance.status) }}</span>
+                </div>
+                <div class="mt-1 space-y-1 text-[10px] text-slate-500 dark:text-slate-400">
+                  <div v-if="instance.hostname">{{ instance.hostname }}</div>
+                  <div>{{ t('admin.ops.cluster.lastSeen') }} {{ formatDateTimeShort(instance.last_seen_at) }}</div>
+                  <div>{{ t('admin.ops.cluster.startedAt') }} {{ formatDateTimeShort(instance.started_at) }}</div>
+                  <div>
+                    {{ instance.autonomous_background_enabled ? t('admin.ops.cluster.backgroundJobsOn') : t('admin.ops.cluster.backgroundJobsOff') }}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="absolute left-8 top-0 h-3 w-3 -translate-y-1/2 rotate-45 border-l border-t border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900"></div>
+          </div>
+        </div>
+
         <!-- CPU -->
         <div class="rounded-xl bg-gray-50 p-3 dark:bg-dark-900">
           <div class="flex items-center gap-1">

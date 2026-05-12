@@ -91,6 +91,7 @@ export interface OpsDashboardOverview {
 
   system_metrics?: OpsSystemMetricsSnapshot | null
   job_heartbeats?: OpsJobHeartbeat[] | null
+  cluster_status?: OpsClusterStatusSummary | null
 
   success_count: number
   error_count_total: number
@@ -338,6 +339,26 @@ export interface OpsJobHeartbeat {
   last_duration_ms?: number | null
   last_result?: string | null
   updated_at: string
+}
+
+export interface OpsClusterInstanceStatus {
+  instance_id: string
+  role: string
+  hostname: string
+  status: 'online' | 'offline' | string
+  started_at: string
+  last_seen_at: string
+  autonomous_background_enabled: boolean
+}
+
+export interface OpsClusterStatusSummary {
+  status: 'healthy' | 'warning' | 'critical' | 'unknown' | string
+  online_instances: number
+  total_instances: number
+  online_masters: number
+  online_slaves: number
+  job_warning_count: number
+  instances: OpsClusterInstanceStatus[]
 }
 
 export interface PlatformConcurrencyInfo {

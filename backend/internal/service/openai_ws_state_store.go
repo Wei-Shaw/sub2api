@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -24,8 +25,13 @@ type openAIWSAccountBinding struct {
 	expiresAt time.Time
 }
 
+type openAIWSSharedConnBinding struct {
+	InstanceID string `json:"instance_id"`
+	ConnID     string `json:"conn_id"`
+}
+
 type openAIWSConnBinding struct {
-	connID    string
+	binding   openAIWSSharedConnBinding
 	expiresAt time.Time
 }
 
@@ -35,16 +41,16 @@ type openAIWSTurnStateBinding struct {
 }
 
 type openAIWSSessionConnBinding struct {
-	connID    string
+	binding   openAIWSSharedConnBinding
 	expiresAt time.Time
 }
 
 // OpenAIWSStateStore 管理 WSv2 的粘连状态。
 // - response_id -> account_id 用于续链路由
-// - response_id -> conn_id 用于连接内上下文复用
+// - response_id / session_hash -> conn binding 用于单实例内连接复用
 //
-// response_id -> account_id 优先走 GatewayCache（Redis），同时维护本地热缓存。
-// response_id -> conn_id 仅在本进程内有效。
+// response_id -> account_id 与 session_hash -> turn_state 共享到 GatewayCache（Redis）。
+// 连接绑定也会共享 instance_id 归属，但仅当前实例命中自己的绑定时才会复用 conn_id。
 type OpenAIWSStateStore interface {
 	BindResponseAccount(ctx context.Context, groupID int64, responseID string, accountID int64, ttl time.Duration) error
 	GetResponseAccount(ctx context.Context, groupID int64, responseID string) (int64, error)
@@ -64,7 +70,8 @@ type OpenAIWSStateStore interface {
 }
 
 type defaultOpenAIWSStateStore struct {
-	cache GatewayCache
+	instanceID string
+	cache      GatewayCache
 
 	responseToAccountMu  sync.RWMutex
 	responseToAccount    map[string]openAIWSAccountBinding
@@ -79,8 +86,9 @@ type defaultOpenAIWSStateStore struct {
 }
 
 // NewOpenAIWSStateStore 创建默认 WS 状态存储。
-func NewOpenAIWSStateStore(cache GatewayCache) OpenAIWSStateStore {
+func NewOpenAIWSStateStore(cache GatewayCache, instanceIDs ...string) OpenAIWSStateStore {
 	store := &defaultOpenAIWSStateStore{
+		instanceID:         normalizeOpenAIWSInstanceID(instanceIDs...),
 		cache:              cache,
 		responseToAccount:  make(map[string]openAIWSAccountBinding, 256),
 		responseToConn:     make(map[string]openAIWSConnBinding, 256),
@@ -172,14 +180,24 @@ func (s *defaultOpenAIWSStateStore) BindResponseConn(responseID, connID string, 
 	}
 	ttl = normalizeOpenAIWSTTL(ttl)
 	s.maybeCleanup()
+	shared := openAIWSSharedConnBinding{InstanceID: s.instanceID, ConnID: conn}
 
 	s.responseToConnMu.Lock()
 	ensureBindingCapacity(s.responseToConn, id, openAIWSStateStoreMaxEntriesPerMap)
 	s.responseToConn[id] = openAIWSConnBinding{
-		connID:    conn,
+		binding:   shared,
 		expiresAt: time.Now().Add(ttl),
 	}
 	s.responseToConnMu.Unlock()
+
+	if s.cache == nil {
+		return
+	}
+	if payload, ok := marshalOpenAIWSSharedConnBinding(shared); ok {
+		cacheCtx, cancel := withOpenAIWSStateStoreRedisTimeout(context.Background())
+		defer cancel()
+		_ = s.cache.SetOpenAIWSResponseConnBinding(cacheCtx, id, payload, ttl)
+	}
 }
 
 func (s *defaultOpenAIWSStateStore) GetResponseConn(responseID string) (string, bool) {
@@ -193,10 +211,24 @@ func (s *defaultOpenAIWSStateStore) GetResponseConn(responseID string) (string, 
 	s.responseToConnMu.RLock()
 	binding, ok := s.responseToConn[id]
 	s.responseToConnMu.RUnlock()
-	if !ok || now.After(binding.expiresAt) || strings.TrimSpace(binding.connID) == "" {
+	if ok && now.Before(binding.expiresAt) && binding.binding.InstanceID == s.instanceID && strings.TrimSpace(binding.binding.ConnID) != "" {
+		return binding.binding.ConnID, true
+	}
+
+	if s.cache == nil {
 		return "", false
 	}
-	return binding.connID, true
+	cacheCtx, cancel := withOpenAIWSStateStoreRedisTimeout(context.Background())
+	defer cancel()
+	payload, err := s.cache.GetOpenAIWSResponseConnBinding(cacheCtx, id)
+	if err != nil {
+		return "", false
+	}
+	shared, ok := unmarshalOpenAIWSSharedConnBinding(payload)
+	if !ok || shared.InstanceID != s.instanceID || strings.TrimSpace(shared.ConnID) == "" {
+		return "", false
+	}
+	return shared.ConnID, true
 }
 
 func (s *defaultOpenAIWSStateStore) DeleteResponseConn(responseID string) {
@@ -207,6 +239,12 @@ func (s *defaultOpenAIWSStateStore) DeleteResponseConn(responseID string) {
 	s.responseToConnMu.Lock()
 	delete(s.responseToConn, id)
 	s.responseToConnMu.Unlock()
+	if s.cache == nil {
+		return
+	}
+	cacheCtx, cancel := withOpenAIWSStateStoreRedisTimeout(context.Background())
+	defer cancel()
+	_ = s.cache.DeleteOpenAIWSResponseConnBinding(cacheCtx, id)
 }
 
 func (s *defaultOpenAIWSStateStore) BindSessionTurnState(groupID int64, sessionHash, turnState string, ttl time.Duration) {
@@ -225,6 +263,13 @@ func (s *defaultOpenAIWSStateStore) BindSessionTurnState(groupID int64, sessionH
 		expiresAt: time.Now().Add(ttl),
 	}
 	s.sessionToTurnStateMu.Unlock()
+
+	if s.cache == nil {
+		return
+	}
+	cacheCtx, cancel := withOpenAIWSStateStoreRedisTimeout(context.Background())
+	defer cancel()
+	_ = s.cache.SetOpenAIWSSessionTurnState(cacheCtx, groupID, strings.TrimSpace(sessionHash), state, ttl)
 }
 
 func (s *defaultOpenAIWSStateStore) GetSessionTurnState(groupID int64, sessionHash string) (string, bool) {
@@ -238,10 +283,20 @@ func (s *defaultOpenAIWSStateStore) GetSessionTurnState(groupID int64, sessionHa
 	s.sessionToTurnStateMu.RLock()
 	binding, ok := s.sessionToTurnState[key]
 	s.sessionToTurnStateMu.RUnlock()
-	if !ok || now.After(binding.expiresAt) || strings.TrimSpace(binding.turnState) == "" {
+	if ok && now.Before(binding.expiresAt) && strings.TrimSpace(binding.turnState) != "" {
+		return binding.turnState, true
+	}
+
+	if s.cache == nil {
 		return "", false
 	}
-	return binding.turnState, true
+	cacheCtx, cancel := withOpenAIWSStateStoreRedisTimeout(context.Background())
+	defer cancel()
+	state, err := s.cache.GetOpenAIWSSessionTurnState(cacheCtx, groupID, strings.TrimSpace(sessionHash))
+	if err != nil || strings.TrimSpace(state) == "" {
+		return "", false
+	}
+	return state, true
 }
 
 func (s *defaultOpenAIWSStateStore) DeleteSessionTurnState(groupID int64, sessionHash string) {
@@ -252,6 +307,12 @@ func (s *defaultOpenAIWSStateStore) DeleteSessionTurnState(groupID int64, sessio
 	s.sessionToTurnStateMu.Lock()
 	delete(s.sessionToTurnState, key)
 	s.sessionToTurnStateMu.Unlock()
+	if s.cache == nil {
+		return
+	}
+	cacheCtx, cancel := withOpenAIWSStateStoreRedisTimeout(context.Background())
+	defer cancel()
+	_ = s.cache.DeleteOpenAIWSSessionTurnState(cacheCtx, groupID, strings.TrimSpace(sessionHash))
 }
 
 func (s *defaultOpenAIWSStateStore) BindSessionConn(groupID int64, sessionHash, connID string, ttl time.Duration) {
@@ -262,14 +323,24 @@ func (s *defaultOpenAIWSStateStore) BindSessionConn(groupID int64, sessionHash, 
 	}
 	ttl = normalizeOpenAIWSTTL(ttl)
 	s.maybeCleanup()
+	shared := openAIWSSharedConnBinding{InstanceID: s.instanceID, ConnID: conn}
 
 	s.sessionToConnMu.Lock()
 	ensureBindingCapacity(s.sessionToConn, key, openAIWSStateStoreMaxEntriesPerMap)
 	s.sessionToConn[key] = openAIWSSessionConnBinding{
-		connID:    conn,
+		binding:   shared,
 		expiresAt: time.Now().Add(ttl),
 	}
 	s.sessionToConnMu.Unlock()
+
+	if s.cache == nil {
+		return
+	}
+	if payload, ok := marshalOpenAIWSSharedConnBinding(shared); ok {
+		cacheCtx, cancel := withOpenAIWSStateStoreRedisTimeout(context.Background())
+		defer cancel()
+		_ = s.cache.SetOpenAIWSSessionConnBinding(cacheCtx, groupID, strings.TrimSpace(sessionHash), payload, ttl)
+	}
 }
 
 func (s *defaultOpenAIWSStateStore) GetSessionConn(groupID int64, sessionHash string) (string, bool) {
@@ -283,10 +354,24 @@ func (s *defaultOpenAIWSStateStore) GetSessionConn(groupID int64, sessionHash st
 	s.sessionToConnMu.RLock()
 	binding, ok := s.sessionToConn[key]
 	s.sessionToConnMu.RUnlock()
-	if !ok || now.After(binding.expiresAt) || strings.TrimSpace(binding.connID) == "" {
+	if ok && now.Before(binding.expiresAt) && binding.binding.InstanceID == s.instanceID && strings.TrimSpace(binding.binding.ConnID) != "" {
+		return binding.binding.ConnID, true
+	}
+
+	if s.cache == nil {
 		return "", false
 	}
-	return binding.connID, true
+	cacheCtx, cancel := withOpenAIWSStateStoreRedisTimeout(context.Background())
+	defer cancel()
+	payload, err := s.cache.GetOpenAIWSSessionConnBinding(cacheCtx, groupID, strings.TrimSpace(sessionHash))
+	if err != nil {
+		return "", false
+	}
+	shared, ok := unmarshalOpenAIWSSharedConnBinding(payload)
+	if !ok || shared.InstanceID != s.instanceID || strings.TrimSpace(shared.ConnID) == "" {
+		return "", false
+	}
+	return shared.ConnID, true
 }
 
 func (s *defaultOpenAIWSStateStore) DeleteSessionConn(groupID int64, sessionHash string) {
@@ -297,6 +382,12 @@ func (s *defaultOpenAIWSStateStore) DeleteSessionConn(groupID int64, sessionHash
 	s.sessionToConnMu.Lock()
 	delete(s.sessionToConn, key)
 	s.sessionToConnMu.Unlock()
+	if s.cache == nil {
+		return
+	}
+	cacheCtx, cancel := withOpenAIWSStateStoreRedisTimeout(context.Background())
+	defer cancel()
+	_ = s.cache.DeleteOpenAIWSSessionConnBinding(cacheCtx, groupID, strings.TrimSpace(sessionHash))
 }
 
 func (s *defaultOpenAIWSStateStore) maybeCleanup() {
@@ -424,6 +515,15 @@ func normalizeOpenAIWSTTL(ttl time.Duration) time.Duration {
 	return ttl
 }
 
+func normalizeOpenAIWSInstanceID(instanceIDs ...string) string {
+	for _, instanceID := range instanceIDs {
+		if trimmed := strings.TrimSpace(instanceID); trimmed != "" {
+			return trimmed
+		}
+	}
+	return "local"
+}
+
 func openAIWSSessionTurnStateKey(groupID int64, sessionHash string) string {
 	hash := strings.TrimSpace(sessionHash)
 	if hash == "" {
@@ -437,4 +537,26 @@ func withOpenAIWSStateStoreRedisTimeout(ctx context.Context) (context.Context, c
 		ctx = context.Background()
 	}
 	return context.WithTimeout(ctx, openAIWSStateStoreRedisTimeout)
+}
+
+func marshalOpenAIWSSharedConnBinding(binding openAIWSSharedConnBinding) (string, bool) {
+	data, err := json.Marshal(binding)
+	if err != nil {
+		return "", false
+	}
+	return string(data), true
+}
+
+func unmarshalOpenAIWSSharedConnBinding(payload string) (openAIWSSharedConnBinding, bool) {
+	var binding openAIWSSharedConnBinding
+	if strings.TrimSpace(payload) == "" {
+		return binding, false
+	}
+	if err := json.Unmarshal([]byte(payload), &binding); err != nil {
+		return binding, false
+	}
+	if strings.TrimSpace(binding.InstanceID) == "" || strings.TrimSpace(binding.ConnID) == "" {
+		return binding, false
+	}
+	return binding, true
 }

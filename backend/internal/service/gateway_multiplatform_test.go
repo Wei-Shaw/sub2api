@@ -201,6 +201,7 @@ var _ AccountRepository = (*mockAccountRepoForPlatform)(nil)
 // mockGatewayCacheForPlatform 单平台测试用的 cache mock
 type mockGatewayCacheForPlatform struct {
 	sessionBindings map[string]int64
+	stringValues    map[string]string
 	deletedSessions map[string]int
 }
 
@@ -232,6 +233,42 @@ func (m *mockGatewayCacheForPlatform) DeleteSessionAccountID(ctx context.Context
 	}
 	m.deletedSessions[sessionHash]++
 	delete(m.sessionBindings, sessionHash)
+	return nil
+}
+
+func (m *mockGatewayCacheForPlatform) SetOpenAIWSSessionTurnState(context.Context, int64, string, string, time.Duration) error {
+	return nil
+}
+
+func (m *mockGatewayCacheForPlatform) GetOpenAIWSSessionTurnState(context.Context, int64, string) (string, error) {
+	return "", errors.New("not found")
+}
+
+func (m *mockGatewayCacheForPlatform) DeleteOpenAIWSSessionTurnState(context.Context, int64, string) error {
+	return nil
+}
+
+func (m *mockGatewayCacheForPlatform) SetOpenAIWSResponseConnBinding(context.Context, string, string, time.Duration) error {
+	return nil
+}
+
+func (m *mockGatewayCacheForPlatform) GetOpenAIWSResponseConnBinding(context.Context, string) (string, error) {
+	return "", errors.New("not found")
+}
+
+func (m *mockGatewayCacheForPlatform) DeleteOpenAIWSResponseConnBinding(context.Context, string) error {
+	return nil
+}
+
+func (m *mockGatewayCacheForPlatform) SetOpenAIWSSessionConnBinding(context.Context, int64, string, string, time.Duration) error {
+	return nil
+}
+
+func (m *mockGatewayCacheForPlatform) GetOpenAIWSSessionConnBinding(context.Context, int64, string) (string, error) {
+	return "", errors.New("not found")
+}
+
+func (m *mockGatewayCacheForPlatform) DeleteOpenAIWSSessionConnBinding(context.Context, int64, string) error {
 	return nil
 }
 

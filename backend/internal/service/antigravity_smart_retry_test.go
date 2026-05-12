@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 )
 
 // stubSmartRetryCache 用于 handleSmartRetry 测试的 GatewayCache mock
@@ -27,6 +28,54 @@ type deleteSessionCall struct {
 
 func (c *stubSmartRetryCache) DeleteSessionAccountID(_ context.Context, groupID int64, sessionHash string) error {
 	c.deleteCalls = append(c.deleteCalls, deleteSessionCall{groupID: groupID, sessionHash: sessionHash})
+	return nil
+}
+
+func (c *stubSmartRetryCache) GetSessionAccountID(context.Context, int64, string) (int64, error) {
+	return 0, nil
+}
+
+func (c *stubSmartRetryCache) SetSessionAccountID(context.Context, int64, string, int64, time.Duration) error {
+	return nil
+}
+
+func (c *stubSmartRetryCache) RefreshSessionTTL(context.Context, int64, string, time.Duration) error {
+	return nil
+}
+
+func (c *stubSmartRetryCache) SetOpenAIWSSessionTurnState(context.Context, int64, string, string, time.Duration) error {
+	return nil
+}
+
+func (c *stubSmartRetryCache) GetOpenAIWSSessionTurnState(context.Context, int64, string) (string, error) {
+	return "", nil
+}
+
+func (c *stubSmartRetryCache) DeleteOpenAIWSSessionTurnState(context.Context, int64, string) error {
+	return nil
+}
+
+func (c *stubSmartRetryCache) SetOpenAIWSResponseConnBinding(context.Context, string, string, time.Duration) error {
+	return nil
+}
+
+func (c *stubSmartRetryCache) GetOpenAIWSResponseConnBinding(context.Context, string) (string, error) {
+	return "", nil
+}
+
+func (c *stubSmartRetryCache) DeleteOpenAIWSResponseConnBinding(context.Context, string) error {
+	return nil
+}
+
+func (c *stubSmartRetryCache) SetOpenAIWSSessionConnBinding(context.Context, int64, string, string, time.Duration) error {
+	return nil
+}
+
+func (c *stubSmartRetryCache) GetOpenAIWSSessionConnBinding(context.Context, int64, string) (string, error) {
+	return "", nil
+}
+
+func (c *stubSmartRetryCache) DeleteOpenAIWSSessionConnBinding(context.Context, int64, string) error {
 	return nil
 }
 

@@ -39,6 +39,8 @@ type OpsRepository interface {
 
 	UpsertJobHeartbeat(ctx context.Context, input *OpsUpsertJobHeartbeatInput) error
 	ListJobHeartbeats(ctx context.Context) ([]*OpsJobHeartbeat, error)
+	UpsertInstanceHeartbeat(ctx context.Context, input *OpsUpsertInstanceHeartbeatInput) error
+	ListInstanceHeartbeats(ctx context.Context) ([]*OpsInstanceHeartbeat, error)
 
 	// Alerts (rules + events)
 	ListAlertRules(ctx context.Context) ([]*OpsAlertRule, error)
@@ -337,6 +339,24 @@ type OpsJobHeartbeat struct {
 	LastResult     *string    `json:"last_result"`
 
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type OpsUpsertInstanceHeartbeatInput struct {
+	InstanceID                  string
+	Role                        string
+	Hostname                    string
+	AutonomousBackgroundEnabled bool
+	StartedAt                   time.Time
+	LastSeenAt                  time.Time
+}
+
+type OpsInstanceHeartbeat struct {
+	InstanceID                  string    `json:"instance_id"`
+	Role                        string    `json:"role"`
+	Hostname                    string    `json:"hostname"`
+	AutonomousBackgroundEnabled bool      `json:"autonomous_background_enabled"`
+	StartedAt                   time.Time `json:"started_at"`
+	LastSeenAt                  time.Time `json:"last_seen_at"`
 }
 
 type OpsWindowStats struct {

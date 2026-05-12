@@ -75,6 +75,33 @@ func TestOpenAIWSStateStore_SessionConnTTL(t *testing.T) {
 	require.False(t, ok)
 }
 
+func TestOpenAIWSStateStore_SharedTurnStateAcrossInstances(t *testing.T) {
+	cache := &stubGatewayCache{}
+	storeA := NewOpenAIWSStateStore(cache, "instance-a")
+	storeB := NewOpenAIWSStateStore(cache, "instance-b")
+
+	storeA.BindSessionTurnState(9, "session_hash_shared", "turn_state_shared", time.Minute)
+
+	state, ok := storeB.GetSessionTurnState(9, "session_hash_shared")
+	require.True(t, ok)
+	require.Equal(t, "turn_state_shared", state)
+}
+
+func TestOpenAIWSStateStore_IgnoresOtherInstanceConnBindings(t *testing.T) {
+	cache := &stubGatewayCache{}
+	storeA := NewOpenAIWSStateStore(cache, "instance-a")
+	storeB := NewOpenAIWSStateStore(cache, "instance-b")
+
+	storeA.BindResponseConn("resp_remote", "conn-a", time.Minute)
+	storeA.BindSessionConn(9, "session_hash_remote", "conn-a", time.Minute)
+
+	_, ok := storeB.GetResponseConn("resp_remote")
+	require.False(t, ok, "命中他实例 conn 绑定时应安全降级为不复用")
+
+	_, ok = storeB.GetSessionConn(9, "session_hash_remote")
+	require.False(t, ok, "session 粘连命中他实例 conn 绑定时应安全降级为不复用")
+}
+
 func TestOpenAIWSStateStore_GetResponseAccount_NoStaleAfterCacheMiss(t *testing.T) {
 	cache := &stubGatewayCache{sessionBindings: map[string]int64{}}
 	store := NewOpenAIWSStateStore(cache)
@@ -104,7 +131,7 @@ func TestOpenAIWSStateStore_MaybeCleanupRemovesExpiredIncrementally(t *testing.T
 	store.responseToConnMu.Lock()
 	for i := 0; i < total; i++ {
 		store.responseToConn[fmt.Sprintf("resp_%d", i)] = openAIWSConnBinding{
-			connID:    "conn_incremental",
+			binding:   openAIWSSharedConnBinding{InstanceID: "instance-a", ConnID: "conn_incremental"},
 			expiresAt: expiredAt,
 		}
 	}
@@ -190,6 +217,42 @@ func (c *openAIWSStateStoreTimeoutProbeCache) DeleteSessionAccountID(ctx context
 		c.deleteHasDeadline = true
 		c.delDeadlineDelta = time.Until(deadline)
 	}
+	return nil
+}
+
+func (c *openAIWSStateStoreTimeoutProbeCache) SetOpenAIWSSessionTurnState(context.Context, int64, string, string, time.Duration) error {
+	return nil
+}
+
+func (c *openAIWSStateStoreTimeoutProbeCache) GetOpenAIWSSessionTurnState(context.Context, int64, string) (string, error) {
+	return "", errors.New("not found")
+}
+
+func (c *openAIWSStateStoreTimeoutProbeCache) DeleteOpenAIWSSessionTurnState(context.Context, int64, string) error {
+	return nil
+}
+
+func (c *openAIWSStateStoreTimeoutProbeCache) SetOpenAIWSResponseConnBinding(context.Context, string, string, time.Duration) error {
+	return nil
+}
+
+func (c *openAIWSStateStoreTimeoutProbeCache) GetOpenAIWSResponseConnBinding(context.Context, string) (string, error) {
+	return "", errors.New("not found")
+}
+
+func (c *openAIWSStateStoreTimeoutProbeCache) DeleteOpenAIWSResponseConnBinding(context.Context, string) error {
+	return nil
+}
+
+func (c *openAIWSStateStoreTimeoutProbeCache) SetOpenAIWSSessionConnBinding(context.Context, int64, string, string, time.Duration) error {
+	return nil
+}
+
+func (c *openAIWSStateStoreTimeoutProbeCache) GetOpenAIWSSessionConnBinding(context.Context, int64, string) (string, error) {
+	return "", errors.New("not found")
+}
+
+func (c *openAIWSStateStoreTimeoutProbeCache) DeleteOpenAIWSSessionConnBinding(context.Context, int64, string) error {
 	return nil
 }
 

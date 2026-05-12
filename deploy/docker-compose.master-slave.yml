@@ -1,0 +1,174 @@
+# =============================================================================
+# Sub2API Docker Compose - Static Master/Slave Sample
+# =============================================================================
+# Purpose:
+#   - One explicit master for admin APIs + autonomous background jobs
+#   - One explicit slave for public gateway/business traffic
+#   - One nginx instance for path-based split routing
+#
+# Notes:
+#   - master/slave share the same PostgreSQL and Redis
+#   - master/slave also share ./cluster_data so slave reads the same generated config
+#   - first bootstrap should be done by master only (AUTO_SETUP=true on master, false on slave)
+# =============================================================================
+
+services:
+  master:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: sub2api-master
+    restart: unless-stopped
+    ports:
+      - "${MASTER_BIND_HOST:-127.0.0.1}:${MASTER_PORT:-18080}:8080"
+    volumes:
+      - ./cluster_data:/app/data
+    environment:
+      - AUTO_SETUP=${MASTER_AUTO_SETUP:-true}
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=8080
+      - SERVER_MODE=${SERVER_MODE:-debug}
+      - RUN_MODE=${RUN_MODE:-standard}
+      - DEPLOYMENT_ROLE=master
+      - DEPLOYMENT_INSTANCE_ID=${MASTER_INSTANCE_ID:-master-1}
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - DATABASE_USER=${POSTGRES_USER:-sub2api}
+      - DATABASE_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      - DATABASE_DBNAME=${POSTGRES_DB:-sub2api}
+      - DATABASE_SSLMODE=disable
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_DB=${REDIS_DB:-0}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@sub2api.local}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required}
+      - TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY:?TOTP_ENCRYPTION_KEY is required}
+      - TZ=${TZ:-Asia/Shanghai}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - sub2api-network
+
+  slave:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: sub2api-slave
+    restart: unless-stopped
+    ports:
+      - "${SLAVE_BIND_HOST:-127.0.0.1}:${SLAVE_PORT:-28080}:8080"
+    volumes:
+      - ./cluster_data:/app/data
+    environment:
+      - AUTO_SETUP=false
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=8080
+      - SERVER_MODE=${SERVER_MODE:-debug}
+      - RUN_MODE=${RUN_MODE:-standard}
+      - DEPLOYMENT_ROLE=slave
+      - DEPLOYMENT_INSTANCE_ID=${SLAVE_INSTANCE_ID:-slave-1}
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - DATABASE_USER=${POSTGRES_USER:-sub2api}
+      - DATABASE_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      - DATABASE_DBNAME=${POSTGRES_DB:-sub2api}
+      - DATABASE_SSLMODE=disable
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_DB=${REDIS_DB:-0}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required}
+      - TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY:?TOTP_ENCRYPTION_KEY is required}
+      - TZ=${TZ:-Asia/Shanghai}
+    depends_on:
+      master:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - sub2api-network
+
+  nginx:
+    image: nginx:1.29-alpine
+    container_name: sub2api-nginx
+    restart: unless-stopped
+    depends_on:
+      master:
+        condition: service_healthy
+      slave:
+        condition: service_healthy
+    ports:
+      - "${BIND_HOST:-0.0.0.0}:${SERVER_PORT:-8080}:80"
+    volumes:
+      - ./nginx/static-master-slave.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - sub2api-network
+
+  postgres:
+    image: postgres:18-alpine
+    container_name: sub2api-postgres-cluster
+    restart: unless-stopped
+    volumes:
+      - ./postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-sub2api}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      - POSTGRES_DB=${POSTGRES_DB:-sub2api}
+      - PGDATA=/var/lib/postgresql/data
+      - TZ=${TZ:-Asia/Shanghai}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sub2api} -d ${POSTGRES_DB:-sub2api}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - sub2api-network
+
+  redis:
+    image: redis:8-alpine
+    container_name: sub2api-redis-cluster
+    restart: unless-stopped
+    volumes:
+      - ./redis_data:/data
+    command: >
+      sh -c '
+        redis-server
+        --save 60 1
+        --appendonly yes
+        --appendfsync everysec
+        ${REDIS_PASSWORD:+--requirepass "$REDIS_PASSWORD"}'
+    environment:
+      - TZ=${TZ:-Asia/Shanghai}
+      - REDISCLI_AUTH=${REDIS_PASSWORD:-}
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - sub2api-network
+
+networks:
+  sub2api-network:
+    driver: bridge

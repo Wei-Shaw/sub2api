@@ -27,15 +27,23 @@ type ClaudeOAuthClient interface {
 
 // OAuthService handles OAuth authentication flows
 type OAuthService struct {
-	sessionStore *oauth.SessionStore
+	sessionStore ClaudeOAuthSessionStore
 	proxyRepo    ProxyRepository
 	oauthClient  ClaudeOAuthClient
 }
 
 // NewOAuthService creates a new OAuth service
 func NewOAuthService(proxyRepo ProxyRepository, oauthClient ClaudeOAuthClient) *OAuthService {
+	return NewOAuthServiceWithStore(proxyRepo, oauthClient, oauth.NewSessionStore())
+}
+
+// NewOAuthServiceWithStore creates a new OAuth service with an explicit session store.
+func NewOAuthServiceWithStore(proxyRepo ProxyRepository, oauthClient ClaudeOAuthClient, sessionStore ClaudeOAuthSessionStore) *OAuthService {
+	if sessionStore == nil {
+		sessionStore = oauth.NewSessionStore()
+	}
 	return &OAuthService{
-		sessionStore: oauth.NewSessionStore(),
+		sessionStore: sessionStore,
 		proxyRepo:    proxyRepo,
 		oauthClient:  oauthClient,
 	}

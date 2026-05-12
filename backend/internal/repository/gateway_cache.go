@@ -11,6 +11,12 @@ import (
 
 const stickySessionPrefix = "sticky_session:"
 
+const (
+	openAIWSSessionTurnStatePrefix    = "openai_ws:turn_state:"
+	openAIWSResponseConnBindingPrefix = "openai_ws:response_conn:"
+	openAIWSSessionConnBindingPrefix  = "openai_ws:session_conn:"
+)
+
 type gatewayCache struct {
 	rdb *redis.Client
 }
@@ -23,6 +29,14 @@ func NewGatewayCache(rdb *redis.Client) service.GatewayCache {
 // 格式: sticky_session:{groupID}:{sessionHash}
 func buildSessionKey(groupID int64, sessionHash string) string {
 	return fmt.Sprintf("%s%d:%s", stickySessionPrefix, groupID, sessionHash)
+}
+
+func buildScopedCacheKey(prefix string, groupID int64, key string) string {
+	return fmt.Sprintf("%s%d:%s", prefix, groupID, key)
+}
+
+func buildGlobalCacheKey(prefix string, key string) string {
+	return prefix + key
 }
 
 func (c *gatewayCache) GetSessionAccountID(ctx context.Context, groupID int64, sessionHash string) (int64, error) {
@@ -50,4 +64,40 @@ func (c *gatewayCache) RefreshSessionTTL(ctx context.Context, groupID int64, ses
 func (c *gatewayCache) DeleteSessionAccountID(ctx context.Context, groupID int64, sessionHash string) error {
 	key := buildSessionKey(groupID, sessionHash)
 	return c.rdb.Del(ctx, key).Err()
+}
+
+func (c *gatewayCache) SetOpenAIWSSessionTurnState(ctx context.Context, groupID int64, sessionHash, turnState string, ttl time.Duration) error {
+	return c.rdb.Set(ctx, buildScopedCacheKey(openAIWSSessionTurnStatePrefix, groupID, sessionHash), turnState, ttl).Err()
+}
+
+func (c *gatewayCache) GetOpenAIWSSessionTurnState(ctx context.Context, groupID int64, sessionHash string) (string, error) {
+	return c.rdb.Get(ctx, buildScopedCacheKey(openAIWSSessionTurnStatePrefix, groupID, sessionHash)).Result()
+}
+
+func (c *gatewayCache) DeleteOpenAIWSSessionTurnState(ctx context.Context, groupID int64, sessionHash string) error {
+	return c.rdb.Del(ctx, buildScopedCacheKey(openAIWSSessionTurnStatePrefix, groupID, sessionHash)).Err()
+}
+
+func (c *gatewayCache) SetOpenAIWSResponseConnBinding(ctx context.Context, responseID, binding string, ttl time.Duration) error {
+	return c.rdb.Set(ctx, buildGlobalCacheKey(openAIWSResponseConnBindingPrefix, responseID), binding, ttl).Err()
+}
+
+func (c *gatewayCache) GetOpenAIWSResponseConnBinding(ctx context.Context, responseID string) (string, error) {
+	return c.rdb.Get(ctx, buildGlobalCacheKey(openAIWSResponseConnBindingPrefix, responseID)).Result()
+}
+
+func (c *gatewayCache) DeleteOpenAIWSResponseConnBinding(ctx context.Context, responseID string) error {
+	return c.rdb.Del(ctx, buildGlobalCacheKey(openAIWSResponseConnBindingPrefix, responseID)).Err()
+}
+
+func (c *gatewayCache) SetOpenAIWSSessionConnBinding(ctx context.Context, groupID int64, sessionHash, binding string, ttl time.Duration) error {
+	return c.rdb.Set(ctx, buildScopedCacheKey(openAIWSSessionConnBindingPrefix, groupID, sessionHash), binding, ttl).Err()
+}
+
+func (c *gatewayCache) GetOpenAIWSSessionConnBinding(ctx context.Context, groupID int64, sessionHash string) (string, error) {
+	return c.rdb.Get(ctx, buildScopedCacheKey(openAIWSSessionConnBindingPrefix, groupID, sessionHash)).Result()
+}
+
+func (c *gatewayCache) DeleteOpenAIWSSessionConnBinding(ctx context.Context, groupID int64, sessionHash string) error {
+	return c.rdb.Del(ctx, buildScopedCacheKey(openAIWSSessionConnBindingPrefix, groupID, sessionHash)).Err()
 }

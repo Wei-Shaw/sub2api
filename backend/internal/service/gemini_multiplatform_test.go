@@ -254,6 +254,7 @@ var _ GroupRepository = (*mockGroupRepoForGemini)(nil)
 // mockGatewayCacheForGemini Gemini 测试用的 cache mock
 type mockGatewayCacheForGemini struct {
 	sessionBindings map[string]int64
+	stringValues    map[string]string
 	deletedSessions map[string]int
 }
 
@@ -285,6 +286,42 @@ func (m *mockGatewayCacheForGemini) DeleteSessionAccountID(ctx context.Context, 
 	}
 	m.deletedSessions[sessionHash]++
 	delete(m.sessionBindings, sessionHash)
+	return nil
+}
+
+func (m *mockGatewayCacheForGemini) SetOpenAIWSSessionTurnState(context.Context, int64, string, string, time.Duration) error {
+	return nil
+}
+
+func (m *mockGatewayCacheForGemini) GetOpenAIWSSessionTurnState(context.Context, int64, string) (string, error) {
+	return "", errors.New("not found")
+}
+
+func (m *mockGatewayCacheForGemini) DeleteOpenAIWSSessionTurnState(context.Context, int64, string) error {
+	return nil
+}
+
+func (m *mockGatewayCacheForGemini) SetOpenAIWSResponseConnBinding(context.Context, string, string, time.Duration) error {
+	return nil
+}
+
+func (m *mockGatewayCacheForGemini) GetOpenAIWSResponseConnBinding(context.Context, string) (string, error) {
+	return "", errors.New("not found")
+}
+
+func (m *mockGatewayCacheForGemini) DeleteOpenAIWSResponseConnBinding(context.Context, string) error {
+	return nil
+}
+
+func (m *mockGatewayCacheForGemini) SetOpenAIWSSessionConnBinding(context.Context, int64, string, string, time.Duration) error {
+	return nil
+}
+
+func (m *mockGatewayCacheForGemini) GetOpenAIWSSessionConnBinding(context.Context, int64, string) (string, error) {
+	return "", errors.New("not found")
+}
+
+func (m *mockGatewayCacheForGemini) DeleteOpenAIWSSessionConnBinding(context.Context, int64, string) error {
 	return nil
 }
 

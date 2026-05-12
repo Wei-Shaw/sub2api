@@ -50,7 +50,7 @@ const (
 )
 
 type GeminiOAuthService struct {
-	sessionStore *geminicli.SessionStore
+	sessionStore GeminiOAuthSessionStore
 	proxyRepo    ProxyRepository
 	oauthClient  GeminiOAuthClient
 	codeAssist   GeminiCliCodeAssistClient
@@ -70,8 +70,22 @@ func NewGeminiOAuthService(
 	driveClient geminicli.DriveClient,
 	cfg *config.Config,
 ) *GeminiOAuthService {
+	return NewGeminiOAuthServiceWithStore(proxyRepo, oauthClient, codeAssist, driveClient, cfg, geminicli.NewSessionStore())
+}
+
+func NewGeminiOAuthServiceWithStore(
+	proxyRepo ProxyRepository,
+	oauthClient GeminiOAuthClient,
+	codeAssist GeminiCliCodeAssistClient,
+	driveClient geminicli.DriveClient,
+	cfg *config.Config,
+	sessionStore GeminiOAuthSessionStore,
+) *GeminiOAuthService {
+	if sessionStore == nil {
+		sessionStore = geminicli.NewSessionStore()
+	}
 	return &GeminiOAuthService{
-		sessionStore: geminicli.NewSessionStore(),
+		sessionStore: sessionStore,
 		proxyRepo:    proxyRepo,
 		oauthClient:  oauthClient,
 		codeAssist:   codeAssist,

@@ -115,6 +115,7 @@ func (c schedulerTestConcurrencyCache) GetAccountWaitingCount(ctx context.Contex
 
 type schedulerTestGatewayCache struct {
 	sessionBindings map[string]int64
+	stringValues    map[string]string
 	deletedSessions map[string]int
 }
 
@@ -146,6 +147,84 @@ func (c *schedulerTestGatewayCache) DeleteSessionAccountID(ctx context.Context, 
 	}
 	c.deletedSessions[sessionHash]++
 	delete(c.sessionBindings, sessionHash)
+	return nil
+}
+
+func (c *schedulerTestGatewayCache) SetOpenAIWSSessionTurnState(ctx context.Context, groupID int64, sessionHash, turnState string, ttl time.Duration) error {
+	if c.stringValues == nil {
+		c.stringValues = make(map[string]string)
+	}
+	c.stringValues[fmt.Sprintf("turn:%d:%s", groupID, sessionHash)] = turnState
+	return nil
+}
+
+func (c *schedulerTestGatewayCache) GetOpenAIWSSessionTurnState(ctx context.Context, groupID int64, sessionHash string) (string, error) {
+	if c.stringValues == nil {
+		return "", errors.New("not found")
+	}
+	value, ok := c.stringValues[fmt.Sprintf("turn:%d:%s", groupID, sessionHash)]
+	if !ok {
+		return "", errors.New("not found")
+	}
+	return value, nil
+}
+
+func (c *schedulerTestGatewayCache) DeleteOpenAIWSSessionTurnState(ctx context.Context, groupID int64, sessionHash string) error {
+	if c.stringValues != nil {
+		delete(c.stringValues, fmt.Sprintf("turn:%d:%s", groupID, sessionHash))
+	}
+	return nil
+}
+
+func (c *schedulerTestGatewayCache) SetOpenAIWSResponseConnBinding(ctx context.Context, responseID, binding string, ttl time.Duration) error {
+	if c.stringValues == nil {
+		c.stringValues = make(map[string]string)
+	}
+	c.stringValues["resp_conn:"+responseID] = binding
+	return nil
+}
+
+func (c *schedulerTestGatewayCache) GetOpenAIWSResponseConnBinding(ctx context.Context, responseID string) (string, error) {
+	if c.stringValues == nil {
+		return "", errors.New("not found")
+	}
+	value, ok := c.stringValues["resp_conn:"+responseID]
+	if !ok {
+		return "", errors.New("not found")
+	}
+	return value, nil
+}
+
+func (c *schedulerTestGatewayCache) DeleteOpenAIWSResponseConnBinding(ctx context.Context, responseID string) error {
+	if c.stringValues != nil {
+		delete(c.stringValues, "resp_conn:"+responseID)
+	}
+	return nil
+}
+
+func (c *schedulerTestGatewayCache) SetOpenAIWSSessionConnBinding(ctx context.Context, groupID int64, sessionHash, binding string, ttl time.Duration) error {
+	if c.stringValues == nil {
+		c.stringValues = make(map[string]string)
+	}
+	c.stringValues[fmt.Sprintf("session_conn:%d:%s", groupID, sessionHash)] = binding
+	return nil
+}
+
+func (c *schedulerTestGatewayCache) GetOpenAIWSSessionConnBinding(ctx context.Context, groupID int64, sessionHash string) (string, error) {
+	if c.stringValues == nil {
+		return "", errors.New("not found")
+	}
+	value, ok := c.stringValues[fmt.Sprintf("session_conn:%d:%s", groupID, sessionHash)]
+	if !ok {
+		return "", errors.New("not found")
+	}
+	return value, nil
+}
+
+func (c *schedulerTestGatewayCache) DeleteOpenAIWSSessionConnBinding(ctx context.Context, groupID int64, sessionHash string) error {
+	if c.stringValues != nil {
+		delete(c.stringValues, fmt.Sprintf("session_conn:%d:%s", groupID, sessionHash))
+	}
 	return nil
 }
 

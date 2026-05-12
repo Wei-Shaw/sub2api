@@ -30,6 +30,47 @@ func TestLoadForBootstrapAllowsMissingJWTSecret(t *testing.T) {
 	}
 }
 
+func TestLoadDefaultDeploymentConfig(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, DeploymentRoleStandalone, cfg.Deployment.Role)
+	require.NotEmpty(t, cfg.Deployment.InstanceID)
+}
+
+func TestLoadDeploymentConfigFromEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("DEPLOYMENT_ROLE", "slave")
+	t.Setenv("DEPLOYMENT_INSTANCE_ID", "edge-02")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, DeploymentRoleSlave, cfg.Deployment.Role)
+	require.Equal(t, "edge-02", cfg.Deployment.InstanceID)
+}
+
+func TestLoadDeploymentInstanceIDFallsBackToHostname(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("DEPLOYMENT_ROLE", "master")
+	t.Setenv("DEPLOYMENT_INSTANCE_ID", "")
+	t.Setenv("HOSTNAME", "master-host")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, DeploymentRoleMaster, cfg.Deployment.Role)
+	require.Equal(t, "master-host", cfg.Deployment.InstanceID)
+}
+
+func TestLoadDeploymentConfigRejectsInvalidRole(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("DEPLOYMENT_ROLE", "leader")
+
+	_, err := Load()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "deployment.role")
+}
+
 func TestNormalizeRunMode(t *testing.T) {
 	tests := []struct {
 		input    string

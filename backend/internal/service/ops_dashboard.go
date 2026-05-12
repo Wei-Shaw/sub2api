@@ -65,6 +65,12 @@ func (s *OpsService) GetDashboardOverview(ctx context.Context, filter *OpsDashbo
 		log.Printf("[Ops] ListJobHeartbeats failed: %v", err)
 	}
 
+	if instances, err := s.opsRepo.ListInstanceHeartbeats(ctx); err == nil {
+		overview.ClusterStatus = buildClusterStatusSummary(time.Now().UTC(), instances, overview.JobHeartbeats)
+	} else {
+		log.Printf("[Ops] ListInstanceHeartbeats failed: %v", err)
+	}
+
 	overview.HealthScore = computeDashboardHealthScore(time.Now().UTC(), overview)
 
 	return overview, nil

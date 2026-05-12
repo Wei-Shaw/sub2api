@@ -955,7 +955,11 @@ func (s *OpenAIGatewayService) getOpenAIWSStateStore() OpenAIWSStateStore {
 	}
 	s.openaiWSStateStoreOnce.Do(func() {
 		if s.openaiWSStateStore == nil {
-			s.openaiWSStateStore = NewOpenAIWSStateStore(s.cache)
+			instanceID := ""
+			if s.cfg != nil {
+				instanceID = s.cfg.Deployment.InstanceID
+			}
+			s.openaiWSStateStore = NewOpenAIWSStateStore(s.cache, instanceID)
 		}
 	})
 	return s.openaiWSStateStore

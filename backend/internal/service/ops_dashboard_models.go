@@ -45,6 +45,9 @@ type OpsDashboardOverview struct {
 	// Background jobs health (heartbeats).
 	JobHeartbeats []*OpsJobHeartbeat `json:"job_heartbeats"`
 
+	// ClusterStatus is a best-effort deployment cluster snapshot.
+	ClusterStatus *OpsClusterStatusSummary `json:"cluster_status"`
+
 	SuccessCount         int64 `json:"success_count"`
 	ErrorCountTotal      int64 `json:"error_count_total"`
 	BusinessLimitedCount int64 `json:"business_limited_count"`
@@ -67,6 +70,26 @@ type OpsDashboardOverview struct {
 
 	Duration OpsPercentiles `json:"duration"`
 	TTFT     OpsPercentiles `json:"ttft"`
+}
+
+type OpsClusterStatusSummary struct {
+	Status          string                      `json:"status"`
+	OnlineInstances int                         `json:"online_instances"`
+	TotalInstances  int                         `json:"total_instances"`
+	OnlineMasters   int                         `json:"online_masters"`
+	OnlineSlaves    int                         `json:"online_slaves"`
+	JobWarningCount int                         `json:"job_warning_count"`
+	Instances       []*OpsClusterInstanceStatus `json:"instances"`
+}
+
+type OpsClusterInstanceStatus struct {
+	InstanceID                  string    `json:"instance_id"`
+	Role                        string    `json:"role"`
+	Hostname                    string    `json:"hostname"`
+	Status                      string    `json:"status"`
+	StartedAt                   time.Time `json:"started_at"`
+	LastSeenAt                  time.Time `json:"last_seen_at"`
+	AutonomousBackgroundEnabled bool      `json:"autonomous_background_enabled"`
 }
 
 type OpsLatencyHistogramBucket struct {

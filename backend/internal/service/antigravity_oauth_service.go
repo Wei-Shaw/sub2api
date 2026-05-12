@@ -11,13 +11,20 @@ import (
 )
 
 type AntigravityOAuthService struct {
-	sessionStore *antigravity.SessionStore
+	sessionStore AntigravityOAuthSessionStore
 	proxyRepo    ProxyRepository
 }
 
 func NewAntigravityOAuthService(proxyRepo ProxyRepository) *AntigravityOAuthService {
+	return NewAntigravityOAuthServiceWithStore(proxyRepo, antigravity.NewSessionStore())
+}
+
+func NewAntigravityOAuthServiceWithStore(proxyRepo ProxyRepository, sessionStore AntigravityOAuthSessionStore) *AntigravityOAuthService {
+	if sessionStore == nil {
+		sessionStore = antigravity.NewSessionStore()
+	}
 	return &AntigravityOAuthService{
-		sessionStore: antigravity.NewSessionStore(),
+		sessionStore: sessionStore,
 		proxyRepo:    proxyRepo,
 	}
 }

@@ -72,6 +72,7 @@ func provideServiceBuildInfo(buildInfo handler.BuildInfo) service.BuildInfo {
 func provideCleanup(
 	entClient *ent.Client,
 	rdb *redis.Client,
+	opsInstanceHeartbeat *service.OpsInstanceHeartbeatService,
 	opsMetricsCollector *service.OpsMetricsCollector,
 	opsAggregation *service.OpsAggregationService,
 	opsAlertEvaluator *service.OpsAlertEvaluatorService,
@@ -143,6 +144,12 @@ func provideCleanup(
 			{"OpsMetricsCollector", func() error {
 				if opsMetricsCollector != nil {
 					opsMetricsCollector.Stop()
+				}
+				return nil
+			}},
+			{"OpsInstanceHeartbeatService", func() error {
+				if opsInstanceHeartbeat != nil {
+					opsInstanceHeartbeat.Stop()
 				}
 				return nil
 			}},

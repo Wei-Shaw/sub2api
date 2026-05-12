@@ -14,7 +14,7 @@ import (
 
 // OpenAIOAuthService handles OpenAI OAuth authentication flows
 type OpenAIOAuthService struct {
-	sessionStore         *openai.SessionStore
+	sessionStore         OpenAIOAuthSessionStore
 	proxyRepo            ProxyRepository
 	oauthClient          OpenAIOAuthClient
 	privacyClientFactory PrivacyClientFactory // 用于调用 chatgpt.com/backend-api（ImpersonateChrome）
@@ -22,8 +22,16 @@ type OpenAIOAuthService struct {
 
 // NewOpenAIOAuthService creates a new OpenAI OAuth service
 func NewOpenAIOAuthService(proxyRepo ProxyRepository, oauthClient OpenAIOAuthClient) *OpenAIOAuthService {
+	return NewOpenAIOAuthServiceWithStore(proxyRepo, oauthClient, openai.NewSessionStore())
+}
+
+// NewOpenAIOAuthServiceWithStore creates a new OpenAI OAuth service with an explicit session store.
+func NewOpenAIOAuthServiceWithStore(proxyRepo ProxyRepository, oauthClient OpenAIOAuthClient, sessionStore OpenAIOAuthSessionStore) *OpenAIOAuthService {
+	if sessionStore == nil {
+		sessionStore = openai.NewSessionStore()
+	}
 	return &OpenAIOAuthService{
-		sessionStore: openai.NewSessionStore(),
+		sessionStore: sessionStore,
 		proxyRepo:    proxyRepo,
 		oauthClient:  oauthClient,
 	}
