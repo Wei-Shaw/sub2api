@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
@@ -141,14 +142,20 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 		return nil
 	}
 	antCfg := g.AnthropicConfig()
+	oaiCfg := g.OpenAIConfig()
+	agCfg := g.AntigravityConfig()
+	var dispatchModelCfg domain.OpenAIMessagesDispatchModelConfig
+	if oaiCfg.MessagesDispatchModelConfig != nil {
+		dispatchModelCfg = *oaiCfg.MessagesDispatchModelConfig
+	}
 	out := &AdminGroup{
 		Group:                       groupFromServiceBase(g),
 		ModelRouting:                antCfg.ModelRouting,
 		ModelRoutingEnabled:         antCfg.ModelRoutingEnabled,
-		MCPXMLInject:                g.MCPXMLInject,
-		DefaultMappedModel:          g.DefaultMappedModel,
-		MessagesDispatchModelConfig: g.MessagesDispatchModelConfig,
-		SupportedModelScopes:        g.SupportedModelScopes,
+		MCPXMLInject:                agCfg.MCPXMLInject,
+		DefaultMappedModel:          oaiCfg.DefaultMappedModel,
+		MessagesDispatchModelConfig: dispatchModelCfg,
+		SupportedModelScopes:        agCfg.SupportedModelScopes,
 		AccountCount:                g.AccountCount,
 		ActiveAccountCount:          g.ActiveAccountCount,
 		RateLimitedAccountCount:     g.RateLimitedAccountCount,
@@ -168,6 +175,20 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 func groupFromServiceBase(g *service.Group) Group {
 	imgCfg := g.ImageConfig()
 	antCfg := g.AnthropicConfig()
+	oaiCfg := g.OpenAIConfig()
+	// RequireOAuthOnly/RequirePrivacySet 是跨平台字段，
+	// 从对应平台 config 读取（OpenAI/Antigravity 各自存一份），fallback 到一级字段。
+	requireOAuthOnly := g.RequireOAuthOnly
+	requirePrivacySet := g.RequirePrivacySet
+	switch g.Platform {
+	case service.PlatformOpenAI:
+		requireOAuthOnly = oaiCfg.RequireOAuthOnly
+		requirePrivacySet = oaiCfg.RequirePrivacySet
+	case service.PlatformAntigravity:
+		agCfg := g.AntigravityConfig()
+		requireOAuthOnly = agCfg.RequireOAuthOnly
+		requirePrivacySet = agCfg.RequirePrivacySet
+	}
 	return Group{
 		ID:                              g.ID,
 		Name:                            g.Name,
@@ -189,9 +210,9 @@ func groupFromServiceBase(g *service.Group) Group {
 		ClaudeCodeOnly:                  antCfg.ClaudeCodeOnly,
 		FallbackGroupID:                 antCfg.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: antCfg.FallbackGroupIDOnInvalidRequest,
-		AllowMessagesDispatch:           g.AllowMessagesDispatch,
-		RequireOAuthOnly:                g.RequireOAuthOnly,
-		RequirePrivacySet:               g.RequirePrivacySet,
+		AllowMessagesDispatch:           oaiCfg.AllowMessagesDispatch,
+		RequireOAuthOnly:                requireOAuthOnly,
+		RequirePrivacySet:               requirePrivacySet,
 		RPMLimit:                        g.RPMLimit,
 		CreatedAt:                       g.CreatedAt,
 		UpdatedAt:                       g.UpdatedAt,

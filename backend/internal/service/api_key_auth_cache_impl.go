@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 11 // v11: added AnthropicConfigExtra for GroupExtra anthropic_config migration
+const apiKeyAuthSnapshotVersion = 12 // v12: added OpenAIConfigExtra/AntigravityConfigExtra for GroupExtra platform config migration
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -248,6 +248,8 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 	if apiKey.Group != nil {
 		imgCfg := apiKey.Group.ImageConfig()
 		antCfg := apiKey.Group.AnthropicConfig()
+		oaiCfg := apiKey.Group.OpenAIConfig()
+		agCfg := apiKey.Group.AntigravityConfig()
 		snapshot.Group = &APIKeyAuthGroupSnapshot{
 			ID:                              apiKey.Group.ID,
 			Name:                            apiKey.Group.Name,
@@ -266,16 +268,18 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			ImagePrice4K:                    imgCfg.Price4K,
 			ImageConfigExtra:                &imgCfg,
 			AnthropicConfigExtra:            &antCfg,
+			OpenAIConfigExtra:               &oaiCfg,
+			AntigravityConfigExtra:          &agCfg,
 			ClaudeCodeOnly:                  antCfg.ClaudeCodeOnly,
 			FallbackGroupID:                 antCfg.FallbackGroupID,
 			FallbackGroupIDOnInvalidRequest: antCfg.FallbackGroupIDOnInvalidRequest,
 			ModelRouting:                    antCfg.ModelRouting,
 			ModelRoutingEnabled:             antCfg.ModelRoutingEnabled,
-			MCPXMLInject:                    apiKey.Group.MCPXMLInject,
-			SupportedModelScopes:            apiKey.Group.SupportedModelScopes,
-			AllowMessagesDispatch:           apiKey.Group.AllowMessagesDispatch,
-			DefaultMappedModel:              apiKey.Group.DefaultMappedModel,
-			MessagesDispatchModelConfig:     apiKey.Group.MessagesDispatchModelConfig,
+			MCPXMLInject:                    agCfg.MCPXMLInject,
+			SupportedModelScopes:            agCfg.SupportedModelScopes,
+			AllowMessagesDispatch:           oaiCfg.AllowMessagesDispatch,
+			DefaultMappedModel:              oaiCfg.DefaultMappedModel,
+			MessagesDispatchModelConfig:     oaiCfg.messagesDispatchModelConfigValue(),
 			RPMLimit:                        apiKey.Group.RPMLimit,
 		}
 	}
@@ -347,6 +351,8 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			AllowMessagesDispatch:           snapshot.Group.AllowMessagesDispatch,
 			DefaultMappedModel:              snapshot.Group.DefaultMappedModel,
 			MessagesDispatchModelConfig:     snapshot.Group.MessagesDispatchModelConfig,
+			RequireOAuthOnly:                snapshot.Group.requireOAuthOnlyFromPlatform(),
+			RequirePrivacySet:               snapshot.Group.requirePrivacySetFromPlatform(),
 			RPMLimit:                        snapshot.Group.RPMLimit,
 			GroupExtra:                      groupExtra,
 		}
@@ -355,23 +361,62 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 	return apiKey
 }
 
-// buildGroupExtraFromSnapshot 从快照的 ImageConfigExtra/AnthropicConfigExtra 重建 GroupExtra，
-// 使得 ImageConfig()/AnthropicConfig() accessor 在 cache-restored Group 上能正确命中 GroupExtra 路径。
+// buildGroupExtraFromSnapshot 从快照的各平台 ConfigExtra 重建 GroupExtra，
+// 使得 ImageConfig()/AnthropicConfig()/OpenAIConfig()/AntigravityConfig() accessor
+// 在 cache-restored Group 上能正确命中 GroupExtra 路径。
 func buildGroupExtraFromSnapshot(gs *APIKeyAuthGroupSnapshot) map[string]interface{} {
 	if gs == nil {
 		return nil
 	}
 	hasImage := gs.ImageConfigExtra != nil
 	hasAnthropic := gs.AnthropicConfigExtra != nil
-	if !hasImage && !hasAnthropic {
+	hasOpenAI := gs.OpenAIConfigExtra != nil
+	hasAntigravity := gs.AntigravityConfigExtra != nil
+	if !hasImage && !hasAnthropic && !hasOpenAI && !hasAntigravity {
 		return nil
 	}
-	extra := make(map[string]interface{}, 2)
+	extra := make(map[string]interface{}, 4)
 	if hasImage {
 		extra["image_config"] = gs.ImageConfigExtra
 	}
 	if hasAnthropic {
 		extra["anthropic_config"] = gs.AnthropicConfigExtra
 	}
+	if hasOpenAI {
+		extra["openai_config"] = gs.OpenAIConfigExtra
+	}
+	if hasAntigravity {
+		extra["antigravity_config"] = gs.AntigravityConfigExtra
+	}
 	return extra
+}
+
+// requireOAuthOnlyFromPlatform 从平台对应的 config extra 提取 RequireOAuthOnly。
+func (gs *APIKeyAuthGroupSnapshot) requireOAuthOnlyFromPlatform() bool {
+	switch gs.Platform {
+	case PlatformOpenAI:
+		if gs.OpenAIConfigExtra != nil {
+			return gs.OpenAIConfigExtra.RequireOAuthOnly
+		}
+	case PlatformAntigravity:
+		if gs.AntigravityConfigExtra != nil {
+			return gs.AntigravityConfigExtra.RequireOAuthOnly
+		}
+	}
+	return false
+}
+
+// requirePrivacySetFromPlatform 从平台对应的 config extra 提取 RequirePrivacySet。
+func (gs *APIKeyAuthGroupSnapshot) requirePrivacySetFromPlatform() bool {
+	switch gs.Platform {
+	case PlatformOpenAI:
+		if gs.OpenAIConfigExtra != nil {
+			return gs.OpenAIConfigExtra.RequirePrivacySet
+		}
+	case PlatformAntigravity:
+		if gs.AntigravityConfigExtra != nil {
+			return gs.AntigravityConfigExtra.RequirePrivacySet
+		}
+	}
+	return false
 }

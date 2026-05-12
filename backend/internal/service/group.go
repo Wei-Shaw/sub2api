@@ -27,6 +27,31 @@ type GroupAnthropicConfig struct {
 	ModelRouting                    map[string][]int64 `json:"model_routing,omitempty"`
 }
 
+// GroupOpenAIConfig OpenAI 平台专属配置（封装在 GroupExtra["openai_config"] 中）
+type GroupOpenAIConfig struct {
+	AllowMessagesDispatch       bool                              `json:"allow_messages_dispatch"`
+	DefaultMappedModel          string                            `json:"default_mapped_model,omitempty"`
+	MessagesDispatchModelConfig *OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config,omitempty"`
+	RequireOAuthOnly            bool                              `json:"require_oauth_only"`
+	RequirePrivacySet           bool                              `json:"require_privacy_set"`
+}
+
+// GroupAntigravityConfig Antigravity 平台专属配置（封装在 GroupExtra["antigravity_config"] 中）
+type GroupAntigravityConfig struct {
+	SupportedModelScopes []string `json:"supported_model_scopes,omitempty"`
+	MCPXMLInject         bool     `json:"mcp_xml_inject"`
+	RequireOAuthOnly     bool     `json:"require_oauth_only"`
+	RequirePrivacySet    bool     `json:"require_privacy_set"`
+}
+
+// messagesDispatchModelConfigValue 返回值类型的 MessagesDispatchModelConfig（解引用指针，nil 返回零值）。
+func (c GroupOpenAIConfig) messagesDispatchModelConfigValue() OpenAIMessagesDispatchModelConfig {
+	if c.MessagesDispatchModelConfig != nil {
+		return *c.MessagesDispatchModelConfig
+	}
+	return OpenAIMessagesDispatchModelConfig{}
+}
+
 type OpenAIMessagesDispatchModelConfig = domain.OpenAIMessagesDispatchModelConfig
 
 type Group struct {
@@ -104,6 +129,32 @@ func (g *Group) IsActive() bool {
 
 func (g *Group) IsSubscriptionType() bool {
 	return g.SubscriptionType == SubscriptionTypeSubscription
+}
+
+// IsRequireOAuthOnly 返回分组是否要求仅 OAuth 账号。
+// 优先从平台对应的 config extra 读取，fallback 到一级字段。
+func (g *Group) IsRequireOAuthOnly() bool {
+	switch g.Platform {
+	case PlatformOpenAI:
+		return g.OpenAIConfig().RequireOAuthOnly
+	case PlatformAntigravity:
+		return g.AntigravityConfig().RequireOAuthOnly
+	default:
+		return g.RequireOAuthOnly
+	}
+}
+
+// IsRequirePrivacySet 返回分组是否要求账号已设置 privacy。
+// 优先从平台对应的 config extra 读取，fallback 到一级字段。
+func (g *Group) IsRequirePrivacySet() bool {
+	switch g.Platform {
+	case PlatformOpenAI:
+		return g.OpenAIConfig().RequirePrivacySet
+	case PlatformAntigravity:
+		return g.AntigravityConfig().RequirePrivacySet
+	default:
+		return g.RequirePrivacySet
+	}
 }
 
 func (g *Group) HasDailyLimit() bool {
@@ -230,6 +281,65 @@ func matchModelPattern(pattern, model string) bool {
 	}
 
 	return false
+}
+
+// OpenAIConfig 返回 OpenAI 平台专属配置。
+// 优先从 GroupExtra["openai_config"] 读取，fallback 到一级字段（兼容旧数据）。
+func (g *Group) OpenAIConfig() GroupOpenAIConfig {
+	if raw, ok := g.GroupExtra["openai_config"]; ok {
+		if data, err := json.Marshal(raw); err == nil {
+			var cfg GroupOpenAIConfig
+			if json.Unmarshal(data, &cfg) == nil {
+				return cfg
+			}
+		}
+	}
+	return GroupOpenAIConfig{
+		AllowMessagesDispatch:       g.AllowMessagesDispatch,
+		DefaultMappedModel:          g.DefaultMappedModel,
+		MessagesDispatchModelConfig: &g.MessagesDispatchModelConfig,
+		RequireOAuthOnly:            g.RequireOAuthOnly,
+		RequirePrivacySet:           g.RequirePrivacySet,
+	}
+}
+
+// AntigravityConfig 返回 Antigravity 平台专属配置。
+// 优先从 GroupExtra["antigravity_config"] 读取，fallback 到一级字段（兼容旧数据）。
+func (g *Group) AntigravityConfig() GroupAntigravityConfig {
+	if raw, ok := g.GroupExtra["antigravity_config"]; ok {
+		if data, err := json.Marshal(raw); err == nil {
+			var cfg GroupAntigravityConfig
+			if json.Unmarshal(data, &cfg) == nil {
+				return cfg
+			}
+		}
+	}
+	return GroupAntigravityConfig{
+		SupportedModelScopes: g.SupportedModelScopes,
+		MCPXMLInject:         g.MCPXMLInject,
+		RequireOAuthOnly:     g.RequireOAuthOnly,
+		RequirePrivacySet:    g.RequirePrivacySet,
+	}
+}
+
+// mergeOpenAIConfigIntoExtra 将 OpenAI 配置合并到 GroupExtra 的 "openai_config" 键中。
+// 如果 extra 为 nil 则创建新 map。
+func mergeOpenAIConfigIntoExtra(extra map[string]interface{}, cfg GroupOpenAIConfig) map[string]interface{} {
+	if extra == nil {
+		extra = make(map[string]interface{})
+	}
+	extra["openai_config"] = &cfg
+	return extra
+}
+
+// mergeAntigravityConfigIntoExtra 将 Antigravity 配置合并到 GroupExtra 的 "antigravity_config" 键中。
+// 如果 extra 为 nil 则创建新 map。
+func mergeAntigravityConfigIntoExtra(extra map[string]interface{}, cfg GroupAntigravityConfig) map[string]interface{} {
+	if extra == nil {
+		extra = make(map[string]interface{})
+	}
+	extra["antigravity_config"] = &cfg
+	return extra
 }
 
 // mergeImageConfigIntoExtra 将图片配置合并到 GroupExtra 的 "image_config" 键中。

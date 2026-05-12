@@ -64,7 +64,12 @@ func (g *Group) ResolveMessagesDispatchModel(requestedModel string) string {
 		return ""
 	}
 
-	cfg := normalizeOpenAIMessagesDispatchModelConfig(g.MessagesDispatchModelConfig)
+	oaiCfg := g.OpenAIConfig()
+	var rawCfg OpenAIMessagesDispatchModelConfig
+	if oaiCfg.MessagesDispatchModelConfig != nil {
+		rawCfg = *oaiCfg.MessagesDispatchModelConfig
+	}
+	cfg := normalizeOpenAIMessagesDispatchModelConfig(rawCfg)
 	if mappedModel := strings.TrimSpace(cfg.ExactModelMappings[requestedModel]); mappedModel != "" {
 		return mappedModel
 	}
@@ -97,4 +102,9 @@ func sanitizeGroupMessagesDispatchFields(g *Group) {
 	g.AllowMessagesDispatch = false
 	g.DefaultMappedModel = ""
 	g.MessagesDispatchModelConfig = OpenAIMessagesDispatchModelConfig{}
+	// 同步清理 GroupExtra 中的 openai_config
+	if g.GroupExtra != nil {
+		emptyCfg := GroupOpenAIConfig{}
+		g.GroupExtra = mergeOpenAIConfigIntoExtra(g.GroupExtra, emptyCfg)
+	}
 }

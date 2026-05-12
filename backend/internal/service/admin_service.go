@@ -1698,6 +1698,20 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		ModelRoutingEnabled:             input.ModelRoutingEnabled,
 		ModelRouting:                    input.ModelRouting,
 	})
+	normalizedDispatchCfg := normalizeOpenAIMessagesDispatchModelConfig(input.MessagesDispatchModelConfig)
+	groupExtra = mergeOpenAIConfigIntoExtra(groupExtra, GroupOpenAIConfig{
+		AllowMessagesDispatch:       input.AllowMessagesDispatch,
+		DefaultMappedModel:          input.DefaultMappedModel,
+		MessagesDispatchModelConfig: &normalizedDispatchCfg,
+		RequireOAuthOnly:            input.RequireOAuthOnly,
+		RequirePrivacySet:           input.RequirePrivacySet,
+	})
+	groupExtra = mergeAntigravityConfigIntoExtra(groupExtra, GroupAntigravityConfig{
+		SupportedModelScopes: input.SupportedModelScopes,
+		MCPXMLInject:         mcpXMLInject,
+		RequireOAuthOnly:     input.RequireOAuthOnly,
+		RequirePrivacySet:    input.RequirePrivacySet,
+	})
 
 	group := &Group{
 		Name:                            input.Name,
@@ -1736,7 +1750,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	}
 
 	// require_oauth_only: 过滤掉 apikey 类型账号
-	if group.RequireOAuthOnly && (group.Platform == PlatformOpenAI || group.Platform == PlatformAntigravity || group.Platform == PlatformAnthropic || group.Platform == PlatformGemini) && len(accountIDsToCopy) > 0 {
+	if group.IsRequireOAuthOnly() && (group.Platform == PlatformOpenAI || group.Platform == PlatformAntigravity || group.Platform == PlatformAnthropic || group.Platform == PlatformGemini) && len(accountIDsToCopy) > 0 {
 		accounts, err := s.accountRepo.GetByIDs(ctx, accountIDsToCopy)
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch accounts for oauth filter: %w", err)
@@ -1993,6 +2007,21 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.MessagesDispatchModelConfig != nil {
 		group.MessagesDispatchModelConfig = normalizeOpenAIMessagesDispatchModelConfig(*input.MessagesDispatchModelConfig)
 	}
+	// 双写：同步更新 GroupExtra["openai_config"]
+	group.GroupExtra = mergeOpenAIConfigIntoExtra(group.GroupExtra, GroupOpenAIConfig{
+		AllowMessagesDispatch:       group.AllowMessagesDispatch,
+		DefaultMappedModel:          group.DefaultMappedModel,
+		MessagesDispatchModelConfig: &group.MessagesDispatchModelConfig,
+		RequireOAuthOnly:            group.RequireOAuthOnly,
+		RequirePrivacySet:           group.RequirePrivacySet,
+	})
+	// 双写：同步更新 GroupExtra["antigravity_config"]
+	group.GroupExtra = mergeAntigravityConfigIntoExtra(group.GroupExtra, GroupAntigravityConfig{
+		SupportedModelScopes: group.SupportedModelScopes,
+		MCPXMLInject:         group.MCPXMLInject,
+		RequireOAuthOnly:     group.RequireOAuthOnly,
+		RequirePrivacySet:    group.RequirePrivacySet,
+	})
 	if input.RPMLimit != nil {
 		group.RPMLimit = *input.RPMLimit
 	}
@@ -2049,7 +2078,7 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		}
 
 		// require_oauth_only: 过滤掉 apikey 类型账号
-		if group.RequireOAuthOnly && (group.Platform == PlatformOpenAI || group.Platform == PlatformAntigravity || group.Platform == PlatformAnthropic || group.Platform == PlatformGemini) && len(accountIDsToCopy) > 0 {
+		if group.IsRequireOAuthOnly() && (group.Platform == PlatformOpenAI || group.Platform == PlatformAntigravity || group.Platform == PlatformAnthropic || group.Platform == PlatformGemini) && len(accountIDsToCopy) > 0 {
 			accounts, err := s.accountRepo.GetByIDs(ctx, accountIDsToCopy)
 			if err != nil {
 				return nil, fmt.Errorf("failed to fetch accounts for oauth filter: %w", err)

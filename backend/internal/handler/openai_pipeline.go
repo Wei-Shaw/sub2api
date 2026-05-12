@@ -289,7 +289,7 @@ func (h *OpenAIGatewayHandler) openaiMessagesPipeline(c *gin.Context) {
 		h.anthropicErrorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
 		return
 	}
-	if apiKey.Group != nil && !apiKey.Group.AllowMessagesDispatch {
+	if apiKey.Group != nil && !apiKey.Group.OpenAIConfig().AllowMessagesDispatch {
 		h.anthropicErrorResponse(c, http.StatusForbidden, "permission_error",
 			"This group does not allow /v1/messages dispatch")
 		return
