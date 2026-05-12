@@ -189,6 +189,22 @@ describe('decidePaymentLaunch', () => {
     expect(decision.paymentState.qrCode).toBe('https://pay.example.com/qr/session')
   })
 
+  it('treats a qr_code identical to checkout_url as a hosted redirect on desktop', () => {
+    const checkoutUrl = 'https://checkout.example.com/session/hosted'
+    const decision = decidePaymentLaunch(createOrderResult({
+      checkout_url: checkoutUrl,
+      qr_code: checkoutUrl,
+    }), {
+      visibleMethod: 'paddle',
+      orderType: 'subscription',
+      isMobile: false,
+    })
+
+    expect(decision.kind).toBe('redirect_waiting')
+    expect(decision.paymentState.payUrl).toBe(checkoutUrl)
+    expect(decision.paymentState.qrCode).toBe(checkoutUrl)
+  })
+
   it('uses checkout_url as redirect URL when a provider exposes only canonical checkout_url', () => {
     const decision = decidePaymentLaunch(createOrderResult({
       checkout_url: 'https://checkout.example.com/session/abc',

@@ -190,6 +190,8 @@ export function decidePaymentLaunch(
     resumeToken: result.resume_token || '',
     alipayMobilePrecreateDeepLink: result.alipay_mobile_precreate_deep_link === true,
   }, context.now)
+  const checkoutUrl = String(result.checkout_url || '').trim()
+  const hostedCheckoutRedirect = !!checkoutUrl && baseState.qrCode.trim() === checkoutUrl
 
   if (visibleMethod === 'airwallex' && baseState.clientSecret && baseState.intentId) {
     if (!context.airwallexRouteUrl) {
@@ -244,7 +246,8 @@ export function decidePaymentLaunch(
   const effectiveMobile = (context.forceQRCode && !context.mobilePrecreateDeepLink && visibleMethod === 'alipay')
     ? false
     : context.isMobile
-  const prefersRedirect = normalizedPaymentMode === 'redirect'
+  const prefersRedirect = hostedCheckoutRedirect
+    || normalizedPaymentMode === 'redirect'
     || normalizedPaymentMode === 'popup'
     || (effectiveMobile && !!baseState.payUrl)
   const prefersQr = normalizedPaymentMode === 'qrcode'

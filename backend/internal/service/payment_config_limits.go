@@ -33,6 +33,8 @@ func (s *PaymentConfigService) GetAvailableMethodLimits(ctx context.Context) (*M
 			ml.Currency = ml.AllowedPaymentCurrencies[0]
 		} else if currency, ok := s.pcAggregateMethodCurrency(insts); ok {
 			ml.Currency = currency
+		} else {
+			continue
 		}
 		ml.DisplayName = s.pcAggregateMethodDisplayName(pt, insts)
 		resp.Methods[ml.PaymentType] = ml

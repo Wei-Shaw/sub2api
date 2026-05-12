@@ -291,7 +291,6 @@ const localeCode = computed(() => {
   }
   return undefined
 })
-
 // Terminal outcome: null = still active, 'success' | 'cancelled' | 'expired'
 const outcome = ref<PaymentOutcome | null>(null)
 
