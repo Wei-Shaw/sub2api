@@ -21,16 +21,23 @@
           <Icon name="home" size="xs" />
           {{ t('home.nav.home') }}
         </router-link>
-        <router-link v-for="link in navLinks" :key="link.path" :to="link.path"
-          :class="[
-            'hidden items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition-colors sm:flex',
-            activePath === link.path
-              ? 'font-medium text-gray-900 bg-gray-100 dark:text-white dark:bg-dark-800'
-              : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-dark-300 dark:hover:bg-dark-800 dark:hover:text-white'
-          ]">
-          <Icon :name="link.icon" size="xs" />
-          {{ link.label }}
-        </router-link>
+        <template v-for="link in navLinks" :key="link.path">
+          <a v-if="link.external" :href="link.href" target="_blank" rel="noopener noreferrer"
+            class="hidden items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 dark:text-dark-300 dark:hover:bg-dark-800 dark:hover:text-white sm:flex">
+            <Icon :name="link.icon" size="xs" />
+            {{ link.label }}
+          </a>
+          <router-link v-else :to="link.path"
+            :class="[
+              'hidden items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition-colors sm:flex',
+              activePath === link.path
+                ? 'font-medium text-gray-900 bg-gray-100 dark:text-white dark:bg-dark-800'
+                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-dark-300 dark:hover:bg-dark-800 dark:hover:text-white'
+            ]">
+            <Icon :name="link.icon" size="xs" />
+            {{ link.label }}
+          </router-link>
+        </template>
         <a v-if="docUrl" :href="docUrl" target="_blank" rel="noopener noreferrer"
           class="hidden items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 dark:text-dark-300 dark:hover:bg-dark-800 dark:hover:text-white sm:flex">
           <Icon name="book" size="xs" />
@@ -80,17 +87,24 @@
           <Icon name="home" size="xs" />
           {{ t('home.nav.home') }}
         </router-link>
-        <router-link v-for="link in navLinks" :key="link.path" :to="link.path"
-          @click="mobileMenuOpen = false"
-          :class="[
-            'flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-colors',
-            activePath === link.path
-              ? 'font-medium text-gray-900 bg-gray-100 dark:text-white dark:bg-dark-800'
-              : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-dark-300 dark:hover:bg-dark-800 dark:hover:text-white'
-          ]">
-          <Icon :name="link.icon" size="xs" />
-          {{ link.label }}
-        </router-link>
+        <template v-for="link in navLinks" :key="link.path">
+          <a v-if="link.external" :href="link.href" target="_blank" rel="noopener noreferrer" @click="mobileMenuOpen = false"
+            class="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 dark:text-dark-300 dark:hover:bg-dark-800 dark:hover:text-white">
+            <Icon :name="link.icon" size="xs" />
+            {{ link.label }}
+          </a>
+          <router-link v-else :to="link.path"
+            @click="mobileMenuOpen = false"
+            :class="[
+              'flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-colors',
+              activePath === link.path
+                ? 'font-medium text-gray-900 bg-gray-100 dark:text-white dark:bg-dark-800'
+                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-dark-300 dark:hover:bg-dark-800 dark:hover:text-white'
+            ]">
+            <Icon :name="link.icon" size="xs" />
+            {{ link.label }}
+          </router-link>
+        </template>
         <a v-if="docUrl" :href="docUrl" target="_blank" rel="noopener noreferrer"
           class="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 dark:text-dark-300 dark:hover:bg-dark-800 dark:hover:text-white">
           <Icon name="book" size="xs" />
@@ -145,7 +159,7 @@ const mobileMenuOpen = ref(false)
 
 const navLinks = computed(() => [
   { path: '/key-usage', label: t('keyUsage.title'), icon: 'key' as const },
-  { path: '/monitoring', label: t('admin.monitoring.title'), icon: 'chart' as const },
+  { path: '/monitoring', label: t('admin.monitoring.title'), icon: 'chart' as const, external: true, href: 'https://status.djoui.space' },
   { path: '/pricing', label: t('pricing.title'), icon: 'dollar' as const },
 ])
 

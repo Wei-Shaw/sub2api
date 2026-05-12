@@ -392,7 +392,7 @@ export default {
     channelMonitor: '渠道监控',
     channelStatus: '渠道状态',
     riskControl: '风控中心',
-    monitoring: '平台监控',
+    monitoring: '站点检测',
     modelPricing: '模型定价',
   },
 
@@ -1095,7 +1095,7 @@ export default {
 
   // Public Monitoring
   monitoring: {
-    title: '平台监控',
+    title: '站点检测',
     subtitle: '实时查看平台运行状态',
     overview: '24小时概览',
     totalRequests: '总请求',
@@ -4509,7 +4509,7 @@ export default {
     },
 
     monitoring: {
-      title: '平台监控',
+      title: '站点检测',
       description: '账号健康状态、模型延迟与请求量监控',
       todayRequests: '24小时请求',
       avgLatency: '平均延迟',
