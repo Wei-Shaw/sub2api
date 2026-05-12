@@ -356,7 +356,7 @@ func TestServePageImage_SupportsChineseFilename(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d, body=%q", w.Code, http.StatusOK, w.Body.String())
 	}
-	if string(w.Body.Bytes()) != string(imageBytes) {
+	if w.Body.String() != string(imageBytes) {
 		t.Fatalf("image body = %q, want %q", w.Body.String(), string(imageBytes))
 	}
 }
@@ -393,7 +393,7 @@ func TestServePageImage_AllowsLegalDocumentSlug(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d, body=%q", w.Code, http.StatusOK, w.Body.String())
 	}
-	if string(w.Body.Bytes()) != string(imageBytes) {
+	if w.Body.String() != string(imageBytes) {
 		t.Fatalf("image body = %q, want %q", w.Body.String(), string(imageBytes))
 	}
 }

@@ -360,6 +360,7 @@ func (h *AuthHandler) completeEmailOAuthRegistration(c *gin.Context, provider st
 	if affiliateCode == "" {
 		affiliateCode = pendingSessionStringValue(session.UpstreamIdentityClaims, "aff_code")
 	}
+	_ = affiliateCode
 
 	tokenPair, user, err := h.authService.RegisterVerifiedOAuthEmailAccount(
 		c.Request.Context(),

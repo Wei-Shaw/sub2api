@@ -129,7 +129,7 @@ func SanitizeTutorialHTML(raw string) string {
 	}
 	var b strings.Builder
 	for _, node := range nodes {
-		b.WriteString(sanitizeNodeString(node))
+		_, _ = b.WriteString(sanitizeNodeString(node))
 	}
 	return b.String()
 }
@@ -178,33 +178,33 @@ func sanitizeNodeString(node *xhtml.Node) string {
 func sanitizeChildren(node *xhtml.Node) string {
 	var b strings.Builder
 	for child := node.FirstChild; child != nil; child = child.NextSibling {
-		b.WriteString(sanitizeNodeString(child))
+		_, _ = b.WriteString(sanitizeNodeString(child))
 	}
 	return b.String()
 }
 
 func renderStartTag(tag string, attrs []xhtml.Attribute) string {
 	var b strings.Builder
-	b.WriteString("<")
-	b.WriteString(tag)
+	_, _ = b.WriteString("<")
+	_, _ = b.WriteString(tag)
 	for _, attr := range attrs {
-		b.WriteString(" ")
-		b.WriteString(attr.Key)
-		b.WriteString(`="`)
-		b.WriteString(html.EscapeString(attr.Val))
-		b.WriteString(`"`)
+		_, _ = b.WriteString(" ")
+		_, _ = b.WriteString(attr.Key)
+		_, _ = b.WriteString(`="`)
+		_, _ = b.WriteString(html.EscapeString(attr.Val))
+		_, _ = b.WriteString(`"`)
 	}
-	b.WriteString(">")
+	_, _ = b.WriteString(">")
 	return b.String()
 }
 
 func renderElement(tag string, attrs []xhtml.Attribute, childHTML string) string {
 	var b strings.Builder
-	b.WriteString(renderStartTag(tag, attrs))
-	b.WriteString(childHTML)
-	b.WriteString("</")
-	b.WriteString(tag)
-	b.WriteString(">")
+	_, _ = b.WriteString(renderStartTag(tag, attrs))
+	_, _ = b.WriteString(childHTML)
+	_, _ = b.WriteString("</")
+	_, _ = b.WriteString(tag)
+	_, _ = b.WriteString(">")
 	return b.String()
 }
 

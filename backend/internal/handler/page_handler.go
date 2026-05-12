@@ -609,7 +609,7 @@ func sanitizePageAssetBaseName(name string) string {
 	var b strings.Builder
 	for _, ch := range name {
 		if unicode.IsLetter(ch) || unicode.IsDigit(ch) || ch == '-' || ch == '_' {
-			b.WriteRune(ch)
+			_, _ = b.WriteRune(ch)
 		}
 	}
 	return strings.Trim(b.String(), "-_")
