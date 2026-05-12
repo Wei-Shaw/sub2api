@@ -252,7 +252,8 @@ func (s *PaymentService) prepareRefundEnabled(ctx context.Context, oid int64, am
 	if moneyx.Currency(amt).GreaterThan(moneyx.Currency(remainingRefundAmount)) {
 		return nil, nil, infraerrors.BadRequest("REFUND_AMOUNT_EXCEEDED", "refund amount exceeds paid amount")
 	}
-	ga := calculateGatewayRefundAmount(o.Amount, o.PayAmount, amt)
+	orderCurrency := PaymentOrderCurrency(o)
+	ga := calculateGatewayRefundAmount(o.Amount, o.PayAmount, amt, orderCurrency)
 	rr := strings.TrimSpace(reason)
 	if rr == "" && o.RefundRequestReason != nil {
 		rr = *o.RefundRequestReason
@@ -367,13 +368,35 @@ func (s *PaymentService) gwRefund(ctx context.Context, p *RefundPlan) error {
 		})
 		return err
 	}
-	_, err = prov.Refund(ctx, payment.RefundRequest{
+	resp, err := prov.Refund(ctx, payment.RefundRequest{
 		TradeNo: p.Order.PaymentTradeNo,
 		OrderID: p.Order.OutTradeNo,
-		Amount:  strconv.FormatFloat(p.GatewayAmount, 'f', 2, 64),
+		Amount:  formatGatewayRefundAmount(p.GatewayAmount, p.Order),
 		Reason:  p.Reason,
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	return validateRefundProviderResponse(resp)
+}
+
+func formatGatewayRefundAmount(amount float64, order *dbent.PaymentOrder) string {
+	return payment.FormatAmountForCurrency(amount, PaymentOrderCurrency(order))
+}
+
+func validateRefundProviderResponse(resp *payment.RefundResponse) error {
+	if resp == nil {
+		return fmt.Errorf("payment refund response missing")
+	}
+	status := strings.TrimSpace(resp.Status)
+	switch status {
+	case payment.ProviderStatusSuccess, payment.ProviderStatusRefunded, payment.ProviderStatusPending:
+		return nil
+	case payment.ProviderStatusFailed:
+		return fmt.Errorf("payment refund failed: status %s", status)
+	default:
+		return fmt.Errorf("payment refund returned unknown status: %s", status)
+	}
 }
 
 // getRefundProvider creates a provider using the order's original instance config.

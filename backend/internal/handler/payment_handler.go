@@ -459,6 +459,7 @@ type PublicOrderResult struct {
 	Amount              float64    `json:"amount"`
 	PayAmount           float64    `json:"pay_amount"`
 	FeeRate             float64    `json:"fee_rate"`
+	Currency            string     `json:"currency"`
 	PaymentType         string     `json:"payment_type"`
 	OrderType           string     `json:"order_type"`
 	Status              string     `json:"status"`
@@ -481,6 +482,7 @@ func buildPublicOrderResult(order *dbent.PaymentOrder) PublicOrderResult {
 		Amount:              order.Amount,
 		PayAmount:           order.PayAmount,
 		FeeRate:             order.FeeRate,
+		Currency:            service.PaymentOrderCurrency(order),
 		PaymentType:         order.PaymentType,
 		OrderType:           order.OrderType,
 		Status:              order.Status,
@@ -554,24 +556,67 @@ func isMobile(c *gin.Context) bool {
 	return false
 }
 
-func sanitizePaymentOrdersForResponse(orders []*dbent.PaymentOrder) []*dbent.PaymentOrder {
-	if len(orders) == 0 {
-		return orders
-	}
-	out := make([]*dbent.PaymentOrder, 0, len(orders))
+type PaymentOrderResult struct {
+	ID                  int64      `json:"id"`
+	UserID              int64      `json:"user_id"`
+	Amount              float64    `json:"amount"`
+	PayAmount           float64    `json:"pay_amount"`
+	FeeRate             float64    `json:"fee_rate"`
+	Currency            string     `json:"currency"`
+	PaymentType         string     `json:"payment_type"`
+	OutTradeNo          string     `json:"out_trade_no"`
+	Status              string     `json:"status"`
+	OrderType           string     `json:"order_type"`
+	CreatedAt           time.Time  `json:"created_at"`
+	ExpiresAt           time.Time  `json:"expires_at"`
+	PaidAt              *time.Time `json:"paid_at,omitempty"`
+	CompletedAt         *time.Time `json:"completed_at,omitempty"`
+	RefundAmount        float64    `json:"refund_amount"`
+	RefundReason        *string    `json:"refund_reason,omitempty"`
+	RefundRequestedAt   *time.Time `json:"refund_requested_at,omitempty"`
+	RefundRequestedBy   *string    `json:"refund_requested_by,omitempty"`
+	RefundRequestReason *string    `json:"refund_request_reason,omitempty"`
+	PlanID              *int64     `json:"plan_id,omitempty"`
+	ProviderInstanceID  *string    `json:"provider_instance_id,omitempty"`
+}
+
+func sanitizePaymentOrdersForResponse(orders []*dbent.PaymentOrder) []PaymentOrderResult {
+	out := make([]PaymentOrderResult, 0, len(orders))
 	for _, order := range orders {
-		out = append(out, sanitizePaymentOrderForResponse(order))
+		if item := sanitizePaymentOrderForResponse(order); item != nil {
+			out = append(out, *item)
+		}
 	}
 	return out
 }
 
-func sanitizePaymentOrderForResponse(order *dbent.PaymentOrder) *dbent.PaymentOrder {
+func sanitizePaymentOrderForResponse(order *dbent.PaymentOrder) *PaymentOrderResult {
 	if order == nil {
 		return nil
 	}
-	cloned := *order
-	cloned.ProviderSnapshot = nil
-	return &cloned
+	return &PaymentOrderResult{
+		ID:                  order.ID,
+		UserID:              order.UserID,
+		Amount:              order.Amount,
+		PayAmount:           order.PayAmount,
+		FeeRate:             order.FeeRate,
+		Currency:            service.PaymentOrderCurrency(order),
+		PaymentType:         order.PaymentType,
+		OutTradeNo:          order.OutTradeNo,
+		Status:              order.Status,
+		OrderType:           order.OrderType,
+		CreatedAt:           order.CreatedAt,
+		ExpiresAt:           order.ExpiresAt,
+		PaidAt:              order.PaidAt,
+		CompletedAt:         order.CompletedAt,
+		RefundAmount:        order.RefundAmount,
+		RefundReason:        order.RefundReason,
+		RefundRequestedAt:   order.RefundRequestedAt,
+		RefundRequestedBy:   order.RefundRequestedBy,
+		RefundRequestReason: order.RefundRequestReason,
+		PlanID:              order.PlanID,
+		ProviderInstanceID:  order.ProviderInstanceID,
+	}
 }
 
 func isWeChatBrowser(c *gin.Context) bool {

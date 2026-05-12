@@ -2765,6 +2765,7 @@
         :show-mobile-refresh-token-option="form.platform === 'openai'"
         :show-session-token-option="false"
         :show-access-token-option="false"
+        :show-codex-session-import-option="form.platform === 'openai'"
         :platform="form.platform"
         :show-project-id="geminiOAuthType === 'code_assist'"
         @generate-url="handleGenerateUrl"
@@ -2772,6 +2773,7 @@
         @validate-refresh-token="handleValidateRefreshToken"
         @validate-mobile-refresh-token="handleOpenAIValidateMobileRT"
         @validate-session-token="handleValidateSessionToken"
+        @import-codex-session="handleOpenAIImportCodexSession"
       />
 
     </div>
@@ -3119,6 +3121,7 @@ import type {
   AccountType,
   CheckMixedChannelResponse,
   CreateAccountRequest,
+  CodexSessionImportMessage,
   OpenAICompactMode
 } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -3152,6 +3155,7 @@ interface OAuthFlowExposed {
   sessionKey: string
   refreshToken: string
   sessionToken: string
+  codexSession: string
   inputMethod: AuthInputMethod
   reset: () => void
 }
@@ -4630,6 +4634,113 @@ const handleOpenAIExchange = async (authCode: string) => {
 // OpenAI 手动 RT 批量验证和创建
 // OpenAI Mobile RT client_id
 const OPENAI_MOBILE_RT_CLIENT_ID = 'app_LlGpXReQgckcGGUo2JrYvtJK'
+
+const buildOpenAICodexImportCredentialExtras = (): Record<string, unknown> | null => {
+  const credentials: Record<string, unknown> = {}
+  if (!isOpenAIModelRestrictionDisabled.value) {
+    const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+    if (modelMapping) {
+      credentials.model_mapping = modelMapping
+    }
+  }
+
+  const compactModelMapping = buildOpenAICompactModelMapping()
+  if (compactModelMapping) {
+    credentials.compact_model_mapping = compactModelMapping
+  }
+
+  if (!applyTempUnschedConfig(credentials)) {
+    return null
+  }
+  return credentials
+}
+
+const formatCodexImportMessages = (messages?: CodexSessionImportMessage[]) => {
+  return (messages || [])
+    .map((item) => {
+      const name = item.name ? ` ${item.name}` : ''
+      return `#${item.index}${name}: ${item.message}`
+    })
+    .join('\n')
+}
+
+const handleOpenAIImportCodexSession = async (content: string) => {
+  const oauthClient = openaiOAuth
+  const trimmed = content.trim()
+  if (!trimmed) {
+    oauthClient.error.value = t('admin.accounts.oauth.openai.codexSessionEmpty')
+    return
+  }
+
+  const credentialExtras = buildOpenAICodexImportCredentialExtras()
+  if (credentialExtras === null) {
+    return
+  }
+
+  oauthClient.loading.value = true
+  oauthClient.error.value = ''
+
+  try {
+    const extra = buildOpenAIExtra()
+    const result = await adminAPI.accounts.importCodexSession({
+      content: trimmed,
+      name: form.name,
+      notes: form.notes || null,
+      proxy_id: form.proxy_id,
+      concurrency: form.concurrency,
+      load_factor: form.load_factor ?? undefined,
+      priority: form.priority,
+      rate_multiplier: form.rate_multiplier,
+      group_ids: form.group_ids,
+      expires_at: form.expires_at,
+      auto_pause_on_expired: autoPauseOnExpired.value,
+      credential_extras: Object.keys(credentialExtras).length > 0 ? credentialExtras : undefined,
+      extra,
+      update_existing: true
+    })
+
+    const successCount = result.created + result.updated
+    const params = {
+      created: result.created,
+      updated: result.updated,
+      skipped: result.skipped,
+      failed: result.failed
+    }
+
+    if (successCount > 0 && result.failed === 0) {
+      appStore.showSuccess(t('admin.accounts.oauth.openai.codexSessionImportSuccess', params))
+      emit('created')
+      handleClose()
+      return
+    }
+
+    const errorText = formatCodexImportMessages(result.errors)
+    const warningText = formatCodexImportMessages(result.warnings)
+    oauthClient.error.value = [errorText, warningText].filter(Boolean).join('\n')
+
+    if (result.failed === 0) {
+      appStore.showWarning(t('admin.accounts.oauth.openai.codexSessionImportSuccess', params))
+      return
+    }
+
+    if (successCount > 0) {
+      appStore.showWarning(t('admin.accounts.oauth.openai.codexSessionImportPartial', params))
+      emit('created')
+      return
+    }
+
+    appStore.showError(t('admin.accounts.oauth.openai.codexSessionImportFailed'))
+  } catch (error: any) {
+    oauthClient.error.value =
+      error.response?.data?.detail ||
+      error.response?.data?.message ||
+      error.message ||
+      t('admin.accounts.oauth.openai.codexSessionImportFailed')
+    appStore.showError(oauthClient.error.value)
+  } finally {
+    oauthClient.loading.value = false
+  }
+}
 
 // OpenAI RT 批量验证和创建（共享逻辑）
 const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string) => {

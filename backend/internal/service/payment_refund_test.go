@@ -588,3 +588,26 @@ func TestGwRefundRejectsAlipayMerchantIdentitySnapshotMismatch(t *testing.T) {
 	})
 	require.ErrorContains(t, err, "alipay app_id mismatch")
 }
+
+func TestCalculateGatewayRefundAmountUsesCurrencyPrecision(t *testing.T) {
+	require.InDelta(t, 6.173, calculateGatewayRefundAmount(100, 12.345, 50, "KWD"), 1e-12)
+	require.InDelta(t, 12.345, calculateGatewayRefundAmount(100, 12.345, 100, "KWD"), 1e-12)
+	require.InDelta(t, 52, calculateGatewayRefundAmount(100, 103, 50, "JPY"), 1e-12)
+}
+
+func TestFormatGatewayRefundAmountUsesOrderCurrency(t *testing.T) {
+	order := &dbent.PaymentOrder{
+		ProviderSnapshot: map[string]any{
+			"currency": "KWD",
+		},
+	}
+
+	require.Equal(t, "12.345", formatGatewayRefundAmount(12.345, order))
+}
+
+func TestValidateRefundProviderResponseAcceptsPending(t *testing.T) {
+	require.NoError(t, validateRefundProviderResponse(&payment.RefundResponse{Status: payment.ProviderStatusPending}))
+	require.NoError(t, validateRefundProviderResponse(&payment.RefundResponse{Status: payment.ProviderStatusSuccess}))
+	require.Error(t, validateRefundProviderResponse(&payment.RefundResponse{Status: payment.ProviderStatusFailed}))
+	require.Error(t, validateRefundProviderResponse(nil))
+}

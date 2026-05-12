@@ -3,6 +3,7 @@ package service
 import (
 	"math"
 
+	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/moneyx"
 	"github.com/shopspring/decimal"
 )
@@ -21,19 +22,6 @@ func calculateCreditedBalance(paymentAmount, multiplier float64) float64 {
 		Mul(decimal.NewFromFloat(normalizeBalanceRechargeMultiplier(multiplier))).
 		Round(2).
 		InexactFloat64()
-}
-
-func calculateGatewayRefundAmount(orderAmount, payAmount, refundAmount float64) float64 {
-	refundablePayAmount := refundableOrderPayAmount(orderAmount, payAmount)
-	if refundablePayAmount <= 0 || refundAmount <= 0 {
-		return 0
-	}
-	refundAmountDec := moneyx.Currency(refundAmount)
-	refundablePayAmountDec := moneyx.Currency(refundablePayAmount)
-	if refundAmountDec.GreaterThanOrEqual(refundablePayAmountDec) {
-		return refundablePayAmountDec.InexactFloat64()
-	}
-	return refundAmountDec.InexactFloat64()
 }
 
 func refundableOrderPayAmount(orderAmount, payAmount float64) float64 {
@@ -61,5 +49,20 @@ func calculateBalanceDeductionAmount(orderAmount, payAmount, refundAmount float6
 		Mul(refundAmountDec).
 		Div(refundablePayAmountDec).
 		Round(2).
+		InexactFloat64()
+}
+
+func calculateGatewayRefundAmount(orderAmount, payAmount, refundAmount float64, currency string) float64 {
+	if orderAmount <= 0 || payAmount <= 0 || refundAmount <= 0 {
+		return 0
+	}
+	fractionDigits := int32(payment.CurrencyMaxFractionDigits(currency))
+	if math.Abs(refundAmount-orderAmount) <= paymentAmountToleranceForCurrency(currency) {
+		return decimal.NewFromFloat(payAmount).Round(fractionDigits).InexactFloat64()
+	}
+	return decimal.NewFromFloat(payAmount).
+		Mul(decimal.NewFromFloat(refundAmount)).
+		Div(decimal.NewFromFloat(orderAmount)).
+		Round(fractionDigits).
 		InexactFloat64()
 }

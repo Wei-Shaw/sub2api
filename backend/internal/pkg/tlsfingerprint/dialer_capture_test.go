@@ -15,8 +15,8 @@ import (
 	utls "github.com/refraction-networking/utls"
 )
 
-// CapturedFingerprint mirrors the Fingerprint struct from tls-fingerprint-web.
-// Used to deserialize the JSON response from the capture server.
+// CapturedFingerprint 对应 tls-fingerprint-web 返回的 Fingerprint 结构。
+// 用于反序列化 capture server 的 JSON 响应。
 type CapturedFingerprint struct {
 	JA3Raw              string   `json:"ja3_raw"`
 	JA3Hash             string   `json:"ja3_hash"`
@@ -35,17 +35,17 @@ type CapturedFingerprint struct {
 	EnableGREASE        bool     `json:"enable_grease"`
 }
 
-// TestDialerAgainstCaptureServer connects to the tls-fingerprint-web capture server
-// and verifies that the dialer's TLS fingerprint matches the configured Profile.
+// TestDialerAgainstCaptureServer 连接 tls-fingerprint-web capture server，
+// 验证 Dialer 的 TLS 指纹是否匹配配置的 Profile。
 //
-// Default capture server: https://tls.sub2api.org:8090
-// Override with env: TLSFINGERPRINT_CAPTURE_URL=https://localhost:8443
+// 该测试依赖外部服务，默认跳过。需要手动验证时设置：
+// TLSFINGERPRINT_CAPTURE_URL=https://localhost:8443
 //
-// Run: go test -v -run TestDialerAgainstCaptureServer ./internal/pkg/tlsfingerprint/...
+// 运行方式：go test -tags=integration -v -run TestDialerAgainstCaptureServer ./internal/pkg/tlsfingerprint/...
 func TestDialerAgainstCaptureServer(t *testing.T) {
-	captureURL := os.Getenv("TLSFINGERPRINT_CAPTURE_URL")
+	captureURL := strings.TrimSpace(os.Getenv("TLSFINGERPRINT_CAPTURE_URL"))
 	if captureURL == "" {
-		captureURL = "https://tls.sub2api.org:8090"
+		t.Skip("跳过外部 TLS 指纹 capture 测试：未设置 TLSFINGERPRINT_CAPTURE_URL")
 	}
 
 	tests := []struct {
@@ -57,7 +57,7 @@ func TestDialerAgainstCaptureServer(t *testing.T) {
 			profile: &Profile{
 				Name:         "default",
 				EnableGREASE: false,
-				// All empty → uses built-in defaults
+				// 全部留空时使用内置默认值
 			},
 		},
 		{
@@ -104,7 +104,7 @@ func TestDialerAgainstCaptureServer(t *testing.T) {
 			t.Logf("JA3 Hash: %s", captured.JA3Hash)
 			t.Logf("JA4:      %s", captured.JA4)
 
-			// Resolve effective profile values (what the dialer actually uses)
+			// 解析实际生效的 Profile 值，也就是 Dialer 最终使用的值。
 			effectiveCipherSuites := tc.profile.CipherSuites
 			if len(effectiveCipherSuites) == 0 {
 				effectiveCipherSuites = defaultCipherSuites
@@ -144,7 +144,7 @@ func TestDialerAgainstCaptureServer(t *testing.T) {
 				effectivePSKModes = []uint16{1} // psk_dhe_ke
 			}
 
-			// Verify each field
+			// 校验每个指纹字段
 			assertIntSliceEqual(t, "cipher_suites", uint16sToInts(effectiveCipherSuites), captured.CipherSuites)
 			assertIntSliceEqual(t, "curves", uint16sToInts(effectiveCurves), captured.Curves)
 			assertIntSliceEqual(t, "point_formats", uint16sToInts(effectivePointFormats), captured.PointFormats)
@@ -160,13 +160,13 @@ func TestDialerAgainstCaptureServer(t *testing.T) {
 				t.Logf("  enable_grease: %v OK", captured.EnableGREASE)
 			}
 
-			// Verify extension order
-			// Use profile.Extensions if set, otherwise the default order (Node.js 24.x)
+			// 校验扩展顺序；如果 Profile 显式配置了 Extensions 就使用配置值，
+			// 否则使用默认顺序（Node.js 24.x）。
 			expectedExtOrder := uint16sToInts(defaultExtensionOrder)
 			if len(tc.profile.Extensions) > 0 {
 				expectedExtOrder = uint16sToInts(tc.profile.Extensions)
 			}
-			// Strip GREASE values from both expected and captured for comparison
+			// 比较前从期望值和采集值中剔除 GREASE。
 			var filteredExpected, filteredActual []int
 			for _, e := range expectedExtOrder {
 				if !isGREASEValue(uint16(e)) {
@@ -180,7 +180,7 @@ func TestDialerAgainstCaptureServer(t *testing.T) {
 			}
 			assertIntSliceEqual(t, "extensions (order, non-GREASE)", filteredExpected, filteredActual)
 
-			// Print full captured data as JSON for debugging
+			// 打印完整采集结果，便于排查指纹差异。
 			capturedJSON, _ := json.MarshalIndent(captured, "  ", "  ")
 			t.Logf("Full captured fingerprint:\n  %s", string(capturedJSON))
 		})
