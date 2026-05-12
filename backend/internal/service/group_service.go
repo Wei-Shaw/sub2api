@@ -98,7 +98,7 @@ func (s *GroupService) Create(ctx context.Context, req CreateGroupRequest) (*Gro
 		return nil, ErrGroupExists
 	}
 
-	// 创建分组
+	// 创建分组（双写：一级字段 + GroupExtra["image_config"]）
 	group := &Group{
 		Name:                 req.Name,
 		Description:          req.Description,
@@ -110,6 +110,11 @@ func (s *GroupService) Create(ctx context.Context, req CreateGroupRequest) (*Gro
 		AllowImageGeneration: req.AllowImageGeneration,
 		ImageRateIndependent: req.ImageRateIndependent,
 		ImageRateMultiplier:  imageRateMultiplier,
+		GroupExtra: mergeImageConfigIntoExtra(nil, GroupImageConfig{
+			AllowGeneration: req.AllowImageGeneration,
+			RateIndependent: req.ImageRateIndependent,
+			RateMultiplier:  imageRateMultiplier,
+		}),
 	}
 
 	if err := s.groupRepo.Create(ctx, group); err != nil {
@@ -193,6 +198,12 @@ func (s *GroupService) Update(ctx context.Context, id int64, req UpdateGroupRequ
 		}
 		group.ImageRateMultiplier = *req.ImageRateMultiplier
 	}
+	// 双写：同步更新 GroupExtra["image_config"]
+	group.GroupExtra = mergeImageConfigIntoExtra(group.GroupExtra, GroupImageConfig{
+		AllowGeneration: group.AllowImageGeneration,
+		RateIndependent: group.ImageRateIndependent,
+		RateMultiplier:  group.ImageRateMultiplier,
+	})
 
 	if err := s.groupRepo.Update(ctx, group); err != nil {
 		return nil, fmt.Errorf("update group: %w", err)

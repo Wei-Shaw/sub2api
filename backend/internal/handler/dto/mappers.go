@@ -165,6 +165,7 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 }
 
 func groupFromServiceBase(g *service.Group) Group {
+	imgCfg := g.ImageConfig()
 	return Group{
 		ID:                              g.ID,
 		Name:                            g.Name,
@@ -177,12 +178,12 @@ func groupFromServiceBase(g *service.Group) Group {
 		DailyLimitUSD:                   g.DailyLimitUSD,
 		WeeklyLimitUSD:                  g.WeeklyLimitUSD,
 		MonthlyLimitUSD:                 g.MonthlyLimitUSD,
-		AllowImageGeneration:            g.AllowImageGeneration,
-		ImageRateIndependent:            g.ImageRateIndependent,
-		ImageRateMultiplier:             g.ImageRateMultiplier,
-		ImagePrice1K:                    g.ImagePrice1K,
-		ImagePrice2K:                    g.ImagePrice2K,
-		ImagePrice4K:                    g.ImagePrice4K,
+		AllowImageGeneration:            imgCfg.AllowGeneration,
+		ImageRateIndependent:            imgCfg.RateIndependent,
+		ImageRateMultiplier:             imgCfg.RateMultiplier,
+		ImagePrice1K:                    imgCfg.Price1K,
+		ImagePrice2K:                    imgCfg.Price2K,
+		ImagePrice4K:                    imgCfg.Price4K,
 		ClaudeCodeOnly:                  g.ClaudeCodeOnly,
 		FallbackGroupID:                 g.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: g.FallbackGroupIDOnInvalidRequest,

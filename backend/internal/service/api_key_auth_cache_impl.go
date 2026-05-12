@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 9 // v9: added API Key name for audit logs
+const apiKeyAuthSnapshotVersion = 10 // v10: added ImageConfigExtra for GroupExtra image_config migration
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -246,6 +246,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 		// 查询失败或无 override 时留 nil，checkRPM 会回退到 DB 查询
 	}
 	if apiKey.Group != nil {
+		imgCfg := apiKey.Group.ImageConfig()
 		snapshot.Group = &APIKeyAuthGroupSnapshot{
 			ID:                              apiKey.Group.ID,
 			Name:                            apiKey.Group.Name,
@@ -256,12 +257,13 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			DailyLimitUSD:                   apiKey.Group.DailyLimitUSD,
 			WeeklyLimitUSD:                  apiKey.Group.WeeklyLimitUSD,
 			MonthlyLimitUSD:                 apiKey.Group.MonthlyLimitUSD,
-			AllowImageGeneration:            apiKey.Group.AllowImageGeneration,
-			ImageRateIndependent:            apiKey.Group.ImageRateIndependent,
-			ImageRateMultiplier:             apiKey.Group.ImageRateMultiplier,
-			ImagePrice1K:                    apiKey.Group.ImagePrice1K,
-			ImagePrice2K:                    apiKey.Group.ImagePrice2K,
-			ImagePrice4K:                    apiKey.Group.ImagePrice4K,
+			AllowImageGeneration:            imgCfg.AllowGeneration,
+			ImageRateIndependent:            imgCfg.RateIndependent,
+			ImageRateMultiplier:             imgCfg.RateMultiplier,
+			ImagePrice1K:                    imgCfg.Price1K,
+			ImagePrice2K:                    imgCfg.Price2K,
+			ImagePrice4K:                    imgCfg.Price4K,
+			ImageConfigExtra:                &imgCfg,
 			ClaudeCodeOnly:                  apiKey.Group.ClaudeCodeOnly,
 			FallbackGroupID:                 apiKey.Group.FallbackGroupID,
 			FallbackGroupIDOnInvalidRequest: apiKey.Group.FallbackGroupIDOnInvalidRequest,
@@ -315,6 +317,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 		},
 	}
 	if snapshot.Group != nil {
+		groupExtra := buildGroupExtraFromSnapshot(snapshot.Group)
 		apiKey.Group = &Group{
 			ID:                              snapshot.Group.ID,
 			Name:                            snapshot.Group.Name,
@@ -343,8 +346,20 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			DefaultMappedModel:              snapshot.Group.DefaultMappedModel,
 			MessagesDispatchModelConfig:     snapshot.Group.MessagesDispatchModelConfig,
 			RPMLimit:                        snapshot.Group.RPMLimit,
+			GroupExtra:                      groupExtra,
 		}
 	}
 	s.compileAPIKeyIPRules(apiKey)
 	return apiKey
+}
+
+// buildGroupExtraFromSnapshot 从快照的 ImageConfigExtra 重建 GroupExtra，
+// 使得 ImageConfig() accessor 在 cache-restored Group 上能正确命中 GroupExtra 路径。
+func buildGroupExtraFromSnapshot(gs *APIKeyAuthGroupSnapshot) map[string]interface{} {
+	if gs == nil || gs.ImageConfigExtra == nil {
+		return nil
+	}
+	return map[string]interface{}{
+		"image_config": gs.ImageConfigExtra,
+	}
 }

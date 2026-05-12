@@ -1,15 +1,21 @@
-package main
+﻿package main
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 )
+
+// errBedrockAccount is returned by resolveForwardAuth when the account is
+// a Bedrock type, signalling that the caller should use forwardBedrock
+// instead of the standard Anthropic Messages API path.
+var errBedrockAccount = errors.New("bedrock account")
 
 // --- upstream request construction ---
 
@@ -118,7 +124,10 @@ func resolveForwardAuth(
 		apiURL = strings.TrimSuffix(baseURL, "/") + "/v1/messages?beta=true"
 
 	case accountTypeBedrock:
-		return "", "", false, fmt.Errorf("bedrock forwarding not yet implemented in plugin")
+		// Bedrock uses a dedicated forwarding path (forwardBedrock) that
+		// bypasses the standard Anthropic Messages API flow. Return a
+		// sentinel error so buildUpstreamRequest callers know to branch.
+		return "", "", false, errBedrockAccount
 
 	default:
 		return "", "", false, fmt.Errorf("unsupported account type: %s", accountType)
@@ -127,11 +136,11 @@ func resolveForwardAuth(
 }
 
 // resolveModel applies model mapping from account credentials.
-// For API key accounts, explicit model_mapping is checked.
+// For API key and Bedrock accounts, explicit model_mapping is checked.
 // For OAuth/setup-token, the model is passed through unchanged
 // (host-side mimicry and NormalizeModelID are not replicated here).
 func resolveModel(requestedModel, accountType string, credentialsJSON []byte) string {
-	if accountType != accountTypeAPIKey {
+	if accountType != accountTypeAPIKey && accountType != accountTypeBedrock {
 		return requestedModel
 	}
 	mapping := extractModelMapping(credentialsJSON)

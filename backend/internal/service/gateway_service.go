@@ -9005,10 +9005,11 @@ func (s *GatewayService) calculateImageCost(
 
 	var groupConfig *ImagePriceConfig
 	if apiKey.Group != nil {
+		cfg := apiKey.Group.ImageConfig()
 		groupConfig = &ImagePriceConfig{
-			Price1K: apiKey.Group.ImagePrice1K,
-			Price2K: apiKey.Group.ImagePrice2K,
-			Price4K: apiKey.Group.ImagePrice4K,
+			Price1K: cfg.Price1K,
+			Price2K: cfg.Price2K,
+			Price4K: cfg.Price4K,
 		}
 	}
 	return s.billingService.CalculateImageCost(billingModel, result.ImageSize, result.ImageCount, groupConfig, multiplier)

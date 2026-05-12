@@ -1,11 +1,22 @@
 package service
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
+
+// GroupImageConfig 图片生成计费配置（封装在 GroupExtra["image_config"] 中）
+type GroupImageConfig struct {
+	AllowGeneration bool     `json:"allow_image_generation"`
+	RateIndependent bool     `json:"image_rate_independent"`
+	RateMultiplier  float64  `json:"image_rate_multiplier"`
+	Price1K         *float64 `json:"image_price_1k,omitempty"`
+	Price2K         *float64 `json:"image_price_2k,omitempty"`
+	Price4K         *float64 `json:"image_price_4k,omitempty"`
+}
 
 type OpenAIMessagesDispatchModelConfig = domain.OpenAIMessagesDispatchModelConfig
 
@@ -98,19 +109,41 @@ func (g *Group) HasMonthlyLimit() bool {
 	return g.MonthlyLimitUSD != nil && *g.MonthlyLimitUSD > 0
 }
 
+// ImageConfig 返回图片生成计费配置。
+// 优先从 GroupExtra["image_config"] 读取，fallback 到一级字段（兼容旧数据）。
+func (g *Group) ImageConfig() GroupImageConfig {
+	if raw, ok := g.GroupExtra["image_config"]; ok {
+		if data, err := json.Marshal(raw); err == nil {
+			var cfg GroupImageConfig
+			if json.Unmarshal(data, &cfg) == nil {
+				return cfg
+			}
+		}
+	}
+	return GroupImageConfig{
+		AllowGeneration: g.AllowImageGeneration,
+		RateIndependent: g.ImageRateIndependent,
+		RateMultiplier:  g.ImageRateMultiplier,
+		Price1K:         g.ImagePrice1K,
+		Price2K:         g.ImagePrice2K,
+		Price4K:         g.ImagePrice4K,
+	}
+}
+
 // GetImagePrice 根据 image_size 返回对应的图片生成价格
 // 如果分组未配置价格，返回 nil（调用方应使用默认值）
 func (g *Group) GetImagePrice(imageSize string) *float64 {
+	cfg := g.ImageConfig()
 	switch imageSize {
 	case "1K":
-		return g.ImagePrice1K
+		return cfg.Price1K
 	case "2K":
-		return g.ImagePrice2K
+		return cfg.Price2K
 	case "4K":
-		return g.ImagePrice4K
+		return cfg.Price4K
 	default:
 		// 未知尺寸默认按 2K 计费
-		return g.ImagePrice2K
+		return cfg.Price2K
 	}
 }
 
@@ -167,4 +200,14 @@ func matchModelPattern(pattern, model string) bool {
 	}
 
 	return false
+}
+
+// mergeImageConfigIntoExtra 将图片配置合并到 GroupExtra 的 "image_config" 键中。
+// 如果 extra 为 nil 则创建新 map。
+func mergeImageConfigIntoExtra(extra map[string]interface{}, cfg GroupImageConfig) map[string]interface{} {
+	if extra == nil {
+		extra = make(map[string]interface{})
+	}
+	extra["image_config"] = &cfg
+	return extra
 }

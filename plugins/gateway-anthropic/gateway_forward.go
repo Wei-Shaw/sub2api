@@ -1,6 +1,7 @@
-package main
+﻿package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -28,12 +29,12 @@ func newGatewayProviderServer() *gatewayProviderServer {
 
 // Forward handles a single gateway request by:
 //  1. Building the upstream HTTP request (auth, headers, model mapping)
-//  2. Sending the request to the Anthropic Messages API
+//  2. Sending the request to the upstream API
 //  3. Streaming the response back as GatewayForwardChunk messages
 //  4. Reporting usage data in the final Done chunk
 //
-// Bedrock accounts are not yet supported; they return an error that
-// triggers failover to the host's built-in implementation.
+// Bedrock accounts are routed to forwardBedrock which handles SigV4
+// signing, request body transformation, and EventStream decoding.
 func (s *gatewayProviderServer) Forward(
 	req *pb.GatewayForwardRequest,
 	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
@@ -41,9 +42,13 @@ func (s *gatewayProviderServer) Forward(
 	startTime := time.Now()
 	ctx := stream.Context()
 
-	// Build the upstream HTTP request.
+	// Build the upstream HTTP request. Bedrock accounts use a dedicated
+	// forwarding path with SigV4 signing and EventStream decoding.
 	upstream, err := buildUpstreamRequest(ctx, req)
 	if err != nil {
+		if errors.Is(err, errBedrockAccount) {
+			return s.forwardBedrock(req, stream)
+		}
 		return fmt.Errorf("build upstream request: %w", err)
 	}
 

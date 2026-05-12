@@ -1681,6 +1681,17 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		}
 	}
 
+	// 双写：同时写入一级字段（兼容旧代码/DB列）和 GroupExtra["image_config"]
+	groupExtra := input.GroupExtra
+	groupExtra = mergeImageConfigIntoExtra(groupExtra, GroupImageConfig{
+		AllowGeneration: input.AllowImageGeneration,
+		RateIndependent: input.ImageRateIndependent,
+		RateMultiplier:  imageRateMultiplier,
+		Price1K:         imagePrice1K,
+		Price2K:         imagePrice2K,
+		Price4K:         imagePrice4K,
+	})
+
 	group := &Group{
 		Name:                            input.Name,
 		Description:                     input.Description,
@@ -1710,7 +1721,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		DefaultMappedModel:              input.DefaultMappedModel,
 		MessagesDispatchModelConfig:     normalizeOpenAIMessagesDispatchModelConfig(input.MessagesDispatchModelConfig),
 		RPMLimit:                        input.RPMLimit,
-		GroupExtra:                      input.GroupExtra,
+		GroupExtra:                      groupExtra,
 	}
 	sanitizeGroupMessagesDispatchFields(group)
 	if err := s.groupRepo.Create(ctx, group); err != nil {
@@ -1893,6 +1904,15 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.ImagePrice4K != nil {
 		group.ImagePrice4K = normalizePrice(input.ImagePrice4K)
 	}
+	// 双写：同步更新 GroupExtra["image_config"]
+	group.GroupExtra = mergeImageConfigIntoExtra(group.GroupExtra, GroupImageConfig{
+		AllowGeneration: group.AllowImageGeneration,
+		RateIndependent: group.ImageRateIndependent,
+		RateMultiplier:  group.ImageRateMultiplier,
+		Price1K:         group.ImagePrice1K,
+		Price2K:         group.ImagePrice2K,
+		Price4K:         group.ImagePrice4K,
+	})
 
 	// Claude Code 客户端限制
 	if input.ClaudeCodeOnly != nil {

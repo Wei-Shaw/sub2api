@@ -70,6 +70,9 @@ type APIKeyAuthGroupSnapshot struct {
 	ImagePrice1K                    *float64 `json:"image_price_1k,omitempty"`
 	ImagePrice2K                    *float64 `json:"image_price_2k,omitempty"`
 	ImagePrice4K                    *float64 `json:"image_price_4k,omitempty"`
+	// ImageConfigExtra 存储 GroupExtra["image_config"] 的副本，
+	// 用于 snapshot→Group 还原时在 GroupExtra 中重建 image_config 键。
+	ImageConfigExtra *GroupImageConfig `json:"image_config_extra,omitempty"`
 	ClaudeCodeOnly                  bool     `json:"claude_code_only"`
 	FallbackGroupID                 *int64   `json:"fallback_group_id,omitempty"`
 	FallbackGroupIDOnInvalidRequest *int64   `json:"fallback_group_id_on_invalid_request,omitempty"`
