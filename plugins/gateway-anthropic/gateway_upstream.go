@@ -78,9 +78,12 @@ func buildUpstreamRequest(
 		httpReq.Header.Set("anthropic-beta", apiKeyBetaHeader)
 	}
 
-	// Forward relevant client headers (anthropic-beta from client can
-	// augment the defaults; content-type and auth are already set above).
+	// Forward allowed client headers from both the host-curated `headers` map
+	// and the raw `client_headers` map. The host populates `headers` with
+	// already-filtered upstream headers; `client_headers` carries the full
+	// downstream set so we apply the allowlist ourselves.
 	forwardClientHeaders(httpReq, req.GetHeaders())
+	forwardClientHeaders(httpReq, req.GetClientHeaders())
 
 	return &upstreamRequest{
 		httpReq:       httpReq,
@@ -161,11 +164,28 @@ func replaceModelInBody(body []byte, newModel string) []byte {
 }
 
 // clientHeadersAllowList lists headers from the client that may be forwarded
-// to the upstream Anthropic API. Auth and content-type are always set by
-// buildUpstreamRequest and are excluded from forwarding.
+// to the upstream Anthropic API. Matches the core's allowedHeaders whitelist.
+// Auth headers (authorization, x-api-key, cookie) are always overwritten by
+// buildUpstreamRequest and excluded from forwarding.
 var clientHeadersAllowList = map[string]bool{
-	"anthropic-beta":    true,
-	"anthropic-version": true,
+	"anthropic-beta":                            true,
+	"anthropic-version":                         true,
+	"anthropic-dangerous-direct-browser-access": true,
+	"content-type":                              true,
+	"user-agent":                                true,
+	"accept-encoding":                           true,
+	"accept-language":                           true,
+	"sec-fetch-mode":                            true,
+	"x-stainless-lang":                          true,
+	"x-stainless-package-version":               true,
+	"x-stainless-os":                            true,
+	"x-stainless-arch":                          true,
+	"x-stainless-runtime":                       true,
+	"x-stainless-runtime-version":               true,
+	"x-stainless-helper-method":                 true,
+	"x-app":                                     true,
+	"x-claude-code-session-id":                  true,
+	"x-client-request-id":                       true,
 }
 
 // forwardClientHeaders copies allowed client headers to the upstream request.

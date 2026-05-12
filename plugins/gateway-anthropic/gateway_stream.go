@@ -28,14 +28,16 @@ type streamResult struct {
 	cacheReadTokens     int64
 	firstTokenMs        int32
 	clientDisconnect    bool
+	sawTerminalEvent    bool // true when message_stop or [DONE] was seen
 }
 
 // processSSEStream reads the upstream SSE response body line-by-line,
 // extracts usage data from message_start/message_delta events, and
 // streams each raw line back to the host as GatewayResponseBody chunks.
 //
-// The host is responsible for writing the SSE data to the downstream
-// HTTP client; the plugin just relays bytes and extracts usage.
+// When the gRPC client disconnects mid-stream, the plugin continues
+// draining the upstream to capture final usage data (output_tokens in
+// message_delta). This matches the core's "drain for usage" behaviour.
 func processSSEStream(
 	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
 	body io.Reader,
@@ -59,19 +61,23 @@ func processSSEStream(
 		// Empty line = end of SSE event.
 		if line == "" {
 			if len(eventLines) > 0 {
-				if err := processAndSendEvent(
-					stream, eventLines, result,
+				processEventUsage(
+					eventLines, result,
 					needModelReplace, originalModel, mappedModel,
 					startTime, &firstTokenSent,
-				); err != nil {
-					return result, err
+				)
+				if !result.clientDisconnect {
+					if err := sendSSEEvent(stream, eventLines); err != nil {
+						result.clientDisconnect = true
+					}
 				}
 				eventLines = eventLines[:0]
 			}
 			// Send the empty line to preserve SSE framing.
-			if err := sendBodyChunk(stream, []byte("\n")); err != nil {
-				result.clientDisconnect = true
-				return result, nil
+			if !result.clientDisconnect {
+				if err := sendBodyChunk(stream, []byte("\n")); err != nil {
+					result.clientDisconnect = true
+				}
 			}
 			continue
 		}
@@ -81,75 +87,131 @@ func processSSEStream(
 
 	// Process any remaining lines (stream ended without trailing newline).
 	if len(eventLines) > 0 {
-		if err := processAndSendEvent(
-			stream, eventLines, result,
+		processEventUsage(
+			eventLines, result,
 			needModelReplace, originalModel, mappedModel,
 			startTime, &firstTokenSent,
-		); err != nil {
-			return result, err
+		)
+		if !result.clientDisconnect {
+			if err := sendSSEEvent(stream, eventLines); err != nil {
+				result.clientDisconnect = true
+			}
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
+		if result.sawTerminalEvent {
+			// Usage already captured; scanner error after terminal event is harmless.
+			return result, nil
+		}
 		return result, err
 	}
 	return result, nil
 }
 
-// processAndSendEvent handles a single SSE event (one or more lines).
-// It extracts usage, optionally replaces the model name, and sends the
-// lines downstream.
-func processAndSendEvent(
-	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
+// processEventUsage extracts usage data from an SSE event's lines and
+// updates the result. It also performs model replacement on the lines
+// in-place when needed. This is separated from sending so that usage
+// extraction continues even after client disconnect.
+func processEventUsage(
 	lines []string,
 	result *streamResult,
 	needModelReplace bool,
 	originalModel, mappedModel string,
 	startTime time.Time,
 	firstTokenSent *bool,
-) error {
-	var eventName, dataLine string
+) {
+	eventName, dataLine := parseSSEEventLines(lines)
+
+	// Detect terminal events for stream completion tracking.
+	if isTerminalEvent(eventName, dataLine) {
+		result.sawTerminalEvent = true
+	}
+
+	// Extract usage from the parsed data.
+	if dataLine == "" || dataLine == "[DONE]" {
+		return
+	}
+
+	var event map[string]any
+	if err := json.Unmarshal([]byte(dataLine), &event); err != nil {
+		return
+	}
+
+	extractUsageFromEvent(event, result)
+
+	// Record first token timing on content_block_delta.
+	eventType, _ := event["type"].(string)
+	if eventType == "content_block_delta" && !*firstTokenSent {
+		*firstTokenSent = true
+		result.firstTokenMs = int32(time.Since(startTime).Milliseconds())
+	}
+
+	// Replace model in response if mapping was applied.
+	if needModelReplace {
+		if replaced := replaceModelInEvent(event, mappedModel, originalModel); replaced {
+			if newData, err := json.Marshal(event); err == nil {
+				// Rebuild lines in-place with the new data.
+				rebuilt := rebuildSSELines(eventName, string(newData))
+				copy(lines, rebuilt)
+				// Truncate if rebuilt is shorter (shouldn't happen, but be safe).
+				for i := len(rebuilt); i < len(lines); i++ {
+					lines[i] = ""
+				}
+			}
+		}
+	}
+}
+
+// parseSSEEventLines extracts the event name and first data line from
+// a set of SSE lines.
+func parseSSEEventLines(lines []string) (eventName, dataLine string) {
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "event:") {
+		if eventName == "" && strings.HasPrefix(trimmed, "event:") {
 			eventName = strings.TrimSpace(strings.TrimPrefix(trimmed, "event:"))
 		}
 		if dataLine == "" && strings.HasPrefix(trimmed, "data:") {
 			dataLine = strings.TrimSpace(strings.TrimPrefix(trimmed, "data:"))
 		}
 	}
+	return eventName, dataLine
+}
 
-	// Extract usage from the parsed data.
-	if dataLine != "" && dataLine != "[DONE]" {
-		var event map[string]any
-		if err := json.Unmarshal([]byte(dataLine), &event); err == nil {
-			extractUsageFromEvent(event, result)
-
-			// Record first token timing on content_block_delta.
-			eventType, _ := event["type"].(string)
-			if eventType == "content_block_delta" && !*firstTokenSent {
-				*firstTokenSent = true
-				ms := int32(time.Since(startTime).Milliseconds())
-				result.firstTokenMs = ms
-			}
-
-			// Replace model in response if mapping was applied.
-			if needModelReplace {
-				if replaced := replaceModelInEvent(event, mappedModel, originalModel); replaced {
-					newData, err := json.Marshal(event)
-					if err == nil {
-						dataLine = string(newData)
-						// Rebuild lines with new data.
-						lines = rebuildSSELines(eventName, dataLine)
-					}
-				}
-			}
+// isTerminalEvent returns true when the SSE event indicates the stream
+// has completed (message_stop event or [DONE] sentinel). Matches the
+// core's anthropicStreamEventIsTerminal logic.
+func isTerminalEvent(eventName, dataLine string) bool {
+	if strings.EqualFold(strings.TrimSpace(eventName), "message_stop") {
+		return true
+	}
+	trimmed := strings.TrimSpace(dataLine)
+	if trimmed == "[DONE]" {
+		return true
+	}
+	// Check the JSON type field for message_stop.
+	if trimmed != "" && trimmed[0] == '{' {
+		var probe struct {
+			Type string `json:"type"`
+		}
+		if json.Unmarshal([]byte(trimmed), &probe) == nil && probe.Type == "message_stop" {
+			return true
 		}
 	}
+	return false
+}
 
-	// Send all lines as a single body chunk, preserving SSE framing.
+// sendSSEEvent sends a set of SSE lines as a single body chunk,
+// preserving SSE framing.
+func sendSSEEvent(
+	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
+	lines []string,
+) error {
 	var buf strings.Builder
 	for _, line := range lines {
+		if line == "" {
+			continue
+		}
 		buf.WriteString(line)
 		buf.WriteByte('\n')
 	}
@@ -157,7 +219,9 @@ func processAndSendEvent(
 }
 
 // extractUsageFromEvent reads usage fields from message_start and
-// message_delta events.
+// message_delta events. Handles both flat usage fields and the nested
+// cache_creation object (ephemeral_5m/1h), as well as the cached_tokens
+// fallback for cache_read_input_tokens.
 func extractUsageFromEvent(event map[string]any, result *streamResult) {
 	eventType, _ := event["type"].(string)
 
@@ -168,33 +232,67 @@ func extractUsageFromEvent(event map[string]any, result *streamResult) {
 		if len(usage) == 0 {
 			return
 		}
-		if v, ok := usageInt(usage, "input_tokens"); ok {
-			result.inputTokens = v
-		}
-		if v, ok := usageInt(usage, "cache_creation_input_tokens"); ok {
-			result.cacheCreationTokens = v
-		}
-		if v, ok := usageInt(usage, "cache_read_input_tokens"); ok {
-			result.cacheReadTokens = v
-		}
+		extractUsageFields(usage, result, false)
 
 	case "message_delta":
 		usage, _ := event["usage"].(map[string]any)
 		if len(usage) == 0 {
 			return
 		}
-		if v, ok := usageInt(usage, "output_tokens"); ok && v > 0 {
-			result.outputTokens = v
+		extractUsageFields(usage, result, true)
+	}
+}
+
+// extractUsageFields reads token counts from a usage map. When
+// onlyPositive is true (message_delta), only non-zero values overwrite
+// the result -- matching the core's "only update if v > 0" semantics.
+func extractUsageFields(usage map[string]any, result *streamResult, onlyPositive bool) {
+	setField := func(dest *int64, key string) {
+		v, ok := usageInt(usage, key)
+		if !ok {
+			return
 		}
-		if v, ok := usageInt(usage, "input_tokens"); ok && v > 0 {
-			result.inputTokens = v
+		if onlyPositive && v <= 0 {
+			return
 		}
-		if v, ok := usageInt(usage, "cache_creation_input_tokens"); ok && v > 0 {
-			result.cacheCreationTokens = v
-		}
-		if v, ok := usageInt(usage, "cache_read_input_tokens"); ok && v > 0 {
+		*dest = v
+	}
+
+	setField(&result.inputTokens, "input_tokens")
+	setField(&result.outputTokens, "output_tokens")
+	setField(&result.cacheCreationTokens, "cache_creation_input_tokens")
+	setField(&result.cacheReadTokens, "cache_read_input_tokens")
+
+	// Granular cache_creation: sum ephemeral_5m + ephemeral_1h when the
+	// flat cache_creation_input_tokens is absent or zero.
+	applyCacheCreationGranular(usage, result, onlyPositive)
+
+	// Fallback: cached_tokens -> cache_read_input_tokens (some upstream
+	// variants report this field instead of cache_read_input_tokens).
+	if result.cacheReadTokens == 0 {
+		if v, ok := usageInt(usage, "cached_tokens"); ok && v > 0 {
 			result.cacheReadTokens = v
 		}
+	}
+}
+
+// applyCacheCreationGranular sums the nested cache_creation.ephemeral_5m
+// and cache_creation.ephemeral_1h fields when the flat
+// cache_creation_input_tokens is zero. This matches the core's behaviour
+// of computing CacheCreationInputTokens = cc5m + cc1h as a fallback.
+func applyCacheCreationGranular(usage map[string]any, result *streamResult, onlyPositive bool) {
+	ccObj, _ := usage["cache_creation"].(map[string]any)
+	if len(ccObj) == 0 {
+		return
+	}
+	cc5m, _ := usageInt(ccObj, "ephemeral_5m_input_tokens")
+	cc1h, _ := usageInt(ccObj, "ephemeral_1h_input_tokens")
+	total := cc5m + cc1h
+	if total <= 0 {
+		return
+	}
+	if result.cacheCreationTokens == 0 || (!onlyPositive) {
+		result.cacheCreationTokens = total
 	}
 }
 
@@ -256,22 +354,7 @@ func processNonStreamResponse(
 	}
 
 	result := &streamResult{}
-
-	// Extract usage from the response body.
-	var resp struct {
-		Usage struct {
-			InputTokens              int64 `json:"input_tokens"`
-			OutputTokens             int64 `json:"output_tokens"`
-			CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
-			CacheReadInputTokens     int64 `json:"cache_read_input_tokens"`
-		} `json:"usage"`
-	}
-	if err := json.Unmarshal(data, &resp); err == nil {
-		result.inputTokens = resp.Usage.InputTokens
-		result.outputTokens = resp.Usage.OutputTokens
-		result.cacheCreationTokens = resp.Usage.CacheCreationInputTokens
-		result.cacheReadTokens = resp.Usage.CacheReadInputTokens
-	}
+	extractNonStreamUsage(data, result)
 
 	// Replace model in response body if needed.
 	if originalModel != mappedModel {
@@ -279,6 +362,22 @@ func processNonStreamResponse(
 	}
 
 	return result, sendBodyChunk(stream, data)
+}
+
+// extractNonStreamUsage parses the full JSON response body and extracts
+// usage fields, including granular cache_creation and cached_tokens
+// fallback. Mirrors the core's parseClaudeUsageFromResponseBody.
+func extractNonStreamUsage(body []byte, result *streamResult) {
+	var parsed map[string]any
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return
+	}
+	usage, _ := parsed["usage"].(map[string]any)
+	if len(usage) == 0 {
+		return
+	}
+	// Reuse the same extraction logic as streaming events.
+	extractUsageFields(usage, result, false)
 }
 
 // replaceModelInResponseJSON replaces the top-level "model" field in a JSON

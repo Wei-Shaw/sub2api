@@ -59,14 +59,16 @@ func (s *gatewayProviderServer) Forward(
 		return err
 	}
 
-	// Handle error responses (4xx/5xx).
+	isStream := req.GetStream()
+
+	// Handle error responses (4xx/5xx) with structured upstream error.
 	if resp.StatusCode >= 400 {
-		return s.handleErrorResponse(stream, resp, upstream, startTime)
+		return s.handleErrorResponse(stream, resp, upstream, isStream, startTime)
 	}
 
 	// Process the response body.
 	var result *streamResult
-	if req.GetStream() {
+	if isStream {
 		result, err = processSSEStream(
 			stream, resp.Body, startTime,
 			upstream.originalModel, upstream.mappedModel,
@@ -80,7 +82,7 @@ func (s *gatewayProviderServer) Forward(
 
 	// Build the Done chunk with usage data.
 	done := buildDoneChunk(
-		resp, upstream, result, startTime, err,
+		resp, upstream, result, isStream, startTime, err,
 	)
 	if sendErr := stream.Send(done); sendErr != nil {
 		return sendErr
@@ -89,14 +91,15 @@ func (s *gatewayProviderServer) Forward(
 	return nil
 }
 
-// handleErrorResponse processes upstream 4xx/5xx responses. For failover-
-// eligible status codes, it reads the body and returns it so the host
-// can attempt another account. For other errors, it sends the error
-// body downstream.
+// handleErrorResponse processes upstream 4xx/5xx responses. It sends
+// the error body downstream and attaches a structured GatewayUpstreamError
+// to the Done chunk so the host can decide failover strategy without
+// parsing error message strings.
 func (s *gatewayProviderServer) handleErrorResponse(
 	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
 	resp *http.Response,
 	upstream *upstreamRequest,
+	isStream bool,
 	startTime time.Time,
 ) error {
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodySize))
@@ -109,30 +112,33 @@ func (s *gatewayProviderServer) handleErrorResponse(
 		}
 	}
 
+	result := &pb.GatewayForwardResult{
+		RequestId:     resp.Header.Get("x-request-id"),
+		Model:         upstream.originalModel,
+		UpstreamModel: upstream.mappedModel,
+		Stream:        isStream,
+		DurationMs:    time.Since(startTime).Milliseconds(),
+	}
+
+	// Attach structured upstream error for failover-eligible status codes.
+	if shouldFailoverStatus(resp.StatusCode) {
+		result.UpstreamError = &pb.GatewayUpstreamError{
+			StatusCode:   int32(resp.StatusCode),
+			ErrorType:    classifyErrorType(resp.StatusCode),
+			ResponseBody: truncateBytes(body, maxErrorBodyForProto),
+		}
+	}
+
 	errMsg := fmt.Sprintf("upstream returned %d", resp.StatusCode)
 	done := &pb.GatewayForwardChunk{
 		Chunk: &pb.GatewayForwardChunk_Done{
 			Done: &pb.GatewayResponseDone{
-				Error: errMsg,
-				Result: &pb.GatewayForwardResult{
-					RequestId:     resp.Header.Get("x-request-id"),
-					Model:         upstream.originalModel,
-					UpstreamModel: upstream.mappedModel,
-					DurationMs:    time.Since(startTime).Milliseconds(),
-				},
+				Error:  errMsg,
+				Result: result,
 			},
 		},
 	}
-	if sendErr := stream.Send(done); sendErr != nil {
-		return sendErr
-	}
-
-	// Signal failover for eligible status codes.
-	if shouldFailoverStatus(resp.StatusCode) {
-		return fmt.Errorf("UpstreamFailoverError: status %d", resp.StatusCode)
-	}
-
-	return nil
+	return stream.Send(done)
 }
 
 // sendResponseHeaders sends the initial GatewayResponseHeaders chunk
@@ -164,6 +170,7 @@ func buildDoneChunk(
 	resp *http.Response,
 	upstream *upstreamRequest,
 	result *streamResult,
+	isStream bool,
 	startTime time.Time,
 	streamErr error,
 ) *pb.GatewayForwardChunk {
@@ -172,7 +179,7 @@ func buildDoneChunk(
 			RequestId:     resp.Header.Get("x-request-id"),
 			Model:         upstream.originalModel,
 			UpstreamModel: upstream.mappedModel,
-			Stream:        true,
+			Stream:        isStream,
 			DurationMs:    time.Since(startTime).Milliseconds(),
 		},
 	}
@@ -195,4 +202,16 @@ func buildDoneChunk(
 	return &pb.GatewayForwardChunk{
 		Chunk: &pb.GatewayForwardChunk_Done{Done: done},
 	}
+}
+
+// maxErrorBodyForProto caps the upstream error body embedded in the proto
+// message to avoid excessive gRPC message sizes.
+const maxErrorBodyForProto = 8 << 10 // 8 KB
+
+// truncateBytes returns b truncated to at most maxLen bytes.
+func truncateBytes(b []byte, maxLen int) []byte {
+	if len(b) <= maxLen {
+		return b
+	}
+	return b[:maxLen]
 }

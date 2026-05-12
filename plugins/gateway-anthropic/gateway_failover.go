@@ -55,6 +55,24 @@ func shouldFailoverStatus(statusCode int) bool {
 	return statusCode >= 500
 }
 
+// classifyErrorType maps an upstream HTTP status code to a structured error
+// type string for the host's routing decisions. Matches the host-side
+// UpstreamFailoverError classification.
+func classifyErrorType(statusCode int) string {
+	switch statusCode {
+	case 429:
+		return "rate_limit"
+	case 529, 503:
+		return "overloaded"
+	case 401, 403:
+		return "auth_error"
+	case 500, 502, 504:
+		return "server_error"
+	default:
+		return ""
+	}
+}
+
 // isNetworkError detects connection-level failures from error messages.
 func isNetworkError(msg string) bool {
 	lower := strings.ToLower(msg)
