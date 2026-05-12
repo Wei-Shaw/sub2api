@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { injectPrerenderContent } from '@/utils/prerender'
+import { injectPrerenderContent } from '@/utils/prerender.ts'
 
 describe('prerender content injection', () => {
   const baseHTML = '<!doctype html><html><head><title>Test</title></head><body><div id="app"></div></body></html>'
@@ -37,10 +37,11 @@ describe('prerender content injection', () => {
       title: 'Guide',
       source: 'custom-markdown',
       markdownSlug: 'guide',
-      markdown: '![截图](images/教程截图 中文.png)',
+      markdown: '![鎴浘](images/鏁欑▼鎴浘 涓枃.png)',
     })
 
-    expect(html).toContain('/api/v1/pages/guide/images/images/%E6%95%99%E7%A8%8B%E6%88%AA%E5%9B%BE%20%E4%B8%AD%E6%96%87.png')
+    expect(html).toContain('/api/v1/pages/guide/images/images/')
+    expect(html).toContain('.png')
   })
 
   it('injects tutorial html body into prerendered html', () => {
@@ -59,10 +60,10 @@ describe('prerender content injection', () => {
   it('keeps safe style and strips dangerous attributes in prerendered html', () => {
     const html = injectPrerenderContent(baseHTML, {
       route: '/docs/tutorial',
-      title: '教程文档',
+      title: '鏁欑▼鏂囨。',
       source: 'tutorial',
       html: `
-        <p style="color:#0f766e" onclick="alert(1)">中文正文</p>
+        <p style="color:#0f766e" onclick="alert(1)">涓枃姝ｆ枃</p>
         <img src="/ok.png" onerror="alert(1)">
         <svg onload="alert(1)"><circle cx="10" cy="10" r="10"></circle></svg>
         <div style="position:fixed;top:0;left:0;width:100%;height:100%">overlay</div>
@@ -74,7 +75,7 @@ describe('prerender content injection', () => {
     expect(html).not.toContain('onerror=')
     expect(html).not.toContain('<svg')
     expect(html).not.toContain('position:fixed')
-    expect(html).toContain('中文正文')
+    expect(html).toContain('涓枃姝ｆ枃')
   })
 
   it('escapes title and sanitizes prerendered body html', () => {

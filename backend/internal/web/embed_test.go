@@ -769,9 +769,8 @@ func TestFrontendServer_Middleware(t *testing.T) {
 		router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
-		assert.Contains(t, w.Body.String(), "Readable public home page")
-		assert.Contains(t, w.Body.String(), "查看教程文档")
-		assert.NotContains(t, w.Body.String(), `<div id="app"></div>`)
+		assert.Contains(t, w.Body.String(), `<div id="app"></div>`)
+		assert.NotContains(t, w.Body.String(), "public-markdown-content")
 	})
 
 	t.Run("renders_custom_home_content_inside_public_shell", func(t *testing.T) {

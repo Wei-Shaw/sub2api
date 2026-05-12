@@ -1,7 +1,7 @@
 <template>
   <!-- Custom Home Content: Public Content Mode -->
   <div
-    v-if="homeContent"
+    v-if="renderedHomeContent"
     class="min-h-screen bg-gray-50 text-gray-900 dark:bg-dark-950 dark:text-white"
   >
     <header class="border-b border-gray-200 bg-white/95 dark:border-dark-800 dark:bg-dark-900/95">

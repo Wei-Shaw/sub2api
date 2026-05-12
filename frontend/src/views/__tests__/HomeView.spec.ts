@@ -105,4 +105,29 @@ describe('HomeView', () => {
     expect(wrapper.find('.public-home-content').exists()).toBe(true)
     expect(wrapper.find('header').exists()).toBe(true)
   })
+
+  it('falls back to the default home page when sanitized home content is empty', () => {
+    appStore.cachedPublicSettings = {
+      site_name: 'MyCustomSite',
+      site_logo: '/logo.png',
+      site_subtitle: 'Readable public home page',
+      doc_url: '',
+      seo_home_title: '公开首页',
+      home_content: '<script>alert(1)</script><iframe src=\"https://evil.example\"></iframe>',
+    }
+
+    const wrapper = mount(HomeView, {
+      global: {
+        stubs: {
+          RouterLink: {
+            props: ['to'],
+            template: '<a :href="to"><slot /></a>',
+          },
+        },
+      },
+    })
+
+    expect(wrapper.find('.public-home-content').exists()).toBe(false)
+    expect(wrapper.text()).toContain('Readable public home page')
+  })
 })

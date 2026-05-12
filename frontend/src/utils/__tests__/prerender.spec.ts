@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildPrerenderManifest } from '@/utils/prerender'
+import { buildPrerenderManifest, collectPrerenderRoutes } from '@/utils/prerender.ts'
 
 describe('prerender manifest', () => {
   it('captures route metadata for generated entries', () => {
@@ -33,5 +33,19 @@ describe('prerender manifest', () => {
       markdown_slug: 'guide',
       output: 'custom/guide/index.html',
     })
+  })
+
+  it('does not inject fallback public home content when home_content is empty', () => {
+    const routes = collectPrerenderRoutes({
+      data: {
+        site_name: 'Sub2API',
+        site_subtitle: 'Readable public home page',
+        home_content: '',
+      },
+    })
+
+    const homeRoute = routes.find((entry) => entry.route === '/home')
+    expect(homeRoute).toBeTruthy()
+    expect(homeRoute?.html).toBeUndefined()
   })
 })

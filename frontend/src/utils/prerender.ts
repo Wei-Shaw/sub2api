@@ -73,12 +73,12 @@ export function collectPrerenderRoutes(
   const data = payload?.data
 
   const homeContent = String(data?.home_content ?? '').trim()
-  const homeDescription = String(data?.seo_home_description ?? '').trim()
-    || String(data?.site_subtitle ?? '').trim()
   const homeEntry = routes.get('/home')
   if (homeEntry) {
     homeEntry.title = String(data?.site_name ?? '').trim() || 'Sub2API'
-    homeEntry.html = homeContent || `<p>${escapeHTML(homeDescription || 'Sub2API is an AI API gateway platform.')}</p><p><a href="/docs/tutorial">查看教程文档</a></p>`
+    if (homeContent) {
+      homeEntry.html = homeContent
+    }
   }
 
   routes.set('/docs/tutorial', {

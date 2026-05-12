@@ -55,6 +55,9 @@ func (s *FrontendServer) tryServePublicRenderedPage(c *gin.Context, requestPath 
 
 	switch {
 	case requestPath == "/" || requestPath == "/home":
+		if strings.TrimSpace(cfg.HomeContent) == "" {
+			return false
+		}
 		return s.serveRenderedHomePage(c, settingsJSON, requestPath)
 	case strings.HasPrefix(requestPath, "/legal/"):
 		docID := strings.TrimPrefix(requestPath, "/legal/")
@@ -100,10 +103,9 @@ func (s *FrontendServer) serveRenderedHomePage(c *gin.Context, settingsJSON []by
 	seo := buildSEOData(requestPath, settingsJSON)
 	cfg := parseSEOConfig(settingsJSON)
 
-	homeContent := strings.TrimSpace(cfg.HomeContent)
-	bodyHTML := tutorialhtml.SanitizeTutorialHTML(homeContent)
+	bodyHTML := tutorialhtml.SanitizeTutorialHTML(strings.TrimSpace(cfg.HomeContent))
 	if strings.TrimSpace(bodyHTML) == "" {
-		bodyHTML = `<p>` + html.EscapeString(buildHomeDescription(cfg)) + `</p><p><a href="/docs/tutorial">查看教程文档</a></p>`
+		return false
 	}
 
 	pageHTML := buildPublicMarkdownHTML(cfg, seo, normalizeSiteName(cfg.SiteName), bodyHTML)
