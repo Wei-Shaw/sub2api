@@ -139,6 +139,34 @@ func (_c *APIKeyCreate) SetIPBlacklist(v []string) *APIKeyCreate {
 	return _c
 }
 
+// SetIPLockMode sets the "ip_lock_mode" field.
+func (_c *APIKeyCreate) SetIPLockMode(v string) *APIKeyCreate {
+	_c.mutation.SetIPLockMode(v)
+	return _c
+}
+
+// SetNillableIPLockMode sets the "ip_lock_mode" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableIPLockMode(v *string) *APIKeyCreate {
+	if v != nil {
+		_c.SetIPLockMode(*v)
+	}
+	return _c
+}
+
+// SetLimitAction sets the "limit_action" field.
+func (_c *APIKeyCreate) SetLimitAction(v string) *APIKeyCreate {
+	_c.mutation.SetLimitAction(v)
+	return _c
+}
+
+// SetNillableLimitAction sets the "limit_action" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableLimitAction(v *string) *APIKeyCreate {
+	if v != nil {
+		_c.SetLimitAction(*v)
+	}
+	return _c
+}
+
 // SetQuota sets the "quota" field.
 func (_c *APIKeyCreate) SetQuota(v float64) *APIKeyCreate {
 	_c.mutation.SetQuota(v)
@@ -223,6 +251,20 @@ func (_c *APIKeyCreate) SetNillableRateLimit7d(v *float64) *APIKeyCreate {
 	return _c
 }
 
+// SetRateLimit1mo sets the "rate_limit_1mo" field.
+func (_c *APIKeyCreate) SetRateLimit1mo(v float64) *APIKeyCreate {
+	_c.mutation.SetRateLimit1mo(v)
+	return _c
+}
+
+// SetNillableRateLimit1mo sets the "rate_limit_1mo" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableRateLimit1mo(v *float64) *APIKeyCreate {
+	if v != nil {
+		_c.SetRateLimit1mo(*v)
+	}
+	return _c
+}
+
 // SetUsage5h sets the "usage_5h" field.
 func (_c *APIKeyCreate) SetUsage5h(v float64) *APIKeyCreate {
 	_c.mutation.SetUsage5h(v)
@@ -265,6 +307,20 @@ func (_c *APIKeyCreate) SetNillableUsage7d(v *float64) *APIKeyCreate {
 	return _c
 }
 
+// SetUsage1mo sets the "usage_1mo" field.
+func (_c *APIKeyCreate) SetUsage1mo(v float64) *APIKeyCreate {
+	_c.mutation.SetUsage1mo(v)
+	return _c
+}
+
+// SetNillableUsage1mo sets the "usage_1mo" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableUsage1mo(v *float64) *APIKeyCreate {
+	if v != nil {
+		_c.SetUsage1mo(*v)
+	}
+	return _c
+}
+
 // SetWindow5hStart sets the "window_5h_start" field.
 func (_c *APIKeyCreate) SetWindow5hStart(v time.Time) *APIKeyCreate {
 	_c.mutation.SetWindow5hStart(v)
@@ -303,6 +359,20 @@ func (_c *APIKeyCreate) SetWindow7dStart(v time.Time) *APIKeyCreate {
 func (_c *APIKeyCreate) SetNillableWindow7dStart(v *time.Time) *APIKeyCreate {
 	if v != nil {
 		_c.SetWindow7dStart(*v)
+	}
+	return _c
+}
+
+// SetWindow1moStart sets the "window_1mo_start" field.
+func (_c *APIKeyCreate) SetWindow1moStart(v time.Time) *APIKeyCreate {
+	_c.mutation.SetWindow1moStart(v)
+	return _c
+}
+
+// SetNillableWindow1moStart sets the "window_1mo_start" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableWindow1moStart(v *time.Time) *APIKeyCreate {
+	if v != nil {
+		_c.SetWindow1moStart(*v)
 	}
 	return _c
 }
@@ -387,6 +457,14 @@ func (_c *APIKeyCreate) defaults() error {
 		v := apikey.DefaultStatus
 		_c.mutation.SetStatus(v)
 	}
+	if _, ok := _c.mutation.IPLockMode(); !ok {
+		v := apikey.DefaultIPLockMode
+		_c.mutation.SetIPLockMode(v)
+	}
+	if _, ok := _c.mutation.LimitAction(); !ok {
+		v := apikey.DefaultLimitAction
+		_c.mutation.SetLimitAction(v)
+	}
 	if _, ok := _c.mutation.Quota(); !ok {
 		v := apikey.DefaultQuota
 		_c.mutation.SetQuota(v)
@@ -407,6 +485,10 @@ func (_c *APIKeyCreate) defaults() error {
 		v := apikey.DefaultRateLimit7d
 		_c.mutation.SetRateLimit7d(v)
 	}
+	if _, ok := _c.mutation.RateLimit1mo(); !ok {
+		v := apikey.DefaultRateLimit1mo
+		_c.mutation.SetRateLimit1mo(v)
+	}
 	if _, ok := _c.mutation.Usage5h(); !ok {
 		v := apikey.DefaultUsage5h
 		_c.mutation.SetUsage5h(v)
@@ -418,6 +500,10 @@ func (_c *APIKeyCreate) defaults() error {
 	if _, ok := _c.mutation.Usage7d(); !ok {
 		v := apikey.DefaultUsage7d
 		_c.mutation.SetUsage7d(v)
+	}
+	if _, ok := _c.mutation.Usage1mo(); !ok {
+		v := apikey.DefaultUsage1mo
+		_c.mutation.SetUsage1mo(v)
 	}
 	return nil
 }
@@ -457,6 +543,22 @@ func (_c *APIKeyCreate) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "APIKey.status": %w`, err)}
 		}
 	}
+	if _, ok := _c.mutation.IPLockMode(); !ok {
+		return &ValidationError{Name: "ip_lock_mode", err: errors.New(`ent: missing required field "APIKey.ip_lock_mode"`)}
+	}
+	if v, ok := _c.mutation.IPLockMode(); ok {
+		if err := apikey.IPLockModeValidator(v); err != nil {
+			return &ValidationError{Name: "ip_lock_mode", err: fmt.Errorf(`ent: validator failed for field "APIKey.ip_lock_mode": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.LimitAction(); !ok {
+		return &ValidationError{Name: "limit_action", err: errors.New(`ent: missing required field "APIKey.limit_action"`)}
+	}
+	if v, ok := _c.mutation.LimitAction(); ok {
+		if err := apikey.LimitActionValidator(v); err != nil {
+			return &ValidationError{Name: "limit_action", err: fmt.Errorf(`ent: validator failed for field "APIKey.limit_action": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.Quota(); !ok {
 		return &ValidationError{Name: "quota", err: errors.New(`ent: missing required field "APIKey.quota"`)}
 	}
@@ -472,6 +574,9 @@ func (_c *APIKeyCreate) check() error {
 	if _, ok := _c.mutation.RateLimit7d(); !ok {
 		return &ValidationError{Name: "rate_limit_7d", err: errors.New(`ent: missing required field "APIKey.rate_limit_7d"`)}
 	}
+	if _, ok := _c.mutation.RateLimit1mo(); !ok {
+		return &ValidationError{Name: "rate_limit_1mo", err: errors.New(`ent: missing required field "APIKey.rate_limit_1mo"`)}
+	}
 	if _, ok := _c.mutation.Usage5h(); !ok {
 		return &ValidationError{Name: "usage_5h", err: errors.New(`ent: missing required field "APIKey.usage_5h"`)}
 	}
@@ -480,6 +585,9 @@ func (_c *APIKeyCreate) check() error {
 	}
 	if _, ok := _c.mutation.Usage7d(); !ok {
 		return &ValidationError{Name: "usage_7d", err: errors.New(`ent: missing required field "APIKey.usage_7d"`)}
+	}
+	if _, ok := _c.mutation.Usage1mo(); !ok {
+		return &ValidationError{Name: "usage_1mo", err: errors.New(`ent: missing required field "APIKey.usage_1mo"`)}
 	}
 	if len(_c.mutation.UserIDs()) == 0 {
 		return &ValidationError{Name: "user", err: errors.New(`ent: missing required edge "APIKey.user"`)}
@@ -547,6 +655,14 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 		_spec.SetField(apikey.FieldIPBlacklist, field.TypeJSON, value)
 		_node.IPBlacklist = value
 	}
+	if value, ok := _c.mutation.IPLockMode(); ok {
+		_spec.SetField(apikey.FieldIPLockMode, field.TypeString, value)
+		_node.IPLockMode = value
+	}
+	if value, ok := _c.mutation.LimitAction(); ok {
+		_spec.SetField(apikey.FieldLimitAction, field.TypeString, value)
+		_node.LimitAction = value
+	}
 	if value, ok := _c.mutation.Quota(); ok {
 		_spec.SetField(apikey.FieldQuota, field.TypeFloat64, value)
 		_node.Quota = value
@@ -571,6 +687,10 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 		_spec.SetField(apikey.FieldRateLimit7d, field.TypeFloat64, value)
 		_node.RateLimit7d = value
 	}
+	if value, ok := _c.mutation.RateLimit1mo(); ok {
+		_spec.SetField(apikey.FieldRateLimit1mo, field.TypeFloat64, value)
+		_node.RateLimit1mo = value
+	}
 	if value, ok := _c.mutation.Usage5h(); ok {
 		_spec.SetField(apikey.FieldUsage5h, field.TypeFloat64, value)
 		_node.Usage5h = value
@@ -583,6 +703,10 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 		_spec.SetField(apikey.FieldUsage7d, field.TypeFloat64, value)
 		_node.Usage7d = value
 	}
+	if value, ok := _c.mutation.Usage1mo(); ok {
+		_spec.SetField(apikey.FieldUsage1mo, field.TypeFloat64, value)
+		_node.Usage1mo = value
+	}
 	if value, ok := _c.mutation.Window5hStart(); ok {
 		_spec.SetField(apikey.FieldWindow5hStart, field.TypeTime, value)
 		_node.Window5hStart = &value
@@ -594,6 +718,10 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Window7dStart(); ok {
 		_spec.SetField(apikey.FieldWindow7dStart, field.TypeTime, value)
 		_node.Window7dStart = &value
+	}
+	if value, ok := _c.mutation.Window1moStart(); ok {
+		_spec.SetField(apikey.FieldWindow1moStart, field.TypeTime, value)
+		_node.Window1moStart = &value
 	}
 	if nodes := _c.mutation.UserIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -847,6 +975,30 @@ func (u *APIKeyUpsert) ClearIPBlacklist() *APIKeyUpsert {
 	return u
 }
 
+// SetIPLockMode sets the "ip_lock_mode" field.
+func (u *APIKeyUpsert) SetIPLockMode(v string) *APIKeyUpsert {
+	u.Set(apikey.FieldIPLockMode, v)
+	return u
+}
+
+// UpdateIPLockMode sets the "ip_lock_mode" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateIPLockMode() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldIPLockMode)
+	return u
+}
+
+// SetLimitAction sets the "limit_action" field.
+func (u *APIKeyUpsert) SetLimitAction(v string) *APIKeyUpsert {
+	u.Set(apikey.FieldLimitAction, v)
+	return u
+}
+
+// UpdateLimitAction sets the "limit_action" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateLimitAction() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldLimitAction)
+	return u
+}
+
 // SetQuota sets the "quota" field.
 func (u *APIKeyUpsert) SetQuota(v float64) *APIKeyUpsert {
 	u.Set(apikey.FieldQuota, v)
@@ -955,6 +1107,24 @@ func (u *APIKeyUpsert) AddRateLimit7d(v float64) *APIKeyUpsert {
 	return u
 }
 
+// SetRateLimit1mo sets the "rate_limit_1mo" field.
+func (u *APIKeyUpsert) SetRateLimit1mo(v float64) *APIKeyUpsert {
+	u.Set(apikey.FieldRateLimit1mo, v)
+	return u
+}
+
+// UpdateRateLimit1mo sets the "rate_limit_1mo" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateRateLimit1mo() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldRateLimit1mo)
+	return u
+}
+
+// AddRateLimit1mo adds v to the "rate_limit_1mo" field.
+func (u *APIKeyUpsert) AddRateLimit1mo(v float64) *APIKeyUpsert {
+	u.Add(apikey.FieldRateLimit1mo, v)
+	return u
+}
+
 // SetUsage5h sets the "usage_5h" field.
 func (u *APIKeyUpsert) SetUsage5h(v float64) *APIKeyUpsert {
 	u.Set(apikey.FieldUsage5h, v)
@@ -1009,6 +1179,24 @@ func (u *APIKeyUpsert) AddUsage7d(v float64) *APIKeyUpsert {
 	return u
 }
 
+// SetUsage1mo sets the "usage_1mo" field.
+func (u *APIKeyUpsert) SetUsage1mo(v float64) *APIKeyUpsert {
+	u.Set(apikey.FieldUsage1mo, v)
+	return u
+}
+
+// UpdateUsage1mo sets the "usage_1mo" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateUsage1mo() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldUsage1mo)
+	return u
+}
+
+// AddUsage1mo adds v to the "usage_1mo" field.
+func (u *APIKeyUpsert) AddUsage1mo(v float64) *APIKeyUpsert {
+	u.Add(apikey.FieldUsage1mo, v)
+	return u
+}
+
 // SetWindow5hStart sets the "window_5h_start" field.
 func (u *APIKeyUpsert) SetWindow5hStart(v time.Time) *APIKeyUpsert {
 	u.Set(apikey.FieldWindow5hStart, v)
@@ -1060,6 +1248,24 @@ func (u *APIKeyUpsert) UpdateWindow7dStart() *APIKeyUpsert {
 // ClearWindow7dStart clears the value of the "window_7d_start" field.
 func (u *APIKeyUpsert) ClearWindow7dStart() *APIKeyUpsert {
 	u.SetNull(apikey.FieldWindow7dStart)
+	return u
+}
+
+// SetWindow1moStart sets the "window_1mo_start" field.
+func (u *APIKeyUpsert) SetWindow1moStart(v time.Time) *APIKeyUpsert {
+	u.Set(apikey.FieldWindow1moStart, v)
+	return u
+}
+
+// UpdateWindow1moStart sets the "window_1mo_start" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateWindow1moStart() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldWindow1moStart)
+	return u
+}
+
+// ClearWindow1moStart clears the value of the "window_1mo_start" field.
+func (u *APIKeyUpsert) ClearWindow1moStart() *APIKeyUpsert {
+	u.SetNull(apikey.FieldWindow1moStart)
 	return u
 }
 
@@ -1283,6 +1489,34 @@ func (u *APIKeyUpsertOne) ClearIPBlacklist() *APIKeyUpsertOne {
 	})
 }
 
+// SetIPLockMode sets the "ip_lock_mode" field.
+func (u *APIKeyUpsertOne) SetIPLockMode(v string) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetIPLockMode(v)
+	})
+}
+
+// UpdateIPLockMode sets the "ip_lock_mode" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateIPLockMode() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateIPLockMode()
+	})
+}
+
+// SetLimitAction sets the "limit_action" field.
+func (u *APIKeyUpsertOne) SetLimitAction(v string) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetLimitAction(v)
+	})
+}
+
+// UpdateLimitAction sets the "limit_action" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateLimitAction() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateLimitAction()
+	})
+}
+
 // SetQuota sets the "quota" field.
 func (u *APIKeyUpsertOne) SetQuota(v float64) *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
@@ -1409,6 +1643,27 @@ func (u *APIKeyUpsertOne) UpdateRateLimit7d() *APIKeyUpsertOne {
 	})
 }
 
+// SetRateLimit1mo sets the "rate_limit_1mo" field.
+func (u *APIKeyUpsertOne) SetRateLimit1mo(v float64) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetRateLimit1mo(v)
+	})
+}
+
+// AddRateLimit1mo adds v to the "rate_limit_1mo" field.
+func (u *APIKeyUpsertOne) AddRateLimit1mo(v float64) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.AddRateLimit1mo(v)
+	})
+}
+
+// UpdateRateLimit1mo sets the "rate_limit_1mo" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateRateLimit1mo() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateRateLimit1mo()
+	})
+}
+
 // SetUsage5h sets the "usage_5h" field.
 func (u *APIKeyUpsertOne) SetUsage5h(v float64) *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
@@ -1472,6 +1727,27 @@ func (u *APIKeyUpsertOne) UpdateUsage7d() *APIKeyUpsertOne {
 	})
 }
 
+// SetUsage1mo sets the "usage_1mo" field.
+func (u *APIKeyUpsertOne) SetUsage1mo(v float64) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetUsage1mo(v)
+	})
+}
+
+// AddUsage1mo adds v to the "usage_1mo" field.
+func (u *APIKeyUpsertOne) AddUsage1mo(v float64) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.AddUsage1mo(v)
+	})
+}
+
+// UpdateUsage1mo sets the "usage_1mo" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateUsage1mo() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateUsage1mo()
+	})
+}
+
 // SetWindow5hStart sets the "window_5h_start" field.
 func (u *APIKeyUpsertOne) SetWindow5hStart(v time.Time) *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
@@ -1532,6 +1808,27 @@ func (u *APIKeyUpsertOne) UpdateWindow7dStart() *APIKeyUpsertOne {
 func (u *APIKeyUpsertOne) ClearWindow7dStart() *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.ClearWindow7dStart()
+	})
+}
+
+// SetWindow1moStart sets the "window_1mo_start" field.
+func (u *APIKeyUpsertOne) SetWindow1moStart(v time.Time) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetWindow1moStart(v)
+	})
+}
+
+// UpdateWindow1moStart sets the "window_1mo_start" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateWindow1moStart() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateWindow1moStart()
+	})
+}
+
+// ClearWindow1moStart clears the value of the "window_1mo_start" field.
+func (u *APIKeyUpsertOne) ClearWindow1moStart() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearWindow1moStart()
 	})
 }
 
@@ -1921,6 +2218,34 @@ func (u *APIKeyUpsertBulk) ClearIPBlacklist() *APIKeyUpsertBulk {
 	})
 }
 
+// SetIPLockMode sets the "ip_lock_mode" field.
+func (u *APIKeyUpsertBulk) SetIPLockMode(v string) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetIPLockMode(v)
+	})
+}
+
+// UpdateIPLockMode sets the "ip_lock_mode" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateIPLockMode() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateIPLockMode()
+	})
+}
+
+// SetLimitAction sets the "limit_action" field.
+func (u *APIKeyUpsertBulk) SetLimitAction(v string) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetLimitAction(v)
+	})
+}
+
+// UpdateLimitAction sets the "limit_action" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateLimitAction() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateLimitAction()
+	})
+}
+
 // SetQuota sets the "quota" field.
 func (u *APIKeyUpsertBulk) SetQuota(v float64) *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
@@ -2047,6 +2372,27 @@ func (u *APIKeyUpsertBulk) UpdateRateLimit7d() *APIKeyUpsertBulk {
 	})
 }
 
+// SetRateLimit1mo sets the "rate_limit_1mo" field.
+func (u *APIKeyUpsertBulk) SetRateLimit1mo(v float64) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetRateLimit1mo(v)
+	})
+}
+
+// AddRateLimit1mo adds v to the "rate_limit_1mo" field.
+func (u *APIKeyUpsertBulk) AddRateLimit1mo(v float64) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.AddRateLimit1mo(v)
+	})
+}
+
+// UpdateRateLimit1mo sets the "rate_limit_1mo" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateRateLimit1mo() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateRateLimit1mo()
+	})
+}
+
 // SetUsage5h sets the "usage_5h" field.
 func (u *APIKeyUpsertBulk) SetUsage5h(v float64) *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
@@ -2110,6 +2456,27 @@ func (u *APIKeyUpsertBulk) UpdateUsage7d() *APIKeyUpsertBulk {
 	})
 }
 
+// SetUsage1mo sets the "usage_1mo" field.
+func (u *APIKeyUpsertBulk) SetUsage1mo(v float64) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetUsage1mo(v)
+	})
+}
+
+// AddUsage1mo adds v to the "usage_1mo" field.
+func (u *APIKeyUpsertBulk) AddUsage1mo(v float64) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.AddUsage1mo(v)
+	})
+}
+
+// UpdateUsage1mo sets the "usage_1mo" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateUsage1mo() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateUsage1mo()
+	})
+}
+
 // SetWindow5hStart sets the "window_5h_start" field.
 func (u *APIKeyUpsertBulk) SetWindow5hStart(v time.Time) *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
@@ -2170,6 +2537,27 @@ func (u *APIKeyUpsertBulk) UpdateWindow7dStart() *APIKeyUpsertBulk {
 func (u *APIKeyUpsertBulk) ClearWindow7dStart() *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.ClearWindow7dStart()
+	})
+}
+
+// SetWindow1moStart sets the "window_1mo_start" field.
+func (u *APIKeyUpsertBulk) SetWindow1moStart(v time.Time) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetWindow1moStart(v)
+	})
+}
+
+// UpdateWindow1moStart sets the "window_1mo_start" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateWindow1moStart() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateWindow1moStart()
+	})
+}
+
+// ClearWindow1moStart clears the value of the "window_1mo_start" field.
+func (u *APIKeyUpsertBulk) ClearWindow1moStart() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearWindow1moStart()
 	})
 }
 

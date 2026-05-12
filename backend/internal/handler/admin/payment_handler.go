@@ -238,6 +238,33 @@ func (h *PaymentHandler) DeletePlan(c *gin.Context) {
 	response.Success(c, gin.H{"message": "deleted"})
 }
 
+// GetHomePricingConfig returns the public homepage pricing display config.
+// GET /api/v1/admin/payment/home-pricing
+func (h *PaymentHandler) GetHomePricingConfig(c *gin.Context) {
+	cfg, err := h.configService.GetHomePricingConfig(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, cfg)
+}
+
+// UpdateHomePricingConfig updates the public homepage pricing display config.
+// PUT /api/v1/admin/payment/home-pricing
+func (h *PaymentHandler) UpdateHomePricingConfig(c *gin.Context) {
+	var req service.HomePricingConfig
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	cfg, err := h.configService.UpdateHomePricingConfig(c.Request.Context(), req)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, cfg)
+}
+
 // --- Provider Instances ---
 
 // ListProviders returns all payment provider instances.

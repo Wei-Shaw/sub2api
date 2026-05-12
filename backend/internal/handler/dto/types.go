@@ -11,6 +11,7 @@ type User struct {
 	Email         string     `json:"email"`
 	Username      string     `json:"username"`
 	Role          string     `json:"role"`
+	CustomerType  string     `json:"customer_type"`
 	Balance       float64    `json:"balance"`
 	Concurrency   int        `json:"concurrency"`
 	Status        string     `json:"status"`
@@ -54,6 +55,8 @@ type APIKey struct {
 	Status      string     `json:"status"`
 	IPWhitelist []string   `json:"ip_whitelist"`
 	IPBlacklist []string   `json:"ip_blacklist"`
+	IPLockMode  string     `json:"ip_lock_mode"`
+	LimitAction string     `json:"limit_action"`
 	LastUsedAt  *time.Time `json:"last_used_at"`
 	Quota       float64    `json:"quota"`      // Quota limit in USD (0 = unlimited)
 	QuotaUsed   float64    `json:"quota_used"` // Used quota amount in USD
@@ -62,18 +65,22 @@ type APIKey struct {
 	UpdatedAt   time.Time  `json:"updated_at"`
 
 	// Rate limit fields
-	RateLimit5h   float64    `json:"rate_limit_5h"`
-	RateLimit1d   float64    `json:"rate_limit_1d"`
-	RateLimit7d   float64    `json:"rate_limit_7d"`
-	Usage5h       float64    `json:"usage_5h"`
-	Usage1d       float64    `json:"usage_1d"`
-	Usage7d       float64    `json:"usage_7d"`
-	Window5hStart *time.Time `json:"window_5h_start"`
-	Window1dStart *time.Time `json:"window_1d_start"`
-	Window7dStart *time.Time `json:"window_7d_start"`
-	Reset5hAt     *time.Time `json:"reset_5h_at,omitempty"`
-	Reset1dAt     *time.Time `json:"reset_1d_at,omitempty"`
-	Reset7dAt     *time.Time `json:"reset_7d_at,omitempty"`
+	RateLimit5h    float64    `json:"rate_limit_5h"`
+	RateLimit1d    float64    `json:"rate_limit_1d"`
+	RateLimit7d    float64    `json:"rate_limit_7d"`
+	RateLimit1mo   float64    `json:"rate_limit_1mo"`
+	Usage5h        float64    `json:"usage_5h"`
+	Usage1d        float64    `json:"usage_1d"`
+	Usage7d        float64    `json:"usage_7d"`
+	Usage1mo       float64    `json:"usage_1mo"`
+	Window5hStart  *time.Time `json:"window_5h_start"`
+	Window1dStart  *time.Time `json:"window_1d_start"`
+	Window7dStart  *time.Time `json:"window_7d_start"`
+	Window1moStart *time.Time `json:"window_1mo_start"`
+	Reset5hAt      *time.Time `json:"reset_5h_at,omitempty"`
+	Reset1dAt      *time.Time `json:"reset_1d_at,omitempty"`
+	Reset7dAt      *time.Time `json:"reset_7d_at,omitempty"`
+	Reset1moAt     *time.Time `json:"reset_1mo_at,omitempty"`
 
 	User  *User  `json:"user,omitempty"`
 	Group *Group `json:"group,omitempty"`

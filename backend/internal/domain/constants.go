@@ -16,6 +16,12 @@ const (
 	RoleUser  = "user"
 )
 
+// Customer type constants
+const (
+	CustomerTypeRetail  = "retail"
+	CustomerTypeManaged = "managed"
+)
+
 // Platform constants
 const (
 	PlatformAnthropic   = "anthropic"

@@ -107,6 +107,20 @@ func (_u *UserUpdate) SetNillableRole(v *string) *UserUpdate {
 	return _u
 }
 
+// SetCustomerType sets the "customer_type" field.
+func (_u *UserUpdate) SetCustomerType(v string) *UserUpdate {
+	_u.mutation.SetCustomerType(v)
+	return _u
+}
+
+// SetNillableCustomerType sets the "customer_type" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableCustomerType(v *string) *UserUpdate {
+	if v != nil {
+		_u.SetCustomerType(*v)
+	}
+	return _u
+}
+
 // SetBalance sets the "balance" field.
 func (_u *UserUpdate) SetBalance(v float64) *UserUpdate {
 	_u.mutation.ResetBalance()
@@ -906,6 +920,11 @@ func (_u *UserUpdate) check() error {
 			return &ValidationError{Name: "role", err: fmt.Errorf(`ent: validator failed for field "User.role": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.CustomerType(); ok {
+		if err := user.CustomerTypeValidator(v); err != nil {
+			return &ValidationError{Name: "customer_type", err: fmt.Errorf(`ent: validator failed for field "User.customer_type": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Status(); ok {
 		if err := user.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "User.status": %w`, err)}
@@ -953,6 +972,9 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.Role(); ok {
 		_spec.SetField(user.FieldRole, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.CustomerType(); ok {
+		_spec.SetField(user.FieldCustomerType, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.Balance(); ok {
 		_spec.SetField(user.FieldBalance, field.TypeFloat64, value)
@@ -1671,6 +1693,20 @@ func (_u *UserUpdateOne) SetRole(v string) *UserUpdateOne {
 func (_u *UserUpdateOne) SetNillableRole(v *string) *UserUpdateOne {
 	if v != nil {
 		_u.SetRole(*v)
+	}
+	return _u
+}
+
+// SetCustomerType sets the "customer_type" field.
+func (_u *UserUpdateOne) SetCustomerType(v string) *UserUpdateOne {
+	_u.mutation.SetCustomerType(v)
+	return _u
+}
+
+// SetNillableCustomerType sets the "customer_type" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableCustomerType(v *string) *UserUpdateOne {
+	if v != nil {
+		_u.SetCustomerType(*v)
 	}
 	return _u
 }
@@ -2487,6 +2523,11 @@ func (_u *UserUpdateOne) check() error {
 			return &ValidationError{Name: "role", err: fmt.Errorf(`ent: validator failed for field "User.role": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.CustomerType(); ok {
+		if err := user.CustomerTypeValidator(v); err != nil {
+			return &ValidationError{Name: "customer_type", err: fmt.Errorf(`ent: validator failed for field "User.customer_type": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Status(); ok {
 		if err := user.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "User.status": %w`, err)}
@@ -2551,6 +2592,9 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if value, ok := _u.mutation.Role(); ok {
 		_spec.SetField(user.FieldRole, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.CustomerType(); ok {
+		_spec.SetField(user.FieldCustomerType, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.Balance(); ok {
 		_spec.SetField(user.FieldBalance, field.TypeFloat64, value)

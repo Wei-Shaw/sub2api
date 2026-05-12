@@ -210,6 +210,7 @@ type PendingOAuthCreateAccountResponse = {
 }
 
 const email = ref<string>('')
+const username = ref<string>('')
 const password = ref<string>('')
 const initialTurnstileToken = ref<string>('')
 const promoCode = ref<string>('')
@@ -228,7 +229,7 @@ const hasRegisterData = ref<boolean>(false)
 // Public settings
 const turnstileEnabled = ref<boolean>(false)
 const turnstileSiteKey = ref<string>('')
-const siteName = ref<string>('Sub2API')
+const siteName = ref<string>('OceanWay AI')
 const registrationEmailSuffixWhitelist = ref<string[]>([])
 
 // Turnstile for resend
@@ -262,6 +263,7 @@ onMounted(async () => {
     try {
       const registerData = JSON.parse(registerDataStr)
       email.value = registerData.email || ''
+      username.value = registerData.username || ''
       password.value = registerData.password || ''
       initialTurnstileToken.value = registerData.turnstile_token || ''
       promoCode.value = registerData.promo_code || ''
@@ -277,7 +279,11 @@ onMounted(async () => {
             adoptAvatar: registerData.pending_adoption_decision.adopt_avatar === true
           }
         : null
-      hasRegisterData.value = !!(email.value && password.value)
+      hasRegisterData.value = !!(
+        email.value &&
+        password.value &&
+        (isPendingOAuthFlow() || username.value)
+      )
     } catch {
       hasRegisterData.value = false
     }
@@ -293,7 +299,7 @@ onMounted(async () => {
     const settings = await getPublicSettings()
     turnstileEnabled.value = settings.turnstile_enabled
     turnstileSiteKey.value = settings.turnstile_site_key || ''
-    siteName.value = settings.site_name || 'Sub2API'
+    siteName.value = settings.site_name || 'OceanWay AI'
     registrationEmailSuffixWhitelist.value = normalizeRegistrationEmailSuffixWhitelist(
       settings.registration_email_suffix_whitelist || []
     )
@@ -528,6 +534,7 @@ async function handleVerify(): Promise<void> {
       // Register with verification code
       await authStore.register({
         email: email.value,
+        username: username.value.trim(),
         password: password.value,
         verify_code: verifyCode.value.trim(),
         turnstile_token: initialTurnstileToken.value || undefined,

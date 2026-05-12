@@ -12,12 +12,14 @@ import (
 
 // APIKeyRateLimitCacheData holds rate limit usage data cached in Redis.
 type APIKeyRateLimitCacheData struct {
-	Usage5h  float64 `json:"usage_5h"`
-	Usage1d  float64 `json:"usage_1d"`
-	Usage7d  float64 `json:"usage_7d"`
-	Window5h int64   `json:"window_5h"` // unix timestamp, 0 = not started
-	Window1d int64   `json:"window_1d"`
-	Window7d int64   `json:"window_7d"`
+	Usage5h   float64 `json:"usage_5h"`
+	Usage1d   float64 `json:"usage_1d"`
+	Usage7d   float64 `json:"usage_7d"`
+	Usage1mo  float64 `json:"usage_1mo"`
+	Window5h  int64   `json:"window_5h"` // unix timestamp, 0 = not started
+	Window1d  int64   `json:"window_1d"`
+	Window7d  int64   `json:"window_7d"`
+	Window1mo int64   `json:"window_1mo"`
 }
 
 // BillingCache defines cache operations for billing service

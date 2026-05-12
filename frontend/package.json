@@ -12,7 +12,8 @@
     "typecheck": "vue-tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "generate:agents-hub": "node tools/generate-agents-hub.mjs"
   },
   "dependencies": {
     "@lobehub/icons": "^4.0.2",

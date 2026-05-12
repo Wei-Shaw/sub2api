@@ -131,6 +131,8 @@ docs/*
 !docs/PAYMENT.md
 !docs/PAYMENT_CN.md
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md
+!docs/OCEANWAY_DEPLOYMENT_NOTES.md
+!docs/current-system-structure.md
 .serena/
 .codex/
 frontend/coverage/

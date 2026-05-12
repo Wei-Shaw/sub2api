@@ -27,6 +27,8 @@ const (
 	FieldPasswordHash = "password_hash"
 	// FieldRole holds the string denoting the role field in the database.
 	FieldRole = "role"
+	// FieldCustomerType holds the string denoting the customer_type field in the database.
+	FieldCustomerType = "customer_type"
 	// FieldBalance holds the string denoting the balance field in the database.
 	FieldBalance = "balance"
 	// FieldConcurrency holds the string denoting the concurrency field in the database.
@@ -189,6 +191,7 @@ var Columns = []string{
 	FieldEmail,
 	FieldPasswordHash,
 	FieldRole,
+	FieldCustomerType,
 	FieldBalance,
 	FieldConcurrency,
 	FieldStatus,
@@ -246,6 +249,10 @@ var (
 	DefaultRole string
 	// RoleValidator is a validator for the "role" field. It is called by the builders before save.
 	RoleValidator func(string) error
+	// DefaultCustomerType holds the default value on creation for the "customer_type" field.
+	DefaultCustomerType string
+	// CustomerTypeValidator is a validator for the "customer_type" field. It is called by the builders before save.
+	CustomerTypeValidator func(string) error
 	// DefaultBalance holds the default value on creation for the "balance" field.
 	DefaultBalance float64
 	// DefaultConcurrency holds the default value on creation for the "concurrency" field.
@@ -314,6 +321,11 @@ func ByPasswordHash(opts ...sql.OrderTermOption) OrderOption {
 // ByRole orders the results by the role field.
 func ByRole(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRole, opts...).ToFunc()
+}
+
+// ByCustomerType orders the results by the customer_type field.
+func ByCustomerType(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCustomerType, opts...).ToFunc()
 }
 
 // ByBalance orders the results by the balance field.

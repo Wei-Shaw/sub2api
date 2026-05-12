@@ -1,8 +1,25 @@
 <template>
   <AppLayout>
     <div class="space-y-4">
+      <div class="flex space-x-1 rounded-xl bg-gray-100 p-1 dark:bg-dark-800">
+        <button
+          class="flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-all"
+          :class="activeTab === 'plans' ? 'bg-white text-gray-900 shadow dark:bg-dark-700 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'"
+          @click="activeTab = 'plans'"
+        >
+          真实套餐
+        </button>
+        <button
+          class="flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-all"
+          :class="activeTab === 'home-pricing' ? 'bg-white text-gray-900 shadow dark:bg-dark-700 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'"
+          @click="activeTab = 'home-pricing'"
+        >
+          主页展示
+        </button>
+      </div>
+
       <!-- Actions -->
-      <div class="flex items-center justify-end gap-2">
+      <div v-if="activeTab === 'plans'" class="flex items-center justify-end gap-2">
         <button @click="loadPlans" :disabled="plansLoading" class="btn btn-secondary" :title="t('common.refresh')">
           <Icon name="refresh" size="md" :class="plansLoading ? 'animate-spin' : ''" />
         </button>
@@ -10,7 +27,7 @@
       </div>
 
       <!-- Plans Table -->
-      <DataTable :columns="planColumns" :data="plans" :loading="plansLoading">
+      <DataTable v-if="activeTab === 'plans'" :columns="planColumns" :data="plans" :loading="plansLoading">
         <template #cell-name="{ value, row }">
           <span class="text-sm font-medium" :class="getPlanNameClass(row.group_id)">{{ value }}</span>
         </template>
@@ -64,6 +81,8 @@
           </div>
         </template>
       </DataTable>
+
+      <HomePricingConfigPanel v-else :plans="plans" />
     </div>
 
     <!-- Plan Edit Dialog -->
@@ -89,6 +108,7 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
 import PlanEditDialog from './PlanEditDialog.vue'
+import HomePricingConfigPanel from './HomePricingConfigPanel.vue'
 import { platformTextClass } from '@/utils/platformColors'
 
 const { t } = useI18n()
@@ -122,6 +142,7 @@ function getPlanNameClass(groupId: number): string {
 
 const plansLoading = ref(false)
 const plans = ref<SubscriptionPlan[]>([])
+const activeTab = ref<'plans' | 'home-pricing'>('plans')
 const showPlanDialog = ref(false)
 const showDeletePlanDialog = ref(false)
 const editingPlan = ref<SubscriptionPlan | null>(null)

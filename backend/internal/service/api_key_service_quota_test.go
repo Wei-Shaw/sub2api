@@ -67,6 +67,22 @@ func (s *quotaStateCacheStub) DeleteAuthCache(_ context.Context, key string) err
 	return nil
 }
 
+func (s *quotaStateCacheStub) GetAPIKeyIPLock(context.Context, int64) (string, error) {
+	return "", nil
+}
+
+func (s *quotaStateCacheStub) BindAPIKeyIPLock(_ context.Context, _ int64, clientIP string, _ time.Duration) (string, error) {
+	return clientIP, nil
+}
+
+func (s *quotaStateCacheStub) RefreshAPIKeyIPLock(context.Context, int64, time.Duration) error {
+	return nil
+}
+
+func (s *quotaStateCacheStub) ResetAPIKeyIPLock(context.Context, int64) error {
+	return nil
+}
+
 func (s *quotaStateCacheStub) PublishAuthCacheInvalidation(context.Context, string) error {
 	return nil
 }

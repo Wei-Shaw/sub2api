@@ -1,6 +1,9 @@
 package service
 
-import "strings"
+import (
+	"encoding/json"
+	"strings"
+)
 
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
@@ -95,7 +98,7 @@ type SystemSettings struct {
 	APIBaseURL                  string
 	ContactInfo                 string
 	DocURL                      string
-	HomeContent                 string
+	InternalHomeDomains         string
 	HideCcsImportButton         bool
 	PurchaseSubscriptionEnabled bool
 	PurchaseSubscriptionURL     string
@@ -198,11 +201,12 @@ type PublicSettings struct {
 	APIBaseURL                       string
 	ContactInfo                      string
 	DocURL                           string
-	HomeContent                      string
+	InternalHomeDomains              []string
 	HideCcsImportButton              bool
 
 	PurchaseSubscriptionEnabled bool
 	PurchaseSubscriptionURL     string
+	HomePricingConfig           json.RawMessage
 	TableDefaultPageSize        int
 	TablePageSizeOptions        []int
 	CustomMenuItems             string // JSON array of custom menu items

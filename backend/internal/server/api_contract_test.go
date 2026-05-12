@@ -732,7 +732,7 @@ func TestAPIContracts(t *testing.T) {
 						"enable_identity_patch": true,
 						"identity_patch_prompt": "",
 						"invitation_code_enabled": false,
-						"home_content": "",
+						"internal_home_domains": "",
 					"hide_ccs_import_button": false,
 					"purchase_subscription_enabled": false,
 					"purchase_subscription_url": "",
@@ -904,7 +904,7 @@ func TestAPIContracts(t *testing.T) {
 					"api_base_url": "",
 					"contact_info": "",
 					"doc_url": "",
-					"home_content": "",
+					"internal_home_domains": [],
 					"hide_ccs_import_button": false,
 					"purchase_subscription_enabled": false,
 					"purchase_subscription_url": "",
@@ -1373,6 +1373,22 @@ func (stubApiKeyCache) SetAuthCache(ctx context.Context, key string, entry *serv
 }
 
 func (stubApiKeyCache) DeleteAuthCache(ctx context.Context, key string) error {
+	return nil
+}
+
+func (stubApiKeyCache) GetAPIKeyIPLock(ctx context.Context, keyID int64) (string, error) {
+	return "", nil
+}
+
+func (stubApiKeyCache) BindAPIKeyIPLock(ctx context.Context, keyID int64, clientIP string, ttl time.Duration) (string, error) {
+	return clientIP, nil
+}
+
+func (stubApiKeyCache) RefreshAPIKeyIPLock(ctx context.Context, keyID int64, ttl time.Duration) error {
+	return nil
+}
+
+func (stubApiKeyCache) ResetAPIKeyIPLock(ctx context.Context, keyID int64) error {
 	return nil
 }
 

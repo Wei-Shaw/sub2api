@@ -57,6 +57,29 @@
 
       <!-- Registration Form -->
       <form v-else @submit.prevent="handleRegister" class="space-y-5">
+        <!-- Username Input -->
+        <div>
+          <label for="username" class="input-label">
+            {{ t('auth.usernameLabel') }}
+          </label>
+          <div class="relative">
+            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
+              <Icon name="user" size="md" class="text-gray-400 dark:text-dark-500" />
+            </div>
+            <input
+              id="username"
+              v-model="formData.username"
+              type="text"
+              required
+              autocomplete="username"
+              :disabled="isLoading"
+              class="input pl-11"
+              :class="{ 'input-error': errors.username }"
+              :placeholder="t('auth.usernamePlaceholder')"
+            />
+          </div>
+        </div>
+
         <!-- Email Input -->
         <div>
           <label for="email" class="input-label">
@@ -325,7 +348,7 @@ const promoCodeEnabled = ref<boolean>(true)
 const invitationCodeEnabled = ref<boolean>(false)
 const turnstileEnabled = ref<boolean>(false)
 const turnstileSiteKey = ref<string>('')
-const siteName = ref<string>('Sub2API')
+const siteName = ref<string>('OceanWay AI')
 const linuxdoOAuthEnabled = ref<boolean>(false)
 const wechatOAuthEnabled = ref<boolean>(false)
 const oidcOAuthEnabled = ref<boolean>(false)
@@ -356,6 +379,7 @@ const invitationValidation = reactive({
 let invitationValidateTimeout: ReturnType<typeof setTimeout> | null = null
 
 const formData = reactive({
+  username: '',
   email: '',
   password: '',
   promo_code: '',
@@ -364,6 +388,7 @@ const formData = reactive({
 })
 
 const errors = reactive({
+  username: '',
   email: '',
   password: '',
   turnstile: '',
@@ -371,6 +396,7 @@ const errors = reactive({
 })
 
 const validationToastMessage = computed(() =>
+  errors.username ||
   errors.email ||
   errors.password ||
   (invitationValidation.invalid ? invitationValidation.message : '') ||
@@ -407,7 +433,7 @@ onMounted(async () => {
     invitationCodeEnabled.value = settings.invitation_code_enabled
     turnstileEnabled.value = settings.turnstile_enabled
     turnstileSiteKey.value = settings.turnstile_site_key || ''
-    siteName.value = settings.site_name || 'Sub2API'
+    siteName.value = settings.site_name || 'OceanWay AI'
     linuxdoOAuthEnabled.value = settings.linuxdo_oauth_enabled
     wechatOAuthEnabled.value = isWeChatWebOAuthEnabled(settings)
     oidcOAuthEnabled.value = settings.oidc_oauth_enabled
@@ -626,11 +652,22 @@ function buildEmailSuffixNotAllowedMessage(): string {
 function validateForm(): boolean {
   // Reset errors
   errors.email = ''
+  errors.username = ''
   errors.password = ''
   errors.turnstile = ''
   errors.invitation_code = ''
 
   let isValid = true
+
+  // Username validation
+  const username = formData.username.trim()
+  if (!username) {
+    errors.username = t('auth.usernameRequired')
+    isValid = false
+  } else if (username.length > 100) {
+    errors.username = t('auth.usernameMaxLength')
+    isValid = false
+  }
 
   // Email validation
   if (!formData.email.trim()) {
@@ -736,6 +773,7 @@ async function handleRegister(): Promise<void> {
         'register_data',
         JSON.stringify({
           email: formData.email,
+          username: formData.username.trim(),
           password: formData.password,
           turnstile_token: turnstileToken.value,
           promo_code: formData.promo_code || undefined,
@@ -752,6 +790,7 @@ async function handleRegister(): Promise<void> {
     // Otherwise, directly register
     await authStore.register({
       email: formData.email,
+      username: formData.username.trim(),
       password: formData.password,
       turnstile_token: turnstileEnabled.value ? turnstileToken.value : undefined,
       promo_code: formData.promo_code || undefined,

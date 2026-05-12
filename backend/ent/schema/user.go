@@ -46,6 +46,10 @@ func (User) Fields() []ent.Field {
 		field.String("role").
 			MaxLen(20).
 			Default(domain.RoleUser),
+		field.String("customer_type").
+			MaxLen(20).
+			Default(domain.CustomerTypeRetail).
+			Comment("Customer type: retail or managed"),
 		field.Float("balance").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
 			Default(0),
@@ -138,6 +142,7 @@ func (User) Indexes() []ent.Index {
 	return []ent.Index{
 		// email 字段已在 Fields() 中声明 Unique()，无需重复索引
 		index.Fields("status"),
+		index.Fields("customer_type"),
 		index.Fields("deleted_at"),
 	}
 }

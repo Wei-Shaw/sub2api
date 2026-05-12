@@ -1017,9 +1017,21 @@ onMounted(async () => {
     if (checkout.value.balance_disabled) {
       activeTab.value = 'subscription'
     }
-    // Handle renewal navigation: ?tab=subscription&group=123
+    // Handle direct navigation: ?tab=recharge&amount=20
+    if (route.query.tab === 'recharge' && !checkout.value.balance_disabled) {
+      activeTab.value = 'recharge'
+      const queryAmount = Number(route.query.amount)
+      if (Number.isFinite(queryAmount) && queryAmount > 0) {
+        amount.value = queryAmount
+      }
+    }
+    // Handle subscription navigation: ?tab=subscription&plan_id=123
     if (route.query.tab === 'subscription') {
       activeTab.value = 'subscription'
+      const planId = Number(route.query.plan_id)
+      if (Number.isFinite(planId) && planId > 0) {
+        selectedPlan.value = checkout.value.plans.find(plan => plan.id === planId) ?? null
+      }
       if (route.query.group) {
         const groupId = Number(route.query.group)
         const groupPlans = checkout.value.plans.filter(p => p.group_id === groupId)

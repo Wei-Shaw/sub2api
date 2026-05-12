@@ -85,6 +85,7 @@ export interface User {
   oidc_bound?: boolean
   wechat_bound?: boolean
   role: 'admin' | 'user' // User role for authorization
+  customer_type?: 'retail' | 'managed'
   balance: number // User balance for API usage
   concurrency: number // Allowed concurrent requests
   rpm_limit?: number // User-level RPM cap (0 = unlimited); effective as fallback when group has no rpm_limit
@@ -117,6 +118,7 @@ export interface LoginRequest {
 
 export interface RegisterRequest {
   email: string
+  username: string
   password: string
   verify_code?: string
   turnstile_token?: string
@@ -178,6 +180,63 @@ export interface CustomEndpoint {
   description: string
 }
 
+export interface HomePricingLocalizedText {
+  zh: string
+  en: string
+}
+
+export interface HomePricingMetricConfig {
+  label: HomePricingLocalizedText
+  value: HomePricingLocalizedText
+}
+
+export interface HomePricingGroupConfig {
+  title: HomePricingLocalizedText
+  description: HomePricingLocalizedText
+}
+
+export interface HomePricingSubscriptionCardConfig {
+  id: string
+  enabled: boolean
+  sort_order: number
+  subscription_plan_id: number
+  name: HomePricingLocalizedText
+  description: HomePricingLocalizedText
+  badge: HomePricingLocalizedText
+  period: HomePricingLocalizedText
+  highlight: boolean
+  metrics: HomePricingMetricConfig[]
+  price?: number
+  original_price?: number
+  for_sale?: boolean
+}
+
+export interface HomePricingCreditCardConfig {
+  id: string
+  enabled: boolean
+  sort_order: number
+  recharge_amount: number
+  name: HomePricingLocalizedText
+  description: HomePricingLocalizedText
+  badge: HomePricingLocalizedText
+  period: HomePricingLocalizedText
+  highlight: boolean
+  metrics: HomePricingMetricConfig[]
+  price?: number
+}
+
+export interface HomePricingConfig {
+  external_purchase_url: string
+  cta_mode: 'external' | 'internal'
+  eyebrow: HomePricingLocalizedText
+  title: HomePricingLocalizedText
+  description: HomePricingLocalizedText
+  subscription_group: HomePricingGroupConfig
+  credit_group: HomePricingGroupConfig
+  subscription_cards: HomePricingSubscriptionCardConfig[]
+  credit_cards: HomePricingCreditCardConfig[]
+}
+
 export interface PublicSettings {
   registration_enabled: boolean
   email_verify_enabled: boolean
@@ -194,8 +253,11 @@ export interface PublicSettings {
   api_base_url: string
   contact_info: string
   doc_url: string
-  home_content: string
+  internal_home_domains: string[]
   hide_ccs_import_button: boolean
+  purchase_subscription_enabled?: boolean
+  purchase_subscription_url?: string
+  home_pricing_config?: HomePricingConfig | null
   payment_enabled: boolean
   table_default_page_size: number
   table_page_size_options: number[]
@@ -546,6 +608,8 @@ export interface ApiKey {
   status: 'active' | 'inactive' | 'quota_exhausted' | 'expired'
   ip_whitelist: string[]
   ip_blacklist: string[]
+  ip_lock_mode?: 'off' | 'auto_single_ip'
+  limit_action?: 'hard_block' | 'soft_throttle'
   last_used_at: string | null
   quota: number // Quota limit in USD (0 = unlimited)
   quota_used: number // Used quota amount in USD
@@ -556,15 +620,19 @@ export interface ApiKey {
   rate_limit_5h: number
   rate_limit_1d: number
   rate_limit_7d: number
+  rate_limit_1mo: number
   usage_5h: number
   usage_1d: number
   usage_7d: number
+  usage_1mo: number
   window_5h_start: string | null
   window_1d_start: string | null
   window_7d_start: string | null
+  window_1mo_start: string | null
   reset_5h_at: string | null
   reset_1d_at: string | null
   reset_7d_at: string | null
+  reset_1mo_at: string | null
 }
 
 export interface CreateApiKeyRequest {
@@ -578,6 +646,7 @@ export interface CreateApiKeyRequest {
   rate_limit_5h?: number
   rate_limit_1d?: number
   rate_limit_7d?: number
+  rate_limit_1mo?: number
 }
 
 export interface UpdateApiKeyRequest {
@@ -592,6 +661,7 @@ export interface UpdateApiKeyRequest {
   rate_limit_5h?: number
   rate_limit_1d?: number
   rate_limit_7d?: number
+  rate_limit_1mo?: number
   reset_rate_limit_usage?: boolean
 }
 

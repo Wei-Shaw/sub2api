@@ -87,6 +87,7 @@ func (r *userRepository) Create(ctx context.Context, userIn *service.User) error
 		SetNotes(userIn.Notes).
 		SetPasswordHash(userIn.PasswordHash).
 		SetRole(userIn.Role).
+		SetCustomerType(userCustomerTypeOrDefault(userIn.CustomerType)).
 		SetBalance(userIn.Balance).
 		SetConcurrency(userIn.Concurrency).
 		SetStatus(userIn.Status).
@@ -213,6 +214,7 @@ func (r *userRepository) Update(ctx context.Context, userIn *service.User) error
 		SetNotes(userIn.Notes).
 		SetPasswordHash(userIn.PasswordHash).
 		SetRole(userIn.Role).
+		SetCustomerType(userCustomerTypeOrDefault(userIn.CustomerType)).
 		SetBalance(userIn.Balance).
 		SetConcurrency(userIn.Concurrency).
 		SetStatus(userIn.Status).
@@ -411,6 +413,9 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 	}
 	if filters.Role != "" {
 		q = q.Where(dbuser.RoleEQ(filters.Role))
+	}
+	if filters.CustomerType != "" {
+		q = q.Where(dbuser.CustomerTypeEQ(filters.CustomerType))
 	}
 	if filters.Search != "" {
 		q = q.Where(
@@ -915,6 +920,7 @@ func applyUserEntityToService(dst *service.User, src *dbent.User) {
 	}
 	dst.ID = src.ID
 	dst.SignupSource = src.SignupSource
+	dst.CustomerType = src.CustomerType
 	dst.LastLoginAt = src.LastLoginAt
 	dst.LastActiveAt = src.LastActiveAt
 	dst.CreatedAt = src.CreatedAt
@@ -929,6 +935,15 @@ func userSignupSourceOrDefault(signupSource string) string {
 		return strings.TrimSpace(strings.ToLower(signupSource))
 	default:
 		return "email"
+	}
+}
+
+func userCustomerTypeOrDefault(customerType string) string {
+	switch strings.TrimSpace(strings.ToLower(customerType)) {
+	case service.CustomerTypeManaged:
+		return service.CustomerTypeManaged
+	default:
+		return service.CustomerTypeRetail
 	}
 }
 

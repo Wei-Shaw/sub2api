@@ -11,6 +11,8 @@ type APIKeyAuthSnapshot struct {
 	Status      string                   `json:"status"`
 	IPWhitelist []string                 `json:"ip_whitelist,omitempty"`
 	IPBlacklist []string                 `json:"ip_blacklist,omitempty"`
+	IPLockMode  string                   `json:"ip_lock_mode"`
+	LimitAction string                   `json:"limit_action"`
 	User        APIKeyAuthUserSnapshot   `json:"user"`
 	Group       *APIKeyAuthGroupSnapshot `json:"group,omitempty"`
 
@@ -22,18 +24,20 @@ type APIKeyAuthSnapshot struct {
 	ExpiresAt *time.Time `json:"expires_at,omitempty"` // Expiration time (nil = never expires)
 
 	// Rate limit configuration (only limits, not usage - usage read from Redis at check time)
-	RateLimit5h float64 `json:"rate_limit_5h"`
-	RateLimit1d float64 `json:"rate_limit_1d"`
-	RateLimit7d float64 `json:"rate_limit_7d"`
+	RateLimit5h  float64 `json:"rate_limit_5h"`
+	RateLimit1d  float64 `json:"rate_limit_1d"`
+	RateLimit7d  float64 `json:"rate_limit_7d"`
+	RateLimit1mo float64 `json:"rate_limit_1mo"`
 }
 
 // APIKeyAuthUserSnapshot 用户快照
 type APIKeyAuthUserSnapshot struct {
-	ID          int64   `json:"id"`
-	Status      string  `json:"status"`
-	Role        string  `json:"role"`
-	Balance     float64 `json:"balance"`
-	Concurrency int     `json:"concurrency"`
+	ID           int64   `json:"id"`
+	Status       string  `json:"status"`
+	Role         string  `json:"role"`
+	CustomerType string  `json:"customer_type"`
+	Balance      float64 `json:"balance"`
+	Concurrency  int     `json:"concurrency"`
 
 	// Balance notification fields (required for CheckBalanceAfterDeduction)
 	Email                      string             `json:"email"`
