@@ -32,13 +32,13 @@ describe('AppSidebar header styles', () => {
 })
 
 describe('AppSidebar secondary-development navigation contract', () => {
-  it('keeps profile, hides user channel status, and adds unified user entries', () => {
+  it('keeps profile, hides stale docs/channel-status entries, and adds unified user entries', () => {
     expect(componentSource).toContain("path: '/profile'")
     expect(componentSource).toContain("path: '/models'")
-    expect(componentSource).toContain("path: '/docs'")
     expect(componentSource).toContain("path: '/monitor', label: t('nav.channelMonitor'), icon: SignalIcon, featureFlag: flagChannelMonitor")
     expect(componentSource).toContain("path: '/images', label: t('nav.imageGeneration'), icon: PhotoIcon, featureFlag: flagImageGeneration")
     expect(componentSource).toContain("path: '/recharge-subscription', label: t('nav.rechargeSubscription'), icon: RechargeSubscriptionIcon, featureFlag: flagPayment")
+    expect(componentSource).not.toContain("path: '/docs'")
     expect(componentSource).toContain('const flagImageGeneration = makeSidebarFlag(FeatureFlags.imageGeneration)')
     expect(componentSource).toContain("path: '/recharge-subscription'")
     expect(componentSource).not.toContain("path: '/monitor', label: t('nav.channelStatus')")

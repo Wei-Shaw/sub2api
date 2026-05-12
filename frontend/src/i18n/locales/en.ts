@@ -853,6 +853,7 @@ export default {
     upstreamEndpoint: 'Upstream Endpoint',
     type: 'Type',
     tokens: 'Tokens',
+    cacheHitRate: 'Cache Rate',
     cost: 'Cost',
     firstToken: 'First Token',
     duration: 'Duration',

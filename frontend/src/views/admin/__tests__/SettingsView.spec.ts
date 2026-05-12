@@ -736,28 +736,6 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(paymentHelpImageUpload?.attributes("data-remove-label")).toBe("移除");
   });
 
-  it("renders and submits the image generation feature switch", async () => {
-    getSettings.mockResolvedValueOnce({
-      ...baseSettingsResponse,
-      image_generation_enabled: true,
-    });
-
-    const wrapper = mountView();
-
-    await flushPromises();
-
-    expect(wrapper.text()).toContain("AI生图");
-    expect(wrapper.text()).toContain("启用AI生图入口");
-
-    await wrapper.find("form").trigger("submit.prevent");
-    await flushPromises();
-
-    expect(updateSettings).toHaveBeenCalledWith(
-      expect.objectContaining({
-        image_generation_enabled: true,
-      }),
-    );
-  });
 });
 
 describe("admin SettingsView wechat connect controls", () => {

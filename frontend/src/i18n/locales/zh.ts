@@ -857,6 +857,7 @@ export default {
     upstreamEndpoint: '上游端点',
     type: '类型',
     tokens: 'Token',
+    cacheHitRate: '缓存率',
     cost: '费用',
     firstToken: '首 Token',
     duration: '耗时',

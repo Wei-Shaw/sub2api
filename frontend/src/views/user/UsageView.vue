@@ -196,8 +196,7 @@
             </span>
           </template>
 
-          <template #cell-tokens="{ row }">
-            <!-- 图片生成请求（仅按次计费时显示图片格式） -->
+          <template #cell-input_tokens="{ row }">
             <div v-if="row.image_count > 0 && row.billing_mode === 'image'" class="flex items-center gap-1.5">
               <svg
                 class="h-4 w-4 text-indigo-500"
@@ -215,50 +214,18 @@
               <span class="font-medium text-gray-900 dark:text-white">{{ row.image_count }}{{ $t('usage.imageUnit') }}</span>
               <span class="text-gray-400">({{ row.image_size || '2K' }})</span>
             </div>
-            <!-- Token 请求 -->
+            <span v-else class="font-medium text-gray-900 dark:text-white">{{ formatTokensCompact(row.input_tokens) }}</span>
+          </template>
+
+          <template #cell-output_tokens="{ row }">
+            <span v-if="row.image_count > 0 && row.billing_mode === 'image'" class="text-sm text-gray-400 dark:text-gray-500">-</span>
+            <span v-else class="font-medium text-gray-900 dark:text-white">{{ formatTokensCompact(row.output_tokens) }}</span>
+          </template>
+
+          <template #cell-cache_rate="{ row }">
+            <span v-if="row.image_count > 0 && row.billing_mode === 'image'" class="text-sm text-gray-400 dark:text-gray-500">-</span>
             <div v-else class="flex items-center gap-1.5">
-              <div class="space-y-1.5 text-sm">
-                <!-- Input / Output Tokens -->
-                <div class="flex items-center gap-2">
-                  <!-- Input -->
-                  <div class="inline-flex items-center gap-1">
-                    <Icon name="arrowDown" size="sm" class="text-emerald-500" />
-                    <span class="font-medium text-gray-900 dark:text-white">{{
-                      row.input_tokens.toLocaleString()
-                    }}</span>
-                  </div>
-                  <!-- Output -->
-                  <div class="inline-flex items-center gap-1">
-                    <Icon name="arrowUp" size="sm" class="text-violet-500" />
-                    <span class="font-medium text-gray-900 dark:text-white">{{
-                      row.output_tokens.toLocaleString()
-                    }}</span>
-                  </div>
-                </div>
-                <!-- Cache Tokens (Read + Write) -->
-                <div
-                  v-if="row.cache_read_tokens > 0 || row.cache_creation_tokens > 0"
-                  class="flex items-center gap-2"
-                >
-                  <!-- Cache Read -->
-                  <div v-if="row.cache_read_tokens > 0" class="inline-flex items-center gap-1">
-                    <Icon name="inbox" size="sm" class="text-sky-500" />
-                    <span class="font-medium text-sky-600 dark:text-sky-400">{{
-                      formatCacheTokens(row.cache_read_tokens)
-                    }}</span>
-                  </div>
-                  <!-- Cache Write -->
-                  <div v-if="row.cache_creation_tokens > 0" class="inline-flex items-center gap-1">
-                    <Icon name="edit" size="sm" class="text-amber-500" />
-                    <span class="font-medium text-amber-600 dark:text-amber-400">{{
-                      formatCacheTokens(row.cache_creation_tokens)
-                    }}</span>
-                    <span v-if="row.cache_creation_1h_tokens > 0" class="inline-flex items-center rounded px-1 py-px text-[10px] font-medium leading-tight bg-orange-100 text-orange-600 ring-1 ring-inset ring-orange-200 dark:bg-orange-500/20 dark:text-orange-400 dark:ring-orange-500/30">1h</span>
-                    <span v-if="row.cache_ttl_overridden" :title="t('usage.cacheTtlOverriddenHint')" class="inline-flex items-center rounded px-1 py-px text-[10px] font-medium leading-tight bg-rose-100 text-rose-600 ring-1 ring-inset ring-rose-200 dark:bg-rose-500/20 dark:text-rose-400 dark:ring-rose-500/30 cursor-help">R</span>
-                  </div>
-                </div>
-              </div>
-              <!-- Token Detail Tooltip -->
+              <span class="font-medium text-sky-600 dark:text-sky-400">{{ formatTokenCacheRate(row.input_tokens, row.cache_read_tokens) }}</span>
               <div
                 class="group relative"
                 @mouseenter="showTokenTooltip($event, row)"
@@ -534,7 +501,7 @@ import type { UsageLog, ApiKey, UsageQueryParams, UsageStatsResponse } from '@/t
 import type { Column } from '@/components/common/types'
 import { formatDateTime, formatReasoningEffort } from '@/utils/format'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
-import { formatCacheTokens, formatMultiplier } from '@/utils/formatters'
+import { formatMultiplier, formatTokenCacheRate, formatTokensCompact } from '@/utils/formatters'
 import { formatTokenPricePerMillion } from '@/utils/usagePricing'
 import { getUsageServiceTierLabel } from '@/utils/usageServiceTier'
 import { resolveUsageRequestType } from '@/utils/usageRequestType'
@@ -565,7 +532,9 @@ const columns = computed<Column[]>(() => [
   { key: 'endpoint', label: t('usage.endpoint'), sortable: false },
   { key: 'stream', label: t('usage.type'), sortable: false },
   { key: 'billing_mode', label: t('admin.usage.billingMode'), sortable: false },
-  { key: 'tokens', label: t('usage.tokens'), sortable: false },
+  { key: 'input_tokens', label: t('admin.usage.inputTokens'), sortable: false },
+  { key: 'output_tokens', label: t('admin.usage.outputTokens'), sortable: false },
+  { key: 'cache_rate', label: t('usage.cacheHitRate'), sortable: false },
   { key: 'cost', label: t('usage.cost'), sortable: false },
   { key: 'first_token', label: t('usage.firstToken'), sortable: false },
   { key: 'duration', label: t('usage.duration'), sortable: false },
@@ -680,16 +649,7 @@ const formatUsageEndpoints = (log: UsageLog): string => {
   return inbound || '-'
 }
 
-const formatTokens = (value: number): string => {
-  if (value >= 1_000_000_000) {
-    return `${(value / 1_000_000_000).toFixed(2)}B`
-  } else if (value >= 1_000_000) {
-    return `${(value / 1_000_000).toFixed(2)}M`
-  } else if (value >= 1_000) {
-    return `${(value / 1_000).toFixed(2)}K`
-  }
-  return value.toLocaleString()
-}
+const formatTokens = formatTokensCompact
 
 type UsageTableQueryParams = UsageQueryParams & {
   sort_by?: string

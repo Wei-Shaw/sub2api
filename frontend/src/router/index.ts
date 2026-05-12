@@ -231,17 +231,6 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
-    path: '/docs',
-    name: 'UsageDocs',
-    component: () => import('@/views/user/UsageDocsView.vue'),
-    meta: {
-      requiresAuth: true,
-      requiresAdmin: false,
-      title: 'Usage Docs',
-      titleKey: 'nav.usageDocs'
-    }
-  },
-  {
     path: '/available-channels',
     name: 'UserAvailableChannels',
     component: () => import('@/views/user/AvailableChannelsView.vue'),
