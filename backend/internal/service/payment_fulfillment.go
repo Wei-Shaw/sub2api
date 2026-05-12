@@ -582,6 +582,15 @@ func (s *PaymentService) doSub(ctx context.Context, o *dbent.PaymentOrder, lease
 	if err := s.applyAffiliateRebateForOrder(ctx, o); err != nil {
 		return err
 	}
+	if s.entitlementBinder != nil {
+		if _, err := s.entitlementBinder.BindUserToGroupAfterPayment(ctx, o.UserID, gid); err != nil {
+			slog.Warn("failed to bind entitlement after subscription payment", "orderID", o.ID, "userID", o.UserID, "groupID", gid, "error", err)
+			s.writeAuditLog(ctx, o.ID, "ENTITLEMENT_BIND_FAILED", "system", map[string]any{
+				"groupID": gid,
+				"error":   err.Error(),
+			})
+		}
+	}
 	return s.markCompleted(ctx, o, lease, "SUBSCRIPTION_SUCCESS")
 }
 

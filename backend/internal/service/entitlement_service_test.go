@@ -1,0 +1,145 @@
+package service
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/stretchr/testify/require"
+)
+
+type entitlementUserRepoStub struct {
+	users map[int64]*User
+}
+
+func (s *entitlementUserRepoStub) GetByID(_ context.Context, id int64) (*User, error) {
+	return s.users[id], nil
+}
+
+type entitlementGroupRepoStub struct {
+	groups map[int64]*Group
+}
+
+func (s *entitlementGroupRepoStub) GetByID(_ context.Context, id int64) (*Group, error) {
+	return s.groups[id], nil
+}
+
+type entitlementAPIKeyRepoStub struct {
+	keys []APIKey
+}
+
+func (s *entitlementAPIKeyRepoStub) ListByUserID(_ context.Context, userID int64, _ pagination.PaginationParams, _ APIKeyListFilters) ([]APIKey, *pagination.PaginationResult, error) {
+	out := make([]APIKey, 0, len(s.keys))
+	for _, key := range s.keys {
+		if key.UserID == userID {
+			out = append(out, key)
+		}
+	}
+	return out, &pagination.PaginationResult{Total: int64(len(out))}, nil
+}
+
+type entitlementAPIKeyUpdaterStub struct {
+	updatedID     int64
+	updatedUserID int64
+	updatedGroup  *int64
+	updatedKey    *APIKey
+}
+
+func (s *entitlementAPIKeyUpdaterStub) Update(_ context.Context, id, userID int64, req UpdateAPIKeyRequest) (*APIKey, error) {
+	s.updatedID = id
+	s.updatedUserID = userID
+	s.updatedGroup = req.GroupID
+	key := &APIKey{ID: id, UserID: userID, Status: StatusActive, GroupID: req.GroupID}
+	s.updatedKey = key
+	return key, nil
+}
+
+type entitlementUserSubRepoStub struct {
+	subs []UserSubscription
+}
+
+func (s *entitlementUserSubRepoStub) ListByUserID(_ context.Context, userID int64) ([]UserSubscription, error) {
+	out := make([]UserSubscription, 0, len(s.subs))
+	for _, sub := range s.subs {
+		if sub.UserID == userID {
+			out = append(out, sub)
+		}
+	}
+	return out, nil
+}
+
+func TestEntitlementService_GetUserEntitlements_IncludesSubscriptionAndBalanceFallback(t *testing.T) {
+	now := time.Now()
+	later := now.Add(30 * 24 * time.Hour)
+	monthlyLimit := 5.0
+	groupID := int64(8)
+	fallbackGroupID := int64(2)
+	rateMultiplier := 0.0463
+	modelScopes := []string{"openai"}
+	svc := NewEntitlementService(
+		&entitlementUserRepoStub{users: map[int64]*User{42: {ID: 42, Balance: 12.5}}},
+		&entitlementGroupRepoStub{groups: map[int64]*Group{8: {ID: 8, Name: "OpenAI-Subscription", Platform: PlatformOpenAI, SubscriptionType: SubscriptionTypeSubscription, MonthlyLimitUSD: &monthlyLimit, RateMultiplier: rateMultiplier, SupportedModelScopes: modelScopes, FallbackGroupID: &fallbackGroupID}}},
+		&entitlementAPIKeyUpdaterStub{},
+		&entitlementAPIKeyRepoStub{keys: []APIKey{{ID: 100, UserID: 42, Status: StatusActive, GroupID: &groupID}}},
+		&entitlementUserSubRepoStub{subs: []UserSubscription{{ID: 7, UserID: 42, GroupID: 8, Status: StatusActive, StartsAt: now, ExpiresAt: later, MonthlyUsageUSD: 1.25}}},
+	)
+
+	state, err := svc.GetUserEntitlements(context.Background(), 42)
+	require.NoError(t, err)
+	require.NotNil(t, state.Current)
+	require.Equal(t, int64(100), state.Current.APIKeyID)
+	require.Equal(t, groupID, *state.Current.GroupID)
+	require.Equal(t, EntitlementModeSubscription, state.Current.Mode)
+	require.Equal(t, PlatformOpenAI, state.Current.GroupPlatform)
+	require.Equal(t, rateMultiplier, state.Current.RateMultiplier)
+	require.Equal(t, modelScopes, state.Current.SupportedModelScopes)
+	require.Equal(t, monthlyLimit, *state.Current.MonthlyLimitUSD)
+	require.Equal(t, 1.25, *state.Current.MonthlyUsageUSD)
+	require.True(t, state.Fallback.Available)
+	require.Equal(t, 12.5, state.Fallback.BalanceUSD)
+	require.Len(t, state.Entitlements, 1)
+	require.True(t, state.Entitlements[0].Switchable)
+	require.True(t, state.Entitlements[0].Current)
+	require.Equal(t, PlatformOpenAI, state.Entitlements[0].GroupPlatform)
+	require.Equal(t, rateMultiplier, state.Entitlements[0].RateMultiplier)
+	require.Equal(t, modelScopes, state.Entitlements[0].SupportedModelScopes)
+	require.Equal(t, monthlyLimit, *state.Entitlements[0].MonthlyLimitUSD)
+	require.Equal(t, fallbackGroupID, *state.Entitlements[0].FallbackGroupID)
+}
+
+func TestEntitlementService_SwitchEntitlement_UsesSelectedAPIKeyAndRefreshesState(t *testing.T) {
+	now := time.Now()
+	later := now.Add(30 * 24 * time.Hour)
+	oldGroupID := int64(2)
+	newGroupID := int64(8)
+	updater := &entitlementAPIKeyUpdaterStub{}
+	svc := NewEntitlementService(
+		&entitlementUserRepoStub{users: map[int64]*User{42: {ID: 42}}},
+		&entitlementGroupRepoStub{groups: map[int64]*Group{8: {ID: 8, Name: "OpenAI-Subscription", SubscriptionType: SubscriptionTypeSubscription}}},
+		updater,
+		&entitlementAPIKeyRepoStub{keys: []APIKey{{ID: 100, UserID: 42, Status: StatusActive, GroupID: &oldGroupID}}},
+		&entitlementUserSubRepoStub{subs: []UserSubscription{{ID: 7, UserID: 42, GroupID: 8, Status: StatusActive, StartsAt: now, ExpiresAt: later}}},
+	)
+
+	result, err := svc.SwitchEntitlement(context.Background(), 42, SwitchEntitlementRequest{GroupID: newGroupID})
+	require.NoError(t, err)
+	require.NotNil(t, result.APIKey)
+	require.Equal(t, int64(100), updater.updatedID)
+	require.Equal(t, int64(42), updater.updatedUserID)
+	require.Equal(t, newGroupID, *updater.updatedGroup)
+	require.NotNil(t, result.State)
+}
+
+func TestEntitlementService_SwitchEntitlement_NoAPIKeyReturnsActionableError(t *testing.T) {
+	svc := NewEntitlementService(
+		&entitlementUserRepoStub{users: map[int64]*User{42: {ID: 42}}},
+		&entitlementGroupRepoStub{groups: map[int64]*Group{}},
+		&entitlementAPIKeyUpdaterStub{},
+		&entitlementAPIKeyRepoStub{},
+		&entitlementUserSubRepoStub{},
+	)
+
+	_, err := svc.SwitchEntitlement(context.Background(), 42, SwitchEntitlementRequest{GroupID: 8})
+	require.ErrorIs(t, err, ErrEntitlementAPIKeyRequired)
+}

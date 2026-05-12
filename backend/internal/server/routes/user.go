@@ -89,6 +89,14 @@ func RegisterUserRoutes(
 			groups.GET("/rates", h.APIKey.GetUserGroupRates)
 		}
 
+		// 用户 entitlement / 套餐切换
+		entitlements := authenticated.Group("/user/entitlements")
+		{
+			entitlements.GET("", h.Entitlement.List)
+			entitlements.POST("/refresh", h.Entitlement.Refresh)
+			entitlements.POST("/switch", h.Entitlement.Switch)
+		}
+
 		// 用户可用渠道（非管理员接口）
 		channels := authenticated.Group("/channels")
 		{

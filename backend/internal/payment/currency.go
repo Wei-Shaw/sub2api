@@ -94,6 +94,9 @@ func AmountToMinorUnit(amountStr, currency string) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("invalid amount: %s", amountStr)
 	}
+	if d.IsNegative() {
+		return 0, fmt.Errorf("payment amount must be non-negative")
+	}
 	normalizedCurrency, err := NormalizePaymentCurrency(currency)
 	if err != nil {
 		return 0, err

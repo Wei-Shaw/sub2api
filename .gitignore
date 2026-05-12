@@ -138,6 +138,7 @@ docs/*
 !docs/ASYNC_IMAGE_TASKS.md
 !docs/legal/
 !docs/legal/*.md
+!docs/vclaw-entitlement-mapping.md
 .serena/
 .codex/
 frontend/coverage/

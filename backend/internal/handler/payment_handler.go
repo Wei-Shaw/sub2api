@@ -126,6 +126,7 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 	planList := make([]checkoutPlan, 0, len(plans))
 	for _, p := range plans {
 		gi := groupInfo[p.GroupID]
+		features := parseFeatures(p.Features)
 		planList = append(planList, checkoutPlan{
 			ID: int64(p.ID), GroupID: p.GroupID,
 			GroupPlatform: gi.Platform, GroupName: gi.Name,
@@ -137,8 +138,8 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 			ModelScopes: gi.ModelScopes,
 			Name:        p.Name, Description: p.Description, Price: p.Price, OriginalPrice: p.OriginalPrice,
 			Currency:     p.Currency,
-			ValidityDays: p.ValidityDays, ValidityUnit: p.ValidityUnit, Features: parseFeatures(p.Features),
-			ProductName: p.ProductName,
+			ValidityDays: p.ValidityDays, ValidityUnit: p.ValidityUnit, Features: publicPlanFeatures(features),
+			ProductName: p.ProductName, Pricing: buildCheckoutPlanPricing(features, p.Price, p.OriginalPrice),
 		})
 	}
 
@@ -320,28 +321,40 @@ func checkoutCurrencySymbol(currency string) string {
 }
 
 type checkoutPlan struct {
-	ID                 int64    `json:"id"`
-	GroupID            int64    `json:"group_id"`
-	GroupPlatform      string   `json:"group_platform"`
-	GroupName          string   `json:"group_name"`
-	RateMultiplier     float64  `json:"rate_multiplier"`
-	PeakRateEnabled    bool     `json:"peak_rate_enabled"`
-	PeakStart          string   `json:"peak_start"`
-	PeakEnd            string   `json:"peak_end"`
-	PeakRateMultiplier float64  `json:"peak_rate_multiplier"`
-	DailyLimitUSD      *float64 `json:"daily_limit_usd"`
-	WeeklyLimitUSD     *float64 `json:"weekly_limit_usd"`
-	MonthlyLimitUSD    *float64 `json:"monthly_limit_usd"`
-	ModelScopes        []string `json:"supported_model_scopes"`
-	Name               string   `json:"name"`
-	Description        string   `json:"description"`
-	Price              float64  `json:"price"`
-	OriginalPrice      *float64 `json:"original_price,omitempty"`
-	Currency           string   `json:"currency,omitempty"`
-	ValidityDays       int      `json:"validity_days"`
-	ValidityUnit       string   `json:"validity_unit"`
-	Features           []string `json:"features"`
-	ProductName        string   `json:"product_name"`
+	ID                 int64                `json:"id"`
+	GroupID            int64                `json:"group_id"`
+	GroupPlatform      string               `json:"group_platform"`
+	GroupName          string               `json:"group_name"`
+	RateMultiplier     float64              `json:"rate_multiplier"`
+	PeakRateEnabled    bool                 `json:"peak_rate_enabled"`
+	PeakStart          string               `json:"peak_start"`
+	PeakEnd            string               `json:"peak_end"`
+	PeakRateMultiplier float64              `json:"peak_rate_multiplier"`
+	DailyLimitUSD      *float64             `json:"daily_limit_usd"`
+	WeeklyLimitUSD     *float64             `json:"weekly_limit_usd"`
+	MonthlyLimitUSD    *float64             `json:"monthly_limit_usd"`
+	ModelScopes        []string             `json:"supported_model_scopes"`
+	Name               string               `json:"name"`
+	Description        string               `json:"description"`
+	Price              float64              `json:"price"`
+	OriginalPrice      *float64             `json:"original_price,omitempty"`
+	Currency           string               `json:"currency,omitempty"`
+	ValidityDays       int                  `json:"validity_days"`
+	ValidityUnit       string               `json:"validity_unit"`
+	Features           []string             `json:"features"`
+	ProductName        string               `json:"product_name"`
+	Pricing            *checkoutPlanPricing `json:"pricing,omitempty"`
+}
+
+type checkoutPlanPricing struct {
+	Version               string   `json:"version,omitempty"`
+	Formula               string   `json:"formula,omitempty"`
+	CurrencySource        string   `json:"currency_source,omitempty"`
+	TokenPriceLedger      *float64 `json:"token_price_ledger,omitempty"`
+	TotalPriceLedger      *float64 `json:"total_price_ledger,omitempty"`
+	RawValueLedger        *float64 `json:"raw_value_ledger,omitempty"`
+	TokenQuantityMillions *float64 `json:"token_quantity_millions,omitempty"`
+	SavingsFormula        string   `json:"savings_formula,omitempty"`
 }
 
 // parseFeatures splits a newline-separated features string into a string slice.
@@ -359,6 +372,81 @@ func parseFeatures(raw string) []string {
 		return []string{}
 	}
 	return out
+}
+
+func publicPlanFeatures(features []string) []string {
+	if len(features) == 0 {
+		return []string{}
+	}
+	out := make([]string, 0, len(features))
+	for _, feature := range features {
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(feature)), "pricing.") {
+			continue
+		}
+		out = append(out, feature)
+	}
+	return out
+}
+
+func buildCheckoutPlanPricing(features []string, price float64, originalPrice *float64) *checkoutPlanPricing {
+	values := make(map[string]string)
+	for _, feature := range features {
+		key, value, ok := strings.Cut(strings.TrimSpace(feature), "=")
+		if !ok {
+			continue
+		}
+		key = strings.ToLower(strings.TrimSpace(key))
+		if !strings.HasPrefix(key, "pricing.") {
+			continue
+		}
+		values[strings.TrimPrefix(key, "pricing.")] = strings.TrimSpace(value)
+	}
+	if len(values) == 0 && originalPrice == nil && price <= 0 {
+		return nil
+	}
+
+	pricing := &checkoutPlanPricing{
+		Version:               firstNonEmptyPricingValue(values["version"], "ledger_v1"),
+		Formula:               firstNonEmptyPricingValue(values["formula"], "convert_ledger_amounts"),
+		CurrencySource:        firstNonEmptyPricingValue(values["currency_source"], "selected_payment_currency"),
+		TokenPriceLedger:      parseOptionalPricingFloat(values["token_price_ledger"]),
+		TotalPriceLedger:      parseOptionalPricingFloat(values["total_price_ledger"]),
+		RawValueLedger:        parseOptionalPricingFloat(values["raw_value_ledger"]),
+		TokenQuantityMillions: parseOptionalPricingFloat(values["token_quantity_millions"]),
+		SavingsFormula:        firstNonEmptyPricingValue(values["savings_formula"], "1 - total_price_ledger / raw_value_ledger"),
+	}
+	if pricing.TotalPriceLedger == nil && price > 0 {
+		pricing.TotalPriceLedger = &price
+	}
+	if pricing.RawValueLedger == nil && originalPrice != nil && *originalPrice > 0 {
+		pricing.RawValueLedger = originalPrice
+	}
+	if pricing.TokenPriceLedger == nil && pricing.RawValueLedger != nil && pricing.TokenQuantityMillions != nil && *pricing.TokenQuantityMillions > 0 {
+		tokenPrice := *pricing.RawValueLedger / *pricing.TokenQuantityMillions
+		pricing.TokenPriceLedger = &tokenPrice
+	}
+	return pricing
+}
+
+func firstNonEmptyPricingValue(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+func parseOptionalPricingFloat(value string) *float64 {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	parsed, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return nil
+	}
+	return &parsed
 }
 
 // GetLimits returns per-payment-type limits derived from enabled provider instances.

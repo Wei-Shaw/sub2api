@@ -217,6 +217,11 @@ type PaymentService struct {
 	resumeService            *PaymentResumeService
 	affiliateService         *AffiliateService
 	notificationEmailService *NotificationEmailService
+	entitlementBinder        PaymentEntitlementBinder
+}
+
+type PaymentEntitlementBinder interface {
+	BindUserToGroupAfterPayment(ctx context.Context, userID, groupID int64) (*EntitlementSwitchResult, error)
 }
 
 func NewPaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository, affiliateService *AffiliateService) *PaymentService {
@@ -227,6 +232,10 @@ func NewPaymentService(entClient *dbent.Client, registry *payment.Registry, load
 
 func (s *PaymentService) SetNotificationEmailService(notificationEmailService *NotificationEmailService) {
 	s.notificationEmailService = notificationEmailService
+}
+
+func (s *PaymentService) SetEntitlementBinder(binder PaymentEntitlementBinder) {
+	s.entitlementBinder = binder
 }
 
 // --- Provider Registry ---

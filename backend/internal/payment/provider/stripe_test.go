@@ -12,11 +12,11 @@ import (
 )
 
 func TestStripeNormalizeCurrencyDefaultsToCNY(t *testing.T) {
-	if got := normalizeStripeCurrency(""); got != "CNY" {
-		t.Fatalf("normalizeStripeCurrency empty = %q, want CNY", got)
+	if got := stripeIntentCurrency(stripe.Currency(""), ""); got != "CNY" {
+		t.Fatalf("stripeIntentCurrency empty = %q, want CNY", got)
 	}
-	if got := normalizeStripeCurrency(" vnd "); got != "VND" {
-		t.Fatalf("normalizeStripeCurrency vnd = %q, want VND", got)
+	if got := stripeIntentCurrency(stripe.Currency(" vnd "), ""); got != "VND" {
+		t.Fatalf("stripeIntentCurrency vnd = %q, want VND", got)
 	}
 }
 

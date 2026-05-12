@@ -252,6 +252,16 @@ func ProvideGrokTokenProvider(
 	return p
 }
 
+func ProvideEntitlementService(
+	userRepo UserRepository,
+	groupRepo GroupRepository,
+	apiKeyService *APIKeyService,
+	apiKeyRepo APIKeyRepository,
+	userSubRepo UserSubscriptionRepository,
+) *EntitlementService {
+	return NewEntitlementService(userRepo, groupRepo, apiKeyService, apiKeyRepo, userSubRepo)
+}
+
 // ProvideDashboardAggregationService 创建并启动仪表盘聚合服务
 func ProvideDashboardAggregationService(repo DashboardAggregationRepository, timingWheel *TimingWheelService, lockCache LeaderLockCache, db *sql.DB, cfg *config.Config) *DashboardAggregationService {
 	svc := NewDashboardAggregationService(repo, timingWheel, cfg)
@@ -799,6 +809,8 @@ var ProviderSet = wire.NewSet(
 	ProvideEmailQueueService,
 	NewTurnstileService,
 	NewSubscriptionService,
+	ProvideEntitlementService,
+	wire.Bind(new(PaymentEntitlementBinder), new(*EntitlementService)),
 	wire.Bind(new(DefaultSubscriptionAssigner), new(*SubscriptionService)),
 	ProvideConcurrencyService,
 	ProvideUserMessageQueueService,
@@ -835,7 +847,7 @@ var ProviderSet = wire.NewSet(
 	NewContentModerationService,
 	NewAffiliateService,
 	ProvidePaymentConfigService,
-	NewPaymentService,
+	ProvidePaymentService,
 	ProvidePaymentOrderExpiryService,
 	ProvideBalanceNotifyService,
 	ProvideChannelMonitorService,
@@ -865,10 +877,11 @@ func ProvideBalanceNotifyService(emailService *EmailService, settingRepo Setting
 	return svc
 }
 
-// ProvidePaymentService creates PaymentService and attaches notification email delivery.
-func ProvidePaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository, affiliateService *AffiliateService, notificationEmailService *NotificationEmailService) *PaymentService {
+// ProvidePaymentService creates PaymentService and attaches notification email delivery and entitlement binding.
+func ProvidePaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository, affiliateService *AffiliateService, notificationEmailService *NotificationEmailService, entitlementBinder PaymentEntitlementBinder) *PaymentService {
 	svc := NewPaymentService(entClient, registry, loadBalancer, redeemService, subscriptionSvc, configService, userRepo, groupRepo, affiliateService)
 	svc.SetNotificationEmailService(notificationEmailService)
+	svc.SetEntitlementBinder(entitlementBinder)
 	return svc
 }
 
