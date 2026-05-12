@@ -5335,6 +5335,11 @@ export default {
         cchSigningHint: '転送リクエストの課金ヘッダーをCCHハッシュで署名します。無効化するとプレースホルダーが保持されます。',
         anthropicCacheTTL1hInjection: 'Anthropicキャッシュ TTL注入',
         anthropicCacheTTL1hInjectionHint: '有効化すると、Anthropic OAuth/Setup Tokenリクエストボディ内の既存の一時的なcache_controlブロックは強制的に1時間に設定されます。レスポンスの利用は既定で5分として再課金され、アカウントレベルのTTL課金オーバーライドが優先されます。',
+        rewriteMessageCacheControl: 'メッセージのキャッシュブレークポイントを書き換える',
+        rewriteMessageCacheControlHint: '既定では無効。messages のコンテンツブロックにあるクライアント側の cache_control をそのまま保持します。有効化するとクライアント側のブレークポイントを削除し、プロキシ側のブレークポイントを注入します。キャッシュ戦略を自前で管理しないクライアント向けです。',
+        antigravityUserAgentVersion: 'Antigravity UA バージョン',
+        antigravityUserAgentVersionPlaceholder: '1.23.2',
+        antigravityUserAgentVersionHint: '空欄の場合は ANTIGRAVITY_USER_AGENT_VERSION またはビルトインの既定値 1.23.2 が使用されます。値を設定した場合は管理画面の設定が優先されます。',
       },
       webSearchEmulation: {
         title: 'Web検索エミュレーション',
