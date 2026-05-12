@@ -22,6 +22,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
+	"github.com/Wei-Shaw/sub2api/ent/cacheinvalidationoutbox"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
@@ -48,6 +49,9 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/ent/userattributedefinition"
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
+	"github.com/Wei-Shaw/sub2api/ent/userpool"
+	"github.com/Wei-Shaw/sub2api/ent/userpoolgroupgrant"
+	"github.com/Wei-Shaw/sub2api/ent/userpoolmember"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 
 	stdsql "database/sql"
@@ -72,6 +76,8 @@ type Client struct {
 	AuthIdentity *AuthIdentityClient
 	// AuthIdentityChannel is the client for interacting with the AuthIdentityChannel builders.
 	AuthIdentityChannel *AuthIdentityChannelClient
+	// CacheInvalidationOutbox is the client for interacting with the CacheInvalidationOutbox builders.
+	CacheInvalidationOutbox *CacheInvalidationOutboxClient
 	// ChannelMonitor is the client for interacting with the ChannelMonitor builders.
 	ChannelMonitor *ChannelMonitorClient
 	// ChannelMonitorDailyRollup is the client for interacting with the ChannelMonitorDailyRollup builders.
@@ -124,6 +130,12 @@ type Client struct {
 	UserAttributeDefinition *UserAttributeDefinitionClient
 	// UserAttributeValue is the client for interacting with the UserAttributeValue builders.
 	UserAttributeValue *UserAttributeValueClient
+	// UserPool is the client for interacting with the UserPool builders.
+	UserPool *UserPoolClient
+	// UserPoolGroupGrant is the client for interacting with the UserPoolGroupGrant builders.
+	UserPoolGroupGrant *UserPoolGroupGrantClient
+	// UserPoolMember is the client for interacting with the UserPoolMember builders.
+	UserPoolMember *UserPoolMemberClient
 	// UserSubscription is the client for interacting with the UserSubscription builders.
 	UserSubscription *UserSubscriptionClient
 }
@@ -144,6 +156,7 @@ func (c *Client) init() {
 	c.AnnouncementRead = NewAnnouncementReadClient(c.config)
 	c.AuthIdentity = NewAuthIdentityClient(c.config)
 	c.AuthIdentityChannel = NewAuthIdentityChannelClient(c.config)
+	c.CacheInvalidationOutbox = NewCacheInvalidationOutboxClient(c.config)
 	c.ChannelMonitor = NewChannelMonitorClient(c.config)
 	c.ChannelMonitorDailyRollup = NewChannelMonitorDailyRollupClient(c.config)
 	c.ChannelMonitorHistory = NewChannelMonitorHistoryClient(c.config)
@@ -170,6 +183,9 @@ func (c *Client) init() {
 	c.UserAllowedGroup = NewUserAllowedGroupClient(c.config)
 	c.UserAttributeDefinition = NewUserAttributeDefinitionClient(c.config)
 	c.UserAttributeValue = NewUserAttributeValueClient(c.config)
+	c.UserPool = NewUserPoolClient(c.config)
+	c.UserPoolGroupGrant = NewUserPoolGroupGrantClient(c.config)
+	c.UserPoolMember = NewUserPoolMemberClient(c.config)
 	c.UserSubscription = NewUserSubscriptionClient(c.config)
 }
 
@@ -270,6 +286,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		AnnouncementRead:              NewAnnouncementReadClient(cfg),
 		AuthIdentity:                  NewAuthIdentityClient(cfg),
 		AuthIdentityChannel:           NewAuthIdentityChannelClient(cfg),
+		CacheInvalidationOutbox:       NewCacheInvalidationOutboxClient(cfg),
 		ChannelMonitor:                NewChannelMonitorClient(cfg),
 		ChannelMonitorDailyRollup:     NewChannelMonitorDailyRollupClient(cfg),
 		ChannelMonitorHistory:         NewChannelMonitorHistoryClient(cfg),
@@ -296,6 +313,9 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		UserAllowedGroup:              NewUserAllowedGroupClient(cfg),
 		UserAttributeDefinition:       NewUserAttributeDefinitionClient(cfg),
 		UserAttributeValue:            NewUserAttributeValueClient(cfg),
+		UserPool:                      NewUserPoolClient(cfg),
+		UserPoolGroupGrant:            NewUserPoolGroupGrantClient(cfg),
+		UserPoolMember:                NewUserPoolMemberClient(cfg),
 		UserSubscription:              NewUserSubscriptionClient(cfg),
 	}, nil
 }
@@ -323,6 +343,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		AnnouncementRead:              NewAnnouncementReadClient(cfg),
 		AuthIdentity:                  NewAuthIdentityClient(cfg),
 		AuthIdentityChannel:           NewAuthIdentityChannelClient(cfg),
+		CacheInvalidationOutbox:       NewCacheInvalidationOutboxClient(cfg),
 		ChannelMonitor:                NewChannelMonitorClient(cfg),
 		ChannelMonitorDailyRollup:     NewChannelMonitorDailyRollupClient(cfg),
 		ChannelMonitorHistory:         NewChannelMonitorHistoryClient(cfg),
@@ -349,6 +370,9 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		UserAllowedGroup:              NewUserAllowedGroupClient(cfg),
 		UserAttributeDefinition:       NewUserAttributeDefinitionClient(cfg),
 		UserAttributeValue:            NewUserAttributeValueClient(cfg),
+		UserPool:                      NewUserPoolClient(cfg),
+		UserPoolGroupGrant:            NewUserPoolGroupGrantClient(cfg),
+		UserPoolMember:                NewUserPoolMemberClient(cfg),
 		UserSubscription:              NewUserSubscriptionClient(cfg),
 	}, nil
 }
@@ -380,15 +404,15 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
-		c.AuthIdentity, c.AuthIdentityChannel, c.ChannelMonitor,
-		c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
+		c.AuthIdentity, c.AuthIdentityChannel, c.CacheInvalidationOutbox,
+		c.ChannelMonitor, c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
 		c.ChannelMonitorRequestTemplate, c.ErrorPassthroughRule, c.Group,
 		c.IdempotencyRecord, c.IdentityAdoptionDecision, c.PaymentAuditLog,
 		c.PaymentOrder, c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode,
 		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
 		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
 		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
-		c.UserSubscription,
+		c.UserPool, c.UserPoolGroupGrant, c.UserPoolMember, c.UserSubscription,
 	} {
 		n.Use(hooks...)
 	}
@@ -399,15 +423,15 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
-		c.AuthIdentity, c.AuthIdentityChannel, c.ChannelMonitor,
-		c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
+		c.AuthIdentity, c.AuthIdentityChannel, c.CacheInvalidationOutbox,
+		c.ChannelMonitor, c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
 		c.ChannelMonitorRequestTemplate, c.ErrorPassthroughRule, c.Group,
 		c.IdempotencyRecord, c.IdentityAdoptionDecision, c.PaymentAuditLog,
 		c.PaymentOrder, c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode,
 		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
 		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
 		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
-		c.UserSubscription,
+		c.UserPool, c.UserPoolGroupGrant, c.UserPoolMember, c.UserSubscription,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -430,6 +454,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.AuthIdentity.mutate(ctx, m)
 	case *AuthIdentityChannelMutation:
 		return c.AuthIdentityChannel.mutate(ctx, m)
+	case *CacheInvalidationOutboxMutation:
+		return c.CacheInvalidationOutbox.mutate(ctx, m)
 	case *ChannelMonitorMutation:
 		return c.ChannelMonitor.mutate(ctx, m)
 	case *ChannelMonitorDailyRollupMutation:
@@ -482,6 +508,12 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.UserAttributeDefinition.mutate(ctx, m)
 	case *UserAttributeValueMutation:
 		return c.UserAttributeValue.mutate(ctx, m)
+	case *UserPoolMutation:
+		return c.UserPool.mutate(ctx, m)
+	case *UserPoolGroupGrantMutation:
+		return c.UserPoolGroupGrant.mutate(ctx, m)
+	case *UserPoolMemberMutation:
+		return c.UserPoolMember.mutate(ctx, m)
 	case *UserSubscriptionMutation:
 		return c.UserSubscription.mutate(ctx, m)
 	default:
@@ -1631,6 +1663,139 @@ func (c *AuthIdentityChannelClient) mutate(ctx context.Context, m *AuthIdentityC
 	}
 }
 
+// CacheInvalidationOutboxClient is a client for the CacheInvalidationOutbox schema.
+type CacheInvalidationOutboxClient struct {
+	config
+}
+
+// NewCacheInvalidationOutboxClient returns a client for the CacheInvalidationOutbox from the given config.
+func NewCacheInvalidationOutboxClient(c config) *CacheInvalidationOutboxClient {
+	return &CacheInvalidationOutboxClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `cacheinvalidationoutbox.Hooks(f(g(h())))`.
+func (c *CacheInvalidationOutboxClient) Use(hooks ...Hook) {
+	c.hooks.CacheInvalidationOutbox = append(c.hooks.CacheInvalidationOutbox, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `cacheinvalidationoutbox.Intercept(f(g(h())))`.
+func (c *CacheInvalidationOutboxClient) Intercept(interceptors ...Interceptor) {
+	c.inters.CacheInvalidationOutbox = append(c.inters.CacheInvalidationOutbox, interceptors...)
+}
+
+// Create returns a builder for creating a CacheInvalidationOutbox entity.
+func (c *CacheInvalidationOutboxClient) Create() *CacheInvalidationOutboxCreate {
+	mutation := newCacheInvalidationOutboxMutation(c.config, OpCreate)
+	return &CacheInvalidationOutboxCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of CacheInvalidationOutbox entities.
+func (c *CacheInvalidationOutboxClient) CreateBulk(builders ...*CacheInvalidationOutboxCreate) *CacheInvalidationOutboxCreateBulk {
+	return &CacheInvalidationOutboxCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *CacheInvalidationOutboxClient) MapCreateBulk(slice any, setFunc func(*CacheInvalidationOutboxCreate, int)) *CacheInvalidationOutboxCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &CacheInvalidationOutboxCreateBulk{err: fmt.Errorf("calling to CacheInvalidationOutboxClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*CacheInvalidationOutboxCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &CacheInvalidationOutboxCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for CacheInvalidationOutbox.
+func (c *CacheInvalidationOutboxClient) Update() *CacheInvalidationOutboxUpdate {
+	mutation := newCacheInvalidationOutboxMutation(c.config, OpUpdate)
+	return &CacheInvalidationOutboxUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *CacheInvalidationOutboxClient) UpdateOne(_m *CacheInvalidationOutbox) *CacheInvalidationOutboxUpdateOne {
+	mutation := newCacheInvalidationOutboxMutation(c.config, OpUpdateOne, withCacheInvalidationOutbox(_m))
+	return &CacheInvalidationOutboxUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *CacheInvalidationOutboxClient) UpdateOneID(id int64) *CacheInvalidationOutboxUpdateOne {
+	mutation := newCacheInvalidationOutboxMutation(c.config, OpUpdateOne, withCacheInvalidationOutboxID(id))
+	return &CacheInvalidationOutboxUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for CacheInvalidationOutbox.
+func (c *CacheInvalidationOutboxClient) Delete() *CacheInvalidationOutboxDelete {
+	mutation := newCacheInvalidationOutboxMutation(c.config, OpDelete)
+	return &CacheInvalidationOutboxDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *CacheInvalidationOutboxClient) DeleteOne(_m *CacheInvalidationOutbox) *CacheInvalidationOutboxDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *CacheInvalidationOutboxClient) DeleteOneID(id int64) *CacheInvalidationOutboxDeleteOne {
+	builder := c.Delete().Where(cacheinvalidationoutbox.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &CacheInvalidationOutboxDeleteOne{builder}
+}
+
+// Query returns a query builder for CacheInvalidationOutbox.
+func (c *CacheInvalidationOutboxClient) Query() *CacheInvalidationOutboxQuery {
+	return &CacheInvalidationOutboxQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeCacheInvalidationOutbox},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a CacheInvalidationOutbox entity by its id.
+func (c *CacheInvalidationOutboxClient) Get(ctx context.Context, id int64) (*CacheInvalidationOutbox, error) {
+	return c.Query().Where(cacheinvalidationoutbox.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *CacheInvalidationOutboxClient) GetX(ctx context.Context, id int64) *CacheInvalidationOutbox {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *CacheInvalidationOutboxClient) Hooks() []Hook {
+	return c.hooks.CacheInvalidationOutbox
+}
+
+// Interceptors returns the client interceptors.
+func (c *CacheInvalidationOutboxClient) Interceptors() []Interceptor {
+	return c.inters.CacheInvalidationOutbox
+}
+
+func (c *CacheInvalidationOutboxClient) mutate(ctx context.Context, m *CacheInvalidationOutboxMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&CacheInvalidationOutboxCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&CacheInvalidationOutboxUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&CacheInvalidationOutboxUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&CacheInvalidationOutboxDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown CacheInvalidationOutbox mutation op: %q", m.Op())
+	}
+}
+
 // ChannelMonitorClient is a client for the ChannelMonitor schema.
 type ChannelMonitorClient struct {
 	config
@@ -2596,6 +2761,22 @@ func (c *GroupClient) QueryAllowedUsers(_m *Group) *UserQuery {
 	return query
 }
 
+// QueryUserPools queries the user_pools edge of a Group.
+func (c *GroupClient) QueryUserPools(_m *Group) *UserPoolQuery {
+	query := (&UserPoolClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(group.Table, group.FieldID, id),
+			sqlgraph.To(userpool.Table, userpool.FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, true, group.UserPoolsTable, group.UserPoolsPrimaryKey...),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // QueryAccountGroups queries the account_groups edge of a Group.
 func (c *GroupClient) QueryAccountGroups(_m *Group) *AccountGroupQuery {
 	query := (&AccountGroupClient{config: c.config}).Query()
@@ -2621,6 +2802,22 @@ func (c *GroupClient) QueryUserAllowedGroups(_m *Group) *UserAllowedGroupQuery {
 			sqlgraph.From(group.Table, group.FieldID, id),
 			sqlgraph.To(userallowedgroup.Table, userallowedgroup.GroupColumn),
 			sqlgraph.Edge(sqlgraph.O2M, true, group.UserAllowedGroupsTable, group.UserAllowedGroupsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryPoolGrants queries the pool_grants edge of a Group.
+func (c *GroupClient) QueryPoolGrants(_m *Group) *UserPoolGroupGrantQuery {
+	query := (&UserPoolGroupGrantClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(group.Table, group.FieldID, id),
+			sqlgraph.To(userpoolgroupgrant.Table, userpoolgroupgrant.GroupColumn),
+			sqlgraph.Edge(sqlgraph.O2M, true, group.PoolGrantsTable, group.PoolGrantsColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -5341,6 +5538,22 @@ func (c *UserClient) QueryPendingAuthSessions(_m *User) *PendingAuthSessionQuery
 	return query
 }
 
+// QueryUserPools queries the user_pools edge of a User.
+func (c *UserClient) QueryUserPools(_m *User) *UserPoolQuery {
+	query := (&UserPoolClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(userpool.Table, userpool.FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, true, user.UserPoolsTable, user.UserPoolsPrimaryKey...),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // QueryUserAllowedGroups queries the user_allowed_groups edge of a User.
 func (c *UserClient) QueryUserAllowedGroups(_m *User) *UserAllowedGroupQuery {
 	query := (&UserAllowedGroupClient{config: c.config}).Query()
@@ -5350,6 +5563,22 @@ func (c *UserClient) QueryUserAllowedGroups(_m *User) *UserAllowedGroupQuery {
 			sqlgraph.From(user.Table, user.FieldID, id),
 			sqlgraph.To(userallowedgroup.Table, userallowedgroup.UserColumn),
 			sqlgraph.Edge(sqlgraph.O2M, true, user.UserAllowedGroupsTable, user.UserAllowedGroupsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryPoolMemberships queries the pool_memberships edge of a User.
+func (c *UserClient) QueryPoolMemberships(_m *User) *UserPoolMemberQuery {
+	query := (&UserPoolMemberClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(userpoolmember.Table, userpoolmember.UserColumn),
+			sqlgraph.Edge(sqlgraph.O2M, true, user.PoolMembershipsTable, user.PoolMembershipsColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -5816,6 +6045,437 @@ func (c *UserAttributeValueClient) mutate(ctx context.Context, m *UserAttributeV
 	}
 }
 
+// UserPoolClient is a client for the UserPool schema.
+type UserPoolClient struct {
+	config
+}
+
+// NewUserPoolClient returns a client for the UserPool from the given config.
+func NewUserPoolClient(c config) *UserPoolClient {
+	return &UserPoolClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `userpool.Hooks(f(g(h())))`.
+func (c *UserPoolClient) Use(hooks ...Hook) {
+	c.hooks.UserPool = append(c.hooks.UserPool, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `userpool.Intercept(f(g(h())))`.
+func (c *UserPoolClient) Intercept(interceptors ...Interceptor) {
+	c.inters.UserPool = append(c.inters.UserPool, interceptors...)
+}
+
+// Create returns a builder for creating a UserPool entity.
+func (c *UserPoolClient) Create() *UserPoolCreate {
+	mutation := newUserPoolMutation(c.config, OpCreate)
+	return &UserPoolCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of UserPool entities.
+func (c *UserPoolClient) CreateBulk(builders ...*UserPoolCreate) *UserPoolCreateBulk {
+	return &UserPoolCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *UserPoolClient) MapCreateBulk(slice any, setFunc func(*UserPoolCreate, int)) *UserPoolCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &UserPoolCreateBulk{err: fmt.Errorf("calling to UserPoolClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*UserPoolCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &UserPoolCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for UserPool.
+func (c *UserPoolClient) Update() *UserPoolUpdate {
+	mutation := newUserPoolMutation(c.config, OpUpdate)
+	return &UserPoolUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *UserPoolClient) UpdateOne(_m *UserPool) *UserPoolUpdateOne {
+	mutation := newUserPoolMutation(c.config, OpUpdateOne, withUserPool(_m))
+	return &UserPoolUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *UserPoolClient) UpdateOneID(id int64) *UserPoolUpdateOne {
+	mutation := newUserPoolMutation(c.config, OpUpdateOne, withUserPoolID(id))
+	return &UserPoolUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for UserPool.
+func (c *UserPoolClient) Delete() *UserPoolDelete {
+	mutation := newUserPoolMutation(c.config, OpDelete)
+	return &UserPoolDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *UserPoolClient) DeleteOne(_m *UserPool) *UserPoolDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *UserPoolClient) DeleteOneID(id int64) *UserPoolDeleteOne {
+	builder := c.Delete().Where(userpool.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &UserPoolDeleteOne{builder}
+}
+
+// Query returns a query builder for UserPool.
+func (c *UserPoolClient) Query() *UserPoolQuery {
+	return &UserPoolQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeUserPool},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a UserPool entity by its id.
+func (c *UserPoolClient) Get(ctx context.Context, id int64) (*UserPool, error) {
+	return c.Query().Where(userpool.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *UserPoolClient) GetX(ctx context.Context, id int64) *UserPool {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryUsers queries the users edge of a UserPool.
+func (c *UserPoolClient) QueryUsers(_m *UserPool) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(userpool.Table, userpool.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, false, userpool.UsersTable, userpool.UsersPrimaryKey...),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryGroups queries the groups edge of a UserPool.
+func (c *UserPoolClient) QueryGroups(_m *UserPool) *GroupQuery {
+	query := (&GroupClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(userpool.Table, userpool.FieldID, id),
+			sqlgraph.To(group.Table, group.FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, false, userpool.GroupsTable, userpool.GroupsPrimaryKey...),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryMembers queries the members edge of a UserPool.
+func (c *UserPoolClient) QueryMembers(_m *UserPool) *UserPoolMemberQuery {
+	query := (&UserPoolMemberClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(userpool.Table, userpool.FieldID, id),
+			sqlgraph.To(userpoolmember.Table, userpoolmember.PoolColumn),
+			sqlgraph.Edge(sqlgraph.O2M, true, userpool.MembersTable, userpool.MembersColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryGroupGrants queries the group_grants edge of a UserPool.
+func (c *UserPoolClient) QueryGroupGrants(_m *UserPool) *UserPoolGroupGrantQuery {
+	query := (&UserPoolGroupGrantClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(userpool.Table, userpool.FieldID, id),
+			sqlgraph.To(userpoolgroupgrant.Table, userpoolgroupgrant.PoolColumn),
+			sqlgraph.Edge(sqlgraph.O2M, true, userpool.GroupGrantsTable, userpool.GroupGrantsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *UserPoolClient) Hooks() []Hook {
+	hooks := c.hooks.UserPool
+	return append(hooks[:len(hooks):len(hooks)], userpool.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *UserPoolClient) Interceptors() []Interceptor {
+	inters := c.inters.UserPool
+	return append(inters[:len(inters):len(inters)], userpool.Interceptors[:]...)
+}
+
+func (c *UserPoolClient) mutate(ctx context.Context, m *UserPoolMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&UserPoolCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&UserPoolUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&UserPoolUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&UserPoolDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown UserPool mutation op: %q", m.Op())
+	}
+}
+
+// UserPoolGroupGrantClient is a client for the UserPoolGroupGrant schema.
+type UserPoolGroupGrantClient struct {
+	config
+}
+
+// NewUserPoolGroupGrantClient returns a client for the UserPoolGroupGrant from the given config.
+func NewUserPoolGroupGrantClient(c config) *UserPoolGroupGrantClient {
+	return &UserPoolGroupGrantClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `userpoolgroupgrant.Hooks(f(g(h())))`.
+func (c *UserPoolGroupGrantClient) Use(hooks ...Hook) {
+	c.hooks.UserPoolGroupGrant = append(c.hooks.UserPoolGroupGrant, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `userpoolgroupgrant.Intercept(f(g(h())))`.
+func (c *UserPoolGroupGrantClient) Intercept(interceptors ...Interceptor) {
+	c.inters.UserPoolGroupGrant = append(c.inters.UserPoolGroupGrant, interceptors...)
+}
+
+// Create returns a builder for creating a UserPoolGroupGrant entity.
+func (c *UserPoolGroupGrantClient) Create() *UserPoolGroupGrantCreate {
+	mutation := newUserPoolGroupGrantMutation(c.config, OpCreate)
+	return &UserPoolGroupGrantCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of UserPoolGroupGrant entities.
+func (c *UserPoolGroupGrantClient) CreateBulk(builders ...*UserPoolGroupGrantCreate) *UserPoolGroupGrantCreateBulk {
+	return &UserPoolGroupGrantCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *UserPoolGroupGrantClient) MapCreateBulk(slice any, setFunc func(*UserPoolGroupGrantCreate, int)) *UserPoolGroupGrantCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &UserPoolGroupGrantCreateBulk{err: fmt.Errorf("calling to UserPoolGroupGrantClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*UserPoolGroupGrantCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &UserPoolGroupGrantCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for UserPoolGroupGrant.
+func (c *UserPoolGroupGrantClient) Update() *UserPoolGroupGrantUpdate {
+	mutation := newUserPoolGroupGrantMutation(c.config, OpUpdate)
+	return &UserPoolGroupGrantUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *UserPoolGroupGrantClient) UpdateOne(_m *UserPoolGroupGrant) *UserPoolGroupGrantUpdateOne {
+	mutation := newUserPoolGroupGrantMutation(c.config, OpUpdateOne)
+	mutation.pool = &_m.PoolID
+	mutation.group = &_m.GroupID
+	return &UserPoolGroupGrantUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for UserPoolGroupGrant.
+func (c *UserPoolGroupGrantClient) Delete() *UserPoolGroupGrantDelete {
+	mutation := newUserPoolGroupGrantMutation(c.config, OpDelete)
+	return &UserPoolGroupGrantDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Query returns a query builder for UserPoolGroupGrant.
+func (c *UserPoolGroupGrantClient) Query() *UserPoolGroupGrantQuery {
+	return &UserPoolGroupGrantQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeUserPoolGroupGrant},
+		inters: c.Interceptors(),
+	}
+}
+
+// QueryPool queries the pool edge of a UserPoolGroupGrant.
+func (c *UserPoolGroupGrantClient) QueryPool(_m *UserPoolGroupGrant) *UserPoolQuery {
+	return c.Query().
+		Where(userpoolgroupgrant.PoolID(_m.PoolID), userpoolgroupgrant.GroupID(_m.GroupID)).
+		QueryPool()
+}
+
+// QueryGroup queries the group edge of a UserPoolGroupGrant.
+func (c *UserPoolGroupGrantClient) QueryGroup(_m *UserPoolGroupGrant) *GroupQuery {
+	return c.Query().
+		Where(userpoolgroupgrant.PoolID(_m.PoolID), userpoolgroupgrant.GroupID(_m.GroupID)).
+		QueryGroup()
+}
+
+// Hooks returns the client hooks.
+func (c *UserPoolGroupGrantClient) Hooks() []Hook {
+	return c.hooks.UserPoolGroupGrant
+}
+
+// Interceptors returns the client interceptors.
+func (c *UserPoolGroupGrantClient) Interceptors() []Interceptor {
+	return c.inters.UserPoolGroupGrant
+}
+
+func (c *UserPoolGroupGrantClient) mutate(ctx context.Context, m *UserPoolGroupGrantMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&UserPoolGroupGrantCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&UserPoolGroupGrantUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&UserPoolGroupGrantUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&UserPoolGroupGrantDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown UserPoolGroupGrant mutation op: %q", m.Op())
+	}
+}
+
+// UserPoolMemberClient is a client for the UserPoolMember schema.
+type UserPoolMemberClient struct {
+	config
+}
+
+// NewUserPoolMemberClient returns a client for the UserPoolMember from the given config.
+func NewUserPoolMemberClient(c config) *UserPoolMemberClient {
+	return &UserPoolMemberClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `userpoolmember.Hooks(f(g(h())))`.
+func (c *UserPoolMemberClient) Use(hooks ...Hook) {
+	c.hooks.UserPoolMember = append(c.hooks.UserPoolMember, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `userpoolmember.Intercept(f(g(h())))`.
+func (c *UserPoolMemberClient) Intercept(interceptors ...Interceptor) {
+	c.inters.UserPoolMember = append(c.inters.UserPoolMember, interceptors...)
+}
+
+// Create returns a builder for creating a UserPoolMember entity.
+func (c *UserPoolMemberClient) Create() *UserPoolMemberCreate {
+	mutation := newUserPoolMemberMutation(c.config, OpCreate)
+	return &UserPoolMemberCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of UserPoolMember entities.
+func (c *UserPoolMemberClient) CreateBulk(builders ...*UserPoolMemberCreate) *UserPoolMemberCreateBulk {
+	return &UserPoolMemberCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *UserPoolMemberClient) MapCreateBulk(slice any, setFunc func(*UserPoolMemberCreate, int)) *UserPoolMemberCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &UserPoolMemberCreateBulk{err: fmt.Errorf("calling to UserPoolMemberClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*UserPoolMemberCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &UserPoolMemberCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for UserPoolMember.
+func (c *UserPoolMemberClient) Update() *UserPoolMemberUpdate {
+	mutation := newUserPoolMemberMutation(c.config, OpUpdate)
+	return &UserPoolMemberUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *UserPoolMemberClient) UpdateOne(_m *UserPoolMember) *UserPoolMemberUpdateOne {
+	mutation := newUserPoolMemberMutation(c.config, OpUpdateOne)
+	mutation.pool = &_m.PoolID
+	mutation.user = &_m.UserID
+	return &UserPoolMemberUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for UserPoolMember.
+func (c *UserPoolMemberClient) Delete() *UserPoolMemberDelete {
+	mutation := newUserPoolMemberMutation(c.config, OpDelete)
+	return &UserPoolMemberDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Query returns a query builder for UserPoolMember.
+func (c *UserPoolMemberClient) Query() *UserPoolMemberQuery {
+	return &UserPoolMemberQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeUserPoolMember},
+		inters: c.Interceptors(),
+	}
+}
+
+// QueryPool queries the pool edge of a UserPoolMember.
+func (c *UserPoolMemberClient) QueryPool(_m *UserPoolMember) *UserPoolQuery {
+	return c.Query().
+		Where(userpoolmember.PoolID(_m.PoolID), userpoolmember.UserID(_m.UserID)).
+		QueryPool()
+}
+
+// QueryUser queries the user edge of a UserPoolMember.
+func (c *UserPoolMemberClient) QueryUser(_m *UserPoolMember) *UserQuery {
+	return c.Query().
+		Where(userpoolmember.PoolID(_m.PoolID), userpoolmember.UserID(_m.UserID)).
+		QueryUser()
+}
+
+// Hooks returns the client hooks.
+func (c *UserPoolMemberClient) Hooks() []Hook {
+	return c.hooks.UserPoolMember
+}
+
+// Interceptors returns the client interceptors.
+func (c *UserPoolMemberClient) Interceptors() []Interceptor {
+	return c.inters.UserPoolMember
+}
+
+func (c *UserPoolMemberClient) mutate(ctx context.Context, m *UserPoolMemberMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&UserPoolMemberCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&UserPoolMemberUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&UserPoolMemberUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&UserPoolMemberDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown UserPoolMember mutation op: %q", m.Op())
+	}
+}
+
 // UserSubscriptionClient is a client for the UserSubscription schema.
 type UserSubscriptionClient struct {
 	config
@@ -6019,23 +6679,27 @@ func (c *UserSubscriptionClient) mutate(ctx context.Context, m *UserSubscription
 type (
 	hooks struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
-		AuthIdentityChannel, ChannelMonitor, ChannelMonitorDailyRollup,
-		ChannelMonitorHistory, ChannelMonitorRequestTemplate, ErrorPassthroughRule,
-		Group, IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog,
-		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
-		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
-		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
-		UserAttributeDefinition, UserAttributeValue, UserSubscription []ent.Hook
+		AuthIdentityChannel, CacheInvalidationOutbox, ChannelMonitor,
+		ChannelMonitorDailyRollup, ChannelMonitorHistory,
+		ChannelMonitorRequestTemplate, ErrorPassthroughRule, Group, IdempotencyRecord,
+		IdentityAdoptionDecision, PaymentAuditLog, PaymentOrder,
+		PaymentProviderInstance, PendingAuthSession, PromoCode, PromoCodeUsage, Proxy,
+		RedeemCode, SecuritySecret, Setting, SubscriptionPlan, TLSFingerprintProfile,
+		UsageCleanupTask, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
+		UserAttributeValue, UserPool, UserPoolGroupGrant, UserPoolMember,
+		UserSubscription []ent.Hook
 	}
 	inters struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
-		AuthIdentityChannel, ChannelMonitor, ChannelMonitorDailyRollup,
-		ChannelMonitorHistory, ChannelMonitorRequestTemplate, ErrorPassthroughRule,
-		Group, IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog,
-		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
-		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
-		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
-		UserAttributeDefinition, UserAttributeValue, UserSubscription []ent.Interceptor
+		AuthIdentityChannel, CacheInvalidationOutbox, ChannelMonitor,
+		ChannelMonitorDailyRollup, ChannelMonitorHistory,
+		ChannelMonitorRequestTemplate, ErrorPassthroughRule, Group, IdempotencyRecord,
+		IdentityAdoptionDecision, PaymentAuditLog, PaymentOrder,
+		PaymentProviderInstance, PendingAuthSession, PromoCode, PromoCodeUsage, Proxy,
+		RedeemCode, SecuritySecret, Setting, SubscriptionPlan, TLSFingerprintProfile,
+		UsageCleanupTask, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
+		UserAttributeValue, UserPool, UserPoolGroupGrant, UserPoolMember,
+		UserSubscription []ent.Interceptor
 	}
 )
 

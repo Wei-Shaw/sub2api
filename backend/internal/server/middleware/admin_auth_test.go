@@ -236,3 +236,13 @@ func (s *stubUserRepo) EnableTotp(ctx context.Context, userID int64) error {
 func (s *stubUserRepo) DisableTotp(ctx context.Context, userID int64) error {
 	panic("unexpected DisableTotp call")
 }
+
+func (s *stubUserRepo) GetEffectiveAllowedGroups(_ context.Context, _ []int64, _ service.EffectiveAllowedGroupsOptions) (map[int64][]int64, error) {
+	return nil, nil
+}
+func (s *stubUserRepo) GetEffectiveAllowedGroupSources(_ context.Context, _ []int64, _ service.EffectiveAllowedGroupsOptions) (map[int64][]service.EffectiveAllowedGroupSource, error) {
+	return nil, nil
+}
+func (s *stubUserRepo) CanBindStandardGroupEffective(_ context.Context, _ int64, _ int64, _ bool, _ service.EffectiveAllowedGroupsOptions) (bool, error) {
+	return true, nil
+}

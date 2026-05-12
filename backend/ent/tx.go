@@ -28,6 +28,8 @@ type Tx struct {
 	AuthIdentity *AuthIdentityClient
 	// AuthIdentityChannel is the client for interacting with the AuthIdentityChannel builders.
 	AuthIdentityChannel *AuthIdentityChannelClient
+	// CacheInvalidationOutbox is the client for interacting with the CacheInvalidationOutbox builders.
+	CacheInvalidationOutbox *CacheInvalidationOutboxClient
 	// ChannelMonitor is the client for interacting with the ChannelMonitor builders.
 	ChannelMonitor *ChannelMonitorClient
 	// ChannelMonitorDailyRollup is the client for interacting with the ChannelMonitorDailyRollup builders.
@@ -80,6 +82,12 @@ type Tx struct {
 	UserAttributeDefinition *UserAttributeDefinitionClient
 	// UserAttributeValue is the client for interacting with the UserAttributeValue builders.
 	UserAttributeValue *UserAttributeValueClient
+	// UserPool is the client for interacting with the UserPool builders.
+	UserPool *UserPoolClient
+	// UserPoolGroupGrant is the client for interacting with the UserPoolGroupGrant builders.
+	UserPoolGroupGrant *UserPoolGroupGrantClient
+	// UserPoolMember is the client for interacting with the UserPoolMember builders.
+	UserPoolMember *UserPoolMemberClient
 	// UserSubscription is the client for interacting with the UserSubscription builders.
 	UserSubscription *UserSubscriptionClient
 
@@ -220,6 +228,7 @@ func (tx *Tx) init() {
 	tx.AnnouncementRead = NewAnnouncementReadClient(tx.config)
 	tx.AuthIdentity = NewAuthIdentityClient(tx.config)
 	tx.AuthIdentityChannel = NewAuthIdentityChannelClient(tx.config)
+	tx.CacheInvalidationOutbox = NewCacheInvalidationOutboxClient(tx.config)
 	tx.ChannelMonitor = NewChannelMonitorClient(tx.config)
 	tx.ChannelMonitorDailyRollup = NewChannelMonitorDailyRollupClient(tx.config)
 	tx.ChannelMonitorHistory = NewChannelMonitorHistoryClient(tx.config)
@@ -246,6 +255,9 @@ func (tx *Tx) init() {
 	tx.UserAllowedGroup = NewUserAllowedGroupClient(tx.config)
 	tx.UserAttributeDefinition = NewUserAttributeDefinitionClient(tx.config)
 	tx.UserAttributeValue = NewUserAttributeValueClient(tx.config)
+	tx.UserPool = NewUserPoolClient(tx.config)
+	tx.UserPoolGroupGrant = NewUserPoolGroupGrantClient(tx.config)
+	tx.UserPoolMember = NewUserPoolMemberClient(tx.config)
 	tx.UserSubscription = NewUserSubscriptionClient(tx.config)
 }
 

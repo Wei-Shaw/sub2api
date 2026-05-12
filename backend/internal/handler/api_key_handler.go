@@ -292,6 +292,23 @@ func (h *APIKeyHandler) GetAvailableGroups(c *gin.Context) {
 	response.Success(c, out)
 }
 
+// GetAvailableGroupsProfile 获取用户可绑定分组列表（含权限来源信息）
+// GET /api/v1/groups/available/profile
+func (h *APIKeyHandler) GetAvailableGroupsProfile(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+
+	profile, err := h.apiKeyService.GetAvailableGroupsProfile(c.Request.Context(), subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, dto.AvailableGroupsProfileFromService(&profile))
+}
+
 // GetUserGroupRates 获取当前用户的专属分组倍率配置
 // GET /api/v1/groups/rates
 func (h *APIKeyHandler) GetUserGroupRates(c *gin.Context) {

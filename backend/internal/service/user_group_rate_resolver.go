@@ -19,6 +19,10 @@ type userGroupRateResolver struct {
 }
 
 func newUserGroupRateResolver(repo UserGroupRateRepository, cache *gocache.Cache, cacheTTL time.Duration, sf *singleflight.Group, logComponent string) *userGroupRateResolver {
+	return newUserGroupRateResolverWithConfig(repo, cache, cacheTTL, sf, logComponent)
+}
+
+func newUserGroupRateResolverWithConfig(repo UserGroupRateRepository, cache *gocache.Cache, cacheTTL time.Duration, sf *singleflight.Group, logComponent string) *userGroupRateResolver {
 	if cacheTTL <= 0 {
 		cacheTTL = defaultUserGroupRateCacheTTL
 	}
@@ -79,6 +83,21 @@ func (r *userGroupRateResolver) Resolve(ctx context.Context, userID, groupID int
 		multiplier := groupDefaultMultiplier
 		if userRate != nil {
 			multiplier = *userRate
+		} else {
+			poolGrant, poolErr := r.repo.GetPoolGroupGrantByUserAndGroup(ctx, userID, groupID)
+			if poolErr != nil {
+				userPoolRateFallbackQueryErrorTotal.Add(1)
+				logger.LegacyPrintf(
+					r.logComponent,
+					"get pool group rate fallback failed, fallback to group default: user=%d group=%d err=%v",
+					userID, groupID, poolErr,
+				)
+				// fallback to group default, do not cache the error result
+				return groupDefaultMultiplier, nil
+			}
+			if poolGrant.Found && poolGrant.RateMultiplier != nil {
+				multiplier = *poolGrant.RateMultiplier
+			}
 		}
 		if r.cache != nil {
 			r.cache.Set(key, multiplier, r.cacheTTL)

@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 9 // v9: added API Key name for audit logs
+const apiKeyAuthSnapshotVersion = 10 // v10: added IsExclusive to APIKeyAuthGroupSnapshot for Pool effective permission checks
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -176,7 +176,14 @@ func (s *APIKeyService) loadAuthCacheEntry(ctx context.Context, key, cacheKey st
 		return nil, fmt.Errorf("get api key: %w", err)
 	}
 	apiKey.Key = key
-	snapshot := s.snapshotFromAPIKey(ctx, apiKey)
+	snapshot, snapshotErr := s.snapshotFromAPIKey(ctx, apiKey)
+	if snapshotErr != nil {
+		// 撤权/分组失效：不写 L1/L2 auth cache，不写 negative cache，原样返回错误。
+		// 所有 singleflight 共享等待者都会看到此错误。
+		slog.Info("auth cache: snapshot build failed, not caching",
+			"error", snapshotErr, "api_key_id", apiKey.ID)
+		return nil, snapshotErr
+	}
 	if snapshot == nil {
 		return nil, fmt.Errorf("get api key: %w", ErrAPIKeyNotFound)
 	}
@@ -201,10 +208,55 @@ func (s *APIKeyService) applyAuthCacheEntry(key string, entry *APIKeyAuthCacheEn
 	return s.snapshotToAPIKey(key, entry.Snapshot), true, nil
 }
 
-func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) *APIKeyAuthSnapshot {
+func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) (*APIKeyAuthSnapshot, error) {
 	if apiKey == nil || apiKey.User == nil {
-		return nil
+		return nil, nil
 	}
+
+	// ── Group 有效性与权限校验 ──
+	// 校验在 snapshot 构建时进行，确保撤权后 snapshot 不写入缓存。
+	if apiKey.Group != nil {
+		g := apiKey.Group
+		// Step 1: group 不存在/软删/非 active → fail-closed
+		if g.Status != "active" {
+			slog.Info("auth snapshot: group inactive, revoking",
+				"api_key_id", apiKey.ID, "group_id", g.ID, "group_status", g.Status)
+			return nil, ErrAPIKeyGroupRevoked
+		}
+		// Step 2: 订阅类型分组 → 校验有效订阅
+		if g.IsSubscriptionType() {
+			if s.userSubRepo != nil {
+				_, err := s.userSubRepo.GetActiveByUserIDAndGroupID(ctx, apiKey.UserID, g.ID)
+				if err != nil {
+					slog.Info("auth snapshot: subscription group, no active subscription",
+						"api_key_id", apiKey.ID, "user_id", apiKey.UserID, "group_id", g.ID)
+					return nil, ErrAPIKeyGroupRevoked
+				}
+			}
+		} else {
+			// Step 3: 标准类型分组 → effective 权限校验
+			// 独享标准分组走 direct/Pool effective 校验；公开标准分组直接放行。
+			if g.IsExclusive {
+				opts := EffectiveAllowedGroupsOptions{
+					IncludePool: true,
+				}
+				allowed, err := s.userRepo.CanBindStandardGroupEffective(ctx, apiKey.UserID, g.ID, g.IsExclusive, opts)
+				if err != nil {
+					// fail-closed: permission lookup error → revoke
+					slog.Warn("auth snapshot: effective permission check failed",
+						"api_key_id", apiKey.ID, "user_id", apiKey.UserID, "group_id", g.ID, "error", err)
+					return nil, ErrAPIKeyGroupRevoked
+				}
+				if !allowed {
+					slog.Info("auth snapshot: exclusive standard group permission revoked",
+						"api_key_id", apiKey.ID, "user_id", apiKey.UserID, "group_id", g.ID)
+					return nil, ErrAPIKeyGroupRevoked
+				}
+			}
+			// public standard (non-exclusive): pass through regardless of direct/Pool grant
+		}
+	}
+
 	snapshot := &APIKeyAuthSnapshot{
 		Version:     apiKeyAuthSnapshotVersion,
 		APIKeyID:    apiKey.ID,
@@ -242,6 +294,14 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 		override, err := s.userGroupRateRepo.GetRPMOverrideByUserAndGroup(ctx, apiKey.UserID, *apiKey.GroupID)
 		if err == nil && override != nil {
 			snapshot.User.UserGroupRPMOverride = override
+		} else if err == nil && override == nil &&
+			apiKey.Group != nil && !apiKey.Group.IsSubscriptionType() {
+			// direct RPM miss on standard group — fallback to Pool grant rpm_override (best-effort)
+			poolGrant, poolErr := s.userGroupRateRepo.GetPoolGroupGrantByUserAndGroup(ctx, apiKey.UserID, *apiKey.GroupID)
+			if poolErr == nil && poolGrant.Found && poolGrant.RPMOverride != nil {
+				snapshot.User.UserGroupRPMOverride = poolGrant.RPMOverride
+			}
+			// pool query failure or nil RPMOverride: inherit group rpm_limit (leave nil)
 		}
 		// 查询失败或无 override 时留 nil，checkRPM 会回退到 DB 查询
 	}
@@ -252,6 +312,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			Platform:                        apiKey.Group.Platform,
 			Status:                          apiKey.Group.Status,
 			SubscriptionType:                apiKey.Group.SubscriptionType,
+			IsExclusive:                     apiKey.Group.IsExclusive,
 			RateMultiplier:                  apiKey.Group.RateMultiplier,
 			DailyLimitUSD:                   apiKey.Group.DailyLimitUSD,
 			WeeklyLimitUSD:                  apiKey.Group.WeeklyLimitUSD,
@@ -275,7 +336,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			RPMLimit:                        apiKey.Group.RPMLimit,
 		}
 	}
-	return snapshot
+	return snapshot, nil
 }
 
 func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapshot) *APIKey {
@@ -322,6 +383,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			Status:                          snapshot.Group.Status,
 			Hydrated:                        true,
 			SubscriptionType:                snapshot.Group.SubscriptionType,
+			IsExclusive:                     snapshot.Group.IsExclusive,
 			RateMultiplier:                  snapshot.Group.RateMultiplier,
 			DailyLimitUSD:                   snapshot.Group.DailyLimitUSD,
 			WeeklyLimitUSD:                  snapshot.Group.WeeklyLimitUSD,

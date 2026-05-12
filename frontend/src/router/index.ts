@@ -426,6 +426,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/user-pools',
+    name: 'AdminUserPools',
+    component: () => import('@/views/admin/UserPoolsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'User Pool Management',
+      titleKey: 'admin.userPools.title',
+      descriptionKey: 'admin.userPools.description'
+    }
+  },
+  {
     path: '/admin/channels',
     redirect: '/admin/channels/pricing'
   },

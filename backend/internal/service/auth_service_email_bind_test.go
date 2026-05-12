@@ -845,7 +845,17 @@ func (s *emailBindUserRepoStub) UnbindUserAuthProvider(context.Context, int64, s
 
 func (s *emailBindUserRepoStub) UpdateTotpSecret(context.Context, int64, *string) error { return nil }
 func (s *emailBindUserRepoStub) EnableTotp(context.Context, int64) error                { return nil }
-func (s *emailBindUserRepoStub) DisableTotp(context.Context, int64) error               { return nil }
+func (s *emailBindUserRepoStub) DisableTotp(context.Context, int64) error { return nil }
+
+func (s *emailBindUserRepoStub) GetEffectiveAllowedGroups(_ context.Context, _ []int64, _ service.EffectiveAllowedGroupsOptions) (map[int64][]int64, error) {
+	return nil, nil
+}
+func (s *emailBindUserRepoStub) GetEffectiveAllowedGroupSources(_ context.Context, _ []int64, _ service.EffectiveAllowedGroupsOptions) (map[int64][]service.EffectiveAllowedGroupSource, error) {
+	return nil, nil
+}
+func (s *emailBindUserRepoStub) CanBindStandardGroupEffective(_ context.Context, _ int64, _ int64, _ bool, _ service.EffectiveAllowedGroupsOptions) (bool, error) {
+	return true, nil
+}
 
 func cloneEmailBindUser(user *service.User) *service.User {
 	if user == nil {

@@ -27,6 +27,17 @@ type GroupRPMOverrideInput struct {
 	RPMOverride *int  `json:"rpm_override"`
 }
 
+// PoolGroupGrantSelection Pool 分组授权查询结果。
+// Found=false 表示没有任何 active Pool grant；
+// Found=true 但 RateMultiplier/RPMOverride 为 nil 表示已选中最小 pool_id 的 grant，字段继承 group default，不跳到更大 Pool。
+type PoolGroupGrantSelection struct {
+	Found          bool
+	PoolID         int64
+	PoolName       string
+	RateMultiplier *float64
+	RPMOverride    *int
+}
+
 // UserGroupRateRepository 用户专属分组倍率/RPM 仓储接口。
 // 允许管理员为特定用户设置分组的专属计费倍率与 RPM 上限，覆盖分组默认值。
 type UserGroupRateRepository interface {
@@ -60,4 +71,9 @@ type UserGroupRateRepository interface {
 
 	// DeleteByUserID 删除指定用户的所有专属条目（用户删除时调用）
 	DeleteByUserID(ctx context.Context, userID int64) error
+
+	// GetPoolGroupGrantByUserAndGroup 查询用户在指定分组最小 pool_id 的 active Pool grant。
+	// 若无任何 active Pool grant 则返回 Found=false。
+	// NOT 加 rate/rpm IS NOT NULL 过滤：最小 pool_id 的 NULL 字段表示继承 group default，不跳到更大 Pool。
+	GetPoolGroupGrantByUserAndGroup(ctx context.Context, userID, groupID int64) (PoolGroupGrantSelection, error)
 }

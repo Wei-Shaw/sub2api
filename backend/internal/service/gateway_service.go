@@ -86,11 +86,12 @@ var (
 	windowCostPrefetchFallbackTotal  atomic.Int64
 	windowCostPrefetchErrorTotal     atomic.Int64
 
-	userGroupRateCacheHitTotal      atomic.Int64
-	userGroupRateCacheMissTotal     atomic.Int64
-	userGroupRateCacheLoadTotal     atomic.Int64
-	userGroupRateCacheSFSharedTotal atomic.Int64
-	userGroupRateCacheFallbackTotal atomic.Int64
+	userGroupRateCacheHitTotal          atomic.Int64
+	userGroupRateCacheMissTotal         atomic.Int64
+	userGroupRateCacheLoadTotal         atomic.Int64
+	userGroupRateCacheSFSharedTotal     atomic.Int64
+	userGroupRateCacheFallbackTotal     atomic.Int64
+	userPoolRateFallbackQueryErrorTotal atomic.Int64
 
 	modelsListCacheHitTotal   atomic.Int64
 	modelsListCacheMissTotal  atomic.Int64
@@ -115,6 +116,11 @@ func GatewayUserGroupRateCacheStats() (cacheHit, cacheMiss, load, singleflightSh
 
 func GatewayModelsListCacheStats() (cacheHit, cacheMiss, store int64) {
 	return modelsListCacheHitTotal.Load(), modelsListCacheMissTotal.Load(), modelsListCacheStoreTotal.Load()
+}
+
+// GatewayUserPoolRateFallbackQueryErrorTotal 返回 Pool rate fallback 查询失败次数（供测试用）。
+func GatewayUserPoolRateFallbackQueryErrorTotal() int64 {
+	return userPoolRateFallbackQueryErrorTotal.Load()
 }
 
 func openAIStreamEventIsTerminal(data string) bool {
@@ -641,7 +647,7 @@ func NewGatewayService(
 		resolver:             resolver,
 		balanceNotifyService: balanceNotifyService,
 	}
-	svc.userGroupRateResolver = newUserGroupRateResolver(
+	svc.userGroupRateResolver = newUserGroupRateResolverWithConfig(
 		userGroupRateRepo,
 		svc.userGroupRateCache,
 		userGroupRateTTL,
@@ -7896,7 +7902,7 @@ func (s *GatewayService) getUserGroupRateMultiplier(ctx context.Context, userID,
 	}
 	resolver := s.userGroupRateResolver
 	if resolver == nil {
-		resolver = newUserGroupRateResolver(
+		resolver = newUserGroupRateResolverWithConfig(
 			s.userGroupRateRepo,
 			s.userGroupRateCache,
 			resolveUserGroupRateCacheTTL(s.cfg),
@@ -9621,4 +9627,19 @@ func (s *GatewayService) debugLogGatewaySnapshot(tag string, headers http.Header
 
 	// 写入文件（调试用，并发写入可能交错但不影响可读性）
 	_, _ = f.WriteString(buf.String())
+}
+
+// ── UserGroupRateCacheInvalidator implementation ─────────────────────────────
+
+// InvalidateUserGroupRateCache removes cached rate multiplier entries for the given
+// (user_id, group_id) pairs from the in-process gocache.
+func (s *GatewayService) InvalidateUserGroupRateCache(_ context.Context, pairs []RatePair) error {
+	if s == nil || s.userGroupRateCache == nil {
+		return nil
+	}
+	for _, p := range pairs {
+		key := fmt.Sprintf("%d:%d", p.UserID, p.GroupID)
+		s.userGroupRateCache.Delete(key)
+	}
+	return nil
 }

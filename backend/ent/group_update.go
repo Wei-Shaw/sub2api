@@ -19,6 +19,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
+	"github.com/Wei-Shaw/sub2api/ent/userpool"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
@@ -727,6 +728,21 @@ func (_u *GroupUpdate) AddAllowedUsers(v ...*User) *GroupUpdate {
 	return _u.AddAllowedUserIDs(ids...)
 }
 
+// AddUserPoolIDs adds the "user_pools" edge to the UserPool entity by IDs.
+func (_u *GroupUpdate) AddUserPoolIDs(ids ...int64) *GroupUpdate {
+	_u.mutation.AddUserPoolIDs(ids...)
+	return _u
+}
+
+// AddUserPools adds the "user_pools" edges to the UserPool entity.
+func (_u *GroupUpdate) AddUserPools(v ...*UserPool) *GroupUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddUserPoolIDs(ids...)
+}
+
 // Mutation returns the GroupMutation object of the builder.
 func (_u *GroupUpdate) Mutation() *GroupMutation {
 	return _u.mutation
@@ -856,6 +872,27 @@ func (_u *GroupUpdate) RemoveAllowedUsers(v ...*User) *GroupUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveAllowedUserIDs(ids...)
+}
+
+// ClearUserPools clears all "user_pools" edges to the UserPool entity.
+func (_u *GroupUpdate) ClearUserPools() *GroupUpdate {
+	_u.mutation.ClearUserPools()
+	return _u
+}
+
+// RemoveUserPoolIDs removes the "user_pools" edge to UserPool entities by IDs.
+func (_u *GroupUpdate) RemoveUserPoolIDs(ids ...int64) *GroupUpdate {
+	_u.mutation.RemoveUserPoolIDs(ids...)
+	return _u
+}
+
+// RemoveUserPools removes "user_pools" edges to UserPool entities.
+func (_u *GroupUpdate) RemoveUserPools(v ...*UserPool) *GroupUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveUserPoolIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -1407,6 +1444,63 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
 		createE := &UserAllowedGroupCreate{config: _u.config, mutation: newUserAllowedGroupMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.UserPoolsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   group.UserPoolsTable,
+			Columns: group.UserPoolsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(userpool.FieldID, field.TypeInt64),
+			},
+		}
+		createE := &UserPoolGroupGrantCreate{config: _u.config, mutation: newUserPoolGroupGrantMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedUserPoolsIDs(); len(nodes) > 0 && !_u.mutation.UserPoolsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   group.UserPoolsTable,
+			Columns: group.UserPoolsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(userpool.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &UserPoolGroupGrantCreate{config: _u.config, mutation: newUserPoolGroupGrantMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.UserPoolsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   group.UserPoolsTable,
+			Columns: group.UserPoolsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(userpool.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &UserPoolGroupGrantCreate{config: _u.config, mutation: newUserPoolGroupGrantMutation(_u.config, OpCreate)}
 		createE.defaults()
 		_, specE := createE.createSpec()
 		edge.Target.Fields = specE.Fields
@@ -2123,6 +2217,21 @@ func (_u *GroupUpdateOne) AddAllowedUsers(v ...*User) *GroupUpdateOne {
 	return _u.AddAllowedUserIDs(ids...)
 }
 
+// AddUserPoolIDs adds the "user_pools" edge to the UserPool entity by IDs.
+func (_u *GroupUpdateOne) AddUserPoolIDs(ids ...int64) *GroupUpdateOne {
+	_u.mutation.AddUserPoolIDs(ids...)
+	return _u
+}
+
+// AddUserPools adds the "user_pools" edges to the UserPool entity.
+func (_u *GroupUpdateOne) AddUserPools(v ...*UserPool) *GroupUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddUserPoolIDs(ids...)
+}
+
 // Mutation returns the GroupMutation object of the builder.
 func (_u *GroupUpdateOne) Mutation() *GroupMutation {
 	return _u.mutation
@@ -2252,6 +2361,27 @@ func (_u *GroupUpdateOne) RemoveAllowedUsers(v ...*User) *GroupUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveAllowedUserIDs(ids...)
+}
+
+// ClearUserPools clears all "user_pools" edges to the UserPool entity.
+func (_u *GroupUpdateOne) ClearUserPools() *GroupUpdateOne {
+	_u.mutation.ClearUserPools()
+	return _u
+}
+
+// RemoveUserPoolIDs removes the "user_pools" edge to UserPool entities by IDs.
+func (_u *GroupUpdateOne) RemoveUserPoolIDs(ids ...int64) *GroupUpdateOne {
+	_u.mutation.RemoveUserPoolIDs(ids...)
+	return _u
+}
+
+// RemoveUserPools removes "user_pools" edges to UserPool entities.
+func (_u *GroupUpdateOne) RemoveUserPools(v ...*UserPool) *GroupUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveUserPoolIDs(ids...)
 }
 
 // Where appends a list predicates to the GroupUpdate builder.
@@ -2833,6 +2963,63 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
 		createE := &UserAllowedGroupCreate{config: _u.config, mutation: newUserAllowedGroupMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.UserPoolsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   group.UserPoolsTable,
+			Columns: group.UserPoolsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(userpool.FieldID, field.TypeInt64),
+			},
+		}
+		createE := &UserPoolGroupGrantCreate{config: _u.config, mutation: newUserPoolGroupGrantMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedUserPoolsIDs(); len(nodes) > 0 && !_u.mutation.UserPoolsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   group.UserPoolsTable,
+			Columns: group.UserPoolsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(userpool.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &UserPoolGroupGrantCreate{config: _u.config, mutation: newUserPoolGroupGrantMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.UserPoolsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   group.UserPoolsTable,
+			Columns: group.UserPoolsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(userpool.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &UserPoolGroupGrantCreate{config: _u.config, mutation: newUserPoolGroupGrantMutation(_u.config, OpCreate)}
 		createE.defaults()
 		_, specE := createE.createSpec()
 		edge.Target.Fields = specE.Fields

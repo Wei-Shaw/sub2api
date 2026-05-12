@@ -94,6 +94,16 @@ func (s *balanceLoadUserRepoStub) UnbindUserAuthProvider(context.Context, int64,
 	return nil
 }
 
+func (s *balanceLoadUserRepoStub) GetEffectiveAllowedGroups(_ context.Context, _ []int64, _ EffectiveAllowedGroupsOptions) (map[int64][]int64, error) {
+	return nil, nil
+}
+func (s *balanceLoadUserRepoStub) GetEffectiveAllowedGroupSources(_ context.Context, _ []int64, _ EffectiveAllowedGroupsOptions) (map[int64][]EffectiveAllowedGroupSource, error) {
+	return nil, nil
+}
+func (s *balanceLoadUserRepoStub) CanBindStandardGroupEffective(_ context.Context, _ int64, _ int64, _ bool, _ EffectiveAllowedGroupsOptions) (bool, error) {
+	return true, nil
+}
+
 func TestBillingCacheServiceGetUserBalance_Singleflight(t *testing.T) {
 	cache := &billingCacheMissStub{}
 	userRepo := &balanceLoadUserRepoStub{

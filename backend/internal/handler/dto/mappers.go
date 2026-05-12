@@ -194,6 +194,89 @@ func groupFromServiceBase(g *service.Group) Group {
 	}
 }
 
+// AvailableGroupFromService converts an AvailableGroupWithSource (service) to a
+// Group DTO with optional permission-source fields populated.
+func AvailableGroupFromService(a *service.AvailableGroupWithSource) *Group {
+	if a == nil {
+		return nil
+	}
+	g := groupFromServiceBase(&a.Group)
+	g.PermissionSource = a.PermissionSource
+	if a.PermissionSource == "pool" {
+		g.PoolID = a.PermissionPoolID
+		g.PoolName = a.PermissionPoolName
+	}
+	return &g
+}
+
+// AvailableGroupsProfileFromService converts the service profile result to the
+// AvailableGroupsProfile DTO.
+func AvailableGroupsProfileFromService(result *service.AvailableGroupsProfileResult) *AvailableGroupsProfile {
+	if result == nil {
+		return nil
+	}
+	bindable := make([]Group, 0, len(result.BindableGroups))
+	for i := range result.BindableGroups {
+		g := AvailableGroupFromService(&result.BindableGroups[i])
+		if g != nil {
+			bindable = append(bindable, *g)
+		}
+	}
+	grantIDs := result.GrantEffectiveGroups
+	if grantIDs == nil {
+		grantIDs = []int64{}
+	}
+	return &AvailableGroupsProfile{
+		BindableGroups:       bindable,
+		GrantEffectiveGroups: grantIDs,
+	}
+}
+
+// AllowedGroupDetailFromProfile builds an AllowedGroupDetail slice from an
+// AvailableGroupsProfile, deduplicating by group_id with priority
+// direct > pool > public > subscription.
+func AllowedGroupDetailFromProfile(profile *AvailableGroupsProfile) []AllowedGroupDetail {
+	if profile == nil {
+		return []AllowedGroupDetail{}
+	}
+	type entry struct {
+		detail AllowedGroupDetail
+		rank   int // 1=direct, 2=pool, 3=public, 4=subscription
+	}
+	byID := make(map[int64]entry)
+	for _, g := range profile.BindableGroups {
+		var rank int
+		switch g.PermissionSource {
+		case "direct":
+			rank = 1
+		case "pool":
+			rank = 2
+		case "public":
+			rank = 3
+		default:
+			rank = 4
+		}
+		e, exists := byID[g.ID]
+		if !exists || rank < e.rank {
+			byID[g.ID] = entry{
+				detail: AllowedGroupDetail{
+					GroupID:   g.ID,
+					GroupName: g.Name,
+					Source:    g.PermissionSource,
+					PoolID:    g.PoolID,
+					PoolName:  g.PoolName,
+				},
+				rank: rank,
+			}
+		}
+	}
+	result := make([]AllowedGroupDetail, 0, len(byID))
+	for _, e := range byID {
+		result = append(result, e.detail)
+	}
+	return result
+}
+
 func AccountFromServiceShallow(a *service.Account) *Account {
 	if a == nil {
 		return nil

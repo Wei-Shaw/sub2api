@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
+	"github.com/Wei-Shaw/sub2api/ent/cacheinvalidationoutbox"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
@@ -42,6 +43,9 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/ent/userattributedefinition"
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
+	"github.com/Wei-Shaw/sub2api/ent/userpool"
+	"github.com/Wei-Shaw/sub2api/ent/userpoolgroupgrant"
+	"github.com/Wei-Shaw/sub2api/ent/userpoolmember"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 )
 
@@ -288,6 +292,33 @@ func (f TraverseAuthIdentityChannel) Traverse(ctx context.Context, q ent.Query) 
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.AuthIdentityChannelQuery", q)
+}
+
+// The CacheInvalidationOutboxFunc type is an adapter to allow the use of ordinary function as a Querier.
+type CacheInvalidationOutboxFunc func(context.Context, *ent.CacheInvalidationOutboxQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f CacheInvalidationOutboxFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.CacheInvalidationOutboxQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.CacheInvalidationOutboxQuery", q)
+}
+
+// The TraverseCacheInvalidationOutbox type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseCacheInvalidationOutbox func(context.Context, *ent.CacheInvalidationOutboxQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseCacheInvalidationOutbox) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseCacheInvalidationOutbox) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.CacheInvalidationOutboxQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.CacheInvalidationOutboxQuery", q)
 }
 
 // The ChannelMonitorFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -992,6 +1023,87 @@ func (f TraverseUserAttributeValue) Traverse(ctx context.Context, q ent.Query) e
 	return fmt.Errorf("unexpected query type %T. expect *ent.UserAttributeValueQuery", q)
 }
 
+// The UserPoolFunc type is an adapter to allow the use of ordinary function as a Querier.
+type UserPoolFunc func(context.Context, *ent.UserPoolQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f UserPoolFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.UserPoolQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.UserPoolQuery", q)
+}
+
+// The TraverseUserPool type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseUserPool func(context.Context, *ent.UserPoolQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseUserPool) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseUserPool) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.UserPoolQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.UserPoolQuery", q)
+}
+
+// The UserPoolGroupGrantFunc type is an adapter to allow the use of ordinary function as a Querier.
+type UserPoolGroupGrantFunc func(context.Context, *ent.UserPoolGroupGrantQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f UserPoolGroupGrantFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.UserPoolGroupGrantQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.UserPoolGroupGrantQuery", q)
+}
+
+// The TraverseUserPoolGroupGrant type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseUserPoolGroupGrant func(context.Context, *ent.UserPoolGroupGrantQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseUserPoolGroupGrant) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseUserPoolGroupGrant) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.UserPoolGroupGrantQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.UserPoolGroupGrantQuery", q)
+}
+
+// The UserPoolMemberFunc type is an adapter to allow the use of ordinary function as a Querier.
+type UserPoolMemberFunc func(context.Context, *ent.UserPoolMemberQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f UserPoolMemberFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.UserPoolMemberQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.UserPoolMemberQuery", q)
+}
+
+// The TraverseUserPoolMember type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseUserPoolMember func(context.Context, *ent.UserPoolMemberQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseUserPoolMember) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseUserPoolMember) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.UserPoolMemberQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.UserPoolMemberQuery", q)
+}
+
 // The UserSubscriptionFunc type is an adapter to allow the use of ordinary function as a Querier.
 type UserSubscriptionFunc func(context.Context, *ent.UserSubscriptionQuery) (ent.Value, error)
 
@@ -1036,6 +1148,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.AuthIdentityQuery, predicate.AuthIdentity, authidentity.OrderOption]{typ: ent.TypeAuthIdentity, tq: q}, nil
 	case *ent.AuthIdentityChannelQuery:
 		return &query[*ent.AuthIdentityChannelQuery, predicate.AuthIdentityChannel, authidentitychannel.OrderOption]{typ: ent.TypeAuthIdentityChannel, tq: q}, nil
+	case *ent.CacheInvalidationOutboxQuery:
+		return &query[*ent.CacheInvalidationOutboxQuery, predicate.CacheInvalidationOutbox, cacheinvalidationoutbox.OrderOption]{typ: ent.TypeCacheInvalidationOutbox, tq: q}, nil
 	case *ent.ChannelMonitorQuery:
 		return &query[*ent.ChannelMonitorQuery, predicate.ChannelMonitor, channelmonitor.OrderOption]{typ: ent.TypeChannelMonitor, tq: q}, nil
 	case *ent.ChannelMonitorDailyRollupQuery:
@@ -1088,6 +1202,12 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.UserAttributeDefinitionQuery, predicate.UserAttributeDefinition, userattributedefinition.OrderOption]{typ: ent.TypeUserAttributeDefinition, tq: q}, nil
 	case *ent.UserAttributeValueQuery:
 		return &query[*ent.UserAttributeValueQuery, predicate.UserAttributeValue, userattributevalue.OrderOption]{typ: ent.TypeUserAttributeValue, tq: q}, nil
+	case *ent.UserPoolQuery:
+		return &query[*ent.UserPoolQuery, predicate.UserPool, userpool.OrderOption]{typ: ent.TypeUserPool, tq: q}, nil
+	case *ent.UserPoolGroupGrantQuery:
+		return &query[*ent.UserPoolGroupGrantQuery, predicate.UserPoolGroupGrant, userpoolgroupgrant.OrderOption]{typ: ent.TypeUserPoolGroupGrant, tq: q}, nil
+	case *ent.UserPoolMemberQuery:
+		return &query[*ent.UserPoolMemberQuery, predicate.UserPoolMember, userpoolmember.OrderOption]{typ: ent.TypeUserPoolMember, tq: q}, nil
 	case *ent.UserSubscriptionQuery:
 		return &query[*ent.UserSubscriptionQuery, predicate.UserSubscription, usersubscription.OrderOption]{typ: ent.TypeUserSubscription, tq: q}, nil
 	default:

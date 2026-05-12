@@ -97,6 +97,9 @@ func RegisterAdminRoutes(
 
 		// 邀请返利（专属用户管理）
 		registerAffiliateRoutes(admin, h)
+
+		// 用户池管理
+		registerUserPoolRoutes(admin, h)
 	}
 }
 
@@ -250,6 +253,9 @@ func registerUserManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		// User attribute values
 		users.GET("/:id/attributes", h.Admin.UserAttribute.GetUserAttributes)
 		users.PUT("/:id/attributes", h.Admin.UserAttribute.UpdateUserAttributes)
+
+		// User pools (read-only view per user)
+		users.GET("/:id/pools", h.Admin.UserPool.GetUserPools)
 	}
 }
 
@@ -638,5 +644,23 @@ func registerAffiliateRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 			users.PUT("/:user_id", h.Admin.Affiliate.UpdateUserSettings)
 			users.DELETE("/:user_id", h.Admin.Affiliate.ClearUserSettings)
 		}
+	}
+}
+
+func registerUserPoolRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	userPools := admin.Group("/user-pools")
+	{
+		userPools.POST("", h.Admin.UserPool.Create)
+		userPools.GET("", h.Admin.UserPool.List)
+		userPools.GET("/:id", h.Admin.UserPool.GetByID)
+		userPools.PUT("/:id", h.Admin.UserPool.Update)
+		userPools.DELETE("/:id", h.Admin.UserPool.Delete)
+		userPools.POST("/:id/members", h.Admin.UserPool.AddMembers)
+		userPools.POST("/:id/members/remove", h.Admin.UserPool.RemoveMembers)
+		userPools.POST("/:id/members/by-filter", h.Admin.UserPool.AddMembersByFilter)
+		userPools.GET("/:id/members", h.Admin.UserPool.ListMembers)
+		userPools.GET("/:id/allowed-groups", h.Admin.UserPool.ListGroupGrants)
+		userPools.PUT("/:id/allowed-groups", h.Admin.UserPool.ReplaceGroupGrants)
+		userPools.DELETE("/:id/allowed-groups/:group_id", h.Admin.UserPool.DeleteGroupGrant)
 	}
 }

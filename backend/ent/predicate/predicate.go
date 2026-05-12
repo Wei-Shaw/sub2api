@@ -27,6 +27,9 @@ type AuthIdentity func(*sql.Selector)
 // AuthIdentityChannel is the predicate function for authidentitychannel builders.
 type AuthIdentityChannel func(*sql.Selector)
 
+// CacheInvalidationOutbox is the predicate function for cacheinvalidationoutbox builders.
+type CacheInvalidationOutbox func(*sql.Selector)
+
 // ChannelMonitor is the predicate function for channelmonitor builders.
 type ChannelMonitor func(*sql.Selector)
 
@@ -104,6 +107,15 @@ type UserAttributeDefinition func(*sql.Selector)
 
 // UserAttributeValue is the predicate function for userattributevalue builders.
 type UserAttributeValue func(*sql.Selector)
+
+// UserPool is the predicate function for userpool builders.
+type UserPool func(*sql.Selector)
+
+// UserPoolGroupGrant is the predicate function for userpoolgroupgrant builders.
+type UserPoolGroupGrant func(*sql.Selector)
+
+// UserPoolMember is the predicate function for userpoolmember builders.
+type UserPoolMember func(*sql.Selector)
 
 // UserSubscription is the predicate function for usersubscription builders.
 type UserSubscription func(*sql.Selector)

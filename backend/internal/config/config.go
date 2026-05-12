@@ -92,6 +92,21 @@ type Config struct {
 	Gemini                  GeminiConfig                  `mapstructure:"gemini"`
 	Update                  UpdateConfig                  `mapstructure:"update"`
 	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
+	CacheInvalidation       CacheInvalidationConfig       `mapstructure:"cache_invalidation"`
+}
+
+// CacheInvalidationConfig 缓存失效配置
+type CacheInvalidationConfig struct {
+	Outbox CacheInvalidationOutboxConfig `mapstructure:"outbox"`
+}
+
+// CacheInvalidationOutboxConfig outbox 缓存失效 worker 配置
+type CacheInvalidationOutboxConfig struct {
+	PollIntervalSeconds      int `mapstructure:"poll_interval_seconds"`
+	BatchSize                int `mapstructure:"batch_size"`
+	LockTimeoutSeconds       int `mapstructure:"lock_timeout_seconds"`
+	MaxAttempts              int `mapstructure:"max_attempts"`
+	DeadLetterAlertThreshold int `mapstructure:"dead_letter_alert_threshold"`
 }
 
 type LogConfig struct {
@@ -1860,6 +1875,13 @@ func setDefaults() {
 	viper.SetDefault("subscription_maintenance.worker_count", 2)
 	viper.SetDefault("subscription_maintenance.queue_size", 1024)
 
+	// Cache Invalidation Outbox
+	viper.SetDefault("cache_invalidation.outbox.poll_interval_seconds", 2)
+	viper.SetDefault("cache_invalidation.outbox.batch_size", 100)
+	viper.SetDefault("cache_invalidation.outbox.lock_timeout_seconds", 60)
+	viper.SetDefault("cache_invalidation.outbox.max_attempts", 12)
+	viper.SetDefault("cache_invalidation.outbox.dead_letter_alert_threshold", 1)
+
 }
 
 func (c *Config) Validate() error {
@@ -2665,6 +2687,23 @@ func (c *Config) Validate() error {
 	}
 	if err := ValidateDingTalkConfig(c.DingTalk); err != nil {
 		return fmt.Errorf("dingtalk_connect: %w", err)
+	}
+	// CacheInvalidation Outbox validation
+	outbox := c.CacheInvalidation.Outbox
+	if outbox.PollIntervalSeconds <= 0 {
+		return fmt.Errorf("cache_invalidation.outbox.poll_interval_seconds must be positive, got %d", outbox.PollIntervalSeconds)
+	}
+	if outbox.BatchSize <= 0 {
+		return fmt.Errorf("cache_invalidation.outbox.batch_size must be positive, got %d", outbox.BatchSize)
+	}
+	if outbox.LockTimeoutSeconds <= 0 {
+		return fmt.Errorf("cache_invalidation.outbox.lock_timeout_seconds must be positive, got %d", outbox.LockTimeoutSeconds)
+	}
+	if outbox.MaxAttempts <= 0 {
+		return fmt.Errorf("cache_invalidation.outbox.max_attempts must be positive, got %d", outbox.MaxAttempts)
+	}
+	if outbox.DeadLetterAlertThreshold < 0 {
+		return fmt.Errorf("cache_invalidation.outbox.dead_letter_alert_threshold must be non-negative, got %d", outbox.DeadLetterAlertThreshold)
 	}
 	return nil
 }

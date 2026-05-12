@@ -173,6 +173,16 @@ func (s *userRepoStub) DisableTotp(ctx context.Context, userID int64) error {
 	panic("unexpected DisableTotp call")
 }
 
+func (s *userRepoStub) GetEffectiveAllowedGroups(_ context.Context, _ []int64, _ EffectiveAllowedGroupsOptions) (map[int64][]int64, error) {
+	return nil, nil
+}
+func (s *userRepoStub) GetEffectiveAllowedGroupSources(_ context.Context, _ []int64, _ EffectiveAllowedGroupsOptions) (map[int64][]EffectiveAllowedGroupSource, error) {
+	return nil, nil
+}
+func (s *userRepoStub) CanBindStandardGroupEffective(_ context.Context, _ int64, _ int64, _ bool, _ EffectiveAllowedGroupsOptions) (bool, error) {
+	return true, nil
+}
+
 type groupRepoStub struct {
 	affectedUserIDs []int64
 	deleteErr       error
@@ -242,6 +252,10 @@ func (s *groupRepoStub) GetAccountIDsByGroupIDs(ctx context.Context, groupIDs []
 
 func (s *groupRepoStub) UpdateSortOrders(ctx context.Context, updates []GroupSortOrderUpdate) error {
 	return nil
+}
+
+func (s *groupRepoStub) ListUserIDsAllowingGroup(_ context.Context, _ int64) ([]int64, error) {
+	return nil, nil
 }
 
 type proxyRepoStub struct {

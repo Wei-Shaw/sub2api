@@ -93,6 +93,18 @@ func (f AuthIdentityChannelFunc) Mutate(ctx context.Context, m ent.Mutation) (en
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AuthIdentityChannelMutation", m)
 }
 
+// The CacheInvalidationOutboxFunc type is an adapter to allow the use of ordinary
+// function as CacheInvalidationOutbox mutator.
+type CacheInvalidationOutboxFunc func(context.Context, *ent.CacheInvalidationOutboxMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CacheInvalidationOutboxFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CacheInvalidationOutboxMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CacheInvalidationOutboxMutation", m)
+}
+
 // The ChannelMonitorFunc type is an adapter to allow the use of ordinary
 // function as ChannelMonitor mutator.
 type ChannelMonitorFunc func(context.Context, *ent.ChannelMonitorMutation) (ent.Value, error)
@@ -403,6 +415,42 @@ func (f UserAttributeValueFunc) Mutate(ctx context.Context, m ent.Mutation) (ent
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.UserAttributeValueMutation", m)
+}
+
+// The UserPoolFunc type is an adapter to allow the use of ordinary
+// function as UserPool mutator.
+type UserPoolFunc func(context.Context, *ent.UserPoolMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f UserPoolFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.UserPoolMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.UserPoolMutation", m)
+}
+
+// The UserPoolGroupGrantFunc type is an adapter to allow the use of ordinary
+// function as UserPoolGroupGrant mutator.
+type UserPoolGroupGrantFunc func(context.Context, *ent.UserPoolGroupGrantMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f UserPoolGroupGrantFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.UserPoolGroupGrantMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.UserPoolGroupGrantMutation", m)
+}
+
+// The UserPoolMemberFunc type is an adapter to allow the use of ordinary
+// function as UserPoolMember mutator.
+type UserPoolMemberFunc func(context.Context, *ent.UserPoolMemberMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f UserPoolMemberFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.UserPoolMemberMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.UserPoolMemberMutation", m)
 }
 
 // The UserSubscriptionFunc type is an adapter to allow the use of ordinary

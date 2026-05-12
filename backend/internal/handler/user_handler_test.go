@@ -119,6 +119,16 @@ func (s *userHandlerRepoStub) ListUserAuthIdentities(context.Context, int64) ([]
 	copy(out, s.identities)
 	return out, nil
 }
+func (s *userHandlerRepoStub) GetEffectiveAllowedGroups(_ context.Context, _ []int64, _ service.EffectiveAllowedGroupsOptions) (map[int64][]int64, error) {
+	return nil, nil
+}
+func (s *userHandlerRepoStub) GetEffectiveAllowedGroupSources(_ context.Context, _ []int64, _ service.EffectiveAllowedGroupsOptions) (map[int64][]service.EffectiveAllowedGroupSource, error) {
+	return nil, nil
+}
+func (s *userHandlerRepoStub) CanBindStandardGroupEffective(_ context.Context, _ int64, _ int64, _ bool, _ service.EffectiveAllowedGroupsOptions) (bool, error) {
+	return true, nil
+}
+
 func (s *userHandlerRepoStub) UnbindUserAuthProvider(_ context.Context, _ int64, provider string) error {
 	s.unbound = append(s.unbound, provider)
 	filtered := s.identities[:0]

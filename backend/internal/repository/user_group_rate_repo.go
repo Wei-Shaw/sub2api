@@ -398,3 +398,54 @@ func (r *userGroupRateRepository) DeleteByUserID(ctx context.Context, userID int
 	_, err := r.sql.ExecContext(ctx, `DELETE FROM user_group_rate_multipliers WHERE user_id = $1`, userID)
 	return err
 }
+
+// GetPoolGroupGrantByUserAndGroup 查询用户在指定分组最小 pool_id 的 active Pool grant。
+// 过滤 active Pool、active standard group、active user；ORDER BY p.id ASC LIMIT 1。
+// 不加 rate/rpm IS NOT NULL 过滤：最小 pool_id 的 NULL 字段表示继承 group default，不跳到更大 Pool。
+func (r *userGroupRateRepository) GetPoolGroupGrantByUserAndGroup(ctx context.Context, userID, groupID int64) (service.PoolGroupGrantSelection, error) {
+	const query = `
+SELECT p.id, p.name, g.rate_multiplier, g.rpm_override
+  FROM user_pool_group_grants g
+  JOIN user_pool_members m ON m.pool_id = g.pool_id
+  JOIN user_pools p ON p.id = g.pool_id
+  JOIN users u ON u.id = m.user_id
+  JOIN groups grp ON grp.id = g.group_id
+ WHERE m.user_id = $1
+   AND g.group_id = $2
+   AND p.deleted_at IS NULL
+   AND p.status = 'active'
+   AND u.deleted_at IS NULL
+   AND grp.deleted_at IS NULL
+   AND grp.status = 'active'
+   AND grp.subscription_type = 'standard'
+ ORDER BY p.id ASC
+ LIMIT 1`
+
+	rows, err := r.sql.QueryContext(ctx, query, userID, groupID)
+	if err != nil {
+		return service.PoolGroupGrantSelection{}, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return service.PoolGroupGrantSelection{}, err
+		}
+		return service.PoolGroupGrantSelection{Found: false}, nil
+	}
+
+	var poolID int64
+	var poolName string
+	var rateMultiplier *float64
+	var rpmOverride *int
+	if err := rows.Scan(&poolID, &poolName, &rateMultiplier, &rpmOverride); err != nil {
+		return service.PoolGroupGrantSelection{}, err
+	}
+	return service.PoolGroupGrantSelection{
+		Found:          true,
+		PoolID:         poolID,
+		PoolName:       poolName,
+		RateMultiplier: rateMultiplier,
+		RPMOverride:    rpmOverride,
+	}, nil
+}

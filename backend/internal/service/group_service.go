@@ -35,6 +35,11 @@ type GroupRepository interface {
 	BindAccountsToGroup(ctx context.Context, groupID int64, accountIDs []int64) error
 	// UpdateSortOrders 批量更新分组排序
 	UpdateSortOrders(ctx context.Context, updates []GroupSortOrderUpdate) error
+	// ListUserIDsAllowingGroup returns all user IDs that have effective access to groupID,
+	// covering both direct grants (user_allowed_groups) and pool-derived grants
+	// (user_pool_group_grants + user_pool_members).
+	// Uses a single SQL query; safe for arbitrarily large membership.
+	ListUserIDsAllowingGroup(ctx context.Context, groupID int64) ([]int64, error)
 }
 
 // GroupSortOrderUpdate 分组排序更新

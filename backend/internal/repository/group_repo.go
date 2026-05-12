@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -662,6 +663,43 @@ func (r *groupRepository) DeleteCascade(ctx context.Context, id int64) ([]int64,
 		return nil, err
 	}
 
+	// 6. Collect pool member user IDs affected by grants on this group, then clean up
+	// user_pool_group_grants. Soft-delete does not trigger FK CASCADE, so we must
+	// explicitly delete grant rows and write an outbox event for cache invalidation.
+	poolMemberUserIDs, err := collectPoolMembersByGroupID(ctx, exec, id)
+	if err != nil {
+		return nil, fmt.Errorf("collect pool_members for group %d: %w", id, err)
+	}
+
+	if _, err := exec.ExecContext(ctx, `DELETE FROM user_pool_group_grants WHERE group_id = $1`, id); err != nil {
+		return nil, fmt.Errorf("delete user_pool_group_grants for group %d: %w", id, err)
+	}
+
+	// Merge pool member IDs into affectedUserIDs (deduplicated).
+	if len(poolMemberUserIDs) > 0 {
+		seen := make(map[int64]struct{}, len(affectedUserIDs))
+		for _, uid := range affectedUserIDs {
+			seen[uid] = struct{}{}
+		}
+		for _, uid := range poolMemberUserIDs {
+			if _, ok := seen[uid]; !ok {
+				affectedUserIDs = append(affectedUserIDs, uid)
+				seen[uid] = struct{}{}
+			}
+		}
+	}
+
+	// Write auth-cache invalidation outbox row inside the same transaction.
+	// This guarantees that if the group delete commits, the outbox row commits too,
+	// so affected pool-member API Keys will have their auth snapshot invalidated by
+	// the outbox worker even if the in-process invalidator fails.
+	if len(poolMemberUserIDs) > 0 {
+		groupIDAgg := id
+		if err := enqueueGroupDeleteOutbox(ctx, exec, groupIDAgg, poolMemberUserIDs); err != nil {
+			return nil, fmt.Errorf("enqueue cache invalidation outbox for group %d: %w", id, err)
+		}
+	}
+
 	if tx != nil {
 		if err := tx.Commit(); err != nil {
 			return nil, err
@@ -672,6 +710,66 @@ func (r *groupRepository) DeleteCascade(ctx context.Context, id int64) ([]int64,
 	}
 
 	return affectedUserIDs, nil
+}
+
+// collectPoolMembersByGroupID returns the distinct user IDs of all pool members whose pool
+// has at least one grant for the given group.  Used to build the auth-cache invalidation
+// list when a group is deleted.
+func collectPoolMembersByGroupID(ctx context.Context, exec interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}, groupID int64) ([]int64, error) {
+	rows, err := exec.QueryContext(ctx, `
+SELECT DISTINCT m.user_id
+  FROM user_pool_group_grants g
+  JOIN user_pool_members m ON m.pool_id = g.pool_id
+ WHERE g.group_id = $1`, groupID)
+	if err != nil {
+		return nil, err
+	}
+	var ids []int64
+	for rows.Next() {
+		var uid int64
+		if scanErr := rows.Scan(&uid); scanErr != nil {
+			_ = rows.Close()
+			return nil, scanErr
+		}
+		ids = append(ids, uid)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	return ids, rows.Err()
+}
+
+// enqueueGroupDeleteOutbox inserts a cache_invalidation_outbox row (within the current
+// transaction) so that pool-member auth snapshots are reliably invalidated after a
+// group is deleted.
+func enqueueGroupDeleteOutbox(ctx context.Context, exec interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}, groupID int64, affectedUserIDs []int64) error {
+	payload := service.EventPayload{
+		SchemaVersion:    service.EventPayloadSchemaVersion,
+		AffectedUserIDs:  affectedUserIDs,
+		AffectedGroupIDs: []int64{groupID},
+	}
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal payload: %w", err)
+	}
+	_, err = exec.ExecContext(ctx, `
+INSERT INTO cache_invalidation_outbox
+    (event_type, aggregate_type, aggregate_id, reason, cache_types, payload,
+     status, attempts, max_attempts, next_attempt_at)
+VALUES ($1, $2, $3, $4, $5, $6,
+        'pending', 0, 12, NOW())`,
+		service.EventTypeAuthCacheInvalidate,
+		"group",
+		groupID,
+		service.ReasonGroupDeleted,
+		pq.Array([]string{service.CacheTypeAuthSnapshot}),
+		payloadJSON,
+	)
+	return err
 }
 
 type groupAccountCounts struct {
@@ -859,4 +957,48 @@ func (r *groupRepository) UpdateSortOrders(ctx context.Context, updates []servic
 		}
 	}
 	return nil
+}
+
+// ListUserIDsAllowingGroup returns all user IDs that have effective access to groupID,
+// covering both direct grants (user_allowed_groups) and pool-derived grants.
+// Returns deduplicated IDs in ascending order.
+func (r *groupRepository) ListUserIDsAllowingGroup(ctx context.Context, groupID int64) ([]int64, error) {
+	rows, err := r.sql.QueryContext(ctx, `
+SELECT DISTINCT u.id
+  FROM users u
+ WHERE u.deleted_at IS NULL
+   AND (
+         -- Direct grants: user explicitly allowed this group.
+         EXISTS (
+             SELECT 1 FROM user_allowed_groups uag
+              WHERE uag.user_id = u.id AND uag.group_id = $1
+         )
+         OR
+         -- Pool-derived grants: user is a member of a pool that grants this group.
+         EXISTS (
+             SELECT 1
+               FROM user_pool_members upm
+               JOIN user_pool_group_grants upgr ON upgr.pool_id = upm.pool_id
+               JOIN user_pools up ON up.id = upm.pool_id AND up.status = 'active'
+              WHERE upm.user_id = u.id AND upgr.group_id = $1
+         )
+       )
+ ORDER BY u.id ASC`, groupID)
+	if err != nil {
+		return nil, fmt.Errorf("group: list_user_ids_allowing_group: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var ids []int64
+	for rows.Next() {
+		var uid int64
+		if scanErr := rows.Scan(&uid); scanErr != nil {
+			return nil, fmt.Errorf("group: list_user_ids_allowing_group scan: %w", scanErr)
+		}
+		ids = append(ids, uid)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("group: list_user_ids_allowing_group rows: %w", err)
+	}
+	return ids, nil
 }

@@ -95,11 +95,15 @@ type UserEdges struct {
 	AuthIdentities []*AuthIdentity `json:"auth_identities,omitempty"`
 	// PendingAuthSessions holds the value of the pending_auth_sessions edge.
 	PendingAuthSessions []*PendingAuthSession `json:"pending_auth_sessions,omitempty"`
+	// UserPools holds the value of the user_pools edge.
+	UserPools []*UserPool `json:"user_pools,omitempty"`
 	// UserAllowedGroups holds the value of the user_allowed_groups edge.
 	UserAllowedGroups []*UserAllowedGroup `json:"user_allowed_groups,omitempty"`
+	// PoolMemberships holds the value of the pool_memberships edge.
+	PoolMemberships []*UserPoolMember `json:"pool_memberships,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [13]bool
+	loadedTypes [15]bool
 }
 
 // APIKeysOrErr returns the APIKeys value or an error if the edge
@@ -210,13 +214,31 @@ func (e UserEdges) PendingAuthSessionsOrErr() ([]*PendingAuthSession, error) {
 	return nil, &NotLoadedError{edge: "pending_auth_sessions"}
 }
 
+// UserPoolsOrErr returns the UserPools value or an error if the edge
+// was not loaded in eager-loading.
+func (e UserEdges) UserPoolsOrErr() ([]*UserPool, error) {
+	if e.loadedTypes[12] {
+		return e.UserPools, nil
+	}
+	return nil, &NotLoadedError{edge: "user_pools"}
+}
+
 // UserAllowedGroupsOrErr returns the UserAllowedGroups value or an error if the edge
 // was not loaded in eager-loading.
 func (e UserEdges) UserAllowedGroupsOrErr() ([]*UserAllowedGroup, error) {
-	if e.loadedTypes[12] {
+	if e.loadedTypes[13] {
 		return e.UserAllowedGroups, nil
 	}
 	return nil, &NotLoadedError{edge: "user_allowed_groups"}
+}
+
+// PoolMembershipsOrErr returns the PoolMemberships value or an error if the edge
+// was not loaded in eager-loading.
+func (e UserEdges) PoolMembershipsOrErr() ([]*UserPoolMember, error) {
+	if e.loadedTypes[14] {
+		return e.PoolMemberships, nil
+	}
+	return nil, &NotLoadedError{edge: "pool_memberships"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -472,9 +494,19 @@ func (_m *User) QueryPendingAuthSessions() *PendingAuthSessionQuery {
 	return NewUserClient(_m.config).QueryPendingAuthSessions(_m)
 }
 
+// QueryUserPools queries the "user_pools" edge of the User entity.
+func (_m *User) QueryUserPools() *UserPoolQuery {
+	return NewUserClient(_m.config).QueryUserPools(_m)
+}
+
 // QueryUserAllowedGroups queries the "user_allowed_groups" edge of the User entity.
 func (_m *User) QueryUserAllowedGroups() *UserAllowedGroupQuery {
 	return NewUserClient(_m.config).QueryUserAllowedGroups(_m)
+}
+
+// QueryPoolMemberships queries the "pool_memberships" edge of the User entity.
+func (_m *User) QueryPoolMemberships() *UserPoolMemberQuery {
+	return NewUserClient(_m.config).QueryPoolMemberships(_m)
 }
 
 // Update returns a builder for updating this User.

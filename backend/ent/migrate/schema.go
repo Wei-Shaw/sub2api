@@ -421,6 +421,64 @@ var (
 			},
 		},
 	}
+	// CacheInvalidationOutboxColumns holds the columns for the "cache_invalidation_outbox" table.
+	CacheInvalidationOutboxColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "event_type", Type: field.TypeString, Size: 64},
+		{Name: "aggregate_type", Type: field.TypeString, Size: 64},
+		{Name: "aggregate_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "reason", Type: field.TypeString, Size: 128},
+		{Name: "cache_types", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "text[]"}},
+		{Name: "payload", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "status", Type: field.TypeString, Size: 20, Default: "pending"},
+		{Name: "attempts", Type: field.TypeInt, Default: 0},
+		{Name: "max_attempts", Type: field.TypeInt, Default: 12},
+		{Name: "next_attempt_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "locked_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "locked_by", Type: field.TypeString, Nullable: true, Size: 128},
+		{Name: "processed_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "last_error", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "idempotency_key", Type: field.TypeString, Nullable: true, Size: 200},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// CacheInvalidationOutboxTable holds the schema information for the "cache_invalidation_outbox" table.
+	CacheInvalidationOutboxTable = &schema.Table{
+		Name:       "cache_invalidation_outbox",
+		Columns:    CacheInvalidationOutboxColumns,
+		PrimaryKey: []*schema.Column{CacheInvalidationOutboxColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "cacheinvalidationoutbox_status_next_attempt_at_id",
+				Unique:  false,
+				Columns: []*schema.Column{CacheInvalidationOutboxColumns[7], CacheInvalidationOutboxColumns[10], CacheInvalidationOutboxColumns[0]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "status IN ('pending', 'failed')",
+				},
+			},
+			{
+				Name:    "cacheinvalidationoutbox_locked_at",
+				Unique:  false,
+				Columns: []*schema.Column{CacheInvalidationOutboxColumns[11]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "status = 'processing'",
+				},
+			},
+			{
+				Name:    "cacheinvalidationoutbox_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{CacheInvalidationOutboxColumns[16]},
+			},
+			{
+				Name:    "cacheinvalidationoutbox_idempotency_key",
+				Unique:  true,
+				Columns: []*schema.Column{CacheInvalidationOutboxColumns[15]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "idempotency_key IS NOT NULL",
+				},
+			},
+		},
+	}
 	// ChannelMonitorsColumns holds the columns for the "channel_monitors" table.
 	ChannelMonitorsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1600,6 +1658,111 @@ var (
 			},
 		},
 	}
+	// UserPoolsColumns holds the columns for the "user_pools" table.
+	UserPoolsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "name", Type: field.TypeString, Size: 100},
+		{Name: "description", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "status", Type: field.TypeString, Size: 20, Default: "active"},
+	}
+	// UserPoolsTable holds the schema information for the "user_pools" table.
+	UserPoolsTable = &schema.Table{
+		Name:       "user_pools",
+		Columns:    UserPoolsColumns,
+		PrimaryKey: []*schema.Column{UserPoolsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "userpool_name",
+				Unique:  true,
+				Columns: []*schema.Column{UserPoolsColumns[4]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "deleted_at IS NULL",
+				},
+			},
+			{
+				Name:    "userpool_status",
+				Unique:  false,
+				Columns: []*schema.Column{UserPoolsColumns[6]},
+			},
+			{
+				Name:    "userpool_deleted_at",
+				Unique:  false,
+				Columns: []*schema.Column{UserPoolsColumns[3]},
+			},
+		},
+	}
+	// UserPoolGroupGrantsColumns holds the columns for the "user_pool_group_grants" table.
+	UserPoolGroupGrantsColumns = []*schema.Column{
+		{Name: "rate_multiplier", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(10,4)"}},
+		{Name: "rpm_override", Type: field.TypeInt, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "pool_id", Type: field.TypeInt64},
+		{Name: "group_id", Type: field.TypeInt64},
+	}
+	// UserPoolGroupGrantsTable holds the schema information for the "user_pool_group_grants" table.
+	UserPoolGroupGrantsTable = &schema.Table{
+		Name:       "user_pool_group_grants",
+		Columns:    UserPoolGroupGrantsColumns,
+		PrimaryKey: []*schema.Column{UserPoolGroupGrantsColumns[4], UserPoolGroupGrantsColumns[5]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "user_pool_group_grants_user_pools_pool",
+				Columns:    []*schema.Column{UserPoolGroupGrantsColumns[4]},
+				RefColumns: []*schema.Column{UserPoolsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "user_pool_group_grants_groups_group",
+				Columns:    []*schema.Column{UserPoolGroupGrantsColumns[5]},
+				RefColumns: []*schema.Column{GroupsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "userpoolgroupgrant_group_id",
+				Unique:  false,
+				Columns: []*schema.Column{UserPoolGroupGrantsColumns[5]},
+			},
+		},
+	}
+	// UserPoolMembersColumns holds the columns for the "user_pool_members" table.
+	UserPoolMembersColumns = []*schema.Column{
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "pool_id", Type: field.TypeInt64},
+		{Name: "user_id", Type: field.TypeInt64},
+	}
+	// UserPoolMembersTable holds the schema information for the "user_pool_members" table.
+	UserPoolMembersTable = &schema.Table{
+		Name:       "user_pool_members",
+		Columns:    UserPoolMembersColumns,
+		PrimaryKey: []*schema.Column{UserPoolMembersColumns[1], UserPoolMembersColumns[2]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "user_pool_members_user_pools_pool",
+				Columns:    []*schema.Column{UserPoolMembersColumns[1]},
+				RefColumns: []*schema.Column{UserPoolsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "user_pool_members_users_user",
+				Columns:    []*schema.Column{UserPoolMembersColumns[2]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "userpoolmember_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{UserPoolMembersColumns[2]},
+			},
+		},
+	}
 	// UserSubscriptionsColumns holds the columns for the "user_subscriptions" table.
 	UserSubscriptionsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1698,6 +1861,7 @@ var (
 		AnnouncementReadsTable,
 		AuthIdentitiesTable,
 		AuthIdentityChannelsTable,
+		CacheInvalidationOutboxTable,
 		ChannelMonitorsTable,
 		ChannelMonitorDailyRollupsTable,
 		ChannelMonitorHistoriesTable,
@@ -1724,6 +1888,9 @@ var (
 		UserAllowedGroupsTable,
 		UserAttributeDefinitionsTable,
 		UserAttributeValuesTable,
+		UserPoolsTable,
+		UserPoolGroupGrantsTable,
+		UserPoolMembersTable,
 		UserSubscriptionsTable,
 	}
 )
@@ -1758,6 +1925,9 @@ func init() {
 	AuthIdentityChannelsTable.ForeignKeys[0].RefTable = AuthIdentitiesTable
 	AuthIdentityChannelsTable.Annotation = &entsql.Annotation{
 		Table: "auth_identity_channels",
+	}
+	CacheInvalidationOutboxTable.Annotation = &entsql.Annotation{
+		Table: "cache_invalidation_outbox",
 	}
 	ChannelMonitorsTable.ForeignKeys[0].RefTable = ChannelMonitorRequestTemplatesTable
 	ChannelMonitorsTable.Annotation = &entsql.Annotation{
@@ -1856,6 +2026,19 @@ func init() {
 	UserAttributeValuesTable.ForeignKeys[1].RefTable = UserAttributeDefinitionsTable
 	UserAttributeValuesTable.Annotation = &entsql.Annotation{
 		Table: "user_attribute_values",
+	}
+	UserPoolsTable.Annotation = &entsql.Annotation{
+		Table: "user_pools",
+	}
+	UserPoolGroupGrantsTable.ForeignKeys[0].RefTable = UserPoolsTable
+	UserPoolGroupGrantsTable.ForeignKeys[1].RefTable = GroupsTable
+	UserPoolGroupGrantsTable.Annotation = &entsql.Annotation{
+		Table: "user_pool_group_grants",
+	}
+	UserPoolMembersTable.ForeignKeys[0].RefTable = UserPoolsTable
+	UserPoolMembersTable.ForeignKeys[1].RefTable = UsersTable
+	UserPoolMembersTable.Annotation = &entsql.Annotation{
+		Table: "user_pool_members",
 	}
 	UserSubscriptionsTable.ForeignKeys[0].RefTable = GroupsTable
 	UserSubscriptionsTable.ForeignKeys[1].RefTable = UsersTable

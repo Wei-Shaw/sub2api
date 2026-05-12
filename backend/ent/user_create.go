@@ -22,6 +22,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
+	"github.com/Wei-Shaw/sub2api/ent/userpool"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 )
 
@@ -517,6 +518,21 @@ func (_c *UserCreate) AddPendingAuthSessions(v ...*PendingAuthSession) *UserCrea
 		ids[i] = v[i].ID
 	}
 	return _c.AddPendingAuthSessionIDs(ids...)
+}
+
+// AddUserPoolIDs adds the "user_pools" edge to the UserPool entity by IDs.
+func (_c *UserCreate) AddUserPoolIDs(ids ...int64) *UserCreate {
+	_c.mutation.AddUserPoolIDs(ids...)
+	return _c
+}
+
+// AddUserPools adds the "user_pools" edges to the UserPool entity.
+func (_c *UserCreate) AddUserPools(v ...*UserPool) *UserCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddUserPoolIDs(ids...)
 }
 
 // Mutation returns the UserMutation object of the builder.
@@ -1021,6 +1037,26 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 		for _, k := range nodes {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.UserPoolsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   user.UserPoolsTable,
+			Columns: user.UserPoolsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(userpool.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &UserPoolMemberCreate{config: _c.config, mutation: newUserPoolMemberMutation(_c.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec

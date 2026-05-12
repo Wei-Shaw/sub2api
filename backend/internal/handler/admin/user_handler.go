@@ -22,13 +22,15 @@ type UserWithConcurrency struct {
 type UserHandler struct {
 	adminService       service.AdminService
 	concurrencyService *service.ConcurrencyService
+	apiKeyService      *service.APIKeyService
 }
 
 // NewUserHandler creates a new admin user handler
-func NewUserHandler(adminService service.AdminService, concurrencyService *service.ConcurrencyService) *UserHandler {
+func NewUserHandler(adminService service.AdminService, concurrencyService *service.ConcurrencyService, apiKeyService *service.APIKeyService) *UserHandler {
 	return &UserHandler{
 		adminService:       adminService,
 		concurrencyService: concurrencyService,
+		apiKeyService:      apiKeyService,
 	}
 }
 
@@ -172,6 +174,19 @@ func parseAttributeFilters(c *gin.Context) map[int64]string {
 	return result
 }
 
+// adminUserDetail wraps AdminUser with optional Pool-derived fields.
+type adminUserDetail struct {
+	*dto.AdminUser
+	// GrantEffectiveGroups: active standard explicit grant (direct + pool), nil when feature disabled.
+	GrantEffectiveGroups *[]int64 `json:"grant_effective_groups,omitempty"`
+	// EffectiveAllowedGroups is an alias of GrantEffectiveGroups for compatibility.
+	EffectiveAllowedGroups *[]int64 `json:"effective_allowed_groups,omitempty"`
+	// BindableGroups: full bindable list with source metadata, nil when feature disabled.
+	BindableGroups *[]dto.Group `json:"bindable_groups,omitempty"`
+	// AllowedGroupsDetail: per-group permission source detail, nil when feature disabled.
+	AllowedGroupsDetail *[]dto.AllowedGroupDetail `json:"allowed_groups_detail,omitempty"`
+}
+
 // GetByID handles getting a user by ID
 // GET /api/v1/admin/users/:id
 func (h *UserHandler) GetByID(c *gin.Context) {
@@ -187,7 +202,27 @@ func (h *UserHandler) GetByID(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, dto.UserFromServiceAdmin(user))
+	base := dto.UserFromServiceAdmin(user)
+	detail := &adminUserDetail{AdminUser: base}
+
+	// Append Pool-derived fields when the feature is available and apiKeyService is wired.
+	if h.apiKeyService != nil {
+		profile, profileErr := h.apiKeyService.GetAvailableGroupsProfile(c.Request.Context(), userID)
+		if profileErr == nil {
+			dtoProfile := dto.AvailableGroupsProfileFromService(&profile)
+
+			detail.GrantEffectiveGroups = &dtoProfile.GrantEffectiveGroups
+			detail.EffectiveAllowedGroups = &dtoProfile.GrantEffectiveGroups
+			detail.BindableGroups = &dtoProfile.BindableGroups
+
+			// Build allowed_groups_detail with dedup (direct > pool > public).
+			allowedDetail := dto.AllowedGroupDetailFromProfile(dtoProfile)
+			detail.AllowedGroupsDetail = &allowedDetail
+		}
+		// If other error: omit Pool fields, return base user only.
+	}
+
+	response.Success(c, detail)
 }
 
 // BindAuthIdentity manually binds a canonical auth identity to a user.

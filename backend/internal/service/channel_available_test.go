@@ -69,6 +69,10 @@ func (s *stubGroupRepoForAvailable) UpdateSortOrders(ctx context.Context, update
 	return nil
 }
 
+func (s *stubGroupRepoForAvailable) ListUserIDsAllowingGroup(_ context.Context, _ int64) ([]int64, error) {
+	return nil, nil
+}
+
 // newAvailableChannelService 构造一个 ChannelService，channelRepo.ListAll 返回给定 channels，
 // groupRepo 由参数决定。传入空 stub 表示「活跃分组列表为空」。
 func newAvailableChannelService(channels []Channel, groupRepo GroupRepository) *ChannelService {

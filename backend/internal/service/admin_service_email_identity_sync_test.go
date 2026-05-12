@@ -134,6 +134,16 @@ func (s *emailSyncRepoStub) EnableTotp(context.Context, int64) error { return ni
 
 func (s *emailSyncRepoStub) DisableTotp(context.Context, int64) error { return nil }
 
+func (s *emailSyncRepoStub) GetEffectiveAllowedGroups(_ context.Context, _ []int64, _ EffectiveAllowedGroupsOptions) (map[int64][]int64, error) {
+	return nil, nil
+}
+func (s *emailSyncRepoStub) GetEffectiveAllowedGroupSources(_ context.Context, _ []int64, _ EffectiveAllowedGroupsOptions) (map[int64][]EffectiveAllowedGroupSource, error) {
+	return nil, nil
+}
+func (s *emailSyncRepoStub) CanBindStandardGroupEffective(_ context.Context, _ int64, _ int64, _ bool, _ EffectiveAllowedGroupsOptions) (bool, error) {
+	return true, nil
+}
+
 func (s *emailSyncRepoStub) EnsureEmailAuthIdentity(_ context.Context, userID int64, email string) error {
 	s.ensureCalls = append(s.ensureCalls, ensureEmailCall{userID: userID, email: email})
 	return s.ensureErr

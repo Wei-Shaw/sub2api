@@ -2909,6 +2909,16 @@ func (r *oauthPendingFlowUserRepo) DisableTotp(ctx context.Context, userID int64
 		Exec(ctx)
 }
 
+func (r *oauthPendingFlowUserRepo) GetEffectiveAllowedGroups(_ context.Context, _ []int64, _ service.EffectiveAllowedGroupsOptions) (map[int64][]int64, error) {
+	return nil, nil
+}
+func (r *oauthPendingFlowUserRepo) GetEffectiveAllowedGroupSources(_ context.Context, _ []int64, _ service.EffectiveAllowedGroupsOptions) (map[int64][]service.EffectiveAllowedGroupSource, error) {
+	return nil, nil
+}
+func (r *oauthPendingFlowUserRepo) CanBindStandardGroupEffective(_ context.Context, _ int64, _ int64, _ bool, _ service.EffectiveAllowedGroupsOptions) (bool, error) {
+	return true, nil
+}
+
 func oauthPendingFlowServiceUser(entity *dbent.User) *service.User {
 	if entity == nil {
 		return nil

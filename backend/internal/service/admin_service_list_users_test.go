@@ -121,6 +121,10 @@ func (s *userGroupRateRepoStubForListUsers) DeleteByUserID(_ context.Context, us
 	panic("unexpected DeleteByUserID call")
 }
 
+func (s *userGroupRateRepoStubForListUsers) GetPoolGroupGrantByUserAndGroup(_ context.Context, _, _ int64) (PoolGroupGrantSelection, error) {
+	panic("unexpected GetPoolGroupGrantByUserAndGroup call")
+}
+
 func TestAdminService_ListUsers_BatchRateFallbackToSingle(t *testing.T) {
 	userRepo := &userRepoStubForListUsers{
 		users: []User{

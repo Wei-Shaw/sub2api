@@ -1250,7 +1250,7 @@ func newContractDeps(t *testing.T) *contractDeps {
 	settingRepo := newStubSettingRepo()
 	settingService := service.NewSettingService(settingRepo, cfg)
 
-	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil, redeemService, nil, nil)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 	usageHandler := handler.NewUsageHandler(usageService, apiKeyService)
@@ -1466,6 +1466,16 @@ func (r *stubUserRepo) DisableTotp(ctx context.Context, userID int64) error {
 	return errors.New("not implemented")
 }
 
+func (r *stubUserRepo) GetEffectiveAllowedGroups(_ context.Context, _ []int64, _ service.EffectiveAllowedGroupsOptions) (map[int64][]int64, error) {
+	return nil, nil
+}
+func (r *stubUserRepo) GetEffectiveAllowedGroupSources(_ context.Context, _ []int64, _ service.EffectiveAllowedGroupsOptions) (map[int64][]service.EffectiveAllowedGroupSource, error) {
+	return nil, nil
+}
+func (r *stubUserRepo) CanBindStandardGroupEffective(_ context.Context, _ int64, _ int64, _ bool, _ service.EffectiveAllowedGroupsOptions) (bool, error) {
+	return true, nil
+}
+
 type stubApiKeyCache struct{}
 
 func (stubApiKeyCache) GetCreateAttemptCount(ctx context.Context, userID int64) (int, error) {
@@ -1585,6 +1595,10 @@ func (stubGroupRepo) GetAccountIDsByGroupIDs(ctx context.Context, groupIDs []int
 
 func (stubGroupRepo) UpdateSortOrders(ctx context.Context, updates []service.GroupSortOrderUpdate) error {
 	return nil
+}
+
+func (stubGroupRepo) ListUserIDsAllowingGroup(ctx context.Context, groupID int64) ([]int64, error) {
+	return nil, errors.New("not implemented")
 }
 
 type stubAccountRepo struct {

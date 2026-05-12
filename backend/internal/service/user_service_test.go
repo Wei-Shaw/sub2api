@@ -236,6 +236,16 @@ func (m *mockUserRepo) UnbindUserAuthProvider(_ context.Context, _ int64, provid
 	return nil
 }
 
+func (m *mockUserRepo) GetEffectiveAllowedGroups(_ context.Context, _ []int64, _ EffectiveAllowedGroupsOptions) (map[int64][]int64, error) {
+	return nil, nil
+}
+func (m *mockUserRepo) GetEffectiveAllowedGroupSources(_ context.Context, _ []int64, _ EffectiveAllowedGroupsOptions) (map[int64][]EffectiveAllowedGroupSource, error) {
+	return nil, nil
+}
+func (m *mockUserRepo) CanBindStandardGroupEffective(_ context.Context, _ int64, _ int64, _ bool, _ EffectiveAllowedGroupsOptions) (bool, error) {
+	return true, nil
+}
+
 func (m *mockUserRepo) WithUserProfileIdentityTx(ctx context.Context, fn func(txCtx context.Context) error) error {
 	m.txCalls++
 	txState := &mockUserRepoTxState{

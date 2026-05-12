@@ -384,6 +384,16 @@ func (r *userRepository) Delete(ctx context.Context, id int64) error {
 		}
 	}
 
+	// Delete user_pool_members for this user before soft-deleting the user.
+	// Soft-delete (UPDATE deleted_at) does not trigger ON DELETE CASCADE, so we must
+	// explicitly clean up pool membership to avoid member_count drift.
+	sqlExec := txAwareSQLExecutor(ctx, r.sql, txClient)
+	if _, err := sqlExec.ExecContext(ctx,
+		`DELETE FROM user_pool_members WHERE user_id = $1`, id,
+	); err != nil {
+		return fmt.Errorf("user_pool_members cleanup: %w", err)
+	}
+
 	affected, err := txClient.User.Delete().Where(dbuser.IDEQ(id)).Exec(ctx)
 	if err != nil {
 		return translatePersistenceError(err, service.ErrUserNotFound, nil)
@@ -1010,4 +1020,225 @@ func (r *userRepository) DisableTotp(ctx context.Context, userID int64) error {
 		return translatePersistenceError(err, service.ErrUserNotFound, nil)
 	}
 	return nil
+}
+
+// CanBindStandardGroupEffective 判断用户是否有资格绑定指定 standard 分组。
+// direct SQL 始终执行；Pool SQL 仅在 opts.IncludePool=true 时执行。
+// fail-closed：Pool 查询失败时返回 error 而非 false。
+func (r *userRepository) CanBindStandardGroupEffective(
+	ctx context.Context,
+	userID, groupID int64,
+	isExclusive bool,
+	opts service.EffectiveAllowedGroupsOptions,
+) (bool, error) {
+	// 1. direct 侧：user_allowed_groups + 校验 group 为 active standard
+	const directSQL = `
+SELECT 1
+FROM user_allowed_groups uag
+JOIN users u ON u.id = uag.user_id AND u.deleted_at IS NULL
+JOIN groups grp ON grp.id = uag.group_id
+WHERE uag.user_id = $1
+  AND uag.group_id = $2
+  AND grp.subscription_type = 'standard'
+  AND grp.deleted_at IS NULL
+  AND grp.status = 'active'
+LIMIT 1`
+
+	rows, err := r.sql.QueryContext(ctx, directSQL, userID, groupID)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = rows.Close() }()
+	if rows.Next() {
+		return true, nil
+	}
+	if err := rows.Err(); err != nil {
+		return false, err
+	}
+
+	// 2. non-exclusive 标准分组：如果是公开分组，无需显式权限
+	if !isExclusive {
+		const publicSQL = `
+SELECT 1
+FROM groups grp
+WHERE grp.id = $1
+  AND grp.deleted_at IS NULL
+  AND grp.status = 'active'
+  AND grp.subscription_type = 'standard'
+  AND grp.is_exclusive = false
+LIMIT 1`
+		pubRows, err := r.sql.QueryContext(ctx, publicSQL, groupID)
+		if err != nil {
+			return false, err
+		}
+		defer func() { _ = pubRows.Close() }()
+		if pubRows.Next() {
+			return true, nil
+		}
+		if err := pubRows.Err(); err != nil {
+			return false, err
+		}
+	}
+
+	// 3. Pool 侧（仅当 opts.IncludePool=true）
+	if !opts.IncludePool {
+		return false, nil
+	}
+
+	const poolSQL = `
+SELECT 1
+FROM user_pool_group_grants g
+JOIN user_pool_members m ON m.pool_id = g.pool_id
+JOIN user_pools p ON p.id = g.pool_id
+JOIN users u ON u.id = m.user_id
+JOIN groups grp ON grp.id = g.group_id
+WHERE m.user_id = $1
+  AND g.group_id = $2
+  AND p.deleted_at IS NULL
+  AND p.status = 'active'
+  AND u.deleted_at IS NULL
+  AND grp.deleted_at IS NULL
+  AND grp.status = 'active'
+  AND grp.subscription_type = 'standard'
+LIMIT 1`
+
+	poolRows, err := r.sql.QueryContext(ctx, poolSQL, userID, groupID)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = poolRows.Close() }()
+	if poolRows.Next() {
+		return true, nil
+	}
+	return false, poolRows.Err()
+}
+
+// GetEffectiveAllowedGroupSources 返回每个用户的 effective standard 分组来源列表。
+// direct 侧始终查询；Pool 侧仅在 opts.IncludePool=true 时查询。
+func (r *userRepository) GetEffectiveAllowedGroupSources(
+	ctx context.Context,
+	userIDs []int64,
+	opts service.EffectiveAllowedGroupsOptions,
+) (map[int64][]service.EffectiveAllowedGroupSource, error) {
+	out := make(map[int64][]service.EffectiveAllowedGroupSource, len(userIDs))
+	if len(userIDs) == 0 {
+		return out, nil
+	}
+
+	// direct 侧 SQL（批量）
+	const directSQL = `
+SELECT uag.user_id, uag.group_id
+FROM user_allowed_groups uag
+JOIN groups grp ON grp.id = uag.group_id
+WHERE uag.user_id = ANY($1::bigint[])
+  AND grp.deleted_at IS NULL
+  AND grp.status = 'active'
+  AND grp.subscription_type = 'standard'`
+
+	rows, err := r.sql.QueryContext(ctx, directSQL, pq.Array(userIDs))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	// 记录 direct group 集合（用于 NOT IN 语义）
+	directGroups := make(map[int64]map[int64]struct{}) // userID -> set of groupIDs
+	for rows.Next() {
+		var uid, gid int64
+		if err := rows.Scan(&uid, &gid); err != nil {
+			return nil, err
+		}
+		if directGroups[uid] == nil {
+			directGroups[uid] = make(map[int64]struct{})
+		}
+		directGroups[uid][gid] = struct{}{}
+		out[uid] = append(out[uid], service.EffectiveAllowedGroupSource{
+			UserID:           uid,
+			GroupID:          gid,
+			PermissionSource: "direct",
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Pool 侧（仅当 opts.IncludePool=true）
+	if !opts.IncludePool {
+		return out, nil
+	}
+
+	// Pool 侧 SQL（批量），DISTINCT ON (m.user_id, g.group_id) 取最小 pool_id
+	const poolSQL = `
+SELECT pool_derived.user_id, pool_derived.group_id, pool_derived.source_pool_id, pool_derived.source_pool_name
+FROM (
+  SELECT DISTINCT ON (m.user_id, g.group_id)
+         m.user_id,
+         g.group_id,
+         p.id   AS source_pool_id,
+         p.name AS source_pool_name
+    FROM user_pool_group_grants g
+    JOIN user_pool_members m ON m.pool_id = g.pool_id
+    JOIN user_pools p ON p.id = g.pool_id
+    JOIN groups grp ON grp.id = g.group_id
+    WHERE m.user_id = ANY($1::bigint[])
+      AND p.deleted_at IS NULL
+      AND p.status = 'active'
+      AND grp.deleted_at IS NULL
+      AND grp.status = 'active'
+      AND grp.subscription_type = 'standard'
+    ORDER BY m.user_id, g.group_id, p.id ASC
+) AS pool_derived`
+
+	poolRows, err := r.sql.QueryContext(ctx, poolSQL, pq.Array(userIDs))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = poolRows.Close() }()
+
+	for poolRows.Next() {
+		var uid, gid, poolID int64
+		var poolName string
+		if err := poolRows.Scan(&uid, &gid, &poolID, &poolName); err != nil {
+			return nil, err
+		}
+		// 跳过已被 direct 覆盖的 group（direct 优先）
+		if _, hasDirect := directGroups[uid][gid]; hasDirect {
+			continue
+		}
+		out[uid] = append(out[uid], service.EffectiveAllowedGroupSource{
+			UserID:             uid,
+			GroupID:            gid,
+			PermissionSource:   "pool",
+			PermissionPoolID:   &poolID,
+			PermissionPoolName: &poolName,
+		})
+	}
+	if err := poolRows.Err(); err != nil {
+		return nil, err
+	}
+
+	return out, nil
+}
+
+// GetEffectiveAllowedGroups 返回每个用户的 effective standard 分组 ID 列表。
+// 复用 GetEffectiveAllowedGroupSources，仅返回 group IDs。
+func (r *userRepository) GetEffectiveAllowedGroups(
+	ctx context.Context,
+	userIDs []int64,
+	opts service.EffectiveAllowedGroupsOptions,
+) (map[int64][]int64, error) {
+	sources, err := r.GetEffectiveAllowedGroupSources(ctx, userIDs, opts)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[int64][]int64, len(sources))
+	for uid, srcs := range sources {
+		ids := make([]int64, 0, len(srcs))
+		for _, s := range srcs {
+			ids = append(ids, s.GroupID)
+		}
+		sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+		out[uid] = ids
+	}
+	return out, nil
 }

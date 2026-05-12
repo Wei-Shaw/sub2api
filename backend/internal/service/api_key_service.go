@@ -36,6 +36,9 @@ var (
 	ErrAPIKeyRateLimit5hExceeded = infraerrors.TooManyRequests("API_KEY_RATE_5H_EXCEEDED", "api key 5小时限额已用完")
 	ErrAPIKeyRateLimit1dExceeded = infraerrors.TooManyRequests("API_KEY_RATE_1D_EXCEEDED", "api key 日限额已用完")
 	ErrAPIKeyRateLimit7dExceeded = infraerrors.TooManyRequests("API_KEY_RATE_7D_EXCEEDED", "api key 7天限额已用完")
+
+	// Snapshot rebuild errors: API Key 绑定分组已被撤权或分组已失效，不写入缓存。
+	ErrAPIKeyGroupRevoked = infraerrors.Forbidden("API_KEY_GROUP_REVOKED", "api key bound group permission has been revoked or group is no longer active")
 )
 
 const (
@@ -312,17 +315,25 @@ func (s *APIKeyService) incrementAPIKeyErrorCount(ctx context.Context, userID in
 	_ = s.cache.IncrementCreateAttemptCount(ctx, userID)
 }
 
-// canUserBindGroup 检查用户是否可以绑定指定分组
-// 对于订阅类型分组：检查用户是否有有效订阅
-// 对于标准类型分组：使用原有的 AllowedGroups 和 IsExclusive 逻辑
-func (s *APIKeyService) canUserBindGroup(ctx context.Context, user *User, group *Group) bool {
-	// 订阅类型分组：需要有效订阅
+// canUserBindGroup 检查用户是否可以绑定指定分组。
+// 对于订阅类型分组：检查用户是否有有效订阅。
+// 对于标准类型分组：使用 effective 权限查询（direct + Pool，受 feature flag 控制）。
+// 返回 (bool, error)：区分"确认无权限"和"权限查询失败"。
+func (s *APIKeyService) canUserBindGroup(ctx context.Context, user *User, group *Group) (bool, error) {
+	// 订阅类型分组：只走有效订阅校验，Pool 不参与
 	if group.IsSubscriptionType() {
 		_, err := s.userSubRepo.GetActiveByUserIDAndGroupID(ctx, user.ID, group.ID)
-		return err == nil // 有有效订阅则允许
+		return err == nil, nil
 	}
-	// 标准类型分组：使用原有逻辑
-	return user.CanBindGroup(group.ID, group.IsExclusive)
+	// 标准类型分组：effective 校验（direct + Pool）
+	opts := EffectiveAllowedGroupsOptions{
+		IncludePool: true,
+	}
+	allowed, err := s.userRepo.CanBindStandardGroupEffective(ctx, user.ID, group.ID, group.IsExclusive, opts)
+	if err != nil {
+		return false, fmt.Errorf("effective group permission check: %w", err)
+	}
+	return allowed, nil
 }
 
 // Create 创建API Key
@@ -355,7 +366,11 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 		}
 
 		// 检查用户是否可以绑定该分组
-		if !s.canUserBindGroup(ctx, user, group) {
+		allowed, err := s.canUserBindGroup(ctx, user, group)
+		if err != nil {
+			return nil, fmt.Errorf("check group binding permission: %w", err)
+		}
+		if !allowed {
 			return nil, ErrGroupNotAllowed
 		}
 	}
@@ -553,7 +568,11 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 			return nil, fmt.Errorf("get group: %w", err)
 		}
 
-		if !s.canUserBindGroup(ctx, user, group) {
+		allowed, err := s.canUserBindGroup(ctx, user, group)
+		if err != nil {
+			return nil, fmt.Errorf("check group binding permission: %w", err)
+		}
+		if !allowed {
 			return nil, ErrGroupNotAllowed
 		}
 
@@ -783,6 +802,147 @@ func (s *APIKeyService) canUserBindGroupInternal(user *User, group *Group, subsc
 	}
 	// 标准类型分组：使用原有逻辑
 	return user.CanBindGroup(group.ID, group.IsExclusive)
+}
+
+// AvailableGroupWithSource wraps a Group with permission-source metadata.
+type AvailableGroupWithSource struct {
+	Group
+	PermissionSource   string // direct | pool | public | subscription
+	PermissionPoolID   *int64
+	PermissionPoolName *string
+}
+
+// AvailableGroupsProfileResult is the return type for GetAvailableGroupsProfile.
+type AvailableGroupsProfileResult struct {
+	BindableGroups       []AvailableGroupWithSource
+	GrantEffectiveGroups []int64
+}
+
+// GetAvailableGroupsWithSource returns groups the user can bind along with
+// permission-source metadata (direct / pool / public / subscription).
+// flag=false: Pool-derived items are excluded (IncludePool=false).
+func (s *APIKeyService) GetAvailableGroupsWithSource(ctx context.Context, userID int64) ([]AvailableGroupWithSource, error) {
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get user: %w", err)
+	}
+
+	allGroups, err := s.groupRepo.ListActive(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list active groups: %w", err)
+	}
+
+	activeSubscriptions, err := s.userSubRepo.ListActiveByUserID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list active subscriptions: %w", err)
+	}
+
+	subscribedGroupIDs := make(map[int64]bool)
+	for _, sub := range activeSubscriptions {
+		subscribedGroupIDs[sub.GroupID] = true
+	}
+
+	// Fetch effective grant sources (direct + pool) for standard groups.
+	opts := EffectiveAllowedGroupsOptions{IncludePool: true}
+	sourcesMap, err := s.userRepo.GetEffectiveAllowedGroupSources(ctx, []int64{userID}, opts)
+	if err != nil {
+		return nil, fmt.Errorf("get effective allowed group sources: %w", err)
+	}
+	userSources := sourcesMap[userID]
+
+	// Index sources by group_id (direct > pool priority is already guaranteed by SQL UNION logic).
+	sourceByGroup := make(map[int64]EffectiveAllowedGroupSource)
+	for _, src := range userSources {
+		sourceByGroup[src.GroupID] = src
+	}
+
+	// Build bindable groups with source priority: direct > pool > public > subscription.
+	// Use a map to deduplicate by group_id.
+	type candidateEntry struct {
+		group  Group
+		source string
+		poolID *int64
+		pool   *string
+		rank   int // lower = higher priority (1=direct, 2=pool, 3=public, 4=subscription)
+	}
+	byGroupID := make(map[int64]candidateEntry)
+
+	for _, g := range allGroups {
+		if g.IsSubscriptionType() {
+			if subscribedGroupIDs[g.ID] {
+				e := byGroupID[g.ID]
+				if e.rank == 0 || 4 < e.rank {
+					byGroupID[g.ID] = candidateEntry{group: g, source: "subscription", rank: 4}
+				}
+			}
+			continue
+		}
+		// Standard group.
+		if src, ok := sourceByGroup[g.ID]; ok {
+			var rank int
+			if src.PermissionSource == "direct" {
+				rank = 1
+			} else {
+				rank = 2
+			}
+			e := byGroupID[g.ID]
+			if e.rank == 0 || rank < e.rank {
+				byGroupID[g.ID] = candidateEntry{group: g, source: src.PermissionSource,
+					poolID: src.PermissionPoolID, pool: src.PermissionPoolName, rank: rank}
+			}
+		} else if !g.IsExclusive {
+			// Public non-exclusive standard group.
+			e := byGroupID[g.ID]
+			if e.rank == 0 || 3 < e.rank {
+				byGroupID[g.ID] = candidateEntry{group: g, source: "public", rank: 3}
+			}
+		} else if user.CanBindGroup(g.ID, g.IsExclusive) {
+			// Direct-only exclusive group (user.AllowedGroups contains it).
+			e := byGroupID[g.ID]
+			if e.rank == 0 || 1 < e.rank {
+				byGroupID[g.ID] = candidateEntry{group: g, source: "direct", rank: 1}
+			}
+		}
+	}
+
+	result := make([]AvailableGroupWithSource, 0, len(byGroupID))
+	for _, e := range byGroupID {
+		result = append(result, AvailableGroupWithSource{
+			Group:              e.group,
+			PermissionSource:   e.source,
+			PermissionPoolID:   e.poolID,
+			PermissionPoolName: e.pool,
+		})
+	}
+	return result, nil
+}
+
+// GetAvailableGroupsProfile returns the AvailableGroupsProfileResult for a user.
+// grant_effective_groups = active standard direct + pool grant group IDs.
+func (s *APIKeyService) GetAvailableGroupsProfile(ctx context.Context, userID int64) (AvailableGroupsProfileResult, error) {
+	bindable, err := s.GetAvailableGroupsWithSource(ctx, userID)
+	if err != nil {
+		return AvailableGroupsProfileResult{}, err
+	}
+
+	// Grant effective groups: direct + pool permission sources.
+	opts := EffectiveAllowedGroupsOptions{IncludePool: true}
+	sourcesMap, err := s.userRepo.GetEffectiveAllowedGroupSources(ctx, []int64{userID}, opts)
+	if err != nil {
+		return AvailableGroupsProfileResult{}, fmt.Errorf("get effective group sources: %w", err)
+	}
+	userSources := sourcesMap[userID]
+	grantEffective := make([]int64, 0, len(userSources))
+	for _, src := range userSources {
+		if src.PermissionSource == "direct" || src.PermissionSource == "pool" {
+			grantEffective = append(grantEffective, src.GroupID)
+		}
+	}
+
+	return AvailableGroupsProfileResult{
+		BindableGroups:       bindable,
+		GrantEffectiveGroups: grantEffective,
+	}, nil
 }
 
 func (s *APIKeyService) SearchAPIKeys(ctx context.Context, userID int64, keyword string, limit int) ([]APIKey, error) {

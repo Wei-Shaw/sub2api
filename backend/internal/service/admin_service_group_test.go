@@ -4,9 +4,12 @@ package service
 
 import (
 	"context"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -21,6 +24,8 @@ type groupRepoStubForAdmin struct {
 	updated *Group // 记录 Update 调用的参数
 	getByID *Group // GetByID 返回值
 	getErr  error  // GetByID 返回的错误
+
+	allowingUserIDs []int64 // ListUserIDsAllowingGroup 返回值
 
 	listWithFiltersCalls       int
 	listWithFiltersParams      pagination.PaginationParams
@@ -123,6 +128,10 @@ func (s *groupRepoStubForAdmin) GetAccountIDsByGroupIDs(_ context.Context, _ []i
 
 func (s *groupRepoStubForAdmin) UpdateSortOrders(_ context.Context, _ []GroupSortOrderUpdate) error {
 	return nil
+}
+
+func (s *groupRepoStubForAdmin) ListUserIDsAllowingGroup(_ context.Context, _ int64) ([]int64, error) {
+	return s.allowingUserIDs, nil
 }
 
 func TestAdminService_ListGroups_PassesSortParams(t *testing.T) {
@@ -603,6 +612,10 @@ func (s *groupRepoStubForFallbackCycle) UpdateSortOrders(_ context.Context, _ []
 	return nil
 }
 
+func (s *groupRepoStubForFallbackCycle) ListUserIDsAllowingGroup(_ context.Context, _ int64) ([]int64, error) {
+	return nil, nil
+}
+
 type groupRepoStubForInvalidRequestFallback struct {
 	groups  map[int64]*Group
 	created *Group
@@ -676,6 +689,10 @@ func (s *groupRepoStubForInvalidRequestFallback) BindAccountsToGroup(_ context.C
 
 func (s *groupRepoStubForInvalidRequestFallback) UpdateSortOrders(_ context.Context, _ []GroupSortOrderUpdate) error {
 	return nil
+}
+
+func (s *groupRepoStubForInvalidRequestFallback) ListUserIDsAllowingGroup(_ context.Context, _ int64) ([]int64, error) {
+	return nil, nil
 }
 
 func TestAdminService_CreateGroup_InvalidRequestFallbackRejectsUnsupportedPlatform(t *testing.T) {
@@ -990,4 +1007,92 @@ func TestAdminService_UpdateGroup_InvalidRequestFallbackAllowsAntigravity(t *tes
 	require.NotNil(t, group)
 	require.NotNil(t, repo.updated)
 	require.Equal(t, fallbackID, *repo.updated.FallbackGroupIDOnInvalidRequest)
+}
+
+// ── P0-3: Group update outbox fills AffectedUserIDs ───────────────────────────
+
+// adminOutboxStubForGroupUpdate captures enqueued CacheInvalidationEvents.
+type adminOutboxStubForGroupUpdate struct {
+	mu     sync.Mutex
+	events []CacheInvalidationEvent
+}
+
+func (s *adminOutboxStubForGroupUpdate) Enqueue(_ context.Context, ev CacheInvalidationEvent) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.events = append(s.events, ev)
+	return nil
+}
+
+// The remaining CacheInvalidationOutboxRepository methods are no-ops.
+func (s *adminOutboxStubForGroupUpdate) ClaimReady(_ context.Context, _ string, _ int, _ time.Duration) ([]CacheInvalidationEvent, error) {
+	return nil, nil
+}
+func (s *adminOutboxStubForGroupUpdate) MarkSucceeded(_ context.Context, _ int64) error { return nil }
+func (s *adminOutboxStubForGroupUpdate) MarkFailed(_ context.Context, _ int64, _ error, _ time.Time) error {
+	return nil
+}
+func (s *adminOutboxStubForGroupUpdate) MarkDead(_ context.Context, _ int64, _ error) error {
+	return nil
+}
+func (s *adminOutboxStubForGroupUpdate) RequeueStaleProcessing(_ context.Context, _ time.Time) (int64, error) {
+	return 0, nil
+}
+
+// TestGroupUpdate_FillsAffectedUserIDs verifies that when a group attribute changes in a way
+// that requires strict cache invalidation, the outbox events contain AffectedUserIDs
+// (not just AffectedGroupIDs).
+// The mock group has 3 direct users + 2 pool-derived users (5 total) returned by
+// ListUserIDsAllowingGroup.
+func TestGroupUpdate_FillsAffectedUserIDs(t *testing.T) {
+	const groupID = int64(42)
+
+	affectedUsers := []int64{10, 20, 30, 40, 50}
+
+	repo := &groupRepoStubForAdmin{
+		getByID: &Group{
+			ID:             groupID,
+			Name:           "test-group",
+			Status:         StatusActive,
+			RateMultiplier: 1.0,
+			RPMLimit:       0,
+			IsExclusive:    false,
+		},
+		allowingUserIDs: affectedUsers,
+	}
+	outbox := &adminOutboxStubForGroupUpdate{}
+
+	svc := &adminServiceImpl{
+		groupRepo:  repo,
+		outboxRepo: outbox,
+	}
+
+	// Change RateMultiplier — triggers needsStrictInvalidation=true.
+	newRate := 2.0
+	_, err := svc.UpdateGroup(context.Background(), groupID, &UpdateGroupInput{
+		RateMultiplier: &newRate,
+	})
+	require.NoError(t, err)
+
+	outbox.mu.Lock()
+	events := outbox.events
+	outbox.mu.Unlock()
+
+	require.NotEmpty(t, events, "outbox must have events after group rate change")
+
+	// Collect all AffectedUserIDs across all events.
+	seenIDs := make(map[int64]struct{})
+	for _, ev := range events {
+		for _, uid := range ev.Payload.AffectedUserIDs {
+			seenIDs[uid] = struct{}{}
+		}
+		assert.Contains(t, ev.Payload.AffectedGroupIDs, groupID,
+			"every group-update event must carry AffectedGroupIDs")
+	}
+
+	assert.Equal(t, len(affectedUsers), len(seenIDs),
+		"all affected users must appear in outbox AffectedUserIDs")
+	for _, uid := range affectedUsers {
+		assert.Contains(t, seenIDs, uid, "user %d must be in outbox", uid)
+	}
 }

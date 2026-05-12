@@ -715,7 +715,8 @@ func (s *BillingCacheService) checkRPM(ctx context.Context, user *User, group *G
 
 	// ── 第一层：分组级检查（override 或 group.rpm_limit） ──
 	if group != nil {
-		// 解析 override：优先从 auth cache snapshot，nil 时回退 DB。
+		// 解析 override：优先从 auth cache snapshot，nil 时回退 DB；
+		// active standard group + direct miss 且 feature flag 开启时再尝试 Pool grant rpm_override。
 		var override *int
 		if user.UserGroupRPMOverride != nil {
 			override = user.UserGroupRPMOverride
@@ -729,6 +730,19 @@ func (s *BillingCacheService) checkRPM(ctx context.Context, user *User, group *G
 				)
 			} else {
 				override = dbOverride
+			}
+			// Pool grant rpm_override fallback: only for active standard groups.
+			if override == nil && !group.IsSubscriptionType() {
+				poolGrant, poolErr := s.userGroupRateRepo.GetPoolGroupGrantByUserAndGroup(ctx, user.ID, group.ID)
+				if poolErr != nil {
+					logger.LegacyPrintf(
+						"service.billing_cache",
+						"Warning: pool rpm override lookup failed for user=%d group=%d: %v",
+						user.ID, group.ID, poolErr,
+					)
+				} else if poolGrant.Found && poolGrant.RPMOverride != nil {
+					override = poolGrant.RPMOverride
+				}
 			}
 		}
 

@@ -22,6 +22,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
+	"github.com/Wei-Shaw/sub2api/ent/userpool"
+	"github.com/Wei-Shaw/sub2api/ent/userpoolgroupgrant"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 )
 
@@ -38,8 +40,10 @@ type GroupQuery struct {
 	withUsageLogs         *UsageLogQuery
 	withAccounts          *AccountQuery
 	withAllowedUsers      *UserQuery
+	withUserPools         *UserPoolQuery
 	withAccountGroups     *AccountGroupQuery
 	withUserAllowedGroups *UserAllowedGroupQuery
+	withPoolGrants        *UserPoolGroupGrantQuery
 	modifiers             []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
@@ -209,6 +213,28 @@ func (_q *GroupQuery) QueryAllowedUsers() *UserQuery {
 	return query
 }
 
+// QueryUserPools chains the current query on the "user_pools" edge.
+func (_q *GroupQuery) QueryUserPools() *UserPoolQuery {
+	query := (&UserPoolClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(group.Table, group.FieldID, selector),
+			sqlgraph.To(userpool.Table, userpool.FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, true, group.UserPoolsTable, group.UserPoolsPrimaryKey...),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
 // QueryAccountGroups chains the current query on the "account_groups" edge.
 func (_q *GroupQuery) QueryAccountGroups() *AccountGroupQuery {
 	query := (&AccountGroupClient{config: _q.config}).Query()
@@ -246,6 +272,28 @@ func (_q *GroupQuery) QueryUserAllowedGroups() *UserAllowedGroupQuery {
 			sqlgraph.From(group.Table, group.FieldID, selector),
 			sqlgraph.To(userallowedgroup.Table, userallowedgroup.GroupColumn),
 			sqlgraph.Edge(sqlgraph.O2M, true, group.UserAllowedGroupsTable, group.UserAllowedGroupsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryPoolGrants chains the current query on the "pool_grants" edge.
+func (_q *GroupQuery) QueryPoolGrants() *UserPoolGroupGrantQuery {
+	query := (&UserPoolGroupGrantClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(group.Table, group.FieldID, selector),
+			sqlgraph.To(userpoolgroupgrant.Table, userpoolgroupgrant.GroupColumn),
+			sqlgraph.Edge(sqlgraph.O2M, true, group.PoolGrantsTable, group.PoolGrantsColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -451,8 +499,10 @@ func (_q *GroupQuery) Clone() *GroupQuery {
 		withUsageLogs:         _q.withUsageLogs.Clone(),
 		withAccounts:          _q.withAccounts.Clone(),
 		withAllowedUsers:      _q.withAllowedUsers.Clone(),
+		withUserPools:         _q.withUserPools.Clone(),
 		withAccountGroups:     _q.withAccountGroups.Clone(),
 		withUserAllowedGroups: _q.withUserAllowedGroups.Clone(),
+		withPoolGrants:        _q.withPoolGrants.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -525,6 +575,17 @@ func (_q *GroupQuery) WithAllowedUsers(opts ...func(*UserQuery)) *GroupQuery {
 	return _q
 }
 
+// WithUserPools tells the query-builder to eager-load the nodes that are connected to
+// the "user_pools" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *GroupQuery) WithUserPools(opts ...func(*UserPoolQuery)) *GroupQuery {
+	query := (&UserPoolClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withUserPools = query
+	return _q
+}
+
 // WithAccountGroups tells the query-builder to eager-load the nodes that are connected to
 // the "account_groups" edge. The optional arguments are used to configure the query builder of the edge.
 func (_q *GroupQuery) WithAccountGroups(opts ...func(*AccountGroupQuery)) *GroupQuery {
@@ -544,6 +605,17 @@ func (_q *GroupQuery) WithUserAllowedGroups(opts ...func(*UserAllowedGroupQuery)
 		opt(query)
 	}
 	_q.withUserAllowedGroups = query
+	return _q
+}
+
+// WithPoolGrants tells the query-builder to eager-load the nodes that are connected to
+// the "pool_grants" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *GroupQuery) WithPoolGrants(opts ...func(*UserPoolGroupGrantQuery)) *GroupQuery {
+	query := (&UserPoolGroupGrantClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withPoolGrants = query
 	return _q
 }
 
@@ -625,15 +697,17 @@ func (_q *GroupQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Group,
 	var (
 		nodes       = []*Group{}
 		_spec       = _q.querySpec()
-		loadedTypes = [8]bool{
+		loadedTypes = [10]bool{
 			_q.withAPIKeys != nil,
 			_q.withRedeemCodes != nil,
 			_q.withSubscriptions != nil,
 			_q.withUsageLogs != nil,
 			_q.withAccounts != nil,
 			_q.withAllowedUsers != nil,
+			_q.withUserPools != nil,
 			_q.withAccountGroups != nil,
 			_q.withUserAllowedGroups != nil,
+			_q.withPoolGrants != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -699,6 +773,13 @@ func (_q *GroupQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Group,
 			return nil, err
 		}
 	}
+	if query := _q.withUserPools; query != nil {
+		if err := _q.loadUserPools(ctx, query, nodes,
+			func(n *Group) { n.Edges.UserPools = []*UserPool{} },
+			func(n *Group, e *UserPool) { n.Edges.UserPools = append(n.Edges.UserPools, e) }); err != nil {
+			return nil, err
+		}
+	}
 	if query := _q.withAccountGroups; query != nil {
 		if err := _q.loadAccountGroups(ctx, query, nodes,
 			func(n *Group) { n.Edges.AccountGroups = []*AccountGroup{} },
@@ -710,6 +791,13 @@ func (_q *GroupQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Group,
 		if err := _q.loadUserAllowedGroups(ctx, query, nodes,
 			func(n *Group) { n.Edges.UserAllowedGroups = []*UserAllowedGroup{} },
 			func(n *Group, e *UserAllowedGroup) { n.Edges.UserAllowedGroups = append(n.Edges.UserAllowedGroups, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withPoolGrants; query != nil {
+		if err := _q.loadPoolGrants(ctx, query, nodes,
+			func(n *Group) { n.Edges.PoolGrants = []*UserPoolGroupGrant{} },
+			func(n *Group, e *UserPoolGroupGrant) { n.Edges.PoolGrants = append(n.Edges.PoolGrants, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -967,6 +1055,67 @@ func (_q *GroupQuery) loadAllowedUsers(ctx context.Context, query *UserQuery, no
 	}
 	return nil
 }
+func (_q *GroupQuery) loadUserPools(ctx context.Context, query *UserPoolQuery, nodes []*Group, init func(*Group), assign func(*Group, *UserPool)) error {
+	edgeIDs := make([]driver.Value, len(nodes))
+	byID := make(map[int64]*Group)
+	nids := make(map[int64]map[*Group]struct{})
+	for i, node := range nodes {
+		edgeIDs[i] = node.ID
+		byID[node.ID] = node
+		if init != nil {
+			init(node)
+		}
+	}
+	query.Where(func(s *sql.Selector) {
+		joinT := sql.Table(group.UserPoolsTable)
+		s.Join(joinT).On(s.C(userpool.FieldID), joinT.C(group.UserPoolsPrimaryKey[0]))
+		s.Where(sql.InValues(joinT.C(group.UserPoolsPrimaryKey[1]), edgeIDs...))
+		columns := s.SelectedColumns()
+		s.Select(joinT.C(group.UserPoolsPrimaryKey[1]))
+		s.AppendSelect(columns...)
+		s.SetDistinct(false)
+	})
+	if err := query.prepareQuery(ctx); err != nil {
+		return err
+	}
+	qr := QuerierFunc(func(ctx context.Context, q Query) (Value, error) {
+		return query.sqlAll(ctx, func(_ context.Context, spec *sqlgraph.QuerySpec) {
+			assign := spec.Assign
+			values := spec.ScanValues
+			spec.ScanValues = func(columns []string) ([]any, error) {
+				values, err := values(columns[1:])
+				if err != nil {
+					return nil, err
+				}
+				return append([]any{new(sql.NullInt64)}, values...), nil
+			}
+			spec.Assign = func(columns []string, values []any) error {
+				outValue := values[0].(*sql.NullInt64).Int64
+				inValue := values[1].(*sql.NullInt64).Int64
+				if nids[inValue] == nil {
+					nids[inValue] = map[*Group]struct{}{byID[outValue]: {}}
+					return assign(columns[1:], values[1:])
+				}
+				nids[inValue][byID[outValue]] = struct{}{}
+				return nil
+			}
+		})
+	})
+	neighbors, err := withInterceptors[[]*UserPool](ctx, query, qr, query.inters)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		nodes, ok := nids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected "user_pools" node returned %v`, n.ID)
+		}
+		for kn := range nodes {
+			assign(kn, n)
+		}
+	}
+	return nil
+}
 func (_q *GroupQuery) loadAccountGroups(ctx context.Context, query *AccountGroupQuery, nodes []*Group, init func(*Group), assign func(*Group, *AccountGroup)) error {
 	fks := make([]driver.Value, 0, len(nodes))
 	nodeids := make(map[int64]*Group)
@@ -1012,6 +1161,36 @@ func (_q *GroupQuery) loadUserAllowedGroups(ctx context.Context, query *UserAllo
 	}
 	query.Where(predicate.UserAllowedGroup(func(s *sql.Selector) {
 		s.Where(sql.InValues(s.C(group.UserAllowedGroupsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.GroupID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "group_id" returned %v for node %v`, fk, n)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *GroupQuery) loadPoolGrants(ctx context.Context, query *UserPoolGroupGrantQuery, nodes []*Group, init func(*Group), assign func(*Group, *UserPoolGroupGrant)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[int64]*Group)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(userpoolgroupgrant.FieldGroupID)
+	}
+	query.Where(predicate.UserPoolGroupGrant(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(group.PoolGrantsColumn), fks...))
 	}))
 	neighbors, err := query.All(ctx)
 	if err != nil {

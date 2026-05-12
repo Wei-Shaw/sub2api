@@ -111,6 +111,25 @@ type UserRepository interface {
 	UpdateTotpSecret(ctx context.Context, userID int64, encryptedSecret *string) error
 	EnableTotp(ctx context.Context, userID int64) error
 	DisableTotp(ctx context.Context, userID int64) error
+
+	// Effective 权限查询（direct + Pool 合并，Pool 侧受 opts.IncludePool 控制）
+	GetEffectiveAllowedGroups(ctx context.Context, userIDs []int64, opts EffectiveAllowedGroupsOptions) (map[int64][]int64, error)
+	GetEffectiveAllowedGroupSources(ctx context.Context, userIDs []int64, opts EffectiveAllowedGroupsOptions) (map[int64][]EffectiveAllowedGroupSource, error)
+	CanBindStandardGroupEffective(ctx context.Context, userID, groupID int64, isExclusive bool, opts EffectiveAllowedGroupsOptions) (bool, error)
+}
+
+// EffectiveAllowedGroupsOptions 控制 effective 权限查询是否包含 Pool 侧
+type EffectiveAllowedGroupsOptions struct {
+	IncludePool bool
+}
+
+// EffectiveAllowedGroupSource 描述单条 effective 权限的来源
+type EffectiveAllowedGroupSource struct {
+	UserID             int64
+	GroupID            int64
+	PermissionSource   string // "direct" | "pool"
+	PermissionPoolID   *int64
+	PermissionPoolName *string
 }
 
 type UserAuthIdentityRecord struct {

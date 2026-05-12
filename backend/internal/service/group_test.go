@@ -90,3 +90,118 @@ func TestGroup_GetImagePrice_PartialConfig(t *testing.T) {
 	require.Nil(t, group.GetImagePrice("2K"))
 	require.Nil(t, group.GetImagePrice("4K"))
 }
+
+// ─── groupUpdateNeedsStrictInvalidation tests ─────────────────────────────────
+
+// TestGroupUpdateNeedsStrictInvalidation_StatusDisabled verifies that disabling
+// an active group triggers strict cache invalidation.
+func TestGroupUpdateNeedsStrictInvalidation_StatusDisabled(t *testing.T) {
+	require.True(t,
+		groupUpdateNeedsStrictInvalidation(
+			StatusActive, StatusDisabled,
+			false, false,
+			SubscriptionTypeStandard, SubscriptionTypeStandard,
+			1.0, 1.0,
+			0, 0,
+		),
+		"disabling a group must trigger strict invalidation")
+}
+
+// TestGroupUpdateNeedsStrictInvalidation_StatusActiveNoChange verifies that
+// keeping status=active does NOT trigger strict invalidation on its own.
+func TestGroupUpdateNeedsStrictInvalidation_StatusActiveNoChange(t *testing.T) {
+	require.False(t,
+		groupUpdateNeedsStrictInvalidation(
+			StatusActive, StatusActive,
+			false, false,
+			SubscriptionTypeStandard, SubscriptionTypeStandard,
+			1.0, 1.0,
+			0, 0,
+		),
+		"no effective change must not trigger strict invalidation")
+}
+
+// TestGroupUpdateNeedsStrictInvalidation_IsExclusiveChanged verifies that
+// toggling is_exclusive triggers strict invalidation.
+func TestGroupUpdateNeedsStrictInvalidation_IsExclusiveChanged(t *testing.T) {
+	require.True(t,
+		groupUpdateNeedsStrictInvalidation(
+			StatusActive, StatusActive,
+			false, true,
+			SubscriptionTypeStandard, SubscriptionTypeStandard,
+			1.0, 1.0,
+			0, 0,
+		),
+		"changing is_exclusive must trigger strict invalidation")
+}
+
+// TestGroupUpdateNeedsStrictInvalidation_SubscriptionTypeChanged verifies that
+// changing subscription_type triggers strict invalidation.
+func TestGroupUpdateNeedsStrictInvalidation_SubscriptionTypeChanged(t *testing.T) {
+	require.True(t,
+		groupUpdateNeedsStrictInvalidation(
+			StatusActive, StatusActive,
+			false, false,
+			SubscriptionTypeStandard, SubscriptionTypeSubscription,
+			1.0, 1.0,
+			0, 0,
+		),
+		"changing subscription_type must trigger strict invalidation")
+}
+
+// TestGroupUpdateNeedsStrictInvalidation_RateMultiplierChanged verifies that
+// changing rate_multiplier triggers strict invalidation.
+func TestGroupUpdateNeedsStrictInvalidation_RateMultiplierChanged(t *testing.T) {
+	require.True(t,
+		groupUpdateNeedsStrictInvalidation(
+			StatusActive, StatusActive,
+			false, false,
+			SubscriptionTypeStandard, SubscriptionTypeStandard,
+			1.0, 0.8,
+			0, 0,
+		),
+		"changing rate_multiplier must trigger strict invalidation")
+}
+
+// TestGroupUpdateNeedsStrictInvalidation_RPMTightened verifies that reducing
+// rpm_limit (from unlimited to limited) triggers strict invalidation.
+func TestGroupUpdateNeedsStrictInvalidation_RPMTightened(t *testing.T) {
+	require.True(t,
+		groupUpdateNeedsStrictInvalidation(
+			StatusActive, StatusActive,
+			false, false,
+			SubscriptionTypeStandard, SubscriptionTypeStandard,
+			1.0, 1.0,
+			0, 100, // unlimited → limited
+		),
+		"tightening RPM from unlimited to 100 must trigger strict invalidation")
+}
+
+// TestGroupUpdateNeedsStrictInvalidation_RPMRelaxed verifies that increasing
+// rpm_limit does NOT trigger strict invalidation (relaxation, not tightening).
+func TestGroupUpdateNeedsStrictInvalidation_RPMRelaxed(t *testing.T) {
+	require.False(t,
+		groupUpdateNeedsStrictInvalidation(
+			StatusActive, StatusActive,
+			false, false,
+			SubscriptionTypeStandard, SubscriptionTypeStandard,
+			1.0, 1.0,
+			100, 200, // 100 → 200 (relaxation)
+		),
+		"relaxing RPM must not trigger strict invalidation")
+}
+
+// TestGroupUpdateNeedsStrictInvalidation_ReenablingGroupNoOtherChanges verifies
+// that re-enabling a group (disabled → active) does not trigger strict
+// invalidation (it's a permission grant, not a revocation).
+func TestGroupUpdateNeedsStrictInvalidation_ReenablingGroupNoOtherChanges(t *testing.T) {
+	require.False(t,
+		groupUpdateNeedsStrictInvalidation(
+			StatusDisabled, StatusActive,
+			false, false,
+			SubscriptionTypeStandard, SubscriptionTypeStandard,
+			1.0, 1.0,
+			0, 0,
+		),
+		"re-enabling group (no other change) must not trigger strict invalidation")
+}

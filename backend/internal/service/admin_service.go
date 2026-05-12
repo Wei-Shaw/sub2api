@@ -531,6 +531,7 @@ type adminServiceImpl struct {
 	defaultSubAssigner   DefaultSubscriptionAssigner
 	userSubRepo          UserSubscriptionRepository
 	privacyClientFactory PrivacyClientFactory
+	outboxRepo           CacheInvalidationOutboxRepository // 缓存失效 outbox（Group 更新/删除）
 }
 
 type userGroupRateBatchReader interface {
@@ -556,6 +557,7 @@ func NewAdminService(
 	defaultSubAssigner DefaultSubscriptionAssigner,
 	userSubRepo UserSubscriptionRepository,
 	privacyClientFactory PrivacyClientFactory,
+	outboxRepo CacheInvalidationOutboxRepository,
 ) AdminService {
 	return &adminServiceImpl{
 		userRepo:             userRepo,
@@ -575,6 +577,7 @@ func NewAdminService(
 		defaultSubAssigner:   defaultSubAssigner,
 		userSubRepo:          userSubRepo,
 		privacyClientFactory: privacyClientFactory,
+		outboxRepo:           outboxRepo,
 	}
 }
 
@@ -1746,6 +1749,39 @@ func normalizePrice(price *float64) *float64 {
 	return price
 }
 
+// groupUpdateNeedsStrictInvalidation 判断 Group 更新是否需要严格缓存失效（写 outbox）。
+// 仅当以下条件之一成立时返回 true：
+//   - status 变为 disabled（撤权）
+//   - is_exclusive 变化（影响可绑定性）
+//   - subscription_type 变化（影响授权语义）
+//   - rate_multiplier 变化（计费变化）
+//   - rpm_limit 收紧（rpm 变小，0 表示无限制，正数更小代表更严格）
+func groupUpdateNeedsStrictInvalidation(
+	beforeStatus, afterStatus string,
+	beforeExclusive, afterExclusive bool,
+	beforeSubType, afterSubType string,
+	beforeRate, afterRate float64,
+	beforeRPM, afterRPM int,
+) bool {
+	if beforeStatus != afterStatus && afterStatus == StatusDisabled {
+		return true
+	}
+	if beforeExclusive != afterExclusive {
+		return true
+	}
+	if beforeSubType != afterSubType {
+		return true
+	}
+	if beforeRate != afterRate {
+		return true
+	}
+	// RPM 收紧：从无限制（0）→ 有限制（>0），或从较大限制变为更小限制
+	if afterRPM > 0 && (beforeRPM == 0 || afterRPM < beforeRPM) {
+		return true
+	}
+	return false
+}
+
 // validateFallbackGroup 校验降级分组的有效性
 // currentGroupID: 当前分组 ID（新建时为 0）
 // fallbackGroupID: 降级分组 ID
@@ -1820,6 +1856,15 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if err != nil {
 		return nil, err
 	}
+
+	// Snapshot key effective-profile fields BEFORE applying the update.
+	// These are compared after the write to determine whether a cache-invalidation
+	// outbox row is required (status revocation, RPM tightening, rate/billing change).
+	beforeStatus := group.Status
+	beforeIsExclusive := group.IsExclusive
+	beforeSubType := group.SubscriptionType
+	beforeRateMultiplier := group.RateMultiplier
+	beforeRPMLimit := group.RPMLimit
 
 	if input.Name != "" {
 		group.Name = input.Name
@@ -1947,6 +1992,26 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		return nil, err
 	}
 
+	// Determine whether effective permissions or billing changed in a way that
+	// requires reliable cache invalidation via the outbox.
+	needsStrictInvalidation := groupUpdateNeedsStrictInvalidation(
+		beforeStatus, group.Status,
+		beforeIsExclusive, group.IsExclusive,
+		beforeSubType, group.SubscriptionType,
+		beforeRateMultiplier, group.RateMultiplier,
+		beforeRPMLimit, group.RPMLimit,
+	)
+	if needsStrictInvalidation && s.outboxRepo != nil {
+		// Fetch all users affected by this group change (direct + pool-derived).
+		// enqueueGroupUpdateOutboxBatched writes per-batch outbox rows with populated AffectedUserIDs.
+		// Errors are logged and swallowed: the in-process invalidator below acts as hot-path fallback.
+		if err := s.enqueueGroupUpdateOutboxBatched(ctx, id); err != nil {
+			slog.Warn("admin_service: group update outbox enqueue failed (non-fatal)",
+				"group_id", id, "error", err)
+		}
+	}
+
+	// Hot-path: synchronous in-process cache invalidation for single-instance latency.
 	if s.authCacheInvalidator != nil {
 		s.authCacheInvalidator.InvalidateAuthCacheByGroupID(ctx, id)
 	}
@@ -2131,6 +2196,62 @@ func (s *adminServiceImpl) UpdateGroupSortOrders(ctx context.Context, updates []
 	return s.groupRepo.UpdateSortOrders(ctx, updates)
 }
 
+// enqueueGroupUpdateOutboxBatched fetches all users affected by a group change
+// (direct + pool-derived) and writes outbox events in batches of ≤1000 users.
+// Each event carries both AffectedGroupIDs and AffectedUserIDs so the worker
+// can invalidate auth snapshots by user key rather than by group scan.
+func (s *adminServiceImpl) enqueueGroupUpdateOutboxBatched(ctx context.Context, groupID int64) error {
+	const batchSize = 1000
+
+	userIDs, err := s.groupRepo.ListUserIDsAllowingGroup(ctx, groupID)
+	if err != nil {
+		return fmt.Errorf("enqueueGroupUpdateOutboxBatched: list users: %w", err)
+	}
+
+	groupIDCopy := groupID
+
+	// Always write at least one event (even when userIDs is empty) so the outbox
+	// worker can pick it up and the AffectedGroupIDs field triggers group-level invalidation.
+	if len(userIDs) == 0 {
+		return s.outboxRepo.Enqueue(ctx, CacheInvalidationEvent{
+			EventType:     EventTypeAuthCacheInvalidate,
+			AggregateType: "group",
+			AggregateID:   &groupIDCopy,
+			Reason:        ReasonGroupDeleted, // repurposed: group effective-profile changed
+			CacheTypes:    []string{CacheTypeAuthSnapshot},
+			MaxAttempts:   12,
+			Payload: EventPayload{
+				SchemaVersion:    EventPayloadSchemaVersion,
+				AffectedGroupIDs: []int64{groupID},
+			},
+		})
+	}
+
+	for i := 0; i < len(userIDs); i += batchSize {
+		end := i + batchSize
+		if end > len(userIDs) {
+			end = len(userIDs)
+		}
+		batch := userIDs[i:end]
+		if err := s.outboxRepo.Enqueue(ctx, CacheInvalidationEvent{
+			EventType:     EventTypeAuthCacheInvalidate,
+			AggregateType: "group",
+			AggregateID:   &groupIDCopy,
+			Reason:        ReasonGroupDeleted, // repurposed: group effective-profile changed
+			CacheTypes:    []string{CacheTypeAuthSnapshot},
+			MaxAttempts:   12,
+			Payload: EventPayload{
+				SchemaVersion:    EventPayloadSchemaVersion,
+				AffectedGroupIDs: []int64{groupID},
+				AffectedUserIDs:  batch,
+			},
+		}); err != nil {
+			return fmt.Errorf("enqueueGroupUpdateOutboxBatched: enqueue batch [%d:%d]: %w", i, end, err)
+		}
+	}
+	return nil
+}
+
 // AdminUpdateAPIKeyGroupID 管理员修改 API Key 分组绑定
 // groupID: nil=不修改, 指向0=解绑, 指向正整数=绑定到目标分组
 func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID int64, groupID *int64) (*AdminUpdateAPIKeyGroupIDResult, error) {
@@ -2180,45 +2301,61 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID i
 		apiKey.GroupID = &gid
 		apiKey.Group = group
 
-		// 专属标准分组：使用事务保证「添加分组权限」与「更新 API Key」的原子性
-		if group.IsExclusive && !group.IsSubscriptionType() {
-			opCtx := ctx
-			var tx *dbent.Tx
-			if s.entClient == nil {
-				logger.LegacyPrintf("service.admin", "Warning: entClient is nil, skipping transaction protection for exclusive group binding")
-			} else {
-				var txErr error
-				tx, txErr = s.entClient.Tx(ctx)
-				if txErr != nil {
-					return nil, fmt.Errorf("begin transaction: %w", txErr)
+		// 标准分组：先通过 effective 权限查询（direct + Pool）
+		if !group.IsSubscriptionType() {
+			opts := EffectiveAllowedGroupsOptions{
+				IncludePool: true,
+			}
+			effectiveAllowed, err := s.userRepo.CanBindStandardGroupEffective(ctx, apiKey.UserID, gid, group.IsExclusive, opts)
+			if err != nil {
+				return nil, fmt.Errorf("effective group permission check: %w", err)
+			}
+
+			if !effectiveAllowed {
+				// 仅独享标准分组允许管理员自动授予 direct 权限
+				if group.IsExclusive {
+					opCtx := ctx
+					var tx *dbent.Tx
+					if s.entClient == nil {
+						logger.LegacyPrintf("service.admin", "Warning: entClient is nil, skipping transaction protection for exclusive group binding")
+					} else {
+						var txErr error
+						tx, txErr = s.entClient.Tx(ctx)
+						if txErr != nil {
+							return nil, fmt.Errorf("begin transaction: %w", txErr)
+						}
+						defer func() { _ = tx.Rollback() }()
+						opCtx = dbent.NewTxContext(ctx, tx)
+					}
+
+					if addErr := s.userRepo.AddGroupToAllowedGroups(opCtx, apiKey.UserID, gid); addErr != nil {
+						return nil, fmt.Errorf("add group to user allowed groups: %w", addErr)
+					}
+					if err := s.apiKeyRepo.Update(opCtx, apiKey); err != nil {
+						return nil, fmt.Errorf("update api key: %w", err)
+					}
+					if tx != nil {
+						if err := tx.Commit(); err != nil {
+							return nil, fmt.Errorf("commit transaction: %w", err)
+						}
+					}
+
+					result.AutoGrantedGroupAccess = true
+					result.GrantedGroupID = &gid
+					result.GrantedGroupName = group.Name
+
+					// 失效认证缓存（在事务提交后执行）
+					if s.authCacheInvalidator != nil {
+						s.authCacheInvalidator.InvalidateAuthCacheByKey(ctx, apiKey.Key)
+					}
+
+					result.APIKey = apiKey
+					return result, nil
 				}
-				defer func() { _ = tx.Rollback() }()
-				opCtx = dbent.NewTxContext(ctx, tx)
+				// 非独享标准分组无管理员自动授权：用户没有权限
+				return nil, infraerrors.Forbidden("GROUP_NOT_ALLOWED", "user does not have permission to bind this group")
 			}
-
-			if addErr := s.userRepo.AddGroupToAllowedGroups(opCtx, apiKey.UserID, gid); addErr != nil {
-				return nil, fmt.Errorf("add group to user allowed groups: %w", addErr)
-			}
-			if err := s.apiKeyRepo.Update(opCtx, apiKey); err != nil {
-				return nil, fmt.Errorf("update api key: %w", err)
-			}
-			if tx != nil {
-				if err := tx.Commit(); err != nil {
-					return nil, fmt.Errorf("commit transaction: %w", err)
-				}
-			}
-
-			result.AutoGrantedGroupAccess = true
-			result.GrantedGroupID = &gid
-			result.GrantedGroupName = group.Name
-
-			// 失效认证缓存（在事务提交后执行）
-			if s.authCacheInvalidator != nil {
-				s.authCacheInvalidator.InvalidateAuthCacheByKey(ctx, apiKey.Key)
-			}
-
-			result.APIKey = apiKey
-			return result, nil
+			// effective 已允许：直接更新 Key，不写入 direct 表（不污染 D 方案）
 		}
 	}
 

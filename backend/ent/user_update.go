@@ -23,6 +23,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
+	"github.com/Wei-Shaw/sub2api/ent/userpool"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 )
 
@@ -590,6 +591,21 @@ func (_u *UserUpdate) AddPendingAuthSessions(v ...*PendingAuthSession) *UserUpda
 	return _u.AddPendingAuthSessionIDs(ids...)
 }
 
+// AddUserPoolIDs adds the "user_pools" edge to the UserPool entity by IDs.
+func (_u *UserUpdate) AddUserPoolIDs(ids ...int64) *UserUpdate {
+	_u.mutation.AddUserPoolIDs(ids...)
+	return _u
+}
+
+// AddUserPools adds the "user_pools" edges to the UserPool entity.
+func (_u *UserUpdate) AddUserPools(v ...*UserPool) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddUserPoolIDs(ids...)
+}
+
 // Mutation returns the UserMutation object of the builder.
 func (_u *UserUpdate) Mutation() *UserMutation {
 	return _u.mutation
@@ -845,6 +861,27 @@ func (_u *UserUpdate) RemovePendingAuthSessions(v ...*PendingAuthSession) *UserU
 		ids[i] = v[i].ID
 	}
 	return _u.RemovePendingAuthSessionIDs(ids...)
+}
+
+// ClearUserPools clears all "user_pools" edges to the UserPool entity.
+func (_u *UserUpdate) ClearUserPools() *UserUpdate {
+	_u.mutation.ClearUserPools()
+	return _u
+}
+
+// RemoveUserPoolIDs removes the "user_pools" edge to UserPool entities by IDs.
+func (_u *UserUpdate) RemoveUserPoolIDs(ids ...int64) *UserUpdate {
+	_u.mutation.RemoveUserPoolIDs(ids...)
+	return _u
+}
+
+// RemoveUserPools removes "user_pools" edges to UserPool entities.
+func (_u *UserUpdate) RemoveUserPools(v ...*UserPool) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveUserPoolIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -1587,6 +1624,63 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.UserPoolsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   user.UserPoolsTable,
+			Columns: user.UserPoolsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(userpool.FieldID, field.TypeInt64),
+			},
+		}
+		createE := &UserPoolMemberCreate{config: _u.config, mutation: newUserPoolMemberMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedUserPoolsIDs(); len(nodes) > 0 && !_u.mutation.UserPoolsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   user.UserPoolsTable,
+			Columns: user.UserPoolsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(userpool.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &UserPoolMemberCreate{config: _u.config, mutation: newUserPoolMemberMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.UserPoolsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   user.UserPoolsTable,
+			Columns: user.UserPoolsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(userpool.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &UserPoolMemberCreate{config: _u.config, mutation: newUserPoolMemberMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{user.Label}
@@ -2158,6 +2252,21 @@ func (_u *UserUpdateOne) AddPendingAuthSessions(v ...*PendingAuthSession) *UserU
 	return _u.AddPendingAuthSessionIDs(ids...)
 }
 
+// AddUserPoolIDs adds the "user_pools" edge to the UserPool entity by IDs.
+func (_u *UserUpdateOne) AddUserPoolIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.AddUserPoolIDs(ids...)
+	return _u
+}
+
+// AddUserPools adds the "user_pools" edges to the UserPool entity.
+func (_u *UserUpdateOne) AddUserPools(v ...*UserPool) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddUserPoolIDs(ids...)
+}
+
 // Mutation returns the UserMutation object of the builder.
 func (_u *UserUpdateOne) Mutation() *UserMutation {
 	return _u.mutation
@@ -2413,6 +2522,27 @@ func (_u *UserUpdateOne) RemovePendingAuthSessions(v ...*PendingAuthSession) *Us
 		ids[i] = v[i].ID
 	}
 	return _u.RemovePendingAuthSessionIDs(ids...)
+}
+
+// ClearUserPools clears all "user_pools" edges to the UserPool entity.
+func (_u *UserUpdateOne) ClearUserPools() *UserUpdateOne {
+	_u.mutation.ClearUserPools()
+	return _u
+}
+
+// RemoveUserPoolIDs removes the "user_pools" edge to UserPool entities by IDs.
+func (_u *UserUpdateOne) RemoveUserPoolIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.RemoveUserPoolIDs(ids...)
+	return _u
+}
+
+// RemoveUserPools removes "user_pools" edges to UserPool entities.
+func (_u *UserUpdateOne) RemoveUserPools(v ...*UserPool) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveUserPoolIDs(ids...)
 }
 
 // Where appends a list predicates to the UserUpdate builder.
@@ -3183,6 +3313,63 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 		for _, k := range nodes {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.UserPoolsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   user.UserPoolsTable,
+			Columns: user.UserPoolsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(userpool.FieldID, field.TypeInt64),
+			},
+		}
+		createE := &UserPoolMemberCreate{config: _u.config, mutation: newUserPoolMemberMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedUserPoolsIDs(); len(nodes) > 0 && !_u.mutation.UserPoolsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   user.UserPoolsTable,
+			Columns: user.UserPoolsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(userpool.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &UserPoolMemberCreate{config: _u.config, mutation: newUserPoolMemberMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.UserPoolsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   user.UserPoolsTable,
+			Columns: user.UserPoolsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(userpool.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &UserPoolMemberCreate{config: _u.config, mutation: newUserPoolMemberMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
 	_node = &User{config: _u.config}

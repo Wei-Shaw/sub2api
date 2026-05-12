@@ -297,6 +297,10 @@ func (m *mockGroupRepoForGateway) UpdateSortOrders(ctx context.Context, updates 
 	return nil
 }
 
+func (m *mockGroupRepoForGateway) ListUserIDsAllowingGroup(_ context.Context, _ int64) ([]int64, error) {
+	return nil, nil
+}
+
 func ptr[T any](v T) *T {
 	return &v
 }

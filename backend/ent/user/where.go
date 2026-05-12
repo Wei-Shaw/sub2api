@@ -1616,6 +1616,29 @@ func HasPendingAuthSessionsWith(preds ...predicate.PendingAuthSession) predicate
 	})
 }
 
+// HasUserPools applies the HasEdge predicate on the "user_pools" edge.
+func HasUserPools() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2M, true, UserPoolsTable, UserPoolsPrimaryKey...),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasUserPoolsWith applies the HasEdge predicate on the "user_pools" edge with a given conditions (other predicates).
+func HasUserPoolsWith(preds ...predicate.UserPool) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newUserPoolsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // HasUserAllowedGroups applies the HasEdge predicate on the "user_allowed_groups" edge.
 func HasUserAllowedGroups() predicate.User {
 	return predicate.User(func(s *sql.Selector) {
@@ -1631,6 +1654,29 @@ func HasUserAllowedGroups() predicate.User {
 func HasUserAllowedGroupsWith(preds ...predicate.UserAllowedGroup) predicate.User {
 	return predicate.User(func(s *sql.Selector) {
 		step := newUserAllowedGroupsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasPoolMemberships applies the HasEdge predicate on the "pool_memberships" edge.
+func HasPoolMemberships() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, PoolMembershipsTable, PoolMembershipsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasPoolMembershipsWith applies the HasEdge predicate on the "pool_memberships" edge with a given conditions (other predicates).
+func HasPoolMembershipsWith(preds ...predicate.UserPoolMember) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newPoolMembershipsStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

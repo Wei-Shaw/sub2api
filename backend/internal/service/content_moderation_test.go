@@ -231,6 +231,16 @@ func (r *contentModerationTestUserRepo) DisableTotp(ctx context.Context, userID 
 	panic("unexpected DisableTotp call")
 }
 
+func (r *contentModerationTestUserRepo) GetEffectiveAllowedGroups(_ context.Context, _ []int64, _ EffectiveAllowedGroupsOptions) (map[int64][]int64, error) {
+	return nil, nil
+}
+func (r *contentModerationTestUserRepo) GetEffectiveAllowedGroupSources(_ context.Context, _ []int64, _ EffectiveAllowedGroupsOptions) (map[int64][]EffectiveAllowedGroupSource, error) {
+	return nil, nil
+}
+func (r *contentModerationTestUserRepo) CanBindStandardGroupEffective(_ context.Context, _ int64, _ int64, _ bool, _ EffectiveAllowedGroupsOptions) (bool, error) {
+	return true, nil
+}
+
 type contentModerationTestAuthCacheInvalidator struct {
 	userIDs []int64
 }

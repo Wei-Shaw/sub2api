@@ -378,6 +378,34 @@ func ProvideAPIKeyAuthCacheInvalidator(apiKeyService *APIKeyService) APIKeyAuthC
 	return apiKeyService
 }
 
+// ProvideCacheInvalidationOutboxWorker 构造 outbox worker 并调用 Start()，
+// 确保 Wire 注入完成后后台轮询循环即时启动。
+// Stop() 由 provideCleanup 注入并在 shutdown 时调用。
+func ProvideCacheInvalidationOutboxWorker(
+	repo CacheInvalidationOutboxRepository,
+	apiKeyService *APIKeyService,
+	gatewaySvc *GatewayService,
+	cfg *config.Config,
+) *CacheInvalidationOutboxWorker {
+	outbox := cfg.CacheInvalidation.Outbox
+	pollInterval := time.Duration(outbox.PollIntervalSeconds) * time.Second
+	lockTimeout := time.Duration(outbox.LockTimeoutSeconds) * time.Second
+
+	w := NewCacheInvalidationOutboxWorker(
+		repo,
+		apiKeyService, // implements StrictAPIKeyAuthCacheInvalidator
+		gatewaySvc,    // implements UserGroupRateCacheInvalidator
+		pollInterval,
+		outbox.BatchSize,
+		lockTimeout,
+		outbox.MaxAttempts,
+		outbox.DeadLetterAlertThreshold,
+		"outbox-worker",
+	)
+	w.Start()
+	return w
+}
+
 // ProvideBackupService creates and starts BackupService
 func ProvideBackupService(
 	settingRepo SettingRepository,
@@ -513,6 +541,7 @@ var ProviderSet = wire.NewSet(
 	NewModelPricingResolver,
 	NewContentModerationService,
 	NewAffiliateService,
+	NewUserPoolService,
 	ProvidePaymentConfigService,
 	NewPaymentService,
 	ProvidePaymentOrderExpiryService,
@@ -520,6 +549,7 @@ var ProviderSet = wire.NewSet(
 	ProvideChannelMonitorService,
 	ProvideChannelMonitorRunner,
 	NewChannelMonitorRequestTemplateService,
+	ProvideCacheInvalidationOutboxWorker,
 )
 
 // ProvidePaymentConfigService wraps NewPaymentConfigService to accept the named

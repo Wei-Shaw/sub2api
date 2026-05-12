@@ -1068,7 +1068,8 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 	import EndpointPopover from '@/components/keys/EndpointPopover.vue'
 	import GroupBadge from '@/components/common/GroupBadge.vue'
 	import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
-	import type { ApiKey, Group, PublicSettings, SubscriptionType, GroupPlatform } from '@/types'
+	import type { ApiKey, PublicSettings, SubscriptionType, GroupPlatform } from '@/types'
+import type { AvailableGroup } from '@/api/groups'
 import type { Column } from '@/components/common/types'
 import type { BatchApiKeyUsageStats } from '@/api/usage'
 import { formatDateTime } from '@/utils/format'
@@ -1113,7 +1114,7 @@ const columns = computed<Column[]>(() => [
 ])
 
 const apiKeys = ref<ApiKey[]>([])
-const groups = ref<Group[]>([])
+const groups = ref<AvailableGroup[]>([])
 const loading = ref(false)
 const submitting = ref(false)
 const now = ref(new Date())
@@ -1337,7 +1338,8 @@ const loadApiKeys = async () => {
 
 const loadGroups = async () => {
   try {
-    groups.value = await userGroupsAPI.getAvailable()
+    const profile = await userGroupsAPI.getAvailableProfile()
+    groups.value = profile.bindable_groups
   } catch (error) {
     console.error('Failed to load groups:', error)
   }

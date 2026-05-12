@@ -19,10 +19,11 @@ import (
 
 // userRepoStubForGroupUpdate implements UserRepository for AdminUpdateAPIKeyGroupID tests.
 type userRepoStubForGroupUpdate struct {
-	addGroupErr    error
-	addGroupCalled bool
-	addedUserID    int64
-	addedGroupID   int64
+	addGroupErr              error
+	addGroupCalled           bool
+	addedUserID              int64
+	addedGroupID             int64
+	canBindStandardEffective bool // default false = no direct/pool access (triggers auto-grant for exclusive)
 }
 
 func (s *userRepoStubForGroupUpdate) AddGroupToAllowedGroups(_ context.Context, userID int64, groupID int64) error {
@@ -101,6 +102,16 @@ func (s *userRepoStubForGroupUpdate) UpdateUserLastActiveAt(context.Context, int
 }
 func (s *userRepoStubForGroupUpdate) RemoveGroupFromUserAllowedGroups(context.Context, int64, int64) error {
 	panic("unexpected")
+}
+
+func (s *userRepoStubForGroupUpdate) GetEffectiveAllowedGroups(_ context.Context, _ []int64, _ EffectiveAllowedGroupsOptions) (map[int64][]int64, error) {
+	return nil, nil
+}
+func (s *userRepoStubForGroupUpdate) GetEffectiveAllowedGroupSources(_ context.Context, _ []int64, _ EffectiveAllowedGroupsOptions) (map[int64][]EffectiveAllowedGroupSource, error) {
+	return nil, nil
+}
+func (s *userRepoStubForGroupUpdate) CanBindStandardGroupEffective(_ context.Context, _ int64, _ int64, _ bool, _ EffectiveAllowedGroupsOptions) (bool, error) {
+	return s.canBindStandardEffective, nil
 }
 
 // apiKeyRepoStubForGroupUpdate implements APIKeyRepository for AdminUpdateAPIKeyGroupID tests.
@@ -244,6 +255,9 @@ func (s *groupRepoStubForGroupUpdate) BindAccountsToGroup(context.Context, int64
 func (s *groupRepoStubForGroupUpdate) UpdateSortOrders(context.Context, []GroupSortOrderUpdate) error {
 	panic("unexpected")
 }
+func (s *groupRepoStubForGroupUpdate) ListUserIDsAllowingGroup(context.Context, int64) ([]int64, error) {
+	return nil, nil
+}
 
 type userSubRepoStubForGroupUpdate struct {
 	userSubRepoNoop
@@ -311,8 +325,9 @@ func TestAdminService_AdminUpdateAPIKeyGroupID_BindActiveGroup(t *testing.T) {
 	existing := &APIKey{ID: 1, Key: "sk-test", GroupID: nil}
 	apiKeyRepo := &apiKeyRepoStubForGroupUpdate{key: existing}
 	groupRepo := &groupRepoStubForGroupUpdate{group: &Group{ID: 10, Name: "Pro", Status: StatusActive}}
+	userRepo := &userRepoStubForGroupUpdate{canBindStandardEffective: true}
 	cache := &authCacheInvalidatorStub{}
-	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo, groupRepo: groupRepo, authCacheInvalidator: cache}
+	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo, groupRepo: groupRepo, userRepo: userRepo, authCacheInvalidator: cache}
 
 	got, err := svc.AdminUpdateAPIKeyGroupID(context.Background(), 1, int64Ptr(10))
 	require.NoError(t, err)
@@ -331,8 +346,9 @@ func TestAdminService_AdminUpdateAPIKeyGroupID_SameGroup_Idempotent(t *testing.T
 	existing := &APIKey{ID: 1, Key: "sk-test", GroupID: int64Ptr(10), Group: &Group{ID: 10, Name: "Pro"}}
 	apiKeyRepo := &apiKeyRepoStubForGroupUpdate{key: existing}
 	groupRepo := &groupRepoStubForGroupUpdate{group: &Group{ID: 10, Name: "Pro", Status: StatusActive}}
+	userRepo := &userRepoStubForGroupUpdate{canBindStandardEffective: true}
 	cache := &authCacheInvalidatorStub{}
-	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo, groupRepo: groupRepo, authCacheInvalidator: cache}
+	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo, groupRepo: groupRepo, userRepo: userRepo, authCacheInvalidator: cache}
 
 	got, err := svc.AdminUpdateAPIKeyGroupID(context.Background(), 1, int64Ptr(10))
 	require.NoError(t, err)
@@ -388,8 +404,9 @@ func TestAdminService_AdminUpdateAPIKeyGroupID_PointerIsolation(t *testing.T) {
 	existing := &APIKey{ID: 1, Key: "sk-test", GroupID: nil}
 	apiKeyRepo := &apiKeyRepoStubForGroupUpdate{key: existing}
 	groupRepo := &groupRepoStubForGroupUpdate{group: &Group{ID: 10, Name: "Pro", Status: StatusActive}}
+	userRepo := &userRepoStubForGroupUpdate{canBindStandardEffective: true}
 	cache := &authCacheInvalidatorStub{}
-	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo, groupRepo: groupRepo, authCacheInvalidator: cache}
+	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo, groupRepo: groupRepo, userRepo: userRepo, authCacheInvalidator: cache}
 
 	inputGID := int64(10)
 	got, err := svc.AdminUpdateAPIKeyGroupID(context.Background(), 1, &inputGID)
@@ -405,8 +422,9 @@ func TestAdminService_AdminUpdateAPIKeyGroupID_NilCacheInvalidator(t *testing.T)
 	existing := &APIKey{ID: 1, Key: "sk-test"}
 	apiKeyRepo := &apiKeyRepoStubForGroupUpdate{key: existing}
 	groupRepo := &groupRepoStubForGroupUpdate{group: &Group{ID: 7, Status: StatusActive}}
+	userRepo := &userRepoStubForGroupUpdate{canBindStandardEffective: true}
 	// authCacheInvalidator is nil – should not panic
-	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo, groupRepo: groupRepo}
+	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo, groupRepo: groupRepo, userRepo: userRepo}
 
 	got, err := svc.AdminUpdateAPIKeyGroupID(context.Background(), 1, int64Ptr(7))
 	require.NoError(t, err)
@@ -445,7 +463,7 @@ func TestAdminService_AdminUpdateAPIKeyGroupID_NonExclusiveGroup_NoAllowedGroupU
 	existing := &APIKey{ID: 1, UserID: 42, Key: "sk-test", GroupID: nil}
 	apiKeyRepo := &apiKeyRepoStubForGroupUpdate{key: existing}
 	groupRepo := &groupRepoStubForGroupUpdate{group: &Group{ID: 10, Name: "Public", Status: StatusActive, IsExclusive: false, SubscriptionType: SubscriptionTypeStandard}}
-	userRepo := &userRepoStubForGroupUpdate{}
+	userRepo := &userRepoStubForGroupUpdate{canBindStandardEffective: true}
 	cache := &authCacheInvalidatorStub{}
 	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo, groupRepo: groupRepo, userRepo: userRepo, authCacheInvalidator: cache}
 

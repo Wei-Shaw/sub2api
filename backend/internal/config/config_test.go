@@ -1832,3 +1832,86 @@ func TestLoad_DefaultGatewayImageStreamConfig(t *testing.T) {
 		t.Fatalf("image stream timeout = %d, want greater than ordinary stream timeout %d", cfg.Gateway.ImageStreamDataIntervalTimeout, cfg.Gateway.StreamDataIntervalTimeout)
 	}
 }
+
+func TestCacheInvalidationOutboxConfigDefault(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+
+	outbox := cfg.CacheInvalidation.Outbox
+	require.Equal(t, 2, outbox.PollIntervalSeconds)
+	require.Equal(t, 100, outbox.BatchSize)
+	require.Equal(t, 60, outbox.LockTimeoutSeconds)
+	require.Equal(t, 12, outbox.MaxAttempts)
+	require.Equal(t, 1, outbox.DeadLetterAlertThreshold)
+}
+
+func TestCacheInvalidationOutboxConfigEnvOverride(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("CACHE_INVALIDATION_OUTBOX_POLL_INTERVAL_SECONDS", "5")
+	t.Setenv("CACHE_INVALIDATION_OUTBOX_BATCH_SIZE", "200")
+	t.Setenv("CACHE_INVALIDATION_OUTBOX_LOCK_TIMEOUT_SECONDS", "120")
+	t.Setenv("CACHE_INVALIDATION_OUTBOX_MAX_ATTEMPTS", "6")
+	t.Setenv("CACHE_INVALIDATION_OUTBOX_DEAD_LETTER_ALERT_THRESHOLD", "0")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+
+	outbox := cfg.CacheInvalidation.Outbox
+	require.Equal(t, 5, outbox.PollIntervalSeconds)
+	require.Equal(t, 200, outbox.BatchSize)
+	require.Equal(t, 120, outbox.LockTimeoutSeconds)
+	require.Equal(t, 6, outbox.MaxAttempts)
+	require.Equal(t, 0, outbox.DeadLetterAlertThreshold)
+}
+
+func TestCacheInvalidationOutboxConfigValidate(t *testing.T) {
+	tests := []struct {
+		name    string
+		envKey  string
+		envVal  string
+		wantErr string
+	}{
+		{
+			name:    "poll_interval_seconds zero",
+			envKey:  "CACHE_INVALIDATION_OUTBOX_POLL_INTERVAL_SECONDS",
+			envVal:  "0",
+			wantErr: "poll_interval_seconds must be positive",
+		},
+		{
+			name:    "batch_size zero",
+			envKey:  "CACHE_INVALIDATION_OUTBOX_BATCH_SIZE",
+			envVal:  "0",
+			wantErr: "batch_size must be positive",
+		},
+		{
+			name:    "lock_timeout_seconds zero",
+			envKey:  "CACHE_INVALIDATION_OUTBOX_LOCK_TIMEOUT_SECONDS",
+			envVal:  "0",
+			wantErr: "lock_timeout_seconds must be positive",
+		},
+		{
+			name:    "max_attempts zero",
+			envKey:  "CACHE_INVALIDATION_OUTBOX_MAX_ATTEMPTS",
+			envVal:  "0",
+			wantErr: "max_attempts must be positive",
+		},
+		{
+			name:    "dead_letter_alert_threshold negative",
+			envKey:  "CACHE_INVALIDATION_OUTBOX_DEAD_LETTER_ALERT_THRESHOLD",
+			envVal:  "-1",
+			wantErr: "dead_letter_alert_threshold must be non-negative",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			resetViperWithJWTSecret(t)
+			t.Setenv(tc.envKey, tc.envVal)
+
+			_, err := Load()
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tc.wantErr)
+		})
+	}
+}

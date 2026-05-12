@@ -119,6 +119,27 @@ type Group struct {
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+
+	// 权限来源字段（仅在 available/profile 端点返回，omitempty 保持旧客户端兼容）
+	PermissionSource string  `json:"permission_source,omitempty"`
+	PoolID           *int64  `json:"pool_id,omitempty"`
+	PoolName         *string `json:"pool_name,omitempty"`
+}
+
+// AvailableGroupsProfile 是 GET /groups/available/profile 端点的响应 DTO。
+type AvailableGroupsProfile struct {
+	BindableGroups       []Group `json:"bindable_groups"`
+	GrantEffectiveGroups []int64 `json:"grant_effective_groups"`
+}
+
+// AllowedGroupDetail 是管理员用户详情中 allowed_groups_detail 的单条记录。
+// source 字段是 permission_source 的 UI 可编辑性兼容别名。
+type AllowedGroupDetail struct {
+	GroupID   int64   `json:"group_id"`
+	GroupName string  `json:"group_name"`
+	Source    string  `json:"source"` // direct | pool | public | subscription
+	PoolID    *int64  `json:"pool_id,omitempty"`
+	PoolName  *string `json:"pool_name,omitempty"`
 }
 
 // AdminGroup 是管理员接口使用的 group DTO（包含敏感/内部字段）。

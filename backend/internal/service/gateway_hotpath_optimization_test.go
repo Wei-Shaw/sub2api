@@ -180,6 +180,7 @@ func resetGatewayHotpathStatsForTest() {
 	userGroupRateCacheLoadTotal.Store(0)
 	userGroupRateCacheSFSharedTotal.Store(0)
 	userGroupRateCacheFallbackTotal.Store(0)
+	userPoolRateFallbackQueryErrorTotal.Store(0)
 
 	modelsListCacheHitTotal.Store(0)
 	modelsListCacheMissTotal.Store(0)

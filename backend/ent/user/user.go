@@ -85,8 +85,12 @@ const (
 	EdgeAuthIdentities = "auth_identities"
 	// EdgePendingAuthSessions holds the string denoting the pending_auth_sessions edge name in mutations.
 	EdgePendingAuthSessions = "pending_auth_sessions"
+	// EdgeUserPools holds the string denoting the user_pools edge name in mutations.
+	EdgeUserPools = "user_pools"
 	// EdgeUserAllowedGroups holds the string denoting the user_allowed_groups edge name in mutations.
 	EdgeUserAllowedGroups = "user_allowed_groups"
+	// EdgePoolMemberships holds the string denoting the pool_memberships edge name in mutations.
+	EdgePoolMemberships = "pool_memberships"
 	// Table holds the table name of the user in the database.
 	Table = "users"
 	// APIKeysTable is the table that holds the api_keys relation/edge.
@@ -171,6 +175,11 @@ const (
 	PendingAuthSessionsInverseTable = "pending_auth_sessions"
 	// PendingAuthSessionsColumn is the table column denoting the pending_auth_sessions relation/edge.
 	PendingAuthSessionsColumn = "target_user_id"
+	// UserPoolsTable is the table that holds the user_pools relation/edge. The primary key declared below.
+	UserPoolsTable = "user_pool_members"
+	// UserPoolsInverseTable is the table name for the UserPool entity.
+	// It exists in this package in order to avoid circular dependency with the "userpool" package.
+	UserPoolsInverseTable = "user_pools"
 	// UserAllowedGroupsTable is the table that holds the user_allowed_groups relation/edge.
 	UserAllowedGroupsTable = "user_allowed_groups"
 	// UserAllowedGroupsInverseTable is the table name for the UserAllowedGroup entity.
@@ -178,6 +187,13 @@ const (
 	UserAllowedGroupsInverseTable = "user_allowed_groups"
 	// UserAllowedGroupsColumn is the table column denoting the user_allowed_groups relation/edge.
 	UserAllowedGroupsColumn = "user_id"
+	// PoolMembershipsTable is the table that holds the pool_memberships relation/edge.
+	PoolMembershipsTable = "user_pool_members"
+	// PoolMembershipsInverseTable is the table name for the UserPoolMember entity.
+	// It exists in this package in order to avoid circular dependency with the "userpoolmember" package.
+	PoolMembershipsInverseTable = "user_pool_members"
+	// PoolMembershipsColumn is the table column denoting the pool_memberships relation/edge.
+	PoolMembershipsColumn = "user_id"
 )
 
 // Columns holds all SQL columns for user fields.
@@ -212,6 +228,9 @@ var (
 	// AllowedGroupsPrimaryKey and AllowedGroupsColumn2 are the table columns denoting the
 	// primary key for the allowed_groups relation (M2M).
 	AllowedGroupsPrimaryKey = []string{"user_id", "group_id"}
+	// UserPoolsPrimaryKey and UserPoolsColumn2 are the table columns denoting the
+	// primary key for the user_pools relation (M2M).
+	UserPoolsPrimaryKey = []string{"pool_id", "user_id"}
 )
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -569,6 +588,20 @@ func ByPendingAuthSessions(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOpti
 	}
 }
 
+// ByUserPoolsCount orders the results by user_pools count.
+func ByUserPoolsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newUserPoolsStep(), opts...)
+	}
+}
+
+// ByUserPools orders the results by user_pools terms.
+func ByUserPools(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newUserPoolsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByUserAllowedGroupsCount orders the results by user_allowed_groups count.
 func ByUserAllowedGroupsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -580,6 +613,20 @@ func ByUserAllowedGroupsCount(opts ...sql.OrderTermOption) OrderOption {
 func ByUserAllowedGroups(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	return func(s *sql.Selector) {
 		sqlgraph.OrderByNeighborTerms(s, newUserAllowedGroupsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByPoolMembershipsCount orders the results by pool_memberships count.
+func ByPoolMembershipsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newPoolMembershipsStep(), opts...)
+	}
+}
+
+// ByPoolMemberships orders the results by pool_memberships terms.
+func ByPoolMemberships(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newPoolMembershipsStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
 func newAPIKeysStep() *sqlgraph.Step {
@@ -666,10 +713,24 @@ func newPendingAuthSessionsStep() *sqlgraph.Step {
 		sqlgraph.Edge(sqlgraph.O2M, false, PendingAuthSessionsTable, PendingAuthSessionsColumn),
 	)
 }
+func newUserPoolsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(UserPoolsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2M, true, UserPoolsTable, UserPoolsPrimaryKey...),
+	)
+}
 func newUserAllowedGroupsStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(UserAllowedGroupsInverseTable, UserAllowedGroupsColumn),
 		sqlgraph.Edge(sqlgraph.O2M, true, UserAllowedGroupsTable, UserAllowedGroupsColumn),
+	)
+}
+func newPoolMembershipsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(PoolMembershipsInverseTable, PoolMembershipsColumn),
+		sqlgraph.Edge(sqlgraph.O2M, true, PoolMembershipsTable, PoolMembershipsColumn),
 	)
 }

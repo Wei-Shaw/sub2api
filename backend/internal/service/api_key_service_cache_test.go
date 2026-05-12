@@ -264,7 +264,8 @@ func TestAPIKeyService_SnapshotRoundTrip_PreservesMessagesDispatchModelConfig(t 
 		},
 	}
 
-	snapshot := svc.snapshotFromAPIKey(context.Background(), apiKey)
+	snapshot, err := svc.snapshotFromAPIKey(context.Background(), apiKey)
+	require.NoError(t, err)
 	roundTrip := svc.snapshotToAPIKey(apiKey.Key, snapshot)
 
 	require.NotNil(t, roundTrip)
@@ -574,4 +575,149 @@ func TestAPIKeyService_GetByKey_SingleflightCollapses(t *testing.T) {
 		require.NoError(t, err)
 	}
 	require.Equal(t, int32(1), atomic.LoadInt32(&calls))
+}
+
+// ─── Stubs for Task 6 snapshot tests ────────────────────────────────────────
+
+// snapshotUserRepoStub satisfies UserRepository with only CanBindStandardGroupEffective.
+type snapshotUserRepoStub struct {
+	UserRepository
+	canBindResult bool
+	canBindErr    error
+}
+
+func (s *snapshotUserRepoStub) CanBindStandardGroupEffective(_ context.Context, _, _ int64, _ bool, _ EffectiveAllowedGroupsOptions) (bool, error) {
+	return s.canBindResult, s.canBindErr
+}
+
+// snapshotSubRepoStub satisfies UserSubscriptionRepository with only GetActiveByUserIDAndGroupID.
+type snapshotSubRepoStub struct {
+	UserSubscriptionRepository
+	sub *UserSubscription
+	err error
+}
+
+func (s *snapshotSubRepoStub) GetActiveByUserIDAndGroupID(_ context.Context, _, _ int64) (*UserSubscription, error) {
+	return s.sub, s.err
+}
+
+// ─── Snapshot version test ───────────────────────────────────────────────────
+
+// TestSnapshotVersion_MustBeCurrentVersion asserts that the snapshot version constant
+// matches what would be written when building a new snapshot — any mismatch means a
+// stale cache entry is silently rejected and rebuilt.
+func TestSnapshotVersion_MustBeCurrentVersion(t *testing.T) {
+	svc := NewAPIKeyService(nil, nil, nil, nil, nil, nil, &config.Config{})
+	groupID := int64(1)
+	apiKey := &APIKey{
+		ID:      1,
+		UserID:  2,
+		GroupID: &groupID,
+		Status:  StatusActive,
+		User: &User{
+			ID:     2,
+			Status: StatusActive,
+		},
+	}
+	snapshot, err := svc.snapshotFromAPIKey(context.Background(), apiKey)
+	require.NoError(t, err)
+	require.NotNil(t, snapshot)
+	require.Equal(t, apiKeyAuthSnapshotVersion, snapshot.Version,
+		"newly built snapshot version must equal the current constant")
+}
+
+// ─── IsExclusive round-trip test ─────────────────────────────────────────────
+
+// TestSnapshotRoundTrip_IsExclusivePreserved asserts that IsExclusive=true on the Group
+// survives a snapshotFromAPIKey → snapshotToAPIKey round-trip.
+func TestSnapshotRoundTrip_IsExclusivePreserved(t *testing.T) {
+	userRepo := &snapshotUserRepoStub{canBindResult: true}
+	svc := NewAPIKeyService(nil, userRepo, nil, nil, nil, nil, &config.Config{})
+	groupID := int64(5)
+	apiKey := &APIKey{
+		ID:      1,
+		UserID:  2,
+		GroupID: &groupID,
+		Key:     "k-excl",
+		Status:  StatusActive,
+		User:    &User{ID: 2, Status: StatusActive},
+		Group: &Group{
+			ID:               groupID,
+			Name:             "excl-group",
+			Platform:         PlatformAnthropic,
+			Status:           StatusActive,
+			SubscriptionType: SubscriptionTypeStandard,
+			IsExclusive:      true,
+			RateMultiplier:   1.0,
+		},
+	}
+	snapshot, err := svc.snapshotFromAPIKey(context.Background(), apiKey)
+	require.NoError(t, err)
+	require.NotNil(t, snapshot)
+	require.NotNil(t, snapshot.Group)
+	require.True(t, snapshot.Group.IsExclusive, "IsExclusive must be serialised into snapshot")
+
+	restored := svc.snapshotToAPIKey(apiKey.Key, snapshot)
+	require.NotNil(t, restored)
+	require.NotNil(t, restored.Group)
+	require.True(t, restored.Group.IsExclusive, "IsExclusive must survive round-trip")
+}
+
+// ─── Revocation tests ─────────────────────────────────────────────────────────
+
+// TestSnapshotFromAPIKey_InactiveGroup_Revoked asserts that an inactive group causes
+// snapshotFromAPIKey to return ErrAPIKeyGroupRevoked.
+func TestSnapshotFromAPIKey_InactiveGroup_Revoked(t *testing.T) {
+	svc := NewAPIKeyService(nil, nil, nil, nil, nil, nil, &config.Config{})
+	groupID := int64(5)
+	apiKey := &APIKey{
+		ID:      1,
+		UserID:  2,
+		GroupID: &groupID,
+		Status:  StatusActive,
+		User:    &User{ID: 2, Status: StatusActive},
+		Group: &Group{
+			ID:               groupID,
+			Status:           "disabled", // not active
+			SubscriptionType: SubscriptionTypeStandard,
+		},
+	}
+	snapshot, err := svc.snapshotFromAPIKey(context.Background(), apiKey)
+	require.Nil(t, snapshot, "no snapshot should be returned for revoked group")
+	require.ErrorIs(t, err, ErrAPIKeyGroupRevoked, "should return ErrAPIKeyGroupRevoked for inactive group")
+}
+
+// TestSnapshotFromAPIKey_RevokedGroup_DoesNotWriteCache asserts that when snapshotFromAPIKey
+// returns ErrAPIKeyGroupRevoked, neither L1 nor L2 auth cache is written.
+func TestSnapshotFromAPIKey_RevokedGroup_DoesNotWriteCache(t *testing.T) {
+	cache := &authCacheStub{}
+	repo := &authRepoStub{
+		getByKeyForAuth: func(_ context.Context, _ string) (*APIKey, error) {
+			groupID := int64(5)
+			return &APIKey{
+				ID:      1,
+				UserID:  2,
+				GroupID: &groupID,
+				Status:  StatusActive,
+				User:    &User{ID: 2, Status: StatusActive},
+				Group: &Group{
+					ID:               groupID,
+					Status:           "disabled", // not active → revoked
+					SubscriptionType: SubscriptionTypeStandard,
+				},
+			}, nil
+		},
+	}
+	cfg := &config.Config{
+		APIKeyAuth: config.APIKeyAuthCacheConfig{
+			L2TTLSeconds:       60,
+			NegativeTTLSeconds: 30,
+		},
+	}
+	svc := NewAPIKeyService(repo, nil, nil, nil, nil, cache, cfg)
+
+	_, err := svc.GetByKey(context.Background(), "k-revoked")
+	require.Error(t, err, "GetByKey should return error for revoked group")
+	require.ErrorIs(t, err, ErrAPIKeyGroupRevoked)
+	require.Empty(t, cache.setAuthKeys, "L2 auth cache must NOT be written for revoked group")
 }

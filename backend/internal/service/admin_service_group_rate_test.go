@@ -77,6 +77,10 @@ func (s *userGroupRateRepoStubForGroupRate) DeleteByUserID(_ context.Context, _ 
 	panic("unexpected DeleteByUserID call")
 }
 
+func (s *userGroupRateRepoStubForGroupRate) GetPoolGroupGrantByUserAndGroup(_ context.Context, _, _ int64) (PoolGroupGrantSelection, error) {
+	panic("unexpected GetPoolGroupGrantByUserAndGroup call")
+}
+
 func TestAdminService_GetGroupRateMultipliers(t *testing.T) {
 	t.Run("returns entries for group", func(t *testing.T) {
 		repo := &userGroupRateRepoStubForGroupRate{

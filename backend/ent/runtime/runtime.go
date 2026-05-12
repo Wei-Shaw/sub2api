@@ -12,6 +12,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
+	"github.com/Wei-Shaw/sub2api/ent/cacheinvalidationoutbox"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
@@ -39,6 +40,9 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/ent/userattributedefinition"
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
+	"github.com/Wei-Shaw/sub2api/ent/userpool"
+	"github.com/Wei-Shaw/sub2api/ent/userpoolgroupgrant"
+	"github.com/Wei-Shaw/sub2api/ent/userpoolmember"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
@@ -431,6 +435,98 @@ func init() {
 	authidentitychannelDescMetadata := authidentitychannelFields[6].Descriptor()
 	// authidentitychannel.DefaultMetadata holds the default value on creation for the metadata field.
 	authidentitychannel.DefaultMetadata = authidentitychannelDescMetadata.Default.(func() map[string]interface{})
+	cacheinvalidationoutboxFields := schema.CacheInvalidationOutbox{}.Fields()
+	_ = cacheinvalidationoutboxFields
+	// cacheinvalidationoutboxDescEventType is the schema descriptor for event_type field.
+	cacheinvalidationoutboxDescEventType := cacheinvalidationoutboxFields[0].Descriptor()
+	// cacheinvalidationoutbox.EventTypeValidator is a validator for the "event_type" field. It is called by the builders before save.
+	cacheinvalidationoutbox.EventTypeValidator = func() func(string) error {
+		validators := cacheinvalidationoutboxDescEventType.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(event_type string) error {
+			for _, fn := range fns {
+				if err := fn(event_type); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// cacheinvalidationoutboxDescAggregateType is the schema descriptor for aggregate_type field.
+	cacheinvalidationoutboxDescAggregateType := cacheinvalidationoutboxFields[1].Descriptor()
+	// cacheinvalidationoutbox.AggregateTypeValidator is a validator for the "aggregate_type" field. It is called by the builders before save.
+	cacheinvalidationoutbox.AggregateTypeValidator = func() func(string) error {
+		validators := cacheinvalidationoutboxDescAggregateType.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(aggregate_type string) error {
+			for _, fn := range fns {
+				if err := fn(aggregate_type); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// cacheinvalidationoutboxDescReason is the schema descriptor for reason field.
+	cacheinvalidationoutboxDescReason := cacheinvalidationoutboxFields[3].Descriptor()
+	// cacheinvalidationoutbox.ReasonValidator is a validator for the "reason" field. It is called by the builders before save.
+	cacheinvalidationoutbox.ReasonValidator = func() func(string) error {
+		validators := cacheinvalidationoutboxDescReason.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(reason string) error {
+			for _, fn := range fns {
+				if err := fn(reason); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// cacheinvalidationoutboxDescStatus is the schema descriptor for status field.
+	cacheinvalidationoutboxDescStatus := cacheinvalidationoutboxFields[6].Descriptor()
+	// cacheinvalidationoutbox.DefaultStatus holds the default value on creation for the status field.
+	cacheinvalidationoutbox.DefaultStatus = cacheinvalidationoutboxDescStatus.Default.(string)
+	// cacheinvalidationoutbox.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	cacheinvalidationoutbox.StatusValidator = cacheinvalidationoutboxDescStatus.Validators[0].(func(string) error)
+	// cacheinvalidationoutboxDescAttempts is the schema descriptor for attempts field.
+	cacheinvalidationoutboxDescAttempts := cacheinvalidationoutboxFields[7].Descriptor()
+	// cacheinvalidationoutbox.DefaultAttempts holds the default value on creation for the attempts field.
+	cacheinvalidationoutbox.DefaultAttempts = cacheinvalidationoutboxDescAttempts.Default.(int)
+	// cacheinvalidationoutboxDescMaxAttempts is the schema descriptor for max_attempts field.
+	cacheinvalidationoutboxDescMaxAttempts := cacheinvalidationoutboxFields[8].Descriptor()
+	// cacheinvalidationoutbox.DefaultMaxAttempts holds the default value on creation for the max_attempts field.
+	cacheinvalidationoutbox.DefaultMaxAttempts = cacheinvalidationoutboxDescMaxAttempts.Default.(int)
+	// cacheinvalidationoutboxDescNextAttemptAt is the schema descriptor for next_attempt_at field.
+	cacheinvalidationoutboxDescNextAttemptAt := cacheinvalidationoutboxFields[9].Descriptor()
+	// cacheinvalidationoutbox.DefaultNextAttemptAt holds the default value on creation for the next_attempt_at field.
+	cacheinvalidationoutbox.DefaultNextAttemptAt = cacheinvalidationoutboxDescNextAttemptAt.Default.(func() time.Time)
+	// cacheinvalidationoutboxDescLockedBy is the schema descriptor for locked_by field.
+	cacheinvalidationoutboxDescLockedBy := cacheinvalidationoutboxFields[11].Descriptor()
+	// cacheinvalidationoutbox.LockedByValidator is a validator for the "locked_by" field. It is called by the builders before save.
+	cacheinvalidationoutbox.LockedByValidator = cacheinvalidationoutboxDescLockedBy.Validators[0].(func(string) error)
+	// cacheinvalidationoutboxDescIdempotencyKey is the schema descriptor for idempotency_key field.
+	cacheinvalidationoutboxDescIdempotencyKey := cacheinvalidationoutboxFields[14].Descriptor()
+	// cacheinvalidationoutbox.IdempotencyKeyValidator is a validator for the "idempotency_key" field. It is called by the builders before save.
+	cacheinvalidationoutbox.IdempotencyKeyValidator = cacheinvalidationoutboxDescIdempotencyKey.Validators[0].(func(string) error)
+	// cacheinvalidationoutboxDescCreatedAt is the schema descriptor for created_at field.
+	cacheinvalidationoutboxDescCreatedAt := cacheinvalidationoutboxFields[15].Descriptor()
+	// cacheinvalidationoutbox.DefaultCreatedAt holds the default value on creation for the created_at field.
+	cacheinvalidationoutbox.DefaultCreatedAt = cacheinvalidationoutboxDescCreatedAt.Default.(func() time.Time)
+	// cacheinvalidationoutboxDescUpdatedAt is the schema descriptor for updated_at field.
+	cacheinvalidationoutboxDescUpdatedAt := cacheinvalidationoutboxFields[16].Descriptor()
+	// cacheinvalidationoutbox.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	cacheinvalidationoutbox.DefaultUpdatedAt = cacheinvalidationoutboxDescUpdatedAt.Default.(func() time.Time)
+	// cacheinvalidationoutbox.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	cacheinvalidationoutbox.UpdateDefaultUpdatedAt = cacheinvalidationoutboxDescUpdatedAt.UpdateDefault.(func() time.Time)
 	channelmonitorMixin := schema.ChannelMonitor{}.Mixin()
 	channelmonitorMixinFields0 := channelmonitorMixin[0].Fields()
 	_ = channelmonitorMixinFields0
@@ -1985,6 +2081,67 @@ func init() {
 	userattributevalueDescValue := userattributevalueFields[2].Descriptor()
 	// userattributevalue.DefaultValue holds the default value on creation for the value field.
 	userattributevalue.DefaultValue = userattributevalueDescValue.Default.(string)
+	userpoolMixin := schema.UserPool{}.Mixin()
+	userpoolMixinHooks1 := userpoolMixin[1].Hooks()
+	userpool.Hooks[0] = userpoolMixinHooks1[0]
+	userpoolMixinInters1 := userpoolMixin[1].Interceptors()
+	userpool.Interceptors[0] = userpoolMixinInters1[0]
+	userpoolMixinFields0 := userpoolMixin[0].Fields()
+	_ = userpoolMixinFields0
+	userpoolFields := schema.UserPool{}.Fields()
+	_ = userpoolFields
+	// userpoolDescCreatedAt is the schema descriptor for created_at field.
+	userpoolDescCreatedAt := userpoolMixinFields0[0].Descriptor()
+	// userpool.DefaultCreatedAt holds the default value on creation for the created_at field.
+	userpool.DefaultCreatedAt = userpoolDescCreatedAt.Default.(func() time.Time)
+	// userpoolDescUpdatedAt is the schema descriptor for updated_at field.
+	userpoolDescUpdatedAt := userpoolMixinFields0[1].Descriptor()
+	// userpool.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	userpool.DefaultUpdatedAt = userpoolDescUpdatedAt.Default.(func() time.Time)
+	// userpool.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	userpool.UpdateDefaultUpdatedAt = userpoolDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// userpoolDescName is the schema descriptor for name field.
+	userpoolDescName := userpoolFields[0].Descriptor()
+	// userpool.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	userpool.NameValidator = func() func(string) error {
+		validators := userpoolDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// userpoolDescStatus is the schema descriptor for status field.
+	userpoolDescStatus := userpoolFields[2].Descriptor()
+	// userpool.DefaultStatus holds the default value on creation for the status field.
+	userpool.DefaultStatus = userpoolDescStatus.Default.(string)
+	// userpool.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	userpool.StatusValidator = userpoolDescStatus.Validators[0].(func(string) error)
+	userpoolgroupgrantFields := schema.UserPoolGroupGrant{}.Fields()
+	_ = userpoolgroupgrantFields
+	// userpoolgroupgrantDescCreatedAt is the schema descriptor for created_at field.
+	userpoolgroupgrantDescCreatedAt := userpoolgroupgrantFields[4].Descriptor()
+	// userpoolgroupgrant.DefaultCreatedAt holds the default value on creation for the created_at field.
+	userpoolgroupgrant.DefaultCreatedAt = userpoolgroupgrantDescCreatedAt.Default.(func() time.Time)
+	// userpoolgroupgrantDescUpdatedAt is the schema descriptor for updated_at field.
+	userpoolgroupgrantDescUpdatedAt := userpoolgroupgrantFields[5].Descriptor()
+	// userpoolgroupgrant.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	userpoolgroupgrant.DefaultUpdatedAt = userpoolgroupgrantDescUpdatedAt.Default.(func() time.Time)
+	// userpoolgroupgrant.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	userpoolgroupgrant.UpdateDefaultUpdatedAt = userpoolgroupgrantDescUpdatedAt.UpdateDefault.(func() time.Time)
+	userpoolmemberFields := schema.UserPoolMember{}.Fields()
+	_ = userpoolmemberFields
+	// userpoolmemberDescCreatedAt is the schema descriptor for created_at field.
+	userpoolmemberDescCreatedAt := userpoolmemberFields[2].Descriptor()
+	// userpoolmember.DefaultCreatedAt holds the default value on creation for the created_at field.
+	userpoolmember.DefaultCreatedAt = userpoolmemberDescCreatedAt.Default.(func() time.Time)
 	usersubscriptionMixin := schema.UserSubscription{}.Mixin()
 	usersubscriptionMixinHooks1 := usersubscriptionMixin[1].Hooks()
 	usersubscription.Hooks[0] = usersubscriptionMixinHooks1[0]
