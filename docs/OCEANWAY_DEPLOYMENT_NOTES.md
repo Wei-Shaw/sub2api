@@ -32,7 +32,7 @@
 
 因此：
 
-- 应用镜像更新部署到 `ali-vps` 的 `/root/sub2api-deploy`。
+- 应用镜像更新部署到 `ali-vps` 的 `/opt/sub2api`。
 - `la-vps` 通常只改 Caddy 配置，不加载应用镜像。
 - `la-vps` 上的 sub2api 应用容器不作为当前主服务使用；如果保留数据库/Redis，也只是回滚或备份参考。
 
@@ -55,7 +55,7 @@
    - 不要让 `la-vps:8080` 直接暴露完整 sub2api 页面或 `/api/*`。
 
 4. 备份：
-   - 在 `ali-vps` 上先备份 `/root/sub2api-deploy`。
+   - 在 `ali-vps` 上先备份 `/opt/sub2api`。
    - 在 `ali-vps` 上先备份 PostgreSQL 数据。
    - 不要把 `.env` 内容贴到聊天或日志里。
 
@@ -188,7 +188,7 @@ scp sub2api-${TAG}.tar.gz ali-vps:/root/
 ssh ali-vps
 TAG=oceanway-YYYYMMDD-HHMM
 gunzip -c /root/sub2api-${TAG}.tar.gz | docker load
-cd /root/sub2api-deploy
+cd /opt/sub2api
 
 # 修改 docker-compose.yml 中的 image：
 # image: sub2api:oceanway-YYYYMMDD-HHMM
