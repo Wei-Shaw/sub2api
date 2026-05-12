@@ -11,6 +11,7 @@ import type {
   SubscriptionPlan,
   ProviderInstance
 } from '@/types/payment'
+import type { HomePricingConfig } from '@/types'
 import type { BasePaginationResponse } from '@/types'
 
 /** Admin-facing payment config returned by GET /admin/payment/config */
@@ -150,6 +151,16 @@ export const adminPaymentAPI = {
   /** Delete a subscription plan */
   deletePlan(id: number) {
     return apiClient.delete(`/admin/payment/plans/${id}`)
+  },
+
+  /** Get public homepage pricing display config */
+  getHomePricingConfig() {
+    return apiClient.get<HomePricingConfig>('/admin/payment/home-pricing')
+  },
+
+  /** Update public homepage pricing display config */
+  updateHomePricingConfig(data: HomePricingConfig) {
+    return apiClient.put<HomePricingConfig>('/admin/payment/home-pricing', data)
   },
 
   // ==================== Provider Instances ====================

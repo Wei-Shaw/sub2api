@@ -101,6 +101,20 @@ func (_c *UserCreate) SetNillableRole(v *string) *UserCreate {
 	return _c
 }
 
+// SetCustomerType sets the "customer_type" field.
+func (_c *UserCreate) SetCustomerType(v string) *UserCreate {
+	_c.mutation.SetCustomerType(v)
+	return _c
+}
+
+// SetNillableCustomerType sets the "customer_type" field if the given value is not nil.
+func (_c *UserCreate) SetNillableCustomerType(v *string) *UserCreate {
+	if v != nil {
+		_c.SetCustomerType(*v)
+	}
+	return _c
+}
+
 // SetBalance sets the "balance" field.
 func (_c *UserCreate) SetBalance(v float64) *UserCreate {
 	_c.mutation.SetBalance(v)
@@ -574,6 +588,10 @@ func (_c *UserCreate) defaults() error {
 		v := user.DefaultRole
 		_c.mutation.SetRole(v)
 	}
+	if _, ok := _c.mutation.CustomerType(); !ok {
+		v := user.DefaultCustomerType
+		_c.mutation.SetCustomerType(v)
+	}
 	if _, ok := _c.mutation.Balance(); !ok {
 		v := user.DefaultBalance
 		_c.mutation.SetBalance(v)
@@ -655,6 +673,14 @@ func (_c *UserCreate) check() error {
 	if v, ok := _c.mutation.Role(); ok {
 		if err := user.RoleValidator(v); err != nil {
 			return &ValidationError{Name: "role", err: fmt.Errorf(`ent: validator failed for field "User.role": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.CustomerType(); !ok {
+		return &ValidationError{Name: "customer_type", err: errors.New(`ent: missing required field "User.customer_type"`)}
+	}
+	if v, ok := _c.mutation.CustomerType(); ok {
+		if err := user.CustomerTypeValidator(v); err != nil {
+			return &ValidationError{Name: "customer_type", err: fmt.Errorf(`ent: validator failed for field "User.customer_type": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.Balance(); !ok {
@@ -758,6 +784,10 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Role(); ok {
 		_spec.SetField(user.FieldRole, field.TypeString, value)
 		_node.Role = value
+	}
+	if value, ok := _c.mutation.CustomerType(); ok {
+		_spec.SetField(user.FieldCustomerType, field.TypeString, value)
+		_node.CustomerType = value
 	}
 	if value, ok := _c.mutation.Balance(); ok {
 		_spec.SetField(user.FieldBalance, field.TypeFloat64, value)
@@ -1138,6 +1168,18 @@ func (u *UserUpsert) SetRole(v string) *UserUpsert {
 // UpdateRole sets the "role" field to the value that was provided on create.
 func (u *UserUpsert) UpdateRole() *UserUpsert {
 	u.SetExcluded(user.FieldRole)
+	return u
+}
+
+// SetCustomerType sets the "customer_type" field.
+func (u *UserUpsert) SetCustomerType(v string) *UserUpsert {
+	u.Set(user.FieldCustomerType, v)
+	return u
+}
+
+// UpdateCustomerType sets the "customer_type" field to the value that was provided on create.
+func (u *UserUpsert) UpdateCustomerType() *UserUpsert {
+	u.SetExcluded(user.FieldCustomerType)
 	return u
 }
 
@@ -1524,6 +1566,20 @@ func (u *UserUpsertOne) SetRole(v string) *UserUpsertOne {
 func (u *UserUpsertOne) UpdateRole() *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateRole()
+	})
+}
+
+// SetCustomerType sets the "customer_type" field.
+func (u *UserUpsertOne) SetCustomerType(v string) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetCustomerType(v)
+	})
+}
+
+// UpdateCustomerType sets the "customer_type" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateCustomerType() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateCustomerType()
 	})
 }
 
@@ -2120,6 +2176,20 @@ func (u *UserUpsertBulk) SetRole(v string) *UserUpsertBulk {
 func (u *UserUpsertBulk) UpdateRole() *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateRole()
+	})
+}
+
+// SetCustomerType sets the "customer_type" field.
+func (u *UserUpsertBulk) SetCustomerType(v string) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetCustomerType(v)
+	})
+}
+
+// UpdateCustomerType sets the "customer_type" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateCustomerType() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateCustomerType()
 	})
 }
 

@@ -190,6 +190,34 @@ func (_u *APIKeyUpdate) ClearIPBlacklist() *APIKeyUpdate {
 	return _u
 }
 
+// SetIPLockMode sets the "ip_lock_mode" field.
+func (_u *APIKeyUpdate) SetIPLockMode(v string) *APIKeyUpdate {
+	_u.mutation.SetIPLockMode(v)
+	return _u
+}
+
+// SetNillableIPLockMode sets the "ip_lock_mode" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableIPLockMode(v *string) *APIKeyUpdate {
+	if v != nil {
+		_u.SetIPLockMode(*v)
+	}
+	return _u
+}
+
+// SetLimitAction sets the "limit_action" field.
+func (_u *APIKeyUpdate) SetLimitAction(v string) *APIKeyUpdate {
+	_u.mutation.SetLimitAction(v)
+	return _u
+}
+
+// SetNillableLimitAction sets the "limit_action" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableLimitAction(v *string) *APIKeyUpdate {
+	if v != nil {
+		_u.SetLimitAction(*v)
+	}
+	return _u
+}
+
 // SetQuota sets the "quota" field.
 func (_u *APIKeyUpdate) SetQuota(v float64) *APIKeyUpdate {
 	_u.mutation.ResetQuota()
@@ -315,6 +343,27 @@ func (_u *APIKeyUpdate) AddRateLimit7d(v float64) *APIKeyUpdate {
 	return _u
 }
 
+// SetRateLimit1mo sets the "rate_limit_1mo" field.
+func (_u *APIKeyUpdate) SetRateLimit1mo(v float64) *APIKeyUpdate {
+	_u.mutation.ResetRateLimit1mo()
+	_u.mutation.SetRateLimit1mo(v)
+	return _u
+}
+
+// SetNillableRateLimit1mo sets the "rate_limit_1mo" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableRateLimit1mo(v *float64) *APIKeyUpdate {
+	if v != nil {
+		_u.SetRateLimit1mo(*v)
+	}
+	return _u
+}
+
+// AddRateLimit1mo adds value to the "rate_limit_1mo" field.
+func (_u *APIKeyUpdate) AddRateLimit1mo(v float64) *APIKeyUpdate {
+	_u.mutation.AddRateLimit1mo(v)
+	return _u
+}
+
 // SetUsage5h sets the "usage_5h" field.
 func (_u *APIKeyUpdate) SetUsage5h(v float64) *APIKeyUpdate {
 	_u.mutation.ResetUsage5h()
@@ -378,6 +427,27 @@ func (_u *APIKeyUpdate) AddUsage7d(v float64) *APIKeyUpdate {
 	return _u
 }
 
+// SetUsage1mo sets the "usage_1mo" field.
+func (_u *APIKeyUpdate) SetUsage1mo(v float64) *APIKeyUpdate {
+	_u.mutation.ResetUsage1mo()
+	_u.mutation.SetUsage1mo(v)
+	return _u
+}
+
+// SetNillableUsage1mo sets the "usage_1mo" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableUsage1mo(v *float64) *APIKeyUpdate {
+	if v != nil {
+		_u.SetUsage1mo(*v)
+	}
+	return _u
+}
+
+// AddUsage1mo adds value to the "usage_1mo" field.
+func (_u *APIKeyUpdate) AddUsage1mo(v float64) *APIKeyUpdate {
+	_u.mutation.AddUsage1mo(v)
+	return _u
+}
+
 // SetWindow5hStart sets the "window_5h_start" field.
 func (_u *APIKeyUpdate) SetWindow5hStart(v time.Time) *APIKeyUpdate {
 	_u.mutation.SetWindow5hStart(v)
@@ -435,6 +505,26 @@ func (_u *APIKeyUpdate) SetNillableWindow7dStart(v *time.Time) *APIKeyUpdate {
 // ClearWindow7dStart clears the value of the "window_7d_start" field.
 func (_u *APIKeyUpdate) ClearWindow7dStart() *APIKeyUpdate {
 	_u.mutation.ClearWindow7dStart()
+	return _u
+}
+
+// SetWindow1moStart sets the "window_1mo_start" field.
+func (_u *APIKeyUpdate) SetWindow1moStart(v time.Time) *APIKeyUpdate {
+	_u.mutation.SetWindow1moStart(v)
+	return _u
+}
+
+// SetNillableWindow1moStart sets the "window_1mo_start" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableWindow1moStart(v *time.Time) *APIKeyUpdate {
+	if v != nil {
+		_u.SetWindow1moStart(*v)
+	}
+	return _u
+}
+
+// ClearWindow1moStart clears the value of the "window_1mo_start" field.
+func (_u *APIKeyUpdate) ClearWindow1moStart() *APIKeyUpdate {
+	_u.mutation.ClearWindow1moStart()
 	return _u
 }
 
@@ -560,6 +650,16 @@ func (_u *APIKeyUpdate) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "APIKey.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.IPLockMode(); ok {
+		if err := apikey.IPLockModeValidator(v); err != nil {
+			return &ValidationError{Name: "ip_lock_mode", err: fmt.Errorf(`ent: validator failed for field "APIKey.ip_lock_mode": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.LimitAction(); ok {
+		if err := apikey.LimitActionValidator(v); err != nil {
+			return &ValidationError{Name: "limit_action", err: fmt.Errorf(`ent: validator failed for field "APIKey.limit_action": %w`, err)}
+		}
+	}
 	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "APIKey.user"`)
 	}
@@ -624,6 +724,12 @@ func (_u *APIKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.IPBlacklistCleared() {
 		_spec.ClearField(apikey.FieldIPBlacklist, field.TypeJSON)
 	}
+	if value, ok := _u.mutation.IPLockMode(); ok {
+		_spec.SetField(apikey.FieldIPLockMode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.LimitAction(); ok {
+		_spec.SetField(apikey.FieldLimitAction, field.TypeString, value)
+	}
 	if value, ok := _u.mutation.Quota(); ok {
 		_spec.SetField(apikey.FieldQuota, field.TypeFloat64, value)
 	}
@@ -660,6 +766,12 @@ func (_u *APIKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AddedRateLimit7d(); ok {
 		_spec.AddField(apikey.FieldRateLimit7d, field.TypeFloat64, value)
 	}
+	if value, ok := _u.mutation.RateLimit1mo(); ok {
+		_spec.SetField(apikey.FieldRateLimit1mo, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedRateLimit1mo(); ok {
+		_spec.AddField(apikey.FieldRateLimit1mo, field.TypeFloat64, value)
+	}
 	if value, ok := _u.mutation.Usage5h(); ok {
 		_spec.SetField(apikey.FieldUsage5h, field.TypeFloat64, value)
 	}
@@ -678,6 +790,12 @@ func (_u *APIKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AddedUsage7d(); ok {
 		_spec.AddField(apikey.FieldUsage7d, field.TypeFloat64, value)
 	}
+	if value, ok := _u.mutation.Usage1mo(); ok {
+		_spec.SetField(apikey.FieldUsage1mo, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedUsage1mo(); ok {
+		_spec.AddField(apikey.FieldUsage1mo, field.TypeFloat64, value)
+	}
 	if value, ok := _u.mutation.Window5hStart(); ok {
 		_spec.SetField(apikey.FieldWindow5hStart, field.TypeTime, value)
 	}
@@ -695,6 +813,12 @@ func (_u *APIKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.Window7dStartCleared() {
 		_spec.ClearField(apikey.FieldWindow7dStart, field.TypeTime)
+	}
+	if value, ok := _u.mutation.Window1moStart(); ok {
+		_spec.SetField(apikey.FieldWindow1moStart, field.TypeTime, value)
+	}
+	if _u.mutation.Window1moStartCleared() {
+		_spec.ClearField(apikey.FieldWindow1moStart, field.TypeTime)
 	}
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -977,6 +1101,34 @@ func (_u *APIKeyUpdateOne) ClearIPBlacklist() *APIKeyUpdateOne {
 	return _u
 }
 
+// SetIPLockMode sets the "ip_lock_mode" field.
+func (_u *APIKeyUpdateOne) SetIPLockMode(v string) *APIKeyUpdateOne {
+	_u.mutation.SetIPLockMode(v)
+	return _u
+}
+
+// SetNillableIPLockMode sets the "ip_lock_mode" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableIPLockMode(v *string) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetIPLockMode(*v)
+	}
+	return _u
+}
+
+// SetLimitAction sets the "limit_action" field.
+func (_u *APIKeyUpdateOne) SetLimitAction(v string) *APIKeyUpdateOne {
+	_u.mutation.SetLimitAction(v)
+	return _u
+}
+
+// SetNillableLimitAction sets the "limit_action" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableLimitAction(v *string) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetLimitAction(*v)
+	}
+	return _u
+}
+
 // SetQuota sets the "quota" field.
 func (_u *APIKeyUpdateOne) SetQuota(v float64) *APIKeyUpdateOne {
 	_u.mutation.ResetQuota()
@@ -1102,6 +1254,27 @@ func (_u *APIKeyUpdateOne) AddRateLimit7d(v float64) *APIKeyUpdateOne {
 	return _u
 }
 
+// SetRateLimit1mo sets the "rate_limit_1mo" field.
+func (_u *APIKeyUpdateOne) SetRateLimit1mo(v float64) *APIKeyUpdateOne {
+	_u.mutation.ResetRateLimit1mo()
+	_u.mutation.SetRateLimit1mo(v)
+	return _u
+}
+
+// SetNillableRateLimit1mo sets the "rate_limit_1mo" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableRateLimit1mo(v *float64) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetRateLimit1mo(*v)
+	}
+	return _u
+}
+
+// AddRateLimit1mo adds value to the "rate_limit_1mo" field.
+func (_u *APIKeyUpdateOne) AddRateLimit1mo(v float64) *APIKeyUpdateOne {
+	_u.mutation.AddRateLimit1mo(v)
+	return _u
+}
+
 // SetUsage5h sets the "usage_5h" field.
 func (_u *APIKeyUpdateOne) SetUsage5h(v float64) *APIKeyUpdateOne {
 	_u.mutation.ResetUsage5h()
@@ -1165,6 +1338,27 @@ func (_u *APIKeyUpdateOne) AddUsage7d(v float64) *APIKeyUpdateOne {
 	return _u
 }
 
+// SetUsage1mo sets the "usage_1mo" field.
+func (_u *APIKeyUpdateOne) SetUsage1mo(v float64) *APIKeyUpdateOne {
+	_u.mutation.ResetUsage1mo()
+	_u.mutation.SetUsage1mo(v)
+	return _u
+}
+
+// SetNillableUsage1mo sets the "usage_1mo" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableUsage1mo(v *float64) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetUsage1mo(*v)
+	}
+	return _u
+}
+
+// AddUsage1mo adds value to the "usage_1mo" field.
+func (_u *APIKeyUpdateOne) AddUsage1mo(v float64) *APIKeyUpdateOne {
+	_u.mutation.AddUsage1mo(v)
+	return _u
+}
+
 // SetWindow5hStart sets the "window_5h_start" field.
 func (_u *APIKeyUpdateOne) SetWindow5hStart(v time.Time) *APIKeyUpdateOne {
 	_u.mutation.SetWindow5hStart(v)
@@ -1222,6 +1416,26 @@ func (_u *APIKeyUpdateOne) SetNillableWindow7dStart(v *time.Time) *APIKeyUpdateO
 // ClearWindow7dStart clears the value of the "window_7d_start" field.
 func (_u *APIKeyUpdateOne) ClearWindow7dStart() *APIKeyUpdateOne {
 	_u.mutation.ClearWindow7dStart()
+	return _u
+}
+
+// SetWindow1moStart sets the "window_1mo_start" field.
+func (_u *APIKeyUpdateOne) SetWindow1moStart(v time.Time) *APIKeyUpdateOne {
+	_u.mutation.SetWindow1moStart(v)
+	return _u
+}
+
+// SetNillableWindow1moStart sets the "window_1mo_start" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableWindow1moStart(v *time.Time) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetWindow1moStart(*v)
+	}
+	return _u
+}
+
+// ClearWindow1moStart clears the value of the "window_1mo_start" field.
+func (_u *APIKeyUpdateOne) ClearWindow1moStart() *APIKeyUpdateOne {
+	_u.mutation.ClearWindow1moStart()
 	return _u
 }
 
@@ -1360,6 +1574,16 @@ func (_u *APIKeyUpdateOne) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "APIKey.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.IPLockMode(); ok {
+		if err := apikey.IPLockModeValidator(v); err != nil {
+			return &ValidationError{Name: "ip_lock_mode", err: fmt.Errorf(`ent: validator failed for field "APIKey.ip_lock_mode": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.LimitAction(); ok {
+		if err := apikey.LimitActionValidator(v); err != nil {
+			return &ValidationError{Name: "limit_action", err: fmt.Errorf(`ent: validator failed for field "APIKey.limit_action": %w`, err)}
+		}
+	}
 	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "APIKey.user"`)
 	}
@@ -1441,6 +1665,12 @@ func (_u *APIKeyUpdateOne) sqlSave(ctx context.Context) (_node *APIKey, err erro
 	if _u.mutation.IPBlacklistCleared() {
 		_spec.ClearField(apikey.FieldIPBlacklist, field.TypeJSON)
 	}
+	if value, ok := _u.mutation.IPLockMode(); ok {
+		_spec.SetField(apikey.FieldIPLockMode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.LimitAction(); ok {
+		_spec.SetField(apikey.FieldLimitAction, field.TypeString, value)
+	}
 	if value, ok := _u.mutation.Quota(); ok {
 		_spec.SetField(apikey.FieldQuota, field.TypeFloat64, value)
 	}
@@ -1477,6 +1707,12 @@ func (_u *APIKeyUpdateOne) sqlSave(ctx context.Context) (_node *APIKey, err erro
 	if value, ok := _u.mutation.AddedRateLimit7d(); ok {
 		_spec.AddField(apikey.FieldRateLimit7d, field.TypeFloat64, value)
 	}
+	if value, ok := _u.mutation.RateLimit1mo(); ok {
+		_spec.SetField(apikey.FieldRateLimit1mo, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedRateLimit1mo(); ok {
+		_spec.AddField(apikey.FieldRateLimit1mo, field.TypeFloat64, value)
+	}
 	if value, ok := _u.mutation.Usage5h(); ok {
 		_spec.SetField(apikey.FieldUsage5h, field.TypeFloat64, value)
 	}
@@ -1495,6 +1731,12 @@ func (_u *APIKeyUpdateOne) sqlSave(ctx context.Context) (_node *APIKey, err erro
 	if value, ok := _u.mutation.AddedUsage7d(); ok {
 		_spec.AddField(apikey.FieldUsage7d, field.TypeFloat64, value)
 	}
+	if value, ok := _u.mutation.Usage1mo(); ok {
+		_spec.SetField(apikey.FieldUsage1mo, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedUsage1mo(); ok {
+		_spec.AddField(apikey.FieldUsage1mo, field.TypeFloat64, value)
+	}
 	if value, ok := _u.mutation.Window5hStart(); ok {
 		_spec.SetField(apikey.FieldWindow5hStart, field.TypeTime, value)
 	}
@@ -1512,6 +1754,12 @@ func (_u *APIKeyUpdateOne) sqlSave(ctx context.Context) (_node *APIKey, err erro
 	}
 	if _u.mutation.Window7dStartCleared() {
 		_spec.ClearField(apikey.FieldWindow7dStart, field.TypeTime)
+	}
+	if value, ok := _u.mutation.Window1moStart(); ok {
+		_spec.SetField(apikey.FieldWindow1moStart, field.TypeTime, value)
+	}
+	if _u.mutation.Window1moStartCleared() {
+		_spec.ClearField(apikey.FieldWindow1moStart, field.TypeTime)
 	}
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{

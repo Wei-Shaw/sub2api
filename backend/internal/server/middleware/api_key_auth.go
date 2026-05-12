@@ -96,6 +96,10 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 				return
 			}
 		}
+		if err := apiKeyService.EnforceIPLock(c.Request.Context(), apiKey, ip.GetTrustedClientIP(c)); err != nil {
+			AbortWithError(c, 403, "ACCESS_DENIED", "Access denied")
+			return
+		}
 
 		// 检查关联的用户
 		if apiKey.User == nil {

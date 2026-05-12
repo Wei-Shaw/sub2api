@@ -336,7 +336,9 @@ describe('EmailVerifyView', () => {
       email: 'fresh@example.com',
       password: 'secret-123',
       verify_code: '123456',
-      aff_code: 'AFF123',
+      invitation_code: undefined,
+      adopt_display_name: undefined,
+      adopt_avatar: undefined,
     })
     expect(persistOAuthTokenContextMock).toHaveBeenCalledWith({
       access_token: 'oauth-access-token',
@@ -419,6 +421,7 @@ describe('EmailVerifyView', () => {
       'register_data',
       JSON.stringify({
         email: 'normal@example.com',
+        username: 'Normal User',
         password: 'secret-456',
         promo_code: 'PROMO',
         invitation_code: 'INVITE',
@@ -444,6 +447,7 @@ describe('EmailVerifyView', () => {
 
     expect(registerMock).toHaveBeenCalledWith({
       email: 'normal@example.com',
+      username: 'Normal User',
       password: 'secret-456',
       verify_code: '654321',
       turnstile_token: undefined,

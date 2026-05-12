@@ -199,6 +199,22 @@ func (s *apiKeyCacheStub) DeleteAuthCache(ctx context.Context, key string) error
 	return nil
 }
 
+func (s *apiKeyCacheStub) GetAPIKeyIPLock(ctx context.Context, keyID int64) (string, error) {
+	return "", nil
+}
+
+func (s *apiKeyCacheStub) BindAPIKeyIPLock(ctx context.Context, keyID int64, clientIP string, ttl time.Duration) (string, error) {
+	return clientIP, nil
+}
+
+func (s *apiKeyCacheStub) RefreshAPIKeyIPLock(ctx context.Context, keyID int64, ttl time.Duration) error {
+	return nil
+}
+
+func (s *apiKeyCacheStub) ResetAPIKeyIPLock(ctx context.Context, keyID int64) error {
+	return nil
+}
+
 func (s *apiKeyCacheStub) PublishAuthCacheInvalidation(ctx context.Context, cacheKey string) error {
 	return nil
 }

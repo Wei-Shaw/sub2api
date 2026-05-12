@@ -42,7 +42,7 @@ func (s *AuthService) SendPendingOAuthVerifyCode(ctx context.Context, email stri
 		return nil, ErrServiceUnavailable
 	}
 
-	siteName := "Sub2API"
+	siteName := "OceanWay AI"
 	if s.settingService != nil {
 		siteName = s.settingService.GetSiteName(ctx)
 	}

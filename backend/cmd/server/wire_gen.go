@@ -194,7 +194,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	if err != nil {
 		return nil, err
 	}
-	paymentConfigService := service.ProvidePaymentConfigService(client, settingRepository, encryptionKey)
+	paymentConfigService := service.ProvidePaymentConfigService(client, settingRepository, encryptionKey, settingService)
 	registry := payment.ProvideRegistry()
 	defaultLoadBalancer := payment.ProvideDefaultLoadBalancer(client, encryptionKey)
 	paymentService := service.NewPaymentService(client, registry, defaultLoadBalancer, redeemService, subscriptionService, paymentConfigService, userRepository, groupRepository, affiliateService)
@@ -220,7 +220,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	errorPassthroughService := service.NewErrorPassthroughService(errorPassthroughRepository, errorPassthroughCache)
 	errorPassthroughHandler := admin.NewErrorPassthroughHandler(errorPassthroughService)
 	tlsFingerprintProfileHandler := admin.NewTLSFingerprintProfileHandler(tlsFingerprintProfileService)
-	adminAPIKeyHandler := admin.NewAdminAPIKeyHandler(adminService)
+	adminAPIKeyHandler := admin.NewAdminAPIKeyHandler(adminService, apiKeyService)
 	scheduledTestPlanRepository := repository.NewScheduledTestPlanRepository(db)
 	scheduledTestResultRepository := repository.NewScheduledTestResultRepository(db)
 	scheduledTestService := service.ProvideScheduledTestService(scheduledTestPlanRepository, scheduledTestResultRepository)

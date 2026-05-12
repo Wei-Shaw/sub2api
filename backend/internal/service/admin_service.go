@@ -120,6 +120,7 @@ type CreateUserInput struct {
 	Password      string
 	Username      string
 	Notes         string
+	CustomerType  string
 	Balance       float64
 	Concurrency   int
 	RPMLimit      int
@@ -661,11 +662,16 @@ func (s *adminServiceImpl) GetUser(ctx context.Context, id int64) (*User, error)
 }
 
 func (s *adminServiceImpl) CreateUser(ctx context.Context, input *CreateUserInput) (*User, error) {
+	customerType := strings.TrimSpace(input.CustomerType)
+	if customerType == "" {
+		customerType = CustomerTypeRetail
+	}
 	user := &User{
 		Email:         input.Email,
 		Username:      input.Username,
 		Notes:         input.Notes,
 		Role:          RoleUser, // Always create as regular user, never admin
+		CustomerType:  customerType,
 		Balance:       input.Balance,
 		Concurrency:   input.Concurrency,
 		RPMLimit:      input.RPMLimit,

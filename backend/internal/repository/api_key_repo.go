@@ -48,9 +48,12 @@ func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) erro
 		SetQuota(key.Quota).
 		SetQuotaUsed(key.QuotaUsed).
 		SetNillableExpiresAt(key.ExpiresAt).
+		SetIPLockMode(apiKeyIPLockModeOrDefault(key.IPLockMode)).
+		SetLimitAction(apiKeyLimitActionOrDefault(key.LimitAction)).
 		SetRateLimit5h(key.RateLimit5h).
 		SetRateLimit1d(key.RateLimit1d).
-		SetRateLimit7d(key.RateLimit7d)
+		SetRateLimit7d(key.RateLimit7d).
+		SetRateLimit1mo(key.RateLimit1mo)
 
 	if len(key.IPWhitelist) > 0 {
 		builder.SetIPWhitelist(key.IPWhitelist)
@@ -129,12 +132,15 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 			apikey.FieldStatus,
 			apikey.FieldIPWhitelist,
 			apikey.FieldIPBlacklist,
+			apikey.FieldIPLockMode,
+			apikey.FieldLimitAction,
 			apikey.FieldQuota,
 			apikey.FieldQuotaUsed,
 			apikey.FieldExpiresAt,
 			apikey.FieldRateLimit5h,
 			apikey.FieldRateLimit1d,
 			apikey.FieldRateLimit7d,
+			apikey.FieldRateLimit1mo,
 		).
 		WithUser(func(q *dbent.UserQuery) {
 			q.Select(
@@ -143,6 +149,7 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				user.FieldUsername,
 				user.FieldStatus,
 				user.FieldRole,
+				user.FieldCustomerType,
 				user.FieldBalance,
 				user.FieldConcurrency,
 				user.FieldBalanceNotifyEnabled,
@@ -210,12 +217,16 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey) erro
 		SetStatus(key.Status).
 		SetQuota(key.Quota).
 		SetQuotaUsed(key.QuotaUsed).
+		SetIPLockMode(apiKeyIPLockModeOrDefault(key.IPLockMode)).
+		SetLimitAction(apiKeyLimitActionOrDefault(key.LimitAction)).
 		SetRateLimit5h(key.RateLimit5h).
 		SetRateLimit1d(key.RateLimit1d).
 		SetRateLimit7d(key.RateLimit7d).
+		SetRateLimit1mo(key.RateLimit1mo).
 		SetUsage5h(key.Usage5h).
 		SetUsage1d(key.Usage1d).
 		SetUsage7d(key.Usage7d).
+		SetUsage1mo(key.Usage1mo).
 		SetUpdatedAt(now)
 	if key.GroupID != nil {
 		builder.SetGroupID(*key.GroupID)
@@ -245,6 +256,11 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey) erro
 		builder.SetWindow7dStart(*key.Window7dStart)
 	} else {
 		builder.ClearWindow7dStart()
+	}
+	if key.Window1moStart != nil {
+		builder.SetWindow1moStart(*key.Window1moStart)
+	} else {
+		builder.ClearWindow1moStart()
 	}
 
 	// IP 限制字段
@@ -563,9 +579,11 @@ func (r *apiKeyRepository) IncrementRateLimitUsage(ctx context.Context, id int64
 			usage_5h = CASE WHEN window_5h_start IS NOT NULL AND window_5h_start + INTERVAL '5 hours' <= NOW() THEN $1 ELSE usage_5h + $1 END,
 			usage_1d = CASE WHEN window_1d_start IS NOT NULL AND window_1d_start + INTERVAL '24 hours' <= NOW() THEN $1 ELSE usage_1d + $1 END,
 			usage_7d = CASE WHEN window_7d_start IS NOT NULL AND window_7d_start + INTERVAL '7 days' <= NOW() THEN $1 ELSE usage_7d + $1 END,
+			usage_1mo = CASE WHEN window_1mo_start IS NOT NULL AND window_1mo_start + INTERVAL '30 days' <= NOW() THEN $1 ELSE usage_1mo + $1 END,
 			window_5h_start = CASE WHEN window_5h_start IS NULL OR window_5h_start + INTERVAL '5 hours' <= NOW() THEN NOW() ELSE window_5h_start END,
 			window_1d_start = CASE WHEN window_1d_start IS NULL OR window_1d_start + INTERVAL '24 hours' <= NOW() THEN date_trunc('day', NOW()) ELSE window_1d_start END,
 			window_7d_start = CASE WHEN window_7d_start IS NULL OR window_7d_start + INTERVAL '7 days' <= NOW() THEN date_trunc('day', NOW()) ELSE window_7d_start END,
+			window_1mo_start = CASE WHEN window_1mo_start IS NULL OR window_1mo_start + INTERVAL '30 days' <= NOW() THEN date_trunc('day', NOW()) ELSE window_1mo_start END,
 			updated_at = NOW()
 		WHERE id = $2 AND deleted_at IS NULL`,
 		cost, id)
@@ -582,6 +600,8 @@ func (r *apiKeyRepository) ResetRateLimitWindows(ctx context.Context, id int64) 
 			window_1d_start = CASE WHEN window_1d_start IS NOT NULL AND window_1d_start + INTERVAL '24 hours' <= NOW() THEN date_trunc('day', NOW()) ELSE window_1d_start END,
 			usage_7d = CASE WHEN window_7d_start IS NOT NULL AND window_7d_start + INTERVAL '7 days' <= NOW() THEN 0 ELSE usage_7d END,
 			window_7d_start = CASE WHEN window_7d_start IS NOT NULL AND window_7d_start + INTERVAL '7 days' <= NOW() THEN date_trunc('day', NOW()) ELSE window_7d_start END,
+			usage_1mo = CASE WHEN window_1mo_start IS NOT NULL AND window_1mo_start + INTERVAL '30 days' <= NOW() THEN 0 ELSE usage_1mo END,
+			window_1mo_start = CASE WHEN window_1mo_start IS NOT NULL AND window_1mo_start + INTERVAL '30 days' <= NOW() THEN date_trunc('day', NOW()) ELSE window_1mo_start END,
 			updated_at = NOW()
 		WHERE id = $1 AND deleted_at IS NULL`,
 		id)
@@ -591,7 +611,7 @@ func (r *apiKeyRepository) ResetRateLimitWindows(ctx context.Context, id int64) 
 // GetRateLimitData returns the current rate limit usage and window start times for an API key.
 func (r *apiKeyRepository) GetRateLimitData(ctx context.Context, id int64) (result *service.APIKeyRateLimitData, err error) {
 	rows, err := r.sql.QueryContext(ctx, `
-		SELECT usage_5h, usage_1d, usage_7d, window_5h_start, window_1d_start, window_7d_start
+		SELECT usage_5h, usage_1d, usage_7d, usage_1mo, window_5h_start, window_1d_start, window_7d_start, window_1mo_start
 		FROM api_keys
 		WHERE id = $1 AND deleted_at IS NULL`,
 		id)
@@ -607,7 +627,7 @@ func (r *apiKeyRepository) GetRateLimitData(ctx context.Context, id int64) (resu
 		return nil, service.ErrAPIKeyNotFound
 	}
 	data := &service.APIKeyRateLimitData{}
-	if err := rows.Scan(&data.Usage5h, &data.Usage1d, &data.Usage7d, &data.Window5hStart, &data.Window1dStart, &data.Window7dStart); err != nil {
+	if err := rows.Scan(&data.Usage5h, &data.Usage1d, &data.Usage7d, &data.Usage1mo, &data.Window5hStart, &data.Window1dStart, &data.Window7dStart, &data.Window1moStart); err != nil {
 		return nil, err
 	}
 	return data, rows.Err()
@@ -618,29 +638,34 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 		return nil
 	}
 	out := &service.APIKey{
-		ID:            m.ID,
-		UserID:        m.UserID,
-		Key:           m.Key,
-		Name:          m.Name,
-		Status:        m.Status,
-		IPWhitelist:   m.IPWhitelist,
-		IPBlacklist:   m.IPBlacklist,
-		LastUsedAt:    m.LastUsedAt,
-		CreatedAt:     m.CreatedAt,
-		UpdatedAt:     m.UpdatedAt,
-		GroupID:       m.GroupID,
-		Quota:         m.Quota,
-		QuotaUsed:     m.QuotaUsed,
-		ExpiresAt:     m.ExpiresAt,
-		RateLimit5h:   m.RateLimit5h,
-		RateLimit1d:   m.RateLimit1d,
-		RateLimit7d:   m.RateLimit7d,
-		Usage5h:       m.Usage5h,
-		Usage1d:       m.Usage1d,
-		Usage7d:       m.Usage7d,
-		Window5hStart: m.Window5hStart,
-		Window1dStart: m.Window1dStart,
-		Window7dStart: m.Window7dStart,
+		ID:             m.ID,
+		UserID:         m.UserID,
+		Key:            m.Key,
+		Name:           m.Name,
+		Status:         m.Status,
+		IPWhitelist:    m.IPWhitelist,
+		IPBlacklist:    m.IPBlacklist,
+		IPLockMode:     m.IPLockMode,
+		LimitAction:    m.LimitAction,
+		LastUsedAt:     m.LastUsedAt,
+		CreatedAt:      m.CreatedAt,
+		UpdatedAt:      m.UpdatedAt,
+		GroupID:        m.GroupID,
+		Quota:          m.Quota,
+		QuotaUsed:      m.QuotaUsed,
+		ExpiresAt:      m.ExpiresAt,
+		RateLimit5h:    m.RateLimit5h,
+		RateLimit1d:    m.RateLimit1d,
+		RateLimit7d:    m.RateLimit7d,
+		RateLimit1mo:   m.RateLimit1mo,
+		Usage5h:        m.Usage5h,
+		Usage1d:        m.Usage1d,
+		Usage7d:        m.Usage7d,
+		Usage1mo:       m.Usage1mo,
+		Window5hStart:  m.Window5hStart,
+		Window1dStart:  m.Window1dStart,
+		Window7dStart:  m.Window7dStart,
+		Window1moStart: m.Window1moStart,
 	}
 	if m.Edges.User != nil {
 		out.User = userEntityToService(m.Edges.User)
@@ -649,6 +674,24 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 		out.Group = groupEntityToService(m.Edges.Group)
 	}
 	return out
+}
+
+func apiKeyIPLockModeOrDefault(mode string) string {
+	switch strings.TrimSpace(strings.ToLower(mode)) {
+	case service.IPLockModeAutoSingleIP:
+		return service.IPLockModeAutoSingleIP
+	default:
+		return service.IPLockModeOff
+	}
+}
+
+func apiKeyLimitActionOrDefault(action string) string {
+	switch strings.TrimSpace(strings.ToLower(action)) {
+	case service.LimitActionSoftThrottle:
+		return service.LimitActionSoftThrottle
+	default:
+		return service.LimitActionHardBlock
+	}
 }
 
 func userEntityToService(u *dbent.User) *service.User {
@@ -662,6 +705,7 @@ func userEntityToService(u *dbent.User) *service.User {
 		Notes:                      u.Notes,
 		PasswordHash:               u.PasswordHash,
 		Role:                       u.Role,
+		CustomerType:               u.CustomerType,
 		Balance:                    u.Balance,
 		Concurrency:                u.Concurrency,
 		Status:                     u.Status,

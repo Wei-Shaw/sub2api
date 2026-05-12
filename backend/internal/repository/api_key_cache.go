@@ -14,6 +14,7 @@ import (
 
 const (
 	apiKeyRateLimitKeyPrefix   = "apikey:ratelimit:"
+	apiKeyIPLockKeyPrefix      = "apikey:iplock:"
 	apiKeyRateLimitDuration    = 24 * time.Hour
 	apiKeyAuthCachePrefix      = "apikey:auth:"
 	authCacheInvalidateChannel = "auth:cache:invalidate"
@@ -26,6 +27,10 @@ func apiKeyRateLimitKey(userID int64) string {
 
 func apiKeyAuthCacheKey(key string) string {
 	return fmt.Sprintf("%s%s", apiKeyAuthCachePrefix, key)
+}
+
+func apiKeyIPLockKey(keyID int64) string {
+	return fmt.Sprintf("%s%d", apiKeyIPLockKeyPrefix, keyID)
 }
 
 type apiKeyCache struct {
@@ -92,6 +97,34 @@ func (c *apiKeyCache) SetAuthCache(ctx context.Context, key string, entry *servi
 
 func (c *apiKeyCache) DeleteAuthCache(ctx context.Context, key string) error {
 	return c.rdb.Del(ctx, apiKeyAuthCacheKey(key)).Err()
+}
+
+func (c *apiKeyCache) GetAPIKeyIPLock(ctx context.Context, keyID int64) (string, error) {
+	val, err := c.rdb.Get(ctx, apiKeyIPLockKey(keyID)).Result()
+	if errors.Is(err, redis.Nil) {
+		return "", nil
+	}
+	return val, err
+}
+
+func (c *apiKeyCache) BindAPIKeyIPLock(ctx context.Context, keyID int64, clientIP string, ttl time.Duration) (string, error) {
+	key := apiKeyIPLockKey(keyID)
+	ok, err := c.rdb.SetNX(ctx, key, clientIP, ttl).Result()
+	if err != nil {
+		return "", err
+	}
+	if ok {
+		return clientIP, nil
+	}
+	return c.GetAPIKeyIPLock(ctx, keyID)
+}
+
+func (c *apiKeyCache) RefreshAPIKeyIPLock(ctx context.Context, keyID int64, ttl time.Duration) error {
+	return c.rdb.Expire(ctx, apiKeyIPLockKey(keyID), ttl).Err()
+}
+
+func (c *apiKeyCache) ResetAPIKeyIPLock(ctx context.Context, keyID int64) error {
+	return c.rdb.Del(ctx, apiKeyIPLockKey(keyID)).Err()
 }
 
 // PublishAuthCacheInvalidation publishes a cache invalidation message to all instances

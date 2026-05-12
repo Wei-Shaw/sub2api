@@ -10,6 +10,12 @@ import { useAdminSettingsStore } from '@/stores/adminSettings'
 import { useNavigationLoadingState } from '@/composables/useNavigationLoading'
 import { useRoutePrefetch } from '@/composables/useRoutePrefetch'
 import { resolveDocumentTitle } from './title'
+import {
+  INTERNAL_HOME_PATH,
+  isInternalHomeHost,
+  isInternalMarketingPathAllowed,
+  resolveHomePathForHost,
+} from '@/utils/homeDomain'
 
 /**
  * Route definitions with lazy loading
@@ -34,6 +40,15 @@ const routes: RouteRecordRaw[] = [
     meta: {
       requiresAuth: false,
       title: 'Home'
+    }
+  },
+  {
+    path: '/internal-home',
+    name: 'InternalHome',
+    component: () => import('@/views/HomeView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Internal Home'
     }
   },
   {
@@ -153,11 +168,29 @@ const routes: RouteRecordRaw[] = [
       title: 'Legal Document'
     }
   },
+  {
+    path: '/docs',
+    name: 'Docs',
+    component: () => import('@/views/DocsView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Docs'
+    }
+  },
+  {
+    path: '/agents',
+    name: 'AgentsHub',
+    component: () => import('@/views/AgentsView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Agents Hub'
+    }
+  },
 
   // ==================== User Routes ====================
   {
     path: '/',
-    redirect: '/home'
+    redirect: () => resolveHomePathForHost(window.__APP_CONFIG__)
   },
   {
     path: '/dashboard',
@@ -257,6 +290,7 @@ const routes: RouteRecordRaw[] = [
   },
   {
     path: '/purchase',
+    alias: '/payment',
     name: 'PurchaseSubscription',
     component: () => import('@/views/user/PaymentView.vue'),
     meta: {
@@ -390,6 +424,18 @@ const routes: RouteRecordRaw[] = [
       title: 'User Management',
       titleKey: 'admin.users.title',
       descriptionKey: 'admin.users.description'
+    }
+  },
+  {
+    path: '/admin/managed-keys',
+    name: 'AdminManagedKeys',
+    component: () => import('@/views/admin/ManagedKeysView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Managed Keys',
+      titleKey: 'admin.managedKeys.title',
+      descriptionKey: 'admin.managedKeys.description'
     }
   },
   {
@@ -627,8 +673,7 @@ const routes: RouteRecordRaw[] = [
       requiresAuth: true,
       requiresAdmin: true,
       title: 'Subscription Plans',
-      titleKey: 'nav.paymentPlans',
-      requiresPayment: true
+      titleKey: 'nav.paymentPlans'
     }
   },
 
@@ -668,7 +713,7 @@ let authInitialized = false
 const navigationLoading = useNavigationLoadingState()
 // 延迟初始化预加载，传入 router 实例
 let routePrefetch: ReturnType<typeof useRoutePrefetch> | null = null
-const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/setup', '/payment/result', '/payment/airwallex', '/legal']
+const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/internal-home', '/key-usage', '/docs', '/agents', '/setup', '/payment/result', '/payment/airwallex', '/legal']
 const BACKEND_MODE_CALLBACK_PATHS = [
   '/auth/callback',
   '/auth/linuxdo/callback',
@@ -708,6 +753,15 @@ router.beforeEach((to, _from, next) => {
 
   // Set page title
   const appStore = useAppStore()
+
+  if (
+    isInternalHomeHost(appStore.cachedPublicSettings ?? window.__APP_CONFIG__) &&
+    !isInternalMarketingPathAllowed(to.path)
+  ) {
+    next(INTERNAL_HOME_PATH)
+    return
+  }
+
   // For custom pages, use menu item label as document title
   if (to.name === 'CustomPage') {
     const id = to.params.id as string
@@ -716,7 +770,7 @@ router.beforeEach((to, _from, next) => {
     const menuItem = publicItems.find((item) => item.id === id)
       ?? (authStore.isAdmin ? adminSettingsStore.customMenuItems.find((item) => item.id === id) : undefined)
     if (menuItem?.label) {
-      const siteName = appStore.siteName || 'Sub2API'
+      const siteName = appStore.siteName || 'OceanWay AI'
       document.title = `${menuItem.label} - ${siteName}`
     } else {
       document.title = resolveDocumentTitle(to.meta.title, appStore.siteName, to.meta.titleKey as string)

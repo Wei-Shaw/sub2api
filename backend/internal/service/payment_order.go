@@ -502,7 +502,7 @@ func (s *PaymentService) buildPaymentSubject(plan *dbent.SubscriptionPlan, limit
 		if plan.ProductName != "" {
 			return plan.ProductName
 		}
-		return "Sub2API Subscription " + plan.Name
+		return "OceanWay AI Subscription " + plan.Name
 	}
 	currency := payment.DefaultPaymentCurrency
 	if sel != nil {

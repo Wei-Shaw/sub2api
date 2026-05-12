@@ -119,6 +119,14 @@ func registerAdminAPIKeyRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	{
 		apiKeys.PUT("/:id", h.Admin.APIKey.UpdateGroup)
 	}
+
+	managedKeys := admin.Group("/managed-keys")
+	{
+		managedKeys.GET("", h.Admin.APIKey.ListManagedKeys)
+		managedKeys.POST("", h.Admin.APIKey.CreateManagedKey)
+		managedKeys.GET("/:id/delivery", h.Admin.APIKey.GetManagedKeyDelivery)
+		managedKeys.POST("/:id/reset-ip-lock", h.Admin.APIKey.ResetManagedKeyIPLock)
+	}
 }
 
 func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {

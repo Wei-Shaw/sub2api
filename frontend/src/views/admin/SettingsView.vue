@@ -4234,29 +4234,27 @@
                   :upload-label="t('admin.settings.site.uploadImage')"
                   :remove-label="t('admin.settings.site.remove')"
                   :hint="t('admin.settings.site.logoHint')"
-                  :max-size="300 * 1024"
+                  :max-size="512 * 1024"
                 />
               </div>
 
-              <!-- Home Content -->
+              <!-- Internal Home Domains -->
               <div>
                 <label
                   class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
                 >
-                  {{ t("admin.settings.site.homeContent") }}
+                  {{ t("admin.settings.site.internalHomeDomains") }}
                 </label>
                 <textarea
-                  v-model="form.home_content"
-                  rows="6"
+                  v-model="form.internal_home_domains"
+                  rows="3"
                   class="input font-mono text-sm"
-                  :placeholder="t('admin.settings.site.homeContentPlaceholder')"
+                  :placeholder="
+                    t('admin.settings.site.internalHomeDomainsPlaceholder')
+                  "
                 ></textarea>
                 <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                  {{ t("admin.settings.site.homeContentHint") }}
-                </p>
-                <!-- iframe CSP Warning -->
-                <p class="mt-2 text-xs text-amber-600 dark:text-amber-400">
-                  {{ t("admin.settings.site.homeContentIframeWarning") }}
+                  {{ t("admin.settings.site.internalHomeDomainsHint") }}
                 </p>
               </div>
 
@@ -5253,7 +5251,7 @@
                       v-model="form.payment_product_name_prefix"
                       type="text"
                       class="input"
-                      placeholder="Sub2API"
+                      placeholder="OceanWay AI"
                     />
                   </div>
                   <div>
@@ -5275,7 +5273,7 @@
                       class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300"
                     >
                       {{
-                        (form.payment_product_name_prefix || "Sub2API") +
+                        (form.payment_product_name_prefix || "OceanWay AI") +
                         " 100 " +
                         (form.payment_product_name_suffix || "CNY")
                       }}
@@ -6453,13 +6451,13 @@ const form = reactive<SettingsForm>({
   default_subscriptions: [],
   force_email_on_third_party_signup: false,
   default_user_rpm_limit: 0,
-  site_name: "Sub2API",
+  site_name: "OceanWay AI",
   site_logo: "",
   site_subtitle: "Subscription to API Conversion Platform",
   api_base_url: "",
   contact_info: "",
   doc_url: "",
-  home_content: "",
+  internal_home_domains: "",
   backend_mode_enabled: false,
   hide_ccs_import_button: false,
   payment_enabled: false,
@@ -7570,7 +7568,7 @@ async function saveSettings() {
       api_base_url: form.api_base_url,
       contact_info: form.contact_info,
       doc_url: form.doc_url,
-      home_content: form.home_content,
+      internal_home_domains: form.internal_home_domains,
       backend_mode_enabled: form.backend_mode_enabled,
       hide_ccs_import_button: form.hide_ccs_import_button,
       table_default_page_size: form.table_default_page_size,

@@ -311,7 +311,7 @@ describe('useAppStore', () => {
         api_base_url: '',
         contact_info: '',
         doc_url: '',
-        home_content: '',
+        internal_home_domains: [],
         hide_ccs_import_button: false,
         purchase_subscription_enabled: false,
         purchase_subscription_url: '',

@@ -37,6 +37,10 @@ const (
 	FieldIPWhitelist = "ip_whitelist"
 	// FieldIPBlacklist holds the string denoting the ip_blacklist field in the database.
 	FieldIPBlacklist = "ip_blacklist"
+	// FieldIPLockMode holds the string denoting the ip_lock_mode field in the database.
+	FieldIPLockMode = "ip_lock_mode"
+	// FieldLimitAction holds the string denoting the limit_action field in the database.
+	FieldLimitAction = "limit_action"
 	// FieldQuota holds the string denoting the quota field in the database.
 	FieldQuota = "quota"
 	// FieldQuotaUsed holds the string denoting the quota_used field in the database.
@@ -49,18 +53,24 @@ const (
 	FieldRateLimit1d = "rate_limit_1d"
 	// FieldRateLimit7d holds the string denoting the rate_limit_7d field in the database.
 	FieldRateLimit7d = "rate_limit_7d"
+	// FieldRateLimit1mo holds the string denoting the rate_limit_1mo field in the database.
+	FieldRateLimit1mo = "rate_limit_1mo"
 	// FieldUsage5h holds the string denoting the usage_5h field in the database.
 	FieldUsage5h = "usage_5h"
 	// FieldUsage1d holds the string denoting the usage_1d field in the database.
 	FieldUsage1d = "usage_1d"
 	// FieldUsage7d holds the string denoting the usage_7d field in the database.
 	FieldUsage7d = "usage_7d"
+	// FieldUsage1mo holds the string denoting the usage_1mo field in the database.
+	FieldUsage1mo = "usage_1mo"
 	// FieldWindow5hStart holds the string denoting the window_5h_start field in the database.
 	FieldWindow5hStart = "window_5h_start"
 	// FieldWindow1dStart holds the string denoting the window_1d_start field in the database.
 	FieldWindow1dStart = "window_1d_start"
 	// FieldWindow7dStart holds the string denoting the window_7d_start field in the database.
 	FieldWindow7dStart = "window_7d_start"
+	// FieldWindow1moStart holds the string denoting the window_1mo_start field in the database.
+	FieldWindow1moStart = "window_1mo_start"
 	// EdgeUser holds the string denoting the user edge name in mutations.
 	EdgeUser = "user"
 	// EdgeGroup holds the string denoting the group edge name in mutations.
@@ -106,18 +116,23 @@ var Columns = []string{
 	FieldLastUsedAt,
 	FieldIPWhitelist,
 	FieldIPBlacklist,
+	FieldIPLockMode,
+	FieldLimitAction,
 	FieldQuota,
 	FieldQuotaUsed,
 	FieldExpiresAt,
 	FieldRateLimit5h,
 	FieldRateLimit1d,
 	FieldRateLimit7d,
+	FieldRateLimit1mo,
 	FieldUsage5h,
 	FieldUsage1d,
 	FieldUsage7d,
+	FieldUsage1mo,
 	FieldWindow5hStart,
 	FieldWindow1dStart,
 	FieldWindow7dStart,
+	FieldWindow1moStart,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -152,6 +167,14 @@ var (
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	StatusValidator func(string) error
+	// DefaultIPLockMode holds the default value on creation for the "ip_lock_mode" field.
+	DefaultIPLockMode string
+	// IPLockModeValidator is a validator for the "ip_lock_mode" field. It is called by the builders before save.
+	IPLockModeValidator func(string) error
+	// DefaultLimitAction holds the default value on creation for the "limit_action" field.
+	DefaultLimitAction string
+	// LimitActionValidator is a validator for the "limit_action" field. It is called by the builders before save.
+	LimitActionValidator func(string) error
 	// DefaultQuota holds the default value on creation for the "quota" field.
 	DefaultQuota float64
 	// DefaultQuotaUsed holds the default value on creation for the "quota_used" field.
@@ -162,12 +185,16 @@ var (
 	DefaultRateLimit1d float64
 	// DefaultRateLimit7d holds the default value on creation for the "rate_limit_7d" field.
 	DefaultRateLimit7d float64
+	// DefaultRateLimit1mo holds the default value on creation for the "rate_limit_1mo" field.
+	DefaultRateLimit1mo float64
 	// DefaultUsage5h holds the default value on creation for the "usage_5h" field.
 	DefaultUsage5h float64
 	// DefaultUsage1d holds the default value on creation for the "usage_1d" field.
 	DefaultUsage1d float64
 	// DefaultUsage7d holds the default value on creation for the "usage_7d" field.
 	DefaultUsage7d float64
+	// DefaultUsage1mo holds the default value on creation for the "usage_1mo" field.
+	DefaultUsage1mo float64
 )
 
 // OrderOption defines the ordering options for the APIKey queries.
@@ -223,6 +250,16 @@ func ByLastUsedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldLastUsedAt, opts...).ToFunc()
 }
 
+// ByIPLockMode orders the results by the ip_lock_mode field.
+func ByIPLockMode(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldIPLockMode, opts...).ToFunc()
+}
+
+// ByLimitAction orders the results by the limit_action field.
+func ByLimitAction(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLimitAction, opts...).ToFunc()
+}
+
 // ByQuota orders the results by the quota field.
 func ByQuota(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldQuota, opts...).ToFunc()
@@ -253,6 +290,11 @@ func ByRateLimit7d(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRateLimit7d, opts...).ToFunc()
 }
 
+// ByRateLimit1mo orders the results by the rate_limit_1mo field.
+func ByRateLimit1mo(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRateLimit1mo, opts...).ToFunc()
+}
+
 // ByUsage5h orders the results by the usage_5h field.
 func ByUsage5h(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldUsage5h, opts...).ToFunc()
@@ -268,6 +310,11 @@ func ByUsage7d(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldUsage7d, opts...).ToFunc()
 }
 
+// ByUsage1mo orders the results by the usage_1mo field.
+func ByUsage1mo(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUsage1mo, opts...).ToFunc()
+}
+
 // ByWindow5hStart orders the results by the window_5h_start field.
 func ByWindow5hStart(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldWindow5hStart, opts...).ToFunc()
@@ -281,6 +328,11 @@ func ByWindow1dStart(opts ...sql.OrderTermOption) OrderOption {
 // ByWindow7dStart orders the results by the window_7d_start field.
 func ByWindow7dStart(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldWindow7dStart, opts...).ToFunc()
+}
+
+// ByWindow1moStart orders the results by the window_1mo_start field.
+func ByWindow1moStart(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWindow1moStart, opts...).ToFunc()
 }
 
 // ByUserField orders the results by user field.

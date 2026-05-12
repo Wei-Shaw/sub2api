@@ -80,6 +80,18 @@ var backendModeSF singleflight.Group
 
 const backendModeCacheTTL = 60 * time.Second
 const backendModeErrorTTL = 5 * time.Second
+
+const defaultBrandSiteName = "OceanWay AI"
+const legacyBrandSiteName = "Sub2API"
+
+func normalizeSiteName(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" || strings.EqualFold(trimmed, legacyBrandSiteName) {
+		return defaultBrandSiteName
+	}
+	return trimmed
+}
+
 const backendModeDBTimeout = 5 * time.Second
 
 // cachedGatewayForwardingSettings 缓存网关转发行为设置（进程内缓存，60s TTL）
@@ -118,10 +130,15 @@ type DefaultSubscriptionGroupReader interface {
 // proxyURLs maps proxy ID to resolved URL for provider-level proxy support.
 type WebSearchManagerBuilder func(cfg *WebSearchEmulationConfig, proxyURLs map[int64]string)
 
+type HomePricingConfigResolver interface {
+	ResolvePublicHomePricingConfig(ctx context.Context, raw string) json.RawMessage
+}
+
 // SettingService 系统设置服务
 type SettingService struct {
 	settingRepo               SettingRepository
 	defaultSubGroupReader     DefaultSubscriptionGroupReader
+	homePricingResolver       HomePricingConfigResolver
 	proxyRepo                 ProxyRepository // for resolving websearch provider proxy URLs
 	cfg                       *config.Config
 	onUpdate                  func() // Callback when settings are updated (for cache invalidation)
@@ -550,6 +567,12 @@ func (s *SettingService) SetDefaultSubscriptionGroupReader(reader DefaultSubscri
 	s.defaultSubGroupReader = reader
 }
 
+// SetHomePricingConfigResolver injects the optional resolver that enriches
+// homepage pricing display config with live subscription plan data.
+func (s *SettingService) SetHomePricingConfigResolver(resolver HomePricingConfigResolver) {
+	s.homePricingResolver = resolver
+}
+
 // SetProxyRepository injects a proxy repo for resolving websearch provider proxy URLs.
 func (s *SettingService) SetProxyRepository(repo ProxyRepository) {
 	s.proxyRepo = repo
@@ -597,10 +620,11 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyAPIBaseURL,
 		SettingKeyContactInfo,
 		SettingKeyDocURL,
-		SettingKeyHomeContent,
+		SettingKeyInternalHomeDomains,
 		SettingKeyHideCcsImportButton,
 		SettingKeyPurchaseSubscriptionEnabled,
 		SettingKeyPurchaseSubscriptionURL,
+		SettingKeyHomePricingConfig,
 		SettingKeyTableDefaultPageSize,
 		SettingKeyTablePageSizeOptions,
 		SettingKeyCustomMenuItems,
@@ -691,6 +715,10 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 	if v, err := strconv.ParseFloat(settings[SettingKeyBalanceLowNotifyThreshold], 64); err == nil && v >= 0 {
 		balanceLowNotifyThreshold = v
 	}
+	var homePricingConfig json.RawMessage
+	if s.homePricingResolver != nil {
+		homePricingConfig = s.homePricingResolver.ResolvePublicHomePricingConfig(ctx, settings[SettingKeyHomePricingConfig])
+	}
 
 	return &PublicSettings{
 		RegistrationEnabled:              settings[SettingKeyRegistrationEnabled] == "true",
@@ -708,16 +736,17 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		LoginAgreementDocuments:          loginAgreementDocuments,
 		TurnstileEnabled:                 settings[SettingKeyTurnstileEnabled] == "true",
 		TurnstileSiteKey:                 settings[SettingKeyTurnstileSiteKey],
-		SiteName:                         s.getStringOrDefault(settings, SettingKeySiteName, "Sub2API"),
+		SiteName:                         normalizeSiteName(settings[SettingKeySiteName]),
 		SiteLogo:                         settings[SettingKeySiteLogo],
 		SiteSubtitle:                     s.getStringOrDefault(settings, SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),
 		APIBaseURL:                       settings[SettingKeyAPIBaseURL],
 		ContactInfo:                      settings[SettingKeyContactInfo],
 		DocURL:                           settings[SettingKeyDocURL],
-		HomeContent:                      settings[SettingKeyHomeContent],
+		InternalHomeDomains:              parseInternalHomeDomains(settings[SettingKeyInternalHomeDomains]),
 		HideCcsImportButton:              settings[SettingKeyHideCcsImportButton] == "true",
 		PurchaseSubscriptionEnabled:      settings[SettingKeyPurchaseSubscriptionEnabled] == "true",
 		PurchaseSubscriptionURL:          strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
+		HomePricingConfig:                homePricingConfig,
 		TableDefaultPageSize:             tableDefaultPageSize,
 		TablePageSizeOptions:             tablePageSizeOptions,
 		CustomMenuItems:                  settings[SettingKeyCustomMenuItems],
@@ -918,9 +947,11 @@ type PublicSettingsInjectionPayload struct {
 	ContactInfo                      string                   `json:"contact_info"`
 	DocURL                           string                   `json:"doc_url"`
 	HomeContent                      string                   `json:"home_content"`
+	InternalHomeDomains              []string                 `json:"internal_home_domains"`
 	HideCcsImportButton              bool                     `json:"hide_ccs_import_button"`
 	PurchaseSubscriptionEnabled      bool                     `json:"purchase_subscription_enabled"`
 	PurchaseSubscriptionURL          string                   `json:"purchase_subscription_url"`
+	HomePricingConfig                json.RawMessage          `json:"home_pricing_config"`
 	TableDefaultPageSize             int                      `json:"table_default_page_size"`
 	TablePageSizeOptions             []int                    `json:"table_page_size_options"`
 	CustomMenuItems                  json.RawMessage          `json:"custom_menu_items"`
@@ -981,10 +1012,11 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		APIBaseURL:                       settings.APIBaseURL,
 		ContactInfo:                      settings.ContactInfo,
 		DocURL:                           settings.DocURL,
-		HomeContent:                      settings.HomeContent,
+		InternalHomeDomains:              settings.InternalHomeDomains,
 		HideCcsImportButton:              settings.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:      settings.PurchaseSubscriptionEnabled,
 		PurchaseSubscriptionURL:          settings.PurchaseSubscriptionURL,
+		HomePricingConfig:                settings.HomePricingConfig,
 		TableDefaultPageSize:             settings.TableDefaultPageSize,
 		TablePageSizeOptions:             settings.TablePageSizeOptions,
 		CustomMenuItems:                  filterUserVisibleMenuItems(settings.CustomMenuItems),
@@ -1212,8 +1244,65 @@ func safeRawJSONArray(raw string) json.RawMessage {
 	return json.RawMessage("[]")
 }
 
-// GetFrameSrcOrigins returns deduplicated http(s) origins from home_content URL,
-// purchase_subscription_url, and all custom_menu_items URLs. Used by the router layer for CSP frame-src injection.
+func parseInternalHomeDomains(raw string) []string {
+	parts := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n' || r == '\r' || r == '\t' || r == ' '
+	})
+
+	seen := make(map[string]struct{}, len(parts))
+	domains := make([]string, 0, len(parts))
+	for _, part := range parts {
+		domain := normalizeInternalHomeDomain(part)
+		if domain == "" {
+			continue
+		}
+		if _, ok := seen[domain]; ok {
+			continue
+		}
+		seen[domain] = struct{}{}
+		domains = append(domains, domain)
+	}
+	return domains
+}
+
+func normalizeInternalHomeDomainsForStorage(raw string) string {
+	return strings.Join(parseInternalHomeDomains(raw), "\n")
+}
+
+func normalizeInternalHomeDomain(raw string) string {
+	value := strings.ToLower(strings.TrimSpace(raw))
+	if value == "" {
+		return ""
+	}
+
+	wildcard := strings.HasPrefix(value, "*.")
+	if wildcard {
+		value = strings.TrimPrefix(value, "*.")
+	}
+
+	var host string
+	if strings.Contains(value, "://") {
+		if u, err := url.Parse(value); err == nil {
+			host = u.Hostname()
+		}
+	} else {
+		if u, err := url.Parse("https://" + value); err == nil {
+			host = u.Hostname()
+		}
+	}
+
+	host = strings.TrimSuffix(strings.TrimSpace(strings.ToLower(host)), ".")
+	if host == "" || strings.Contains(host, "*") {
+		return ""
+	}
+	if wildcard {
+		return "*." + host
+	}
+	return host
+}
+
+// GetFrameSrcOrigins returns deduplicated http(s) origins from purchase_subscription_url
+// and all custom_menu_items URLs. Used by the router layer for CSP frame-src injection.
 func (s *SettingService) GetFrameSrcOrigins(ctx context.Context) ([]string, error) {
 	settings, err := s.GetPublicSettings(ctx)
 	if err != nil {
@@ -1231,9 +1320,6 @@ func (s *SettingService) GetFrameSrcOrigins(ctx context.Context) ([]string, erro
 			}
 		}
 	}
-
-	// home content URL (when home_content is set to a URL for iframe embedding)
-	addOrigin(settings.HomeContent)
 
 	// purchase subscription URL
 	if settings.PurchaseSubscriptionEnabled {
@@ -1551,7 +1637,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyAPIBaseURL] = settings.APIBaseURL
 	updates[SettingKeyContactInfo] = settings.ContactInfo
 	updates[SettingKeyDocURL] = settings.DocURL
-	updates[SettingKeyHomeContent] = settings.HomeContent
+	updates[SettingKeyInternalHomeDomains] = normalizeInternalHomeDomainsForStorage(settings.InternalHomeDomains)
 	updates[SettingKeyHideCcsImportButton] = strconv.FormatBool(settings.HideCcsImportButton)
 	updates[SettingKeyPurchaseSubscriptionEnabled] = strconv.FormatBool(settings.PurchaseSubscriptionEnabled)
 	updates[SettingKeyPurchaseSubscriptionURL] = strings.TrimSpace(settings.PurchaseSubscriptionURL)
@@ -2142,10 +2228,10 @@ func (s *SettingService) IsTotpEncryptionKeyConfigured() bool {
 // GetSiteName 获取网站名称
 func (s *SettingService) GetSiteName(ctx context.Context) string {
 	value, err := s.settingRepo.GetValue(ctx, SettingKeySiteName)
-	if err != nil || value == "" {
-		return "Sub2API"
+	if err != nil {
+		return defaultBrandSiteName
 	}
-	return value
+	return normalizeSiteName(value)
 }
 
 // GetDefaultConcurrency 获取默认并发量
@@ -2324,10 +2410,12 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyLoginAgreementMode:                       defaultLoginAgreementMode,
 		SettingKeyLoginAgreementUpdatedAt:                  defaultLoginAgreementDate,
 		SettingKeyLoginAgreementDocuments:                  loginAgreementDocumentsJSON,
-		SettingKeySiteName:                                 "Sub2API",
+		SettingKeySiteName:                                 defaultBrandSiteName,
 		SettingKeySiteLogo:                                 "",
+		SettingKeyInternalHomeDomains:                      "",
 		SettingKeyPurchaseSubscriptionEnabled:              "false",
 		SettingKeyPurchaseSubscriptionURL:                  "",
+		SettingKeyHomePricingConfig:                        "",
 		SettingKeyTableDefaultPageSize:                     "20",
 		SettingKeyTablePageSizeOptions:                     "[10,20,50,100]",
 		SettingKeyCustomMenuItems:                          "[]",
@@ -2499,13 +2587,13 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		TurnstileEnabled:                 settings[SettingKeyTurnstileEnabled] == "true",
 		TurnstileSiteKey:                 settings[SettingKeyTurnstileSiteKey],
 		TurnstileSecretKeyConfigured:     settings[SettingKeyTurnstileSecretKey] != "",
-		SiteName:                         s.getStringOrDefault(settings, SettingKeySiteName, "Sub2API"),
+		SiteName:                         normalizeSiteName(settings[SettingKeySiteName]),
 		SiteLogo:                         settings[SettingKeySiteLogo],
 		SiteSubtitle:                     s.getStringOrDefault(settings, SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),
 		APIBaseURL:                       settings[SettingKeyAPIBaseURL],
 		ContactInfo:                      settings[SettingKeyContactInfo],
 		DocURL:                           settings[SettingKeyDocURL],
-		HomeContent:                      settings[SettingKeyHomeContent],
+		InternalHomeDomains:              settings[SettingKeyInternalHomeDomains],
 		HideCcsImportButton:              settings[SettingKeyHideCcsImportButton] == "true",
 		PurchaseSubscriptionEnabled:      settings[SettingKeyPurchaseSubscriptionEnabled] == "true",
 		PurchaseSubscriptionURL:          strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),

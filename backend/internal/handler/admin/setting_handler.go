@@ -189,7 +189,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		APIBaseURL:                             settings.APIBaseURL,
 		ContactInfo:                            settings.ContactInfo,
 		DocURL:                                 settings.DocURL,
-		HomeContent:                            settings.HomeContent,
+		InternalHomeDomains:                    settings.InternalHomeDomains,
 		HideCcsImportButton:                    settings.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:            settings.PurchaseSubscriptionEnabled,
 		PurchaseSubscriptionURL:                settings.PurchaseSubscriptionURL,
@@ -436,7 +436,7 @@ type UpdateSettingsRequest struct {
 	APIBaseURL                  string                `json:"api_base_url"`
 	ContactInfo                 string                `json:"contact_info"`
 	DocURL                      string                `json:"doc_url"`
-	HomeContent                 string                `json:"home_content"`
+	InternalHomeDomains         string                `json:"internal_home_domains"`
 	HideCcsImportButton         bool                  `json:"hide_ccs_import_button"`
 	PurchaseSubscriptionEnabled *bool                 `json:"purchase_subscription_enabled"`
 	PurchaseSubscriptionURL     *string               `json:"purchase_subscription_url"`
@@ -1352,7 +1352,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		APIBaseURL:                       req.APIBaseURL,
 		ContactInfo:                      req.ContactInfo,
 		DocURL:                           req.DocURL,
-		HomeContent:                      req.HomeContent,
+		InternalHomeDomains:              req.InternalHomeDomains,
 		HideCcsImportButton:              req.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:      purchaseEnabled,
 		PurchaseSubscriptionURL:          purchaseURL,
@@ -1736,7 +1736,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		APIBaseURL:                             updatedSettings.APIBaseURL,
 		ContactInfo:                            updatedSettings.ContactInfo,
 		DocURL:                                 updatedSettings.DocURL,
-		HomeContent:                            updatedSettings.HomeContent,
+		InternalHomeDomains:                    updatedSettings.InternalHomeDomains,
 		HideCcsImportButton:                    updatedSettings.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:            updatedSettings.PurchaseSubscriptionEnabled,
 		PurchaseSubscriptionURL:                updatedSettings.PurchaseSubscriptionURL,
@@ -2067,8 +2067,8 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.DocURL != after.DocURL {
 		changed = append(changed, "doc_url")
 	}
-	if before.HomeContent != after.HomeContent {
-		changed = append(changed, "home_content")
+	if before.InternalHomeDomains != after.InternalHomeDomains {
+		changed = append(changed, "internal_home_domains")
 	}
 	if before.HideCcsImportButton != after.HideCcsImportButton {
 		changed = append(changed, "hide_ccs_import_button")

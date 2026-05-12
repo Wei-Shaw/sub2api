@@ -43,6 +43,7 @@ func NewAuthHandler(cfg *config.Config, authService *service.AuthService, userSe
 // RegisterRequest represents the registration request payload
 type RegisterRequest struct {
 	Email          string `json:"email" binding:"required,email"`
+	Username       string `json:"username" binding:"required,max=100"`
 	Password       string `json:"password" binding:"required,min=6"`
 	VerifyCode     string `json:"verify_code"`
 	TurnstileToken string `json:"turnstile_token"`
@@ -158,6 +159,11 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
+	req.Username = strings.TrimSpace(req.Username)
+	if req.Username == "" {
+		response.BadRequest(c, "Invalid request: username is required")
+		return
+	}
 
 	// Turnstile 验证（邮箱验证码注册场景避免重复校验一次性 token）
 	if err := h.authService.VerifyTurnstileForRegister(c.Request.Context(), req.TurnstileToken, ip.GetClientIP(c), req.VerifyCode); err != nil {
@@ -168,6 +174,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	_, user, err := h.authService.RegisterWithVerification(
 		c.Request.Context(),
 		req.Email,
+		req.Username,
 		req.Password,
 		req.VerifyCode,
 		req.PromoCode,

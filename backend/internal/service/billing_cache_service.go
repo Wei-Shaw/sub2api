@@ -538,8 +538,8 @@ func (s *BillingCacheService) checkAPIKeyRateLimits(ctx context.Context, apiKey 
 		if err != nil {
 			return nil // Don't block requests on DB errors
 		}
-		return s.evaluateRateLimits(ctx, apiKey, data.Usage5h, data.Usage1d, data.Usage7d,
-			data.Window5hStart, data.Window1dStart, data.Window7dStart)
+		return s.evaluateRateLimits(ctx, apiKey, data.Usage5h, data.Usage1d, data.Usage7d, data.Usage1mo,
+			data.Window5hStart, data.Window1dStart, data.Window7dStart, data.Window1moStart)
 	}
 
 	cacheData, err := s.cache.GetAPIKeyRateLimit(ctx, apiKey.ID)
@@ -554,9 +554,10 @@ func (s *BillingCacheService) checkAPIKeyRateLimits(ctx context.Context, apiKey 
 		}
 		// Build cache entry from DB data
 		cacheEntry := &APIKeyRateLimitCacheData{
-			Usage5h: dbData.Usage5h,
-			Usage1d: dbData.Usage1d,
-			Usage7d: dbData.Usage7d,
+			Usage5h:  dbData.Usage5h,
+			Usage1d:  dbData.Usage1d,
+			Usage7d:  dbData.Usage7d,
+			Usage1mo: dbData.Usage1mo,
 		}
 		if dbData.Window5hStart != nil {
 			cacheEntry.Window5h = dbData.Window5hStart.Unix()
@@ -567,11 +568,14 @@ func (s *BillingCacheService) checkAPIKeyRateLimits(ctx context.Context, apiKey 
 		if dbData.Window7dStart != nil {
 			cacheEntry.Window7d = dbData.Window7dStart.Unix()
 		}
+		if dbData.Window1moStart != nil {
+			cacheEntry.Window1mo = dbData.Window1moStart.Unix()
+		}
 		_ = s.cache.SetAPIKeyRateLimit(ctx, apiKey.ID, cacheEntry)
 		cacheData = cacheEntry
 	}
 
-	var w5h, w1d, w7d *time.Time
+	var w5h, w1d, w7d, w1mo *time.Time
 	if cacheData.Window5h > 0 {
 		t := time.Unix(cacheData.Window5h, 0)
 		w5h = &t
@@ -584,11 +588,15 @@ func (s *BillingCacheService) checkAPIKeyRateLimits(ctx context.Context, apiKey 
 		t := time.Unix(cacheData.Window7d, 0)
 		w7d = &t
 	}
-	return s.evaluateRateLimits(ctx, apiKey, cacheData.Usage5h, cacheData.Usage1d, cacheData.Usage7d, w5h, w1d, w7d)
+	if cacheData.Window1mo > 0 {
+		t := time.Unix(cacheData.Window1mo, 0)
+		w1mo = &t
+	}
+	return s.evaluateRateLimits(ctx, apiKey, cacheData.Usage5h, cacheData.Usage1d, cacheData.Usage7d, cacheData.Usage1mo, w5h, w1d, w7d, w1mo)
 }
 
 // evaluateRateLimits checks usage against limits, triggering async resets for expired windows.
-func (s *BillingCacheService) evaluateRateLimits(ctx context.Context, apiKey *APIKey, usage5h, usage1d, usage7d float64, w5h, w1d, w7d *time.Time) error {
+func (s *BillingCacheService) evaluateRateLimits(ctx context.Context, apiKey *APIKey, usage5h, usage1d, usage7d, usage1mo float64, w5h, w1d, w7d, w1mo *time.Time) error {
 	needsReset := false
 
 	// Reset expired windows in-memory for check purposes
@@ -602,6 +610,10 @@ func (s *BillingCacheService) evaluateRateLimits(ctx context.Context, apiKey *AP
 	}
 	if IsWindowExpired(w7d, RateLimitWindow7d) {
 		usage7d = 0
+		needsReset = true
+	}
+	if IsWindowExpired(w1mo, RateLimitWindow1mo) {
+		usage1mo = 0
 		needsReset = true
 	}
 
@@ -630,17 +642,73 @@ func (s *BillingCacheService) evaluateRateLimits(ctx context.Context, apiKey *AP
 		}()
 	}
 
-	// Check limits
+	var limitErr error
+	var delay time.Duration
 	if apiKey.RateLimit5h > 0 && usage5h >= apiKey.RateLimit5h {
-		return ErrAPIKeyRateLimit5hExceeded
+		limitErr = ErrAPIKeyRateLimit5hExceeded
+		delay = maxDuration(delay, softThrottleDelay(usage5h, apiKey.RateLimit5h))
 	}
 	if apiKey.RateLimit1d > 0 && usage1d >= apiKey.RateLimit1d {
-		return ErrAPIKeyRateLimit1dExceeded
+		if limitErr == nil {
+			limitErr = ErrAPIKeyRateLimit1dExceeded
+		}
+		delay = maxDuration(delay, softThrottleDelay(usage1d, apiKey.RateLimit1d))
 	}
 	if apiKey.RateLimit7d > 0 && usage7d >= apiKey.RateLimit7d {
-		return ErrAPIKeyRateLimit7dExceeded
+		if limitErr == nil {
+			limitErr = ErrAPIKeyRateLimit7dExceeded
+		}
+		delay = maxDuration(delay, softThrottleDelay(usage7d, apiKey.RateLimit7d))
 	}
-	return nil
+	if apiKey.RateLimit1mo > 0 && usage1mo >= apiKey.RateLimit1mo {
+		if limitErr == nil {
+			limitErr = ErrAPIKeyRateLimit1moExceeded
+		}
+		delay = maxDuration(delay, softThrottleDelay(usage1mo, apiKey.RateLimit1mo))
+	}
+	if limitErr == nil {
+		return nil
+	}
+	if normalizeLimitAction(apiKey.LimitAction) == LimitActionSoftThrottle {
+		return sleepThrottleWithContext(ctx, delay)
+	}
+	return limitErr
+}
+
+func softThrottleDelay(usage, limit float64) time.Duration {
+	if limit <= 0 {
+		return 0
+	}
+	overRatio := (usage - limit) / limit
+	if overRatio < 0 {
+		overRatio = 0
+	}
+	delay := 2*time.Second + time.Duration(overRatio*10*float64(time.Second))
+	if delay > 60*time.Second {
+		return 60 * time.Second
+	}
+	return delay
+}
+
+func maxDuration(a, b time.Duration) time.Duration {
+	if b > a {
+		return b
+	}
+	return a
+}
+
+func sleepThrottleWithContext(ctx context.Context, delay time.Duration) error {
+	if delay <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 // QueueUpdateAPIKeyRateLimitUsage asynchronously updates rate limit usage in the cache.

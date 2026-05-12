@@ -168,6 +168,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewErrorPassthroughHandler,
 	admin.NewTLSFingerprintProfileHandler,
 	admin.NewAdminAPIKeyHandler,
+	wire.Bind(new(admin.ManagedKeyAPIKeyService), new(*service.APIKeyService)),
 	admin.NewScheduledTestHandler,
 	admin.NewChannelHandler,
 	admin.NewChannelMonitorHandler,

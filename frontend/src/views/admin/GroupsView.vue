@@ -60,6 +60,39 @@
                 :class="loading ? 'animate-spin' : ''"
               />
             </button>
+            <div class="relative" ref="columnDropdownRef">
+              <button
+                @click="showColumnDropdown = !showColumnDropdown"
+                class="btn btn-secondary px-2 md:px-3"
+                :title="t('admin.users.columnSettings')"
+              >
+                <Icon name="grid" size="md" class="md:mr-2" />
+                <span class="hidden md:inline">{{
+                  t("admin.users.columnSettings")
+                }}</span>
+              </button>
+              <div
+                v-if="showColumnDropdown"
+                class="absolute right-0 z-50 mt-2 w-48 origin-top-right rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800"
+              >
+                <div class="max-h-80 overflow-y-auto p-2">
+                  <button
+                    v-for="col in toggleableColumns"
+                    :key="col.key"
+                    @click="toggleColumn(col.key)"
+                    class="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+                  >
+                    <span>{{ col.label }}</span>
+                    <Icon
+                      v-if="isColumnVisible(col.key)"
+                      name="check"
+                      size="sm"
+                      class="text-primary-500"
+                    />
+                  </button>
+                </div>
+              </div>
+            </div>
             <button
               @click="openSortModal"
               class="btn btn-secondary"
@@ -2870,7 +2903,12 @@ const { t } = useI18n();
 const appStore = useAppStore();
 const onboardingStore = useOnboardingStore();
 
-const columns = computed<Column[]>(() => [
+const showColumnDropdown = ref(false);
+const columnDropdownRef = ref<HTMLElement | null>(null);
+const hiddenColumns = reactive<Set<string>>(new Set());
+const HIDDEN_COLUMNS_KEY = "group-hidden-columns";
+
+const allColumns = computed<Column[]>(() => [
   { key: "name", label: t("admin.groups.columns.name"), sortable: true },
   {
     key: "platform",
@@ -2906,6 +2944,52 @@ const columns = computed<Column[]>(() => [
   { key: "status", label: t("admin.groups.columns.status"), sortable: true },
   { key: "actions", label: t("admin.groups.columns.actions"), sortable: false },
 ]);
+
+const toggleableColumns = computed(() =>
+  allColumns.value.filter((col) => col.key !== "name" && col.key !== "actions"),
+);
+
+const columns = computed<Column[]>(() =>
+  allColumns.value.filter(
+    (col) =>
+      col.key === "name" || col.key === "actions" || !hiddenColumns.has(col.key),
+  ),
+);
+
+const loadSavedColumns = () => {
+  try {
+    const saved = localStorage.getItem(HIDDEN_COLUMNS_KEY);
+    if (!saved) return;
+
+    const parsed = JSON.parse(saved) as string[];
+    parsed.forEach((key) => hiddenColumns.add(key));
+  } catch (error) {
+    console.error("Failed to load saved group columns:", error);
+  }
+};
+
+const saveColumnsToStorage = () => {
+  try {
+    localStorage.setItem(HIDDEN_COLUMNS_KEY, JSON.stringify([...hiddenColumns]));
+  } catch (error) {
+    console.error("Failed to save group columns:", error);
+  }
+};
+
+if (typeof window !== "undefined") {
+  loadSavedColumns();
+}
+
+const toggleColumn = (key: string) => {
+  if (hiddenColumns.has(key)) {
+    hiddenColumns.delete(key);
+  } else {
+    hiddenColumns.add(key);
+  }
+  saveColumnsToStorage();
+};
+
+const isColumnVisible = (key: string) => !hiddenColumns.has(key);
 
 // Filter options
 const statusOptions = computed(() => [
@@ -3989,6 +4073,9 @@ watch(
 // 点击外部关闭账号搜索下拉框
 const handleClickOutside = (event: MouseEvent) => {
   const target = event.target as HTMLElement;
+  if (columnDropdownRef.value && !columnDropdownRef.value.contains(target)) {
+    showColumnDropdown.value = false;
+  }
   // 检查是否点击在下拉框或输入框内
   if (!target.closest(".account-search-container")) {
     Object.keys(showAccountDropdown.value).forEach((key) => {

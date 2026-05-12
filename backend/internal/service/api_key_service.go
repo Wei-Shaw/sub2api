@@ -33,9 +33,11 @@ var (
 	ErrAPIKeyQuotaExhausted = infraerrors.TooManyRequests("API_KEY_QUOTA_EXHAUSTED", "api key 额度已用完")
 
 	// Rate limit errors
-	ErrAPIKeyRateLimit5hExceeded = infraerrors.TooManyRequests("API_KEY_RATE_5H_EXCEEDED", "api key 5小时限额已用完")
-	ErrAPIKeyRateLimit1dExceeded = infraerrors.TooManyRequests("API_KEY_RATE_1D_EXCEEDED", "api key 日限额已用完")
-	ErrAPIKeyRateLimit7dExceeded = infraerrors.TooManyRequests("API_KEY_RATE_7D_EXCEEDED", "api key 7天限额已用完")
+	ErrAPIKeyRateLimit5hExceeded  = infraerrors.TooManyRequests("API_KEY_RATE_5H_EXCEEDED", "api key 5小时限额已用完")
+	ErrAPIKeyRateLimit1dExceeded  = infraerrors.TooManyRequests("API_KEY_RATE_1D_EXCEEDED", "api key 日限额已用完")
+	ErrAPIKeyRateLimit7dExceeded  = infraerrors.TooManyRequests("API_KEY_RATE_7D_EXCEEDED", "api key 7天限额已用完")
+	ErrAPIKeyRateLimit1moExceeded = infraerrors.TooManyRequests("API_KEY_RATE_1MO_EXCEEDED", "api key 月限额已用完")
+	ErrAPIKeyIPLocked             = infraerrors.Forbidden("ACCESS_DENIED", "Access denied")
 )
 
 const (
@@ -43,6 +45,7 @@ const (
 	apiKeyLastUsedMinTouch = 30 * time.Second
 	// DB 写失败后的短退避，避免请求路径持续同步重试造成写风暴与高延迟。
 	apiKeyLastUsedFailBackoff = 5 * time.Second
+	apiKeyIPLockTTL           = 24 * time.Hour
 )
 
 type APIKeyRepository interface {
@@ -81,12 +84,14 @@ type APIKeyRepository interface {
 
 // APIKeyRateLimitData holds rate limit usage and window state for an API key.
 type APIKeyRateLimitData struct {
-	Usage5h       float64
-	Usage1d       float64
-	Usage7d       float64
-	Window5hStart *time.Time
-	Window1dStart *time.Time
-	Window7dStart *time.Time
+	Usage5h        float64
+	Usage1d        float64
+	Usage7d        float64
+	Usage1mo       float64
+	Window5hStart  *time.Time
+	Window1dStart  *time.Time
+	Window7dStart  *time.Time
+	Window1moStart *time.Time
 }
 
 // EffectiveUsage5h returns the 5h window usage, or 0 if the window has expired.
@@ -113,6 +118,14 @@ func (d *APIKeyRateLimitData) EffectiveUsage7d() float64 {
 	return d.Usage7d
 }
 
+// EffectiveUsage1mo returns the 30d window usage, or 0 if the window has expired.
+func (d *APIKeyRateLimitData) EffectiveUsage1mo() float64 {
+	if IsWindowExpired(d.Window1moStart, RateLimitWindow1mo) {
+		return 0
+	}
+	return d.Usage1mo
+}
+
 // APIKeyQuotaUsageState captures the latest quota fields after an atomic quota update.
 // It is intentionally small so repositories can return it from a single SQL statement.
 type APIKeyQuotaUsageState struct {
@@ -134,6 +147,11 @@ type APIKeyCache interface {
 	GetAuthCache(ctx context.Context, key string) (*APIKeyAuthCacheEntry, error)
 	SetAuthCache(ctx context.Context, key string, entry *APIKeyAuthCacheEntry, ttl time.Duration) error
 	DeleteAuthCache(ctx context.Context, key string) error
+
+	GetAPIKeyIPLock(ctx context.Context, keyID int64) (string, error)
+	BindAPIKeyIPLock(ctx context.Context, keyID int64, clientIP string, ttl time.Duration) (string, error)
+	RefreshAPIKeyIPLock(ctx context.Context, keyID int64, ttl time.Duration) error
+	ResetAPIKeyIPLock(ctx context.Context, keyID int64) error
 
 	// Pub/Sub for L1 cache invalidation across instances
 	PublishAuthCacheInvalidation(ctx context.Context, cacheKey string) error
@@ -160,9 +178,13 @@ type CreateAPIKeyRequest struct {
 	ExpiresInDays *int    `json:"expires_in_days"` // Days until expiry (nil = never expires)
 
 	// Rate limit fields (0 = unlimited)
-	RateLimit5h float64 `json:"rate_limit_5h"`
-	RateLimit1d float64 `json:"rate_limit_1d"`
-	RateLimit7d float64 `json:"rate_limit_7d"`
+	RateLimit5h  float64 `json:"rate_limit_5h"`
+	RateLimit1d  float64 `json:"rate_limit_1d"`
+	RateLimit7d  float64 `json:"rate_limit_7d"`
+	RateLimit1mo float64 `json:"rate_limit_1mo"`
+
+	IPLockMode  string `json:"ip_lock_mode"`
+	LimitAction string `json:"limit_action"`
 }
 
 // UpdateAPIKeyRequest 更新API Key请求
@@ -183,7 +205,11 @@ type UpdateAPIKeyRequest struct {
 	RateLimit5h         *float64 `json:"rate_limit_5h"`
 	RateLimit1d         *float64 `json:"rate_limit_1d"`
 	RateLimit7d         *float64 `json:"rate_limit_7d"`
+	RateLimit1mo        *float64 `json:"rate_limit_1mo"`
 	ResetRateLimitUsage *bool    `json:"reset_rate_limit_usage"` // Reset all usage counters to 0
+
+	IPLockMode  *string `json:"ip_lock_mode"`
+	LimitAction *string `json:"limit_action"`
 }
 
 // APIKeyService API Key服务
@@ -243,6 +269,28 @@ func (s *APIKeyService) compileAPIKeyIPRules(apiKey *APIKey) {
 	}
 	apiKey.CompiledIPWhitelist = ip.CompileIPRules(apiKey.IPWhitelist)
 	apiKey.CompiledIPBlacklist = ip.CompileIPRules(apiKey.IPBlacklist)
+}
+
+func normalizeIPLockMode(mode string) string {
+	switch strings.TrimSpace(strings.ToLower(mode)) {
+	case "", IPLockModeOff:
+		return IPLockModeOff
+	case IPLockModeAutoSingleIP:
+		return IPLockModeAutoSingleIP
+	default:
+		return ""
+	}
+}
+
+func normalizeLimitAction(action string) string {
+	switch strings.TrimSpace(strings.ToLower(action)) {
+	case "", LimitActionHardBlock:
+		return LimitActionHardBlock
+	case LimitActionSoftThrottle:
+		return LimitActionSoftThrottle
+	default:
+		return ""
+	}
 }
 
 // GenerateKey 生成随机API Key
@@ -347,6 +395,15 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 		}
 	}
 
+	ipLockMode := normalizeIPLockMode(req.IPLockMode)
+	if ipLockMode == "" {
+		return nil, infraerrors.BadRequest("INVALID_IP_LOCK_MODE", "invalid IP lock mode")
+	}
+	limitAction := normalizeLimitAction(req.LimitAction)
+	if limitAction == "" {
+		return nil, infraerrors.BadRequest("INVALID_LIMIT_ACTION", "invalid limit action")
+	}
+
 	// 验证分组权限（如果指定了分组）
 	if req.GroupID != nil {
 		group, err := s.groupRepo.GetByID(ctx, *req.GroupID)
@@ -397,18 +454,21 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 
 	// 创建API Key记录
 	apiKey := &APIKey{
-		UserID:      userID,
-		Key:         key,
-		Name:        req.Name,
-		GroupID:     req.GroupID,
-		Status:      StatusActive,
-		IPWhitelist: req.IPWhitelist,
-		IPBlacklist: req.IPBlacklist,
-		Quota:       req.Quota,
-		QuotaUsed:   0,
-		RateLimit5h: req.RateLimit5h,
-		RateLimit1d: req.RateLimit1d,
-		RateLimit7d: req.RateLimit7d,
+		UserID:       userID,
+		Key:          key,
+		Name:         req.Name,
+		GroupID:      req.GroupID,
+		Status:       StatusActive,
+		IPWhitelist:  req.IPWhitelist,
+		IPBlacklist:  req.IPBlacklist,
+		Quota:        req.Quota,
+		QuotaUsed:    0,
+		IPLockMode:   ipLockMode,
+		LimitAction:  limitAction,
+		RateLimit5h:  req.RateLimit5h,
+		RateLimit1d:  req.RateLimit1d,
+		RateLimit7d:  req.RateLimit7d,
+		RateLimit1mo: req.RateLimit1mo,
 	}
 
 	// Set expiration time if specified
@@ -611,14 +671,36 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 	if req.RateLimit7d != nil {
 		apiKey.RateLimit7d = *req.RateLimit7d
 	}
+	if req.RateLimit1mo != nil {
+		apiKey.RateLimit1mo = *req.RateLimit1mo
+	}
+	if req.IPLockMode != nil {
+		ipLockMode := normalizeIPLockMode(*req.IPLockMode)
+		if ipLockMode == "" {
+			return nil, infraerrors.BadRequest("INVALID_IP_LOCK_MODE", "invalid IP lock mode")
+		}
+		apiKey.IPLockMode = ipLockMode
+		if ipLockMode == IPLockModeOff && s.cache != nil {
+			_ = s.cache.ResetAPIKeyIPLock(ctx, apiKey.ID)
+		}
+	}
+	if req.LimitAction != nil {
+		limitAction := normalizeLimitAction(*req.LimitAction)
+		if limitAction == "" {
+			return nil, infraerrors.BadRequest("INVALID_LIMIT_ACTION", "invalid limit action")
+		}
+		apiKey.LimitAction = limitAction
+	}
 	resetRateLimit := req.ResetRateLimitUsage != nil && *req.ResetRateLimitUsage
 	if resetRateLimit {
 		apiKey.Usage5h = 0
 		apiKey.Usage1d = 0
 		apiKey.Usage7d = 0
+		apiKey.Usage1mo = 0
 		apiKey.Window5hStart = nil
 		apiKey.Window1dStart = nil
 		apiKey.Window7dStart = nil
+		apiKey.Window1moStart = nil
 	}
 
 	if err := s.apiKeyRepo.Update(ctx, apiKey); err != nil {
@@ -634,6 +716,44 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 	}
 
 	return apiKey, nil
+}
+
+// EnforceIPLock applies the automatic single-IP lock for managed/internal keys.
+func (s *APIKeyService) EnforceIPLock(ctx context.Context, apiKey *APIKey, clientIP string) error {
+	if s == nil || s.cache == nil || apiKey == nil || normalizeIPLockMode(apiKey.IPLockMode) != IPLockModeAutoSingleIP {
+		return nil
+	}
+	clientIP = strings.TrimSpace(clientIP)
+	if clientIP == "" {
+		return ErrAPIKeyIPLocked
+	}
+
+	lockedIP, err := s.cache.BindAPIKeyIPLock(ctx, apiKey.ID, clientIP, apiKeyIPLockTTL)
+	if err != nil {
+		// IP lock is a protection feature; Redis failure should not make the gateway unusable.
+		return nil
+	}
+	if lockedIP == "" || lockedIP == clientIP {
+		_ = s.cache.RefreshAPIKeyIPLock(ctx, apiKey.ID, apiKeyIPLockTTL)
+		return nil
+	}
+	return ErrAPIKeyIPLocked
+}
+
+// ResetIPLock clears the dynamic IP lock for an API key.
+func (s *APIKeyService) ResetIPLock(ctx context.Context, apiKeyID int64) error {
+	if s == nil || s.cache == nil || apiKeyID <= 0 {
+		return nil
+	}
+	return s.cache.ResetAPIKeyIPLock(ctx, apiKeyID)
+}
+
+// GetIPLock returns the current dynamic IP lock for an API key, if any.
+func (s *APIKeyService) GetIPLock(ctx context.Context, apiKeyID int64) (string, error) {
+	if s == nil || s.cache == nil || apiKeyID <= 0 {
+		return "", nil
+	}
+	return s.cache.GetAPIKeyIPLock(ctx, apiKeyID)
 }
 
 // Delete 删除API Key

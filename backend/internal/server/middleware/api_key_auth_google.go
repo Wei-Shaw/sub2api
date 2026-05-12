@@ -6,6 +6,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/googleapi"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -44,6 +45,18 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 
 		if !apiKey.IsActive() {
 			abortWithGoogleError(c, 401, "API key is disabled")
+			return
+		}
+		if len(apiKey.IPWhitelist) > 0 || len(apiKey.IPBlacklist) > 0 {
+			clientIP := ip.GetTrustedClientIP(c)
+			allowed, _ := ip.CheckIPRestrictionWithCompiledRules(clientIP, apiKey.CompiledIPWhitelist, apiKey.CompiledIPBlacklist)
+			if !allowed {
+				abortWithGoogleError(c, 403, "Access denied")
+				return
+			}
+		}
+		if err := apiKeyService.EnforceIPLock(c.Request.Context(), apiKey, ip.GetTrustedClientIP(c)); err != nil {
+			abortWithGoogleError(c, 403, "Access denied")
 			return
 		}
 		if apiKey.User == nil {

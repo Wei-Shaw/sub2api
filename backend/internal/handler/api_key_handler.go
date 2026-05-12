@@ -39,9 +39,10 @@ type CreateAPIKeyRequest struct {
 	ExpiresInDays *int     `json:"expires_in_days"` // 过期天数
 
 	// Rate limit fields (0 = unlimited)
-	RateLimit5h *float64 `json:"rate_limit_5h"`
-	RateLimit1d *float64 `json:"rate_limit_1d"`
-	RateLimit7d *float64 `json:"rate_limit_7d"`
+	RateLimit5h  *float64 `json:"rate_limit_5h"`
+	RateLimit1d  *float64 `json:"rate_limit_1d"`
+	RateLimit7d  *float64 `json:"rate_limit_7d"`
+	RateLimit1mo *float64 `json:"rate_limit_1mo"`
 }
 
 // UpdateAPIKeyRequest represents the update API key request payload
@@ -59,6 +60,7 @@ type UpdateAPIKeyRequest struct {
 	RateLimit5h         *float64 `json:"rate_limit_5h"`
 	RateLimit1d         *float64 `json:"rate_limit_1d"`
 	RateLimit7d         *float64 `json:"rate_limit_7d"`
+	RateLimit1mo        *float64 `json:"rate_limit_1mo"`
 	ResetRateLimitUsage *bool    `json:"reset_rate_limit_usage"` // 重置限速用量
 }
 
@@ -173,6 +175,9 @@ func (h *APIKeyHandler) Create(c *gin.Context) {
 	if req.RateLimit7d != nil {
 		svcReq.RateLimit7d = *req.RateLimit7d
 	}
+	if req.RateLimit1mo != nil {
+		svcReq.RateLimit1mo = *req.RateLimit1mo
+	}
 
 	executeUserIdempotentJSON(c, "user.api_keys.create", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
 		key, err := h.apiKeyService.Create(ctx, subject.UserID, svcReq)
@@ -212,6 +217,7 @@ func (h *APIKeyHandler) Update(c *gin.Context) {
 		RateLimit5h:         req.RateLimit5h,
 		RateLimit1d:         req.RateLimit1d,
 		RateLimit7d:         req.RateLimit7d,
+		RateLimit1mo:        req.RateLimit1mo,
 		ResetRateLimitUsage: req.ResetRateLimitUsage,
 	}
 	if req.Name != "" {

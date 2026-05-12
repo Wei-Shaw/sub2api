@@ -126,11 +126,11 @@ func (s *AuthService) EntClient() *dbent.Client {
 
 // Register 用户注册，返回token和用户
 func (s *AuthService) Register(ctx context.Context, email, password string) (string, *User, error) {
-	return s.RegisterWithVerification(ctx, email, password, "", "", "", "")
+	return s.RegisterWithVerification(ctx, email, "", password, "", "", "", "")
 }
 
 // RegisterWithVerification 用户注册（支持邮件验证、优惠码、邀请码和邀请返利码），返回token和用户。
-func (s *AuthService) RegisterWithVerification(ctx context.Context, email, password, verifyCode, promoCode, invitationCode, affiliateCode string) (string, *User, error) {
+func (s *AuthService) RegisterWithVerification(ctx context.Context, email, username, password, verifyCode, promoCode, invitationCode, affiliateCode string) (string, *User, error) {
 	// 检查是否开放注册（默认关闭：settingService 未配置时不允许注册）
 	if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
 		return "", nil, ErrRegDisabled
@@ -208,6 +208,7 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 	// 创建用户
 	user := &User{
 		Email:        email,
+		Username:     strings.TrimSpace(username),
 		PasswordHash: hashedPassword,
 		Role:         RoleUser,
 		Balance:      grantPlan.Balance,
@@ -302,7 +303,7 @@ func (s *AuthService) SendVerifyCode(ctx context.Context, email string) error {
 	}
 
 	// 获取网站名称
-	siteName := "Sub2API"
+	siteName := "OceanWay AI"
 	if s.settingService != nil {
 		siteName = s.settingService.GetSiteName(ctx)
 	}
@@ -345,7 +346,7 @@ func (s *AuthService) SendVerifyCodeAsync(ctx context.Context, email string) (*S
 	}
 
 	// 获取网站名称
-	siteName := "Sub2API"
+	siteName := "OceanWay AI"
 	if s.settingService != nil {
 		siteName = s.settingService.GetSiteName(ctx)
 	}
@@ -445,6 +446,9 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (string
 
 	// 验证密码
 	if !s.CheckPassword(password, user.PasswordHash) {
+		return "", nil, ErrInvalidCredentials
+	}
+	if user.CustomerType == CustomerTypeManaged {
 		return "", nil, ErrInvalidCredentials
 	}
 
@@ -1215,7 +1219,7 @@ func (s *AuthService) preparePasswordReset(ctx context.Context, email, frontendB
 	}
 
 	// Get site name
-	siteName := "Sub2API"
+	siteName := "OceanWay AI"
 	if s.settingService != nil {
 		siteName = s.settingService.GetSiteName(ctx)
 	}
