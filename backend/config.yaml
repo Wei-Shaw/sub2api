@@ -1,0 +1,132 @@
+server:
+  host: "0.0.0.0"
+  port: 8080
+  mode: "debug"
+  frontend_url: "http://localhost:5173"
+
+run_mode: "standard"
+timezone: "Asia/Shanghai"
+
+log:
+  level: "debug"
+  format: "console"
+  service_name: "sub2api"
+  env: "development"
+  caller: true
+  stacktrace_level: "error"
+  output:
+    to_stdout: true
+    to_file: false
+    file_path: ""
+  rotation:
+    max_size_mb: 100
+    max_backups: 10
+    max_age_days: 7
+    compress: true
+    local_time: true
+  sampling:
+    enabled: false
+    initial: 100
+    thereafter: 100
+
+cors:
+  allowed_origins:
+    - "http://localhost:5173"
+    - "http://127.0.0.1:5173"
+  allow_credentials: true
+
+security:
+  url_allowlist:
+    enabled: false
+    allow_private_hosts: true
+    allow_insecure_http: true
+  response_headers:
+    enabled: true
+  csp:
+    enabled: true
+
+billing:
+  circuit_breaker:
+    enabled: true
+    failure_threshold: 5
+    reset_timeout_seconds: 30
+    half_open_requests: 3
+
+turnstile:
+  required: false
+
+database:
+  host: "www.chainhook.cn"
+  port: 5432
+  user: "tokenclub"
+  password: "tokenclub@2026"
+  dbname: "tokenclub"
+  sslmode: "prefer"
+  max_open_conns: 50
+  max_idle_conns: 10
+  conn_max_lifetime_minutes: 30
+  conn_max_idle_time_minutes: 5
+
+redis:
+  host: "www.chainhook.cn"
+  port: 6379
+  password: "Chainhook@2026"
+  db: 0
+  dial_timeout_seconds: 5
+  read_timeout_seconds: 3
+  write_timeout_seconds: 3
+  pool_size: 100
+  min_idle_conns: 10
+  enable_tls: false
+
+jwt:
+  secret: "dc14e92a323c1807850fdb8dd579e69d3b7d4ae095c7116b63344e648bb30acb"
+  expire_hour: 24
+  access_token_expire_minutes: 0
+  refresh_token_expire_days: 30
+  refresh_window_minutes: 2
+
+totp:
+  encryption_key: "8bb1916441ed2779e4fdcd19575318912dcdd7f45be6a752434cf4c082e59140"
+
+default:
+  admin_email: "294825811@qq.com"
+  admin_password: "tokenclub@112242"
+  user_concurrency: 5
+  user_balance: 0
+  api_key_prefix: "sk-"
+  rate_multiplier: 1.0
+
+rate_limit:
+  overload_cooldown_minutes: 10
+  oauth_401_cooldown_minutes: 10
+
+pricing:
+  data_dir: "./data"
+  fallback_file: "./resources/model-pricing/model_prices_and_context_window.json"
+  update_interval_hours: 24
+  hash_check_interval_minutes: 10
+
+gateway:
+  response_header_timeout: 600
+  max_body_size: 268435456
+  upstream_response_read_max_bytes: 134217728
+  proxy_probe_response_read_max_bytes: 1048576
+  connection_pool_isolation: "account_proxy"
+  image_stream_data_interval_timeout: 900
+  image_stream_keepalive_interval: 10
+  image_concurrency:
+    enabled: false
+    max_concurrent_requests: 0
+    overflow_mode: "reject"
+    wait_timeout_seconds: 30
+    max_waiting_requests: 100
+
+api_key_auth_cache:
+  enabled: true
+
+subscription_cache:
+  enabled: true
+
+dashboard_cache:
+  enabled: true
