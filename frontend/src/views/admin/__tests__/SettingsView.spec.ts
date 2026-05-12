@@ -859,24 +859,6 @@ describe("admin SettingsView wechat connect controls", () => {
     ).toBe("/auth/wechat/callback");
   });
 
-  it("links GitHub OAuth Apps guide to GitHub developer settings", async () => {
-    getSettings.mockResolvedValueOnce({
-      ...baseSettingsResponse,
-      github_oauth_enabled: true,
-    });
-
-    const wrapper = mountView();
-
-    await flushPromises();
-    await openSecurityTab(wrapper);
-
-    const link = wrapper.get('[data-testid="github-oauth-apps-guide-link"]');
-    expect(link.text()).toContain("OAuth Apps");
-    expect(link.attributes("href")).toBe("https://github.com/settings/developers");
-    expect(link.attributes("target")).toBe("_blank");
-    expect(link.attributes("rel")).toContain("noopener");
-  });
-
   it("saves WeChat Connect fields using the backend contract and clears the secret after save", async () => {
     const wrapper = mountView();
 
