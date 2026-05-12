@@ -159,7 +159,7 @@ const mobileMenuOpen = ref(false)
 
 const navLinks = computed(() => [
   { path: '/key-usage', label: t('keyUsage.title'), icon: 'key' as const },
-  { path: '/monitoring', label: t('admin.monitoring.title'), icon: 'chart' as const, external: true, href: 'https://status.djoui.space' },
+  { path: '/monitoring', label: t('admin.monitoring.title'), icon: 'chart' as const, external: true, href: 'https://status.djoui.online' },
   { path: '/pricing', label: t('pricing.title'), icon: 'dollar' as const },
 ])
 
