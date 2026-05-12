@@ -37,10 +37,7 @@ func trimAnthropicCompatResponsesInputToLatestTurn(req *apicompat.ResponsesReque
 		return
 	}
 
-	start := len(items) - 1
-	for start > 0 && items[start].Type == "function_call_output" {
-		start--
-	}
+	start := latestAnthropicCompatResponsesInputTurnStart(items)
 	trimmed := append([]apicompat.ResponsesInputItem(nil), items[start:]...)
 	if len(trimmed) == len(items) {
 		return
@@ -48,6 +45,63 @@ func trimAnthropicCompatResponsesInputToLatestTurn(req *apicompat.ResponsesReque
 	if input, err := json.Marshal(trimmed); err == nil {
 		req.Input = input
 	}
+}
+
+func latestAnthropicCompatResponsesInputTurnStart(items []apicompat.ResponsesInputItem) int {
+	if len(items) == 0 {
+		return 0
+	}
+
+	start := len(items) - 1
+	last := items[start]
+	switch {
+	case last.Type == "function_call_output":
+		for start > 0 && items[start-1].Type == "function_call_output" {
+			start--
+		}
+	case last.Type == "message" && last.Role == "user":
+		for start > 0 && items[start-1].Type == "function_call_output" {
+			start--
+		}
+	default:
+		return start
+	}
+
+	return expandAnthropicCompatResponsesInputToolCallStart(items, start)
+}
+
+func expandAnthropicCompatResponsesInputToolCallStart(items []apicompat.ResponsesInputItem, start int) int {
+	if start < 0 || start >= len(items) {
+		return start
+	}
+
+	needed := make(map[string]struct{})
+	for i := start; i < len(items); i++ {
+		if items[i].Type != "function_call_output" {
+			continue
+		}
+		callID := strings.TrimSpace(items[i].CallID)
+		if callID != "" {
+			needed[callID] = struct{}{}
+		}
+	}
+	if len(needed) == 0 {
+		return start
+	}
+
+	expandedStart := start
+	for i := start - 1; i >= 0 && len(needed) > 0; i-- {
+		if items[i].Type != "function_call" {
+			continue
+		}
+		callID := strings.TrimSpace(items[i].CallID)
+		if _, ok := needed[callID]; !ok {
+			continue
+		}
+		delete(needed, callID)
+		expandedStart = i
+	}
+	return expandedStart
 }
 
 func isOpenAICompatPreviousResponseNotFound(statusCode int, upstreamMsg string, upstreamBody []byte) bool {
