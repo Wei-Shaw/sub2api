@@ -3,238 +3,409 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"io"
+	"net"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 	"google.golang.org/grpc"
 )
 
-const (
-	// maxResponseBodyRead limits how much of an error response body we read.
-	maxResponseBodyRead = 2 << 20 // 2 MB
-)
-
-// upstreamRequest bundles everything needed to make a single upstream
-// HTTP request and stream the response back through gRPC.
-type upstreamRequest struct {
-	method    string
-	url       string
-	headers   map[string]string
-	body      []byte
-	model     string
-	isStream  bool
-	startTime time.Time
-	requestID string
-	extractor usageExtractor
+// defaultHTTPClient is a shared HTTP client with sensible timeouts for
+// upstream requests. Streaming responses need long timeouts since SSE
+// connections stay open until the model finishes generating.
+var defaultHTTPClient = &http.Client{
+	// No overall timeout — streaming responses can take minutes.
+	// Individual read deadlines are handled at the io level.
+	Transport: &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		TLSClientConfig:       &tls.Config{MinVersion: tls.VersionTLS12},
+		TLSHandshakeTimeout:   15 * time.Second,
+		MaxIdleConns:          100,
+		MaxIdleConnsPerHost:   20,
+		IdleConnTimeout:       90 * time.Second,
+		ResponseHeaderTimeout: 60 * time.Second,
+		ForceAttemptHTTP2:     true,
+	},
 }
 
-// upstreamClient is a thin HTTP client used by the gateway provider
-// server to make upstream API calls.
-type upstreamClient struct {
-	httpClient *http.Client
+// upstreamRequestInfo holds a fully-built HTTP request ready to send to
+// the upstream, along with model metadata needed for billing.
+type upstreamRequestInfo struct {
+	httpReq       *http.Request
+	originalModel string // model as requested by the client (for billing)
+	mappedModel   string // model after mapping (actually sent upstream)
 }
 
-func newUpstreamClient() *upstreamClient {
-	return &upstreamClient{
-		httpClient: &http.Client{
-			Timeout: 5 * time.Minute,
-		},
-	}
-}
-
-// proxyRequest executes an HTTP request and streams the response back
-// through the gRPC stream as GatewayForwardChunk messages.
-//
-// Chunk sequence: headers → body (one or more) → done.
-func (c *upstreamClient) proxyRequest(
+// buildUpstreamAPIKeyRequest constructs the HTTP request for an API key
+// account targeting the AI Studio REST API.
+func buildUpstreamAPIKeyRequest(
 	ctx context.Context,
-	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
-	req upstreamRequest,
-) error {
-	httpReq, err := http.NewRequestWithContext(
-		ctx, req.method, req.url, bytes.NewReader(req.body),
+	req *pb.GatewayForwardRequest,
+	creds *geminiCredentials,
+) (*upstreamRequestInfo, error) {
+	apiKey := strings.TrimSpace(creds.APIKey)
+	if apiKey == "" {
+		return nil, fmt.Errorf("no API key available")
+	}
+
+	baseURL := strings.TrimSpace(creds.BaseURL)
+	if baseURL == "" {
+		baseURL = aiStudioBaseURL
+	}
+
+	originalModel := req.GetModel()
+	mappedModel := resolveModelMapping(originalModel, req.GetAccount())
+
+	action, apiURL := buildGeminiAPIURL(
+		baseURL, mappedModel, req.GetGeminiAction(), req.GetStream(),
+	)
+
+	body := req.GetRawBody()
+	if mappedModel != originalModel {
+		body = replaceModelInBody(body, mappedModel)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("x-goog-api-key", apiKey)
+
+	forwardClientHeaders(httpReq, req.GetHeaders())
+	forwardClientHeaders(httpReq, req.GetClientHeaders())
+
+	isStreaming := req.GetStream() || action == "streamGenerateContent"
+	_ = isStreaming // used by caller to determine response processing
+
+	return &upstreamRequestInfo{
+		httpReq:       httpReq,
+		originalModel: originalModel,
+		mappedModel:   mappedModel,
+	}, nil
+}
+
+// buildUpstreamOAuthAIStudioRequest constructs the HTTP request for an
+// OAuth account targeting AI Studio (no project_id).
+func buildUpstreamOAuthAIStudioRequest(
+	ctx context.Context,
+	req *pb.GatewayForwardRequest,
+	creds *geminiCredentials,
+	accessToken string,
+) (*upstreamRequestInfo, error) {
+	baseURL := strings.TrimSpace(creds.BaseURL)
+	if baseURL == "" {
+		baseURL = aiStudioBaseURL
+	}
+
+	originalModel := req.GetModel()
+	mappedModel := resolveModelMapping(originalModel, req.GetAccount())
+
+	_, apiURL := buildGeminiAPIURL(
+		baseURL, mappedModel, req.GetGeminiAction(), req.GetStream(),
+	)
+
+	body := req.GetRawBody()
+	if mappedModel != originalModel {
+		body = replaceModelInBody(body, mappedModel)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+accessToken)
+
+	forwardClientHeaders(httpReq, req.GetHeaders())
+	forwardClientHeaders(httpReq, req.GetClientHeaders())
+
+	return &upstreamRequestInfo{
+		httpReq:       httpReq,
+		originalModel: originalModel,
+		mappedModel:   mappedModel,
+	}, nil
+}
+
+// buildUpstreamCodeAssistRequest constructs the HTTP request for an
+// OAuth account targeting the Code Assist v1internal endpoint.
+func buildUpstreamCodeAssistRequest(
+	ctx context.Context,
+	req *pb.GatewayForwardRequest,
+	accessToken, projectID string,
+) (*upstreamRequestInfo, error) {
+	action := req.GetGeminiAction()
+	if action == "" {
+		action = "streamGenerateContent"
+	}
+	apiURL := geminiCLIBaseURL + "/v1internal:" + action + "?alt=sse"
+
+	originalModel := req.GetModel()
+	payload := buildCodeAssistPayload(projectID, originalModel, req.GetRawBody())
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(payload))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+accessToken)
+	httpReq.Header.Set("User-Agent", geminiCLIUserAgent)
+
+	return &upstreamRequestInfo{
+		httpReq:       httpReq,
+		originalModel: originalModel,
+		mappedModel:   originalModel, // no mapping for Code Assist
+	}, nil
+}
+
+// buildUpstreamVertexRequest constructs the HTTP request for a service
+// account targeting Vertex AI.
+func buildUpstreamVertexRequest(
+	ctx context.Context,
+	req *pb.GatewayForwardRequest,
+	creds *geminiCredentials,
+	accessToken string,
+) (*upstreamRequestInfo, error) {
+	originalModel := req.GetModel()
+	mappedModel := resolveModelMapping(originalModel, req.GetAccount())
+
+	apiURL, err := buildVertexForwardURL(
+		creds, mappedModel, req.GetGeminiAction(), req.GetStream(),
 	)
 	if err != nil {
-		return fmt.Errorf("create upstream request: %w", err)
-	}
-	for k, v := range req.headers {
-		httpReq.Header.Set(k, v)
+		return nil, err
 	}
 
-	resp, err := c.httpClient.Do(httpReq)
+	body := req.GetRawBody()
+	if mappedModel != originalModel {
+		body = replaceModelInBody(body, mappedModel)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("upstream request failed: %w", err)
+		return nil, fmt.Errorf("create request: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
 
-	return c.streamResponse(stream, resp, req)
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+accessToken)
+
+	forwardClientHeaders(httpReq, req.GetHeaders())
+	forwardClientHeaders(httpReq, req.GetClientHeaders())
+
+	return &upstreamRequestInfo{
+		httpReq:       httpReq,
+		originalModel: originalModel,
+		mappedModel:   mappedModel,
+	}, nil
 }
 
-// streamResponse reads the HTTP response and sends it as gRPC chunks.
-func (c *upstreamClient) streamResponse(
-	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
-	resp *http.Response,
-	req upstreamRequest,
-) error {
-	// Send headers chunk.
-	respHeaders := make(map[string]string)
-	for key := range resp.Header {
-		respHeaders[key] = resp.Header.Get(key)
-	}
-	if err := stream.Send(&pb.GatewayForwardChunk{
-		Chunk: &pb.GatewayForwardChunk_Headers{
-			Headers: &pb.GatewayResponseHeaders{
-				StatusCode: int32(resp.StatusCode),
-				Headers:    respHeaders,
-			},
-		},
-	}); err != nil {
-		return fmt.Errorf("send headers chunk: %w", err)
-	}
+// --- model mapping ---
 
-	// For error responses, read the full body and send as a single chunk.
-	if resp.StatusCode >= 400 {
-		return c.streamErrorBody(stream, resp, req)
+// resolveModelMapping applies model_mapping from account credentials.
+// Only API key and service account types support explicit mappings.
+func resolveModelMapping(
+	requestedModel string,
+	info *pb.GatewayAccountInfo,
+) string {
+	if info == nil {
+		return requestedModel
 	}
-
-	// For success responses, stream the body.
-	if req.isStream {
-		return c.streamSSEBody(stream, resp, req)
+	acctType := info.GetAccountType()
+	if acctType != accountTypeAPIKey && acctType != accountTypeServiceAccount {
+		return requestedModel
 	}
-	return c.streamFullBody(stream, resp, req)
+	mapping := extractModelMapping(info.GetCredentialsJson())
+	if len(mapping) == 0 {
+		return requestedModel
+	}
+	if mapped, ok := mapping[requestedModel]; ok {
+		return mapped
+	}
+	return requestedModel
 }
 
-// streamErrorBody reads an error response body and sends it as a
-// single body chunk followed by a done chunk.
-func (c *upstreamClient) streamErrorBody(
-	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
-	resp *http.Response,
-	req upstreamRequest,
-) error {
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodyRead))
-
-	if err := stream.Send(&pb.GatewayForwardChunk{
-		Chunk: &pb.GatewayForwardChunk_Body{
-			Body: &pb.GatewayResponseBody{Data: body},
-		},
-	}); err != nil {
-		return fmt.Errorf("send error body: %w", err)
+// replaceModelInBody replaces the "model" field in the JSON body with
+// the mapped model name.
+func replaceModelInBody(body []byte, newModel string) []byte {
+	var parsed map[string]json.RawMessage
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return body
 	}
-
-	duration := time.Since(req.startTime)
-	return stream.Send(&pb.GatewayForwardChunk{
-		Chunk: &pb.GatewayForwardChunk_Done{
-			Done: &pb.GatewayResponseDone{
-				Result: &pb.GatewayForwardResult{
-					RequestId:  req.requestID,
-					Model:      req.model,
-					DurationMs: duration.Milliseconds(),
-				},
-				Error: fmt.Sprintf("upstream returned %d", resp.StatusCode),
-			},
-		},
-	})
-}
-
-// streamFullBody reads a non-streaming response and sends it as one
-// body chunk, extracting usage from the complete body.
-func (c *upstreamClient) streamFullBody(
-	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
-	resp *http.Response,
-	req upstreamRequest,
-) error {
-	body, err := io.ReadAll(resp.Body)
+	modelBytes, err := json.Marshal(newModel)
 	if err != nil {
-		return fmt.Errorf("read upstream body: %w", err)
+		return body
 	}
-
-	if sendErr := stream.Send(&pb.GatewayForwardChunk{
-		Chunk: &pb.GatewayForwardChunk_Body{
-			Body: &pb.GatewayResponseBody{Data: body},
-		},
-	}); sendErr != nil {
-		return fmt.Errorf("send body chunk: %w", sendErr)
-	}
-
-	// Extract usage from the complete response.
-	usage := req.extractor.extractFromBody(body)
-	duration := time.Since(req.startTime)
-
-	return stream.Send(&pb.GatewayForwardChunk{
-		Chunk: &pb.GatewayForwardChunk_Done{
-			Done: &pb.GatewayResponseDone{
-				Result: buildForwardResult(req, usage, duration, nil),
-			},
-		},
-	})
-}
-
-// streamSSEBody reads an SSE response body and streams each line as a
-// body chunk, accumulating usage data from SSE events.
-func (c *upstreamClient) streamSSEBody(
-	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
-	resp *http.Response,
-	req upstreamRequest,
-) error {
-	tracker := newSSETracker(req.extractor, req.startTime)
-
-	err := tracker.streamAndTrack(resp.Body, func(data []byte) error {
-		return stream.Send(&pb.GatewayForwardChunk{
-			Chunk: &pb.GatewayForwardChunk_Body{
-				Body: &pb.GatewayResponseBody{Data: data},
-			},
-		})
-	})
-
-	duration := time.Since(req.startTime)
-	usage := tracker.usage()
-
-	var doneError string
+	parsed["model"] = modelBytes
+	result, err := json.Marshal(parsed)
 	if err != nil {
-		doneError = err.Error()
-	}
-
-	return stream.Send(&pb.GatewayForwardChunk{
-		Chunk: &pb.GatewayForwardChunk_Done{
-			Done: &pb.GatewayResponseDone{
-				Result: buildForwardResult(req, usage, duration, tracker.firstTokenTime()),
-				Error:  doneError,
-			},
-		},
-	})
-}
-
-// buildForwardResult constructs a GatewayForwardResult from extracted
-// usage data and timing.
-func buildForwardResult(
-	req upstreamRequest,
-	usage *extractedUsage,
-	duration time.Duration,
-	firstToken *time.Time,
-) *pb.GatewayForwardResult {
-	result := &pb.GatewayForwardResult{
-		RequestId:  req.requestID,
-		Model:      req.model,
-		Stream:     req.isStream,
-		DurationMs: duration.Milliseconds(),
-	}
-	if usage != nil {
-		result.InputTokens = usage.inputTokens
-		result.OutputTokens = usage.outputTokens
-		result.CacheCreationTokens = usage.cacheCreationTokens
-		result.CacheReadTokens = usage.cacheReadTokens
-	}
-	if firstToken != nil {
-		ftMs := firstToken.Sub(req.startTime).Milliseconds()
-		if ftMs > 0 {
-			result.FirstTokenMs = int32(ftMs)
-		}
+		return body
 	}
 	return result
+}
+
+// --- client header forwarding ---
+
+// clientHeadersAllowList lists headers from the client that may be
+// forwarded to the upstream Gemini API. Auth headers (authorization,
+// x-goog-api-key) are always overwritten by the request builders.
+var clientHeadersAllowList = map[string]bool{
+	"content-type":      true,
+	"user-agent":        true,
+	"accept":            true,
+	"accept-encoding":   true,
+	"accept-language":   true,
+	"x-goog-api-client": true,
+}
+
+// forwardClientHeaders copies allowed client headers to the upstream
+// request. Only sets headers not already present.
+func forwardClientHeaders(httpReq *http.Request, clientHeaders map[string]string) {
+	for key, value := range clientHeaders {
+		lower := strings.ToLower(key)
+		if !clientHeadersAllowList[lower] {
+			continue
+		}
+		// Only set if not already present (auth headers take priority).
+		if httpReq.Header.Get(key) == "" {
+			httpReq.Header.Set(key, value)
+		}
+	}
+}
+
+// --- done chunk builder ---
+
+// buildDoneChunk constructs the terminal GatewayForwardChunk_Done
+// message with usage data from the stream processing result.
+func buildDoneChunk(
+	resp *http.Response,
+	upstream *upstreamRequestInfo,
+	result *streamResult,
+	isStream bool,
+	startTime time.Time,
+	streamErr error,
+) *pb.GatewayForwardChunk {
+	done := &pb.GatewayResponseDone{
+		Result: &pb.GatewayForwardResult{
+			RequestId:     resp.Header.Get("x-goog-request-id"),
+			Model:         upstream.originalModel,
+			UpstreamModel: upstream.mappedModel,
+			Stream:        isStream,
+			DurationMs:    time.Since(startTime).Milliseconds(),
+		},
+	}
+
+	if result != nil {
+		done.Result.InputTokens = result.inputTokens
+		done.Result.OutputTokens = result.outputTokens
+		done.Result.CacheReadTokens = result.cacheReadTokens
+		done.Result.ImageOutputTokens = result.imageOutputTokens
+		done.Result.ClientDisconnect = result.clientDisconnect
+		if result.firstTokenMs > 0 {
+			done.Result.FirstTokenMs = result.firstTokenMs
+		}
+	}
+
+	if streamErr != nil {
+		done.Error = streamErr.Error()
+	}
+
+	return &pb.GatewayForwardChunk{
+		Chunk: &pb.GatewayForwardChunk_Done{Done: done},
+	}
+}
+
+// maxErrorBodyForProto caps the upstream error body embedded in the
+// proto message to avoid excessive gRPC message sizes.
+const maxErrorBodyForProto = 8 << 10 // 8 KB
+
+// truncateBytes returns b truncated to at most maxLen bytes.
+func truncateBytes(b []byte, maxLen int) []byte {
+	if len(b) <= maxLen {
+		return b
+	}
+	return b[:maxLen]
+}
+
+// --- URL builders ---
+
+// buildGeminiAPIURL constructs the AI Studio REST API URL for a Gemini
+// model. Returns (action, fullURL).
+func buildGeminiAPIURL(baseURL, model, geminiAction string, isStream bool) (string, string) {
+	action := geminiAction
+	if action == "" {
+		if isStream {
+			action = "streamGenerateContent"
+		} else {
+			action = "generateContent"
+		}
+	}
+
+	apiURL := fmt.Sprintf("%s/v1beta/models/%s:%s",
+		strings.TrimRight(baseURL, "/"), model, action)
+	if isStream || action == "streamGenerateContent" {
+		apiURL += "?alt=sse"
+	}
+	return action, apiURL
+}
+
+// buildVertexForwardURL constructs the Vertex AI API URL for a Gemini
+// model.
+func buildVertexForwardURL(
+	creds *geminiCredentials,
+	model, geminiAction string,
+	isStream bool,
+) (string, error) {
+	projectID := strings.TrimSpace(creds.VertexProjectID)
+	if projectID == "" {
+		return "", fmt.Errorf("vertex_project_id is required for service accounts")
+	}
+
+	location := strings.TrimSpace(creds.VertexLocation)
+	if location == "" {
+		location = vertexDefaultLocation
+	}
+	if !vertexLocationPattern.MatchString(location) {
+		return "", fmt.Errorf("invalid vertex location: %s", location)
+	}
+
+	action := geminiAction
+	if action == "" {
+		if isStream {
+			action = "streamGenerateContent"
+		} else {
+			action = "generateContent"
+		}
+	}
+
+	host := fmt.Sprintf("%s-aiplatform.googleapis.com", location)
+	if location == "global" {
+		host = "aiplatform.googleapis.com"
+	}
+
+	apiURL := fmt.Sprintf(
+		"https://%s/v1/projects/%s/locations/%s/publishers/google/models/%s:%s",
+		host,
+		url.PathEscape(projectID),
+		url.PathEscape(location),
+		url.PathEscape(model),
+		action,
+	)
+	if isStream || action == "streamGenerateContent" {
+		apiURL += "?alt=sse"
+	}
+	return apiURL, nil
 }
 
 // buildCodeAssistPayload wraps a Gemini request body for the Code
@@ -258,4 +429,22 @@ func buildCodeAssistPayload(projectID, model string, body []byte) []byte {
 
 	result, _ := json.Marshal(wrapper)
 	return result
+}
+
+// --- helpers ---
+
+// sendDone sends a terminal Done chunk with an optional error message.
+func sendDone(
+	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
+	result *pb.GatewayForwardResult,
+	errMsg string,
+) error {
+	return stream.Send(&pb.GatewayForwardChunk{
+		Chunk: &pb.GatewayForwardChunk_Done{
+			Done: &pb.GatewayResponseDone{
+				Result: result,
+				Error:  errMsg,
+			},
+		},
+	})
 }

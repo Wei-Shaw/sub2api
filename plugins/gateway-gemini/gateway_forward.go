@@ -3,8 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
-	"net/url"
+	"net/http"
 	"strings"
 	"time"
 
@@ -24,14 +25,12 @@ const (
 // It handles upstream API forwarding for the Gemini platform.
 type gatewayProviderServer struct {
 	pb.UnimplementedGatewayProviderExtensionServer
-	upstreamClient *upstreamClient
-	logger         *slog.Logger
+	logger *slog.Logger
 }
 
 func newGatewayProviderServer(logger *slog.Logger) *gatewayProviderServer {
 	return &gatewayProviderServer{
-		upstreamClient: newUpstreamClient(),
-		logger:         logger,
+		logger: logger,
 	}
 }
 
@@ -40,9 +39,9 @@ func newGatewayProviderServer(logger *slog.Logger) *gatewayProviderServer {
 // messages.
 //
 // Account type dispatch:
-//   - apikey         → AI Studio REST API (x-goog-api-key auth)
-//   - oauth          → AI Studio or Code Assist v1internal (Bearer auth)
-//   - service_account → Vertex AI API (Bearer auth)
+//   - apikey          -> AI Studio REST API (x-goog-api-key auth)
+//   - oauth           -> AI Studio or Code Assist v1internal (Bearer auth)
+//   - service_account -> Vertex AI API (Bearer auth)
 func (s *gatewayProviderServer) Forward(
 	req *pb.GatewayForwardRequest,
 	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
@@ -88,41 +87,21 @@ func (s *gatewayProviderServer) forwardAPIKey(
 	creds *geminiCredentials,
 	startTime time.Time,
 ) error {
-	apiKey := strings.TrimSpace(creds.APIKey)
-	if apiKey == "" {
-		return fmt.Errorf("gateway-gemini: no API key available")
+	upstream, err := buildUpstreamAPIKeyRequest(ctx, req, creds)
+	if err != nil {
+		return fmt.Errorf("gateway-gemini: %w", err)
 	}
 
-	baseURL := strings.TrimSpace(creds.BaseURL)
-	if baseURL == "" {
-		baseURL = aiStudioBaseURL
-	}
-
-	action, apiURL := buildGeminiAPIURL(baseURL, req.GetModel(), req.GetGeminiAction(), req.GetStream())
-
-	headers := map[string]string{
-		"Content-Type":    "application/json",
-		"x-goog-api-key": apiKey,
-	}
-
+	action := req.GetGeminiAction()
 	isStreaming := req.GetStream() || action == "streamGenerateContent"
-	return s.upstreamClient.proxyRequest(ctx, stream, upstreamRequest{
-		method:    "POST",
-		url:       apiURL,
-		headers:   headers,
-		body:      req.GetRawBody(),
-		model:     req.GetModel(),
-		isStream:  isStreaming,
-		startTime: startTime,
-		requestID: req.GetRequestId(),
-		extractor: &geminiUsageExtractor{},
-	})
+
+	return s.executeAndStream(stream, upstream, isStreaming, startTime)
 }
 
 // forwardOAuth forwards a request using an OAuth access token. Two
 // modes exist:
-//  1. With project_id → Code Assist v1internal endpoint (wrapped request)
-//  2. Without project_id → AI Studio API (direct, like API key mode)
+//  1. With project_id -> Code Assist v1internal endpoint (wrapped request)
+//  2. Without project_id -> AI Studio API (direct, like API key mode)
 func (s *gatewayProviderServer) forwardOAuth(
 	ctx context.Context,
 	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
@@ -137,51 +116,29 @@ func (s *gatewayProviderServer) forwardOAuth(
 
 	projectID := strings.TrimSpace(creds.ProjectID)
 	if projectID != "" {
-		return s.forwardOAuthCodeAssist(ctx, stream, req, creds, accessToken, projectID, startTime)
+		return s.forwardOAuthCodeAssist(ctx, stream, req, accessToken, projectID, startTime)
 	}
 	return s.forwardOAuthAIStudio(ctx, stream, req, creds, accessToken, startTime)
 }
 
-// forwardOAuthCodeAssist forwards through the Code Assist v1internal endpoint.
+// forwardOAuthCodeAssist forwards through the Code Assist v1internal
+// endpoint.
 func (s *gatewayProviderServer) forwardOAuthCodeAssist(
 	ctx context.Context,
 	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
 	req *pb.GatewayForwardRequest,
-	creds *geminiCredentials,
 	accessToken, projectID string,
 	startTime time.Time,
 ) error {
-	action := req.GetGeminiAction()
-	if action == "" {
-		action = "streamGenerateContent"
+	upstream, err := buildUpstreamCodeAssistRequest(ctx, req, accessToken, projectID)
+	if err != nil {
+		return fmt.Errorf("gateway-gemini: %w", err)
 	}
-
-	apiURL := geminiCLIBaseURL + "/v1internal:" + action + "?alt=sse"
-
-	// Wrap the request body for the v1internal endpoint.
-	payload := buildCodeAssistPayload(projectID, req.GetModel(), req.GetRawBody())
-
-	headers := map[string]string{
-		"Content-Type":  "application/json",
-		"Authorization": "Bearer " + accessToken,
-		"User-Agent":    geminiCLIUserAgent,
-	}
-
-	return s.upstreamClient.proxyRequest(ctx, stream, upstreamRequest{
-		method:    "POST",
-		url:       apiURL,
-		headers:   headers,
-		body:      payload,
-		model:     req.GetModel(),
-		isStream:  true, // v1internal always uses streaming
-		startTime: startTime,
-		requestID: req.GetRequestId(),
-		extractor: &geminiUsageExtractor{},
-	})
+	// v1internal always uses streaming.
+	return s.executeAndStream(stream, upstream, true, startTime)
 }
 
-// forwardOAuthAIStudio forwards to AI Studio using Bearer token auth
-// (same as API key mode but with Authorization header).
+// forwardOAuthAIStudio forwards to AI Studio using Bearer token auth.
 func (s *gatewayProviderServer) forwardOAuthAIStudio(
 	ctx context.Context,
 	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
@@ -190,30 +147,15 @@ func (s *gatewayProviderServer) forwardOAuthAIStudio(
 	accessToken string,
 	startTime time.Time,
 ) error {
-	baseURL := strings.TrimSpace(creds.BaseURL)
-	if baseURL == "" {
-		baseURL = aiStudioBaseURL
+	upstream, err := buildUpstreamOAuthAIStudioRequest(ctx, req, creds, accessToken)
+	if err != nil {
+		return fmt.Errorf("gateway-gemini: %w", err)
 	}
 
-	action, apiURL := buildGeminiAPIURL(baseURL, req.GetModel(), req.GetGeminiAction(), req.GetStream())
-
-	headers := map[string]string{
-		"Content-Type":  "application/json",
-		"Authorization": "Bearer " + accessToken,
-	}
-
+	action := req.GetGeminiAction()
 	isStreaming := req.GetStream() || action == "streamGenerateContent"
-	return s.upstreamClient.proxyRequest(ctx, stream, upstreamRequest{
-		method:    "POST",
-		url:       apiURL,
-		headers:   headers,
-		body:      req.GetRawBody(),
-		model:     req.GetModel(),
-		isStream:  isStreaming,
-		startTime: startTime,
-		requestID: req.GetRequestId(),
-		extractor: &geminiUsageExtractor{},
-	})
+
+	return s.executeAndStream(stream, upstream, isStreaming, startTime)
 }
 
 // forwardServiceAccount forwards a request to Vertex AI using a
@@ -227,113 +169,111 @@ func (s *gatewayProviderServer) forwardServiceAccount(
 ) error {
 	accessToken := strings.TrimSpace(creds.AccessToken)
 	if accessToken == "" {
-		return fmt.Errorf("gateway-gemini: no access token available for service account")
+		return fmt.Errorf("gateway-gemini: no access token for service account")
 	}
 
-	apiURL, err := buildVertexForwardURL(creds, req.GetModel(), req.GetGeminiAction(), req.GetStream())
+	upstream, err := buildUpstreamVertexRequest(ctx, req, creds, accessToken)
 	if err != nil {
 		return fmt.Errorf("gateway-gemini: %w", err)
 	}
 
-	headers := map[string]string{
-		"Content-Type":  "application/json",
-		"Authorization": "Bearer " + accessToken,
-	}
+	isStreaming := req.GetStream() ||
+		strings.Contains(upstream.httpReq.URL.String(), "streamGenerateContent")
 
-	isStreaming := req.GetStream() || strings.Contains(apiURL, "streamGenerateContent")
-	return s.upstreamClient.proxyRequest(ctx, stream, upstreamRequest{
-		method:    "POST",
-		url:       apiURL,
-		headers:   headers,
-		body:      req.GetRawBody(),
-		model:     req.GetModel(),
-		isStream:  isStreaming,
-		startTime: startTime,
-		requestID: req.GetRequestId(),
-		extractor: &geminiUsageExtractor{},
-	})
+	return s.executeAndStream(stream, upstream, isStreaming, startTime)
 }
 
-// ShouldFailover returns whether a failed forward should be retried
-// with a different account. For Gemini, we failover on 429 (rate
-// limit), 503 (service unavailable), and authentication errors.
+// executeAndStream sends the upstream request and streams the response
+// back through gRPC. This is the shared execution path for all account
+// types, handling headers, errors, streaming/non-streaming responses,
+// and the terminal Done chunk.
+func (s *gatewayProviderServer) executeAndStream(
+	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
+	upstream *upstreamRequestInfo,
+	isStream bool,
+	startTime time.Time,
+) error {
+	resp, err := defaultHTTPClient.Do(upstream.httpReq)
+	if err != nil {
+		return fmt.Errorf("gateway-gemini: upstream request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	// Send response headers.
+	if err := sendResponseHeaders(stream, resp); err != nil {
+		return fmt.Errorf("gateway-gemini: send headers: %w", err)
+	}
+
+	// Handle error responses with structured upstream error.
+	if resp.StatusCode >= 400 {
+		return s.handleErrorResponse(stream, resp, upstream, isStream, startTime)
+	}
+
+	// Process the response body.
+	var result *streamResult
+	if isStream {
+		result, err = proxySSEStream(stream, resp, startTime,
+			upstream.originalModel, upstream.mappedModel)
+	} else {
+		result, err = proxyNonStreamResponse(stream, resp)
+	}
+
+	// Build and send the Done chunk with usage data.
+	done := buildDoneChunk(resp, upstream, result, isStream, startTime, err)
+	if sendErr := stream.Send(done); sendErr != nil {
+		return sendErr
+	}
+	return nil
+}
+
+// handleErrorResponse processes upstream 4xx/5xx responses. It sends
+// the error body downstream and attaches a structured GatewayUpstreamError
+// to the Done chunk so the host can decide failover strategy without
+// parsing error message strings.
+func (s *gatewayProviderServer) handleErrorResponse(
+	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
+	resp *http.Response,
+	upstream *upstreamRequestInfo,
+	isStream bool,
+	startTime time.Time,
+) error {
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodySize))
+
+	// Send the error body to the host so it can forward to the client
+	// if it decides not to failover.
+	if len(body) > 0 {
+		if err := sendBodyChunk(stream, body); err != nil {
+			return err
+		}
+	}
+
+	result := &pb.GatewayForwardResult{
+		RequestId:     resp.Header.Get("x-goog-request-id"),
+		Model:         upstream.originalModel,
+		UpstreamModel: upstream.mappedModel,
+		Stream:        isStream,
+		DurationMs:    time.Since(startTime).Milliseconds(),
+	}
+
+	// Attach structured upstream error for failover-eligible status codes.
+	if shouldFailoverStatus(resp.StatusCode) {
+		result.UpstreamError = &pb.GatewayUpstreamError{
+			StatusCode:   int32(resp.StatusCode),
+			ErrorType:    classifyErrorType(resp.StatusCode),
+			ResponseBody: truncateBytes(body, maxErrorBodyForProto),
+		}
+	}
+
+	errMsg := fmt.Sprintf("upstream returned %d", resp.StatusCode)
+	return sendDone(stream, result, errMsg)
+}
+
+// ShouldFailover determines whether a failed forward should be retried
+// with a different account. See gateway_failover.go for classification.
 func (s *gatewayProviderServer) ShouldFailover(
 	_ context.Context,
 	req *pb.GatewayFailoverRequest,
 ) (*pb.GatewayFailoverResponse, error) {
-	errMsg := req.GetErrorMessage()
-	errType := req.GetErrorType()
-
-	shouldFailover := strings.Contains(errType, "UpstreamFailoverError") ||
-		strings.Contains(errMsg, "rate limit") ||
-		strings.Contains(errMsg, "429") ||
-		strings.Contains(errMsg, "503") ||
-		strings.Contains(errMsg, "502")
-
-	return &pb.GatewayFailoverResponse{
-		ShouldFailover: shouldFailover,
-	}, nil
-}
-
-// buildGeminiAPIURL constructs the AI Studio REST API URL for a Gemini
-// model. Returns (action, fullURL).
-func buildGeminiAPIURL(baseURL, model, geminiAction string, isStream bool) (string, string) {
-	action := geminiAction
-	if action == "" {
-		if isStream {
-			action = "streamGenerateContent"
-		} else {
-			action = "generateContent"
-		}
-	}
-
-	apiURL := fmt.Sprintf("%s/v1beta/models/%s:%s",
-		strings.TrimRight(baseURL, "/"), model, action)
-	if isStream || action == "streamGenerateContent" {
-		apiURL += "?alt=sse"
-	}
-	return action, apiURL
-}
-
-// buildVertexForwardURL constructs the Vertex AI API URL for a Gemini model.
-func buildVertexForwardURL(creds *geminiCredentials, model, geminiAction string, isStream bool) (string, error) {
-	projectID := strings.TrimSpace(creds.VertexProjectID)
-	if projectID == "" {
-		return "", fmt.Errorf("vertex_project_id is required for service accounts")
-	}
-
-	location := strings.TrimSpace(creds.VertexLocation)
-	if location == "" {
-		location = vertexDefaultLocation
-	}
-	if !vertexLocationPattern.MatchString(location) {
-		return "", fmt.Errorf("invalid vertex location: %s", location)
-	}
-
-	action := geminiAction
-	if action == "" {
-		if isStream {
-			action = "streamGenerateContent"
-		} else {
-			action = "generateContent"
-		}
-	}
-
-	host := fmt.Sprintf("%s-aiplatform.googleapis.com", location)
-	if location == "global" {
-		host = "aiplatform.googleapis.com"
-	}
-
-	apiURL := fmt.Sprintf(
-		"https://%s/v1/projects/%s/locations/%s/publishers/google/models/%s:%s",
-		host,
-		url.PathEscape(projectID),
-		url.PathEscape(location),
-		url.PathEscape(model),
-		action,
-	)
-	if isStream || action == "streamGenerateContent" {
-		apiURL += "?alt=sse"
-	}
-	return apiURL, nil
+	should := classifyShouldFailover(req)
+	return &pb.GatewayFailoverResponse{ShouldFailover: should}, nil
 }

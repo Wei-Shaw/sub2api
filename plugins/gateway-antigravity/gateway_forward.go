@@ -13,7 +13,6 @@ import (
 )
 
 // gatewayProviderServer implements GatewayProviderExtensionServer.
-// It handles upstream API forwarding for the Antigravity platform.
 type gatewayProviderServer struct {
 	pb.UnimplementedGatewayProviderExtensionServer
 	upstreamClient *upstreamClient
@@ -27,12 +26,7 @@ func newGatewayProviderServer(logger *slog.Logger) *gatewayProviderServer {
 	}
 }
 
-// Forward handles a gateway request by proxying it to the upstream API
-// and streaming the response back as GatewayForwardChunk messages.
-//
-// Dispatch logic:
-//   - protocol "anthropic" → Claude API (via Antigravity v1internal or upstream)
-//   - protocol "gemini"    → Gemini API (via Antigravity v1internal or upstream)
+// Forward handles a gateway request by proxying it to the upstream API.
 func (s *gatewayProviderServer) Forward(
 	req *pb.GatewayForwardRequest,
 	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
@@ -56,6 +50,7 @@ func (s *gatewayProviderServer) Forward(
 		"protocol", req.GetProtocol(),
 		"account_type", acct.GetAccountType(),
 		"stream", req.GetStream(),
+		"sticky_session", req.GetIsStickySession(),
 	)
 
 	switch acct.GetAccountType() {
@@ -66,8 +61,24 @@ func (s *gatewayProviderServer) Forward(
 	}
 }
 
-// forwardUpstream handles upstream pass-through accounts. The request
-// body is forwarded as-is to the configured base_url.
+// ShouldFailover returns true when the error from Forward is transient.
+func (s *gatewayProviderServer) ShouldFailover(
+	_ context.Context,
+	req *pb.GatewayFailoverRequest,
+) (*pb.GatewayFailoverResponse, error) {
+	errType := req.GetErrorType()
+	errMsg := req.GetErrorMessage()
+
+	if errType == "UpstreamFailoverError" || errType == "*service.UpstreamFailoverError" {
+		return &pb.GatewayFailoverResponse{ShouldFailover: true}, nil
+	}
+	if isNetworkError(errMsg) {
+		return &pb.GatewayFailoverResponse{ShouldFailover: true}, nil
+	}
+	return &pb.GatewayFailoverResponse{ShouldFailover: false}, nil
+}
+
+// forwardUpstream handles upstream pass-through accounts.
 func (s *gatewayProviderServer) forwardUpstream(
 	ctx context.Context,
 	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
@@ -81,30 +92,36 @@ func (s *gatewayProviderServer) forwardUpstream(
 		return fmt.Errorf("gateway-antigravity: upstream account missing base_url or api_key")
 	}
 
-	upstreamURL := strings.TrimSuffix(baseURL, "/") + "/v1/messages"
-	headers := map[string]string{
-		"Content-Type":       "application/json",
-		"Authorization":      "Bearer " + apiKey,
-		"x-api-key":          apiKey,
-		"anthropic-version":  "2023-06-01",
+	originalModel := req.GetModel()
+	mappedModel := resolveModelMapping(originalModel, req.GetAccount())
+
+	body := req.GetRawBody()
+	if mappedModel != originalModel {
+		body = replaceModelInBody(body, mappedModel)
 	}
 
-	return s.upstreamClient.proxyRequest(ctx, stream, upstreamRequest{
-		method:    "POST",
-		url:       upstreamURL,
-		headers:   headers,
-		body:      req.GetRawBody(),
-		model:     req.GetModel(),
-		isStream:  req.GetStream(),
-		startTime: startTime,
-		requestID: req.GetRequestId(),
-		extractor: &claudeUsageExtractor{},
+	return s.upstreamClient.proxyRequest(ctx, stream, upstreamReq{
+		method: "POST",
+		url:    strings.TrimSuffix(baseURL, "/") + "/v1/messages",
+		headers: map[string]string{
+			"Content-Type":      "application/json",
+			"Authorization":     "Bearer " + apiKey,
+			"x-api-key":         apiKey,
+			"anthropic-version": "2023-06-01",
+		},
+		body:              body,
+		originalModel:     originalModel,
+		mappedModel:       mappedModel,
+		isStream:          req.GetStream(),
+		startTime:         startTime,
+		requestID:         req.GetRequestId(),
+		extractor:         &claudeUsageExtractor{},
+		clientHeaders:     collectClientHeaders(req),
+		forceCacheBilling: req.GetForceCacheBilling(),
 	})
 }
 
-// forwardViaAntigravity handles OAuth and API key accounts by forwarding
-// through the Antigravity v1internal endpoint (for OAuth) or directly
-// to Claude/Gemini APIs (for API key accounts).
+// forwardViaAntigravity dispatches by protocol.
 func (s *gatewayProviderServer) forwardViaAntigravity(
 	ctx context.Context,
 	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
@@ -123,9 +140,6 @@ func (s *gatewayProviderServer) forwardViaAntigravity(
 }
 
 // forwardAnthropicProtocol forwards a Claude Messages API request.
-// OAuth accounts go through the Antigravity v1internal endpoint with
-// Claude→Gemini format conversion; API key accounts call the Anthropic
-// Messages API directly.
 func (s *gatewayProviderServer) forwardAnthropicProtocol(
 	ctx context.Context,
 	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
@@ -140,13 +154,13 @@ func (s *gatewayProviderServer) forwardAnthropicProtocol(
 	case accountTypeOAuth:
 		return s.forwardOAuthClaude(ctx, stream, req, creds, startTime)
 	default:
-		return fmt.Errorf("gateway-antigravity: unsupported account type %q for anthropic protocol",
+		return fmt.Errorf(
+			"gateway-antigravity: unsupported account type %q for anthropic protocol",
 			acct.GetAccountType())
 	}
 }
 
-// forwardClaudeAPIKey forwards to the Anthropic Messages API using an
-// API key (direct passthrough, no format conversion needed).
+// forwardClaudeAPIKey forwards to the Anthropic Messages API using an API key.
 func (s *gatewayProviderServer) forwardClaudeAPIKey(
 	ctx context.Context,
 	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
@@ -163,34 +177,37 @@ func (s *gatewayProviderServer) forwardClaudeAPIKey(
 	if baseURL == "" {
 		baseURL = "https://api.anthropic.com"
 	}
-	apiURL := strings.TrimSuffix(baseURL, "/") + "/v1/messages"
 
-	headers := map[string]string{
-		"Content-Type":      "application/json",
-		"X-Api-Key":         apiKey,
-		"anthropic-version": "2023-06-01",
+	originalModel := req.GetModel()
+	mappedModel := resolveModelMapping(originalModel, req.GetAccount())
+
+	body := req.GetRawBody()
+	if mappedModel != originalModel {
+		body = replaceModelInBody(body, mappedModel)
 	}
 
-	return s.upstreamClient.proxyRequest(ctx, stream, upstreamRequest{
-		method:    "POST",
-		url:       apiURL,
-		headers:   headers,
-		body:      req.GetRawBody(),
-		model:     req.GetModel(),
-		isStream:  req.GetStream(),
-		startTime: startTime,
-		requestID: req.GetRequestId(),
-		extractor: &claudeUsageExtractor{},
+	return s.upstreamClient.proxyRequest(ctx, stream, upstreamReq{
+		method: "POST",
+		url:    strings.TrimSuffix(baseURL, "/") + "/v1/messages",
+		headers: map[string]string{
+			"Content-Type":      "application/json",
+			"X-Api-Key":         apiKey,
+			"anthropic-version": "2023-06-01",
+		},
+		body:              body,
+		originalModel:     originalModel,
+		mappedModel:       mappedModel,
+		isStream:          req.GetStream(),
+		startTime:         startTime,
+		requestID:         req.GetRequestId(),
+		extractor:         &claudeUsageExtractor{},
+		clientHeaders:     collectClientHeaders(req),
+		forceCacheBilling: req.GetForceCacheBilling(),
 	})
 }
 
 // forwardOAuthClaude forwards a Claude request through the Antigravity
-// v1internal endpoint. The Claude request body is sent as-is for now
-// (Phase 1: basic proxy without Claude→Gemini conversion).
-//
-// Note: Full Claude→Gemini format conversion requires the antigravity
-// package from the host, which is not available to the plugin. Phase 2
-// will implement this conversion within the plugin.
+// v1internal endpoint.
 func (s *gatewayProviderServer) forwardOAuthClaude(
 	ctx context.Context,
 	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
@@ -203,35 +220,30 @@ func (s *gatewayProviderServer) forwardOAuthClaude(
 		return fmt.Errorf("gateway-antigravity: no access token available")
 	}
 
-	projectID := strings.TrimSpace(creds.ProjectID)
+	originalModel := req.GetModel()
+	payload := buildAntigravityForwardPayload(
+		strings.TrimSpace(creds.ProjectID), originalModel, req.GetRawBody())
 
-	// Build Antigravity v1internal payload (wraps the raw body as Gemini format).
-	// Phase 1: use the raw body directly since we cannot do Claude→Gemini
-	// conversion without the host's antigravity package.
-	payload := buildAntigravityForwardPayload(projectID, req.GetModel(), req.GetRawBody())
-
-	apiURL := antigravityProdBaseURL + "/v1internal:streamGenerateContent?alt=sse"
-	headers := map[string]string{
-		"Content-Type":  "application/json",
-		"Authorization": "Bearer " + accessToken,
-		"User-Agent":    antigravityUserAgent,
-	}
-
-	return s.upstreamClient.proxyRequest(ctx, stream, upstreamRequest{
-		method:    "POST",
-		url:       apiURL,
-		headers:   headers,
-		body:      payload,
-		model:     req.GetModel(),
-		isStream:  true, // Antigravity v1internal always uses streaming
-		startTime: startTime,
-		requestID: req.GetRequestId(),
-		extractor: &geminiUsageExtractor{},
+	return s.upstreamClient.proxyRequest(ctx, stream, upstreamReq{
+		method: "POST",
+		url:    antigravityProdBaseURL + "/v1internal:streamGenerateContent?alt=sse",
+		headers: map[string]string{
+			"Content-Type":  "application/json",
+			"Authorization": "Bearer " + accessToken,
+			"User-Agent":    antigravityUserAgent,
+		},
+		body:              payload,
+		originalModel:     originalModel,
+		mappedModel:       originalModel,
+		isStream:          true,
+		startTime:         startTime,
+		requestID:         req.GetRequestId(),
+		extractor:         &geminiUsageExtractor{},
+		forceCacheBilling: req.GetForceCacheBilling(),
 	})
 }
 
-// forwardGeminiProtocol forwards a Gemini native request through the
-// Antigravity v1internal endpoint or via direct API key access.
+// forwardGeminiProtocol forwards a Gemini native request.
 func (s *gatewayProviderServer) forwardGeminiProtocol(
 	ctx context.Context,
 	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
@@ -246,7 +258,8 @@ func (s *gatewayProviderServer) forwardGeminiProtocol(
 	case accountTypeAPIKey:
 		return s.forwardGeminiAPIKey(ctx, stream, req, creds, startTime)
 	default:
-		return fmt.Errorf("gateway-antigravity: unsupported account type %q for gemini protocol",
+		return fmt.Errorf(
+			"gateway-antigravity: unsupported account type %q for gemini protocol",
 			acct.GetAccountType())
 	}
 }
@@ -265,38 +278,35 @@ func (s *gatewayProviderServer) forwardOAuthGemini(
 		return fmt.Errorf("gateway-antigravity: no access token available")
 	}
 
-	projectID := strings.TrimSpace(creds.ProjectID)
-
-	// Wrap the Gemini request body for the v1internal endpoint.
-	payload := buildAntigravityForwardPayload(projectID, req.GetModel(), req.GetRawBody())
+	originalModel := req.GetModel()
+	payload := buildAntigravityForwardPayload(
+		strings.TrimSpace(creds.ProjectID), originalModel, req.GetRawBody())
 
 	action := req.GetGeminiAction()
 	if action == "" {
 		action = "streamGenerateContent"
 	}
 
-	apiURL := antigravityProdBaseURL + "/v1internal:" + action + "?alt=sse"
-	headers := map[string]string{
-		"Content-Type":  "application/json",
-		"Authorization": "Bearer " + accessToken,
-		"User-Agent":    antigravityUserAgent,
-	}
-
-	return s.upstreamClient.proxyRequest(ctx, stream, upstreamRequest{
-		method:    "POST",
-		url:       apiURL,
-		headers:   headers,
-		body:      payload,
-		model:     req.GetModel(),
-		isStream:  true,
-		startTime: startTime,
-		requestID: req.GetRequestId(),
-		extractor: &geminiUsageExtractor{},
+	return s.upstreamClient.proxyRequest(ctx, stream, upstreamReq{
+		method: "POST",
+		url:    antigravityProdBaseURL + "/v1internal:" + action + "?alt=sse",
+		headers: map[string]string{
+			"Content-Type":  "application/json",
+			"Authorization": "Bearer " + accessToken,
+			"User-Agent":    antigravityUserAgent,
+		},
+		body:              payload,
+		originalModel:     originalModel,
+		mappedModel:       originalModel,
+		isStream:          true,
+		startTime:         startTime,
+		requestID:         req.GetRequestId(),
+		extractor:         &geminiUsageExtractor{},
+		forceCacheBilling: req.GetForceCacheBilling(),
 	})
 }
 
-// forwardGeminiAPIKey forwards a Gemini request using an API key to
-// the standard Gemini generateContent endpoint.
+// forwardGeminiAPIKey forwards a Gemini request using an API key.
 func (s *gatewayProviderServer) forwardGeminiAPIKey(
 	ctx context.Context,
 	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
@@ -314,6 +324,9 @@ func (s *gatewayProviderServer) forwardGeminiAPIKey(
 		baseURL = "https://generativelanguage.googleapis.com"
 	}
 
+	originalModel := req.GetModel()
+	mappedModel := resolveModelMapping(originalModel, req.GetAccount())
+
 	action := req.GetGeminiAction()
 	if action == "" {
 		if req.GetStream() {
@@ -324,54 +337,34 @@ func (s *gatewayProviderServer) forwardGeminiAPIKey(
 	}
 
 	apiURL := fmt.Sprintf("%s/v1beta/models/%s:%s",
-		strings.TrimSuffix(baseURL, "/"), req.GetModel(), action)
+		strings.TrimSuffix(baseURL, "/"), mappedModel, action)
 	if req.GetStream() || action == "streamGenerateContent" {
 		apiURL += "?alt=sse"
 	}
 
-	headers := map[string]string{
-		"Content-Type":   "application/json",
-		"x-goog-api-key": apiKey,
-	}
-
-	return s.upstreamClient.proxyRequest(ctx, stream, upstreamRequest{
-		method:    "POST",
-		url:       apiURL,
-		headers:   headers,
-		body:      req.GetRawBody(),
-		model:     req.GetModel(),
-		isStream:  req.GetStream(),
-		startTime: startTime,
-		requestID: req.GetRequestId(),
-		extractor: &geminiUsageExtractor{},
+	return s.upstreamClient.proxyRequest(ctx, stream, upstreamReq{
+		method: "POST",
+		url:    apiURL,
+		headers: map[string]string{
+			"Content-Type":   "application/json",
+			"x-goog-api-key": apiKey,
+		},
+		body:              req.GetRawBody(),
+		originalModel:     originalModel,
+		mappedModel:       mappedModel,
+		isStream:          req.GetStream(),
+		startTime:         startTime,
+		requestID:         req.GetRequestId(),
+		extractor:         &geminiUsageExtractor{},
+		clientHeaders:     collectClientHeaders(req),
+		forceCacheBilling: req.GetForceCacheBilling(),
 	})
 }
 
-// ShouldFailover returns whether a failed forward should be retried with
-// a different account. For Antigravity, we failover on 429 (rate limit),
-// 503 (service unavailable), and 502 (bad gateway).
-func (s *gatewayProviderServer) ShouldFailover(
-	_ context.Context,
-	req *pb.GatewayFailoverRequest,
-) (*pb.GatewayFailoverResponse, error) {
-	errMsg := req.GetErrorMessage()
-	errType := req.GetErrorType()
-
-	shouldFailover := strings.Contains(errType, "UpstreamFailoverError") ||
-		strings.Contains(errMsg, "rate limit") ||
-		strings.Contains(errMsg, "429") ||
-		strings.Contains(errMsg, "503") ||
-		strings.Contains(errMsg, "502")
-
-	return &pb.GatewayFailoverResponse{
-		ShouldFailover: shouldFailover,
-	}, nil
-}
+// --- request helpers ---
 
 // buildAntigravityForwardPayload wraps a request body in the
-// Antigravity v1internal envelope format:
-//
-//	{"model": "<model>", "project": "<projectID>", "request": <body>}
+// Antigravity v1internal envelope format.
 func buildAntigravityForwardPayload(projectID, model string, body []byte) []byte {
 	wrapper := map[string]any{
 		"model": model,
@@ -380,15 +373,59 @@ func buildAntigravityForwardPayload(projectID, model string, body []byte) []byte
 		wrapper["project"] = projectID
 	}
 
-	// Parse the body to embed as the "request" field.
 	var inner any
 	if err := json.Unmarshal(body, &inner); err != nil {
-		// If we cannot parse it, wrap as a string fallback.
 		wrapper["request"] = string(body)
 	} else {
 		wrapper["request"] = inner
 	}
 
 	result, _ := json.Marshal(wrapper)
+	return result
+}
+
+// collectClientHeaders combines host-curated headers and raw client_headers.
+func collectClientHeaders(req *pb.GatewayForwardRequest) map[string]string {
+	merged := make(map[string]string)
+	for k, v := range req.GetHeaders() {
+		merged[k] = v
+	}
+	for k, v := range req.GetClientHeaders() {
+		merged[k] = v
+	}
+	return merged
+}
+
+// resolveModelMapping applies model_mapping from account credentials.
+func resolveModelMapping(requestedModel string, acct *pb.GatewayAccountInfo) string {
+	accountType := acct.GetAccountType()
+	if accountType != accountTypeAPIKey && accountType != accountTypeUpstream {
+		return requestedModel
+	}
+	mapping := extractModelMapping(acct.GetCredentialsJson())
+	if len(mapping) == 0 {
+		return requestedModel
+	}
+	if mapped, ok := mapping[requestedModel]; ok {
+		return mapped
+	}
+	return requestedModel
+}
+
+// replaceModelInBody replaces the "model" field in the JSON body.
+func replaceModelInBody(body []byte, newModel string) []byte {
+	var parsed map[string]json.RawMessage
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return body
+	}
+	modelBytes, err := json.Marshal(newModel)
+	if err != nil {
+		return body
+	}
+	parsed["model"] = modelBytes
+	result, err := json.Marshal(parsed)
+	if err != nil {
+		return body
+	}
 	return result
 }
