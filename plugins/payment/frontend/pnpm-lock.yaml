@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@airwallex/components-sdk':
+        specifier: ^1.30.2
+        version: 1.30.2
       '@stripe/stripe-js':
         specifier: ^9.0.1
         version: 9.4.0
@@ -71,6 +74,12 @@ importers:
         version: 1.8.27(typescript@5.3.3)
 
 packages:
+
+  '@airwallex/airtracker@3.2.0':
+    resolution: {integrity: sha512-PKE5N38ajTVg6ph9JzLpWsICNjqLtf/wWudNVU3UPX9SVy2I5s5ITc281sMSD8+LIE6RJoGjGTO+VYP/io5kig==}
+
+  '@airwallex/components-sdk@1.30.2':
+    resolution: {integrity: sha512-BGwAPCACwOJm8XNxDxJGMq1o/73D9+ZWifvp5YHvfgIwxg1RGVCIME0tP1g8cash3fVLHgl7xObyS1QbIOSDXw==}
 
   '@alloc/quick-lru@5.2.0':
     resolution: {integrity: sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw==}
@@ -1163,6 +1172,12 @@ packages:
     engines: {node: '>=8'}
 
 snapshots:
+
+  '@airwallex/airtracker@3.2.0': {}
+
+  '@airwallex/components-sdk@1.30.2':
+    dependencies:
+      '@airwallex/airtracker': 3.2.0
 
   '@alloc/quick-lru@5.2.0': {}
 

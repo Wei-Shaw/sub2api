@@ -18,6 +18,7 @@
     "vue-router": "^4.2.5"
   },
   "dependencies": {
+    "@airwallex/components-sdk": "^1.30.2",
     "@stripe/stripe-js": "^9.0.1",
     "chart.js": "^4.5.1",
     "decimal.js": "^10.6.0",
