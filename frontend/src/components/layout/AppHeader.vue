@@ -21,10 +21,21 @@
         </div>
       </div>
 
-      <!-- Right: Announcements + Docs + Language + Subscriptions + Balance + User Dropdown -->
+      <!-- Right: Announcements + Guide + Docs + Language + Subscriptions + Balance + User Dropdown -->
       <div class="flex items-center gap-3">
         <!-- Announcement Bell -->
         <AnnouncementBell v-if="user" />
+
+        <!-- Beginner Guide -->
+        <router-link
+          v-if="user"
+          to="/guide"
+          class="inline-flex items-center gap-1.5 rounded-lg border border-primary-200 bg-primary-50 px-2.5 py-1.5 text-sm font-semibold text-primary-700 transition-colors hover:bg-primary-100 hover:text-primary-800 dark:border-primary-800 dark:bg-primary-900/25 dark:text-primary-300 dark:hover:bg-primary-900/40"
+          title="新手教程"
+        >
+          <Icon name="lightbulb" size="sm" />
+          <span class="hidden sm:inline">新手教程</span>
+        </router-link>
 
         <!-- Docs Link -->
         <a
@@ -43,6 +54,19 @@
 
         <!-- Subscription Progress (for users with active subscriptions) -->
         <SubscriptionProgressMini v-if="user" />
+
+        <!-- Recharge Link -->
+        <a
+          v-if="user"
+          :href="rechargeUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 hover:text-emerald-800 dark:bg-emerald-900/25 dark:text-emerald-300 dark:hover:bg-emerald-900/40"
+          title="充值额度"
+        >
+          <Icon name="creditCard" size="sm" />
+          <span class="hidden sm:inline">充值额度</span>
+        </a>
 
         <!-- Balance Display -->
         <div
@@ -237,6 +261,7 @@ const dropdownRef = ref<HTMLElement | null>(null)
 const contactInfo = computed(() => appStore.contactInfo)
 const docUrl = computed(() => appStore.docUrl)
 const avatarUrl = computed(() => user.value?.avatar_url?.trim() || '')
+const rechargeUrl = 'https://pay.ldxp.cn/shop/HO6HHJIX'
 
 // 只在标准模式的管理员下显示新手引导按钮
 const showOnboardingButton = computed(() => {

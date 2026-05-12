@@ -63,6 +63,16 @@
             <Icon name="book" size="md" />
           </a>
 
+          <!-- Beginner Guide -->
+          <router-link
+            to="/guide"
+            class="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-dark-300 dark:hover:bg-dark-800 dark:hover:text-white"
+            title="新手教程"
+          >
+            <Icon name="lightbulb" size="sm" />
+            <span class="hidden sm:inline">新手教程</span>
+          </router-link>
+
           <!-- Theme Toggle -->
           <button
             @click="toggleTheme"
@@ -127,13 +137,20 @@
             </p>
 
             <!-- CTA Button -->
-            <div>
+            <div class="flex flex-col items-center gap-3 sm:flex-row lg:justify-start">
               <router-link
                 :to="isAuthenticated ? dashboardPath : '/login'"
                 class="btn btn-primary px-8 py-3 text-base shadow-lg shadow-primary-500/30"
               >
                 {{ isAuthenticated ? t('home.goToDashboard') : t('home.getStarted') }}
                 <Icon name="arrowRight" size="md" class="ml-2" :stroke-width="2" />
+              </router-link>
+              <router-link
+                to="/guide"
+                class="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white/80 px-6 py-3 text-base font-medium text-gray-700 shadow-sm backdrop-blur-sm transition-colors hover:bg-white dark:border-dark-700 dark:bg-dark-800/80 dark:text-dark-200 dark:hover:bg-dark-800"
+              >
+                查看教程
+                <Icon name="lightbulb" size="md" class="ml-2" :stroke-width="2" />
               </router-link>
             </div>
           </div>
