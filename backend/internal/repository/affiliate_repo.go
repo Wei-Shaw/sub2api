@@ -76,6 +76,11 @@ func (r *affiliateRepository) GetAffiliateByCode(ctx context.Context, code strin
 	return queryAffiliateByCode(ctx, client, code)
 }
 
+func (r *affiliateRepository) GetAffiliateCode(ctx context.Context, code string) (*service.AffiliateCode, error) {
+	client := clientFromContext(ctx, r.client)
+	return queryAffiliateCode(ctx, client, code)
+}
+
 func (r *affiliateRepository) BindInviter(ctx context.Context, userID, inviterID int64) (bool, error) {
 	var bound bool
 	err := r.withTx(ctx, func(txCtx context.Context, txClient *dbent.Client) error {
@@ -763,9 +768,15 @@ func ensureUserAffiliateWithClient(ctx context.Context, client affiliateQueryExe
 			return nil, codeErr
 		}
 		_, insertErr := client.ExecContext(ctx, `
-INSERT INTO user_affiliates (user_id, aff_code, created_at, updated_at)
-VALUES ($1, $2, NOW(), NOW())
-ON CONFLICT (user_id) DO NOTHING`, userID, code)
+WITH inserted AS (
+    INSERT INTO user_affiliates (user_id, aff_code, created_at, updated_at)
+    VALUES ($1, $2, NOW(), NOW())
+    ON CONFLICT (user_id) DO NOTHING
+    RETURNING user_id, aff_code, created_at, updated_at
+)
+INSERT INTO user_affiliate_codes (user_id, aff_code, is_auto_active, is_primary, created_at, updated_at)
+SELECT user_id, aff_code, false, true, created_at, updated_at
+FROM inserted`, userID, code)
 		if insertErr == nil {
 			break
 		}
@@ -829,24 +840,33 @@ WHERE user_id = $1`, userID)
 		v := rebateRate.Float64
 		out.AffRebateRatePercent = &v
 	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	codes, err := listAffiliateCodesForUsers(ctx, client, []int64{out.UserID})
+	if err != nil {
+		return nil, err
+	}
+	out.Codes = codes[out.UserID]
 	return &out, nil
 }
 
 func queryAffiliateByCode(ctx context.Context, client affiliateQueryExecer, code string) (*service.AffiliateSummary, error) {
 	rows, err := client.QueryContext(ctx, `
-SELECT user_id,
-       aff_code,
-       aff_code_custom,
-       aff_rebate_rate_percent,
-       inviter_id,
-       aff_count,
-       aff_quota::double precision,
-       aff_frozen_quota::double precision,
-       aff_history_quota::double precision,
-       created_at,
-       updated_at
-FROM user_affiliates
-WHERE aff_code = $1
+SELECT ua.user_id,
+       ua.aff_code,
+       ua.aff_code_custom,
+       ua.aff_rebate_rate_percent,
+       ua.inviter_id,
+       ua.aff_count,
+       ua.aff_quota::double precision,
+       ua.aff_frozen_quota::double precision,
+       ua.aff_history_quota::double precision,
+       ua.created_at,
+       ua.updated_at
+FROM user_affiliate_codes uac
+JOIN user_affiliates ua ON ua.user_id = uac.user_id
+WHERE uac.aff_code = $1
 LIMIT 1`, strings.ToUpper(strings.TrimSpace(code)))
 	if err != nil {
 		return nil, err
@@ -884,6 +904,37 @@ LIMIT 1`, strings.ToUpper(strings.TrimSpace(code)))
 	if rebateRate.Valid {
 		v := rebateRate.Float64
 		out.AffRebateRatePercent = &v
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	codes, err := listAffiliateCodesForUsers(ctx, client, []int64{out.UserID})
+	if err != nil {
+		return nil, err
+	}
+	out.Codes = codes[out.UserID]
+	return &out, nil
+}
+
+func queryAffiliateCode(ctx context.Context, client affiliateQueryExecer, code string) (*service.AffiliateCode, error) {
+	rows, err := client.QueryContext(ctx, `
+SELECT id, user_id, aff_code, is_auto_active, is_primary, created_at, updated_at
+FROM user_affiliate_codes
+WHERE aff_code = $1
+LIMIT 1`, strings.ToUpper(strings.TrimSpace(code)))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		return nil, service.ErrAffiliateProfileNotFound
+	}
+	var out service.AffiliateCode
+	if err := rows.Scan(&out.ID, &out.UserID, &out.AffCode, &out.IsAutoActive, &out.IsPrimary, &out.CreatedAt, &out.UpdatedAt); err != nil {
+		return nil, err
 	}
 	return &out, nil
 }
@@ -969,12 +1020,154 @@ func generateAffiliateCode() (string, error) {
 	return string(buf), nil
 }
 
+func generateAutoActiveAffiliateCode(base string) (string, error) {
+	base = strings.ToUpper(strings.TrimSpace(base))
+	const suffixLength = 4
+	maxBaseLen := service.AffiliateCodeMaxLength - suffixLength - 1
+	if len(base) > maxBaseLen {
+		base = base[:maxBaseLen]
+	}
+	buf := make([]byte, suffixLength)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("generate auto-active affiliate code: %w", err)
+	}
+	for i := range buf {
+		buf[i] = affiliateCodeCharset[int(buf[i])%len(affiliateCodeCharset)]
+	}
+	return base + "-" + string(buf), nil
+}
+
 func isAffiliateUniqueViolation(err error) bool {
 	var pqErr *pq.Error
 	if errors.As(err, &pqErr) {
 		return string(pqErr.Code) == "23505"
 	}
 	return false
+}
+
+func (r *affiliateRepository) EnsureUserAutoActiveAffCode(ctx context.Context, userID int64) (*service.AffiliateCode, error) {
+	if userID <= 0 {
+		return nil, service.ErrUserNotFound
+	}
+	var out *service.AffiliateCode
+	err := r.withTx(ctx, func(txCtx context.Context, txClient *dbent.Client) error {
+		summary, err := ensureUserAffiliateWithClient(txCtx, txClient, userID)
+		if err != nil {
+			return err
+		}
+		if summary == nil {
+			return service.ErrUserNotFound
+		}
+
+		if existing, err := queryUserAutoActiveAffiliateCode(txCtx, txClient, userID); err == nil && existing != nil {
+			out = existing
+			return nil
+		} else if err != nil && !errors.Is(err, service.ErrAffiliateProfileNotFound) {
+			return err
+		}
+
+		for i := 0; i < affiliateCodeMaxAttempts; i++ {
+			candidate, codeErr := generateAutoActiveAffiliateCode(summary.AffCode)
+			if codeErr != nil {
+				return codeErr
+			}
+			created, err := insertUserAutoActiveAffiliateCode(txCtx, txClient, userID, candidate)
+			if err != nil {
+				if isAffiliateUniqueViolation(err) {
+					continue
+				}
+				return fmt.Errorf("create auto-active affiliate code: %w", err)
+			}
+			out = created
+			return nil
+		}
+		return service.ErrAffiliateCodeTaken
+	})
+	return out, err
+}
+
+func (r *affiliateRepository) DeleteUserAutoActiveAffCode(ctx context.Context, userID int64) error {
+	if userID <= 0 {
+		return service.ErrUserNotFound
+	}
+	return r.withTx(ctx, func(txCtx context.Context, txClient *dbent.Client) error {
+		_, err := txClient.ExecContext(txCtx, `
+DELETE FROM user_affiliate_codes
+WHERE user_id = $1 AND is_auto_active = true AND is_primary = false`, userID)
+		if err != nil {
+			return fmt.Errorf("delete auto-active affiliate code: %w", err)
+		}
+		return nil
+	})
+}
+
+func queryUserAutoActiveAffiliateCode(ctx context.Context, client affiliateQueryExecer, userID int64) (*service.AffiliateCode, error) {
+	rows, err := client.QueryContext(ctx, `
+SELECT id, user_id, aff_code, is_auto_active, is_primary, created_at, updated_at
+FROM user_affiliate_codes
+WHERE user_id = $1 AND is_auto_active = true AND is_primary = false
+LIMIT 1`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		return nil, service.ErrAffiliateProfileNotFound
+	}
+	out := &service.AffiliateCode{}
+	if err := rows.Scan(&out.ID, &out.UserID, &out.AffCode, &out.IsAutoActive, &out.IsPrimary, &out.CreatedAt, &out.UpdatedAt); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func insertUserAutoActiveAffiliateCode(ctx context.Context, client affiliateQueryExecer, userID int64, code string) (*service.AffiliateCode, error) {
+	rows, err := client.QueryContext(ctx, `
+INSERT INTO user_affiliate_codes (user_id, aff_code, is_auto_active, is_primary, created_at, updated_at)
+VALUES ($1, $2, true, false, NOW(), NOW())
+RETURNING id, user_id, aff_code, is_auto_active, is_primary, created_at, updated_at`, userID, code)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	if !rows.Next() {
+		return nil, service.ErrAffiliateCodeInvalid
+	}
+	out := &service.AffiliateCode{}
+	if err := rows.Scan(&out.ID, &out.UserID, &out.AffCode, &out.IsAutoActive, &out.IsPrimary, &out.CreatedAt, &out.UpdatedAt); err != nil {
+		return nil, err
+	}
+	return out, rows.Err()
+}
+
+func refreshUserAutoActiveAffiliateCode(ctx context.Context, client affiliateQueryExecer, userID int64, manualCode string) error {
+	if _, err := queryUserAutoActiveAffiliateCode(ctx, client, userID); err != nil {
+		if errors.Is(err, service.ErrAffiliateProfileNotFound) {
+			return nil
+		}
+		return err
+	}
+	for i := 0; i < affiliateCodeMaxAttempts; i++ {
+		candidate, codeErr := generateAutoActiveAffiliateCode(manualCode)
+		if codeErr != nil {
+			return codeErr
+		}
+		_, err := client.ExecContext(ctx, `
+UPDATE user_affiliate_codes
+SET aff_code = $1, updated_at = NOW()
+WHERE user_id = $2 AND is_auto_active = true AND is_primary = false`, candidate, userID)
+		if err == nil {
+			return nil
+		}
+		if isAffiliateUniqueViolation(err) {
+			continue
+		}
+		return fmt.Errorf("refresh auto-active affiliate code: %w", err)
+	}
+	return service.ErrAffiliateCodeTaken
 }
 
 // UpdateUserAffCode 改写用户的邀请码（自定义专属邀请码）。
@@ -992,6 +1185,15 @@ func (r *affiliateRepository) UpdateUserAffCode(ctx context.Context, userID int6
 		if _, err := ensureUserAffiliateWithClient(txCtx, txClient, userID); err != nil {
 			return err
 		}
+		if _, err := txClient.ExecContext(txCtx, `
+UPDATE user_affiliate_codes
+SET aff_code = $1, updated_at = NOW()
+WHERE user_id = $2 AND is_primary = true`, code, userID); err != nil {
+			if isAffiliateUniqueViolation(err) {
+				return service.ErrAffiliateCodeTaken
+			}
+			return fmt.Errorf("update primary affiliate code: %w", err)
+		}
 		res, err := txClient.ExecContext(txCtx, `
 UPDATE user_affiliates
 SET aff_code = $1,
@@ -1008,7 +1210,7 @@ WHERE user_id = $2`, code, userID)
 		if affected == 0 {
 			return service.ErrUserNotFound
 		}
-		return nil
+		return refreshUserAutoActiveAffiliateCode(txCtx, txClient, userID, code)
 	})
 }
 
@@ -1028,6 +1230,12 @@ func (r *affiliateRepository) ResetUserAffCode(ctx context.Context, userID int64
 				return codeErr
 			}
 			res, err := txClient.ExecContext(txCtx, `
+WITH updated_code AS (
+    UPDATE user_affiliate_codes
+    SET aff_code = $1, is_auto_active = false, updated_at = NOW()
+    WHERE user_id = $2 AND is_primary = true
+    RETURNING user_id
+)
 UPDATE user_affiliates
 SET aff_code = $1,
     aff_code_custom = false,
@@ -1044,6 +1252,11 @@ WHERE user_id = $2`, candidate, userID)
 				return service.ErrUserNotFound
 			}
 			newCode = candidate
+			if _, err := txClient.ExecContext(txCtx, `
+DELETE FROM user_affiliate_codes
+WHERE user_id = $1 AND is_auto_active = true AND is_primary = false`, userID); err != nil {
+				return fmt.Errorf("delete auto-active affiliate code: %w", err)
+			}
 			return nil
 		}
 		return fmt.Errorf("reset aff_code: exhausted attempts")
@@ -1143,7 +1356,10 @@ func (r *affiliateRepository) ListUsersWithCustomSettings(ctx context.Context, f
 	const baseFrom = `
 FROM user_affiliates ua
 JOIN users u ON u.id = ua.user_id
-WHERE (ua.aff_code_custom = true OR ua.aff_rebate_rate_percent IS NOT NULL)
+WHERE (ua.aff_code_custom = true OR ua.aff_rebate_rate_percent IS NOT NULL OR EXISTS (
+    SELECT 1 FROM user_affiliate_codes uac_auto
+    WHERE uac_auto.user_id = ua.user_id AND uac_auto.is_auto_active = true
+))
   AND (u.email ILIKE $1 OR u.username ILIKE $1)`
 
 	client := clientFromContext(ctx, r.client)
@@ -1187,7 +1403,42 @@ LIMIT $2 OFFSET $3`
 	if err := rows.Err(); err != nil {
 		return nil, 0, err
 	}
+	ids := make([]int64, 0, len(entries))
+	for _, entry := range entries {
+		ids = append(ids, entry.UserID)
+	}
+	codesByUser, err := listAffiliateCodesForUsers(ctx, client, ids)
+	if err != nil {
+		return nil, 0, err
+	}
+	for i := range entries {
+		entries[i].Codes = codesByUser[entries[i].UserID]
+	}
 	return entries, total, nil
+}
+
+func listAffiliateCodesForUsers(ctx context.Context, client affiliateQueryExecer, userIDs []int64) (map[int64][]service.AffiliateCode, error) {
+	out := make(map[int64][]service.AffiliateCode, len(userIDs))
+	if len(userIDs) == 0 {
+		return out, nil
+	}
+	rows, err := client.QueryContext(ctx, `
+SELECT id, user_id, aff_code, is_auto_active, is_primary, created_at, updated_at
+FROM user_affiliate_codes
+WHERE user_id = ANY($1)
+ORDER BY is_primary DESC, created_at ASC`, pq.Array(userIDs))
+	if err != nil {
+		return nil, fmt.Errorf("list affiliate codes: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var c service.AffiliateCode
+		if err := rows.Scan(&c.ID, &c.UserID, &c.AffCode, &c.IsAutoActive, &c.IsPrimary, &c.CreatedAt, &c.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out[c.UserID] = append(out[c.UserID], c)
+	}
+	return out, rows.Err()
 }
 
 // scanInt64 runs a query expected to return a single int64 column (e.g. COUNT).

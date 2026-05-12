@@ -96,6 +96,7 @@ type vclawClaimUserDeviceRepoStub struct {
 
 type vclawClaimAffiliateRepoStub struct {
 	profilesByCode map[string]*AffiliateSummary
+	codesByCode    map[string]*AffiliateCode
 	profilesByUser map[int64]*AffiliateSummary
 	bindings       []vclawClaimAffiliateBinding
 }
@@ -131,6 +132,18 @@ func (s *vclawClaimAffiliateRepoStub) GetAffiliateByCode(ctx context.Context, co
 	return &clone, nil
 }
 
+func (s *vclawClaimAffiliateRepoStub) GetAffiliateCode(ctx context.Context, code string) (*AffiliateCode, error) {
+	if s.codesByCode == nil {
+		return nil, ErrAffiliateProfileNotFound
+	}
+	entry, ok := s.codesByCode[code]
+	if !ok {
+		return nil, ErrAffiliateProfileNotFound
+	}
+	clone := *entry
+	return &clone, nil
+}
+
 func (s *vclawClaimAffiliateRepoStub) BindInviter(ctx context.Context, userID, inviterID int64) (bool, error) {
 	s.bindings = append(s.bindings, vclawClaimAffiliateBinding{UserID: userID, InviterID: inviterID})
 	if s.profilesByUser == nil {
@@ -159,6 +172,12 @@ func (s *vclawClaimAffiliateRepoStub) TransferQuotaToBalance(context.Context, in
 }
 func (s *vclawClaimAffiliateRepoStub) ListInvitees(context.Context, int64, int) ([]AffiliateInvitee, error) {
 	return nil, nil
+}
+func (s *vclawClaimAffiliateRepoStub) EnsureUserAutoActiveAffCode(context.Context, int64) (*AffiliateCode, error) {
+	panic("unexpected EnsureUserAutoActiveAffCode call")
+}
+func (s *vclawClaimAffiliateRepoStub) DeleteUserAutoActiveAffCode(context.Context, int64) error {
+	panic("unexpected DeleteUserAutoActiveAffCode call")
 }
 func (s *vclawClaimAffiliateRepoStub) UpdateUserAffCode(context.Context, int64, string) error {
 	panic("unexpected UpdateUserAffCode call")
@@ -422,6 +441,45 @@ func TestVClawClaimServiceFirstClaimBindsAffiliateCodeOnce(t *testing.T) {
 	require.Equal(t, UserDeviceStatusActive, resume.DeviceStatus)
 	require.Equal(t, first.DeviceLoginCode, resume.DeviceLoginCode)
 	require.Equal(t, []vclawClaimAffiliateBinding{{UserID: 202, InviterID: 901}}, affiliateRepo.bindings)
+}
+
+func TestVClawClaimServiceFirstClaimAutoActivatesAffiliateCodeFlag(t *testing.T) {
+	const deviceHash = "cc0addf134d4ac9d6ac98ffdb1f4796dd2b27d6ab2b66ec0bab9e181a007b668"
+
+	userRepo := &userRepoStub{nextID: 203}
+	redeemRepo := &vclawClaimRedeemRepoStub{}
+	deviceRepo := &vclawClaimUserDeviceRepoStub{}
+	affiliateRepo := &vclawClaimAffiliateRepoStub{
+		profilesByCode: map[string]*AffiliateSummary{
+			"AFF-AUTO": {UserID: 902, AffCode: "AFF-MANUAL"},
+		},
+		codesByCode: map[string]*AffiliateCode{
+			"AFF-AUTO": {UserID: 902, AffCode: "AFF-AUTO", IsAutoActive: true},
+		},
+	}
+	affiliateService := NewAffiliateService(affiliateRepo, NewSettingService(&settingRepoStub{values: map[string]string{
+		SettingKeyAffiliateEnabled: "true",
+	}}, &config.Config{}), nil, nil)
+	svc := NewVClawClaimService(nil, userRepo, redeemRepo, deviceRepo, &config.Config{}, nil, nil, affiliateService)
+	req := VClawClaimRequest{
+		AffCode: " aff-auto ",
+		Device: VClawDeviceInput{
+			DeviceHash:         deviceHash,
+			FingerprintVersion: 1,
+			Platform:           "windows",
+			Arch:               "amd64",
+		},
+	}
+
+	first, err := svc.Claim(context.Background(), req)
+
+	require.NoError(t, err)
+	require.NotNil(t, first)
+	require.Equal(t, "first_claim", first.Mode)
+	require.Equal(t, StatusActive, first.Status)
+	require.Equal(t, UserDeviceStatusActive, first.DeviceStatus)
+	require.Equal(t, int64(203), first.UserID)
+	require.Equal(t, []vclawClaimAffiliateBinding{{UserID: 203, InviterID: 902}}, affiliateRepo.bindings)
 }
 
 func validDeviceHash(seed byte) string {

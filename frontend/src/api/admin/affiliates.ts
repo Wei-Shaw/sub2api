@@ -7,6 +7,16 @@
 import { apiClient } from '../client'
 import type { PaginatedResponse } from '@/types'
 
+export interface AffiliateCode {
+  id: number
+  user_id: number
+  aff_code: string
+  is_auto_active: boolean
+  is_primary: boolean
+  created_at: string
+  updated_at: string
+}
+
 export interface AffiliateAdminEntry {
   user_id: number
   email: string
@@ -15,6 +25,7 @@ export interface AffiliateAdminEntry {
   aff_code_custom: boolean
   aff_rebate_rate_percent?: number | null
   aff_count: number
+  codes: AffiliateCode[]
 }
 
 export interface ListAffiliateUsersParams {
@@ -94,6 +105,8 @@ export interface UpdateAffiliateUserRequest {
   aff_rebate_rate_percent?: number | null
   /** Set true to explicitly clear the per-user rate (sets it to NULL). */
   clear_rebate_rate?: boolean
+  /** Optional companion code: one auto-active code per affiliate user. */
+  auto_active_code_enabled?: boolean
 }
 
 export interface BatchSetRateRequest {
@@ -149,6 +162,24 @@ export async function clearUserSettings(
 ): Promise<{ user_id: number }> {
   const { data } = await apiClient.delete<{ user_id: number }>(
     `/admin/affiliates/users/${userId}`,
+  )
+  return data
+}
+
+export async function ensureAutoActiveCode(
+  userId: number,
+): Promise<AffiliateCode> {
+  const { data } = await apiClient.post<AffiliateCode>(
+    `/admin/affiliates/users/${userId}/auto-active-code`,
+  )
+  return data
+}
+
+export async function deleteAutoActiveCode(
+  userId: number,
+): Promise<{ user_id: number }> {
+  const { data } = await apiClient.delete<{ user_id: number }>(
+    `/admin/affiliates/users/${userId}/auto-active-code`,
   )
   return data
 }
@@ -220,6 +251,8 @@ export const affiliatesAPI = {
   lookupUsers,
   updateUserSettings,
   clearUserSettings,
+  ensureAutoActiveCode,
+  deleteAutoActiveCode,
   batchSetRate,
   listInviteRecords,
   listRebateRecords,

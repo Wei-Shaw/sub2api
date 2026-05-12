@@ -57,18 +57,29 @@ func isValidAffiliateCodeFormat(code string) bool {
 	return true
 }
 
+type AffiliateCode struct {
+	ID           int64     `json:"id"`
+	UserID       int64     `json:"user_id"`
+	AffCode      string    `json:"aff_code"`
+	IsAutoActive bool      `json:"is_auto_active"`
+	IsPrimary    bool      `json:"is_primary"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
 type AffiliateSummary struct {
-	UserID               int64     `json:"user_id"`
-	AffCode              string    `json:"aff_code"`
-	AffCodeCustom        bool      `json:"aff_code_custom"`
-	AffRebateRatePercent *float64  `json:"aff_rebate_rate_percent,omitempty"`
-	InviterID            *int64    `json:"inviter_id,omitempty"`
-	AffCount             int       `json:"aff_count"`
-	AffQuota             float64   `json:"aff_quota"`
-	AffFrozenQuota       float64   `json:"aff_frozen_quota"`
-	AffHistoryQuota      float64   `json:"aff_history_quota"`
-	CreatedAt            time.Time `json:"created_at"`
-	UpdatedAt            time.Time `json:"updated_at"`
+	UserID               int64           `json:"user_id"`
+	AffCode              string          `json:"aff_code"`
+	AffCodeCustom        bool            `json:"aff_code_custom"`
+	AffRebateRatePercent *float64        `json:"aff_rebate_rate_percent,omitempty"`
+	Codes                []AffiliateCode `json:"codes,omitempty"`
+	InviterID            *int64          `json:"inviter_id,omitempty"`
+	AffCount             int             `json:"aff_count"`
+	AffQuota             float64         `json:"aff_quota"`
+	AffFrozenQuota       float64         `json:"aff_frozen_quota"`
+	AffHistoryQuota      float64         `json:"aff_history_quota"`
+	CreatedAt            time.Time       `json:"created_at"`
+	UpdatedAt            time.Time       `json:"updated_at"`
 }
 
 type AffiliateInvitee struct {
@@ -97,6 +108,7 @@ type AffiliateDetail struct {
 type AffiliateRepository interface {
 	EnsureUserAffiliate(ctx context.Context, userID int64) (*AffiliateSummary, error)
 	GetAffiliateByCode(ctx context.Context, code string) (*AffiliateSummary, error)
+	GetAffiliateCode(ctx context.Context, code string) (*AffiliateCode, error)
 	BindInviter(ctx context.Context, userID, inviterID int64) (bool, error)
 	AccrueQuota(ctx context.Context, inviterID, inviteeUserID int64, amount float64, freezeHours int, sourceOrderID *int64) (bool, error)
 	GetAccruedRebateFromInvitee(ctx context.Context, inviterID, inviteeUserID int64) (float64, error)
@@ -105,6 +117,8 @@ type AffiliateRepository interface {
 	ListInvitees(ctx context.Context, inviterID int64, limit int) ([]AffiliateInvitee, error)
 
 	// 管理端：用户级专属配置
+	EnsureUserAutoActiveAffCode(ctx context.Context, userID int64) (*AffiliateCode, error)
+	DeleteUserAutoActiveAffCode(ctx context.Context, userID int64) error
 	UpdateUserAffCode(ctx context.Context, userID int64, newCode string) error
 	ResetUserAffCode(ctx context.Context, userID int64) (string, error)
 	SetUserRebateRate(ctx context.Context, userID int64, ratePercent *float64) error
@@ -125,13 +139,14 @@ type AffiliateAdminFilter struct {
 
 // AffiliateAdminEntry 专属用户列表条目
 type AffiliateAdminEntry struct {
-	UserID               int64    `json:"user_id"`
-	Email                string   `json:"email"`
-	Username             string   `json:"username"`
-	AffCode              string   `json:"aff_code"`
-	AffCodeCustom        bool     `json:"aff_code_custom"`
-	AffRebateRatePercent *float64 `json:"aff_rebate_rate_percent,omitempty"`
-	AffCount             int      `json:"aff_count"`
+	UserID               int64           `json:"user_id"`
+	Email                string          `json:"email"`
+	Username             string          `json:"username"`
+	AffCode              string          `json:"aff_code"`
+	AffCodeCustom        bool            `json:"aff_code_custom"`
+	AffRebateRatePercent *float64        `json:"aff_rebate_rate_percent,omitempty"`
+	AffCount             int             `json:"aff_count"`
+	Codes                []AffiliateCode `json:"codes"`
 }
 
 type AffiliateRecordFilter struct {
@@ -231,6 +246,12 @@ func (s *AffiliateService) IsDeviceAutoActivationCode(ctx context.Context, code 
 	code = strings.ToUpper(strings.TrimSpace(code))
 	if code == "" {
 		return false
+	}
+	if s != nil && s.repo != nil {
+		entry, err := s.repo.GetAffiliateCode(ctx, code)
+		if err == nil && entry != nil && entry.IsAutoActive {
+			return true
+		}
 	}
 	for _, allowed := range s.DeviceAutoActivationCodes(ctx) {
 		if code == allowed {
@@ -556,6 +577,29 @@ func validateExclusiveRate(ratePercent *float64) error {
 	return nil
 }
 
+func (s *AffiliateService) AdminEnsureUserAutoActiveAffCode(ctx context.Context, userID int64) (*AffiliateCode, error) {
+	if s == nil || s.repo == nil {
+		return nil, infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "affiliate service unavailable")
+	}
+	created, err := s.repo.EnsureUserAutoActiveAffCode(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	s.invalidateAffiliateCaches(ctx, userID)
+	return created, nil
+}
+
+func (s *AffiliateService) AdminDeleteUserAutoActiveAffCode(ctx context.Context, userID int64) error {
+	if s == nil || s.repo == nil {
+		return infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "affiliate service unavailable")
+	}
+	if err := s.repo.DeleteUserAutoActiveAffCode(ctx, userID); err != nil {
+		return err
+	}
+	s.invalidateAffiliateCaches(ctx, userID)
+	return nil
+}
+
 // AdminUpdateUserAffCode 管理员改写用户的邀请码（专属邀请码）。
 func (s *AffiliateService) AdminUpdateUserAffCode(ctx context.Context, userID int64, rawCode string) error {
 	if s == nil || s.repo == nil {
@@ -565,7 +609,11 @@ func (s *AffiliateService) AdminUpdateUserAffCode(ctx context.Context, userID in
 	if !isValidAffiliateCodeFormat(code) {
 		return ErrAffiliateCodeInvalid
 	}
-	return s.repo.UpdateUserAffCode(ctx, userID, code)
+	if err := s.repo.UpdateUserAffCode(ctx, userID, code); err != nil {
+		return err
+	}
+	s.invalidateAffiliateCaches(ctx, userID)
+	return nil
 }
 
 // AdminResetUserAffCode 重置用户邀请码为系统随机码。
@@ -573,7 +621,12 @@ func (s *AffiliateService) AdminResetUserAffCode(ctx context.Context, userID int
 	if s == nil || s.repo == nil {
 		return "", infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "affiliate service unavailable")
 	}
-	return s.repo.ResetUserAffCode(ctx, userID)
+	code, err := s.repo.ResetUserAffCode(ctx, userID)
+	if err != nil {
+		return "", err
+	}
+	s.invalidateAffiliateCaches(ctx, userID)
+	return code, nil
 }
 
 // AdminSetUserRebateRate 设置/清除用户专属返利比例。ratePercent==nil 表示清除。
@@ -584,7 +637,11 @@ func (s *AffiliateService) AdminSetUserRebateRate(ctx context.Context, userID in
 	if err := validateExclusiveRate(ratePercent); err != nil {
 		return err
 	}
-	return s.repo.SetUserRebateRate(ctx, userID, ratePercent)
+	if err := s.repo.SetUserRebateRate(ctx, userID, ratePercent); err != nil {
+		return err
+	}
+	s.invalidateAffiliateCaches(ctx, userID)
+	return nil
 }
 
 // AdminBatchSetUserRebateRate 批量设置/清除用户专属返利比例。

@@ -386,6 +386,14 @@ func (r *oauthEmailAffiliateRepoStub) GetAffiliateByCode(_ context.Context, code
 	return &service.AffiliateSummary{UserID: userID, AffCode: strings.ToUpper(strings.TrimSpace(code))}, nil
 }
 
+func (r *oauthEmailAffiliateRepoStub) GetAffiliateCode(_ context.Context, code string) (*service.AffiliateCode, error) {
+	userID, ok := r.codeOwners[strings.ToUpper(strings.TrimSpace(code))]
+	if !ok {
+		return nil, service.ErrAffiliateProfileNotFound
+	}
+	return &service.AffiliateCode{UserID: userID, AffCode: strings.ToUpper(strings.TrimSpace(code))}, nil
+}
+
 func (r *oauthEmailAffiliateRepoStub) BindInviter(_ context.Context, userID, inviterID int64) (bool, error) {
 	r.bindCalls = append(r.bindCalls, oauthEmailAffiliateBindCall{userID: userID, inviterID: inviterID})
 	return true, nil
@@ -409,6 +417,14 @@ func (r *oauthEmailAffiliateRepoStub) TransferQuotaToBalance(context.Context, in
 
 func (r *oauthEmailAffiliateRepoStub) ListInvitees(context.Context, int64, int) ([]service.AffiliateInvitee, error) {
 	panic("unexpected ListInvitees call")
+}
+
+func (r *oauthEmailAffiliateRepoStub) EnsureUserAutoActiveAffCode(context.Context, int64) (*service.AffiliateCode, error) {
+	panic("unexpected EnsureUserAutoActiveAffCode call")
+}
+
+func (r *oauthEmailAffiliateRepoStub) DeleteUserAutoActiveAffCode(context.Context, int64) error {
+	panic("unexpected DeleteUserAutoActiveAffCode call")
 }
 
 func (r *oauthEmailAffiliateRepoStub) UpdateUserAffCode(context.Context, int64, string) error {

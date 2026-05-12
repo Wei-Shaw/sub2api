@@ -53,6 +53,9 @@ func (h *AffiliateHandler) ListUsers(c *gin.Context) {
 type UpdateAffiliateUserRequest struct {
 	AffCode              *string  `json:"aff_code"`
 	AffRebateRatePercent *float64 `json:"aff_rebate_rate_percent"`
+	// AutoActiveCodeEnabled controls the optional companion auto-active code.
+	// nil means "leave as-is"; true ensures one exists; false deletes it.
+	AutoActiveCodeEnabled *bool `json:"auto_active_code_enabled"`
 	// ClearRebateRate explicitly clears the per-user rate (sets it to NULL).
 	// Used to disambiguate from "field not provided".
 	ClearRebateRate bool `json:"clear_rebate_rate"`
@@ -90,6 +93,20 @@ func (h *AffiliateHandler) UpdateUserSettings(c *gin.Context) {
 		}
 	}
 
+	if req.AutoActiveCodeEnabled != nil {
+		if *req.AutoActiveCodeEnabled {
+			if _, err := h.affiliateService.AdminEnsureUserAutoActiveAffCode(c.Request.Context(), userID); err != nil {
+				response.ErrorFrom(c, err)
+				return
+			}
+		} else {
+			if err := h.affiliateService.AdminDeleteUserAutoActiveAffCode(c.Request.Context(), userID); err != nil {
+				response.ErrorFrom(c, err)
+				return
+			}
+		}
+	}
+
 	response.Success(c, gin.H{"user_id": userID})
 }
 
@@ -111,6 +128,33 @@ func (h *AffiliateHandler) ClearUserSettings(c *gin.Context) {
 		return
 	}
 	if _, err := h.affiliateService.AdminResetUserAffCode(c.Request.Context(), userID); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"user_id": userID})
+}
+
+func (h *AffiliateHandler) EnsureUserAutoActiveCode(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("user_id"), 10, 64)
+	if err != nil || userID <= 0 {
+		response.BadRequest(c, "Invalid user_id")
+		return
+	}
+	code, err := h.affiliateService.AdminEnsureUserAutoActiveAffCode(c.Request.Context(), userID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, code)
+}
+
+func (h *AffiliateHandler) DeleteUserAutoActiveCode(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("user_id"), 10, 64)
+	if err != nil || userID <= 0 {
+		response.BadRequest(c, "Invalid user_id")
+		return
+	}
+	if err := h.affiliateService.AdminDeleteUserAutoActiveAffCode(c.Request.Context(), userID); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}

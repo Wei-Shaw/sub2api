@@ -6755,12 +6755,36 @@
                         </td>
                         <td class="px-3 py-2 text-sm text-gray-900 dark:text-white">{{ entry.email }}</td>
                         <td class="px-3 py-2 text-sm text-gray-600 dark:text-gray-300">{{ entry.username }}</td>
-                        <td class="px-3 py-2 text-sm font-mono">
-                          {{ entry.aff_code }}
-                          <span
-                            v-if="entry.aff_code_custom"
-                            class="ml-1 inline-block rounded bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
-                          >{{ t('admin.settings.features.affiliate.customUsers.customBadge') }}</span>
+                        <td class="px-3 py-2 text-sm">
+                          <div class="space-y-1">
+                            <div class="flex flex-wrap items-center gap-1">
+                              <span class="font-mono">{{ primaryAffiliateCode(entry)?.aff_code || entry.aff_code }}</span>
+                              <span class="inline-block rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-dark-700 dark:text-gray-300">
+                                {{ t('admin.settings.features.affiliate.customUsers.manualBadge') }}
+                              </span>
+                              <span
+                                v-if="entry.aff_code_custom"
+                                class="inline-block rounded bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+                              >{{ t('admin.settings.features.affiliate.customUsers.customBadge') }}</span>
+                            </div>
+                            <div v-if="autoActiveAffiliateCode(entry)" class="flex flex-wrap items-center gap-1">
+                              <span class="font-mono">{{ autoActiveAffiliateCode(entry)?.aff_code }}</span>
+                              <span class="inline-block rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-900/30 dark:text-green-300">
+                                {{ t('admin.settings.features.affiliate.customUsers.autoBadge') }}
+                              </span>
+                              <button
+                                type="button"
+                                class="text-xs text-red-600 hover:underline"
+                                @click="askDeleteAffiliateAutoCode(entry)"
+                              >{{ t('common.delete') }}</button>
+                            </div>
+                            <button
+                              v-else
+                              type="button"
+                              class="text-xs text-primary-600 hover:underline"
+                              @click="ensureAffiliateAutoCode(entry)"
+                            >+ {{ t('admin.settings.features.affiliate.customUsers.createAutoCode') }}</button>
+                          </div>
                         </td>
                         <td class="px-3 py-2 text-sm">
                           <span v-if="entry.aff_rebate_rate_percent != null">{{ entry.aff_rebate_rate_percent }}%</span>
@@ -6893,6 +6917,14 @@
                   {{ t('admin.settings.features.affiliate.modal.codeHint') }}
                 </p>
               </div>
+
+              <label class="flex items-start gap-2 rounded-md border border-gray-200 p-3 text-sm text-gray-700 dark:border-dark-700 dark:text-gray-300">
+                <input v-model="affiliateModal.autoActiveCodeEnabled" type="checkbox" class="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+                <span>
+                  <span class="block font-medium">{{ t('admin.settings.features.affiliate.modal.autoActiveCodeLabel') }}</span>
+                  <span class="block text-xs text-gray-400">{{ t('admin.settings.features.affiliate.modal.autoActiveCodeHint') }}</span>
+                </span>
+              </label>
 
               <div>
                 <label class="input-label">{{ t('admin.settings.features.affiliate.modal.rateLabel') }}</label>
@@ -8464,7 +8496,12 @@ import {
   stepUpBlockReason,
 } from "@/composables/useStepUp";
 import TotpStepUpDialog from "@/components/auth/TotpStepUpDialog.vue";
-import { affiliatesAPI, type AffiliateAdminEntry, type SimpleUser as AffiliateSimpleUser } from "@/api/admin/affiliates";
+import {
+  affiliatesAPI,
+  type AffiliateAdminEntry,
+  type AffiliateCode,
+  type SimpleUser as AffiliateSimpleUser,
+} from "@/api/admin/affiliates";
 import { extractApiErrorMessage, extractI18nErrorMessage } from "@/utils/apiError";
 import { useAppStore } from "@/stores";
 import { useAdminSettingsStore } from "@/stores/adminSettings";
@@ -12746,6 +12783,7 @@ interface AffiliateModalState {
   selectedUser: AffiliateSimpleUser | null;
   editingEntry: AffiliateAdminEntry | null;
   code: string;
+  autoActiveCodeEnabled: boolean;
   rate: string | number;
   searchTimer: number | null;
 }
@@ -12759,6 +12797,7 @@ const affiliateModal = reactive<AffiliateModalState>({
   selectedUser: null,
   editingEntry: null,
   code: "",
+  autoActiveCodeEnabled: false,
   rate: "",
   searchTimer: null,
 });
@@ -12903,6 +12942,7 @@ function openAffiliateModal(entry: AffiliateAdminEntry | null) {
   affiliateModal.selectedUser = null;
   affiliateModal.editingEntry = entry;
   affiliateModal.code = entry?.aff_code_custom ? entry.aff_code : "";
+  affiliateModal.autoActiveCodeEnabled = entry ? Boolean(autoActiveAffiliateCode(entry)) : false;
   affiliateModal.rate =
     entry?.aff_rebate_rate_percent != null ? String(entry.aff_rebate_rate_percent) : "";
 }
@@ -12954,7 +12994,10 @@ const affiliateModalCanSubmit = computed(() => {
   }
   const codeFilled = affiliateModal.code.trim() !== "";
   const rateFilled = String(affiliateModal.rate ?? "").trim() !== "";
-  if (codeFilled || rateFilled) return true;
+  const autoActiveChanged = affiliateModal.editingEntry
+    ? affiliateModal.autoActiveCodeEnabled !== Boolean(autoActiveAffiliateCode(affiliateModal.editingEntry))
+    : affiliateModal.autoActiveCodeEnabled;
+  if (codeFilled || rateFilled || autoActiveChanged) return true;
   // Edit mode + empty rate input is a meaningful "clear" only if the user
   // currently has an exclusive rate to clear.
   return (
@@ -12980,6 +13023,7 @@ async function submitAffiliateModal() {
   const payload: Parameters<typeof affiliatesAPI.updateUserSettings>[1] = {};
   const codeRaw = affiliateModal.code.trim();
   if (codeRaw) payload.aff_code = codeRaw.toUpperCase();
+  payload.auto_active_code_enabled = affiliateModal.autoActiveCodeEnabled;
 
   const rateInput = parseRebateRate(affiliateModal.rate);
   if (rateInput === undefined) return; // toast already shown
@@ -13016,6 +13060,34 @@ function askResetAffiliateUser(entry: AffiliateAdminEntry) {
     }),
     t("common.delete"),
     () => affiliatesAPI.clearUserSettings(entry.user_id),
+  );
+}
+
+function primaryAffiliateCode(entry: AffiliateAdminEntry): AffiliateCode | undefined {
+  return entry.codes?.find((code) => code.is_primary);
+}
+
+function autoActiveAffiliateCode(entry: AffiliateAdminEntry): AffiliateCode | undefined {
+  return entry.codes?.find((code) => code.is_auto_active && !code.is_primary);
+}
+
+async function ensureAffiliateAutoCode(entry: AffiliateAdminEntry) {
+  try {
+    await affiliatesAPI.ensureAutoActiveCode(entry.user_id);
+    appStore.showSuccess(t("common.saved"));
+    await loadAffiliateUsers();
+  } catch (err) {
+    appStore.showError(extractApiErrorMessage(err, t("common.error")));
+  }
+}
+
+function askDeleteAffiliateAutoCode(entry: AffiliateAdminEntry) {
+  const code = autoActiveAffiliateCode(entry);
+  openAffiliateConfirm(
+    t("admin.settings.features.affiliate.codeModal.deleteTitle"),
+    t("admin.settings.features.affiliate.codeModal.deleteMessage", { code: code?.aff_code || entry.aff_code }),
+    t("common.delete"),
+    () => affiliatesAPI.deleteAutoActiveCode(entry.user_id),
   );
 }
 
