@@ -1,4 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-  <rect width="24" height="24" rx="5" fill="#C8252D"/>
-  <text x="12" y="16.5" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="11" font-weight="900" fill="#fff">TF</text>
+  <!-- dark navy petal – lower-left -->
+  <ellipse cx="8" cy="16" rx="6" ry="3.5" transform="rotate(135 8 16)" fill="#231F20"/>
+  <!-- wine-red petal – upper-left -->
+  <ellipse cx="8" cy="8"  rx="6" ry="3.5" transform="rotate(-135 8 8)"  fill="#8C1C1C"/>
+  <!-- golden petal – lower-right -->
+  <ellipse cx="16" cy="16" rx="6" ry="3.5" transform="rotate(45 16 16)" fill="#E8A000"/>
+  <!-- orange petal – upper-right (front) -->
+  <ellipse cx="16" cy="8"  rx="6" ry="3.5" transform="rotate(-45 16 8)"  fill="#D95F00"/>
 </svg>
