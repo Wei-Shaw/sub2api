@@ -159,17 +159,14 @@
                   {{ t('invoice.fields.invoiceNo') }}:
                   <span class="ml-1 font-mono font-medium text-gray-700 dark:text-gray-200">{{ request.invoice_no }}</span>
                 </span>
-                <div class="ml-auto flex gap-2">
-                  <button
-                    v-if="request.status === 'completed' && request.has_file"
-                    type="button"
-                    class="btn btn-secondary btn-sm"
-                    :disabled="downloadingId === request.id"
-                    @click="downloadInvoice(request)"
+                <div class="ml-auto flex items-center gap-2">
+                  <span
+                    v-if="request.status === 'completed'"
+                    class="inline-flex items-center text-xs text-gray-500 dark:text-gray-400"
                   >
-                    <Icon name="download" size="sm" class="mr-1" />
-                    {{ downloadingId === request.id ? t('common.processing') : t('invoice.actions.downloadFile') }}
-                  </button>
+                    <Icon name="mail" size="sm" class="mr-1" />
+                    {{ t('invoice.messages.sentByEmail', { email: request.profile_snapshot.email }) }}
+                  </span>
                   <button
                     v-if="request.status === 'pending'"
                     type="button"
@@ -560,7 +557,6 @@ const editingProfile = ref<InvoiceProfile | null>(null)
 const deleteTarget = ref<InvoiceProfile | null>(null)
 const cancelTarget = ref<InvoiceRequest | null>(null)
 const cancellingId = ref<number | null>(null)
-const downloadingId = ref<number | null>(null)
 
 const requestPagination = reactive({ page: 1, page_size: 20, total: 0 })
 const orderPagination = reactive({ page: 1, page_size: 20, total: 0 })
@@ -912,32 +908,6 @@ async function confirmCancelRequest() {
   } finally {
     cancellingId.value = null
   }
-}
-
-async function downloadInvoice(request: InvoiceRequest) {
-  if (downloadingId.value !== null) return
-  downloadingId.value = request.id
-  try {
-    const res = await invoiceAPI.downloadFile(request.id)
-    const blob = res.data instanceof Blob ? res.data : new Blob([res.data as BlobPart])
-    const filename = request.invoice_file_name || `invoice_${request.serial_no}`
-    triggerBlobDownload(blob, filename)
-  } catch (err: unknown) {
-    showInvoiceError(err)
-  } finally {
-    downloadingId.value = null
-  }
-}
-
-function triggerBlobDownload(blob: Blob, filename: string) {
-  const url = window.URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  window.URL.revokeObjectURL(url)
 }
 
 async function setDefaultProfile(id: number) {
