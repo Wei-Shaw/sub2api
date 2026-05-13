@@ -203,6 +203,8 @@ type checkoutBalancePackage struct {
 	CreditLedger     float64 `json:"credit_ledger"`
 	BonusLedger      float64 `json:"bonus_ledger"`
 	CreditMultiplier float64 `json:"credit_multiplier"`
+	ActualCredits    int64   `json:"actual_credits,omitempty"`
+	CreditUnit       string  `json:"credit_unit,omitempty"`
 	Badge            string  `json:"badge,omitempty"`
 	Popular          bool    `json:"popular,omitempty"`
 	SortOrder        int     `json:"sort_order,omitempty"`
@@ -222,6 +224,8 @@ func buildCheckoutBalancePackages(packages []service.BalanceRechargePackage) []c
 			CreditLedger:     pkg.CreditLedger,
 			BonusLedger:      pkg.BonusLedger,
 			CreditMultiplier: pkg.CreditMultiplier,
+			ActualCredits:    pkg.ActualCredits,
+			CreditUnit:       pkg.CreditUnit,
 			Badge:            pkg.Badge,
 			Popular:          pkg.Popular,
 			SortOrder:        pkg.SortOrder,
