@@ -4,10 +4,7 @@ import (
 	"context"
 	"fmt"
 	"html"
-	"io"
 	"log/slog"
-	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -147,7 +144,6 @@ func (h *InvoiceHandler) CompleteInvoiceRequest(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	go h.notifyInvoiceCompleted(req)
 	h.writeUserNotification(req, true)
 	response.Success(c, req)
 }
@@ -191,61 +187,7 @@ func (h *InvoiceHandler) writeUserNotification(req *service.InvoiceRequest, comp
 	}
 }
 
-// DownloadInvoiceFile streams the stored invoice file (admin scope).
-// GET /api/v1/admin/payment/invoices/:id/file
-func (h *InvoiceHandler) DownloadInvoiceFile(c *gin.Context) {
-	id, ok := parseIDParam(c, "id")
-	if !ok {
-		return
-	}
-	f, req, err := h.paymentService.OpenInvoiceFile(c.Request.Context(), 0, id)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	defer f.Close()
-
-	stat, err := f.Stat()
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-
-	mime := "application/octet-stream"
-	if req.InvoiceFileMime != nil && *req.InvoiceFileMime != "" {
-		mime = *req.InvoiceFileMime
-	}
-	filename := "invoice"
-	if req.InvoiceFileName != nil && *req.InvoiceFileName != "" {
-		filename = *req.InvoiceFileName
-	}
-
-	c.Header("Content-Type", mime)
-	c.Header("Content-Length", strconv.FormatInt(stat.Size(), 10))
-	c.Header("Content-Disposition", `attachment; filename="`+filename+`"; filename*=UTF-8''`+url.PathEscape(filename))
-	c.Status(http.StatusOK)
-	_, _ = io.Copy(c.Writer, f)
-}
-
 // --- Email notifications (best-effort, async) ---
-
-func (h *InvoiceHandler) notifyInvoiceCompleted(req *service.InvoiceRequest) {
-	if h.emailService == nil || req == nil {
-		return
-	}
-	to := strings.TrimSpace(req.ProfileSnapshot.Email)
-	if to == "" {
-		return
-	}
-	siteName := h.lookupSiteName()
-	subject := fmt.Sprintf("[%s] 发票已开具 / Invoice Issued", sanitizeHeader(siteName))
-	invoiceNo := ""
-	if req.InvoiceNo != nil {
-		invoiceNo = *req.InvoiceNo
-	}
-	body := buildInvoiceCompletedBody(req, invoiceNo, siteName)
-	h.dispatchEmail(to, subject, body)
-}
 
 func (h *InvoiceHandler) notifyInvoiceRejected(req *service.InvoiceRequest) {
 	if h.emailService == nil || req == nil {
@@ -283,27 +225,6 @@ func (h *InvoiceHandler) lookupSiteName() string {
 		return name
 	}
 	return "Sub2API"
-}
-
-func buildInvoiceCompletedBody(req *service.InvoiceRequest, invoiceNo, siteName string) string {
-	title := html.EscapeString(req.ProfileSnapshot.Title)
-	serial := html.EscapeString(req.SerialNo)
-	site := html.EscapeString(siteName)
-	invoiceNoHTML := html.EscapeString(invoiceNo)
-	return `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;color:#333;">
-<p>您好，</p>
-<p>您在 <strong>` + site + `</strong> 提交的开票申请已完成开具。</p>
-<table cellpadding="6" style="border-collapse:collapse;font-size:14px;">
-  <tr><td style="color:#666;">申请单号 / Serial</td><td><strong>` + serial + `</strong></td></tr>
-  <tr><td style="color:#666;">发票抬头 / Title</td><td>` + title + `</td></tr>
-  <tr><td style="color:#666;">发票号码 / Invoice No.</td><td><strong>` + invoiceNoHTML + `</strong></td></tr>
-  <tr><td style="color:#666;">开票金额 / Amount</td><td>` + fmt.Sprintf("%.2f", req.TotalAmount) + `</td></tr>
-</table>
-<p>请登录系统查看并下载发票文件。</p>
-<p>Your invoice request has been issued. Please log in to view and download the invoice.</p>
-<hr style="border:none;border-top:1px solid #eee;">
-<p style="font-size:12px;color:#999;">本邮件由系统自动发送，请勿直接回复。</p>
-</body></html>`
 }
 
 func buildInvoiceRejectedBody(req *service.InvoiceRequest, reason, siteName string) string {

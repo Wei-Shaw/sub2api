@@ -66,7 +66,6 @@ func RegisterPaymentRoutes(
 			requests.POST("", paymentHandler.CreateInvoiceRequest)
 			requests.GET("/:id", paymentHandler.GetInvoiceRequest)
 			requests.DELETE("/:id", paymentHandler.CancelInvoiceRequest)
-			requests.GET("/:id/file", paymentHandler.DownloadInvoiceFile)
 		}
 	}
 
@@ -103,7 +102,6 @@ func RegisterPaymentRoutes(
 			adminInvoices.GET("/:id", adminInvoiceHandler.GetInvoiceRequest)
 			adminInvoices.POST("/:id/complete", adminInvoiceHandler.CompleteInvoiceRequest)
 			adminInvoices.POST("/:id/reject", adminInvoiceHandler.RejectInvoiceRequest)
-			adminInvoices.GET("/:id/file", adminInvoiceHandler.DownloadInvoiceFile)
 		}
 
 		// Dashboard

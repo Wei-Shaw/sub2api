@@ -138,16 +138,6 @@
 
             <div class="mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-gray-100 pt-3 dark:border-dark-700">
               <button
-                v-if="item.status === 'completed' && item.has_file"
-                type="button"
-                class="btn btn-secondary btn-sm"
-                :disabled="downloadingId === item.id"
-                @click="downloadInvoice(item)"
-              >
-                <Icon name="download" size="sm" class="mr-1" />
-                {{ downloadingId === item.id ? t('common.processing') : t('invoice.actions.downloadFile') }}
-              </button>
-              <button
                 v-if="item.status === 'pending'"
                 type="button"
                 class="btn btn-secondary btn-sm"
@@ -228,13 +218,16 @@
             @change="onFileChange"
           />
           <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('invoice.admin.fileHint') }}</p>
+          <p v-if="activeRequest?.profile_snapshot?.email" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('invoice.admin.fileHintEmail', { email: activeRequest.profile_snapshot.email }) }}
+          </p>
         </div>
       </form>
       <template #footer>
         <div class="flex justify-end gap-3">
           <button type="button" class="btn btn-secondary" @click="closeCompleteDialog">{{ t('common.cancel') }}</button>
           <button type="button" class="btn btn-primary" :disabled="actionLoading || !canSubmitComplete" @click="submitComplete">
-            {{ actionLoading ? t('common.processing') : t('invoice.admin.complete') }}
+            {{ actionLoading ? t('common.processing') : t('invoice.admin.sendInvoiceEmail') }}
           </button>
         </div>
       </template>
@@ -310,7 +303,6 @@ const completeDialogOpen = ref(false)
 const rejectDialogOpen = ref(false)
 const activeRequest = ref<AdminInvoiceRequest | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
-const downloadingId = ref<number | null>(null)
 
 const completeForm = reactive<{ invoice_no: string; file: File | null }>({
   invoice_no: '',
@@ -446,28 +438,6 @@ async function submitReject() {
     showError(err)
   } finally {
     actionLoading.value = false
-  }
-}
-
-async function downloadInvoice(item: AdminInvoiceRequest) {
-  if (downloadingId.value !== null) return
-  downloadingId.value = item.id
-  try {
-    const res = await adminInvoiceAPI.downloadFile(item.id)
-    const blob = res.data instanceof Blob ? res.data : new Blob([res.data as BlobPart])
-    const filename = item.invoice_file_name || `invoice_${item.serial_no}`
-    const url = window.URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = filename
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    window.URL.revokeObjectURL(url)
-  } catch (err: unknown) {
-    showError(err)
-  } finally {
-    downloadingId.value = null
   }
 }
 

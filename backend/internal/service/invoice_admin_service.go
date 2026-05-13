@@ -9,7 +9,6 @@ import (
 	"io"
 	"mime/multipart"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -22,9 +21,6 @@ const (
 	defaultInvoiceUploadDir = "./data/invoices"
 	maxInvoiceFileBytes     = 10 * 1024 * 1024 // 10 MB
 )
-
-// invoiceFileNameSafe matches characters allowed in a stored filename suffix.
-var invoiceFileNameSafe = regexp.MustCompile(`[^A-Za-z0-9._-]`)
 
 // invoiceNoFormat validates an issued invoice number.
 // Accepts:
@@ -229,13 +225,12 @@ func (s *PaymentService) CancelInvoiceRequest(ctx context.Context, userID, reqID
 	defer rollbackIfActive(tx)
 
 	var status string
-	var filePath sql.NullString
 	if err := tx.QueryRowContext(ctx, `
-		SELECT status, invoice_file_path
+		SELECT status
 		FROM invoice_requests
 		WHERE id = $1 AND user_id = $2
 		FOR UPDATE
-	`, reqID, userID).Scan(&status, &filePath); err != nil {
+	`, reqID, userID).Scan(&status); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return infraerrors.NotFound("INVOICE_REQUEST_NOT_FOUND", "invoice request not found")
 		}
@@ -255,10 +250,6 @@ func (s *PaymentService) CancelInvoiceRequest(ctx context.Context, userID, reqID
 		return infraerrors.InternalServer("INVOICE_REQUEST_CANCEL_FAILED", "failed to commit invoice cancel").WithCause(err)
 	}
 
-	// Best-effort cleanup of any uploaded file (pending requests shouldn't have one, but just in case).
-	if filePath.Valid && filePath.String != "" {
-		_ = removeInvoiceFile(filePath.String)
-	}
 	return nil
 }
 
@@ -308,7 +299,10 @@ type CompleteInvoiceRequestInput struct {
 	File      *multipart.FileHeader
 }
 
-// CompleteInvoiceRequest stores the uploaded file and marks the request as completed.
+// CompleteInvoiceRequest sends the uploaded invoice file as an email attachment
+// to the requester, and on successful send marks the request as completed.
+// No file is persisted to disk; the file metadata columns remain NULL.
+// Failure to send the email leaves the request in its current pending state.
 func (s *PaymentService) CompleteInvoiceRequest(ctx context.Context, adminID, reqID int64, input CompleteInvoiceRequestInput) (*InvoiceRequest, error) {
 	invoiceNo := strings.TrimSpace(input.InvoiceNo)
 	if invoiceNo == "" {
@@ -329,68 +323,85 @@ func (s *PaymentService) CompleteInvoiceRequest(ctx context.Context, adminID, re
 	if input.File.Size > maxInvoiceFileBytes {
 		return nil, infraerrors.BadRequest("INVOICE_FILE_TOO_LARGE", "invoice file exceeds 10 MB")
 	}
+	mimeType := strings.TrimSpace(input.File.Header.Get("Content-Type"))
+	if mimeType != "" && !allowedInvoiceMimeTypes[mimeType] {
+		return nil, infraerrors.BadRequest("INVOICE_FILE_TYPE_INVALID", "invoice file type is not allowed")
+	}
 
+	if s.invoiceEmailSender == nil {
+		return nil, infraerrors.ServiceUnavailable("INVOICE_EMAIL_NOT_CONFIGURED", "invoice email sender is not configured")
+	}
+
+	// Load the request to confirm it is still pending and to capture the recipient.
+	loaded, err := s.loadInvoiceRequest(ctx, 0, reqID)
+	if err != nil {
+		return nil, err
+	}
+	if loaded.Status != InvoiceStatusPending {
+		return nil, infraerrors.Conflict("INVOICE_REQUEST_NOT_PENDING", "invoice request is not pending")
+	}
+	to := strings.TrimSpace(loaded.ProfileSnapshot.Email)
+	if to == "" {
+		return nil, infraerrors.BadRequest("INVOICE_EMAIL_REQUIRED", "profile email is required")
+	}
+
+	// Read the uploaded file into memory (bounded).
+	src, err := input.File.Open()
+	if err != nil {
+		return nil, infraerrors.BadRequest("INVOICE_FILE_OPEN_FAILED", "failed to read uploaded file")
+	}
+	defer src.Close()
+	content, err := io.ReadAll(io.LimitReader(src, maxInvoiceFileBytes+1))
+	if err != nil {
+		return nil, infraerrors.InternalServer("INVOICE_FILE_READ_FAILED", "failed to read invoice file").WithCause(err)
+	}
+	if int64(len(content)) > maxInvoiceFileBytes {
+		return nil, infraerrors.BadRequest("INVOICE_FILE_TOO_LARGE", "invoice file exceeds 10 MB")
+	}
+
+	filename := strings.TrimSpace(input.File.Filename)
+	if filename == "" {
+		filename = "invoice.pdf"
+	}
+
+	// Build the email payload.
+	siteName := s.invoiceEmailSiteName(ctx)
+	subject := fmt.Sprintf("[%s] 您的发票 %s / Your Invoice %s", siteName, invoiceNo, invoiceNo)
+	body := buildInvoiceAttachmentEmailBody(loaded, invoiceNo, siteName)
+
+	att := EmailAttachment{Filename: filename, MimeType: mimeType, Content: content}
+	if err := s.invoiceEmailSender.SendEmailWithAttachment(ctx, to, subject, body, []EmailAttachment{att}); err != nil {
+		return nil, infraerrors.ServiceUnavailable("INVOICE_EMAIL_SEND_FAILED", "failed to send invoice email").WithCause(err)
+	}
+
+	// Email succeeded — promote the request to completed.
 	db, err := s.invoiceDB()
 	if err != nil {
 		return nil, err
 	}
-
-	// Verify request exists and is pending; capture old file path (if any) for cleanup.
-	var status string
-	var oldFilePath sql.NullString
-	if err := db.QueryRowContext(ctx, `
-		SELECT status, invoice_file_path FROM invoice_requests WHERE id = $1
-	`, reqID).Scan(&status, &oldFilePath); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, infraerrors.NotFound("INVOICE_REQUEST_NOT_FOUND", "invoice request not found")
-		}
-		return nil, infraerrors.InternalServer("INVOICE_REQUEST_LOAD_FAILED", "failed to load invoice request").WithCause(err)
-	}
-	if status != InvoiceStatusPending {
-		return nil, infraerrors.Conflict("INVOICE_REQUEST_NOT_PENDING", "invoice request is not pending")
-	}
-
-	storedPath, storedName, mimeType, err := saveInvoiceUpload(reqID, input.File)
-	if err != nil {
-		return nil, err
-	}
-
 	row := db.QueryRowContext(ctx, `
 		UPDATE invoice_requests
 		SET status = $2,
 		    invoice_no = $3,
-		    invoice_file_path = $4,
-		    invoice_file_name = $5,
-		    invoice_file_size = $6,
-		    invoice_file_mime = $7,
-		    processed_by = $8,
+		    processed_by = $4,
 		    processed_at = NOW(),
 		    completed_at = NOW(),
 		    updated_at = NOW(),
 		    reject_reason = NULL
-		WHERE id = $1 AND status = $9
+		WHERE id = $1 AND status = $5
 		RETURNING `+invoiceRequestColumns,
 		reqID,
 		InvoiceStatusCompleted,
 		invoiceNo,
-		storedPath,
-		storedName,
-		input.File.Size,
-		mimeType,
 		adminID,
 		InvoiceStatusPending,
 	)
 	req, err := scanInvoiceRequest(row)
 	if err != nil {
-		_ = removeInvoiceFile(storedPath)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, invoiceRequestStateError(ctx, db, reqID)
 		}
 		return nil, err
-	}
-
-	if oldFilePath.Valid && oldFilePath.String != "" && oldFilePath.String != storedPath {
-		_ = removeInvoiceFile(oldFilePath.String)
 	}
 
 	orders, err := queryInvoiceRequestOrders(ctx, db, []int64{req.ID})
@@ -399,43 +410,6 @@ func (s *PaymentService) CompleteInvoiceRequest(ctx context.Context, adminID, re
 	}
 	req.Orders = orders[req.ID]
 	return &req, nil
-}
-
-// OpenInvoiceFile opens the stored invoice file for read.
-// userID > 0 enforces ownership; userID == 0 is admin scope.
-func (s *PaymentService) OpenInvoiceFile(ctx context.Context, userID, reqID int64) (*os.File, *InvoiceRequest, error) {
-	req, err := s.loadInvoiceRequest(ctx, userID, reqID)
-	if err != nil {
-		return nil, nil, err
-	}
-	if !req.HasFile {
-		return nil, nil, infraerrors.NotFound("INVOICE_FILE_NOT_FOUND", "invoice file not found")
-	}
-
-	db, err := s.invoiceDB()
-	if err != nil {
-		return nil, nil, err
-	}
-	var rawPath sql.NullString
-	if err := db.QueryRowContext(ctx, `SELECT invoice_file_path FROM invoice_requests WHERE id = $1`, reqID).Scan(&rawPath); err != nil {
-		return nil, nil, infraerrors.InternalServer("INVOICE_FILE_LOAD_FAILED", "failed to load invoice file").WithCause(err)
-	}
-	if !rawPath.Valid || rawPath.String == "" {
-		return nil, nil, infraerrors.NotFound("INVOICE_FILE_NOT_FOUND", "invoice file not found")
-	}
-
-	resolved, err := resolveInvoiceFilePath(rawPath.String)
-	if err != nil {
-		return nil, nil, err
-	}
-	f, err := os.Open(resolved)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil, infraerrors.NotFound("INVOICE_FILE_MISSING", "invoice file is missing on disk")
-		}
-		return nil, nil, infraerrors.InternalServer("INVOICE_FILE_OPEN_FAILED", "failed to open invoice file").WithCause(err)
-	}
-	return f, req, nil
 }
 
 // invoiceRequestStateError returns an appropriate error for state-conflict failures.
@@ -501,102 +475,5 @@ func prefixedInvoiceColumns(alias string) string {
 		out = append(out, alias+"."+c)
 	}
 	return strings.Join(out, ", ")
-}
-
-// --- File storage helpers ---
-
-func saveInvoiceUpload(reqID int64, fh *multipart.FileHeader) (storedPath, storedName, mimeType string, err error) {
-	mimeType = strings.TrimSpace(fh.Header.Get("Content-Type"))
-	if mimeType != "" && !allowedInvoiceMimeTypes[mimeType] {
-		return "", "", "", infraerrors.BadRequest("INVOICE_FILE_TYPE_INVALID", "invoice file type is not allowed")
-	}
-
-	dir := InvoiceUploadDir()
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return "", "", "", infraerrors.InternalServer("INVOICE_FILE_DIR_FAILED", "failed to prepare invoice directory").WithCause(err)
-	}
-
-	originalName := strings.TrimSpace(fh.Filename)
-	if originalName == "" {
-		originalName = "invoice"
-	}
-	// safeName is used only for the on-disk filename (ASCII-safe filesystem path).
-	safeName := invoiceFileNameSafe.ReplaceAllString(filepath.Base(originalName), "_")
-	if safeName == "" || safeName == "." || safeName == ".." {
-		safeName = "invoice"
-	}
-	if len(safeName) > 80 {
-		ext := filepath.Ext(safeName)
-		base := strings.TrimSuffix(safeName, ext)
-		if len(base) > 60 {
-			base = base[:60]
-		}
-		safeName = base + ext
-	}
-	// storedName is the display name returned to clients; keep original so Chinese/Unicode filenames round-trip correctly.
-	displayName := originalName
-	if len(displayName) > 255 {
-		ext := filepath.Ext(displayName)
-		displayName = displayName[:255-len(ext)] + ext
-	}
-	storedName = displayName
-
-	finalName := fmt.Sprintf("inv_%d_%d_%s", reqID, time.Now().UnixNano(), safeName)
-	storedPath = filepath.Join(dir, finalName)
-
-	src, err := fh.Open()
-	if err != nil {
-		return "", "", "", infraerrors.BadRequest("INVOICE_FILE_OPEN_FAILED", "failed to read uploaded file")
-	}
-	defer src.Close()
-
-	dst, err := os.OpenFile(storedPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o640)
-	if err != nil {
-		return "", "", "", infraerrors.InternalServer("INVOICE_FILE_WRITE_FAILED", "failed to write invoice file").WithCause(err)
-	}
-	written, copyErr := io.Copy(dst, io.LimitReader(src, maxInvoiceFileBytes+1))
-	closeErr := dst.Close()
-	if copyErr != nil {
-		_ = os.Remove(storedPath)
-		return "", "", "", infraerrors.InternalServer("INVOICE_FILE_WRITE_FAILED", "failed to write invoice file").WithCause(copyErr)
-	}
-	if closeErr != nil {
-		_ = os.Remove(storedPath)
-		return "", "", "", infraerrors.InternalServer("INVOICE_FILE_WRITE_FAILED", "failed to finalize invoice file").WithCause(closeErr)
-	}
-	if written > maxInvoiceFileBytes {
-		_ = os.Remove(storedPath)
-		return "", "", "", infraerrors.BadRequest("INVOICE_FILE_TOO_LARGE", "invoice file exceeds 10 MB")
-	}
-	return storedPath, storedName, mimeType, nil
-}
-
-// resolveInvoiceFilePath returns an absolute path that is guaranteed to live within the upload directory.
-// SECURITY: prevents path-traversal via stored filename.
-func resolveInvoiceFilePath(stored string) (string, error) {
-	dir, err := filepath.Abs(InvoiceUploadDir())
-	if err != nil {
-		return "", infraerrors.InternalServer("INVOICE_FILE_PATH_FAILED", "failed to resolve invoice directory").WithCause(err)
-	}
-	abs, err := filepath.Abs(stored)
-	if err != nil {
-		return "", infraerrors.InternalServer("INVOICE_FILE_PATH_FAILED", "failed to resolve invoice path").WithCause(err)
-	}
-	rel, err := filepath.Rel(dir, abs)
-	if err != nil || strings.HasPrefix(rel, "..") || strings.Contains(rel, string(os.PathSeparator)+"..") {
-		return "", infraerrors.BadRequest("INVOICE_FILE_PATH_INVALID", "invoice file path is invalid")
-	}
-	return abs, nil
-}
-
-func removeInvoiceFile(stored string) error {
-	resolved, err := resolveInvoiceFilePath(stored)
-	if err != nil {
-		return err
-	}
-	if err := os.Remove(resolved); err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	return nil
 }
 

@@ -15,12 +15,6 @@ export const adminInvoiceAPI = {
     return apiClient.post<InvoiceRequest>(`/admin/payment/invoices/${id}/reject`, { reason })
   },
 
-  /**
-   * Complete an invoice request by uploading the issued invoice file.
-   * @param id Invoice request ID
-   * @param invoiceNo Real invoice number issued by the tax authority
-   * @param file PDF / image file
-   */
   complete(id: number, invoiceNo: string, file: File) {
     const form = new FormData()
     form.append('invoice_no', invoiceNo)
@@ -28,9 +22,5 @@ export const adminInvoiceAPI = {
     return apiClient.post<InvoiceRequest>(`/admin/payment/invoices/${id}/complete`, form, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
-  },
-
-  downloadFile(id: number) {
-    return apiClient.get<Blob>(`/admin/payment/invoices/${id}/file`, { responseType: 'blob' })
   }
 }
