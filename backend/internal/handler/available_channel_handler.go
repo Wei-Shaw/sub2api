@@ -101,6 +101,7 @@ type userSupportedModel struct {
 // 后面的平台行按 sections 顺序铺开。
 type userChannelPlatformSection struct {
 	Platform        string               `json:"platform"`
+	BaseURL         string               `json:"base_url"`
 	Groups          []userAvailableGroup `json:"groups"`
 	SupportedModels []userSupportedModel `json:"supported_models"`
 }
@@ -271,11 +272,27 @@ func buildPlatformSections(
 		platformSet := map[string]struct{}{platform: {}}
 		sections = append(sections, userChannelPlatformSection{
 			Platform:        platform,
+			BaseURL:         defaultBaseURLForPlatform(platform),
 			Groups:          groupsByPlatform[platform],
 			SupportedModels: toUserSupportedModels(ch.SupportedModels, platformSet),
 		})
 	}
 	return sections
+}
+
+func defaultBaseURLForPlatform(platform string) string {
+	switch platform {
+	case service.PlatformAnthropic:
+		return "https://api.anthropic.com"
+	case service.PlatformGemini:
+		return "https://generativelanguage.googleapis.com"
+	case service.PlatformAntigravity:
+		return "https://cloudcode-pa.googleapis.com"
+	case service.PlatformOpenAI:
+		return "https://api.openai.com"
+	default:
+		return ""
+	}
 }
 
 // filterUserVisibleGroups 仅保留用户可访问的分组。

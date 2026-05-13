@@ -264,6 +264,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 
 		ImageGenerationEnabled: settings.ImageGenerationEnabled,
 
+		ChatCompletionEnabled: settings.ChatCompletionEnabled,
+
 		AffiliateEnabled: settings.AffiliateEnabled,
 	}
 
@@ -567,6 +569,9 @@ type UpdateSettingsRequest struct {
 
 	// Image Generation feature switch (user-facing)
 	ImageGenerationEnabled *bool `json:"image_generation_enabled"`
+
+	// Chat Completion feature switch (user-facing)
+	ChatCompletionEnabled *bool `json:"chat_completion_enabled"`
 
 	// Affiliate (邀请返利) feature switch
 	AffiliateEnabled *bool `json:"affiliate_enabled"`
@@ -1504,6 +1509,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.ImageGenerationEnabled
 		}(),
+		ChatCompletionEnabled: func() bool {
+			if req.ChatCompletionEnabled != nil {
+				return *req.ChatCompletionEnabled
+			}
+			return previousSettings.ChatCompletionEnabled
+		}(),
 		AffiliateEnabled: func() bool {
 			if req.AffiliateEnabled != nil {
 				return *req.AffiliateEnabled
@@ -1795,6 +1806,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		AvailableChannelsEnabled: updatedSettings.AvailableChannelsEnabled,
 
 		ImageGenerationEnabled: updatedSettings.ImageGenerationEnabled,
+
+		ChatCompletionEnabled: updatedSettings.ChatCompletionEnabled,
 
 		AffiliateEnabled: updatedSettings.AffiliateEnabled,
 
@@ -2198,6 +2211,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.ImageGenerationEnabled != after.ImageGenerationEnabled {
 		changed = append(changed, "image_generation_enabled")
+	}
+	if before.ChatCompletionEnabled != after.ChatCompletionEnabled {
+		changed = append(changed, "chat_completion_enabled")
 	}
 	if before.AffiliateEnabled != after.AffiliateEnabled {
 		changed = append(changed, "affiliate_enabled")

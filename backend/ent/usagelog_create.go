@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/chatmessage"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
@@ -530,6 +531,21 @@ func (_c *UsageLogCreate) SetSubscription(v *UserSubscription) *UsageLogCreate {
 	return _c.SetSubscriptionID(v.ID)
 }
 
+// AddChatMessageIDs adds the "chat_messages" edge to the ChatMessage entity by IDs.
+func (_c *UsageLogCreate) AddChatMessageIDs(ids ...int64) *UsageLogCreate {
+	_c.mutation.AddChatMessageIDs(ids...)
+	return _c
+}
+
+// AddChatMessages adds the "chat_messages" edges to the ChatMessage entity.
+func (_c *UsageLogCreate) AddChatMessages(v ...*ChatMessage) *UsageLogCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddChatMessageIDs(ids...)
+}
+
 // Mutation returns the UsageLogMutation object of the builder.
 func (_c *UsageLogCreate) Mutation() *UsageLogMutation {
 	return _c.mutation
@@ -1007,6 +1023,22 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
 		_node.SubscriptionID = &nodes[0]
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.ChatMessagesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   usagelog.ChatMessagesTable,
+			Columns: []string{usagelog.ChatMessagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(chatmessage.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec

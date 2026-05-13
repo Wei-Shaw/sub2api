@@ -216,6 +216,9 @@ type SystemSettings struct {
 	// Image Generation feature switch (user-facing tool)
 	ImageGenerationEnabled bool `json:"image_generation_enabled"`
 
+	// Chat Completion feature switch (user-facing tool)
+	ChatCompletionEnabled bool `json:"chat_completion_enabled"`
+
 	// 风控中心功能开关
 	RiskControlEnabled bool `json:"risk_control_enabled"`
 
@@ -285,6 +288,8 @@ type PublicSettings struct {
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 
 	ImageGenerationEnabled bool `json:"image_generation_enabled"`
+
+	ChatCompletionEnabled bool `json:"chat_completion_enabled"`
 
 	AffiliateEnabled bool `json:"affiliate_enabled"`
 

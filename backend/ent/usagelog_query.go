@@ -4,6 +4,7 @@ package ent
 
 import (
 	"context"
+	"database/sql/driver"
 	"fmt"
 	"math"
 
@@ -14,6 +15,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/chatmessage"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
@@ -33,6 +35,7 @@ type UsageLogQuery struct {
 	withAccount      *AccountQuery
 	withGroup        *GroupQuery
 	withSubscription *UserSubscriptionQuery
+	withChatMessages *ChatMessageQuery
 	modifiers        []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
@@ -173,6 +176,28 @@ func (_q *UsageLogQuery) QuerySubscription() *UserSubscriptionQuery {
 			sqlgraph.From(usagelog.Table, usagelog.FieldID, selector),
 			sqlgraph.To(usersubscription.Table, usersubscription.FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, true, usagelog.SubscriptionTable, usagelog.SubscriptionColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryChatMessages chains the current query on the "chat_messages" edge.
+func (_q *UsageLogQuery) QueryChatMessages() *ChatMessageQuery {
+	query := (&ChatMessageClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(usagelog.Table, usagelog.FieldID, selector),
+			sqlgraph.To(chatmessage.Table, chatmessage.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, usagelog.ChatMessagesTable, usagelog.ChatMessagesColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -377,6 +402,7 @@ func (_q *UsageLogQuery) Clone() *UsageLogQuery {
 		withAccount:      _q.withAccount.Clone(),
 		withGroup:        _q.withGroup.Clone(),
 		withSubscription: _q.withSubscription.Clone(),
+		withChatMessages: _q.withChatMessages.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -435,6 +461,17 @@ func (_q *UsageLogQuery) WithSubscription(opts ...func(*UserSubscriptionQuery)) 
 		opt(query)
 	}
 	_q.withSubscription = query
+	return _q
+}
+
+// WithChatMessages tells the query-builder to eager-load the nodes that are connected to
+// the "chat_messages" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *UsageLogQuery) WithChatMessages(opts ...func(*ChatMessageQuery)) *UsageLogQuery {
+	query := (&ChatMessageClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withChatMessages = query
 	return _q
 }
 
@@ -516,12 +553,13 @@ func (_q *UsageLogQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Usa
 	var (
 		nodes       = []*UsageLog{}
 		_spec       = _q.querySpec()
-		loadedTypes = [5]bool{
+		loadedTypes = [6]bool{
 			_q.withUser != nil,
 			_q.withAPIKey != nil,
 			_q.withAccount != nil,
 			_q.withGroup != nil,
 			_q.withSubscription != nil,
+			_q.withChatMessages != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -572,6 +610,13 @@ func (_q *UsageLogQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Usa
 	if query := _q.withSubscription; query != nil {
 		if err := _q.loadSubscription(ctx, query, nodes, nil,
 			func(n *UsageLog, e *UserSubscription) { n.Edges.Subscription = e }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withChatMessages; query != nil {
+		if err := _q.loadChatMessages(ctx, query, nodes,
+			func(n *UsageLog) { n.Edges.ChatMessages = []*ChatMessage{} },
+			func(n *UsageLog, e *ChatMessage) { n.Edges.ChatMessages = append(n.Edges.ChatMessages, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -726,6 +771,39 @@ func (_q *UsageLogQuery) loadSubscription(ctx context.Context, query *UserSubscr
 		for i := range nodes {
 			assign(nodes[i], n)
 		}
+	}
+	return nil
+}
+func (_q *UsageLogQuery) loadChatMessages(ctx context.Context, query *ChatMessageQuery, nodes []*UsageLog, init func(*UsageLog), assign func(*UsageLog, *ChatMessage)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[int64]*UsageLog)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(chatmessage.FieldUsageLogID)
+	}
+	query.Where(predicate.ChatMessage(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(usagelog.ChatMessagesColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.UsageLogID
+		if fk == nil {
+			return fmt.Errorf(`foreign-key "usage_log_id" is nil for node %v`, n.ID)
+		}
+		node, ok := nodeids[*fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "usage_log_id" returned %v for node %v`, *fk, n.ID)
+		}
+		assign(node, n)
 	}
 	return nil
 }

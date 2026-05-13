@@ -1,0 +1,73 @@
+<h2>Revised Chat Layout</h2>
+<p class="subtitle">Right-side balance panel removed. Usage and cost are kept lightweight inside the conversation, while detailed balance remains in Usage Records.</p>
+
+<div class="mockup">
+  <div class="mockup-header">Desktop: history + conversation, no balance sidebar</div>
+  <div class="mockup-body">
+    <div style="display:grid;grid-template-columns:240px minmax(0,1fr);gap:14px;min-height:520px;">
+      <aside style="border:1px solid #e5e7eb;border-radius:10px;background:#f8fafc;padding:12px;">
+        <div class="label">Session History</div>
+        <div style="margin-top:12px;display:grid;gap:8px;">
+          <button class="mock-button" style="width:100%;">New Chat</button>
+          <div style="border-radius:8px;background:white;border:1px solid #dbe3ef;padding:10px;">
+            <strong style="font-size:13px;">Gateway 调试</strong>
+            <p style="font-size:11px;margin:4px 0 0;color:#64748b;">3 messages · just now</p>
+          </div>
+          <div style="border-radius:8px;background:white;border:1px solid #dbe3ef;padding:10px;">
+            <strong style="font-size:13px;">模型对比</strong>
+            <p style="font-size:11px;margin:4px 0 0;color:#64748b;">8 messages · yesterday</p>
+          </div>
+        </div>
+      </aside>
+
+      <main style="border:1px solid #e5e7eb;border-radius:10px;background:white;display:flex;flex-direction:column;overflow:hidden;">
+        <div style="border-bottom:1px solid #eef2f7;padding:10px 12px;display:flex;gap:8px;align-items:center;justify-content:space-between;">
+          <div>
+            <strong>Chat</strong>
+            <p style="font-size:11px;margin:2px 0 0;color:#64748b;">Key · gpt-5.4 · streaming ready</p>
+          </div>
+          <div style="display:flex;gap:6px;">
+            <button class="mock-button">Stop</button>
+            <button class="mock-button">Regenerate</button>
+          </div>
+        </div>
+        <div style="flex:1;background:#f8fafc;padding:16px;display:grid;gap:12px;align-content:start;">
+          <div style="justify-self:end;max-width:70%;border-radius:14px 14px 4px 14px;background:#2563eb;color:white;padding:10px 12px;font-size:13px;">写一个 SSE 调用示例</div>
+          <div style="max-width:82%;border-radius:14px 14px 14px 4px;background:white;border:1px solid #e5e7eb;padding:12px;font-size:13px;">
+            <p style="margin:0 0 8px;">下面是一个 Markdown 响应：</p>
+            <pre style="margin:0;background:#0f172a;color:#e2e8f0;border-radius:8px;padding:10px;font-size:12px;">fetch('/v1/chat/completions')</pre>
+            <div style="display:flex;gap:6px;margin-top:8px;"><button class="mock-button">Copy code</button><button class="mock-button">Copy message</button></div>
+            <p style="font-size:11px;margin:8px 0 0;color:#64748b;">Generated in 2.4s · cost pending usage sync</p>
+          </div>
+        </div>
+        <div style="border-top:1px solid #eef2f7;padding:12px;">
+          <textarea class="mock-input" style="width:100%;height:108px;resize:none;" placeholder="Message..."></textarea>
+        </div>
+      </main>
+    </div>
+  </div>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="local" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Local-first history</h3>
+      <p>Session history is stored in the browser. Fast and simple; not shared across devices.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="server" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Server-backed history</h3>
+      <p>History is stored in backend APIs. Shared across devices; needs database and backend work.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="hybrid" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Hybrid incremental</h3>
+      <p>Start with local history and UI contracts, then add server-backed sync later.</p>
+    </div>
+  </div>
+</div>

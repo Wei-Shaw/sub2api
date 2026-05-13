@@ -4728,6 +4728,30 @@
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.features.chatCompletion.title') }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.features.chatCompletion.description') }}
+            </p>
+          </div>
+          <div class="space-y-5 p-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.features.chatCompletion.enabled') }}
+                </label>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.features.chatCompletion.enabledHint') }}
+                </p>
+              </div>
+              <Toggle v-model="form.chat_completion_enabled" />
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
               {{ t('admin.settings.features.riskControl.title') }}
             </h2>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -6529,6 +6553,8 @@ const form = reactive<SettingsForm>({
   available_channels_enabled: false,
   // Image Generation feature switch
   image_generation_enabled: false,
+  // Chat Completion feature switch
+  chat_completion_enabled: false,
   // Affiliate (邀请返利) feature switch
   affiliate_enabled: false,
 });
@@ -7634,6 +7660,8 @@ async function saveSettings() {
       available_channels_enabled: form.available_channels_enabled,
       // Image Generation feature switch
       image_generation_enabled: form.image_generation_enabled,
+      // Chat Completion feature switch
+      chat_completion_enabled: form.chat_completion_enabled,
       // Affiliate (邀请返利) feature switch
       affiliate_enabled: form.affiliate_enabled,
     };

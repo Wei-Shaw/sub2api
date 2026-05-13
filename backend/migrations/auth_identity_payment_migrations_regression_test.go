@@ -155,3 +155,21 @@ func TestMigration135AllowsGitHubAndGoogleAuthProviders(t *testing.T) {
 	require.Contains(t, sql, "'github'")
 	require.Contains(t, sql, "'google'")
 }
+
+func TestMigration136CreatesChatHistoryTablesForRelease(t *testing.T) {
+	content, err := FS.ReadFile("136_chat_sessions.sql")
+	require.NoError(t, err)
+
+	sql := string(content)
+	require.Contains(t, sql, "CREATE TABLE IF NOT EXISTS chat_sessions")
+	require.Contains(t, sql, "CREATE TABLE IF NOT EXISTS chat_messages")
+	require.Contains(t, sql, "expires_at TIMESTAMPTZ NOT NULL")
+	require.Contains(t, sql, "FOREIGN KEY (user_id) REFERENCES users(id)")
+	require.Contains(t, sql, "FOREIGN KEY (api_key_id) REFERENCES api_keys(id)")
+	require.Contains(t, sql, "FOREIGN KEY (session_id) REFERENCES chat_sessions(id)")
+	require.Contains(t, sql, "CREATE INDEX IF NOT EXISTS chat_sessions_user_updated_at_idx")
+	require.Contains(t, sql, "CREATE INDEX IF NOT EXISTS chat_sessions_user_expires_at_idx")
+	require.Contains(t, sql, "CREATE INDEX IF NOT EXISTS chat_messages_session_created_at_idx")
+	require.Contains(t, sql, "CREATE INDEX IF NOT EXISTS chat_messages_user_created_at_idx")
+	require.Contains(t, sql, "CREATE INDEX IF NOT EXISTS chat_messages_usage_log_id_idx")
+}

@@ -14,6 +14,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
+	"github.com/Wei-Shaw/sub2api/ent/chatmessage"
+	"github.com/Wei-Shaw/sub2api/ent/chatsession"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/pendingauthsession"
@@ -442,6 +444,36 @@ func (_c *UserCreate) AddUsageLogs(v ...*UsageLog) *UserCreate {
 		ids[i] = v[i].ID
 	}
 	return _c.AddUsageLogIDs(ids...)
+}
+
+// AddChatSessionIDs adds the "chat_sessions" edge to the ChatSession entity by IDs.
+func (_c *UserCreate) AddChatSessionIDs(ids ...int64) *UserCreate {
+	_c.mutation.AddChatSessionIDs(ids...)
+	return _c
+}
+
+// AddChatSessions adds the "chat_sessions" edges to the ChatSession entity.
+func (_c *UserCreate) AddChatSessions(v ...*ChatSession) *UserCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddChatSessionIDs(ids...)
+}
+
+// AddChatMessageIDs adds the "chat_messages" edge to the ChatMessage entity by IDs.
+func (_c *UserCreate) AddChatMessageIDs(ids ...int64) *UserCreate {
+	_c.mutation.AddChatMessageIDs(ids...)
+	return _c
+}
+
+// AddChatMessages adds the "chat_messages" edges to the ChatMessage entity.
+func (_c *UserCreate) AddChatMessages(v ...*ChatMessage) *UserCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddChatMessageIDs(ids...)
 }
 
 // AddAttributeValueIDs adds the "attribute_values" edge to the UserAttributeValue entity by IDs.
@@ -936,6 +968,38 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(usagelog.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.ChatSessionsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ChatSessionsTable,
+			Columns: []string{user.ChatSessionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(chatsession.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.ChatMessagesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ChatMessagesTable,
+			Columns: []string{user.ChatMessagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(chatmessage.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

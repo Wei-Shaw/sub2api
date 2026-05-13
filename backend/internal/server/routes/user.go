@@ -104,6 +104,18 @@ func RegisterUserRoutes(
 			usage.POST("/dashboard/api-keys-usage", h.Usage.DashboardAPIKeysUsage)
 		}
 
+		// 聊天会话历史
+		chatSessions := authenticated.Group("/chat/sessions")
+		{
+			chatSessions.GET("", h.ChatSession.ListSessions)
+			chatSessions.POST("", h.ChatSession.CreateSession)
+			chatSessions.PATCH("/:id", h.ChatSession.UpdateSession)
+			chatSessions.DELETE("/:id", h.ChatSession.DeleteSession)
+			chatSessions.GET("/:id/messages", h.ChatSession.ListMessages)
+			chatSessions.POST("/:id/messages", h.ChatSession.CreateMessage)
+			chatSessions.PATCH("/:id/messages/:message_id", h.ChatSession.UpdateMessage)
+		}
+
 		// 公告（用户可见）
 		announcements := authenticated.Group("/announcements")
 		{

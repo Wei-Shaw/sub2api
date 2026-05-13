@@ -68,6 +68,7 @@ export interface UserModelPricingBatchResponse {
  */
 export interface UserChannelPlatformSection {
   platform: string
+  base_url?: string
   groups: UserAvailableGroup[]
   supported_models: UserSupportedModel[]
 }

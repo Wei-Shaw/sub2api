@@ -254,6 +254,17 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/chat',
+    name: 'ChatCompletion',
+    component: () => import('@/views/user/ChatCompletionView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Chat Completion',
+      titleKey: 'nav.chatCompletion'
+    }
+  },
+  {
     path: '/profile',
     name: 'Profile',
     component: () => import('@/views/user/ProfileView.vue'),

@@ -29,17 +29,6 @@ export async function getVersion(): Promise<{ version: string }> {
   return data
 }
 
-/**
- * Check for updates
- * @param force - Force refresh from GitHub API
- */
-export async function checkUpdates(force = false): Promise<VersionInfo> {
-  const { data } = await apiClient.get<VersionInfo>('/admin/system/check-updates', {
-    params: force ? { force: 'true' } : undefined
-  })
-  return data
-}
-
 export interface UpdateResult {
   message: string
   need_restart: boolean
@@ -72,7 +61,6 @@ export async function restartService(): Promise<{ message: string }> {
 
 export const systemAPI = {
   getVersion,
-  checkUpdates,
   performUpdate,
   rollback,
   restartService

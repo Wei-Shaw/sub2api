@@ -626,6 +626,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyChannelMonitorDefaultIntervalSeconds,
 		SettingKeyAvailableChannelsEnabled,
 		SettingKeyImageGenerationEnabled,
+		SettingKeyChatCompletionEnabled,
 		SettingKeyAffiliateEnabled,
 		SettingKeyRiskControlEnabled,
 	}
@@ -730,6 +731,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 
 		AvailableChannelsEnabled: settings[SettingKeyAvailableChannelsEnabled] == "true",
 		ImageGenerationEnabled:   settings[SettingKeyImageGenerationEnabled] == "true",
+		ChatCompletionEnabled:    settings[SettingKeyChatCompletionEnabled] == "true",
 
 		AffiliateEnabled: settings[SettingKeyAffiliateEnabled] == "true",
 
@@ -888,6 +890,7 @@ type PublicSettingsInjectionPayload struct {
 	ChannelMonitorDefaultIntervalSeconds int  `json:"channel_monitor_default_interval_seconds"`
 	AvailableChannelsEnabled             bool `json:"available_channels_enabled"`
 	ImageGenerationEnabled               bool `json:"image_generation_enabled"`
+	ChatCompletionEnabled                bool `json:"chat_completion_enabled"`
 	AffiliateEnabled                     bool `json:"affiliate_enabled"`
 	RiskControlEnabled                   bool `json:"risk_control_enabled"`
 }
@@ -950,6 +953,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
 		AvailableChannelsEnabled:             settings.AvailableChannelsEnabled,
 		ImageGenerationEnabled:               settings.ImageGenerationEnabled,
+		ChatCompletionEnabled:                settings.ChatCompletionEnabled,
 		AffiliateEnabled:                     settings.AffiliateEnabled,
 		RiskControlEnabled:                   settings.RiskControlEnabled,
 	}, nil
@@ -1569,6 +1573,9 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 
 	// Image generation feature switch
 	updates[SettingKeyImageGenerationEnabled] = strconv.FormatBool(settings.ImageGenerationEnabled)
+
+	// Chat completion feature switch
+	updates[SettingKeyChatCompletionEnabled] = strconv.FormatBool(settings.ChatCompletionEnabled)
 
 	// Affiliate (邀请返利) feature switch
 	updates[SettingKeyAffiliateEnabled] = strconv.FormatBool(settings.AffiliateEnabled)
@@ -2355,6 +2362,9 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		// Image generation feature (default disabled; opt-in)
 		SettingKeyImageGenerationEnabled: "false",
 
+		// Chat completion feature (default disabled; opt-in)
+		SettingKeyChatCompletionEnabled: "false",
+
 		// Affiliate (邀请返利) feature (default disabled; opt-in)
 		SettingKeyAffiliateEnabled: "false",
 
@@ -2724,6 +2734,9 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 
 	// Image generation feature (default: disabled; strict true)
 	result.ImageGenerationEnabled = settings[SettingKeyImageGenerationEnabled] == "true"
+
+	// Chat completion feature (default: disabled; strict true)
+	result.ChatCompletionEnabled = settings[SettingKeyChatCompletionEnabled] == "true"
 
 	// Affiliate (邀请返利) feature (default: disabled; strict true)
 	result.AffiliateEnabled = settings[SettingKeyAffiliateEnabled] == "true"

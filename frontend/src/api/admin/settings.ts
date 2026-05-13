@@ -524,6 +524,9 @@ export interface SystemSettings {
   // Image Generation feature switch
   image_generation_enabled: boolean;
 
+  // Chat Completion feature switch
+  chat_completion_enabled: boolean;
+
   // Affiliate (邀请返利) feature switch
   affiliate_enabled: boolean;
 
@@ -719,6 +722,9 @@ export interface UpdateSettingsRequest {
 
   // Image Generation feature switch
   image_generation_enabled?: boolean;
+
+  // Chat Completion feature switch
+  chat_completion_enabled?: boolean;
 
   // Affiliate (邀请返利) feature switch
   affiliate_enabled?: boolean;

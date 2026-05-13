@@ -109,10 +109,16 @@ export const useAuthStore = defineStore('auth', () => {
 
     if (savedToken && savedUser) {
       try {
+        const parsedExpiresAt = savedExpiresAt ? parseInt(savedExpiresAt, 10) : null
+        if (parsedExpiresAt !== null && Number.isFinite(parsedExpiresAt) && parsedExpiresAt <= Date.now()) {
+          clearAuth({ preservePendingAuthSession: true })
+          return
+        }
+
         token.value = savedToken
         user.value = JSON.parse(savedUser)
         refreshTokenValue.value = savedRefreshToken
-        tokenExpiresAt.value = savedExpiresAt ? parseInt(savedExpiresAt, 10) : null
+        tokenExpiresAt.value = parsedExpiresAt
 
         // Immediately refresh user data from backend (async, don't block)
         refreshUser().catch((error) => {

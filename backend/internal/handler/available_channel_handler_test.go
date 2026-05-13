@@ -123,6 +123,7 @@ func TestUserAvailableChannel_FieldWhitelist(t *testing.T) {
 		Platforms: []userChannelPlatformSection{
 			{
 				Platform:        "anthropic",
+				BaseURL:         "https://api.anthropic.com",
 				Groups:          []userAvailableGroup{{ID: 1, Name: "g1", Platform: "anthropic"}},
 				SupportedModels: []userSupportedModel{},
 			},
@@ -147,7 +148,7 @@ func TestUserAvailableChannel_FieldWhitelist(t *testing.T) {
 	require.NoError(t, err)
 	var sectionDecoded map[string]any
 	require.NoError(t, json.Unmarshal(rawSection, &sectionDecoded))
-	for _, key := range []string{"platform", "groups", "supported_models"} {
+	for _, key := range []string{"platform", "base_url", "groups", "supported_models"} {
 		_, exists := sectionDecoded[key]
 		require.Truef(t, exists, "platform section must expose %q", key)
 	}
@@ -200,7 +201,9 @@ func TestBuildPlatformSections_GroupsByPlatform(t *testing.T) {
 	sections := buildPlatformSections(ch, visible)
 	require.Len(t, sections, 2)
 	require.Equal(t, "anthropic", sections[0].Platform)
+	require.Equal(t, "https://api.anthropic.com", sections[0].BaseURL)
 	require.Equal(t, "openai", sections[1].Platform)
+	require.Equal(t, "https://api.openai.com", sections[1].BaseURL)
 	require.Len(t, sections[0].Groups, 1)
 	require.Equal(t, int64(2), sections[0].Groups[0].ID)
 	require.Len(t, sections[0].SupportedModels, 1)

@@ -75,6 +75,10 @@ const (
 	EdgeAllowedGroups = "allowed_groups"
 	// EdgeUsageLogs holds the string denoting the usage_logs edge name in mutations.
 	EdgeUsageLogs = "usage_logs"
+	// EdgeChatSessions holds the string denoting the chat_sessions edge name in mutations.
+	EdgeChatSessions = "chat_sessions"
+	// EdgeChatMessages holds the string denoting the chat_messages edge name in mutations.
+	EdgeChatMessages = "chat_messages"
 	// EdgeAttributeValues holds the string denoting the attribute_values edge name in mutations.
 	EdgeAttributeValues = "attribute_values"
 	// EdgePromoCodeUsages holds the string denoting the promo_code_usages edge name in mutations.
@@ -136,6 +140,20 @@ const (
 	UsageLogsInverseTable = "usage_logs"
 	// UsageLogsColumn is the table column denoting the usage_logs relation/edge.
 	UsageLogsColumn = "user_id"
+	// ChatSessionsTable is the table that holds the chat_sessions relation/edge.
+	ChatSessionsTable = "chat_sessions"
+	// ChatSessionsInverseTable is the table name for the ChatSession entity.
+	// It exists in this package in order to avoid circular dependency with the "chatsession" package.
+	ChatSessionsInverseTable = "chat_sessions"
+	// ChatSessionsColumn is the table column denoting the chat_sessions relation/edge.
+	ChatSessionsColumn = "user_id"
+	// ChatMessagesTable is the table that holds the chat_messages relation/edge.
+	ChatMessagesTable = "chat_messages"
+	// ChatMessagesInverseTable is the table name for the ChatMessage entity.
+	// It exists in this package in order to avoid circular dependency with the "chatmessage" package.
+	ChatMessagesInverseTable = "chat_messages"
+	// ChatMessagesColumn is the table column denoting the chat_messages relation/edge.
+	ChatMessagesColumn = "user_id"
 	// AttributeValuesTable is the table that holds the attribute_values relation/edge.
 	AttributeValuesTable = "user_attribute_values"
 	// AttributeValuesInverseTable is the table name for the UserAttributeValue entity.
@@ -499,6 +517,34 @@ func ByUsageLogs(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByChatSessionsCount orders the results by chat_sessions count.
+func ByChatSessionsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newChatSessionsStep(), opts...)
+	}
+}
+
+// ByChatSessions orders the results by chat_sessions terms.
+func ByChatSessions(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newChatSessionsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByChatMessagesCount orders the results by chat_messages count.
+func ByChatMessagesCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newChatMessagesStep(), opts...)
+	}
+}
+
+// ByChatMessages orders the results by chat_messages terms.
+func ByChatMessages(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newChatMessagesStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByAttributeValuesCount orders the results by attribute_values count.
 func ByAttributeValuesCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -629,6 +675,20 @@ func newUsageLogsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(UsageLogsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, UsageLogsTable, UsageLogsColumn),
+	)
+}
+func newChatSessionsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(ChatSessionsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, ChatSessionsTable, ChatSessionsColumn),
+	)
+}
+func newChatMessagesStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(ChatMessagesInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, ChatMessagesTable, ChatMessagesColumn),
 	)
 }
 func newAttributeValuesStep() *sqlgraph.Step {

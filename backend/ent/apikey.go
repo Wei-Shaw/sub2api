@@ -80,9 +80,11 @@ type APIKeyEdges struct {
 	Group *Group `json:"group,omitempty"`
 	// UsageLogs holds the value of the usage_logs edge.
 	UsageLogs []*UsageLog `json:"usage_logs,omitempty"`
+	// ChatSessions holds the value of the chat_sessions edge.
+	ChatSessions []*ChatSession `json:"chat_sessions,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [3]bool
+	loadedTypes [4]bool
 }
 
 // UserOrErr returns the User value or an error if the edge
@@ -114,6 +116,15 @@ func (e APIKeyEdges) UsageLogsOrErr() ([]*UsageLog, error) {
 		return e.UsageLogs, nil
 	}
 	return nil, &NotLoadedError{edge: "usage_logs"}
+}
+
+// ChatSessionsOrErr returns the ChatSessions value or an error if the edge
+// was not loaded in eager-loading.
+func (e APIKeyEdges) ChatSessionsOrErr() ([]*ChatSession, error) {
+	if e.loadedTypes[3] {
+		return e.ChatSessions, nil
+	}
+	return nil, &NotLoadedError{edge: "chat_sessions"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -327,6 +338,11 @@ func (_m *APIKey) QueryGroup() *GroupQuery {
 // QueryUsageLogs queries the "usage_logs" edge of the APIKey entity.
 func (_m *APIKey) QueryUsageLogs() *UsageLogQuery {
 	return NewAPIKeyClient(_m.config).QueryUsageLogs(_m)
+}
+
+// QueryChatSessions queries the "chat_sessions" edge of the APIKey entity.
+func (_m *APIKey) QueryChatSessions() *ChatSessionQuery {
+	return NewAPIKeyClient(_m.config).QueryChatSessions(_m)
 }
 
 // Update returns a builder for updating this APIKey.

@@ -98,6 +98,8 @@ const (
 	EdgeGroup = "group"
 	// EdgeSubscription holds the string denoting the subscription edge name in mutations.
 	EdgeSubscription = "subscription"
+	// EdgeChatMessages holds the string denoting the chat_messages edge name in mutations.
+	EdgeChatMessages = "chat_messages"
 	// Table holds the table name of the usagelog in the database.
 	Table = "usage_logs"
 	// UserTable is the table that holds the user relation/edge.
@@ -135,6 +137,13 @@ const (
 	SubscriptionInverseTable = "user_subscriptions"
 	// SubscriptionColumn is the table column denoting the subscription relation/edge.
 	SubscriptionColumn = "subscription_id"
+	// ChatMessagesTable is the table that holds the chat_messages relation/edge.
+	ChatMessagesTable = "chat_messages"
+	// ChatMessagesInverseTable is the table name for the ChatMessage entity.
+	// It exists in this package in order to avoid circular dependency with the "chatmessage" package.
+	ChatMessagesInverseTable = "chat_messages"
+	// ChatMessagesColumn is the table column denoting the chat_messages relation/edge.
+	ChatMessagesColumn = "usage_log_id"
 )
 
 // Columns holds all SQL columns for usagelog fields.
@@ -475,6 +484,20 @@ func BySubscriptionField(field string, opts ...sql.OrderTermOption) OrderOption 
 		sqlgraph.OrderByNeighborTerms(s, newSubscriptionStep(), sql.OrderByField(field, opts...))
 	}
 }
+
+// ByChatMessagesCount orders the results by chat_messages count.
+func ByChatMessagesCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newChatMessagesStep(), opts...)
+	}
+}
+
+// ByChatMessages orders the results by chat_messages terms.
+func ByChatMessages(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newChatMessagesStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
 func newUserStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -508,5 +531,12 @@ func newSubscriptionStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(SubscriptionInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2O, true, SubscriptionTable, SubscriptionColumn),
+	)
+}
+func newChatMessagesStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(ChatMessagesInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, ChatMessagesTable, ChatMessagesColumn),
 	)
 }

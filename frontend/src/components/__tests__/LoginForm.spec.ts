@@ -25,10 +25,6 @@ vi.mock('@/api', () => ({
   isTotp2FARequired: (response: any) => response?.requires_2fa === true,
 }))
 
-vi.mock('@/api/admin/system', () => ({
-  checkUpdates: vi.fn(),
-}))
-
 vi.mock('@/api/auth', () => ({
   getPublicSettings: vi.fn().mockResolvedValue({}),
 }))

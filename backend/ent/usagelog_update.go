@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/chatmessage"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
@@ -778,6 +779,21 @@ func (_u *UsageLogUpdate) SetSubscription(v *UserSubscription) *UsageLogUpdate {
 	return _u.SetSubscriptionID(v.ID)
 }
 
+// AddChatMessageIDs adds the "chat_messages" edge to the ChatMessage entity by IDs.
+func (_u *UsageLogUpdate) AddChatMessageIDs(ids ...int64) *UsageLogUpdate {
+	_u.mutation.AddChatMessageIDs(ids...)
+	return _u
+}
+
+// AddChatMessages adds the "chat_messages" edges to the ChatMessage entity.
+func (_u *UsageLogUpdate) AddChatMessages(v ...*ChatMessage) *UsageLogUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddChatMessageIDs(ids...)
+}
+
 // Mutation returns the UsageLogMutation object of the builder.
 func (_u *UsageLogUpdate) Mutation() *UsageLogMutation {
 	return _u.mutation
@@ -811,6 +827,27 @@ func (_u *UsageLogUpdate) ClearGroup() *UsageLogUpdate {
 func (_u *UsageLogUpdate) ClearSubscription() *UsageLogUpdate {
 	_u.mutation.ClearSubscription()
 	return _u
+}
+
+// ClearChatMessages clears all "chat_messages" edges to the ChatMessage entity.
+func (_u *UsageLogUpdate) ClearChatMessages() *UsageLogUpdate {
+	_u.mutation.ClearChatMessages()
+	return _u
+}
+
+// RemoveChatMessageIDs removes the "chat_messages" edge to ChatMessage entities by IDs.
+func (_u *UsageLogUpdate) RemoveChatMessageIDs(ids ...int64) *UsageLogUpdate {
+	_u.mutation.RemoveChatMessageIDs(ids...)
+	return _u
+}
+
+// RemoveChatMessages removes "chat_messages" edges to ChatMessage entities.
+func (_u *UsageLogUpdate) RemoveChatMessages(v ...*ChatMessage) *UsageLogUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveChatMessageIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -1240,6 +1277,51 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(usersubscription.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ChatMessagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   usagelog.ChatMessagesTable,
+			Columns: []string{usagelog.ChatMessagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(chatmessage.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedChatMessagesIDs(); len(nodes) > 0 && !_u.mutation.ChatMessagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   usagelog.ChatMessagesTable,
+			Columns: []string{usagelog.ChatMessagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(chatmessage.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ChatMessagesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   usagelog.ChatMessagesTable,
+			Columns: []string{usagelog.ChatMessagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(chatmessage.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {
@@ -2013,6 +2095,21 @@ func (_u *UsageLogUpdateOne) SetSubscription(v *UserSubscription) *UsageLogUpdat
 	return _u.SetSubscriptionID(v.ID)
 }
 
+// AddChatMessageIDs adds the "chat_messages" edge to the ChatMessage entity by IDs.
+func (_u *UsageLogUpdateOne) AddChatMessageIDs(ids ...int64) *UsageLogUpdateOne {
+	_u.mutation.AddChatMessageIDs(ids...)
+	return _u
+}
+
+// AddChatMessages adds the "chat_messages" edges to the ChatMessage entity.
+func (_u *UsageLogUpdateOne) AddChatMessages(v ...*ChatMessage) *UsageLogUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddChatMessageIDs(ids...)
+}
+
 // Mutation returns the UsageLogMutation object of the builder.
 func (_u *UsageLogUpdateOne) Mutation() *UsageLogMutation {
 	return _u.mutation
@@ -2046,6 +2143,27 @@ func (_u *UsageLogUpdateOne) ClearGroup() *UsageLogUpdateOne {
 func (_u *UsageLogUpdateOne) ClearSubscription() *UsageLogUpdateOne {
 	_u.mutation.ClearSubscription()
 	return _u
+}
+
+// ClearChatMessages clears all "chat_messages" edges to the ChatMessage entity.
+func (_u *UsageLogUpdateOne) ClearChatMessages() *UsageLogUpdateOne {
+	_u.mutation.ClearChatMessages()
+	return _u
+}
+
+// RemoveChatMessageIDs removes the "chat_messages" edge to ChatMessage entities by IDs.
+func (_u *UsageLogUpdateOne) RemoveChatMessageIDs(ids ...int64) *UsageLogUpdateOne {
+	_u.mutation.RemoveChatMessageIDs(ids...)
+	return _u
+}
+
+// RemoveChatMessages removes "chat_messages" edges to ChatMessage entities.
+func (_u *UsageLogUpdateOne) RemoveChatMessages(v ...*ChatMessage) *UsageLogUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveChatMessageIDs(ids...)
 }
 
 // Where appends a list predicates to the UsageLogUpdate builder.
@@ -2505,6 +2623,51 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(usersubscription.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ChatMessagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   usagelog.ChatMessagesTable,
+			Columns: []string{usagelog.ChatMessagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(chatmessage.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedChatMessagesIDs(); len(nodes) > 0 && !_u.mutation.ChatMessagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   usagelog.ChatMessagesTable,
+			Columns: []string{usagelog.ChatMessagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(chatmessage.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ChatMessagesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   usagelog.ChatMessagesTable,
+			Columns: []string{usagelog.ChatMessagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(chatmessage.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

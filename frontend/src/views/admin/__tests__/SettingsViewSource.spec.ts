@@ -13,4 +13,13 @@ describe('SettingsView feature management source contract', () => {
     expect(viewSource.match(/v-model="form\.image_generation_enabled"/g)).toHaveLength(1)
     expect(viewSource.match(/image_generation_enabled: form\.image_generation_enabled/g)).toHaveLength(1)
   })
+
+  it('places the chat completion feature switch below image generation', () => {
+    expect(viewSource.indexOf('admin.settings.features.imageGeneration.title')).toBeLessThan(
+      viewSource.indexOf('admin.settings.features.chatCompletion.title'),
+    )
+    expect(viewSource.indexOf('v-model="form.image_generation_enabled"')).toBeLessThan(
+      viewSource.indexOf('v-model="form.chat_completion_enabled"'),
+    )
+  })
 })

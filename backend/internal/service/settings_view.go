@@ -160,6 +160,9 @@ type SystemSettings struct {
 	// Image Generation feature (user-facing tool)
 	ImageGenerationEnabled bool `json:"image_generation_enabled"`
 
+	// Chat Completion feature (user-facing tool)
+	ChatCompletionEnabled bool `json:"chat_completion_enabled"`
+
 	// Claude Code version check
 	MinClaudeCodeVersion string
 	MaxClaudeCodeVersion string
@@ -262,6 +265,9 @@ type PublicSettings struct {
 
 	// Image Generation feature (user-facing tool)
 	ImageGenerationEnabled bool `json:"image_generation_enabled"`
+
+	// Chat Completion feature (user-facing tool)
+	ChatCompletionEnabled bool `json:"chat_completion_enabled"`
 
 	// Affiliate (邀请返利) feature toggle
 	AffiliateEnabled bool `json:"affiliate_enabled"`

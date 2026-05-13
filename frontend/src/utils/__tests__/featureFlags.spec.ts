@@ -25,4 +25,17 @@ describe('feature flag registry', () => {
     cachedPublicSettings.value = { image_generation_enabled: true }
     expect(isFeatureFlagEnabled(FeatureFlags.imageGeneration)).toBe(true)
   })
+
+  it('treats chat completion as opt-in', async () => {
+    const { FeatureFlags, isFeatureFlagEnabled } = await import('../featureFlags')
+
+    cachedPublicSettings.value = undefined
+    expect(isFeatureFlagEnabled(FeatureFlags.chatCompletion)).toBe(false)
+
+    cachedPublicSettings.value = { chat_completion_enabled: false }
+    expect(isFeatureFlagEnabled(FeatureFlags.chatCompletion)).toBe(false)
+
+    cachedPublicSettings.value = { chat_completion_enabled: true }
+    expect(isFeatureFlagEnabled(FeatureFlags.chatCompletion)).toBe(true)
+  })
 })

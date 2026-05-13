@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv, Plugin } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import checker from 'vite-plugin-checker'
+import http from 'node:http'
 import { resolve } from 'path'
 
 /**
@@ -37,8 +38,9 @@ function injectPublicSettings(backendUrl: string): Plugin {
 export default defineConfig(({ mode }) => {
   // 加载环境变量
   const env = loadEnv(mode, process.cwd(), '')
-  const backendUrl = env.VITE_DEV_PROXY_TARGET || 'http://localhost:8080'
+  const backendUrl = env.VITE_DEV_PROXY_TARGET || 'http://127.0.0.1:8080'
   const devPort = Number(env.VITE_DEV_PORT || 3000)
+  const proxyAgent = new http.Agent({ keepAlive: false })
 
   return {
     plugins: [
@@ -113,16 +115,28 @@ export default defineConfig(({ mode }) => {
         '/api': {
           target: backendUrl,
           changeOrigin: true,
-          proxyTimeout: 0,
-          timeout: 0
+          agent: proxyAgent,
+          proxyTimeout: 30000,
+          timeout: 30000,
+          headers: {
+            connection: 'close'
+          }
         },
         '/v1': {
           target: backendUrl,
-          changeOrigin: true
+          changeOrigin: true,
+          agent: proxyAgent,
+          headers: {
+            connection: 'close'
+          }
         },
         '/setup': {
           target: backendUrl,
-          changeOrigin: true
+          changeOrigin: true,
+          agent: proxyAgent,
+          headers: {
+            connection: 'close'
+          }
         }
       }
     }

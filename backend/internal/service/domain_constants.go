@@ -313,6 +313,10 @@ const (
 	// must be configured before exposing the entry point.
 	SettingKeyImageGenerationEnabled = "image_generation_enabled"
 
+	// SettingKeyChatCompletionEnabled is a DB-backed soft switch for the user-facing
+	// chat completion tool. Defaults to false because deployments should opt in.
+	SettingKeyChatCompletionEnabled = "chat_completion_enabled"
+
 	// =========================
 	// Overload Cooldown (529)
 	// =========================

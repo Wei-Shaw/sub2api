@@ -79,3 +79,20 @@ func TestGatewayRoutesOpenAIImagesPathsAreRegistered(t *testing.T) {
 		require.NotEqual(t, http.StatusNotFound, w.Code, "path=%s should hit OpenAI images handler", path)
 	}
 }
+
+func TestGatewayRoutesOpenAIChatCompletionAppPathIsRegistered(t *testing.T) {
+	router := newGatewayRoutesTestRouter()
+
+	for _, path := range []string{
+		"/v1/chat/completions",
+		"/chat/completions",
+		"/api/v1/chat/completions",
+	} {
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hi"}],"stream":true}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+		require.NotEqual(t, http.StatusNotFound, w.Code, "path=%s should hit OpenAI chat completions handler", path)
+	}
+}

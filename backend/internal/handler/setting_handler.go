@@ -85,6 +85,8 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 
 		ImageGenerationEnabled: settings.ImageGenerationEnabled,
 
+		ChatCompletionEnabled: settings.ChatCompletionEnabled,
+
 		AffiliateEnabled: settings.AffiliateEnabled,
 
 		RiskControlEnabled: settings.RiskControlEnabled,

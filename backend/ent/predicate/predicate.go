@@ -39,6 +39,12 @@ type ChannelMonitorHistory func(*sql.Selector)
 // ChannelMonitorRequestTemplate is the predicate function for channelmonitorrequesttemplate builders.
 type ChannelMonitorRequestTemplate func(*sql.Selector)
 
+// ChatMessage is the predicate function for chatmessage builders.
+type ChatMessage func(*sql.Selector)
+
+// ChatSession is the predicate function for chatsession builders.
+type ChatSession func(*sql.Selector)
+
 // ErrorPassthroughRule is the predicate function for errorpassthroughrule builders.
 type ErrorPassthroughRule func(*sql.Selector)
 

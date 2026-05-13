@@ -98,6 +98,26 @@ func TestSettingService_GetPublicSettings_DefaultsImageGenerationFeatureFlagOff(
 	require.False(t, settings.ImageGenerationEnabled)
 }
 
+func TestSettingService_GetPublicSettings_ExposesChatCompletionFeatureFlag(t *testing.T) {
+	svc := NewSettingService(&settingPublicRepoStub{
+		values: map[string]string{
+			SettingKeyChatCompletionEnabled: "true",
+		},
+	}, &config.Config{})
+
+	settings, err := svc.GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.True(t, settings.ChatCompletionEnabled)
+}
+
+func TestSettingService_GetPublicSettings_DefaultsChatCompletionFeatureFlagOff(t *testing.T) {
+	svc := NewSettingService(&settingPublicRepoStub{values: map[string]string{}}, &config.Config{})
+
+	settings, err := svc.GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.False(t, settings.ChatCompletionEnabled)
+}
+
 func TestSettingService_GetPublicSettings_ExposesForceEmailOnThirdPartySignup(t *testing.T) {
 	repo := &settingPublicRepoStub{
 		values: map[string]string{

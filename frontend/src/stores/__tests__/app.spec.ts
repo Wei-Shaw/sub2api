@@ -3,27 +3,66 @@ import { setActivePinia, createPinia } from 'pinia'
 import { useAppStore } from '@/stores/app'
 import { getPublicSettings } from '@/api/auth'
 
-// Mock API 模块
-vi.mock('@/api/admin/system', () => ({
-  checkUpdates: vi.fn(),
+vi.mock('@/i18n', () => ({
+  i18n: {
+    global: {
+      t: (key: string) => key,
+    },
+  },
 }))
 
 vi.mock('@/api/auth', () => ({
   getPublicSettings: vi.fn(),
 }))
 
+function ensureLocalStorage(): Storage {
+  const current = globalThis.localStorage
+  if (
+    current &&
+    typeof current.getItem === 'function' &&
+    typeof current.setItem === 'function' &&
+    typeof current.removeItem === 'function' &&
+    typeof current.clear === 'function'
+  ) {
+    return current
+  }
+
+  const data = new Map<string, string>()
+  const storage = {
+    get length() {
+      return data.size
+    },
+    clear: vi.fn(() => data.clear()),
+    getItem: vi.fn((key: string) => data.get(key) ?? null),
+    key: vi.fn((index: number) => Array.from(data.keys())[index] ?? null),
+    removeItem: vi.fn((key: string) => data.delete(key)),
+    setItem: vi.fn((key: string, value: string) => data.set(key, String(value))),
+  } as Storage
+
+  Object.defineProperty(globalThis, 'localStorage', {
+    value: storage,
+    configurable: true,
+  })
+  Object.defineProperty(window, 'localStorage', {
+    value: storage,
+    configurable: true,
+  })
+
+  return storage
+}
+
 describe('useAppStore', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.useFakeTimers()
-    localStorage.clear()
+    ensureLocalStorage().clear()
     // 清除 window.__APP_CONFIG__
     delete (window as any).__APP_CONFIG__
   })
 
   afterEach(() => {
     vi.useRealTimers()
-    localStorage.clear()
+    ensureLocalStorage().clear()
   })
 
   // --- Toast 消息管理 ---

@@ -109,6 +109,11 @@ export const FeatureFlags = {
     mode: 'opt-in',
     label: 'Image Generation',
   }),
+  chatCompletion: defineFlag({
+    key: 'chat_completion_enabled',
+    mode: 'opt-in',
+    label: 'Chat Completion',
+  }),
   payment: defineFlag({
     key: 'payment_enabled',
     mode: 'opt-out',

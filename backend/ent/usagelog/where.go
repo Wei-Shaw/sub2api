@@ -2065,6 +2065,29 @@ func HasSubscriptionWith(preds ...predicate.UserSubscription) predicate.UsageLog
 	})
 }
 
+// HasChatMessages applies the HasEdge predicate on the "chat_messages" edge.
+func HasChatMessages() predicate.UsageLog {
+	return predicate.UsageLog(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, ChatMessagesTable, ChatMessagesColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasChatMessagesWith applies the HasEdge predicate on the "chat_messages" edge with a given conditions (other predicates).
+func HasChatMessagesWith(preds ...predicate.ChatMessage) predicate.UsageLog {
+	return predicate.UsageLog(func(s *sql.Selector) {
+		step := newChatMessagesStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // And groups predicates with the AND operator between them.
 func And(predicates ...predicate.UsageLog) predicate.UsageLog {
 	return predicate.UsageLog(sql.AndPredicates(predicates...))

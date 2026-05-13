@@ -20,7 +20,7 @@ describe('AppSidebar custom SVG styles', () => {
 })
 
 describe('AppSidebar header styles', () => {
-  it('does not clip the version badge dropdown', () => {
+  it('does not clip header content', () => {
     const sidebarHeaderBlockMatch = styleSource.match(/\.sidebar-header\s*\{[\s\S]*?\n {2}\}/)
     const sidebarBrandBlockMatch = componentSource.match(/\.sidebar-brand\s*\{[\s\S]*?\n\}/)
 
@@ -28,6 +28,12 @@ describe('AppSidebar header styles', () => {
     expect(sidebarBrandBlockMatch).not.toBeNull()
     expect(sidebarHeaderBlockMatch?.[0]).not.toContain('@apply overflow-hidden;')
     expect(sidebarBrandBlockMatch?.[0]).not.toContain('overflow: hidden;')
+  })
+
+  it('does not trigger official update checks from the sidebar', () => {
+    expect(componentSource).toContain('<VersionBadge :version="siteVersion" />')
+    expect(componentSource).not.toContain('fetchVersion')
+    expect(componentSource).not.toContain('checkUpdates')
   })
 })
 
@@ -37,9 +43,13 @@ describe('AppSidebar secondary-development navigation contract', () => {
     expect(componentSource).toContain("path: '/models'")
     expect(componentSource).toContain("path: '/monitor', label: t('nav.channelMonitor'), icon: SignalIcon, featureFlag: flagChannelMonitor")
     expect(componentSource).toContain("path: '/images', label: t('nav.imageGeneration'), icon: PhotoIcon, featureFlag: flagImageGeneration")
+    expect(componentSource).toContain("path: '/chat', label: t('nav.chatCompletion'), icon: ChatIcon, featureFlag: flagChatCompletion")
+    expect(componentSource.indexOf("path: '/images'")).toBeLessThan(componentSource.indexOf("path: '/chat'"))
+    expect(componentSource.indexOf("path: '/chat'")).toBeLessThan(componentSource.indexOf("path: '/usage'"))
     expect(componentSource).toContain("path: '/recharge-subscription', label: t('nav.rechargeSubscription'), icon: RechargeSubscriptionIcon, featureFlag: flagPayment")
     expect(componentSource).not.toContain("path: '/docs'")
     expect(componentSource).toContain('const flagImageGeneration = makeSidebarFlag(FeatureFlags.imageGeneration)')
+    expect(componentSource).toContain('const flagChatCompletion = makeSidebarFlag(FeatureFlags.chatCompletion)')
     expect(componentSource).toContain("path: '/recharge-subscription'")
     expect(componentSource).not.toContain("path: '/monitor', label: t('nav.channelStatus')")
   })

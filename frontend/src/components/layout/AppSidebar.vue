@@ -444,6 +444,21 @@ const PhotoIcon = {
     )
 }
 
+const ChatIcon = {
+  render: () =>
+    h(
+      'svg',
+      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
+      [
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M8.625 9.75h6.75m-6.75 3h4.5m8.25-1.5c0 4.556-4.03 8.25-9 8.25a9.77 9.77 0 01-3.35-.586L3.75 20.25l1.336-4.009A7.58 7.58 0 013.375 11.25c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z'
+        })
+      ]
+    )
+}
+
 const GlobeIcon = {
   render: () =>
     h(
@@ -671,6 +686,7 @@ const flagChannelMonitor = makeSidebarFlag(FeatureFlags.channelMonitor)
 const flagPayment = makeSidebarFlag(FeatureFlags.payment)
 const flagAvailableChannels = makeSidebarFlag(FeatureFlags.availableChannels)
 const flagImageGeneration = makeSidebarFlag(FeatureFlags.imageGeneration)
+const flagChatCompletion = makeSidebarFlag(FeatureFlags.chatCompletion)
 const flagAffiliate = makeSidebarFlag(FeatureFlags.affiliate)
 const flagRiskControl = makeSidebarFlag(FeatureFlags.riskControl)
 const flagOpsMonitoring = () => adminSettingsStore.opsMonitoringEnabled
@@ -690,6 +706,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
     { path: '/monitor', label: t('nav.channelMonitor'), icon: SignalIcon, featureFlag: flagChannelMonitor },
     { path: '/images', label: t('nav.imageGeneration'), icon: PhotoIcon, featureFlag: flagImageGeneration },
+    { path: '/chat', label: t('nav.chatCompletion'), icon: ChatIcon, featureFlag: flagChatCompletion },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
     { path: '/recharge-subscription', label: t('nav.rechargeSubscription'), icon: RechargeSubscriptionIcon, featureFlag: flagPayment },
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },

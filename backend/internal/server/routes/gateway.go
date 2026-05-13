@@ -161,6 +161,13 @@ func RegisterGatewayRoutes(
 		}
 		h.Gateway.ChatCompletions(c)
 	})
+	r.POST("/api/v1/chat/completions", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, func(c *gin.Context) {
+		if getGroupPlatform(c) == service.PlatformOpenAI {
+			h.OpenAIGateway.ChatCompletions(c)
+			return
+		}
+		h.Gateway.ChatCompletions(c)
+	})
 	r.POST("/images/generations", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, func(c *gin.Context) {
 		openAIImagesHandler(c)
 	})
