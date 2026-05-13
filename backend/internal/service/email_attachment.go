@@ -92,10 +92,17 @@ func buildMultipartMessage(from, to, subject, body string, attachments []EmailAt
 	// Attachment parts.
 	for _, att := range attachments {
 		mimeType := strings.TrimSpace(att.MimeType)
+		// Sanitize MIME type for defense-in-depth: strip CR/LF and quote
+		// characters that could break the header or `name="..."` parameter.
+		mimeType = sanitizeEmailHeader(mimeType)
+		mimeType = strings.ReplaceAll(mimeType, `"`, `_`)
 		if mimeType == "" {
 			mimeType = "application/octet-stream"
 		}
-		filename := att.Filename
+		filename := sanitizeEmailHeader(att.Filename)
+		// Also strip any embedded quote characters that would break the
+		// legacy `filename="..."` parameter.
+		filename = strings.ReplaceAll(filename, `"`, `_`)
 		if filename == "" {
 			filename = "attachment"
 		}
@@ -112,7 +119,7 @@ func buildMultipartMessage(from, to, subject, body string, attachments []EmailAt
 		if err != nil {
 			return nil, err
 		}
-		b64 := base64.NewEncoder(base64.StdEncoding, lineWrappingWriter{aw})
+		b64 := base64.NewEncoder(base64.StdEncoding, aw)
 		if _, err := b64.Write(att.Content); err != nil {
 			return nil, err
 		}
@@ -144,28 +151,4 @@ func asciiFallbackFilename(name string) string {
 		return "attachment"
 	}
 	return out
-}
-
-// lineWrappingWriter wraps base64 output at 76 chars per RFC 2045.
-type lineWrappingWriter struct{ inner interface{ Write([]byte) (int, error) } }
-
-func (w lineWrappingWriter) Write(p []byte) (int, error) {
-	const lineLen = 76
-	written := 0
-	for len(p) > 0 {
-		chunk := p
-		if len(chunk) > lineLen {
-			chunk = chunk[:lineLen]
-		}
-		n, err := w.inner.Write(chunk)
-		written += n
-		if err != nil {
-			return written, err
-		}
-		if _, err := w.inner.Write([]byte("\r\n")); err != nil {
-			return written, err
-		}
-		p = p[len(chunk):]
-	}
-	return written, nil
 }
