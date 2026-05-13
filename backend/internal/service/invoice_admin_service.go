@@ -520,6 +520,7 @@ func saveInvoiceUpload(reqID int64, fh *multipart.FileHeader) (storedPath, store
 	if originalName == "" {
 		originalName = "invoice"
 	}
+	// safeName is used only for the on-disk filename (ASCII-safe filesystem path).
 	safeName := invoiceFileNameSafe.ReplaceAllString(filepath.Base(originalName), "_")
 	if safeName == "" || safeName == "." || safeName == ".." {
 		safeName = "invoice"
@@ -532,7 +533,13 @@ func saveInvoiceUpload(reqID int64, fh *multipart.FileHeader) (storedPath, store
 		}
 		safeName = base + ext
 	}
-	storedName = safeName
+	// storedName is the display name returned to clients; keep original so Chinese/Unicode filenames round-trip correctly.
+	displayName := originalName
+	if len(displayName) > 255 {
+		ext := filepath.Ext(displayName)
+		displayName = displayName[:255-len(ext)] + ext
+	}
+	storedName = displayName
 
 	finalName := fmt.Sprintf("inv_%d_%d_%s", reqID, time.Now().UnixNano(), safeName)
 	storedPath = filepath.Join(dir, finalName)
