@@ -66,6 +66,7 @@ export interface CheckoutInfoResponse {
   balance_disabled: boolean
   balance_recharge_multiplier: number
   recharge_fee_rate: number
+  quick_amounts: number[]
   help_text: string
   help_image_url: string
   stripe_publishable_key: string
