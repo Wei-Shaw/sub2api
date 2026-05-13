@@ -17,8 +17,9 @@
         </router-link>
 
         <nav class="home-header__menu">
+          <a href="#partners" class="home-header__link">{{ isZh ? '合作伙伴' : 'Partners' }}</a>
+          <a href="#why" class="home-header__link">{{ isZh ? '为什么选择' : 'Why us' }}</a>
           <a href="#experience" class="home-header__link">{{ isZh ? '接入体验' : 'Experience' }}</a>
-          <a href="#models" class="home-header__link">{{ isZh ? '模型支持' : 'Models' }}</a>
           <a href="#pricing" class="home-header__link">{{ isZh ? '定价' : 'Pricing' }}</a>
           <a v-if="docUrl" :href="docUrl" target="_blank" rel="noopener noreferrer" class="home-header__link">
             {{ isZh ? '文档' : 'Docs' }}
@@ -75,7 +76,7 @@
       </section>
 
       <!-- ── ENTERPRISE PARTNERS ── -->
-      <section class="partners-section">
+      <section id="partners" class="partners-section">
         <div class="partners-section__container">
           <div class="partners-section__header">
             <span class="eyebrow-badge mirror-reveal">{{ isZh ? '合作伙伴' : 'Partners' }}</span>
@@ -117,7 +118,7 @@
       </section>
 
       <!-- ── WHY CHOOSE ── -->
-      <section class="why-choose">
+      <section id="why" class="why-choose">
         <div class="why-choose__container">
           <div class="why-choose__header mirror-reveal">
             <span class="eyebrow-badge">{{ isZh ? '为什么选择我们' : 'Why choose us' }}</span>
