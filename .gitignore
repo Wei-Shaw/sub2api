@@ -127,6 +127,23 @@ backend/cmd/server/server
 deploy/docker-compose.override.yml
 .gocache/
 vite.config.js
+
+# ===================
+# 开发临时产物
+# ===================
+# Playwright / Superpowers 插件缓存
+.playwright-mcp/
+.superpowers/
+
+# 开发截图 / 手动测试文件
+*.png
+*.jpg
+*.jpeg
+*.gif
+!frontend/public/**
+!frontend/src/**
+*.pdf
+!docs/**/*.pdf
 docs/*
 !docs/PAYMENT.md
 !docs/PAYMENT_CN.md
