@@ -422,16 +422,10 @@ REDACTED
 //
 //   - base 已是 /chat/completions：原样返回
 //   - base 以 /v1 结尾：追加 /chat/completions
+//   - base 以其他版本段结尾（如 /v4）：追加 /chat/completions
 //   - 其他情况：追加 /v1/chat/completions
 //
 // 与 buildOpenAIResponsesURL 是姐妹函数。
 func buildOpenAIChatCompletionsURL(base string) string {
-	normalized := strings.TrimRight(strings.TrimSpace(base), "/")
-	if strings.HasSuffix(normalized, "/chat/completions") {
-		return normalized
-REDACTED
-	if strings.HasSuffix(normalized, "/v1") {
-		return normalized + "/chat/completions"
-REDACTED
-	return normalized + "/v1/chat/completions"
+	return buildOpenAIEndpointURL(base, "/v1/chat/completions")
 REDACTED
