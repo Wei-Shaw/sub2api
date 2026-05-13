@@ -25,6 +25,11 @@ const (
 	// No usage recording or failover; only billing eligibility and
 	// account selection are required.
 	ProtocolCountTokens = "count_tokens"
+
+	// ProtocolResponsesWS dispatches OpenAI Responses WebSocket v2
+	// sessions through the WS pipeline (ExecuteWS). Unlike HTTP
+	// protocols, no SSE ping or failover loop is used.
+	ProtocolResponsesWS = "responses_ws"
 )
 
 // ForwardRequest is the protocol-agnostic request context passed to
