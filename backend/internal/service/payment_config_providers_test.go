@@ -45,6 +45,13 @@ func TestValidateProviderRequest(t *testing.T) {
 			wantErr:        false,
 		},
 		{
+			name:           "valid airwallex provider",
+			providerKey:    payment.TypeAirwallex,
+			providerName:   "Airwallex Provider",
+			supportedTypes: payment.TypeAirwallex,
+			wantErr:        false,
+		},
+		{
 			name:           "valid alipay provider",
 			providerKey:    "alipay",
 			providerName:   "Alipay Direct",
@@ -120,6 +127,7 @@ func TestIsSensitiveProviderConfigField(t *testing.T) {
 		{"stripe", "webhookSecret", true},
 		{"stripe", "SecretKey", true}, // case-insensitive
 		{"stripe", "publishableKey", false},
+		{"stripe", "currency", false},
 		{"stripe", "appId", false},
 
 		// Alipay
@@ -141,6 +149,14 @@ func TestIsSensitiveProviderConfigField(t *testing.T) {
 		{"easypay", "pkey", true},
 		{"easypay", "pid", false},
 		{"easypay", "apiBase", false},
+
+		// Airwallex
+		{payment.TypeAirwallex, "apiKey", true},
+		{payment.TypeAirwallex, "webhookSecret", true},
+		{payment.TypeAirwallex, "clientId", false},
+		{payment.TypeAirwallex, "apiBase", false},
+		{payment.TypeAirwallex, "accountId", false},
+		{payment.TypeAirwallex, "currency", false},
 
 		// Unknown provider: never sensitive
 		{"unknown", "secretKey", false},
@@ -395,6 +411,42 @@ func TestUpdateProviderInstanceRejectsProtectedConfigChangesWhilePendingOrders(t
 			fieldName:     "pid",
 			wantValue:     "pid-test",
 		},
+		{
+			name:          "stripe currency",
+			providerKey:   payment.TypeStripe,
+			createConfig:  validStripeProviderConfig,
+			supportedType: []string{payment.TypeStripe},
+			updateConfig:  map[string]string{"currency": "HKD"},
+			fieldName:     "currency",
+			wantValue:     "CNY",
+		},
+		{
+			name:          "airwallex accountId",
+			providerKey:   payment.TypeAirwallex,
+			createConfig:  validAirwallexProviderConfig,
+			supportedType: []string{payment.TypeAirwallex},
+			updateConfig:  map[string]string{"accountId": "acct-updated"},
+			fieldName:     "accountId",
+			wantValue:     "acct-test",
+		},
+		{
+			name:          "airwallex currency",
+			providerKey:   payment.TypeAirwallex,
+			createConfig:  validAirwallexProviderConfig,
+			supportedType: []string{payment.TypeAirwallex},
+			updateConfig:  map[string]string{"currency": "HKD"},
+			fieldName:     "currency",
+			wantValue:     "CNY",
+		},
+		{
+			name:          "airwallex webhookSecret",
+			providerKey:   payment.TypeAirwallex,
+			createConfig:  validAirwallexProviderConfig,
+			supportedType: []string{payment.TypeAirwallex},
+			updateConfig:  map[string]string{"webhookSecret": "whsec-updated"},
+			fieldName:     "webhookSecret",
+			wantValue:     "whsec-test",
+		},
 	}
 
 	for _, tc := range tests {
@@ -506,6 +558,39 @@ func TestUpdateProviderInstanceAllowsSafeConfigChangesWhilePendingOrders(t *test
 	}
 }
 
+func TestUpdateProviderInstanceClearsAirwallexAccountID(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	svc := &PaymentConfigService{
+		entClient:     client,
+		encryptionKey: []byte("0123456789abcdef0123456789abcdef"),
+	}
+
+	instance, err := svc.CreateProviderInstance(ctx, CreateProviderInstanceRequest{
+		ProviderKey:    payment.TypeAirwallex,
+		Name:           "airwallex-clear-account",
+		Config:         validAirwallexProviderConfig(t),
+		SupportedTypes: []string{payment.TypeAirwallex},
+		Enabled:        true,
+	})
+	require.NoError(t, err)
+
+	updated, err := svc.UpdateProviderInstance(ctx, instance.ID, UpdateProviderInstanceRequest{
+		Config: map[string]string{"accountId": ""},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, updated)
+
+	saved, err := client.PaymentProviderInstance.Get(ctx, instance.ID)
+	require.NoError(t, err)
+	cfg, err := svc.decryptConfig(saved.Config)
+	require.NoError(t, err)
+	require.Empty(t, cfg["accountId"])
+	require.Equal(t, "client-id-test", cfg["clientId"])
+}
+
 func createPendingProviderConfigOrder(t *testing.T, ctx context.Context, client *dbent.Client, instance *dbent.PaymentProviderInstance) {
 	t.Helper()
 
@@ -545,8 +630,23 @@ func providerPendingOrderPaymentType(providerKey string) string {
 		return payment.TypeWxpay
 	case payment.TypeAlipay:
 		return payment.TypeAlipay
+	case payment.TypeAirwallex:
+		return payment.TypeAirwallex
+	case payment.TypeStripe:
+		return payment.TypeStripe
 	default:
 		return payment.TypeAlipay
+	}
+}
+
+func validStripeProviderConfig(t *testing.T) map[string]string {
+	t.Helper()
+
+	return map[string]string{
+		"secretKey":      "sk_test_123",
+		"publishableKey": "pk_test_123",
+		"webhookSecret":  "whsec-test",
+		"currency":       "CNY",
 	}
 }
 
@@ -574,6 +674,19 @@ func validEasyPayProviderConfig(t *testing.T) map[string]string {
 		"apiBase":   "https://pay.example.com",
 		"notifyUrl": "https://merchant.example.com/easypay/notify",
 		"returnUrl": "https://merchant.example.com/easypay/return",
+	}
+}
+
+func validAirwallexProviderConfig(t *testing.T) map[string]string {
+	t.Helper()
+
+	return map[string]string{
+		"clientId":      "client-id-test",
+		"apiKey":        "api-key-test",
+		"webhookSecret": "whsec-test",
+		"apiBase":       "https://api-demo.airwallex.com/api/v1",
+		"accountId":     "acct-test",
+		"currency":      "CNY",
 	}
 }
 

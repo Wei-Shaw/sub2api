@@ -21,7 +21,7 @@
         @click="method.available && emit('select', method.type)"
       >
         <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-50 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700">
-          <img :src="methodIcon(method.type)" :alt="t(`payment.methods.${method.type}`)" class="h-7 w-7" />
+          <img :src="methodIcon(method.type)" :alt="t(`payment.methods.${method.type}`)" class="h-7 w-7 object-contain" />
         </span>
         <span class="min-w-0 flex-1">
           <span class="flex items-center gap-2">
@@ -60,6 +60,7 @@ import { METHOD_ORDER } from './providerConfig'
 import alipayIcon from '@/assets/icons/alipay.svg'
 import wxpayIcon from '@/assets/icons/wxpay.svg'
 import stripeIcon from '@/assets/icons/stripe.svg'
+import airwallexIcon from '@/assets/icons/airwallex.svg'
 
 export interface PaymentMethodOption {
   type: string
@@ -82,6 +83,7 @@ const METHOD_ICONS: Record<string, string> = {
   alipay: alipayIcon,
   wxpay: wxpayIcon,
   stripe: stripeIcon,
+  airwallex: airwallexIcon,
 }
 
 const sortedMethods = computed(() => {
@@ -96,6 +98,7 @@ const sortedMethods = computed(() => {
 function methodIcon(type: string): string {
   if (type.includes('alipay')) return METHOD_ICONS.alipay
   if (type.includes('wxpay')) return METHOD_ICONS.wxpay
+  if (type === 'airwallex') return METHOD_ICONS.airwallex
   return METHOD_ICONS[type] || alipayIcon
 }
 
@@ -103,6 +106,7 @@ function methodDescription(type: string): string {
   if (type.includes('alipay')) return '跳转至支付宝安全收银台完成付款'
   if (type.includes('wxpay')) return '使用微信支付完成订单付款'
   if (type === 'stripe') return '支持国际银行卡与 Stripe 通道'
+  if (type === 'airwallex') return '支持国际银行卡与 Airwallex 通道'
   return '订单创建后进入安全支付页面'
 }
 
@@ -110,6 +114,7 @@ function methodSelectedClass(type: string): string {
   if (type.includes('alipay')) return 'border-[#02A9F1] bg-sky-50 shadow-md shadow-sky-900/10 ring-2 ring-sky-500/10 dark:bg-sky-950/40'
   if (type.includes('wxpay')) return 'border-[#09BB07] bg-emerald-50 shadow-md shadow-emerald-900/10 ring-2 ring-emerald-500/10 dark:bg-emerald-950/40'
   if (type === 'stripe') return 'border-[#676BE5] bg-indigo-50 shadow-md shadow-indigo-900/10 ring-2 ring-indigo-500/10 dark:bg-indigo-950/40'
+  if (type === 'airwallex') return 'border-[#FF6B3D] bg-orange-50 shadow-md shadow-orange-900/10 ring-2 ring-orange-500/10 dark:bg-orange-950/40'
   return 'border-blue-500 bg-blue-50 shadow-md shadow-blue-900/10 ring-2 ring-blue-500/10 dark:bg-blue-950/40'
 }
 </script>

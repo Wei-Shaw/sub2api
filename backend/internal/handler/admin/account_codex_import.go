@@ -211,9 +211,7 @@ func (h *AccountHandler) importCodexSessions(ctx context.Context, req CodexSessi
 			})
 			continue
 		}
-		for _, warning := range expiryWarnings {
-			item.WarningTexts = append(item.WarningTexts, warning)
-		}
+		item.WarningTexts = append(item.WarningTexts, expiryWarnings...)
 		if credentialExpiresAt != nil {
 			item.Credentials["expires_at"] = credentialExpiresAt.Format(time.RFC3339)
 		}
@@ -565,7 +563,7 @@ func normalizeCodexImportEntry(entry codexImportEntry) (*codexImportAccount, err
 	}
 	if item.IDToken != "" {
 		item.Credentials["id_token"] = item.IDToken
-		enrichCodexImportAccountFromJWT(item, item.IDToken, false, now)
+		_ = enrichCodexImportAccountFromJWT(item, item.IDToken, false, now)
 	}
 	if err := enrichCodexImportAccountFromJWT(item, item.AccessToken, true, now); err != nil {
 		return nil, err

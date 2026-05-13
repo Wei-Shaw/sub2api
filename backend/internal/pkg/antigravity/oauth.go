@@ -1,6 +1,7 @@
 package antigravity
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -27,6 +29,12 @@ const (
 
 	// AntigravityOAuthClientSecretEnv 是 Antigravity OAuth client_secret 的环境变量名。
 	AntigravityOAuthClientSecretEnv = "ANTIGRAVITY_OAUTH_CLIENT_SECRET"
+
+	// AntigravityUserAgentVersionEnv 是 Antigravity User-Agent 版本号的环境变量名。
+	AntigravityUserAgentVersionEnv = "ANTIGRAVITY_USER_AGENT_VERSION"
+
+	// DefaultUserAgentVersion 是未通过环境变量或后台设置覆盖时使用的默认版本号。
+	DefaultUserAgentVersion = "1.23.2"
 
 	// 固定的 redirect_uri（用户需手动复制 code）
 	RedirectURI = "http://localhost:8085/callback"
@@ -49,15 +57,24 @@ const (
 	antigravityDailyBaseURL = "https://daily-cloudcode-pa.sandbox.googleapis.com"
 )
 
-// defaultUserAgentVersion 可通过环境变量 ANTIGRAVITY_USER_AGENT_VERSION 配置，默认 1.20.5
-var defaultUserAgentVersion = "1.21.9"
+var userAgentVersionPattern = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
+
+// UserAgentVersionResolver 提供运行时 User-Agent 版本号覆盖能力。
+type UserAgentVersionResolver func(ctx context.Context) string
+
+var (
+	// defaultUserAgentVersion 可通过环境变量 ANTIGRAVITY_USER_AGENT_VERSION 配置。
+	defaultUserAgentVersion  = DefaultUserAgentVersion
+	userAgentVersionMu       sync.RWMutex
+	userAgentVersionResolver UserAgentVersionResolver
+)
 
 // defaultClientSecret 可通过环境变量 ANTIGRAVITY_OAUTH_CLIENT_SECRET 配置
 var defaultClientSecret = "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"
 
 func init() {
 	// 从环境变量读取版本号，未设置则使用默认值
-	if version := os.Getenv("ANTIGRAVITY_USER_AGENT_VERSION"); version != "" {
+	if version := NormalizeUserAgentVersion(os.Getenv(AntigravityUserAgentVersionEnv)); version != "" {
 		defaultUserAgentVersion = version
 	}
 	// 从环境变量读取 client_secret，未设置则使用默认值
@@ -66,9 +83,59 @@ func init() {
 	}
 }
 
-// GetUserAgent 返回当前配置的 User-Agent
-func GetUserAgent() string {
+// NormalizeUserAgentVersion 校验并归一化 Antigravity User-Agent 版本号。
+func NormalizeUserAgentVersion(version string) string {
+	version = strings.TrimSpace(version)
+	if version == "" || !userAgentVersionPattern.MatchString(version) {
+		return ""
+	}
+	return version
+}
+
+// GetDefaultUserAgentVersion 返回配置文件/环境变量层面的默认版本号。
+func GetDefaultUserAgentVersion() string {
+	return defaultUserAgentVersion
+}
+
+// SetUserAgentVersionResolver 设置运行时版本号解析器，通常由后台 settings 注入。
+func SetUserAgentVersionResolver(resolver UserAgentVersionResolver) {
+	userAgentVersionMu.Lock()
+	defer userAgentVersionMu.Unlock()
+	userAgentVersionResolver = resolver
+}
+
+// GetUserAgentVersionForContext 返回当前请求应使用的 Antigravity 版本号。
+func GetUserAgentVersionForContext(ctx context.Context) string {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	userAgentVersionMu.RLock()
+	resolver := userAgentVersionResolver
+	userAgentVersionMu.RUnlock()
+	if resolver != nil {
+		if version := NormalizeUserAgentVersion(resolver(ctx)); version != "" {
+			return version
+		}
+	}
+	return defaultUserAgentVersion
+}
+
+// BuildUserAgent 使用指定版本号构造 User-Agent；版本为空或非法时回退默认值。
+func BuildUserAgent(version string) string {
+	if normalized := NormalizeUserAgentVersion(version); normalized != "" {
+		return fmt.Sprintf("antigravity/%s windows/amd64", normalized)
+	}
 	return fmt.Sprintf("antigravity/%s windows/amd64", defaultUserAgentVersion)
+}
+
+// GetUserAgentForContext 返回当前请求应使用的 User-Agent。
+func GetUserAgentForContext(ctx context.Context) string {
+	return BuildUserAgent(GetUserAgentVersionForContext(ctx))
+}
+
+// GetUserAgent 返回当前配置的 User-Agent。
+func GetUserAgent() string {
+	return GetUserAgentForContext(context.Background())
 }
 
 func getClientSecret() (string, error) {

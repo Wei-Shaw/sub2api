@@ -101,11 +101,19 @@ func (s *PaymentService) confirmPayment(ctx context.Context, oid int64, tradeNo 
 		})
 		return fmt.Errorf("invalid paid amount from provider: %v", paid)
 	}
-	if math.Abs(paid-o.PayAmount) > amountToleranceCNY {
+	if math.Abs(paid-o.PayAmount) > paymentAmountToleranceForCurrency(PaymentOrderCurrency(o)) {
 		s.writeAuditLog(ctx, o.ID, "PAYMENT_AMOUNT_MISMATCH", pk, map[string]any{"expected": o.PayAmount, "paid": paid, "tradeNo": tradeNo})
-		return fmt.Errorf("amount mismatch: expected %.2f, got %.2f", o.PayAmount, paid)
+		return fmt.Errorf("amount mismatch: expected %s, got %s", strconv.FormatFloat(o.PayAmount, 'f', -1, 64), strconv.FormatFloat(paid, 'f', -1, 64))
 	}
 	return s.toPaid(ctx, o, tradeNo, paid, pk)
+}
+
+func paymentAmountToleranceForCurrency(currency string) float64 {
+	minorUnit := payment.CurrencyMinorUnit(currency)
+	if minorUnit <= 2 {
+		return amountToleranceCNY
+	}
+	return math.Pow10(-minorUnit) / 2
 }
 
 func isValidProviderAmount(amount float64) bool {
