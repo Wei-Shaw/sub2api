@@ -294,6 +294,13 @@ type OpsSystemMetricsSnapshot struct {
 	MemoryTotalMB      *int64   `json:"memory_total_mb"`
 	MemoryUsagePercent *float64 `json:"memory_usage_percent"`
 
+	// Disk metrics are computed live at dashboard request time (never persisted).
+	// Path describes the filesystem being measured (typically the working directory's volume).
+	DiskPath         *string  `json:"disk_path,omitempty"`
+	DiskUsedMB       *int64   `json:"disk_used_mb,omitempty"`
+	DiskTotalMB      *int64   `json:"disk_total_mb,omitempty"`
+	DiskUsagePercent *float64 `json:"disk_usage_percent,omitempty"`
+
 	DBOK    *bool `json:"db_ok"`
 	RedisOK *bool `json:"redis_ok"`
 

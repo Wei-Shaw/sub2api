@@ -310,6 +310,12 @@ export interface OpsSystemMetricsSnapshot {
   memory_total_mb?: number | null
   memory_usage_percent?: number | null
 
+  // Live disk usage of the server's working-directory volume (not persisted).
+  disk_path?: string | null
+  disk_used_mb?: number | null
+  disk_total_mb?: number | null
+  disk_usage_percent?: number | null
+
   db_ok?: boolean | null
   redis_ok?: boolean | null
 

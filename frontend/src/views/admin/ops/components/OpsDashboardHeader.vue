@@ -670,6 +670,30 @@ const memPercentClass = computed(() => {
   return 'text-emerald-600 dark:text-emerald-400'
 })
 
+const diskPercentValue = computed<number | null>(() => {
+  const v = systemMetrics.value?.disk_usage_percent
+  return typeof v === 'number' && Number.isFinite(v) ? v : null
+})
+
+const diskPercentClass = computed(() => {
+  const v = diskPercentValue.value
+  if (v == null) return 'text-gray-900 dark:text-white'
+  if (v >= 95) return 'text-rose-600 dark:text-rose-400'
+  if (v >= 85) return 'text-yellow-600 dark:text-yellow-400'
+  return 'text-emerald-600 dark:text-emerald-400'
+})
+
+function formatDiskCapacity(usedMB?: number | null, totalMB?: number | null): string {
+  if (usedMB == null || totalMB == null) return '-'
+  // Render in GB once values are large enough to read naturally.
+  if (totalMB >= 1024) {
+    const usedGB = usedMB / 1024
+    const totalGB = totalMB / 1024
+    return `${usedGB.toFixed(1)} / ${totalGB.toFixed(1)} GB`
+  }
+  return `${formatNumber(usedMB)} / ${formatNumber(totalMB)} MB`
+}
+
 const dbConnActiveValue = computed<number | null>(() => {
   const v = systemMetrics.value?.db_conn_active
   return typeof v === 'number' && Number.isFinite(v) ? v : null
@@ -1433,7 +1457,7 @@ function handleToolbarRefresh() {
 
     <!-- Integrated: System health (cards) -->
     <div v-if="overview" class="mt-2 border-t border-gray-100 pt-4 dark:border-dark-700">
-      <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
         <!-- CPU -->
         <div class="rounded-xl bg-gray-50 p-3 dark:bg-dark-900">
           <div class="flex items-center gap-1">
@@ -1463,6 +1487,20 @@ function handleToolbarRefresh() {
                 ? '-'
                 : `${formatNumber(systemMetrics.memory_used_mb)} / ${formatNumber(systemMetrics.memory_total_mb)} MB`
             }}
+          </div>
+        </div>
+
+        <!-- Storage -->
+        <div class="rounded-xl bg-gray-50 p-3 dark:bg-dark-900">
+          <div class="flex items-center gap-1">
+            <div class="text-[10px] font-bold uppercase tracking-wider text-gray-400">{{ t('admin.ops.storage') }}</div>
+            <HelpTooltip v-if="!props.fullscreen" :content="t('admin.ops.tooltips.storage')" />
+          </div>
+          <div class="mt-1 text-lg font-black" :class="diskPercentClass">
+            {{ diskPercentValue == null ? '-' : `${diskPercentValue.toFixed(1)}%` }}
+          </div>
+          <div v-if="!props.fullscreen" class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
+            {{ formatDiskCapacity(systemMetrics?.disk_used_mb, systemMetrics?.disk_total_mb) }}
           </div>
         </div>
 

@@ -891,7 +891,7 @@ onUnmounted(() => {
 
 /* ── TRANSFER EXPERIENCE ─────────────────────────────────────────────────── */
 .transfer-experience {
-  padding: 8rem 0;
+  padding: 5rem 0;
   background-color: #f8f9fa;
 }
 .dark .transfer-experience { background-color: #161b22; }
@@ -1118,7 +1118,7 @@ onUnmounted(() => {
 .dark .transfer-experience__footer-title { color: #e6edf3; }
 
 /* ── WHY CHOOSE ──────────────────────────────────────────────────────────── */
-.why-choose { padding: 6rem 0 8rem; background-color: #f8f9fa; }
+.why-choose { padding: 4rem 0 5rem; background-color: #f8f9fa; }
 .dark .why-choose { background-color: #161b22; }
 
 .why-choose__container { width: min(100% - 4rem, 1200px); margin: 0 auto; }
@@ -1198,7 +1198,7 @@ onUnmounted(() => {
 /* ── MODELS ──────────────────────────────────────────────────────────────── */
 .model-section {
   position: relative;
-  padding: 6rem 0;
+  padding: 4rem 0;
   background: #edf3ff;
 }
 .dark .model-section { background: #111827; }
@@ -1330,7 +1330,7 @@ onUnmounted(() => {
 .dark .model-card-new__sub { color: rgba(230,237,243,0.25); }
 
 /* ── IDE SECTION ─────────────────────────────────────────────────────────── */
-.ide-section { padding: 8rem 0; background-color: #f8f9fa; overflow: hidden; }
+.ide-section { padding: 5rem 0; background-color: #f8f9fa; overflow: hidden; }
 .dark .ide-section { background-color: #161b22; }
 
 .ide-section__container { width: min(100% - 4rem, 1200px); margin: 0 auto; }
@@ -1685,7 +1685,7 @@ onUnmounted(() => {
 /* ── STATS ───────────────────────────────────────────────────────────────── */
 .stats-section {
   position: relative;
-  padding: 6rem 0 8rem;
+  padding: 4rem 0 5rem;
   background:
     radial-gradient(ellipse 80% 60% at 20% 50%, rgba(79,140,255,0.06) 0%, transparent 60%),
     radial-gradient(ellipse 60% 50% at 80% 50%, rgba(99,102,241,0.05) 0%, transparent 55%),
@@ -1755,7 +1755,7 @@ onUnmounted(() => {
 
 /* ── ENTERPRISE PARTNERS ─────────────────────────────────────────────────── */
 .partners-section {
-  padding: 5rem 0 6rem;
+  padding: 3.5rem 0 4rem;
   background: #fff;
   overflow: hidden;
 }
