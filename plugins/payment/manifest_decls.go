@@ -211,6 +211,7 @@ var standaloneCallbackMeta = map[string]string{"chrome": "none", "requiresAuth":
 
 var routeDecls = []pluginsdk.RouteDecl{
 	// Admin
+	{Path: "/admin/payment", Name: "AdminPayment", ComponentPath: "PaymentDashboardView.vue"},
 	{Path: "/admin/payment/dashboard", Name: "AdminPaymentDashboard", ComponentPath: "PaymentDashboardView.vue"},
 	{Path: "/admin/payment/orders", Name: "AdminPaymentOrders", ComponentPath: "PaymentOrdersView.vue"},
 	{Path: "/admin/payment/plans", Name: "AdminPaymentPlans", ComponentPath: "PaymentPlansView.vue"},
