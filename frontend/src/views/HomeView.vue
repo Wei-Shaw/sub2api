@@ -1754,6 +1754,149 @@ onUnmounted(() => {
 .home-footer__links a:hover { color: #4f8cff; }
 .home-footer__links span { font-size: 0.8125rem; color: #9ca3af; }
 
+/* ── ENTERPRISE PARTNERS ─────────────────────────────────────────────────── */
+.partners-section {
+  padding: 5rem 0 6rem;
+  background: #fff;
+  overflow: hidden;
+}
+.dark .partners-section { background: #0d1117; }
+
+.partners-section__container {
+  width: min(100% - 4rem, 1200px);
+  margin: 0 auto;
+}
+
+.partners-section__header {
+  text-align: center;
+  margin-bottom: 3rem;
+}
+
+.partners-section__title {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: #1a1a2e;
+  margin: 1rem 0 0.75rem;
+  line-height: 1.3;
+}
+.dark .partners-section__title { color: #e6edf3; }
+
+.partners-section__em { color: #4f8cff; font-style: normal; }
+
+.partners-section__star {
+  display: inline-block;
+  margin-left: 0.5rem;
+  font-size: 1.8rem;
+  animation: twinkleStar 4s ease-in-out infinite;
+}
+
+.partners-section__subtitle {
+  font-size: 1rem;
+  color: rgba(26,26,46,0.5);
+}
+.dark .partners-section__subtitle { color: rgba(230,237,243,0.45); }
+
+/* Marquee wrapper */
+.partners-marquee-wrap {
+  position: relative;
+  overflow: hidden;
+}
+
+.partners-fade {
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 120px;
+  z-index: 2;
+  pointer-events: none;
+}
+.partners-fade--left  { left: 0;  background: linear-gradient(to right, #fff, transparent); }
+.partners-fade--right { right: 0; background: linear-gradient(to left,  #fff, transparent); }
+.dark .partners-fade--left  { background: linear-gradient(to right, #0d1117, transparent); }
+.dark .partners-fade--right { background: linear-gradient(to left,  #0d1117, transparent); }
+
+/* Tracks */
+.partners-track {
+  display: flex;
+  gap: 16px;
+  width: max-content;
+  padding: 6px 0;
+}
+.partners-track--fwd { animation: partnersFwd 32s linear infinite; }
+.partners-track--rev { animation: partnersRev 28s linear infinite; margin-top: 8px; }
+
+@keyframes partnersFwd {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+@keyframes partnersRev {
+  from { transform: translateX(-50%); }
+  to   { transform: translateX(0); }
+}
+
+.partners-marquee-wrap:hover .partners-track { animation-play-state: paused; }
+
+/* Chip */
+.partner-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 20px;
+  background: #fff;
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 12px;
+  white-space: nowrap;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease;
+  cursor: default;
+}
+.dark .partner-chip { background: #1c2128; border-color: rgba(255,255,255,0.08); }
+.partner-chip:hover {
+  border-color: #4f8cff;
+  box-shadow: 0 4px 16px rgba(79,140,255,0.14);
+  transform: translateY(-2px);
+}
+
+.partner-chip__logo {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+/* Wide wordmark logos need more width */
+.partner-chip__logo[src*="tencent"],
+.partner-chip__logo[src*="haier"],
+.partner-chip__logo[src*="byd"],
+.partner-chip__logo[src*="tcl"],
+.partner-chip__logo[src*="midea"] {
+  width: auto;
+  max-width: 64px;
+}
+/* Dark mode: invert dark-on-transparent logos */
+.dark .partner-chip__logo[src*="bytedance"],
+.dark .partner-chip__logo[src*="tcl"] {
+  filter: brightness(0) invert(1);
+  opacity: 0.85;
+}
+
+.partner-chip__name {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #1a1a2e;
+  letter-spacing: -0.01em;
+}
+.dark .partner-chip__name { color: #e6edf3; }
+
+/* reduced-motion: freeze animation */
+@media (prefers-reduced-motion: reduce) {
+  .partners-track {
+    animation: none !important;
+    flex-wrap: wrap;
+    width: auto;
+    justify-content: center;
+  }
+  .partners-track > [aria-hidden="true"] { display: none; }
+}
+
 /* ── RESPONSIVE ──────────────────────────────────────────────────────────── */
 @media (max-width: 1024px) {
   .ide-section__grid { grid-template-columns: 1fr; gap: 4rem; }
