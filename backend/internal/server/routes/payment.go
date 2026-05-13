@@ -66,7 +66,6 @@ func RegisterPaymentRoutes(
 			requests.POST("", paymentHandler.CreateInvoiceRequest)
 			requests.GET("/:id", paymentHandler.GetInvoiceRequest)
 			requests.DELETE("/:id", paymentHandler.CancelInvoiceRequest)
-			requests.GET("/:id/file", paymentHandler.DownloadInvoiceFile)
 		}
 	}
 

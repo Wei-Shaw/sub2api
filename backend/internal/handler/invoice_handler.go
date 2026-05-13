@@ -1,9 +1,6 @@
 package handler
 
 import (
-	"io"
-	"net/http"
-	"net/url"
 	"strconv"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -207,49 +204,3 @@ func (h *PaymentHandler) CancelInvoiceRequest(c *gin.Context) {
 	response.Success(c, gin.H{"message": "invoice request cancelled"})
 }
 
-// DownloadInvoiceFile streams the invoice file owned by the authenticated user.
-// GET /api/v1/invoice/requests/:id/file
-func (h *PaymentHandler) DownloadInvoiceFile(c *gin.Context) {
-	subject, ok := requireAuth(c)
-	if !ok {
-		return
-	}
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil || id <= 0 {
-		response.BadRequest(c, "Invalid invoice request ID")
-		return
-	}
-	streamInvoiceFile(c, h.paymentService, subject.UserID, id)
-}
-
-// streamInvoiceFile handles the shared streaming logic for user/admin downloads.
-// Pass userID=0 for admin scope.
-func streamInvoiceFile(c *gin.Context, svc *service.PaymentService, userID, reqID int64) {
-	f, req, err := svc.OpenInvoiceFile(c.Request.Context(), userID, reqID)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	defer f.Close()
-
-	stat, err := f.Stat()
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-
-	mime := "application/octet-stream"
-	if req.InvoiceFileMime != nil && *req.InvoiceFileMime != "" {
-		mime = *req.InvoiceFileMime
-	}
-	filename := "invoice"
-	if req.InvoiceFileName != nil && *req.InvoiceFileName != "" {
-		filename = *req.InvoiceFileName
-	}
-
-	c.Header("Content-Type", mime)
-	c.Header("Content-Length", strconv.FormatInt(stat.Size(), 10))
-	c.Header("Content-Disposition", `attachment; filename="`+filename+`"; filename*=UTF-8''`+url.PathEscape(filename))
-	c.Status(http.StatusOK)
-	_, _ = io.Copy(c.Writer, f)
-}
