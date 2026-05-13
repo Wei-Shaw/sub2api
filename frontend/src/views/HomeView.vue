@@ -315,7 +315,6 @@
           <p>&copy; {{ currentYear }} {{ brandName }}. {{ t('home.footer.allRightsReserved') }}</p>
           <div class="home-footer__links">
             <a v-if="docUrl" :href="docUrl" target="_blank" rel="noopener noreferrer">{{ isZh ? '文档' : 'Docs' }}</a>
-            <a :href="githubUrl" target="_blank" rel="noopener noreferrer">GitHub</a>
             <span v-if="contactInfo">{{ contactInfo }}</span>
           </div>
         </div>
