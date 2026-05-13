@@ -74,6 +74,48 @@
         </div>
       </section>
 
+      <!-- ── ENTERPRISE PARTNERS ── -->
+      <section class="partners-section">
+        <div class="partners-section__container">
+          <div class="partners-section__header">
+            <span class="eyebrow-badge mirror-reveal">{{ isZh ? '合作伙伴' : 'Partners' }}</span>
+            <h2 class="partners-section__title mirror-reveal">
+              {{ isZh ? '受' : 'Trusted by ' }}<em class="partners-section__em">{{ isZh ? '各行业头部企业' : 'industry leaders' }}</em>{{ isZh ? '信赖' : '' }}
+              <span class="partners-section__star">✦</span>
+            </h2>
+            <p class="partners-section__subtitle mirror-reveal">
+              {{ isZh ? '覆盖消费电子、金融、互联网、新能源等核心行业' : 'Spanning consumer electronics, finance, internet, and new energy' }}
+            </p>
+          </div>
+          <div class="partners-marquee-wrap mirror-reveal">
+            <div class="partners-fade partners-fade--left" aria-hidden="true"></div>
+            <div class="partners-fade partners-fade--right" aria-hidden="true"></div>
+            <!-- Row 1: scrolls left -->
+            <div class="partners-track partners-track--fwd">
+              <div v-for="p in partnersRow1" :key="p.id" class="partner-chip">
+                <img :src="p.logo" :alt="p.name" class="partner-chip__logo" />
+                <span class="partner-chip__name">{{ p.name }}</span>
+              </div>
+              <div v-for="p in partnersRow1" :key="`dup1-${p.id}`" class="partner-chip" aria-hidden="true">
+                <img :src="p.logo" :alt="p.name" class="partner-chip__logo" />
+                <span class="partner-chip__name">{{ p.name }}</span>
+              </div>
+            </div>
+            <!-- Row 2: scrolls right -->
+            <div class="partners-track partners-track--rev">
+              <div v-for="p in partnersRow2" :key="p.id" class="partner-chip">
+                <img :src="p.logo" :alt="p.name" class="partner-chip__logo" />
+                <span class="partner-chip__name">{{ p.name }}</span>
+              </div>
+              <div v-for="p in partnersRow2" :key="`dup2-${p.id}`" class="partner-chip" aria-hidden="true">
+                <img :src="p.logo" :alt="p.name" class="partner-chip__logo" />
+                <span class="partner-chip__name">{{ p.name }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- ── WHY CHOOSE ── -->
       <section class="why-choose">
         <div class="why-choose__container">
@@ -259,48 +301,6 @@
             <div class="stat-item">
               <p class="stat-num">{{ statResp }}<span class="stat-unit">s</span></p>
               <p class="stat-label">{{ isZh ? '平均响应时间' : 'Avg response time' }}</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ── ENTERPRISE PARTNERS ── -->
-      <section class="partners-section">
-        <div class="partners-section__container">
-          <div class="partners-section__header">
-            <span class="eyebrow-badge mirror-reveal">{{ isZh ? '合作伙伴' : 'Partners' }}</span>
-            <h2 class="partners-section__title mirror-reveal">
-              {{ isZh ? '受' : 'Trusted by ' }}<em class="partners-section__em">{{ isZh ? '各行业头部企业' : 'industry leaders' }}</em>{{ isZh ? '信赖' : '' }}
-              <span class="partners-section__star">✦</span>
-            </h2>
-            <p class="partners-section__subtitle mirror-reveal">
-              {{ isZh ? '覆盖消费电子、金融、互联网、新能源等核心行业' : 'Spanning consumer electronics, finance, internet, and new energy' }}
-            </p>
-          </div>
-          <div class="partners-marquee-wrap mirror-reveal">
-            <div class="partners-fade partners-fade--left" aria-hidden="true"></div>
-            <div class="partners-fade partners-fade--right" aria-hidden="true"></div>
-            <!-- Row 1: scrolls left -->
-            <div class="partners-track partners-track--fwd">
-              <div v-for="p in partnersRow1" :key="p.id" class="partner-chip">
-                <img :src="p.logo" :alt="p.name" class="partner-chip__logo" />
-                <span class="partner-chip__name">{{ p.name }}</span>
-              </div>
-              <div v-for="p in partnersRow1" :key="`dup1-${p.id}`" class="partner-chip" aria-hidden="true">
-                <img :src="p.logo" :alt="p.name" class="partner-chip__logo" />
-                <span class="partner-chip__name">{{ p.name }}</span>
-              </div>
-            </div>
-            <!-- Row 2: scrolls right -->
-            <div class="partners-track partners-track--rev">
-              <div v-for="p in partnersRow2" :key="p.id" class="partner-chip">
-                <img :src="p.logo" :alt="p.name" class="partner-chip__logo" />
-                <span class="partner-chip__name">{{ p.name }}</span>
-              </div>
-              <div v-for="p in partnersRow2" :key="`dup2-${p.id}`" class="partner-chip" aria-hidden="true">
-                <img :src="p.logo" :alt="p.name" class="partner-chip__logo" />
-                <span class="partner-chip__name">{{ p.name }}</span>
-              </div>
             </div>
           </div>
         </div>
