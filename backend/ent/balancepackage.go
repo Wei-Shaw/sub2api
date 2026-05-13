@@ -31,6 +31,10 @@ type BalancePackage struct {
 	BonusLedger float64 `json:"bonus_ledger,omitempty"`
 	// CreditMultiplier holds the value of the "credit_multiplier" field.
 	CreditMultiplier float64 `json:"credit_multiplier,omitempty"`
+	// ActualCredits holds the value of the "actual_credits" field.
+	ActualCredits int64 `json:"actual_credits,omitempty"`
+	// CreditUnit holds the value of the "credit_unit" field.
+	CreditUnit string `json:"credit_unit,omitempty"`
 	// GroupID holds the value of the "group_id" field.
 	GroupID *int64 `json:"group_id,omitempty"`
 	// Badge holds the value of the "badge" field.
@@ -57,9 +61,9 @@ func (*BalancePackage) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case balancepackage.FieldAmountLedger, balancepackage.FieldCreditLedger, balancepackage.FieldBonusLedger, balancepackage.FieldCreditMultiplier:
 			values[i] = new(sql.NullFloat64)
-		case balancepackage.FieldID, balancepackage.FieldGroupID, balancepackage.FieldSortOrder:
+		case balancepackage.FieldID, balancepackage.FieldActualCredits, balancepackage.FieldGroupID, balancepackage.FieldSortOrder:
 			values[i] = new(sql.NullInt64)
-		case balancepackage.FieldCode, balancepackage.FieldLabel, balancepackage.FieldDescription, balancepackage.FieldBadge:
+		case balancepackage.FieldCode, balancepackage.FieldLabel, balancepackage.FieldDescription, balancepackage.FieldCreditUnit, balancepackage.FieldBadge:
 			values[i] = new(sql.NullString)
 		case balancepackage.FieldCreatedAt, balancepackage.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -125,6 +129,18 @@ func (_m *BalancePackage) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field credit_multiplier", values[i])
 			} else if value.Valid {
 				_m.CreditMultiplier = value.Float64
+			}
+		case balancepackage.FieldActualCredits:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field actual_credits", values[i])
+			} else if value.Valid {
+				_m.ActualCredits = value.Int64
+			}
+		case balancepackage.FieldCreditUnit:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field credit_unit", values[i])
+			} else if value.Valid {
+				_m.CreditUnit = value.String
 			}
 		case balancepackage.FieldGroupID:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -225,6 +241,12 @@ func (_m *BalancePackage) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("credit_multiplier=")
 	builder.WriteString(fmt.Sprintf("%v", _m.CreditMultiplier))
+	builder.WriteString(", ")
+	builder.WriteString("actual_credits=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ActualCredits))
+	builder.WriteString(", ")
+	builder.WriteString("credit_unit=")
+	builder.WriteString(_m.CreditUnit)
 	builder.WriteString(", ")
 	if v := _m.GroupID; v != nil {
 		builder.WriteString("group_id=")

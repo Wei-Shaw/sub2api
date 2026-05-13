@@ -72,6 +72,8 @@ type BalanceRechargePackage struct {
 	CreditLedger     float64 `json:"credit_ledger"`
 	BonusLedger      float64 `json:"bonus_ledger"`
 	CreditMultiplier float64 `json:"credit_multiplier"`
+	ActualCredits    int64   `json:"actual_credits,omitempty"`
+	CreditUnit       string  `json:"credit_unit,omitempty"`
 	BalanceGroupID   *int64  `json:"balance_group_id,omitempty"`
 	GroupID          *int64  `json:"group_id,omitempty"`
 	Badge            string  `json:"badge,omitempty"`
@@ -244,6 +246,7 @@ type CreateBalancePackageRequest struct {
 	AmountLedger     float64 `json:"amount_ledger"`
 	CreditLedger     float64 `json:"credit_ledger"`
 	CreditMultiplier float64 `json:"credit_multiplier"`
+	CreditUnit       string  `json:"credit_unit"`
 	BalanceGroupID   *int64  `json:"balance_group_id"`
 	GroupID          *int64  `json:"group_id"` // Backward-compatible alias for balance_group_id.
 	Badge            string  `json:"badge"`
@@ -259,6 +262,7 @@ type UpdateBalancePackageRequest struct {
 	AmountLedger     *float64 `json:"amount_ledger"`
 	CreditLedger     *float64 `json:"credit_ledger"`
 	CreditMultiplier *float64 `json:"credit_multiplier"`
+	CreditUnit       *string  `json:"credit_unit"`
 	BalanceGroupID   *int64   `json:"balance_group_id"`
 	GroupID          *int64   `json:"group_id"` // Backward-compatible alias for balance_group_id.
 	Badge            *string  `json:"badge"`

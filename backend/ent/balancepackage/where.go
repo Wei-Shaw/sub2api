@@ -84,6 +84,16 @@ func CreditMultiplier(v float64) predicate.BalancePackage {
 	return predicate.BalancePackage(sql.FieldEQ(FieldCreditMultiplier, v))
 }
 
+// ActualCredits applies equality check predicate on the "actual_credits" field. It's identical to ActualCreditsEQ.
+func ActualCredits(v int64) predicate.BalancePackage {
+	return predicate.BalancePackage(sql.FieldEQ(FieldActualCredits, v))
+}
+
+// CreditUnit applies equality check predicate on the "credit_unit" field. It's identical to CreditUnitEQ.
+func CreditUnit(v string) predicate.BalancePackage {
+	return predicate.BalancePackage(sql.FieldEQ(FieldCreditUnit, v))
+}
+
 // GroupID applies equality check predicate on the "group_id" field. It's identical to GroupIDEQ.
 func GroupID(v int64) predicate.BalancePackage {
 	return predicate.BalancePackage(sql.FieldEQ(FieldGroupID, v))
@@ -472,6 +482,111 @@ func CreditMultiplierLT(v float64) predicate.BalancePackage {
 // CreditMultiplierLTE applies the LTE predicate on the "credit_multiplier" field.
 func CreditMultiplierLTE(v float64) predicate.BalancePackage {
 	return predicate.BalancePackage(sql.FieldLTE(FieldCreditMultiplier, v))
+}
+
+// ActualCreditsEQ applies the EQ predicate on the "actual_credits" field.
+func ActualCreditsEQ(v int64) predicate.BalancePackage {
+	return predicate.BalancePackage(sql.FieldEQ(FieldActualCredits, v))
+}
+
+// ActualCreditsNEQ applies the NEQ predicate on the "actual_credits" field.
+func ActualCreditsNEQ(v int64) predicate.BalancePackage {
+	return predicate.BalancePackage(sql.FieldNEQ(FieldActualCredits, v))
+}
+
+// ActualCreditsIn applies the In predicate on the "actual_credits" field.
+func ActualCreditsIn(vs ...int64) predicate.BalancePackage {
+	return predicate.BalancePackage(sql.FieldIn(FieldActualCredits, vs...))
+}
+
+// ActualCreditsNotIn applies the NotIn predicate on the "actual_credits" field.
+func ActualCreditsNotIn(vs ...int64) predicate.BalancePackage {
+	return predicate.BalancePackage(sql.FieldNotIn(FieldActualCredits, vs...))
+}
+
+// ActualCreditsGT applies the GT predicate on the "actual_credits" field.
+func ActualCreditsGT(v int64) predicate.BalancePackage {
+	return predicate.BalancePackage(sql.FieldGT(FieldActualCredits, v))
+}
+
+// ActualCreditsGTE applies the GTE predicate on the "actual_credits" field.
+func ActualCreditsGTE(v int64) predicate.BalancePackage {
+	return predicate.BalancePackage(sql.FieldGTE(FieldActualCredits, v))
+}
+
+// ActualCreditsLT applies the LT predicate on the "actual_credits" field.
+func ActualCreditsLT(v int64) predicate.BalancePackage {
+	return predicate.BalancePackage(sql.FieldLT(FieldActualCredits, v))
+}
+
+// ActualCreditsLTE applies the LTE predicate on the "actual_credits" field.
+func ActualCreditsLTE(v int64) predicate.BalancePackage {
+	return predicate.BalancePackage(sql.FieldLTE(FieldActualCredits, v))
+}
+
+// CreditUnitEQ applies the EQ predicate on the "credit_unit" field.
+func CreditUnitEQ(v string) predicate.BalancePackage {
+	return predicate.BalancePackage(sql.FieldEQ(FieldCreditUnit, v))
+}
+
+// CreditUnitNEQ applies the NEQ predicate on the "credit_unit" field.
+func CreditUnitNEQ(v string) predicate.BalancePackage {
+	return predicate.BalancePackage(sql.FieldNEQ(FieldCreditUnit, v))
+}
+
+// CreditUnitIn applies the In predicate on the "credit_unit" field.
+func CreditUnitIn(vs ...string) predicate.BalancePackage {
+	return predicate.BalancePackage(sql.FieldIn(FieldCreditUnit, vs...))
+}
+
+// CreditUnitNotIn applies the NotIn predicate on the "credit_unit" field.
+func CreditUnitNotIn(vs ...string) predicate.BalancePackage {
+	return predicate.BalancePackage(sql.FieldNotIn(FieldCreditUnit, vs...))
+}
+
+// CreditUnitGT applies the GT predicate on the "credit_unit" field.
+func CreditUnitGT(v string) predicate.BalancePackage {
+	return predicate.BalancePackage(sql.FieldGT(FieldCreditUnit, v))
+}
+
+// CreditUnitGTE applies the GTE predicate on the "credit_unit" field.
+func CreditUnitGTE(v string) predicate.BalancePackage {
+	return predicate.BalancePackage(sql.FieldGTE(FieldCreditUnit, v))
+}
+
+// CreditUnitLT applies the LT predicate on the "credit_unit" field.
+func CreditUnitLT(v string) predicate.BalancePackage {
+	return predicate.BalancePackage(sql.FieldLT(FieldCreditUnit, v))
+}
+
+// CreditUnitLTE applies the LTE predicate on the "credit_unit" field.
+func CreditUnitLTE(v string) predicate.BalancePackage {
+	return predicate.BalancePackage(sql.FieldLTE(FieldCreditUnit, v))
+}
+
+// CreditUnitContains applies the Contains predicate on the "credit_unit" field.
+func CreditUnitContains(v string) predicate.BalancePackage {
+	return predicate.BalancePackage(sql.FieldContains(FieldCreditUnit, v))
+}
+
+// CreditUnitHasPrefix applies the HasPrefix predicate on the "credit_unit" field.
+func CreditUnitHasPrefix(v string) predicate.BalancePackage {
+	return predicate.BalancePackage(sql.FieldHasPrefix(FieldCreditUnit, v))
+}
+
+// CreditUnitHasSuffix applies the HasSuffix predicate on the "credit_unit" field.
+func CreditUnitHasSuffix(v string) predicate.BalancePackage {
+	return predicate.BalancePackage(sql.FieldHasSuffix(FieldCreditUnit, v))
+}
+
+// CreditUnitEqualFold applies the EqualFold predicate on the "credit_unit" field.
+func CreditUnitEqualFold(v string) predicate.BalancePackage {
+	return predicate.BalancePackage(sql.FieldEqualFold(FieldCreditUnit, v))
+}
+
+// CreditUnitContainsFold applies the ContainsFold predicate on the "credit_unit" field.
+func CreditUnitContainsFold(v string) predicate.BalancePackage {
+	return predicate.BalancePackage(sql.FieldContainsFold(FieldCreditUnit, v))
 }
 
 // GroupIDEQ applies the EQ predicate on the "group_id" field.

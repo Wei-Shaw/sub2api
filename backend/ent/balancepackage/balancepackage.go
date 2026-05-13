@@ -27,6 +27,10 @@ const (
 	FieldBonusLedger = "bonus_ledger"
 	// FieldCreditMultiplier holds the string denoting the credit_multiplier field in the database.
 	FieldCreditMultiplier = "credit_multiplier"
+	// FieldActualCredits holds the string denoting the actual_credits field in the database.
+	FieldActualCredits = "actual_credits"
+	// FieldCreditUnit holds the string denoting the credit_unit field in the database.
+	FieldCreditUnit = "credit_unit"
 	// FieldGroupID holds the string denoting the group_id field in the database.
 	FieldGroupID = "group_id"
 	// FieldBadge holds the string denoting the badge field in the database.
@@ -55,6 +59,8 @@ var Columns = []string{
 	FieldCreditLedger,
 	FieldBonusLedger,
 	FieldCreditMultiplier,
+	FieldActualCredits,
+	FieldCreditUnit,
 	FieldGroupID,
 	FieldBadge,
 	FieldPopular,
@@ -85,6 +91,12 @@ var (
 	DefaultBonusLedger float64
 	// DefaultCreditMultiplier holds the default value on creation for the "credit_multiplier" field.
 	DefaultCreditMultiplier float64
+	// DefaultActualCredits holds the default value on creation for the "actual_credits" field.
+	DefaultActualCredits int64
+	// DefaultCreditUnit holds the default value on creation for the "credit_unit" field.
+	DefaultCreditUnit string
+	// CreditUnitValidator is a validator for the "credit_unit" field. It is called by the builders before save.
+	CreditUnitValidator func(string) error
 	// DefaultBadge holds the default value on creation for the "badge" field.
 	DefaultBadge string
 	// BadgeValidator is a validator for the "badge" field. It is called by the builders before save.
@@ -144,6 +156,16 @@ func ByBonusLedger(opts ...sql.OrderTermOption) OrderOption {
 // ByCreditMultiplier orders the results by the credit_multiplier field.
 func ByCreditMultiplier(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCreditMultiplier, opts...).ToFunc()
+}
+
+// ByActualCredits orders the results by the actual_credits field.
+func ByActualCredits(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldActualCredits, opts...).ToFunc()
+}
+
+// ByCreditUnit orders the results by the credit_unit field.
+func ByCreditUnit(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCreditUnit, opts...).ToFunc()
 }
 
 // ByGroupID orders the results by the group_id field.

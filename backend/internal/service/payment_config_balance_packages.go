@@ -11,6 +11,8 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
+const balancePackageCreditsPerLedgerUnit = 10000.0
+
 func validateBalancePackageRequired(code, label string, amountLedger, creditLedger, creditMultiplier float64) error {
 	if strings.TrimSpace(code) == "" {
 		return infraerrors.BadRequest("BALANCE_PACKAGE_CODE_REQUIRED", "package code is required")
@@ -75,24 +77,40 @@ func balancePackageGroupID(balanceGroupID, legacyGroupID *int64) *int64 {
 	return legacyGroupID
 }
 
-func (s *PaymentConfigService) validateBalancePackageGroup(ctx context.Context, groupID *int64) error {
+func normalizeBalancePackageCreditUnit(value string) string {
+	unit := strings.TrimSpace(value)
+	if unit == "" {
+		return "credits"
+	}
+	return unit
+}
+
+func computeBalancePackageActualCredits(amountLedger, creditMultiplier float64, balanceGroup *dbent.Group) int64 {
+	if amountLedger <= 0 || creditMultiplier <= 0 || balanceGroup == nil || balanceGroup.RateMultiplier <= 0 {
+		return 0
+	}
+	ledgerCredits := amountLedger * creditMultiplier
+	return int64(math.Round((ledgerCredits / balanceGroup.RateMultiplier) * balancePackageCreditsPerLedgerUnit))
+}
+
+func (s *PaymentConfigService) loadBalancePackageGroup(ctx context.Context, groupID *int64) (*dbent.Group, error) {
 	if groupID == nil {
-		return nil
+		return nil, nil
 	}
 	if *groupID <= 0 {
-		return infraerrors.BadRequest("BALANCE_PACKAGE_GROUP_INVALID", "balance group is invalid")
+		return nil, infraerrors.BadRequest("BALANCE_PACKAGE_GROUP_INVALID", "balance group is invalid")
 	}
 	if s == nil || s.entClient == nil {
-		return infraerrors.ServiceUnavailable("BALANCE_PACKAGE_STORE_UNAVAILABLE", "balance package store is not available")
+		return nil, infraerrors.ServiceUnavailable("BALANCE_PACKAGE_STORE_UNAVAILABLE", "balance package store is not available")
 	}
 	g, err := s.entClient.Group.Query().Where(group.IDEQ(*groupID)).Only(ctx)
 	if err != nil || g.Status != StatusActive {
-		return infraerrors.NotFound("BALANCE_PACKAGE_GROUP_NOT_FOUND", "balance group not found or inactive")
+		return nil, infraerrors.NotFound("BALANCE_PACKAGE_GROUP_NOT_FOUND", "balance group not found or inactive")
 	}
 	if g.SubscriptionType == SubscriptionTypeSubscription {
-		return infraerrors.BadRequest("BALANCE_PACKAGE_GROUP_TYPE_MISMATCH", "balance package group must be a standard balance group, not a subscription group")
+		return nil, infraerrors.BadRequest("BALANCE_PACKAGE_GROUP_TYPE_MISMATCH", "balance package group must be a standard balance group, not a subscription group")
 	}
-	return nil
+	return g, nil
 }
 
 func (s *PaymentConfigService) ListBalanceRechargePackages(ctx context.Context) ([]*dbent.BalancePackage, error) {
@@ -117,10 +135,12 @@ func (s *PaymentConfigService) CreateBalancePackage(ctx context.Context, req Cre
 		return nil, err
 	}
 	groupID := balancePackageGroupID(req.BalanceGroupID, req.GroupID)
-	if err := s.validateBalancePackageGroup(ctx, groupID); err != nil {
+	balanceGroup, err := s.loadBalancePackageGroup(ctx, groupID)
+	if err != nil {
 		return nil, err
 	}
 	amount, credit, bonus, multiplier := normalizeBalancePackageAmounts(req.AmountLedger, req.CreditLedger, req.CreditMultiplier)
+	actualCredits := computeBalancePackageActualCredits(amount, multiplier, balanceGroup)
 	b := s.entClient.BalancePackage.Create().
 		SetCode(strings.TrimSpace(req.Code)).
 		SetLabel(strings.TrimSpace(req.Label)).
@@ -129,6 +149,8 @@ func (s *PaymentConfigService) CreateBalancePackage(ctx context.Context, req Cre
 		SetCreditLedger(credit).
 		SetBonusLedger(bonus).
 		SetCreditMultiplier(multiplier).
+		SetActualCredits(actualCredits).
+		SetCreditUnit(normalizeBalancePackageCreditUnit(req.CreditUnit)).
 		SetBadge(strings.TrimSpace(req.Badge)).
 		SetPopular(req.Popular).
 		SetForSale(req.ForSale).
@@ -148,12 +170,19 @@ func (s *PaymentConfigService) UpdateBalancePackage(ctx context.Context, id int6
 		return nil, err
 	}
 	groupID := balancePackageGroupID(req.BalanceGroupID, req.GroupID)
-	if err := s.validateBalancePackageGroup(ctx, groupID); err != nil {
+	balanceGroup, err := s.loadBalancePackageGroup(ctx, groupID)
+	if err != nil {
 		return nil, err
 	}
 	existing, err := s.entClient.BalancePackage.Get(ctx, id)
 	if err != nil {
 		return nil, infraerrors.NotFound("BALANCE_PACKAGE_NOT_FOUND", "balance package not found")
+	}
+	if groupID == nil && existing.GroupID != nil {
+		balanceGroup, err = s.loadBalancePackageGroup(ctx, existing.GroupID)
+		if err != nil {
+			return nil, err
+		}
 	}
 	amount := existing.AmountLedger
 	credit := existing.CreditLedger
@@ -169,11 +198,13 @@ func (s *PaymentConfigService) UpdateBalancePackage(ctx context.Context, id int6
 		credit = 0
 	}
 	amount, credit, bonus, multiplier := normalizeBalancePackageAmounts(amount, credit, multiplier)
+	actualCredits := computeBalancePackageActualCredits(amount, multiplier, balanceGroup)
 	u := s.entClient.BalancePackage.UpdateOneID(id).
 		SetAmountLedger(amount).
 		SetCreditLedger(credit).
 		SetBonusLedger(bonus).
-		SetCreditMultiplier(multiplier)
+		SetCreditMultiplier(multiplier).
+		SetActualCredits(actualCredits)
 	if req.Code != nil {
 		u.SetCode(strings.TrimSpace(*req.Code))
 	}
@@ -185,6 +216,9 @@ func (s *PaymentConfigService) UpdateBalancePackage(ctx context.Context, id int6
 	}
 	if groupID != nil {
 		u.SetGroupID(*groupID)
+	}
+	if req.CreditUnit != nil {
+		u.SetCreditUnit(normalizeBalancePackageCreditUnit(*req.CreditUnit))
 	}
 	if req.Badge != nil {
 		u.SetBadge(strings.TrimSpace(*req.Badge))
@@ -222,6 +256,8 @@ func balancePackageEntitiesToConfig(packages []*dbent.BalancePackage) []BalanceR
 			CreditLedger:     pkg.CreditLedger,
 			BonusLedger:      pkg.BonusLedger,
 			CreditMultiplier: pkg.CreditMultiplier,
+			ActualCredits:    pkg.ActualCredits,
+			CreditUnit:       normalizeBalancePackageCreditUnit(pkg.CreditUnit),
 			BalanceGroupID:   pkg.GroupID,
 			GroupID:          pkg.GroupID,
 			Badge:            pkg.Badge,

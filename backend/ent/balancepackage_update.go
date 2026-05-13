@@ -154,6 +154,41 @@ func (_u *BalancePackageUpdate) AddCreditMultiplier(v float64) *BalancePackageUp
 	return _u
 }
 
+// SetActualCredits sets the "actual_credits" field.
+func (_u *BalancePackageUpdate) SetActualCredits(v int64) *BalancePackageUpdate {
+	_u.mutation.ResetActualCredits()
+	_u.mutation.SetActualCredits(v)
+	return _u
+}
+
+// SetNillableActualCredits sets the "actual_credits" field if the given value is not nil.
+func (_u *BalancePackageUpdate) SetNillableActualCredits(v *int64) *BalancePackageUpdate {
+	if v != nil {
+		_u.SetActualCredits(*v)
+	}
+	return _u
+}
+
+// AddActualCredits adds value to the "actual_credits" field.
+func (_u *BalancePackageUpdate) AddActualCredits(v int64) *BalancePackageUpdate {
+	_u.mutation.AddActualCredits(v)
+	return _u
+}
+
+// SetCreditUnit sets the "credit_unit" field.
+func (_u *BalancePackageUpdate) SetCreditUnit(v string) *BalancePackageUpdate {
+	_u.mutation.SetCreditUnit(v)
+	return _u
+}
+
+// SetNillableCreditUnit sets the "credit_unit" field if the given value is not nil.
+func (_u *BalancePackageUpdate) SetNillableCreditUnit(v *string) *BalancePackageUpdate {
+	if v != nil {
+		_u.SetCreditUnit(*v)
+	}
+	return _u
+}
+
 // SetGroupID sets the "group_id" field.
 func (_u *BalancePackageUpdate) SetGroupID(v int64) *BalancePackageUpdate {
 	_u.mutation.ResetGroupID()
@@ -303,6 +338,11 @@ func (_u *BalancePackageUpdate) check() error {
 			return &ValidationError{Name: "label", err: fmt.Errorf(`ent: validator failed for field "BalancePackage.label": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.CreditUnit(); ok {
+		if err := balancepackage.CreditUnitValidator(v); err != nil {
+			return &ValidationError{Name: "credit_unit", err: fmt.Errorf(`ent: validator failed for field "BalancePackage.credit_unit": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Badge(); ok {
 		if err := balancepackage.BadgeValidator(v); err != nil {
 			return &ValidationError{Name: "badge", err: fmt.Errorf(`ent: validator failed for field "BalancePackage.badge": %w`, err)}
@@ -355,6 +395,15 @@ func (_u *BalancePackageUpdate) sqlSave(ctx context.Context) (_node int, err err
 	}
 	if value, ok := _u.mutation.AddedCreditMultiplier(); ok {
 		_spec.AddField(balancepackage.FieldCreditMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.ActualCredits(); ok {
+		_spec.SetField(balancepackage.FieldActualCredits, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedActualCredits(); ok {
+		_spec.AddField(balancepackage.FieldActualCredits, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.CreditUnit(); ok {
+		_spec.SetField(balancepackage.FieldCreditUnit, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.GroupID(); ok {
 		_spec.SetField(balancepackage.FieldGroupID, field.TypeInt64, value)
@@ -529,6 +578,41 @@ func (_u *BalancePackageUpdateOne) AddCreditMultiplier(v float64) *BalancePackag
 	return _u
 }
 
+// SetActualCredits sets the "actual_credits" field.
+func (_u *BalancePackageUpdateOne) SetActualCredits(v int64) *BalancePackageUpdateOne {
+	_u.mutation.ResetActualCredits()
+	_u.mutation.SetActualCredits(v)
+	return _u
+}
+
+// SetNillableActualCredits sets the "actual_credits" field if the given value is not nil.
+func (_u *BalancePackageUpdateOne) SetNillableActualCredits(v *int64) *BalancePackageUpdateOne {
+	if v != nil {
+		_u.SetActualCredits(*v)
+	}
+	return _u
+}
+
+// AddActualCredits adds value to the "actual_credits" field.
+func (_u *BalancePackageUpdateOne) AddActualCredits(v int64) *BalancePackageUpdateOne {
+	_u.mutation.AddActualCredits(v)
+	return _u
+}
+
+// SetCreditUnit sets the "credit_unit" field.
+func (_u *BalancePackageUpdateOne) SetCreditUnit(v string) *BalancePackageUpdateOne {
+	_u.mutation.SetCreditUnit(v)
+	return _u
+}
+
+// SetNillableCreditUnit sets the "credit_unit" field if the given value is not nil.
+func (_u *BalancePackageUpdateOne) SetNillableCreditUnit(v *string) *BalancePackageUpdateOne {
+	if v != nil {
+		_u.SetCreditUnit(*v)
+	}
+	return _u
+}
+
 // SetGroupID sets the "group_id" field.
 func (_u *BalancePackageUpdateOne) SetGroupID(v int64) *BalancePackageUpdateOne {
 	_u.mutation.ResetGroupID()
@@ -691,6 +775,11 @@ func (_u *BalancePackageUpdateOne) check() error {
 			return &ValidationError{Name: "label", err: fmt.Errorf(`ent: validator failed for field "BalancePackage.label": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.CreditUnit(); ok {
+		if err := balancepackage.CreditUnitValidator(v); err != nil {
+			return &ValidationError{Name: "credit_unit", err: fmt.Errorf(`ent: validator failed for field "BalancePackage.credit_unit": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Badge(); ok {
 		if err := balancepackage.BadgeValidator(v); err != nil {
 			return &ValidationError{Name: "badge", err: fmt.Errorf(`ent: validator failed for field "BalancePackage.badge": %w`, err)}
@@ -760,6 +849,15 @@ func (_u *BalancePackageUpdateOne) sqlSave(ctx context.Context) (_node *BalanceP
 	}
 	if value, ok := _u.mutation.AddedCreditMultiplier(); ok {
 		_spec.AddField(balancepackage.FieldCreditMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.ActualCredits(); ok {
+		_spec.SetField(balancepackage.FieldActualCredits, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedActualCredits(); ok {
+		_spec.AddField(balancepackage.FieldActualCredits, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.CreditUnit(); ok {
+		_spec.SetField(balancepackage.FieldCreditUnit, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.GroupID(); ok {
 		_spec.SetField(balancepackage.FieldGroupID, field.TypeInt64, value)

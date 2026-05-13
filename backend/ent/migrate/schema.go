@@ -445,6 +445,8 @@ var (
 		{Name: "credit_ledger", Type: field.TypeFloat64, SchemaType: map[string]string{"postgres": "decimal(20,2)"}},
 		{Name: "bonus_ledger", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,2)"}},
 		{Name: "credit_multiplier", Type: field.TypeFloat64, Default: 1, SchemaType: map[string]string{"postgres": "decimal(20,6)"}},
+		{Name: "actual_credits", Type: field.TypeInt64, Default: 0},
+		{Name: "credit_unit", Type: field.TypeString, Size: 32, Default: "credits"},
 		{Name: "group_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "badge", Type: field.TypeString, Size: 100, Default: ""},
 		{Name: "popular", Type: field.TypeBool, Default: false},
@@ -467,17 +469,17 @@ var (
 			{
 				Name:    "balancepackage_for_sale",
 				Unique:  false,
-				Columns: []*schema.Column{BalancePackagesColumns[11]},
+				Columns: []*schema.Column{BalancePackagesColumns[13]},
 			},
 			{
 				Name:    "balancepackage_group_id",
 				Unique:  false,
-				Columns: []*schema.Column{BalancePackagesColumns[8]},
+				Columns: []*schema.Column{BalancePackagesColumns[10]},
 			},
 			{
 				Name:    "balancepackage_sort_order",
 				Unique:  false,
-				Columns: []*schema.Column{BalancePackagesColumns[12]},
+				Columns: []*schema.Column{BalancePackagesColumns[14]},
 			},
 		},
 	}

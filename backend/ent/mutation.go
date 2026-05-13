@@ -9149,6 +9149,9 @@ type BalancePackageMutation struct {
 	addbonus_ledger      *float64
 	credit_multiplier    *float64
 	addcredit_multiplier *float64
+	actual_credits       *int64
+	addactual_credits    *int64
+	credit_unit          *string
 	group_id             *int64
 	addgroup_id          *int64
 	badge                *string
@@ -9594,6 +9597,98 @@ func (m *BalancePackageMutation) ResetCreditMultiplier() {
 	m.addcredit_multiplier = nil
 }
 
+// SetActualCredits sets the "actual_credits" field.
+func (m *BalancePackageMutation) SetActualCredits(i int64) {
+	m.actual_credits = &i
+	m.addactual_credits = nil
+}
+
+// ActualCredits returns the value of the "actual_credits" field in the mutation.
+func (m *BalancePackageMutation) ActualCredits() (r int64, exists bool) {
+	v := m.actual_credits
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldActualCredits returns the old "actual_credits" field's value of the BalancePackage entity.
+// If the BalancePackage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BalancePackageMutation) OldActualCredits(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldActualCredits is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldActualCredits requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldActualCredits: %w", err)
+	}
+	return oldValue.ActualCredits, nil
+}
+
+// AddActualCredits adds i to the "actual_credits" field.
+func (m *BalancePackageMutation) AddActualCredits(i int64) {
+	if m.addactual_credits != nil {
+		*m.addactual_credits += i
+	} else {
+		m.addactual_credits = &i
+	}
+}
+
+// AddedActualCredits returns the value that was added to the "actual_credits" field in this mutation.
+func (m *BalancePackageMutation) AddedActualCredits() (r int64, exists bool) {
+	v := m.addactual_credits
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetActualCredits resets all changes to the "actual_credits" field.
+func (m *BalancePackageMutation) ResetActualCredits() {
+	m.actual_credits = nil
+	m.addactual_credits = nil
+}
+
+// SetCreditUnit sets the "credit_unit" field.
+func (m *BalancePackageMutation) SetCreditUnit(s string) {
+	m.credit_unit = &s
+}
+
+// CreditUnit returns the value of the "credit_unit" field in the mutation.
+func (m *BalancePackageMutation) CreditUnit() (r string, exists bool) {
+	v := m.credit_unit
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreditUnit returns the old "credit_unit" field's value of the BalancePackage entity.
+// If the BalancePackage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BalancePackageMutation) OldCreditUnit(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreditUnit is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreditUnit requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreditUnit: %w", err)
+	}
+	return oldValue.CreditUnit, nil
+}
+
+// ResetCreditUnit resets all changes to the "credit_unit" field.
+func (m *BalancePackageMutation) ResetCreditUnit() {
+	m.credit_unit = nil
+}
+
 // SetGroupID sets the "group_id" field.
 func (m *BalancePackageMutation) SetGroupID(i int64) {
 	m.group_id = &i
@@ -9934,7 +10029,7 @@ func (m *BalancePackageMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *BalancePackageMutation) Fields() []string {
-	fields := make([]string, 0, 14)
+	fields := make([]string, 0, 16)
 	if m.code != nil {
 		fields = append(fields, balancepackage.FieldCode)
 	}
@@ -9955,6 +10050,12 @@ func (m *BalancePackageMutation) Fields() []string {
 	}
 	if m.credit_multiplier != nil {
 		fields = append(fields, balancepackage.FieldCreditMultiplier)
+	}
+	if m.actual_credits != nil {
+		fields = append(fields, balancepackage.FieldActualCredits)
+	}
+	if m.credit_unit != nil {
+		fields = append(fields, balancepackage.FieldCreditUnit)
 	}
 	if m.group_id != nil {
 		fields = append(fields, balancepackage.FieldGroupID)
@@ -9999,6 +10100,10 @@ func (m *BalancePackageMutation) Field(name string) (ent.Value, bool) {
 		return m.BonusLedger()
 	case balancepackage.FieldCreditMultiplier:
 		return m.CreditMultiplier()
+	case balancepackage.FieldActualCredits:
+		return m.ActualCredits()
+	case balancepackage.FieldCreditUnit:
+		return m.CreditUnit()
 	case balancepackage.FieldGroupID:
 		return m.GroupID()
 	case balancepackage.FieldBadge:
@@ -10036,6 +10141,10 @@ func (m *BalancePackageMutation) OldField(ctx context.Context, name string) (ent
 		return m.OldBonusLedger(ctx)
 	case balancepackage.FieldCreditMultiplier:
 		return m.OldCreditMultiplier(ctx)
+	case balancepackage.FieldActualCredits:
+		return m.OldActualCredits(ctx)
+	case balancepackage.FieldCreditUnit:
+		return m.OldCreditUnit(ctx)
 	case balancepackage.FieldGroupID:
 		return m.OldGroupID(ctx)
 	case balancepackage.FieldBadge:
@@ -10108,6 +10217,20 @@ func (m *BalancePackageMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetCreditMultiplier(v)
 		return nil
+	case balancepackage.FieldActualCredits:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetActualCredits(v)
+		return nil
+	case balancepackage.FieldCreditUnit:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreditUnit(v)
+		return nil
 	case balancepackage.FieldGroupID:
 		v, ok := value.(int64)
 		if !ok {
@@ -10177,6 +10300,9 @@ func (m *BalancePackageMutation) AddedFields() []string {
 	if m.addcredit_multiplier != nil {
 		fields = append(fields, balancepackage.FieldCreditMultiplier)
 	}
+	if m.addactual_credits != nil {
+		fields = append(fields, balancepackage.FieldActualCredits)
+	}
 	if m.addgroup_id != nil {
 		fields = append(fields, balancepackage.FieldGroupID)
 	}
@@ -10199,6 +10325,8 @@ func (m *BalancePackageMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedBonusLedger()
 	case balancepackage.FieldCreditMultiplier:
 		return m.AddedCreditMultiplier()
+	case balancepackage.FieldActualCredits:
+		return m.AddedActualCredits()
 	case balancepackage.FieldGroupID:
 		return m.AddedGroupID()
 	case balancepackage.FieldSortOrder:
@@ -10239,6 +10367,13 @@ func (m *BalancePackageMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddCreditMultiplier(v)
+		return nil
+	case balancepackage.FieldActualCredits:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddActualCredits(v)
 		return nil
 	case balancepackage.FieldGroupID:
 		v, ok := value.(int64)
@@ -10310,6 +10445,12 @@ func (m *BalancePackageMutation) ResetField(name string) error {
 		return nil
 	case balancepackage.FieldCreditMultiplier:
 		m.ResetCreditMultiplier()
+		return nil
+	case balancepackage.FieldActualCredits:
+		m.ResetActualCredits()
+		return nil
+	case balancepackage.FieldCreditUnit:
+		m.ResetCreditUnit()
 		return nil
 	case balancepackage.FieldGroupID:
 		m.ResetGroupID()

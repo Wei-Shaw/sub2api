@@ -88,6 +88,34 @@ func (_c *BalancePackageCreate) SetNillableCreditMultiplier(v *float64) *Balance
 	return _c
 }
 
+// SetActualCredits sets the "actual_credits" field.
+func (_c *BalancePackageCreate) SetActualCredits(v int64) *BalancePackageCreate {
+	_c.mutation.SetActualCredits(v)
+	return _c
+}
+
+// SetNillableActualCredits sets the "actual_credits" field if the given value is not nil.
+func (_c *BalancePackageCreate) SetNillableActualCredits(v *int64) *BalancePackageCreate {
+	if v != nil {
+		_c.SetActualCredits(*v)
+	}
+	return _c
+}
+
+// SetCreditUnit sets the "credit_unit" field.
+func (_c *BalancePackageCreate) SetCreditUnit(v string) *BalancePackageCreate {
+	_c.mutation.SetCreditUnit(v)
+	return _c
+}
+
+// SetNillableCreditUnit sets the "credit_unit" field if the given value is not nil.
+func (_c *BalancePackageCreate) SetNillableCreditUnit(v *string) *BalancePackageCreate {
+	if v != nil {
+		_c.SetCreditUnit(*v)
+	}
+	return _c
+}
+
 // SetGroupID sets the "group_id" field.
 func (_c *BalancePackageCreate) SetGroupID(v int64) *BalancePackageCreate {
 	_c.mutation.SetGroupID(v)
@@ -233,6 +261,14 @@ func (_c *BalancePackageCreate) defaults() {
 		v := balancepackage.DefaultCreditMultiplier
 		_c.mutation.SetCreditMultiplier(v)
 	}
+	if _, ok := _c.mutation.ActualCredits(); !ok {
+		v := balancepackage.DefaultActualCredits
+		_c.mutation.SetActualCredits(v)
+	}
+	if _, ok := _c.mutation.CreditUnit(); !ok {
+		v := balancepackage.DefaultCreditUnit
+		_c.mutation.SetCreditUnit(v)
+	}
 	if _, ok := _c.mutation.Badge(); !ok {
 		v := balancepackage.DefaultBadge
 		_c.mutation.SetBadge(v)
@@ -291,6 +327,17 @@ func (_c *BalancePackageCreate) check() error {
 	}
 	if _, ok := _c.mutation.CreditMultiplier(); !ok {
 		return &ValidationError{Name: "credit_multiplier", err: errors.New(`ent: missing required field "BalancePackage.credit_multiplier"`)}
+	}
+	if _, ok := _c.mutation.ActualCredits(); !ok {
+		return &ValidationError{Name: "actual_credits", err: errors.New(`ent: missing required field "BalancePackage.actual_credits"`)}
+	}
+	if _, ok := _c.mutation.CreditUnit(); !ok {
+		return &ValidationError{Name: "credit_unit", err: errors.New(`ent: missing required field "BalancePackage.credit_unit"`)}
+	}
+	if v, ok := _c.mutation.CreditUnit(); ok {
+		if err := balancepackage.CreditUnitValidator(v); err != nil {
+			return &ValidationError{Name: "credit_unit", err: fmt.Errorf(`ent: validator failed for field "BalancePackage.credit_unit": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.Badge(); !ok {
 		return &ValidationError{Name: "badge", err: errors.New(`ent: missing required field "BalancePackage.badge"`)}
@@ -369,6 +416,14 @@ func (_c *BalancePackageCreate) createSpec() (*BalancePackage, *sqlgraph.CreateS
 	if value, ok := _c.mutation.CreditMultiplier(); ok {
 		_spec.SetField(balancepackage.FieldCreditMultiplier, field.TypeFloat64, value)
 		_node.CreditMultiplier = value
+	}
+	if value, ok := _c.mutation.ActualCredits(); ok {
+		_spec.SetField(balancepackage.FieldActualCredits, field.TypeInt64, value)
+		_node.ActualCredits = value
+	}
+	if value, ok := _c.mutation.CreditUnit(); ok {
+		_spec.SetField(balancepackage.FieldCreditUnit, field.TypeString, value)
+		_node.CreditUnit = value
 	}
 	if value, ok := _c.mutation.GroupID(); ok {
 		_spec.SetField(balancepackage.FieldGroupID, field.TypeInt64, value)
@@ -555,6 +610,36 @@ func (u *BalancePackageUpsert) UpdateCreditMultiplier() *BalancePackageUpsert {
 // AddCreditMultiplier adds v to the "credit_multiplier" field.
 func (u *BalancePackageUpsert) AddCreditMultiplier(v float64) *BalancePackageUpsert {
 	u.Add(balancepackage.FieldCreditMultiplier, v)
+	return u
+}
+
+// SetActualCredits sets the "actual_credits" field.
+func (u *BalancePackageUpsert) SetActualCredits(v int64) *BalancePackageUpsert {
+	u.Set(balancepackage.FieldActualCredits, v)
+	return u
+}
+
+// UpdateActualCredits sets the "actual_credits" field to the value that was provided on create.
+func (u *BalancePackageUpsert) UpdateActualCredits() *BalancePackageUpsert {
+	u.SetExcluded(balancepackage.FieldActualCredits)
+	return u
+}
+
+// AddActualCredits adds v to the "actual_credits" field.
+func (u *BalancePackageUpsert) AddActualCredits(v int64) *BalancePackageUpsert {
+	u.Add(balancepackage.FieldActualCredits, v)
+	return u
+}
+
+// SetCreditUnit sets the "credit_unit" field.
+func (u *BalancePackageUpsert) SetCreditUnit(v string) *BalancePackageUpsert {
+	u.Set(balancepackage.FieldCreditUnit, v)
+	return u
+}
+
+// UpdateCreditUnit sets the "credit_unit" field to the value that was provided on create.
+func (u *BalancePackageUpsert) UpdateCreditUnit() *BalancePackageUpsert {
+	u.SetExcluded(balancepackage.FieldCreditUnit)
 	return u
 }
 
@@ -816,6 +901,41 @@ func (u *BalancePackageUpsertOne) AddCreditMultiplier(v float64) *BalancePackage
 func (u *BalancePackageUpsertOne) UpdateCreditMultiplier() *BalancePackageUpsertOne {
 	return u.Update(func(s *BalancePackageUpsert) {
 		s.UpdateCreditMultiplier()
+	})
+}
+
+// SetActualCredits sets the "actual_credits" field.
+func (u *BalancePackageUpsertOne) SetActualCredits(v int64) *BalancePackageUpsertOne {
+	return u.Update(func(s *BalancePackageUpsert) {
+		s.SetActualCredits(v)
+	})
+}
+
+// AddActualCredits adds v to the "actual_credits" field.
+func (u *BalancePackageUpsertOne) AddActualCredits(v int64) *BalancePackageUpsertOne {
+	return u.Update(func(s *BalancePackageUpsert) {
+		s.AddActualCredits(v)
+	})
+}
+
+// UpdateActualCredits sets the "actual_credits" field to the value that was provided on create.
+func (u *BalancePackageUpsertOne) UpdateActualCredits() *BalancePackageUpsertOne {
+	return u.Update(func(s *BalancePackageUpsert) {
+		s.UpdateActualCredits()
+	})
+}
+
+// SetCreditUnit sets the "credit_unit" field.
+func (u *BalancePackageUpsertOne) SetCreditUnit(v string) *BalancePackageUpsertOne {
+	return u.Update(func(s *BalancePackageUpsert) {
+		s.SetCreditUnit(v)
+	})
+}
+
+// UpdateCreditUnit sets the "credit_unit" field to the value that was provided on create.
+func (u *BalancePackageUpsertOne) UpdateCreditUnit() *BalancePackageUpsertOne {
+	return u.Update(func(s *BalancePackageUpsert) {
+		s.UpdateCreditUnit()
 	})
 }
 
@@ -1258,6 +1378,41 @@ func (u *BalancePackageUpsertBulk) AddCreditMultiplier(v float64) *BalancePackag
 func (u *BalancePackageUpsertBulk) UpdateCreditMultiplier() *BalancePackageUpsertBulk {
 	return u.Update(func(s *BalancePackageUpsert) {
 		s.UpdateCreditMultiplier()
+	})
+}
+
+// SetActualCredits sets the "actual_credits" field.
+func (u *BalancePackageUpsertBulk) SetActualCredits(v int64) *BalancePackageUpsertBulk {
+	return u.Update(func(s *BalancePackageUpsert) {
+		s.SetActualCredits(v)
+	})
+}
+
+// AddActualCredits adds v to the "actual_credits" field.
+func (u *BalancePackageUpsertBulk) AddActualCredits(v int64) *BalancePackageUpsertBulk {
+	return u.Update(func(s *BalancePackageUpsert) {
+		s.AddActualCredits(v)
+	})
+}
+
+// UpdateActualCredits sets the "actual_credits" field to the value that was provided on create.
+func (u *BalancePackageUpsertBulk) UpdateActualCredits() *BalancePackageUpsertBulk {
+	return u.Update(func(s *BalancePackageUpsert) {
+		s.UpdateActualCredits()
+	})
+}
+
+// SetCreditUnit sets the "credit_unit" field.
+func (u *BalancePackageUpsertBulk) SetCreditUnit(v string) *BalancePackageUpsertBulk {
+	return u.Update(func(s *BalancePackageUpsert) {
+		s.SetCreditUnit(v)
+	})
+}
+
+// UpdateCreditUnit sets the "credit_unit" field to the value that was provided on create.
+func (u *BalancePackageUpsertBulk) UpdateCreditUnit() *BalancePackageUpsertBulk {
+	return u.Update(func(s *BalancePackageUpsert) {
+		s.UpdateCreditUnit()
 	})
 }
 
