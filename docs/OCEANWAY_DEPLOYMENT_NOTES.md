@@ -197,8 +197,10 @@ rm -rf /opt/sub2api/source
 mkdir -p /opt/sub2api/source
 tar -xzf /root/sub2api-source-${TAG}-${COMMIT}.tar.gz -C /opt/sub2api/source
 cd /opt/sub2api/source
-docker build -t sub2api:${TAG} --build-arg VERSION=${TAG} --build-arg COMMIT=${COMMIT} .
+docker build -t sub2api:${TAG} --build-arg COMMIT=${COMMIT} .
 ```
+
+注意：`TAG` 只是镜像部署标记，不要传给 `--build-arg VERSION`。应用版本默认来自 `backend/cmd/server/VERSION`，这样页面左上角会显示上游同步后的版本号，例如 `v0.1.126`。
 
 在 `ali-vps` 上加载镜像并重启应用：
 
