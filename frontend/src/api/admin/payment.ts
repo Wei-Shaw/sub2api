@@ -132,6 +132,11 @@ export const adminPaymentAPI = {
     return apiClient.post(`/admin/payment/orders/${id}/retry`)
   },
 
+  /** Manually confirm a pending manual QR payment order */
+  completeManualOrder(id: number, data: { trade_no?: string; note?: string } = {}) {
+    return apiClient.post(`/admin/payment/orders/${id}/manual-complete`, data)
+  },
+
   /** Process a refund */
   refundOrder(id: number, data: { amount: number; reason: string; deduct_balance?: boolean; force?: boolean }) {
     return apiClient.post<RefundResult>(`/admin/payment/orders/${id}/refund`, data)
@@ -224,6 +229,15 @@ export const adminPaymentAPI = {
   /** Create a provider instance */
   createProvider(data: Partial<ProviderInstance>) {
     return apiClient.post<ProviderInstance>('/admin/payment/providers', data)
+  },
+
+  /** Upload a manual payment QR image and receive a data URL for provider config. */
+  uploadManualQRCode(file: File) {
+    const formData = new FormData()
+    formData.append('file', file)
+    return apiClient.post<{ url: string; content_type: string; size: number }>('/admin/payment/providers/manual-qr', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
   },
 
   /** Update a provider instance */

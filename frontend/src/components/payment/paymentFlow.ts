@@ -169,7 +169,7 @@ export function decidePaymentLaunch(
   const baseState = createPaymentRecoverySnapshot({
     orderId: result.order_id,
     amount: result.amount,
-    qrCode: result.qr_code || '',
+    qrCode: result.qr_code_img || result.qr_code || '',
     expiresAt: result.expires_at || '',
     paymentType: visibleMethod,
     payUrl: result.pay_url || result.checkout_url || '',

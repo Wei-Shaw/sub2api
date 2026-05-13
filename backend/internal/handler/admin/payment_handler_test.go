@@ -28,6 +28,8 @@ func TestSanitizeAdminPaymentOrderForResponseAddsCurrency(t *testing.T) {
 		ProviderSnapshot: map[string]any{
 			"schema_version": 2,
 			"currency":       "USD",
+			"payment_mode":   "manual",
+			"api_key":        "secret-value",
 		},
 	}
 
@@ -38,13 +40,22 @@ func TestSanitizeAdminPaymentOrderForResponseAddsCurrency(t *testing.T) {
 	if got.Currency != "USD" {
 		t.Fatalf("expected currency USD, got %q", got.Currency)
 	}
+	if got.ProviderSnapshot == nil {
+		t.Fatal("expected safe provider snapshot metadata")
+	}
+	if got.ProviderSnapshot["payment_mode"] != "manual" {
+		t.Fatalf("expected payment_mode manual, got %#v", got.ProviderSnapshot["payment_mode"])
+	}
 
 	body, err := json.Marshal(got)
 	if err != nil {
 		t.Fatalf("marshal sanitized order: %v", err)
 	}
-	if strings.Contains(string(body), "provider_snapshot") {
-		t.Fatalf("expected provider_snapshot to be omitted, got %s", string(body))
+	if !strings.Contains(string(body), "provider_snapshot") {
+		t.Fatalf("expected safe provider_snapshot metadata, got %s", string(body))
+	}
+	if strings.Contains(string(body), "api_key") || strings.Contains(string(body), "secret-value") {
+		t.Fatalf("expected provider_snapshot secrets to be omitted, got %s", string(body))
 	}
 }
 

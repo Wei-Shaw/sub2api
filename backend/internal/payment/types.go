@@ -153,6 +153,7 @@ type CreatePaymentResponse struct {
 	TradeNo      string                  // Third-party transaction ID
 	PayURL       string                  // H5 payment URL (alipay/wxpay)
 	QRCode       string                  // QR code content for scanning
+	QRCodeImg    string                  // QR code image URL/data URL for manual/static QR flows
 	ClientSecret string                  // Stripe PaymentIntent 客户端密钥
 	IntentID     string                  // 前端 SDK 需要的服务商支付意图 ID
 	Currency     string                  // 服务商支付币种

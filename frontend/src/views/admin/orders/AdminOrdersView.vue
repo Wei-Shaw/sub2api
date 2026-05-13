@@ -26,6 +26,10 @@
               <Icon name="eye" size="sm" />
               {{ t('common.view') }}
             </button>
+            <button v-if="isManualPaymentOrder(row)" @click="handleManualCompleteOrder(row)" class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-green-600 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-900/20">
+              <Icon name="check" size="sm" />
+              {{ t('payment.admin.confirmManualPayment') }}
+            </button>
             <button v-if="row.status === 'PENDING'" @click="handleCancelOrder(row)" class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-yellow-600 hover:bg-yellow-50 dark:text-yellow-400 dark:hover:bg-yellow-900/20">
               <Icon name="x" size="sm" />
               {{ t('payment.orders.cancel') }}
@@ -223,6 +227,27 @@ async function showOrderDetail(order: PaymentOrder) {
     if (data.order) selectedOrder.value = data.order as PaymentOrder
     orderAuditLogs.value = ((data.auditLogs || data.audit_logs || []) as unknown) as AuditLog[]
   } catch (_err: unknown) { /* keep cached order data */ }
+}
+
+function isManualPaymentOrder(order: PaymentOrder): boolean {
+  return order.status === 'PENDING'
+    && ['alipay', 'wxpay'].includes(order.payment_type)
+    && order.provider_snapshot?.payment_mode === 'manual'
+}
+
+async function handleManualCompleteOrder(order: PaymentOrder) {
+  const confirmed = window.confirm(t('payment.admin.confirmManualPaymentPrompt', {
+    order: order.out_trade_no,
+    amount: order.pay_amount.toFixed(2),
+  }))
+  if (!confirmed) return
+  try {
+    await adminPaymentAPI.completeManualOrder(order.id, { note: 'confirmed by admin orders page' })
+    appStore.showSuccess(t('payment.admin.manualPaymentConfirmed'))
+    await loadOrders()
+  } catch (err: unknown) {
+    appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error')))
+  }
 }
 
 async function handleCancelOrder(order: PaymentOrder) {

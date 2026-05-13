@@ -146,6 +146,13 @@ export interface PaymentOrder {
   refund_request_reason?: string
   plan_id?: number
   provider_instance_id?: string
+  provider_snapshot?: {
+    provider_instance_id?: string
+    provider_key?: string
+    payment_mode?: string
+    currency?: string
+    schema_version?: number
+  }
 }
 
 // ==================== Plans & Channels ====================
@@ -303,6 +310,7 @@ export interface CreateOrderResult {
   fx_timestamp?: string
   pay_url?: string
   qr_code?: string
+  qr_code_img?: string
   checkout_url?: string
   client_secret?: string
   intent_id?: string

@@ -34,7 +34,7 @@
         <ToggleSwitch :label="t('common.enabled')" :checked="form.enabled" @toggle="form.enabled = !form.enabled" />
         <ToggleSwitch :label="t('admin.settings.payment.refundEnabled')" :checked="form.refund_enabled" @toggle="form.refund_enabled = !form.refund_enabled; if (!form.refund_enabled) form.allow_user_refund = false" />
         <ToggleSwitch v-if="form.refund_enabled" :label="t('admin.settings.payment.allowUserRefund')" :checked="form.allow_user_refund" @toggle="form.allow_user_refund = !form.allow_user_refund" />
-        <div v-if="supportsPaymentMode" class="flex items-center gap-2">
+        <div v-if="supportsPaymentModeSelector" class="flex items-center gap-2">
           <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.paymentMode') }}</span>
           <div class="flex gap-1.5">
             <button
@@ -288,6 +288,31 @@
                 {{ sepayBankAccountsError }}
               </p>
             </div>
+            <div v-else-if="isManualQRCodeField(field.key)" class="space-y-2">
+              <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <input
+                  type="file"
+                  accept="image/*"
+                  class="block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-primary-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary-700 hover:file:bg-primary-100 dark:text-gray-300 dark:file:bg-primary-900/30 dark:file:text-primary-200"
+                  :disabled="manualQrUploading"
+                  @change="handleManualQRCodeUpload"
+                />
+                <button
+                  v-if="config.manualQrCodeImg"
+                  type="button"
+                  class="btn btn-secondary whitespace-nowrap"
+                  @click="config.manualQrCodeImg = ''"
+                >
+                  {{ t('admin.settings.payment.clearManualQRCode') }}
+                </button>
+              </div>
+              <div v-if="config.manualQrCodeImg" class="inline-flex rounded-lg bg-white p-2 shadow-sm dark:bg-dark-800">
+                <img :src="config.manualQrCodeImg" :alt="t('admin.settings.payment.manualQRCodePreview')" class="h-32 w-32 object-contain" />
+              </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                {{ manualQrUploading ? t('admin.settings.payment.manualQRCodeUploading') : t('admin.settings.payment.manualQRCodeHint') }}
+              </p>
+            </div>
             <Select
               v-else-if="field.options?.length"
               v-model="config[field.key]"
@@ -421,38 +446,13 @@ import {
   WEBHOOK_PATHS,
   PAYMENT_MODE_QRCODE,
   PAYMENT_MODE_POPUP,
-  PAYMENT_MODE_REDIRECT,
+  PAYMENT_MODE_MANUAL,
   STRIPE_SDK_API_VERSION,
   getAvailableTypes,
   extractBaseUrl,
   parseEasyPayCustomMethods,
   serializeEasyPayCustomMethods,
 } from './providerConfig'
-
-/** Default payment_mode per provider key — "" means "no preference, use
- * provider's built-in default behavior". */
-function defaultPaymentMode(providerKey: string): string {
-  if (providerKey === 'easypay') return PAYMENT_MODE_QRCODE
-  return ''
-}
-
-/** Provider keys whose admin UI exposes a payment_mode selector.
- * Other providers always send payment_mode = ''. */
-function providerSupportsPaymentMode(providerKey: string): boolean {
-  return providerKey === 'easypay' || providerKey === 'alipay'
-}
-
-/** Allowed payment_mode values per provider. Used to coerce DB values
- * from a different provider (or stale data) back to the default. */
-function isValidPaymentMode(providerKey: string, mode: string): boolean {
-  if (providerKey === 'easypay') {
-    return mode === PAYMENT_MODE_QRCODE || mode === PAYMENT_MODE_POPUP
-  }
-  if (providerKey === 'alipay') {
-    return mode === '' || mode === PAYMENT_MODE_REDIRECT
-  }
-  return mode === ''
-}
 
 const props = defineProps<{
   show: boolean
@@ -515,6 +515,7 @@ const easyPayCustomMethods = reactive<EasyPayCustomMethod[]>([])
 const sepayBankAccounts = ref<SepayBankAccountOption[]>([])
 const sepayBankAccountsLoading = ref(false)
 const sepayBankAccountsError = ref('')
+const manualQrUploading = ref(false)
 
 // --- Computed ---
 const defaultBaseUrl = typeof window !== 'undefined' ? window.location.origin : ''
@@ -533,23 +534,23 @@ const providerWebhookHint = computed(() =>
   providerWebhookHintMap[form.provider_key] || 'admin.settings.payment.stripeWebhookHint',
 )
 
-const callbackPaths = computed(() => PROVIDER_CALLBACK_PATHS[form.provider_key] || null)
+const callbackPaths = computed(() => {
+  if (supportsManualPaymentMode.value && form.payment_mode === PAYMENT_MODE_MANUAL) return null
+  return PROVIDER_CALLBACK_PATHS[form.provider_key] || null
+})
 
-const supportsPaymentMode = computed(() => providerSupportsPaymentMode(form.provider_key))
+const supportsManualPaymentMode = computed(() => ['alipay', 'wxpay'].includes(form.provider_key))
+const supportsPaymentModeSelector = computed(() => form.provider_key === 'easypay' || supportsManualPaymentMode.value)
 
 const paymentModeOptions = computed(() => {
-  if (form.provider_key === 'alipay') {
-    // For Alipay official: "" = default (precreate → page.pay fallback);
-    // "redirect" = always open the Alipay checkout page in a new tab.
-    return [
-      { value: '', label: t('admin.settings.payment.modeQRCode') },
-      { value: PAYMENT_MODE_REDIRECT, label: t('admin.settings.payment.modeRedirect') },
-    ]
-  }
-  return [
+  const options = [
     { value: PAYMENT_MODE_QRCODE, label: t('admin.settings.payment.modeQRCode') },
     { value: PAYMENT_MODE_POPUP, label: t('admin.settings.payment.modePopup') },
   ]
+  if (supportsManualPaymentMode.value) {
+    options.push({ value: PAYMENT_MODE_MANUAL, label: t('admin.settings.payment.modeManual') })
+  }
+  return options
 })
 
 const availableTypes = computed(() => {
@@ -574,13 +575,18 @@ const availableTypes = computed(() => {
 
 const resolvedFields = computed(() => {
   const fields = PROVIDER_CONFIG_FIELDS[form.provider_key] || []
-  return fields.map(f => ({
+  const visibleProviderFields = supportsManualPaymentMode.value && form.payment_mode === PAYMENT_MODE_MANUAL
+    ? fields.filter(f => f.key === 'manualQrCodeImg')
+    : fields
+  return visibleProviderFields.map(f => ({
     ...f,
     label: f.label || t(`admin.settings.payment.field_${f.key}`),
   }))
 })
 
 const paymentGuide = computed<PaymentGuide | null>(() => {
+  if (supportsManualPaymentMode.value && form.payment_mode === PAYMENT_MODE_MANUAL) return null
+
   if (form.provider_key === 'alipay') {
     return {
       summary: t('admin.settings.payment.alipayGuideSummary'),
@@ -859,6 +865,18 @@ function isSepayWebhookApiKeyField(key: string): boolean {
   return form.provider_key === 'sepay' && key === 'webhookApiKey'
 }
 
+function isManualQRCodeField(key: string): boolean {
+  return supportsManualPaymentMode.value && key === 'manualQrCodeImg'
+}
+
+function isConfigFieldRequired(field: { key: string; optional?: boolean; sensitive?: boolean }): boolean {
+  if (supportsManualPaymentMode.value && form.payment_mode === PAYMENT_MODE_MANUAL) {
+    return field.key === 'manualQrCodeImg'
+  }
+  if (field.optional) return false
+  return true
+}
+
 function isMultilineSecretField(key: string): boolean {
   return ['privateKey', 'publicKey', 'alipayPublicKey'].includes(key)
 }
@@ -868,6 +886,30 @@ function formatSepayBankAccountLabel(account: SepayBankAccountOption): string {
     .map(part => (part || '').trim())
     .filter(Boolean)
   return parts.join(' · ') || account.id
+}
+
+async function handleManualQRCodeUpload(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  if (!file.type.startsWith('image/')) {
+    emitValidationError(t('admin.settings.payment.manualQRCodeImageRequired'))
+    return
+  }
+  if (file.size > 1024 * 1024) {
+    emitValidationError(t('admin.settings.payment.manualQRCodeTooLarge'))
+    return
+  }
+  manualQrUploading.value = true
+  try {
+    const res = await adminPaymentAPI.uploadManualQRCode(file)
+    config.manualQrCodeImg = res.data.url
+  } catch (err: unknown) {
+    emitValidationError(getErrorMessage(err))
+  } finally {
+    manualQrUploading.value = false
+  }
 }
 
 function resetSepayBankAccounts() {
@@ -928,7 +970,7 @@ async function loadSepayBankAccounts() {
 
 function onKeyChange() {
   form.supported_types = [...(PROVIDER_SUPPORTED_TYPES[form.provider_key] || [])]
-  form.payment_mode = defaultPaymentMode(form.provider_key)
+  form.payment_mode = supportsPaymentModeSelector.value ? PAYMENT_MODE_QRCODE : ''
   clearConfig()
   applyDefaults()
 }
@@ -1011,6 +1053,9 @@ function handleSave() {
     emitValidationError(t('admin.settings.payment.validationNameRequired'))
     return
   }
+  if (supportsPaymentModeSelector.value && !paymentModeOptions.value.some(option => option.value === form.payment_mode)) {
+    form.payment_mode = PAYMENT_MODE_QRCODE
+  }
   if (form.provider_key === 'easypay') {
     const validationError = validateEasyPayCustomMethods()
     if (validationError) {
@@ -1023,7 +1068,7 @@ function handleSave() {
   // In edit mode, sensitive fields may be left blank to preserve the stored
   // value (backend merges blanks by preserving the existing secret).
   for (const f of PROVIDER_CONFIG_FIELDS[form.provider_key] || []) {
-    if (f.optional) continue
+    if (!isConfigFieldRequired(f)) continue
     if (props.editing && f.sensitive) continue
     const val = (config[f.key] || '').trim()
     if (!val) {
@@ -1073,7 +1118,7 @@ function handleSave() {
     name: form.name,
     supported_types: form.supported_types,
     enabled: form.enabled,
-    payment_mode: supportsPaymentMode.value ? form.payment_mode : '',
+    payment_mode: supportsPaymentModeSelector.value ? form.payment_mode : '',
     refund_enabled: form.refund_enabled,
     allow_user_refund: form.refund_enabled ? form.allow_user_refund : false,
     config: filteredConfig,
@@ -1143,7 +1188,7 @@ function reset(defaultKey: string) {
   form.provider_key = defaultKey
   form.supported_types = [...(PROVIDER_SUPPORTED_TYPES[defaultKey] || [])]
   form.enabled = true
-  form.payment_mode = defaultPaymentMode(defaultKey)
+  form.payment_mode = defaultKey === 'easypay' || ['alipay', 'wxpay'].includes(defaultKey) ? PAYMENT_MODE_QRCODE : ''
   form.refund_enabled = false
   form.allow_user_refund = false
   clearConfig()
@@ -1157,12 +1202,7 @@ function loadProvider(provider: ProviderInstance) {
     ? [...provider.supported_types]
     : []
   form.enabled = provider.enabled
-  // Coerce to a valid value for this provider. Guards against stale data
-  // (e.g. "popup" written by an older client) showing up as an unselected
-  // button in the dialog.
-  form.payment_mode = isValidPaymentMode(provider.provider_key, provider.payment_mode || '')
-    ? (provider.payment_mode || '')
-    : defaultPaymentMode(provider.provider_key)
+  form.payment_mode = provider.payment_mode || (['easypay', 'alipay', 'wxpay'].includes(provider.provider_key) ? PAYMENT_MODE_QRCODE : '')
   form.refund_enabled = provider.refund_enabled
   form.allow_user_refund = provider.allow_user_refund
   clearConfig()
