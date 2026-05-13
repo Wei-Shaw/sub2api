@@ -665,7 +665,7 @@ const routes: RouteRecordRaw[] = [
       title: 'Invoice Management',
       titleKey: 'invoice.admin.title',
       descriptionKey: 'invoice.admin.description',
-      requiresPayment: true
+      requiresPayment: false
     }
   },
 
