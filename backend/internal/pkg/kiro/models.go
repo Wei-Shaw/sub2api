@@ -8,6 +8,8 @@ type Model struct {
 }
 
 var DefaultModels = []Model{
+	{ID: "claude-opus-4-7", Type: "model", DisplayName: "Claude Opus 4.7"},
+	{ID: "claude-opus-4-7-thinking", Type: "model", DisplayName: "Claude Opus 4.7 (Thinking)"},
 	{ID: "claude-opus-4-6", Type: "model", DisplayName: "Claude Opus 4.6"},
 	{ID: "claude-opus-4-6-thinking", Type: "model", DisplayName: "Claude Opus 4.6 (Thinking)"},
 	{ID: "claude-sonnet-4-6", Type: "model", DisplayName: "Claude Sonnet 4.6"},

@@ -13,6 +13,8 @@ func TestDefaultModels_MatchesKiroReferenceModels(t *testing.T) {
 	}
 
 	require.Equal(t, []string{
+		"claude-opus-4-7",
+		"claude-opus-4-7-thinking",
 		"claude-opus-4-6",
 		"claude-opus-4-6-thinking",
 		"claude-sonnet-4-6",
@@ -33,7 +35,9 @@ func TestDefaultModels_MatchesKiroReferenceModels(t *testing.T) {
 	require.NotContains(t, ids, "deepseek-3-2")
 	require.NotContains(t, ids, "minimax-m2-1")
 	require.NotContains(t, ids, "qwen3-coder-next")
-	require.NotContains(t, ids, "claude-opus-4-7")
+	require.Contains(t, ids, "claude-opus-4-7")
+	require.Contains(t, ids, "claude-opus-4-7-thinking")
+	require.NotContains(t, ids, "claude-sonnet-4-7")
 	require.NotContains(t, ids, "claude-sonnet-4-6-chat")
 	for _, id := range ids {
 		require.NotContains(t, id, "kiro-")

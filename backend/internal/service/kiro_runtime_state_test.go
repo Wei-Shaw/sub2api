@@ -353,7 +353,7 @@ func TestHandleKiroHTTPErrorOAuthInvalidModelRateLimitsAndFailovers(t *testing.T
 	resp := newJSONResponse(http.StatusBadRequest, `{"error":{"message":"Invalid model. Please select a different model to continue.","type":"upstream_error"}}`)
 	resp.Header.Set("x-request-id", "req-invalid-model")
 
-	err := svc.handleKiroHTTPError(context.Background(), resp, c, account, "claude-opus-4.6", requestBody)
+	err := svc.handleKiroHTTPError(context.Background(), resp, c, account, "claude-opus-4.7", requestBody)
 	require.Error(t, err)
 
 	var failoverErr *UpstreamFailoverError
@@ -379,8 +379,8 @@ func TestHandleKiroHTTPErrorOAuthInvalidModelRateLimitsAndFailovers(t *testing.T
 	require.Equal(t, "req-invalid-model", events[0].UpstreamRequestID)
 	require.Equal(t, "failover", events[0].Kind)
 	require.Equal(t, "claude-opus-4-7", events[0].RequestedModel)
-	require.Equal(t, "claude-opus-4.6", events[0].MappedModel)
-	require.Equal(t, "claude-opus-4.6", events[0].KiroModelID)
+	require.Equal(t, "claude-opus-4.7", events[0].MappedModel)
+	require.Equal(t, "claude-opus-4.7", events[0].KiroModelID)
 	require.True(t, events[0].HasTools)
 	require.True(t, events[0].HasAdaptiveThinking)
 	require.True(t, events[0].HasContext1MBeta)
@@ -399,7 +399,7 @@ func TestHandleKiroHTTPErrorAPIKeyInvalidModelDoesNotFailover(t *testing.T) {
 	svc := &GatewayService{accountRepo: repo}
 	resp := newJSONResponse(http.StatusBadRequest, `{"message":"Invalid model. Please select a different model to continue."}`)
 
-	err := svc.handleKiroHTTPError(context.Background(), resp, c, account, "claude-opus-4.6", []byte(`{"model":"claude-opus-4-7"}`))
+	err := svc.handleKiroHTTPError(context.Background(), resp, c, account, "claude-opus-4.7", []byte(`{"model":"claude-opus-4-7"}`))
 	require.Error(t, err)
 
 	var failoverErr *UpstreamFailoverError

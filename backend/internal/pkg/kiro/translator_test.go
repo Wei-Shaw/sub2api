@@ -1137,6 +1137,9 @@ func TestMapModel_MatchesKiroReferenceMapping(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string]string{
+		"claude-opus-4-7":                     "claude-opus-4.7",
+		"claude-opus-4-7-thinking":            "claude-opus-4.7",
+		"claude-opus-4.7":                     "claude-opus-4.7",
 		"claude-sonnet-4-6":                   "claude-sonnet-4.6",
 		"claude-sonnet-4-6-thinking":          "claude-sonnet-4.6",
 		"claude-sonnet-4.6":                   "claude-sonnet-4.6",
