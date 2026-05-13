@@ -512,6 +512,7 @@ const allPaymentTypes = computed(() => [
   { value: 'alipay', label: t('payment.adminSettings.providerAlipay') },
   { value: 'wxpay', label: t('payment.adminSettings.providerWxpay') },
   { value: 'stripe', label: t('payment.adminSettings.providerStripe') },
+  { value: 'airwallex', label: t('payment.adminSettings.providerAirwallex') },
 ])
 
 const hasAnyPaymentTypeEnabled = computed(() => form.payment_enabled_types.length > 0)
@@ -530,6 +531,7 @@ const providerKeyOptions = computed(() => [
   { value: 'alipay', label: t('payment.adminSettings.providerAlipay') },
   { value: 'wxpay', label: t('payment.adminSettings.providerWxpay') },
   { value: 'stripe', label: t('payment.adminSettings.providerStripe') },
+  { value: 'airwallex', label: t('payment.adminSettings.providerAirwallex') },
 ])
 
 const enabledProviderKeyOptions = computed(() =>

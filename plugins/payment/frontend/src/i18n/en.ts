@@ -246,6 +246,7 @@ export default {
       providerAlipay: 'Alipay (Direct)',
       providerWxpay: 'WeChat Pay (Direct)',
       providerStripe: 'Stripe',
+      providerAirwallex: 'Airwallex',
       typeDisabled: 'type disabled',
       enableTypesFirst: 'Enable at least one payment type above first',
       enableConflict: 'Provider has pending orders; enable state restored',

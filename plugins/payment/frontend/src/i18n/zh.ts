@@ -246,6 +246,7 @@ export default {
       providerAlipay: '支付宝官方',
       providerWxpay: '微信官方',
       providerStripe: 'Stripe',
+      providerAirwallex: '空中云汇 (Airwallex)',
       typeDisabled: '类型已禁用',
       enableTypesFirst: '请先在上方启用至少一种服务商',
       enableConflict: '该服务商存在未完成的订单，已恢复启用状态',
