@@ -206,12 +206,25 @@
         </div>
         <div>
           <label class="input-label">{{ t('invoice.admin.fileLabel') }} <span class="text-red-500">*</span></label>
+          <div class="mt-1 flex items-center gap-3">
+            <button
+              type="button"
+              class="btn btn-secondary"
+              @click="triggerFilePicker"
+            >
+              <Icon name="document" size="sm" class="mr-2" />
+              {{ completeForm.file ? t('common.reselect') : t('common.selectFile') }}
+            </button>
+            <span v-if="completeForm.file" class="truncate text-sm text-gray-700 dark:text-gray-300">
+              {{ completeForm.file.name }} ({{ formatFileSize(completeForm.file.size) }})
+            </span>
+            <span v-else class="text-sm text-gray-400">{{ t('common.noFileSelected') }}</span>
+          </div>
           <input
             ref="fileInputRef"
             type="file"
-            class="mt-1 w-full text-sm"
+            class="hidden"
             accept=".pdf,.png,.jpg,.jpeg,.zip,.xls,.xlsx"
-            required
             @change="onFileChange"
           />
           <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('invoice.admin.fileHint') }}</p>
@@ -387,6 +400,16 @@ function closeRejectDialog() {
 function onFileChange(event: Event) {
   const input = event.target as HTMLInputElement
   completeForm.file = input.files && input.files.length > 0 ? input.files[0] : null
+}
+
+function triggerFilePicker() {
+  fileInputRef.value?.click()
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
 }
 
 async function submitComplete() {

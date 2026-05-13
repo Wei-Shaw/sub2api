@@ -1,5 +1,0 @@
-allowBuilds:
-  '0': esbuild
-  '1': vue-demi
-  esbuild: true
-  vue-demi: true

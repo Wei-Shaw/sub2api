@@ -308,6 +308,9 @@ export default {
     saving: 'Saving...',
     selectedCount: '({count} selected)',
     refresh: 'Refresh',
+    selectFile: 'Select File',
+    reselect: 'Reselect',
+    noFileSelected: 'No file selected',
     autoRefresh: {
       title: 'Auto Refresh',
       enable: 'Enable auto refresh',

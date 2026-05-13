@@ -308,6 +308,9 @@ export default {
     saving: '保存中...',
     selectedCount: '（已选 {count} 个）',
     refresh: '刷新',
+    selectFile: '选择文件',
+    reselect: '重新选择',
+    noFileSelected: '未选择文件',
     autoRefresh: {
       title: '自动刷新',
       enable: '启用自动刷新',
