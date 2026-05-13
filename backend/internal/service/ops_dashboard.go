@@ -54,6 +54,8 @@ func (s *OpsService) GetDashboardOverview(ctx context.Context, filter *OpsDashbo
 				metrics.RedisPoolSize = intPtr(s.cfg.Redis.PoolSize)
 			}
 		}
+		// Attach live disk stats (working-directory volume). Not persisted to DB.
+		attachLiveDiskStats(ctx, metrics)
 		overview.SystemMetrics = metrics
 	} else if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		log.Printf("[Ops] GetLatestSystemMetrics failed: %v", err)
