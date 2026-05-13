@@ -1746,13 +1746,20 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	promptCacheKey := openAIWSPayloadString(payload, "prompt_cache_key")
 	_, hasTools := payload["tools"]
 	debugEnabled := isOpenAIWSModeDebugEnabled()
-	payloadBytes := -1
+	var payloadJSON []byte
+	var payloadMarshalErr error
 	resolvePayloadBytes := func() int {
-		if payloadBytes >= 0 {
-			return payloadBytes
+		if payloadJSON != nil {
+			return len(payloadJSON)
 		}
-		payloadBytes = len(payloadAsJSONBytes(payload))
-		return payloadBytes
+		if payloadMarshalErr != nil {
+			return -1
+		}
+		payloadJSON, payloadMarshalErr = json.Marshal(payload)
+		if payloadMarshalErr != nil {
+			return -1
+		}
+		return len(payloadJSON)
 	}
 	streamValue := "-"
 	if raw, ok := payload["stream"]; ok {
@@ -1977,7 +1984,24 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		return nil, err
 	}
 
-	if err := lease.WriteJSONWithContextTimeout(ctx, payload, s.openAIWSWriteTimeout()); err != nil {
+	writePayload := any(payload)
+	if payloadJSON != nil {
+		writePayload = json.RawMessage(payloadJSON)
+	} else {
+		payloadJSON, payloadMarshalErr = json.Marshal(payload)
+		if payloadMarshalErr != nil {
+			lease.MarkBroken()
+			logOpenAIWSModeInfo(
+				"write_request_marshal_fail account_id=%d conn_id=%s cause=%s",
+				account.ID,
+				connID,
+				truncateOpenAIWSLogValue(payloadMarshalErr.Error(), openAIWSLogValueMaxLen),
+			)
+			return nil, wrapOpenAIWSFallback("write_request_marshal", payloadMarshalErr)
+		}
+		writePayload = json.RawMessage(payloadJSON)
+	}
+	if err := lease.WriteJSONWithContextTimeout(ctx, writePayload, s.openAIWSWriteTimeout()); err != nil {
 		lease.MarkBroken()
 		logOpenAIWSModeInfo(
 			"write_request_fail account_id=%d conn_id=%s cause=%s payload_bytes=%d",
@@ -3729,9 +3753,18 @@ func (s *OpenAIGatewayService) performOpenAIWSGeneratePrewarm(
 		prewarmPayload[k] = v
 	}
 	prewarmPayload["generate"] = false
-	prewarmPayloadJSON := payloadAsJSONBytes(prewarmPayload)
+	prewarmPayloadJSON, err := json.Marshal(prewarmPayload)
+	if err != nil {
+		logOpenAIWSModeInfo(
+			"prewarm_marshal_fail account_id=%d conn_id=%s cause=%s",
+			account.ID,
+			connID,
+			truncateOpenAIWSLogValue(err.Error(), openAIWSLogValueMaxLen),
+		)
+		return wrapOpenAIWSFallback("prewarm_marshal", err)
+	}
 
-	if err := lease.WriteJSONWithContextTimeout(ctx, prewarmPayload, s.openAIWSWriteTimeout()); err != nil {
+	if err := lease.WriteJSONWithContextTimeout(ctx, json.RawMessage(prewarmPayloadJSON), s.openAIWSWriteTimeout()); err != nil {
 		lease.MarkBroken()
 		logOpenAIWSModeInfo(
 			"prewarm_write_fail account_id=%d conn_id=%s cause=%s",

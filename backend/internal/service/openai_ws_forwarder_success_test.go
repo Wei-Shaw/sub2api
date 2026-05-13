@@ -975,6 +975,314 @@ func TestOpenAIGatewayService_Forward_WSv2_GeneratePrewarm(t *testing.T) {
 	require.False(t, gjson.Get(secondWrite, "generate").Exists())
 }
 
+func TestOpenAIGatewayService_Forward_WSv2_WritePayload_JSONEquivalentToLegacyMarshal(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+	c.Request.Header.Set("User-Agent", "unit-test-agent/1.0")
+	c.Request.Header.Set(openAIWSTurnMetadataHeader, `{"trace":"unit","turn":"42"}`)
+
+	cfg := &config.Config{}
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Security.URLAllowlist.AllowInsecureHTTP = true
+	cfg.Gateway.OpenAIWS.Enabled = true
+	cfg.Gateway.OpenAIWS.OAuthEnabled = true
+	cfg.Gateway.OpenAIWS.APIKeyEnabled = true
+	cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 = true
+	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 1
+	cfg.Gateway.OpenAIWS.MinIdlePerAccount = 0
+	cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 1
+
+	captureConn := &openAIWSCaptureConn{
+		events: [][]byte{
+			[]byte(`{"type":"response.completed","response":{"id":"resp_json_equiv_1","model":"gpt-5.1","usage":{"input_tokens":3,"output_tokens":2}}}`),
+		},
+	}
+	captureDialer := &openAIWSCaptureDialer{conn: captureConn}
+	pool := newOpenAIWSConnPool(cfg)
+	pool.setClientDialerForTest(captureDialer)
+
+	svc := &OpenAIGatewayService{
+		cfg:              cfg,
+		httpUpstream:     &httpUpstreamRecorder{},
+		cache:            &stubGatewayCache{},
+		openaiWSResolver: NewOpenAIWSProtocolResolver(cfg),
+		toolCorrector:    NewCodexToolCorrector(),
+		openaiWSPool:     pool,
+	}
+
+	account := &Account{
+		ID:          609,
+		Name:        "openai-write-json-equivalent",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key": "sk-test",
+		},
+		Extra: map[string]any{
+			"responses_websockets_v2_enabled": true,
+		},
+	}
+
+	reqBody := map[string]any{
+		"model":                "gpt-5.1",
+		"stream":               false,
+		"input":                []any{map[string]any{"type": "input_text", "text": "hello"}},
+		"tools":                []any{map[string]any{"type": "function", "name": "search", "parameters": map[string]any{"type": "object", "properties": map[string]any{"query": map[string]any{"type": "string"}}}}},
+		"parallel_tool_calls":  true,
+		"previous_response_id": "resp_prev_1",
+		"prompt_cache_key":     "cache-key-1",
+		"instructions":         "custom write payload equivalence",
+	}
+
+	result, err := svc.forwardOpenAIWSV2(
+		context.Background(),
+		c,
+		account,
+		reqBody,
+		"sk-test",
+		OpenAIWSProtocolDecision{Transport: OpenAIUpstreamTransportResponsesWebsocketV2},
+		false,
+		false,
+		"gpt-5.1",
+		"gpt-5.1",
+		time.Now(),
+		1,
+		"",
+	)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, captureConn.writes, 1)
+
+	expectedPayload := svc.buildOpenAIWSCreatePayload(reqBody, account)
+	setOpenAIWSTurnMetadata(expectedPayload, c.GetHeader(openAIWSTurnMetadataHeader))
+	expectedJSON, err := json.Marshal(expectedPayload)
+	require.NoError(t, err)
+	require.JSONEq(t, string(expectedJSON), requestToJSONString(captureConn.writes[0]))
+}
+
+func TestOpenAIGatewayService_Forward_WSv2_WritePayloadMarshalFailureFailsClosed(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+
+	cfg := &config.Config{}
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Security.URLAllowlist.AllowInsecureHTTP = true
+	cfg.Gateway.OpenAIWS.Enabled = true
+	cfg.Gateway.OpenAIWS.OAuthEnabled = true
+	cfg.Gateway.OpenAIWS.APIKeyEnabled = true
+	cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 = true
+	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 1
+	cfg.Gateway.OpenAIWS.MinIdlePerAccount = 0
+	cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 1
+
+	captureConn := &openAIWSCaptureConn{}
+	captureDialer := &openAIWSCaptureDialer{conn: captureConn}
+	pool := newOpenAIWSConnPool(cfg)
+	pool.setClientDialerForTest(captureDialer)
+
+	svc := &OpenAIGatewayService{
+		cfg:              cfg,
+		httpUpstream:     &httpUpstreamRecorder{},
+		cache:            &stubGatewayCache{},
+		openaiWSResolver: NewOpenAIWSProtocolResolver(cfg),
+		toolCorrector:    NewCodexToolCorrector(),
+		openaiWSPool:     pool,
+	}
+
+	account := &Account{
+		ID:          610,
+		Name:        "openai-write-json-fail-closed",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key": "sk-test",
+		},
+		Extra: map[string]any{
+			"responses_websockets_v2_enabled": true,
+		},
+	}
+
+	reqBody := map[string]any{
+		"model": "gpt-5.1",
+		"input": []any{map[string]any{"type": "input_text", "text": "hello"}},
+		"bad":   func() {},
+	}
+
+	_, err := svc.forwardOpenAIWSV2(
+		context.Background(),
+		c,
+		account,
+		reqBody,
+		"sk-test",
+		OpenAIWSProtocolDecision{Transport: OpenAIUpstreamTransportResponsesWebsocketV2},
+		false,
+		false,
+		"gpt-5.1",
+		"gpt-5.1",
+		time.Now(),
+		1,
+		"",
+	)
+	require.Error(t, err)
+	var fallbackErr *openAIWSFallbackError
+	require.ErrorAs(t, err, &fallbackErr)
+	require.Equal(t, "write_request_marshal", fallbackErr.Reason)
+	require.Len(t, captureConn.writes, 0, "marshal 失败时不应向上游写入任何 payload")
+}
+
+func TestOpenAIGatewayService_Forward_WSv2_GeneratePrewarm_JSONEquivalentToLegacyMarshal(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+	c.Request.Header.Set("session_id", "session-prewarm-json-equivalent")
+
+	cfg := &config.Config{}
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Security.URLAllowlist.AllowInsecureHTTP = true
+	cfg.Gateway.OpenAIWS.Enabled = true
+	cfg.Gateway.OpenAIWS.OAuthEnabled = true
+	cfg.Gateway.OpenAIWS.APIKeyEnabled = true
+	cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 = true
+	cfg.Gateway.OpenAIWS.PrewarmGenerateEnabled = true
+	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 1
+	cfg.Gateway.OpenAIWS.MinIdlePerAccount = 0
+	cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 1
+
+	captureConn := &openAIWSCaptureConn{
+		events: [][]byte{
+			[]byte(`{"type":"response.completed","response":{"id":"resp_prewarm_json_1","model":"gpt-5.1","usage":{"input_tokens":0,"output_tokens":0}}}`),
+			[]byte(`{"type":"response.completed","response":{"id":"resp_main_json_1","model":"gpt-5.1","usage":{"input_tokens":4,"output_tokens":2}}}`),
+		},
+	}
+	captureDialer := &openAIWSCaptureDialer{conn: captureConn}
+	pool := newOpenAIWSConnPool(cfg)
+	pool.setClientDialerForTest(captureDialer)
+
+	svc := &OpenAIGatewayService{
+		cfg:              cfg,
+		httpUpstream:     &httpUpstreamRecorder{},
+		cache:            &stubGatewayCache{},
+		openaiWSResolver: NewOpenAIWSProtocolResolver(cfg),
+		toolCorrector:    NewCodexToolCorrector(),
+		openaiWSPool:     pool,
+	}
+
+	account := &Account{
+		ID:          611,
+		Name:        "openai-prewarm-json-equivalent",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key": "sk-test",
+		},
+		Extra: map[string]any{
+			"responses_websockets_v2_enabled": true,
+		},
+	}
+
+	reqBody := map[string]any{
+		"model":        "gpt-5.1",
+		"stream":       false,
+		"input":        []any{map[string]any{"type": "input_text", "text": "hello"}},
+		"instructions": "prewarm equivalence",
+	}
+
+	result, err := svc.forwardOpenAIWSV2(
+		context.Background(),
+		c,
+		account,
+		reqBody,
+		"sk-test",
+		OpenAIWSProtocolDecision{Transport: OpenAIUpstreamTransportResponsesWebsocketV2},
+		false,
+		false,
+		"gpt-5.1",
+		"gpt-5.1",
+		time.Now(),
+		1,
+		"",
+	)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, captureConn.writes, 2)
+
+	expectedMain := svc.buildOpenAIWSCreatePayload(reqBody, account)
+	expectedPrewarm := cloneMapStringAny(expectedMain)
+	expectedPrewarm["generate"] = false
+
+	expectedPrewarmJSON, err := json.Marshal(expectedPrewarm)
+	require.NoError(t, err)
+	expectedMainJSON, err := json.Marshal(expectedMain)
+	require.NoError(t, err)
+
+	require.JSONEq(t, string(expectedPrewarmJSON), requestToJSONString(captureConn.writes[0]))
+	require.JSONEq(t, string(expectedMainJSON), requestToJSONString(captureConn.writes[1]))
+}
+
+func TestOpenAIGatewayService_PerformOpenAIWSGeneratePrewarm_MarshalFailureFailsClosed(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.PrewarmGenerateEnabled = true
+	cfg.Gateway.OpenAIWS.WriteTimeoutSeconds = 3
+
+	svc := &OpenAIGatewayService{
+		cfg:           cfg,
+		toolCorrector: NewCodexToolCorrector(),
+	}
+	account := &Account{
+		ID:          612,
+		Name:        "openai-prewarm-fail-closed",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+	}
+	captureConn := &openAIWSCaptureConn{}
+	conn := newOpenAIWSConn("prewarm_marshal_fail_conn", account.ID, captureConn, nil)
+	lease := &openAIWSConnLease{
+		accountID: account.ID,
+		conn:      conn,
+	}
+	payload := map[string]any{
+		"type":  "response.create",
+		"model": "gpt-5.1",
+		"bad":   func() {},
+	}
+
+	err := svc.performOpenAIWSGeneratePrewarm(
+		context.Background(),
+		lease,
+		OpenAIWSProtocolDecision{Transport: OpenAIUpstreamTransportResponsesWebsocketV2},
+		payload,
+		"",
+		map[string]any{"model": "gpt-5.1"},
+		account,
+		nil,
+		0,
+	)
+	require.Error(t, err)
+	var fallbackErr *openAIWSFallbackError
+	require.ErrorAs(t, err, &fallbackErr)
+	require.Equal(t, "prewarm_marshal", fallbackErr.Reason)
+	require.Len(t, captureConn.writes, 0, "prewarm marshal 失败时不应写入任何 payload")
+}
+
 func TestOpenAIGatewayService_PrewarmReadHonorsParentContext(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Gateway.OpenAIWS.PrewarmGenerateEnabled = true
