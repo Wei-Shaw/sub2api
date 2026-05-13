@@ -367,7 +367,6 @@ const isHomeContentUrl = computed(() => {
   return c.startsWith('http://') || c.startsWith('https://')
 })
 
-const githubUrl = 'https://github.com/Wei-Shaw/sub2api'
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 const isAdmin = computed(() => authStore.isAdmin)
 const dashboardPath = computed(() => (isAdmin.value ? '/admin/dashboard' : '/dashboard'))
