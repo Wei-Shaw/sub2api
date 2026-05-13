@@ -47,7 +47,10 @@ func (s *EmailService) SendEmailWithAttachment(ctx context.Context, to, subject,
 	}
 
 	addr := fmt.Sprintf("%s:%d", config.Host, config.Port)
-	auth := smtp.PlainAuth("", config.Username, config.Password, config.Host)
+	var auth smtp.Auth
+	if config.Username != "" {
+		auth = smtp.PlainAuth("", config.Username, config.Password, config.Host)
+	}
 	if config.UseTLS {
 		return s.sendMailTLS(addr, auth, config.From, to, msg, config.Host)
 	}
