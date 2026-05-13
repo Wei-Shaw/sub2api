@@ -108,8 +108,8 @@ export function useOpenAIForm() {
     const cm = buildCompactModelMapping(); if (cm) creds.compact_model_mapping = cm
   }
 
-  const validate = (category?: string): PlatformFormValidation => {
-    if (category === 'apikey' && !apiKeyValue.value.trim()) {
+  const validate = (category?: string, mode?: string): PlatformFormValidation => {
+    if (category === 'apikey' && mode !== 'edit' && !apiKeyValue.value.trim()) {
       return { valid: false, error: t('admin.accounts.pleaseEnterApiKey') }
     }
     return { valid: true }

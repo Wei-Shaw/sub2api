@@ -61,8 +61,8 @@ export function useGeminiForm() {
     if (!geminiAIStudioOAuthEnabled.value && geminiOAuthType.value === 'ai_studio') geminiOAuthType.value = 'code_assist'
   }
 
-  function validate(accountCategory: string): PlatformFormValidation {
-    if (accountCategory === 'apikey' && !apiKeyValue.value.trim()) {
+  function validate(accountCategory: string, mode?: string): PlatformFormValidation {
+    if (accountCategory === 'apikey' && mode !== 'edit' && !apiKeyValue.value.trim()) {
       return { valid: false, error: t('admin.accounts.pleaseEnterApiKey') }
     }
     if (accountCategory === 'service_account') {

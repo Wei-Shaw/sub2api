@@ -164,7 +164,7 @@ export function useAnthropicForm() {
     applyInterceptWarmup(creds, interceptWarmupRequests.value, 'create')
   }
 
-  function validate(accountCategory: string): PlatformFormValidation {
+  function validate(accountCategory: string, mode?: string): PlatformFormValidation {
     if (accountCategory === 'bedrock') {
       if (bedrockAuthMode.value === 'sigv4') {
         if (!bedrockAccessKeyId.value.trim()) return { valid: false, error: t('admin.accounts.bedrockAccessKeyIdRequired') }
@@ -175,7 +175,7 @@ export function useAnthropicForm() {
       if (!vertexServiceAccountJson.value.trim()) return { valid: false, error: t('admin.accounts.vertexSaJsonMissingFields') }
       if (!vertexLocation.value.trim()) return { valid: false, error: t('admin.accounts.vertexLocationRequired') }
     }
-    if (accountCategory === 'apikey' && !apiKeyValue.value.trim()) return { valid: false, error: t('admin.accounts.pleaseEnterApiKey') }
+    if (accountCategory === 'apikey' && mode !== 'edit' && !apiKeyValue.value.trim()) return { valid: false, error: t('admin.accounts.pleaseEnterApiKey') }
     return { valid: true }
   }
 

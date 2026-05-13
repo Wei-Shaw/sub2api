@@ -167,7 +167,7 @@ onMounted(() => {
 })
 
 defineExpose({
-  validate: () => validate(props.context.accountCategory),
+  validate: () => validate(props.context.accountCategory, props.context.mode),
   getPayload: () => getPayload(props.context.accountCategory),
   isOAuthFlow: () => props.context.accountCategory === 'oauth-based',
   reset: () => reset(),
