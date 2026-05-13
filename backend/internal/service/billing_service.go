@@ -263,6 +263,13 @@ func (s *BillingService) initFallbackPricing() {
 	s.fallbackPrices["claude-opus-4.8"] = s.fallbackPrices["claude-opus-4.7"]
 	s.fallbackPrices["claude-opus-5"] = s.fallbackPrices["claude-opus-4.8"]
 
+	// Claude Sonnet 4.5/4.6 当前与 Sonnet 4 同价
+	s.fallbackPrices["claude-sonnet-4.5"] = s.fallbackPrices["claude-sonnet-4"]
+	s.fallbackPrices["claude-sonnet-4.6"] = s.fallbackPrices["claude-sonnet-4.5"]
+
+	// Claude Haiku 4.5 当前与 Claude 3.5 Haiku 同价
+	s.fallbackPrices["claude-haiku-4.5"] = s.fallbackPrices["claude-3-5-haiku"]
+
 	// Gemini 3.1 Pro
 	s.fallbackPrices["gemini-3.1-pro"] = &ModelPricing{
 		InputPricePerToken:         2e-6,   // $2 per MTok
@@ -639,13 +646,21 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 		return s.fallbackPrices["claude-3-opus"]
 	}
 	if strings.Contains(modelLower, "sonnet") {
-		if strings.Contains(modelLower, "4") && !strings.Contains(modelLower, "3") {
+		switch {
+		case strings.Contains(modelLower, "4.6") || strings.Contains(modelLower, "4-6"):
+			return s.fallbackPrices["claude-sonnet-4.6"]
+		case strings.Contains(modelLower, "4.5") || strings.Contains(modelLower, "4-5"):
+			return s.fallbackPrices["claude-sonnet-4.5"]
+		case strings.Contains(modelLower, "4") && !strings.Contains(modelLower, "3"):
 			return s.fallbackPrices["claude-sonnet-4"]
 		}
 		return s.fallbackPrices["claude-3-5-sonnet"]
 	}
 	if strings.Contains(modelLower, "haiku") {
-		if strings.Contains(modelLower, "3-5") || strings.Contains(modelLower, "3.5") {
+		switch {
+		case strings.Contains(modelLower, "4.5") || strings.Contains(modelLower, "4-5"):
+			return s.fallbackPrices["claude-haiku-4.5"]
+		case strings.Contains(modelLower, "3-5") || strings.Contains(modelLower, "3.5"):
 			return s.fallbackPrices["claude-3-5-haiku"]
 		}
 		return s.fallbackPrices["claude-3-haiku"]

@@ -12,9 +12,9 @@ func optionalTrimmedStringPtr(raw string) *string {
 
 func forwardResultBillingModel(requestedModel, upstreamModel string) string {
 	if trimmed := strings.TrimSpace(requestedModel); trimmed != "" {
-		return trimmed
+		return normalizeModelNameForPricing(trimmed)
 	}
-	return strings.TrimSpace(upstreamModel)
+	return normalizeModelNameForPricing(upstreamModel)
 }
 
 func optionalInt64Ptr(v int64) *int64 {

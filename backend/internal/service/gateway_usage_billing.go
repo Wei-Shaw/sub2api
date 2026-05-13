@@ -559,6 +559,7 @@ type recordUsageOpts struct {
 	// 长上下文计费（仅 Gemini 路径需要）
 	LongContextThreshold  int
 	LongContextMultiplier float64
+	IsKiroAccount         bool
 }
 
 // RecordUsage 记录使用量并扣费（或更新订阅用量）
@@ -714,6 +715,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	}
 
 	// 计算费用
+	opts.IsKiroAccount = account != nil && account.Platform == PlatformKiro
 	cost := s.calculateRecordUsageCost(ctx, result, apiKey, billingModel, multiplier, imageMultiplier, opts)
 
 	// 判断计费方式：订阅模式 vs 余额模式
@@ -911,6 +913,27 @@ func (s *GatewayService) calculateImageCost(
 	return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier)
 }
 
+const kiroConservativeFallbackBillingModel = "claude-opus-4-6"
+
+func shouldUseKiroConservativeBillingFallback(result *ForwardResult, billingModel string, opts *recordUsageOpts) bool {
+	if result == nil {
+		return false
+	}
+	return opts != nil && opts.IsKiroAccount
+}
+
+func (s *GatewayService) calculateKiroConservativeTokenCost(tokens UsageTokens, multiplier float64) *CostBreakdown {
+	if s == nil || s.billingService == nil {
+		return nil
+	}
+	cost, err := s.billingService.CalculateCost(kiroConservativeFallbackBillingModel, tokens, multiplier)
+	if err != nil {
+		logger.LegacyPrintf("service.gateway", "Calculate conservative Kiro fallback cost failed: %v", err)
+		return nil
+	}
+	return cost
+}
+
 // calculateTokenCost 计算 Token 计费：根据 opts 决定走普通/长上下文/渠道统一计费。
 func (s *GatewayService) calculateTokenCost(
 	ctx context.Context,
@@ -954,6 +977,12 @@ func (s *GatewayService) calculateTokenCost(
 	}
 	if err != nil {
 		logger.LegacyPrintf("service.gateway", "Calculate cost failed: %v", err)
+		if shouldUseKiroConservativeBillingFallback(result, billingModel, opts) {
+			if fallback := s.calculateKiroConservativeTokenCost(tokens, multiplier); fallback != nil {
+				logger.LegacyPrintf("service.gateway", "Using conservative Kiro fallback pricing for model=%s", billingModel)
+				return fallback
+			}
+		}
 		return &CostBreakdown{ActualCost: 0}
 	}
 	return cost

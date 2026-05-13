@@ -454,6 +454,21 @@ func TestGetModelPricing_OpenAICompactAliasUsesStaticFallback(t *testing.T) {
 	require.InDelta(t, 1.5e-5, got.OutputCostPerToken, 1e-12)
 }
 
+func TestPricingService_ClaudeDottedAliasesUseCanonicalPricingNames(t *testing.T) {
+	tests := map[string]string{
+		"claude-opus-4.6":        "claude-opus-4-6",
+		"models/claude-opus-4.7": "claude-opus-4-7",
+		"claude-sonnet-4.6":      "claude-sonnet-4-6",
+		"claude-haiku-4.5":       "claude-haiku-4-5",
+	}
+
+	for input, expected := range tests {
+		t.Run(input, func(t *testing.T) {
+			require.Equal(t, expected, normalizeModelNameForPricing(input))
+		})
+	}
+}
+
 func TestPricingService_Gemini36FlashThinkingTiersUseBasePricing(t *testing.T) {
 	basePricing := &LiteLLMModelPricing{
 		InputCostPerToken:       1.5e-6,

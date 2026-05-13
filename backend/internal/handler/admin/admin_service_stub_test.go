@@ -215,6 +215,14 @@ func (s *stubAdminService) DeleteUser(ctx context.Context, id int64) error {
 	return nil
 }
 
+func (s *stubAdminService) ActivateUserDevices(ctx context.Context, userID int64) (*service.User, int64, error) {
+	user, err := s.GetUser(ctx, userID)
+	if err != nil {
+		return nil, 0, err
+	}
+	return user, 0, nil
+}
+
 func (s *stubAdminService) UpdateUserBalance(ctx context.Context, userID int64, balance float64, operation string, notes string) (*service.User, error) {
 	s.updatedBalanceCalls = append(s.updatedBalanceCalls, stubBalanceUpdateCall{
 		UserID:    userID,

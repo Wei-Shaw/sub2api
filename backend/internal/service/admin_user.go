@@ -433,6 +433,27 @@ func (s *adminServiceImpl) DeleteUser(ctx context.Context, id int64) error {
 	return nil
 }
 
+func (s *adminServiceImpl) ActivateUserDevices(ctx context.Context, userID int64) (*User, int64, error) {
+	if userID <= 0 {
+		return nil, 0, ErrUserNotFound
+	}
+	activator, ok := s.userRepo.(interface {
+		ActivatePendingDevicesByUserID(ctx context.Context, userID int64) (int64, error)
+	})
+	if !ok {
+		return nil, 0, ErrServiceUnavailable
+	}
+	updated, err := activator.ActivatePendingDevicesByUserID(ctx, userID)
+	if err != nil {
+		return nil, 0, err
+	}
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, updated, err
+	}
+	return user, updated, nil
+}
+
 func (s *adminServiceImpl) listUserAPIKeysForDeletion(ctx context.Context, userID int64) ([]APIKey, error) {
 	if s.apiKeyRepo == nil {
 		return nil, nil

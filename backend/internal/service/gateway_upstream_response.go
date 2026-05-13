@@ -769,10 +769,7 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 	}
 
 	// 下游 keepalive：防止代理/Cloudflare Tunnel 因连接空闲而断开
-	keepaliveInterval := time.Duration(0)
-	if s.cfg != nil && s.cfg.Gateway.StreamKeepaliveInterval > 0 {
-		keepaliveInterval = time.Duration(s.cfg.Gateway.StreamKeepaliveInterval) * time.Second
-	}
+	keepaliveInterval := s.streamKeepaliveIntervalForAccount(account)
 	var keepaliveTimer *time.Timer
 	if keepaliveInterval > 0 {
 		keepaliveTimer = time.NewTimer(keepaliveInterval)

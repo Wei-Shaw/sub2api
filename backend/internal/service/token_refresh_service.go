@@ -11,6 +11,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	kiropkg "github.com/Wei-Shaw/sub2api/internal/pkg/kiro"
 	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
 )
 
@@ -92,6 +93,7 @@ func NewTokenRefreshService(
 	openaiOAuthService *OpenAIOAuthService,
 	geminiOAuthService *GeminiOAuthService,
 	antigravityOAuthService *AntigravityOAuthService,
+	kiroOAuthService *KiroOAuthService,
 	cacheInvalidator TokenCacheInvalidator,
 	schedulerCache SchedulerCache,
 	cfg *config.Config,
@@ -128,6 +130,7 @@ func NewTokenRefreshService(
 		grokOAuthService = grokOAuthServices[0]
 	}
 	grokRefresher := NewGrokTokenRefresher(grokOAuthService)
+	kiroRefresher := NewKiroTokenRefresher(kiroOAuthService)
 
 	// Each provider is registered exactly once. The same registry supplies both
 	// execution and repository eligibility, preventing future platform drift.
@@ -137,6 +140,7 @@ func NewTokenRefreshService(
 		{platform: PlatformGemini, refresher: geminiRefresher, executor: geminiRefresher},
 		{platform: PlatformAntigravity, refresher: agRefresher, executor: agRefresher},
 		{platform: PlatformGrok, refresher: grokRefresher, executor: grokRefresher},
+		{platform: PlatformKiro, refresher: kiroRefresher, executor: kiroRefresher},
 	}
 
 	return s
@@ -1405,6 +1409,10 @@ func isSharedProviderRefreshError(err error) bool {
 func isNonRetryableRefreshError(err error) bool {
 	if err == nil {
 		return false
+	}
+	var kiroInvalidGrant *kiropkg.RefreshTokenInvalidError
+	if errors.As(err, &kiroInvalidGrant) {
+		return true
 	}
 	msg := strings.ToLower(err.Error())
 	nonRetryable := []string{

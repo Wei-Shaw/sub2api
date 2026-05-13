@@ -8542,6 +8542,7 @@ const appStore = useAppStore();
 // 关闭 step-up 开关是敏感操作：后端返回 STEP_UP_REQUIRED 时弹 TOTP 码重试
 const settingsStepUp = useStepUp();
 const adminSettingsStore = useAdminSettingsStore();
+
 const paymentGuideHref = computed(() =>
   locale.value.startsWith("zh")
     ? "https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT_CN.md"
@@ -9415,6 +9416,7 @@ const form = reactive<SettingsForm>({
   // Claude Code version check
   min_claude_code_version: "",
   max_claude_code_version: "",
+  antigravity_user_agent_version: "",
   // 分组隔离
   allow_ungrouped_key_scheduling: false,
   openai_low_upstream_rate_priority_enabled: false,
@@ -9443,7 +9445,6 @@ const form = reactive<SettingsForm>({
   enable_anthropic_cache_ttl_1h_injection: false,
   rewrite_message_cache_control: false,
   enable_client_dateline_normalization: true,
-  antigravity_user_agent_version: "",
   openai_codex_user_agent: "",
   // codex_cli_only 加固
   min_codex_version: "",

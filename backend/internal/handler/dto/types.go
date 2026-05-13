@@ -215,6 +215,12 @@ type Account struct {
 
 	TempUnschedulableUntil  *time.Time `json:"temp_unschedulable_until"`
 	TempUnschedulableReason string     `json:"temp_unschedulable_reason"`
+	KiroQuotaState          string     `json:"kiro_quota_state,omitempty"`
+	KiroQuotaReason         string     `json:"kiro_quota_reason,omitempty"`
+	KiroQuotaResetAt        *time.Time `json:"kiro_quota_reset_at,omitempty"`
+	KiroRuntimeState        string     `json:"kiro_runtime_state,omitempty"`
+	KiroRuntimeReason       string     `json:"kiro_runtime_reason,omitempty"`
+	KiroRuntimeResetAt      *time.Time `json:"kiro_runtime_reset_at,omitempty"`
 
 	SessionWindowStart  *time.Time `json:"session_window_start"`
 	SessionWindowEnd    *time.Time `json:"session_window_end"`

@@ -1600,3 +1600,22 @@ func (r *userRepository) DisableTotp(ctx context.Context, userID int64) error {
 	}
 	return nil
 }
+
+// ActivatePendingDevicesByUserID approves all pending device bindings for a user.
+func (r *userRepository) ActivatePendingDevicesByUserID(ctx context.Context, userID int64) (int64, error) {
+	if userID <= 0 {
+		return 0, service.ErrUserNotFound
+	}
+	client := clientFromContext(ctx, r.client)
+	n, err := client.UserDevice.Update().
+		Where(
+			userdevice.UserIDEQ(userID),
+			userdevice.StatusEQ(service.UserDeviceStatusPendingActivation),
+		).
+		SetStatus(service.UserDeviceStatusActive).
+		Save(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return int64(n), nil
+}

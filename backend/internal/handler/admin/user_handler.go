@@ -186,6 +186,31 @@ func (h *UserHandler) List(c *gin.Context) {
 	response.Paginated(c, out, total, page, pageSize)
 }
 
+// ActivateDevices approves pending device bindings for a user.
+// POST /api/v1/admin/users/:id/activate-devices
+func (h *UserHandler) ActivateDevices(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid user ID")
+		return
+	}
+
+	if !ensureMarketingCanManageUser(c, h.adminService, userID) {
+		return
+	}
+
+	user, activated, err := h.adminService.ActivateUserDevices(c.Request.Context(), userID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, gin.H{
+		"user":      dto.UserFromServiceAdmin(user),
+		"activated": activated,
+	})
+}
+
 func applyMarketingUserScope(c *gin.Context, filters *service.UserListFilters) bool {
 	if !isMarketingRequest(c) {
 		return true
