@@ -404,11 +404,6 @@ func (s *GeminiMessagesCompatService) isModelSupportedByAccount(account *Account
 	return account.IsModelSupported(requestedModel)
 }
 
-// GetAntigravityGatewayService 返回 AntigravityGatewayService
-func (s *GeminiMessagesCompatService) GetAntigravityGatewayService() *AntigravityGatewayService {
-	return s.antigravityGatewayService
-}
-
 func (s *GeminiMessagesCompatService) getSchedulableAccount(ctx context.Context, accountID int64) (*Account, error) {
 	if s.schedulerSnapshot != nil {
 		return s.schedulerSnapshot.GetAccount(ctx, accountID)

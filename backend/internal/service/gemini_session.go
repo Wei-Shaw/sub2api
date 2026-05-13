@@ -65,34 +65,6 @@ func GenerateGeminiPrefixHash(userID, apiKeyID int64, ip, userAgent, platform, m
 	return base64.RawURLEncoding.EncodeToString(hash[:12])
 }
 
-// ParseGeminiSessionValue 解析 Gemini 会话缓存值
-// 格式: {uuid}:{accountID}
-func ParseGeminiSessionValue(value string) (uuid string, accountID int64, ok bool) {
-	if value == "" {
-		return "", 0, false
-	}
-
-	// 找到最后一个 ":" 的位置（因为 uuid 可能包含 ":"）
-	i := strings.LastIndex(value, ":")
-	if i <= 0 || i >= len(value)-1 {
-		return "", 0, false
-	}
-
-	uuid = value[:i]
-	accountID, err := strconv.ParseInt(value[i+1:], 10, 64)
-	if err != nil {
-		return "", 0, false
-	}
-
-	return uuid, accountID, true
-}
-
-// FormatGeminiSessionValue 格式化 Gemini 会话缓存值
-// 格式: {uuid}:{accountID}
-func FormatGeminiSessionValue(uuid string, accountID int64) string {
-	return uuid + ":" + strconv.FormatInt(accountID, 10)
-}
-
 // geminiDigestSessionKeyPrefix Gemini 摘要 fallback 会话 key 前缀
 const geminiDigestSessionKeyPrefix = "gemini:digest:"
 

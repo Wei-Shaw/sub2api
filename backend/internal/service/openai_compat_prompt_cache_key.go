@@ -69,50 +69,6 @@ func deriveCompatPromptCacheKey(req *apicompat.ChatCompletionsRequest, mappedMod
 	return compatPromptCacheKeyPrefix + hashSensitiveValueForLog(strings.Join(seedParts, "|"))
 }
 
-func deriveAnthropicCompatPromptCacheKey(req *apicompat.AnthropicRequest, mappedModel string) string {
-	if req == nil {
-		return ""
-	}
-	if anchorKey := deriveAnthropicCacheControlPromptCacheKey(req); anchorKey != "" {
-		return anchorKey
-	}
-
-	normalizedModel := normalizeCodexModel(strings.TrimSpace(mappedModel))
-	if normalizedModel == "" {
-		normalizedModel = normalizeCodexModel(strings.TrimSpace(req.Model))
-	}
-	if normalizedModel == "" {
-		normalizedModel = strings.TrimSpace(req.Model)
-	}
-
-	seedParts := []string{"model=" + normalizedModel}
-	if req.OutputConfig != nil && strings.TrimSpace(req.OutputConfig.Effort) != "" {
-		seedParts = append(seedParts, "effort="+strings.TrimSpace(req.OutputConfig.Effort))
-	}
-	if len(req.ToolChoice) > 0 {
-		seedParts = append(seedParts, "tool_choice="+normalizeCompatSeedJSON(req.ToolChoice))
-	}
-	if len(req.Tools) > 0 {
-		if raw, err := json.Marshal(req.Tools); err == nil {
-			seedParts = append(seedParts, "tools="+normalizeCompatSeedJSON(raw))
-		}
-	}
-	if len(req.System) > 0 {
-		seedParts = append(seedParts, "system="+normalizeCompatSeedJSON(req.System))
-	}
-
-	firstUserCaptured := false
-	for _, msg := range req.Messages {
-		if strings.TrimSpace(msg.Role) != "user" || firstUserCaptured {
-			continue
-		}
-		seedParts = append(seedParts, "first_user="+normalizeCompatSeedJSON(msg.Content))
-		firstUserCaptured = true
-	}
-
-	return compatPromptCacheKeyPrefix + hashSensitiveValueForLog(strings.Join(seedParts, "|"))
-}
-
 func deriveAnthropicCacheControlPromptCacheKey(req *apicompat.AnthropicRequest) string {
 	if req == nil {
 		return ""

@@ -315,7 +315,7 @@ func (p *GatewayPipeline) handleForwardError(
 	fs *pipelineFailoverState,
 	err error,
 ) (*ForwardResult, bool, error) {
-	// If bytes have been written to the client, we cannot failover.
+	// Non-failover: bytes already written or upstream accepted.
 	if writerHasData(w) {
 		return nil, true, fmt.Errorf("gateway: forward failed after data written: %w", err)
 	}
@@ -323,67 +323,92 @@ func (p *GatewayPipeline) handleForwardError(
 		return nil, true, fmt.Errorf("gateway: forward failed after upstream accepted: %w", err)
 	}
 
-	// Check if the error is a failover-eligible upstream error
+	// Check if the error is a failover-eligible upstream error.
 	var failoverErr *service.UpstreamFailoverError
 	if !errors.As(err, &failoverErr) {
-		// Not a failover error: check provider's ShouldFailover as fallback
-		provider, ok := p.registry.Get(req.Account.Platform)
-		if !ok || !provider.ShouldFailover(ctx, req, err) {
-			return nil, true, err
-		}
-		// Provider says failover but no UpstreamFailoverError detail;
-		// treat as a simple account switch.
-		fs.excludedIDs[req.Account.ID] = struct{}{}
-		fs.switchCount++
-		if fs.switchCount > fs.maxSwitches {
-			return nil, true, fmt.Errorf("gateway: failover limit reached: %w", err)
-		}
-		req.SwitchCount = fs.switchCount
-		return nil, false, nil
+		return p.handleNonFailoverError(ctx, req, fs, err)
 	}
 
 	fs.lastFailoverErr = failoverErr
-
-	// Delegate upstream error processing to the host service layer so that
-	// account state management (rate-limiting, 429 plan_type sync, 403
-	// counter, etc.) works for plugin-handled requests. The pipeline
-	// handles failover separately; this call ensures side-effects like
-	// persistOpenAI429PlanType are not lost.
 	p.gatewayService.HandlePipelineUpstreamError(ctx, req.Account, failoverErr)
-
-	// Cache billing: when sticky session switches account or upstream
-	// explicitly marks it, convert input_tokens to cache_read billing.
 	if failoverErr.ForceCacheBilling {
 		fs.forceCacheBilling = true
 		req.ForceCacheBilling = true
 	}
 
-	// Same-account retry for transient errors
+	// Same-account retry for transient errors.
 	if failoverErr.RetryableOnSameAccount {
-		retries := fs.sameAccountRetryCount[req.Account.ID]
-		if retries < maxSameAccountRetries {
-			fs.sameAccountRetryCount[req.Account.ID]++
-			slog.Warn("pipeline.same_account_retry",
-				"account_id", req.Account.ID,
-				"retry_count", retries+1,
-				"max_retries", maxSameAccountRetries,
-				"status_code", failoverErr.StatusCode,
-			)
-			if !sleepWithContext(ctx, sameAccountRetryDelay) {
-				return nil, true, ctx.Err()
-			}
-			// Retry on the same account (don't exclude, don't increment switch)
-			return nil, false, nil
+		if result, done, retryErr := p.handleSameAccountRetry(ctx, req, fs, failoverErr); done {
+			return result, done, retryErr
 		}
-		// Same-account retries exhausted: temp-unschedule the account
-		p.gatewayService.TempUnscheduleRetryableError(ctx, req.Account.ID, failoverErr)
 	}
 
-	// Switch to a different account
+	return p.handleAccountSwitch(req, fs, failoverErr)
+}
+
+// handleNonFailoverError handles errors that are not UpstreamFailoverError.
+// Falls back to the provider's ShouldFailover check and, if approved,
+// switches to a different account.
+func (p *GatewayPipeline) handleNonFailoverError(
+	ctx context.Context,
+	req *ForwardRequest,
+	fs *pipelineFailoverState,
+	err error,
+) (*ForwardResult, bool, error) {
+	provider, ok := p.registry.Get(req.Account.Platform)
+	if !ok || !provider.ShouldFailover(ctx, req, err) {
+		return nil, true, err
+	}
+	// Provider says failover but no UpstreamFailoverError detail;
+	// treat as a simple account switch.
 	fs.excludedIDs[req.Account.ID] = struct{}{}
 	fs.switchCount++
 	if fs.switchCount > fs.maxSwitches {
 		return nil, true, fmt.Errorf("gateway: failover limit reached: %w", err)
+	}
+	req.SwitchCount = fs.switchCount
+	return nil, false, nil
+}
+
+// handleSameAccountRetry attempts to retry on the same account for
+// transient errors. Returns (nil, false, nil) when retries are exhausted
+// so the caller falls through to account switch.
+func (p *GatewayPipeline) handleSameAccountRetry(
+	ctx context.Context,
+	req *ForwardRequest,
+	fs *pipelineFailoverState,
+	failoverErr *service.UpstreamFailoverError,
+) (*ForwardResult, bool, error) {
+	retries := fs.sameAccountRetryCount[req.Account.ID]
+	if retries < maxSameAccountRetries {
+		fs.sameAccountRetryCount[req.Account.ID]++
+		slog.Warn("pipeline.same_account_retry",
+			"account_id", req.Account.ID,
+			"retry_count", retries+1,
+			"max_retries", maxSameAccountRetries,
+			"status_code", failoverErr.StatusCode,
+		)
+		if !sleepWithContext(ctx, sameAccountRetryDelay) {
+			return nil, true, ctx.Err()
+		}
+		return nil, false, nil
+	}
+	// Same-account retries exhausted: temp-unschedule the account.
+	p.gatewayService.TempUnscheduleRetryableError(ctx, req.Account.ID, failoverErr)
+	return nil, false, nil
+}
+
+// handleAccountSwitch excludes the current account and increments the
+// switch counter for failover to a different account.
+func (p *GatewayPipeline) handleAccountSwitch(
+	req *ForwardRequest,
+	fs *pipelineFailoverState,
+	failoverErr *service.UpstreamFailoverError,
+) (*ForwardResult, bool, error) {
+	fs.excludedIDs[req.Account.ID] = struct{}{}
+	fs.switchCount++
+	if fs.switchCount > fs.maxSwitches {
+		return nil, true, fmt.Errorf("gateway: failover limit reached: %w", failoverErr)
 	}
 	req.SwitchCount = fs.switchCount
 	slog.Info("pipeline.failover_switch",

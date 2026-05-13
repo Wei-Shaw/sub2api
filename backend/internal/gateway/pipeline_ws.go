@@ -68,37 +68,54 @@ func (p *GatewayPipeline) ExecuteWS(
 	defer releaseTurnSlots()
 	defer req.BillingTicket.Close()
 
-	// --- Phase 2: account selection (single, no failover loop) ---
-	account, accountRelease, err := p.selectAccountGeneric(
-		c.Request.Context(), req, nil,
+	// --- Phases 2-6: account selection through WS relay ---
+	return p.wsSelectAndForward(
+		c, req, protocol,
+		&currentUserRelease, &currentAccountRelease,
+		releaseTurnSlots, forward, record,
 	)
+}
+
+// wsSelectAndForward runs phases 2-6 of the WS lifecycle: account selection,
+// billing consume, access token retrieval, session hook setup, and relay
+// delegation. The release pointers are shared with the caller's deferred
+// cleanup so slot ownership transfers correctly across WS turns.
+func (p *GatewayPipeline) wsSelectAndForward(
+	c *gin.Context,
+	req *ForwardRequest,
+	protocol string,
+	currentUserRelease *func(),
+	currentAccountRelease *func(),
+	releaseTurnSlots func(),
+	forward WSForwardFunc,
+	record RecordUsageFunc,
+) error {
+	ctx := c.Request.Context()
+
+	// --- Phase 2: account selection (single, no failover loop) ---
+	account, accountRelease, err := p.selectAccountGeneric(ctx, req, nil)
 	if err != nil {
 		return fmt.Errorf("gateway/ws: select account: %w", err)
 	}
 	req.Account = account
-	currentAccountRelease = wrapReleaseOnDone(c.Request.Context(), accountRelease)
-
-	if c != nil {
-		setOpsSelectedAccount(c, account.ID, account.Platform)
-	}
+	*currentAccountRelease = wrapReleaseOnDone(ctx, accountRelease)
+	setOpsSelectedAccount(c, account.ID, account.Platform)
 
 	// --- Phase 3: billing consume ---
-	if err := p.consumeBilling(c.Request.Context(), req); err != nil {
+	if err := p.consumeBilling(ctx, req); err != nil {
 		return err
 	}
 
 	// --- Phase 4: get access token ---
-	token, _, err := p.gatewayService.GetAccessToken(c.Request.Context(), account)
+	token, _, err := p.gatewayService.GetAccessToken(ctx, account)
 	if err != nil {
 		return fmt.Errorf("gateway/ws: get access token: %w", err)
 	}
 
 	// --- Phase 5: build session hooks ---
-	accountMaxConcurrency := p.resolveAccountMaxConcurrency(account)
-
 	hooks := p.buildWSSessionHooks(
-		c.Request.Context(), req, account, accountMaxConcurrency,
-		&currentUserRelease, &currentAccountRelease,
+		ctx, req, account, p.resolveAccountMaxConcurrency(account),
+		currentUserRelease, currentAccountRelease,
 		releaseTurnSlots, record,
 	)
 
@@ -108,8 +125,7 @@ func (p *GatewayPipeline) ExecuteWS(
 		"model", req.Model,
 		"protocol", protocol,
 	)
-
-	return forward(c.Request.Context(), account, token, hooks)
+	return forward(ctx, account, token, hooks)
 }
 
 // executeWSPreFlight is the WS-specific pre-flight that accepts a WSParseFunc

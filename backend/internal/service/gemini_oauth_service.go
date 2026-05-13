@@ -388,60 +388,6 @@ func (s *GeminiOAuthService) FetchGoogleOneTier(ctx context.Context, accessToken
 	return tierID, storageInfo, nil
 }
 
-// RefreshAccountGoogleOneTier 刷新单个账号的 Google One Tier
-func (s *GeminiOAuthService) RefreshAccountGoogleOneTier(
-	ctx context.Context,
-	account *Account,
-) (tierID string, extra map[string]any, credentials map[string]any, err error) {
-	if account == nil {
-		return "", nil, nil, fmt.Errorf("account is nil")
-	}
-
-	// 验证账号类型
-	oauthType, ok := account.Credentials["oauth_type"].(string)
-	if !ok || oauthType != "google_one" {
-		return "", nil, nil, fmt.Errorf("not a google_one OAuth account")
-	}
-
-	// 获取 access_token
-	accessToken, ok := account.Credentials["access_token"].(string)
-	if !ok || accessToken == "" {
-		return "", nil, nil, fmt.Errorf("missing access_token")
-	}
-
-	// 获取 proxy URL
-	var proxyURL string
-	if account.ProxyID != nil && account.Proxy != nil {
-		proxyURL = account.Proxy.URL()
-	}
-
-	// 调用 Drive API
-	tierID, storageInfo, err := s.FetchGoogleOneTier(ctx, accessToken, proxyURL)
-	if err != nil {
-		return "", nil, nil, err
-	}
-
-	// 构建 extra 数据（保留原有 extra 字段）
-	extra = make(map[string]any)
-	for k, v := range account.Extra {
-		extra[k] = v
-	}
-	if storageInfo != nil {
-		extra["drive_storage_limit"] = storageInfo.Limit
-		extra["drive_storage_usage"] = storageInfo.Usage
-		extra["drive_tier_updated_at"] = time.Now().Format(time.RFC3339)
-	}
-
-	// 构建 credentials 数据
-	credentials = make(map[string]any)
-	for k, v := range account.Credentials {
-		credentials[k] = v
-	}
-	credentials["tier_id"] = tierID
-
-	return tierID, extra, credentials, nil
-}
-
 func (s *GeminiOAuthService) ExchangeCode(ctx context.Context, input *GeminiExchangeCodeInput) (*GeminiTokenInfo, error) {
 	logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] ========== ExchangeCode START ==========")
 	logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] SessionID: %s", input.SessionID)

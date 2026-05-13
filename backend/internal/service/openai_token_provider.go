@@ -20,20 +20,6 @@ const (
 	openAILockWarnThresholdMs = 250
 )
 
-// OpenAITokenRuntimeMetrics is a snapshot of refresh and lock contention metrics.
-type OpenAITokenRuntimeMetrics struct {
-	RefreshRequests    int64
-	RefreshSuccess     int64
-	RefreshFailure     int64
-	LockAcquireFailure int64
-	LockContention     int64
-	LockWaitSamples    int64
-	LockWaitTotalMs    int64
-	LockWaitHit        int64
-	LockWaitMiss       int64
-	LastObservedUnixMs int64
-}
-
 type openAITokenRuntimeMetricsStore struct {
 	refreshRequests    atomic.Int64
 	refreshSuccess     atomic.Int64
@@ -45,24 +31,6 @@ type openAITokenRuntimeMetricsStore struct {
 	lockWaitHit        atomic.Int64
 	lockWaitMiss       atomic.Int64
 	lastObservedUnixMs atomic.Int64
-}
-
-func (m *openAITokenRuntimeMetricsStore) snapshot() OpenAITokenRuntimeMetrics {
-	if m == nil {
-		return OpenAITokenRuntimeMetrics{}
-	}
-	return OpenAITokenRuntimeMetrics{
-		RefreshRequests:    m.refreshRequests.Load(),
-		RefreshSuccess:     m.refreshSuccess.Load(),
-		RefreshFailure:     m.refreshFailure.Load(),
-		LockAcquireFailure: m.lockAcquireFailure.Load(),
-		LockContention:     m.lockContention.Load(),
-		LockWaitSamples:    m.lockWaitSamples.Load(),
-		LockWaitTotalMs:    m.lockWaitTotalMs.Load(),
-		LockWaitHit:        m.lockWaitHit.Load(),
-		LockWaitMiss:       m.lockWaitMiss.Load(),
-		LastObservedUnixMs: m.lastObservedUnixMs.Load(),
-	}
 }
 
 func (m *openAITokenRuntimeMetricsStore) touchNow() {
@@ -109,14 +77,6 @@ func (p *OpenAITokenProvider) SetRefreshAPI(api *OAuthRefreshAPI, executor OAuth
 // SetRefreshPolicy injects caller-side refresh policy.
 func (p *OpenAITokenProvider) SetRefreshPolicy(policy ProviderRefreshPolicy) {
 	p.refreshPolicy = policy
-}
-
-func (p *OpenAITokenProvider) SnapshotRuntimeMetrics() OpenAITokenRuntimeMetrics {
-	if p == nil {
-		return OpenAITokenRuntimeMetrics{}
-	}
-	p.ensureMetrics()
-	return p.metrics.snapshot()
 }
 
 func (p *OpenAITokenProvider) ensureMetrics() {

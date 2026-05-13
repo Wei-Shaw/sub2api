@@ -425,13 +425,6 @@ func summarizeOpenAIWSErrorEventFieldsFromRaw(codeRaw, errTypeRaw, errMessageRaw
 	return code, errType, errMessage
 }
 
-func summarizeOpenAIWSErrorEventFields(message []byte) (code string, errType string, errMessage string) {
-	if len(message) == 0 {
-		return "-", "-", "-"
-	}
-	return summarizeOpenAIWSErrorEventFieldsFromRaw(parseOpenAIWSErrorEventFields(message))
-}
-
 func summarizeOpenAIWSPayloadKeySizes(payload map[string]any, topN int) string {
 	if len(payload) == 0 {
 		return "-"
@@ -922,33 +915,6 @@ func (s *OpenAIGatewayService) getOpenAIWSPassthroughDialer() openAIWSClientDial
 	return s.openaiWSPassthroughDialer
 }
 
-func (s *OpenAIGatewayService) SnapshotOpenAIWSPoolMetrics() OpenAIWSPoolMetricsSnapshot {
-	pool := s.getOpenAIWSConnPool()
-	if pool == nil {
-		return OpenAIWSPoolMetricsSnapshot{}
-	}
-	return pool.SnapshotMetrics()
-}
-
-type OpenAIWSPerformanceMetricsSnapshot struct {
-	Pool      OpenAIWSPoolMetricsSnapshot      `json:"pool"`
-	Retry     OpenAIWSRetryMetricsSnapshot     `json:"retry"`
-	Transport OpenAIWSTransportMetricsSnapshot `json:"transport"`
-}
-
-func (s *OpenAIGatewayService) SnapshotOpenAIWSPerformanceMetrics() OpenAIWSPerformanceMetricsSnapshot {
-	pool := s.getOpenAIWSConnPool()
-	snapshot := OpenAIWSPerformanceMetricsSnapshot{
-		Retry: s.SnapshotOpenAIWSRetryMetrics(),
-	}
-	if pool == nil {
-		return snapshot
-	}
-	snapshot.Pool = pool.SnapshotMetrics()
-	snapshot.Transport = pool.SnapshotTransportMetrics()
-	return snapshot
-}
-
 func (s *OpenAIGatewayService) getOpenAIWSStateStore() OpenAIWSStateStore {
 	if s == nil {
 		return nil
@@ -1394,36 +1360,6 @@ func shouldInferIngressFunctionCallOutputPreviousResponseID(
 	return strings.TrimSpace(expectedPreviousResponseID) != ""
 }
 
-func alignStoreDisabledPreviousResponseID(
-	payload []byte,
-	expectedPreviousResponseID string,
-) ([]byte, bool, error) {
-	if len(payload) == 0 {
-		return payload, false, nil
-	}
-	expected := strings.TrimSpace(expectedPreviousResponseID)
-	if expected == "" {
-		return payload, false, nil
-	}
-	current := openAIWSPayloadStringFromRaw(payload, "previous_response_id")
-	if current == "" || current == expected {
-		return payload, false, nil
-	}
-
-	withoutPrev, removed, dropErr := dropPreviousResponseIDFromRawPayload(payload)
-	if dropErr != nil {
-		return payload, false, dropErr
-	}
-	if !removed {
-		return payload, false, nil
-	}
-	updated, setErr := setPreviousResponseIDToRawPayload(withoutPrev, expected)
-	if setErr != nil {
-		return payload, false, setErr
-	}
-	return updated, true, nil
-}
-
 func cloneOpenAIWSPayloadBytes(payload []byte) []byte {
 	if len(payload) == 0 {
 		return nil
@@ -1501,38 +1437,6 @@ func openAIWSExtractNormalizedInputSequence(payload []byte) ([]json.RawMessage, 
 		return []json.RawMessage{encoded}, true, nil
 	}
 	return []json.RawMessage{json.RawMessage(inputValue.Raw)}, true, nil
-}
-
-func openAIWSInputIsPrefixExtended(previousPayload, currentPayload []byte) (bool, error) {
-	previousItems, previousExists, prevErr := openAIWSExtractNormalizedInputSequence(previousPayload)
-	if prevErr != nil {
-		return false, prevErr
-	}
-	currentItems, currentExists, currentErr := openAIWSExtractNormalizedInputSequence(currentPayload)
-	if currentErr != nil {
-		return false, currentErr
-	}
-	if !previousExists && !currentExists {
-		return true, nil
-	}
-	if !previousExists {
-		return len(currentItems) == 0, nil
-	}
-	if !currentExists {
-		return len(previousItems) == 0, nil
-	}
-	if len(currentItems) < len(previousItems) {
-		return false, nil
-	}
-
-	for idx := range previousItems {
-		previousNormalized := normalizeOpenAIWSJSONForCompareOrRaw(previousItems[idx])
-		currentNormalized := normalizeOpenAIWSJSONForCompareOrRaw(currentItems[idx])
-		if !bytes.Equal(previousNormalized, currentNormalized) {
-			return false, nil
-		}
-	}
-	return true, nil
 }
 
 func openAIWSRawItemsHasPrefix(items []json.RawMessage, prefix []json.RawMessage) bool {
@@ -3833,10 +3737,6 @@ func (s *OpenAIGatewayService) performOpenAIWSGeneratePrewarm(
 	return nil
 }
 
-func payloadAsJSON(payload map[string]any) string {
-	return string(payloadAsJSONBytes(payload))
-}
-
 func payloadAsJSONBytes(payload map[string]any) []byte {
 	if len(payload) == 0 {
 		return []byte("{}")
@@ -4135,13 +4035,6 @@ func classifyOpenAIWSErrorEventFromRaw(codeRaw, errTypeRaw, msgRaw string) (stri
 	return "event_error", false
 }
 
-func classifyOpenAIWSErrorEvent(message []byte) (string, bool) {
-	if len(message) == 0 {
-		return "event_error", false
-	}
-	return classifyOpenAIWSErrorEventFromRaw(parseOpenAIWSErrorEventFields(message))
-}
-
 func openAIWSErrorHTTPStatusFromRaw(codeRaw, errTypeRaw string) int {
 	code := strings.ToLower(strings.TrimSpace(codeRaw))
 	errType := strings.ToLower(strings.TrimSpace(errTypeRaw))
@@ -4166,63 +4059,3 @@ func openAIWSErrorHTTPStatusFromRaw(codeRaw, errTypeRaw string) int {
 	}
 }
 
-func openAIWSErrorHTTPStatus(message []byte) int {
-	if len(message) == 0 {
-		return http.StatusBadGateway
-	}
-	codeRaw, errTypeRaw, _ := parseOpenAIWSErrorEventFields(message)
-	return openAIWSErrorHTTPStatusFromRaw(codeRaw, errTypeRaw)
-}
-
-func (s *OpenAIGatewayService) openAIWSFallbackCooldown() time.Duration {
-	if s == nil || s.cfg == nil {
-		return 30 * time.Second
-	}
-	seconds := s.cfg.Gateway.OpenAIWS.FallbackCooldownSeconds
-	if seconds <= 0 {
-		return 0
-	}
-	return time.Duration(seconds) * time.Second
-}
-
-func (s *OpenAIGatewayService) isOpenAIWSFallbackCooling(accountID int64) bool {
-	if s == nil || accountID <= 0 {
-		return false
-	}
-	cooldown := s.openAIWSFallbackCooldown()
-	if cooldown <= 0 {
-		return false
-	}
-	rawUntil, ok := s.openaiWSFallbackUntil.Load(accountID)
-	if !ok || rawUntil == nil {
-		return false
-	}
-	until, ok := rawUntil.(time.Time)
-	if !ok || until.IsZero() {
-		s.openaiWSFallbackUntil.Delete(accountID)
-		return false
-	}
-	if time.Now().Before(until) {
-		return true
-	}
-	s.openaiWSFallbackUntil.Delete(accountID)
-	return false
-}
-
-func (s *OpenAIGatewayService) markOpenAIWSFallbackCooling(accountID int64, _ string) {
-	if s == nil || accountID <= 0 {
-		return
-	}
-	cooldown := s.openAIWSFallbackCooldown()
-	if cooldown <= 0 {
-		return
-	}
-	s.openaiWSFallbackUntil.Store(accountID, time.Now().Add(cooldown))
-}
-
-func (s *OpenAIGatewayService) clearOpenAIWSFallbackCooling(accountID int64) {
-	if s == nil || accountID <= 0 {
-		return
-	}
-	s.openaiWSFallbackUntil.Delete(accountID)
-}

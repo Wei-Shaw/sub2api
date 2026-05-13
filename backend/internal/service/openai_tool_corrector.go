@@ -60,19 +60,6 @@ func NewCodexToolCorrector() *CodexToolCorrector {
 	}
 }
 
-// CorrectToolCallsInSSEData 修正 SSE 数据中的工具调用
-// 返回修正后的数据和是否进行了修正
-func (c *CodexToolCorrector) CorrectToolCallsInSSEData(data string) (string, bool) {
-	if data == "" || data == "\n" {
-		return data, false
-	}
-	correctedBytes, corrected := c.CorrectToolCallsInSSEBytes([]byte(data))
-	if !corrected {
-		return data, false
-	}
-	return string(correctedBytes), true
-}
-
 // CorrectToolCallsInSSEBytes 修正 SSE JSON 数据中的工具调用（字节路径）。
 // 返回修正后的数据和是否进行了修正。
 func (c *CodexToolCorrector) CorrectToolCallsInSSEBytes(data []byte) ([]byte, bool) {
@@ -346,32 +333,6 @@ func (c *CodexToolCorrector) recordCorrection(from, to string) {
 
 	logger.LegacyPrintf("service.openai_tool_corrector", "[CodexToolCorrector] Corrected tool call: %s -> %s (total: %d)",
 		from, to, c.stats.TotalCorrected)
-}
-
-// GetStats 获取工具修正统计信息
-func (c *CodexToolCorrector) GetStats() ToolCorrectionStats {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	// 返回副本以避免并发问题
-	statsCopy := ToolCorrectionStats{
-		TotalCorrected:    c.stats.TotalCorrected,
-		CorrectionsByTool: make(map[string]int, len(c.stats.CorrectionsByTool)),
-	}
-	for k, v := range c.stats.CorrectionsByTool {
-		statsCopy.CorrectionsByTool[k] = v
-	}
-
-	return statsCopy
-}
-
-// ResetStats 重置统计信息
-func (c *CodexToolCorrector) ResetStats() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.stats.TotalCorrected = 0
-	c.stats.CorrectionsByTool = make(map[string]int)
 }
 
 // CorrectToolName 直接修正工具名称（用于非 SSE 场景）

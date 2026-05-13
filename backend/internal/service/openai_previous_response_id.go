@@ -31,7 +31,3 @@ func ClassifyOpenAIPreviousResponseIDKind(id string) string {
 	}
 	return OpenAIPreviousResponseIDKindUnknown
 }
-
-func IsOpenAIPreviousResponseIDLikelyMessageID(id string) bool {
-	return ClassifyOpenAIPreviousResponseIDKind(id) == OpenAIPreviousResponseIDKindMessageID
-}
