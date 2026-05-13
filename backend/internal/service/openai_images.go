@@ -90,6 +90,14 @@ type OpenAIImagesRequest struct {
 	bodyHash           string
 }
 
+type openAIImagesAPIKeyNonStreamingResponse struct {
+	Usage      OpenAIUsage
+	ImageCount int
+	Body       []byte
+	CreatedAt  int64
+	StatusCode int
+}
+
 func (r *OpenAIImagesRequest) ModerationBody() []byte {
 	if r == nil {
 		return nil
@@ -638,6 +646,19 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	if !parsed.Multipart {
 		setOpsUpstreamRequestBody(c, forwardBody)
 	}
+	if !parsed.Stream && parsed.N > 1 {
+		return s.forwardOpenAIImagesAPIKeyNonStreamingBatch(
+			ctx,
+			c,
+			account,
+			forwardBody,
+			forwardContentType,
+			parsed,
+			requestModel,
+			upstreamModel,
+			startTime,
+		)
+	}
 
 	upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, parsed.Stream)
 	defer releaseUpstreamCtx()
@@ -890,6 +911,281 @@ func cloneMultipartHeader(src textproto.MIMEHeader) textproto.MIMEHeader {
 		dst[key] = copied
 	}
 	return dst
+}
+
+func rewriteOpenAIImagesRequestCount(body []byte, contentType string, count int) ([]byte, string, error) {
+	if count <= 0 {
+		count = 1
+	}
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err == nil && strings.EqualFold(mediaType, "multipart/form-data") {
+		return rewriteOpenAIImagesMultipartField(body, contentType, "n", strconv.Itoa(count))
+	}
+	rewritten, err := sjson.SetBytes(body, "n", count)
+	if err != nil {
+		return nil, "", fmt.Errorf("rewrite image request count: %w", err)
+	}
+	return rewritten, contentType, nil
+}
+
+func rewriteOpenAIImagesMultipartField(body []byte, contentType string, fieldName string, value string) ([]byte, string, error) {
+	_, params, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return nil, "", fmt.Errorf("parse multipart content-type: %w", err)
+	}
+	boundary := strings.TrimSpace(params["boundary"])
+	if boundary == "" {
+		return nil, "", fmt.Errorf("multipart boundary is required")
+	}
+
+	reader := multipart.NewReader(bytes.NewReader(body), boundary)
+	var buffer bytes.Buffer
+	writer := multipart.NewWriter(&buffer)
+	fieldWritten := false
+
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, "", fmt.Errorf("read multipart body: %w", err)
+		}
+
+		formName := strings.TrimSpace(part.FormName())
+		partHeader := cloneMultipartHeader(part.Header)
+		target, err := writer.CreatePart(partHeader)
+		if err != nil {
+			_ = part.Close()
+			return nil, "", fmt.Errorf("create multipart part: %w", err)
+		}
+
+		if formName == fieldName && part.FileName() == "" {
+			if _, err := target.Write([]byte(value)); err != nil {
+				_ = part.Close()
+				return nil, "", fmt.Errorf("rewrite multipart %s: %w", fieldName, err)
+			}
+			fieldWritten = true
+			_ = part.Close()
+			continue
+		}
+		if _, err := io.Copy(target, part); err != nil {
+			_ = part.Close()
+			return nil, "", fmt.Errorf("copy multipart part: %w", err)
+		}
+		_ = part.Close()
+	}
+
+	if !fieldWritten {
+		if err := writer.WriteField(fieldName, value); err != nil {
+			return nil, "", fmt.Errorf("append multipart %s field: %w", fieldName, err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		return nil, "", fmt.Errorf("finalize multipart body: %w", err)
+	}
+	return buffer.Bytes(), writer.FormDataContentType(), nil
+}
+
+func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKeyNonStreamingBatch(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	body []byte,
+	contentType string,
+	parsed *OpenAIImagesRequest,
+	requestModel string,
+	upstreamModel string,
+	startTime time.Time,
+) (*OpenAIForwardResult, error) {
+	requestCount := parsed.N
+	if requestCount <= 1 {
+		requestCount = 1
+	}
+	requestBody, requestContentType, err := rewriteOpenAIImagesRequestCount(body, contentType, 1)
+	if err != nil {
+		return nil, err
+	}
+	if !parsed.Multipart {
+		setOpsUpstreamRequestBody(c, requestBody)
+	}
+
+	upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, false)
+	defer releaseUpstreamCtx()
+
+	token, _, err := s.GetAccessToken(upstreamCtx, account)
+	if err != nil {
+		return nil, err
+	}
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+
+	var totalUsage OpenAIUsage
+	var responses []openAIImagesAPIKeyNonStreamingResponse
+	var responseHeaders http.Header
+	var requestID string
+	statusCode := http.StatusOK
+	var upstreamLatencyMs int64
+	imageCount := 0
+
+	for i := 0; i < requestCount; i++ {
+		upstreamReq, err := s.buildOpenAIImagesRequest(upstreamCtx, c, account, requestBody, requestContentType, token, parsed.Endpoint)
+		if err != nil {
+			return nil, err
+		}
+
+		upstreamStart := time.Now()
+		resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+		upstreamLatencyMs += time.Since(upstreamStart).Milliseconds()
+		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, upstreamLatencyMs)
+		if err != nil {
+			safeErr := sanitizeUpstreamErrorMessage(err.Error())
+			setOpsUpstreamError(c, 0, safeErr, "")
+			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+				Platform:           account.Platform,
+				AccountID:          account.ID,
+				AccountName:        account.Name,
+				UpstreamStatusCode: 0,
+				UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
+				Kind:               "request_error",
+				Message:            safeErr,
+			})
+			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
+		}
+		if resp.StatusCode >= 400 {
+			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+			_ = resp.Body.Close()
+			resp.Body = io.NopCloser(bytes.NewReader(respBody))
+			upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
+			upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+			if s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMsg, respBody) {
+				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+					Platform:           account.Platform,
+					AccountID:          account.ID,
+					AccountName:        account.Name,
+					UpstreamStatusCode: resp.StatusCode,
+					UpstreamRequestID:  resp.Header.Get("x-request-id"),
+					UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
+					Kind:               "failover",
+					Message:            upstreamMsg,
+				})
+				s.handleFailoverSideEffects(upstreamCtx, resp, account)
+				return nil, &UpstreamFailoverError{
+					StatusCode:             resp.StatusCode,
+					ResponseBody:           respBody,
+					RetryableOnSameAccount: account.IsPoolMode() && isPoolModeRetryableStatus(resp.StatusCode),
+				}
+			}
+			return s.handleErrorResponse(upstreamCtx, resp, c, account, requestBody)
+		}
+
+		collected, err := s.collectOpenAIImagesAPIKeyNonStreamingResponse(resp, c)
+		_ = resp.Body.Close()
+		if err != nil {
+			return nil, err
+		}
+		if responseHeaders == nil {
+			responseHeaders = resp.Header.Clone()
+		}
+		if len(responses) == 0 && collected.StatusCode > 0 {
+			statusCode = collected.StatusCode
+		}
+		if requestID == "" {
+			requestID = strings.TrimSpace(resp.Header.Get("x-request-id"))
+		}
+		addOpenAIImagesUsage(&totalUsage, collected.Usage)
+		imageCount += collected.ImageCount
+		responses = append(responses, collected)
+	}
+
+	responseBody, err := mergeOpenAIImagesAPIKeyNonStreamingBodies(responses, imageCount)
+	if err != nil {
+		return nil, err
+	}
+	responseheaders.WriteFilteredHeaders(c.Writer.Header(), responseHeaders, s.responseHeaderFilter)
+	responseContentType := "application/json"
+	if s.cfg != nil && !s.cfg.Security.ResponseHeaders.Enabled {
+		if upstreamType := responseHeaders.Get("Content-Type"); upstreamType != "" {
+			responseContentType = upstreamType
+		}
+	}
+	c.Data(statusCode, responseContentType, responseBody)
+
+	return &OpenAIForwardResult{
+		RequestID:       requestID,
+		Usage:           totalUsage,
+		Model:           requestModel,
+		UpstreamModel:   upstreamModel,
+		Stream:          false,
+		ResponseHeaders: responseHeaders,
+		Duration:        time.Since(startTime),
+		ImageCount:      imageCount,
+		ImageSize:       parsed.SizeTier,
+	}, nil
+}
+
+func (s *OpenAIGatewayService) collectOpenAIImagesAPIKeyNonStreamingResponse(
+	resp *http.Response,
+	c *gin.Context,
+) (openAIImagesAPIKeyNonStreamingResponse, error) {
+	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
+	if err != nil {
+		return openAIImagesAPIKeyNonStreamingResponse{}, err
+	}
+	usage, _ := extractOpenAIUsageFromJSONBytes(body)
+	return openAIImagesAPIKeyNonStreamingResponse{
+		Usage:      usage,
+		ImageCount: extractOpenAIImageCountFromJSONBytes(body),
+		Body:       body,
+		CreatedAt:  gjson.GetBytes(body, "created").Int(),
+		StatusCode: resp.StatusCode,
+	}, nil
+}
+
+func mergeOpenAIImagesAPIKeyNonStreamingBodies(responses []openAIImagesAPIKeyNonStreamingResponse, imageCount int) ([]byte, error) {
+	var firstBody []byte
+	createdAt := int64(0)
+	for _, resp := range responses {
+		if len(resp.Body) == 0 || !gjson.ValidBytes(resp.Body) {
+			continue
+		}
+		if firstBody == nil {
+			firstBody = append([]byte(nil), resp.Body...)
+		}
+		if createdAt <= 0 {
+			createdAt = resp.CreatedAt
+		}
+	}
+	if firstBody == nil {
+		return nil, fmt.Errorf("upstream did not return valid image response")
+	}
+
+	out := firstBody
+	if stripped, err := sjson.DeleteBytes(out, "data"); err == nil {
+		out = stripped
+	}
+	out, _ = sjson.SetRawBytes(out, "data", []byte("[]"))
+	if createdAt > 0 {
+		out, _ = sjson.SetBytes(out, "created", createdAt)
+	}
+	if imageCount > 0 {
+		out, _ = sjson.SetRawBytes(out, "usage", buildOpenAIImagesAggregatedUsageRaw(imageCount))
+	}
+
+	for _, resp := range responses {
+		data := gjson.GetBytes(resp.Body, "data")
+		if !data.IsArray() {
+			continue
+		}
+		data.ForEach(func(_, item gjson.Result) bool {
+			out, _ = sjson.SetRawBytes(out, "data.-1", []byte(item.Raw))
+			return true
+		})
+	}
+	return out, nil
 }
 
 func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(resp *http.Response, c *gin.Context) (OpenAIUsage, int, error) {

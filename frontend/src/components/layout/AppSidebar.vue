@@ -901,6 +901,9 @@ if (
 ) {
   isDark.value = true
   document.documentElement.classList.add('dark')
+} else {
+  isDark.value = false
+  document.documentElement.classList.remove('dark')
 }
 
 // Fetch admin settings (for feature-gated nav items like Ops).

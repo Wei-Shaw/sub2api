@@ -5490,6 +5490,71 @@
                     </div>
                   </div>
                 </div>
+                <div class="rounded-2xl border border-gray-200 bg-gray-50/70 p-4 dark:border-dark-700 dark:bg-dark-800/60">
+                  <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h3 class="text-sm font-semibold text-gray-900 dark:text-white">充值套餐</h3>
+                      <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">配置用户充值页展示的金额、赠送体验额度、有效期和排序。</p>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-3">
+                      <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                        <Toggle v-model="form.payment_recharge_custom_amount_enabled" />
+                        <span>开放自定义金额</span>
+                      </label>
+                      <button
+                        type="button"
+                        class="btn btn-secondary btn-sm inline-flex items-center gap-1.5"
+                        @click="addRechargePackage"
+                      >
+                        <Icon name="plus" size="sm" />
+                        <span>添加套餐</span>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="mt-4 space-y-3">
+                    <div
+                      v-for="(pkg, index) in form.payment_recharge_packages"
+                      :key="`recharge-package-${index}`"
+                      class="grid gap-3 rounded-xl border border-gray-200 bg-white p-3 dark:border-dark-600 dark:bg-dark-900 sm:grid-cols-[auto_repeat(5,minmax(0,1fr))_auto]"
+                    >
+                      <label class="flex items-center gap-2 sm:pt-7">
+                        <input
+                          v-model="pkg.enabled"
+                          type="checkbox"
+                          class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                        />
+                        <span class="text-xs font-medium text-gray-500 dark:text-gray-400">启用</span>
+                      </label>
+                      <div>
+                        <label class="input-label">充值金额</label>
+                        <input v-model.number="pkg.amount" type="number" min="0.01" step="0.01" class="input" />
+                      </div>
+                      <div>
+                        <label class="input-label">赠送体验额度</label>
+                        <input v-model.number="pkg.trial_bonus" type="number" min="0" step="0.01" class="input" />
+                      </div>
+                      <div>
+                        <label class="input-label">有效期(天)</label>
+                        <input v-model.number="pkg.trial_days" type="number" min="0" step="1" class="input" />
+                      </div>
+                      <div>
+                        <label class="input-label">标签</label>
+                        <input v-model="pkg.label" type="text" class="input" placeholder="推荐" />
+                      </div>
+                      <div>
+                        <label class="input-label">排序</label>
+                        <input v-model.number="pkg.sort_order" type="number" min="1" step="1" class="input" />
+                      </div>
+                      <button
+                        type="button"
+                        class="btn btn-secondary btn-sm h-10 self-end text-red-600 hover:text-red-700 dark:text-red-300"
+                        @click="removeRechargePackage(index)"
+                      >
+                        <Icon name="trash" size="sm" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
                 <!-- Row 4: Enabled payment types (provider badges like sub2apipay) -->
                 <div>
                   <label class="input-label">{{
@@ -6068,6 +6133,7 @@ import {
 import type {
   AuthSourceDefaultsState,
   AuthSourceType,
+  PaymentRechargePackage,
   SystemSettings,
   UpdateSettingsRequest,
   DefaultSubscriptionSetting,
@@ -6237,6 +6303,16 @@ const openaiFastPolicyLoaded = ref(false);
 const tablePageSizeMin = 5;
 const tablePageSizeMax = 1000;
 const tablePageSizeDefault = 20;
+const defaultPaymentRechargePackages: PaymentRechargePackage[] = [
+  { enabled: true, amount: 10, trial_bonus: 0, trial_days: 30, label: "", sort_order: 1 },
+  { enabled: true, amount: 20, trial_bonus: 0.5, trial_days: 1, label: "推荐", sort_order: 2 },
+  { enabled: true, amount: 30, trial_bonus: 1, trial_days: 1, label: "推荐", sort_order: 3 },
+  { enabled: true, amount: 50, trial_bonus: 2, trial_days: 3, label: "推荐", sort_order: 5 },
+  { enabled: true, amount: 100, trial_bonus: 5, trial_days: 30, label: "推荐", sort_order: 6 },
+  { enabled: true, amount: 300, trial_bonus: 20, trial_days: 15, label: "推荐", sort_order: 7 },
+  { enabled: true, amount: 500, trial_bonus: 40, trial_days: 30, label: "推荐", sort_order: 8 },
+  { enabled: true, amount: 888, trial_bonus: 88, trial_days: 30, label: "88或加入代理", sort_order: 9 },
+];
 
 function defaultLoginAgreementDocuments(): LoginAgreementDocument[] {
   return [
@@ -6355,6 +6431,8 @@ const form = reactive<SettingsForm>({
   payment_balance_disabled: false,
   payment_balance_recharge_multiplier: 1,
   payment_recharge_fee_rate: 0,
+  payment_recharge_packages: defaultPaymentRechargePackages.map((pkg) => ({ ...pkg })),
+  payment_recharge_custom_amount_enabled: false,
   payment_enabled_types: [],
   payment_help_image_url: "",
   payment_help_text: "",
@@ -7077,6 +7155,50 @@ function parseTablePageSizeOptionsInput(raw: string): number[] | null {
   return deduped;
 }
 
+function normalizePaymentRechargePackages(
+  packages: PaymentRechargePackage[] | null | undefined,
+): PaymentRechargePackage[] {
+  const source =
+    Array.isArray(packages) && packages.length > 0
+      ? packages
+      : defaultPaymentRechargePackages;
+
+  return source
+    .map((pkg, index) => ({
+      enabled: pkg.enabled !== false,
+      amount: Math.round((Number(pkg.amount) || 0) * 100) / 100,
+      trial_bonus: Math.max(0, Math.round((Number(pkg.trial_bonus) || 0) * 100) / 100),
+      trial_days: Math.max(0, Math.floor(Number(pkg.trial_days) || 0)),
+      label: String(pkg.label || "").trim(),
+      sort_order: Math.max(1, Math.floor(Number(pkg.sort_order) || index + 1)),
+    }))
+    .filter((pkg) => pkg.amount > 0)
+    .sort((a, b) => (a.sort_order === b.sort_order ? a.amount - b.amount : a.sort_order - b.sort_order));
+}
+
+function addRechargePackage() {
+  const nextOrder =
+    form.payment_recharge_packages.reduce(
+      (max, pkg) => Math.max(max, Number(pkg.sort_order) || 0),
+      0,
+    ) + 1;
+  form.payment_recharge_packages.push({
+    enabled: true,
+    amount: 0,
+    trial_bonus: 0,
+    trial_days: 0,
+    label: "",
+    sort_order: nextOrder,
+  });
+}
+
+function removeRechargePackage(index: number) {
+  form.payment_recharge_packages.splice(index, 1);
+  if (form.payment_recharge_packages.length === 0) {
+    addRechargePackage();
+  }
+}
+
 async function loadSettings() {
   loading.value = true;
   loadFailed.value = false;
@@ -7108,6 +7230,11 @@ async function loadSettings() {
     form.default_subscriptions = normalizeDefaultSubscriptionSettings(
       settings.default_subscriptions,
     );
+    form.payment_recharge_packages = normalizePaymentRechargePackages(
+      settings.payment_recharge_packages,
+    );
+    form.payment_recharge_custom_amount_enabled =
+      settings.payment_recharge_custom_amount_enabled === true;
     registrationEmailSuffixWhitelistTags.value =
       normalizeRegistrationEmailSuffixDomains(
         settings.registration_email_suffix_whitelist,
@@ -7566,6 +7693,11 @@ async function saveSettings() {
       payment_balance_recharge_multiplier:
         Number(form.payment_balance_recharge_multiplier) || 1,
       payment_recharge_fee_rate: Number(form.payment_recharge_fee_rate) || 0,
+      payment_recharge_packages: normalizePaymentRechargePackages(
+        form.payment_recharge_packages,
+      ),
+      payment_recharge_custom_amount_enabled:
+        form.payment_recharge_custom_amount_enabled,
       payment_enabled_types: form.payment_enabled_types,
       payment_load_balance_strategy: form.payment_load_balance_strategy,
       payment_product_name_prefix: form.payment_product_name_prefix,
@@ -7639,6 +7771,11 @@ async function saveSettings() {
       }
     }
     Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(updated));
+    form.payment_recharge_packages = normalizePaymentRechargePackages(
+      updated.payment_recharge_packages,
+    );
+    form.payment_recharge_custom_amount_enabled =
+      updated.payment_recharge_custom_amount_enabled === true;
     registrationEmailSuffixWhitelistTags.value =
       normalizeRegistrationEmailSuffixDomains(
         updated.registration_email_suffix_whitelist,

@@ -138,6 +138,8 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 		BalanceDisabled:           cfg.BalanceDisabled,
 		BalanceRechargeMultiplier: cfg.BalanceRechargeMultiplier,
 		RechargeFeeRate:           cfg.RechargeFeeRate,
+		RechargePackages:          cfg.RechargePackages,
+		RechargeCustomEnabled:     cfg.RechargeCustomEnabled,
 		HelpText:                  cfg.HelpText,
 		HelpImageURL:              cfg.HelpImageURL,
 		StripePublishableKey:      cfg.StripePublishableKey,
@@ -145,16 +147,18 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 }
 
 type checkoutInfoResponse struct {
-	Methods                   map[string]service.MethodLimits `json:"methods"`
-	GlobalMin                 float64                         `json:"global_min"`
-	GlobalMax                 float64                         `json:"global_max"`
-	Plans                     []checkoutPlan                  `json:"plans"`
-	BalanceDisabled           bool                            `json:"balance_disabled"`
-	BalanceRechargeMultiplier float64                         `json:"balance_recharge_multiplier"`
-	RechargeFeeRate           float64                         `json:"recharge_fee_rate"`
-	HelpText                  string                          `json:"help_text"`
-	HelpImageURL              string                          `json:"help_image_url"`
-	StripePublishableKey      string                          `json:"stripe_publishable_key"`
+	Methods                   map[string]service.MethodLimits  `json:"methods"`
+	GlobalMin                 float64                          `json:"global_min"`
+	GlobalMax                 float64                          `json:"global_max"`
+	Plans                     []checkoutPlan                   `json:"plans"`
+	BalanceDisabled           bool                             `json:"balance_disabled"`
+	BalanceRechargeMultiplier float64                          `json:"balance_recharge_multiplier"`
+	RechargeFeeRate           float64                          `json:"recharge_fee_rate"`
+	RechargePackages          []service.BalanceRechargePackage `json:"recharge_packages"`
+	RechargeCustomEnabled     bool                             `json:"recharge_custom_amount_enabled"`
+	HelpText                  string                           `json:"help_text"`
+	HelpImageURL              string                           `json:"help_image_url"`
+	StripePublishableKey      string                           `json:"stripe_publishable_key"`
 }
 
 type checkoutPlan struct {

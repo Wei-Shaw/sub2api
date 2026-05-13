@@ -102,6 +102,7 @@ func registerRoutes(
 ) {
 	// 通用路由（健康检查、状态等）
 	routes.RegisterCommonRoutes(r)
+	routes.RegisterProviderPricingRoutes(r, h)
 
 	// API v1
 	v1 := r.Group("/api/v1")

@@ -97,6 +97,11 @@ func (s *PaymentService) validateOrderInput(ctx context.Context, req CreateOrder
 	if math.IsNaN(req.Amount) || math.IsInf(req.Amount, 0) || req.Amount <= 0 {
 		return nil, infraerrors.BadRequest("INVALID_AMOUNT", "amount must be a positive number")
 	}
+	if req.OrderType == payment.OrderTypeBalance && !cfg.RechargeCustomEnabled {
+		if _, ok := lookupBalanceRechargePackage(req.Amount, cfg.RechargePackages); !ok {
+			return nil, infraerrors.BadRequest("INVALID_RECHARGE_PACKAGE", "unsupported recharge amount")
+		}
+	}
 	if (cfg.MinAmount > 0 && req.Amount < cfg.MinAmount) || (cfg.MaxAmount > 0 && req.Amount > cfg.MaxAmount) {
 		return nil, infraerrors.BadRequest("INVALID_AMOUNT", "amount out of range").
 			WithMetadata(map[string]string{"min": fmt.Sprintf("%.2f", cfg.MinAmount), "max": fmt.Sprintf("%.2f", cfg.MaxAmount)})

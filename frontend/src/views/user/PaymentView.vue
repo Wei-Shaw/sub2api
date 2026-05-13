@@ -1,6 +1,6 @@
 <template>
   <AppLayout>
-    <div class="mx-auto max-w-4xl space-y-6">
+    <div :class="['mx-auto space-y-6', activeTab === 'recharge' && paymentPhase === 'select' ? 'max-w-7xl' : 'max-w-4xl']">
       <div v-if="loading" class="flex items-center justify-center py-20">
         <div class="h-8 w-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent"></div>
       </div>
@@ -30,85 +30,221 @@
         <template v-else>
           <!-- Top-up Tab -->
           <template v-if="activeTab === 'recharge'">
-            <!-- Recharge Account Card -->
-            <div class="card p-5">
-              <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                <div class="min-w-0">
-                  <p class="text-xs font-medium text-gray-400 dark:text-gray-500">{{ t('payment.rechargeAccount') }}</p>
-                  <p class="mt-1 text-base font-semibold text-gray-900 dark:text-white">{{ user?.username || '' }}</p>
-                  <p class="mt-0.5 text-sm font-medium text-green-600 dark:text-green-400">{{ t('payment.currentBalance') }}: {{ availableBalance.toFixed(2) }}</p>
-                  <p v-if="trialBalance > 0" class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                    {{ t('common.realBalance') }}: {{ realBalance.toFixed(2) }} · {{ t('common.trialBalance') }}: {{ trialBalance.toFixed(2) }}
-                  </p>
-                </div>
-                <div class="flex shrink-0 flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-100 sm:flex-row sm:items-center">
-                  <div class="flex items-start gap-2">
-                    <Icon name="infoCircle" size="sm" class="mt-0.5 shrink-0 text-amber-500 dark:text-amber-300" />
-                    <div>
-                      <p class="text-sm font-semibold">{{ t('payment.rechargeSupportTitle') }}</p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    class="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 text-sm font-medium text-amber-800 transition-colors hover:bg-amber-100 dark:border-amber-400/40 dark:bg-amber-400/10 dark:text-amber-100 dark:hover:bg-amber-400/20"
-                    @click="copyWechatContact"
-                  >
-                    <Icon name="copy" size="sm" />
-                    <span>{{ t('payment.copyWechat') }}</span>
-                  </button>
-                </div>
-              </div>
-            </div>
             <div v-if="enabledMethods.length === 0" class="card py-16 text-center">
               <p class="text-gray-500 dark:text-gray-400">{{ t('payment.notAvailable') }}</p>
             </div>
             <template v-else>
-            <div class="card p-6">
-              <AmountInput
-                v-model="amount"
-                :amounts="[10, 20, 50, 100, 200, 500, 1000, 2000, 5000]"
-                :min="globalMinAmount"
-                :max="globalMaxAmount"
-              />
-              <p v-if="amountError" class="mt-2 text-xs text-amber-600 dark:text-amber-300">{{ amountError }}</p>
-            </div>
-            <div v-if="enabledMethods.length >= 1" class="card p-6">
-              <PaymentMethodSelector
-                :methods="methodOptions"
-                :selected="selectedMethod"
-                @select="selectedMethod = $event"
-              />
-            </div>
-            <div v-if="validAmount > 0" class="card p-6">
-              <div class="space-y-2 text-sm">
-                <div class="flex justify-between">
-                  <span class="text-gray-500 dark:text-gray-400">{{ t('payment.paymentAmount') }}</span>
-                  <span class="text-gray-900 dark:text-white">¥{{ validAmount.toFixed(2) }}</span>
+              <div class="overflow-hidden rounded-[28px] border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-cyan-50 p-4 shadow-xl shadow-blue-900/10 dark:border-slate-700 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 sm:p-6 lg:p-8">
+                <div class="mb-6 flex flex-col gap-4 border-b border-blue-100/80 pb-5 dark:border-slate-700 sm:flex-row sm:items-center sm:justify-between">
+                  <div class="flex items-center gap-3">
+                    <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/25">
+                      <Icon name="creditCard" size="md" />
+                    </div>
+                    <div>
+                      <h2 class="text-2xl font-bold tracking-normal text-slate-950 dark:text-white">收银台</h2>
+                      <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">安全收银台 · 官方充值通道</p>
+                    </div>
+                  </div>
+                  <div class="inline-flex w-fit items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200">
+                    <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+                    已加密保护
+                  </div>
                 </div>
-                <div v-if="feeRate > 0" class="flex justify-between">
-                  <span class="text-gray-500 dark:text-gray-400">{{ t('payment.fee') }} ({{ feeRate }}%)</span>
-                  <span class="text-gray-900 dark:text-white">¥{{ feeAmount.toFixed(2) }}</span>
+
+                <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+                  <div class="space-y-5">
+                    <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                      <div class="mb-5 flex items-start gap-3">
+                        <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">1</span>
+                        <div>
+                          <h3 class="text-lg font-semibold text-slate-950 dark:text-white">选择充值金额</h3>
+                          <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">选择套餐或输入自定义金额，到账后自动计入账户余额</p>
+                        </div>
+                        <span class="ml-auto hidden rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 dark:bg-blue-500/10 dark:text-blue-200 sm:inline-flex">{{ rechargeHeaderBadge }}</span>
+                      </div>
+
+                      <div class="mb-3 flex items-center justify-between gap-3">
+                        <p class="text-sm font-semibold text-slate-800 dark:text-slate-100">充值套餐</p>
+                        <p class="text-xs text-slate-500 dark:text-slate-400">赠送额度优先抵扣，有效期内使用</p>
+                      </div>
+
+                      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                        <button
+                          v-for="pkg in topUpPackages"
+                          :key="pkg.amount"
+                          type="button"
+                          :disabled="!packageAvailable(pkg)"
+                          :class="[
+                            'group relative min-h-[138px] overflow-hidden rounded-2xl border bg-white p-4 text-left transition-all dark:bg-slate-950',
+                            amount === pkg.amount
+                              ? 'border-blue-500 shadow-lg shadow-blue-600/15 ring-2 ring-blue-500/15'
+                              : packageAvailable(pkg)
+                                ? 'border-slate-200 hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md dark:border-slate-700 dark:hover:border-blue-400/70'
+                                : 'cursor-not-allowed border-slate-100 opacity-45 dark:border-slate-800',
+                          ]"
+                          @click="selectTopUpPackage(pkg)"
+                        >
+                          <span
+                            v-if="pkg.badge"
+                            class="absolute right-3 top-3 rounded-full bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-600 ring-1 ring-orange-100 dark:bg-orange-500/10 dark:text-orange-200 dark:ring-orange-400/20"
+                          >
+                            {{ pkg.badge }}
+                          </span>
+                          <span
+                            v-if="amount === pkg.amount"
+                            class="absolute bottom-3 right-3 flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm shadow-blue-600/20"
+                          >
+                            <Icon name="check" size="xs" />
+                          </span>
+                          <div class="flex h-full flex-col justify-between gap-4">
+                            <div class="pr-16">
+                              <div class="flex items-baseline gap-1">
+                                <span class="text-base font-semibold text-slate-500 dark:text-slate-400">¥</span>
+                                <span class="text-4xl font-bold tracking-normal text-slate-950 dark:text-white">{{ formatBonus(pkg.amount) }}</span>
+                              </div>
+                              <p class="mt-1 text-xs text-slate-400 dark:text-slate-500">官方充值额度</p>
+                            </div>
+                            <div v-if="pkg.bonus > 0" class="inline-flex w-fit items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-sm font-semibold text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-200">
+                              <Icon name="gift" size="xs" class="shrink-0" />
+                              <span>赠送 {{ formatBonus(pkg.bonus) }} / {{ pkg.days }}天</span>
+                            </div>
+                            <div v-else class="inline-flex w-fit items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+                              <Icon name="clock" size="xs" class="shrink-0" />
+                              <span>实时到账</span>
+                            </div>
+                          </div>
+                        </button>
+                      </div>
+
+                      <div
+                        v-if="customAmountEnabled"
+                        class="mt-4 rounded-2xl border border-dashed border-blue-200 bg-blue-50/60 p-4 dark:border-blue-400/30 dark:bg-blue-500/10"
+                      >
+                        <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+                          <div class="min-w-0 flex-1">
+                            <label class="text-sm font-semibold text-slate-800 dark:text-slate-100">自定义金额</label>
+                            <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">可输入其他充值金额，套餐赠送仅在选中对应套餐时生效</p>
+                          </div>
+                          <div class="relative sm:w-56">
+                            <span class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">¥</span>
+                            <input
+                              :value="amount ?? ''"
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              class="input pl-8"
+                              placeholder="输入金额"
+                              @input="amount = parseCustomAmount(($event.target as HTMLInputElement).value)"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <p v-if="amountError" class="mt-3 text-xs text-amber-600 dark:text-amber-300">{{ amountError }}</p>
+                    </section>
+
+                    <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                      <div class="mb-5 flex items-start gap-3">
+                        <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">2</span>
+                        <div>
+                          <h3 class="text-lg font-semibold text-slate-950 dark:text-white">选择支付方式</h3>
+                          <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">订单创建后进入安全支付页完成付款</p>
+                        </div>
+                      </div>
+                      <PaymentMethodSelector
+                        :methods="methodOptions"
+                        :selected="selectedMethod"
+                        @select="selectedMethod = $event"
+                      />
+                    </section>
+                  </div>
+
+                  <aside class="space-y-5 lg:sticky lg:top-6 lg:self-start">
+                    <section class="rounded-2xl border border-blue-100 bg-white p-5 shadow-lg shadow-blue-900/10 dark:border-slate-700 dark:bg-slate-900">
+                      <p class="text-sm font-medium text-slate-500 dark:text-slate-400">实付金额</p>
+                      <div class="mt-3 flex items-end gap-1">
+                        <span class="text-2xl font-bold text-blue-600">¥</span>
+                        <span class="text-5xl font-bold tracking-normal text-blue-600">{{ totalAmount.toFixed(2) }}</span>
+                      </div>
+                      <div class="my-5 border-t border-dashed border-slate-200 dark:border-slate-700"></div>
+                      <div class="space-y-3 text-sm">
+                        <div class="flex items-center justify-between">
+                          <span class="text-slate-500 dark:text-slate-400">{{ t('payment.paymentAmount') }}</span>
+                          <span class="font-medium text-slate-900 dark:text-white">¥{{ validAmount.toFixed(2) }}</span>
+                        </div>
+                        <div v-if="feeRate > 0" class="flex items-center justify-between">
+                          <span class="text-slate-500 dark:text-slate-400">{{ t('payment.fee') }} ({{ feeRate }}%)</span>
+                          <span class="font-medium text-slate-900 dark:text-white">¥{{ feeAmount.toFixed(2) }}</span>
+                        </div>
+                        <div v-if="selectedPackage && selectedPackage.bonus > 0" class="flex items-center justify-between">
+                          <span class="text-slate-500 dark:text-slate-400">赠送</span>
+                          <span class="font-semibold text-emerald-600 dark:text-emerald-300">{{ formatBonus(selectedPackage.bonus) }} / {{ selectedPackage.days }}天</span>
+                        </div>
+                        <div v-if="balanceRechargeMultiplier !== 1" class="flex items-center justify-between">
+                          <span class="text-slate-500 dark:text-slate-400">{{ t('payment.creditedBalance') }}</span>
+                          <span class="font-medium text-slate-900 dark:text-white">${{ creditedAmount.toFixed(2) }}</span>
+                        </div>
+                      </div>
+                      <p v-if="balanceRechargeMultiplier !== 1" class="mt-4 rounded-xl bg-slate-50 p-3 text-xs leading-relaxed text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                        {{ t('payment.rechargeRatePreview', { usd: balanceRechargeMultiplier.toFixed(2) }) }}
+                      </p>
+                      <button
+                        class="mt-5 inline-flex h-12 w-full items-center justify-center rounded-xl bg-blue-600 px-4 text-base font-semibold text-white shadow-lg shadow-blue-600/25 transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        :disabled="!canSubmit || submitting"
+                        @click="handleSubmitRecharge"
+                      >
+                        <span v-if="submitting" class="flex items-center justify-center gap-2">
+                          <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
+                          {{ t('common.processing') }}
+                        </span>
+                        <span v-else>确认支付 ¥{{ totalAmount.toFixed(2) }}</span>
+                      </button>
+                    </section>
+
+                    <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                      <div class="flex items-center gap-3">
+                        <div class="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-200">
+                          <Icon name="user" size="sm" />
+                        </div>
+                        <div class="min-w-0">
+                          <p class="text-sm font-medium text-slate-500 dark:text-slate-400">充值账户</p>
+                          <p class="truncate font-semibold text-slate-950 dark:text-white">{{ user?.username || '' }}</p>
+                        </div>
+                      </div>
+                      <div class="mt-5 grid grid-cols-2 gap-3 text-sm">
+                        <div class="rounded-xl bg-slate-50 p-3 dark:bg-slate-800">
+                          <p class="text-slate-500 dark:text-slate-400">{{ t('payment.currentBalance') }}</p>
+                          <p class="mt-1 text-lg font-semibold text-slate-950 dark:text-white">{{ availableBalance.toFixed(2) }}</p>
+                        </div>
+                        <div class="rounded-xl bg-blue-50 p-3 dark:bg-blue-500/10">
+                          <p class="text-blue-600 dark:text-blue-200">充值后金额</p>
+                          <p class="mt-1 text-lg font-semibold text-blue-700 dark:text-blue-200">{{ projectedBalance.toFixed(2) }}</p>
+                        </div>
+                      </div>
+                      <p v-if="trialBalance > 0" class="mt-3 text-xs text-slate-500 dark:text-slate-400">
+                        {{ t('common.realBalance') }} {{ realBalance.toFixed(2) }} / {{ t('common.trialBalance') }} {{ trialBalance.toFixed(2) }}
+                      </p>
+                    </section>
+
+                    <section class="rounded-2xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-500/30 dark:bg-amber-500/10">
+                      <div class="flex items-start gap-3">
+                        <Icon name="infoCircle" size="sm" class="mt-0.5 shrink-0 text-amber-600 dark:text-amber-300" />
+                        <div>
+                          <p class="font-semibold text-amber-900 dark:text-amber-100">{{ t('payment.rechargeSupportTitle') }}</p>
+                          <p class="mt-2 text-sm leading-relaxed text-amber-800/80 dark:text-amber-100/80">如遇到支付风控或无法站内充值，可以添加微信协助处理，依然附带当前套餐赠送。</p>
+                          <button
+                            type="button"
+                            class="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-white px-3 text-sm font-semibold text-amber-700 shadow-sm ring-1 ring-amber-200 transition-colors hover:bg-amber-100 dark:bg-slate-900 dark:text-amber-200 dark:ring-amber-500/30 dark:hover:bg-slate-800"
+                            @click="copyWechatContact"
+                          >
+                            <Icon name="copy" size="sm" />
+                            <span>{{ t('payment.copyWechat') }}</span>
+                          </button>
+                        </div>
+                      </div>
+                    </section>
+                  </aside>
                 </div>
-                <div v-if="feeRate > 0" class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600">
-                  <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.actualPay') }}</span>
-                  <span class="text-lg font-bold text-primary-600 dark:text-primary-400">¥{{ totalAmount.toFixed(2) }}</span>
-                </div>
-                <div v-if="balanceRechargeMultiplier !== 1" class="flex justify-between" :class="{ 'border-t border-gray-200 pt-2 dark:border-dark-600': feeRate <= 0 }">
-                  <span class="text-gray-500 dark:text-gray-400">{{ t('payment.creditedBalance') }}</span>
-                  <span class="text-gray-900 dark:text-white">${{ creditedAmount.toFixed(2) }}</span>
-                </div>
-                <p v-if="balanceRechargeMultiplier !== 1" class="border-t border-gray-200 pt-2 text-xs text-gray-500 dark:border-dark-600 dark:text-gray-400">
-                  {{ t('payment.rechargeRatePreview', { usd: balanceRechargeMultiplier.toFixed(2) }) }}
-                </p>
               </div>
-            </div>
-            <button :class="['btn w-full py-3 text-base font-medium', paymentButtonClass]" :disabled="!canSubmit || submitting" @click="handleSubmitRecharge">
-              <span v-if="submitting" class="flex items-center justify-center gap-2">
-                <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
-                {{ t('common.processing') }}
-              </span>
-              <span v-else>{{ t('payment.createOrder') }} ¥{{ totalAmount.toFixed(2) }}</span>
-            </button>
             </template>
           </template>
           <!-- Subscribe Tab -->
@@ -277,9 +413,8 @@ import { useAppStore } from '@/stores'
 import { paymentAPI } from '@/api/payment'
 import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
 import { isMobileDevice } from '@/utils/device'
-import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType } from '@/types/payment'
+import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType, RechargePackage } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
-import AmountInput from '@/components/payment/AmountInput.vue'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
 import { METHOD_ORDER, getPaymentPopupFeatures } from '@/components/payment/providerConfig'
 import {
@@ -331,6 +466,13 @@ const amount = ref<number | null>(null)
 const selectedMethod = ref('')
 const selectedPlan = ref<SubscriptionPlan | null>(null)
 const previewImage = ref('')
+
+interface TopUpPackage {
+  amount: number
+  bonus: number
+  days: number
+  badge?: string
+}
 
 const paymentPhase = ref<'select' | 'paying'>('select')
 
@@ -499,7 +641,9 @@ function onPaymentSettled() {
 // All checkout data from single API call
 const checkout = ref<CheckoutInfoResponse>({
   methods: {}, global_min: 0, global_max: 0,
-  plans: [], balance_disabled: false, balance_recharge_multiplier: 1, recharge_fee_rate: 0, help_text: '', help_image_url: '', stripe_publishable_key: '',
+  plans: [], balance_disabled: false, balance_recharge_multiplier: 1, recharge_fee_rate: 0,
+  recharge_packages: [], recharge_custom_amount_enabled: false,
+  help_text: '', help_image_url: '', stripe_publishable_key: '',
 })
 
 const tabs = computed(() => {
@@ -512,11 +656,33 @@ const tabs = computed(() => {
 const visibleMethods = computed(() => getVisibleMethods(checkout.value.methods))
 const enabledMethods = computed(() => Object.keys(visibleMethods.value))
 const validAmount = computed(() => amount.value ?? 0)
+const customAmountEnabled = computed(() => checkout.value.recharge_custom_amount_enabled === true)
+const topUpPackages = computed<TopUpPackage[]>(() =>
+  (checkout.value.recharge_packages || [])
+    .filter((pkg: RechargePackage) => pkg.enabled !== false && Number(pkg.amount) > 0)
+    .sort((a, b) => {
+      const orderDelta = (a.sort_order || 0) - (b.sort_order || 0)
+      return orderDelta !== 0 ? orderDelta : a.amount - b.amount
+    })
+    .map((pkg) => ({
+      amount: Number(pkg.amount),
+      bonus: Number(pkg.trial_bonus) || 0,
+      days: Math.max(0, Math.floor(Number(pkg.trial_days) || 0)),
+      badge: pkg.label?.trim() || undefined,
+    }))
+)
+const selectedPackage = computed(() => topUpPackages.value.find(pkg => pkg.amount === validAmount.value) ?? null)
+const rechargeHeaderBadge = computed(() => {
+  if (customAmountEnabled.value) return '开放自定义金额'
+  const maxPackageAmount = topUpPackages.value.reduce((max, pkg) => Math.max(max, pkg.amount), 0)
+  return maxPackageAmount > 0 ? `最高 ¥${formatBonus(maxPackageAmount)}` : '套餐配置'
+})
 const balanceRechargeMultiplier = computed(() => {
   const multiplier = checkout.value.balance_recharge_multiplier
   return multiplier > 0 ? multiplier : 1
 })
 const creditedAmount = computed(() => Math.round((validAmount.value * balanceRechargeMultiplier.value) * 100) / 100)
+const projectedBalance = computed(() => Math.round((availableBalance.value + creditedAmount.value) * 100) / 100)
 
 // Adaptive grid: center single card, 2-col for 2 plans, 3-col for 3+
 const planGridClass = computed(() => {
@@ -535,19 +701,23 @@ function amountFitsMethod(amt: number, methodType: string): boolean {
   return true
 }
 
-// Visible methods decide the amount range shown to users.
-const globalMinAmount = computed(() => {
-  const limits = Object.values(visibleMethods.value)
-  if (limits.length === 0) return 0
-  if (limits.some(limit => limit.single_min <= 0)) return 0
-  return Math.min(...limits.map(limit => limit.single_min))
-})
-const globalMaxAmount = computed(() => {
-  const limits = Object.values(visibleMethods.value)
-  if (limits.length === 0) return 0
-  if (limits.some(limit => limit.single_max <= 0)) return 0
-  return Math.max(...limits.map(limit => limit.single_max))
-})
+function packageAvailable(pkg: TopUpPackage): boolean {
+  return enabledMethods.value.some((method) => amountFitsMethod(pkg.amount, method))
+}
+
+function selectTopUpPackage(pkg: TopUpPackage) {
+  if (!packageAvailable(pkg)) return
+  amount.value = pkg.amount
+}
+
+function parseCustomAmount(raw: string): number | null {
+  const value = Math.round(Number(raw) * 100) / 100
+  return Number.isFinite(value) && value > 0 ? value : null
+}
+
+function formatBonus(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/\.?0+$/, '')
+}
 
 // Selected method's limits (for validation and error messages)
 const selectedLimit = computed(() => visibleMethods.value[selectedMethod.value])
@@ -577,6 +747,9 @@ const totalAmount = computed(() =>
 
 const amountError = computed(() => {
   if (validAmount.value <= 0) return ''
+  if (!customAmountEnabled.value && !selectedPackage.value) {
+    return '请选择可用充值套餐'
+  }
   // No method can handle this amount
   if (!enabledMethods.value.some((m) => amountFitsMethod(validAmount.value, m))) {
     return t('payment.amountNoMethod')
@@ -592,6 +765,7 @@ const amountError = computed(() => {
 
 const canSubmit = computed(() =>
   validAmount.value > 0
+    && (customAmountEnabled.value || selectedPackage.value !== null)
     && amountFitsMethod(validAmount.value, selectedMethod.value)
     && selectedLimit.value?.available !== false
 )
@@ -987,7 +1161,9 @@ async function resumeWechatPaymentFromQuery() {
 
   selectedMethod.value = resume.paymentType
   if (resume.orderType === 'balance' && resume.orderAmount > 0) {
-    amount.value = resume.orderAmount
+    amount.value = customAmountEnabled.value || topUpPackages.value.some(pkg => pkg.amount === resume.orderAmount)
+      ? resume.orderAmount
+      : null
   }
   if (resume.orderType === 'subscription' && resume.planId) {
     selectedPlan.value = checkout.value.plans.find(plan => plan.id === resume.planId) ?? null
@@ -1053,6 +1229,9 @@ onMounted(async () => {
     await resumeWechatPaymentFromQuery()
     if (checkout.value.balance_disabled) {
       activeTab.value = 'subscription'
+    }
+    if (!amount.value) {
+      amount.value = topUpPackages.value.find(pkg => packageAvailable(pkg))?.amount ?? null
     }
     // Handle renewal navigation: ?tab=subscription&group=123
     if (route.query.tab === 'subscription') {

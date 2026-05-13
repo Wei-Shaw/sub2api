@@ -56,6 +56,15 @@ export interface MethodLimitsResponse {
   global_max: number  // widest max across all methods; 0 = no maximum
 }
 
+export interface RechargePackage {
+  amount: number
+  trial_bonus: number
+  trial_days: number
+  label?: string
+  sort_order: number
+  enabled: boolean
+}
+
 /** Response from /payment/checkout-info API — single call for the payment page */
 export interface CheckoutInfoResponse {
   methods: Record<string, MethodLimit>
@@ -65,6 +74,8 @@ export interface CheckoutInfoResponse {
   balance_disabled: boolean
   balance_recharge_multiplier: number
   recharge_fee_rate: number
+  recharge_packages: RechargePackage[]
+  recharge_custom_amount_enabled: boolean
   help_text: string
   help_image_url: string
   stripe_publishable_key: string

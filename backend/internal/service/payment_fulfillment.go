@@ -269,6 +269,9 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder) e
 
 	switch action {
 	case redeemActionSkipCompleted:
+		if err := s.applyBalanceRechargeTrialBonus(ctx, o); err != nil {
+			return err
+		}
 		if err := s.applyAffiliateRebateForOrder(ctx, o); err != nil {
 			return err
 		}
@@ -285,10 +288,60 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder) e
 	if _, err := s.redeemService.Redeem(ContextSkipRedeemAffiliate(ctx), o.UserID, o.RechargeCode); err != nil {
 		return fmt.Errorf("redeem balance: %w", err)
 	}
+	if err := s.applyBalanceRechargeTrialBonus(ctx, o); err != nil {
+		return err
+	}
 	if err := s.applyAffiliateRebateForOrder(ctx, o); err != nil {
 		return err
 	}
 	return s.markCompleted(ctx, o, "RECHARGE_SUCCESS")
+}
+
+func (s *PaymentService) applyBalanceRechargeTrialBonus(ctx context.Context, o *dbent.PaymentOrder) error {
+	if o == nil || o.OrderType != payment.OrderTypeBalance {
+		return nil
+	}
+	if s.hasAuditLog(ctx, o.ID, "RECHARGE_TRIAL_BONUS_APPLIED") {
+		return nil
+	}
+	cfg, err := s.configService.GetPaymentConfig(ctx)
+	if err != nil {
+		return fmt.Errorf("get payment config for trial bonus: %w", err)
+	}
+	pkg, ok := matchBalanceRechargePackageByPayAmount(o.PayAmount, o.FeeRate, cfg.RechargePackages)
+	if !ok || pkg.TrialBonus <= 0 || pkg.TrialDays <= 0 {
+		return nil
+	}
+	user, err := s.entClient.User.Get(ctx, o.UserID)
+	if err != nil {
+		return fmt.Errorf("get user for trial bonus: %w", err)
+	}
+	now := time.Now()
+	expiresAt := now.Add(time.Duration(pkg.TrialDays) * 24 * time.Hour)
+	hasActiveTrial := user.TrialBalanceExpiresAt != nil && user.TrialBalanceExpiresAt.After(now)
+	if hasActiveTrial && user.TrialBalanceExpiresAt.After(expiresAt) {
+		expiresAt = *user.TrialBalanceExpiresAt
+	}
+	update := s.entClient.User.UpdateOneID(o.UserID).
+		SetTrialBalanceExpiresAt(expiresAt)
+	if hasActiveTrial {
+		update.AddTrialBalance(pkg.TrialBonus)
+	} else {
+		update.SetTrialBalance(pkg.TrialBonus)
+	}
+	if _, err := update.Save(ctx); err != nil {
+		return fmt.Errorf("apply trial bonus: %w", err)
+	}
+	s.writeAuditLog(ctx, o.ID, "RECHARGE_TRIAL_BONUS_APPLIED", "system", map[string]any{
+		"baseAmount":     pkg.Amount,
+		"trialBonus":     pkg.TrialBonus,
+		"trialDays":      pkg.TrialDays,
+		"trialExpiresAt": expiresAt,
+	})
+	if s.redeemService != nil {
+		s.redeemService.invalidateRedeemCaches(ctx, o.UserID, &RedeemCode{Type: RedeemTypeBalance})
+	}
+	return nil
 }
 
 func (s *PaymentService) markCompleted(ctx context.Context, o *dbent.PaymentOrder, auditAction string) error {

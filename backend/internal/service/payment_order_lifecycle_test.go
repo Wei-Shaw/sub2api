@@ -245,6 +245,34 @@ func TestVerifyOrderByOutTradeNoBackfillsTradeNoFromPaidQuery(t *testing.T) {
 	require.Equal(t, user.ID, redeemRepo.useCalls[0].userID)
 }
 
+func TestBalanceRechargePackages(t *testing.T) {
+	validAmounts := []float64{10, 20, 30, 50, 100, 300, 500, 888}
+	for _, amount := range validAmounts {
+		pkg, ok := lookupBalanceRechargePackage(amount, defaultBalanceRechargePackages)
+		require.True(t, ok)
+		require.Equal(t, amount, pkg.Amount)
+		require.GreaterOrEqual(t, pkg.TrialBonus, 0.0)
+		if pkg.TrialBonus > 0 {
+			require.Greater(t, pkg.TrialDays, 0)
+		}
+	}
+
+	_, ok := lookupBalanceRechargePackage(999, defaultBalanceRechargePackages)
+	require.False(t, ok)
+}
+
+func TestMatchBalanceRechargePackageByPayAmountIncludesFee(t *testing.T) {
+	pkg, ok := matchBalanceRechargePackageByPayAmount(20.2, 1, defaultBalanceRechargePackages)
+	require.True(t, ok)
+	require.Equal(t, 20.0, pkg.Amount)
+	require.Equal(t, 0.5, pkg.TrialBonus)
+
+	pkg, ok = matchBalanceRechargePackageByPayAmount(510, 2, defaultBalanceRechargePackages)
+	require.True(t, ok)
+	require.Equal(t, 500.0, pkg.Amount)
+	require.Equal(t, 40.0, pkg.TrialBonus)
+}
+
 func TestVerifyOrderByOutTradeNoRetriesZeroAmountPaidQueryOnce(t *testing.T) {
 	ctx := context.Background()
 	client := newPaymentOrderLifecycleTestClient(t)

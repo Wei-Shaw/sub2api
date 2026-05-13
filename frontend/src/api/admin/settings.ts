@@ -45,6 +45,15 @@ export type PaymentVisibleMethodSource =
   | "easypay_wxpay";
 export type WeChatConnectMode = "open" | "mp" | "mobile";
 
+export interface PaymentRechargePackage {
+  amount: number;
+  trial_bonus: number;
+  trial_days: number;
+  label?: string;
+  sort_order: number;
+  enabled: boolean;
+}
+
 export interface PaymentVisibleMethodSourceOption {
   value: PaymentVisibleMethodSource;
   labelZh: string;
@@ -491,6 +500,8 @@ export interface SystemSettings {
   payment_balance_disabled: boolean;
   payment_balance_recharge_multiplier: number;
   payment_recharge_fee_rate: number;
+  payment_recharge_packages: PaymentRechargePackage[];
+  payment_recharge_custom_amount_enabled: boolean;
   payment_load_balance_strategy: string;
   payment_product_name_prefix: string;
   payment_product_name_suffix: string;
@@ -685,6 +696,8 @@ export interface UpdateSettingsRequest {
   payment_balance_disabled?: boolean;
   payment_balance_recharge_multiplier?: number;
   payment_recharge_fee_rate?: number;
+  payment_recharge_packages?: PaymentRechargePackage[];
+  payment_recharge_custom_amount_enabled?: boolean;
   payment_load_balance_strategy?: string;
   payment_product_name_prefix?: string;
   payment_product_name_suffix?: string;
