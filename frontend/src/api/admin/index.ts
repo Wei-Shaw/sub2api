@@ -29,8 +29,6 @@ import tlsFingerprintProfileAPI from './tlsFingerprintProfile'
 // cross-cutting features (PathEditor, ServiceQuota FilterBar, entityNames)
 // still need list/getById, so we keep this thin client here.
 import channelsAPI from './channels'
-import channelMonitorAPI from './channelMonitor'
-import channelMonitorTemplateAPI from './channelMonitorTemplate'
 import affiliatesAPI from './affiliates'
 import riskControlAPI from './riskControl'
 
@@ -61,8 +59,6 @@ export const adminAPI = {
   backup: backupAPI,
   tlsFingerprintProfiles: tlsFingerprintProfileAPI,
   channels: channelsAPI,
-  channelMonitor: channelMonitorAPI,
-  channelMonitorTemplate: channelMonitorTemplateAPI,
   affiliates: affiliatesAPI,
   riskControl: riskControlAPI
 }
@@ -91,8 +87,6 @@ export {
   backupAPI,
   tlsFingerprintProfileAPI,
   channelsAPI,
-  channelMonitorAPI,
-  channelMonitorTemplateAPI,
   affiliatesAPI,
   riskControlAPI
 }
