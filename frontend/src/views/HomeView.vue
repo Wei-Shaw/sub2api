@@ -350,7 +350,7 @@ const authStore = useAuthStore()
 const appStore = useAppStore()
 
 const fallbackBrand = 'gw-link'
-const fallbackDocUrl = 'https://github.com/Wei-Shaw/sub2api#readme'
+const fallbackDocUrl = 'https://github.com/hongheshan-svg/sub2api#readme'
 
 const brandName = computed(() => {
   const configured = appStore.cachedPublicSettings?.site_name || appStore.siteName
