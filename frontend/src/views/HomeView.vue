@@ -431,6 +431,25 @@ const pricingRows = [
   { model: 'GPT 5.5',    logo: '/logos/openai.svg', type: 'Codex',      typeColor: 'green',  rate: '0.5x',  inputCny: '¥2.50',  outputCny: '¥14.00', official: '$5 / $30',    discount: '0.7折', proxy: true  },
 ]
 
+const partnersRow1 = [
+  { id: 'tcl',      name: 'TCL',    logo: '/logos/enterprise/tcl.svg' },
+  { id: 'kaadas',   name: '凯迪仕', logo: '/logos/enterprise/kaadas.svg' },
+  { id: 'tianfeng', name: '天风证券', logo: '/logos/enterprise/tianfeng.svg' },
+  { id: 'zhaochi',  name: '兆驰股份', logo: '/logos/enterprise/zhaochi.svg' },
+  { id: 'xiaomi',   name: '小米',   logo: '/logos/enterprise/xiaomi.svg' },
+  { id: 'huawei',   name: '华为',   logo: '/logos/enterprise/huawei.svg' },
+  { id: 'byd',      name: '比亚迪', logo: '/logos/enterprise/byd.svg' },
+]
+
+const partnersRow2 = [
+  { id: 'baidu',     name: '百度',   logo: '/logos/enterprise/baidu.svg' },
+  { id: 'tencent',   name: '腾讯',   logo: '/logos/enterprise/tencent.svg' },
+  { id: 'bytedance', name: '字节跳动', logo: '/logos/enterprise/bytedance.svg' },
+  { id: 'cmb',       name: '招商银行', logo: '/logos/enterprise/cmb.svg' },
+  { id: 'pingan',    name: '中国平安', logo: '/logos/enterprise/pingan.svg' },
+  { id: 'midea',     name: '美的',   logo: '/logos/enterprise/midea.svg' },
+  { id: 'haier',     name: '海尔',   logo: '/logos/enterprise/haier.svg' },
+]
 
 onMounted(() => {
   initTheme()
