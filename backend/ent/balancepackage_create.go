@@ -88,6 +88,20 @@ func (_c *BalancePackageCreate) SetNillableCreditMultiplier(v *float64) *Balance
 	return _c
 }
 
+// SetGroupID sets the "group_id" field.
+func (_c *BalancePackageCreate) SetGroupID(v int64) *BalancePackageCreate {
+	_c.mutation.SetGroupID(v)
+	return _c
+}
+
+// SetNillableGroupID sets the "group_id" field if the given value is not nil.
+func (_c *BalancePackageCreate) SetNillableGroupID(v *int64) *BalancePackageCreate {
+	if v != nil {
+		_c.SetGroupID(*v)
+	}
+	return _c
+}
+
 // SetBadge sets the "badge" field.
 func (_c *BalancePackageCreate) SetBadge(v string) *BalancePackageCreate {
 	_c.mutation.SetBadge(v)
@@ -356,6 +370,10 @@ func (_c *BalancePackageCreate) createSpec() (*BalancePackage, *sqlgraph.CreateS
 		_spec.SetField(balancepackage.FieldCreditMultiplier, field.TypeFloat64, value)
 		_node.CreditMultiplier = value
 	}
+	if value, ok := _c.mutation.GroupID(); ok {
+		_spec.SetField(balancepackage.FieldGroupID, field.TypeInt64, value)
+		_node.GroupID = &value
+	}
 	if value, ok := _c.mutation.Badge(); ok {
 		_spec.SetField(balancepackage.FieldBadge, field.TypeString, value)
 		_node.Badge = value
@@ -537,6 +555,30 @@ func (u *BalancePackageUpsert) UpdateCreditMultiplier() *BalancePackageUpsert {
 // AddCreditMultiplier adds v to the "credit_multiplier" field.
 func (u *BalancePackageUpsert) AddCreditMultiplier(v float64) *BalancePackageUpsert {
 	u.Add(balancepackage.FieldCreditMultiplier, v)
+	return u
+}
+
+// SetGroupID sets the "group_id" field.
+func (u *BalancePackageUpsert) SetGroupID(v int64) *BalancePackageUpsert {
+	u.Set(balancepackage.FieldGroupID, v)
+	return u
+}
+
+// UpdateGroupID sets the "group_id" field to the value that was provided on create.
+func (u *BalancePackageUpsert) UpdateGroupID() *BalancePackageUpsert {
+	u.SetExcluded(balancepackage.FieldGroupID)
+	return u
+}
+
+// AddGroupID adds v to the "group_id" field.
+func (u *BalancePackageUpsert) AddGroupID(v int64) *BalancePackageUpsert {
+	u.Add(balancepackage.FieldGroupID, v)
+	return u
+}
+
+// ClearGroupID clears the value of the "group_id" field.
+func (u *BalancePackageUpsert) ClearGroupID() *BalancePackageUpsert {
+	u.SetNull(balancepackage.FieldGroupID)
 	return u
 }
 
@@ -774,6 +816,34 @@ func (u *BalancePackageUpsertOne) AddCreditMultiplier(v float64) *BalancePackage
 func (u *BalancePackageUpsertOne) UpdateCreditMultiplier() *BalancePackageUpsertOne {
 	return u.Update(func(s *BalancePackageUpsert) {
 		s.UpdateCreditMultiplier()
+	})
+}
+
+// SetGroupID sets the "group_id" field.
+func (u *BalancePackageUpsertOne) SetGroupID(v int64) *BalancePackageUpsertOne {
+	return u.Update(func(s *BalancePackageUpsert) {
+		s.SetGroupID(v)
+	})
+}
+
+// AddGroupID adds v to the "group_id" field.
+func (u *BalancePackageUpsertOne) AddGroupID(v int64) *BalancePackageUpsertOne {
+	return u.Update(func(s *BalancePackageUpsert) {
+		s.AddGroupID(v)
+	})
+}
+
+// UpdateGroupID sets the "group_id" field to the value that was provided on create.
+func (u *BalancePackageUpsertOne) UpdateGroupID() *BalancePackageUpsertOne {
+	return u.Update(func(s *BalancePackageUpsert) {
+		s.UpdateGroupID()
+	})
+}
+
+// ClearGroupID clears the value of the "group_id" field.
+func (u *BalancePackageUpsertOne) ClearGroupID() *BalancePackageUpsertOne {
+	return u.Update(func(s *BalancePackageUpsert) {
+		s.ClearGroupID()
 	})
 }
 
@@ -1188,6 +1258,34 @@ func (u *BalancePackageUpsertBulk) AddCreditMultiplier(v float64) *BalancePackag
 func (u *BalancePackageUpsertBulk) UpdateCreditMultiplier() *BalancePackageUpsertBulk {
 	return u.Update(func(s *BalancePackageUpsert) {
 		s.UpdateCreditMultiplier()
+	})
+}
+
+// SetGroupID sets the "group_id" field.
+func (u *BalancePackageUpsertBulk) SetGroupID(v int64) *BalancePackageUpsertBulk {
+	return u.Update(func(s *BalancePackageUpsert) {
+		s.SetGroupID(v)
+	})
+}
+
+// AddGroupID adds v to the "group_id" field.
+func (u *BalancePackageUpsertBulk) AddGroupID(v int64) *BalancePackageUpsertBulk {
+	return u.Update(func(s *BalancePackageUpsert) {
+		s.AddGroupID(v)
+	})
+}
+
+// UpdateGroupID sets the "group_id" field to the value that was provided on create.
+func (u *BalancePackageUpsertBulk) UpdateGroupID() *BalancePackageUpsertBulk {
+	return u.Update(func(s *BalancePackageUpsert) {
+		s.UpdateGroupID()
+	})
+}
+
+// ClearGroupID clears the value of the "group_id" field.
+func (u *BalancePackageUpsertBulk) ClearGroupID() *BalancePackageUpsertBulk {
+	return u.Update(func(s *BalancePackageUpsert) {
+		s.ClearGroupID()
 	})
 }
 

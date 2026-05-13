@@ -154,6 +154,33 @@ func (_u *BalancePackageUpdate) AddCreditMultiplier(v float64) *BalancePackageUp
 	return _u
 }
 
+// SetGroupID sets the "group_id" field.
+func (_u *BalancePackageUpdate) SetGroupID(v int64) *BalancePackageUpdate {
+	_u.mutation.ResetGroupID()
+	_u.mutation.SetGroupID(v)
+	return _u
+}
+
+// SetNillableGroupID sets the "group_id" field if the given value is not nil.
+func (_u *BalancePackageUpdate) SetNillableGroupID(v *int64) *BalancePackageUpdate {
+	if v != nil {
+		_u.SetGroupID(*v)
+	}
+	return _u
+}
+
+// AddGroupID adds value to the "group_id" field.
+func (_u *BalancePackageUpdate) AddGroupID(v int64) *BalancePackageUpdate {
+	_u.mutation.AddGroupID(v)
+	return _u
+}
+
+// ClearGroupID clears the value of the "group_id" field.
+func (_u *BalancePackageUpdate) ClearGroupID() *BalancePackageUpdate {
+	_u.mutation.ClearGroupID()
+	return _u
+}
+
 // SetBadge sets the "badge" field.
 func (_u *BalancePackageUpdate) SetBadge(v string) *BalancePackageUpdate {
 	_u.mutation.SetBadge(v)
@@ -329,6 +356,15 @@ func (_u *BalancePackageUpdate) sqlSave(ctx context.Context) (_node int, err err
 	if value, ok := _u.mutation.AddedCreditMultiplier(); ok {
 		_spec.AddField(balancepackage.FieldCreditMultiplier, field.TypeFloat64, value)
 	}
+	if value, ok := _u.mutation.GroupID(); ok {
+		_spec.SetField(balancepackage.FieldGroupID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedGroupID(); ok {
+		_spec.AddField(balancepackage.FieldGroupID, field.TypeInt64, value)
+	}
+	if _u.mutation.GroupIDCleared() {
+		_spec.ClearField(balancepackage.FieldGroupID, field.TypeInt64)
+	}
 	if value, ok := _u.mutation.Badge(); ok {
 		_spec.SetField(balancepackage.FieldBadge, field.TypeString, value)
 	}
@@ -490,6 +526,33 @@ func (_u *BalancePackageUpdateOne) SetNillableCreditMultiplier(v *float64) *Bala
 // AddCreditMultiplier adds value to the "credit_multiplier" field.
 func (_u *BalancePackageUpdateOne) AddCreditMultiplier(v float64) *BalancePackageUpdateOne {
 	_u.mutation.AddCreditMultiplier(v)
+	return _u
+}
+
+// SetGroupID sets the "group_id" field.
+func (_u *BalancePackageUpdateOne) SetGroupID(v int64) *BalancePackageUpdateOne {
+	_u.mutation.ResetGroupID()
+	_u.mutation.SetGroupID(v)
+	return _u
+}
+
+// SetNillableGroupID sets the "group_id" field if the given value is not nil.
+func (_u *BalancePackageUpdateOne) SetNillableGroupID(v *int64) *BalancePackageUpdateOne {
+	if v != nil {
+		_u.SetGroupID(*v)
+	}
+	return _u
+}
+
+// AddGroupID adds value to the "group_id" field.
+func (_u *BalancePackageUpdateOne) AddGroupID(v int64) *BalancePackageUpdateOne {
+	_u.mutation.AddGroupID(v)
+	return _u
+}
+
+// ClearGroupID clears the value of the "group_id" field.
+func (_u *BalancePackageUpdateOne) ClearGroupID() *BalancePackageUpdateOne {
+	_u.mutation.ClearGroupID()
 	return _u
 }
 
@@ -697,6 +760,15 @@ func (_u *BalancePackageUpdateOne) sqlSave(ctx context.Context) (_node *BalanceP
 	}
 	if value, ok := _u.mutation.AddedCreditMultiplier(); ok {
 		_spec.AddField(balancepackage.FieldCreditMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.GroupID(); ok {
+		_spec.SetField(balancepackage.FieldGroupID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedGroupID(); ok {
+		_spec.AddField(balancepackage.FieldGroupID, field.TypeInt64, value)
+	}
+	if _u.mutation.GroupIDCleared() {
+		_spec.ClearField(balancepackage.FieldGroupID, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.Badge(); ok {
 		_spec.SetField(balancepackage.FieldBadge, field.TypeString, value)

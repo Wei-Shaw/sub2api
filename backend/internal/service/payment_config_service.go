@@ -72,6 +72,8 @@ type BalanceRechargePackage struct {
 	CreditLedger     float64 `json:"credit_ledger"`
 	BonusLedger      float64 `json:"bonus_ledger"`
 	CreditMultiplier float64 `json:"credit_multiplier"`
+	BalanceGroupID   *int64  `json:"balance_group_id,omitempty"`
+	GroupID          *int64  `json:"group_id,omitempty"`
 	Badge            string  `json:"badge,omitempty"`
 	Popular          bool    `json:"popular,omitempty"`
 	SortOrder        int     `json:"sort_order,omitempty"`
@@ -242,6 +244,8 @@ type CreateBalancePackageRequest struct {
 	AmountLedger     float64 `json:"amount_ledger"`
 	CreditLedger     float64 `json:"credit_ledger"`
 	CreditMultiplier float64 `json:"credit_multiplier"`
+	BalanceGroupID   *int64  `json:"balance_group_id"`
+	GroupID          *int64  `json:"group_id"` // Backward-compatible alias for balance_group_id.
 	Badge            string  `json:"badge"`
 	Popular          bool    `json:"popular"`
 	ForSale          bool    `json:"for_sale"`
@@ -255,6 +259,8 @@ type UpdateBalancePackageRequest struct {
 	AmountLedger     *float64 `json:"amount_ledger"`
 	CreditLedger     *float64 `json:"credit_ledger"`
 	CreditMultiplier *float64 `json:"credit_multiplier"`
+	BalanceGroupID   *int64   `json:"balance_group_id"`
+	GroupID          *int64   `json:"group_id"` // Backward-compatible alias for balance_group_id.
 	Badge            *string  `json:"badge"`
 	Popular          *bool    `json:"popular"`
 	ForSale          *bool    `json:"for_sale"`
@@ -446,6 +452,15 @@ func parseBalanceRechargePackagesJSON(raw string) ([]BalanceRechargePackage, err
 		}
 		if math.IsNaN(pkg.CreditMultiplier) || math.IsInf(pkg.CreditMultiplier, 0) || pkg.CreditMultiplier <= 0 {
 			return nil, fmt.Errorf("package %s credit_multiplier must be greater than 0", pkg.ID)
+		}
+		if pkg.BalanceGroupID == nil {
+			pkg.BalanceGroupID = pkg.GroupID
+		}
+		if pkg.GroupID == nil {
+			pkg.GroupID = pkg.BalanceGroupID
+		}
+		if pkg.BalanceGroupID != nil && *pkg.BalanceGroupID <= 0 {
+			return nil, fmt.Errorf("package %s balance_group_id must be greater than 0", pkg.ID)
 		}
 		pkg.AmountLedger = roundLedgerAmountForCredit(pkg.AmountLedger, defaultLedgerCurrency)
 		pkg.CreditLedger = roundLedgerAmountForCredit(pkg.CreditLedger, defaultLedgerCurrency)

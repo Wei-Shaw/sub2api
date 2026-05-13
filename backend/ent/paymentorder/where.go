@@ -180,6 +180,11 @@ func SubscriptionDays(v int) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldEQ(FieldSubscriptionDays, v))
 }
 
+// BalanceGroupID applies equality check predicate on the "balance_group_id" field. It's identical to BalanceGroupIDEQ.
+func BalanceGroupID(v int64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldEQ(FieldBalanceGroupID, v))
+}
+
 // ProviderInstanceID applies equality check predicate on the "provider_instance_id" field. It's identical to ProviderInstanceIDEQ.
 func ProviderInstanceID(v string) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldEQ(FieldProviderInstanceID, v))
@@ -1698,6 +1703,56 @@ func SubscriptionDaysIsNil() predicate.PaymentOrder {
 // SubscriptionDaysNotNil applies the NotNil predicate on the "subscription_days" field.
 func SubscriptionDaysNotNil() predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldNotNull(FieldSubscriptionDays))
+}
+
+// BalanceGroupIDEQ applies the EQ predicate on the "balance_group_id" field.
+func BalanceGroupIDEQ(v int64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldEQ(FieldBalanceGroupID, v))
+}
+
+// BalanceGroupIDNEQ applies the NEQ predicate on the "balance_group_id" field.
+func BalanceGroupIDNEQ(v int64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldNEQ(FieldBalanceGroupID, v))
+}
+
+// BalanceGroupIDIn applies the In predicate on the "balance_group_id" field.
+func BalanceGroupIDIn(vs ...int64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldIn(FieldBalanceGroupID, vs...))
+}
+
+// BalanceGroupIDNotIn applies the NotIn predicate on the "balance_group_id" field.
+func BalanceGroupIDNotIn(vs ...int64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldNotIn(FieldBalanceGroupID, vs...))
+}
+
+// BalanceGroupIDGT applies the GT predicate on the "balance_group_id" field.
+func BalanceGroupIDGT(v int64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldGT(FieldBalanceGroupID, v))
+}
+
+// BalanceGroupIDGTE applies the GTE predicate on the "balance_group_id" field.
+func BalanceGroupIDGTE(v int64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldGTE(FieldBalanceGroupID, v))
+}
+
+// BalanceGroupIDLT applies the LT predicate on the "balance_group_id" field.
+func BalanceGroupIDLT(v int64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldLT(FieldBalanceGroupID, v))
+}
+
+// BalanceGroupIDLTE applies the LTE predicate on the "balance_group_id" field.
+func BalanceGroupIDLTE(v int64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldLTE(FieldBalanceGroupID, v))
+}
+
+// BalanceGroupIDIsNil applies the IsNil predicate on the "balance_group_id" field.
+func BalanceGroupIDIsNil() predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldIsNull(FieldBalanceGroupID))
+}
+
+// BalanceGroupIDNotNil applies the NotNil predicate on the "balance_group_id" field.
+func BalanceGroupIDNotNil() predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldNotNull(FieldBalanceGroupID))
 }
 
 // ProviderInstanceIDEQ applies the EQ predicate on the "provider_instance_id" field.

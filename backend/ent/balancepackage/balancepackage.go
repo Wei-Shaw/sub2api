@@ -27,6 +27,8 @@ const (
 	FieldBonusLedger = "bonus_ledger"
 	// FieldCreditMultiplier holds the string denoting the credit_multiplier field in the database.
 	FieldCreditMultiplier = "credit_multiplier"
+	// FieldGroupID holds the string denoting the group_id field in the database.
+	FieldGroupID = "group_id"
 	// FieldBadge holds the string denoting the badge field in the database.
 	FieldBadge = "badge"
 	// FieldPopular holds the string denoting the popular field in the database.
@@ -53,6 +55,7 @@ var Columns = []string{
 	FieldCreditLedger,
 	FieldBonusLedger,
 	FieldCreditMultiplier,
+	FieldGroupID,
 	FieldBadge,
 	FieldPopular,
 	FieldForSale,
@@ -141,6 +144,11 @@ func ByBonusLedger(opts ...sql.OrderTermOption) OrderOption {
 // ByCreditMultiplier orders the results by the credit_multiplier field.
 func ByCreditMultiplier(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCreditMultiplier, opts...).ToFunc()
+}
+
+// ByGroupID orders the results by the group_id field.
+func ByGroupID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldGroupID, opts...).ToFunc()
 }
 
 // ByBadge orders the results by the badge field.

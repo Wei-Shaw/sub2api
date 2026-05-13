@@ -424,10 +424,28 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder, l
 	if _, err := s.redeemService.Redeem(ContextSkipRedeemAffiliate(ctx), o.UserID, o.RechargeCode); err != nil {
 		return fmt.Errorf("redeem balance: %w", err)
 	}
+	if err := s.applyBalancePackageUsageGroup(ctx, o); err != nil {
+		return err
+	}
 	if err := s.applyAffiliateRebateForOrder(ctx, o); err != nil {
 		return err
 	}
 	return s.markCompleted(ctx, o, lease, "RECHARGE_SUCCESS")
+}
+
+func (s *PaymentService) applyBalancePackageUsageGroup(ctx context.Context, o *dbent.PaymentOrder) error {
+	if s == nil || s.entitlementBinder == nil || o == nil || o.BalanceGroupID == nil || *o.BalanceGroupID <= 0 {
+		return nil
+	}
+	gid := *o.BalanceGroupID
+	if _, err := s.entitlementBinder.BindUserToGroupAfterPayment(ctx, o.UserID, gid); err != nil {
+		slog.Warn("failed to apply balance package usage group after payment", "orderID", o.ID, "userID", o.UserID, "balanceGroupID", gid, "error", err)
+		s.writeAuditLog(ctx, o.ID, "BALANCE_USAGE_GROUP_BIND_FAILED", "system", map[string]any{
+			"balanceGroupID": gid,
+			"error":          err.Error(),
+		})
+	}
+	return nil
 }
 
 func (s *PaymentService) markCompleted(ctx context.Context, o *dbent.PaymentOrder, lease *paymentFulfillmentLease, auditAction string) error {

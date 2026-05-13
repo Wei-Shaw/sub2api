@@ -110,6 +110,11 @@ func (PaymentOrder) Fields() []ent.Field {
 		field.Int("subscription_days").
 			Optional().
 			Nillable(),
+		// Balance top-up usage group. Keep this separate from subscription_group_id
+		// so package purchases do not look like subscription purchases.
+		field.Int64("balance_group_id").
+			Optional().
+			Nillable(),
 		field.String("provider_instance_id").
 			Optional().
 			Nillable().
@@ -218,5 +223,6 @@ func (PaymentOrder) Indexes() []ent.Index {
 		index.Fields("paid_at"),
 		index.Fields("payment_type", "paid_at"),
 		index.Fields("order_type"),
+		index.Fields("balance_group_id"),
 	}
 }

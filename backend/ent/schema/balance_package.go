@@ -33,6 +33,7 @@ func (BalancePackage) Fields() []ent.Field {
 		field.Float("credit_ledger").SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}),
 		field.Float("bonus_ledger").SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}).Default(0),
 		field.Float("credit_multiplier").SchemaType(map[string]string{dialect.Postgres: "decimal(20,6)"}).Default(1),
+		field.Int64("group_id").Optional().Nillable(),
 		field.String("badge").MaxLen(100).Default(""),
 		field.Bool("popular").Default(false),
 		field.Bool("for_sale").Default(true),
@@ -46,6 +47,7 @@ func (BalancePackage) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("code").Unique(),
 		index.Fields("for_sale"),
+		index.Fields("group_id"),
 		index.Fields("sort_order"),
 	}
 }

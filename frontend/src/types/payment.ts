@@ -187,6 +187,12 @@ export interface BalancePackage {
   credit_ledger: number
   bonus_ledger: number
   credit_multiplier: number
+  balance_group_id?: number | null
+  group_id?: number | null
+  group_name?: string
+  group_platform?: string
+  group_rate_multiplier?: number
+  group_subscription_type?: string
   badge: string
   popular: boolean
   for_sale: boolean

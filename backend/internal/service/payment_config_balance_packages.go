@@ -7,6 +7,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/balancepackage"
+	"github.com/Wei-Shaw/sub2api/ent/group"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
@@ -67,6 +68,33 @@ func normalizeBalancePackageAmounts(amountLedger, creditLedger, creditMultiplier
 	return amountLedger, creditLedger, bonusLedger, creditMultiplier
 }
 
+func balancePackageGroupID(balanceGroupID, legacyGroupID *int64) *int64 {
+	if balanceGroupID != nil {
+		return balanceGroupID
+	}
+	return legacyGroupID
+}
+
+func (s *PaymentConfigService) validateBalancePackageGroup(ctx context.Context, groupID *int64) error {
+	if groupID == nil {
+		return nil
+	}
+	if *groupID <= 0 {
+		return infraerrors.BadRequest("BALANCE_PACKAGE_GROUP_INVALID", "balance group is invalid")
+	}
+	if s == nil || s.entClient == nil {
+		return infraerrors.ServiceUnavailable("BALANCE_PACKAGE_STORE_UNAVAILABLE", "balance package store is not available")
+	}
+	g, err := s.entClient.Group.Query().Where(group.IDEQ(*groupID)).Only(ctx)
+	if err != nil || g.Status != StatusActive {
+		return infraerrors.NotFound("BALANCE_PACKAGE_GROUP_NOT_FOUND", "balance group not found or inactive")
+	}
+	if g.SubscriptionType == SubscriptionTypeSubscription {
+		return infraerrors.BadRequest("BALANCE_PACKAGE_GROUP_TYPE_MISMATCH", "balance package group must be a standard balance group, not a subscription group")
+	}
+	return nil
+}
+
 func (s *PaymentConfigService) ListBalanceRechargePackages(ctx context.Context) ([]*dbent.BalancePackage, error) {
 	if s == nil || s.entClient == nil {
 		return nil, infraerrors.ServiceUnavailable("BALANCE_PACKAGE_STORE_UNAVAILABLE", "balance package store is not available")
@@ -88,8 +116,12 @@ func (s *PaymentConfigService) CreateBalancePackage(ctx context.Context, req Cre
 	if err := validateBalancePackageRequired(req.Code, req.Label, req.AmountLedger, req.CreditLedger, req.CreditMultiplier); err != nil {
 		return nil, err
 	}
+	groupID := balancePackageGroupID(req.BalanceGroupID, req.GroupID)
+	if err := s.validateBalancePackageGroup(ctx, groupID); err != nil {
+		return nil, err
+	}
 	amount, credit, bonus, multiplier := normalizeBalancePackageAmounts(req.AmountLedger, req.CreditLedger, req.CreditMultiplier)
-	return s.entClient.BalancePackage.Create().
+	b := s.entClient.BalancePackage.Create().
 		SetCode(strings.TrimSpace(req.Code)).
 		SetLabel(strings.TrimSpace(req.Label)).
 		SetDescription(strings.TrimSpace(req.Description)).
@@ -100,8 +132,11 @@ func (s *PaymentConfigService) CreateBalancePackage(ctx context.Context, req Cre
 		SetBadge(strings.TrimSpace(req.Badge)).
 		SetPopular(req.Popular).
 		SetForSale(req.ForSale).
-		SetSortOrder(req.SortOrder).
-		Save(ctx)
+		SetSortOrder(req.SortOrder)
+	if groupID != nil {
+		b.SetGroupID(*groupID)
+	}
+	return b.Save(ctx)
 }
 
 // UpdateBalancePackage updates a balance package by ID (patch semantics).
@@ -110,6 +145,10 @@ func (s *PaymentConfigService) UpdateBalancePackage(ctx context.Context, id int6
 		return nil, infraerrors.ServiceUnavailable("BALANCE_PACKAGE_STORE_UNAVAILABLE", "balance package store is not available")
 	}
 	if err := validateBalancePackagePatch(req); err != nil {
+		return nil, err
+	}
+	groupID := balancePackageGroupID(req.BalanceGroupID, req.GroupID)
+	if err := s.validateBalancePackageGroup(ctx, groupID); err != nil {
 		return nil, err
 	}
 	existing, err := s.entClient.BalancePackage.Get(ctx, id)
@@ -143,6 +182,9 @@ func (s *PaymentConfigService) UpdateBalancePackage(ctx context.Context, id int6
 	}
 	if req.Description != nil {
 		u.SetDescription(strings.TrimSpace(*req.Description))
+	}
+	if groupID != nil {
+		u.SetGroupID(*groupID)
 	}
 	if req.Badge != nil {
 		u.SetBadge(strings.TrimSpace(*req.Badge))
@@ -180,6 +222,8 @@ func balancePackageEntitiesToConfig(packages []*dbent.BalancePackage) []BalanceR
 			CreditLedger:     pkg.CreditLedger,
 			BonusLedger:      pkg.BonusLedger,
 			CreditMultiplier: pkg.CreditMultiplier,
+			BalanceGroupID:   pkg.GroupID,
+			GroupID:          pkg.GroupID,
 			Badge:            pkg.Badge,
 			Popular:          pkg.Popular,
 			SortOrder:        pkg.SortOrder,

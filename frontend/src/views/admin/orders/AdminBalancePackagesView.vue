@@ -34,6 +34,13 @@
             <span class="ml-2 text-xs text-gray-500">+${{ Number(row.bonus_ledger || 0).toFixed(2) }}</span>
           </div>
         </template>
+        <template #cell-balance_group_id="{ row }">
+          <div v-if="row.balance_group_id || row.group_id" class="text-sm">
+            <div class="font-medium text-gray-900 dark:text-white">#{{ row.balance_group_id || row.group_id }} · {{ row.group_name || '-' }}</div>
+            <div class="text-xs text-gray-500">{{ row.group_platform || '-' }} · {{ row.group_subscription_type || 'standard' }} · x{{ Number(row.group_rate_multiplier || 0).toFixed(6) }}</div>
+          </div>
+          <span v-else class="text-sm text-red-500">{{ t('payment.admin.balanceGroupMissing') }}</span>
+        </template>
         <template #cell-badge="{ value }">
           <span v-if="value" class="badge badge-success">{{ value }}</span>
           <span v-else class="text-sm text-gray-400">-</span>
@@ -91,6 +98,7 @@ const columns = computed((): Column[] => [
   { key: 'label', label: t('payment.admin.packageLabel') },
   { key: 'amount_ledger', label: t('payment.admin.packageAmounts') },
   { key: 'credit_multiplier', label: t('payment.admin.creditMultiplier') },
+  { key: 'balance_group_id', label: t('payment.admin.balanceGroup') },
   { key: 'badge', label: t('payment.admin.badge') },
   { key: 'for_sale', label: t('payment.admin.forSale') },
   { key: 'sort_order', label: t('payment.admin.sortOrder') },

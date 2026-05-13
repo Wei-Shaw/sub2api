@@ -9149,6 +9149,8 @@ type BalancePackageMutation struct {
 	addbonus_ledger      *float64
 	credit_multiplier    *float64
 	addcredit_multiplier *float64
+	group_id             *int64
+	addgroup_id          *int64
 	badge                *string
 	popular              *bool
 	for_sale             *bool
@@ -9592,6 +9594,76 @@ func (m *BalancePackageMutation) ResetCreditMultiplier() {
 	m.addcredit_multiplier = nil
 }
 
+// SetGroupID sets the "group_id" field.
+func (m *BalancePackageMutation) SetGroupID(i int64) {
+	m.group_id = &i
+	m.addgroup_id = nil
+}
+
+// GroupID returns the value of the "group_id" field in the mutation.
+func (m *BalancePackageMutation) GroupID() (r int64, exists bool) {
+	v := m.group_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGroupID returns the old "group_id" field's value of the BalancePackage entity.
+// If the BalancePackage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BalancePackageMutation) OldGroupID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGroupID: %w", err)
+	}
+	return oldValue.GroupID, nil
+}
+
+// AddGroupID adds i to the "group_id" field.
+func (m *BalancePackageMutation) AddGroupID(i int64) {
+	if m.addgroup_id != nil {
+		*m.addgroup_id += i
+	} else {
+		m.addgroup_id = &i
+	}
+}
+
+// AddedGroupID returns the value that was added to the "group_id" field in this mutation.
+func (m *BalancePackageMutation) AddedGroupID() (r int64, exists bool) {
+	v := m.addgroup_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearGroupID clears the value of the "group_id" field.
+func (m *BalancePackageMutation) ClearGroupID() {
+	m.group_id = nil
+	m.addgroup_id = nil
+	m.clearedFields[balancepackage.FieldGroupID] = struct{}{}
+}
+
+// GroupIDCleared returns if the "group_id" field was cleared in this mutation.
+func (m *BalancePackageMutation) GroupIDCleared() bool {
+	_, ok := m.clearedFields[balancepackage.FieldGroupID]
+	return ok
+}
+
+// ResetGroupID resets all changes to the "group_id" field.
+func (m *BalancePackageMutation) ResetGroupID() {
+	m.group_id = nil
+	m.addgroup_id = nil
+	delete(m.clearedFields, balancepackage.FieldGroupID)
+}
+
 // SetBadge sets the "badge" field.
 func (m *BalancePackageMutation) SetBadge(s string) {
 	m.badge = &s
@@ -9862,7 +9934,7 @@ func (m *BalancePackageMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *BalancePackageMutation) Fields() []string {
-	fields := make([]string, 0, 13)
+	fields := make([]string, 0, 14)
 	if m.code != nil {
 		fields = append(fields, balancepackage.FieldCode)
 	}
@@ -9883,6 +9955,9 @@ func (m *BalancePackageMutation) Fields() []string {
 	}
 	if m.credit_multiplier != nil {
 		fields = append(fields, balancepackage.FieldCreditMultiplier)
+	}
+	if m.group_id != nil {
+		fields = append(fields, balancepackage.FieldGroupID)
 	}
 	if m.badge != nil {
 		fields = append(fields, balancepackage.FieldBadge)
@@ -9924,6 +9999,8 @@ func (m *BalancePackageMutation) Field(name string) (ent.Value, bool) {
 		return m.BonusLedger()
 	case balancepackage.FieldCreditMultiplier:
 		return m.CreditMultiplier()
+	case balancepackage.FieldGroupID:
+		return m.GroupID()
 	case balancepackage.FieldBadge:
 		return m.Badge()
 	case balancepackage.FieldPopular:
@@ -9959,6 +10036,8 @@ func (m *BalancePackageMutation) OldField(ctx context.Context, name string) (ent
 		return m.OldBonusLedger(ctx)
 	case balancepackage.FieldCreditMultiplier:
 		return m.OldCreditMultiplier(ctx)
+	case balancepackage.FieldGroupID:
+		return m.OldGroupID(ctx)
 	case balancepackage.FieldBadge:
 		return m.OldBadge(ctx)
 	case balancepackage.FieldPopular:
@@ -10029,6 +10108,13 @@ func (m *BalancePackageMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetCreditMultiplier(v)
 		return nil
+	case balancepackage.FieldGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGroupID(v)
+		return nil
 	case balancepackage.FieldBadge:
 		v, ok := value.(string)
 		if !ok {
@@ -10091,6 +10177,9 @@ func (m *BalancePackageMutation) AddedFields() []string {
 	if m.addcredit_multiplier != nil {
 		fields = append(fields, balancepackage.FieldCreditMultiplier)
 	}
+	if m.addgroup_id != nil {
+		fields = append(fields, balancepackage.FieldGroupID)
+	}
 	if m.addsort_order != nil {
 		fields = append(fields, balancepackage.FieldSortOrder)
 	}
@@ -10110,6 +10199,8 @@ func (m *BalancePackageMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedBonusLedger()
 	case balancepackage.FieldCreditMultiplier:
 		return m.AddedCreditMultiplier()
+	case balancepackage.FieldGroupID:
+		return m.AddedGroupID()
 	case balancepackage.FieldSortOrder:
 		return m.AddedSortOrder()
 	}
@@ -10149,6 +10240,13 @@ func (m *BalancePackageMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddCreditMultiplier(v)
 		return nil
+	case balancepackage.FieldGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddGroupID(v)
+		return nil
 	case balancepackage.FieldSortOrder:
 		v, ok := value.(int)
 		if !ok {
@@ -10163,7 +10261,11 @@ func (m *BalancePackageMutation) AddField(name string, value ent.Value) error {
 // ClearedFields returns all nullable fields that were cleared during this
 // mutation.
 func (m *BalancePackageMutation) ClearedFields() []string {
-	return nil
+	var fields []string
+	if m.FieldCleared(balancepackage.FieldGroupID) {
+		fields = append(fields, balancepackage.FieldGroupID)
+	}
+	return fields
 }
 
 // FieldCleared returns a boolean indicating if a field with the given name was
@@ -10176,6 +10278,11 @@ func (m *BalancePackageMutation) FieldCleared(name string) bool {
 // ClearField clears the value of the field with the given name. It returns an
 // error if the field is not defined in the schema.
 func (m *BalancePackageMutation) ClearField(name string) error {
+	switch name {
+	case balancepackage.FieldGroupID:
+		m.ClearGroupID()
+		return nil
+	}
 	return fmt.Errorf("unknown BalancePackage nullable field %s", name)
 }
 
@@ -10203,6 +10310,9 @@ func (m *BalancePackageMutation) ResetField(name string) error {
 		return nil
 	case balancepackage.FieldCreditMultiplier:
 		m.ResetCreditMultiplier()
+		return nil
+	case balancepackage.FieldGroupID:
+		m.ResetGroupID()
 		return nil
 	case balancepackage.FieldBadge:
 		m.ResetBadge()
@@ -29960,6 +30070,8 @@ type PaymentOrderMutation struct {
 	addsubscription_group_id     *int64
 	subscription_days            *int
 	addsubscription_days         *int
+	balance_group_id             *int64
+	addbalance_group_id          *int64
 	provider_instance_id         *string
 	provider_key                 *string
 	provider_snapshot            *map[string]interface{}
@@ -31288,6 +31400,76 @@ func (m *PaymentOrderMutation) ResetSubscriptionDays() {
 	delete(m.clearedFields, paymentorder.FieldSubscriptionDays)
 }
 
+// SetBalanceGroupID sets the "balance_group_id" field.
+func (m *PaymentOrderMutation) SetBalanceGroupID(i int64) {
+	m.balance_group_id = &i
+	m.addbalance_group_id = nil
+}
+
+// BalanceGroupID returns the value of the "balance_group_id" field in the mutation.
+func (m *PaymentOrderMutation) BalanceGroupID() (r int64, exists bool) {
+	v := m.balance_group_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBalanceGroupID returns the old "balance_group_id" field's value of the PaymentOrder entity.
+// If the PaymentOrder object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PaymentOrderMutation) OldBalanceGroupID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBalanceGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBalanceGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBalanceGroupID: %w", err)
+	}
+	return oldValue.BalanceGroupID, nil
+}
+
+// AddBalanceGroupID adds i to the "balance_group_id" field.
+func (m *PaymentOrderMutation) AddBalanceGroupID(i int64) {
+	if m.addbalance_group_id != nil {
+		*m.addbalance_group_id += i
+	} else {
+		m.addbalance_group_id = &i
+	}
+}
+
+// AddedBalanceGroupID returns the value that was added to the "balance_group_id" field in this mutation.
+func (m *PaymentOrderMutation) AddedBalanceGroupID() (r int64, exists bool) {
+	v := m.addbalance_group_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearBalanceGroupID clears the value of the "balance_group_id" field.
+func (m *PaymentOrderMutation) ClearBalanceGroupID() {
+	m.balance_group_id = nil
+	m.addbalance_group_id = nil
+	m.clearedFields[paymentorder.FieldBalanceGroupID] = struct{}{}
+}
+
+// BalanceGroupIDCleared returns if the "balance_group_id" field was cleared in this mutation.
+func (m *PaymentOrderMutation) BalanceGroupIDCleared() bool {
+	_, ok := m.clearedFields[paymentorder.FieldBalanceGroupID]
+	return ok
+}
+
+// ResetBalanceGroupID resets all changes to the "balance_group_id" field.
+func (m *PaymentOrderMutation) ResetBalanceGroupID() {
+	m.balance_group_id = nil
+	m.addbalance_group_id = nil
+	delete(m.clearedFields, paymentorder.FieldBalanceGroupID)
+}
+
 // SetProviderInstanceID sets the "provider_instance_id" field.
 func (m *PaymentOrderMutation) SetProviderInstanceID(s string) {
 	m.provider_instance_id = &s
@@ -32294,7 +32476,7 @@ func (m *PaymentOrderMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *PaymentOrderMutation) Fields() []string {
-	fields := make([]string, 0, 46)
+	fields := make([]string, 0, 47)
 	if m.user != nil {
 		fields = append(fields, paymentorder.FieldUserID)
 	}
@@ -32369,6 +32551,9 @@ func (m *PaymentOrderMutation) Fields() []string {
 	}
 	if m.subscription_days != nil {
 		fields = append(fields, paymentorder.FieldSubscriptionDays)
+	}
+	if m.balance_group_id != nil {
+		fields = append(fields, paymentorder.FieldBalanceGroupID)
 	}
 	if m.provider_instance_id != nil {
 		fields = append(fields, paymentorder.FieldProviderInstanceID)
@@ -32491,6 +32676,8 @@ func (m *PaymentOrderMutation) Field(name string) (ent.Value, bool) {
 		return m.SubscriptionGroupID()
 	case paymentorder.FieldSubscriptionDays:
 		return m.SubscriptionDays()
+	case paymentorder.FieldBalanceGroupID:
+		return m.BalanceGroupID()
 	case paymentorder.FieldProviderInstanceID:
 		return m.ProviderInstanceID()
 	case paymentorder.FieldProviderKey:
@@ -32592,6 +32779,8 @@ func (m *PaymentOrderMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldSubscriptionGroupID(ctx)
 	case paymentorder.FieldSubscriptionDays:
 		return m.OldSubscriptionDays(ctx)
+	case paymentorder.FieldBalanceGroupID:
+		return m.OldBalanceGroupID(ctx)
 	case paymentorder.FieldProviderInstanceID:
 		return m.OldProviderInstanceID(ctx)
 	case paymentorder.FieldProviderKey:
@@ -32818,6 +33007,13 @@ func (m *PaymentOrderMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetSubscriptionDays(v)
 		return nil
+	case paymentorder.FieldBalanceGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBalanceGroupID(v)
+		return nil
 	case paymentorder.FieldProviderInstanceID:
 		v, ok := value.(string)
 		if !ok {
@@ -33000,6 +33196,9 @@ func (m *PaymentOrderMutation) AddedFields() []string {
 	if m.addsubscription_days != nil {
 		fields = append(fields, paymentorder.FieldSubscriptionDays)
 	}
+	if m.addbalance_group_id != nil {
+		fields = append(fields, paymentorder.FieldBalanceGroupID)
+	}
 	if m.addrefund_amount != nil {
 		fields = append(fields, paymentorder.FieldRefundAmount)
 	}
@@ -33029,6 +33228,8 @@ func (m *PaymentOrderMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedSubscriptionGroupID()
 	case paymentorder.FieldSubscriptionDays:
 		return m.AddedSubscriptionDays()
+	case paymentorder.FieldBalanceGroupID:
+		return m.AddedBalanceGroupID()
 	case paymentorder.FieldRefundAmount:
 		return m.AddedRefundAmount()
 	}
@@ -33103,6 +33304,13 @@ func (m *PaymentOrderMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddSubscriptionDays(v)
 		return nil
+	case paymentorder.FieldBalanceGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddBalanceGroupID(v)
+		return nil
 	case paymentorder.FieldRefundAmount:
 		v, ok := value.(float64)
 		if !ok {
@@ -33144,6 +33352,9 @@ func (m *PaymentOrderMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(paymentorder.FieldSubscriptionDays) {
 		fields = append(fields, paymentorder.FieldSubscriptionDays)
+	}
+	if m.FieldCleared(paymentorder.FieldBalanceGroupID) {
+		fields = append(fields, paymentorder.FieldBalanceGroupID)
 	}
 	if m.FieldCleared(paymentorder.FieldProviderInstanceID) {
 		fields = append(fields, paymentorder.FieldProviderInstanceID)
@@ -33224,6 +33435,9 @@ func (m *PaymentOrderMutation) ClearField(name string) error {
 		return nil
 	case paymentorder.FieldSubscriptionDays:
 		m.ClearSubscriptionDays()
+		return nil
+	case paymentorder.FieldBalanceGroupID:
+		m.ClearBalanceGroupID()
 		return nil
 	case paymentorder.FieldProviderInstanceID:
 		m.ClearProviderInstanceID()
@@ -33346,6 +33560,9 @@ func (m *PaymentOrderMutation) ResetField(name string) error {
 		return nil
 	case paymentorder.FieldSubscriptionDays:
 		m.ResetSubscriptionDays()
+		return nil
+	case paymentorder.FieldBalanceGroupID:
+		m.ResetBalanceGroupID()
 		return nil
 	case paymentorder.FieldProviderInstanceID:
 		m.ResetProviderInstanceID()

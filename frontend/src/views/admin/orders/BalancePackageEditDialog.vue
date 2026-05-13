@@ -52,6 +52,17 @@
         </div>
       </div>
 
+      <div>
+        <label class="input-label">{{ t('payment.admin.balanceGroup') }} <span class="text-red-500">*</span></label>
+        <select v-model.number="form.balance_group_id" class="input" required :disabled="groupsLoading">
+          <option :value="0">{{ groupsLoading ? t('common.loading') : t('payment.admin.selectBalanceGroup') }}</option>
+          <option v-for="group in balanceGroups" :key="group.id" :value="group.id">
+            #{{ group.id }} · {{ group.name }} · {{ group.platform }} · x{{ safeNumber(group.rate_multiplier).toFixed(6) }}
+          </option>
+        </select>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.balanceGroupHelp') }}</p>
+      </div>
+
       <div class="flex flex-wrap items-center gap-6">
         <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
           <input v-model="form.popular" type="checkbox" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
@@ -76,9 +87,11 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
+import { adminAPI } from '@/api/admin'
 import { adminPaymentAPI } from '@/api/admin/payment'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import type { BalancePackage } from '@/types/payment'
+import type { AdminGroup } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 
 const props = defineProps<{ show: boolean; pkg: BalancePackage | null }>()
@@ -86,13 +99,17 @@ const emit = defineEmits<{ close: []; saved: [] }>()
 const { t } = useI18n()
 const appStore = useAppStore()
 const saving = ref(false)
+const groupsLoading = ref(false)
+const groups = ref<AdminGroup[]>([])
+const balanceGroups = computed(() => groups.value.filter((group) => group.status === 'active' && group.subscription_type === 'standard'))
 
-const form = reactive({ code: '', label: '', description: '', amount_ledger: 0, credit_ledger: 0, credit_multiplier: 0, badge: '', popular: false, for_sale: true, sort_order: 0 })
+const form = reactive({ code: '', label: '', description: '', amount_ledger: 0, credit_ledger: 0, credit_multiplier: 0, balance_group_id: 0, badge: '', popular: false, for_sale: true, sort_order: 0 })
 const safeNumber = (v: unknown) => Number.isFinite(Number(v)) ? Number(v) : 0
 const computedBonus = computed(() => Math.max(0, safeNumber(form.credit_ledger) - safeNumber(form.amount_ledger)))
 
 watch(() => props.show, (visible) => {
   if (!visible) return
+  void loadBalanceGroups()
   if (props.pkg) {
     Object.assign(form, {
       code: props.pkg.code,
@@ -101,13 +118,14 @@ watch(() => props.show, (visible) => {
       amount_ledger: props.pkg.amount_ledger,
       credit_ledger: props.pkg.credit_ledger,
       credit_multiplier: props.pkg.credit_multiplier,
+      balance_group_id: props.pkg.balance_group_id || props.pkg.group_id || 0,
       badge: props.pkg.badge || '',
       popular: !!props.pkg.popular,
       for_sale: !!props.pkg.for_sale,
       sort_order: props.pkg.sort_order || 0,
     })
   } else {
-    Object.assign(form, { code: '', label: '', description: '', amount_ledger: 0, credit_ledger: 0, credit_multiplier: 0, badge: '', popular: false, for_sale: true, sort_order: 0 })
+    Object.assign(form, { code: '', label: '', description: '', amount_ledger: 0, credit_ledger: 0, credit_multiplier: 0, balance_group_id: 0, badge: '', popular: false, for_sale: true, sort_order: 0 })
   }
 })
 
@@ -119,6 +137,18 @@ watch(() => [form.amount_ledger, form.credit_ledger], () => {
   }
 })
 
+async function loadBalanceGroups() {
+  if (groupsLoading.value || groups.value.length > 0) return
+  groupsLoading.value = true
+  try {
+    groups.value = await adminAPI.groups.getAll()
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+  } finally {
+    groupsLoading.value = false
+  }
+}
+
 function buildPayload() {
   return {
     code: form.code.trim(),
@@ -127,6 +157,7 @@ function buildPayload() {
     amount_ledger: safeNumber(form.amount_ledger),
     credit_ledger: safeNumber(form.credit_ledger),
     credit_multiplier: safeNumber(form.credit_multiplier),
+    balance_group_id: safeNumber(form.balance_group_id),
     badge: form.badge.trim(),
     popular: form.popular,
     for_sale: form.for_sale,
@@ -141,6 +172,10 @@ async function handleSave() {
   }
   if (safeNumber(form.amount_ledger) <= 0 || safeNumber(form.credit_ledger) <= 0) {
     appStore.showError(t('payment.admin.packageAmountRequired'))
+    return
+  }
+  if (safeNumber(form.balance_group_id) <= 0) {
+    appStore.showError(t('payment.admin.balanceGroupRequired'))
     return
   }
   saving.value = true

@@ -445,6 +445,7 @@ var (
 		{Name: "credit_ledger", Type: field.TypeFloat64, SchemaType: map[string]string{"postgres": "decimal(20,2)"}},
 		{Name: "bonus_ledger", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,2)"}},
 		{Name: "credit_multiplier", Type: field.TypeFloat64, Default: 1, SchemaType: map[string]string{"postgres": "decimal(20,6)"}},
+		{Name: "group_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "badge", Type: field.TypeString, Size: 100, Default: ""},
 		{Name: "popular", Type: field.TypeBool, Default: false},
 		{Name: "for_sale", Type: field.TypeBool, Default: true},
@@ -466,12 +467,17 @@ var (
 			{
 				Name:    "balancepackage_for_sale",
 				Unique:  false,
-				Columns: []*schema.Column{BalancePackagesColumns[10]},
+				Columns: []*schema.Column{BalancePackagesColumns[11]},
+			},
+			{
+				Name:    "balancepackage_group_id",
+				Unique:  false,
+				Columns: []*schema.Column{BalancePackagesColumns[8]},
 			},
 			{
 				Name:    "balancepackage_sort_order",
 				Unique:  false,
-				Columns: []*schema.Column{BalancePackagesColumns[11]},
+				Columns: []*schema.Column{BalancePackagesColumns[12]},
 			},
 		},
 	}
@@ -1164,6 +1170,7 @@ var (
 		{Name: "plan_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "subscription_group_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "subscription_days", Type: field.TypeInt, Nullable: true},
+		{Name: "balance_group_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "provider_instance_id", Type: field.TypeString, Nullable: true, Size: 64},
 		{Name: "provider_key", Type: field.TypeString, Nullable: true, Size: 30},
 		{Name: "provider_snapshot", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
@@ -1195,7 +1202,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "payment_orders_users_payment_orders",
-				Columns:    []*schema.Column{PaymentOrdersColumns[46]},
+				Columns:    []*schema.Column{PaymentOrdersColumns[47]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -1212,37 +1219,42 @@ var (
 			{
 				Name:    "paymentorder_user_id",
 				Unique:  false,
-				Columns: []*schema.Column{PaymentOrdersColumns[46]},
+				Columns: []*schema.Column{PaymentOrdersColumns[47]},
 			},
 			{
 				Name:    "paymentorder_status",
 				Unique:  false,
-				Columns: []*schema.Column{PaymentOrdersColumns[28]},
+				Columns: []*schema.Column{PaymentOrdersColumns[29]},
 			},
 			{
 				Name:    "paymentorder_expires_at",
 				Unique:  false,
-				Columns: []*schema.Column{PaymentOrdersColumns[36]},
+				Columns: []*schema.Column{PaymentOrdersColumns[37]},
 			},
 			{
 				Name:    "paymentorder_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{PaymentOrdersColumns[44]},
+				Columns: []*schema.Column{PaymentOrdersColumns[45]},
 			},
 			{
 				Name:    "paymentorder_paid_at",
 				Unique:  false,
-				Columns: []*schema.Column{PaymentOrdersColumns[37]},
+				Columns: []*schema.Column{PaymentOrdersColumns[38]},
 			},
 			{
 				Name:    "paymentorder_payment_type_paid_at",
 				Unique:  false,
-				Columns: []*schema.Column{PaymentOrdersColumns[16], PaymentOrdersColumns[37]},
+				Columns: []*schema.Column{PaymentOrdersColumns[16], PaymentOrdersColumns[38]},
 			},
 			{
 				Name:    "paymentorder_order_type",
 				Unique:  false,
 				Columns: []*schema.Column{PaymentOrdersColumns[21]},
+			},
+			{
+				Name:    "paymentorder_balance_group_id",
+				Unique:  false,
+				Columns: []*schema.Column{PaymentOrdersColumns[25]},
 			},
 		},
 	}
