@@ -238,6 +238,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	affiliateHandler := admin.NewAffiliateHandler(affiliateService, adminService)
 	notificationService := service.NewNotificationService(client)
 	paymentService.SetInvoiceNotifier(notificationService)
+	paymentService.SetInvoiceSettingService(settingService)
 	adminInvoiceHandler := admin.NewInvoiceHandler(paymentService, emailService, settingService, notificationService)
 	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, adminAnnouncementHandler, dataManagementHandler, backupHandler, oAuthHandler, openAIOAuthHandler, geminiOAuthHandler, antigravityOAuthHandler, proxyHandler, adminRedeemHandler, promoHandler, settingHandler, opsHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler, userAttributeHandler, errorPassthroughHandler, tlsFingerprintProfileHandler, adminAPIKeyHandler, scheduledTestHandler, channelHandler, channelMonitorHandler, channelMonitorRequestTemplateHandler, contentModerationHandler, paymentHandler, affiliateHandler, adminInvoiceHandler)
 	usageRecordWorkerPool := service.NewUsageRecordWorkerPool(configConfig)

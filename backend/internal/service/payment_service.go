@@ -174,19 +174,20 @@ type TopUserStat struct {
 // --- Service ---
 
 type PaymentService struct {
-	providerMu       sync.Mutex
-	providersLoaded  bool
-	entClient        *dbent.Client
-	registry         *payment.Registry
-	loadBalancer     payment.LoadBalancer
-	redeemService    *RedeemService
-	subscriptionSvc  *SubscriptionService
-	configService    *PaymentConfigService
-	userRepo         UserRepository
-	groupRepo        GroupRepository
-	resumeService    *PaymentResumeService
-	affiliateService *AffiliateService
-	invoiceNotifier  *NotificationService // optional, set via SetInvoiceNotifier
+	providerMu            sync.Mutex
+	providersLoaded       bool
+	entClient             *dbent.Client
+	registry              *payment.Registry
+	loadBalancer          payment.LoadBalancer
+	redeemService         *RedeemService
+	subscriptionSvc       *SubscriptionService
+	configService         *PaymentConfigService
+	userRepo              UserRepository
+	groupRepo             GroupRepository
+	resumeService         *PaymentResumeService
+	affiliateService      *AffiliateService
+	invoiceNotifier       *NotificationService // optional, set via SetInvoiceNotifier
+	invoiceSettingService *SettingService      // optional, set via SetInvoiceSettingService; used for site-name lookup in invoice emails
 }
 
 func NewPaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository, affiliateService *AffiliateService) *PaymentService {
@@ -203,6 +204,15 @@ func (s *PaymentService) SetInvoiceNotifier(n *NotificationService) {
 		return
 	}
 	s.invoiceNotifier = n
+}
+
+// SetInvoiceSettingService injects the SettingService used by invoice email
+// body builders to look up the site name. Pass nil to fall back to "Sub2API".
+func (s *PaymentService) SetInvoiceSettingService(ss *SettingService) {
+	if s == nil {
+		return
+	}
+	s.invoiceSettingService = ss
 }
 
 // --- Provider Registry ---
