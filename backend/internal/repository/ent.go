@@ -64,12 +64,13 @@ func InitEnt(cfg *config.Config) (*ent.Client, *sql.DB, error) {
 	}
 	applyDBPoolSettings(drv.DB(), cfg)
 
-	// 确保数据库 schema 已准备就绪。
-	// SQL 迁移文件是 schema 的权威来源（source of truth）。
-	// 这种方式比 Ent 的自动迁移更可控，支持复杂的迁移场景。
+	// Ensure the database schema is ready.
+	// The startup path must explicitly keep both migration sources visible here:
+	// upstreamFS applies canonical upstream SQL, localFS applies our product-local
+	// SQL namespace. This prevents accidentally running only one side.
 	migrationCtx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
-	if err := applyMigrationsFS(migrationCtx, drv.DB(), migrations.FS); err != nil {
+	if err := ApplyMigrationsFromFS(migrationCtx, drv.DB(), migrations.UpstreamFS, migrations.LocalFS); err != nil {
 		_ = drv.Close() // 迁移失败时关闭驱动，避免资源泄露
 		return nil, nil, err
 	}

@@ -97,13 +97,17 @@ var migrationChecksumCompatibilityRules = map[string]migrationChecksumCompatibil
 // 返回：
 //   - error: 迁移过程中的任何错误
 func ApplyMigrations(ctx context.Context, db *sql.DB) error {
+	return ApplyMigrationsFromFS(ctx, db, migrations.UpstreamFS, migrations.LocalFS)
+}
+
+func ApplyMigrationsFromFS(ctx context.Context, db *sql.DB, upstreamFS fs.FS, localFS fs.FS) error {
 	if db == nil {
 		return errors.New("nil sql db")
 	}
-	if err := applyMigrationsFS(ctx, db, migrations.UpstreamFS); err != nil {
+	if err := applyMigrationsFS(ctx, db, upstreamFS); err != nil {
 		return err
 	}
-	return applyMigrationNamespaces(ctx, db, migrations.LocalFS, "local/*.sql")
+	return applyMigrationNamespaces(ctx, db, localFS, "local/*.sql")
 }
 
 // applyMigrationsFS 是迁移执行的核心实现。
