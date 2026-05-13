@@ -201,6 +201,11 @@ export function decidePaymentLaunch(
     return { kind: 'redirect_waiting', paymentState: baseState, recovery: baseState }
   }
 
+  if (visibleMethod === 'alipay' && baseState.payUrl) {
+    const paymentState = { ...baseState, qrCode: '' }
+    return { kind: 'redirect_waiting', paymentState, recovery: paymentState }
+  }
+
   if (prefersRedirect && baseState.payUrl) {
     return { kind: 'redirect_waiting', paymentState: baseState, recovery: baseState }
   }

@@ -67,6 +67,7 @@ describe('PaymentStatusPanel', () => {
   })
 
   afterEach(() => {
+    vi.restoreAllMocks()
     vi.useRealTimers()
   })
 
@@ -106,7 +107,7 @@ describe('PaymentStatusPanel', () => {
         qrCode: 'https://pay.example.com/qr/42',
         payUrl: 'https://pay.example.com/session/42',
         expiresAt: '2099-01-01T12:30:00Z',
-        paymentType: 'alipay',
+        paymentType: 'wxpay',
         orderType: 'balance',
       },
       global: {
@@ -127,5 +128,29 @@ describe('PaymentStatusPanel', () => {
     )
 
     openSpy.mockRestore()
+  })
+
+  it('hides Alipay QR mode when payUrl is available', async () => {
+    const wrapper = mount(PaymentStatusPanel, {
+      props: {
+        orderId: 42,
+        qrCode: 'https://pay.example.com/invalid-alipay-qr',
+        payUrl: 'https://pay.example.com/session/42',
+        expiresAt: '2099-01-01T12:30:00Z',
+        paymentType: 'alipay',
+        orderType: 'balance',
+      },
+      global: {
+        stubs: {
+          Icon: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(toCanvas).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('payment.qr.payInNewWindowHint')
+    expect(wrapper.text()).not.toContain('payment.qr.scanAlipay')
   })
 })

@@ -148,19 +148,19 @@ describe('decidePaymentLaunch', () => {
     expect(decision.recovery.resumeToken).toBe('resume-2')
   })
 
-  it('prefers redirect on mobile when both pay_url and qr_code are present', () => {
+  it('prefers Alipay pay_url over QR when both are present', () => {
     const decision = decidePaymentLaunch(createOrderResult({
-      pay_url: 'https://pay.example.com/mobile/session',
+      pay_url: 'https://pay.example.com/alipay/session',
       qr_code: 'https://pay.example.com/qr/session',
     }), {
       visibleMethod: 'alipay',
       orderType: 'balance',
-      isMobile: true,
+      isMobile: false,
     })
 
     expect(decision.kind).toBe('redirect_waiting')
-    expect(decision.paymentState.payUrl).toBe('https://pay.example.com/mobile/session')
-    expect(decision.paymentState.qrCode).toBe('https://pay.example.com/qr/session')
+    expect(decision.paymentState.payUrl).toBe('https://pay.example.com/alipay/session')
+    expect(decision.paymentState.qrCode).toBe('')
   })
 
   it('keeps QR flow on desktop when both pay_url and qr_code are present', () => {

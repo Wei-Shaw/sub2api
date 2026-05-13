@@ -117,6 +117,7 @@ let countdownTimer: ReturnType<typeof setInterval> | null = null
 
 const isAlipay = computed(() => props.paymentType.includes('alipay'))
 const isWxpay = computed(() => props.paymentType.includes('wxpay'))
+const shouldOpenAlipayPopup = computed(() => isAlipay.value && !!props.payUrl)
 
 const dialogTitle = computed(() => {
   if (success.value) return t('payment.result.success')
@@ -147,7 +148,10 @@ function getLogoForType(): string | null {
 
 function reopenPopup() {
   if (props.payUrl) {
-    window.open(props.payUrl, 'paymentPopup', getPaymentPopupFeatures())
+    const win = window.open(props.payUrl, 'paymentPopup', getPaymentPopupFeatures())
+    if (!win || win.closed) {
+      window.location.href = props.payUrl
+    }
   }
 }
 
@@ -249,7 +253,7 @@ function init() {
   paidOrder.value = null
   expired.value = false
   cancelling.value = false
-  qrUrl.value = props.qrCode
+  qrUrl.value = shouldOpenAlipayPopup.value ? '' : props.qrCode
 
   let seconds = 30 * 60
   if (props.expiresAt) {
@@ -258,7 +262,11 @@ function init() {
   }
   startCountdown(seconds)
   pollTimer = setInterval(pollStatus, 3000)
-  renderQR()
+  if (shouldOpenAlipayPopup.value) {
+    reopenPopup()
+  } else {
+    renderQR()
+  }
 }
 
 // Watch for dialog open/close

@@ -178,6 +178,7 @@ let countdownTimer: ReturnType<typeof setInterval> | null = null
 
 const isAlipay = computed(() => props.paymentType.includes('alipay'))
 const isWxpay = computed(() => props.paymentType.includes('wxpay'))
+const shouldOpenAlipayPopup = computed(() => isAlipay.value && !!props.payUrl)
 
 const qrBorderClass = computed(() => {
   if (isAlipay.value) return 'border-[#00AEEF] bg-blue-50 dark:border-[#00AEEF]/70 dark:bg-blue-950/20'
@@ -290,14 +291,16 @@ function cleanup() {
 }
 
 // Initialize on mount
-qrUrl.value = props.qrCode
+qrUrl.value = shouldOpenAlipayPopup.value ? '' : props.qrCode
 let seconds = 30 * 60
 if (props.expiresAt) {
   seconds = Math.floor((new Date(props.expiresAt).getTime() - Date.now()) / 1000)
 }
 startCountdown(seconds)
 pollTimer = setInterval(pollStatus, 3000)
-renderQR()
+if (!shouldOpenAlipayPopup.value) {
+  renderQR()
+}
 
 watch(() => qrUrl.value, () => renderQR())
 onUnmounted(() => cleanup())
