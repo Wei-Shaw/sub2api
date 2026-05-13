@@ -224,7 +224,7 @@ func TestSettingHandler_GetSettings_IncludesAntigravityUserAgentVersion(t *testi
 		},
 	}
 	svc := service.NewSettingService(repo, &config.Config{Default: config.DefaultConfig{UserConcurrency: 5}})
-	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil)
+	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil, nil)
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -248,7 +248,7 @@ func TestSettingHandler_UpdateSettings_PersistsAntigravityUserAgentVersion(t *te
 		},
 	}
 	svc := service.NewSettingService(repo, &config.Config{Default: config.DefaultConfig{UserConcurrency: 5}})
-	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil)
+	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil, nil)
 
 	body := map[string]any{
 		"antigravity_user_agent_version": " 1.24.0 ",
@@ -282,7 +282,7 @@ func TestSettingHandler_UpdateSettings_PreservesOmittedAntigravityUserAgentVersi
 		},
 	}
 	svc := service.NewSettingService(repo, &config.Config{Default: config.DefaultConfig{UserConcurrency: 5}})
-	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil)
+	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil, nil)
 
 	body := map[string]any{
 		"promo_code_enabled": false,

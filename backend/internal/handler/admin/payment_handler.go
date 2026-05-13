@@ -438,6 +438,69 @@ func (h *PaymentHandler) DeletePlan(c *gin.Context) {
 	response.Success(c, gin.H{"message": "deleted"})
 }
 
+// --- Balance Packages ---
+
+// ListBalancePackages returns all balance recharge packages.
+// GET /api/v1/admin/payment/balance-packages
+func (h *PaymentHandler) ListBalancePackages(c *gin.Context) {
+	packages, err := h.configService.ListBalanceRechargePackages(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, packages)
+}
+
+// CreateBalancePackage creates a new balance recharge package.
+// POST /api/v1/admin/payment/balance-packages
+func (h *PaymentHandler) CreateBalancePackage(c *gin.Context) {
+	var req service.CreateBalancePackageRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	pkg, err := h.configService.CreateBalancePackage(c.Request.Context(), req)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Created(c, pkg)
+}
+
+// UpdateBalancePackage updates an existing balance recharge package.
+// PUT /api/v1/admin/payment/balance-packages/:id
+func (h *PaymentHandler) UpdateBalancePackage(c *gin.Context) {
+	id, ok := parseIDParam(c, "id")
+	if !ok {
+		return
+	}
+	var req service.UpdateBalancePackageRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	pkg, err := h.configService.UpdateBalancePackage(c.Request.Context(), id, req)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, pkg)
+}
+
+// DeleteBalancePackage deletes a balance recharge package.
+// DELETE /api/v1/admin/payment/balance-packages/:id
+func (h *PaymentHandler) DeleteBalancePackage(c *gin.Context) {
+	id, ok := parseIDParam(c, "id")
+	if !ok {
+		return
+	}
+	if err := h.configService.DeleteBalancePackage(c.Request.Context(), id); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"message": "deleted"})
+}
+
 // --- Provider Instances ---
 
 // ListProviders returns all payment provider instances.

@@ -151,6 +151,7 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 		GlobalMin:                     limitsResp.GlobalMin,
 		GlobalMax:                     limitsResp.GlobalMax,
 		Plans:                         planList,
+		BalancePackages:               buildCheckoutBalancePackages(cfg.BalancePackages),
 		BalanceDisabled:               cfg.BalanceDisabled,
 		BalanceRechargeMultiplier:     cfg.BalanceRechargeMultiplier,
 		SubscriptionUSDToCNYRate:      cfg.SubscriptionUSDToCNYRate,
@@ -175,6 +176,7 @@ type checkoutInfoResponse struct {
 	GlobalMin                     float64                         `json:"global_min"`
 	GlobalMax                     float64                         `json:"global_max"`
 	Plans                         []checkoutPlan                  `json:"plans"`
+	BalancePackages               []checkoutBalancePackage        `json:"balance_packages"`
 	BalanceDisabled               bool                            `json:"balance_disabled"`
 	BalanceRechargeMultiplier     float64                         `json:"balance_recharge_multiplier"`
 	SubscriptionUSDToCNYRate      float64                         `json:"subscription_usd_to_cny_rate"`
@@ -191,6 +193,47 @@ type checkoutInfoResponse struct {
 	ManualFXRates                 map[string]float64              `json:"manual_fx_rates"`
 	FXStatus                      service.PaymentFXStatus         `json:"fx_status"`
 	CurrencyMeta                  map[string]currencyMeta         `json:"currency_meta"`
+}
+
+type checkoutBalancePackage struct {
+	ID               string  `json:"id"`
+	Label            string  `json:"label,omitempty"`
+	Description      string  `json:"description,omitempty"`
+	AmountLedger     float64 `json:"amount_ledger"`
+	CreditLedger     float64 `json:"credit_ledger"`
+	BonusLedger      float64 `json:"bonus_ledger"`
+	CreditMultiplier float64 `json:"credit_multiplier"`
+	Badge            string  `json:"badge,omitempty"`
+	Popular          bool    `json:"popular,omitempty"`
+	SortOrder        int     `json:"sort_order,omitempty"`
+}
+
+func buildCheckoutBalancePackages(packages []service.BalanceRechargePackage) []checkoutBalancePackage {
+	if len(packages) == 0 {
+		return []checkoutBalancePackage{}
+	}
+	out := make([]checkoutBalancePackage, 0, len(packages))
+	for _, pkg := range packages {
+		out = append(out, checkoutBalancePackage{
+			ID:               pkg.ID,
+			Label:            pkg.Label,
+			Description:      pkg.Description,
+			AmountLedger:     pkg.AmountLedger,
+			CreditLedger:     pkg.CreditLedger,
+			BonusLedger:      pkg.BonusLedger,
+			CreditMultiplier: pkg.CreditMultiplier,
+			Badge:            pkg.Badge,
+			Popular:          pkg.Popular,
+			SortOrder:        pkg.SortOrder,
+		})
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].SortOrder == out[j].SortOrder {
+			return out[i].AmountLedger < out[j].AmountLedger
+		}
+		return out[i].SortOrder < out[j].SortOrder
+	})
+	return out
 }
 
 type currencyMeta struct {
@@ -461,12 +504,13 @@ func (h *PaymentHandler) GetLimits(c *gin.Context) {
 }
 
 type CreatePaymentQuoteRequest struct {
-	Amount          float64 `json:"amount"`
-	AmountMode      string  `json:"amount_mode"`
-	PaymentCurrency string  `json:"payment_currency"`
-	PaymentType     string  `json:"payment_type" binding:"required"`
-	OrderType       string  `json:"order_type"`
-	PlanID          int64   `json:"plan_id"`
+	Amount           float64 `json:"amount"`
+	AmountMode       string  `json:"amount_mode"`
+	PaymentCurrency  string  `json:"payment_currency"`
+	PaymentType      string  `json:"payment_type" binding:"required"`
+	OrderType        string  `json:"order_type"`
+	PlanID           int64   `json:"plan_id"`
+	BalancePackageID string  `json:"balance_package_id"`
 }
 
 // CreatePaymentQuote returns a short-lived signed payment quote that locks the FX snapshot.
@@ -482,13 +526,14 @@ func (h *PaymentHandler) CreatePaymentQuote(c *gin.Context) {
 		return
 	}
 	quote, err := h.paymentService.CreatePaymentQuote(c.Request.Context(), service.CreatePaymentQuoteRequest{
-		UserID:          subject.UserID,
-		Amount:          req.Amount,
-		AmountMode:      req.AmountMode,
-		PaymentCurrency: req.PaymentCurrency,
-		PaymentType:     req.PaymentType,
-		OrderType:       req.OrderType,
-		PlanID:          req.PlanID,
+		UserID:           subject.UserID,
+		Amount:           req.Amount,
+		AmountMode:       req.AmountMode,
+		PaymentCurrency:  req.PaymentCurrency,
+		PaymentType:      req.PaymentType,
+		OrderType:        req.OrderType,
+		PlanID:           req.PlanID,
+		BalancePackageID: req.BalancePackageID,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -510,6 +555,7 @@ type CreateOrderRequest struct {
 	PaymentSource     string  `json:"payment_source"`
 	OrderType         string  `json:"order_type"`
 	PlanID            int64   `json:"plan_id"`
+	BalancePackageID  string  `json:"balance_package_id"`
 	// IsMobile lets the frontend declare its mobile status directly. When
 	// nil we fall back to User-Agent heuristics (which miss iPadOS / some
 	// embedded browsers that strip the "Mobile" keyword).
@@ -546,23 +592,23 @@ func (h *PaymentHandler) CreateOrder(c *gin.Context) {
 		mobile = *req.IsMobile
 	}
 	result, err := h.paymentService.CreateOrder(c.Request.Context(), service.CreateOrderRequest{
-		UserID:          subject.UserID,
-		Amount:          req.Amount,
-		AmountMode:      req.AmountMode,
-		PaymentCurrency: req.PaymentCurrency,
-		QuoteID:         req.QuoteID,
-		PaymentType:     req.PaymentType,
-		OpenID:          req.OpenID,
-		ClientIP:        c.ClientIP(),
-		IsMobile:        mobile,
-		IsWeChatBrowser: isWeChatBrowser(c),
-		SrcHost:         c.Request.Host,
-		SrcURL:          c.Request.Referer(),
-		ReturnURL:       req.ReturnURL,
-		PaymentSource:   req.PaymentSource,
-		OrderType:       req.OrderType,
-		PlanID:          req.PlanID,
-		Locale:          c.GetHeader("Accept-Language"),
+		UserID:           subject.UserID,
+		Amount:           req.Amount,
+		AmountMode:       req.AmountMode,
+		PaymentCurrency:  req.PaymentCurrency,
+		QuoteID:          req.QuoteID,
+		PaymentType:      req.PaymentType,
+		OpenID:           req.OpenID,
+		ClientIP:         c.ClientIP(),
+		IsMobile:         mobile,
+		IsWeChatBrowser:  isWeChatBrowser(c),
+		SrcHost:          c.Request.Host,
+		SrcURL:           c.Request.Referer(),
+		ReturnURL:        req.ReturnURL,
+		PaymentSource:    req.PaymentSource,
+		OrderType:        req.OrderType,
+		PlanID:           req.PlanID,
+		BalancePackageID: req.BalancePackageID,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)

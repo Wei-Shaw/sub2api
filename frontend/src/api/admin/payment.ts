@@ -9,6 +9,7 @@ import type {
   PaymentOrder,
   PaymentChannel,
   SubscriptionPlan,
+  BalancePackage,
   ProviderInstance
 } from '@/types/payment'
 import type { BasePaginationResponse } from '@/types'
@@ -183,6 +184,29 @@ export const adminPaymentAPI = {
   /** Delete a subscription plan */
   deletePlan(id: number) {
     return apiClient.delete(`/admin/payment/plans/${id}`)
+  },
+
+
+  // ==================== Balance Packages ====================
+
+  /** Get all balance recharge packages */
+  getBalancePackages() {
+    return apiClient.get<BalancePackage[]>('/admin/payment/balance-packages')
+  },
+
+  /** Create a balance recharge package */
+  createBalancePackage(data: Record<string, unknown>) {
+    return apiClient.post<BalancePackage>('/admin/payment/balance-packages', data)
+  },
+
+  /** Update a balance recharge package */
+  updateBalancePackage(id: number, data: Record<string, unknown>) {
+    return apiClient.put<BalancePackage>(`/admin/payment/balance-packages/${id}`, data)
+  },
+
+  /** Delete a balance recharge package */
+  deleteBalancePackage(id: number) {
+    return apiClient.delete(`/admin/payment/balance-packages/${id}`)
   },
 
   // ==================== Provider Instances ====================

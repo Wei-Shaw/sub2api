@@ -706,6 +706,19 @@ const routes: RouteRecordRaw[] = [
       requiresPayment: true
     }
   },
+  {
+    path: '/admin/orders/balance-packages',
+    name: 'AdminBalancePackages',
+    component: () => import('@/views/admin/orders/AdminBalancePackagesView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Balance Packages',
+      titleKey: 'nav.balancePackages',
+      allowMarketing: true,
+      requiresPayment: true
+    }
+  },
 
   // ==================== 404 Not Found ====================
   {

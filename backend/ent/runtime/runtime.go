@@ -12,6 +12,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
+	"github.com/Wei-Shaw/sub2api/ent/balancepackage"
 	"github.com/Wei-Shaw/sub2api/ent/batchimageevent"
 	"github.com/Wei-Shaw/sub2api/ent/batchimageitem"
 	"github.com/Wei-Shaw/sub2api/ent/batchimagejob"
@@ -437,6 +438,84 @@ func init() {
 	authidentitychannelDescMetadata := authidentitychannelFields[6].Descriptor()
 	// authidentitychannel.DefaultMetadata holds the default value on creation for the metadata field.
 	authidentitychannel.DefaultMetadata = authidentitychannelDescMetadata.Default.(func() map[string]interface{})
+	balancepackageFields := schema.BalancePackage{}.Fields()
+	_ = balancepackageFields
+	// balancepackageDescCode is the schema descriptor for code field.
+	balancepackageDescCode := balancepackageFields[0].Descriptor()
+	// balancepackage.CodeValidator is a validator for the "code" field. It is called by the builders before save.
+	balancepackage.CodeValidator = func() func(string) error {
+		validators := balancepackageDescCode.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(code string) error {
+			for _, fn := range fns {
+				if err := fn(code); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// balancepackageDescLabel is the schema descriptor for label field.
+	balancepackageDescLabel := balancepackageFields[1].Descriptor()
+	// balancepackage.LabelValidator is a validator for the "label" field. It is called by the builders before save.
+	balancepackage.LabelValidator = func() func(string) error {
+		validators := balancepackageDescLabel.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(label string) error {
+			for _, fn := range fns {
+				if err := fn(label); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// balancepackageDescDescription is the schema descriptor for description field.
+	balancepackageDescDescription := balancepackageFields[2].Descriptor()
+	// balancepackage.DefaultDescription holds the default value on creation for the description field.
+	balancepackage.DefaultDescription = balancepackageDescDescription.Default.(string)
+	// balancepackageDescBonusLedger is the schema descriptor for bonus_ledger field.
+	balancepackageDescBonusLedger := balancepackageFields[5].Descriptor()
+	// balancepackage.DefaultBonusLedger holds the default value on creation for the bonus_ledger field.
+	balancepackage.DefaultBonusLedger = balancepackageDescBonusLedger.Default.(float64)
+	// balancepackageDescCreditMultiplier is the schema descriptor for credit_multiplier field.
+	balancepackageDescCreditMultiplier := balancepackageFields[6].Descriptor()
+	// balancepackage.DefaultCreditMultiplier holds the default value on creation for the credit_multiplier field.
+	balancepackage.DefaultCreditMultiplier = balancepackageDescCreditMultiplier.Default.(float64)
+	// balancepackageDescBadge is the schema descriptor for badge field.
+	balancepackageDescBadge := balancepackageFields[7].Descriptor()
+	// balancepackage.DefaultBadge holds the default value on creation for the badge field.
+	balancepackage.DefaultBadge = balancepackageDescBadge.Default.(string)
+	// balancepackage.BadgeValidator is a validator for the "badge" field. It is called by the builders before save.
+	balancepackage.BadgeValidator = balancepackageDescBadge.Validators[0].(func(string) error)
+	// balancepackageDescPopular is the schema descriptor for popular field.
+	balancepackageDescPopular := balancepackageFields[8].Descriptor()
+	// balancepackage.DefaultPopular holds the default value on creation for the popular field.
+	balancepackage.DefaultPopular = balancepackageDescPopular.Default.(bool)
+	// balancepackageDescForSale is the schema descriptor for for_sale field.
+	balancepackageDescForSale := balancepackageFields[9].Descriptor()
+	// balancepackage.DefaultForSale holds the default value on creation for the for_sale field.
+	balancepackage.DefaultForSale = balancepackageDescForSale.Default.(bool)
+	// balancepackageDescSortOrder is the schema descriptor for sort_order field.
+	balancepackageDescSortOrder := balancepackageFields[10].Descriptor()
+	// balancepackage.DefaultSortOrder holds the default value on creation for the sort_order field.
+	balancepackage.DefaultSortOrder = balancepackageDescSortOrder.Default.(int)
+	// balancepackageDescCreatedAt is the schema descriptor for created_at field.
+	balancepackageDescCreatedAt := balancepackageFields[11].Descriptor()
+	// balancepackage.DefaultCreatedAt holds the default value on creation for the created_at field.
+	balancepackage.DefaultCreatedAt = balancepackageDescCreatedAt.Default.(func() time.Time)
+	// balancepackageDescUpdatedAt is the schema descriptor for updated_at field.
+	balancepackageDescUpdatedAt := balancepackageFields[12].Descriptor()
+	// balancepackage.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	balancepackage.DefaultUpdatedAt = balancepackageDescUpdatedAt.Default.(func() time.Time)
+	// balancepackage.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	balancepackage.UpdateDefaultUpdatedAt = balancepackageDescUpdatedAt.UpdateDefault.(func() time.Time)
 	batchimageeventFields := schema.BatchImageEvent{}.Fields()
 	_ = batchimageeventFields
 	// batchimageeventDescJobID is the schema descriptor for job_id field.

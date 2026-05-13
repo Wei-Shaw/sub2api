@@ -15,6 +15,7 @@ type createOrderAmounts struct {
 	LedgerAmount      float64
 	PaymentAmount     float64
 	LimitLedgerAmount float64
+	BalancePackage    *BalanceRechargePackage
 	FXSnapshot        fxSnapshot
 }
 
@@ -45,6 +46,25 @@ func computeCreateOrderAmounts(req CreateOrderRequest, cfg *PaymentConfig, plan 
 			LedgerAmount:      ledgerAmount,
 			PaymentAmount:     paymentAmount,
 			LimitLedgerAmount: ledgerAmount,
+			FXSnapshot:        snapshot,
+		}, nil
+	}
+
+	if strings.TrimSpace(req.BalancePackageID) != "" {
+		pkg, ok := findBalanceRechargePackage(cfg.BalancePackages, req.BalancePackageID)
+		if !ok {
+			return createOrderAmounts{}, infraerrors.BadRequest("BALANCE_PACKAGE_NOT_FOUND", "balance package not found or not available")
+		}
+		ledgerBaseAmount := roundLedgerAmountForCredit(pkg.AmountLedger, snapshot.LedgerCurrency)
+		paymentAmount, err := convertLedgerToPayment(ledgerBaseAmount, snapshot)
+		if err != nil {
+			return createOrderAmounts{}, err
+		}
+		return createOrderAmounts{
+			LedgerAmount:      roundLedgerAmountForCredit(pkg.CreditLedger, snapshot.LedgerCurrency),
+			PaymentAmount:     paymentAmount,
+			LimitLedgerAmount: ledgerBaseAmount,
+			BalancePackage:    pkg,
 			FXSnapshot:        snapshot,
 		}, nil
 	}

@@ -86,12 +86,14 @@ func TestCreateOrderInTx_WritesProviderSnapshot(t *testing.T) {
 			OrderTimeoutMin:  30,
 			LedgerCurrency:   "USD",
 		},
-		fxSnapshot{
-			PaymentCurrency:     "CNY",
-			LedgerCurrency:      "USD",
-			RatePaymentToLedger: 1,
-			Source:              fxSourceIdentity,
-			Timestamp:           time.Now().UTC(),
+		createOrderAmounts{
+			FXSnapshot: fxSnapshot{
+				PaymentCurrency:     "CNY",
+				LedgerCurrency:      "USD",
+				RatePaymentToLedger: 1,
+				Source:              fxSourceIdentity,
+				Timestamp:           time.Now().UTC(),
+			},
 		},
 		88,
 		88,

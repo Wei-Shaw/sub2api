@@ -17,50 +17,53 @@ const (
 )
 
 type CreatePaymentQuoteRequest struct {
-	UserID          int64
-	Amount          float64
-	AmountMode      string
-	PaymentCurrency string
-	PaymentType     string
-	OrderType       string
-	PlanID          int64
+	UserID           int64
+	Amount           float64
+	AmountMode       string
+	PaymentCurrency  string
+	PaymentType      string
+	OrderType        string
+	PlanID           int64
+	BalancePackageID string
 }
 
 type PaymentQuoteResponse struct {
-	QuoteID         string    `json:"quote_id"`
-	ExpiresAt       time.Time `json:"expires_at"`
-	Amount          float64   `json:"amount"`
-	AmountMode      string    `json:"amount_mode"`
-	PaymentType     string    `json:"payment_type"`
-	OrderType       string    `json:"order_type"`
-	PlanID          int64     `json:"plan_id,omitempty"`
-	PaymentAmount   float64   `json:"payment_amount"`
-	PaymentCurrency string    `json:"payment_currency"`
-	LedgerAmount    float64   `json:"ledger_amount"`
-	LedgerCurrency  string    `json:"ledger_currency"`
-	FXRate          float64   `json:"fx_rate"`
-	FXSource        string    `json:"fx_source"`
-	FXTimestamp     time.Time `json:"fx_timestamp"`
+	QuoteID          string    `json:"quote_id"`
+	ExpiresAt        time.Time `json:"expires_at"`
+	Amount           float64   `json:"amount"`
+	AmountMode       string    `json:"amount_mode"`
+	PaymentType      string    `json:"payment_type"`
+	OrderType        string    `json:"order_type"`
+	PlanID           int64     `json:"plan_id,omitempty"`
+	BalancePackageID string    `json:"balance_package_id,omitempty"`
+	PaymentAmount    float64   `json:"payment_amount"`
+	PaymentCurrency  string    `json:"payment_currency"`
+	LedgerAmount     float64   `json:"ledger_amount"`
+	LedgerCurrency   string    `json:"ledger_currency"`
+	FXRate           float64   `json:"fx_rate"`
+	FXSource         string    `json:"fx_source"`
+	FXTimestamp      time.Time `json:"fx_timestamp"`
 }
 
 type PaymentQuoteClaims struct {
-	TokenType       string  `json:"tk"`
-	UserID          int64   `json:"uid"`
-	Amount          float64 `json:"amt"`
-	AmountMode      string  `json:"am"`
-	PaymentType     string  `json:"pt"`
-	OrderType       string  `json:"ot"`
-	PlanID          int64   `json:"pid,omitempty"`
-	PaymentAmount   float64 `json:"pam"`
-	PaymentCurrency string  `json:"pc"`
-	LedgerAmount    float64 `json:"lam"`
-	LedgerCurrency  string  `json:"lc"`
-	LimitAmount     float64 `json:"lim"`
-	FXRate          float64 `json:"fx"`
-	FXSource        string  `json:"fxs,omitempty"`
-	FXTimestamp     int64   `json:"fxt"`
-	IssuedAt        int64   `json:"iat"`
-	ExpiresAt       int64   `json:"exp"`
+	TokenType        string  `json:"tk"`
+	UserID           int64   `json:"uid"`
+	Amount           float64 `json:"amt"`
+	AmountMode       string  `json:"am"`
+	PaymentType      string  `json:"pt"`
+	OrderType        string  `json:"ot"`
+	PlanID           int64   `json:"pid,omitempty"`
+	BalancePackageID string  `json:"bpid,omitempty"`
+	PaymentAmount    float64 `json:"pam"`
+	PaymentCurrency  string  `json:"pc"`
+	LedgerAmount     float64 `json:"lam"`
+	LedgerCurrency   string  `json:"lc"`
+	LimitAmount      float64 `json:"lim"`
+	FXRate           float64 `json:"fx"`
+	FXSource         string  `json:"fxs,omitempty"`
+	FXTimestamp      int64   `json:"fxt"`
+	IssuedAt         int64   `json:"iat"`
+	ExpiresAt        int64   `json:"exp"`
 }
 
 func (s *PaymentService) CreatePaymentQuote(ctx context.Context, req CreatePaymentQuoteRequest) (*PaymentQuoteResponse, error) {
@@ -85,13 +88,14 @@ func (s *PaymentService) CreatePaymentQuote(ctx context.Context, req CreatePayme
 	}
 
 	createReq := CreateOrderRequest{
-		UserID:          req.UserID,
-		Amount:          req.Amount,
-		AmountMode:      req.AmountMode,
-		PaymentCurrency: req.PaymentCurrency,
-		PaymentType:     req.PaymentType,
-		OrderType:       req.OrderType,
-		PlanID:          req.PlanID,
+		UserID:           req.UserID,
+		Amount:           req.Amount,
+		AmountMode:       req.AmountMode,
+		PaymentCurrency:  req.PaymentCurrency,
+		PaymentType:      req.PaymentType,
+		OrderType:        req.OrderType,
+		PlanID:           req.PlanID,
+		BalancePackageID: req.BalancePackageID,
 	}
 	if err := s.resolveRequestPaymentCurrency(ctx, &createReq, cfg); err != nil {
 		return nil, err
@@ -111,23 +115,24 @@ func (s *PaymentService) CreatePaymentQuote(ctx context.Context, req CreatePayme
 	issuedAt := time.Now()
 	expiresAt := issuedAt.Add(paymentQuoteTokenTTL)
 	claims := PaymentQuoteClaims{
-		TokenType:       paymentQuoteTokenType,
-		UserID:          req.UserID,
-		Amount:          req.Amount,
-		AmountMode:      req.AmountMode,
-		PaymentType:     req.PaymentType,
-		OrderType:       req.OrderType,
-		PlanID:          req.PlanID,
-		PaymentAmount:   amounts.PaymentAmount,
-		PaymentCurrency: amounts.FXSnapshot.PaymentCurrency,
-		LedgerAmount:    amounts.LedgerAmount,
-		LedgerCurrency:  amounts.FXSnapshot.LedgerCurrency,
-		LimitAmount:     amounts.LimitLedgerAmount,
-		FXRate:          amounts.FXSnapshot.RatePaymentToLedger,
-		FXSource:        amounts.FXSnapshot.Source,
-		FXTimestamp:     amounts.FXSnapshot.Timestamp.Unix(),
-		IssuedAt:        issuedAt.Unix(),
-		ExpiresAt:       expiresAt.Unix(),
+		TokenType:        paymentQuoteTokenType,
+		UserID:           req.UserID,
+		Amount:           req.Amount,
+		AmountMode:       req.AmountMode,
+		PaymentType:      req.PaymentType,
+		OrderType:        req.OrderType,
+		PlanID:           req.PlanID,
+		BalancePackageID: req.BalancePackageID,
+		PaymentAmount:    amounts.PaymentAmount,
+		PaymentCurrency:  amounts.FXSnapshot.PaymentCurrency,
+		LedgerAmount:     amounts.LedgerAmount,
+		LedgerCurrency:   amounts.FXSnapshot.LedgerCurrency,
+		LimitAmount:      amounts.LimitLedgerAmount,
+		FXRate:           amounts.FXSnapshot.RatePaymentToLedger,
+		FXSource:         amounts.FXSnapshot.Source,
+		FXTimestamp:      amounts.FXSnapshot.Timestamp.Unix(),
+		IssuedAt:         issuedAt.Unix(),
+		ExpiresAt:        expiresAt.Unix(),
 	}
 	quoteID, err := s.createPaymentQuoteToken(claims)
 	if err != nil {
@@ -214,20 +219,21 @@ func validatePaymentQuoteClaims(claims *PaymentQuoteClaims) error {
 
 func paymentQuoteResponseFromClaims(quoteID string, claims PaymentQuoteClaims) *PaymentQuoteResponse {
 	return &PaymentQuoteResponse{
-		QuoteID:         quoteID,
-		ExpiresAt:       time.Unix(claims.ExpiresAt, 0).UTC(),
-		Amount:          claims.Amount,
-		AmountMode:      claims.AmountMode,
-		PaymentType:     claims.PaymentType,
-		OrderType:       claims.OrderType,
-		PlanID:          claims.PlanID,
-		PaymentAmount:   claims.PaymentAmount,
-		PaymentCurrency: claims.PaymentCurrency,
-		LedgerAmount:    claims.LedgerAmount,
-		LedgerCurrency:  claims.LedgerCurrency,
-		FXRate:          claims.FXRate,
-		FXSource:        claims.FXSource,
-		FXTimestamp:     time.Unix(claims.FXTimestamp, 0).UTC(),
+		QuoteID:          quoteID,
+		ExpiresAt:        time.Unix(claims.ExpiresAt, 0).UTC(),
+		Amount:           claims.Amount,
+		AmountMode:       claims.AmountMode,
+		PaymentType:      claims.PaymentType,
+		OrderType:        claims.OrderType,
+		PlanID:           claims.PlanID,
+		BalancePackageID: claims.BalancePackageID,
+		PaymentAmount:    claims.PaymentAmount,
+		PaymentCurrency:  claims.PaymentCurrency,
+		LedgerAmount:     claims.LedgerAmount,
+		LedgerCurrency:   claims.LedgerCurrency,
+		FXRate:           claims.FXRate,
+		FXSource:         claims.FXSource,
+		FXTimestamp:      time.Unix(claims.FXTimestamp, 0).UTC(),
 	}
 }
 
@@ -257,6 +263,9 @@ func (s *PaymentService) applyPaymentQuoteToCreateOrder(req *CreateOrderRequest)
 	if req.PlanID > 0 && req.PlanID != claims.PlanID {
 		return infraerrors.BadRequest("INVALID_PAYMENT_QUOTE", "payment quote plan mismatch")
 	}
+	if strings.TrimSpace(req.BalancePackageID) != "" && strings.TrimSpace(req.BalancePackageID) != strings.TrimSpace(claims.BalancePackageID) {
+		return infraerrors.BadRequest("INVALID_PAYMENT_QUOTE", "payment quote balance package mismatch")
+	}
 	if req.Amount > 0 && !paymentQuoteFloatEqual(req.Amount, claims.Amount) {
 		return infraerrors.BadRequest("INVALID_PAYMENT_QUOTE", "payment quote amount mismatch")
 	}
@@ -272,6 +281,7 @@ func (s *PaymentService) applyPaymentQuoteToCreateOrder(req *CreateOrderRequest)
 	req.PaymentType = claims.PaymentType
 	req.OrderType = claims.OrderType
 	req.PlanID = claims.PlanID
+	req.BalancePackageID = claims.BalancePackageID
 	req.paymentQuote = claims
 	return nil
 }

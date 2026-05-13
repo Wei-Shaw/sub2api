@@ -2580,7 +2580,7 @@ func (r *oauthPendingFlowPromoRepoStub) List(context.Context, pagination.Paginat
 	panic("unexpected List call")
 }
 
-func (r *oauthPendingFlowPromoRepoStub) ListWithFilters(context.Context, pagination.PaginationParams, string, string) ([]service.PromoCode, *pagination.PaginationResult, error) {
+func (r *oauthPendingFlowPromoRepoStub) ListWithFilters(context.Context, pagination.PaginationParams, string, string, *int64) ([]service.PromoCode, *pagination.PaginationResult, error) {
 	panic("unexpected ListWithFilters call")
 }
 

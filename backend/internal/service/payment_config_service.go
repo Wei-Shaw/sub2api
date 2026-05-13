@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"os"
@@ -48,6 +49,7 @@ const (
 	SettingFXRatesUpdatedAt              = "PAYMENT_FX_RATES_UPDATED_AT"
 	SettingFXRatesStaleAfterSeconds      = "PAYMENT_FX_RATES_STALE_AFTER_SECONDS"
 	SettingCurrencyCapabilities          = "PAYMENT_CURRENCY_CAPABILITIES_JSON"
+	SettingBalanceRechargePackages       = "BALANCE_RECHARGE_PACKAGES_JSON"
 )
 
 // Default values for payment configuration settings.
@@ -62,6 +64,19 @@ const (
 )
 
 // PaymentConfig holds the payment system configuration.
+type BalanceRechargePackage struct {
+	ID               string  `json:"id"`
+	Label            string  `json:"label,omitempty"`
+	Description      string  `json:"description,omitempty"`
+	AmountLedger     float64 `json:"amount_ledger"`
+	CreditLedger     float64 `json:"credit_ledger"`
+	BonusLedger      float64 `json:"bonus_ledger"`
+	CreditMultiplier float64 `json:"credit_multiplier"`
+	Badge            string  `json:"badge,omitempty"`
+	Popular          bool    `json:"popular,omitempty"`
+	SortOrder        int     `json:"sort_order,omitempty"`
+}
+
 type PaymentConfig struct {
 	Enabled                   bool     `json:"enabled"`
 	MinAmount                 float64  `json:"min_amount"`
@@ -87,6 +102,7 @@ type PaymentConfig struct {
 	AllowedPaymentCurrencies []string                         `json:"allowed_payment_currencies"`
 	ManualFXRates            map[string]float64               `json:"manual_fx_rates"`
 	CurrencyCapabilities     payment.CurrencyCapabilityConfig `json:"currency_capabilities"`
+	BalancePackages          []BalanceRechargePackage         `json:"balance_packages"`
 	FXStatus                 PaymentFXStatus                  `json:"fx_status"`
 
 	// Cancel rate limit settings
@@ -125,6 +141,7 @@ type UpdatePaymentConfigRequest struct {
 	ManualFXRates             *string  `json:"manual_fx_rates"`
 	CurrencyCapabilities      *string  `json:"currency_capabilities"`
 	FXRatesStaleAfterSeconds  *int     `json:"fx_rates_stale_after_seconds"`
+	BalanceRechargePackages   *string  `json:"balance_recharge_packages"`
 
 	// Cancel rate limit settings
 	CancelRateLimitEnabled *bool   `json:"cancel_rate_limit_enabled"`
@@ -218,6 +235,32 @@ type UpdatePlanRequest struct {
 	SortOrder     *int     `json:"sort_order"`
 }
 
+type CreateBalancePackageRequest struct {
+	Code             string  `json:"code"`
+	Label            string  `json:"label"`
+	Description      string  `json:"description"`
+	AmountLedger     float64 `json:"amount_ledger"`
+	CreditLedger     float64 `json:"credit_ledger"`
+	CreditMultiplier float64 `json:"credit_multiplier"`
+	Badge            string  `json:"badge"`
+	Popular          bool    `json:"popular"`
+	ForSale          bool    `json:"for_sale"`
+	SortOrder        int     `json:"sort_order"`
+}
+
+type UpdateBalancePackageRequest struct {
+	Code             *string  `json:"code"`
+	Label            *string  `json:"label"`
+	Description      *string  `json:"description"`
+	AmountLedger     *float64 `json:"amount_ledger"`
+	CreditLedger     *float64 `json:"credit_ledger"`
+	CreditMultiplier *float64 `json:"credit_multiplier"`
+	Badge            *string  `json:"badge"`
+	Popular          *bool    `json:"popular"`
+	ForSale          *bool    `json:"for_sale"`
+	SortOrder        *int     `json:"sort_order"`
+}
+
 // PaymentConfigService manages payment configuration and CRUD for
 // provider instances, channels, and subscription plans.
 type PaymentConfigService struct {
@@ -261,7 +304,7 @@ func (s *PaymentConfigService) GetPaymentConfig(ctx context.Context) (*PaymentCo
 		SettingHelpImageURL, SettingHelpText,
 		SettingLedgerCurrency, SettingAllowedPaymentCurrencies, SettingManualFXRates,
 		SettingFXRatesSource, SettingFXRatesUpdatedAt, SettingFXRatesStaleAfterSeconds,
-		SettingCurrencyCapabilities,
+		SettingCurrencyCapabilities, SettingBalanceRechargePackages,
 		SettingCancelRateLimitOn, SettingCancelRateLimitMax,
 		SettingCancelWindowSize, SettingCancelWindowUnit, SettingCancelWindowMode,
 		SettingAlipayForceQRCode, SettingAlipayMobilePrecreateDeepLink,
@@ -273,6 +316,9 @@ func (s *PaymentConfigService) GetPaymentConfig(ctx context.Context) (*PaymentCo
 		return nil, fmt.Errorf("get payment config settings: %w", err)
 	}
 	cfg := s.parsePaymentConfig(vals)
+	if packages, err := s.ListBalanceRechargePackagesForSale(ctx); err == nil {
+		cfg.BalancePackages = balancePackageEntitiesToConfig(packages)
+	}
 	// Load Stripe publishable key from the first enabled Stripe provider instance
 	cfg.StripePublishableKey = s.getStripePublishableKey(ctx)
 	cfg.PaddleClientToken, cfg.PaddleEnvironment = s.getPaddleFrontendConfig(ctx)
@@ -300,6 +346,7 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 		AllowedPaymentCurrencies:  parseCurrencyList(vals[SettingAllowedPaymentCurrencies], defaultPaymentCurrencyCSV),
 		ManualFXRates:             parseManualFXRates(vals[SettingManualFXRates]),
 		CurrencyCapabilities:      parseCurrencyCapabilities(vals[SettingCurrencyCapabilities]),
+		BalancePackages:           parseBalanceRechargePackages(vals[SettingBalanceRechargePackages]),
 
 		CancelRateLimitEnabled: vals[SettingCancelRateLimitOn] == "true",
 		CancelRateLimitMax:     pcParseInt(vals[SettingCancelRateLimitMax], 10),
@@ -353,6 +400,78 @@ func pcEnvBoolOverride(key string, fallback bool) bool {
 }
 
 // getStripePublishableKey finds the publishable key from the first enabled Stripe provider instance.
+
+func parseBalanceRechargePackages(raw string) []BalanceRechargePackage {
+	packages, err := parseBalanceRechargePackagesJSON(raw)
+	if err != nil {
+		return []BalanceRechargePackage{}
+	}
+	return packages
+}
+
+func parseBalanceRechargePackagesJSON(raw string) ([]BalanceRechargePackage, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return []BalanceRechargePackage{}, nil
+	}
+	var packages []BalanceRechargePackage
+	if err := json.Unmarshal([]byte(raw), &packages); err != nil {
+		return nil, err
+	}
+	out := make([]BalanceRechargePackage, 0, len(packages))
+	seen := map[string]struct{}{}
+	for _, pkg := range packages {
+		pkg.ID = strings.TrimSpace(pkg.ID)
+		pkg.Label = strings.TrimSpace(pkg.Label)
+		pkg.Description = strings.TrimSpace(pkg.Description)
+		pkg.Badge = strings.TrimSpace(pkg.Badge)
+		if pkg.ID == "" {
+			return nil, fmt.Errorf("package id is required")
+		}
+		if _, ok := seen[pkg.ID]; ok {
+			return nil, fmt.Errorf("duplicate package id %q", pkg.ID)
+		}
+		seen[pkg.ID] = struct{}{}
+		if math.IsNaN(pkg.AmountLedger) || math.IsInf(pkg.AmountLedger, 0) || pkg.AmountLedger <= 0 {
+			return nil, fmt.Errorf("package %s amount_ledger must be greater than 0", pkg.ID)
+		}
+		if pkg.CreditLedger <= 0 && pkg.CreditMultiplier > 0 {
+			pkg.CreditLedger = pkg.AmountLedger * pkg.CreditMultiplier
+		}
+		if math.IsNaN(pkg.CreditLedger) || math.IsInf(pkg.CreditLedger, 0) || pkg.CreditLedger <= 0 {
+			return nil, fmt.Errorf("package %s credit_ledger must be greater than 0", pkg.ID)
+		}
+		if pkg.CreditMultiplier <= 0 {
+			pkg.CreditMultiplier = pkg.CreditLedger / pkg.AmountLedger
+		}
+		if math.IsNaN(pkg.CreditMultiplier) || math.IsInf(pkg.CreditMultiplier, 0) || pkg.CreditMultiplier <= 0 {
+			return nil, fmt.Errorf("package %s credit_multiplier must be greater than 0", pkg.ID)
+		}
+		pkg.AmountLedger = roundLedgerAmountForCredit(pkg.AmountLedger, defaultLedgerCurrency)
+		pkg.CreditLedger = roundLedgerAmountForCredit(pkg.CreditLedger, defaultLedgerCurrency)
+		pkg.BonusLedger = roundLedgerAmountForCredit(pkg.CreditLedger-pkg.AmountLedger, defaultLedgerCurrency)
+		if pkg.BonusLedger < 0 {
+			pkg.BonusLedger = 0
+		}
+		out = append(out, pkg)
+	}
+	return out, nil
+}
+
+func findBalanceRechargePackage(packages []BalanceRechargePackage, id string) (*BalanceRechargePackage, bool) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return nil, false
+	}
+	for i := range packages {
+		if packages[i].ID == id {
+			pkg := packages[i]
+			return &pkg, true
+		}
+	}
+	return nil, false
+}
+
 func (s *PaymentConfigService) getStripePublishableKey(ctx context.Context) string {
 	if s.entClient == nil {
 		return ""
@@ -417,6 +536,11 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 			return infraerrors.BadRequest("INVALID_RECHARGE_FEE_RATE", "recharge fee rate allows at most 2 decimal places")
 		}
 	}
+	if req.BalanceRechargePackages != nil {
+		if _, err := parseBalanceRechargePackagesJSON(*req.BalanceRechargePackages); err != nil {
+			return infraerrors.BadRequest("INVALID_BALANCE_RECHARGE_PACKAGES", "balance recharge packages must be a JSON array")
+		}
+	}
 	if req.LedgerCurrency != nil {
 		if normalizeCurrencyCode(*req.LedgerCurrency, "") == "" {
 			return infraerrors.BadRequest("INVALID_LEDGER_CURRENCY", "ledger currency is required")
@@ -465,6 +589,9 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 	}
 	if req.CurrencyCapabilities != nil {
 		m[SettingCurrencyCapabilities] = normalizeCurrencyCapabilitiesJSON(*req.CurrencyCapabilities)
+	}
+	if req.BalanceRechargePackages != nil {
+		m[SettingBalanceRechargePackages] = normalizeBalanceRechargePackagesJSON(*req.BalanceRechargePackages)
 	}
 	if req.FXRatesStaleAfterSeconds != nil {
 		m[SettingFXRatesStaleAfterSeconds] = formatPositiveInt(req.FXRatesStaleAfterSeconds)
@@ -537,6 +664,21 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 		m[SettingFXRatesUpdatedAt] = time.Now().UTC().Format(time.RFC3339)
 	}
 	return s.settingRepo.SetMultiple(ctx, m)
+}
+
+func normalizeBalanceRechargePackagesJSON(raw string) string {
+	packages, err := parseBalanceRechargePackagesJSON(raw)
+	if err != nil {
+		return ""
+	}
+	if len(packages) == 0 {
+		return ""
+	}
+	encoded, err := json.Marshal(packages)
+	if err != nil {
+		return ""
+	}
+	return string(encoded)
 }
 
 func formatBoolOrEmpty(v *bool) string {
