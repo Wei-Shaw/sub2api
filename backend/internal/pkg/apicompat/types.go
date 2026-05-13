@@ -75,6 +75,32 @@ type AnthropicContentBlock struct {
 	IsError   bool            `json:"is_error,omitempty"`
 }
 
+// MarshalJSON implements json.Marshaler for AnthropicContentBlock.
+// It ensures that text-type blocks always include the "text" field and
+// thinking-type blocks always include the "thinking" field, even when the
+// value is an empty string. The Anthropic API spec requires these fields to
+// be present in content_block_start events; omitting them causes the
+// Anthropic Python SDK to initialize content.text as None rather than "",
+// which triggers a TypeError on the subsequent "+=" accumulation.
+func (b AnthropicContentBlock) MarshalJSON() ([]byte, error) {
+	// Use a type alias to avoid infinite recursion when delegating to json.Marshal.
+	type Alias AnthropicContentBlock
+	switch b.Type {
+	case "text":
+		return json.Marshal(struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		}{Type: b.Type, Text: b.Text})
+	case "thinking":
+		return json.Marshal(struct {
+			Type     string `json:"type"`
+			Thinking string `json:"thinking"`
+		}{Type: b.Type, Thinking: b.Thinking})
+	default:
+		return json.Marshal(Alias(b))
+	}
+}
+
 // AnthropicImageSource describes the source data for an image content block.
 type AnthropicImageSource struct {
 	Type      string `json:"type"` // "base64"

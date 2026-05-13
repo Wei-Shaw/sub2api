@@ -889,6 +889,74 @@ func TestResponsesAnthropicEventToSSE(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// AnthropicContentBlock JSON serialization tests
+// ---------------------------------------------------------------------------
+
+// TestAnthropicContentBlock_TextAlwaysPresent verifies that text-type content
+// blocks always include the "text" field in JSON, even when the value is "".
+// The Anthropic API spec requires this: without it the Python SDK initializes
+// content.text as None and the subsequent += accumulation raises a TypeError.
+func TestAnthropicContentBlock_TextAlwaysPresent(t *testing.T) {
+	block := AnthropicContentBlock{Type: "text", Text: ""}
+	data, err := json.Marshal(block)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), `"text":""`,
+		"text field must be present even when empty")
+}
+
+// TestAnthropicContentBlock_ThinkingAlwaysPresent verifies that thinking-type
+// content blocks always include the "thinking" field in JSON, even when empty.
+func TestAnthropicContentBlock_ThinkingAlwaysPresent(t *testing.T) {
+	block := AnthropicContentBlock{Type: "thinking", Thinking: ""}
+	data, err := json.Marshal(block)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), `"thinking":""`,
+		"thinking field must be present even when empty")
+}
+
+// TestAnthropicContentBlock_ToolUseOmitsTextAndThinking verifies that tool_use
+// blocks do NOT include "text" or "thinking" fields (they would pollute the output).
+func TestAnthropicContentBlock_ToolUseOmitsTextAndThinking(t *testing.T) {
+	block := AnthropicContentBlock{
+		Type:  "tool_use",
+		ID:    "tool_1",
+		Name:  "get_weather",
+		Input: json.RawMessage(`{}`),
+	}
+	data, err := json.Marshal(block)
+	require.NoError(t, err)
+	s := string(data)
+	assert.NotContains(t, s, `"text"`, "tool_use block must not include text field")
+	assert.NotContains(t, s, `"thinking"`, "tool_use block must not include thinking field")
+	assert.Contains(t, s, `"id":"tool_1"`)
+	assert.Contains(t, s, `"name":"get_weather"`)
+}
+
+// TestStreamingContentBlockStartTextJSON verifies that the SSE JSON for a
+// content_block_start event includes "text":"" for text-type blocks.
+func TestStreamingContentBlockStartTextJSON(t *testing.T) {
+	state := NewResponsesEventToAnthropicState()
+
+	ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:     "response.created",
+		Response: &ResponsesResponse{ID: "resp_x", Model: "gpt-5.4"},
+	}, state)
+
+	events := ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:  "response.output_text.delta",
+		Delta: "ok",
+	}, state)
+	require.GreaterOrEqual(t, len(events), 1)
+	blockStart := events[0]
+	require.Equal(t, "content_block_start", blockStart.Type)
+
+	sse, err := ResponsesAnthropicEventToSSE(blockStart)
+	require.NoError(t, err)
+	assert.Contains(t, sse, `"text":""`,
+		"content_block_start SSE must include \"text\":\"\" for text-type blocks")
+}
+
+// ---------------------------------------------------------------------------
 // response.failed tests
 // ---------------------------------------------------------------------------
 
