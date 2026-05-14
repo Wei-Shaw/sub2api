@@ -91,8 +91,7 @@
                   :name="g.name"
                   :platform="g.platform as GroupPlatform"
                   :subscription-type="(g.subscription_type || 'standard') as SubscriptionType"
-                  :rate-multiplier="g.rate_multiplier"
-                  :user-rate-multiplier="userGroupRates[g.id] ?? null"
+                  :rate-multiplier="displayRateMultiplier(g)"
                   always-show-rate
                 />
               </div>
@@ -113,8 +112,7 @@
                   :name="g.name"
                   :platform="g.platform as GroupPlatform"
                   :subscription-type="(g.subscription_type || 'standard') as SubscriptionType"
-                  :rate-multiplier="g.rate_multiplier"
-                  :user-rate-multiplier="userGroupRates[g.id] ?? null"
+                  :rate-multiplier="displayRateMultiplier(g)"
                   always-show-rate
                 />
               </div>
@@ -155,7 +153,7 @@ import type { UserAvailableChannel, UserAvailableGroup, UserChannelPlatformSecti
 import type { GroupPlatform, SubscriptionType } from '@/types'
 import { platformBadgeClass } from '@/utils/platformColors'
 
-const props = defineProps<{
+defineProps<{
   columns: {
     name: string
     description: string
@@ -169,13 +167,10 @@ const props = defineProps<{
   noPricingLabel: string
   noModelsLabel: string
   emptyLabel: string
-  /** 用户专属倍率（group_id → multiplier）；无专属时由 GroupBadge 仅显示默认倍率。 */
-  userGroupRates: Record<number, number>
 }>()
 
-// Suppress unused warning — props is accessed via template automatically but
-// the explicit reference here keeps the linter from flagging userGroupRates.
-void props.userGroupRates
+const displayRateMultiplier = (group: UserAvailableGroup): number =>
+  group.display_rate_multiplier ?? group.rate_multiplier
 
 const { t } = useI18n()
 

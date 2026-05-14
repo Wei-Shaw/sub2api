@@ -80,13 +80,14 @@ type APIKey struct {
 }
 
 type Group struct {
-	ID             int64   `json:"id"`
-	Name           string  `json:"name"`
-	Description    string  `json:"description"`
-	Platform       string  `json:"platform"`
-	RateMultiplier float64 `json:"rate_multiplier"`
-	IsExclusive    bool    `json:"is_exclusive"`
-	Status         string  `json:"status"`
+	ID                    int64   `json:"id"`
+	Name                  string  `json:"name"`
+	Description           string  `json:"description"`
+	Platform              string  `json:"platform"`
+	RateMultiplier        float64 `json:"rate_multiplier"`
+	DisplayRateMultiplier float64 `json:"display_rate_multiplier"`
+	IsExclusive           bool    `json:"is_exclusive"`
+	Status                string  `json:"status"`
 
 	SubscriptionType string   `json:"subscription_type"`
 	DailyLimitUSD    *float64 `json:"daily_limit_usd"`

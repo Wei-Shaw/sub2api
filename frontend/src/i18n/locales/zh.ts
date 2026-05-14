@@ -2049,6 +2049,7 @@ export default {
         name: '名称',
         platform: '平台',
         rateMultiplier: '费率倍数',
+        displayRateMultiplier: '调整费率倍数',
         rpmOverride: 'RPM 覆盖',
         rpmOverrideHint: '该用户在此分组的 RPM 上限；留空 = 使用分组默认；0 = 不限制',
         rateDefault: '默认',
@@ -2079,6 +2080,7 @@ export default {
         description: '描述',
         platform: '平台',
         rateMultiplier: '费率倍数',
+        displayRateMultiplier: '调整费率倍数',
         status: '状态',
         exclusive: '专属分组',
         nameLabel: '分组名称',
@@ -2115,6 +2117,7 @@ export default {
           '公开分组费率 0.8，您可以创建一个费率 0.7 的专属分组，手动分配给 VIP 用户，让他们享受更优惠的价格。'
       },
       rateMultiplierHint: '1.0 = 标准费率，0.5 = 半价，2.0 = 双倍',
+      displayRateMultiplierHint: '仅用于用户侧创建 API 密钥和可用渠道展示，实际消耗仍按费率倍数扣费',
       platforms: {
         all: '全部平台',
         anthropic: 'Anthropic',

@@ -50,15 +50,16 @@ func (h *AvailableChannelHandler) featureEnabled(c *gin.Context) bool {
 // userAvailableGroup 用户可见的分组概要（白名单字段）。
 //
 // 前端据此区分专属 vs 公开分组（IsExclusive）、订阅 vs 标准分组（SubscriptionType，
-// 订阅视觉加深），并用 RateMultiplier 作为默认倍率；用户专属倍率前端走
+// 订阅视觉加深），并用 DisplayRateMultiplier 作为用户侧展示倍率；用户专属倍率前端走
 // /groups/rates，和 API 密钥页面保持一致。
 type userAvailableGroup struct {
-	ID               int64   `json:"id"`
-	Name             string  `json:"name"`
-	Platform         string  `json:"platform"`
-	SubscriptionType string  `json:"subscription_type"`
-	RateMultiplier   float64 `json:"rate_multiplier"`
-	IsExclusive      bool    `json:"is_exclusive"`
+	ID                    int64   `json:"id"`
+	Name                  string  `json:"name"`
+	Platform              string  `json:"platform"`
+	SubscriptionType      string  `json:"subscription_type"`
+	RateMultiplier        float64 `json:"rate_multiplier"`
+	DisplayRateMultiplier float64 `json:"display_rate_multiplier"`
+	IsExclusive           bool    `json:"is_exclusive"`
 }
 
 // userSupportedModelPricing 用户可见的定价字段白名单。
@@ -213,12 +214,13 @@ func filterUserVisibleGroups(
 			continue
 		}
 		visible = append(visible, userAvailableGroup{
-			ID:               g.ID,
-			Name:             g.Name,
-			Platform:         g.Platform,
-			SubscriptionType: g.SubscriptionType,
-			RateMultiplier:   g.RateMultiplier,
-			IsExclusive:      g.IsExclusive,
+			ID:                    g.ID,
+			Name:                  g.Name,
+			Platform:              g.Platform,
+			SubscriptionType:      g.SubscriptionType,
+			RateMultiplier:        g.RateMultiplier,
+			DisplayRateMultiplier: g.DisplayRateMultiplier,
+			IsExclusive:           g.IsExclusive,
 		})
 	}
 	return visible

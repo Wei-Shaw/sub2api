@@ -1999,6 +1999,7 @@ export default {
         name: 'Name',
         platform: 'Platform',
         rateMultiplier: 'Rate Multiplier',
+        displayRateMultiplier: 'Display Rate Multiplier',
         rpmOverride: 'RPM Override',
         rpmOverrideHint: 'Per-user RPM cap in this group; empty = group default; 0 = unlimited',
         rateDefault: 'default',
@@ -2028,6 +2029,7 @@ export default {
         description: 'Description',
         platform: 'Platform',
         rateMultiplier: 'Rate Multiplier',
+        displayRateMultiplier: 'Display Rate Multiplier',
         status: 'Status',
         exclusive: 'Exclusive Group',
         rpmLimit: 'Requests Per Minute (RPM)',
@@ -2039,6 +2041,7 @@ export default {
       platformHint: 'Select the platform this group is associated with',
       platformNotEditable: 'Platform cannot be changed after creation',
       rateMultiplierHint: 'Cost multiplier for this group (e.g., 1.5 = 150% of base cost)',
+      displayRateMultiplierHint: 'Shown to users when they create API keys or view available channels. Actual usage is still billed with the rate multiplier.',
       exclusiveHint: 'Exclusive group, manually assign to specific users',
       exclusiveTooltip: {
         title: 'What is an exclusive group?',
