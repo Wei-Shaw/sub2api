@@ -1654,6 +1654,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingPaymentVisibleMethodAlipayEnabled] = strconv.FormatBool(settings.PaymentVisibleMethodAlipayEnabled)
 	updates[SettingPaymentVisibleMethodWxpayEnabled] = strconv.FormatBool(settings.PaymentVisibleMethodWxpayEnabled)
 	updates[openAIAdvancedSchedulerSettingKey] = strconv.FormatBool(settings.OpenAIAdvancedSchedulerEnabled)
+	updates[openAIRoundRobinSchedulerSettingKey] = strconv.FormatBool(settings.OpenAIRoundRobinSchedulerEnabled)
 
 	// Balance low notification
 	updates[SettingKeyBalanceLowNotifyEnabled] = strconv.FormatBool(settings.BalanceLowNotifyEnabled)
@@ -1733,6 +1734,11 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	openAIAdvancedSchedulerSettingCache.Store(&cachedOpenAIAdvancedSchedulerSetting{
 		enabled:   settings.OpenAIAdvancedSchedulerEnabled,
 		expiresAt: time.Now().Add(openAIAdvancedSchedulerSettingCacheTTL).UnixNano(),
+	})
+	openAIRoundRobinSchedulerSettingSF.Forget(openAIRoundRobinSchedulerSettingKey)
+	openAIRoundRobinSchedulerSettingCache.Store(&cachedOpenAIRoundRobinSchedulerSetting{
+		enabled:   settings.OpenAIRoundRobinSchedulerEnabled,
+		expiresAt: time.Now().Add(openAIRoundRobinSchedulerSettingCacheTTL).UnixNano(),
 	})
 	if s.onUpdate != nil {
 		s.onUpdate() // Invalidate cache after settings update
@@ -2464,6 +2470,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingPaymentVisibleMethodAlipayEnabled:     "false",
 		SettingPaymentVisibleMethodWxpayEnabled:      "false",
 		openAIAdvancedSchedulerSettingKey:            "false",
+		openAIRoundRobinSchedulerSettingKey:          "false",
 	}
 
 	return s.settingRepo.SetMultiple(ctx, defaults)
@@ -2854,6 +2861,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.PaymentVisibleMethodAlipayEnabled = settings[SettingPaymentVisibleMethodAlipayEnabled] == "true"
 	result.PaymentVisibleMethodWxpayEnabled = settings[SettingPaymentVisibleMethodWxpayEnabled] == "true"
 	result.OpenAIAdvancedSchedulerEnabled = settings[openAIAdvancedSchedulerSettingKey] == "true"
+	result.OpenAIRoundRobinSchedulerEnabled = settings[openAIRoundRobinSchedulerSettingKey] == "true"
 
 	// Balance low notification
 	result.BalanceLowNotifyEnabled = settings[SettingKeyBalanceLowNotifyEnabled] == "true"

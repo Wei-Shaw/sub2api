@@ -21,7 +21,9 @@ const (
 	openAIAccountScheduleLayerPreviousResponse = "previous_response_id"
 	openAIAccountScheduleLayerSessionSticky    = "session_hash"
 	openAIAccountScheduleLayerLoadBalance      = "load_balance"
+	openAIAccountScheduleLayerRoundRobin       = "round_robin"
 	openAIAdvancedSchedulerSettingKey          = "openai_advanced_scheduler_enabled"
+	openAIRoundRobinSchedulerSettingKey        = "openai_round_robin_scheduler_enabled"
 )
 
 const (
@@ -1012,6 +1014,7 @@ func (s *OpenAIGatewayService) getOpenAIAccountScheduler(ctx context.Context) Op
 func resetOpenAIAdvancedSchedulerSettingCacheForTest() {
 	openAIAdvancedSchedulerSettingCache = atomic.Value{}
 	openAIAdvancedSchedulerSettingSF = singleflight.Group{}
+	resetOpenAIRoundRobinSchedulerSettingCacheForTest()
 }
 
 func (s *OpenAIGatewayService) SelectAccountWithScheduler(
@@ -1060,6 +1063,19 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 	decision := OpenAIAccountScheduleDecision{}
 	scheduler := s.getOpenAIAccountScheduler(ctx)
 	if scheduler == nil {
+		if roundRobin := s.getOpenAIRoundRobinScheduler(ctx); roundRobin != nil {
+			selection, rrDecision, err := roundRobin.Select(ctx, OpenAIAccountScheduleRequest{
+				GroupID:                 groupID,
+				SessionHash:             sessionHash,
+				PreviousResponseID:      previousResponseID,
+				RequestedModel:          requestedModel,
+				RequiredTransport:       requiredTransport,
+				RequiredImageCapability: requiredImageCapability,
+				RequireCompact:          requireCompact,
+				ExcludedIDs:             excludedIDs,
+			})
+			return selection, rrDecision, err
+		}
 		decision.Layer = openAIAccountScheduleLayerLoadBalance
 		if requiredTransport == OpenAIUpstreamTransportAny || requiredTransport == OpenAIUpstreamTransportHTTPSSE {
 			effectiveExcludedIDs := cloneExcludedAccountIDs(excludedIDs)

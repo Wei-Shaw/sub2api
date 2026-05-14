@@ -6157,6 +6157,10 @@ export default {
         title: 'OpenAI 实验调度策略',
         description: '默认关闭。开启后仅影响本网关在 OpenAI 账号间的实验性调度选择逻辑，不代表上游 OpenAI 官方能力。'
       },
+      openaiRoundRobinScheduler: {
+        title: 'OpenAI Round-Robin 轮询调度',
+        description: '默认关闭。仅在实验调度关闭时生效；每次请求都会在可用 OpenAI 账号池中推进游标。'
+      },
       saveSettings: '保存设置',
       saving: '保存中...',
       settingsSaved: '设置保存成功',

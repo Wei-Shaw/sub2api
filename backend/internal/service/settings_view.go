@@ -185,7 +185,8 @@ type SystemSettings struct {
 	PaymentVisibleMethodWxpayEnabled  bool
 
 	// OpenAI account scheduling
-	OpenAIAdvancedSchedulerEnabled bool
+	OpenAIAdvancedSchedulerEnabled   bool
+	OpenAIRoundRobinSchedulerEnabled bool
 
 	// Balance low notification
 	BalanceLowNotifyEnabled     bool

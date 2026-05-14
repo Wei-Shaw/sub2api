@@ -5997,6 +5997,10 @@ export default {
         title: 'OpenAI experimental scheduler policy',
         description: "Disabled by default. When enabled, this only changes the gateway's experimental account-selection policy for OpenAI traffic; it does not indicate an upstream OpenAI capability."
       },
+      openaiRoundRobinScheduler: {
+        title: 'OpenAI round-robin scheduler',
+        description: 'Disabled by default. Takes effect only when the experimental scheduler is off; each request advances a cursor across eligible OpenAI accounts.'
+      },
       saveSettings: 'Save Settings',
       saving: 'Saving...',
       settingsSaved: 'Settings saved successfully',

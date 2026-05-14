@@ -3329,6 +3329,22 @@
                 </div>
                 <Toggle v-model="form.openai_advanced_scheduler_enabled" />
               </div>
+
+              <div class="flex items-center justify-between">
+                <div>
+                  <label
+                    class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.openaiRoundRobinScheduler.title") }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{
+                      t("admin.settings.openaiRoundRobinScheduler.description")
+                    }}
+                  </p>
+                </div>
+                <Toggle v-model="form.openai_round_robin_scheduler_enabled" />
+              </div>
             </div>
           </div>
 
@@ -6429,6 +6445,7 @@ type SettingsForm = Omit<
   google_oauth_client_secret: string;
   force_email_on_third_party_signup: boolean;
   openai_advanced_scheduler_enabled: boolean;
+  openai_round_robin_scheduler_enabled: boolean;
 };
 
 const form = reactive<SettingsForm>({
@@ -6595,6 +6612,7 @@ const form = reactive<SettingsForm>({
   // 分组隔离
   allow_ungrouped_key_scheduling: false,
   openai_advanced_scheduler_enabled: false,
+  openai_round_robin_scheduler_enabled: false,
   // Gateway forwarding behavior
   enable_fingerprint_unification: true,
   enable_metadata_passthrough: false,
@@ -7703,6 +7721,8 @@ async function saveSettings() {
       payment_cancel_rate_limit_window_mode:
         form.payment_cancel_rate_limit_window_mode,
       openai_advanced_scheduler_enabled: form.openai_advanced_scheduler_enabled,
+      openai_round_robin_scheduler_enabled:
+        form.openai_round_robin_scheduler_enabled,
       // Balance & quota notification
       balance_low_notify_enabled: form.balance_low_notify_enabled,
       balance_low_notify_threshold:
