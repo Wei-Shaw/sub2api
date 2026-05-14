@@ -20,11 +20,11 @@ FROM ${NODE_IMAGE} AS frontend-builder
 
 WORKDIR /app/frontend
 
-# Install pnpm v9 (matches lockfileVersion: '9.0')
-RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
+# Enable Corepack; pnpm version is selected from packageManager in package.json.
+RUN corepack enable
 
 # Install dependencies first (better caching)
-COPY frontend/package.json frontend/pnpm-lock.yaml ./
+COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
 # Copy frontend source and build
