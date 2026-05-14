@@ -1063,18 +1063,20 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 	decision := OpenAIAccountScheduleDecision{}
 	scheduler := s.getOpenAIAccountScheduler(ctx)
 	if scheduler == nil {
-		if roundRobin := s.getOpenAIRoundRobinScheduler(ctx); roundRobin != nil {
-			selection, rrDecision, err := roundRobin.Select(ctx, OpenAIAccountScheduleRequest{
-				GroupID:                 groupID,
-				SessionHash:             sessionHash,
-				PreviousResponseID:      previousResponseID,
-				RequestedModel:          requestedModel,
-				RequiredTransport:       requiredTransport,
-				RequiredImageCapability: requiredImageCapability,
-				RequireCompact:          requireCompact,
-				ExcludedIDs:             excludedIDs,
-			})
-			return selection, rrDecision, err
+		if shouldUseOpenAIRoundRobinForModel(requestedModel) {
+			if roundRobin := s.getOpenAIRoundRobinScheduler(ctx); roundRobin != nil {
+				selection, rrDecision, err := roundRobin.Select(ctx, OpenAIAccountScheduleRequest{
+					GroupID:                 groupID,
+					SessionHash:             sessionHash,
+					PreviousResponseID:      previousResponseID,
+					RequestedModel:          requestedModel,
+					RequiredTransport:       requiredTransport,
+					RequiredImageCapability: requiredImageCapability,
+					RequireCompact:          requireCompact,
+					ExcludedIDs:             excludedIDs,
+				})
+				return selection, rrDecision, err
+			}
 		}
 		decision.Layer = openAIAccountScheduleLayerLoadBalance
 		if requiredTransport == OpenAIUpstreamTransportAny || requiredTransport == OpenAIUpstreamTransportHTTPSSE {

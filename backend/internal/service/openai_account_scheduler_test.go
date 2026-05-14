@@ -337,7 +337,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_RoundRobinEnabledCycles
 
 	var got []int64
 	for i := 0; i < 5; i++ {
-		selection, decision, err := svc.SelectAccountWithScheduler(ctx, &groupID, "", "ignored-sticky", "gpt-5.1", nil, OpenAIUpstreamTransportAny, false)
+		selection, decision, err := svc.SelectAccountWithScheduler(ctx, &groupID, "", "ignored-sticky", "gpt-5.3-codex", nil, OpenAIUpstreamTransportAny, false)
 		require.NoError(t, err)
 		require.NotNil(t, selection)
 		require.NotNil(t, selection.Account)
@@ -348,6 +348,41 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_RoundRobinEnabledCycles
 		}
 	}
 	require.Equal(t, []int64{51001, 51002, 51003, 51001, 51002}, got)
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_RoundRobinDisabledForNonCodexModels(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(20115)
+	accounts := []Account{
+		{ID: 51103, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0},
+		{ID: 51101, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0},
+		{ID: 51102, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0},
+	}
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: accounts},
+		cfg:                &config.Config{},
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{}),
+		rateLimitService:   newOpenAISchedulerRateLimitService("false", "true"),
+	}
+
+	first, firstDecision, err := svc.SelectAccountWithScheduler(ctx, &groupID, "", "", "gpt-5.1", nil, OpenAIUpstreamTransportAny, false)
+	require.NoError(t, err)
+	require.NotNil(t, first)
+	require.NotNil(t, first.Account)
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, firstDecision.Layer)
+	if first.ReleaseFunc != nil {
+		first.ReleaseFunc()
+	}
+
+	second, secondDecision, err := svc.SelectAccountWithScheduler(ctx, &groupID, "", "", "gpt-5.1", nil, OpenAIUpstreamTransportAny, false)
+	require.NoError(t, err)
+	require.NotNil(t, second)
+	require.NotNil(t, second.Account)
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, secondDecision.Layer)
+	require.Equal(t, first.Account.ID, second.Account.ID)
+	if second.ReleaseFunc != nil {
+		second.ReleaseFunc()
+	}
 }
 
 func TestOpenAIGatewayService_SelectAccountWithScheduler_AdvancedSchedulerWinsOverRoundRobin(t *testing.T) {
@@ -397,7 +432,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_RoundRobinIgnoresSticky
 	require.NoError(t, svc.BindStickySession(ctx, &groupID, "rr-sticky", 53002))
 	require.NoError(t, svc.getOpenAIWSStateStore().BindResponseAccount(ctx, groupID, "resp_rr_001", 53002, time.Hour))
 
-	first, decision, err := svc.SelectAccountWithScheduler(ctx, &groupID, "resp_rr_001", "rr-sticky", "gpt-5.1", nil, OpenAIUpstreamTransportAny, false)
+	first, decision, err := svc.SelectAccountWithScheduler(ctx, &groupID, "resp_rr_001", "rr-sticky", "gpt-5.3-codex", nil, OpenAIUpstreamTransportAny, false)
 	require.NoError(t, err)
 	require.NotNil(t, first)
 	require.NotNil(t, first.Account)
@@ -408,7 +443,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_RoundRobinIgnoresSticky
 		first.ReleaseFunc()
 	}
 
-	second, _, err := svc.SelectAccountWithScheduler(ctx, &groupID, "resp_rr_001", "rr-sticky", "gpt-5.1", nil, OpenAIUpstreamTransportAny, false)
+	second, _, err := svc.SelectAccountWithScheduler(ctx, &groupID, "resp_rr_001", "rr-sticky", "gpt-5.3-codex", nil, OpenAIUpstreamTransportAny, false)
 	require.NoError(t, err)
 	require.NotNil(t, second)
 	require.NotNil(t, second.Account)
@@ -437,7 +472,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_RoundRobinSkipsExcluded
 		&groupID,
 		"",
 		"",
-		"gpt-5.1",
+		"gpt-5.3-codex",
 		map[int64]struct{}{54001: {}},
 		OpenAIUpstreamTransportAny,
 		false,
@@ -467,7 +502,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_RoundRobinReturnsAcquir
 		rateLimitService: newOpenAISchedulerRateLimitService("false", "true"),
 	}
 
-	selection, decision, err := svc.SelectAccountWithScheduler(ctx, &groupID, "", "", "gpt-5.1", nil, OpenAIUpstreamTransportAny, false)
+	selection, decision, err := svc.SelectAccountWithScheduler(ctx, &groupID, "", "", "gpt-5.3-codex", nil, OpenAIUpstreamTransportAny, false)
 	require.ErrorIs(t, err, acquireErr)
 	require.Nil(t, selection)
 	require.Equal(t, openAIAccountScheduleLayerRoundRobin, decision.Layer)

@@ -87,6 +87,11 @@ func (s *OpenAIGatewayService) getOpenAIRoundRobinScheduler(ctx context.Context)
 	return s.openaiRoundRobinScheduler
 }
 
+func shouldUseOpenAIRoundRobinForModel(requestedModel string) bool {
+	normalized := normalizeKnownOpenAICodexModel(requestedModel)
+	return normalized != "" && strings.Contains(normalized, "codex")
+}
+
 func resetOpenAIRoundRobinSchedulerSettingCacheForTest() {
 	openAIRoundRobinSchedulerSettingCache = atomic.Value{}
 	openAIRoundRobinSchedulerSettingSF = singleflight.Group{}

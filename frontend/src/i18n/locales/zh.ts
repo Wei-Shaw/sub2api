@@ -6159,7 +6159,7 @@ export default {
       },
       openaiRoundRobinScheduler: {
         title: 'OpenAI Round-Robin 轮询调度',
-        description: '默认关闭。仅在实验调度关闭时生效；每次请求都会在可用 OpenAI 账号池中推进游标。'
+        description: '默认关闭。仅在实验调度关闭时，对 Codex 账号路由生效；每次请求都会在可用账号池中推进游标。'
       },
       saveSettings: '保存设置',
       saving: '保存中...',

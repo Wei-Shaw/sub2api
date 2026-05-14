@@ -5999,7 +5999,7 @@ export default {
       },
       openaiRoundRobinScheduler: {
         title: 'OpenAI round-robin scheduler',
-        description: 'Disabled by default. Takes effect only when the experimental scheduler is off; each request advances a cursor across eligible OpenAI accounts.'
+        description: 'Disabled by default. Takes effect only for Codex account routing when the experimental scheduler is off; each request advances a cursor across eligible accounts.'
       },
       saveSettings: 'Save Settings',
       saving: 'Saving...',
