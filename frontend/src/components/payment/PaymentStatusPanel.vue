@@ -105,7 +105,11 @@
         <div class="flex flex-col items-center space-y-4 py-4">
           <div class="h-10 w-10 animate-spin rounded-full border-4 border-primary-500 border-t-transparent"></div>
           <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('payment.qr.payInNewWindowHint') }}</p>
-          <button v-if="payUrl" class="btn btn-secondary text-sm" @click="reopenPopup">
+          <template v-if="popupBlocked">
+            <p class="text-xs text-amber-600 dark:text-amber-400">{{ t('payment.qr.popupBlocked') || '弹窗被浏览器阻止，请点击下方链接完成支付' }}</p>
+            <a v-if="payUrl" :href="payUrl" target="_blank" rel="noopener" class="btn btn-secondary text-sm">{{ t('payment.qr.openPayWindow') }}</a>
+          </template>
+          <button v-else-if="payUrl" class="btn btn-secondary text-sm" @click="reopenPopup">
             {{ t('payment.qr.openPayWindow') }}
           </button>
         </div>
@@ -218,13 +222,19 @@ function isSuccessStatus(status: string | null | undefined): boolean {
   return status === 'COMPLETED' || status === 'PAID' || status === 'RECHARGING'
 }
 
+const popupBlocked = ref(false)
+
 function reopenPopup() {
   if (props.payUrl) {
     const win = window.open(props.payUrl, 'paymentPopup', getPaymentPopupFeatures())
     if (!win || win.closed) {
-      window.location.href = props.payUrl
+      popupBlocked.value = true
+      return false
     }
+    popupBlocked.value = false
+    return true
   }
+  return false
 }
 
 function setOutcome(next: PaymentOutcome) {
@@ -300,6 +310,8 @@ startCountdown(seconds)
 pollTimer = setInterval(pollStatus, 3000)
 if (!shouldOpenAlipayPopup.value) {
   renderQR()
+} else {
+  reopenPopup()
 }
 
 watch(() => qrUrl.value, () => renderQR())
