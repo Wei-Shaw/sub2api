@@ -339,7 +339,12 @@ export default {
         minutes: '{m}m',
         withSuffix: '{time} to lift'
       }
-    }
+    },
+    groupOption: {
+      discountOriginal: 'List price',
+      discountFormat: '{value}× off',
+      cacheFormat: 'Cache {pct}%'
+    },
   },
 
   // Navigation

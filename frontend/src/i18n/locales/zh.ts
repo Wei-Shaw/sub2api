@@ -339,7 +339,12 @@ export default {
         minutes: '{m}m',
         withSuffix: '{time} 后解除'
       }
-    }
+    },
+    groupOption: {
+      discountOriginal: '原价',
+      discountFormat: '{value}折',
+      cacheFormat: '缓存 {pct}%'
+    },
   },
 
   // Navigation
