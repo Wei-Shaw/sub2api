@@ -111,8 +111,12 @@ COPY --from=pg-client /usr/local/lib/libpq.so.5* /usr/local/lib/
 RUN addgroup -g 1000 sub2api && \
     adduser -u 1000 -G sub2api -s /bin/sh -D sub2api
 
-# Set working directory
+# Set working directory and make it writable by sub2api so the in-place
+# update mechanism (UpdateService.PerformUpdate) can create temp dirs and
+# rename the binary atomically. Without this /app remains root:root and
+# the update fails with "permission denied".
 WORKDIR /app
+RUN chown sub2api:sub2api /app
 
 # Copy binary/resources with ownership to avoid extra full-layer chown copy
 COPY --from=backend-builder --chown=sub2api:sub2api /app/sub2api /app/sub2api

@@ -35,6 +35,23 @@ services:
       # gateway.forced_codex_instructions_template_file at /app/data/codex-instructions.md.tmpl
       # in config.yaml.
       # - ./codex-instructions.md.tmpl:/app/data/codex-instructions.md.tmpl:ro
+      #
+      # Optional: persist one-click in-place updates across `docker compose
+      # down && up` (i.e. across container *recreates*). Without this mount,
+      # the in-place update survives container restarts (same container
+      # instance), but is reset to the image baseline whenever the container
+      # is recreated from the image. Workflow:
+      #   1) Create an empty host file first so Docker mounts it as a file,
+      #      not as a directory:
+      #         touch ./sub2api-bin   # then run the container once; the
+      #                               # entrypoint will fail to exec an
+      #                               # empty file, so prefer step 2:
+      #   2) Or copy the image's binary out first, then mount:
+      #         docker create --name _tmp ghcr.io/hongheshan-svg/sub2api:latest
+      #         docker cp _tmp:/app/sub2api ./sub2api-bin
+      #         docker rm _tmp
+      # Then uncomment:
+      # - ./sub2api-bin:/app/sub2api
     environment:
       # =======================================================================
       # Auto Setup (REQUIRED for Docker deployment)

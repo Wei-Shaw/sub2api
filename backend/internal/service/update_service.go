@@ -17,6 +17,30 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+)
+
+// Update-specific structured errors. These give the frontend a stable
+// reason code and a non-500 status when the failure is expected (e.g.
+// running a source build, missing platform asset, read-only filesystem).
+var (
+	ErrUpdateBuildTypeNotRelease = infraerrors.BadRequest(
+		"UPDATE_BUILD_TYPE_NOT_RELEASE",
+		"one-click update is only available for release builds; please update from source via git pull",
+	)
+	ErrUpdateNoCompatibleAsset = infraerrors.NotFound(
+		"UPDATE_NO_COMPATIBLE_ASSET",
+		"no pre-built binary asset was found for the current platform in the latest release",
+	)
+	ErrUpdateExeDirNotWritable = infraerrors.Forbidden(
+		"UPDATE_EXE_DIR_NOT_WRITABLE",
+		"the directory containing the running binary is not writable by the current user; in-place update cannot proceed",
+	)
+	ErrUpdateNoUpdateAvailable = infraerrors.BadRequest(
+		"UPDATE_NO_UPDATE_AVAILABLE",
+		"no update available",
+	)
 )
 
 const (
@@ -140,13 +164,19 @@ func (s *UpdateService) CheckUpdate(ctx context.Context, force bool) (*UpdateInf
 // PerformUpdate downloads and applies the update
 // Uses atomic file replacement pattern for safe in-place updates
 func (s *UpdateService) PerformUpdate(ctx context.Context) error {
+	// Preflight 1: only release builds support in-place update. Source builds
+	// must be updated via git pull + rebuild — there is no binary to replace.
+	if s.buildType != "release" {
+		return ErrUpdateBuildTypeNotRelease
+	}
+
 	info, err := s.CheckUpdate(ctx, true)
 	if err != nil {
 		return err
 	}
 
 	if !info.HasUpdate {
-		return fmt.Errorf("no update available")
+		return ErrUpdateNoUpdateAvailable
 	}
 
 	// Find matching archive and checksum for current platform
@@ -163,8 +193,13 @@ func (s *UpdateService) PerformUpdate(ctx context.Context) error {
 		}
 	}
 
+	// Preflight 2: ensure the release actually contains a binary for this platform.
+	// Fail with a structured 404 so the frontend can show a clear message.
 	if downloadURL == "" {
-		return fmt.Errorf("no compatible release found for %s/%s", runtime.GOOS, runtime.GOARCH)
+		return ErrUpdateNoCompatibleAsset.WithMetadata(map[string]string{
+			"platform":     runtime.GOOS + "/" + runtime.GOARCH,
+			"archive_name": archiveName,
+		})
 	}
 
 	// SECURITY: Validate download URL is from trusted domain
@@ -188,6 +223,17 @@ func (s *UpdateService) PerformUpdate(ctx context.Context) error {
 	}
 
 	exeDir := filepath.Dir(exePath)
+
+	// Preflight 3: verify the directory containing the running binary is
+	// writable. If not, fail fast with a 403 and a clear remediation hint
+	// rather than after downloading hundreds of MB.
+	if err := checkDirWritable(exeDir); err != nil {
+		return ErrUpdateExeDirNotWritable.WithMetadata(map[string]string{
+			"exe_dir":   exeDir,
+			"exe_path":  exePath,
+			"underlying": err.Error(),
+		})
+	}
 
 	// Create temp directory in the SAME directory as executable
 	// This ensures os.Rename is atomic (same filesystem)
@@ -314,6 +360,21 @@ func (s *UpdateService) getArchiveName() string {
 	osName := runtime.GOOS
 	arch := runtime.GOARCH
 	return fmt.Sprintf("%s_%s", osName, arch)
+}
+
+// checkDirWritable verifies that the current process can create new files
+// inside dir. It probes by creating and immediately removing a temp file,
+// which is the only reliable cross-platform way to test write+execute
+// permission on the directory (stat(2) bits can lie under ACLs / overlayfs).
+func checkDirWritable(dir string) error {
+	f, err := os.CreateTemp(dir, ".sub2api-writecheck-*")
+	if err != nil {
+		return err
+	}
+	name := f.Name()
+	_ = f.Close()
+	_ = os.Remove(name)
+	return nil
 }
 
 // validateDownloadURL checks if the URL is from an allowed domain
