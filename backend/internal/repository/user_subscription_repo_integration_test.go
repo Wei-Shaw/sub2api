@@ -338,9 +338,11 @@ func (s *UserSubscriptionRepoSuite) TestIncrementUsage() {
 
 	got, err := s.repo.GetByID(s.ctx, sub.ID)
 	s.Require().NoError(err)
+	s.Require().InDelta(1.25, got.FiveHourUsageUSD, 1e-6)
 	s.Require().InDelta(1.25, got.DailyUsageUSD, 1e-6)
 	s.Require().InDelta(1.25, got.WeeklyUsageUSD, 1e-6)
 	s.Require().InDelta(1.25, got.MonthlyUsageUSD, 1e-6)
+	s.Require().NotNil(got.FiveHourWindowStart)
 }
 
 func (s *UserSubscriptionRepoSuite) TestIncrementUsage_Accumulates() {
@@ -353,7 +355,27 @@ func (s *UserSubscriptionRepoSuite) TestIncrementUsage_Accumulates() {
 
 	got, err := s.repo.GetByID(s.ctx, sub.ID)
 	s.Require().NoError(err)
+	s.Require().InDelta(3.5, got.FiveHourUsageUSD, 1e-6)
 	s.Require().InDelta(3.5, got.DailyUsageUSD, 1e-6)
+}
+
+func (s *UserSubscriptionRepoSuite) TestIncrementUsage_ExpiredFiveHourWindowResetsUsage() {
+	user := s.mustCreateUser("expired5h@test.com", service.RoleUser)
+	group := s.mustCreateGroup("g-expired5h")
+	oldStart := time.Now().Add(-6 * time.Hour)
+	sub := s.mustCreateSubscription(user.ID, group.ID, func(c *dbent.UserSubscriptionCreate) {
+		c.SetFiveHourWindowStart(oldStart)
+		c.SetFiveHourUsageUsd(9.0)
+	})
+
+	s.Require().NoError(s.repo.IncrementUsage(s.ctx, sub.ID, 1.25))
+
+	got, err := s.repo.GetByID(s.ctx, sub.ID)
+	s.Require().NoError(err)
+	s.Require().InDelta(1.25, got.FiveHourUsageUSD, 1e-6)
+	s.Require().NotNil(got.FiveHourWindowStart)
+	s.Require().True(got.FiveHourWindowStart.After(oldStart))
+	s.Require().InDelta(1.25, got.DailyUsageUSD, 1e-6)
 }
 
 func (s *UserSubscriptionRepoSuite) TestActivateWindows() {
@@ -361,16 +383,39 @@ func (s *UserSubscriptionRepoSuite) TestActivateWindows() {
 	group := s.mustCreateGroup("g-activate")
 	sub := s.mustCreateSubscription(user.ID, group.ID, nil)
 
-	activateAt := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
-	err := s.repo.ActivateWindows(s.ctx, sub.ID, activateAt)
+	fiveHourActivateAt := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	activateAt := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	err := s.repo.ActivateWindows(s.ctx, sub.ID, fiveHourActivateAt, activateAt)
 	s.Require().NoError(err, "ActivateWindows")
 
 	got, err := s.repo.GetByID(s.ctx, sub.ID)
 	s.Require().NoError(err)
+	s.Require().NotNil(got.FiveHourWindowStart)
 	s.Require().NotNil(got.DailyWindowStart)
 	s.Require().NotNil(got.WeeklyWindowStart)
 	s.Require().NotNil(got.MonthlyWindowStart)
+	s.Require().WithinDuration(fiveHourActivateAt, *got.FiveHourWindowStart, time.Microsecond)
 	s.Require().WithinDuration(activateAt, *got.DailyWindowStart, time.Microsecond)
+}
+
+func (s *UserSubscriptionRepoSuite) TestResetFiveHourUsage() {
+	user := s.mustCreateUser("reset5h@test.com", service.RoleUser)
+	group := s.mustCreateGroup("g-reset5h")
+	sub := s.mustCreateSubscription(user.ID, group.ID, func(c *dbent.UserSubscriptionCreate) {
+		c.SetFiveHourUsageUsd(10.0)
+		c.SetDailyUsageUsd(20.0)
+	})
+
+	resetAt := time.Date(2025, 1, 2, 12, 0, 0, 0, time.UTC)
+	err := s.repo.ResetFiveHourUsage(s.ctx, sub.ID, resetAt)
+	s.Require().NoError(err, "ResetFiveHourUsage")
+
+	got, err := s.repo.GetByID(s.ctx, sub.ID)
+	s.Require().NoError(err)
+	s.Require().InDelta(0.0, got.FiveHourUsageUSD, 1e-6)
+	s.Require().InDelta(20.0, got.DailyUsageUSD, 1e-6)
+	s.Require().NotNil(got.FiveHourWindowStart)
+	s.Require().WithinDuration(resetAt, *got.FiveHourWindowStart, time.Microsecond)
 }
 
 func (s *UserSubscriptionRepoSuite) TestResetDailyUsage() {
@@ -604,11 +649,12 @@ func (s *UserSubscriptionRepoSuite) TestActiveExpiredBoundaries_UsageAndReset_Ba
 	s.Require().Equal(active.ID, got.ID, "expected active subscription")
 
 	activateAt := time.Now().Add(-25 * time.Hour)
-	s.Require().NoError(s.repo.ActivateWindows(s.ctx, active.ID, activateAt), "ActivateWindows")
+	s.Require().NoError(s.repo.ActivateWindows(s.ctx, active.ID, activateAt, activateAt), "ActivateWindows")
 	s.Require().NoError(s.repo.IncrementUsage(s.ctx, active.ID, 1.25), "IncrementUsage")
 
 	after, err := s.repo.GetByID(s.ctx, active.ID)
 	s.Require().NoError(err, "GetByID")
+	s.Require().InDelta(1.25, after.FiveHourUsageUSD, 1e-6)
 	s.Require().InDelta(1.25, after.DailyUsageUSD, 1e-6)
 	s.Require().InDelta(1.25, after.WeeklyUsageUSD, 1e-6)
 	s.Require().InDelta(1.25, after.MonthlyUsageUSD, 1e-6)
@@ -699,8 +745,10 @@ func (s *UserSubscriptionRepoSuite) TestIncrementUsage_Concurrent() {
 	s.Require().NoError(err)
 	expectedUsage := float64(numGoroutines) * incrementPerGoroutine
 	s.Require().InDelta(expectedUsage, got.DailyUsageUSD, 1e-6, "daily usage should be correctly accumulated")
+	s.Require().InDelta(expectedUsage, got.FiveHourUsageUSD, 1e-6, "five-hour usage should be correctly accumulated")
 	s.Require().InDelta(expectedUsage, got.WeeklyUsageUSD, 1e-6, "weekly usage should be correctly accumulated")
 	s.Require().InDelta(expectedUsage, got.MonthlyUsageUSD, 1e-6, "monthly usage should be correctly accumulated")
+	s.Require().NotNil(got.FiveHourWindowStart, "five-hour window should be activated atomically")
 }
 
 func (s *UserSubscriptionRepoSuite) TestTxContext_RollbackIsolation() {

@@ -11,17 +11,19 @@ import (
 
 // SubscriptionSummaryItem represents a subscription item in summary
 type SubscriptionSummaryItem struct {
-	ID              int64   `json:"id"`
-	GroupID         int64   `json:"group_id"`
-	GroupName       string  `json:"group_name"`
-	Status          string  `json:"status"`
-	DailyUsedUSD    float64 `json:"daily_used_usd,omitempty"`
-	DailyLimitUSD   float64 `json:"daily_limit_usd,omitempty"`
-	WeeklyUsedUSD   float64 `json:"weekly_used_usd,omitempty"`
-	WeeklyLimitUSD  float64 `json:"weekly_limit_usd,omitempty"`
-	MonthlyUsedUSD  float64 `json:"monthly_used_usd,omitempty"`
-	MonthlyLimitUSD float64 `json:"monthly_limit_usd,omitempty"`
-	ExpiresAt       *string `json:"expires_at,omitempty"`
+	ID               int64   `json:"id"`
+	GroupID          int64   `json:"group_id"`
+	GroupName        string  `json:"group_name"`
+	Status           string  `json:"status"`
+	FiveHourUsedUSD  float64 `json:"five_hour_used_usd,omitempty"`
+	FiveHourLimitUSD float64 `json:"five_hour_limit_usd,omitempty"`
+	DailyUsedUSD     float64 `json:"daily_used_usd,omitempty"`
+	DailyLimitUSD    float64 `json:"daily_limit_usd,omitempty"`
+	WeeklyUsedUSD    float64 `json:"weekly_used_usd,omitempty"`
+	WeeklyLimitUSD   float64 `json:"weekly_limit_usd,omitempty"`
+	MonthlyUsedUSD   float64 `json:"monthly_used_usd,omitempty"`
+	MonthlyLimitUSD  float64 `json:"monthly_limit_usd,omitempty"`
+	ExpiresAt        *string `json:"expires_at,omitempty"`
 }
 
 // SubscriptionProgressInfo represents subscription with progress info
@@ -140,17 +142,21 @@ func (h *SubscriptionHandler) GetSummary(c *gin.Context) {
 
 	for _, sub := range subscriptions {
 		item := SubscriptionSummaryItem{
-			ID:             sub.ID,
-			GroupID:        sub.GroupID,
-			Status:         sub.Status,
-			DailyUsedUSD:   sub.DailyUsageUSD,
-			WeeklyUsedUSD:  sub.WeeklyUsageUSD,
-			MonthlyUsedUSD: sub.MonthlyUsageUSD,
+			ID:              sub.ID,
+			GroupID:         sub.GroupID,
+			Status:          sub.Status,
+			FiveHourUsedUSD: sub.FiveHourUsageUSD,
+			DailyUsedUSD:    sub.DailyUsageUSD,
+			WeeklyUsedUSD:   sub.WeeklyUsageUSD,
+			MonthlyUsedUSD:  sub.MonthlyUsageUSD,
 		}
 
 		// Add group info if preloaded
 		if sub.Group != nil {
 			item.GroupName = sub.Group.Name
+			if sub.Group.FiveHourLimitUSD != nil {
+				item.FiveHourLimitUSD = *sub.Group.FiveHourLimitUSD
+			}
 			if sub.Group.DailyLimitUSD != nil {
 				item.DailyLimitUSD = *sub.Group.DailyLimitUSD
 			}
