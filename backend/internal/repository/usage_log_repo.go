@@ -1,13 +1,17 @@
 package repository
 
 import (
+	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/internal/payment"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	gocache "github.com/patrickmn/go-cache"
 )
@@ -162,6 +166,105 @@ func newUsageLogRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *usage
 	}
 	repo.bestEffortRecent = gocache.New(usageLogBestEffortRecentTTL, time.Minute)
 	return repo
+}
+
+const creditUsageUnitScale = 10000.0
+
+// GetUserCreditUsageSummary reconstructs aggregate credit usage from existing monetary ledgers.
+// It intentionally does not allocate balance consumption to a specific purchased package: usage_logs
+// do not store payment_order_id/balance_package_id, so this endpoint is an aggregate estimate surface.
+func (r *usageLogRepository) GetUserCreditUsageSummary(ctx context.Context, userID int64) (*usagestats.CreditUsageSummary, error) {
+	var balanceLedger float64
+	if err := scanSingleRow(ctx, r.sql, `
+		SELECT COALESCE(balance, 0)
+		FROM users
+		WHERE id = $1 AND deleted_at IS NULL
+	`, []any{userID}, &balanceLedger); err != nil {
+		return nil, fmt.Errorf("query user balance: %w", err)
+	}
+
+	summary := &usagestats.CreditUsageSummary{
+		UserID:              userID,
+		CreditUnitScale:     creditUsageUnitScale,
+		BalanceLedgerAmount: balanceLedger,
+		Accuracy:            "aggregate_estimate",
+		AccuracyNotes: []string{
+			"used credits are reconstructed from usage_logs.actual_cost / usage_logs.rate_multiplier * 10000",
+			"purchased credits are reconstructed from completed balance payment_orders.ledger_amount and the current group rate_multiplier",
+			"remaining credits are estimates because user balance is a single ledger balance and usage logs are not linked to a payment_order_id or balance_package_id",
+		},
+	}
+
+	if err := r.populateUserCreditUsageTotals(ctx, summary); err != nil {
+		return nil, err
+	}
+	if err := r.populateUserCreditPurchaseGroups(ctx, summary); err != nil {
+		return nil, err
+	}
+	return summary, nil
+}
+
+func (r *usageLogRepository) populateUserCreditUsageTotals(ctx context.Context, summary *usagestats.CreditUsageSummary) error {
+	query := `
+		SELECT
+			COUNT(*),
+			COALESCE(SUM(actual_cost), 0),
+			COALESCE(SUM(CASE WHEN rate_multiplier > 0 THEN actual_cost / rate_multiplier * $2 ELSE 0 END), 0)
+		FROM usage_logs
+		WHERE user_id = $1
+	`
+	if err := scanSingleRow(ctx, r.sql, query, []any{summary.UserID, creditUsageUnitScale}, &summary.UsageLogCount, &summary.TotalUsedLedgerAmount, &summary.TotalUsedCredits); err != nil {
+		return fmt.Errorf("query user credit usage totals: %w", err)
+	}
+	return nil
+}
+
+func (r *usageLogRepository) populateUserCreditPurchaseGroups(ctx context.Context, summary *usagestats.CreditUsageSummary) (err error) {
+	query := `
+		SELECT
+			COALESCE(po.balance_group_id, 0) AS group_id,
+			COALESCE(g.name, '') AS group_name,
+			COALESCE(g.rate_multiplier, 0) AS rate_multiplier,
+			COALESCE(SUM(po.ledger_amount), 0) AS purchased_ledger_amount,
+			COALESCE(SUM(CASE WHEN po.balance_group_id IS NOT NULL AND g.rate_multiplier > 0 THEN po.ledger_amount / g.rate_multiplier * $2 ELSE 0 END), 0) AS purchased_credits
+		FROM payment_orders po
+		LEFT JOIN groups g ON g.id = po.balance_group_id
+		WHERE po.user_id = $1
+			AND po.order_type = $3
+			AND po.status = $4
+		GROUP BY COALESCE(po.balance_group_id, 0), COALESCE(g.name, ''), COALESCE(g.rate_multiplier, 0)
+		ORDER BY group_id
+	`
+	rows, err := r.sql.QueryContext(ctx, query, summary.UserID, creditUsageUnitScale, payment.OrderTypeBalance, payment.OrderStatusCompleted)
+	if err != nil {
+		return fmt.Errorf("query user credit purchase groups: %w", err)
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			err = errors.Join(err, closeErr)
+		}
+	}()
+
+	estimates := make([]usagestats.CreditUsageGroupEstimate, 0)
+	for rows.Next() {
+		var estimate usagestats.CreditUsageGroupEstimate
+		if err := rows.Scan(&estimate.GroupID, &estimate.GroupName, &estimate.RateMultiplier, &estimate.PurchasedLedgerAmount, &estimate.PurchasedCredits); err != nil {
+			return fmt.Errorf("scan user credit purchase group: %w", err)
+		}
+		summary.TotalPurchasedLedgerAmount += estimate.PurchasedLedgerAmount
+		summary.TotalPurchasedCredits += estimate.PurchasedCredits
+		if estimate.GroupID == 0 || estimate.RateMultiplier <= 0 {
+			summary.UnassignedPurchasedLedgerAmount += estimate.PurchasedLedgerAmount
+			continue
+		}
+		estimate.RemainingCredits = summary.BalanceLedgerAmount / estimate.RateMultiplier * creditUsageUnitScale
+		estimates = append(estimates, estimate)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate user credit purchase groups: %w", err)
+	}
+	summary.GroupEstimates = estimates
+	return nil
 }
 
 func buildWhere(conditions []string) string {

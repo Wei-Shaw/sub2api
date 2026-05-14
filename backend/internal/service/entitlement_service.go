@@ -7,7 +7,9 @@ import (
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 )
 
 var (
@@ -28,26 +30,40 @@ type EntitlementFallback struct {
 	TargetGroup *Group  `json:"target_group,omitempty"`
 }
 
+type EntitlementCreditQuota struct {
+	PurchasedLedgerAmount float64  `json:"purchased_ledger_amount"`
+	PurchasedCredits      float64  `json:"purchased_credits"`
+	UsedLedgerAmount      float64  `json:"used_ledger_amount"`
+	UsedCredits           float64  `json:"used_credits"`
+	RemainingCredits      float64  `json:"remaining_credits"`
+	UsedPercent           float64  `json:"used_percent"`
+	NearLimit             bool     `json:"near_limit"`
+	CreditUnitScale       float64  `json:"credit_unit_scale"`
+	Accuracy              string   `json:"accuracy,omitempty"`
+	AccuracyNotes         []string `json:"accuracy_notes,omitempty"`
+}
+
 type EntitlementItem struct {
-	GroupID              int64      `json:"group_id"`
-	GroupName            string     `json:"group_name"`
-	GroupPlatform        string     `json:"group_platform,omitempty"`
-	Mode                 string     `json:"mode"`
-	Status               string     `json:"status"`
-	StartsAt             *time.Time `json:"starts_at,omitempty"`
-	ExpiresAt            *time.Time `json:"expires_at,omitempty"`
-	DailyUsageUSD        float64    `json:"daily_usage_usd"`
-	WeeklyUsageUSD       float64    `json:"weekly_usage_usd"`
-	MonthlyUsageUSD      float64    `json:"monthly_usage_usd"`
-	DailyLimitUSD        *float64   `json:"daily_limit_usd,omitempty"`
-	WeeklyLimitUSD       *float64   `json:"weekly_limit_usd,omitempty"`
-	MonthlyLimitUSD      *float64   `json:"monthly_limit_usd,omitempty"`
-	RateMultiplier       float64    `json:"rate_multiplier"`
-	SupportedModelScopes []string   `json:"supported_model_scopes,omitempty"`
-	Switchable           bool       `json:"switchable"`
-	Current              bool       `json:"current"`
-	SubscriptionID       *int64     `json:"subscription_id,omitempty"`
-	FallbackGroupID      *int64     `json:"fallback_group_id,omitempty"`
+	GroupID              int64                   `json:"group_id"`
+	GroupName            string                  `json:"group_name"`
+	GroupPlatform        string                  `json:"group_platform,omitempty"`
+	Mode                 string                  `json:"mode"`
+	Status               string                  `json:"status"`
+	StartsAt             *time.Time              `json:"starts_at,omitempty"`
+	ExpiresAt            *time.Time              `json:"expires_at,omitempty"`
+	DailyUsageUSD        float64                 `json:"daily_usage_usd"`
+	WeeklyUsageUSD       float64                 `json:"weekly_usage_usd"`
+	MonthlyUsageUSD      float64                 `json:"monthly_usage_usd"`
+	DailyLimitUSD        *float64                `json:"daily_limit_usd,omitempty"`
+	WeeklyLimitUSD       *float64                `json:"weekly_limit_usd,omitempty"`
+	MonthlyLimitUSD      *float64                `json:"monthly_limit_usd,omitempty"`
+	RateMultiplier       float64                 `json:"rate_multiplier"`
+	SupportedModelScopes []string                `json:"supported_model_scopes,omitempty"`
+	Switchable           bool                    `json:"switchable"`
+	Current              bool                    `json:"current"`
+	SubscriptionID       *int64                  `json:"subscription_id,omitempty"`
+	FallbackGroupID      *int64                  `json:"fallback_group_id,omitempty"`
+	CreditQuota          *EntitlementCreditQuota `json:"credit_quota,omitempty"`
 }
 
 type EntitlementCurrent struct {
@@ -63,10 +79,11 @@ type EntitlementCurrent struct {
 }
 
 type EntitlementState struct {
-	Current      *EntitlementCurrent `json:"current,omitempty"`
-	APIKey       *APIKey             `json:"api_key,omitempty"`
-	Entitlements []EntitlementItem   `json:"entitlements"`
-	Fallback     EntitlementFallback `json:"fallback"`
+	Current      *EntitlementCurrent            `json:"current,omitempty"`
+	APIKey       *APIKey                        `json:"api_key,omitempty"`
+	Entitlements []EntitlementItem              `json:"entitlements"`
+	Fallback     EntitlementFallback            `json:"fallback"`
+	CreditUsage  *usagestats.CreditUsageSummary `json:"credit_usage,omitempty"`
 }
 
 type SwitchEntitlementRequest struct {
@@ -85,6 +102,7 @@ type EntitlementService struct {
 	apiKeySvc   entitlementAPIKeyUpdater
 	apiKeyRepo  entitlementAPIKeyRepository
 	userSubRepo entitlementUserSubscriptionRepository
+	usageRepo   entitlementUsageRepository
 }
 
 type entitlementUserRepository interface {
@@ -107,8 +125,25 @@ type entitlementUserSubscriptionRepository interface {
 	ListByUserID(ctx context.Context, userID int64) ([]UserSubscription, error)
 }
 
+// entitlementUsageRepository is the narrow contract EntitlementService needs from the usage log
+// repository. It is intentionally small so service tests can stub credit usage without pulling in
+// the full UsageLogRepository surface.
+type entitlementUsageRepository interface {
+	GetUserCreditUsageSummary(ctx context.Context, userID int64) (*usagestats.CreditUsageSummary, error)
+}
+
 func NewEntitlementService(userRepo entitlementUserRepository, groupRepo entitlementGroupRepository, apiKeySvc entitlementAPIKeyUpdater, apiKeyRepo entitlementAPIKeyRepository, userSubRepo entitlementUserSubscriptionRepository) *EntitlementService {
 	return &EntitlementService{userRepo: userRepo, groupRepo: groupRepo, apiKeySvc: apiKeySvc, apiKeyRepo: apiKeyRepo, userSubRepo: userSubRepo}
+}
+
+// SetUsageRepository wires the optional credit usage repository. When set, GetUserEntitlements will
+// best-effort attach aggregate credit usage to the response. Errors from this repository never fail
+// the entitlement response itself; they are logged and the credit_usage field is left empty.
+func (s *EntitlementService) SetUsageRepository(repo entitlementUsageRepository) {
+	if s == nil {
+		return
+	}
+	s.usageRepo = repo
 }
 
 func (s *EntitlementService) GetUserEntitlements(ctx context.Context, userID int64) (*EntitlementState, error) {
@@ -177,7 +212,100 @@ func (s *EntitlementService) GetUserEntitlements(ctx context.Context, userID int
 			}
 		}
 	}
+
+	s.attachCreditUsage(ctx, state, userID)
+
 	return state, nil
+}
+
+const entitlementCreditNearLimitPercent = 80.0
+
+// attachCreditUsage best-effort hydrates aggregate CreditUsage on the state and per-balance-group
+// credit_quota on each balance entitlement item. It deliberately swallows repository errors and
+// logs them: credit usage is presentation/quota-progress data, not authorization, so a transient
+// SQL failure must not break entitlement listing/switching.
+func (s *EntitlementService) attachCreditUsage(ctx context.Context, state *EntitlementState, userID int64) {
+	if s == nil || s.usageRepo == nil || state == nil {
+		return
+	}
+	summary, err := s.usageRepo.GetUserCreditUsageSummary(ctx, userID)
+	if err != nil {
+		logger.LegacyPrintf("service.entitlement", "credit usage summary lookup failed for user %d: %v", userID, err)
+		return
+	}
+	if summary == nil {
+		return
+	}
+	state.CreditUsage = summary
+
+	// Index group estimates so each balance entitlement can render exact remaining/percent without
+	// re-querying. Only balance/credit groups participate; subscription groups still rely on
+	// daily/weekly/monthly USD counters.
+	estimates := make(map[int64]usagestats.CreditUsageGroupEstimate, len(summary.GroupEstimates))
+	for _, est := range summary.GroupEstimates {
+		if est.GroupID == 0 {
+			continue
+		}
+		estimates[est.GroupID] = est
+	}
+
+	totalPurchasedCredits := summary.TotalPurchasedCredits
+	totalUsedCredits := summary.TotalUsedCredits
+	for i := range state.Entitlements {
+		item := &state.Entitlements[i]
+		if item.Mode != EntitlementModeBalance {
+			continue
+		}
+		est, ok := estimates[item.GroupID]
+		if !ok {
+			continue
+		}
+		quota := buildEntitlementCreditQuota(est, totalPurchasedCredits, totalUsedCredits, summary.TotalUsedLedgerAmount, summary.CreditUnitScale)
+		item.CreditQuota = quota
+	}
+}
+
+func buildEntitlementCreditQuota(est usagestats.CreditUsageGroupEstimate, totalPurchasedCredits, totalUsedCredits, totalUsedLedger, creditUnitScale float64) *EntitlementCreditQuota {
+	// Each balance group's purchased credits comes from immutable payment_orders rows; allocation
+	// of usage to a specific group is not tracked, so we approximate per-group used credits as a
+	// share of aggregate used credits proportional to purchased credits. This is the same accuracy
+	// caveat documented in the credit-usage skill — use accuracy=aggregate_estimate downstream.
+	usedShareCredits := 0.0
+	usedShareLedger := 0.0
+	if totalPurchasedCredits > 0 && est.PurchasedCredits > 0 {
+		share := est.PurchasedCredits / totalPurchasedCredits
+		usedShareCredits = totalUsedCredits * share
+		usedShareLedger = totalUsedLedger * share
+	}
+	remaining := est.PurchasedCredits - usedShareCredits
+	if remaining < 0 {
+		remaining = 0
+	}
+	percent := 0.0
+	if est.PurchasedCredits > 0 {
+		percent = usedShareCredits / est.PurchasedCredits * 100.0
+		if percent < 0 {
+			percent = 0
+		}
+		if percent > 100 {
+			percent = 100
+		}
+	}
+	return &EntitlementCreditQuota{
+		PurchasedLedgerAmount: est.PurchasedLedgerAmount,
+		PurchasedCredits:      est.PurchasedCredits,
+		UsedLedgerAmount:      usedShareLedger,
+		UsedCredits:           usedShareCredits,
+		RemainingCredits:      remaining,
+		UsedPercent:           percent,
+		NearLimit:             percent >= entitlementCreditNearLimitPercent,
+		CreditUnitScale:       creditUnitScale,
+		Accuracy:              "aggregate_estimate",
+		AccuracyNotes: []string{
+			"used credits per group are proportional shares of aggregate usage; usage_logs do not track payment_order_id/balance_package_id",
+			"remaining credits drift if admin edits group rate_multiplier after purchase; snapshot actual_credits + group_rate_multiplier in payment_orders.provider_snapshot for stable accuracy",
+		},
+	}
 }
 
 func (s *EntitlementService) RefreshUserEntitlements(ctx context.Context, userID int64) (*EntitlementState, error) {

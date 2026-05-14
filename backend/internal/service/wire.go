@@ -281,8 +281,13 @@ func ProvideEntitlementService(
 	apiKeyService *APIKeyService,
 	apiKeyRepo APIKeyRepository,
 	userSubRepo UserSubscriptionRepository,
+	usageRepo UsageLogRepository,
 ) *EntitlementService {
-	return NewEntitlementService(userRepo, groupRepo, apiKeyService, apiKeyRepo, userSubRepo)
+	svc := NewEntitlementService(userRepo, groupRepo, apiKeyService, apiKeyRepo, userSubRepo)
+	if usageRepo != nil {
+		svc.SetUsageRepository(usageRepo)
+	}
+	return svc
 }
 
 // ProvideDashboardAggregationService 创建并启动仪表盘聚合服务

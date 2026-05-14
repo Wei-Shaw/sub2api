@@ -538,6 +538,65 @@ func TestAPIContracts(t *testing.T) {
 			}`,
 		},
 		{
+			name: "GET /api/v1/usage/credit-usage",
+			setup: func(t *testing.T, deps *contractDeps) {
+				t.Helper()
+				deps.usageRepo.SetCreditUsageSummary(&usagestats.CreditUsageSummary{
+					UserID:                          1,
+					CreditUnitScale:                 10000,
+					BalanceLedgerAmount:             12.5,
+					TotalPurchasedLedgerAmount:      20,
+					UnassignedPurchasedLedgerAmount: 0,
+					TotalPurchasedCredits:           200000,
+					TotalUsedLedgerAmount:           5,
+					TotalUsedCredits:                50000,
+					UsageLogCount:                   10,
+					GroupEstimates: []usagestats.CreditUsageGroupEstimate{
+						{
+							GroupID:               7,
+							GroupName:             "Claude",
+							RateMultiplier:        1,
+							PurchasedLedgerAmount: 20,
+							PurchasedCredits:      200000,
+							RemainingCredits:      125000,
+						},
+					},
+					Accuracy:      "aggregate_estimate",
+					AccuracyNotes: []string{"derived from logs"},
+				})
+			},
+			method:     http.MethodGet,
+			path:       "/api/v1/usage/credit-usage",
+			wantStatus: http.StatusOK,
+			wantJSON: `{
+				"code": 0,
+				"message": "success",
+				"data": {
+					"user_id": 1,
+					"credit_unit_scale": 10000,
+					"balance_ledger_amount": 12.5,
+					"total_purchased_ledger_amount": 20,
+					"unassigned_purchased_ledger_amount": 0,
+					"total_purchased_credits": 200000,
+					"total_used_ledger_amount": 5,
+					"total_used_credits": 50000,
+					"usage_log_count": 10,
+					"group_estimates": [
+						{
+							"group_id": 7,
+							"group_name": "Claude",
+							"rate_multiplier": 1,
+							"purchased_ledger_amount": 20,
+							"purchased_credits": 200000,
+							"remaining_credits": 125000
+						}
+					],
+					"accuracy": "aggregate_estimate",
+					"accuracy_notes": ["derived from logs"]
+				}
+			}`,
+		},
+		{
 			name: "GET /api/v1/usage (paginated)",
 			setup: func(t *testing.T, deps *contractDeps) {
 				t.Helper()
@@ -1483,6 +1542,7 @@ func newContractDeps(t *testing.T) *contractDeps {
 	v1Usage.Use(jwtAuth)
 	v1Usage.GET("/usage", usageHandler.List)
 	v1Usage.GET("/usage/stats", usageHandler.Stats)
+	v1Usage.GET("/usage/credit-usage", usageHandler.CreditUsageSummary)
 
 	v1Subs := v1.Group("")
 	v1Subs.Use(jwtAuth)
@@ -2495,7 +2555,8 @@ func (r *stubApiKeyRepo) GetRateLimitData(ctx context.Context, id int64) (*servi
 }
 
 type stubUsageLogRepo struct {
-	userLogs map[int64][]service.UsageLog
+	userLogs           map[int64][]service.UsageLog
+	creditUsageSummary *usagestats.CreditUsageSummary
 }
 
 func newStubUsageLogRepo() *stubUsageLogRepo {
@@ -2504,6 +2565,10 @@ func newStubUsageLogRepo() *stubUsageLogRepo {
 
 func (r *stubUsageLogRepo) SetUserLogs(userID int64, logs []service.UsageLog) {
 	r.userLogs[userID] = logs
+}
+
+func (r *stubUsageLogRepo) SetCreditUsageSummary(summary *usagestats.CreditUsageSummary) {
+	r.creditUsageSummary = summary
 }
 
 func (r *stubUsageLogRepo) Create(ctx context.Context, log *service.UsageLog) (bool, error) {
@@ -2683,6 +2748,17 @@ func (r *stubUsageLogRepo) GetAPIKeyDashboardStats(ctx context.Context, apiKeyID
 
 func (r *stubUsageLogRepo) GetUserUsageTrendByUserID(ctx context.Context, userID int64, startTime, endTime time.Time, granularity string) ([]usagestats.TrendDataPoint, error) {
 	return nil, errors.New("not implemented")
+}
+
+func (r *stubUsageLogRepo) GetUserCreditUsageSummary(ctx context.Context, userID int64) (*usagestats.CreditUsageSummary, error) {
+	if r.creditUsageSummary == nil {
+		return &usagestats.CreditUsageSummary{UserID: userID, CreditUnitScale: 10000, GroupEstimates: []usagestats.CreditUsageGroupEstimate{}, Accuracy: "aggregate_estimate"}, nil
+	}
+	clone := *r.creditUsageSummary
+	clone.UserID = userID
+	clone.GroupEstimates = append([]usagestats.CreditUsageGroupEstimate(nil), r.creditUsageSummary.GroupEstimates...)
+	clone.AccuracyNotes = append([]string(nil), r.creditUsageSummary.AccuracyNotes...)
+	return &clone, nil
 }
 
 func (r *stubUsageLogRepo) GetUserModelStats(ctx context.Context, userID int64, startTime, endTime time.Time) ([]usagestats.ModelStat, error) {

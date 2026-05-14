@@ -335,6 +335,15 @@ func (s *UsageService) GetUsageTrendWithFilters(ctx context.Context, startTime, 
 	return trend, nil
 }
 
+// GetUserCreditUsageSummary returns aggregate credit usage reconstructed from usage logs and balance orders.
+func (s *UsageService) GetUserCreditUsageSummary(ctx context.Context, userID int64) (*usagestats.CreditUsageSummary, error) {
+	summary, err := s.usageRepo.GetUserCreditUsageSummary(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get user credit usage summary: %w", err)
+	}
+	return summary, nil
+}
+
 // GetUserModelStats returns per-user model usage stats.
 func (s *UsageService) GetUserModelStats(ctx context.Context, userID int64, startTime, endTime time.Time) ([]usagestats.ModelStat, error) {
 	stats, err := s.usageRepo.GetUserModelStats(ctx, userID, startTime, endTime)

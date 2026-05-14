@@ -2,10 +2,12 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"github.com/stretchr/testify/require"
 )
 
@@ -67,6 +69,20 @@ func (s *entitlementUserSubRepoStub) ListByUserID(_ context.Context, userID int6
 		}
 	}
 	return out, nil
+}
+
+type entitlementUsageRepoStub struct {
+	summary *usagestats.CreditUsageSummary
+	err     error
+	calls   int
+}
+
+func (s *entitlementUsageRepoStub) GetUserCreditUsageSummary(_ context.Context, _ int64) (*usagestats.CreditUsageSummary, error) {
+	s.calls++
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.summary, nil
 }
 
 func TestEntitlementService_GetUserEntitlements_IncludesSubscriptionAndBalanceFallback(t *testing.T) {
@@ -142,4 +158,103 @@ func TestEntitlementService_SwitchEntitlement_NoAPIKeyReturnsActionableError(t *
 
 	_, err := svc.SwitchEntitlement(context.Background(), 42, SwitchEntitlementRequest{GroupID: 8})
 	require.ErrorIs(t, err, ErrEntitlementAPIKeyRequired)
+}
+
+func TestEntitlementService_GetUserEntitlements_AttachesCreditQuotaForBalanceGroup(t *testing.T) {
+	now := time.Now()
+	later := now.Add(30 * 24 * time.Hour)
+	balanceGroupID := int64(2)
+	svc := NewEntitlementService(
+		&entitlementUserRepoStub{users: map[int64]*User{42: {ID: 42, Balance: 50}}},
+		&entitlementGroupRepoStub{groups: map[int64]*Group{2: {ID: 2, Name: "OpenAI Plus", SubscriptionType: SubscriptionTypeStandard, RateMultiplier: 0.0463}}},
+		&entitlementAPIKeyUpdaterStub{},
+		&entitlementAPIKeyRepoStub{keys: []APIKey{{ID: 100, UserID: 42, Status: StatusActive, GroupID: &balanceGroupID}}},
+		&entitlementUserSubRepoStub{subs: []UserSubscription{{ID: 9, UserID: 42, GroupID: balanceGroupID, Status: StatusActive, StartsAt: now, ExpiresAt: later}}},
+	)
+	svc.SetUsageRepository(&entitlementUsageRepoStub{summary: &usagestats.CreditUsageSummary{
+		UserID:                     42,
+		CreditUnitScale:            10000,
+		BalanceLedgerAmount:        50,
+		TotalPurchasedLedgerAmount: 100,
+		TotalPurchasedCredits:      27000000,
+		TotalUsedLedgerAmount:      80,
+		TotalUsedCredits:           21600000,
+		Accuracy:                   "aggregate_estimate",
+		GroupEstimates: []usagestats.CreditUsageGroupEstimate{
+			{
+				GroupID:               balanceGroupID,
+				GroupName:             "OpenAI Plus",
+				RateMultiplier:        0.0463,
+				PurchasedLedgerAmount: 100,
+				PurchasedCredits:      27000000,
+			},
+		},
+	}})
+
+	state, err := svc.GetUserEntitlements(context.Background(), 42)
+	require.NoError(t, err)
+	require.NotNil(t, state.CreditUsage)
+	require.Equal(t, 27000000.0, state.CreditUsage.TotalPurchasedCredits)
+	require.Equal(t, 21600000.0, state.CreditUsage.TotalUsedCredits)
+
+	require.Len(t, state.Entitlements, 1)
+	item := state.Entitlements[0]
+	require.Equal(t, EntitlementModeBalance, item.Mode)
+	require.NotNil(t, item.CreditQuota)
+	require.Equal(t, 27000000.0, item.CreditQuota.PurchasedCredits)
+	// Single-group case: used share equals total used.
+	require.InDelta(t, 21600000.0, item.CreditQuota.UsedCredits, 0.001)
+	require.InDelta(t, 5400000.0, item.CreditQuota.RemainingCredits, 0.001)
+	require.InDelta(t, 80.0, item.CreditQuota.UsedPercent, 0.001)
+	require.True(t, item.CreditQuota.NearLimit)
+	require.Equal(t, "aggregate_estimate", item.CreditQuota.Accuracy)
+	require.NotEmpty(t, item.CreditQuota.AccuracyNotes)
+}
+
+func TestEntitlementService_GetUserEntitlements_DoesNotAttachCreditQuotaForSubscriptionGroup(t *testing.T) {
+	now := time.Now()
+	later := now.Add(30 * 24 * time.Hour)
+	subscriptionGroupID := int64(8)
+	svc := NewEntitlementService(
+		&entitlementUserRepoStub{users: map[int64]*User{42: {ID: 42, Balance: 0}}},
+		&entitlementGroupRepoStub{groups: map[int64]*Group{8: {ID: 8, Name: "OpenAI-Subscription", SubscriptionType: SubscriptionTypeSubscription, RateMultiplier: 1}}},
+		&entitlementAPIKeyUpdaterStub{},
+		&entitlementAPIKeyRepoStub{keys: []APIKey{{ID: 100, UserID: 42, Status: StatusActive, GroupID: &subscriptionGroupID}}},
+		&entitlementUserSubRepoStub{subs: []UserSubscription{{ID: 9, UserID: 42, GroupID: subscriptionGroupID, Status: StatusActive, StartsAt: now, ExpiresAt: later}}},
+	)
+	svc.SetUsageRepository(&entitlementUsageRepoStub{summary: &usagestats.CreditUsageSummary{
+		UserID:          42,
+		CreditUnitScale: 10000,
+		GroupEstimates: []usagestats.CreditUsageGroupEstimate{
+			{GroupID: subscriptionGroupID, PurchasedCredits: 999, RateMultiplier: 1},
+		},
+	}})
+
+	state, err := svc.GetUserEntitlements(context.Background(), 42)
+	require.NoError(t, err)
+	require.Len(t, state.Entitlements, 1)
+	require.Equal(t, EntitlementModeSubscription, state.Entitlements[0].Mode)
+	require.Nil(t, state.Entitlements[0].CreditQuota, "subscription groups must not carry credit_quota; they use USD counters")
+}
+
+func TestEntitlementService_GetUserEntitlements_UsageRepoErrorDoesNotFailResponse(t *testing.T) {
+	now := time.Now()
+	later := now.Add(30 * 24 * time.Hour)
+	balanceGroupID := int64(2)
+	svc := NewEntitlementService(
+		&entitlementUserRepoStub{users: map[int64]*User{42: {ID: 42, Balance: 50}}},
+		&entitlementGroupRepoStub{groups: map[int64]*Group{2: {ID: 2, Name: "OpenAI Plus", SubscriptionType: SubscriptionTypeStandard, RateMultiplier: 0.0463}}},
+		&entitlementAPIKeyUpdaterStub{},
+		&entitlementAPIKeyRepoStub{keys: []APIKey{{ID: 100, UserID: 42, Status: StatusActive, GroupID: &balanceGroupID}}},
+		&entitlementUserSubRepoStub{subs: []UserSubscription{{ID: 9, UserID: 42, GroupID: balanceGroupID, Status: StatusActive, StartsAt: now, ExpiresAt: later}}},
+	)
+	stub := &entitlementUsageRepoStub{err: errors.New("transient sql failure")}
+	svc.SetUsageRepository(stub)
+
+	state, err := svc.GetUserEntitlements(context.Background(), 42)
+	require.NoError(t, err, "usage repo failure must not break entitlement response")
+	require.Equal(t, 1, stub.calls)
+	require.Nil(t, state.CreditUsage, "credit_usage must be empty when repo errs")
+	require.Len(t, state.Entitlements, 1)
+	require.Nil(t, state.Entitlements[0].CreditQuota)
 }
