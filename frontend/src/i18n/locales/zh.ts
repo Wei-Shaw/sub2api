@@ -3300,6 +3300,17 @@ export default {
         apiKeyResponsesWebsocketsV2Desc:
           '仅对 OpenAI API Key 生效。开启后该账号才允许使用 OpenAI WebSocket Mode 协议。',
         responsesWebsocketsV2PassthroughHint: '当前已开启自动透传：仅影响 HTTP 透传链路，不影响 WS mode。',
+        responsesMode: 'Responses API 支持',
+        responsesModeDesc:
+          '仅对 OpenAI API Key 生效。自动跟随探测结果，强制模式会覆盖自动探测。',
+        responsesModeAuto: '自动',
+        responsesModeForceResponses: '强制 Responses',
+        responsesModeForceChatCompletions: '强制 Chat Completions',
+        responsesStatusAutoSupported: '自动探测：Responses',
+        responsesStatusAutoUnsupported: '自动探测：Chat Completions',
+        responsesStatusAutoUnknown: '自动探测：未探测',
+        responsesStatusForcedResponses: '已强制 Responses',
+        responsesStatusForcedChatCompletions: '已强制 Chat Completions',
         codexCLIOnly: '仅允许 Codex 官方客户端',
         codexCLIOnlyDesc: '仅对 OpenAI OAuth 生效。开启后仅允许 Codex 官方客户端家族访问；关闭后完全绕过并保持原逻辑。',
         codexImageGenerationBridge: 'Codex 图片生成桥接',

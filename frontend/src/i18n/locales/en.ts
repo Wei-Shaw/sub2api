@@ -3154,6 +3154,17 @@ export default {
           'Only applies to OpenAI API Key. This account can use OpenAI WebSocket Mode only when enabled.',
         responsesWebsocketsV2PassthroughHint:
           'Automatic passthrough is currently enabled: it only affects HTTP passthrough and does not disable WS mode.',
+        responsesMode: 'Responses API support',
+        responsesModeDesc:
+          'Only applies to OpenAI API Key accounts. Auto follows probe results; force modes override probing.',
+        responsesModeAuto: 'Auto',
+        responsesModeForceResponses: 'Force Responses',
+        responsesModeForceChatCompletions: 'Force Chat Completions',
+        responsesStatusAutoSupported: 'Auto probe: Responses',
+        responsesStatusAutoUnsupported: 'Auto probe: Chat Completions',
+        responsesStatusAutoUnknown: 'Auto probe: unknown',
+        responsesStatusForcedResponses: 'Forced Responses',
+        responsesStatusForcedChatCompletions: 'Forced Chat Completions',
         codexCLIOnly: 'Codex official clients only',
         codexCLIOnlyDesc:
           'Only applies to OpenAI OAuth. When enabled, only Codex official client families are allowed; when disabled, the gateway bypasses this restriction and keeps existing behavior.',
