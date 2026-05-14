@@ -156,7 +156,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewOpenAIOAuthHandler,
 	admin.NewGeminiOAuthHandler,
 	admin.NewAntigravityOAuthHandler,
-	admin.NewProxyHandler,
+	ProvideProxyHandler,
 	admin.NewRedeemHandler,
 	admin.NewPromoHandler,
 	admin.NewSettingHandler,
@@ -180,3 +180,7 @@ var ProviderSet = wire.NewSet(
 	ProvideAdminHandlers,
 	ProvideHandlers,
 )
+
+func ProvideProxyHandler(adminService service.AdminService) *admin.ProxyHandler {
+	return admin.NewProxyHandler(adminService)
+}

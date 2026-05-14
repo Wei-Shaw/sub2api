@@ -326,6 +326,7 @@ import PendingOAuthCreateAccountForm, {
 import { apiClient } from '@/api/client'
 import { useAuthStore, useAppStore } from '@/stores'
 import {
+  completeWeComOAuthRegistration,
   completeWeChatOAuthRegistration,
   exchangePendingOAuthCompletion,
   getAuthToken,
@@ -381,7 +382,9 @@ const totpError = ref('')
 const totpUserEmailMasked = ref('')
 const bindSuccessMessage = t('profile.authBindings.bindSuccess')
 
-const providerName = t('auth.wechatProviderName')
+const isWeComCallback = computed(() => route.path.includes('/auth/wecom/'))
+const providerName = computed(() => isWeComCallback.value ? t('auth.wecomProviderName') : t('auth.wechatProviderName'))
+const oauthProviderPath = computed(() => isWeComCallback.value ? 'wecom' : 'wechat')
 const showBackToChooser = computed(
   () => pendingAccountAction.value === 'create_account' || pendingAccountAction.value === 'bind_login'
 )
@@ -431,7 +434,7 @@ function persistPendingAuthSession(redirect?: string) {
   authStore.setPendingAuthSession({
     token: '',
     token_field: 'pending_oauth_token',
-    provider: 'wechat',
+    provider: oauthProviderPath.value,
     redirect: sanitizeRedirectPath(redirect || redirectTo.value)
   })
 }
@@ -500,6 +503,9 @@ function resolveConfiguredWeChatOAuthMode(): 'open' | 'mp' | null {
 }
 
 function resolveWeChatOAuthUnavailableMessage(): string {
+  if (isWeComCallback.value) {
+    return t('auth.oauthFlow.wecomNotConfigured')
+  }
   const resolved = resolveWeChatOAuthStartStrict(appStore.cachedPublicSettings)
 
   switch (resolved.unavailableReason) {
@@ -518,18 +524,27 @@ function resolveWeChatOAuthUnavailableMessage(): string {
   }
 }
 
-function resolveRuntimeWeChatOAuthMode(): 'open' | 'mp' {
+function resolveRuntimeWeChatOAuthMode(): 'open' | 'mp' | 'web' | 'webview' {
+  if (isWeComCallback.value) {
+    return typeof navigator !== 'undefined' && /wxwork/i.test(navigator.userAgent) ? 'webview' : 'web'
+  }
   if (typeof navigator === 'undefined') {
     return 'open'
   }
   return /MicroMessenger/i.test(navigator.userAgent) ? 'mp' : 'open'
 }
 
-function normalizeWeChatOAuthMode(value: unknown): 'open' | 'mp' | null {
+function normalizeWeChatOAuthMode(value: unknown): 'open' | 'mp' | 'web' | 'webview' | null {
+  if (isWeComCallback.value) {
+    return value === 'web' || value === 'webview' ? value : null
+  }
   return value === 'open' || value === 'mp' ? value : null
 }
 
-function resolveRequestedWeChatOAuthMode(): 'open' | 'mp' | null {
+function resolveRequestedWeChatOAuthMode(): 'open' | 'mp' | 'web' | 'webview' | null {
+  if (isWeComCallback.value) {
+    return normalizeWeChatOAuthMode(route.query.mode) || resolveRuntimeWeChatOAuthMode()
+  }
   const configuredMode = resolveConfiguredWeChatOAuthMode()
   if (configuredMode) {
     return configuredMode
@@ -562,7 +577,7 @@ function resolveWeChatStartURL(intent: 'bind_current_user' | 'adopt_existing_use
     intent,
   })
 
-  return `${normalized}/auth/oauth/wechat/start?${params.toString()}`
+  return `${normalized}/auth/oauth/${oauthProviderPath.value}/start?${params.toString()}`
 }
 
 function buildExistingAccountResumePath(): string | null {
@@ -582,7 +597,7 @@ function buildExistingAccountResumePath(): string | null {
     params.set('email', email)
   }
 
-  return `/auth/wechat/callback?${params.toString()}`
+  return `/auth/${oauthProviderPath.value}/callback?${params.toString()}`
 }
 
 function currentAdoptionDecision(): OAuthAdoptionDecision {
@@ -872,7 +887,7 @@ async function handleSubmitInvitation() {
     const decision = currentAdoptionDecision()
     const completion: PendingWeChatCompletion = legacyPendingOAuthToken.value
       ? (
-          await apiClient.post<PendingWeChatCompletion>('/auth/oauth/wechat/complete-registration', {
+          await apiClient.post<PendingWeChatCompletion>(`/auth/oauth/${oauthProviderPath.value}/complete-registration`, {
             pending_oauth_token: legacyPendingOAuthToken.value,
             invitation_code: invitationCode.value.trim(),
             ...oauthAffiliatePayload(affCode),
@@ -880,8 +895,12 @@ async function handleSubmitInvitation() {
           })
         ).data
       : affCode
-        ? await completeWeChatOAuthRegistration(invitationCode.value.trim(), decision, affCode)
-        : await completeWeChatOAuthRegistration(invitationCode.value.trim(), decision)
+        ? isWeComCallback.value
+          ? await completeWeComOAuthRegistration(invitationCode.value.trim(), decision, affCode)
+          : await completeWeChatOAuthRegistration(invitationCode.value.trim(), decision, affCode)
+        : isWeComCallback.value
+          ? await completeWeComOAuthRegistration(invitationCode.value.trim(), decision)
+          : await completeWeChatOAuthRegistration(invitationCode.value.trim(), decision)
     await finalizePendingAccountResponse(completion)
   } catch (e: unknown) {
     const err = e as { message?: string; response?: { data?: { message?: string } } }

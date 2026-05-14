@@ -1339,8 +1339,12 @@ func init() {
 	proxyDescPassword := proxyFields[5].Descriptor()
 	// proxy.PasswordValidator is a validator for the "password" field. It is called by the builders before save.
 	proxy.PasswordValidator = proxyDescPassword.Validators[0].(func(string) error)
+	// proxyDescBasePath is the schema descriptor for base_path field.
+	proxyDescBasePath := proxyFields[6].Descriptor()
+	// proxy.BasePathValidator is a validator for the "base_path" field. It is called by the builders before save.
+	proxy.BasePathValidator = proxyDescBasePath.Validators[0].(func(string) error)
 	// proxyDescStatus is the schema descriptor for status field.
-	proxyDescStatus := proxyFields[6].Descriptor()
+	proxyDescStatus := proxyFields[7].Descriptor()
 	// proxy.DefaultStatus holds the default value on creation for the status field.
 	proxy.DefaultStatus = proxyDescStatus.Default.(string)
 	// proxy.StatusValidator is a validator for the "status" field. It is called by the builders before save.

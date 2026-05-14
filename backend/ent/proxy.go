@@ -35,6 +35,8 @@ type Proxy struct {
 	Username *string `json:"username,omitempty"`
 	// Password holds the value of the "password" field.
 	Password *string `json:"password,omitempty"`
+	// BasePath holds the value of the "base_path" field.
+	BasePath *string `json:"base_path,omitempty"`
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
@@ -68,7 +70,7 @@ func (*Proxy) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case proxy.FieldID, proxy.FieldPort:
 			values[i] = new(sql.NullInt64)
-		case proxy.FieldName, proxy.FieldProtocol, proxy.FieldHost, proxy.FieldUsername, proxy.FieldPassword, proxy.FieldStatus:
+		case proxy.FieldName, proxy.FieldProtocol, proxy.FieldHost, proxy.FieldUsername, proxy.FieldPassword, proxy.FieldBasePath, proxy.FieldStatus:
 			values[i] = new(sql.NullString)
 		case proxy.FieldCreatedAt, proxy.FieldUpdatedAt, proxy.FieldDeletedAt:
 			values[i] = new(sql.NullTime)
@@ -150,6 +152,13 @@ func (_m *Proxy) assignValues(columns []string, values []any) error {
 				_m.Password = new(string)
 				*_m.Password = value.String
 			}
+		case proxy.FieldBasePath:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field base_path", values[i])
+			} else if value.Valid {
+				_m.BasePath = new(string)
+				*_m.BasePath = value.String
+			}
 		case proxy.FieldStatus:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field status", values[i])
@@ -227,6 +236,11 @@ func (_m *Proxy) String() string {
 	builder.WriteString(", ")
 	if v := _m.Password; v != nil {
 		builder.WriteString("password=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.BasePath; v != nil {
+		builder.WriteString("base_path=")
 		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")

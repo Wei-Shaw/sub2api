@@ -73,6 +73,14 @@ type SystemSettings struct {
 	WeChatConnectRedirectURL               string `json:"wechat_connect_redirect_url"`
 	WeChatConnectFrontendRedirectURL       string `json:"wechat_connect_frontend_redirect_url"`
 
+	WeComOAuthEnabled             bool   `json:"wecom_oauth_enabled"`
+	WeComOAuthCorpID              string `json:"wecom_oauth_corp_id"`
+	WeComOAuthAgentID             string `json:"wecom_oauth_agent_id"`
+	WeComOAuthSecretConfigured    bool   `json:"wecom_oauth_secret_configured"`
+	WeComOAuthScope               string `json:"wecom_oauth_scope"`
+	WeComOAuthRedirectURL         string `json:"wecom_oauth_redirect_url"`
+	WeComOAuthFrontendRedirectURL string `json:"wecom_oauth_frontend_redirect_url"`
+
 	OIDCConnectEnabled                bool   `json:"oidc_connect_enabled"`
 	OIDCConnectProviderName           string `json:"oidc_connect_provider_name"`
 	OIDCConnectClientID               string `json:"oidc_connect_client_id"`
@@ -265,6 +273,7 @@ type PublicSettings struct {
 	WeChatOAuthOpenEnabled           bool                     `json:"wechat_oauth_open_enabled"`
 	WeChatOAuthMPEnabled             bool                     `json:"wechat_oauth_mp_enabled"`
 	WeChatOAuthMobileEnabled         bool                     `json:"wechat_oauth_mobile_enabled"`
+	WeComOAuthEnabled                bool                     `json:"wecom_oauth_enabled"`
 	OIDCOAuthEnabled                 bool                     `json:"oidc_oauth_enabled"`
 	OIDCOAuthProviderName            string                   `json:"oidc_oauth_provider_name"`
 	GitHubOAuthEnabled               bool                     `json:"github_oauth_enabled"`

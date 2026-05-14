@@ -144,6 +144,7 @@ type AuthSourceDefaultSettings struct {
 	LinuxDo                      ProviderDefaultGrantSettings
 	OIDC                         ProviderDefaultGrantSettings
 	WeChat                       ProviderDefaultGrantSettings
+	WeCom                        ProviderDefaultGrantSettings
 	GitHub                       ProviderDefaultGrantSettings
 	Google                       ProviderDefaultGrantSettings
 	ForceEmailOnThirdPartySignup bool
@@ -186,6 +187,13 @@ var (
 		grantOnSignup:    SettingKeyAuthSourceDefaultWeChatGrantOnSignup,
 		grantOnFirstBind: SettingKeyAuthSourceDefaultWeChatGrantOnFirstBind,
 	}
+	weComAuthSourceDefaultKeys = authSourceDefaultKeySet{
+		balance:          SettingKeyAuthSourceDefaultWeComBalance,
+		concurrency:      SettingKeyAuthSourceDefaultWeComConcurrency,
+		subscriptions:    SettingKeyAuthSourceDefaultWeComSubscriptions,
+		grantOnSignup:    SettingKeyAuthSourceDefaultWeComGrantOnSignup,
+		grantOnFirstBind: SettingKeyAuthSourceDefaultWeComGrantOnFirstBind,
+	}
 	gitHubAuthSourceDefaultKeys = authSourceDefaultKeySet{
 		balance:          SettingKeyAuthSourceDefaultGitHubBalance,
 		concurrency:      SettingKeyAuthSourceDefaultGitHubConcurrency,
@@ -208,6 +216,8 @@ const (
 	defaultWeChatConnectMode     = "open"
 	defaultWeChatConnectScopes   = "snsapi_login"
 	defaultWeChatConnectFrontend = "/auth/wechat/callback"
+	defaultWeComOAuthScope       = "snsapi_base"
+	defaultWeComOAuthFrontend    = "/auth/wecom/callback"
 	defaultGitHubOAuthAuthorize  = "https://github.com/login/oauth/authorize"
 	defaultGitHubOAuthToken      = "https://github.com/login/oauth/access_token"
 	defaultGitHubOAuthUserInfo   = "https://api.github.com/user"
@@ -537,6 +547,31 @@ func (s *SettingService) effectiveWeChatConnectOAuthConfig(settings map[string]s
 	}
 }
 
+func normalizeWeComOAuthScope(raw string) string {
+	switch strings.TrimSpace(raw) {
+	case "snsapi_privateinfo":
+		return "snsapi_privateinfo"
+	default:
+		return defaultWeComOAuthScope
+	}
+}
+
+func (s *SettingService) effectiveWeComOAuthConfig(settings map[string]string) WeComOAuthConfig {
+	enabled := false
+	if raw, ok := settings[SettingKeyWeComOAuthEnabled]; ok {
+		enabled = strings.TrimSpace(raw) == "true"
+	}
+	return WeComOAuthConfig{
+		Enabled:             enabled,
+		CorpID:              strings.TrimSpace(settings[SettingKeyWeComOAuthCorpID]),
+		AgentID:             strings.TrimSpace(settings[SettingKeyWeComOAuthAgentID]),
+		Secret:              strings.TrimSpace(settings[SettingKeyWeComOAuthSecret]),
+		Scope:               normalizeWeComOAuthScope(settings[SettingKeyWeComOAuthScope]),
+		RedirectURL:         strings.TrimSpace(settings[SettingKeyWeComOAuthRedirectURL]),
+		FrontendRedirectURL: strings.TrimSpace(firstNonEmpty(settings[SettingKeyWeComOAuthFrontendRedirectURL], defaultWeComOAuthFrontend)),
+	}
+}
+
 // NewSettingService 创建系统设置服务实例
 func NewSettingService(settingRepo SettingRepository, cfg *config.Config) *SettingService {
 	return &SettingService{
@@ -622,6 +657,13 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyWeChatConnectScopes,
 		SettingKeyWeChatConnectRedirectURL,
 		SettingKeyWeChatConnectFrontendRedirectURL,
+		SettingKeyWeComOAuthEnabled,
+		SettingKeyWeComOAuthCorpID,
+		SettingKeyWeComOAuthAgentID,
+		SettingKeyWeComOAuthSecret,
+		SettingKeyWeComOAuthScope,
+		SettingKeyWeComOAuthRedirectURL,
+		SettingKeyWeComOAuthFrontendRedirectURL,
 		SettingKeyBackendModeEnabled,
 		SettingPaymentEnabled,
 		SettingKeyOIDCConnectEnabled,
@@ -670,6 +712,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 	gitHubEnabled := s.emailOAuthPublicEnabled(settings, "github")
 	googleEnabled := s.emailOAuthPublicEnabled(settings, "google")
 	weChatEnabled, weChatOpenEnabled, weChatMPEnabled, weChatMobileEnabled := s.weChatOAuthCapabilitiesFromSettings(settings)
+	weComCfg := s.effectiveWeComOAuthConfig(settings)
+	weComEnabled := weComCfg.Enabled && weComCfg.CorpID != "" && weComCfg.AgentID != "" && weComCfg.Secret != "" && weComCfg.RedirectURL != ""
 
 	// Password reset requires email verification to be enabled
 	emailVerifyEnabled := settings[SettingKeyEmailVerifyEnabled] == "true"
@@ -727,6 +771,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		WeChatOAuthOpenEnabled:           weChatOpenEnabled,
 		WeChatOAuthMPEnabled:             weChatMPEnabled,
 		WeChatOAuthMobileEnabled:         weChatMobileEnabled,
+		WeComOAuthEnabled:                weComEnabled,
 		BackendModeEnabled:               settings[SettingKeyBackendModeEnabled] == "true",
 		PaymentEnabled:                   settings[SettingPaymentEnabled] == "true",
 		OIDCOAuthEnabled:                 oidcEnabled,
@@ -930,6 +975,7 @@ type PublicSettingsInjectionPayload struct {
 	WeChatOAuthOpenEnabled           bool                     `json:"wechat_oauth_open_enabled"`
 	WeChatOAuthMPEnabled             bool                     `json:"wechat_oauth_mp_enabled"`
 	WeChatOAuthMobileEnabled         bool                     `json:"wechat_oauth_mobile_enabled"`
+	WeComOAuthEnabled                bool                     `json:"wecom_oauth_enabled"`
 	OIDCOAuthEnabled                 bool                     `json:"oidc_oauth_enabled"`
 	OIDCOAuthProviderName            string                   `json:"oidc_oauth_provider_name"`
 	GitHubOAuthEnabled               bool                     `json:"github_oauth_enabled"`
@@ -994,6 +1040,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		WeChatOAuthOpenEnabled:           settings.WeChatOAuthOpenEnabled,
 		WeChatOAuthMPEnabled:             settings.WeChatOAuthMPEnabled,
 		WeChatOAuthMobileEnabled:         settings.WeChatOAuthMobileEnabled,
+		WeComOAuthEnabled:                settings.WeComOAuthEnabled,
 		OIDCOAuthEnabled:                 settings.OIDCOAuthEnabled,
 		OIDCOAuthProviderName:            settings.OIDCOAuthProviderName,
 		GitHubOAuthEnabled:               settings.GitHubOAuthEnabled,
@@ -1544,6 +1591,26 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 		updates[SettingKeyWeChatConnectMobileAppSecret] = settings.WeChatConnectMobileAppSecret
 	}
 
+	// WeCom / 企业微信 OAuth 登录
+	settings.WeComOAuthCorpID = strings.TrimSpace(settings.WeComOAuthCorpID)
+	settings.WeComOAuthAgentID = strings.TrimSpace(settings.WeComOAuthAgentID)
+	settings.WeComOAuthSecret = strings.TrimSpace(settings.WeComOAuthSecret)
+	settings.WeComOAuthScope = normalizeWeComOAuthScope(settings.WeComOAuthScope)
+	settings.WeComOAuthRedirectURL = strings.TrimSpace(settings.WeComOAuthRedirectURL)
+	settings.WeComOAuthFrontendRedirectURL = strings.TrimSpace(settings.WeComOAuthFrontendRedirectURL)
+	if settings.WeComOAuthFrontendRedirectURL == "" {
+		settings.WeComOAuthFrontendRedirectURL = defaultWeComOAuthFrontend
+	}
+	updates[SettingKeyWeComOAuthEnabled] = strconv.FormatBool(settings.WeComOAuthEnabled)
+	updates[SettingKeyWeComOAuthCorpID] = settings.WeComOAuthCorpID
+	updates[SettingKeyWeComOAuthAgentID] = settings.WeComOAuthAgentID
+	updates[SettingKeyWeComOAuthScope] = settings.WeComOAuthScope
+	updates[SettingKeyWeComOAuthRedirectURL] = settings.WeComOAuthRedirectURL
+	updates[SettingKeyWeComOAuthFrontendRedirectURL] = settings.WeComOAuthFrontendRedirectURL
+	if settings.WeComOAuthSecret != "" {
+		updates[SettingKeyWeComOAuthSecret] = settings.WeComOAuthSecret
+	}
+
 	// OEM设置
 	updates[SettingKeySiteName] = settings.SiteName
 	updates[SettingKeySiteLogo] = settings.SiteLogo
@@ -1675,6 +1742,7 @@ func (s *SettingService) buildAuthSourceDefaultUpdates(ctx context.Context, sett
 		settings.LinuxDo.Subscriptions,
 		settings.OIDC.Subscriptions,
 		settings.WeChat.Subscriptions,
+		settings.WeCom.Subscriptions,
 		settings.GitHub.Subscriptions,
 		settings.Google.Subscriptions,
 	} {
@@ -1688,6 +1756,7 @@ func (s *SettingService) buildAuthSourceDefaultUpdates(ctx context.Context, sett
 	writeProviderDefaultGrantUpdates(updates, linuxDoAuthSourceDefaultKeys, settings.LinuxDo)
 	writeProviderDefaultGrantUpdates(updates, oidcAuthSourceDefaultKeys, settings.OIDC)
 	writeProviderDefaultGrantUpdates(updates, weChatAuthSourceDefaultKeys, settings.WeChat)
+	writeProviderDefaultGrantUpdates(updates, weComAuthSourceDefaultKeys, settings.WeCom)
 	writeProviderDefaultGrantUpdates(updates, gitHubAuthSourceDefaultKeys, settings.GitHub)
 	writeProviderDefaultGrantUpdates(updates, googleAuthSourceDefaultKeys, settings.Google)
 	updates[SettingKeyForceEmailOnThirdPartySignup] = strconv.FormatBool(settings.ForceEmailOnThirdPartySignup)
@@ -2215,6 +2284,11 @@ func (s *SettingService) GetAuthSourceDefaultSettings(ctx context.Context) (*Aut
 		SettingKeyAuthSourceDefaultWeChatSubscriptions,
 		SettingKeyAuthSourceDefaultWeChatGrantOnSignup,
 		SettingKeyAuthSourceDefaultWeChatGrantOnFirstBind,
+		SettingKeyAuthSourceDefaultWeComBalance,
+		SettingKeyAuthSourceDefaultWeComConcurrency,
+		SettingKeyAuthSourceDefaultWeComSubscriptions,
+		SettingKeyAuthSourceDefaultWeComGrantOnSignup,
+		SettingKeyAuthSourceDefaultWeComGrantOnFirstBind,
 		SettingKeyAuthSourceDefaultGitHubBalance,
 		SettingKeyAuthSourceDefaultGitHubConcurrency,
 		SettingKeyAuthSourceDefaultGitHubSubscriptions,
@@ -2238,6 +2312,7 @@ func (s *SettingService) GetAuthSourceDefaultSettings(ctx context.Context) (*Aut
 		LinuxDo:                      parseProviderDefaultGrantSettings(settings, linuxDoAuthSourceDefaultKeys),
 		OIDC:                         parseProviderDefaultGrantSettings(settings, oidcAuthSourceDefaultKeys),
 		WeChat:                       parseProviderDefaultGrantSettings(settings, weChatAuthSourceDefaultKeys),
+		WeCom:                        parseProviderDefaultGrantSettings(settings, weComAuthSourceDefaultKeys),
 		GitHub:                       parseProviderDefaultGrantSettings(settings, gitHubAuthSourceDefaultKeys),
 		Google:                       parseProviderDefaultGrantSettings(settings, googleAuthSourceDefaultKeys),
 		ForceEmailOnThirdPartySignup: settings[SettingKeyForceEmailOnThirdPartySignup] == "true",
@@ -2348,6 +2423,13 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyWeChatConnectScopes:                      "snsapi_login",
 		SettingKeyWeChatConnectRedirectURL:                 "",
 		SettingKeyWeChatConnectFrontendRedirectURL:         defaultWeChatConnectFrontend,
+		SettingKeyWeComOAuthEnabled:                        "false",
+		SettingKeyWeComOAuthCorpID:                         "",
+		SettingKeyWeComOAuthAgentID:                        "",
+		SettingKeyWeComOAuthSecret:                         "",
+		SettingKeyWeComOAuthScope:                          defaultWeComOAuthScope,
+		SettingKeyWeComOAuthRedirectURL:                    "",
+		SettingKeyWeComOAuthFrontendRedirectURL:            defaultWeComOAuthFrontend,
 		SettingKeyGitHubOAuthEnabled:                       "false",
 		SettingKeyGitHubOAuthClientID:                      "",
 		SettingKeyGitHubOAuthClientSecret:                  "",
@@ -2408,6 +2490,11 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyAuthSourceDefaultWeChatSubscriptions:     "[]",
 		SettingKeyAuthSourceDefaultWeChatGrantOnSignup:     "false",
 		SettingKeyAuthSourceDefaultWeChatGrantOnFirstBind:  "false",
+		SettingKeyAuthSourceDefaultWeComBalance:            "0",
+		SettingKeyAuthSourceDefaultWeComConcurrency:        "5",
+		SettingKeyAuthSourceDefaultWeComSubscriptions:      "[]",
+		SettingKeyAuthSourceDefaultWeComGrantOnSignup:      "false",
+		SettingKeyAuthSourceDefaultWeComGrantOnFirstBind:   "false",
 		SettingKeyAuthSourceDefaultGitHubBalance:           "0",
 		SettingKeyAuthSourceDefaultGitHubConcurrency:       "5",
 		SettingKeyAuthSourceDefaultGitHubSubscriptions:     "[]",
@@ -2771,6 +2858,16 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.WeChatConnectScopes = weChatEffective.Scopes
 	result.WeChatConnectRedirectURL = weChatEffective.RedirectURL
 	result.WeChatConnectFrontendRedirectURL = weChatEffective.FrontendRedirectURL
+
+	weComEffective := s.effectiveWeComOAuthConfig(settings)
+	result.WeComOAuthEnabled = weComEffective.Enabled
+	result.WeComOAuthCorpID = weComEffective.CorpID
+	result.WeComOAuthAgentID = weComEffective.AgentID
+	result.WeComOAuthSecret = weComEffective.Secret
+	result.WeComOAuthSecretConfigured = weComEffective.Secret != ""
+	result.WeComOAuthScope = weComEffective.Scope
+	result.WeComOAuthRedirectURL = weComEffective.RedirectURL
+	result.WeComOAuthFrontendRedirectURL = weComEffective.FrontendRedirectURL
 
 	// Model fallback settings
 	result.EnableModelFallback = settings[SettingKeyEnableModelFallback] == "true"

@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	resinpkg "github.com/Wei-Shaw/sub2api/internal/pkg/resin"
 	openaiwsv2 "github.com/Wei-Shaw/sub2api/internal/service/openai_ws_v2"
 	coderws "github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
@@ -41,7 +42,7 @@ type openAIWSClientConn interface {
 
 // openAIWSClientDialer 抽象 WS 建连器。
 type openAIWSClientDialer interface {
-	Dial(ctx context.Context, wsURL string, headers http.Header, proxyURL string) (openAIWSClientConn, int, http.Header, error)
+	Dial(ctx context.Context, wsURL string, headers http.Header, proxyURL string, accountID int64) (openAIWSClientConn, int, http.Header, error)
 }
 
 type openAIWSTransportMetricsDialer interface {
@@ -71,16 +72,31 @@ func (d *coderOpenAIWSClientDialer) Dial(
 	wsURL string,
 	headers http.Header,
 	proxyURL string,
+	accountID int64,
 ) (openAIWSClientConn, int, http.Header, error) {
 	targetURL := strings.TrimSpace(wsURL)
 	if targetURL == "" {
 		return nil, 0, nil, errors.New("ws url is empty")
 	}
+	hostOverride := ""
+	wsHeaders := cloneHeader(headers)
+	if accountID > 0 {
+		ctx = resinpkg.WithAccountID(ctx, accountID)
+		if resinCfg, _ := resinpkg.Parse(proxyURL); resinCfg != nil {
+			var err error
+			targetURL, hostOverride, wsHeaders, err = resinpkg.PrepareReverseWS(targetURL, wsHeaders, resinCfg, accountID)
+			if err != nil {
+				return nil, 0, nil, err
+			}
+			proxyURL = ""
+		}
+	}
 
 	opts := &coderws.DialOptions{
-		HTTPHeader:      cloneHeader(headers),
+		HTTPHeader:      wsHeaders,
 		CompressionMode: coderws.CompressionContextTakeover,
 	}
+	opts.Host = hostOverride
 	if proxy := strings.TrimSpace(proxyURL); proxy != "" {
 		proxyClient, err := d.proxyHTTPClient(proxy)
 		if err != nil {

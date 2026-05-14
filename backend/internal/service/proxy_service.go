@@ -26,7 +26,7 @@ type ProxyRepository interface {
 	ListActive(ctx context.Context) ([]Proxy, error)
 	ListActiveWithAccountCount(ctx context.Context) ([]ProxyWithAccountCount, error)
 
-	ExistsByHostPortAuth(ctx context.Context, host string, port int, username, password string) (bool, error)
+	ExistsByHostPortAuth(ctx context.Context, host string, port int, username, password, basePath string) (bool, error)
 	CountAccountsByProxyID(ctx context.Context, proxyID int64) (int64, error)
 	ListAccountSummariesByProxyID(ctx context.Context, proxyID int64) ([]ProxyAccountSummary, error)
 }
@@ -39,6 +39,7 @@ type CreateProxyRequest struct {
 	Port     int    `json:"port"`
 	Username string `json:"username"`
 	Password string `json:"password"`
+	BasePath string `json:"base_path"`
 }
 
 // UpdateProxyRequest 更新代理请求
@@ -49,6 +50,7 @@ type UpdateProxyRequest struct {
 	Port     *int    `json:"port"`
 	Username *string `json:"username"`
 	Password *string `json:"password"`
+	BasePath *string `json:"base_path"`
 	Status   *string `json:"status"`
 }
 
@@ -74,6 +76,7 @@ func (s *ProxyService) Create(ctx context.Context, req CreateProxyRequest) (*Pro
 		Port:     req.Port,
 		Username: req.Username,
 		Password: req.Password,
+		BasePath: req.BasePath,
 		Status:   StatusActive,
 	}
 
@@ -141,6 +144,10 @@ func (s *ProxyService) Update(ctx context.Context, id int64, req UpdateProxyRequ
 
 	if req.Password != nil {
 		proxy.Password = *req.Password
+	}
+
+	if req.BasePath != nil {
+		proxy.BasePath = *req.BasePath
 	}
 
 	if req.Status != nil {

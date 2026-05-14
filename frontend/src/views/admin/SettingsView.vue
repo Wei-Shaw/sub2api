@@ -2333,6 +2333,17 @@
             </div>
           </div>
 
+          <WeComOAuthSettingsSection
+            v-model:enabled="form.wecom_oauth_enabled"
+            v-model:corp-id="form.wecom_oauth_corp_id"
+            v-model:agent-id="form.wecom_oauth_agent_id"
+            v-model:secret="form.wecom_oauth_secret"
+            v-model:scope="form.wecom_oauth_scope"
+            v-model:redirect-url="form.wecom_oauth_redirect_url"
+            v-model:frontend-redirect-url="form.wecom_oauth_frontend_redirect_url"
+            :secret-configured="form.wecom_oauth_secret_configured"
+          />
+
           <!-- Generic OIDC OAuth 登录 -->
           <div class="card">
             <div
@@ -6161,6 +6172,7 @@ import GroupOptionItem from "@/components/common/GroupOptionItem.vue";
 import Toggle from "@/components/common/Toggle.vue";
 import ProxySelector from "@/components/common/ProxySelector.vue";
 import ImageUpload from "@/components/common/ImageUpload.vue";
+import WeComOAuthSettingsSection from "@/components/admin/settings/WeComOAuthSettingsSection.vue";
 import BackupSettings from "@/views/admin/BackupView.vue";
 import { useClipboard } from "@/composables/useClipboard";
 import { affiliatesAPI, type AffiliateAdminEntry, type SimpleUser as AffiliateSimpleUser } from "@/api/admin/affiliates";
@@ -6424,6 +6436,7 @@ type SettingsForm = Omit<
   wechat_connect_open_enabled: boolean;
   wechat_connect_mp_enabled: boolean;
   wechat_connect_mobile_enabled: boolean;
+  wecom_oauth_secret: string;
   oidc_connect_client_secret: string;
   github_oauth_client_secret: string;
   google_oauth_client_secret: string;
@@ -6538,6 +6551,15 @@ const form = reactive<SettingsForm>({
   wechat_connect_scopes: "snsapi_login",
   wechat_connect_redirect_url: "",
   wechat_connect_frontend_redirect_url: "/auth/wechat/callback",
+  // WeCom OAuth 登录
+  wecom_oauth_enabled: false,
+  wecom_oauth_corp_id: "",
+  wecom_oauth_agent_id: "",
+  wecom_oauth_secret: "",
+  wecom_oauth_secret_configured: false,
+  wecom_oauth_scope: "snsapi_base",
+  wecom_oauth_redirect_url: "",
+  wecom_oauth_frontend_redirect_url: "/auth/wecom/callback",
   // Generic OIDC OAuth 登录
   oidc_connect_enabled: false,
   oidc_connect_provider_name: "OIDC",
@@ -6641,6 +6663,14 @@ const authSourceDefaultsMeta = computed(() => [
     source: "wechat" as AuthSourceType,
     title: t("admin.settings.authSourceDefaults.sources.wechat.title"),
     description: t("admin.settings.authSourceDefaults.sources.wechat.description"),
+  },
+  {
+    source: "wecom" as AuthSourceType,
+    title: localText("企业微信", "WeCom"),
+    description: localText(
+      "通过企业微信首次注册或首次绑定时应用。",
+      "Applied on first signup or first bind through WeCom.",
+    ),
   },
   {
     source: "github" as AuthSourceType,
@@ -7247,6 +7277,7 @@ async function loadSettings() {
     form.wechat_connect_open_app_secret = "";
     form.wechat_connect_mp_app_secret = "";
     form.wechat_connect_mobile_app_secret = "";
+    form.wecom_oauth_secret = "";
     const wechatCapabilities = resolveWeChatConnectModeCapabilities(
       settings.wechat_connect_open_enabled,
       settings.wechat_connect_mp_enabled,
@@ -7618,6 +7649,14 @@ async function saveSettings() {
       wechat_connect_redirect_url: form.wechat_connect_redirect_url,
       wechat_connect_frontend_redirect_url:
         form.wechat_connect_frontend_redirect_url,
+      wecom_oauth_enabled: form.wecom_oauth_enabled,
+      wecom_oauth_corp_id: form.wecom_oauth_corp_id,
+      wecom_oauth_agent_id: form.wecom_oauth_agent_id,
+      wecom_oauth_secret: form.wecom_oauth_secret || undefined,
+      wecom_oauth_scope: form.wecom_oauth_scope || "snsapi_base",
+      wecom_oauth_redirect_url: form.wecom_oauth_redirect_url,
+      wecom_oauth_frontend_redirect_url:
+        form.wecom_oauth_frontend_redirect_url || "/auth/wecom/callback",
       oidc_connect_enabled: form.oidc_connect_enabled,
       oidc_connect_provider_name: form.oidc_connect_provider_name,
       oidc_connect_client_id: form.oidc_connect_client_id,

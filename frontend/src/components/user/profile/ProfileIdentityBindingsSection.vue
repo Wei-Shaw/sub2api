@@ -409,6 +409,9 @@ function isProviderEnabledForBinding(provider: BindableProvider): boolean {
   if (provider === 'oidc') {
     return props.oidcEnabled
   }
+  if (provider === 'wecom') {
+    return appStore.cachedPublicSettings?.wecom_oauth_enabled === true
+  }
   return resolvedWeChatBinding.value.mode !== null
 }
 
@@ -454,6 +457,17 @@ const providerItems = computed(() => [
     canUnbind: Boolean(getBindingStatus('wechat') && getBindingDetails('wechat')?.can_unbind),
     details: getBindingDetails('wechat'),
   },
+  {
+    provider: 'wecom' as const,
+    label: t('profile.authBindings.providers.wecom'),
+    bound: getBindingStatus('wecom'),
+    canBind:
+      !getBindingStatus('wecom') &&
+      isProviderEnabledForBinding('wecom') &&
+      (getBindingDetails('wecom')?.can_bind ?? true),
+    canUnbind: Boolean(getBindingStatus('wecom') && getBindingDetails('wecom')?.can_unbind),
+    details: getBindingDetails('wecom'),
+  },
 ])
 
 function providerInitial(provider: UserAuthProvider): string {
@@ -462,6 +476,9 @@ function providerInitial(provider: UserAuthProvider): string {
   }
   if (provider === 'wechat') {
     return 'W'
+  }
+  if (provider === 'wecom') {
+    return '企'
   }
   if (provider === 'oidc') {
     return 'O'
@@ -475,6 +492,9 @@ function providerIconClass(provider: UserAuthProvider): string {
   }
   if (provider === 'wechat') {
     return 'bg-green-100 text-green-600 dark:bg-green-900/20 dark:text-green-300'
+  }
+  if (provider === 'wecom') {
+    return 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-300'
   }
   if (provider === 'oidc') {
     return 'bg-sky-100 text-sky-600 dark:bg-sky-900/20 dark:text-sky-300'

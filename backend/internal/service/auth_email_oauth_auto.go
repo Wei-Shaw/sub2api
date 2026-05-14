@@ -49,7 +49,7 @@ func (s *AuthService) loginOrRegisterVerifiedEmailOAuth(
 	}
 
 	providerType := normalizeOAuthSignupSource(input.ProviderType)
-	if providerType != "github" && providerType != "google" {
+	if providerType != "github" && providerType != "google" && providerType != "wecom" {
 		return nil, nil, infraerrors.BadRequest("OAUTH_PROVIDER_INVALID", "oauth provider is invalid")
 	}
 	providerKey := strings.TrimSpace(input.ProviderKey)
@@ -71,11 +71,15 @@ func (s *AuthService) loginOrRegisterVerifiedEmailOAuth(
 	if _, err := mail.ParseAddress(email); err != nil {
 		return nil, nil, infraerrors.BadRequest("INVALID_EMAIL", "invalid email")
 	}
-	if isReservedEmail(email) {
+	if isReservedEmail(email) && providerType != "wecom" {
 		return nil, nil, ErrEmailReserved
 	}
-	if err := s.validateRegistrationEmailPolicy(ctx, email); err != nil {
-		return nil, nil, err
+	if providerType != "wecom" {
+		if err := s.validateRegistrationEmailPolicy(ctx, email); err != nil {
+			return nil, nil, err
+		}
+	} else if !strings.HasSuffix(email, WeComConnectSyntheticEmailDomain) {
+		return nil, nil, infraerrors.BadRequest("INVALID_EMAIL", "invalid email")
 	}
 
 	identityUser, err := s.findEmailOAuthIdentityOwner(ctx, providerType, providerKey, providerSubject)

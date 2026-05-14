@@ -68,6 +68,16 @@ type SystemSettings struct {
 	WeChatConnectRedirectURL               string
 	WeChatConnectFrontendRedirectURL       string
 
+	// WeCom / 企业微信 OAuth 登录
+	WeComOAuthEnabled             bool
+	WeComOAuthCorpID              string
+	WeComOAuthAgentID             string
+	WeComOAuthSecret              string
+	WeComOAuthSecretConfigured    bool
+	WeComOAuthScope               string
+	WeComOAuthRedirectURL         string
+	WeComOAuthFrontendRedirectURL string
+
 	// Generic OIDC OAuth 登录
 	OIDCConnectEnabled                bool
 	OIDCConnectProviderName           string
@@ -239,6 +249,7 @@ type PublicSettings struct {
 	WeChatOAuthOpenEnabled   bool
 	WeChatOAuthMPEnabled     bool
 	WeChatOAuthMobileEnabled bool
+	WeComOAuthEnabled        bool
 	BackendModeEnabled       bool
 	PaymentEnabled           bool
 	OIDCOAuthEnabled         bool
@@ -287,6 +298,16 @@ type WeChatConnectOAuthConfig struct {
 	MobileEnabled       bool
 	Mode                string
 	Scopes              string
+	RedirectURL         string
+	FrontendRedirectURL string
+}
+
+type WeComOAuthConfig struct {
+	Enabled             bool
+	CorpID              string
+	AgentID             string
+	Secret              string
+	Scope               string
 	RedirectURL         string
 	FrontendRedirectURL string
 }

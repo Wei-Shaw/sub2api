@@ -49,6 +49,10 @@ func (Proxy) Fields() []ent.Field {
 			MaxLen(100).
 			Optional().
 			Nillable(),
+		field.String("base_path").
+			MaxLen(255).
+			Optional().
+			Nillable(),
 		field.String("status").
 			MaxLen(20).
 			Default("active"),

@@ -521,13 +521,16 @@ export default {
       wechatAvailabilityUnknown: 'WeChat sign-in availability could not be confirmed. Refresh and retry.',
       wechatSystemBrowserOnly: 'This WeChat sign-in flow is only available in your system browser.',
       wechatBrowserOnly: 'This WeChat sign-in flow is only available inside the WeChat browser.',
-      wechatNotConfigured: 'WeChat sign-in is not configured yet.'
+      wechatNotConfigured: 'WeChat sign-in is not configured yet.',
+      wecomNotConfigured: 'WeCom sign-in is not configured yet.'
     },
     linuxdoCallbackPageTitle: 'LinuxDo Sign-In Callback',
     oidcCallbackPageTitle: 'OIDC Sign-In Callback',
     oauthCallbackPageTitle: 'OAuth Callback',
     wechatProviderName: 'WeChat',
+    wecomProviderName: 'WeCom',
     wechatCallbackPageTitle: 'WeChat Sign-In Callback',
+    wecomCallbackPageTitle: 'WeCom Sign-In Callback',
     wechatPaymentCallbackPageTitle: 'WeChat Payment Callback',
     wechatPayment: {
       callbackTitle: 'Resuming WeChat payment',
@@ -1233,6 +1236,7 @@ export default {
         linuxdo: 'LinuxDo',
         oidc: '{providerName}',
         wechat: 'WeChat',
+        wecom: 'WeCom',
       },
       notes: {
         emailManagedFromProfile: 'Primary email is managed in the profile form',
@@ -3902,7 +3906,9 @@ export default {
         http: 'HTTP',
         https: 'HTTPS',
         socks5: 'SOCKS5',
-        socks5h: 'SOCKS5H (Remote DNS)'
+        socks5h: 'SOCKS5H (Remote DNS)',
+        resin_http: 'Resin HTTP',
+        resin_https: 'Resin HTTPS'
       },
       columns: {
         name: 'Name',
@@ -3947,10 +3953,9 @@ export default {
       enterProxyName: 'Enter proxy name',
       leaveEmptyToKeep: 'Leave empty to keep current',
       optionalAuth: 'Optional authentication',
-      form: {
-        hostPlaceholder: 'proxy.example.com',
-        portPlaceholder: '8080'
-      },
+      resinPlatform: 'Resin Platform',
+      resinToken: 'Resin Token',
+      resinFieldHint: 'For Resin proxies, username stores the platform name. Reverse proxy mode automatically uses /<Resin Token> as the base path.',
       noProxiesYet: 'No proxies yet',
       createFirstProxy: 'Create your first proxy to route traffic through it.',
       // Batch import
@@ -4010,7 +4015,14 @@ export default {
       hostRequired: 'Please enter host address',
       portInvalid: 'Port must be between 1-65535',
       deleteConfirm:
-        "Are you sure you want to delete '{name}'? Accounts using this proxy will have their proxy removed."
+        "Are you sure you want to delete '{name}'? Accounts using this proxy will have their proxy removed.",
+      form: {
+        hostPlaceholder: 'proxy.example.com',
+        portPlaceholder: '8080',
+        resinHostPlaceholder: 'resin.example.com',
+        resinPlatformPlaceholder: 'openai',
+        resinTokenPlaceholder: 'resin-token'
+      }
     },
 
     // Redeem Codes

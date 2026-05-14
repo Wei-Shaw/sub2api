@@ -416,7 +416,8 @@ func (s *GeminiOAuthService) RefreshAccountGoogleOneTier(
 	}
 
 	// 调用 Drive API
-	tierID, storageInfo, err := s.FetchGoogleOneTier(ctx, accessToken, proxyURL)
+	tierCtx := withAccountResinContext(ctx, account.ID)
+	tierID, storageInfo, err := s.FetchGoogleOneTier(tierCtx, accessToken, proxyURL)
 	if err != nil {
 		return "", nil, nil, err
 	}
@@ -746,13 +747,8 @@ func (s *GeminiOAuthService) RefreshAccountToken(ctx context.Context, account *A
 		oauthType = "code_assist"
 	}
 
-	var proxyURL string
-	if account.ProxyID != nil {
-		proxy, err := s.proxyRepo.GetByID(ctx, *account.ProxyID)
-		if err == nil && proxy != nil {
-			proxyURL = proxy.URL()
-		}
-	}
+	ctx = withAccountResinContext(ctx, account.ID)
+	proxyURL := resolveAccountSharedProxyURL(ctx, s.proxyRepo, account)
 
 	tokenInfo, err := s.RefreshToken(ctx, oauthType, refreshToken, proxyURL)
 	// Backward compatibility:
@@ -849,7 +845,8 @@ func (s *GeminiOAuthService) RefreshAccountToken(ctx context.Context, account *A
 		}
 
 		if needsRefresh {
-			tierID, storageInfo, err := s.FetchGoogleOneTier(ctx, tokenInfo.AccessToken, proxyURL)
+			tierCtx := withAccountResinContext(ctx, account.ID)
+			tierID, storageInfo, err := s.FetchGoogleOneTier(tierCtx, tokenInfo.AccessToken, proxyURL)
 			if err == nil {
 				if canonical := canonicalGeminiTierIDForOAuthType(oauthType, tierID); canonical != "" && canonical != GeminiTierGoogleOneUnknown {
 					tokenInfo.TierID = canonical

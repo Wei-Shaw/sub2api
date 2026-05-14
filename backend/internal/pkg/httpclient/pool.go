@@ -16,15 +16,18 @@
 package httpclient
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
+	resinpkg "github.com/Wei-Shaw/sub2api/internal/pkg/resin"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 )
 
@@ -83,7 +86,7 @@ func GetClient(opts Options) (*http.Client, error) {
 }
 
 func buildClient(opts Options) (*http.Client, error) {
-	transport, err := buildTransport(opts)
+	transport, resinCfg, err := buildTransport(opts)
 	if err != nil {
 		return nil, err
 	}
@@ -92,13 +95,16 @@ func buildClient(opts Options) (*http.Client, error) {
 	if opts.ValidateResolvedIP && !opts.AllowPrivateHosts {
 		rt = newValidatedTransport(transport)
 	}
+	if resinCfg != nil {
+		rt = resinpkg.WrapForwardProxyRoundTripper(rt, resinCfg)
+	}
 	return &http.Client{
 		Transport: rt,
 		Timeout:   opts.Timeout,
 	}, nil
 }
 
-func buildTransport(opts Options) (*http.Transport, error) {
+func buildTransport(opts Options) (*http.Transport, *resinpkg.Config, error) {
 	// 使用自定义值或默认值
 	maxIdleConns := opts.MaxIdleConns
 	if maxIdleConns <= 0 {
@@ -123,22 +129,39 @@ func buildTransport(opts Options) (*http.Transport, error) {
 
 	if opts.InsecureSkipVerify {
 		// 安全要求：禁止跳过证书验证，避免中间人攻击。
-		return nil, fmt.Errorf("insecure_skip_verify is not allowed; install a trusted certificate instead")
+		return nil, nil, fmt.Errorf("insecure_skip_verify is not allowed; install a trusted certificate instead")
 	}
 
 	_, parsed, err := proxyurl.Parse(opts.ProxyURL)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	resinCfg, err := resinpkg.Parse(opts.ProxyURL)
+	if err != nil {
+		return nil, nil, err
+	}
+	if resinCfg != nil {
+		_, parsed, err = proxyurl.Parse(resinCfg.ForwardProxyBaseURL())
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 	if parsed == nil {
-		return transport, nil
+		return transport, nil, nil
+	}
+	if resinCfg != nil {
+		transport.Proxy = http.ProxyURL(parsed)
+		transport.GetProxyConnectHeader = func(ctx context.Context, proxyURL *url.URL, target string) (http.Header, error) {
+			return resinCfg.ProxyConnectHeadersForContext(ctx), nil
+		}
+		return transport, resinCfg, nil
 	}
 
 	if err := proxyutil.ConfigureTransportProxy(transport, parsed); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return transport, nil
+	return transport, nil, nil
 }
 
 func buildClientKey(opts Options) string {

@@ -151,6 +151,13 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		WeChatConnectScopes:                    settings.WeChatConnectScopes,
 		WeChatConnectRedirectURL:               settings.WeChatConnectRedirectURL,
 		WeChatConnectFrontendRedirectURL:       settings.WeChatConnectFrontendRedirectURL,
+		WeComOAuthEnabled:                      settings.WeComOAuthEnabled,
+		WeComOAuthCorpID:                       settings.WeComOAuthCorpID,
+		WeComOAuthAgentID:                      settings.WeComOAuthAgentID,
+		WeComOAuthSecretConfigured:             settings.WeComOAuthSecretConfigured,
+		WeComOAuthScope:                        settings.WeComOAuthScope,
+		WeComOAuthRedirectURL:                  settings.WeComOAuthRedirectURL,
+		WeComOAuthFrontendRedirectURL:          settings.WeComOAuthFrontendRedirectURL,
 		OIDCConnectEnabled:                     settings.OIDCConnectEnabled,
 		OIDCConnectProviderName:                settings.OIDCConnectProviderName,
 		OIDCConnectClientID:                    settings.OIDCConnectClientID,
@@ -394,6 +401,14 @@ type UpdateSettingsRequest struct {
 	WeChatConnectRedirectURL         string `json:"wechat_connect_redirect_url"`
 	WeChatConnectFrontendRedirectURL string `json:"wechat_connect_frontend_redirect_url"`
 
+	WeComOAuthEnabled             bool   `json:"wecom_oauth_enabled"`
+	WeComOAuthCorpID              string `json:"wecom_oauth_corp_id"`
+	WeComOAuthAgentID             string `json:"wecom_oauth_agent_id"`
+	WeComOAuthSecret              string `json:"wecom_oauth_secret"`
+	WeComOAuthScope               string `json:"wecom_oauth_scope"`
+	WeComOAuthRedirectURL         string `json:"wecom_oauth_redirect_url"`
+	WeComOAuthFrontendRedirectURL string `json:"wecom_oauth_frontend_redirect_url"`
+
 	// Generic OIDC OAuth 登录
 	OIDCConnectEnabled              bool   `json:"oidc_connect_enabled"`
 	OIDCConnectProviderName         string `json:"oidc_connect_provider_name"`
@@ -474,6 +489,11 @@ type UpdateSettingsRequest struct {
 	AuthSourceDefaultWeChatSubscriptions     *[]dto.DefaultSubscriptionSetting `json:"auth_source_default_wechat_subscriptions"`
 	AuthSourceDefaultWeChatGrantOnSignup     *bool                             `json:"auth_source_default_wechat_grant_on_signup"`
 	AuthSourceDefaultWeChatGrantOnFirstBind  *bool                             `json:"auth_source_default_wechat_grant_on_first_bind"`
+	AuthSourceDefaultWeComBalance            *float64                          `json:"auth_source_default_wecom_balance"`
+	AuthSourceDefaultWeComConcurrency        *int                              `json:"auth_source_default_wecom_concurrency"`
+	AuthSourceDefaultWeComSubscriptions      *[]dto.DefaultSubscriptionSetting `json:"auth_source_default_wecom_subscriptions"`
+	AuthSourceDefaultWeComGrantOnSignup      *bool                             `json:"auth_source_default_wecom_grant_on_signup"`
+	AuthSourceDefaultWeComGrantOnFirstBind   *bool                             `json:"auth_source_default_wecom_grant_on_first_bind"`
 	AuthSourceDefaultGitHubBalance           *float64                          `json:"auth_source_default_github_balance"`
 	AuthSourceDefaultGitHubConcurrency       *int                              `json:"auth_source_default_github_concurrency"`
 	AuthSourceDefaultGitHubSubscriptions     *[]dto.DefaultSubscriptionSetting `json:"auth_source_default_github_subscriptions"`
@@ -661,6 +681,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	req.AuthSourceDefaultLinuxDoSubscriptions = normalizeOptionalDefaultSubscriptions(req.AuthSourceDefaultLinuxDoSubscriptions)
 	req.AuthSourceDefaultOIDCSubscriptions = normalizeOptionalDefaultSubscriptions(req.AuthSourceDefaultOIDCSubscriptions)
 	req.AuthSourceDefaultWeChatSubscriptions = normalizeOptionalDefaultSubscriptions(req.AuthSourceDefaultWeChatSubscriptions)
+	req.AuthSourceDefaultWeComSubscriptions = normalizeOptionalDefaultSubscriptions(req.AuthSourceDefaultWeComSubscriptions)
 
 	// SMTP 配置保护：如果请求中 smtp_host 为空但数据库中已有配置，则保留已有 SMTP 配置
 	// 防止前端加载设置失败时空表单覆盖已保存的 SMTP 配置
@@ -903,6 +924,39 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				response.BadRequest(c, "WeChat Frontend Redirect URL is invalid")
 				return
 			}
+		}
+	}
+
+	if req.WeComOAuthEnabled {
+		req.WeComOAuthCorpID = strings.TrimSpace(firstNonEmpty(req.WeComOAuthCorpID, previousSettings.WeComOAuthCorpID))
+		req.WeComOAuthAgentID = strings.TrimSpace(firstNonEmpty(req.WeComOAuthAgentID, previousSettings.WeComOAuthAgentID))
+		req.WeComOAuthSecret = strings.TrimSpace(firstNonEmpty(req.WeComOAuthSecret, previousSettings.WeComOAuthSecret))
+		req.WeComOAuthScope = strings.TrimSpace(firstNonEmpty(req.WeComOAuthScope, previousSettings.WeComOAuthScope, "snsapi_base"))
+		req.WeComOAuthRedirectURL = strings.TrimSpace(firstNonEmpty(req.WeComOAuthRedirectURL, previousSettings.WeComOAuthRedirectURL))
+		req.WeComOAuthFrontendRedirectURL = strings.TrimSpace(firstNonEmpty(req.WeComOAuthFrontendRedirectURL, previousSettings.WeComOAuthFrontendRedirectURL, "/auth/wecom/callback"))
+		if req.WeComOAuthCorpID == "" {
+			response.BadRequest(c, "WeCom CorpID is required when enabled")
+			return
+		}
+		if req.WeComOAuthAgentID == "" {
+			response.BadRequest(c, "WeCom AgentID is required when enabled")
+			return
+		}
+		if req.WeComOAuthSecret == "" {
+			response.BadRequest(c, "WeCom Secret is required when enabled")
+			return
+		}
+		if req.WeComOAuthRedirectURL == "" {
+			response.BadRequest(c, "WeCom Redirect URL is required when enabled")
+			return
+		}
+		if err := config.ValidateAbsoluteHTTPURL(req.WeComOAuthRedirectURL); err != nil {
+			response.BadRequest(c, "WeCom Redirect URL must be an absolute http(s) URL")
+			return
+		}
+		if err := config.ValidateFrontendRedirectURL(req.WeComOAuthFrontendRedirectURL); err != nil {
+			response.BadRequest(c, "WeCom Frontend Redirect URL is invalid")
+			return
 		}
 	}
 
@@ -1314,6 +1368,13 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		WeChatConnectScopes:              req.WeChatConnectScopes,
 		WeChatConnectRedirectURL:         req.WeChatConnectRedirectURL,
 		WeChatConnectFrontendRedirectURL: req.WeChatConnectFrontendRedirectURL,
+		WeComOAuthEnabled:                req.WeComOAuthEnabled,
+		WeComOAuthCorpID:                 req.WeComOAuthCorpID,
+		WeComOAuthAgentID:                req.WeComOAuthAgentID,
+		WeComOAuthSecret:                 req.WeComOAuthSecret,
+		WeComOAuthScope:                  req.WeComOAuthScope,
+		WeComOAuthRedirectURL:            req.WeComOAuthRedirectURL,
+		WeComOAuthFrontendRedirectURL:    req.WeComOAuthFrontendRedirectURL,
 		OIDCConnectEnabled:               req.OIDCConnectEnabled,
 		OIDCConnectProviderName:          req.OIDCConnectProviderName,
 		OIDCConnectClientID:              req.OIDCConnectClientID,
@@ -1560,6 +1621,13 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			GrantOnSignup:    boolValueOrDefault(req.AuthSourceDefaultWeChatGrantOnSignup, previousAuthSourceDefaults.WeChat.GrantOnSignup),
 			GrantOnFirstBind: boolValueOrDefault(req.AuthSourceDefaultWeChatGrantOnFirstBind, previousAuthSourceDefaults.WeChat.GrantOnFirstBind),
 		},
+		WeCom: service.ProviderDefaultGrantSettings{
+			Balance:          float64ValueOrDefault(req.AuthSourceDefaultWeComBalance, previousAuthSourceDefaults.WeCom.Balance),
+			Concurrency:      intValueOrDefault(req.AuthSourceDefaultWeComConcurrency, previousAuthSourceDefaults.WeCom.Concurrency),
+			Subscriptions:    defaultSubscriptionsValueOrDefault(req.AuthSourceDefaultWeComSubscriptions, previousAuthSourceDefaults.WeCom.Subscriptions),
+			GrantOnSignup:    boolValueOrDefault(req.AuthSourceDefaultWeComGrantOnSignup, previousAuthSourceDefaults.WeCom.GrantOnSignup),
+			GrantOnFirstBind: boolValueOrDefault(req.AuthSourceDefaultWeComGrantOnFirstBind, previousAuthSourceDefaults.WeCom.GrantOnFirstBind),
+		},
 		GitHub: service.ProviderDefaultGrantSettings{
 			Balance:          float64ValueOrDefault(req.AuthSourceDefaultGitHubBalance, previousAuthSourceDefaults.GitHub.Balance),
 			Concurrency:      intValueOrDefault(req.AuthSourceDefaultGitHubConcurrency, previousAuthSourceDefaults.GitHub.Concurrency),
@@ -1698,6 +1766,13 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		WeChatConnectScopes:                    updatedSettings.WeChatConnectScopes,
 		WeChatConnectRedirectURL:               updatedSettings.WeChatConnectRedirectURL,
 		WeChatConnectFrontendRedirectURL:       updatedSettings.WeChatConnectFrontendRedirectURL,
+		WeComOAuthEnabled:                      updatedSettings.WeComOAuthEnabled,
+		WeComOAuthCorpID:                       updatedSettings.WeComOAuthCorpID,
+		WeComOAuthAgentID:                      updatedSettings.WeComOAuthAgentID,
+		WeComOAuthSecretConfigured:             updatedSettings.WeComOAuthSecretConfigured,
+		WeComOAuthScope:                        updatedSettings.WeComOAuthScope,
+		WeComOAuthRedirectURL:                  updatedSettings.WeComOAuthRedirectURL,
+		WeComOAuthFrontendRedirectURL:          updatedSettings.WeComOAuthFrontendRedirectURL,
 		OIDCConnectEnabled:                     updatedSettings.OIDCConnectEnabled,
 		OIDCConnectProviderName:                updatedSettings.OIDCConnectProviderName,
 		OIDCConnectClientID:                    updatedSettings.OIDCConnectClientID,
@@ -2244,6 +2319,7 @@ func appendAuthSourceDefaultChanges(changed []string, before *service.AuthSource
 		{name: "linuxdo", before: before.LinuxDo, after: after.LinuxDo},
 		{name: "oidc", before: before.OIDC, after: after.OIDC},
 		{name: "wechat", before: before.WeChat, after: after.WeChat},
+		{name: "wecom", before: before.WeCom, after: after.WeCom},
 		{name: "github", before: before.GitHub, after: after.GitHub},
 		{name: "google", before: before.Google, after: after.Google},
 	}
@@ -2360,6 +2436,11 @@ func systemSettingsResponseData(settings dto.SystemSettings, authSourceDefaults 
 	data["auth_source_default_wechat_subscriptions"] = authSourceDefaults.WeChat.Subscriptions
 	data["auth_source_default_wechat_grant_on_signup"] = authSourceDefaults.WeChat.GrantOnSignup
 	data["auth_source_default_wechat_grant_on_first_bind"] = authSourceDefaults.WeChat.GrantOnFirstBind
+	data["auth_source_default_wecom_balance"] = authSourceDefaults.WeCom.Balance
+	data["auth_source_default_wecom_concurrency"] = authSourceDefaults.WeCom.Concurrency
+	data["auth_source_default_wecom_subscriptions"] = authSourceDefaults.WeCom.Subscriptions
+	data["auth_source_default_wecom_grant_on_signup"] = authSourceDefaults.WeCom.GrantOnSignup
+	data["auth_source_default_wecom_grant_on_first_bind"] = authSourceDefaults.WeCom.GrantOnFirstBind
 	data["auth_source_default_github_balance"] = authSourceDefaults.GitHub.Balance
 	data["auth_source_default_github_concurrency"] = authSourceDefaults.GitHub.Concurrency
 	data["auth_source_default_github_subscriptions"] = authSourceDefaults.GitHub.Subscriptions

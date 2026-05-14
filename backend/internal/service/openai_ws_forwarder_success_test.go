@@ -1405,10 +1405,12 @@ func (d *openAIWSCaptureDialer) Dial(
 	wsURL string,
 	headers http.Header,
 	proxyURL string,
+	accountID int64,
 ) (openAIWSClientConn, int, http.Header, error) {
 	_ = ctx
 	_ = wsURL
 	_ = proxyURL
+	_ = accountID
 	d.mu.Lock()
 	d.lastHeaders = cloneHeader(headers)
 	d.dialCount++

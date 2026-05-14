@@ -28,6 +28,19 @@ export function isTotp2FARequired(response: LoginResponse): response is TotpLogi
   return 'requires_2fa' in response && response.requires_2fa === true
 }
 
+export function resolveWeComOAuthStart(
+  settings: { wecom_oauth_enabled?: boolean } | null | undefined,
+  userAgent?: string
+): { mode: 'web' | 'webview'; enabled: boolean } {
+  const normalizedUserAgent = (userAgent
+    ?? (typeof navigator !== 'undefined' ? navigator.userAgent : '')
+    ?? '').trim()
+  return {
+    enabled: settings?.wecom_oauth_enabled === true,
+    mode: /wxwork/i.test(normalizedUserAgent) ? 'webview' : 'web'
+  }
+}
+
 /**
  * Store authentication token in localStorage
  */
@@ -591,8 +604,16 @@ export async function completeWeChatOAuthRegistration(
   return createPendingWeChatOAuthAccount(invitationCode, decision, affiliateCode)
 }
 
+export async function completeWeComOAuthRegistration(
+  invitationCode: string,
+  decision?: OAuthAdoptionDecision,
+  affiliateCode?: string
+): Promise<OAuthTokenResponse> {
+  return createPendingOAuthAccount('wecom', invitationCode, decision, affiliateCode)
+}
+
 async function createPendingOAuthAccount(
-  provider: 'linuxdo' | 'oidc' | 'wechat',
+  provider: 'linuxdo' | 'oidc' | 'wechat' | 'wecom',
   invitationCode: string,
   decision?: OAuthAdoptionDecision,
   affiliateCode?: string
@@ -683,7 +704,8 @@ export const authAPI = {
   exchangePendingOAuthCompletion,
   completeLinuxDoOAuthRegistration,
   completeOIDCOAuthRegistration,
-  completeWeChatOAuthRegistration
+  completeWeChatOAuthRegistration,
+  completeWeComOAuthRegistration
 }
 
 export default authAPI

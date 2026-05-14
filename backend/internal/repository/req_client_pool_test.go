@@ -1,12 +1,17 @@
 package repository
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 	"unsafe"
 
+	resinpkg "github.com/Wei-Shaw/sub2api/internal/pkg/resin"
 	"github.com/imroc/req/v3"
 	"github.com/stretchr/testify/require"
 )
@@ -117,4 +122,52 @@ func TestCreateGeminiReqClient_ForceHTTP2Disabled(t *testing.T) {
 	client, err := createGeminiReqClient("http://proxy.local:8080")
 	require.NoError(t, err)
 	require.Equal(t, "", forceHTTPVersion(t, client))
+}
+
+func TestGetSharedReqClient_ResinSharedProxyAddsConnectAuthFromContext(t *testing.T) {
+	sharedReqClients = sync.Map{}
+
+	gotMethod := make(chan string, 1)
+	gotAuth := make(chan string, 1)
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case gotMethod <- r.Method:
+		default:
+		}
+		select {
+		case gotAuth <- r.Header.Get("Proxy-Authorization"):
+		default:
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer proxy.Close()
+
+	rawResinURL := strings.Replace(proxy.URL, "://", "://openai:token123@", 1) + "#resin"
+	cfg, err := resinpkg.Parse(rawResinURL)
+	require.NoError(t, err)
+
+	client, err := getSharedReqClient(reqClientOptions{
+		ProxyURL: rawResinURL,
+		Timeout:  2 * time.Second,
+	})
+	require.NoError(t, err)
+
+	_, err = client.R().
+		SetContext(resinpkg.WithAccountID(context.Background(), 42)).
+		Get("https://example.com")
+	require.Error(t, err)
+
+	select {
+	case method := <-gotMethod:
+		require.Equal(t, http.MethodConnect, method)
+	case <-time.After(2 * time.Second):
+		t.Fatal("proxy did not receive CONNECT request")
+	}
+
+	select {
+	case auth := <-gotAuth:
+		require.Equal(t, cfg.ProxyAuthorizationHeader(42), auth)
+	case <-time.After(2 * time.Second):
+		t.Fatal("proxy did not receive Proxy-Authorization header")
+	}
 }

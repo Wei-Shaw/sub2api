@@ -40,6 +40,7 @@ type DataProxy struct {
 	Port     int    `json:"port"`
 	Username string `json:"username,omitempty"`
 	Password string `json:"password,omitempty"`
+	BasePath string `json:"base_path,omitempty"`
 	Status   string `json:"status"`
 }
 
@@ -83,6 +84,10 @@ func buildProxyKey(protocol, host string, port int, username, password string) s
 	return fmt.Sprintf("%s|%s|%d|%s|%s", strings.TrimSpace(protocol), strings.TrimSpace(host), port, strings.TrimSpace(username), strings.TrimSpace(password))
 }
 
+func buildProxyKeyWithBasePath(protocol, host string, port int, username, password, basePath string) string {
+	return fmt.Sprintf("%s|%s|%d|%s|%s|%s", strings.TrimSpace(protocol), strings.TrimSpace(host), port, strings.TrimSpace(username), strings.TrimSpace(password), strings.TrimSpace(basePath))
+}
+
 func (h *AccountHandler) ExportData(c *gin.Context) {
 	ctx := c.Request.Context()
 
@@ -119,7 +124,7 @@ func (h *AccountHandler) ExportData(c *gin.Context) {
 	dataProxies := make([]DataProxy, 0, len(proxies))
 	for i := range proxies {
 		p := proxies[i]
-		key := buildProxyKey(p.Protocol, p.Host, p.Port, p.Username, p.Password)
+		key := buildProxyKeyWithBasePath(p.Protocol, p.Host, p.Port, p.Username, p.Password, p.BasePath)
 		proxyKeyByID[p.ID] = key
 		dataProxies = append(dataProxies, DataProxy{
 			ProxyKey: key,
@@ -129,6 +134,7 @@ func (h *AccountHandler) ExportData(c *gin.Context) {
 			Port:     p.Port,
 			Username: p.Username,
 			Password: p.Password,
+			BasePath: p.BasePath,
 			Status:   p.Status,
 		})
 	}
@@ -206,15 +212,18 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 	proxyKeyToID := make(map[string]int64, len(existingProxies))
 	for i := range existingProxies {
 		p := existingProxies[i]
-		key := buildProxyKey(p.Protocol, p.Host, p.Port, p.Username, p.Password)
+		key := buildProxyKeyWithBasePath(p.Protocol, p.Host, p.Port, p.Username, p.Password, p.BasePath)
 		proxyKeyToID[key] = p.ID
+		if p.BasePath == "" {
+			proxyKeyToID[buildProxyKey(p.Protocol, p.Host, p.Port, p.Username, p.Password)] = p.ID
+		}
 	}
 
 	for i := range dataPayload.Proxies {
 		item := dataPayload.Proxies[i]
 		key := item.ProxyKey
 		if key == "" {
-			key = buildProxyKey(item.Protocol, item.Host, item.Port, item.Username, item.Password)
+			key = buildProxyKeyWithBasePath(item.Protocol, item.Host, item.Port, item.Username, item.Password, item.BasePath)
 		}
 		if err := validateDataProxy(item); err != nil {
 			result.ProxyFailed++
@@ -247,6 +256,7 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 			Port:     item.Port,
 			Username: item.Username,
 			Password: item.Password,
+			BasePath: item.BasePath,
 		})
 		if createErr != nil {
 			result.ProxyFailed++
@@ -259,6 +269,9 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 			continue
 		}
 		proxyKeyToID[key] = created.ID
+		if created.BasePath == "" {
+			proxyKeyToID[buildProxyKey(created.Protocol, created.Host, created.Port, created.Username, created.Password)] = created.ID
+		}
 		result.ProxyCreated++
 
 		if normalizedStatus != "" && normalizedStatus != created.Status {
@@ -533,7 +546,7 @@ func validateDataProxy(item DataProxy) error {
 		return errors.New("proxy port is invalid")
 	}
 	switch item.Protocol {
-	case "http", "https", "socks5", "socks5h":
+	case "http", "https", "socks5", "socks5h", "resin_http", "resin_https":
 	default:
 		return fmt.Errorf("proxy protocol is invalid: %s", item.Protocol)
 	}

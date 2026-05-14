@@ -158,6 +158,26 @@ func (_u *ProxyUpdate) ClearPassword() *ProxyUpdate {
 	return _u
 }
 
+// SetBasePath sets the "base_path" field.
+func (_u *ProxyUpdate) SetBasePath(v string) *ProxyUpdate {
+	_u.mutation.SetBasePath(v)
+	return _u
+}
+
+// SetNillableBasePath sets the "base_path" field if the given value is not nil.
+func (_u *ProxyUpdate) SetNillableBasePath(v *string) *ProxyUpdate {
+	if v != nil {
+		_u.SetBasePath(*v)
+	}
+	return _u
+}
+
+// ClearBasePath clears the value of the "base_path" field.
+func (_u *ProxyUpdate) ClearBasePath() *ProxyUpdate {
+	_u.mutation.ClearBasePath()
+	return _u
+}
+
 // SetStatus sets the "status" field.
 func (_u *ProxyUpdate) SetStatus(v string) *ProxyUpdate {
 	_u.mutation.SetStatus(v)
@@ -282,6 +302,11 @@ func (_u *ProxyUpdate) check() error {
 			return &ValidationError{Name: "password", err: fmt.Errorf(`ent: validator failed for field "Proxy.password": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.BasePath(); ok {
+		if err := proxy.BasePathValidator(v); err != nil {
+			return &ValidationError{Name: "base_path", err: fmt.Errorf(`ent: validator failed for field "Proxy.base_path": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Status(); ok {
 		if err := proxy.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Proxy.status": %w`, err)}
@@ -337,6 +362,12 @@ func (_u *ProxyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.PasswordCleared() {
 		_spec.ClearField(proxy.FieldPassword, field.TypeString)
+	}
+	if value, ok := _u.mutation.BasePath(); ok {
+		_spec.SetField(proxy.FieldBasePath, field.TypeString, value)
+	}
+	if _u.mutation.BasePathCleared() {
+		_spec.ClearField(proxy.FieldBasePath, field.TypeString)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(proxy.FieldStatus, field.TypeString, value)
@@ -535,6 +566,26 @@ func (_u *ProxyUpdateOne) ClearPassword() *ProxyUpdateOne {
 	return _u
 }
 
+// SetBasePath sets the "base_path" field.
+func (_u *ProxyUpdateOne) SetBasePath(v string) *ProxyUpdateOne {
+	_u.mutation.SetBasePath(v)
+	return _u
+}
+
+// SetNillableBasePath sets the "base_path" field if the given value is not nil.
+func (_u *ProxyUpdateOne) SetNillableBasePath(v *string) *ProxyUpdateOne {
+	if v != nil {
+		_u.SetBasePath(*v)
+	}
+	return _u
+}
+
+// ClearBasePath clears the value of the "base_path" field.
+func (_u *ProxyUpdateOne) ClearBasePath() *ProxyUpdateOne {
+	_u.mutation.ClearBasePath()
+	return _u
+}
+
 // SetStatus sets the "status" field.
 func (_u *ProxyUpdateOne) SetStatus(v string) *ProxyUpdateOne {
 	_u.mutation.SetStatus(v)
@@ -672,6 +723,11 @@ func (_u *ProxyUpdateOne) check() error {
 			return &ValidationError{Name: "password", err: fmt.Errorf(`ent: validator failed for field "Proxy.password": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.BasePath(); ok {
+		if err := proxy.BasePathValidator(v); err != nil {
+			return &ValidationError{Name: "base_path", err: fmt.Errorf(`ent: validator failed for field "Proxy.base_path": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Status(); ok {
 		if err := proxy.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Proxy.status": %w`, err)}
@@ -744,6 +800,12 @@ func (_u *ProxyUpdateOne) sqlSave(ctx context.Context) (_node *Proxy, err error)
 	}
 	if _u.mutation.PasswordCleared() {
 		_spec.ClearField(proxy.FieldPassword, field.TypeString)
+	}
+	if value, ok := _u.mutation.BasePath(); ok {
+		_spec.SetField(proxy.FieldBasePath, field.TypeString, value)
+	}
+	if _u.mutation.BasePathCleared() {
+		_spec.ClearField(proxy.FieldBasePath, field.TypeString)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(proxy.FieldStatus, field.TypeString, value)

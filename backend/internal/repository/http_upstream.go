@@ -20,6 +20,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
+	resinpkg "github.com/Wei-Shaw/sub2api/internal/pkg/resin"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
@@ -131,6 +132,17 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 	if err := s.validateRequestHost(req); err != nil {
 		return nil, err
 	}
+	if accountID > 0 {
+		req = req.Clone(resinpkg.WithAccountID(req.Context(), accountID))
+		if resinCfg := resinConfigForProxyURL(proxyURL); resinCfg != nil {
+			var err error
+			req, err = resinpkg.PrepareReverseRequest(req, resinCfg, accountID)
+			if err != nil {
+				return nil, err
+			}
+			proxyURL = ""
+		}
+	}
 
 	// 获取或创建对应的客户端，并标记请求占用
 	entry, err := s.acquireClient(proxyURL, accountID, accountConcurrency)
@@ -167,6 +179,12 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile) (*http.Response, error) {
 	if profile == nil {
 		return s.Do(req, proxyURL, accountID, accountConcurrency)
+	}
+	if accountID > 0 {
+		req = req.Clone(resinpkg.WithAccountID(req.Context(), accountID))
+		if resinCfg := resinConfigForProxyURL(proxyURL); resinCfg != nil {
+			proxyURL = resinCfg.ForwardProxyURLForAccount(accountID)
+		}
 	}
 
 	targetHost := ""
@@ -205,6 +223,14 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 	})
 
 	return resp, nil
+}
+
+func resinConfigForProxyURL(proxyURL string) *resinpkg.Config {
+	cfg, err := resinpkg.Parse(proxyURL)
+	if err != nil {
+		return nil
+	}
+	return cfg
 }
 
 // acquireClientWithTLS 获取或创建带 TLS 指纹的客户端

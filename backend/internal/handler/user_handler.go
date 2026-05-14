@@ -67,6 +67,7 @@ type userProfileResponse struct {
 	LinuxDoBound      bool                                   `json:"linuxdo_bound"`
 	OIDCBound         bool                                   `json:"oidc_bound"`
 	WeChatBound       bool                                   `json:"wechat_bound"`
+	WeComBound        bool                                   `json:"wecom_bound"`
 }
 
 type userProfileSourceContext struct {
@@ -528,6 +529,7 @@ func userProfileResponseFromService(user *service.User, identities service.UserI
 		LinuxDoBound:      identities.LinuxDo.Bound,
 		OIDCBound:         identities.OIDC.Bound,
 		WeChatBound:       identities.WeChat.Bound,
+		WeComBound:        identities.WeCom.Bound,
 	}
 }
 
@@ -537,6 +539,7 @@ func userProfileBindingMap(identities service.UserIdentitySummarySet) map[string
 		"linuxdo": identities.LinuxDo,
 		"oidc":    identities.OIDC,
 		"wechat":  identities.WeChat,
+		"wecom":   identities.WeCom,
 	}
 }
 
@@ -585,7 +588,7 @@ func inferUserProfileSources(user *service.User, identities service.UserIdentity
 
 func thirdPartyIdentityProviders(identities service.UserIdentitySummarySet) []service.UserIdentitySummary {
 	out := make([]service.UserIdentitySummary, 0, 3)
-	for _, summary := range []service.UserIdentitySummary{identities.LinuxDo, identities.OIDC, identities.WeChat} {
+	for _, summary := range []service.UserIdentitySummary{identities.LinuxDo, identities.OIDC, identities.WeChat, identities.WeCom} {
 		if summary.Bound {
 			out = append(out, summary)
 		}

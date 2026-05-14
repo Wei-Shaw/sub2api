@@ -117,6 +117,20 @@ func (_c *ProxyCreate) SetNillablePassword(v *string) *ProxyCreate {
 	return _c
 }
 
+// SetBasePath sets the "base_path" field.
+func (_c *ProxyCreate) SetBasePath(v string) *ProxyCreate {
+	_c.mutation.SetBasePath(v)
+	return _c
+}
+
+// SetNillableBasePath sets the "base_path" field if the given value is not nil.
+func (_c *ProxyCreate) SetNillableBasePath(v *string) *ProxyCreate {
+	if v != nil {
+		_c.SetBasePath(*v)
+	}
+	return _c
+}
+
 // SetStatus sets the "status" field.
 func (_c *ProxyCreate) SetStatus(v string) *ProxyCreate {
 	_c.mutation.SetStatus(v)
@@ -249,6 +263,11 @@ func (_c *ProxyCreate) check() error {
 			return &ValidationError{Name: "password", err: fmt.Errorf(`ent: validator failed for field "Proxy.password": %w`, err)}
 		}
 	}
+	if v, ok := _c.mutation.BasePath(); ok {
+		if err := proxy.BasePathValidator(v); err != nil {
+			return &ValidationError{Name: "base_path", err: fmt.Errorf(`ent: validator failed for field "Proxy.base_path": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.Status(); !ok {
 		return &ValidationError{Name: "status", err: errors.New(`ent: missing required field "Proxy.status"`)}
 	}
@@ -319,6 +338,10 @@ func (_c *ProxyCreate) createSpec() (*Proxy, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Password(); ok {
 		_spec.SetField(proxy.FieldPassword, field.TypeString, value)
 		_node.Password = &value
+	}
+	if value, ok := _c.mutation.BasePath(); ok {
+		_spec.SetField(proxy.FieldBasePath, field.TypeString, value)
+		_node.BasePath = &value
 	}
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(proxy.FieldStatus, field.TypeString, value)
@@ -509,6 +532,24 @@ func (u *ProxyUpsert) UpdatePassword() *ProxyUpsert {
 // ClearPassword clears the value of the "password" field.
 func (u *ProxyUpsert) ClearPassword() *ProxyUpsert {
 	u.SetNull(proxy.FieldPassword)
+	return u
+}
+
+// SetBasePath sets the "base_path" field.
+func (u *ProxyUpsert) SetBasePath(v string) *ProxyUpsert {
+	u.Set(proxy.FieldBasePath, v)
+	return u
+}
+
+// UpdateBasePath sets the "base_path" field to the value that was provided on create.
+func (u *ProxyUpsert) UpdateBasePath() *ProxyUpsert {
+	u.SetExcluded(proxy.FieldBasePath)
+	return u
+}
+
+// ClearBasePath clears the value of the "base_path" field.
+func (u *ProxyUpsert) ClearBasePath() *ProxyUpsert {
+	u.SetNull(proxy.FieldBasePath)
 	return u
 }
 
@@ -706,6 +747,27 @@ func (u *ProxyUpsertOne) UpdatePassword() *ProxyUpsertOne {
 func (u *ProxyUpsertOne) ClearPassword() *ProxyUpsertOne {
 	return u.Update(func(s *ProxyUpsert) {
 		s.ClearPassword()
+	})
+}
+
+// SetBasePath sets the "base_path" field.
+func (u *ProxyUpsertOne) SetBasePath(v string) *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.SetBasePath(v)
+	})
+}
+
+// UpdateBasePath sets the "base_path" field to the value that was provided on create.
+func (u *ProxyUpsertOne) UpdateBasePath() *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.UpdateBasePath()
+	})
+}
+
+// ClearBasePath clears the value of the "base_path" field.
+func (u *ProxyUpsertOne) ClearBasePath() *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.ClearBasePath()
 	})
 }
 
@@ -1071,6 +1133,27 @@ func (u *ProxyUpsertBulk) UpdatePassword() *ProxyUpsertBulk {
 func (u *ProxyUpsertBulk) ClearPassword() *ProxyUpsertBulk {
 	return u.Update(func(s *ProxyUpsert) {
 		s.ClearPassword()
+	})
+}
+
+// SetBasePath sets the "base_path" field.
+func (u *ProxyUpsertBulk) SetBasePath(v string) *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.SetBasePath(v)
+	})
+}
+
+// UpdateBasePath sets the "base_path" field to the value that was provided on create.
+func (u *ProxyUpsertBulk) UpdateBasePath() *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.UpdateBasePath()
+	})
+}
+
+// ClearBasePath clears the value of the "base_path" field.
+func (u *ProxyUpsertBulk) ClearBasePath() *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.ClearBasePath()
 	})
 }
 

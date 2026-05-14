@@ -94,6 +94,14 @@ func RegisterAuthRoutes(
 			h.Auth.WeChatOAuthStart(c)
 		})
 		auth.GET("/oauth/wechat/callback", h.Auth.WeChatOAuthCallback)
+		auth.GET("/oauth/wecom/start", h.Auth.WeComOAuthStart)
+		auth.GET("/oauth/wecom/bind/start", func(c *gin.Context) {
+			query := c.Request.URL.Query()
+			query.Set("intent", "bind_current_user")
+			c.Request.URL.RawQuery = query.Encode()
+			h.Auth.WeComOAuthStart(c)
+		})
+		auth.GET("/oauth/wecom/callback", h.Auth.WeComOAuthCallback)
 		auth.GET("/oauth/wechat/payment/start", h.Auth.WeChatPaymentOAuthStart)
 		auth.GET("/oauth/wechat/payment/callback", h.Auth.WeChatPaymentOAuthCallback)
 		auth.POST("/oauth/pending/exchange",
@@ -155,6 +163,24 @@ func RegisterAuthRoutes(
 				FailureMode: middleware.RateLimitFailClose,
 			}),
 			h.Auth.CreateWeChatOAuthAccount,
+		)
+		auth.POST("/oauth/wecom/complete-registration",
+			rateLimiter.LimitWithOptions("oauth-wecom-complete", 10, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+			}),
+			h.Auth.CompleteWeComOAuthRegistration,
+		)
+		auth.POST("/oauth/wecom/bind-login",
+			rateLimiter.LimitWithOptions("oauth-wecom-bind-login", 20, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+			}),
+			h.Auth.BindWeComOAuthLogin,
+		)
+		auth.POST("/oauth/wecom/create-account",
+			rateLimiter.LimitWithOptions("oauth-wecom-create-account", 10, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+			}),
+			h.Auth.CreateWeComOAuthAccount,
 		)
 		auth.GET("/oauth/oidc/start", h.Auth.OIDCOAuthStart)
 		auth.GET("/oauth/oidc/bind/start", func(c *gin.Context) {

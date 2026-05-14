@@ -49,7 +49,7 @@ func (h *ProxyHandler) ExportData(c *gin.Context) {
 	dataProxies := make([]DataProxy, 0, len(proxies))
 	for i := range proxies {
 		p := proxies[i]
-		key := buildProxyKey(p.Protocol, p.Host, p.Port, p.Username, p.Password)
+		key := buildProxyKeyWithBasePath(p.Protocol, p.Host, p.Port, p.Username, p.Password, p.BasePath)
 		dataProxies = append(dataProxies, DataProxy{
 			ProxyKey: key,
 			Name:     p.Name,
@@ -58,6 +58,7 @@ func (h *ProxyHandler) ExportData(c *gin.Context) {
 			Port:     p.Port,
 			Username: p.Username,
 			Password: p.Password,
+			BasePath: p.BasePath,
 			Status:   p.Status,
 		})
 	}
@@ -100,8 +101,11 @@ func (h *ProxyHandler) ImportData(c *gin.Context) {
 	proxyByKey := make(map[string]service.Proxy, len(existingProxies))
 	for i := range existingProxies {
 		p := existingProxies[i]
-		key := buildProxyKey(p.Protocol, p.Host, p.Port, p.Username, p.Password)
+		key := buildProxyKeyWithBasePath(p.Protocol, p.Host, p.Port, p.Username, p.Password, p.BasePath)
 		proxyByKey[key] = p
+		if p.BasePath == "" {
+			proxyByKey[buildProxyKey(p.Protocol, p.Host, p.Port, p.Username, p.Password)] = p
+		}
 	}
 
 	latencyProbeIDs := make([]int64, 0, len(req.Data.Proxies))
@@ -109,7 +113,7 @@ func (h *ProxyHandler) ImportData(c *gin.Context) {
 		item := req.Data.Proxies[i]
 		key := item.ProxyKey
 		if key == "" {
-			key = buildProxyKey(item.Protocol, item.Host, item.Port, item.Username, item.Password)
+			key = buildProxyKeyWithBasePath(item.Protocol, item.Host, item.Port, item.Username, item.Password, item.BasePath)
 		}
 
 		if err := validateDataProxy(item); err != nil {
@@ -147,6 +151,7 @@ func (h *ProxyHandler) ImportData(c *gin.Context) {
 			Port:     item.Port,
 			Username: item.Username,
 			Password: item.Password,
+			BasePath: item.BasePath,
 		})
 		if err != nil {
 			result.ProxyFailed++
@@ -160,6 +165,9 @@ func (h *ProxyHandler) ImportData(c *gin.Context) {
 		}
 		result.ProxyCreated++
 		proxyByKey[key] = *created
+		if created.BasePath == "" {
+			proxyByKey[buildProxyKey(created.Protocol, created.Host, created.Port, created.Username, created.Password)] = *created
+		}
 
 		if normalizedStatus != "" && normalizedStatus != created.Status {
 			if _, err := h.adminService.UpdateProxy(ctx, created.ID, &service.UpdateProxyInput{Status: normalizedStatus}); err != nil {

@@ -125,9 +125,9 @@
           <template #cell-protocol="{ value }">
             <span
               v-if="value"
-              :class="['badge', value.startsWith('socks5') ? 'badge-primary' : 'badge-gray']"
+              :class="['badge', protocolBadgeClass(value)]"
             >
-              {{ value.toUpperCase() }}
+              {{ protocolLabel(value) }}
             </span>
             <span v-else class="text-sm text-gray-400">-</span>
           </template>
@@ -426,9 +426,12 @@
               v-model="createForm.host"
               type="text"
               required
-              :placeholder="t('admin.proxies.form.hostPlaceholder')"
+              :placeholder="proxyHostPlaceholder(createForm.protocol)"
               class="input"
             />
+            <p v-if="isResinProtocol(createForm.protocol)" class="input-hint mt-2">
+              {{ t('admin.proxies.resinFieldHint') }}
+            </p>
           </div>
           <div>
             <label class="input-label">{{ t('admin.proxies.port') }}</label>
@@ -444,22 +447,22 @@
           </div>
         </div>
         <div>
-          <label class="input-label">{{ t('admin.proxies.username') }}</label>
+          <label class="input-label">{{ proxyUsernameLabel(createForm.protocol) }}</label>
           <input
             v-model="createForm.username"
             type="text"
             class="input"
-            :placeholder="t('admin.proxies.optionalAuth')"
+            :placeholder="proxyUsernamePlaceholder(createForm.protocol)"
           />
         </div>
         <div>
-          <label class="input-label">{{ t('admin.proxies.password') }}</label>
+          <label class="input-label">{{ proxyPasswordLabel(createForm.protocol) }}</label>
           <div class="relative">
             <input
               v-model="createForm.password"
               :type="createPasswordVisible ? 'text' : 'password'"
               class="input pr-10"
-              :placeholder="t('admin.proxies.optionalAuth')"
+              :placeholder="proxyPasswordPlaceholder(createForm.protocol)"
             />
             <button
               type="button"
@@ -627,7 +630,10 @@
         <div class="grid grid-cols-2 gap-4">
           <div>
             <label class="input-label">{{ t('admin.proxies.host') }}</label>
-            <input v-model="editForm.host" type="text" required class="input" />
+            <input v-model="editForm.host" type="text" required class="input" :placeholder="proxyHostPlaceholder(editForm.protocol)" />
+            <p v-if="isResinProtocol(editForm.protocol)" class="input-hint mt-2">
+              {{ t('admin.proxies.resinFieldHint') }}
+            </p>
           </div>
           <div>
             <label class="input-label">{{ t('admin.proxies.port') }}</label>
@@ -642,16 +648,16 @@
           </div>
         </div>
         <div>
-          <label class="input-label">{{ t('admin.proxies.username') }}</label>
+          <label class="input-label">{{ proxyUsernameLabel(editForm.protocol) }}</label>
           <input v-model="editForm.username" type="text" class="input" />
         </div>
         <div>
-          <label class="input-label">{{ t('admin.proxies.password') }}</label>
+          <label class="input-label">{{ proxyPasswordLabel(editForm.protocol) }}</label>
           <div class="relative">
             <input
               v-model="editForm.password"
               :type="editPasswordVisible ? 'text' : 'password'"
-              :placeholder="t('admin.proxies.leaveEmptyToKeep')"
+              :placeholder="proxyPasswordPlaceholder(editForm.protocol, true)"
               class="input pr-10"
               @input="editPasswordDirty = true"
             />
@@ -917,7 +923,9 @@ const protocolOptions = computed(() => [
   { value: 'http', label: 'HTTP' },
   { value: 'https', label: 'HTTPS' },
   { value: 'socks5', label: 'SOCKS5' },
-  { value: 'socks5h', label: 'SOCKS5H' }
+  { value: 'socks5h', label: 'SOCKS5H' },
+  { value: 'resin_http', label: t('admin.proxies.protocols.resin_http') },
+  { value: 'resin_https', label: t('admin.proxies.protocols.resin_https') }
 ])
 
 const statusOptions = computed(() => [
@@ -931,7 +939,9 @@ const protocolSelectOptions = computed(() => [
   { value: 'http', label: t('admin.proxies.protocols.http') },
   { value: 'https', label: t('admin.proxies.protocols.https') },
   { value: 'socks5', label: t('admin.proxies.protocols.socks5') },
-  { value: 'socks5h', label: t('admin.proxies.protocols.socks5h') }
+  { value: 'socks5h', label: t('admin.proxies.protocols.socks5h') },
+  { value: 'resin_http', label: t('admin.proxies.protocols.resin_http') },
+  { value: 'resin_https', label: t('admin.proxies.protocols.resin_https') }
 ])
 
 const editStatusOptions = computed(() => [
@@ -1048,6 +1058,53 @@ const isAbortError = (error: unknown) => {
   if (!error || typeof error !== 'object') return false
   const maybeError = error as { name?: string; code?: string }
   return maybeError.name === 'AbortError' || maybeError.code === 'ERR_CANCELED'
+}
+
+const isResinProtocol = (protocol: ProxyProtocol | string) =>
+  protocol === 'resin_http' || protocol === 'resin_https'
+
+const protocolLabel = (protocol: ProxyProtocol | string) => {
+  switch (protocol) {
+    case 'http':
+      return t('admin.proxies.protocols.http')
+    case 'https':
+      return t('admin.proxies.protocols.https')
+    case 'socks5':
+      return t('admin.proxies.protocols.socks5')
+    case 'socks5h':
+      return t('admin.proxies.protocols.socks5h')
+    case 'resin_http':
+      return t('admin.proxies.protocols.resin_http')
+    case 'resin_https':
+      return t('admin.proxies.protocols.resin_https')
+    default:
+      return String(protocol || '')
+  }
+}
+
+const protocolBadgeClass = (protocol: ProxyProtocol | string) => {
+  if (protocol === 'resin_http' || protocol === 'resin_https') return 'badge-warning'
+  if (String(protocol).startsWith('socks5')) return 'badge-primary'
+  return 'badge-gray'
+}
+
+const proxyHostPlaceholder = (protocol: ProxyProtocol) =>
+  isResinProtocol(protocol) ? t('admin.proxies.form.resinHostPlaceholder') : t('admin.proxies.form.hostPlaceholder')
+
+const proxyUsernameLabel = (protocol: ProxyProtocol) =>
+  isResinProtocol(protocol) ? t('admin.proxies.resinPlatform') : t('admin.proxies.username')
+
+const proxyUsernamePlaceholder = (protocol: ProxyProtocol) =>
+  isResinProtocol(protocol) ? t('admin.proxies.form.resinPlatformPlaceholder') : t('admin.proxies.optionalAuth')
+
+const proxyPasswordLabel = (protocol: ProxyProtocol) =>
+  isResinProtocol(protocol) ? t('admin.proxies.resinToken') : t('admin.proxies.password')
+
+const proxyPasswordPlaceholder = (protocol: ProxyProtocol, keepExisting = false) => {
+  if (isResinProtocol(protocol)) {
+    return keepExisting ? t('admin.proxies.leaveEmptyToKeep') : t('admin.proxies.form.resinTokenPlaceholder')
+  }
+  return keepExisting ? t('admin.proxies.leaveEmptyToKeep') : t('admin.proxies.optionalAuth')
 }
 
 const toggleSelectRow = (id: number, event: Event) => {
@@ -1834,7 +1891,16 @@ function buildAuthPart(row: any): string {
 }
 
 function buildProxyUrl(row: any): string {
-  return `${row.protocol}://${buildAuthPart(row)}${row.host}:${row.port}`
+  const scheme = row.protocol === 'resin_http'
+    ? 'http'
+    : row.protocol === 'resin_https'
+      ? 'https'
+      : row.protocol
+  const suffix = isResinProtocol(row.protocol) ? '#resin' : ''
+  const basePath = isResinProtocol(row.protocol)
+    ? (row.base_path || (row.password ? `/${encodeURIComponent(String(row.password).replace(/^\/+/, ''))}` : ''))
+    : (row.base_path || '')
+  return `${scheme}://${buildAuthPart(row)}${row.host}:${row.port}${basePath}${suffix}`
 }
 
 function getCopyFormats(row: any) {

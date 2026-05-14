@@ -100,6 +100,11 @@ func Password(v string) predicate.Proxy {
 	return predicate.Proxy(sql.FieldEQ(FieldPassword, v))
 }
 
+// BasePath applies equality check predicate on the "base_path" field. It's identical to BasePathEQ.
+func BasePath(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldEQ(FieldBasePath, v))
+}
+
 // Status applies equality check predicate on the "status" field. It's identical to StatusEQ.
 func Status(v string) predicate.Proxy {
 	return predicate.Proxy(sql.FieldEQ(FieldStatus, v))
@@ -618,6 +623,81 @@ func PasswordEqualFold(v string) predicate.Proxy {
 // PasswordContainsFold applies the ContainsFold predicate on the "password" field.
 func PasswordContainsFold(v string) predicate.Proxy {
 	return predicate.Proxy(sql.FieldContainsFold(FieldPassword, v))
+}
+
+// BasePathEQ applies the EQ predicate on the "base_path" field.
+func BasePathEQ(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldEQ(FieldBasePath, v))
+}
+
+// BasePathNEQ applies the NEQ predicate on the "base_path" field.
+func BasePathNEQ(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldNEQ(FieldBasePath, v))
+}
+
+// BasePathIn applies the In predicate on the "base_path" field.
+func BasePathIn(vs ...string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldIn(FieldBasePath, vs...))
+}
+
+// BasePathNotIn applies the NotIn predicate on the "base_path" field.
+func BasePathNotIn(vs ...string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldNotIn(FieldBasePath, vs...))
+}
+
+// BasePathGT applies the GT predicate on the "base_path" field.
+func BasePathGT(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldGT(FieldBasePath, v))
+}
+
+// BasePathGTE applies the GTE predicate on the "base_path" field.
+func BasePathGTE(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldGTE(FieldBasePath, v))
+}
+
+// BasePathLT applies the LT predicate on the "base_path" field.
+func BasePathLT(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldLT(FieldBasePath, v))
+}
+
+// BasePathLTE applies the LTE predicate on the "base_path" field.
+func BasePathLTE(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldLTE(FieldBasePath, v))
+}
+
+// BasePathContains applies the Contains predicate on the "base_path" field.
+func BasePathContains(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldContains(FieldBasePath, v))
+}
+
+// BasePathHasPrefix applies the HasPrefix predicate on the "base_path" field.
+func BasePathHasPrefix(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldHasPrefix(FieldBasePath, v))
+}
+
+// BasePathHasSuffix applies the HasSuffix predicate on the "base_path" field.
+func BasePathHasSuffix(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldHasSuffix(FieldBasePath, v))
+}
+
+// BasePathIsNil applies the IsNil predicate on the "base_path" field.
+func BasePathIsNil() predicate.Proxy {
+	return predicate.Proxy(sql.FieldIsNull(FieldBasePath))
+}
+
+// BasePathNotNil applies the NotNil predicate on the "base_path" field.
+func BasePathNotNil() predicate.Proxy {
+	return predicate.Proxy(sql.FieldNotNull(FieldBasePath))
+}
+
+// BasePathEqualFold applies the EqualFold predicate on the "base_path" field.
+func BasePathEqualFold(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldEqualFold(FieldBasePath, v))
+}
+
+// BasePathContainsFold applies the ContainsFold predicate on the "base_path" field.
+func BasePathContainsFold(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldContainsFold(FieldBasePath, v))
 }
 
 // StatusEQ applies the EQ predicate on the "status" field.

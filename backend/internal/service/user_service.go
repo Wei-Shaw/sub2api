@@ -145,6 +145,7 @@ type UserIdentitySummarySet struct {
 	LinuxDo UserIdentitySummary `json:"linuxdo"`
 	OIDC    UserIdentitySummary `json:"oidc"`
 	WeChat  UserIdentitySummary `json:"wechat"`
+	WeCom   UserIdentitySummary `json:"wecom"`
 }
 
 type StartUserIdentityBindingRequest struct {
@@ -264,6 +265,7 @@ func (s *UserService) GetProfileIdentitySummaries(ctx context.Context, userID in
 		LinuxDo: s.buildProviderIdentitySummary("linuxdo", user, records),
 		OIDC:    s.buildProviderIdentitySummary("oidc", user, records),
 		WeChat:  s.buildProviderIdentitySummary("wechat", user, records),
+		WeCom:   s.buildProviderIdentitySummary("wecom", user, records),
 	}
 
 	s.applyExplicitProviderAvailability(ctx, &summaries)
@@ -696,7 +698,7 @@ func (s *UserService) canUnbindProvider(provider string, user *User, records []U
 		return true
 	}
 
-	for _, candidate := range []string{"linuxdo", "oidc", "wechat"} {
+	for _, candidate := range []string{"linuxdo", "oidc", "wechat", "wecom"} {
 		if candidate == provider {
 			continue
 		}
@@ -772,6 +774,8 @@ func buildUserIdentityBindAuthorizeURL(provider, redirectTo string) (string, err
 		path = "/api/v1/auth/oauth/oidc/bind/start"
 	case "wechat":
 		path = "/api/v1/auth/oauth/wechat/bind/start"
+	case "wecom":
+		path = "/api/v1/auth/oauth/wecom/bind/start"
 	default:
 		return "", ErrIdentityProviderInvalid
 	}
@@ -790,6 +794,8 @@ func normalizeUserIdentityProvider(provider string) string {
 		return "oidc"
 	case "wechat":
 		return "wechat"
+	case "wecom":
+		return "wecom"
 	case "email":
 		return "email"
 	default:

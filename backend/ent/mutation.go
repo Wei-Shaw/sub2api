@@ -27603,6 +27603,7 @@ type ProxyMutation struct {
 	addport         *int
 	username        *string
 	password        *string
+	base_path       *string
 	status          *string
 	clearedFields   map[string]struct{}
 	accounts        map[int64]struct{}
@@ -28094,6 +28095,55 @@ func (m *ProxyMutation) ResetPassword() {
 	delete(m.clearedFields, proxy.FieldPassword)
 }
 
+// SetBasePath sets the "base_path" field.
+func (m *ProxyMutation) SetBasePath(s string) {
+	m.base_path = &s
+}
+
+// BasePath returns the value of the "base_path" field in the mutation.
+func (m *ProxyMutation) BasePath() (r string, exists bool) {
+	v := m.base_path
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBasePath returns the old "base_path" field's value of the Proxy entity.
+// If the Proxy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProxyMutation) OldBasePath(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBasePath is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBasePath requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBasePath: %w", err)
+	}
+	return oldValue.BasePath, nil
+}
+
+// ClearBasePath clears the value of the "base_path" field.
+func (m *ProxyMutation) ClearBasePath() {
+	m.base_path = nil
+	m.clearedFields[proxy.FieldBasePath] = struct{}{}
+}
+
+// BasePathCleared returns if the "base_path" field was cleared in this mutation.
+func (m *ProxyMutation) BasePathCleared() bool {
+	_, ok := m.clearedFields[proxy.FieldBasePath]
+	return ok
+}
+
+// ResetBasePath resets all changes to the "base_path" field.
+func (m *ProxyMutation) ResetBasePath() {
+	m.base_path = nil
+	delete(m.clearedFields, proxy.FieldBasePath)
+}
+
 // SetStatus sets the "status" field.
 func (m *ProxyMutation) SetStatus(s string) {
 	m.status = &s
@@ -28218,7 +28268,7 @@ func (m *ProxyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ProxyMutation) Fields() []string {
-	fields := make([]string, 0, 10)
+	fields := make([]string, 0, 11)
 	if m.created_at != nil {
 		fields = append(fields, proxy.FieldCreatedAt)
 	}
@@ -28245,6 +28295,9 @@ func (m *ProxyMutation) Fields() []string {
 	}
 	if m.password != nil {
 		fields = append(fields, proxy.FieldPassword)
+	}
+	if m.base_path != nil {
+		fields = append(fields, proxy.FieldBasePath)
 	}
 	if m.status != nil {
 		fields = append(fields, proxy.FieldStatus)
@@ -28275,6 +28328,8 @@ func (m *ProxyMutation) Field(name string) (ent.Value, bool) {
 		return m.Username()
 	case proxy.FieldPassword:
 		return m.Password()
+	case proxy.FieldBasePath:
+		return m.BasePath()
 	case proxy.FieldStatus:
 		return m.Status()
 	}
@@ -28304,6 +28359,8 @@ func (m *ProxyMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldUsername(ctx)
 	case proxy.FieldPassword:
 		return m.OldPassword(ctx)
+	case proxy.FieldBasePath:
+		return m.OldBasePath(ctx)
 	case proxy.FieldStatus:
 		return m.OldStatus(ctx)
 	}
@@ -28378,6 +28435,13 @@ func (m *ProxyMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetPassword(v)
 		return nil
+	case proxy.FieldBasePath:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBasePath(v)
+		return nil
 	case proxy.FieldStatus:
 		v, ok := value.(string)
 		if !ok {
@@ -28439,6 +28503,9 @@ func (m *ProxyMutation) ClearedFields() []string {
 	if m.FieldCleared(proxy.FieldPassword) {
 		fields = append(fields, proxy.FieldPassword)
 	}
+	if m.FieldCleared(proxy.FieldBasePath) {
+		fields = append(fields, proxy.FieldBasePath)
+	}
 	return fields
 }
 
@@ -28461,6 +28528,9 @@ func (m *ProxyMutation) ClearField(name string) error {
 		return nil
 	case proxy.FieldPassword:
 		m.ClearPassword()
+		return nil
+	case proxy.FieldBasePath:
+		m.ClearBasePath()
 		return nil
 	}
 	return fmt.Errorf("unknown Proxy nullable field %s", name)
@@ -28496,6 +28566,9 @@ func (m *ProxyMutation) ResetField(name string) error {
 		return nil
 	case proxy.FieldPassword:
 		m.ResetPassword()
+		return nil
+	case proxy.FieldBasePath:
+		m.ResetBasePath()
 		return nil
 	case proxy.FieldStatus:
 		m.ResetStatus()

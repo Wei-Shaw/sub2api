@@ -54,6 +54,29 @@ func TestProxyURL(t *testing.T) {
 			},
 			want: "http://first%20last%40corp:p%40%20ss%3A%23word@proxy.example.com:3128",
 		},
+		{
+			name: "resin proxy keeps real transport scheme and marker",
+			proxy: Proxy{
+				Protocol: ProxyProtocolResinHTTPS,
+				Host:     "resin.example.com",
+				Port:     443,
+				Username: "openai",
+				Password: "token123",
+			},
+			want: "https://openai:token123@resin.example.com:443/token123#resin",
+		},
+		{
+			name: "resin proxy keeps base path for reverse routing",
+			proxy: Proxy{
+				Protocol: ProxyProtocolResinHTTP,
+				Host:     "127.0.0.1",
+				Port:     2260,
+				Username: "Default",
+				Password: "token123",
+				BasePath: "/my-token",
+			},
+			want: "http://Default:token123@127.0.0.1:2260/my-token#resin",
+		},
 	}
 
 	for _, tc := range tests {
@@ -64,6 +87,29 @@ func TestProxyURL(t *testing.T) {
 				t.Fatalf("Proxy.URL() mismatch: got=%q want=%q", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestProxyResinConfig(t *testing.T) {
+	t.Parallel()
+
+	proxy := &Proxy{
+		Protocol: ProxyProtocolResinHTTPS,
+		Host:     "resin.example.com",
+		Port:     443,
+		Username: "openai",
+		Password: "token123",
+	}
+
+	cfg, err := proxy.ResinConfig()
+	if err != nil {
+		t.Fatalf("Proxy.ResinConfig() error = %v", err)
+	}
+	if cfg == nil {
+		t.Fatal("Proxy.ResinConfig() returned nil")
+	}
+	if got, want := cfg.ForwardProxyBaseURL(), "https://resin.example.com:443"; got != want {
+		t.Fatalf("ForwardProxyBaseURL mismatch: got=%q want=%q", got, want)
 	}
 }
 

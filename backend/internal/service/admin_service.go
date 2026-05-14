@@ -100,7 +100,7 @@ type AdminService interface {
 	DeleteProxy(ctx context.Context, id int64) error
 	BatchDeleteProxies(ctx context.Context, ids []int64) (*ProxyBatchDeleteResult, error)
 	GetProxyAccounts(ctx context.Context, proxyID int64) ([]ProxyAccountSummary, error)
-	CheckProxyExists(ctx context.Context, host string, port int, username, password string) (bool, error)
+	CheckProxyExists(ctx context.Context, host string, port int, username, password, basePath string) (bool, error)
 	TestProxy(ctx context.Context, id int64) (*ProxyTestResult, error)
 	CheckProxyQuality(ctx context.Context, id int64) (*ProxyQualityCheckResult, error)
 
@@ -379,6 +379,7 @@ type CreateProxyInput struct {
 	Port     int
 	Username string
 	Password string
+	BasePath string
 }
 
 type UpdateProxyInput struct {
@@ -388,6 +389,7 @@ type UpdateProxyInput struct {
 	Port     int
 	Username string
 	Password string
+	BasePath *string
 	Status   string
 }
 
@@ -2846,6 +2848,10 @@ func (s *adminServiceImpl) GetProxiesByIDs(ctx context.Context, ids []int64) ([]
 }
 
 func (s *adminServiceImpl) CreateProxy(ctx context.Context, input *CreateProxyInput) (*Proxy, error) {
+	basePath, err := normalizeProxyBasePath(input.Protocol, input.BasePath)
+	if err != nil {
+		return nil, err
+	}
 	proxy := &Proxy{
 		Name:     input.Name,
 		Protocol: input.Protocol,
@@ -2853,6 +2859,7 @@ func (s *adminServiceImpl) CreateProxy(ctx context.Context, input *CreateProxyIn
 		Port:     input.Port,
 		Username: input.Username,
 		Password: input.Password,
+		BasePath: basePath,
 		Status:   StatusActive,
 	}
 	if err := s.proxyRepo.Create(ctx, proxy); err != nil {
@@ -2886,6 +2893,13 @@ func (s *adminServiceImpl) UpdateProxy(ctx context.Context, id int64, input *Upd
 	}
 	if input.Password != "" {
 		proxy.Password = input.Password
+	}
+	if input.BasePath != nil {
+		basePath, err := normalizeProxyBasePath(proxy.Protocol, *input.BasePath)
+		if err != nil {
+			return nil, err
+		}
+		proxy.BasePath = basePath
 	}
 	if input.Status != "" {
 		proxy.Status = input.Status
@@ -2947,8 +2961,8 @@ func (s *adminServiceImpl) GetProxyAccounts(ctx context.Context, proxyID int64) 
 	return s.proxyRepo.ListAccountSummariesByProxyID(ctx, proxyID)
 }
 
-func (s *adminServiceImpl) CheckProxyExists(ctx context.Context, host string, port int, username, password string) (bool, error) {
-	return s.proxyRepo.ExistsByHostPortAuth(ctx, host, port, username, password)
+func (s *adminServiceImpl) CheckProxyExists(ctx context.Context, host string, port int, username, password, basePath string) (bool, error) {
+	return s.proxyRepo.ExistsByHostPortAuth(ctx, host, port, username, password, basePath)
 }
 
 // Redeem code management implementations
@@ -3571,12 +3585,8 @@ func (s *adminServiceImpl) EnsureOpenAIPrivacy(ctx context.Context, account *Acc
 		return ""
 	}
 
-	var proxyURL string
-	if account.ProxyID != nil {
-		if p, err := s.proxyRepo.GetByID(ctx, *account.ProxyID); err == nil && p != nil {
-			proxyURL = p.URL()
-		}
-	}
+	ctx = withAccountResinContext(ctx, account.ID)
+	proxyURL := resolveAccountSharedProxyURL(ctx, s.proxyRepo, account)
 
 	mode := disableOpenAITraining(ctx, s.privacyClientFactory, token, proxyURL)
 	if mode == "" {
@@ -3601,12 +3611,8 @@ func (s *adminServiceImpl) ForceOpenAIPrivacy(ctx context.Context, account *Acco
 		return ""
 	}
 
-	var proxyURL string
-	if account.ProxyID != nil {
-		if p, err := s.proxyRepo.GetByID(ctx, *account.ProxyID); err == nil && p != nil {
-			proxyURL = p.URL()
-		}
-	}
+	ctx = withAccountResinContext(ctx, account.ID)
+	proxyURL := resolveAccountSharedProxyURL(ctx, s.proxyRepo, account)
 
 	mode := disableOpenAITraining(ctx, s.privacyClientFactory, token, proxyURL)
 	if mode == "" {
@@ -3644,12 +3650,7 @@ func (s *adminServiceImpl) EnsureAntigravityPrivacy(ctx context.Context, account
 
 	projectID, _ := account.Credentials["project_id"].(string)
 
-	var proxyURL string
-	if account.ProxyID != nil {
-		if p, err := s.proxyRepo.GetByID(ctx, *account.ProxyID); err == nil && p != nil {
-			proxyURL = p.URL()
-		}
-	}
+	proxyURL := resolveAccountDedicatedProxyURL(ctx, s.proxyRepo, account)
 
 	mode := setAntigravityPrivacy(ctx, token, projectID, proxyURL)
 	if mode == "" {
@@ -3677,12 +3678,7 @@ func (s *adminServiceImpl) ForceAntigravityPrivacy(ctx context.Context, account 
 
 	projectID, _ := account.Credentials["project_id"].(string)
 
-	var proxyURL string
-	if account.ProxyID != nil {
-		if p, err := s.proxyRepo.GetByID(ctx, *account.ProxyID); err == nil && p != nil {
-			proxyURL = p.URL()
-		}
-	}
+	proxyURL := resolveAccountDedicatedProxyURL(ctx, s.proxyRepo, account)
 
 	mode := setAntigravityPrivacy(ctx, token, projectID, proxyURL)
 	if mode == "" {

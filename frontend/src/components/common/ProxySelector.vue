@@ -114,7 +114,7 @@
                 </template>
               </div>
               <div class="truncate text-xs text-gray-500 dark:text-gray-400">
-                {{ proxy.protocol }}://{{ proxy.host }}:{{ proxy.port }}
+                {{ formatProxySummary(proxy) }}
               </div>
             </div>
 
@@ -220,8 +220,27 @@ const selectedLabel = computed(() => {
     return t('admin.accounts.noProxy')
   }
   const proxy = selectedProxy.value
-  return `${proxy.name} (${proxy.protocol}://${proxy.host}:${proxy.port})`
+  return `${proxy.name} (${formatProxySummary(proxy)})`
 })
+
+const formatProxyProtocol = (protocol: Proxy['protocol']) => {
+  switch (protocol) {
+    case 'resin_http':
+      return t('admin.proxies.protocols.resin_http')
+    case 'resin_https':
+      return t('admin.proxies.protocols.resin_https')
+    case 'socks5':
+      return t('admin.proxies.protocols.socks5')
+    case 'socks5h':
+      return t('admin.proxies.protocols.socks5h')
+    case 'https':
+      return t('admin.proxies.protocols.https')
+    default:
+      return t('admin.proxies.protocols.http')
+  }
+}
+
+const formatProxySummary = (proxy: Proxy) => `${formatProxyProtocol(proxy.protocol)} · ${proxy.host}:${proxy.port}`
 
 const filteredProxies = computed(() => {
   if (!searchQuery.value) {

@@ -96,9 +96,9 @@ func TestVertexServiceAccountProxyURL(t *testing.T) {
 		},
 	}
 
-	require.Equal(t, "http://proxy.example.com:8080", vertexServiceAccountProxyURL(account))
-	require.Empty(t, vertexServiceAccountProxyURL(&Account{Proxy: account.Proxy}))
-	require.Empty(t, vertexServiceAccountProxyURL(&Account{ProxyID: &proxyID}))
+	require.Equal(t, "http://proxy.example.com:8080", vertexServiceAccountProxyURL(context.Background(), account))
+	require.Equal(t, "http://proxy.example.com:8080", vertexServiceAccountProxyURL(context.Background(), &Account{Proxy: account.Proxy}))
+	require.Empty(t, vertexServiceAccountProxyURL(context.Background(), &Account{ProxyID: &proxyID}))
 }
 
 func TestExchangeVertexServiceAccountTokenUsesProxy(t *testing.T) {

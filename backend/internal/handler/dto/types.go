@@ -268,6 +268,7 @@ type Proxy struct {
 	Host      string    `json:"host"`
 	Port      int       `json:"port"`
 	Username  string    `json:"username"`
+	BasePath  string    `json:"base_path,omitempty"`
 	Password  string    `json:"-"`
 	Status    string    `json:"status"`
 	CreatedAt time.Time `json:"created_at"`

@@ -45,6 +45,9 @@ func (r *proxyRepository) Create(ctx context.Context, proxyIn *service.Proxy) er
 	if proxyIn.Password != "" {
 		builder.SetPassword(proxyIn.Password)
 	}
+	if proxyIn.BasePath != "" {
+		builder.SetBasePath(proxyIn.BasePath)
+	}
 
 	created, err := builder.Save(ctx)
 	if err == nil {
@@ -99,6 +102,11 @@ func (r *proxyRepository) Update(ctx context.Context, proxyIn *service.Proxy) er
 		builder.SetPassword(proxyIn.Password)
 	} else {
 		builder.ClearPassword()
+	}
+	if proxyIn.BasePath != "" {
+		builder.SetBasePath(proxyIn.BasePath)
+	} else {
+		builder.ClearBasePath()
 	}
 
 	updated, err := builder.Save(ctx)
@@ -283,7 +291,7 @@ func (r *proxyRepository) ListActive(ctx context.Context) ([]service.Proxy, erro
 }
 
 // ExistsByHostPortAuth checks if a proxy with the same host, port, username, and password exists
-func (r *proxyRepository) ExistsByHostPortAuth(ctx context.Context, host string, port int, username, password string) (bool, error) {
+func (r *proxyRepository) ExistsByHostPortAuth(ctx context.Context, host string, port int, username, password, basePath string) (bool, error) {
 	q := r.client.Proxy.Query().
 		Where(proxy.HostEQ(host), proxy.PortEQ(port))
 
@@ -296,6 +304,11 @@ func (r *proxyRepository) ExistsByHostPortAuth(ctx context.Context, host string,
 		q = q.Where(proxy.Or(proxy.PasswordIsNil(), proxy.PasswordEQ("")))
 	} else {
 		q = q.Where(proxy.PasswordEQ(password))
+	}
+	if basePath == "" {
+		q = q.Where(proxy.Or(proxy.BasePathIsNil(), proxy.BasePathEQ("")))
+	} else {
+		q = q.Where(proxy.BasePathEQ(basePath))
 	}
 
 	count, err := q.Count(ctx)
@@ -422,6 +435,7 @@ func proxyEntityToService(m *dbent.Proxy) *service.Proxy {
 		Protocol:  m.Protocol,
 		Host:      m.Host,
 		Port:      m.Port,
+		BasePath:  "",
 		Status:    m.Status,
 		CreatedAt: m.CreatedAt,
 		UpdatedAt: m.UpdatedAt,
@@ -431,6 +445,9 @@ func proxyEntityToService(m *dbent.Proxy) *service.Proxy {
 	}
 	if m.Password != nil {
 		out.Password = *m.Password
+	}
+	if m.BasePath != nil {
+		out.BasePath = *m.BasePath
 	}
 	return out
 }

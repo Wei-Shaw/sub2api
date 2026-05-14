@@ -775,6 +775,8 @@ func authSourceSignupSettings(defaults *AuthSourceDefaultSettings, signupSource 
 		return defaults.OIDC, true
 	case "wechat":
 		return defaults.WeChat, true
+	case "wecom":
+		return defaults.WeCom, true
 	case "github":
 		return defaults.GitHub, true
 	case "google":
@@ -998,6 +1000,8 @@ func inferLegacySignupSource(email string) string {
 		return "oidc"
 	case strings.HasSuffix(normalized, WeChatConnectSyntheticEmailDomain):
 		return "wechat"
+	case strings.HasSuffix(normalized, WeComConnectSyntheticEmailDomain):
+		return "wecom"
 	default:
 		return "email"
 	}
@@ -1086,7 +1090,8 @@ func isReservedEmail(email string) bool {
 	normalized := strings.ToLower(strings.TrimSpace(email))
 	return strings.HasSuffix(normalized, LinuxDoConnectSyntheticEmailDomain) ||
 		strings.HasSuffix(normalized, OIDCConnectSyntheticEmailDomain) ||
-		strings.HasSuffix(normalized, WeChatConnectSyntheticEmailDomain)
+		strings.HasSuffix(normalized, WeChatConnectSyntheticEmailDomain) ||
+		strings.HasSuffix(normalized, WeComConnectSyntheticEmailDomain)
 }
 
 // GenerateToken 生成JWT access token

@@ -21,6 +21,7 @@ export type AuthSourceType =
   | "linuxdo"
   | "oidc"
   | "wechat"
+  | "wecom"
   | "github"
   | "google";
 
@@ -62,6 +63,7 @@ const AUTH_SOURCE_TYPES: AuthSourceType[] = [
   "linuxdo",
   "oidc",
   "wechat",
+  "wecom",
   "github",
   "google",
 ];
@@ -352,6 +354,11 @@ export interface SystemSettings {
   auth_source_default_wechat_subscriptions?: DefaultSubscriptionSetting[];
   auth_source_default_wechat_grant_on_signup?: boolean;
   auth_source_default_wechat_grant_on_first_bind?: boolean;
+  auth_source_default_wecom_balance?: number;
+  auth_source_default_wecom_concurrency?: number;
+  auth_source_default_wecom_subscriptions?: DefaultSubscriptionSetting[];
+  auth_source_default_wecom_grant_on_signup?: boolean;
+  auth_source_default_wecom_grant_on_first_bind?: boolean;
   auth_source_default_github_balance?: number;
   auth_source_default_github_concurrency?: number;
   auth_source_default_github_subscriptions?: DefaultSubscriptionSetting[];
@@ -413,6 +420,13 @@ export interface SystemSettings {
   wechat_connect_scopes: string;
   wechat_connect_redirect_url: string;
   wechat_connect_frontend_redirect_url: string;
+  wecom_oauth_enabled: boolean;
+  wecom_oauth_corp_id: string;
+  wecom_oauth_agent_id: string;
+  wecom_oauth_secret_configured: boolean;
+  wecom_oauth_scope: string;
+  wecom_oauth_redirect_url: string;
+  wecom_oauth_frontend_redirect_url: string;
 
   // Generic OIDC OAuth settings
   oidc_connect_enabled: boolean;
@@ -571,6 +585,11 @@ export interface UpdateSettingsRequest {
   auth_source_default_wechat_subscriptions?: DefaultSubscriptionSetting[];
   auth_source_default_wechat_grant_on_signup?: boolean;
   auth_source_default_wechat_grant_on_first_bind?: boolean;
+  auth_source_default_wecom_balance?: number;
+  auth_source_default_wecom_concurrency?: number;
+  auth_source_default_wecom_subscriptions?: DefaultSubscriptionSetting[];
+  auth_source_default_wecom_grant_on_signup?: boolean;
+  auth_source_default_wecom_grant_on_first_bind?: boolean;
   auth_source_default_github_balance?: number;
   auth_source_default_github_concurrency?: number;
   auth_source_default_github_subscriptions?: DefaultSubscriptionSetting[];
@@ -625,6 +644,13 @@ export interface UpdateSettingsRequest {
   wechat_connect_scopes?: string;
   wechat_connect_redirect_url?: string;
   wechat_connect_frontend_redirect_url?: string;
+  wecom_oauth_enabled?: boolean;
+  wecom_oauth_corp_id?: string;
+  wecom_oauth_agent_id?: string;
+  wecom_oauth_secret?: string;
+  wecom_oauth_scope?: string;
+  wecom_oauth_redirect_url?: string;
+  wecom_oauth_frontend_redirect_url?: string;
   oidc_connect_enabled?: boolean;
   oidc_connect_provider_name?: string;
   oidc_connect_client_id?: string;

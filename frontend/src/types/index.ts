@@ -34,7 +34,7 @@ export interface NotifyEmailEntry {
 
 // ==================== User & Auth Types ====================
 
-export type UserAuthProvider = 'email' | 'linuxdo' | 'oidc' | 'wechat' | 'github' | 'google'
+export type UserAuthProvider = 'email' | 'linuxdo' | 'oidc' | 'wechat' | 'wecom' | 'github' | 'google'
 
 export interface UserAuthBindingStatus {
   bound?: boolean
@@ -84,6 +84,7 @@ export interface User {
   linuxdo_bound?: boolean
   oidc_bound?: boolean
   wechat_bound?: boolean
+  wecom_bound?: boolean
   role: 'admin' | 'user' // User role for authorization
   balance: number // User balance for API usage
   concurrency: number // Allowed concurrent requests
@@ -219,6 +220,7 @@ export interface PublicSettings {
   wechat_oauth_open_enabled?: boolean
   wechat_oauth_mp_enabled?: boolean
   wechat_oauth_mobile_enabled?: boolean
+  wecom_oauth_enabled: boolean
   oidc_oauth_enabled: boolean
   oidc_oauth_provider_name: string
   github_oauth_enabled: boolean
@@ -669,7 +671,7 @@ export interface UpdateGroupRequest {
 export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity'
 export type AccountType = 'oauth' | 'setup-token' | 'apikey' | 'upstream' | 'bedrock' | 'service_account'
 export type OAuthAddMethod = 'oauth' | 'setup-token'
-export type ProxyProtocol = 'http' | 'https' | 'socks5' | 'socks5h'
+export type ProxyProtocol = 'http' | 'https' | 'socks5' | 'socks5h' | 'resin_http' | 'resin_https'
 
 // Claude Model type (returned by /v1/models and account models API)
 export interface ClaudeModel {
@@ -686,6 +688,7 @@ export interface Proxy {
   host: string
   port: number
   username: string | null
+  base_path?: string | null
   password?: string | null
   status: 'active' | 'inactive'
   account_count?: number // Number of accounts using this proxy
@@ -1042,6 +1045,7 @@ export interface CreateProxyRequest {
   host: string
   port: number
   username?: string | null
+  base_path?: string | null
   password?: string | null
 }
 
@@ -1051,6 +1055,7 @@ export interface UpdateProxyRequest {
   host?: string
   port?: number
   username?: string | null
+  base_path?: string | null
   password?: string | null
   status?: 'active' | 'inactive'
 }
@@ -1070,6 +1075,7 @@ export interface AdminDataProxy {
   host: string
   port: number
   username?: string | null
+  base_path?: string | null
   password?: string | null
   status: 'active' | 'inactive'
 }

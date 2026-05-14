@@ -17,6 +17,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
+	resinpkg "github.com/Wei-Shaw/sub2api/internal/pkg/resin"
 )
 
 // ForbiddenError 表示上游返回 403 Forbidden
@@ -247,6 +248,26 @@ type Client struct {
 	httpClient *http.Client
 }
 
+type ClientOption func(*clientOptions)
+
+type clientOptions struct {
+	accountID int64
+	resinCfg  *resinpkg.Config
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func WithResinProxy(accountID int64, resinCfg *resinpkg.Config) ClientOption {
+	return func(opts *clientOptions) {
+		opts.accountID = accountID
+		opts.resinCfg = resinCfg
+	}
+}
+
 const (
 	// proxyDialTimeout 代理 TCP 连接超时（含代理握手），代理不通时快速失败
 	proxyDialTimeout = 5 * time.Second
@@ -256,9 +277,15 @@ const (
 	clientTimeout = 10 * time.Second
 )
 
-func NewClient(proxyURL string) (*Client, error) {
+func NewClient(proxyURL string, opts ...ClientOption) (*Client, error) {
 	client := &http.Client{
 		Timeout: clientTimeout,
+	}
+	var resolved clientOptions
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&resolved)
+		}
 	}
 
 	_, parsed, err := proxyurl.Parse(proxyURL)
@@ -272,10 +299,32 @@ func NewClient(proxyURL string) (*Client, error) {
 			}).DialContext,
 			TLSHandshakeTimeout: proxyTLSHandshakeTimeout,
 		}
-		if err := proxyutil.ConfigureTransportProxy(transport, parsed); err != nil {
-			return nil, fmt.Errorf("configure proxy: %w", err)
+		if resolved.resinCfg != nil && resolved.accountID > 0 && resolved.resinCfg.MatchesForwardProxyURL(proxyURL) {
+			authValue := resolved.resinCfg.ProxyAuthorizationHeader(resolved.accountID)
+			transport.Proxy = http.ProxyURL(parsed)
+			transport.GetProxyConnectHeader = func(ctx context.Context, proxyURL *url.URL, target string) (http.Header, error) {
+				if authValue == "" {
+					return nil, nil
+				}
+				headers := make(http.Header, 1)
+				headers.Set("Proxy-Authorization", authValue)
+				return headers, nil
+			}
+			client.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if authValue == "" {
+					return transport.RoundTrip(req)
+				}
+				clone := req.Clone(req.Context())
+				clone.Header = req.Header.Clone()
+				clone.Header.Set("Proxy-Authorization", authValue)
+				return transport.RoundTrip(clone)
+			})
+		} else {
+			if err := proxyutil.ConfigureTransportProxy(transport, parsed); err != nil {
+				return nil, fmt.Errorf("configure proxy: %w", err)
+			}
+			client.Transport = transport
 		}
-		client.Transport = transport
 	}
 
 	return &Client{

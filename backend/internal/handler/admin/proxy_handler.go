@@ -27,21 +27,23 @@ func NewProxyHandler(adminService service.AdminService) *ProxyHandler {
 // CreateProxyRequest represents create proxy request
 type CreateProxyRequest struct {
 	Name     string `json:"name" binding:"required"`
-	Protocol string `json:"protocol" binding:"required,oneof=http https socks5 socks5h"`
+	Protocol string `json:"protocol" binding:"required,oneof=http https socks5 socks5h resin_http resin_https"`
 	Host     string `json:"host" binding:"required"`
 	Port     int    `json:"port" binding:"required,min=1,max=65535"`
 	Username string `json:"username"`
 	Password string `json:"password"`
+	BasePath string `json:"base_path"`
 }
 
 // UpdateProxyRequest represents update proxy request
 type UpdateProxyRequest struct {
 	Name     string `json:"name"`
-	Protocol string `json:"protocol" binding:"omitempty,oneof=http https socks5 socks5h"`
+	Protocol string `json:"protocol" binding:"omitempty,oneof=http https socks5 socks5h resin_http resin_https"`
 	Host     string `json:"host"`
 	Port     int    `json:"port" binding:"omitempty,min=1,max=65535"`
 	Username string `json:"username"`
 	Password string `json:"password"`
+	BasePath *string `json:"base_path"`
 	Status   string `json:"status" binding:"omitempty,oneof=active inactive"`
 }
 
@@ -141,6 +143,7 @@ func (h *ProxyHandler) Create(c *gin.Context) {
 			Port:     req.Port,
 			Username: strings.TrimSpace(req.Username),
 			Password: strings.TrimSpace(req.Password),
+			BasePath: strings.TrimSpace(req.BasePath),
 		})
 		if err != nil {
 			return nil, err
@@ -171,6 +174,7 @@ func (h *ProxyHandler) Update(c *gin.Context) {
 		Port:     req.Port,
 		Username: strings.TrimSpace(req.Username),
 		Password: strings.TrimSpace(req.Password),
+		BasePath: trimStringPtr(req.BasePath),
 		Status:   strings.TrimSpace(req.Status),
 	})
 	if err != nil {
@@ -301,11 +305,12 @@ func (h *ProxyHandler) GetProxyAccounts(c *gin.Context) {
 
 // BatchCreateProxyItem represents a single proxy in batch create request
 type BatchCreateProxyItem struct {
-	Protocol string `json:"protocol" binding:"required,oneof=http https socks5 socks5h"`
+	Protocol string `json:"protocol" binding:"required,oneof=http https socks5 socks5h resin_http resin_https"`
 	Host     string `json:"host" binding:"required"`
 	Port     int    `json:"port" binding:"required,min=1,max=65535"`
 	Username string `json:"username"`
 	Password string `json:"password"`
+	BasePath string `json:"base_path"`
 }
 
 // BatchCreateRequest represents batch create proxies request
@@ -331,9 +336,10 @@ func (h *ProxyHandler) BatchCreate(c *gin.Context) {
 		protocol := strings.TrimSpace(item.Protocol)
 		username := strings.TrimSpace(item.Username)
 		password := strings.TrimSpace(item.Password)
+		basePath := strings.TrimSpace(item.BasePath)
 
 		// Check for duplicates (same host, port, username, password)
-		exists, err := h.adminService.CheckProxyExists(c.Request.Context(), host, item.Port, username, password)
+		exists, err := h.adminService.CheckProxyExists(c.Request.Context(), host, item.Port, username, password, basePath)
 		if err != nil {
 			response.ErrorFrom(c, err)
 			return
@@ -352,6 +358,7 @@ func (h *ProxyHandler) BatchCreate(c *gin.Context) {
 			Port:     item.Port,
 			Username: username,
 			Password: password,
+			BasePath: basePath,
 		})
 		if err != nil {
 			// If creation fails due to duplicate, count as skipped
@@ -366,4 +373,12 @@ func (h *ProxyHandler) BatchCreate(c *gin.Context) {
 		"created": created,
 		"skipped": skipped,
 	})
+}
+
+func trimStringPtr(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(*value)
+	return &trimmed
 }

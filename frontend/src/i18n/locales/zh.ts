@@ -519,13 +519,16 @@ export default {
       wechatAvailabilityUnknown: '暂时无法确认微信登录可用性，请刷新后重试。',
       wechatSystemBrowserOnly: '当前微信登录流程仅支持在系统浏览器中继续。',
       wechatBrowserOnly: '当前微信登录流程仅支持在微信内置浏览器中继续。',
-      wechatNotConfigured: '微信登录尚未配置。'
+      wechatNotConfigured: '微信登录尚未配置。',
+      wecomNotConfigured: '企业微信登录尚未配置。'
     },
     linuxdoCallbackPageTitle: 'LinuxDo 登录回调',
     oidcCallbackPageTitle: 'OIDC 登录回调',
     oauthCallbackPageTitle: 'OAuth 回调',
     wechatProviderName: '微信',
+    wecomProviderName: '企业微信',
     wechatCallbackPageTitle: '微信登录回调',
+    wecomCallbackPageTitle: '企业微信登录回调',
     wechatPaymentCallbackPageTitle: '微信支付回调',
     wechatPayment: {
       callbackTitle: '正在恢复微信支付',
@@ -1237,6 +1240,7 @@ export default {
         linuxdo: 'LinuxDo',
         oidc: '{providerName}',
         wechat: '微信',
+        wecom: '企业微信',
       },
       notes: {
         emailManagedFromProfile: '主邮箱在资料表单中管理',
@@ -4032,6 +4036,8 @@ export default {
         https: 'HTTPS',
         socks5: 'SOCKS5',
         socks5h: 'SOCKS5H (远程 DNS)',
+        resin_http: 'Resin HTTP',
+        resin_https: 'Resin HTTPS',
       },
       name: '名称',
       protocol: '协议',
@@ -4045,8 +4051,14 @@ export default {
       leaveEmptyToKeep: '留空保持不变',
       form: {
         hostPlaceholder: '请输入主机地址',
-        portPlaceholder: '请输入端口'
+        portPlaceholder: '请输入端口',
+        resinHostPlaceholder: 'resin.example.com',
+        resinPlatformPlaceholder: 'openai',
+        resinTokenPlaceholder: 'resin-token'
       },
+      resinPlatform: 'Resin 平台',
+      resinToken: 'Resin Token',
+      resinFieldHint: 'Resin 代理使用用户名字段保存平台名称，反向代理模式会自动使用 /<Resin Token> 作为基础路径。',
       noProxiesYet: '暂无代理',
       createFirstProxy: '添加您的第一个代理以开始使用。',
       testConnection: '测试连接',

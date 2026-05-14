@@ -92,6 +92,9 @@ const OIDCConnectSyntheticEmailDomain = "@oidc-connect.invalid"
 // WeChatConnectSyntheticEmailDomain 是 WeChat Connect 用户的合成邮箱后缀（RFC 保留域名）。
 const WeChatConnectSyntheticEmailDomain = "@wechat-connect.invalid"
 
+// WeComConnectSyntheticEmailDomain 是企业微信登录用户的合成邮箱后缀（RFC 保留域名）。
+const WeComConnectSyntheticEmailDomain = "@wecom-connect.invalid"
+
 // Setting keys
 const (
 	// 注册设置
@@ -154,6 +157,15 @@ const (
 	SettingKeyWeChatConnectScopes              = "wechat_connect_scopes"
 	SettingKeyWeChatConnectRedirectURL         = "wechat_connect_redirect_url"
 	SettingKeyWeChatConnectFrontendRedirectURL = "wechat_connect_frontend_redirect_url"
+
+	// WeCom / 企业微信 OAuth 登录设置
+	SettingKeyWeComOAuthEnabled             = "wecom_oauth_enabled"
+	SettingKeyWeComOAuthCorpID              = "wecom_oauth_corp_id"
+	SettingKeyWeComOAuthAgentID             = "wecom_oauth_agent_id"
+	SettingKeyWeComOAuthSecret              = "wecom_oauth_secret"
+	SettingKeyWeComOAuthScope               = "wecom_oauth_scope"
+	SettingKeyWeComOAuthRedirectURL         = "wecom_oauth_redirect_url"
+	SettingKeyWeComOAuthFrontendRedirectURL = "wecom_oauth_frontend_redirect_url"
 
 	// Generic OIDC OAuth 登录设置
 	SettingKeyOIDCConnectEnabled              = "oidc_connect_enabled"
@@ -234,6 +246,11 @@ const (
 	SettingKeyAuthSourceDefaultWeChatSubscriptions     = "auth_source_default_wechat_subscriptions"
 	SettingKeyAuthSourceDefaultWeChatGrantOnSignup     = "auth_source_default_wechat_grant_on_signup"
 	SettingKeyAuthSourceDefaultWeChatGrantOnFirstBind  = "auth_source_default_wechat_grant_on_first_bind"
+	SettingKeyAuthSourceDefaultWeComBalance            = "auth_source_default_wecom_balance"
+	SettingKeyAuthSourceDefaultWeComConcurrency        = "auth_source_default_wecom_concurrency"
+	SettingKeyAuthSourceDefaultWeComSubscriptions      = "auth_source_default_wecom_subscriptions"
+	SettingKeyAuthSourceDefaultWeComGrantOnSignup      = "auth_source_default_wecom_grant_on_signup"
+	SettingKeyAuthSourceDefaultWeComGrantOnFirstBind   = "auth_source_default_wecom_grant_on_first_bind"
 	SettingKeyAuthSourceDefaultGitHubBalance           = "auth_source_default_github_balance"
 	SettingKeyAuthSourceDefaultGitHubConcurrency       = "auth_source_default_github_concurrency"
 	SettingKeyAuthSourceDefaultGitHubSubscriptions     = "auth_source_default_github_subscriptions"

@@ -1,12 +1,16 @@
 package repository
 
 import (
+	"context"
 	"fmt"
+	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
+	resinpkg "github.com/Wei-Shaw/sub2api/internal/pkg/resin"
 
 	"github.com/imroc/req/v3"
 )
@@ -32,7 +36,6 @@ type reqClientOptions struct {
 // 2. 复用底层连接池，减少 TLS 握手开销
 // 3. LoadOrStore 保证并发安全，避免重复创建
 var sharedReqClients sync.Map
-
 // getSharedReqClient 获取共享的 req 客户端实例
 // 性能优化：相同配置复用同一客户端，避免重复创建
 func getSharedReqClient(opts reqClientOptions) (*req.Client, error) {
@@ -54,8 +57,26 @@ func getSharedReqClient(opts reqClientOptions) (*req.Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	resinCfg, err := resinpkg.Parse(trimmed)
+	if err != nil {
+		return nil, err
+	}
+	if resinCfg != nil {
+		trimmed = resinCfg.ForwardProxyBaseURL()
+	}
 	if trimmed != "" {
 		client.SetProxyURL(trimmed)
+		if resinCfg != nil {
+			client.GetTransport().SetGetProxyConnectHeader(func(ctx context.Context, _ *url.URL, _ string) (http.Header, error) {
+				return resinCfg.ProxyConnectHeadersForContext(ctx), nil
+			})
+			client.GetTransport().WrapRoundTripFunc(func(rt http.RoundTripper) req.HttpRoundTripFunc {
+				wrapped := resinpkg.WrapForwardProxyRoundTripper(rt, resinCfg)
+				return func(req *http.Request) (*http.Response, error) {
+					return wrapped.RoundTrip(req)
+				}
+			})
+		}
 	}
 
 	actual, _ := sharedReqClients.LoadOrStore(key, client)

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	resinpkg "github.com/Wei-Shaw/sub2api/internal/pkg/resin"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
@@ -146,6 +147,55 @@ func (s *HTTPUpstreamSuite) TestDo_WithHTTPProxy_UsesProxy() {
 		require.Equal(s.T(), "http://example.com/test", uri, "expected absolute-form request URI")
 	default:
 		require.Fail(s.T(), "expected proxy to receive request")
+	}
+}
+
+func (s *HTTPUpstreamSuite) TestDo_WithResinProxy_RewritesReverseURLPerAccount() {
+	seenPath := make(chan string, 1)
+	seenHost := make(chan string, 1)
+	seenAccount := make(chan string, 1)
+	resinSrv := newLocalTestServer(s.T(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case seenPath <- r.URL.Path:
+		default:
+		}
+		select {
+		case seenHost <- r.Host:
+		default:
+		}
+		select {
+		case seenAccount <- r.Header.Get(resinpkg.HeaderAccount):
+		default:
+		}
+		_, _ = io.WriteString(w, "resin")
+	}))
+	s.T().Cleanup(resinSrv.Close)
+
+	up := NewHTTPUpstream(s.cfg)
+	req, err := http.NewRequest(http.MethodGet, "https://api.openai.com/v1/responses?stream=true", nil)
+	require.NoError(s.T(), err, "NewRequest")
+
+	resp, err := up.Do(req, "http://openai:token123@"+resinSrv.Listener.Addr().String()+"#resin", 42, 1)
+	require.NoError(s.T(), err, "Do")
+	defer func() { _ = resp.Body.Close() }()
+
+	select {
+	case got := <-seenPath:
+		require.Equal(s.T(), "/openai/https/api.openai.com/v1/responses", got)
+	default:
+		require.Fail(s.T(), "expected resin server to receive request")
+	}
+	select {
+	case got := <-seenHost:
+		require.Equal(s.T(), "api.openai.com", got)
+	default:
+		require.Fail(s.T(), "expected rewritten host header")
+	}
+	select {
+	case got := <-seenAccount:
+		require.Equal(s.T(), "acct-42", got)
+	default:
+		require.Fail(s.T(), "expected resin account header")
 	}
 }
 
