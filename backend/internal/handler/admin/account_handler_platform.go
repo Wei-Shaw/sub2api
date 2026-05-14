@@ -182,7 +182,11 @@ func (h *AccountHandler) tryPluginTestConnection(c *gin.Context, account *servic
 			break
 		}
 
-		evt := gin.H{"type": event.Type}
+		evtType := event.Type
+		if evtType == "test_end" {
+			evtType = "test_complete"
+		}
+		evt := gin.H{"type": evtType}
 		if event.Text != "" {
 			evt["text"] = event.Text
 		}
@@ -265,7 +269,7 @@ func sendPluginSSEError(c *gin.Context, msg string) {
 	c.Writer.Header().Set("Cache-Control", "no-cache")
 	c.Writer.WriteHeader(http.StatusOK)
 	writePluginSSEEvent(c, gin.H{"type": "error", "error": msg})
-	writePluginSSEEvent(c, gin.H{"type": "test_end", "success": false, "error": msg})
+	writePluginSSEEvent(c, gin.H{"type": "test_complete", "success": false, "error": msg})
 }
 
 // validateAccountDataResult holds the outcome of plugin-side validation.
