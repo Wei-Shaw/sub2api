@@ -190,6 +190,31 @@ describe('EditAccountModal', () => {
     REDACTED)
   REDACTED)
 
+  it('preserves model mappings when editing the whitelist', async () => {
+    const account = buildAccount()
+    account.credentials.model_mapping = {
+      'gpt-5.2': 'gpt-5.2',
+      'gpt-latest': 'gpt-5.2'
+    REDACTED
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false REDACTED)
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+
+    expect(wrapper.get('[data-testid="model-whitelist-value"]').text()).toBe('gpt-5.2')
+
+    await wrapper.get('[data-testid="rewrite-to-snapshot"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
+      'gpt-5.2-2025-12-11': 'gpt-5.2-2025-12-11',
+      'gpt-latest': 'gpt-5.2'
+    REDACTED)
+  REDACTED)
+
   it('submits OpenAI compact mode and compact-only model mapping', async () => {
     const account = buildAccount()
     account.extra = {
