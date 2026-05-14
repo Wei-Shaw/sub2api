@@ -1401,18 +1401,10 @@ func (r *usageLogRepository) GetUserStats(ctx context.Context, userID int64, sta
 	return stats, nil
 }
 
-// GroupCacheHitRate7d holds the 7-day cache-read aggregation for a single group.
-// It is a temporary local type; Task 2 will migrate to service.GroupCacheHitRate7d.
-type GroupCacheHitRate7d struct {
-	GroupID   int64
-	CacheRead float64
-	Denom     float64
-}
-
 // GetGroupCacheHitRates7d returns, for every group that has at least one token
 // in the last 7 days, the sum of cache_read_tokens and the denominator
 // (input_tokens + cache_read_tokens). Groups with a zero denominator are excluded.
-func (r *usageLogRepository) GetGroupCacheHitRates7d(ctx context.Context) ([]GroupCacheHitRate7d, error) {
+func (r *usageLogRepository) GetGroupCacheHitRates7d(ctx context.Context) ([]service.GroupCacheHitRate7d, error) {
 	const query = `
 		SELECT group_id,
 		       SUM(cache_read_tokens)::float8 AS cache_read,
@@ -1429,9 +1421,9 @@ func (r *usageLogRepository) GetGroupCacheHitRates7d(ctx context.Context) ([]Gro
 	}
 	defer rows.Close()
 
-	out := make([]GroupCacheHitRate7d, 0, 16)
+	out := make([]service.GroupCacheHitRate7d, 0, 16)
 	for rows.Next() {
-		var item GroupCacheHitRate7d
+		var item service.GroupCacheHitRate7d
 		if err := rows.Scan(&item.GroupID, &item.CacheRead, &item.Denom); err != nil {
 			return nil, fmt.Errorf("scan group cache hit rate: %w", err)
 		}

@@ -23,6 +23,17 @@ import (
 	"golang.org/x/sync/singleflight"
 )
 
+// GroupCacheHitRate7d is the per-group 7-day cache-hit aggregation row,
+// defined in the service package so the UsageLogRepository interface can
+// reference it without service importing repository.
+//
+// Denom = SUM(input_tokens + cache_read_tokens); ratio = CacheRead / Denom.
+type GroupCacheHitRate7d struct {
+	GroupID   int64
+	CacheRead float64
+	Denom     float64
+}
+
 type UsageLogRepository interface {
 	// Create creates a usage log and returns whether it was actually inserted.
 	// inserted is false when the insert was skipped due to conflict (idempotent retries).
@@ -51,6 +62,10 @@ type UsageLogRepository interface {
 	GetGroupStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, requestType *int16, stream *bool, billingType *int8) ([]usagestats.GroupStat, error)
 	GetUserBreakdownStats(ctx context.Context, startTime, endTime time.Time, dim usagestats.UserBreakdownDimension, limit int) ([]usagestats.UserBreakdownItem, error)
 	GetAllGroupUsageSummary(ctx context.Context, todayStart time.Time) ([]usagestats.GroupUsageSummary, error)
+	// GetGroupCacheHitRates7d returns one row per group with at least one usage_log
+	// in the past 7 days and non-zero (input_tokens + cache_read_tokens). Used to
+	// surface group-level cache-hit ratios in the user-facing group dropdown.
+	GetGroupCacheHitRates7d(ctx context.Context) ([]GroupCacheHitRate7d, error)
 	GetAPIKeyUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) ([]usagestats.APIKeyUsageTrendPoint, error)
 	GetUserUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) ([]usagestats.UserUsageTrendPoint, error)
 	GetUserSpendingRanking(ctx context.Context, startTime, endTime time.Time, limit int) (*usagestats.UserSpendingRankingResponse, error)

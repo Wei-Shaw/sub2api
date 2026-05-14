@@ -1724,7 +1724,7 @@ func TestUsageLogRepository_GetGroupCacheHitRates7d(t *testing.T) {
 	require.NoError(t, err, "GetGroupCacheHitRates7d")
 
 	// Build a map for easy lookup by group ID.
-	rateMap := make(map[int64]GroupCacheHitRate7d)
+	rateMap := make(map[int64]service.GroupCacheHitRate7d)
 	for _, r := range rates {
 		rateMap[r.GroupID] = r
 	}

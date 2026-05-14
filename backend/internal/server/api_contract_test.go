@@ -2387,6 +2387,9 @@ func (r *stubUsageLogRepo) GetStatsWithFilters(ctx context.Context, filters usag
 func (r *stubUsageLogRepo) GetAllGroupUsageSummary(ctx context.Context, todayStart time.Time) ([]usagestats.GroupUsageSummary, error) {
 	return nil, errors.New("not implemented")
 }
+func (r *stubUsageLogRepo) GetGroupCacheHitRates7d(ctx context.Context) ([]service.GroupCacheHitRate7d, error) {
+	return nil, errors.New("not implemented")
+}
 
 type stubSettingRepo struct {
 	all map[string]string
