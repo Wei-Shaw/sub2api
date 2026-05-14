@@ -60,9 +60,11 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Setup pnpm
-        # Version is read from package.json's packageManager field;
+        # Version is read from frontend/package.json's packageManager field;
         # do not hard-pin here or it drifts from the Dockerfile / lockfile.
         uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
