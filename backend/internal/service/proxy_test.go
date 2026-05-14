@@ -2,6 +2,7 @@ package service
 
 import (
 	"net/url"
+	"strings"
 	"testing"
 )
 
@@ -77,6 +78,27 @@ func TestProxyURL(t *testing.T) {
 			},
 			want: "http://Default:token123@127.0.0.1:2260/my-token#resin",
 		},
+		{
+			name: "resin socks5 proxy stays pathless",
+			proxy: Proxy{
+				Protocol: ProxyProtocolResinSOCKS,
+				Host:     "resin.example.com",
+				Port:     2260,
+				Username: "openai",
+				Password: "token123",
+			},
+			want: "socks5h://openai:token123@resin.example.com:2260#resin",
+		},
+		{
+			name: "resin proxy keeps username when token is missing",
+			proxy: Proxy{
+				Protocol: ProxyProtocolResinHTTP,
+				Host:     "resin.example.com",
+				Port:     2260,
+				Username: "openai",
+			},
+			want: "http://openai@resin.example.com:2260#resin",
+		},
 	}
 
 	for _, tc := range tests {
@@ -85,6 +107,61 @@ func TestProxyURL(t *testing.T) {
 			t.Parallel()
 			if got := tc.proxy.URL(); got != tc.want {
 				t.Fatalf("Proxy.URL() mismatch: got=%q want=%q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestValidateResinProxyCredentials(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		protocol string
+		username string
+		password string
+		wantErr  string
+	}{
+		{
+			name:     "non resin proxy does not require credentials",
+			protocol: ProxyProtocolHTTP,
+		},
+		{
+			name:     "resin requires platform",
+			protocol: ProxyProtocolResinHTTP,
+			password: "token123",
+			wantErr:  "Resin platform is required",
+		},
+		{
+			name:     "resin allows empty token",
+			protocol: ProxyProtocolResinHTTP,
+			username: "openai",
+		},
+		{
+			name:     "resin accepts both values",
+			protocol: ProxyProtocolResinSOCKS,
+			username: "openai",
+			password: "token123",
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := validateResinProxyCredentials(tc.protocol, tc.username, tc.password)
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("validateResinProxyCredentials() error = %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("validateResinProxyCredentials() expected error containing %q", tc.wantErr)
+			}
+			if !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("validateResinProxyCredentials() error = %q, want substring %q", err.Error(), tc.wantErr)
 			}
 		})
 	}
@@ -109,6 +186,52 @@ func TestProxyResinConfig(t *testing.T) {
 		t.Fatal("Proxy.ResinConfig() returned nil")
 	}
 	if got, want := cfg.ForwardProxyBaseURL(), "https://resin.example.com:443"; got != want {
+		t.Fatalf("ForwardProxyBaseURL mismatch: got=%q want=%q", got, want)
+	}
+}
+
+func TestProxyResinSocksConfig(t *testing.T) {
+	t.Parallel()
+
+	proxy := &Proxy{
+		Protocol: ProxyProtocolResinSOCKS,
+		Host:     "resin.example.com",
+		Port:     2260,
+		Username: "openai",
+		Password: "token123",
+		BasePath: "/ignored",
+	}
+
+	cfg, err := proxy.ResinConfig()
+	if err != nil {
+		t.Fatalf("Proxy.ResinConfig() error = %v", err)
+	}
+	if cfg == nil {
+		t.Fatal("Proxy.ResinConfig() returned nil")
+	}
+	if got, want := cfg.ForwardProxyBaseURL(), "socks5h://resin.example.com:2260"; got != want {
+		t.Fatalf("ForwardProxyBaseURL mismatch: got=%q want=%q", got, want)
+	}
+}
+
+func TestProxyResinConfig_MissingTokenStillParses(t *testing.T) {
+	t.Parallel()
+
+	proxy := &Proxy{
+		Protocol: ProxyProtocolResinHTTP,
+		Host:     "resin.example.com",
+		Port:     2260,
+		Username: "openai",
+	}
+
+	cfg, err := proxy.ResinConfig()
+	if err != nil {
+		t.Fatalf("Proxy.ResinConfig() error = %v", err)
+	}
+	if cfg == nil {
+		t.Fatal("Proxy.ResinConfig() returned nil")
+	}
+	if got, want := cfg.ForwardProxyBaseURL(), "http://resin.example.com:2260"; got != want {
 		t.Fatalf("ForwardProxyBaseURL mismatch: got=%q want=%q", got, want)
 	}
 }

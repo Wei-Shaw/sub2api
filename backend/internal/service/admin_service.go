@@ -2848,6 +2848,9 @@ func (s *adminServiceImpl) GetProxiesByIDs(ctx context.Context, ids []int64) ([]
 }
 
 func (s *adminServiceImpl) CreateProxy(ctx context.Context, input *CreateProxyInput) (*Proxy, error) {
+	if err := validateResinProxyCredentials(input.Protocol, input.Username, input.Password); err != nil {
+		return nil, err
+	}
 	basePath, err := normalizeProxyBasePath(input.Protocol, input.BasePath)
 	if err != nil {
 		return nil, err
@@ -2903,6 +2906,10 @@ func (s *adminServiceImpl) UpdateProxy(ctx context.Context, id int64, input *Upd
 	}
 	if input.Status != "" {
 		proxy.Status = input.Status
+	}
+
+	if err := validateResinProxyCredentials(proxy.Protocol, proxy.Username, proxy.Password); err != nil {
+		return nil, err
 	}
 
 	if err := s.proxyRepo.Update(ctx, proxy); err != nil {

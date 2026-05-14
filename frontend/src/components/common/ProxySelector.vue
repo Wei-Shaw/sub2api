@@ -229,6 +229,8 @@ const formatProxyProtocol = (protocol: Proxy['protocol']) => {
       return t('admin.proxies.protocols.resin_http')
     case 'resin_https':
       return t('admin.proxies.protocols.resin_https')
+    case 'resin_socks5':
+      return t('admin.proxies.protocols.resin_socks5')
     case 'socks5':
       return t('admin.proxies.protocols.socks5')
     case 'socks5h':

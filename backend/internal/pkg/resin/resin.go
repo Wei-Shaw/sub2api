@@ -45,9 +45,6 @@ func Parse(rawURL string) (*Config, error) {
 		return nil, fmt.Errorf("resin platform name is empty")
 	}
 	secret := secretFromMarkedProxyURL(parsed)
-	if strings.TrimSpace(secret) == "" {
-		return nil, fmt.Errorf("resin url missing secret/token")
-	}
 
 	base := *parsed
 	base.User = nil
@@ -80,7 +77,14 @@ func platformFromURL(u *url.URL) string {
 	if u == nil || u.User == nil {
 		return ""
 	}
-	return strings.TrimSpace(u.User.Username())
+	username := strings.TrimSpace(u.User.Username())
+	if username == "" {
+		return ""
+	}
+	if idx := strings.Index(username, "."); idx > 0 {
+		return strings.TrimSpace(username[:idx])
+	}
+	return username
 }
 
 func secretFromMarkedProxyURL(u *url.URL) string {
@@ -170,7 +174,7 @@ func (c *Config) forwardProxyUsername(accountID int64) string {
 }
 
 func (c *Config) ProxyAuthorizationHeader(accountID int64) string {
-	if c == nil || accountID <= 0 {
+	if c == nil || accountID <= 0 || c.UsesSOCKS5ForwardProxy() {
 		return ""
 	}
 	token := base64.StdEncoding.EncodeToString([]byte(c.forwardProxyUsername(accountID) + ":" + c.Secret))
@@ -178,6 +182,9 @@ func (c *Config) ProxyAuthorizationHeader(accountID int64) string {
 }
 
 func (c *Config) ProxyConnectHeadersForContext(ctx context.Context) http.Header {
+	if c == nil || c.UsesSOCKS5ForwardProxy() {
+		return nil
+	}
 	accountID := AccountIDFromContext(ctx)
 	if accountID <= 0 {
 		return nil
@@ -216,6 +223,26 @@ func (c *Config) MatchesForwardProxyURL(raw string) bool {
 	return normalized == expected
 }
 
+func (c *Config) Scheme() string {
+	if c == nil || c.BaseURL == nil {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(c.BaseURL.Scheme))
+}
+
+func (c *Config) UsesSOCKS5ForwardProxy() bool {
+	switch c.Scheme() {
+	case "socks5", "socks5h":
+		return true
+	default:
+		return false
+	}
+}
+
+func (c *Config) SupportsReverseProxy() bool {
+	return !c.UsesSOCKS5ForwardProxy()
+}
+
 func (c *Config) forwardProxyURL() url.URL {
 	cloned := *c.BaseURL
 	cloned.Path = ""
@@ -228,6 +255,9 @@ func (c *Config) forwardProxyURL() url.URL {
 func (c *Config) BuildReverseURL(original *url.URL) (*url.URL, error) {
 	if c == nil || c.BaseURL == nil {
 		return nil, fmt.Errorf("resin config is nil")
+	}
+	if !c.SupportsReverseProxy() {
+		return nil, fmt.Errorf("resin reverse proxy is not supported for %s", c.Scheme())
 	}
 	if original == nil {
 		return nil, fmt.Errorf("original url is nil")
@@ -286,7 +316,7 @@ func PrepareReverseWS(rawWSURL string, headers http.Header, cfg *Config, account
 }
 
 func WrapForwardProxyRoundTripper(base http.RoundTripper, cfg *Config) http.RoundTripper {
-	if base == nil || cfg == nil {
+	if base == nil || cfg == nil || cfg.UsesSOCKS5ForwardProxy() {
 		return base
 	}
 	return roundTripFunc(func(req *http.Request) (*http.Response, error) {

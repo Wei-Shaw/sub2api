@@ -135,12 +135,16 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 	if accountID > 0 {
 		req = req.Clone(resinpkg.WithAccountID(req.Context(), accountID))
 		if resinCfg := resinConfigForProxyURL(proxyURL); resinCfg != nil {
-			var err error
-			req, err = resinpkg.PrepareReverseRequest(req, resinCfg, accountID)
-			if err != nil {
-				return nil, err
+			if resinCfg.SupportsReverseProxy() {
+				var err error
+				req, err = resinpkg.PrepareReverseRequest(req, resinCfg, accountID)
+				if err != nil {
+					return nil, err
+				}
+				proxyURL = ""
+			} else {
+				proxyURL = resinCfg.ForwardProxyURLForAccount(accountID)
 			}
-			proxyURL = ""
 		}
 	}
 

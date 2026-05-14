@@ -141,6 +141,15 @@ func buildTransport(opts Options) (*http.Transport, *resinpkg.Config, error) {
 		return nil, nil, err
 	}
 	if resinCfg != nil {
+		if resinCfg.UsesSOCKS5ForwardProxy() {
+			if parsed == nil {
+				return transport, nil, nil
+			}
+			if err := proxyutil.ConfigureTransportProxy(transport, parsed); err != nil {
+				return nil, nil, err
+			}
+			return transport, nil, nil
+		}
 		_, parsed, err = proxyurl.Parse(resinCfg.ForwardProxyBaseURL())
 		if err != nil {
 			return nil, nil, err

@@ -36,6 +36,7 @@ type reqClientOptions struct {
 // 2. 复用底层连接池，减少 TLS 握手开销
 // 3. LoadOrStore 保证并发安全，避免重复创建
 var sharedReqClients sync.Map
+
 // getSharedReqClient 获取共享的 req 客户端实例
 // 性能优化：相同配置复用同一客户端，避免重复创建
 func getSharedReqClient(opts reqClientOptions) (*req.Client, error) {
@@ -62,11 +63,13 @@ func getSharedReqClient(opts reqClientOptions) (*req.Client, error) {
 		return nil, err
 	}
 	if resinCfg != nil {
-		trimmed = resinCfg.ForwardProxyBaseURL()
+		if !resinCfg.UsesSOCKS5ForwardProxy() {
+			trimmed = resinCfg.ForwardProxyBaseURL()
+		}
 	}
 	if trimmed != "" {
 		client.SetProxyURL(trimmed)
-		if resinCfg != nil {
+		if resinCfg != nil && !resinCfg.UsesSOCKS5ForwardProxy() {
 			client.GetTransport().SetGetProxyConnectHeader(func(ctx context.Context, _ *url.URL, _ string) (http.Header, error) {
 				return resinCfg.ProxyConnectHeadersForContext(ctx), nil
 			})

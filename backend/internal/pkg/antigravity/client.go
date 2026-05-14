@@ -299,7 +299,7 @@ func NewClient(proxyURL string, opts ...ClientOption) (*Client, error) {
 			}).DialContext,
 			TLSHandshakeTimeout: proxyTLSHandshakeTimeout,
 		}
-		if resolved.resinCfg != nil && resolved.accountID > 0 && resolved.resinCfg.MatchesForwardProxyURL(proxyURL) {
+		if resolved.resinCfg != nil && resolved.accountID > 0 && !resolved.resinCfg.UsesSOCKS5ForwardProxy() && resolved.resinCfg.MatchesForwardProxyURL(proxyURL) {
 			authValue := resolved.resinCfg.ProxyAuthorizationHeader(resolved.accountID)
 			transport.Proxy = http.ProxyURL(parsed)
 			transport.GetProxyConnectHeader = func(ctx context.Context, proxyURL *url.URL, target string) (http.Header, error) {

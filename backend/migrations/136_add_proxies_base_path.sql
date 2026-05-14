@@ -1,0 +1,2 @@
+ALTER TABLE proxies
+    ADD COLUMN IF NOT EXISTS base_path VARCHAR(255);

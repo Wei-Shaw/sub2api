@@ -25,6 +25,9 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	requireColumn(t, tx, "users", "username", "character varying", 100, false)
 	requireColumn(t, tx, "users", "notes", "text", 0, false)
 
+	// proxies: reverse-proxy compatibility field used by repository queries
+	requireColumn(t, tx, "proxies", "base_path", "character varying", 255, true)
+
 	// accounts: schedulable and rate-limit fields
 	requireColumn(t, tx, "accounts", "notes", "text", 0, true)
 	requireColumn(t, tx, "accounts", "schedulable", "boolean", 0, false)

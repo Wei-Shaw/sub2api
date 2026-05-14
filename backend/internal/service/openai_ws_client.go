@@ -5,12 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
 	resinpkg "github.com/Wei-Shaw/sub2api/internal/pkg/resin"
 	openaiwsv2 "github.com/Wei-Shaw/sub2api/internal/service/openai_ws_v2"
 	coderws "github.com/coder/websocket"
@@ -83,12 +84,16 @@ func (d *coderOpenAIWSClientDialer) Dial(
 	if accountID > 0 {
 		ctx = resinpkg.WithAccountID(ctx, accountID)
 		if resinCfg, _ := resinpkg.Parse(proxyURL); resinCfg != nil {
-			var err error
-			targetURL, hostOverride, wsHeaders, err = resinpkg.PrepareReverseWS(targetURL, wsHeaders, resinCfg, accountID)
-			if err != nil {
-				return nil, 0, nil, err
+			if resinCfg.SupportsReverseProxy() {
+				var err error
+				targetURL, hostOverride, wsHeaders, err = resinpkg.PrepareReverseWS(targetURL, wsHeaders, resinCfg, accountID)
+				if err != nil {
+					return nil, 0, nil, err
+				}
+				proxyURL = ""
+			} else {
+				proxyURL = resinCfg.ForwardProxyURLForAccount(accountID)
 			}
-			proxyURL = ""
 		}
 	}
 
@@ -133,7 +138,7 @@ func (d *coderOpenAIWSClientDialer) proxyHTTPClient(proxy string) (*http.Client,
 	if normalizedProxy == "" {
 		return nil, errors.New("proxy url is empty")
 	}
-	parsedProxyURL, err := url.Parse(normalizedProxy)
+	_, parsedProxyURL, err := proxyurl.Parse(normalizedProxy)
 	if err != nil {
 		return nil, fmt.Errorf("invalid proxy url: %w", err)
 	}
@@ -148,12 +153,14 @@ func (d *coderOpenAIWSClientDialer) proxyHTTPClient(proxy string) (*http.Client,
 	}
 	d.cleanupProxyClientsLocked(now)
 	transport := &http.Transport{
-		Proxy:               http.ProxyURL(parsedProxyURL),
 		MaxIdleConns:        openAIWSProxyTransportMaxIdleConns,
 		MaxIdleConnsPerHost: openAIWSProxyTransportMaxIdleConnsPerHost,
 		IdleConnTimeout:     openAIWSProxyTransportIdleConnTimeout,
 		TLSHandshakeTimeout: 10 * time.Second,
 		ForceAttemptHTTP2:   true,
+	}
+	if err := proxyutil.ConfigureTransportProxy(transport, parsedProxyURL); err != nil {
+		return nil, fmt.Errorf("configure proxy: %w", err)
 	}
 	client := &http.Client{Transport: transport}
 	d.proxyClients[normalizedProxy] = &openAIWSProxyClientEntry{

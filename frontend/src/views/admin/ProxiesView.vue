@@ -925,7 +925,8 @@ const protocolOptions = computed(() => [
   { value: 'socks5', label: 'SOCKS5' },
   { value: 'socks5h', label: 'SOCKS5H' },
   { value: 'resin_http', label: t('admin.proxies.protocols.resin_http') },
-  { value: 'resin_https', label: t('admin.proxies.protocols.resin_https') }
+  { value: 'resin_https', label: t('admin.proxies.protocols.resin_https') },
+  { value: 'resin_socks5', label: t('admin.proxies.protocols.resin_socks5') }
 ])
 
 const statusOptions = computed(() => [
@@ -941,7 +942,8 @@ const protocolSelectOptions = computed(() => [
   { value: 'socks5', label: t('admin.proxies.protocols.socks5') },
   { value: 'socks5h', label: t('admin.proxies.protocols.socks5h') },
   { value: 'resin_http', label: t('admin.proxies.protocols.resin_http') },
-  { value: 'resin_https', label: t('admin.proxies.protocols.resin_https') }
+  { value: 'resin_https', label: t('admin.proxies.protocols.resin_https') },
+  { value: 'resin_socks5', label: t('admin.proxies.protocols.resin_socks5') }
 ])
 
 const editStatusOptions = computed(() => [
@@ -1061,7 +1063,7 @@ const isAbortError = (error: unknown) => {
 }
 
 const isResinProtocol = (protocol: ProxyProtocol | string) =>
-  protocol === 'resin_http' || protocol === 'resin_https'
+  protocol === 'resin_http' || protocol === 'resin_https' || protocol === 'resin_socks5'
 
 const protocolLabel = (protocol: ProxyProtocol | string) => {
   switch (protocol) {
@@ -1077,13 +1079,15 @@ const protocolLabel = (protocol: ProxyProtocol | string) => {
       return t('admin.proxies.protocols.resin_http')
     case 'resin_https':
       return t('admin.proxies.protocols.resin_https')
+    case 'resin_socks5':
+      return t('admin.proxies.protocols.resin_socks5')
     default:
       return String(protocol || '')
   }
 }
 
 const protocolBadgeClass = (protocol: ProxyProtocol | string) => {
-  if (protocol === 'resin_http' || protocol === 'resin_https') return 'badge-warning'
+  if (protocol === 'resin_http' || protocol === 'resin_https' || protocol === 'resin_socks5') return 'badge-warning'
   if (String(protocol).startsWith('socks5')) return 'badge-primary'
   return 'badge-gray'
 }
@@ -1895,9 +1899,11 @@ function buildProxyUrl(row: any): string {
     ? 'http'
     : row.protocol === 'resin_https'
       ? 'https'
+      : row.protocol === 'resin_socks5'
+        ? 'socks5h'
       : row.protocol
   const suffix = isResinProtocol(row.protocol) ? '#resin' : ''
-  const basePath = isResinProtocol(row.protocol)
+  const basePath = (row.protocol === 'resin_http' || row.protocol === 'resin_https')
     ? (row.base_path || (row.password ? `/${encodeURIComponent(String(row.password).replace(/^\/+/, ''))}` : ''))
     : (row.base_path || '')
   return `${scheme}://${buildAuthPart(row)}${row.host}:${row.port}${basePath}${suffix}`

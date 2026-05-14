@@ -19,6 +19,18 @@ func TestParseAndForwardProxyURLForAccount(t *testing.T) {
 	require.True(t, cfg.MatchesForwardProxyURL("https://resin.example.com"))
 }
 
+func TestParseAndForwardProxyURLForAccount_SOCKS5(t *testing.T) {
+	cfg, err := Parse("socks5h://openai:token123@resin.example.com#resin")
+	require.NoError(t, err)
+
+	require.Equal(t, "socks5h://resin.example.com", cfg.ForwardProxyBaseURL())
+	require.Equal(t, "socks5h://openai:token123@resin.example.com", cfg.BaseAuthProxyURL())
+	require.Equal(t, "socks5h://openai.acct-42:token123@resin.example.com", cfg.ForwardProxyURLForAccount(42))
+	require.True(t, cfg.MatchesForwardProxyURL("socks5://resin.example.com"))
+	require.False(t, cfg.SupportsReverseProxy())
+	require.True(t, cfg.UsesSOCKS5ForwardProxy())
+}
+
 func TestPrepareReverseRequest(t *testing.T) {
 	cfg, err := Parse("https://openai:token123@resin.example.com/reverse#resin")
 	require.NoError(t, err)
@@ -102,4 +114,17 @@ func TestBuildReverseURLKeepsResinBasePath(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, "http://127.0.0.1:2260/my-token/openai/https/api.openai.com/v1/responses", target.String())
+}
+
+func TestBuildReverseURLRejectsSOCKS5Resin(t *testing.T) {
+	cfg, err := Parse("socks5h://openai:token123@127.0.0.1:2260#resin")
+	require.NoError(t, err)
+
+	_, err = cfg.BuildReverseURL(&url.URL{
+		Scheme: "https",
+		Host:   "api.openai.com",
+		Path:   "/v1/responses",
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not supported")
 }

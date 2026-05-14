@@ -3908,7 +3908,8 @@ export default {
         socks5: 'SOCKS5',
         socks5h: 'SOCKS5H (Remote DNS)',
         resin_http: 'Resin HTTP',
-        resin_https: 'Resin HTTPS'
+        resin_https: 'Resin HTTPS',
+        resin_socks5: 'Resin SOCKS5'
       },
       columns: {
         name: 'Name',
@@ -3955,7 +3956,7 @@ export default {
       optionalAuth: 'Optional authentication',
       resinPlatform: 'Resin Platform',
       resinToken: 'Resin Token',
-      resinFieldHint: 'For Resin proxies, username stores the platform name. Reverse proxy mode automatically uses /<Resin Token> as the base path.',
+      resinFieldHint: 'For Resin proxies, username stores the platform name. HTTP/HTTPS Resin automatically uses /<Resin Token> for reverse mode, while Resin SOCKS5 uses forward proxy auth.',
       noProxiesYet: 'No proxies yet',
       createFirstProxy: 'Create your first proxy to route traffic through it.',
       // Batch import

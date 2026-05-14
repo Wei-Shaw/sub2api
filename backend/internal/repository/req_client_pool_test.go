@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -170,4 +171,34 @@ func TestGetSharedReqClient_ResinSharedProxyAddsConnectAuthFromContext(t *testin
 	case <-time.After(2 * time.Second):
 		t.Fatal("proxy did not receive Proxy-Authorization header")
 	}
+}
+
+func TestGetSharedReqClient_ResinSOCKS5UsesAccountCredentialsInProxyURL(t *testing.T) {
+	sharedReqClients = sync.Map{}
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "ok")
+	}))
+	defer upstream.Close()
+
+	socksSrv := newSOCKS5TestServer(t)
+
+	cfg, err := resinpkg.Parse("socks5h://openai:token123@" + socksSrv.Addr() + "#resin")
+	require.NoError(t, err)
+
+	client, err := getSharedReqClient(reqClientOptions{
+		ProxyURL: cfg.ForwardProxyURLForAccount(42),
+		Timeout:  2 * time.Second,
+	})
+	require.NoError(t, err)
+
+	resp, err := client.R().Get(upstream.URL)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	record, ok := socksSrv.LastRecord()
+	require.True(t, ok, "expected socks5 auth record")
+	require.Equal(t, "openai.acct-42", record.Username)
+	require.Equal(t, "token123", record.Password)
 }

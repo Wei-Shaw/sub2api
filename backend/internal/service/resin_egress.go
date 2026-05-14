@@ -12,6 +12,20 @@ func withAccountResinContext(ctx context.Context, accountID int64) context.Conte
 }
 
 func resolveAccountSharedProxyURL(ctx context.Context, proxyRepo ProxyRepository, account *Account) string {
+	if account != nil && account.ID > 0 {
+		if account.Proxy != nil {
+			if cfg, err := account.Proxy.ResinConfig(); err == nil && cfg != nil && cfg.UsesSOCKS5ForwardProxy() {
+				return cfg.ForwardProxyURLForAccount(account.ID)
+			}
+		}
+		if account.ProxyID != nil && proxyRepo != nil {
+			if proxy, err := proxyRepo.GetByID(ctx, *account.ProxyID); err == nil && proxy != nil {
+				if cfg, cfgErr := proxy.ResinConfig(); cfgErr == nil && cfg != nil && cfg.UsesSOCKS5ForwardProxy() {
+					return cfg.ForwardProxyURLForAccount(account.ID)
+				}
+			}
+		}
+	}
 	return resolveAccountStoredProxyURL(ctx, proxyRepo, account)
 }
 

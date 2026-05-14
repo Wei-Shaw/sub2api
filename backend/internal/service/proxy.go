@@ -19,6 +19,7 @@ const (
 	ProxyProtocolSOCKS5H    = "socks5h"
 	ProxyProtocolResinHTTP  = "resin_http"
 	ProxyProtocolResinHTTPS = "resin_https"
+	ProxyProtocolResinSOCKS = "resin_socks5"
 )
 
 type Proxy struct {
@@ -55,6 +56,8 @@ func (p *Proxy) transportScheme() string {
 		return ProxyProtocolHTTP
 	case ProxyProtocolResinHTTPS:
 		return ProxyProtocolHTTPS
+	case ProxyProtocolResinSOCKS:
+		return ProxyProtocolSOCKS5H
 	default:
 		return strings.TrimSpace(p.Protocol)
 	}
@@ -73,6 +76,8 @@ func (p *Proxy) URL() string {
 	if p.IsResin() {
 		if p.Username != "" && p.Password != "" {
 			u.User = url.UserPassword(p.Username, p.Password)
+		} else if p.Username != "" {
+			u.User = url.User(p.Username)
 		}
 		u.Fragment = resinpkg.ProxyMarker
 		return u.String()
@@ -94,6 +99,9 @@ func (p *Proxy) resinBasePath() string {
 	if p == nil || !p.IsResin() {
 		return ""
 	}
+	if !supportsResinReversePath(strings.TrimSpace(p.Protocol)) {
+		return ""
+	}
 	if strings.TrimSpace(p.BasePath) != "" {
 		return p.BasePath
 	}
@@ -106,6 +114,9 @@ func (p *Proxy) resinBasePath() string {
 
 func normalizeProxyBasePath(protocol, raw string) (string, error) {
 	if !isResinProtocol(strings.TrimSpace(protocol)) {
+		return "", nil
+	}
+	if !supportsResinReversePath(strings.TrimSpace(protocol)) {
 		return "", nil
 	}
 	trimmed := strings.TrimSpace(raw)
@@ -125,7 +136,26 @@ func normalizeProxyBasePath(protocol, raw string) (string, error) {
 	return cleaned, nil
 }
 
+func validateResinProxyCredentials(protocol, username, password string) error {
+	if !isResinProtocol(strings.TrimSpace(protocol)) {
+		return nil
+	}
+	if strings.TrimSpace(username) == "" {
+		return infraerrors.BadRequest("PROXY_RESIN_PLATFORM_REQUIRED", "Resin platform is required")
+	}
+	return nil
+}
+
 func isResinProtocol(protocol string) bool {
+	switch strings.TrimSpace(protocol) {
+	case ProxyProtocolResinHTTP, ProxyProtocolResinHTTPS, ProxyProtocolResinSOCKS:
+		return true
+	default:
+		return false
+	}
+}
+
+func supportsResinReversePath(protocol string) bool {
 	switch strings.TrimSpace(protocol) {
 	case ProxyProtocolResinHTTP, ProxyProtocolResinHTTPS:
 		return true

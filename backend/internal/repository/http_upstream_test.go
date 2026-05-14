@@ -199,6 +199,31 @@ func (s *HTTPUpstreamSuite) TestDo_WithResinProxy_RewritesReverseURLPerAccount()
 	}
 }
 
+func (s *HTTPUpstreamSuite) TestDo_WithResinSOCKS5Proxy_UsesForwardProxyPerAccount() {
+	upstream := newLocalTestServer(s.T(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, "socks-resin")
+	}))
+	s.T().Cleanup(upstream.Close)
+
+	socksSrv := newSOCKS5TestServer(s.T())
+
+	up := NewHTTPUpstream(s.cfg)
+	req, err := http.NewRequest(http.MethodGet, upstream.URL+"/v1/responses", nil)
+	require.NoError(s.T(), err, "NewRequest")
+
+	resp, err := up.Do(req, "socks5h://openai:token123@"+socksSrv.Addr()+"#resin", 42, 1)
+	require.NoError(s.T(), err, "Do")
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(s.T(), err, "ReadAll")
+	require.Equal(s.T(), "socks-resin", string(body))
+
+	record, ok := socksSrv.LastRecord()
+	require.True(s.T(), ok, "expected socks5 server to record auth")
+	require.Equal(s.T(), "openai.acct-42", record.Username)
+	require.Equal(s.T(), "token123", record.Password)
+}
+
 // TestDo_EmptyProxy_UsesDirect 测试空代理字符串
 // 验证空字符串代理等同于直连
 func (s *HTTPUpstreamSuite) TestDo_EmptyProxy_UsesDirect() {
