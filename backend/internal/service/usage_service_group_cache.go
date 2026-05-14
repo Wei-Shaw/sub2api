@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -28,7 +29,7 @@ func (s *UsageService) GetGroupCacheHitRates7d(ctx context.Context) (map[int64]f
 		if err == nil && cached != nil {
 			return cached, nil
 		}
-		if err != nil && err != redis.Nil {
+		if err != nil && !errors.Is(err, redis.Nil) {
 			logger.L().Warn("groups cache hit rate redis read failed", zap.Error(err))
 		}
 	}
