@@ -464,12 +464,12 @@ const platforms = [
 const pricingRows = [
   { model: 'Opus 4.7',   logo: '/logos/claude.svg', type: 'AWS Bedrock官方', typeColor: 'blue',   rate: '7x',  inputCny: '¥35.00', outputCny: '¥175.00', official: '$5 / $25',   discount: '原价',  proxy: false },
   { model: 'Sonnet 4.6', logo: '/logos/claude.svg', type: 'AWS Bedrock官方', typeColor: 'blue',   rate: '7x',  inputCny: '¥21.00', outputCny: '¥105.00', official: '$3 / $15',   discount: '原价',  proxy: false },
-  { model: 'Opus 4.7',   logo: '/logos/claude.svg', type: 'claude max专线转发', typeColor: 'orange', rate: '4x', inputCny: '¥20.00', outputCny: '¥100.00', official: '$5 / $25',   discount: '5.7折', proxy: true  },
-  { model: 'Sonnet 4.6', logo: '/logos/claude.svg', type: 'claude max专线转发', typeColor: 'orange', rate: '4x', inputCny: '¥12.00', outputCny: '¥60.00',  official: '$3 / $15',   discount: '5.7折', proxy: true  },
-  { model: 'Opus 4.6',   logo: '/logos/claude.svg', type: 'claude max转发',    typeColor: 'purple', rate: '3x', inputCny: '¥15.00', outputCny: '¥75.00',  official: '$5 / $25',   discount: '4.3折', proxy: true  },
-  { model: 'Sonnet 4.6', logo: '/logos/claude.svg', type: 'claude max转发',    typeColor: 'purple', rate: '3x', inputCny: '¥9.00',  outputCny: '¥45.00',  official: '$3 / $15',   discount: '4.3折', proxy: true  },
-  { model: 'GPT 5.4',    logo: '/logos/openai.svg', type: 'chatgpt pro转发',   typeColor: 'green',  rate: '1x', inputCny: '¥5.00',  outputCny: '¥22.50',  official: '$5 / $22.5', discount: '1.4折', proxy: true  },
-  { model: 'GPT 5.5',    logo: '/logos/openai.svg', type: 'chatgpt pro转发',   typeColor: 'green',  rate: '1x', inputCny: '¥5.00',  outputCny: '¥30.00',  official: '$5 / $30',   discount: '1.4折', proxy: true  },
+  { model: 'Opus 4.7',   logo: '/logos/claude.svg', type: 'claude max专线转发', typeColor: 'orange', rate: '4x', inputCny: '¥20.00', outputCny: '¥100.00', official: '$5 / $25',   discount: '5.7折', proxy: false },
+  { model: 'Sonnet 4.6', logo: '/logos/claude.svg', type: 'claude max专线转发', typeColor: 'orange', rate: '4x', inputCny: '¥12.00', outputCny: '¥60.00',  official: '$3 / $15',   discount: '5.7折', proxy: false },
+  { model: 'Opus 4.6',   logo: '/logos/claude.svg', type: 'claude max转发',    typeColor: 'purple', rate: '3x', inputCny: '¥15.00', outputCny: '¥75.00',  official: '$5 / $25',   discount: '4.3折', proxy: false },
+  { model: 'Sonnet 4.6', logo: '/logos/claude.svg', type: 'claude max转发',    typeColor: 'purple', rate: '3x', inputCny: '¥9.00',  outputCny: '¥45.00',  official: '$3 / $15',   discount: '4.3折', proxy: false },
+  { model: 'GPT 5.4',    logo: '/logos/openai.svg', type: 'chatgpt pro转发',   typeColor: 'green',  rate: '1x', inputCny: '¥5.00',  outputCny: '¥22.50',  official: '$5 / $22.5', discount: '1.4折', proxy: false },
+  { model: 'GPT 5.5',    logo: '/logos/openai.svg', type: 'chatgpt pro转发',   typeColor: 'green',  rate: '1x', inputCny: '¥5.00',  outputCny: '¥30.00',  official: '$5 / $30',   discount: '1.4折', proxy: false },
 ]
 
 const partnersRow1 = [
