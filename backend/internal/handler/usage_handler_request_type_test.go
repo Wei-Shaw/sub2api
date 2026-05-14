@@ -33,7 +33,7 @@ func (s *userUsageRepoCapture) ListWithFilters(ctx context.Context, params pagin
 
 func newUserUsageRequestTypeTestRouter(repo *userUsageRepoCapture) *gin.Engine {
 	gin.SetMode(gin.TestMode)
-	usageSvc := service.NewUsageService(repo, nil, nil, nil)
+	usageSvc := service.NewUsageService(repo, nil, nil, nil, nil)
 	handler := NewUsageHandler(usageSvc, nil)
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
