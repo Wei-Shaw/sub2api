@@ -526,6 +526,8 @@ export interface Group {
   require_privacy_set: boolean
   created_at: string
   updated_at: string
+  /** Global 7-day cache hit ratio (0..1). null = no usage in the past 7 days. */
+  cache_hit_rate_7d?: number | null
 }
 
 export interface AdminGroup extends Group {
