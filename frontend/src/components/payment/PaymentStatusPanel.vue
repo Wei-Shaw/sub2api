@@ -106,7 +106,7 @@
           <div class="h-10 w-10 animate-spin rounded-full border-4 border-primary-500 border-t-transparent"></div>
           <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('payment.qr.payInNewWindowHint') }}</p>
           <template v-if="popupBlocked">
-            <p class="text-xs text-amber-600 dark:text-amber-400">{{ t('payment.qr.popupBlocked') || '弹窗被浏览器阻止，请点击下方链接完成支付' }}</p>
+            <p class="text-xs text-amber-600 dark:text-amber-400">{{ t('payment.qr.popupBlocked') }}</p>
             <a v-if="payUrl" :href="payUrl" target="_blank" rel="noopener" class="btn btn-secondary text-sm">{{ t('payment.qr.openPayWindow') }}</a>
           </template>
           <button v-else-if="payUrl" class="btn btn-secondary text-sm" @click="reopenPopup">
