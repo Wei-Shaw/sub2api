@@ -270,6 +270,7 @@
                       :subscription-type="(option as unknown as GroupOption).subscriptionType"
                       :rate-multiplier="(option as unknown as GroupOption).rate"
                       :description="(option as unknown as GroupOption).description"
+                      :cache-hit-rate7d="(option as unknown as GroupOption).cacheHitRate7d"
                       :selected="selected"
                     />
                   </template>
@@ -429,6 +430,7 @@ interface GroupOption {
   platform: GroupPlatform
   subscriptionType: SubscriptionType
   rate: number
+  cacheHitRate7d: number | null
 }
 
 const showGenerateDialog = ref(false)
@@ -446,7 +448,8 @@ const subscriptionGroupOptions = computed(() => {
       description: g.description,
       platform: g.platform,
       subscriptionType: g.subscription_type,
-      rate: g.rate_multiplier
+      rate: g.rate_multiplier,
+      cacheHitRate7d: g.cache_hit_rate_7d ?? null
     }))
 })
 
