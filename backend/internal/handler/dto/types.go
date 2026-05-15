@@ -119,11 +119,6 @@ type Group struct {
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
-
-	// CacheHitRate7d is the global 7-day cache-hit ratio for this group
-	// (cache_read / (input + cache_read)). nil = no data in the past 7 days.
-	// Populated by handler.GetAvailableGroups via UsageService.
-	CacheHitRate7d *float64 `json:"cache_hit_rate_7d"`
 }
 
 // AdminGroup 是管理员接口使用的 group DTO（包含敏感/内部字段）。

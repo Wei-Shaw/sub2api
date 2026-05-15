@@ -342,9 +342,8 @@ export default {
     },
     groupOption: {
       discountOriginal: 'List price',
-      discountFormat: '{value}× off',
-      cacheFormat: 'Cache {pct}%'
-    },
+      discountFormat: '{value}× off'
+    }
   },
 
   // Navigation

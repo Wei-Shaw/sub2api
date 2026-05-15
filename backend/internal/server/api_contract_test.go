@@ -339,8 +339,7 @@ func TestAPIContracts(t *testing.T) {
 						"require_privacy_set": false,
 						"rpm_limit": 0,
 						"created_at": "2025-01-02T03:04:05Z",
-						"updated_at": "2025-01-02T03:04:05Z",
-						"cache_hit_rate_7d": null
+						"updated_at": "2025-01-02T03:04:05Z"
 					}
 				]
 			}`,
@@ -1179,7 +1178,7 @@ func newContractDeps(t *testing.T) *contractDeps {
 	apiKeyService := service.NewAPIKeyService(apiKeyRepo, userRepo, groupRepo, userSubRepo, nil, apiKeyCache, cfg)
 
 	usageRepo := newStubUsageLogRepo()
-	usageService := service.NewUsageService(usageRepo, userRepo, nil, nil, nil)
+	usageService := service.NewUsageService(usageRepo, userRepo, nil, nil)
 
 	subscriptionService := service.NewSubscriptionService(groupRepo, userSubRepo, nil, nil, cfg)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService)
@@ -1192,7 +1191,7 @@ func newContractDeps(t *testing.T) *contractDeps {
 
 	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil, redeemService, nil)
-	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService, usageService)
+	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 	usageHandler := handler.NewUsageHandler(usageService, apiKeyService)
 	adminSettingHandler := adminhandler.NewSettingHandler(settingService, nil, nil, nil, nil, nil)
 	adminAccountHandler := adminhandler.NewAccountHandler(adminService, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
@@ -2386,9 +2385,6 @@ func (r *stubUsageLogRepo) GetStatsWithFilters(ctx context.Context, filters usag
 	return nil, errors.New("not implemented")
 }
 func (r *stubUsageLogRepo) GetAllGroupUsageSummary(ctx context.Context, todayStart time.Time) ([]usagestats.GroupUsageSummary, error) {
-	return nil, errors.New("not implemented")
-}
-func (r *stubUsageLogRepo) GetGroupCacheHitRates7d(ctx context.Context) ([]service.GroupCacheHitRate7d, error) {
 	return nil, errors.New("not implemented")
 }
 

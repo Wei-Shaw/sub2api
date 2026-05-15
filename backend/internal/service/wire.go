@@ -512,45 +512,18 @@ var ProviderSet = wire.NewSet(
 	NewContentModerationService,
 	NewAffiliateService,
 	ProvidePaymentConfigService,
-	ProvidePaymentServiceWithInvoice,
+	NewPaymentService,
 	ProvidePaymentOrderExpiryService,
 	ProvideBalanceNotifyService,
 	ProvideChannelMonitorService,
 	ProvideChannelMonitorRunner,
 	NewChannelMonitorRequestTemplateService,
-	NewNotificationService,
 )
 
 // ProvidePaymentConfigService wraps NewPaymentConfigService to accept the named
 // payment.EncryptionKey type instead of raw []byte, avoiding Wire ambiguity.
 func ProvidePaymentConfigService(entClient *dbent.Client, settingRepo SettingRepository, key payment.EncryptionKey) *PaymentConfigService {
 	return NewPaymentConfigService(entClient, settingRepo, []byte(key))
-}
-
-// ProvidePaymentServiceWithInvoice constructs PaymentService and performs setter
-// injection for invoice-related dependencies. Wire does not support setter
-// injection natively, so this wrapper handles the three optional setters that
-// would otherwise cause a circular-dependency if added to NewPaymentService's
-// constructor signature.
-func ProvidePaymentServiceWithInvoice(
-	entClient *dbent.Client,
-	registry *payment.Registry,
-	loadBalancer payment.LoadBalancer,
-	redeemService *RedeemService,
-	subscriptionSvc *SubscriptionService,
-	configService *PaymentConfigService,
-	userRepo UserRepository,
-	groupRepo GroupRepository,
-	affiliateService *AffiliateService,
-	notificationService *NotificationService,
-	settingService *SettingService,
-	emailService *EmailService,
-) *PaymentService {
-	svc := NewPaymentService(entClient, registry, loadBalancer, redeemService, subscriptionSvc, configService, userRepo, groupRepo, affiliateService)
-	svc.SetInvoiceNotifier(notificationService)
-	svc.SetInvoiceSettingService(settingService)
-	svc.SetInvoiceEmailSender(emailService)
-	return svc
 }
 
 // ProvideBalanceNotifyService creates BalanceNotifyService

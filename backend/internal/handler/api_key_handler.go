@@ -8,30 +8,23 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
 )
 
 // APIKeyHandler handles API key-related requests
 type APIKeyHandler struct {
 	apiKeyService *service.APIKeyService
-	usageService  *service.UsageService
 }
 
 // NewAPIKeyHandler creates a new APIKeyHandler
-func NewAPIKeyHandler(
-	apiKeyService *service.APIKeyService,
-	usageService *service.UsageService,
-) *APIKeyHandler {
+func NewAPIKeyHandler(apiKeyService *service.APIKeyService) *APIKeyHandler {
 	return &APIKeyHandler{
 		apiKeyService: apiKeyService,
-		usageService:  usageService,
 	}
 }
 
@@ -292,28 +285,9 @@ func (h *APIKeyHandler) GetAvailableGroups(c *gin.Context) {
 		return
 	}
 
-	var cacheRates map[int64]float64
-	if h.usageService != nil {
-		rates, cacheErr := h.usageService.GetGroupCacheHitRates7d(c.Request.Context())
-		if cacheErr != nil {
-			// Non-fatal: log and continue with no cache-hit-rate field populated.
-			logger.L().Warn("fetch group cache hit rates failed", zap.Error(cacheErr))
-		} else {
-			cacheRates = rates
-		}
-	}
-
 	out := make([]dto.Group, 0, len(groups))
 	for i := range groups {
-		g := dto.GroupFromService(&groups[i])
-		if g == nil {
-			continue
-		}
-		if rate, ok := cacheRates[groups[i].ID]; ok {
-			r := rate
-			g.CacheHitRate7d = &r
-		}
-		out = append(out, *g)
+		out = append(out, *dto.GroupFromService(&groups[i]))
 	}
 	response.Success(c, out)
 }

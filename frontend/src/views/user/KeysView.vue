@@ -433,7 +433,6 @@
                 :rate-multiplier="(option as unknown as GroupOption).rate"
                 :user-rate-multiplier="(option as unknown as GroupOption).userRate"
                 :description="(option as unknown as GroupOption).description"
-                :cache-hit-rate7d="(option as unknown as GroupOption).cacheHitRate7d"
                 :selected="selected"
               />
             </template>
@@ -1029,7 +1028,6 @@
               :rate-multiplier="option.rate"
               :user-rate-multiplier="option.userRate"
               :description="option.description"
-              :cache-hit-rate7d="option.cacheHitRate7d"
               :selected="
                 selectedKeyForGroup?.group_id === option.value ||
                 (!selectedKeyForGroup?.group_id && option.value === null)
@@ -1091,7 +1089,6 @@ interface GroupOption {
   userRate: number | null
   subscriptionType: SubscriptionType
   platform: GroupPlatform
-  cacheHitRate7d: number | null
 }
 
 const appStore = useAppStore()
@@ -1249,8 +1246,7 @@ const groupOptions = computed(() =>
     rate: group.rate_multiplier,
     userRate: userGroupRates.value[group.id] ?? null,
     subscriptionType: group.subscription_type,
-    platform: group.platform,
-    cacheHitRate7d: group.cache_hit_rate_7d ?? null
+    platform: group.platform
   }))
 )
 

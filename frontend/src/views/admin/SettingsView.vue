@@ -2906,11 +2906,6 @@
                                 option as unknown as DefaultSubscriptionGroupOption
                               ).description
                             "
-                            :cache-hit-rate7d="
-                              (
-                                option as unknown as DefaultSubscriptionGroupOption
-                              ).cacheHitRate7d
-                            "
                             :selected="selected"
                           />
                         </template>
@@ -3177,11 +3172,6 @@
                                   (
                                     option as unknown as DefaultSubscriptionGroupOption
                                   ).description
-                                "
-                                :cache-hit-rate7d="
-                                  (
-                                    option as unknown as DefaultSubscriptionGroupOption
-                                  ).cacheHitRate7d
                                 "
                                 :selected="selected"
                               />
@@ -6298,7 +6288,6 @@ interface DefaultSubscriptionGroupOption {
   platform: AdminGroup["platform"];
   subscriptionType: AdminGroup["subscription_type"];
   rate: number;
-  cacheHitRate7d: number | null;
   [key: string]: unknown;
 }
 
@@ -6739,7 +6728,6 @@ const defaultSubscriptionGroupOptions = computed<
     platform: group.platform,
     subscriptionType: group.subscription_type,
     rate: group.rate_multiplier,
-    cacheHitRate7d: group.cache_hit_rate_7d ?? null,
   })),
 );
 

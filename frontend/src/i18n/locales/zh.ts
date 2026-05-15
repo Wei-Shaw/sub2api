@@ -342,9 +342,8 @@ export default {
     },
     groupOption: {
       discountOriginal: '原价',
-      discountFormat: '{value}折',
-      cacheFormat: '缓存 {pct}%'
-    },
+      discountFormat: '{value}折'
+    }
   },
 
   // Navigation

@@ -20,7 +20,7 @@
       </span>
     </div>
 
-    <!-- Right: rate pill + discount pill + cache pill, stacked vertically, right-aligned -->
+    <!-- Right: rate pill + discount pill, stacked vertically, right-aligned -->
     <div class="flex shrink-0 flex-col items-end gap-1 pt-0.5">
       <!-- Row 1: rate pill + checkmark -->
       <div class="flex items-center gap-2">
@@ -55,14 +55,6 @@
       >
         {{ discountLabel }}
       </span>
-
-      <!-- Row 3: cache pill -->
-      <span
-        v-if="cacheHitRate7d != null"
-        class="inline-flex items-center whitespace-nowrap rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-dark-700 dark:text-dark-300"
-      >
-        {{ t('common.groupOption.cacheFormat', { pct: Math.round(cacheHitRate7d * 100) }) }}
-      </span>
     </div>
   </div>
 </template>
@@ -82,16 +74,13 @@ interface Props {
   description?: string | null
   selected?: boolean
   showCheckmark?: boolean
-  /** Global 7-day cache hit ratio (0..1); null/undefined hides the cache pill. */
-  cacheHitRate7d?: number | null
 }
 
 const props = withDefaults(defineProps<Props>(), {
   subscriptionType: 'standard',
   selected: false,
   showCheckmark: true,
-  userRateMultiplier: null,
-  cacheHitRate7d: null
+  userRateMultiplier: null
 })
 
 const { t } = useI18n()

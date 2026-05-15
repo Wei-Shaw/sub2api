@@ -10,12 +10,9 @@ const i18n = createI18n({
     zh: {
       common: {
         groupOption: {
-          // Use MessageFunction to avoid runtime compiler requirement
           discountOriginal: () => '原价',
           discountFormat: ({ named }: { named: (key: string) => unknown }) =>
-            `${named('value')}折`,
-          cacheFormat: ({ named }: { named: (key: string) => unknown }) =>
-            `缓存 ${named('pct')}%`
+            `${named('value')}折`
         }
       }
     }
@@ -59,27 +56,5 @@ describe('GroupOptionItem discount pill', () => {
   it('uses userRateMultiplier when present', () => {
     const wrapper = mountItem({ rateMultiplier: 4, userRateMultiplier: 1 })
     expect(wrapper.text()).toContain('1.4折')
-  })
-})
-
-describe('GroupOptionItem cache pill', () => {
-  it('renders "缓存 35%" for cacheHitRate7d=0.347', () => {
-    const wrapper = mountItem({ cacheHitRate7d: 0.347 })
-    expect(wrapper.text()).toContain('缓存 35%')
-  })
-
-  it('renders "缓存 0%" for cacheHitRate7d=0 (zero, not null)', () => {
-    const wrapper = mountItem({ cacheHitRate7d: 0 })
-    expect(wrapper.text()).toContain('缓存 0%')
-  })
-
-  it('omits cache pill when cacheHitRate7d is null', () => {
-    const wrapper = mountItem({ cacheHitRate7d: null })
-    expect(wrapper.text()).not.toContain('缓存')
-  })
-
-  it('omits cache pill when cacheHitRate7d is undefined', () => {
-    const wrapper = mountItem({})
-    expect(wrapper.text()).not.toContain('缓存')
   })
 })

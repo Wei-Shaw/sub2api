@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/redis/go-redis/v9"
-
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -60,23 +58,15 @@ type UsageService struct {
 	userRepo             UserRepository
 	entClient            *dbent.Client
 	authCacheInvalidator APIKeyAuthCacheInvalidator
-	redisClient          *redis.Client
 }
 
 // NewUsageService 创建使用统计服务实例
-func NewUsageService(
-	usageRepo UsageLogRepository,
-	userRepo UserRepository,
-	entClient *dbent.Client,
-	authCacheInvalidator APIKeyAuthCacheInvalidator,
-	redisClient *redis.Client,
-) *UsageService {
+func NewUsageService(usageRepo UsageLogRepository, userRepo UserRepository, entClient *dbent.Client, authCacheInvalidator APIKeyAuthCacheInvalidator) *UsageService {
 	return &UsageService{
 		usageRepo:            usageRepo,
 		userRepo:             userRepo,
 		entClient:            entClient,
 		authCacheInvalidator: authCacheInvalidator,
-		redisClient:          redisClient,
 	}
 }
 

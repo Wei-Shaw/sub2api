@@ -89,7 +89,6 @@
             :subscription-type="group.subscription_type"
             :rate-multiplier="group.rate_multiplier"
             :description="group.description"
-            :cache-hit-rate7d="group.cache_hit_rate_7d ?? null"
             :selected="selectedKeyForGroup?.group_id === group.id"
           />
         </button>
