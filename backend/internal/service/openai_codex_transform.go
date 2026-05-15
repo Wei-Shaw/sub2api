@@ -1030,7 +1030,7 @@ func filterCodexInputWithOptions(input []any, opts codexInputFilterOptions) []an
 				return id
 		REDACTED
 			if strings.HasPrefix(id, "call_") {
-				return "fc" + strings.TrimPrefix(id, "call_")
+				return "fc_" + strings.TrimPrefix(id, "call_")
 		REDACTED
 			return "fc_" + id
 	REDACTED
