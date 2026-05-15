@@ -268,7 +268,11 @@ func applyMigrationsPatternUnlocked(ctx context.Context, lockConn migrationConne
 		if err != nil {
 			return fmt.Errorf("begin migration %s: %w", name, err)
 		}
-		if _, err := tx.ExecContext(ctx, content); err != nil {
+		// Strip redundant BEGIN/COMMIT from migration content since the runner
+		// already wraps execution in a transaction. Nested transaction control
+		// statements cause "unexpected transaction status idle" errors in PostgreSQL.
+		execContent := stripRedundantTransactionControl(content)
+		if _, err := tx.ExecContext(ctx, execContent); err != nil {
 			_ = tx.Rollback()
 			return fmt.Errorf("apply migration %s: %w", name, err)
 		}
@@ -303,6 +307,42 @@ func prepareNonTransactionalMigration(ctx context.Context, db migrationConnectio
 	default:
 		return nil
 	}
+}
+
+// stripRedundantTransactionControl removes one redundant outer BEGIN/COMMIT or
+// BEGIN/ROLLBACK pair. The runner already wraps each migration in a transaction.
+// Restricting removal to the first and last executable lines preserves BEGIN
+// statements inside DO blocks and other procedural SQL.
+func stripRedundantTransactionControl(content string) string {
+	lines := strings.Split(content, "\n")
+	firstExecutable := -1
+	lastExecutable := -1
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "--") {
+			continue
+		}
+		if firstExecutable == -1 {
+			firstExecutable = i
+		}
+		lastExecutable = i
+	}
+	if firstExecutable == -1 || lastExecutable <= firstExecutable {
+		return content
+	}
+
+	first := strings.ToUpper(strings.TrimSpace(lines[firstExecutable]))
+	last := strings.ToUpper(strings.TrimSpace(lines[lastExecutable]))
+	if first != "BEGIN" && first != "BEGIN;" {
+		return content
+	}
+	if last != "COMMIT" && last != "COMMIT;" && last != "ROLLBACK" && last != "ROLLBACK;" {
+		return content
+	}
+
+	lines[firstExecutable] = ""
+	lines[lastExecutable] = ""
+	return strings.Join(lines, "\n")
 }
 
 func preparePaymentOrdersOutTradeNoUniqueMigration(ctx context.Context, db migrationConnection) error {

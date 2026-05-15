@@ -112,6 +112,24 @@ func TestMigrationChecksumCompatibilityRules_CoverEditedUpgradeCompatibilityMigr
 	}
 }
 
+func TestStripRedundantTransactionControl(t *testing.T) {
+	t.Run("strips redundant outer pair after comments", func(t *testing.T) {
+		content := "-- migration comment\n\nBEGIN;\nSELECT 1;\nCOMMIT;\n-- trailing comment"
+		got := stripRedundantTransactionControl(content)
+		require.Equal(t, "-- migration comment\n\n\nSELECT 1;\n\n-- trailing comment", got)
+	})
+
+	t.Run("preserves procedural begin inside do block", func(t *testing.T) {
+		content := "DO $$\nBEGIN\n  PERFORM 1;\nEND\n$$;"
+		require.Equal(t, content, stripRedundantTransactionControl(content))
+	})
+
+	t.Run("preserves unpaired transaction control", func(t *testing.T) {
+		content := "BEGIN;\nSELECT 1;"
+		require.Equal(t, content, stripRedundantTransactionControl(content))
+	})
+}
+
 func TestEnsureAtlasBaselineAligned(t *testing.T) {
 	t.Run("skip_when_no_legacy_table", func(t *testing.T) {
 		db, mock, err := sqlmock.New()
