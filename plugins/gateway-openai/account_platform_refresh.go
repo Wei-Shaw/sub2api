@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -28,12 +29,12 @@ func (s *accountPlatformServer) RefreshToken(
 		}, nil
 	}
 
-	refreshToken := credStr(creds, "refresh_token")
+	refreshToken := gatewayutil.CredStr(creds, "refresh_token")
 	if refreshToken == "" {
-		return handleNoRefreshToken(creds)
+		return gatewayutil.HandleNoRefreshToken(creds)
 	}
 
-	clientID := credStr(creds, "client_id")
+	clientID := gatewayutil.CredStr(creds, "client_id")
 	if clientID == "" {
 		clientID = openaiDefaultCID
 	}
@@ -61,22 +62,6 @@ func (s *accountPlatformServer) RefreshToken(
 	}, nil
 }
 
-// handleNoRefreshToken returns the existing access_token info when no
-// refresh_token is available (same fallback as the host service).
-func handleNoRefreshToken(creds map[string]any) (*pb.RefreshTokenResponse, error) {
-	if credStr(creds, "access_token") == "" {
-		return &pb.RefreshTokenResponse{
-			Success: false,
-			Error:   "no refresh_token or access_token available",
-		}, nil
-	}
-	// Return existing credentials unchanged — host preserves them.
-	credsJSON, _ := json.Marshal(creds)
-	return &pb.RefreshTokenResponse{
-		Success:                true,
-		UpdatedCredentialsJson: credsJSON,
-	}, nil
-}
 
 // openaiTokenResponse mirrors the OpenAI /oauth/token JSON response.
 type openaiTokenResponse struct {
@@ -120,7 +105,7 @@ func callOpenAITokenEndpoint(
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("status %d: %s", resp.StatusCode, truncateBody(body))
+		return nil, fmt.Errorf("status %d: %s", resp.StatusCode, gatewayutil.TruncateBody(body))
 	}
 
 	var tokenResp openaiTokenResponse
@@ -131,14 +116,6 @@ func callOpenAITokenEndpoint(
 	return &tokenResp, nil
 }
 
-// truncateBody returns at most 200 bytes of body text for error messages.
-func truncateBody(b []byte) string {
-	const maxLen = 200
-	if len(b) <= maxLen {
-		return string(b)
-	}
-	return string(b[:maxLen]) + "..."
-}
 
 // buildUpdatedCredentials merges the refresh response into the existing
 // credential map, preserving fields that the token endpoint does not return.

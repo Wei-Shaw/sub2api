@@ -56,3 +56,19 @@ func (c *pluginCtx) Host() HostClient {
 	}
 	return c.host
 }
+
+// HostPayment returns the HostPaymentClient for payment-related host
+// RPCs. The concrete *hostClient satisfies both HostClient and
+// HostPaymentClient, so the cast always succeeds when a real client is
+// wired. For test harnesses that construct a pluginCtx with host=nil
+// or a custom mock, the nilHostClient fallback also satisfies
+// HostPaymentClient (every method returns ErrHost*Unavailable).
+func (c *pluginCtx) HostPayment() HostPaymentClient {
+	if c.host == nil {
+		return nilHostClient{}
+	}
+	if hp, ok := c.host.(HostPaymentClient); ok {
+		return hp
+	}
+	return nilHostClient{}
+}

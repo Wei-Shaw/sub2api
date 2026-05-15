@@ -119,6 +119,11 @@ type GatewayForwardResult struct {
 	// Image generation billing fields
 	ImageCount int
 	ImageSize  string // "1K" / "2K" / "4K"
+
+	// ResponseHeaders carries selected upstream response headers for
+	// post-forward processing by the host (e.g. x-codex-* for usage
+	// snapshot extraction, x-ratelimit-* for rate limit tracking).
+	ResponseHeaders map[string]string
 }
 
 // GatewayFailoverReq is the input for ShouldFailover. It carries the

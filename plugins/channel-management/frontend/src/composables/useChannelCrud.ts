@@ -17,7 +17,7 @@ import channelsAPI, {
   type UpdateChannelRequest,
 } from '../api/channels'
 import type { AdminGroup } from '../components/channels/types'
-import { extractApiErrorMessage } from '../utils/apiError'
+import { extractApiErrorMessage } from '@sub2api/plugin-sdk'
 
 interface ListFilters {
   status?: string

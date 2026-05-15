@@ -51,7 +51,7 @@ import { Icon, SearchInput } from '@sub2api/plugin-sdk'
 import AvailableChannelsTable from '../../components/channels/AvailableChannelsTable.vue'
 import userChannelsAPI, { type UserAvailableChannel } from '../../api/user/availableChannels'
 import { getSdk } from '../../api/sdk'
-import { extractApiErrorMessage } from '../../utils/apiError'
+import { extractApiErrorMessage } from '@sub2api/plugin-sdk'
 
 const { t } = useI18n()
 const sdk = getSdk()

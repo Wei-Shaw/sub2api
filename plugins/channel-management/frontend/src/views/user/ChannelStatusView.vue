@@ -60,7 +60,7 @@ import {
 } from '../../utils/channelMonitorConstants'
 import { useAutoRefresh } from '../../composables/useAutoRefresh'
 import { getSdk } from '../../api/sdk'
-import { extractApiErrorMessage } from '../../utils/apiError'
+import { extractApiErrorMessage } from '@sub2api/plugin-sdk'
 
 const { t } = useI18n()
 const sdk = getSdk()

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 )
 
 // Claude OAuth constants -- mirrored from backend/internal/pkg/oauth/oauth.go.
@@ -34,9 +35,9 @@ func (s *accountPlatformServer) RefreshToken(
 		}, nil
 	}
 
-	refreshToken := credStr(creds, "refresh_token")
+	refreshToken := gatewayutil.CredStr(creds, "refresh_token")
 	if refreshToken == "" {
-		return handleNoRefreshToken(creds)
+		return gatewayutil.HandleNoRefreshToken(creds)
 	}
 
 	tokenResp, err := callClaudeTokenEndpoint(ctx, s.httpClient, refreshToken)
@@ -59,23 +60,6 @@ func (s *accountPlatformServer) RefreshToken(
 	return &pb.RefreshTokenResponse{
 		Success:                true,
 		UpdatedCredentialsJson: updatedJSON,
-	}, nil
-}
-
-// handleNoRefreshToken returns the existing access_token info when no
-// refresh_token is available (same fallback as the host service).
-func handleNoRefreshToken(creds map[string]any) (*pb.RefreshTokenResponse, error) {
-	if credStr(creds, "access_token") == "" {
-		return &pb.RefreshTokenResponse{
-			Success: false,
-			Error:   "no refresh_token or access_token available",
-		}, nil
-	}
-	// Return existing credentials unchanged -- host preserves them.
-	credsJSON, _ := json.Marshal(creds)
-	return &pb.RefreshTokenResponse{
-		Success:                true,
-		UpdatedCredentialsJson: credsJSON,
 	}, nil
 }
 
@@ -124,7 +108,7 @@ func callClaudeTokenEndpoint(
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("status %d: %s", resp.StatusCode, truncateBody(body))
+		return nil, fmt.Errorf("status %d: %s", resp.StatusCode, gatewayutil.TruncateBody(body))
 	}
 
 	var tokenResp claudeTokenResponse
@@ -133,15 +117,6 @@ func callClaudeTokenEndpoint(
 	}
 
 	return &tokenResp, nil
-}
-
-// truncateBody returns at most 200 bytes of body text for error messages.
-func truncateBody(b []byte) string {
-	const maxLen = 200
-	if len(b) <= maxLen {
-		return string(b)
-	}
-	return string(b[:maxLen]) + "..."
 }
 
 // buildUpdatedCredentials merges the refresh response into the existing

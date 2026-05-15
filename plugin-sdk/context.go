@@ -62,6 +62,20 @@ type PluginContext interface {
 	// exposes read-only lookups the host already trusts every plugin
 	// to perform.
 	Host() HostClient
+
+	// HostPayment returns the HostPaymentClient for payment-related
+	// host RPCs (balance credit/debit, subscription assignment,
+	// affiliate rebate, user lookup). Always returns a non-nil client:
+	// when the host has not registered the payment extension the
+	// client surfaces typed ErrHost*Unavailable sentinels from each
+	// call so plugins degrade gracefully. No manifest capability is
+	// required — the same underlying gRPC connection used by Host()
+	// carries these RPCs.
+	//
+	// This accessor eliminates the need for type-asserting Host() to
+	// HostPaymentClient; plugin authors call ctx.HostPayment()
+	// directly.
+	HostPayment() HostPaymentClient
 }
 
 // RedisClient is the SDK's go-redis-style Redis client. Internally every

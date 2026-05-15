@@ -8,6 +8,7 @@ import (
 	"time"
 
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"google.golang.org/grpc"
 )
 
@@ -75,7 +76,7 @@ func processSSEStream(
 			}
 			// Send the empty line to preserve SSE framing.
 			if !result.clientDisconnect {
-				if err := sendBodyChunk(stream, []byte("\n")); err != nil {
+				if err := gatewayutil.SendBodyChunk(stream, []byte("\n")); err != nil {
 					result.clientDisconnect = true
 				}
 			}
@@ -215,7 +216,7 @@ func sendSSEEvent(
 		buf.WriteString(line)
 		buf.WriteByte('\n')
 	}
-	return sendBodyChunk(stream, []byte(buf.String()))
+	return gatewayutil.SendBodyChunk(stream, []byte(buf.String()))
 }
 
 // extractUsageFromEvent reads usage fields from message_start and
@@ -361,7 +362,7 @@ func processNonStreamResponse(
 		data = replaceModelInResponseJSON(data, mappedModel, originalModel)
 	}
 
-	return result, sendBodyChunk(stream, data)
+	return result, gatewayutil.SendBodyChunk(stream, data)
 }
 
 // extractNonStreamUsage parses the full JSON response body and extracts
@@ -403,16 +404,3 @@ func replaceModelInResponseJSON(body []byte, from, to string) []byte {
 	return result
 }
 
-// --- chunk sending helpers ---
-
-// sendBodyChunk sends a GatewayResponseBody chunk to the gRPC stream.
-func sendBodyChunk(
-	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
-	data []byte,
-) error {
-	return stream.Send(&pb.GatewayForwardChunk{
-		Chunk: &pb.GatewayForwardChunk_Body{
-			Body: &pb.GatewayResponseBody{Data: data},
-		},
-	})
-}

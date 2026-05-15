@@ -163,7 +163,7 @@ import {
   type BillingMode,
 } from '../../utils/channelConstants'
 import type { UserPricingInterval, UserSupportedModel } from '../../api/user/availableChannels'
-import { platformBadgeClass, platformBadgeLightClass, platformBorderClass } from '../../utils/platformColors'
+import { platformBadgeClass, platformBadgeLightClass, platformBorderClass } from '@sub2api/plugin-sdk'
 
 const props = withDefaults(
   defineProps<{

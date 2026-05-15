@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -110,7 +111,7 @@ func fetchGoogleOneTier(
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", 0, 0, fmt.Errorf("drive API status %d: %s", resp.StatusCode, truncateBody(body))
+		return "", 0, 0, fmt.Errorf("drive API status %d: %s", resp.StatusCode, gatewayutil.TruncateBody(body))
 	}
 
 	storageLimit, storageUsage, err = parseDriveStorageQuota(body)

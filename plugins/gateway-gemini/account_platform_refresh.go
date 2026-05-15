@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -44,9 +45,9 @@ func (s *accountPlatformServer) RefreshToken(
 		}, nil
 	}
 
-	refreshToken := credStr(creds, "refresh_token")
+	refreshToken := gatewayutil.CredStr(creds, "refresh_token")
 	if refreshToken == "" {
-		return handleNoRefreshToken(creds)
+		return gatewayutil.HandleNoRefreshToken(creds)
 	}
 
 	clientID, clientSecret := resolveOAuthClient(creds)
@@ -74,27 +75,12 @@ func (s *accountPlatformServer) RefreshToken(
 	}, nil
 }
 
-// handleNoRefreshToken returns existing credentials when no refresh_token
-// is available (same fallback as the host service).
-func handleNoRefreshToken(creds map[string]any) (*pb.RefreshTokenResponse, error) {
-	if credStr(creds, "access_token") == "" {
-		return &pb.RefreshTokenResponse{
-			Success: false,
-			Error:   "no refresh_token or access_token available",
-		}, nil
-	}
-	credsJSON, _ := json.Marshal(creds)
-	return &pb.RefreshTokenResponse{
-		Success:                true,
-		UpdatedCredentialsJson: credsJSON,
-	}, nil
-}
 
 // resolveOAuthClient determines the OAuth client_id and client_secret to use.
 // Falls back to the built-in Gemini CLI client if not configured.
 func resolveOAuthClient(creds map[string]any) (clientID, clientSecret string) {
-	clientID = credStr(creds, "client_id")
-	clientSecret = credStr(creds, "client_secret")
+	clientID = gatewayutil.CredStr(creds, "client_id")
+	clientSecret = gatewayutil.CredStr(creds, "client_secret")
 	if clientID == "" || clientSecret == "" {
 		clientID = defaultGeminiCLIClientID
 		clientSecret = defaultGeminiCLIClientSecret
@@ -144,7 +130,7 @@ func callGoogleTokenEndpoint(
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("status %d: %s", resp.StatusCode, truncateBody(body))
+		return nil, fmt.Errorf("status %d: %s", resp.StatusCode, gatewayutil.TruncateBody(body))
 	}
 
 	var tokenResp googleTokenResponse
@@ -155,14 +141,6 @@ func callGoogleTokenEndpoint(
 	return &tokenResp, nil
 }
 
-// truncateBody returns at most 200 bytes of body text for error messages.
-func truncateBody(b []byte) string {
-	const maxLen = 200
-	if len(b) <= maxLen {
-		return string(b)
-	}
-	return string(b[:maxLen]) + "..."
-}
 
 // buildUpdatedCredentials merges the refresh response into the existing
 // credential map, preserving fields that the token endpoint does not return.

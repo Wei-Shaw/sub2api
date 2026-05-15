@@ -9,6 +9,7 @@ import (
 	"time"
 
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"google.golang.org/grpc"
 )
 
@@ -122,7 +123,7 @@ func (s *gatewayProviderServer) handleVertexErrorResponse(
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodySize))
 
 	if len(body) > 0 {
-		if err := sendBodyChunk(stream, body); err != nil {
+		if err := gatewayutil.SendBodyChunk(stream, body); err != nil {
 			return err
 		}
 	}
@@ -135,11 +136,11 @@ func (s *gatewayProviderServer) handleVertexErrorResponse(
 		DurationMs:    time.Since(startTime).Milliseconds(),
 	}
 
-	if shouldFailoverStatus(resp.StatusCode) {
+	if gatewayutil.ShouldFailoverStatus(resp.StatusCode, extraFailoverCodes) {
 		fwdResult.UpstreamError = &pb.GatewayUpstreamError{
 			StatusCode:   int32(resp.StatusCode),
-			ErrorType:    classifyErrorType(resp.StatusCode),
-			ResponseBody: truncateBytes(body, maxErrorBodyForProto),
+			ErrorType:    gatewayutil.ClassifyErrorType(resp.StatusCode, extraOverloadedCodes),
+			ResponseBody: gatewayutil.TruncateBytes(body, gatewayutil.MaxErrorBodyForProto),
 		}
 	}
 

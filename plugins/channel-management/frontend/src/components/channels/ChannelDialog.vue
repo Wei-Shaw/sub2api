@@ -109,7 +109,7 @@ import {
   validateChannelForm,
   type ValidationError,
 } from '../../composables/useChannelValidation'
-import { platformTextClass } from '../../utils/platformColors'
+import { platformTextClass } from '@sub2api/plugin-sdk'
 import { getSdk } from '../../api/sdk'
 
 const props = defineProps<{

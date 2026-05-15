@@ -158,7 +158,7 @@ import type {
   FormPricingRule,
   PlatformSection,
 } from './types'
-import { platformTagClass, platformTextClass } from '../../utils/platformColors'
+import { platformTagClass, platformTextClass } from '@sub2api/plugin-sdk'
 
 const props = defineProps<{
   section: PlatformSection

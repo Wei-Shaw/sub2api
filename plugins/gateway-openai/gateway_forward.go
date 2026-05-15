@@ -11,6 +11,7 @@ import (
 	"time"
 
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -23,6 +24,20 @@ var supportedProtocols = map[string]bool{
 	"openai":           true,
 	"chat_completions": true,
 	"":                 true, // empty = default to openai
+}
+
+// openaiExtraHeaderKeys lists OpenAI-specific upstream response headers
+// to capture beyond the common set in gatewayutil.CollectResponseHeaders.
+// These include Codex usage headers the host uses for rate-limit reset
+// time calculation and usage snapshot extraction.
+var openaiExtraHeaderKeys = []string{
+	"openai-processing-ms",
+	"x-codex-request-usage",
+	"x-codex-monthly-usage",
+	"x-codex-monthly-max",
+	"x-codex-daily-usage",
+	"x-codex-daily-max",
+	"x-codex-plan",
 }
 
 // gatewayProviderServer implements GatewayProviderExtensionServer to handle
@@ -114,25 +129,29 @@ func (s *gatewayProviderServer) handleErrorResponse(
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodySize))
 
 	if len(body) > 0 {
-		if err := sendBodyChunk(stream, body); err != nil {
+		if err := gatewayutil.SendBodyChunk(stream, body); err != nil {
 			return err
 		}
 	}
 
+	respHeaders := gatewayutil.CollectResponseHeaders(resp, openaiExtraHeaderKeys)
+
 	result := &pb.GatewayForwardResult{
-		RequestId:     resp.Header.Get("x-request-id"),
-		Model:         upstream.originalModel,
-		UpstreamModel: upstream.mappedModel,
-		Stream:        isStream,
-		DurationMs:    time.Since(startTime).Milliseconds(),
+		RequestId:       resp.Header.Get("x-request-id"),
+		Model:           upstream.originalModel,
+		UpstreamModel:   upstream.mappedModel,
+		Stream:          isStream,
+		DurationMs:      time.Since(startTime).Milliseconds(),
+		ResponseHeaders: respHeaders,
 	}
 
 	// Attach structured upstream error for failover-eligible codes.
 	if shouldFailoverStatus(resp.StatusCode) {
 		result.UpstreamError = &pb.GatewayUpstreamError{
-			StatusCode:   int32(resp.StatusCode),
-			ErrorType:    classifyErrorType(resp.StatusCode),
-			ResponseBody: truncateBytes(body, maxErrorBodyForProto),
+			StatusCode:      int32(resp.StatusCode),
+			ErrorType:       classifyErrorType(resp.StatusCode),
+			ResponseBody:    gatewayutil.TruncateBytes(body, gatewayutil.MaxErrorBodyForProto),
+			ResponseHeaders: respHeaders,
 		}
 	}
 
@@ -190,10 +209,10 @@ func decodeAccountInfo(info *pb.GatewayAccountInfo) (*decodedAccount, error) {
 		if err := json.Unmarshal(info.GetCredentialsJson(), &creds); err != nil {
 			return nil, fmt.Errorf("parse credentials: %w", err)
 		}
-		acct.AccessToken = strings.TrimSpace(credStr(creds, "access_token"))
-		acct.APIKey = strings.TrimSpace(credStr(creds, "api_key"))
-		acct.BaseURL = strings.TrimSpace(credStr(creds, "base_url"))
-		acct.ChatGPTAccountID = strings.TrimSpace(credStr(creds, "chatgpt_account_id"))
+		acct.AccessToken = strings.TrimSpace(gatewayutil.CredStr(creds, "access_token"))
+		acct.APIKey = strings.TrimSpace(gatewayutil.CredStr(creds, "api_key"))
+		acct.BaseURL = strings.TrimSpace(gatewayutil.CredStr(creds, "base_url"))
+		acct.ChatGPTAccountID = strings.TrimSpace(gatewayutil.CredStr(creds, "chatgpt_account_id"))
 	}
 
 	return acct, nil
@@ -228,11 +247,12 @@ func buildDoneChunk(
 ) *pb.GatewayForwardChunk {
 	done := &pb.GatewayResponseDone{
 		Result: &pb.GatewayForwardResult{
-			RequestId:     resp.Header.Get("x-request-id"),
-			Model:         upstream.originalModel,
-			UpstreamModel: upstream.mappedModel,
-			Stream:        isStream,
-			DurationMs:    time.Since(startTime).Milliseconds(),
+			RequestId:       resp.Header.Get("x-request-id"),
+			Model:           upstream.originalModel,
+			UpstreamModel:   upstream.mappedModel,
+			Stream:          isStream,
+			DurationMs:      time.Since(startTime).Milliseconds(),
+			ResponseHeaders: gatewayutil.CollectResponseHeaders(resp, openaiExtraHeaderKeys),
 		},
 	}
 
@@ -254,16 +274,4 @@ func buildDoneChunk(
 	return &pb.GatewayForwardChunk{
 		Chunk: &pb.GatewayForwardChunk_Done{Done: done},
 	}
-}
-
-// maxErrorBodyForProto caps the upstream error body embedded in the proto
-// message to avoid excessive gRPC message sizes.
-const maxErrorBodyForProto = 8 << 10 // 8 KB
-
-// truncateBytes returns b truncated to at most maxLen bytes.
-func truncateBytes(b []byte, maxLen int) []byte {
-	if len(b) <= maxLen {
-		return b
-	}
-	return b[:maxLen]
 }

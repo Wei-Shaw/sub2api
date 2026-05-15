@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"context"
 	"fmt"
 	"io"
@@ -242,7 +243,7 @@ func (s *gatewayProviderServer) handleErrorResponse(
 	// Send the error body to the host so it can forward to the client
 	// if it decides not to failover.
 	if len(body) > 0 {
-		if err := sendBodyChunk(stream, body); err != nil {
+		if err := gatewayutil.SendBodyChunk(stream, body); err != nil {
 			return err
 		}
 	}
@@ -260,7 +261,8 @@ func (s *gatewayProviderServer) handleErrorResponse(
 		result.UpstreamError = &pb.GatewayUpstreamError{
 			StatusCode:   int32(resp.StatusCode),
 			ErrorType:    classifyErrorType(resp.StatusCode),
-			ResponseBody: truncateBytes(body, maxErrorBodyForProto),
+			ResponseBody: gatewayutil.TruncateBytes(body, gatewayutil.MaxErrorBodyForProto),
+			ResponseHeaders: gatewayutil.CollectResponseHeaders(resp, nil),
 		}
 	}
 

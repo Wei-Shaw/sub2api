@@ -81,7 +81,7 @@ import { ref, reactive, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '../../stores/host'
 import { adminPaymentAPI } from '../../api/admin/payment'
-import { extractApiErrorMessage } from '../../utils/apiError'
+import { extractApiErrorMessage } from '@sub2api/plugin-sdk'
 import { money, formatMoney } from '../../utils/decimal'
 import type { SubscriptionPlan } from '../../types/payment'
 import type { AdminGroup } from '../../types/index'
@@ -89,7 +89,7 @@ import { BaseDialog } from '@sub2api/plugin-sdk'
 import { Select } from '@sub2api/plugin-sdk'
 import { Icon } from '@sub2api/plugin-sdk'
 import GroupBadge from '../../components/common/GroupBadge.vue'
-import { platformTextClass } from '../../utils/platformColors'
+import { platformTextClass } from '@sub2api/plugin-sdk'
 
 const props = defineProps<{
   show: boolean

@@ -1,8 +1,15 @@
 /**
- * Centralized API error message extraction
+ * Centralized API error message extraction.
  *
  * The API client interceptor rejects with a plain object: { status, code, message, error }
  * This utility extracts the user-facing message from any error shape.
+ *
+ * Resolution order:
+ *   1. Host axios interceptor shape: { status, code, message, error } (via plugin SDK apiClient)
+ *   2. Legacy axios shape: { response.data.detail | message }
+ *   3. Native Error
+ *   4. String
+ *   5. Fallback
  */
 
 interface ApiErrorLike {
@@ -21,13 +28,7 @@ interface ApiErrorLike {
   }
 }
 
-/**
- * Extract the error code from an API error object.
- *
- * Prefers the string `reason` (e.g. "PAYMENT_PROVIDER_MISCONFIGURED") over the
- * numeric HTTP `code`, because reason is granular enough to drive i18n lookup
- * while HTTP code is not.
- */
+/** Extract the error code from an API error object (string), for i18n mapping. */
 export function extractApiErrorCode(err: unknown): string | undefined {
   if (!err || typeof err !== 'object') return undefined
   const e = err as ApiErrorLike
@@ -50,7 +51,7 @@ type TranslateWithExistsFn = TranslateFn & { te?: (key: string) => boolean }
 
 /**
  * Translate a value via i18n if a matching key exists, otherwise return the original.
- * Example: "certSerial" → t('payment.adminSettings.field_certSerial') → "证书序列号".
+ * Example: "certSerial" -> t('payment.adminSettings.field_certSerial') -> localized label.
  */
 function tryTranslate(t: TranslateFn, key: string, fallback: string): string {
   const translated = t(key)
@@ -62,8 +63,8 @@ function tryTranslate(t: TranslateFn, key: string, fallback: string): string {
 
 /**
  * Replace raw config field names in metadata (e.g. "certSerial") with their
- * localized UI labels (e.g. "证书序列号"), using the provider-config field i18n namespace.
- * Handles both single `key` and `/`-joined `keys` patterns used by wxpay errors.
+ * localized UI labels, using the provider-config field i18n namespace.
+ * Handles both single `key` and `/`-joined `keys` patterns.
  */
 function localizeMetadata(metadata: Record<string, unknown>, t: TranslateFn): Record<string, unknown> {
   const out: Record<string, unknown> = { ...metadata }
@@ -84,13 +85,12 @@ function localizeMetadata(metadata: Record<string, unknown>, t: TranslateFn): Re
  * `<namespace>.<REASON>` in i18n and substituting metadata as placeholders.
  *
  * Config-field names in metadata (`key` / `keys`) are automatically translated
- * to their UI labels before substitution, so error messages read like
- * "缺少必填项：证书序列号" instead of "缺少必填项：certSerial".
+ * to their UI labels before substitution.
  *
- * @param err      - The caught error
- * @param t        - Vue i18n translate function
- * @param namespace- i18n key prefix, e.g. "payment.errors"
- * @param fallback - Fallback key or plain string if no localized mapping exists
+ * @param err       - The caught error
+ * @param t         - i18n translate function: (key: string, params?) => string
+ * @param namespace - i18n key prefix, e.g. "payment.errors"
+ * @param fallback  - Fallback key or plain string if no localized mapping exists
  */
 export function extractI18nErrorMessage(
   err: unknown,
@@ -116,9 +116,9 @@ export function extractI18nErrorMessage(
 /**
  * Extract a displayable error message from an API error.
  *
- * @param err - The caught error (unknown type)
- * @param fallback - Fallback message if none can be extracted (use t('common.error') or similar)
- * @param i18nMap - Optional map of error codes to i18n translated strings
+ * @param err      - The caught error (unknown type)
+ * @param fallback - Fallback message if none can be extracted
+ * @param i18nMap  - Optional map of error codes to i18n translated strings
  */
 export function extractApiErrorMessage(
   err: unknown,
@@ -136,10 +136,8 @@ export function extractApiErrorMessage(
   // Plain object from API client interceptor (most common case)
   if (typeof err === 'object' && err !== null) {
     const e = err as ApiErrorLike
-    // Interceptor shape: { message, error }
     if (e.message) return e.message
     if (e.error) return e.error
-    // Legacy axios shape: { response.data.detail }
     if (e.response?.data?.detail) return e.response.data.detail
     if (e.response?.data?.message) return e.response.data.message
   }

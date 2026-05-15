@@ -367,6 +367,7 @@ func (p *PluginGatewayProvider) doneToForwardResult(done *pb.GatewayResponseDone
 		ClientDisconnect:    r.GetClientDisconnect(),
 		ImageCount:          int(r.GetImageCount()),
 		ImageSize:           r.GetImageSize(),
+		ResponseHeaders:     protoMapToHTTPHeader(r.GetResponseHeaders()),
 	}
 	if ftms := r.GetFirstTokenMs(); ftms > 0 {
 		v := int(ftms)
@@ -389,7 +390,22 @@ func (p *PluginGatewayProvider) doneToUpstreamError(done *pb.GatewayResponseDone
 	return &service.UpstreamFailoverError{
 		StatusCode:             int(ue.GetStatusCode()),
 		ResponseBody:           ue.GetResponseBody(),
+		ResponseHeaders:        protoMapToHTTPHeader(ue.GetResponseHeaders()),
 		ForceCacheBilling:      ue.GetForceCacheBilling(),
 		RetryableOnSameAccount: ue.GetRetryOnSameAccount(),
 	}
+}
+
+// protoMapToHTTPHeader converts a proto map<string,string> to http.Header.
+// Returns nil when the input map is empty so callers do not allocate an
+// empty header map on every successful (headerless) forward.
+func protoMapToHTTPHeader(m map[string]string) http.Header {
+	if len(m) == 0 {
+		return nil
+	}
+	h := make(http.Header, len(m))
+	for k, v := range m {
+		h.Set(k, v)
+	}
+	return h
 }

@@ -1,10 +1,10 @@
 package main
 
 import (
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"bytes"
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -79,7 +79,7 @@ func buildUpstreamRequest(
 
 	body := req.GetRawBody()
 	if mappedModel != originalModel {
-		body = replaceModelInBody(body, mappedModel)
+		body = gatewayutil.ReplaceModelInBody(body, mappedModel)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))
@@ -146,7 +146,7 @@ func resolveModelMapping(
 	if acct.AccountType != accountTypeAPIKey && acct.AccountType != accountTypeUpstream {
 		return requestedModel
 	}
-	mapping := extractModelMapping(info.GetCredentialsJson())
+	mapping := gatewayutil.ExtractModelMapping(info.GetCredentialsJson())
 	if len(mapping) == 0 {
 		return requestedModel
 	}
@@ -156,24 +156,6 @@ func resolveModelMapping(
 	return requestedModel
 }
 
-// replaceModelInBody replaces the "model" field in the JSON body with the
-// mapped model name.
-func replaceModelInBody(body []byte, newModel string) []byte {
-	var parsed map[string]json.RawMessage
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		return body
-	}
-	modelBytes, err := json.Marshal(newModel)
-	if err != nil {
-		return body
-	}
-	parsed["model"] = modelBytes
-	result, err := json.Marshal(parsed)
-	if err != nil {
-		return body
-	}
-	return result
-}
 
 // applyAccountHeaders sets headers specific to the account type.
 // OAuth accounts require Host=chatgpt.com and chatgpt-account-id.
@@ -219,7 +201,7 @@ func forwardClientHeaders(httpReq *http.Request, clientHeaders map[string]string
 		}
 		if lower == "openai-beta" {
 			existing := httpReq.Header.Get("OpenAI-Beta")
-			merged := mergeBetaHeaders(existing, value)
+			merged := gatewayutil.MergeBetaHeaders(existing, value)
 			httpReq.Header.Set("OpenAI-Beta", merged)
 			continue
 		}
@@ -229,36 +211,3 @@ func forwardClientHeaders(httpReq *http.Request, clientHeaders map[string]string
 	}
 }
 
-// mergeBetaHeaders merges two comma-separated beta header values,
-// deduplicating entries.
-func mergeBetaHeaders(existing, additional string) string {
-	if existing == "" {
-		return additional
-	}
-	if additional == "" {
-		return existing
-	}
-	seen := make(map[string]struct{})
-	var parts []string
-	for _, part := range strings.Split(existing, ",") {
-		t := strings.TrimSpace(part)
-		if t == "" {
-			continue
-		}
-		if _, ok := seen[t]; !ok {
-			seen[t] = struct{}{}
-			parts = append(parts, t)
-		}
-	}
-	for _, part := range strings.Split(additional, ",") {
-		t := strings.TrimSpace(part)
-		if t == "" {
-			continue
-		}
-		if _, ok := seen[t]; !ok {
-			seen[t] = struct{}{}
-			parts = append(parts, t)
-		}
-	}
-	return strings.Join(parts, ",")
-}

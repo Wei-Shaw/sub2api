@@ -54,7 +54,7 @@
                 @click="executeCustomAction(action)"
                 class="flex w-full items-center gap-2 px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-dark-700"
               >
-                <span v-if="action.icon_svg" v-html="action.icon_svg" class="h-4 w-4"></span>
+                <span v-if="action.icon_svg" v-html="sanitizeSvg(action.icon_svg)" class="h-4 w-4"></span>
                 <Icon v-else name="grid" size="sm" class="text-gray-500" />
                 {{ action.labels[$i18n.locale] || action.labels['en'] || action.action_id }}
               </button>
@@ -73,6 +73,7 @@ import { Icon } from '@/components/icons'
 import { usePlatforms } from '@/composables/usePlatforms'
 import type { CustomActionDeclaration } from '@/api/admin/platforms'
 import type { Account } from '@/types'
+import { sanitizeSvg } from '@/utils/sanitize'
 
 const props = defineProps<{ show: boolean; account: Account | null; position: { top: number; left: number } | null }>()
 const emit = defineEmits(['close', 'test', 'stats', 'schedule', 'reauth', 'refresh-token', 'recover-state', 'reset-quota', 'set-privacy', 'custom-action'])

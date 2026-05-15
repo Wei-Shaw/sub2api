@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"bufio"
 	"bytes"
 	"context"
@@ -98,32 +99,24 @@ func validateCredentialsByType(accountType string, creds map[string]any) map[str
 	errs := make(map[string]string)
 	switch accountType {
 	case accountTypeOAuth, accountTypeSetupToken:
-		if credStr(creds, "access_token") == "" && credStr(creds, "refresh_token") == "" {
+		if gatewayutil.CredStr(creds, "access_token") == "" && gatewayutil.CredStr(creds, "refresh_token") == "" {
 			errs["credentials.access_token"] = "oauth account requires access_token or refresh_token"
 		}
 	case accountTypeAPIKey:
-		apiKey := credStr(creds, "api_key")
+		apiKey := gatewayutil.CredStr(creds, "api_key")
 		if apiKey == "" {
 			errs["credentials.api_key"] = "api_key is required"
 		} else if !strings.HasPrefix(apiKey, "sk-") {
 			errs["credentials.api_key"] = "api_key must start with sk-"
 		}
 	case accountTypeUpstream:
-		if credStr(creds, "api_key") == "" && credStr(creds, "base_url") == "" {
+		if gatewayutil.CredStr(creds, "api_key") == "" && gatewayutil.CredStr(creds, "base_url") == "" {
 			errs["credentials.api_key"] = "upstream account requires api_key or base_url"
 		}
 	}
 	return errs
 }
 
-// credStr extracts a string credential value, trimming whitespace.
-func credStr(creds map[string]any, key string) string {
-	if creds == nil {
-		return ""
-	}
-	v, _ := creds[key].(string)
-	return strings.TrimSpace(v)
-}
 
 // TestConnection performs a connectivity test against the OpenAI API.
 // It sends a minimal streaming request to the OpenAI Responses API and
@@ -134,7 +127,7 @@ func (s *accountPlatformServer) TestConnection(
 ) error {
 	creds, err := parseCredentials(req.GetCredentialsJson())
 	if err != nil {
-		return sendErrorEnd(stream, "failed to parse credentials: "+err.Error())
+		return gatewayutil.SendErrorEnd(stream, "failed to parse credentials: "+err.Error())
 	}
 
 	model := req.GetModelId()
@@ -144,7 +137,7 @@ func (s *accountPlatformServer) TestConnection(
 
 	authToken, apiURL, isOAuth, err := resolveAuth(req.GetAccountType(), creds)
 	if err != nil {
-		return sendErrorEnd(stream, err.Error())
+		return gatewayutil.SendErrorEnd(stream, err.Error())
 	}
 
 	_ = stream.Send(&pb.TestConnectionEvent{Type: "test_start", Model: model})
@@ -153,18 +146,18 @@ func (s *accountPlatformServer) TestConnection(
 		stream.Context(), model, isOAuth, authToken, apiURL, creds,
 	)
 	if err != nil {
-		return sendErrorEnd(stream, "failed to create request: "+err.Error())
+		return gatewayutil.SendErrorEnd(stream, "failed to create request: "+err.Error())
 	}
 
 	resp, err := s.httpClient.Do(httpReq)
 	if err != nil {
-		return sendErrorEnd(stream, "request failed: "+err.Error())
+		return gatewayutil.SendErrorEnd(stream, "request failed: "+err.Error())
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		return sendErrorEnd(stream, fmt.Sprintf(
+		return gatewayutil.SendErrorEnd(stream, fmt.Sprintf(
 			"API returned %d: %s", resp.StatusCode, string(body),
 		))
 	}
@@ -294,7 +287,7 @@ func processOpenAIStream(
 				})
 				return nil
 			}
-			return sendErrorEnd(stream, "stream read error: "+err.Error())
+			return gatewayutil.SendErrorEnd(stream, "stream read error: "+err.Error())
 		}
 
 		line = strings.TrimSpace(line)
@@ -348,12 +341,12 @@ func handleSSEEvent(
 
 	case "response.failed":
 		msg := extractFailedMessage(data)
-		_ = sendErrorEnd(stream, msg)
+		_ = gatewayutil.SendErrorEnd(stream, msg)
 		return true
 
 	case "error":
 		msg := extractErrorMessage(data)
-		_ = sendErrorEnd(stream, msg)
+		_ = gatewayutil.SendErrorEnd(stream, msg)
 		return true
 	}
 	return false
@@ -381,17 +374,6 @@ func extractErrorMessage(data map[string]any) string {
 	return "unknown error"
 }
 
-func sendErrorEnd(
-	stream grpc.ServerStreamingServer[pb.TestConnectionEvent],
-	msg string,
-) error {
-	_ = stream.Send(&pb.TestConnectionEvent{
-		Type:    "test_end",
-		Success: false,
-		Error:   msg,
-	})
-	return nil
-}
 
 // RefreshTier refreshes account tier/plan info.
 // OpenAI does not expose a standard tier API; this queries the ChatGPT

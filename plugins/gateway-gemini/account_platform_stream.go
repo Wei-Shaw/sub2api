@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"bufio"
 	"encoding/json"
 	"fmt"
@@ -97,7 +98,7 @@ func processGeminiStream(
 			if err == io.EOF {
 				return sendSuccessEnd(stream)
 			}
-			return sendErrorEnd(stream, "stream read error: "+err.Error())
+			return gatewayutil.SendErrorEnd(stream, "stream read error: "+err.Error())
 		}
 
 		line = strings.TrimSpace(line)
@@ -144,7 +145,7 @@ func handleGeminiSSEEvent(
 		if m, ok := errData["message"].(string); ok && m != "" {
 			msg = m
 		}
-		_ = sendErrorEnd(stream, msg)
+		_ = gatewayutil.SendErrorEnd(stream, msg)
 		return true
 	}
 
@@ -211,14 +212,3 @@ func sendSuccessEnd(stream grpc.ServerStreamingServer[pb.TestConnectionEvent]) e
 	return nil
 }
 
-func sendErrorEnd(
-	stream grpc.ServerStreamingServer[pb.TestConnectionEvent],
-	msg string,
-) error {
-	_ = stream.Send(&pb.TestConnectionEvent{
-		Type:    "test_end",
-		Success: false,
-		Error:   msg,
-	})
-	return nil
-}

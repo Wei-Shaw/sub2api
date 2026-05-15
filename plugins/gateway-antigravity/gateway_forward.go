@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -72,7 +73,7 @@ func (s *gatewayProviderServer) ShouldFailover(
 	if errType == "UpstreamFailoverError" || errType == "*service.UpstreamFailoverError" {
 		return &pb.GatewayFailoverResponse{ShouldFailover: true}, nil
 	}
-	if isNetworkError(errMsg) {
+	if gatewayutil.IsNetworkError(errMsg) {
 		return &pb.GatewayFailoverResponse{ShouldFailover: true}, nil
 	}
 	return &pb.GatewayFailoverResponse{ShouldFailover: false}, nil
@@ -97,7 +98,7 @@ func (s *gatewayProviderServer) forwardUpstream(
 
 	body := req.GetRawBody()
 	if mappedModel != originalModel {
-		body = replaceModelInBody(body, mappedModel)
+		body = gatewayutil.ReplaceModelInBody(body, mappedModel)
 	}
 
 	return s.upstreamClient.proxyRequest(ctx, stream, upstreamReq{
@@ -183,7 +184,7 @@ func (s *gatewayProviderServer) forwardClaudeAPIKey(
 
 	body := req.GetRawBody()
 	if mappedModel != originalModel {
-		body = replaceModelInBody(body, mappedModel)
+		body = gatewayutil.ReplaceModelInBody(body, mappedModel)
 	}
 
 	return s.upstreamClient.proxyRequest(ctx, stream, upstreamReq{
@@ -402,7 +403,7 @@ func resolveModelMapping(requestedModel string, acct *pb.GatewayAccountInfo) str
 	if accountType != accountTypeAPIKey && accountType != accountTypeUpstream {
 		return requestedModel
 	}
-	mapping := extractModelMapping(acct.GetCredentialsJson())
+	mapping := gatewayutil.ExtractModelMapping(acct.GetCredentialsJson())
 	if len(mapping) == 0 {
 		return requestedModel
 	}
@@ -412,20 +413,3 @@ func resolveModelMapping(requestedModel string, acct *pb.GatewayAccountInfo) str
 	return requestedModel
 }
 
-// replaceModelInBody replaces the "model" field in the JSON body.
-func replaceModelInBody(body []byte, newModel string) []byte {
-	var parsed map[string]json.RawMessage
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		return body
-	}
-	modelBytes, err := json.Marshal(newModel)
-	if err != nil {
-		return body
-	}
-	parsed["model"] = modelBytes
-	result, err := json.Marshal(parsed)
-	if err != nil {
-		return body
-	}
-	return result
-}

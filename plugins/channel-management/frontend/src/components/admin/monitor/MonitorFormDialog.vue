@@ -190,10 +190,10 @@ import {
 } from '../../../api/admin/channelMonitor'
 import { DEFAULT_INTERVAL_SECONDS } from '../../../utils/channelMonitorConstants'
 import { getSdk } from '../../../api/sdk'
-import { extractApiErrorMessage } from '../../../utils/apiError'
+import { extractApiErrorMessage } from '@sub2api/plugin-sdk'
 import { useChannelMonitorFormat } from '../../../composables/useChannelMonitorFormat'
 import { useMonitorKeyPicker } from '../../../composables/useMonitorKeyPicker'
-import { platformTextClass } from '../../../utils/platformColors'
+import { platformTextClass } from '@sub2api/plugin-sdk'
 import MonitorAdvancedRequestConfig from './MonitorAdvancedRequestConfig.vue'
 import MonitorKeyPickerDialog from './MonitorKeyPickerDialog.vue'
 

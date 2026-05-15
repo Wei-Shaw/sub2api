@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"bufio"
 	"encoding/json"
 	"io"
@@ -98,7 +99,7 @@ func processSSEStream(
 				})
 				return nil
 			}
-			return sendErrorEnd(stream, "stream read error: "+err.Error())
+			return gatewayutil.SendErrorEnd(stream, "stream read error: "+err.Error())
 		}
 
 		line = strings.TrimSpace(line)

@@ -56,7 +56,7 @@
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
-import { extractI18nErrorMessage } from '../../utils/apiError'
+import { extractI18nErrorMessage } from '@sub2api/plugin-sdk'
 import { isMobileDevice } from '../../utils/device'
 
 interface StripeWithWechatPay {

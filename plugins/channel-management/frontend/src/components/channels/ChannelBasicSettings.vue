@@ -114,7 +114,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { PlatformIcon, Select, Toggle } from '@sub2api/plugin-sdk'
 import { PLATFORM_ORDER, type ChannelFormState, type GroupPlatform } from './types'
-import { platformTextClass } from '../../utils/platformColors'
+import { platformTextClass } from '@sub2api/plugin-sdk'
 
 const props = defineProps<{
   form: ChannelFormState

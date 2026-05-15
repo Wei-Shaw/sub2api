@@ -80,7 +80,7 @@ import {
   useChannelMonitorFormat,
   providerGradient,
 } from '../../../composables/useChannelMonitorFormat'
-import { platformTintTextClass } from '../../../utils/platformColors'
+import { platformTintTextClass } from '@sub2api/plugin-sdk'
 import ProviderIcon from './ProviderIcon.vue'
 import MonitorMetricPair from './MonitorMetricPair.vue'
 import MonitorAvailabilityRow from './MonitorAvailabilityRow.vue'

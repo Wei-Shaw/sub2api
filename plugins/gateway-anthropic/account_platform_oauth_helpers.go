@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -165,7 +166,7 @@ func postClaudeToken(
 		return nil, fmt.Errorf("read response: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("status %d: %s", resp.StatusCode, truncateBody(body))
+		return nil, fmt.Errorf("status %d: %s", resp.StatusCode, gatewayutil.TruncateBody(body))
 	}
 
 	var tokenResp claudeFullTokenResponse
@@ -200,7 +201,7 @@ func getOrganizationUUID(
 		return "", fmt.Errorf("read response: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("status %d: %s", resp.StatusCode, truncateBody(body))
+		return "", fmt.Errorf("status %d: %s", resp.StatusCode, gatewayutil.TruncateBody(body))
 	}
 
 	return parseOrganizationUUID(body)
@@ -278,7 +279,7 @@ func getAuthorizationCode(
 		return "", fmt.Errorf("read response: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("status %d: %s", resp.StatusCode, truncateBody(body))
+		return "", fmt.Errorf("status %d: %s", resp.StatusCode, gatewayutil.TruncateBody(body))
 	}
 
 	return parseRedirectCode(body)

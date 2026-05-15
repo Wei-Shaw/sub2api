@@ -11,6 +11,7 @@ import (
 	"time"
 
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"google.golang.org/grpc"
 )
 
@@ -318,7 +319,7 @@ func processBedrockStream(
 		}
 
 		if !result.clientDisconnect {
-			if err := sendBodyChunk(stream, []byte(sseFrame)); err != nil {
+			if err := gatewayutil.SendBodyChunk(stream, []byte(sseFrame)); err != nil {
 				result.clientDisconnect = true
 				// Continue draining to capture usage.
 			}
@@ -348,7 +349,7 @@ func processBedrockNonStreamResponse(
 		data = replaceModelInResponseJSON(data, mappedModel, originalModel)
 	}
 
-	return result, sendBodyChunk(stream, data)
+	return result, gatewayutil.SendBodyChunk(stream, data)
 }
 
 // replaceModelInBedrockSSE replaces the model in a Bedrock SSE event JSON.

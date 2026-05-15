@@ -69,7 +69,7 @@ import {
 } from '../../api/user/channelMonitor'
 import { useChannelMonitorFormat } from '../../composables/useChannelMonitorFormat'
 import { getSdk } from '../../api/sdk'
-import { extractApiErrorMessage } from '../../utils/apiError'
+import { extractApiErrorMessage } from '@sub2api/plugin-sdk'
 
 const props = defineProps<{
   show: boolean

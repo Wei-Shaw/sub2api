@@ -1,4 +1,4 @@
-﻿package main
+package main
 
 import (
 	"errors"
@@ -9,6 +9,8 @@ import (
 
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 	"google.golang.org/grpc"
+
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 )
 
 // gatewayProviderServer implements the GatewayProviderExtension gRPC service.
@@ -112,14 +114,6 @@ func (s *gatewayProviderServer) handleErrorResponse(
 ) error {
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodySize))
 
-	// Send the error body to the host so it can forward to the client
-	// if it decides not to failover.
-	if len(body) > 0 {
-		if err := sendBodyChunk(stream, body); err != nil {
-			return err
-		}
-	}
-
 	result := &pb.GatewayForwardResult{
 		RequestId:     resp.Header.Get("x-request-id"),
 		Model:         upstream.originalModel,
@@ -128,25 +122,10 @@ func (s *gatewayProviderServer) handleErrorResponse(
 		DurationMs:    time.Since(startTime).Milliseconds(),
 	}
 
-	// Attach structured upstream error for failover-eligible status codes.
-	if shouldFailoverStatus(resp.StatusCode) {
-		result.UpstreamError = &pb.GatewayUpstreamError{
-			StatusCode:   int32(resp.StatusCode),
-			ErrorType:    classifyErrorType(resp.StatusCode),
-			ResponseBody: truncateBytes(body, maxErrorBodyForProto),
-		}
-	}
-
-	errMsg := fmt.Sprintf("upstream returned %d", resp.StatusCode)
-	done := &pb.GatewayForwardChunk{
-		Chunk: &pb.GatewayForwardChunk_Done{
-			Done: &pb.GatewayResponseDone{
-				Error:  errMsg,
-				Result: result,
-			},
-		},
-	}
-	return stream.Send(done)
+	return gatewayutil.HandleErrorResponse(
+		stream, resp.StatusCode, body, result, gatewayutil.CollectResponseHeaders(resp, nil),
+		extraFailoverCodes, extraOverloadedCodes,
+	)
 }
 
 // sendResponseHeaders sends the initial GatewayResponseHeaders chunk
@@ -189,6 +168,7 @@ func buildDoneChunk(
 			UpstreamModel: upstream.mappedModel,
 			Stream:        isStream,
 			DurationMs:    time.Since(startTime).Milliseconds(),
+			ResponseHeaders: gatewayutil.CollectResponseHeaders(resp, nil),
 		},
 	}
 
@@ -210,16 +190,4 @@ func buildDoneChunk(
 	return &pb.GatewayForwardChunk{
 		Chunk: &pb.GatewayForwardChunk_Done{Done: done},
 	}
-}
-
-// maxErrorBodyForProto caps the upstream error body embedded in the proto
-// message to avoid excessive gRPC message sizes.
-const maxErrorBodyForProto = 8 << 10 // 8 KB
-
-// truncateBytes returns b truncated to at most maxLen bytes.
-func truncateBytes(b []byte, maxLen int) []byte {
-	if len(b) <= maxLen {
-		return b
-	}
-	return b[:maxLen]
 }

@@ -24,7 +24,7 @@ import {
   platformTagClass,
   platformPickerClass,
   platformGradientClass,
-} from '../utils/platformColors'
+} from '@sub2api/plugin-sdk'
 
 const NEUTRAL_BADGE = 'bg-gray-100 text-gray-800 dark:bg-dark-700 dark:text-gray-300'
 

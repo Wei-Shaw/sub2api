@@ -1021,25 +1021,7 @@ func (s *openAIWSUsageHandlerUsageLogRepoStub) Create(ctx context.Context, log *
 	return true, nil
 }
 
-type openAIWSUsageHandlerChannelRepoStub struct {
-	service.ChannelRepository
-	channels       []service.Channel
-	groupPlatforms map[int64]string
-}
 
-func (s *openAIWSUsageHandlerChannelRepoStub) ListAll(ctx context.Context) ([]service.Channel, error) {
-	return s.channels, nil
-}
-
-func (s *openAIWSUsageHandlerChannelRepoStub) GetGroupPlatforms(ctx context.Context, groupIDs []int64) (map[int64]string, error) {
-	out := make(map[int64]string, len(groupIDs))
-	for _, groupID := range groupIDs {
-		if platform := strings.TrimSpace(s.groupPlatforms[groupID]); platform != "" {
-			out[groupID] = platform
-		}
-	}
-	return out, nil
-}
 
 func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSUsageLogCase) openAIResponsesWSUsageLogResult {
 	t.Helper()
@@ -1121,19 +1103,10 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 	accountRepo := &openAIWSUsageHandlerAccountRepoStub{account: account}
 	usageRepo := &openAIWSUsageHandlerUsageLogRepoStub{created: make(chan *service.UsageLog, 1)}
 
-	var channelSvc *service.ChannelService
-	if len(tc.channelMapping) > 0 {
-		channelSvc = service.NewChannelService(&openAIWSUsageHandlerChannelRepoStub{
-			channels: []service.Channel{{
-				ID:           7701,
-				Name:         "openai-ws-e2e-channel",
-				Status:       service.StatusActive,
-				GroupIDs:     []int64{groupID},
-				ModelMapping: map[string]map[string]string{service.PlatformOpenAI: tc.channelMapping},
-			}},
-			groupPlatforms: map[int64]string{groupID: service.PlatformOpenAI},
-		}, nil, nil, nil)
-	}
+	// Channel cache reader is nil: channel-management is now a plugin and
+	// its ChannelCacheReader requires Redis. Tests that need channel-level
+	// model mapping should set up a ChannelCacheReader with a real or mock Redis.
+	var channelCacheReader *service.ChannelCacheReader
 
 	billingCacheSvc := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg)
 	gatewaySvc := service.NewOpenAIGatewayService(
@@ -1154,7 +1127,7 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 		&service.DeferredService{},
 		nil,
 		nil,
-		channelSvc,
+		channelCacheReader,
 		nil,
 		nil,
 	)

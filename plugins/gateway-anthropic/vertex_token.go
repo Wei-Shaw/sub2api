@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -173,7 +174,7 @@ func exchangeWithKey(ctx context.Context, client *http.Client, key *vertexServic
 			msg = strings.TrimSpace(parsed.Error)
 		}
 		if msg == "" {
-			msg = truncateBody(body)
+			msg = gatewayutil.TruncateBody(body)
 		}
 		return "", fmt.Errorf("token request returned %d: %s", resp.StatusCode, msg)
 	}

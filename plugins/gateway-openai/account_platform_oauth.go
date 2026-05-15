@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -234,7 +235,7 @@ func (s *accountPlatformServer) SetPrivacy(
 		}
 	}
 
-	accessToken := credStr(creds, "access_token")
+	accessToken := gatewayutil.CredStr(creds, "access_token")
 	if accessToken == "" {
 		return &pb.SetPrivacyResponse{
 			Success: false,
@@ -287,12 +288,12 @@ func (s *accountPlatformServer) PostAccountCreate(
 func (s *accountPlatformServer) postCreateAPIKeyProbe(
 	ctx context.Context, creds map[string]any,
 ) (*pb.PostAccountCreateResponse, error) {
-	apiKey := credStr(creds, "api_key")
+	apiKey := gatewayutil.CredStr(creds, "api_key")
 	if apiKey == "" {
 		return &pb.PostAccountCreateResponse{}, nil
 	}
 
-	baseURL := credStr(creds, "base_url")
+	baseURL := gatewayutil.CredStr(creds, "base_url")
 	if baseURL == "" {
 		baseURL = defaultOpenAIBaseURL
 	}
@@ -314,7 +315,7 @@ func (s *accountPlatformServer) postCreateAPIKeyProbe(
 func (s *accountPlatformServer) postCreateOAuthPrivacy(
 	ctx context.Context, creds map[string]any,
 ) (*pb.PostAccountCreateResponse, error) {
-	accessToken := credStr(creds, "access_token")
+	accessToken := gatewayutil.CredStr(creds, "access_token")
 	if accessToken == "" {
 		return &pb.PostAccountCreateResponse{}, nil
 	}

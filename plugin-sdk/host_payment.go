@@ -110,6 +110,14 @@ var (
 	ErrHostUserLookupUnavailable   = errors.New("plugin-sdk: host user lookup not registered")
 )
 
+// Compile-time proof that the SDK's concrete types satisfy
+// HostPaymentClient so PluginContext.HostPayment() never falls through
+// to nilHostClient unexpectedly.
+var (
+	_ HostPaymentClient = (*hostClient)(nil)
+	_ HostPaymentClient = nilHostClient{}
+)
+
 type HostPaymentClient interface {
 	CreditBalance(ctx context.Context, in CreditBalanceInput) (*CreditBalanceResult, error)
 	DeductBalance(ctx context.Context, in DeductBalanceInput) (*DeductBalanceResult, error)

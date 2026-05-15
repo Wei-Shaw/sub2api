@@ -1,23 +1,10 @@
 package main
 
 import (
-	"strings"
-
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
+
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 )
-
-// --- failover decision ---
-
-// failoverStatusCodes are upstream HTTP status codes that indicate the
-// request should be retried with a different account. These match the
-// host's shouldFailoverUpstreamError logic.
-var failoverStatusCodes = map[int]bool{
-	429: true, // rate limited
-	500: true, // internal server error
-	502: true, // bad gateway
-	503: true, // service unavailable
-	504: true, // gateway timeout
-}
 
 // classifyShouldFailover determines whether a failed forward should be
 // retried with a different account based on the error context.
@@ -36,7 +23,7 @@ func classifyShouldFailover(req *pb.GatewayFailoverRequest) bool {
 	}
 
 	// Network/connection errors: failover.
-	if isNetworkError(errMsg) {
+	if gatewayutil.IsNetworkError(errMsg) {
 		return true
 	}
 
@@ -44,49 +31,13 @@ func classifyShouldFailover(req *pb.GatewayFailoverRequest) bool {
 }
 
 // shouldFailoverStatus returns true for status codes that warrant failover.
-// Used by handleErrorResponse to attach GatewayUpstreamError.
+// OpenAI does not use 529, so no extra codes are needed.
 func shouldFailoverStatus(statusCode int) bool {
-	if failoverStatusCodes[statusCode] {
-		return true
-	}
-	// Also failover on auth errors (credential may be expired).
-	return statusCode == 401 || statusCode == 403
+	return gatewayutil.ShouldFailoverStatus(statusCode, nil)
 }
 
 // classifyErrorType maps an upstream HTTP status code to a structured error
-// type string for the host's routing decisions. Matches the host-side
-// UpstreamFailoverError classification.
+// type string for the host's routing decisions.
 func classifyErrorType(statusCode int) string {
-	switch statusCode {
-	case 429:
-		return "rate_limit"
-	case 503:
-		return "overloaded"
-	case 401, 403:
-		return "auth_error"
-	case 500, 502, 504:
-		return "server_error"
-	default:
-		return ""
-	}
-}
-
-// isNetworkError detects connection-level failures from error messages.
-func isNetworkError(msg string) bool {
-	lower := strings.ToLower(msg)
-	patterns := []string{
-		"connection refused",
-		"connection reset",
-		"no such host",
-		"dial tcp",
-		"tls handshake",
-		"i/o timeout",
-		"eof",
-	}
-	for _, p := range patterns {
-		if strings.Contains(lower, p) {
-			return true
-		}
-	}
-	return false
+	return gatewayutil.ClassifyErrorType(statusCode, nil)
 }

@@ -64,7 +64,7 @@
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getSdk } from '../../api/sdk'
-import { extractApiErrorMessage } from '../../utils/apiError'
+import { extractApiErrorMessage } from '@sub2api/plugin-sdk'
 import { useAppStore } from '../../stores/host'
 import LoadingSpinner from './LoadingSpinner.vue'
 

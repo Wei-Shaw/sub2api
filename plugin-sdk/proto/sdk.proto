@@ -1755,6 +1755,12 @@ message GatewayForwardResult {
   // error; the host uses the structured fields to decide failover strategy
   // without parsing error strings.
   GatewayUpstreamError upstream_error = 30;
+
+  // response_headers carries selected upstream HTTP response headers for
+  // post-forward processing (e.g. Codex usage snapshot extraction via
+  // x-codex-* headers). The plugin populates this with headers it deems
+  // relevant; the host maps it to ForwardResult.ResponseHeaders.
+  map<string, string> response_headers = 31;
 }
 
 // GatewayUpstreamError carries structured error information from the
@@ -1788,6 +1794,13 @@ message GatewayUpstreamError {
   // a reasonable size by the plugin). Used by the host for error
   // passthrough rule matching.
   bytes response_body = 5;
+
+  // response_headers carries selected upstream HTTP response headers from
+  // the error response. The host maps these to
+  // UpstreamFailoverError.ResponseHeaders for rate-limit reset time
+  // calculation (x-codex-*, x-ratelimit-*, cf-ray, etc.) and diagnostic
+  // header passthrough.
+  map<string, string> response_headers = 6;
 }
 
 // GatewayFailoverRequest is sent to ShouldFailover after a forward failure.

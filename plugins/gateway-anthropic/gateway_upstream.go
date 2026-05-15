@@ -3,13 +3,13 @@
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 )
 
 // errBedrockAccount is returned by resolveForwardAuth when the account is
@@ -63,7 +63,7 @@ func buildUpstreamRequest(
 
 	// Replace model in body if mapping changed it.
 	if mappedModel != originalModel {
-		body = replaceModelInBody(body, mappedModel)
+		body = gatewayutil.ReplaceModelInBody(body, mappedModel)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
@@ -158,7 +158,7 @@ func resolveModel(requestedModel, accountType string, credentialsJSON []byte) st
 	if accountType != accountTypeAPIKey && accountType != accountTypeBedrock {
 		return requestedModel
 	}
-	mapping := extractModelMapping(credentialsJSON)
+	mapping := gatewayutil.ExtractModelMapping(credentialsJSON)
 	if len(mapping) == 0 {
 		return requestedModel
 	}
@@ -166,25 +166,6 @@ func resolveModel(requestedModel, accountType string, credentialsJSON []byte) st
 		return mapped
 	}
 	return requestedModel
-}
-
-// replaceModelInBody replaces the "model" field in the JSON body with the
-// mapped model name.
-func replaceModelInBody(body []byte, newModel string) []byte {
-	var parsed map[string]json.RawMessage
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		return body // best effort
-	}
-	modelBytes, err := json.Marshal(newModel)
-	if err != nil {
-		return body
-	}
-	parsed["model"] = modelBytes
-	result, err := json.Marshal(parsed)
-	if err != nil {
-		return body
-	}
-	return result
 }
 
 // clientHeadersAllowList lists headers from the client that may be forwarded
@@ -223,7 +204,7 @@ func forwardClientHeaders(httpReq *http.Request, clientHeaders map[string]string
 		if lower == "anthropic-beta" {
 			// Merge client betas with defaults (avoid duplicates).
 			existing := httpReq.Header.Get("anthropic-beta")
-			merged := mergeBetaHeaders(existing, value)
+			merged := gatewayutil.MergeBetaHeaders(existing, value)
 			httpReq.Header.Set("anthropic-beta", merged)
 			continue
 		}
@@ -232,37 +213,4 @@ func forwardClientHeaders(httpReq *http.Request, clientHeaders map[string]string
 			httpReq.Header.Set(key, value)
 		}
 	}
-}
-
-// mergeBetaHeaders merges two comma-separated beta header values, deduplicating.
-func mergeBetaHeaders(existing, additional string) string {
-	if existing == "" {
-		return additional
-	}
-	if additional == "" {
-		return existing
-	}
-	seen := make(map[string]struct{})
-	var parts []string
-	for _, part := range strings.Split(existing, ",") {
-		t := strings.TrimSpace(part)
-		if t == "" {
-			continue
-		}
-		if _, ok := seen[t]; !ok {
-			seen[t] = struct{}{}
-			parts = append(parts, t)
-		}
-	}
-	for _, part := range strings.Split(additional, ",") {
-		t := strings.TrimSpace(part)
-		if t == "" {
-			continue
-		}
-		if _, ok := seen[t]; !ok {
-			seen[t] = struct{}{}
-			parts = append(parts, t)
-		}
-	}
-	return strings.Join(parts, ",")
 }

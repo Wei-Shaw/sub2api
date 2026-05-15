@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"google.golang.org/grpc"
 )
 
@@ -92,28 +93,28 @@ func validateCredentialsByType(accountType string, creds map[string]any) map[str
 	errs := make(map[string]string)
 	switch accountType {
 	case accountTypeOAuth:
-		if credStr(creds, "access_token") == "" && credStr(creds, "refresh_token") == "" {
+		if gatewayutil.CredStr(creds, "access_token") == "" && gatewayutil.CredStr(creds, "refresh_token") == "" {
 			errs["credentials.access_token"] = "oauth account requires access_token or refresh_token"
 		}
 	case accountTypeSetupToken:
-		if credStr(creds, "access_token") == "" && credStr(creds, "session_key") == "" && credStr(creds, "setup_token") == "" {
+		if gatewayutil.CredStr(creds, "access_token") == "" && gatewayutil.CredStr(creds, "session_key") == "" && gatewayutil.CredStr(creds, "setup_token") == "" {
 			errs["credentials.access_token"] = "setup-token account requires access_token, session_key, or setup_token"
 		}
 	case accountTypeAPIKey:
-		if credStr(creds, "api_key") == "" {
+		if gatewayutil.CredStr(creds, "api_key") == "" {
 			errs["credentials.api_key"] = "api_key is required"
 		}
 	case accountTypeBedrock:
-		apiKey := credStr(creds, "api_key")
-		accessKeyID := credStr(creds, "aws_access_key_id")
-		secretKey := credStr(creds, "aws_secret_access_key")
+		apiKey := gatewayutil.CredStr(creds, "api_key")
+		accessKeyID := gatewayutil.CredStr(creds, "aws_access_key_id")
+		secretKey := gatewayutil.CredStr(creds, "aws_secret_access_key")
 		if apiKey == "" && (accessKeyID == "" || secretKey == "") {
 			errs["credentials.aws_access_key_id"] = "bedrock requires api_key (cross-region) or aws_access_key_id + aws_secret_access_key"
 		}
 	case accountTypeServiceAccount:
-		saJSON := credStr(creds, "service_account_json")
+		saJSON := gatewayutil.CredStr(creds, "service_account_json")
 		if saJSON == "" {
-			saJSON = credStr(creds, "service_account")
+			saJSON = gatewayutil.CredStr(creds, "service_account")
 		}
 		if saJSON == "" {
 			// Also accept nested object form.
@@ -127,14 +128,6 @@ func validateCredentialsByType(accountType string, creds map[string]any) map[str
 	return errs
 }
 
-// credStr extracts a string credential value, trimming whitespace.
-func credStr(creds map[string]any, key string) string {
-	if creds == nil {
-		return ""
-	}
-	v, _ := creds[key].(string)
-	return strings.TrimSpace(v)
-}
 
 // TestConnection performs a connectivity test against the Anthropic Messages API.
 // It sends a minimal streaming request and relays the SSE events back through
@@ -155,12 +148,12 @@ func (s *accountPlatformServer) TestConnection(
 
 	creds, err := parseCredentials(req.GetCredentialsJson())
 	if err != nil {
-		return sendErrorEnd(stream, "failed to parse credentials: "+err.Error())
+		return gatewayutil.SendErrorEnd(stream, "failed to parse credentials: "+err.Error())
 	}
 
 	authToken, apiURL, useBearer, err := resolveAuth(req.GetAccountType(), creds)
 	if err != nil {
-		return sendErrorEnd(stream, err.Error())
+		return gatewayutil.SendErrorEnd(stream, err.Error())
 	}
 
 	_ = stream.Send(&pb.TestConnectionEvent{Type: "test_start", Model: model})
@@ -169,18 +162,18 @@ func (s *accountPlatformServer) TestConnection(
 		stream.Context(), model, useBearer, authToken, apiURL,
 	)
 	if err != nil {
-		return sendErrorEnd(stream, "failed to create request: "+err.Error())
+		return gatewayutil.SendErrorEnd(stream, "failed to create request: "+err.Error())
 	}
 
 	resp, err := s.httpClient.Do(httpReq)
 	if err != nil {
-		return sendErrorEnd(stream, "request failed: "+err.Error())
+		return gatewayutil.SendErrorEnd(stream, "request failed: "+err.Error())
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		return sendErrorEnd(stream, fmt.Sprintf(
+		return gatewayutil.SendErrorEnd(stream, fmt.Sprintf(
 			"API returned %d: %s", resp.StatusCode, string(body),
 		))
 	}
@@ -204,7 +197,7 @@ func (s *accountPlatformServer) testVertexConnection(
 	// Use the account's proxy URL for the token endpoint request.
 	accessToken, err := exchangeVertexServiceAccountToken(ctx, req.GetProxyUrl(), creds.serviceAccountJSON)
 	if err != nil {
-		return sendErrorEnd(stream, "token exchange failed: "+err.Error())
+		return gatewayutil.SendErrorEnd(stream, "token exchange failed: "+err.Error())
 	}
 
 	// Normalize model for Vertex.
@@ -217,38 +210,38 @@ func (s *accountPlatformServer) testVertexConnection(
 	payloadBytes, _ := json.Marshal(payload)
 	vertexBody, err := buildVertexAnthropicRequestBody(payloadBytes)
 	if err != nil {
-		return sendErrorEnd(stream, "failed to build vertex body: "+err.Error())
+		return gatewayutil.SendErrorEnd(stream, "failed to build vertex body: "+err.Error())
 	}
 
 	// Resolve project ID and location.
 	projectID, err := creds.resolveProjectID()
 	if err != nil {
-		return sendErrorEnd(stream, "vertex credentials: "+err.Error())
+		return gatewayutil.SendErrorEnd(stream, "vertex credentials: "+err.Error())
 	}
 	location := creds.locationForModel(vertexModel)
 
 	// Build URL (streaming test).
 	targetURL, err := buildVertexAnthropicURL(projectID, location, vertexModel, true)
 	if err != nil {
-		return sendErrorEnd(stream, "failed to build vertex url: "+err.Error())
+		return gatewayutil.SendErrorEnd(stream, "failed to build vertex url: "+err.Error())
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(vertexBody))
 	if err != nil {
-		return sendErrorEnd(stream, "failed to create request: "+err.Error())
+		return gatewayutil.SendErrorEnd(stream, "failed to create request: "+err.Error())
 	}
 	httpReq.Header.Set("Authorization", "Bearer "+accessToken)
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	resp, err := s.httpClient.Do(httpReq)
 	if err != nil {
-		return sendErrorEnd(stream, "request failed: "+err.Error())
+		return gatewayutil.SendErrorEnd(stream, "request failed: "+err.Error())
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		return sendErrorEnd(stream, fmt.Sprintf(
+		return gatewayutil.SendErrorEnd(stream, fmt.Sprintf(
 			"Vertex API returned %d: %s", resp.StatusCode, string(body),
 		))
 	}
@@ -389,7 +382,7 @@ func processClaudeStream(
 				})
 				return nil
 			}
-			return sendErrorEnd(stream, "stream read error: "+err.Error())
+			return gatewayutil.SendErrorEnd(stream, "stream read error: "+err.Error())
 		}
 
 		line = strings.TrimSpace(line)
@@ -445,7 +438,7 @@ func handleSSEEvent(
 
 	case "error":
 		msg := extractErrorMessage(data)
-		_ = sendErrorEnd(stream, msg)
+		_ = gatewayutil.SendErrorEnd(stream, msg)
 		return true
 	}
 	return false
@@ -460,18 +453,6 @@ func extractErrorMessage(data map[string]any) string {
 		}
 	}
 	return "unknown error"
-}
-
-func sendErrorEnd(
-	stream grpc.ServerStreamingServer[pb.TestConnectionEvent],
-	msg string,
-) error {
-	_ = stream.Send(&pb.TestConnectionEvent{
-		Type:    "test_end",
-		Success: false,
-		Error:   msg,
-	})
-	return nil
 }
 
 // RefreshTier refreshes account tier/plan info.

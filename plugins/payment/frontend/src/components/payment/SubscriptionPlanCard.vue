@@ -109,7 +109,7 @@ import {
   platformButtonClass,
   platformDiscountClass,
   platformLabel,
-} from '../../utils/platformColors'
+} from '@sub2api/plugin-sdk'
 
 const props = defineProps<{ plan: SubscriptionPlan; activeSubscriptions?: UserSubscription[] }>()
 const emit = defineEmits<{ select: [plan: SubscriptionPlan] }>()

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"bufio"
 	"encoding/json"
 	"io"
@@ -119,7 +120,7 @@ func proxySSEStream(
 		// Forward every line (including empty lines as SSE separators).
 		chunk := line + "\n"
 		if !result.clientDisconnect {
-			if err := sendBodyChunk(stream, []byte(chunk)); err != nil {
+			if err := gatewayutil.SendBodyChunk(stream, []byte(chunk)); err != nil {
 				result.clientDisconnect = true
 				// Continue draining to capture usage from terminal event.
 			}
@@ -155,19 +156,7 @@ func proxyNonStreamResponse(
 		body = replaceModelInResponseJSON(body, mappedModel, originalModel)
 	}
 
-	return result, sendBodyChunk(stream, body)
-}
-
-// sendBodyChunk sends a single GatewayResponseBody chunk to the stream.
-func sendBodyChunk(
-	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
-	data []byte,
-) error {
-	return stream.Send(&pb.GatewayForwardChunk{
-		Chunk: &pb.GatewayForwardChunk_Body{
-			Body: &pb.GatewayResponseBody{Data: data},
-		},
-	})
+	return result, gatewayutil.SendBodyChunk(stream, body)
 }
 
 // --- SSE parsing helpers ---

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"google.golang.org/grpc"
 )
 
@@ -111,6 +112,9 @@ func (s *gatewayProviderServer) forwardBedrock(
 	// Build and send the Done chunk.
 	reqID := bedrockRequestID(respHeaders)
 	done := buildBedrockDoneChunk(reqID, originalModel, mappedModel, isStream, startTime, result, err)
+	if dc, ok := done.Chunk.(*pb.GatewayForwardChunk_Done); ok && dc.Done.GetResult() != nil {
+		dc.Done.GetResult().ResponseHeaders = gatewayutil.CollectResponseHeaders(resp, nil)
+	}
 	if sendErr := stream.Send(done); sendErr != nil {
 		return sendErr
 	}
@@ -130,7 +134,7 @@ func (s *gatewayProviderServer) handleBedrockErrorResponse(
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodySize))
 
 	if len(body) > 0 {
-		if err := sendBodyChunk(stream, body); err != nil {
+		if err := gatewayutil.SendBodyChunk(stream, body); err != nil {
 			return err
 		}
 	}
@@ -144,11 +148,12 @@ func (s *gatewayProviderServer) handleBedrockErrorResponse(
 		DurationMs:    time.Since(startTime).Milliseconds(),
 	}
 
-	if shouldFailoverStatus(resp.StatusCode) {
+	if gatewayutil.ShouldFailoverStatus(resp.StatusCode, extraFailoverCodes) {
 		fwdResult.UpstreamError = &pb.GatewayUpstreamError{
 			StatusCode:   int32(resp.StatusCode),
-			ErrorType:    classifyErrorType(resp.StatusCode),
-			ResponseBody: truncateBytes(body, maxErrorBodyForProto),
+			ErrorType:    gatewayutil.ClassifyErrorType(resp.StatusCode, extraOverloadedCodes),
+			ResponseBody: gatewayutil.TruncateBytes(body, gatewayutil.MaxErrorBodyForProto),
+			ResponseHeaders: gatewayutil.CollectResponseHeaders(resp, nil),
 		}
 	}
 

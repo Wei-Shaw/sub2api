@@ -186,4 +186,4 @@ function checkIntervalOverlap(sorted: IntervalFormEntry[]): string | null {
  * Re-export self utils/platformColors. 保留旧导出名以兼容
  * `<ModelTagInput>` / `<PricingEntryCard>` 等已导入它的组件.
  */
-export { platformTagClass as getPlatformTagClass } from '../utils/platformColors'
+export { platformTagClass as getPlatformTagClass } from '@sub2api/plugin-sdk'

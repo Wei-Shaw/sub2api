@@ -222,7 +222,7 @@ import MonitorFormDialog from '../../components/admin/monitor/MonitorFormDialog.
 import MonitorRunResultDialog from '../../components/admin/monitor/MonitorRunResultDialog.vue'
 import MonitorTemplateManagerDialog from '../../components/admin/monitor/MonitorTemplateManagerDialog.vue'
 import { getSdk } from '../../api/sdk'
-import { extractApiErrorMessage } from '../../utils/apiError'
+import { extractApiErrorMessage } from '@sub2api/plugin-sdk'
 import { loadPageSize, savePageSize } from '../../utils/pageSize'
 
 const { t } = useI18n()

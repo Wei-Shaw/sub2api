@@ -247,7 +247,7 @@ import {
   PROVIDER_GEMINI,
 } from '../../../utils/channelMonitorConstants'
 import { getSdk } from '../../../api/sdk'
-import { extractApiErrorMessage } from '../../../utils/apiError'
+import { extractApiErrorMessage } from '@sub2api/plugin-sdk'
 
 const props = defineProps<{ show: boolean }>()
 const emit = defineEmits<{

@@ -28,4 +28,33 @@ export type { Column, SelectOption } from './types'
 
 export * as tablePreferences from './utils/tablePreferences'
 
+export {
+  extractApiErrorCode,
+  extractApiErrorMetadata,
+  extractI18nErrorMessage,
+  extractApiErrorMessage,
+} from './utils/apiError'
+
+export {
+  type Platform,
+  isPlatform,
+  PLATFORM_TINT,
+  platformBadgeClass,
+  platformBadgeLightClass,
+  platformBorderClass,
+  platformTextClass,
+  platformTagClass,
+  platformTintTextClass,
+  platformPickerClass,
+  platformAccentBarClass,
+  platformIconClass,
+  platformButtonClass,
+  platformDiscountClass,
+  platformGradientClass,
+  platformHeaderGradientClass,
+  platformGradientTextClass,
+  platformGradientSubtextClass,
+  platformLabel,
+} from './utils/platformColors'
+
 export * from './host-sdk'

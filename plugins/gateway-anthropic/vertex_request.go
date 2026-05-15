@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -188,7 +189,7 @@ func normalizeVertexAnthropicModelID(model string) string {
 // resolveVertexModel applies model mapping and Vertex normalization.
 func resolveVertexModel(requestedModel string, credentialsJSON []byte) string {
 	// Check account-level model_mapping first.
-	if mm := extractModelMapping(credentialsJSON); len(mm) > 0 {
+	if mm := gatewayutil.ExtractModelMapping(credentialsJSON); len(mm) > 0 {
 		if mapped, ok := mm[requestedModel]; ok {
 			return normalizeVertexAnthropicModelID(mapped)
 		}

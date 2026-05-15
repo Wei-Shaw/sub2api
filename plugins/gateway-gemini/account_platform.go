@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -87,15 +88,15 @@ func validateCredentialsByType(accountType string, creds map[string]any) map[str
 	errs := make(map[string]string)
 	switch accountType {
 	case accountTypeOAuth:
-		if credStr(creds, "access_token") == "" && credStr(creds, "refresh_token") == "" {
+		if gatewayutil.CredStr(creds, "access_token") == "" && gatewayutil.CredStr(creds, "refresh_token") == "" {
 			errs["credentials.access_token"] = "oauth account requires access_token or refresh_token"
 		}
 	case accountTypeAPIKey:
-		if credStr(creds, "api_key") == "" {
+		if gatewayutil.CredStr(creds, "api_key") == "" {
 			errs["credentials.api_key"] = "api_key is required"
 		}
 	case accountTypeServiceAccount:
-		saJSON := credStr(creds, "service_account_json")
+		saJSON := gatewayutil.CredStr(creds, "service_account_json")
 		if saJSON == "" {
 			errs["credentials.service_account_json"] = "service_account_json is required"
 			break
@@ -108,14 +109,6 @@ func validateCredentialsByType(accountType string, creds map[string]any) map[str
 	return errs
 }
 
-// credStr extracts a string credential value, trimming whitespace.
-func credStr(creds map[string]any, key string) string {
-	if creds == nil {
-		return ""
-	}
-	v, _ := creds[key].(string)
-	return strings.TrimSpace(v)
-}
 
 // TestConnection performs a connectivity test against the Gemini API.
 func (s *accountPlatformServer) TestConnection(
@@ -124,7 +117,7 @@ func (s *accountPlatformServer) TestConnection(
 ) error {
 	creds, err := parseCredentials(req.GetCredentialsJson())
 	if err != nil {
-		return sendErrorEnd(stream, "failed to parse credentials: "+err.Error())
+		return gatewayutil.SendErrorEnd(stream, "failed to parse credentials: "+err.Error())
 	}
 
 	model := req.GetModelId()
@@ -136,18 +129,18 @@ func (s *accountPlatformServer) TestConnection(
 
 	httpReq, err := s.buildTestRequest(stream.Context(), req.GetAccountType(), model, creds)
 	if err != nil {
-		return sendErrorEnd(stream, "failed to create request: "+err.Error())
+		return gatewayutil.SendErrorEnd(stream, "failed to create request: "+err.Error())
 	}
 
 	resp, err := s.httpClient.Do(httpReq)
 	if err != nil {
-		return sendErrorEnd(stream, "request failed: "+err.Error())
+		return gatewayutil.SendErrorEnd(stream, "request failed: "+err.Error())
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		return sendErrorEnd(stream, fmt.Sprintf(
+		return gatewayutil.SendErrorEnd(stream, fmt.Sprintf(
 			"API returned %d: %s", resp.StatusCode, string(body),
 		))
 	}

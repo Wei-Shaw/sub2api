@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -84,32 +85,24 @@ func validateCredentialsByType(accountType string, creds map[string]any) map[str
 	errs := make(map[string]string)
 	switch accountType {
 	case accountTypeOAuth:
-		if credStr(creds, "access_token") == "" && credStr(creds, "refresh_token") == "" {
+		if gatewayutil.CredStr(creds, "access_token") == "" && gatewayutil.CredStr(creds, "refresh_token") == "" {
 			errs["credentials.access_token"] = "oauth account requires access_token or refresh_token"
 		}
 	case accountTypeAPIKey:
-		if credStr(creds, "api_key") == "" {
+		if gatewayutil.CredStr(creds, "api_key") == "" {
 			errs["credentials.api_key"] = "api_key is required"
 		}
 	case accountTypeUpstream:
-		if credStr(creds, "api_key") == "" {
+		if gatewayutil.CredStr(creds, "api_key") == "" {
 			errs["credentials.api_key"] = "upstream account requires api_key"
 		}
-		if credStr(creds, "base_url") == "" {
+		if gatewayutil.CredStr(creds, "base_url") == "" {
 			errs["credentials.base_url"] = "upstream account requires base_url"
 		}
 	}
 	return errs
 }
 
-// credStr extracts a string credential value, trimming whitespace.
-func credStr(creds map[string]any, key string) string {
-	if creds == nil {
-		return ""
-	}
-	v, _ := creds[key].(string)
-	return strings.TrimSpace(v)
-}
 
 // TestConnection performs a connectivity test against the Antigravity API.
 // For OAuth accounts: calls the Antigravity v1internal streamGenerateContent
@@ -122,7 +115,7 @@ func (s *accountPlatformServer) TestConnection(
 ) error {
 	creds, err := parseCredentials(req.GetCredentialsJson())
 	if err != nil {
-		return sendErrorEnd(stream, "failed to parse credentials: "+err.Error())
+		return gatewayutil.SendErrorEnd(stream, "failed to parse credentials: "+err.Error())
 	}
 
 	model := req.GetModelId()
@@ -138,7 +131,7 @@ func (s *accountPlatformServer) TestConnection(
 	case accountTypeAPIKey, accountTypeUpstream:
 		return s.testAPIKeyConnection(stream, req.GetAccountType(), creds, model)
 	default:
-		return sendErrorEnd(stream, "unsupported account type: "+req.GetAccountType())
+		return gatewayutil.SendErrorEnd(stream, "unsupported account type: "+req.GetAccountType())
 	}
 }
 
@@ -151,7 +144,7 @@ func (s *accountPlatformServer) testOAuthConnection(
 ) error {
 	accessToken := strings.TrimSpace(creds.AccessToken)
 	if accessToken == "" {
-		return sendErrorEnd(stream, "no access token available")
+		return gatewayutil.SendErrorEnd(stream, "no access token available")
 	}
 
 	projectID := strings.TrimSpace(creds.ProjectID)
@@ -164,7 +157,7 @@ func (s *accountPlatformServer) testOAuthConnection(
 		stream.Context(), http.MethodPost, apiURL, bytes.NewReader(body),
 	)
 	if err != nil {
-		return sendErrorEnd(stream, "failed to create request: "+err.Error())
+		return gatewayutil.SendErrorEnd(stream, "failed to create request: "+err.Error())
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
@@ -173,13 +166,13 @@ func (s *accountPlatformServer) testOAuthConnection(
 
 	resp, err := s.httpClient.Do(httpReq)
 	if err != nil {
-		return sendErrorEnd(stream, "request failed: "+err.Error())
+		return gatewayutil.SendErrorEnd(stream, "request failed: "+err.Error())
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		return sendErrorEnd(stream, fmt.Sprintf(
+		return gatewayutil.SendErrorEnd(stream, fmt.Sprintf(
 			"API returned %d: %s", resp.StatusCode, string(respBody),
 		))
 	}
@@ -199,7 +192,7 @@ func (s *accountPlatformServer) testAPIKeyConnection(
 ) error {
 	apiKey := strings.TrimSpace(creds.APIKey)
 	if apiKey == "" {
-		return sendErrorEnd(stream, "no API key available")
+		return gatewayutil.SendErrorEnd(stream, "no API key available")
 	}
 
 	baseURL := strings.TrimSpace(creds.BaseURL)
@@ -234,7 +227,7 @@ func (s *accountPlatformServer) testClaudeAPIKey(
 		stream.Context(), http.MethodPost, apiURL, bytes.NewReader(body),
 	)
 	if err != nil {
-		return sendErrorEnd(stream, "failed to create request: "+err.Error())
+		return gatewayutil.SendErrorEnd(stream, "failed to create request: "+err.Error())
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
@@ -243,13 +236,13 @@ func (s *accountPlatformServer) testClaudeAPIKey(
 
 	resp, err := s.httpClient.Do(httpReq)
 	if err != nil {
-		return sendErrorEnd(stream, "request failed: "+err.Error())
+		return gatewayutil.SendErrorEnd(stream, "request failed: "+err.Error())
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		return sendErrorEnd(stream, fmt.Sprintf(
+		return gatewayutil.SendErrorEnd(stream, fmt.Sprintf(
 			"API returned %d: %s", resp.StatusCode, string(respBody),
 		))
 	}
@@ -287,7 +280,7 @@ func (s *accountPlatformServer) testGeminiAPIKey(
 		stream.Context(), http.MethodPost, apiURL, bytes.NewReader(body),
 	)
 	if err != nil {
-		return sendErrorEnd(stream, "failed to create request: "+err.Error())
+		return gatewayutil.SendErrorEnd(stream, "failed to create request: "+err.Error())
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
@@ -295,13 +288,13 @@ func (s *accountPlatformServer) testGeminiAPIKey(
 
 	resp, err := s.httpClient.Do(httpReq)
 	if err != nil {
-		return sendErrorEnd(stream, "request failed: "+err.Error())
+		return gatewayutil.SendErrorEnd(stream, "request failed: "+err.Error())
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		return sendErrorEnd(stream, fmt.Sprintf(
+		return gatewayutil.SendErrorEnd(stream, fmt.Sprintf(
 			"API returned %d: %s", resp.StatusCode, string(respBody),
 		))
 	}
@@ -333,19 +326,6 @@ func parseCredentials(raw []byte) (*antigravityCredentials, error) {
 	return &c, nil
 }
 
-// --- error helpers ---
-
-func sendErrorEnd(
-	stream grpc.ServerStreamingServer[pb.TestConnectionEvent],
-	msg string,
-) error {
-	_ = stream.Send(&pb.TestConnectionEvent{
-		Type:    "test_end",
-		Success: false,
-		Error:   msg,
-	})
-	return nil
-}
 
 // RefreshTier refreshes account tier/plan info from the Antigravity API.
 // Calls loadCodeAssist to retrieve the current tier and plan_type.

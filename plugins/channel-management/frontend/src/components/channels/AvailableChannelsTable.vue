@@ -144,7 +144,7 @@ import type {
   UserAvailableGroup,
   UserChannelPlatformSection,
 } from '../../api/user/availableChannels'
-import { platformBadgeClass } from '../../utils/platformColors'
+import { platformBadgeClass } from '@sub2api/plugin-sdk'
 
 const props = defineProps<{
   columns: {

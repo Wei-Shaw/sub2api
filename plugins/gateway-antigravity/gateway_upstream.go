@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"bytes"
 	"context"
 	"fmt"
@@ -153,7 +154,7 @@ func (c *upstreamClient) handleErrorResponse(
 
 	// Send the error body so the host can forward to the client.
 	if len(body) > 0 {
-		if err := sendBodyChunk(stream, body); err != nil {
+		if err := gatewayutil.SendBodyChunk(stream, body); err != nil {
 			return err
 		}
 	}
@@ -171,8 +172,9 @@ func (c *upstreamClient) handleErrorResponse(
 		result.UpstreamError = &pb.GatewayUpstreamError{
 			StatusCode:        int32(resp.StatusCode),
 			ErrorType:         classifyErrorType(resp.StatusCode),
-			ResponseBody:      truncateBytes(body, maxErrorBodyForProto),
+			ResponseBody:      gatewayutil.TruncateBytes(body, gatewayutil.MaxErrorBodyForProto),
 			ForceCacheBilling: req.forceCacheBilling,
+			ResponseHeaders:   gatewayutil.CollectResponseHeaders(resp, nil),
 		}
 	}
 
@@ -187,17 +189,6 @@ func (c *upstreamClient) handleErrorResponse(
 	})
 }
 
-// sendBodyChunk sends a single GatewayResponseBody chunk.
-func sendBodyChunk(
-	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
-	data []byte,
-) error {
-	return stream.Send(&pb.GatewayForwardChunk{
-		Chunk: &pb.GatewayForwardChunk_Body{
-			Body: &pb.GatewayResponseBody{Data: data},
-		},
-	})
-}
 
 // streamFullBody reads a non-streaming response and sends it as one
 // body chunk, extracting usage from the complete body.
@@ -211,17 +202,19 @@ func (c *upstreamClient) streamFullBody(
 		return fmt.Errorf("read upstream body: %w", err)
 	}
 
-	if sendErr := sendBodyChunk(stream, body); sendErr != nil {
+	if sendErr := gatewayutil.SendBodyChunk(stream, body); sendErr != nil {
 		return fmt.Errorf("send body chunk: %w", sendErr)
 	}
 
 	usage := req.extractor.extractFromBody(body)
 	duration := time.Since(req.startTime)
 
+	fwdResult := buildForwardResult(req, usage, duration, nil, false)
+	fwdResult.ResponseHeaders = gatewayutil.CollectResponseHeaders(resp, nil)
 	return stream.Send(&pb.GatewayForwardChunk{
 		Chunk: &pb.GatewayForwardChunk_Done{
 			Done: &pb.GatewayResponseDone{
-				Result: buildForwardResult(req, usage, duration, nil, false),
+				Result: fwdResult,
 			},
 		},
 	})
@@ -242,7 +235,7 @@ func (c *upstreamClient) streamSSEBody(
 		if clientDisconnect {
 			return nil // keep draining for usage
 		}
-		if sendErr := sendBodyChunk(stream, data); sendErr != nil {
+		if sendErr := gatewayutil.SendBodyChunk(stream, data); sendErr != nil {
 			clientDisconnect = true
 			return nil // continue to capture usage
 		}
@@ -257,19 +250,21 @@ func (c *upstreamClient) streamSSEBody(
 		doneError = err.Error()
 	}
 
+	fwdResult := buildForwardResult(
+		req, usage, duration,
+		tracker.firstTokenTime(), clientDisconnect,
+	)
+	fwdResult.ResponseHeaders = gatewayutil.CollectResponseHeaders(resp, nil)
 	return stream.Send(&pb.GatewayForwardChunk{
 		Chunk: &pb.GatewayForwardChunk_Done{
 			Done: &pb.GatewayResponseDone{
-				Result: buildForwardResult(
-					req, usage, duration,
-					tracker.firstTokenTime(), clientDisconnect,
-				),
-				Error: doneError,
+				Result: fwdResult,
+				Error:  doneError,
 			},
 		},
 	})
-}
 
+}
 // buildForwardResult constructs a GatewayForwardResult from extracted
 // usage data and timing.
 func buildForwardResult(
@@ -312,7 +307,7 @@ func forwardClientHeaders(httpReq *http.Request, clientHeaders map[string]string
 		}
 		if lower == "anthropic-beta" {
 			existing := httpReq.Header.Get("anthropic-beta")
-			merged := mergeBetaHeaders(existing, value)
+			merged := gatewayutil.MergeBetaHeaders(existing, value)
 			httpReq.Header.Set("anthropic-beta", merged)
 			continue
 		}
@@ -322,35 +317,3 @@ func forwardClientHeaders(httpReq *http.Request, clientHeaders map[string]string
 	}
 }
 
-// mergeBetaHeaders merges two comma-separated beta header values, deduplicating.
-func mergeBetaHeaders(existing, additional string) string {
-	if existing == "" {
-		return additional
-	}
-	if additional == "" {
-		return existing
-	}
-	seen := make(map[string]struct{})
-	var parts []string
-	for _, part := range strings.Split(existing, ",") {
-		t := strings.TrimSpace(part)
-		if t == "" {
-			continue
-		}
-		if _, ok := seen[t]; !ok {
-			seen[t] = struct{}{}
-			parts = append(parts, t)
-		}
-	}
-	for _, part := range strings.Split(additional, ",") {
-		t := strings.TrimSpace(part)
-		if t == "" {
-			continue
-		}
-		if _, ok := seen[t]; !ok {
-			seen[t] = struct{}{}
-			parts = append(parts, t)
-		}
-	}
-	return strings.Join(parts, ",")
-}

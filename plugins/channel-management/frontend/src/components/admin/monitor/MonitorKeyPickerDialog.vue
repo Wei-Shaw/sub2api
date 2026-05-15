@@ -87,7 +87,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { BaseDialog, PlatformIcon, maskApiKey } from '@sub2api/plugin-sdk'
 import type { SdkApiKey, SdkApiKeyGroup } from '@sub2api/plugin-sdk'
-import { platformTagClass } from '../../../utils/platformColors'
+import { platformTagClass } from '@sub2api/plugin-sdk'
 
 const props = withDefaults(defineProps<{
   show: boolean

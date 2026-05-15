@@ -1,6 +1,7 @@
-﻿package main
+package main
 
 import (
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -275,7 +276,7 @@ func (s *accountPlatformServer) SetPrivacy(
 		return nil, fmt.Errorf("parse credentials: %w", err)
 	}
 
-	accessToken := credStr(creds, "access_token")
+	accessToken := gatewayutil.CredStr(creds, "access_token")
 	if accessToken == "" {
 		return &pb.SetPrivacyResponse{
 			Success: false,
@@ -283,7 +284,7 @@ func (s *accountPlatformServer) SetPrivacy(
 		}, nil
 	}
 
-	projectID := credStr(creds, "project_id")
+	projectID := gatewayutil.CredStr(creds, "project_id")
 
 	mode := setAntigravityPrivacyViaAPI(ctx, s.httpClient, accessToken, projectID)
 	if mode == privacyModeSet {
@@ -317,8 +318,8 @@ func (s *accountPlatformServer) PostAccountCreate(
 		return &pb.PostAccountCreateResponse{}, nil
 	}
 
-	accessToken := credStr(creds, "access_token")
-	projectID := credStr(creds, "project_id")
+	accessToken := gatewayutil.CredStr(creds, "access_token")
+	projectID := gatewayutil.CredStr(creds, "project_id")
 
 	if accessToken == "" {
 		return &pb.PostAccountCreateResponse{}, nil

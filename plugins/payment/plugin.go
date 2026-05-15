@@ -169,12 +169,12 @@ func (p *PaymentPlugin) Init(ctx pluginsdk.PluginContext) error {
 }
 
 // buildServices constructs the PaymentConfigService and PaymentService
-// from the SDK-provided clients. Host() is type-asserted to the payment
-// extension surface; if the host has not registered the extension the
-// nilHostClient still satisfies the interface and surfaces a clear
-// ErrHost*Unavailable from each call site.
+// from the SDK-provided clients. HostPayment() returns the payment
+// extension surface directly; if the host has not registered the
+// extension the nilHostClient still satisfies the interface and
+// surfaces a clear ErrHost*Unavailable from each call site.
 func (p *PaymentPlugin) buildServices(ctx pluginsdk.PluginContext) {
-	hostPayment, _ := ctx.Host().(pluginsdk.HostPaymentClient)
+	hostPayment := ctx.HostPayment()
 
 	p.configService = service.NewPaymentConfigService(
 		ctx.Settings(),

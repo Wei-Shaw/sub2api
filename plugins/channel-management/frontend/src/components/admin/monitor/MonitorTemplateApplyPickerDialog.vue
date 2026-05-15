@@ -109,7 +109,7 @@ import {
   type AssociatedMonitorBrief,
 } from '../../../api/admin/channelMonitorTemplate'
 import { getSdk } from '../../../api/sdk'
-import { extractApiErrorMessage } from '../../../utils/apiError'
+import { extractApiErrorMessage } from '@sub2api/plugin-sdk'
 
 const props = defineProps<{
   show: boolean

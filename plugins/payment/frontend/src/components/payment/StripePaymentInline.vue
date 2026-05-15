@@ -67,7 +67,7 @@
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { extractI18nErrorMessage } from '../../utils/apiError'
+import { extractI18nErrorMessage } from '@sub2api/plugin-sdk'
 import { paymentAPI } from '../../api/payment'
 import { useAppStore } from '../../stores/host'
 import { getPaymentPopupFeatures } from './providerConfig'

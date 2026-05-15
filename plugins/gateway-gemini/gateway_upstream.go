@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"bytes"
 	"context"
 	"crypto/tls"
@@ -71,7 +72,7 @@ func buildUpstreamAPIKeyRequest(
 
 	body := req.GetRawBody()
 	if mappedModel != originalModel {
-		body = replaceModelInBody(body, mappedModel)
+		body = gatewayutil.ReplaceModelInBody(body, mappedModel)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(body))
@@ -117,7 +118,7 @@ func buildUpstreamOAuthAIStudioRequest(
 
 	body := req.GetRawBody()
 	if mappedModel != originalModel {
-		body = replaceModelInBody(body, mappedModel)
+		body = gatewayutil.ReplaceModelInBody(body, mappedModel)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(body))
@@ -190,7 +191,7 @@ func buildUpstreamVertexRequest(
 
 	body := req.GetRawBody()
 	if mappedModel != originalModel {
-		body = replaceModelInBody(body, mappedModel)
+		body = gatewayutil.ReplaceModelInBody(body, mappedModel)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(body))
@@ -226,7 +227,7 @@ func resolveModelMapping(
 	if acctType != accountTypeAPIKey && acctType != accountTypeServiceAccount {
 		return requestedModel
 	}
-	mapping := extractModelMapping(info.GetCredentialsJson())
+	mapping := gatewayutil.ExtractModelMapping(info.GetCredentialsJson())
 	if len(mapping) == 0 {
 		return requestedModel
 	}
@@ -236,24 +237,6 @@ func resolveModelMapping(
 	return requestedModel
 }
 
-// replaceModelInBody replaces the "model" field in the JSON body with
-// the mapped model name.
-func replaceModelInBody(body []byte, newModel string) []byte {
-	var parsed map[string]json.RawMessage
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		return body
-	}
-	modelBytes, err := json.Marshal(newModel)
-	if err != nil {
-		return body
-	}
-	parsed["model"] = modelBytes
-	result, err := json.Marshal(parsed)
-	if err != nil {
-		return body
-	}
-	return result
-}
 
 // --- client header forwarding ---
 
@@ -303,6 +286,7 @@ func buildDoneChunk(
 			UpstreamModel: upstream.mappedModel,
 			Stream:        isStream,
 			DurationMs:    time.Since(startTime).Milliseconds(),
+			ResponseHeaders: gatewayutil.CollectResponseHeaders(resp, nil),
 		},
 	}
 
@@ -324,18 +308,6 @@ func buildDoneChunk(
 	return &pb.GatewayForwardChunk{
 		Chunk: &pb.GatewayForwardChunk_Done{Done: done},
 	}
-}
-
-// maxErrorBodyForProto caps the upstream error body embedded in the
-// proto message to avoid excessive gRPC message sizes.
-const maxErrorBodyForProto = 8 << 10 // 8 KB
-
-// truncateBytes returns b truncated to at most maxLen bytes.
-func truncateBytes(b []byte, maxLen int) []byte {
-	if len(b) <= maxLen {
-		return b
-	}
-	return b[:maxLen]
 }
 
 // --- URL builders ---
