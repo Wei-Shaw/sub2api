@@ -83,6 +83,9 @@ func SetupRouter(
 	// 注册路由
 	registerRoutes(r, handlers, jwtAuth, adminAuth, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, cfg, redisClient)
 
+	// 注册公开的 provider-catalog 路由（无需认证）
+	routes.RegisterProviderCatalogRoutes(r, handlers)
+
 	return r
 }
 

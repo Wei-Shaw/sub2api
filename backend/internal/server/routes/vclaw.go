@@ -21,3 +21,12 @@ func RegisterVClawRoutes(v1 *gin.RouterGroup, h *handler.Handlers, redisClient *
 		}), h.VClaw.Claim)
 	}
 }
+
+// RegisterProviderCatalogRoutes registers the public provider-catalog route.
+// This endpoint is served at the root level (not under /api/v1) because the
+// v-claw-provider plugin expects it at {baseUrl}/provider-catalog.
+func RegisterProviderCatalogRoutes(r *gin.Engine, h *handler.Handlers) {
+	if h.ProviderCatalog != nil {
+		r.GET("/provider-catalog", h.ProviderCatalog.GetCatalog)
+	}
+}
