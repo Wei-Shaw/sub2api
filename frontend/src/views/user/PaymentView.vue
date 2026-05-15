@@ -72,6 +72,29 @@
                   </option>
                 </select>
               </div>
+              <!-- Balance Package Selector -->
+              <div v-if="availableBalancePackages.length > 0" class="mb-4">
+                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('payment.selectPackage') || 'Select Package' }}
+                </label>
+                <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  <button
+                    v-for="pkg in availableBalancePackages"
+                    :key="pkg.code"
+                    :class="[
+                      'relative rounded-lg border p-3 text-left transition-all',
+                      selectedBalancePackage?.code === pkg.code
+                        ? 'border-primary-500 bg-primary-50 ring-2 ring-primary-500 dark:bg-primary-900/20'
+                        : 'border-gray-200 hover:border-primary-300 dark:border-dark-500 dark:hover:border-primary-600',
+                    ]"
+                    @click="selectBalancePackage(pkg)"
+                  >
+                    <span v-if="pkg.badge" class="absolute -top-2 right-2 rounded bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">{{ pkg.badge }}</span>
+                    <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ pkg.label }}</p>
+                    <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ formatTokens(pkg.actual_credits) }} tokens</p>
+                  </button>
+                </div>
+              </div>
               <AmountInput
                 v-model="amount"
                 :amounts="localQuickAmounts"
@@ -308,7 +331,7 @@ import { paymentAPI, type PublicOrderVerifyResult } from '@/api/payment'
 import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
 import { isMobileDevice } from '@/utils/device'
 import { hasPeakRate, formatPeakRateWindow, serverTimezoneLabel, type PeakRateFields } from '@/utils/peak-rate'
-import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType, PaymentOrder } from '@/types/payment'
+import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType, PaymentOrder, BalancePackage } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import AmountInput from '@/components/payment/AmountInput.vue'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
@@ -369,6 +392,7 @@ const activeTab = ref<'recharge' | 'subscription'>('recharge')
 const amount = ref<number | null>(null)
 const selectedMethod = ref('')
 const selectedPlan = ref<SubscriptionPlan | null>(null)
+const selectedBalancePackage = ref<BalancePackage | null>(null)
 const previewImage = ref('')
 
 const paymentPhase = ref<'select' | 'paying' | 'paddle'>('select')
@@ -381,6 +405,7 @@ interface CreateOrderOptions {
   isResume?: boolean
   mobileQrFallbackAttempted?: boolean
   quoteId?: string
+  balancePackageId?: string
 }
 
 interface WeixinJSBridgeLike {
@@ -580,7 +605,7 @@ function onPaymentSettled() {
 // All checkout data from single API call
 const checkout = ref<CheckoutInfoResponse>({
   methods: {}, global_min: 0, global_max: 0,
-  plans: [], balance_disabled: false, balance_recharge_multiplier: 1, subscription_usd_to_cny_rate: 0, recharge_fee_rate: 0, help_text: '', help_image_url: '', stripe_publishable_key: '', paddle_client_token: '', paddle_environment: '',
+  plans: [], balance_packages: [], balance_disabled: false, balance_recharge_multiplier: 1, subscription_usd_to_cny_rate: 0, recharge_fee_rate: 0, help_text: '', help_image_url: '', stripe_publishable_key: '', paddle_client_token: '', paddle_environment: '',
   ledger_currency: 'USD', allowed_payment_currencies: ['USD'], manual_fx_rates: {}, currency_meta: {},
   fx_status: { source: 'manual', stale_after_seconds: 86400, stale: true, missing_currencies: [] },
 })
@@ -591,6 +616,10 @@ const tabs = computed(() => {
   if (!checkout.value.balance_disabled) result.push({ key: 'recharge', label: t('payment.tabTopUp') })
   result.push({ key: 'subscription', label: t('payment.tabSubscribe') })
   return result
+})
+
+const availableBalancePackages = computed(() => {
+  return (checkout.value.balance_packages || []).filter(p => p.for_sale).sort((a, b) => a.sort_order - b.sort_order)
 })
 
 const visibleMethods = computed(() => getVisibleMethods(checkout.value.methods))
@@ -643,6 +672,12 @@ function formatPaymentMoney(value: number): string {
 }
 function formatLedgerMoney(value: number): string {
   return formatMoney(value, ledgerCurrency.value, checkout.value.currency_meta)
+}
+function formatTokens(value: number): string {
+  if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)}B`
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(0)}M`
+  if (value >= 1_000) return `${(value / 1_000).toFixed(0)}K`
+  return String(value)
 }
 const fxStatusClass = computed(() => checkout.value.fx_status?.stale
   ? 'text-amber-600 dark:text-amber-300'
@@ -931,7 +966,18 @@ function closeRenewalModal() {
 
 async function handleSubmitRecharge() {
   if (!canSubmit.value || submitting.value) return
-  await createOrder(validAmount.value, 'balance')
+  const pkg = selectedBalancePackage.value
+  await createOrder(validAmount.value, 'balance', undefined, { balancePackageId: pkg?.code })
+}
+
+function selectBalancePackage(pkg: BalancePackage) {
+  if (selectedBalancePackage.value?.code === pkg.code) {
+    selectedBalancePackage.value = null
+    amount.value = null
+  } else {
+    selectedBalancePackage.value = pkg
+    amount.value = pkg.amount_ledger
+  }
 }
 
 async function confirmSubscribe() {
@@ -939,7 +985,7 @@ async function confirmSubscribe() {
   await createOrder(selectedPlan.value.price, 'subscription', selectedPlan.value.id)
 }
 
-async function createPaymentQuoteForOrder(orderAmount: number, orderType: OrderType, paymentType: string, planId?: number): Promise<string> {
+async function createPaymentQuoteForOrder(orderAmount: number, orderType: OrderType, paymentType: string, planId?: number, balancePackageId?: string): Promise<string> {
   if (orderAmount <= 0) {
     return ''
   }
@@ -951,6 +997,7 @@ async function createPaymentQuoteForOrder(orderAmount: number, orderType: OrderT
     payment_type: paymentType,
     order_type: orderType,
     plan_id: planId,
+    balance_package_id: balancePackageId,
   })
   return res.data.quote_id
 }
@@ -964,12 +1011,13 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
   try {
     const quoteId = options.wechatResumeToken
       ? ''
-      : options.quoteId || await createPaymentQuoteForOrder(orderAmount, orderType, requestType, planId)
+      : options.quoteId || await createPaymentQuoteForOrder(orderAmount, orderType, requestType, planId, options.balancePackageId)
     const payload = buildCreateOrderPayload({
       amount: orderAmount,
       paymentType: requestType,
       orderType,
       planId,
+      balancePackageId: options.balancePackageId,
       origin: typeof window !== 'undefined' ? window.location.origin : '',
       isMobile: isMobileDevice(),
       isWechatBrowser: typeof window !== 'undefined' && /MicroMessenger/i.test(window.navigator.userAgent),

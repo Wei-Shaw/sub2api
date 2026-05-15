@@ -54,40 +54,6 @@ func (_c *BalancePackageCreate) SetAmountLedger(v float64) *BalancePackageCreate
 	return _c
 }
 
-// SetCreditLedger sets the "credit_ledger" field.
-func (_c *BalancePackageCreate) SetCreditLedger(v float64) *BalancePackageCreate {
-	_c.mutation.SetCreditLedger(v)
-	return _c
-}
-
-// SetBonusLedger sets the "bonus_ledger" field.
-func (_c *BalancePackageCreate) SetBonusLedger(v float64) *BalancePackageCreate {
-	_c.mutation.SetBonusLedger(v)
-	return _c
-}
-
-// SetNillableBonusLedger sets the "bonus_ledger" field if the given value is not nil.
-func (_c *BalancePackageCreate) SetNillableBonusLedger(v *float64) *BalancePackageCreate {
-	if v != nil {
-		_c.SetBonusLedger(*v)
-	}
-	return _c
-}
-
-// SetCreditMultiplier sets the "credit_multiplier" field.
-func (_c *BalancePackageCreate) SetCreditMultiplier(v float64) *BalancePackageCreate {
-	_c.mutation.SetCreditMultiplier(v)
-	return _c
-}
-
-// SetNillableCreditMultiplier sets the "credit_multiplier" field if the given value is not nil.
-func (_c *BalancePackageCreate) SetNillableCreditMultiplier(v *float64) *BalancePackageCreate {
-	if v != nil {
-		_c.SetCreditMultiplier(*v)
-	}
-	return _c
-}
-
 // SetActualCredits sets the "actual_credits" field.
 func (_c *BalancePackageCreate) SetActualCredits(v int64) *BalancePackageCreate {
 	_c.mutation.SetActualCredits(v)
@@ -253,14 +219,6 @@ func (_c *BalancePackageCreate) defaults() {
 		v := balancepackage.DefaultDescription
 		_c.mutation.SetDescription(v)
 	}
-	if _, ok := _c.mutation.BonusLedger(); !ok {
-		v := balancepackage.DefaultBonusLedger
-		_c.mutation.SetBonusLedger(v)
-	}
-	if _, ok := _c.mutation.CreditMultiplier(); !ok {
-		v := balancepackage.DefaultCreditMultiplier
-		_c.mutation.SetCreditMultiplier(v)
-	}
 	if _, ok := _c.mutation.ActualCredits(); !ok {
 		v := balancepackage.DefaultActualCredits
 		_c.mutation.SetActualCredits(v)
@@ -318,15 +276,6 @@ func (_c *BalancePackageCreate) check() error {
 	}
 	if _, ok := _c.mutation.AmountLedger(); !ok {
 		return &ValidationError{Name: "amount_ledger", err: errors.New(`ent: missing required field "BalancePackage.amount_ledger"`)}
-	}
-	if _, ok := _c.mutation.CreditLedger(); !ok {
-		return &ValidationError{Name: "credit_ledger", err: errors.New(`ent: missing required field "BalancePackage.credit_ledger"`)}
-	}
-	if _, ok := _c.mutation.BonusLedger(); !ok {
-		return &ValidationError{Name: "bonus_ledger", err: errors.New(`ent: missing required field "BalancePackage.bonus_ledger"`)}
-	}
-	if _, ok := _c.mutation.CreditMultiplier(); !ok {
-		return &ValidationError{Name: "credit_multiplier", err: errors.New(`ent: missing required field "BalancePackage.credit_multiplier"`)}
 	}
 	if _, ok := _c.mutation.ActualCredits(); !ok {
 		return &ValidationError{Name: "actual_credits", err: errors.New(`ent: missing required field "BalancePackage.actual_credits"`)}
@@ -404,18 +353,6 @@ func (_c *BalancePackageCreate) createSpec() (*BalancePackage, *sqlgraph.CreateS
 	if value, ok := _c.mutation.AmountLedger(); ok {
 		_spec.SetField(balancepackage.FieldAmountLedger, field.TypeFloat64, value)
 		_node.AmountLedger = value
-	}
-	if value, ok := _c.mutation.CreditLedger(); ok {
-		_spec.SetField(balancepackage.FieldCreditLedger, field.TypeFloat64, value)
-		_node.CreditLedger = value
-	}
-	if value, ok := _c.mutation.BonusLedger(); ok {
-		_spec.SetField(balancepackage.FieldBonusLedger, field.TypeFloat64, value)
-		_node.BonusLedger = value
-	}
-	if value, ok := _c.mutation.CreditMultiplier(); ok {
-		_spec.SetField(balancepackage.FieldCreditMultiplier, field.TypeFloat64, value)
-		_node.CreditMultiplier = value
 	}
 	if value, ok := _c.mutation.ActualCredits(); ok {
 		_spec.SetField(balancepackage.FieldActualCredits, field.TypeInt64, value)
@@ -556,60 +493,6 @@ func (u *BalancePackageUpsert) UpdateAmountLedger() *BalancePackageUpsert {
 // AddAmountLedger adds v to the "amount_ledger" field.
 func (u *BalancePackageUpsert) AddAmountLedger(v float64) *BalancePackageUpsert {
 	u.Add(balancepackage.FieldAmountLedger, v)
-	return u
-}
-
-// SetCreditLedger sets the "credit_ledger" field.
-func (u *BalancePackageUpsert) SetCreditLedger(v float64) *BalancePackageUpsert {
-	u.Set(balancepackage.FieldCreditLedger, v)
-	return u
-}
-
-// UpdateCreditLedger sets the "credit_ledger" field to the value that was provided on create.
-func (u *BalancePackageUpsert) UpdateCreditLedger() *BalancePackageUpsert {
-	u.SetExcluded(balancepackage.FieldCreditLedger)
-	return u
-}
-
-// AddCreditLedger adds v to the "credit_ledger" field.
-func (u *BalancePackageUpsert) AddCreditLedger(v float64) *BalancePackageUpsert {
-	u.Add(balancepackage.FieldCreditLedger, v)
-	return u
-}
-
-// SetBonusLedger sets the "bonus_ledger" field.
-func (u *BalancePackageUpsert) SetBonusLedger(v float64) *BalancePackageUpsert {
-	u.Set(balancepackage.FieldBonusLedger, v)
-	return u
-}
-
-// UpdateBonusLedger sets the "bonus_ledger" field to the value that was provided on create.
-func (u *BalancePackageUpsert) UpdateBonusLedger() *BalancePackageUpsert {
-	u.SetExcluded(balancepackage.FieldBonusLedger)
-	return u
-}
-
-// AddBonusLedger adds v to the "bonus_ledger" field.
-func (u *BalancePackageUpsert) AddBonusLedger(v float64) *BalancePackageUpsert {
-	u.Add(balancepackage.FieldBonusLedger, v)
-	return u
-}
-
-// SetCreditMultiplier sets the "credit_multiplier" field.
-func (u *BalancePackageUpsert) SetCreditMultiplier(v float64) *BalancePackageUpsert {
-	u.Set(balancepackage.FieldCreditMultiplier, v)
-	return u
-}
-
-// UpdateCreditMultiplier sets the "credit_multiplier" field to the value that was provided on create.
-func (u *BalancePackageUpsert) UpdateCreditMultiplier() *BalancePackageUpsert {
-	u.SetExcluded(balancepackage.FieldCreditMultiplier)
-	return u
-}
-
-// AddCreditMultiplier adds v to the "credit_multiplier" field.
-func (u *BalancePackageUpsert) AddCreditMultiplier(v float64) *BalancePackageUpsert {
-	u.Add(balancepackage.FieldCreditMultiplier, v)
 	return u
 }
 
@@ -838,69 +721,6 @@ func (u *BalancePackageUpsertOne) AddAmountLedger(v float64) *BalancePackageUpse
 func (u *BalancePackageUpsertOne) UpdateAmountLedger() *BalancePackageUpsertOne {
 	return u.Update(func(s *BalancePackageUpsert) {
 		s.UpdateAmountLedger()
-	})
-}
-
-// SetCreditLedger sets the "credit_ledger" field.
-func (u *BalancePackageUpsertOne) SetCreditLedger(v float64) *BalancePackageUpsertOne {
-	return u.Update(func(s *BalancePackageUpsert) {
-		s.SetCreditLedger(v)
-	})
-}
-
-// AddCreditLedger adds v to the "credit_ledger" field.
-func (u *BalancePackageUpsertOne) AddCreditLedger(v float64) *BalancePackageUpsertOne {
-	return u.Update(func(s *BalancePackageUpsert) {
-		s.AddCreditLedger(v)
-	})
-}
-
-// UpdateCreditLedger sets the "credit_ledger" field to the value that was provided on create.
-func (u *BalancePackageUpsertOne) UpdateCreditLedger() *BalancePackageUpsertOne {
-	return u.Update(func(s *BalancePackageUpsert) {
-		s.UpdateCreditLedger()
-	})
-}
-
-// SetBonusLedger sets the "bonus_ledger" field.
-func (u *BalancePackageUpsertOne) SetBonusLedger(v float64) *BalancePackageUpsertOne {
-	return u.Update(func(s *BalancePackageUpsert) {
-		s.SetBonusLedger(v)
-	})
-}
-
-// AddBonusLedger adds v to the "bonus_ledger" field.
-func (u *BalancePackageUpsertOne) AddBonusLedger(v float64) *BalancePackageUpsertOne {
-	return u.Update(func(s *BalancePackageUpsert) {
-		s.AddBonusLedger(v)
-	})
-}
-
-// UpdateBonusLedger sets the "bonus_ledger" field to the value that was provided on create.
-func (u *BalancePackageUpsertOne) UpdateBonusLedger() *BalancePackageUpsertOne {
-	return u.Update(func(s *BalancePackageUpsert) {
-		s.UpdateBonusLedger()
-	})
-}
-
-// SetCreditMultiplier sets the "credit_multiplier" field.
-func (u *BalancePackageUpsertOne) SetCreditMultiplier(v float64) *BalancePackageUpsertOne {
-	return u.Update(func(s *BalancePackageUpsert) {
-		s.SetCreditMultiplier(v)
-	})
-}
-
-// AddCreditMultiplier adds v to the "credit_multiplier" field.
-func (u *BalancePackageUpsertOne) AddCreditMultiplier(v float64) *BalancePackageUpsertOne {
-	return u.Update(func(s *BalancePackageUpsert) {
-		s.AddCreditMultiplier(v)
-	})
-}
-
-// UpdateCreditMultiplier sets the "credit_multiplier" field to the value that was provided on create.
-func (u *BalancePackageUpsertOne) UpdateCreditMultiplier() *BalancePackageUpsertOne {
-	return u.Update(func(s *BalancePackageUpsert) {
-		s.UpdateCreditMultiplier()
 	})
 }
 
@@ -1315,69 +1135,6 @@ func (u *BalancePackageUpsertBulk) AddAmountLedger(v float64) *BalancePackageUps
 func (u *BalancePackageUpsertBulk) UpdateAmountLedger() *BalancePackageUpsertBulk {
 	return u.Update(func(s *BalancePackageUpsert) {
 		s.UpdateAmountLedger()
-	})
-}
-
-// SetCreditLedger sets the "credit_ledger" field.
-func (u *BalancePackageUpsertBulk) SetCreditLedger(v float64) *BalancePackageUpsertBulk {
-	return u.Update(func(s *BalancePackageUpsert) {
-		s.SetCreditLedger(v)
-	})
-}
-
-// AddCreditLedger adds v to the "credit_ledger" field.
-func (u *BalancePackageUpsertBulk) AddCreditLedger(v float64) *BalancePackageUpsertBulk {
-	return u.Update(func(s *BalancePackageUpsert) {
-		s.AddCreditLedger(v)
-	})
-}
-
-// UpdateCreditLedger sets the "credit_ledger" field to the value that was provided on create.
-func (u *BalancePackageUpsertBulk) UpdateCreditLedger() *BalancePackageUpsertBulk {
-	return u.Update(func(s *BalancePackageUpsert) {
-		s.UpdateCreditLedger()
-	})
-}
-
-// SetBonusLedger sets the "bonus_ledger" field.
-func (u *BalancePackageUpsertBulk) SetBonusLedger(v float64) *BalancePackageUpsertBulk {
-	return u.Update(func(s *BalancePackageUpsert) {
-		s.SetBonusLedger(v)
-	})
-}
-
-// AddBonusLedger adds v to the "bonus_ledger" field.
-func (u *BalancePackageUpsertBulk) AddBonusLedger(v float64) *BalancePackageUpsertBulk {
-	return u.Update(func(s *BalancePackageUpsert) {
-		s.AddBonusLedger(v)
-	})
-}
-
-// UpdateBonusLedger sets the "bonus_ledger" field to the value that was provided on create.
-func (u *BalancePackageUpsertBulk) UpdateBonusLedger() *BalancePackageUpsertBulk {
-	return u.Update(func(s *BalancePackageUpsert) {
-		s.UpdateBonusLedger()
-	})
-}
-
-// SetCreditMultiplier sets the "credit_multiplier" field.
-func (u *BalancePackageUpsertBulk) SetCreditMultiplier(v float64) *BalancePackageUpsertBulk {
-	return u.Update(func(s *BalancePackageUpsert) {
-		s.SetCreditMultiplier(v)
-	})
-}
-
-// AddCreditMultiplier adds v to the "credit_multiplier" field.
-func (u *BalancePackageUpsertBulk) AddCreditMultiplier(v float64) *BalancePackageUpsertBulk {
-	return u.Update(func(s *BalancePackageUpsert) {
-		s.AddCreditMultiplier(v)
-	})
-}
-
-// UpdateCreditMultiplier sets the "credit_multiplier" field to the value that was provided on create.
-func (u *BalancePackageUpsertBulk) UpdateCreditMultiplier() *BalancePackageUpsertBulk {
-	return u.Update(func(s *BalancePackageUpsert) {
-		s.UpdateCreditMultiplier()
 	})
 }
 

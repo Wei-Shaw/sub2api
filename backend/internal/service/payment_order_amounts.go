@@ -21,7 +21,7 @@ type createOrderAmounts struct {
 
 func computeCreateOrderAmounts(req CreateOrderRequest, cfg *PaymentConfig, plan *dbent.SubscriptionPlan, now time.Time) (createOrderAmounts, error) {
 	if req.paymentQuote != nil {
-		return createOrderAmountsFromPaymentQuote(req.paymentQuote), nil
+		return createOrderAmountsFromPaymentQuote(req.paymentQuote, cfg), nil
 	}
 	paymentCurrency := req.PaymentCurrency
 	if normalizeCurrencyCode(paymentCurrency, "") == "" {
@@ -61,7 +61,7 @@ func computeCreateOrderAmounts(req CreateOrderRequest, cfg *PaymentConfig, plan 
 			return createOrderAmounts{}, err
 		}
 		return createOrderAmounts{
-			LedgerAmount:      roundLedgerAmountForCredit(pkg.CreditLedger, snapshot.LedgerCurrency),
+			LedgerAmount:      roundLedgerAmountForCredit(pkg.AmountLedger, snapshot.LedgerCurrency),
 			PaymentAmount:     paymentAmount,
 			LimitLedgerAmount: ledgerBaseAmount,
 			BalancePackage:    pkg,

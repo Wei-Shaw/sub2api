@@ -112,11 +112,11 @@ func TestMigrationChecksumCompatibilityRules_CoverEditedUpgradeCompatibilityMigr
 	}
 }
 
-func TestStripRedundantTransactionControl(t *testing.T) {
+func TestStripRedundantTransactionControl_SafetyEdges(t *testing.T) {
 	t.Run("strips redundant outer pair after comments", func(t *testing.T) {
 		content := "-- migration comment\n\nBEGIN;\nSELECT 1;\nCOMMIT;\n-- trailing comment"
 		got := stripRedundantTransactionControl(content)
-		require.Equal(t, "-- migration comment\n\n\nSELECT 1;\n\n-- trailing comment", got)
+		require.Equal(t, "-- migration comment\n\nSELECT 1;\n-- trailing comment", got)
 	})
 
 	t.Run("preserves procedural begin inside do block", func(t *testing.T) {

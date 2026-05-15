@@ -25,12 +25,6 @@ type BalancePackage struct {
 	Description string `json:"description,omitempty"`
 	// AmountLedger holds the value of the "amount_ledger" field.
 	AmountLedger float64 `json:"amount_ledger,omitempty"`
-	// CreditLedger holds the value of the "credit_ledger" field.
-	CreditLedger float64 `json:"credit_ledger,omitempty"`
-	// BonusLedger holds the value of the "bonus_ledger" field.
-	BonusLedger float64 `json:"bonus_ledger,omitempty"`
-	// CreditMultiplier holds the value of the "credit_multiplier" field.
-	CreditMultiplier float64 `json:"credit_multiplier,omitempty"`
 	// ActualCredits holds the value of the "actual_credits" field.
 	ActualCredits int64 `json:"actual_credits,omitempty"`
 	// CreditUnit holds the value of the "credit_unit" field.
@@ -59,7 +53,7 @@ func (*BalancePackage) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case balancepackage.FieldPopular, balancepackage.FieldForSale:
 			values[i] = new(sql.NullBool)
-		case balancepackage.FieldAmountLedger, balancepackage.FieldCreditLedger, balancepackage.FieldBonusLedger, balancepackage.FieldCreditMultiplier:
+		case balancepackage.FieldAmountLedger:
 			values[i] = new(sql.NullFloat64)
 		case balancepackage.FieldID, balancepackage.FieldActualCredits, balancepackage.FieldGroupID, balancepackage.FieldSortOrder:
 			values[i] = new(sql.NullInt64)
@@ -111,24 +105,6 @@ func (_m *BalancePackage) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field amount_ledger", values[i])
 			} else if value.Valid {
 				_m.AmountLedger = value.Float64
-			}
-		case balancepackage.FieldCreditLedger:
-			if value, ok := values[i].(*sql.NullFloat64); !ok {
-				return fmt.Errorf("unexpected type %T for field credit_ledger", values[i])
-			} else if value.Valid {
-				_m.CreditLedger = value.Float64
-			}
-		case balancepackage.FieldBonusLedger:
-			if value, ok := values[i].(*sql.NullFloat64); !ok {
-				return fmt.Errorf("unexpected type %T for field bonus_ledger", values[i])
-			} else if value.Valid {
-				_m.BonusLedger = value.Float64
-			}
-		case balancepackage.FieldCreditMultiplier:
-			if value, ok := values[i].(*sql.NullFloat64); !ok {
-				return fmt.Errorf("unexpected type %T for field credit_multiplier", values[i])
-			} else if value.Valid {
-				_m.CreditMultiplier = value.Float64
 			}
 		case balancepackage.FieldActualCredits:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -232,15 +208,6 @@ func (_m *BalancePackage) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("amount_ledger=")
 	builder.WriteString(fmt.Sprintf("%v", _m.AmountLedger))
-	builder.WriteString(", ")
-	builder.WriteString("credit_ledger=")
-	builder.WriteString(fmt.Sprintf("%v", _m.CreditLedger))
-	builder.WriteString(", ")
-	builder.WriteString("bonus_ledger=")
-	builder.WriteString(fmt.Sprintf("%v", _m.BonusLedger))
-	builder.WriteString(", ")
-	builder.WriteString("credit_multiplier=")
-	builder.WriteString(fmt.Sprintf("%v", _m.CreditMultiplier))
 	builder.WriteString(", ")
 	builder.WriteString("actual_credits=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ActualCredits))

@@ -65,20 +65,17 @@ const (
 
 // PaymentConfig holds the payment system configuration.
 type BalanceRechargePackage struct {
-	ID               string  `json:"id"`
-	Label            string  `json:"label,omitempty"`
-	Description      string  `json:"description,omitempty"`
-	AmountLedger     float64 `json:"amount_ledger"`
-	CreditLedger     float64 `json:"credit_ledger"`
-	BonusLedger      float64 `json:"bonus_ledger"`
-	CreditMultiplier float64 `json:"credit_multiplier"`
-	ActualCredits    int64   `json:"actual_credits,omitempty"`
-	CreditUnit       string  `json:"credit_unit,omitempty"`
-	BalanceGroupID   *int64  `json:"balance_group_id,omitempty"`
-	GroupID          *int64  `json:"group_id,omitempty"`
-	Badge            string  `json:"badge,omitempty"`
-	Popular          bool    `json:"popular,omitempty"`
-	SortOrder        int     `json:"sort_order,omitempty"`
+	ID             string  `json:"id"`
+	Label          string  `json:"label,omitempty"`
+	Description    string  `json:"description,omitempty"`
+	AmountLedger   float64 `json:"amount_ledger"`
+	ActualCredits  int64   `json:"actual_credits,omitempty"`
+	CreditUnit     string  `json:"credit_unit,omitempty"`
+	BalanceGroupID *int64  `json:"balance_group_id,omitempty"`
+	GroupID        *int64  `json:"group_id,omitempty"`
+	Badge          string  `json:"badge,omitempty"`
+	Popular        bool    `json:"popular,omitempty"`
+	SortOrder      int     `json:"sort_order,omitempty"`
 }
 
 type PaymentConfig struct {
@@ -240,35 +237,33 @@ type UpdatePlanRequest struct {
 }
 
 type CreateBalancePackageRequest struct {
-	Code             string  `json:"code"`
-	Label            string  `json:"label"`
-	Description      string  `json:"description"`
-	AmountLedger     float64 `json:"amount_ledger"`
-	CreditLedger     float64 `json:"credit_ledger"`
-	CreditMultiplier float64 `json:"credit_multiplier"`
-	CreditUnit       string  `json:"credit_unit"`
-	BalanceGroupID   *int64  `json:"balance_group_id"`
-	GroupID          *int64  `json:"group_id"` // Backward-compatible alias for balance_group_id.
-	Badge            string  `json:"badge"`
-	Popular          bool    `json:"popular"`
-	ForSale          bool    `json:"for_sale"`
-	SortOrder        int     `json:"sort_order"`
+	Code           string  `json:"code"`
+	Label          string  `json:"label"`
+	Description    string  `json:"description"`
+	AmountLedger   float64 `json:"amount_ledger"`
+	ActualCredits  int64   `json:"actual_credits"`
+	CreditUnit     string  `json:"credit_unit"`
+	BalanceGroupID *int64  `json:"balance_group_id"`
+	GroupID        *int64  `json:"group_id"` // Backward-compatible alias for balance_group_id.
+	Badge          string  `json:"badge"`
+	Popular        bool    `json:"popular"`
+	ForSale        bool    `json:"for_sale"`
+	SortOrder      int     `json:"sort_order"`
 }
 
 type UpdateBalancePackageRequest struct {
-	Code             *string  `json:"code"`
-	Label            *string  `json:"label"`
-	Description      *string  `json:"description"`
-	AmountLedger     *float64 `json:"amount_ledger"`
-	CreditLedger     *float64 `json:"credit_ledger"`
-	CreditMultiplier *float64 `json:"credit_multiplier"`
-	CreditUnit       *string  `json:"credit_unit"`
-	BalanceGroupID   *int64   `json:"balance_group_id"`
-	GroupID          *int64   `json:"group_id"` // Backward-compatible alias for balance_group_id.
-	Badge            *string  `json:"badge"`
-	Popular          *bool    `json:"popular"`
-	ForSale          *bool    `json:"for_sale"`
-	SortOrder        *int     `json:"sort_order"`
+	Code           *string  `json:"code"`
+	Label          *string  `json:"label"`
+	Description    *string  `json:"description"`
+	AmountLedger   *float64 `json:"amount_ledger"`
+	ActualCredits  *int64   `json:"actual_credits"`
+	CreditUnit     *string  `json:"credit_unit"`
+	BalanceGroupID *int64   `json:"balance_group_id"`
+	GroupID        *int64   `json:"group_id"` // Backward-compatible alias for balance_group_id.
+	Badge          *string  `json:"badge"`
+	Popular        *bool    `json:"popular"`
+	ForSale        *bool    `json:"for_sale"`
+	SortOrder      *int     `json:"sort_order"`
 }
 
 // PaymentConfigService manages payment configuration and CRUD for
@@ -445,18 +440,6 @@ func parseBalanceRechargePackagesJSON(raw string) ([]BalanceRechargePackage, err
 		if math.IsNaN(pkg.AmountLedger) || math.IsInf(pkg.AmountLedger, 0) || pkg.AmountLedger <= 0 {
 			return nil, fmt.Errorf("package %s amount_ledger must be greater than 0", pkg.ID)
 		}
-		if pkg.CreditLedger <= 0 && pkg.CreditMultiplier > 0 {
-			pkg.CreditLedger = pkg.AmountLedger * pkg.CreditMultiplier
-		}
-		if math.IsNaN(pkg.CreditLedger) || math.IsInf(pkg.CreditLedger, 0) || pkg.CreditLedger <= 0 {
-			return nil, fmt.Errorf("package %s credit_ledger must be greater than 0", pkg.ID)
-		}
-		if pkg.CreditMultiplier <= 0 {
-			pkg.CreditMultiplier = pkg.CreditLedger / pkg.AmountLedger
-		}
-		if math.IsNaN(pkg.CreditMultiplier) || math.IsInf(pkg.CreditMultiplier, 0) || pkg.CreditMultiplier <= 0 {
-			return nil, fmt.Errorf("package %s credit_multiplier must be greater than 0", pkg.ID)
-		}
 		if pkg.BalanceGroupID == nil {
 			pkg.BalanceGroupID = pkg.GroupID
 		}
@@ -467,11 +450,6 @@ func parseBalanceRechargePackagesJSON(raw string) ([]BalanceRechargePackage, err
 			return nil, fmt.Errorf("package %s balance_group_id must be greater than 0", pkg.ID)
 		}
 		pkg.AmountLedger = roundLedgerAmountForCredit(pkg.AmountLedger, defaultLedgerCurrency)
-		pkg.CreditLedger = roundLedgerAmountForCredit(pkg.CreditLedger, defaultLedgerCurrency)
-		pkg.BonusLedger = roundLedgerAmountForCredit(pkg.CreditLedger-pkg.AmountLedger, defaultLedgerCurrency)
-		if pkg.BonusLedger < 0 {
-			pkg.BonusLedger = 0
-		}
 		out = append(out, pkg)
 	}
 	return out, nil

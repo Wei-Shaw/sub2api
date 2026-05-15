@@ -9135,36 +9135,30 @@ func (m *AuthIdentityChannelMutation) ResetEdge(name string) error {
 // BalancePackageMutation represents an operation that mutates the BalancePackage nodes in the graph.
 type BalancePackageMutation struct {
 	config
-	op                   Op
-	typ                  string
-	id                   *int64
-	code                 *string
-	label                *string
-	description          *string
-	amount_ledger        *float64
-	addamount_ledger     *float64
-	credit_ledger        *float64
-	addcredit_ledger     *float64
-	bonus_ledger         *float64
-	addbonus_ledger      *float64
-	credit_multiplier    *float64
-	addcredit_multiplier *float64
-	actual_credits       *int64
-	addactual_credits    *int64
-	credit_unit          *string
-	group_id             *int64
-	addgroup_id          *int64
-	badge                *string
-	popular              *bool
-	for_sale             *bool
-	sort_order           *int
-	addsort_order        *int
-	created_at           *time.Time
-	updated_at           *time.Time
-	clearedFields        map[string]struct{}
-	done                 bool
-	oldValue             func(context.Context) (*BalancePackage, error)
-	predicates           []predicate.BalancePackage
+	op                Op
+	typ               string
+	id                *int64
+	code              *string
+	label             *string
+	description       *string
+	amount_ledger     *float64
+	addamount_ledger  *float64
+	actual_credits    *int64
+	addactual_credits *int64
+	credit_unit       *string
+	group_id          *int64
+	addgroup_id       *int64
+	badge             *string
+	popular           *bool
+	for_sale          *bool
+	sort_order        *int
+	addsort_order     *int
+	created_at        *time.Time
+	updated_at        *time.Time
+	clearedFields     map[string]struct{}
+	done              bool
+	oldValue          func(context.Context) (*BalancePackage, error)
+	predicates        []predicate.BalancePackage
 }
 
 var _ ent.Mutation = (*BalancePackageMutation)(nil)
@@ -9427,174 +9421,6 @@ func (m *BalancePackageMutation) AddedAmountLedger() (r float64, exists bool) {
 func (m *BalancePackageMutation) ResetAmountLedger() {
 	m.amount_ledger = nil
 	m.addamount_ledger = nil
-}
-
-// SetCreditLedger sets the "credit_ledger" field.
-func (m *BalancePackageMutation) SetCreditLedger(f float64) {
-	m.credit_ledger = &f
-	m.addcredit_ledger = nil
-}
-
-// CreditLedger returns the value of the "credit_ledger" field in the mutation.
-func (m *BalancePackageMutation) CreditLedger() (r float64, exists bool) {
-	v := m.credit_ledger
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldCreditLedger returns the old "credit_ledger" field's value of the BalancePackage entity.
-// If the BalancePackage object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *BalancePackageMutation) OldCreditLedger(ctx context.Context) (v float64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldCreditLedger is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldCreditLedger requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldCreditLedger: %w", err)
-	}
-	return oldValue.CreditLedger, nil
-}
-
-// AddCreditLedger adds f to the "credit_ledger" field.
-func (m *BalancePackageMutation) AddCreditLedger(f float64) {
-	if m.addcredit_ledger != nil {
-		*m.addcredit_ledger += f
-	} else {
-		m.addcredit_ledger = &f
-	}
-}
-
-// AddedCreditLedger returns the value that was added to the "credit_ledger" field in this mutation.
-func (m *BalancePackageMutation) AddedCreditLedger() (r float64, exists bool) {
-	v := m.addcredit_ledger
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ResetCreditLedger resets all changes to the "credit_ledger" field.
-func (m *BalancePackageMutation) ResetCreditLedger() {
-	m.credit_ledger = nil
-	m.addcredit_ledger = nil
-}
-
-// SetBonusLedger sets the "bonus_ledger" field.
-func (m *BalancePackageMutation) SetBonusLedger(f float64) {
-	m.bonus_ledger = &f
-	m.addbonus_ledger = nil
-}
-
-// BonusLedger returns the value of the "bonus_ledger" field in the mutation.
-func (m *BalancePackageMutation) BonusLedger() (r float64, exists bool) {
-	v := m.bonus_ledger
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldBonusLedger returns the old "bonus_ledger" field's value of the BalancePackage entity.
-// If the BalancePackage object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *BalancePackageMutation) OldBonusLedger(ctx context.Context) (v float64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldBonusLedger is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldBonusLedger requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldBonusLedger: %w", err)
-	}
-	return oldValue.BonusLedger, nil
-}
-
-// AddBonusLedger adds f to the "bonus_ledger" field.
-func (m *BalancePackageMutation) AddBonusLedger(f float64) {
-	if m.addbonus_ledger != nil {
-		*m.addbonus_ledger += f
-	} else {
-		m.addbonus_ledger = &f
-	}
-}
-
-// AddedBonusLedger returns the value that was added to the "bonus_ledger" field in this mutation.
-func (m *BalancePackageMutation) AddedBonusLedger() (r float64, exists bool) {
-	v := m.addbonus_ledger
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ResetBonusLedger resets all changes to the "bonus_ledger" field.
-func (m *BalancePackageMutation) ResetBonusLedger() {
-	m.bonus_ledger = nil
-	m.addbonus_ledger = nil
-}
-
-// SetCreditMultiplier sets the "credit_multiplier" field.
-func (m *BalancePackageMutation) SetCreditMultiplier(f float64) {
-	m.credit_multiplier = &f
-	m.addcredit_multiplier = nil
-}
-
-// CreditMultiplier returns the value of the "credit_multiplier" field in the mutation.
-func (m *BalancePackageMutation) CreditMultiplier() (r float64, exists bool) {
-	v := m.credit_multiplier
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldCreditMultiplier returns the old "credit_multiplier" field's value of the BalancePackage entity.
-// If the BalancePackage object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *BalancePackageMutation) OldCreditMultiplier(ctx context.Context) (v float64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldCreditMultiplier is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldCreditMultiplier requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldCreditMultiplier: %w", err)
-	}
-	return oldValue.CreditMultiplier, nil
-}
-
-// AddCreditMultiplier adds f to the "credit_multiplier" field.
-func (m *BalancePackageMutation) AddCreditMultiplier(f float64) {
-	if m.addcredit_multiplier != nil {
-		*m.addcredit_multiplier += f
-	} else {
-		m.addcredit_multiplier = &f
-	}
-}
-
-// AddedCreditMultiplier returns the value that was added to the "credit_multiplier" field in this mutation.
-func (m *BalancePackageMutation) AddedCreditMultiplier() (r float64, exists bool) {
-	v := m.addcredit_multiplier
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ResetCreditMultiplier resets all changes to the "credit_multiplier" field.
-func (m *BalancePackageMutation) ResetCreditMultiplier() {
-	m.credit_multiplier = nil
-	m.addcredit_multiplier = nil
 }
 
 // SetActualCredits sets the "actual_credits" field.
@@ -10029,7 +9855,7 @@ func (m *BalancePackageMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *BalancePackageMutation) Fields() []string {
-	fields := make([]string, 0, 16)
+	fields := make([]string, 0, 13)
 	if m.code != nil {
 		fields = append(fields, balancepackage.FieldCode)
 	}
@@ -10041,15 +9867,6 @@ func (m *BalancePackageMutation) Fields() []string {
 	}
 	if m.amount_ledger != nil {
 		fields = append(fields, balancepackage.FieldAmountLedger)
-	}
-	if m.credit_ledger != nil {
-		fields = append(fields, balancepackage.FieldCreditLedger)
-	}
-	if m.bonus_ledger != nil {
-		fields = append(fields, balancepackage.FieldBonusLedger)
-	}
-	if m.credit_multiplier != nil {
-		fields = append(fields, balancepackage.FieldCreditMultiplier)
 	}
 	if m.actual_credits != nil {
 		fields = append(fields, balancepackage.FieldActualCredits)
@@ -10094,12 +9911,6 @@ func (m *BalancePackageMutation) Field(name string) (ent.Value, bool) {
 		return m.Description()
 	case balancepackage.FieldAmountLedger:
 		return m.AmountLedger()
-	case balancepackage.FieldCreditLedger:
-		return m.CreditLedger()
-	case balancepackage.FieldBonusLedger:
-		return m.BonusLedger()
-	case balancepackage.FieldCreditMultiplier:
-		return m.CreditMultiplier()
 	case balancepackage.FieldActualCredits:
 		return m.ActualCredits()
 	case balancepackage.FieldCreditUnit:
@@ -10135,12 +9946,6 @@ func (m *BalancePackageMutation) OldField(ctx context.Context, name string) (ent
 		return m.OldDescription(ctx)
 	case balancepackage.FieldAmountLedger:
 		return m.OldAmountLedger(ctx)
-	case balancepackage.FieldCreditLedger:
-		return m.OldCreditLedger(ctx)
-	case balancepackage.FieldBonusLedger:
-		return m.OldBonusLedger(ctx)
-	case balancepackage.FieldCreditMultiplier:
-		return m.OldCreditMultiplier(ctx)
 	case balancepackage.FieldActualCredits:
 		return m.OldActualCredits(ctx)
 	case balancepackage.FieldCreditUnit:
@@ -10195,27 +10000,6 @@ func (m *BalancePackageMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetAmountLedger(v)
-		return nil
-	case balancepackage.FieldCreditLedger:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetCreditLedger(v)
-		return nil
-	case balancepackage.FieldBonusLedger:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetBonusLedger(v)
-		return nil
-	case balancepackage.FieldCreditMultiplier:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetCreditMultiplier(v)
 		return nil
 	case balancepackage.FieldActualCredits:
 		v, ok := value.(int64)
@@ -10291,15 +10075,6 @@ func (m *BalancePackageMutation) AddedFields() []string {
 	if m.addamount_ledger != nil {
 		fields = append(fields, balancepackage.FieldAmountLedger)
 	}
-	if m.addcredit_ledger != nil {
-		fields = append(fields, balancepackage.FieldCreditLedger)
-	}
-	if m.addbonus_ledger != nil {
-		fields = append(fields, balancepackage.FieldBonusLedger)
-	}
-	if m.addcredit_multiplier != nil {
-		fields = append(fields, balancepackage.FieldCreditMultiplier)
-	}
 	if m.addactual_credits != nil {
 		fields = append(fields, balancepackage.FieldActualCredits)
 	}
@@ -10319,12 +10094,6 @@ func (m *BalancePackageMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
 	case balancepackage.FieldAmountLedger:
 		return m.AddedAmountLedger()
-	case balancepackage.FieldCreditLedger:
-		return m.AddedCreditLedger()
-	case balancepackage.FieldBonusLedger:
-		return m.AddedBonusLedger()
-	case balancepackage.FieldCreditMultiplier:
-		return m.AddedCreditMultiplier()
 	case balancepackage.FieldActualCredits:
 		return m.AddedActualCredits()
 	case balancepackage.FieldGroupID:
@@ -10346,27 +10115,6 @@ func (m *BalancePackageMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddAmountLedger(v)
-		return nil
-	case balancepackage.FieldCreditLedger:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddCreditLedger(v)
-		return nil
-	case balancepackage.FieldBonusLedger:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddBonusLedger(v)
-		return nil
-	case balancepackage.FieldCreditMultiplier:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddCreditMultiplier(v)
 		return nil
 	case balancepackage.FieldActualCredits:
 		v, ok := value.(int64)
@@ -10436,15 +10184,6 @@ func (m *BalancePackageMutation) ResetField(name string) error {
 		return nil
 	case balancepackage.FieldAmountLedger:
 		m.ResetAmountLedger()
-		return nil
-	case balancepackage.FieldCreditLedger:
-		m.ResetCreditLedger()
-		return nil
-	case balancepackage.FieldBonusLedger:
-		m.ResetBonusLedger()
-		return nil
-	case balancepackage.FieldCreditMultiplier:
-		m.ResetCreditMultiplier()
 		return nil
 	case balancepackage.FieldActualCredits:
 		m.ResetActualCredits()

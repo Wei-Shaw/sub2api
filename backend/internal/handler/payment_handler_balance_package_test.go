@@ -11,17 +11,14 @@ import (
 func TestBuildCheckoutBalancePackagesExposesActualCredits(t *testing.T) {
 	packages := buildCheckoutBalancePackages([]service.BalanceRechargePackage{
 		{
-			ID:               "standard",
-			Label:            "Standard",
-			AmountLedger:     7.34,
-			CreditLedger:     472.50,
-			BonusLedger:      465.16,
-			CreditMultiplier: 64.373297,
-			ActualCredits:    27000000,
-			CreditUnit:       "tokens",
-			Badge:            "Tiết kiệm 95.4%",
-			Popular:          true,
-			SortOrder:        10,
+			ID:            "standard",
+			Label:         "Standard",
+			AmountLedger:  7.34,
+			ActualCredits: 27000000,
+			CreditUnit:    "tokens",
+			Badge:         "Tiết kiệm 95.4%",
+			Popular:       true,
+			SortOrder:     10,
 		},
 	})
 
@@ -35,9 +32,6 @@ func TestBuildCheckoutBalancePackagesExposesActualCredits(t *testing.T) {
 		"id":"standard",
 		"label":"Standard",
 		"amount_ledger":7.34,
-		"credit_ledger":472.5,
-		"bonus_ledger":465.16,
-		"credit_multiplier":64.373297,
 		"actual_credits":27000000,
 		"credit_unit":"tokens",
 		"badge":"Tiết kiệm 95.4%",

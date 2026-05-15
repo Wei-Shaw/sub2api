@@ -17,28 +17,22 @@
         <textarea v-model="form.description" rows="2" class="input" />
       </div>
 
-      <div class="grid grid-cols-3 gap-4">
+      <div class="grid grid-cols-2 gap-4">
         <div>
-          <label class="input-label">{{ t('payment.admin.amountLedger') }} <span class="text-red-500">*</span></label>
+          <label class="input-label">{{ t('payment.admin.amountLedger') }} ($) <span class="text-red-500">*</span></label>
           <input v-model.number="form.amount_ledger" type="number" step="0.01" min="0.01" class="input" required />
         </div>
         <div>
-          <label class="input-label">{{ t('payment.admin.creditLedger') }} <span class="text-red-500">*</span></label>
-          <input v-model.number="form.credit_ledger" type="number" step="0.01" min="0.01" class="input" required />
-        </div>
-        <div>
-          <label class="input-label">{{ t('payment.admin.creditMultiplier') }}</label>
-          <input v-model.number="form.credit_multiplier" type="number" step="0.000001" min="0.000001" class="input" />
+          <label class="input-label">Tokens <span class="text-red-500">*</span></label>
+          <input v-model.number="form.actual_credits" type="number" step="1" min="1" class="input" required />
         </div>
       </div>
 
       <div class="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm dark:border-dark-600 dark:bg-dark-800">
-        <div class="grid grid-cols-3 gap-3">
+        <div class="grid grid-cols-2 gap-3">
           <div><span class="text-gray-500">{{ t('payment.admin.payAmount') }}:</span> <span class="font-medium">${{ safeNumber(form.amount_ledger).toFixed(2) }}</span></div>
-          <div><span class="text-gray-500">{{ t('payment.admin.creditAmount') }}:</span> <span class="font-medium">${{ safeNumber(form.credit_ledger).toFixed(2) }}</span></div>
-          <div><span class="text-gray-500">{{ t('payment.admin.bonusLedger') }}:</span> <span class="font-medium">${{ computedBonus.toFixed(2) }}</span></div>
+          <div><span class="text-gray-500">Tokens:</span> <span class="font-medium">{{ formatTokens(safeNumber(form.actual_credits)) }}</span></div>
         </div>
-        <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.balancePackageFormula') }}</p>
       </div>
 
       <div class="grid grid-cols-2 gap-4">
@@ -103,9 +97,15 @@ const groupsLoading = ref(false)
 const groups = ref<AdminGroup[]>([])
 const balanceGroups = computed(() => groups.value.filter((group) => group.status === 'active' && group.subscription_type === 'standard'))
 
-const form = reactive({ code: '', label: '', description: '', amount_ledger: 0, credit_ledger: 0, credit_multiplier: 0, balance_group_id: 0, badge: '', popular: false, for_sale: true, sort_order: 0 })
+const form = reactive({ code: '', label: '', description: '', amount_ledger: 0, actual_credits: 0, balance_group_id: 0, badge: '', popular: false, for_sale: true, sort_order: 0 })
 const safeNumber = (v: unknown) => Number.isFinite(Number(v)) ? Number(v) : 0
-const computedBonus = computed(() => Math.max(0, safeNumber(form.credit_ledger) - safeNumber(form.amount_ledger)))
+
+function formatTokens(value: number): string {
+  if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)}B`
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(0)}M`
+  if (value >= 1_000) return `${(value / 1_000).toFixed(0)}K`
+  return String(value)
+}
 
 watch(() => props.show, (visible) => {
   if (!visible) return
@@ -116,8 +116,7 @@ watch(() => props.show, (visible) => {
       label: props.pkg.label,
       description: props.pkg.description || '',
       amount_ledger: props.pkg.amount_ledger,
-      credit_ledger: props.pkg.credit_ledger,
-      credit_multiplier: props.pkg.credit_multiplier,
+      actual_credits: props.pkg.actual_credits || 0,
       balance_group_id: props.pkg.balance_group_id || props.pkg.group_id || 0,
       badge: props.pkg.badge || '',
       popular: !!props.pkg.popular,
@@ -125,15 +124,7 @@ watch(() => props.show, (visible) => {
       sort_order: props.pkg.sort_order || 0,
     })
   } else {
-    Object.assign(form, { code: '', label: '', description: '', amount_ledger: 0, credit_ledger: 0, credit_multiplier: 0, balance_group_id: 0, badge: '', popular: false, for_sale: true, sort_order: 0 })
-  }
-})
-
-watch(() => [form.amount_ledger, form.credit_ledger], () => {
-  const amount = safeNumber(form.amount_ledger)
-  const credit = safeNumber(form.credit_ledger)
-  if (amount > 0 && credit > 0) {
-    form.credit_multiplier = Number((credit / amount).toFixed(6))
+    Object.assign(form, { code: '', label: '', description: '', amount_ledger: 0, actual_credits: 0, balance_group_id: 0, badge: '', popular: false, for_sale: true, sort_order: 0 })
   }
 })
 
@@ -155,8 +146,7 @@ function buildPayload() {
     label: form.label.trim(),
     description: form.description.trim(),
     amount_ledger: safeNumber(form.amount_ledger),
-    credit_ledger: safeNumber(form.credit_ledger),
-    credit_multiplier: safeNumber(form.credit_multiplier),
+    actual_credits: safeNumber(form.actual_credits),
     balance_group_id: safeNumber(form.balance_group_id),
     badge: form.badge.trim(),
     popular: form.popular,
@@ -170,8 +160,12 @@ async function handleSave() {
     appStore.showError(t('payment.admin.packageRequired'))
     return
   }
-  if (safeNumber(form.amount_ledger) <= 0 || safeNumber(form.credit_ledger) <= 0) {
+  if (safeNumber(form.amount_ledger) <= 0) {
     appStore.showError(t('payment.admin.packageAmountRequired'))
+    return
+  }
+  if (safeNumber(form.actual_credits) <= 0) {
+    appStore.showError('Tokens must be > 0')
     return
   }
   if (safeNumber(form.balance_group_id) <= 0) {

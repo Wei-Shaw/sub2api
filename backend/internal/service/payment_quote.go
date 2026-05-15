@@ -286,11 +286,11 @@ func (s *PaymentService) applyPaymentQuoteToCreateOrder(req *CreateOrderRequest)
 	return nil
 }
 
-func createOrderAmountsFromPaymentQuote(claims *PaymentQuoteClaims) createOrderAmounts {
+func createOrderAmountsFromPaymentQuote(claims *PaymentQuoteClaims, cfg *PaymentConfig) createOrderAmounts {
 	if claims == nil {
 		return createOrderAmounts{}
 	}
-	return createOrderAmounts{
+	amounts := createOrderAmounts{
 		LedgerAmount:      claims.LedgerAmount,
 		PaymentAmount:     claims.PaymentAmount,
 		LimitLedgerAmount: claims.LimitAmount,
@@ -302,6 +302,14 @@ func createOrderAmountsFromPaymentQuote(claims *PaymentQuoteClaims) createOrderA
 			Timestamp:           time.Unix(claims.FXTimestamp, 0).UTC(),
 		},
 	}
+	// Resolve BalancePackage from the quote's balance_package_id so that
+	// downstream order creation can set balance_group_id correctly.
+	if bpid := strings.TrimSpace(claims.BalancePackageID); bpid != "" && cfg != nil {
+		if pkg, ok := findBalanceRechargePackage(cfg.BalancePackages, bpid); ok {
+			amounts.BalancePackage = pkg
+		}
+	}
+	return amounts
 }
 
 func paymentQuoteFloatEqual(a, b float64) bool {

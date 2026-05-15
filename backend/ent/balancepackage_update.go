@@ -91,69 +91,6 @@ func (_u *BalancePackageUpdate) AddAmountLedger(v float64) *BalancePackageUpdate
 	return _u
 }
 
-// SetCreditLedger sets the "credit_ledger" field.
-func (_u *BalancePackageUpdate) SetCreditLedger(v float64) *BalancePackageUpdate {
-	_u.mutation.ResetCreditLedger()
-	_u.mutation.SetCreditLedger(v)
-	return _u
-}
-
-// SetNillableCreditLedger sets the "credit_ledger" field if the given value is not nil.
-func (_u *BalancePackageUpdate) SetNillableCreditLedger(v *float64) *BalancePackageUpdate {
-	if v != nil {
-		_u.SetCreditLedger(*v)
-	}
-	return _u
-}
-
-// AddCreditLedger adds value to the "credit_ledger" field.
-func (_u *BalancePackageUpdate) AddCreditLedger(v float64) *BalancePackageUpdate {
-	_u.mutation.AddCreditLedger(v)
-	return _u
-}
-
-// SetBonusLedger sets the "bonus_ledger" field.
-func (_u *BalancePackageUpdate) SetBonusLedger(v float64) *BalancePackageUpdate {
-	_u.mutation.ResetBonusLedger()
-	_u.mutation.SetBonusLedger(v)
-	return _u
-}
-
-// SetNillableBonusLedger sets the "bonus_ledger" field if the given value is not nil.
-func (_u *BalancePackageUpdate) SetNillableBonusLedger(v *float64) *BalancePackageUpdate {
-	if v != nil {
-		_u.SetBonusLedger(*v)
-	}
-	return _u
-}
-
-// AddBonusLedger adds value to the "bonus_ledger" field.
-func (_u *BalancePackageUpdate) AddBonusLedger(v float64) *BalancePackageUpdate {
-	_u.mutation.AddBonusLedger(v)
-	return _u
-}
-
-// SetCreditMultiplier sets the "credit_multiplier" field.
-func (_u *BalancePackageUpdate) SetCreditMultiplier(v float64) *BalancePackageUpdate {
-	_u.mutation.ResetCreditMultiplier()
-	_u.mutation.SetCreditMultiplier(v)
-	return _u
-}
-
-// SetNillableCreditMultiplier sets the "credit_multiplier" field if the given value is not nil.
-func (_u *BalancePackageUpdate) SetNillableCreditMultiplier(v *float64) *BalancePackageUpdate {
-	if v != nil {
-		_u.SetCreditMultiplier(*v)
-	}
-	return _u
-}
-
-// AddCreditMultiplier adds value to the "credit_multiplier" field.
-func (_u *BalancePackageUpdate) AddCreditMultiplier(v float64) *BalancePackageUpdate {
-	_u.mutation.AddCreditMultiplier(v)
-	return _u
-}
-
 // SetActualCredits sets the "actual_credits" field.
 func (_u *BalancePackageUpdate) SetActualCredits(v int64) *BalancePackageUpdate {
 	_u.mutation.ResetActualCredits()
@@ -378,24 +315,6 @@ func (_u *BalancePackageUpdate) sqlSave(ctx context.Context) (_node int, err err
 	if value, ok := _u.mutation.AddedAmountLedger(); ok {
 		_spec.AddField(balancepackage.FieldAmountLedger, field.TypeFloat64, value)
 	}
-	if value, ok := _u.mutation.CreditLedger(); ok {
-		_spec.SetField(balancepackage.FieldCreditLedger, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedCreditLedger(); ok {
-		_spec.AddField(balancepackage.FieldCreditLedger, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.BonusLedger(); ok {
-		_spec.SetField(balancepackage.FieldBonusLedger, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedBonusLedger(); ok {
-		_spec.AddField(balancepackage.FieldBonusLedger, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.CreditMultiplier(); ok {
-		_spec.SetField(balancepackage.FieldCreditMultiplier, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedCreditMultiplier(); ok {
-		_spec.AddField(balancepackage.FieldCreditMultiplier, field.TypeFloat64, value)
-	}
 	if value, ok := _u.mutation.ActualCredits(); ok {
 		_spec.SetField(balancepackage.FieldActualCredits, field.TypeInt64, value)
 	}
@@ -512,69 +431,6 @@ func (_u *BalancePackageUpdateOne) SetNillableAmountLedger(v *float64) *BalanceP
 // AddAmountLedger adds value to the "amount_ledger" field.
 func (_u *BalancePackageUpdateOne) AddAmountLedger(v float64) *BalancePackageUpdateOne {
 	_u.mutation.AddAmountLedger(v)
-	return _u
-}
-
-// SetCreditLedger sets the "credit_ledger" field.
-func (_u *BalancePackageUpdateOne) SetCreditLedger(v float64) *BalancePackageUpdateOne {
-	_u.mutation.ResetCreditLedger()
-	_u.mutation.SetCreditLedger(v)
-	return _u
-}
-
-// SetNillableCreditLedger sets the "credit_ledger" field if the given value is not nil.
-func (_u *BalancePackageUpdateOne) SetNillableCreditLedger(v *float64) *BalancePackageUpdateOne {
-	if v != nil {
-		_u.SetCreditLedger(*v)
-	}
-	return _u
-}
-
-// AddCreditLedger adds value to the "credit_ledger" field.
-func (_u *BalancePackageUpdateOne) AddCreditLedger(v float64) *BalancePackageUpdateOne {
-	_u.mutation.AddCreditLedger(v)
-	return _u
-}
-
-// SetBonusLedger sets the "bonus_ledger" field.
-func (_u *BalancePackageUpdateOne) SetBonusLedger(v float64) *BalancePackageUpdateOne {
-	_u.mutation.ResetBonusLedger()
-	_u.mutation.SetBonusLedger(v)
-	return _u
-}
-
-// SetNillableBonusLedger sets the "bonus_ledger" field if the given value is not nil.
-func (_u *BalancePackageUpdateOne) SetNillableBonusLedger(v *float64) *BalancePackageUpdateOne {
-	if v != nil {
-		_u.SetBonusLedger(*v)
-	}
-	return _u
-}
-
-// AddBonusLedger adds value to the "bonus_ledger" field.
-func (_u *BalancePackageUpdateOne) AddBonusLedger(v float64) *BalancePackageUpdateOne {
-	_u.mutation.AddBonusLedger(v)
-	return _u
-}
-
-// SetCreditMultiplier sets the "credit_multiplier" field.
-func (_u *BalancePackageUpdateOne) SetCreditMultiplier(v float64) *BalancePackageUpdateOne {
-	_u.mutation.ResetCreditMultiplier()
-	_u.mutation.SetCreditMultiplier(v)
-	return _u
-}
-
-// SetNillableCreditMultiplier sets the "credit_multiplier" field if the given value is not nil.
-func (_u *BalancePackageUpdateOne) SetNillableCreditMultiplier(v *float64) *BalancePackageUpdateOne {
-	if v != nil {
-		_u.SetCreditMultiplier(*v)
-	}
-	return _u
-}
-
-// AddCreditMultiplier adds value to the "credit_multiplier" field.
-func (_u *BalancePackageUpdateOne) AddCreditMultiplier(v float64) *BalancePackageUpdateOne {
-	_u.mutation.AddCreditMultiplier(v)
 	return _u
 }
 
@@ -831,24 +687,6 @@ func (_u *BalancePackageUpdateOne) sqlSave(ctx context.Context) (_node *BalanceP
 	}
 	if value, ok := _u.mutation.AddedAmountLedger(); ok {
 		_spec.AddField(balancepackage.FieldAmountLedger, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.CreditLedger(); ok {
-		_spec.SetField(balancepackage.FieldCreditLedger, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedCreditLedger(); ok {
-		_spec.AddField(balancepackage.FieldCreditLedger, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.BonusLedger(); ok {
-		_spec.SetField(balancepackage.FieldBonusLedger, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedBonusLedger(); ok {
-		_spec.AddField(balancepackage.FieldBonusLedger, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.CreditMultiplier(); ok {
-		_spec.SetField(balancepackage.FieldCreditMultiplier, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedCreditMultiplier(); ok {
-		_spec.AddField(balancepackage.FieldCreditMultiplier, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.ActualCredits(); ok {
 		_spec.SetField(balancepackage.FieldActualCredits, field.TypeInt64, value)

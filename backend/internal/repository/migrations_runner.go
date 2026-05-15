@@ -340,8 +340,8 @@ func stripRedundantTransactionControl(content string) string {
 		return content
 	}
 
-	lines[firstExecutable] = ""
-	lines[lastExecutable] = ""
+	lines = append(lines[:lastExecutable], lines[lastExecutable+1:]...)
+	lines = append(lines[:firstExecutable], lines[firstExecutable+1:]...)
 	return strings.Join(lines, "\n")
 }
 

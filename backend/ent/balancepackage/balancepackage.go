@@ -21,12 +21,6 @@ const (
 	FieldDescription = "description"
 	// FieldAmountLedger holds the string denoting the amount_ledger field in the database.
 	FieldAmountLedger = "amount_ledger"
-	// FieldCreditLedger holds the string denoting the credit_ledger field in the database.
-	FieldCreditLedger = "credit_ledger"
-	// FieldBonusLedger holds the string denoting the bonus_ledger field in the database.
-	FieldBonusLedger = "bonus_ledger"
-	// FieldCreditMultiplier holds the string denoting the credit_multiplier field in the database.
-	FieldCreditMultiplier = "credit_multiplier"
 	// FieldActualCredits holds the string denoting the actual_credits field in the database.
 	FieldActualCredits = "actual_credits"
 	// FieldCreditUnit holds the string denoting the credit_unit field in the database.
@@ -56,9 +50,6 @@ var Columns = []string{
 	FieldLabel,
 	FieldDescription,
 	FieldAmountLedger,
-	FieldCreditLedger,
-	FieldBonusLedger,
-	FieldCreditMultiplier,
 	FieldActualCredits,
 	FieldCreditUnit,
 	FieldGroupID,
@@ -87,10 +78,6 @@ var (
 	LabelValidator func(string) error
 	// DefaultDescription holds the default value on creation for the "description" field.
 	DefaultDescription string
-	// DefaultBonusLedger holds the default value on creation for the "bonus_ledger" field.
-	DefaultBonusLedger float64
-	// DefaultCreditMultiplier holds the default value on creation for the "credit_multiplier" field.
-	DefaultCreditMultiplier float64
 	// DefaultActualCredits holds the default value on creation for the "actual_credits" field.
 	DefaultActualCredits int64
 	// DefaultCreditUnit holds the default value on creation for the "credit_unit" field.
@@ -141,21 +128,6 @@ func ByDescription(opts ...sql.OrderTermOption) OrderOption {
 // ByAmountLedger orders the results by the amount_ledger field.
 func ByAmountLedger(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAmountLedger, opts...).ToFunc()
-}
-
-// ByCreditLedger orders the results by the credit_ledger field.
-func ByCreditLedger(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldCreditLedger, opts...).ToFunc()
-}
-
-// ByBonusLedger orders the results by the bonus_ledger field.
-func ByBonusLedger(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldBonusLedger, opts...).ToFunc()
-}
-
-// ByCreditMultiplier orders the results by the credit_multiplier field.
-func ByCreditMultiplier(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldCreditMultiplier, opts...).ToFunc()
 }
 
 // ByActualCredits orders the results by the actual_credits field.

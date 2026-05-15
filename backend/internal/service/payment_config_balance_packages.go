@@ -11,9 +11,7 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
-const balancePackageCreditsPerLedgerUnit = 10000.0
-
-func validateBalancePackageRequired(code, label string, amountLedger, creditLedger, creditMultiplier float64) error {
+func validateBalancePackageRequired(code, label string, amountLedger float64) error {
 	if strings.TrimSpace(code) == "" {
 		return infraerrors.BadRequest("BALANCE_PACKAGE_CODE_REQUIRED", "package code is required")
 	}
@@ -22,15 +20,6 @@ func validateBalancePackageRequired(code, label string, amountLedger, creditLedg
 	}
 	if math.IsNaN(amountLedger) || math.IsInf(amountLedger, 0) || amountLedger <= 0 {
 		return infraerrors.BadRequest("BALANCE_PACKAGE_AMOUNT_INVALID", "amount must be > 0")
-	}
-	if creditLedger <= 0 && creditMultiplier <= 0 {
-		return infraerrors.BadRequest("BALANCE_PACKAGE_CREDIT_INVALID", "credit amount or multiplier is required")
-	}
-	if creditLedger > 0 && (math.IsNaN(creditLedger) || math.IsInf(creditLedger, 0)) {
-		return infraerrors.BadRequest("BALANCE_PACKAGE_CREDIT_INVALID", "credit amount must be valid")
-	}
-	if creditMultiplier > 0 && (math.IsNaN(creditMultiplier) || math.IsInf(creditMultiplier, 0)) {
-		return infraerrors.BadRequest("BALANCE_PACKAGE_MULTIPLIER_INVALID", "credit multiplier must be valid")
 	}
 	return nil
 }
@@ -45,29 +34,7 @@ func validateBalancePackagePatch(req UpdateBalancePackageRequest) error {
 	if req.AmountLedger != nil && (math.IsNaN(*req.AmountLedger) || math.IsInf(*req.AmountLedger, 0) || *req.AmountLedger <= 0) {
 		return infraerrors.BadRequest("BALANCE_PACKAGE_AMOUNT_INVALID", "amount must be > 0")
 	}
-	if req.CreditLedger != nil && (math.IsNaN(*req.CreditLedger) || math.IsInf(*req.CreditLedger, 0) || *req.CreditLedger <= 0) {
-		return infraerrors.BadRequest("BALANCE_PACKAGE_CREDIT_INVALID", "credit amount must be > 0")
-	}
-	if req.CreditMultiplier != nil && (math.IsNaN(*req.CreditMultiplier) || math.IsInf(*req.CreditMultiplier, 0) || *req.CreditMultiplier <= 0) {
-		return infraerrors.BadRequest("BALANCE_PACKAGE_MULTIPLIER_INVALID", "credit multiplier must be > 0")
-	}
 	return nil
-}
-
-func normalizeBalancePackageAmounts(amountLedger, creditLedger, creditMultiplier float64) (float64, float64, float64, float64) {
-	amountLedger = roundLedgerAmountForCredit(amountLedger, defaultLedgerCurrency)
-	if creditLedger <= 0 && creditMultiplier > 0 {
-		creditLedger = amountLedger * creditMultiplier
-	}
-	creditLedger = roundLedgerAmountForCredit(creditLedger, defaultLedgerCurrency)
-	if creditMultiplier <= 0 && amountLedger > 0 {
-		creditMultiplier = creditLedger / amountLedger
-	}
-	bonusLedger := roundLedgerAmountForCredit(creditLedger-amountLedger, defaultLedgerCurrency)
-	if bonusLedger < 0 {
-		bonusLedger = 0
-	}
-	return amountLedger, creditLedger, bonusLedger, creditMultiplier
 }
 
 func balancePackageGroupID(balanceGroupID, legacyGroupID *int64) *int64 {
@@ -80,17 +47,9 @@ func balancePackageGroupID(balanceGroupID, legacyGroupID *int64) *int64 {
 func normalizeBalancePackageCreditUnit(value string) string {
 	unit := strings.TrimSpace(value)
 	if unit == "" {
-		return "credits"
+		return "tokens"
 	}
 	return unit
-}
-
-func computeBalancePackageActualCredits(amountLedger, creditMultiplier float64, balanceGroup *dbent.Group) int64 {
-	if amountLedger <= 0 || creditMultiplier <= 0 || balanceGroup == nil || balanceGroup.RateMultiplier <= 0 {
-		return 0
-	}
-	ledgerCredits := amountLedger * creditMultiplier
-	return int64(math.Round((ledgerCredits / balanceGroup.RateMultiplier) * balancePackageCreditsPerLedgerUnit))
 }
 
 func (s *PaymentConfigService) loadBalancePackageGroup(ctx context.Context, groupID *int64) (*dbent.Group, error) {
@@ -131,24 +90,21 @@ func (s *PaymentConfigService) CreateBalancePackage(ctx context.Context, req Cre
 	if s == nil || s.entClient == nil {
 		return nil, infraerrors.ServiceUnavailable("BALANCE_PACKAGE_STORE_UNAVAILABLE", "balance package store is not available")
 	}
-	if err := validateBalancePackageRequired(req.Code, req.Label, req.AmountLedger, req.CreditLedger, req.CreditMultiplier); err != nil {
+	if err := validateBalancePackageRequired(req.Code, req.Label, req.AmountLedger); err != nil {
 		return nil, err
 	}
 	groupID := balancePackageGroupID(req.BalanceGroupID, req.GroupID)
-	balanceGroup, err := s.loadBalancePackageGroup(ctx, groupID)
+	_, err := s.loadBalancePackageGroup(ctx, groupID)
 	if err != nil {
 		return nil, err
 	}
-	amount, credit, bonus, multiplier := normalizeBalancePackageAmounts(req.AmountLedger, req.CreditLedger, req.CreditMultiplier)
-	actualCredits := computeBalancePackageActualCredits(amount, multiplier, balanceGroup)
+	amount := roundLedgerAmountForCredit(req.AmountLedger, defaultLedgerCurrency)
+	actualCredits := req.ActualCredits
 	b := s.entClient.BalancePackage.Create().
 		SetCode(strings.TrimSpace(req.Code)).
 		SetLabel(strings.TrimSpace(req.Label)).
 		SetDescription(strings.TrimSpace(req.Description)).
 		SetAmountLedger(amount).
-		SetCreditLedger(credit).
-		SetBonusLedger(bonus).
-		SetCreditMultiplier(multiplier).
 		SetActualCredits(actualCredits).
 		SetCreditUnit(normalizeBalancePackageCreditUnit(req.CreditUnit)).
 		SetBadge(strings.TrimSpace(req.Badge)).
@@ -170,7 +126,7 @@ func (s *PaymentConfigService) UpdateBalancePackage(ctx context.Context, id int6
 		return nil, err
 	}
 	groupID := balancePackageGroupID(req.BalanceGroupID, req.GroupID)
-	balanceGroup, err := s.loadBalancePackageGroup(ctx, groupID)
+	_, err := s.loadBalancePackageGroup(ctx, groupID)
 	if err != nil {
 		return nil, err
 	}
@@ -179,32 +135,21 @@ func (s *PaymentConfigService) UpdateBalancePackage(ctx context.Context, id int6
 		return nil, infraerrors.NotFound("BALANCE_PACKAGE_NOT_FOUND", "balance package not found")
 	}
 	if groupID == nil && existing.GroupID != nil {
-		balanceGroup, err = s.loadBalancePackageGroup(ctx, existing.GroupID)
+		_, err = s.loadBalancePackageGroup(ctx, existing.GroupID)
 		if err != nil {
 			return nil, err
 		}
 	}
 	amount := existing.AmountLedger
-	credit := existing.CreditLedger
-	multiplier := existing.CreditMultiplier
 	if req.AmountLedger != nil {
 		amount = *req.AmountLedger
 	}
-	if req.CreditLedger != nil {
-		credit = *req.CreditLedger
-	}
-	if req.CreditMultiplier != nil && req.CreditLedger == nil {
-		multiplier = *req.CreditMultiplier
-		credit = 0
-	}
-	amount, credit, bonus, multiplier := normalizeBalancePackageAmounts(amount, credit, multiplier)
-	actualCredits := computeBalancePackageActualCredits(amount, multiplier, balanceGroup)
+	amount = roundLedgerAmountForCredit(amount, defaultLedgerCurrency)
 	u := s.entClient.BalancePackage.UpdateOneID(id).
-		SetAmountLedger(amount).
-		SetCreditLedger(credit).
-		SetBonusLedger(bonus).
-		SetCreditMultiplier(multiplier).
-		SetActualCredits(actualCredits)
+		SetAmountLedger(amount)
+	if req.ActualCredits != nil {
+		u.SetActualCredits(*req.ActualCredits)
+	}
 	if req.Code != nil {
 		u.SetCode(strings.TrimSpace(*req.Code))
 	}
@@ -249,20 +194,17 @@ func balancePackageEntitiesToConfig(packages []*dbent.BalancePackage) []BalanceR
 			continue
 		}
 		out = append(out, BalanceRechargePackage{
-			ID:               pkg.Code,
-			Label:            pkg.Label,
-			Description:      pkg.Description,
-			AmountLedger:     pkg.AmountLedger,
-			CreditLedger:     pkg.CreditLedger,
-			BonusLedger:      pkg.BonusLedger,
-			CreditMultiplier: pkg.CreditMultiplier,
-			ActualCredits:    pkg.ActualCredits,
-			CreditUnit:       normalizeBalancePackageCreditUnit(pkg.CreditUnit),
-			BalanceGroupID:   pkg.GroupID,
-			GroupID:          pkg.GroupID,
-			Badge:            pkg.Badge,
-			Popular:          pkg.Popular,
-			SortOrder:        pkg.SortOrder,
+			ID:             pkg.Code,
+			Label:          pkg.Label,
+			Description:    pkg.Description,
+			AmountLedger:   pkg.AmountLedger,
+			ActualCredits:  pkg.ActualCredits,
+			CreditUnit:     normalizeBalancePackageCreditUnit(pkg.CreditUnit),
+			BalanceGroupID: pkg.GroupID,
+			GroupID:        pkg.GroupID,
+			Badge:          pkg.Badge,
+			Popular:        pkg.Popular,
+			SortOrder:      pkg.SortOrder,
 		})
 	}
 	return out
