@@ -20,7 +20,7 @@ export const useAppStore = defineStore('app', () => {
   // Public settings cache state
   const publicSettingsLoaded = ref<boolean>(false)
   const publicSettingsLoading = ref<boolean>(false)
-  const siteName = ref<string>('CloseAI')
+  const siteName = ref<string>('Ikun')
   const siteLogo = ref<string>('/logo.png')
   const siteVersion = ref<string>('')
   const contactInfo = ref<string>('')
@@ -228,7 +228,7 @@ export const useAppStore = defineStore('app', () => {
       window.__APP_CONFIG__ = { ...config }
     }
     cachedPublicSettings.value = config
-    siteName.value = config.site_name || 'CloseAI'
+    siteName.value = config.site_name || 'Ikun'
     siteLogo.value = config.site_logo || '/logo.png'
     siteVersion.value = config.version || ''
     contactInfo.value = config.contact_info || ''
@@ -272,6 +272,7 @@ export const useAppStore = defineStore('app', () => {
         home_content: '',
         hide_ccs_import_button: false,
         payment_enabled: false,
+        payment_display_mode: 'off',
         table_default_page_size: 20,
         table_page_size_options: [10, 20, 50, 100],
         custom_menu_items: [],

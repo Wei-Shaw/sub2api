@@ -99,6 +99,21 @@ func ProductName(v string) predicate.SubscriptionPlan {
 	return predicate.SubscriptionPlan(sql.FieldEQ(FieldProductName, v))
 }
 
+// ExternalSubscribeEnabled applies equality check predicate on the "external_subscribe_enabled" field. It's identical to ExternalSubscribeEnabledEQ.
+func ExternalSubscribeEnabled(v bool) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldEQ(FieldExternalSubscribeEnabled, v))
+}
+
+// ExternalSubscribeURL applies equality check predicate on the "external_subscribe_url" field. It's identical to ExternalSubscribeURLEQ.
+func ExternalSubscribeURL(v string) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldEQ(FieldExternalSubscribeURL, v))
+}
+
+// ExternalSubscribeDialogText applies equality check predicate on the "external_subscribe_dialog_text" field. It's identical to ExternalSubscribeDialogTextEQ.
+func ExternalSubscribeDialogText(v string) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldEQ(FieldExternalSubscribeDialogText, v))
+}
+
 // ForSale applies equality check predicate on the "for_sale" field. It's identical to ForSaleEQ.
 func ForSale(v bool) predicate.SubscriptionPlan {
 	return predicate.SubscriptionPlan(sql.FieldEQ(FieldForSale, v))
@@ -612,6 +627,146 @@ func ProductNameEqualFold(v string) predicate.SubscriptionPlan {
 // ProductNameContainsFold applies the ContainsFold predicate on the "product_name" field.
 func ProductNameContainsFold(v string) predicate.SubscriptionPlan {
 	return predicate.SubscriptionPlan(sql.FieldContainsFold(FieldProductName, v))
+}
+
+// ExternalSubscribeEnabledEQ applies the EQ predicate on the "external_subscribe_enabled" field.
+func ExternalSubscribeEnabledEQ(v bool) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldEQ(FieldExternalSubscribeEnabled, v))
+}
+
+// ExternalSubscribeEnabledNEQ applies the NEQ predicate on the "external_subscribe_enabled" field.
+func ExternalSubscribeEnabledNEQ(v bool) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldNEQ(FieldExternalSubscribeEnabled, v))
+}
+
+// ExternalSubscribeURLEQ applies the EQ predicate on the "external_subscribe_url" field.
+func ExternalSubscribeURLEQ(v string) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldEQ(FieldExternalSubscribeURL, v))
+}
+
+// ExternalSubscribeURLNEQ applies the NEQ predicate on the "external_subscribe_url" field.
+func ExternalSubscribeURLNEQ(v string) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldNEQ(FieldExternalSubscribeURL, v))
+}
+
+// ExternalSubscribeURLIn applies the In predicate on the "external_subscribe_url" field.
+func ExternalSubscribeURLIn(vs ...string) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldIn(FieldExternalSubscribeURL, vs...))
+}
+
+// ExternalSubscribeURLNotIn applies the NotIn predicate on the "external_subscribe_url" field.
+func ExternalSubscribeURLNotIn(vs ...string) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldNotIn(FieldExternalSubscribeURL, vs...))
+}
+
+// ExternalSubscribeURLGT applies the GT predicate on the "external_subscribe_url" field.
+func ExternalSubscribeURLGT(v string) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldGT(FieldExternalSubscribeURL, v))
+}
+
+// ExternalSubscribeURLGTE applies the GTE predicate on the "external_subscribe_url" field.
+func ExternalSubscribeURLGTE(v string) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldGTE(FieldExternalSubscribeURL, v))
+}
+
+// ExternalSubscribeURLLT applies the LT predicate on the "external_subscribe_url" field.
+func ExternalSubscribeURLLT(v string) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldLT(FieldExternalSubscribeURL, v))
+}
+
+// ExternalSubscribeURLLTE applies the LTE predicate on the "external_subscribe_url" field.
+func ExternalSubscribeURLLTE(v string) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldLTE(FieldExternalSubscribeURL, v))
+}
+
+// ExternalSubscribeURLContains applies the Contains predicate on the "external_subscribe_url" field.
+func ExternalSubscribeURLContains(v string) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldContains(FieldExternalSubscribeURL, v))
+}
+
+// ExternalSubscribeURLHasPrefix applies the HasPrefix predicate on the "external_subscribe_url" field.
+func ExternalSubscribeURLHasPrefix(v string) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldHasPrefix(FieldExternalSubscribeURL, v))
+}
+
+// ExternalSubscribeURLHasSuffix applies the HasSuffix predicate on the "external_subscribe_url" field.
+func ExternalSubscribeURLHasSuffix(v string) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldHasSuffix(FieldExternalSubscribeURL, v))
+}
+
+// ExternalSubscribeURLEqualFold applies the EqualFold predicate on the "external_subscribe_url" field.
+func ExternalSubscribeURLEqualFold(v string) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldEqualFold(FieldExternalSubscribeURL, v))
+}
+
+// ExternalSubscribeURLContainsFold applies the ContainsFold predicate on the "external_subscribe_url" field.
+func ExternalSubscribeURLContainsFold(v string) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldContainsFold(FieldExternalSubscribeURL, v))
+}
+
+// ExternalSubscribeDialogTextEQ applies the EQ predicate on the "external_subscribe_dialog_text" field.
+func ExternalSubscribeDialogTextEQ(v string) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldEQ(FieldExternalSubscribeDialogText, v))
+}
+
+// ExternalSubscribeDialogTextNEQ applies the NEQ predicate on the "external_subscribe_dialog_text" field.
+func ExternalSubscribeDialogTextNEQ(v string) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldNEQ(FieldExternalSubscribeDialogText, v))
+}
+
+// ExternalSubscribeDialogTextIn applies the In predicate on the "external_subscribe_dialog_text" field.
+func ExternalSubscribeDialogTextIn(vs ...string) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldIn(FieldExternalSubscribeDialogText, vs...))
+}
+
+// ExternalSubscribeDialogTextNotIn applies the NotIn predicate on the "external_subscribe_dialog_text" field.
+func ExternalSubscribeDialogTextNotIn(vs ...string) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldNotIn(FieldExternalSubscribeDialogText, vs...))
+}
+
+// ExternalSubscribeDialogTextGT applies the GT predicate on the "external_subscribe_dialog_text" field.
+func ExternalSubscribeDialogTextGT(v string) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldGT(FieldExternalSubscribeDialogText, v))
+}
+
+// ExternalSubscribeDialogTextGTE applies the GTE predicate on the "external_subscribe_dialog_text" field.
+func ExternalSubscribeDialogTextGTE(v string) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldGTE(FieldExternalSubscribeDialogText, v))
+}
+
+// ExternalSubscribeDialogTextLT applies the LT predicate on the "external_subscribe_dialog_text" field.
+func ExternalSubscribeDialogTextLT(v string) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldLT(FieldExternalSubscribeDialogText, v))
+}
+
+// ExternalSubscribeDialogTextLTE applies the LTE predicate on the "external_subscribe_dialog_text" field.
+func ExternalSubscribeDialogTextLTE(v string) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldLTE(FieldExternalSubscribeDialogText, v))
+}
+
+// ExternalSubscribeDialogTextContains applies the Contains predicate on the "external_subscribe_dialog_text" field.
+func ExternalSubscribeDialogTextContains(v string) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldContains(FieldExternalSubscribeDialogText, v))
+}
+
+// ExternalSubscribeDialogTextHasPrefix applies the HasPrefix predicate on the "external_subscribe_dialog_text" field.
+func ExternalSubscribeDialogTextHasPrefix(v string) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldHasPrefix(FieldExternalSubscribeDialogText, v))
+}
+
+// ExternalSubscribeDialogTextHasSuffix applies the HasSuffix predicate on the "external_subscribe_dialog_text" field.
+func ExternalSubscribeDialogTextHasSuffix(v string) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldHasSuffix(FieldExternalSubscribeDialogText, v))
+}
+
+// ExternalSubscribeDialogTextEqualFold applies the EqualFold predicate on the "external_subscribe_dialog_text" field.
+func ExternalSubscribeDialogTextEqualFold(v string) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldEqualFold(FieldExternalSubscribeDialogText, v))
+}
+
+// ExternalSubscribeDialogTextContainsFold applies the ContainsFold predicate on the "external_subscribe_dialog_text" field.
+func ExternalSubscribeDialogTextContainsFold(v string) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldContainsFold(FieldExternalSubscribeDialogText, v))
 }
 
 // ForSaleEQ applies the EQ predicate on the "for_sale" field.

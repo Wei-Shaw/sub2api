@@ -15,6 +15,7 @@
             </template>
             <template #option="{ option, selected }">
               <span class="flex-1 truncate text-left" :class="option.platform ? platformTextClass(String(option.platform)) : ''">{{ option.label }}</span>
+              <span v-if="option.subscriptionType" class="ml-2 shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500 dark:bg-dark-700 dark:text-gray-400">{{ option.subscriptionTypeLabel }}</span>
               <Icon v-if="selected" name="check" size="sm" class="text-primary-500" :stroke-width="2" />
             </template>
           </Select>
@@ -49,6 +50,66 @@
         <label class="input-label">{{ t('payment.admin.features') }}</label>
         <textarea v-model="planFeaturesText" rows="3" class="input" :placeholder="t('payment.admin.featuresPlaceholder')"></textarea>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.featuresHint') }}</p>
+      </div>
+      <div class="rounded-lg border border-gray-200 p-3 dark:border-dark-600">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('payment.admin.externalSubscribe') }}</label>
+            <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.externalSubscribeHint') }}</p>
+          </div>
+          <button
+            type="button"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              planForm.external_subscribe_enabled ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600'
+            ]"
+            @click="planForm.external_subscribe_enabled = !planForm.external_subscribe_enabled"
+          >
+            <span :class="[
+              'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+              planForm.external_subscribe_enabled ? 'translate-x-5' : 'translate-x-0'
+            ]" />
+          </button>
+        </div>
+        <div class="mt-3">
+          <label class="input-label">{{ t('payment.admin.externalSubscribeTargetType') }}</label>
+          <div class="grid grid-cols-1 gap-2 rounded-lg bg-gray-100 p-1 dark:bg-dark-800 sm:grid-cols-2">
+            <button
+              type="button"
+              class="rounded-md px-3 py-2 text-sm font-medium transition-colors"
+              :class="externalSubscribeTargetType === 'url'
+                ? 'bg-white text-primary-700 shadow-sm dark:bg-dark-700 dark:text-primary-300'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'"
+              @click="setExternalSubscribeTargetType('url')"
+            >
+              {{ t('payment.admin.externalSubscribeTargetUrl') }}
+            </button>
+            <button
+              type="button"
+              class="rounded-md px-3 py-2 text-sm font-medium transition-colors"
+              :class="externalSubscribeTargetType === 'dialog'
+                ? 'bg-white text-primary-700 shadow-sm dark:bg-dark-700 dark:text-primary-300'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'"
+              @click="setExternalSubscribeTargetType('dialog')"
+            >
+              {{ t('payment.admin.externalSubscribeTargetDialog') }}
+            </button>
+          </div>
+        </div>
+        <div v-if="externalSubscribeTargetType === 'url'" class="mt-3">
+          <label class="input-label">{{ t('payment.admin.externalSubscribeUrl') }}</label>
+          <input v-model.trim="planForm.external_subscribe_url" type="url" class="input" :placeholder="t('payment.admin.externalSubscribeUrlPlaceholder')" />
+        </div>
+        <div v-else class="mt-3">
+          <label class="input-label">{{ t('payment.admin.externalSubscribeDialogText') }}</label>
+          <textarea
+            v-model.trim="planForm.external_subscribe_dialog_text"
+            rows="4"
+            class="input"
+            :placeholder="t('payment.admin.externalSubscribeDialogTextPlaceholder')"
+          ></textarea>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.externalSubscribeDialogTextHint') }}</p>
+        </div>
       </div>
       <div class="flex items-center gap-3">
         <label class="text-sm text-gray-700 dark:text-gray-300">{{ t('payment.admin.forSale') }}</label>
@@ -94,19 +155,21 @@ const props = defineProps<{
   show: boolean
   plan: SubscriptionPlan | null
   groups: AdminGroup[]
+  initialExternalSubscribeEnabled?: boolean
 }>()
 
 const emit = defineEmits<{
   close: []
-  saved: []
+  saved: [plan: SubscriptionPlan]
 }>()
 
 const { t } = useI18n()
 const appStore = useAppStore()
 
 const saving = ref(false)
-const planForm = reactive({ name: '', group_id: null as number | null, description: '', price: 0, original_price: 0, validity_days: 30, validity_unit: 'days', sort_order: 0, for_sale: true })
+const planForm = reactive({ name: '', group_id: null as number | null, description: '', price: 0, original_price: 0, validity_days: 30, validity_unit: 'days', sort_order: 0, external_subscribe_enabled: false, external_subscribe_url: '', external_subscribe_dialog_text: '', for_sale: true })
 const planFeaturesText = ref('')
+const externalSubscribeTargetType = ref<'url' | 'dialog'>('url')
 
 const validityUnitOptions = computed(() => [
   { value: 'days', label: t('payment.admin.days') },
@@ -116,11 +179,14 @@ const validityUnitOptions = computed(() => [
 
 const groupOptions = computed(() =>
   props.groups
-    .filter(g => g.subscription_type === 'subscription')
     .map(g => ({
       value: g.id,
       label: `${g.name} — ${g.platform} (${g.rate_multiplier}x)`,
       platform: g.platform,
+      subscriptionType: g.subscription_type,
+      subscriptionTypeLabel: g.subscription_type === 'subscription'
+        ? t('admin.groups.subscription.subscription')
+        : t('admin.groups.subscription.standard'),
     })),
 )
 
@@ -129,21 +195,51 @@ const selectedGroupInfo = computed(() => {
   return props.groups.find(g => g.id === planForm.group_id) || null
 })
 
+function inferExternalSubscribeTargetType(plan: SubscriptionPlan | null): 'url' | 'dialog' {
+  if (plan?.external_subscribe_dialog_text?.trim()) return 'dialog'
+  return 'url'
+}
+
+function setExternalSubscribeTargetType(type: 'url' | 'dialog') {
+  externalSubscribeTargetType.value = type
+  if (type === 'url') {
+    planForm.external_subscribe_dialog_text = ''
+    return
+  }
+  planForm.external_subscribe_url = ''
+}
+
 // Reset form when dialog opens
 watch(() => props.show, (visible) => {
   if (!visible) return
   if (props.plan) {
-    Object.assign(planForm, { name: props.plan.name, group_id: props.plan.group_id, description: props.plan.description, price: props.plan.price, original_price: props.plan.original_price || 0, validity_days: props.plan.validity_days, validity_unit: props.plan.validity_unit || 'days', sort_order: props.plan.sort_order || 0, for_sale: props.plan.for_sale })
+    Object.assign(planForm, { name: props.plan.name, group_id: props.plan.group_id, description: props.plan.description, price: props.plan.price, original_price: props.plan.original_price || 0, validity_days: props.plan.validity_days, validity_unit: props.plan.validity_unit || 'days', sort_order: props.plan.sort_order || 0, external_subscribe_enabled: props.initialExternalSubscribeEnabled ?? props.plan.external_subscribe_enabled === true, external_subscribe_url: props.plan.external_subscribe_url || '', external_subscribe_dialog_text: props.plan.external_subscribe_dialog_text || '', for_sale: props.plan.for_sale })
+    externalSubscribeTargetType.value = inferExternalSubscribeTargetType(props.plan)
     planFeaturesText.value = (props.plan.features || []).join('\n')
   } else {
-    Object.assign(planForm, { name: '', group_id: null, description: '', price: 0, original_price: 0, validity_days: 30, validity_unit: 'days', sort_order: 0, for_sale: true })
+    Object.assign(planForm, { name: '', group_id: null, description: '', price: 0, original_price: 0, validity_days: 30, validity_unit: 'days', sort_order: 0, external_subscribe_enabled: false, external_subscribe_url: '', external_subscribe_dialog_text: '', for_sale: true })
+    externalSubscribeTargetType.value = 'url'
     planFeaturesText.value = ''
   }
 })
 
 /** Build request payload with snake_case keys matching backend JSON tags */
+function normalizeExternalSubscribeUrl(raw: string): string {
+  const trimmed = raw.trim()
+  if (!trimmed) return ''
+  if (/^[a-z][a-z\d+\-.]*:\/\//i.test(trimmed)) return trimmed
+  return `https://${trimmed}`
+}
+
 function buildPlanPayload() {
   const features = planFeaturesText.value.split('\n').map(f => f.trim()).filter(Boolean).join('\n')
+  const useDialogTarget = externalSubscribeTargetType.value === 'dialog'
+  const externalSubscribeUrl = !useDialogTarget
+    ? normalizeExternalSubscribeUrl(planForm.external_subscribe_url)
+    : ''
+  const externalSubscribeDialogText = useDialogTarget
+    ? planForm.external_subscribe_dialog_text.trim()
+    : ''
   return {
     name: planForm.name,
     group_id: planForm.group_id,
@@ -153,6 +249,9 @@ function buildPlanPayload() {
     validity_days: planForm.validity_days,
     validity_unit: planForm.validity_unit,
     sort_order: planForm.sort_order,
+    external_subscribe_enabled: planForm.external_subscribe_enabled,
+    external_subscribe_url: externalSubscribeUrl,
+    external_subscribe_dialog_text: externalSubscribeDialogText,
     for_sale: planForm.for_sale,
     features,
   }
@@ -171,14 +270,31 @@ async function handleSavePlan() {
     appStore.showError(t('payment.admin.validityDaysRequired'))
     return
   }
+  if (
+    planForm.external_subscribe_enabled &&
+    externalSubscribeTargetType.value === 'url' &&
+    !normalizeExternalSubscribeUrl(planForm.external_subscribe_url)
+  ) {
+    appStore.showError(t('payment.admin.externalSubscribeUrlRequired'))
+    return
+  }
+  if (
+    planForm.external_subscribe_enabled &&
+    externalSubscribeTargetType.value === 'dialog' &&
+    !planForm.external_subscribe_dialog_text.trim()
+  ) {
+    appStore.showError(t('payment.admin.externalSubscribeDialogTextRequired'))
+    return
+  }
   saving.value = true
   try {
     const data = buildPlanPayload()
-    if (props.plan) { await adminPaymentAPI.updatePlan(props.plan.id, data) }
-    else { await adminPaymentAPI.createPlan(data) }
+    const response = props.plan
+      ? await adminPaymentAPI.updatePlan(props.plan.id, data)
+      : await adminPaymentAPI.createPlan(data)
     appStore.showSuccess(t('common.saved'))
+    emit('saved', response.data)
     emit('close')
-    emit('saved')
   } catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) }
   finally { saving.value = false }
 }

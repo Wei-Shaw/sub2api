@@ -10,9 +10,9 @@
         <!-- Row 1: Core Stats -->
         <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <!-- Total API Keys -->
-          <div class="card p-4">
+          <div class="card dashboard-stat-card dashboard-stat-card-blue p-4">
             <div class="flex items-center gap-3">
-              <div class="rounded-lg bg-blue-100 p-2 dark:bg-blue-900/30">
+              <div class="dashboard-stat-icon bg-blue-100 dark:bg-blue-900/30">
                 <Icon name="key" size="md" class="text-blue-600 dark:text-blue-400" :stroke-width="2" />
               </div>
               <div>
@@ -30,10 +30,10 @@
           </div>
 
           <!-- Service Accounts -->
-          <div class="card p-4">
+          <div class="card dashboard-stat-card dashboard-stat-card-primary p-4">
             <div class="flex items-center gap-3">
-              <div class="rounded-lg bg-purple-100 p-2 dark:bg-purple-900/30">
-                <Icon name="server" size="md" class="text-purple-600 dark:text-purple-400" :stroke-width="2" />
+              <div class="dashboard-stat-icon bg-primary-100 dark:bg-primary-900/30">
+                <Icon name="server" size="md" class="text-primary-700 dark:text-primary-300" :stroke-width="2" />
               </div>
               <div>
                 <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
@@ -55,9 +55,9 @@
           </div>
 
           <!-- Today Requests -->
-          <div class="card p-4">
+          <div class="card dashboard-stat-card dashboard-stat-card-emerald p-4">
             <div class="flex items-center gap-3">
-              <div class="rounded-lg bg-green-100 p-2 dark:bg-green-900/30">
+              <div class="dashboard-stat-icon bg-green-100 dark:bg-green-900/30">
                 <Icon name="chart" size="md" class="text-green-600 dark:text-green-400" :stroke-width="2" />
               </div>
               <div>
@@ -75,9 +75,9 @@
           </div>
 
           <!-- New Users Today -->
-          <div class="card p-4">
+          <div class="card dashboard-stat-card dashboard-stat-card-emerald p-4">
             <div class="flex items-center gap-3">
-              <div class="rounded-lg bg-emerald-100 p-2 dark:bg-emerald-900/30">
+              <div class="dashboard-stat-icon bg-emerald-100 dark:bg-emerald-900/30">
                 <Icon name="userPlus" size="md" class="text-emerald-600 dark:text-emerald-400" :stroke-width="2" />
               </div>
               <div>
@@ -98,10 +98,10 @@
         <!-- Row 2: Token Stats -->
         <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <!-- Today Tokens -->
-          <div class="card p-4">
+          <div class="card dashboard-stat-card dashboard-stat-card-primary p-4">
             <div class="flex items-center gap-3">
-              <div class="rounded-lg bg-amber-100 p-2 dark:bg-amber-900/30">
-                <Icon name="cube" size="md" class="text-amber-600 dark:text-amber-400" :stroke-width="2" />
+              <div class="dashboard-stat-icon bg-primary-100 dark:bg-primary-900/30">
+                <Icon name="cube" size="md" class="text-primary-700 dark:text-primary-300" :stroke-width="2" />
               </div>
               <div>
                 <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
@@ -134,10 +134,10 @@
           </div>
 
           <!-- Total Tokens -->
-          <div class="card p-4">
+          <div class="card dashboard-stat-card dashboard-stat-card-cyan p-4">
             <div class="flex items-center gap-3">
-              <div class="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
-                <Icon name="database" size="md" class="text-indigo-600 dark:text-indigo-400" :stroke-width="2" />
+              <div class="dashboard-stat-icon bg-cyan-100 dark:bg-cyan-900/30">
+                <Icon name="database" size="md" class="text-cyan-700 dark:text-cyan-300" :stroke-width="2" />
               </div>
               <div>
                 <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
@@ -170,10 +170,10 @@
           </div>
 
           <!-- Performance (RPM/TPM) -->
-          <div class="card p-4">
+          <div class="card dashboard-stat-card dashboard-stat-card-teal p-4">
             <div class="flex items-center gap-3">
-              <div class="rounded-lg bg-violet-100 p-2 dark:bg-violet-900/30">
-                <Icon name="bolt" size="md" class="text-violet-600 dark:text-violet-400" :stroke-width="2" />
+              <div class="dashboard-stat-icon bg-teal-100 p-2 dark:bg-teal-900/30">
+                <Icon name="bolt" size="md" class="text-teal-700 dark:text-teal-300" :stroke-width="2" />
               </div>
               <div class="flex-1">
                 <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
@@ -186,7 +186,7 @@
                   <span class="text-xs text-gray-500 dark:text-gray-400">RPM</span>
                 </div>
                 <div class="flex items-baseline gap-2">
-                  <p class="text-sm font-semibold text-violet-600 dark:text-violet-400">
+                  <p class="text-sm font-semibold text-teal-700 dark:text-teal-300">
                     {{ formatTokens(stats.tpm) }}
                   </p>
                   <span class="text-xs text-gray-500 dark:text-gray-400">TPM</span>
@@ -196,9 +196,9 @@
           </div>
 
           <!-- Avg Response Time -->
-          <div class="card p-4">
+          <div class="card dashboard-stat-card dashboard-stat-card-rose p-4">
             <div class="flex items-center gap-3">
-              <div class="rounded-lg bg-rose-100 p-2 dark:bg-rose-900/30">
+              <div class="dashboard-stat-icon bg-rose-100 dark:bg-rose-900/30">
                 <Icon name="clock" size="md" class="text-rose-600 dark:text-rose-400" :stroke-width="2" />
               </div>
               <div>
@@ -491,18 +491,18 @@ const userTrendChartData = computed(() => {
 
   const sortedDates = Array.from(allDates).sort()
   const colors = [
-    '#3b82f6',
-    '#10b981',
-    '#f59e0b',
-    '#ef4444',
-    '#8b5cf6',
-    '#ec4899',
-    '#c084fc',
     '#f97316',
-    '#6366f1',
-    '#84cc16',
-    '#06b6d4',
-    '#a855f7'
+    '#2563eb',
+    '#059669',
+    '#dc2626',
+    '#0891b2',
+    '#ca8a04',
+    '#65a30d',
+    '#0d9488',
+    '#0284c7',
+    '#ea580c',
+    '#16a34a',
+    '#475569'
   ]
 
   const datasets = Array.from(userGroups.values()).map((group, idx) => ({
@@ -698,4 +698,54 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.dashboard-stat-card {
+  position: relative;
+  overflow: hidden;
+  border-color: rgba(251, 191, 36, 0.32);
+  box-shadow:
+    0 1px 3px rgba(120, 53, 15, 0.05),
+    0 12px 30px rgba(120, 53, 15, 0.06);
+}
+
+.dashboard-stat-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(135deg, rgba(255, 247, 237, 0.72), transparent 46%);
+}
+
+:global(.dark) .dashboard-stat-card {
+  border-color: rgba(249, 115, 22, 0.16);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.18),
+    0 12px 30px rgba(0, 0, 0, 0.18);
+}
+
+:global(.dark) .dashboard-stat-card::before {
+  background: linear-gradient(135deg, rgba(124, 45, 18, 0.16), transparent 46%);
+}
+
+.dashboard-stat-card > * {
+  position: relative;
+}
+
+.dashboard-stat-icon {
+  flex-shrink: 0;
+  border-radius: 0.75rem;
+  padding: 0.5rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+}
+
+.dashboard-stat-card-primary {
+  border-color: rgba(249, 115, 22, 0.34);
+}
+
+.dashboard-stat-card-blue,
+.dashboard-stat-card-cyan,
+.dashboard-stat-card-emerald,
+.dashboard-stat-card-teal,
+.dashboard-stat-card-rose {
+  border-color: rgba(251, 191, 36, 0.28);
+}
 </style>

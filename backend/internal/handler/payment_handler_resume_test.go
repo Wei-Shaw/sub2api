@@ -24,6 +24,46 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+type paymentHandlerCheckoutSettingRepoStub struct {
+	values map[string]string
+}
+
+func (s *paymentHandlerCheckoutSettingRepoStub) Get(context.Context, string) (*service.Setting, error) {
+	return nil, nil
+}
+
+func (s *paymentHandlerCheckoutSettingRepoStub) GetValue(_ context.Context, key string) (string, error) {
+	return s.values[key], nil
+}
+
+func (s *paymentHandlerCheckoutSettingRepoStub) Set(context.Context, string, string) error {
+	return nil
+}
+
+func (s *paymentHandlerCheckoutSettingRepoStub) GetMultiple(_ context.Context, keys []string) (map[string]string, error) {
+	out := make(map[string]string, len(keys))
+	for _, key := range keys {
+		out[key] = s.values[key]
+	}
+	return out, nil
+}
+
+func (s *paymentHandlerCheckoutSettingRepoStub) SetMultiple(_ context.Context, values map[string]string) error {
+	if s.values == nil {
+		s.values = map[string]string{}
+	}
+	for key, value := range values {
+		s.values[key] = value
+	}
+	return nil
+}
+
+func (s *paymentHandlerCheckoutSettingRepoStub) GetAll(context.Context) (map[string]string, error) {
+	return s.values, nil
+}
+
+func (s *paymentHandlerCheckoutSettingRepoStub) Delete(context.Context, string) error { return nil }
+
 func TestApplyWeChatPaymentResumeClaims(t *testing.T) {
 	t.Parallel()
 
@@ -164,6 +204,89 @@ func TestVerifyOrderPublicReturnsLegacyOrderState(t *testing.T) {
 	require.Equal(t, 0.0, resp.Data.RefundAmount)
 	require.NotEmpty(t, resp.Data.CreatedAt)
 	require.NotEmpty(t, resp.Data.ExpiresAt)
+}
+
+func TestGetCheckoutInfoIncludesExternalSubscribeFields(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+
+	db, err := sql.Open("sqlite", "file:payment_handler_checkout_info?mode=memory&cache=shared")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	_, err = db.Exec("PRAGMA foreign_keys = ON")
+	require.NoError(t, err)
+
+	drv := entsql.OpenDB(dialect.SQLite, db)
+	client := enttest.NewClient(t, enttest.WithOptions(dbent.Driver(drv)))
+	t.Cleanup(func() { _ = client.Close() })
+
+	group, err := client.Group.Create().
+		SetName("External Subscribe Group").
+		SetPlatform("openai").
+		SetDescription("group for checkout info test").
+		SetRateMultiplier(1).
+		SetStatus("active").
+		SetSubscriptionType("subscription").
+		Save(context.Background())
+	require.NoError(t, err)
+
+	_, err = client.SubscriptionPlan.Create().
+		SetGroupID(group.ID).
+		SetName("External Subscribe Plan").
+		SetDescription("plan with external subscription").
+		SetPrice(19.9).
+		SetValidityDays(30).
+		SetValidityUnit("days").
+		SetFeatures("Fast access\nPriority queue").
+		SetProductName("External Product").
+		SetExternalSubscribeEnabled(true).
+		SetExternalSubscribeURL("https://example.com/subscribe").
+		SetExternalSubscribeDialogText("联系客服开通\n支持工作日处理。").
+		SetForSale(true).
+		SetSortOrder(1).
+		Save(context.Background())
+	require.NoError(t, err)
+
+	settingRepo := &paymentHandlerCheckoutSettingRepoStub{
+		values: map[string]string{
+			service.SettingPaymentDisplayMode:  service.PaymentDisplayModePlans,
+			service.SettingPaymentEnabled:      "false",
+			service.SettingBalancePayDisabled:  "false",
+			service.SettingBalanceRechargeMult: "1",
+		},
+	}
+
+	configSvc := service.NewPaymentConfigService(client, settingRepo, nil)
+	h := NewPaymentHandler(nil, configSvc, nil)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/v1/payment/checkout-info", nil)
+
+	h.GetCheckoutInfo(ctx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	var resp struct {
+		Code int `json:"code"`
+		Data struct {
+			Plans []struct {
+				Name                        string `json:"name"`
+				ExternalSubscribeEnabled    bool   `json:"external_subscribe_enabled"`
+				ExternalSubscribeURL        string `json:"external_subscribe_url"`
+				ExternalSubscribeDialogText string `json:"external_subscribe_dialog_text"`
+			} `json:"plans"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
+	require.Equal(t, 0, resp.Code)
+	require.Len(t, resp.Data.Plans, 1)
+	require.Equal(t, "External Subscribe Plan", resp.Data.Plans[0].Name)
+	require.True(t, resp.Data.Plans[0].ExternalSubscribeEnabled)
+	require.Equal(t, "https://example.com/subscribe", resp.Data.Plans[0].ExternalSubscribeURL)
+	require.Equal(t, "联系客服开通\n支持工作日处理。", resp.Data.Plans[0].ExternalSubscribeDialogText)
 }
 
 func TestResolveOrderPublicByResumeTokenReturnsFrontendContractFields(t *testing.T) {

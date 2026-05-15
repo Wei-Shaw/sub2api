@@ -30823,31 +30823,34 @@ func (m *SettingMutation) ResetEdge(name string) error {
 // SubscriptionPlanMutation represents an operation that mutates the SubscriptionPlan nodes in the graph.
 type SubscriptionPlanMutation struct {
 	config
-	op                Op
-	typ               string
-	id                *int64
-	group_id          *int64
-	addgroup_id       *int64
-	name              *string
-	description       *string
-	price             *float64
-	addprice          *float64
-	original_price    *float64
-	addoriginal_price *float64
-	validity_days     *int
-	addvalidity_days  *int
-	validity_unit     *string
-	features          *string
-	product_name      *string
-	for_sale          *bool
-	sort_order        *int
-	addsort_order     *int
-	created_at        *time.Time
-	updated_at        *time.Time
-	clearedFields     map[string]struct{}
-	done              bool
-	oldValue          func(context.Context) (*SubscriptionPlan, error)
-	predicates        []predicate.SubscriptionPlan
+	op                             Op
+	typ                            string
+	id                             *int64
+	group_id                       *int64
+	addgroup_id                    *int64
+	name                           *string
+	description                    *string
+	price                          *float64
+	addprice                       *float64
+	original_price                 *float64
+	addoriginal_price              *float64
+	validity_days                  *int
+	addvalidity_days               *int
+	validity_unit                  *string
+	features                       *string
+	product_name                   *string
+	external_subscribe_enabled     *bool
+	external_subscribe_url         *string
+	external_subscribe_dialog_text *string
+	for_sale                       *bool
+	sort_order                     *int
+	addsort_order                  *int
+	created_at                     *time.Time
+	updated_at                     *time.Time
+	clearedFields                  map[string]struct{}
+	done                           bool
+	oldValue                       func(context.Context) (*SubscriptionPlan, error)
+	predicates                     []predicate.SubscriptionPlan
 }
 
 var _ ent.Mutation = (*SubscriptionPlanMutation)(nil)
@@ -31366,6 +31369,114 @@ func (m *SubscriptionPlanMutation) ResetProductName() {
 	m.product_name = nil
 }
 
+// SetExternalSubscribeEnabled sets the "external_subscribe_enabled" field.
+func (m *SubscriptionPlanMutation) SetExternalSubscribeEnabled(b bool) {
+	m.external_subscribe_enabled = &b
+}
+
+// ExternalSubscribeEnabled returns the value of the "external_subscribe_enabled" field in the mutation.
+func (m *SubscriptionPlanMutation) ExternalSubscribeEnabled() (r bool, exists bool) {
+	v := m.external_subscribe_enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExternalSubscribeEnabled returns the old "external_subscribe_enabled" field's value of the SubscriptionPlan entity.
+// If the SubscriptionPlan object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionPlanMutation) OldExternalSubscribeEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExternalSubscribeEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExternalSubscribeEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExternalSubscribeEnabled: %w", err)
+	}
+	return oldValue.ExternalSubscribeEnabled, nil
+}
+
+// ResetExternalSubscribeEnabled resets all changes to the "external_subscribe_enabled" field.
+func (m *SubscriptionPlanMutation) ResetExternalSubscribeEnabled() {
+	m.external_subscribe_enabled = nil
+}
+
+// SetExternalSubscribeURL sets the "external_subscribe_url" field.
+func (m *SubscriptionPlanMutation) SetExternalSubscribeURL(s string) {
+	m.external_subscribe_url = &s
+}
+
+// ExternalSubscribeURL returns the value of the "external_subscribe_url" field in the mutation.
+func (m *SubscriptionPlanMutation) ExternalSubscribeURL() (r string, exists bool) {
+	v := m.external_subscribe_url
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExternalSubscribeURL returns the old "external_subscribe_url" field's value of the SubscriptionPlan entity.
+// If the SubscriptionPlan object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionPlanMutation) OldExternalSubscribeURL(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExternalSubscribeURL is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExternalSubscribeURL requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExternalSubscribeURL: %w", err)
+	}
+	return oldValue.ExternalSubscribeURL, nil
+}
+
+// ResetExternalSubscribeURL resets all changes to the "external_subscribe_url" field.
+func (m *SubscriptionPlanMutation) ResetExternalSubscribeURL() {
+	m.external_subscribe_url = nil
+}
+
+// SetExternalSubscribeDialogText sets the "external_subscribe_dialog_text" field.
+func (m *SubscriptionPlanMutation) SetExternalSubscribeDialogText(s string) {
+	m.external_subscribe_dialog_text = &s
+}
+
+// ExternalSubscribeDialogText returns the value of the "external_subscribe_dialog_text" field in the mutation.
+func (m *SubscriptionPlanMutation) ExternalSubscribeDialogText() (r string, exists bool) {
+	v := m.external_subscribe_dialog_text
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExternalSubscribeDialogText returns the old "external_subscribe_dialog_text" field's value of the SubscriptionPlan entity.
+// If the SubscriptionPlan object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionPlanMutation) OldExternalSubscribeDialogText(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExternalSubscribeDialogText is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExternalSubscribeDialogText requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExternalSubscribeDialogText: %w", err)
+	}
+	return oldValue.ExternalSubscribeDialogText, nil
+}
+
+// ResetExternalSubscribeDialogText resets all changes to the "external_subscribe_dialog_text" field.
+func (m *SubscriptionPlanMutation) ResetExternalSubscribeDialogText() {
+	m.external_subscribe_dialog_text = nil
+}
+
 // SetForSale sets the "for_sale" field.
 func (m *SubscriptionPlanMutation) SetForSale(b bool) {
 	m.for_sale = &b
@@ -31564,7 +31675,7 @@ func (m *SubscriptionPlanMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *SubscriptionPlanMutation) Fields() []string {
-	fields := make([]string, 0, 13)
+	fields := make([]string, 0, 16)
 	if m.group_id != nil {
 		fields = append(fields, subscriptionplan.FieldGroupID)
 	}
@@ -31591,6 +31702,15 @@ func (m *SubscriptionPlanMutation) Fields() []string {
 	}
 	if m.product_name != nil {
 		fields = append(fields, subscriptionplan.FieldProductName)
+	}
+	if m.external_subscribe_enabled != nil {
+		fields = append(fields, subscriptionplan.FieldExternalSubscribeEnabled)
+	}
+	if m.external_subscribe_url != nil {
+		fields = append(fields, subscriptionplan.FieldExternalSubscribeURL)
+	}
+	if m.external_subscribe_dialog_text != nil {
+		fields = append(fields, subscriptionplan.FieldExternalSubscribeDialogText)
 	}
 	if m.for_sale != nil {
 		fields = append(fields, subscriptionplan.FieldForSale)
@@ -31630,6 +31750,12 @@ func (m *SubscriptionPlanMutation) Field(name string) (ent.Value, bool) {
 		return m.Features()
 	case subscriptionplan.FieldProductName:
 		return m.ProductName()
+	case subscriptionplan.FieldExternalSubscribeEnabled:
+		return m.ExternalSubscribeEnabled()
+	case subscriptionplan.FieldExternalSubscribeURL:
+		return m.ExternalSubscribeURL()
+	case subscriptionplan.FieldExternalSubscribeDialogText:
+		return m.ExternalSubscribeDialogText()
 	case subscriptionplan.FieldForSale:
 		return m.ForSale()
 	case subscriptionplan.FieldSortOrder:
@@ -31665,6 +31791,12 @@ func (m *SubscriptionPlanMutation) OldField(ctx context.Context, name string) (e
 		return m.OldFeatures(ctx)
 	case subscriptionplan.FieldProductName:
 		return m.OldProductName(ctx)
+	case subscriptionplan.FieldExternalSubscribeEnabled:
+		return m.OldExternalSubscribeEnabled(ctx)
+	case subscriptionplan.FieldExternalSubscribeURL:
+		return m.OldExternalSubscribeURL(ctx)
+	case subscriptionplan.FieldExternalSubscribeDialogText:
+		return m.OldExternalSubscribeDialogText(ctx)
 	case subscriptionplan.FieldForSale:
 		return m.OldForSale(ctx)
 	case subscriptionplan.FieldSortOrder:
@@ -31744,6 +31876,27 @@ func (m *SubscriptionPlanMutation) SetField(name string, value ent.Value) error 
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetProductName(v)
+		return nil
+	case subscriptionplan.FieldExternalSubscribeEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExternalSubscribeEnabled(v)
+		return nil
+	case subscriptionplan.FieldExternalSubscribeURL:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExternalSubscribeURL(v)
+		return nil
+	case subscriptionplan.FieldExternalSubscribeDialogText:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExternalSubscribeDialogText(v)
 		return nil
 	case subscriptionplan.FieldForSale:
 		v, ok := value.(bool)
@@ -31920,6 +32073,15 @@ func (m *SubscriptionPlanMutation) ResetField(name string) error {
 		return nil
 	case subscriptionplan.FieldProductName:
 		m.ResetProductName()
+		return nil
+	case subscriptionplan.FieldExternalSubscribeEnabled:
+		m.ResetExternalSubscribeEnabled()
+		return nil
+	case subscriptionplan.FieldExternalSubscribeURL:
+		m.ResetExternalSubscribeURL()
+		return nil
+	case subscriptionplan.FieldExternalSubscribeDialogText:
+		m.ResetExternalSubscribeDialogText()
 		return nil
 	case subscriptionplan.FieldForSale:
 		m.ResetForSale()

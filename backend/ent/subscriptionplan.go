@@ -35,6 +35,12 @@ type SubscriptionPlan struct {
 	Features string `json:"features,omitempty"`
 	// ProductName holds the value of the "product_name" field.
 	ProductName string `json:"product_name,omitempty"`
+	// ExternalSubscribeEnabled holds the value of the "external_subscribe_enabled" field.
+	ExternalSubscribeEnabled bool `json:"external_subscribe_enabled,omitempty"`
+	// ExternalSubscribeURL holds the value of the "external_subscribe_url" field.
+	ExternalSubscribeURL string `json:"external_subscribe_url,omitempty"`
+	// ExternalSubscribeDialogText holds the value of the "external_subscribe_dialog_text" field.
+	ExternalSubscribeDialogText string `json:"external_subscribe_dialog_text,omitempty"`
 	// ForSale holds the value of the "for_sale" field.
 	ForSale bool `json:"for_sale,omitempty"`
 	// SortOrder holds the value of the "sort_order" field.
@@ -51,13 +57,13 @@ func (*SubscriptionPlan) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case subscriptionplan.FieldForSale:
+		case subscriptionplan.FieldExternalSubscribeEnabled, subscriptionplan.FieldForSale:
 			values[i] = new(sql.NullBool)
 		case subscriptionplan.FieldPrice, subscriptionplan.FieldOriginalPrice:
 			values[i] = new(sql.NullFloat64)
 		case subscriptionplan.FieldID, subscriptionplan.FieldGroupID, subscriptionplan.FieldValidityDays, subscriptionplan.FieldSortOrder:
 			values[i] = new(sql.NullInt64)
-		case subscriptionplan.FieldName, subscriptionplan.FieldDescription, subscriptionplan.FieldValidityUnit, subscriptionplan.FieldFeatures, subscriptionplan.FieldProductName:
+		case subscriptionplan.FieldName, subscriptionplan.FieldDescription, subscriptionplan.FieldValidityUnit, subscriptionplan.FieldFeatures, subscriptionplan.FieldProductName, subscriptionplan.FieldExternalSubscribeURL, subscriptionplan.FieldExternalSubscribeDialogText:
 			values[i] = new(sql.NullString)
 		case subscriptionplan.FieldCreatedAt, subscriptionplan.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -136,6 +142,24 @@ func (_m *SubscriptionPlan) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field product_name", values[i])
 			} else if value.Valid {
 				_m.ProductName = value.String
+			}
+		case subscriptionplan.FieldExternalSubscribeEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field external_subscribe_enabled", values[i])
+			} else if value.Valid {
+				_m.ExternalSubscribeEnabled = value.Bool
+			}
+		case subscriptionplan.FieldExternalSubscribeURL:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field external_subscribe_url", values[i])
+			} else if value.Valid {
+				_m.ExternalSubscribeURL = value.String
+			}
+		case subscriptionplan.FieldExternalSubscribeDialogText:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field external_subscribe_dialog_text", values[i])
+			} else if value.Valid {
+				_m.ExternalSubscribeDialogText = value.String
 			}
 		case subscriptionplan.FieldForSale:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -225,6 +249,15 @@ func (_m *SubscriptionPlan) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("product_name=")
 	builder.WriteString(_m.ProductName)
+	builder.WriteString(", ")
+	builder.WriteString("external_subscribe_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ExternalSubscribeEnabled))
+	builder.WriteString(", ")
+	builder.WriteString("external_subscribe_url=")
+	builder.WriteString(_m.ExternalSubscribeURL)
+	builder.WriteString(", ")
+	builder.WriteString("external_subscribe_dialog_text=")
+	builder.WriteString(_m.ExternalSubscribeDialogText)
 	builder.WriteString(", ")
 	builder.WriteString("for_sale=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ForSale))

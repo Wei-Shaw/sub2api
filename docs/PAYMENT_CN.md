@@ -13,6 +13,7 @@ Sub2API 内置支付系统，支持用户自助充值，无需部署独立的支
 - [服务商实例管理](#服务商实例管理)
 - [Webhook 配置](#webhook-配置)
 - [支付流程](#支付流程)
+- [订阅套餐外链与弹窗说明经验](#订阅套餐外链与弹窗说明经验)
 - [从 Sub2ApiPay 迁移](#从-sub2apipay-迁移)
 
 ---
@@ -259,6 +260,63 @@ Sub2API 内置支付系统，支持用户自助充值，无需部署独立的支
 - 订单超时后，后台任务会先查询上游支付状态再标记过期
 - 如果用户实际已支付但回调延迟，系统会通过查询补单
 - 后台任务每 60 秒执行一次超时检查
+
+---
+
+## 订阅套餐外链与弹窗说明经验
+
+“前往订阅”按钮支持两种外部订阅目标：
+
+| 目标类型 | 字段 | 用户侧行为 |
+|----------|------|------------|
+| 外链 | `external_subscribe_url` | 点击后跳转到外部链接 |
+| 弹窗说明 | `external_subscribe_dialog_text` | 点击后展示主题风格弹窗 |
+
+核心规则：
+
+- `external_subscribe_url` 与 `external_subscribe_dialog_text` 必须二选一，不能同时有值
+- 选择“弹窗说明”时，`external_subscribe_url` 必须保存为空字符串
+- 选择“外链”时，`external_subscribe_dialog_text` 必须保存为空字符串
+- 开启 `external_subscribe_enabled` 时，只要求存在一个外部订阅目标，不能再把 URL 当作唯一必填项
+
+### 历史问题
+
+弹窗说明刚接入时，管理员选择“弹窗说明”并填写文本后保存，接口仍返回：
+
+```text
+external subscribe URL is required
+```
+
+本地后端日志只表现为 `PUT /api/v1/admin/payment/plans/:id` 返回 `400`。这类 access log 不会直接打印响应体，所以排查时应回到代码搜索报错文案或错误码，例如：
+
+```text
+external subscribe URL is required
+PLAN_EXTERNAL_SUBSCRIBE_URL_REQUIRED
+```
+
+根因是旧逻辑只支持外链目标，服务层仍保留“开启外部订阅就必须填写 URL”的校验。新增弹窗说明后，如果只加 UI 字段和 API 字段，而不改后端 required 语义，就会导致弹窗目标永远保存失败。
+
+### 修复经验
+
+校验应围绕“外部订阅目标”而不是“URL 必填”：
+
+- 目标校验：开启外部订阅时，URL 或弹窗文本至少有一个
+- 互斥校验：URL 和弹窗文本不能同时有值
+- URL 格式校验：只有 URL 非空时，才校验是否为合法 `http` / `https` 绝对地址
+- 更新校验：`PUT /api/v1/admin/payment/plans/:id` 要合并当前值和本次请求值后再校验，避免只修创建不修更新
+- 前端归一化：编辑页提交时必须按当前选择清空另一个字段，不能依赖后端猜测管理员意图
+
+推荐回归场景：
+
+| 场景 | 请求 | 期望 |
+|------|------|------|
+| 创建弹窗目标套餐 | `external_subscribe_enabled=true`，URL 空，弹窗文本非空 | `200`，文本保存成功 |
+| 更新弹窗目标套餐 | `PUT /api/v1/admin/payment/plans/:id`，URL 空，弹窗文本非空 | `200`，文本保存成功 |
+| 同时填写 URL 和文本 | URL 非空，弹窗文本非空 | `400 PLAN_EXTERNAL_SUBSCRIBE_TARGET_CONFLICT` |
+| 开启但目标为空 | URL 空，弹窗文本空 | `400 PLAN_EXTERNAL_SUBSCRIBE_TARGET_REQUIRED` |
+| URL 格式错误 | URL 非空但不是合法 `http` / `https` 地址 | `400 PLAN_EXTERNAL_SUBSCRIBE_URL_INVALID` |
+
+这类改动的关键教训是：业务从“一个字段必填”演进为“多个目标二选一”时，旧 required 校验、编辑态回显、payload 归一化、create/update 合并逻辑和回归测试都要一起改。`external_subscribe_url` 不是必选项，外部订阅目标才是业务上的必选项。
 
 ---
 

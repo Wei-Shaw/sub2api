@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"strconv"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -14,6 +15,31 @@ import (
 type PaymentHandler struct {
 	paymentService *service.PaymentService
 	configService  *service.PaymentConfigService
+}
+
+type adminPlanResponse struct {
+	ID                          int64    `json:"id"`
+	GroupID                     int64    `json:"group_id"`
+	GroupPlatform               string   `json:"group_platform"`
+	GroupName                   string   `json:"group_name"`
+	RateMultiplier              float64  `json:"rate_multiplier"`
+	DailyLimitUSD               *float64 `json:"daily_limit_usd"`
+	WeeklyLimitUSD              *float64 `json:"weekly_limit_usd"`
+	MonthlyLimitUSD             *float64 `json:"monthly_limit_usd"`
+	SupportedModelScopes        []string `json:"supported_model_scopes"`
+	Name                        string   `json:"name"`
+	Description                 string   `json:"description"`
+	Price                       float64  `json:"price"`
+	OriginalPrice               *float64 `json:"original_price,omitempty"`
+	ValidityDays                int      `json:"validity_days"`
+	ValidityUnit                string   `json:"validity_unit"`
+	Features                    string   `json:"features"`
+	ProductName                 string   `json:"product_name"`
+	ExternalSubscribeEnabled    bool     `json:"external_subscribe_enabled"`
+	ExternalSubscribeURL        string   `json:"external_subscribe_url"`
+	ExternalSubscribeDialogText string   `json:"external_subscribe_dialog_text"`
+	ForSale                     bool     `json:"for_sale"`
+	SortOrder                   int      `json:"sort_order"`
 }
 
 // NewPaymentHandler creates a new admin PaymentHandler.
@@ -185,7 +211,7 @@ func (h *PaymentHandler) ListPlans(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, plans)
+	response.Success(c, buildAdminPlanResponses(c.Request.Context(), h.configService, plans))
 }
 
 // CreatePlan creates a new subscription plan.
@@ -201,7 +227,7 @@ func (h *PaymentHandler) CreatePlan(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Created(c, plan)
+	response.Created(c, buildAdminPlanResponse(c.Request.Context(), h.configService, plan))
 }
 
 // UpdatePlan updates an existing subscription plan.
@@ -221,7 +247,7 @@ func (h *PaymentHandler) UpdatePlan(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, plan)
+	response.Success(c, buildAdminPlanResponse(c.Request.Context(), h.configService, plan))
 }
 
 // DeletePlan deletes a subscription plan.
@@ -313,6 +339,56 @@ func parseIDParam(c *gin.Context, paramName string) (int64, bool) {
 		return 0, false
 	}
 	return id, true
+}
+
+func buildAdminPlanResponses(ctx context.Context, configService *service.PaymentConfigService, plans []*dbent.SubscriptionPlan) []adminPlanResponse {
+	if len(plans) == 0 {
+		return []adminPlanResponse{}
+	}
+	groupInfo := configService.GetGroupInfoMap(ctx, plans)
+	result := make([]adminPlanResponse, 0, len(plans))
+	for _, plan := range plans {
+		result = append(result, buildAdminPlanResponseWithGroupInfo(plan, groupInfo[plan.GroupID]))
+	}
+	return result
+}
+
+func buildAdminPlanResponse(ctx context.Context, configService *service.PaymentConfigService, plan *dbent.SubscriptionPlan) adminPlanResponse {
+	if plan == nil {
+		return adminPlanResponse{}
+	}
+	groupInfo := configService.GetGroupInfoMap(ctx, []*dbent.SubscriptionPlan{plan})
+	return buildAdminPlanResponseWithGroupInfo(plan, groupInfo[plan.GroupID])
+}
+
+func buildAdminPlanResponseWithGroupInfo(plan *dbent.SubscriptionPlan, groupInfo service.PlanGroupInfo) adminPlanResponse {
+	if plan == nil {
+		return adminPlanResponse{}
+	}
+	return adminPlanResponse{
+		ID:                          int64(plan.ID),
+		GroupID:                     plan.GroupID,
+		GroupPlatform:               groupInfo.Platform,
+		GroupName:                   groupInfo.Name,
+		RateMultiplier:              groupInfo.RateMultiplier,
+		DailyLimitUSD:               groupInfo.DailyLimitUSD,
+		WeeklyLimitUSD:              groupInfo.WeeklyLimitUSD,
+		MonthlyLimitUSD:             groupInfo.MonthlyLimitUSD,
+		SupportedModelScopes:        groupInfo.ModelScopes,
+		Name:                        plan.Name,
+		Description:                 plan.Description,
+		Price:                       plan.Price,
+		OriginalPrice:               plan.OriginalPrice,
+		ValidityDays:                plan.ValidityDays,
+		ValidityUnit:                plan.ValidityUnit,
+		Features:                    plan.Features,
+		ProductName:                 plan.ProductName,
+		ExternalSubscribeEnabled:    plan.ExternalSubscribeEnabled,
+		ExternalSubscribeURL:        plan.ExternalSubscribeURL,
+		ExternalSubscribeDialogText: plan.ExternalSubscribeDialogText,
+		ForSale:                     plan.ForSale,
+		SortOrder:                   plan.SortOrder,
+	}
 }
 
 // --- Config ---

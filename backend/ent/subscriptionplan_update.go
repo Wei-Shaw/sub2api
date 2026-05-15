@@ -188,6 +188,48 @@ func (_u *SubscriptionPlanUpdate) SetNillableProductName(v *string) *Subscriptio
 	return _u
 }
 
+// SetExternalSubscribeEnabled sets the "external_subscribe_enabled" field.
+func (_u *SubscriptionPlanUpdate) SetExternalSubscribeEnabled(v bool) *SubscriptionPlanUpdate {
+	_u.mutation.SetExternalSubscribeEnabled(v)
+	return _u
+}
+
+// SetNillableExternalSubscribeEnabled sets the "external_subscribe_enabled" field if the given value is not nil.
+func (_u *SubscriptionPlanUpdate) SetNillableExternalSubscribeEnabled(v *bool) *SubscriptionPlanUpdate {
+	if v != nil {
+		_u.SetExternalSubscribeEnabled(*v)
+	}
+	return _u
+}
+
+// SetExternalSubscribeURL sets the "external_subscribe_url" field.
+func (_u *SubscriptionPlanUpdate) SetExternalSubscribeURL(v string) *SubscriptionPlanUpdate {
+	_u.mutation.SetExternalSubscribeURL(v)
+	return _u
+}
+
+// SetNillableExternalSubscribeURL sets the "external_subscribe_url" field if the given value is not nil.
+func (_u *SubscriptionPlanUpdate) SetNillableExternalSubscribeURL(v *string) *SubscriptionPlanUpdate {
+	if v != nil {
+		_u.SetExternalSubscribeURL(*v)
+	}
+	return _u
+}
+
+// SetExternalSubscribeDialogText sets the "external_subscribe_dialog_text" field.
+func (_u *SubscriptionPlanUpdate) SetExternalSubscribeDialogText(v string) *SubscriptionPlanUpdate {
+	_u.mutation.SetExternalSubscribeDialogText(v)
+	return _u
+}
+
+// SetNillableExternalSubscribeDialogText sets the "external_subscribe_dialog_text" field if the given value is not nil.
+func (_u *SubscriptionPlanUpdate) SetNillableExternalSubscribeDialogText(v *string) *SubscriptionPlanUpdate {
+	if v != nil {
+		_u.SetExternalSubscribeDialogText(*v)
+	}
+	return _u
+}
+
 // SetForSale sets the "for_sale" field.
 func (_u *SubscriptionPlanUpdate) SetForSale(v bool) *SubscriptionPlanUpdate {
 	_u.mutation.SetForSale(v)
@@ -287,6 +329,16 @@ func (_u *SubscriptionPlanUpdate) check() error {
 			return &ValidationError{Name: "product_name", err: fmt.Errorf(`ent: validator failed for field "SubscriptionPlan.product_name": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ExternalSubscribeURL(); ok {
+		if err := subscriptionplan.ExternalSubscribeURLValidator(v); err != nil {
+			return &ValidationError{Name: "external_subscribe_url", err: fmt.Errorf(`ent: validator failed for field "SubscriptionPlan.external_subscribe_url": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.ExternalSubscribeDialogText(); ok {
+		if err := subscriptionplan.ExternalSubscribeDialogTextValidator(v); err != nil {
+			return &ValidationError{Name: "external_subscribe_dialog_text", err: fmt.Errorf(`ent: validator failed for field "SubscriptionPlan.external_subscribe_dialog_text": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -343,6 +395,15 @@ func (_u *SubscriptionPlanUpdate) sqlSave(ctx context.Context) (_node int, err e
 	}
 	if value, ok := _u.mutation.ProductName(); ok {
 		_spec.SetField(subscriptionplan.FieldProductName, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ExternalSubscribeEnabled(); ok {
+		_spec.SetField(subscriptionplan.FieldExternalSubscribeEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ExternalSubscribeURL(); ok {
+		_spec.SetField(subscriptionplan.FieldExternalSubscribeURL, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ExternalSubscribeDialogText(); ok {
+		_spec.SetField(subscriptionplan.FieldExternalSubscribeDialogText, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.ForSale(); ok {
 		_spec.SetField(subscriptionplan.FieldForSale, field.TypeBool, value)
@@ -536,6 +597,48 @@ func (_u *SubscriptionPlanUpdateOne) SetNillableProductName(v *string) *Subscrip
 	return _u
 }
 
+// SetExternalSubscribeEnabled sets the "external_subscribe_enabled" field.
+func (_u *SubscriptionPlanUpdateOne) SetExternalSubscribeEnabled(v bool) *SubscriptionPlanUpdateOne {
+	_u.mutation.SetExternalSubscribeEnabled(v)
+	return _u
+}
+
+// SetNillableExternalSubscribeEnabled sets the "external_subscribe_enabled" field if the given value is not nil.
+func (_u *SubscriptionPlanUpdateOne) SetNillableExternalSubscribeEnabled(v *bool) *SubscriptionPlanUpdateOne {
+	if v != nil {
+		_u.SetExternalSubscribeEnabled(*v)
+	}
+	return _u
+}
+
+// SetExternalSubscribeURL sets the "external_subscribe_url" field.
+func (_u *SubscriptionPlanUpdateOne) SetExternalSubscribeURL(v string) *SubscriptionPlanUpdateOne {
+	_u.mutation.SetExternalSubscribeURL(v)
+	return _u
+}
+
+// SetNillableExternalSubscribeURL sets the "external_subscribe_url" field if the given value is not nil.
+func (_u *SubscriptionPlanUpdateOne) SetNillableExternalSubscribeURL(v *string) *SubscriptionPlanUpdateOne {
+	if v != nil {
+		_u.SetExternalSubscribeURL(*v)
+	}
+	return _u
+}
+
+// SetExternalSubscribeDialogText sets the "external_subscribe_dialog_text" field.
+func (_u *SubscriptionPlanUpdateOne) SetExternalSubscribeDialogText(v string) *SubscriptionPlanUpdateOne {
+	_u.mutation.SetExternalSubscribeDialogText(v)
+	return _u
+}
+
+// SetNillableExternalSubscribeDialogText sets the "external_subscribe_dialog_text" field if the given value is not nil.
+func (_u *SubscriptionPlanUpdateOne) SetNillableExternalSubscribeDialogText(v *string) *SubscriptionPlanUpdateOne {
+	if v != nil {
+		_u.SetExternalSubscribeDialogText(*v)
+	}
+	return _u
+}
+
 // SetForSale sets the "for_sale" field.
 func (_u *SubscriptionPlanUpdateOne) SetForSale(v bool) *SubscriptionPlanUpdateOne {
 	_u.mutation.SetForSale(v)
@@ -648,6 +751,16 @@ func (_u *SubscriptionPlanUpdateOne) check() error {
 			return &ValidationError{Name: "product_name", err: fmt.Errorf(`ent: validator failed for field "SubscriptionPlan.product_name": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ExternalSubscribeURL(); ok {
+		if err := subscriptionplan.ExternalSubscribeURLValidator(v); err != nil {
+			return &ValidationError{Name: "external_subscribe_url", err: fmt.Errorf(`ent: validator failed for field "SubscriptionPlan.external_subscribe_url": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.ExternalSubscribeDialogText(); ok {
+		if err := subscriptionplan.ExternalSubscribeDialogTextValidator(v); err != nil {
+			return &ValidationError{Name: "external_subscribe_dialog_text", err: fmt.Errorf(`ent: validator failed for field "SubscriptionPlan.external_subscribe_dialog_text": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -721,6 +834,15 @@ func (_u *SubscriptionPlanUpdateOne) sqlSave(ctx context.Context) (_node *Subscr
 	}
 	if value, ok := _u.mutation.ProductName(); ok {
 		_spec.SetField(subscriptionplan.FieldProductName, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ExternalSubscribeEnabled(); ok {
+		_spec.SetField(subscriptionplan.FieldExternalSubscribeEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ExternalSubscribeURL(); ok {
+		_spec.SetField(subscriptionplan.FieldExternalSubscribeURL, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ExternalSubscribeDialogText(); ok {
+		_spec.SetField(subscriptionplan.FieldExternalSubscribeDialogText, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.ForSale(); ok {
 		_spec.SetField(subscriptionplan.FieldForSale, field.TypeBool, value)

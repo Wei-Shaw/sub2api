@@ -201,6 +201,7 @@ type SystemSettings struct {
 
 	// Payment configuration
 	PaymentEnabled                   bool     `json:"payment_enabled"`
+	PaymentDisplayMode               string   `json:"payment_display_mode"`
 	PaymentMinAmount                 float64  `json:"payment_min_amount"`
 	PaymentMaxAmount                 float64  `json:"payment_max_amount"`
 	PaymentDailyLimit                float64  `json:"payment_daily_limit"`
@@ -302,6 +303,7 @@ type PublicSettings struct {
 	SoraClientEnabled                bool                     `json:"sora_client_enabled"`
 	BackendModeEnabled               bool                     `json:"backend_mode_enabled"`
 	PaymentEnabled                   bool                     `json:"payment_enabled"`
+	PaymentDisplayMode               string                   `json:"payment_display_mode"`
 	Version                          string                   `json:"version"`
 	BalanceLowNotifyEnabled          bool                     `json:"balance_low_notify_enabled"`
 	AccountQuotaNotifyEnabled        bool                     `json:"account_quota_notify_enabled"`

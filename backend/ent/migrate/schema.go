@@ -1219,6 +1219,9 @@ var (
 		{Name: "validity_unit", Type: field.TypeString, Size: 10, Default: "day"},
 		{Name: "features", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "product_name", Type: field.TypeString, Size: 100, Default: ""},
+		{Name: "external_subscribe_enabled", Type: field.TypeBool, Default: false},
+		{Name: "external_subscribe_url", Type: field.TypeString, Size: 500, Default: ""},
+		{Name: "external_subscribe_dialog_text", Type: field.TypeString, Size: 4000, Default: "", SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "for_sale", Type: field.TypeBool, Default: true},
 		{Name: "sort_order", Type: field.TypeInt, Default: 0},
 		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
@@ -1238,7 +1241,7 @@ var (
 			{
 				Name:    "subscriptionplan_for_sale",
 				Unique:  false,
-				Columns: []*schema.Column{SubscriptionPlansColumns[10]},
+				Columns: []*schema.Column{SubscriptionPlansColumns[13]},
 			},
 		},
 	}

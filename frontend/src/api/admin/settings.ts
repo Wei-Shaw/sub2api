@@ -87,6 +87,7 @@ export type PaymentVisibleMethodSource =
   | "easypay_alipay"
   | "official_wxpay"
   | "easypay_wxpay";
+export type PaymentDisplayMode = "off" | "payment" | "plans";
 export type WeChatConnectMode = "open" | "mp" | "mobile";
 
 export interface PaymentVisibleMethodSourceOption {
@@ -565,6 +566,7 @@ export interface SystemSettings {
 
   // Payment configuration
   payment_enabled: boolean;
+  payment_display_mode: PaymentDisplayMode;
   risk_control_enabled: boolean;
   payment_min_amount: number;
   payment_max_amount: number;
@@ -796,6 +798,7 @@ export interface UpdateSettingsRequest {
   openai_allow_claude_code_codex_plugin?: boolean;
   // Payment configuration
   payment_enabled?: boolean;
+  payment_display_mode?: PaymentDisplayMode;
   risk_control_enabled?: boolean;
   payment_min_amount?: number;
   payment_max_amount?: number;

@@ -86,7 +86,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 mkdir -p data
-echo "=== CloseAI Sub2API ==="
+echo "=== Ikun Sub2API ==="
 echo "启动中..."
 ./sub2api
 STARTSCRIPT
@@ -97,7 +97,7 @@ STARTSCRIPT
     # systemd service
     cat > "$TARGET/sub2api.service" << 'SERVICE'
 [Unit]
-Description=CloseAI Sub2API Service
+Description=Ikun Sub2API Service
 After=network.target
 
 [Service]
@@ -124,7 +124,7 @@ set -e
 INSTALL_DIR="/opt/sub2api"
 SERVICE_NAME="sub2api"
 
-echo "=== CloseAI Sub2API 部署 ==="
+echo "=== Ikun Sub2API 部署 ==="
 
 # 停止旧服务
 if systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then

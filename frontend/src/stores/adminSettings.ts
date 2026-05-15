@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { adminAPI } from '@/api'
 import type { CustomMenuItem } from '@/types'
+import type { PaymentDisplayMode } from '@/api/admin/settings'
 
 export const useAdminSettingsStore = defineStore('adminSettings', () => {
   const loaded = ref(false)
@@ -49,6 +50,12 @@ export const useAdminSettingsStore = defineStore('adminSettings', () => {
   const opsRealtimeMonitoringEnabled = ref(readCachedBool('ops_realtime_monitoring_enabled_cached', true))
   const opsQueryModeDefault = ref(readCachedString('ops_query_mode_default_cached', 'auto'))
   const paymentEnabled = ref(readCachedBool('payment_enabled_cached', false))
+  const cachedPaymentDisplayMode = readCachedString('payment_display_mode_cached', paymentEnabled.value ? 'payment' : 'off')
+  const paymentDisplayMode = ref<PaymentDisplayMode>(
+    cachedPaymentDisplayMode === 'payment' || cachedPaymentDisplayMode === 'plans' || cachedPaymentDisplayMode === 'off'
+      ? cachedPaymentDisplayMode
+      : paymentEnabled.value ? 'payment' : 'off'
+  )
   const customMenuItems = ref<CustomMenuItem[]>([])
 
   async function fetch(force = false): Promise<void> {
@@ -72,8 +79,13 @@ export const useAdminSettingsStore = defineStore('adminSettings', () => {
 
       customMenuItems.value = Array.isArray(settings.custom_menu_items) ? settings.custom_menu_items : []
 
-      paymentEnabled.value = paymentConfigResp.data?.enabled ?? false
+      const displayMode = paymentConfigResp.data?.display_mode
+      paymentDisplayMode.value = displayMode === 'payment' || displayMode === 'plans' || displayMode === 'off'
+        ? displayMode
+        : paymentConfigResp.data?.enabled ? 'payment' : 'off'
+      paymentEnabled.value = paymentDisplayMode.value === 'payment'
       writeCachedBool('payment_enabled_cached', paymentEnabled.value)
+      writeCachedString('payment_display_mode_cached', paymentDisplayMode.value)
 
       loaded.value = true
     } catch (err) {
@@ -98,8 +110,14 @@ export const useAdminSettingsStore = defineStore('adminSettings', () => {
   }
 
   function setPaymentEnabledLocal(value: boolean) {
-    paymentEnabled.value = value
-    writeCachedBool('payment_enabled_cached', value)
+    setPaymentDisplayModeLocal(value ? 'payment' : 'off')
+  }
+
+  function setPaymentDisplayModeLocal(value: PaymentDisplayMode) {
+    paymentDisplayMode.value = value
+    paymentEnabled.value = value === 'payment'
+    writeCachedString('payment_display_mode_cached', value)
+    writeCachedBool('payment_enabled_cached', paymentEnabled.value)
     loaded.value = true
   }
 
@@ -140,11 +158,13 @@ export const useAdminSettingsStore = defineStore('adminSettings', () => {
     opsRealtimeMonitoringEnabled,
     opsQueryModeDefault,
     paymentEnabled,
+    paymentDisplayMode,
     customMenuItems,
     fetch,
     setOpsMonitoringEnabledLocal,
     setOpsRealtimeMonitoringEnabledLocal,
     setPaymentEnabledLocal,
+    setPaymentDisplayModeLocal,
     setOpsQueryModeDefaultLocal
   }
 })

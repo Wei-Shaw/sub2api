@@ -169,16 +169,16 @@ const toggleBreakdown = async (type: string, id: number | string) => {
 }
 
 const chartColors = [
-  '#3b82f6',
-  '#10b981',
-  '#f59e0b',
-  '#ef4444',
-  '#8b5cf6',
-  '#ec4899',
-  '#c084fc',
   '#f97316',
-  '#6366f1',
-  '#84cc16'
+  '#2563eb',
+  '#059669',
+  '#dc2626',
+  '#0891b2',
+  '#ca8a04',
+  '#65a30d',
+  '#0d9488',
+  '#0284c7',
+  '#475569'
 ]
 
 const displayGroupStats = computed(() => {

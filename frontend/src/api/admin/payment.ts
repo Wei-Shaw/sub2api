@@ -16,6 +16,7 @@ import type { BasePaginationResponse } from '@/types'
 /** Admin-facing payment config returned by GET /admin/payment/config */
 export interface AdminPaymentConfig {
   enabled: boolean
+  display_mode: 'off' | 'payment' | 'plans'
   min_amount: number
   max_amount: number
   daily_limit: number
@@ -34,6 +35,7 @@ export interface AdminPaymentConfig {
 /** Fields accepted by PUT /admin/payment/config (all optional via pointer semantics) */
 export interface UpdatePaymentConfigRequest {
   enabled?: boolean
+  display_mode?: 'off' | 'payment' | 'plans'
   min_amount?: number
   max_amount?: number
   daily_limit?: number

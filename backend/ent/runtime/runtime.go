@@ -1513,20 +1513,36 @@ func init() {
 	subscriptionplan.DefaultProductName = subscriptionplanDescProductName.Default.(string)
 	// subscriptionplan.ProductNameValidator is a validator for the "product_name" field. It is called by the builders before save.
 	subscriptionplan.ProductNameValidator = subscriptionplanDescProductName.Validators[0].(func(string) error)
+	// subscriptionplanDescExternalSubscribeEnabled is the schema descriptor for external_subscribe_enabled field.
+	subscriptionplanDescExternalSubscribeEnabled := subscriptionplanFields[9].Descriptor()
+	// subscriptionplan.DefaultExternalSubscribeEnabled holds the default value on creation for the external_subscribe_enabled field.
+	subscriptionplan.DefaultExternalSubscribeEnabled = subscriptionplanDescExternalSubscribeEnabled.Default.(bool)
+	// subscriptionplanDescExternalSubscribeURL is the schema descriptor for external_subscribe_url field.
+	subscriptionplanDescExternalSubscribeURL := subscriptionplanFields[10].Descriptor()
+	// subscriptionplan.DefaultExternalSubscribeURL holds the default value on creation for the external_subscribe_url field.
+	subscriptionplan.DefaultExternalSubscribeURL = subscriptionplanDescExternalSubscribeURL.Default.(string)
+	// subscriptionplan.ExternalSubscribeURLValidator is a validator for the "external_subscribe_url" field. It is called by the builders before save.
+	subscriptionplan.ExternalSubscribeURLValidator = subscriptionplanDescExternalSubscribeURL.Validators[0].(func(string) error)
+	// subscriptionplanDescExternalSubscribeDialogText is the schema descriptor for external_subscribe_dialog_text field.
+	subscriptionplanDescExternalSubscribeDialogText := subscriptionplanFields[11].Descriptor()
+	// subscriptionplan.DefaultExternalSubscribeDialogText holds the default value on creation for the external_subscribe_dialog_text field.
+	subscriptionplan.DefaultExternalSubscribeDialogText = subscriptionplanDescExternalSubscribeDialogText.Default.(string)
+	// subscriptionplan.ExternalSubscribeDialogTextValidator is a validator for the "external_subscribe_dialog_text" field. It is called by the builders before save.
+	subscriptionplan.ExternalSubscribeDialogTextValidator = subscriptionplanDescExternalSubscribeDialogText.Validators[0].(func(string) error)
 	// subscriptionplanDescForSale is the schema descriptor for for_sale field.
-	subscriptionplanDescForSale := subscriptionplanFields[9].Descriptor()
+	subscriptionplanDescForSale := subscriptionplanFields[12].Descriptor()
 	// subscriptionplan.DefaultForSale holds the default value on creation for the for_sale field.
 	subscriptionplan.DefaultForSale = subscriptionplanDescForSale.Default.(bool)
 	// subscriptionplanDescSortOrder is the schema descriptor for sort_order field.
-	subscriptionplanDescSortOrder := subscriptionplanFields[10].Descriptor()
+	subscriptionplanDescSortOrder := subscriptionplanFields[13].Descriptor()
 	// subscriptionplan.DefaultSortOrder holds the default value on creation for the sort_order field.
 	subscriptionplan.DefaultSortOrder = subscriptionplanDescSortOrder.Default.(int)
 	// subscriptionplanDescCreatedAt is the schema descriptor for created_at field.
-	subscriptionplanDescCreatedAt := subscriptionplanFields[11].Descriptor()
+	subscriptionplanDescCreatedAt := subscriptionplanFields[14].Descriptor()
 	// subscriptionplan.DefaultCreatedAt holds the default value on creation for the created_at field.
 	subscriptionplan.DefaultCreatedAt = subscriptionplanDescCreatedAt.Default.(func() time.Time)
 	// subscriptionplanDescUpdatedAt is the schema descriptor for updated_at field.
-	subscriptionplanDescUpdatedAt := subscriptionplanFields[12].Descriptor()
+	subscriptionplanDescUpdatedAt := subscriptionplanFields[15].Descriptor()
 	// subscriptionplan.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	subscriptionplan.DefaultUpdatedAt = subscriptionplanDescUpdatedAt.Default.(func() time.Time)
 	// subscriptionplan.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

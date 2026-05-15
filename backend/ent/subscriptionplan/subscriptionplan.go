@@ -31,6 +31,12 @@ const (
 	FieldFeatures = "features"
 	// FieldProductName holds the string denoting the product_name field in the database.
 	FieldProductName = "product_name"
+	// FieldExternalSubscribeEnabled holds the string denoting the external_subscribe_enabled field in the database.
+	FieldExternalSubscribeEnabled = "external_subscribe_enabled"
+	// FieldExternalSubscribeURL holds the string denoting the external_subscribe_url field in the database.
+	FieldExternalSubscribeURL = "external_subscribe_url"
+	// FieldExternalSubscribeDialogText holds the string denoting the external_subscribe_dialog_text field in the database.
+	FieldExternalSubscribeDialogText = "external_subscribe_dialog_text"
 	// FieldForSale holds the string denoting the for_sale field in the database.
 	FieldForSale = "for_sale"
 	// FieldSortOrder holds the string denoting the sort_order field in the database.
@@ -55,6 +61,9 @@ var Columns = []string{
 	FieldValidityUnit,
 	FieldFeatures,
 	FieldProductName,
+	FieldExternalSubscribeEnabled,
+	FieldExternalSubscribeURL,
+	FieldExternalSubscribeDialogText,
 	FieldForSale,
 	FieldSortOrder,
 	FieldCreatedAt,
@@ -88,6 +97,16 @@ var (
 	DefaultProductName string
 	// ProductNameValidator is a validator for the "product_name" field. It is called by the builders before save.
 	ProductNameValidator func(string) error
+	// DefaultExternalSubscribeEnabled holds the default value on creation for the "external_subscribe_enabled" field.
+	DefaultExternalSubscribeEnabled bool
+	// DefaultExternalSubscribeURL holds the default value on creation for the "external_subscribe_url" field.
+	DefaultExternalSubscribeURL string
+	// ExternalSubscribeURLValidator is a validator for the "external_subscribe_url" field. It is called by the builders before save.
+	ExternalSubscribeURLValidator func(string) error
+	// DefaultExternalSubscribeDialogText holds the default value on creation for the "external_subscribe_dialog_text" field.
+	DefaultExternalSubscribeDialogText string
+	// ExternalSubscribeDialogTextValidator is a validator for the "external_subscribe_dialog_text" field. It is called by the builders before save.
+	ExternalSubscribeDialogTextValidator func(string) error
 	// DefaultForSale holds the default value on creation for the "for_sale" field.
 	DefaultForSale bool
 	// DefaultSortOrder holds the default value on creation for the "sort_order" field.
@@ -151,6 +170,21 @@ func ByFeatures(opts ...sql.OrderTermOption) OrderOption {
 // ByProductName orders the results by the product_name field.
 func ByProductName(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldProductName, opts...).ToFunc()
+}
+
+// ByExternalSubscribeEnabled orders the results by the external_subscribe_enabled field.
+func ByExternalSubscribeEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldExternalSubscribeEnabled, opts...).ToFunc()
+}
+
+// ByExternalSubscribeURL orders the results by the external_subscribe_url field.
+func ByExternalSubscribeURL(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldExternalSubscribeURL, opts...).ToFunc()
+}
+
+// ByExternalSubscribeDialogText orders the results by the external_subscribe_dialog_text field.
+func ByExternalSubscribeDialogText(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldExternalSubscribeDialogText, opts...).ToFunc()
 }
 
 // ByForSale orders the results by the for_sale field.

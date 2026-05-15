@@ -6,11 +6,11 @@
     <template v-if="outcome === 'success'">
       <div class="card p-6">
         <div class="flex flex-col items-center space-y-4 py-4">
-          <div class="flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
-            <Icon name="check" size="lg" class="text-green-500" />
+          <div class="flex h-16 w-16 items-center justify-center rounded-full bg-primary-100 ring-1 ring-primary-200/70 dark:bg-primary-900/30 dark:ring-primary-800/50">
+            <Icon name="check" size="lg" class="text-primary-600 dark:text-primary-300" />
           </div>
           <p class="text-lg font-bold text-gray-900 dark:text-white">{{ props.orderType === 'subscription' ? t('payment.result.subscriptionSuccess') : t('payment.result.success') }}</p>
-          <div v-if="paidOrder" class="w-full rounded-xl bg-gray-50 p-4 dark:bg-dark-800">
+          <div v-if="paidOrder" class="w-full rounded-xl border border-amber-100/70 bg-primary-50/60 p-4 dark:border-primary-900/25 dark:bg-primary-950/20">
             <div class="space-y-2 text-sm">
               <div class="flex justify-between">
                 <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.orderId') }}</span>
@@ -39,8 +39,8 @@
     <template v-else-if="outcome === 'cancelled'">
       <div class="card p-6">
         <div class="flex flex-col items-center space-y-4 py-4">
-          <div class="flex h-16 w-16 items-center justify-center rounded-full bg-gray-100 dark:bg-dark-700">
-            <svg class="h-8 w-8 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <div class="flex h-16 w-16 items-center justify-center rounded-full bg-amber-100/80 dark:bg-primary-900/20">
+            <svg class="h-8 w-8 text-primary-500/70 dark:text-primary-300/80" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </div>
@@ -55,8 +55,8 @@
     <template v-else-if="outcome === 'expired'">
       <div class="card p-6">
         <div class="flex flex-col items-center space-y-4 py-4">
-          <div class="flex h-16 w-16 items-center justify-center rounded-full bg-orange-100 dark:bg-orange-900/30">
-            <svg class="h-8 w-8 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <div class="flex h-16 w-16 items-center justify-center rounded-full bg-primary-100 dark:bg-primary-900/30">
+            <svg class="h-8 w-8 text-primary-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </div>
@@ -74,7 +74,7 @@
       <div class="card p-6">
         <div class="flex flex-col items-center space-y-4">
           <p class="text-lg font-semibold text-gray-900 dark:text-white">{{ scanTitle }}</p>
-          <div :class="['relative rounded-lg border-2 p-4', qrBorderClass]">
+          <div :class="['relative rounded-2xl border p-4 shadow-inner', qrBorderClass]">
             <canvas ref="qrCanvas" class="mx-auto"></canvas>
             <!-- Brand logo overlay -->
             <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -185,9 +185,9 @@ const isAlipay = computed(() => props.paymentType.includes('alipay'))
 const isWxpay = computed(() => props.paymentType.includes('wxpay'))
 
 const qrBorderClass = computed(() => {
-  if (isAlipay.value) return 'border-[#00AEEF] bg-blue-50 dark:border-[#00AEEF]/70 dark:bg-blue-950/20'
-  if (isWxpay.value) return 'border-[#2BB741] bg-green-50 dark:border-[#2BB741]/70 dark:bg-green-950/20'
-  return 'border-gray-200 bg-white dark:border-dark-600 dark:bg-dark-800'
+  if (isAlipay.value) return 'border-primary-200 bg-gradient-to-br from-primary-50 to-white dark:border-primary-800/45 dark:from-primary-950/25 dark:to-dark-900'
+  if (isWxpay.value) return 'border-primary-200 bg-gradient-to-br from-primary-50 to-white dark:border-primary-800/45 dark:from-primary-950/25 dark:to-dark-900'
+  return 'border-amber-100 bg-white dark:border-primary-900/30 dark:bg-dark-900'
 })
 
 const qrLogoBgClass = computed(() => {

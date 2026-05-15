@@ -15,6 +15,7 @@ import (
 
 const (
 	SettingPaymentEnabled      = "payment_enabled"
+	SettingPaymentDisplayMode  = "payment_display_mode"
 	SettingMinRechargeAmount   = "MIN_RECHARGE_AMOUNT"
 	SettingMaxRechargeAmount   = "MAX_RECHARGE_AMOUNT"
 	SettingDailyRechargeLimit  = "DAILY_RECHARGE_LIMIT"
@@ -43,9 +44,16 @@ const (
 	defaultMaxPendingOrders = 3
 )
 
+const (
+	PaymentDisplayModeOff     = "off"
+	PaymentDisplayModePayment = "payment"
+	PaymentDisplayModePlans   = "plans"
+)
+
 // PaymentConfig holds the payment system configuration.
 type PaymentConfig struct {
 	Enabled                   bool     `json:"enabled"`
+	DisplayMode               string   `json:"display_mode"`
 	MinAmount                 float64  `json:"min_amount"`
 	MaxAmount                 float64  `json:"max_amount"`
 	DailyLimit                float64  `json:"daily_limit"`
@@ -76,6 +84,7 @@ type PaymentConfig struct {
 // UpdatePaymentConfigRequest contains fields to update payment configuration.
 type UpdatePaymentConfigRequest struct {
 	Enabled                   *bool    `json:"enabled"`
+	DisplayMode               *string  `json:"display_mode"`
 	MinAmount                 *float64 `json:"min_amount"`
 	MaxAmount                 *float64 `json:"max_amount"`
 	DailyLimit                *float64 `json:"daily_limit"`
@@ -150,31 +159,37 @@ type UpdateProviderInstanceRequest struct {
 	AllowUserRefund *bool             `json:"allow_user_refund"`
 }
 type CreatePlanRequest struct {
-	GroupID       int64    `json:"group_id"`
-	Name          string   `json:"name"`
-	Description   string   `json:"description"`
-	Price         float64  `json:"price"`
-	OriginalPrice *float64 `json:"original_price"`
-	ValidityDays  int      `json:"validity_days"`
-	ValidityUnit  string   `json:"validity_unit"`
-	Features      string   `json:"features"`
-	ProductName   string   `json:"product_name"`
-	ForSale       bool     `json:"for_sale"`
-	SortOrder     int      `json:"sort_order"`
+	GroupID                     int64    `json:"group_id"`
+	Name                        string   `json:"name"`
+	Description                 string   `json:"description"`
+	Price                       float64  `json:"price"`
+	OriginalPrice               *float64 `json:"original_price"`
+	ValidityDays                int      `json:"validity_days"`
+	ValidityUnit                string   `json:"validity_unit"`
+	Features                    string   `json:"features"`
+	ProductName                 string   `json:"product_name"`
+	ExternalSubscribeEnabled    bool     `json:"external_subscribe_enabled"`
+	ExternalSubscribeURL        string   `json:"external_subscribe_url"`
+	ExternalSubscribeDialogText string   `json:"external_subscribe_dialog_text"`
+	ForSale                     bool     `json:"for_sale"`
+	SortOrder                   int      `json:"sort_order"`
 }
 
 type UpdatePlanRequest struct {
-	GroupID       *int64   `json:"group_id"`
-	Name          *string  `json:"name"`
-	Description   *string  `json:"description"`
-	Price         *float64 `json:"price"`
-	OriginalPrice *float64 `json:"original_price"`
-	ValidityDays  *int     `json:"validity_days"`
-	ValidityUnit  *string  `json:"validity_unit"`
-	Features      *string  `json:"features"`
-	ProductName   *string  `json:"product_name"`
-	ForSale       *bool    `json:"for_sale"`
-	SortOrder     *int     `json:"sort_order"`
+	GroupID                     *int64   `json:"group_id"`
+	Name                        *string  `json:"name"`
+	Description                 *string  `json:"description"`
+	Price                       *float64 `json:"price"`
+	OriginalPrice               *float64 `json:"original_price"`
+	ValidityDays                *int     `json:"validity_days"`
+	ValidityUnit                *string  `json:"validity_unit"`
+	Features                    *string  `json:"features"`
+	ProductName                 *string  `json:"product_name"`
+	ExternalSubscribeEnabled    *bool    `json:"external_subscribe_enabled"`
+	ExternalSubscribeURL        *string  `json:"external_subscribe_url"`
+	ExternalSubscribeDialogText *string  `json:"external_subscribe_dialog_text"`
+	ForSale                     *bool    `json:"for_sale"`
+	SortOrder                   *int     `json:"sort_order"`
 }
 
 // PaymentConfigService manages payment configuration and CRUD for
@@ -192,17 +207,17 @@ func NewPaymentConfigService(entClient *dbent.Client, settingRepo SettingReposit
 
 // IsPaymentEnabled returns whether the payment system is enabled.
 func (s *PaymentConfigService) IsPaymentEnabled(ctx context.Context) bool {
-	val, err := s.settingRepo.GetValue(ctx, SettingPaymentEnabled)
+	vals, err := s.settingRepo.GetMultiple(ctx, []string{SettingPaymentDisplayMode, SettingPaymentEnabled})
 	if err != nil {
 		return false
 	}
-	return val == "true"
+	return NormalizePaymentDisplayMode(vals[SettingPaymentDisplayMode], vals[SettingPaymentEnabled] == "true") == PaymentDisplayModePayment
 }
 
 // GetPaymentConfig returns the full payment configuration.
 func (s *PaymentConfigService) GetPaymentConfig(ctx context.Context) (*PaymentConfig, error) {
 	keys := []string{
-		SettingPaymentEnabled, SettingMinRechargeAmount, SettingMaxRechargeAmount,
+		SettingPaymentEnabled, SettingPaymentDisplayMode, SettingMinRechargeAmount, SettingMaxRechargeAmount,
 		SettingDailyRechargeLimit, SettingOrderTimeoutMinutes, SettingMaxPendingOrders,
 		SettingEnabledPaymentTypes, SettingBalancePayDisabled, SettingBalanceRechargeMult, SettingRechargeFeeRate, SettingLoadBalanceStrategy,
 		SettingProductNamePrefix, SettingProductNameSuffix,
@@ -224,8 +239,10 @@ func (s *PaymentConfigService) GetPaymentConfig(ctx context.Context) (*PaymentCo
 }
 
 func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *PaymentConfig {
+	displayMode := NormalizePaymentDisplayMode(vals[SettingPaymentDisplayMode], vals[SettingPaymentEnabled] == "true")
 	cfg := &PaymentConfig{
-		Enabled:                   vals[SettingPaymentEnabled] == "true",
+		Enabled:                   displayMode == PaymentDisplayModePayment,
+		DisplayMode:               displayMode,
 		MinAmount:                 pcParseFloat(vals[SettingMinRechargeAmount], 1),
 		MaxAmount:                 pcParseFloat(vals[SettingMaxRechargeAmount], 0),
 		DailyLimit:                pcParseFloat(vals[SettingDailyRechargeLimit], 0),
@@ -304,8 +321,25 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 			return infraerrors.BadRequest("INVALID_RECHARGE_FEE_RATE", "recharge fee rate allows at most 2 decimal places")
 		}
 	}
+	displayModeValue := ""
+	paymentEnabledValue := formatBoolOrEmpty(req.Enabled)
+	if req.DisplayMode != nil {
+		mode, err := ParsePaymentDisplayMode(*req.DisplayMode)
+		if err != nil {
+			return err
+		}
+		displayModeValue = mode
+		paymentEnabledValue = strconv.FormatBool(mode == PaymentDisplayModePayment)
+	} else if req.Enabled != nil {
+		if *req.Enabled {
+			displayModeValue = PaymentDisplayModePayment
+		} else {
+			displayModeValue = PaymentDisplayModeOff
+		}
+	}
 	m := map[string]string{
-		SettingPaymentEnabled:                    formatBoolOrEmpty(req.Enabled),
+		SettingPaymentEnabled:                    paymentEnabledValue,
+		SettingPaymentDisplayMode:                displayModeValue,
 		SettingMinRechargeAmount:                 formatPositiveFloat(req.MinAmount),
 		SettingMaxRechargeAmount:                 formatPositiveFloat(req.MaxAmount),
 		SettingDailyRechargeLimit:                formatPositiveFloat(req.DailyLimit),
@@ -336,6 +370,38 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 		m[SettingEnabledPaymentTypes] = ""
 	}
 	return s.settingRepo.SetMultiple(ctx, m)
+}
+
+func NormalizePaymentDisplayMode(raw string, paymentEnabled bool) string {
+	mode := strings.ToLower(strings.TrimSpace(raw))
+	switch mode {
+	case PaymentDisplayModePayment:
+		return PaymentDisplayModePayment
+	case PaymentDisplayModePlans:
+		return PaymentDisplayModePlans
+	case PaymentDisplayModeOff:
+		return PaymentDisplayModeOff
+	case "":
+		if paymentEnabled {
+			return PaymentDisplayModePayment
+		}
+		return PaymentDisplayModeOff
+	default:
+		if paymentEnabled {
+			return PaymentDisplayModePayment
+		}
+		return PaymentDisplayModeOff
+	}
+}
+
+func ParsePaymentDisplayMode(raw string) (string, error) {
+	mode := strings.ToLower(strings.TrimSpace(raw))
+	switch mode {
+	case PaymentDisplayModeOff, PaymentDisplayModePayment, PaymentDisplayModePlans:
+		return mode, nil
+	default:
+		return "", infraerrors.BadRequest("INVALID_PAYMENT_DISPLAY_MODE", "payment_display_mode must be off, payment, or plans")
+	}
 }
 
 func formatBoolOrEmpty(v *bool) string {

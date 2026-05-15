@@ -124,6 +124,48 @@ func (_c *SubscriptionPlanCreate) SetNillableProductName(v *string) *Subscriptio
 	return _c
 }
 
+// SetExternalSubscribeEnabled sets the "external_subscribe_enabled" field.
+func (_c *SubscriptionPlanCreate) SetExternalSubscribeEnabled(v bool) *SubscriptionPlanCreate {
+	_c.mutation.SetExternalSubscribeEnabled(v)
+	return _c
+}
+
+// SetNillableExternalSubscribeEnabled sets the "external_subscribe_enabled" field if the given value is not nil.
+func (_c *SubscriptionPlanCreate) SetNillableExternalSubscribeEnabled(v *bool) *SubscriptionPlanCreate {
+	if v != nil {
+		_c.SetExternalSubscribeEnabled(*v)
+	}
+	return _c
+}
+
+// SetExternalSubscribeURL sets the "external_subscribe_url" field.
+func (_c *SubscriptionPlanCreate) SetExternalSubscribeURL(v string) *SubscriptionPlanCreate {
+	_c.mutation.SetExternalSubscribeURL(v)
+	return _c
+}
+
+// SetNillableExternalSubscribeURL sets the "external_subscribe_url" field if the given value is not nil.
+func (_c *SubscriptionPlanCreate) SetNillableExternalSubscribeURL(v *string) *SubscriptionPlanCreate {
+	if v != nil {
+		_c.SetExternalSubscribeURL(*v)
+	}
+	return _c
+}
+
+// SetExternalSubscribeDialogText sets the "external_subscribe_dialog_text" field.
+func (_c *SubscriptionPlanCreate) SetExternalSubscribeDialogText(v string) *SubscriptionPlanCreate {
+	_c.mutation.SetExternalSubscribeDialogText(v)
+	return _c
+}
+
+// SetNillableExternalSubscribeDialogText sets the "external_subscribe_dialog_text" field if the given value is not nil.
+func (_c *SubscriptionPlanCreate) SetNillableExternalSubscribeDialogText(v *string) *SubscriptionPlanCreate {
+	if v != nil {
+		_c.SetExternalSubscribeDialogText(*v)
+	}
+	return _c
+}
+
 // SetForSale sets the "for_sale" field.
 func (_c *SubscriptionPlanCreate) SetForSale(v bool) *SubscriptionPlanCreate {
 	_c.mutation.SetForSale(v)
@@ -235,6 +277,18 @@ func (_c *SubscriptionPlanCreate) defaults() {
 		v := subscriptionplan.DefaultProductName
 		_c.mutation.SetProductName(v)
 	}
+	if _, ok := _c.mutation.ExternalSubscribeEnabled(); !ok {
+		v := subscriptionplan.DefaultExternalSubscribeEnabled
+		_c.mutation.SetExternalSubscribeEnabled(v)
+	}
+	if _, ok := _c.mutation.ExternalSubscribeURL(); !ok {
+		v := subscriptionplan.DefaultExternalSubscribeURL
+		_c.mutation.SetExternalSubscribeURL(v)
+	}
+	if _, ok := _c.mutation.ExternalSubscribeDialogText(); !ok {
+		v := subscriptionplan.DefaultExternalSubscribeDialogText
+		_c.mutation.SetExternalSubscribeDialogText(v)
+	}
 	if _, ok := _c.mutation.ForSale(); !ok {
 		v := subscriptionplan.DefaultForSale
 		_c.mutation.SetForSale(v)
@@ -292,6 +346,25 @@ func (_c *SubscriptionPlanCreate) check() error {
 	if v, ok := _c.mutation.ProductName(); ok {
 		if err := subscriptionplan.ProductNameValidator(v); err != nil {
 			return &ValidationError{Name: "product_name", err: fmt.Errorf(`ent: validator failed for field "SubscriptionPlan.product_name": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.ExternalSubscribeEnabled(); !ok {
+		return &ValidationError{Name: "external_subscribe_enabled", err: errors.New(`ent: missing required field "SubscriptionPlan.external_subscribe_enabled"`)}
+	}
+	if _, ok := _c.mutation.ExternalSubscribeURL(); !ok {
+		return &ValidationError{Name: "external_subscribe_url", err: errors.New(`ent: missing required field "SubscriptionPlan.external_subscribe_url"`)}
+	}
+	if v, ok := _c.mutation.ExternalSubscribeURL(); ok {
+		if err := subscriptionplan.ExternalSubscribeURLValidator(v); err != nil {
+			return &ValidationError{Name: "external_subscribe_url", err: fmt.Errorf(`ent: validator failed for field "SubscriptionPlan.external_subscribe_url": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.ExternalSubscribeDialogText(); !ok {
+		return &ValidationError{Name: "external_subscribe_dialog_text", err: errors.New(`ent: missing required field "SubscriptionPlan.external_subscribe_dialog_text"`)}
+	}
+	if v, ok := _c.mutation.ExternalSubscribeDialogText(); ok {
+		if err := subscriptionplan.ExternalSubscribeDialogTextValidator(v); err != nil {
+			return &ValidationError{Name: "external_subscribe_dialog_text", err: fmt.Errorf(`ent: validator failed for field "SubscriptionPlan.external_subscribe_dialog_text": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.ForSale(); !ok {
@@ -368,6 +441,18 @@ func (_c *SubscriptionPlanCreate) createSpec() (*SubscriptionPlan, *sqlgraph.Cre
 	if value, ok := _c.mutation.ProductName(); ok {
 		_spec.SetField(subscriptionplan.FieldProductName, field.TypeString, value)
 		_node.ProductName = value
+	}
+	if value, ok := _c.mutation.ExternalSubscribeEnabled(); ok {
+		_spec.SetField(subscriptionplan.FieldExternalSubscribeEnabled, field.TypeBool, value)
+		_node.ExternalSubscribeEnabled = value
+	}
+	if value, ok := _c.mutation.ExternalSubscribeURL(); ok {
+		_spec.SetField(subscriptionplan.FieldExternalSubscribeURL, field.TypeString, value)
+		_node.ExternalSubscribeURL = value
+	}
+	if value, ok := _c.mutation.ExternalSubscribeDialogText(); ok {
+		_spec.SetField(subscriptionplan.FieldExternalSubscribeDialogText, field.TypeString, value)
+		_node.ExternalSubscribeDialogText = value
 	}
 	if value, ok := _c.mutation.ForSale(); ok {
 		_spec.SetField(subscriptionplan.FieldForSale, field.TypeBool, value)
@@ -572,6 +657,42 @@ func (u *SubscriptionPlanUpsert) SetProductName(v string) *SubscriptionPlanUpser
 // UpdateProductName sets the "product_name" field to the value that was provided on create.
 func (u *SubscriptionPlanUpsert) UpdateProductName() *SubscriptionPlanUpsert {
 	u.SetExcluded(subscriptionplan.FieldProductName)
+	return u
+}
+
+// SetExternalSubscribeEnabled sets the "external_subscribe_enabled" field.
+func (u *SubscriptionPlanUpsert) SetExternalSubscribeEnabled(v bool) *SubscriptionPlanUpsert {
+	u.Set(subscriptionplan.FieldExternalSubscribeEnabled, v)
+	return u
+}
+
+// UpdateExternalSubscribeEnabled sets the "external_subscribe_enabled" field to the value that was provided on create.
+func (u *SubscriptionPlanUpsert) UpdateExternalSubscribeEnabled() *SubscriptionPlanUpsert {
+	u.SetExcluded(subscriptionplan.FieldExternalSubscribeEnabled)
+	return u
+}
+
+// SetExternalSubscribeURL sets the "external_subscribe_url" field.
+func (u *SubscriptionPlanUpsert) SetExternalSubscribeURL(v string) *SubscriptionPlanUpsert {
+	u.Set(subscriptionplan.FieldExternalSubscribeURL, v)
+	return u
+}
+
+// UpdateExternalSubscribeURL sets the "external_subscribe_url" field to the value that was provided on create.
+func (u *SubscriptionPlanUpsert) UpdateExternalSubscribeURL() *SubscriptionPlanUpsert {
+	u.SetExcluded(subscriptionplan.FieldExternalSubscribeURL)
+	return u
+}
+
+// SetExternalSubscribeDialogText sets the "external_subscribe_dialog_text" field.
+func (u *SubscriptionPlanUpsert) SetExternalSubscribeDialogText(v string) *SubscriptionPlanUpsert {
+	u.Set(subscriptionplan.FieldExternalSubscribeDialogText, v)
+	return u
+}
+
+// UpdateExternalSubscribeDialogText sets the "external_subscribe_dialog_text" field to the value that was provided on create.
+func (u *SubscriptionPlanUpsert) UpdateExternalSubscribeDialogText() *SubscriptionPlanUpsert {
+	u.SetExcluded(subscriptionplan.FieldExternalSubscribeDialogText)
 	return u
 }
 
@@ -820,6 +941,48 @@ func (u *SubscriptionPlanUpsertOne) SetProductName(v string) *SubscriptionPlanUp
 func (u *SubscriptionPlanUpsertOne) UpdateProductName() *SubscriptionPlanUpsertOne {
 	return u.Update(func(s *SubscriptionPlanUpsert) {
 		s.UpdateProductName()
+	})
+}
+
+// SetExternalSubscribeEnabled sets the "external_subscribe_enabled" field.
+func (u *SubscriptionPlanUpsertOne) SetExternalSubscribeEnabled(v bool) *SubscriptionPlanUpsertOne {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.SetExternalSubscribeEnabled(v)
+	})
+}
+
+// UpdateExternalSubscribeEnabled sets the "external_subscribe_enabled" field to the value that was provided on create.
+func (u *SubscriptionPlanUpsertOne) UpdateExternalSubscribeEnabled() *SubscriptionPlanUpsertOne {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.UpdateExternalSubscribeEnabled()
+	})
+}
+
+// SetExternalSubscribeURL sets the "external_subscribe_url" field.
+func (u *SubscriptionPlanUpsertOne) SetExternalSubscribeURL(v string) *SubscriptionPlanUpsertOne {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.SetExternalSubscribeURL(v)
+	})
+}
+
+// UpdateExternalSubscribeURL sets the "external_subscribe_url" field to the value that was provided on create.
+func (u *SubscriptionPlanUpsertOne) UpdateExternalSubscribeURL() *SubscriptionPlanUpsertOne {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.UpdateExternalSubscribeURL()
+	})
+}
+
+// SetExternalSubscribeDialogText sets the "external_subscribe_dialog_text" field.
+func (u *SubscriptionPlanUpsertOne) SetExternalSubscribeDialogText(v string) *SubscriptionPlanUpsertOne {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.SetExternalSubscribeDialogText(v)
+	})
+}
+
+// UpdateExternalSubscribeDialogText sets the "external_subscribe_dialog_text" field to the value that was provided on create.
+func (u *SubscriptionPlanUpsertOne) UpdateExternalSubscribeDialogText() *SubscriptionPlanUpsertOne {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.UpdateExternalSubscribeDialogText()
 	})
 }
 
@@ -1241,6 +1404,48 @@ func (u *SubscriptionPlanUpsertBulk) SetProductName(v string) *SubscriptionPlanU
 func (u *SubscriptionPlanUpsertBulk) UpdateProductName() *SubscriptionPlanUpsertBulk {
 	return u.Update(func(s *SubscriptionPlanUpsert) {
 		s.UpdateProductName()
+	})
+}
+
+// SetExternalSubscribeEnabled sets the "external_subscribe_enabled" field.
+func (u *SubscriptionPlanUpsertBulk) SetExternalSubscribeEnabled(v bool) *SubscriptionPlanUpsertBulk {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.SetExternalSubscribeEnabled(v)
+	})
+}
+
+// UpdateExternalSubscribeEnabled sets the "external_subscribe_enabled" field to the value that was provided on create.
+func (u *SubscriptionPlanUpsertBulk) UpdateExternalSubscribeEnabled() *SubscriptionPlanUpsertBulk {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.UpdateExternalSubscribeEnabled()
+	})
+}
+
+// SetExternalSubscribeURL sets the "external_subscribe_url" field.
+func (u *SubscriptionPlanUpsertBulk) SetExternalSubscribeURL(v string) *SubscriptionPlanUpsertBulk {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.SetExternalSubscribeURL(v)
+	})
+}
+
+// UpdateExternalSubscribeURL sets the "external_subscribe_url" field to the value that was provided on create.
+func (u *SubscriptionPlanUpsertBulk) UpdateExternalSubscribeURL() *SubscriptionPlanUpsertBulk {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.UpdateExternalSubscribeURL()
+	})
+}
+
+// SetExternalSubscribeDialogText sets the "external_subscribe_dialog_text" field.
+func (u *SubscriptionPlanUpsertBulk) SetExternalSubscribeDialogText(v string) *SubscriptionPlanUpsertBulk {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.SetExternalSubscribeDialogText(v)
+	})
+}
+
+// UpdateExternalSubscribeDialogText sets the "external_subscribe_dialog_text" field to the value that was provided on create.
+func (u *SubscriptionPlanUpsertBulk) UpdateExternalSubscribeDialogText() *SubscriptionPlanUpsertBulk {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.UpdateExternalSubscribeDialogText()
 	})
 }
 

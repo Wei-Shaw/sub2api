@@ -2,7 +2,7 @@
   <div class="space-y-4">
     <!-- Quick Amount Buttons -->
     <div>
-      <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+      <label class="mb-2 block text-sm font-semibold text-primary-900/80 dark:text-primary-100">
         {{ t('payment.quickAmounts') }}
       </label>
       <div class="grid grid-cols-3 gap-2">
@@ -11,10 +11,10 @@
           :key="amt"
           type="button"
           :class="[
-            'rounded-lg border-2 px-4 py-3 text-center font-medium transition-colors',
+            'rounded-xl border px-4 py-3 text-center font-semibold transition-all',
             modelValue === amt
-              ? 'border-primary-500 bg-primary-50 text-primary-700 dark:border-primary-400 dark:bg-primary-900/40 dark:text-primary-300'
-              : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-200 dark:hover:border-dark-500',
+              ? 'border-primary-400 bg-gradient-to-br from-primary-50 to-amber-50 text-primary-700 shadow-sm shadow-primary-500/15 dark:border-primary-500/70 dark:from-primary-900/35 dark:to-primary-950/20 dark:text-primary-200'
+              : 'border-amber-100/80 bg-white/85 text-gray-700 hover:border-primary-200 hover:bg-primary-50/60 hover:text-primary-700 dark:border-primary-900/25 dark:bg-dark-900/65 dark:text-gray-200 dark:hover:border-primary-800/60 dark:hover:bg-primary-950/25',
           ]"
           @click="selectAmount(amt)"
         >
@@ -25,11 +25,11 @@
 
     <!-- Custom Amount Input -->
     <div>
-      <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+      <label class="mb-2 block text-sm font-semibold text-primary-900/80 dark:text-primary-100">
         {{ t('payment.customAmount') }}
       </label>
       <div class="relative">
-        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-dark-500">
+        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-primary-500/80 dark:text-primary-300">
           $
         </span>
         <input

@@ -57,7 +57,7 @@ vi.mock('vue-i18n', () => ({
   useI18n: () => ({
     t: (key: string, params?: Record<string, string | number>) => {
       if (key === 'auth.accountCreatedSuccess') {
-        return `Account created for ${params?.siteName ?? 'CloseAI'}`
+        return `Account created for ${params?.siteName ?? 'Ikun'}`
       }
       return key
     },
@@ -117,7 +117,7 @@ describe('EmailVerifyView', () => {
     getPublicSettingsMock.mockResolvedValue({
       turnstile_enabled: false,
       turnstile_site_key: '',
-      site_name: 'CloseAI',
+      site_name: 'Ikun',
       registration_email_suffix_whitelist: [],
     })
     sendVerifyCodeMock.mockResolvedValue({ countdown: 60 })
@@ -171,7 +171,7 @@ describe('EmailVerifyView', () => {
     getPublicSettingsMock.mockResolvedValue({
       turnstile_enabled: false,
       turnstile_site_key: '',
-      site_name: 'CloseAI',
+      site_name: 'Ikun',
       registration_email_suffix_whitelist: ['allowed.com'],
     })
     sessionStorage.setItem(
@@ -212,7 +212,7 @@ describe('EmailVerifyView', () => {
     getPublicSettingsMock.mockResolvedValue({
       turnstile_enabled: false,
       turnstile_site_key: '',
-      site_name: 'CloseAI',
+      site_name: 'Ikun',
       registration_email_suffix_whitelist: ['allowed.com'],
     })
     sessionStorage.setItem(
@@ -254,7 +254,7 @@ describe('EmailVerifyView', () => {
     getPublicSettingsMock.mockResolvedValue({
       turnstile_enabled: false,
       turnstile_site_key: '',
-      site_name: 'CloseAI',
+      site_name: 'Ikun',
       registration_email_suffix_whitelist: ['allowed.com'],
     })
     sendPendingOAuthVerifyCodeMock.mockResolvedValue({
@@ -360,7 +360,7 @@ describe('EmailVerifyView', () => {
     getPublicSettingsMock.mockResolvedValue({
       turnstile_enabled: false,
       turnstile_site_key: '',
-      site_name: 'CloseAI',
+      site_name: 'Ikun',
       registration_email_suffix_whitelist: ['allowed.com'],
     })
     sessionStorage.setItem(

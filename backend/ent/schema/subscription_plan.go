@@ -54,6 +54,15 @@ func (SubscriptionPlan) Fields() []ent.Field {
 		field.String("product_name").
 			MaxLen(100).
 			Default(""),
+		field.Bool("external_subscribe_enabled").
+			Default(false),
+		field.String("external_subscribe_url").
+			MaxLen(500).
+			Default(""),
+		field.String("external_subscribe_dialog_text").
+			SchemaType(map[string]string{dialect.Postgres: "text"}).
+			MaxLen(4000).
+			Default(""),
 		field.Bool("for_sale").
 			Default(true),
 		field.Int("sort_order").

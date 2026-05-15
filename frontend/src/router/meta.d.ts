@@ -50,6 +50,12 @@ declare module 'vue-router' {
     requiresPayment?: boolean
 
     /**
+     * Payment display modes accepted by this route.
+     * When omitted, routes with requiresPayment only allow full payment mode.
+     */
+    paymentModes?: Array<'payment' | 'plans'>
+
+    /**
      * 是否要求风控中心功能开关已启用
      * @default false
      */

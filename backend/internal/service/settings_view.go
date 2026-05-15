@@ -201,6 +201,7 @@ type SystemSettings struct {
 	WebSearchEmulationEnabled bool // 是否启用 web search 模拟
 
 	// Payment visible method routing
+	PaymentDisplayMode                string
 	PaymentVisibleMethodAlipaySource  string
 	PaymentVisibleMethodWxpaySource   string
 	PaymentVisibleMethodAlipayEnabled bool
@@ -270,6 +271,7 @@ type PublicSettings struct {
 	WeChatOAuthMobileEnabled bool
 	BackendModeEnabled       bool
 	PaymentEnabled           bool
+	PaymentDisplayMode       string
 	OIDCOAuthEnabled         bool
 	OIDCOAuthProviderName    string
 	GitHubOAuthEnabled       bool

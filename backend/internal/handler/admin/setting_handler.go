@@ -270,6 +270,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		AccountQuotaNotifyEnabled:              settings.AccountQuotaNotifyEnabled,
 		AccountQuotaNotifyEmails:               dto.NotifyEmailEntriesFromService(settings.AccountQuotaNotifyEmails),
 		PaymentEnabled:                         paymentCfg.Enabled,
+		PaymentDisplayMode:                     paymentCfg.DisplayMode,
 		PaymentMinAmount:                       paymentCfg.MinAmount,
 		PaymentMaxAmount:                       paymentCfg.MaxAmount,
 		PaymentDailyLimit:                      paymentCfg.DailyLimit,
@@ -606,6 +607,7 @@ type UpdateSettingsRequest struct {
 
 	// Payment configuration (integrated into settings, full replace)
 	PaymentEnabled                   *bool    `json:"payment_enabled"`
+	PaymentDisplayMode               *string  `json:"payment_display_mode" binding:"omitempty,oneof=off payment plans"`
 	PaymentMinAmount                 *float64 `json:"payment_min_amount"`
 	PaymentMaxAmount                 *float64 `json:"payment_max_amount"`
 	PaymentDailyLimit                *float64 `json:"payment_daily_limit"`
@@ -1840,6 +1842,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	if h.paymentConfigService != nil && hasPaymentFields(req) {
 		paymentReq := service.UpdatePaymentConfigRequest{
 			Enabled:                   req.PaymentEnabled,
+			DisplayMode:               req.PaymentDisplayMode,
 			MinAmount:                 req.PaymentMinAmount,
 			MaxAmount:                 req.PaymentMaxAmount,
 			DailyLimit:                req.PaymentDailyLimit,
@@ -2052,6 +2055,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		AccountQuotaNotifyEnabled:              updatedSettings.AccountQuotaNotifyEnabled,
 		AccountQuotaNotifyEmails:               dto.NotifyEmailEntriesFromService(updatedSettings.AccountQuotaNotifyEmails),
 		PaymentEnabled:                         updatedPaymentCfg.Enabled,
+		PaymentDisplayMode:                     updatedPaymentCfg.DisplayMode,
 		PaymentMinAmount:                       updatedPaymentCfg.MinAmount,
 		PaymentMaxAmount:                       updatedPaymentCfg.MaxAmount,
 		PaymentDailyLimit:                      updatedPaymentCfg.DailyLimit,
@@ -2111,7 +2115,7 @@ func mapDingTalkValidateError(err error) string {
 }
 
 func hasPaymentFields(req UpdateSettingsRequest) bool {
-	return req.PaymentEnabled != nil || req.PaymentMinAmount != nil ||
+	return req.PaymentEnabled != nil || req.PaymentDisplayMode != nil || req.PaymentMinAmount != nil ||
 		req.PaymentMaxAmount != nil || req.PaymentDailyLimit != nil ||
 		req.PaymentOrderTimeoutMin != nil || req.PaymentMaxPendingOrders != nil ||
 		req.PaymentEnabledTypes != nil || req.PaymentBalanceDisabled != nil ||
@@ -2511,6 +2515,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.OpenAIAllowClaudeCodeCodexPlugin != after.OpenAIAllowClaudeCodeCodexPlugin {
 		changed = append(changed, "openai_allow_claude_code_codex_plugin")
+	}
+	if before.PaymentDisplayMode != after.PaymentDisplayMode {
+		changed = append(changed, "payment_display_mode")
 	}
 	if before.PaymentVisibleMethodAlipaySource != after.PaymentVisibleMethodAlipaySource {
 		changed = append(changed, "payment_visible_method_alipay_source")

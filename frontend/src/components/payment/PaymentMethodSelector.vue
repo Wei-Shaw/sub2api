@@ -1,6 +1,6 @@
 <template>
   <div>
-    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+    <label class="mb-2 block text-sm font-semibold text-primary-900/80 dark:text-primary-100">
       {{ t('payment.paymentMethod') }}
     </label>
     <div class="grid grid-cols-2 gap-3 sm:flex">
@@ -10,12 +10,12 @@
         type="button"
         :disabled="!method.available"
         :class="[
-          'relative flex h-[60px] flex-col items-center justify-center rounded-lg border px-3 transition-all sm:flex-1',
+          'relative flex h-[64px] flex-col items-center justify-center rounded-xl border px-3 transition-all sm:flex-1',
           !method.available
-            ? 'cursor-not-allowed border-gray-200 bg-gray-50 opacity-50 dark:border-dark-700 dark:bg-dark-800/50'
+            ? 'cursor-not-allowed border-amber-100/60 bg-primary-50/40 opacity-50 dark:border-dark-700 dark:bg-dark-800/50'
             : selected === method.type
               ? methodSelectedClass(method.type)
-              : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-200 dark:hover:border-dark-500',
+              : 'border-amber-100/80 bg-white/85 text-gray-700 shadow-sm shadow-primary-500/5 hover:border-primary-200 hover:bg-primary-50/60 hover:text-primary-800 dark:border-primary-900/25 dark:bg-dark-900/65 dark:text-gray-200 dark:hover:border-primary-800/60 dark:hover:bg-primary-950/25',
         ]"
         @click="method.available && emit('select', method.type)"
       >
@@ -86,10 +86,20 @@ function methodIcon(type: string): string {
 }
 
 function methodSelectedClass(type: string): string {
-  if (type.includes('alipay')) return 'border-[#02A9F1] bg-blue-50 text-gray-900 shadow-sm dark:bg-blue-950 dark:text-gray-100'
-  if (type.includes('wxpay')) return 'border-[#09BB07] bg-green-50 text-gray-900 shadow-sm dark:bg-green-950 dark:text-gray-100'
-  if (type === 'stripe') return 'border-[#676BE5] bg-indigo-50 text-gray-900 shadow-sm dark:bg-indigo-950 dark:text-gray-100'
-  if (type === 'airwallex') return 'border-[#FF6B3D] bg-orange-50 text-gray-900 shadow-sm dark:border-[#FF8E3C] dark:bg-orange-950 dark:text-gray-100'
-  return 'border-primary-500 bg-primary-50 text-gray-900 shadow-sm dark:bg-primary-950 dark:text-gray-100'
+  const brandRing = type.includes('alipay')
+    ? 'after:bg-[#02A9F1]'
+    : type.includes('wxpay')
+      ? 'after:bg-[#09BB07]'
+      : type === 'stripe'
+        ? 'after:bg-[#676BE5]'
+        : type === 'airwallex'
+          ? 'after:bg-[#FF6B3D]'
+          : 'after:bg-primary-500'
+  return [
+    'border-primary-400 bg-gradient-to-br from-primary-50 to-amber-50 text-gray-900 shadow-md shadow-primary-500/15',
+    'dark:border-primary-500/60 dark:from-primary-900/35 dark:to-primary-950/20 dark:text-gray-100',
+    'after:absolute after:left-3 after:top-3 after:h-1.5 after:w-1.5 after:rounded-full',
+    brandRing,
+  ].join(' ')
 }
 </script>

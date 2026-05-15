@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -30,6 +31,74 @@ func validatePlanRequired(name string, groupID int64, price float64, validityDay
 	}
 	if originalPrice != nil && *originalPrice < 0 {
 		return infraerrors.BadRequest("PLAN_ORIGINAL_PRICE_INVALID", "original price must be >= 0")
+	}
+	return nil
+}
+
+func validateExternalSubscribeURL(rawURL string) error {
+	trimmed := strings.TrimSpace(rawURL)
+	if trimmed == "" {
+		return nil
+	}
+	normalized := normalizeExternalSubscribeURL(trimmed)
+	parsed, err := url.ParseRequestURI(normalized)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return infraerrors.BadRequest("PLAN_EXTERNAL_SUBSCRIBE_URL_INVALID", "external subscribe URL must be a valid absolute URL")
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return infraerrors.BadRequest("PLAN_EXTERNAL_SUBSCRIBE_URL_INVALID", "external subscribe URL must use http or https")
+	}
+	return nil
+}
+
+func normalizeExternalSubscribeDialogText(raw string) string {
+	return strings.TrimSpace(raw)
+}
+
+func hasExternalSubscribeTarget(rawURL, dialogText string) bool {
+	return strings.TrimSpace(rawURL) != "" || strings.TrimSpace(dialogText) != ""
+}
+
+func validateExternalSubscribeTarget(enabled bool, rawURL, dialogText string) error {
+	if strings.TrimSpace(rawURL) != "" && strings.TrimSpace(dialogText) != "" {
+		return infraerrors.BadRequest("PLAN_EXTERNAL_SUBSCRIBE_TARGET_CONFLICT", "external subscribe URL and dialog text cannot both be set")
+	}
+	if !enabled && !hasExternalSubscribeTarget(rawURL, dialogText) {
+		return nil
+	}
+	if !hasExternalSubscribeTarget(rawURL, dialogText) {
+		return infraerrors.BadRequest("PLAN_EXTERNAL_SUBSCRIBE_TARGET_REQUIRED", "external subscribe target is required")
+	}
+	if err := validateExternalSubscribeURL(rawURL); err != nil {
+		return err
+	}
+	return nil
+}
+
+func normalizeExternalSubscribeURL(rawURL string) string {
+	trimmed := strings.TrimSpace(rawURL)
+	if trimmed == "" {
+		return ""
+	}
+	parsed, err := url.Parse(trimmed)
+	if err == nil && parsed.Scheme != "" {
+		return trimmed
+	}
+	return "https://" + trimmed
+}
+
+func (s *PaymentConfigService) validatePlanGroupType(ctx context.Context, groupID int64) error {
+	exists, err := s.entClient.Group.Query().
+		Where(
+			group.IDEQ(groupID),
+			group.SubscriptionTypeEQ(SubscriptionTypeSubscription),
+		).
+		Exist(ctx)
+	if err != nil {
+		return fmt.Errorf("check plan group type: %w", err)
+	}
+	if !exists {
+		return ErrGroupNotSubscriptionType
 	}
 	return nil
 }
@@ -124,10 +193,19 @@ func (s *PaymentConfigService) CreatePlan(ctx context.Context, req CreatePlanReq
 	if err := validatePlanRequired(req.Name, req.GroupID, req.Price, req.ValidityDays, req.ValidityUnit, req.OriginalPrice); err != nil {
 		return nil, err
 	}
+	if err := s.validatePlanGroupType(ctx, req.GroupID); err != nil {
+		return nil, err
+	}
+	if err := validateExternalSubscribeTarget(req.ExternalSubscribeEnabled, req.ExternalSubscribeURL, req.ExternalSubscribeDialogText); err != nil {
+		return nil, err
+	}
 	b := s.entClient.SubscriptionPlan.Create().
 		SetGroupID(req.GroupID).SetName(req.Name).SetDescription(req.Description).
 		SetPrice(req.Price).SetValidityDays(req.ValidityDays).SetValidityUnit(req.ValidityUnit).
 		SetFeatures(req.Features).SetProductName(req.ProductName).
+		SetExternalSubscribeEnabled(req.ExternalSubscribeEnabled).
+		SetExternalSubscribeURL(normalizeExternalSubscribeURL(req.ExternalSubscribeURL)).
+		SetExternalSubscribeDialogText(normalizeExternalSubscribeDialogText(req.ExternalSubscribeDialogText)).
 		SetForSale(req.ForSale).SetSortOrder(req.SortOrder)
 	if req.OriginalPrice != nil {
 		b.SetOriginalPrice(*req.OriginalPrice)
@@ -141,6 +219,34 @@ func (s *PaymentConfigService) CreatePlan(ctx context.Context, req CreatePlanReq
 func (s *PaymentConfigService) UpdatePlan(ctx context.Context, id int64, req UpdatePlanRequest) (*dbent.SubscriptionPlan, error) {
 	if err := validatePlanPatch(req); err != nil {
 		return nil, err
+	}
+	// Only validate explicit group reassignment so legacy invalid plans can still
+	// be disabled or repaired without being trapped by unrelated field edits.
+	if req.GroupID != nil {
+		if err := s.validatePlanGroupType(ctx, *req.GroupID); err != nil {
+			return nil, err
+		}
+	}
+	if req.ExternalSubscribeEnabled != nil || req.ExternalSubscribeURL != nil || req.ExternalSubscribeDialogText != nil {
+		current, err := s.entClient.SubscriptionPlan.Get(ctx, id)
+		if err != nil {
+			return nil, infraerrors.NotFound("PLAN_NOT_FOUND", "subscription plan not found")
+		}
+		enabled := current.ExternalSubscribeEnabled
+		rawURL := current.ExternalSubscribeURL
+		dialogText := current.ExternalSubscribeDialogText
+		if req.ExternalSubscribeEnabled != nil {
+			enabled = *req.ExternalSubscribeEnabled
+		}
+		if req.ExternalSubscribeURL != nil {
+			rawURL = *req.ExternalSubscribeURL
+		}
+		if req.ExternalSubscribeDialogText != nil {
+			dialogText = *req.ExternalSubscribeDialogText
+		}
+		if err := validateExternalSubscribeTarget(enabled, rawURL, dialogText); err != nil {
+			return nil, err
+		}
 	}
 	u := s.entClient.SubscriptionPlan.UpdateOneID(id)
 	if req.GroupID != nil {
@@ -169,6 +275,15 @@ func (s *PaymentConfigService) UpdatePlan(ctx context.Context, id int64, req Upd
 	}
 	if req.ProductName != nil {
 		u.SetProductName(*req.ProductName)
+	}
+	if req.ExternalSubscribeEnabled != nil {
+		u.SetExternalSubscribeEnabled(*req.ExternalSubscribeEnabled)
+	}
+	if req.ExternalSubscribeURL != nil {
+		u.SetExternalSubscribeURL(normalizeExternalSubscribeURL(*req.ExternalSubscribeURL))
+	}
+	if req.ExternalSubscribeDialogText != nil {
+		u.SetExternalSubscribeDialogText(normalizeExternalSubscribeDialogText(*req.ExternalSubscribeDialogText))
 	}
 	if req.ForSale != nil {
 		u.SetForSale(*req.ForSale)
