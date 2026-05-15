@@ -354,6 +354,22 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		}
 		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 		if err != nil {
+			safeErr := sanitizeUpstreamErrorMessage(err.Error())
+			logger.FromContext(ctx).Warn("openai messages: upstream request failed",
+				zap.Int64("account_id", account.ID),
+				zap.String("account_name", account.Name),
+				zap.String("platform", account.Platform),
+				zap.String("account_type", account.Type),
+				zap.String("upstream_url", safeUpstreamURL(upstreamReq.URL.String())),
+				zap.Bool("proxy_enabled", proxyURL != ""),
+				zap.Int("concurrency", account.Concurrency),
+				zap.String("model", upstreamModel),
+				zap.String("request_path", c.Request.URL.Path),
+				zap.String("request_method", c.Request.Method),
+				zap.Bool("stream", isStream),
+				zap.Duration("upstream_duration", time.Since(startTime)),
+				zap.String("error", safeErr),
+			)
 			return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 		}
 		if account.Platform != PlatformGrok || attempt > 0 || resp.StatusCode != http.StatusBadRequest {

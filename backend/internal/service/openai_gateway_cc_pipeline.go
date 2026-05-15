@@ -215,8 +215,24 @@ func (s *OpenAIGatewayService) sendCCUpstreamRequest(
 	if account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
 	}
+	upstreamStart := time.Now()
 	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 	if err != nil {
+		safeErr := sanitizeUpstreamErrorMessage(err.Error())
+		logger.FromContext(ctx).Warn("openai cc upstream request failed",
+			zap.Int64("account_id", account.ID),
+			zap.String("account_name", account.Name),
+			zap.String("platform", account.Platform),
+			zap.String("account_type", account.Type),
+			zap.String("upstream_url", safeUpstreamURL(targetURL)),
+			zap.Bool("proxy_enabled", proxyURL != ""),
+			zap.Int("concurrency", account.Concurrency),
+			zap.String("request_path", c.Request.URL.Path),
+			zap.String("request_method", c.Request.Method),
+			zap.Bool("stream", stream),
+			zap.Duration("upstream_duration", time.Since(upstreamStart)),
+			zap.String("error", safeErr),
+		)
 		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 	}
 	return resp, nil

@@ -18,6 +18,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
+	"go.uber.org/zap"
 )
 
 type openAIResponsesImageResult struct {
@@ -1715,6 +1716,21 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 	if err != nil {
 		safeErr := sanitizeUpstreamErrorMessage(err.Error())
+		logger.FromContext(ctx).Warn("openai images responses: upstream request failed",
+			zap.Int64("account_id", account.ID),
+			zap.String("account_name", account.Name),
+			zap.String("platform", account.Platform),
+			zap.String("account_type", account.Type),
+			zap.String("upstream_url", safeUpstreamURL(upstreamReq.URL.String())),
+			zap.Bool("proxy_enabled", proxyURL != ""),
+			zap.Int("concurrency", account.Concurrency),
+			zap.String("model", requestModel),
+			zap.String("request_path", c.Request.URL.Path),
+			zap.String("request_method", c.Request.Method),
+			zap.Bool("stream", parsed.Stream),
+			zap.Duration("upstream_duration", time.Since(upstreamStart)),
+			zap.String("error", safeErr),
+		)
 		setOpsUpstreamError(c, 0, safeErr, "")
 		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 			Platform:           account.Platform,
