@@ -36,6 +36,19 @@ const (
 	// OpsSkipPassthroughKey 由 applyErrorPassthroughRule 在命中 skip_monitoring=true 的规则时设置。
 	// ops_error_logger 中间件检查此 key，为 true 时跳过错误记录。
 	OpsSkipPassthroughKey = "ops_skip_passthrough"
+
+	OpenAICompactRequestBodyBytesKey         = "openai_compact_request_body_bytes"
+	OpenAICompactRequestContentLengthKey     = "openai_compact_request_content_length"
+	OpenAICompactReadBodyDurationMsKey       = "openai_compact_read_body_duration_ms"
+	OpenAICompactRequestModelKey             = "openai_compact_request_model"
+	OpenAICompactUpstreamModelKey            = "openai_compact_upstream_model"
+	OpenAICompactUpstreamURLHostKey          = "openai_compact_upstream_url_host"
+	OpenAICompactUpstreamURLPathKey          = "openai_compact_upstream_url_path"
+	OpenAICompactUpstreamStatusCodeKey       = "openai_compact_upstream_status_code"
+	OpenAICompactUpstreamErrorClassKey       = "openai_compact_upstream_error_class"
+	OpenAICompactUpstreamHeaderDurationMsKey = "openai_compact_upstream_header_duration_ms"
+	OpenAICompactUpstreamTotalDurationMsKey  = "openai_compact_upstream_total_duration_ms"
+	OpenAICompactTimeoutMsKey                = "openai_compact_timeout_ms"
 )
 
 func setOpsUpstreamRequestBody(c *gin.Context, body []byte) {

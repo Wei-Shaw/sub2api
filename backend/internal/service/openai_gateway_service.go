@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -58,6 +59,123 @@ const (
 	// Codex 限额快照仅用于后台展示/诊断，不需要每个成功请求都立即落库。
 	openAICodexSnapshotPersistMinInterval = 30 * time.Second
 )
+
+type OpenAICompactTimeoutError struct {
+	Elapsed time.Duration
+	Timeout time.Duration
+}
+
+func (e *OpenAICompactTimeoutError) Error() string {
+	return fmt.Sprintf("openai compact upstream wait timeout after %s", e.Elapsed)
+}
+
+func setOpenAICompactDiagnostic(c *gin.Context, key string, value any) {
+	if c == nil || strings.TrimSpace(key) == "" || value == nil {
+		return
+	}
+	if s, ok := value.(string); ok && strings.TrimSpace(s) == "" {
+		return
+	}
+	c.Set(key, value)
+}
+
+func recordOpenAICompactUpstreamTarget(c *gin.Context, req *http.Request) {
+	if c == nil || req == nil || req.URL == nil {
+		return
+	}
+	setOpenAICompactDiagnostic(c, OpenAICompactUpstreamURLHostKey, req.URL.Host)
+	setOpenAICompactDiagnostic(c, OpenAICompactUpstreamURLPathKey, req.URL.EscapedPath())
+}
+
+func classifyOpenAICompactUpstreamError(err error) string {
+	if err == nil {
+		return ""
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "upstream_wait_timeout"
+	}
+	if errors.Is(err, context.Canceled) {
+		return "context_canceled"
+	}
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		if urlErr.Timeout() {
+			return "upstream_wait_timeout"
+		}
+		if urlErr.Err != nil {
+			return classifyOpenAICompactUpstreamError(urlErr.Err)
+		}
+		return "url_error"
+	}
+	return "request_error"
+}
+
+func (s *OpenAIGatewayService) openAICompactTimeout() time.Duration {
+	if s != nil && s.cfg != nil && s.cfg.Gateway.OpenAICompactTimeoutSeconds > 0 {
+		return time.Duration(s.cfg.Gateway.OpenAICompactTimeoutSeconds) * time.Second
+	}
+	return 0
+}
+
+func (s *OpenAIGatewayService) openAICompactAwareUpstreamContext(ctx context.Context, compact bool) (context.Context, context.CancelFunc) {
+	if !compact {
+		return detachUpstreamContext(ctx)
+	}
+	timeout := s.openAICompactTimeout()
+	if timeout <= 0 {
+		return detachUpstreamContext(ctx)
+	}
+	base := context.Background()
+	if ctx != nil {
+		base = context.WithoutCancel(ctx)
+	}
+	return context.WithTimeout(base, timeout)
+}
+
+func (s *OpenAIGatewayService) writeOpenAICompactTimeoutResponse(c *gin.Context, elapsed time.Duration) {
+	if c == nil || c.Writer == nil || c.Writer.Written() {
+		return
+	}
+	timeout := s.openAICompactTimeout()
+	elapsedMs := elapsed.Milliseconds()
+	if elapsedMs < 0 {
+		elapsedMs = 0
+	}
+	timeoutMs := timeout.Milliseconds()
+	if timeoutMs < 0 {
+		timeoutMs = 0
+	}
+	setOpenAICompactDiagnostic(c, OpenAICompactUpstreamErrorClassKey, "upstream_wait_timeout")
+	setOpenAICompactDiagnostic(c, OpenAICompactTimeoutMsKey, timeoutMs)
+	setOpsUpstreamError(c, http.StatusGatewayTimeout, "openai compact upstream wait timeout", "")
+	c.JSON(http.StatusGatewayTimeout, gin.H{
+		"error": gin.H{
+			"type":       "upstream_timeout",
+			"message":    "OpenAI compact upstream wait timeout",
+			"stage":      "upstream_wait_timeout",
+			"elapsed_ms": elapsedMs,
+			"retryable":  true,
+			"cf_ray":     strings.TrimSpace(c.GetHeader("CF-Ray")),
+		},
+		"request_id": strings.TrimSpace(c.Writer.Header().Get("X-Request-ID")),
+	})
+}
+
+func (s *OpenAIGatewayService) writeOpenAICompactTimeoutIfDeadline(c *gin.Context, req *http.Request, startedAt time.Time) bool {
+	if req == nil || req.Context() == nil {
+		return false
+	}
+	if !errors.Is(req.Context().Err(), context.DeadlineExceeded) {
+		return false
+	}
+	elapsed := time.Since(startedAt)
+	if elapsed < 0 {
+		elapsed = 0
+	}
+	setOpenAICompactDiagnostic(c, OpenAICompactUpstreamTotalDurationMsKey, elapsed.Milliseconds())
+	s.writeOpenAICompactTimeoutResponse(c, elapsed)
+	return true
+}
 
 // OpenAI allowed headers whitelist (for non-passthrough).
 var openaiAllowedHeaders = map[string]bool{
@@ -2012,6 +2130,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	originalModel := reqModel
 	compatMessagesBridge := isOpenAICompatMessagesBridgeBody(body)
 	setOpenAICompatMessagesBridgeContext(c, compatMessagesBridge)
+	isCompactRequest := isOpenAIResponsesCompactPath(c)
+	if isCompactRequest {
+		setOpenAICompactDiagnostic(c, OpenAICompactRequestModelKey, reqModel)
+	}
 
 	isCodexCLI := openai.IsCodexOfficialClientByHeaders(c.GetHeader("User-Agent"), c.GetHeader("originator")) || (s.cfg != nil && s.cfg.Gateway.ForceCodexCLI)
 	wsDecision := s.getOpenAIWSProtocolResolver().Resolve(account)
@@ -2218,7 +2340,6 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 
 	// Compact-only model 映射：仅在 /responses/compact 路径生效，且优先级高于
 	// OAuth 模型规范化（避免 OAuth 规范化覆盖 compact-only 自定义模型）。
-	isCompactRequest := isOpenAIResponsesCompactPath(c)
 	compactMapped := false
 	if isCompactRequest {
 		compactMappedModel := resolveOpenAICompactForwardModel(account, billingModel)
@@ -2230,6 +2351,20 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			markPatchSet("model", compactMappedModel)
 			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Compact model mapping applied: %s -> %s (account: %s, isCodexCLI: %v)", billingModel, compactMappedModel, account.Name, isCodexCLI)
 		}
+	}
+	if isCompactRequest {
+		setOpenAICompactDiagnostic(c, OpenAICompactUpstreamModelKey, upstreamModel)
+	}
+	if err := validateOpenAIResponsesImageModel(reqBody, upstreamModel); err != nil {
+		setOpsUpstreamError(c, http.StatusBadRequest, err.Error(), "")
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": gin.H{
+				"type":    "invalid_request_error",
+				"message": err.Error(),
+				"param":   "model",
+			},
+		})
+		return nil, err
 	}
 
 	// OpenAI OAuth 账号走 ChatGPT internal Codex endpoint，需要将模型名规范化为
@@ -2682,11 +2817,22 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	httpInvalidEncryptedContentRetryTried := false
 	for {
 		// Build upstream request
-		upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
+		upstreamCtx, releaseUpstreamCtx := s.openAICompactAwareUpstreamContext(ctx, isCompactRequest)
+		compactUpstreamDone := false
+		releaseCompactUpstreamCtx := func() {
+			if compactUpstreamDone {
+				return
+			}
+			compactUpstreamDone = true
+			releaseUpstreamCtx()
+		}
 		upstreamReq, err := s.buildUpstreamRequest(upstreamCtx, c, account, body, token, reqStream, promptCacheKey, isCodexCLI)
-		releaseUpstreamCtx()
 		if err != nil {
+			releaseCompactUpstreamCtx()
 			return nil, err
+		}
+		if isCompactRequest {
+			recordOpenAICompactUpstreamTarget(c, upstreamReq)
 		}
 
 		// Get proxy URL
@@ -2698,8 +2844,24 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		// Send request
 		upstreamStart := time.Now()
 		resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
-		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
+		upstreamDuration := time.Since(upstreamStart)
+		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, upstreamDuration.Milliseconds())
+		if isCompactRequest {
+			setOpenAICompactDiagnostic(c, OpenAICompactUpstreamHeaderDurationMsKey, upstreamDuration.Milliseconds())
+		}
 		if err != nil {
+			releaseCompactUpstreamCtx()
+			if isCompactRequest {
+				setOpenAICompactDiagnostic(c, OpenAICompactUpstreamTotalDurationMsKey, upstreamDuration.Milliseconds())
+				setOpenAICompactDiagnostic(c, OpenAICompactUpstreamErrorClassKey, classifyOpenAICompactUpstreamError(err))
+				if errors.Is(err, context.DeadlineExceeded) || errors.Is(upstreamReq.Context().Err(), context.DeadlineExceeded) {
+					s.writeOpenAICompactTimeoutResponse(c, upstreamDuration)
+					return nil, &OpenAICompactTimeoutError{
+						Elapsed: upstreamDuration,
+						Timeout: s.openAICompactTimeout(),
+					}
+				}
+			}
 			// Ensure the client receives an error response (handlers assume Forward writes on non-failover errors).
 			safeErr := sanitizeUpstreamErrorMessage(err.Error())
 			setOpsUpstreamError(c, 0, safeErr, "")
@@ -2722,9 +2884,16 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 
 		// Handle error response
 		if resp.StatusCode >= 400 {
+			if isCompactRequest {
+				setOpenAICompactDiagnostic(c, OpenAICompactUpstreamStatusCodeKey, resp.StatusCode)
+				setOpenAICompactDiagnostic(c, OpenAICompactUpstreamErrorClassKey, "http_error")
+			}
 			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 			_ = resp.Body.Close()
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))
+			if isCompactRequest {
+				setOpenAICompactDiagnostic(c, OpenAICompactUpstreamTotalDurationMsKey, time.Since(upstreamStart).Milliseconds())
+			}
 
 			upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 			upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
@@ -2733,11 +2902,13 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				if trimOpenAIEncryptedReasoningItems(reqBody) {
 					body, err = json.Marshal(reqBody)
 					if err != nil {
+						releaseCompactUpstreamCtx()
 						return nil, fmt.Errorf("serialize invalid_encrypted_content retry body: %w", err)
 					}
 					setOpsUpstreamRequestBody(c, body)
 					httpInvalidEncryptedContentRetryTried = true
 					logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Retrying non-WSv2 request once after invalid_encrypted_content (account: %s)", account.Name)
+					releaseCompactUpstreamCtx()
 					continue
 				}
 				logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Skip non-WSv2 invalid_encrypted_content retry because encrypted reasoning items are missing (account: %s)", account.Name)
@@ -2763,15 +2934,25 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				})
 
 				s.handleFailoverSideEffects(ctx, resp, account)
+				releaseCompactUpstreamCtx()
 				return nil, &UpstreamFailoverError{
 					StatusCode:             resp.StatusCode,
 					ResponseBody:           respBody,
 					RetryableOnSameAccount: account.IsPoolMode() && (isPoolModeRetryableStatus(resp.StatusCode) || isOpenAITransientProcessingError(resp.StatusCode, upstreamMsg, respBody)),
 				}
 			}
-			return s.handleErrorResponse(ctx, resp, c, account, body)
+			result, err := s.handleErrorResponse(ctx, resp, c, account, body)
+			releaseCompactUpstreamCtx()
+			return result, err
 		}
-		defer func() { _ = resp.Body.Close() }()
+		defer func() {
+			_ = resp.Body.Close()
+			releaseCompactUpstreamCtx()
+		}()
+		if isCompactRequest {
+			setOpenAICompactDiagnostic(c, OpenAICompactUpstreamStatusCodeKey, resp.StatusCode)
+			setOpenAICompactDiagnostic(c, OpenAICompactUpstreamErrorClassKey, "none")
+		}
 
 		// Handle normal response
 		var usage *OpenAIUsage
@@ -2780,6 +2961,17 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		if reqStream {
 			streamResult, err := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, upstreamModel)
 			if err != nil {
+				if isCompactRequest && s.writeOpenAICompactTimeoutIfDeadline(c, upstreamReq, upstreamStart) {
+					releaseCompactUpstreamCtx()
+					return nil, &OpenAICompactTimeoutError{
+						Elapsed: time.Since(upstreamStart),
+						Timeout: s.openAICompactTimeout(),
+					}
+				}
+				if isCompactRequest {
+					setOpenAICompactDiagnostic(c, OpenAICompactUpstreamTotalDurationMsKey, time.Since(upstreamStart).Milliseconds())
+				}
+				releaseCompactUpstreamCtx()
 				return nil, err
 			}
 			usage = streamResult.usage
@@ -2788,6 +2980,17 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		} else {
 			nonStreamResult, err := s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, upstreamModel)
 			if err != nil {
+				if isCompactRequest && s.writeOpenAICompactTimeoutIfDeadline(c, upstreamReq, upstreamStart) {
+					releaseCompactUpstreamCtx()
+					return nil, &OpenAICompactTimeoutError{
+						Elapsed: time.Since(upstreamStart),
+						Timeout: s.openAICompactTimeout(),
+					}
+				}
+				if isCompactRequest {
+					setOpenAICompactDiagnostic(c, OpenAICompactUpstreamTotalDurationMsKey, time.Since(upstreamStart).Milliseconds())
+				}
+				releaseCompactUpstreamCtx()
 				return nil, err
 			}
 			usage = nonStreamResult.usage
@@ -2825,6 +3028,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			forwardResult.ImageSize = imageSizeTier
 			forwardResult.BillingModel = imageBillingModel
 		}
+		if isCompactRequest {
+			setOpenAICompactDiagnostic(c, OpenAICompactUpstreamTotalDurationMsKey, time.Since(upstreamStart).Milliseconds())
+		}
+		releaseCompactUpstreamCtx()
 		return forwardResult, nil
 	}
 }
@@ -2841,6 +3048,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 ) (*OpenAIForwardResult, error) {
 	upstreamPassthroughModel := ""
 	if isOpenAIResponsesCompactPath(c) {
+		setOpenAICompactDiagnostic(c, OpenAICompactRequestModelKey, reqModel)
 		compactMappedModel := resolveOpenAICompactForwardModel(account, reqModel)
 		if compactMappedModel != "" && compactMappedModel != reqModel {
 			nextBody, setErr := sjson.SetBytes(body, "model", compactMappedModel)
@@ -2850,6 +3058,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			body = nextBody
 			upstreamPassthroughModel = compactMappedModel
 		}
+		setOpenAICompactDiagnostic(c, OpenAICompactUpstreamModelKey, firstNonEmptyString(upstreamPassthroughModel, reqModel))
 	}
 
 	if account != nil && account.Type == AccountTypeOAuth {
@@ -2972,11 +3181,15 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		return nil, err
 	}
 
-	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
+	isCompactRequest := isOpenAIResponsesCompactPath(c)
+	upstreamCtx, releaseUpstreamCtx := s.openAICompactAwareUpstreamContext(ctx, isCompactRequest)
 	upstreamReq, err := s.buildUpstreamRequestOpenAIPassthrough(upstreamCtx, c, account, body, token)
-	releaseUpstreamCtx()
 	if err != nil {
+		releaseUpstreamCtx()
 		return nil, err
+	}
+	if isCompactRequest {
+		recordOpenAICompactUpstreamTarget(c, upstreamReq)
 	}
 
 	proxyURL := ""
@@ -2991,8 +3204,24 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 
 	upstreamStart := time.Now()
 	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
-	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
+	upstreamDuration := time.Since(upstreamStart)
+	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, upstreamDuration.Milliseconds())
+	if isCompactRequest {
+		setOpenAICompactDiagnostic(c, OpenAICompactUpstreamHeaderDurationMsKey, upstreamDuration.Milliseconds())
+	}
 	if err != nil {
+		releaseUpstreamCtx()
+		if isCompactRequest {
+			setOpenAICompactDiagnostic(c, OpenAICompactUpstreamTotalDurationMsKey, upstreamDuration.Milliseconds())
+			setOpenAICompactDiagnostic(c, OpenAICompactUpstreamErrorClassKey, classifyOpenAICompactUpstreamError(err))
+			if errors.Is(err, context.DeadlineExceeded) || errors.Is(upstreamReq.Context().Err(), context.DeadlineExceeded) {
+				s.writeOpenAICompactTimeoutResponse(c, upstreamDuration)
+				return nil, &OpenAICompactTimeoutError{
+					Elapsed: upstreamDuration,
+					Timeout: s.openAICompactTimeout(),
+				}
+			}
+		}
 		safeErr := sanitizeUpstreamErrorMessage(err.Error())
 		setOpsUpstreamError(c, 0, safeErr, "")
 		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
@@ -3015,12 +3244,30 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
+		if isCompactRequest {
+			setOpenAICompactDiagnostic(c, OpenAICompactUpstreamStatusCodeKey, resp.StatusCode)
+			setOpenAICompactDiagnostic(c, OpenAICompactUpstreamErrorClassKey, "http_error")
+		}
 		// 透传模式默认保持原样代理；但 429/529 属于网关必须兜底的
 		// 上游容量类错误，应先触发多账号 failover 以维持基础 SLA。
 		if shouldFailoverOpenAIPassthroughResponse(resp.StatusCode) {
-			return nil, s.handleFailoverErrorResponsePassthrough(ctx, resp, c, account, body)
+			err := s.handleFailoverErrorResponsePassthrough(ctx, resp, c, account, body)
+			if isCompactRequest {
+				setOpenAICompactDiagnostic(c, OpenAICompactUpstreamTotalDurationMsKey, time.Since(upstreamStart).Milliseconds())
+			}
+			releaseUpstreamCtx()
+			return nil, err
 		}
-		return nil, s.handleErrorResponsePassthrough(ctx, resp, c, account, body)
+		err := s.handleErrorResponsePassthrough(ctx, resp, c, account, body)
+		if isCompactRequest {
+			setOpenAICompactDiagnostic(c, OpenAICompactUpstreamTotalDurationMsKey, time.Since(upstreamStart).Milliseconds())
+		}
+		releaseUpstreamCtx()
+		return nil, err
+	}
+	if isCompactRequest {
+		setOpenAICompactDiagnostic(c, OpenAICompactUpstreamStatusCodeKey, resp.StatusCode)
+		setOpenAICompactDiagnostic(c, OpenAICompactUpstreamErrorClassKey, "none")
 	}
 
 	var usage *OpenAIUsage
@@ -3029,6 +3276,17 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	if reqStream {
 		result, err := s.handleStreamingResponsePassthrough(ctx, resp, c, account, startTime, reqModel, upstreamPassthroughModel)
 		if err != nil {
+			if isCompactRequest && s.writeOpenAICompactTimeoutIfDeadline(c, upstreamReq, upstreamStart) {
+				releaseUpstreamCtx()
+				return nil, &OpenAICompactTimeoutError{
+					Elapsed: time.Since(upstreamStart),
+					Timeout: s.openAICompactTimeout(),
+				}
+			}
+			if isCompactRequest {
+				setOpenAICompactDiagnostic(c, OpenAICompactUpstreamTotalDurationMsKey, time.Since(upstreamStart).Milliseconds())
+			}
+			releaseUpstreamCtx()
 			return nil, err
 		}
 		usage = result.usage
@@ -3037,6 +3295,17 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	} else {
 		result, err := s.handleNonStreamingResponsePassthrough(ctx, resp, c, reqModel, upstreamPassthroughModel)
 		if err != nil {
+			if isCompactRequest && s.writeOpenAICompactTimeoutIfDeadline(c, upstreamReq, upstreamStart) {
+				releaseUpstreamCtx()
+				return nil, &OpenAICompactTimeoutError{
+					Elapsed: time.Since(upstreamStart),
+					Timeout: s.openAICompactTimeout(),
+				}
+			}
+			if isCompactRequest {
+				setOpenAICompactDiagnostic(c, OpenAICompactUpstreamTotalDurationMsKey, time.Since(upstreamStart).Milliseconds())
+			}
+			releaseUpstreamCtx()
 			return nil, err
 		}
 		usage = result.usage
@@ -3068,6 +3337,10 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		forwardResult.ImageSize = imageSizeTier
 		forwardResult.BillingModel = imageBillingModel
 	}
+	if isCompactRequest {
+		setOpenAICompactDiagnostic(c, OpenAICompactUpstreamTotalDurationMsKey, time.Since(upstreamStart).Milliseconds())
+	}
+	releaseUpstreamCtx()
 	return forwardResult, nil
 }
 

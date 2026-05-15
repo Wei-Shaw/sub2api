@@ -239,6 +239,9 @@ gateway:
   # OpenAI 透传模式是否放行客户端超时头（如 x-stainless-timeout）
   # 默认 false：过滤超时头，降低上游提前断流风险。
   openai_passthrough_allow_timeout_headers: false
+  # OpenAI /responses/compact 专用总超时（秒），0 表示禁用。
+  # 默认在 Cloudflare 524 前返回结构化 504，便于定位和重试。
+  openai_compact_timeout_seconds: 90
   # OpenAI Responses WebSocket 配置（默认开启，可按需回滚到 HTTP）
   openai_ws:
     # 新版 WS mode 路由（默认关闭）。关闭时保持当前 legacy 实现行为。

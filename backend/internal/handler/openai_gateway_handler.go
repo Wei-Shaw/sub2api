@@ -15,6 +15,7 @@ import (
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -115,7 +116,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	}
 
 	// Read request body
+	readBodyStart := time.Now()
 	body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
+	readBodyDurationMs := time.Since(readBodyStart).Milliseconds()
 	if err != nil {
 		if maxErr, ok := extractMaxBytesError(err); ok {
 			h.errorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
@@ -131,6 +134,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	}
 
 	setOpsRequestContext(c, "", false, body)
+	if isOpenAIRemoteCompactPath(c) {
+		setOpenAICompactInboundDiagnostics(c, body, readBodyDurationMs)
+	}
 	sessionHashBody := body
 	if service.IsOpenAIResponsesCompactPathForTest(c) {
 		if compactSeed := strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String()); compactSeed != "" {
@@ -159,6 +165,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		return
 	}
 	reqModel := modelResult.String()
+	if isOpenAIRemoteCompactPath(c) {
+		c.Set(openAICompactRequestModelKey, reqModel)
+	}
 
 	streamResult := gjson.GetBytes(body, "stream")
 	if streamResult.Exists() && streamResult.Type != gjson.True && streamResult.Type != gjson.False {
@@ -463,6 +472,106 @@ func isOpenAIRemoteCompactPath(c *gin.Context) bool {
 	return strings.HasSuffix(normalizedPath, "/responses/compact")
 }
 
+const (
+	openAICompactRequestBodyBytesKey         = service.OpenAICompactRequestBodyBytesKey
+	openAICompactRequestContentLengthKey     = service.OpenAICompactRequestContentLengthKey
+	openAICompactReadBodyDurationMsKey       = service.OpenAICompactReadBodyDurationMsKey
+	openAICompactRequestModelKey             = service.OpenAICompactRequestModelKey
+	openAICompactUpstreamModelKey            = service.OpenAICompactUpstreamModelKey
+	openAICompactUpstreamURLHostKey          = service.OpenAICompactUpstreamURLHostKey
+	openAICompactUpstreamURLPathKey          = service.OpenAICompactUpstreamURLPathKey
+	openAICompactUpstreamStatusCodeKey       = service.OpenAICompactUpstreamStatusCodeKey
+	openAICompactUpstreamErrorClassKey       = service.OpenAICompactUpstreamErrorClassKey
+	openAICompactUpstreamHeaderDurationMsKey = service.OpenAICompactUpstreamHeaderDurationMsKey
+	openAICompactUpstreamTotalDurationMsKey  = service.OpenAICompactUpstreamTotalDurationMsKey
+)
+
+func setOpenAICompactInboundDiagnostics(c *gin.Context, body []byte, readBodyDurationMs int64) {
+	if c == nil {
+		return
+	}
+	c.Set(openAICompactRequestBodyBytesKey, len(body))
+	if c.Request != nil {
+		c.Set(openAICompactRequestContentLengthKey, c.Request.ContentLength)
+	}
+	if readBodyDurationMs < 0 {
+		readBodyDurationMs = 0
+	}
+	c.Set(openAICompactReadBodyDurationMsKey, readBodyDurationMs)
+}
+
+func appendContextFieldIfPresent(fields []zap.Field, c *gin.Context, contextKey string, fieldName string) []zap.Field {
+	if c == nil {
+		return fields
+	}
+	v, ok := c.Get(contextKey)
+	if !ok {
+		return fields
+	}
+	switch t := v.(type) {
+	case int:
+		return append(fields, zap.Int(fieldName, t))
+	case int64:
+		return append(fields, zap.Int64(fieldName, t))
+	case string:
+		if value := strings.TrimSpace(t); value != "" {
+			return append(fields, zap.String(fieldName, value))
+		}
+	case bool:
+		return append(fields, zap.Bool(fieldName, t))
+	}
+	return fields
+}
+
+func appendOpenAICompactContextFields(fields []zap.Field, c *gin.Context) []zap.Field {
+	if c == nil {
+		return fields
+	}
+	if req := c.Request; req != nil {
+		if reqID := strings.TrimSpace(c.Writer.Header().Get("X-Request-ID")); reqID != "" {
+			fields = append(fields, zap.String("request_id", reqID))
+		}
+		if cfRay := strings.TrimSpace(req.Header.Get("CF-Ray")); cfRay != "" {
+			fields = append(fields, zap.String("cf_ray", cfRay))
+			if idx := strings.LastIndex(cfRay, "-"); idx >= 0 && idx+1 < len(cfRay) {
+				fields = append(fields, zap.String("cf_colo", cfRay[idx+1:]))
+			}
+		}
+		originator := strings.TrimSpace(req.Header.Get("originator"))
+		userAgent := strings.TrimSpace(req.Header.Get("User-Agent"))
+		if originator != "" {
+			fields = append(fields, zap.String("originator", originator))
+		}
+		if userAgent != "" {
+			fields = append(fields, zap.String("request_user_agent", userAgent))
+		}
+		fields = append(fields,
+			zap.Bool("codex_official_client_match", openai.IsCodexOfficialClientByHeaders(userAgent, originator)),
+			zap.Bool("codex_app_client_match", strings.Contains(strings.ToLower(userAgent+" "+originator), "codex_app")),
+			zap.Bool("codex_cli_client_match", openai.IsCodexCLIRequest(userAgent) || strings.HasPrefix(strings.ToLower(originator), "codex_cli")),
+		)
+	}
+	for _, pair := range []struct {
+		contextKey string
+		fieldName  string
+	}{
+		{openAICompactRequestBodyBytesKey, "request_body_bytes"},
+		{openAICompactRequestContentLengthKey, "request_content_length"},
+		{openAICompactReadBodyDurationMsKey, "request_body_read_ms"},
+		{openAICompactRequestModelKey, "request_model"},
+		{openAICompactUpstreamModelKey, "upstream_model"},
+		{openAICompactUpstreamURLHostKey, "upstream_url_host"},
+		{openAICompactUpstreamURLPathKey, "upstream_url_path"},
+		{openAICompactUpstreamStatusCodeKey, "upstream_status_code"},
+		{openAICompactUpstreamErrorClassKey, "upstream_error_class"},
+		{openAICompactUpstreamHeaderDurationMsKey, "upstream_header_ms"},
+		{openAICompactUpstreamTotalDurationMsKey, "upstream_total_ms"},
+	} {
+		fields = appendContextFieldIfPresent(fields, c, pair.contextKey, pair.fieldName)
+	}
+	return fields
+}
+
 func (h *OpenAIGatewayHandler) logOpenAIRemoteCompactOutcome(c *gin.Context, startedAt time.Time) {
 	if !isOpenAIRemoteCompactPath(c) {
 		return
@@ -503,14 +612,12 @@ func (h *OpenAIGatewayHandler) logOpenAIRemoteCompactOutcome(c *gin.Context, sta
 		zap.String("path", path),
 		zap.Bool("force_codex_cli", h != nil && h.cfg != nil && h.cfg.Gateway.ForceCodexCLI),
 	}
+	fields = appendOpenAICompactContextFields(fields, c)
 
 	if c != nil {
-		if userAgent := strings.TrimSpace(c.GetHeader("User-Agent")); userAgent != "" {
-			fields = append(fields, zap.String("request_user_agent", userAgent))
-		}
 		if v, ok := c.Get(opsModelKey); ok {
 			if model, ok := v.(string); ok && strings.TrimSpace(model) != "" {
-				fields = append(fields, zap.String("request_model", strings.TrimSpace(model)))
+				fields = append(fields, zap.String("ops_request_model", strings.TrimSpace(model)))
 			}
 		}
 		if v, ok := c.Get(opsAccountIDKey); ok {

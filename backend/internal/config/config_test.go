@@ -175,6 +175,19 @@ func TestLoadOpenAIWSStickyTTLCompatibility(t *testing.T) {
 	}
 }
 
+func TestLoadDefaultOpenAICompactTimeout(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+
+	if cfg.Gateway.OpenAICompactTimeoutSeconds != 90 {
+		t.Fatalf("Gateway.OpenAICompactTimeoutSeconds = %d, want 90", cfg.Gateway.OpenAICompactTimeoutSeconds)
+	}
+}
+
 func TestLoadDefaultIdempotencyConfig(t *testing.T) {
 	resetViperWithJWTSecret(t)
 
@@ -1256,6 +1269,11 @@ func TestValidateConfigErrors(t *testing.T) {
 			name:    "gateway connection isolation",
 			mutate:  func(c *Config) { c.Gateway.ConnectionPoolIsolation = "invalid" },
 			wantErr: "gateway.connection_pool_isolation",
+		},
+		{
+			name:    "gateway openai compact timeout",
+			mutate:  func(c *Config) { c.Gateway.OpenAICompactTimeoutSeconds = -1 },
+			wantErr: "gateway.openai_compact_timeout_seconds",
 		},
 		{
 			name:    "gateway stream keepalive range",

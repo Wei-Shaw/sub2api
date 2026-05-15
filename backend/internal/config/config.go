@@ -638,6 +638,9 @@ type GatewayConfig struct {
 	// OpenAIPassthroughAllowTimeoutHeaders: OpenAI 透传模式是否放行客户端超时头
 	// 关闭（默认）可避免 x-stainless-timeout 等头导致上游提前断流。
 	OpenAIPassthroughAllowTimeoutHeaders bool `mapstructure:"openai_passthrough_allow_timeout_headers"`
+	// OpenAICompactTimeoutSeconds: /responses/compact 专用总超时（秒），0 表示禁用。
+	// 用于在 Cloudflare 524 前返回结构化错误，不影响普通 /responses。
+	OpenAICompactTimeoutSeconds int `mapstructure:"openai_compact_timeout_seconds"`
 	// OpenAIWS: OpenAI Responses WebSocket 配置（默认开启，可按需回滚到 HTTP）
 	OpenAIWS GatewayOpenAIWSConfig `mapstructure:"openai_ws"`
 	// ImageConcurrency: 图片生成独立并发限制配置（默认关闭）
@@ -1669,6 +1672,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.force_codex_cli", false)
 	viper.SetDefault("gateway.codex_image_generation_bridge_enabled", false)
 	viper.SetDefault("gateway.openai_passthrough_allow_timeout_headers", false)
+	viper.SetDefault("gateway.openai_compact_timeout_seconds", 90)
 	// OpenAI Responses WebSocket（默认开启；可通过 force_http 紧急回滚）
 	viper.SetDefault("gateway.openai_ws.enabled", true)
 	viper.SetDefault("gateway.openai_ws.mode_router_v2_enabled", false)
@@ -2280,6 +2284,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.ProxyProbeResponseReadMaxBytes <= 0 {
 		return fmt.Errorf("gateway.proxy_probe_response_read_max_bytes must be positive")
+	}
+	if c.Gateway.OpenAICompactTimeoutSeconds < 0 {
+		return fmt.Errorf("gateway.openai_compact_timeout_seconds must be non-negative")
 	}
 	if strings.TrimSpace(c.Gateway.ConnectionPoolIsolation) != "" {
 		switch c.Gateway.ConnectionPoolIsolation {
