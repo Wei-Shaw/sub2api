@@ -70,6 +70,10 @@ func SetupRouter(
 	}))
 	r.Use(middleware2.ServerTiming(cfg.Server.EnableServerTiming))
 
+	// 注册公开的 provider-catalog 路由（无需认证）
+	// Must be registered BEFORE the frontend SPA middleware to avoid catch-all.
+	routes.RegisterProviderCatalogRoutes(r, handlers)
+
 	// Serve embedded frontend with settings injection if available
 	if web.HasEmbeddedFrontend() {
 		frontendServer, err := web.NewFrontendServer(settingService) //nolint:staticcheck // SA4023: the !embed stub always errors; embed builds can return nil
@@ -91,9 +95,6 @@ func SetupRouter(
 
 	// 注册路由
 	registerRoutes(r, handlers, jwtAuth, optionalJWTAuth, adminAuth, apiKeyAuth, auditLog, stepUpAuth, apiKeyService, subscriptionService, opsService, settingService, compositeResolver, cfg, redisClient)
-
-	// 注册公开的 provider-catalog 路由（无需认证）
-	routes.RegisterProviderCatalogRoutes(r, handlers)
 
 	return r
 }
