@@ -83,7 +83,7 @@ REDACTED
 	require.Equal(t, 1, signupSource.Validators)
 
 	validator := requireStringFieldValidator(t, User{REDACTED.Fields(), "signup_source")
-	for _, value := range []string{"email", "linuxdo", "wechat", "oidc", "github", "google"REDACTED {
+	for _, value := range []string{"email", "linuxdo", "wechat", "oidc", "github", "google", "dingtalk"REDACTED {
 		require.NoError(t, validator(value))
 REDACTED
 	require.Error(t, validator("unknown"))

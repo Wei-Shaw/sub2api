@@ -1238,7 +1238,7 @@ REDACTED
 	providerKey := strings.TrimSpace(input.ProviderKey)
 	providerSubject := strings.TrimSpace(input.ProviderSubject)
 	if providerType == "" {
-		return nil, infraerrors.BadRequest("INVALID_INPUT", "provider_type must be one of email, linuxdo, oidc, or wechat")
+		return nil, infraerrors.BadRequest("INVALID_INPUT", "provider_type must be one of email, linuxdo, oidc, wechat, or dingtalk")
 REDACTED
 	if providerKey == "" || providerSubject == "" {
 		return nil, infraerrors.BadRequest("INVALID_INPUT", "provider_type, provider_key, and provider_subject are required")
@@ -1493,6 +1493,8 @@ func normalizeAdminAuthIdentityProviderType(input string) string {
 		return "oidc"
 	case "wechat":
 		return "wechat"
+	case "dingtalk":
+		return "dingtalk"
 	default:
 		return ""
 REDACTED

@@ -72,6 +72,11 @@ func (s *UserAttributeService) GetDefinition(ctx context.Context, id int64) (*Us
 	return s.defRepo.GetByID(ctx, id)
 REDACTED
 
+// GetDefinitionByKey retrieves a definition by its unique key
+func (s *UserAttributeService) GetDefinitionByKey(ctx context.Context, key string) (*UserAttributeDefinition, error) {
+	return s.defRepo.GetByKey(ctx, key)
+REDACTED
+
 // ListDefinitions lists all definitions
 func (s *UserAttributeService) ListDefinitions(ctx context.Context, enabledOnly bool) ([]UserAttributeDefinition, error) {
 	return s.defRepo.List(ctx, enabledOnly)

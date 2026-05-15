@@ -461,7 +461,7 @@ export default {
     invitationCodeInvalid: 'Invalid or used invitation code',
     invitationCodeValidating: 'Validating invitation code...',
     invitationCodeInvalidCannotRegister: 'Invalid invitation code. Please check and try again',
-    oauthOrContinue: 'or continue with email',
+    oauthOrContinue: 'or continue with others',
     linuxdo: {
       signIn: 'Continue with Linux.do',
       orContinue: 'or continue with email',
@@ -475,6 +475,34 @@ export default {
       completeRegistration: 'Complete Registration',
       completing: 'Completing registration…',
       completeRegistrationFailed: 'Registration failed. Please check your invitation code and try again.'
+    REDACTED,
+    dingtalk: {
+      signIn: 'Continue with DingTalk',
+      callbackTitle: 'Signing you in with DingTalk',
+      callbackProcessing: 'Completing DingTalk login, please wait...',
+      callbackHint: 'If you are not redirected automatically, go back to the login page and try again.',
+      callbackMissingToken: 'Missing login token, please try again.',
+      backToLogin: 'Back to Login',
+      invitationRequired: 'This DingTalk account is not yet registered. The site requires an invitation code — please enter one to complete registration.',
+      invalidPendingToken: 'The registration token has expired. Please sign in with DingTalk again.',
+      completeRegistration: 'Complete Registration',
+      completing: 'Completing registration…',
+      completeRegistrationFailed: 'Registration failed. Please check your invitation code and try again.',
+      createAccountTitle: 'Create DingTalk Account',
+      registrationDisabledRedirectToBind: 'New account registration is currently disabled. Please bind to your existing account with its email and password.',
+      error: {
+        title: 'DingTalk Sign-in Failed',
+        csrf: 'Login session expired, please scan again',
+        corp_rejected: 'Your DingTalk account is not part of this organization. Please contact administrator',
+        dingtalk_not_enabled: 'DingTalk login is not enabled',
+        upstream_error: 'DingTalk service is temporarily unavailable. Please try again later',
+        missing_browser_session: 'Browser session lost. Please login again',
+        missing_params: 'Request parameters are incomplete',
+        invalid_state: 'Invalid login state',
+        provider_error: 'DingTalk authorization failed',
+        session_error: 'Failed to create session. Please retry',
+        retry: 'Retry Login'
+      REDACTED
     REDACTED,
     emailOAuth: {
       signIn: 'Continue with {providerNameREDACTED'
@@ -524,6 +552,7 @@ export default {
       wechatNotConfigured: 'WeChat sign-in is not configured yet.'
     REDACTED,
     linuxdoCallbackPageTitle: 'LinuxDo Sign-In Callback',
+    dingtalkCallbackPageTitle: 'DingTalk Sign-In Callback',
     oidcCallbackPageTitle: 'OIDC Sign-In Callback',
     oauthCallbackPageTitle: 'OAuth Callback',
     wechatProviderName: 'WeChat',
@@ -1244,6 +1273,7 @@ export default {
       providers: {
         email: 'Email',
         linuxdo: 'LinuxDo',
+        dingtalk: 'DingTalk',
         oidc: '{providerNameREDACTED',
         wechat: 'WeChat',
       REDACTED,
@@ -5267,6 +5297,47 @@ export default {
           'Must match the redirect URL configured in Connect.Linux.Do (must be an absolute http(s) URL)',
         quickSetCopy: 'Generate & Copy (current site)',
         redirectUrlSetAndCopied: 'Redirect URL generated and copied to clipboard'
+      REDACTED,
+      dingtalk: {
+        title: 'DingTalk Login',
+        description: 'Configure DingTalk OAuth for Sub2API end-user login',
+        enable: 'Enable DingTalk Login (Internal Corporate App)',
+        enableHint: 'Show DingTalk login on the login/register pages',
+        clientId: 'Client ID (AppKey)',
+        clientIdPlaceholder: 'e.g., dingxxxxxxxxxxxxxxxx',
+        clientIdHint: 'Get this from the DingTalk Open Platform app details',
+        clientSecret: 'Client Secret (AppSecret)',
+        clientSecretPlaceholder: '********',
+        clientSecretHint: 'Used by backend to exchange tokens (keep it secret)',
+        clientSecretConfiguredPlaceholder: '********',
+        clientSecretConfiguredHint: 'Secret configured. Leave empty to keep the current value.',
+        redirectUrl: 'Redirect URL',
+        redirectUrlPlaceholder: 'https://your-domain.com/api/v1/auth/oauth/dingtalk/callback',
+        redirectUrlHint:
+          'Must match the redirect URL configured in DingTalk Open Platform (must be an absolute http(s) URL)',
+        corpPolicy: {
+          label: 'Corp Restriction Policy',
+          hint: 'Control which DingTalk accounts (orgs) are allowed to sign in',
+          none: 'No restriction (all DingTalk accounts allowed)',
+          internalOnly: 'Internal only (single corp)'
+        REDACTED,
+        bypassRegistration: 'Enable DingTalk signup',
+        bypassRegistrationHint: 'Allow new users to register via DingTalk even when public registration is disabled.',
+        syncDisplayName: 'Sync DingTalk display name',
+        syncDisplayNameHint: 'Overwrite username with the DingTalk staff name on each login (also stored in the dingtalk_name attribute).',
+        syncCorpEmail: 'Sync corporate email',
+        syncCorpEmailHint: 'Write the DingTalk corporate email to the dingtalk_email attribute on each login (does not change the login email).',
+        syncCorpEmailPermissionHint: 'Requires the OAPI permission "Personal info incl. email (fieldEmail)" to be granted to the app on the DingTalk open platform, otherwise OAPI will not return the email field.',
+        syncDept: 'Sync department',
+        syncDeptHint: 'Write the full DingTalk department path to the dingtalk_department attribute on each login (fetched live each time).',
+        syncDeptPermissionHint: 'Requires the OAPI "Department info read (qyapi_get_department_list)" permission to be granted to the app on the DingTalk open platform, otherwise the department path cannot be resolved.',
+        syncDisplayNameTarget: 'Attribute key',
+        syncDisplayNameTargetHint: 'Defaults to dingtalk_name / DingTalk Name. Saving settings auto-creates the user attribute by the key and display name above (existing definition only has its display name synced).',
+        syncCorpEmailTarget: 'Attribute key',
+        syncCorpEmailTargetHint: 'Defaults to dingtalk_email / DingTalk Corporate Email. Saving settings auto-creates the user attribute by the key and display name above (existing definition only has its display name synced).',
+        syncDeptTarget: 'Attribute key',
+        syncDeptTargetHint: 'Defaults to dingtalk_department / DingTalk Department. Saving settings auto-creates the user attribute by the key and display name above (existing definition only has its display name synced).',
+        syncAttrDisplayName: 'Display name'
       REDACTED,
       oidc: {
         title: 'OIDC Login',
