@@ -60,6 +60,11 @@ func UserID(v int64) predicate.UserDevice {
 	return predicate.UserDevice(sql.FieldEQ(FieldUserID, v))
 }
 
+// DeviceCode applies equality check predicate on the "device_code" field. It's identical to DeviceCodeEQ.
+func DeviceCode(v string) predicate.UserDevice {
+	return predicate.UserDevice(sql.FieldEQ(FieldDeviceCode, v))
+}
+
 // DeviceHash applies equality check predicate on the "device_hash" field. It's identical to DeviceHashEQ.
 func DeviceHash(v string) predicate.UserDevice {
 	return predicate.UserDevice(sql.FieldEQ(FieldDeviceHash, v))
@@ -148,6 +153,81 @@ func UserIDIn(vs ...int64) predicate.UserDevice {
 // UserIDNotIn applies the NotIn predicate on the "user_id" field.
 func UserIDNotIn(vs ...int64) predicate.UserDevice {
 	return predicate.UserDevice(sql.FieldNotIn(FieldUserID, vs...))
+}
+
+// DeviceCodeEQ applies the EQ predicate on the "device_code" field.
+func DeviceCodeEQ(v string) predicate.UserDevice {
+	return predicate.UserDevice(sql.FieldEQ(FieldDeviceCode, v))
+}
+
+// DeviceCodeNEQ applies the NEQ predicate on the "device_code" field.
+func DeviceCodeNEQ(v string) predicate.UserDevice {
+	return predicate.UserDevice(sql.FieldNEQ(FieldDeviceCode, v))
+}
+
+// DeviceCodeIn applies the In predicate on the "device_code" field.
+func DeviceCodeIn(vs ...string) predicate.UserDevice {
+	return predicate.UserDevice(sql.FieldIn(FieldDeviceCode, vs...))
+}
+
+// DeviceCodeNotIn applies the NotIn predicate on the "device_code" field.
+func DeviceCodeNotIn(vs ...string) predicate.UserDevice {
+	return predicate.UserDevice(sql.FieldNotIn(FieldDeviceCode, vs...))
+}
+
+// DeviceCodeGT applies the GT predicate on the "device_code" field.
+func DeviceCodeGT(v string) predicate.UserDevice {
+	return predicate.UserDevice(sql.FieldGT(FieldDeviceCode, v))
+}
+
+// DeviceCodeGTE applies the GTE predicate on the "device_code" field.
+func DeviceCodeGTE(v string) predicate.UserDevice {
+	return predicate.UserDevice(sql.FieldGTE(FieldDeviceCode, v))
+}
+
+// DeviceCodeLT applies the LT predicate on the "device_code" field.
+func DeviceCodeLT(v string) predicate.UserDevice {
+	return predicate.UserDevice(sql.FieldLT(FieldDeviceCode, v))
+}
+
+// DeviceCodeLTE applies the LTE predicate on the "device_code" field.
+func DeviceCodeLTE(v string) predicate.UserDevice {
+	return predicate.UserDevice(sql.FieldLTE(FieldDeviceCode, v))
+}
+
+// DeviceCodeContains applies the Contains predicate on the "device_code" field.
+func DeviceCodeContains(v string) predicate.UserDevice {
+	return predicate.UserDevice(sql.FieldContains(FieldDeviceCode, v))
+}
+
+// DeviceCodeHasPrefix applies the HasPrefix predicate on the "device_code" field.
+func DeviceCodeHasPrefix(v string) predicate.UserDevice {
+	return predicate.UserDevice(sql.FieldHasPrefix(FieldDeviceCode, v))
+}
+
+// DeviceCodeHasSuffix applies the HasSuffix predicate on the "device_code" field.
+func DeviceCodeHasSuffix(v string) predicate.UserDevice {
+	return predicate.UserDevice(sql.FieldHasSuffix(FieldDeviceCode, v))
+}
+
+// DeviceCodeIsNil applies the IsNil predicate on the "device_code" field.
+func DeviceCodeIsNil() predicate.UserDevice {
+	return predicate.UserDevice(sql.FieldIsNull(FieldDeviceCode))
+}
+
+// DeviceCodeNotNil applies the NotNil predicate on the "device_code" field.
+func DeviceCodeNotNil() predicate.UserDevice {
+	return predicate.UserDevice(sql.FieldNotNull(FieldDeviceCode))
+}
+
+// DeviceCodeEqualFold applies the EqualFold predicate on the "device_code" field.
+func DeviceCodeEqualFold(v string) predicate.UserDevice {
+	return predicate.UserDevice(sql.FieldEqualFold(FieldDeviceCode, v))
+}
+
+// DeviceCodeContainsFold applies the ContainsFold predicate on the "device_code" field.
+func DeviceCodeContainsFold(v string) predicate.UserDevice {
+	return predicate.UserDevice(sql.FieldContainsFold(FieldDeviceCode, v))
 }
 
 // DeviceHashEQ applies the EQ predicate on the "device_hash" field.
@@ -583,6 +663,16 @@ func LoginRedeemCodeIDIn(vs ...int64) predicate.UserDevice {
 // LoginRedeemCodeIDNotIn applies the NotIn predicate on the "login_redeem_code_id" field.
 func LoginRedeemCodeIDNotIn(vs ...int64) predicate.UserDevice {
 	return predicate.UserDevice(sql.FieldNotIn(FieldLoginRedeemCodeID, vs...))
+}
+
+// LoginRedeemCodeIDIsNil applies the IsNil predicate on the "login_redeem_code_id" field.
+func LoginRedeemCodeIDIsNil() predicate.UserDevice {
+	return predicate.UserDevice(sql.FieldIsNull(FieldLoginRedeemCodeID))
+}
+
+// LoginRedeemCodeIDNotNil applies the NotNil predicate on the "login_redeem_code_id" field.
+func LoginRedeemCodeIDNotNil() predicate.UserDevice {
+	return predicate.UserDevice(sql.FieldNotNull(FieldLoginRedeemCodeID))
 }
 
 // StatusEQ applies the EQ predicate on the "status" field.

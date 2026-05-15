@@ -594,6 +594,7 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 				dbuser.HasAPIKeysWith(apikey.KeyContainsFold(filters.Search)),
 				dbuser.HasRedeemCodesWith(redeemcode.CodeContainsFold(filters.Search)),
 				dbuser.HasDevicesWith(userdevice.DeviceHashContainsFold(filters.Search)),
+				dbuser.HasDevicesWith(userdevice.DeviceCodeContainsFold(filters.Search)),
 				dbuser.HasDevicesWith(userdevice.HasClaimRedeemCodeWith(redeemcode.CodeContainsFold(filters.Search))),
 				dbuser.HasDevicesWith(userdevice.HasLoginRedeemCodeWith(redeemcode.CodeContainsFold(filters.Search))),
 			),
@@ -1497,7 +1498,19 @@ func (r *userRepository) loadPrimaryRedeemCodes(ctx context.Context, userIDs []i
 		return nil, nil, err
 	}
 	for _, device := range devices {
-		if _, exists := codesByUser[device.UserID]; exists || device.Edges.LoginRedeemCode == nil {
+		if _, exists := codesByUser[device.UserID]; exists {
+			continue
+		}
+		// Prefer device_code directly (Phase 2 dual-write)
+		if device.DeviceCode != nil && *device.DeviceCode != "" {
+			code := *device.DeviceCode
+			redeemType := service.RedeemTypeDeviceLogin
+			codesByUser[device.UserID] = &code
+			typesByUser[device.UserID] = &redeemType
+			continue
+		}
+		// Fallback to legacy edge
+		if device.Edges.LoginRedeemCode == nil {
 			continue
 		}
 		code := device.Edges.LoginRedeemCode.Code

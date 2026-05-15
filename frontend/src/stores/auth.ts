@@ -10,7 +10,6 @@ import type {
   User,
   LoginRequest,
   InviteLoginRequest,
-  RedeemLoginRequest,
   RegisterRequest,
   AuthResponse
 } from '@/types'
@@ -272,17 +271,6 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  async function redeemLogin(request: RedeemLoginRequest): Promise<User> {
-    try {
-      const response = await authAPI.redeemLogin(request)
-      setAuthFromResponse(response)
-      return user.value!
-    } catch (error) {
-      clearAuth({ preservePendingAuthSession: pendingAuthSession.value !== null })
-      throw error
-    }
-  }
-
   async function inviteLogin(request: InviteLoginRequest): Promise<User> {
     try {
       const response = await authAPI.inviteLogin(request)
@@ -537,7 +525,6 @@ export const useAuthStore = defineStore('auth', () => {
     // Actions
     login,
     loginWithPasskey,
-    redeemLogin,
     inviteLogin,
     login2FA,
     register,

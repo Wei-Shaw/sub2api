@@ -116,7 +116,7 @@ func newRuntimeOpsService(t *testing.T) *service.OpsService {
 }
 
 func TestOpsRuntimeLoggingHandler_GetConfig(t *testing.T) {
-	h := NewOpsHandler(newRuntimeOpsService(t))
+	h := NewOpsHandler(newRuntimeOpsService(t), nil)
 	r := newOpsRuntimeRouter(h, false)
 
 	w := httptest.NewRecorder()
@@ -128,7 +128,7 @@ func TestOpsRuntimeLoggingHandler_GetConfig(t *testing.T) {
 }
 
 func TestOpsRuntimeLoggingHandler_UpdateUnauthorized(t *testing.T) {
-	h := NewOpsHandler(newRuntimeOpsService(t))
+	h := NewOpsHandler(newRuntimeOpsService(t), nil)
 	r := newOpsRuntimeRouter(h, false)
 
 	body := `{"level":"debug","enable_sampling":false,"sampling_initial":100,"sampling_thereafter":100,"caller":true,"stacktrace_level":"error","retention_days":30}`
@@ -142,7 +142,7 @@ func TestOpsRuntimeLoggingHandler_UpdateUnauthorized(t *testing.T) {
 }
 
 func TestOpsRuntimeLoggingHandler_UpdateAndResetSuccess(t *testing.T) {
-	h := NewOpsHandler(newRuntimeOpsService(t))
+	h := NewOpsHandler(newRuntimeOpsService(t), nil)
 	r := newOpsRuntimeRouter(h, true)
 
 	payload := map[string]any{

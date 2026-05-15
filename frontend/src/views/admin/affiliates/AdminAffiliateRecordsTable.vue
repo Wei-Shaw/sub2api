@@ -44,6 +44,14 @@
               @open="openUserOverview"
             />
           </template>
+          <template #cell-invitee_device_code="{ row }">
+            <span v-if="row.invitee_device_code" class="text-xs font-mono text-gray-600 dark:text-gray-400">{{ row.invitee_device_code }}</span>
+            <span v-else class="text-xs text-gray-400">-</span>
+          </template>
+          <template #cell-device_code="{ row }">
+            <span v-if="row.device_code" class="text-xs font-mono text-gray-600 dark:text-gray-400">{{ row.device_code }}</span>
+            <span v-else class="text-xs text-gray-400">-</span>
+          </template>
           <template #cell-user="{ row }">
             <UserCell
               :id="row.user_id"
@@ -181,6 +189,7 @@ const columns = computed<Column[]>(() => {
     return [
       { key: 'inviter', label: t('admin.affiliates.records.inviter'), sortable: true },
       { key: 'invitee', label: t('admin.affiliates.records.invitee'), sortable: true },
+      { key: 'invitee_device_code', label: t('admin.affiliates.records.deviceCode'), sortable: false },
       { key: 'aff_code', label: t('admin.affiliates.records.affCode'), sortable: true },
       { key: 'total_rebate', label: t('admin.affiliates.records.totalRebate'), sortable: true },
       { key: 'created_at', label: t('admin.affiliates.records.invitedAt'), sortable: true },
@@ -191,6 +200,7 @@ const columns = computed<Column[]>(() => {
       { key: 'order', label: t('admin.affiliates.records.order'), sortable: true },
       { key: 'inviter', label: t('admin.affiliates.records.inviter'), sortable: true },
       { key: 'invitee', label: t('admin.affiliates.records.invitee'), sortable: true },
+      { key: 'invitee_device_code', label: t('admin.affiliates.records.deviceCode'), sortable: false },
       { key: 'order_amount', label: t('admin.affiliates.records.orderAmount'), sortable: true },
       { key: 'pay_amount', label: t('admin.affiliates.records.payAmount'), sortable: true },
       { key: 'rebate_amount', label: t('admin.affiliates.records.rebateAmount') },
@@ -201,6 +211,7 @@ const columns = computed<Column[]>(() => {
   }
   return [
     { key: 'user', label: t('admin.affiliates.records.user'), sortable: true },
+    { key: 'device_code', label: t('admin.affiliates.records.deviceCode'), sortable: false },
     { key: 'amount', label: t('admin.affiliates.records.transferAmount'), sortable: true },
     { key: 'balance_after', label: t('admin.affiliates.records.balanceAfter'), sortable: true },
     { key: 'available_quota_after', label: t('admin.affiliates.records.availableQuotaAfter'), sortable: true },

@@ -12,6 +12,10 @@
         <span v-if="row.user_notes" class="ml-1 text-xs text-gray-400">({{ row.user_notes }})</span>
       </div>
     </template>
+    <template v-if="showUser" #cell-device_code="{ value }">
+      <span v-if="value" class="font-mono text-xs text-blue-700 dark:text-blue-300">{{ value }}</span>
+      <span v-else class="text-xs text-gray-400">-</span>
+    </template>
     <template #cell-pay_amount="{ value, row }">
       <div class="text-sm">
         <span class="font-medium text-gray-900 dark:text-white">{{ paymentAmountSymbol(row) }}{{ value.toFixed(2) }}</span>
@@ -70,6 +74,7 @@ const columns = computed((): Column[] => {
   ]
   if (props.showUser) {
     cols.push({ key: 'user_email', label: t('payment.admin.colUser') })
+    cols.push({ key: 'device_code', label: t('payment.admin.colDeviceCode') })
   }
   cols.push(
     { key: 'pay_amount', label: t('payment.orders.payAmount') },

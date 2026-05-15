@@ -253,6 +253,7 @@ export default {
         keyDeletedBadge: 'Key 已删除',
         account: '账号',
         accountId: '账号 ID',
+        deviceCode: '设备码',
         status: '状态码',
         message: '响应内容',
         ip: 'IP',

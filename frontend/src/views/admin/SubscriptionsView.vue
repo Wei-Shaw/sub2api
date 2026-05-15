@@ -95,6 +95,30 @@
                 @change="applyFilters"
               />
             </div>
+            <!-- Device Code Search -->
+            <div class="relative w-full sm:w-56">
+              <Icon
+                name="search"
+                size="md"
+                class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              />
+              <input
+                v-model="filters.device_code"
+                type="text"
+                :placeholder="t('admin.subscriptions.searchDeviceCode')"
+                class="input pl-10 pr-8"
+                @input="debounceDeviceCodeSearch"
+              />
+              <button
+                v-if="filters.device_code"
+                @click="clearDeviceCodeFilter"
+                type="button"
+                class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                :title="t('common.clear')"
+              >
+                <Icon name="x" size="sm" :stroke-width="2" />
+              </button>
+            </div>
           </div>
 
           <!-- Right: Actions -->
@@ -1012,6 +1036,7 @@ const filters = reactive({
   status: 'active',
   group_id: '',
   platform: '',
+  device_code: '',
   user_id: null as number | null
 })
 
@@ -1101,6 +1126,7 @@ const loadSubscriptions = async () => {
         status: (filters.status as any) || undefined,
         group_id: filters.group_id ? parseInt(filters.group_id) : undefined,
         platform: filters.platform || undefined,
+        device_code: filters.device_code || undefined,
         user_id: filters.user_id || undefined,
         sort_by: sortState.sort_by,
         sort_order: sortState.sort_order
@@ -1184,6 +1210,24 @@ const clearFilterUser = () => {
   showFilterUserDropdown.value = false
   filters.user_id = null
   applyFilters()
+}
+
+// Device code search with debounce
+let deviceCodeSearchTimeout: ReturnType<typeof setTimeout> | null = null
+const debounceDeviceCodeSearch = () => {
+  if (deviceCodeSearchTimeout) {
+    clearTimeout(deviceCodeSearchTimeout)
+  }
+  deviceCodeSearchTimeout = setTimeout(() => {
+    pagination.page = 1
+    loadSubscriptions()
+  }, 300)
+}
+
+const clearDeviceCodeFilter = () => {
+  filters.device_code = ''
+  pagination.page = 1
+  loadSubscriptions()
 }
 
 // User search with debounce

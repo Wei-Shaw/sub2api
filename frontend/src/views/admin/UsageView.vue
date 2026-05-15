@@ -623,7 +623,7 @@ const exportToExcel = async () => {
 
 // Column visibility
 const ALWAYS_VISIBLE = ['user', 'created_at']
-const DEFAULT_HIDDEN_COLUMNS = ['reasoning_effort', 'user_agent']
+const DEFAULT_HIDDEN_COLUMNS = ['reasoning_effort', 'user_agent', 'device_code']
 const HIDDEN_COLUMNS_KEY = 'usage-hidden-columns'
 
 const allColumns = computed(() => [
@@ -641,7 +641,8 @@ const allColumns = computed(() => [
   { key: 'latency', label: t('usage.latency'), sortable: false },
   { key: 'created_at', label: t('usage.time'), sortable: true },
   { key: 'user_agent', label: t('usage.userAgent'), sortable: false },
-  { key: 'ip_address', label: t('admin.usage.ipAddress'), sortable: false }
+  { key: 'ip_address', label: t('admin.usage.ipAddress'), sortable: false },
+  { key: 'device_code', label: t('admin.usage.deviceCode'), sortable: false }
 ])
 
 const hiddenColumns = reactive<Set<string>>(new Set())

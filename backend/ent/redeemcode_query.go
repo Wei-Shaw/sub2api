@@ -730,9 +730,12 @@ func (_q *RedeemCodeQuery) loadLoginDevices(ctx context.Context, query *UserDevi
 	}
 	for _, n := range neighbors {
 		fk := n.LoginRedeemCodeID
-		node, ok := nodeids[fk]
+		if fk == nil {
+			return fmt.Errorf(`foreign-key "login_redeem_code_id" is nil for node %v`, n.ID)
+		}
+		node, ok := nodeids[*fk]
 		if !ok {
-			return fmt.Errorf(`unexpected referenced foreign-key "login_redeem_code_id" returned %v for node %v`, fk, n.ID)
+			return fmt.Errorf(`unexpected referenced foreign-key "login_redeem_code_id" returned %v for node %v`, *fk, n.ID)
 		}
 		assign(node, n)
 	}

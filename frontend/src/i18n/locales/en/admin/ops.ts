@@ -253,6 +253,7 @@ export default {
         keyDeletedBadge: 'Key Deleted',
         account: 'Account',
         accountId: 'Account ID',
+        deviceCode: 'Device Code',
         status: 'Status',
         message: 'Message',
         ip: 'IP',

@@ -51,6 +51,11 @@
         <span class="text-sm text-gray-600 dark:text-gray-400">#{{ value }}</span>
       </template>
 
+      <template #cell-device_code="{ value }">
+        <span v-if="value" class="text-sm font-mono text-gray-600 dark:text-gray-400">{{ value }}</span>
+        <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
+      </template>
+
       <template #cell-pay_amount="{ value, row }">
         <div class="text-sm">
           <span class="font-medium text-gray-900 dark:text-white">{{ paymentAmountSymbol(row) }}{{ value.toFixed(2) }}</span>
@@ -192,6 +197,7 @@ function emitFiltersChanged() {
 const columns = computed<Column[]>(() => [
   { key: 'id', label: t('payment.orders.orderId') },
   { key: 'user_id', label: t('payment.orders.userId') },
+  { key: 'device_code', label: t('payment.orders.deviceCode') },
   { key: 'pay_amount', label: t('payment.orders.payAmount') },
   { key: 'payment_type', label: t('payment.orders.paymentMethod') },
   { key: 'status', label: t('payment.orders.status') },

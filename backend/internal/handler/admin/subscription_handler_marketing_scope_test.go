@@ -70,7 +70,7 @@ func (r *subscriptionScopeRepoStub) ListByGroupID(context.Context, int64, pagina
 	panic("unexpected ListByGroupID call")
 }
 
-func (r *subscriptionScopeRepoStub) List(context.Context, pagination.PaginationParams, *int64, *int64, []int64, string, string, string, string) ([]service.UserSubscription, *pagination.PaginationResult, error) {
+func (r *subscriptionScopeRepoStub) List(context.Context, pagination.PaginationParams, *int64, *int64, []int64, string, string, string, string, string) ([]service.UserSubscription, *pagination.PaginationResult, error) {
 	panic("unexpected List call")
 }
 

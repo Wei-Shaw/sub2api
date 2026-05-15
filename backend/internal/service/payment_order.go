@@ -13,6 +13,8 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
+	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
+	"github.com/Wei-Shaw/sub2api/ent/userdevice"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/payment/provider"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -914,6 +916,7 @@ func (s *PaymentService) AdminListOrders(ctx context.Context, userID int64, p Or
 			paymentorder.OutTradeNoContainsFold(p.Keyword),
 			paymentorder.UserEmailContainsFold(p.Keyword),
 			paymentorder.UserNameContainsFold(p.Keyword),
+			paymentorder.HasUserWith(dbuser.HasDevicesWith(userdevice.DeviceCodeContainsFold(p.Keyword))),
 		))
 	}
 	total, err := q.Clone().Count(ctx)
@@ -926,4 +929,10 @@ func (s *PaymentService) AdminListOrders(ctx context.Context, userID int64, p Or
 		return nil, 0, fmt.Errorf("query admin orders: %w", err)
 	}
 	return orders, total, nil
+}
+
+// GetDeviceCodesByUserIDs returns a map of userID -> device_code for the given user IDs.
+// It picks the primary device (most recently logged in) for each user.
+func (s *PaymentService) GetDeviceCodesByUserIDs(ctx context.Context, userIDs []int64) map[int64]string {
+	return LookupDeviceCodesByUserIDs(ctx, s.entClient, userIDs)
 }

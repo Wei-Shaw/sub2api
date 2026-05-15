@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -85,7 +86,11 @@ func (h *PaymentHandler) ListOrders(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Paginated(c, sanitizeAdminPaymentOrdersForResponse(orders), int64(total), page, pageSize)
+	sanitized := sanitizeAdminPaymentOrdersForResponse(orders)
+
+	// Enrich orders with device_code from user_devices
+	enriched := enrichOrdersWithDeviceCode(c.Request.Context(), h.paymentService, sanitized)
+	response.Paginated(c, enriched, int64(total), page, pageSize)
 }
 
 // GetOrderDetail returns detailed information about a single order.
@@ -233,6 +238,7 @@ type AdminPaymentOrderResult struct {
 	UserEmail           string         `json:"user_email,omitempty"`
 	UserName            string         `json:"user_name,omitempty"`
 	UserNotes           *string        `json:"user_notes,omitempty"`
+	DeviceCode          string         `json:"device_code,omitempty"`
 	Amount              float64        `json:"amount"`
 	PayAmount           float64        `json:"pay_amount"`
 	FeeRate             float64        `json:"fee_rate"`
@@ -279,6 +285,34 @@ func sanitizeAdminPaymentOrdersForResponse(orders []*dbent.PaymentOrder) []*Admi
 		}
 	}
 	return out
+}
+
+func enrichOrdersWithDeviceCode(ctx context.Context, paymentService *service.PaymentService, orders []*AdminPaymentOrderResult) []*AdminPaymentOrderResult {
+	if len(orders) == 0 || paymentService == nil {
+		return orders
+	}
+	// Collect unique user IDs.
+	userIDSet := make(map[int64]struct{}, len(orders))
+	for _, o := range orders {
+		if o != nil && o.UserID > 0 {
+			userIDSet[o.UserID] = struct{}{}
+		}
+	}
+	if len(userIDSet) == 0 {
+		return orders
+	}
+	userIDs := make([]int64, 0, len(userIDSet))
+	for id := range userIDSet {
+		userIDs = append(userIDs, id)
+	}
+
+	deviceCodes := paymentService.GetDeviceCodesByUserIDs(ctx, userIDs)
+	for _, o := range orders {
+		if o != nil {
+			o.DeviceCode = deviceCodes[o.UserID]
+		}
+	}
+	return orders
 }
 
 func sanitizeAdminPaymentOrderForResponse(order *dbent.PaymentOrder) *AdminPaymentOrderResult {

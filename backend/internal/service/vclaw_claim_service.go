@@ -156,10 +156,15 @@ func (s *VClawClaimService) resumeExistingClaim(ctx context.Context, binding *Us
 	if err != nil || user == nil {
 		return nil, ErrServiceUnavailable
 	}
-	loginCode, err := s.redeemRepo.GetByID(ctx, binding.LoginRedeemCodeID)
-	if err != nil || loginCode == nil {
+
+	// Use device_code directly from user_devices (no redeem_codes dependency)
+	var deviceLoginCode string
+	if binding.DeviceCode != nil && *binding.DeviceCode != "" {
+		deviceLoginCode = *binding.DeviceCode
+	} else {
 		return nil, ErrServiceUnavailable
 	}
+
 	if err := s.userDeviceRepo.UpdateLastClaimedAt(ctx, binding.ID, now); err != nil {
 		return nil, ErrServiceUnavailable
 	}
@@ -168,7 +173,7 @@ func (s *VClawClaimService) resumeExistingClaim(ctx context.Context, binding *Us
 		DeviceStatus:    deviceStatus,
 		Mode:            "resume",
 		UserID:          binding.UserID,
-		DeviceLoginCode: loginCode.Code,
+		DeviceLoginCode: deviceLoginCode,
 		DeviceBindingID: binding.ID,
 		ClaimedAt:       now,
 	}, nil
@@ -204,18 +209,6 @@ func (s *VClawClaimService) createFirstClaim(ctx context.Context, req VClawClaim
 		if err != nil {
 			return nil, fmt.Errorf("generate device login code: %w", err)
 		}
-		usedAt := now
-		loginRedeemCode := &RedeemCode{
-			Code:   loginCodeText,
-			Type:   RedeemTypeDeviceLogin,
-			Status: StatusUsed,
-			UsedBy: &user.ID,
-			UsedAt: &usedAt,
-			Notes:  fmt.Sprintf("vclaw device login for device_hash=%s", deviceHash),
-		}
-		if err := s.redeemRepo.Create(runCtx, loginRedeemCode); err != nil {
-			return nil, ErrServiceUnavailable
-		}
 
 		installID := optionalTrimmedString(req.Device.InstallID)
 		appVersion := optionalTrimmedString(req.Device.AppVersion)
@@ -226,6 +219,7 @@ func (s *VClawClaimService) createFirstClaim(ctx context.Context, req VClawClaim
 		}
 		binding := &UserDevice{
 			UserID:             user.ID,
+			DeviceCode:         &loginCodeText,
 			DeviceHash:         deviceHash,
 			FingerprintVersion: req.Device.FingerprintVersion,
 			InstallID:          installID,
@@ -233,7 +227,6 @@ func (s *VClawClaimService) createFirstClaim(ctx context.Context, req VClawClaim
 			Arch:               strings.TrimSpace(req.Device.Arch),
 			AppVersion:         appVersion,
 			ClaimRedeemCodeID:  claimRedeemCodeID,
-			LoginRedeemCodeID:  loginRedeemCode.ID,
 			Status:             UserDeviceStatusActive,
 			FirstClaimedAt:     now,
 			LastClaimedAt:      &now,
@@ -247,7 +240,7 @@ func (s *VClawClaimService) createFirstClaim(ctx context.Context, req VClawClaim
 			DeviceStatus:    UserDeviceStatusActive,
 			Mode:            "first_claim",
 			UserID:          user.ID,
-			DeviceLoginCode: loginRedeemCode.Code,
+			DeviceLoginCode: loginCodeText,
 			DeviceBindingID: binding.ID,
 			ClaimedAt:       now,
 		}, nil

@@ -133,11 +133,6 @@ export interface InviteLoginRequest {
   turnstile_token?: string
 }
 
-export interface RedeemLoginRequest {
-  invitation_code: string
-  turnstile_token?: string
-}
-
 export interface RegisterRequest {
   email: string
   password: string
@@ -1667,6 +1662,12 @@ export interface AdminUsageLog extends UsageLog {
   // 渠道 ID 和计费等级（仅管理员可见）
   channel_id?: number | null
   billing_tier?: string | null
+
+  // 用户请求 IP（仅管理员可见）
+  ip_address?: string | null
+
+  // 用户设备码（仅管理员可见）
+  device_code?: string | null
 
   // 最小账号信息（仅管理员接口返回）
   account?: UsageLogAccountSummary

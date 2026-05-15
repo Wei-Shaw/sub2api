@@ -21,6 +21,8 @@ type UserDevice struct {
 	ID int64 `json:"id,omitempty"`
 	// UserID holds the value of the "user_id" field.
 	UserID int64 `json:"user_id,omitempty"`
+	// Device login code (DLG-XXXX-XXXX-XXXX). Canonical device identifier, replaces login_redeem_code lookup.
+	DeviceCode *string `json:"device_code,omitempty"`
 	// DeviceHash holds the value of the "device_hash" field.
 	DeviceHash string `json:"device_hash,omitempty"`
 	// FingerprintVersion holds the value of the "fingerprint_version" field.
@@ -36,7 +38,7 @@ type UserDevice struct {
 	// ClaimRedeemCodeID holds the value of the "claim_redeem_code_id" field.
 	ClaimRedeemCodeID *int64 `json:"claim_redeem_code_id,omitempty"`
 	// LoginRedeemCodeID holds the value of the "login_redeem_code_id" field.
-	LoginRedeemCodeID int64 `json:"login_redeem_code_id,omitempty"`
+	LoginRedeemCodeID *int64 `json:"login_redeem_code_id,omitempty"`
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
 	// FirstClaimedAt holds the value of the "first_claimed_at" field.
@@ -108,7 +110,7 @@ func (*UserDevice) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case userdevice.FieldID, userdevice.FieldUserID, userdevice.FieldFingerprintVersion, userdevice.FieldClaimRedeemCodeID, userdevice.FieldLoginRedeemCodeID:
 			values[i] = new(sql.NullInt64)
-		case userdevice.FieldDeviceHash, userdevice.FieldInstallID, userdevice.FieldPlatform, userdevice.FieldArch, userdevice.FieldAppVersion, userdevice.FieldStatus:
+		case userdevice.FieldDeviceCode, userdevice.FieldDeviceHash, userdevice.FieldInstallID, userdevice.FieldPlatform, userdevice.FieldArch, userdevice.FieldAppVersion, userdevice.FieldStatus:
 			values[i] = new(sql.NullString)
 		case userdevice.FieldFirstClaimedAt, userdevice.FieldLastClaimedAt, userdevice.FieldLastLoginAt, userdevice.FieldCreatedAt, userdevice.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -138,6 +140,13 @@ func (_m *UserDevice) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field user_id", values[i])
 			} else if value.Valid {
 				_m.UserID = value.Int64
+			}
+		case userdevice.FieldDeviceCode:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field device_code", values[i])
+			} else if value.Valid {
+				_m.DeviceCode = new(string)
+				*_m.DeviceCode = value.String
 			}
 		case userdevice.FieldDeviceHash:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -188,7 +197,8 @@ func (_m *UserDevice) assignValues(columns []string, values []any) error {
 			if value, ok := values[i].(*sql.NullInt64); !ok {
 				return fmt.Errorf("unexpected type %T for field login_redeem_code_id", values[i])
 			} else if value.Valid {
-				_m.LoginRedeemCodeID = value.Int64
+				_m.LoginRedeemCodeID = new(int64)
+				*_m.LoginRedeemCodeID = value.Int64
 			}
 		case userdevice.FieldStatus:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -282,6 +292,11 @@ func (_m *UserDevice) String() string {
 	builder.WriteString("user_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.UserID))
 	builder.WriteString(", ")
+	if v := _m.DeviceCode; v != nil {
+		builder.WriteString("device_code=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
 	builder.WriteString("device_hash=")
 	builder.WriteString(_m.DeviceHash)
 	builder.WriteString(", ")
@@ -309,8 +324,10 @@ func (_m *UserDevice) String() string {
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")
-	builder.WriteString("login_redeem_code_id=")
-	builder.WriteString(fmt.Sprintf("%v", _m.LoginRedeemCodeID))
+	if v := _m.LoginRedeemCodeID; v != nil {
+		builder.WriteString("login_redeem_code_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(_m.Status)

@@ -28,6 +28,7 @@ export async function list(
     user_id?: number
     group_id?: number
     platform?: string
+    device_code?: string
     sort_by?: string
     sort_order?: 'asc' | 'desc'
   },

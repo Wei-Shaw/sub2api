@@ -163,6 +163,18 @@
           <Select v-model="filters.group_id" :options="groupOptions" searchable @change="emitChange" />
         </div>
 
+        <!-- Device Code Search -->
+        <div class="w-full sm:w-auto sm:min-w-[200px]">
+          <label class="input-label">{{ t('admin.usage.deviceCode') }}</label>
+          <input
+            v-model="filters.device_code"
+            type="text"
+            class="input"
+            :placeholder="t('admin.usage.searchDeviceCodePlaceholder')"
+            @input="debounceDeviceCodeSearch"
+          />
+        </div>
+
       </div>
 
       <!-- Right: actions -->
@@ -315,6 +327,14 @@ const clearPendingUserSearch = () => {
     userSearchTimeout = null
   }
   userSearchSequence += 1
+}
+
+let deviceCodeSearchTimeout: ReturnType<typeof setTimeout> | null = null
+const debounceDeviceCodeSearch = () => {
+  if (deviceCodeSearchTimeout) clearTimeout(deviceCodeSearchTimeout)
+  deviceCodeSearchTimeout = setTimeout(() => {
+    emitChange()
+  }, 400)
 }
 
 const debounceUserSearch = () => {

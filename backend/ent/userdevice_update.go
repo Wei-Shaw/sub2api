@@ -44,6 +44,26 @@ func (_u *UserDeviceUpdate) SetNillableUserID(v *int64) *UserDeviceUpdate {
 	return _u
 }
 
+// SetDeviceCode sets the "device_code" field.
+func (_u *UserDeviceUpdate) SetDeviceCode(v string) *UserDeviceUpdate {
+	_u.mutation.SetDeviceCode(v)
+	return _u
+}
+
+// SetNillableDeviceCode sets the "device_code" field if the given value is not nil.
+func (_u *UserDeviceUpdate) SetNillableDeviceCode(v *string) *UserDeviceUpdate {
+	if v != nil {
+		_u.SetDeviceCode(*v)
+	}
+	return _u
+}
+
+// ClearDeviceCode clears the value of the "device_code" field.
+func (_u *UserDeviceUpdate) ClearDeviceCode() *UserDeviceUpdate {
+	_u.mutation.ClearDeviceCode()
+	return _u
+}
+
 // SetDeviceHash sets the "device_hash" field.
 func (_u *UserDeviceUpdate) SetDeviceHash(v string) *UserDeviceUpdate {
 	_u.mutation.SetDeviceHash(v)
@@ -178,6 +198,12 @@ func (_u *UserDeviceUpdate) SetNillableLoginRedeemCodeID(v *int64) *UserDeviceUp
 	if v != nil {
 		_u.SetLoginRedeemCodeID(*v)
 	}
+	return _u
+}
+
+// ClearLoginRedeemCodeID clears the value of the "login_redeem_code_id" field.
+func (_u *UserDeviceUpdate) ClearLoginRedeemCodeID() *UserDeviceUpdate {
+	_u.mutation.ClearLoginRedeemCodeID()
 	return _u
 }
 
@@ -331,6 +357,11 @@ func (_u *UserDeviceUpdate) defaults() {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *UserDeviceUpdate) check() error {
+	if v, ok := _u.mutation.DeviceCode(); ok {
+		if err := userdevice.DeviceCodeValidator(v); err != nil {
+			return &ValidationError{Name: "device_code", err: fmt.Errorf(`ent: validator failed for field "UserDevice.device_code": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.DeviceHash(); ok {
 		if err := userdevice.DeviceHashValidator(v); err != nil {
 			return &ValidationError{Name: "device_hash", err: fmt.Errorf(`ent: validator failed for field "UserDevice.device_hash": %w`, err)}
@@ -364,9 +395,6 @@ func (_u *UserDeviceUpdate) check() error {
 	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "UserDevice.user"`)
 	}
-	if _u.mutation.LoginRedeemCodeCleared() && len(_u.mutation.LoginRedeemCodeIDs()) > 0 {
-		return errors.New(`ent: clearing a required unique edge "UserDevice.login_redeem_code"`)
-	}
 	return nil
 }
 
@@ -381,6 +409,12 @@ func (_u *UserDeviceUpdate) sqlSave(ctx context.Context) (_node int, err error) 
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := _u.mutation.DeviceCode(); ok {
+		_spec.SetField(userdevice.FieldDeviceCode, field.TypeString, value)
+	}
+	if _u.mutation.DeviceCodeCleared() {
+		_spec.ClearField(userdevice.FieldDeviceCode, field.TypeString)
 	}
 	if value, ok := _u.mutation.DeviceHash(); ok {
 		_spec.SetField(userdevice.FieldDeviceHash, field.TypeString, value)
@@ -551,6 +585,26 @@ func (_u *UserDeviceUpdateOne) SetNillableUserID(v *int64) *UserDeviceUpdateOne 
 	return _u
 }
 
+// SetDeviceCode sets the "device_code" field.
+func (_u *UserDeviceUpdateOne) SetDeviceCode(v string) *UserDeviceUpdateOne {
+	_u.mutation.SetDeviceCode(v)
+	return _u
+}
+
+// SetNillableDeviceCode sets the "device_code" field if the given value is not nil.
+func (_u *UserDeviceUpdateOne) SetNillableDeviceCode(v *string) *UserDeviceUpdateOne {
+	if v != nil {
+		_u.SetDeviceCode(*v)
+	}
+	return _u
+}
+
+// ClearDeviceCode clears the value of the "device_code" field.
+func (_u *UserDeviceUpdateOne) ClearDeviceCode() *UserDeviceUpdateOne {
+	_u.mutation.ClearDeviceCode()
+	return _u
+}
+
 // SetDeviceHash sets the "device_hash" field.
 func (_u *UserDeviceUpdateOne) SetDeviceHash(v string) *UserDeviceUpdateOne {
 	_u.mutation.SetDeviceHash(v)
@@ -685,6 +739,12 @@ func (_u *UserDeviceUpdateOne) SetNillableLoginRedeemCodeID(v *int64) *UserDevic
 	if v != nil {
 		_u.SetLoginRedeemCodeID(*v)
 	}
+	return _u
+}
+
+// ClearLoginRedeemCodeID clears the value of the "login_redeem_code_id" field.
+func (_u *UserDeviceUpdateOne) ClearLoginRedeemCodeID() *UserDeviceUpdateOne {
+	_u.mutation.ClearLoginRedeemCodeID()
 	return _u
 }
 
@@ -851,6 +911,11 @@ func (_u *UserDeviceUpdateOne) defaults() {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *UserDeviceUpdateOne) check() error {
+	if v, ok := _u.mutation.DeviceCode(); ok {
+		if err := userdevice.DeviceCodeValidator(v); err != nil {
+			return &ValidationError{Name: "device_code", err: fmt.Errorf(`ent: validator failed for field "UserDevice.device_code": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.DeviceHash(); ok {
 		if err := userdevice.DeviceHashValidator(v); err != nil {
 			return &ValidationError{Name: "device_hash", err: fmt.Errorf(`ent: validator failed for field "UserDevice.device_hash": %w`, err)}
@@ -884,9 +949,6 @@ func (_u *UserDeviceUpdateOne) check() error {
 	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "UserDevice.user"`)
 	}
-	if _u.mutation.LoginRedeemCodeCleared() && len(_u.mutation.LoginRedeemCodeIDs()) > 0 {
-		return errors.New(`ent: clearing a required unique edge "UserDevice.login_redeem_code"`)
-	}
 	return nil
 }
 
@@ -918,6 +980,12 @@ func (_u *UserDeviceUpdateOne) sqlSave(ctx context.Context) (_node *UserDevice, 
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := _u.mutation.DeviceCode(); ok {
+		_spec.SetField(userdevice.FieldDeviceCode, field.TypeString, value)
+	}
+	if _u.mutation.DeviceCodeCleared() {
+		_spec.ClearField(userdevice.FieldDeviceCode, field.TypeString)
 	}
 	if value, ok := _u.mutation.DeviceHash(); ok {
 		_spec.SetField(userdevice.FieldDeviceHash, field.TypeString, value)

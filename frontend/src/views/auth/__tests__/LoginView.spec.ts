@@ -8,7 +8,6 @@ const mocks = vi.hoisted(() => ({
   },
   push: vi.fn(),
   login: vi.fn(),
-  redeemLogin: vi.fn(),
   inviteLogin: vi.fn(),
   login2FA: vi.fn(),
   showSuccess: vi.fn(),
@@ -43,7 +42,6 @@ vi.mock('vue-i18n', () => ({
 vi.mock('@/stores', () => ({
   useAuthStore: () => ({
     login: (...args: unknown[]) => mocks.login(...args),
-    redeemLogin: (...args: unknown[]) => mocks.redeemLogin(...args),
     inviteLogin: (...args: unknown[]) => mocks.inviteLogin(...args),
     login2FA: (...args: unknown[]) => mocks.login2FA(...args)
   }),
@@ -88,7 +86,7 @@ const stubs = {
   }
 }
 
-describe('LoginView redeem-code login', () => {
+describe('LoginView device-code login', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     sessionStorage.clear()
@@ -110,7 +108,6 @@ describe('LoginView redeem-code login', () => {
       token_type: 'Bearer',
       user: { id: 1 }
     })
-    mocks.redeemLogin.mockResolvedValue({ id: 1 })
     mocks.inviteLogin.mockResolvedValue({ id: 1 })
   })
 
@@ -127,14 +124,13 @@ describe('LoginView redeem-code login', () => {
     await wrapper.find('form').trigger('submit')
     await flushPromises()
 
-    expect(mocks.redeemLogin).not.toHaveBeenCalled()
     expect(mocks.inviteLogin).toHaveBeenCalledWith({
       invitation_code: 'DLG-7TTY-SQ2Q-47TE',
       client_kind: 'web',
       turnstile_token: undefined
     })
     expect(mocks.clearAllAffiliateReferralCodes).toHaveBeenCalled()
-    expect(mocks.showSuccess).toHaveBeenCalledWith('auth.redeemLoginSuccess')
+    expect(mocks.showSuccess).toHaveBeenCalledWith('auth.deviceCodeLoginSuccess')
     expect(mocks.push).toHaveBeenCalledWith({
       path: '/profile',
       query: { inviteBootstrap: '1' }

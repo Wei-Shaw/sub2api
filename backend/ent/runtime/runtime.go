@@ -2457,8 +2457,12 @@ func init() {
 	userattributevalue.DefaultValue = userattributevalueDescValue.Default.(string)
 	userdeviceFields := schema.UserDevice{}.Fields()
 	_ = userdeviceFields
+	// userdeviceDescDeviceCode is the schema descriptor for device_code field.
+	userdeviceDescDeviceCode := userdeviceFields[1].Descriptor()
+	// userdevice.DeviceCodeValidator is a validator for the "device_code" field. It is called by the builders before save.
+	userdevice.DeviceCodeValidator = userdeviceDescDeviceCode.Validators[0].(func(string) error)
 	// userdeviceDescDeviceHash is the schema descriptor for device_hash field.
-	userdeviceDescDeviceHash := userdeviceFields[1].Descriptor()
+	userdeviceDescDeviceHash := userdeviceFields[2].Descriptor()
 	// userdevice.DeviceHashValidator is a validator for the "device_hash" field. It is called by the builders before save.
 	userdevice.DeviceHashValidator = func() func(string) error {
 		validators := userdeviceDescDeviceHash.Validators
@@ -2476,15 +2480,15 @@ func init() {
 		}
 	}()
 	// userdeviceDescFingerprintVersion is the schema descriptor for fingerprint_version field.
-	userdeviceDescFingerprintVersion := userdeviceFields[2].Descriptor()
+	userdeviceDescFingerprintVersion := userdeviceFields[3].Descriptor()
 	// userdevice.DefaultFingerprintVersion holds the default value on creation for the fingerprint_version field.
 	userdevice.DefaultFingerprintVersion = userdeviceDescFingerprintVersion.Default.(int)
 	// userdeviceDescInstallID is the schema descriptor for install_id field.
-	userdeviceDescInstallID := userdeviceFields[3].Descriptor()
+	userdeviceDescInstallID := userdeviceFields[4].Descriptor()
 	// userdevice.InstallIDValidator is a validator for the "install_id" field. It is called by the builders before save.
 	userdevice.InstallIDValidator = userdeviceDescInstallID.Validators[0].(func(string) error)
 	// userdeviceDescPlatform is the schema descriptor for platform field.
-	userdeviceDescPlatform := userdeviceFields[4].Descriptor()
+	userdeviceDescPlatform := userdeviceFields[5].Descriptor()
 	// userdevice.PlatformValidator is a validator for the "platform" field. It is called by the builders before save.
 	userdevice.PlatformValidator = func() func(string) error {
 		validators := userdeviceDescPlatform.Validators
@@ -2502,7 +2506,7 @@ func init() {
 		}
 	}()
 	// userdeviceDescArch is the schema descriptor for arch field.
-	userdeviceDescArch := userdeviceFields[5].Descriptor()
+	userdeviceDescArch := userdeviceFields[6].Descriptor()
 	// userdevice.ArchValidator is a validator for the "arch" field. It is called by the builders before save.
 	userdevice.ArchValidator = func() func(string) error {
 		validators := userdeviceDescArch.Validators
@@ -2520,25 +2524,25 @@ func init() {
 		}
 	}()
 	// userdeviceDescAppVersion is the schema descriptor for app_version field.
-	userdeviceDescAppVersion := userdeviceFields[6].Descriptor()
+	userdeviceDescAppVersion := userdeviceFields[7].Descriptor()
 	// userdevice.AppVersionValidator is a validator for the "app_version" field. It is called by the builders before save.
 	userdevice.AppVersionValidator = userdeviceDescAppVersion.Validators[0].(func(string) error)
 	// userdeviceDescStatus is the schema descriptor for status field.
-	userdeviceDescStatus := userdeviceFields[9].Descriptor()
+	userdeviceDescStatus := userdeviceFields[10].Descriptor()
 	// userdevice.DefaultStatus holds the default value on creation for the status field.
 	userdevice.DefaultStatus = userdeviceDescStatus.Default.(string)
 	// userdevice.StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	userdevice.StatusValidator = userdeviceDescStatus.Validators[0].(func(string) error)
 	// userdeviceDescFirstClaimedAt is the schema descriptor for first_claimed_at field.
-	userdeviceDescFirstClaimedAt := userdeviceFields[10].Descriptor()
+	userdeviceDescFirstClaimedAt := userdeviceFields[11].Descriptor()
 	// userdevice.DefaultFirstClaimedAt holds the default value on creation for the first_claimed_at field.
 	userdevice.DefaultFirstClaimedAt = userdeviceDescFirstClaimedAt.Default.(func() time.Time)
 	// userdeviceDescCreatedAt is the schema descriptor for created_at field.
-	userdeviceDescCreatedAt := userdeviceFields[13].Descriptor()
+	userdeviceDescCreatedAt := userdeviceFields[14].Descriptor()
 	// userdevice.DefaultCreatedAt holds the default value on creation for the created_at field.
 	userdevice.DefaultCreatedAt = userdeviceDescCreatedAt.Default.(func() time.Time)
 	// userdeviceDescUpdatedAt is the schema descriptor for updated_at field.
-	userdeviceDescUpdatedAt := userdeviceFields[14].Descriptor()
+	userdeviceDescUpdatedAt := userdeviceFields[15].Descriptor()
 	// userdevice.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	userdevice.DefaultUpdatedAt = userdeviceDescUpdatedAt.Default.(func() time.Time)
 	// userdevice.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

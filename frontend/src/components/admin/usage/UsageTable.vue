@@ -233,6 +233,11 @@
           <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
         </template>
 
+        <template #cell-device_code="{ row }">
+          <span v-if="row.device_code" class="text-sm font-mono text-gray-600 dark:text-gray-400">{{ row.device_code }}</span>
+          <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
+        </template>
+
         <template #empty><EmptyState :message="t('usage.noRecords')" /></template>
       </DataTable>
     </div>

@@ -8,8 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestInviteBootstrapHelpersPreferSubscriptionForDeviceLoginBootstrap(t *testing.T) {
-	deviceRedeem := &RedeemCode{Type: RedeemTypeDeviceLogin}
+func TestSelectInviteBootstrapGroupsForDevicePreferSubscription(t *testing.T) {
 	subscriptionGroup := Group{
 		ID:                  11,
 		Platform:            "openai",
@@ -26,14 +25,6 @@ func TestInviteBootstrapHelpersPreferSubscriptionForDeviceLoginBootstrap(t *test
 		RateMultiplier:     0.9,
 		ActiveAccountCount: 2,
 	}
-	balanceExpensive := Group{
-		ID:                 13,
-		Platform:           "openai",
-		Status:             StatusActive,
-		SubscriptionType:   SubscriptionTypeStandard,
-		RateMultiplier:     1.2,
-		ActiveAccountCount: 2,
-	}
 	balanceOtherPlatform := Group{
 		ID:                 14,
 		Platform:           "anthropic",
@@ -43,13 +34,16 @@ func TestInviteBootstrapHelpersPreferSubscriptionForDeviceLoginBootstrap(t *test
 		ActiveAccountCount: 2,
 	}
 
-	require.True(t, isInviteLoginBootstrapRedeemType(RedeemTypeDeviceLogin))
-	require.True(t, isGroupEligibleForInviteBootstrap(deviceRedeem, subscriptionGroup))
-	require.True(t, isGroupEligibleForInviteBootstrap(deviceRedeem, balanceCheap))
-	require.True(t, isInviteBootstrapGroupBetter(deviceRedeem, subscriptionGroup, balanceCheap))
-
-	selected := selectInviteBootstrapGroupsForRedeem(deviceRedeem, []Group{subscriptionGroup, balanceExpensive, balanceCheap, balanceOtherPlatform})
+	selected := selectInviteBootstrapGroupsForDevice([]Group{subscriptionGroup, balanceCheap, balanceOtherPlatform})
 	require.Len(t, selected, 2)
+	// Subscription preferred over standard for same platform
 	require.Equal(t, subscriptionGroup.ID, selected["openai"].ID)
 	require.Equal(t, balanceOtherPlatform.ID, selected["anthropic"].ID)
+}
+
+func TestIsDeviceBootstrapGroupBetterPrefsSubscription(t *testing.T) {
+	sub := Group{SubscriptionType: SubscriptionTypeSubscription, DefaultValidityDays: 30}
+	std := Group{SubscriptionType: SubscriptionTypeStandard, RateMultiplier: 0.5}
+	require.True(t, isDeviceBootstrapGroupBetter(sub, std))
+	require.False(t, isDeviceBootstrapGroupBetter(std, sub))
 }

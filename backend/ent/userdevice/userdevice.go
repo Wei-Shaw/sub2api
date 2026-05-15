@@ -16,6 +16,8 @@ const (
 	FieldID = "id"
 	// FieldUserID holds the string denoting the user_id field in the database.
 	FieldUserID = "user_id"
+	// FieldDeviceCode holds the string denoting the device_code field in the database.
+	FieldDeviceCode = "device_code"
 	// FieldDeviceHash holds the string denoting the device_hash field in the database.
 	FieldDeviceHash = "device_hash"
 	// FieldFingerprintVersion holds the string denoting the fingerprint_version field in the database.
@@ -79,6 +81,7 @@ const (
 var Columns = []string{
 	FieldID,
 	FieldUserID,
+	FieldDeviceCode,
 	FieldDeviceHash,
 	FieldFingerprintVersion,
 	FieldInstallID,
@@ -106,6 +109,8 @@ func ValidColumn(column string) bool {
 }
 
 var (
+	// DeviceCodeValidator is a validator for the "device_code" field. It is called by the builders before save.
+	DeviceCodeValidator func(string) error
 	// DeviceHashValidator is a validator for the "device_hash" field. It is called by the builders before save.
 	DeviceHashValidator func(string) error
 	// DefaultFingerprintVersion holds the default value on creation for the "fingerprint_version" field.
@@ -143,6 +148,11 @@ func ByID(opts ...sql.OrderTermOption) OrderOption {
 // ByUserID orders the results by the user_id field.
 func ByUserID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldUserID, opts...).ToFunc()
+}
+
+// ByDeviceCode orders the results by the device_code field.
+func ByDeviceCode(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDeviceCode, opts...).ToFunc()
 }
 
 // ByDeviceHash orders the results by the device_hash field.

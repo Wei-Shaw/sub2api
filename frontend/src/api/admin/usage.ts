@@ -93,6 +93,7 @@ export interface AdminUsageQueryParams extends UsageQueryParams {
   error_phase?: string | null
   error_category?: string | null
   status_code?: number | null
+  device_code?: string
 }
 
 // ==================== API Functions ====================

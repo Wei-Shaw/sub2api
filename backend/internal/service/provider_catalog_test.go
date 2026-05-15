@@ -10,12 +10,12 @@ import (
 
 func TestResolveProviderMeta(t *testing.T) {
 	tests := []struct {
-		name       string
-		platform   string
-		wantID     string
-		wantName   string
-		wantStyle  string
-		wantOK     bool
+		name      string
+		platform  string
+		wantID    string
+		wantName  string
+		wantStyle string
+		wantOK    bool
 	}{
 		{"openai", "openai", "v-claw-openai", "OpenAI", "openai-responses", true},
 		{"anthropic", "anthropic", "v-claw-anthropic", "Anthropic", "anthropic-messages", true},

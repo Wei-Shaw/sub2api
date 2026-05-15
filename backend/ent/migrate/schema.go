@@ -2015,6 +2015,7 @@ var (
 	// UserDevicesColumns holds the columns for the "user_devices" table.
 	UserDevicesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "device_code", Type: field.TypeString, Nullable: true, Size: 20},
 		{Name: "device_hash", Type: field.TypeString, Size: 64},
 		{Name: "fingerprint_version", Type: field.TypeInt, Default: 1},
 		{Name: "install_id", Type: field.TypeString, Nullable: true, Size: 128},
@@ -2028,7 +2029,7 @@ var (
 		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "claim_redeem_code_id", Type: field.TypeInt64, Nullable: true},
-		{Name: "login_redeem_code_id", Type: field.TypeInt64},
+		{Name: "login_redeem_code_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "user_id", Type: field.TypeInt64},
 	}
 	// UserDevicesTable holds the schema information for the "user_devices" table.
@@ -2039,48 +2040,48 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "user_devices_redeem_codes_claimed_devices",
-				Columns:    []*schema.Column{UserDevicesColumns[13]},
+				Columns:    []*schema.Column{UserDevicesColumns[14]},
 				RefColumns: []*schema.Column{RedeemCodesColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "user_devices_redeem_codes_login_devices",
-				Columns:    []*schema.Column{UserDevicesColumns[14]},
+				Columns:    []*schema.Column{UserDevicesColumns[15]},
 				RefColumns: []*schema.Column{RedeemCodesColumns[0]},
-				OnDelete:   schema.NoAction,
+				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "user_devices_users_devices",
-				Columns:    []*schema.Column{UserDevicesColumns[15]},
+				Columns:    []*schema.Column{UserDevicesColumns[16]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 		},
 		Indexes: []*schema.Index{
 			{
-				Name:    "userdevice_device_hash",
+				Name:    "userdevice_device_code",
 				Unique:  true,
 				Columns: []*schema.Column{UserDevicesColumns[1]},
 			},
 			{
-				Name:    "userdevice_claim_redeem_code_id",
+				Name:    "userdevice_device_hash",
 				Unique:  true,
-				Columns: []*schema.Column{UserDevicesColumns[13]},
+				Columns: []*schema.Column{UserDevicesColumns[2]},
 			},
 			{
-				Name:    "userdevice_login_redeem_code_id",
+				Name:    "userdevice_claim_redeem_code_id",
 				Unique:  true,
 				Columns: []*schema.Column{UserDevicesColumns[14]},
 			},
 			{
 				Name:    "userdevice_user_id",
 				Unique:  false,
-				Columns: []*schema.Column{UserDevicesColumns[15]},
+				Columns: []*schema.Column{UserDevicesColumns[16]},
 			},
 			{
 				Name:    "userdevice_status",
 				Unique:  false,
-				Columns: []*schema.Column{UserDevicesColumns[7]},
+				Columns: []*schema.Column{UserDevicesColumns[8]},
 			},
 		},
 	}

@@ -7,7 +7,6 @@ import { apiClient } from './client'
 import type {
   LoginRequest,
   InviteLoginRequest,
-  RedeemLoginRequest,
   RegisterRequest,
   AuthResponse,
   CurrentUserResponse,
@@ -113,16 +112,7 @@ export async function login(credentials: LoginRequest): Promise<LoginResponse> {
 }
 
 /**
- * Redeem-code login for the web UI.
- * Does not accept device binding fields; V-Claw/device flows use a separate API.
- */
-export async function redeemLogin(request: RedeemLoginRequest): Promise<AuthResponse> {
-  const { data } = await apiClient.post<AuthResponse>('/auth/redeem-login', request)
-  persistAuthResponse(data)
-  return data
-}
-
-/**
+ * Invite-login for device code login (web + desktop).
  * Device-bound invite login used by V-Claw.
  * Supports first-time bootstrap codes and device-login codes that reopen an existing account.
  */
@@ -685,7 +675,6 @@ export async function exchangePendingOAuthCompletion(
 
 export const authAPI = {
   login,
-  redeemLogin,
   inviteLogin,
   login2FA,
   isTotp2FARequired,

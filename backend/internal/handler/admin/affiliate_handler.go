@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -18,13 +19,15 @@ import (
 type AffiliateHandler struct {
 	affiliateService *service.AffiliateService
 	adminService     service.AdminService
+	entClient        *dbent.Client
 }
 
 // NewAffiliateHandler creates a new admin affiliate handler.
-func NewAffiliateHandler(affiliateService *service.AffiliateService, adminService service.AdminService) *AffiliateHandler {
+func NewAffiliateHandler(affiliateService *service.AffiliateService, adminService service.AdminService, entClient *dbent.Client) *AffiliateHandler {
 	return &AffiliateHandler{
 		affiliateService: affiliateService,
 		adminService:     adminService,
+		entClient:        entClient,
 	}
 }
 
@@ -255,6 +258,17 @@ func (h *AffiliateHandler) ListInviteRecords(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	// Enrich invitee device codes
+	if h.entClient != nil && len(items) > 0 {
+		userIDs := make([]int64, len(items))
+		for i, r := range items {
+			userIDs[i] = r.InviteeID
+		}
+		dcMap := service.LookupDeviceCodesByUserIDs(c.Request.Context(), h.entClient, userIDs)
+		for i := range items {
+			items[i].InviteeDeviceCode = dcMap[items[i].InviteeID]
+		}
+	}
 	response.Paginated(c, items, total, filter.Page, filter.PageSize)
 }
 
@@ -268,6 +282,17 @@ func (h *AffiliateHandler) ListRebateRecords(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	// Enrich invitee device codes
+	if h.entClient != nil && len(items) > 0 {
+		userIDs := make([]int64, len(items))
+		for i, r := range items {
+			userIDs[i] = r.InviteeID
+		}
+		dcMap := service.LookupDeviceCodesByUserIDs(c.Request.Context(), h.entClient, userIDs)
+		for i := range items {
+			items[i].InviteeDeviceCode = dcMap[items[i].InviteeID]
+		}
+	}
 	response.Paginated(c, items, total, filter.Page, filter.PageSize)
 }
 
@@ -280,6 +305,17 @@ func (h *AffiliateHandler) ListTransferRecords(c *gin.Context) {
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
+	}
+	// Enrich user device codes
+	if h.entClient != nil && len(items) > 0 {
+		userIDs := make([]int64, len(items))
+		for i, r := range items {
+			userIDs[i] = r.UserID
+		}
+		dcMap := service.LookupDeviceCodesByUserIDs(c.Request.Context(), h.entClient, userIDs)
+		for i := range items {
+			items[i].DeviceCode = dcMap[items[i].UserID]
+		}
 	}
 	response.Paginated(c, items, total, filter.Page, filter.PageSize)
 }

@@ -31,6 +31,20 @@ func (r *userDeviceRepository) GetByDeviceHash(ctx context.Context, deviceHash s
 	return userDeviceEntityToService(device), nil
 }
 
+func (r *userDeviceRepository) GetByDeviceCode(ctx context.Context, code string) (*service.UserDevice, error) {
+	client := clientFromContext(ctx, r.client)
+	device, err := client.UserDevice.Query().
+		Where(userdevice.DeviceCodeEQ(code)).
+		WithUser().
+		WithClaimRedeemCode().
+		WithLoginRedeemCode().
+		Only(ctx)
+	if err != nil {
+		return nil, translatePersistenceError(err, service.ErrUserDeviceNotFound, nil)
+	}
+	return userDeviceEntityToService(device), nil
+}
+
 func (r *userDeviceRepository) GetByLoginRedeemCodeID(ctx context.Context, codeID int64) (*service.UserDevice, error) {
 	client := clientFromContext(ctx, r.client)
 	device, err := client.UserDevice.Query().
@@ -71,9 +85,14 @@ func (r *userDeviceRepository) Create(ctx context.Context, device *service.UserD
 		SetFingerprintVersion(device.FingerprintVersion).
 		SetPlatform(device.Platform).
 		SetArch(device.Arch).
-		SetLoginRedeemCodeID(device.LoginRedeemCodeID).
 		SetStatus(device.Status).
 		SetFirstClaimedAt(device.FirstClaimedAt)
+	if device.LoginRedeemCodeID != 0 {
+		create.SetLoginRedeemCodeID(device.LoginRedeemCodeID)
+	}
+	if device.DeviceCode != nil {
+		create.SetDeviceCode(*device.DeviceCode)
+	}
 	if device.InstallID != nil {
 		create.SetInstallID(*device.InstallID)
 	}
@@ -117,6 +136,7 @@ func userDeviceEntityToService(m *dbent.UserDevice) *service.UserDevice {
 	out := &service.UserDevice{
 		ID:                 m.ID,
 		UserID:             m.UserID,
+		DeviceCode:         m.DeviceCode,
 		DeviceHash:         m.DeviceHash,
 		FingerprintVersion: m.FingerprintVersion,
 		InstallID:          m.InstallID,
@@ -124,13 +144,18 @@ func userDeviceEntityToService(m *dbent.UserDevice) *service.UserDevice {
 		Arch:               m.Arch,
 		AppVersion:         m.AppVersion,
 		ClaimRedeemCodeID:  m.ClaimRedeemCodeID,
-		LoginRedeemCodeID:  m.LoginRedeemCodeID,
-		Status:             m.Status,
-		FirstClaimedAt:     m.FirstClaimedAt,
-		LastClaimedAt:      m.LastClaimedAt,
-		LastLoginAt:        m.LastLoginAt,
-		CreatedAt:          m.CreatedAt,
-		UpdatedAt:          m.UpdatedAt,
+		LoginRedeemCodeID: func() int64 {
+			if m.LoginRedeemCodeID != nil {
+				return *m.LoginRedeemCodeID
+			}
+			return 0
+		}(),
+		Status:         m.Status,
+		FirstClaimedAt: m.FirstClaimedAt,
+		LastClaimedAt:  m.LastClaimedAt,
+		LastLoginAt:    m.LastLoginAt,
+		CreatedAt:      m.CreatedAt,
+		UpdatedAt:      m.UpdatedAt,
 	}
 	if m.Edges.User != nil {
 		out.User = userEntityToService(m.Edges.User)

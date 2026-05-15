@@ -65,11 +65,6 @@ type InviteLoginRequest struct {
 	TurnstileToken string `json:"turnstile_token"`
 }
 
-type RedeemLoginRequest struct {
-	InvitationCode string `json:"invitation_code" binding:"required"`
-	TurnstileToken string `json:"turnstile_token"`
-}
-
 type InviteBootstrapAPIKeyResponse struct {
 	Platform   string `json:"platform"`
 	GroupID    int64  `json:"group_id"`
@@ -252,47 +247,6 @@ func (h *AuthHandler) InviteLogin(c *gin.Context) {
 		InstallID:      req.InstallID,
 		ClientKind:     req.ClientKind,
 	})
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-
-	apiKeysResp := make([]BootstrapAPIKeyResponse, 0, len(result.BootstrapAPIKeys))
-	for _, key := range result.BootstrapAPIKeys {
-		apiKeysResp = append(apiKeysResp, BootstrapAPIKeyResponse{
-			ID:       key.ID,
-			Name:     key.Name,
-			Key:      key.Key,
-			GroupID:  key.GroupID,
-			Platform: key.Platform,
-		})
-	}
-
-	response.Success(c, AuthResponse{
-		AccessToken:      result.TokenPair.AccessToken,
-		RefreshToken:     result.TokenPair.RefreshToken,
-		ExpiresIn:        result.TokenPair.ExpiresIn,
-		TokenType:        "Bearer",
-		User:             dto.UserFromService(result.User),
-		BootstrapAPIKeys: apiKeysResp,
-	})
-}
-
-// RedeemLogin handles the web redeem login.
-// POST /api/v1/auth/redeem-login
-func (h *AuthHandler) RedeemLogin(c *gin.Context) {
-	var req RedeemLoginRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
-		return
-	}
-
-	if err := h.authService.VerifyTurnstile(c.Request.Context(), req.TurnstileToken, ip.GetClientIP(c)); err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-
-	result, err := h.authService.RedeemLogin(c.Request.Context(), req.InvitationCode)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

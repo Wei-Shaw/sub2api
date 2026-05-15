@@ -1,0 +1,94 @@
+# Sub2API Local Deploy - token.linkto.vn via Cloudflare Tunnel
+# Port 18080 on host → tunnel config points token.linkto.vn here
+services:
+  sub2api:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: sub2api-token
+    restart: unless-stopped
+    ports:
+      - "18080:8080"
+    environment:
+      - AUTO_SETUP=true
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=8080
+      - SERVER_MODE=release
+      - RUN_MODE=standard
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - DATABASE_USER=sub2api
+      - DATABASE_PASSWORD=sub2api_local_2026
+      - DATABASE_DBNAME=sub2api
+      - DATABASE_SSLMODE=disable
+      - DATABASE_MAX_OPEN_CONNS=50
+      - DATABASE_MAX_IDLE_CONNS=10
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=
+      - REDIS_DB=0
+      - ADMIN_EMAIL=admin@sub2api.local
+      - ADMIN_PASSWORD=Admin@2026!
+      - JWT_SECRET=a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2
+      - TZ=Asia/Ho_Chi_Minh
+      - SECURITY_URL_ALLOWLIST_ENABLED=false
+      - SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=true
+      - SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS=true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - sub2api-token-net
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  postgres:
+    image: postgres:18-alpine
+    container_name: sub2api-token-postgres
+    restart: unless-stopped
+    volumes:
+      - sub2api_token_pgdata:/var/lib/postgresql/data
+    environment:
+      - PGDATA=/var/lib/postgresql/data
+      - POSTGRES_USER=sub2api
+      - POSTGRES_PASSWORD=sub2api_local_2026
+      - POSTGRES_DB=sub2api
+      - TZ=Asia/Ho_Chi_Minh
+    networks:
+      - sub2api-token-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sub2api -d sub2api"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  redis:
+    image: redis:8-alpine
+    container_name: sub2api-token-redis
+    restart: unless-stopped
+    volumes:
+      - sub2api_token_redis:/data
+    command: redis-server --save 60 1 --appendonly yes
+    networks:
+      - sub2api-token-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+volumes:
+  sub2api_token_pgdata:
+  sub2api_token_redis:
+
+networks:
+  sub2api-token-net:
+    driver: bridge

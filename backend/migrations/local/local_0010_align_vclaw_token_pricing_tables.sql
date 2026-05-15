@@ -2,8 +2,6 @@
 -- pricing with the approved USD-first token table. CNY is derived later through
 -- PAYMENT_MANUAL_FX_RATES_JSON.
 
-BEGIN;
-
 -- Keep USD as source of truth; this FX rate makes the reference CNY outputs
 -- in the approved table resolve from USD at checkout/display time.
 UPDATE settings
@@ -132,5 +130,3 @@ UPDATE groups
 SET status = 'inactive',
     sort_order = 999
 WHERE id = (SELECT group_id FROM subscription_plans WHERE id = 7);
-
-COMMIT;

@@ -127,6 +127,10 @@ func (r *usageLogRepository) ListWithFilters(ctx context.Context, params paginat
 		args = append(args, int16(*filters.BillingType))
 	}
 	conditions, args = appendUsageLogBillingModeWhereCondition(conditions, args, filters.BillingMode)
+	if filters.DeviceCode != "" {
+		conditions = append(conditions, fmt.Sprintf("user_id IN (SELECT user_id FROM user_devices WHERE device_code ILIKE $%d)", len(args)+1))
+		args = append(args, "%"+filters.DeviceCode+"%")
+	}
 	if filters.StartTime != nil {
 		conditions = append(conditions, fmt.Sprintf("created_at >= $%d", len(args)+1))
 		args = append(args, *filters.StartTime)

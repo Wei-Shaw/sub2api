@@ -577,6 +577,9 @@ type AdminUsageLog struct {
 
 	// Account 最小账号信息（避免泄露敏感字段）
 	Account *AccountSummary `json:"account,omitempty"`
+
+	// DeviceCode 用户设备码（仅管理员可见）
+	DeviceCode string `json:"device_code,omitempty"`
 }
 
 type UsageCleanupFilters struct {

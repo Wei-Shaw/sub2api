@@ -187,7 +187,6 @@ apiClient.interceptors.response.use(
         const refreshToken = localStorage.getItem('refresh_token')
         const isAuthEndpoint =
           url.includes('/auth/login') ||
-          url.includes('/auth/redeem-login') ||
           url.includes('/auth/invite-login') ||
           url.includes('/auth/register') ||
           url.includes('/auth/refresh')

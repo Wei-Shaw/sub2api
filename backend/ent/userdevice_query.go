@@ -556,7 +556,10 @@ func (_q *UserDeviceQuery) loadLoginRedeemCode(ctx context.Context, query *Redee
 	ids := make([]int64, 0, len(nodes))
 	nodeids := make(map[int64][]*UserDevice)
 	for i := range nodes {
-		fk := nodes[i].LoginRedeemCodeID
+		if nodes[i].LoginRedeemCodeID == nil {
+			continue
+		}
+		fk := *nodes[i].LoginRedeemCodeID
 		if _, ok := nodeids[fk]; !ok {
 			ids = append(ids, fk)
 		}

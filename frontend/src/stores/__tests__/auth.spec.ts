@@ -4,7 +4,6 @@ import { useAuthStore } from '@/stores/auth'
 
 // Mock authAPI
 const mockLogin = vi.fn()
-const mockRedeemLogin = vi.fn()
 const mockInviteLogin = vi.fn()
 const mockLogin2FA = vi.fn()
 const mockLogout = vi.fn()
@@ -15,7 +14,6 @@ const mockRefreshToken = vi.fn()
 vi.mock('@/api', () => ({
   authAPI: {
     login: (...args: any[]) => mockLogin(...args),
-    redeemLogin: (...args: any[]) => mockRedeemLogin(...args),
     inviteLogin: (...args: any[]) => mockInviteLogin(...args),
     login2FA: (...args: any[]) => mockLogin2FA(...args),
     logout: (...args: any[]) => mockLogout(...args),
@@ -117,20 +115,7 @@ describe('useAuthStore', () => {
     })
   })
 
-  describe('redeem and invite login', () => {
-    it('redeemLogin 设置 token 和 user 并调用网页兑换码登录 API', async () => {
-      mockRedeemLogin.mockResolvedValue(fakeAuthResponse)
-      const store = useAuthStore()
-
-      const user = await store.redeemLogin({ invitation_code: 'INV-TEST-001' })
-
-      expect(mockRedeemLogin).toHaveBeenCalledWith({ invitation_code: 'INV-TEST-001' })
-      expect(user).toEqual(fakeUser)
-      expect(store.token).toBe('test-token-123')
-      expect(store.user).toEqual(fakeUser)
-      expect(store.isAuthenticated).toBe(true)
-    })
-
+  describe('invite login (device code)', () => {
     it('inviteLogin 透传 device 字段用于设备绑定登录', async () => {
       mockInviteLogin.mockResolvedValue(fakeAuthResponse)
       const store = useAuthStore()

@@ -9,7 +9,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
-	"github.com/Wei-Shaw/sub2api/ent/user"
+	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/userdevice"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -225,7 +225,7 @@ func (r *userSubscriptionRepository) ListByGroupID(ctx context.Context, groupID 
 	return userSubscriptionEntitiesToService(subs), paginationResultFromTotal(int64(total), params), nil
 }
 
-func (r *userSubscriptionRepository) List(ctx context.Context, params pagination.PaginationParams, userID, groupID *int64, scopedUserIDs []int64, status, platform, sortBy, sortOrder string) ([]service.UserSubscription, *pagination.PaginationResult, error) {
+func (r *userSubscriptionRepository) List(ctx context.Context, params pagination.PaginationParams, userID, groupID *int64, scopedUserIDs []int64, status, platform, deviceCode, sortBy, sortOrder string) ([]service.UserSubscription, *pagination.PaginationResult, error) {
 	client := clientFromContext(ctx, r.client)
 	q := client.UserSubscription.Query()
 	includeSoftDeleted := status == "" || status == service.SubscriptionStatusRevoked
@@ -248,6 +248,9 @@ func (r *userSubscriptionRepository) List(ctx context.Context, params pagination
 			groupPredicates = append(groupPredicates, group.DeletedAtIsNil())
 		}
 		q = q.Where(usersubscription.HasGroupWith(groupPredicates...))
+	}
+	if deviceCode != "" {
+		q = q.Where(usersubscription.HasUserWith(dbuser.HasDevicesWith(userdevice.DeviceCodeContainsFold(deviceCode))))
 	}
 
 	// Status filtering with real-time expiration check
@@ -571,7 +574,7 @@ func (r *userSubscriptionRepository) attachUserSubscriptionRelations(ctx context
 	}
 
 	client := clientFromContext(ctx, r.client)
-	users, err := client.User.Query().Where(user.IDIn(uniqueInt64s(userIDs)...)).All(ctx)
+	users, err := client.User.Query().Where(dbuser.IDIn(uniqueInt64s(userIDs)...)).All(ctx)
 	if err != nil {
 		return err
 	}
@@ -591,7 +594,7 @@ func (r *userSubscriptionRepository) attachUserSubscriptionRelations(ctx context
 
 	assignedByID := map[int64]*service.User{}
 	if len(assignedByIDs) > 0 {
-		assignedUsers, err := client.User.Query().Where(user.IDIn(uniqueInt64s(assignedByIDs)...)).All(ctx)
+		assignedUsers, err := client.User.Query().Where(dbuser.IDIn(uniqueInt64s(assignedByIDs)...)).All(ctx)
 		if err != nil {
 			return err
 		}
@@ -680,7 +683,19 @@ func (r *userSubscriptionRepository) loadSubscriptionPrimaryRedeemCodes(ctx cont
 		return nil, nil, err
 	}
 	for _, device := range devices {
-		if _, exists := codesByUser[device.UserID]; exists || device.Edges.LoginRedeemCode == nil {
+		if _, exists := codesByUser[device.UserID]; exists {
+			continue
+		}
+		// Prefer device_code directly (Phase 2 dual-write)
+		if device.DeviceCode != nil && *device.DeviceCode != "" {
+			code := *device.DeviceCode
+			redeemType := service.RedeemTypeDeviceLogin
+			codesByUser[device.UserID] = &code
+			typesByUser[device.UserID] = &redeemType
+			continue
+		}
+		// Fallback to legacy edge
+		if device.Edges.LoginRedeemCode == nil {
 			continue
 		}
 		code := device.Edges.LoginRedeemCode.Code

@@ -10,11 +10,13 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 )
 
-func (s *AuthService) completeDeviceInviteLogin(ctx context.Context, input InviteLoginInput, code *RedeemCode) (*InviteLoginResult, error) {
-	if code == nil || code.Type != RedeemTypeDeviceLogin {
+// completeDeviceInviteLoginByDevice handles device login using the new device_code path
+// (no redeem_codes dependency). This is the Phase 2 dual-write path.
+func (s *AuthService) completeDeviceInviteLoginByDevice(ctx context.Context, input InviteLoginInput, device *UserDevice) (*InviteLoginResult, error) {
+	if device == nil {
 		return nil, ErrInvitationCodeInvalid
 	}
-	if s.inviteLoginDeviceRepo == nil || s.userRepo == nil {
+	if s.userRepo == nil {
 		return nil, ErrServiceUnavailable
 	}
 
@@ -33,16 +35,6 @@ func (s *AuthService) completeDeviceInviteLogin(ctx context.Context, input Invit
 		}
 	}
 
-	device, err := s.inviteLoginDeviceRepo.GetByLoginRedeemCodeID(ctx, code.ID)
-	if err != nil {
-		if errors.Is(err, ErrUserDeviceNotFound) {
-			return nil, ErrInvitationCodeInvalid
-		}
-		return nil, ErrServiceUnavailable
-	}
-	if device == nil {
-		return nil, ErrDeviceRevoked
-	}
 	if strings.TrimSpace(device.Status) != UserDeviceStatusActive {
 		return nil, ErrDeviceRevoked
 	}
@@ -74,7 +66,8 @@ func (s *AuthService) completeDeviceInviteLogin(ctx context.Context, input Invit
 
 	var bootstrapKeys []InviteBootstrapAPIKey
 	if !allowWebLoginWithoutDeviceHash {
-		bootstrapKeys, err = s.provisionInviteBootstrapAPIKeys(ctx, user.ID, code)
+		// Provision bootstrap API keys directly without redeem_codes dependency
+		bootstrapKeys, err = s.provisionInviteBootstrapAPIKeysForDevice(ctx, user.ID)
 		if err != nil {
 			return nil, err
 		}
