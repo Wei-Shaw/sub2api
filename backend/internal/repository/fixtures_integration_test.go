@@ -92,6 +92,9 @@ func mustCreateGroup(t *testing.T, client *dbent.Client, g *service.Group) *serv
 	if g.Description != "" {
 		create.SetDescription(g.Description)
 	}
+	if g.FiveHourLimitUSD != nil {
+		create.SetFiveHourLimitUsd(*g.FiveHourLimitUSD)
+	}
 	if g.DailyLimitUSD != nil {
 		create.SetDailyLimitUsd(*g.DailyLimitUSD)
 	}
@@ -391,9 +394,23 @@ func mustCreateSubscription(t *testing.T, client *dbent.Client, s *service.UserS
 		SetStatus(s.Status).
 		SetAssignedAt(s.AssignedAt).
 		SetNotes(s.Notes).
+		SetFiveHourUsageUsd(s.FiveHourUsageUSD).
 		SetDailyUsageUsd(s.DailyUsageUSD).
 		SetWeeklyUsageUsd(s.WeeklyUsageUSD).
 		SetMonthlyUsageUsd(s.MonthlyUsageUSD)
+
+	if s.FiveHourWindowStart != nil {
+		create.SetFiveHourWindowStart(*s.FiveHourWindowStart)
+	}
+	if s.DailyWindowStart != nil {
+		create.SetDailyWindowStart(*s.DailyWindowStart)
+	}
+	if s.WeeklyWindowStart != nil {
+		create.SetWeeklyWindowStart(*s.WeeklyWindowStart)
+	}
+	if s.MonthlyWindowStart != nil {
+		create.SetMonthlyWindowStart(*s.MonthlyWindowStart)
+	}
 
 	if s.AssignedBy != nil {
 		create.SetAssignedBy(*s.AssignedBy)

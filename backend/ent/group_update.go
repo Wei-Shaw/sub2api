@@ -173,6 +173,33 @@ func (_u *GroupUpdate) SetNillableSubscriptionType(v *string) *GroupUpdate {
 	return _u
 }
 
+// SetFiveHourLimitUsd sets the "five_hour_limit_usd" field.
+func (_u *GroupUpdate) SetFiveHourLimitUsd(v float64) *GroupUpdate {
+	_u.mutation.ResetFiveHourLimitUsd()
+	_u.mutation.SetFiveHourLimitUsd(v)
+	return _u
+}
+
+// SetNillableFiveHourLimitUsd sets the "five_hour_limit_usd" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableFiveHourLimitUsd(v *float64) *GroupUpdate {
+	if v != nil {
+		_u.SetFiveHourLimitUsd(*v)
+	}
+	return _u
+}
+
+// AddFiveHourLimitUsd adds value to the "five_hour_limit_usd" field.
+func (_u *GroupUpdate) AddFiveHourLimitUsd(v float64) *GroupUpdate {
+	_u.mutation.AddFiveHourLimitUsd(v)
+	return _u
+}
+
+// ClearFiveHourLimitUsd clears the value of the "five_hour_limit_usd" field.
+func (_u *GroupUpdate) ClearFiveHourLimitUsd() *GroupUpdate {
+	_u.mutation.ClearFiveHourLimitUsd()
+	return _u
+}
+
 // SetDailyLimitUsd sets the "daily_limit_usd" field.
 func (_u *GroupUpdate) SetDailyLimitUsd(v float64) *GroupUpdate {
 	_u.mutation.ResetDailyLimitUsd()
@@ -978,6 +1005,15 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.SubscriptionType(); ok {
 		_spec.SetField(group.FieldSubscriptionType, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.FiveHourLimitUsd(); ok {
+		_spec.SetField(group.FieldFiveHourLimitUsd, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedFiveHourLimitUsd(); ok {
+		_spec.AddField(group.FieldFiveHourLimitUsd, field.TypeFloat64, value)
+	}
+	if _u.mutation.FiveHourLimitUsdCleared() {
+		_spec.ClearField(group.FieldFiveHourLimitUsd, field.TypeFloat64)
+	}
 	if value, ok := _u.mutation.DailyLimitUsd(); ok {
 		_spec.SetField(group.FieldDailyLimitUsd, field.TypeFloat64, value)
 	}
@@ -1566,6 +1602,33 @@ func (_u *GroupUpdateOne) SetNillableSubscriptionType(v *string) *GroupUpdateOne
 	if v != nil {
 		_u.SetSubscriptionType(*v)
 	}
+	return _u
+}
+
+// SetFiveHourLimitUsd sets the "five_hour_limit_usd" field.
+func (_u *GroupUpdateOne) SetFiveHourLimitUsd(v float64) *GroupUpdateOne {
+	_u.mutation.ResetFiveHourLimitUsd()
+	_u.mutation.SetFiveHourLimitUsd(v)
+	return _u
+}
+
+// SetNillableFiveHourLimitUsd sets the "five_hour_limit_usd" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableFiveHourLimitUsd(v *float64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetFiveHourLimitUsd(*v)
+	}
+	return _u
+}
+
+// AddFiveHourLimitUsd adds value to the "five_hour_limit_usd" field.
+func (_u *GroupUpdateOne) AddFiveHourLimitUsd(v float64) *GroupUpdateOne {
+	_u.mutation.AddFiveHourLimitUsd(v)
+	return _u
+}
+
+// ClearFiveHourLimitUsd clears the value of the "five_hour_limit_usd" field.
+func (_u *GroupUpdateOne) ClearFiveHourLimitUsd() *GroupUpdateOne {
+	_u.mutation.ClearFiveHourLimitUsd()
 	return _u
 }
 
@@ -2403,6 +2466,15 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.SubscriptionType(); ok {
 		_spec.SetField(group.FieldSubscriptionType, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.FiveHourLimitUsd(); ok {
+		_spec.SetField(group.FieldFiveHourLimitUsd, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedFiveHourLimitUsd(); ok {
+		_spec.AddField(group.FieldFiveHourLimitUsd, field.TypeFloat64, value)
+	}
+	if _u.mutation.FiveHourLimitUsdCleared() {
+		_spec.ClearField(group.FieldFiveHourLimitUsd, field.TypeFloat64)
 	}
 	if value, ok := _u.mutation.DailyLimitUsd(); ok {
 		_spec.SetField(group.FieldDailyLimitUsd, field.TypeFloat64, value)
