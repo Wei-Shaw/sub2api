@@ -12,11 +12,13 @@ ARG ALPINE_IMAGE=alpine:3.21
 ARG POSTGRES_IMAGE=postgres:18-alpine
 ARG GOPROXY=https://goproxy.cn,direct
 ARG GOSUMDB=sum.golang.google.cn
+ARG PNPM_VERSION=9.15.9
 
 # -----------------------------------------------------------------------------
 # Stage 1: Frontend Builder
 # -----------------------------------------------------------------------------
 FROM ${NODE_IMAGE} AS frontend-builder
+ARG PNPM_VERSION
 
 WORKDIR /app/frontend
 
@@ -24,8 +26,9 @@ WORKDIR /app/frontend
 # Docker builders; otherwise vite can fail with an out-of-memory error.
 ENV NODE_OPTIONS=--max-old-space-size=4096
 
-# Install pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# Install the pnpm major version used by this lockfile. Avoid pnpm@latest here:
+# newer pnpm releases require interactive build-script approvals during Docker builds.
+RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 
 # Install dependencies first (better caching). Keep .npmrc with the lockfile so
 # pnpm honors the project's script policy for packages such as esbuild.
