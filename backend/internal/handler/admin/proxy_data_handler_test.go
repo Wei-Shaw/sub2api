@@ -54,6 +54,7 @@ func TestProxyExportDataRespectsFilters(t *testing.T) {
 			Name:     "proxy-b",
 			Protocol: "https",
 			Host:     "10.0.0.2",
+			IPVersion: service.ProxyIPVersionIPv6,
 			Port:     443,
 			Username: "u",
 			Password: "p",
@@ -74,6 +75,7 @@ func TestProxyExportDataRespectsFilters(t *testing.T) {
 	require.Len(t, resp.Data.Proxies, 1)
 	require.Len(t, resp.Data.Accounts, 0)
 	require.Equal(t, "https", resp.Data.Proxies[0].Protocol)
+	require.Equal(t, service.ProxyIPVersionIPv6, resp.Data.Proxies[0].IPVersion)
 	require.Equal(t, 1, adminSvc.lastListProxies.calls)
 	require.Equal(t, "https", adminSvc.lastListProxies.protocol)
 	require.Equal(t, "id", adminSvc.lastListProxies.sortBy)
@@ -245,6 +247,7 @@ func TestProxyImportDataReusesAndTriggersLatencyProbe(t *testing.T) {
 					"name":      "proxy-b",
 					"protocol":  "https",
 					"host":      "10.0.0.2",
+					"ip_version": "ipv6",
 					"port":      443,
 					"username":  "u",
 					"password":  "p",
@@ -268,6 +271,8 @@ func TestProxyImportDataReusesAndTriggersLatencyProbe(t *testing.T) {
 	require.Equal(t, 1, resp.Data.ProxyCreated)
 	require.Equal(t, 1, resp.Data.ProxyReused)
 	require.Equal(t, 0, resp.Data.ProxyFailed)
+	require.Len(t, adminSvc.createdProxies, 1)
+	require.Equal(t, service.ProxyIPVersionIPv6, adminSvc.createdProxies[0].IPVersion)
 
 	adminSvc.mu.Lock()
 	updatedIDs := append([]int64(nil), adminSvc.updatedProxyIDs...)

@@ -1087,6 +1087,7 @@ var (
 		{Name: "name", Type: field.TypeString, Size: 100},
 		{Name: "protocol", Type: field.TypeString, Size: 20},
 		{Name: "host", Type: field.TypeString, Size: 255},
+		{Name: "ip_version", Type: field.TypeString, Size: 10, Default: "ipv4"},
 		{Name: "port", Type: field.TypeInt},
 		{Name: "username", Type: field.TypeString, Nullable: true, Size: 100},
 		{Name: "password", Type: field.TypeString, Nullable: true, Size: 100},
@@ -1101,7 +1102,7 @@ var (
 			{
 				Name:    "proxy_status",
 				Unique:  false,
-				Columns: []*schema.Column{ProxiesColumns[10]},
+				Columns: []*schema.Column{ProxiesColumns[11]},
 			},
 			{
 				Name:    "proxy_deleted_at",

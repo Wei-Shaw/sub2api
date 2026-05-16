@@ -55,6 +55,7 @@ func (h *ProxyHandler) ExportData(c *gin.Context) {
 			Name:     p.Name,
 			Protocol: p.Protocol,
 			Host:     p.Host,
+			IPVersion: service.NormalizeProxyIPVersion(p.IPVersion),
 			Port:     p.Port,
 			Username: p.Username,
 			Password: p.Password,
@@ -126,13 +127,23 @@ func (h *ProxyHandler) ImportData(c *gin.Context) {
 		normalizedStatus := normalizeProxyStatus(item.Status)
 		if existing, ok := proxyByKey[key]; ok {
 			result.ProxyReused++
+			update := &service.UpdateProxyInput{}
 			if normalizedStatus != "" && normalizedStatus != existing.Status {
-				if _, err := h.adminService.UpdateProxy(ctx, existing.ID, &service.UpdateProxyInput{Status: normalizedStatus}); err != nil {
+				update.Status = normalizedStatus
+			}
+			if item.IPVersion != "" {
+				normalizedIPVersion := service.NormalizeProxyIPVersion(item.IPVersion)
+				if normalizedIPVersion != service.NormalizeProxyIPVersion(existing.IPVersion) {
+					update.IPVersion = normalizedIPVersion
+				}
+			}
+			if update.Status != "" || update.IPVersion != "" {
+				if _, err := h.adminService.UpdateProxy(ctx, existing.ID, update); err != nil {
 					result.Errors = append(result.Errors, DataImportError{
 						Kind:     "proxy",
 						Name:     item.Name,
 						ProxyKey: key,
-						Message:  "update status failed: " + err.Error(),
+						Message:  "update proxy failed: " + err.Error(),
 					})
 				}
 			}
@@ -144,6 +155,7 @@ func (h *ProxyHandler) ImportData(c *gin.Context) {
 			Name:     defaultProxyName(item.Name),
 			Protocol: item.Protocol,
 			Host:     item.Host,
+			IPVersion: item.IPVersion,
 			Port:     item.Port,
 			Username: item.Username,
 			Password: item.Password,

@@ -27599,6 +27599,7 @@ type ProxyMutation struct {
 	name            *string
 	protocol        *string
 	host            *string
+	ip_version      *string
 	port            *int
 	addport         *int
 	username        *string
@@ -27940,6 +27941,42 @@ func (m *ProxyMutation) ResetHost() {
 	m.host = nil
 }
 
+// SetIPVersion sets the "ip_version" field.
+func (m *ProxyMutation) SetIPVersion(s string) {
+	m.ip_version = &s
+}
+
+// IPVersion returns the value of the "ip_version" field in the mutation.
+func (m *ProxyMutation) IPVersion() (r string, exists bool) {
+	v := m.ip_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIPVersion returns the old "ip_version" field's value of the Proxy entity.
+// If the Proxy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProxyMutation) OldIPVersion(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIPVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIPVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIPVersion: %w", err)
+	}
+	return oldValue.IPVersion, nil
+}
+
+// ResetIPVersion resets all changes to the "ip_version" field.
+func (m *ProxyMutation) ResetIPVersion() {
+	m.ip_version = nil
+}
+
 // SetPort sets the "port" field.
 func (m *ProxyMutation) SetPort(i int) {
 	m.port = &i
@@ -28218,7 +28255,7 @@ func (m *ProxyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ProxyMutation) Fields() []string {
-	fields := make([]string, 0, 10)
+	fields := make([]string, 0, 11)
 	if m.created_at != nil {
 		fields = append(fields, proxy.FieldCreatedAt)
 	}
@@ -28236,6 +28273,9 @@ func (m *ProxyMutation) Fields() []string {
 	}
 	if m.host != nil {
 		fields = append(fields, proxy.FieldHost)
+	}
+	if m.ip_version != nil {
+		fields = append(fields, proxy.FieldIPVersion)
 	}
 	if m.port != nil {
 		fields = append(fields, proxy.FieldPort)
@@ -28269,6 +28309,8 @@ func (m *ProxyMutation) Field(name string) (ent.Value, bool) {
 		return m.Protocol()
 	case proxy.FieldHost:
 		return m.Host()
+	case proxy.FieldIPVersion:
+		return m.IPVersion()
 	case proxy.FieldPort:
 		return m.Port()
 	case proxy.FieldUsername:
@@ -28298,6 +28340,8 @@ func (m *ProxyMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldProtocol(ctx)
 	case proxy.FieldHost:
 		return m.OldHost(ctx)
+	case proxy.FieldIPVersion:
+		return m.OldIPVersion(ctx)
 	case proxy.FieldPort:
 		return m.OldPort(ctx)
 	case proxy.FieldUsername:
@@ -28356,6 +28400,13 @@ func (m *ProxyMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetHost(v)
+		return nil
+	case proxy.FieldIPVersion:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIPVersion(v)
 		return nil
 	case proxy.FieldPort:
 		v, ok := value.(int)
@@ -28487,6 +28538,9 @@ func (m *ProxyMutation) ResetField(name string) error {
 		return nil
 	case proxy.FieldHost:
 		m.ResetHost()
+		return nil
+	case proxy.FieldIPVersion:
+		m.ResetIPVersion()
 		return nil
 	case proxy.FieldPort:
 		m.ResetPort()

@@ -1,10 +1,9 @@
-import type { ProxyProtocol } from '@/types'
-
-export type ProxyIPVersion = 'ipv4' | 'ipv6'
+import type { ProxyIPVersion, ProxyProtocol } from '@/types'
 
 export interface ParsedProxyAddress {
   protocol: ProxyProtocol
   host: string
+  ip_version: ProxyIPVersion
   port: number
   username: string
   password: string
@@ -77,6 +76,7 @@ export function parseProxyUrl(line: string): ParsedProxyAddress | null {
   return {
     protocol: protocol as ProxyProtocol,
     host,
+    ip_version: detectProxyIPVersion(host),
     port,
     username: parsed.username ? decodeURIComponent(parsed.username) : '',
     password: parsed.password ? decodeURIComponent(parsed.password) : ''

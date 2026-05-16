@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -278,6 +279,7 @@ func TestProxyHandlerCreateNormalizesIPv6Host(t *testing.T) {
 		"name":     "ipv6-proxy",
 		"protocol": "socks5",
 		"host":     "[2001:db8::1]",
+		"ip_version": "ipv6",
 		"port":     1080,
 	})
 
@@ -291,6 +293,7 @@ func TestProxyHandlerCreateNormalizesIPv6Host(t *testing.T) {
 	defer adminSvc.mu.Unlock()
 	require.Len(t, adminSvc.createdProxies, 1)
 	require.Equal(t, "2001:db8::1", adminSvc.createdProxies[0].Host)
+	require.Equal(t, service.ProxyIPVersionIPv6, adminSvc.createdProxies[0].IPVersion)
 }
 
 func TestRedeemHandlerEndpoints(t *testing.T) {

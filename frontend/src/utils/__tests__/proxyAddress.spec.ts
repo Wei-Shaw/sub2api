@@ -40,6 +40,7 @@ describe('proxyAddress', () => {
     expect(parseProxyUrl('socks5://user:pass@[2001:db8::1]:1080')).toEqual({
       protocol: 'socks5',
       host: '2001:db8::1',
+      ip_version: 'ipv6',
       port: 1080,
       username: 'user',
       password: 'pass'

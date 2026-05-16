@@ -12,6 +12,7 @@ type Proxy struct {
 	Name      string
 	Protocol  string
 	Host      string
+	IPVersion string
 	Port      int
 	Username  string
 	Password  string

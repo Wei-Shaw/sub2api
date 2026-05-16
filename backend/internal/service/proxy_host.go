@@ -6,6 +6,11 @@ import (
 	"strings"
 )
 
+const (
+	ProxyIPVersionIPv4 = "ipv4"
+	ProxyIPVersionIPv6 = "ipv6"
+)
+
 // NormalizeProxyHost strips IPv6 brackets and surrounding whitespace so the
 // persisted host value stays canonical across UI, import, and API paths.
 func NormalizeProxyHost(host string) string {
@@ -26,4 +31,13 @@ func NormalizeProxyHost(host string) string {
 // automatically adding IPv6 brackets when needed.
 func FormatProxyHostPort(host string, port int) string {
 	return net.JoinHostPort(NormalizeProxyHost(host), strconv.Itoa(port))
+}
+
+func NormalizeProxyIPVersion(ipVersion string) string {
+	switch strings.ToLower(strings.TrimSpace(ipVersion)) {
+	case ProxyIPVersionIPv6:
+		return ProxyIPVersionIPv6
+	default:
+		return ProxyIPVersionIPv4
+	}
 }

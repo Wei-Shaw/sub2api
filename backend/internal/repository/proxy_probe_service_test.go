@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
@@ -69,6 +70,25 @@ func (s *ProxyProbeServiceSuite) TestProbeProxy_Success_IPAPI() {
 	require.Equal(s.T(), "r", info.Region)
 	require.Equal(s.T(), "cc", info.Country)
 	require.Equal(s.T(), "CC", info.CountryCode)
+}
+
+func (s *ProxyProbeServiceSuite) TestProbeProxy_IPv6UsesIPv6ProbeEndpoint() {
+	var sawIPv6Endpoint bool
+	s.setupProxyServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.RequestURI, "api6.ipify.org") {
+			sawIPv6Endpoint = true
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{"ip":"2001:db8::7"}`)
+			return
+		}
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+
+	info, latencyMs, err := s.prober.ProbeProxy(s.ctx, s.proxySrv.URL, service.ProxyIPVersionIPv6)
+	require.NoError(s.T(), err, "ProbeProxy should use IPv6 probe endpoint")
+	require.GreaterOrEqual(s.T(), latencyMs, int64(0), "unexpected latency")
+	require.True(s.T(), sawIPv6Endpoint)
+	require.Equal(s.T(), "2001:db8::7", info.IP)
 }
 
 func (s *ProxyProbeServiceSuite) TestProbeProxy_Success_HTTPBinFallback() {

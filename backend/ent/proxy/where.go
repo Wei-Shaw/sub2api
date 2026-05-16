@@ -85,6 +85,11 @@ func Host(v string) predicate.Proxy {
 	return predicate.Proxy(sql.FieldEQ(FieldHost, v))
 }
 
+// IPVersion applies equality check predicate on the "ip_version" field. It's identical to IPVersionEQ.
+func IPVersion(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldEQ(FieldIPVersion, v))
+}
+
 // Port applies equality check predicate on the "port" field. It's identical to PortEQ.
 func Port(v int) predicate.Proxy {
 	return predicate.Proxy(sql.FieldEQ(FieldPort, v))
@@ -428,6 +433,71 @@ func HostEqualFold(v string) predicate.Proxy {
 // HostContainsFold applies the ContainsFold predicate on the "host" field.
 func HostContainsFold(v string) predicate.Proxy {
 	return predicate.Proxy(sql.FieldContainsFold(FieldHost, v))
+}
+
+// IPVersionEQ applies the EQ predicate on the "ip_version" field.
+func IPVersionEQ(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldEQ(FieldIPVersion, v))
+}
+
+// IPVersionNEQ applies the NEQ predicate on the "ip_version" field.
+func IPVersionNEQ(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldNEQ(FieldIPVersion, v))
+}
+
+// IPVersionIn applies the In predicate on the "ip_version" field.
+func IPVersionIn(vs ...string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldIn(FieldIPVersion, vs...))
+}
+
+// IPVersionNotIn applies the NotIn predicate on the "ip_version" field.
+func IPVersionNotIn(vs ...string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldNotIn(FieldIPVersion, vs...))
+}
+
+// IPVersionGT applies the GT predicate on the "ip_version" field.
+func IPVersionGT(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldGT(FieldIPVersion, v))
+}
+
+// IPVersionGTE applies the GTE predicate on the "ip_version" field.
+func IPVersionGTE(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldGTE(FieldIPVersion, v))
+}
+
+// IPVersionLT applies the LT predicate on the "ip_version" field.
+func IPVersionLT(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldLT(FieldIPVersion, v))
+}
+
+// IPVersionLTE applies the LTE predicate on the "ip_version" field.
+func IPVersionLTE(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldLTE(FieldIPVersion, v))
+}
+
+// IPVersionContains applies the Contains predicate on the "ip_version" field.
+func IPVersionContains(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldContains(FieldIPVersion, v))
+}
+
+// IPVersionHasPrefix applies the HasPrefix predicate on the "ip_version" field.
+func IPVersionHasPrefix(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldHasPrefix(FieldIPVersion, v))
+}
+
+// IPVersionHasSuffix applies the HasSuffix predicate on the "ip_version" field.
+func IPVersionHasSuffix(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldHasSuffix(FieldIPVersion, v))
+}
+
+// IPVersionEqualFold applies the EqualFold predicate on the "ip_version" field.
+func IPVersionEqualFold(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldEqualFold(FieldIPVersion, v))
+}
+
+// IPVersionContainsFold applies the ContainsFold predicate on the "ip_version" field.
+func IPVersionContainsFold(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldContainsFold(FieldIPVersion, v))
 }
 
 // PortEQ applies the EQ predicate on the "port" field.

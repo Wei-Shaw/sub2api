@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -44,14 +45,21 @@ const (
 	defaultProxyProbeResponseMaxBytes = int64(1024 * 1024)
 )
 
+type probeEndpoint struct {
+	url    string
+	parser string
+}
+
 // probeURLs 按优先级排列的探测 URL 列表
 // 某些 AI API 专用代理只允许访问特定域名，因此需要多个备选
-var probeURLs = []struct {
-	url    string
-	parser string // "ip-api" or "httpbin"
-}{
+var ipv4ProbeURLs = []probeEndpoint{
 	{"http://ip-api.com/json/?lang=zh-CN", "ip-api"},
 	{"http://httpbin.org/ip", "httpbin"},
+}
+
+var ipv6ProbeURLs = []probeEndpoint{
+	{"http://api6.ipify.org?format=json", "ipify"},
+	{"http://api64.ipify.org?format=json", "ipify"},
 }
 
 type proxyProbeService struct {
@@ -61,7 +69,7 @@ type proxyProbeService struct {
 	maxResponseBytes   int64
 }
 
-func (s *proxyProbeService) ProbeProxy(ctx context.Context, proxyURL string) (*service.ProxyExitInfo, int64, error) {
+func (s *proxyProbeService) ProbeProxy(ctx context.Context, proxyURL string, ipVersion ...string) (*service.ProxyExitInfo, int64, error) {
 	client, err := httpclient.GetClient(httpclient.Options{
 		ProxyURL:           proxyURL,
 		Timeout:            defaultProxyProbeTimeout,
@@ -73,10 +81,23 @@ func (s *proxyProbeService) ProbeProxy(ctx context.Context, proxyURL string) (*s
 		return nil, 0, fmt.Errorf("failed to create proxy client: %w", err)
 	}
 
+	targetIPVersion := service.ProxyIPVersionIPv4
+	if len(ipVersion) > 0 {
+		targetIPVersion = service.NormalizeProxyIPVersion(ipVersion[0])
+	}
+	probes := ipv4ProbeURLs
+	if targetIPVersion == service.ProxyIPVersionIPv6 {
+		probes = ipv6ProbeURLs
+	}
+
 	var lastErr error
-	for _, probe := range probeURLs {
+	for _, probe := range probes {
 		exitInfo, latencyMs, err := s.probeWithURL(ctx, client, probe.url, probe.parser)
 		if err == nil {
+			if targetIPVersion == service.ProxyIPVersionIPv6 && !isIPv6Address(exitInfo.IP) {
+				lastErr = fmt.Errorf("probe returned non-IPv6 exit IP: %s", exitInfo.IP)
+				continue
+			}
 			return exitInfo, latencyMs, nil
 		}
 		lastErr = err
@@ -121,6 +142,8 @@ func (s *proxyProbeService) probeWithURL(ctx context.Context, client *http.Clien
 		return s.parseIPAPI(body, latencyMs)
 	case "httpbin":
 		return s.parseHTTPBin(body, latencyMs)
+	case "ipify":
+		return s.parseIPify(body, latencyMs)
 	default:
 		return nil, latencyMs, fmt.Errorf("unknown parser: %s", parser)
 	}
@@ -179,4 +202,24 @@ func (s *proxyProbeService) parseHTTPBin(body []byte, latencyMs int64) (*service
 	return &service.ProxyExitInfo{
 		IP: result.Origin,
 	}, latencyMs, nil
+}
+
+func (s *proxyProbeService) parseIPify(body []byte, latencyMs int64) (*service.ProxyExitInfo, int64, error) {
+	var result struct {
+		IP string `json:"ip"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, latencyMs, fmt.Errorf("failed to parse ipify response: %w", err)
+	}
+	if strings.TrimSpace(result.IP) == "" {
+		return nil, latencyMs, fmt.Errorf("ipify: no IP found in response")
+	}
+	return &service.ProxyExitInfo{
+		IP: strings.TrimSpace(result.IP),
+	}, latencyMs, nil
+}
+
+func isIPv6Address(value string) bool {
+	ip := net.ParseIP(strings.TrimSpace(value))
+	return ip != nil && ip.To4() == nil
 }

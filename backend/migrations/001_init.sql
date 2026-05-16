@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS proxies (
     name            VARCHAR(100) NOT NULL,
     protocol        VARCHAR(20) NOT NULL,                 -- http/https/socks5
     host            VARCHAR(255) NOT NULL,
+    ip_version      VARCHAR(10) NOT NULL DEFAULT 'ipv4',   -- ipv4/ipv6 exit probe target
     port            INT NOT NULL,
     username        VARCHAR(100),
     password        VARCHAR(100),

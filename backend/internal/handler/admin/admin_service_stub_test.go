@@ -456,7 +456,7 @@ func (s *stubAdminService) CreateProxy(ctx context.Context, input *service.Creat
 	s.mu.Lock()
 	s.createdProxies = append(s.createdProxies, input)
 	s.mu.Unlock()
-	proxy := service.Proxy{ID: 400, Name: input.Name, Status: service.StatusActive}
+	proxy := service.Proxy{ID: 400, Name: input.Name, Host: input.Host, IPVersion: service.NormalizeProxyIPVersion(input.IPVersion), Status: service.StatusActive}
 	return &proxy, nil
 }
 
@@ -465,7 +465,7 @@ func (s *stubAdminService) UpdateProxy(ctx context.Context, id int64, input *ser
 	s.updatedProxyIDs = append(s.updatedProxyIDs, id)
 	s.updatedProxies = append(s.updatedProxies, input)
 	s.mu.Unlock()
-	proxy := service.Proxy{ID: id, Name: input.Name, Status: service.StatusActive}
+	proxy := service.Proxy{ID: id, Name: input.Name, IPVersion: service.NormalizeProxyIPVersion(input.IPVersion), Status: service.StatusActive}
 	return &proxy, nil
 }
 

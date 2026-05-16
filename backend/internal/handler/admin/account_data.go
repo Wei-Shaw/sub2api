@@ -37,6 +37,7 @@ type DataProxy struct {
 	Name     string `json:"name"`
 	Protocol string `json:"protocol"`
 	Host     string `json:"host"`
+	IPVersion string `json:"ip_version,omitempty"`
 	Port     int    `json:"port"`
 	Username string `json:"username,omitempty"`
 	Password string `json:"password,omitempty"`
@@ -153,6 +154,7 @@ func (h *AccountHandler) ExportData(c *gin.Context) {
 			Name:     p.Name,
 			Protocol: p.Protocol,
 			Host:     p.Host,
+			IPVersion: service.NormalizeProxyIPVersion(p.IPVersion),
 			Port:     p.Port,
 			Username: p.Username,
 			Password: p.Password,
@@ -257,11 +259,19 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 		if existingID, ok := proxyKeyToID[key]; ok {
 			proxyKeyToID[key] = existingID
 			result.ProxyReused++
-			if normalizedStatus != "" {
-				if proxy, getErr := h.adminService.GetProxy(ctx, existingID); getErr == nil && proxy != nil && proxy.Status != normalizedStatus {
-					_, _ = h.adminService.UpdateProxy(ctx, existingID, &service.UpdateProxyInput{
-						Status: normalizedStatus,
-					})
+			if proxy, getErr := h.adminService.GetProxy(ctx, existingID); getErr == nil && proxy != nil {
+				update := &service.UpdateProxyInput{}
+				if normalizedStatus != "" && proxy.Status != normalizedStatus {
+					update.Status = normalizedStatus
+				}
+				if item.IPVersion != "" {
+					normalizedIPVersion := service.NormalizeProxyIPVersion(item.IPVersion)
+					if normalizedIPVersion != service.NormalizeProxyIPVersion(proxy.IPVersion) {
+						update.IPVersion = normalizedIPVersion
+					}
+				}
+				if update.Status != "" || update.IPVersion != "" {
+					_, _ = h.adminService.UpdateProxy(ctx, existingID, update)
 				}
 			}
 			continue
@@ -271,6 +281,7 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 			Name:     defaultProxyName(item.Name),
 			Protocol: item.Protocol,
 			Host:     item.Host,
+			IPVersion: item.IPVersion,
 			Port:     item.Port,
 			Username: item.Username,
 			Password: item.Password,
@@ -569,6 +580,13 @@ func validateDataProxy(item DataProxy) error {
 		normalizedStatus := normalizeProxyStatus(item.Status)
 		if normalizedStatus != service.StatusActive && normalizedStatus != "inactive" {
 			return fmt.Errorf("proxy status is invalid: %s", item.Status)
+		}
+	}
+	if item.IPVersion != "" {
+		switch strings.ToLower(strings.TrimSpace(item.IPVersion)) {
+		case service.ProxyIPVersionIPv4, service.ProxyIPVersionIPv6:
+		default:
+			return fmt.Errorf("proxy ip_version is invalid: %s", item.IPVersion)
 		}
 	}
 	return nil

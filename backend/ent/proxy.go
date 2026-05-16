@@ -29,6 +29,8 @@ type Proxy struct {
 	Protocol string `json:"protocol,omitempty"`
 	// Host holds the value of the "host" field.
 	Host string `json:"host,omitempty"`
+	// IPVersion holds the value of the "ip_version" field.
+	IPVersion string `json:"ip_version,omitempty"`
 	// Port holds the value of the "port" field.
 	Port int `json:"port,omitempty"`
 	// Username holds the value of the "username" field.
@@ -68,7 +70,7 @@ func (*Proxy) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case proxy.FieldID, proxy.FieldPort:
 			values[i] = new(sql.NullInt64)
-		case proxy.FieldName, proxy.FieldProtocol, proxy.FieldHost, proxy.FieldUsername, proxy.FieldPassword, proxy.FieldStatus:
+		case proxy.FieldName, proxy.FieldProtocol, proxy.FieldHost, proxy.FieldIPVersion, proxy.FieldUsername, proxy.FieldPassword, proxy.FieldStatus:
 			values[i] = new(sql.NullString)
 		case proxy.FieldCreatedAt, proxy.FieldUpdatedAt, proxy.FieldDeletedAt:
 			values[i] = new(sql.NullTime)
@@ -129,6 +131,12 @@ func (_m *Proxy) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field host", values[i])
 			} else if value.Valid {
 				_m.Host = value.String
+			}
+		case proxy.FieldIPVersion:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field ip_version", values[i])
+			} else if value.Valid {
+				_m.IPVersion = value.String
 			}
 		case proxy.FieldPort:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -216,6 +224,9 @@ func (_m *Proxy) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("host=")
 	builder.WriteString(_m.Host)
+	builder.WriteString(", ")
+	builder.WriteString("ip_version=")
+	builder.WriteString(_m.IPVersion)
 	builder.WriteString(", ")
 	builder.WriteString("port=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Port))

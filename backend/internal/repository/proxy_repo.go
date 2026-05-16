@@ -37,6 +37,7 @@ func (r *proxyRepository) Create(ctx context.Context, proxyIn *service.Proxy) er
 		SetName(proxyIn.Name).
 		SetProtocol(proxyIn.Protocol).
 		SetHost(proxyIn.Host).
+		SetIPVersion(service.NormalizeProxyIPVersion(proxyIn.IPVersion)).
 		SetPort(proxyIn.Port).
 		SetStatus(proxyIn.Status)
 	if proxyIn.Username != "" {
@@ -88,6 +89,7 @@ func (r *proxyRepository) Update(ctx context.Context, proxyIn *service.Proxy) er
 		SetName(proxyIn.Name).
 		SetProtocol(proxyIn.Protocol).
 		SetHost(proxyIn.Host).
+		SetIPVersion(service.NormalizeProxyIPVersion(proxyIn.IPVersion)).
 		SetPort(proxyIn.Port).
 		SetStatus(proxyIn.Status)
 	if proxyIn.Username != "" {
@@ -421,6 +423,7 @@ func proxyEntityToService(m *dbent.Proxy) *service.Proxy {
 		Name:      m.Name,
 		Protocol:  m.Protocol,
 		Host:      m.Host,
+		IPVersion: service.NormalizeProxyIPVersion(m.IPVersion),
 		Port:      m.Port,
 		Status:    m.Status,
 		CreatedAt: m.CreatedAt,
@@ -440,6 +443,7 @@ func applyProxyEntityToService(dst *service.Proxy, src *dbent.Proxy) {
 		return
 	}
 	dst.ID = src.ID
+	dst.IPVersion = service.NormalizeProxyIPVersion(src.IPVersion)
 	dst.CreatedAt = src.CreatedAt
 	dst.UpdatedAt = src.UpdatedAt
 }

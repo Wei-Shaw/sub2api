@@ -412,6 +412,7 @@ func ProxyFromService(p *service.Proxy) *Proxy {
 		Name:      p.Name,
 		Protocol:  p.Protocol,
 		Host:      p.Host,
+		IPVersion: service.NormalizeProxyIPVersion(p.IPVersion),
 		Port:      p.Port,
 		Username:  p.Username,
 		Status:    p.Status,

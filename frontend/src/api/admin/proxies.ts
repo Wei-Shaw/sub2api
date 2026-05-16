@@ -197,6 +197,7 @@ export async function batchCreate(
   proxies: Array<{
     protocol: string
     host: string
+    ip_version?: 'ipv4' | 'ipv6'
     port: number
     username?: string
     password?: string

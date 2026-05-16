@@ -27,3 +27,28 @@ func TestNormalizeProxyHost(t *testing.T) {
 		})
 	}
 }
+
+func TestNormalizeProxyIPVersion(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "defaults empty to ipv4", in: "", want: ProxyIPVersionIPv4},
+		{name: "keeps ipv4", in: "ipv4", want: ProxyIPVersionIPv4},
+		{name: "keeps ipv6 case insensitive", in: " IPV6 ", want: ProxyIPVersionIPv6},
+		{name: "unknown falls back to ipv4", in: "dual", want: ProxyIPVersionIPv4},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := NormalizeProxyIPVersion(tc.in); got != tc.want {
+				t.Fatalf("NormalizeProxyIPVersion(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}

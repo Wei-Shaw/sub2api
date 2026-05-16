@@ -40,6 +40,9 @@ func (Proxy) Fields() []ent.Field {
 		field.String("host").
 			MaxLen(255).
 			NotEmpty(),
+		field.String("ip_version").
+			MaxLen(10).
+			Default("ipv4"),
 		field.Int("port"),
 		field.String("username").
 			MaxLen(100).

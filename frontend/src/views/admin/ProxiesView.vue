@@ -924,7 +924,7 @@ import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
-import type { Proxy, ProxyAccountSummary, ProxyProtocol, ProxyQualityCheckResult } from '@/types'
+import type { Proxy, ProxyAccountSummary, ProxyIPVersion, ProxyProtocol, ProxyQualityCheckResult } from '@/types'
 import type { Column } from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
@@ -946,8 +946,7 @@ import {
   detectProxyIPVersion,
   formatProxyAddress,
   normalizeProxyHost,
-  parseProxyUrl,
-  type ProxyIPVersion
+  parseProxyUrl
 } from '@/utils/proxyAddress'
 
 const { t } = useI18n()
@@ -1073,6 +1072,7 @@ const batchParseResult = reactive({
   proxies: [] as Array<{
     protocol: ProxyProtocol
     host: string
+    ip_version: ProxyIPVersion
     port: number
     username: string
     password: string
@@ -1291,6 +1291,7 @@ const handleCreateProxy = async () => {
       name: createForm.name.trim(),
       protocol: createForm.protocol,
       host: normalizedHost,
+      ip_version: createForm.ipVersion,
       port: createForm.port,
       username: createForm.username.trim() || null,
       password: createForm.password.trim() || null
@@ -1311,7 +1312,7 @@ const handleEdit = (proxy: Proxy) => {
   editForm.name = proxy.name
   editForm.protocol = proxy.protocol
   editForm.host = proxy.host
-  editForm.ipVersion = detectProxyIPVersion(proxy.host)
+  editForm.ipVersion = proxy.ip_version || detectProxyIPVersion(proxy.host)
   editForm.port = proxy.port
   editForm.username = proxy.username || ''
   editForm.password = proxy.password || ''
@@ -1350,6 +1351,7 @@ const handleUpdateProxy = async () => {
       name: editForm.name.trim(),
       protocol: editForm.protocol,
       host: normalizedHost,
+      ip_version: editForm.ipVersion,
       port: editForm.port,
       username: editForm.username.trim() || null,
       status: editForm.status

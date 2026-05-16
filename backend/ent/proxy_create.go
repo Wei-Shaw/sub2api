@@ -83,6 +83,20 @@ func (_c *ProxyCreate) SetHost(v string) *ProxyCreate {
 	return _c
 }
 
+// SetIPVersion sets the "ip_version" field.
+func (_c *ProxyCreate) SetIPVersion(v string) *ProxyCreate {
+	_c.mutation.SetIPVersion(v)
+	return _c
+}
+
+// SetNillableIPVersion sets the "ip_version" field if the given value is not nil.
+func (_c *ProxyCreate) SetNillableIPVersion(v *string) *ProxyCreate {
+	if v != nil {
+		_c.SetIPVersion(*v)
+	}
+	return _c
+}
+
 // SetPort sets the "port" field.
 func (_c *ProxyCreate) SetPort(v int) *ProxyCreate {
 	_c.mutation.SetPort(v)
@@ -197,6 +211,10 @@ func (_c *ProxyCreate) defaults() error {
 		v := proxy.DefaultUpdatedAt()
 		_c.mutation.SetUpdatedAt(v)
 	}
+	if _, ok := _c.mutation.IPVersion(); !ok {
+		v := proxy.DefaultIPVersion
+		_c.mutation.SetIPVersion(v)
+	}
 	if _, ok := _c.mutation.Status(); !ok {
 		v := proxy.DefaultStatus
 		_c.mutation.SetStatus(v)
@@ -234,6 +252,14 @@ func (_c *ProxyCreate) check() error {
 	if v, ok := _c.mutation.Host(); ok {
 		if err := proxy.HostValidator(v); err != nil {
 			return &ValidationError{Name: "host", err: fmt.Errorf(`ent: validator failed for field "Proxy.host": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.IPVersion(); !ok {
+		return &ValidationError{Name: "ip_version", err: errors.New(`ent: missing required field "Proxy.ip_version"`)}
+	}
+	if v, ok := _c.mutation.IPVersion(); ok {
+		if err := proxy.IPVersionValidator(v); err != nil {
+			return &ValidationError{Name: "ip_version", err: fmt.Errorf(`ent: validator failed for field "Proxy.ip_version": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.Port(); !ok {
@@ -307,6 +333,10 @@ func (_c *ProxyCreate) createSpec() (*Proxy, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Host(); ok {
 		_spec.SetField(proxy.FieldHost, field.TypeString, value)
 		_node.Host = value
+	}
+	if value, ok := _c.mutation.IPVersion(); ok {
+		_spec.SetField(proxy.FieldIPVersion, field.TypeString, value)
+		_node.IPVersion = value
 	}
 	if value, ok := _c.mutation.Port(); ok {
 		_spec.SetField(proxy.FieldPort, field.TypeInt, value)
@@ -455,6 +485,18 @@ func (u *ProxyUpsert) SetHost(v string) *ProxyUpsert {
 // UpdateHost sets the "host" field to the value that was provided on create.
 func (u *ProxyUpsert) UpdateHost() *ProxyUpsert {
 	u.SetExcluded(proxy.FieldHost)
+	return u
+}
+
+// SetIPVersion sets the "ip_version" field.
+func (u *ProxyUpsert) SetIPVersion(v string) *ProxyUpsert {
+	u.Set(proxy.FieldIPVersion, v)
+	return u
+}
+
+// UpdateIPVersion sets the "ip_version" field to the value that was provided on create.
+func (u *ProxyUpsert) UpdateIPVersion() *ProxyUpsert {
+	u.SetExcluded(proxy.FieldIPVersion)
 	return u
 }
 
@@ -643,6 +685,20 @@ func (u *ProxyUpsertOne) SetHost(v string) *ProxyUpsertOne {
 func (u *ProxyUpsertOne) UpdateHost() *ProxyUpsertOne {
 	return u.Update(func(s *ProxyUpsert) {
 		s.UpdateHost()
+	})
+}
+
+// SetIPVersion sets the "ip_version" field.
+func (u *ProxyUpsertOne) SetIPVersion(v string) *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.SetIPVersion(v)
+	})
+}
+
+// UpdateIPVersion sets the "ip_version" field to the value that was provided on create.
+func (u *ProxyUpsertOne) UpdateIPVersion() *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.UpdateIPVersion()
 	})
 }
 
@@ -1008,6 +1064,20 @@ func (u *ProxyUpsertBulk) SetHost(v string) *ProxyUpsertBulk {
 func (u *ProxyUpsertBulk) UpdateHost() *ProxyUpsertBulk {
 	return u.Update(func(s *ProxyUpsert) {
 		s.UpdateHost()
+	})
+}
+
+// SetIPVersion sets the "ip_version" field.
+func (u *ProxyUpsertBulk) SetIPVersion(v string) *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.SetIPVersion(v)
+	})
+}
+
+// UpdateIPVersion sets the "ip_version" field to the value that was provided on create.
+func (u *ProxyUpsertBulk) UpdateIPVersion() *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.UpdateIPVersion()
 	})
 }
 
