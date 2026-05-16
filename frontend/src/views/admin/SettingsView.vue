@@ -13179,8 +13179,9 @@ watch(
 
 /* ============ 系统设置 Tab 导航 ============ */
 .settings-tabs-shell {
-  @apply sticky z-20 -mx-1 rounded-2xl border border-white/80 bg-white/90 p-1.5 backdrop-blur-xl;
+  @apply sticky z-20 -mx-1 rounded-2xl border border-white/80 p-1.5 backdrop-blur-xl;
   top: 4.75rem;
+  background: rgb(255 255 255 / 0.9);
   box-shadow:
     0 12px 28px rgb(15 23 42 / 0.07),
     0 1px 0 rgb(255 255 255 / 0.9) inset;
@@ -13197,14 +13198,14 @@ watch(
 }
 
 .settings-tabs {
-  @apply inline-flex min-w-full flex-nowrap items-stretch gap-1.5 rounded-2xl border border-gray-100 bg-white/80 p-1 backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/80;
+  @apply inline-flex min-w-full flex-nowrap items-stretch gap-1 rounded-2xl border border-gray-100 bg-gray-50/80 p-1 backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-900/60;
   box-shadow:
     0 1px 3px rgb(0 0 0 / 0.04),
     0 1px 2px rgb(0 0 0 / 0.02);
 }
 
 .settings-tab {
-  @apply relative isolate inline-flex h-10 min-w-[6.75rem] shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-transparent px-3 text-sm font-medium leading-none text-gray-600 outline-none transition-colors duration-200 ease-out dark:text-gray-300;
+  @apply relative isolate inline-flex h-10 min-w-[5.5rem] shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-transparent px-2.5 text-sm font-medium leading-none text-gray-600 outline-none transition-colors duration-200 ease-out dark:text-gray-300;
 }
 
 @media (min-width: 768px) {
@@ -13213,11 +13214,11 @@ watch(
   }
 
   .settings-tab {
-    @apply min-w-0 flex-1 basis-0 overflow-hidden px-2 text-[13px];
+    @apply min-w-0 flex-1 basis-0 overflow-hidden px-1.5 text-[12px];
   }
 
   .settings-tab-icon {
-    @apply h-6 w-6;
+    @apply h-5 w-5;
   }
 }
 
@@ -13282,7 +13283,7 @@ watch(
    rules in the production build, leaving inactive tabs unreadable on dark. */
 .dark .settings-tabs-shell {
   border-color: rgb(51 65 85 / 0.65);
-  background: rgb(15 23 42 / 0.86);
+  background: rgb(15 23 42 / 0.92);
   box-shadow:
     0 16px 36px rgb(0 0 0 / 0.28),
     0 1px 0 rgb(255 255 255 / 0.06) inset;
