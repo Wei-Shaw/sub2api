@@ -13179,12 +13179,8 @@ watch(
 
 /* ============ 系统设置 Tab 导航 ============ */
 .settings-tabs-shell {
-  @apply sticky z-20 -mx-1 rounded-2xl border border-white/80 p-1.5 backdrop-blur-xl;
+  @apply sticky z-20 -mx-1 rounded-2xl border border-white/80 bg-white/90 p-1.5 shadow-lg backdrop-blur-xl dark:border-slate-700/65 dark:bg-[rgb(15_23_42_/_0.92)] dark:shadow-[0_16px_36px_rgb(0_0_0_/_0.28)];
   top: 4.75rem;
-  background: rgb(255 255 255 / 0.9);
-  box-shadow:
-    0 12px 28px rgb(15 23 42 / 0.07),
-    0 1px 0 rgb(255 255 255 / 0.9) inset;
 }
 
 .settings-tabs-scroll {
