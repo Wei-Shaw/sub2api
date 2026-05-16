@@ -253,6 +253,30 @@ export interface PluginRuntimeAssets {
    * 但需要自己 use pinia/i18n).
    */
   mount(shadowRoot: ShadowRoot, ctx: PluginRuntimeContext): PluginInstance | Promise<PluginInstance>
+
+  /**
+   * Raw Vue components for host-tree rendering (NOT Shadow DOM).
+   *
+   * Unlike mount() which renders inside an isolated ShadowRoot, formComponents
+   * are rendered directly in the host Vue tree. This is necessary for account
+   * form components that need template ref access from the host (e.g. validate(),
+   * getPayload()) and must participate in the host's form lifecycle.
+   *
+   * key 对应 AccountTypeDeclaration.form_component_path, value 是 Vue Component.
+   * host 在打开创建/编辑账号弹窗时, 优先从这里取表单组件, 未找到时降级到
+   * 内置表单 (BUILTIN_FORMS) 或通用 JSON schema 表单 (PluginForm.vue).
+   *
+   * 插件 install() 时把编译好的 .vue 组件放进 map 即可, 不需要额外注册.
+   */
+  formComponents?: Record<string, Component>
+
+  /**
+   * 可选: 插件提供的分组配置组件映射.
+   *
+   * key 对应 GroupConfigDeclaration.form_component_path, value 是 Vue Component.
+   * 逻辑与 formComponents 对称: host 优先取此 map, 降级到内置组件或 PluginGroupConfig.vue.
+   */
+  groupConfigComponents?: Record<string, Component>
 }
 
 /** Minimal group shape attached to an API key, for plugin consumption. */

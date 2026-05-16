@@ -28,18 +28,20 @@ func buildManifest() *pluginsdk.Manifest {
 				CompatibleGateways: []string{"openai", "chat_completions", "responses", "anthropic_via_openai", "images"},
 				AccountTypes: []pluginsdk.AccountTypeDecl{
 					{
-						Type:        "oauth",
+						Type:              "oauth",
 						DisplayName: "OAuth",
 						Description: "ChatGPT Plus/Team/Enterprise OAuth session",
 						SortOrder:   1,
-						BadgeLabel:  "OAuth",
+						BadgeLabel:         "OAuth",
+						FormComponentPath: "OpenAIForm",
 					},
 					{
-						Type:        "apikey",
+						Type:              "apikey",
 						DisplayName: "API Key",
 						Description: "OpenAI platform API key",
 						SortOrder:   2,
-						BadgeLabel:  "Key",
+						BadgeLabel:         "Key",
+						FormComponentPath: "OpenAIForm",
 					},
 				},
 				CapacityDisplay: &pluginsdk.CapacityDisplayConfig{

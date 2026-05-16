@@ -21,32 +21,6 @@
         <p class="input-hint">{{ t('admin.accounts.notesHint') }}</p>
       </div>
 
-      <div v-if="account.type === 'apikey'" class="space-y-4">
-        <div>
-          <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
-          <input v-model="editBaseUrl" type="text" class="input" :placeholder="defaultBaseUrlPlaceholder" />
-          <p class="input-hint">{{ baseUrlHint }}</p>
-        </div>
-        <div>
-          <label class="input-label">{{ t('admin.accounts.apiKey') }}</label>
-          <input v-model="editApiKey" type="password" class="input font-mono" autocomplete="new-password" data-1p-ignore data-lpignore="true" data-bwignore="true" :placeholder="apiKeyPlaceholder" />
-          <p class="input-hint">{{ t('admin.accounts.leaveEmptyToKeep') }}</p>
-        </div>
-      </div>
-
-      <div v-if="account.type === 'upstream'" class="space-y-4">
-        <div>
-          <label class="input-label">{{ t('admin.accounts.upstream.baseUrl') }}</label>
-          <input v-model="editBaseUrl" type="text" class="input" placeholder="https://cloudcode-pa.googleapis.com" />
-          <p class="input-hint">{{ t('admin.accounts.upstream.baseUrlHint') }}</p>
-        </div>
-        <div>
-          <label class="input-label">{{ t('admin.accounts.upstream.apiKey') }}</label>
-          <input v-model="editApiKey" type="password" class="input font-mono" placeholder="sk-..." />
-          <p class="input-hint">{{ t('admin.accounts.leaveEmptyToKeep') }}</p>
-        </div>
-      </div>
-
       <component :is="platformFormComponent" ref="platformFormRef" :context="platformFormContext" v-bind="platformFormExtraProps" />
 
       <div v-if="showQuotaControl" class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4">
@@ -192,8 +166,6 @@ const BUILTIN_PLATFORMS = new Set(['anthropic', 'openai', 'gemini', 'antigravity
 
 const submitting = ref(false)
 const autoPauseOnExpired = ref(false)
-const editBaseUrl = ref('')
-const editApiKey = ref('')
 
 const form = reactive({
   name: '', notes: '', proxy_id: null as number | null,
@@ -243,26 +215,6 @@ loadQuotaNotifyGlobal()
 const showQuotaControl = computed(() => { const tp = props.account?.type; return tp === 'apikey' || tp === 'bedrock' })
 const isAnthropicQuotaControl = computed(() => props.account?.platform === 'anthropic' && (props.account?.type === 'apikey' || props.account?.type === 'bedrock'))
 
-const defaultBaseUrlPlaceholder = computed(() => {
-  const p = props.account?.platform
-  if (p === 'openai') return 'https://api.openai.com'
-  if (p === 'gemini') return 'https://generativelanguage.googleapis.com'
-  if (p === 'antigravity') return 'https://cloudcode-pa.googleapis.com'
-  return ''
-})
-const apiKeyPlaceholder = computed(() => {
-  const p = props.account?.platform
-  if (p === 'openai') return 'sk-proj-...'
-  if (p === 'gemini') return 'AIza...'
-  if (p === 'antigravity') return 'sk-...'
-  return ''
-})
-const baseUrlHint = computed(() => {
-  const p = props.account?.platform
-  if (p === 'openai') return t('admin.accounts.openai.baseUrlHint')
-  if (p === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
-  return t('admin.accounts.baseUrlHint')
-})
 const statusOptions = computed(() => {
   const opts = [{ value: 'active', label: t('common.active') }, { value: 'inactive', label: t('common.inactive') }]
   if (form.status === 'error') opts.push({ value: 'error', label: t('admin.accounts.status.error') })
@@ -312,11 +264,6 @@ function syncFormFromAccount(account: Account) {
   form.status = (['active', 'inactive', 'error'].includes(account.status) ? account.status : 'active') as typeof form.status
   form.group_ids = account.group_ids || []; form.expires_at = account.expires_at ?? null
   autoPauseOnExpired.value = account.auto_pause_on_expired === true
-  const credentials = account.credentials as Record<string, unknown> | undefined
-  if (account.type === 'apikey') editBaseUrl.value = (credentials?.base_url as string) || defaultBaseUrlPlaceholder.value
-  else if (account.type === 'upstream') editBaseUrl.value = (credentials?.base_url as string) || ''
-  else editBaseUrl.value = defaultBaseUrlPlaceholder.value
-  editApiKey.value = ''
   const extra = account.extra as Record<string, unknown> | undefined
   if (account.type === 'apikey' || account.type === 'bedrock') {
     loadQuotaFromExtra(extra, { quotaLimit: editQuotaLimit, quotaDailyLimit: editQuotaDailyLimit, quotaWeeklyLimit: editQuotaWeeklyLimit, dailyResetMode: editDailyResetMode, dailyResetHour: editDailyResetHour, weeklyResetMode: editWeeklyResetMode, weeklyResetDay: editWeeklyResetDay, weeklyResetHour: editWeeklyResetHour, resetTimezone: editResetTimezone })
@@ -356,15 +303,6 @@ async function handleSubmit() {
     const ep = platformFormRef.value?.getEditPayload?.(props.account)
     if (ep) {
       if (ep.credentials === undefined) return
-      if (ep.credentials && (props.account.type === 'apikey' || props.account.type === 'upstream')) {
-        if (editApiKey.value.trim()) ep.credentials.api_key = editApiKey.value.trim()
-        else if (props.account.type === 'apikey') {
-          const existing = (props.account.credentials as Record<string, unknown>)?.api_key
-          if (existing) ep.credentials.api_key = existing
-          else { appStore.showError(t('admin.accounts.apiKeyIsRequired')); return }
-        }
-        if (editBaseUrl.value.trim()) ep.credentials.base_url = editBaseUrl.value.trim()
-      }
       if (ep.credentials) up.credentials = ep.credentials
       if (ep.extra !== undefined) up.extra = ep.extra
     }

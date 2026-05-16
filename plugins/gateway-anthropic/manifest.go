@@ -30,6 +30,7 @@ func buildManifest() *pluginsdk.Manifest {
 					{
 						Type:        "oauth",
 						DisplayName: "OAuth",
+						FormComponentPath: "AnthropicForm",
 						Description: "Claude Code OAuth session (full scope: profile + inference)",
 						SortOrder:   1,
 						BadgeLabel:  "OAuth",
@@ -37,6 +38,7 @@ func buildManifest() *pluginsdk.Manifest {
 					{
 						Type:        "setup-token",
 						DisplayName: "Setup Token",
+						FormComponentPath: "AnthropicForm",
 						Description: "Claude Code setup token (inference only)",
 						SortOrder:   2,
 						BadgeLabel:  "Setup",
@@ -44,6 +46,7 @@ func buildManifest() *pluginsdk.Manifest {
 					{
 						Type:        "apikey",
 						DisplayName: "API Key",
+						FormComponentPath: "AnthropicForm",
 						Description: "Anthropic platform API key",
 						SortOrder:   3,
 						BadgeLabel:  "Key",
@@ -51,6 +54,7 @@ func buildManifest() *pluginsdk.Manifest {
 					{
 						Type:        "bedrock",
 						DisplayName: "AWS Bedrock",
+						FormComponentPath: "AnthropicForm",
 						Description: "AWS Bedrock access via SigV4 or cross-region API key",
 						SortOrder:   4,
 						BadgeLabel:  "Bedrock",
@@ -58,6 +62,7 @@ func buildManifest() *pluginsdk.Manifest {
 					{
 						Type:        "service_account",
 						DisplayName: "Vertex AI",
+						FormComponentPath: "AnthropicForm",
 						Description: "Vertex AI access via Google Service Account",
 						SortOrder:   5,
 						BadgeLabel:  "Vertex",
