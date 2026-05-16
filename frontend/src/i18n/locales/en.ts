@@ -3949,6 +3949,7 @@ export default {
       optionalAuth: 'Optional authentication',
       form: {
         hostPlaceholder: 'proxy.example.com',
+        hostPlaceholderIpv6: 'Enter an IPv6 address, for example 2001:db8::1',
         portPlaceholder: '8080'
       },
       noProxiesYet: 'No proxies yet',
@@ -3956,11 +3957,12 @@ export default {
       // Batch import
       standardAdd: 'Standard Add',
       batchAdd: 'Quick Add',
+      ipType: 'Proxy IP Type',
       batchInput: 'Proxy List',
       batchInputPlaceholder:
-        "Enter one proxy per line in the following formats:\nsocks5://user:pass{'@'}192.168.1.1:1080\nhttp://192.168.1.1:8080\nhttps://user:pass{'@'}proxy.example.com:443",
+        "Enter one proxy per line in the following formats:\nsocks5://user:pass{'@'}192.168.1.1:1080\nsocks5://user:pass{'@'}[2001:db8::1]:1080\nhttps://user:pass{'@'}proxy.example.com:443",
       batchInputHint:
-        "Supports http, https, socks5 protocols. Format: protocol://[user:pass{'@'}]host:port",
+        "Supports http, https, socks5, and socks5h. For IPv6 use the [address]:port format.",
       parsedCount: '{count} valid',
       invalidCount: '{count} invalid',
       duplicateCount: '{count} duplicate',

@@ -271,6 +271,28 @@ func TestProxyHandlerEndpoints(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 }
 
+func TestProxyHandlerCreateNormalizesIPv6Host(t *testing.T) {
+	router, adminSvc := setupAdminRouter()
+
+	body, _ := json.Marshal(map[string]any{
+		"name":     "ipv6-proxy",
+		"protocol": "socks5",
+		"host":     "[2001:db8::1]",
+		"port":     1080,
+	})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/proxies", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	adminSvc.mu.Lock()
+	defer adminSvc.mu.Unlock()
+	require.Len(t, adminSvc.createdProxies, 1)
+	require.Equal(t, "2001:db8::1", adminSvc.createdProxies[0].Host)
+}
+
 func TestRedeemHandlerEndpoints(t *testing.T) {
 	router, _ := setupAdminRouter()
 

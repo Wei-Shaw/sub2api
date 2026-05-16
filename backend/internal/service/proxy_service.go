@@ -70,7 +70,7 @@ func (s *ProxyService) Create(ctx context.Context, req CreateProxyRequest) (*Pro
 	proxy := &Proxy{
 		Name:     req.Name,
 		Protocol: req.Protocol,
-		Host:     req.Host,
+		Host:     NormalizeProxyHost(req.Host),
 		Port:     req.Port,
 		Username: req.Username,
 		Password: req.Password,
@@ -128,7 +128,7 @@ func (s *ProxyService) Update(ctx context.Context, id int64, req UpdateProxyRequ
 	}
 
 	if req.Host != nil {
-		proxy.Host = *req.Host
+		proxy.Host = NormalizeProxyHost(*req.Host)
 	}
 
 	if req.Port != nil {

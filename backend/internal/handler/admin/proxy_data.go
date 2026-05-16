@@ -107,7 +107,7 @@ func (h *ProxyHandler) ImportData(c *gin.Context) {
 	latencyProbeIDs := make([]int64, 0, len(req.Data.Proxies))
 	for i := range req.Data.Proxies {
 		item := req.Data.Proxies[i]
-		key := item.ProxyKey
+		key := normalizeImportedProxyKey(item.ProxyKey)
 		if key == "" {
 			key = buildProxyKey(item.Protocol, item.Host, item.Port, item.Username, item.Password)
 		}

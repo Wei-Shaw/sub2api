@@ -452,6 +452,7 @@ func (s *stubAdminService) GetProxiesByIDs(ctx context.Context, ids []int64) ([]
 }
 
 func (s *stubAdminService) CreateProxy(ctx context.Context, input *service.CreateProxyInput) (*service.Proxy, error) {
+	input.Host = service.NormalizeProxyHost(input.Host)
 	s.mu.Lock()
 	s.createdProxies = append(s.createdProxies, input)
 	s.mu.Unlock()

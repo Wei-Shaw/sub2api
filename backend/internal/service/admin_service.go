@@ -2849,7 +2849,7 @@ func (s *adminServiceImpl) CreateProxy(ctx context.Context, input *CreateProxyIn
 	proxy := &Proxy{
 		Name:     input.Name,
 		Protocol: input.Protocol,
-		Host:     input.Host,
+		Host:     NormalizeProxyHost(input.Host),
 		Port:     input.Port,
 		Username: input.Username,
 		Password: input.Password,
@@ -2876,7 +2876,7 @@ func (s *adminServiceImpl) UpdateProxy(ctx context.Context, id int64, input *Upd
 		proxy.Protocol = input.Protocol
 	}
 	if input.Host != "" {
-		proxy.Host = input.Host
+		proxy.Host = NormalizeProxyHost(input.Host)
 	}
 	if input.Port != 0 {
 		proxy.Port = input.Port
@@ -2948,7 +2948,7 @@ func (s *adminServiceImpl) GetProxyAccounts(ctx context.Context, proxyID int64) 
 }
 
 func (s *adminServiceImpl) CheckProxyExists(ctx context.Context, host string, port int, username, password string) (bool, error) {
-	return s.proxyRepo.ExistsByHostPortAuth(ctx, host, port, username, password)
+	return s.proxyRepo.ExistsByHostPortAuth(ctx, NormalizeProxyHost(host), port, username, password)
 }
 
 // Redeem code management implementations

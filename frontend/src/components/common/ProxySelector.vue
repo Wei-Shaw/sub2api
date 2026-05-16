@@ -114,7 +114,7 @@
                 </template>
               </div>
               <div class="truncate text-xs text-gray-500 dark:text-gray-400">
-                {{ proxy.protocol }}://{{ proxy.host }}:{{ proxy.port }}
+                {{ buildProxyUrl(proxy) }}
               </div>
             </div>
 
@@ -173,6 +173,7 @@ import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import Icon from '@/components/icons/Icon.vue'
 import type { Proxy } from '@/types'
+import { buildProxyUrl } from '@/utils/proxyAddress'
 
 const { t } = useI18n()
 
@@ -220,7 +221,7 @@ const selectedLabel = computed(() => {
     return t('admin.accounts.noProxy')
   }
   const proxy = selectedProxy.value
-  return `${proxy.name} (${proxy.protocol}://${proxy.host}:${proxy.port})`
+  return `${proxy.name} (${buildProxyUrl(proxy)})`
 })
 
 const filteredProxies = computed(() => {

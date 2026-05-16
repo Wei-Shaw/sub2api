@@ -80,7 +80,34 @@ type DataImportError struct {
 }
 
 func buildProxyKey(protocol, host string, port int, username, password string) string {
-	return fmt.Sprintf("%s|%s|%d|%s|%s", strings.TrimSpace(protocol), strings.TrimSpace(host), port, strings.TrimSpace(username), strings.TrimSpace(password))
+	return fmt.Sprintf(
+		"%s|%s|%d|%s|%s",
+		strings.TrimSpace(protocol),
+		service.NormalizeProxyHost(host),
+		port,
+		strings.TrimSpace(username),
+		strings.TrimSpace(password),
+	)
+}
+
+func normalizeImportedProxyKey(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	parts := strings.Split(raw, "|")
+	if len(parts) != 5 {
+		return raw
+	}
+	return buildProxyKey(parts[0], parts[1], mustAtoi(parts[2]), parts[3], parts[4])
+}
+
+func mustAtoi(raw string) int {
+	value, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil {
+		return 0
+	}
+	return value
 }
 
 func (h *AccountHandler) ExportData(c *gin.Context) {
@@ -212,7 +239,7 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 
 	for i := range dataPayload.Proxies {
 		item := dataPayload.Proxies[i]
-		key := item.ProxyKey
+		key := normalizeImportedProxyKey(item.ProxyKey)
 		if key == "" {
 			key = buildProxyKey(item.Protocol, item.Host, item.Port, item.Username, item.Password)
 		}
@@ -284,15 +311,16 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 		}
 
 		var proxyID *int64
-		if item.ProxyKey != nil && *item.ProxyKey != "" {
-			if id, ok := proxyKeyToID[*item.ProxyKey]; ok {
+		if item.ProxyKey != nil && strings.TrimSpace(*item.ProxyKey) != "" {
+			normalizedProxyKey := normalizeImportedProxyKey(*item.ProxyKey)
+			if id, ok := proxyKeyToID[normalizedProxyKey]; ok {
 				proxyID = &id
 			} else {
 				result.AccountFailed++
 				result.Errors = append(result.Errors, DataImportError{
 					Kind:     "account",
 					Name:     item.Name,
-					ProxyKey: *item.ProxyKey,
+					ProxyKey: normalizedProxyKey,
 					Message:  "proxy_key not found",
 				})
 				continue

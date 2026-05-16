@@ -134,7 +134,7 @@
 
           <template #cell-address="{ row }">
             <div class="flex items-center gap-1.5">
-              <code class="code text-xs">{{ row.host }}:{{ row.port }}</code>
+              <code class="code text-xs">{{ formatProxyAddress(row.host, row.port) }}</code>
               <div class="relative">
                 <button
                   type="button"
@@ -419,6 +419,27 @@
           <label class="input-label">{{ t('admin.proxies.protocol') }}</label>
           <Select v-model="createForm.protocol" :options="protocolSelectOptions" />
         </div>
+        <div>
+          <label class="input-label">{{ t('admin.proxies.ipType') }}</label>
+          <div class="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              @click="setCreateIPVersion('ipv4')"
+              :class="proxyIpTypeButtonClass(createForm.ipVersion === 'ipv4')"
+            >
+              <span :class="proxyIpTypeDotClass(createForm.ipVersion === 'ipv4')"></span>
+              <span>IPv4</span>
+            </button>
+            <button
+              type="button"
+              @click="setCreateIPVersion('ipv6')"
+              :class="proxyIpTypeButtonClass(createForm.ipVersion === 'ipv6')"
+            >
+              <span :class="proxyIpTypeDotClass(createForm.ipVersion === 'ipv6')"></span>
+              <span>IPv6</span>
+            </button>
+          </div>
+        </div>
         <div class="grid grid-cols-2 gap-4">
           <div>
             <label class="input-label">{{ t('admin.proxies.host') }}</label>
@@ -426,7 +447,7 @@
               v-model="createForm.host"
               type="text"
               required
-              :placeholder="t('admin.proxies.form.hostPlaceholder')"
+              :placeholder="hostPlaceholderFor(createForm.ipVersion)"
               class="input"
             />
           </div>
@@ -624,10 +645,37 @@
           <label class="input-label">{{ t('admin.proxies.protocol') }}</label>
           <Select v-model="editForm.protocol" :options="protocolSelectOptions" />
         </div>
+        <div>
+          <label class="input-label">{{ t('admin.proxies.ipType') }}</label>
+          <div class="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              @click="setEditIPVersion('ipv4')"
+              :class="proxyIpTypeButtonClass(editForm.ipVersion === 'ipv4')"
+            >
+              <span :class="proxyIpTypeDotClass(editForm.ipVersion === 'ipv4')"></span>
+              <span>IPv4</span>
+            </button>
+            <button
+              type="button"
+              @click="setEditIPVersion('ipv6')"
+              :class="proxyIpTypeButtonClass(editForm.ipVersion === 'ipv6')"
+            >
+              <span :class="proxyIpTypeDotClass(editForm.ipVersion === 'ipv6')"></span>
+              <span>IPv6</span>
+            </button>
+          </div>
+        </div>
         <div class="grid grid-cols-2 gap-4">
           <div>
             <label class="input-label">{{ t('admin.proxies.host') }}</label>
-            <input v-model="editForm.host" type="text" required class="input" />
+            <input
+              v-model="editForm.host"
+              type="text"
+              required
+              :placeholder="hostPlaceholderFor(editForm.ipVersion)"
+              class="input"
+            />
           </div>
           <div>
             <label class="input-label">{{ t('admin.proxies.port') }}</label>
@@ -893,6 +941,14 @@ import { useClipboard } from '@/composables/useClipboard'
 import { useSwipeSelect } from '@/composables/useSwipeSelect'
 import { useTableSelection } from '@/composables/useTableSelection'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
+import {
+  buildProxyUrl,
+  detectProxyIPVersion,
+  formatProxyAddress,
+  normalizeProxyHost,
+  parseProxyUrl,
+  type ProxyIPVersion
+} from '@/utils/proxyAddress'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -1026,6 +1082,7 @@ const batchParseResult = reactive({
 const createForm = reactive({
   name: '',
   protocol: 'http' as ProxyProtocol,
+  ipVersion: 'ipv4' as ProxyIPVersion,
   host: '',
   port: 8080,
   username: '',
@@ -1035,6 +1092,7 @@ const createForm = reactive({
 const editForm = reactive({
   name: '',
   protocol: 'http' as ProxyProtocol,
+  ipVersion: 'ipv4' as ProxyIPVersion,
   host: '',
   port: 8080,
   username: '',
@@ -1138,6 +1196,7 @@ const closeCreateModal = () => {
   createMode.value = 'standard'
   createForm.name = ''
   createForm.protocol = 'http'
+  createForm.ipVersion = 'ipv4'
   createForm.host = ''
   createForm.port = 8080
   createForm.username = ''
@@ -1156,39 +1215,6 @@ const handleDataImported = () => {
   loadProxies()
 }
 
-// Parse proxy URL: protocol://user:pass@host:port or protocol://host:port
-const parseProxyUrl = (
-  line: string
-): {
-  protocol: ProxyProtocol
-  host: string
-  port: number
-  username: string
-  password: string
-} | null => {
-  const trimmed = line.trim()
-  if (!trimmed) return null
-
-  // Regex to parse proxy URL (supports http, https, socks5, socks5h)
-  const regex = /^(https?|socks5h?):\/\/(?:([^:@]+):([^@]+)@)?([^:]+):(\d+)$/i
-  const match = trimmed.match(regex)
-
-  if (!match) return null
-
-  const [, protocol, username, password, host, port] = match
-  const portNum = parseInt(port, 10)
-
-  if (portNum < 1 || portNum > 65535) return null
-
-  return {
-    protocol: protocol.toLowerCase() as ProxyProtocol,
-    host: host.trim(),
-    port: portNum,
-    username: username?.trim() || '',
-    password: password?.trim() || ''
-  }
-}
-
 const parseBatchInput = () => {
   const lines = batchInput.value.split('\n').filter((l) => l.trim())
   const seen = new Set<string>()
@@ -1204,7 +1230,7 @@ const parseBatchInput = () => {
     }
 
     // Check for duplicates (same host:port:username:password)
-    const key = `${parsed.host}:${parsed.port}:${parsed.username}:${parsed.password}`
+    const key = `${normalizeProxyHost(parsed.host)}:${parsed.port}:${parsed.username}:${parsed.password}`
     if (seen.has(key)) {
       duplicate++
       continue
@@ -1250,7 +1276,8 @@ const handleCreateProxy = async () => {
     appStore.showError(t('admin.proxies.nameRequired'))
     return
   }
-  if (!createForm.host.trim()) {
+  const normalizedHost = normalizeProxyHost(createForm.host)
+  if (!normalizedHost) {
     appStore.showError(t('admin.proxies.hostRequired'))
     return
   }
@@ -1263,7 +1290,7 @@ const handleCreateProxy = async () => {
     await adminAPI.proxies.create({
       name: createForm.name.trim(),
       protocol: createForm.protocol,
-      host: createForm.host.trim(),
+      host: normalizedHost,
       port: createForm.port,
       username: createForm.username.trim() || null,
       password: createForm.password.trim() || null
@@ -1284,6 +1311,7 @@ const handleEdit = (proxy: Proxy) => {
   editForm.name = proxy.name
   editForm.protocol = proxy.protocol
   editForm.host = proxy.host
+  editForm.ipVersion = detectProxyIPVersion(proxy.host)
   editForm.port = proxy.port
   editForm.username = proxy.username || ''
   editForm.password = proxy.password || ''
@@ -1306,7 +1334,8 @@ const handleUpdateProxy = async () => {
     appStore.showError(t('admin.proxies.nameRequired'))
     return
   }
-  if (!editForm.host.trim()) {
+  const normalizedHost = normalizeProxyHost(editForm.host)
+  if (!normalizedHost) {
     appStore.showError(t('admin.proxies.hostRequired'))
     return
   }
@@ -1320,7 +1349,7 @@ const handleUpdateProxy = async () => {
     const updateData: any = {
       name: editForm.name.trim(),
       protocol: editForm.protocol,
-      host: editForm.host.trim(),
+      host: normalizedHost,
       port: editForm.port,
       username: editForm.username.trim() || null,
       status: editForm.status
@@ -1824,17 +1853,31 @@ const closeAccountsModal = () => {
 }
 
 // ── Proxy URL copy ──
-function buildAuthPart(row: any): string {
-  const user = row.username ? encodeURIComponent(row.username) : ''
-  const pass = row.password ? encodeURIComponent(row.password) : ''
-  if (user && pass) return `${user}:${pass}@`
-  if (user) return `${user}@`
-  if (pass) return `:${pass}@`
-  return ''
+const hostPlaceholderFor = (version: ProxyIPVersion) =>
+  version === 'ipv6'
+    ? t('admin.proxies.form.hostPlaceholderIpv6')
+    : t('admin.proxies.form.hostPlaceholder')
+
+const proxyIpTypeButtonClass = (active: boolean) => [
+  'flex items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm font-medium transition-all',
+  active
+    ? 'border-primary-500 bg-primary-50 text-primary-600 ring-1 ring-primary-500/20 dark:bg-primary-900/20 dark:text-primary-300'
+    : 'border-gray-200 bg-white text-gray-700 hover:border-primary-300 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-200 dark:hover:border-primary-700'
+]
+
+const proxyIpTypeDotClass = (active: boolean) => [
+  'inline-flex h-5 w-5 flex-shrink-0 rounded-full border-2 transition-all',
+  active
+    ? 'border-primary-500 bg-primary-500 shadow-[inset_0_0_0_4px_white] dark:shadow-[inset_0_0_0_4px_rgba(17,24,39,1)]'
+    : 'border-gray-300 bg-white dark:border-dark-500 dark:bg-dark-800'
+]
+
+const setCreateIPVersion = (version: ProxyIPVersion) => {
+  createForm.ipVersion = version
 }
 
-function buildProxyUrl(row: any): string {
-  return `${row.protocol}://${buildAuthPart(row)}${row.host}:${row.port}`
+const setEditIPVersion = (version: ProxyIPVersion) => {
+  editForm.ipVersion = version
 }
 
 function getCopyFormats(row: any) {
@@ -1847,7 +1890,10 @@ function getCopyFormats(row: any) {
     const withoutProtocol = fullUrl.replace(/^[^:]+:\/\//, '')
     formats.push({ label: withoutProtocol, value: withoutProtocol })
   }
-  formats.push({ label: `${row.host}:${row.port}`, value: `${row.host}:${row.port}` })
+  formats.push({
+    label: formatProxyAddress(row.host, row.port),
+    value: formatProxyAddress(row.host, row.port)
+  })
   return formats
 }
 
