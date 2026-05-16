@@ -20,6 +20,10 @@ FROM ${NODE_IMAGE} AS frontend-builder
 
 WORKDIR /app/frontend
 
+# The admin frontend needs a larger V8 heap when built inside small CI/server
+# Docker builders; otherwise vite can fail with an out-of-memory error.
+ENV NODE_OPTIONS=--max-old-space-size=4096
+
 # Install pnpm
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
