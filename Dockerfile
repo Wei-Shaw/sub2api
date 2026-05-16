@@ -27,8 +27,9 @@ ENV NODE_OPTIONS=--max-old-space-size=4096
 # Install pnpm
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
-# Install dependencies first (better caching)
-COPY frontend/package.json frontend/pnpm-lock.yaml ./
+# Install dependencies first (better caching). Keep .npmrc with the lockfile so
+# pnpm honors the project's script policy for packages such as esbuild.
+COPY frontend/package.json frontend/pnpm-lock.yaml frontend/.npmrc ./
 RUN pnpm install --frozen-lockfile
 
 # Copy frontend source and build

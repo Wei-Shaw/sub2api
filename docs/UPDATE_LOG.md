@@ -32,6 +32,7 @@
   - `NODE_OPTIONS=--max-old-space-size=4096 pnpm build`
 - Docker image build:
   - Added the same frontend heap setting to the Docker frontend builder so Server A deployment builds do not fail with Vite/Node out-of-memory errors.
+  - Copied frontend `.npmrc` into the Docker dependency-install layer so pnpm runs the required `esbuild` / `vue-demi` postinstall scripts during image builds.
 - Real SOCKS5 IPv6 exit verification on Server A:
   - `curl -x socks5h://[redacted] 'http://api6.ipify.org?format=json'` returned an IPv6 address.
   - `curl -x socks5h://[redacted] 'http://api64.ipify.org?format=json'` returned the same IPv6 address.
