@@ -21,14 +21,14 @@ import (
 
 // forwardContext 封装 Forward 流程中各阶段共享的中间状态。
 type forwardContext struct {
-	body            []byte // 转换后的请求体
-	originalModel   string // 原始模型名（用于计费和日志）
-	mappedModel     string // 映射后的模型名（发送到上游）
-	reqModel        string // 当前使用的模型名
-	reqStream       bool   // 是否流式请求
-	mimicClaudeCode bool   // 是否启用 Claude Code 伪装
-	token           string // 认证凭证
-	tokenType       string // 凭证类型 (oauth/apikey/setup-token)
+	body            []byte                  // 转换后的请求体
+	originalModel   string                  // 原始模型名（用于计费和日志）
+	mappedModel     string                  // 映射后的模型名（发送到上游）
+	reqModel        string                  // 当前使用的模型名
+	reqStream       bool                    // 是否流式请求
+	mimicClaudeCode bool                    // 是否启用 Claude Code 伪装
+	token           string                  // 认证凭证
+	tokenType       string                  // 凭证类型 (oauth/apikey/setup-token)
 	proxyURL        string                  // 代理 URL
 	tlsProfile      *tlsfingerprint.Profile // TLS 指纹配置
 	startTime       time.Time
