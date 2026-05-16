@@ -34,6 +34,7 @@
   - Added the same frontend heap setting to the Docker frontend builder so Server A deployment builds do not fail with Vite/Node out-of-memory errors.
   - Copied frontend `.npmrc` into the Docker dependency-install layer so pnpm runs the required `esbuild` / `vue-demi` postinstall scripts during image builds.
   - Pinned Docker frontend builds to pnpm 9 instead of `pnpm@latest` to avoid pnpm 11 interactive build-script approval failures.
+  - Ignored local `frontend/pnpm-workspace.yaml` scratch files in Docker builds so deployment images always build the frontend as the standalone package defined by `frontend/package.json`.
 - Real SOCKS5 IPv6 exit verification on Server A:
   - `curl -x socks5h://[redacted] 'http://api6.ipify.org?format=json'` returned an IPv6 address.
   - `curl -x socks5h://[redacted] 'http://api64.ipify.org?format=json'` returned the same IPv6 address.
