@@ -29,11 +29,18 @@
           </div>
         </template>
         <template #cell-balance_group_id="{ row }">
-          <div v-if="row.balance_group_id || row.group_id" class="text-sm">
-            <div class="font-medium text-gray-900 dark:text-white">#{{ row.balance_group_id || row.group_id }} · {{ row.group_name || '-' }}</div>
-            <div class="text-xs text-gray-500">{{ row.group_platform || '-' }} · {{ row.group_subscription_type || 'standard' }} · x{{ Number(row.group_rate_multiplier || 0).toFixed(6) }}</div>
-          </div>
-          <span v-else class="text-sm text-red-500">{{ t('payment.admin.balanceGroupMissing') }}</span>
+          <span v-if="isGroupMissing(row.balance_group_id || row.group_id)" class="text-sm">
+            <span class="text-gray-400">#{{ row.balance_group_id || row.group_id }}</span>
+            <span class="ml-1 badge badge-danger">{{ t('payment.admin.balanceGroupMissing') }}</span>
+          </span>
+          <GroupBadge
+            v-else-if="getGroup(row.balance_group_id || row.group_id)"
+            :name="getGroup(row.balance_group_id || row.group_id)!.name"
+            :platform="getGroup(row.balance_group_id || row.group_id)!.platform"
+            :subscription-type="getGroup(row.balance_group_id || row.group_id)!.subscription_type"
+            :rate-multiplier="getGroup(row.balance_group_id || row.group_id)!.rate_multiplier"
+          />
+          <span v-else class="text-sm text-gray-400">-</span>
         </template>
         <template #cell-badge="{ value }">
           <span v-if="value" class="badge badge-success">{{ value }}</span>
@@ -70,12 +77,15 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminPaymentAPI } from '@/api/admin/payment'
 import { extractI18nErrorMessage } from '@/utils/apiError'
+import adminAPI from '@/api/admin'
 import type { BalancePackage } from '@/types/payment'
+import type { AdminGroup } from '@/types'
 import type { Column } from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
+import GroupBadge from '@/components/common/GroupBadge.vue'
 import BalancePackageEditDialog from './BalancePackageEditDialog.vue'
 
 const { t } = useI18n()
@@ -86,6 +96,24 @@ const showDialog = ref(false)
 const showDeleteDialog = ref(false)
 const editingPackage = ref<BalancePackage | null>(null)
 const deletingPackageId = ref<number | null>(null)
+
+// ==================== Groups ====================
+
+const groups = ref<AdminGroup[]>([])
+
+async function loadGroups() {
+  try {
+    groups.value = await adminAPI.groups.getAll()
+  } catch { /* ignore */ }
+}
+
+function getGroup(id: number): AdminGroup | undefined {
+  return groups.value.find(g => g.id === id)
+}
+
+function isGroupMissing(id: number): boolean {
+  return id > 0 && !groups.value.find(g => g.id === id)
+}
 
 const columns = computed((): Column[] => [
   { key: 'id', label: 'ID' },
@@ -148,5 +176,8 @@ async function handleDelete() {
   }
 }
 
-onMounted(loadPackages)
+onMounted(() => {
+  loadGroups()
+  loadPackages()
+})
 </script>
