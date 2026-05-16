@@ -11,9 +11,9 @@ import (
 	stripe "github.com/stripe/stripe-go/v85"
 )
 
-func TestStripeNormalizeCurrencyDefaultsToCNY(t *testing.T) {
-	if got := stripeIntentCurrency(stripe.Currency(""), ""); got != "CNY" {
-		t.Fatalf("stripeIntentCurrency empty = %q, want CNY", got)
+func TestStripeNormalizeCurrencyDefaultsToUSD(t *testing.T) {
+	if got := stripeIntentCurrency(stripe.Currency(""), ""); got != "USD" {
+		t.Fatalf("stripeIntentCurrency empty = %q, want USD", got)
 	}
 	if got := stripeIntentCurrency(stripe.Currency(" vnd "), ""); got != "VND" {
 		t.Fatalf("stripeIntentCurrency vnd = %q, want VND", got)

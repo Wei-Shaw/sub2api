@@ -78,6 +78,7 @@ func paymentStatsTestOrder(userID int64, email, currency string, amount float64,
 		UserID:           userID,
 		UserEmail:        email,
 		PayAmount:        amount,
+		LedgerAmount:     amount / 10,
 		PaidAt:           paidAt,
 		ProviderSnapshot: map[string]any{"currency": currency},
 	}

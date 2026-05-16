@@ -71,7 +71,7 @@ func TestAirwallexCreatePaymentUsesServerAmountAndStableRequestID(t *testing.T) 
 			var payload airwallexCreatePaymentIntentRequest
 			require.NoError(t, json.Unmarshal(body, &payload))
 			createRequests = append(createRequests, payload)
-			_, _ = w.Write([]byte(`{"id":"int_123","client_secret":"secret_123","amount":12.34,"currency":"CNY","merchant_order_id":"sub2_order","status":"REQUIRES_PAYMENT_METHOD"}`))
+			_, _ = w.Write([]byte(`{"id":"int_123","client_secret":"secret_123","amount":12.34,"currency":"USD","merchant_order_id":"sub2_order","status":"REQUIRES_PAYMENT_METHOD"}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -88,14 +88,14 @@ func TestAirwallexCreatePaymentUsesServerAmountAndStableRequestID(t *testing.T) 
 	require.Equal(t, "int_123", resp.TradeNo)
 	require.Equal(t, "secret_123", resp.ClientSecret)
 	require.Equal(t, "int_123", resp.IntentID)
-	require.Equal(t, "CNY", resp.Currency)
+	require.Equal(t, "USD", resp.Currency)
 	require.Equal(t, "CN", resp.CountryCode)
 	require.Equal(t, "demo", resp.PaymentEnv)
 	require.Len(t, createRequests, 1)
 	require.Equal(t, "12.34", createRequests[0].Amount.StringFixed(2))
-	require.Equal(t, "CNY", createRequests[0].Currency)
+	require.Equal(t, "USD", createRequests[0].Currency)
 	require.Equal(t, "sub2_order", createRequests[0].MerchantOrderID)
-	require.Equal(t, airwallexDeterministicRequestID("payment-intent", "sub2_order", "12.34", "CNY"), createRequests[0].RequestID)
+	require.Equal(t, airwallexDeterministicRequestID("payment-intent", "sub2_order", "12.34", "USD"), createRequests[0].RequestID)
 }
 
 func TestAirwallexCreatePaymentUsesConfiguredCurrency(t *testing.T) {
@@ -153,7 +153,7 @@ func TestAirwallexRequestsUseConfiguredAccountID(t *testing.T) {
 		case "/api/v1/pa/payment_intents/create":
 			paRequestCount++
 			require.Equal(t, "acct_123", r.Header.Get("x-on-behalf-of"))
-			_, _ = w.Write([]byte(`{"id":"int_123","client_secret":"secret_123","amount":12.34,"currency":"CNY","merchant_order_id":"sub2_order","status":"REQUIRES_PAYMENT_METHOD"}`))
+			_, _ = w.Write([]byte(`{"id":"int_123","client_secret":"secret_123","amount":12.34,"currency":"USD","merchant_order_id":"sub2_order","status":"REQUIRES_PAYMENT_METHOD"}`))
 		case "/api/v1/pa/payment_intents/int_123":
 			paRequestCount++
 			require.Equal(t, "acct_123", r.Header.Get("x-on-behalf-of"))

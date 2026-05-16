@@ -33,3 +33,53 @@ export function formatOrderDateTime(dateStr: string): string {
   if (!dateStr) return '-'
   return new Date(dateStr).toLocaleString()
 }
+
+/**
+ * Map a currency code to its display symbol.
+ * Falls back to the code itself if unknown.
+ */
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  CNY: '¥',
+  USD: '$',
+  KRW: '₩',
+  VND: '₫',
+  EUR: '€',
+  GBP: '£',
+  JPY: '¥',
+}
+
+export function currencySymbol(currency?: string): string {
+  if (!currency) return '¥'
+  return CURRENCY_SYMBOLS[currency.toUpperCase()] || currency
+}
+
+/**
+ * Resolve the payment currency from an order object.
+ * Admin API returns `payment_currency` directly on the entity.
+ * User API returns `currency` (derived from PaymentOrderCurrency).
+ */
+export function orderPaymentCurrency(order: { payment_currency?: string; currency?: string }): string {
+  return order.payment_currency || order.currency || 'CNY'
+}
+
+/**
+ * Resolve the ledger currency from an order object.
+ */
+export function orderLedgerCurrency(order: { ledger_currency?: string }): string {
+  return order.ledger_currency || 'USD'
+}
+
+/**
+ * Format an amount with the correct currency symbol.
+ * For zero-decimal currencies (KRW, VND, JPY), show no decimals.
+ */
+const ZERO_DECIMAL_CURRENCIES = ['KRW', 'VND', 'JPY']
+
+export function formatCurrencyAmount(amount: number, currency?: string): string {
+  const cur = (currency || 'CNY').toUpperCase()
+  const symbol = currencySymbol(cur)
+  if (ZERO_DECIMAL_CURRENCIES.includes(cur)) {
+    return `${symbol}${Math.round(amount).toLocaleString()}`
+  }
+  return `${symbol}${amount.toFixed(2)}`
+}

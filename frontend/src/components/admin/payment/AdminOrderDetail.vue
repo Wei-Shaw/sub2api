@@ -11,6 +11,10 @@
           <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.orderId') }}</p>
           <p class="font-mono text-sm font-medium text-gray-900 dark:text-white">#{{ order.id }}</p>
         </div>
+        <div v-if="order.device_code">
+          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.colDeviceCode') }}</p>
+          <p class="font-mono text-sm font-medium text-gray-900 dark:text-white">{{ order.device_code }}</p>
+        </div>
         <div>
           <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.status') }}</p>
           <span :class="['badge', statusBadgeClass(order.status)]">
@@ -19,20 +23,19 @@
         </div>
         <div>
           <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.baseAmount') }}</p>
-          <p class="text-sm font-medium text-gray-900 dark:text-white">{{ paymentAmountSymbol }}{{ baseAmount.toFixed(2) }}</p>
+          <p class="text-sm font-medium text-gray-900 dark:text-white">{{ order ? formatCurrencyAmount(baseAmount, orderPaymentCurrency(order)) : '' }}</p>
         </div>
         <div v-if="order.fee_rate > 0">
           <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.fee') }} ({{ order.fee_rate }}%)</p>
-          <p class="text-sm font-medium text-gray-900 dark:text-white">{{ paymentAmountSymbol }}{{ feeAmount.toFixed(2) }}</p>
+          <p class="text-sm font-medium text-gray-900 dark:text-white">{{ formatCurrencyAmount(feeAmount, orderPaymentCurrency(order)) }}</p>
         </div>
         <div>
           <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.payAmount') }}</p>
-          <p class="text-sm font-medium text-gray-900 dark:text-white">{{ paymentAmountSymbol }}{{ order.pay_amount.toFixed(2) }}</p>
+          <p class="text-sm font-medium text-gray-900 dark:text-white">{{ formatCurrencyAmount(order.pay_amount, orderPaymentCurrency(order)) }}</p>
         </div>
         <div v-if="order.amount !== order.pay_amount">
           <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.creditedAmount') }}</p>
-          <p class="text-sm font-medium text-gray-900 dark:text-white">{{ creditedAmountSymbol }}{{ order.amount.toFixed(2) }}</p>
-        </div>
+          <p class="text-sm font-medium text-gray-900 dark:text-white">{{ formatCurrencyAmount(order.ledger_amount || order.amount, orderLedgerCurrency(order)) }}</p>        </div>
         <div>
           <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.paymentMethod') }}</p>
           <p class="text-sm text-gray-700 dark:text-gray-300">
@@ -77,8 +80,7 @@
         <div class="grid grid-cols-2 gap-2 text-sm">
           <div>
             <span class="text-red-600 dark:text-red-400">{{ t('payment.admin.refundAmount') }}:</span>
-            <span class="ml-1 font-medium text-red-700 dark:text-red-300">{{ creditedAmountSymbol }}{{ order.refund_amount.toFixed(2) }}</span>
-          </div>
+            <span class="ml-1 font-medium text-red-700 dark:text-red-300">{{ formatCurrencyAmount(order.refund_amount, orderLedgerCurrency(order)) }}</span>          </div>
           <div v-if="order.refund_reason" class="col-span-2">
             <span class="text-red-600 dark:text-red-400">{{ t('payment.admin.refundReason') }}:</span>
             <span class="ml-1 text-red-700 dark:text-red-300">{{ order.refund_reason }}</span>
@@ -118,9 +120,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import type { PaymentOrder } from '@/types/payment'
-import { statusBadgeClass, canRefund as canRefundStatus, formatOrderDateTime } from '@/components/payment/orderUtils'
-import { currencySymbol } from '@/components/payment/currency'
-
+import { statusBadgeClass, canRefund as canRefundStatus, formatOrderDateTime, formatCurrencyAmount, orderPaymentCurrency, orderLedgerCurrency } from '@/components/payment/orderUtils'
 const { t } = useI18n()
 
 const props = defineProps<{
@@ -128,9 +128,6 @@ const props = defineProps<{
   order: PaymentOrder | null
 }>()
 
-const creditedAmountSymbol = currencySymbol('USD')
-
-const paymentAmountSymbol = computed(() => currencySymbol(props.order?.currency))
 
 /** 充值金额 (base amount before fee) = pay_amount - fee = pay_amount / (1 + fee_rate/100) */
 const baseAmount = computed(() => {

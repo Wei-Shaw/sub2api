@@ -222,25 +222,6 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 	return order, nil
 }
 
-<<<<<<< HEAD
-=======
-func withBalancePackageProviderSnapshot(snapshot map[string]any, pkg BalanceRechargePackage) map[string]any {
-	if snapshot == nil {
-		snapshot = map[string]any{"schema_version": 2}
-	}
-	snapshot["balance_package"] = map[string]any{
-		"id":               pkg.ID,
-		"label":            pkg.Label,
-		"amount_ledger":    pkg.AmountLedger,
-		"actual_credits":   pkg.ActualCredits,
-		"credit_unit":      pkg.CreditUnit,
-		"balance_group_id": pkg.BalanceGroupID,
-		"group_id":         pkg.BalanceGroupID,
-	}
-	return snapshot
-}
-
->>>>>>> bbe3b3871 (fix: cleanup balance package schema - drop deprecated fields (#60))
 func (s *PaymentService) allocateOutTradeNo(ctx context.Context, tx *dbent.Tx) (string, error) {
 	const maxAttempts = 5
 	for attempt := 0; attempt < maxAttempts; attempt++ {
@@ -301,7 +282,7 @@ func buildPaymentOrderProviderSnapshot(sel *payment.InstanceSelection, req Creat
 		if merchantID := strings.TrimSpace(sel.Config["mchId"]); merchantID != "" {
 			snapshot["merchant_id"] = merchantID
 		}
-		snapshot["currency"] = payment.DefaultPaymentCurrency
+		snapshot["currency"] = "CNY" // WxPay always uses CNY
 	}
 	if providerKey == payment.TypeAlipay {
 		if merchantAppID := strings.TrimSpace(sel.Config["appId"]); merchantAppID != "" {

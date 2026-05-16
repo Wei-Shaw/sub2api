@@ -83,7 +83,7 @@
             <AmountText :value="row.order_amount" />
           </template>
           <template #cell-pay_amount="{ row }">
-            <span class="text-sm text-gray-900 dark:text-white">¥{{ formatAmount(row.pay_amount) }}</span>
+            <span class="text-sm text-gray-900 dark:text-white">{{ row.payment_currency ? formatCurrencyAmount(row.pay_amount, row.payment_currency) : '¥' + formatAmount(row.pay_amount) }}</span>
           </template>
           <template #cell-rebate_amount="{ row }">
             <AmountText :value="row.rebate_amount" strong />
@@ -165,6 +165,7 @@ import { affiliatesAPI, type AffiliateInviteRecord, type AffiliateRebateRecord, 
 import type { PaginatedResponse } from '@/types'
 import { extractI18nErrorMessage } from '@/utils/apiError'
 import { formatDateTime as formatDisplayDateTime } from '@/utils/format'
+import { formatCurrencyAmount } from '@/components/payment/orderUtils'
 
 type RecordType = 'invites' | 'rebates' | 'transfers'
 type AffiliateRecord = AffiliateInviteRecord | AffiliateRebateRecord | AffiliateTransferRecord

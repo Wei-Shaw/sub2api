@@ -58,13 +58,12 @@
 
       <template #cell-pay_amount="{ value, row }">
         <div class="text-sm">
-          <span class="font-medium text-gray-900 dark:text-white">{{ paymentAmountSymbol(row) }}{{ value.toFixed(2) }}</span>
+          <span class="font-medium text-gray-900 dark:text-white">{{ formatCurrencyAmount(value, orderPaymentCurrency(row)) }}</span>
           <span v-if="row.fee_rate > 0" class="ml-1 text-xs text-gray-400" :title="t('payment.orders.fee') + ': ' + row.fee_rate + '%'">
             ({{ row.fee_rate }}%)
           </span>
-          <div v-if="row.amount !== row.pay_amount" class="text-xs text-gray-500">
-            {{ t('payment.orders.creditedAmount') }}: {{ creditedAmountSymbol }}{{ row.amount.toFixed(2) }}
-          </div>
+          <div v-if="row.ledger_amount && row.ledger_amount !== row.pay_amount" class="text-xs text-gray-500">
+            {{ t('payment.orders.creditedAmount') }}: {{ formatCurrencyAmount(row.ledger_amount || row.amount, orderLedgerCurrency(row)) }}          </div>
         </div>
       </template>
 
@@ -147,9 +146,7 @@ import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
-import { statusBadgeClass, canRefund, formatOrderDateTime } from '@/components/payment/orderUtils'
-import { currencySymbol } from '@/components/payment/currency'
-
+import { statusBadgeClass, canRefund, formatOrderDateTime, formatCurrencyAmount, orderPaymentCurrency, orderLedgerCurrency } from '@/components/payment/orderUtils'
 const { t } = useI18n()
 
 defineProps<{
@@ -173,12 +170,6 @@ const emit = defineEmits<{
 
 const searchQuery = ref('')
 const filters = reactive({ status: '', payment_type: '', order_type: '' })
-const creditedAmountSymbol = currencySymbol('USD')
-
-function paymentAmountSymbol(order: PaymentOrder): string {
-  return currencySymbol(order.currency)
-}
-
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 function handleSearch() {
   if (debounceTimer) clearTimeout(debounceTimer)
@@ -197,7 +188,7 @@ function emitFiltersChanged() {
 const columns = computed<Column[]>(() => [
   { key: 'id', label: t('payment.orders.orderId') },
   { key: 'user_id', label: t('payment.orders.userId') },
-  { key: 'device_code', label: t('payment.orders.deviceCode') },
+  { key: 'device_code', label: t('payment.admin.colDeviceCode') },
   { key: 'pay_amount', label: t('payment.orders.payAmount') },
   { key: 'payment_type', label: t('payment.orders.paymentMethod') },
   { key: 'status', label: t('payment.orders.status') },
