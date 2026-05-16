@@ -1,8 +1,10 @@
 package service
 
-import "testing"
+import (
+	"testing"
 
-import "github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/require"
+)
 
 func TestNormalizeOpenAIMessagesDispatchModelConfig(t *testing.T) {
 	t.Parallel()

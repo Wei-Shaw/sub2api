@@ -1,8 +1,9 @@
 package service
 
 import (
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"time"
+
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
 // ChannelMonitorRequestTemplate 请求模板（service 层模型）。
