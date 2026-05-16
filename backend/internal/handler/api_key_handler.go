@@ -252,6 +252,29 @@ func (h *APIKeyHandler) Update(c *gin.Context) {
 	response.Success(c, dto.APIKeyFromService(key))
 }
 
+// Regenerate handles rotating a user-owned API key secret.
+// POST /api/v1/keys/:id/regenerate
+func (h *APIKeyHandler) Regenerate(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+
+	keyID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid key ID")
+		return
+	}
+
+	key, err := h.apiKeyService.RegenerateKey(c.Request.Context(), keyID, subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, dto.APIKeyFromService(key))
+}
+
 // Delete handles deleting an API key
 // DELETE /api/v1/api-keys/:id
 func (h *APIKeyHandler) Delete(c *gin.Context) {

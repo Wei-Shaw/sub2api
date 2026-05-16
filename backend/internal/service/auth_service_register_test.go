@@ -71,6 +71,11 @@ type defaultSubscriptionAssignerStub struct {
 	err   error
 }
 
+type defaultAPIKeyCreatorStub struct {
+	calls []CreateAPIKeyRequest
+	err   error
+}
+
 type refreshTokenCacheStub struct{}
 
 func (s *defaultSubscriptionAssignerStub) AssignOrExtendSubscription(_ context.Context, input *AssignSubscriptionInput) (*UserSubscription, bool, error) {
@@ -81,6 +86,14 @@ func (s *defaultSubscriptionAssignerStub) AssignOrExtendSubscription(_ context.C
 		return nil, false, s.err
 	}
 	return &UserSubscription{UserID: input.UserID, GroupID: input.GroupID}, false, nil
+}
+
+func (s *defaultAPIKeyCreatorStub) Create(_ context.Context, _ int64, req CreateAPIKeyRequest) (*APIKey, error) {
+	s.calls = append(s.calls, req)
+	if s.err != nil {
+		return nil, s.err
+	}
+	return &APIKey{Name: req.Name}, nil
 }
 
 func (s *refreshTokenCacheStub) StoreRefreshToken(context.Context, string, *RefreshTokenData, time.Duration) error {
@@ -390,6 +403,22 @@ func TestAuthService_Register_Success(t *testing.T) {
 	require.Equal(t, 2, user.Concurrency)
 	require.Len(t, repo.created, 1)
 	require.True(t, user.CheckPassword("password"))
+}
+
+func TestAuthService_Register_CreatesDefaultAPIKey(t *testing.T) {
+	repo := &userRepoStub{nextID: 5}
+	keyCreator := &defaultAPIKeyCreatorStub{}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled: "true",
+	}, nil)
+	service.SetDefaultAPIKeyCreator(keyCreator)
+
+	_, user, err := service.Register(context.Background(), "user@test.com", "password")
+	require.NoError(t, err)
+	require.Equal(t, int64(5), user.ID)
+	require.Len(t, keyCreator.calls, 1)
+	require.Equal(t, "Default Key", keyCreator.calls[0].Name)
+	require.Nil(t, keyCreator.calls[0].GroupID)
 }
 
 func TestAuthService_ValidateToken_ExpiredReturnsClaimsWithError(t *testing.T) {

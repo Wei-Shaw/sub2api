@@ -122,6 +122,16 @@ export async function deleteKey(id: number): Promise<{ message: string }> {
 }
 
 /**
+ * Regenerate API key secret
+ * @param id - API key ID
+ * @returns Updated API key with a new secret
+ */
+export async function regenerate(id: number): Promise<ApiKey> {
+  const { data } = await apiClient.post<ApiKey>(`/keys/${id}/regenerate`)
+  return data
+}
+
+/**
  * Toggle API key status (active/inactive)
  * @param id - API key ID
  * @param status - New status
@@ -137,6 +147,7 @@ export const keysAPI = {
   create,
   update,
   delete: deleteKey,
+  regenerate,
   toggleStatus
 }
 

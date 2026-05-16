@@ -1,3 +1,5 @@
+name: sub2api
+
 # =============================================================================
 # Sub2API Docker Compose - Local Directory Version
 # =============================================================================
@@ -151,6 +153,7 @@ services:
       # =======================================================================
       # Image Generation Stream & Concurrency
       # =======================================================================
+      - GATEWAY_CODEX_IMAGE_GENERATION_BRIDGE_ENABLED=${GATEWAY_CODEX_IMAGE_GENERATION_BRIDGE_ENABLED:-false}
       - GATEWAY_IMAGE_STREAM_DATA_INTERVAL_TIMEOUT=${GATEWAY_IMAGE_STREAM_DATA_INTERVAL_TIMEOUT:-900}
       - GATEWAY_IMAGE_STREAM_KEEPALIVE_INTERVAL=${GATEWAY_IMAGE_STREAM_KEEPALIVE_INTERVAL:-10}
       - GATEWAY_IMAGE_CONCURRENCY_ENABLED=${GATEWAY_IMAGE_CONCURRENCY_ENABLED:-false}

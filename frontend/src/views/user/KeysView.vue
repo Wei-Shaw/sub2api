@@ -11,12 +11,6 @@
               @search="onFilterChange"
             />
             <Select
-              :model-value="filterGroupId"
-              class="w-40"
-              :options="groupFilterOptions"
-              @update:model-value="onGroupFilterChange"
-            />
-            <Select
               :model-value="filterStatus"
               class="w-40"
               :options="statusFilterOptions"
@@ -41,7 +35,11 @@
         >
           <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
         </button>
-        <button @click="showCreateModal = true" class="btn btn-primary" data-tour="keys-create-btn">
+        <button
+          @click="showCreateModal = true"
+          class="btn btn-primary"
+          data-tour="keys-create-btn"
+        >
           <Icon name="plus" size="md" class="mr-2" />
           {{ t('keys.createKey') }}
         </button>
@@ -342,6 +340,14 @@
                 <Icon v-else name="checkCircle" size="sm" />
                 <span class="text-xs">{{ row.status === 'active' ? t('keys.disable') : t('keys.enable') }}</span>
               </button>
+              <!-- Regenerate Key Button -->
+              <button
+                @click="confirmRegenerateKey(row)"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20 dark:hover:text-blue-400"
+              >
+                <Icon name="refresh" size="sm" />
+                <span class="text-xs">{{ t('keys.regenerate') }}</span>
+              </button>
               <!-- Edit Button -->
               <button
                 @click="editKey(row)"
@@ -402,41 +408,6 @@
             :placeholder="t('keys.namePlaceholder')"
             data-tour="key-form-name"
           />
-        </div>
-
-        <div>
-          <label class="input-label">{{ t('keys.groupLabel') }}</label>
-          <Select
-            v-model="formData.group_id"
-            :options="groupOptions"
-            :placeholder="t('keys.selectGroup')"
-            :searchable="true"
-            :search-placeholder="t('keys.searchGroup')"
-            data-tour="key-form-group"
-          >
-            <template #selected="{ option }">
-              <GroupBadge
-                v-if="option"
-                :name="(option as unknown as GroupOption).label"
-                :platform="(option as unknown as GroupOption).platform"
-                :subscription-type="(option as unknown as GroupOption).subscriptionType"
-                :rate-multiplier="(option as unknown as GroupOption).rate"
-                :user-rate-multiplier="(option as unknown as GroupOption).userRate"
-              />
-              <span v-else class="text-gray-400">{{ t('keys.selectGroup') }}</span>
-            </template>
-            <template #option="{ option, selected }">
-              <GroupOptionItem
-                :name="(option as unknown as GroupOption).label"
-                :platform="(option as unknown as GroupOption).platform"
-                :subscription-type="(option as unknown as GroupOption).subscriptionType"
-                :rate-multiplier="(option as unknown as GroupOption).rate"
-                :user-rate-multiplier="(option as unknown as GroupOption).userRate"
-                :description="(option as unknown as GroupOption).description"
-                :selected="selected"
-              />
-            </template>
-          </Select>
         </div>
 
         <!-- Custom Key Section (only for create) -->
@@ -920,12 +891,24 @@
       @cancel="showResetRateLimitDialog = false"
     />
 
+    <!-- Regenerate Key Confirmation Dialog -->
+    <ConfirmDialog
+      :show="showRegenerateDialog"
+      :title="t('keys.regenerateKey')"
+      :message="t('keys.regenerateConfirmMessage', { name: selectedKey?.name })"
+      :confirm-text="t('keys.regenerate')"
+      :cancel-text="t('common.cancel')"
+      :danger="true"
+      @confirm="handleRegenerateKey"
+      @cancel="showRegenerateDialog = false"
+    />
+
     <!-- Use Key Modal -->
     <UseKeyModal
       :show="showUseKeyModal"
       :api-key="selectedKey?.key || ''"
       :base-url="publicSettings?.api_base_url || ''"
-      :platform="selectedKey?.group?.platform || null"
+      :platform="selectedKey?.group?.platform || 'openai'"
       :allow-messages-dispatch="selectedKey?.group?.allow_messages_dispatch || false"
       @close="closeUseKeyModal"
     />
@@ -1068,7 +1051,7 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 	import EndpointPopover from '@/components/keys/EndpointPopover.vue'
 	import GroupBadge from '@/components/common/GroupBadge.vue'
 	import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
-	import type { ApiKey, Group, PublicSettings, SubscriptionType, GroupPlatform } from '@/types'
+	import type { ApiKey, Group, PublicSettings } from '@/types'
 import type { Column } from '@/components/common/types'
 import type { BatchApiKeyUsageStats } from '@/api/usage'
 import { formatDateTime } from '@/utils/format'
@@ -1085,16 +1068,6 @@ const formatDateTimeLocal = (isoDate: string): string => {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
-interface GroupOption {
-  value: number
-  label: string
-  description: string | null
-  rate: number
-  userRate: number | null
-  subscriptionType: SubscriptionType
-  platform: GroupPlatform
-}
-
 const appStore = useAppStore()
 const onboardingStore = useOnboardingStore()
 const { copyToClipboard: clipboardCopy } = useClipboard()
@@ -1102,7 +1075,6 @@ const { copyToClipboard: clipboardCopy } = useClipboard()
 const columns = computed<Column[]>(() => [
   { key: 'name', label: t('common.name'), sortable: true },
   { key: 'key', label: t('keys.apiKey'), sortable: false },
-  { key: 'group', label: t('keys.group'), sortable: false },
   { key: 'usage', label: t('keys.usage'), sortable: false },
   { key: 'rate_limit', label: t('keys.rateLimitColumn'), sortable: false },
   { key: 'expires_at', label: t('keys.expiresAt'), sortable: true },
@@ -1142,6 +1114,7 @@ const showEditModal = ref(false)
 const showDeleteDialog = ref(false)
 const showResetQuotaDialog = ref(false)
 const showResetRateLimitDialog = ref(false)
+const showRegenerateDialog = ref(false)
 const showUseKeyModal = ref(false)
 const showCcsClientSelect = ref(false)
 const pendingCcsRow = ref<ApiKey | null>(null)
@@ -1211,13 +1184,6 @@ const statusOptions = computed(() => [
   { value: 'inactive', label: t('common.inactive') }
 ])
 
-// Filter dropdown options
-const groupFilterOptions = computed(() => [
-  { value: '', label: t('keys.allGroups') },
-  { value: 0, label: t('keys.noGroup') },
-  ...groups.value.map((g) => ({ value: g.id, label: g.name }))
-])
-
 const statusFilterOptions = computed(() => [
   { value: '', label: t('keys.allStatus') },
   { value: 'active', label: t('keys.status.active') },
@@ -1229,11 +1195,6 @@ const statusFilterOptions = computed(() => [
 const onFilterChange = () => {
   pagination.value.page = 1
   loadApiKeys()
-}
-
-const onGroupFilterChange = (value: string | number | boolean | null) => {
-  filterGroupId.value = value as string | number
-  onFilterChange()
 }
 
 const onStatusFilterChange = (value: string | number | boolean | null) => {
@@ -1426,6 +1387,11 @@ const toggleKeyStatus = async (key: ApiKey) => {
   }
 }
 
+const confirmRegenerateKey = (key: ApiKey) => {
+  selectedKey.value = key
+  showRegenerateDialog.value = true
+}
+
 const openGroupSelector = (key: ApiKey) => {
   if (groupSelectorKeyId.value === key.id) {
     groupSelectorKeyId.value = null
@@ -1486,12 +1452,6 @@ const confirmDelete = (key: ApiKey) => {
 }
 
 const handleSubmit = async () => {
-  // Validate group_id is required
-  if (formData.value.group_id === null) {
-    appStore.showError(t('keys.groupRequired'))
-    return
-  }
-
   // Validate custom key if enabled
   if (!showEditModal.value && formData.value.use_custom_key) {
     if (!formData.value.custom_key) {
@@ -1544,7 +1504,6 @@ const handleSubmit = async () => {
     if (showEditModal.value && selectedKey.value) {
       await keysAPI.update(selectedKey.value.id, {
         name: formData.value.name,
-        group_id: formData.value.group_id,
         status: formData.value.status,
         ip_whitelist: ipWhitelist,
         ip_blacklist: ipBlacklist,
@@ -1600,6 +1559,21 @@ const handleDelete = async () => {
   } catch (error: any) {
     // 优先使用后端返回的错误消息，提供更具体的错误信息给用户
     const errorMsg = error?.message || t('keys.failedToDelete')
+    appStore.showError(errorMsg)
+  }
+}
+
+const handleRegenerateKey = async () => {
+  if (!selectedKey.value) return
+
+  try {
+    const regenerated = await keysAPI.regenerate(selectedKey.value.id)
+    appStore.showSuccess(t('keys.regenerateSuccess'))
+    showRegenerateDialog.value = false
+    await loadApiKeys()
+    await copyToClipboard(regenerated.key, regenerated.id)
+  } catch (error: any) {
+    const errorMsg = error?.response?.data?.detail || t('keys.regenerateFailed')
     appStore.showError(errorMsg)
   }
 }

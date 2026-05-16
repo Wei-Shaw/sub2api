@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -716,6 +717,73 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 	}
 
 	return apiKey, nil
+}
+
+// RegenerateKey replaces the secret for a user-owned API key while preserving
+// its metadata, usage counters, status, and runtime routing behavior.
+func (s *APIKeyService) RegenerateKey(ctx context.Context, id int64, userID int64) (*APIKey, error) {
+	apiKey, err := s.apiKeyRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("get api key: %w", err)
+	}
+	if apiKey.UserID != userID {
+		return nil, ErrInsufficientPerms
+	}
+
+	oldKey := apiKey.Key
+	for i := 0; i < 5; i++ {
+		newKey, err := s.GenerateKey()
+		if err != nil {
+			return nil, fmt.Errorf("generate key: %w", err)
+		}
+		exists, err := s.apiKeyRepo.ExistsByKey(ctx, newKey)
+		if err != nil {
+			return nil, fmt.Errorf("check key exists: %w", err)
+		}
+		if exists {
+			continue
+		}
+		apiKey.Key = newKey
+		if err := s.apiKeyRepo.Update(ctx, apiKey); err != nil {
+			return nil, fmt.Errorf("update api key: %w", err)
+		}
+		s.InvalidateAuthCacheByKey(ctx, oldKey)
+		s.InvalidateAuthCacheByKey(ctx, newKey)
+		s.compileAPIKeyIPRules(apiKey)
+		return apiKey, nil
+	}
+
+	return nil, ErrAPIKeyExists
+}
+
+// ResolveDefaultStandardGroup returns the first usable standard group for a user.
+// It is used by unbound API keys when the user has balance but no active
+// subscription entitlement.
+func (s *APIKeyService) ResolveDefaultStandardGroup(ctx context.Context, userID int64) (*Group, error) {
+	if s == nil || s.userRepo == nil || s.groupRepo == nil {
+		return nil, nil
+	}
+	groups, err := s.GetAvailableGroups(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	standardGroups := make([]Group, 0, len(groups))
+	for _, group := range groups {
+		if group.IsActive() && !group.IsSubscriptionType() {
+			standardGroups = append(standardGroups, group)
+		}
+	}
+	if len(standardGroups) == 0 {
+		return nil, nil
+	}
+	sort.SliceStable(standardGroups, func(i, j int) bool {
+		if standardGroups[i].SortOrder != standardGroups[j].SortOrder {
+			return standardGroups[i].SortOrder < standardGroups[j].SortOrder
+		}
+		return standardGroups[i].ID < standardGroups[j].ID
+	})
+	selected := standardGroups[0]
+	return &selected, nil
 }
 
 // EnforceIPLock applies the automatic single-IP lock for managed/internal keys.

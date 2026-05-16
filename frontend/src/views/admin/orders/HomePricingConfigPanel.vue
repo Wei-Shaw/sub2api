@@ -180,7 +180,7 @@ function createDefaultConfig(): HomePricingConfig {
     external_purchase_url: 'https://pay.ldxp.cn/shop/E8WHWMVD',
     cta_mode: 'external',
     eyebrow: localized('定价', 'Pricing'),
-    title: localized('先选择套餐，再进入控制台开始使用。', 'Choose a plan, then start from the console.'),
+    title: localized('先选择套餐，注册登录后开始使用。', 'Choose a plan, then sign in to start.'),
     description: localized('token 数量为营销估算，实际消耗会随模型、输入输出长度和工具行为变化。', 'Token counts are marketing estimates. Actual usage varies by model, input/output length, and tool behavior.'),
     subscription_group: {
       title: localized('订阅套餐', 'Subscription Plans'),

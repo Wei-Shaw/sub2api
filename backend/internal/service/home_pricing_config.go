@@ -124,8 +124,8 @@ func defaultHomePricingConfig() *HomePricingConfig {
 		CTAMode:             HomePricingCTAModeExternal,
 		Eyebrow:             HomePricingLocalizedText{Zh: "定价", En: "Pricing"},
 		Title: HomePricingLocalizedText{
-			Zh: "先选择套餐，再进入控制台开始使用。",
-			En: "Choose a plan, then start from the console.",
+			Zh: "先选择套餐，注册登录后开始使用。",
+			En: "Choose a plan, then sign in to start.",
 		},
 		Description: HomePricingLocalizedText{
 			Zh: "token 数量为营销估算，实际消耗会随模型、输入输出长度和工具行为变化。",

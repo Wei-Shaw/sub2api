@@ -54,7 +54,7 @@
             </a>
             <router-link
               v-if="!isInternalHome"
-              to="/dashboard"
+              :to="publicEntryRoute"
               class="nav-button"
             >
               {{ pageCopy.navAction }}
@@ -89,7 +89,7 @@
           <div class="mt-9 flex flex-wrap gap-3">
             <router-link
               v-if="!isInternalHome"
-              to="/dashboard"
+              :to="publicEntryRoute"
               class="primary-action"
             >
               {{ pageCopy.primaryAction }}
@@ -441,6 +441,7 @@ const contactQrSrc = '/wechat-contact-qr.png'
 const isInternalHome = computed(() => route.name === 'InternalHome')
 const isZh = computed(() => locale.value.toLowerCase().startsWith('zh'))
 const homePath = computed(() => isInternalHome.value ? '/internal-home' : '/home')
+const publicEntryRoute = '/login?redirect=/dashboard'
 
 const siteName = computed(() => {
   const configured = appStore.cachedPublicSettings?.site_name || appStore.siteName
@@ -616,7 +617,7 @@ const publicZhCopy = computed(() => ({
   brand: siteName.value,
   subtitle: 'AI 工具用户的一站式工作台',
   docsLabel: '文档',
-  navAction: '进入控制台',
+  navAction: '注册 / 登录',
   navAnchor: '#pricing',
   navAnchorLabel: '定价',
   contactNavLabel: '微信咨询',
@@ -625,7 +626,7 @@ const publicZhCopy = computed(() => ({
   titleHighlight: '一站式工作台。',
   description:
     '把稳定模型接入、Agents Hub、额度套餐和控制台管理放在同一个入口里。适合需要长期使用 AI 工具、Agent prompt 和多模型 API 的个人与团队。',
-  primaryAction: '进入控制台',
+  primaryAction: '开始使用',
   secondaryAction: '查看定价',
   secondaryHref: '#pricing',
   secondaryExternal: false,
@@ -668,7 +669,7 @@ const publicZhCopy = computed(() => ({
     },
   ] satisfies HomeCard[],
   pricingEyebrow: '定价',
-  pricingTitle: '先选择套餐，再进入控制台开始使用。',
+  pricingTitle: '先选择套餐，注册登录后开始使用。',
   pricingDescription: 'token 数量为营销估算，实际消耗会随模型、输入输出长度和工具行为变化。',
   pricingGroups: [
     {
@@ -765,11 +766,11 @@ const publicZhCopy = computed(() => ({
   managedDescription: '',
   managedOffers: [] satisfies ManagedOffer[],
   workflowEyebrow: '使用流程',
-  workflowTitle: '购买后回到控制台，完成 Key 和 Agent 工作流配置。',
-  workflowDescription: '主页只负责说明与转化，实际 Key、用量和调用都在控制台完成。',
+  workflowTitle: '购买后注册登录，完成 Key 和 Agent 工作流配置。',
+  workflowDescription: '主页负责说明与购买入口，实际 Key、用量和调用都在登录后的控制台完成。',
   workflow: [
     { title: '购买套餐', description: '根据使用频率选择日卡、月卡或额度套餐。' },
-    { title: '进入控制台', description: '登录后创建 API Key，并查看账户状态。' },
+    { title: '注册 / 登录', description: '进入账号后创建 API Key，并查看套餐、额度和账户状态。' },
     { title: '配置工具', description: '在 AI 工具中填写 Base URL、Key 和模型名。' },
     { title: '使用 Agents', description: '从 Agents Hub 复制模板，放入自己的开发或内容工作流。' },
   ] satisfies WorkflowStep[],
@@ -786,7 +787,7 @@ const publicZhCopy = computed(() => ({
     },
     {
       question: '购买后在哪里使用？',
-      answer: '购买后进入控制台创建 API Key，再按文档把工具指向对应 Base URL。',
+      answer: '购买后注册或登录账号，在控制台创建 API Key，再按文档把工具指向对应 Base URL。',
     },
     {
       question: 'Agents Hub 是什么？',
@@ -799,7 +800,7 @@ const publicEnCopy = computed(() => ({
   brand: siteName.value,
   subtitle: 'AI workspace for tool users',
   docsLabel: 'Docs',
-  navAction: 'Enter console',
+  navAction: 'Sign up / Sign in',
   navAnchor: '#pricing',
   navAnchorLabel: 'Pricing',
   contactNavLabel: 'WeChat',
@@ -808,7 +809,7 @@ const publicEnCopy = computed(() => ({
   titleHighlight: 'AI tool users.',
   description:
     'Bring stable model access, Agents Hub, credit packages, and console management into one entry point for people who rely on AI tools, agent prompts, and multi-model APIs every day.',
-  primaryAction: 'Enter console',
+  primaryAction: 'Start using',
   secondaryAction: 'View pricing',
   secondaryHref: '#pricing',
   secondaryExternal: false,
@@ -851,7 +852,7 @@ const publicEnCopy = computed(() => ({
     },
   ] satisfies HomeCard[],
   pricingEyebrow: 'Pricing',
-  pricingTitle: 'Choose a plan, then start from the console.',
+  pricingTitle: 'Choose a plan, then sign in to start.',
   pricingDescription: 'Token counts are marketing estimates. Actual usage varies by model, input/output length, and tool behavior.',
   pricingGroups: [
     {
@@ -948,11 +949,11 @@ const publicEnCopy = computed(() => ({
   managedDescription: '',
   managedOffers: [] satisfies ManagedOffer[],
   workflowEyebrow: 'Workflow',
-  workflowTitle: 'After purchase, return to the console for keys and agents.',
-  workflowDescription: 'The homepage explains the offer. Keys, usage, and calls stay inside the console.',
+  workflowTitle: 'After purchase, sign in for keys and agents.',
+  workflowDescription: 'The homepage explains the offer. Keys, usage, and calls stay inside the signed-in console.',
   workflow: [
     { title: 'Buy a package', description: 'Choose a subscription or credit package based on usage frequency.' },
-    { title: 'Enter console', description: 'Sign in, create an API key, and inspect account status.' },
+    { title: 'Sign up / Sign in', description: 'Create an API key and inspect plan, credit, and account status.' },
     { title: 'Configure tools', description: 'Set Base URL, API key, and model name in compatible AI tools.' },
     { title: 'Use agents', description: 'Copy agent templates from Agents Hub into development or content workflows.' },
   ] satisfies WorkflowStep[],
@@ -969,7 +970,7 @@ const publicEnCopy = computed(() => ({
     },
     {
       question: 'Where do I use it after purchase?',
-      answer: 'Enter the console, create an API key, then follow the docs to configure the matching Base URL.',
+      answer: 'Sign up or sign in, create an API key in the console, then follow the docs to configure the matching Base URL.',
     },
     {
       question: 'What is Agents Hub?',

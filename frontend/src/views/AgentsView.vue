@@ -86,18 +86,27 @@
 
       <section class="controls-band border-y border-slate-200/75 bg-white/72">
         <div class="mx-auto max-w-7xl px-5 py-5">
-          <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+          <div class="controls-panel">
             <label class="search-box">
-              <span class="search-icon" aria-hidden="true">/</span>
+              <span class="search-icon" aria-hidden="true"></span>
               <input
                 v-model="query"
                 type="search"
                 :placeholder="copy.searchPlaceholder"
-                class="min-w-0 flex-1 bg-transparent text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-400"
+                class="search-input"
               />
+              <button
+                v-if="query"
+                type="button"
+                class="search-clear"
+                :aria-label="copy.clearSearch"
+                @click="query = ''"
+              >
+                ×
+              </button>
             </label>
 
-            <div class="flex flex-wrap gap-2">
+            <div class="division-filter" :aria-label="copy.filterLabel">
               <button
                 type="button"
                 class="filter-chip"
@@ -446,6 +455,8 @@ const zhCopy = {
   agentCount: 'Agents',
   divisionCount: '分类',
   searchPlaceholder: '搜索 Agent 名称、能力、分类或 vibe',
+  clearSearch: '清空搜索',
+  filterLabel: 'Agent 分类筛选',
   allDivisions: '全部',
   emptyTitle: '没有找到匹配的 Agent',
   emptyDescription: '换一个关键词，或者清空分类筛选后再看一次。',
@@ -471,6 +482,8 @@ const enCopy = {
   agentCount: 'Agents',
   divisionCount: 'Divisions',
   searchPlaceholder: 'Search name, capability, division, or vibe',
+  clearSearch: 'Clear search',
+  filterLabel: 'Agent division filters',
   allDivisions: 'All',
   emptyTitle: 'No agents found',
   emptyDescription: 'Try another keyword, or clear the active division filter.',
@@ -639,20 +652,39 @@ const enCopy = {
   backdrop-filter: blur(14px);
 }
 
+.controls-panel {
+  display: grid;
+  gap: 0.85rem;
+}
+
 .search-box {
   display: flex;
-  min-height: 3rem;
+  width: 100%;
+  min-height: 3.25rem;
   min-width: 0;
   align-items: center;
-  gap: 0.8rem;
-  border: 1px solid rgba(148, 163, 184, 0.36);
+  gap: 0.75rem;
+  border: 1px solid rgba(0, 111, 214, 0.2);
   border-radius: 0.5rem;
-  background: rgba(255, 255, 255, 0.86);
-  padding: 0 1rem;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+  background: rgba(255, 255, 255, 0.92);
+  padding: 0 0.75rem;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    background-color 0.16s ease;
+}
+
+.search-box:focus-within {
+  border-color: rgba(0, 111, 214, 0.56);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow:
+    0 0 0 3px rgba(0, 160, 255, 0.12),
+    0 14px 30px rgba(15, 23, 42, 0.06);
 }
 
 .search-icon {
+  position: relative;
   display: inline-flex;
   width: 1.5rem;
   height: 1.5rem;
@@ -661,14 +693,90 @@ const enCopy = {
   justify-content: center;
   border-radius: 0.375rem;
   background: #e8f6ff;
-  color: #006fd6;
-  font-size: 0.85rem;
-  font-weight: 900;
+}
+
+.search-icon::before {
+  width: 0.6rem;
+  height: 0.6rem;
+  border: 2px solid #006fd6;
+  border-radius: 999px;
+  content: '';
+}
+
+.search-icon::after {
+  position: absolute;
+  width: 0.42rem;
+  height: 2px;
+  border-radius: 999px;
+  background: #006fd6;
+  content: '';
+  transform: translate(0.42rem, 0.42rem) rotate(45deg);
+}
+
+.search-input {
+  min-width: 0;
+  flex: 1;
+  background: transparent;
+  color: #0f172a;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.5;
+  outline: none;
+}
+
+.search-input::placeholder {
+  color: #94a3b8;
+  font-weight: 650;
+}
+
+.search-input::-webkit-search-cancel-button,
+.search-input::-webkit-search-decoration {
+  display: none;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.search-clear {
+  display: inline-flex;
+  width: 1.75rem;
+  height: 1.75rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.375rem;
+  color: #64748b;
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1;
+  transition:
+    background-color 0.16s ease,
+    color 0.16s ease;
+}
+
+.search-clear:hover {
+  background: #eef6ff;
+  color: #005db8;
+}
+
+.division-filter {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding-bottom: 0.1rem;
+  scrollbar-width: thin;
+}
+
+@media (min-width: 768px) {
+  .division-filter {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
 }
 
 .filter-chip {
   display: inline-flex;
   min-height: 2.25rem;
+  flex: 0 0 auto;
   align-items: center;
   gap: 0.45rem;
   border: 1px solid rgba(148, 163, 184, 0.35);
@@ -678,6 +786,7 @@ const enCopy = {
   color: #475569;
   font-size: 0.78rem;
   font-weight: 800;
+  white-space: nowrap;
   transition:
     border-color 0.16s ease,
     background-color 0.16s ease,

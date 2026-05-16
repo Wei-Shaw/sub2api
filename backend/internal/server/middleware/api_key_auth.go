@@ -134,9 +134,17 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		skipBilling := c.Request.URL.Path == "/v1/usage"
 
 		var subscription *service.UserSubscription
+		if apiKey.Group == nil || apiKey.GroupID == nil {
+			resolvedSub, resolveErr := resolveUnboundAPIKeyEntitlement(c.Request.Context(), apiKeyService, subscriptionService, apiKey)
+			if resolveErr != nil {
+				AbortWithError(c, 500, "INTERNAL_ERROR", "Failed to resolve API key entitlement")
+				return
+			}
+			subscription = resolvedSub
+		}
 		isSubscriptionType := apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
 
-		if isSubscriptionType && subscriptionService != nil {
+		if isSubscriptionType && subscription == nil && subscriptionService != nil {
 			sub, subErr := subscriptionService.GetActiveSubscription(
 				c.Request.Context(),
 				apiKey.User.ID,
@@ -253,4 +261,38 @@ func setGroupContext(c *gin.Context, group *service.Group) {
 	}
 	ctx := context.WithValue(c.Request.Context(), ctxkey.Group, group)
 	c.Request = c.Request.WithContext(ctx)
+}
+
+func resolveUnboundAPIKeyEntitlement(ctx context.Context, apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, apiKey *service.APIKey) (*service.UserSubscription, error) {
+	if apiKey == nil || apiKey.User == nil {
+		return nil, nil
+	}
+
+	if subscriptionService != nil {
+		sub, group, err := subscriptionService.ResolveAutomaticSubscription(ctx, apiKey.User.ID)
+		if err != nil {
+			return nil, err
+		}
+		if sub != nil && group != nil {
+			groupID := group.ID
+			apiKey.GroupID = &groupID
+			apiKey.Group = group
+			sub.Group = group
+			return sub, nil
+		}
+	}
+
+	if apiKeyService != nil {
+		group, err := apiKeyService.ResolveDefaultStandardGroup(ctx, apiKey.User.ID)
+		if err != nil {
+			return nil, err
+		}
+		if group != nil {
+			groupID := group.ID
+			apiKey.GroupID = &groupID
+			apiKey.Group = group
+		}
+	}
+
+	return nil, nil
 }

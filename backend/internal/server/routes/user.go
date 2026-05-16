@@ -60,6 +60,7 @@ func RegisterUserRoutes(
 			keys.GET("/:id", h.APIKey.GetByID)
 			keys.POST("", h.APIKey.Create)
 			keys.PUT("/:id", h.APIKey.Update)
+			keys.POST("/:id/regenerate", h.APIKey.Regenerate)
 			keys.DELETE("/:id", h.APIKey.Delete)
 		}
 

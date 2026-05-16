@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand/v2"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -619,6 +620,71 @@ func (s *SubscriptionService) ListActiveUserSubscriptions(ctx context.Context, u
 	}
 	normalizeExpiredWindows(subs)
 	return subs, nil
+}
+
+// ResolveAutomaticSubscription selects the best currently usable subscription for
+// an unbound user API key. Earlier expiry wins so short-lived grants are consumed
+// before longer subscriptions.
+func (s *SubscriptionService) ResolveAutomaticSubscription(ctx context.Context, userID int64) (*UserSubscription, *Group, error) {
+	if s == nil {
+		return nil, nil, nil
+	}
+	subs, err := s.ListActiveUserSubscriptions(ctx, userID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	type candidate struct {
+		sub   UserSubscription
+		group *Group
+	}
+	candidates := make([]candidate, 0, len(subs))
+	for i := range subs {
+		sub := subs[i]
+		group := sub.Group
+		if group == nil {
+			if s.groupRepo == nil {
+				continue
+			}
+			loaded, err := s.groupRepo.GetByID(ctx, sub.GroupID)
+			if err != nil {
+				continue
+			}
+			group = loaded
+			sub.Group = loaded
+		}
+		if group == nil || !group.IsActive() || !group.IsSubscriptionType() {
+			continue
+		}
+		checkCopy := sub
+		needsMaintenance, err := s.ValidateAndCheckLimits(&checkCopy, group)
+		if err != nil {
+			continue
+		}
+		if needsMaintenance {
+			maintenanceCopy := checkCopy
+			s.DoWindowMaintenance(&maintenanceCopy)
+		}
+		candidates = append(candidates, candidate{sub: checkCopy, group: group})
+	}
+	if len(candidates) == 0 {
+		return nil, nil, nil
+	}
+
+	sort.SliceStable(candidates, func(i, j int) bool {
+		left, right := candidates[i], candidates[j]
+		if !left.sub.ExpiresAt.Equal(right.sub.ExpiresAt) {
+			return left.sub.ExpiresAt.Before(right.sub.ExpiresAt)
+		}
+		if left.group.SortOrder != right.group.SortOrder {
+			return left.group.SortOrder < right.group.SortOrder
+		}
+		return left.group.ID < right.group.ID
+	})
+
+	selected := candidates[0]
+	selected.sub.Group = selected.group
+	return &selected.sub, selected.group, nil
 }
 
 // ListGroupSubscriptions 获取分组的所有订阅
