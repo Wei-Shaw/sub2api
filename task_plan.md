@@ -1,60 +1,47 @@
-# Task Plan: Codebase Explanation Document
+# Task Plan: Backend Billing Logic Documentation
 
 ## Goal
-Produce a concise code explanation document for second-stage development, covering frontend/backend structure and the core logic for key management, account pool, and per-session cost calculation.
+Produce an accurate Chinese document that explains the complete backend billing logic, including request billing, subscriptions, user balance deduction, recharge/payment fulfillment, refunds, redeem/admin adjustments, and a sequence diagram.
 
 ## Current Phase
-Phase 5
+Complete
 
 ## Phases
 
-### Phase 1: Requirements & Discovery
-- [x] Capture user requirements
-- [x] Identify project structure and documentation conventions
-- [x] Document initial findings in findings.md
+### Phase 1: Requirements & Source Discovery
+- [x] Identify billing-related schemas, repositories, services, handlers, and existing docs
+- [x] Record source-backed findings
 - **Status:** complete
 
-### Phase 2: Backend Code Analysis
-- [x] Map backend modules, routing, services, persistence, and pricing logic
-- [x] Trace key management logic
-- [x] Trace account pool logic
-- [x] Trace per-session cost calculation logic
+### Phase 2: Trace Runtime Request Billing
+- [x] Trace auth-time billing block checks
+- [x] Trace cost calculation and multiplier logic
+- [x] Trace transactional usage apply and cache behavior
 - **Status:** complete
 
-### Phase 3: Frontend Code Analysis
-- [x] Map frontend routes, stores, API client, and relevant management screens
-- [x] Connect frontend operations to backend APIs
+### Phase 3: Trace Recharge & Subscription Fulfillment
+- [x] Trace payment order creation, webhook, fulfillment, expiry, refund
+- [x] Trace redeem code and admin balance/subscription adjustments
 - **Status:** complete
 
 ### Phase 4: Write Documentation
-- [x] Create a code explanation document in docs/
-- [x] Include code references and development notes
+- [x] Create a Chinese document under docs/
+- [x] Include an accurate Mermaid sequence diagram
+- [x] Include source references and edge cases
 - **Status:** complete
 
 ### Phase 5: Verification & Delivery
-- [x] Review the document against source code
-- [x] Report files changed and any uncertainty
+- [x] Re-check document against source files
+- [x] Report modified files and verification result
 - **Status:** complete
-
-## Key Questions
-1. How are API keys created, stored, validated, listed, updated, and revoked?
-2. How is the account pool represented, selected, refreshed, disabled, and recovered?
-3. How is each session or request cost calculated, persisted, and exposed?
-4. Which frontend pages/stores call these backend capabilities?
 
 ## Decisions Made
 | Decision | Rationale |
 |----------|-----------|
-| Write a standalone document under docs/ | Existing project already uses docs/ for operational and integration documentation. |
+| Use Mermaid sequence diagram inside Markdown | Existing docs are Markdown; Mermaid is easy to review and maintain. |
+| Focus on backend implementation, not frontend UX | User explicitly asked for backend billing logic. |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |
 |-------|---------|------------|
-| `python` command not found while running session-catchup | 1 | Re-ran the script with `python3`; no catch-up output was produced. |
-| `sed backend/internal/service/account_pool_mode.go` file not found | 1 | Located account scheduling logic in `gateway_service.go`, `scheduler_snapshot_service.go`, and `account_repo.go`. |
-| `sed backend/internal/service/admin_service_apikey.go` file not found | 1 | Located admin API key handler in `backend/internal/handler/admin/apikey_handler.go`; service methods are in admin service files. |
-
-## Notes
-- User wants a code explanation document for second-stage development.
-- Core logic that must be covered: key management, account pool, per-session cost calculation.
-- Verification confirmed the document includes the requested key sections. `docs/*` is ignored by `.gitignore`, so the new document exists locally but does not appear in normal `git status`.
+| planning session catch-up script missing in `.cc-switch` skill path | 1 | Continued with local source discovery and replaced old planning files for this task. |

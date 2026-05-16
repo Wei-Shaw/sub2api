@@ -14,6 +14,16 @@ export interface UserAvailableGroup {
   subscription_type: string
   /** 分组默认倍率。用户专属倍率（若有）通过 /groups/rates 获取后在前端 join。 */
   rate_multiplier: number
+  /** true 时图片计费使用 image_rate_multiplier，而不是普通分组倍率。 */
+  image_rate_independent?: boolean
+  /** 图片独立倍率；仅 image_rate_independent=true 时生效。 */
+  image_rate_multiplier?: number
+  /** 分组图片 1K 基础价格。 */
+  image_price_1k?: number | null
+  /** 分组图片 2K 基础价格。 */
+  image_price_2k?: number | null
+  /** 分组图片 4K 基础价格。 */
+  image_price_4k?: number | null
   /** true = 专属分组（小范围授权）；false = 公开分组。 */
   is_exclusive: boolean
 }

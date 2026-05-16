@@ -17,6 +17,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func availableFloat64Ptr(v float64) *float64 { return &v }
+
 func TestUserAvailableChannel_Unauthenticated401(t *testing.T) {
 	// 没有 AuthSubject 注入时，handler 应返回 401 且不触达 service 依赖。
 	gin.SetMode(gin.TestMode)
@@ -122,9 +124,18 @@ func TestUserAvailableChannel_FieldWhitelist(t *testing.T) {
 		Description: "d",
 		Platforms: []userChannelPlatformSection{
 			{
-				Platform:        "anthropic",
-				BaseURL:         "https://api.anthropic.com",
-				Groups:          []userAvailableGroup{{ID: 1, Name: "g1", Platform: "anthropic"}},
+				Platform: "anthropic",
+				BaseURL:  "https://api.anthropic.com",
+				Groups: []userAvailableGroup{{
+					ID:                   1,
+					Name:                 "g1",
+					Platform:             "anthropic",
+					ImageRateIndependent: true,
+					ImageRateMultiplier:  0.25,
+					ImagePrice1K:         availableFloat64Ptr(0.04),
+					ImagePrice2K:         availableFloat64Ptr(0.08),
+					ImagePrice4K:         availableFloat64Ptr(0.16),
+				}},
 				SupportedModels: []userSupportedModel{},
 			},
 		},
@@ -159,10 +170,13 @@ func TestUserAvailableChannel_FieldWhitelist(t *testing.T) {
 	require.NoError(t, err)
 	var groupDecoded map[string]any
 	require.NoError(t, json.Unmarshal(rawGroup, &groupDecoded))
-	for _, key := range []string{"id", "name", "platform", "subscription_type", "rate_multiplier", "is_exclusive"} {
+	for _, key := range []string{"id", "name", "platform", "subscription_type", "rate_multiplier", "image_rate_independent", "image_rate_multiplier", "image_price_1k", "image_price_2k", "image_price_4k", "is_exclusive"} {
 		_, exists := groupDecoded[key]
 		require.Truef(t, exists, "group DTO must expose %q", key)
 	}
+	require.InDelta(t, 0.04, groupDecoded["image_price_1k"], 1e-12)
+	require.InDelta(t, 0.08, groupDecoded["image_price_2k"], 1e-12)
+	require.InDelta(t, 0.16, groupDecoded["image_price_4k"], 1e-12)
 
 	// pricing interval 白名单：不应暴露 id / sort_order。
 	pricing := toUserPricing(&service.ChannelModelPricing{
