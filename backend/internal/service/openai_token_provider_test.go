@@ -930,3 +930,34 @@ REDACTED
 	require.GreaterOrEqual(t, metrics.LockAcquireFailure, int64(1))
 	require.GreaterOrEqual(t, metrics.RefreshRequests, int64(1))
 REDACTED
+
+func TestOpenAITokenProvider_NoRefreshTokenExpired_DisablesAccount(t *testing.T) {
+	cache := newOpenAITokenCacheStub()
+	repo := &rateLimitAccountRepoStub{REDACTED
+
+	expiresAt := time.Now().Add(-time.Minute).UTC().Format(time.RFC3339)
+	account := &Account{
+		ID:       2881,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+REDACTED
+			"access_token": "expired-access-token",
+			"expires_at":   expiresAt,
+	REDACTED,
+REDACTED
+
+	cacheKey := OpenAITokenCacheKey(account)
+	cache.tokens[cacheKey] = "stale-cached-token"
+	// Force the provider past the cache hit branch.
+	cache.getErr = errors.New("simulated cache miss")
+
+	provider := NewOpenAITokenProvider(repo, cache, nil)
+
+	token, err := provider.GetAccessToken(context.Background(), account)
+REDACTED
+	require.Empty(t, token)
+	require.Contains(t, err.Error(), "refresh_token is missing")
+
+	require.Equal(t, 1, repo.setErrorCalls, "account should be disabled via SetError exactly once")
+	require.Contains(t, repo.lastErrorMsg, "refresh_token is missing")
+REDACTED
