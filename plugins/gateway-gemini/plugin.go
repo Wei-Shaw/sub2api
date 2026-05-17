@@ -1,13 +1,19 @@
 package main
 
 import (
+	"embed"
+	"io/fs"
 	"log/slog"
+	"path"
 	"sync/atomic"
 
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 	"google.golang.org/grpc"
 )
+
+//go:embed all:frontend/dist
+var frontendAssets embed.FS
 
 const pluginVersion = "0.1.0"
 
@@ -74,9 +80,21 @@ func (p *GeminiGatewayPlugin) logger() *slog.Logger {
 	return slog.Default()
 }
 
+// OpenFrontendFile implements pluginsdk.FrontendBundleProvider so the
+// core can fetch frontend assets over gRPC.
+func (p *GeminiGatewayPlugin) OpenFrontendFile(rel string) ([]byte, error) {
+	clean := path.Clean("/" + rel)
+	if clean == "/" || clean == "/." {
+		return nil, fs.ErrInvalid
+	}
+	clean = clean[1:] // strip leading "/"
+	return frontendAssets.ReadFile("frontend/" + clean)
+}
+
 // compile-time interface assertions
 var (
-	_ pluginsdk.Plugin               = (*GeminiGatewayPlugin)(nil)
-	_ pluginsdk.GRPCServiceRegistrar = (*GeminiGatewayPlugin)(nil)
+	_ pluginsdk.Plugin                = (*GeminiGatewayPlugin)(nil)
+	_ pluginsdk.GRPCServiceRegistrar  = (*GeminiGatewayPlugin)(nil)
+	_ pluginsdk.FrontendBundleProvider = (*GeminiGatewayPlugin)(nil)
 )
 

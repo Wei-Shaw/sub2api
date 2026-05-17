@@ -1,13 +1,24 @@
 package main
 
 import (
+	"embed"
+	"io/fs"
 	"log/slog"
+	"path"
 	"sync/atomic"
 
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 	"google.golang.org/grpc"
 )
+
+// frontendAssets embeds the compiled frontend bundle (entry.js + entry.css).
+// Build with `pnpm --filter @sub2api/plugin-gateway-anthropic build` before
+// compiling; otherwise only the .keep placeholder is embedded and
+// OpenFrontendFile will return fs.ErrNotExist at runtime.
+//
+//go:embed all:frontend/dist
+var frontendAssets embed.FS
 
 const pluginVersion = "0.1.0"
 
@@ -57,6 +68,21 @@ func (p *AnthropicGatewayPlugin) RegisterGRPCServices(server *grpc.Server) {
 	pb.RegisterGatewayProviderExtensionServer(server, p.gatewayProviderServer)
 }
 
+// OpenFrontendFile implements pluginsdk.FrontendBundleProvider so the core can
+// fetch frontend assets (entry.js / entry.css / source maps) over gRPC.
+//
+// rel comes from manifest.Frontend.EntryJS / EntryCSS or the host
+// /api/v1/plugin-assets HTTP handler. The caller already validates against
+// path traversal; this method does minimal sanitisation as a safety net.
+func (p *AnthropicGatewayPlugin) OpenFrontendFile(rel string) ([]byte, error) {
+	clean := path.Clean("/" + rel)
+	if clean == "/" || clean == "/." {
+		return nil, fs.ErrInvalid
+	}
+	clean = clean[1:] // strip leading "/"
+	return frontendAssets.ReadFile("frontend/" + clean)
+}
+
 // context returns the live PluginContext or nil if Init has not run yet.
 func (p *AnthropicGatewayPlugin) context() pluginsdk.PluginContext {
 	c := p.ctx.Load()
@@ -76,7 +102,8 @@ func (p *AnthropicGatewayPlugin) logger() *slog.Logger {
 
 // compile-time interface assertions
 var (
-	_ pluginsdk.Plugin               = (*AnthropicGatewayPlugin)(nil)
-	_ pluginsdk.GRPCServiceRegistrar = (*AnthropicGatewayPlugin)(nil)
+	_ pluginsdk.Plugin                = (*AnthropicGatewayPlugin)(nil)
+	_ pluginsdk.GRPCServiceRegistrar  = (*AnthropicGatewayPlugin)(nil)
+	_ pluginsdk.FrontendBundleProvider = (*AnthropicGatewayPlugin)(nil)
 )
 

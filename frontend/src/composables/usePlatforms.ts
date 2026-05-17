@@ -4,10 +4,17 @@ import { listPlatforms, type PlatformDeclaration } from '@/api/admin/platforms'
 const platforms = ref<PlatformDeclaration[]>([])
 const loaded = ref(false)
 const loading = ref(false)
+let inflightPromise: Promise<void> | null = null
 
 export function usePlatforms() {
   async function fetchPlatforms() {
-    if (loaded.value || loading.value) return
+    if (loaded.value) return
+    if (inflightPromise) return inflightPromise
+    inflightPromise = doFetch()
+    return inflightPromise
+  }
+
+  async function doFetch() {
     loading.value = true
     try {
       platforms.value = await listPlatforms()
@@ -16,12 +23,13 @@ export function usePlatforms() {
       // Platforms API may not be available if plugins are disabled
     } finally {
       loading.value = false
+      inflightPromise = null
     }
   }
 
   async function refreshPlatforms() {
     loaded.value = false
-    loading.value = false
+    inflightPromise = null
     await fetchPlatforms()
   }
 

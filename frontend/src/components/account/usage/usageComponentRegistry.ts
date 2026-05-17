@@ -6,8 +6,8 @@
  *   2. null -- caller falls back to KeyAccountStats or generic display
  *
  * External interface: resolveUsageComponent(platform, accountType) returns
- * Component | null. Returns null synchronously when no plugin is available
- * for the platform, otherwise wraps in defineAsyncComponent.
+ * Component | null. Returns null when platforms haven't loaded yet or no plugin
+ * is available, otherwise wraps in defineAsyncComponent.
  */
 import { defineAsyncComponent, type Component } from 'vue'
 import { usePlatforms } from '@/composables/usePlatforms'
@@ -17,12 +17,17 @@ import { loadPluginEntry } from '@/plugins/loader-runtime'
 /**
  * Resolve the usage display component for a platform:accountType pair.
  *
- * Returns defineAsyncComponent-wrapped Component, or null if no plugin
- * is available for this platform (caller should use generic fallback).
+ * Returns defineAsyncComponent-wrapped Component, or null if platform data
+ * is not yet loaded or no plugin is available. Callers use the null return
+ * for conditional rendering (hasUsageComponent, quotaInfoComponent).
  */
 export function resolveUsageComponent(platform: string, accountType: string): Component | null {
-  // Quick synchronous bail-out: no plugin for this platform → null
-  const { getPlatformDecl } = usePlatforms()
+  const { getPlatformDecl, loaded } = usePlatforms()
+
+  // When platforms aren't loaded yet, return null (callers fall back).
+  // Once platforms load, the parent's reactive dependencies recompute.
+  if (!loaded.value) return null
+
   const decl = getPlatformDecl(platform)
   if (!decl?.plugin_name) return null
 
@@ -42,9 +47,6 @@ async function resolveComponent(
     return { default: pluginComponent }
   }
 
-  // No custom component found in plugin -- return a no-op stub.
-  // This path is only reached if the plugin loaded but didn't register
-  // a component for this specific platform:accountType combination.
   const { defineComponent, h } = await import('vue')
   return {
     default: defineComponent({

@@ -1,13 +1,19 @@
 package main
 
 import (
+	"embed"
+	"io/fs"
 	"log/slog"
+	"path"
 	"sync/atomic"
 
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 	"google.golang.org/grpc"
 )
+
+//go:embed all:frontend/dist
+var frontendAssets embed.FS
 
 const pluginVersion = "0.1.0"
 
@@ -75,9 +81,21 @@ func (p *AntigravityGatewayPlugin) logger() *slog.Logger {
 	return slog.Default()
 }
 
+// OpenFrontendFile implements pluginsdk.FrontendBundleProvider so the core can
+// fetch frontend assets (entry.js / entry.css) over gRPC.
+func (p *AntigravityGatewayPlugin) OpenFrontendFile(rel string) ([]byte, error) {
+	clean := path.Clean("/" + rel)
+	if clean == "/" || clean == "/." {
+		return nil, fs.ErrInvalid
+	}
+	clean = clean[1:]
+	return frontendAssets.ReadFile("frontend/" + clean)
+}
+
 // compile-time interface assertions
 var (
-	_ pluginsdk.Plugin               = (*AntigravityGatewayPlugin)(nil)
-	_ pluginsdk.GRPCServiceRegistrar = (*AntigravityGatewayPlugin)(nil)
+	_ pluginsdk.Plugin                = (*AntigravityGatewayPlugin)(nil)
+	_ pluginsdk.GRPCServiceRegistrar  = (*AntigravityGatewayPlugin)(nil)
+	_ pluginsdk.FrontendBundleProvider = (*AntigravityGatewayPlugin)(nil)
 )
 

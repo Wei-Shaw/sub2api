@@ -19,6 +19,10 @@ func buildManifest() *pluginsdk.Manifest {
 		Capabilities: []string{
 			pluginsdk.CapabilityHTTPRegisterGateway,
 		},
+		Frontend: &pluginsdk.FrontendManifest{
+			EntryJS:  "dist/entry.js",
+			EntryCSS: "dist/entry.css",
+		},
 		Platforms: []pluginsdk.PlatformDecl{
 			{
 				Platform:    "gemini",

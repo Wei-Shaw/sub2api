@@ -59,7 +59,11 @@ async function resolveFormComponent(
  * Returns null on any step failure, letting caller fall through to next tier.
  */
 async function resolveFromPlugin(platform: string): Promise<Component | null> {
-  const { getPlatformDecl } = usePlatforms()
+  const { getPlatformDecl, fetchPlatforms } = usePlatforms()
+
+  // Ensure platform data is loaded before looking up plugin_name
+  await fetchPlatforms()
+
   const decl = getPlatformDecl(platform)
   if (!decl?.plugin_name) {
     return null

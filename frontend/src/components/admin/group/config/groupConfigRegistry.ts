@@ -49,7 +49,10 @@ async function resolveConfigComponent(
  * Symmetric with platformFormRegistry's resolveFromPlugin.
  */
 async function resolveFromPlugin(platform: string): Promise<Component | null> {
-  const { getPlatformDecl } = usePlatforms()
+  const { getPlatformDecl, fetchPlatforms } = usePlatforms()
+
+  await fetchPlatforms()
+
   const decl = getPlatformDecl(platform)
   if (!decl?.plugin_name) {
     return null

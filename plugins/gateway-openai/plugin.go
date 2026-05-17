@@ -1,13 +1,19 @@
 package main
 
 import (
+	"embed"
+	"io/fs"
 	"log/slog"
+	"path"
 	"sync/atomic"
 
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 	"google.golang.org/grpc"
 )
+
+//go:embed all:frontend/dist
+var frontendAssets embed.FS
 
 const pluginVersion = "0.1.0"
 
@@ -74,8 +80,20 @@ func (p *OpenAIGatewayPlugin) logger() *slog.Logger {
 	return slog.Default()
 }
 
+// OpenFrontendFile implements pluginsdk.FrontendBundleProvider so the core can
+// fetch frontend assets (entry.js / entry.css / source maps) over gRPC.
+func (p *OpenAIGatewayPlugin) OpenFrontendFile(rel string) ([]byte, error) {
+	clean := path.Clean("/" + rel)
+	if clean == "/" || clean == "/." {
+		return nil, fs.ErrInvalid
+	}
+	clean = clean[1:] // strip leading "/"
+	return frontendAssets.ReadFile("frontend/" + clean)
+}
+
 // compile-time interface assertions
 var (
-	_ pluginsdk.Plugin               = (*OpenAIGatewayPlugin)(nil)
-	_ pluginsdk.GRPCServiceRegistrar = (*OpenAIGatewayPlugin)(nil)
+	_ pluginsdk.Plugin                = (*OpenAIGatewayPlugin)(nil)
+	_ pluginsdk.GRPCServiceRegistrar  = (*OpenAIGatewayPlugin)(nil)
+	_ pluginsdk.FrontendBundleProvider = (*OpenAIGatewayPlugin)(nil)
 )
