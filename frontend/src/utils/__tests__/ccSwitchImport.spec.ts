@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   OPENAI_CC_SWITCH_CODEX_MODEL,
   buildCcSwitchImportDeeplink
-} from '@/utils/ccswitchImport'
+} from '@/utils/ccSwitchImport'
 import type { GroupPlatform } from '@/types'
 
 function paramsFromDeeplink(deeplink: string): URLSearchParams {
