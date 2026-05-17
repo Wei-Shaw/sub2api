@@ -5,17 +5,17 @@
  */
 import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { BodyOverrideMode, Provider } from '../../api/admin/channelMonitor'
+import type { BodyOverrideMode, Provider } from '../api/admin/channelMonitor'
 import {
   channelMonitorTemplateAPI,
   type ChannelMonitorTemplate,
-} from '../../api/admin/channelMonitorTemplate'
+} from '../api/admin/channelMonitorTemplate'
 import {
   PROVIDER_ANTHROPIC,
   PROVIDER_OPENAI,
   PROVIDER_GEMINI,
-} from '../../utils/channelMonitorConstants'
-import { getSdk } from '../../api/sdk'
+} from '../utils/channelMonitorConstants'
+import { getSdk } from '../api/sdk'
 import { extractApiErrorMessage } from '@sub2api/plugin-sdk'
 
 interface TemplateForm {

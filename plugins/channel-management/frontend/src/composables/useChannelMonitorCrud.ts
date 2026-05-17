@@ -11,10 +11,10 @@ import {
   type CheckResult,
   type ListParams,
   type Provider,
-} from '../../api/admin/channelMonitor'
-import { getSdk } from '../../api/sdk'
+} from '../api/admin/channelMonitor'
+import { getSdk } from '../api/sdk'
 import { extractApiErrorMessage } from '@sub2api/plugin-sdk'
-import { loadPageSize, savePageSize } from '../../utils/pageSize'
+import { loadPageSize, savePageSize } from '../utils/pageSize'
 
 const PAGE_SIZE_SCOPE = 'channelMonitor'
 

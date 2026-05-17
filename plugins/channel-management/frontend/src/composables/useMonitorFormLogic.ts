@@ -12,9 +12,9 @@ import {
   type CreateParams,
   type Provider,
   type UpdateParams,
-} from '../../api/admin/channelMonitor'
-import { DEFAULT_INTERVAL_SECONDS } from '../../utils/channelMonitorConstants'
-import { getSdk } from '../../api/sdk'
+} from '../api/admin/channelMonitor'
+import { DEFAULT_INTERVAL_SECONDS } from '../utils/channelMonitorConstants'
+import { getSdk } from '../api/sdk'
 import { extractApiErrorMessage } from '@sub2api/plugin-sdk'
 
 export interface MonitorFormState {
