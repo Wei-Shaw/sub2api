@@ -11,6 +11,8 @@ import (
 	"sync"
 
 	kiropkg "github.com/Wei-Shaw/sub2api/internal/pkg/kiro"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"go.uber.org/zap"
 )
 
 const kiroMaxWebSearchIterations = 5
@@ -382,7 +384,10 @@ func (s *GatewayService) doKiroMCPJSONRequest(ctx context.Context, account *Acco
 			if failoverErr := asKiroCooldownFailoverError(err); failoverErr != nil {
 				return nil, currentToken, failoverErr
 			}
-			return nil, currentToken, err
+			logger.L().Warn("kiro web search cooldown reserve failed; proceeding without cooldown gating",
+				zap.Int64("account_id", account.ID),
+				zap.String("error", err.Error()),
+			)
 		}
 
 		req, err := newKiroJSONRequest(ctx, endpoint, payload, currentToken, accountKey, buildKiroMachineID(account), "", account)
@@ -403,7 +408,10 @@ func (s *GatewayService) doKiroMCPJSONRequest(ctx context.Context, account *Acco
 			}
 			if resp.StatusCode == http.StatusForbidden && isKiroSuspendedBody(respBody) {
 				if _, err := s.markKiroSuspended(ctx, accountKey); err != nil {
-					return nil, currentToken, err
+					logger.L().Warn("kiro web search cooldown suspended mark failed; preserving upstream forbidden response",
+						zap.Int64("account_id", account.ID),
+						zap.String("error", err.Error()),
+					)
 				}
 				resp.Body = io.NopCloser(strings.NewReader(string(respBody)))
 				return resp, currentToken, nil
@@ -431,8 +439,10 @@ func (s *GatewayService) doKiroMCPJSONRequest(ctx context.Context, account *Acco
 
 		if resp.StatusCode == http.StatusTooManyRequests {
 			if _, err := s.markKiro429(ctx, accountKey); err != nil {
-				_ = resp.Body.Close()
-				return nil, currentToken, err
+				logger.L().Warn("kiro web search cooldown mark429 failed; preserving upstream 429 response",
+					zap.Int64("account_id", account.ID),
+					zap.String("error", err.Error()),
+				)
 			}
 		}
 		if resp.StatusCode == http.StatusRequestTimeout || resp.StatusCode >= 500 {
@@ -446,8 +456,10 @@ func (s *GatewayService) doKiroMCPJSONRequest(ctx context.Context, account *Acco
 		}
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 			if err := s.markKiroSuccess(ctx, accountKey); err != nil {
-				_ = resp.Body.Close()
-				return nil, currentToken, err
+				logger.L().Warn("kiro web search cooldown success mark failed; preserving upstream success response",
+					zap.Int64("account_id", account.ID),
+					zap.String("error", err.Error()),
+				)
 			}
 		}
 

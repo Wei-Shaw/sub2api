@@ -36,7 +36,7 @@ func asKiroCooldownFailoverError(err error) *UpstreamFailoverError {
 
 func (s *GatewayService) checkAndWaitKiroCooldown(ctx context.Context, tokenKey string) error {
 	if s == nil || s.kiroCooldownStore == nil {
-		return errKiroCooldownStoreUnavailable
+		return nil
 	}
 	waitFor, err := s.kiroCooldownStore.ReserveRequest(ctx, tokenKey)
 	if err != nil {

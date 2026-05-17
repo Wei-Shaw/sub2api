@@ -322,13 +322,6 @@ func (s *GatewayService) openKiroAnthropicStreamResponse(ctx context.Context, ac
 
 func (s *GatewayService) executeKiroUpstream(ctx context.Context, account *Account, anthropicBody []byte, mappedModel, requestModel, token string, headers http.Header) (*http.Response, kiropkg.KiroRequestContext, error) {
 	var requestCtx kiropkg.KiroRequestContext
-	if err := s.checkAndWaitKiroCooldown(ctx, buildKiroAccountKey(account)); err != nil {
-		if failoverErr := asKiroCooldownFailoverError(err); failoverErr != nil {
-			return nil, requestCtx, failoverErr
-		}
-		return nil, requestCtx, err
-	}
-
 	modelID := kiropkg.MapModel(mappedModel)
 	currentToken := token
 	buildResult, err := buildKiroPayloadForAccountWithRepo(ctx, s.accountRepo, account, anthropicBody, modelID, currentToken, requestModel, headers)
@@ -346,6 +339,16 @@ func (s *GatewayService) executeKiroUpstream(ctx context.Context, account *Accou
 
 	for idx, endpoint := range endpoints {
 		for attempt := 0; attempt <= maxRetries; attempt++ {
+			if err := s.checkAndWaitKiroCooldown(ctx, accountKey); err != nil {
+				if failoverErr := asKiroCooldownFailoverError(err); failoverErr != nil {
+					return nil, requestCtx, failoverErr
+				}
+				logger.L().Warn("kiro cooldown reserve failed; proceeding without cooldown gating",
+					zap.Int64("account_id", account.ID),
+					zap.String("error", err.Error()),
+				)
+			}
+
 			req, err := newKiroJSONRequest(ctx, endpoint.URL, payload, currentToken, accountKey, buildKiroMachineID(account), endpoint.AmzTarget, account)
 			if err != nil {
 				return nil, requestCtx, err
@@ -365,8 +368,10 @@ func (s *GatewayService) executeKiroUpstream(ctx context.Context, account *Accou
 			if resp.StatusCode == http.StatusTooManyRequests {
 				cooldown, err := s.markKiro429(ctx, accountKey)
 				if err != nil {
-					_ = resp.Body.Close()
-					return nil, requestCtx, err
+					logger.L().Warn("kiro cooldown mark429 failed; preserving upstream 429 response",
+						zap.Int64("account_id", account.ID),
+						zap.String("error", err.Error()),
+					)
 				}
 				if idx+1 < len(endpoints) {
 					_ = resp.Body.Close()
@@ -423,7 +428,10 @@ func (s *GatewayService) executeKiroUpstream(ctx context.Context, account *Accou
 
 				if resp.StatusCode == http.StatusForbidden && isKiroSuspendedBody(respBody) {
 					if _, err := s.markKiroSuspended(ctx, accountKey); err != nil {
-						return nil, requestCtx, err
+						logger.L().Warn("kiro cooldown suspended mark failed; preserving upstream forbidden response",
+							zap.Int64("account_id", account.ID),
+							zap.String("error", err.Error()),
+						)
 					}
 					resetHTTPResponseBody(resp, respBody)
 					return resp, requestCtx, nil
@@ -473,8 +481,10 @@ func (s *GatewayService) executeKiroUpstream(ctx context.Context, account *Accou
 
 			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 				if err := s.markKiroSuccess(ctx, accountKey); err != nil {
-					_ = resp.Body.Close()
-					return nil, requestCtx, err
+					logger.L().Warn("kiro cooldown success mark failed; preserving upstream success response",
+						zap.Int64("account_id", account.ID),
+						zap.String("error", err.Error()),
+					)
 				}
 			}
 			return resp, requestCtx, nil
