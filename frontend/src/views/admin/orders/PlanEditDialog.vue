@@ -64,6 +64,18 @@
         <textarea v-model="planFeaturesText" rows="3" class="input" :placeholder="t('payment.admin.featuresPlaceholder')"></textarea>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.featuresHint') }}</p>
       </div>
+      <!-- Currency Price Overrides -->
+      <div>
+        <label class="input-label">Currency Price Overrides</label>
+        <p class="mb-2 text-xs text-gray-500 dark:text-gray-400">Set custom payment amounts per currency. Leave empty to use auto FX conversion.</p>
+        <div v-for="(entry, idx) in currencyOverrideEntries" :key="idx" class="mb-2 flex items-center gap-2">
+          <input v-model="entry.currency" type="text" maxlength="3" placeholder="USD" class="input w-20 uppercase" />
+          <input v-model.number="entry.amount" type="number" step="0.01" min="0" placeholder="Amount" class="input flex-1" />
+          <button type="button" @click="removeCurrencyOverride(idx)" class="text-red-500 hover:text-red-700">&times;</button>
+        </div>
+        <button type="button" @click="addCurrencyOverride" class="text-xs text-primary-500 hover:text-primary-700">+ Add currency override</button>
+      </div>
+
       <div class="flex items-center gap-3">
         <label class="text-sm text-gray-700 dark:text-gray-300">{{ t('payment.admin.forSale') }}</label>
         <button
@@ -124,6 +136,31 @@ const appStore = useAppStore()
 const saving = ref(false)
 const planForm = reactive({ name: '', group_id: null as number | null, description: '', price: 0, original_price: 0, currency: '', validity_days: 30, validity_unit: 'days', sort_order: 0, for_sale: true })
 const planFeaturesText = ref('')
+const currencyOverrideEntries = ref<{ currency: string; amount: number | null }[]>([])
+
+function addCurrencyOverride() {
+  currencyOverrideEntries.value.push({ currency: '', amount: null })
+}
+function removeCurrencyOverride(idx: number) {
+  currencyOverrideEntries.value.splice(idx, 1)
+}
+function buildCurrencyOverridesMap(): Record<string, number> {
+  const map: Record<string, number> = {}
+  for (const entry of currencyOverrideEntries.value) {
+    const code = entry.currency.trim().toUpperCase()
+    if (code.length === 3 && entry.amount && entry.amount > 0) {
+      map[code] = entry.amount
+    }
+  }
+  return map
+}
+function loadCurrencyOverrideEntries(overrides?: Record<string, number>) {
+  if (!overrides || Object.keys(overrides).length === 0) {
+    currencyOverrideEntries.value = []
+    return
+  }
+  currencyOverrideEntries.value = Object.entries(overrides).map(([currency, amount]) => ({ currency, amount }))
+}
 
 const validityUnitOptions = computed(() => [
   { value: 'days', label: t('payment.admin.days') },
@@ -177,15 +214,18 @@ watch(() => props.show, (visible) => {
   if (props.plan) {
     Object.assign(planForm, { name: props.plan.name, group_id: props.plan.group_id, description: props.plan.description, price: props.plan.price, original_price: props.plan.original_price || 0, currency: props.plan.currency || '', validity_days: props.plan.validity_days, validity_unit: props.plan.validity_unit || 'days', sort_order: props.plan.sort_order || 0, for_sale: props.plan.for_sale })
     planFeaturesText.value = (props.plan.features || []).join('\n')
+    loadCurrencyOverrideEntries(props.plan.currency_overrides)
   } else {
     Object.assign(planForm, { name: '', group_id: null, description: '', price: 0, original_price: 0, currency: '', validity_days: 30, validity_unit: 'days', sort_order: 0, for_sale: true })
     planFeaturesText.value = ''
+    currencyOverrideEntries.value = []
   }
 })
 
 /** Build request payload with snake_case keys matching backend JSON tags */
 function buildPlanPayload() {
   const features = planFeaturesText.value.split('\n').map(f => f.trim()).filter(Boolean).join('\n')
+  const currency_overrides = buildCurrencyOverridesMap()
   return {
     name: planForm.name,
     group_id: planForm.group_id,
@@ -198,6 +238,7 @@ function buildPlanPayload() {
     sort_order: planForm.sort_order,
     for_sale: planForm.for_sale,
     features,
+    currency_overrides,
   }
 }
 

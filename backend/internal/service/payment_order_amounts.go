@@ -38,9 +38,22 @@ func computeCreateOrderAmounts(req CreateOrderRequest, cfg *PaymentConfig, plan 
 
 	if plan != nil {
 		ledgerAmount := roundLedgerAmountForCredit(plan.Price, snapshot.LedgerCurrency)
-		paymentAmount, err := convertLedgerToPayment(ledgerAmount, snapshot)
-		if err != nil {
-			return createOrderAmounts{}, err
+		var paymentAmount float64
+		if override, ok := resolveCurrencyOverride(plan.CurrencyOverrides, snapshot.PaymentCurrency); ok {
+			paymentAmount = override
+		} else if strings.EqualFold(snapshot.PaymentCurrency, "CNY") {
+			rate := normalizeSubscriptionUSDToCNYRate(cfg.SubscriptionUSDToCNYRate)
+			if rate > 0 {
+				paymentAmount = roundPaymentAmountForCollection(ledgerAmount*rate, snapshot.PaymentCurrency)
+			} else {
+				paymentAmount = roundPaymentAmountForCollection(ledgerAmount, snapshot.PaymentCurrency)
+			}
+		} else {
+			var err2 error
+			paymentAmount, err2 = convertLedgerToPayment(ledgerAmount, snapshot)
+			if err2 != nil {
+				return createOrderAmounts{}, err2
+			}
 		}
 		return createOrderAmounts{
 			LedgerAmount:      ledgerAmount,
@@ -56,9 +69,15 @@ func computeCreateOrderAmounts(req CreateOrderRequest, cfg *PaymentConfig, plan 
 			return createOrderAmounts{}, infraerrors.BadRequest("BALANCE_PACKAGE_NOT_FOUND", "balance package not found or not available")
 		}
 		ledgerBaseAmount := roundLedgerAmountForCredit(pkg.AmountLedger, snapshot.LedgerCurrency)
-		paymentAmount, err := convertLedgerToPayment(ledgerBaseAmount, snapshot)
-		if err != nil {
-			return createOrderAmounts{}, err
+		var paymentAmount float64
+		if override, ok := resolveCurrencyOverride(pkg.CurrencyOverrides, snapshot.PaymentCurrency); ok {
+			paymentAmount = override
+		} else {
+			var err2 error
+			paymentAmount, err2 = convertLedgerToPayment(ledgerBaseAmount, snapshot)
+			if err2 != nil {
+				return createOrderAmounts{}, err2
+			}
 		}
 		return createOrderAmounts{
 			LedgerAmount:      roundLedgerAmountForCredit(pkg.AmountLedger, snapshot.LedgerCurrency),

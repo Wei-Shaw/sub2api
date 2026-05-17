@@ -202,6 +202,18 @@ func (_u *SubscriptionPlanUpdate) SetNillableProductName(v *string) *Subscriptio
 	return _u
 }
 
+// SetCurrencyOverrides sets the "currency_overrides" field.
+func (_u *SubscriptionPlanUpdate) SetCurrencyOverrides(v map[string]float64) *SubscriptionPlanUpdate {
+	_u.mutation.SetCurrencyOverrides(v)
+	return _u
+}
+
+// ClearCurrencyOverrides clears the value of the "currency_overrides" field.
+func (_u *SubscriptionPlanUpdate) ClearCurrencyOverrides() *SubscriptionPlanUpdate {
+	_u.mutation.ClearCurrencyOverrides()
+	return _u
+}
+
 // SetForSale sets the "for_sale" field.
 func (_u *SubscriptionPlanUpdate) SetForSale(v bool) *SubscriptionPlanUpdate {
 	_u.mutation.SetForSale(v)
@@ -365,6 +377,12 @@ func (_u *SubscriptionPlanUpdate) sqlSave(ctx context.Context) (_node int, err e
 	}
 	if value, ok := _u.mutation.ProductName(); ok {
 		_spec.SetField(subscriptionplan.FieldProductName, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.CurrencyOverrides(); ok {
+		_spec.SetField(subscriptionplan.FieldCurrencyOverrides, field.TypeJSON, value)
+	}
+	if _u.mutation.CurrencyOverridesCleared() {
+		_spec.ClearField(subscriptionplan.FieldCurrencyOverrides, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.ForSale(); ok {
 		_spec.SetField(subscriptionplan.FieldForSale, field.TypeBool, value)
@@ -572,6 +590,18 @@ func (_u *SubscriptionPlanUpdateOne) SetNillableProductName(v *string) *Subscrip
 	return _u
 }
 
+// SetCurrencyOverrides sets the "currency_overrides" field.
+func (_u *SubscriptionPlanUpdateOne) SetCurrencyOverrides(v map[string]float64) *SubscriptionPlanUpdateOne {
+	_u.mutation.SetCurrencyOverrides(v)
+	return _u
+}
+
+// ClearCurrencyOverrides clears the value of the "currency_overrides" field.
+func (_u *SubscriptionPlanUpdateOne) ClearCurrencyOverrides() *SubscriptionPlanUpdateOne {
+	_u.mutation.ClearCurrencyOverrides()
+	return _u
+}
+
 // SetForSale sets the "for_sale" field.
 func (_u *SubscriptionPlanUpdateOne) SetForSale(v bool) *SubscriptionPlanUpdateOne {
 	_u.mutation.SetForSale(v)
@@ -765,6 +795,12 @@ func (_u *SubscriptionPlanUpdateOne) sqlSave(ctx context.Context) (_node *Subscr
 	}
 	if value, ok := _u.mutation.ProductName(); ok {
 		_spec.SetField(subscriptionplan.FieldProductName, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.CurrencyOverrides(); ok {
+		_spec.SetField(subscriptionplan.FieldCurrencyOverrides, field.TypeJSON, value)
+	}
+	if _u.mutation.CurrencyOverridesCleared() {
+		_spec.ClearField(subscriptionplan.FieldCurrencyOverrides, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.ForSale(); ok {
 		_spec.SetField(subscriptionplan.FieldForSale, field.TypeBool, value)

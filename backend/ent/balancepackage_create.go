@@ -96,6 +96,12 @@ func (_c *BalancePackageCreate) SetNillableGroupID(v *int64) *BalancePackageCrea
 	return _c
 }
 
+// SetCurrencyOverrides sets the "currency_overrides" field.
+func (_c *BalancePackageCreate) SetCurrencyOverrides(v map[string]float64) *BalancePackageCreate {
+	_c.mutation.SetCurrencyOverrides(v)
+	return _c
+}
+
 // SetBadge sets the "badge" field.
 func (_c *BalancePackageCreate) SetBadge(v string) *BalancePackageCreate {
 	_c.mutation.SetBadge(v)
@@ -366,6 +372,10 @@ func (_c *BalancePackageCreate) createSpec() (*BalancePackage, *sqlgraph.CreateS
 		_spec.SetField(balancepackage.FieldGroupID, field.TypeInt64, value)
 		_node.GroupID = &value
 	}
+	if value, ok := _c.mutation.CurrencyOverrides(); ok {
+		_spec.SetField(balancepackage.FieldCurrencyOverrides, field.TypeJSON, value)
+		_node.CurrencyOverrides = value
+	}
 	if value, ok := _c.mutation.Badge(); ok {
 		_spec.SetField(balancepackage.FieldBadge, field.TypeString, value)
 		_node.Badge = value
@@ -547,6 +557,24 @@ func (u *BalancePackageUpsert) AddGroupID(v int64) *BalancePackageUpsert {
 // ClearGroupID clears the value of the "group_id" field.
 func (u *BalancePackageUpsert) ClearGroupID() *BalancePackageUpsert {
 	u.SetNull(balancepackage.FieldGroupID)
+	return u
+}
+
+// SetCurrencyOverrides sets the "currency_overrides" field.
+func (u *BalancePackageUpsert) SetCurrencyOverrides(v map[string]float64) *BalancePackageUpsert {
+	u.Set(balancepackage.FieldCurrencyOverrides, v)
+	return u
+}
+
+// UpdateCurrencyOverrides sets the "currency_overrides" field to the value that was provided on create.
+func (u *BalancePackageUpsert) UpdateCurrencyOverrides() *BalancePackageUpsert {
+	u.SetExcluded(balancepackage.FieldCurrencyOverrides)
+	return u
+}
+
+// ClearCurrencyOverrides clears the value of the "currency_overrides" field.
+func (u *BalancePackageUpsert) ClearCurrencyOverrides() *BalancePackageUpsert {
+	u.SetNull(balancepackage.FieldCurrencyOverrides)
 	return u
 }
 
@@ -784,6 +812,27 @@ func (u *BalancePackageUpsertOne) UpdateGroupID() *BalancePackageUpsertOne {
 func (u *BalancePackageUpsertOne) ClearGroupID() *BalancePackageUpsertOne {
 	return u.Update(func(s *BalancePackageUpsert) {
 		s.ClearGroupID()
+	})
+}
+
+// SetCurrencyOverrides sets the "currency_overrides" field.
+func (u *BalancePackageUpsertOne) SetCurrencyOverrides(v map[string]float64) *BalancePackageUpsertOne {
+	return u.Update(func(s *BalancePackageUpsert) {
+		s.SetCurrencyOverrides(v)
+	})
+}
+
+// UpdateCurrencyOverrides sets the "currency_overrides" field to the value that was provided on create.
+func (u *BalancePackageUpsertOne) UpdateCurrencyOverrides() *BalancePackageUpsertOne {
+	return u.Update(func(s *BalancePackageUpsert) {
+		s.UpdateCurrencyOverrides()
+	})
+}
+
+// ClearCurrencyOverrides clears the value of the "currency_overrides" field.
+func (u *BalancePackageUpsertOne) ClearCurrencyOverrides() *BalancePackageUpsertOne {
+	return u.Update(func(s *BalancePackageUpsert) {
+		s.ClearCurrencyOverrides()
 	})
 }
 
@@ -1198,6 +1247,27 @@ func (u *BalancePackageUpsertBulk) UpdateGroupID() *BalancePackageUpsertBulk {
 func (u *BalancePackageUpsertBulk) ClearGroupID() *BalancePackageUpsertBulk {
 	return u.Update(func(s *BalancePackageUpsert) {
 		s.ClearGroupID()
+	})
+}
+
+// SetCurrencyOverrides sets the "currency_overrides" field.
+func (u *BalancePackageUpsertBulk) SetCurrencyOverrides(v map[string]float64) *BalancePackageUpsertBulk {
+	return u.Update(func(s *BalancePackageUpsert) {
+		s.SetCurrencyOverrides(v)
+	})
+}
+
+// UpdateCurrencyOverrides sets the "currency_overrides" field to the value that was provided on create.
+func (u *BalancePackageUpsertBulk) UpdateCurrencyOverrides() *BalancePackageUpsertBulk {
+	return u.Update(func(s *BalancePackageUpsert) {
+		s.UpdateCurrencyOverrides()
+	})
+}
+
+// ClearCurrencyOverrides clears the value of the "currency_overrides" field.
+func (u *BalancePackageUpsertBulk) ClearCurrencyOverrides() *BalancePackageUpsertBulk {
+	return u.Update(func(s *BalancePackageUpsert) {
+		s.ClearCurrencyOverrides()
 	})
 }
 

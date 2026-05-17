@@ -684,6 +684,16 @@ func ProductNameContainsFold(v string) predicate.SubscriptionPlan {
 	return predicate.SubscriptionPlan(sql.FieldContainsFold(FieldProductName, v))
 }
 
+// CurrencyOverridesIsNil applies the IsNil predicate on the "currency_overrides" field.
+func CurrencyOverridesIsNil() predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldIsNull(FieldCurrencyOverrides))
+}
+
+// CurrencyOverridesNotNil applies the NotNil predicate on the "currency_overrides" field.
+func CurrencyOverridesNotNil() predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldNotNull(FieldCurrencyOverrides))
+}
+
 // ForSaleEQ applies the EQ predicate on the "for_sale" field.
 func ForSaleEQ(v bool) predicate.SubscriptionPlan {
 	return predicate.SubscriptionPlan(sql.FieldEQ(FieldForSale, v))

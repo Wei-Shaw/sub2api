@@ -65,17 +65,18 @@ const (
 
 // PaymentConfig holds the payment system configuration.
 type BalanceRechargePackage struct {
-	ID             string  `json:"id"`
-	Label          string  `json:"label,omitempty"`
-	Description    string  `json:"description,omitempty"`
-	AmountLedger   float64 `json:"amount_ledger"`
-	ActualCredits  int64   `json:"actual_credits,omitempty"`
-	CreditUnit     string  `json:"credit_unit,omitempty"`
-	BalanceGroupID *int64  `json:"balance_group_id,omitempty"`
-	GroupID        *int64  `json:"group_id,omitempty"`
-	Badge          string  `json:"badge,omitempty"`
-	Popular        bool    `json:"popular,omitempty"`
-	SortOrder      int     `json:"sort_order,omitempty"`
+	ID                string             `json:"id"`
+	Label             string             `json:"label,omitempty"`
+	Description       string             `json:"description,omitempty"`
+	AmountLedger      float64            `json:"amount_ledger"`
+	ActualCredits     int64              `json:"actual_credits,omitempty"`
+	CreditUnit        string             `json:"credit_unit,omitempty"`
+	BalanceGroupID    *int64             `json:"balance_group_id,omitempty"`
+	GroupID           *int64             `json:"group_id,omitempty"`
+	CurrencyOverrides map[string]float64 `json:"currency_overrides,omitempty"`
+	Badge             string             `json:"badge,omitempty"`
+	Popular           bool               `json:"popular,omitempty"`
+	SortOrder         int                `json:"sort_order,omitempty"`
 }
 
 type PaymentConfig struct {
@@ -207,63 +208,67 @@ type UpdateProviderInstanceRequest struct {
 	AllowUserRefund *bool             `json:"allow_user_refund"`
 }
 type CreatePlanRequest struct {
-	GroupID       int64    `json:"group_id"`
-	Name          string   `json:"name"`
-	Description   string   `json:"description"`
-	Price         float64  `json:"price"`
-	OriginalPrice *float64 `json:"original_price"`
-	Currency      string   `json:"currency"`
-	ValidityDays  int      `json:"validity_days"`
-	ValidityUnit  string   `json:"validity_unit"`
-	Features      string   `json:"features"`
-	ProductName   string   `json:"product_name"`
-	ForSale       bool     `json:"for_sale"`
-	SortOrder     int      `json:"sort_order"`
+	GroupID           int64              `json:"group_id"`
+	Name              string             `json:"name"`
+	Description       string             `json:"description"`
+	Price             float64            `json:"price"`
+	OriginalPrice     *float64           `json:"original_price"`
+	Currency          string             `json:"currency"`
+	ValidityDays      int                `json:"validity_days"`
+	ValidityUnit      string             `json:"validity_unit"`
+	Features          string             `json:"features"`
+	ProductName       string             `json:"product_name"`
+	CurrencyOverrides map[string]float64 `json:"currency_overrides"`
+	ForSale           bool               `json:"for_sale"`
+	SortOrder         int                `json:"sort_order"`
 }
 
 type UpdatePlanRequest struct {
-	GroupID       *int64   `json:"group_id"`
-	Name          *string  `json:"name"`
-	Description   *string  `json:"description"`
-	Price         *float64 `json:"price"`
-	OriginalPrice *float64 `json:"original_price"`
-	Currency      *string  `json:"currency"`
-	ValidityDays  *int     `json:"validity_days"`
-	ValidityUnit  *string  `json:"validity_unit"`
-	Features      *string  `json:"features"`
-	ProductName   *string  `json:"product_name"`
-	ForSale       *bool    `json:"for_sale"`
-	SortOrder     *int     `json:"sort_order"`
+	GroupID           *int64             `json:"group_id"`
+	Name              *string            `json:"name"`
+	Description       *string            `json:"description"`
+	Price             *float64           `json:"price"`
+	OriginalPrice     *float64           `json:"original_price"`
+	Currency          *string            `json:"currency"`
+	ValidityDays      *int               `json:"validity_days"`
+	ValidityUnit      *string            `json:"validity_unit"`
+	Features          *string            `json:"features"`
+	ProductName       *string            `json:"product_name"`
+	CurrencyOverrides map[string]float64 `json:"currency_overrides"`
+	ForSale           *bool              `json:"for_sale"`
+	SortOrder         *int               `json:"sort_order"`
 }
 
 type CreateBalancePackageRequest struct {
-	Code           string  `json:"code"`
-	Label          string  `json:"label"`
-	Description    string  `json:"description"`
-	AmountLedger   float64 `json:"amount_ledger"`
-	ActualCredits  int64   `json:"actual_credits"`
-	CreditUnit     string  `json:"credit_unit"`
-	BalanceGroupID *int64  `json:"balance_group_id"`
-	GroupID        *int64  `json:"group_id"` // Backward-compatible alias for balance_group_id.
-	Badge          string  `json:"badge"`
-	Popular        bool    `json:"popular"`
-	ForSale        bool    `json:"for_sale"`
-	SortOrder      int     `json:"sort_order"`
+	Code              string             `json:"code"`
+	Label             string             `json:"label"`
+	Description       string             `json:"description"`
+	AmountLedger      float64            `json:"amount_ledger"`
+	ActualCredits     int64              `json:"actual_credits"`
+	CreditUnit        string             `json:"credit_unit"`
+	BalanceGroupID    *int64             `json:"balance_group_id"`
+	GroupID           *int64             `json:"group_id"` // Backward-compatible alias for balance_group_id.
+	CurrencyOverrides map[string]float64 `json:"currency_overrides"`
+	Badge             string             `json:"badge"`
+	Popular           bool               `json:"popular"`
+	ForSale           bool               `json:"for_sale"`
+	SortOrder         int                `json:"sort_order"`
 }
 
 type UpdateBalancePackageRequest struct {
-	Code           *string  `json:"code"`
-	Label          *string  `json:"label"`
-	Description    *string  `json:"description"`
-	AmountLedger   *float64 `json:"amount_ledger"`
-	ActualCredits  *int64   `json:"actual_credits"`
-	CreditUnit     *string  `json:"credit_unit"`
-	BalanceGroupID *int64   `json:"balance_group_id"`
-	GroupID        *int64   `json:"group_id"` // Backward-compatible alias for balance_group_id.
-	Badge          *string  `json:"badge"`
-	Popular        *bool    `json:"popular"`
-	ForSale        *bool    `json:"for_sale"`
-	SortOrder      *int     `json:"sort_order"`
+	Code              *string            `json:"code"`
+	Label             *string            `json:"label"`
+	Description       *string            `json:"description"`
+	AmountLedger      *float64           `json:"amount_ledger"`
+	ActualCredits     *int64             `json:"actual_credits"`
+	CreditUnit        *string            `json:"credit_unit"`
+	BalanceGroupID    *int64             `json:"balance_group_id"`
+	GroupID           *int64             `json:"group_id"` // Backward-compatible alias for balance_group_id.
+	CurrencyOverrides map[string]float64 `json:"currency_overrides"`
+	Badge             *string            `json:"badge"`
+	Popular           *bool              `json:"popular"`
+	ForSale           *bool              `json:"for_sale"`
+	SortOrder         *int               `json:"sort_order"`
 }
 
 // PaymentConfigService manages payment configuration and CRUD for

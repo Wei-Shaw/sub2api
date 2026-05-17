@@ -33,6 +33,8 @@ const (
 	FieldFeatures = "features"
 	// FieldProductName holds the string denoting the product_name field in the database.
 	FieldProductName = "product_name"
+	// FieldCurrencyOverrides holds the string denoting the currency_overrides field in the database.
+	FieldCurrencyOverrides = "currency_overrides"
 	// FieldForSale holds the string denoting the for_sale field in the database.
 	FieldForSale = "for_sale"
 	// FieldSortOrder holds the string denoting the sort_order field in the database.
@@ -58,6 +60,7 @@ var Columns = []string{
 	FieldValidityUnit,
 	FieldFeatures,
 	FieldProductName,
+	FieldCurrencyOverrides,
 	FieldForSale,
 	FieldSortOrder,
 	FieldCreatedAt,

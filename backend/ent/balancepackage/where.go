@@ -504,6 +504,16 @@ func GroupIDNotNil() predicate.BalancePackage {
 	return predicate.BalancePackage(sql.FieldNotNull(FieldGroupID))
 }
 
+// CurrencyOverridesIsNil applies the IsNil predicate on the "currency_overrides" field.
+func CurrencyOverridesIsNil() predicate.BalancePackage {
+	return predicate.BalancePackage(sql.FieldIsNull(FieldCurrencyOverrides))
+}
+
+// CurrencyOverridesNotNil applies the NotNil predicate on the "currency_overrides" field.
+func CurrencyOverridesNotNil() predicate.BalancePackage {
+	return predicate.BalancePackage(sql.FieldNotNull(FieldCurrencyOverrides))
+}
+
 // BadgeEQ applies the EQ predicate on the "badge" field.
 func BadgeEQ(v string) predicate.BalancePackage {
 	return predicate.BalancePackage(sql.FieldEQ(FieldBadge, v))

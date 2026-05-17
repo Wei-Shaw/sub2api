@@ -3,6 +3,7 @@
 package ent
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -31,6 +32,8 @@ type BalancePackage struct {
 	CreditUnit string `json:"credit_unit,omitempty"`
 	// GroupID holds the value of the "group_id" field.
 	GroupID *int64 `json:"group_id,omitempty"`
+	// Per-currency display/payment price overrides; key=ISO currency code, value=amount in that currency. When set, this amount is charged instead of FX-converting the ledger amount.
+	CurrencyOverrides map[string]float64 `json:"currency_overrides,omitempty"`
 	// Badge holds the value of the "badge" field.
 	Badge string `json:"badge,omitempty"`
 	// Popular holds the value of the "popular" field.
@@ -51,6 +54,8 @@ func (*BalancePackage) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case balancepackage.FieldCurrencyOverrides:
+			values[i] = new([]byte)
 		case balancepackage.FieldPopular, balancepackage.FieldForSale:
 			values[i] = new(sql.NullBool)
 		case balancepackage.FieldAmountLedger:
@@ -124,6 +129,14 @@ func (_m *BalancePackage) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.GroupID = new(int64)
 				*_m.GroupID = value.Int64
+			}
+		case balancepackage.FieldCurrencyOverrides:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field currency_overrides", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.CurrencyOverrides); err != nil {
+					return fmt.Errorf("unmarshal field currency_overrides: %w", err)
+				}
 			}
 		case balancepackage.FieldBadge:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -219,6 +232,9 @@ func (_m *BalancePackage) String() string {
 		builder.WriteString("group_id=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
+	builder.WriteString(", ")
+	builder.WriteString("currency_overrides=")
+	builder.WriteString(fmt.Sprintf("%v", _m.CurrencyOverrides))
 	builder.WriteString(", ")
 	builder.WriteString("badge=")
 	builder.WriteString(_m.Badge)

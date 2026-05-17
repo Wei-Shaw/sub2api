@@ -57,6 +57,18 @@
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.balanceGroupHelp') }}</p>
       </div>
 
+      <!-- Currency Price Overrides -->
+      <div>
+        <label class="input-label">Currency Price Overrides</label>
+        <p class="mb-2 text-xs text-gray-500 dark:text-gray-400">Set custom payment amounts per currency. Leave empty to use auto FX conversion.</p>
+        <div v-for="(entry, idx) in currencyOverrideEntries" :key="idx" class="mb-2 flex items-center gap-2">
+          <input v-model="entry.currency" type="text" maxlength="3" placeholder="USD" class="input w-20 uppercase" />
+          <input v-model.number="entry.amount" type="number" step="0.01" min="0" placeholder="Amount" class="input flex-1" />
+          <button type="button" @click="removeCurrencyOverride(idx)" class="text-red-500 hover:text-red-700">&times;</button>
+        </div>
+        <button type="button" @click="addCurrencyOverride" class="text-xs text-primary-500 hover:text-primary-700">+ Add currency override</button>
+      </div>
+
       <div class="flex flex-wrap items-center gap-6">
         <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
           <input v-model="form.popular" type="checkbox" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
@@ -98,6 +110,31 @@ const groups = ref<AdminGroup[]>([])
 const balanceGroups = computed(() => groups.value.filter((group) => group.status === 'active' && group.subscription_type === 'standard'))
 
 const form = reactive({ code: '', label: '', description: '', amount_ledger: 0, actual_credits: 0, balance_group_id: 0, badge: '', popular: false, for_sale: true, sort_order: 0 })
+const currencyOverrideEntries = ref<{ currency: string; amount: number | null }[]>([])
+
+function addCurrencyOverride() {
+  currencyOverrideEntries.value.push({ currency: '', amount: null })
+}
+function removeCurrencyOverride(idx: number) {
+  currencyOverrideEntries.value.splice(idx, 1)
+}
+function buildCurrencyOverridesMap(): Record<string, number> {
+  const map: Record<string, number> = {}
+  for (const entry of currencyOverrideEntries.value) {
+    const code = entry.currency.trim().toUpperCase()
+    if (code.length === 3 && entry.amount && entry.amount > 0) {
+      map[code] = entry.amount
+    }
+  }
+  return map
+}
+function loadCurrencyOverrideEntries(overrides?: Record<string, number>) {
+  if (!overrides || Object.keys(overrides).length === 0) {
+    currencyOverrideEntries.value = []
+    return
+  }
+  currencyOverrideEntries.value = Object.entries(overrides).map(([currency, amount]) => ({ currency, amount }))
+}
 const safeNumber = (v: unknown) => Number.isFinite(Number(v)) ? Number(v) : 0
 
 function formatTokens(value: number): string {
@@ -123,8 +160,10 @@ watch(() => props.show, (visible) => {
       for_sale: !!props.pkg.for_sale,
       sort_order: props.pkg.sort_order || 0,
     })
+    loadCurrencyOverrideEntries(props.pkg.currency_overrides)
   } else {
     Object.assign(form, { code: '', label: '', description: '', amount_ledger: 0, actual_credits: 0, balance_group_id: 0, badge: '', popular: false, for_sale: true, sort_order: 0 })
+    currencyOverrideEntries.value = []
   }
 })
 
@@ -152,6 +191,7 @@ function buildPayload() {
     popular: form.popular,
     for_sale: form.for_sale,
     sort_order: safeNumber(form.sort_order),
+    currency_overrides: buildCurrencyOverridesMap(),
   }
 }
 

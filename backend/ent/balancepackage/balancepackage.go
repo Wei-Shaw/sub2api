@@ -27,6 +27,8 @@ const (
 	FieldCreditUnit = "credit_unit"
 	// FieldGroupID holds the string denoting the group_id field in the database.
 	FieldGroupID = "group_id"
+	// FieldCurrencyOverrides holds the string denoting the currency_overrides field in the database.
+	FieldCurrencyOverrides = "currency_overrides"
 	// FieldBadge holds the string denoting the badge field in the database.
 	FieldBadge = "badge"
 	// FieldPopular holds the string denoting the popular field in the database.
@@ -53,6 +55,7 @@ var Columns = []string{
 	FieldActualCredits,
 	FieldCreditUnit,
 	FieldGroupID,
+	FieldCurrencyOverrides,
 	FieldBadge,
 	FieldPopular,
 	FieldForSale,

@@ -148,6 +148,9 @@ func (s *PaymentConfigService) CreatePlan(ctx context.Context, req CreatePlanReq
 	if req.OriginalPrice != nil {
 		b.SetOriginalPrice(*req.OriginalPrice)
 	}
+	if len(req.CurrencyOverrides) > 0 {
+		b.SetCurrencyOverrides(normalizeCurrencyOverrides(req.CurrencyOverrides))
+	}
 	return b.Save(ctx)
 }
 
@@ -198,6 +201,9 @@ func (s *PaymentConfigService) UpdatePlan(ctx context.Context, id int64, req Upd
 	}
 	if req.SortOrder != nil {
 		u.SetSortOrder(*req.SortOrder)
+	}
+	if req.CurrencyOverrides != nil {
+		u.SetCurrencyOverrides(normalizeCurrencyOverrides(req.CurrencyOverrides))
 	}
 	return u.Save(ctx)
 }

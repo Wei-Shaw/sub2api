@@ -57,6 +57,10 @@ func (SubscriptionPlan) Fields() []ent.Field {
 		field.String("product_name").
 			MaxLen(100).
 			Default(""),
+		field.JSON("currency_overrides", map[string]float64{}).
+			Optional().
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("Per-currency display/payment price overrides; key=ISO currency code, value=amount in that currency. When set, this amount is charged instead of FX-converting the ledger price."),
 		field.Bool("for_sale").
 			Default(true),
 		field.Int("sort_order").

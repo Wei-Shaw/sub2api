@@ -138,6 +138,12 @@ func (_c *SubscriptionPlanCreate) SetNillableProductName(v *string) *Subscriptio
 	return _c
 }
 
+// SetCurrencyOverrides sets the "currency_overrides" field.
+func (_c *SubscriptionPlanCreate) SetCurrencyOverrides(v map[string]float64) *SubscriptionPlanCreate {
+	_c.mutation.SetCurrencyOverrides(v)
+	return _c
+}
+
 // SetForSale sets the "for_sale" field.
 func (_c *SubscriptionPlanCreate) SetForSale(v bool) *SubscriptionPlanCreate {
 	_c.mutation.SetForSale(v)
@@ -399,6 +405,10 @@ func (_c *SubscriptionPlanCreate) createSpec() (*SubscriptionPlan, *sqlgraph.Cre
 		_spec.SetField(subscriptionplan.FieldProductName, field.TypeString, value)
 		_node.ProductName = value
 	}
+	if value, ok := _c.mutation.CurrencyOverrides(); ok {
+		_spec.SetField(subscriptionplan.FieldCurrencyOverrides, field.TypeJSON, value)
+		_node.CurrencyOverrides = value
+	}
 	if value, ok := _c.mutation.ForSale(); ok {
 		_spec.SetField(subscriptionplan.FieldForSale, field.TypeBool, value)
 		_node.ForSale = value
@@ -614,6 +624,24 @@ func (u *SubscriptionPlanUpsert) SetProductName(v string) *SubscriptionPlanUpser
 // UpdateProductName sets the "product_name" field to the value that was provided on create.
 func (u *SubscriptionPlanUpsert) UpdateProductName() *SubscriptionPlanUpsert {
 	u.SetExcluded(subscriptionplan.FieldProductName)
+	return u
+}
+
+// SetCurrencyOverrides sets the "currency_overrides" field.
+func (u *SubscriptionPlanUpsert) SetCurrencyOverrides(v map[string]float64) *SubscriptionPlanUpsert {
+	u.Set(subscriptionplan.FieldCurrencyOverrides, v)
+	return u
+}
+
+// UpdateCurrencyOverrides sets the "currency_overrides" field to the value that was provided on create.
+func (u *SubscriptionPlanUpsert) UpdateCurrencyOverrides() *SubscriptionPlanUpsert {
+	u.SetExcluded(subscriptionplan.FieldCurrencyOverrides)
+	return u
+}
+
+// ClearCurrencyOverrides clears the value of the "currency_overrides" field.
+func (u *SubscriptionPlanUpsert) ClearCurrencyOverrides() *SubscriptionPlanUpsert {
+	u.SetNull(subscriptionplan.FieldCurrencyOverrides)
 	return u
 }
 
@@ -876,6 +904,27 @@ func (u *SubscriptionPlanUpsertOne) SetProductName(v string) *SubscriptionPlanUp
 func (u *SubscriptionPlanUpsertOne) UpdateProductName() *SubscriptionPlanUpsertOne {
 	return u.Update(func(s *SubscriptionPlanUpsert) {
 		s.UpdateProductName()
+	})
+}
+
+// SetCurrencyOverrides sets the "currency_overrides" field.
+func (u *SubscriptionPlanUpsertOne) SetCurrencyOverrides(v map[string]float64) *SubscriptionPlanUpsertOne {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.SetCurrencyOverrides(v)
+	})
+}
+
+// UpdateCurrencyOverrides sets the "currency_overrides" field to the value that was provided on create.
+func (u *SubscriptionPlanUpsertOne) UpdateCurrencyOverrides() *SubscriptionPlanUpsertOne {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.UpdateCurrencyOverrides()
+	})
+}
+
+// ClearCurrencyOverrides clears the value of the "currency_overrides" field.
+func (u *SubscriptionPlanUpsertOne) ClearCurrencyOverrides() *SubscriptionPlanUpsertOne {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.ClearCurrencyOverrides()
 	})
 }
 
@@ -1311,6 +1360,27 @@ func (u *SubscriptionPlanUpsertBulk) SetProductName(v string) *SubscriptionPlanU
 func (u *SubscriptionPlanUpsertBulk) UpdateProductName() *SubscriptionPlanUpsertBulk {
 	return u.Update(func(s *SubscriptionPlanUpsert) {
 		s.UpdateProductName()
+	})
+}
+
+// SetCurrencyOverrides sets the "currency_overrides" field.
+func (u *SubscriptionPlanUpsertBulk) SetCurrencyOverrides(v map[string]float64) *SubscriptionPlanUpsertBulk {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.SetCurrencyOverrides(v)
+	})
+}
+
+// UpdateCurrencyOverrides sets the "currency_overrides" field to the value that was provided on create.
+func (u *SubscriptionPlanUpsertBulk) UpdateCurrencyOverrides() *SubscriptionPlanUpsertBulk {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.UpdateCurrencyOverrides()
+	})
+}
+
+// ClearCurrencyOverrides clears the value of the "currency_overrides" field.
+func (u *SubscriptionPlanUpsertBulk) ClearCurrencyOverrides() *SubscriptionPlanUpsertBulk {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.ClearCurrencyOverrides()
 	})
 }
 

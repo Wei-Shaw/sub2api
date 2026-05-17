@@ -139,7 +139,8 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 			Name:        p.Name, Description: p.Description, Price: p.Price, OriginalPrice: p.OriginalPrice,
 			Currency:     p.Currency,
 			ValidityDays: p.ValidityDays, ValidityUnit: p.ValidityUnit, Features: publicPlanFeatures(features),
-			ProductName: p.ProductName, Pricing: buildCheckoutPlanPricing(features, p.Price, p.OriginalPrice),
+			ProductName: p.ProductName, CurrencyOverrides: p.CurrencyOverrides,
+			Pricing: buildCheckoutPlanPricing(features, p.Price, p.OriginalPrice),
 		})
 	}
 
@@ -196,15 +197,16 @@ type checkoutInfoResponse struct {
 }
 
 type checkoutBalancePackage struct {
-	ID            string  `json:"id"`
-	Label         string  `json:"label,omitempty"`
-	Description   string  `json:"description,omitempty"`
-	AmountLedger  float64 `json:"amount_ledger"`
-	ActualCredits int64   `json:"actual_credits,omitempty"`
-	CreditUnit    string  `json:"credit_unit,omitempty"`
-	Badge         string  `json:"badge,omitempty"`
-	Popular       bool    `json:"popular,omitempty"`
-	SortOrder     int     `json:"sort_order,omitempty"`
+	ID                string             `json:"id"`
+	Label             string             `json:"label,omitempty"`
+	Description       string             `json:"description,omitempty"`
+	AmountLedger      float64            `json:"amount_ledger"`
+	ActualCredits     int64              `json:"actual_credits,omitempty"`
+	CreditUnit        string             `json:"credit_unit,omitempty"`
+	CurrencyOverrides map[string]float64 `json:"currency_overrides,omitempty"`
+	Badge             string             `json:"badge,omitempty"`
+	Popular           bool               `json:"popular,omitempty"`
+	SortOrder         int                `json:"sort_order,omitempty"`
 }
 
 func buildCheckoutBalancePackages(packages []service.BalanceRechargePackage) []checkoutBalancePackage {
@@ -214,15 +216,16 @@ func buildCheckoutBalancePackages(packages []service.BalanceRechargePackage) []c
 	out := make([]checkoutBalancePackage, 0, len(packages))
 	for _, pkg := range packages {
 		out = append(out, checkoutBalancePackage{
-			ID:            pkg.ID,
-			Label:         pkg.Label,
-			Description:   pkg.Description,
-			AmountLedger:  pkg.AmountLedger,
-			ActualCredits: pkg.ActualCredits,
-			CreditUnit:    pkg.CreditUnit,
-			Badge:         pkg.Badge,
-			Popular:       pkg.Popular,
-			SortOrder:     pkg.SortOrder,
+			ID:                pkg.ID,
+			Label:             pkg.Label,
+			Description:       pkg.Description,
+			AmountLedger:      pkg.AmountLedger,
+			ActualCredits:     pkg.ActualCredits,
+			CreditUnit:        pkg.CreditUnit,
+			CurrencyOverrides: pkg.CurrencyOverrides,
+			Badge:             pkg.Badge,
+			Popular:           pkg.Popular,
+			SortOrder:         pkg.SortOrder,
 		})
 	}
 	sort.SliceStable(out, func(i, j int) bool {
@@ -384,6 +387,7 @@ type checkoutPlan struct {
 	ValidityUnit       string               `json:"validity_unit"`
 	Features           []string             `json:"features"`
 	ProductName        string               `json:"product_name"`
+	CurrencyOverrides  map[string]float64   `json:"currency_overrides,omitempty"`
 	Pricing            *checkoutPlanPricing `json:"pricing,omitempty"`
 }
 

@@ -184,6 +184,7 @@ export interface SubscriptionPlan {
   features: string[]
   for_sale: boolean
   sort_order: number
+  currency_overrides?: Record<string, number>
 }
 
 export interface BalancePackage {
@@ -204,6 +205,7 @@ export interface BalancePackage {
   popular: boolean
   for_sale: boolean
   sort_order: number
+  currency_overrides?: Record<string, number>
   created_at?: string
   updated_at?: string
 }

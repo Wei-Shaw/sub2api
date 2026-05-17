@@ -153,6 +153,18 @@ func (_u *BalancePackageUpdate) ClearGroupID() *BalancePackageUpdate {
 	return _u
 }
 
+// SetCurrencyOverrides sets the "currency_overrides" field.
+func (_u *BalancePackageUpdate) SetCurrencyOverrides(v map[string]float64) *BalancePackageUpdate {
+	_u.mutation.SetCurrencyOverrides(v)
+	return _u
+}
+
+// ClearCurrencyOverrides clears the value of the "currency_overrides" field.
+func (_u *BalancePackageUpdate) ClearCurrencyOverrides() *BalancePackageUpdate {
+	_u.mutation.ClearCurrencyOverrides()
+	return _u
+}
+
 // SetBadge sets the "badge" field.
 func (_u *BalancePackageUpdate) SetBadge(v string) *BalancePackageUpdate {
 	_u.mutation.SetBadge(v)
@@ -333,6 +345,12 @@ func (_u *BalancePackageUpdate) sqlSave(ctx context.Context) (_node int, err err
 	if _u.mutation.GroupIDCleared() {
 		_spec.ClearField(balancepackage.FieldGroupID, field.TypeInt64)
 	}
+	if value, ok := _u.mutation.CurrencyOverrides(); ok {
+		_spec.SetField(balancepackage.FieldCurrencyOverrides, field.TypeJSON, value)
+	}
+	if _u.mutation.CurrencyOverridesCleared() {
+		_spec.ClearField(balancepackage.FieldCurrencyOverrides, field.TypeJSON)
+	}
 	if value, ok := _u.mutation.Badge(); ok {
 		_spec.SetField(balancepackage.FieldBadge, field.TypeString, value)
 	}
@@ -493,6 +511,18 @@ func (_u *BalancePackageUpdateOne) AddGroupID(v int64) *BalancePackageUpdateOne 
 // ClearGroupID clears the value of the "group_id" field.
 func (_u *BalancePackageUpdateOne) ClearGroupID() *BalancePackageUpdateOne {
 	_u.mutation.ClearGroupID()
+	return _u
+}
+
+// SetCurrencyOverrides sets the "currency_overrides" field.
+func (_u *BalancePackageUpdateOne) SetCurrencyOverrides(v map[string]float64) *BalancePackageUpdateOne {
+	_u.mutation.SetCurrencyOverrides(v)
+	return _u
+}
+
+// ClearCurrencyOverrides clears the value of the "currency_overrides" field.
+func (_u *BalancePackageUpdateOne) ClearCurrencyOverrides() *BalancePackageUpdateOne {
+	_u.mutation.ClearCurrencyOverrides()
 	return _u
 }
 
@@ -705,6 +735,12 @@ func (_u *BalancePackageUpdateOne) sqlSave(ctx context.Context) (_node *BalanceP
 	}
 	if _u.mutation.GroupIDCleared() {
 		_spec.ClearField(balancepackage.FieldGroupID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.CurrencyOverrides(); ok {
+		_spec.SetField(balancepackage.FieldCurrencyOverrides, field.TypeJSON, value)
+	}
+	if _u.mutation.CurrencyOverridesCleared() {
+		_spec.ClearField(balancepackage.FieldCurrencyOverrides, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.Badge(); ok {
 		_spec.SetField(balancepackage.FieldBadge, field.TypeString, value)

@@ -162,6 +162,9 @@ func (s *PaymentConfigService) CreateBalancePackage(ctx context.Context, req Cre
 	if groupID != nil {
 		b.SetGroupID(*groupID)
 	}
+	if len(req.CurrencyOverrides) > 0 {
+		b.SetCurrencyOverrides(normalizeCurrencyOverrides(req.CurrencyOverrides))
+	}
 	return b.Save(ctx)
 }
 
@@ -228,6 +231,9 @@ func (s *PaymentConfigService) UpdateBalancePackage(ctx context.Context, id int6
 	if req.SortOrder != nil {
 		u.SetSortOrder(*req.SortOrder)
 	}
+	if req.CurrencyOverrides != nil {
+		u.SetCurrencyOverrides(normalizeCurrencyOverrides(req.CurrencyOverrides))
+	}
 	return u.Save(ctx)
 }
 
@@ -245,17 +251,18 @@ func balancePackageEntitiesToConfig(packages []*dbent.BalancePackage) []BalanceR
 			continue
 		}
 		out = append(out, BalanceRechargePackage{
-			ID:             pkg.Code,
-			Label:          pkg.Label,
-			Description:    pkg.Description,
-			AmountLedger:   pkg.AmountLedger,
-			ActualCredits:  pkg.ActualCredits,
-			CreditUnit:     normalizeBalancePackageCreditUnit(pkg.CreditUnit),
-			BalanceGroupID: pkg.GroupID,
-			GroupID:        pkg.GroupID,
-			Badge:          pkg.Badge,
-			Popular:        pkg.Popular,
-			SortOrder:      pkg.SortOrder,
+			ID:                pkg.Code,
+			Label:             pkg.Label,
+			Description:       pkg.Description,
+			AmountLedger:      pkg.AmountLedger,
+			ActualCredits:     pkg.ActualCredits,
+			CreditUnit:        normalizeBalancePackageCreditUnit(pkg.CreditUnit),
+			BalanceGroupID:    pkg.GroupID,
+			GroupID:           pkg.GroupID,
+			CurrencyOverrides: pkg.CurrencyOverrides,
+			Badge:             pkg.Badge,
+			Popular:           pkg.Popular,
+			SortOrder:         pkg.SortOrder,
 		})
 	}
 	return out
