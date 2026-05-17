@@ -5,10 +5,10 @@
  */
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useAppStore } from '../../stores/host'
-import { adminPaymentAPI } from '../../api/admin/payment'
+import { useAppStore } from '../stores/host'
+import { adminPaymentAPI } from '../api/admin/payment'
 import { extractApiErrorMessage, extractI18nErrorMessage } from '@sub2api/plugin-sdk'
-import type { ProviderInstance } from '../../types/payment'
+import type { ProviderInstance } from '../types/payment'
 
 // --- Conflict detection ---
 
