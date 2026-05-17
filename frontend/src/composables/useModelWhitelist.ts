@@ -5,6 +5,8 @@
 // =====================
 
 import { getPlatformModels } from '@/api/admin/platforms'
+import { usePlatforms } from '@/composables/usePlatforms'
+import { getPlatformMeta, type PresetMapping } from '@/utils/platformFrontendMeta'
 
 // OpenAI
 const openaiModels = [
@@ -435,7 +437,19 @@ function getHardcodedModels(platform: string): string[] {
 }
 
 // 按平台获取预设映射
-export function getPresetMappingsByPlatform(platform: string) {
+// Checks PlatformDeclaration.frontend_meta.preset_mappings first, falls back to hardcoded.
+export function getPresetMappingsByPlatform(platform: string): PresetMapping[] {
+  const { getPlatformDecl } = usePlatforms()
+  const decl = getPlatformDecl(platform)
+  const meta = getPlatformMeta(decl)
+  if (meta.preset_mappings && meta.preset_mappings.length > 0) {
+    return meta.preset_mappings
+  }
+  // Hardcoded fallback
+  return getHardcodedPresetMappings(platform)
+}
+
+function getHardcodedPresetMappings(platform: string): PresetMapping[] {
   if (platform === 'openai') return openaiPresetMappings
   if (platform === 'gemini') return geminiPresetMappings
   if (platform === 'antigravity') return antigravityPresetMappings

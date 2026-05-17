@@ -4,6 +4,7 @@ import { adminAPI } from '@/api/admin'
 import type { Account, AccountUsageInfo } from '@/types'
 import { usePlatforms } from '@/composables/usePlatforms'
 import { enqueueUsageRequest } from '@/utils/usageLoadQueue'
+import { getAccountTypeMeta } from '@/utils/platformFrontendMeta'
 
 // Module-level cache shared across all AccountUsageCell instances
 const _usageCache = new Map<number, { data: AccountUsageInfo; ts: number }>()
@@ -20,7 +21,7 @@ interface UseAccountUsageLoaderOptions {
 export function useAccountUsageLoader(options: UseAccountUsageLoaderOptions) {
   const { account, manualRefreshToken, rootRef } = options
   const { t } = useI18n()
-  const { getPlatformDecl } = usePlatforms()
+  const { getPlatformDecl, getAccountTypeDecl } = usePlatforms()
 
   const unmounted = ref(false)
   onBeforeUnmount(() => { unmounted.value = true })
@@ -54,9 +55,16 @@ export function useAccountUsageLoader(options: UseAccountUsageLoaderOptions) {
 
   /**
    * Determine if this account uses passive source for initial load.
-   * Platform-specific: Anthropic OAuth/SetupToken use passive sampling.
+   * Checks AccountTypeDeclaration.frontend_meta.default_usage_source first,
+   * falls back to hardcoded: Anthropic OAuth/SetupToken use passive sampling.
    */
   const usesPassiveSource = computed(() => {
+    const typeDecl = getAccountTypeDecl(account.value.platform, account.value.type)
+    const meta = getAccountTypeMeta(typeDecl)
+    if (meta.default_usage_source !== undefined) {
+      return meta.default_usage_source === 'passive'
+    }
+    // Fallback: Anthropic OAuth/SetupToken
     return account.value.platform === 'anthropic' &&
       (account.value.type === 'oauth' || account.value.type === 'setup-token')
   })
@@ -64,14 +72,23 @@ export function useAccountUsageLoader(options: UseAccountUsageLoaderOptions) {
   /**
    * Build a usage refresh key from account fields that, when changed,
    * indicate cached usage data is stale and should be re-fetched.
+   * Checks AccountTypeDeclaration.frontend_meta.usage_refresh_extra_fields first,
+   * falls back to hardcoded OpenAI codex fields.
    */
   const usageRefreshKey = computed(() => {
     const a = account.value
-    // Generic key using updated_at, rate_limit_reset_at, and extra hash
     const parts = [a.id, a.updated_at, a.last_used_at, a.rate_limit_reset_at]
     const extra = a.extra ?? {}
-    // Include OpenAI-specific codex fields if present
-    if (extra.codex_usage_updated_at !== undefined) {
+
+    // Check metadata for declared extra fields
+    const typeDecl = getAccountTypeDecl(a.platform, a.type)
+    const meta = getAccountTypeMeta(typeDecl)
+    if (meta.usage_refresh_extra_fields && meta.usage_refresh_extra_fields.length > 0) {
+      for (const field of meta.usage_refresh_extra_fields) {
+        parts.push(extra[field] != null ? String(extra[field]) : '')
+      }
+    } else if (extra.codex_usage_updated_at !== undefined) {
+      // Fallback: OpenAI-specific codex fields
       parts.push(
         extra.codex_usage_updated_at as string,
         String(extra.codex_5h_used_percent ?? ''),

@@ -27,6 +27,24 @@ func buildManifest() *pluginsdk.Manifest {
 				ThemeColor:         "#ea580c",
 				SortOrder:          1,
 				CompatibleGateways: []string{"anthropic"},
+				FrontendMeta: json.RawMessage(`{
+					"cli_config": {
+						"base_url_suffix": "/anthropic",
+						"claude_code_supported": true,
+						"opencode_supported": true,
+						"default_client_tab": "claude-code",
+						"claude_code_env_base_url": "ANTHROPIC_BASE_URL",
+						"claude_code_env_api_key": "ANTHROPIC_AUTH_TOKEN"
+					},
+					"cc_switch_config": {
+						"app": "claude"
+					},
+					"preset_mappings": [
+						{"label": "Sonnet 4", "from": "claude-sonnet-4-*", "to": "claude-sonnet-4-20250514"},
+						{"label": "Opus 4.5", "from": "claude-opus-4-5-*", "to": "claude-opus-4-5-20250514"}
+					],
+					"supports_mixed_channel_check": true
+				}`),
 				AccountTypes: []pluginsdk.AccountTypeDecl{
 					{
 						Type:        "oauth",
@@ -35,6 +53,10 @@ func buildManifest() *pluginsdk.Manifest {
 						Description: "Claude Code OAuth session (full scope: profile + inference)",
 						SortOrder:   1,
 						BadgeLabel:  "OAuth",
+						FrontendMeta: json.RawMessage(`{
+							"supports_rpm_limit": true,
+							"default_usage_source": "passive"
+						}`),
 					},
 					{
 						Type:        "setup-token",
@@ -43,6 +65,10 @@ func buildManifest() *pluginsdk.Manifest {
 						Description: "Claude Code setup token (inference only)",
 						SortOrder:   2,
 						BadgeLabel:  "Setup",
+						FrontendMeta: json.RawMessage(`{
+							"supports_rpm_limit": true,
+							"default_usage_source": "passive"
+						}`),
 					},
 					{
 						Type:        "apikey",
@@ -88,6 +114,9 @@ func buildManifest() *pluginsdk.Manifest {
 				},
 				GroupConfig: &pluginsdk.GroupConfigDecl{
 					FormComponentPath: "AnthropicGroupConfig",
+					FrontendMeta: json.RawMessage(`{
+						"supports_fallback_on_invalid_request": true
+					}`),
 					GroupExtraSchema: json.RawMessage(`{
 						"type": "object",
 						"properties": {

@@ -4,6 +4,13 @@
  * TODO: These functions contain platform-specific display logic that ideally
  * should be provided by gateway plugins via PlatformDeclaration metadata.
  * For now they read from account.extra fields directly.
+ *
+ * TODO: Migrate to PlatformDeclaration.frontend_meta.badge_extractors when
+ * that metadata is available. This is complex because badge rendering requires
+ * reading nested extra fields (e.g. load_code_assist.paidTier.id) and mapping
+ * them to i18n labels + CSS classes. A follow-up should define a declarative
+ * badge_extractors schema in frontend_meta that describes these field paths,
+ * value-to-label mappings, and value-to-class mappings.
  */
 
 // ---------------------------------------------------------------------------

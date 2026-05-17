@@ -27,6 +27,22 @@ func buildManifest() *pluginsdk.Manifest {
 				ThemeColor:         "#2563eb",
 				SortOrder:          3,
 				CompatibleGateways: []string{"gemini"},
+				FrontendMeta: json.RawMessage(`{
+					"cli_config": {
+						"base_url_suffix": "/gemini",
+						"gemini_cli_supported": true,
+						"opencode_supported": true,
+						"default_client_tab": "gemini-cli",
+						"gemini_cli_env_base_url": "GOOGLE_GEMINI_BASE_URL",
+						"gemini_cli_env_api_key": "GEMINI_API_KEY"
+					},
+					"cc_switch_config": {
+						"app": "gemini"
+					},
+					"preset_mappings": [
+						{"label": "Gemini 2.5 Pro", "from": "gemini-2.5-pro*", "to": "gemini-2.5-pro-preview-05-06"}
+					]
+				}`),
 				AccountTypes: []pluginsdk.AccountTypeDecl{
 					{
 						Type:              "oauth",

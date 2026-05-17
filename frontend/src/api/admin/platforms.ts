@@ -15,6 +15,7 @@ export interface PlatformDeclaration {
   privacy_states?: PrivacyStateDeclaration[]
   group_config?: GroupConfigDeclaration
   compatible_gateways?: string[]
+  frontend_meta?: Record<string, unknown>
 }
 
 export interface AccountTypeDeclaration {
@@ -29,6 +30,7 @@ export interface AccountTypeDeclaration {
   sub_types?: { value: string; label: string }[]
   sort_order: number
   badge_label?: string
+  frontend_meta?: Record<string, unknown>
 }
 
 export interface CapacityDisplayConfig {
@@ -77,6 +79,7 @@ export interface TestConnectionConfig {
 export interface GroupConfigDeclaration {
   group_extra_schema?: Record<string, unknown>
   form_component_path?: string
+  frontend_meta?: Record<string, unknown>
 }
 
 export interface PrivacyStateDeclaration {

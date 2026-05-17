@@ -193,8 +193,17 @@ const builtinConfigs: Record<string, PlatformCliConfig> = {
 
 /**
  * Look up the CLI config for a platform.
+ * If cliConfigOverride is provided (from PlatformDeclaration.frontend_meta.cli_config),
+ * it is merged over the Anthropic-compatible default.
+ * Otherwise falls back to the hardcoded builtin registry.
  * Unknown platforms get an Anthropic-compatible default.
  */
-export function getPlatformCliConfig(platform: string): PlatformCliConfig {
+export function getPlatformCliConfig(
+  platform: string,
+  cliConfigOverride?: Partial<PlatformCliConfig>,
+): PlatformCliConfig {
+  if (cliConfigOverride && Object.keys(cliConfigOverride).length > 0) {
+    return { ...anthropicConfig, platform, ...cliConfigOverride }
+  }
   return builtinConfigs[platform] ?? { ...anthropicConfig, platform }
 }

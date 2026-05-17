@@ -24,6 +24,7 @@ func platformDeclToProto(d *PlatformDecl) *pb.PlatformDeclaration {
 		SortOrder:     int32(d.SortOrder),
 		PrivacyStates:      privacyStatesToProto(d.PrivacyStates),
 		CompatibleGateways: append([]string(nil), d.CompatibleGateways...),
+		FrontendMeta:       append([]byte(nil), d.FrontendMeta...),
 	}
 	if d.CapacityDisplay != nil {
 		p.CapacityDisplay = &pb.CapacityDisplayConfig{
@@ -54,6 +55,7 @@ func platformDeclToProto(d *PlatformDecl) *pb.PlatformDeclaration {
 		p.GroupConfig = &pb.GroupConfigDeclaration{
 			GroupExtraSchema:  d.GroupConfig.GroupExtraSchema,
 			FormComponentPath: d.GroupConfig.FormComponentPath,
+			FrontendMeta:      append([]byte(nil), d.GroupConfig.FrontendMeta...),
 		}
 	}
 	return p
@@ -78,6 +80,7 @@ func accountTypesToProto(types []AccountTypeDecl) []*pb.AccountTypeDeclaration {
 			SubTypes:          subTypesToProto(t.SubTypes),
 			SortOrder:         int32(t.SortOrder),
 			BadgeLabel:        t.BadgeLabel,
+			FrontendMeta:      append([]byte(nil), t.FrontendMeta...),
 		}
 	}
 	return out
@@ -158,6 +161,7 @@ func PlatformDeclFromProto(p *pb.PlatformDeclaration) PlatformDecl {
 		ThemeColor:  p.ThemeColor,
 		SortOrder:          int(p.SortOrder),
 		CompatibleGateways: append([]string(nil), p.CompatibleGateways...),
+		FrontendMeta:       append([]byte(nil), p.FrontendMeta...),
 	}
 	for _, at := range p.AccountTypes {
 		d.AccountTypes = append(d.AccountTypes, accountTypeDeclFromProto(at))
@@ -202,6 +206,7 @@ func PlatformDeclFromProto(p *pb.PlatformDeclaration) PlatformDecl {
 		d.GroupConfig = &GroupConfigDecl{
 			GroupExtraSchema:  append([]byte(nil), p.GroupConfig.GroupExtraSchema...),
 			FormComponentPath: p.GroupConfig.FormComponentPath,
+			FrontendMeta:      append([]byte(nil), p.GroupConfig.FrontendMeta...),
 		}
 	}
 	return d
@@ -222,6 +227,7 @@ func accountTypeDeclFromProto(p *pb.AccountTypeDeclaration) AccountTypeDecl {
 		FormComponentPath: p.FormComponentPath,
 		SortOrder:         int(p.SortOrder),
 		BadgeLabel:        p.BadgeLabel,
+		FrontendMeta:      append([]byte(nil), p.FrontendMeta...),
 	}
 	for _, st := range p.SubTypes {
 		d.SubTypes = append(d.SubTypes, SubTypeOption{Value: st.Value, Label: st.Label})

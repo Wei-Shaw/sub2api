@@ -1234,11 +1234,6 @@
   />
 </template>
 
-<!-- TODO: BulkEditAccountModal has extensive hardcoded platform checks (openai, anthropic,
-     antigravity) for conditional field sections (passthrough, WS mode, compact mode, RPM limits,
-     allow overages, etc.). These should be driven by PlatformDeclaration metadata in the future.
-     Affected computed props: allOpenAIPassthroughCapable, allOpenAIOAuth, allOpenAIAPIKey,
-     allAntigravity, allAnthropicOAuthOrSetupToken, canPreCheck(). -->
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -1265,6 +1260,8 @@ import {
   resolveOpenAIWSModeConcurrencyHintKey
 } from '@/utils/openaiWsMode'
 import type { OpenAIWSMode } from '@/utils/openaiWsMode'
+import { usePlatforms } from '@/composables/usePlatforms'
+import { getAccountTypeMeta, getPlatformMeta } from '@/utils/platformFrontendMeta'
 interface Props {
   show: boolean
   accountIds: number[]
@@ -1297,40 +1294,83 @@ const targetSelectedPlatforms = computed(() => props.target?.selectedPlatforms ?
 const targetSelectedTypes = computed(() => props.target?.selectedTypes ?? props.selectedTypes)
 const isMixedPlatform = computed(() => targetSelectedPlatforms.value.length > 1)
 
+const { getAccountTypeDecl, getPlatformDecl } = usePlatforms()
+
+/**
+ * Check if ALL selected account types have a given capability flag set in frontend_meta.
+ * Returns false if mixed platforms, no types selected, or API hasn't loaded yet and
+ * no hardcoded fallback matches.
+ */
+const allTypesHaveCapability = (
+  flag: keyof import('@/utils/platformFrontendMeta').AccountTypeFrontendMeta,
+): boolean => {
+  if (targetSelectedPlatforms.value.length !== 1) return false
+  const platform = targetSelectedPlatforms.value[0]
+  const types = targetSelectedTypes.value
+  if (types.length === 0) return false
+  return types.every(t => {
+    const decl = getAccountTypeDecl(platform, t)
+    const meta = getAccountTypeMeta(decl)
+    return meta[flag] === true
+  })
+}
+
+// Hardcoded fallbacks for when plugin API has not loaded yet
+const FALLBACK_PASSTHROUGH_TYPES = new Set(['oauth', 'apikey'])
+const FALLBACK_WS_MODE_OAUTH_TYPES = new Set(['oauth'])
+const FALLBACK_WS_MODE_APIKEY_TYPES = new Set(['apikey'])
+
 const allOpenAIPassthroughCapable = computed(() => {
+  if (allTypesHaveCapability('supports_passthrough')) return true
+  // Fallback: OpenAI OAuth/APIKey
   return (
     targetSelectedPlatforms.value.length === 1 &&
     targetSelectedPlatforms.value[0] === 'openai' &&
     targetSelectedTypes.value.length > 0 &&
-    targetSelectedTypes.value.every(t => t === 'oauth' || t === 'apikey')
+    targetSelectedTypes.value.every(t => FALLBACK_PASSTHROUGH_TYPES.has(t))
   )
 })
 
 const allOpenAIOAuth = computed(() => {
+  if (allTypesHaveCapability('supports_ws_mode') && allTypesHaveCapability('supports_codex_cli_only')) return true
+  // Fallback: OpenAI OAuth
   return (
     targetSelectedPlatforms.value.length === 1 &&
     targetSelectedPlatforms.value[0] === 'openai' &&
     targetSelectedTypes.value.length > 0 &&
-    targetSelectedTypes.value.every(t => t === 'oauth')
+    targetSelectedTypes.value.every(t => FALLBACK_WS_MODE_OAUTH_TYPES.has(t))
   )
 })
 
 const allOpenAIAPIKey = computed(() => {
+  // Metadata: supports_ws_mode but NOT supports_codex_cli_only distinguishes apikey from oauth
+  const platform = targetSelectedPlatforms.value[0]
+  const types = targetSelectedTypes.value
+  if (targetSelectedPlatforms.value.length === 1 && types.length > 0) {
+    const allHaveWs = types.every(t => getAccountTypeMeta(getAccountTypeDecl(platform, t)).supports_ws_mode === true)
+    const noneHaveCodex = types.every(t => !getAccountTypeMeta(getAccountTypeDecl(platform, t)).supports_codex_cli_only)
+    if (allHaveWs && noneHaveCodex) return true
+  }
+  // Fallback: OpenAI APIKey
   return (
     targetSelectedPlatforms.value.length === 1 &&
     targetSelectedPlatforms.value[0] === 'openai' &&
-    targetSelectedTypes.value.length > 0 &&
-    targetSelectedTypes.value.every(t => t === 'apikey')
+    types.length > 0 &&
+    types.every(t => FALLBACK_WS_MODE_APIKEY_TYPES.has(t))
   )
 })
 
-// 是否全部为 Antigravity 平台（allow_overages 仅在此条件下显示）
-const allAntigravity = computed(() =>
-  props.selectedPlatforms.length === 1 && props.selectedPlatforms[0] === 'antigravity'
-)
+// 是否全部为支持 allow_overages 的平台（如 Antigravity）
+const allAntigravity = computed(() => {
+  if (allTypesHaveCapability('supports_allow_overages')) return true
+  // Fallback
+  return props.selectedPlatforms.length === 1 && props.selectedPlatforms[0] === 'antigravity'
+})
 
-// 是否全部为 Anthropic OAuth/SetupToken（RPM 配置仅在此条件下显示）
+// 是否全部为支持 RPM 配置的类型（如 Anthropic OAuth/SetupToken）
 const allAnthropicOAuthOrSetupToken = computed(() => {
+  if (allTypesHaveCapability('supports_rpm_limit')) return true
+  // Fallback
   return (
     targetSelectedPlatforms.value.length === 1 &&
     targetSelectedPlatforms.value[0] === 'anthropic' &&
@@ -1702,13 +1742,19 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
 
 const mixedChannelConfirmed = ref(false)
 
-// 是否需要预检查：改了分组 + 全是单一的 antigravity 或 anthropic 平台
+// 是否需要预检查：改了分组 + 平台支持 mixed channel check
 // 多平台混合的情况由 submitBulkUpdate 的 409 catch 兜底
-const canPreCheck = () =>
-  enableGroups.value &&
-  groupIds.value.length > 0 &&
-  targetSelectedPlatforms.value.length === 1 &&
-  (targetSelectedPlatforms.value[0] === 'antigravity' || targetSelectedPlatforms.value[0] === 'anthropic')
+const canPreCheck = () => {
+  if (!enableGroups.value || groupIds.value.length === 0) return false
+  if (targetSelectedPlatforms.value.length !== 1) return false
+  const platform = targetSelectedPlatforms.value[0]
+  // Check platform metadata first
+  const decl = getPlatformDecl(platform)
+  const meta = getPlatformMeta(decl)
+  if (meta.supports_mixed_channel_check) return true
+  // Fallback: antigravity and anthropic
+  return platform === 'antigravity' || platform === 'anthropic'
+}
 
 const handleClose = () => {
   showMixedChannelWarning.value = false

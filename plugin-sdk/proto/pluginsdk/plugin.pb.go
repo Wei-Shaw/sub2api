@@ -1410,7 +1410,12 @@ type PlatformDeclaration struct {
 	// group_config declares the group-level configuration schema. When set,
 	// the admin group form renders either a JSON-schema form or a custom Vue
 	// component for platform-specific group settings.
-	GroupConfig   *GroupConfigDeclaration `protobuf:"bytes,13,opt,name=group_config,json=groupConfig,proto3" json:"group_config,omitempty"`
+	GroupConfig *GroupConfigDeclaration `protobuf:"bytes,13,opt,name=group_config,json=groupConfig,proto3" json:"group_config,omitempty"`
+	// frontend_meta is opaque JSON passed through to the frontend unchanged.
+	// The backend does not interpret this field. Plugins use it to declare
+	// UI hints (CLI config, CC switch config, feature flags, etc.) that the
+	// frontend reads to drive data-driven rendering.
+	FrontendMeta  []byte `protobuf:"bytes,14,opt,name=frontend_meta,json=frontendMeta,proto3" json:"frontend_meta,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1536,6 +1541,13 @@ func (x *PlatformDeclaration) GetGroupConfig() *GroupConfigDeclaration {
 	return nil
 }
 
+func (x *PlatformDeclaration) GetFrontendMeta() []byte {
+	if x != nil {
+		return x.FrontendMeta
+	}
+	return nil
+}
+
 // GroupConfigDeclaration declares group-level configuration for a platform.
 type GroupConfigDeclaration struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -1545,8 +1557,10 @@ type GroupConfigDeclaration struct {
 	// form_component_path names a custom Vue component the plugin ships for
 	// the group config form. Empty = use the JSON schema renderer.
 	FormComponentPath string `protobuf:"bytes,2,opt,name=form_component_path,json=formComponentPath,proto3" json:"form_component_path,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// frontend_meta is opaque JSON passed through to the frontend unchanged.
+	FrontendMeta  []byte `protobuf:"bytes,3,opt,name=frontend_meta,json=frontendMeta,proto3" json:"frontend_meta,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GroupConfigDeclaration) Reset() {
@@ -1593,6 +1607,13 @@ func (x *GroupConfigDeclaration) GetFormComponentPath() string {
 	return ""
 }
 
+func (x *GroupConfigDeclaration) GetFrontendMeta() []byte {
+	if x != nil {
+		return x.FrontendMeta
+	}
+	return nil
+}
+
 // AccountTypeDeclaration describes an account type within a platform.
 type AccountTypeDeclaration struct {
 	state       protoimpl.MessageState `protogen:"open.v1"`
@@ -1613,7 +1634,9 @@ type AccountTypeDeclaration struct {
 	SubTypes  []*SubTypeOption `protobuf:"bytes,9,rep,name=sub_types,json=subTypes,proto3" json:"sub_types,omitempty"`
 	SortOrder int32            `protobuf:"varint,10,opt,name=sort_order,json=sortOrder,proto3" json:"sort_order,omitempty"`
 	// badge_label is the short text on the list view type badge.
-	BadgeLabel    string `protobuf:"bytes,11,opt,name=badge_label,json=badgeLabel,proto3" json:"badge_label,omitempty"`
+	BadgeLabel string `protobuf:"bytes,11,opt,name=badge_label,json=badgeLabel,proto3" json:"badge_label,omitempty"`
+	// frontend_meta is opaque JSON passed through to the frontend unchanged.
+	FrontendMeta  []byte `protobuf:"bytes,12,opt,name=frontend_meta,json=frontendMeta,proto3" json:"frontend_meta,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1723,6 +1746,13 @@ func (x *AccountTypeDeclaration) GetBadgeLabel() string {
 		return x.BadgeLabel
 	}
 	return ""
+}
+
+func (x *AccountTypeDeclaration) GetFrontendMeta() []byte {
+	if x != nil {
+		return x.FrontendMeta
+	}
+	return nil
 }
 
 type SubTypeOption struct {
@@ -2377,7 +2407,7 @@ const file_plugin_proto_rawDesc = "" +
 	"\bfilename\x18\x01 \x01(\tR\bfilename\x12\x10\n" +
 	"\x03sql\x18\x02 \x01(\fR\x03sql\x12'\n" +
 	"\x0fchecksum_sha256\x18\x03 \x01(\tR\x0echecksumSha256\x12+\n" +
-	"\x11non_transactional\x18\x04 \x01(\bR\x10nonTransactional\"\xcc\x05\n" +
+	"\x11non_transactional\x18\x04 \x01(\bR\x10nonTransactional\"\xf1\x05\n" +
 	"\x13PlatformDeclaration\x12\x1a\n" +
 	"\bplatform\x18\x01 \x01(\tR\bplatform\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12\x19\n" +
@@ -2395,10 +2425,12 @@ const file_plugin_proto_rawDesc = "" +
 	" \x01(\x05R\tsortOrder\x12>\n" +
 	"\x0eprivacy_states\x18\v \x03(\v2\x17.pluginsdk.PrivacyStateR\rprivacyStates\x12/\n" +
 	"\x13compatible_gateways\x18\f \x03(\tR\x12compatibleGateways\x12D\n" +
-	"\fgroup_config\x18\r \x01(\v2!.pluginsdk.GroupConfigDeclarationR\vgroupConfig\"v\n" +
+	"\fgroup_config\x18\r \x01(\v2!.pluginsdk.GroupConfigDeclarationR\vgroupConfig\x12#\n" +
+	"\rfrontend_meta\x18\x0e \x01(\fR\ffrontendMeta\"\x9b\x01\n" +
 	"\x16GroupConfigDeclaration\x12,\n" +
 	"\x12group_extra_schema\x18\x01 \x01(\fR\x10groupExtraSchema\x12.\n" +
-	"\x13form_component_path\x18\x02 \x01(\tR\x11formComponentPath\"\xa4\x03\n" +
+	"\x13form_component_path\x18\x02 \x01(\tR\x11formComponentPath\x12#\n" +
+	"\rfrontend_meta\x18\x03 \x01(\fR\ffrontendMeta\"\xc9\x03\n" +
 	"\x16AccountTypeDeclaration\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12 \n" +
@@ -2414,7 +2446,8 @@ const file_plugin_proto_rawDesc = "" +
 	"sort_order\x18\n" +
 	" \x01(\x05R\tsortOrder\x12\x1f\n" +
 	"\vbadge_label\x18\v \x01(\tR\n" +
-	"badgeLabel\";\n" +
+	"badgeLabel\x12#\n" +
+	"\rfrontend_meta\x18\f \x01(\fR\ffrontendMeta\";\n" +
 	"\rSubTypeOption\x12\x14\n" +
 	"\x05value\x18\x01 \x01(\tR\x05value\x12\x14\n" +
 	"\x05label\x18\x02 \x01(\tR\x05label\"x\n" +

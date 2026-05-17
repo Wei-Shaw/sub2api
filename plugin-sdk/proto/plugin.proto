@@ -399,6 +399,11 @@ message PlatformDeclaration {
   // the admin group form renders either a JSON-schema form or a custom Vue
   // component for platform-specific group settings.
   GroupConfigDeclaration group_config = 13;
+  // frontend_meta is opaque JSON passed through to the frontend unchanged.
+  // The backend does not interpret this field. Plugins use it to declare
+  // UI hints (CLI config, CC switch config, feature flags, etc.) that the
+  // frontend reads to drive data-driven rendering.
+  bytes frontend_meta = 14;
 }
 
 // GroupConfigDeclaration declares group-level configuration for a platform.
@@ -409,6 +414,8 @@ message GroupConfigDeclaration {
   // form_component_path names a custom Vue component the plugin ships for
   // the group config form. Empty = use the JSON schema renderer.
   string form_component_path = 2;
+  // frontend_meta is opaque JSON passed through to the frontend unchanged.
+  bytes frontend_meta = 3;
 }
 
 // AccountTypeDeclaration describes an account type within a platform.
@@ -431,6 +438,8 @@ message AccountTypeDeclaration {
   int32 sort_order = 10;
   // badge_label is the short text on the list view type badge.
   string badge_label = 11;
+  // frontend_meta is opaque JSON passed through to the frontend unchanged.
+  bytes frontend_meta = 12;
 }
 
 message SubTypeOption {

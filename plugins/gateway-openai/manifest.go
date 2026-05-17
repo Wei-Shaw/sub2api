@@ -27,6 +27,26 @@ func buildManifest() *pluginsdk.Manifest {
 				ThemeColor:         "#10b981",
 				SortOrder:          2,
 				CompatibleGateways: []string{"openai", "chat_completions", "responses", "anthropic_via_openai", "images"},
+				FrontendMeta: json.RawMessage(`{
+					"cli_config": {
+						"base_url_suffix": "/openai",
+						"claude_code_supported": true,
+						"codex_cli_supported": true,
+						"codex_ws_supported": true,
+						"opencode_supported": true,
+						"claude_code_requires_dispatch": true,
+						"codex_model": "gpt-5.4",
+						"codex_wire_api": "responses"
+					},
+					"cc_switch_config": {
+						"app": "codex",
+						"model": "gpt-5.4"
+					},
+					"preset_mappings": [
+						{"label": "GPT-4o", "from": "gpt-4o*", "to": "gpt-4o"},
+						{"label": "GPT-5.2", "from": "gpt-5.2*", "to": "gpt-5.2-preview"}
+					]
+				}`),
 				AccountTypes: []pluginsdk.AccountTypeDecl{
 					{
 						Type:              "oauth",
@@ -35,6 +55,13 @@ func buildManifest() *pluginsdk.Manifest {
 						SortOrder:   1,
 						BadgeLabel:         "OAuth",
 						FormComponentPath: "OpenAIForm",
+						FrontendMeta: json.RawMessage(`{
+							"supports_passthrough": true,
+							"supports_ws_mode": true,
+							"supports_compact_mode": true,
+							"supports_codex_cli_only": true,
+							"usage_refresh_extra_fields": ["codex_usage_updated_at", "codex_5h_used_percent", "codex_monthly_used_percent"]
+						}`),
 					},
 					{
 						Type:              "apikey",
@@ -43,6 +70,11 @@ func buildManifest() *pluginsdk.Manifest {
 						SortOrder:   2,
 						BadgeLabel:         "Key",
 						FormComponentPath: "OpenAIForm",
+						FrontendMeta: json.RawMessage(`{
+							"supports_passthrough": true,
+							"supports_ws_mode": true,
+							"supports_compact_mode": true
+						}`),
 					},
 				},
 				CapacityDisplay: &pluginsdk.CapacityDisplayConfig{
@@ -84,6 +116,9 @@ func buildManifest() *pluginsdk.Manifest {
 				},
 				GroupConfig: &pluginsdk.GroupConfigDecl{
 					FormComponentPath: "OpenAIGroupConfig",
+					FrontendMeta: json.RawMessage(`{
+						"supports_messages_dispatch": true
+					}`),
 					GroupExtraSchema: json.RawMessage(`{
 						"type": "object",
 						"properties": {

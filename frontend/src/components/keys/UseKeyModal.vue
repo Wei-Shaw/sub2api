@@ -137,6 +137,8 @@ import { BaseDialog } from '@sub2api/plugin-sdk'
 import Icon from '@/components/icons/Icon.vue'
 import { useClipboard } from '@/composables/useClipboard'
 import { getPlatformCliConfig } from './platformCliConfigs'
+import { usePlatforms } from '@/composables/usePlatforms'
+import { getPlatformMeta } from '@/utils/platformFrontendMeta'
 import {
   generateClaudeCodeFiles,
   generateGeminiCliFile,
@@ -166,9 +168,14 @@ const copiedIndex = ref<number | null>(null)
 const activeTab = ref('unix')
 const activeClientTab = ref('claude')
 
-const cliConfig = computed(() =>
-  props.platform ? getPlatformCliConfig(props.platform) : null
-)
+const { getPlatformDecl: getUseKeyPlatformDecl } = usePlatforms()
+
+const cliConfig = computed(() => {
+  if (!props.platform) return null
+  const decl = getUseKeyPlatformDecl(props.platform)
+  const meta = getPlatformMeta(decl)
+  return getPlatformCliConfig(props.platform, meta.cli_config)
+})
 
 // Reset tabs when platform changes
 watch(() => props.platform, () => {

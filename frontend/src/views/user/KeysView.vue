@@ -1076,7 +1076,9 @@ import { maskApiKey } from '@/utils/maskApiKey'
 import {
   buildCcSwitchImportDeeplink,
   type CcSwitchClientType
-} from '@/utils/ccswitchImport'
+} from '@/utils/ccSwitchImport'
+import { usePlatforms } from '@/composables/usePlatforms'
+import { getPlatformMeta } from '@/utils/platformFrontendMeta'
 
 // Helper to format date for datetime-local input
 const formatDateTimeLocal = (isoDate: string): string => {
@@ -1690,11 +1692,18 @@ const resetRateLimitUsage = async () => {
   }
 }
 
+const { getPlatformDecl: getKeysPlatformDecl } = usePlatforms()
+
 const importToCcswitch = (row: ApiKey) => {
   const platform = row.group?.platform || 'anthropic'
 
-  // For antigravity platform, show client selection dialog
-  if (platform === 'antigravity') {
+  // Check if platform is client-type-aware (show selection dialog)
+  const decl = getKeysPlatformDecl(platform)
+  const meta = getPlatformMeta(decl)
+  const isClientTypeAware = meta.cc_switch_config?.clientTypeAware
+    ?? (platform === 'antigravity') // fallback
+
+  if (isClientTypeAware) {
     pendingCcsRow.value = row
     showCcsClientSelect.value = true
     return

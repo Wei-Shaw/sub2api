@@ -20,6 +20,7 @@ type PlatformDecl struct {
 	PrivacyStates      []PrivacyStateDecl
 	CompatibleGateways []string
 	GroupConfig        *GroupConfigDecl
+	FrontendMeta       json.RawMessage `json:"frontend_meta,omitempty"` // Opaque JSON passed to frontend; backend does not interpret
 }
 
 // GroupConfigDecl declares the group-level configuration schema for a platform.
@@ -28,6 +29,7 @@ type PlatformDecl struct {
 type GroupConfigDecl struct {
 	GroupExtraSchema  json.RawMessage // JSON Schema (Draft-07)
 	FormComponentPath string          // custom Vue component path; empty = schema renderer
+	FrontendMeta      json.RawMessage `json:"frontend_meta,omitempty"` // Opaque JSON passed to frontend; backend does not interpret
 }
 
 // AccountTypeDecl describes an account type within a platform.
@@ -44,6 +46,7 @@ type AccountTypeDecl struct {
 	SubTypes          []SubTypeOption
 	SortOrder         int
 	BadgeLabel        string
+	FrontendMeta      json.RawMessage `json:"frontend_meta,omitempty"` // Opaque JSON passed to frontend; backend does not interpret
 }
 
 // SubTypeOption represents a sub-type choice within an account type.

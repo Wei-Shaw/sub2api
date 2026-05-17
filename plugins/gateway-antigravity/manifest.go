@@ -27,6 +27,29 @@ func buildManifest() *pluginsdk.Manifest {
 				ThemeColor:         "#7c3aed",
 				SortOrder:          3,
 				CompatibleGateways: []string{"antigravity"},
+				FrontendMeta: json.RawMessage(`{
+					"cli_config": {
+						"base_url_suffix": "/antigravity",
+						"claude_code_supported": true,
+						"gemini_cli_supported": true,
+						"opencode_supported": true,
+						"default_client_tab": "claude-code",
+						"claude_code_env_base_url": "ANTHROPIC_BASE_URL",
+						"claude_code_env_api_key": "ANTHROPIC_AUTH_TOKEN",
+						"gemini_cli_env_base_url": "GOOGLE_GEMINI_BASE_URL",
+						"gemini_cli_env_api_key": "GEMINI_API_KEY"
+					},
+					"cc_switch_config": {
+						"app": "claude",
+						"endpoint_suffix": "/antigravity",
+						"client_type_aware": true
+					},
+					"preset_mappings": [
+						{"label": "Claude Sonnet 4", "from": "claude-sonnet-4-*", "to": "claude-sonnet-4-20250514"},
+						{"label": "Gemini 2.5 Pro", "from": "gemini-2.5-pro*", "to": "gemini-2.5-pro-preview-05-06"}
+					],
+					"supports_mixed_channel_check": true
+				}`),
 				AccountTypes: []pluginsdk.AccountTypeDecl{
 					{
 						Type:              "oauth",
@@ -35,6 +58,9 @@ func buildManifest() *pluginsdk.Manifest {
 						SortOrder:          1,
 						BadgeLabel:         "OAuth",
 						FormComponentPath:  "AntigravityForm",
+						FrontendMeta: json.RawMessage(`{
+							"supports_allow_overages": true
+						}`),
 					},
 					{
 						Type:              "apikey",
@@ -80,6 +106,9 @@ func buildManifest() *pluginsdk.Manifest {
 				},
 				GroupConfig: &pluginsdk.GroupConfigDecl{
 					FormComponentPath: "AntigravityGroupConfig",
+					FrontendMeta: json.RawMessage(`{
+						"supports_fallback_on_invalid_request": true
+					}`),
 					GroupExtraSchema: json.RawMessage(`{
 						"type": "object",
 						"properties": {

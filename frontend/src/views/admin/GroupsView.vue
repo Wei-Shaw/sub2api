@@ -621,11 +621,12 @@ import {
 import { usePlatforms } from "@/composables/usePlatforms";
 import { dynamicPlatformBadgeClass } from "@/utils/platformColors";
 import { resolveGroupConfigComponent } from "@/components/admin/group/config/groupConfigRegistry";
+import { getGroupConfigMeta } from "@/utils/platformFrontendMeta";
 
 const { t } = useI18n();
 const appStore = useAppStore();
 const onboardingStore = useOnboardingStore();
-const { platforms, fetchPlatforms } = usePlatforms();
+const { platforms, fetchPlatforms, getPlatformDecl } = usePlatforms();
 
 const FALLBACK_PLATFORMS = [
   { value: "anthropic", label: "Anthropic", theme_color: "#ea580c" },
@@ -1085,16 +1086,20 @@ const buildGroupPayload = (
   formFieldsRef: InstanceType<typeof GroupFormFields> | null,
 ) => {
   const emptyToNull = (v: unknown) => (v === "" ? null : v);
+  // Check if this platform supports messages dispatch via metadata
+  const platformStr = form.platform as string
+  const platformDecl = getPlatformDecl(platformStr)
+  const groupConfigMeta = getGroupConfigMeta(platformDecl?.group_config)
+  const supportsMessagesDispatch = groupConfigMeta.supports_messages_dispatch
+    ?? (platformStr === "openai") // fallback
+
   const payload: Record<string, unknown> = {
     ...form,
     daily_limit_usd: emptyToNull(normalizeOptionalLimit(form.daily_limit_usd as number | string | null)),
     weekly_limit_usd: emptyToNull(normalizeOptionalLimit(form.weekly_limit_usd as number | string | null)),
     monthly_limit_usd: emptyToNull(normalizeOptionalLimit(form.monthly_limit_usd as number | string | null)),
     model_routing: formFieldsRef?.getRoutingRulesApiFormat?.() ?? null,
-    // TODO: messages_dispatch is currently OpenAI-specific. When PlatformDeclaration gains a
-    // "supports_messages_dispatch" capability flag, replace this platform check with metadata.
-    messages_dispatch_model_config:
-      form.platform === "openai"
+    messages_dispatch_model_config: supportsMessagesDispatch
         ? messagesDispatchFormStateToConfig({
             allow_messages_dispatch: form.allow_messages_dispatch as boolean,
             opus_mapped_model: form.opus_mapped_model as string,
@@ -1273,16 +1278,35 @@ watch(
   },
 );
 
+/** Check if a platform supports fallback_on_invalid_request via metadata or fallback */
+const platformSupportsFallbackOnInvalidRequest = (platform: string): boolean => {
+  const decl = getPlatformDecl(platform)
+  const meta = getGroupConfigMeta(decl?.group_config)
+  if (meta.supports_fallback_on_invalid_request !== undefined) {
+    return meta.supports_fallback_on_invalid_request
+  }
+  // Fallback: anthropic and antigravity
+  return ["anthropic", "antigravity"].includes(platform)
+}
+
+/** Check if a platform supports messages dispatch via metadata or fallback */
+const platformSupportsMessagesDispatch = (platform: string): boolean => {
+  const decl = getPlatformDecl(platform)
+  const meta = getGroupConfigMeta(decl?.group_config)
+  if (meta.supports_messages_dispatch !== undefined) {
+    return meta.supports_messages_dispatch
+  }
+  // Fallback: openai
+  return platform === "openai"
+}
+
 watch(
   () => createForm.platform,
   (newVal) => {
-    // TODO: fallback_group_id_on_invalid_request support should come from PlatformDeclaration
-    // or GroupConfigDeclaration metadata (e.g. "supports_fallback_on_invalid_request" capability).
-    if (!["anthropic", "antigravity"].includes(newVal)) {
+    if (!platformSupportsFallbackOnInvalidRequest(newVal)) {
       createForm.fallback_group_id_on_invalid_request = null;
     }
-    // TODO: messages_dispatch support should come from PlatformDeclaration capability metadata.
-    if (newVal !== "openai") {
+    if (!platformSupportsMessagesDispatch(newVal)) {
       resetMessagesDispatchFormState(createForm);
     }
   },
@@ -1291,13 +1315,10 @@ watch(
 watch(
   () => editForm.platform,
   (newVal) => {
-    // TODO: fallback_group_id_on_invalid_request support should come from PlatformDeclaration
-    // or GroupConfigDeclaration metadata (e.g. "supports_fallback_on_invalid_request" capability).
-    if (!["anthropic", "antigravity"].includes(newVal)) {
+    if (!platformSupportsFallbackOnInvalidRequest(newVal)) {
       editForm.fallback_group_id_on_invalid_request = null;
     }
-    // TODO: messages_dispatch support should come from PlatformDeclaration capability metadata.
-    if (newVal !== "openai") {
+    if (!platformSupportsMessagesDispatch(newVal)) {
       resetMessagesDispatchFormState(editForm);
       editForm.allow_messages_dispatch = false;
       editForm.default_mapped_model = '';

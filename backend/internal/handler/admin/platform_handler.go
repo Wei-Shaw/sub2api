@@ -106,6 +106,7 @@ type platformResponse struct {
 	PrivacyStates      []privacyStateResponse   `json:"privacy_states,omitempty"`
 	GroupConfig        *groupConfigResponse     `json:"group_config,omitempty"`
 	CompatibleGateways []string                 `json:"compatible_gateways,omitempty"`
+	FrontendMeta       json.RawMessage          `json:"frontend_meta,omitempty"`
 }
 
 type accountTypeResponse struct {
@@ -120,6 +121,7 @@ type accountTypeResponse struct {
 	SubTypes          []subTypeResp   `json:"sub_types,omitempty"`
 	SortOrder         int             `json:"sort_order"`
 	BadgeLabel        string          `json:"badge_label,omitempty"`
+	FrontendMeta      json.RawMessage `json:"frontend_meta,omitempty"`
 }
 
 type subTypeResp struct {
@@ -180,6 +182,7 @@ type privacyStateResponse struct {
 type groupConfigResponse struct {
 	GroupExtraSchema  json.RawMessage `json:"group_extra_schema,omitempty"`
 	FormComponentPath string          `json:"form_component_path,omitempty"`
+	FrontendMeta      json.RawMessage `json:"frontend_meta,omitempty"`
 }
 
 // --- converters ---
@@ -245,9 +248,11 @@ func toPlatformResponse(e *plugin.RegisteredPlatform) platformResponse {
 		r.GroupConfig = &groupConfigResponse{
 			GroupExtraSchema:  d.GroupConfig.GroupExtraSchema,
 			FormComponentPath: d.GroupConfig.FormComponentPath,
+			FrontendMeta:      d.GroupConfig.FrontendMeta,
 		}
 	}
 	r.CompatibleGateways = d.CompatibleGateways
+	r.FrontendMeta = d.FrontendMeta
 	return r
 }
 
@@ -264,6 +269,7 @@ func toAccountTypeResp(at pluginsdk.AccountTypeDecl) accountTypeResponse {
 		SubTypes:          toSubTypes(at.SubTypes),
 		SortOrder:         at.SortOrder,
 		BadgeLabel:        at.BadgeLabel,
+		FrontendMeta:      at.FrontendMeta,
 	}
 }
 
