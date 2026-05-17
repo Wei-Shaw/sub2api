@@ -366,26 +366,21 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { useThemeTransition } from '@/composables/useThemeTransition'
 
 const { t, locale } = useI18n()
 const appStore = useAppStore()
 
 // ==================== Site Settings (same as HomeView) ====================
 
-const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || 'Sub2API')
+const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || 'DevRouter')
 const siteLogo = computed(() => appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '')
 const docUrl = computed(() => appStore.cachedPublicSettings?.doc_url || appStore.docUrl || '')
 const githubUrl = 'https://github.com/Wei-Shaw/sub2api'
 
 // ==================== Theme (same as HomeView) ====================
 
-const isDark = ref(document.documentElement.classList.contains('dark'))
-
-function toggleTheme() {
-  isDark.value = !isDark.value
-  document.documentElement.classList.toggle('dark', isDark.value)
-  localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
-}
+const { isDark, initTheme, toggleTheme } = useThemeTransition()
 
 const currentYear = computed(() => new Date().getFullYear())
 
@@ -801,14 +796,6 @@ async function queryKey() {
 }
 
 // ==================== Lifecycle ====================
-
-function initTheme() {
-  const savedTheme = localStorage.getItem('theme')
-  if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-    isDark.value = true
-    document.documentElement.classList.add('dark')
-  }
-}
 
 function formatResetTime(resetAt: string | null | undefined): string {
   if (!resetAt) return ''

@@ -1418,11 +1418,11 @@ func (s *ContentModerationService) sendAccountDisabledEmail(ctx context.Context,
 
 func (s *ContentModerationService) siteName(ctx context.Context) string {
 	if s == nil || s.settingRepo == nil {
-		return "Sub2API"
+		return "DevRouter"
 	}
 	name, err := s.settingRepo.GetValue(ctx, SettingKeySiteName)
 	if err != nil || strings.TrimSpace(name) == "" {
-		return "Sub2API"
+		return "DevRouter"
 	}
 	return strings.TrimSpace(name)
 }

@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen bg-gray-50 dark:bg-dark-950">
+  <div class="min-h-screen bg-[#F8FAFC] dark:bg-dark-950">
     <!-- Background Decoration -->
     <div class="pointer-events-none fixed inset-0 bg-mesh-gradient"></div>
 
@@ -39,7 +39,8 @@ const route = useRoute()
 const sidebarCollapsed = computed(() => appStore.sidebarCollapsed)
 const isAdmin = computed(() => authStore.user?.role === 'admin')
 const isPublicGuestPage = computed(() => route.meta.requiresAuth === false && !authStore.isAuthenticated)
-const showSidebar = computed(() => !isPublicGuestPage.value)
+const isStandalonePage = computed(() => route.meta.standalone === true)
+const showSidebar = computed(() => !isStandalonePage.value && !isPublicGuestPage.value)
 
 const { replayTour } = useOnboardingTour({
   storageKey: isAdmin.value ? 'admin_guide' : 'user_guide',

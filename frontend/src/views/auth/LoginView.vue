@@ -1,25 +1,39 @@
 <template>
   <AuthLayout>
-    <div class="space-y-6">
-      <!-- Title -->
+    <div class="auth-login-panel space-y-6">
       <div class="text-center">
-        <h2 class="text-2xl font-bold text-gray-900 dark:text-white">
+        <h2 class="font-[Inter,Geist,system-ui,sans-serif] text-3xl font-bold tracking-[-0.02em] text-slate-950 dark:text-white">
           {{ t('auth.welcomeBack') }}
         </h2>
-        <p class="mt-2 text-sm text-gray-500 dark:text-dark-400">
+        <p class="auth-login-subtitle mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
           {{ t('auth.signInToAccount') }}
         </p>
       </div>
-      <!-- Login Form -->
+
+      <div v-if="showEmailOAuthLogin" class="auth-email-oauth space-y-3">
+        <EmailOAuthButtons
+          :disabled="authActionDisabled"
+          :github-enabled="githubOAuthEnabled"
+          :google-enabled="googleOAuthEnabled"
+          :show-divider="false"
+        />
+        <div class="flex items-center gap-3">
+          <div class="h-px flex-1 bg-slate-200/80 dark:bg-white/10"></div>
+          <span class="text-xs font-medium text-slate-400 dark:text-slate-500">
+            {{ t('auth.oauthOrContinue') }}
+          </span>
+          <div class="h-px flex-1 bg-slate-200/80 dark:bg-white/10"></div>
+        </div>
+      </div>
+
       <form @submit.prevent="handleLogin" class="space-y-5">
-        <!-- Email Input -->
         <div>
-          <label for="email" class="input-label">
+          <label for="email" class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
             {{ t('auth.emailLabel') }}
           </label>
           <div class="relative">
-            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
-              <Icon name="mail" size="md" class="text-gray-400 dark:text-dark-500" />
+            <div class="auth-field-icon pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400 dark:text-slate-500">
+              <Icon name="mail" size="md" :stroke-width="1.5" />
             </div>
             <input
               id="email"
@@ -29,21 +43,20 @@
               autofocus
               autocomplete="email"
               :disabled="authActionDisabled"
-              class="input pl-11"
-              :class="{ 'input-error': errors.email }"
+              class="auth-input h-11 w-full rounded-md border border-slate-200 bg-white px-4 py-2.5 pl-11 text-sm text-slate-950 shadow-sm transition-all duration-300 placeholder:text-slate-400 focus:border-slate-950 focus:bg-white focus:outline-none focus:ring-4 focus:ring-slate-950/5 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400 dark:border-white/10 dark:bg-slate-900/80 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-slate-400 dark:focus:bg-slate-900 dark:focus:ring-slate-400/10"
+              :class="{ 'border-red-500 focus:border-red-500 focus:ring-red-500/20': errors.email }"
               :placeholder="t('auth.emailPlaceholder')"
             />
           </div>
         </div>
 
-        <!-- Password Input -->
         <div>
-          <label for="password" class="input-label">
+          <label for="password" class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
             {{ t('auth.passwordLabel') }}
           </label>
           <div class="relative">
-            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
-              <Icon name="lock" size="md" class="text-gray-400 dark:text-dark-500" />
+            <div class="auth-field-icon pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400 dark:text-slate-500">
+              <Icon name="lock" size="md" :stroke-width="1.5" />
             </div>
             <input
               id="password"
@@ -52,18 +65,18 @@
               required
               autocomplete="current-password"
               :disabled="authActionDisabled"
-              class="input pl-11 pr-11"
-              :class="{ 'input-error': errors.password }"
+              class="auth-input h-11 w-full rounded-md border border-slate-200 bg-white px-4 py-2.5 pl-11 pr-11 text-sm text-slate-950 shadow-sm transition-all duration-300 placeholder:text-slate-400 focus:border-slate-950 focus:bg-white focus:outline-none focus:ring-4 focus:ring-slate-950/5 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400 dark:border-white/10 dark:bg-slate-900/80 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-slate-400 dark:focus:bg-slate-900 dark:focus:ring-slate-400/10"
+              :class="{ 'border-red-500 focus:border-red-500 focus:ring-red-500/20': errors.password }"
               :placeholder="t('auth.passwordPlaceholder')"
             />
             <button
               type="button"
               @click="showPassword = !showPassword"
               :disabled="authActionDisabled"
-              class="absolute inset-y-0 right-0 flex items-center pr-3.5 text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-dark-300"
+              class="absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-400 transition-colors hover:text-slate-700 disabled:cursor-not-allowed dark:text-slate-500 dark:hover:text-slate-300"
             >
-              <Icon v-if="showPassword" name="eyeOff" size="md" />
-              <Icon v-else name="eye" size="md" />
+              <Icon v-if="showPassword" name="eyeOff" size="md" :stroke-width="1.5" />
+              <Icon v-else name="eye" size="md" :stroke-width="1.5" />
             </button>
           </div>
           <div class="mt-1 flex items-center justify-between">
@@ -71,7 +84,7 @@
             <router-link
               v-if="passwordResetEnabled && !backendModeEnabled"
               to="/forgot-password"
-              class="text-sm font-medium text-primary-600 transition-colors hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300"
+              class="auth-forgot-link text-sm font-medium text-slate-600 underline-offset-4 transition-colors hover:text-slate-950 hover:underline dark:text-slate-400 dark:hover:text-white"
             >
               {{ t('auth.forgotPassword') }}
             </router-link>
@@ -93,7 +106,7 @@
         <button
           type="submit"
           :disabled="authActionDisabled || (turnstileEnabled && !turnstileToken)"
-          class="btn btn-primary w-full"
+          class="auth-submit-button inline-flex h-11 w-full items-center justify-center gap-2 rounded-md border border-slate-950 bg-slate-950 px-4 text-sm font-semibold text-white shadow-[0_16px_40px_rgba(139,92,246,0.18)] transition-all duration-300 hover:-translate-y-0.5 hover:bg-slate-900 hover:shadow-[0_20px_52px_rgba(139,92,246,0.24)] focus:outline-none focus:ring-4 focus:ring-slate-950/10 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 dark:border-white/20 dark:bg-black dark:text-white dark:hover:bg-slate-950 dark:focus:ring-slate-400/10"
         >
           <svg
             v-if="isLoading"
@@ -131,21 +144,14 @@
           @open="showAgreementModal = true"
         />
 
-        <div v-if="showOAuthLogin" class="space-y-3 pt-1">
+        <div v-if="showSecondaryOAuthLogin" class="space-y-3 pt-1">
           <div class="flex items-center gap-3">
-            <div class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></div>
-            <span class="text-xs text-gray-500 dark:text-dark-400">
+            <div class="h-px flex-1 bg-slate-200/80 dark:bg-white/10"></div>
+            <span class="text-xs font-medium text-slate-400 dark:text-slate-500">
               {{ t('auth.oauthOrContinue') }}
             </span>
-            <div class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></div>
+            <div class="h-px flex-1 bg-slate-200/80 dark:bg-white/10"></div>
           </div>
-
-          <EmailOAuthButtons
-            :disabled="authActionDisabled"
-            :github-enabled="githubOAuthEnabled"
-            :google-enabled="googleOAuthEnabled"
-            :show-divider="false"
-          />
 
           <LinuxDoOAuthSection
             v-if="linuxdoOAuthEnabled"
@@ -169,11 +175,11 @@
 
     <!-- Footer -->
     <template v-if="!backendModeEnabled" #footer>
-      <p class="text-gray-500 dark:text-dark-400">
+      <p class="text-slate-500 dark:text-slate-500">
         {{ t('auth.dontHaveAccount') }}
         <router-link
           to="/register"
-          class="font-medium text-primary-600 transition-colors hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300"
+          class="auth-signup-link font-semibold text-slate-950 underline-offset-4 transition-colors hover:underline dark:text-white"
         >
           {{ t('auth.signUp') }}
         </router-link>
@@ -279,14 +285,14 @@ const authActionDisabled = computed(
   () => isLoading.value || !publicSettingsLoaded.value || agreementGateActive.value
 )
 
-const showOAuthLogin = computed(
+const showEmailOAuthLogin = computed(
+  () => !backendModeEnabled.value && (githubOAuthEnabled.value || googleOAuthEnabled.value)
+)
+
+const showSecondaryOAuthLogin = computed(
   () =>
     !backendModeEnabled.value &&
-    (linuxdoOAuthEnabled.value ||
-      wechatOAuthEnabled.value ||
-      oidcOAuthEnabled.value ||
-      githubOAuthEnabled.value ||
-      googleOAuthEnabled.value)
+    (linuxdoOAuthEnabled.value || wechatOAuthEnabled.value || oidcOAuthEnabled.value)
 )
 
 watch(validationToastMessage, (value, previousValue) => {

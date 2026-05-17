@@ -12,7 +12,7 @@
   }
 
   body {
-    @apply bg-gray-50 text-gray-900 dark:bg-dark-950 dark:text-gray-100;
+    @apply bg-[#F8FAFC] text-slate-900 dark:bg-dark-950 dark:text-gray-100;
     @apply min-h-screen;
   }
 
@@ -60,6 +60,74 @@
     @apply bg-primary-500/20 text-primary-900 dark:text-primary-100;
   }
 
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+    mix-blend-mode: normal;
+  }
+
+  ::view-transition-old(root) {
+    z-index: 0;
+  }
+
+  ::view-transition-new(root) {
+    z-index: 1;
+  }
+
+  .theme-ripple-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483647;
+    pointer-events: none;
+    overflow: hidden;
+  }
+
+  .theme-ripple-ring {
+    position: absolute;
+    left: var(--theme-ripple-x);
+    top: var(--theme-ripple-y);
+    width: 36px;
+    height: 36px;
+    border-radius: 9999px;
+    border: 1px solid rgba(148, 163, 184, var(--theme-ripple-alpha, 0.22));
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.18),
+      0 0 24px rgba(139, 92, 246, 0.10),
+      0 0 44px rgba(6, 182, 212, 0.08);
+    transform: translate(-50%, -50%) scale(0.25);
+    opacity: 0;
+    animation: theme-ripple-ring 1200ms cubic-bezier(0.19, 1, 0.22, 1) forwards;
+    animation-delay: var(--theme-ripple-delay, 0ms);
+  }
+
+  .dark .theme-ripple-ring {
+    border-color: rgba(226, 232, 240, var(--theme-ripple-alpha, 0.22));
+    box-shadow:
+      0 0 0 1px rgba(15, 23, 42, 0.18),
+      0 0 24px rgba(139, 92, 246, 0.13),
+      0 0 44px rgba(6, 182, 212, 0.10);
+  }
+
+  @keyframes theme-ripple-ring {
+    0% {
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(0.25);
+    }
+    20% {
+      opacity: 0.55;
+    }
+    100% {
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(42);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .theme-ripple-ring {
+      animation-duration: 1ms;
+    }
+  }
+
 
 }
 
@@ -67,26 +135,23 @@
   /* ============ 按钮样式 ============ */
   .btn {
     @apply inline-flex items-center justify-center gap-2;
-    @apply rounded-xl px-4 py-2.5 text-sm font-medium;
-    @apply transition-all duration-200 ease-out;
-    @apply focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:ring-offset-2;
+    @apply rounded-md px-4 py-2.5 text-sm font-semibold;
+    @apply transition-all duration-300 ease-out;
+    @apply focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:ring-offset-2;
     @apply disabled:transform-none disabled:cursor-not-allowed disabled:opacity-50;
     @apply active:scale-[0.98];
   }
 
   .btn-primary {
-    @apply bg-gradient-to-r from-primary-500 to-primary-600;
-    @apply text-white shadow-md shadow-primary-500/25;
-    @apply hover:from-primary-600 hover:to-primary-700 hover:shadow-lg hover:shadow-primary-500/30;
-    @apply dark:shadow-primary-500/20;
+    @apply bg-slate-950 text-white shadow-sm shadow-slate-950/10;
+    @apply hover:-translate-y-0.5 hover:bg-black hover:shadow-md hover:shadow-violet-500/15;
+    @apply dark:border dark:border-white/15 dark:bg-black dark:text-white dark:shadow-black/30;
   }
 
   .btn-secondary {
-    @apply bg-white dark:bg-dark-800;
-    @apply text-gray-700 dark:text-gray-200;
-    @apply border border-gray-200 dark:border-dark-600;
-    @apply shadow-sm hover:bg-gray-50 dark:hover:bg-dark-700;
-    @apply hover:border-gray-300 dark:hover:border-dark-500;
+    @apply border border-slate-200 bg-white text-slate-700 shadow-sm;
+    @apply hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950;
+    @apply dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10 dark:hover:text-white;
   }
 
   .btn-ghost {
@@ -153,13 +218,13 @@
 
   /* ============ 输入框样式 ============ */
   .input {
-    @apply w-full rounded-xl px-4 py-2.5 text-sm;
-    @apply bg-white dark:bg-dark-800;
-    @apply border border-gray-200 dark:border-dark-600;
-    @apply text-gray-900 dark:text-gray-100;
+    @apply w-full rounded-md px-4 py-2.5 text-sm;
+    @apply border border-slate-200 bg-white dark:border-dark-600 dark:bg-dark-900;
+    @apply text-slate-900 dark:text-gray-100;
     @apply placeholder:text-gray-400 dark:placeholder:text-dark-400;
-    @apply transition-all duration-200;
-    @apply focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30;
+    @apply transition-all duration-300;
+    @apply focus:border-slate-950 focus:bg-white focus:outline-none focus:ring-4 focus:ring-slate-950/5;
+    @apply dark:focus:border-slate-400 dark:focus:bg-dark-900 dark:focus:ring-slate-400/10;
     @apply disabled:cursor-not-allowed disabled:bg-gray-100 dark:disabled:bg-dark-900;
   }
 
@@ -192,7 +257,7 @@
 
   /* ============ 玻璃效果 ============ */
   .glass {
-    @apply bg-white/80 backdrop-blur-xl dark:bg-dark-800/80;
+    @apply border border-white/60 bg-white/80 backdrop-blur-2xl dark:border-white/10 dark:bg-dark-900/70;
   }
 
   .glass-card {
@@ -289,7 +354,7 @@
 
   /* ============ 表格样式 ============ */
   .table-container {
-    @apply overflow-x-auto rounded-xl border border-gray-200 dark:border-dark-700;
+    @apply overflow-x-auto rounded-lg border border-slate-200 dark:border-dark-700;
   }
 
   .table {
@@ -297,16 +362,16 @@
   }
 
   .table th {
-    @apply px-4 py-3 text-left font-medium;
-    @apply text-gray-600 dark:text-dark-300;
-    @apply bg-gray-50 dark:bg-dark-800/50;
-    @apply border-b border-gray-200 dark:border-dark-700;
+    @apply px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider;
+    @apply text-slate-500 dark:text-dark-400;
+    @apply bg-white dark:bg-dark-900;
+    @apply border-b border-slate-100 dark:border-dark-800;
   }
 
   .table td {
     @apply px-4 py-3;
-    @apply text-gray-700 dark:text-gray-300;
-    @apply border-b border-gray-100 dark:border-dark-800;
+    @apply text-slate-700 dark:text-gray-300;
+    @apply border-b border-slate-100 dark:border-dark-800;
   }
 
   .table tr:last-child td {
@@ -315,7 +380,7 @@
 
   .table tbody tr {
     @apply transition-colors duration-150;
-    @apply hover:bg-gray-50 dark:hover:bg-dark-800/30;
+    @apply hover:bg-slate-50/70 dark:hover:bg-dark-800/30;
   }
 
   /* ============ 徽章样式 ============ */
@@ -325,11 +390,11 @@
   }
 
   .badge-primary {
-    @apply bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400;
+    @apply border border-slate-200 bg-white text-slate-700 dark:border-dark-600 dark:bg-dark-900 dark:text-dark-300;
   }
 
   .badge-success {
-    @apply bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400;
+    @apply bg-transparent px-0 text-slate-700 dark:text-dark-300;
   }
 
   .badge-warning {
@@ -540,7 +605,7 @@
   }
 
   .sidebar-link {
-    @apply flex items-center gap-3 rounded-xl py-2.5;
+    @apply flex items-center gap-3 rounded-lg border-l-2 border-transparent py-2.5;
     @apply overflow-hidden;
     @apply text-sm font-medium;
     @apply text-gray-600 dark:text-dark-300;
@@ -552,9 +617,8 @@
   }
 
   .sidebar-link-active {
-    @apply bg-primary-50 dark:bg-primary-900/20;
-    @apply text-primary-600 dark:text-primary-400;
-    @apply hover:bg-primary-100 dark:hover:bg-primary-900/30;
+    @apply border-l-2 border-slate-950 bg-slate-100 text-slate-950 font-bold dark:border-white dark:bg-white/10 dark:text-white;
+    @apply hover:bg-slate-100 dark:hover:bg-white/10;
   }
 
   .sidebar-section {
@@ -667,9 +731,9 @@
   /* ============ 代码块 ============ */
   .code {
     @apply font-mono text-sm;
-    @apply bg-gray-100 dark:bg-dark-800;
+    @apply bg-slate-100 dark:bg-dark-800;
     @apply rounded px-1.5 py-0.5;
-    @apply text-primary-600 dark:text-primary-400;
+    @apply text-slate-950 dark:text-slate-100;
   }
 
   .code-block {

@@ -69,17 +69,17 @@
       'is-scrollable': isScrollable
     }"
   >
-    <table class="w-full min-w-max divide-y divide-gray-200 dark:divide-dark-700">
-      <thead class="table-header bg-gray-50 dark:bg-dark-800">
+    <table class="w-full min-w-max divide-y divide-slate-100 dark:divide-dark-800">
+      <thead class="table-header bg-white dark:bg-dark-900">
         <tr>
           <th
             v-for="(column, index) in columns"
             :key="column.key"
             scope="col"
             :class="[
-              'sticky-header-cell py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-dark-400',
+              'sticky-header-cell py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-dark-400',
               getAdaptivePaddingClass(),
-              { 'cursor-pointer hover:bg-gray-100 dark:hover:bg-dark-700': column.sortable },
+              { 'cursor-pointer hover:bg-slate-50 dark:hover:bg-dark-800': column.sortable },
               getStickyColumnClass(column, index),
               column.class
             ]"
@@ -118,7 +118,7 @@
           </th>
         </tr>
       </thead>
-      <tbody class="table-body divide-y divide-gray-200 bg-white dark:divide-dark-700 dark:bg-dark-900">
+      <tbody class="table-body divide-y divide-slate-100 bg-white dark:divide-dark-800 dark:bg-dark-900">
         <!-- Loading skeleton -->
         <tr v-if="loading" v-for="i in 5" :key="i">
           <td v-for="column in columns" :key="column.key" :class="['whitespace-nowrap py-4', getAdaptivePaddingClass()]">
@@ -162,7 +162,7 @@
             :data-row-id="resolveRowKey(sortedData[virtualRow.index], virtualRow.index)"
             :data-index="virtualRow.index"
             :ref="measureElement"
-            class="hover:bg-gray-50 dark:hover:bg-dark-800"
+            class="group/row transition-colors hover:bg-slate-50/70 dark:hover:bg-dark-800"
           >
             <td
               v-for="(column, colIndex) in columns"

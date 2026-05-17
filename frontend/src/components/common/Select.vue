@@ -88,7 +88,7 @@
                   v-if="isSelected(option)"
                   name="check"
                   size="sm"
-                  class="text-primary-500"
+                  class="text-slate-950 dark:text-white"
                   :stroke-width="2"
                 />
               </slot>
@@ -437,13 +437,14 @@ onUnmounted(() => {
   @apply border border-gray-200 dark:border-dark-600;
   @apply text-gray-900 dark:text-gray-100;
   @apply transition-all duration-200;
-  @apply focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30;
+  @apply focus:border-slate-950 focus:outline-none focus:ring-2 focus:ring-slate-950/10;
+  @apply dark:focus:border-slate-400 dark:focus:ring-slate-400/10;
   @apply hover:border-gray-300 dark:hover:border-dark-500;
   @apply cursor-pointer;
 }
 
 .select-trigger-open {
-  @apply border-primary-500 ring-2 ring-primary-500/30;
+  @apply border-slate-950 ring-2 ring-slate-950/10 dark:border-slate-400 dark:ring-slate-400/10;
 }
 
 .select-trigger-error {
@@ -500,8 +501,8 @@ onUnmounted(() => {
 }
 
 .select-dropdown-portal .select-option-selected {
-  @apply bg-primary-50 dark:bg-primary-900/20;
-  @apply text-primary-700 dark:text-primary-300;
+  @apply bg-slate-100 dark:bg-white/10;
+  @apply text-slate-950 dark:text-white;
 }
 
 .select-dropdown-portal .select-option-focused {

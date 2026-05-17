@@ -149,6 +149,7 @@ type ModelDetail struct {
 	Availability15d float64
 	Availability30d float64
 	AvgLatency7dMs  *int
+	Timeline        []UserMonitorTimelinePoint // 当前模型最近 N 个历史点（按 checked_at DESC，最新在前）
 }
 
 // ChannelMonitorHistoryRow 历史记录入库行（service 层向 repository 提交的数据）。

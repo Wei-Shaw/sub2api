@@ -20,6 +20,30 @@ export const apiClient: AxiosInstance = axios.create({
   }
 })
 
+function normalizeRequestPath(url: string): string {
+  if (!url) return ''
+  try {
+    const parsed = new URL(url, window.location.origin)
+    return parsed.pathname.replace(/^\/api\/v1(?=\/|$)/, '') || '/'
+  } catch {
+    const path = url.split('?')[0]?.split('#')[0] || ''
+    return path.replace(/^\/api\/v1(?=\/|$)/, '') || path
+  }
+}
+
+function isAuthOptionalPublicEndpoint(url: string): boolean {
+  const path = normalizeRequestPath(url)
+  return (
+    path === '/settings/public' ||
+    path === '/public/channels/available' ||
+    path === '/public/channel-monitors' ||
+    path.startsWith('/public/channel-monitors/') ||
+    path === '/channels/model-pricing/batch' ||
+    path === '/channel-monitors' ||
+    path.startsWith('/channel-monitors/')
+  )
+}
+
 // ==================== Token Refresh State ====================
 
 // Track if a token refresh is in progress to prevent multiple simultaneous refresh requests
@@ -160,6 +184,26 @@ apiClient.interceptors.response.use(
         const refreshToken = localStorage.getItem('refresh_token')
         const isAuthEndpoint =
           url.includes('/auth/login') || url.includes('/auth/register') || url.includes('/auth/refresh')
+        const headers = error.config?.headers as Record<string, unknown> | undefined
+        const authHeader = headers?.Authorization ?? headers?.authorization
+        const sentAuth =
+          typeof authHeader === 'string'
+            ? authHeader.trim() !== ''
+            : Array.isArray(authHeader)
+              ? authHeader.length > 0
+              : !!authHeader
+        const hasToken = !!localStorage.getItem('auth_token')
+
+        if (isAuthOptionalPublicEndpoint(url)) {
+          return Promise.reject({
+            status,
+            code: apiData.code,
+            reason: apiData.reason,
+            error: apiData.error,
+            message: apiData.message || apiData.detail || error.message,
+            metadata: apiData.metadata,
+          })
+        }
 
         // If we have a refresh token and this is not an auth endpoint, try to refresh
         if (refreshToken && !isAuthEndpoint) {
@@ -250,16 +294,6 @@ apiClient.interceptors.response.use(
         }
 
         // No refresh token or is auth endpoint - clear auth and redirect
-        const hasToken = !!localStorage.getItem('auth_token')
-        const headers = error.config?.headers as Record<string, unknown> | undefined
-        const authHeader = headers?.Authorization ?? headers?.authorization
-        const sentAuth =
-          typeof authHeader === 'string'
-            ? authHeader.trim() !== ''
-            : Array.isArray(authHeader)
-              ? authHeader.length > 0
-              : !!authHeader
-
         localStorage.removeItem('auth_token')
         localStorage.removeItem('refresh_token')
         localStorage.removeItem('auth_user')

@@ -202,6 +202,36 @@ describe('API Client', () => {
   // --- 401 Token 刷新 ---
 
   describe('401 Token 刷新', () => {
+    it('公共渠道监控接口 401 不触发整页跳转到登录页', async () => {
+      const originalLocation = window.location
+      Object.defineProperty(window, 'location', {
+        value: { ...originalLocation, pathname: '/monitor', href: '/monitor' },
+        writable: true,
+      })
+
+      const adapter = vi.fn().mockRejectedValue({
+        response: {
+          status: 401,
+          data: { code: 'UNAUTHORIZED', message: 'Unauthorized' },
+        },
+        config: {
+          url: '/channel-monitors',
+          headers: {},
+        },
+        code: 'ERR_BAD_REQUEST',
+      })
+      apiClient.defaults.adapter = adapter
+
+      await expect(apiClient.get('/channel-monitors')).rejects.toBeDefined()
+
+      expect(window.location.href).toBe('/monitor')
+
+      Object.defineProperty(window, 'location', {
+        value: originalLocation,
+        writable: true,
+      })
+    })
+
     it('无 refresh_token 时 401 清除 localStorage', async () => {
       localStorage.setItem('auth_token', 'expired-token')
       // 不设置 refresh_token

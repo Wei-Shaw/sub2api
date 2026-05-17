@@ -60,7 +60,7 @@
         >
           <template #cell-key="{ value, row }">
             <div class="flex items-center gap-2">
-              <code class="code text-xs">
+              <code class="api-key-code code text-xs">
                 {{ maskApiKey(value) }}
               </code>
               <button
@@ -68,7 +68,7 @@
                 class="rounded-lg p-1 transition-colors hover:bg-gray-100 dark:hover:bg-dark-700"
                 :class="
                   copiedKeyId === row.id
-                    ? 'text-green-500'
+                    ? 'text-slate-950 dark:text-white'
                     : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
                 "
                 :title="copiedKeyId === row.id ? t('keys.copied') : t('keys.copyToClipboard')"
@@ -91,7 +91,7 @@
                 v-if="row.ip_whitelist?.length > 0 || row.ip_blacklist?.length > 0"
                 name="shield"
                 size="sm"
-                class="text-blue-500"
+                class="text-slate-400"
                 :title="t('keys.ipRestrictionEnabled')"
               />
             </div>
@@ -167,7 +167,7 @@
                       'h-full rounded-full transition-all',
                       row.quota_used >= row.quota ? 'bg-red-500' :
                       row.quota_used >= row.quota * 0.8 ? 'bg-yellow-500' :
-                      'bg-primary-500'
+                      'bg-slate-900 dark:bg-slate-200'
                     ]"
                     :style="{ width: Math.min((row.quota_used / row.quota) * 100, 100) + '%' }"
                   />
@@ -197,7 +197,7 @@
                       'h-full rounded-full transition-all',
                       row.usage_5h >= row.rate_limit_5h ? 'bg-red-500' :
                       row.usage_5h >= row.rate_limit_5h * 0.8 ? 'bg-yellow-500' :
-                      'bg-emerald-500'
+                      'bg-slate-900 dark:bg-slate-200'
                     ]"
                     :style="{ width: Math.min((row.usage_5h / row.rate_limit_5h) * 100, 100) + '%' }"
                   />
@@ -225,7 +225,7 @@
                       'h-full rounded-full transition-all',
                       row.usage_1d >= row.rate_limit_1d ? 'bg-red-500' :
                       row.usage_1d >= row.rate_limit_1d * 0.8 ? 'bg-yellow-500' :
-                      'bg-emerald-500'
+                      'bg-slate-900 dark:bg-slate-200'
                     ]"
                     :style="{ width: Math.min((row.usage_1d / row.rate_limit_1d) * 100, 100) + '%' }"
                   />
@@ -253,7 +253,7 @@
                       'h-full rounded-full transition-all',
                       row.usage_7d >= row.rate_limit_7d ? 'bg-red-500' :
                       row.usage_7d >= row.rate_limit_7d * 0.8 ? 'bg-yellow-500' :
-                      'bg-emerald-500'
+                      'bg-slate-900 dark:bg-slate-200'
                     ]"
                     :style="{ width: Math.min((row.usage_7d / row.rate_limit_7d) * 100, 100) + '%' }"
                   />
@@ -266,7 +266,7 @@
               <button
                 v-if="row.usage_5h > 0 || row.usage_1d > 0 || row.usage_7d > 0"
                 @click.stop="confirmResetRateLimitFromTable(row)"
-                class="mt-0.5 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
+                class="mt-0.5 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-gray-500 transition-colors hover:bg-gray-100 hover:text-slate-950 dark:hover:bg-dark-700 dark:hover:text-white"
                 :title="t('keys.resetRateLimitUsage')"
               >
                 <Icon name="refresh" size="xs" />
@@ -287,13 +287,11 @@
           </template>
 
           <template #cell-status="{ value }">
-            <span :class="[
-              'badge',
-              value === 'active' ? 'badge-success' :
-              value === 'quota_exhausted' ? 'badge-warning' :
-              value === 'expired' ? 'badge-danger' :
-              'badge-gray'
-            ]">
+            <span class="api-key-status inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 dark:text-slate-300">
+              <span
+                class="api-key-status-dot h-1.5 w-1.5 rounded-full"
+                :class="statusDotClass(value)"
+              ></span>
               {{ t('keys.status.' + value) }}
             </span>
           </template>
@@ -310,53 +308,53 @@
           </template>
 
           <template #cell-actions="{ row }">
-            <div class="flex items-center gap-1">
+            <div class="api-key-actions flex items-center justify-end gap-1.5 opacity-80 transition-opacity group-hover/row:opacity-100 focus-within:opacity-100">
               <!-- Use Key Button -->
               <button
                 @click="openUseKeyModal(row)"
-                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400"
+                class="api-key-action inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-slate-100 hover:text-slate-950 dark:text-gray-400 dark:hover:bg-dark-700 dark:hover:text-white"
+                :title="t('keys.useKey')"
               >
                 <Icon name="terminal" size="sm" />
-                <span class="text-xs">{{ t('keys.useKey') }}</span>
+                <span class="api-key-action-label whitespace-nowrap">{{ t('keys.useKey') }}</span>
               </button>
               <!-- Import to CC Switch Button -->
               <button
                 v-if="!publicSettings?.hide_ccs_import_button"
                 @click="importToCcswitch(row)"
-                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20 dark:hover:text-blue-400"
+                class="api-key-action inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-slate-100 hover:text-slate-950 dark:text-gray-400 dark:hover:bg-dark-700 dark:hover:text-white"
+                :title="t('keys.importToCcSwitch')"
               >
                 <Icon name="upload" size="sm" />
-                <span class="text-xs">{{ t('keys.importToCcSwitch') }}</span>
+                <span class="api-key-action-label whitespace-nowrap">{{ t('keys.importToCcSwitch') }}</span>
               </button>
               <!-- Toggle Status Button -->
               <button
                 @click="toggleKeyStatus(row)"
-                :class="[
-                  'flex flex-col items-center gap-0.5 rounded-lg p-1.5 transition-colors',
-                  row.status === 'active'
-                    ? 'text-gray-500 hover:bg-yellow-50 hover:text-yellow-600 dark:hover:bg-yellow-900/20 dark:hover:text-yellow-400'
-                    : 'text-gray-500 hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400'
-                ]"
+                class="api-key-action inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-slate-100 hover:text-slate-950 dark:text-gray-400 dark:hover:bg-dark-700 dark:hover:text-white"
+                :title="row.status === 'active' ? t('keys.disable') : t('keys.enable')"
               >
                 <Icon v-if="row.status === 'active'" name="ban" size="sm" />
                 <Icon v-else name="checkCircle" size="sm" />
-                <span class="text-xs">{{ row.status === 'active' ? t('keys.disable') : t('keys.enable') }}</span>
+                <span class="api-key-action-label whitespace-nowrap">{{ row.status === 'active' ? t('keys.disable') : t('keys.enable') }}</span>
               </button>
               <!-- Edit Button -->
               <button
                 @click="editKey(row)"
-                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
+                class="api-key-action inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-slate-100 hover:text-slate-950 dark:text-gray-400 dark:hover:bg-dark-700 dark:hover:text-white"
+                :title="t('common.edit')"
               >
                 <Icon name="edit" size="sm" />
-                <span class="text-xs">{{ t('common.edit') }}</span>
+                <span class="api-key-action-label whitespace-nowrap">{{ t('common.edit') }}</span>
               </button>
               <!-- Delete Button -->
               <button
                 @click="confirmDelete(row)"
-                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                class="api-key-action inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:text-gray-400 dark:hover:bg-red-500/10 dark:hover:text-red-400"
+                :title="t('common.delete')"
               >
                 <Icon name="trash" size="sm" />
-                <span class="text-xs">{{ t('common.delete') }}</span>
+                <span class="api-key-action-label whitespace-nowrap">{{ t('common.delete') }}</span>
               </button>
             </div>
           </template>
@@ -448,7 +446,7 @@
               @click="formData.use_custom_key = !formData.use_custom_key"
               :class="[
                 'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
-                formData.use_custom_key ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+                formData.use_custom_key ? 'bg-slate-950' : 'bg-gray-200 dark:bg-dark-600'
               ]"
             >
               <span
@@ -490,7 +488,7 @@
               @click="formData.enable_ip_restriction = !formData.enable_ip_restriction"
               :class="[
                 'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
-                formData.enable_ip_restriction ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+                formData.enable_ip_restriction ? 'bg-slate-950' : 'bg-gray-200 dark:bg-dark-600'
               ]"
             >
               <span
@@ -538,7 +536,7 @@
               @click="formData.enable_quota = !formData.enable_quota"
               :class="[
                 'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
-                formData.enable_quota ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+                formData.enable_quota ? 'bg-slate-950' : 'bg-gray-200 dark:bg-dark-600'
               ]"
             >
               <span
@@ -602,7 +600,7 @@
               @click="formData.enable_rate_limit = !formData.enable_rate_limit"
               :class="[
                 'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
-                formData.enable_rate_limit ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+                formData.enable_rate_limit ? 'bg-slate-950' : 'bg-gray-200 dark:bg-dark-600'
               ]"
             >
               <span
@@ -654,7 +652,7 @@
                       'h-full rounded-full transition-all',
                       selectedKey.usage_5h >= selectedKey.rate_limit_5h ? 'bg-red-500' :
                       selectedKey.usage_5h >= selectedKey.rate_limit_5h * 0.8 ? 'bg-yellow-500' :
-                      'bg-green-500'
+                      'bg-slate-900 dark:bg-slate-200'
                     ]"
                     :style="{ width: Math.min((selectedKey.usage_5h / selectedKey.rate_limit_5h) * 100, 100) + '%' }"
                   />
@@ -700,7 +698,7 @@
                       'h-full rounded-full transition-all',
                       selectedKey.usage_1d >= selectedKey.rate_limit_1d ? 'bg-red-500' :
                       selectedKey.usage_1d >= selectedKey.rate_limit_1d * 0.8 ? 'bg-yellow-500' :
-                      'bg-green-500'
+                      'bg-slate-900 dark:bg-slate-200'
                     ]"
                     :style="{ width: Math.min((selectedKey.usage_1d / selectedKey.rate_limit_1d) * 100, 100) + '%' }"
                   />
@@ -746,7 +744,7 @@
                       'h-full rounded-full transition-all',
                       selectedKey.usage_7d >= selectedKey.rate_limit_7d ? 'bg-red-500' :
                       selectedKey.usage_7d >= selectedKey.rate_limit_7d * 0.8 ? 'bg-yellow-500' :
-                      'bg-green-500'
+                      'bg-slate-900 dark:bg-slate-200'
                     ]"
                     :style="{ width: Math.min((selectedKey.usage_7d / selectedKey.rate_limit_7d) * 100, 100) + '%' }"
                   />
@@ -776,7 +774,7 @@
               @click="formData.enable_expiration = !formData.enable_expiration"
               :class="[
                 'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
-                formData.enable_expiration ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+                formData.enable_expiration ? 'bg-slate-950' : 'bg-gray-200 dark:bg-dark-600'
               ]"
             >
               <span
@@ -799,7 +797,7 @@
                 :class="[
                   'rounded-lg px-3 py-1.5 text-sm transition-colors',
                   formData.expiration_preset === days
-                    ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                    ? 'bg-slate-100 text-slate-950 dark:bg-white/10 dark:text-white'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-700 dark:text-gray-400 dark:hover:bg-dark-600'
                 ]"
               >
@@ -811,7 +809,7 @@
                 :class="[
                   'rounded-lg px-3 py-1.5 text-sm transition-colors',
                   formData.expiration_preset === 'custom'
-                    ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                    ? 'bg-slate-100 text-slate-950 dark:bg-white/10 dark:text-white'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-700 dark:text-gray-400 dark:hover:bg-dark-600'
                 ]"
               >
@@ -944,7 +942,7 @@
 	        <div class="grid grid-cols-2 gap-3">
 	          <button
 	            @click="handleCcsClientSelect('claude')"
-	            class="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-gray-200 dark:border-dark-600 hover:border-primary-500 dark:hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all"
+	            class="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-gray-200 dark:border-dark-600 hover:border-slate-400 dark:hover:border-slate-400 hover:bg-slate-50 dark:hover:bg-white/10 transition-all"
 	          >
 	            <Icon name="terminal" size="xl" class="text-gray-600 dark:text-gray-400" />
 	            <span class="font-medium text-gray-900 dark:text-white">{{
@@ -956,7 +954,7 @@
 	          </button>
 	          <button
 	            @click="handleCcsClientSelect('gemini')"
-	            class="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-gray-200 dark:border-dark-600 hover:border-primary-500 dark:hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all"
+	            class="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-gray-200 dark:border-dark-600 hover:border-slate-400 dark:hover:border-slate-400 hover:bg-slate-50 dark:hover:bg-white/10 transition-all"
 	          >
 	            <Icon name="sparkles" size="xl" class="text-gray-600 dark:text-gray-400" />
 	            <span class="font-medium text-gray-900 dark:text-white">{{
@@ -999,7 +997,7 @@
             <input
               v-model="groupSearchQuery"
               type="text"
-              class="w-full rounded-lg border border-gray-200 bg-gray-50 py-1.5 pl-8 pr-3 text-sm text-gray-900 placeholder-gray-400 outline-none focus:border-primary-300 focus:ring-1 focus:ring-primary-300 dark:border-dark-600 dark:bg-dark-700 dark:text-white dark:placeholder-gray-500 dark:focus:border-primary-600 dark:focus:ring-primary-600"
+              class="w-full rounded-lg border border-gray-200 bg-gray-50 py-1.5 pl-8 pr-3 text-sm text-gray-900 placeholder-gray-400 outline-none focus:border-slate-950 focus:ring-1 focus:ring-slate-950/10 dark:border-dark-600 dark:bg-dark-700 dark:text-white dark:placeholder-gray-500 dark:focus:border-slate-400 dark:focus:ring-slate-400/10"
               :placeholder="t('keys.searchGroup')"
               @click.stop
             />
@@ -1016,7 +1014,7 @@
               'border-b border-gray-100 last:border-0 dark:border-dark-700',
               selectedKeyForGroup?.group_id === option.value ||
               (!selectedKeyForGroup?.group_id && option.value === null)
-                ? 'bg-primary-50 dark:bg-primary-900/20'
+                ? 'bg-slate-100 dark:bg-white/10'
                 : 'hover:bg-gray-100 dark:hover:bg-dark-700'
             ]"
             :title="option.description || undefined"
@@ -1161,6 +1159,19 @@ const setGroupButtonRef = (keyId: number, el: Element | ComponentPublicInstance 
     groupButtonRefs.value.set(keyId, el)
   } else {
     groupButtonRefs.value.delete(keyId)
+  }
+}
+
+const statusDotClass = (status: string) => {
+  switch (status) {
+    case 'active':
+      return 'bg-emerald-500'
+    case 'quota_exhausted':
+      return 'bg-amber-500'
+    case 'expired':
+      return 'bg-red-500'
+    default:
+      return 'bg-slate-300 dark:bg-slate-500'
   }
 }
 
@@ -1744,7 +1755,7 @@ const executeCcsImport = (row: ApiKey, clientType: 'claude' | 'gemini') => {
       };
     }
   })`
-  const providerName = (publicSettings.value?.site_name || 'sub2api').trim() || 'sub2api'
+  const providerName = (publicSettings.value?.site_name || 'DevRouter').trim() || 'DevRouter'
 
   const params = new URLSearchParams({
     resource: 'provider',

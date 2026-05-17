@@ -146,8 +146,9 @@ func (s *ChannelMonitorService) GetUserDetail(ctx context.Context, id int64) (*U
 	if err != nil {
 		return nil, err
 	}
+	timelineByModel := s.collectModelTimelines(ctx, id, monitorModels(m))
 
-	models := mergeModelDetails(m, latest, availMap)
+	models := mergeModelDetails(m, latest, availMap, timelineByModel)
 	return &UserMonitorDetail{
 		ID:        m.ID,
 		Name:      m.Name,
@@ -155,6 +156,32 @@ func (s *ChannelMonitorService) GetUserDetail(ctx context.Context, id int64) (*U
 		GroupName: m.GroupName,
 		Models:    models,
 	}, nil
+}
+
+func monitorModels(m *ChannelMonitor) []string {
+	all := make([]string, 0, 1+len(m.ExtraModels))
+	if m.PrimaryModel != "" {
+		all = append(all, m.PrimaryModel)
+	}
+	all = append(all, m.ExtraModels...)
+	return all
+}
+
+func (s *ChannelMonitorService) collectModelTimelines(
+	ctx context.Context,
+	monitorID int64,
+	models []string,
+) map[string][]*ChannelMonitorHistoryEntry {
+	out := make(map[string][]*ChannelMonitorHistoryEntry, len(models))
+	for _, model := range models {
+		rows, err := s.repo.ListHistory(ctx, monitorID, model, monitorTimelineMaxPoints)
+		if err != nil {
+			slog.Warn("channel_monitor: user detail model timeline failed", "monitor_id", monitorID, "model", model, "error", err)
+			continue
+		}
+		out[model] = rows
+	}
+	return out
 }
 
 // collectAvailabilityWindows 一次性查询 7/15/30 天三个窗口，按模型组织。
@@ -266,8 +293,9 @@ func mergeModelDetails(
 	m *ChannelMonitor,
 	latest []*ChannelMonitorLatest,
 	availMap map[int]map[string]*ChannelMonitorAvailability,
+	timelineByModel map[string][]*ChannelMonitorHistoryEntry,
 ) []ModelDetail {
-	all := append([]string{m.PrimaryModel}, m.ExtraModels...)
+	all := monitorModels(m)
 	latestByModel := indexLatestByModel(latest)
 	out := make([]ModelDetail, 0, len(all))
 	for _, model := range all {
@@ -285,6 +313,9 @@ func mergeModelDetails(
 		}
 		if a, ok := availMap[monitorAvailability30Days][model]; ok {
 			d.Availability30d = a.AvailabilityPct
+		}
+		if timelineByModel != nil {
+			d.Timeline = buildTimelinePoints(timelineByModel[model])
 		}
 		out = append(out, d)
 	}

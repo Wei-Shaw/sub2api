@@ -23,8 +23,8 @@ describe('resolveDocumentTitle', () => {
   })
 
   it('站点名为空时，回退默认站点名', () => {
-    expect(resolveDocumentTitle('Dashboard', '')).toBe('Dashboard - Sub2API')
-    expect(resolveDocumentTitle(undefined, '   ')).toBe('Sub2API')
+    expect(resolveDocumentTitle('Dashboard', '')).toBe('Dashboard - DevRouter')
+    expect(resolveDocumentTitle(undefined, '   ')).toBe('DevRouter')
   })
 
   it('站点名变更时仅影响后续路由标题计算', () => {
@@ -48,5 +48,12 @@ describe('resolveDocumentTitle', () => {
     expect(routerSource).not.toContain("path: '/docs'")
     expect(routerSource).not.toContain("name: 'UsageDocs'")
     expect(routerSource).not.toContain("backend/")
+  })
+
+  it('declares the channel status route as public for landing-page links', () => {
+    const routerSource = readFileSync(resolve(process.cwd(), 'src/router/index.ts'), 'utf8')
+
+    expect(routerSource).toMatch(/path: '\/monitor'[\s\S]*requiresAuth: false/)
+    expect(routerSource).toMatch(/path: '\/monitor'[\s\S]*standalone: true/)
   })
 })

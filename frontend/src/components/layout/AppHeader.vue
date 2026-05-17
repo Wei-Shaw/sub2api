@@ -23,6 +23,19 @@
 
       <!-- Right: Announcements + Docs + Language + Subscriptions + Balance + User Dropdown -->
       <div class="flex items-center gap-3">
+        <!-- Public Service Status -->
+        <button
+          v-if="showServiceStatusShortcut"
+          type="button"
+          class="app-header-service-status flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
+          :title="t('nav.channelStatus')"
+          :aria-label="t('nav.channelStatus')"
+          @click="openServiceStatus"
+        >
+          <Icon name="activity" size="sm" />
+          <span>{{ t('common.status') }}</span>
+        </button>
+
         <!-- Announcement Bell -->
         <AnnouncementBell v-if="user" />
 
@@ -47,10 +60,10 @@
         <!-- Balance Display -->
         <div
           v-if="user"
-          class="hidden items-center gap-2 rounded-xl bg-primary-50 px-3 py-1.5 dark:bg-primary-900/20 sm:flex"
+          class="hidden items-center gap-2 rounded-xl bg-slate-100 px-3 py-1.5 dark:bg-white/10 sm:flex"
         >
           <svg
-            class="h-4 w-4 text-primary-600 dark:text-primary-400"
+            class="h-4 w-4 text-slate-600 dark:text-slate-300"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -62,7 +75,7 @@
               d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z"
             />
           </svg>
-          <span class="text-sm font-semibold text-primary-700 dark:text-primary-300">
+          <span class="text-sm font-semibold text-slate-700 dark:text-slate-200">
             ${{ user.balance?.toFixed(2) || '0.00' }}
           </span>
         </div>
@@ -74,7 +87,7 @@
             class="flex items-center gap-2 rounded-xl p-1.5 transition-colors hover:bg-gray-100 dark:hover:bg-dark-800"
             aria-label="User Menu"
           >
-            <div class="flex h-8 w-8 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 text-sm font-medium text-white shadow-sm">
+            <div class="flex h-8 w-8 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-slate-900 to-black text-sm font-medium text-white shadow-sm">
               <img
                 v-if="avatarUrl"
                 :src="avatarUrl"
@@ -110,7 +123,7 @@
                 <div class="text-xs text-gray-500 dark:text-dark-400">
                   {{ t('common.balance') }}
                 </div>
-                <div class="text-sm font-semibold text-primary-600 dark:text-primary-400">
+                <div class="text-sm font-semibold text-slate-700 dark:text-slate-200">
                   ${{ user.balance?.toFixed(2) || '0.00' }}
                 </div>
               </div>
@@ -210,7 +223,7 @@
         <router-link
           v-else
           :to="{ path: '/login', query: { redirect: route.fullPath } }"
-          class="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700 dark:border-dark-700 dark:bg-dark-800 dark:text-dark-200 dark:hover:border-primary-700/60 dark:hover:bg-primary-900/20 dark:hover:text-primary-300"
+          class="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950 dark:border-dark-700 dark:bg-dark-800 dark:text-dark-200 dark:hover:border-slate-500 dark:hover:bg-white/10 dark:hover:text-white"
         >
           <Icon name="user" size="sm" />
           <span>{{ t('nav.notLoggedIn') }}</span>
@@ -230,6 +243,7 @@ import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import SubscriptionProgressMini from '@/components/common/SubscriptionProgressMini.vue'
 import AnnouncementBell from '@/components/common/AnnouncementBell.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { FeatureFlags, isFeatureFlagEnabled } from '@/utils/featureFlags'
 
 const router = useRouter()
 const route = useRoute()
@@ -245,6 +259,7 @@ const dropdownRef = ref<HTMLElement | null>(null)
 const contactInfo = computed(() => appStore.contactInfo)
 const docUrl = computed(() => appStore.docUrl?.trim() || '')
 const avatarUrl = computed(() => user.value?.avatar_url?.trim() || '')
+const showServiceStatusShortcut = computed(() => isFeatureFlagEnabled(FeatureFlags.channelMonitor))
 
 // 只在标准模式的管理员下显示新手引导按钮
 const showOnboardingButton = computed(() => {
@@ -320,6 +335,10 @@ async function handleLogout() {
 function handleReplayGuide() {
   closeDropdown()
   onboardingStore.replay()
+}
+
+function openServiceStatus() {
+  window.open('/monitor', '_blank', 'noopener,noreferrer')
 }
 
 function handleClickOutside(event: MouseEvent) {

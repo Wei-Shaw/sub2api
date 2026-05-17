@@ -22,12 +22,26 @@ func RegisterUserRoutes(
 		{
 			channels.GET("/available", h.AvailableChannel.ListPublic)
 		}
+
+		// 公开服务状态接口：不依赖登录态，供首页与独立状态页直接访问。
+		monitors := public.Group("/channel-monitors")
+		{
+			monitors.GET("", h.ChannelMonitor.List)
+			monitors.GET("/:id/status", h.ChannelMonitor.GetStatus)
+		}
 	}
 
 	// 模型广场价格对比接口不包含用户数据，允许匿名页面复用。
 	publicChannels := v1.Group("/channels")
 	{
 		publicChannels.POST("/model-pricing/batch", h.AvailableChannel.GetModelPricingBatch)
+	}
+
+	// 兼容旧前端路径。新页面使用 /public/channel-monitors。
+	monitors := v1.Group("/channel-monitors")
+	{
+		monitors.GET("", h.ChannelMonitor.List)
+		monitors.GET("/:id/status", h.ChannelMonitor.GetStatus)
 	}
 
 	authenticated := v1.Group("")
@@ -139,11 +153,5 @@ func RegisterUserRoutes(
 			subscriptions.GET("/summary", h.Subscription.GetSummary)
 		}
 
-		// 渠道监控（用户只读）
-		monitors := authenticated.Group("/channel-monitors")
-		{
-			monitors.GET("", h.ChannelMonitor.List)
-			monitors.GET("/:id/status", h.ChannelMonitor.GetStatus)
-		}
 	}
 }

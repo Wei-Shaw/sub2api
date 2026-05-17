@@ -74,7 +74,7 @@ function simulateGuard(
       return authState.isAdmin ? '/admin/dashboard' : '/dashboard'
     }
     if (authState.backendModeEnabled && !authState.isAuthenticated) {
-      const allowed = ['/login', '/key-usage', '/setup', '/payment/result']
+      const allowed = ['/login', '/key-usage', '/setup', '/payment/result', '/legal', '/monitor']
       const callbackPaths = [
         '/auth/callback',
         '/auth/linuxdo/callback',
@@ -123,7 +123,7 @@ function simulateGuard(
     if (authState.isAuthenticated && authState.isAdmin) {
       return null
     }
-    const allowed = ['/login', '/key-usage', '/setup', '/payment/result']
+    const allowed = ['/login', '/key-usage', '/setup', '/payment/result', '/legal', '/monitor']
     const callbackPaths = [
       '/auth/callback',
       '/auth/linuxdo/callback',
@@ -386,6 +386,18 @@ describe('路由守卫逻辑', () => {
       expect(redirect).toBeNull()
     })
 
+    it('unauthenticated: /monitor is allowed', () => {
+      const authState: MockAuthState = {
+        isAuthenticated: false,
+        isAdmin: false,
+        isSimpleMode: false,
+        backendModeEnabled: true,
+        hasPendingAuthSession: false,
+      }
+      const redirect = simulateGuard('/monitor', { requiresAuth: false }, authState)
+      expect(redirect).toBeNull()
+    })
+
     it('admin: /admin/dashboard is allowed', () => {
       const authState: MockAuthState = {
         isAuthenticated: true,
@@ -443,6 +455,18 @@ describe('路由守卫逻辑', () => {
         hasPendingAuthSession: false,
       }
       const redirect = simulateGuard('/key-usage', { requiresAuth: false }, authState)
+      expect(redirect).toBeNull()
+    })
+
+    it('non-admin authenticated: /monitor is allowed', () => {
+      const authState: MockAuthState = {
+        isAuthenticated: true,
+        isAdmin: false,
+        isSimpleMode: false,
+        backendModeEnabled: true,
+        hasPendingAuthSession: false,
+      }
+      const redirect = simulateGuard('/monitor', { requiresAuth: false }, authState)
       expect(redirect).toBeNull()
     })
 

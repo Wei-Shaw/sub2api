@@ -72,13 +72,14 @@ type channelMonitorUserDetailResponse struct {
 }
 
 type channelMonitorUserModelStat struct {
-	Model           string  `json:"model"`
-	LatestStatus    string  `json:"latest_status"`
-	LatestLatencyMs *int    `json:"latest_latency_ms"`
-	Availability7d  float64 `json:"availability_7d"`
-	Availability15d float64 `json:"availability_15d"`
-	Availability30d float64 `json:"availability_30d"`
-	AvgLatency7dMs  *int    `json:"avg_latency_7d_ms"`
+	Model           string                            `json:"model"`
+	LatestStatus    string                            `json:"latest_status"`
+	LatestLatencyMs *int                              `json:"latest_latency_ms"`
+	Availability7d  float64                           `json:"availability_7d"`
+	Availability15d float64                           `json:"availability_15d"`
+	Availability30d float64                           `json:"availability_30d"`
+	AvgLatency7dMs  *int                              `json:"avg_latency_7d_ms"`
+	Timeline        []channelMonitorUserTimelinePoint `json:"timeline"`
 }
 
 func userMonitorViewToItem(v *service.UserMonitorView) channelMonitorUserListItem {
@@ -117,6 +118,15 @@ func userMonitorViewToItem(v *service.UserMonitorView) channelMonitorUserListIte
 func userMonitorDetailToResponse(d *service.UserMonitorDetail) *channelMonitorUserDetailResponse {
 	models := make([]channelMonitorUserModelStat, 0, len(d.Models))
 	for _, m := range d.Models {
+		timeline := make([]channelMonitorUserTimelinePoint, 0, len(m.Timeline))
+		for _, p := range m.Timeline {
+			timeline = append(timeline, channelMonitorUserTimelinePoint{
+				Status:        p.Status,
+				LatencyMs:     p.LatencyMs,
+				PingLatencyMs: p.PingLatencyMs,
+				CheckedAt:     p.CheckedAt.UTC().Format(time.RFC3339),
+			})
+		}
 		models = append(models, channelMonitorUserModelStat{
 			Model:           m.Model,
 			LatestStatus:    m.LatestStatus,
@@ -125,6 +135,7 @@ func userMonitorDetailToResponse(d *service.UserMonitorDetail) *channelMonitorUs
 			Availability15d: m.Availability15d,
 			Availability30d: m.Availability30d,
 			AvgLatency7dMs:  m.AvgLatency7dMs,
+			Timeline:        timeline,
 		})
 	}
 	return &channelMonitorUserDetailResponse{

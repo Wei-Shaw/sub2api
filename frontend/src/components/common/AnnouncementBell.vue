@@ -3,11 +3,12 @@
     <!-- 铃铛按钮 -->
     <button
       @click="openModal"
-      class="relative flex h-9 w-9 items-center justify-center rounded-lg text-gray-600 transition-all hover:bg-gray-100 hover:scale-105 dark:text-gray-400 dark:hover:bg-dark-800"
+      class="relative flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-600 transition-all hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-dark-800 dark:hover:text-white"
       :class="{ 'text-blue-600 dark:text-blue-400': unreadCount > 0 }"
       :aria-label="t('announcements.title')"
     >
-      <Icon name="bell" size="md" />
+      <Icon name="bell" size="sm" />
+      <span>{{ t('announcements.title') }}</span>
       <!-- 未读红点 -->
       <span
         v-if="unreadCount > 0"

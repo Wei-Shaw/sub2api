@@ -14,7 +14,7 @@
         :key="provider"
         type="button"
         :disabled="disabled"
-        class="btn btn-secondary h-12 w-full justify-center gap-2"
+        class="auth-oauth-button inline-flex h-11 w-full items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950 hover:shadow-md focus:outline-none focus:ring-4 focus:ring-violet-500/10 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 dark:border-white/10 dark:bg-white/10 dark:text-slate-200 dark:hover:bg-white/15"
         @click="startLogin(provider)"
       >
         <GitHubMark v-if="provider === 'github'" class="h-5 w-5 text-gray-800 dark:text-gray-100" />

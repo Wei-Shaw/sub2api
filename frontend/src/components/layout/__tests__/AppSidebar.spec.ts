@@ -37,11 +37,22 @@ describe('AppSidebar header styles', () => {
   })
 })
 
+describe('AppSidebar theme control', () => {
+  it('does not render a dark-mode toggle in the sidebar', () => {
+    expect(componentSource).not.toContain('@click="toggleTheme"')
+    expect(componentSource).not.toContain("t('nav.lightMode')")
+    expect(componentSource).not.toContain("t('nav.darkMode')")
+    expect(componentSource).not.toContain('useThemeTransition')
+    expect(componentSource).not.toContain('SunIcon')
+    expect(componentSource).not.toContain('MoonIcon')
+  })
+})
+
 describe('AppSidebar secondary-development navigation contract', () => {
   it('keeps profile, hides stale docs/channel-status entries, and adds unified user entries', () => {
     expect(componentSource).toContain("path: '/profile'")
     expect(componentSource).toContain("path: '/models'")
-    expect(componentSource).toContain("path: '/monitor', label: t('nav.channelMonitor'), icon: SignalIcon, featureFlag: flagChannelMonitor")
+    expect(componentSource).not.toContain("path: '/monitor', label: t('nav.channelMonitor'), icon: SignalIcon, featureFlag: flagChannelMonitor")
     expect(componentSource).toContain("path: '/images', label: t('nav.imageGeneration'), icon: PhotoIcon, featureFlag: flagImageGeneration")
     expect(componentSource).toContain("path: '/chat', label: t('nav.chatCompletion'), icon: ChatIcon, featureFlag: flagChatCompletion")
     expect(componentSource.indexOf("path: '/images'")).toBeLessThan(componentSource.indexOf("path: '/chat'"))
@@ -57,7 +68,7 @@ describe('AppSidebar secondary-development navigation contract', () => {
   it('uses a home-style label for the user dashboard item', () => {
     expect(componentSource).toContain("path: '/dashboard', label: t('nav.home')")
   })
-  it('keeps channel monitor reachable in simple mode while hiding channel pricing', () => {
+  it('keeps admin channel monitor reachable in simple mode while hiding channel pricing', () => {
     expect(componentSource).toContain('function applySimpleModeFilter(items: NavItem[]): NavItem[]')
     expect(componentSource).toContain("path: '/admin/channels/pricing', label: t('nav.channelPricing'), icon: PriceTagIcon, hideInSimpleMode: true")
     expect(componentSource).toContain("path: '/admin/channels/monitor', label: t('nav.channelMonitor'), icon: SignalIcon, featureFlag: flagChannelMonitor")

@@ -10,6 +10,29 @@ const locationState = vi.hoisted(() => ({
   current: { href: 'http://localhost/register?aff=AFF123' } as { href: string },
 }))
 
+const localStorageMemory = new Map<string, string>()
+const sessionStorageMemory = new Map<string, string>()
+
+Object.defineProperty(window, 'localStorage', {
+  configurable: true,
+  value: {
+    getItem: (key: string) => localStorageMemory.get(key) ?? null,
+    setItem: (key: string, value: string) => localStorageMemory.set(key, value),
+    removeItem: (key: string) => localStorageMemory.delete(key),
+    clear: () => localStorageMemory.clear(),
+  },
+})
+
+Object.defineProperty(window, 'sessionStorage', {
+  configurable: true,
+  value: {
+    getItem: (key: string) => sessionStorageMemory.get(key) ?? null,
+    setItem: (key: string, value: string) => sessionStorageMemory.set(key, value),
+    removeItem: (key: string) => sessionStorageMemory.delete(key),
+    clear: () => sessionStorageMemory.clear(),
+  },
+})
+
 vi.mock('vue-router', () => ({
   useRoute: () => routeState,
 }))
@@ -76,6 +99,8 @@ describe('EmailOAuthButtons', () => {
 
     expect(wrapper.find('.grid').classes()).not.toContain('sm:grid-cols-2')
     expect(wrapper.get('button').text()).toContain('使用 GitHub 登录')
+    expect(wrapper.get('button').classes()).toContain('auth-oauth-button')
+    expect(wrapper.get('button').classes()).not.toContain('btn-secondary')
   })
 
   it('uses compact labels and two columns when GitHub and Google are both enabled', () => {

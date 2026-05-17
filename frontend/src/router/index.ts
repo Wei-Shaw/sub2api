@@ -470,10 +470,11 @@ const routes: RouteRecordRaw[] = [
     name: 'ChannelStatus',
     component: () => import('@/views/user/ChannelStatusView.vue'),
     meta: {
-      requiresAuth: true,
+      requiresAuth: false,
       requiresAdmin: false,
       title: 'Channel Status',
-      titleKey: 'nav.channelStatus'
+      titleKey: 'nav.channelStatus',
+      standalone: true
     }
   },
   {
@@ -701,7 +702,7 @@ let authInitialized = false
 const navigationLoading = useNavigationLoadingState()
 // 延迟初始化预加载，传入 router 实例
 let routePrefetch: ReturnType<typeof useRoutePrefetch> | null = null
-const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/setup', '/payment/result', '/legal']
+const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/setup', '/payment/result', '/legal', '/monitor']
 const BACKEND_MODE_CALLBACK_PATHS = [
   '/auth/callback',
   '/auth/linuxdo/callback',
@@ -749,7 +750,7 @@ router.beforeEach((to, _from, next) => {
     const menuItem = publicItems.find((item) => item.id === id)
       ?? (authStore.isAdmin ? adminSettingsStore.customMenuItems.find((item) => item.id === id) : undefined)
     if (menuItem?.label) {
-      const siteName = appStore.siteName || 'Sub2API'
+      const siteName = appStore.siteName || 'DevRouter'
       document.title = `${menuItem.label} - ${siteName}`
     } else {
       document.title = resolveDocumentTitle(to.meta.title, appStore.siteName, to.meta.titleKey as string)
