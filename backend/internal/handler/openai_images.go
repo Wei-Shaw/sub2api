@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -103,6 +104,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		setOpsRequestContext(c, parsed.Model, parsed.Stream, body)
 	}
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(parsed.Stream, false)))
+	var stopImageStreamPrimer func()
 
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, parsed.Model)
 
@@ -129,6 +131,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		if retryAfter > 0 {
 			c.Header("Retry-After", strconv.Itoa(retryAfter))
 		}
+		stopOpenAIImagesStreamPrimerForHandlerError(c, stopImageStreamPrimer)
 		h.handleStreamingAwareError(c, status, code, message, streamStarted)
 		return
 	}
@@ -157,9 +160,11 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
 			if len(failedAccountIDs) == 0 {
+				stopOpenAIImagesStreamPrimerForHandlerError(c, stopImageStreamPrimer)
 				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available compatible accounts", streamStarted)
 				return
 			}
+			stopOpenAIImagesStreamPrimerForHandlerError(c, stopImageStreamPrimer)
 			if lastFailoverErr != nil {
 				h.handleFailoverExhausted(c, lastFailoverErr, streamStarted)
 			} else {
@@ -168,6 +173,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			return
 		}
 		if selection == nil || selection.Account == nil {
+			stopOpenAIImagesStreamPrimerForHandlerError(c, stopImageStreamPrimer)
 			h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available compatible accounts", streamStarted)
 			return
 		}
@@ -192,6 +198,17 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		}
 
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
+		if stopImageStreamPrimer == nil && parsed.Stream {
+			keepaliveInterval := time.Duration(0)
+			if h != nil && h.cfg != nil && h.cfg.Gateway.ImageStreamKeepaliveInterval > 0 {
+				keepaliveInterval = time.Duration(h.cfg.Gateway.ImageStreamKeepaliveInterval) * time.Second
+			}
+			if stop, started := startOpenAIImagesStreamPrimer(c, &streamStarted, keepaliveInterval); started {
+				stopImageStreamPrimer = stop
+				service.BindOpenAIImagesStreamPrimerStopper(c, stop)
+				defer stopImageStreamPrimer()
+			}
+		}
 		forwardStart := time.Now()
 		result, err := h.gatewayService.ForwardImages(c.Request.Context(), c, account, body, parsed, channelMapping.MappedModel)
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
@@ -240,6 +257,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 					failedAccountIDs[account.ID] = struct{}{}
 					lastFailoverErr = failoverErr
 					if switchCount >= maxAccountSwitches {
+						stopOpenAIImagesStreamPrimerForHandlerError(c, stopImageStreamPrimer)
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
@@ -253,6 +271,15 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 					continue
 				}
 				h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
+				if streamStarted && c.Writer.Written() {
+					wroteFallback := shouldWriteOpenAIImagesStreamPrimerForwardError(c) && handleOpenAIImagesStreamPrimerForwardError(c, stopImageStreamPrimer)
+					reqLog.Warn("openai.images.forward_failed",
+						zap.Int64("account_id", account.ID),
+						zap.Bool("fallback_error_response_written", wroteFallback),
+						zap.Error(err),
+					)
+					return
+				}
 				wroteFallback := h.ensureForwardErrorResponse(c, streamStarted)
 				fields := []zap.Field{
 					zap.Int64("account_id", account.ID),
@@ -321,6 +348,103 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		)
 		return
 	}
+}
+
+func startOpenAIImagesStreamPrimer(c *gin.Context, streamStarted *bool, keepaliveInterval time.Duration) (func(), bool) {
+	if c == nil || c.Writer == nil || streamStarted == nil || *streamStarted {
+		return nil, false
+	}
+	flusher, ok := c.Writer.(http.Flusher)
+	if !ok {
+		return nil, false
+	}
+
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("X-Accel-Buffering", "no")
+	c.Writer.WriteHeader(http.StatusOK)
+	*streamStarted = true
+
+	if _, err := io.WriteString(c.Writer, ":\n\n"); err != nil {
+		flusher.Flush()
+		return func() {}, true
+	}
+	flusher.Flush()
+
+	if keepaliveInterval <= 0 {
+		return func() {}, true
+	}
+
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	stopped := make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(keepaliveInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				if _, err := io.WriteString(c.Writer, ":\n\n"); err != nil {
+					return
+				}
+				flusher.Flush()
+			case <-stop:
+				return
+			case <-c.Request.Context().Done():
+				return
+			}
+		}
+	}()
+
+	return func() {
+		select {
+		case <-stopped:
+			return
+		default:
+			close(stopped)
+			close(stop)
+			<-done
+		}
+	}, true
+}
+
+func handleOpenAIImagesStreamPrimerForwardError(c *gin.Context, stop func()) bool {
+	if c == nil || c.Writer == nil || !c.Writer.Written() {
+		return false
+	}
+	if stop != nil {
+		stop()
+	}
+	service.StopOpenAIImagesStreamPrimer(c)
+
+	flusher, ok := c.Writer.(http.Flusher)
+	if !ok {
+		return false
+	}
+	errorEvent := "event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"upstream_error\",\"message\":\"Upstream request failed\"}}\n\n"
+	if _, err := io.WriteString(c.Writer, errorEvent); err != nil {
+		_ = c.Error(err)
+		return false
+	}
+	flusher.Flush()
+	service.MarkOpenAIImagesStreamResponseWritten(c)
+	return true
+}
+
+func shouldWriteOpenAIImagesStreamPrimerForwardError(c *gin.Context) bool {
+	if c == nil || c.Writer == nil || !c.Writer.Written() {
+		return false
+	}
+	return !service.HasOpenAIImagesStreamResponseWritten(c)
+}
+
+func stopOpenAIImagesStreamPrimerForHandlerError(c *gin.Context, stop func()) {
+	if stop != nil {
+		stop()
+	}
+	service.StopOpenAIImagesStreamPrimer(c)
 }
 
 func isMultipartImagesContentType(contentType string) bool {

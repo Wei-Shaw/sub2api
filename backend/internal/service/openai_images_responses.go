@@ -505,6 +505,18 @@ func buildOpenAIImagesStreamErrorBody(message string) []byte {
 	return body
 }
 
+func (s *OpenAIGatewayService) writeOpenAIImagesStreamError(c *gin.Context, message string) error {
+	flusher, ok := c.Writer.(http.Flusher)
+	if !ok {
+		return fmt.Errorf("streaming is not supported by response writer")
+	}
+	if strings.TrimSpace(message) == "" {
+		message = "upstream request failed"
+	}
+	_ = s.writeOpenAIImagesStreamEvent(c, flusher, "error", buildOpenAIImagesStreamErrorBody(message))
+	return fmt.Errorf("upstream image stream error: %s", message)
+}
+
 func (s *OpenAIGatewayService) writeOpenAIImagesStreamEvent(c *gin.Context, flusher http.Flusher, eventName string, payload []byte) error {
 	if strings.TrimSpace(eventName) != "" {
 		if _, err := fmt.Fprintf(c.Writer, "event: %s\n", eventName); err != nil {
@@ -514,6 +526,7 @@ func (s *OpenAIGatewayService) writeOpenAIImagesStreamEvent(c *gin.Context, flus
 	if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", payload); err != nil {
 		return err
 	}
+	MarkOpenAIImagesStreamResponseWritten(c)
 	flusher.Flush()
 	return nil
 }
@@ -574,6 +587,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 	}
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	c.Data(resp.StatusCode, "application/json; charset=utf-8", responseBody)
+	MarkOpenAIImagesStreamResponseWritten(c)
 	return usage, len(results), nil
 }
 
@@ -589,7 +603,10 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
-	c.Status(resp.StatusCode)
+	c.Header("X-Accel-Buffering", "no")
+	if !c.Writer.Written() {
+		c.Status(resp.StatusCode)
+	}
 
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
@@ -990,6 +1007,9 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 		})
 		return nil, fmt.Errorf("upstream request failed: %s", safeErr)
 	}
+	if resp.StatusCode < 400 {
+		StopOpenAIImagesStreamPrimer(c)
+	}
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 		_ = resp.Body.Close()
@@ -1013,6 +1033,10 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 				ResponseBody:           respBody,
 				RetryableOnSameAccount: account.IsPoolMode() && isPoolModeRetryableStatus(resp.StatusCode),
 			}
+		}
+		StopOpenAIImagesStreamPrimer(c)
+		if parsed.Stream && c.Writer.Written() {
+			return nil, s.writeOpenAIImagesStreamError(c, upstreamMsg)
 		}
 		return s.handleErrorResponse(upstreamCtx, resp, c, account, responsesBody)
 	}
