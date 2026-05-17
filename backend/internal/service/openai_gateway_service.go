@@ -4578,6 +4578,76 @@ REDACTED
 	return line[start:], true
 REDACTED
 
+func extractOpenAISSEEventLine(line string) (string, bool) {
+	if !strings.HasPrefix(line, "event:") {
+		return "", false
+REDACTED
+	start := len("event:")
+	for start < len(line) {
+		if line[start] != ' ' && line[start] != '	' {
+			break
+	REDACTED
+		start++
+REDACTED
+	return strings.TrimSpace(line[start:]), true
+REDACTED
+
+type openAICompatSSEFrame struct {
+	EventType string
+	Data      string
+REDACTED
+
+type openAICompatSSEFrameParser struct {
+	eventType string
+	dataLines []string
+REDACTED
+
+func (p *openAICompatSSEFrameParser) AddLine(line string) (openAICompatSSEFrame, bool) {
+	if line == "" {
+		return p.dispatch()
+REDACTED
+	if strings.HasPrefix(line, ":") {
+		return openAICompatSSEFrame{REDACTED, false
+REDACTED
+	if eventType, ok := extractOpenAISSEEventLine(line); ok {
+		p.eventType = eventType
+		return openAICompatSSEFrame{REDACTED, false
+REDACTED
+	if data, ok := extractOpenAISSEDataLine(line); ok {
+		p.dataLines = append(p.dataLines, data)
+REDACTED
+	return openAICompatSSEFrame{REDACTED, false
+REDACTED
+
+func (p *openAICompatSSEFrameParser) Finish() (openAICompatSSEFrame, bool) {
+	return p.dispatch()
+REDACTED
+
+func (p *openAICompatSSEFrameParser) dispatch() (openAICompatSSEFrame, bool) {
+	frame := openAICompatSSEFrame{
+		EventType: p.eventType,
+		Data:      strings.Join(p.dataLines, "\n"),
+REDACTED
+	p.eventType = ""
+	p.dataLines = nil
+	return frame, frame.Data != ""
+REDACTED
+
+func openAICompatPayloadWithEventType(payload, eventType string) string {
+	eventType = strings.TrimSpace(eventType)
+	if eventType == "" || strings.TrimSpace(payload) == "" || strings.TrimSpace(payload) == "[DONE]" {
+		return payload
+REDACTED
+	if gjson.Get(payload, "type").Exists() {
+		return payload
+REDACTED
+	patched, err := sjson.Set(payload, "type", eventType)
+	if err != nil {
+		return payload
+REDACTED
+	return patched
+REDACTED
+
 func (s *OpenAIGatewayService) replaceModelInSSELine(line, fromModel, toModel string) string {
 	data, ok := extractOpenAISSEDataLine(line)
 	if !ok {

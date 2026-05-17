@@ -560,10 +560,24 @@ REDACTED
 REDACTED()
 	defer close(done)
 
+	var parser openAICompatSSEFrameParser
 	for {
 		select {
 		case ev, ok := <-events:
 			if !ok {
+				if frame, ok := parser.Finish(); ok {
+					payload := openAICompatPayloadWithEventType(frame.Data, frame.EventType)
+					var event apicompat.ResponsesStreamEvent
+					if err := json.Unmarshal([]byte(payload), &event); err == nil {
+						acc.ProcessEvent(&event)
+						if isOpenAICompatResponsesTerminalEvent(event.Type) && event.Response != nil {
+							if event.Response.Usage != nil {
+								usage = copyOpenAIUsageFromResponsesUsage(event.Response.Usage)
+						REDACTED
+							return event.Response, usage, acc, nil
+					REDACTED
+				REDACTED
+			REDACTED
 				return nil, usage, acc, nil
 		REDACTED
 			resetTimeout()
@@ -580,10 +594,11 @@ REDACTED()
 			if isOpenAICompatDoneSentinelLine(ev.line) {
 				return nil, usage, acc, nil
 		REDACTED
-			payload, ok := extractOpenAISSEDataLine(ev.line)
-			if !ok || payload == "" {
+			frame, ok := parser.AddLine(ev.line)
+			if !ok {
 				continue
 		REDACTED
+			payload := openAICompatPayloadWithEventType(frame.Data, frame.EventType)
 
 			var event apicompat.ResponsesStreamEvent
 			if err := json.Unmarshal([]byte(payload), &event); err != nil {
@@ -772,6 +787,10 @@ REDACTED
 	missingTerminalErr := func() (*OpenAIForwardResult, error) {
 		return resultWithUsage(), fmt.Errorf("stream usage incomplete: missing terminal event")
 REDACTED
+	processFrame := func(frame openAICompatSSEFrame) bool {
+		payload := openAICompatPayloadWithEventType(frame.Data, frame.EventType)
+		return processDataLine(payload)
+REDACTED
 
 	// ── Determine keepalive interval ──
 	keepaliveInterval := time.Duration(0)
@@ -781,22 +800,31 @@ REDACTED
 
 	// ── No keepalive: fast synchronous path (no goroutine overhead) ──
 	if streamInterval <= 0 && keepaliveInterval <= 0 {
+		var parser openAICompatSSEFrameParser
 		for scanner.Scan() {
 			line := scanner.Text()
 			if isOpenAICompatDoneSentinelLine(line) {
 				return missingTerminalErr()
 		REDACTED
-			payload, ok := extractOpenAISSEDataLine(line)
+			frame, ok := parser.AddLine(line)
 			if !ok {
 				continue
 		REDACTED
-			if processDataLine(payload) {
+			if processFrame(frame) {
 				return finalizeStream()
 		REDACTED
 	REDACTED
 		if err := scanner.Err(); err != nil {
 			handleScanErr(err)
 			return resultWithUsage(), fmt.Errorf("stream usage incomplete: %w", err)
+	REDACTED
+		if frame, ok := parser.Finish(); ok {
+			if strings.TrimSpace(frame.Data) == "[DONE]" {
+				return missingTerminalErr()
+		REDACTED
+			if processFrame(frame) {
+				return finalizeStream()
+		REDACTED
 	REDACTED
 		return missingTerminalErr()
 REDACTED
@@ -842,12 +870,21 @@ REDACTED
 		keepaliveCh = keepaliveTicker.C
 REDACTED
 	lastDataAt := time.Now()
+	var parser openAICompatSSEFrameParser
 
 	for {
 		select {
 		case ev, ok := <-events:
 			if !ok {
 				// Upstream closed
+				if frame, ok := parser.Finish(); ok {
+					if strings.TrimSpace(frame.Data) == "[DONE]" {
+						return missingTerminalErr()
+				REDACTED
+					if processFrame(frame) {
+						return finalizeStream()
+				REDACTED
+			REDACTED
 				return missingTerminalErr()
 		REDACTED
 			if ev.err != nil {
@@ -859,11 +896,11 @@ REDACTED
 			if isOpenAICompatDoneSentinelLine(line) {
 				return missingTerminalErr()
 		REDACTED
-			payload, ok := extractOpenAISSEDataLine(line)
+			frame, ok := parser.AddLine(line)
 			if !ok {
 				continue
 		REDACTED
-			if processDataLine(payload) {
+			if processFrame(frame) {
 				return finalizeStream()
 		REDACTED
 
