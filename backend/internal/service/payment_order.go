@@ -215,8 +215,27 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 	if amounts.BalancePackage != nil && amounts.BalancePackage.BalanceGroupID != nil && *amounts.BalancePackage.BalanceGroupID > 0 {
 		b.SetBalanceGroupID(*amounts.BalancePackage.BalanceGroupID)
 	}
+	if amounts.BalancePackage != nil && amounts.BalancePackage.ActualCredits > 0 {
+		b.SetActualCredits(amounts.BalancePackage.ActualCredits)
+	}
 	if plan != nil {
 		b.SetPlanID(plan.ID).SetSubscriptionGroupID(plan.GroupID).SetSubscriptionDays(psComputeValidityDays(plan.ValidityDays, plan.ValidityUnit))
+		// For subscription orders, compute actual_credits from ledger_amount using the
+		// subscription group's rate_multiplier and token_price_per_million.
+		if amounts.BalancePackage == nil || amounts.BalancePackage.ActualCredits <= 0 {
+			if subGroup, err := s.groupRepo.GetByID(ctx, plan.GroupID); err == nil && subGroup != nil && subGroup.RateMultiplier > 0 {
+				var tokenPrice float64
+				if subGroup.TokenPricePerMillion != nil && *subGroup.TokenPricePerMillion > 0 {
+					tokenPrice = *subGroup.TokenPricePerMillion
+				}
+				if tokenPrice > 0 {
+					subCredits := computeActualCreditsFromRateMultiplier(ledgerAmount, subGroup.RateMultiplier, tokenPrice)
+					if subCredits > 0 {
+						b.SetActualCredits(subCredits)
+					}
+				}
+			}
+		}
 	}
 	order, err := b.Save(ctx)
 	if err != nil {

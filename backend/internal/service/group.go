@@ -66,6 +66,18 @@ type Group struct {
 	// 一旦设置即接管该分组用户的限流（覆盖用户级 rpm_limit），可被 user-group rpm_override 进一步覆盖。
 	RPMLimit int
 
+	// TokenPricePerMillion 每百万 token 均价 (USD)，用于 USD↔token 互转。
+	// nil/0 表示系统自动从 pricing_reference_model 推导。
+	TokenPricePerMillion *float64
+
+	// PricingReferenceModel admin 选择的定价参考模型（如 gpt-5.5, claude-sonnet-4）。
+	// 系统根据此模型的 input/output pricing 自动计算 token_price_per_million。
+	PricingReferenceModel *string
+
+	// InputOutputRatio input token 占比 (0.0-1.0)，用于加权计算 token_price_per_million。
+	// nil 使用系统默认 0.90（90% input, 10% output）。
+	InputOutputRatio *float64
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 

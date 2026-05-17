@@ -58,6 +58,7 @@ type EntitlementItem struct {
 	WeeklyLimitUSD       *float64                `json:"weekly_limit_usd,omitempty"`
 	MonthlyLimitUSD      *float64                `json:"monthly_limit_usd,omitempty"`
 	RateMultiplier       float64                 `json:"rate_multiplier"`
+	TokenPricePerMillion *float64                `json:"token_price_per_million,omitempty"`
 	SupportedModelScopes []string                `json:"supported_model_scopes,omitempty"`
 	Switchable           bool                    `json:"switchable"`
 	Current              bool                    `json:"current"`
@@ -385,6 +386,7 @@ func entitlementItemFromSubscription(sub UserSubscription, group *Group) Entitle
 	var modelScopes []string
 	var dailyLimit, weeklyLimit, monthlyLimit *float64
 	var fallbackGroupID *int64
+	var tokenPricePerMillion *float64
 	if group != nil {
 		name = group.Name
 		platform = group.Platform
@@ -394,6 +396,7 @@ func entitlementItemFromSubscription(sub UserSubscription, group *Group) Entitle
 		weeklyLimit = group.WeeklyLimitUSD
 		monthlyLimit = group.MonthlyLimitUSD
 		fallbackGroupID = group.FallbackGroupID
+		tokenPricePerMillion = group.TokenPricePerMillion
 		if !group.IsSubscriptionType() {
 			mode = EntitlementModeBalance
 		}
@@ -416,6 +419,7 @@ func entitlementItemFromSubscription(sub UserSubscription, group *Group) Entitle
 		WeeklyLimitUSD:       weeklyLimit,
 		MonthlyLimitUSD:      monthlyLimit,
 		RateMultiplier:       rateMultiplier,
+		TokenPricePerMillion: tokenPricePerMillion,
 		SupportedModelScopes: modelScopes,
 		Switchable:           sub.IsActive(),
 		SubscriptionID:       &subID,

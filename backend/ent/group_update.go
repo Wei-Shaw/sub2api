@@ -637,6 +637,80 @@ func (_u *GroupUpdate) AddRpmLimit(v int) *GroupUpdate {
 	return _u
 }
 
+// SetTokenPricePerMillion sets the "token_price_per_million" field.
+func (_u *GroupUpdate) SetTokenPricePerMillion(v float64) *GroupUpdate {
+	_u.mutation.ResetTokenPricePerMillion()
+	_u.mutation.SetTokenPricePerMillion(v)
+	return _u
+}
+
+// SetNillableTokenPricePerMillion sets the "token_price_per_million" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableTokenPricePerMillion(v *float64) *GroupUpdate {
+	if v != nil {
+		_u.SetTokenPricePerMillion(*v)
+	}
+	return _u
+}
+
+// AddTokenPricePerMillion adds value to the "token_price_per_million" field.
+func (_u *GroupUpdate) AddTokenPricePerMillion(v float64) *GroupUpdate {
+	_u.mutation.AddTokenPricePerMillion(v)
+	return _u
+}
+
+// ClearTokenPricePerMillion clears the value of the "token_price_per_million" field.
+func (_u *GroupUpdate) ClearTokenPricePerMillion() *GroupUpdate {
+	_u.mutation.ClearTokenPricePerMillion()
+	return _u
+}
+
+// SetPricingReferenceModel sets the "pricing_reference_model" field.
+func (_u *GroupUpdate) SetPricingReferenceModel(v string) *GroupUpdate {
+	_u.mutation.SetPricingReferenceModel(v)
+	return _u
+}
+
+// SetNillablePricingReferenceModel sets the "pricing_reference_model" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillablePricingReferenceModel(v *string) *GroupUpdate {
+	if v != nil {
+		_u.SetPricingReferenceModel(*v)
+	}
+	return _u
+}
+
+// ClearPricingReferenceModel clears the value of the "pricing_reference_model" field.
+func (_u *GroupUpdate) ClearPricingReferenceModel() *GroupUpdate {
+	_u.mutation.ClearPricingReferenceModel()
+	return _u
+}
+
+// SetInputOutputRatio sets the "input_output_ratio" field.
+func (_u *GroupUpdate) SetInputOutputRatio(v float64) *GroupUpdate {
+	_u.mutation.ResetInputOutputRatio()
+	_u.mutation.SetInputOutputRatio(v)
+	return _u
+}
+
+// SetNillableInputOutputRatio sets the "input_output_ratio" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableInputOutputRatio(v *float64) *GroupUpdate {
+	if v != nil {
+		_u.SetInputOutputRatio(*v)
+	}
+	return _u
+}
+
+// AddInputOutputRatio adds value to the "input_output_ratio" field.
+func (_u *GroupUpdate) AddInputOutputRatio(v float64) *GroupUpdate {
+	_u.mutation.AddInputOutputRatio(v)
+	return _u
+}
+
+// ClearInputOutputRatio clears the value of the "input_output_ratio" field.
+func (_u *GroupUpdate) ClearInputOutputRatio() *GroupUpdate {
+	_u.mutation.ClearInputOutputRatio()
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdate) AddAPIKeyIDs(ids ...int64) *GroupUpdate {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -927,6 +1001,11 @@ func (_u *GroupUpdate) check() error {
 			return &ValidationError{Name: "default_mapped_model", err: fmt.Errorf(`ent: validator failed for field "Group.default_mapped_model": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.PricingReferenceModel(); ok {
+		if err := group.PricingReferenceModelValidator(v); err != nil {
+			return &ValidationError{Name: "pricing_reference_model", err: fmt.Errorf(`ent: validator failed for field "Group.pricing_reference_model": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -1117,6 +1196,30 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedRpmLimit(); ok {
 		_spec.AddField(group.FieldRpmLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.TokenPricePerMillion(); ok {
+		_spec.SetField(group.FieldTokenPricePerMillion, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedTokenPricePerMillion(); ok {
+		_spec.AddField(group.FieldTokenPricePerMillion, field.TypeFloat64, value)
+	}
+	if _u.mutation.TokenPricePerMillionCleared() {
+		_spec.ClearField(group.FieldTokenPricePerMillion, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.PricingReferenceModel(); ok {
+		_spec.SetField(group.FieldPricingReferenceModel, field.TypeString, value)
+	}
+	if _u.mutation.PricingReferenceModelCleared() {
+		_spec.ClearField(group.FieldPricingReferenceModel, field.TypeString)
+	}
+	if value, ok := _u.mutation.InputOutputRatio(); ok {
+		_spec.SetField(group.FieldInputOutputRatio, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedInputOutputRatio(); ok {
+		_spec.AddField(group.FieldInputOutputRatio, field.TypeFloat64, value)
+	}
+	if _u.mutation.InputOutputRatioCleared() {
+		_spec.ClearField(group.FieldInputOutputRatio, field.TypeFloat64)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -2033,6 +2136,80 @@ func (_u *GroupUpdateOne) AddRpmLimit(v int) *GroupUpdateOne {
 	return _u
 }
 
+// SetTokenPricePerMillion sets the "token_price_per_million" field.
+func (_u *GroupUpdateOne) SetTokenPricePerMillion(v float64) *GroupUpdateOne {
+	_u.mutation.ResetTokenPricePerMillion()
+	_u.mutation.SetTokenPricePerMillion(v)
+	return _u
+}
+
+// SetNillableTokenPricePerMillion sets the "token_price_per_million" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableTokenPricePerMillion(v *float64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetTokenPricePerMillion(*v)
+	}
+	return _u
+}
+
+// AddTokenPricePerMillion adds value to the "token_price_per_million" field.
+func (_u *GroupUpdateOne) AddTokenPricePerMillion(v float64) *GroupUpdateOne {
+	_u.mutation.AddTokenPricePerMillion(v)
+	return _u
+}
+
+// ClearTokenPricePerMillion clears the value of the "token_price_per_million" field.
+func (_u *GroupUpdateOne) ClearTokenPricePerMillion() *GroupUpdateOne {
+	_u.mutation.ClearTokenPricePerMillion()
+	return _u
+}
+
+// SetPricingReferenceModel sets the "pricing_reference_model" field.
+func (_u *GroupUpdateOne) SetPricingReferenceModel(v string) *GroupUpdateOne {
+	_u.mutation.SetPricingReferenceModel(v)
+	return _u
+}
+
+// SetNillablePricingReferenceModel sets the "pricing_reference_model" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillablePricingReferenceModel(v *string) *GroupUpdateOne {
+	if v != nil {
+		_u.SetPricingReferenceModel(*v)
+	}
+	return _u
+}
+
+// ClearPricingReferenceModel clears the value of the "pricing_reference_model" field.
+func (_u *GroupUpdateOne) ClearPricingReferenceModel() *GroupUpdateOne {
+	_u.mutation.ClearPricingReferenceModel()
+	return _u
+}
+
+// SetInputOutputRatio sets the "input_output_ratio" field.
+func (_u *GroupUpdateOne) SetInputOutputRatio(v float64) *GroupUpdateOne {
+	_u.mutation.ResetInputOutputRatio()
+	_u.mutation.SetInputOutputRatio(v)
+	return _u
+}
+
+// SetNillableInputOutputRatio sets the "input_output_ratio" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableInputOutputRatio(v *float64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetInputOutputRatio(*v)
+	}
+	return _u
+}
+
+// AddInputOutputRatio adds value to the "input_output_ratio" field.
+func (_u *GroupUpdateOne) AddInputOutputRatio(v float64) *GroupUpdateOne {
+	_u.mutation.AddInputOutputRatio(v)
+	return _u
+}
+
+// ClearInputOutputRatio clears the value of the "input_output_ratio" field.
+func (_u *GroupUpdateOne) ClearInputOutputRatio() *GroupUpdateOne {
+	_u.mutation.ClearInputOutputRatio()
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdateOne) AddAPIKeyIDs(ids ...int64) *GroupUpdateOne {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -2336,6 +2513,11 @@ func (_u *GroupUpdateOne) check() error {
 			return &ValidationError{Name: "default_mapped_model", err: fmt.Errorf(`ent: validator failed for field "Group.default_mapped_model": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.PricingReferenceModel(); ok {
+		if err := group.PricingReferenceModelValidator(v); err != nil {
+			return &ValidationError{Name: "pricing_reference_model", err: fmt.Errorf(`ent: validator failed for field "Group.pricing_reference_model": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -2543,6 +2725,30 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.AddedRpmLimit(); ok {
 		_spec.AddField(group.FieldRpmLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.TokenPricePerMillion(); ok {
+		_spec.SetField(group.FieldTokenPricePerMillion, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedTokenPricePerMillion(); ok {
+		_spec.AddField(group.FieldTokenPricePerMillion, field.TypeFloat64, value)
+	}
+	if _u.mutation.TokenPricePerMillionCleared() {
+		_spec.ClearField(group.FieldTokenPricePerMillion, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.PricingReferenceModel(); ok {
+		_spec.SetField(group.FieldPricingReferenceModel, field.TypeString, value)
+	}
+	if _u.mutation.PricingReferenceModelCleared() {
+		_spec.ClearField(group.FieldPricingReferenceModel, field.TypeString)
+	}
+	if value, ok := _u.mutation.InputOutputRatio(); ok {
+		_spec.SetField(group.FieldInputOutputRatio, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedInputOutputRatio(); ok {
+		_spec.AddField(group.FieldInputOutputRatio, field.TypeFloat64, value)
+	}
+	if _u.mutation.InputOutputRatioCleared() {
+		_spec.ClearField(group.FieldInputOutputRatio, field.TypeFloat64)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{

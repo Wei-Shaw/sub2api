@@ -185,6 +185,11 @@ func BalanceGroupID(v int64) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldEQ(FieldBalanceGroupID, v))
 }
 
+// ActualCredits applies equality check predicate on the "actual_credits" field. It's identical to ActualCreditsEQ.
+func ActualCredits(v int64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldEQ(FieldActualCredits, v))
+}
+
 // ProviderInstanceID applies equality check predicate on the "provider_instance_id" field. It's identical to ProviderInstanceIDEQ.
 func ProviderInstanceID(v string) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldEQ(FieldProviderInstanceID, v))
@@ -1753,6 +1758,56 @@ func BalanceGroupIDIsNil() predicate.PaymentOrder {
 // BalanceGroupIDNotNil applies the NotNil predicate on the "balance_group_id" field.
 func BalanceGroupIDNotNil() predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldNotNull(FieldBalanceGroupID))
+}
+
+// ActualCreditsEQ applies the EQ predicate on the "actual_credits" field.
+func ActualCreditsEQ(v int64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldEQ(FieldActualCredits, v))
+}
+
+// ActualCreditsNEQ applies the NEQ predicate on the "actual_credits" field.
+func ActualCreditsNEQ(v int64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldNEQ(FieldActualCredits, v))
+}
+
+// ActualCreditsIn applies the In predicate on the "actual_credits" field.
+func ActualCreditsIn(vs ...int64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldIn(FieldActualCredits, vs...))
+}
+
+// ActualCreditsNotIn applies the NotIn predicate on the "actual_credits" field.
+func ActualCreditsNotIn(vs ...int64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldNotIn(FieldActualCredits, vs...))
+}
+
+// ActualCreditsGT applies the GT predicate on the "actual_credits" field.
+func ActualCreditsGT(v int64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldGT(FieldActualCredits, v))
+}
+
+// ActualCreditsGTE applies the GTE predicate on the "actual_credits" field.
+func ActualCreditsGTE(v int64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldGTE(FieldActualCredits, v))
+}
+
+// ActualCreditsLT applies the LT predicate on the "actual_credits" field.
+func ActualCreditsLT(v int64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldLT(FieldActualCredits, v))
+}
+
+// ActualCreditsLTE applies the LTE predicate on the "actual_credits" field.
+func ActualCreditsLTE(v int64) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldLTE(FieldActualCredits, v))
+}
+
+// ActualCreditsIsNil applies the IsNil predicate on the "actual_credits" field.
+func ActualCreditsIsNil() predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldIsNull(FieldActualCredits))
+}
+
+// ActualCreditsNotNil applies the NotNil predicate on the "actual_credits" field.
+func ActualCreditsNotNil() predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldNotNull(FieldActualCredits))
 }
 
 // ProviderInstanceIDEQ applies the EQ predicate on the "provider_instance_id" field.

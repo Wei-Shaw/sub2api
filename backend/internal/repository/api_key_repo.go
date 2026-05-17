@@ -724,6 +724,9 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		DefaultMappedModel:              g.DefaultMappedModel,
 		MessagesDispatchModelConfig:     g.MessagesDispatchModelConfig,
 		RPMLimit:                        g.RpmLimit,
+		TokenPricePerMillion:            g.TokenPricePerMillion,
+		PricingReferenceModel:           g.PricingReferenceModel,
+		InputOutputRatio:                g.InputOutputRatio,
 		CreatedAt:                       g.CreatedAt,
 		UpdatedAt:                       g.UpdatedAt,
 	}

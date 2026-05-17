@@ -221,7 +221,10 @@ func newUsageLogRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *usage
 	return repo
 }
 
-const creditUsageUnitScale = 10000.0
+// creditUsageUnitScale is DEPRECATED — kept only for backward-compatible JSON output.
+// The actual credit unit is now tokens (1 credit = 1 token). Purchased credits come from
+// payment_orders.actual_credits; remaining/used credits are derived proportionally from balance.
+const creditUsageUnitScale = 1.0
 
 // GetUserCreditUsageSummary reconstructs aggregate credit usage from existing monetary ledgers.
 // It intentionally does not allocate balance consumption to a specific purchased package: usage_logs
@@ -240,11 +243,11 @@ func (r *usageLogRepository) GetUserCreditUsageSummary(ctx context.Context, user
 		UserID:              userID,
 		CreditUnitScale:     creditUsageUnitScale,
 		BalanceLedgerAmount: balanceLedger,
-		Accuracy:            "aggregate_estimate",
+		Accuracy:            "balance_derived",
 		AccuracyNotes: []string{
-			"used credits are reconstructed from usage_logs.actual_cost / usage_logs.rate_multiplier * 10000",
-			"purchased credits are reconstructed from completed balance payment_orders.ledger_amount and the current group rate_multiplier",
-			"remaining credits are estimates because user balance is a single ledger balance and usage logs are not linked to a payment_order_id or balance_package_id",
+			"used credits = purchased_credits - remaining_credits (derived from current balance)",
+			"purchased credits are summed from payment_orders.actual_credits (tokens stored at order creation)",
+			"remaining_credits = purchased_credits × (current_balance / purchased_ledger) — proportional to USD remaining",
 		},
 	}
 
@@ -254,19 +257,35 @@ func (r *usageLogRepository) GetUserCreditUsageSummary(ctx context.Context, user
 	if err := r.populateUserCreditPurchaseGroups(ctx, summary); err != nil {
 		return nil, err
 	}
+
+	// Derive used credits from balance rather than summing usage_logs.
+	// This is the source of truth: used_ledger = purchased_ledger - current_balance.
+	summary.TotalUsedLedgerAmount = summary.TotalPurchasedLedgerAmount - balanceLedger
+	if summary.TotalUsedLedgerAmount < 0 {
+		summary.TotalUsedLedgerAmount = 0
+	}
+	// used_credits = purchased_credits - remaining_credits
+	// remaining_credits is already computed per-group in populateUserCreditPurchaseGroups;
+	// for the aggregate total, we sum remaining across groups.
+	totalRemaining := 0.0
+	for _, est := range summary.GroupEstimates {
+		totalRemaining += est.RemainingCredits
+	}
+	summary.TotalUsedCredits = summary.TotalPurchasedCredits - totalRemaining
+	if summary.TotalUsedCredits < 0 {
+		summary.TotalUsedCredits = 0
+	}
+
 	return summary, nil
 }
 
 func (r *usageLogRepository) populateUserCreditUsageTotals(ctx context.Context, summary *usagestats.CreditUsageSummary) error {
 	query := `
-		SELECT
-			COUNT(*),
-			COALESCE(SUM(actual_cost), 0),
-			COALESCE(SUM(CASE WHEN rate_multiplier > 0 THEN actual_cost / rate_multiplier * $2 ELSE 0 END), 0)
+		SELECT COUNT(*)
 		FROM usage_logs
 		WHERE user_id = $1
 	`
-	if err := scanSingleRow(ctx, r.sql, query, []any{summary.UserID, creditUsageUnitScale}, &summary.UsageLogCount, &summary.TotalUsedLedgerAmount, &summary.TotalUsedCredits); err != nil {
+	if err := scanSingleRow(ctx, r.sql, query, []any{summary.UserID}, &summary.UsageLogCount); err != nil {
 		return fmt.Errorf("query user credit usage totals: %w", err)
 	}
 	return nil
@@ -279,16 +298,16 @@ func (r *usageLogRepository) populateUserCreditPurchaseGroups(ctx context.Contex
 			COALESCE(g.name, '') AS group_name,
 			COALESCE(g.rate_multiplier, 0) AS rate_multiplier,
 			COALESCE(SUM(po.ledger_amount), 0) AS purchased_ledger_amount,
-			COALESCE(SUM(CASE WHEN po.balance_group_id IS NOT NULL AND g.rate_multiplier > 0 THEN po.ledger_amount / g.rate_multiplier * $2 ELSE 0 END), 0) AS purchased_credits
+			COALESCE(SUM(COALESCE(po.actual_credits, 0)), 0) AS purchased_credits
 		FROM payment_orders po
 		LEFT JOIN groups g ON g.id = po.balance_group_id
 		WHERE po.user_id = $1
-			AND po.order_type = $3
-			AND po.status = $4
+			AND po.order_type = $2
+			AND po.status = $3
 		GROUP BY COALESCE(po.balance_group_id, 0), COALESCE(g.name, ''), COALESCE(g.rate_multiplier, 0)
 		ORDER BY group_id
 	`
-	rows, err := r.sql.QueryContext(ctx, query, summary.UserID, creditUsageUnitScale, payment.OrderTypeBalance, payment.OrderStatusCompleted)
+	rows, err := r.sql.QueryContext(ctx, query, summary.UserID, payment.OrderTypeBalance, payment.OrderStatusCompleted)
 	if err != nil {
 		return fmt.Errorf("query user credit purchase groups: %w", err)
 	}
@@ -310,7 +329,14 @@ func (r *usageLogRepository) populateUserCreditPurchaseGroups(ctx context.Contex
 			summary.UnassignedPurchasedLedgerAmount += estimate.PurchasedLedgerAmount
 			continue
 		}
-		estimate.RemainingCredits = summary.BalanceLedgerAmount / estimate.RateMultiplier * creditUsageUnitScale
+		// Remaining credits = proportional to balance remaining vs total purchased ledger.
+		// This avoids any hardcoded pricing constant — purely USD-ratio based.
+		if estimate.PurchasedLedgerAmount > 0 && summary.BalanceLedgerAmount > 0 {
+			estimate.RemainingCredits = estimate.PurchasedCredits * (summary.BalanceLedgerAmount / estimate.PurchasedLedgerAmount)
+			if estimate.RemainingCredits > estimate.PurchasedCredits {
+				estimate.RemainingCredits = estimate.PurchasedCredits
+			}
+		}
 		estimates = append(estimates, estimate)
 	}
 	if err := rows.Err(); err != nil {

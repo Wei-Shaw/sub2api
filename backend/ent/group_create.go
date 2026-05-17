@@ -481,6 +481,48 @@ func (_c *GroupCreate) SetNillableRpmLimit(v *int) *GroupCreate {
 	return _c
 }
 
+// SetTokenPricePerMillion sets the "token_price_per_million" field.
+func (_c *GroupCreate) SetTokenPricePerMillion(v float64) *GroupCreate {
+	_c.mutation.SetTokenPricePerMillion(v)
+	return _c
+}
+
+// SetNillableTokenPricePerMillion sets the "token_price_per_million" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableTokenPricePerMillion(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetTokenPricePerMillion(*v)
+	}
+	return _c
+}
+
+// SetPricingReferenceModel sets the "pricing_reference_model" field.
+func (_c *GroupCreate) SetPricingReferenceModel(v string) *GroupCreate {
+	_c.mutation.SetPricingReferenceModel(v)
+	return _c
+}
+
+// SetNillablePricingReferenceModel sets the "pricing_reference_model" field if the given value is not nil.
+func (_c *GroupCreate) SetNillablePricingReferenceModel(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetPricingReferenceModel(*v)
+	}
+	return _c
+}
+
+// SetInputOutputRatio sets the "input_output_ratio" field.
+func (_c *GroupCreate) SetInputOutputRatio(v float64) *GroupCreate {
+	_c.mutation.SetInputOutputRatio(v)
+	return _c
+}
+
+// SetNillableInputOutputRatio sets the "input_output_ratio" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableInputOutputRatio(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetInputOutputRatio(*v)
+	}
+	return _c
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_c *GroupCreate) AddAPIKeyIDs(ids ...int64) *GroupCreate {
 	_c.mutation.AddAPIKeyIDs(ids...)
@@ -801,6 +843,11 @@ func (_c *GroupCreate) check() error {
 	if _, ok := _c.mutation.RpmLimit(); !ok {
 		return &ValidationError{Name: "rpm_limit", err: errors.New(`ent: missing required field "Group.rpm_limit"`)}
 	}
+	if v, ok := _c.mutation.PricingReferenceModel(); ok {
+		if err := group.PricingReferenceModelValidator(v); err != nil {
+			return &ValidationError{Name: "pricing_reference_model", err: fmt.Errorf(`ent: validator failed for field "Group.pricing_reference_model": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -963,6 +1010,18 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)
 		_node.RpmLimit = value
+	}
+	if value, ok := _c.mutation.TokenPricePerMillion(); ok {
+		_spec.SetField(group.FieldTokenPricePerMillion, field.TypeFloat64, value)
+		_node.TokenPricePerMillion = &value
+	}
+	if value, ok := _c.mutation.PricingReferenceModel(); ok {
+		_spec.SetField(group.FieldPricingReferenceModel, field.TypeString, value)
+		_node.PricingReferenceModel = &value
+	}
+	if value, ok := _c.mutation.InputOutputRatio(); ok {
+		_spec.SetField(group.FieldInputOutputRatio, field.TypeFloat64, value)
+		_node.InputOutputRatio = &value
 	}
 	if nodes := _c.mutation.APIKeysIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -1660,6 +1719,72 @@ func (u *GroupUpsert) AddRpmLimit(v int) *GroupUpsert {
 	return u
 }
 
+// SetTokenPricePerMillion sets the "token_price_per_million" field.
+func (u *GroupUpsert) SetTokenPricePerMillion(v float64) *GroupUpsert {
+	u.Set(group.FieldTokenPricePerMillion, v)
+	return u
+}
+
+// UpdateTokenPricePerMillion sets the "token_price_per_million" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateTokenPricePerMillion() *GroupUpsert {
+	u.SetExcluded(group.FieldTokenPricePerMillion)
+	return u
+}
+
+// AddTokenPricePerMillion adds v to the "token_price_per_million" field.
+func (u *GroupUpsert) AddTokenPricePerMillion(v float64) *GroupUpsert {
+	u.Add(group.FieldTokenPricePerMillion, v)
+	return u
+}
+
+// ClearTokenPricePerMillion clears the value of the "token_price_per_million" field.
+func (u *GroupUpsert) ClearTokenPricePerMillion() *GroupUpsert {
+	u.SetNull(group.FieldTokenPricePerMillion)
+	return u
+}
+
+// SetPricingReferenceModel sets the "pricing_reference_model" field.
+func (u *GroupUpsert) SetPricingReferenceModel(v string) *GroupUpsert {
+	u.Set(group.FieldPricingReferenceModel, v)
+	return u
+}
+
+// UpdatePricingReferenceModel sets the "pricing_reference_model" field to the value that was provided on create.
+func (u *GroupUpsert) UpdatePricingReferenceModel() *GroupUpsert {
+	u.SetExcluded(group.FieldPricingReferenceModel)
+	return u
+}
+
+// ClearPricingReferenceModel clears the value of the "pricing_reference_model" field.
+func (u *GroupUpsert) ClearPricingReferenceModel() *GroupUpsert {
+	u.SetNull(group.FieldPricingReferenceModel)
+	return u
+}
+
+// SetInputOutputRatio sets the "input_output_ratio" field.
+func (u *GroupUpsert) SetInputOutputRatio(v float64) *GroupUpsert {
+	u.Set(group.FieldInputOutputRatio, v)
+	return u
+}
+
+// UpdateInputOutputRatio sets the "input_output_ratio" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateInputOutputRatio() *GroupUpsert {
+	u.SetExcluded(group.FieldInputOutputRatio)
+	return u
+}
+
+// AddInputOutputRatio adds v to the "input_output_ratio" field.
+func (u *GroupUpsert) AddInputOutputRatio(v float64) *GroupUpsert {
+	u.Add(group.FieldInputOutputRatio, v)
+	return u
+}
+
+// ClearInputOutputRatio clears the value of the "input_output_ratio" field.
+func (u *GroupUpsert) ClearInputOutputRatio() *GroupUpsert {
+	u.SetNull(group.FieldInputOutputRatio)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
@@ -2332,6 +2457,83 @@ func (u *GroupUpsertOne) AddRpmLimit(v int) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateRpmLimit() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateRpmLimit()
+	})
+}
+
+// SetTokenPricePerMillion sets the "token_price_per_million" field.
+func (u *GroupUpsertOne) SetTokenPricePerMillion(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetTokenPricePerMillion(v)
+	})
+}
+
+// AddTokenPricePerMillion adds v to the "token_price_per_million" field.
+func (u *GroupUpsertOne) AddTokenPricePerMillion(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddTokenPricePerMillion(v)
+	})
+}
+
+// UpdateTokenPricePerMillion sets the "token_price_per_million" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateTokenPricePerMillion() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateTokenPricePerMillion()
+	})
+}
+
+// ClearTokenPricePerMillion clears the value of the "token_price_per_million" field.
+func (u *GroupUpsertOne) ClearTokenPricePerMillion() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearTokenPricePerMillion()
+	})
+}
+
+// SetPricingReferenceModel sets the "pricing_reference_model" field.
+func (u *GroupUpsertOne) SetPricingReferenceModel(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetPricingReferenceModel(v)
+	})
+}
+
+// UpdatePricingReferenceModel sets the "pricing_reference_model" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdatePricingReferenceModel() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdatePricingReferenceModel()
+	})
+}
+
+// ClearPricingReferenceModel clears the value of the "pricing_reference_model" field.
+func (u *GroupUpsertOne) ClearPricingReferenceModel() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearPricingReferenceModel()
+	})
+}
+
+// SetInputOutputRatio sets the "input_output_ratio" field.
+func (u *GroupUpsertOne) SetInputOutputRatio(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetInputOutputRatio(v)
+	})
+}
+
+// AddInputOutputRatio adds v to the "input_output_ratio" field.
+func (u *GroupUpsertOne) AddInputOutputRatio(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddInputOutputRatio(v)
+	})
+}
+
+// UpdateInputOutputRatio sets the "input_output_ratio" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateInputOutputRatio() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateInputOutputRatio()
+	})
+}
+
+// ClearInputOutputRatio clears the value of the "input_output_ratio" field.
+func (u *GroupUpsertOne) ClearInputOutputRatio() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearInputOutputRatio()
 	})
 }
 
@@ -3173,6 +3375,83 @@ func (u *GroupUpsertBulk) AddRpmLimit(v int) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateRpmLimit() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateRpmLimit()
+	})
+}
+
+// SetTokenPricePerMillion sets the "token_price_per_million" field.
+func (u *GroupUpsertBulk) SetTokenPricePerMillion(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetTokenPricePerMillion(v)
+	})
+}
+
+// AddTokenPricePerMillion adds v to the "token_price_per_million" field.
+func (u *GroupUpsertBulk) AddTokenPricePerMillion(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddTokenPricePerMillion(v)
+	})
+}
+
+// UpdateTokenPricePerMillion sets the "token_price_per_million" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateTokenPricePerMillion() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateTokenPricePerMillion()
+	})
+}
+
+// ClearTokenPricePerMillion clears the value of the "token_price_per_million" field.
+func (u *GroupUpsertBulk) ClearTokenPricePerMillion() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearTokenPricePerMillion()
+	})
+}
+
+// SetPricingReferenceModel sets the "pricing_reference_model" field.
+func (u *GroupUpsertBulk) SetPricingReferenceModel(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetPricingReferenceModel(v)
+	})
+}
+
+// UpdatePricingReferenceModel sets the "pricing_reference_model" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdatePricingReferenceModel() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdatePricingReferenceModel()
+	})
+}
+
+// ClearPricingReferenceModel clears the value of the "pricing_reference_model" field.
+func (u *GroupUpsertBulk) ClearPricingReferenceModel() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearPricingReferenceModel()
+	})
+}
+
+// SetInputOutputRatio sets the "input_output_ratio" field.
+func (u *GroupUpsertBulk) SetInputOutputRatio(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetInputOutputRatio(v)
+	})
+}
+
+// AddInputOutputRatio adds v to the "input_output_ratio" field.
+func (u *GroupUpsertBulk) AddInputOutputRatio(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddInputOutputRatio(v)
+	})
+}
+
+// UpdateInputOutputRatio sets the "input_output_ratio" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateInputOutputRatio() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateInputOutputRatio()
+	})
+}
+
+// ClearInputOutputRatio clears the value of the "input_output_ratio" field.
+func (u *GroupUpsertBulk) ClearInputOutputRatio() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearInputOutputRatio()
 	})
 }
 

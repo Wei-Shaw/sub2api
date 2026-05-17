@@ -523,6 +523,33 @@ func (_u *PaymentOrderUpdate) ClearBalanceGroupID() *PaymentOrderUpdate {
 	return _u
 }
 
+// SetActualCredits sets the "actual_credits" field.
+func (_u *PaymentOrderUpdate) SetActualCredits(v int64) *PaymentOrderUpdate {
+	_u.mutation.ResetActualCredits()
+	_u.mutation.SetActualCredits(v)
+	return _u
+}
+
+// SetNillableActualCredits sets the "actual_credits" field if the given value is not nil.
+func (_u *PaymentOrderUpdate) SetNillableActualCredits(v *int64) *PaymentOrderUpdate {
+	if v != nil {
+		_u.SetActualCredits(*v)
+	}
+	return _u
+}
+
+// AddActualCredits adds value to the "actual_credits" field.
+func (_u *PaymentOrderUpdate) AddActualCredits(v int64) *PaymentOrderUpdate {
+	_u.mutation.AddActualCredits(v)
+	return _u
+}
+
+// ClearActualCredits clears the value of the "actual_credits" field.
+func (_u *PaymentOrderUpdate) ClearActualCredits() *PaymentOrderUpdate {
+	_u.mutation.ClearActualCredits()
+	return _u
+}
+
 // SetProviderInstanceID sets the "provider_instance_id" field.
 func (_u *PaymentOrderUpdate) SetProviderInstanceID(v string) *PaymentOrderUpdate {
 	_u.mutation.SetProviderInstanceID(v)
@@ -1158,6 +1185,15 @@ func (_u *PaymentOrderUpdate) sqlSave(ctx context.Context) (_node int, err error
 	}
 	if _u.mutation.BalanceGroupIDCleared() {
 		_spec.ClearField(paymentorder.FieldBalanceGroupID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.ActualCredits(); ok {
+		_spec.SetField(paymentorder.FieldActualCredits, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedActualCredits(); ok {
+		_spec.AddField(paymentorder.FieldActualCredits, field.TypeInt64, value)
+	}
+	if _u.mutation.ActualCreditsCleared() {
+		_spec.ClearField(paymentorder.FieldActualCredits, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.ProviderInstanceID(); ok {
 		_spec.SetField(paymentorder.FieldProviderInstanceID, field.TypeString, value)
@@ -1801,6 +1837,33 @@ func (_u *PaymentOrderUpdateOne) AddBalanceGroupID(v int64) *PaymentOrderUpdateO
 // ClearBalanceGroupID clears the value of the "balance_group_id" field.
 func (_u *PaymentOrderUpdateOne) ClearBalanceGroupID() *PaymentOrderUpdateOne {
 	_u.mutation.ClearBalanceGroupID()
+	return _u
+}
+
+// SetActualCredits sets the "actual_credits" field.
+func (_u *PaymentOrderUpdateOne) SetActualCredits(v int64) *PaymentOrderUpdateOne {
+	_u.mutation.ResetActualCredits()
+	_u.mutation.SetActualCredits(v)
+	return _u
+}
+
+// SetNillableActualCredits sets the "actual_credits" field if the given value is not nil.
+func (_u *PaymentOrderUpdateOne) SetNillableActualCredits(v *int64) *PaymentOrderUpdateOne {
+	if v != nil {
+		_u.SetActualCredits(*v)
+	}
+	return _u
+}
+
+// AddActualCredits adds value to the "actual_credits" field.
+func (_u *PaymentOrderUpdateOne) AddActualCredits(v int64) *PaymentOrderUpdateOne {
+	_u.mutation.AddActualCredits(v)
+	return _u
+}
+
+// ClearActualCredits clears the value of the "actual_credits" field.
+func (_u *PaymentOrderUpdateOne) ClearActualCredits() *PaymentOrderUpdateOne {
+	_u.mutation.ClearActualCredits()
 	return _u
 }
 
@@ -2469,6 +2532,15 @@ func (_u *PaymentOrderUpdateOne) sqlSave(ctx context.Context) (_node *PaymentOrd
 	}
 	if _u.mutation.BalanceGroupIDCleared() {
 		_spec.ClearField(paymentorder.FieldBalanceGroupID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.ActualCredits(); ok {
+		_spec.SetField(paymentorder.FieldActualCredits, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedActualCredits(); ok {
+		_spec.AddField(paymentorder.FieldActualCredits, field.TypeInt64, value)
+	}
+	if _u.mutation.ActualCreditsCleared() {
+		_spec.ClearField(paymentorder.FieldActualCredits, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.ProviderInstanceID(); ok {
 		_spec.SetField(paymentorder.FieldProviderInstanceID, field.TypeString, value)

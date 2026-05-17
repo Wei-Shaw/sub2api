@@ -210,6 +210,21 @@ func RpmLimit(v int) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldRpmLimit, v))
 }
 
+// TokenPricePerMillion applies equality check predicate on the "token_price_per_million" field. It's identical to TokenPricePerMillionEQ.
+func TokenPricePerMillion(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldTokenPricePerMillion, v))
+}
+
+// PricingReferenceModel applies equality check predicate on the "pricing_reference_model" field. It's identical to PricingReferenceModelEQ.
+func PricingReferenceModel(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldPricingReferenceModel, v))
+}
+
+// InputOutputRatio applies equality check predicate on the "input_output_ratio" field. It's identical to InputOutputRatioEQ.
+func InputOutputRatio(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldInputOutputRatio, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldCreatedAt, v))
@@ -1438,6 +1453,181 @@ func RpmLimitLT(v int) predicate.Group {
 // RpmLimitLTE applies the LTE predicate on the "rpm_limit" field.
 func RpmLimitLTE(v int) predicate.Group {
 	return predicate.Group(sql.FieldLTE(FieldRpmLimit, v))
+}
+
+// TokenPricePerMillionEQ applies the EQ predicate on the "token_price_per_million" field.
+func TokenPricePerMillionEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldTokenPricePerMillion, v))
+}
+
+// TokenPricePerMillionNEQ applies the NEQ predicate on the "token_price_per_million" field.
+func TokenPricePerMillionNEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldTokenPricePerMillion, v))
+}
+
+// TokenPricePerMillionIn applies the In predicate on the "token_price_per_million" field.
+func TokenPricePerMillionIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldTokenPricePerMillion, vs...))
+}
+
+// TokenPricePerMillionNotIn applies the NotIn predicate on the "token_price_per_million" field.
+func TokenPricePerMillionNotIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldTokenPricePerMillion, vs...))
+}
+
+// TokenPricePerMillionGT applies the GT predicate on the "token_price_per_million" field.
+func TokenPricePerMillionGT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldTokenPricePerMillion, v))
+}
+
+// TokenPricePerMillionGTE applies the GTE predicate on the "token_price_per_million" field.
+func TokenPricePerMillionGTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldTokenPricePerMillion, v))
+}
+
+// TokenPricePerMillionLT applies the LT predicate on the "token_price_per_million" field.
+func TokenPricePerMillionLT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldTokenPricePerMillion, v))
+}
+
+// TokenPricePerMillionLTE applies the LTE predicate on the "token_price_per_million" field.
+func TokenPricePerMillionLTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldTokenPricePerMillion, v))
+}
+
+// TokenPricePerMillionIsNil applies the IsNil predicate on the "token_price_per_million" field.
+func TokenPricePerMillionIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldTokenPricePerMillion))
+}
+
+// TokenPricePerMillionNotNil applies the NotNil predicate on the "token_price_per_million" field.
+func TokenPricePerMillionNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldTokenPricePerMillion))
+}
+
+// PricingReferenceModelEQ applies the EQ predicate on the "pricing_reference_model" field.
+func PricingReferenceModelEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldPricingReferenceModel, v))
+}
+
+// PricingReferenceModelNEQ applies the NEQ predicate on the "pricing_reference_model" field.
+func PricingReferenceModelNEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldPricingReferenceModel, v))
+}
+
+// PricingReferenceModelIn applies the In predicate on the "pricing_reference_model" field.
+func PricingReferenceModelIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldPricingReferenceModel, vs...))
+}
+
+// PricingReferenceModelNotIn applies the NotIn predicate on the "pricing_reference_model" field.
+func PricingReferenceModelNotIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldPricingReferenceModel, vs...))
+}
+
+// PricingReferenceModelGT applies the GT predicate on the "pricing_reference_model" field.
+func PricingReferenceModelGT(v string) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldPricingReferenceModel, v))
+}
+
+// PricingReferenceModelGTE applies the GTE predicate on the "pricing_reference_model" field.
+func PricingReferenceModelGTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldPricingReferenceModel, v))
+}
+
+// PricingReferenceModelLT applies the LT predicate on the "pricing_reference_model" field.
+func PricingReferenceModelLT(v string) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldPricingReferenceModel, v))
+}
+
+// PricingReferenceModelLTE applies the LTE predicate on the "pricing_reference_model" field.
+func PricingReferenceModelLTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldPricingReferenceModel, v))
+}
+
+// PricingReferenceModelContains applies the Contains predicate on the "pricing_reference_model" field.
+func PricingReferenceModelContains(v string) predicate.Group {
+	return predicate.Group(sql.FieldContains(FieldPricingReferenceModel, v))
+}
+
+// PricingReferenceModelHasPrefix applies the HasPrefix predicate on the "pricing_reference_model" field.
+func PricingReferenceModelHasPrefix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasPrefix(FieldPricingReferenceModel, v))
+}
+
+// PricingReferenceModelHasSuffix applies the HasSuffix predicate on the "pricing_reference_model" field.
+func PricingReferenceModelHasSuffix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasSuffix(FieldPricingReferenceModel, v))
+}
+
+// PricingReferenceModelIsNil applies the IsNil predicate on the "pricing_reference_model" field.
+func PricingReferenceModelIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldPricingReferenceModel))
+}
+
+// PricingReferenceModelNotNil applies the NotNil predicate on the "pricing_reference_model" field.
+func PricingReferenceModelNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldPricingReferenceModel))
+}
+
+// PricingReferenceModelEqualFold applies the EqualFold predicate on the "pricing_reference_model" field.
+func PricingReferenceModelEqualFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldEqualFold(FieldPricingReferenceModel, v))
+}
+
+// PricingReferenceModelContainsFold applies the ContainsFold predicate on the "pricing_reference_model" field.
+func PricingReferenceModelContainsFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldContainsFold(FieldPricingReferenceModel, v))
+}
+
+// InputOutputRatioEQ applies the EQ predicate on the "input_output_ratio" field.
+func InputOutputRatioEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldInputOutputRatio, v))
+}
+
+// InputOutputRatioNEQ applies the NEQ predicate on the "input_output_ratio" field.
+func InputOutputRatioNEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldInputOutputRatio, v))
+}
+
+// InputOutputRatioIn applies the In predicate on the "input_output_ratio" field.
+func InputOutputRatioIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldInputOutputRatio, vs...))
+}
+
+// InputOutputRatioNotIn applies the NotIn predicate on the "input_output_ratio" field.
+func InputOutputRatioNotIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldInputOutputRatio, vs...))
+}
+
+// InputOutputRatioGT applies the GT predicate on the "input_output_ratio" field.
+func InputOutputRatioGT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldInputOutputRatio, v))
+}
+
+// InputOutputRatioGTE applies the GTE predicate on the "input_output_ratio" field.
+func InputOutputRatioGTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldInputOutputRatio, v))
+}
+
+// InputOutputRatioLT applies the LT predicate on the "input_output_ratio" field.
+func InputOutputRatioLT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldInputOutputRatio, v))
+}
+
+// InputOutputRatioLTE applies the LTE predicate on the "input_output_ratio" field.
+func InputOutputRatioLTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldInputOutputRatio, v))
+}
+
+// InputOutputRatioIsNil applies the IsNil predicate on the "input_output_ratio" field.
+func InputOutputRatioIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldInputOutputRatio))
+}
+
+// InputOutputRatioNotNil applies the NotNil predicate on the "input_output_ratio" field.
+func InputOutputRatioNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldInputOutputRatio))
 }
 
 // HasAPIKeys applies the HasEdge predicate on the "api_keys" edge.
