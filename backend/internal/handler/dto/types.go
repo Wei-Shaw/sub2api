@@ -266,6 +266,7 @@ type Proxy struct {
 	Name      string    `json:"name"`
 	Protocol  string    `json:"protocol"`
 	Host      string    `json:"host"`
+	IPVersion string    `json:"ip_version"`
 	Port      int       `json:"port"`
 	Username  string    `json:"username"`
 	Password  string    `json:"-"`

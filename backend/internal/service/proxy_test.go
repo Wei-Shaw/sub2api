@@ -54,6 +54,24 @@ func TestProxyURL(t *testing.T) {
 			},
 			want: "http://first%20last%40corp:p%40%20ss%3A%23word@proxy.example.com:3128",
 		},
+		{
+			name: "ipv6 host without brackets is formatted correctly",
+			proxy: Proxy{
+				Protocol: "socks5h",
+				Host:     "2001:db8::1",
+				Port:     1080,
+			},
+			want: "socks5h://[2001:db8::1]:1080",
+		},
+		{
+			name: "ipv6 host with brackets is normalized before formatting",
+			proxy: Proxy{
+				Protocol: "http",
+				Host:     "[::1]",
+				Port:     8080,
+			},
+			want: "http://[::1]:8080",
+		},
 	}
 
 	for _, tc := range tests {

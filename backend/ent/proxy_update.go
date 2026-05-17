@@ -97,6 +97,20 @@ func (_u *ProxyUpdate) SetNillableHost(v *string) *ProxyUpdate {
 	return _u
 }
 
+// SetIPVersion sets the "ip_version" field.
+func (_u *ProxyUpdate) SetIPVersion(v string) *ProxyUpdate {
+	_u.mutation.SetIPVersion(v)
+	return _u
+}
+
+// SetNillableIPVersion sets the "ip_version" field if the given value is not nil.
+func (_u *ProxyUpdate) SetNillableIPVersion(v *string) *ProxyUpdate {
+	if v != nil {
+		_u.SetIPVersion(*v)
+	}
+	return _u
+}
+
 // SetPort sets the "port" field.
 func (_u *ProxyUpdate) SetPort(v int) *ProxyUpdate {
 	_u.mutation.ResetPort()
@@ -272,6 +286,11 @@ func (_u *ProxyUpdate) check() error {
 			return &ValidationError{Name: "host", err: fmt.Errorf(`ent: validator failed for field "Proxy.host": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.IPVersion(); ok {
+		if err := proxy.IPVersionValidator(v); err != nil {
+			return &ValidationError{Name: "ip_version", err: fmt.Errorf(`ent: validator failed for field "Proxy.ip_version": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Username(); ok {
 		if err := proxy.UsernameValidator(v); err != nil {
 			return &ValidationError{Name: "username", err: fmt.Errorf(`ent: validator failed for field "Proxy.username": %w`, err)}
@@ -319,6 +338,9 @@ func (_u *ProxyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.Host(); ok {
 		_spec.SetField(proxy.FieldHost, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.IPVersion(); ok {
+		_spec.SetField(proxy.FieldIPVersion, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.Port(); ok {
 		_spec.SetField(proxy.FieldPort, field.TypeInt, value)
@@ -470,6 +492,20 @@ func (_u *ProxyUpdateOne) SetHost(v string) *ProxyUpdateOne {
 func (_u *ProxyUpdateOne) SetNillableHost(v *string) *ProxyUpdateOne {
 	if v != nil {
 		_u.SetHost(*v)
+	}
+	return _u
+}
+
+// SetIPVersion sets the "ip_version" field.
+func (_u *ProxyUpdateOne) SetIPVersion(v string) *ProxyUpdateOne {
+	_u.mutation.SetIPVersion(v)
+	return _u
+}
+
+// SetNillableIPVersion sets the "ip_version" field if the given value is not nil.
+func (_u *ProxyUpdateOne) SetNillableIPVersion(v *string) *ProxyUpdateOne {
+	if v != nil {
+		_u.SetIPVersion(*v)
 	}
 	return _u
 }
@@ -662,6 +698,11 @@ func (_u *ProxyUpdateOne) check() error {
 			return &ValidationError{Name: "host", err: fmt.Errorf(`ent: validator failed for field "Proxy.host": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.IPVersion(); ok {
+		if err := proxy.IPVersionValidator(v); err != nil {
+			return &ValidationError{Name: "ip_version", err: fmt.Errorf(`ent: validator failed for field "Proxy.ip_version": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Username(); ok {
 		if err := proxy.UsernameValidator(v); err != nil {
 			return &ValidationError{Name: "username", err: fmt.Errorf(`ent: validator failed for field "Proxy.username": %w`, err)}
@@ -726,6 +767,9 @@ func (_u *ProxyUpdateOne) sqlSave(ctx context.Context) (_node *Proxy, err error)
 	}
 	if value, ok := _u.mutation.Host(); ok {
 		_spec.SetField(proxy.FieldHost, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.IPVersion(); ok {
+		_spec.SetField(proxy.FieldIPVersion, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.Port(); ok {
 		_spec.SetField(proxy.FieldPort, field.TypeInt, value)

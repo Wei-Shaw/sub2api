@@ -12,6 +12,7 @@ type Proxy struct {
 	Name      string
 	Protocol  string
 	Host      string
+	IPVersion string
 	Port      int
 	Username  string
 	Password  string
@@ -27,7 +28,7 @@ func (p *Proxy) IsActive() bool {
 func (p *Proxy) URL() string {
 	u := &url.URL{
 		Scheme: p.Protocol,
-		Host:   net.JoinHostPort(p.Host, strconv.Itoa(p.Port)),
+		Host:   net.JoinHostPort(NormalizeProxyHost(p.Host), strconv.Itoa(p.Port)),
 	}
 	if p.Username != "" && p.Password != "" {
 		u.User = url.UserPassword(p.Username, p.Password)

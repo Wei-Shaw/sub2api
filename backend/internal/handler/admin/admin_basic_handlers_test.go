@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -269,6 +270,30 @@ func TestProxyHandlerEndpoints(t *testing.T) {
 	req = httptest.NewRequest(http.MethodGet, "/api/v1/admin/proxies/4/accounts", nil)
 	router.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestProxyHandlerCreateNormalizesIPv6Host(t *testing.T) {
+	router, adminSvc := setupAdminRouter()
+
+	body, _ := json.Marshal(map[string]any{
+		"name":     "ipv6-proxy",
+		"protocol": "socks5",
+		"host":     "[2001:db8::1]",
+		"ip_version": "ipv6",
+		"port":     1080,
+	})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/proxies", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	adminSvc.mu.Lock()
+	defer adminSvc.mu.Unlock()
+	require.Len(t, adminSvc.createdProxies, 1)
+	require.Equal(t, "2001:db8::1", adminSvc.createdProxies[0].Host)
+	require.Equal(t, service.ProxyIPVersionIPv6, adminSvc.createdProxies[0].IPVersion)
 }
 
 func TestRedeemHandlerEndpoints(t *testing.T) {

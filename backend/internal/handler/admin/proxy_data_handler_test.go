@@ -54,6 +54,7 @@ func TestProxyExportDataRespectsFilters(t *testing.T) {
 			Name:     "proxy-b",
 			Protocol: "https",
 			Host:     "10.0.0.2",
+			IPVersion: service.ProxyIPVersionIPv6,
 			Port:     443,
 			Username: "u",
 			Password: "p",
@@ -74,6 +75,7 @@ func TestProxyExportDataRespectsFilters(t *testing.T) {
 	require.Len(t, resp.Data.Proxies, 1)
 	require.Len(t, resp.Data.Accounts, 0)
 	require.Equal(t, "https", resp.Data.Proxies[0].Protocol)
+	require.Equal(t, service.ProxyIPVersionIPv6, resp.Data.Proxies[0].IPVersion)
 	require.Equal(t, 1, adminSvc.lastListProxies.calls)
 	require.Equal(t, "https", adminSvc.lastListProxies.protocol)
 	require.Equal(t, "id", adminSvc.lastListProxies.sortBy)
@@ -245,6 +247,7 @@ func TestProxyImportDataReusesAndTriggersLatencyProbe(t *testing.T) {
 					"name":      "proxy-b",
 					"protocol":  "https",
 					"host":      "10.0.0.2",
+					"ip_version": "ipv6",
 					"port":      443,
 					"username":  "u",
 					"password":  "p",
@@ -268,6 +271,8 @@ func TestProxyImportDataReusesAndTriggersLatencyProbe(t *testing.T) {
 	require.Equal(t, 1, resp.Data.ProxyCreated)
 	require.Equal(t, 1, resp.Data.ProxyReused)
 	require.Equal(t, 0, resp.Data.ProxyFailed)
+	require.Len(t, adminSvc.createdProxies, 1)
+	require.Equal(t, service.ProxyIPVersionIPv6, adminSvc.createdProxies[0].IPVersion)
 
 	adminSvc.mu.Lock()
 	updatedIDs := append([]int64(nil), adminSvc.updatedProxyIDs...)
@@ -279,4 +284,114 @@ func TestProxyImportDataReusesAndTriggersLatencyProbe(t *testing.T) {
 		defer adminSvc.mu.Unlock()
 		return len(adminSvc.testedProxyIDs) == 1
 	}, time.Second, 10*time.Millisecond)
+}
+
+func TestProxyImportDataReusesIPv6ProxyAcrossBracketFormats(t *testing.T) {
+	router, adminSvc := setupProxyDataRouter()
+
+	adminSvc.proxies = []service.Proxy{
+		{
+			ID:       1,
+			Name:     "ipv6-existing",
+			Protocol: "socks5",
+			Host:     "2001:db8::1",
+			Port:     1080,
+			Username: "u",
+			Password: "p",
+			Status:   service.StatusActive,
+		},
+	}
+
+	payload := map[string]any{
+		"data": map[string]any{
+			"type":    dataType,
+			"version": dataVersion,
+			"proxies": []map[string]any{
+				{
+					"proxy_key": "socks5|[2001:db8::1]|1080|u|p",
+					"name":      "ipv6-existing",
+					"protocol":  "socks5",
+					"host":      "[2001:db8::1]",
+					"port":      1080,
+					"username":  "u",
+					"password":  "p",
+					"status":    "active",
+				},
+			},
+			"accounts": []map[string]any{},
+		},
+	}
+
+	body, _ := json.Marshal(payload)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/proxies/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp proxyImportResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, 0, resp.Code)
+	require.Equal(t, 0, resp.Data.ProxyCreated)
+	require.Equal(t, 1, resp.Data.ProxyReused)
+	require.Equal(t, 0, resp.Data.ProxyFailed)
+
+	adminSvc.mu.Lock()
+	defer adminSvc.mu.Unlock()
+	require.Len(t, adminSvc.createdProxies, 0)
+}
+
+func TestProxyImportDataReusesIPv6ProxyWhenKeyOnlyUsesBracketedHost(t *testing.T) {
+	router, adminSvc := setupProxyDataRouter()
+
+	adminSvc.proxies = []service.Proxy{
+		{
+			ID:       1,
+			Name:     "ipv6-existing",
+			Protocol: "socks5",
+			Host:     "2001:db8::2",
+			Port:     1080,
+			Username: "u",
+			Password: "p",
+			Status:   service.StatusActive,
+		},
+	}
+
+	payload := map[string]any{
+		"data": map[string]any{
+			"type":    dataType,
+			"version": dataVersion,
+			"proxies": []map[string]any{
+				{
+					"proxy_key": "socks5|[2001:db8::2]|1080|u|p",
+					"name":      "ipv6-existing",
+					"protocol":  "socks5",
+					"host":      "2001:db8::2",
+					"port":      1080,
+					"username":  "u",
+					"password":  "p",
+					"status":    "active",
+				},
+			},
+			"accounts": []map[string]any{},
+		},
+	}
+
+	body, _ := json.Marshal(payload)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/proxies/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp proxyImportResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, 0, resp.Code)
+	require.Equal(t, 0, resp.Data.ProxyCreated)
+	require.Equal(t, 1, resp.Data.ProxyReused)
+	require.Equal(t, 0, resp.Data.ProxyFailed)
+
+	adminSvc.mu.Lock()
+	defer adminSvc.mu.Unlock()
+	require.Len(t, adminSvc.createdProxies, 0)
 }

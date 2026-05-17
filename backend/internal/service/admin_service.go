@@ -376,6 +376,7 @@ type CreateProxyInput struct {
 	Name     string
 	Protocol string
 	Host     string
+	IPVersion string
 	Port     int
 	Username string
 	Password string
@@ -385,6 +386,7 @@ type UpdateProxyInput struct {
 	Name     string
 	Protocol string
 	Host     string
+	IPVersion string
 	Port     int
 	Username string
 	Password string
@@ -458,7 +460,7 @@ type ProxyExitInfo struct {
 
 // ProxyExitInfoProber tests proxy connectivity and retrieves exit information
 type ProxyExitInfoProber interface {
-	ProbeProxy(ctx context.Context, proxyURL string) (*ProxyExitInfo, int64, error)
+	ProbeProxy(ctx context.Context, proxyURL string, ipVersion ...string) (*ProxyExitInfo, int64, error)
 }
 
 type groupExistenceBatchReader interface {
@@ -2849,7 +2851,8 @@ func (s *adminServiceImpl) CreateProxy(ctx context.Context, input *CreateProxyIn
 	proxy := &Proxy{
 		Name:     input.Name,
 		Protocol: input.Protocol,
-		Host:     input.Host,
+		Host:     NormalizeProxyHost(input.Host),
+		IPVersion: NormalizeProxyIPVersion(input.IPVersion),
 		Port:     input.Port,
 		Username: input.Username,
 		Password: input.Password,
@@ -2876,7 +2879,10 @@ func (s *adminServiceImpl) UpdateProxy(ctx context.Context, id int64, input *Upd
 		proxy.Protocol = input.Protocol
 	}
 	if input.Host != "" {
-		proxy.Host = input.Host
+		proxy.Host = NormalizeProxyHost(input.Host)
+	}
+	if input.IPVersion != "" {
+		proxy.IPVersion = NormalizeProxyIPVersion(input.IPVersion)
 	}
 	if input.Port != 0 {
 		proxy.Port = input.Port
@@ -2948,7 +2954,7 @@ func (s *adminServiceImpl) GetProxyAccounts(ctx context.Context, proxyID int64) 
 }
 
 func (s *adminServiceImpl) CheckProxyExists(ctx context.Context, host string, port int, username, password string) (bool, error) {
-	return s.proxyRepo.ExistsByHostPortAuth(ctx, host, port, username, password)
+	return s.proxyRepo.ExistsByHostPortAuth(ctx, NormalizeProxyHost(host), port, username, password)
 }
 
 // Redeem code management implementations
@@ -3042,7 +3048,7 @@ func (s *adminServiceImpl) TestProxy(ctx context.Context, id int64) (*ProxyTestR
 	}
 
 	proxyURL := proxy.URL()
-	exitInfo, latencyMs, err := s.proxyProber.ProbeProxy(ctx, proxyURL)
+	exitInfo, latencyMs, err := s.proxyProber.ProbeProxy(ctx, proxyURL, proxy.IPVersion)
 	if err != nil {
 		s.saveProxyLatency(ctx, id, &ProxyLatencyInfo{
 			Success:   false,
@@ -3106,7 +3112,7 @@ func (s *adminServiceImpl) CheckProxyQuality(ctx context.Context, id int64) (*Pr
 		return result, nil
 	}
 
-	exitInfo, latencyMs, err := s.proxyProber.ProbeProxy(ctx, proxyURL)
+	exitInfo, latencyMs, err := s.proxyProber.ProbeProxy(ctx, proxyURL, proxy.IPVersion)
 	if err != nil {
 		result.Items = append(result.Items, ProxyQualityCheckItem{
 			Target:    "base_connectivity",
@@ -3347,7 +3353,7 @@ func (s *adminServiceImpl) probeProxyLatency(ctx context.Context, proxy *Proxy) 
 	if s.proxyProber == nil || proxy == nil {
 		return
 	}
-	exitInfo, latencyMs, err := s.proxyProber.ProbeProxy(ctx, proxy.URL())
+	exitInfo, latencyMs, err := s.proxyProber.ProbeProxy(ctx, proxy.URL(), proxy.IPVersion)
 	if err != nil {
 		s.saveProxyLatency(ctx, proxy.ID, &ProxyLatencyInfo{
 			Success:   false,

@@ -27,6 +27,8 @@ const (
 	FieldProtocol = "protocol"
 	// FieldHost holds the string denoting the host field in the database.
 	FieldHost = "host"
+	// FieldIPVersion holds the string denoting the ip_version field in the database.
+	FieldIPVersion = "ip_version"
 	// FieldPort holds the string denoting the port field in the database.
 	FieldPort = "port"
 	// FieldUsername holds the string denoting the username field in the database.
@@ -57,6 +59,7 @@ var Columns = []string{
 	FieldName,
 	FieldProtocol,
 	FieldHost,
+	FieldIPVersion,
 	FieldPort,
 	FieldUsername,
 	FieldPassword,
@@ -93,6 +96,10 @@ var (
 	ProtocolValidator func(string) error
 	// HostValidator is a validator for the "host" field. It is called by the builders before save.
 	HostValidator func(string) error
+	// DefaultIPVersion holds the default value on creation for the "ip_version" field.
+	DefaultIPVersion string
+	// IPVersionValidator is a validator for the "ip_version" field. It is called by the builders before save.
+	IPVersionValidator func(string) error
 	// UsernameValidator is a validator for the "username" field. It is called by the builders before save.
 	UsernameValidator func(string) error
 	// PasswordValidator is a validator for the "password" field. It is called by the builders before save.
@@ -139,6 +146,11 @@ func ByProtocol(opts ...sql.OrderTermOption) OrderOption {
 // ByHost orders the results by the host field.
 func ByHost(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldHost, opts...).ToFunc()
+}
+
+// ByIPVersion orders the results by the ip_version field.
+func ByIPVersion(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldIPVersion, opts...).ToFunc()
 }
 
 // ByPort orders the results by the port field.

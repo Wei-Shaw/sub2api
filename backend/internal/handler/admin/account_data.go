@@ -37,6 +37,7 @@ type DataProxy struct {
 	Name     string `json:"name"`
 	Protocol string `json:"protocol"`
 	Host     string `json:"host"`
+	IPVersion string `json:"ip_version,omitempty"`
 	Port     int    `json:"port"`
 	Username string `json:"username,omitempty"`
 	Password string `json:"password,omitempty"`
@@ -80,7 +81,34 @@ type DataImportError struct {
 }
 
 func buildProxyKey(protocol, host string, port int, username, password string) string {
-	return fmt.Sprintf("%s|%s|%d|%s|%s", strings.TrimSpace(protocol), strings.TrimSpace(host), port, strings.TrimSpace(username), strings.TrimSpace(password))
+	return fmt.Sprintf(
+		"%s|%s|%d|%s|%s",
+		strings.TrimSpace(protocol),
+		service.NormalizeProxyHost(host),
+		port,
+		strings.TrimSpace(username),
+		strings.TrimSpace(password),
+	)
+}
+
+func normalizeImportedProxyKey(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	parts := strings.Split(raw, "|")
+	if len(parts) != 5 {
+		return raw
+	}
+	return buildProxyKey(parts[0], parts[1], mustAtoi(parts[2]), parts[3], parts[4])
+}
+
+func mustAtoi(raw string) int {
+	value, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil {
+		return 0
+	}
+	return value
 }
 
 func (h *AccountHandler) ExportData(c *gin.Context) {
@@ -126,6 +154,7 @@ func (h *AccountHandler) ExportData(c *gin.Context) {
 			Name:     p.Name,
 			Protocol: p.Protocol,
 			Host:     p.Host,
+			IPVersion: service.NormalizeProxyIPVersion(p.IPVersion),
 			Port:     p.Port,
 			Username: p.Username,
 			Password: p.Password,
@@ -212,7 +241,7 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 
 	for i := range dataPayload.Proxies {
 		item := dataPayload.Proxies[i]
-		key := item.ProxyKey
+		key := normalizeImportedProxyKey(item.ProxyKey)
 		if key == "" {
 			key = buildProxyKey(item.Protocol, item.Host, item.Port, item.Username, item.Password)
 		}
@@ -230,11 +259,19 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 		if existingID, ok := proxyKeyToID[key]; ok {
 			proxyKeyToID[key] = existingID
 			result.ProxyReused++
-			if normalizedStatus != "" {
-				if proxy, getErr := h.adminService.GetProxy(ctx, existingID); getErr == nil && proxy != nil && proxy.Status != normalizedStatus {
-					_, _ = h.adminService.UpdateProxy(ctx, existingID, &service.UpdateProxyInput{
-						Status: normalizedStatus,
-					})
+			if proxy, getErr := h.adminService.GetProxy(ctx, existingID); getErr == nil && proxy != nil {
+				update := &service.UpdateProxyInput{}
+				if normalizedStatus != "" && proxy.Status != normalizedStatus {
+					update.Status = normalizedStatus
+				}
+				if item.IPVersion != "" {
+					normalizedIPVersion := service.NormalizeProxyIPVersion(item.IPVersion)
+					if normalizedIPVersion != service.NormalizeProxyIPVersion(proxy.IPVersion) {
+						update.IPVersion = normalizedIPVersion
+					}
+				}
+				if update.Status != "" || update.IPVersion != "" {
+					_, _ = h.adminService.UpdateProxy(ctx, existingID, update)
 				}
 			}
 			continue
@@ -244,6 +281,7 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 			Name:     defaultProxyName(item.Name),
 			Protocol: item.Protocol,
 			Host:     item.Host,
+			IPVersion: item.IPVersion,
 			Port:     item.Port,
 			Username: item.Username,
 			Password: item.Password,
@@ -284,15 +322,16 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 		}
 
 		var proxyID *int64
-		if item.ProxyKey != nil && *item.ProxyKey != "" {
-			if id, ok := proxyKeyToID[*item.ProxyKey]; ok {
+		if item.ProxyKey != nil && strings.TrimSpace(*item.ProxyKey) != "" {
+			normalizedProxyKey := normalizeImportedProxyKey(*item.ProxyKey)
+			if id, ok := proxyKeyToID[normalizedProxyKey]; ok {
 				proxyID = &id
 			} else {
 				result.AccountFailed++
 				result.Errors = append(result.Errors, DataImportError{
 					Kind:     "account",
 					Name:     item.Name,
-					ProxyKey: *item.ProxyKey,
+					ProxyKey: normalizedProxyKey,
 					Message:  "proxy_key not found",
 				})
 				continue
@@ -541,6 +580,13 @@ func validateDataProxy(item DataProxy) error {
 		normalizedStatus := normalizeProxyStatus(item.Status)
 		if normalizedStatus != service.StatusActive && normalizedStatus != "inactive" {
 			return fmt.Errorf("proxy status is invalid: %s", item.Status)
+		}
+	}
+	if item.IPVersion != "" {
+		switch strings.ToLower(strings.TrimSpace(item.IPVersion)) {
+		case service.ProxyIPVersionIPv4, service.ProxyIPVersionIPv6:
+		default:
+			return fmt.Errorf("proxy ip_version is invalid: %s", item.IPVersion)
 		}
 	}
 	return nil

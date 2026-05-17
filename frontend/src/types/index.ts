@@ -670,6 +670,7 @@ export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity'
 export type AccountType = 'oauth' | 'setup-token' | 'apikey' | 'upstream' | 'bedrock' | 'service_account'
 export type OAuthAddMethod = 'oauth' | 'setup-token'
 export type ProxyProtocol = 'http' | 'https' | 'socks5' | 'socks5h'
+export type ProxyIPVersion = 'ipv4' | 'ipv6'
 
 // Claude Model type (returned by /v1/models and account models API)
 export interface ClaudeModel {
@@ -684,6 +685,7 @@ export interface Proxy {
   name: string
   protocol: ProxyProtocol
   host: string
+  ip_version?: ProxyIPVersion
   port: number
   username: string | null
   password?: string | null
@@ -1040,6 +1042,7 @@ export interface CreateProxyRequest {
   name: string
   protocol: ProxyProtocol
   host: string
+  ip_version?: ProxyIPVersion
   port: number
   username?: string | null
   password?: string | null
@@ -1049,6 +1052,7 @@ export interface UpdateProxyRequest {
   name?: string
   protocol?: ProxyProtocol
   host?: string
+  ip_version?: ProxyIPVersion
   port?: number
   username?: string | null
   password?: string | null
@@ -1068,6 +1072,7 @@ export interface AdminDataProxy {
   name: string
   protocol: ProxyProtocol
   host: string
+  ip_version?: ProxyIPVersion
   port: number
   username?: string | null
   password?: string | null

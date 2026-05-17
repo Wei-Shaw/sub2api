@@ -29,6 +29,7 @@ type CreateProxyRequest struct {
 	Name     string `json:"name" binding:"required"`
 	Protocol string `json:"protocol" binding:"required,oneof=http https socks5 socks5h"`
 	Host     string `json:"host" binding:"required"`
+	IPVersion string `json:"ip_version" binding:"omitempty,oneof=ipv4 ipv6"`
 	Port     int    `json:"port" binding:"required,min=1,max=65535"`
 	Username string `json:"username"`
 	Password string `json:"password"`
@@ -39,6 +40,7 @@ type UpdateProxyRequest struct {
 	Name     string `json:"name"`
 	Protocol string `json:"protocol" binding:"omitempty,oneof=http https socks5 socks5h"`
 	Host     string `json:"host"`
+	IPVersion string `json:"ip_version" binding:"omitempty,oneof=ipv4 ipv6"`
 	Port     int    `json:"port" binding:"omitempty,min=1,max=65535"`
 	Username string `json:"username"`
 	Password string `json:"password"`
@@ -138,6 +140,7 @@ func (h *ProxyHandler) Create(c *gin.Context) {
 			Name:     strings.TrimSpace(req.Name),
 			Protocol: strings.TrimSpace(req.Protocol),
 			Host:     strings.TrimSpace(req.Host),
+			IPVersion: strings.TrimSpace(req.IPVersion),
 			Port:     req.Port,
 			Username: strings.TrimSpace(req.Username),
 			Password: strings.TrimSpace(req.Password),
@@ -168,6 +171,7 @@ func (h *ProxyHandler) Update(c *gin.Context) {
 		Name:     strings.TrimSpace(req.Name),
 		Protocol: strings.TrimSpace(req.Protocol),
 		Host:     strings.TrimSpace(req.Host),
+		IPVersion: strings.TrimSpace(req.IPVersion),
 		Port:     req.Port,
 		Username: strings.TrimSpace(req.Username),
 		Password: strings.TrimSpace(req.Password),
@@ -303,6 +307,7 @@ func (h *ProxyHandler) GetProxyAccounts(c *gin.Context) {
 type BatchCreateProxyItem struct {
 	Protocol string `json:"protocol" binding:"required,oneof=http https socks5 socks5h"`
 	Host     string `json:"host" binding:"required"`
+	IPVersion string `json:"ip_version" binding:"omitempty,oneof=ipv4 ipv6"`
 	Port     int    `json:"port" binding:"required,min=1,max=65535"`
 	Username string `json:"username"`
 	Password string `json:"password"`
@@ -329,6 +334,7 @@ func (h *ProxyHandler) BatchCreate(c *gin.Context) {
 		// Trim all string fields
 		host := strings.TrimSpace(item.Host)
 		protocol := strings.TrimSpace(item.Protocol)
+		ipVersion := strings.TrimSpace(item.IPVersion)
 		username := strings.TrimSpace(item.Username)
 		password := strings.TrimSpace(item.Password)
 
@@ -349,6 +355,7 @@ func (h *ProxyHandler) BatchCreate(c *gin.Context) {
 			Name:     "default",
 			Protocol: protocol,
 			Host:     host,
+			IPVersion: ipVersion,
 			Port:     item.Port,
 			Username: username,
 			Password: password,

@@ -36,6 +36,7 @@ type CreateProxyRequest struct {
 	Name     string `json:"name"`
 	Protocol string `json:"protocol"`
 	Host     string `json:"host"`
+	IPVersion string `json:"ip_version"`
 	Port     int    `json:"port"`
 	Username string `json:"username"`
 	Password string `json:"password"`
@@ -46,6 +47,7 @@ type UpdateProxyRequest struct {
 	Name     *string `json:"name"`
 	Protocol *string `json:"protocol"`
 	Host     *string `json:"host"`
+	IPVersion *string `json:"ip_version"`
 	Port     *int    `json:"port"`
 	Username *string `json:"username"`
 	Password *string `json:"password"`
@@ -70,7 +72,8 @@ func (s *ProxyService) Create(ctx context.Context, req CreateProxyRequest) (*Pro
 	proxy := &Proxy{
 		Name:     req.Name,
 		Protocol: req.Protocol,
-		Host:     req.Host,
+		Host:     NormalizeProxyHost(req.Host),
+		IPVersion: NormalizeProxyIPVersion(req.IPVersion),
 		Port:     req.Port,
 		Username: req.Username,
 		Password: req.Password,
@@ -128,7 +131,11 @@ func (s *ProxyService) Update(ctx context.Context, id int64, req UpdateProxyRequ
 	}
 
 	if req.Host != nil {
-		proxy.Host = *req.Host
+		proxy.Host = NormalizeProxyHost(*req.Host)
+	}
+
+	if req.IPVersion != nil {
+		proxy.IPVersion = NormalizeProxyIPVersion(*req.IPVersion)
 	}
 
 	if req.Port != nil {

@@ -29,6 +29,9 @@ build/
 # Node modules (will be installed in container)
 frontend/node_modules/
 node_modules/
+# Do not let local pnpm approval/workspace scratch files affect the frontend
+# Docker build; this project builds the frontend as a standalone package.
+frontend/pnpm-workspace.yaml
 
 # Go build cache (will be built in container)
 backend/vendor/

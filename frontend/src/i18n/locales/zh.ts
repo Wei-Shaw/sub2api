@@ -4045,6 +4045,7 @@ export default {
       leaveEmptyToKeep: '留空保持不变',
       form: {
         hostPlaceholder: '请输入主机地址',
+        hostPlaceholderIpv6: '请输入代理入口地址，例如 45.145.57.212 或 2001:db8::1',
         portPlaceholder: '请输入端口'
       },
       noProxiesYet: '暂无代理',
@@ -4074,10 +4075,11 @@ export default {
       // Batch import
       standardAdd: '标准添加',
       batchAdd: '快捷添加',
+      ipType: '出口 IP 类型',
       batchInput: '代理列表',
       batchInputPlaceholder:
-        "每行输入一个代理，支持以下格式：\nsocks5://user:pass{'@'}192.168.1.1:1080\nhttp://192.168.1.1:8080\nhttps://user:pass{'@'}proxy.example.com:443",
-      batchInputHint: "支持 http、https、socks5 协议，格式：协议://[用户名:密码{'@'}]主机:端口",
+        "每行输入一个代理，支持以下格式：\nsocks5://user:pass{'@'}192.168.1.1:1080\nsocks5://user:pass{'@'}[2001:db8::1]:1080\nhttps://user:pass{'@'}proxy.example.com:443",
+      batchInputHint: "支持 http、https、socks5、socks5h 协议。批量导入会按入口地址自动识别 IPv4/IPv6；IPv4 入口但 IPv6 出口的代理，请创建后在编辑里选择 IPv6。",
       parsedCount: '有效 {count} 个',
       invalidCount: '无效 {count} 个',
       duplicateCount: '重复 {count} 个',
