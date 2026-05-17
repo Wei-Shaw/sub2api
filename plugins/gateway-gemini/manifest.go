@@ -20,8 +20,7 @@ func buildManifest() *pluginsdk.Manifest {
 			pluginsdk.CapabilityHTTPRegisterGateway,
 		},
 		Frontend: &pluginsdk.FrontendManifest{
-			EntryJS:  "dist/entry.js",
-			EntryCSS: "dist/entry.css",
+			EntryJS: "dist/entry.js",
 		},
 		Platforms: []pluginsdk.PlatformDecl{
 			{
