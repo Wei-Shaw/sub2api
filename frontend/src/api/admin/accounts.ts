@@ -566,31 +566,6 @@ export async function getAntigravityDefaultModelMapping(): Promise<Record<string
 }
 
 /**
- * Refresh OpenAI token using refresh token
- * @param refreshToken - The refresh token
- * @param proxyId - Optional proxy ID
- * @returns Token information including access_token, email, etc.
- */
-export async function refreshOpenAIToken(
-  refreshToken: string,
-  proxyId?: number | null,
-  endpoint: string = '/admin/openai/refresh-token',
-  clientId?: string
-): Promise<Record<string, unknown>> {
-  const payload: { refresh_token: string; proxy_id?: number; client_id?: string } = {
-    refresh_token: refreshToken
-  }
-  if (proxyId) {
-    payload.proxy_id = proxyId
-  }
-  if (clientId) {
-    payload.client_id = clientId
-  }
-  const { data } = await apiClient.post<Record<string, unknown>>(endpoint, payload)
-  return data
-}
-
-/**
  * Batch operation result type
  */
 export interface BatchOperationResult {
@@ -662,7 +637,6 @@ export const accountsAPI = {
   getAvailableModels,
   generateAuthUrl,
   exchangeCode,
-  refreshOpenAIToken,
   batchCreate,
   batchUpdateCredentials,
   bulkUpdate,

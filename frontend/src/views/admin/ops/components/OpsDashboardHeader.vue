@@ -10,6 +10,7 @@ import { opsAPI, type OpsDashboardOverview, type OpsMetricThresholds, type OpsRe
 import type { OpsRequestDetailsPreset } from './OpsRequestDetailsModal.vue'
 import { useAdminSettingsStore } from '@/stores'
 import { formatNumber } from '@/utils/format'
+import { usePlatforms } from '@/composables/usePlatforms'
 
 type RealtimeWindow = '1min' | '5min' | '30min' | '1h'
 
@@ -49,6 +50,7 @@ const emit = defineEmits<Emits>()
 
 const { t } = useI18n()
 const adminSettingsStore = useAdminSettingsStore()
+const { platforms: registeredPlatforms, fetchPlatforms } = usePlatforms()
 
 const realtimeWindow = ref<RealtimeWindow>('1min')
 
@@ -106,13 +108,12 @@ function formatCustomTimeRangeLabel(startTime: string, endTime: string): string 
 
 const groups = ref<Array<{ id: number; name: string; platform: string }>>([])
 
-const platformOptions = computed(() => [
-  { value: '', label: t('common.all') },
-  { value: 'openai', label: 'OpenAI' },
-  { value: 'anthropic', label: 'Anthropic' },
-  { value: 'gemini', label: 'Gemini' },
-  { value: 'antigravity', label: 'Antigravity' }
-])
+const platformOptions = computed(() => {
+  const dynamicOptions = [...registeredPlatforms.value]
+    .sort((a, b) => a.sort_order - b.sort_order)
+    .map(p => ({ value: p.platform, label: p.display_name }))
+  return [{ value: '', label: t('common.all') }, ...dynamicOptions]
+})
 
 const timeRangeOptions = computed(() => [
   { value: '5m', label: t('admin.ops.timeRange.5m') },
@@ -151,6 +152,7 @@ watch(
 )
 
 onMounted(async () => {
+  fetchPlatforms()
   try {
     const list = await adminAPI.groups.getAll()
     groups.value = list.map((g) => ({ id: g.id, name: g.name, platform: g.platform }))

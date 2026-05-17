@@ -66,7 +66,7 @@ import {
 } from '@/utils/platformColors'
 
 const { t } = useI18n()
-const { getPlatformDecl } = usePlatforms()
+const { getPlatformDecl, getAccountTypeDecl } = usePlatforms()
 
 interface Props {
   platform: AccountPlatform
@@ -79,8 +79,10 @@ interface Props {
 const props = defineProps<Props>()
 
 const decl = computed(() => getPlatformDecl(props.platform))
+const typeDecl = computed(() => getAccountTypeDecl(props.platform, props.type))
 
-// -- Hardcoded fallback maps (used when API has not loaded) -----------
+// -- Hardcoded fallback maps (used when plugin API has not loaded yet) --
+// TODO: Remove these once plugin API is guaranteed to load before first render
 
 const FALLBACK_LABELS: Record<string, string> = {
   anthropic: 'Anthropic',
@@ -103,6 +105,15 @@ const FALLBACK_TYPE_CLASS: Record<string, string> = {
   gemini: 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400',
 }
 
+// TODO: Remove these fallback type labels once badge_label is guaranteed from plugin API
+const FALLBACK_TYPE_LABELS: Record<string, string> = {
+  oauth: 'OAuth',
+  'setup-token': 'Token',
+  apikey: 'Key',
+  bedrock: 'AWS',
+  service_account: 'Vertex',
+}
+
 const DEFAULT_CLASS = 'bg-slate-100 text-slate-700 dark:bg-slate-900/30 dark:text-slate-400'
 const DEFAULT_TYPE_CLASS = 'bg-slate-100 text-slate-600 dark:bg-slate-900/30 dark:text-slate-400'
 
@@ -114,20 +125,12 @@ const platformLabel = computed(() => {
 })
 
 const typeLabel = computed(() => {
-  switch (props.type) {
-    case 'oauth':
-      return 'OAuth'
-    case 'setup-token':
-      return 'Token'
-    case 'apikey':
-      return 'Key'
-    case 'bedrock':
-      return 'AWS'
-    case 'service_account':
-      return 'Vertex'
-    default:
-      return props.type
-  }
+  // Prefer badge_label from AccountTypeDeclaration (plugin-driven)
+  if (typeDecl.value?.badge_label) return typeDecl.value.badge_label
+  // Then try display_name from AccountTypeDeclaration
+  if (typeDecl.value?.display_name) return typeDecl.value.display_name
+  // Fallback to hardcoded labels for startup resilience
+  return FALLBACK_TYPE_LABELS[props.type] ?? props.type
 })
 
 const planLabel = computed(() => {
@@ -210,7 +213,7 @@ const privacyBadge = computed(() => {
     return { label: state.display_name, icon, title: state.display_name, class: colorClass }
   }
 
-  // Fallback: only builtin platforms with hardcoded privacy states
+  // TODO: Remove hardcoded fallback once all platforms declare privacy_states via plugin API
   if (props.platform !== 'openai' && props.platform !== 'antigravity') return null
 
   switch (props.privacyMode) {

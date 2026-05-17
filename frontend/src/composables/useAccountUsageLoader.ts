@@ -2,7 +2,7 @@ import { ref, computed, onMounted, onBeforeUnmount, onUnmounted, watch, type Ref
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import type { Account, AccountUsageInfo } from '@/types'
-import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
+import { usePlatforms } from '@/composables/usePlatforms'
 import { enqueueUsageRequest } from '@/utils/usageLoadQueue'
 
 // Module-level cache shared across all AccountUsageCell instances
@@ -20,6 +20,7 @@ interface UseAccountUsageLoaderOptions {
 export function useAccountUsageLoader(options: UseAccountUsageLoaderOptions) {
   const { account, manualRefreshToken, rootRef } = options
   const { t } = useI18n()
+  const { getPlatformDecl } = usePlatforms()
 
   const unmounted = ref(false)
   onBeforeUnmount(() => { unmounted.value = true })
@@ -39,23 +40,48 @@ export function useAccountUsageLoader(options: UseAccountUsageLoaderOptions) {
   let desktopViewportListener: ((event: MediaQueryListEvent) => void) | null = null
   let visibilityObserver: IntersectionObserver | null = null
 
+  /**
+   * Determine if this account should fetch usage data.
+   * Data-driven: checks platform declaration's usage_display config.
+   */
   const shouldFetchUsage = computed(() => {
-    const p = account.value.platform
-    const ty = account.value.type
-    if (p === 'anthropic') return ty === 'oauth' || ty === 'setup-token'
-    if (p === 'gemini') return true
-    if (p === 'antigravity') return ty === 'oauth'
-    if (p === 'openai') return ty === 'oauth'
-    return false
+    const decl = getPlatformDecl(account.value.platform)
+    if (!decl?.usage_display) return false
+    return decl.usage_display.show_req_count || decl.usage_display.show_cost
   })
 
   const shouldLazyLoadOnMobile = computed(() => shouldFetchUsage.value && !isDesktopViewport.value)
 
-  const isAnthropicOAuthOrSetupToken = computed(() => {
-    return account.value.platform === 'anthropic' && (account.value.type === 'oauth' || account.value.type === 'setup-token')
+  /**
+   * Determine if this account uses passive source for initial load.
+   * Platform-specific: Anthropic OAuth/SetupToken use passive sampling.
+   */
+  const usesPassiveSource = computed(() => {
+    return account.value.platform === 'anthropic' &&
+      (account.value.type === 'oauth' || account.value.type === 'setup-token')
   })
 
-  const openAIUsageRefreshKey = computed(() => buildOpenAIUsageRefreshKey(account.value))
+  /**
+   * Build a usage refresh key from account fields that, when changed,
+   * indicate cached usage data is stale and should be re-fetched.
+   */
+  const usageRefreshKey = computed(() => {
+    const a = account.value
+    // Generic key using updated_at, rate_limit_reset_at, and extra hash
+    const parts = [a.id, a.updated_at, a.last_used_at, a.rate_limit_reset_at]
+    const extra = a.extra ?? {}
+    // Include OpenAI-specific codex fields if present
+    if (extra.codex_usage_updated_at !== undefined) {
+      parts.push(
+        extra.codex_usage_updated_at as string,
+        String(extra.codex_5h_used_percent ?? ''),
+        extra.codex_5h_reset_at as string,
+        String(extra.codex_7d_used_percent ?? ''),
+        extra.codex_7d_reset_at as string,
+      )
+    }
+    return parts.map(v => v == null ? '' : String(v)).join('|')
+  })
 
   const loadUsage = async (opts?: { source?: 'passive' | 'active'; bypassCache?: boolean }) => {
     if (!shouldFetchUsage.value) return
@@ -158,13 +184,15 @@ export function useAccountUsageLoader(options: UseAccountUsageLoaderOptions) {
       }
     }
     if (!shouldFetchUsage.value) return
-    const source = isAnthropicOAuthOrSetupToken.value ? 'passive' : undefined
+    const source = usesPassiveSource.value ? 'passive' : undefined
     requestAutoLoad(source)
   })
 
-  watch(openAIUsageRefreshKey, (nextKey, prevKey) => {
+  // Watch for account data changes that indicate stale usage
+  watch(usageRefreshKey, (nextKey, prevKey) => {
     if (!prevKey || nextKey === prevKey) return
-    if (account.value.platform !== 'openai' || account.value.type !== 'oauth') return
+    if (!shouldFetchUsage.value) return
+    _usageCache.delete(account.value.id)
     requestAutoLoad()
   })
 
@@ -173,7 +201,7 @@ export function useAccountUsageLoader(options: UseAccountUsageLoaderOptions) {
     (nextToken, prevToken) => {
       if (nextToken === prevToken) return
       if (!shouldFetchUsage.value) return
-      const source = isAnthropicOAuthOrSetupToken.value ? 'passive' : undefined
+      const source = usesPassiveSource.value ? 'passive' : undefined
       _usageCache.delete(account.value.id)
       loadUsage({ source, bypassCache: true }).catch((e) => {
         console.error('Failed to refresh usage after manual refresh:', e)

@@ -266,6 +266,9 @@
         :show-session-token-option="oauthCfg?.showSessionTokenOption ?? false"
         :show-access-token-option="oauthCfg?.showAccessTokenOption ?? false"
         :show-codex-session-import-option="oauthCfg?.showCodexSessionImportOption ?? false"
+        :show-important-notice="oauthCfg?.showImportantNotice ?? false"
+        :show-state-warning="oauthCfg?.showStateWarning ?? false"
+        :i18n-prefix="oauthCfg?.i18nPrefix ?? ''"
         :platform="form.platform"
         :show-project-id="oauthCfg?.showProjectId ?? false"
         @generate-url="handleGenerateUrl"
@@ -337,8 +340,8 @@ import { resolvePlatformForm } from './forms/platformFormRegistry'
 import type {
   PlatformFormContext, PlatformFormExposed,
   OAuthFlowConfig, OAuthComposableState,
+  AddMethod, AuthInputMethod,
 } from './forms/types'
-import type { AddMethod, AuthInputMethod } from '@/composables/useAccountOAuth'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import type { QuotaResetMode } from '@/constants/account'
@@ -426,7 +429,6 @@ loadQuotaNotifyGlobal()
 
 const accountCategory = ref<'oauth-based' | 'apikey' | 'bedrock' | 'service_account'>('oauth-based')
 const addMethod = ref<AddMethod>('oauth')
-const antigravityAccountType = ref<'oauth' | 'upstream'>('oauth')
 
 const form = reactive({
   name: '',
@@ -442,6 +444,25 @@ const form = reactive({
   group_ids: [] as number[],
   expires_at: null as number | null,
 })
+
+// ---------------------------------------------------------------------------
+// Account type → category mapping (data-driven, no platform name checks)
+// ---------------------------------------------------------------------------
+/** Well-known type IDs that map to the 'oauth-based' category. */
+const OAUTH_TYPE_IDS = new Set(['oauth', 'setup-token'])
+/** Well-known type IDs that have their own dedicated category name. */
+const DEDICATED_CATEGORY_IDS = new Set(['bedrock', 'service_account'])
+
+function typeIdToCategory(typeId: string): 'oauth-based' | 'apikey' | 'bedrock' | 'service_account' {
+  if (OAUTH_TYPE_IDS.has(typeId)) return 'oauth-based'
+  if (DEDICATED_CATEGORY_IDS.has(typeId)) return typeId as 'bedrock' | 'service_account'
+  return 'apikey'
+}
+
+// ---------------------------------------------------------------------------
+// Account type selection
+// ---------------------------------------------------------------------------
+const selectedAccountTypeId = ref<string>('oauth')
 
 // ---------------------------------------------------------------------------
 // Dynamic platform form component
@@ -460,41 +481,18 @@ const platformFormExtraProps = computed(() => {
   return {}
 })
 
-// ---------------------------------------------------------------------------
-// Account type selection
-// ---------------------------------------------------------------------------
-const selectedAccountTypeId = computed(() => {
-  if (BUILTIN_PLATFORMS.has(form.platform)) {
-    if (form.platform === 'antigravity') return antigravityAccountType.value
-    if (accountCategory.value === 'oauth-based') {
-      return form.platform === 'anthropic' ? addMethod.value : 'oauth'
-    }
-    if (accountCategory.value === 'bedrock') return 'bedrock'
-    if (accountCategory.value === 'service_account') return 'service_account'
-    return 'apikey'
-  }
-  return form.type
-})
-
 function onAccountTypeSelect(at: { type: string }) {
   const tp = at.type
-  if (BUILTIN_PLATFORMS.has(form.platform)) {
-    if (form.platform === 'antigravity') {
-      antigravityAccountType.value = tp as typeof antigravityAccountType.value
-      accountCategory.value = tp === 'oauth' ? 'oauth-based' : 'apikey'
-      return
-    }
-    if (tp === 'oauth' || tp === 'setup-token') {
-      accountCategory.value = 'oauth-based'
-      if (form.platform === 'anthropic') addMethod.value = tp as AddMethod
-    } else if (tp === 'bedrock') {
-      accountCategory.value = 'bedrock'
-    } else if (tp === 'service_account') {
-      accountCategory.value = 'service_account'
-    } else {
-      accountCategory.value = 'apikey'
-    }
-  } else {
+  selectedAccountTypeId.value = tp
+  const category = typeIdToCategory(tp)
+  accountCategory.value = category
+  // For OAuth-based types with multiple sub-types (e.g. oauth vs setup-token),
+  // update addMethod so the form component knows which OAuth variant to use.
+  if (category === 'oauth-based') {
+    addMethod.value = tp as AddMethod
+  }
+  // For non-builtin platforms, directly set form.type
+  if (!BUILTIN_PLATFORMS.has(form.platform)) {
     form.type = tp
   }
 }
@@ -785,33 +783,42 @@ watch(() => props.show, (newVal) => {
 })
 
 watch(
-  [accountCategory, addMethod, antigravityAccountType, () => form.platform],
-  ([category, method, agType]) => {
-    if (form.platform === 'antigravity' && agType === 'upstream') { form.type = 'apikey'; return }
-    if (form.platform === 'anthropic' && category === 'bedrock') { form.type = 'bedrock' as AccountType; return }
-    if ((form.platform === 'gemini' || form.platform === 'anthropic') && category === 'service_account') {
-      form.type = 'service_account' as AccountType
-    } else if (category === 'oauth-based') {
-      form.type = method as AccountType
-    } else {
-      form.type = 'apikey'
+  [accountCategory, addMethod, () => selectedAccountTypeId.value, () => form.platform],
+  ([category, method]) => {
+    // Non-builtin platforms: form.type is set directly in onAccountTypeSelect
+    if (!BUILTIN_PLATFORMS.has(form.platform)) return
+    // Dedicated categories (bedrock, service_account) use category name as type
+    if (DEDICATED_CATEGORY_IDS.has(category)) {
+      form.type = category as AccountType
+      return
     }
+    // OAuth-based: use the specific add method (oauth / setup-token)
+    if (category === 'oauth-based') {
+      form.type = method as AccountType
+      return
+    }
+    // Fallback: apikey
+    form.type = 'apikey'
   },
   { immediate: true },
 )
 
 watch(() => form.platform, (newPlatform) => {
-  if (newPlatform !== 'gemini' && newPlatform !== 'anthropic' && accountCategory.value === 'service_account')
+  // When switching platforms, reset to the first available account type from declaration
+  const decl = getPlatformDecl(newPlatform)
+  if (decl?.account_types.length) {
+    const firstType = decl.account_types[0]
+    selectedAccountTypeId.value = firstType.type
+    accountCategory.value = typeIdToCategory(firstType.type)
+    addMethod.value = OAUTH_TYPE_IDS.has(firstType.type) ? firstType.type as AddMethod : 'oauth'
+    if (!BUILTIN_PLATFORMS.has(newPlatform)) {
+      form.type = firstType.type
+    }
+  } else {
+    // Fallback when no declaration is available (startup race)
     accountCategory.value = 'oauth-based'
-  if (newPlatform !== 'anthropic' && accountCategory.value === 'bedrock')
-    accountCategory.value = 'oauth-based'
-  if (newPlatform === 'antigravity') {
-    accountCategory.value = 'oauth-based'
-    antigravityAccountType.value = 'oauth'
-  }
-  if (!BUILTIN_PLATFORMS.has(newPlatform)) {
-    const decl = getPlatformDecl(newPlatform)
-    if (decl?.account_types.length) form.type = decl.account_types[0].type
+    addMethod.value = 'oauth'
+    selectedAccountTypeId.value = 'oauth'
   }
 })
 
@@ -834,7 +841,7 @@ function resetForm() {
   form.expires_at = null
   accountCategory.value = 'oauth-based'
   addMethod.value = 'oauth'
-  antigravityAccountType.value = 'oauth'
+  selectedAccountTypeId.value = 'oauth'
   autoPauseOnExpired.value = true
   editQuotaLimit.value = null
   editQuotaDailyLimit.value = null

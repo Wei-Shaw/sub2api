@@ -15,7 +15,10 @@ import {
 import type { useAnthropicBedrockForm } from './useAnthropicBedrockForm'
 import type { useAnthropicOAuthForm } from './useAnthropicOAuthForm'
 
+export type AddMethod = 'oauth' | 'setup-token'
+
 export interface EditModeRefs {
+  addMethod: Ref<AddMethod>
   apiKeyBaseUrl: Ref<string>
   editApiKey: Ref<string>
   vertexLocation: Ref<string>
@@ -65,6 +68,7 @@ export function initFromAccount(
     refs.vertexLocation.value = (credentials?.location as string) || 'us-east5'
     loadModelMappingFromCredentials(credentials, refs.modelRestrictionMode, refs.allowedModels, refs.modelMappings)
   } else if (account.type === 'oauth' || account.type === 'setup-token') {
+    refs.addMethod.value = account.type as AddMethod
     oauthQuota.initOAuthFromAccount(account)
   }
 }

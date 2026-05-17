@@ -1234,6 +1234,11 @@
   />
 </template>
 
+<!-- TODO: BulkEditAccountModal has extensive hardcoded platform checks (openai, anthropic,
+     antigravity) for conditional field sections (passthrough, WS mode, compact mode, RPM limits,
+     allow overages, etc.). These should be driven by PlatformDeclaration metadata in the future.
+     Affected computed props: allOpenAIPassthroughCapable, allOpenAIOAuth, allOpenAIAPIKey,
+     allAntigravity, allAnthropicOAuthOrSetupToken, canPreCheck(). -->
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'

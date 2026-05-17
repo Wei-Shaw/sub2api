@@ -36,6 +36,7 @@ const updateStatus = (value: string | number | boolean | null) => { emit('update
 const updatePrivacyMode = (value: string | number | boolean | null) => { emit('update:filters', { ...props.filters, privacy_mode: value }) }
 const updateGroup = (value: string | number | boolean | null) => { emit('update:filters', { ...props.filters, group: value }) }
 
+// TODO: Remove fallback once plugin API is guaranteed to load before filter render
 const FALLBACK_PLATFORMS = [
   { value: 'anthropic', label: 'Anthropic' },
   { value: 'openai', label: 'OpenAI' },
@@ -52,6 +53,7 @@ const pOpts = computed(() => {
   ]
 })
 
+// TODO: Remove fallback once plugin API is guaranteed to load before filter render
 const FALLBACK_TYPES = [
   { value: 'oauth', label: 'OAuth' },
   { value: 'setup-token', label: 'Setup Token' },

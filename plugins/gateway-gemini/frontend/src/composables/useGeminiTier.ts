@@ -1,12 +1,24 @@
 import { computed, type Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { Account, GeminiCredentials } from '@/types'
+
+/** Minimal Gemini credentials shape for tier detection. */
+interface GeminiCredentials {
+  oauth_type?: string
+  tier_id?: string
+  project_id?: string
+}
+
+/** Minimal account shape for Gemini tier display. */
+interface GeminiTierAccount {
+  type: string
+  credentials?: Record<string, unknown>
+}
 
 /**
  * Derives Gemini channel, user level, auth type label, tier class,
  * and quota-policy tooltip strings from an Account ref.
  */
-export function useGeminiTier(account: Ref<Account>) {
+export function useGeminiTier(account: Ref<GeminiTierAccount>) {
   const { t } = useI18n()
 
   const creds = computed(() => account.value.credentials as GeminiCredentials | undefined)

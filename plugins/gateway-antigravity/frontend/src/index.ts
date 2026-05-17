@@ -1,14 +1,17 @@
-﻿/**
+/**
  * Gateway Antigravity plugin frontend entry (V2 protocol).
  *
- * This plugin only provides account form components (no mountable views).
- * The form runs directly in the host Vue tree via formComponents, not
+ * This plugin provides account form components, group config components,
+ * and account usage display components. All run directly in the host Vue
+ * tree via formComponents / groupConfigComponents / usageComponents, not
  * inside a Shadow DOM.
  */
 import type { HostSdk, PluginRuntimeAssets } from '@sub2api/plugin-sdk'
 import type { AxiosInstance } from 'axios'
 import { setClient } from './api/client'
 import AntigravityForm from './forms/AntigravityForm.vue'
+import AntigravityUsageSection from './components/AntigravityUsageSection.vue'
+import AntigravityGroupConfig from './components/AntigravityGroupConfig.vue'
 import enMessages from './i18n/en'
 import zhMessages from './i18n/zh'
 
@@ -29,7 +32,14 @@ function install(sdk: HostSdk): PluginRuntimeAssets {
       throw new Error('[gateway-antigravity] has no mountable views')
     },
     formComponents: {
-      'AntigravityForm': AntigravityForm,
+      AntigravityForm,
+    },
+    groupConfigComponents: {
+      AntigravityGroupConfig,
+    },
+    // Account usage display components rendered in host Vue tree
+    usageComponents: {
+      'antigravity:oauth': AntigravityUsageSection,
     },
   }
 }

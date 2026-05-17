@@ -1,14 +1,17 @@
 /**
  * Gateway Anthropic plugin frontend entry.
  *
- * This plugin provides the account form component for the Anthropic platform.
- * The form is rendered in the host Vue tree (not Shadow DOM) via the
- * formComponents contract in PluginRuntimeAssets.
+ * This plugin provides account form components, group config components,
+ * and account usage display components for the Anthropic platform.
+ * All are rendered in the host Vue tree (not Shadow DOM) via the
+ * formComponents / groupConfigComponents / usageComponents contracts.
  */
 import type { HostSdk, PluginRuntimeAssets } from '@sub2api/plugin-sdk'
 import type { AxiosInstance } from 'axios'
 import './style.css'
 import AnthropicForm from './forms/AnthropicForm.vue'
+import AnthropicUsageSection from './components/AnthropicUsageSection.vue'
+import AnthropicGroupConfig from './components/group-config/AnthropicGroupConfig.vue'
 import { setClient } from './api/client'
 import { setSdk } from './api/sdk'
 import enMessages from './i18n/en'
@@ -35,6 +38,15 @@ function install(sdk: HostSdk): PluginRuntimeAssets {
     // Account form components rendered in host Vue tree
     formComponents: {
       AnthropicForm,
+    },
+    // Group config components rendered in host Vue tree
+    groupConfigComponents: {
+      AnthropicGroupConfig,
+    },
+    // Account usage display components rendered in host Vue tree
+    usageComponents: {
+      'anthropic:oauth': AnthropicUsageSection,
+      'anthropic:setup-token': AnthropicUsageSection,
     },
   }
 }

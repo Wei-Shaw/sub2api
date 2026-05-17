@@ -15,8 +15,6 @@ import settingsAPI from './settings'
 import systemAPI from './system'
 import subscriptionsAPI from './subscriptions'
 import usageAPI from './usage'
-import geminiAPI from './gemini'
-import antigravityAPI from './antigravity'
 import userAttributesAPI from './userAttributes'
 import opsAPI from './ops'
 import errorPassthroughAPI from './errorPassthrough'
@@ -48,8 +46,6 @@ export const adminAPI = {
   system: systemAPI,
   subscriptions: subscriptionsAPI,
   usage: usageAPI,
-  gemini: geminiAPI,
-  antigravity: antigravityAPI,
   userAttributes: userAttributesAPI,
   ops: opsAPI,
   errorPassthrough: errorPassthroughAPI,
@@ -76,8 +72,6 @@ export {
   systemAPI,
   subscriptionsAPI,
   usageAPI,
-  geminiAPI,
-  antigravityAPI,
   userAttributesAPI,
   opsAPI,
   errorPassthroughAPI,

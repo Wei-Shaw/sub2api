@@ -5,6 +5,8 @@
  * instead of defining their own color mappings.
  */
 
+// TODO: This hardcoded union should eventually be removed; dynamic platforms
+// are resolved via themeColorToTailwind() + PlatformDeclaration.theme_color
 export type Platform = 'anthropic' | 'openai' | 'antigravity' | 'gemini'
 
 // ── Badge (bg + text + border, for inline badges with border) ───────
@@ -110,50 +112,97 @@ function isPlatform(p: string): p is Platform {
   return p === 'anthropic' || p === 'openai' || p === 'antigravity' || p === 'gemini'
 }
 
-export function platformBadgeClass(p: string): string {
-  return isPlatform(p) ? BADGE[p] : BADGE_DEFAULT
+export function platformBadgeClass(p: string, themeColor?: string): string {
+  if (isPlatform(p)) return BADGE[p]
+  if (themeColor) return dynamicBadgeClass(themeColor)
+  return BADGE_DEFAULT
 }
 
-export function platformBadgeLightClass(p: string): string {
-  return isPlatform(p) ? BADGE_LIGHT[p] : BADGE_DEFAULT
+export function platformBadgeLightClass(p: string, themeColor?: string): string {
+  if (isPlatform(p)) return BADGE_LIGHT[p]
+  if (themeColor) return dynamicBadgeClass(themeColor)
+  return BADGE_DEFAULT
 }
 
-export function platformBorderClass(p: string): string {
-  return isPlatform(p) ? BORDER[p] : BORDER_DEFAULT
+export function platformBorderClass(p: string, themeColor?: string): string {
+  if (isPlatform(p)) return BORDER[p]
+  if (themeColor) {
+    const tw = themeColorToTailwind(themeColor)
+    return `border-${tw}-500/20 dark:border-${tw}-500/20`
+  }
+  return BORDER_DEFAULT
 }
 
-export function platformAccentBarClass(p: string): string {
-  return isPlatform(p) ? ACCENT_BAR[p] : ACCENT_BAR_DEFAULT
+export function platformAccentBarClass(p: string, themeColor?: string): string {
+  if (isPlatform(p)) return ACCENT_BAR[p]
+  if (themeColor) {
+    const tw = themeColorToTailwind(themeColor)
+    return `bg-gradient-to-r from-${tw}-400 to-${tw}-500`
+  }
+  return ACCENT_BAR_DEFAULT
 }
 
-export function platformTextClass(p: string): string {
-  return isPlatform(p) ? TEXT[p] : TEXT_DEFAULT
+export function platformTextClass(p: string, themeColor?: string): string {
+  if (isPlatform(p)) return TEXT[p]
+  if (themeColor) return dynamicTextClass(themeColor)
+  return TEXT_DEFAULT
 }
 
-export function platformIconClass(p: string): string {
-  return isPlatform(p) ? ICON[p] : ICON_DEFAULT
+export function platformIconClass(p: string, themeColor?: string): string {
+  if (isPlatform(p)) return ICON[p]
+  if (themeColor) {
+    const tw = themeColorToTailwind(themeColor)
+    return `text-${tw}-500 dark:text-${tw}-400`
+  }
+  return ICON_DEFAULT
 }
 
-export function platformButtonClass(p: string): string {
-  return isPlatform(p) ? BUTTON[p] : BUTTON_DEFAULT
+export function platformButtonClass(p: string, themeColor?: string): string {
+  if (isPlatform(p)) return BUTTON[p]
+  if (themeColor) {
+    const tw = themeColorToTailwind(themeColor)
+    return `bg-${tw}-500 text-white hover:bg-${tw}-600 active:bg-${tw}-700 dark:bg-${tw}-500/80 dark:hover:bg-${tw}-500`
+  }
+  return BUTTON_DEFAULT
 }
 
-export function platformDiscountClass(p: string): string {
-  return isPlatform(p) ? DISCOUNT[p] : DISCOUNT_DEFAULT
+export function platformDiscountClass(p: string, themeColor?: string): string {
+  if (isPlatform(p)) return DISCOUNT[p]
+  if (themeColor) {
+    const tw = themeColorToTailwind(themeColor)
+    return `bg-${tw}-100 text-${tw}-700 dark:bg-${tw}-900/40 dark:text-${tw}-300`
+  }
+  return DISCOUNT_DEFAULT
 }
 
-export function platformGradientClass(p: string): string {
-  return isPlatform(p) ? GRADIENT[p] : GRADIENT_DEFAULT
+export function platformGradientClass(p: string, themeColor?: string): string {
+  if (isPlatform(p)) return GRADIENT[p]
+  if (themeColor) {
+    const tw = themeColorToTailwind(themeColor)
+    return `from-${tw}-500 to-${tw}-600`
+  }
+  return GRADIENT_DEFAULT
 }
 
-export function platformGradientTextClass(p: string): string {
-  return isPlatform(p) ? GRADIENT_TEXT[p] : GRADIENT_TEXT_DEFAULT
+export function platformGradientTextClass(p: string, themeColor?: string): string {
+  if (isPlatform(p)) return GRADIENT_TEXT[p]
+  if (themeColor) {
+    const tw = themeColorToTailwind(themeColor)
+    return `text-${tw}-100`
+  }
+  return GRADIENT_TEXT_DEFAULT
 }
 
-export function platformGradientSubtextClass(p: string): string {
-  return isPlatform(p) ? GRADIENT_SUBTEXT[p] : GRADIENT_SUBTEXT_DEFAULT
+export function platformGradientSubtextClass(p: string, themeColor?: string): string {
+  if (isPlatform(p)) return GRADIENT_SUBTEXT[p]
+  if (themeColor) {
+    const tw = themeColorToTailwind(themeColor)
+    return `text-${tw}-200`
+  }
+  return GRADIENT_SUBTEXT_DEFAULT
 }
 
+// TODO: Callers should migrate to dynamicPlatformLabel() which reads from plugin API
 export function platformLabel(p: string): string {
   switch (p) {
     case 'anthropic': return 'Anthropic'

@@ -94,6 +94,8 @@ export function useOpenAIForm() {
   const oauthConfig: OAuthFlowConfig = {
     showRefreshTokenOption: true, showMobileRefreshTokenOption: true,
     showCodexSessionImportOption: true, showProxyWarning: false, platform: 'openai',
+    showImportantNotice: true,
+    i18nPrefix: 'admin.accounts.oauth.openai',
   }
 
   const getWSMode = (cat: string): OpenAIWSMode => cat === 'apikey' ? openaiAPIKeyWSMode.value : openaiOAuthWSMode.value

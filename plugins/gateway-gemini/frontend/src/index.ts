@@ -1,19 +1,17 @@
 /**
  * Gemini gateway plugin frontend entry.
  *
- * This plugin provides the GeminiForm account form component. Unlike full
- * Shadow DOM plugins (payment, channel-management), gateway form plugins
- * only expose formComponents — the host renders them directly in its Vue
- * tree (EditAccountModal / CreateAccountModal).
- *
- * Contract:
- *   - default export { install(sdk) }
- *   - install returns { formComponents: { 'GeminiForm': Component } }
- *   - No mount() needed (form is rendered in host tree, not Shadow DOM)
+ * This plugin provides the GeminiForm account form component and
+ * GeminiGroupConfig group config component. Unlike full Shadow DOM
+ * plugins, gateway form plugins only expose formComponents and
+ * groupConfigComponents -- the host renders them directly in its Vue tree.
  */
 import type { HostSdk, PluginRuntimeAssets } from '@sub2api/plugin-sdk'
 import type { AxiosInstance } from 'axios'
 import GeminiForm from './forms/GeminiForm.vue'
+import GeminiGroupConfig from './components/GeminiGroupConfig.vue'
+import GeminiUsageSection from './components/GeminiUsageSection.vue'
+import AccountQuotaInfo from './components/AccountQuotaInfo.vue'
 import { setClient } from './api/client'
 import { setSdk } from './api/sdk'
 import enMessages from './i18n/en'
@@ -36,6 +34,14 @@ function install(sdk: HostSdk): PluginRuntimeAssets {
     },
     formComponents: {
       GeminiForm,
+    },
+    groupConfigComponents: {
+      GeminiGroupConfig,
+    },
+    // Account usage display components rendered in host Vue tree
+    usageComponents: {
+      'gemini:*': GeminiUsageSection,
+      'gemini:quota-info': AccountQuotaInfo,
     },
   }
 }

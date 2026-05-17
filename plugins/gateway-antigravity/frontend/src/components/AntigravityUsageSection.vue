@@ -95,7 +95,6 @@
 
     <!-- Usage data from API -->
     <div v-else-if="hasQuotaFromAPI" class="space-y-1">
-      <!-- Gemini 3 Pro -->
       <UsageProgressBar
         v-if="proUsage !== null"
         :label="t('admin.accounts.usageWindow.gemini3Pro')"
@@ -103,7 +102,6 @@
         :resets-at="proUsage.resetTime"
         color="indigo"
       />
-      <!-- Gemini 3 Flash -->
       <UsageProgressBar
         v-if="flashUsage !== null"
         :label="t('admin.accounts.usageWindow.gemini3Flash')"
@@ -111,7 +109,6 @@
         :resets-at="flashUsage.resetTime"
         color="emerald"
       />
-      <!-- Gemini 3 Image -->
       <UsageProgressBar
         v-if="imageUsage !== null"
         :label="t('admin.accounts.usageWindow.gemini3Image')"
@@ -119,7 +116,6 @@
         :resets-at="imageUsage.resetTime"
         color="purple"
       />
-      <!-- Claude -->
       <UsageProgressBar
         v-if="claudeUsage !== null"
         :label="t('admin.accounts.usageWindow.claude')"
@@ -141,12 +137,29 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { Account, AccountUsageInfo } from '@/types'
-import UsageProgressBar from '../UsageProgressBar.vue'
+import { UsageProgressBar } from '@sub2api/plugin-sdk'
+
+/** Minimal model quota shape. */
+interface ModelQuota {
+  utilization: number
+  reset_time: string
+}
+
+/** Minimal account usage info for Antigravity display. */
+interface AntigravityUsageInfo {
+  antigravity_quota?: Record<string, ModelQuota> | null
+  ai_credits?: Array<{ credit_type?: string; amount?: number; minimum_balance?: number }> | null
+  is_forbidden?: boolean
+  forbidden_type?: string
+  validation_url?: string
+  needs_reauth?: boolean
+  error_code?: string
+  error?: string
+}
 
 const props = defineProps<{
-  account: Account
-  usageInfo: AccountUsageInfo | null
+  account: { extra?: Record<string, unknown>; [k: string]: unknown }
+  usageInfo: AntigravityUsageInfo | null
   loading: boolean
   error: string | null
 }>()

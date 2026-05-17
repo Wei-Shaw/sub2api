@@ -65,7 +65,11 @@ export function useGeminiForm() {
     }
   }, { immediate: true })
 
-  const oauthConfig: OAuthFlowConfig = { showProjectId: true, platform: 'gemini' }
+  const oauthConfig: OAuthFlowConfig = {
+    showProjectId: true, platform: 'gemini',
+    showStateWarning: true,
+    i18nPrefix: 'admin.accounts.oauth.gemini',
+  }
   const geminiHelpLinks = {
     apiKey: 'https://aistudio.google.com/app/apikey',
     aiStudioPricing: 'https://ai.google.dev/pricing',

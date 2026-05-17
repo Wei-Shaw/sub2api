@@ -68,10 +68,32 @@ export { default as TempUnschedSection } from './components/account/TempUnschedS
 export { default as ModelRestrictionSection } from './components/account/ModelRestrictionSection.vue'
 export { default as VertexServiceAccount } from './components/account/VertexServiceAccount.vue'
 
+// Account usage display components
+export { default as UsageProgressBar } from './components/account/UsageProgressBar.vue'
+
 // Account constants
 export { VERTEX_LOCATION_OPTIONS } from './constants/account'
 
 // Utilities used by account form widgets
 export { createStableObjectKeyResolver } from './utils/stableObjectKey'
 
+// Utilities used by account usage display
+export { formatCompactNumber } from './utils/formatCompact'
+
 export * from './host-sdk'
+
+// Group config shared components
+export {
+  SharedImagePricing,
+  SharedAccountFilters,
+  SharedInvalidRequestFallback,
+} from './components/group-config'
+export type {
+  GroupConfigGroup,
+  GroupConfigProps,
+  GroupConfigExposed,
+} from './components/group-config'
+
+// Composables
+export { useKeyedDebouncedSearch } from './composables/useKeyedDebouncedSearch'
+export type { KeyedDebouncedSearchContext } from './composables/useKeyedDebouncedSearch'

@@ -28,3 +28,22 @@ import type { Account, AccountPlatform, CreateAccountRequest } from '@/types'
  * AccountPlatform to oauthConfig.platform keep compiling without changes.
  */
 export type { Account, AccountPlatform, CreateAccountRequest }
+
+// ---------------------------------------------------------------------------
+// OAuth flow types — previously lived in @/composables/useAccountOAuth.
+// Moved here because the composable was platform-specific (Anthropic OAuth)
+// and has been migrated to the gateway-anthropic plugin.
+// ---------------------------------------------------------------------------
+
+/** OAuth add method — 'oauth' (browser-based) or 'setup-token' (long-lived token) */
+export type AddMethod = 'oauth' | 'setup-token'
+
+/** Input method for the OAuthAuthorizationFlow component */
+export type AuthInputMethod =
+  | 'manual'
+  | 'cookie'
+  | 'refresh_token'
+  | 'mobile_refresh_token'
+  | 'session_token'
+  | 'access_token'
+  | 'codex_session'

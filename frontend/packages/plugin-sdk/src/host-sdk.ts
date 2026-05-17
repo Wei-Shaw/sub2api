@@ -277,6 +277,19 @@ export interface PluginRuntimeAssets {
    * 逻辑与 formComponents 对称: host 优先取此 map, 降级到内置组件或 PluginGroupConfig.vue.
    */
   groupConfigComponents?: Record<string, Component>
+
+  /**
+   * 可选: 插件提供的账号用量展示组件映射.
+   *
+   * key 格式为 `<platform>:<accountType>` 或 `<platform>:*` (通配),
+   * value 是 Vue Component. host 的 AccountUsageCell 在渲染用量列时,
+   * 优先从此 map 取组件, 未找到时降级到通用的 KeyAccountStats.
+   *
+   * 用量组件在 host Vue tree 中直接渲染 (与 formComponents 对称),
+   * 接收标准 props: account, usageInfo, loading, error, todayStats, todayStatsLoading, activeQueryLoading.
+   * 支持 emit 'active-query' 事件触发主动查询.
+   */
+  usageComponents?: Record<string, Component>
 }
 
 /** Minimal group shape attached to an API key, for plugin consumption. */

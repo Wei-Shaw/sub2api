@@ -110,14 +110,38 @@
 <script setup lang="ts">
 import { computed, toRef } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { Account, AccountUsageInfo, WindowStats } from '@/types'
-import { formatCompactNumber } from '@/utils/format'
-import { useGeminiTier } from '@/composables/useGeminiTier'
-import UsageProgressBar from '../UsageProgressBar.vue'
+import { UsageProgressBar, formatCompactNumber } from '@sub2api/plugin-sdk'
+import { useGeminiTier } from '../composables/useGeminiTier'
+
+/** Minimal WindowStats shape. */
+interface WindowStats {
+  requests: number
+  tokens: number
+  cost: number
+  standard_cost?: number
+  user_cost?: number
+}
+
+/** Minimal UsageProgress shape. */
+interface UsageProgress {
+  utilization: number
+  resets_at: string | null
+  window_stats?: WindowStats | null
+}
+
+/** Minimal account usage info for Gemini display. */
+interface GeminiUsageInfo {
+  gemini_shared_daily?: UsageProgress | null
+  gemini_pro_daily?: UsageProgress | null
+  gemini_flash_daily?: UsageProgress | null
+  gemini_shared_minute?: UsageProgress | null
+  gemini_pro_minute?: UsageProgress | null
+  gemini_flash_minute?: UsageProgress | null
+}
 
 const props = defineProps<{
-  account: Account
-  usageInfo: AccountUsageInfo | null
+  account: { type: string; credentials?: Record<string, unknown>; [k: string]: unknown }
+  usageInfo: GeminiUsageInfo | null
   loading: boolean
   error: string | null
   todayStats?: WindowStats | null
@@ -195,7 +219,7 @@ const usageBars = computed(() => {
         utilization: sd.utilization,
         resetsAt: sd.resets_at,
         windowStats: sd.window_stats,
-        color: 'indigo'
+        color: 'indigo',
       })
     }
     return bars
@@ -209,7 +233,7 @@ const usageBars = computed(() => {
       utilization: pro.utilization,
       resetsAt: pro.resets_at,
       windowStats: pro.window_stats,
-      color: 'indigo'
+      color: 'indigo',
     })
   }
 
@@ -221,7 +245,7 @@ const usageBars = computed(() => {
       utilization: flash.utilization,
       resetsAt: flash.resets_at,
       windowStats: flash.window_stats,
-      color: 'emerald'
+      color: 'emerald',
     })
   }
 

@@ -61,7 +61,8 @@
           t("admin.groups.claudeCode.fallbackGroup")
         }}</label>
         <Select
-          v-model="formData.fallback_group_id"
+          :model-value="formData.fallback_group_id as number | null"
+          @update:model-value="formData.fallback_group_id = $event"
           :options="fallbackGroupOptions"
           :placeholder="t('admin.groups.claudeCode.noFallback')"
         />
@@ -77,7 +78,7 @@
       :form-data="formData"
       :groups="groups"
       :editing-group-id="editingGroupId"
-      :platform="formData.platform || 'anthropic'"
+      :platform="(formData.platform as string) || 'anthropic'"
     />
 
     <!-- Account Filters -->
@@ -95,22 +96,24 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
 import { useI18n } from "vue-i18n";
-import { Select } from "@sub2api/plugin-sdk";
-import Icon from "@/components/icons/Icon.vue";
+import {
+  Icon,
+  Select,
+  SharedInvalidRequestFallback,
+  SharedAccountFilters,
+  type GroupConfigGroup,
+} from "@sub2api/plugin-sdk";
 import ModelRoutingSection from "./ModelRoutingSection.vue";
-import SharedInvalidRequestFallback from "./SharedInvalidRequestFallback.vue";
-import SharedAccountFilters from "./SharedAccountFilters.vue";
-import type { AdminGroup } from "@/types";
 
 const props = defineProps<{
   mode: "create" | "edit";
   platform: string;
-  formData: Record<string, any>;
-  groups: AdminGroup[];
+  formData: Record<string, unknown>;
+  groups: GroupConfigGroup[];
   editingGroupId?: number | null;
 }>();
 
-defineEmits<{ "update:formData": [value: Record<string, any>] }>();
+defineEmits<{ "update:formData": [value: Record<string, unknown>] }>();
 
 const { t } = useI18n();
 

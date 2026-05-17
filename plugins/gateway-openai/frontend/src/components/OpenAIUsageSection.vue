@@ -36,11 +36,24 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { Account, AccountUsageInfo } from '@/types'
-import UsageProgressBar from '../UsageProgressBar.vue'
+import { UsageProgressBar } from '@sub2api/plugin-sdk'
+
+/** Minimal usage progress shape for display. */
+interface UsageProgress {
+  utilization: number
+  resets_at: string | null
+  remaining_seconds: number
+  window_stats?: { requests: number; tokens: number; cost: number; standard_cost?: number; user_cost?: number } | null
+}
+
+/** Minimal account usage info shape. */
+interface AccountUsageInfo {
+  five_hour: UsageProgress | null
+  seven_day: UsageProgress | null
+}
 
 const props = defineProps<{
-  account: Account
+  account: { type: string; [k: string]: unknown }
   usageInfo: AccountUsageInfo | null
   loading: boolean
   error: string | null

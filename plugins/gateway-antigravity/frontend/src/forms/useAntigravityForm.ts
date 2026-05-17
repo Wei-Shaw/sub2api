@@ -38,6 +38,8 @@ export function useAntigravityForm() {
   const isOAuthFlow = () => antigravityAccountType.value === 'oauth'
   const oauthConfig: OAuthFlowConfig = {
     showRefreshTokenOption: true, needsMixedChannelCheck: true, platform: 'antigravity',
+    showImportantNotice: true,
+    i18nPrefix: 'admin.accounts.oauth.antigravity',
   }
   const formRefs = {
     antigravityAccountType, upstreamBaseUrl, editUpstreamApiKey,

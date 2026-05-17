@@ -43,7 +43,7 @@
     <div v-else class="text-xs text-gray-400">-</div>
   </div>
 
-  <!-- OAuth / complex account types: dispatch to platform sub-component -->
+  <!-- OAuth / complex account types: dispatch to plugin-provided or fallback component -->
   <div ref="rootRef" v-else-if="showUsageWindows">
     <component
       :is="usageComponent"
@@ -58,9 +58,13 @@
     />
   </div>
 
-  <!-- Non-OAuth/Setup-Token accounts -->
+  <!-- Non-OAuth/Setup-Token accounts: dispatch to plugin quota-info or generic KeyAccountStats -->
   <div ref="rootRef" v-else>
-    <AccountQuotaInfo v-if="account.platform === 'gemini'" :account="account" />
+    <component
+      v-if="quotaInfoComponent"
+      :is="quotaInfoComponent"
+      :account="account"
+    />
     <KeyAccountStats
       v-else
       :account="account"
@@ -75,26 +79,11 @@ import { ref, computed, toRef, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Account, WindowStats } from '@/types'
 import { formatCompactNumber } from '@/utils/format'
-import AccountQuotaInfo from './AccountQuotaInfo.vue'
 import KeyAccountStats from './usage/KeyAccountStats.vue'
 import { usePlatforms } from '@/composables/usePlatforms'
 import { useAccountUsageLoader } from '@/composables/useAccountUsageLoader'
 import type { UsageDisplayConfig } from '@/api/admin/platforms'
-
-// Platform sub-components
-import AnthropicUsageSection from './usage/AnthropicUsageSection.vue'
-import OpenAIUsageSection from './usage/OpenAIUsageSection.vue'
-import GeminiUsageSection from './usage/GeminiUsageSection.vue'
-import AntigravityUsageSection from './usage/AntigravityUsageSection.vue'
-
-// Component registry: maps platform+type to sub-component
-const USAGE_COMPONENT_REGISTRY: Record<string, Component> = {
-  'anthropic:oauth': AnthropicUsageSection,
-  'anthropic:setup-token': AnthropicUsageSection,
-  'openai:oauth': OpenAIUsageSection,
-  'antigravity:oauth': AntigravityUsageSection,
-  'gemini:*': GeminiUsageSection,
-}
+import { resolveUsageComponent } from './usage/usageComponentRegistry'
 
 const props = withDefaults(
   defineProps<{
@@ -121,9 +110,25 @@ const { loading, activeQueryLoading, error, usageInfo, loadActiveUsage } =
     rootRef,
   })
 
-// ===== Plugin platform support =====
-const BUILTIN_PLATFORMS = new Set(['anthropic', 'openai', 'gemini', 'antigravity'])
-const isPluginPlatform = computed(() => !BUILTIN_PLATFORMS.has(props.account.platform))
+// ===== Plugin platform support (no built-in usage component) =====
+const knownPluginPlatforms = computed(() => {
+  const decl = getPlatformDecl(props.account.platform)
+  return !!decl?.plugin_name
+})
+
+const hasUsageComponent = computed(() => {
+  // Check if a plugin provides a usage component for this platform:type
+  const component = resolveUsageComponent(props.account.platform, props.account.type)
+  return component !== null
+})
+
+const isPluginPlatform = computed(() => {
+  // A platform is "plugin-only display" if it has a plugin but no registered usage component
+  // AND it has a usage_display config (generic display from platform declaration)
+  if (!knownPluginPlatforms.value) return false
+  if (hasUsageComponent.value) return false
+  return !!usageDisplay.value
+})
 
 const usageDisplay = computed((): UsageDisplayConfig | undefined =>
   getPlatformDecl(props.account.platform)?.usage_display
@@ -156,15 +161,23 @@ function resolveExtraSource(source: string): string {
   return String(current)
 }
 
-// ===== Dispatch =====
+// ===== Dispatch to plugin-provided usage component =====
 const showUsageWindows = computed(() => {
-  if (props.account.platform === 'gemini') return true
+  const component = resolveUsageComponent(props.account.platform, props.account.type)
+  if (component) return true
   return props.account.type === 'oauth' || props.account.type === 'setup-token'
 })
 
 const usageComponent = computed((): Component => {
-  const key = `${props.account.platform}:${props.account.type}`
-  const wildcard = `${props.account.platform}:*`
-  return USAGE_COMPONENT_REGISTRY[key] || USAGE_COMPONENT_REGISTRY[wildcard] || KeyAccountStats
+  const pluginComponent = resolveUsageComponent(props.account.platform, props.account.type)
+  if (pluginComponent) return pluginComponent
+  // Final fallback: generic key stats
+  return KeyAccountStats
+})
+
+// ===== Quota info for non-OAuth accounts (e.g., Gemini apikey) =====
+const quotaInfoComponent = computed((): Component | null => {
+  const component = resolveUsageComponent(props.account.platform, 'quota-info')
+  return component
 })
 </script>

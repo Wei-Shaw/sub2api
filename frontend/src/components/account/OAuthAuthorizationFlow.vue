@@ -56,7 +56,7 @@
                 class="text-blue-600 focus:ring-blue-500"
               />
               <span class="text-sm text-blue-900 dark:text-blue-200">{{
-                t('admin.accounts.oauth.openai.mobileRefreshTokenAuth', '手动输入 Mobile RT')
+                t(getOAuthKey('mobileRefreshTokenAuth'))
               }}</span>
             </label>
             <label v-if="showSessionTokenOption" class="flex cursor-pointer items-center gap-2">
@@ -78,7 +78,7 @@
                 class="text-blue-600 focus:ring-blue-500"
               />
               <span class="text-sm text-blue-900 dark:text-blue-200">{{
-                t('admin.accounts.oauth.openai.accessTokenAuth', '手动输入 AT')
+                t(getOAuthKey('accessTokenAuth'))
               }}</span>
             </label>
             <label v-if="showCodexSessionImportOption" class="flex cursor-pointer items-center gap-2">
@@ -89,7 +89,7 @@
                 class="text-blue-600 focus:ring-blue-500"
               />
               <span class="text-sm text-blue-900 dark:text-blue-200">{{
-                t('admin.accounts.oauth.openai.codexSessionAuth')
+                t(getOAuthKey('codexSessionAuth'))
               }}</span>
             </label>
           </div>
@@ -185,7 +185,7 @@
             class="rounded-lg border border-blue-300 bg-white/80 p-4 dark:border-blue-600 dark:bg-gray-800/80"
           >
             <p class="mb-3 text-sm text-blue-700 dark:text-blue-300">
-              {{ t('admin.accounts.oauth.openai.codexSessionDesc') }}
+              {{ t(getOAuthKey('codexSessionDesc')) }}
             </p>
 
             <div class="mb-4">
@@ -193,7 +193,7 @@
                 class="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300"
               >
                 <Icon name="key" size="sm" class="text-blue-500" />
-                {{ t('admin.accounts.oauth.openai.codexSessionInputLabel') }}
+                {{ t(getOAuthKey('codexSessionInputLabel')) }}
                 <span
                   v-if="parsedCodexSessionCount > 1"
                   class="rounded-full bg-blue-500 px-2 py-0.5 text-xs text-white"
@@ -205,11 +205,11 @@
                 v-model="codexSessionInput"
                 rows="8"
                 class="input w-full resize-y font-mono text-sm"
-                :placeholder="t('admin.accounts.oauth.openai.codexSessionPlaceholder')"
+                :placeholder="t(getOAuthKey('codexSessionPlaceholder'))"
                 spellcheck="false"
               ></textarea>
               <p class="mt-1 text-xs text-blue-600 dark:text-blue-400">
-                {{ t('admin.accounts.oauth.openai.codexSessionHint') }}
+                {{ t(getOAuthKey('codexSessionHint')) }}
               </p>
             </div>
 
@@ -251,8 +251,8 @@
               <Icon v-else name="sparkles" size="sm" class="mr-2" />
               {{
                 loading
-                  ? t('admin.accounts.oauth.openai.validating')
-                  : t('admin.accounts.oauth.openai.codexSessionImportAndCreate')
+                  ? t(getOAuthKey('validating'))
+                  : t(getOAuthKey('codexSessionImportAndCreate'))
               }}
             </button>
           </div>
@@ -410,9 +410,9 @@
                 <p class="mb-2 font-medium text-blue-900 dark:text-blue-200">
                   {{ oauthStep1GenerateUrl }}
                 </p>
-                <div v-if="showProjectId && platform === 'gemini'" class="mb-3">
+                <div v-if="showProjectId" class="mb-3">
                   <label class="input-label flex items-center gap-2">
-                    {{ t('admin.accounts.oauth.gemini.projectIdLabel') }}
+                    {{ t(getOAuthKey('projectIdLabel')) }}
                     <a
                       href="https://console.cloud.google.com/"
                       target="_blank"
@@ -422,17 +422,17 @@
                       <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
                       </svg>
-                      {{ t('admin.accounts.oauth.gemini.howToGetProjectId') }}
+                      {{ t(getOAuthKey('howToGetProjectId')) }}
                     </a>
                   </label>
                   <input
                     v-model="projectId"
                     type="text"
                     class="input w-full font-mono text-sm"
-                    :placeholder="t('admin.accounts.oauth.gemini.projectIdPlaceholder')"
+                    :placeholder="t(getOAuthKey('projectIdPlaceholder'))"
                   />
                   <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    {{ t('admin.accounts.oauth.gemini.projectIdHint') }}
+                    {{ t(getOAuthKey('projectIdHint')) }}
                   </p>
                 </div>
                 <button
@@ -532,9 +532,9 @@
                 <p class="text-sm text-blue-700 dark:text-blue-300">
                   {{ oauthOpenUrlDesc }}
                 </p>
-                <!-- OpenAI Important Notice -->
+                <!-- Platform-specific important notice (configured via showImportantNotice) -->
                 <div
-                  v-if="isOpenAI"
+                  v-if="showImportantNotice"
                   class="mt-2 rounded border border-amber-300 bg-amber-50 p-3 dark:border-amber-700 dark:bg-amber-900/30"
                 >
                   <p
@@ -542,7 +542,7 @@
                     v-text="oauthImportantNotice"
                   ></p>
                 </div>
-                <!-- Proxy Warning (for non-OpenAI) -->
+                <!-- Proxy Warning -->
                 <div
                   v-else-if="showProxyWarning"
                   class="mt-2 rounded border border-yellow-300 bg-yellow-50 p-3 dark:border-yellow-700 dark:bg-yellow-900/30"
@@ -590,9 +590,9 @@
                     {{ oauthAuthCodeHint }}
                   </p>
 
-                  <!-- Gemini-specific state parameter warning -->
+                  <!-- State parameter warning (configured via showStateWarning) -->
                   <div
-                    v-if="platform === 'gemini'"
+                    v-if="showStateWarning"
                     class="mt-3 rounded-lg border-2 border-amber-400 bg-amber-50 p-3 dark:border-amber-600 dark:bg-amber-900/30"
                   >
                     <div class="flex items-start gap-2">
@@ -603,8 +603,8 @@
                         :stroke-width="2"
                       />
                       <div class="text-sm text-amber-800 dark:text-amber-300">
-                        <p class="font-semibold">{{ $t('admin.accounts.oauth.gemini.stateWarningTitle') }}</p>
-                        <p class="mt-1">{{ $t('admin.accounts.oauth.gemini.stateWarningDesc') }}</p>
+                        <p class="font-semibold">{{ t(getOAuthKey('stateWarningTitle')) }}</p>
+                        <p class="mt-1">{{ t(getOAuthKey('stateWarningDesc')) }}</p>
                       </div>
                     </div>
                   </div>
@@ -633,8 +633,7 @@ import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useClipboard } from '@/composables/useClipboard'
 import Icon from '@/components/icons/Icon.vue'
-import type { AddMethod, AuthInputMethod } from '@/composables/useAccountOAuth'
-import type { AccountPlatform } from '@/types'
+import type { AddMethod, AuthInputMethod } from './forms/types'
 
 interface Props {
   addMethod: AddMethod
@@ -646,14 +645,20 @@ interface Props {
   showProxyWarning?: boolean
   allowMultiple?: boolean
   methodLabel?: string
-  showCookieOption?: boolean // Whether to show cookie auto-auth option
-  showRefreshTokenOption?: boolean // Whether to show refresh token input option (OpenAI only)
-  showMobileRefreshTokenOption?: boolean // Whether to show mobile refresh token option (OpenAI only)
+  showCookieOption?: boolean
+  showRefreshTokenOption?: boolean
+  showMobileRefreshTokenOption?: boolean
   showSessionTokenOption?: boolean
   showAccessTokenOption?: boolean
   showCodexSessionImportOption?: boolean
-  platform?: AccountPlatform // Platform type for different UI/text
-  showProjectId?: boolean // New prop to control project ID visibility
+  platform?: string
+  showProjectId?: boolean
+  /** Show a warning notice in Step 2 (e.g. OpenAI "Important Notice") */
+  showImportantNotice?: boolean
+  /** Show a state-parameter warning under the auth-code input */
+  showStateWarning?: boolean
+  /** i18n key prefix for platform-specific translations */
+  i18nPrefix?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -672,7 +677,10 @@ const props = withDefaults(defineProps<Props>(), {
   showAccessTokenOption: false,
   showCodexSessionImportOption: false,
   platform: 'anthropic',
-  showProjectId: true
+  showProjectId: true,
+  showImportantNotice: false,
+  showStateWarning: false,
+  i18nPrefix: '',
 })
 
 const emit = defineEmits<{
@@ -689,14 +697,10 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 
-const isOpenAI = computed(() => props.platform === 'openai')
-
-// Get translation key based on platform
+// Get translation key based on i18nPrefix (falls back to platform-based prefix)
 const getOAuthKey = (key: string) => {
-  if (props.platform === 'openai') return `admin.accounts.oauth.openai.${key}`
-  if (props.platform === 'gemini') return `admin.accounts.oauth.gemini.${key}`
-  if (props.platform === 'antigravity') return `admin.accounts.oauth.antigravity.${key}`
-  return `admin.accounts.oauth.${key}`
+  const prefix = props.i18nPrefix || `admin.accounts.oauth`
+  return `${prefix}.${key}`
 }
 
 // Computed translations for current platform
@@ -711,11 +715,7 @@ const oauthAuthCodeDesc = computed(() => t(getOAuthKey('authCodeDesc')))
 const oauthAuthCode = computed(() => t(getOAuthKey('authCode')))
 const oauthAuthCodePlaceholder = computed(() => t(getOAuthKey('authCodePlaceholder')))
 const oauthAuthCodeHint = computed(() => t(getOAuthKey('authCodeHint')))
-const oauthImportantNotice = computed(() => {
-  if (props.platform === 'openai') return t('admin.accounts.oauth.openai.importantNotice')
-  if (props.platform === 'antigravity') return t('admin.accounts.oauth.antigravity.importantNotice')
-  return ''
-})
+const oauthImportantNotice = computed(() => t(getOAuthKey('importantNotice')))
 
 // Local state
 const inputMethod = ref<AuthInputMethod>(props.showCookieOption ? 'manual' : 'manual')

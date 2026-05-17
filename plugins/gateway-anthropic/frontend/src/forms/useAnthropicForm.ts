@@ -59,6 +59,7 @@ export function useAnthropicForm() {
   const oauthConfig: OAuthFlowConfig = {
     showCookieOption: true, showRefreshTokenOption: false, showHelp: true,
     allowMultiple: true, needsMixedChannelCheck: true, platform: 'anthropic',
+    i18nPrefix: 'admin.accounts.oauth',
   }
 
   function isOAuthFlow(cat: string): boolean { return cat === 'oauth-based' }
@@ -164,7 +165,7 @@ export function useAnthropicForm() {
   }
 
   const editRefs: editMode.EditModeRefs = {
-    apiKeyBaseUrl, editApiKey, vertexLocation,
+    addMethod, apiKeyBaseUrl, editApiKey, vertexLocation,
     anthropicPassthroughEnabled, webSearchEmulationMode, syncToStreamMode,
     interceptWarmupRequests, modelRestrictionMode, allowedModels, modelMappings,
     poolModeEnabled, poolModeRetryCount, customErrorCodesEnabled, selectedErrorCodes,

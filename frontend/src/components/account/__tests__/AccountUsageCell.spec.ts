@@ -1,7 +1,88 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
+import { defineComponent, h } from 'vue'
 import AccountUsageCell from '../AccountUsageCell.vue'
 import type { Account } from '@/types'
+
+/**
+ * Minimal stub for AntigravityUsageSection: renders text directly matching
+ * the format expected by UsageProgressBar stubs in tests.
+ */
+const AntigravityUsageSectionStub = defineComponent({
+  name: 'AntigravityUsageSectionStub',
+  props: { account: Object, usageInfo: Object, loading: Boolean, error: String },
+  setup(props) {
+    return () => {
+      const info = props.usageInfo as Record<string, unknown> | null
+      if (!info) return h('div', '-')
+      const lines: string[] = []
+      const quota = info.antigravity_quota as Record<string, { utilization: number; reset_time: string }> | undefined
+      if (quota) {
+        const getMax = (models: string[]) => {
+          let maxU = 0; let earliest: string | null = null
+          for (const m of models) {
+            const mq = quota[m]; if (!mq) continue
+            if (mq.utilization > maxU) maxU = mq.utilization
+            if (mq.reset_time && (!earliest || mq.reset_time < earliest)) earliest = mq.reset_time
+          }
+          return models.some(m => quota[m]) ? { utilization: maxU, resetTime: earliest } : null
+        }
+        const pro = getMax(['gemini-3-pro-low', 'gemini-3-pro-high', 'gemini-3-pro-preview'])
+        const flash = getMax(['gemini-3-flash'])
+        const image = getMax(['gemini-2.5-flash-image', 'gemini-3.1-flash-image', 'gemini-3-pro-image'])
+        const claude = getMax(['claude-sonnet-4-5', 'claude-opus-4-5-thinking', 'claude-sonnet-4-6', 'claude-opus-4-6', 'claude-opus-4-6-thinking'])
+        if (pro) lines.push(`admin.accounts.usageWindow.gemini3Pro|${pro.utilization}|${pro.resetTime}`)
+        if (flash) lines.push(`admin.accounts.usageWindow.gemini3Flash|${flash.utilization}|${flash.resetTime}`)
+        if (image) lines.push(`admin.accounts.usageWindow.gemini3Image|${image.utilization}|${image.resetTime}`)
+        if (claude) lines.push(`admin.accounts.usageWindow.claude|${claude.utilization}|${claude.resetTime}`)
+      }
+      const credits = info.ai_credits as Array<{ amount?: number }> | undefined
+      if (credits?.length) {
+        const total = credits.reduce((s, c) => s + (c.amount ?? 0), 0)
+        if (total > 0) lines.push(`admin.accounts.aiCreditsBalance: ${total.toFixed(0)}`)
+      }
+      return lines.length ? h('div', lines.join('\n')) : h('div', '-')
+    }
+  },
+})
+
+/**
+ * Minimal stub for OpenAIUsageSection: renders text matching UsageProgressBar
+ * stub format. Falls back to codex snapshot from account.extra.
+ */
+const OpenAIUsageSectionStub = defineComponent({
+  name: 'OpenAIUsageSectionStub',
+  props: { account: Object, usageInfo: Object, loading: Boolean, error: String },
+  setup(props) {
+    return () => {
+      const info = props.usageInfo as Record<string, unknown> | null
+      if (info) {
+        const lines: string[] = []
+        const fiveHour = info.five_hour as { utilization: number; resets_at: string | null; window_stats?: { tokens: number } } | null
+        const sevenDay = info.seven_day as { utilization: number; resets_at: string | null; window_stats?: { tokens: number } } | null
+        if (fiveHour) lines.push(`5h|${fiveHour.utilization}|${fiveHour.window_stats?.tokens ?? fiveHour.resets_at}`)
+        if (sevenDay) lines.push(`7d|${sevenDay.utilization}|${sevenDay.window_stats?.tokens ?? sevenDay.resets_at}`)
+        if (lines.length) return h('div', lines.join('\n'))
+      }
+      // Fallback to codex snapshot from account.extra (only when not loading)
+      if (props.loading) return h('div')
+      const extra = (props.account as Record<string, unknown>)?.extra as Record<string, unknown> | undefined
+      if (extra?.codex_5h_used_percent !== undefined || extra?.codex_7d_used_percent !== undefined) {
+        const lines: string[] = []
+        if (extra.codex_5h_used_percent !== undefined) {
+          const resetAt = extra.codex_5h_reset_at ? new Date(extra.codex_5h_reset_at as string).toISOString() : null
+          lines.push(`5h|${extra.codex_5h_used_percent}|${resetAt}`)
+        }
+        if (extra.codex_7d_used_percent !== undefined) {
+          const resetAt = extra.codex_7d_reset_at ? new Date(extra.codex_7d_reset_at as string).toISOString() : null
+          lines.push(`7d|${extra.codex_7d_used_percent}|${resetAt}`)
+        }
+        if (lines.length) return h('div', lines.join('\n'))
+      }
+      return h('div', '-')
+    }
+  },
+})
 
 const { getUsage } = vi.hoisted(() => ({
   getUsage: vi.fn()
@@ -17,6 +98,38 @@ vi.mock('@/api/admin', () => ({
 
 vi.mock('@/utils/usageLoadQueue', () => ({
   enqueueUsageRequest: (_account: unknown, fn: () => Promise<unknown>) => fn()
+}))
+
+// Mock usePlatforms with usage_display declarations for tested platforms
+const mockPlatformDecls: Record<string, { usage_display?: { show_req_count: boolean; show_cost: boolean } }> = {
+  openai: { usage_display: { show_req_count: true, show_cost: false } },
+  anthropic: { usage_display: { show_req_count: true, show_cost: true } },
+  antigravity: { usage_display: { show_req_count: true, show_cost: true } },
+  gemini: { usage_display: { show_req_count: true, show_cost: true } },
+}
+
+vi.mock('@/composables/usePlatforms', () => ({
+  usePlatforms: () => ({
+    getPlatformDecl: (platform: string) => mockPlatformDecls[platform] ?? undefined,
+    platforms: { value: [] },
+    loaded: { value: false },
+    loading: { value: false },
+    fetchPlatforms: vi.fn(),
+    refreshPlatforms: vi.fn(),
+    platformOptions: { value: [] },
+    typeOptionsForPlatform: { value: () => [] },
+    getAccountTypeDecl: () => undefined,
+  }),
+}))
+
+// Mock usage component registry -- return stub components for tested platforms
+const { resolveUsageComponent: mockResolveUsageComponent } = vi.hoisted(() => {
+  const resolveUsageComponent = vi.fn().mockReturnValue(null)
+  return { resolveUsageComponent }
+})
+
+vi.mock('../usage/usageComponentRegistry', () => ({
+  resolveUsageComponent: (...args: unknown[]) => mockResolveUsageComponent(...args),
 }))
 
 vi.mock('vue-i18n', async () => {
@@ -61,6 +174,12 @@ function makeAccount(overrides: Partial<Account>): Account {
 describe('AccountUsageCell', () => {
   beforeEach(() => {
     getUsage.mockReset()
+    // Default: return platform-appropriate stub components
+    mockResolveUsageComponent.mockImplementation((platform: string) => {
+      if (platform === 'antigravity') return AntigravityUsageSectionStub
+      if (platform === 'openai') return OpenAIUsageSectionStub
+      return null
+    })
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
       value: vi.fn().mockImplementation(() => ({
@@ -210,7 +329,7 @@ describe('AccountUsageCell', () => {
 
     await flushPromises()
 
-    expect(getUsage).toHaveBeenCalledWith(2000)
+    expect(getUsage).toHaveBeenCalledWith(2000, undefined)
     expect(wrapper.text()).toContain('5h|15|300')
     expect(wrapper.text()).toContain('7d|77|300')
   })
@@ -271,7 +390,7 @@ describe('AccountUsageCell', () => {
 
     await flushPromises()
 
-    expect(getUsage).toHaveBeenCalledWith(2001)
+    expect(getUsage).toHaveBeenCalledWith(2001, undefined)
     // 单一数据源：始终使用 /usage API 返回值，忽略 codex 快照
     expect(wrapper.text()).toContain('5h|18|900')
     expect(wrapper.text()).toContain('7d|36|900')
@@ -342,7 +461,7 @@ describe('AccountUsageCell', () => {
 
     // 手动刷新再拉一次
     expect(getUsage).toHaveBeenCalledTimes(2)
-    expect(getUsage).toHaveBeenCalledWith(2010)
+    expect(getUsage).toHaveBeenCalledWith(2010, undefined)
     // 单一数据源：始终使用 /usage API 值
     expect(wrapper.text()).toContain('5h|18|900')
   })
@@ -397,7 +516,7 @@ describe('AccountUsageCell', () => {
 
 	await flushPromises()
 
-	expect(getUsage).toHaveBeenCalledWith(2002)
+	expect(getUsage).toHaveBeenCalledWith(2002, undefined)
 	expect(wrapper.text()).toContain('5h|0|27700')
 	expect(wrapper.text()).toContain('7d|0|27700')
   })
@@ -434,7 +553,7 @@ describe('AccountUsageCell', () => {
 
     await flushPromises()
 
-    expect(getUsage).toHaveBeenCalledWith(2004)
+    expect(getUsage).toHaveBeenCalledWith(2004, undefined)
     expect(wrapper.text()).toContain('5h|12|2099-03-07T12:00:00.000Z')
     expect(wrapper.text()).toContain('7d|34|2099-03-13T12:00:00.000Z')
     errorSpy.mockRestore()
@@ -476,7 +595,7 @@ describe('AccountUsageCell', () => {
 
     await Promise.resolve()
 
-    expect(getUsage).toHaveBeenCalledWith(2005)
+    expect(getUsage).toHaveBeenCalledWith(2005, undefined)
     expect(wrapper.text()).not.toContain('5h|0|')
     expect(wrapper.text()).not.toContain('7d|0|')
 
@@ -640,7 +759,7 @@ describe('AccountUsageCell', () => {
 
 	await flushPromises()
 
-  expect(getUsage).toHaveBeenCalledWith(2004)
+  expect(getUsage).toHaveBeenCalledWith(2004, undefined)
   expect(wrapper.text()).toContain('5h|100|106540000')
   expect(wrapper.text()).toContain('7d|100|106540000')
   })

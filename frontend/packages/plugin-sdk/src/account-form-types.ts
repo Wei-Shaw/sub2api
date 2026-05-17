@@ -95,6 +95,17 @@ export interface OAuthFlowConfig {
   allowMultiple?: boolean
   needsMixedChannelCheck?: boolean
   showCodexSessionImportOption?: boolean
+  /** Show a warning notice in Step 2 (e.g. OpenAI's "Important Notice") */
+  showImportantNotice?: boolean
+  /** Show a state-parameter warning under the auth-code input (e.g. Gemini) */
+  showStateWarning?: boolean
+  /**
+   * i18n key prefix for platform-specific OAuth translations.
+   * Falls back to 'admin.accounts.oauth' when unset.
+   * Example: 'admin.accounts.oauth.openai' resolves 'title' as
+   * 'admin.accounts.oauth.openai.title'.
+   */
+  i18nPrefix?: string
   platform: string
 }
 

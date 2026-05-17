@@ -14,7 +14,7 @@
           <div
             :class="[
               'flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br',
-              platformGradientClass
+              gradientClass
             ]"
           >
             <PlatformIcon :platform="account.platform" size="md" class="text-white" />
@@ -30,79 +30,7 @@
         </div>
       </div>
 
-      <!-- Add Method Selection (Claude only) -->
-      <fieldset v-if="isAnthropic" class="border-0 p-0">
-        <legend class="input-label">{{ t('admin.accounts.oauth.authMethod') }}</legend>
-        <div class="mt-2 flex gap-4">
-          <label class="flex cursor-pointer items-center">
-            <input
-              v-model="addMethod"
-              type="radio"
-              value="oauth"
-              class="mr-2 text-primary-600 focus:ring-primary-500"
-            />
-            <span class="text-sm text-gray-700 dark:text-gray-300">{{
-              t('admin.accounts.types.oauth')
-            }}</span>
-          </label>
-          <label class="flex cursor-pointer items-center">
-            <input
-              v-model="addMethod"
-              type="radio"
-              value="setup-token"
-              class="mr-2 text-primary-600 focus:ring-primary-500"
-            />
-            <span class="text-sm text-gray-700 dark:text-gray-300">{{
-              t('admin.accounts.setupTokenLongLived')
-            }}</span>
-          </label>
-        </div>
-      </fieldset>
-
-      <!-- Gemini OAuth Type Display (read-only) -->
-      <div v-if="isGemini" class="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-dark-600 dark:bg-dark-700">
-        <div class="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-          {{ t('admin.accounts.oauth.gemini.oauthTypeLabel') }}
-        </div>
-        <div class="flex items-center gap-3">
-          <div
-            :class="[
-              'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
-              geminiOAuthType === 'google_one'
-                ? 'bg-purple-500 text-white'
-                : geminiOAuthType === 'code_assist'
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-amber-500 text-white'
-            ]"
-          >
-            <Icon v-if="geminiOAuthType === 'google_one'" name="user" size="sm" />
-            <Icon v-else-if="geminiOAuthType === 'code_assist'" name="cloud" size="sm" />
-            <Icon v-else name="sparkles" size="sm" />
-          </div>
-          <div>
-            <span class="block text-sm font-medium text-gray-900 dark:text-white">
-              {{
-                geminiOAuthType === 'google_one'
-                  ? 'Google One'
-                  : geminiOAuthType === 'code_assist'
-                    ? t('admin.accounts.gemini.oauthType.builtInTitle')
-                    : t('admin.accounts.gemini.oauthType.customTitle')
-              }}
-            </span>
-            <span class="text-xs text-gray-500 dark:text-gray-400">
-              {{
-                geminiOAuthType === 'google_one'
-                  ? t('admin.accounts.personalAccount')
-                  : geminiOAuthType === 'code_assist'
-                    ? t('admin.accounts.gemini.oauthType.builtInDesc')
-                    : t('admin.accounts.gemini.oauthType.customDesc')
-              }}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Hidden platform form component (provides OAuth methods) -->
+      <!-- Platform form component (provides OAuth methods; visible for non-OAuth flows) -->
       <component
         v-show="showCredentialForm"
         :is="platformFormComponent"
@@ -127,6 +55,9 @@
         :show-mobile-refresh-token-option="oauthCfg?.showMobileRefreshTokenOption ?? false"
         :show-session-token-option="oauthCfg?.showSessionTokenOption ?? false"
         :show-access-token-option="oauthCfg?.showAccessTokenOption ?? false"
+        :show-important-notice="oauthCfg?.showImportantNotice ?? false"
+        :show-state-warning="oauthCfg?.showStateWarning ?? false"
+        :i18n-prefix="oauthCfg?.i18nPrefix ?? ''"
         :allow-multiple="false"
         :method-label="t('admin.accounts.inputMethod')"
         :platform="account.platform"
@@ -196,7 +127,7 @@ import { ref, computed, watch, nextTick, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
-import type { AddMethod, AuthInputMethod } from '@/composables/useAccountOAuth'
+import type { AddMethod, AuthInputMethod } from './forms/types'
 import { usePlatforms } from '@/composables/usePlatforms'
 import { resolvePlatformForm } from './forms/platformFormRegistry'
 import type {
@@ -206,9 +137,9 @@ import type {
 import type { Account, CreateAccountRequest } from '@/types'
 import { BaseDialog } from '@sub2api/plugin-sdk'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
-import Icon from '@/components/icons/Icon.vue'
 import OAuthAuthorizationFlow from './OAuthAuthorizationFlow.vue'
 import { extractApiErrorMessage } from '@/utils/apiError'
+import { platformGradientClass as platformGradientClassFn, platformLabel } from '@/utils/platformColors'
 
 const BUILTIN_PLATFORMS = new Set(['anthropic', 'openai', 'gemini', 'antigravity'])
 
@@ -266,14 +197,7 @@ const oauthFlowRef = ref<OAuthFlowExposed | null>(null)
 
 // State
 const addMethod = ref<AddMethod>('oauth')
-const geminiOAuthType = ref<'code_assist' | 'google_one' | 'ai_studio'>('code_assist')
 const saving = ref(false)
-
-// ---------------------------------------------------------------------------
-// Computed - platform checks
-// ---------------------------------------------------------------------------
-const isAnthropic = computed(() => props.account?.platform === 'anthropic')
-const isGemini = computed(() => props.account?.platform === 'gemini')
 
 // ---------------------------------------------------------------------------
 // OAuth delegation (mirror CreateAccountModal pattern)
@@ -300,28 +224,18 @@ const showCredentialForm = computed(() =>
 )
 
 // ---------------------------------------------------------------------------
-// Theme / display
+// Theme / display (driven by PlatformDeclaration, no hardcoded platform checks)
 // ---------------------------------------------------------------------------
-const platformGradientClass = computed(() => {
-  const decl = props.account ? getPlatformDecl(props.account.platform) : undefined
-  if (decl?.theme_color) {
-    return `from-${decl.theme_color}-500 to-${decl.theme_color}-600`
-  }
-  if (props.account?.platform === 'openai') return 'from-green-500 to-green-600'
-  if (props.account?.platform === 'gemini') return 'from-blue-500 to-blue-600'
-  if (props.account?.platform === 'antigravity') return 'from-purple-500 to-purple-600'
-  return 'from-orange-500 to-orange-600'
+const gradientClass = computed(() => {
+  const p = props.account?.platform ?? ''
+  const decl = props.account ? getPlatformDecl(p) : undefined
+  return platformGradientClassFn(p, decl?.theme_color)
 })
 
 const platformAccountLabel = computed(() => {
   const decl = props.account ? getPlatformDecl(props.account.platform) : undefined
-  if (decl?.display_name) {
-    return `${decl.display_name} ${t('admin.accounts.account')}`
-  }
-  if (props.account?.platform === 'openai') return t('admin.accounts.openaiAccount')
-  if (props.account?.platform === 'gemini') return t('admin.accounts.geminiAccount')
-  if (props.account?.platform === 'antigravity') return t('admin.accounts.antigravityAccount')
-  return t('admin.accounts.claudeCodeAccount')
+  const name = decl?.display_name || platformLabel(props.account?.platform ?? '')
+  return `${name} ${t('admin.accounts.account')}`
 })
 
 // ---------------------------------------------------------------------------
@@ -362,21 +276,11 @@ function resolveAccountCategory(): string {
 }
 
 function initializeFromAccount(account: Account) {
-  if (account.platform === 'anthropic') {
-    if (account.type === 'oauth' || account.type === 'setup-token') {
-      addMethod.value = account.type as AddMethod
-    }
+  // Set addMethod from existing account type for the OAuth flow
+  if (account.type === 'oauth' || account.type === 'setup-token') {
+    addMethod.value = account.type as AddMethod
   }
-  if (account.platform === 'gemini') {
-    const creds = (account.credentials || {}) as Record<string, unknown>
-    geminiOAuthType.value =
-      creds.oauth_type === 'google_one'
-        ? 'google_one'
-        : creds.oauth_type === 'ai_studio'
-          ? 'ai_studio'
-          : 'code_assist'
-  }
-  // Initialize the form component after it mounts
+  // Delegate all platform-specific initialization to the form component
   void nextTick(() => {
     platformFormRef.value?.initFromAccount?.(account)
   })
@@ -387,7 +291,6 @@ function initializeFromAccount(account: Account) {
 // ---------------------------------------------------------------------------
 const resetState = () => {
   addMethod.value = 'oauth'
-  geminiOAuthType.value = 'code_assist'
   platformFormRef.value?.reset?.()
   platformFormRef.value?.resetOAuth?.()
   oauthFlowRef.value?.reset()
