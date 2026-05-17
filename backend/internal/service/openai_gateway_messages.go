@@ -227,7 +227,18 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	// 4c. Apply OpenAI fast policy (may filter service_tier or block the request).
 	// Mirrors the Claude anthropic-beta "fast-mode-2026-02-01" filter, but keyed
 	// on the body-level service_tier field (priority/flex).
-	updatedBody, policyErr := s.applyOpenAIFastPolicyToBody(ctx, account, upstreamModel, responsesBody)
+	updatedBody, policyErr := s.applyOpenAIFastPolicyToBodyForEndpoint(
+		ctx,
+		c,
+		account,
+		upstreamModel,
+		OpenAIFastPolicyEndpointMessagesToResponses,
+		openAIFastPolicyBodyShapeResponses,
+		responsesBody,
+		originalModel,
+		normalizedModel,
+		billingModel,
+	)
 	if policyErr != nil {
 		var blocked *OpenAIFastBlockedError
 		if errors.As(policyErr, &blocked) {
@@ -375,12 +386,12 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		if promptCacheKey != "" && anthropicDigestChain != "" {
 			s.bindOpenAICompatAnthropicDigestPromptCacheKey(account, apiKeyID, anthropicDigestChain, promptCacheKey, anthropicMatchedDigestChain)
 		}
-		if responsesReq.ServiceTier != "" {
-			st := responsesReq.ServiceTier
+		if serviceTier := extractOpenAIServiceTierFromBody(responsesBody); serviceTier != nil {
+			st := *serviceTier
 			result.ServiceTier = &st
 		}
-		if responsesReq.Reasoning != nil && responsesReq.Reasoning.Effort != "" {
-			re := responsesReq.Reasoning.Effort
+		if reasoningEffort := extractOpenAIReasoningEffortFromBody(responsesBody, originalModel); reasoningEffort != nil {
+			re := *reasoningEffort
 			result.ReasoningEffort = &re
 		}
 	}

@@ -90,10 +90,15 @@
           default-sort-order="asc"
           @sort="handleSort"
         >
-          <template #cell-name="{ value }">
-            <span class="font-medium text-gray-900 dark:text-white">{{
-              value
-            }}</span>
+          <template #cell-name="{ value, row }">
+            <div class="space-y-0.5">
+              <div class="font-medium text-gray-900 dark:text-white">
+                {{ value }}
+              </div>
+              <div class="text-xs text-gray-400 dark:text-gray-500">
+                #{{ row.id }}
+              </div>
+            </div>
           </template>
 
           <template #cell-platform="{ value }">

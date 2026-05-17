@@ -345,6 +345,11 @@ type OpenAIFastPolicyRule struct {
 	ServiceTier          string   `json:"service_tier"`
 	Action               string   `json:"action"`
 	Scope                string   `json:"scope"`
+	AccountIDs           []int64  `json:"account_ids,omitempty"`
+	AccountPoolIDs       []int64  `json:"account_pool_ids,omitempty"`
+	GroupIDs             []int64  `json:"group_ids,omitempty"`
+	Endpoints            []string `json:"endpoints,omitempty"`
+	ReasoningEffort      string   `json:"reasoning_effort,omitempty"`
 	ErrorMessage         string   `json:"error_message,omitempty"`
 	ModelWhitelist       []string `json:"model_whitelist,omitempty"`
 	FallbackAction       string   `json:"fallback_action,omitempty"`

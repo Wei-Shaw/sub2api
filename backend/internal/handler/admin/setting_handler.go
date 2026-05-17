@@ -285,6 +285,12 @@ func openaiFastPolicySettingsToDTO(s *service.OpenAIFastPolicySettings) *dto.Ope
 	rules := make([]dto.OpenAIFastPolicyRule, len(s.Rules))
 	for i, r := range s.Rules {
 		rules[i] = dto.OpenAIFastPolicyRule(r)
+		switch rules[i].Action {
+		case service.OpenAIFastPolicyActionForcePriority,
+			service.OpenAIFastPolicyActionForceDefault,
+			service.OpenAIFastPolicyActionForceFlex:
+			rules[i].ServiceTier = service.OpenAIFastTierAny
+		}
 	}
 	return &dto.OpenAIFastPolicySettings{Rules: rules}
 }
