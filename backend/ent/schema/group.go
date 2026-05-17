@@ -234,6 +234,33 @@ func (Group) Fields() []ent.Field {
 			Default([]domain.ReasoningEffortMapping{}).
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
 			Comment("OpenAI reasoning effort 自定义精确映射；先映射再应用上限"),
+
+		// Token 定价基准：每百万 token 的 USD 均价（用于 USD↔token 互转）。
+		// 由系统根据分组关联的主力模型 pricing 自动计算（weighted avg of input+output）。
+		// Admin 可 override；为 0 时系统自动从 model pricing 推导。
+		field.Float("token_price_per_million").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
+			Comment("每百万 token 均价 (USD)，用于 USD↔token 互转；0/NULL 表示系统自动从 model pricing 推导"),
+
+		// 定价参考模型：admin 选择的用于计算 token_price_per_million 的模型。
+		// 默认为该 platform 最新主力模型（如 gpt-5.5、claude-sonnet-4）。
+		// 系统根据此模型的 input/output pricing 自动计算 token_price_per_million。
+		field.String("pricing_reference_model").
+			MaxLen(100).
+			Optional().
+			Nillable().
+			Comment("定价参考模型名称，用于自动计算 token_price_per_million"),
+
+		// Input/Output token 比例：用于计算 token_price_per_million 的加权均价。
+		// 例如 0.90 表示 90% input tokens + 10% output tokens。
+		// 系统根据此比例 + pricing_reference_model 的 input/output 单价自动计算 token_price_per_million。
+		field.Float("input_output_ratio").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "decimal(5,4)"}).
+			Comment("Input token 占比 (0.0-1.0)，用于加权计算 token_price_per_million；NULL 使用系统默认 0.90"),
 	}
 }
 

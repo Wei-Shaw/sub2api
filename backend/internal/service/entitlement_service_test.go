@@ -173,13 +173,13 @@ func TestEntitlementService_GetUserEntitlements_AttachesCreditQuotaForBalanceGro
 	)
 	svc.SetUsageRepository(&entitlementUsageRepoStub{summary: &usagestats.CreditUsageSummary{
 		UserID:                     42,
-		CreditUnitScale:            10000,
+		CreditUnitScale:            1,
 		BalanceLedgerAmount:        50,
 		TotalPurchasedLedgerAmount: 100,
 		TotalPurchasedCredits:      27000000,
-		TotalUsedLedgerAmount:      80,
-		TotalUsedCredits:           21600000,
-		Accuracy:                   "aggregate_estimate",
+		TotalUsedLedgerAmount:      50,
+		TotalUsedCredits:           13500000,
+		Accuracy:                   "balance_derived",
 		GroupEstimates: []usagestats.CreditUsageGroupEstimate{
 			{
 				GroupID:               balanceGroupID,
@@ -195,7 +195,7 @@ func TestEntitlementService_GetUserEntitlements_AttachesCreditQuotaForBalanceGro
 	require.NoError(t, err)
 	require.NotNil(t, state.CreditUsage)
 	require.Equal(t, 27000000.0, state.CreditUsage.TotalPurchasedCredits)
-	require.Equal(t, 21600000.0, state.CreditUsage.TotalUsedCredits)
+	require.Equal(t, 13500000.0, state.CreditUsage.TotalUsedCredits)
 
 	require.Len(t, state.Entitlements, 1)
 	item := state.Entitlements[0]
@@ -203,11 +203,11 @@ func TestEntitlementService_GetUserEntitlements_AttachesCreditQuotaForBalanceGro
 	require.NotNil(t, item.CreditQuota)
 	require.Equal(t, 27000000.0, item.CreditQuota.PurchasedCredits)
 	// Single-group case: used share equals total used.
-	require.InDelta(t, 21600000.0, item.CreditQuota.UsedCredits, 0.001)
-	require.InDelta(t, 5400000.0, item.CreditQuota.RemainingCredits, 0.001)
-	require.InDelta(t, 80.0, item.CreditQuota.UsedPercent, 0.001)
-	require.True(t, item.CreditQuota.NearLimit)
-	require.Equal(t, "aggregate_estimate", item.CreditQuota.Accuracy)
+	require.InDelta(t, 13500000.0, item.CreditQuota.UsedCredits, 0.001)
+	require.InDelta(t, 13500000.0, item.CreditQuota.RemainingCredits, 0.001)
+	require.InDelta(t, 50.0, item.CreditQuota.UsedPercent, 0.001)
+	require.False(t, item.CreditQuota.NearLimit)
+	require.Equal(t, "balance_derived", item.CreditQuota.Accuracy)
 	require.NotEmpty(t, item.CreditQuota.AccuracyNotes)
 }
 
@@ -224,7 +224,7 @@ func TestEntitlementService_GetUserEntitlements_DoesNotAttachCreditQuotaForSubsc
 	)
 	svc.SetUsageRepository(&entitlementUsageRepoStub{summary: &usagestats.CreditUsageSummary{
 		UserID:          42,
-		CreditUnitScale: 10000,
+		CreditUnitScale: 1,
 		GroupEstimates: []usagestats.CreditUsageGroupEstimate{
 			{GroupID: subscriptionGroupID, PurchasedCredits: 999, RateMultiplier: 1},
 		},

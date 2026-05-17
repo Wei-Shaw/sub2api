@@ -316,7 +316,8 @@ type CreditUsageGroupEstimate struct {
 
 // CreditUsageSummary represents aggregate credit usage reconstructed from existing logs and orders.
 type CreditUsageSummary struct {
-	UserID                          int64                      `json:"user_id"`
+	UserID int64 `json:"user_id"`
+	// Deprecated: CreditUnitScale is always 1.0 now. Kept for JSON backward compatibility.
 	CreditUnitScale                 float64                    `json:"credit_unit_scale"`
 	BalanceLedgerAmount             float64                    `json:"balance_ledger_amount"`
 	TotalPurchasedLedgerAmount      float64                    `json:"total_purchased_ledger_amount"`

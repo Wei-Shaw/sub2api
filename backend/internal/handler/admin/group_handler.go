@@ -207,11 +207,13 @@ type CreateGroupRequest struct {
 	MaxReasoningEffort string `json:"max_reasoning_effort"`
 	// OpenAI/Codex 推理强度精确映射。
 	ReasoningEffortMappings []service.ReasoningEffortMapping `json:"reasoning_effort_mappings"`
+	// Token pricing fields for USD↔token conversion
+	TokenPricePerMillion  *float64 `json:"token_price_per_million"`
+	PricingReferenceModel *string  `json:"pricing_reference_model"`
+	InputOutputRatio      *float64 `json:"input_output_ratio"`
 	// 从指定分组复制账号（创建后自动绑定）
 	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
 }
-
-// UpdateGroupRequest represents update group request
 type UpdateGroupRequest struct {
 	Name             string             `json:"name"`
 	Description      *string            `json:"description"`
@@ -266,6 +268,10 @@ type UpdateGroupRequest struct {
 	MaxReasoningEffort *string `json:"max_reasoning_effort"`
 	// nil 不修改，空数组清空，非空数组替换。
 	ReasoningEffortMappings *[]service.ReasoningEffortMapping `json:"reasoning_effort_mappings"`
+	// Token pricing fields for USD↔token conversion
+	TokenPricePerMillion  *float64 `json:"token_price_per_million"`
+	PricingReferenceModel *string  `json:"pricing_reference_model"`
+	InputOutputRatio      *float64 `json:"input_output_ratio"`
 	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
 	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
 }
@@ -580,6 +586,9 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		RPMLimit:                        req.RPMLimit.ToCreateInput(),
 		MaxReasoningEffort:              req.MaxReasoningEffort,
 		ReasoningEffortMappings:         req.ReasoningEffortMappings,
+		TokenPricePerMillion:            req.TokenPricePerMillion,
+		PricingReferenceModel:           req.PricingReferenceModel,
+		InputOutputRatio:                req.InputOutputRatio,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
 	})
 	if err != nil {
@@ -699,6 +708,9 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		RPMLimit:                        req.RPMLimit.ToUpdateInput(),
 		MaxReasoningEffort:              req.MaxReasoningEffort,
 		ReasoningEffortMappings:         req.ReasoningEffortMappings,
+		TokenPricePerMillion:            req.TokenPricePerMillion,
+		PricingReferenceModel:           req.PricingReferenceModel,
+		InputOutputRatio:                req.InputOutputRatio,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
 	})
 	if err != nil {

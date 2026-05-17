@@ -23058,6 +23058,11 @@ type GroupMutation struct {
 	max_reasoning_effort                    *string
 	reasoning_effort_mappings               *[]domain.ReasoningEffortMapping
 	appendreasoning_effort_mappings         []domain.ReasoningEffortMapping
+	token_price_per_million                 *float64
+	addtoken_price_per_million              *float64
+	pricing_reference_model                 *string
+	input_output_ratio                      *float64
+	addinput_output_ratio                   *float64
 	clearedFields                           map[string]struct{}
 	api_keys                                map[int64]struct{}
 	removedapi_keys                         map[int64]struct{}
@@ -25722,6 +25727,195 @@ func (m *GroupMutation) ResetReasoningEffortMappings() {
 	m.appendreasoning_effort_mappings = nil
 }
 
+// SetTokenPricePerMillion sets the "token_price_per_million" field.
+func (m *GroupMutation) SetTokenPricePerMillion(f float64) {
+	m.token_price_per_million = &f
+	m.addtoken_price_per_million = nil
+}
+
+// TokenPricePerMillion returns the value of the "token_price_per_million" field in the mutation.
+func (m *GroupMutation) TokenPricePerMillion() (r float64, exists bool) {
+	v := m.token_price_per_million
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTokenPricePerMillion returns the old "token_price_per_million" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldTokenPricePerMillion(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTokenPricePerMillion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTokenPricePerMillion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTokenPricePerMillion: %w", err)
+	}
+	return oldValue.TokenPricePerMillion, nil
+}
+
+// AddTokenPricePerMillion adds f to the "token_price_per_million" field.
+func (m *GroupMutation) AddTokenPricePerMillion(f float64) {
+	if m.addtoken_price_per_million != nil {
+		*m.addtoken_price_per_million += f
+	} else {
+		m.addtoken_price_per_million = &f
+	}
+}
+
+// AddedTokenPricePerMillion returns the value that was added to the "token_price_per_million" field in this mutation.
+func (m *GroupMutation) AddedTokenPricePerMillion() (r float64, exists bool) {
+	v := m.addtoken_price_per_million
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearTokenPricePerMillion clears the value of the "token_price_per_million" field.
+func (m *GroupMutation) ClearTokenPricePerMillion() {
+	m.token_price_per_million = nil
+	m.addtoken_price_per_million = nil
+	m.clearedFields[group.FieldTokenPricePerMillion] = struct{}{}
+}
+
+// TokenPricePerMillionCleared returns if the "token_price_per_million" field was cleared in this mutation.
+func (m *GroupMutation) TokenPricePerMillionCleared() bool {
+	_, ok := m.clearedFields[group.FieldTokenPricePerMillion]
+	return ok
+}
+
+// ResetTokenPricePerMillion resets all changes to the "token_price_per_million" field.
+func (m *GroupMutation) ResetTokenPricePerMillion() {
+	m.token_price_per_million = nil
+	m.addtoken_price_per_million = nil
+	delete(m.clearedFields, group.FieldTokenPricePerMillion)
+}
+
+// SetPricingReferenceModel sets the "pricing_reference_model" field.
+func (m *GroupMutation) SetPricingReferenceModel(s string) {
+	m.pricing_reference_model = &s
+}
+
+// PricingReferenceModel returns the value of the "pricing_reference_model" field in the mutation.
+func (m *GroupMutation) PricingReferenceModel() (r string, exists bool) {
+	v := m.pricing_reference_model
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPricingReferenceModel returns the old "pricing_reference_model" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldPricingReferenceModel(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPricingReferenceModel is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPricingReferenceModel requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPricingReferenceModel: %w", err)
+	}
+	return oldValue.PricingReferenceModel, nil
+}
+
+// ClearPricingReferenceModel clears the value of the "pricing_reference_model" field.
+func (m *GroupMutation) ClearPricingReferenceModel() {
+	m.pricing_reference_model = nil
+	m.clearedFields[group.FieldPricingReferenceModel] = struct{}{}
+}
+
+// PricingReferenceModelCleared returns if the "pricing_reference_model" field was cleared in this mutation.
+func (m *GroupMutation) PricingReferenceModelCleared() bool {
+	_, ok := m.clearedFields[group.FieldPricingReferenceModel]
+	return ok
+}
+
+// ResetPricingReferenceModel resets all changes to the "pricing_reference_model" field.
+func (m *GroupMutation) ResetPricingReferenceModel() {
+	m.pricing_reference_model = nil
+	delete(m.clearedFields, group.FieldPricingReferenceModel)
+}
+
+// SetInputOutputRatio sets the "input_output_ratio" field.
+func (m *GroupMutation) SetInputOutputRatio(f float64) {
+	m.input_output_ratio = &f
+	m.addinput_output_ratio = nil
+}
+
+// InputOutputRatio returns the value of the "input_output_ratio" field in the mutation.
+func (m *GroupMutation) InputOutputRatio() (r float64, exists bool) {
+	v := m.input_output_ratio
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldInputOutputRatio returns the old "input_output_ratio" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldInputOutputRatio(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldInputOutputRatio is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldInputOutputRatio requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldInputOutputRatio: %w", err)
+	}
+	return oldValue.InputOutputRatio, nil
+}
+
+// AddInputOutputRatio adds f to the "input_output_ratio" field.
+func (m *GroupMutation) AddInputOutputRatio(f float64) {
+	if m.addinput_output_ratio != nil {
+		*m.addinput_output_ratio += f
+	} else {
+		m.addinput_output_ratio = &f
+	}
+}
+
+// AddedInputOutputRatio returns the value that was added to the "input_output_ratio" field in this mutation.
+func (m *GroupMutation) AddedInputOutputRatio() (r float64, exists bool) {
+	v := m.addinput_output_ratio
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearInputOutputRatio clears the value of the "input_output_ratio" field.
+func (m *GroupMutation) ClearInputOutputRatio() {
+	m.input_output_ratio = nil
+	m.addinput_output_ratio = nil
+	m.clearedFields[group.FieldInputOutputRatio] = struct{}{}
+}
+
+// InputOutputRatioCleared returns if the "input_output_ratio" field was cleared in this mutation.
+func (m *GroupMutation) InputOutputRatioCleared() bool {
+	_, ok := m.clearedFields[group.FieldInputOutputRatio]
+	return ok
+}
+
+// ResetInputOutputRatio resets all changes to the "input_output_ratio" field.
+func (m *GroupMutation) ResetInputOutputRatio() {
+	m.input_output_ratio = nil
+	m.addinput_output_ratio = nil
+	delete(m.clearedFields, group.FieldInputOutputRatio)
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by ids.
 func (m *GroupMutation) AddAPIKeyIDs(ids ...int64) {
 	if m.api_keys == nil {
@@ -26080,7 +26274,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 52)
+	fields := make([]string, 0, 55)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -26237,6 +26431,15 @@ func (m *GroupMutation) Fields() []string {
 	if m.reasoning_effort_mappings != nil {
 		fields = append(fields, group.FieldReasoningEffortMappings)
 	}
+	if m.token_price_per_million != nil {
+		fields = append(fields, group.FieldTokenPricePerMillion)
+	}
+	if m.pricing_reference_model != nil {
+		fields = append(fields, group.FieldPricingReferenceModel)
+	}
+	if m.input_output_ratio != nil {
+		fields = append(fields, group.FieldInputOutputRatio)
+	}
 	return fields
 }
 
@@ -26349,6 +26552,12 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.MaxReasoningEffort()
 	case group.FieldReasoningEffortMappings:
 		return m.ReasoningEffortMappings()
+	case group.FieldTokenPricePerMillion:
+		return m.TokenPricePerMillion()
+	case group.FieldPricingReferenceModel:
+		return m.PricingReferenceModel()
+	case group.FieldInputOutputRatio:
+		return m.InputOutputRatio()
 	}
 	return nil, false
 }
@@ -26462,6 +26671,12 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldMaxReasoningEffort(ctx)
 	case group.FieldReasoningEffortMappings:
 		return m.OldReasoningEffortMappings(ctx)
+	case group.FieldTokenPricePerMillion:
+		return m.OldTokenPricePerMillion(ctx)
+	case group.FieldPricingReferenceModel:
+		return m.OldPricingReferenceModel(ctx)
+	case group.FieldInputOutputRatio:
+		return m.OldInputOutputRatio(ctx)
 	}
 	return nil, fmt.Errorf("unknown Group field %s", name)
 }
@@ -26835,6 +27050,27 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetReasoningEffortMappings(v)
 		return nil
+	case group.FieldTokenPricePerMillion:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTokenPricePerMillion(v)
+		return nil
+	case group.FieldPricingReferenceModel:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPricingReferenceModel(v)
+		return nil
+	case group.FieldInputOutputRatio:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetInputOutputRatio(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Group field %s", name)
 }
@@ -26906,6 +27142,12 @@ func (m *GroupMutation) AddedFields() []string {
 	if m.addrpm_limit != nil {
 		fields = append(fields, group.FieldRpmLimit)
 	}
+	if m.addtoken_price_per_million != nil {
+		fields = append(fields, group.FieldTokenPricePerMillion)
+	}
+	if m.addinput_output_ratio != nil {
+		fields = append(fields, group.FieldInputOutputRatio)
+	}
 	return fields
 }
 
@@ -26956,6 +27198,10 @@ func (m *GroupMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedSortOrder()
 	case group.FieldRpmLimit:
 		return m.AddedRpmLimit()
+	case group.FieldTokenPricePerMillion:
+		return m.AddedTokenPricePerMillion()
+	case group.FieldInputOutputRatio:
+		return m.AddedInputOutputRatio()
 	}
 	return nil, false
 }
@@ -27112,6 +27358,20 @@ func (m *GroupMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddRpmLimit(v)
 		return nil
+	case group.FieldTokenPricePerMillion:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddTokenPricePerMillion(v)
+		return nil
+	case group.FieldInputOutputRatio:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddInputOutputRatio(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Group numeric field %s", name)
 }
@@ -27167,6 +27427,15 @@ func (m *GroupMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(group.FieldModelRouting) {
 		fields = append(fields, group.FieldModelRouting)
+	}
+	if m.FieldCleared(group.FieldTokenPricePerMillion) {
+		fields = append(fields, group.FieldTokenPricePerMillion)
+	}
+	if m.FieldCleared(group.FieldPricingReferenceModel) {
+		fields = append(fields, group.FieldPricingReferenceModel)
+	}
+	if m.FieldCleared(group.FieldInputOutputRatio) {
+		fields = append(fields, group.FieldInputOutputRatio)
 	}
 	return fields
 }
@@ -27229,6 +27498,15 @@ func (m *GroupMutation) ClearField(name string) error {
 		return nil
 	case group.FieldModelRouting:
 		m.ClearModelRouting()
+		return nil
+	case group.FieldTokenPricePerMillion:
+		m.ClearTokenPricePerMillion()
+		return nil
+	case group.FieldPricingReferenceModel:
+		m.ClearPricingReferenceModel()
+		return nil
+	case group.FieldInputOutputRatio:
+		m.ClearInputOutputRatio()
 		return nil
 	}
 	return fmt.Errorf("unknown Group nullable field %s", name)
@@ -27393,6 +27671,15 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldReasoningEffortMappings:
 		m.ResetReasoningEffortMappings()
+		return nil
+	case group.FieldTokenPricePerMillion:
+		m.ResetTokenPricePerMillion()
+		return nil
+	case group.FieldPricingReferenceModel:
+		m.ResetPricingReferenceModel()
+		return nil
+	case group.FieldInputOutputRatio:
+		m.ResetInputOutputRatio()
 		return nil
 	}
 	return fmt.Errorf("unknown Group field %s", name)
@@ -29952,6 +30239,8 @@ type PaymentOrderMutation struct {
 	addsubscription_days         *int
 	balance_group_id             *int64
 	addbalance_group_id          *int64
+	actual_credits               *int64
+	addactual_credits            *int64
 	provider_instance_id         *string
 	provider_key                 *string
 	provider_snapshot            *map[string]interface{}
@@ -31350,6 +31639,76 @@ func (m *PaymentOrderMutation) ResetBalanceGroupID() {
 	delete(m.clearedFields, paymentorder.FieldBalanceGroupID)
 }
 
+// SetActualCredits sets the "actual_credits" field.
+func (m *PaymentOrderMutation) SetActualCredits(i int64) {
+	m.actual_credits = &i
+	m.addactual_credits = nil
+}
+
+// ActualCredits returns the value of the "actual_credits" field in the mutation.
+func (m *PaymentOrderMutation) ActualCredits() (r int64, exists bool) {
+	v := m.actual_credits
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldActualCredits returns the old "actual_credits" field's value of the PaymentOrder entity.
+// If the PaymentOrder object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PaymentOrderMutation) OldActualCredits(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldActualCredits is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldActualCredits requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldActualCredits: %w", err)
+	}
+	return oldValue.ActualCredits, nil
+}
+
+// AddActualCredits adds i to the "actual_credits" field.
+func (m *PaymentOrderMutation) AddActualCredits(i int64) {
+	if m.addactual_credits != nil {
+		*m.addactual_credits += i
+	} else {
+		m.addactual_credits = &i
+	}
+}
+
+// AddedActualCredits returns the value that was added to the "actual_credits" field in this mutation.
+func (m *PaymentOrderMutation) AddedActualCredits() (r int64, exists bool) {
+	v := m.addactual_credits
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearActualCredits clears the value of the "actual_credits" field.
+func (m *PaymentOrderMutation) ClearActualCredits() {
+	m.actual_credits = nil
+	m.addactual_credits = nil
+	m.clearedFields[paymentorder.FieldActualCredits] = struct{}{}
+}
+
+// ActualCreditsCleared returns if the "actual_credits" field was cleared in this mutation.
+func (m *PaymentOrderMutation) ActualCreditsCleared() bool {
+	_, ok := m.clearedFields[paymentorder.FieldActualCredits]
+	return ok
+}
+
+// ResetActualCredits resets all changes to the "actual_credits" field.
+func (m *PaymentOrderMutation) ResetActualCredits() {
+	m.actual_credits = nil
+	m.addactual_credits = nil
+	delete(m.clearedFields, paymentorder.FieldActualCredits)
+}
+
 // SetProviderInstanceID sets the "provider_instance_id" field.
 func (m *PaymentOrderMutation) SetProviderInstanceID(s string) {
 	m.provider_instance_id = &s
@@ -32356,7 +32715,7 @@ func (m *PaymentOrderMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *PaymentOrderMutation) Fields() []string {
-	fields := make([]string, 0, 47)
+	fields := make([]string, 0, 48)
 	if m.user != nil {
 		fields = append(fields, paymentorder.FieldUserID)
 	}
@@ -32434,6 +32793,9 @@ func (m *PaymentOrderMutation) Fields() []string {
 	}
 	if m.balance_group_id != nil {
 		fields = append(fields, paymentorder.FieldBalanceGroupID)
+	}
+	if m.actual_credits != nil {
+		fields = append(fields, paymentorder.FieldActualCredits)
 	}
 	if m.provider_instance_id != nil {
 		fields = append(fields, paymentorder.FieldProviderInstanceID)
@@ -32558,6 +32920,8 @@ func (m *PaymentOrderMutation) Field(name string) (ent.Value, bool) {
 		return m.SubscriptionDays()
 	case paymentorder.FieldBalanceGroupID:
 		return m.BalanceGroupID()
+	case paymentorder.FieldActualCredits:
+		return m.ActualCredits()
 	case paymentorder.FieldProviderInstanceID:
 		return m.ProviderInstanceID()
 	case paymentorder.FieldProviderKey:
@@ -32661,6 +33025,8 @@ func (m *PaymentOrderMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldSubscriptionDays(ctx)
 	case paymentorder.FieldBalanceGroupID:
 		return m.OldBalanceGroupID(ctx)
+	case paymentorder.FieldActualCredits:
+		return m.OldActualCredits(ctx)
 	case paymentorder.FieldProviderInstanceID:
 		return m.OldProviderInstanceID(ctx)
 	case paymentorder.FieldProviderKey:
@@ -32894,6 +33260,13 @@ func (m *PaymentOrderMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetBalanceGroupID(v)
 		return nil
+	case paymentorder.FieldActualCredits:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetActualCredits(v)
+		return nil
 	case paymentorder.FieldProviderInstanceID:
 		v, ok := value.(string)
 		if !ok {
@@ -33079,6 +33452,9 @@ func (m *PaymentOrderMutation) AddedFields() []string {
 	if m.addbalance_group_id != nil {
 		fields = append(fields, paymentorder.FieldBalanceGroupID)
 	}
+	if m.addactual_credits != nil {
+		fields = append(fields, paymentorder.FieldActualCredits)
+	}
 	if m.addrefund_amount != nil {
 		fields = append(fields, paymentorder.FieldRefundAmount)
 	}
@@ -33110,6 +33486,8 @@ func (m *PaymentOrderMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedSubscriptionDays()
 	case paymentorder.FieldBalanceGroupID:
 		return m.AddedBalanceGroupID()
+	case paymentorder.FieldActualCredits:
+		return m.AddedActualCredits()
 	case paymentorder.FieldRefundAmount:
 		return m.AddedRefundAmount()
 	}
@@ -33191,6 +33569,13 @@ func (m *PaymentOrderMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddBalanceGroupID(v)
 		return nil
+	case paymentorder.FieldActualCredits:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddActualCredits(v)
+		return nil
 	case paymentorder.FieldRefundAmount:
 		v, ok := value.(float64)
 		if !ok {
@@ -33235,6 +33620,9 @@ func (m *PaymentOrderMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(paymentorder.FieldBalanceGroupID) {
 		fields = append(fields, paymentorder.FieldBalanceGroupID)
+	}
+	if m.FieldCleared(paymentorder.FieldActualCredits) {
+		fields = append(fields, paymentorder.FieldActualCredits)
 	}
 	if m.FieldCleared(paymentorder.FieldProviderInstanceID) {
 		fields = append(fields, paymentorder.FieldProviderInstanceID)
@@ -33318,6 +33706,9 @@ func (m *PaymentOrderMutation) ClearField(name string) error {
 		return nil
 	case paymentorder.FieldBalanceGroupID:
 		m.ClearBalanceGroupID()
+		return nil
+	case paymentorder.FieldActualCredits:
+		m.ClearActualCredits()
 		return nil
 	case paymentorder.FieldProviderInstanceID:
 		m.ClearProviderInstanceID()
@@ -33443,6 +33834,9 @@ func (m *PaymentOrderMutation) ResetField(name string) error {
 		return nil
 	case paymentorder.FieldBalanceGroupID:
 		m.ResetBalanceGroupID()
+		return nil
+	case paymentorder.FieldActualCredits:
+		m.ResetActualCredits()
 		return nil
 	case paymentorder.FieldProviderInstanceID:
 		m.ResetProviderInstanceID()

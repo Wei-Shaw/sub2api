@@ -58,6 +58,7 @@ type EntitlementItem struct {
 	WeeklyLimitUSD       *float64                `json:"weekly_limit_usd,omitempty"`
 	MonthlyLimitUSD      *float64                `json:"monthly_limit_usd,omitempty"`
 	RateMultiplier       float64                 `json:"rate_multiplier"`
+	TokenPricePerMillion *float64                `json:"token_price_per_million,omitempty"`
 	SupportedModelScopes []string                `json:"supported_model_scopes,omitempty"`
 	Switchable           bool                    `json:"switchable"`
 	Current              bool                    `json:"current"`
@@ -260,7 +261,7 @@ func (s *EntitlementService) attachCreditUsage(ctx context.Context, state *Entit
 		if !ok {
 			continue
 		}
-		quota := buildEntitlementCreditQuota(est, totalPurchasedCredits, totalUsedCredits, summary.TotalUsedLedgerAmount, summary.CreditUnitScale)
+		quota := buildEntitlementCreditQuota(est, totalPurchasedCredits, totalUsedCredits, summary.TotalUsedLedgerAmount, 1.0)
 		item.CreditQuota = quota
 	}
 }
@@ -300,10 +301,10 @@ func buildEntitlementCreditQuota(est usagestats.CreditUsageGroupEstimate, totalP
 		UsedPercent:           percent,
 		NearLimit:             percent >= entitlementCreditNearLimitPercent,
 		CreditUnitScale:       creditUnitScale,
-		Accuracy:              "aggregate_estimate",
+		Accuracy:              "balance_derived",
 		AccuracyNotes: []string{
-			"used credits per group are proportional shares of aggregate usage; usage_logs do not track payment_order_id/balance_package_id",
-			"remaining credits drift if admin edits group rate_multiplier after purchase; snapshot actual_credits + group_rate_multiplier in payment_orders.provider_snapshot for stable accuracy",
+			"purchased_credits from SUM(payment_orders.actual_credits); remaining derived proportionally from current balance",
+			"used_credits = purchased_credits - remaining_credits",
 		},
 	}
 }
@@ -385,6 +386,7 @@ func entitlementItemFromSubscription(sub UserSubscription, group *Group) Entitle
 	var modelScopes []string
 	var dailyLimit, weeklyLimit, monthlyLimit *float64
 	var fallbackGroupID *int64
+	var tokenPricePerMillion *float64
 	if group != nil {
 		name = group.Name
 		platform = group.Platform
@@ -394,6 +396,7 @@ func entitlementItemFromSubscription(sub UserSubscription, group *Group) Entitle
 		weeklyLimit = group.WeeklyLimitUSD
 		monthlyLimit = group.MonthlyLimitUSD
 		fallbackGroupID = group.FallbackGroupID
+		tokenPricePerMillion = group.TokenPricePerMillion
 		if !group.IsSubscriptionType() {
 			mode = EntitlementModeBalance
 		}
@@ -416,6 +419,7 @@ func entitlementItemFromSubscription(sub UserSubscription, group *Group) Entitle
 		WeeklyLimitUSD:       weeklyLimit,
 		MonthlyLimitUSD:      monthlyLimit,
 		RateMultiplier:       rateMultiplier,
+		TokenPricePerMillion: tokenPricePerMillion,
 		SupportedModelScopes: modelScopes,
 		Switchable:           sub.IsActive(),
 		SubscriptionID:       &subID,

@@ -66,6 +66,8 @@ const (
 	FieldSubscriptionDays = "subscription_days"
 	// FieldBalanceGroupID holds the string denoting the balance_group_id field in the database.
 	FieldBalanceGroupID = "balance_group_id"
+	// FieldActualCredits holds the string denoting the actual_credits field in the database.
+	FieldActualCredits = "actual_credits"
 	// FieldProviderInstanceID holds the string denoting the provider_instance_id field in the database.
 	FieldProviderInstanceID = "provider_instance_id"
 	// FieldProviderKey holds the string denoting the provider_key field in the database.
@@ -150,6 +152,7 @@ var Columns = []string{
 	FieldSubscriptionGroupID,
 	FieldSubscriptionDays,
 	FieldBalanceGroupID,
+	FieldActualCredits,
 	FieldProviderInstanceID,
 	FieldProviderKey,
 	FieldProviderSnapshot,
@@ -382,6 +385,11 @@ func BySubscriptionDays(opts ...sql.OrderTermOption) OrderOption {
 // ByBalanceGroupID orders the results by the balance_group_id field.
 func ByBalanceGroupID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldBalanceGroupID, opts...).ToFunc()
+}
+
+// ByActualCredits orders the results by the actual_credits field.
+func ByActualCredits(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldActualCredits, opts...).ToFunc()
 }
 
 // ByProviderInstanceID orders the results by the provider_instance_id field.

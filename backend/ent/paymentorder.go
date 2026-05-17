@@ -71,6 +71,8 @@ type PaymentOrder struct {
 	SubscriptionDays *int `json:"subscription_days,omitempty"`
 	// BalanceGroupID holds the value of the "balance_group_id" field.
 	BalanceGroupID *int64 `json:"balance_group_id,omitempty"`
+	// ActualCredits holds the value of the "actual_credits" field.
+	ActualCredits *int64 `json:"actual_credits,omitempty"`
 	// ProviderInstanceID holds the value of the "provider_instance_id" field.
 	ProviderInstanceID *string `json:"provider_instance_id,omitempty"`
 	// ProviderKey holds the value of the "provider_key" field.
@@ -150,7 +152,7 @@ func (*PaymentOrder) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case paymentorder.FieldAmount, paymentorder.FieldPayAmount, paymentorder.FieldPaymentAmount, paymentorder.FieldLedgerAmount, paymentorder.FieldFxRatePaymentToLedger, paymentorder.FieldFeeRate, paymentorder.FieldRefundAmount:
 			values[i] = new(sql.NullFloat64)
-		case paymentorder.FieldID, paymentorder.FieldUserID, paymentorder.FieldPlanID, paymentorder.FieldSubscriptionGroupID, paymentorder.FieldSubscriptionDays, paymentorder.FieldBalanceGroupID:
+		case paymentorder.FieldID, paymentorder.FieldUserID, paymentorder.FieldPlanID, paymentorder.FieldSubscriptionGroupID, paymentorder.FieldSubscriptionDays, paymentorder.FieldBalanceGroupID, paymentorder.FieldActualCredits:
 			values[i] = new(sql.NullInt64)
 		case paymentorder.FieldUserEmail, paymentorder.FieldUserName, paymentorder.FieldUserNotes, paymentorder.FieldPaymentCurrency, paymentorder.FieldLedgerCurrency, paymentorder.FieldFxSource, paymentorder.FieldRechargeCode, paymentorder.FieldOutTradeNo, paymentorder.FieldPaymentType, paymentorder.FieldPaymentTradeNo, paymentorder.FieldPayURL, paymentorder.FieldQrCode, paymentorder.FieldQrCodeImg, paymentorder.FieldOrderType, paymentorder.FieldProviderInstanceID, paymentorder.FieldProviderKey, paymentorder.FieldStatus, paymentorder.FieldRefundReason, paymentorder.FieldRefundRequestReason, paymentorder.FieldRefundRequestedBy, paymentorder.FieldFailedReason, paymentorder.FieldClientIP, paymentorder.FieldSrcHost, paymentorder.FieldSrcURL:
 			values[i] = new(sql.NullString)
@@ -342,6 +344,13 @@ func (_m *PaymentOrder) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.BalanceGroupID = new(int64)
 				*_m.BalanceGroupID = value.Int64
+			}
+		case paymentorder.FieldActualCredits:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field actual_credits", values[i])
+			} else if value.Valid {
+				_m.ActualCredits = new(int64)
+				*_m.ActualCredits = value.Int64
 			}
 		case paymentorder.FieldProviderInstanceID:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -619,6 +628,11 @@ func (_m *PaymentOrder) String() string {
 	builder.WriteString(", ")
 	if v := _m.BalanceGroupID; v != nil {
 		builder.WriteString("balance_group_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.ActualCredits; v != nil {
+		builder.WriteString("actual_credits=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")

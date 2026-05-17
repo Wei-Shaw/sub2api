@@ -323,6 +323,20 @@ func (_c *PaymentOrderCreate) SetNillableBalanceGroupID(v *int64) *PaymentOrderC
 	return _c
 }
 
+// SetActualCredits sets the "actual_credits" field.
+func (_c *PaymentOrderCreate) SetActualCredits(v int64) *PaymentOrderCreate {
+	_c.mutation.SetActualCredits(v)
+	return _c
+}
+
+// SetNillableActualCredits sets the "actual_credits" field if the given value is not nil.
+func (_c *PaymentOrderCreate) SetNillableActualCredits(v *int64) *PaymentOrderCreate {
+	if v != nil {
+		_c.SetActualCredits(*v)
+	}
+	return _c
+}
+
 // SetProviderInstanceID sets the "provider_instance_id" field.
 func (_c *PaymentOrderCreate) SetProviderInstanceID(v string) *PaymentOrderCreate {
 	_c.mutation.SetProviderInstanceID(v)
@@ -963,6 +977,10 @@ func (_c *PaymentOrderCreate) createSpec() (*PaymentOrder, *sqlgraph.CreateSpec)
 		_spec.SetField(paymentorder.FieldBalanceGroupID, field.TypeInt64, value)
 		_node.BalanceGroupID = &value
 	}
+	if value, ok := _c.mutation.ActualCredits(); ok {
+		_spec.SetField(paymentorder.FieldActualCredits, field.TypeInt64, value)
+		_node.ActualCredits = &value
+	}
 	if value, ok := _c.mutation.ProviderInstanceID(); ok {
 		_spec.SetField(paymentorder.FieldProviderInstanceID, field.TypeString, value)
 		_node.ProviderInstanceID = &value
@@ -1545,6 +1563,30 @@ func (u *PaymentOrderUpsert) AddBalanceGroupID(v int64) *PaymentOrderUpsert {
 // ClearBalanceGroupID clears the value of the "balance_group_id" field.
 func (u *PaymentOrderUpsert) ClearBalanceGroupID() *PaymentOrderUpsert {
 	u.SetNull(paymentorder.FieldBalanceGroupID)
+	return u
+}
+
+// SetActualCredits sets the "actual_credits" field.
+func (u *PaymentOrderUpsert) SetActualCredits(v int64) *PaymentOrderUpsert {
+	u.Set(paymentorder.FieldActualCredits, v)
+	return u
+}
+
+// UpdateActualCredits sets the "actual_credits" field to the value that was provided on create.
+func (u *PaymentOrderUpsert) UpdateActualCredits() *PaymentOrderUpsert {
+	u.SetExcluded(paymentorder.FieldActualCredits)
+	return u
+}
+
+// AddActualCredits adds v to the "actual_credits" field.
+func (u *PaymentOrderUpsert) AddActualCredits(v int64) *PaymentOrderUpsert {
+	u.Add(paymentorder.FieldActualCredits, v)
+	return u
+}
+
+// ClearActualCredits clears the value of the "actual_credits" field.
+func (u *PaymentOrderUpsert) ClearActualCredits() *PaymentOrderUpsert {
+	u.SetNull(paymentorder.FieldActualCredits)
 	return u
 }
 
@@ -2418,6 +2460,34 @@ func (u *PaymentOrderUpsertOne) UpdateBalanceGroupID() *PaymentOrderUpsertOne {
 func (u *PaymentOrderUpsertOne) ClearBalanceGroupID() *PaymentOrderUpsertOne {
 	return u.Update(func(s *PaymentOrderUpsert) {
 		s.ClearBalanceGroupID()
+	})
+}
+
+// SetActualCredits sets the "actual_credits" field.
+func (u *PaymentOrderUpsertOne) SetActualCredits(v int64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetActualCredits(v)
+	})
+}
+
+// AddActualCredits adds v to the "actual_credits" field.
+func (u *PaymentOrderUpsertOne) AddActualCredits(v int64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddActualCredits(v)
+	})
+}
+
+// UpdateActualCredits sets the "actual_credits" field to the value that was provided on create.
+func (u *PaymentOrderUpsertOne) UpdateActualCredits() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateActualCredits()
+	})
+}
+
+// ClearActualCredits clears the value of the "actual_credits" field.
+func (u *PaymentOrderUpsertOne) ClearActualCredits() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.ClearActualCredits()
 	})
 }
 
@@ -3511,6 +3581,34 @@ func (u *PaymentOrderUpsertBulk) UpdateBalanceGroupID() *PaymentOrderUpsertBulk 
 func (u *PaymentOrderUpsertBulk) ClearBalanceGroupID() *PaymentOrderUpsertBulk {
 	return u.Update(func(s *PaymentOrderUpsert) {
 		s.ClearBalanceGroupID()
+	})
+}
+
+// SetActualCredits sets the "actual_credits" field.
+func (u *PaymentOrderUpsertBulk) SetActualCredits(v int64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetActualCredits(v)
+	})
+}
+
+// AddActualCredits adds v to the "actual_credits" field.
+func (u *PaymentOrderUpsertBulk) AddActualCredits(v int64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddActualCredits(v)
+	})
+}
+
+// UpdateActualCredits sets the "actual_credits" field to the value that was provided on create.
+func (u *PaymentOrderUpsertBulk) UpdateActualCredits() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateActualCredits()
+	})
+}
+
+// ClearActualCredits clears the value of the "actual_credits" field.
+func (u *PaymentOrderUpsertBulk) ClearActualCredits() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.ClearActualCredits()
 	})
 }
 

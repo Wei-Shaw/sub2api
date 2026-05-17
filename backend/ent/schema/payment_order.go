@@ -115,6 +115,12 @@ func (PaymentOrder) Fields() []ent.Field {
 		field.Int64("balance_group_id").
 			Optional().
 			Nillable(),
+		// actual_credits stores the token credit entitlement for balance orders.
+		// Computed from: ledger_amount / rate_multiplier / avg_price × 1,000,000
+		// Stored at order creation time so entitlements queries can SUM directly.
+		field.Int64("actual_credits").
+			Optional().
+			Nillable(),
 		field.String("provider_instance_id").
 			Optional().
 			Nillable().
