@@ -6,6 +6,7 @@
 
 - Added IPv6-aware proxy host normalization in backend proxy create, update, URL generation, duplicate checks, and import/export key matching.
 - Added a persisted `ip_version` field for proxies, including ent schema, SQL migrations, repository mapping, service models, API requests, DTO responses, admin import/export, and frontend API types.
+- Kept the already-applied `001_init.sql` migration immutable; existing and fresh databases receive `ip_version` through `136_add_proxy_ip_version.sql` so deployed databases do not hit checksum mismatches.
 - Updated backend proxy testing so `IP版本 = IPv6` uses IPv6 probe endpoints instead of the old IPv4-only `ip-api.com` / `httpbin.org` chain.
 - Added IPv6 probe endpoint parsing through `api6.ipify.org` and `api64.ipify.org`, and reject successful probe responses that do not return an IPv6 exit address when IPv6 is selected.
 - Updated admin `IP管理` UI to add an `IPv4 / IPv6` exit IP selection block in create and edit dialogs, aligned with the existing modal style.
@@ -35,6 +36,8 @@
   - Copied frontend `.npmrc` into the Docker dependency-install layer so pnpm runs the required `esbuild` / `vue-demi` postinstall scripts during image builds.
   - Pinned Docker frontend builds to pnpm 9 instead of `pnpm@latest` to avoid pnpm 11 interactive build-script approval failures.
   - Ignored local `frontend/pnpm-workspace.yaml` scratch files in Docker builds so deployment images always build the frontend as the standalone package defined by `frontend/package.json`.
+- Deployment migration check:
+  - Restored the original `001_init.sql` contents after Server A reported a migration checksum mismatch, then verified the new `136_add_proxy_ip_version.sql` migration is the only schema change used to add proxy `ip_version`.
 - Real SOCKS5 IPv6 exit verification on Server A:
   - `curl -x socks5h://[redacted] 'http://api6.ipify.org?format=json'` returned an IPv6 address.
   - `curl -x socks5h://[redacted] 'http://api64.ipify.org?format=json'` returned the same IPv6 address.
