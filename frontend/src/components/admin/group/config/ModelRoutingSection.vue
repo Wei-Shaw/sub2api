@@ -235,7 +235,7 @@ const accountSearchRunner = useKeyedDebouncedSearch<SimpleAccount[]>({
     const res = await adminAPI.accounts.list(
       1,
       20,
-      { search: keyword, platform: "anthropic" },
+      { search: keyword, platform: props.formData.platform || '' },
       { signal },
     );
     return res.items.map((a) => ({ id: a.id, name: a.name }));

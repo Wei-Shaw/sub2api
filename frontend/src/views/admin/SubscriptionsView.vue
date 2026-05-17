@@ -747,6 +747,7 @@ import type { SimpleUser } from '@/api/admin/usage'
 import type { Column } from '@sub2api/plugin-sdk'
 import { formatDateOnly } from '@/utils/format'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
+import { usePlatforms } from '@/composables/usePlatforms'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import { DataTable } from '@sub2api/plugin-sdk'
@@ -761,6 +762,21 @@ import Icon from '@/components/icons/Icon.vue'
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const { platformOptions: dynamicPlatformOptions, fetchPlatforms } = usePlatforms()
+
+const FALLBACK_PLATFORM_OPTIONS = [
+  { value: 'anthropic', label: 'Anthropic' },
+  { value: 'openai', label: 'OpenAI' },
+  { value: 'gemini', label: 'Gemini' },
+  { value: 'antigravity', label: 'Antigravity' },
+]
+
+const platformFilterOptions = computed(() => [
+  { value: '', label: t('admin.subscriptions.allPlatforms') },
+  ...(dynamicPlatformOptions.value.length > 0
+    ? dynamicPlatformOptions.value
+    : FALLBACK_PLATFORM_OPTIONS),
+])
 
 interface GroupOption {
   value: number
@@ -960,14 +976,6 @@ const extendForm = reactive({
 const groupOptions = computed(() => [
   { value: '', label: t('admin.subscriptions.allGroups') },
   ...groups.value.map((g) => ({ value: g.id.toString(), label: g.name }))
-])
-
-const platformFilterOptions = computed(() => [
-  { value: '', label: t('admin.subscriptions.allPlatforms') },
-  { value: 'anthropic', label: 'Anthropic' },
-  { value: 'openai', label: 'OpenAI' },
-  { value: 'gemini', label: 'Gemini' },
-  { value: 'antigravity', label: 'Antigravity' }
 ])
 
 // Group options for assign (only subscription type groups)
@@ -1366,6 +1374,7 @@ onMounted(() => {
   loadSavedColumns()
   loadSubscriptions()
   loadGroups()
+  fetchPlatforms()
   document.addEventListener('click', handleClickOutside)
 })
 

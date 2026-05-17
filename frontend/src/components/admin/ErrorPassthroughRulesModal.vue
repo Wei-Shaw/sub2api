@@ -438,6 +438,7 @@ import type { ErrorPassthroughRule } from '@/api/admin/errorPassthrough'
 import { BaseDialog } from '@sub2api/plugin-sdk'
 import { ConfirmDialog } from '@sub2api/plugin-sdk'
 import Icon from '@/components/icons/Icon.vue'
+import { usePlatforms } from '@/composables/usePlatforms'
 
 const props = defineProps<{
   show: boolean
@@ -452,6 +453,20 @@ void emit // suppress unused warning - emit is used via $emit in template
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const { platformOptions: dynamicPlatformOptions, fetchPlatforms } = usePlatforms()
+
+const FALLBACK_PLATFORM_OPTIONS = [
+  { value: 'anthropic', label: 'Anthropic' },
+  { value: 'openai', label: 'OpenAI' },
+  { value: 'gemini', label: 'Gemini' },
+  { value: 'antigravity', label: 'Antigravity' },
+]
+
+const platformOptions = computed(() =>
+  dynamicPlatformOptions.value.length > 0
+    ? dynamicPlatformOptions.value
+    : FALLBACK_PLATFORM_OPTIONS,
+)
 
 const rules = ref<ErrorPassthroughRule[]>([])
 const loading = ref(false)
@@ -485,16 +500,10 @@ const matchModeOptions = computed(() => [
   { value: 'all', label: t('admin.errorPassthrough.matchMode.all'), description: t('admin.errorPassthrough.matchMode.allHint') }
 ])
 
-const platformOptions = [
-  { value: 'anthropic', label: 'Anthropic' },
-  { value: 'openai', label: 'OpenAI' },
-  { value: 'gemini', label: 'Gemini' },
-  { value: 'antigravity', label: 'Antigravity' }
-]
-
 // Load rules when dialog opens
 watch(() => props.show, (newVal) => {
   if (newVal) {
+    fetchPlatforms()
     loadRules()
   }
 })

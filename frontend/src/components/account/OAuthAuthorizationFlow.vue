@@ -676,7 +676,7 @@ const props = withDefaults(defineProps<Props>(), {
   showSessionTokenOption: false,
   showAccessTokenOption: false,
   showCodexSessionImportOption: false,
-  platform: 'anthropic',
+  platform: '',
   showProjectId: true,
   showImportantNotice: false,
   showStateWarning: false,

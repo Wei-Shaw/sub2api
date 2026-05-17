@@ -217,7 +217,7 @@ import Pagination from '@/components/common/Pagination.vue'
 import Icon from '@/components/icons/Icon.vue'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import { usePlatforms } from '@/composables/usePlatforms'
-import { dynamicTextClass } from '@/utils/platformColors'
+import { dynamicTextClass, platformTextClass } from '@/utils/platformColors'
 
 interface LocalEntry extends GroupRPMOverrideEntry {}
 
@@ -251,16 +251,12 @@ let searchTimeout: ReturnType<typeof setTimeout>
 const { getPlatformDecl } = usePlatforms()
 
 const platformColorClass = computed(() => {
-  const decl = getPlatformDecl(props.group?.platform || '')
+  const platform = props.group?.platform || ''
+  const decl = getPlatformDecl(platform)
   if (decl?.theme_color) {
     return dynamicTextClass(decl.theme_color)
   }
-  switch (props.group?.platform) {
-    case 'anthropic': return 'text-orange-700 dark:text-orange-400'
-    case 'openai': return 'text-emerald-700 dark:text-emerald-400'
-    case 'antigravity': return 'text-purple-700 dark:text-purple-400'
-    default: return 'text-blue-700 dark:text-blue-400'
-  }
+  return platformTextClass(platform)
 })
 
 const isDirty = computed(() => {

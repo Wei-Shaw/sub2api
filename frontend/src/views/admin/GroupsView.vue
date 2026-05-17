@@ -779,10 +779,17 @@ const sortableGroups = ref<AdminGroup[]>([]);
 const createMessagesDispatchDefaults = createDefaultMessagesDispatchFormState();
 const editMessagesDispatchDefaults = createDefaultMessagesDispatchFormState();
 
+const defaultPlatform = computed<GroupPlatform>(() => {
+  if (dynamicPlatformList.value.length > 0) {
+    return dynamicPlatformList.value[0].value as GroupPlatform;
+  }
+  return "anthropic" as GroupPlatform;
+});
+
 const createForm = reactive({
   name: "",
   description: "",
-  platform: "anthropic" as GroupPlatform,
+  platform: defaultPlatform.value as GroupPlatform,
   rate_multiplier: 1.0,
   is_exclusive: false,
   subscription_type: "standard" as SubscriptionType,
@@ -824,7 +831,7 @@ const createForm = reactive({
 const editForm = reactive({
   name: "",
   description: "",
-  platform: "anthropic" as GroupPlatform,
+  platform: defaultPlatform.value as GroupPlatform,
   rate_multiplier: 1.0,
   is_exclusive: false,
   status: "active" as "active" | "inactive",
@@ -1019,7 +1026,7 @@ const closeCreateModal = () => {
   createFormFieldsRef.value?.resetRoutingRules?.();
   createForm.name = "";
   createForm.description = "";
-  createForm.platform = "anthropic";
+  createForm.platform = defaultPlatform.value;
   createForm.rate_multiplier = 1.0;
   createForm.is_exclusive = false;
   createForm.subscription_type = "standard";
@@ -1084,6 +1091,8 @@ const buildGroupPayload = (
     weekly_limit_usd: emptyToNull(normalizeOptionalLimit(form.weekly_limit_usd as number | string | null)),
     monthly_limit_usd: emptyToNull(normalizeOptionalLimit(form.monthly_limit_usd as number | string | null)),
     model_routing: formFieldsRef?.getRoutingRulesApiFormat?.() ?? null,
+    // TODO: messages_dispatch is currently OpenAI-specific. When PlatformDeclaration gains a
+    // "supports_messages_dispatch" capability flag, replace this platform check with metadata.
     messages_dispatch_model_config:
       form.platform === "openai"
         ? messagesDispatchFormStateToConfig({
@@ -1267,9 +1276,12 @@ watch(
 watch(
   () => createForm.platform,
   (newVal) => {
+    // TODO: fallback_group_id_on_invalid_request support should come from PlatformDeclaration
+    // or GroupConfigDeclaration metadata (e.g. "supports_fallback_on_invalid_request" capability).
     if (!["anthropic", "antigravity"].includes(newVal)) {
       createForm.fallback_group_id_on_invalid_request = null;
     }
+    // TODO: messages_dispatch support should come from PlatformDeclaration capability metadata.
     if (newVal !== "openai") {
       resetMessagesDispatchFormState(createForm);
     }
@@ -1279,9 +1291,12 @@ watch(
 watch(
   () => editForm.platform,
   (newVal) => {
+    // TODO: fallback_group_id_on_invalid_request support should come from PlatformDeclaration
+    // or GroupConfigDeclaration metadata (e.g. "supports_fallback_on_invalid_request" capability).
     if (!["anthropic", "antigravity"].includes(newVal)) {
       editForm.fallback_group_id_on_invalid_request = null;
     }
+    // TODO: messages_dispatch support should come from PlatformDeclaration capability metadata.
     if (newVal !== "openai") {
       resetMessagesDispatchFormState(editForm);
       editForm.allow_messages_dispatch = false;
