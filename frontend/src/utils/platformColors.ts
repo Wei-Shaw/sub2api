@@ -106,6 +106,14 @@ const GRADIENT_SUBTEXT: Record<Platform, string> = {
 }
 const GRADIENT_SUBTEXT_DEFAULT = 'text-primary-200'
 
+// ── Dot (small accent indicator) ────────────────────────────────────
+const DOT: Record<Platform, string> = {
+  anthropic: 'bg-orange-500',
+  openai: 'bg-emerald-500',
+  antigravity: 'bg-purple-500',
+  gemini: 'bg-blue-500',
+}
+
 // ── Public API ──────────────────────────────────────────────────────
 
 function isPlatform(p: string): p is Platform {
@@ -155,6 +163,15 @@ export function platformIconClass(p: string, themeColor?: string): string {
     return `text-${tw}-500 dark:text-${tw}-400`
   }
   return ICON_DEFAULT
+}
+
+export function platformDotClass(p: string, themeColor?: string): string {
+  if (isPlatform(p)) return DOT[p]
+  if (themeColor) {
+    const tw = themeColorToTailwind(themeColor)
+    return `bg-${tw}-500`
+  }
+  return 'bg-gray-400'
 }
 
 export function platformButtonClass(p: string, themeColor?: string): string {

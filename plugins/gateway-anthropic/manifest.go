@@ -77,6 +77,9 @@ func buildManifest() *pluginsdk.Manifest {
 						Description: "Anthropic platform API key",
 						SortOrder:   3,
 						BadgeLabel:  "Key",
+						FrontendMeta: json.RawMessage(`{
+							"supports_advanced_quota_control": true
+						}`),
 					},
 					{
 						Type:        "bedrock",
@@ -85,6 +88,9 @@ func buildManifest() *pluginsdk.Manifest {
 						Description: "AWS Bedrock access via SigV4 or cross-region API key",
 						SortOrder:   4,
 						BadgeLabel:  "Bedrock",
+						FrontendMeta: json.RawMessage(`{
+							"supports_advanced_quota_control": true
+						}`),
 					},
 					{
 						Type:        "service_account",

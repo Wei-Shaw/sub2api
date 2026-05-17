@@ -154,7 +154,7 @@
         <div class="mb-3">
           <h3 class="input-label mb-0 text-base font-semibold">{{ t('admin.accounts.quotaControl.title') }}</h3>
           <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            {{ form.platform === 'anthropic' ? t('admin.accounts.quotaControl.hint') : t('admin.accounts.quotaLimitHint') }}
+            {{ currentAccountTypeMeta.supports_advanced_quota_control ? t('admin.accounts.quotaControl.hint') : t('admin.accounts.quotaLimitHint') }}
           </p>
         </div>
         <QuotaLimitCard
@@ -344,6 +344,7 @@ import type {
 } from './forms/types'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { extractApiErrorMessage } from '@/utils/apiError'
+import { getAccountTypeMeta } from '@/utils/platformFrontendMeta'
 import type { QuotaResetMode } from '@/constants/account'
 
 // ---------------------------------------------------------------------------
@@ -382,7 +383,7 @@ const authStore = useAuthStore()
 // ---------------------------------------------------------------------------
 // Platform declarations
 // ---------------------------------------------------------------------------
-const { platforms, fetchPlatforms, getPlatformDecl } = usePlatforms()
+const { platforms, fetchPlatforms, getPlatformDecl, getAccountTypeDecl } = usePlatforms()
 
 const BUILTIN_PLATFORMS = new Set(['anthropic', 'openai', 'gemini', 'antigravity'])
 
@@ -463,6 +464,9 @@ function typeIdToCategory(typeId: string): 'oauth-based' | 'apikey' | 'bedrock' 
 // Account type selection
 // ---------------------------------------------------------------------------
 const selectedAccountTypeId = ref<string>('oauth')
+const currentAccountTypeMeta = computed(() =>
+  getAccountTypeMeta(getAccountTypeDecl(form.platform, selectedAccountTypeId.value))
+)
 
 // ---------------------------------------------------------------------------
 // Dynamic platform form component
@@ -829,7 +833,7 @@ function resetForm() {
   step.value = 1
   form.name = ''
   form.notes = ''
-  form.platform = 'anthropic'
+  form.platform = (allPlatforms.value[0]?.platform || 'anthropic') as AccountPlatform
   form.type = 'oauth'
   form.credentials = {}
   form.proxy_id = null

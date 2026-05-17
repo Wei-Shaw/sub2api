@@ -893,6 +893,7 @@ import { useClipboard } from '@/composables/useClipboard'
 import { useSwipeSelect } from '@/composables/useSwipeSelect'
 import { useTableSelection } from '@/composables/useTableSelection'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
+import { dynamicPlatformLabel } from '@/utils/platformColors'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -1584,18 +1585,8 @@ const qualityOverallLabel = (status?: string) => {
 }
 
 const qualityTargetLabel = (target: string) => {
-  switch (target) {
-    case 'base_connectivity':
-      return t('admin.proxies.qualityTargetBase')
-    case 'openai':
-      return 'OpenAI'
-    case 'anthropic':
-      return 'Anthropic'
-    case 'gemini':
-      return 'Gemini'
-    default:
-      return target
-  }
+  if (target === 'base_connectivity') return t('admin.proxies.qualityTargetBase')
+  return dynamicPlatformLabel(target)
 }
 
 const fetchAllProxiesForBatch = async (): Promise<Proxy[]> => {

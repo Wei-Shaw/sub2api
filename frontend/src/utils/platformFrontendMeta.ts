@@ -57,6 +57,8 @@ export interface AccountTypeFrontendMeta {
   supports_allow_overages?: boolean
   /** Whether this account type supports RPM limit config (e.g. Anthropic OAuth/SetupToken) */
   supports_rpm_limit?: boolean
+  /** Whether this account type supports advanced quota control (quota+notify, e.g. Anthropic apikey/bedrock) */
+  supports_advanced_quota_control?: boolean
   /** Default usage source for initial load: 'passive' for sampling-based, undefined for active */
   default_usage_source?: 'passive' | 'active'
   /** Extra fields from account.extra that should be included in usage refresh key */

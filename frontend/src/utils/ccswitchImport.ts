@@ -35,14 +35,16 @@ export interface CcSwitchPlatformEntry {
   model?: string
   /** If true, clientType 'gemini' overrides app to 'gemini' */
   clientTypeAware?: boolean
+  /** Default client type when platform is not clientTypeAware */
+  defaultClientType?: CcSwitchClientType
 }
 
 /** Hardcoded fallback registry (used when plugin API has not loaded) */
 const CC_SWITCH_PLATFORM_REGISTRY: Record<string, CcSwitchPlatformEntry> = {
-  anthropic: { app: 'claude' },
+  anthropic: { app: 'claude', defaultClientType: 'claude' },
   antigravity: { app: 'claude', endpointSuffix: '/antigravity', clientTypeAware: true },
-  openai: { app: 'codex', model: OPENAI_CC_SWITCH_CODEX_MODEL },
-  gemini: { app: 'gemini' },
+  openai: { app: 'codex', model: OPENAI_CC_SWITCH_CODEX_MODEL, defaultClientType: 'claude' },
+  gemini: { app: 'gemini', defaultClientType: 'gemini' },
 }
 
 const CC_SWITCH_DEFAULT_ENTRY: CcSwitchPlatformEntry = { app: 'claude' }
@@ -51,7 +53,7 @@ const CC_SWITCH_DEFAULT_ENTRY: CcSwitchPlatformEntry = { app: 'claude' }
  * Resolve CC Switch config for a platform.
  * Checks PlatformDeclaration.frontend_meta.cc_switch_config first, falls back to hardcoded.
  */
-function resolveCcSwitchEntry(platform: string | undefined | null): CcSwitchPlatformEntry {
+export function resolveCcSwitchEntry(platform: string | undefined | null): CcSwitchPlatformEntry {
   const platformKey = platform || 'anthropic'
   // Check metadata first
   const { getPlatformDecl } = usePlatforms()

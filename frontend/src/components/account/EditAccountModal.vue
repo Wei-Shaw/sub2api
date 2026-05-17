@@ -153,6 +153,7 @@ import type { PlatformFormContext, PlatformFormExposed } from './forms/types'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { loadQuotaFromExtra, applyQuotaToExtra } from './forms/editHelpers'
 import { extractApiErrorMessage } from '@/utils/apiError'
+import { getAccountTypeMeta } from '@/utils/platformFrontendMeta'
 
 interface Props { show: boolean; account: Account | null; proxies: Proxy[]; groups: AdminGroup[] }
 const props = defineProps<Props>()
@@ -161,7 +162,7 @@ const emit = defineEmits<{ close: []; updated: [account: Account] }>()
 const { t } = useI18n()
 const appStore = useAppStore()
 const authStore = useAuthStore()
-const { fetchPlatforms } = usePlatforms()
+const { fetchPlatforms, getAccountTypeDecl } = usePlatforms()
 const BUILTIN_PLATFORMS = new Set(['anthropic', 'openai', 'gemini', 'antigravity'])
 
 const submitting = ref(false)
@@ -213,7 +214,12 @@ const { globalEnabled: quotaNotifyGlobalEnabled, state: quotaNotifyState, loadGl
 loadQuotaNotifyGlobal()
 
 const showQuotaControl = computed(() => { const tp = props.account?.type; return tp === 'apikey' || tp === 'bedrock' })
-const isAnthropicQuotaControl = computed(() => props.account?.platform === 'anthropic' && (props.account?.type === 'apikey' || props.account?.type === 'bedrock'))
+const isAnthropicQuotaControl = computed(() => {
+  const acct = props.account
+  if (!acct) return false
+  const decl = getAccountTypeDecl(acct.platform, acct.type)
+  return getAccountTypeMeta(decl).supports_advanced_quota_control === true
+})
 
 const statusOptions = computed(() => {
   const opts = [{ value: 'active', label: t('common.active') }, { value: 'inactive', label: t('common.inactive') }]

@@ -1075,6 +1075,7 @@ import { formatDateTime, formatCurrency } from '@/utils/format'
 import { maskApiKey } from '@/utils/maskApiKey'
 import {
   buildCcSwitchImportDeeplink,
+  resolveCcSwitchEntry,
   type CcSwitchClientType
 } from '@/utils/ccSwitchImport'
 import { usePlatforms } from '@/composables/usePlatforms'
@@ -1710,7 +1711,8 @@ const importToCcswitch = (row: ApiKey) => {
   }
 
   // For other platforms, execute directly
-  executeCcsImport(row, platform === 'gemini' ? 'gemini' : 'claude')
+  const entry = resolveCcSwitchEntry(platform)
+  executeCcsImport(row, entry.defaultClientType ?? 'claude')
 }
 
 const executeCcsImport = (row: ApiKey, clientType: CcSwitchClientType) => {

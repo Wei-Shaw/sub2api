@@ -37,7 +37,8 @@ func buildManifest() *pluginsdk.Manifest {
 						"gemini_cli_env_api_key": "GEMINI_API_KEY"
 					},
 					"cc_switch_config": {
-						"app": "gemini"
+						"app": "gemini",
+						"defaultClientType": "gemini"
 					},
 					"preset_mappings": [
 						{"label": "Gemini 2.5 Pro", "from": "gemini-2.5-pro*", "to": "gemini-2.5-pro-preview-05-06"}
