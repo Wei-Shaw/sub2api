@@ -68,56 +68,73 @@ func TestExtractImageSize_CaseInsensitive(t *testing.T) {
 	require.Equal(t, "4K", svc.extractImageSize(body))
 }
 
-// TestExtractImageSize_Default 测试无 imageConfig 返回默认 2K
+// TestExtractImageSize_Default 测试缺少 imageSize 时回落到官方默认 1K
 func TestExtractImageSize_Default(t *testing.T) {
 	svc := &AntigravityGatewayService{}
 
 	// 无 generationConfig
 	body := []byte(`{"contents":[]}`)
-	require.Equal(t, "2K", svc.extractImageSize(body))
+	require.Equal(t, "1K", svc.extractImageSize(body))
 
 	// 有 generationConfig 但无 imageConfig
 	body = []byte(`{"generationConfig":{"temperature":0.7}}`)
-	require.Equal(t, "2K", svc.extractImageSize(body))
+	require.Equal(t, "1K", svc.extractImageSize(body))
 
 	// 有 imageConfig 但无 imageSize
 	body = []byte(`{"generationConfig":{"imageConfig":{}}}`)
-	require.Equal(t, "2K", svc.extractImageSize(body))
+	require.Equal(t, "1K", svc.extractImageSize(body))
 }
 
-// TestExtractImageSize_InvalidJSON 测试非法 JSON 返回默认 2K
+// TestExtractImageSize_InvalidJSON 测试非法 JSON 返回默认 1K
 func TestExtractImageSize_InvalidJSON(t *testing.T) {
 	svc := &AntigravityGatewayService{}
 
 	body := []byte(`not valid json`)
-	require.Equal(t, "2K", svc.extractImageSize(body))
+	require.Equal(t, "1K", svc.extractImageSize(body))
 
 	body = []byte(`{"broken":`)
-	require.Equal(t, "2K", svc.extractImageSize(body))
+	require.Equal(t, "1K", svc.extractImageSize(body))
 }
 
-// TestExtractImageSize_EmptySize 测试空 imageSize 返回默认 2K
+// TestExtractImageSize_EmptySize 测试空 imageSize 返回默认 1K
 func TestExtractImageSize_EmptySize(t *testing.T) {
 	svc := &AntigravityGatewayService{}
 
 	body := []byte(`{"generationConfig":{"imageConfig":{"imageSize":""}}}`)
-	require.Equal(t, "2K", svc.extractImageSize(body))
+	require.Equal(t, "1K", svc.extractImageSize(body))
 
 	// 空格
 	body = []byte(`{"generationConfig":{"imageConfig":{"imageSize":"   "}}}`)
-	require.Equal(t, "2K", svc.extractImageSize(body))
+	require.Equal(t, "1K", svc.extractImageSize(body))
 }
 
-// TestExtractImageSize_InvalidSize 测试无效尺寸返回默认 2K
+// TestExtractImageSize_InvalidSize 测试无效尺寸返回默认 1K
 func TestExtractImageSize_InvalidSize(t *testing.T) {
 	svc := &AntigravityGatewayService{}
 
 	body := []byte(`{"generationConfig":{"imageConfig":{"imageSize":"3K"}}}`)
-	require.Equal(t, "2K", svc.extractImageSize(body))
+	require.Equal(t, "1K", svc.extractImageSize(body))
 
 	body = []byte(`{"generationConfig":{"imageConfig":{"imageSize":"8K"}}}`)
-	require.Equal(t, "2K", svc.extractImageSize(body))
+	require.Equal(t, "1K", svc.extractImageSize(body))
 
 	body = []byte(`{"generationConfig":{"imageConfig":{"imageSize":"invalid"}}}`)
+	require.Equal(t, "1K", svc.extractImageSize(body))
+}
+
+// TestExtractImageSize_Resolutions 测试新分辨率会回落到既有计费档位
+func TestExtractImageSize_Resolutions(t *testing.T) {
+	svc := &AntigravityGatewayService{}
+
+	body := []byte(`{"generationConfig":{"imageConfig":{"imageSize":"512"}}}`)
+	require.Equal(t, "1K", svc.extractImageSize(body))
+
+	body = []byte(`{"generationConfig":{"imageConfig":{"imageSize":"1584x672"}}}`)
+	require.Equal(t, "1K", svc.extractImageSize(body))
+
+	body = []byte(`{"generationConfig":{"imageConfig":{"imageSize":"3168x1344"}}}`)
 	require.Equal(t, "2K", svc.extractImageSize(body))
+
+	body = []byte(`{"generationConfig":{"imageConfig":{"imageSize":"6336x2688"}}}`)
+	require.Equal(t, "4K", svc.extractImageSize(body))
 }

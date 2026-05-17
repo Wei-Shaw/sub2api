@@ -4067,17 +4067,14 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 func (s *AntigravityGatewayService) extractImageSize(body []byte) string {
 	var req antigravity.GeminiRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		return "2K" // 默认 2K
+		return geminiImageSizeDefault
 	}
 
 	if req.GenerationConfig != nil && req.GenerationConfig.ImageConfig != nil {
-		size := strings.ToUpper(strings.TrimSpace(req.GenerationConfig.ImageConfig.ImageSize))
-		if size == "1K" || size == "2K" || size == "4K" {
-			return size
-		}
+		return normalizeGeminiImageSizeOrDefault(req.GenerationConfig.ImageConfig.ImageSize)
 	}
 
-	return "2K" // 默认 2K
+	return geminiImageSizeDefault
 }
 
 // isImageGenerationModel 判断模型是否为图片生成模型

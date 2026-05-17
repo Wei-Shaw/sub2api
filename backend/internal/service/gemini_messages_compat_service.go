@@ -3440,15 +3440,12 @@ func (s *GeminiMessagesCompatService) extractImageSize(body []byte) string {
 		} `json:"generationConfig"`
 	}
 	if err := json.Unmarshal(body, &req); err != nil {
-		return "2K"
+		return geminiImageSizeDefault
 	}
 
 	if req.GenerationConfig != nil && req.GenerationConfig.ImageConfig != nil {
-		size := strings.ToUpper(strings.TrimSpace(req.GenerationConfig.ImageConfig.ImageSize))
-		if size == "1K" || size == "2K" || size == "4K" {
-			return size
-		}
+		return normalizeGeminiImageSizeOrDefault(req.GenerationConfig.ImageConfig.ImageSize)
 	}
 
-	return "2K"
+	return geminiImageSizeDefault
 }
