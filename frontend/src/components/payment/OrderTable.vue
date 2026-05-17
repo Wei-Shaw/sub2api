@@ -7,14 +7,30 @@
       <span class="text-sm text-gray-900 dark:text-white">{{ value }}</span>
     </template>
     <template v-if="showUser" #cell-user_email="{ value, row }">
-      <div class="text-sm">
-        <span class="text-gray-900 dark:text-white">{{ value || row.user_name || '#' + row.user_id }}</span>
-        <span v-if="row.user_notes" class="ml-1 text-xs text-gray-400">({{ row.user_notes }})</span>
+      <div class="flex min-w-0 items-center gap-2">
+        <div class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-primary-100 dark:bg-primary-900/30">
+          <span class="text-sm font-medium text-primary-700 dark:text-primary-300">
+            {{ (value || row.user_name || '#').charAt(0).toUpperCase() }}
+          </span>
+        </div>
+        <div class="flex min-w-0 flex-col gap-1">
+          <span
+            class="block max-w-[14rem] truncate font-medium text-gray-900 dark:text-white sm:max-w-[18rem]"
+            :title="value || row.user_name || '#' + row.user_id"
+          >
+            {{ value || row.user_name || '#' + row.user_id }}
+          </span>
+          <span v-if="row.user_notes" class="block max-w-[14rem] truncate text-xs text-gray-400 sm:max-w-[18rem]">{{ row.user_notes }}</span>
+          <div v-if="row.device_code" class="flex min-w-0 items-center gap-1.5">
+            <span
+              class="inline-flex min-w-0 max-w-[12rem] items-center rounded-md bg-primary-50 px-1.5 py-0.5 text-xs font-medium text-primary-700 ring-1 ring-inset ring-primary-200 dark:bg-primary-900/20 dark:text-primary-300 dark:ring-primary-800"
+              :title="row.device_code"
+            >
+              <span class="truncate font-mono">{{ row.device_code }}</span>
+            </span>
+          </div>
+        </div>
       </div>
-    </template>
-    <template v-if="showUser" #cell-device_code="{ value }">
-      <span v-if="value" class="font-mono text-xs text-blue-700 dark:text-blue-300">{{ value }}</span>
-      <span v-else class="text-xs text-gray-400">-</span>
     </template>
     <template #cell-pay_amount="{ value, row }">
       <div class="text-sm">
@@ -66,7 +82,6 @@ const columns = computed((): Column[] => {
   ]
   if (props.showUser) {
     cols.push({ key: 'user_email', label: t('payment.admin.colUser') })
-    cols.push({ key: 'device_code', label: t('payment.admin.colDeviceCode') })
   }
   cols.push(
     { key: 'pay_amount', label: t('payment.orders.payAmount') },

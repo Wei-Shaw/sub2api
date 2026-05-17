@@ -352,7 +352,7 @@ describe('PaymentStatusPanel', () => {
         ledgerAmount: 3.39,
         paymentCurrency: 'VND',
         ledgerCurrency: 'USD',
-        outTradeNo: 'vclaw_20260429AbC123xY',
+        outTradeNo: 'vclaw_aB3k9Q',
       },
       global: {
         stubs: {
@@ -365,7 +365,7 @@ describe('PaymentStatusPanel', () => {
 
     const text = wrapper.text()
     expect(text).toContain('payment.orders.orderNo')
-    expect(text).toContain('vclaw_20260429AbC123xY')
+    expect(text).toContain('vclaw_aB3k9Q')
     expect(text).toContain('payment.orders.payAmount')
     expect(text).toContain('₫50,000')
     expect(text).toContain('payment.creditedBalance')

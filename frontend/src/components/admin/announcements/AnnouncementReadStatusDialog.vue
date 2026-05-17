@@ -31,7 +31,7 @@
         @sort="handleSort"
       >
         <template #cell-email="{ value }">
-          <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
+          <span class="block max-w-[12rem] truncate font-medium text-gray-900 dark:text-white" :title="value">{{ value }}</span>
         </template>
 
         <template #cell-balance="{ value }">

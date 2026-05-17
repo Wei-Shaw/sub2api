@@ -46,8 +46,8 @@ const (
 	topUsersLimit      = 10
 	amountToleranceCNY = 0.01
 
-	legacyOrderIDPrefix = "sub2_"
 	orderIDPrefix       = "vclaw_"
+	legacyOrderIDPrefix = "sub2_"
 )
 
 const paymentResumeSigningKeyEnv = "PAYMENT_RESUME_SIGNING_KEY"
@@ -55,11 +55,11 @@ const paymentResumeSigningKeyEnv = "PAYMENT_RESUME_SIGNING_KEY"
 // --- Types ---
 
 // generateOutTradeNo creates a unique external order ID for payment providers.
-// Format: vclaw_20250409aB3kX9mQ (prefix + date + 8-char random)
+// Format: vclaw_aB3k9Q (prefix + 6-char alphanumeric random)
+// Charset: a-z A-Z 0-9 (62 chars) → 62^6 ≈ 56.8 billion combinations.
 func generateOutTradeNo() string {
-	date := time.Now().Format("20060102")
-	rnd := generateRandomString(8)
-	return orderIDPrefix + date + rnd
+	rnd := generateRandomString(6)
+	return orderIDPrefix + rnd
 }
 
 func generateRandomString(n int) string {
@@ -165,12 +165,13 @@ type RefundResult struct {
 }
 
 type DashboardStats struct {
-	TodayAmount   CurrencyAmounts `json:"today_amount"`
-	TotalAmount   CurrencyAmounts `json:"total_amount"`
-	TodayCount    int             `json:"today_count"`
-	TotalCount    int             `json:"total_count"`
-	AvgAmount     CurrencyAmounts `json:"avg_amount"`
-	PendingOrders int             `json:"pending_orders"`
+	TodayAmount       CurrencyAmounts   `json:"today_amount"`
+	TotalAmount       CurrencyAmounts   `json:"total_amount"`
+	TodayCount        int               `json:"today_count"`
+	TotalCount        int               `json:"total_count"`
+	AvgAmount         CurrencyAmounts   `json:"avg_amount"`
+	PendingOrders     int               `json:"pending_orders"`
+	RevenueByCurrency []CurrencyRevenue `json:"revenue_by_currency"`
 
 	DailySeries    []DailyStats        `json:"daily_series"`
 	PaymentMethods []PaymentMethodStat `json:"payment_methods"`
@@ -180,6 +181,15 @@ type DashboardStats struct {
 // CurrencyAmounts holds payment amounts keyed by their ISO 4217 currency.
 // Amounts in different currencies must never be added together.
 type CurrencyAmounts map[string]float64
+
+// CurrencyRevenue holds revenue totals and counts for a payment currency.
+type CurrencyRevenue struct {
+	Currency    string  `json:"currency"`
+	TodayAmount float64 `json:"today_amount"`
+	TotalAmount float64 `json:"total_amount"`
+	TodayCount  int     `json:"today_count"`
+	TotalCount  int     `json:"total_count"`
+}
 
 type DailyStats struct {
 	Date   string          `json:"date"`

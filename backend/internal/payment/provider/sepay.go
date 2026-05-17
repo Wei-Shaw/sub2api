@@ -34,8 +34,8 @@ const (
 
 var (
 	sepayOrderCodePattern   = regexp.MustCompile(`(?i)\b(?:vclaw|sub2)_[a-z0-9]+\b`)
-	sepayTransferRefPattern = regexp.MustCompile(`(?i)\b(?:VCLAW|VC)([0-9]{8}[a-z0-9]{8})\b`)
-	sepayOrderSuffixPattern = regexp.MustCompile(`(?i)^([0-9]{8}[a-z0-9]{8})$`)
+	sepayTransferRefPattern = regexp.MustCompile(`(?i)\b(?:VCLAW|VC)((?:[0-9]{8}[a-z0-9]{8})|(?:[a-z0-9]{6}))\b`)
+	sepayOrderSuffixPattern = regexp.MustCompile(`(?i)^((?:[0-9]{8}[a-z0-9]{8})|(?:[a-z0-9]{6}))$`)
 )
 
 type Sepay struct {

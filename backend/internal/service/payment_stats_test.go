@@ -28,6 +28,10 @@ func TestComputeBasicStatsGroupsAmountsByCurrency(t *testing.T) {
 	require.Equal(t, CurrencyAmounts{"CNY": 15, "USD": 10}, stats.TotalAmount)
 	require.Equal(t, CurrencyAmounts{"CNY": 10, "USD": 10}, stats.TodayAmount)
 	require.Equal(t, CurrencyAmounts{"CNY": 7.5, "USD": 10}, stats.AvgAmount)
+	require.Equal(t, []CurrencyRevenue{
+		{Currency: "CNY", TodayAmount: 10, TotalAmount: 15, TodayCount: 1, TotalCount: 2},
+		{Currency: "USD", TodayAmount: 10, TotalAmount: 10, TodayCount: 1, TotalCount: 1},
+	}, stats.RevenueByCurrency)
 	require.Equal(t, 3, stats.TotalCount)
 	require.Equal(t, 2, stats.TodayCount)
 }
@@ -56,8 +60,8 @@ func TestPaymentDashboardBreakdownsGroupAmountsAndRankingsByCurrency(t *testing.
 
 	methods := buildMethodDistribution(orders)
 	require.Equal(t, []PaymentMethodStat{
-		{Type: "alipay", Amount: CurrencyAmounts{"USD": 10}, Count: 1},
 		{Type: "stripe", Amount: CurrencyAmounts{"CNY": 15.56, "USD": 20}, Count: 3},
+		{Type: "alipay", Amount: CurrencyAmounts{"USD": 10}, Count: 1},
 	}, methods)
 
 	users := buildTopUsers(orders)

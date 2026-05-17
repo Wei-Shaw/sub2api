@@ -47,13 +47,20 @@
         <span class="font-mono text-sm">#{{ value }}</span>
       </template>
 
-      <template #cell-user_id="{ value }">
-        <span class="text-sm text-gray-600 dark:text-gray-400">#{{ value }}</span>
-      </template>
-
-      <template #cell-device_code="{ value }">
-        <span v-if="value" class="text-sm font-mono text-gray-600 dark:text-gray-400">{{ value }}</span>
-        <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
+      <template #cell-user_id="{ value, row }">
+        <div class="flex min-w-0 items-center gap-2">
+          <div class="flex min-w-0 flex-col gap-1">
+            <span class="text-sm text-gray-600 dark:text-gray-400">#{{ value }}</span>
+            <div v-if="row.device_code" class="flex min-w-0 items-center gap-1.5">
+              <span
+                class="inline-flex min-w-0 max-w-[12rem] items-center rounded-md bg-primary-50 px-1.5 py-0.5 text-xs font-medium text-primary-700 ring-1 ring-inset ring-primary-200 dark:bg-primary-900/20 dark:text-primary-300 dark:ring-primary-800"
+                :title="row.device_code"
+              >
+                <span class="truncate font-mono">{{ row.device_code }}</span>
+              </span>
+            </div>
+          </div>
+        </div>
       </template>
 
       <template #cell-pay_amount="{ value, row }">
@@ -188,7 +195,6 @@ function emitFiltersChanged() {
 const columns = computed<Column[]>(() => [
   { key: 'id', label: t('payment.orders.orderId') },
   { key: 'user_id', label: t('payment.orders.userId') },
-  { key: 'device_code', label: t('payment.admin.colDeviceCode') },
   { key: 'pay_amount', label: t('payment.orders.payAmount') },
   { key: 'payment_type', label: t('payment.orders.paymentMethod') },
   { key: 'status', label: t('payment.orders.status') },

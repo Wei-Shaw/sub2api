@@ -360,7 +360,17 @@ export interface DashboardStats {
   today_count: number
   total_count: number
   avg_amount: CurrencyAmounts
+  pending_orders: number
+  revenue_by_currency: CurrencyRevenue[]
   daily_series: DailyPaymentStats[]
   payment_methods: PaymentMethodStats[]
   top_users: Record<string, TopUserPaymentStats[]>
+}
+
+export interface CurrencyRevenue {
+  currency: string
+  today_amount: number
+  total_amount: number
+  today_count: number
+  total_count: number
 }

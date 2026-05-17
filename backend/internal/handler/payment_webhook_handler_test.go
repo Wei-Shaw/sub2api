@@ -183,8 +183,8 @@ func TestExtractOutTradeNo(t *testing.T) {
 		{
 			name:        "sepay json payload with content code",
 			providerKey: "sepay",
-			rawBody:     `{"code":null,"content":"NAP sub2_20260429AbC123xY cho user","transferType":"in"}`,
-			want:        "sub2_20260429AbC123xY",
+			rawBody:     `{"code":null,"content":"NAP vclaw_aB3k9Q cho user","transferType":"in"}`,
+			want:        "vclaw_aB3k9Q",
 		},
 		{
 			name:        "unknown provider",

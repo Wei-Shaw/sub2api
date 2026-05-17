@@ -58,23 +58,55 @@ func computeBasicStats(st *DashboardStats, orders []*dbent.PaymentOrder, todaySt
 	st.TodayAmount = make(CurrencyAmounts)
 	st.AvgAmount = make(CurrencyAmounts)
 	currencyCounts := make(map[string]int)
+	currencyRevenue := make(map[string]*CurrencyRevenue)
 	var todayCount int
+
 	for _, o := range orders {
 		currency := PaymentOrderCurrency(o)
-		st.TotalAmount[currency] += o.PayAmount
+		amount := o.PayAmount
+		st.TotalAmount[currency] += amount
 		currencyCounts[currency]++
+
+		revenue, ok := currencyRevenue[currency]
+		if !ok {
+			revenue = &CurrencyRevenue{Currency: currency}
+			currencyRevenue[currency] = revenue
+		}
+		revenue.TotalAmount += amount
+		revenue.TotalCount++
+
 		if o.PaidAt != nil && !o.PaidAt.Before(todayStart) {
-			st.TodayAmount[currency] += o.PayAmount
+			st.TodayAmount[currency] += amount
+			revenue.TodayAmount += amount
+			revenue.TodayCount++
 			todayCount++
 		}
 	}
+
 	st.TotalCount = len(orders)
 	st.TodayCount = todayCount
 	for currency, totalAmount := range st.TotalAmount {
 		st.AvgAmount[currency] = roundAmount(totalAmount / float64(currencyCounts[currency]))
 	}
+	finalizeRevenueStats(st, currencyRevenue)
+}
+
+func finalizeRevenueStats(st *DashboardStats, currencyRevenue map[string]*CurrencyRevenue) {
 	roundCurrencyAmounts(st.TotalAmount)
 	roundCurrencyAmounts(st.TodayAmount)
+
+	st.RevenueByCurrency = make([]CurrencyRevenue, 0, len(currencyRevenue))
+	for _, revenue := range currencyRevenue {
+		revenue.TotalAmount = roundAmount(revenue.TotalAmount)
+		revenue.TodayAmount = roundAmount(revenue.TodayAmount)
+		st.RevenueByCurrency = append(st.RevenueByCurrency, *revenue)
+	}
+	sort.Slice(st.RevenueByCurrency, func(i, j int) bool {
+		if st.RevenueByCurrency[i].TotalCount == st.RevenueByCurrency[j].TotalCount {
+			return st.RevenueByCurrency[i].Currency < st.RevenueByCurrency[j].Currency
+		}
+		return st.RevenueByCurrency[i].TotalCount > st.RevenueByCurrency[j].TotalCount
+	})
 }
 
 func buildDailySeries(orders []*dbent.PaymentOrder, since time.Time, days int) []DailyStats {
@@ -108,21 +140,25 @@ func buildDailySeries(orders []*dbent.PaymentOrder, since time.Time, days int) [
 func buildMethodDistribution(orders []*dbent.PaymentOrder) []PaymentMethodStat {
 	methodMap := make(map[string]*PaymentMethodStat)
 	for _, o := range orders {
-		ms, ok := methodMap[o.PaymentType]
+		method, ok := methodMap[o.PaymentType]
 		if !ok {
-			ms = &PaymentMethodStat{Type: o.PaymentType, Amount: make(CurrencyAmounts)}
-			methodMap[o.PaymentType] = ms
+			method = &PaymentMethodStat{Type: o.PaymentType, Amount: make(CurrencyAmounts)}
+			methodMap[o.PaymentType] = method
 		}
-		ms.Amount[PaymentOrderCurrency(o)] += o.PayAmount
-		ms.Count++
+		method.Amount[PaymentOrderCurrency(o)] += o.PayAmount
+		method.Count++
 	}
+
 	methods := make([]PaymentMethodStat, 0, len(methodMap))
-	for _, ms := range methodMap {
-		roundCurrencyAmounts(ms.Amount)
-		methods = append(methods, *ms)
+	for _, method := range methodMap {
+		roundCurrencyAmounts(method.Amount)
+		methods = append(methods, *method)
 	}
 	sort.Slice(methods, func(i, j int) bool {
-		return methods[i].Type < methods[j].Type
+		if methods[i].Count == methods[j].Count {
+			return methods[i].Type < methods[j].Type
+		}
+		return methods[i].Count > methods[j].Count
 	})
 	return methods
 }

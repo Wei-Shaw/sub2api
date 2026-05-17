@@ -121,7 +121,7 @@
                     :key="entry.user_id"
                     class="hover:bg-gray-50 dark:hover:bg-dark-700/50"
                   >
-                    <td class="px-3 py-2 text-gray-600 dark:text-gray-400">{{ entry.user_email }}</td>
+                    <td class="max-w-[12rem] truncate px-3 py-2 text-gray-600 dark:text-gray-400" :title="entry.user_email">{{ entry.user_email }}</td>
                     <td class="whitespace-nowrap px-3 py-2 text-gray-400 dark:text-gray-500">{{ entry.user_id }}</td>
                     <td class="whitespace-nowrap px-3 py-2 text-gray-900 dark:text-white">{{ entry.user_name || '-' }}</td>
                     <td class="max-w-[160px] truncate px-3 py-2 text-gray-500 dark:text-gray-400" :title="entry.user_notes">{{ entry.user_notes || '-' }}</td>
