@@ -5,7 +5,9 @@ package web
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"io/fs"
@@ -214,14 +216,25 @@ func (s *FrontendServer) serveIndexHTML(c *gin.Context) {
 // 浏览器原生 importmap 支持: 主流浏览器自 2023 起均支持; 旧 Edge / 老 webview
 // 没有 polyfill, 此时 plugin entry 的 `import { ... } from 'vue'` 会失败,
 // loader-runtime.ts 把错误捕获并显示 PluginView error state.
-const pluginImportMap = `<script type="importmap" nonce="__CSP_NONCE_VALUE__">{"imports":{` +
-	`"vue":"/api/v1/plugin-assets/__shared__/vue.js",` +
-	`"vue-router":"/api/v1/plugin-assets/__shared__/vue-router.js",` +
-	`"vue-i18n":"/api/v1/plugin-assets/__shared__/vue-i18n.js",` +
-	`"pinia":"/api/v1/plugin-assets/__shared__/pinia.js",` +
-	`"axios":"/api/v1/plugin-assets/__shared__/axios.js",` +
-	`"@sub2api/plugin-sdk":"/api/v1/plugin-assets/__shared__/plugin-sdk.js"` +
-	`}}</script>`
+// sharedRuntimeVersion is a cache-busting token for importmap URLs.
+// Changes whenever the binary is recompiled, ensuring browsers refetch
+// shared runtime proxies after a deployment with updated exports.
+var sharedRuntimeVersion = func() string {
+	h := sha256.Sum256([]byte("v2-guardReactiveProps-mergeProps-withDefaults"))
+	return hex.EncodeToString(h[:])[:12]
+}()
+
+func pluginImportMap() string {
+	v := sharedRuntimeVersion
+	return `<script type="importmap" nonce="__CSP_NONCE_VALUE__">{"imports":{` +
+		`"vue":"/api/v1/plugin-assets/__shared__/vue.js?v=` + v + `",` +
+		`"vue-router":"/api/v1/plugin-assets/__shared__/vue-router.js?v=` + v + `",` +
+		`"vue-i18n":"/api/v1/plugin-assets/__shared__/vue-i18n.js?v=` + v + `",` +
+		`"pinia":"/api/v1/plugin-assets/__shared__/pinia.js?v=` + v + `",` +
+		`"axios":"/api/v1/plugin-assets/__shared__/axios.js?v=` + v + `",` +
+		`"@sub2api/plugin-sdk":"/api/v1/plugin-assets/__shared__/plugin-sdk.js?v=` + v + `"` +
+		`}}</script>`
+}
 
 // V2 (Shadow DOM) 协议下不再向 host head 注入 plugin-sdk.css —
 // 改由 frontend/src/plugins/mount-plugin.ts 在每个 plugin 的独立 ShadowRoot 内
@@ -260,9 +273,10 @@ func (s *FrontendServer) injectSettings(settingsJSON []byte) []byte {
 		headOpen := []byte("<head>")
 		headOpenIdx := bytes.Index(s.baseHTML, headOpen)
 		if headOpenIdx >= 0 {
-			afterHeadOpen = make([]byte, 0, len(s.baseHTML)+len(pluginImportMap))
+			importMapHTML := pluginImportMap()
+			afterHeadOpen = make([]byte, 0, len(s.baseHTML)+len(importMapHTML))
 			afterHeadOpen = append(afterHeadOpen, s.baseHTML[:headOpenIdx+len(headOpen)]...)
-			afterHeadOpen = append(afterHeadOpen, []byte(pluginImportMap)...)
+			afterHeadOpen = append(afterHeadOpen, []byte(importMapHTML)...)
 			afterHeadOpen = append(afterHeadOpen, s.baseHTML[headOpenIdx+len(headOpen):]...)
 		}
 	}
