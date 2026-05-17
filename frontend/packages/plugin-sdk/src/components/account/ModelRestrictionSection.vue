@@ -131,7 +131,6 @@ const props = withDefaults(defineProps<{
 }>(), {
   disabled: false,
   keyPrefix: 'model-restriction',
-  onNotifyInfo: undefined,
 })
 
 const emit = defineEmits<{

@@ -92,11 +92,7 @@
   </div>
 </template>
 
-<script setup lang="ts">
-import { ref, computed } from 'vue'
-import { useI18n } from 'vue-i18n'
-import Icon from '../Icon.vue'
-
+<script lang="ts">
 const DEFAULT_ERROR_CODES = [
   { value: 401, label: 'Unauthorized' },
   { value: 403, label: 'Forbidden' },
@@ -106,6 +102,12 @@ const DEFAULT_ERROR_CODES = [
   { value: 503, label: 'Unavailable' },
   { value: 529, label: 'Overloaded' }
 ]
+</script>
+
+<script setup lang="ts">
+import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+import Icon from '../Icon.vue'
 
 const props = withDefaults(defineProps<{
   enabled: boolean
@@ -118,8 +120,6 @@ const props = withDefaults(defineProps<{
   onNotifyInfo?: (msg: string) => void
 }>(), {
   commonErrorCodes: () => DEFAULT_ERROR_CODES,
-  onNotifyError: undefined,
-  onNotifyInfo: undefined,
 })
 
 const emit = defineEmits<{
