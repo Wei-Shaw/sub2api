@@ -17,13 +17,19 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// Protocol identifiers this plugin supports.
+const (
+	protocolOpenAI          = "openai"
+	protocolChatCompletions = "chat_completions"
+)
+
 // supportedProtocols lists the gateway protocols this plugin can handle
 // directly. Unsupported protocols return Unimplemented so the host falls
 // back to core handling.
 var supportedProtocols = map[string]bool{
-	"openai":           true,
-	"chat_completions": true,
-	"":                 true, // empty = default to openai
+	protocolOpenAI:          true,
+	protocolChatCompletions: true,
+	"":                      true, // empty = default to openai
 }
 
 // openaiExtraHeaderKeys lists OpenAI-specific upstream response headers

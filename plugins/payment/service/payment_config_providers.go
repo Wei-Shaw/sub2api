@@ -111,25 +111,35 @@ func (s *PaymentConfigService) ListProviderInstancesWithConfig(ctx context.Conte
 	}
 	out := make([]ProviderInstanceResponse, 0, len(instances))
 	for _, inst := range instances {
-		cfg, err := s.decryptAndMaskConfig(ctx, inst.ProviderKey, inst.Config)
+		resp, err := s.buildProviderInstanceResponse(ctx, inst)
 		if err != nil {
-			return nil, fmt.Errorf("decrypt config for instance %d: %w", inst.ID, err)
+			return nil, err
 		}
-		out = append(out, ProviderInstanceResponse{
-			ID:              int64(inst.ID),
-			ProviderKey:     inst.ProviderKey,
-			Name:            inst.Name,
-			Config:          cfg,
-			SupportedTypes:  splitTypes(inst.SupportedTypes),
-			Enabled:         inst.Enabled,
-			PaymentMode:     inst.PaymentMode,
-			SortOrder:       inst.SortOrder,
-			Limits:          inst.Limits,
-			RefundEnabled:   inst.RefundEnabled,
-			AllowUserRefund: inst.AllowUserRefund,
-		})
+		out = append(out, resp)
 	}
 	return out, nil
+}
+
+// buildProviderInstanceResponse constructs a single admin-facing response
+// for a provider instance with its decrypted+masked config.
+func (s *PaymentConfigService) buildProviderInstanceResponse(ctx context.Context, inst *pluginent.PaymentProviderInstance) (ProviderInstanceResponse, error) {
+	cfg, err := s.decryptAndMaskConfig(ctx, inst.ProviderKey, inst.Config)
+	if err != nil {
+		return ProviderInstanceResponse{}, fmt.Errorf("decrypt config for instance %d: %w", inst.ID, err)
+	}
+	return ProviderInstanceResponse{
+		ID:              int64(inst.ID),
+		ProviderKey:     inst.ProviderKey,
+		Name:            inst.Name,
+		Config:          cfg,
+		SupportedTypes:  splitTypes(inst.SupportedTypes),
+		Enabled:         inst.Enabled,
+		PaymentMode:     inst.PaymentMode,
+		SortOrder:       inst.SortOrder,
+		Limits:          inst.Limits,
+		RefundEnabled:   inst.RefundEnabled,
+		AllowUserRefund: inst.AllowUserRefund,
+	}, nil
 }
 
 // decryptAndMaskConfig returns the stored config with sensitive fields omitted.
@@ -161,46 +171,6 @@ func (s *PaymentConfigService) countPendingOrders(ctx context.Context, providerI
 		).Count(ctx)
 }
 
-// CreateProviderInstance inserts a new instance after validating the
-// supplied config when the instance starts enabled.
-func (s *PaymentConfigService) CreateProviderInstance(ctx context.Context, req CreateProviderInstanceRequest) (*pluginent.PaymentProviderInstance, error) {
-	typesStr := joinTypes(req.SupportedTypes)
-	if err := validateProviderRequest(req.ProviderKey, req.Name, typesStr); err != nil {
-		return nil, err
-	}
-	if err := s.validateVisibleMethodEnablementConflicts(ctx, 0, req.ProviderKey, typesStr, req.Enabled); err != nil {
-		return nil, err
-	}
-	if req.Enabled {
-		if err := s.validateProviderConfig(req.ProviderKey, req.Config); err != nil {
-			return nil, err
-		}
-	}
-	enc, err := s.encryptConfig(ctx, req.Config)
-	if err != nil {
-		return nil, err
-	}
-	allowUserRefund := req.AllowUserRefund && req.RefundEnabled
-	return s.entClient.PaymentProviderInstance.Create().
-		SetProviderKey(req.ProviderKey).SetName(req.Name).SetConfig(enc).
-		SetSupportedTypes(typesStr).SetEnabled(req.Enabled).SetPaymentMode(req.PaymentMode).
-		SetSortOrder(req.SortOrder).SetLimits(req.Limits).SetRefundEnabled(req.RefundEnabled).
-		SetAllowUserRefund(allowUserRefund).
-		Save(ctx)
-}
-
-func validateProviderRequest(providerKey, name, _ string) error {
-	if strings.TrimSpace(name) == "" {
-		return infraerrors.BadRequest("VALIDATION_ERROR", "provider name is required")
-	}
-	if !validProviderKeys[providerKey] {
-		return infraerrors.BadRequest("VALIDATION_ERROR", fmt.Sprintf("invalid provider key: %s", providerKey))
-	}
-	// supported_types may be empty for half-configured drafts; the
-	// per-type matrix is enforced at order creation.
-	return nil
-}
-
 // pendingOrderCounter caches the in-progress order count for an instance
 // so the patch flow can short-circuit repeated DB queries when several
 // protected fields change in one update.
@@ -220,34 +190,6 @@ func (p *pendingOrderCounter) get(ctx context.Context) (int, error) {
 	}
 	p.cached = &count
 	return count, nil
-}
-
-// UpdateProviderInstance updates a provider instance by ID (patch semantics).
-// Splits its concerns across helpers so each step stays under the per-function
-// budget while preserving the original safety checks.
-func (s *PaymentConfigService) UpdateProviderInstance(ctx context.Context, id int64, req UpdateProviderInstanceRequest) (*pluginent.PaymentProviderInstance, error) {
-	current, err := s.entClient.PaymentProviderInstance.Get(ctx, int(id))
-	if err != nil {
-		return nil, fmt.Errorf("load provider instance: %w", err)
-	}
-	counter := &pendingOrderCounter{svc: s, instanceID: id}
-	if err := s.validateProviderUpdateBasics(ctx, current, req); err != nil {
-		return nil, err
-	}
-	mergedConfig, err := s.prepareProviderUpdateConfig(ctx, current, req, counter)
-	if err != nil {
-		return nil, err
-	}
-	if err := s.guardProviderUpdateDisable(ctx, req, counter); err != nil {
-		return nil, err
-	}
-	if err := s.validateMergedProviderConfig(ctx, current, req, mergedConfig); err != nil {
-		return nil, err
-	}
-	if err := s.guardSupportedTypesShrink(ctx, current, req, counter); err != nil {
-		return nil, err
-	}
-	return s.applyProviderUpdate(ctx, current, req, mergedConfig)
 }
 
 // validateProviderUpdateBasics enforces visible-method and provider-key
@@ -294,11 +236,16 @@ func (s *PaymentConfigService) prepareProviderUpdateConfig(
 			return nil, err
 		}
 		if count > 0 {
-			return nil, infraerrors.Conflict("PENDING_ORDERS", "instance has pending orders").
-				WithMetadata(map[string]string{"count": strconv.Itoa(count)})
+			return nil, pendingOrdersConflictError(count)
 		}
 	}
 	return merged, nil
+}
+
+// pendingOrdersConflictError builds a standard conflict error for pending orders.
+func pendingOrdersConflictError(count int) error {
+	return infraerrors.Conflict("PENDING_ORDERS", "instance has pending orders").
+		WithMetadata(map[string]string{"count": strconv.Itoa(count)})
 }
 
 // guardProviderUpdateDisable refuses to disable an instance while it has
@@ -316,8 +263,7 @@ func (s *PaymentConfigService) guardProviderUpdateDisable(
 		return err
 	}
 	if count > 0 {
-		return infraerrors.Conflict("PENDING_ORDERS", "instance has pending orders").
-			WithMetadata(map[string]string{"count": strconv.Itoa(count)})
+		return pendingOrdersConflictError(count)
 	}
 	return nil
 }
@@ -368,25 +314,33 @@ func (s *PaymentConfigService) guardSupportedTypesShrink(
 	if count == 0 {
 		return nil
 	}
-	oldTypes := strings.Split(current.SupportedTypes, ",")
+	if hasSupportedTypeRemoval(current.SupportedTypes, req.SupportedTypes) {
+		return infraerrors.Conflict("PENDING_ORDERS", "cannot remove payment types while instance has pending orders").
+			WithMetadata(map[string]string{"count": strconv.Itoa(count)})
+	}
+	return nil
+}
+
+// hasSupportedTypeRemoval checks if any old type was removed from new types.
+func hasSupportedTypeRemoval(oldTypesCSV string, newTypes []string) bool {
+	oldTypes := strings.Split(oldTypesCSV, ",")
 	for _, ot := range oldTypes {
 		ot = strings.TrimSpace(ot)
 		if ot == "" {
 			continue
 		}
 		found := false
-		for _, nt := range req.SupportedTypes {
+		for _, nt := range newTypes {
 			if strings.TrimSpace(nt) == ot {
 				found = true
 				break
 			}
 		}
 		if !found {
-			return infraerrors.Conflict("PENDING_ORDERS", "cannot remove payment types while instance has pending orders").
-				WithMetadata(map[string]string{"count": strconv.Itoa(count)})
+			return true
 		}
 	}
-	return nil
+	return false
 }
 
 // applyProviderUpdate performs the actual ent UpdateOne after all validation
@@ -399,9 +353,7 @@ func (s *PaymentConfigService) applyProviderUpdate(
 	mergedConfig map[string]string,
 ) (*pluginent.PaymentProviderInstance, error) {
 	u := s.entClient.PaymentProviderInstance.UpdateOneID(current.ID)
-	if req.Name != nil {
-		u.SetName(*req.Name)
-	}
+	applyProviderScalarFields(u, req)
 	if mergedConfig != nil {
 		enc, err := s.encryptConfig(ctx, mergedConfig)
 		if err != nil {
@@ -412,6 +364,15 @@ func (s *PaymentConfigService) applyProviderUpdate(
 	if req.SupportedTypes != nil {
 		u.SetSupportedTypes(joinTypes(req.SupportedTypes))
 	}
+	applyProviderRefundFields(u, current, req)
+	return u.Save(ctx)
+}
+
+// applyProviderScalarFields sets the non-config, non-refund scalar fields.
+func applyProviderScalarFields(u *pluginent.PaymentProviderInstanceUpdateOne, req UpdateProviderInstanceRequest) {
+	if req.Name != nil {
+		u.SetName(*req.Name)
+	}
 	if req.Enabled != nil {
 		u.SetEnabled(*req.Enabled)
 	}
@@ -421,11 +382,9 @@ func (s *PaymentConfigService) applyProviderUpdate(
 	if req.Limits != nil {
 		u.SetLimits(*req.Limits)
 	}
-	applyProviderRefundFields(u, current, req)
 	if req.PaymentMode != nil {
 		u.SetPaymentMode(*req.PaymentMode)
 	}
-	return u.Save(ctx)
 }
 
 // applyProviderRefundFields encapsulates the cascading rules between
@@ -476,40 +435,4 @@ func (s *PaymentConfigService) mergeConfig(ctx context.Context, current *plugine
 		existing[k] = v
 	}
 	return existing, nil
-}
-
-// DeleteProviderInstance removes an instance after refusing while it has
-// in-flight orders.
-func (s *PaymentConfigService) DeleteProviderInstance(ctx context.Context, id int64) error {
-	count, err := s.countPendingOrders(ctx, id)
-	if err != nil {
-		return fmt.Errorf("check pending orders: %w", err)
-	}
-	if count > 0 {
-		return infraerrors.Conflict("PENDING_ORDERS",
-			fmt.Sprintf("this instance has %d in-progress orders and cannot be deleted — wait for orders to complete or disable the instance first", count))
-	}
-	return s.entClient.PaymentProviderInstance.DeleteOneID(int(id)).Exec(ctx)
-}
-
-// GetUserRefundEligibleInstanceIDs returns the IDs of provider instances
-// where allow_user_refund is true and refund is enabled.
-func (s *PaymentConfigService) GetUserRefundEligibleInstanceIDs(ctx context.Context) ([]string, error) {
-	if s == nil || s.entClient == nil {
-		return nil, nil
-	}
-	instances, err := s.entClient.PaymentProviderInstance.Query().
-		Where(
-			paymentproviderinstance.RefundEnabledEQ(true),
-			paymentproviderinstance.AllowUserRefundEQ(true),
-			paymentproviderinstance.EnabledEQ(true),
-		).All(ctx)
-	if err != nil {
-		return nil, err
-	}
-	ids := make([]string, 0, len(instances))
-	for _, inst := range instances {
-		ids = append(ids, strconv.FormatInt(int64(inst.ID), 10))
-	}
-	return ids, nil
 }

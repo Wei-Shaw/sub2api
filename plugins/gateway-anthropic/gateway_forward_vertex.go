@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -28,92 +29,91 @@ func (s *gatewayProviderServer) forwardVertex(
 	startTime := time.Now()
 	ctx := stream.Context()
 	acct := req.GetAccount()
-
 	creds := parseVertexCredentialsRaw(acct.GetCredentialsJson())
 
-	// Obtain access token via service account JWT exchange.
-	// Use the account's proxy URL for the token endpoint request.
 	accessToken, err := exchangeVertexServiceAccountToken(ctx, acct.GetProxyUrl(), creds.serviceAccountJSON)
 	if err != nil {
 		return fmt.Errorf("vertex token exchange: %w", err)
 	}
 
-	// Resolve model with Vertex normalization.
 	originalModel := req.GetModel()
 	mappedModel := resolveVertexModel(originalModel, acct.GetCredentialsJson())
-
 	isStream := req.GetStream()
 
-	// Build Vertex request body (remove model, inject anthropic_version).
-	vertexBody, err := buildVertexAnthropicRequestBody(req.GetRawBody())
+	httpReq, err := buildVertexHTTPRequest(ctx, req, creds, accessToken, mappedModel, isStream)
 	if err != nil {
-		return fmt.Errorf("build vertex body: %w", err)
+		return err
 	}
-
-	// Resolve project ID and location.
-	projectID, err := creds.resolveProjectID()
-	if err != nil {
-		return fmt.Errorf("vertex credentials: %w", err)
-	}
-	location := creds.locationForModel(mappedModel)
-
-	// Build the Vertex URL.
-	targetURL, err := buildVertexAnthropicURL(projectID, location, mappedModel, isStream)
-	if err != nil {
-		return fmt.Errorf("build vertex url: %w", err)
-	}
-
-	// Build the HTTP request.
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(vertexBody))
-	if err != nil {
-		return fmt.Errorf("build vertex http request: %w", err)
-	}
-
-	// Set Vertex headers: Bearer auth, content-type. No anthropic-version
-	// header (it's in the body for Vertex).
-	httpReq.Header.Set("Authorization", "Bearer "+accessToken)
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	// Forward allowed client headers (excluding auth and anthropic-version).
 	forwardVertexClientHeaders(httpReq, req.GetHeaders())
 	forwardVertexClientHeaders(httpReq, req.GetClientHeaders())
 
-	// Execute the upstream request.
 	resp, err := s.httpClient.Do(httpReq)
 	if err != nil {
 		return fmt.Errorf("vertex request failed: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	// Send response headers.
 	if err := sendResponseHeaders(stream, resp); err != nil {
 		return err
 	}
 
-	// Handle error responses.
 	if resp.StatusCode >= 400 {
-		return s.handleVertexErrorResponse(stream, resp, originalModel, mappedModel, isStream, startTime)
+		return handleVertexError(stream, resp, originalModel, mappedModel, isStream, startTime)
 	}
+	return sendVertexSuccess(stream, resp, originalModel, mappedModel, isStream, startTime)
+}
 
-	// Process the response body. Vertex uses the same SSE format as the
-	// standard Anthropic API for streaming responses.
+// buildVertexHTTPRequest constructs the upstream HTTP request for Vertex AI.
+func buildVertexHTTPRequest(
+	ctx context.Context,
+	req *pb.GatewayForwardRequest,
+	creds *vertexCreds,
+	accessToken, mappedModel string,
+	isStream bool,
+) (*http.Request, error) {
+	vertexBody, err := buildVertexAnthropicRequestBody(req.GetRawBody())
+	if err != nil {
+		return nil, fmt.Errorf("build vertex body: %w", err)
+	}
+	projectID, err := creds.resolveProjectID()
+	if err != nil {
+		return nil, fmt.Errorf("vertex credentials: %w", err)
+	}
+	location := creds.locationForModel(mappedModel)
+	targetURL, err := buildVertexAnthropicURL(projectID, location, mappedModel, isStream)
+	if err != nil {
+		return nil, fmt.Errorf("build vertex url: %w", err)
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(vertexBody))
+	if err != nil {
+		return nil, fmt.Errorf("build vertex http request: %w", err)
+	}
+	httpReq.Header.Set("Authorization", "Bearer "+accessToken)
+	httpReq.Header.Set("Content-Type", "application/json")
+	return httpReq, nil
+}
+
+// sendVertexSuccess processes the successful response and sends the Done chunk.
+func sendVertexSuccess(
+	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
+	resp *http.Response,
+	originalModel, mappedModel string,
+	isStream bool,
+	startTime time.Time,
+) error {
 	var result *streamResult
+	var err error
 	if isStream {
 		result, err = processSSEStream(stream, resp.Body, startTime, originalModel, mappedModel)
 	} else {
 		result, err = processNonStreamResponse(stream, resp.Body, originalModel, mappedModel)
 	}
-
-	// Build and send the Done chunk.
 	done := buildVertexDoneChunk(resp, originalModel, mappedModel, isStream, startTime, result, err)
-	if sendErr := stream.Send(done); sendErr != nil {
-		return sendErr
-	}
-	return nil
+	return stream.Send(done)
 }
 
-// handleVertexErrorResponse processes Vertex 4xx/5xx error responses.
-func (s *gatewayProviderServer) handleVertexErrorResponse(
+// handleVertexError processes Vertex 4xx/5xx error responses.
+func handleVertexError(
 	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
 	resp *http.Response,
 	originalModel, mappedModel string,
@@ -121,7 +121,6 @@ func (s *gatewayProviderServer) handleVertexErrorResponse(
 	startTime time.Time,
 ) error {
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodySize))
-
 	if len(body) > 0 {
 		if err := gatewayutil.SendBodyChunk(stream, body); err != nil {
 			return err
@@ -135,7 +134,6 @@ func (s *gatewayProviderServer) handleVertexErrorResponse(
 		Stream:        isStream,
 		DurationMs:    time.Since(startTime).Milliseconds(),
 	}
-
 	if gatewayutil.ShouldFailoverStatus(resp.StatusCode, extraFailoverCodes) {
 		fwdResult.UpstreamError = &pb.GatewayUpstreamError{
 			StatusCode:   int32(resp.StatusCode),
@@ -195,9 +193,7 @@ func buildVertexDoneChunk(
 }
 
 // vertexClientHeadersAllowList lists headers from the client that may be
-// forwarded to Vertex AI. This is narrower than the standard Anthropic
-// allowlist: Vertex does not use anthropic-version or anthropic-beta headers
-// (those go in the request body).
+// forwarded to Vertex AI.
 var vertexClientHeadersAllowList = map[string]bool{
 	"content-type":    true,
 	"user-agent":      true,

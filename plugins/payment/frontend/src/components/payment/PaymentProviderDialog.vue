@@ -70,151 +70,30 @@
         </div>
       </div>
 
-
-      <!-- Config fields -->
-      <div class="border-t border-gray-200 pt-4 dark:border-dark-700">
-        <h4 class="mb-3 text-sm font-semibold text-gray-900 dark:text-white">
-          {{ t('payment.adminSettings.providerConfig') }}
-        </h4>
-        <div class="space-y-3">
-          <div v-for="field in resolvedFields" :key="field.key">
-            <label class="input-label">
-              {{ field.label }}
-              <span v-if="field.optional" class="text-xs text-gray-400">({{ t('common.optional') }})</span>
-              <span v-else class="text-red-500"> *</span>
-            </label>
-            <textarea
-              v-if="field.sensitive && field.key.toLowerCase().includes('key') && field.key !== 'pkey'"
-              v-model="config[field.key]"
-              rows="3"
-              class="input font-mono text-xs"
-              autocomplete="new-password"
-              data-1p-ignore
-              data-lpignore="true"
-              data-bwignore="true"
-              spellcheck="false"
-              :placeholder="editing ? t('admin.accounts.leaveEmptyToKeep') : ''"
-            />
-            <div v-else-if="field.sensitive" class="relative">
-              <input
-                :type="visibleFields[field.key] ? 'text' : 'password'"
-                v-model="config[field.key]"
-                class="input pr-10"
-                autocomplete="new-password"
-                data-1p-ignore
-                data-lpignore="true"
-                data-bwignore="true"
-                spellcheck="false"
-                :placeholder="editing ? t('admin.accounts.leaveEmptyToKeep') : (field.defaultValue || '')"
-              />
-              <button
-                type="button"
-                @click="visibleFields[field.key] = !visibleFields[field.key]"
-                class="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-              >
-                <svg v-if="visibleFields[field.key]" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21" /></svg>
-                <svg v-else class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-              </button>
-            </div>
-            <Select
-              v-else-if="field.options?.length"
-              v-model="config[field.key]"
-              :options="field.options"
-              :searchable="field.options.length > 5"
-            />
-            <input
-              v-else
-              type="text"
-              v-model="config[field.key]"
-              class="input"
-              :placeholder="field.defaultValue || ''"
-            />
-            <p v-if="field.hintKey" class="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
-              {{ t(field.hintKey) }}
-            </p>
-          </div>
-        </div>
-
-        <!-- Callback URLs (each = editable URL + fixed path) -->
-        <div v-if="callbackPaths" class="mt-4 space-y-3">
-          <div v-if="callbackPaths.notifyUrl">
-            <label class="input-label">{{ t('payment.adminSettings.field_notifyUrl') }} <span class="text-red-500">*</span></label>
-            <div class="flex">
-              <input v-model="notifyBaseUrl" type="text" class="input min-w-0 flex-1 !rounded-r-none !border-r-0" :placeholder="defaultBaseUrl" />
-              <span class="inline-flex items-center whitespace-nowrap rounded-r-lg border border-gray-300 bg-gray-50 px-3 text-xs text-gray-500 dark:border-dark-600 dark:bg-dark-700 dark:text-gray-400">{{ callbackPaths.notifyUrl }}</span>
-            </div>
-          </div>
-          <div v-if="callbackPaths.returnUrl">
-            <label class="input-label">{{ t('payment.adminSettings.field_returnUrl') }} <span class="text-red-500">*</span></label>
-            <div class="flex">
-              <input v-model="returnBaseUrl" type="text" class="input min-w-0 flex-1 !rounded-r-none !border-r-0" :placeholder="defaultBaseUrl" />
-              <span class="inline-flex items-center whitespace-nowrap rounded-r-lg border border-gray-300 bg-gray-50 px-3 text-xs text-gray-500 dark:border-dark-600 dark:bg-dark-700 dark:text-gray-400">{{ callbackPaths.returnUrl }}</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- 服务商 Webhook 提示 -->
-        <div v-if="providerWebhookUrl" class="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800/50 dark:bg-blue-900/20">
-          <p class="text-xs text-blue-700 dark:text-blue-300">
-            {{ t(providerWebhookHint) }}
-          </p>
-          <code class="mt-1 block break-all rounded bg-blue-100 px-2 py-1 text-xs text-blue-800 dark:bg-blue-900/40 dark:text-blue-200">
-            {{ providerWebhookUrl }}
-          </code>
-          <p v-if="form.provider_key === 'stripe'" class="mt-2 text-xs leading-relaxed text-blue-700 dark:text-blue-300">
-            {{ t('admin.settings.payment.stripeWebhookApiVersionHint', { version: STRIPE_SDK_API_VERSION }) }}
-          </p>
-        </div>
-      </div>
+      <!-- Config fields + Callback URLs + Webhook hint -->
+      <ProviderConfigSection
+        :editing="!!editing"
+        :provider-key="form.provider_key"
+        :config="config"
+        :visible-fields="visibleFields"
+        :resolved-fields="resolvedFields"
+        :callback-paths="callbackPaths"
+        v-model:notify-base-url="notifyBaseUrl"
+        v-model:return-base-url="returnBaseUrl"
+        :default-base-url="defaultBaseUrl"
+        :provider-webhook-url="providerWebhookUrl"
+        :provider-webhook-hint="providerWebhookHint"
+      />
 
       <!-- Per-type limits (collapsible) -->
-      <div v-if="limitableTypes.length" class="border-t border-gray-200 pt-4 dark:border-dark-700">
-        <button type="button" @click="limitsExpanded = !limitsExpanded" class="flex w-full items-center justify-between">
-          <h4 class="text-sm font-semibold text-gray-900 dark:text-white">
-            {{ t('payment.adminSettings.limitsTitle') }}
-          </h4>
-          <svg :class="['h-4 w-4 text-gray-400 transition-transform', limitsExpanded && 'rotate-180']" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
-        </button>
-        <div v-show="limitsExpanded" class="mt-3 space-y-3">
-          <div
-            v-for="lt in limitableTypes"
-            :key="lt.value"
-            class="rounded-lg border border-gray-100 p-3 dark:border-dark-700"
-          >
-            <p class="mb-2 text-xs font-medium text-gray-700 dark:text-gray-300">{{ lt.label }}</p>
-            <div class="grid grid-cols-3 gap-3">
-              <div>
-                <label class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.adminSettings.limitSingleMin') }}</label>
-                <input
-                  type="number"
-                  :value="getLimitVal(lt.value, 'singleMin')"
-                  @input="setLimitVal(lt.value, 'singleMin', ($event.target as HTMLInputElement).value)"
-                  class="input mt-0.5" min="1" step="0.01" :placeholder="limitPlaceholder(lt.value)"
-                />
-              </div>
-              <div>
-                <label class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.adminSettings.limitSingleMax') }}</label>
-                <input
-                  type="number"
-                  :value="getLimitVal(lt.value, 'singleMax')"
-                  @input="setLimitVal(lt.value, 'singleMax', ($event.target as HTMLInputElement).value)"
-                  class="input mt-0.5" min="1" step="0.01" :placeholder="limitPlaceholder(lt.value)"
-                />
-              </div>
-              <div>
-                <label class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.adminSettings.limitDaily') }}</label>
-                <input
-                  type="number"
-                  :value="getLimitVal(lt.value, 'dailyLimit')"
-                  @input="setLimitVal(lt.value, 'dailyLimit', ($event.target as HTMLInputElement).value)"
-                  class="input mt-0.5" min="1" step="0.01" :placeholder="limitPlaceholder(lt.value)"
-                />
-              </div>
-            </div>
-          </div>
-          <p class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.adminSettings.limitsHint') }}</p>
-        </div>
-      </div>
+      <ProviderLimitsSection
+        v-if="limitableTypes.length"
+        :limitable-types="limitableTypes"
+        v-model:expanded="limitsExpanded"
+        :get-limit-val="getLimitVal"
+        :limit-placeholder="limitPlaceholder"
+        :set-limit-val="setLimitVal"
+      />
     </form>
 
     <template #footer>
@@ -229,26 +108,16 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { BaseDialog } from '@sub2api/plugin-sdk'
 import { Select } from '@sub2api/plugin-sdk'
 import type { SelectOption } from '@sub2api/plugin-sdk'
 import ToggleSwitch from './ToggleSwitch.vue'
-import { useAppStore } from '../../stores/host'
+import ProviderConfigSection from './ProviderConfigSection.vue'
+import ProviderLimitsSection from './ProviderLimitsSection.vue'
 import type { ProviderInstance } from '../../types/payment'
 import type { TypeOption } from './providerConfig'
-import {
-  PROVIDER_CONFIG_FIELDS,
-  PROVIDER_SUPPORTED_TYPES,
-  PROVIDER_CALLBACK_PATHS,
-  WEBHOOK_PATHS,
-  PAYMENT_MODE_QRCODE,
-  PAYMENT_MODE_POPUP,
-  STRIPE_SDK_API_VERSION,
-  getAvailableTypes,
-  extractBaseUrl,
-} from './providerConfig'
+import { useProviderDialogForm } from './useProviderDialogForm'
 
 const props = defineProps<{
   show: boolean
@@ -276,351 +145,40 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
-const appStore = useAppStore()
 
-// --- Form state ---
-const form = reactive({
-  name: '',
-  provider_key: 'easypay',
-  supported_types: [] as string[],
-  enabled: true,
-  payment_mode: PAYMENT_MODE_QRCODE,
-  refund_enabled: false,
-  allow_user_refund: false,
+const {
+  form,
+  config,
+  notifyBaseUrl,
+  returnBaseUrl,
+  limitsExpanded,
+  visibleFields,
+  defaultBaseUrl,
+  providerWebhookUrl,
+  providerWebhookHint,
+  callbackPaths,
+  paymentModeOptions,
+  availableTypes,
+  resolvedFields,
+  limitableTypes,
+  isTypeSelected,
+  toggleType,
+  onKeyChange,
+  getLimitVal,
+  limitPlaceholder,
+  setLimitVal,
+  buildPayload,
+  reset,
+  loadProvider,
+} = useProviderDialogForm({
+  get editing() { return props.editing },
+  get allPaymentTypes() { return props.allPaymentTypes },
+  get redirectLabel() { return props.redirectLabel },
 })
-const config = reactive<Record<string, string>>({})
-const limits = reactive<Record<string, Record<string, number>>>({})
-const notifyBaseUrl = ref('')
-const returnBaseUrl = ref('')
-const limitsExpanded = ref(false)
-const visibleFields = reactive<Record<string, boolean>>({})
-
-// --- Computed ---
-const defaultBaseUrl = typeof window !== 'undefined' ? window.location.origin : ''
-
-const providerWebhookHintMap: Record<string, string> = {
-  stripe: 'admin.settings.payment.stripeWebhookHint',
-  airwallex: 'admin.settings.payment.airwallexWebhookHint',
-}
-
-const providerWebhookUrl = computed(() => {
-  const path = WEBHOOK_PATHS[form.provider_key]
-  return providerWebhookHintMap[form.provider_key] && path ? defaultBaseUrl + path : ''
-})
-
-const providerWebhookHint = computed(() =>
-  providerWebhookHintMap[form.provider_key] || 'admin.settings.payment.stripeWebhookHint',
-)
-
-const callbackPaths = computed(() => PROVIDER_CALLBACK_PATHS[form.provider_key] || null)
-
-const paymentModeOptions = computed(() => {
-  return [
-    { value: PAYMENT_MODE_QRCODE, label: t('payment.adminSettings.modeQRCode') },
-    { value: PAYMENT_MODE_POPUP, label: t('payment.adminSettings.modePopup') },
-  ]
-})
-
-const availableTypes = computed(() => {
-  const base = getAvailableTypes(form.provider_key, props.allPaymentTypes, props.redirectLabel)
-  // Resolve i18n labels for types not in allPaymentTypes (e.g. card, link inside stripe)
-  return base.map(opt =>
-    opt.label === opt.value
-      ? { ...opt, label: t(`payment.methods.${opt.value}`, opt.value) }
-      : opt,
-  )
-})
-
-const resolvedFields = computed(() => {
-  const fields = PROVIDER_CONFIG_FIELDS[form.provider_key] || []
-  return fields.map(f => ({
-    ...f,
-    label: f.label || t(`payment.adminSettings.field_${f.key}`),
-  }))
-})
-
-interface PaymentGuideItem {
-  title: string
-  open: string
-  call: string
-  fallback: string
-}
-
-interface PaymentGuide {
-  summary: string
-  items: PaymentGuideItem[]
-  note?: string
-}
-
-const paymentGuide = computed<PaymentGuide | null>(() => {
-  if (form.provider_key === 'alipay') {
-    return {
-      summary: t('admin.settings.payment.alipayGuideSummary'),
-      items: [
-        {
-          title: t('admin.settings.payment.alipayGuideFaceToFaceTitle'),
-          open: t('admin.settings.payment.alipayGuideFaceToFaceOpen'),
-          call: t('admin.settings.payment.alipayGuideFaceToFaceCall'),
-          fallback: t('admin.settings.payment.alipayGuideFaceToFaceFallback'),
-        },
-        {
-          title: t('admin.settings.payment.alipayGuidePagePayTitle'),
-          open: t('admin.settings.payment.alipayGuidePagePayOpen'),
-          call: t('admin.settings.payment.alipayGuidePagePayCall'),
-          fallback: t('admin.settings.payment.alipayGuidePagePayFallback'),
-        },
-        {
-          title: t('admin.settings.payment.alipayGuideWapTitle'),
-          open: t('admin.settings.payment.alipayGuideWapOpen'),
-          call: t('admin.settings.payment.alipayGuideWapCall'),
-          fallback: t('admin.settings.payment.alipayGuideWapFallback'),
-        },
-      ],
-    }
-  }
-
-  if (form.provider_key === 'wxpay') {
-    return {
-      summary: t('admin.settings.payment.wxpayGuideSummary'),
-      note: t('admin.settings.payment.wxpayGuideNote'),
-      items: [
-        {
-          title: t('admin.settings.payment.wxpayGuideNativeTitle'),
-          open: t('admin.settings.payment.wxpayGuideNativeOpen'),
-          call: t('admin.settings.payment.wxpayGuideNativeCall'),
-          fallback: t('admin.settings.payment.wxpayGuideNativeFallback'),
-        },
-        {
-          title: t('admin.settings.payment.wxpayGuideJsapiTitle'),
-          open: t('admin.settings.payment.wxpayGuideJsapiOpen'),
-          call: t('admin.settings.payment.wxpayGuideJsapiCall'),
-          fallback: t('admin.settings.payment.wxpayGuideJsapiFallback'),
-        },
-        {
-          title: t('admin.settings.payment.wxpayGuideH5Title'),
-          open: t('admin.settings.payment.wxpayGuideH5Open'),
-          call: t('admin.settings.payment.wxpayGuideH5Call'),
-          fallback: t('admin.settings.payment.wxpayGuideH5Fallback'),
-        },
-      ],
-    }
-  }
-
-  if (form.provider_key === 'airwallex') {
-    return {
-      summary: t('admin.settings.payment.airwallexGuideSummary'),
-      note: t('admin.settings.payment.airwallexGuideNote'),
-      items: [],
-    }
-  }
-
-  return null
-})
-
-const limitableTypes = computed(() => {
-  // Stripe: single "stripe" entry (one set of shared limits)
-  if (form.provider_key === 'stripe') {
-    return [{ value: 'stripe', label: 'Stripe' }]
-  }
-  const selected = form.supported_types.filter(t => t !== 'easypay')
-  return selected.map(v => {
-    const found = props.allPaymentTypes.find(pt => pt.value === v)
-    return found || { value: v, label: v }
-  })
-})
-
-// --- Methods ---
-function isTypeSelected(type: string): boolean {
-  return form.supported_types.includes(type)
-}
-
-function toggleType(type: string) {
-  if (form.supported_types.includes(type)) {
-    form.supported_types = form.supported_types.filter(t => t !== type)
-  } else {
-    form.supported_types = [...form.supported_types, type]
-  }
-}
-
-function onKeyChange() {
-  form.supported_types = [...(PROVIDER_SUPPORTED_TYPES[form.provider_key] || [])]
-  clearConfig()
-  applyDefaults()
-}
-
-function clearConfig() {
-  Object.keys(config).forEach(k => delete config[k])
-  Object.keys(limits).forEach(k => delete limits[k])
-  Object.keys(visibleFields).forEach(k => delete visibleFields[k])
-  notifyBaseUrl.value = ''
-  returnBaseUrl.value = ''
-  limitsExpanded.value = false
-}
-
-function applyDefaults() {
-  for (const f of PROVIDER_CONFIG_FIELDS[form.provider_key] || []) {
-    if (f.defaultValue && !config[f.key]) config[f.key] = f.defaultValue
-  }
-}
-
-function getLimitVal(paymentType: string, field: string): string {
-  const val = limits[paymentType]?.[field]
-  return val && val > 0 ? String(val) : ''
-}
-
-/** Returns true if any limit field for this payment type has a value */
-function hasAnyLimit(paymentType: string): boolean {
-  const l = limits[paymentType]
-  if (!l) return false
-  return (l.singleMin > 0) || (l.singleMax > 0) || (l.dailyLimit > 0)
-}
-
-/** Dynamic placeholder: "不限制" if sibling has value, "使用全局配置" if all empty */
-function limitPlaceholder(paymentType: string): string {
-  return hasAnyLimit(paymentType)
-    ? t('payment.adminSettings.limitsNoLimit')
-    : t('payment.adminSettings.limitsUseGlobal')
-}
-
-function setLimitVal(paymentType: string, field: string, val: string) {
-  if (!limits[paymentType]) limits[paymentType] = {}
-  const num = Number(val)
-  // Empty → clear the field (use global); reject ≤0
-  if (val === '' || isNaN(num)) {
-    delete limits[paymentType][field]
-    return
-  }
-  if (num <= 0) return
-  limits[paymentType][field] = num
-}
-
-function serializeLimits(): string {
-  const result: Record<string, Record<string, number>> = {}
-  for (const [pt, fields] of Object.entries(limits)) {
-    const clean: Record<string, number> = {}
-    for (const [k, v] of Object.entries(fields)) {
-      if (v > 0) clean[k] = v
-    }
-    if (Object.keys(clean).length > 0) result[pt] = clean
-  }
-  return Object.keys(result).length > 0 ? JSON.stringify(result) : ''
-}
 
 function handleSave() {
-  // Validate required fields
-  if (!form.name.trim()) {
-    emitValidationError(t('payment.adminSettings.validationNameRequired'))
-    return
-  }
-  // Validate required config fields — all non-optional fields must be filled.
-  // In edit mode, sensitive fields may be left blank to preserve the stored
-  // value (backend merges blanks by preserving the existing secret).
-  for (const f of PROVIDER_CONFIG_FIELDS[form.provider_key] || []) {
-    if (f.optional) continue
-    if (props.editing && f.sensitive) continue
-    const val = (config[f.key] || '').trim()
-    if (!val) {
-      const label = f.label || t(`payment.adminSettings.field_${f.key}`)
-      emitValidationError(t('payment.adminSettings.validationFieldRequired', { field: label }))
-      return
-    }
-  }
-
-  const clearableConfigKeys = new Set(
-    (PROVIDER_CONFIG_FIELDS[form.provider_key] || [])
-      .filter(field => field.clearable)
-      .map(field => field.key),
-  )
-  const filteredConfig: Record<string, string> = {}
-  for (const [k, v] of Object.entries(config)) {
-    if (!v || !v.trim()) {
-      if (clearableConfigKeys.has(k)) {
-        filteredConfig[k] = ''
-      }
-      continue
-    }
-    filteredConfig[k] = v
-  }
-
-  // Inject computed callback URLs (each URL = independent base + fixed path)
-  // If base URL is empty, auto-fill with current domain
-  const paths = PROVIDER_CALLBACK_PATHS[form.provider_key]
-  if (paths) {
-    const notifyBase = notifyBaseUrl.value.trim() || defaultBaseUrl
-    const returnBase = returnBaseUrl.value.trim() || defaultBaseUrl
-    notifyBaseUrl.value = notifyBase
-    returnBaseUrl.value = returnBase
-    if (paths.notifyUrl) filteredConfig['notifyUrl'] = notifyBase + paths.notifyUrl
-    if (paths.returnUrl) filteredConfig['returnUrl'] = returnBase + paths.returnUrl
-  }
-
-  emit('save', {
-    provider_key: form.provider_key,
-    name: form.name,
-    supported_types: form.supported_types,
-    enabled: form.enabled,
-    payment_mode: form.provider_key === 'easypay' ? form.payment_mode : '',
-    refund_enabled: form.refund_enabled,
-    allow_user_refund: form.refund_enabled ? form.allow_user_refund : false,
-    config: filteredConfig,
-    limits: serializeLimits(),
-  })
-}
-
-function emitValidationError(msg: string) {
-  appStore.showError(msg)
-}
-
-// --- Public API for parent to call ---
-function reset(defaultKey: string) {
-  form.name = ''
-  form.provider_key = defaultKey
-  form.supported_types = [...(PROVIDER_SUPPORTED_TYPES[defaultKey] || [])]
-  form.enabled = true
-  form.payment_mode = defaultKey === 'easypay' ? PAYMENT_MODE_QRCODE : ''
-  form.refund_enabled = false
-  form.allow_user_refund = false
-  clearConfig()
-  applyDefaults()
-}
-
-function loadProvider(provider: ProviderInstance) {
-  form.name = provider.name
-  form.provider_key = provider.provider_key
-  form.supported_types = provider.supported_types
-  form.enabled = provider.enabled
-  form.payment_mode = provider.payment_mode || (provider.provider_key === 'easypay' ? PAYMENT_MODE_QRCODE : '')
-  form.refund_enabled = provider.refund_enabled
-  form.allow_user_refund = provider.allow_user_refund
-  clearConfig()
-  // Pre-fill config from API response. Backend omits sensitive fields entirely,
-  // so those inputs stay blank — submitting blank preserves the stored secret.
-  if (provider.config) {
-    for (const [k, v] of Object.entries(provider.config)) {
-      // Skip notifyUrl/returnUrl — they are derived from callbackBaseUrl
-      if (k === 'notifyUrl' || k === 'returnUrl') continue
-      config[k] = v
-    }
-    // Extract base URLs from existing callback URLs
-    const paths = PROVIDER_CALLBACK_PATHS[provider.provider_key]
-    if (paths?.notifyUrl && provider.config['notifyUrl']) {
-      notifyBaseUrl.value = extractBaseUrl(provider.config['notifyUrl'], paths.notifyUrl)
-    }
-    if (paths?.returnUrl && provider.config['returnUrl']) {
-      returnBaseUrl.value = extractBaseUrl(provider.config['returnUrl'], paths.returnUrl)
-    }
-  }
-  applyDefaults()
-  // Parse existing limits
-  if (provider.limits) {
-    try {
-      const parsed = JSON.parse(provider.limits)
-      for (const [pt, fields] of Object.entries(parsed as Record<string, Record<string, number>>)) {
-        limits[pt] = { ...fields }
-      }
-      limitsExpanded.value = Object.keys(limits).length > 0
-    } catch { /* ignore */ }
-  }
+  const payload = buildPayload()
+  if (payload) emit('save', payload)
 }
 
 defineExpose({ reset, loadProvider })

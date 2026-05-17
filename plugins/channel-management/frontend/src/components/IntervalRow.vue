@@ -4,12 +4,12 @@
     <!-- Token mode: context range + prices ($/MTok) -->
     <template v-if="mode === 'token'">
       <div class="w-20">
-        <label class="text-xs text-gray-400">Min</label>
+        <label class="text-xs text-gray-400">{{ t('admin.channels.form.intervalMin') }}</label>
         <input :value="interval.min_tokens" @input="emitField('min_tokens', toInt(($event.target as HTMLInputElement).value))"
           type="number" min="0" class="input mt-0.5 text-xs" />
       </div>
       <div class="w-20">
-        <label class="text-xs text-gray-400">Max <span class="text-gray-300">(含)</span></label>
+        <label class="text-xs text-gray-400">{{ t('admin.channels.form.intervalMax') }} <span class="text-gray-300">{{ t('admin.channels.form.intervalInclusive') }}</span></label>
         <input :value="interval.max_tokens ?? ''" @input="emitField('max_tokens', toIntOrNull(($event.target as HTMLInputElement).value))"
           type="number" min="0" class="input mt-0.5 text-xs" :placeholder="'∞'" />
       </div>
@@ -50,12 +50,12 @@
           type="text" class="input mt-0.5 text-xs" :placeholder="mode === 'image' ? '1K / 2K / 4K' : ''" />
       </div>
       <div class="w-20">
-        <label class="text-xs text-gray-400">Min</label>
+        <label class="text-xs text-gray-400">{{ t('admin.channels.form.intervalMin') }}</label>
         <input :value="interval.min_tokens" @input="emitField('min_tokens', toInt(($event.target as HTMLInputElement).value))"
           type="number" min="0" class="input mt-0.5 text-xs" />
       </div>
       <div class="w-20">
-        <label class="text-xs text-gray-400">Max <span class="text-gray-300">(含)</span></label>
+        <label class="text-xs text-gray-400">{{ t('admin.channels.form.intervalMax') }} <span class="text-gray-300">{{ t('admin.channels.form.intervalInclusive') }}</span></label>
         <input :value="interval.max_tokens ?? ''" @input="emitField('max_tokens', toIntOrNull(($event.target as HTMLInputElement).value))"
           type="number" min="0" class="input mt-0.5 text-xs" :placeholder="'∞'" />
       </div>

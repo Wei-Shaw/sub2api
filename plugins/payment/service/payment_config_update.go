@@ -21,6 +21,26 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 	if s == nil || s.settings == nil {
 		return errors.New("payment: settings client unavailable")
 	}
+	if err := s.updatePaymentScalarSettings(ctx, req); err != nil {
+		return err
+	}
+	if err := s.updatePaymentVisibleMethodSettings(ctx, req); err != nil {
+		return err
+	}
+	if err := s.updatePaymentCancelSettings(ctx, req); err != nil {
+		return err
+	}
+	if req.EnabledTypes != nil {
+		normalized := NormalizeVisibleMethods(req.EnabledTypes)
+		if err := s.settings.Set(ctx, SettingEnabledPaymentTypes, normalized); err != nil {
+			return fmt.Errorf("set %s: %w", SettingEnabledPaymentTypes, err)
+		}
+	}
+	return nil
+}
+
+// updatePaymentScalarSettings persists the core payment configuration fields.
+func (s *PaymentConfigService) updatePaymentScalarSettings(ctx context.Context, req UpdatePaymentConfigRequest) error {
 	if err := s.setIfNotNilBool(ctx, SettingPaymentEnabled, req.Enabled); err != nil {
 		return err
 	}
@@ -60,9 +80,11 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 	if err := s.setIfNotNilString(ctx, SettingHelpImageURL, req.HelpImageURL); err != nil {
 		return err
 	}
-	if err := s.setIfNotNilString(ctx, SettingHelpText, req.HelpText); err != nil {
-		return err
-	}
+	return s.setIfNotNilString(ctx, SettingHelpText, req.HelpText)
+}
+
+// updatePaymentCancelSettings persists the cancel rate-limit configuration.
+func (s *PaymentConfigService) updatePaymentCancelSettings(ctx context.Context, req UpdatePaymentConfigRequest) error {
 	if err := s.setIfNotNilBool(ctx, SettingCancelRateLimitOn, req.CancelRateLimitEnabled); err != nil {
 		return err
 	}
@@ -75,9 +97,11 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 	if err := s.setIfNotNilString(ctx, SettingCancelWindowUnit, req.CancelRateLimitUnit); err != nil {
 		return err
 	}
-	if err := s.setIfNotNilString(ctx, SettingCancelWindowMode, req.CancelRateLimitMode); err != nil {
-		return err
-	}
+	return s.setIfNotNilString(ctx, SettingCancelWindowMode, req.CancelRateLimitMode)
+}
+
+// updatePaymentVisibleMethodSettings persists visible-method toggles and source assignments.
+func (s *PaymentConfigService) updatePaymentVisibleMethodSettings(ctx context.Context, req UpdatePaymentConfigRequest) error {
 	if err := s.setIfNotNilBool(ctx, SettingPaymentVisibleMethodAlipayEnabled, req.VisibleMethodAlipayEnabled); err != nil {
 		return err
 	}
@@ -87,16 +111,7 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 	if err := s.setIfNotNilString(ctx, SettingPaymentVisibleMethodAlipaySource, req.VisibleMethodAlipaySource); err != nil {
 		return err
 	}
-	if err := s.setIfNotNilString(ctx, SettingPaymentVisibleMethodWxpaySource, req.VisibleMethodWxpaySource); err != nil {
-		return err
-	}
-	if req.EnabledTypes != nil {
-		normalized := NormalizeVisibleMethods(req.EnabledTypes)
-		if err := s.settings.Set(ctx, SettingEnabledPaymentTypes, normalized); err != nil {
-			return fmt.Errorf("set %s: %w", SettingEnabledPaymentTypes, err)
-		}
-	}
-	return nil
+	return s.setIfNotNilString(ctx, SettingPaymentVisibleMethodWxpaySource, req.VisibleMethodWxpaySource)
 }
 
 func (s *PaymentConfigService) setIfNotNilBool(ctx context.Context, key string, v *bool) error {

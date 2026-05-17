@@ -107,6 +107,9 @@ export default {
       bedrockApiKeyRequired: '请输入 Bedrock API Key',
       vertexSaJsonMissingFields: 'Service Account JSON 缺少 project_id、client_email 或 private_key',
       vertexLocationRequired: '请输入 Vertex 位置',
+      oauth: {
+        failedToGenerateUrl: '生成授权链接失败',
+      },
       types: {
         oauth: 'OAuth',
       },

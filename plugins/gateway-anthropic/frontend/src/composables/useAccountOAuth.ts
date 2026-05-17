@@ -1,4 +1,6 @@
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { extractApiErrorMessage } from '@sub2api/plugin-sdk'
 import { getClient } from '../api/client'
 
 export type AddMethod = 'oauth' | 'setup-token'
@@ -11,6 +13,8 @@ export interface TokenInfo {
 }
 
 export function useAccountOAuth() {
+  const { t } = useI18n()
+
   const authUrl = ref('')
   const authCode = ref('')
   const sessionId = ref('')
@@ -45,8 +49,7 @@ export function useAccountOAuth() {
       sessionId.value = data.session_id
       return true
     } catch (err: unknown) {
-      const msg = extractErrorMessage(err)
-      error.value = msg
+      error.value = extractApiErrorMessage(err, t('admin.accounts.oauth.failedToGenerateUrl'))
       return false
     } finally {
       loading.value = false
@@ -69,12 +72,4 @@ export function useAccountOAuth() {
     authUrl, authCode, sessionId, sessionKey, loading, error,
     resetState, generateAuthUrl, parseSessionKeys, buildExtraInfo,
   }
-}
-
-function extractErrorMessage(err: unknown): string {
-  if (err && typeof err === 'object' && 'response' in err) {
-    const resp = (err as { response?: { data?: { detail?: string } } }).response
-    return resp?.data?.detail || 'Failed to generate auth URL'
-  }
-  return 'Failed to generate auth URL'
 }

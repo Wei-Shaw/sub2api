@@ -24,7 +24,7 @@ export { default as FilterBar } from './components/FilterBar.vue'
 export { default as SearchInput } from './components/SearchInput.vue'
 export { default as StatusBadge } from './components/StatusBadge.vue'
 
-export type { Column, SelectOption } from './types'
+export type { Column, DataRow, DataTableInputRow, SelectOption } from './types'
 
 export * as tablePreferences from './utils/tablePreferences'
 

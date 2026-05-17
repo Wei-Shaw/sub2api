@@ -76,7 +76,7 @@ export function useKeyedDebouncedSearch<T>(options: UseKeyedDebouncedSearchOptio
         if (controller.signal.aborted) return
         if (versions.get(key) !== requestVersion) return
         options.onSuccess(key, result)
-      } catch (error) {
+      } catch (error: unknown) {
         if (controller.signal.aborted) return
         if (versions.get(key) !== requestVersion) return
         options.onError?.(key, error)

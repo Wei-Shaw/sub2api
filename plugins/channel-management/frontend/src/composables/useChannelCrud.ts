@@ -115,7 +115,7 @@ export function useChannelCrud() {
         '/admin/groups/all',
       )
       allGroups.value = response.data
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error loading groups:', error)
     } finally {
       groupsLoading.value = false
@@ -162,7 +162,7 @@ export function useChannelCrud() {
     try {
       await channelsAPI.update(channel.id, { status: newStatus })
       return newStatus
-    } catch (error) {
+    } catch (error: unknown) {
       sdk.notify.error(t('admin.channels.updateError', 'Failed to update channel'))
       console.error('Error toggling channel status:', error)
       return null

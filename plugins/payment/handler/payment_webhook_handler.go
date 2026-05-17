@@ -118,52 +118,59 @@ func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string)
 		c.String(http.StatusBadRequest, "verify failed")
 		return
 	}
-	// nil notification means irrelevant event (e.g. Stripe non-payment event).
 	if notification == nil {
 		writeSuccessResponse(c, resolvedProviderKey)
 		return
 	}
 
-	// Replay protection: each provider populates notification.TradeNo with
-	// the upstream's authoritative transaction id (Alipay trade_no, WeChat
-	// transaction_id, EasyPay trade_no, Stripe PaymentIntent id) once the
-	// signature has been verified. Reserving (provider, TradeNo) in Redis
-	// blocks a captured-and-replayed body from re-triggering fulfillment
-	// even after the order has expired and the grace window has closed.
-	if err := h.dedup.Reserve(c.Request.Context(), resolvedProviderKey, notification.TradeNo); err != nil {
-		if errors.Is(err, ErrWebhookReplay) {
-			slog.Info("[Payment Webhook] duplicate notification suppressed",
-				"provider", resolvedProviderKey,
-				"outTradeNo", notification.OrderID,
-				"tradeNo", notification.TradeNo,
-			)
-			writeSuccessResponse(c, resolvedProviderKey)
-			return
-		}
-		// Reserve never returns non-replay errors today (it logs and
-		// falls open on transport failures), but treat the contract
-		// defensively so future tightening does not silently 500 the
-		// provider.
-		slog.Warn("[Payment Webhook] dedup reserve unexpected error; continuing fail-open",
-			"provider", resolvedProviderKey, "error", err)
-	}
-
-	if err := h.paymentService.HandlePaymentNotification(c.Request.Context(), notification, resolvedProviderKey); err != nil {
-		if errors.Is(err, service.ErrOrderNotFound) {
-			slog.Warn("[Payment Webhook] unknown order, acking to stop retries",
-				"provider", resolvedProviderKey,
-				"outTradeNo", notification.OrderID,
-				"tradeNo", notification.TradeNo,
-			)
-			writeSuccessResponse(c, resolvedProviderKey)
-			return
-		}
-		slog.Error("[Payment Webhook] handle notification failed", "provider", resolvedProviderKey, "error", err)
-		c.String(http.StatusInternalServerError, "handle failed")
+	if !h.checkReplayProtection(c, resolvedProviderKey, notification) {
 		return
 	}
 
-	writeSuccessResponse(c, resolvedProviderKey)
+	h.dispatchNotification(c, resolvedProviderKey, notification)
+}
+
+// checkReplayProtection performs dedup reservation for the notification.
+// Returns true if the notification should proceed, false if it was a
+// replay (response already written).
+func (h *PaymentWebhookHandler) checkReplayProtection(c *gin.Context, providerKey string, notification *payment.PaymentNotification) bool {
+	err := h.dedup.Reserve(c.Request.Context(), providerKey, notification.TradeNo)
+	if err == nil {
+		return true
+	}
+	if errors.Is(err, ErrWebhookReplay) {
+		slog.Info("[Payment Webhook] duplicate notification suppressed",
+			"provider", providerKey,
+			"outTradeNo", notification.OrderID,
+			"tradeNo", notification.TradeNo,
+		)
+		writeSuccessResponse(c, providerKey)
+		return false
+	}
+	slog.Warn("[Payment Webhook] dedup reserve unexpected error; continuing fail-open",
+		"provider", providerKey, "error", err)
+	return true
+}
+
+// dispatchNotification sends the verified notification through the
+// fulfillment pipeline and writes the appropriate HTTP response.
+func (h *PaymentWebhookHandler) dispatchNotification(c *gin.Context, providerKey string, notification *payment.PaymentNotification) {
+	err := h.paymentService.HandlePaymentNotification(c.Request.Context(), notification, providerKey)
+	if err == nil {
+		writeSuccessResponse(c, providerKey)
+		return
+	}
+	if errors.Is(err, service.ErrOrderNotFound) {
+		slog.Warn("[Payment Webhook] unknown order, acking to stop retries",
+			"provider", providerKey,
+			"outTradeNo", notification.OrderID,
+			"tradeNo", notification.TradeNo,
+		)
+		writeSuccessResponse(c, providerKey)
+		return
+	}
+	slog.Error("[Payment Webhook] handle notification failed", "provider", providerKey, "error", err)
+	c.String(http.StatusInternalServerError, "handle failed")
 }
 
 // readWebhookBody returns the raw body of the webhook request. For GET

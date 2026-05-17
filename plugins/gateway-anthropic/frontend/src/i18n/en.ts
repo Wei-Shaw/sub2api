@@ -118,6 +118,9 @@ export default {
       vertexSaJsonMissingFields: 'Service Account JSON is missing project_id, client_email, or private_key',
       vertexLocationRequired: 'Please enter a Vertex location',
       // OAuth keys
+      oauth: {
+        failedToGenerateUrl: 'Failed to generate auth URL',
+      },
       types: {
         oauth: 'OAuth',
       },

@@ -115,5 +115,8 @@ export default {
     ruleAccountsPlaceholder: '输入账号 ID，逗号分隔',
     ruleModelPricing: '模型定价',
     noGroupsInChannel: '上方平台标签页中未选择分组',
+    intervalMin: '最小',
+    intervalMax: '最大',
+    intervalInclusive: '(含)',
   },
 }

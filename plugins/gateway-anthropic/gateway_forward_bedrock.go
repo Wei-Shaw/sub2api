@@ -1,7 +1,8 @@
-﻿package main
+package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -27,10 +28,8 @@ func (s *gatewayProviderServer) forwardBedrock(
 	startTime := time.Now()
 	ctx := stream.Context()
 	acct := req.GetAccount()
-
 	creds := parseBedrockCredentialsRaw(acct.GetCredentialsJson())
 
-	// Resolve model.
 	originalModel := req.GetModel()
 	mappedModel, ok := resolveBedrockModel(originalModel, acct.GetCredentialsJson())
 	if !ok {
@@ -38,92 +37,125 @@ func (s *gatewayProviderServer) forwardBedrock(
 	}
 
 	isStream := req.GetStream()
-
-	// Prepare request body for Bedrock.
-	betaHeader := getClientBetaHeader(req)
-	bedrockBody, err := prepareBedrockRequestBody(req.GetRawBody(), betaHeader)
+	httpReq, bedrockBody, err := buildBedrockHTTPRequest(ctx, req, creds, mappedModel, isStream)
 	if err != nil {
-		return fmt.Errorf("prepare bedrock body: %w", err)
+		return err
+	}
+	if err := authenticateBedrockRequest(ctx, httpReq, bedrockBody, creds); err != nil {
+		return err
 	}
 
-	// Build the upstream HTTP request.
-	targetURL := buildBedrockURL(creds.region, mappedModel, isStream)
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(bedrockBody))
-	if err != nil {
-		return fmt.Errorf("build bedrock request: %w", err)
-	}
-
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Accept", "application/json")
-
-	// Apply authentication.
-	if creds.isAPIKey() {
-		httpReq.Header.Set("Authorization", "Bearer "+creds.apiKey)
-	} else {
-		if creds.accessKeyID == "" || creds.secretAccessKey == "" {
-			return fmt.Errorf("bedrock SigV4 requires aws_access_key_id and aws_secret_access_key")
-		}
-		if err := signBedrockRequest(ctx, httpReq, bedrockBody, creds); err != nil {
-			return fmt.Errorf("sign bedrock request: %w", err)
-		}
-	}
-
-	// Execute the upstream request.
 	resp, err := s.httpClient.Do(httpReq)
 	if err != nil {
 		return fmt.Errorf("bedrock request failed: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	// Map Bedrock response headers.
-	respHeaders := make(map[string]string)
-	for key, values := range resp.Header {
-		if len(values) > 0 {
-			respHeaders[key] = values[0]
-		}
-	}
+	respHeaders := collectSingleValueHeaders(resp)
 	mapBedrockResponseHeaders(respHeaders)
-
-	// Send response headers to the host.
-	if err := stream.Send(&pb.GatewayForwardChunk{
-		Chunk: &pb.GatewayForwardChunk_Headers{
-			Headers: &pb.GatewayResponseHeaders{
-				StatusCode: int32(resp.StatusCode),
-				Headers:    respHeaders,
-			},
-		},
-	}); err != nil {
+	if err := sendBedrockResponseHeaders(stream, resp.StatusCode, respHeaders); err != nil {
 		return err
 	}
 
-	// Handle error responses.
 	if resp.StatusCode >= 400 {
-		return s.handleBedrockErrorResponse(stream, resp, respHeaders, originalModel, mappedModel, isStream, startTime)
+		return handleBedrockError(stream, resp, respHeaders, originalModel, mappedModel, isStream, startTime)
 	}
 
-	// Process the response body.
+	return sendBedrockSuccess(stream, resp, respHeaders, originalModel, mappedModel, isStream, startTime)
+}
+
+// buildBedrockHTTPRequest constructs the upstream HTTP request for Bedrock.
+func buildBedrockHTTPRequest(
+	ctx context.Context,
+	req *pb.GatewayForwardRequest,
+	creds *bedrockCreds,
+	mappedModel string,
+	isStream bool,
+) (*http.Request, []byte, error) {
+	betaHeader := getClientBetaHeader(req)
+	bedrockBody, err := prepareBedrockRequestBody(req.GetRawBody(), betaHeader)
+	if err != nil {
+		return nil, nil, fmt.Errorf("prepare bedrock body: %w", err)
+	}
+	targetURL := buildBedrockURL(creds.region, mappedModel, isStream)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(bedrockBody))
+	if err != nil {
+		return nil, nil, fmt.Errorf("build bedrock request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Accept", "application/json")
+	return httpReq, bedrockBody, nil
+}
+
+// authenticateBedrockRequest applies either SigV4 or API key authentication.
+func authenticateBedrockRequest(ctx context.Context, httpReq *http.Request, body []byte, creds *bedrockCreds) error {
+	if creds.isAPIKey() {
+		httpReq.Header.Set("Authorization", "Bearer "+creds.apiKey)
+		return nil
+	}
+	if creds.accessKeyID == "" || creds.secretAccessKey == "" {
+		return fmt.Errorf("bedrock SigV4 requires aws_access_key_id and aws_secret_access_key")
+	}
+	if err := signBedrockRequest(ctx, httpReq, body, creds); err != nil {
+		return fmt.Errorf("sign bedrock request: %w", err)
+	}
+	return nil
+}
+
+// collectSingleValueHeaders extracts single-value headers from the response.
+func collectSingleValueHeaders(resp *http.Response) map[string]string {
+	headers := make(map[string]string)
+	for key, values := range resp.Header {
+		if len(values) > 0 {
+			headers[key] = values[0]
+		}
+	}
+	return headers
+}
+
+// sendBedrockResponseHeaders sends response headers to the host.
+func sendBedrockResponseHeaders(
+	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
+	statusCode int,
+	headers map[string]string,
+) error {
+	return stream.Send(&pb.GatewayForwardChunk{
+		Chunk: &pb.GatewayForwardChunk_Headers{
+			Headers: &pb.GatewayResponseHeaders{
+				StatusCode: int32(statusCode),
+				Headers:    headers,
+			},
+		},
+	})
+}
+
+// sendBedrockSuccess processes the successful response body and sends the Done chunk.
+func sendBedrockSuccess(
+	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
+	resp *http.Response,
+	respHeaders map[string]string,
+	originalModel, mappedModel string,
+	isStream bool,
+	startTime time.Time,
+) error {
 	var result *streamResult
+	var err error
 	if isStream {
 		result, err = processBedrockStream(stream, resp.Body, startTime, originalModel, mappedModel)
 	} else {
 		result, err = processBedrockNonStreamResponse(stream, resp.Body, originalModel, mappedModel)
 	}
 
-	// Build and send the Done chunk.
 	reqID := bedrockRequestID(respHeaders)
 	done := buildBedrockDoneChunk(reqID, originalModel, mappedModel, isStream, startTime, result, err)
 	if dc, ok := done.Chunk.(*pb.GatewayForwardChunk_Done); ok && dc.Done.GetResult() != nil {
 		dc.Done.GetResult().ResponseHeaders = gatewayutil.CollectResponseHeaders(resp, nil)
 	}
-	if sendErr := stream.Send(done); sendErr != nil {
-		return sendErr
-	}
-
-	return nil
+	return stream.Send(done)
 }
 
-// handleBedrockErrorResponse processes Bedrock 4xx/5xx error responses.
-func (s *gatewayProviderServer) handleBedrockErrorResponse(
+// handleBedrockError processes Bedrock 4xx/5xx error responses.
+func handleBedrockError(
 	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
 	resp *http.Response,
 	headers map[string]string,
@@ -150,9 +182,9 @@ func (s *gatewayProviderServer) handleBedrockErrorResponse(
 
 	if gatewayutil.ShouldFailoverStatus(resp.StatusCode, extraFailoverCodes) {
 		fwdResult.UpstreamError = &pb.GatewayUpstreamError{
-			StatusCode:   int32(resp.StatusCode),
-			ErrorType:    gatewayutil.ClassifyErrorType(resp.StatusCode, extraOverloadedCodes),
-			ResponseBody: gatewayutil.TruncateBytes(body, gatewayutil.MaxErrorBodyForProto),
+			StatusCode:      int32(resp.StatusCode),
+			ErrorType:       gatewayutil.ClassifyErrorType(resp.StatusCode, extraOverloadedCodes),
+			ResponseBody:    gatewayutil.TruncateBytes(body, gatewayutil.MaxErrorBodyForProto),
 			ResponseHeaders: gatewayutil.CollectResponseHeaders(resp, nil),
 		}
 	}
@@ -160,7 +192,7 @@ func (s *gatewayProviderServer) handleBedrockErrorResponse(
 	done := &pb.GatewayForwardChunk{
 		Chunk: &pb.GatewayForwardChunk_Done{
 			Done: &pb.GatewayResponseDone{
-				Error: fmt.Sprintf("bedrock upstream returned %d", resp.StatusCode),
+				Error:  fmt.Sprintf("bedrock upstream returned %d", resp.StatusCode),
 				Result: fwdResult,
 			},
 		},

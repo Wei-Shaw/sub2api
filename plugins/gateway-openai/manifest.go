@@ -6,7 +6,8 @@ import (
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
 )
 
-// buildManifest constructs the static Manifest for the OpenAI gateway plugin.
+// buildManifest constructs a declarative manifest struct.
+// Exceeds 30-line guideline: pure data literal, splitting would scatter the schema declaration.
 func buildManifest() *pluginsdk.Manifest {
 	return &pluginsdk.Manifest{
 		Name:        "gateway-openai",

@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { extractApiErrorMessage } from '@sub2api/plugin-sdk'
 import { getSdk } from '../api/sdk'
 import * as geminiApi from '../api/gemini'
 import type { GeminiOAuthCapabilities, GeminiTokenInfo } from '../api/gemini'
@@ -50,8 +51,7 @@ export function useGeminiOAuth() {
       state.value = response.state
       return true
     } catch (err: unknown) {
-      const errObj = err as { response?: { data?: { detail?: string } } }
-      error.value = errObj.response?.data?.detail || t('admin.accounts.oauth.gemini.failedToGenerateUrl')
+      error.value = extractApiErrorMessage(err, t('admin.accounts.oauth.gemini.failedToGenerateUrl'))
       getSdk().notify.error(error.value)
       return false
     } finally {
@@ -89,8 +89,7 @@ export function useGeminiOAuth() {
 
       return await geminiApi.exchangeCode(payload)
     } catch (err: unknown) {
-      const errObj = err as { message?: string; response?: { data?: { message?: string } } }
-      const errorMessage = errObj.message || errObj.response?.data?.message || ''
+      const errorMessage = extractApiErrorMessage(err, '')
       if (errorMessage.includes('missing project_id')) {
         error.value = t('admin.accounts.oauth.gemini.missingProjectId')
       } else {

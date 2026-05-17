@@ -233,7 +233,7 @@ function commitBody() {
     }
     emit('update:bodyOverride', parsed as Record<string, unknown>)
     bodyError.value = ''
-  } catch (e) {
+  } catch (e: unknown) {
     bodyError.value =
       t('admin.channelMonitor.advanced.bodyJsonError') +
       ': ' +

@@ -1,9 +1,4 @@
 <template>
-  <!-- title/description 已上移到 channel-management manifest descriptions,
-       host AppHeader 唯一渲染标题区. View 直接以 TablePageLayout 为根, 抄
-       host AccountsView 写法: #filters slot 内一个 flex 行同时容纳筛选 + 操作,
-       不再使用 PluginPageLayout / FilterBar / PageActions 包装组件.
-       Dialogs 作为 sibling 渲染 (Vue 3 支持多 root). -->
   <TablePageLayout>
     <template #filters>
       <div class="flex flex-wrap-reverse items-start justify-between gap-3">
@@ -42,7 +37,6 @@
           >
             <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
           </button>
-          <!-- Worker B' — 模板管理入口 (V5 W7 曾砍掉，现随 template apply picker 一并补回). -->
           <button @click="showTemplateManager = true" class="btn btn-secondary">
             {{ t('admin.channelMonitor.template.manageButton') }}
           </button>
@@ -175,23 +169,7 @@
 </template>
 
 <script setup lang="ts">
-/**
- * V5 W7.1 — Channel Monitor admin list view (host AccountsView style port).
- *
- * 简化范围 (vs 09fd83ab host):
- *   - 删除 HelpTooltip + api_key_decrypt_failed 视觉提示 (decrypt_failed
- *     仍然在 i18n 中描述, plugin 后续可加)
- *   - 删除 MonitorActionsCell / MonitorPrimaryModelCell 子组件, 内联 actions
- *     和 primary_model 单元格
- *
- * Worker B' (2026-05): 补回 MonitorTemplateManagerDialog 入口 (host commit
- * 6925ac25c). plugin backend `template_service` / `template_repo` 已经实现
- * ApplyToMonitors / ListAssociatedMonitors, 但 plugin.go 尚未注册
- * /admin/channel-monitor-templates* 路由——前端调用在路由注册前会 404,
- * 这是已知缺口, 等后端配套 PR 补齐. 详见
- * `../../api/admin/channelMonitorTemplate.ts` 头注释.
- */
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   ConfirmDialog,
@@ -205,14 +183,8 @@ import {
   Toggle,
   type Column,
 } from '@sub2api/plugin-sdk'
-import {
-  channelMonitorAPI,
-  type ChannelMonitor,
-  type CheckResult,
-  type ListParams,
-  type Provider,
-} from '../../api/admin/channelMonitor'
 import { useChannelMonitorFormat } from '../../composables/useChannelMonitorFormat'
+import { useChannelMonitorCrud } from '../../composables/useChannelMonitorCrud'
 import {
   PROVIDER_OPENAI,
   PROVIDER_ANTHROPIC,
@@ -221,12 +193,8 @@ import {
 import MonitorFormDialog from '../../components/admin/monitor/MonitorFormDialog.vue'
 import MonitorRunResultDialog from '../../components/admin/monitor/MonitorRunResultDialog.vue'
 import MonitorTemplateManagerDialog from '../../components/admin/monitor/MonitorTemplateManagerDialog.vue'
-import { getSdk } from '../../api/sdk'
-import { extractApiErrorMessage } from '@sub2api/plugin-sdk'
-import { loadPageSize, savePageSize } from '../../utils/pageSize'
 
 const { t } = useI18n()
-const sdk = getSdk()
 const {
   providerLabel,
   providerBadgeClass,
@@ -236,30 +204,14 @@ const {
   formatAvailability,
 } = useChannelMonitorFormat()
 
-const PAGE_SIZE_SCOPE = 'channelMonitor'
-
-const monitors = ref<ChannelMonitor[]>([])
-const loading = ref(false)
-const runningId = ref<number | null>(null)
-const searchQuery = ref('')
-const providerFilter = ref<Provider | ''>('')
-const enabledFilter = ref<'' | 'true' | 'false'>('')
-const pagination = reactive({
-  page: 1,
-  page_size: loadPageSize(PAGE_SIZE_SCOPE),
-  total: 0,
-})
-
-const showDialog = ref(false)
-const editing = ref<ChannelMonitor | null>(null)
-const showDeleteDialog = ref(false)
-const deleting = ref<ChannelMonitor | null>(null)
-const showRunResult = ref(false)
-const runResults = ref<CheckResult[]>([])
-// Worker B' — template manager visibility (open from header action).
-const showTemplateManager = ref(false)
-
-let abortController: AbortController | null = null
+const {
+  monitors, loading, runningId, searchQuery, providerFilter, enabledFilter,
+  pagination, showDialog, editing, showDeleteDialog, deleting,
+  showRunResult, runResults, showTemplateManager,
+  reload, handleSearchImmediate, onPageChange, onPageSizeChange,
+  openCreateDialog, openEditDialog, closeDialog,
+  toggleEnabled, handleRunNow, handleDelete, confirmDelete,
+} = useChannelMonitorCrud()
 
 const columns = computed<Column[]>(() => [
   { key: 'name', label: t('admin.channelMonitor.columns.name'), sortable: false },
@@ -287,118 +239,5 @@ const enabledFilterOptions = computed(() => [
 const deleteConfirmMessage = computed(() => {
   const name = deleting.value?.name || ''
   return t('admin.channelMonitor.deleteConfirm', { name })
-})
-
-async function reload() {
-  if (abortController) abortController.abort()
-  const ctrl = new AbortController()
-  abortController = ctrl
-  loading.value = true
-  try {
-    const params: ListParams = {
-      page: pagination.page,
-      page_size: pagination.page_size,
-    }
-    if (providerFilter.value) params.provider = providerFilter.value
-    if (enabledFilter.value === 'true') params.enabled = true
-    if (enabledFilter.value === 'false') params.enabled = false
-    if (searchQuery.value.trim()) params.search = searchQuery.value.trim()
-
-    const res = await channelMonitorAPI.list(params, { signal: ctrl.signal })
-    if (ctrl.signal.aborted || abortController !== ctrl) return
-    monitors.value = res.items || []
-    pagination.total = res.total
-  } catch (err: unknown) {
-    const e = err as { name?: string; code?: string }
-    if (e?.name === 'AbortError' || e?.code === 'ERR_CANCELED') return
-    sdk.notify.error(extractApiErrorMessage(err, t('admin.channelMonitor.loadError')))
-  } finally {
-    if (abortController === ctrl) {
-      loading.value = false
-      abortController = null
-    }
-  }
-}
-
-// SearchInput 自带 300ms debounce, 这里只需 reset page + reload
-function handleSearchImmediate() {
-  pagination.page = 1
-  reload()
-}
-
-function onPageChange(page: number) {
-  pagination.page = page
-  reload()
-}
-
-function onPageSizeChange(size: number) {
-  pagination.page_size = size
-  pagination.page = 1
-  savePageSize(PAGE_SIZE_SCOPE, size)
-  reload()
-}
-
-function openCreateDialog() {
-  editing.value = null
-  showDialog.value = true
-}
-
-function openEditDialog(row: ChannelMonitor) {
-  editing.value = row
-  showDialog.value = true
-}
-
-function closeDialog() {
-  showDialog.value = false
-  editing.value = null
-}
-
-async function toggleEnabled(row: ChannelMonitor) {
-  const next = !row.enabled
-  try {
-    await channelMonitorAPI.update(row.id, { enabled: next })
-    row.enabled = next
-  } catch (err: unknown) {
-    sdk.notify.error(extractApiErrorMessage(err, t('common.error')))
-  }
-}
-
-async function handleRunNow(row: ChannelMonitor) {
-  if (runningId.value != null) return
-  runningId.value = row.id
-  try {
-    const res = await channelMonitorAPI.runNow(row.id)
-    runResults.value = res.results || []
-    showRunResult.value = true
-    sdk.notify.success(t('admin.channelMonitor.runSuccess'))
-    void reload()
-  } catch (err: unknown) {
-    sdk.notify.error(extractApiErrorMessage(err, t('admin.channelMonitor.runFailed')))
-  } finally {
-    runningId.value = null
-  }
-}
-
-function handleDelete(row: ChannelMonitor) {
-  deleting.value = row
-  showDeleteDialog.value = true
-}
-
-async function confirmDelete() {
-  if (!deleting.value) return
-  try {
-    await channelMonitorAPI.del(deleting.value.id)
-    sdk.notify.success(t('admin.channelMonitor.deleteSuccess'))
-    showDeleteDialog.value = false
-    deleting.value = null
-    reload()
-  } catch (err: unknown) {
-    sdk.notify.error(extractApiErrorMessage(err, t('common.error')))
-  }
-}
-
-onMounted(reload)
-onUnmounted(() => {
-  abortController?.abort()
 })
 </script>

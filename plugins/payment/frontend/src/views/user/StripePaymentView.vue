@@ -13,7 +13,7 @@
         <button class="btn btn-primary mt-6" @click="router.push('/purchase')">{{ t('payment.result.backToRecharge') }}</button>
       </div>
       <template v-else>
-        <!-- 金额头部 -->
+        <!-- Amount header -->
         <div v-if="order" class="card overflow-hidden">
           <div class="bg-gradient-to-br from-[#635bff] to-[#4f46e5] px-6 py-6 text-center">
             <p class="text-sm font-medium text-indigo-200">{{ t('payment.actualPay') }}</p>
@@ -21,7 +21,7 @@
           </div>
         </div>
 
-        <!-- 微信二维码展示 -->
+        <!-- WeChat QR -->
         <template v-if="wechatQrUrl">
           <div class="card p-6">
             <div class="flex flex-col items-center space-y-4">
@@ -42,7 +42,7 @@
           </div>
         </template>
 
-        <!-- 支付宝跳转状态 -->
+        <!-- Alipay redirect state -->
         <template v-else-if="redirecting">
           <div class="card p-6">
             <div class="flex flex-col items-center space-y-4 py-4">
@@ -52,7 +52,7 @@
           </div>
         </template>
 
-        <!-- 成功状态 -->
+        <!-- Success state -->
         <template v-else-if="stripeSuccess">
           <div class="card p-6 text-center">
             <div class="flex flex-col items-center gap-3 py-4">
@@ -65,7 +65,7 @@
           </div>
         </template>
 
-        <!-- 无指定方式或未知方式时展示完整 Payment Element -->
+        <!-- Full Payment Element -->
         <template v-else-if="showPaymentElement">
           <div class="card p-6">
             <div ref="stripeMountEl" class="min-h-[200px]"></div>
@@ -83,7 +83,7 @@
           </div>
         </template>
 
-        <!-- 错误状态 -->
+        <!-- Error state -->
         <div v-if="stripeError && !showPaymentElement" class="card p-4">
           <p class="text-sm text-red-600 dark:text-red-400">{{ stripeError }}</p>
           <button class="btn btn-secondary mt-3 w-full" @click="router.push('/purchase')">{{ t('payment.result.backToRecharge') }}</button>
@@ -94,110 +94,38 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
+import { computed, nextTick, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { usePaymentStore } from '../../stores/payment'
-import { paymentAPI } from '../../api/payment'
-import { extractI18nErrorMessage } from '@sub2api/plugin-sdk'
-import { formatMoney } from '../../utils/decimal'
-import { isMobileDevice } from '../../utils/device'
-import { formatPaymentAmount, normalizePaymentCurrency } from '../../components/payment/currency'
-import { PAYMENT_RECOVERY_STORAGE_KEY, readPaymentRecoverySnapshot } from '../../components/payment/paymentFlow'
-import type { PaymentOrder } from '../../types/payment'
-import type { Stripe, StripeElements } from '@stripe/stripe-js'
+import { formatPaymentAmount } from '../../components/payment/currency'
 import AppLayout from '../../components/common/AppLayout.vue'
 import { Icon } from '@sub2api/plugin-sdk'
+import { useStripePayment } from './useStripePayment'
 
 const i18n = useI18n()
 const { t } = i18n
 const route = useRoute()
 const router = useRouter()
-const paymentStore = usePaymentStore()
 
-// Popup mode: skip AppLayout when opened with either a specific
-// sub-method (alipay/wechat_pay) OR an explicit popup=1 flag — the
-// latter is set by PaymentView when the dedicated Stripe button opens
-// the page in window.open() and there is no preset method to key off.
 const isPopup = computed(() => !!route.query.method || route.query.popup === '1')
 
-const loading = ref(true)
-const initError = ref('')
-const stripeError = ref('')
-const stripeSubmitting = ref(false)
-const stripeSuccess = ref(false)
-const stripeReady = ref(false)
-const order = ref<PaymentOrder | null>(null)
-const currency = ref('CNY')
-const wechatQrUrl = ref('')
-const redirecting = ref(false)
-const showPaymentElement = ref(false)
-// Plugin views render inside a Shadow DOM root, so Stripe's
-// document.querySelector('#stripe-payment-element') can't find anything.
-// Mount via a template ref (HTMLElement) instead — Stripe accepts both
-// CSS selectors and DOM nodes.
-const stripeMountEl = ref<HTMLElement | null>(null)
-
-let stripeInstance: Stripe | null = null
-let elementsInstance: StripeElements | null = null
-let redirectTimer: ReturnType<typeof setTimeout> | null = null
-
-onMounted(async () => {
-  const orderId = Number(route.query.order_id)
-  const clientSecret = String(route.query.client_secret || '')
-  const method = String(route.query.method || '')
-  const resumeToken = typeof route.query.resume_token === 'string' ? route.query.resume_token : undefined
-
-  if (!orderId || !clientSecret) {
-    loading.value = false
-    initError.value = t('payment.stripeMissingParams')
-    return
-  }
-
-  try {
-    if (typeof window !== 'undefined') {
-      const restored = readPaymentRecoverySnapshot(
-        window.localStorage.getItem(PAYMENT_RECOVERY_STORAGE_KEY),
-        { resumeToken },
-      )
-      if (restored?.orderId === orderId) {
-        currency.value = normalizePaymentCurrency(restored.currency)
-      }
-    }
-    const res = await paymentAPI.getOrder(orderId)
-    order.value = res.data
-    if (res.data.currency) {
-      currency.value = normalizePaymentCurrency(res.data.currency)
-    }
-
-    await paymentStore.fetchConfig()
-    const publishableKey = paymentStore.config?.stripe_publishable_key
-    if (!publishableKey) { initError.value = t('payment.stripeNotConfigured'); return }
-
-    const { loadStripe } = await import('@stripe/stripe-js')
-    const stripe = await loadStripe(publishableKey)
-    if (!stripe) { initError.value = t('payment.stripeLoadFailed'); return }
-
-    stripeInstance = stripe
-    loading.value = false
-
-    // 指定方式直接确认，无需渲染完整 Payment Element
-    if (method === 'alipay') {
-      await confirmAlipay(stripe, clientSecret, orderId)
-    } else if (method === 'wechat_pay') {
-      await confirmWechatPay(stripe, clientSecret)
-    } else {
-      // 未指定方式时渲染完整 Payment Element
-      showPaymentElement.value = true
-      await nextTick()
-      mountPaymentElement(stripe, clientSecret)
-    }
-  } catch (err: unknown) {
-    initError.value = extractI18nErrorMessage(err, t, 'payment.errors', t('payment.stripeLoadFailed'))
-  } finally {
-    loading.value = false
-  }
-})
+const {
+  loading,
+  initError,
+  stripeError,
+  stripeSubmitting,
+  stripeSuccess,
+  stripeReady,
+  order,
+  currency,
+  wechatQrUrl,
+  redirecting,
+  showPaymentElement,
+  stripeMountEl,
+  initStripe,
+  mountPaymentElement,
+  handleGenericPay,
+} = useStripePayment()
 
 const localeCode = computed(() => {
   const raw = i18n.locale as unknown
@@ -213,183 +141,11 @@ function formatGatewayAmount(value: number | string): string {
   return formatPaymentAmount(num, currency.value, localeCode.value)
 }
 
-async function confirmAlipay(stripe: Stripe, clientSecret: string, orderId: number) {
-  redirecting.value = true
-  const returnUrl = window.location.origin + '/payment/result?order_id=' + orderId + '&status=success'
-  const { error } = await stripe.confirmAlipayPayment(clientSecret, { return_url: returnUrl })
-  if (error) {
-    redirecting.value = false
-    stripeError.value = error.message || t('payment.result.failed')
+onMounted(async () => {
+  await initStripe()
+  if (showPaymentElement.value) {
+    await nextTick()
+    mountPaymentElement()
   }
-  // 无错误时 Stripe 会自动跳转
-}
-
-async function confirmWechatPay(stripe: Stripe, clientSecret: string) {
-  const { paymentIntent, error } = await (stripe as Stripe & {
-    confirmWechatPayPayment: (cs: string, opts: Record<string, unknown>) => Promise<{ paymentIntent?: { status: string; next_action?: { wechat_pay_display_qr_code?: { image_data_url?: string } } }; error?: { message?: string } }>
-  }).confirmWechatPayPayment(clientSecret, {
-    payment_method_options: { wechat_pay: { client: isMobileDevice() ? 'mobile_web' : 'web' } },
-  })
-
-  if (error) {
-    stripeError.value = error.message || t('payment.result.failed')
-    return
-  }
-
-  // 从 next_action 中提取二维码
-  const qrData = paymentIntent?.next_action?.wechat_pay_display_qr_code?.image_data_url
-  if (qrData) {
-    wechatQrUrl.value = qrData
-    // 轮询支付完成状态
-    startPolling()
-  } else if (paymentIntent?.status === 'succeeded') {
-    stripeSuccess.value = true
-    scheduleClose()
-  } else {
-    stripeError.value = t('payment.result.failed')
-  }
-}
-
-// Light-DOM mount node + viewport sync state. Stripe Elements injects
-// styles into document.head and reads layout via document-level APIs —
-// neither of which work when the mount node lives inside the plugin's
-// Shadow Root, leaving the Payment Element stuck in skeleton state and
-// never firing its `ready` event. Mount Stripe to a div appended to
-// document.body and pin it over the in-shadow placeholder via fixed
-// positioning + ResizeObserver. The placeholder stays in shadow DOM so
-// the rest of the page layout (Tailwind utility classes, dark mode,
-// AppLayout chrome on the in-app variant) keeps working.
-//
-// Two-way height sync: a placeholder ResizeObserver keeps the light-DOM
-// position locked while the page reflows; a content ResizeObserver
-// pushes the Stripe iframe's actual height back to the placeholder so
-// the buttons rendered below the placeholder stay clear of the iframe
-// when the Element grows (e.g. switching tabs reveals more text).
-let lightDomMount: HTMLDivElement | null = null
-let placeholderResizeObserver: ResizeObserver | null = null
-let contentResizeObserver: ResizeObserver | null = null
-
-function syncLightDomMountPosition() {
-  if (!lightDomMount || !stripeMountEl.value) return
-  const rect = stripeMountEl.value.getBoundingClientRect()
-  lightDomMount.style.position = 'fixed'
-  lightDomMount.style.top = `${rect.top}px`
-  lightDomMount.style.left = `${rect.left}px`
-  lightDomMount.style.width = `${rect.width}px`
-  lightDomMount.style.zIndex = '10'
-}
-
-function syncPlaceholderHeight() {
-  if (!lightDomMount || !stripeMountEl.value) return
-  const measured = lightDomMount.scrollHeight
-  if (measured > 0) {
-    stripeMountEl.value.style.height = `${measured}px`
-  }
-}
-
-function cleanupLightDomMount() {
-  if (placeholderResizeObserver) {
-    placeholderResizeObserver.disconnect()
-    placeholderResizeObserver = null
-  }
-  if (contentResizeObserver) {
-    contentResizeObserver.disconnect()
-    contentResizeObserver = null
-  }
-  window.removeEventListener('resize', syncLightDomMountPosition)
-  window.removeEventListener('scroll', syncLightDomMountPosition, true)
-  if (lightDomMount) {
-    lightDomMount.remove()
-    lightDomMount = null
-  }
-}
-
-function mountPaymentElement(stripe: Stripe, clientSecret: string) {
-  if (!stripeMountEl.value) {
-    stripeError.value = t('payment.stripeLoadFailed')
-    return
-  }
-  cleanupLightDomMount()
-  lightDomMount = document.createElement('div')
-  lightDomMount.dataset.stripePaymentMount = '1'
-  document.body.appendChild(lightDomMount)
-  syncLightDomMountPosition()
-  placeholderResizeObserver = new ResizeObserver(syncLightDomMountPosition)
-  placeholderResizeObserver.observe(stripeMountEl.value)
-  contentResizeObserver = new ResizeObserver(syncPlaceholderHeight)
-  contentResizeObserver.observe(lightDomMount)
-  window.addEventListener('resize', syncLightDomMountPosition)
-  window.addEventListener('scroll', syncLightDomMountPosition, true)
-
-  const isDark = document.documentElement.classList.contains('dark')
-  const elements = stripe.elements({
-    clientSecret,
-    appearance: { theme: isDark ? 'night' : 'stripe', variables: { borderRadius: '8px' } },
-  })
-  elementsInstance = elements
-  const paymentElement = elements.create('payment', {
-    layout: 'tabs',
-    paymentMethodOrder: ['alipay', 'wechat_pay', 'card', 'link'],
-  } as Record<string, unknown>)
-  paymentElement.mount(lightDomMount)
-  paymentElement.on('ready', () => { stripeReady.value = true })
-}
-
-async function handleGenericPay() {
-  if (!stripeInstance || !elementsInstance || stripeSubmitting.value) return
-  stripeSubmitting.value = true
-  stripeError.value = ''
-  try {
-    const { error } = await stripeInstance.confirmPayment({
-      elements: elementsInstance,
-      confirmParams: {
-        return_url: window.location.origin + '/payment/result?order_id=' + route.query.order_id + '&status=success',
-      },
-      redirect: 'if_required',
-    })
-    if (error) {
-      stripeError.value = error.message || t('payment.result.failed')
-    } else {
-      stripeSuccess.value = true
-      scheduleClose()
-    }
-  } catch (err: unknown) {
-    stripeError.value = extractI18nErrorMessage(err, t, 'payment.errors', t('payment.result.failed'))
-  } finally {
-    stripeSubmitting.value = false
-  }
-}
-
-let pollTimer: ReturnType<typeof setInterval> | null = null
-
-function startPolling() {
-  const orderId = Number(route.query.order_id)
-  if (!orderId) return
-  pollTimer = setInterval(async () => {
-    const o = await paymentStore.pollOrderStatus(orderId)
-    if (!o) return
-    if (o.status === 'COMPLETED' || o.status === 'PAID') {
-      if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
-      stripeSuccess.value = true
-      wechatQrUrl.value = ''
-      scheduleClose()
-    }
-  }, 3000)
-}
-
-function scheduleClose() {
-  if (window.opener) {
-    redirectTimer = setTimeout(() => { window.close() }, 2000)
-  } else {
-    redirectTimer = setTimeout(() => {
-      router.push({ path: '/payment/result', query: { order_id: String(route.query.order_id || ''), status: 'success' } })
-    }, 2000)
-  }
-}
-
-onUnmounted(() => {
-  if (redirectTimer) clearTimeout(redirectTimer)
-  if (pollTimer) clearInterval(pollTimer)
-  cleanupLightDomMount()
 })
 </script>

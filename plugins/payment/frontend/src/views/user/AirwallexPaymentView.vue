@@ -28,7 +28,7 @@
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { Icon } from '@sub2api/plugin-sdk'
+import { Icon, extractApiErrorMessage } from '@sub2api/plugin-sdk'
 import AppLayout from '../../components/common/AppLayout.vue'
 import {
   PAYMENT_RECOVERY_STORAGE_KEY,
@@ -125,9 +125,7 @@ onMounted(async () => {
     }
   } catch (err: unknown) {
     loading.value = false
-    errorMessage.value = err instanceof Error && err.message
-      ? err.message
-      : t('payment.airwallexLoadFailed')
+    errorMessage.value = extractApiErrorMessage(err, t('payment.airwallexLoadFailed'))
   }
 })
 </script>

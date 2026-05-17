@@ -14,6 +14,13 @@ import (
 // geminiMaxResponseBody limits response body reads to prevent OOM.
 const geminiMaxResponseBody = 1 << 20 // 1 MB
 
+// loadCodeAssist IDE metadata constants.
+const (
+	loadCodeAssistIDEType    = "ANTIGRAVITY"
+	loadCodeAssistIDEVersion = "1.20.6"
+	loadCodeAssistIDEName    = "antigravity"
+)
+
 // geminiLoadCodeAssistURLs are the Gemini Code Assist API endpoints
 // (prod first, daily sandbox fallback).
 var geminiLoadCodeAssistURLs = []string{
@@ -141,9 +148,9 @@ func loadGeminiProjectInfo(
 ) (projectID, tierID string) {
 	reqBody := map[string]any{
 		"metadata": map[string]any{
-			"ideType":    "ANTIGRAVITY",
-			"ideVersion": "1.20.6",
-			"ideName":    "antigravity",
+			"ideType":    loadCodeAssistIDEType,
+			"ideVersion": loadCodeAssistIDEVersion,
+			"ideName":    loadCodeAssistIDEName,
 		},
 	}
 	bodyBytes, _ := json.Marshal(reqBody)

@@ -13,6 +13,12 @@ import (
 	"google.golang.org/grpc"
 )
 
+// Protocol identifiers used in gateway forwarding.
+const (
+	protocolAnthropic = "anthropic"
+	protocolGemini    = "gemini"
+)
+
 // gatewayProviderServer implements GatewayProviderExtensionServer.
 type gatewayProviderServer struct {
 	pb.UnimplementedGatewayProviderExtensionServer
@@ -131,9 +137,9 @@ func (s *gatewayProviderServer) forwardViaAntigravity(
 	startTime time.Time,
 ) error {
 	switch req.GetProtocol() {
-	case "anthropic":
+	case protocolAnthropic:
 		return s.forwardAnthropicProtocol(ctx, stream, req, creds, startTime)
-	case "gemini":
+	case protocolGemini:
 		return s.forwardGeminiProtocol(ctx, stream, req, creds, startTime)
 	default:
 		return fmt.Errorf("gateway-antigravity: unsupported protocol %q", req.GetProtocol())

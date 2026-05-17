@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 	"sync"
@@ -193,15 +194,39 @@ func (s *accountPlatformServer) ExchangeOAuthCode(
 		return nil, fmt.Errorf("token exchange: %w", err)
 	}
 
-	// Compute expires_at with safety window.
+	expiresAt := computeTokenExpiresAt(tokenResp.ExpiresIn)
+	creds := buildGeminiBaseCreds(tokenResp, expiresAt, sess)
+	projectID, tierID := resolveGeminiProjectAndTier(ctx, s.httpClient, sess, tokenResp.AccessToken)
+	applyGeminiProjectAndTier(creds, projectID, tierID)
+
+	accountName := fetchGeminiEmail(ctx, s.httpClient, tokenResp.AccessToken)
+	credsJSON, err := json.Marshal(creds)
+	if err != nil {
+		return nil, fmt.Errorf("marshal credentials: %w", err)
+	}
+
+	return &pb.ExchangeOAuthCodeResponse{
+		CredentialsJson: credsJSON,
+		AccountName:     accountName,
+		TierId:          tierID,
+	}, nil
+}
+
+// computeTokenExpiresAt calculates the token expiration timestamp with a
+// safety window subtracted from the raw TTL.
+func computeTokenExpiresAt(expiresIn int64) int64 {
 	const safetyWindow = 300
 	const minTTL = 30
-	expiresAt := time.Now().Unix() + tokenResp.ExpiresIn - safetyWindow
+	expiresAt := time.Now().Unix() + expiresIn - safetyWindow
 	minExpiresAt := time.Now().Unix() + minTTL
 	if expiresAt < minExpiresAt {
 		expiresAt = minExpiresAt
 	}
+	return expiresAt
+}
 
+// buildGeminiBaseCreds assembles the base credentials map from a token response.
+func buildGeminiBaseCreds(tokenResp *geminiTokenResponse, expiresAt int64, sess *geminiOAuthSession) map[string]any {
 	creds := map[string]any{
 		"access_token": tokenResp.AccessToken,
 		"expires_at":   time.Unix(expiresAt, 0).Format(time.RFC3339),
@@ -216,19 +241,25 @@ func (s *accountPlatformServer) ExchangeOAuthCode(
 	if tokenResp.Scope != "" {
 		creds["scope"] = tokenResp.Scope
 	}
-	// Preserve custom OAuth client info for token refresh.
 	if sess.clientID != geminiCLIClientID {
 		creds["client_id"] = sess.clientID
 		creds["client_secret"] = sess.clientSecret
 	}
+	return creds
+}
 
-	projectID := sess.projectID
-	tierID := sess.tierID
-
-	// For code_assist / google_one, attempt to fetch project_id and tier.
+// resolveGeminiProjectAndTier determines the project ID and tier based on
+// the OAuth type. code_assist/google_one fetch from the API; ai_studio
+// defaults to "aistudio_free".
+func resolveGeminiProjectAndTier(
+	ctx context.Context, client *http.Client,
+	sess *geminiOAuthSession, accessToken string,
+) (projectID, tierID string) {
+	projectID = sess.projectID
+	tierID = sess.tierID
 	switch sess.oauthType {
 	case "code_assist", "google_one":
-		fetchedPID, fetchedTier := loadGeminiProjectInfo(ctx, s.httpClient, tokenResp.AccessToken)
+		fetchedPID, fetchedTier := loadGeminiProjectInfo(ctx, client, accessToken)
 		if fetchedPID != "" {
 			projectID = fetchedPID
 		}
@@ -236,32 +267,22 @@ func (s *accountPlatformServer) ExchangeOAuthCode(
 			tierID = fetchedTier
 		}
 	case "ai_studio":
-		// AI Studio accounts don't need project_id.
 		if tierID == "" {
 			tierID = "aistudio_free"
 		}
 	}
+	return projectID, tierID
+}
 
+// applyGeminiProjectAndTier sets project_id and tier_id in the credentials
+// map when they are non-empty.
+func applyGeminiProjectAndTier(creds map[string]any, projectID, tierID string) {
 	if projectID != "" {
 		creds["project_id"] = projectID
 	}
 	if tierID != "" {
 		creds["tier_id"] = tierID
 	}
-
-	// Fetch email for account name (best-effort).
-	accountName := fetchGeminiEmail(ctx, s.httpClient, tokenResp.AccessToken)
-
-	credsJSON, err := json.Marshal(creds)
-	if err != nil {
-		return nil, fmt.Errorf("marshal credentials: %w", err)
-	}
-
-	return &pb.ExchangeOAuthCodeResponse{
-		CredentialsJson: credsJSON,
-		AccountName:     accountName,
-		TierId:          tierID,
-	}, nil
 }
 
 // ---------- ValidateRefreshToken ----------

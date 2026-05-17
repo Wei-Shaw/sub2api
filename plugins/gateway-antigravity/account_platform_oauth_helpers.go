@@ -16,6 +16,13 @@ import (
 // maxResponseBody limits response body reads to prevent OOM.
 const maxResponseBody = 1 << 20 // 1 MB
 
+// loadCodeAssist IDE metadata constants.
+const (
+	loadCodeAssistIDEType    = "ANTIGRAVITY"
+	loadCodeAssistIDEVersion = "1.20.6"
+	loadCodeAssistIDEName    = "antigravity"
+)
+
 // loadCodeAssistURLs are the Antigravity API endpoints for loadCodeAssist
 // (prod first, daily sandbox fallback).
 var loadCodeAssistURLs = []string{
@@ -139,9 +146,9 @@ func loadAntigravityProjectInfo(
 ) (projectID, planType string) {
 	reqBody := map[string]any{
 		"metadata": map[string]any{
-			"ideType":    "ANTIGRAVITY",
-			"ideVersion": "1.20.6",
-			"ideName":    "antigravity",
+			"ideType":    loadCodeAssistIDEType,
+			"ideVersion": loadCodeAssistIDEVersion,
+			"ideName":    loadCodeAssistIDEName,
 		},
 	}
 	bodyBytes, _ := json.Marshal(reqBody)

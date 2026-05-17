@@ -115,5 +115,8 @@ export default {
     ruleAccountsPlaceholder: 'Enter account IDs, comma-separated',
     ruleModelPricing: 'Model Pricing',
     noGroupsInChannel: 'No groups selected in this platform tab',
+    intervalMin: 'Min',
+    intervalMax: 'Max',
+    intervalInclusive: '(incl.)',
   },
 }
