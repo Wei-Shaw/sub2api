@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Plugin frontend bundle config (gateway-antigravity).
  *
  * Output:
