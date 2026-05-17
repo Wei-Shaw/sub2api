@@ -97,7 +97,7 @@ func TestEnqueueOpsErrorLog_QueueFullDrop(t *testing.T) {
 	opsErrorLogQueue = make(chan opsErrorLogJob, 1)
 	opsErrorLogMu.Unlock()
 
-	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	entry := &service.OpsInsertErrorLogInput{ErrorPhase: "upstream", ErrorType: "upstream_error"}
 
 	enqueueOpsErrorLog(ops, entry)
@@ -144,7 +144,7 @@ func TestAttachOpsRequestBodyToEntry_EarlyReturnBranches(t *testing.T) {
 func TestEnqueueOpsErrorLog_EarlyReturnBranches(t *testing.T) {
 	resetOpsErrorLoggerStateForTest(t)
 
-	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	entry := &service.OpsInsertErrorLogInput{ErrorPhase: "upstream", ErrorType: "upstream_error"}
 
 	// nil 入参分支

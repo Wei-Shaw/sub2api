@@ -24,7 +24,7 @@ func TestOpsServiceListSystemLogs_DefaultClampAndSuccess(t *testing.T) {
 			}, nil
 		},
 	}
-	svc := NewOpsService(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	svc := NewOpsService(repo, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	out, err := svc.ListSystemLogs(context.Background(), &OpsSystemLogFilter{
 		Page:     0,
@@ -49,7 +49,7 @@ func TestOpsServiceListSystemLogs_MonitoringDisabled(t *testing.T) {
 		&opsRepoMock{},
 		nil,
 		&config.Config{Ops: config.OpsConfig{Enabled: false}},
-		nil, nil, nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, nil, nil,
 	)
 	_, err := svc.ListSystemLogs(context.Background(), &OpsSystemLogFilter{})
 	if err == nil {
@@ -58,7 +58,7 @@ func TestOpsServiceListSystemLogs_MonitoringDisabled(t *testing.T) {
 }
 
 func TestOpsServiceListSystemLogs_NilRepoReturnsEmpty(t *testing.T) {
-	svc := NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	svc := NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	out, err := svc.ListSystemLogs(context.Background(), nil)
 	if err != nil {
 		t.Fatalf("ListSystemLogs() error: %v", err)
@@ -74,7 +74,7 @@ func TestOpsServiceListSystemLogs_RepoErrorMapped(t *testing.T) {
 			return nil, errors.New("db down")
 		},
 	}
-	svc := NewOpsService(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	svc := NewOpsService(repo, nil, nil, nil, nil, nil, nil, nil, nil)
 	_, err := svc.ListSystemLogs(context.Background(), &OpsSystemLogFilter{})
 	if err == nil {
 		t.Fatalf("expected mapped internal error")
@@ -95,7 +95,7 @@ func TestOpsServiceCleanupSystemLogs_SuccessAndAudit(t *testing.T) {
 			return nil
 		},
 	}
-	svc := NewOpsService(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	svc := NewOpsService(repo, nil, nil, nil, nil, nil, nil, nil, nil)
 	userID := int64(7)
 	now := time.Now().UTC()
 	filter := &OpsSystemLogCleanupFilter{
@@ -126,12 +126,12 @@ func TestOpsServiceCleanupSystemLogs_SuccessAndAudit(t *testing.T) {
 }
 
 func TestOpsServiceCleanupSystemLogs_RepoUnavailableAndInvalidOperator(t *testing.T) {
-	svc := NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	svc := NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if _, err := svc.CleanupSystemLogs(context.Background(), &OpsSystemLogCleanupFilter{RequestID: "r"}, 1); err == nil {
 		t.Fatalf("expected repo unavailable error")
 	}
 
-	svc = NewOpsService(&opsRepoMock{}, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	svc = NewOpsService(&opsRepoMock{}, nil, nil, nil, nil, nil, nil, nil, nil)
 	if _, err := svc.CleanupSystemLogs(context.Background(), &OpsSystemLogCleanupFilter{RequestID: "r"}, 0); err == nil {
 		t.Fatalf("expected invalid operator error")
 	}
@@ -143,7 +143,7 @@ func TestOpsServiceCleanupSystemLogs_FilterRequired(t *testing.T) {
 			return 0, errors.New("cleanup requires at least one filter condition")
 		},
 	}
-	svc := NewOpsService(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	svc := NewOpsService(repo, nil, nil, nil, nil, nil, nil, nil, nil)
 	_, err := svc.CleanupSystemLogs(context.Background(), &OpsSystemLogCleanupFilter{}, 1)
 	if err == nil {
 		t.Fatalf("expected filter required error")
@@ -155,7 +155,7 @@ func TestOpsServiceCleanupSystemLogs_FilterRequired(t *testing.T) {
 
 func TestOpsServiceCleanupSystemLogs_InvalidRange(t *testing.T) {
 	repo := &opsRepoMock{}
-	svc := NewOpsService(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	svc := NewOpsService(repo, nil, nil, nil, nil, nil, nil, nil, nil)
 	start := time.Now().UTC()
 	end := start.Add(-time.Hour)
 	_, err := svc.CleanupSystemLogs(context.Background(), &OpsSystemLogCleanupFilter{
@@ -173,7 +173,7 @@ func TestOpsServiceCleanupSystemLogs_NoRowsAndInternalError(t *testing.T) {
 			return 0, sql.ErrNoRows
 		},
 	}
-	svc := NewOpsService(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	svc := NewOpsService(repo, nil, nil, nil, nil, nil, nil, nil, nil)
 	deleted, err := svc.CleanupSystemLogs(context.Background(), &OpsSystemLogCleanupFilter{
 		RequestID: "req-1",
 	}, 1)
@@ -200,7 +200,7 @@ func TestOpsServiceCleanupSystemLogs_AuditFailureIgnored(t *testing.T) {
 			return errors.New("audit down")
 		},
 	}
-	svc := NewOpsService(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	svc := NewOpsService(repo, nil, nil, nil, nil, nil, nil, nil, nil)
 	deleted, err := svc.CleanupSystemLogs(context.Background(), &OpsSystemLogCleanupFilter{
 		RequestID: "r1",
 	}, 1)
@@ -228,14 +228,14 @@ func TestMarshalSystemLogCleanupConditions_NilAndMarshalError(t *testing.T) {
 }
 
 func TestOpsServiceGetSystemLogSinkHealth(t *testing.T) {
-	svc := NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	svc := NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	health := svc.GetSystemLogSinkHealth()
 	if health.QueueCapacity != 0 || health.QueueDepth != 0 {
 		t.Fatalf("unexpected health for nil sink: %+v", health)
 	}
 
 	sink := NewOpsSystemLogSink(&opsRepoMock{})
-	svc = NewOpsService(&opsRepoMock{}, nil, nil, nil, nil, nil, nil, nil, nil, nil, sink)
+	svc = NewOpsService(&opsRepoMock{}, nil, nil, nil, nil, nil, nil, nil, sink)
 	health = svc.GetSystemLogSinkHealth()
 	if health.QueueCapacity <= 0 {
 		t.Fatalf("expected non-zero queue capacity: %+v", health)

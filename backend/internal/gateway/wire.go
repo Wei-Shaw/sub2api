@@ -26,3 +26,9 @@ func ProvideGatewayPipeline(
 ) *GatewayPipeline {
 	return NewGatewayPipeline(registry, gw, billing, conc, settings, cfg)
 }
+
+// ProvideOpsRetryForwarder creates an OpsRetryForwarderAdapter that
+// implements service.OpsRetryForwarder via the ProviderRegistry.
+func ProvideOpsRetryForwarder(registry *ProviderRegistry) service.OpsRetryForwarder {
+	return NewOpsRetryForwarderAdapter(registry)
+}

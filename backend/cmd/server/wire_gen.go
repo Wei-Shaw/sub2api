@@ -248,8 +248,9 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	// Gateway Pipeline: empty ProviderRegistry populated dynamically by plugins at spawn time.
 	providerRegistry := gateway.ProvideProviderRegistry()
 	gatewayPipeline := gateway.ProvideGatewayPipeline(providerRegistry, gatewayService, billingCacheService, concurrencyService, settingService, configConfig)
+	opsRetryForwarder := gateway.ProvideOpsRetryForwarder(providerRegistry)
 	opsSystemLogSink := service.ProvideOpsSystemLogSink(opsRepository)
-	opsService := service.NewOpsService(opsRepository, settingRepository, configConfig, accountRepository, userRepository, concurrencyService, gatewayService, openAIGatewayService, geminiMessagesCompatService, antigravityGatewayService, opsSystemLogSink)
+	opsService := service.NewOpsService(opsRepository, settingRepository, configConfig, accountRepository, userRepository, concurrencyService, gatewayService, opsRetryForwarder, opsSystemLogSink)
 	// payment registry / encryptionKey / paymentConfigService / paymentService 已迁移到 plugins/payment/
 	settingHandler := admin.NewSettingHandler(settingService, emailService, turnstileService, opsService, serviceQuotaService)
 	opsHandler := admin.NewOpsHandler(opsService)

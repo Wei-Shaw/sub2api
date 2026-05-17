@@ -651,5 +651,6 @@ func registerPlatformRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	{
 		platforms.GET("", h.Admin.Platform.List)
 		platforms.GET("/:platform", h.Admin.Platform.Get)
+		platforms.GET("/:platform/models", h.Admin.Platform.GetModels)
 	}
 }

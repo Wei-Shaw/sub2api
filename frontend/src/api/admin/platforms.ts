@@ -95,3 +95,14 @@ export async function getPlatform(platform: string): Promise<PlatformDeclaration
   const { data } = await apiClient.get<PlatformDeclaration>(`/admin/platforms/${platform}`)
   return data
 }
+
+export interface PlatformModelInfo {
+  model_id: string
+  display_name: string
+  available: boolean
+}
+
+export async function getPlatformModels(platform: string): Promise<PlatformModelInfo[]> {
+  const { data } = await apiClient.get<PlatformModelInfo[]>(`/admin/platforms/${platform}/models`)
+  return data
+}

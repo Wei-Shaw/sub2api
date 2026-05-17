@@ -1,6 +1,10 @@
 // =====================
-// 模型列表（硬编码，与 new-api 一致）
+// 模型列表（硬编码 fallback，与 new-api 一致）
+// 插件平台（openai/anthropic/gemini/antigravity）会动态从 API 获取，
+// 其余平台仍使用硬编码列表。
 // =====================
+
+import { getPlatformModels } from '@/api/admin/platforms'
 
 // OpenAI
 const openaiModels = [
@@ -201,7 +205,56 @@ const perplexityModels = [
   'llama-3-sonar-small-32k-chat', 'llama-3-sonar-large-32k-chat'
 ]
 
-// 所有模型（去重）
+// =====================
+// 动态模型列表（从插件 API 获取）
+// =====================
+
+// 缓存：platform -> model ID 列表（已从 API 获取）
+const _platformModelsCache = new Map<string, string[]>()
+// 正在进行的请求（防止并发重复请求）
+const _pendingFetches = new Map<string, Promise<string[]>>()
+
+/**
+ * 异步获取平台的模型列表。结果会被缓存。
+ * 失败时返回硬编码的 fallback 列表。
+ */
+export async function fetchModelsByPlatform(platform: string): Promise<string[]> {
+  const cached = _platformModelsCache.get(platform)
+  if (cached) return cached
+
+  const pending = _pendingFetches.get(platform)
+  if (pending) return pending
+
+  const promise = getPlatformModels(platform)
+    .then(models => {
+      const ids = models.map(m => m.model_id)
+      if (ids.length > 0) {
+        _platformModelsCache.set(platform, ids)
+      }
+      _pendingFetches.delete(platform)
+      return ids.length > 0 ? ids : getHardcodedModels(platform)
+    })
+    .catch(() => {
+      _pendingFetches.delete(platform)
+      return getHardcodedModels(platform)
+    })
+
+  _pendingFetches.set(platform, promise)
+  return promise
+}
+
+/**
+ * 清除指定平台（或全部）的模型缓存，用于强制刷新。
+ */
+export function clearPlatformModelsCache(platform?: string): void {
+  if (platform) {
+    _platformModelsCache.delete(platform)
+  } else {
+    _platformModelsCache.clear()
+  }
+}
+
+// 所有模型（去重）— 用作全局下拉的 fallback
 const allModelsList: string[] = [
   ...openaiModels,
   ...claudeModels,
@@ -346,8 +399,16 @@ export const commonErrorCodes = [
 // 辅助函数
 // =====================
 
-// 按平台获取模型
+// 按平台获取模型（同步）
+// 优先返回已缓存的 API 结果，fallback 到硬编码列表。
 export function getModelsByPlatform(platform: string): string[] {
+  const cached = _platformModelsCache.get(platform)
+  if (cached) return cached
+  return getHardcodedModels(platform)
+}
+
+// 硬编码 fallback（用于无插件平台 + API 不可用时）
+function getHardcodedModels(platform: string): string[] {
   switch (platform) {
     case 'openai': return openaiModels
     case 'anthropic':

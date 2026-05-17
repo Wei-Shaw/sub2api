@@ -2,6 +2,7 @@ package admin
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -46,6 +47,45 @@ func (h *PlatformHandler) Get(c *gin.Context) {
 		PluginName: rp.PluginName,
 	}
 	response.Success(c, toPlatformResponse(&entry))
+}
+
+// GetModels returns the default model list for a platform by calling
+// the plugin's GetAvailableModels RPC with empty credentials.
+// GET /api/v1/admin/platforms/:platform/models
+func (h *PlatformHandler) GetModels(c *gin.Context) {
+	platform := c.Param("platform")
+	rp, ok := h.registry.Get(platform)
+	if !ok {
+		response.Success(c, []platformModelResponse{})
+		return
+	}
+	client := plugin.NewAccountPlatformClient(rp.Conn)
+	resp, err := client.GetAvailableModels(
+		c.Request.Context(),
+		0, platform, "", nil, nil,
+	)
+	if err != nil {
+		slog.WarnContext(c.Request.Context(),
+			"plugin GetAvailableModels failed, returning empty list",
+			"platform", platform, "err", err)
+		response.Success(c, []platformModelResponse{})
+		return
+	}
+	models := make([]platformModelResponse, len(resp.Models))
+	for i, m := range resp.Models {
+		models[i] = platformModelResponse{
+			ModelID:     m.ModelId,
+			DisplayName: m.DisplayName,
+			Available:   m.Available,
+		}
+	}
+	response.Success(c, models)
+}
+
+type platformModelResponse struct {
+	ModelID     string `json:"model_id"`
+	DisplayName string `json:"display_name"`
+	Available   bool   `json:"available"`
 }
 
 // --- JSON response types ---

@@ -112,7 +112,7 @@ func newRuntimeOpsService(t *testing.T) *service.OpsService {
 			},
 		},
 	}
-	return service.NewOpsService(nil, settingRepo, cfg, nil, nil, nil, nil, nil, nil, nil, nil)
+	return service.NewOpsService(nil, settingRepo, cfg, nil, nil, nil, nil, nil, nil)
 }
 
 func TestOpsRuntimeLoggingHandler_GetConfig(t *testing.T) {
