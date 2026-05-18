@@ -66,6 +66,10 @@ type Group struct {
 	// 一旦设置即接管该分组用户的限流（覆盖用户级 rpm_limit），可被 user-group rpm_override 进一步覆盖。
 	RPMLimit int
 
+	// ExposeScheduledAccountInLogs controls whether non-admin viewers can see the
+	// scheduled account attribution for this group in ops/log views.
+	ExposeScheduledAccountInLogs bool
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 

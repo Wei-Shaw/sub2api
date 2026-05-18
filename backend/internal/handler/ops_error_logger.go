@@ -25,7 +25,7 @@ const (
 	opsModelKey       = "ops_model"
 	opsStreamKey      = "ops_stream"
 	opsRequestBodyKey = "ops_request_body"
-	opsAccountIDKey   = "ops_account_id"
+	opsAccountIDKey   = service.OpsSelectedAccountIDKey
 
 	opsUpstreamModelKey = "ops_upstream_model"
 	opsRequestTypeKey   = "ops_request_type"
@@ -376,21 +376,15 @@ func attachOpsRequestBodyToEntry(c *gin.Context, entry *service.OpsInsertErrorLo
 	opsErrorLogSanitized.Add(1)
 }
 
-func setOpsSelectedAccount(c *gin.Context, accountID int64, platform ...string) {
+func setOpsSelectedAccount(c *gin.Context, accountID int64, accountName string, platform ...string) {
 	if c == nil || accountID <= 0 {
 		return
 	}
-	c.Set(opsAccountIDKey, accountID)
-	if c.Request != nil {
-		ctx := context.WithValue(c.Request.Context(), ctxkey.AccountID, accountID)
-		if len(platform) > 0 {
-			p := strings.TrimSpace(platform[0])
-			if p != "" {
-				ctx = context.WithValue(ctx, ctxkey.Platform, p)
-			}
-		}
-		c.Request = c.Request.WithContext(ctx)
+	selectedPlatform := ""
+	if len(platform) > 0 {
+		selectedPlatform = strings.TrimSpace(platform[0])
 	}
+	service.SetOpsSelectedAccount(c, accountID, accountName, selectedPlatform)
 }
 
 type opsCaptureWriter struct {
@@ -524,7 +518,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 
 			model, _ := c.Get(opsModelKey)
 			streamV, _ := c.Get(opsStreamKey)
-			accountIDV, _ := c.Get(opsAccountIDKey)
+			selectedAccount := service.GetOpsSelectedAccountSnapshot(c)
 
 			var modelName string
 			if s, ok := model.(string); ok {
@@ -545,7 +539,8 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 				}
 			}
 			if accountID == nil {
-				if v, ok := accountIDV.(int64); ok && v > 0 {
+				if selectedAccount.ID > 0 {
+					v := selectedAccount.ID
 					accountID = &v
 				}
 			}
@@ -750,7 +745,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 
 		model, _ := c.Get(opsModelKey)
 		streamV, _ := c.Get(opsStreamKey)
-		accountIDV, _ := c.Get(opsAccountIDKey)
+		selectedAccount := service.GetOpsSelectedAccountSnapshot(c)
 
 		var modelName string
 		if s, ok := model.(string); ok {
@@ -761,7 +756,8 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			stream = b
 		}
 		var accountID *int64
-		if v, ok := accountIDV.(int64); ok && v > 0 {
+		if selectedAccount.ID > 0 {
+			v := selectedAccount.ID
 			accountID = &v
 		}
 
@@ -892,6 +888,9 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 					}
 				}
 			}
+		}
+		if shouldSuppressUpstreamEndpoint(entry) {
+			entry.UpstreamEndpoint = ""
 		}
 
 		if apiKey != nil {
@@ -1075,6 +1074,47 @@ func guessPlatformFromPath(path string) string {
 	}
 }
 
+func isLocalGatewayMetadataEndpoint(inbound, rawRequestPath string) bool {
+	normalizedInbound := strings.TrimSpace(inbound)
+	if normalizedInbound != "" {
+		normalizedInbound = NormalizeInboundEndpoint(normalizedInbound)
+	}
+	switch normalizedInbound {
+	case "/v1/models", "/v1/usage":
+		return true
+	}
+
+	raw := strings.ToLower(strings.TrimRight(strings.TrimSpace(rawRequestPath), "/"))
+	switch raw {
+	case "/v1/models", "/v1/usage", "/antigravity/models", "/antigravity/v1/models", "/antigravity/v1/usage":
+		return true
+	default:
+		return false
+	}
+}
+
+func shouldSuppressUpstreamEndpoint(entry *service.OpsInsertErrorLogInput) bool {
+	if entry == nil {
+		return false
+	}
+	if !strings.EqualFold(strings.TrimSpace(entry.ErrorPhase), "auth") {
+		return false
+	}
+	if !isLocalGatewayMetadataEndpoint(entry.InboundEndpoint, entry.RequestPath) {
+		return false
+	}
+	if entry.UpstreamStatusCode != nil || len(entry.UpstreamErrors) > 0 {
+		return false
+	}
+	if entry.UpstreamErrorMessage != nil && strings.TrimSpace(*entry.UpstreamErrorMessage) != "" {
+		return false
+	}
+	if entry.UpstreamErrorDetail != nil && strings.TrimSpace(*entry.UpstreamErrorDetail) != "" {
+		return false
+	}
+	return true
+}
+
 // isKnownOpsErrorType returns true if t is a recognized error type used by the
 // ops classification pipeline.  Upstream proxies sometimes return garbage values
 // (e.g. the Go-serialized literal "<nil>") which would pollute phase/severity
@@ -1097,15 +1137,21 @@ func isKnownOpsErrorType(t string) bool {
 }
 
 func normalizeOpsErrorType(errType string, code string) string {
-	if errType != "" && isKnownOpsErrorType(errType) {
-		return errType
+	normalizedType := strings.TrimSpace(errType)
+	if normalizedType != "" && isKnownOpsErrorType(normalizedType) && normalizedType != "api_error" {
+		return normalizedType
 	}
-	switch strings.TrimSpace(code) {
-	case opsCodeInsufficientBalance:
+	switch strings.ToLower(strings.TrimSpace(code)) {
+	case opsErrInvalidAPIKey, opsErrAPIKeyRequired:
+		return "authentication_error"
+	case strings.ToLower(opsCodeInsufficientBalance):
 		return "billing_error"
-	case opsCodeUsageLimitExceeded, opsCodeSubscriptionNotFound, opsCodeSubscriptionInvalid:
+	case strings.ToLower(opsCodeUsageLimitExceeded), strings.ToLower(opsCodeSubscriptionNotFound), strings.ToLower(opsCodeSubscriptionInvalid):
 		return "subscription_error"
 	default:
+		if normalizedType != "" && isKnownOpsErrorType(normalizedType) {
+			return normalizedType
+		}
 		return "api_error"
 	}
 }
@@ -1134,7 +1180,7 @@ func classifyOpsPhase(errType, message, code string) string {
 	case "upstream_error", "overloaded_error":
 		return "upstream"
 	case "api_error":
-		if strings.Contains(msg, opsErrNoAvailableAccounts) {
+		if strings.Contains(msg, opsErrNoAvailableAccounts) || strings.Contains(msg, "openai account selection failed at") {
 			return "routing"
 		}
 		return "internal"

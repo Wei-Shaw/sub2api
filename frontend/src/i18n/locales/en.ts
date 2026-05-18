@@ -1726,6 +1726,8 @@ export default {
       creating: 'Creating...',
       updating: 'Updating...',
       form: {
+        roleLabel: 'Role',
+        selectRole: 'Select role',
         rpmLimit: 'Requests Per Minute (RPM)',
         rpmLimitPlaceholder: '0 = unlimited',
         rpmLimitHint: 'Max requests per minute for this user; 0 = unlimited. Acts as a fallback only when the group has no rpm_limit set.'
@@ -2099,6 +2101,12 @@ export default {
         targetModel: 'Target Model',
         targetModelPlaceholder: 'e.g., gpt-5.4',
         removeExactMapping: 'Remove Exact Mapping'
+      },
+      opsVisibility: {
+        title: 'Ops Log Visibility',
+        enabled: 'Visible to group viewers',
+        disabled: 'Admins only',
+        hint: 'Admins always see scheduled account attribution. Enable this if non-admin viewers of this group should also receive the scheduled account field in logs and ops views.'
       },
       invalidRequestFallback: {
         title: 'Invalid Request Fallback Group',
@@ -2960,6 +2968,9 @@ export default {
         ruleIndex: 'Rule #{index}',
         errorCode: 'Error Code',
         errorCodePlaceholder: 'e.g. 429',
+        triggerCount: 'Trigger Count',
+        triggerCountPlaceholder: 'e.g. 3',
+        triggerCountHint: 'Temporarily stop scheduling only after this rule hits the threshold within the window. Defaults to 1.',
         durationMinutes: 'Duration (minutes)',
         durationPlaceholder: 'e.g. 30',
         keywords: 'Keywords',
@@ -2990,7 +3001,7 @@ export default {
           rateLimitLabel: '429 Rate Limit',
           rateLimitDesc: 'Rate limited - pause 10 minutes',
           unavailableLabel: '503 Unavailable',
-          unavailableDesc: 'Unavailable - pause 30 minutes'
+          unavailableDesc: 'Unavailable - pause 30 minutes after 3 hits'
         }
       },
       clearRateLimit: 'Clear Rate Limit',
@@ -4494,6 +4505,7 @@ export default {
         model: 'Model',
         group: 'Group',
         user: 'User',
+        scheduledAccount: 'Scheduled Account',
         userId: 'User ID',
         account: 'Account',
         accountId: 'Account ID',
@@ -4598,12 +4610,17 @@ export default {
         model: 'Model',
         group: 'Group',
         user: 'User',
+        scheduledAccount: 'Scheduled Account',
+        scheduledAccountNotEntered: 'Did not enter scheduling',
+        platformUnknownBeforeAuth: 'Unknown before auth',
         account: 'Account',
         latency: 'Request Duration',
         businessLimited: 'Business Limited',
         requestPath: 'Request Path',
         inboundEndpoint: 'Inbound Endpoint',
         upstreamEndpoint: 'Upstream Endpoint',
+        notApplicable: 'N/A',
+        noUpstreamCall: 'No upstream call occurred',
         requestedModel: 'Requested Model',
         upstreamModel: 'Upstream Model',
         requestType: 'Request Type',
@@ -4687,6 +4704,7 @@ export default {
           kind: 'Kind',
           platform: 'Platform',
           model: 'Model',
+          scheduledAccount: 'Scheduled Account',
           duration: 'Duration',
           status: 'Status',
           requestId: 'Request ID',

@@ -2184,6 +2184,12 @@ export default {
         targetModelPlaceholder: '例如: gpt-5.4',
         removeExactMapping: '删除精确映射'
       },
+      opsVisibility: {
+        title: '运维日志可见性',
+        enabled: '向分组查看者公开',
+        disabled: '仅管理员可见',
+        hint: '管理员始终可见调度账号。启用后，查看该分组日志/运维视图的非管理员也会收到调度账号字段。'
+      },
       invalidRequestFallback: {
         title: '无效请求兜底分组',
         hint: '仅当上游明确返回 prompt too long 时才会触发，留空表示不兜底',
@@ -3089,6 +3095,9 @@ export default {
         ruleIndex: '规则 #{index}',
         errorCode: '错误码',
         errorCodePlaceholder: '例如 429',
+        triggerCount: '触发次数',
+        triggerCountPlaceholder: '例如 3',
+        triggerCountHint: '同一规则在窗口内累计命中达到该次数后，才会临时停调。默认 1 次即触发。',
         durationMinutes: '持续时间（分钟）',
         durationPlaceholder: '例如 30',
         keywords: '关键词',
@@ -3119,7 +3128,7 @@ export default {
           rateLimitLabel: '429 限流',
           rateLimitDesc: '触发限流 - 暂停 10 分钟',
           unavailableLabel: '503 维护',
-          unavailableDesc: '服务不可用 - 暂停 30 分钟'
+          unavailableDesc: '服务不可用 - 连续 3 次后暂停 30 分钟'
         }
       },
       usageWindow: {
@@ -4656,6 +4665,7 @@ export default {
         model: '模型',
         group: '分组',
         user: '用户',
+        scheduledAccount: '调度账号',
         userId: '用户 ID',
         account: '账号',
         accountId: '账号 ID',
@@ -4760,12 +4770,17 @@ export default {
         model: '模型',
         group: '分组',
         user: '用户',
+        scheduledAccount: '调度账号',
+        scheduledAccountNotEntered: '未进入调度',
+        platformUnknownBeforeAuth: '鉴权前未知',
         account: '账号',
         latency: '请求时长',
         businessLimited: '业务限制',
         requestPath: '请求路径',
         inboundEndpoint: '入站端点',
         upstreamEndpoint: '上游端点',
+        notApplicable: '不适用',
+        noUpstreamCall: '未发生上游调用',
         requestedModel: '请求模型',
         upstreamModel: '上游模型',
         requestType: '请求类型',
@@ -4849,6 +4864,7 @@ export default {
           kind: '类型',
           platform: '平台',
           model: '模型',
+          scheduledAccount: '调度账号',
           duration: '耗时',
           status: '状态码',
           requestId: '请求ID',

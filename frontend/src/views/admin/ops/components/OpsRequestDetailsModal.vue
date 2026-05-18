@@ -136,6 +136,13 @@ async function handleCopyRequestId(requestId: string) {
   appStore.showWarning(t('admin.ops.requestDetails.copyFailed'))
 }
 
+function displayScheduledAccount(row: OpsRequestDetail): string {
+  const scheduledName = String(row.scheduled_account_name || '').trim()
+  if (scheduledName) return scheduledName
+  if (row.scheduled_account_id != null) return String(row.scheduled_account_id)
+  return '-'
+}
+
 function openErrorDetail(errorId: number | null | undefined) {
   if (!errorId) return
   close()
@@ -205,6 +212,9 @@ const kindBadgeClass = (kind: string) => {
                     {{ t('admin.ops.requestDetails.table.model') }}
                   </th>
                   <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    {{ t('admin.ops.requestDetails.table.scheduledAccount') }}
+                  </th>
+                  <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                     {{ t('admin.ops.requestDetails.table.duration') }}
                   </th>
                   <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
@@ -233,6 +243,11 @@ const kindBadgeClass = (kind: string) => {
                   </td>
                   <td class="max-w-[240px] truncate px-4 py-3 text-xs text-gray-600 dark:text-gray-300" :title="row.model || ''">
                     {{ row.model || '-' }}
+                  </td>
+                  <td class="px-4 py-3 text-xs font-medium text-gray-700 dark:text-gray-200">
+                    <span class="block max-w-[180px] truncate" :title="displayScheduledAccount(row)">
+                      {{ displayScheduledAccount(row) }}
+                    </span>
                   </td>
                   <td class="whitespace-nowrap px-4 py-3 text-xs text-gray-600 dark:text-gray-300">
                     {{ typeof row.duration_ms === 'number' ? `${row.duration_ms} ms` : '-' }}

@@ -1348,7 +1348,12 @@ func (s *OpenAIGatewayService) selectAccountForModelWithExclusions(ctx context.C
 		slog.Warn("channel pricing restriction blocked request",
 			"group_id", derefGroupID(groupID),
 			"model", requestedModel)
-		return nil, fmt.Errorf("%w supporting model: %s (channel pricing restriction)", ErrNoAvailableAccounts, requestedModel)
+		return nil, newOpenAINoAvailableAccountsError(
+			"channel_pricing_restriction",
+			"no available accounts due to channel pricing restriction",
+			formatOpenAISelectionScope(groupID, requestedModel),
+			false,
+		)
 	}
 
 	// 1. 尝试粘性会话命中
@@ -1361,15 +1366,26 @@ func (s *OpenAIGatewayService) selectAccountForModelWithExclusions(ctx context.C
 	// Get schedulable OpenAI accounts
 	accounts, err := s.listSchedulableAccounts(ctx, groupID)
 	if err != nil {
-		return nil, fmt.Errorf("query accounts failed: %w", err)
+		return nil, err
 	}
 
 	// 3. 按优先级 + LRU 选择最佳账号
 	// Select by priority + LRU
-	selected, compactBlocked := s.selectBestAccount(ctx, groupID, accounts, requestedModel, excludedIDs, requireCompact)
+	filterStats := s.collectOpenAISelectionFilterStats(ctx, groupID, accounts, requestedModel, excludedIDs, OpenAIUpstreamTransportAny, requireCompact)
+	selected, compactBlocked, attemptStats := s.selectBestAccount(ctx, groupID, accounts, requestedModel, excludedIDs, requireCompact)
 
 	if selected == nil {
-		return nil, noAvailableOpenAISelectionError(requestedModel, compactBlocked)
+		return nil, newOpenAINoAvailableAccountsError(
+			"live_recheck",
+			"no available accounts survived live recheck",
+			formatOpenAISelectionScope(
+				groupID,
+				requestedModel,
+				summarizeOpenAISelectionFilterStats(filterStats),
+				summarizeOpenAISelectionAttemptStats(attemptStats),
+			),
+			compactBlocked,
+		)
 	}
 
 	// 4. 设置粘性会话绑定
@@ -1445,11 +1461,12 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 // Returns nil if no available account. The second return reports whether at
 // least one candidate was filtered out solely because it lacks compact support
 // (only meaningful when requireCompact=true).
-func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *int64, accounts []Account, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool) (*Account, bool) {
+func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *int64, accounts []Account, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool) (*Account, bool, openAISelectionAttemptStats) {
 	var selected *Account
 	selectedCompactTier := -1
 	compactBlocked := false
 	needsUpstreamCheck := s.needsUpstreamChannelRestrictionCheck(ctx, groupID)
+	stats := openAISelectionAttemptStats{PrefilterCandidates: len(accounts)}
 
 	for i := range accounts {
 		acc := &accounts[i]
@@ -1462,13 +1479,16 @@ func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *i
 
 		fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, acc, requestedModel, false)
 		if fresh == nil {
+			stats.FreshLookupRejected++
 			continue
 		}
 		fresh = s.recheckSelectedOpenAIAccountFromDB(ctx, fresh, requestedModel, false)
 		if fresh == nil {
+			stats.RecheckRejected++
 			continue
 		}
 		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, fresh, requestedModel, requireCompact) {
+			stats.ChannelRestrictedAfterDB++
 			continue
 		}
 		compactTier := 0
@@ -1476,6 +1496,7 @@ func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *i
 			compactTier = openAICompactSupportTier(fresh)
 			if compactTier == 0 {
 				compactBlocked = true
+				stats.CompactUnsupportedAfterDB++
 				continue
 			}
 		}
@@ -1503,7 +1524,7 @@ func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *i
 		}
 	}
 
-	return selected, compactBlocked
+	return selected, compactBlocked, stats
 }
 
 // isBetterAccount 判断 candidate 是否比 current 更优。
@@ -1549,7 +1570,12 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		slog.Warn("channel pricing restriction blocked request",
 			"group_id", derefGroupID(groupID),
 			"model", requestedModel)
-		return nil, fmt.Errorf("%w supporting model: %s (channel pricing restriction)", ErrNoAvailableAccounts, requestedModel)
+		return nil, newOpenAINoAvailableAccountsError(
+			"channel_pricing_restriction",
+			"no available accounts due to channel pricing restriction",
+			formatOpenAISelectionScope(groupID, requestedModel),
+			false,
+		)
 	}
 
 	cfg := s.schedulingConfig()
@@ -1558,6 +1584,13 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	if sessionHash != "" && s.cache != nil {
 		if accountID, err := s.getStickySessionAccountID(ctx, groupID, sessionHash); err == nil {
 			stickyAccountID = accountID
+		} else if isOpenAISelectionAbortError(err) {
+			return nil, newOpenAISelectionError(
+				"sticky_session_lookup",
+				"context canceled while resolving sticky session",
+				formatOpenAISelectionScope(groupID, requestedModel),
+				err,
+			)
 		}
 	}
 	if s.concurrencyService == nil || !cfg.LoadBatchEnabled {
@@ -1568,6 +1601,14 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		result, err := s.tryAcquireAccountSlot(ctx, account.ID, account.Concurrency)
 		if err == nil && result.Acquired {
 			return s.newSelectionResult(ctx, account, true, result.ReleaseFunc, nil)
+		}
+		if err != nil && isOpenAISelectionAbortError(err) {
+			return nil, newOpenAISelectionError(
+				"slot_acquisition",
+				"context canceled while acquiring account slot",
+				formatOpenAISelectionScope(groupID, requestedModel, fmt.Sprintf("account_id=%d", account.ID)),
+				err,
+			)
 		}
 		if stickyAccountID > 0 && stickyAccountID == account.ID && s.concurrencyService != nil {
 			waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, account.ID)
@@ -1593,8 +1634,14 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		return nil, err
 	}
 	if len(accounts) == 0 {
-		return nil, ErrNoAvailableAccounts
+		return nil, newOpenAINoAvailableAccountsError(
+			"list_schedulable_accounts",
+			"no available accounts were loaded for the group",
+			formatOpenAISelectionScope(groupID, requestedModel, "total=0"),
+			false,
+		)
 	}
+	filterStats := s.collectOpenAISelectionFilterStats(ctx, groupID, accounts, requestedModel, excludedIDs, OpenAIUpstreamTransportAny, requireCompact)
 
 	isExcluded := func(accountID int64) bool {
 		if excludedIDs == nil {
@@ -1667,7 +1714,12 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	}
 
 	if len(candidates) == 0 {
-		return nil, ErrNoAvailableAccounts
+		return nil, newOpenAINoAvailableAccountsError(
+			"candidate_filtering",
+			"no available accounts remain after candidate filtering",
+			formatOpenAISelectionScope(groupID, requestedModel, summarizeOpenAISelectionFilterStats(filterStats)),
+			requireCompact && filterStats.CompactUnsupported > 0,
+		)
 	}
 
 	accountLoads := make([]AccountWithConcurrency, 0, len(candidates))
@@ -1679,32 +1731,73 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	}
 
 	loadMap, err := s.concurrencyService.GetAccountsLoadBatch(ctx, accountLoads)
+	attemptStats := openAISelectionAttemptStats{PrefilterCandidates: len(candidates)}
 	if err != nil {
 		ordered := append([]*Account(nil), candidates...)
 		sortAccountsByPriorityAndLastUsed(ordered, false)
 		if requireCompact {
 			ordered = prioritizeOpenAICompactAccounts(ordered)
 		}
+		var waitCandidate *Account
 		for _, acc := range ordered {
 			fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, acc, requestedModel, false)
 			if fresh == nil {
+				attemptStats.FreshLookupRejected++
 				continue
 			}
 			fresh = s.recheckSelectedOpenAIAccountFromDB(ctx, fresh, requestedModel, requireCompact)
 			if fresh == nil {
+				attemptStats.RecheckRejected++
 				continue
 			}
 			if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, fresh, requestedModel, requireCompact) {
+				attemptStats.ChannelRestrictedAfterDB++
 				continue
 			}
 			result, err := s.tryAcquireAccountSlot(ctx, fresh.ID, fresh.Concurrency)
+			if err != nil {
+				if isOpenAISelectionAbortError(err) {
+					return nil, newOpenAISelectionError(
+						"slot_acquisition",
+						"context canceled while acquiring account slot",
+						formatOpenAISelectionScope(groupID, requestedModel, fmt.Sprintf("account_id=%d", fresh.ID)),
+						err,
+					)
+				}
+				attemptStats.SlotAcquireErrors++
+				continue
+			}
 			if err == nil && result.Acquired {
 				if sessionHash != "" {
 					_ = s.setStickySessionAccountID(ctx, groupID, sessionHash, fresh.ID, openaiStickySessionTTL)
 				}
 				return s.newSelectionResult(ctx, fresh, true, result.ReleaseFunc, nil)
 			}
+			attemptStats.SlotAcquireBusy++
+			if waitCandidate == nil {
+				waitCandidate = fresh
+			}
 		}
+		if waitCandidate != nil {
+			return s.newSelectionResult(ctx, waitCandidate, false, nil, &AccountWaitPlan{
+				AccountID:      waitCandidate.ID,
+				MaxConcurrency: waitCandidate.Concurrency,
+				Timeout:        cfg.FallbackWaitTimeout,
+				MaxWaiting:     cfg.FallbackMaxWaiting,
+			})
+		}
+		return nil, newOpenAINoAvailableAccountsError(
+			"load_batch_fallback_selection",
+			"no available accounts remained after load-batch fallback selection",
+			formatOpenAISelectionScope(
+				groupID,
+				requestedModel,
+				summarizeOpenAISelectionFilterStats(filterStats),
+				summarizeOpenAISelectionAttemptStats(attemptStats),
+				"load_batch_error="+strings.Join(strings.Fields(strings.TrimSpace(err.Error())), " "),
+			),
+			requireCompact && filterStats.CompactUnsupported > 0,
+		)
 	} else {
 		var available []accountWithLoad
 		for _, acc := range candidates {
@@ -1717,7 +1810,10 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 					account:  acc,
 					loadInfo: loadInfo,
 				})
+				attemptStats.LoadBelowThreshold++
+				continue
 			}
+			attemptStats.Saturated++
 		}
 
 		if len(available) > 0 {
@@ -1764,22 +1860,38 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			for _, item := range selectionOrder {
 				fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, item.account, requestedModel, false)
 				if fresh == nil {
+					attemptStats.FreshLookupRejected++
 					continue
 				}
 				fresh = s.recheckSelectedOpenAIAccountFromDB(ctx, fresh, requestedModel, requireCompact)
 				if fresh == nil {
+					attemptStats.RecheckRejected++
 					continue
 				}
 				if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, fresh, requestedModel, requireCompact) {
+					attemptStats.ChannelRestrictedAfterDB++
 					continue
 				}
 				result, err := s.tryAcquireAccountSlot(ctx, fresh.ID, fresh.Concurrency)
+				if err != nil {
+					if isOpenAISelectionAbortError(err) {
+						return nil, newOpenAISelectionError(
+							"slot_acquisition",
+							"context canceled while acquiring account slot",
+							formatOpenAISelectionScope(groupID, requestedModel, fmt.Sprintf("account_id=%d", fresh.ID)),
+							err,
+						)
+					}
+					attemptStats.SlotAcquireErrors++
+					continue
+				}
 				if err == nil && result.Acquired {
 					if sessionHash != "" {
 						_ = s.setStickySessionAccountID(ctx, groupID, sessionHash, fresh.ID, openaiStickySessionTTL)
 					}
 					return s.newSelectionResult(ctx, fresh, true, result.ReleaseFunc, nil)
 				}
+				attemptStats.SlotAcquireBusy++
 			}
 		}
 	}
@@ -1792,13 +1904,16 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	for _, acc := range candidates {
 		fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, acc, requestedModel, false)
 		if fresh == nil {
+			attemptStats.FreshLookupRejected++
 			continue
 		}
 		fresh = s.recheckSelectedOpenAIAccountFromDB(ctx, fresh, requestedModel, requireCompact)
 		if fresh == nil {
+			attemptStats.RecheckRejected++
 			continue
 		}
 		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, fresh, requestedModel, requireCompact) {
+			attemptStats.ChannelRestrictedAfterDB++
 			continue
 		}
 		return s.newSelectionResult(ctx, fresh, false, nil, &AccountWaitPlan{
@@ -1810,15 +1925,43 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	}
 
 	if requireCompact && baseCandidateCount > 0 {
-		return nil, ErrNoAvailableCompactAccounts
+		return nil, newOpenAINoAvailableAccountsError(
+			"fallback_wait_candidates",
+			"no available accounts support /responses/compact after fallback wait evaluation",
+			formatOpenAISelectionScope(
+				groupID,
+				requestedModel,
+				summarizeOpenAISelectionFilterStats(filterStats),
+				summarizeOpenAISelectionAttemptStats(attemptStats),
+			),
+			true,
+		)
 	}
-	return nil, ErrNoAvailableAccounts
+	return nil, newOpenAINoAvailableAccountsError(
+		"fallback_wait_candidates",
+		"no available accounts remained after fallback wait evaluation",
+		formatOpenAISelectionScope(
+			groupID,
+			requestedModel,
+			summarizeOpenAISelectionFilterStats(filterStats),
+			summarizeOpenAISelectionAttemptStats(attemptStats),
+		),
+		false,
+	)
 }
 
 func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, groupID *int64) ([]Account, error) {
 	if s.schedulerSnapshot != nil {
 		accounts, _, err := s.schedulerSnapshot.ListSchedulableAccounts(ctx, groupID, PlatformOpenAI, false)
-		return accounts, err
+		if err != nil {
+			return nil, newOpenAISelectionError(
+				"list_schedulable_accounts",
+				"failed to load schedulable accounts from scheduler snapshot",
+				formatOpenAISelectionScope(groupID, "", "source=scheduler_snapshot"),
+				err,
+			)
+		}
+		return accounts, nil
 	}
 	var accounts []Account
 	var err error
@@ -1830,7 +1973,12 @@ func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, grou
 		accounts, err = s.accountRepo.ListSchedulableUngroupedByPlatform(ctx, PlatformOpenAI)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("query accounts failed: %w", err)
+		return nil, newOpenAISelectionError(
+			"list_schedulable_accounts",
+			"failed to query schedulable accounts from repository",
+			formatOpenAISelectionScope(groupID, "", "source=repository"),
+			err,
+		)
 	}
 	return accounts, nil
 }
@@ -3286,11 +3434,16 @@ func (s *OpenAIGatewayService) handleErrorResponsePassthrough(
 	}
 	setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
 	logOpenAIInstructionsRequiredDebug(ctx, c, account, resp.StatusCode, upstreamMsg, requestBody, body)
+	shouldDisable := false
 	if s.rateLimitService != nil {
 		// Passthrough mode preserves the raw upstream error response, but runtime
 		// account state still needs to be updated so sticky routing can stop
 		// reusing a freshly rate-limited account.
-		_ = s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, body)
+		shouldDisable = s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, body)
+	}
+	kind := "http_error"
+	if shouldDisable {
+		kind = "failover"
 	}
 	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 		Platform:             account.Platform,
@@ -3299,11 +3452,18 @@ func (s *OpenAIGatewayService) handleErrorResponsePassthrough(
 		UpstreamStatusCode:   resp.StatusCode,
 		UpstreamRequestID:    resp.Header.Get("x-request-id"),
 		Passthrough:          true,
-		Kind:                 "http_error",
+		Kind:                 kind,
 		Message:              upstreamMsg,
 		Detail:               upstreamDetail,
 		UpstreamResponseBody: upstreamDetail,
 	})
+	if shouldDisable {
+		return &UpstreamFailoverError{
+			StatusCode:      resp.StatusCode,
+			ResponseBody:    body,
+			ResponseHeaders: resp.Header.Clone(),
+		}
+	}
 
 	writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	contentType := resp.Header.Get("Content-Type")
@@ -5280,6 +5440,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	}
 	if s.rateLimitService != nil && input.Account != nil && input.Account.Platform == PlatformOpenAI {
 		s.rateLimitService.ResetOpenAI403Counter(ctx, input.Account.ID)
+		s.rateLimitService.resetTempUnschedCounters(input.Account.ID)
 	}
 
 	apiKey := input.APIKey

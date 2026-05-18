@@ -30,6 +30,8 @@ type RateLimitService struct {
 	tokenCacheInvalidator TokenCacheInvalidator
 	usageCacheMu          sync.RWMutex
 	usageCache            map[int64]*geminiUsageCacheEntry
+	tempUnschedCounterMu  sync.Mutex
+	tempUnschedCounters   map[string]*tempUnschedCounterState
 }
 
 // SuccessfulTestRecoveryResult 表示测试成功后恢复了哪些运行时状态。
@@ -49,6 +51,11 @@ type geminiUsageCacheEntry struct {
 	totals      GeminiUsageTotals
 }
 
+type tempUnschedCounterState struct {
+	count     int
+	expiresAt time.Time
+}
+
 type geminiUsageTotalsBatchProvider interface {
 	GetGeminiUsageTotalsBatch(ctx context.Context, accountIDs []int64, startTime, endTime time.Time) (map[int64]GeminiUsageTotals, error)
 }
@@ -66,15 +73,25 @@ const (
 	openAI403CounterWindowMinutes   = 180
 )
 
+const (
+	openAI503BurstDisableThreshold    = 3
+	openAI503BurstWindowMinutes       = 10
+	openAI503BurstCooldownMinutes     = 30
+	openAI503BurstCounterScopeDefault = "builtin:openai:503"
+)
+
+const openAI400CapabilityKeyword = "unsupported responses tool type"
+
 // NewRateLimitService 创建RateLimitService实例
 func NewRateLimitService(accountRepo AccountRepository, usageRepo UsageLogRepository, cfg *config.Config, geminiQuotaService *GeminiQuotaService, tempUnschedCache TempUnschedCache) *RateLimitService {
 	return &RateLimitService{
-		accountRepo:        accountRepo,
-		usageRepo:          usageRepo,
-		cfg:                cfg,
-		geminiQuotaService: geminiQuotaService,
-		tempUnschedCache:   tempUnschedCache,
-		usageCache:         make(map[int64]*geminiUsageCacheEntry),
+		accountRepo:         accountRepo,
+		usageRepo:           usageRepo,
+		cfg:                 cfg,
+		geminiQuotaService:  geminiQuotaService,
+		tempUnschedCache:    tempUnschedCache,
+		usageCache:          make(map[int64]*geminiUsageCacheEntry),
+		tempUnschedCounters: make(map[string]*tempUnschedCounterState),
 	}
 }
 
@@ -130,6 +147,16 @@ func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Accoun
 // HandleUpstreamError 处理上游错误响应，标记账号状态
 // 返回是否应该停止该账号的调度
 func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte) (shouldDisable bool) {
+	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(responseBody))
+	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+	if upstreamMsg != "" {
+		upstreamMsg = truncateForLog([]byte(upstreamMsg), 512)
+	}
+
+	if statusCode == http.StatusBadRequest && s.handleOpenAI400CapabilityMismatch(ctx, account, upstreamMsg, responseBody) {
+		return true
+	}
+
 	customErrorCodesEnabled := account.IsCustomErrorCodesEnabled()
 
 	// 池模式默认不标记本地账号状态；仅当用户显式配置自定义错误码时按本地策略处理。
@@ -151,12 +178,6 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 		if s.tryTempUnschedulable(ctx, account, statusCode, responseBody) {
 			return true
 		}
-	}
-
-	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(responseBody))
-	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
-	if upstreamMsg != "" {
-		upstreamMsg = truncateForLog([]byte(upstreamMsg), 512)
 	}
 
 	switch statusCode {
@@ -273,6 +294,17 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 	case 429:
 		s.handle429(ctx, account, headers, responseBody)
 		shouldDisable = false
+	case 503:
+		if customErrorCodesEnabled {
+			msg := "Custom error code triggered"
+			if upstreamMsg != "" {
+				msg = upstreamMsg
+			}
+			s.handleCustomErrorCode(ctx, account, statusCode, msg)
+			shouldDisable = true
+			break
+		}
+		shouldDisable = s.handleOpenAI503Burst(ctx, account, upstreamMsg, responseBody)
 	case 529:
 		s.handle529(ctx, account)
 		shouldDisable = false
@@ -817,6 +849,162 @@ func (s *RateLimitService) handleCustomErrorCode(ctx context.Context, account *A
 		return
 	}
 	slog.Warn("account_disabled_custom_error", "account_id", account.ID, "status_code", statusCode, "error", errorMsg)
+}
+
+func (s *RateLimitService) incrementTempUnschedCounter(accountID int64, scope string, window time.Duration) int {
+	if s == nil || accountID <= 0 || strings.TrimSpace(scope) == "" {
+		return 1
+	}
+	if window <= 0 {
+		window = time.Minute
+	}
+
+	key := fmt.Sprintf("%d:%s", accountID, scope)
+	now := time.Now()
+
+	s.tempUnschedCounterMu.Lock()
+	defer s.tempUnschedCounterMu.Unlock()
+
+	if s.tempUnschedCounters == nil {
+		s.tempUnschedCounters = make(map[string]*tempUnschedCounterState)
+	}
+
+	for k, state := range s.tempUnschedCounters {
+		if state == nil || !now.Before(state.expiresAt) {
+			delete(s.tempUnschedCounters, k)
+		}
+	}
+
+	state, ok := s.tempUnschedCounters[key]
+	if !ok || state == nil || !now.Before(state.expiresAt) {
+		state = &tempUnschedCounterState{
+			count:     0,
+			expiresAt: now.Add(window),
+		}
+		s.tempUnschedCounters[key] = state
+	}
+
+	state.count++
+	return state.count
+}
+
+func (s *RateLimitService) clearTempUnschedCounter(accountID int64, scope string) {
+	if s == nil || accountID <= 0 || strings.TrimSpace(scope) == "" {
+		return
+	}
+	key := fmt.Sprintf("%d:%s", accountID, scope)
+	s.tempUnschedCounterMu.Lock()
+	defer s.tempUnschedCounterMu.Unlock()
+	delete(s.tempUnschedCounters, key)
+}
+
+func (s *RateLimitService) resetTempUnschedCounters(accountID int64) {
+	if s == nil || accountID <= 0 {
+		return
+	}
+	prefix := fmt.Sprintf("%d:", accountID)
+	s.tempUnschedCounterMu.Lock()
+	defer s.tempUnschedCounterMu.Unlock()
+	for key := range s.tempUnschedCounters {
+		if strings.HasPrefix(key, prefix) {
+			delete(s.tempUnschedCounters, key)
+		}
+	}
+}
+
+func (s *RateLimitService) handleOpenAI503Burst(ctx context.Context, account *Account, upstreamMsg string, responseBody []byte) bool {
+	if s == nil || account == nil || account.Platform != PlatformOpenAI {
+		return false
+	}
+
+	count := s.incrementTempUnschedCounter(
+		account.ID,
+		openAI503BurstCounterScopeDefault,
+		time.Duration(openAI503BurstWindowMinutes)*time.Minute,
+	)
+	if count < openAI503BurstDisableThreshold {
+		slog.Info(
+			"openai_503_burst_pending",
+			"account_id", account.ID,
+			"count", count,
+			"threshold", openAI503BurstDisableThreshold,
+		)
+		return false
+	}
+	s.clearTempUnschedCounter(account.ID, openAI503BurstCounterScopeDefault)
+
+	now := time.Now()
+	until := now.Add(time.Duration(openAI503BurstCooldownMinutes) * time.Minute)
+	state := &TempUnschedState{
+		UntilUnix:       until.Unix(),
+		TriggeredAtUnix: now.Unix(),
+		StatusCode:      http.StatusServiceUnavailable,
+		MatchedKeyword:  "service temporarily unavailable",
+		RuleIndex:       0,
+		HitCount:        count,
+		TriggerCount:    openAI503BurstDisableThreshold,
+		ErrorMessage:    truncateTempUnschedMessage(responseBody, tempUnschedMessageMaxBytes),
+	}
+	if strings.TrimSpace(upstreamMsg) != "" {
+		state.MatchedKeyword = truncateForLog([]byte(strings.TrimSpace(upstreamMsg)), 128)
+	}
+
+	reason := ""
+	if raw, err := json.Marshal(state); err == nil {
+		reason = string(raw)
+	}
+	if reason == "" {
+		reason = truncateTempUnschedMessage(responseBody, tempUnschedMessageMaxBytes)
+	}
+
+	if err := s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, reason); err != nil {
+		slog.Warn("openai_503_set_temp_unschedulable_failed", "account_id", account.ID, "error", err)
+		return false
+	}
+	if s.tempUnschedCache != nil {
+		if err := s.tempUnschedCache.SetTempUnsched(ctx, account.ID, state); err != nil {
+			slog.Warn("openai_503_temp_unsched_cache_set_failed", "account_id", account.ID, "error", err)
+		}
+	}
+
+	slog.Warn(
+		"openai_503_temp_unschedulable",
+		"account_id", account.ID,
+		"until", until,
+		"count", count,
+		"threshold", openAI503BurstDisableThreshold,
+	)
+	return true
+}
+
+func (s *RateLimitService) handleOpenAI400CapabilityMismatch(ctx context.Context, account *Account, upstreamMsg string, responseBody []byte) bool {
+	if s == nil || account == nil || account.Platform != PlatformOpenAI {
+		return false
+	}
+	if !isOpenAI400CapabilityMismatch(upstreamMsg, responseBody) {
+		return false
+	}
+
+	if err := s.accountRepo.SetSchedulable(ctx, account.ID, false); err != nil {
+		slog.Warn("openai_400_capability_disable_schedulable_failed", "account_id", account.ID, "error", err)
+		return false
+	}
+	s.resetTempUnschedCounters(account.ID)
+	slog.Warn(
+		"openai_400_capability_schedulable_disabled",
+		"account_id", account.ID,
+		"account_name", account.Name,
+		"message", upstreamMsg,
+	)
+	return true
+}
+
+func isOpenAI400CapabilityMismatch(upstreamMsg string, responseBody []byte) bool {
+	text := strings.ToLower(strings.TrimSpace(upstreamMsg))
+	if text == "" && len(responseBody) > 0 {
+		text = strings.ToLower(string(responseBody))
+	}
+	return strings.Contains(text, openAI400CapabilityKeyword)
 }
 
 // handle429 处理429限流错误
@@ -1408,6 +1596,7 @@ func (s *RateLimitService) ClearRateLimit(ctx context.Context, accountID int64) 
 			slog.Warn("temp_unsched_cache_delete_failed", "account_id", accountID, "error", err)
 		}
 	}
+	s.resetTempUnschedCounters(accountID)
 	s.ResetOpenAI403Counter(ctx, accountID)
 	return nil
 }
@@ -1473,6 +1662,7 @@ func (s *RateLimitService) ClearTempUnschedulable(ctx context.Context, accountID
 	if err := s.accountRepo.ClearModelRateLimits(ctx, accountID); err != nil {
 		slog.Warn("clear_model_rate_limits_on_temp_unsched_reset_failed", "account_id", accountID, "error", err)
 	}
+	s.resetTempUnschedCounters(accountID)
 	return nil
 }
 
@@ -1615,7 +1805,31 @@ func (s *RateLimitService) tryTempUnschedulable(ctx context.Context, account *Ac
 			continue
 		}
 
-		if s.triggerTempUnschedulable(ctx, account, rule, idx, statusCode, matchedKeyword, responseBody) {
+		triggerCount := rule.TriggerCount
+		if triggerCount <= 0 {
+			triggerCount = 1
+		}
+
+		hitCount := 1
+		if triggerCount > 1 {
+			scope := fmt.Sprintf("rule:%d:%d:%s", idx, statusCode, strings.ToLower(strings.TrimSpace(matchedKeyword)))
+			hitCount = s.incrementTempUnschedCounter(account.ID, scope, time.Duration(rule.DurationMinutes)*time.Minute)
+			if hitCount < triggerCount {
+				slog.Info(
+					"account_temp_unschedulable_threshold_pending",
+					"account_id", account.ID,
+					"rule_index", idx,
+					"status_code", statusCode,
+					"matched_keyword", matchedKeyword,
+					"hit_count", hitCount,
+					"trigger_count", triggerCount,
+				)
+				return false
+			}
+			s.clearTempUnschedCounter(account.ID, scope)
+		}
+
+		if s.triggerTempUnschedulable(ctx, account, rule, idx, statusCode, matchedKeyword, responseBody, hitCount, triggerCount) {
 			return true
 		}
 	}
@@ -1655,12 +1869,18 @@ func matchTempUnschedKeyword(bodyLower string, keywords []string) string {
 	return ""
 }
 
-func (s *RateLimitService) triggerTempUnschedulable(ctx context.Context, account *Account, rule TempUnschedulableRule, ruleIndex int, statusCode int, matchedKeyword string, responseBody []byte) bool {
+func (s *RateLimitService) triggerTempUnschedulable(ctx context.Context, account *Account, rule TempUnschedulableRule, ruleIndex int, statusCode int, matchedKeyword string, responseBody []byte, hitCount int, triggerCount int) bool {
 	if account == nil {
 		return false
 	}
 	if rule.DurationMinutes <= 0 {
 		return false
+	}
+	if hitCount <= 0 {
+		hitCount = 1
+	}
+	if triggerCount <= 0 {
+		triggerCount = 1
 	}
 
 	now := time.Now()
@@ -1672,6 +1892,8 @@ func (s *RateLimitService) triggerTempUnschedulable(ctx context.Context, account
 		StatusCode:      statusCode,
 		MatchedKeyword:  matchedKeyword,
 		RuleIndex:       ruleIndex,
+		HitCount:        hitCount,
+		TriggerCount:    triggerCount,
 		ErrorMessage:    truncateTempUnschedMessage(responseBody, tempUnschedMessageMaxBytes),
 	}
 

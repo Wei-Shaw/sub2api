@@ -1,10 +1,12 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/gin-gonic/gin"
 )
 
@@ -33,10 +35,105 @@ const (
 	OpsOpenAIWSConnReusedKey  = "ops_openai_ws_conn_reused"
 	OpsOpenAIWSConnIDKey      = "ops_openai_ws_conn_id"
 
+	OpsSelectedAccountIDKey       = "ops_selected_account_id"
+	OpsSelectedAccountNameKey     = "ops_selected_account_name"
+	OpsSelectedAccountPlatformKey = "ops_selected_account_platform"
+
 	// OpsSkipPassthroughKey 由 applyErrorPassthroughRule 在命中 skip_monitoring=true 的规则时设置。
 	// ops_error_logger 中间件检查此 key，为 true 时跳过错误记录。
 	OpsSkipPassthroughKey = "ops_skip_passthrough"
 )
+
+type OpsSelectedAccountSnapshot struct {
+	ID       int64
+	Name     string
+	Platform string
+}
+
+func SetOpsSelectedAccount(c *gin.Context, accountID int64, accountName, platform string) {
+	if c == nil {
+		return
+	}
+
+	accountName = strings.TrimSpace(accountName)
+	platform = strings.TrimSpace(platform)
+
+	if accountID > 0 {
+		c.Set(OpsSelectedAccountIDKey, accountID)
+	}
+	if accountName != "" {
+		c.Set(OpsSelectedAccountNameKey, accountName)
+	}
+	if platform != "" {
+		c.Set(OpsSelectedAccountPlatformKey, platform)
+	}
+
+	if c.Request == nil {
+		return
+	}
+
+	ctx := c.Request.Context()
+	if accountID > 0 {
+		ctx = context.WithValue(ctx, ctxkey.AccountID, accountID)
+	}
+	if platform != "" {
+		ctx = context.WithValue(ctx, ctxkey.Platform, platform)
+	}
+	c.Request = c.Request.WithContext(ctx)
+}
+
+func GetOpsSelectedAccountSnapshot(c *gin.Context) OpsSelectedAccountSnapshot {
+	if c == nil {
+		return OpsSelectedAccountSnapshot{}
+	}
+
+	snapshot := OpsSelectedAccountSnapshot{}
+
+	if v, ok := c.Get(OpsSelectedAccountIDKey); ok {
+		switch t := v.(type) {
+		case int64:
+			if t > 0 {
+				snapshot.ID = t
+			}
+		case int:
+			if t > 0 {
+				snapshot.ID = int64(t)
+			}
+		}
+	}
+	if v, ok := c.Get(OpsSelectedAccountNameKey); ok {
+		if s, ok := v.(string); ok {
+			snapshot.Name = strings.TrimSpace(s)
+		}
+	}
+	if v, ok := c.Get(OpsSelectedAccountPlatformKey); ok {
+		if s, ok := v.(string); ok {
+			snapshot.Platform = strings.TrimSpace(s)
+		}
+	}
+
+	if c.Request != nil {
+		if snapshot.ID <= 0 {
+			switch t := c.Request.Context().Value(ctxkey.AccountID).(type) {
+			case int64:
+				if t > 0 {
+					snapshot.ID = t
+				}
+			case int:
+				if t > 0 {
+					snapshot.ID = int64(t)
+				}
+			}
+		}
+		if snapshot.Platform == "" {
+			if s, ok := c.Request.Context().Value(ctxkey.Platform).(string); ok {
+				snapshot.Platform = strings.TrimSpace(s)
+			}
+		}
+	}
+
+	return snapshot
+}
 
 func setOpsUpstreamRequestBody(c *gin.Context, body []byte) {
 	if c == nil || len(body) == 0 {
@@ -58,6 +155,13 @@ func SetOpsLatencyMs(c *gin.Context, key string, value int64) {
 // original upstream status code before mapping it to a client-facing code.
 func SetOpsUpstreamError(c *gin.Context, upstreamStatusCode int, upstreamMessage, upstreamDetail string) {
 	setOpsUpstreamError(c, upstreamStatusCode, upstreamMessage, upstreamDetail)
+}
+
+// AppendOpsUpstreamError is the exported wrapper for appendOpsUpstreamError, used by
+// handler-layer fallback paths that need to persist a best-effort upstream event
+// even when the service path returned before appending one.
+func AppendOpsUpstreamError(c *gin.Context, ev OpsUpstreamErrorEvent) {
+	appendOpsUpstreamError(c, ev)
 }
 
 func setOpsUpstreamError(c *gin.Context, upstreamStatusCode int, upstreamMessage, upstreamDetail string) {
@@ -124,10 +228,22 @@ func appendOpsUpstreamError(c *gin.Context, ev OpsUpstreamErrorEvent) {
 	ev.UpstreamResponseBody = strings.TrimSpace(ev.UpstreamResponseBody)
 	ev.Kind = strings.TrimSpace(ev.Kind)
 	ev.UpstreamURL = strings.TrimSpace(ev.UpstreamURL)
+	ev.AccountName = strings.TrimSpace(ev.AccountName)
 	ev.Message = strings.TrimSpace(ev.Message)
 	ev.Detail = strings.TrimSpace(ev.Detail)
 	if ev.Message != "" {
 		ev.Message = sanitizeUpstreamErrorMessage(ev.Message)
+	}
+
+	snapshot := GetOpsSelectedAccountSnapshot(c)
+	if ev.AccountID <= 0 && snapshot.ID > 0 {
+		ev.AccountID = snapshot.ID
+	}
+	if ev.AccountName == "" && snapshot.Name != "" {
+		ev.AccountName = snapshot.Name
+	}
+	if ev.Platform == "" && snapshot.Platform != "" {
+		ev.Platform = snapshot.Platform
 	}
 
 	// If the caller didn't explicitly pass upstream request body but the gateway

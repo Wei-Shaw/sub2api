@@ -533,6 +533,9 @@ export interface AdminGroup extends Group {
   model_routing: Record<string, number[]> | null
   model_routing_enabled: boolean
 
+  // 调度账号日志可见性（管理员默认可见；此字段控制非管理员是否可见）
+  expose_scheduled_account_in_logs: boolean
+
   // MCP XML 协议注入（仅 antigravity 平台使用）
   mcp_xml_inject: boolean
 
@@ -633,6 +636,7 @@ export interface CreateGroupRequest {
   supported_model_scopes?: string[]
   require_oauth_only?: boolean
   require_privacy_set?: boolean
+  expose_scheduled_account_in_logs?: boolean
   // 从指定分组复制账号
   copy_accounts_from_group_ids?: number[]
 }
@@ -661,6 +665,7 @@ export interface UpdateGroupRequest {
   supported_model_scopes?: string[]
   require_oauth_only?: boolean
   require_privacy_set?: boolean
+  expose_scheduled_account_in_logs?: boolean
   copy_accounts_from_group_ids?: number[]
 }
 
@@ -1461,6 +1466,7 @@ export interface UpdateUserRequest {
   role?: 'admin' | 'user'
   balance?: number
   concurrency?: number
+  rpm_limit?: number
   status?: 'active' | 'disabled'
   allowed_groups?: number[] | null
   // 用户专属分组倍率配置 (group_id -> rate_multiplier | null)

@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -16,7 +17,165 @@ import (
 )
 
 type OpsHandler struct {
-	opsService *service.OpsService
+	opsService            *service.OpsService
+	groupVisibilityReader opsGroupVisibilityReader
+}
+
+type opsGroupVisibilityReader interface {
+	GetByIDLite(ctx context.Context, id int64) (*service.Group, error)
+}
+
+func isAdminOpsViewer(c *gin.Context) bool {
+	role, ok := middleware.GetUserRoleFromContext(c)
+	return ok && strings.EqualFold(strings.TrimSpace(role), service.RoleAdmin)
+}
+
+func (h *OpsHandler) canViewScheduledAccountForGroup(ctx context.Context, c *gin.Context, groupID *int64) bool {
+	if isAdminOpsViewer(c) {
+		return true
+	}
+	return h.groupAllowsScheduledAccountInLogs(ctx, groupID)
+}
+
+func (h *OpsHandler) groupAllowsScheduledAccountInLogs(ctx context.Context, groupID *int64) bool {
+	if h == nil || h.groupVisibilityReader == nil || groupID == nil || *groupID <= 0 {
+		return false
+	}
+	group, err := h.groupVisibilityReader.GetByIDLite(ctx, *groupID)
+	if err != nil || group == nil {
+		return false
+	}
+	return group.ExposeScheduledAccountInLogs
+}
+
+func (h *OpsHandler) buildGroupScheduledAccountVisibility(ctx context.Context, ids []int64) map[int64]bool {
+	out := make(map[int64]bool, len(ids))
+	if h == nil || h.groupVisibilityReader == nil {
+		return out
+	}
+	seen := make(map[int64]struct{}, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		out[id] = h.groupAllowsScheduledAccountInLogs(ctx, &id)
+	}
+	return out
+}
+
+func groupAllowsScheduledAccountFromVisibility(groupID *int64, visibility map[int64]bool) bool {
+	if groupID == nil || *groupID <= 0 {
+		return false
+	}
+	return visibility[*groupID]
+}
+
+func scrubScheduledAccountFields(log *service.OpsErrorLog) {
+	if log == nil {
+		return
+	}
+	log.ScheduledAccountID = nil
+	log.ScheduledAccountName = ""
+}
+
+func scrubScheduledAccountFromDetail(detail *service.OpsErrorLogDetail) {
+	if detail == nil {
+		return
+	}
+	scrubScheduledAccountFields(&detail.OpsErrorLog)
+}
+
+func scrubScheduledAccountFromLogs(logs []*service.OpsErrorLog) {
+	for _, log := range logs {
+		scrubScheduledAccountFields(log)
+	}
+}
+
+func scrubScheduledAccountFromDetails(details []*service.OpsErrorLogDetail) {
+	for _, detail := range details {
+		scrubScheduledAccountFromDetail(detail)
+	}
+}
+
+func scrubScheduledAccountFromRequestDetail(item *service.OpsRequestDetail) {
+	if item == nil {
+		return
+	}
+	item.ScheduledAccountID = nil
+	item.ScheduledAccountName = ""
+}
+
+func scrubScheduledAccountFromRequestDetails(items []*service.OpsRequestDetail) {
+	for _, item := range items {
+		scrubScheduledAccountFromRequestDetail(item)
+	}
+}
+
+func (h *OpsHandler) scrubScheduledAccountLogsForViewer(ctx context.Context, c *gin.Context, logs []*service.OpsErrorLog) {
+	if isAdminOpsViewer(c) {
+		return
+	}
+	groupIDs := make([]int64, 0, len(logs))
+	for _, log := range logs {
+		if log != nil && log.GroupID != nil && *log.GroupID > 0 {
+			groupIDs = append(groupIDs, *log.GroupID)
+		}
+	}
+	visibility := h.buildGroupScheduledAccountVisibility(ctx, groupIDs)
+	for _, log := range logs {
+		if log == nil {
+			continue
+		}
+		if !groupAllowsScheduledAccountFromVisibility(log.GroupID, visibility) {
+			scrubScheduledAccountFields(log)
+		}
+	}
+}
+
+func (h *OpsHandler) scrubScheduledAccountDetailsForViewer(ctx context.Context, c *gin.Context, details []*service.OpsErrorLogDetail) {
+	if isAdminOpsViewer(c) {
+		return
+	}
+	groupIDs := make([]int64, 0, len(details))
+	for _, detail := range details {
+		if detail != nil && detail.GroupID != nil && *detail.GroupID > 0 {
+			groupIDs = append(groupIDs, *detail.GroupID)
+		}
+	}
+	visibility := h.buildGroupScheduledAccountVisibility(ctx, groupIDs)
+	for _, detail := range details {
+		if detail == nil {
+			continue
+		}
+		if !groupAllowsScheduledAccountFromVisibility(detail.GroupID, visibility) {
+			scrubScheduledAccountFromDetail(detail)
+		}
+	}
+}
+
+func (h *OpsHandler) scrubScheduledAccountRequestDetailsForViewer(ctx context.Context, c *gin.Context, items []*service.OpsRequestDetail) {
+	if isAdminOpsViewer(c) {
+		return
+	}
+	groupIDs := make([]int64, 0, len(items))
+	for _, item := range items {
+		if item != nil && item.GroupID != nil && *item.GroupID > 0 {
+			groupIDs = append(groupIDs, *item.GroupID)
+		}
+	}
+	visibility := h.buildGroupScheduledAccountVisibility(ctx, groupIDs)
+	for _, item := range items {
+		if item == nil {
+			continue
+		}
+		if !groupAllowsScheduledAccountFromVisibility(item.GroupID, visibility) {
+			scrubScheduledAccountFromRequestDetail(item)
+		}
+	}
 }
 
 // GetErrorLogByID returns ops error log detail.
@@ -42,6 +201,9 @@ func (h *OpsHandler) GetErrorLogByID(c *gin.Context) {
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
+	}
+	if !h.canViewScheduledAccountForGroup(c.Request.Context(), c, detail.GroupID) {
+		scrubScheduledAccountFromDetail(detail)
 	}
 
 	response.Success(c, detail)
@@ -70,8 +232,15 @@ func parseOpsViewParam(c *gin.Context) string {
 	}
 }
 
-func NewOpsHandler(opsService *service.OpsService) *OpsHandler {
-	return &OpsHandler{opsService: opsService}
+func NewOpsHandler(opsService *service.OpsService, groupReaders ...opsGroupVisibilityReader) *OpsHandler {
+	var groupReader opsGroupVisibilityReader
+	if len(groupReaders) > 0 {
+		groupReader = groupReaders[0]
+	}
+	return &OpsHandler{
+		opsService:            opsService,
+		groupVisibilityReader: groupReader,
+	}
 }
 
 // GetErrorLogs lists ops error logs.
@@ -175,6 +344,7 @@ func (h *OpsHandler) GetErrorLogs(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	h.scrubScheduledAccountLogsForViewer(c.Request.Context(), c, result.Errors)
 	response.Paginated(c, result.Errors, int64(result.Total), result.Page, result.PageSize)
 }
 
@@ -276,6 +446,7 @@ func (h *OpsHandler) ListRequestErrors(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	h.scrubScheduledAccountLogsForViewer(c.Request.Context(), c, result.Errors)
 	response.Paginated(c, result.Errors, int64(result.Total), result.Page, result.PageSize)
 }
 
@@ -310,6 +481,9 @@ func (h *OpsHandler) ListRequestErrorUpstreamErrors(c *gin.Context) {
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
+	}
+	if !h.canViewScheduledAccountForGroup(c.Request.Context(), c, detail.GroupID) {
+		scrubScheduledAccountFromDetail(detail)
 	}
 
 	// Correlate by request_id/client_request_id.
@@ -377,9 +551,11 @@ func (h *OpsHandler) ListRequestErrorUpstreamErrors(c *gin.Context) {
 			}
 			details = append(details, d)
 		}
+		h.scrubScheduledAccountDetailsForViewer(c.Request.Context(), c, details)
 		response.Paginated(c, details, int64(result.Total), result.Page, result.PageSize)
 		return
 	}
+	h.scrubScheduledAccountLogsForViewer(c.Request.Context(), c, result.Errors)
 
 	response.Paginated(c, result.Errors, int64(result.Total), result.Page, result.PageSize)
 }
@@ -555,6 +731,7 @@ func (h *OpsHandler) ListUpstreamErrors(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	h.scrubScheduledAccountLogsForViewer(c.Request.Context(), c, result.Errors)
 	response.Paginated(c, result.Errors, int64(result.Total), result.Page, result.PageSize)
 }
 
@@ -702,6 +879,7 @@ func (h *OpsHandler) ListRequestDetails(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, "Failed to list request details")
 		return
 	}
+	h.scrubScheduledAccountRequestDetailsForViewer(c.Request.Context(), c, out.Items)
 
 	response.Paginated(c, out.Items, out.Total, out.Page, out.PageSize)
 }

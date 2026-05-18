@@ -70,6 +70,7 @@ type TempUnschedulableRule struct {
 	ErrorCode       int      `json:"error_code"`
 	Keywords        []string `json:"keywords"`
 	DurationMinutes int      `json:"duration_minutes"`
+	TriggerCount    int      `json:"trigger_count,omitempty"`
 	Description     string   `json:"description"`
 }
 
@@ -311,7 +312,11 @@ func (a *Account) GetTempUnschedulableRules() []TempUnschedulableRule {
 			ErrorCode:       parseTempUnschedInt(entry["error_code"]),
 			Keywords:        parseTempUnschedStrings(entry["keywords"]),
 			DurationMinutes: parseTempUnschedInt(entry["duration_minutes"]),
+			TriggerCount:    parseTempUnschedInt(entry["trigger_count"]),
 			Description:     parseTempUnschedString(entry["description"]),
+		}
+		if rule.TriggerCount <= 0 {
+			rule.TriggerCount = 1
 		}
 
 		if rule.ErrorCode <= 0 || rule.DurationMinutes <= 0 || len(rule.Keywords) == 0 {

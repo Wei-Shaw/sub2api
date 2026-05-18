@@ -324,7 +324,18 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 	if accountID <= 0 {
 		var err error
 		accountID, err = s.service.getStickySessionAccountID(ctx, req.GroupID, sessionHash)
-		if err != nil || accountID <= 0 {
+		if err != nil {
+			if isOpenAISelectionAbortError(err) {
+				return nil, newOpenAISelectionError(
+					"sticky_session_lookup",
+					"context canceled while resolving sticky session",
+					formatOpenAISelectionScope(req.GroupID, req.RequestedModel),
+					err,
+				)
+			}
+			return nil, nil
+		}
+		if accountID <= 0 {
 			return nil, nil
 		}
 	}
@@ -367,6 +378,14 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 			Acquired:    true,
 			ReleaseFunc: result.ReleaseFunc,
 		}, nil
+	}
+	if acquireErr != nil && isOpenAISelectionAbortError(acquireErr) {
+		return nil, newOpenAISelectionError(
+			"slot_acquisition",
+			"context canceled while acquiring sticky-session account slot",
+			formatOpenAISelectionScope(req.GroupID, req.RequestedModel, fmt.Sprintf("account_id=%d", accountID)),
+			acquireErr,
+		)
 	}
 
 	cfg := s.service.schedulingConfig()
@@ -595,7 +614,12 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		return nil, 0, 0, 0, err
 	}
 	if len(accounts) == 0 {
-		return nil, 0, 0, 0, noAvailableOpenAISelectionError(req.RequestedModel, false)
+		return nil, 0, 0, 0, newOpenAINoAvailableAccountsError(
+			"list_schedulable_accounts",
+			"no available accounts were loaded for the group",
+			formatOpenAISelectionScope(req.GroupID, req.RequestedModel, "total=0"),
+			false,
+		)
 	}
 
 	// require_privacy_set: 获取分组信息
@@ -606,6 +630,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 
 	filtered := make([]*Account, 0, len(accounts))
 	loadReq := make([]AccountWithConcurrency, 0, len(accounts))
+	filterStats := s.service.collectOpenAISelectionFilterStats(ctx, req.GroupID, accounts, req.RequestedModel, req.ExcludedIDs, req.RequiredTransport, req.RequireCompact)
 	for i := range accounts {
 		account := &accounts[i]
 		if req.ExcludedIDs != nil {
@@ -635,7 +660,12 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		})
 	}
 	if len(filtered) == 0 {
-		return nil, 0, 0, 0, noAvailableOpenAISelectionError(req.RequestedModel, false)
+		return nil, 0, 0, 0, newOpenAINoAvailableAccountsError(
+			"candidate_filtering",
+			"no available accounts remain after candidate filtering",
+			formatOpenAISelectionScope(req.GroupID, req.RequestedModel, summarizeOpenAISelectionFilterStats(filterStats)),
+			req.RequireCompact && filterStats.CompactUnsupported > 0,
+		)
 	}
 
 	loadMap := map[int64]*AccountLoadInfo{}
@@ -675,7 +705,12 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 			candidates = append(candidates, candidate)
 		}
 		if len(candidates) == 0 && len(staleSnapshotCompactRetry) == 0 {
-			return nil, 0, 0, 0, ErrNoAvailableCompactAccounts
+			return nil, 0, 0, 0, newOpenAINoAvailableAccountsError(
+				"compact_filtering",
+				"no available accounts support /responses/compact after compact filtering",
+				formatOpenAISelectionScope(req.GroupID, req.RequestedModel, summarizeOpenAISelectionFilterStats(filterStats)),
+				true,
+			)
 		}
 	}
 
@@ -805,7 +840,12 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 			}
 		}
 		if len(supported) == 0 && len(unknown) == 0 && s.service.schedulerSnapshot == nil {
-			return nil, candidateCount, topK, loadSkew, ErrNoAvailableCompactAccounts
+			return nil, candidateCount, topK, loadSkew, newOpenAINoAvailableAccountsError(
+				"compact_filtering",
+				"no available accounts support /responses/compact after compact filtering",
+				formatOpenAISelectionScope(req.GroupID, req.RequestedModel, summarizeOpenAISelectionFilterStats(filterStats)),
+				true,
+			)
 		}
 		selectionOrder = append(selectionOrder, buildSelectionOrder(supported)...)
 		selectionOrder = append(selectionOrder, buildSelectionOrder(unknown)...)
@@ -816,27 +856,45 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		selectionOrder = buildSelectionOrder(candidates)
 	}
 	if len(selectionOrder) == 0 {
-		return nil, candidateCount, topK, loadSkew, noAvailableOpenAISelectionError(req.RequestedModel, req.RequireCompact && len(allCandidates) > 0)
+		return nil, candidateCount, topK, loadSkew, newOpenAINoAvailableAccountsError(
+			"weighted_selection",
+			"no available accounts remained after weighted candidate selection",
+			formatOpenAISelectionScope(req.GroupID, req.RequestedModel, summarizeOpenAISelectionFilterStats(filterStats)),
+			req.RequireCompact && len(allCandidates) > 0,
+		)
 	}
 
 	compactBlocked := false
+	attemptStats := openAISelectionAttemptStats{PrefilterCandidates: len(filtered)}
 	for i := 0; i < len(selectionOrder); i++ {
 		candidate := selectionOrder[i]
 		fresh := s.service.resolveFreshSchedulableOpenAIAccount(ctx, candidate.account, req.RequestedModel, false)
 		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(ctx, fresh, req) {
+			attemptStats.FreshLookupRejected++
 			continue
 		}
 		fresh = s.service.recheckSelectedOpenAIAccountFromDB(ctx, fresh, req.RequestedModel, false)
 		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(ctx, fresh, req) {
+			attemptStats.RecheckRejected++
 			continue
 		}
 		if req.RequireCompact && openAICompactSupportTier(fresh) == 0 {
 			compactBlocked = true
+			attemptStats.CompactUnsupportedAfterDB++
 			continue
 		}
 		result, acquireErr := s.service.tryAcquireAccountSlot(ctx, fresh.ID, fresh.Concurrency)
 		if acquireErr != nil {
-			return nil, candidateCount, topK, loadSkew, acquireErr
+			if isOpenAISelectionAbortError(acquireErr) {
+				return nil, candidateCount, topK, loadSkew, newOpenAISelectionError(
+					"slot_acquisition",
+					"context canceled while acquiring account slot",
+					formatOpenAISelectionScope(req.GroupID, req.RequestedModel, fmt.Sprintf("account_id=%d", fresh.ID)),
+					acquireErr,
+				)
+			}
+			attemptStats.SlotAcquireErrors++
+			continue
 		}
 		if result != nil && result.Acquired {
 			if req.SessionHash != "" {
@@ -848,6 +906,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 				ReleaseFunc: result.ReleaseFunc,
 			}, candidateCount, topK, loadSkew, nil
 		}
+		attemptStats.SlotAcquireBusy++
 	}
 
 	cfg := s.service.schedulingConfig()
@@ -855,14 +914,17 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	for _, candidate := range selectionOrder {
 		fresh := s.service.resolveFreshSchedulableOpenAIAccount(ctx, candidate.account, req.RequestedModel, false)
 		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(ctx, fresh, req) {
+			attemptStats.FreshLookupRejected++
 			continue
 		}
 		fresh = s.service.recheckSelectedOpenAIAccountFromDB(ctx, fresh, req.RequestedModel, false)
 		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(ctx, fresh, req) {
+			attemptStats.RecheckRejected++
 			continue
 		}
 		if req.RequireCompact && openAICompactSupportTier(fresh) == 0 {
 			compactBlocked = true
+			attemptStats.CompactUnsupportedAfterDB++
 			continue
 		}
 		return &AccountSelectionResult{
@@ -876,7 +938,17 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		}, candidateCount, topK, loadSkew, nil
 	}
 
-	return nil, candidateCount, topK, loadSkew, noAvailableOpenAISelectionError(req.RequestedModel, compactBlocked)
+	return nil, candidateCount, topK, loadSkew, newOpenAINoAvailableAccountsError(
+		"fallback_wait_candidates",
+		"no available accounts remained after fallback wait evaluation",
+		formatOpenAISelectionScope(
+			req.GroupID,
+			req.RequestedModel,
+			summarizeOpenAISelectionFilterStats(filterStats),
+			summarizeOpenAISelectionAttemptStats(attemptStats),
+		),
+		compactBlocked,
+	)
 }
 
 func (s *defaultOpenAIAccountScheduler) isAccountTransportCompatible(account *Account, requiredTransport OpenAIUpstreamTransport) bool {
@@ -1081,7 +1153,12 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 					effectiveExcludedIDs = make(map[int64]struct{})
 				}
 				if _, exists := effectiveExcludedIDs[selection.Account.ID]; exists {
-					return nil, decision, ErrNoAvailableAccounts
+					return nil, decision, newOpenAINoAvailableAccountsError(
+						"image_capability_filtering",
+						"no available accounts match the required image capability",
+						formatOpenAISelectionScope(groupID, requestedModel),
+						false,
+					)
 				}
 				effectiveExcludedIDs[selection.Account.ID] = struct{}{}
 			}
@@ -1106,7 +1183,12 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 				effectiveExcludedIDs = make(map[int64]struct{})
 			}
 			if _, exists := effectiveExcludedIDs[selection.Account.ID]; exists {
-				return nil, decision, ErrNoAvailableAccounts
+				return nil, decision, newOpenAINoAvailableAccountsError(
+					"transport_filtering",
+					"no available accounts match the required transport",
+					formatOpenAISelectionScope(groupID, requestedModel),
+					false,
+				)
 			}
 			effectiveExcludedIDs[selection.Account.ID] = struct{}{}
 		}
@@ -1116,13 +1198,25 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 		slog.Warn("channel pricing restriction blocked request",
 			"group_id", derefGroupID(groupID),
 			"model", requestedModel)
-		return nil, decision, fmt.Errorf("%w supporting model: %s (channel pricing restriction)", ErrNoAvailableAccounts, requestedModel)
+		return nil, decision, newOpenAINoAvailableAccountsError(
+			"channel_pricing_restriction",
+			"no available accounts due to channel pricing restriction",
+			formatOpenAISelectionScope(groupID, requestedModel),
+			false,
+		)
 	}
 
 	var stickyAccountID int64
 	if sessionHash != "" && s.cache != nil {
 		if accountID, err := s.getStickySessionAccountID(ctx, groupID, sessionHash); err == nil && accountID > 0 {
 			stickyAccountID = accountID
+		} else if isOpenAISelectionAbortError(err) {
+			return nil, decision, newOpenAISelectionError(
+				"sticky_session_lookup",
+				"context canceled while resolving sticky session",
+				formatOpenAISelectionScope(groupID, requestedModel),
+				err,
+			)
 		}
 	}
 

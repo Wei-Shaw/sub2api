@@ -95,3 +95,32 @@ func TestAdminService_CreateUser_AssignsDefaultSubscriptions(t *testing.T) {
 	require.Equal(t, int64(5), assigner.calls[0].GroupID)
 	require.Equal(t, 30, assigner.calls[0].ValidityDays)
 }
+
+func TestAdminService_CreateUser_AdminRole(t *testing.T) {
+	repo := &userRepoStub{nextID: 12}
+	svc := &adminServiceImpl{userRepo: repo}
+
+	user, err := svc.CreateUser(context.Background(), &CreateUserInput{
+		Email:    "admin@test.com",
+		Password: "strong-pass",
+		Role:     RoleAdmin,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, user)
+	require.Equal(t, RoleAdmin, user.Role)
+	require.Len(t, repo.created, 1)
+	require.Equal(t, RoleAdmin, repo.created[0].Role)
+}
+
+func TestAdminService_CreateUser_InvalidRole(t *testing.T) {
+	repo := &userRepoStub{nextID: 13}
+	svc := &adminServiceImpl{userRepo: repo}
+
+	_, err := svc.CreateUser(context.Background(), &CreateUserInput{
+		Email:    "badrole@test.com",
+		Password: "strong-pass",
+		Role:     "owner",
+	})
+	require.Error(t, err)
+	require.Empty(t, repo.created)
+}

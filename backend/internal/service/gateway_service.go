@@ -6908,6 +6908,7 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 		Platform:           account.Platform,
 		AccountID:          account.ID,
+		AccountName:        account.Name,
 		UpstreamStatusCode: resp.StatusCode,
 		UpstreamRequestID:  resp.Header.Get("x-request-id"),
 		Kind:               "http_error",
@@ -7077,6 +7078,7 @@ func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *ht
 	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 		Platform:           account.Platform,
 		AccountID:          account.ID,
+		AccountName:        account.Name,
 		UpstreamStatusCode: resp.StatusCode,
 		UpstreamRequestID:  resp.Header.Get("x-request-id"),
 		Kind:               "retry_exhausted",

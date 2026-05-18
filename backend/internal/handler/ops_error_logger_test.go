@@ -258,6 +258,10 @@ func TestNormalizeOpsErrorType(t *testing.T) {
 		// Unknown type but known code still maps correctly.
 		{"nil with INSUFFICIENT_BALANCE code", "<nil>", "INSUFFICIENT_BALANCE", "billing_error"},
 		{"nil with USAGE_LIMIT_EXCEEDED code", "<nil>", "USAGE_LIMIT_EXCEEDED", "subscription_error"},
+		{"empty type with API_KEY_REQUIRED code", "", "API_KEY_REQUIRED", "authentication_error"},
+		{"empty type with INVALID_API_KEY code", "", "INVALID_API_KEY", "authentication_error"},
+		{"generic api_error with API_KEY_REQUIRED code", "api_error", "API_KEY_REQUIRED", "authentication_error"},
+		{"generic api_error with balance code", "api_error", "INSUFFICIENT_BALANCE", "billing_error"},
 
 		// Empty type falls through to code-based mapping.
 		{"empty type with balance code", "", "INSUFFICIENT_BALANCE", "billing_error"},
@@ -273,6 +277,42 @@ func TestNormalizeOpsErrorType(t *testing.T) {
 			require.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestShouldSuppressUpstreamEndpoint(t *testing.T) {
+	t.Run("suppresses local metadata auth failures before upstream", func(t *testing.T) {
+		entry := &service.OpsInsertErrorLogInput{
+			ErrorPhase:       "auth",
+			InboundEndpoint:  "/v1/models",
+			RequestPath:      "/v1/models",
+			UpstreamEndpoint: "/v1/models",
+		}
+		require.True(t, shouldSuppressUpstreamEndpoint(entry))
+	})
+
+	t.Run("keeps upstream endpoint when upstream context exists", func(t *testing.T) {
+		code := http.StatusUnauthorized
+		msg := "upstream auth failed"
+		entry := &service.OpsInsertErrorLogInput{
+			ErrorPhase:           "auth",
+			InboundEndpoint:      "/v1/models",
+			RequestPath:          "/v1/models",
+			UpstreamEndpoint:     "/v1/models",
+			UpstreamStatusCode:   &code,
+			UpstreamErrorMessage: &msg,
+		}
+		require.False(t, shouldSuppressUpstreamEndpoint(entry))
+	})
+
+	t.Run("does not suppress non metadata endpoints", func(t *testing.T) {
+		entry := &service.OpsInsertErrorLogInput{
+			ErrorPhase:       "auth",
+			InboundEndpoint:  "/v1/messages",
+			RequestPath:      "/v1/messages",
+			UpstreamEndpoint: "/v1/messages",
+		}
+		require.False(t, shouldSuppressUpstreamEndpoint(entry))
+	})
 }
 
 func TestSetOpsEndpointContext_SetsContextKeys(t *testing.T) {
