@@ -216,6 +216,9 @@ type SystemSettings struct {
 	// 风控中心功能开关
 	RiskControlEnabled bool `json:"risk_control_enabled"`
 
+	// SEO/GEO 元数据注入开关
+	SEOEnabled bool `json:"seo_enabled"`
+
 	// Affiliate (邀请返利) feature switch
 	AffiliateEnabled bool `json:"affiliate_enabled"`
 
@@ -284,6 +287,8 @@ type PublicSettings struct {
 	AffiliateEnabled bool `json:"affiliate_enabled"`
 
 	RiskControlEnabled bool `json:"risk_control_enabled"`
+
+	SEOEnabled bool `json:"seo_enabled"`
 }
 
 type LoginAgreementDocument struct {

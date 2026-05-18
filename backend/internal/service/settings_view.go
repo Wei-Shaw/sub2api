@@ -125,6 +125,7 @@ type SystemSettings struct {
 	DefaultConcurrency           int
 	DefaultBalance               float64
 	RiskControlEnabled           bool
+	SEOEnabled                   bool
 	AffiliateEnabled             bool
 	AffiliateRebateRate          float64
 	AffiliateRebateFreezeHours   int
@@ -262,6 +263,9 @@ type PublicSettings struct {
 
 	// 风控中心功能开关
 	RiskControlEnabled bool `json:"risk_control_enabled"`
+
+	// SEO/GEO 元数据注入开关
+	SEOEnabled bool `json:"seo_enabled"`
 }
 
 type LoginAgreementDocument struct {
