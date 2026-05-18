@@ -18,6 +18,22 @@ import type {
   AffiliateTransferResponse
 } from '@/types'
 
+export interface DailyCheckInStatus {
+  enabled: boolean
+  reward_amount: number
+  check_in_days: number
+  checked_in_today: boolean
+  last_check_in_at?: string | null
+}
+
+export interface DailyCheckInCalendar {
+  enabled: boolean
+  year: number
+  month: number
+  checked_in_dates: string[]
+  checked_in_days: number
+}
+
 /**
  * Get current user profile
  * @returns User profile data
@@ -185,6 +201,28 @@ export async function transferAffiliateQuota(): Promise<AffiliateTransferRespons
   return data
 }
 
+export async function getDailyCheckInStatus(): Promise<DailyCheckInStatus> {
+  const { data } = await apiClient.get<DailyCheckInStatus>('/user/check-in')
+  return data
+}
+
+export async function getDailyCheckInCalendar(year?: number, month?: number): Promise<DailyCheckInCalendar> {
+  const params: Record<string, number> = {}
+  if (year) {
+    params.year = year
+  }
+  if (month) {
+    params.month = month
+  }
+  const { data } = await apiClient.get<DailyCheckInCalendar>('/user/check-in/calendar', { params })
+  return data
+}
+
+export async function applyDailyCheckIn(): Promise<DailyCheckInStatus> {
+  const { data } = await apiClient.post<DailyCheckInStatus>('/user/check-in')
+  return data
+}
+
 export const userAPI = {
   getProfile,
   updateProfile,
@@ -199,7 +237,10 @@ export const userAPI = {
   buildOAuthBindingStartURL,
   startOAuthBinding,
   getAffiliateDetail,
-  transferAffiliateQuota
+  transferAffiliateQuota,
+  getDailyCheckInStatus,
+  getDailyCheckInCalendar,
+  applyDailyCheckIn
 }
 
 export default userAPI

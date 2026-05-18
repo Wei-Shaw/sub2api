@@ -145,6 +145,18 @@ func (s *userRepoStub) RemoveGroupFromAllowedGroups(ctx context.Context, groupID
 	panic("unexpected RemoveGroupFromAllowedGroups call")
 }
 
+func (s *userRepoStub) GetDailyCheckInStatus(context.Context, int64) (int, *time.Time, error) {
+	panic("unexpected GetDailyCheckInStatus call")
+}
+
+func (s *userRepoStub) GetDailyCheckInMonth(context.Context, int64, int, time.Month) ([]time.Time, error) {
+	panic("unexpected GetDailyCheckInMonth call")
+}
+
+func (s *userRepoStub) ApplyDailyCheckIn(context.Context, int64, float64, time.Time) (int, *time.Time, error) {
+	panic("unexpected ApplyDailyCheckIn call")
+}
+
 func (s *userRepoStub) RemoveGroupFromUserAllowedGroups(ctx context.Context, userID int64, groupID int64) error {
 	panic("unexpected RemoveGroupFromUserAllowedGroups call")
 }

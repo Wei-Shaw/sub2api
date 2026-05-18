@@ -327,6 +327,36 @@ func TestRegisterOAuthEmailAccountFallsBackUnknownSignupSourceToEmail(t *testing
 	require.Equal(t, "email", userRepo.created[0].SignupSource)
 }
 
+func TestRegisterOAuthEmailAccountSkipsVerifyCodeWhenEmailVerificationDisabled(t *testing.T) {
+	userRepo := &userRepoStub{nextID: 44}
+	authService := newOAuthEmailFlowAuthService(
+		userRepo,
+		&redeemCodeRepoStub{},
+		&refreshTokenCacheStub{},
+		map[string]string{
+			SettingKeyRegistrationEnabled: "true",
+			SettingKeyEmailVerifyEnabled:  "false",
+		},
+		&emailCacheStub{},
+	)
+
+	tokenPair, user, err := authService.RegisterOAuthEmailAccount(
+		context.Background(),
+		"skip-verify@example.com",
+		"secret-123",
+		"",
+		"",
+		"linuxdo",
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, tokenPair)
+	require.NotNil(t, user)
+	require.Len(t, userRepo.created, 1)
+	require.Equal(t, "skip-verify@example.com", userRepo.created[0].Email)
+	require.Equal(t, "linuxdo", userRepo.created[0].SignupSource)
+}
+
 func TestRollbackOAuthEmailAccountCreationRestoresInvitationUsage(t *testing.T) {
 	userRepo := &userRepoStub{}
 	redeemRepo := &redeemCodeRepoStub{

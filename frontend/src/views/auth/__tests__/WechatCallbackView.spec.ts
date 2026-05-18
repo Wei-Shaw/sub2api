@@ -171,6 +171,12 @@ describe('WechatCallbackView', () => {
     routeState.query = {}
     appStoreState.cachedPublicSettings = null
     appStoreState.publicSettingsLoaded = false
+    getPublicSettingsMock.mockResolvedValue({
+      email_verify_enabled: true,
+      invitation_code_enabled: false,
+      turnstile_enabled: false,
+      turnstile_site_key: '',
+    })
     localStorage.clear()
     sessionStorage.clear()
     locationState.current = {
@@ -652,6 +658,7 @@ describe('WechatCallbackView', () => {
 
   it('collects email, password, and verify code for pending oauth account creation and submits adoption decisions', async () => {
     getPublicSettingsMock.mockResolvedValue({
+      email_verify_enabled: true,
       invitation_code_enabled: true,
       turnstile_enabled: false,
       turnstile_site_key: '',
@@ -800,6 +807,12 @@ describe('WechatCallbackView', () => {
   })
 
   it('sends a verify code for pending oauth account creation', async () => {
+    getPublicSettingsMock.mockResolvedValue({
+      email_verify_enabled: true,
+      invitation_code_enabled: false,
+      turnstile_enabled: false,
+      turnstile_site_key: '',
+    })
     exchangePendingOAuthCompletionMock.mockResolvedValue({
       error: 'email_required',
       redirect: '/welcome',

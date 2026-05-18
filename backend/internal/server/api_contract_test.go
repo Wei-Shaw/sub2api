@@ -345,6 +345,65 @@ func TestAPIContracts(t *testing.T) {
 			}`,
 		},
 		{
+			name: "GET /api/v1/user/check-in",
+			setup: func(t *testing.T, deps *contractDeps) {
+				t.Helper()
+				deps.settingRepo.SetAll(map[string]string{
+					service.SettingKeyDailyCheckInEnabled:      "true",
+					service.SettingKeyDailyCheckInRewardAmount: "0.75",
+				})
+				deps.userRepo.checkInDays = 3
+				last := time.Date(2025, 1, 1, 9, 0, 0, 0, time.UTC)
+				deps.userRepo.lastCheckInAt = &last
+			},
+			method:     http.MethodGet,
+			path:       "/api/v1/user/check-in",
+			wantStatus: http.StatusOK,
+			wantJSON: `{
+				"code": 0,
+				"message": "success",
+				"data": {
+					"enabled": true,
+					"reward_amount": 0.75,
+					"check_in_days": 3,
+					"checked_in_today": false,
+					"last_check_in_at": "2025-01-01T09:00:00Z"
+				}
+			}`,
+		},
+		{
+			name: "GET /api/v1/user/check-in/calendar",
+			setup: func(t *testing.T, deps *contractDeps) {
+				t.Helper()
+				deps.settingRepo.SetAll(map[string]string{
+					service.SettingKeyDailyCheckInEnabled:      "true",
+					service.SettingKeyDailyCheckInRewardAmount: "0.75",
+				})
+				deps.userRepo.checkInDates = []time.Time{
+					time.Date(2026, 5, 1, 9, 0, 0, 0, time.Local),
+					time.Date(2026, 5, 12, 9, 0, 0, 0, time.Local),
+					time.Date(2026, 4, 30, 9, 0, 0, 0, time.Local),
+				}
+			},
+			method:     http.MethodGet,
+			path:       "/api/v1/user/check-in/calendar?year=2026&month=5",
+			wantStatus: http.StatusOK,
+			wantJSON: `{
+				"code": 0,
+				"message": "success",
+				"data": {
+					"enabled": true,
+					"year": 2026,
+					"month": 5,
+					"checked_in_dates": [
+						"2026-05-01",
+						"2026-05-12"
+					],
+					"checked_in_days": 2
+				}
+			}`,
+		},
+		{
 			name: "GET /api/v1/subscriptions",
 			setup: func(t *testing.T, deps *contractDeps) {
 				t.Helper()
@@ -747,6 +806,8 @@ func TestAPIContracts(t *testing.T) {
 					"force_email_on_third_party_signup": false,
 					"default_concurrency": 5,
 					"default_balance": 1.25,
+					"daily_check_in_enabled": true,
+					"daily_check_in_reward_amount": 0.1,
 					"affiliate_rebate_rate": 20,
 					"affiliate_rebate_freeze_hours": 0,
 					"affiliate_rebate_duration_days": 0,
@@ -965,6 +1026,8 @@ func TestAPIContracts(t *testing.T) {
 					"custom_endpoints": [],
 					"default_concurrency": 0,
 					"default_balance": 0,
+					"daily_check_in_enabled": true,
+					"daily_check_in_reward_amount": 0.1,
 					"affiliate_rebate_rate": 20,
 					"affiliate_rebate_freeze_hours": 0,
 					"affiliate_rebate_duration_days": 0,
@@ -1132,6 +1195,7 @@ type contractDeps struct {
 	now         time.Time
 	router      http.Handler
 	cfg         *config.Config
+	userRepo    *stubUserRepo
 	apiKeyRepo  *stubApiKeyRepo
 	groupRepo   *stubGroupRepo
 	userSubRepo *stubUserSubscriptionRepo
@@ -1178,7 +1242,8 @@ func newContractDeps(t *testing.T) *contractDeps {
 		RunMode: config.RunModeStandard,
 	}
 
-	userService := service.NewUserService(userRepo, nil, nil, nil)
+	settingRepo := newStubSettingRepo()
+	userService := service.NewUserService(userRepo, settingRepo, nil, nil)
 	apiKeyService := service.NewAPIKeyService(apiKeyRepo, userRepo, groupRepo, userSubRepo, nil, apiKeyCache, cfg)
 
 	usageRepo := newStubUsageLogRepo()
@@ -1190,11 +1255,11 @@ func newContractDeps(t *testing.T) *contractDeps {
 	redeemService := service.NewRedeemService(redeemRepo, userRepo, subscriptionService, nil, nil, nil, nil, nil)
 	redeemHandler := handler.NewRedeemHandler(redeemService)
 
-	settingRepo := newStubSettingRepo()
 	settingService := service.NewSettingService(settingRepo, cfg)
 
 	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil, redeemService, nil)
+	userHandler := handler.NewUserHandler(userService, nil, nil, nil, nil)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 	usageHandler := handler.NewUsageHandler(usageService, apiKeyService)
 	adminSettingHandler := adminhandler.NewSettingHandler(settingService, nil, nil, nil, nil, nil)
@@ -1231,6 +1296,12 @@ func newContractDeps(t *testing.T) *contractDeps {
 	v1Keys.POST("/keys", apiKeyHandler.Create)
 	v1Keys.GET("/groups/available", apiKeyHandler.GetAvailableGroups)
 
+	v1User := v1.Group("")
+	v1User.Use(jwtAuth)
+	v1User.GET("/user/check-in", userHandler.GetDailyCheckIn)
+	v1User.GET("/user/check-in/calendar", userHandler.GetDailyCheckInCalendar)
+	v1User.POST("/user/check-in", userHandler.ApplyDailyCheckIn)
+
 	v1Usage := v1.Group("")
 	v1Usage.Use(jwtAuth)
 	v1Usage.GET("/usage", usageHandler.List)
@@ -1253,6 +1324,7 @@ func newContractDeps(t *testing.T) *contractDeps {
 		now:         now,
 		router:      r,
 		cfg:         cfg,
+		userRepo:    userRepo,
 		apiKeyRepo:  apiKeyRepo,
 		groupRepo:   groupRepo,
 		userSubRepo: userSubRepo,
@@ -1281,8 +1353,25 @@ func doRequest(t *testing.T, router http.Handler, method, path, body string, hea
 
 func ptr[T any](v T) *T { return &v }
 
+func cloneTimePtr(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+	cloned := value.UTC()
+	return &cloned
+}
+
+func sameLocalDate(left time.Time, right time.Time) bool {
+	ly, lm, ld := left.In(time.Local).Date()
+	ry, rm, rd := right.In(time.Local).Date()
+	return ly == ry && lm == rm && ld == rd
+}
+
 type stubUserRepo struct {
-	users map[int64]*service.User
+	users         map[int64]*service.User
+	checkInDays   int
+	lastCheckInAt *time.Time
+	checkInDates  []time.Time
 }
 
 func (r *stubUserRepo) Create(ctx context.Context, user *service.User) error {
@@ -1348,6 +1437,35 @@ func (r *stubUserRepo) ListWithFilters(ctx context.Context, params pagination.Pa
 
 func (r *stubUserRepo) UpdateBalance(ctx context.Context, id int64, amount float64) error {
 	return errors.New("not implemented")
+}
+
+func (r *stubUserRepo) GetDailyCheckInStatus(ctx context.Context, userID int64) (int, *time.Time, error) {
+	return r.checkInDays, cloneTimePtr(r.lastCheckInAt), nil
+}
+
+func (r *stubUserRepo) GetDailyCheckInMonth(ctx context.Context, userID int64, year int, month time.Month) ([]time.Time, error) {
+	var out []time.Time
+	for _, date := range r.checkInDates {
+		local := date.In(time.Local)
+		if local.Year() == year && local.Month() == month {
+			out = append(out, local)
+		}
+	}
+	return out, nil
+}
+
+func (r *stubUserRepo) ApplyDailyCheckIn(ctx context.Context, userID int64, rewardAmount float64, now time.Time) (int, *time.Time, error) {
+	if r.lastCheckInAt != nil && sameLocalDate(*r.lastCheckInAt, now) {
+		return 0, nil, service.ErrDailyCheckInAlreadyChecked
+	}
+	r.checkInDays++
+	lastCheckIn := now.UTC()
+	r.lastCheckInAt = &lastCheckIn
+	r.checkInDates = append(r.checkInDates, lastCheckIn)
+	if user := r.users[userID]; user != nil {
+		user.Balance += rewardAmount
+	}
+	return r.checkInDays, cloneTimePtr(r.lastCheckInAt), nil
 }
 
 func (r *stubUserRepo) DeductBalance(ctx context.Context, id int64, amount float64) error {

@@ -990,6 +990,89 @@ func TestExchangePendingOAuthCompletionInvitationRequiredFalseFalsePersistsDecis
 	require.Nil(t, storedSession.ConsumedAt)
 }
 
+func TestExchangePendingOAuthCompletionAutoRegisterPreviewThenFinalizeCreatesUser(t *testing.T) {
+	handler, client := newOAuthPendingFlowTestHandler(t, false)
+	ctx := context.Background()
+
+	session, err := client.PendingAuthSession.Create().
+		SetSessionToken("auto-register-session-token").
+		SetIntent("login").
+		SetProviderType("linuxdo").
+		SetProviderKey("linuxdo").
+		SetProviderSubject("auto-register-123").
+		SetResolvedEmail("linuxdo-auto-register-123@linuxdo-connect.invalid").
+		SetBrowserSessionKey("auto-register-browser-session-key").
+		SetUpstreamIdentityClaims(map[string]any{
+			"username":               "linuxdo_user",
+			"suggested_display_name": "Auto Register User",
+			"suggested_avatar_url":   "https://cdn.example/autoreg.png",
+		}).
+		SetLocalFlowState(map[string]any{
+			oauthCompletionResponseKey: map[string]any{
+				"auto_register": true,
+				"redirect":      "/dashboard",
+			},
+		}).
+		SetExpiresAt(time.Now().UTC().Add(10 * time.Minute)).
+		Save(ctx)
+	require.NoError(t, err)
+
+	previewRecorder := httptest.NewRecorder()
+	previewCtx, _ := gin.CreateTestContext(previewRecorder)
+	previewReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/oauth/pending/exchange", nil)
+	previewReq.AddCookie(&http.Cookie{Name: oauthPendingSessionCookieName, Value: encodeCookieValue(session.SessionToken)})
+	previewReq.AddCookie(&http.Cookie{Name: oauthPendingBrowserCookieName, Value: encodeCookieValue("auto-register-browser-session-key")})
+	previewCtx.Request = previewReq
+
+	handler.ExchangePendingOAuthCompletion(previewCtx)
+
+	require.Equal(t, http.StatusOK, previewRecorder.Code)
+	previewData := decodeJSONResponseData(t, previewRecorder)
+	require.Equal(t, true, previewData["adoption_required"])
+	require.Equal(t, true, previewData["auto_register"])
+	require.Equal(t, "/dashboard", previewData["redirect"])
+	require.Empty(t, previewData["access_token"])
+
+	finalizeBody := bytes.NewBufferString(`{"adopt_display_name":true,"adopt_avatar":true}`)
+	finalizeRecorder := httptest.NewRecorder()
+	finalizeCtx, _ := gin.CreateTestContext(finalizeRecorder)
+	finalizeReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/oauth/pending/exchange", finalizeBody)
+	finalizeReq.Header.Set("Content-Type", "application/json")
+	finalizeReq.AddCookie(&http.Cookie{Name: oauthPendingSessionCookieName, Value: encodeCookieValue(session.SessionToken)})
+	finalizeReq.AddCookie(&http.Cookie{Name: oauthPendingBrowserCookieName, Value: encodeCookieValue("auto-register-browser-session-key")})
+	finalizeCtx.Request = finalizeReq
+
+	handler.ExchangePendingOAuthCompletion(finalizeCtx)
+
+	require.Equal(t, http.StatusOK, finalizeRecorder.Code)
+	finalData := decodeJSONResponseData(t, finalizeRecorder)
+	require.NotEmpty(t, finalData["access_token"])
+	require.NotEmpty(t, finalData["refresh_token"])
+	require.Equal(t, "/dashboard", finalData["redirect"])
+
+	userEntity, err := client.User.Query().
+		Where(dbuser.EmailEQ("linuxdo-auto-register-123@linuxdo-connect.invalid")).
+		Only(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "Auto Register User", userEntity.Username)
+
+	identity, err := client.AuthIdentity.Query().
+		Where(
+			authidentity.ProviderTypeEQ("linuxdo"),
+			authidentity.ProviderKeyEQ("linuxdo"),
+			authidentity.ProviderSubjectEQ("auto-register-123"),
+		).
+		Only(ctx)
+	require.NoError(t, err)
+	require.Equal(t, userEntity.ID, identity.UserID)
+	require.Equal(t, "Auto Register User", identity.Metadata["display_name"])
+	require.Equal(t, "https://cdn.example/autoreg.png", identity.Metadata["avatar_url"])
+
+	storedSession, err := client.PendingAuthSession.Get(ctx, session.ID)
+	require.NoError(t, err)
+	require.NotNil(t, storedSession.ConsumedAt)
+}
+
 func TestCreateOIDCOAuthAccountCreatesUserBindsIdentityAndConsumesSession(t *testing.T) {
 	handler, client := newOAuthPendingFlowTestHandlerWithEmailVerification(t, false, "fresh@example.com", "246810")
 	ctx := context.Background()
@@ -2843,6 +2926,18 @@ func (r *oauthPendingFlowUserRepo) ExistsByEmail(ctx context.Context, email stri
 
 func (r *oauthPendingFlowUserRepo) RemoveGroupFromAllowedGroups(context.Context, int64) (int64, error) {
 	panic("unexpected RemoveGroupFromAllowedGroups call")
+}
+
+func (r *oauthPendingFlowUserRepo) GetDailyCheckInStatus(context.Context, int64) (int, *time.Time, error) {
+	panic("unexpected GetDailyCheckInStatus call")
+}
+
+func (r *oauthPendingFlowUserRepo) GetDailyCheckInMonth(context.Context, int64, int, time.Month) ([]time.Time, error) {
+	panic("unexpected GetDailyCheckInMonth call")
+}
+
+func (r *oauthPendingFlowUserRepo) ApplyDailyCheckIn(context.Context, int64, float64, time.Time) (int, *time.Time, error) {
+	panic("unexpected ApplyDailyCheckIn call")
 }
 
 func (r *oauthPendingFlowUserRepo) AddGroupToAllowedGroups(context.Context, int64, int64) error {

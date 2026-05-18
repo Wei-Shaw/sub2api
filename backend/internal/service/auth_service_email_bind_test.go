@@ -810,8 +810,8 @@ func (s *emailBindUserRepoStub) UpdateUserLastActiveAt(context.Context, int64, t
 }
 
 func (s *emailBindUserRepoStub) UpdateBalance(context.Context, int64, float64) error { return nil }
-func (s *emailBindUserRepoStub) DeductBalance(context.Context, int64, float64) error  { return nil }
-func (s *emailBindUserRepoStub) UpdateConcurrency(context.Context, int64, int) error   { return nil }
+func (s *emailBindUserRepoStub) DeductBalance(context.Context, int64, float64) error { return nil }
+func (s *emailBindUserRepoStub) UpdateConcurrency(context.Context, int64, int) error { return nil }
 
 func (s *emailBindUserRepoStub) ExistsByEmail(_ context.Context, email string) (bool, error) {
 	s.mu.Lock()
@@ -820,11 +820,27 @@ func (s *emailBindUserRepoStub) ExistsByEmail(_ context.Context, email string) (
 	return ok, nil
 }
 
-func (s *emailBindUserRepoStub) BatchSetConcurrency(context.Context, []int64, int) (int, error) { return 0, nil }
-func (s *emailBindUserRepoStub) BatchAddConcurrency(context.Context, []int64, int) (int, error) { return 0, nil }
+func (s *emailBindUserRepoStub) BatchSetConcurrency(context.Context, []int64, int) (int, error) {
+	return 0, nil
+}
+func (s *emailBindUserRepoStub) BatchAddConcurrency(context.Context, []int64, int) (int, error) {
+	return 0, nil
+}
 
 func (s *emailBindUserRepoStub) RemoveGroupFromAllowedGroups(context.Context, int64) (int64, error) {
 	return 0, nil
+}
+
+func (s *emailBindUserRepoStub) GetDailyCheckInStatus(context.Context, int64) (int, *time.Time, error) {
+	return 0, nil, nil
+}
+
+func (s *emailBindUserRepoStub) GetDailyCheckInMonth(context.Context, int64, int, time.Month) ([]time.Time, error) {
+	return nil, nil
+}
+
+func (s *emailBindUserRepoStub) ApplyDailyCheckIn(context.Context, int64, float64, time.Time) (int, *time.Time, error) {
+	return 0, nil, nil
 }
 
 func (s *emailBindUserRepoStub) AddGroupToAllowedGroups(context.Context, int64, int64) error {

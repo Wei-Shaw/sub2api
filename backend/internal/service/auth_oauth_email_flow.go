@@ -97,7 +97,8 @@ func (s *AuthService) VerifyOAuthEmailCode(ctx context.Context, email, verifyCod
 }
 
 // RegisterOAuthEmailAccount creates a local account from a third-party first
-// login after the user has verified a local email address.
+// login after the user has supplied a local email address. When global email
+// verification is enabled, the supplied verify code must also pass validation.
 func (s *AuthService) RegisterOAuthEmailAccount(
 	ctx context.Context,
 	email string,
@@ -120,8 +121,10 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 	if err := s.validateRegistrationEmailPolicy(ctx, email); err != nil {
 		return nil, nil, err
 	}
-	if err := s.VerifyOAuthEmailCode(ctx, email, verifyCode); err != nil {
-		return nil, nil, err
+	if s.IsEmailVerifyEnabled(ctx) {
+		if err := s.VerifyOAuthEmailCode(ctx, email, verifyCode); err != nil {
+			return nil, nil, err
+		}
 	}
 
 	if _, err := s.validateOAuthRegistrationInvitation(ctx, invitationCode); err != nil {

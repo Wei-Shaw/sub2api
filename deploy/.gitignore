@@ -4,6 +4,7 @@
 
 # Data directories (generated at runtime when using docker-compose.local.yml)
 data/
+data-*/
 postgres_data/
 redis_data/
 

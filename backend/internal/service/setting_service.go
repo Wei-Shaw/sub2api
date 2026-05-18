@@ -1629,6 +1629,10 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	// Affiliate (邀请返利) feature switch
 	updates[SettingKeyAffiliateEnabled] = strconv.FormatBool(settings.AffiliateEnabled)
 
+	// Daily check-in
+	updates[SettingKeyDailyCheckInEnabled] = strconv.FormatBool(settings.DailyCheckInEnabled)
+	updates[SettingKeyDailyCheckInRewardAmount] = strconv.FormatFloat(settings.DailyCheckInRewardAmount, 'f', 8, 64)
+
 	// 风控中心功能开关
 	updates[SettingKeyRiskControlEnabled] = strconv.FormatBool(settings.RiskControlEnabled)
 
@@ -2446,6 +2450,8 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 
 		// Affiliate (邀请返利) feature (default disabled; opt-in)
 		SettingKeyAffiliateEnabled: "false",
+		SettingKeyDailyCheckInEnabled:      "true",
+		SettingKeyDailyCheckInRewardAmount: "0.1",
 
 		// 风控中心功能（默认关闭，显式启用）
 		SettingKeyRiskControlEnabled: "false",
@@ -2815,6 +2821,13 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 
 	// Affiliate (邀请返利) feature (default: disabled; strict true)
 	result.AffiliateEnabled = settings[SettingKeyAffiliateEnabled] == "true"
+
+	// Daily check-in (default: enabled, reward 0.1)
+	result.DailyCheckInEnabled = !isFalseSettingValue(settings[SettingKeyDailyCheckInEnabled])
+	result.DailyCheckInRewardAmount = defaultDailyCheckInReward
+	if v, err := strconv.ParseFloat(settings[SettingKeyDailyCheckInRewardAmount], 64); err == nil && !math.IsNaN(v) && !math.IsInf(v, 0) && v >= 0 {
+		result.DailyCheckInRewardAmount = v
+	}
 
 	// 风控中心功能（默认关闭，严格 true 才启用）
 	result.RiskControlEnabled = settings[SettingKeyRiskControlEnabled] == "true"

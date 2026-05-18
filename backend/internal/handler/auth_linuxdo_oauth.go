@@ -37,6 +37,7 @@ const (
 	linuxDoOAuthRedirectCookie     = "linuxdo_oauth_redirect"
 	linuxDoOAuthIntentCookieName   = "linuxdo_oauth_intent"
 	linuxDoOAuthBindUserCookieName = "linuxdo_oauth_bind_user"
+	linuxDoOAuthAffiliateCookie    = "linuxdo_oauth_affiliate"
 	oauthBindAccessTokenCookieName = "oauth_bind_access_token"
 	linuxDoOAuthCookieMaxAgeSec    = 10 * 60 // 10 minutes
 	linuxDoOAuthDefaultRedirectTo  = "/dashboard"
@@ -110,6 +111,11 @@ func (h *AuthHandler) LinuxDoOAuthStart(c *gin.Context) {
 	setCookie(c, linuxDoOAuthRedirectCookie, encodeCookieValue(redirectTo), linuxDoOAuthCookieMaxAgeSec, secureCookie)
 	intent := normalizeOAuthIntent(c.Query("intent"))
 	setCookie(c, linuxDoOAuthIntentCookieName, encodeCookieValue(intent), linuxDoOAuthCookieMaxAgeSec, secureCookie)
+	if affCode := strings.TrimSpace(firstNonEmpty(c.Query("aff_code"), c.Query("aff"))); affCode != "" {
+		setCookie(c, linuxDoOAuthAffiliateCookie, encodeCookieValue(affCode), linuxDoOAuthCookieMaxAgeSec, secureCookie)
+	} else {
+		clearCookie(c, linuxDoOAuthAffiliateCookie, secureCookie)
+	}
 	setOAuthPendingBrowserCookie(c, browserSessionKey, secureCookie)
 	clearOAuthPendingSessionCookie(c, secureCookie)
 	if intent == oauthIntentBindCurrentUser {
@@ -182,6 +188,7 @@ func (h *AuthHandler) LinuxDoOAuthCallback(c *gin.Context) {
 		clearCookie(c, linuxDoOAuthRedirectCookie, secureCookie)
 		clearCookie(c, linuxDoOAuthIntentCookieName, secureCookie)
 		clearCookie(c, linuxDoOAuthBindUserCookieName, secureCookie)
+		clearCookie(c, linuxDoOAuthAffiliateCookie, secureCookie)
 	}()
 
 	expectedState, err := readCookieDecoded(c, linuxDoOAuthStateCookieName)
@@ -264,6 +271,9 @@ func (h *AuthHandler) LinuxDoOAuthCallback(c *gin.Context) {
 		"suggested_display_name": displayName,
 		"suggested_avatar_url":   avatarURL,
 	}
+	if affiliateCode := h.linuxDoOAuthAffiliateCode(c); affiliateCode != "" {
+		upstreamClaims["aff_code"] = affiliateCode
+	}
 	if compatEmail != "" && !strings.EqualFold(strings.TrimSpace(compatEmail), strings.TrimSpace(email)) {
 		upstreamClaims["compat_email"] = compatEmail
 	}
@@ -322,18 +332,45 @@ func (h *AuthHandler) LinuxDoOAuthCallback(c *gin.Context) {
 		redirectOAuthError(c, frontendCallback, "session_error", infraerrors.Reason(err), infraerrors.Message(err))
 		return
 	}
-	if err := h.createLinuxDoOAuthChoicePendingSession(
-		c,
-		identityKey,
-		email,
-		email,
-		redirectTo,
-		browserSessionKey,
-		upstreamClaims,
-		compatEmail,
-		compatEmailUser,
-		h.isForceEmailOnThirdPartySignup(c.Request.Context()),
-	); err != nil {
+	forceEmailOnSignup := h.isForceEmailOnThirdPartySignup(c.Request.Context())
+	if compatEmailUser != nil || forceEmailOnSignup {
+		if err := h.createLinuxDoOAuthChoicePendingSession(
+			c,
+			identityKey,
+			email,
+			email,
+			redirectTo,
+			browserSessionKey,
+			upstreamClaims,
+			compatEmail,
+			compatEmailUser,
+			forceEmailOnSignup,
+		); err != nil {
+			redirectOAuthError(c, frontendCallback, "session_error", "failed to continue oauth login", "")
+			return
+		}
+		redirectToFrontendCallback(c, frontendCallback)
+		return
+	}
+
+	completionResponse := map[string]any{
+		"redirect": redirectTo,
+	}
+	if h.isInvitationCodeEnabled(c.Request.Context()) {
+		completionResponse["error"] = "invitation_required"
+		completionResponse["choice_reason"] = "invitation_required"
+	} else {
+		completionResponse["auto_register"] = true
+	}
+	if err := h.createOAuthPendingSession(c, oauthPendingSessionPayload{
+		Intent:                 oauthIntentLogin,
+		Identity:               identityKey,
+		ResolvedEmail:          email,
+		RedirectTo:             redirectTo,
+		BrowserSessionKey:      browserSessionKey,
+		UpstreamIdentityClaims: upstreamClaims,
+		CompletionResponse:     completionResponse,
+	}); err != nil {
 		redirectOAuthError(c, frontendCallback, "session_error", "failed to continue oauth login", "")
 		return
 	}
@@ -519,7 +556,11 @@ func (h *AuthHandler) CompleteLinuxDoOAuthRegistration(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	tokenPair, user, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), email, username, req.InvitationCode, req.AffCode)
+	affiliateCode := strings.TrimSpace(req.AffCode)
+	if affiliateCode == "" {
+		affiliateCode = pendingSessionStringValue(session.UpstreamIdentityClaims, "aff_code")
+	}
+	tokenPair, user, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), email, username, req.InvitationCode, affiliateCode)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -551,6 +592,17 @@ func (h *AuthHandler) getLinuxDoOAuthConfig(ctx context.Context) (config.LinuxDo
 		return config.LinuxDoConnectConfig{}, infraerrors.NotFound("OAUTH_DISABLED", "oauth login is disabled")
 	}
 	return h.cfg.LinuxDo, nil
+}
+
+func (h *AuthHandler) linuxDoOAuthAffiliateCode(c *gin.Context) string {
+	if c == nil {
+		return ""
+	}
+	code, err := readCookieDecoded(c, linuxDoOAuthAffiliateCookie)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(code)
 }
 
 func linuxDoExchangeCode(

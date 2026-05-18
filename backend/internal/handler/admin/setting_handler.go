@@ -199,6 +199,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		CustomEndpoints:                        dto.ParseCustomEndpoints(settings.CustomEndpoints),
 		DefaultConcurrency:                     settings.DefaultConcurrency,
 		DefaultBalance:                         settings.DefaultBalance,
+		DailyCheckInEnabled:                    settings.DailyCheckInEnabled,
+		DailyCheckInRewardAmount:               settings.DailyCheckInRewardAmount,
 		RiskControlEnabled:                     settings.RiskControlEnabled,
 		AffiliateRebateRate:                    settings.AffiliateRebateRate,
 		AffiliateRebateFreezeHours:             settings.AffiliateRebateFreezeHours,
@@ -448,6 +450,8 @@ type UpdateSettingsRequest struct {
 	// 默认配置
 	DefaultConcurrency                       int                               `json:"default_concurrency"`
 	DefaultBalance                           float64                           `json:"default_balance"`
+	DailyCheckInEnabled                      *bool                             `json:"daily_check_in_enabled"`
+	DailyCheckInRewardAmount                 *float64                          `json:"daily_check_in_reward_amount"`
 	AffiliateRebateRate                      *float64                          `json:"affiliate_rebate_rate"`
 	AffiliateRebateFreezeHours               *int                              `json:"affiliate_rebate_freeze_hours"`
 	AffiliateRebateDurationDays              *int                              `json:"affiliate_rebate_duration_days"`
@@ -1362,6 +1366,21 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		CustomEndpoints:                  customEndpointsJSON,
 		DefaultConcurrency:               req.DefaultConcurrency,
 		DefaultBalance:                   req.DefaultBalance,
+		DailyCheckInEnabled: func() bool {
+			if req.DailyCheckInEnabled != nil {
+				return *req.DailyCheckInEnabled
+			}
+			return previousSettings.DailyCheckInEnabled
+		}(),
+		DailyCheckInRewardAmount: func() float64 {
+			if req.DailyCheckInRewardAmount != nil {
+				if *req.DailyCheckInRewardAmount < 0 {
+					return 0
+				}
+				return *req.DailyCheckInRewardAmount
+			}
+			return previousSettings.DailyCheckInRewardAmount
+		}(),
 		AffiliateRebateRate:              affiliateRebateRate,
 		AffiliateRebateFreezeHours:       affiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:      affiliateRebateDurationDays,
@@ -1746,6 +1765,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		CustomEndpoints:                        dto.ParseCustomEndpoints(updatedSettings.CustomEndpoints),
 		DefaultConcurrency:                     updatedSettings.DefaultConcurrency,
 		DefaultBalance:                         updatedSettings.DefaultBalance,
+		DailyCheckInEnabled:                    updatedSettings.DailyCheckInEnabled,
+		DailyCheckInRewardAmount:               updatedSettings.DailyCheckInRewardAmount,
 		AffiliateRebateRate:                    updatedSettings.AffiliateRebateRate,
 		AffiliateRebateFreezeHours:             updatedSettings.AffiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:            updatedSettings.AffiliateRebateDurationDays,
@@ -2217,6 +2238,12 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.AffiliateEnabled != after.AffiliateEnabled {
 		changed = append(changed, "affiliate_enabled")
+	}
+	if before.DailyCheckInEnabled != after.DailyCheckInEnabled {
+		changed = append(changed, "daily_check_in_enabled")
+	}
+	if before.DailyCheckInRewardAmount != after.DailyCheckInRewardAmount {
+		changed = append(changed, "daily_check_in_reward_amount")
 	}
 	if before.RiskControlEnabled != after.RiskControlEnabled {
 		changed = append(changed, "risk_control_enabled")

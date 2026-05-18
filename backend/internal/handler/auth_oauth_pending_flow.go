@@ -282,6 +282,26 @@ func pendingOAuthCompletionCanIssueTokenPair(session *dbent.PendingAuthSession, 
 	return strings.TrimSpace(pendingSessionStringValue(payload, "step")) == ""
 }
 
+func pendingOAuthCompletionCanAutoRegister(session *dbent.PendingAuthSession, payload map[string]any) bool {
+	if session == nil {
+		return false
+	}
+	if !strings.EqualFold(strings.TrimSpace(session.Intent), oauthIntentLogin) {
+		return false
+	}
+	if session.TargetUserID != nil && *session.TargetUserID > 0 {
+		return false
+	}
+	if pendingSessionWantsInvitation(payload) {
+		return false
+	}
+	if strings.TrimSpace(pendingSessionStringValue(payload, "step")) != "" {
+		return false
+	}
+	autoRegister, _ := payload["auto_register"].(bool)
+	return autoRegister
+}
+
 func ensurePendingOAuthCompleteRegistrationSession(session *dbent.PendingAuthSession) error {
 	if session == nil {
 		return infraerrors.BadRequest("PENDING_AUTH_SESSION_INVALID", "pending auth registration context is invalid")
@@ -424,14 +444,32 @@ func (h *AuthHandler) entClient() *dbent.Client {
 }
 
 func (h *AuthHandler) isForceEmailOnThirdPartySignup(ctx context.Context) bool {
-	if h == nil || h.settingSvc == nil {
+	if h == nil {
 		return false
 	}
-	defaults, err := h.settingSvc.GetAuthSourceDefaultSettings(ctx)
-	if err != nil || defaults == nil {
+	if h.authService != nil {
+		return h.authService.IsForceEmailOnThirdPartySignup(ctx)
+	}
+	if h.settingSvc != nil {
+		defaults, err := h.settingSvc.GetAuthSourceDefaultSettings(ctx)
+		if err == nil && defaults != nil {
+			return defaults.ForceEmailOnThirdPartySignup
+		}
+	}
+	return false
+}
+
+func (h *AuthHandler) isInvitationCodeEnabled(ctx context.Context) bool {
+	if h == nil {
 		return false
 	}
-	return defaults.ForceEmailOnThirdPartySignup
+	if h.authService != nil {
+		return h.authService.IsInvitationCodeEnabled(ctx)
+	}
+	if h.settingSvc != nil {
+		return h.settingSvc.IsInvitationCodeEnabled(ctx)
+	}
+	return false
 }
 
 func (h *AuthHandler) findOAuthIdentityUser(ctx context.Context, identity service.PendingAuthIdentityKey) (*dbent.User, error) {
@@ -1852,6 +1890,7 @@ func (h *AuthHandler) ExchangePendingOAuthCompletion(c *gin.Context) {
 	applySuggestedProfileToCompletionResponse(payload, session.UpstreamIdentityClaims)
 
 	canIssueTokenPair := pendingOAuthCompletionCanIssueTokenPair(session, payload)
+	canAutoRegister := pendingOAuthCompletionCanAutoRegister(session, payload)
 	var loginUser *service.User
 	if canIssueTokenPair {
 		loginUser, err = h.userService.GetByID(c.Request.Context(), *session.TargetUserID)
@@ -1914,6 +1953,54 @@ func (h *AuthHandler) ExchangePendingOAuthCompletion(c *gin.Context) {
 	decision, err := h.ensurePendingOAuthAdoptionDecision(c, session.ID, decisionReq)
 	if err != nil {
 		response.ErrorFrom(c, err)
+		return
+	}
+
+	if canAutoRegister {
+		if err := h.ensureBackendModeAllowsNewUserLogin(c.Request.Context()); err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+
+		email := strings.TrimSpace(session.ResolvedEmail)
+		username := pendingSessionStringValue(session.UpstreamIdentityClaims, "username")
+		affiliateCode := pendingSessionStringValue(session.UpstreamIdentityClaims, "aff_code")
+		if email == "" || username == "" {
+			response.ErrorFrom(c, infraerrors.BadRequest("PENDING_AUTH_SESSION_INVALID", "pending auth registration context is invalid"))
+			return
+		}
+
+		tokenPair, user, err := h.authService.LoginOrRegisterOAuthWithTokenPair(
+			c.Request.Context(),
+			email,
+			username,
+			"",
+			affiliateCode,
+		)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		if err := applyPendingOAuthAdoptionAndConsumeSession(
+			c.Request.Context(),
+			h.entClient(),
+			h.authService,
+			h.userService,
+			session,
+			decision,
+			user.ID,
+		); err != nil {
+			respondPendingOAuthBindingApplyError(c, err)
+			return
+		}
+
+		h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
+		payload["access_token"] = tokenPair.AccessToken
+		payload["refresh_token"] = tokenPair.RefreshToken
+		payload["expires_in"] = tokenPair.ExpiresIn
+		payload["token_type"] = "Bearer"
+		clearCookies()
+		response.Success(c, payload)
 		return
 	}
 	if err := applyPendingOAuthAdoption(c.Request.Context(), h.entClient(), h.authService, h.userService, session, decision, session.TargetUserID); err != nil {

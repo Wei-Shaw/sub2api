@@ -23,6 +23,9 @@ func RegisterUserRoutes(
 		user := authenticated.Group("/user")
 		{
 			user.GET("/profile", h.User.GetProfile)
+			user.GET("/check-in", h.User.GetDailyCheckIn)
+			user.GET("/check-in/calendar", h.User.GetDailyCheckInCalendar)
+			user.POST("/check-in", h.User.ApplyDailyCheckIn)
 			user.PUT("/password", h.User.ChangePassword)
 			user.PUT("", h.User.UpdateProfile)
 			user.GET("/aff", h.User.GetAffiliate)

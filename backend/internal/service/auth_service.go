@@ -430,6 +430,24 @@ func (s *AuthService) IsEmailVerifyEnabled(ctx context.Context) bool {
 	return s.settingService.IsEmailVerifyEnabled(ctx)
 }
 
+func (s *AuthService) IsInvitationCodeEnabled(ctx context.Context) bool {
+	if s.settingService == nil {
+		return false
+	}
+	return s.settingService.IsInvitationCodeEnabled(ctx)
+}
+
+func (s *AuthService) IsForceEmailOnThirdPartySignup(ctx context.Context) bool {
+	if s == nil || s.settingService == nil {
+		return false
+	}
+	defaults, err := s.settingService.GetAuthSourceDefaultSettings(ctx)
+	if err != nil || defaults == nil {
+		return false
+	}
+	return defaults.ForceEmailOnThirdPartySignup
+}
+
 // Login 用户登录，返回JWT token
 func (s *AuthService) Login(ctx context.Context, email, password string) (string, *User, error) {
 	// 查找用户

@@ -203,6 +203,18 @@ func (r *contentModerationTestUserRepo) RemoveGroupFromAllowedGroups(ctx context
 	panic("unexpected RemoveGroupFromAllowedGroups call")
 }
 
+func (r *contentModerationTestUserRepo) GetDailyCheckInStatus(ctx context.Context, userID int64) (int, *time.Time, error) {
+	panic("unexpected GetDailyCheckInStatus call")
+}
+
+func (r *contentModerationTestUserRepo) GetDailyCheckInMonth(ctx context.Context, userID int64, year int, month time.Month) ([]time.Time, error) {
+	panic("unexpected GetDailyCheckInMonth call")
+}
+
+func (r *contentModerationTestUserRepo) ApplyDailyCheckIn(ctx context.Context, userID int64, rewardAmount float64, now time.Time) (int, *time.Time, error) {
+	panic("unexpected ApplyDailyCheckIn call")
+}
+
 func (r *contentModerationTestUserRepo) AddGroupToAllowedGroups(ctx context.Context, userID int64, groupID int64) error {
 	panic("unexpected AddGroupToAllowedGroups call")
 }

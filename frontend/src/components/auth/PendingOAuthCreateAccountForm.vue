@@ -16,7 +16,7 @@
       :placeholder="t('auth.passwordPlaceholder')"
       :disabled="isSubmitting"
     />
-    <div v-if="turnstileEnabled && turnstileSiteKey" class="space-y-2">
+    <div v-if="emailVerifyEnabled && turnstileEnabled && turnstileSiteKey" class="space-y-2">
       <TurnstileWidget
         ref="turnstileRef"
         :site-key="turnstileSiteKey"
@@ -25,17 +25,17 @@
         @error="onTurnstileError"
       />
     </div>
-    <div class="flex gap-3">
-    <input
-      v-model="verifyCode"
-      :data-testid="`${testIdPrefix}-create-account-verify-code`"
-      type="text"
+    <div v-if="emailVerifyEnabled" class="flex gap-3">
+      <input
+        v-model="verifyCode"
+        :data-testid="`${testIdPrefix}-create-account-verify-code`"
+        type="text"
         inputmode="numeric"
-      maxlength="6"
-      class="input min-w-0 flex-1"
-      placeholder="123456"
-      :disabled="isSubmitting"
-    />
+        maxlength="6"
+        class="input min-w-0 flex-1"
+        placeholder="123456"
+        :disabled="isSubmitting"
+      />
       <button
         :data-testid="`${testIdPrefix}-create-account-send-code`"
         type="button"
@@ -49,13 +49,13 @@
             : countdown > 0
               ? t('auth.resendCountdown', { countdown })
               : t('auth.sendCode')
-        }}
+          }}
       </button>
     </div>
-    <p v-if="sendCodeSuccess" class="text-sm text-green-600 dark:text-green-400">
+    <p v-if="emailVerifyEnabled && sendCodeSuccess" class="text-sm text-green-600 dark:text-green-400">
       {{ t('auth.codeSentSuccess') }}
     </p>
-    <p v-else class="text-xs text-gray-500 dark:text-dark-400">
+    <p v-else-if="emailVerifyEnabled" class="text-xs text-gray-500 dark:text-dark-400">
       {{ t('auth.verificationCodeHint') }}
     </p>
     <input
@@ -125,6 +125,7 @@ const sendCodeError = ref('')
 const sendCodeSuccess = ref(false)
 const countdown = ref(0)
 const invitationCodeEnabled = ref(false)
+const emailVerifyEnabled = ref(true)
 const turnstileEnabled = ref(false)
 const turnstileSiteKey = ref('')
 const turnstileToken = ref('')
@@ -260,10 +261,12 @@ onMounted(async () => {
   try {
     const settings = await getPublicSettings()
     invitationCodeEnabled.value = settings.invitation_code_enabled === true
+    emailVerifyEnabled.value = settings.email_verify_enabled === true
     turnstileEnabled.value = settings.turnstile_enabled === true
     turnstileSiteKey.value = settings.turnstile_site_key || ''
   } catch {
     invitationCodeEnabled.value = false
+    emailVerifyEnabled.value = true
     turnstileEnabled.value = false
     turnstileSiteKey.value = ''
   }

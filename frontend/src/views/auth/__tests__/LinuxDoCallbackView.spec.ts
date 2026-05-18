@@ -483,6 +483,7 @@ describe('LinuxDoCallbackView', () => {
 
   it('collects email, password, and verify code for pending oauth account creation and submits adoption decisions', async () => {
     getPublicSettings.mockResolvedValue({
+      email_verify_enabled: true,
       invitation_code_enabled: true,
       turnstile_enabled: false,
       turnstile_site_key: ''
@@ -604,6 +605,12 @@ describe('LinuxDoCallbackView', () => {
   })
 
   it('sends a verify code for pending oauth account creation', async () => {
+    getPublicSettings.mockResolvedValue({
+      email_verify_enabled: true,
+      invitation_code_enabled: false,
+      turnstile_enabled: false,
+      turnstile_site_key: ''
+    })
     exchangePendingOAuthCompletion.mockResolvedValue({
       error: 'email_required',
       redirect: '/welcome'
@@ -633,6 +640,35 @@ describe('LinuxDoCallbackView', () => {
     expect(sendPendingOAuthVerifyCode).toHaveBeenCalledWith({
       email: 'new@example.com'
     })
+  })
+
+  it('does not render verify-code controls when email verification is disabled', async () => {
+    getPublicSettings.mockResolvedValue({
+      email_verify_enabled: false,
+      invitation_code_enabled: false,
+      turnstile_enabled: false,
+      turnstile_site_key: ''
+    })
+    exchangePendingOAuthCompletion.mockResolvedValue({
+      error: 'email_required',
+      redirect: '/welcome'
+    })
+
+    const wrapper = mount(LinuxDoCallbackView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' },
+          Icon: true,
+          RouterLink: { template: '<a><slot /></a>' },
+          transition: false
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="linuxdo-create-account-verify-code"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="linuxdo-create-account-send-code"]').exists()).toBe(false)
   })
 
   it('shows bind-login form for existing account binding and submits credentials with adoption decisions', async () => {

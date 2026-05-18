@@ -2,7 +2,9 @@ package handler
 
 import (
 	"context"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -74,6 +76,22 @@ type userProfileSourceContext struct {
 	Source   string `json:"source,omitempty"`
 }
 
+type dailyCheckInResponse struct {
+	Enabled        bool    `json:"enabled"`
+	RewardAmount   float64 `json:"reward_amount"`
+	CheckInDays    int     `json:"check_in_days"`
+	CheckedInToday bool    `json:"checked_in_today"`
+	LastCheckInAt  *string `json:"last_check_in_at,omitempty"`
+}
+
+type dailyCheckInCalendarResponse struct {
+	Enabled        bool     `json:"enabled"`
+	Year           int      `json:"year"`
+	Month          int      `json:"month"`
+	CheckedInDates []string `json:"checked_in_dates"`
+	CheckedInDays  int      `json:"checked_in_days"`
+}
+
 // GetProfile handles getting user profile
 // GET /api/v1/users/me
 func (h *UserHandler) GetProfile(c *gin.Context) {
@@ -96,6 +114,82 @@ func (h *UserHandler) GetProfile(c *gin.Context) {
 	}
 
 	response.Success(c, profileResp)
+}
+
+// GetDailyCheckIn handles fetching the current user's daily check-in status.
+// GET /api/v1/user/check-in
+func (h *UserHandler) GetDailyCheckIn(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+
+	status, err := h.userService.GetDailyCheckInStatus(c.Request.Context(), subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, dailyCheckInResponseFromService(status))
+}
+
+// GetDailyCheckInCalendar handles fetching the current user's monthly check-in calendar.
+// GET /api/v1/user/check-in/calendar?year=2026&month=5
+func (h *UserHandler) GetDailyCheckInCalendar(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+
+	now := time.Now().In(time.Local)
+	year := now.Year()
+	month := int(now.Month())
+
+	if raw := strings.TrimSpace(c.Query("year")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed <= 0 {
+			response.BadRequest(c, "Invalid year")
+			return
+		}
+		year = parsed
+	}
+
+	if raw := strings.TrimSpace(c.Query("month")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > 12 {
+			response.BadRequest(c, "Invalid month")
+			return
+		}
+		month = parsed
+	}
+
+	calendar, err := h.userService.GetDailyCheckInCalendar(c.Request.Context(), subject.UserID, year, time.Month(month))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, dailyCheckInCalendarResponseFromService(calendar))
+}
+
+// ApplyDailyCheckIn handles claiming the current user's daily check-in reward.
+// POST /api/v1/user/check-in
+func (h *UserHandler) ApplyDailyCheckIn(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+
+	status, err := h.userService.ApplyDailyCheckIn(c.Request.Context(), subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, dailyCheckInResponseFromService(status))
 }
 
 // ChangePassword handles changing user password
@@ -601,5 +695,42 @@ func buildUserProfileSourceContext(provider string) *userProfileSourceContext {
 	return &userProfileSourceContext{
 		Provider: provider,
 		Source:   provider,
+	}
+}
+
+func dailyCheckInResponseFromService(status *service.DailyCheckInStatus) dailyCheckInResponse {
+	if status == nil {
+		return dailyCheckInResponse{}
+	}
+
+	var lastCheckInAt *string
+	if status.LastCheckInAt != nil && !status.LastCheckInAt.IsZero() {
+		formatted := status.LastCheckInAt.UTC().Format(time.RFC3339)
+		lastCheckInAt = &formatted
+	}
+
+	return dailyCheckInResponse{
+		Enabled:        status.Enabled,
+		RewardAmount:   status.RewardAmount,
+		CheckInDays:    status.CheckInDays,
+		CheckedInToday: status.CheckedInToday,
+		LastCheckInAt:  lastCheckInAt,
+	}
+}
+
+func dailyCheckInCalendarResponseFromService(calendar *service.DailyCheckInCalendar) dailyCheckInCalendarResponse {
+	if calendar == nil {
+		return dailyCheckInCalendarResponse{
+			CheckedInDates: []string{},
+		}
+	}
+	dates := make([]string, len(calendar.CheckedInDates))
+	copy(dates, calendar.CheckedInDates)
+	return dailyCheckInCalendarResponse{
+		Enabled:        calendar.Enabled,
+		Year:           calendar.Year,
+		Month:          calendar.Month,
+		CheckedInDates: dates,
+		CheckedInDays:  calendar.CheckedInDays,
 	}
 }

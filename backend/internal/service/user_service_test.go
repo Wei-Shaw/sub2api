@@ -40,6 +40,9 @@ type mockUserRepo struct {
 	deleteAvatarFn          func(ctx context.Context, userID int64) error
 	deleteAvatarIDs         []int64
 	getAvatarFn             func(ctx context.Context, userID int64) (*UserAvatar, error)
+	getDailyCheckInStatusFn func(ctx context.Context, userID int64) (int, *time.Time, error)
+	getDailyCheckInMonthFn  func(ctx context.Context, userID int64, year int, month time.Month) ([]time.Time, error)
+	applyDailyCheckInFn     func(ctx context.Context, userID int64, rewardAmount float64, now time.Time) (int, *time.Time, error)
 	txCalls                 int
 }
 
@@ -199,10 +202,28 @@ func (m *mockUserRepo) ExistsByEmail(context.Context, string) (bool, error) { re
 func (m *mockUserRepo) RemoveGroupFromAllowedGroups(context.Context, int64) (int64, error) {
 	return 0, nil
 }
+func (m *mockUserRepo) GetDailyCheckInStatus(ctx context.Context, userID int64) (int, *time.Time, error) {
+	if m.getDailyCheckInStatusFn != nil {
+		return m.getDailyCheckInStatusFn(ctx, userID)
+	}
+	return 0, nil, nil
+}
+func (m *mockUserRepo) GetDailyCheckInMonth(ctx context.Context, userID int64, year int, month time.Month) ([]time.Time, error) {
+	if m.getDailyCheckInMonthFn != nil {
+		return m.getDailyCheckInMonthFn(ctx, userID, year, month)
+	}
+	return nil, nil
+}
+func (m *mockUserRepo) ApplyDailyCheckIn(ctx context.Context, userID int64, rewardAmount float64, now time.Time) (int, *time.Time, error) {
+	if m.applyDailyCheckInFn != nil {
+		return m.applyDailyCheckInFn(ctx, userID, rewardAmount, now)
+	}
+	return 0, nil, nil
+}
 
 func (m *mockUserRepo) BatchSetConcurrency(context.Context, []int64, int) (int, error) { return 0, nil }
 func (m *mockUserRepo) BatchAddConcurrency(context.Context, []int64, int) (int, error) { return 0, nil }
-func (m *mockUserRepo) AddGroupToAllowedGroups(context.Context, int64, int64) error { return nil }
+func (m *mockUserRepo) AddGroupToAllowedGroups(context.Context, int64, int64) error    { return nil }
 func (m *mockUserRepo) ListUserAuthIdentities(context.Context, int64) ([]UserAuthIdentityRecord, error) {
 	out := make([]UserAuthIdentityRecord, len(m.identities))
 	copy(out, m.identities)
@@ -642,6 +663,180 @@ func TestUpdateBalance_WithAuthCacheInvalidator(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return cache.invalidateCallCount.Load() == 1
 	}, 2*time.Second, 10*time.Millisecond)
+}
+
+func TestGetDailyCheckInStatus_DisabledSkipsRepository(t *testing.T) {
+	repo := &mockUserRepo{
+		getDailyCheckInStatusFn: func(context.Context, int64) (int, *time.Time, error) {
+			t.Fatal("repository should not be called when daily check-in is disabled")
+			return 0, nil, nil
+		},
+	}
+	settingRepo := &mockUserSettingRepo{
+		values: map[string]string{
+			SettingKeyDailyCheckInEnabled:      "false",
+			SettingKeyDailyCheckInRewardAmount: "2.5",
+		},
+	}
+	svc := NewUserService(repo, settingRepo, nil, nil)
+
+	status, err := svc.GetDailyCheckInStatus(context.Background(), 7)
+
+	require.NoError(t, err)
+	require.False(t, status.Enabled)
+	require.Equal(t, 2.5, status.RewardAmount)
+	require.Zero(t, status.CheckInDays)
+	require.False(t, status.CheckedInToday)
+	require.Nil(t, status.LastCheckInAt)
+}
+
+func TestGetDailyCheckInStatus_UsesRepositoryAndSettings(t *testing.T) {
+	lastCheckIn := time.Now().Add(-24 * time.Hour).UTC()
+	repo := &mockUserRepo{
+		getDailyCheckInStatusFn: func(ctx context.Context, userID int64) (int, *time.Time, error) {
+			require.Equal(t, int64(7), userID)
+			return 3, &lastCheckIn, nil
+		},
+	}
+	settingRepo := &mockUserSettingRepo{
+		values: map[string]string{
+			SettingKeyDailyCheckInEnabled:      "true",
+			SettingKeyDailyCheckInRewardAmount: "1.25",
+		},
+	}
+	svc := NewUserService(repo, settingRepo, nil, nil)
+
+	status, err := svc.GetDailyCheckInStatus(context.Background(), 7)
+
+	require.NoError(t, err)
+	require.True(t, status.Enabled)
+	require.Equal(t, 1.25, status.RewardAmount)
+	require.Equal(t, 3, status.CheckInDays)
+	require.Equal(t, lastCheckIn, *status.LastCheckInAt)
+}
+
+func TestGetDailyCheckInCalendar_DisabledSkipsRepository(t *testing.T) {
+	repo := &mockUserRepo{
+		getDailyCheckInMonthFn: func(context.Context, int64, int, time.Month) ([]time.Time, error) {
+			t.Fatal("repository should not be called when daily check-in is disabled")
+			return nil, nil
+		},
+	}
+	settingRepo := &mockUserSettingRepo{
+		values: map[string]string{
+			SettingKeyDailyCheckInEnabled: "false",
+		},
+	}
+	svc := NewUserService(repo, settingRepo, nil, nil)
+
+	calendar, err := svc.GetDailyCheckInCalendar(context.Background(), 7, 2026, time.May)
+
+	require.NoError(t, err)
+	require.False(t, calendar.Enabled)
+	require.Equal(t, 2026, calendar.Year)
+	require.Equal(t, 5, calendar.Month)
+	require.Empty(t, calendar.CheckedInDates)
+	require.Zero(t, calendar.CheckedInDays)
+}
+
+func TestGetDailyCheckInCalendar_UsesRepository(t *testing.T) {
+	repo := &mockUserRepo{
+		getDailyCheckInMonthFn: func(ctx context.Context, userID int64, year int, month time.Month) ([]time.Time, error) {
+			require.Equal(t, int64(7), userID)
+			require.Equal(t, 2026, year)
+			require.Equal(t, time.May, month)
+			return []time.Time{
+				time.Date(2026, 5, 1, 8, 0, 0, 0, time.Local),
+				time.Date(2026, 5, 12, 8, 0, 0, 0, time.Local),
+			}, nil
+		},
+	}
+	settingRepo := &mockUserSettingRepo{
+		values: map[string]string{
+			SettingKeyDailyCheckInEnabled: "true",
+		},
+	}
+	svc := NewUserService(repo, settingRepo, nil, nil)
+
+	calendar, err := svc.GetDailyCheckInCalendar(context.Background(), 7, 2026, time.May)
+
+	require.NoError(t, err)
+	require.True(t, calendar.Enabled)
+	require.Equal(t, []string{"2026-05-01", "2026-05-12"}, calendar.CheckedInDates)
+	require.Equal(t, 2, calendar.CheckedInDays)
+}
+
+func TestApplyDailyCheckIn_DisabledReturnsError(t *testing.T) {
+	repo := &mockUserRepo{
+		applyDailyCheckInFn: func(context.Context, int64, float64, time.Time) (int, *time.Time, error) {
+			t.Fatal("repository should not be called when daily check-in is disabled")
+			return 0, nil, nil
+		},
+	}
+	settingRepo := &mockUserSettingRepo{
+		values: map[string]string{
+			SettingKeyDailyCheckInEnabled: "false",
+		},
+	}
+	svc := NewUserService(repo, settingRepo, nil, nil)
+
+	_, err := svc.ApplyDailyCheckIn(context.Background(), 7)
+
+	require.ErrorIs(t, err, ErrDailyCheckInDisabled)
+}
+
+func TestApplyDailyCheckIn_SuccessInvalidatesCaches(t *testing.T) {
+	var gotReward float64
+	var gotUserID int64
+	repo := &mockUserRepo{
+		applyDailyCheckInFn: func(ctx context.Context, userID int64, rewardAmount float64, now time.Time) (int, *time.Time, error) {
+			gotUserID = userID
+			gotReward = rewardAmount
+			lastCheckIn := now.UTC()
+			return 4, &lastCheckIn, nil
+		},
+	}
+	settingRepo := &mockUserSettingRepo{
+		values: map[string]string{
+			SettingKeyDailyCheckInEnabled:      "true",
+			SettingKeyDailyCheckInRewardAmount: "0.75",
+		},
+	}
+	auth := &mockAuthCacheInvalidator{}
+	cache := &mockBillingCache{}
+	svc := NewUserService(repo, settingRepo, auth, cache)
+
+	status, err := svc.ApplyDailyCheckIn(context.Background(), 7)
+
+	require.NoError(t, err)
+	require.Equal(t, int64(7), gotUserID)
+	require.Equal(t, 0.75, gotReward)
+	require.True(t, status.Enabled)
+	require.Equal(t, 0.75, status.RewardAmount)
+	require.Equal(t, 4, status.CheckInDays)
+	require.True(t, status.CheckedInToday)
+	require.NotNil(t, status.LastCheckInAt)
+
+	auth.mu.Lock()
+	require.Equal(t, []int64{7}, auth.invalidatedUserIDs)
+	auth.mu.Unlock()
+
+	require.Eventually(t, func() bool {
+		return cache.invalidateCallCount.Load() == 1
+	}, 2*time.Second, 10*time.Millisecond)
+}
+
+func TestApplyDailyCheckIn_AlreadyCheckedPreservesSentinel(t *testing.T) {
+	repo := &mockUserRepo{
+		applyDailyCheckInFn: func(context.Context, int64, float64, time.Time) (int, *time.Time, error) {
+			return 0, nil, ErrDailyCheckInAlreadyChecked
+		},
+	}
+	svc := NewUserService(repo, nil, nil, nil)
+
+	_, err := svc.ApplyDailyCheckIn(context.Background(), 7)
+
+	require.ErrorIs(t, err, ErrDailyCheckInAlreadyChecked)
 }
 
 func TestNewUserService_FieldsAssignment(t *testing.T) {

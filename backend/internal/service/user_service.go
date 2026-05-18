@@ -111,6 +111,10 @@ type UserRepository interface {
 	UpdateTotpSecret(ctx context.Context, userID int64, encryptedSecret *string) error
 	EnableTotp(ctx context.Context, userID int64) error
 	DisableTotp(ctx context.Context, userID int64) error
+
+	GetDailyCheckInStatus(ctx context.Context, userID int64) (int, *time.Time, error)
+	GetDailyCheckInMonth(ctx context.Context, userID int64, year int, month time.Month) ([]time.Time, error)
+	ApplyDailyCheckIn(ctx context.Context, userID int64, rewardAmount float64, now time.Time) (int, *time.Time, error)
 }
 
 type UserAuthIdentityRecord struct {
@@ -1049,6 +1053,11 @@ func (s *UserService) UpdateBalance(ctx context.Context, userID int64, amount fl
 	if err := s.userRepo.UpdateBalance(ctx, userID, amount); err != nil {
 		return fmt.Errorf("update balance: %w", err)
 	}
+	s.invalidateBalanceRelatedCaches(ctx, userID)
+	return nil
+}
+
+func (s *UserService) invalidateBalanceRelatedCaches(ctx context.Context, userID int64) {
 	if s.authCacheInvalidator != nil {
 		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
 	}
@@ -1066,7 +1075,6 @@ func (s *UserService) UpdateBalance(ctx context.Context, userID int64, amount fl
 			}
 		}()
 	}
-	return nil
 }
 
 // UpdateConcurrency 更新用户并发数（管理员功能）
