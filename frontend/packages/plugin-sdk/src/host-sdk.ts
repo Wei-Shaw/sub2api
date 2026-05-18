@@ -278,6 +278,20 @@ export interface PluginRuntimeAssets {
    */
   groupConfigComponents?: Record<string, Component>
 
+
+  /**
+   * 可选: 插件提供的账号测试组件映射.
+   *
+   * key 格式为 `<platform>:<accountType>` 或 `<platform>:*` (通配),
+   * value 是 Vue Component. host 的 AccountTestModal 在打开测试弹窗时,
+   * 优先从此 map 取组件, 未找到时降级到内置测试面板.
+   *
+   * 测试组件在 host Vue tree 中直接渲染 (与 formComponents 对称),
+   * 接收标准 props: testContext (SdkTestContext).
+   * 必须 expose AccountTestExposed { startTest, abort, isRunning }.
+   */
+  testComponents?: Record<string, Component>
+
   /**
    * 可选: 插件提供的账号用量展示组件映射.
    *

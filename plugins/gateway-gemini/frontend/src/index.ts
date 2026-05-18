@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Gemini gateway plugin frontend entry.
  *
  * This plugin provides the GeminiForm account form component and
@@ -12,6 +12,7 @@ import GeminiForm from './forms/GeminiForm.vue'
 import GeminiGroupConfig from './components/GeminiGroupConfig.vue'
 import GeminiUsageSection from './components/GeminiUsageSection.vue'
 import AccountQuotaInfo from './components/AccountQuotaInfo.vue'
+import GeminiTestPanel from './components/GeminiTestPanel.vue'
 import { setClient } from './api/client'
 import { setSdk } from './api/sdk'
 import enMessages from './i18n/en'
@@ -37,6 +38,10 @@ function install(sdk: HostSdk): PluginRuntimeAssets {
     },
     groupConfigComponents: {
       GeminiGroupConfig,
+    },
+    // Account test panel component rendered in host Vue tree
+    testComponents: {
+      GeminiTestPanel,
     },
     // Account usage display components rendered in host Vue tree
     usageComponents: {

@@ -12,6 +12,7 @@ import './style.css'
 import AnthropicForm from './forms/AnthropicForm.vue'
 import AnthropicUsageSection from './components/AnthropicUsageSection.vue'
 import AnthropicGroupConfig from './components/group-config/AnthropicGroupConfig.vue'
+import AnthropicTestPanel from './components/AnthropicTestPanel.vue'
 import { setClient } from './api/client'
 import { setSdk } from './api/sdk'
 import enMessages from './i18n/en'
@@ -47,6 +48,10 @@ function install(sdk: HostSdk): PluginRuntimeAssets {
     usageComponents: {
       'anthropic:oauth': AnthropicUsageSection,
       'anthropic:setup-token': AnthropicUsageSection,
+    },
+    // Account test panel components rendered in host Vue tree
+    testComponents: {
+      AnthropicTestPanel,
     },
   }
 }

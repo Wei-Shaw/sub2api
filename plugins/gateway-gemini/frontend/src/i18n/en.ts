@@ -1,4 +1,4 @@
-/**
+﻿/**
  * English i18n messages for the Gemini gateway plugin.
  *
  * These keys are merged into the host vue-i18n instance via
@@ -74,6 +74,12 @@ export default {
           unlimited: 'Unlimited',
           limited: 'Rate limited {time}',
           now: 'now'
+        },
+        test: {
+          imagePromptLabel: 'Image Prompt',
+          imagePromptPlaceholder: 'Describe the image you want to generate...',
+          imagePromptHint: 'Imagen models generate images from text descriptions.',
+          imagePromptDefault: 'A serene mountain landscape at sunset with a reflective lake'
         }
       },
       oauth: {

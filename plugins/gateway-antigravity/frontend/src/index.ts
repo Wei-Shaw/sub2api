@@ -12,6 +12,7 @@ import { setClient } from './api/client'
 import AntigravityForm from './forms/AntigravityForm.vue'
 import AntigravityUsageSection from './components/AntigravityUsageSection.vue'
 import AntigravityGroupConfig from './components/AntigravityGroupConfig.vue'
+import AntigravityTestPanel from './components/AntigravityTestPanel.vue'
 import enMessages from './i18n/en'
 import zhMessages from './i18n/zh'
 
@@ -36,6 +37,9 @@ function install(sdk: HostSdk): PluginRuntimeAssets {
     },
     groupConfigComponents: {
       AntigravityGroupConfig,
+    },
+    testComponents: {
+      AntigravityTestPanel,
     },
     // Account usage display components rendered in host Vue tree
     usageComponents: {

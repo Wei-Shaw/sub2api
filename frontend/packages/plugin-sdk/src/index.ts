@@ -116,3 +116,14 @@ export type {
 // Composables
 export { useKeyedDebouncedSearch } from './composables/useKeyedDebouncedSearch'
 export type { KeyedDebouncedSearchContext } from './composables/useKeyedDebouncedSearch'
+
+// Account test composable & terminal component
+export {
+  useAccountTest,
+  type AccountTestStream,
+  type TestOutputLine,
+  type TestImage,
+  type TestStreamOptions,
+} from './composables/useAccountTest'
+export { default as AccountTestTerminal } from './components/account/AccountTestTerminal.vue'
+export type { AccountTestExposed, SdkTestContext } from './account-form-types'

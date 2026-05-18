@@ -185,3 +185,34 @@ export interface PlatformFormExposed {
   handleMobileRefreshToken?(rt: string): Promise<SdkCreateAccountRequest | SdkCreateAccountRequest[] | null>
   handleSessionToken?(token: string): Promise<SdkCreateAccountRequest | SdkCreateAccountRequest[] | null>
 }
+
+
+// ---------------------------------------------------------------------------
+// Test panel types (test component contract)
+// ---------------------------------------------------------------------------
+
+/**
+ * Exposed interface from a plugin test panel component.
+ *
+ * The host's AccountTestModal uses template-ref to call startTest / abort
+ * and read isRunning. This is symmetric with PlatformFormExposed for forms.
+ */
+export interface AccountTestExposed {
+  startTest(): void
+  abort(): void
+  readonly isRunning: boolean
+}
+
+/**
+ * Context passed by the host to the plugin test panel component as a prop.
+ *
+ * Contains the account being tested and host-side data the plugin may need
+ * (e.g. pre-fetched available models so the plugin doesn't re-fetch).
+ */
+export interface SdkTestContext {
+  account: SdkAccount
+  hostData: {
+    /** Available models fetched by host, or plugin can fetch its own. */
+    availableModels?: Array<{ id: string; display_name: string }>
+  }
+}

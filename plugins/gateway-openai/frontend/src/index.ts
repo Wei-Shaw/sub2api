@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Gateway OpenAI plugin frontend runtime entry.
  *
  * This plugin provides form components for OpenAI account management
@@ -18,6 +18,7 @@ import { setSdk } from './api/sdk'
 import OpenAIForm from './forms/OpenAIForm.vue'
 import OpenAIGroupConfig from './components/OpenAIGroupConfig.vue'
 import OpenAIUsageSection from './components/OpenAIUsageSection.vue'
+import OpenAITestPanel from './components/OpenAITestPanel.vue'
 
 function install(sdk: HostSdk): PluginRuntimeAssets {
   setClient(sdk.http.apiClient as unknown as AxiosInstance)
@@ -42,6 +43,11 @@ function install(sdk: HostSdk): PluginRuntimeAssets {
 
     groupConfigComponents: {
       OpenAIGroupConfig,
+    },
+
+    // Account test panel components rendered in host Vue tree
+    testComponents: {
+      OpenAITestPanel,
     },
 
     // Account usage display components rendered in host Vue tree

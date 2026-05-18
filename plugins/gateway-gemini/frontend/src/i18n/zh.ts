@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Chinese i18n messages for the Gemini gateway plugin.
  */
 export default {
@@ -66,6 +66,12 @@ export default {
           unlimited: '无限流',
           limited: '限流 {time}',
           now: '现在'
+        },
+        test: {
+          imagePromptLabel: '图像提示词',
+          imagePromptPlaceholder: '描述你想要生成的图像...',
+          imagePromptHint: 'Imagen 模型根据文本描述生成图像。',
+          imagePromptDefault: '日落时分的宁静山景，伴有倒映的湖泊'
         }
       },
       oauth: {
