@@ -73,3 +73,93 @@ func parseRecord(raw json.RawMessage, langs []string) (Record, error) {
 	}
 	return rec, nil
 }
+
+// Resolve returns the SEO record and lang payload for the given request path and language.
+// settingsJSON is the public-settings payload (used for dynamic routes like /legal/:id).
+// If path or lang cannot be matched, returns a default noindex record so callers
+// never need to nil-check.
+func (r *Registry) Resolve(path, lang string, settingsJSON []byte) (Record, LangPayload) {
+	if !contains(r.Site.SupportedLangs, lang) {
+		lang = r.Site.DefaultLang
+	}
+
+	if rec, ok := r.Routes[path]; ok {
+		if rec.Dynamic != "" {
+			return r.resolveDynamic(rec, path, lang, settingsJSON)
+		}
+		return rec, rec.Langs[lang]
+	}
+
+	for pat, rec := range r.Routes {
+		if rec.Dynamic == "" {
+			continue
+		}
+		if matchPattern(pat, path) {
+			return r.resolveDynamic(rec, path, lang, settingsJSON)
+		}
+	}
+
+	return r.defaultRecord(lang), r.defaultLangPayload(lang)
+}
+
+func (r *Registry) defaultRecord(_ string) Record {
+	return Record{Indexable: false}
+}
+
+func (r *Registry) defaultLangPayload(_ string) LangPayload {
+	return LangPayload{
+		Title:       r.Site.Name,
+		Description: r.Site.Name,
+	}
+}
+
+func contains(ss []string, s string) bool {
+	for _, x := range ss {
+		if x == s {
+			return true
+		}
+	}
+	return false
+}
+
+// matchPattern returns true if path matches a pattern with ":param" placeholders.
+// Example: matchPattern("/legal/:id", "/legal/terms") == true.
+func matchPattern(pattern, path string) bool {
+	pp := splitPath(pattern)
+	xp := splitPath(path)
+	if len(pp) != len(xp) {
+		return false
+	}
+	for i := range pp {
+		if len(pp[i]) > 0 && pp[i][0] == ':' {
+			if xp[i] == "" {
+				return false
+			}
+			continue
+		}
+		if pp[i] != xp[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func splitPath(p string) []string {
+	out := []string{}
+	cur := ""
+	for _, ch := range p {
+		if ch == '/' {
+			out = append(out, cur)
+			cur = ""
+			continue
+		}
+		cur += string(ch)
+	}
+	out = append(out, cur)
+	return out
+}
+
+// resolveDynamic dispatches to per-Dynamic-type handlers. T7 fills in legalDoc.
+func (r *Registry) resolveDynamic(rec Record, _ string, lang string, _ []byte) (Record, LangPayload) {
+	return rec, rec.Langs[lang]
+}
