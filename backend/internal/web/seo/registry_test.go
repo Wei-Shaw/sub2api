@@ -58,3 +58,31 @@ func TestRegistry_Resolve_static(t *testing.T) {
 		assert.False(t, rec.Indexable)
 	})
 }
+
+func TestRegistry_Resolve_legalDoc(t *testing.T) {
+	reg, err := NewRegistry()
+	require.NoError(t, err)
+
+	settingsJSON := []byte(`{
+		"login_agreement_documents": [
+			{"id": "terms-of-service", "title": "服务条款", "content_md": "## 第一章..."},
+			{"id": "privacy-policy", "title": "隐私政策", "content_md": "..."}
+		]
+	}`)
+
+	t.Run("matched_legal_doc_uses_doc_title", func(t *testing.T) {
+		_, lp := reg.Resolve("/legal/terms-of-service", "zh", settingsJSON)
+		assert.Contains(t, lp.Title, "服务条款")
+		assert.Contains(t, lp.Title, "Sub2API")
+	})
+
+	t.Run("missing_legal_doc_returns_default_noindex", func(t *testing.T) {
+		rec, _ := reg.Resolve("/legal/no-such-doc", "zh", settingsJSON)
+		assert.False(t, rec.Indexable)
+	})
+
+	t.Run("malformed_settings_returns_default", func(t *testing.T) {
+		rec, _ := reg.Resolve("/legal/terms", "zh", []byte("not json"))
+		assert.False(t, rec.Indexable)
+	})
+}

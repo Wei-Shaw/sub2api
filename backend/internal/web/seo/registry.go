@@ -159,7 +159,38 @@ func splitPath(p string) []string {
 	return out
 }
 
-// resolveDynamic dispatches to per-Dynamic-type handlers. T7 fills in legalDoc.
-func (r *Registry) resolveDynamic(rec Record, _ string, lang string, _ []byte) (Record, LangPayload) {
-	return rec, rec.Langs[lang]
+// resolveDynamic dispatches to per-Dynamic-type handlers.
+func (r *Registry) resolveDynamic(rec Record, path string, lang string, settingsJSON []byte) (Record, LangPayload) {
+	switch rec.Dynamic {
+	case "legalDoc":
+		return r.resolveLegalDoc(rec, path, lang, settingsJSON)
+	default:
+		return r.defaultRecord(lang), r.defaultLangPayload(lang)
+	}
+}
+
+func (r *Registry) resolveLegalDoc(rec Record, path string, lang string, settingsJSON []byte) (Record, LangPayload) {
+	segs := splitPath(path)
+	if len(segs) < 3 || segs[1] != "legal" || segs[2] == "" {
+		return r.defaultRecord(lang), r.defaultLangPayload(lang)
+	}
+	docID := segs[2]
+
+	var s struct {
+		Docs []struct {
+			ID    string `json:"id"`
+			Title string `json:"title"`
+		} `json:"login_agreement_documents"`
+	}
+	if err := json.Unmarshal(settingsJSON, &s); err != nil {
+		return r.defaultRecord(lang), r.defaultLangPayload(lang)
+	}
+	for _, d := range s.Docs {
+		if d.ID == docID {
+			lp := rec.Langs[lang]
+			lp.Title = d.Title + " - " + r.Site.Name
+			return rec, lp
+		}
+	}
+	return r.defaultRecord(lang), r.defaultLangPayload(lang)
 }
