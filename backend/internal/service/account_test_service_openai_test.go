@@ -24,7 +24,6 @@ import (
 
 type queuedHTTPUpstream struct {
 	responses []*http.Response
-	errors    []error
 	requests  []*http.Request
 	tlsFlags  []bool
 }
@@ -36,13 +35,6 @@ func (u *queuedHTTPUpstream) Do(_ *http.Request, _ string, _ int64, _ int) (*htt
 func (u *queuedHTTPUpstream) DoWithTLS(req *http.Request, _ string, _ int64, _ int, profile *tlsfingerprint.Profile) (*http.Response, error) {
 	u.requests = append(u.requests, req)
 	u.tlsFlags = append(u.tlsFlags, profile != nil)
-	if len(u.errors) > 0 {
-		err := u.errors[0]
-		u.errors = u.errors[1:]
-		if err != nil {
-			return nil, err
-		}
-	}
 	if len(u.responses) == 0 {
 		return nil, fmt.Errorf("no mocked response")
 	}

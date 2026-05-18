@@ -313,9 +313,6 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 				}
 			}
 		}
-		if event.Type == "message_stop" || (event.Type == "message_delta" && event.Delta != nil && event.Delta.StopReason != "") {
-			break
-		}
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -494,9 +491,6 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 
 		if processAnthropicEvent(&event) {
 			return resultWithUsage(), nil
-		}
-		if event.Type == "message_stop" || (event.Type == "message_delta" && event.Delta != nil && event.Delta.StopReason != "") {
-			break
 		}
 	}
 

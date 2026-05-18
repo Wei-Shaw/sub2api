@@ -305,61 +305,6 @@ func TestApplyMigrationsFS_TransactionalMigration(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestStripRedundantTransactionControlPreservesDollarQuotedBlocks(t *testing.T) {
-	input := `BEGIN;
-DO $$
-BEGIN
-    IF EXISTS (SELECT 1) THEN
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS allowed_groups BIGINT[] DEFAULT NULL;
-    END IF;
-END $$;
-COMMIT;`
-
-	stripped := stripRedundantTransactionControl(input)
-
-	require.NotContains(t, stripped, "BEGIN;\nDO")
-	require.NotContains(t, stripped, "COMMIT;")
-	require.Contains(t, stripped, "DO $$\nBEGIN")
-	require.Contains(t, stripped, "IF EXISTS (SELECT 1) THEN")
-	require.Contains(t, stripped, "END $$;")
-}
-
-func TestApplyMigrationsFS_TransactionalDollarQuotedMigration(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	require.NoError(t, err)
-	defer func() { _ = db.Close() }()
-
-	prepareMigrationsBootstrapExpectations(mock)
-	mock.ExpectQuery("SELECT checksum FROM schema_migrations WHERE filename = \\$1").
-		WithArgs("006_add_users_allowed_groups_compat.sql").
-		WillReturnError(sql.ErrNoRows)
-	mock.ExpectBegin()
-	mock.ExpectExec("DO \\$\\$").
-		WillReturnResult(sqlmock.NewResult(0, 0))
-	mock.ExpectExec("INSERT INTO schema_migrations \\(filename, checksum\\) VALUES \\(\\$1, \\$2\\)").
-		WithArgs("006_add_users_allowed_groups_compat.sql", sqlmock.AnyArg()).
-		WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectCommit()
-	mock.ExpectExec("SELECT pg_advisory_unlock\\(\\$1\\)").
-		WithArgs(migrationsAdvisoryLockID).
-		WillReturnResult(sqlmock.NewResult(0, 1))
-
-	fsys := fstest.MapFS{
-		"006_add_users_allowed_groups_compat.sql": &fstest.MapFile{
-			Data: []byte(`DO $$
-BEGIN
-    IF EXISTS (SELECT 1) THEN
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS allowed_groups BIGINT[] DEFAULT NULL;
-    END IF;
-END $$;`),
-		},
-	}
-
-	err = applyMigrationsFS(context.Background(), db, fsys)
-	require.NoError(t, err)
-	require.NoError(t, mock.ExpectationsWereMet())
-}
-
 func prepareMigrationsBootstrapExpectations(mock sqlmock.Sqlmock) {
 	mock.ExpectQuery("SELECT pg_try_advisory_lock\\(\\$1\\)").
 		WithArgs(migrationsAdvisoryLockID).
