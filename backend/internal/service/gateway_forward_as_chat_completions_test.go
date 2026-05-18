@@ -3,6 +3,7 @@
 package service
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/kirocooldown"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -184,4 +186,36 @@ func TestHandleCCStreamingFromAnthropic_PreservesMessageStartCacheUsageAndReason
 	require.NotNil(t, result.ReasoningEffort)
 	require.Equal(t, "medium", *result.ReasoningEffort)
 	require.Contains(t, rec.Body.String(), `[DONE]`)
+}
+
+func TestForwardAsChatCompletions_KiroCooldownPropagatesFailover(t *testing.T) {
+	t.Parallel()
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{"model":"claude-opus-4-7","messages":[{"role":"user","content":"hi"}],"stream":true}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(string(body)))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	svc := &GatewayService{
+		kiroCooldownStore: &stubKiroCooldownStore{reserveErr: kirocooldown.NewError(time.Minute, kirocooldown.CooldownReason429)},
+	}
+	account := &Account{
+		ID:          122,
+		Name:        "kiro-122",
+		Platform:    PlatformKiro,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token": "test-token",
+		},
+	}
+
+	result, err := svc.ForwardAsChatCompletions(c.Request.Context(), c, account, body, &ParsedRequest{Model: "claude-opus-4-7", Stream: true, Body: body})
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.True(t, errors.As(err, &failoverErr))
+	require.Equal(t, http.StatusTooManyRequests, failoverErr.StatusCode)
+	require.Empty(t, rec.Body.String(), "failover must be returned to handler instead of writing a terminal 502")
 }

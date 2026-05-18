@@ -113,6 +113,18 @@ func (s *GatewayService) ForwardAsChatCompletions(
 	if account.Platform == PlatformKiro && account.Type == AccountTypeOAuth {
 		resp, _, err = s.openKiroAnthropicStreamResponse(ctx, account, anthropicBody, mappedModel, originalModel, c.Request.Header)
 		if err != nil {
+			var failoverErr *UpstreamFailoverError
+			if errors.As(err, &failoverErr) {
+				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+					Platform:           account.Platform,
+					AccountID:          account.ID,
+					AccountName:        account.Name,
+					UpstreamStatusCode: failoverErr.StatusCode,
+					Kind:               "failover",
+					Message:            sanitizeUpstreamErrorMessage(err.Error()),
+				})
+				return nil, failoverErr
+			}
 			safeErr := sanitizeUpstreamErrorMessage(err.Error())
 			setOpsUpstreamError(c, 0, safeErr, "")
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
