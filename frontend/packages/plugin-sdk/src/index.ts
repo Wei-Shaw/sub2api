@@ -68,6 +68,8 @@ export { default as TempUnschedSection } from './components/account/TempUnschedS
 export { default as ModelRestrictionSection } from './components/account/ModelRestrictionSection.vue'
 export { default as VertexServiceAccount } from './components/account/VertexServiceAccount.vue'
 export { default as AccountCommonFields } from './components/account/AccountCommonFields.vue'
+export { default as GroupSelect } from './components/account/GroupSelect.vue'
+export { default as ProxySelect } from './components/account/ProxySelect.vue'
 
 // Account usage display components
 export { default as UsageProgressBar } from './components/account/UsageProgressBar.vue'

@@ -3,11 +3,8 @@
     <!-- Proxy -->
     <div>
       <label class="input-label">{{ t('admin.accounts.proxy') }}</label>
-      <select :value="modelValue.proxy_id ?? ''" class="input"
-        @change="update('proxy_id', ($event.target as HTMLSelectElement).value === '' ? null : Number(($event.target as HTMLSelectElement).value))">
-        <option value="">{{ t('admin.accounts.noProxy') }}</option>
-        <option v-for="p in proxies" :key="p.id" :value="p.id">{{ p.name }}{{ p.host ? ` (${p.host}:${p.port})` : '' }}</option>
-      </select>
+      <ProxySelect :model-value="modelValue.proxy_id" :proxies="proxies"
+        @update:model-value="update('proxy_id', $event)" />
     </div>
 
     <!-- Numeric grid: concurrency, load_factor, priority, rate_multiplier -->
@@ -100,21 +97,8 @@
 
     <!-- Groups -->
     <div v-if="!isSimpleMode" class="border-t border-gray-200 pt-4 dark:border-dark-600">
-      <label class="input-label">{{ t('admin.accounts.groups') }}
-        <span class="text-gray-400">({{ t('admin.accounts.selectedGroups', { count: modelValue.group_ids.length }) }})</span>
-      </label>
-      <div class="mt-2 max-h-40 space-y-1 overflow-y-auto rounded-lg border border-gray-200 p-2 dark:border-dark-600">
-        <label v-for="g in groups" :key="g.id"
-          class="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-dark-600">
-          <input type="checkbox" :checked="modelValue.group_ids.includes(g.id)" class="rounded"
-            @change="toggleGroup(g.id)" />
-          <span class="text-sm">{{ g.name }}</span>
-          <span class="ml-auto text-xs text-gray-400">{{ g.rate_multiplier ?? 1 }}x · {{ g.account_count ?? 0 }}</span>
-        </label>
-        <p v-if="groups.length === 0" class="py-2 text-center text-xs text-gray-400">
-          {{ t('admin.accounts.noGroupsAvailable') }}
-        </p>
-      </div>
+      <GroupSelect :model-value="modelValue.group_ids" :groups="groups"
+        @update:model-value="update('group_ids', $event)" />
     </div>
   </div>
 </template>
@@ -123,6 +107,8 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { CommonAccountFields, PlatformFormContext } from '../../account-form-types'
+import ProxySelect from './ProxySelect.vue'
+import GroupSelect from './GroupSelect.vue'
 
 const props = defineProps<{
   modelValue: CommonAccountFields
@@ -172,13 +158,5 @@ function onExpiresAtInput(value: string) {
   }
   const ts = Math.floor(new Date(value).getTime() / 1000)
   if (!isNaN(ts)) update('expires_at', ts)
-}
-
-function toggleGroup(id: number) {
-  const current = props.modelValue.group_ids
-  const next = current.includes(id)
-    ? current.filter(g => g !== id)
-    : [...current, id]
-  update('group_ids', next)
 }
 </script>

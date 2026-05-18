@@ -1943,7 +1943,24 @@ export default {
         allowDispatchHint: '启用后，此 OpenAI 分组的 API Key 可以通过 /v1/messages 端点调度请求',
         defaultModel: '默认映射模型',
         defaultModelPlaceholder: '例如: gpt-4.1',
-        defaultModelHint: '当账号未配置模型映射时，所有请求模型将映射到此模型'
+        defaultModelHint: '当账号未配置模型映射时，所有请求模型将映射到此模型',
+        familyMappingTitle: '模型系列映射',
+        familyMappingHint: '将 Claude 模型系列映射到指定的 OpenAI 模型',
+        opusModel: 'Opus 模型',
+        opusModelPlaceholder: '例如: o3',
+        sonnetModel: 'Sonnet 模型',
+        sonnetModelPlaceholder: '例如: gpt-4.1',
+        haikuModel: 'Haiku 模型',
+        haikuModelPlaceholder: '例如: gpt-4.1-mini',
+        exactMappingTitle: '精确模型映射',
+        exactMappingHint: '将特定 Claude 模型 ID 映射到 OpenAI 模型',
+        noExactMappings: '暂无精确映射配置',
+        addExactMapping: '添加映射',
+        claudeModel: 'Claude 模型',
+        claudeModelPlaceholder: '例如: claude-sonnet-4-20250514',
+        targetModel: '目标模型',
+        targetModelPlaceholder: '例如: gpt-4.1',
+        removeExactMapping: '移除',
       },
       invalidRequestFallback: {
         title: '无效请求兜底分组',
@@ -3313,6 +3330,7 @@ export default {
       oauth: {
         title: 'Claude 账号授权',
         platformAuthTitle: '账号授权',
+        failedToGenerateUrl: '生成授权 URL 失败',
         authMethod: '授权方式',
         manualAuth: '手动授权',
         cookieAutoAuth: 'Cookie 自动授权',
@@ -3402,7 +3420,10 @@ export default {
           validating: '验证中...',
           validateAndCreate: '验证并创建账号',
           pleaseEnterRefreshToken: '请输入 Refresh Token',
-          pleaseEnterSessionToken: '请输入 Session Token'
+          pleaseEnterSessionToken: '请输入 Session Token',
+          failedToGenerateUrl: '生成授权 URL 失败',
+          failedToExchangeCode: '交换授权码失败',
+          failedToValidateRT: '验证 Refresh Token 失败',
         },
         // Gemini specific
         gemini: {

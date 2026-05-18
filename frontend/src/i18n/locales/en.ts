@@ -1857,7 +1857,24 @@ export default {
         allowDispatchHint: 'When enabled, API keys in this OpenAI group can dispatch requests through /v1/messages endpoint',
         defaultModel: 'Default mapped model',
         defaultModelPlaceholder: 'e.g., gpt-4.1',
-        defaultModelHint: 'When account has no model mapping configured, all request models will be mapped to this model'
+        defaultModelHint: 'When account has no model mapping configured, all request models will be mapped to this model',
+        familyMappingTitle: 'Model Family Mapping',
+        familyMappingHint: 'Map Claude model families to specific OpenAI models',
+        opusModel: 'Opus Model',
+        opusModelPlaceholder: 'e.g., o3',
+        sonnetModel: 'Sonnet Model',
+        sonnetModelPlaceholder: 'e.g., gpt-4.1',
+        haikuModel: 'Haiku Model',
+        haikuModelPlaceholder: 'e.g., gpt-4.1-mini',
+        exactMappingTitle: 'Exact Model Mapping',
+        exactMappingHint: 'Map specific Claude model IDs to OpenAI models',
+        noExactMappings: 'No exact mappings configured',
+        addExactMapping: 'Add Mapping',
+        claudeModel: 'Claude Model',
+        claudeModelPlaceholder: 'e.g., claude-sonnet-4-20250514',
+        targetModel: 'Target Model',
+        targetModelPlaceholder: 'e.g., gpt-4.1',
+        removeExactMapping: 'Remove',
       },
       invalidRequestFallback: {
         title: 'Invalid Request Fallback Group',
@@ -3162,6 +3179,7 @@ export default {
       oauth: {
         title: 'Claude Account Authorization',
         platformAuthTitle: 'Account Authorization',
+        failedToGenerateUrl: 'Failed to generate authorization URL',
         authMethod: 'Authorization Method',
         manualAuth: 'Manual Authorization',
         cookieAutoAuth: 'Cookie Auto-Auth',
@@ -3257,7 +3275,10 @@ export default {
           validating: 'Validating...',
           validateAndCreate: 'Validate & Create Account',
           pleaseEnterRefreshToken: 'Please enter Refresh Token',
-          pleaseEnterSessionToken: 'Please enter Session Token'
+          pleaseEnterSessionToken: 'Please enter Session Token',
+          failedToGenerateUrl: 'Failed to generate authorization URL',
+          failedToExchangeCode: 'Failed to exchange authorization code',
+          failedToValidateRT: 'Failed to validate refresh token',
         },
         // Gemini specific
 	        gemini: {
