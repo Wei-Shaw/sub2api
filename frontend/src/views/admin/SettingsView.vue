@@ -1,6 +1,6 @@
 <template>
   <AppLayout>
-    <div class="mx-auto max-w-4xl space-y-6">
+    <div class="mx-auto max-w-6xl space-y-6">
       <!-- Loading State -->
       <div v-if="loading" class="flex items-center justify-center py-12">
         <div
@@ -11,23 +11,36 @@
       <!-- Settings Form -->
       <form v-else @submit.prevent="saveSettings" class="space-y-6" novalidate>
         <!-- Tab Navigation -->
-        <div class="sticky top-0 z-10 overflow-x-auto settings-tabs-scroll">
-          <nav class="settings-tabs">
-            <button
-              v-for="tab in settingsTabs"
-              :key="tab.key"
-              type="button"
-              :class="[
-                'settings-tab',
-                activeTab === tab.key && 'settings-tab-active',
-              ]"
-              @click="activeTab = tab.key"
-            >
-              <span class="settings-tab-icon">
-                <Icon :name="tab.icon" size="sm" />
-              </span>
-              <span>{{ t(`admin.settings.tabs.${tab.key}`) }}</span>
-            </button>
+        <div class="settings-tabs-shell">
+          <nav
+            class="settings-tabs-scroll"
+            role="tablist"
+            :aria-label="t('admin.settings.title')"
+          >
+            <div class="settings-tabs">
+              <button
+                v-for="tab in settingsTabs"
+                :key="tab.key"
+                :id="`settings-tab-${tab.key}`"
+                type="button"
+                role="tab"
+                :aria-selected="activeTab === tab.key"
+                :tabindex="activeTab === tab.key ? 0 : -1"
+                :class="[
+                  'settings-tab',
+                  activeTab === tab.key && 'settings-tab-active',
+                ]"
+                @click="selectSettingsTab(tab.key)"
+                @keydown="handleSettingsTabKeydown($event, tab.key)"
+              >
+                <span class="settings-tab-icon">
+                  <Icon :name="tab.icon" size="sm" />
+                </span>
+                <span class="settings-tab-label">{{
+                  t(`admin.settings.tabs.${tab.key}`)
+                }}</span>
+              </button>
+            </div>
           </nav>
         </div>
 
@@ -3415,6 +3428,59 @@
                   v-model="form.enable_anthropic_cache_ttl_1h_injection"
                 />
               </div>
+
+              <!-- messages cache_control 改写 -->
+              <div class="flex items-center justify-between">
+                <div>
+                  <label
+                    class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{
+                      t(
+                        "admin.settings.gatewayForwarding.rewriteMessageCacheControl",
+                      )
+                    }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{
+                      t(
+                        "admin.settings.gatewayForwarding.rewriteMessageCacheControlHint",
+                      )
+                    }}
+                  </p>
+                </div>
+                <Toggle v-model="form.rewrite_message_cache_control" />
+              </div>
+
+              <!-- Antigravity UA 版本 -->
+              <div>
+                <label
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{
+                    t(
+                      "admin.settings.gatewayForwarding.antigravityUserAgentVersion",
+                    )
+                  }}
+                </label>
+                <input
+                  v-model="form.antigravity_user_agent_version"
+                  type="text"
+                  class="input max-w-xs font-mono text-sm"
+                  :placeholder="
+                    t(
+                      'admin.settings.gatewayForwarding.antigravityUserAgentVersionPlaceholder',
+                    )
+                  "
+                />
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{
+                    t(
+                      "admin.settings.gatewayForwarding.antigravityUserAgentVersionHint",
+                    )
+                  }}
+                </p>
+              </div>
             </div>
           </div>
           <!-- Web Search Emulation -->
@@ -6152,6 +6218,57 @@ const settingsTabs = [
   { key: "email" as SettingsTab, icon: "mail" as const },
   { key: "backup" as SettingsTab, icon: "database" as const },
 ];
+
+const settingsTabKeyboardActions = {
+  ArrowLeft: -1,
+  ArrowUp: -1,
+  ArrowRight: 1,
+  ArrowDown: 1,
+  Home: "first",
+  End: "last",
+} as const;
+
+function selectSettingsTab(tab: SettingsTab): void {
+  activeTab.value = tab;
+}
+
+function focusSettingsTab(tab: SettingsTab): void {
+  window.requestAnimationFrame(() => {
+    document.getElementById(`settings-tab-${tab}`)?.focus();
+  });
+}
+
+function handleSettingsTabKeydown(event: KeyboardEvent, tab: SettingsTab): void {
+  const action =
+    settingsTabKeyboardActions[
+      event.key as keyof typeof settingsTabKeyboardActions
+    ];
+  if (action === undefined) {
+    return;
+  }
+
+  event.preventDefault();
+  const currentIndex = settingsTabs.findIndex((item) => item.key === tab);
+  let nextIndex = currentIndex < 0 ? 0 : currentIndex;
+
+  if (action === "first") {
+    nextIndex = 0;
+  } else if (action === "last") {
+    nextIndex = settingsTabs.length - 1;
+  } else {
+    nextIndex =
+      (nextIndex + action + settingsTabs.length) % settingsTabs.length;
+  }
+
+  const nextTab = settingsTabs[nextIndex]?.key;
+  if (!nextTab) {
+    return;
+  }
+
+  selectSettingsTab(nextTab);
+  focusSettingsTab(nextTab);
+}
+
 const { copyToClipboard } = useClipboard();
 
 const loading = ref(true);
@@ -6483,6 +6600,8 @@ const form = reactive<SettingsForm>({
   enable_metadata_passthrough: false,
   enable_cch_signing: false,
   enable_anthropic_cache_ttl_1h_injection: false,
+  rewrite_message_cache_control: false,
+  antigravity_user_agent_version: "",
   // Balance & quota notification
   balance_low_notify_enabled: false,
   balance_low_notify_threshold: 0,
@@ -7553,6 +7672,9 @@ async function saveSettings() {
       enable_cch_signing: form.enable_cch_signing,
       enable_anthropic_cache_ttl_1h_injection:
         form.enable_anthropic_cache_ttl_1h_injection,
+      rewrite_message_cache_control: form.rewrite_message_cache_control,
+      antigravity_user_agent_version:
+        form.antigravity_user_agent_version?.trim() || "",
       // Payment configuration
       payment_enabled: form.payment_enabled,
       risk_control_enabled: form.risk_control_enabled,
@@ -8164,6 +8286,7 @@ const allPaymentTypes = computed(() => [
   { value: "alipay", label: t("payment.methods.alipay") },
   { value: "wxpay", label: t("payment.methods.wxpay") },
   { value: "stripe", label: t("payment.methods.stripe") },
+  { value: "airwallex", label: t("payment.methods.airwallex") },
 ]);
 
 function isPaymentTypeEnabled(type: string): boolean {
@@ -8220,6 +8343,7 @@ const providerKeyOptions = computed(() => [
   { value: "alipay", label: t("admin.settings.payment.providerAlipay") },
   { value: "wxpay", label: t("admin.settings.payment.providerWxpay") },
   { value: "stripe", label: t("admin.settings.payment.providerStripe") },
+  { value: "airwallex", label: t("admin.settings.payment.providerAirwallex") },
 ]);
 
 const enabledProviderKeyOptions = computed(() => {
@@ -8879,94 +9003,116 @@ watch(
   @apply h-[42px];
 }
 
-/* ============ Settings Tab Navigation ============ */
+/* ============ 系统设置 Tab 导航 ============ */
+.settings-tabs-shell {
+  @apply sticky z-20 -mx-1 rounded-2xl border border-white/80 bg-white/90 p-1.5 backdrop-blur-xl;
+  top: 4.75rem;
+  box-shadow:
+    0 12px 28px rgb(15 23 42 / 0.07),
+    0 1px 0 rgb(255 255 255 / 0.9) inset;
+}
 
-/* Scroll container: thin scrollbar on PC, auto-hide on mobile */
+:global(.dark) .settings-tabs-shell {
+  border-color: rgb(51 65 85 / 0.65);
+  background: rgb(15 23 42 / 0.86);
+  box-shadow:
+    0 16px 36px rgb(0 0 0 / 0.28),
+    0 1px 0 rgb(255 255 255 / 0.06) inset;
+}
+
 .settings-tabs-scroll {
-  scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
+  @apply overflow-x-auto;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
-.settings-tabs-scroll:hover {
-  scrollbar-color: rgb(0 0 0 / 0.15) transparent;
-}
-:root.dark .settings-tabs-scroll:hover {
-  scrollbar-color: rgb(255 255 255 / 0.2) transparent;
-}
+
 .settings-tabs-scroll::-webkit-scrollbar {
-  height: 3px;
-}
-.settings-tabs-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-.settings-tabs-scroll::-webkit-scrollbar-thumb {
-  background: transparent;
-  border-radius: 3px;
-}
-.settings-tabs-scroll:hover::-webkit-scrollbar-thumb {
-  background: rgb(0 0 0 / 0.15);
-}
-:root.dark .settings-tabs-scroll:hover::-webkit-scrollbar-thumb {
-  background: rgb(255 255 255 / 0.2);
+  display: none;
 }
 
 .settings-tabs {
-  @apply inline-flex min-w-full gap-0.5 rounded-2xl
-         border border-gray-100 bg-white/80 p-1 backdrop-blur-sm
-         dark:border-dark-700/50 dark:bg-dark-800/80;
-  box-shadow:
-    0 1px 3px rgb(0 0 0 / 0.04),
-    0 1px 2px rgb(0 0 0 / 0.02);
-}
-
-@media (min-width: 640px) {
-  .settings-tabs {
-    @apply flex;
-  }
+  @apply flex min-w-max items-center gap-1;
 }
 
 .settings-tab {
-  @apply relative flex flex-1 items-center justify-center gap-1.5
-         whitespace-nowrap rounded-xl px-2.5 py-2
-         text-sm font-medium
-         text-gray-500 dark:text-dark-400
-         transition-all duration-200 ease-out;
+  @apply relative isolate flex h-10 min-w-[6.75rem] shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-transparent px-3 text-sm font-medium text-gray-600 outline-none transition-colors duration-200 ease-out dark:text-gray-300;
 }
 
-.settings-tab:hover:not(.settings-tab-active) {
-  @apply text-gray-700 dark:text-gray-300;
-  background: rgb(0 0 0 / 0.03);
+@media (min-width: 768px) {
+  .settings-tabs {
+    @apply min-w-full;
+  }
+
+  .settings-tab {
+    @apply min-w-0 flex-1 basis-0 overflow-hidden px-2 text-[13px];
+  }
+
+  .settings-tab-icon {
+    @apply h-6 w-6;
+  }
 }
 
-:root.dark .settings-tab:hover:not(.settings-tab-active) {
-  background: rgb(255 255 255 / 0.04);
+.settings-tab::before {
+  @apply absolute inset-0 -z-10 rounded-xl opacity-0 transition-opacity duration-200;
+  content: "";
+  background: linear-gradient(135deg, rgb(248 250 252 / 0.95), rgb(241 245 249 / 0.8));
+}
+
+.settings-tab:hover::before,
+.settings-tab:focus-visible::before {
+  opacity: 1;
+}
+
+:global(.dark) .settings-tab::before {
+  background: linear-gradient(135deg, rgb(30 41 59 / 0.9), rgb(51 65 85 / 0.62));
+}
+
+.settings-tab:focus-visible {
+  @apply ring-2 ring-primary-500/40 ring-offset-2 ring-offset-white dark:ring-offset-dark-900;
 }
 
 .settings-tab-active {
-  @apply text-primary-600 dark:text-primary-400;
-  background: linear-gradient(
-    135deg,
-    rgba(20, 184, 166, 0.08),
-    rgba(20, 184, 166, 0.03)
-  );
-  box-shadow: 0 1px 2px rgba(20, 184, 166, 0.1);
+  @apply border-primary-200/80 bg-white text-primary-700 shadow-sm dark:border-primary-400/30 dark:bg-dark-700/95 dark:text-primary-200;
+  box-shadow:
+    0 8px 18px rgb(15 23 42 / 0.08),
+    0 1px 0 rgb(255 255 255 / 0.92) inset;
 }
 
-:root.dark .settings-tab-active {
-  background: linear-gradient(
-    135deg,
-    rgba(45, 212, 191, 0.12),
-    rgba(45, 212, 191, 0.05)
-  );
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
+:global(.dark) .settings-tab-active {
+  box-shadow:
+    0 12px 26px rgb(0 0 0 / 0.22),
+    0 1px 0 rgb(255 255 255 / 0.08) inset;
+}
+
+.settings-tab-active::before {
+  opacity: 0;
+}
+
+.settings-tab-active::after {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 0.25rem;
+  left: 0.75rem;
+  height: 2px;
+  border-radius: 9999px;
+  content: "";
+  background: linear-gradient(90deg, #14b8a6, #0ea5e9);
 }
 
 .settings-tab-icon {
-  @apply flex h-6 w-6 items-center justify-center rounded-lg
-         transition-all duration-200;
+  @apply flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-gray-500 transition-colors duration-200 dark:text-gray-400;
+}
+
+.settings-tab:hover .settings-tab-icon,
+.settings-tab:focus-visible .settings-tab-icon {
+  @apply text-gray-700 dark:text-gray-200;
 }
 
 .settings-tab-active .settings-tab-icon {
-  @apply bg-primary-500/15 text-primary-600
-         dark:bg-primary-400/15 dark:text-primary-400;
+  @apply bg-primary-50 text-primary-600 dark:bg-primary-400/10 dark:text-primary-300;
+}
+
+.settings-tab-label {
+  @apply min-w-0 overflow-hidden text-ellipsis whitespace-nowrap leading-none;
 }
 </style>

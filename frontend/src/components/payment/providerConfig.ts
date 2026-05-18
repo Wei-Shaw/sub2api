@@ -9,12 +9,16 @@ export interface ConfigFieldDef {
   label: string
   sensitive: boolean
   optional?: boolean
+  clearable?: boolean
   defaultValue?: string
+  hintKey?: string
+  options?: TypeOption[]
 }
 
 export interface TypeOption {
   value: string
   label: string
+  [key: string]: unknown
 }
 
 /** Callback URL paths for a provider. */
@@ -31,17 +35,35 @@ export const PROVIDER_SUPPORTED_TYPES: Record<string, string[]> = {
   alipay: ['alipay'],
   wxpay: ['wxpay'],
   stripe: ['card', 'alipay', 'wxpay', 'link'],
+  airwallex: ['airwallex'],
 }
 
 /** Available payment modes for EasyPay providers. */
 export const EASYPAY_PAYMENT_MODES = ['qrcode', 'popup'] as const
 
 /** Fixed display order for user-facing payment methods */
-export const METHOD_ORDER = ['alipay', 'alipay_direct', 'wxpay', 'wxpay_direct', 'stripe'] as const
+export const METHOD_ORDER = ['alipay', 'alipay_direct', 'wxpay', 'wxpay_direct', 'stripe', 'airwallex'] as const
 
 /** Payment mode constants */
 export const PAYMENT_MODE_QRCODE = 'qrcode'
 export const PAYMENT_MODE_POPUP = 'popup'
+
+export const PAYMENT_CURRENCY_OPTIONS: TypeOption[] = [
+  { value: 'CNY', label: 'CNY' },
+  { value: 'HKD', label: 'HKD' },
+  { value: 'USD', label: 'USD' },
+  { value: 'EUR', label: 'EUR' },
+  { value: 'GBP', label: 'GBP' },
+  { value: 'AUD', label: 'AUD' },
+  { value: 'CAD', label: 'CAD' },
+  { value: 'SGD', label: 'SGD' },
+  { value: 'JPY', label: 'JPY' },
+  { value: 'KRW', label: 'KRW' },
+  { value: 'NZD', label: 'NZD' },
+]
+
+// 与后端当前集成的 stripe-go v85.0.0 的 stripe.APIVersion 保持一致。
+export const STRIPE_SDK_API_VERSION = '2026-03-25.dahlia'
 
 /** Preferred popup size for payment gateways. Alipay's standard checkout
  * (QR + account login panel) needs ~1200×900 to render without any scrolling. */
@@ -68,6 +90,7 @@ export const WEBHOOK_PATHS: Record<string, string> = {
   alipay: '/api/v1/payment/webhook/alipay',
   wxpay: '/api/v1/payment/webhook/wxpay',
   stripe: '/api/v1/payment/webhook/stripe',
+  airwallex: '/api/v1/payment/webhook/airwallex',
 }
 
 export const RETURN_PATH = '/payment/result'
@@ -77,7 +100,8 @@ export const PROVIDER_CALLBACK_PATHS: Record<string, CallbackPaths> = {
   easypay: { notifyUrl: WEBHOOK_PATHS.easypay, returnUrl: RETURN_PATH },
   alipay: { notifyUrl: WEBHOOK_PATHS.alipay, returnUrl: RETURN_PATH },
   wxpay: { notifyUrl: WEBHOOK_PATHS.wxpay },
-  // stripe: no callback URL config needed (webhook is separate)
+  // stripe: 不需要回调 URL 配置，Webhook 单独配置。
+  // airwallex: 不需要回调 URL 配置，Webhook 在空中云汇后台配置。
 }
 
 /** Per-provider config fields (excludes notifyUrl/returnUrl which are handled separately). */
@@ -107,6 +131,16 @@ export const PROVIDER_CONFIG_FIELDS: Record<string, ConfigFieldDef[]> = {
     { key: 'secretKey', label: '', sensitive: true },
     { key: 'publishableKey', label: '', sensitive: false },
     { key: 'webhookSecret', label: '', sensitive: true },
+    { key: 'currency', label: '', sensitive: false, defaultValue: 'CNY', hintKey: 'admin.settings.payment.field_paymentCurrencyHint', options: PAYMENT_CURRENCY_OPTIONS },
+  ],
+  airwallex: [
+    { key: 'clientId', label: '', sensitive: false },
+    { key: 'apiKey', label: '', sensitive: true },
+    { key: 'webhookSecret', label: '', sensitive: true },
+    { key: 'apiBase', label: '', sensitive: false, defaultValue: 'https://api.airwallex.com/api/v1', hintKey: 'admin.settings.payment.field_airwallexApiBaseHint' },
+    { key: 'countryCode', label: '', sensitive: false, defaultValue: 'CN' },
+    { key: 'currency', label: '', sensitive: false, defaultValue: 'CNY', hintKey: 'admin.settings.payment.field_paymentCurrencyHint', options: PAYMENT_CURRENCY_OPTIONS },
+    { key: 'accountId', label: '', sensitive: false, optional: true, clearable: true, hintKey: 'admin.settings.payment.field_accountIdHint' },
   ],
 }
 

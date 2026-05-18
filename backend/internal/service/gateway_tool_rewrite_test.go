@@ -1,9 +1,11 @@
 package service
 
 import (
+	"context"
 	"strings"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
@@ -69,19 +71,66 @@ func TestApplyToolNameRewriteToBody_RenamesToolsAndToolChoice(t *testing.T) {
 	require.NotNil(t, rw)
 	require.Contains(t, rw.Forward, "sessions_list")
 	require.Contains(t, rw.Forward, "session_get")
-	// web_search is a server tool, not rewritten
+	// web_search 是 server tool，不参与工具名改写
 	require.NotContains(t, rw.Forward, "web_search")
 
 	out := applyToolNameRewriteToBody(body, rw)
 
-	// tools[0].name and tools[1].name rewritten; tools[2].name untouched
+	// tools[0].name 和 tools[1].name 被改写，tools[2].name 保持不变
 	require.Equal(t, "cc_sess_list", gjson.GetBytes(out, "tools.0.name").String())
 	require.Equal(t, "cc_ses_get", gjson.GetBytes(out, "tools.1.name").String())
 	require.Equal(t, "web_search", gjson.GetBytes(out, "tools.2.name").String())
 
-	// tool_choice.name rewritten
+	// tool_choice.name 被同步改写
 	require.Equal(t, "cc_sess_list", gjson.GetBytes(out, "tool_choice.name").String())
 	require.Equal(t, "tool", gjson.GetBytes(out, "tool_choice.type").String())
+}
+
+func TestApplyToolNameRewriteToBody_RenamesToolUseInMessages(t *testing.T) {
+	// sessions_list 通过静态前缀规则改写为 cc_sess_list
+	// web_search 是 server tool（type != ""），不参与工具名改写
+	// messages 中的 tool_use.name 必须同步改写，才能和 tools[] 保持一致
+	body := []byte(`{"tools":[{"name":"sessions_list","input_schema":{}},{"name":"web_search","type":"web_search_20250305"}],"messages":[{"role":"user","content":[{"type":"text","text":"hi"}]},{"role":"assistant","content":[{"type":"tool_use","id":"tu_01","name":"sessions_list","input":{}},{"type":"text","text":"thinking"}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu_01","content":"ok"}]}]}`)
+	rw := buildToolNameRewriteFromBody(body)
+	require.NotNil(t, rw)
+	require.Equal(t, "cc_sess_list", rw.Forward["sessions_list"])
+
+	out := applyToolNameRewriteToBody(body, rw)
+
+	// tools[0].name 被改写
+	require.Equal(t, "cc_sess_list", gjson.GetBytes(out, "tools.0.name").String())
+	// tools[1].name 是 server tool，保持不变
+	require.Equal(t, "web_search", gjson.GetBytes(out, "tools.1.name").String())
+	// messages[1].content[0].name 是 tool_use，必须同步改写以匹配 tools[]
+	require.Equal(t, "cc_sess_list", gjson.GetBytes(out, "messages.1.content.0.name").String())
+	// messages[1].content[1] 是 text，保持不变
+	require.Equal(t, "thinking", gjson.GetBytes(out, "messages.1.content.1.text").String())
+	// messages[2].content[0] 是 tool_result，不包含 name 字段，保持不变
+	require.Equal(t, "ok", gjson.GetBytes(out, "messages.2.content.0.content").String())
+}
+
+func TestApplyToolNameRewriteToBody_RenamesToolUseWithDynamicMapping(t *testing.T) {
+	body := []byte(`{"tools":[{"name":"alpha_search","input_schema":{}},{"name":"beta_lookup","input_schema":{}},{"name":"gamma_fetch","input_schema":{}},{"name":"delta_update","input_schema":{}},{"name":"epsilon_parse","input_schema":{}},{"name":"zeta_render","input_schema":{}},{"name":"web_search","type":"web_search_20250305"}],"tool_choice":{"type":"tool","name":"gamma_fetch"},"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"tu_dyn","name":"gamma_fetch","input":{}},{"type":"tool_use","id":"tu_srv","name":"web_search","input":{}},{"type":"text","text":"done"}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu_dyn","content":"ok"}]}]}`)
+	rw := buildToolNameRewriteFromBody(body)
+	require.NotNil(t, rw)
+	require.Len(t, rw.Forward, 6)
+
+	fakeGamma := rw.Forward["gamma_fetch"]
+	require.NotEmpty(t, fakeGamma)
+	require.NotEqual(t, "gamma_fetch", fakeGamma)
+	require.NotContains(t, rw.Forward, "web_search")
+
+	out := applyToolNameRewriteToBody(body, rw)
+
+	// 动态映射会改写 tools[]、tool_choice 和历史 tool_use 中的同一个工具名
+	require.Equal(t, fakeGamma, gjson.GetBytes(out, "tools.2.name").String())
+	require.Equal(t, fakeGamma, gjson.GetBytes(out, "tool_choice.name").String())
+	require.Equal(t, fakeGamma, gjson.GetBytes(out, "messages.0.content.0.name").String())
+	// server tool 不参与动态映射，历史 tool_use 中同名引用也保持不变
+	require.Equal(t, "web_search", gjson.GetBytes(out, "tools.6.name").String())
+	require.Equal(t, "web_search", gjson.GetBytes(out, "messages.0.content.1.name").String())
+	// tool_result 依靠 tool_use_id 关联，不需要 name 字段
+	require.Equal(t, "ok", gjson.GetBytes(out, "messages.1.content.0.content").String())
 }
 
 func TestApplyToolsLastCacheBreakpoint_InjectsDefault(t *testing.T) {
@@ -139,6 +188,40 @@ func TestAddMessageCacheBreakpoints_StringContentPromoted(t *testing.T) {
 	require.Equal(t, "text", gjson.GetBytes(out, "messages.0.content.0.type").String())
 	require.Equal(t, "hi", gjson.GetBytes(out, "messages.0.content.0.text").String())
 	require.Equal(t, "5m", gjson.GetBytes(out, "messages.0.content.0.cache_control.ttl").String())
+}
+
+func TestRewriteMessageCacheControlIfEnabled_DefaultKeepsClientAnchors(t *testing.T) {
+	body := []byte(`{"messages":[
+		{"role":"user","content":[{"type":"text","text":"stable","cache_control":{"type":"ephemeral","ttl":"1h"}}]},
+		{"role":"assistant","content":[{"type":"text","text":"ok"}]},
+		{"role":"user","content":[{"type":"text","text":"latest","cache_control":{"type":"ephemeral","ttl":"5m"}}]}
+	]}`)
+
+	out := (&GatewayService{}).rewriteMessageCacheControlIfEnabled(context.Background(), body)
+
+	require.JSONEq(t, string(body), string(out))
+	require.Equal(t, "1h", gjson.GetBytes(out, "messages.0.content.0.cache_control.ttl").String())
+	require.Equal(t, "5m", gjson.GetBytes(out, "messages.2.content.0.cache_control.ttl").String())
+}
+
+func TestRewriteMessageCacheControlIfEnabled_OptInPreservesLegacyRewrite(t *testing.T) {
+	body := []byte(`{"messages":[
+		{"role":"user","content":[{"type":"text","text":"stable","cache_control":{"type":"ephemeral","ttl":"1h"}}]},
+		{"role":"assistant","content":[{"type":"text","text":"ok"}]},
+		{"role":"user","content":[{"type":"text","text":"latest","cache_control":{"type":"ephemeral","ttl":"1h"}}]},
+		{"role":"assistant","content":[{"type":"text","text":"done"}]}
+	]}`)
+	repo := &gatewayTTLSettingRepo{data: map[string]string{
+		SettingKeyRewriteMessageCacheControl: "true",
+	}}
+	gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{})
+	svc := &GatewayService{settingService: NewSettingService(repo, &config.Config{})}
+
+	out := svc.rewriteMessageCacheControlIfEnabled(context.Background(), body)
+
+	require.Equal(t, "5m", gjson.GetBytes(out, "messages.0.content.0.cache_control.ttl").String())
+	require.False(t, gjson.GetBytes(out, "messages.2.content.0.cache_control").Exists())
+	require.Equal(t, "5m", gjson.GetBytes(out, "messages.3.content.0.cache_control.ttl").String())
 }
 
 func TestBuildToolNameRewriteFromBody_ReverseOrderedByLengthDesc(t *testing.T) {

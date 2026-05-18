@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/imroc/req/v3"
 	"golang.org/x/sync/singleflight"
@@ -87,6 +88,7 @@ type cachedGatewayForwardingSettings struct {
 	metadataPassthrough          bool
 	cchSigning                   bool
 	anthropicCacheTTL1hInjection bool
+	rewriteMessageCacheControl   bool
 	expiresAt                    int64 // unix nano
 }
 
@@ -96,6 +98,16 @@ var gatewayForwardingSF singleflight.Group
 const gatewayForwardingCacheTTL = 60 * time.Second
 const gatewayForwardingErrorTTL = 5 * time.Second
 const gatewayForwardingDBTimeout = 5 * time.Second
+
+// cachedAntigravityUserAgentVersion 缓存 Antigravity UA 版本号（进程内缓存，60s TTL）
+type cachedAntigravityUserAgentVersion struct {
+	version   string
+	expiresAt int64 // unix nano
+}
+
+const antigravityUserAgentVersionCacheTTL = 60 * time.Second
+const antigravityUserAgentVersionErrorTTL = 5 * time.Second
+const antigravityUserAgentVersionDBTimeout = 5 * time.Second
 
 // DefaultSubscriptionGroupReader validates group references used by default subscriptions.
 type DefaultSubscriptionGroupReader interface {
@@ -108,13 +120,15 @@ type WebSearchManagerBuilder func(cfg *WebSearchEmulationConfig, proxyURLs map[i
 
 // SettingService 系统设置服务
 type SettingService struct {
-	settingRepo             SettingRepository
-	defaultSubGroupReader   DefaultSubscriptionGroupReader
-	proxyRepo               ProxyRepository // for resolving websearch provider proxy URLs
-	cfg                     *config.Config
-	onUpdate                func() // Callback when settings are updated (for cache invalidation)
-	version                 string // Application version
-	webSearchManagerBuilder WebSearchManagerBuilder
+	settingRepo               SettingRepository
+	defaultSubGroupReader     DefaultSubscriptionGroupReader
+	proxyRepo                 ProxyRepository // for resolving websearch provider proxy URLs
+	cfg                       *config.Config
+	onUpdate                  func() // Callback when settings are updated (for cache invalidation)
+	version                   string // Application version
+	webSearchManagerBuilder   WebSearchManagerBuilder
+	antigravityUAVersionCache atomic.Value // *cachedAntigravityUserAgentVersion
+	antigravityUAVersionSF    singleflight.Group
 }
 
 type ProviderDefaultGrantSettings struct {
@@ -807,6 +821,55 @@ func (s *SettingService) GetAvailableChannelsRuntime(ctx context.Context) Availa
 	return AvailableChannelsRuntime{
 		Enabled: vals[SettingKeyAvailableChannelsEnabled] == "true",
 	}
+}
+
+// GetAntigravityUserAgentVersion 返回 Antigravity 上游请求使用的版本号。
+// 后台设置优先；为空、缺失或非法时回退到 ANTIGRAVITY_USER_AGENT_VERSION / 内置默认值。
+func (s *SettingService) GetAntigravityUserAgentVersion(ctx context.Context) string {
+	fallback := antigravity.GetDefaultUserAgentVersion()
+	if s == nil || s.settingRepo == nil {
+		return fallback
+	}
+	if cached, ok := s.antigravityUAVersionCache.Load().(*cachedAntigravityUserAgentVersion); ok && cached != nil {
+		if time.Now().UnixNano() < cached.expiresAt {
+			return cached.version
+		}
+	}
+
+	result, _, _ := s.antigravityUAVersionSF.Do("antigravity_user_agent_version", func() (any, error) {
+		if cached, ok := s.antigravityUAVersionCache.Load().(*cachedAntigravityUserAgentVersion); ok && cached != nil {
+			if time.Now().UnixNano() < cached.expiresAt {
+				return cached.version, nil
+			}
+		}
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), antigravityUserAgentVersionDBTimeout)
+		defer cancel()
+		value, err := s.settingRepo.GetValue(dbCtx, SettingKeyAntigravityUserAgentVersion)
+		if err != nil && !errors.Is(err, ErrSettingNotFound) {
+			slog.Warn("failed to get antigravity user agent version setting", "error", err)
+			s.antigravityUAVersionCache.Store(&cachedAntigravityUserAgentVersion{
+				version:   fallback,
+				expiresAt: time.Now().Add(antigravityUserAgentVersionErrorTTL).UnixNano(),
+			})
+			return fallback, nil
+		}
+		version := antigravity.NormalizeUserAgentVersion(value)
+		if version == "" {
+			version = fallback
+		}
+		s.antigravityUAVersionCache.Store(&cachedAntigravityUserAgentVersion{
+			version:   version,
+			expiresAt: time.Now().Add(antigravityUserAgentVersionCacheTTL).UnixNano(),
+		})
+		return version, nil
+	})
+	if version, ok := result.(string); ok && version != "" {
+		return version
+	}
+	return fallback
 }
 
 // SetOnUpdateCallback sets a callback function to be called when settings are updated
@@ -1584,6 +1647,8 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyEnableMetadataPassthrough] = strconv.FormatBool(settings.EnableMetadataPassthrough)
 	updates[SettingKeyEnableCCHSigning] = strconv.FormatBool(settings.EnableCCHSigning)
 	updates[SettingKeyEnableAnthropicCacheTTL1hInjection] = strconv.FormatBool(settings.EnableAnthropicCacheTTL1hInjection)
+	updates[SettingKeyRewriteMessageCacheControl] = strconv.FormatBool(settings.RewriteMessageCacheControl)
+	updates[SettingKeyAntigravityUserAgentVersion] = antigravity.NormalizeUserAgentVersion(settings.AntigravityUserAgentVersion)
 	updates[SettingPaymentVisibleMethodAlipaySource] = settings.PaymentVisibleMethodAlipaySource
 	updates[SettingPaymentVisibleMethodWxpaySource] = settings.PaymentVisibleMethodWxpaySource
 	updates[SettingPaymentVisibleMethodAlipayEnabled] = strconv.FormatBool(settings.PaymentVisibleMethodAlipayEnabled)
@@ -1652,7 +1717,17 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 		metadataPassthrough:          settings.EnableMetadataPassthrough,
 		cchSigning:                   settings.EnableCCHSigning,
 		anthropicCacheTTL1hInjection: settings.EnableAnthropicCacheTTL1hInjection,
+		rewriteMessageCacheControl:   settings.RewriteMessageCacheControl,
 		expiresAt:                    time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
+	})
+	s.antigravityUAVersionSF.Forget("antigravity_user_agent_version")
+	antigravityUserAgentVersion := antigravity.NormalizeUserAgentVersion(settings.AntigravityUserAgentVersion)
+	if antigravityUserAgentVersion == "" {
+		antigravityUserAgentVersion = antigravity.GetDefaultUserAgentVersion()
+	}
+	s.antigravityUAVersionCache.Store(&cachedAntigravityUserAgentVersion{
+		version:   antigravityUserAgentVersion,
+		expiresAt: time.Now().Add(antigravityUserAgentVersionCacheTTL).UnixNano(),
 	})
 	openAIAdvancedSchedulerSettingSF.Forget(openAIAdvancedSchedulerSettingKey)
 	openAIAdvancedSchedulerSettingCache.Store(&cachedOpenAIAdvancedSchedulerSetting{
@@ -1662,6 +1737,10 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	if s.onUpdate != nil {
 		s.onUpdate() // Invalidate cache after settings update
 	}
+}
+
+func (s *SettingService) defaultRewriteMessageCacheControl() bool {
+	return false
 }
 
 func (s *SettingService) validateDefaultSubscriptionGroups(ctx context.Context, items []DefaultSubscriptionSetting) error {
@@ -1815,17 +1894,18 @@ func (s *SettingService) IsBackendModeEnabled(ctx context.Context) bool {
 }
 
 type gatewayForwardingSettingsResult struct {
-	fp, mp, cch, cacheTTL1h bool
+	fp, mp, cch, cacheTTL1h, rewriteMessageCacheControl bool
 }
 
 func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context) gatewayForwardingSettingsResult {
 	if cached, ok := gatewayForwardingCache.Load().(*cachedGatewayForwardingSettings); ok && cached != nil {
 		if time.Now().UnixNano() < cached.expiresAt {
 			return gatewayForwardingSettingsResult{
-				fp:         cached.fingerprintUnification,
-				mp:         cached.metadataPassthrough,
-				cch:        cached.cchSigning,
-				cacheTTL1h: cached.anthropicCacheTTL1hInjection,
+				fp:                         cached.fingerprintUnification,
+				mp:                         cached.metadataPassthrough,
+				cch:                        cached.cchSigning,
+				cacheTTL1h:                 cached.anthropicCacheTTL1hInjection,
+				rewriteMessageCacheControl: cached.rewriteMessageCacheControl,
 			}
 		}
 	}
@@ -1833,10 +1913,11 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 		if cached, ok := gatewayForwardingCache.Load().(*cachedGatewayForwardingSettings); ok && cached != nil {
 			if time.Now().UnixNano() < cached.expiresAt {
 				return gatewayForwardingSettingsResult{
-					fp:         cached.fingerprintUnification,
-					mp:         cached.metadataPassthrough,
-					cch:        cached.cchSigning,
-					cacheTTL1h: cached.anthropicCacheTTL1hInjection,
+					fp:                         cached.fingerprintUnification,
+					mp:                         cached.metadataPassthrough,
+					cch:                        cached.cchSigning,
+					cacheTTL1h:                 cached.anthropicCacheTTL1hInjection,
+					rewriteMessageCacheControl: cached.rewriteMessageCacheControl,
 				}, nil
 			}
 		}
@@ -1847,6 +1928,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			SettingKeyEnableMetadataPassthrough,
 			SettingKeyEnableCCHSigning,
 			SettingKeyEnableAnthropicCacheTTL1hInjection,
+			SettingKeyRewriteMessageCacheControl,
 		})
 		if err != nil {
 			slog.Warn("failed to get gateway forwarding settings", "error", err)
@@ -1855,9 +1937,10 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 				metadataPassthrough:          false,
 				cchSigning:                   false,
 				anthropicCacheTTL1hInjection: false,
+				rewriteMessageCacheControl:   s.defaultRewriteMessageCacheControl(),
 				expiresAt:                    time.Now().Add(gatewayForwardingErrorTTL).UnixNano(),
 			})
-			return gatewayForwardingSettingsResult{fp: true}, nil
+			return gatewayForwardingSettingsResult{fp: true, rewriteMessageCacheControl: s.defaultRewriteMessageCacheControl()}, nil
 		}
 		fp := true
 		if v, ok := values[SettingKeyEnableFingerprintUnification]; ok && v != "" {
@@ -1866,14 +1949,25 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 		mp := values[SettingKeyEnableMetadataPassthrough] == "true"
 		cch := values[SettingKeyEnableCCHSigning] == "true"
 		cacheTTL1h := values[SettingKeyEnableAnthropicCacheTTL1hInjection] == "true"
+		rewriteMessageCacheControl := s.defaultRewriteMessageCacheControl()
+		if v, ok := values[SettingKeyRewriteMessageCacheControl]; ok && v != "" {
+			rewriteMessageCacheControl = v == "true"
+		}
 		gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{
 			fingerprintUnification:       fp,
 			metadataPassthrough:          mp,
 			cchSigning:                   cch,
 			anthropicCacheTTL1hInjection: cacheTTL1h,
+			rewriteMessageCacheControl:   rewriteMessageCacheControl,
 			expiresAt:                    time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
 		})
-		return gatewayForwardingSettingsResult{fp: fp, mp: mp, cch: cch, cacheTTL1h: cacheTTL1h}, nil
+		return gatewayForwardingSettingsResult{
+			fp:                         fp,
+			mp:                         mp,
+			cch:                        cch,
+			cacheTTL1h:                 cacheTTL1h,
+			rewriteMessageCacheControl: rewriteMessageCacheControl,
+		}, nil
 	})
 	if r, ok := val.(gatewayForwardingSettingsResult); ok {
 		return r
@@ -1892,6 +1986,11 @@ func (s *SettingService) GetGatewayForwardingSettings(ctx context.Context) (fing
 // IsAnthropicCacheTTL1hInjectionEnabled 检查是否对 Anthropic OAuth/SetupToken 请求体注入 1h cache_control ttl。
 func (s *SettingService) IsAnthropicCacheTTL1hInjectionEnabled(ctx context.Context) bool {
 	return s.getGatewayForwardingSettingsCached(ctx).cacheTTL1h
+}
+
+// IsRewriteMessageCacheControlEnabled 检查是否启用 messages cache_control 改写。
+func (s *SettingService) IsRewriteMessageCacheControlEnabled(ctx context.Context) bool {
+	return s.getGatewayForwardingSettingsCached(ctx).rewriteMessageCacheControl
 }
 
 // IsEmailVerifyEnabled 检查是否开启邮件验证
@@ -2358,6 +2457,8 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		// 分组隔离（默认不允许未分组 Key 调度）
 		SettingKeyAllowUngroupedKeyScheduling:        "false",
 		SettingKeyEnableAnthropicCacheTTL1hInjection: "false",
+		SettingKeyRewriteMessageCacheControl:         strconv.FormatBool(s.defaultRewriteMessageCacheControl()),
+		SettingKeyAntigravityUserAgentVersion:        "",
 		SettingPaymentVisibleMethodAlipaySource:      "",
 		SettingPaymentVisibleMethodWxpaySource:       "",
 		SettingPaymentVisibleMethodAlipayEnabled:     "false",
@@ -2734,6 +2835,12 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.EnableMetadataPassthrough = settings[SettingKeyEnableMetadataPassthrough] == "true"
 	result.EnableCCHSigning = settings[SettingKeyEnableCCHSigning] == "true"
 	result.EnableAnthropicCacheTTL1hInjection = settings[SettingKeyEnableAnthropicCacheTTL1hInjection] == "true"
+	if v, ok := settings[SettingKeyRewriteMessageCacheControl]; ok && v != "" {
+		result.RewriteMessageCacheControl = v == "true"
+	} else {
+		result.RewriteMessageCacheControl = s.defaultRewriteMessageCacheControl()
+	}
+	result.AntigravityUserAgentVersion = antigravity.NormalizeUserAgentVersion(settings[SettingKeyAntigravityUserAgentVersion])
 
 	// Web search emulation: quick enabled check from the JSON config
 	if raw := settings[SettingKeyWebSearchEmulationConfig]; raw != "" {
