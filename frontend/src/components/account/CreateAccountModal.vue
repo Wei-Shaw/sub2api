@@ -361,7 +361,7 @@ const step = ref(1)
 const submitting = ref(false)
 const formLoading = ref(false)
 
-const accountCategory = ref<'oauth-based' | 'apikey' | 'bedrock' | 'service_account'>('oauth-based')
+const accountCategory = ref<string>('oauth-based')
 const addMethod = ref<AddMethod>('oauth')
 
 const form = reactive({
@@ -378,12 +378,10 @@ const form = reactive({
 // Account type -> category mapping (data-driven, no platform name checks)
 // ---------------------------------------------------------------------------
 const OAUTH_TYPE_IDS = new Set(['oauth', 'setup-token'])
-const DEDICATED_CATEGORY_IDS = new Set(['bedrock', 'service_account'])
 
-function typeIdToCategory(typeId: string): 'oauth-based' | 'apikey' | 'bedrock' | 'service_account' {
+function typeIdToCategory(typeId: string): string {
   if (OAUTH_TYPE_IDS.has(typeId)) return 'oauth-based'
-  if (DEDICATED_CATEGORY_IDS.has(typeId)) return typeId as 'bedrock' | 'service_account'
-  return 'apikey'
+  return typeId
 }
 
 // ---------------------------------------------------------------------------
@@ -761,15 +759,11 @@ watch(
   [accountCategory, addMethod, () => selectedAccountTypeId.value, () => form.platform],
   ([category, method]) => {
     if (!BUILTIN_PLATFORMS.has(form.platform)) return
-    if (DEDICATED_CATEGORY_IDS.has(category)) {
-      form.type = category as AccountType
-      return
-    }
     if (category === 'oauth-based') {
       form.type = method as AccountType
-      return
+    } else {
+      form.type = selectedAccountTypeId.value as AccountType
     }
-    form.type = 'apikey'
   },
   { immediate: true },
 )

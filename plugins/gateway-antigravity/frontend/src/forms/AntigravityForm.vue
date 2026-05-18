@@ -108,7 +108,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   Icon,
@@ -152,6 +152,10 @@ const {
   tempUnschedEnabled, tempUnschedRules,
   initFromAccount, getEditPayload,
 } = useAntigravityForm(commonFields)
+
+watch(() => props.context.accountTypeId, (id) => {
+  antigravityAccountType.value = id === 'upstream' ? 'upstream' : 'oauth'
+}, { immediate: true })
 
 const getMappingKey = createStableObjectKeyResolver<ModelMapping>('ag-mapping')
 
