@@ -229,6 +229,15 @@
                   <Icon name="trash" size="xs" />
                   {{ t('admin.plugins.uninstallButton') }}
                 </button>
+                <button
+                  v-if="!p.builtin && !p.enabled"
+                  class="inline-flex items-center gap-1 rounded-md border border-red-300 bg-red-50 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-60 dark:border-red-700 dark:bg-red-900/20 dark:text-red-300 dark:hover:bg-red-900/40"
+                  :disabled="busy[p.name]"
+                  @click="openRemoveFilesDialog(p)"
+                >
+                  <Icon name="trash" size="xs" />
+                  {{ t('admin.plugins.removeFilesButton') }}
+                </button>
               </template>
             </div>
           </div>
@@ -463,6 +472,18 @@
       </template>
     </BaseDialog>
 
+    <!-- Remove files confirm dialog. Deletes plugin binary from disk but
+         keeps all data (settings, migrations, etc.) in the database. -->
+    <ConfirmDialog
+      :show="!!removeFilesTarget"
+      :title="removeFilesTarget ? t('admin.plugins.removeFilesConfirm.title', { name: removeFilesTarget.display_name || removeFilesTarget.name }) : ''"
+      :message="t('admin.plugins.removeFilesConfirm.message')"
+      :confirm-text="t('admin.plugins.removeFilesConfirm.confirmButton')"
+      :danger="true"
+      @confirm="confirmRemoveFiles"
+      @cancel="removeFilesTarget = null"
+    />
+
     <!-- Soft uninstall confirm (P13·C-1). Stops the plugin process, hides
          it from the sidebar, and marks plugins.uninstalled_at — does NOT
          drop any data. Reversible via the Restore button on the
@@ -687,6 +708,9 @@ const showUninstalledOnly = ref(false)
 // the template; null when no dialog is open.
 const uninstallTarget = ref<PluginInfo | null>(null)
 
+// Pending remove-files target. Deletes plugin binary from disk, keeps DB data.
+const removeFilesTarget = ref<PluginInfo | null>(null)
+
 // P13·C-2 hard purge dialog state. Two-stage typed-name confirm: the
 // confirm button stays disabled until purgeNameInput === purgeTarget.name
 // (strict ===), then DELETE /:name?purge=true with body `{name}` is sent.
@@ -783,6 +807,27 @@ async function confirmUninstall() {
     await reload()
     // Soft-uninstall removes the plugin from sidebar / routes — same reason
     // as enable/disable. Force a reload so SSR-injected manifests refresh.
+    window.location.reload()
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+  } finally {
+    busy[target.name] = false
+  }
+}
+
+function openRemoveFilesDialog(p: PluginInfo) {
+  removeFilesTarget.value = p
+}
+
+async function confirmRemoveFiles() {
+  const target = removeFilesTarget.value
+  if (!target) return
+  busy[target.name] = true
+  try {
+    await apiClient.post(`/admin/plugins/${target.name}/remove-files`)
+    appStore.showSuccess(t('admin.plugins.removeFilesSuccess', { name: target.name }))
+    removeFilesTarget.value = null
+    await reload()
     window.location.reload()
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('common.error')))

@@ -1,7 +1,23 @@
 <template>
-  <div class="space-y-5 border-t border-gray-200 pt-5 dark:border-dark-600">
-    <!-- Proxy -->
+  <div class="space-y-5">
+    <!-- Name -->
     <div>
+      <label class="input-label">{{ t('admin.accounts.accountName') }}</label>
+      <input :value="modelValue.name" type="text" required class="input"
+        :placeholder="t('admin.accounts.enterAccountName')"
+        @input="update('name', ($event.target as HTMLInputElement).value)" />
+    </div>
+    <!-- Notes -->
+    <div>
+      <label class="input-label">{{ t('admin.accounts.notes') }}</label>
+      <textarea :value="modelValue.notes" rows="2" class="input"
+        :placeholder="t('admin.accounts.notesPlaceholder')"
+        @input="update('notes', ($event.target as HTMLTextAreaElement).value)"></textarea>
+      <p class="input-hint">{{ t('admin.accounts.notesHint') }}</p>
+    </div>
+
+    <!-- Proxy -->
+    <div class="border-t border-gray-200 pt-5 dark:border-dark-600">
       <label class="input-label">{{ t('admin.accounts.proxy') }}</label>
       <ProxySelect :model-value="modelValue.proxy_id" :proxies="proxies"
         @update:model-value="update('proxy_id', $event)" />

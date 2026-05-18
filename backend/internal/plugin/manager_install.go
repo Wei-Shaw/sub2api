@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -28,6 +30,10 @@ var ErrPluginIsBuiltin = errors.New("builtin plugins cannot be uninstalled")
 // 走完 "先 Uninstall, 再 Purge" 的流程, 防止误操作直接清掉数据。
 // handler 把这个错误映射成 HTTP 409 Conflict。
 var ErrPluginNotSoftUninstalled = errors.New("plugin must be soft-uninstalled before purge")
+
+// ErrPluginNotDisabled 表示在仍处于 enabled 的插件上调用 RemoveFiles。
+// 必须先禁用(停止)插件才能删除其文件。handler 映射成 HTTP 409 Conflict。
+var ErrPluginNotDisabled = errors.New("plugin must be disabled before removing files")
 
 // Uninstall 软卸载插件: 停进程 + 标记 uninstalled_at = NOW(), 不删数据。
 //
@@ -152,6 +158,81 @@ func (m *PluginManager) Purge(ctx context.Context, name string) error {
 	)
 	m.invalidateFrontendCache()
 	return nil
+}
+
+// RemoveFiles 删除插件的二进制文件目录, 但保留所有数据库数据。
+//
+// 前置条件:
+//   - 插件必须已禁用 (enabled=false); 否则返回 ErrPluginNotDisabled (409)。
+//   - 内置插件 (BuiltinDir 下) 一律拒绝 ErrPluginIsBuiltin (400)。
+//
+// 流程: 校验 name → 拒绝内置 → 确认已禁用 → 停进程 (安全起见) →
+// 删除 PluginsDir/<name>/ 目录 → 标记 uninstalled_at → 移除 instance map。
+//
+// 数据保留: plugins / plugin_settings / plugin_settings_schemas /
+// plugin_migrations 全部保留, 只清除磁盘文件。
+func (m *PluginManager) RemoveFiles(ctx context.Context, name string) error {
+	if !IsValidPluginName(name) {
+		return ErrInvalidPluginName
+	}
+	if m.isBuiltinPlugin(name) {
+		return ErrPluginIsBuiltin
+	}
+
+	rec, err := m.repo.GetIncludingUninstalled(ctx, name)
+	if err != nil {
+		return err
+	}
+	if rec.Enabled {
+		return ErrPluginNotDisabled
+	}
+
+	if err := m.stopInstance(ctx, name, true); err != nil {
+		m.logger.Warn("stop instance before remove files (non-fatal)",
+			"plugin", name, "error", err)
+	}
+
+	pluginDir := m.userPluginDir(name)
+	if pluginDir == "" {
+		return fmt.Errorf("cannot resolve plugin directory for %s", name)
+	}
+	if err := os.RemoveAll(pluginDir); err != nil {
+		return fmt.Errorf("remove plugin files %s: %w", name, err)
+	}
+
+	if rec.UninstalledAt == nil {
+		if err := m.repo.MarkUninstalled(ctx, name); err != nil {
+			return err
+		}
+	}
+
+	m.deleteInstance(name)
+
+	m.logger.Info("plugin files removed",
+		"plugin", name,
+		"dir", pluginDir,
+		"data_preserved", true,
+	)
+	m.invalidateFrontendCache()
+	return nil
+}
+
+// userPluginDir 返回用户插件目录下 plugin name 对应的绝对路径。
+// 仅解析 PluginsDir (不含 BuiltinDir), 内置插件不可删除文件。
+func (m *PluginManager) userPluginDir(name string) string {
+	if m.cfg.PluginsDir == "" || !IsValidPluginName(name) {
+		return ""
+	}
+	absDir, err := filepath.Abs(m.cfg.PluginsDir)
+	if err != nil {
+		return ""
+	}
+	candidate := filepath.Join(absDir, name)
+	rel, err := filepath.Rel(absDir, candidate)
+	if err != nil || strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
+		return ""
+	}
+	return candidate
 }
 
 // executePurgeTx 跑 Purge 事务: 倒序回滚迁移 + DELETE 四张表。

@@ -37,6 +37,9 @@ type PluginManager interface {
 	// Purge 硬卸载: 物理清除插件全部数据 (含 plugin_migrations / plugin_settings /
 	// plugin_settings_schemas / plugins 行)。仅对已经软卸载的插件有效。
 	Purge(ctx context.Context, name string) error
+	// RemoveFiles 删除插件的二进制文件目录, 保留所有数据库数据。
+	// 插件必须先禁用。
+	RemoveFiles(ctx context.Context, name string) error
 }
 
 // ErrPluginNotFound 由 PluginManager 实现返回,表示请求的插件不存在。
@@ -56,6 +59,10 @@ var ErrInvalidPluginName = plugin.ErrInvalidPluginName
 // ErrPluginNotSoftUninstalled 表示在仍处于 active 的插件上调用 Purge。
 // handler 据此映射为 HTTP 409 Conflict, 让前端提示 "先 Uninstall 再 Purge"。
 var ErrPluginNotSoftUninstalled = plugin.ErrPluginNotSoftUninstalled
+
+// ErrPluginNotDisabled 表示插件仍在运行, 必须先禁用才能删除文件。
+// handler 映射为 HTTP 409 Conflict。
+var ErrPluginNotDisabled = plugin.ErrPluginNotDisabled
 
 // PluginHandler 提供插件管理的 admin HTTP 接口。
 //
@@ -277,6 +284,24 @@ func (h *PluginHandler) Delete(c *gin.Context) {
 	response.Success(c, gin.H{"name": name, "status": "purged"})
 }
 
+// RemoveFiles 删除插件的二进制文件, 保留数据库数据。
+// POST /api/v1/admin/plugins/:name/remove-files
+//
+// 前置条件: 插件必须已禁用 (409 if enabled), 不能是内置插件 (400)。
+func (h *PluginHandler) RemoveFiles(c *gin.Context) {
+	if !h.requireManager(c) {
+		return
+	}
+	name, ok := h.parseName(c)
+	if !ok {
+		return
+	}
+	if h.handleManagerError(c, h.manager.RemoveFiles(c.Request.Context(), name)) {
+		return
+	}
+	response.Success(c, gin.H{"name": name, "status": "files_removed"})
+}
+
 // requireManager 在 manager 未注入时返回 503，避免后续 nil panic。
 func (h *PluginHandler) requireManager(c *gin.Context) bool {
 	if h.manager == nil {
@@ -319,6 +344,10 @@ func (h *PluginHandler) handleManagerError(c *gin.Context, err error) bool {
 	}
 	if errors.Is(err, ErrPluginNotSoftUninstalled) {
 		response.Error(c, http.StatusConflict, "plugin must be soft-uninstalled before purge")
+		return true
+	}
+	if errors.Is(err, ErrPluginNotDisabled) {
+		response.Error(c, http.StatusConflict, "plugin must be disabled before removing files")
 		return true
 	}
 	if errors.Is(err, ErrInvalidPluginName) {

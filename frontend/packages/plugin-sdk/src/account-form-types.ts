@@ -87,8 +87,10 @@ export interface PlatformFormContext {
   }
 }
 
-/** Common operational fields managed by AccountCommonFields SDK component. */
+/** Common fields managed by AccountCommonFields SDK component. */
 export interface CommonAccountFields {
+  name: string
+  notes: string
   proxy_id: number | null
   concurrency: number
   load_factor: number | null

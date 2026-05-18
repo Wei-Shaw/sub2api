@@ -53,30 +53,6 @@
 
     <!-- Step 1: Platform & Type Selection -->
     <div v-if="step === 1" class="space-y-5">
-      <!-- Name -->
-      <div>
-        <label class="input-label">{{ t('admin.accounts.accountName') }}</label>
-        <input
-          v-model="form.name"
-          type="text"
-          required
-          class="input"
-          :placeholder="t('admin.accounts.enterAccountName')"
-          data-tour="account-form-name"
-        />
-      </div>
-      <!-- Notes -->
-      <div>
-        <label class="input-label">{{ t('admin.accounts.notes') }}</label>
-        <textarea
-          v-model="form.notes"
-          rows="3"
-          class="input"
-          :placeholder="t('admin.accounts.notesPlaceholder')"
-        ></textarea>
-        <p class="input-hint">{{ t('admin.accounts.notesHint') }}</p>
-      </div>
-
       <!-- Platform Selection -->
       <div>
         <label class="input-label">{{ t('admin.accounts.platform') }}</label>
@@ -365,14 +341,16 @@ const accountCategory = ref<string>('oauth-based')
 const addMethod = ref<AddMethod>('oauth')
 
 const form = reactive({
-  name: '',
-  notes: '',
   platform: 'anthropic' as AccountPlatform,
   type: 'oauth' as AccountType,
   credentials: {} as Record<string, unknown>,
   proxy_id: null as number | null,
   group_ids: [] as number[],
 })
+
+// Cached from plugin form payload before transitioning to OAuth Step 3
+const cachedName = ref('')
+const cachedNotes = ref('')
 
 // ---------------------------------------------------------------------------
 // Account type -> category mapping (data-driven, no platform name checks)
@@ -453,10 +431,6 @@ function onCategoryCardSelect(group: typeof groupedTypeCards.value[number]) {
 // Step navigation
 // ---------------------------------------------------------------------------
 async function goToStep2() {
-  if (!form.name.trim()) {
-    appStore.showError(t('admin.accounts.pleaseEnterAccountName'))
-    return
-  }
   if (!selectedAccountTypeId.value) {
     appStore.showError(t('admin.accounts.pleaseSelectType'))
     return
@@ -616,12 +590,16 @@ async function doCreateAccount(payload: CreateAccountRequest) {
 }
 
 async function handleSubmit() {
-  if (!form.name.trim()) { appStore.showError(t('admin.accounts.pleaseEnterAccountName')); return }
   const validation = platformFormRef.value?.validate()
   if (validation && !validation.valid) { appStore.showError(validation.error || t('common.error')); return }
   const payload = platformFormRef.value?.getPayload()
   if (!payload) return
+  const commonName = payload.common?.name?.trim() || ''
+  const commonNotes = payload.common?.notes?.trim() || ''
+  if (!commonName) { appStore.showError(t('admin.accounts.pleaseEnterAccountName')); return }
   if (payload.needsOAuthFlow) {
+    cachedName.value = commonName
+    cachedNotes.value = commonNotes
     if (payload.typeOverride) addMethod.value = payload.typeOverride as AddMethod
     const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => { step.value = 3 })
     if (!canContinue) return
@@ -630,8 +608,8 @@ async function handleSubmit() {
   }
   const resolvedType = payload.typeOverride || form.type
   const request: CreateAccountRequest = {
-    name: form.name.trim(),
-    notes: form.notes.trim() || undefined,
+    name: commonName,
+    notes: commonNotes || undefined,
     platform: form.platform,
     type: resolvedType,
     credentials: payload.credentials,
@@ -693,8 +671,8 @@ async function handleCodexSessionImport(content: string) {
     const common = payload?.common
     const result = await adminAPI.accounts.importCodexSession({
       content: trimmed,
-      name: form.name,
-      notes: form.notes || undefined,
+      name: cachedName.value,
+      notes: cachedNotes.value || undefined,
       proxy_id: common?.proxy_id ?? undefined,
       concurrency: common?.concurrency,
       load_factor: common?.load_factor ?? undefined,
@@ -729,7 +707,7 @@ async function finalizeOAuthResult(result: CreateAccountRequest | CreateAccountR
   const common = payload?.common
   for (let i = 0; i < requests.length; i++) {
     const req = { ...requests[i] }
-    const baseName = req.name || form.name
+    const baseName = req.name || cachedName.value
     req.name = requests.length > 1 ? `${baseName} #${i + 1}` : baseName
     if (common) {
       req.proxy_id = common.proxy_id
@@ -791,8 +769,8 @@ watch(() => form.platform, (newPlatform) => {
 // ---------------------------------------------------------------------------
 function resetForm() {
   step.value = 1
-  form.name = ''
-  form.notes = ''
+  cachedName.value = ''
+  cachedNotes.value = ''
   form.platform = (allPlatforms.value[0]?.platform || 'anthropic') as AccountPlatform
   form.type = 'oauth'
   form.credentials = {}

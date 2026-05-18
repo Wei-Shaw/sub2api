@@ -202,6 +202,7 @@ export function useOpenAIForm(commonFields: Ref<CommonAccountFields>) {
     customErrorCodesEnabled.value = false; selectedErrorCodes.value = []
     tempUnschedEnabled.value = false; tempUnschedRules.value = []
     commonFields.value = {
+      name: '', notes: '',
       proxy_id: null, concurrency: 10, load_factor: null, priority: 1,
       rate_multiplier: 1, expires_at: null, auto_pause_on_expired: true,
       group_ids: [], quota_enabled: false, quota_limit: null,
@@ -226,6 +227,8 @@ export function useOpenAIForm(commonFields: Ref<CommonAccountFields>) {
       editInit(account, editRefs)
       const a = account as Record<string, unknown>
       commonFields.value = {
+        name: (a.name as string) ?? '',
+        notes: (a.notes as string) ?? '',
         proxy_id: (a.proxy_id as number) ?? null,
         concurrency: (a.concurrency as number) ?? 10,
         load_factor: (a.load_factor as number) ?? null,

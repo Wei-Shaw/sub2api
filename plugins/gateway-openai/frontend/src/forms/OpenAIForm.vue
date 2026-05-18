@@ -148,6 +148,8 @@ const props = defineProps<{ context: PlatformFormContext }>()
 const { t } = useI18n()
 
 const commonFields = ref<CommonAccountFields>({
+  name: '',
+  notes: '',
   proxy_id: null,
   concurrency: 10,
   load_factor: null,

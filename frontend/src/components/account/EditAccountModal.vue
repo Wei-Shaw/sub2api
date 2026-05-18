@@ -11,16 +11,6 @@
       @submit.prevent="handleSubmit"
       class="space-y-5"
     >
-      <div>
-        <label class="input-label">{{ t('common.name') }}</label>
-        <input v-model="form.name" type="text" required class="input" data-tour="edit-account-form-name" />
-      </div>
-      <div>
-        <label class="input-label">{{ t('admin.accounts.notes') }}</label>
-        <textarea v-model="form.notes" rows="3" class="input" :placeholder="t('admin.accounts.notesPlaceholder')"></textarea>
-        <p class="input-hint">{{ t('admin.accounts.notesHint') }}</p>
-      </div>
-
       <!-- Platform/type badge (read-only) -->
       <div class="flex items-center gap-2 border-t border-gray-200 pt-4 dark:border-dark-600">
         <PlatformIcon :platform="account.platform" :icon-svg="platformDecl?.icon_svg" size="sm" />
@@ -102,7 +92,6 @@ const { globalEnabled: quotaNotifyGlobalEnabled } = useQuotaNotifyState()
 const submitting = ref(false)
 
 const form = reactive({
-  name: '', notes: '',
   status: 'active' as 'active' | 'inactive' | 'error',
 })
 
@@ -198,7 +187,6 @@ function withConfirmFlag(payload: Record<string, unknown>): Record<string, unkno
 
 function syncFormFromAccount(account: Account) {
   antigravityMixedChannelConfirmed.value = false; clearMixedChannelDialog()
-  form.name = account.name; form.notes = account.notes || ''
   form.status = (['active', 'inactive', 'error'].includes(account.status) ? account.status : 'active') as typeof form.status
   nextTick(() => { platformFormRef.value?.initFromAccount?.(account) })
 }
@@ -226,12 +214,12 @@ async function handleSubmit() {
   if (validation && !validation.valid) { appStore.showError(validation.error || t('common.error')); return }
   if (!['active', 'inactive', 'error'].includes(form.status)) { appStore.showError(t('admin.accounts.pleaseSelectStatus')); return }
   try {
+    const ep = platformFormRef.value?.getEditPayload?.(props.account)
     const up: Record<string, unknown> = {
-      name: form.name.trim(),
-      notes: form.notes.trim() || null,
+      name: ep?.common?.name?.trim() || props.account.name,
+      notes: ep?.common?.notes?.trim() || null,
       status: form.status,
     }
-    const ep = platformFormRef.value?.getEditPayload?.(props.account)
     if (ep) {
       if (ep.credentials === undefined) return
       if (ep.credentials) up.credentials = ep.credentials

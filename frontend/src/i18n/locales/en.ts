@@ -1035,6 +1035,14 @@ export default {
       enableSuccess: '{name} enabled',
       disableSuccess: '{name} disabled',
       restartSuccess: '{name} restart requested',
+      // Remove files (delete plugin binary from disk, keep data)
+      removeFilesButton: 'Delete',
+      removeFilesSuccess: 'Plugin files removed: {name}',
+      removeFilesConfirm: {
+        title: 'Delete plugin {name}',
+        message: 'This will delete the plugin binary from disk but preserve all database data (settings, migrations, etc.). You will need to reinstall the plugin to use it again.',
+        confirmButton: 'Confirm Delete',
+      },
       // Soft uninstall (P13·C-1)
       uninstallButton: 'Uninstall',
       uninstallSuccess: '{name} uninstalled',

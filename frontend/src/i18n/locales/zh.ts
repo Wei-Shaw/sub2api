@@ -1039,6 +1039,14 @@ export default {
       enableSuccess: '已启用 {name}',
       disableSuccess: '已禁用 {name}',
       restartSuccess: '已发起重启 {name}',
+      // Remove files (delete plugin binary from disk, keep data)
+      removeFilesButton: '删除',
+      removeFilesSuccess: '已删除插件文件 {name}',
+      removeFilesConfirm: {
+        title: '删除插件 {name}',
+        message: '将从磁盘删除插件文件（二进制代码），但保留数据库中的所有数据（设置、迁移等）。删除后需要重新安装插件才能使用。',
+        confirmButton: '确认删除',
+      },
       // Soft uninstall (P13·C-1)
       uninstallButton: '卸载',
       uninstallSuccess: '已软卸载 {name}',

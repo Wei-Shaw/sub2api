@@ -209,6 +209,8 @@ const {
 } = form
 
 const commonFields = ref<CommonAccountFields>({
+  name: '',
+  notes: '',
   proxy_id: null,
   concurrency: 10,
   load_factor: null,
@@ -239,6 +241,7 @@ defineExpose({
   reset: () => {
     reset()
     commonFields.value = {
+      name: '', notes: '',
       proxy_id: null, concurrency: 10, load_factor: null, priority: 1,
       rate_multiplier: 1, expires_at: null, auto_pause_on_expired: true,
       group_ids: [], quota_enabled: false, quota_limit: null,
@@ -249,6 +252,8 @@ defineExpose({
     initFromAccount(account as SdkAccount)
     const extra = (account.extra ?? {}) as Record<string, unknown>
     commonFields.value = {
+      name: (account.name as string) ?? '',
+      notes: (account.notes as string) ?? '',
       proxy_id: (account.proxy_id as number | null) ?? null,
       concurrency: (account.concurrency as number) ?? 10,
       load_factor: (account.load_factor as number | null) ?? null,
