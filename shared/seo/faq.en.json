@@ -1,0 +1,74 @@
+[
+  {
+    "id": "what-is-sub2api",
+    "q": "What is Sub2API?",
+    "a": "Sub2API is an OpenAI-compatible AI gateway that unifies access to Claude, Codex, and Gemini CLIs with stable routes, transparent metered billing, and broad client support.",
+    "details": "Sub2API speaks OpenAI Chat Completions, Anthropic Messages, and Gemini Generate Content protocols. One API key works in Claude Code, Codex CLI, Cursor, Cline, and every major coding tool."
+  },
+  {
+    "id": "how-to-use-with-claude-code",
+    "q": "How do I use Sub2API with Claude Code?",
+    "a": "Set ANTHROPIC_BASE_URL to https://your-domain/v1 and ANTHROPIC_AUTH_TOKEN to your sk- prefixed Sub2API key, then run claude as usual.",
+    "details": "Example:\n\n```bash\nexport ANTHROPIC_BASE_URL=https://your.sub2api.example/v1\nexport ANTHROPIC_AUTH_TOKEN=sk-xxxxxxxx\nclaude\n```"
+  },
+  {
+    "id": "how-to-use-with-codex",
+    "q": "How do I use Sub2API with Codex CLI?",
+    "a": "Set OPENAI_BASE_URL to your Sub2API domain plus /v1 and OPENAI_API_KEY to your Sub2API key. Codex routes transparently.",
+    "details": "Codex CLI follows the OpenAI protocol. Sub2API provides a 100% compatible /v1/chat/completions endpoint."
+  },
+  {
+    "id": "how-to-use-with-gemini",
+    "q": "How do I use Sub2API with Gemini CLI?",
+    "a": "After OAuth login, Sub2API automatically manages Gemini CLI session credentials. No manual configuration needed.",
+    "details": "Sub2API embeds the Gemini CLI OAuth flow. Once authenticated, all requests route through Sub2API for unified billing and rate limiting."
+  },
+  {
+    "id": "vs-official-api",
+    "q": "How is Sub2API different from using the official API directly?",
+    "a": "Sub2API adds region-friendly routes, unified billing, multi-account pooling, usage caps, and referral rebates, while remaining a transparent passthrough of the official API.",
+    "details": "Differences: payment model (prepaid/subscription vs postpaid), onboarding (no foreign credit card needed), and regional availability (no VPN required)."
+  },
+  {
+    "id": "supported-clients",
+    "q": "Which clients are supported?",
+    "a": "Claude Code, Codex CLI, Gemini CLI, Cursor, Continue, Cline, JetBrains AI, VS Code Copilot Chat, and any tool that speaks OpenAI- or Anthropic-compatible APIs.",
+    "details": "If the client allows a custom BASE_URL / API_KEY, it works with Sub2API."
+  },
+  {
+    "id": "china-availability",
+    "q": "Is Sub2API usable in mainland China without a VPN?",
+    "a": "Yes. Sub2API provides direct domestic entry points; no proxy or VPN is required.",
+    "details": "Sub2API operates account pools on multiple overseas nodes connected via dedicated tunnels. Standard home or office networks can reach the API endpoints directly."
+  },
+  {
+    "id": "billing",
+    "q": "How does Sub2API bill?",
+    "a": "Real-time per-token metering: prompt and completion tokens are billed at official rates plus a small service fee. Top-up balance, monthly subscriptions, and redeem codes are supported.",
+    "details": "Each request records prompt_tokens and completion_tokens. See Dashboard → Usage for line-item details."
+  },
+  {
+    "id": "security",
+    "q": "Are my API keys and data secure?",
+    "a": "API keys are bcrypt-hashed at rest. Request bodies are not persisted; only metering fields are recorded. All transport is HTTPS-only.",
+    "details": "Sub2API does not store request/response bodies. Error logs are kept briefly (auto-purged in 7 days). See the privacy policy for details."
+  },
+  {
+    "id": "rate-limit",
+    "q": "Are there rate limits?",
+    "a": "Default 60 requests per minute and 10 per second. Subscribers and enterprise customers can request higher limits, configurable per group.",
+    "details": "Rate-limited requests return HTTP 429 with a Retry-After header. Most interactive coding workflows never hit the cap."
+  },
+  {
+    "id": "refund",
+    "q": "Can I get a refund?",
+    "a": "Unused portions are refundable within 7 days. Consumed tokens are non-refundable; remaining balance stays valid until expiration.",
+    "details": "Contact support or submit a refund ticket in the dashboard. Approved refunds return via the original payment method."
+  },
+  {
+    "id": "enterprise",
+    "q": "Do you offer enterprise plans?",
+    "a": "Yes: private deployment, isolated account pools, SSO, dedicated account manager, and SLA-backed contracts are available.",
+    "details": "Enterprise plans support on-premise installation, audit logging, and compliance requirements (SOC2 / equivalent). Contact us via the website for pricing."
+  }
+]

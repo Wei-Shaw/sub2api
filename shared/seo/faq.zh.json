@@ -1,0 +1,74 @@
+[
+  {
+    "id": "what-is-sub2api",
+    "q": "Sub2API 是什么?",
+    "a": "Sub2API 是一个 OpenAI 兼容的 AI 网关,统一接入 Claude、Codex、Gemini 三大 AI 编码 CLI 工具,提供稳定线路、透明按量计费和多客户端适配。",
+    "details": "Sub2API 既支持 OpenAI Chat Completions 协议,也支持 Anthropic Messages 协议和 Gemini Generate Content 协议。一个 API Key 就能在 Claude Code、Codex CLI、Cursor、Cline 等所有主流工具里工作。"
+  },
+  {
+    "id": "how-to-use-with-claude-code",
+    "q": "如何在 Claude Code 里使用 Sub2API?",
+    "a": "在终端设置 ANTHROPIC_BASE_URL 为 https://你的域名/v1,ANTHROPIC_AUTH_TOKEN 为你的 sk- 开头的 Sub2API Key,然后正常运行 claude 命令即可。",
+    "details": "示例配置:\n\n```bash\nexport ANTHROPIC_BASE_URL=https://your.sub2api.example/v1\nexport ANTHROPIC_AUTH_TOKEN=sk-xxxxxxxx\nclaude\n```"
+  },
+  {
+    "id": "how-to-use-with-codex",
+    "q": "如何在 Codex CLI 里使用 Sub2API?",
+    "a": "把 OPENAI_BASE_URL 设为 Sub2API 域名 + /v1,OPENAI_API_KEY 设为你的 Sub2API Key,Codex 会无缝走 Sub2API。",
+    "details": "Codex CLI 完全遵循 OpenAI 协议,Sub2API 提供 100% 兼容的 /v1/chat/completions 端点。"
+  },
+  {
+    "id": "how-to-use-with-gemini",
+    "q": "如何在 Gemini CLI 里使用 Sub2API?",
+    "a": "使用 OAuth 登录后,Sub2API 会自动管理 Gemini CLI 的会话凭据,无需手动配置。",
+    "details": "Sub2API 内置 Gemini CLI OAuth 流程,登录一次后所有请求经 Sub2API 路由,享受统一计费和限流。"
+  },
+  {
+    "id": "vs-official-api",
+    "q": "和直接使用官方 API 相比有什么区别?",
+    "a": "Sub2API 提供国内直连线路、统一计费、多账号池负载均衡、用量上限保护、邀请返佣等官方不具备的能力,但本质仍是转发官方 API。",
+    "details": "技术上 Sub2API 完全透明转发,响应格式与官方一致。主要差异:计费方式(预付费/订阅 vs 后付费)、接入门槛(无需海外信用卡)、国内可用性(无需自备代理)。"
+  },
+  {
+    "id": "supported-clients",
+    "q": "支持哪些客户端?",
+    "a": "Claude Code、Codex CLI、Gemini CLI、Cursor、Continue、Cline、JetBrains AI、VS Code Copilot Chat,以及所有兼容 OpenAI / Anthropic API 的工具。",
+    "details": "只要客户端允许自定义 BASE_URL / API_KEY,理论上都能接入 Sub2API。"
+  },
+  {
+    "id": "china-availability",
+    "q": "中国大陆能用吗,需要梯子吗?",
+    "a": "可以直接使用,Sub2API 提供国内直连入口,无需自备代理或 VPN。",
+    "details": "Sub2API 在多个境外节点维护账号池,通过自有专线回源,普通家庭/办公网络可直连 API 域名。"
+  },
+  {
+    "id": "billing",
+    "q": "Sub2API 怎么计费?",
+    "a": "按 token 实时计费,输入和输出分别按官方定价收取并加少量服务费。支持余额充值、月度订阅、兑换码三种付费方式。",
+    "details": "每次请求记录 prompt_tokens 和 completion_tokens,按当前模型单价扣费。可在控制台 → 用量记录查看明细。"
+  },
+  {
+    "id": "security",
+    "q": "我的 API Key 和数据安全吗?",
+    "a": "API Key 经 bcrypt 哈希存储,请求内容不持久化,仅记录 token 数等计量字段。所有传输强制 HTTPS。",
+    "details": "Sub2API 不保存请求/响应正文,只在出错时短暂记录错误日志(7 天后自动清理)。详见隐私政策。"
+  },
+  {
+    "id": "rate-limit",
+    "q": "有限速吗?",
+    "a": "默认每分钟 60 次请求、每秒 10 次。订阅用户和企业用户可申请提升,具体上限按组配置。",
+    "details": "限速命中时返回 429,响应头含 Retry-After。绝大多数交互式编码场景不会触发。"
+  },
+  {
+    "id": "refund",
+    "q": "可以退款吗?",
+    "a": "未使用部分 7 天内可全额退款。已消费 token 不退,余额可继续使用至到期。",
+    "details": "联系客服或在控制台提交退款工单,审核通过后原路退回。"
+  },
+  {
+    "id": "enterprise",
+    "q": "企业接入有什么方案?",
+    "a": "提供私有部署、独立账号池、SSO 单点登录、专属客户经理、SLA 保障等企业方案。",
+    "details": "企业方案支持本地化部署、审计日志、合规要求(等保 / SOC2)。联系官网邮箱获取报价。"
+  }
+]
