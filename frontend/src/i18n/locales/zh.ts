@@ -3165,6 +3165,12 @@ export default {
       quotaControl: {
         title: '配额控制',
         hint: '配置费用窗口、会话限制等调度控制。',
+        enableQuotaLimit: '启用配额限制',
+        enableQuotaLimitHint: '为此账号设置费用用量上限',
+        totalLimit: '总量上限',
+        dailyLimit: '每日上限',
+        weeklyLimit: '每周上限',
+        unlimited: '不限制',
         windowCost: {
           label: '5h窗口费用控制',
           hint: '限制账号在5小时窗口内的费用使用',
@@ -3240,6 +3246,9 @@ export default {
       billingRateMultiplierHint: '0 表示不计费，仅影响账号计费',
       expiresAt: '过期时间',
       expiresAtHint: '留空表示不过期',
+      groups: '分组',
+      selectedGroups: '已选 {count} 个',
+      noGroupsAvailable: '暂无可用分组',
       higherPriorityFirst: '数值越小优先级越高',
       mixedScheduling: '在 /v1/messages 中使用',
       mixedSchedulingHint: '启用后可参与 Anthropic/Gemini 分组的调度',

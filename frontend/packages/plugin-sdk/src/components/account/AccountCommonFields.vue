@@ -31,10 +31,10 @@
         <p class="input-hint">{{ t('admin.accounts.priorityHint') }}</p>
       </div>
       <div>
-        <label class="input-label">{{ t('admin.accounts.rateMultiplier') }}</label>
+        <label class="input-label">{{ t('admin.accounts.billingRateMultiplier') }}</label>
         <input :value="modelValue.rate_multiplier" type="number" min="0" step="0.001" class="input"
           @input="update('rate_multiplier', Math.max(0, Number(($event.target as HTMLInputElement).value) || 0))" />
-        <p class="input-hint">{{ t('admin.accounts.rateMultiplierHint') }}</p>
+        <p class="input-hint">{{ t('admin.accounts.billingRateMultiplierHint') }}</p>
       </div>
     </div>
 
@@ -88,7 +88,7 @@
     <div class="flex items-center justify-between">
       <div>
         <span class="input-label mb-0">{{ t('admin.accounts.autoPauseOnExpired') }}</span>
-        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.autoPauseOnExpiredHint') }}</p>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.autoPauseOnExpiredDesc') }}</p>
       </div>
       <button type="button" @click="update('auto_pause_on_expired', !modelValue.auto_pause_on_expired)"
         :class="['relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',

@@ -3014,6 +3014,12 @@ export default {
       quotaControl: {
         title: 'Quota Control',
         hint: 'Configure cost windows, session limits and other scheduling controls.',
+        enableQuotaLimit: 'Enable Quota Limit',
+        enableQuotaLimitHint: 'Set cost usage limits for this account',
+        totalLimit: 'Total Limit',
+        dailyLimit: 'Daily Limit',
+        weeklyLimit: 'Weekly Limit',
+        unlimited: 'Unlimited',
         windowCost: {
           label: '5h Window Cost Limit',
           hint: 'Limit account cost usage within the 5-hour window',
@@ -3089,6 +3095,9 @@ export default {
       billingRateMultiplierHint: '0 = free, affects account billing only',
       expiresAt: 'Expires At',
       expiresAtHint: 'Leave empty for no expiration',
+      groups: 'Groups',
+      selectedGroups: '{count} selected',
+      noGroupsAvailable: 'No groups available',
       higherPriorityFirst: 'Lower value means higher priority',
       mixedScheduling: 'Use in /v1/messages',
       mixedSchedulingHint: 'Enable to participate in Anthropic/Gemini group scheduling',
