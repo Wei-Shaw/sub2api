@@ -119,10 +119,13 @@
       @update:compact-mode="onCompactModeUpdate($event)"
       @update:compact-model-mappings="openAICompactModelMappings = $event"
     />
+
+    <AccountCommonFields v-model="commonFields" :context="context" />
   </div>
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   Select,
@@ -131,6 +134,8 @@ import {
   PoolModeSection,
   CustomErrorCodesSection,
   TempUnschedSection,
+  AccountCommonFields,
+  type CommonAccountFields,
 } from '@sub2api/plugin-sdk'
 import type { OpenAIWSMode } from '../utils/openaiWsMode'
 import type { PlatformFormContext } from '@sub2api/plugin-sdk'
@@ -140,6 +145,22 @@ import CompactModeSection from './CompactModeSection.vue'
 
 const props = defineProps<{ context: PlatformFormContext }>()
 const { t } = useI18n()
+
+const commonFields = ref<CommonAccountFields>({
+  proxy_id: null,
+  concurrency: 10,
+  load_factor: null,
+  priority: 1,
+  rate_multiplier: 1,
+  expires_at: null,
+  auto_pause_on_expired: true,
+  group_ids: [],
+  quota_enabled: false,
+  quota_limit: null,
+  quota_daily_limit: null,
+  quota_weekly_limit: null,
+})
+
 const {
   apiKeyBaseUrl, apiKeyValue, editApiKey,
   openaiPassthroughEnabled, openAICompactMode,
@@ -155,7 +176,7 @@ const {
   validate, getPayload, reset,
   handleOAuthExchange, handleRefreshToken, handleMobileRefreshToken,
   initFromAccount, getEditPayload
-} = useOpenAIForm()
+} = useOpenAIForm(commonFields)
 
 type OpenAICompactMode = 'auto' | 'force_on' | 'force_off'
 function onCompactModeUpdate(value: string) {

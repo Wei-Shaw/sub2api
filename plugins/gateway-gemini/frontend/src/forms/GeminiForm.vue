@@ -116,11 +116,13 @@
       @update:enabled="tempUnschedEnabled = $event"
       @update:rules="tempUnschedRules = $event"
     />
+
+    <AccountCommonFields v-model="commonFields" :context="context" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   Icon,
@@ -129,7 +131,9 @@ import {
   CustomErrorCodesSection,
   TempUnschedSection,
   VertexServiceAccount,
+  AccountCommonFields,
   type PlatformFormContext,
+  type CommonAccountFields,
 } from '@sub2api/plugin-sdk'
 import { getSdk } from '../api/sdk'
 import GeminiOAuthTypeSelector from './GeminiOAuthTypeSelector.vue'
@@ -138,6 +142,21 @@ import { useGeminiForm } from './useGeminiForm'
 
 const props = defineProps<{ context: PlatformFormContext }>()
 const { t } = useI18n()
+
+const commonFields = ref<CommonAccountFields>({
+  proxy_id: null,
+  concurrency: 10,
+  load_factor: null,
+  priority: 1,
+  rate_multiplier: 1,
+  expires_at: null,
+  auto_pause_on_expired: true,
+  group_ids: [],
+  quota_enabled: false,
+  quota_limit: null,
+  quota_daily_limit: null,
+  quota_weekly_limit: null,
+})
 
 function notifyError(message: string) {
   getSdk().notify.error(message)
@@ -167,7 +186,7 @@ const {
   selectOAuthType, checkAIStudioCapability,
   validate, getPayload, reset, handleOAuthExchange,
   initFromAccount, getEditPayload
-} = useGeminiForm()
+} = useGeminiForm(commonFields)
 
 onMounted(() => {
   if (props.context.accountCategory === 'oauth-based') {

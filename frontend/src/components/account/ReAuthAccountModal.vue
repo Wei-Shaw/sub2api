@@ -33,7 +33,7 @@
       <!-- Platform form component (provides OAuth methods; visible for non-OAuth flows) -->
       <component
         v-show="showCredentialForm"
-        :is="platformFormComponent"
+        :is="resolvedFormComponent"
         ref="platformFormRef"
         :context="platformFormContext"
         v-bind="platformFormExtraProps"
@@ -123,13 +123,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, type Component } from 'vue'
+import { ref, shallowRef, computed, watch, nextTick, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
 import type { AddMethod, AuthInputMethod } from './forms/types'
 import { usePlatforms } from '@/composables/usePlatforms'
-import { resolvePlatformForm } from './forms/platformFormRegistry'
+import { resolveFormComponentAsync } from './forms/platformFormRegistry'
 import type {
   PlatformFormContext, PlatformFormExposed,
   OAuthFlowConfig, OAuthComposableState,
@@ -140,8 +140,6 @@ import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import OAuthAuthorizationFlow from './OAuthAuthorizationFlow.vue'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { platformGradientClass as platformGradientClassFn, platformLabel } from '@/utils/platformColors'
-
-const BUILTIN_PLATFORMS = new Set(['anthropic', 'openai', 'gemini', 'antigravity'])
 
 // ---------------------------------------------------------------------------
 // OAuthAuthorizationFlow exposed interface
@@ -176,8 +174,18 @@ const { getPlatformDecl } = usePlatforms()
 // Platform form component (delegates OAuth to the right platform)
 // ---------------------------------------------------------------------------
 const platformFormRef = ref<PlatformFormExposed | null>(null)
-const platformFormComponent = computed<Component | null>(() =>
-  props.account ? resolvePlatformForm(props.account.platform) : null
+const resolvedFormComponent = shallowRef<Component | null>(null)
+
+watch(
+  () => props.account?.platform,
+  async (platform) => {
+    if (!platform) {
+      resolvedFormComponent.value = null
+      return
+    }
+    resolvedFormComponent.value = await resolveFormComponentAsync(platform)
+  },
+  { immediate: true },
 )
 
 const platformFormContext = computed<PlatformFormContext>(() => ({
@@ -187,10 +195,9 @@ const platformFormContext = computed<PlatformFormContext>(() => ({
   mode: 'edit',
 }))
 
-const platformFormExtraProps = computed(() => {
-  if (!props.account || BUILTIN_PLATFORMS.has(props.account.platform)) return {}
-  return { platform: props.account.platform }
-})
+const platformFormExtraProps = computed(() => ({
+  platform: props.account?.platform || 'anthropic',
+}))
 
 // Refs
 const oauthFlowRef = ref<OAuthFlowExposed | null>(null)

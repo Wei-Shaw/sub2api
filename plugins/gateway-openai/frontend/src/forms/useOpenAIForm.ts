@@ -1,4 +1,4 @@
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, type Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useOpenAIOAuth } from '../composables/useOpenAIOAuth'
 import { openaiModels, buildModelMappingObject } from '../utils/openaiModels'
@@ -17,6 +17,7 @@ import type {
   ModelMapping,
   SdkAccount,
   SdkCreateAccountRequest,
+  CommonAccountFields,
 } from '@sub2api/plugin-sdk'
 import type { TempUnschedRuleForm } from '@sub2api/plugin-sdk'
 import {
@@ -29,7 +30,7 @@ type OpenAICompactMode = 'auto' | 'force_on' | 'force_off'
 type CodexImageGenBridgeMode = 'inherit' | 'enabled' | 'disabled'
 const OPENAI_MOBILE_RT_CLIENT_ID = 'app_LlGpXReQgckcGGUo2JrYvtJK'
 
-export function useOpenAIForm() {
+export function useOpenAIForm(commonFields: Ref<CommonAccountFields>) {
   const { t } = useI18n()
   const openaiOAuth = useOpenAIOAuth()
 
@@ -140,7 +141,7 @@ export function useOpenAIForm() {
   }
 
   function getPayload(category: string): PlatformFormPayload {
-    if (category === 'oauth-based') return { credentials: {}, extra: buildExtra(category), needsOAuthFlow: true }
+    if (category === 'oauth-based') return { credentials: {}, extra: buildExtra(category), common: commonFields.value, needsOAuthFlow: true }
     const credentials: Record<string, unknown> = {
       base_url: apiKeyBaseUrl.value.trim() || 'https://api.openai.com',
       api_key: apiKeyValue.value.trim(),
@@ -148,7 +149,7 @@ export function useOpenAIForm() {
     applyModelRestriction(credentials)
     if (poolModeEnabled.value) { credentials.pool_mode = true; credentials.pool_mode_retry_count = poolModeRetryCount.value }
     if (customErrorCodesEnabled.value) { credentials.custom_error_codes_enabled = true; credentials.custom_error_codes = [...selectedErrorCodes.value] }
-    return { credentials, extra: buildExtra(category) }
+    return { credentials, extra: buildExtra(category), common: commonFields.value }
   }
 
   async function handleOAuthExchange(code: string, oauthState?: string): Promise<SdkCreateAccountRequest | null> {
@@ -200,6 +201,12 @@ export function useOpenAIForm() {
     poolModeEnabled.value = false; poolModeRetryCount.value = 3
     customErrorCodesEnabled.value = false; selectedErrorCodes.value = []
     tempUnschedEnabled.value = false; tempUnschedRules.value = []
+    commonFields.value = {
+      proxy_id: null, concurrency: 10, load_factor: null, priority: 1,
+      rate_multiplier: 1, expires_at: null, auto_pause_on_expired: true,
+      group_ids: [], quota_enabled: false, quota_limit: null,
+      quota_daily_limit: null, quota_weekly_limit: null,
+    }
     openaiOAuth.resetState()
   }
 
@@ -214,7 +221,29 @@ export function useOpenAIForm() {
     openAICompactModeOptions, openAIWSModeOptions, isModelRestrictionDisabled,
     openaiOAuth, oauthConfig, getWSMode, setWSMode, wsModeHintKey,
     validate, getPayload, reset, handleOAuthExchange, handleRefreshToken, handleMobileRefreshToken,
-    initFromAccount: (account: SdkAccount) => { reset(); editInit(account, editRefs) },
-    getEditPayload: (account: SdkAccount) => editPayload(account, editRefs),
+    initFromAccount: (account: SdkAccount) => {
+      reset()
+      editInit(account, editRefs)
+      const a = account as Record<string, unknown>
+      commonFields.value = {
+        proxy_id: (a.proxy_id as number) ?? null,
+        concurrency: (a.concurrency as number) ?? 10,
+        load_factor: (a.load_factor as number) ?? null,
+        priority: (a.priority as number) ?? 1,
+        rate_multiplier: (a.rate_multiplier as number) ?? 1,
+        expires_at: (a.expires_at as number) ?? null,
+        auto_pause_on_expired: (a.auto_pause_on_expired as boolean) ?? true,
+        group_ids: (a.group_ids as number[]) ?? [],
+        quota_enabled: !!((a.extra as Record<string, unknown>)?.quota_limit || (a.extra as Record<string, unknown>)?.quota_daily_limit),
+        quota_limit: ((a.extra as Record<string, unknown>)?.quota_limit as number) ?? null,
+        quota_daily_limit: ((a.extra as Record<string, unknown>)?.quota_daily_limit as number) ?? null,
+        quota_weekly_limit: ((a.extra as Record<string, unknown>)?.quota_weekly_limit as number) ?? null,
+      }
+    },
+    getEditPayload: (account: SdkAccount) => {
+      const payload = editPayload(account, editRefs)
+      payload.common = commonFields.value
+      return payload
+    },
   }
 }

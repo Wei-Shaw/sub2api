@@ -102,18 +102,23 @@
         class="mt-3"
       />
     </div>
+
+    <AccountCommonFields v-model="commonFields" :context="context" />
   </div>
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   Icon,
   ToggleCard,
   TempUnschedSection,
+  AccountCommonFields,
   createStableObjectKeyResolver,
   type PlatformFormContext,
   type ModelMapping,
+  type CommonAccountFields,
 } from '@sub2api/plugin-sdk'
 import CheckboxWithTooltip from './CheckboxWithTooltip.vue'
 import { useAntigravityForm } from './useAntigravityForm'
@@ -121,6 +126,22 @@ import { isValidWildcardPattern } from './modelMapping'
 
 const props = defineProps<{ context: PlatformFormContext }>()
 const { t } = useI18n()
+
+const commonFields = ref<CommonAccountFields>({
+  proxy_id: null,
+  concurrency: 10,
+  load_factor: null,
+  priority: 1,
+  rate_multiplier: 1,
+  expires_at: null,
+  auto_pause_on_expired: true,
+  group_ids: [],
+  quota_enabled: false,
+  quota_limit: null,
+  quota_daily_limit: null,
+  quota_weekly_limit: null,
+})
+
 const {
   antigravityAccountType, upstreamBaseUrl, upstreamApiKey, editUpstreamApiKey,
   antigravityModelMappings, antigravityPresetMappings,
@@ -130,7 +151,7 @@ const {
   addModelMapping, removeModelMapping, addPresetMapping,
   tempUnschedEnabled, tempUnschedRules,
   initFromAccount, getEditPayload,
-} = useAntigravityForm()
+} = useAntigravityForm(commonFields)
 
 const getMappingKey = createStableObjectKeyResolver<ModelMapping>('ag-mapping')
 

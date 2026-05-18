@@ -67,6 +67,7 @@ export { default as CustomErrorCodesSection } from './components/account/CustomE
 export { default as TempUnschedSection } from './components/account/TempUnschedSection.vue'
 export { default as ModelRestrictionSection } from './components/account/ModelRestrictionSection.vue'
 export { default as VertexServiceAccount } from './components/account/VertexServiceAccount.vue'
+export { default as AccountCommonFields } from './components/account/AccountCommonFields.vue'
 
 // Account usage display components
 export { default as UsageProgressBar } from './components/account/UsageProgressBar.vue'

@@ -1,4 +1,4 @@
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, type Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   type PlatformFormPayload,
@@ -9,6 +9,7 @@ import {
   type SdkAccount,
   type SdkCreateAccountRequest,
   type TempUnschedRuleForm,
+  type CommonAccountFields,
   loadModelMappingFromCredentials,
   applyModelMappingToCredentials,
   loadPoolModeFromCredentials,
@@ -21,7 +22,7 @@ import {
 import { useGeminiOAuth } from '../composables/useGeminiOAuth'
 import { geminiModels, buildModelMappingObject } from './geminiModels'
 
-export function useGeminiForm() {
+export function useGeminiForm(commonFields: Ref<CommonAccountFields>) {
   const { t } = useI18n()
   const geminiOAuth = useGeminiOAuth()
 
@@ -107,12 +108,12 @@ export function useGeminiForm() {
 
   function getPayload(accountCategory: string): PlatformFormPayload {
     if (accountCategory === 'service_account') {
-      return buildServiceAccountPayload()
+      return { ...buildServiceAccountPayload(), common: commonFields.value }
     }
     if (accountCategory === 'oauth-based') {
-      return { credentials: {}, needsOAuthFlow: true }
+      return { credentials: {}, common: commonFields.value, needsOAuthFlow: true }
     }
-    return buildApiKeyPayload()
+    return { ...buildApiKeyPayload(), common: commonFields.value }
   }
 
   function buildServiceAccountPayload(): PlatformFormPayload {
@@ -179,6 +180,21 @@ export function useGeminiForm() {
     } else if (account.type === 'oauth') {
       loadModelMappingFromCredentials(credentials, modelRestrictionMode, allowedModels, modelMappings)
     }
+    const a = account as Record<string, unknown>
+    commonFields.value = {
+      proxy_id: (a.proxy_id as number) ?? null,
+      concurrency: (a.concurrency as number) ?? 10,
+      load_factor: (a.load_factor as number) ?? null,
+      priority: (a.priority as number) ?? 1,
+      rate_multiplier: (a.rate_multiplier as number) ?? 1,
+      expires_at: (a.expires_at as number) ?? null,
+      auto_pause_on_expired: (a.auto_pause_on_expired as boolean) ?? true,
+      group_ids: (a.group_ids as number[]) ?? [],
+      quota_enabled: !!((a.extra as Record<string, unknown>)?.quota_limit || (a.extra as Record<string, unknown>)?.quota_daily_limit),
+      quota_limit: ((a.extra as Record<string, unknown>)?.quota_limit as number) ?? null,
+      quota_daily_limit: ((a.extra as Record<string, unknown>)?.quota_daily_limit as number) ?? null,
+      quota_weekly_limit: ((a.extra as Record<string, unknown>)?.quota_weekly_limit as number) ?? null,
+    }
   }
 
   function initServiceAccountEdit(credentials: Record<string, unknown> | undefined): void {
@@ -201,15 +217,15 @@ export function useGeminiForm() {
     const newCreds: Record<string, unknown> = { ...currentCreds }
     applyTempUnschedToCredentials(newCreds, tempUnschedEnabled.value, tempUnschedRules.value)
     if (account.type === 'service_account') {
-      return buildServiceAccountEditPayload(newCreds)
+      return { ...buildServiceAccountEditPayload(newCreds), common: commonFields.value }
     }
     if (account.type === 'apikey') {
-      return buildApiKeyEditPayload(newCreds)
+      return { ...buildApiKeyEditPayload(newCreds), common: commonFields.value }
     }
     if (account.type === 'oauth') {
       applyModelMappingToCredentials(newCreds, modelRestrictionMode.value, allowedModels.value, modelMappings.value)
     }
-    return { credentials: newCreds }
+    return { credentials: newCreds, common: commonFields.value }
   }
 
   function buildServiceAccountEditPayload(newCreds: Record<string, unknown>): EditFormPayload {
@@ -256,6 +272,12 @@ export function useGeminiForm() {
     selectedErrorCodes.value = []
     tempUnschedEnabled.value = false
     tempUnschedRules.value = []
+    commonFields.value = {
+      proxy_id: null, concurrency: 10, load_factor: null, priority: 1,
+      rate_multiplier: 1, expires_at: null, auto_pause_on_expired: true,
+      group_ids: [], quota_enabled: false, quota_limit: null,
+      quota_daily_limit: null, quota_weekly_limit: null,
+    }
     geminiOAuth.resetState()
   }
 

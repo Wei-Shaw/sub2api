@@ -5,20 +5,17 @@
     width="wide"
     @close="handleClose"
   >
-    <!-- Step Indicator for OAuth accounts -->
-    <div v-if="isOAuthFlow" class="mb-6 flex items-center justify-center">
+    <!-- Step Indicator (shown from Step 2 onwards) -->
+    <div v-if="step > 1" class="mb-6 flex items-center justify-center">
       <div class="flex items-center space-x-4">
         <div class="flex items-center">
           <div
-            :class="[
-              'flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold',
-              step >= 1 ? 'bg-primary-500 text-white' : 'bg-gray-200 text-gray-500 dark:bg-dark-600'
-            ]"
+            class="flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold bg-primary-500 text-white"
           >
             1
           </div>
           <span class="ml-2 text-sm font-medium text-gray-700 dark:text-gray-300">{{
-            t('admin.accounts.oauth.authMethod')
+            t('admin.accounts.selectPlatform')
           }}</span>
         </div>
         <div class="h-0.5 w-8 bg-gray-300 dark:bg-dark-600" />
@@ -32,19 +29,30 @@
             2
           </div>
           <span class="ml-2 text-sm font-medium text-gray-700 dark:text-gray-300">{{
-            oauthStepTitle
+            t('admin.accounts.accountDetails')
           }}</span>
         </div>
+        <template v-if="isOAuthFlow">
+          <div class="h-0.5 w-8 bg-gray-300 dark:bg-dark-600" />
+          <div class="flex items-center">
+            <div
+              :class="[
+                'flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold',
+                step >= 3 ? 'bg-primary-500 text-white' : 'bg-gray-200 text-gray-500 dark:bg-dark-600'
+              ]"
+            >
+              3
+            </div>
+            <span class="ml-2 text-sm font-medium text-gray-700 dark:text-gray-300">{{
+              oauthStepTitle
+            }}</span>
+          </div>
+        </template>
       </div>
     </div>
 
-    <!-- Step 1: Form -->
-    <form
-      v-if="step === 1"
-      id="create-account-form"
-      @submit.prevent="handleSubmit"
-      class="space-y-5"
-    >
+    <!-- Step 1: Platform & Type Selection -->
+    <div v-if="step === 1" class="space-y-5">
       <!-- Name -->
       <div>
         <label class="input-label">{{ t('admin.accounts.accountName') }}</label>
@@ -137,119 +145,45 @@
           </button>
         </div>
       </div>
+    </div>
 
-      <!-- Dynamic Platform Form Body -->
+    <!-- Step 2: Plugin Form -->
+    <div v-else-if="step === 2" class="space-y-5">
+      <!-- Platform/type badge (read-only) + back link -->
+      <div class="flex items-center justify-between rounded-lg bg-gray-50 px-4 py-2.5 dark:bg-dark-700">
+        <div class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+          <PlatformIcon
+            :platform="form.platform"
+            :icon-svg="currentPlatformDecl?.icon_svg"
+            size="sm"
+          />
+          <span>{{ currentPlatformDecl?.display_name }}</span>
+          <span class="text-gray-400">&mdash;</span>
+          <span>{{ selectedAccountTypeDecl?.display_name }}</span>
+        </div>
+        <button
+          type="button"
+          class="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+          @click="goBackToStep1"
+        >
+          {{ t('common.change') }}
+        </button>
+      </div>
+      <!-- Plugin form -->
       <component
-        :is="platformFormComponent"
+        v-if="resolvedFormComponent"
+        :is="resolvedFormComponent"
         ref="platformFormRef"
         :context="platformFormContext"
         v-bind="platformFormExtraProps"
       />
+      <div v-else class="text-center text-gray-500 py-8">
+        {{ t('admin.accounts.loadingForm') }}
+      </div>
+    </div>
 
-      <!-- Quota Control (for apikey/bedrock types) -->
-      <div
-        v-if="form.type === 'apikey' || form.type === 'bedrock'"
-        class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
-      >
-        <div class="mb-3">
-          <h3 class="input-label mb-0 text-base font-semibold">{{ t('admin.accounts.quotaControl.title') }}</h3>
-          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            {{ currentAccountTypeMeta.supports_advanced_quota_control ? t('admin.accounts.quotaControl.hint') : t('admin.accounts.quotaLimitHint') }}
-          </p>
-        </div>
-        <QuotaLimitCard
-          :totalLimit="editQuotaLimit"
-          :dailyLimit="editQuotaDailyLimit"
-          :weeklyLimit="editQuotaWeeklyLimit"
-          :quotaNotifyGlobalEnabled="quotaNotifyGlobalEnabled"
-          :quotaNotifyDailyEnabled="quotaNotifyState.daily.enabled"
-          :quotaNotifyDailyThreshold="quotaNotifyState.daily.threshold"
-          :quotaNotifyDailyThresholdType="quotaNotifyState.daily.thresholdType"
-          :quotaNotifyWeeklyEnabled="quotaNotifyState.weekly.enabled"
-          :quotaNotifyWeeklyThreshold="quotaNotifyState.weekly.threshold"
-          :quotaNotifyWeeklyThresholdType="quotaNotifyState.weekly.thresholdType"
-          :quotaNotifyTotalEnabled="quotaNotifyState.total.enabled"
-          :quotaNotifyTotalThreshold="quotaNotifyState.total.threshold"
-          :quotaNotifyTotalThresholdType="quotaNotifyState.total.thresholdType"
-          :dailyResetMode="editDailyResetMode"
-          :dailyResetHour="editDailyResetHour"
-          :weeklyResetMode="editWeeklyResetMode"
-          :weeklyResetDay="editWeeklyResetDay"
-          :weeklyResetHour="editWeeklyResetHour"
-          :resetTimezone="editResetTimezone"
-          @update:totalLimit="editQuotaLimit = $event"
-          @update:dailyLimit="editQuotaDailyLimit = $event"
-          @update:weeklyLimit="editQuotaWeeklyLimit = $event"
-          @update:quotaNotifyDailyEnabled="quotaNotifyState.daily.enabled = $event"
-          @update:quotaNotifyDailyThreshold="quotaNotifyState.daily.threshold = $event"
-          @update:quotaNotifyDailyThresholdType="quotaNotifyState.daily.thresholdType = $event"
-          @update:quotaNotifyWeeklyEnabled="quotaNotifyState.weekly.enabled = $event"
-          @update:quotaNotifyWeeklyThreshold="quotaNotifyState.weekly.threshold = $event"
-          @update:quotaNotifyWeeklyThresholdType="quotaNotifyState.weekly.thresholdType = $event"
-          @update:quotaNotifyTotalEnabled="quotaNotifyState.total.enabled = $event"
-          @update:quotaNotifyTotalThreshold="quotaNotifyState.total.threshold = $event"
-          @update:quotaNotifyTotalThresholdType="quotaNotifyState.total.thresholdType = $event"
-          @update:dailyResetMode="editDailyResetMode = $event"
-          @update:dailyResetHour="editDailyResetHour = $event"
-          @update:weeklyResetMode="editWeeklyResetMode = $event"
-          @update:weeklyResetDay="editWeeklyResetDay = $event"
-          @update:weeklyResetHour="editWeeklyResetHour = $event"
-          @update:resetTimezone="editResetTimezone = $event"
-        />
-      </div>
-
-      <!-- Common fields -->
-      <div>
-        <label class="input-label">{{ t('admin.accounts.proxy') }}</label>
-        <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
-      </div>
-      <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <div>
-          <label class="input-label">{{ t('admin.accounts.concurrency') }}</label>
-          <input v-model.number="form.concurrency" type="number" min="1" class="input"
-            @input="form.concurrency = Math.max(1, form.concurrency || 1)" />
-        </div>
-        <div>
-          <label class="input-label">{{ t('admin.accounts.loadFactor') }}</label>
-          <input v-model.number="form.load_factor" type="number" min="1"
-            class="input" :placeholder="String(form.concurrency || 1)"
-            @input="form.load_factor = (form.load_factor && form.load_factor >= 1) ? form.load_factor : null" />
-          <p class="input-hint">{{ t('admin.accounts.loadFactorHint') }}</p>
-        </div>
-        <div>
-          <label class="input-label">{{ t('admin.accounts.priority') }}</label>
-          <input v-model.number="form.priority" type="number" min="1" class="input" data-tour="account-form-priority" />
-          <p class="input-hint">{{ t('admin.accounts.priorityHint') }}</p>
-        </div>
-        <div>
-          <label class="input-label">{{ t('admin.accounts.billingRateMultiplier') }}</label>
-          <input v-model.number="form.rate_multiplier" type="number" min="0" step="0.001" class="input" />
-          <p class="input-hint">{{ t('admin.accounts.billingRateMultiplierHint') }}</p>
-        </div>
-      </div>
-      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
-        <label class="input-label">{{ t('admin.accounts.expiresAt') }}</label>
-        <input v-model="expiresAtInput" type="datetime-local" class="input" />
-        <p class="input-hint">{{ t('admin.accounts.expiresAtHint') }}</p>
-      </div>
-      <div>
-        <div class="flex items-center justify-between">
-          <div>
-            <label class="input-label mb-0">{{ t('admin.accounts.autoPauseOnExpired') }}</label>
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.autoPauseOnExpiredDesc') }}</p>
-          </div>
-          <button type="button" @click="autoPauseOnExpired = !autoPauseOnExpired"
-            :class="['relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2', autoPauseOnExpired ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600']">
-            <span :class="['pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out', autoPauseOnExpired ? 'translate-x-5' : 'translate-x-0']" />
-          </button>
-        </div>
-      </div>
-      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
-        <GroupSelector v-if="!authStore.isSimpleMode" v-model="form.group_ids" :groups="groups" :platform="form.platform" data-tour="account-form-groups" />
-      </div>
-    </form>
-    <!-- Step 2: OAuth Authorization -->
-    <div v-else class="space-y-5">
+    <!-- Step 3: OAuth Authorization -->
+    <div v-else-if="step === 3" class="space-y-5">
       <OAuthAuthorizationFlow
         ref="oauthFlowRef"
         :add-method="oauthAddMethod"
@@ -282,9 +216,32 @@
 
     <!-- Footer -->
     <template #footer>
+      <!-- Step 1: Cancel + Next -->
       <div v-if="step === 1" class="flex justify-end gap-3">
         <button @click="handleClose" type="button" class="btn btn-secondary">{{ t('common.cancel') }}</button>
-        <button type="submit" form="create-account-form" :disabled="submitting" class="btn btn-primary" data-tour="account-form-submit">
+        <button
+          type="button"
+          :disabled="formLoading || !selectedAccountTypeId"
+          class="btn btn-primary"
+          data-tour="account-form-submit"
+          @click="goToStep2"
+        >
+          <svg v-if="formLoading" class="-ml-1 mr-2 h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+          </svg>
+          {{ t('common.next') }}
+        </button>
+      </div>
+      <!-- Step 2: Back + Create/Next -->
+      <div v-else-if="step === 2" class="flex justify-between gap-3">
+        <button type="button" class="btn btn-secondary" @click="goBackToStep1">{{ t('common.back') }}</button>
+        <button
+          type="button"
+          :disabled="submitting"
+          class="btn btn-primary"
+          @click="handleSubmit"
+        >
           <svg v-if="submitting" class="-ml-1 mr-2 h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
@@ -292,8 +249,9 @@
           {{ isOAuthFlow ? t('common.next') : submitting ? t('admin.accounts.creating') : t('common.create') }}
         </button>
       </div>
+      <!-- Step 3: Back + Exchange code -->
       <div v-else class="flex justify-between gap-3">
-        <button type="button" class="btn btn-secondary" @click="goBackToBasicInfo">{{ t('common.back') }}</button>
+        <button type="button" class="btn btn-secondary" @click="goBackToStep2">{{ t('common.back') }}</button>
         <button v-if="isManualInputMethod" type="button" :disabled="!canExchangeCode" class="btn btn-primary" @click="handleExchangeCode">
           <svg v-if="oauthState.loading" class="-ml-1 mr-2 h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
@@ -318,7 +276,7 @@
   />
 </template>
 <script setup lang="ts">
-import { ref, reactive, computed, watch, onMounted, type Component } from 'vue'
+import { ref, reactive, computed, watch, shallowRef, onMounted, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
@@ -329,23 +287,16 @@ import type {
 } from '@/types'
 import { BaseDialog, ConfirmDialog } from '@sub2api/plugin-sdk'
 import Icon from '@/components/icons/Icon.vue'
-import ProxySelector from '@/components/common/ProxySelector.vue'
-import GroupSelector from '@/components/common/GroupSelector.vue'
 import OAuthAuthorizationFlow from './OAuthAuthorizationFlow.vue'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
-import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
-import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import { usePlatforms } from '@/composables/usePlatforms'
-import { resolvePlatformForm } from './forms/platformFormRegistry'
+import { resolveFormComponentAsync } from './forms/platformFormRegistry'
 import type {
   PlatformFormContext, PlatformFormExposed,
   OAuthFlowConfig, OAuthComposableState,
   AddMethod, AuthInputMethod,
 } from './forms/types'
-import { formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { extractApiErrorMessage } from '@/utils/apiError'
-import { getAccountTypeMeta } from '@/utils/platformFrontendMeta'
-import type { QuotaResetMode } from '@/constants/account'
 
 // ---------------------------------------------------------------------------
 // OAuthAuthorizationFlow exposed interface
@@ -402,31 +353,15 @@ const allPlatforms = computed(() => {
   return fromApi.length > 0 ? fromApi : BUILTIN_PLATFORM_FALLBACKS
 })
 const currentPlatformDecl = computed(() => getPlatformDecl(form.platform))
+const selectedAccountTypeDecl = computed(() =>
+  getAccountTypeDecl(form.platform, selectedAccountTypeId.value))
 
 // ---------------------------------------------------------------------------
 // Core state
 // ---------------------------------------------------------------------------
 const step = ref(1)
 const submitting = ref(false)
-const autoPauseOnExpired = ref(true)
-
-// Quota limit refs (for apikey/bedrock accounts)
-const editQuotaLimit = ref<number | null>(null)
-const editQuotaDailyLimit = ref<number | null>(null)
-const editQuotaWeeklyLimit = ref<number | null>(null)
-const editDailyResetMode = ref<QuotaResetMode | null>(null)
-const editDailyResetHour = ref<number | null>(null)
-const editWeeklyResetMode = ref<QuotaResetMode | null>(null)
-const editWeeklyResetDay = ref<number | null>(null)
-const editWeeklyResetHour = ref<number | null>(null)
-const editResetTimezone = ref<string | null>(null)
-const {
-  globalEnabled: quotaNotifyGlobalEnabled,
-  state: quotaNotifyState,
-  loadGlobalState: loadQuotaNotifyGlobal,
-  writeToExtra: writeQuotaNotifyToExtra,
-} = useQuotaNotifyState()
-loadQuotaNotifyGlobal()
+const formLoading = ref(false)
 
 const accountCategory = ref<'oauth-based' | 'apikey' | 'bedrock' | 'service_account'>('oauth-based')
 const addMethod = ref<AddMethod>('oauth')
@@ -438,20 +373,13 @@ const form = reactive({
   type: 'oauth' as AccountType,
   credentials: {} as Record<string, unknown>,
   proxy_id: null as number | null,
-  concurrency: 10,
-  load_factor: null as number | null,
-  priority: 1,
-  rate_multiplier: 1,
   group_ids: [] as number[],
-  expires_at: null as number | null,
 })
 
 // ---------------------------------------------------------------------------
-// Account type → category mapping (data-driven, no platform name checks)
+// Account type -> category mapping (data-driven, no platform name checks)
 // ---------------------------------------------------------------------------
-/** Well-known type IDs that map to the 'oauth-based' category. */
 const OAUTH_TYPE_IDS = new Set(['oauth', 'setup-token'])
-/** Well-known type IDs that have their own dedicated category name. */
 const DEDICATED_CATEGORY_IDS = new Set(['bedrock', 'service_account'])
 
 function typeIdToCategory(typeId: string): 'oauth-based' | 'apikey' | 'bedrock' | 'service_account' {
@@ -464,42 +392,77 @@ function typeIdToCategory(typeId: string): 'oauth-based' | 'apikey' | 'bedrock' 
 // Account type selection
 // ---------------------------------------------------------------------------
 const selectedAccountTypeId = ref<string>('oauth')
-const currentAccountTypeMeta = computed(() =>
-  getAccountTypeMeta(getAccountTypeDecl(form.platform, selectedAccountTypeId.value))
-)
 
 // ---------------------------------------------------------------------------
-// Dynamic platform form component
+// Dynamic platform form component (resolved async at Step 2 transition)
 // ---------------------------------------------------------------------------
 const platformFormRef = ref<PlatformFormExposed | null>(null)
-const platformFormComponent = computed<Component>(() => resolvePlatformForm(form.platform))
+const resolvedFormComponent = shallowRef<Component | null>(null)
 
 const platformFormContext = computed<PlatformFormContext>(() => ({
   accountCategory: accountCategory.value,
   accountTypeId: selectedAccountTypeId.value,
   proxyId: form.proxy_id,
+  mode: 'create',
+  hostData: {
+    proxies: props.proxies,
+    groups: props.groups,
+    isSimpleMode: authStore.isSimpleMode,
+    quotaNotifyGlobalEnabled: false,
+  },
 }))
 
-const platformFormExtraProps = computed(() => {
-  if (!BUILTIN_PLATFORMS.has(form.platform)) return { platform: form.platform }
-  return {}
-})
+const platformFormExtraProps = computed(() => ({ platform: form.platform }))
 
 function onAccountTypeSelect(at: { type: string }) {
   const tp = at.type
   selectedAccountTypeId.value = tp
   const category = typeIdToCategory(tp)
   accountCategory.value = category
-  // For OAuth-based types with multiple sub-types (e.g. oauth vs setup-token),
-  // update addMethod so the form component knows which OAuth variant to use.
   if (category === 'oauth-based') {
     addMethod.value = tp as AddMethod
   }
-  // For non-builtin platforms, directly set form.type
   if (!BUILTIN_PLATFORMS.has(form.platform)) {
     form.type = tp
   }
 }
+
+// ---------------------------------------------------------------------------
+// Step navigation
+// ---------------------------------------------------------------------------
+async function goToStep2() {
+  if (!form.name.trim()) {
+    appStore.showError(t('admin.accounts.pleaseEnterAccountName'))
+    return
+  }
+  if (!selectedAccountTypeId.value) {
+    appStore.showError(t('admin.accounts.pleaseSelectType'))
+    return
+  }
+  formLoading.value = true
+  try {
+    resolvedFormComponent.value = await resolveFormComponentAsync(form.platform)
+    if (!resolvedFormComponent.value) {
+      appStore.showError(t('admin.accounts.failedToLoadForm'))
+      return
+    }
+    step.value = 2
+  } finally {
+    formLoading.value = false
+  }
+}
+
+function goBackToStep1() {
+  platformFormRef.value?.reset?.()
+  step.value = 1
+}
+
+function goBackToStep2() {
+  platformFormRef.value?.resetOAuth?.()
+  oauthFlowRef.value?.reset()
+  step.value = 2
+}
+
 // ---------------------------------------------------------------------------
 // OAuth delegation
 // ---------------------------------------------------------------------------
@@ -522,10 +485,6 @@ const isManualInputMethod = computed(() => oauthFlowRef.value?.inputMethod === '
 const canExchangeCode = computed(() => {
   const code = oauthFlowRef.value?.authCode || ''
   return code.trim().length > 0 && !!oauthState.value.sessionId && !oauthState.value.loading
-})
-const expiresAtInput = computed({
-  get: () => formatDateTimeLocalInput(form.expires_at),
-  set: (value: string) => { form.expires_at = parseDateTimeLocalInput(value) },
 })
 
 // ---------------------------------------------------------------------------
@@ -602,6 +561,7 @@ async function ensureAntigravityMixedChannelConfirmed(onConfirm: () => Promise<v
     return false
   }
 }
+
 // ---------------------------------------------------------------------------
 // Submit / create account
 // ---------------------------------------------------------------------------
@@ -633,34 +593,6 @@ async function doCreateAccount(payload: CreateAccountRequest) {
   await submitCreateAccount(payload)
 }
 
-function buildCommonFields(): Partial<CreateAccountRequest> {
-  return {
-    name: form.name,
-    notes: form.notes || undefined,
-    proxy_id: form.proxy_id || undefined,
-    concurrency: form.concurrency || 1,
-    load_factor: form.load_factor ?? undefined,
-    priority: form.priority || 1,
-    rate_multiplier: form.rate_multiplier,
-    group_ids: form.group_ids,
-    expires_at: form.expires_at,
-    auto_pause_on_expired: autoPauseOnExpired.value,
-  }
-}
-
-function mergeQuotaExtra(extra: Record<string, unknown> | undefined, accountType: string): Record<string, unknown> | undefined {
-  if (accountType !== 'apikey' && accountType !== 'bedrock') return extra
-  const quotaExtra: Record<string, unknown> = { ...(extra || {}) }
-  if (editQuotaLimit.value != null && editQuotaLimit.value > 0) quotaExtra.quota_limit = editQuotaLimit.value
-  if (editQuotaDailyLimit.value != null && editQuotaDailyLimit.value > 0) quotaExtra.quota_daily_limit = editQuotaDailyLimit.value
-  if (editQuotaWeeklyLimit.value != null && editQuotaWeeklyLimit.value > 0) quotaExtra.quota_weekly_limit = editQuotaWeeklyLimit.value
-  if (editDailyResetMode.value === 'fixed') { quotaExtra.quota_daily_reset_mode = 'fixed'; quotaExtra.quota_daily_reset_hour = editDailyResetHour.value ?? 0 }
-  if (editWeeklyResetMode.value === 'fixed') { quotaExtra.quota_weekly_reset_mode = 'fixed'; quotaExtra.quota_weekly_reset_day = editWeeklyResetDay.value ?? 1; quotaExtra.quota_weekly_reset_hour = editWeeklyResetHour.value ?? 0 }
-  if (editDailyResetMode.value === 'fixed' || editWeeklyResetMode.value === 'fixed') quotaExtra.quota_reset_timezone = editResetTimezone.value || 'UTC'
-  writeQuotaNotifyToExtra(quotaExtra, 'create')
-  return Object.keys(quotaExtra).length > 0 ? quotaExtra : undefined
-}
-
 async function handleSubmit() {
   if (!form.name.trim()) { appStore.showError(t('admin.accounts.pleaseEnterAccountName')); return }
   const validation = platformFormRef.value?.validate()
@@ -668,18 +600,29 @@ async function handleSubmit() {
   const payload = platformFormRef.value?.getPayload()
   if (!payload) return
   if (payload.needsOAuthFlow) {
-    const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => { step.value = 2 })
+    const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => { step.value = 3 })
     if (!canContinue) return
-    step.value = 2
+    step.value = 3
     return
   }
   const resolvedType = payload.typeOverride || form.type
   const request: CreateAccountRequest = {
-    ...buildCommonFields(),
+    name: form.name.trim(),
+    notes: form.notes.trim() || undefined,
     platform: form.platform,
     type: resolvedType,
     credentials: payload.credentials,
-    extra: mergeQuotaExtra(payload.extra, resolvedType),
+    extra: payload.extra,
+    ...(payload.common ? {
+      proxy_id: payload.common.proxy_id,
+      concurrency: payload.common.concurrency,
+      load_factor: payload.common.load_factor,
+      priority: payload.common.priority,
+      rate_multiplier: payload.common.rate_multiplier,
+      expires_at: payload.common.expires_at,
+      auto_pause_on_expired: payload.common.auto_pause_on_expired,
+      group_ids: payload.common.group_ids,
+    } : {}),
   } as CreateAccountRequest
   await doCreateAccount(request)
 }
@@ -723,20 +666,20 @@ async function handleCodexSessionImport(content: string) {
   if (!trimmed) return
 
   try {
-    const common = buildCommonFields()
     const payload = platformFormRef.value?.getPayload()
+    const common = payload?.common
     const result = await adminAPI.accounts.importCodexSession({
       content: trimmed,
-      name: common.name,
-      notes: common.notes ?? undefined,
-      proxy_id: common.proxy_id,
-      concurrency: common.concurrency,
-      load_factor: common.load_factor ?? undefined,
-      priority: common.priority,
-      rate_multiplier: common.rate_multiplier,
-      group_ids: common.group_ids,
-      expires_at: common.expires_at,
-      auto_pause_on_expired: common.auto_pause_on_expired,
+      name: form.name,
+      notes: form.notes || undefined,
+      proxy_id: common?.proxy_id ?? undefined,
+      concurrency: common?.concurrency,
+      load_factor: common?.load_factor ?? undefined,
+      priority: common?.priority,
+      rate_multiplier: common?.rate_multiplier,
+      group_ids: common?.group_ids,
+      expires_at: common?.expires_at,
+      auto_pause_on_expired: common?.auto_pause_on_expired,
       extra: payload?.extra,
       update_existing: true,
     })
@@ -759,19 +702,22 @@ async function handleCodexSessionImport(content: string) {
 
 async function finalizeOAuthResult(result: CreateAccountRequest | CreateAccountRequest[]) {
   const requests = Array.isArray(result) ? result : [result]
-  const common = buildCommonFields()
+  const payload = platformFormRef.value?.getPayload()
+  const common = payload?.common
   for (let i = 0; i < requests.length; i++) {
     const req = { ...requests[i] }
     const baseName = req.name || form.name
     req.name = requests.length > 1 ? `${baseName} #${i + 1}` : baseName
-    req.proxy_id = common.proxy_id
-    req.concurrency = common.concurrency
-    req.load_factor = common.load_factor
-    req.priority = common.priority
-    req.rate_multiplier = common.rate_multiplier
-    req.group_ids = common.group_ids
-    req.expires_at = common.expires_at
-    req.auto_pause_on_expired = common.auto_pause_on_expired
+    if (common) {
+      req.proxy_id = common.proxy_id
+      req.concurrency = common.concurrency
+      req.load_factor = common.load_factor
+      req.priority = common.priority
+      req.rate_multiplier = common.rate_multiplier
+      req.group_ids = common.group_ids
+      req.expires_at = common.expires_at
+      req.auto_pause_on_expired = common.auto_pause_on_expired
+    }
     await submitCreateAccount(req)
   }
 }
@@ -789,26 +735,21 @@ watch(() => props.show, (newVal) => {
 watch(
   [accountCategory, addMethod, () => selectedAccountTypeId.value, () => form.platform],
   ([category, method]) => {
-    // Non-builtin platforms: form.type is set directly in onAccountTypeSelect
     if (!BUILTIN_PLATFORMS.has(form.platform)) return
-    // Dedicated categories (bedrock, service_account) use category name as type
     if (DEDICATED_CATEGORY_IDS.has(category)) {
       form.type = category as AccountType
       return
     }
-    // OAuth-based: use the specific add method (oauth / setup-token)
     if (category === 'oauth-based') {
       form.type = method as AccountType
       return
     }
-    // Fallback: apikey
     form.type = 'apikey'
   },
   { immediate: true },
 )
 
 watch(() => form.platform, (newPlatform) => {
-  // When switching platforms, reset to the first available account type from declaration
   const decl = getPlatformDecl(newPlatform)
   if (decl?.account_types.length) {
     const firstType = decl.account_types[0]
@@ -819,7 +760,6 @@ watch(() => form.platform, (newPlatform) => {
       form.type = firstType.type
     }
   } else {
-    // Fallback when no declaration is available (startup race)
     accountCategory.value = 'oauth-based'
     addMethod.value = 'oauth'
     selectedAccountTypeId.value = 'oauth'
@@ -827,7 +767,7 @@ watch(() => form.platform, (newPlatform) => {
 })
 
 // ---------------------------------------------------------------------------
-// Reset / Close / Navigation
+// Reset / Close
 // ---------------------------------------------------------------------------
 function resetForm() {
   step.value = 1
@@ -837,26 +777,12 @@ function resetForm() {
   form.type = 'oauth'
   form.credentials = {}
   form.proxy_id = null
-  form.concurrency = 10
-  form.load_factor = null
-  form.priority = 1
-  form.rate_multiplier = 1
   form.group_ids = []
-  form.expires_at = null
   accountCategory.value = 'oauth-based'
   addMethod.value = 'oauth'
   selectedAccountTypeId.value = 'oauth'
-  autoPauseOnExpired.value = true
-  editQuotaLimit.value = null
-  editQuotaDailyLimit.value = null
-  editQuotaWeeklyLimit.value = null
-  editDailyResetMode.value = null
-  editDailyResetHour.value = null
-  editWeeklyResetMode.value = null
-  editWeeklyResetDay.value = null
-  editWeeklyResetHour.value = null
-  editResetTimezone.value = null
   antigravityMixedChannelConfirmed.value = false
+  resolvedFormComponent.value = null
   clearMixedChannelDialog()
   platformFormRef.value?.reset?.()
   platformFormRef.value?.resetOAuth?.()
@@ -867,11 +793,5 @@ function handleClose() {
   antigravityMixedChannelConfirmed.value = false
   clearMixedChannelDialog()
   emit('close')
-}
-
-function goBackToBasicInfo() {
-  step.value = 1
-  platformFormRef.value?.resetOAuth?.()
-  oauthFlowRef.value?.reset()
 }
 </script>

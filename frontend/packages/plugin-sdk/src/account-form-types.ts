@@ -53,6 +53,24 @@ export interface ModelMapping {
   to: string
 }
 
+/** Proxy data passed by the host for ProxySelector rendering. */
+export interface SdkProxy {
+  id: number
+  name: string
+  protocol?: string
+  host?: string
+  port?: number
+}
+
+/** Group data passed by the host for GroupSelector rendering. */
+export interface SdkGroup {
+  id: number
+  name: string
+  platform?: string
+  rate_multiplier?: number
+  account_count?: number
+}
+
 export interface PlatformFormContext {
   /** 'oauth-based' | 'apikey' | 'bedrock' | 'service_account' */
   accountCategory: string
@@ -60,6 +78,29 @@ export interface PlatformFormContext {
   proxyId: number | null
   /** When 'edit', forms pre-populate from account data and hide OAuth flows */
   mode?: 'create' | 'edit'
+  /** Host-provided data for common field rendering */
+  hostData?: {
+    proxies: SdkProxy[]
+    groups: SdkGroup[]
+    isSimpleMode: boolean
+    quotaNotifyGlobalEnabled: boolean
+  }
+}
+
+/** Common operational fields managed by AccountCommonFields SDK component. */
+export interface CommonAccountFields {
+  proxy_id: number | null
+  concurrency: number
+  load_factor: number | null
+  priority: number
+  rate_multiplier: number
+  expires_at: number | null
+  auto_pause_on_expired: boolean
+  group_ids: number[]
+  quota_enabled: boolean
+  quota_limit: number | null
+  quota_daily_limit: number | null
+  quota_weekly_limit: number | null
 }
 
 export interface PlatformFormPayload {
@@ -67,6 +108,7 @@ export interface PlatformFormPayload {
   extra?: Record<string, unknown>
   typeOverride?: string
   needsOAuthFlow?: boolean
+  common?: CommonAccountFields
 }
 
 /**
@@ -76,6 +118,7 @@ export interface PlatformFormPayload {
 export interface EditFormPayload {
   credentials?: Record<string, unknown>
   extra?: Record<string, unknown>
+  common?: Partial<CommonAccountFields>
 }
 
 export interface PlatformFormValidation {

@@ -155,17 +155,20 @@
     <TempUnschedSection :enabled="tempUnschedEnabled" :rules="tempUnschedRules"
       @update:enabled="tempUnschedEnabled = $event"
       @update:rules="tempUnschedRules = $event" />
+
+    <!-- Common operational fields (proxy, concurrency, quota, groups, expiry) -->
+    <AccountCommonFields v-model="commonFields" :context="context" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   ModelRestrictionSection, PoolModeSection, CustomErrorCodesSection,
-  TempUnschedSection, ToggleCard, VertexServiceAccount,
+  TempUnschedSection, ToggleCard, VertexServiceAccount, AccountCommonFields,
 } from '@sub2api/plugin-sdk'
-import type { PlatformFormContext } from '@sub2api/plugin-sdk'
+import type { PlatformFormContext, CommonAccountFields, SdkAccount } from '@sub2api/plugin-sdk'
 import { getSdk } from '../api/sdk'
 import BedrockCredentials from '../components/BedrockCredentials.vue'
 import OAuthMethodSelector from '../components/OAuthMethodSelector.vue'
@@ -202,6 +205,21 @@ const {
   initFromAccount, getEditPayload,
 } = form
 
+const commonFields = ref<CommonAccountFields>({
+  proxy_id: null,
+  concurrency: 10,
+  load_factor: null,
+  priority: 1,
+  rate_multiplier: 1,
+  expires_at: null,
+  auto_pause_on_expired: true,
+  group_ids: [],
+  quota_enabled: false,
+  quota_limit: null,
+  quota_daily_limit: null,
+  quota_weekly_limit: null,
+})
+
 onMounted(() => {
   loadTlsProfiles()
   loadWebSearchEnabled()
@@ -209,11 +227,44 @@ onMounted(() => {
 
 defineExpose({
   validate: () => validate(props.context.accountCategory, props.context.mode),
-  getPayload: () => getPayload(props.context.accountCategory),
+  getPayload: () => {
+    const payload = getPayload(props.context.accountCategory)
+    payload.common = commonFields.value
+    return payload
+  },
   isOAuthFlow: () => isOAuthFlow(props.context.accountCategory),
-  reset: () => reset(),
-  initFromAccount,
-  getEditPayload,
+  reset: () => {
+    reset()
+    commonFields.value = {
+      proxy_id: null, concurrency: 10, load_factor: null, priority: 1,
+      rate_multiplier: 1, expires_at: null, auto_pause_on_expired: true,
+      group_ids: [], quota_enabled: false, quota_limit: null,
+      quota_daily_limit: null, quota_weekly_limit: null,
+    }
+  },
+  initFromAccount: (account: Record<string, unknown>) => {
+    initFromAccount(account as SdkAccount)
+    const extra = (account.extra ?? {}) as Record<string, unknown>
+    commonFields.value = {
+      proxy_id: (account.proxy_id as number | null) ?? null,
+      concurrency: (account.concurrency as number) ?? 10,
+      load_factor: (account.load_factor as number | null) ?? null,
+      priority: (account.priority as number) ?? 1,
+      rate_multiplier: (account.rate_multiplier as number) ?? 1,
+      expires_at: (account.expires_at as number | null) ?? null,
+      auto_pause_on_expired: (account.auto_pause_on_expired as boolean) ?? true,
+      group_ids: (account.group_ids as number[]) ?? [],
+      quota_enabled: !!(extra.quota_limit || extra.quota_daily_limit || extra.quota_weekly_limit),
+      quota_limit: (extra.quota_limit as number) ?? null,
+      quota_daily_limit: (extra.quota_daily_limit as number) ?? null,
+      quota_weekly_limit: (extra.quota_weekly_limit as number) ?? null,
+    }
+  },
+  getEditPayload: (account: SdkAccount) => {
+    const payload = getEditPayload(account)
+    payload.common = commonFields.value
+    return payload
+  },
   oauthConfig,
   getOAuthState: () => ({
     authUrl: oauth.authUrl.value,

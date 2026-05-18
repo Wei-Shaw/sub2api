@@ -4,11 +4,12 @@
  * Migrated from host useAntigravityForm.ts. Host-internal imports
  * replaced with plugin-sdk helpers or plugin-local modules.
  */
-import { ref, computed } from 'vue'
+import { ref, computed, type Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type {
   ModelMapping, PlatformFormPayload, PlatformFormValidation,
   OAuthFlowConfig, SdkAccount, SdkCreateAccountRequest, TempUnschedRuleForm,
+  CommonAccountFields,
 } from '@sub2api/plugin-sdk'
 import { applyInterceptWarmup } from '@sub2api/plugin-sdk'
 import { useAntigravityOAuth } from './useAntigravityOAuth'
@@ -18,7 +19,7 @@ import { initFromAccount as doInit, getEditPayload as doEditPayload } from './ed
 
 export { isValidWildcardPattern }
 
-export function useAntigravityForm() {
+export function useAntigravityForm(commonFields: Ref<CommonAccountFields>) {
   const { t } = useI18n()
   const antigravityOAuth = useAntigravityOAuth()
 
@@ -87,9 +88,9 @@ export function useAntigravityForm() {
       const mapping = buildMapping()
       if (mapping) credentials.model_mapping = mapping
       applyInterceptWarmup(credentials, interceptWarmupRequests.value, 'create')
-      return { credentials, extra: buildExtra(), typeOverride: 'apikey' }
+      return { credentials, extra: buildExtra(), common: commonFields.value, typeOverride: 'apikey' }
     }
-    return { credentials: {}, extra: buildExtra(), needsOAuthFlow: true }
+    return { credentials: {}, extra: buildExtra(), common: commonFields.value, needsOAuthFlow: true }
   }
 
   function applyToCredentials(credentials: Record<string, unknown>) {
@@ -135,9 +136,28 @@ export function useAntigravityForm() {
     editModeActive = true
     reset()
     doInit(account, formRefs)
+    const a = account as Record<string, unknown>
+    commonFields.value = {
+      proxy_id: (a.proxy_id as number) ?? null,
+      concurrency: (a.concurrency as number) ?? 10,
+      load_factor: (a.load_factor as number) ?? null,
+      priority: (a.priority as number) ?? 1,
+      rate_multiplier: (a.rate_multiplier as number) ?? 1,
+      expires_at: (a.expires_at as number) ?? null,
+      auto_pause_on_expired: (a.auto_pause_on_expired as boolean) ?? true,
+      group_ids: (a.group_ids as number[]) ?? [],
+      quota_enabled: !!((a.extra as Record<string, unknown>)?.quota_limit || (a.extra as Record<string, unknown>)?.quota_daily_limit),
+      quota_limit: ((a.extra as Record<string, unknown>)?.quota_limit as number) ?? null,
+      quota_daily_limit: ((a.extra as Record<string, unknown>)?.quota_daily_limit as number) ?? null,
+      quota_weekly_limit: ((a.extra as Record<string, unknown>)?.quota_weekly_limit as number) ?? null,
+    }
   }
 
-  function getEditPayload(account: SdkAccount) { return doEditPayload(account, formRefs) }
+  function getEditPayload(account: SdkAccount) {
+    const payload = doEditPayload(account, formRefs)
+    payload.common = commonFields.value
+    return payload
+  }
 
   function reset() {
     antigravityAccountType.value = 'oauth'
@@ -146,6 +166,12 @@ export function useAntigravityForm() {
     mixedScheduling.value = false; allowOverages.value = false
     interceptWarmupRequests.value = false
     tempUnschedEnabled.value = false; tempUnschedRules.value = []
+    commonFields.value = {
+      proxy_id: null, concurrency: 10, load_factor: null, priority: 1,
+      rate_multiplier: 1, expires_at: null, auto_pause_on_expired: true,
+      group_ids: [], quota_enabled: false, quota_limit: null,
+      quota_daily_limit: null, quota_weekly_limit: null,
+    }
     antigravityOAuth.resetState()
     fetchDefaultMappings().then(defaults => {
       if (!editModeActive && defaults.length > 0) antigravityModelMappings.value = defaults

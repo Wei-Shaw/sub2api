@@ -6,10 +6,11 @@
  *   2. Built-in forms (BUILTIN_FORMS) -- migration-period compat, remove as platforms migrate
  *   3. Generic JSON schema form (PluginForm.vue) -- final fallback
  *
- * External interface unchanged: resolvePlatformForm(platform) returns Component,
- * internally wraps async loading into defineAsyncComponent.
+ * Primary API: resolveFormComponentAsync(platform) -- returns a Promise<Component | null>.
+ * Callers store the result in a shallowRef and use <component :is="ref"> for rendering.
+ * This avoids the defineAsyncComponent reactive cascade that caused blank rendering.
  */
-import { defineAsyncComponent, type Component } from 'vue'
+import { type Component } from 'vue'
 import { usePlatforms } from '@/composables/usePlatforms'
 import { findPluginManifest } from '@/plugins/loader'
 import { loadPluginEntry } from '@/plugins/loader-runtime'
@@ -22,46 +23,38 @@ const BUILTIN_FORMS: Record<string, () => Promise<{ default: Component }>> = {
 /**
  * Resolve the account form component for a given platform.
  *
- * Returns defineAsyncComponent-wrapped Component for use with <component :is="...">.
- * Internally resolves: plugin -> builtin -> generic (three-tier fallback).
+ * Returns the Component directly, or null on failure.
+ * Never throws -- logs warnings on unexpected failures.
+ *
+ * Resolution: plugin -> builtin -> generic (PluginForm.vue).
  */
-export function resolvePlatformForm(platform: string): Component {
-  return defineAsyncComponent(() => resolveFormComponent(platform))
-}
-
-async function resolveFormComponent(
+export async function resolveFormComponentAsync(
   platform: string,
-): Promise<{ default: Component }> {
-  // 1. Try plugin entry assets
-  const pluginComponent = await resolveFromPlugin(platform)
-  if (pluginComponent) {
-    return { default: pluginComponent }
-  }
+): Promise<Component | null> {
+  try {
+    const pluginComponent = await resolveFromPlugin(platform)
+    if (pluginComponent) return pluginComponent
 
-  // 2. Fallback to built-in form (migration compat)
-  const builtinLoader = BUILTIN_FORMS[platform]
-  if (builtinLoader) {
-    return builtinLoader()
-  }
+    const builtinLoader = BUILTIN_FORMS[platform]
+    if (builtinLoader) {
+      const mod = await builtinLoader()
+      return mod.default
+    }
 
-  // 3. Final fallback: generic JSON schema form
-  return import('./PluginForm.vue')
+    const fallback = await import('./PluginForm.vue')
+    return fallback.default
+  } catch (err) {
+    console.warn(`[platformFormRegistry] failed to resolve form for "${platform}"`, err)
+    return null
+  }
 }
 
 /**
  * Resolve form component from plugin entry assets.
- *
- * Flow:
- *   a. Get PlatformDeclaration from usePlatforms(), check for plugin_name
- *   b. Find manifest via plugin_name, get entry_js_url
- *   c. Load plugin entry (cached), look up form_component_path in assets.formComponents
- *
- * Returns null on any step failure, letting caller fall through to next tier.
  */
 async function resolveFromPlugin(platform: string): Promise<Component | null> {
   const { getPlatformDecl, fetchPlatforms } = usePlatforms()
 
-  // Ensure platform data is loaded before looking up plugin_name
   await fetchPlatforms()
 
   const decl = getPlatformDecl(platform)
@@ -87,29 +80,23 @@ async function resolveFromPlugin(platform: string): Promise<Component | null> {
 
     const formComponents = result.assets.formComponents
 
-    // Match by form_component_path (from account type declaration)
     const componentPath = findFormComponentPath(decl)
     if (componentPath && formComponents[componentPath]) {
       return formComponents[componentPath]
     }
 
-    // No form_component_path: try platform name as key
     if (formComponents[platform]) {
       return formComponents[platform]
     }
 
     return null
   } catch {
-    // Plugin load failure: silently fall through
     return null
   }
 }
 
 /**
  * Find first account type with a form_component_path in the platform declaration.
- *
- * Most platforms share one form component across all account types.
- * Future: pass accountType param to distinguish per-type forms.
  */
 function findFormComponentPath(decl: PlatformDeclaration): string | null {
   for (const at of decl.account_types) {

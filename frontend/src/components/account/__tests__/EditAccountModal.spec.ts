@@ -49,44 +49,34 @@ vi.mock('@/composables/useQuotaNotifyState', () => ({
     loadGlobalState: vi.fn(), loadFromExtra: vi.fn(), writeToExtra: vi.fn(), reset: vi.fn()
   })
 }))
-
-vi.mock('@/components/account/QuotaLimitCard.vue', () => ({
-  default: defineComponent({ name: 'QuotaLimitCard', template: '<div />' })
-}))
-
-vi.mock('@/components/common/ProxySelector.vue', () => ({
-  default: defineComponent({ name: 'ProxySelector', template: '<div />' })
-}))
-
-vi.mock('@/components/common/GroupSelector.vue', () => ({
-  default: defineComponent({ name: 'GroupSelector', template: '<div />' })
-}))
 vi.mock('@sub2api/plugin-sdk', () => {
   const BaseDialog = defineComponent({ name: 'BaseDialog', props: { show: Boolean }, template: '<div />' })
   const ConfirmDialog = defineComponent({ name: 'ConfirmDialog', template: '<div />' })
   const Select = defineComponent({ name: 'Select', props: { modelValue: {}, options: Array }, emits: ['update:modelValue'], template: '<select />' })
-  return { BaseDialog, ConfirmDialog, Select }
+  const PlatformIcon = defineComponent({ name: 'PlatformIcon', template: '<span />' })
+  return { BaseDialog, ConfirmDialog, Select, PlatformIcon }
 })
 
 // Mock the platform form registry to return a simple component with the exposed API
 const formInitFromAccountMock = vi.fn()
 const formGetEditPayloadMock = vi.fn()
+const MockPlatformForm = defineComponent({
+  name: 'MockPlatformForm',
+  props: { context: Object },
+  setup(_props, { expose }) {
+    expose({
+      validate: () => ({ valid: true }),
+      getPayload: () => ({ credentials: {} }),
+      isOAuthFlow: () => false,
+      reset: vi.fn(),
+      initFromAccount: formInitFromAccountMock,
+      getEditPayload: formGetEditPayloadMock
+    })
+    return () => null
+  }
+})
 vi.mock('../forms/platformFormRegistry', () => ({
-  resolvePlatformForm: () => defineComponent({
-    name: 'MockPlatformForm',
-    props: { context: Object },
-    setup(_props, { expose }) {
-      expose({
-        validate: () => ({ valid: true }),
-        getPayload: () => ({ credentials: {} }),
-        isOAuthFlow: () => false,
-        reset: vi.fn(),
-        initFromAccount: formInitFromAccountMock,
-        getEditPayload: formGetEditPayloadMock
-      })
-      return () => null
-    }
-  })
+  resolveFormComponentAsync: vi.fn().mockResolvedValue(MockPlatformForm)
 }))
 
 import EditAccountModal from '../EditAccountModal.vue'
@@ -119,7 +109,7 @@ function mountModal(account = buildAccount()) {
     global: {
       stubs: {
         BaseDialog: BaseDialogStub, Select: SelectStub, ConfirmDialog: true,
-        Icon: true, ProxySelector: true, GroupSelector: true, QuotaLimitCard: true,
+        Icon: true, PlatformIcon: true,
         ModelWhitelistSelector: true, ModelRestrictionSection: true,
         PoolModeSection: true, CustomErrorCodesSection: true,
         TempUnschedSection: true, ToggleCard: true, BedrockCredentials: true,
@@ -187,24 +177,43 @@ describe('EditAccountModal', () => {
     expect(payload.credentials.compact_model_mapping).toEqual({ 'gpt-5.4': 'gpt-5.4-openai-compact' })
   })
 
-  it('submits account-level Codex image generation bridge override', async () => {
+  it('merges common fields from plugin form into update payload', async () => {
     const account = buildAccount()
-    account.extra = {
-      codex_image_generation_bridge: false,
-      codex_image_generation_bridge_enabled: true
-    }
     updateAccountMock.mockReset()
     checkMixedChannelRiskMock.mockReset()
     checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
     updateAccountMock.mockResolvedValue(account)
 
     const wrapper = mountModal(account)
+    await flushPromises()
+    await nextTick()
+    await nextTick()
 
-    await wrapper.get('button[data-testid="codex-image-bridge-enabled"]').trigger('click')
+    formGetEditPayloadMock.mockReturnValue({
+      credentials: { api_key: 'sk-test' },
+      extra: {},
+      common: {
+        proxy_id: 5,
+        concurrency: 3,
+        load_factor: null,
+        priority: 10,
+        rate_multiplier: 1.5,
+        expires_at: null,
+        auto_pause_on_expired: true,
+        group_ids: [1, 2],
+      }
+    })
+
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
 
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
-    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.codex_image_generation_bridge).toBe(true)
-    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('codex_image_generation_bridge_enabled')
+    const payload = updateAccountMock.mock.calls[0][1]
+    expect(payload.proxy_id).toBe(5)
+    expect(payload.concurrency).toBe(3)
+    expect(payload.priority).toBe(10)
+    expect(payload.rate_multiplier).toBe(1.5)
+    expect(payload.auto_pause_on_expired).toBe(true)
+    expect(payload.group_ids).toEqual([1, 2])
   })
 })
