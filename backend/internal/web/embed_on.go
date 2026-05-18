@@ -220,7 +220,7 @@ func (s *FrontendServer) serveIndexHTML(c *gin.Context) {
 // Changes whenever the binary is recompiled, ensuring browsers refetch
 // shared runtime proxies after a deployment with updated exports.
 var sharedRuntimeVersion = func() string {
-	h := sha256.Sum256([]byte("v2-guardReactiveProps-mergeProps-withDefaults"))
+	h := sha256.Sum256([]byte("v3-AccountCommonFields-3step-architecture"))
 	return hex.EncodeToString(h[:])[:12]
 }()
 
