@@ -1,0 +1,72 @@
+{
+  "$schema": "./seo.schema.json",
+  "site": {
+    "name": "Sub2API",
+    "baseUrl": "",
+    "defaultLang": "zh",
+    "supportedLangs": ["zh", "en"],
+    "twitterHandle": "",
+    "organization": {
+      "name": "Sub2API",
+      "logo": "/logo.png",
+      "sameAs": []
+    }
+  },
+  "routes": {
+    "/home": {
+      "indexable": true,
+      "priority": 1.0,
+      "changefreq": "weekly",
+      "jsonLd": ["SoftwareApplication", "Organization", "WebSite"],
+      "zh": {
+        "title": "Sub2API — Claude / Codex / Gemini CLI 统一中转网关",
+        "description": "一个账号统一接入 Claude Code、Codex、Gemini CLI 三大 AI 编码工具。稳定线路、透明计费、按量付费,中国大陆免翻墙直连。",
+        "keywords": ["Claude API 中转", "Codex 中转", "Gemini CLI", "AI 编码网关", "Anthropic 中转", "OpenAI 中转", "Sub2API"],
+        "ogImage": "/og/home-zh.png"
+      },
+      "en": {
+        "title": "Sub2API — Unified Gateway for Claude / Codex / Gemini CLI",
+        "description": "One account, unified access to Claude Code, Codex, and Gemini CLI. Stable routes, transparent billing, pay-as-you-go AI coding for every developer.",
+        "keywords": ["Claude API gateway", "Codex proxy", "Gemini CLI", "AI coding gateway", "Anthropic proxy", "OpenAI compatible"],
+        "ogImage": "/og/home-en.png"
+      }
+    },
+    "/faq": {
+      "indexable": true,
+      "priority": 0.9,
+      "changefreq": "weekly",
+      "jsonLd": ["FAQPage", "BreadcrumbList"],
+      "zh": {
+        "title": "常见问题 FAQ — Sub2API",
+        "description": "Sub2API 接入、计费、客户端兼容、地区可用性等常见问题。包括如何在 Claude Code、Codex、Cursor、Cline 等工具里配置。",
+        "keywords": ["Sub2API FAQ", "Claude Code 配置", "AI 编码工具配置", "Codex 接入"],
+        "ogImage": "/og/home-zh.png"
+      },
+      "en": {
+        "title": "FAQ — Sub2API",
+        "description": "Frequently asked questions about Sub2API integration, billing, client compatibility, and region availability.",
+        "keywords": ["Sub2API FAQ", "Claude Code setup", "AI coding tools", "Codex integration"],
+        "ogImage": "/og/home-en.png"
+      }
+    },
+    "/login": {
+      "indexable": false,
+      "zh": { "title": "登录 - Sub2API", "description": "登录 Sub2API 账号管理控制台。" },
+      "en": { "title": "Login - Sub2API", "description": "Log in to your Sub2API dashboard." }
+    },
+    "/register": {
+      "indexable": false,
+      "zh": { "title": "注册 - Sub2API", "description": "注册 Sub2API 账号。" },
+      "en": { "title": "Register - Sub2API", "description": "Create a Sub2API account." }
+    },
+    "/legal/:id": {
+      "indexable": true,
+      "priority": 0.5,
+      "changefreq": "monthly",
+      "dynamic": "legalDoc",
+      "jsonLd": ["Article", "BreadcrumbList"],
+      "zh": { "title": "条款 - Sub2API", "description": "Sub2API 法律条款文档。" },
+      "en": { "title": "Legal - Sub2API", "description": "Sub2API legal documents." }
+    }
+  }
+}
