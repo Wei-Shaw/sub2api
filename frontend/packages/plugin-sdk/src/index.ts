@@ -60,6 +60,22 @@ export {
 export * from './account-form-types'
 export * from './account-form-helpers'
 
+export {
+  type ProtocolDefinition,
+  type ProtocolModel,
+  type ProtocolPresetMapping,
+  type ResolvedProtocolGroup,
+  BUILTIN_PROTOCOLS,
+  PROTOCOL_ANTHROPIC,
+  PROTOCOL_OPENAI,
+  PROTOCOL_GEMINI,
+  getProtocol,
+  resolveProtocolModels,
+  resolveProtocolPresets,
+  resolveAllProtocolModelIds,
+  findProtocolForModel,
+} from './protocols'
+
 // Account form widget components
 export { default as ToggleCard } from './components/account/ToggleCard.vue'
 export { default as PoolModeSection } from './components/account/PoolModeSection.vue'

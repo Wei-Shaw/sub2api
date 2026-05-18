@@ -6,34 +6,10 @@ import type { ModelMapping } from '@sub2api/plugin-sdk'
 import {
   normalizePoolModeRetryCount,
   applyInterceptWarmup as sdkApplyInterceptWarmup,
+  buildModelMappingObject,
 } from '@sub2api/plugin-sdk'
 
-/**
- * Build a model_mapping object from whitelist or mapping mode.
- * Inlined from host useModelWhitelist to avoid host-internal import.
- */
-export function buildModelMappingObject(
-  mode: 'whitelist' | 'mapping',
-  allowedModels: string[],
-  modelMappings: ModelMapping[]
-): Record<string, string> | null {
-  const mapping: Record<string, string> = {}
-  if (mode === 'whitelist') {
-    for (const model of allowedModels) {
-      if (!model.includes('*')) mapping[model] = model
-    }
-  } else {
-    for (const m of modelMappings) {
-      const from = m.from.trim()
-      const to = m.to.trim()
-      if (!from || !to) continue
-      if (from.indexOf('*') !== -1 && from.indexOf('*') !== from.length - 1) continue
-      if (to.includes('*')) continue
-      mapping[from] = to
-    }
-  }
-  return Object.keys(mapping).length > 0 ? mapping : null
-}
+export { buildModelMappingObject }
 
 /** Apply model mapping, pool mode, custom error codes, and intercept warmup to credentials. */
 export function applySharedCredentials(

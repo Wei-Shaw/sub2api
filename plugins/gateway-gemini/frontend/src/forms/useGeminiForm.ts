@@ -20,7 +20,8 @@ import {
   applyTempUnschedToCredentials,
 } from '@sub2api/plugin-sdk'
 import { useGeminiOAuth } from '../composables/useGeminiOAuth'
-import { geminiModels, buildModelMappingObject } from './geminiModels'
+import { buildModelMappingObject } from './geminiModels'
+import { resolveAllProtocolModelIds } from '@sub2api/plugin-sdk'
 
 export function useGeminiForm(commonFields: Ref<CommonAccountFields>) {
   const { t } = useI18n()
@@ -62,7 +63,7 @@ export function useGeminiForm(commonFields: Ref<CommonAccountFields>) {
 
   watch(modelRestrictionMode, (newMode) => {
     if (newMode === 'whitelist') {
-      allowedModels.value = [...geminiModels]
+      allowedModels.value = resolveAllProtocolModelIds(['gemini'])
     }
   }, { immediate: true })
 
@@ -264,7 +265,7 @@ export function useGeminiForm(commonFields: Ref<CommonAccountFields>) {
     vertexClientEmail.value = ''
     vertexLocation.value = 'global'
     modelRestrictionMode.value = 'whitelist'
-    allowedModels.value = [...geminiModels]
+    allowedModels.value = resolveAllProtocolModelIds(['gemini'])
     modelMappings.value = []
     poolModeEnabled.value = false
     poolModeRetryCount.value = 3

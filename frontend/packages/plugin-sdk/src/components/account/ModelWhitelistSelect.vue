@@ -10,9 +10,13 @@
           <span
             v-for="model in modelValue"
             :key="model"
-            class="inline-flex items-center justify-between gap-1 rounded bg-gray-100 px-2 py-1 text-xs text-gray-700 dark:bg-dark-600 dark:text-gray-300"
+            class="inline-flex items-center justify-between gap-1 rounded px-2 py-1 text-xs"
+            :class="modelTagClass(model)"
           >
-            <span class="truncate">{{ model }}</span>
+            <span class="inline-flex items-center gap-1 truncate">
+              <span v-if="modelProtocol(model)" class="protocol-icon-inline" v-html="modelProtocol(model)!.iconSvg"></span>
+              <span class="truncate">{{ model }}</span>
+            </span>
             <button
               type="button"
               @click.stop="removeModel(model)"
@@ -44,30 +48,68 @@
           />
         </div>
         <div class="max-h-52 overflow-auto">
-          <button
-            v-for="model in filteredModels"
-            :key="model"
-            type="button"
-            @click="toggleModel(model)"
-            class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-dark-600"
-          >
-            <span
-              :class="[
-                'flex h-4 w-4 shrink-0 items-center justify-center rounded border',
-                modelValue.includes(model)
-                  ? 'border-primary-500 bg-primary-500 text-white'
-                  : 'border-gray-300 dark:border-dark-500'
-              ]"
+          <!-- Protocol-grouped mode -->
+          <template v-if="resolvedGroups.length > 0">
+            <template v-for="group in filteredGroups" :key="group.protocol.id">
+              <div class="sticky top-0 flex items-center gap-1.5 bg-gray-50 px-3 py-1.5 dark:bg-dark-800">
+                <span class="protocol-icon-inline" :style="{ color: group.protocol.themeColor }" v-html="group.protocol.iconSvg"></span>
+                <span class="text-xs font-semibold" :style="{ color: group.protocol.themeColor }">{{ group.protocol.displayName }}</span>
+                <span class="text-[10px] text-gray-400">({{ group.models.length }})</span>
+              </div>
+              <button
+                v-for="model in group.models"
+                :key="model.id"
+                type="button"
+                @click="toggleModel(model.id)"
+                class="flex w-full items-center gap-2 px-3 py-2 pl-6 text-left text-sm hover:bg-gray-100 dark:hover:bg-dark-600"
+              >
+                <span
+                  :class="[
+                    'flex h-4 w-4 shrink-0 items-center justify-center rounded border',
+                    modelValue.includes(model.id)
+                      ? 'border-primary-500 bg-primary-500 text-white'
+                      : 'border-gray-300 dark:border-dark-500'
+                  ]"
+                >
+                  <svg v-if="modelValue.includes(model.id)" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                  </svg>
+                </span>
+                <span class="truncate text-gray-900 dark:text-white">{{ model.displayName }}</span>
+                <span class="ml-auto truncate text-[10px] text-gray-400">{{ model.id }}</span>
+              </button>
+            </template>
+            <div v-if="filteredGroups.length === 0 || filteredGroups.every(g => g.models.length === 0)" class="px-3 py-4 text-center text-sm text-gray-500">
+              {{ t('admin.accounts.noMatchingModels') }}
+            </div>
+          </template>
+          <!-- Flat mode (backward compatible) -->
+          <template v-else>
+            <button
+              v-for="model in filteredModels"
+              :key="model"
+              type="button"
+              @click="toggleModel(model)"
+              class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-dark-600"
             >
-              <svg v-if="modelValue.includes(model)" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
-              </svg>
-            </span>
-            <span class="truncate text-gray-900 dark:text-white">{{ model }}</span>
-          </button>
-          <div v-if="filteredModels.length === 0" class="px-3 py-4 text-center text-sm text-gray-500">
-            {{ t('admin.accounts.noMatchingModels') }}
-          </div>
+              <span
+                :class="[
+                  'flex h-4 w-4 shrink-0 items-center justify-center rounded border',
+                  modelValue.includes(model)
+                    ? 'border-primary-500 bg-primary-500 text-white'
+                    : 'border-gray-300 dark:border-dark-500'
+                ]"
+              >
+                <svg v-if="modelValue.includes(model)" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                </svg>
+              </span>
+              <span class="truncate text-gray-900 dark:text-white">{{ model }}</span>
+            </button>
+            <div v-if="filteredModels.length === 0" class="px-3 py-4 text-center text-sm text-gray-500">
+              {{ t('admin.accounts.noMatchingModels') }}
+            </div>
+          </template>
         </div>
       </div>
     </div>
@@ -119,10 +161,25 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '../Icon.vue'
+import { resolveProtocolModels, findProtocolForModel } from '../../protocols'
+import type { ProtocolDefinition, ProtocolModel } from '../../protocols'
+
+const PROTOCOL_TAG_COLORS: Record<string, string> = {
+  '#ea580c': 'bg-orange-100 text-orange-700 dark:bg-orange-900/20 dark:text-orange-400',
+  '#10b981': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400',
+  '#2563eb': 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400',
+}
+const DEFAULT_TAG_CLASS = 'bg-gray-100 text-gray-700 dark:bg-dark-600 dark:text-gray-300'
+
+interface FilteredGroup {
+  protocol: ProtocolDefinition
+  models: ProtocolModel[]
+}
 
 const props = withDefaults(defineProps<{
   modelValue: string[]
   availableModels?: string[]
+  protocols?: string[]
   platform?: string
   onNotifyInfo?: (msg: string) => void
 }>(), {
@@ -141,13 +198,49 @@ const searchQuery = ref('')
 const customModel = ref('')
 const isComposing = ref(false)
 
-const hasAvailableModels = computed(() => props.availableModels.length > 0)
+const resolvedGroups = computed(() =>
+  props.protocols?.length ? resolveProtocolModels(props.protocols) : []
+)
+
+const allModelIds = computed(() => {
+  if (resolvedGroups.value.length > 0) {
+    return resolvedGroups.value.flatMap(g => g.models.map(m => m.id))
+  }
+  return props.availableModels
+})
+
+const hasAvailableModels = computed(() => allModelIds.value.length > 0)
+
+const filteredGroups = computed<FilteredGroup[]>(() => {
+  const query = searchQuery.value.toLowerCase().trim()
+  return resolvedGroups.value
+    .map(g => ({
+      protocol: g.protocol,
+      models: query
+        ? g.models.filter(m =>
+            m.id.toLowerCase().includes(query) ||
+            m.displayName.toLowerCase().includes(query))
+        : g.models,
+    }))
+    .filter(g => g.models.length > 0)
+})
 
 const filteredModels = computed(() => {
   const query = searchQuery.value.toLowerCase().trim()
   if (!query) return props.availableModels
   return props.availableModels.filter(m => m.toLowerCase().includes(query))
 })
+
+const modelProtocol = (modelId: string): ProtocolDefinition | undefined => {
+  if (!props.protocols?.length) return undefined
+  return findProtocolForModel(modelId, props.protocols)
+}
+
+const modelTagClass = (modelId: string): string => {
+  const proto = modelProtocol(modelId)
+  if (proto) return PROTOCOL_TAG_COLORS[proto.themeColor] ?? DEFAULT_TAG_CLASS
+  return DEFAULT_TAG_CLASS
+}
 
 const toggleDropdown = () => {
   showDropdown.value = !showDropdown.value
@@ -199,7 +292,7 @@ const handleEnter = () => {
 
 const fillRelated = () => {
   const newModels = [...props.modelValue]
-  for (const model of props.availableModels) {
+  for (const model of allModelIds.value) {
     if (!newModels.includes(model)) {
       newModels.push(model)
     }
@@ -211,3 +304,12 @@ const clearAll = () => {
   emit('update:modelValue', [])
 }
 </script>
+
+<style scoped>
+.protocol-icon-inline :deep(svg) {
+  width: 0.875rem;
+  height: 0.875rem;
+  flex-shrink: 0;
+  fill: currentColor;
+}
+</style>

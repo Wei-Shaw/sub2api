@@ -104,7 +104,7 @@
       :mode="modelRestrictionMode"
       :allowed-models="allowedModels"
       :mappings="modelMappings"
-      :available-models="geminiModels"
+      :protocols="['gemini']"
       @update:mode="modelRestrictionMode = $event"
       @update:allowed-models="allowedModels = $event"
       @update:mappings="modelMappings = $event"
@@ -140,7 +140,6 @@ import { getSdk } from '../api/sdk'
 import GeminiOAuthTypeSelector from './GeminiOAuthTypeSelector.vue'
 import GeminiTierSelector from './GeminiTierSelector.vue'
 import { useGeminiForm } from './useGeminiForm'
-import { geminiModels } from './geminiModels'
 
 const props = defineProps<{ context: PlatformFormContext }>()
 const { t } = useI18n()

@@ -17,7 +17,7 @@ import type { ModelMapping } from './account-form-types'
  * Inlined from useModelWhitelist.buildModelMappingObject to keep SDK
  * free of host-internal dependencies.
  */
-function buildModelMappingObject(
+export function buildModelMappingObject(
   mode: 'whitelist' | 'mapping',
   allowedModels: string[],
   modelMappings: ModelMapping[]
@@ -42,7 +42,7 @@ function buildModelMappingObject(
   return Object.keys(mapping).length > 0 ? mapping : null
 }
 
-function isValidWildcardPattern(pattern: string): boolean {
+export function isValidWildcardPattern(pattern: string): boolean {
   const starIndex = pattern.indexOf('*')
   if (starIndex === -1) return true
   return starIndex === pattern.length - 1 && pattern.lastIndexOf('*') === starIndex

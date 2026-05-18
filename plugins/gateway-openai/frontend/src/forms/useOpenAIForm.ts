@@ -1,7 +1,7 @@
 import { ref, computed, watch, type Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useOpenAIOAuth } from '../composables/useOpenAIOAuth'
-import { openaiModels, buildModelMappingObject } from '../utils/openaiModels'
+import { buildModelMappingObject, resolveAllProtocolModelIds } from '@sub2api/plugin-sdk'
 import {
   OPENAI_WS_MODE_OFF,
   OPENAI_WS_MODE_CTX_POOL,
@@ -89,7 +89,7 @@ export function useOpenAIForm(commonFields: Ref<CommonAccountFields>) {
   const isModelRestrictionDisabled = computed(() => openaiPassthroughEnabled.value)
 
   watch(modelRestrictionMode, (newMode) => {
-    if (newMode === 'whitelist') allowedModels.value = [...openaiModels]
+    if (newMode === 'whitelist') allowedModels.value = resolveAllProtocolModelIds(['openai'])
   }, { immediate: true })
 
   const oauthConfig: OAuthFlowConfig = {
@@ -197,7 +197,7 @@ export function useOpenAIForm(commonFields: Ref<CommonAccountFields>) {
     openaiOAuthWSMode.value = OPENAI_WS_MODE_OFF; openaiAPIKeyWSMode.value = OPENAI_WS_MODE_OFF
     codexCLIOnlyEnabled.value = false; codexImageGenerationBridgeMode.value = 'inherit'
     openAICompactModelMappings.value = []; modelRestrictionMode.value = 'whitelist'
-    allowedModels.value = [...openaiModels]; modelMappings.value = []
+    allowedModels.value = resolveAllProtocolModelIds(['openai']); modelMappings.value = []
     poolModeEnabled.value = false; poolModeRetryCount.value = 3
     customErrorCodesEnabled.value = false; selectedErrorCodes.value = []
     tempUnschedEnabled.value = false; tempUnschedRules.value = []

@@ -37,6 +37,7 @@
         <ModelWhitelistSelect
           :model-value="allowedModels"
           :available-models="availableModels"
+          :protocols="protocols"
           :platform="platform"
           :on-notify-info="onNotifyInfo"
           @update:model-value="emit('update:allowedModels', $event)"
@@ -106,6 +107,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { createStableObjectKeyResolver } from '../../utils/stableObjectKey'
+import { resolveProtocolPresets } from '../../protocols'
 import Icon from '../Icon.vue'
 import ModelWhitelistSelect from './ModelWhitelistSelect.vue'
 import type { ModelMapping } from '../../account-form-types'
@@ -127,6 +129,8 @@ const props = withDefaults(defineProps<{
   keyPrefix?: string
   /** Available models for the whitelist dropdown. Passed through to ModelWhitelistSelect. */
   availableModels?: string[]
+  /** Protocol IDs for the whitelist dropdown. Takes precedence over availableModels. */
+  protocols?: string[]
   /** Notification callback for info messages. Falls back to console.info. */
   onNotifyInfo?: (msg: string) => void
 }>(), {
@@ -145,9 +149,11 @@ const { t } = useI18n()
 
 const getMappingKey = createStableObjectKeyResolver<ModelMapping>(props.keyPrefix)
 
-const computedPresets = computed<PresetMapping[]>(() =>
-  props.presets ?? []
-)
+const computedPresets = computed<PresetMapping[]>(() => {
+  if (props.presets && props.presets.length > 0) return props.presets
+  if (props.protocols?.length) return resolveProtocolPresets(props.protocols)
+  return []
+})
 
 function updateMapping(index: number, field: 'from' | 'to', value: string) {
   const updated = [...props.mappings]

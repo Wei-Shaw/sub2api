@@ -14,13 +14,12 @@ import type {
   PlatformFormPayload, PlatformFormValidation, OAuthFlowConfig,
   ModelMapping, SdkAccount, SdkCreateAccountRequest,
 } from '@sub2api/plugin-sdk'
-import { applyInterceptWarmup, type TempUnschedRuleForm } from '@sub2api/plugin-sdk'
+import { applyInterceptWarmup, resolveAllProtocolModelIds, type TempUnschedRuleForm } from '@sub2api/plugin-sdk'
 import { getClient } from '../api/client'
 import { useAccountOAuth, type AddMethod } from '../composables/useAccountOAuth'
 import { useAnthropicBedrockForm } from './useAnthropicBedrockForm'
 import { useAnthropicOAuthForm } from './useAnthropicOAuthForm'
 import { applySharedCredentials, buildModelMappingObject } from './formShared'
-import { claudeModels } from './modelLists'
 import * as editMode from './useAnthropicEditMode'
 
 export function useAnthropicForm() {
@@ -53,7 +52,7 @@ export function useAnthropicForm() {
   const tempUnschedRules = ref<TempUnschedRuleForm[]>([])
 
   watch(modelRestrictionMode, (m) => {
-    if (m === 'whitelist') allowedModels.value = [...claudeModels]
+    if (m === 'whitelist') allowedModels.value = resolveAllProtocolModelIds(['anthropic'])
   }, { immediate: true })
 
   const oauthConfig: OAuthFlowConfig = {
@@ -158,7 +157,7 @@ export function useAnthropicForm() {
     apiKeyValue.value = ''; editApiKey.value = ''
     vertexServiceAccountJson.value = ''; vertexProjectId.value = ''; vertexClientEmail.value = ''; vertexLocation.value = 'global'
     anthropicPassthroughEnabled.value = false; webSearchEmulationMode.value = 'default'; syncToStreamMode.value = 'default'
-    interceptWarmupRequests.value = false; modelRestrictionMode.value = 'whitelist'; allowedModels.value = [...claudeModels]
+    interceptWarmupRequests.value = false; modelRestrictionMode.value = 'whitelist'; allowedModels.value = resolveAllProtocolModelIds(['anthropic'])
     modelMappings.value = []; poolModeEnabled.value = false; poolModeRetryCount.value = 3
     customErrorCodesEnabled.value = false; selectedErrorCodes.value = []; tempUnschedEnabled.value = false; tempUnschedRules.value = []
     bedrock.resetBedrock(); oauthQuota.resetOAuthQuota(); oauth.resetState()

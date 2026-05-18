@@ -22,7 +22,7 @@
       </div>
       <ModelRestrictionSection platform="anthropic"
         :mode="modelRestrictionMode" :allowed-models="allowedModels" :mappings="modelMappings"
-        :available-models="claudeModels"
+        :protocols="['anthropic']"
         @update:mode="modelRestrictionMode = $event"
         @update:allowed-models="allowedModels = $event"
         @update:mappings="modelMappings = $event" />
@@ -61,7 +61,7 @@
     <template v-if="context.accountCategory === 'bedrock'">
       <ModelRestrictionSection platform="anthropic"
         :mode="modelRestrictionMode" :allowed-models="allowedModels" :mappings="modelMappings"
-        :available-models="claudeModels"
+        :protocols="['anthropic']"
         @update:mode="modelRestrictionMode = $event"
         @update:allowed-models="allowedModels = $event"
         @update:mappings="modelMappings = $event" />
@@ -85,7 +85,7 @@
         @parse-error="sdk.notify.error($event)" />
       <ModelRestrictionSection platform="anthropic"
         :mode="modelRestrictionMode" :allowed-models="allowedModels" :mappings="modelMappings"
-        :available-models="claudeModels"
+        :protocols="['anthropic']"
         @update:mode="modelRestrictionMode = $event"
         @update:allowed-models="allowedModels = $event"
         @update:mappings="modelMappings = $event" />
@@ -177,7 +177,6 @@ import BedrockCredentials from '../components/BedrockCredentials.vue'
 import OAuthMethodSelector from '../components/OAuthMethodSelector.vue'
 import OAuthQuotaSection from '../components/OAuthQuotaSection.vue'
 import { useAnthropicForm } from './useAnthropicForm'
-import { claudeModels } from './modelLists'
 import type { AddMethod } from '../composables/useAccountOAuth'
 
 const props = defineProps<{ context: PlatformFormContext }>()

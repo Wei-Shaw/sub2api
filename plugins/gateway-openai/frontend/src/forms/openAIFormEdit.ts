@@ -22,7 +22,7 @@ import {
   resolveOpenAIWSModeFromExtra,
   type OpenAIWSMode,
 } from '../utils/openaiWsMode'
-import { buildModelMappingObject } from '../utils/openaiModels'
+import { buildModelMappingObject } from '@sub2api/plugin-sdk'
 
 type OpenAICompactMode = 'auto' | 'force_on' | 'force_off'
 type CodexImageGenBridgeMode = 'inherit' | 'enabled' | 'disabled'
