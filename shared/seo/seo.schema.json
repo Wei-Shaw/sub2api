@@ -1,0 +1,66 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Sub2API SEO Registry",
+  "type": "object",
+  "required": ["site", "routes"],
+  "properties": {
+    "site": {
+      "type": "object",
+      "required": ["name", "baseUrl", "defaultLang", "supportedLangs", "organization"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "baseUrl": { "type": "string" },
+        "defaultLang": { "enum": ["zh", "en"] },
+        "supportedLangs": {
+          "type": "array",
+          "items": { "enum": ["zh", "en"] },
+          "minItems": 1
+        },
+        "twitterHandle": { "type": "string" },
+        "organization": {
+          "type": "object",
+          "required": ["name", "logo"],
+          "properties": {
+            "name": { "type": "string" },
+            "logo": { "type": "string" },
+            "sameAs": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "routes": {
+      "type": "object",
+      "patternProperties": {
+        "^/.+$": {
+          "type": "object",
+          "required": ["indexable", "zh", "en"],
+          "properties": {
+            "indexable": { "type": "boolean" },
+            "priority": { "type": "number", "minimum": 0, "maximum": 1 },
+            "changefreq": { "enum": ["always", "hourly", "daily", "weekly", "monthly", "yearly", "never"] },
+            "dynamic": { "type": "string" },
+            "jsonLd": {
+              "type": "array",
+              "items": { "enum": ["Organization", "WebSite", "SoftwareApplication", "FAQPage", "BreadcrumbList", "Article"] }
+            },
+            "zh": { "$ref": "#/definitions/langPayload" },
+            "en": { "$ref": "#/definitions/langPayload" }
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "definitions": {
+    "langPayload": {
+      "type": "object",
+      "required": ["title", "description"],
+      "properties": {
+        "title": { "type": "string", "minLength": 1, "maxLength": 70 },
+        "description": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "keywords": { "type": "array", "items": { "type": "string" } },
+        "ogImage": { "type": "string" }
+      }
+    }
+  }
+}
