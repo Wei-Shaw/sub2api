@@ -69,10 +69,14 @@ func SetupRouter(
 			r.Use(web.ServeEmbeddedFrontend())
 			settingService.SetOnUpdateCallback(refreshFrameOrigins)
 		} else {
-			// Register combined callback: invalidate HTML cache + refresh frame origins
+			// Initial sync of SEO flag from current settings.
+			syncSEOEnabled(frontendServer, settingService)
+
+			// Register combined callback: invalidate HTML cache + refresh frame origins + SEO sync
 			settingService.SetOnUpdateCallback(func() {
 				frontendServer.InvalidateCache()
 				refreshFrameOrigins()
+				syncSEOEnabled(frontendServer, settingService)
 			})
 			r.Use(frontendServer.Middleware())
 		}
@@ -84,6 +88,18 @@ func SetupRouter(
 	registerRoutes(r, handlers, jwtAuth, adminAuth, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, cfg, redisClient)
 
 	return r
+}
+
+// syncSEOEnabled reads the current SEO toggle from settings and applies it to the frontend server.
+// Failures are swallowed (logged at debug level) — SEO toggle must never block startup.
+func syncSEOEnabled(fs *web.FrontendServer, svc *service.SettingService) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	s, err := svc.GetPublicSettings(ctx)
+	if err != nil || s == nil {
+		return
+	}
+	fs.SetSEOEnabled(s.SEOEnabled)
 }
 
 // registerRoutes 注册所有 HTTP 路由
