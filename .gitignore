@@ -147,6 +147,9 @@ vite.config.js
 docs/*
 !docs/PAYMENT.md
 !docs/PAYMENT_CN.md
+
+# Copied at build time by `make prepare-seo` from shared/seo/
+backend/internal/web/seo/data/*.json
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md
 .serena/
 .codex/
