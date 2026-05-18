@@ -5,6 +5,7 @@
  * Canonical definitions now live in plugin-sdk/src/account-form-types.ts.
  */
 export {
+  type CommonAccountFields,
   type ModelMapping,
   type PlatformFormContext,
   type PlatformFormPayload,

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Antigravity form edit-mode helpers.
  *
  * Separated from useAntigravityForm to keep file sizes manageable.
@@ -74,9 +74,10 @@ export function getEditPayload(
   const currentCreds = (account.credentials) || {}
   const newCreds: Record<string, unknown> = { ...currentCreds }
   applyInterceptWarmup(newCreds, refs.interceptWarmupRequests.value, 'edit')
-  applyTempUnschedToCredentials(
+  const unschedResult = applyTempUnschedToCredentials(
     newCreds, refs.tempUnschedEnabled.value, refs.tempUnschedRules.value
   )
+  if (!unschedResult.valid) return { credentials: undefined, error: unschedResult.error }
 
   if (account.type === 'upstream') {
     newCreds.base_url = refs.upstreamBaseUrl.value.trim()

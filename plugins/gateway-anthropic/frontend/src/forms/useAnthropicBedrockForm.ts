@@ -49,6 +49,7 @@ export function useAnthropicBedrockForm() {
   }
 
   function applyBedrockEditCredentials(newCreds: Record<string, unknown>): void {
+    newCreds.auth_mode = bedrockAuthMode.value
     newCreds.aws_region = bedrockRegion.value.trim() || 'us-east-1'
     if (bedrockForceGlobal.value) newCreds.aws_force_global = 'true'
     else delete newCreds.aws_force_global

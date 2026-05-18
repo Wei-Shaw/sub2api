@@ -6,7 +6,9 @@ import type { ModelMapping } from '@sub2api/plugin-sdk'
 import {
   normalizePoolModeRetryCount,
   applyInterceptWarmup as sdkApplyInterceptWarmup,
+  applyTempUnschedToCredentials,
   buildModelMappingObject,
+  type TempUnschedRuleForm,
 } from '@sub2api/plugin-sdk'
 
 export { buildModelMappingObject }
@@ -23,6 +25,8 @@ export function applySharedCredentials(
     customErrorCodesEnabled: boolean
     selectedErrorCodes: number[]
     interceptWarmupRequests: boolean
+    tempUnschedEnabled: boolean
+    tempUnschedRules: TempUnschedRuleForm[]
   }
 ): void {
   const mapping = buildModelMappingObject(opts.modelRestrictionMode, opts.allowedModels, opts.modelMappings)
@@ -35,6 +39,7 @@ export function applySharedCredentials(
     creds.custom_error_codes_enabled = true
     creds.custom_error_codes = [...opts.selectedErrorCodes]
   }
+  applyTempUnschedToCredentials(creds, opts.tempUnschedEnabled, opts.tempUnschedRules)
   sdkApplyInterceptWarmup(creds, opts.interceptWarmupRequests, 'create')
 }
 

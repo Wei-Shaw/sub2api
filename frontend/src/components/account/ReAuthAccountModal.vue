@@ -385,6 +385,7 @@ async function handleSaveCredentials() {
   try {
     const editPayload = platformFormRef.value.getEditPayload?.(props.account)
     if (!editPayload) return
+    if (editPayload.error) { appStore.showError(t(editPayload.error)); return }
     await adminAPI.accounts.update(props.account.id, {
       credentials: editPayload.credentials,
       extra: editPayload.extra,

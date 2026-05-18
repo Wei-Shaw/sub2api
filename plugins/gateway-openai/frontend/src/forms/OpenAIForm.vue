@@ -50,6 +50,7 @@
       :mode="modelRestrictionMode"
       :allowed-models="allowedModels"
       :mappings="modelMappings"
+      :protocols="['openai']"
       :disabled="isModelRestrictionDisabled"
       @update:mode="modelRestrictionMode = $event"
       @update:allowed-models="allowedModels = $event"

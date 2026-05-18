@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <BaseDialog
     :show="show"
     :title="t('admin.accounts.bulkEdit.title')"
@@ -371,6 +371,26 @@
         </div>
 
         <div v-if="enableCustomErrorCodes" id="bulk-edit-custom-error-codes-body" class="space-y-3">
+          <!-- Active toggle: controls whether custom error codes are enabled or disabled -->
+          <div class="flex items-center justify-between">
+            <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('common.enabled') }}</span>
+            <button
+              type="button"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                customErrorCodesActive ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+              @click="customErrorCodesActive = !customErrorCodesActive"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  customErrorCodesActive ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+
           <div class="rounded-lg bg-amber-50 p-3 dark:bg-amber-900/20">
             <p class="text-xs text-amber-700 dark:text-amber-400">
               <Icon name="exclamationTriangle" size="sm" class="mr-1 inline" :stroke-width="2" />
@@ -399,7 +419,7 @@
           <!-- Manual input -->
           <div class="flex items-center gap-2">
             <input
-              v-model="customErrorCodeInput"
+              v-model.number="customErrorCodeInput"
               id="bulk-edit-custom-error-code-input"
               type="number"
               min="100"
@@ -424,7 +444,7 @@
           <!-- Selected codes summary -->
           <div class="flex flex-wrap gap-1.5">
             <span
-              v-for="code in selectedErrorCodes.sort((a, b) => a - b)"
+              v-for="code in sortedErrorCodes"
               :key="code"
               class="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-0.5 text-sm font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400"
             >
@@ -444,8 +464,8 @@
         </div>
       </div>
 
-      <!-- Intercept warmup requests (Anthropic only) -->
-      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+      <!-- Intercept warmup requests (Anthropic / Antigravity only) -->
+      <div v-if="supportsInterceptWarmup" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="flex items-center justify-between">
           <div class="flex-1 pr-4">
             <label
@@ -600,6 +620,7 @@
             class="input"
             :class="!enablePriority && 'cursor-not-allowed opacity-50'"
             aria-labelledby="bulk-edit-priority-label"
+            @input="priority = Math.max(1, priority || 1)"
           />
         </div>
         <div>
@@ -624,7 +645,7 @@
             id="bulk-edit-rate-multiplier"
             type="number"
             min="0"
-            step="0.01"
+            step="0.001"
             :disabled="!enableRateMultiplier"
             class="input"
             :class="!enableRateMultiplier && 'cursor-not-allowed opacity-50'"
@@ -860,7 +881,7 @@
                 :placeholder="t('admin.accounts.fromModel')"
                 data-testid="bulk-edit-openai-compact-model-mapping-input"
               />
-              <span class="text-gray-400">→</span>
+              <span class="text-gray-400">&#x2192;</span>
               <input
                 v-model="mapping.to"
                 type="text"
@@ -925,111 +946,7 @@
         </div>
       </div>
 
-      <!-- OpenAI Compact mode -->
-      <div v-if="allOpenAIPassthroughCapable" class="border-t border-gray-200 pt-4 dark:border-dark-600">
-        <div class="mb-3 flex items-center justify-between">
-          <div class="flex-1 pr-4">
-            <label
-              id="bulk-edit-openai-compact-mode-label"
-              class="input-label mb-0"
-              for="bulk-edit-openai-compact-mode-enabled"
-            >
-              {{ t('admin.accounts.openai.compactMode') }}
-            </label>
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.openai.compactModeDesc') }}
-            </p>
-          </div>
-          <input
-            v-model="enableOpenAICompactMode"
-            id="bulk-edit-openai-compact-mode-enabled"
-            type="checkbox"
-            aria-controls="bulk-edit-openai-compact-mode"
-            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-          />
-        </div>
-        <div
-          id="bulk-edit-openai-compact-mode"
-          :class="!enableOpenAICompactMode && 'pointer-events-none opacity-50'"
-        >
-          <Select
-            v-model="openAICompactMode"
-            data-testid="bulk-edit-openai-compact-mode-select"
-            :options="openAICompactModeOptions"
-            aria-labelledby="bulk-edit-openai-compact-mode-label"
-          />
-        </div>
-      </div>
-
-      <!-- OpenAI Compact model mapping -->
-      <div v-if="allOpenAIPassthroughCapable" class="border-t border-gray-200 pt-4 dark:border-dark-600">
-        <div class="mb-3 flex items-center justify-between">
-          <div class="flex-1 pr-4">
-            <label
-              id="bulk-edit-openai-compact-model-mapping-label"
-              class="input-label mb-0"
-              for="bulk-edit-openai-compact-model-mapping-enabled"
-            >
-              {{ t('admin.accounts.openai.compactModelMapping') }}
-            </label>
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.openai.compactModelMappingDesc') }}
-            </p>
-          </div>
-          <input
-            v-model="enableOpenAICompactModelMapping"
-            id="bulk-edit-openai-compact-model-mapping-enabled"
-            type="checkbox"
-            aria-controls="bulk-edit-openai-compact-model-mapping"
-            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-          />
-        </div>
-        <div
-          id="bulk-edit-openai-compact-model-mapping"
-          :class="!enableOpenAICompactModelMapping && 'pointer-events-none opacity-50'"
-        >
-          <div v-if="openAICompactModelMappings.length > 0" class="mb-3 space-y-2">
-            <div
-              v-for="(mapping, index) in openAICompactModelMappings"
-              :key="index"
-              class="flex items-center gap-2"
-            >
-              <input
-                v-model="mapping.from"
-                type="text"
-                class="input flex-1"
-                :placeholder="t('admin.accounts.fromModel')"
-                data-testid="bulk-edit-openai-compact-model-mapping-input"
-              />
-              <span class="text-gray-400">→</span>
-              <input
-                v-model="mapping.to"
-                type="text"
-                class="input flex-1"
-                :placeholder="t('admin.accounts.toModel')"
-                data-testid="bulk-edit-openai-compact-model-mapping-input"
-              />
-              <button
-                type="button"
-                class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
-                @click="removeOpenAICompactModelMapping(index)"
-              >
-                <Icon name="trash" size="sm" />
-              </button>
-            </div>
-          </div>
-          <button
-            type="button"
-            class="mb-3 w-full rounded-lg border-2 border-dashed border-gray-300 px-4 py-2 text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-700 dark:border-dark-500 dark:text-gray-400 dark:hover:border-dark-400 dark:hover:text-gray-300"
-            data-testid="bulk-edit-openai-compact-model-mapping-add"
-            @click="addOpenAICompactModelMapping"
-          >
-            + {{ t('admin.accounts.addMapping') }}
-          </button>
-        </div>
-      </div>
-
-      <!-- RPM Limit (仅全部为 Anthropic OAuth/SetupToken 时显示) -->
+      <!-- RPM Limit (娴犲懎鍙忛柈銊よ礋 Anthropic OAuth/SetupToken 閺冭埖妯夌粈? -->
       <div v-if="allAnthropicOAuthOrSetupToken" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
           <label
@@ -1134,7 +1051,7 @@
             </div>
           </div>
 
-        <!-- 用户消息限速模式（独立于 RPM 开关，始终可见） -->
+        <!-- 閻劍鍩涘☉鍫熶紖闂勬劙鈧喐膩瀵骏绱欓悪顒傜彌娴?RPM 瀵偓閸忕绱濇慨瀣矒閸欘垵顫嗛敍?-->
         <div class="mt-4">
           <label class="input-label">{{ t('admin.accounts.quotaControl.rpmLimit.userMsgQueue') }}</label>
           <p class="mt-1 text-xs text-gray-500 dark:text-gray-400 mb-2">
@@ -1262,6 +1179,7 @@ import {
 import type { OpenAIWSMode } from '@/utils/openaiWsMode'
 import { usePlatforms } from '@/composables/usePlatforms'
 import { getAccountTypeMeta, getPlatformMeta } from '@/utils/platformFrontendMeta'
+import { extractApiErrorMessage } from '@/utils/apiError'
 interface Props {
   show: boolean
   accountIds: number[]
@@ -1360,14 +1278,14 @@ const allOpenAIAPIKey = computed(() => {
   )
 })
 
-// 是否全部为支持 allow_overages 的平台（如 Antigravity）
+// 閺勵垰鎯侀崗銊╁劥娑撶儤鏁幐?allow_overages 閻ㄥ嫬閽╅崣甯礄婵?Antigravity閿?
 const allAntigravity = computed(() => {
   if (allTypesHaveCapability('supports_allow_overages')) return true
   // Fallback
   return props.selectedPlatforms.length === 1 && props.selectedPlatforms[0] === 'antigravity'
 })
 
-// 是否全部为支持 RPM 配置的类型（如 Anthropic OAuth/SetupToken）
+// 閺勵垰鎯侀崗銊╁劥娑撶儤鏁幐?RPM 闁板秶鐤嗛惃鍕閸ㄥ绱欐俊?Anthropic OAuth/SetupToken閿?
 const allAnthropicOAuthOrSetupToken = computed(() => {
   if (allTypesHaveCapability('supports_rpm_limit')) return true
   // Fallback
@@ -1376,6 +1294,13 @@ const allAnthropicOAuthOrSetupToken = computed(() => {
     targetSelectedPlatforms.value[0] === 'anthropic' &&
     targetSelectedTypes.value.every(t => t === 'oauth' || t === 'setup-token')
   )
+})
+
+// Intercept warmup is supported by Anthropic and Antigravity platforms
+const supportsInterceptWarmup = computed(() => {
+  if (targetSelectedPlatforms.value.length !== 1) return false
+  const platform = targetSelectedPlatforms.value[0]
+  return platform === 'anthropic' || platform === 'antigravity'
 })
 
 const filteredPresets = computed(() => {
@@ -1426,6 +1351,7 @@ const allowedModels = ref<string[]>([])
 const modelMappings = ref<ModelMapping[]>([])
 const selectedErrorCodes = ref<number[]>([])
 const customErrorCodeInput = ref<number | null>(null)
+const customErrorCodesActive = ref(true)
 const interceptWarmupRequests = ref(false)
 const proxyId = ref<number | null>(null)
 const concurrency = ref(1)
@@ -1462,6 +1388,8 @@ const commonErrorCodes = [
   { value: 503, label: 'Unavailable' },
   { value: 529, label: 'Overloaded' }
 ]
+
+const sortedErrorCodes = computed(() => [...selectedErrorCodes.value].sort((a, b) => a - b))
 
 const statusOptions = computed(() => [
   { value: 'active', label: t('common.active') },
@@ -1592,7 +1520,7 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
   }
 
   if (enableProxy.value) {
-    // 后端期望 proxy_id: 0 表示清除代理，而不是 null
+    // 閸氬海顏張鐔告箿 proxy_id: 0 鐞涖劎銇氬〒鍛存珟娴狅絿鎮婇敍宀冣偓灞肩瑝閺?null
     updates.proxy_id = proxyId.value === null ? 0 : proxyId.value
   }
 
@@ -1601,7 +1529,7 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
   }
 
   if (enableLoadFactor.value) {
-    // 空值/NaN/0 时发送 0（后端约定 <= 0 表示清除）
+    // 缁屽搫鈧?NaN/0 閺冭泛褰傞柅?0閿涘牆鎮楃粩顖滃鐎?<= 0 鐞涖劎銇氬〒鍛存珟閿?
     const lf = loadFactor.value
     updates.load_factor = (lf != null && !Number.isNaN(lf) && lf > 0) ? lf : 0
   }
@@ -1611,7 +1539,8 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
   }
 
   if (enableRateMultiplier.value) {
-    updates.rate_multiplier = rateMultiplier.value
+    const rm = rateMultiplier.value
+    updates.rate_multiplier = (rm != null && !Number.isNaN(rm) && rm >= 0) ? rm : 1
   }
 
   if (enableStatus.value) {
@@ -1639,10 +1568,9 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
   }
 
   if (enableModelRestriction.value && !isOpenAIModelRestrictionDisabled.value) {
-    // 统一使用 model_mapping 字段
+    // 缂佺喍绔存担璺ㄦ暏 model_mapping 鐎涙顔
     if (modelRestrictionMode.value === 'whitelist') {
-      // 白名单模式：将模型转换为 model_mapping 格式（key=value）
-      // 空白名单表示“支持所有模型”，需显式发送空对象以覆盖已有限制。
+      // 閻ц棄鎮曢崡鏇熌佸蹇ョ窗鐏忓棙膩閸ㄥ娴嗛幑顫礋 model_mapping 閺嶇厧绱￠敍鍧榚y=value閿?      // 缁岃櫣娅ч崥宥呭礋鐞涖劎銇氶垾婊勬暜閹镐焦澧嶉張澶嬆侀崹瀣р偓婵撶礉闂団偓閺勬儳绱￠崣鎴︹偓浣衡敄鐎电钖勬禒銉洬閻╂牕鍑￠張澶愭閸掕翰鈧?
       const mapping: Record<string, string> = {}
       for (const m of allowedModels.value) {
         mapping[m] = m
@@ -1650,7 +1578,7 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
       credentials.model_mapping = mapping
       credentialsChanged = true
     } else {
-      // 映射模式下空配置同样表示“支持所有模型”。
+      // 閺勭姴鐨犲Ο鈥崇础娑撳鈹栭柊宥囩枂閸氬本鐗辩悰銊с仛閳ユ粍鏁幐浣瑰閺堝膩閸ㄥ鈧縿鈧?
       const modelMapping = buildModelMappingObject()
       credentials.model_mapping = modelMapping ?? {}
       credentialsChanged = true
@@ -1658,8 +1586,8 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
   }
 
   if (enableCustomErrorCodes.value) {
-    credentials.custom_error_codes_enabled = true
-    credentials.custom_error_codes = [...selectedErrorCodes.value]
+    credentials.custom_error_codes_enabled = customErrorCodesActive.value
+    credentials.custom_error_codes = customErrorCodesActive.value ? [...selectedErrorCodes.value] : []
     credentialsChanged = true
   }
 
@@ -1703,7 +1631,7 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     updates.credentials = credentials
   }
 
-  // RPM limit settings (写入 extra 字段)
+  // RPM limit settings (閸愭瑥鍙?extra 鐎涙顔?
   if (enableRpmLimit.value) {
     const extra = ensureExtra()
     if (rpmLimitEnabled.value && bulkBaseRpm.value != null && bulkBaseRpm.value > 0) {
@@ -1713,9 +1641,7 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
         extra.rpm_sticky_buffer = bulkRpmStickyBuffer.value
       }
     } else {
-      // 关闭 RPM 限制 - 设置 base_rpm 为 0，并用空值覆盖关联字段
-      // 后端使用 JSONB || merge 语义，不会删除已有 key，
-      // 所以必须显式发送空值来重置（后端读取时会 fallback 到默认值）
+      // 閸忔娊妫?RPM 闂勬劕鍩?- 鐠佸墽鐤?base_rpm 娑?0閿涘苯鑻熼悽銊р敄閸婅壈顩惄鏍у彠閼辨柨鐡у▓?      // 閸氬海顏担璺ㄦ暏 JSONB || merge 鐠囶厺绠熼敍灞肩瑝娴兼艾鍨归梽銈呭嚒閺?key閿?      // 閹碘偓娴犮儱绻€妞ょ粯妯夊蹇撳絺闁胶鈹栭崐鍏兼降闁插秶鐤嗛敍鍫濇倵缁旑垵顕伴崣鏍ㄦ娴?fallback 閸掍即绮拋銈呪偓纭风礆
       extra.base_rpm = 0
       extra.rpm_strategy = ''
       extra.rpm_sticky_buffer = 0
@@ -1723,11 +1649,11 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     updates.extra = extra
   }
 
-  // UMQ mode（独立于 RPM 保存）
+  // UMQ mode閿涘牏瀚粩瀣╃艾 RPM 娣囨繂鐡ㄩ敍?
   if (userMsgQueueMode.value !== null) {
     const umqExtra = ensureExtra()
-    umqExtra.user_msg_queue_mode = userMsgQueueMode.value  // '' = 清除账号级覆盖
-    umqExtra.user_msg_queue_enabled = false  // 清理旧字段（JSONB merge）
+    umqExtra.user_msg_queue_mode = userMsgQueueMode.value  // '' = 濞撳懘娅庣拹锕€褰跨痪褑顩惄?
+    umqExtra.user_msg_queue_enabled = false  // 濞撳懐鎮婇弮褍鐡у▓纰夌礄JSONB merge閿?
   }
 
   // Allow overages (Antigravity only)
@@ -1742,8 +1668,9 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
 
 const mixedChannelConfirmed = ref(false)
 
-// 是否需要预检查：改了分组 + 平台支持 mixed channel check
-// 多平台混合的情况由 submitBulkUpdate 的 409 catch 兜底
+// 閺勵垰鎯侀棁鈧憰渚€顣╁Λ鈧弻銉窗閺€閫涚啊閸掑棛绮?+ 楠炲啿褰撮弨顖涘瘮 mixed channel check
+// 婢舵艾閽╅崣鐗堣穿閸氬牏娈戦幆鍛枌閻?submitBulkUpdate 閻?409 catch 閸忔粌绨
+
 const canPreCheck = () => {
   if (!enableGroups.value || groupIds.value.length === 0) return false
   if (targetSelectedPlatforms.value.length !== 1) return false
@@ -1764,7 +1691,8 @@ const handleClose = () => {
   emit('close')
 }
 
-// 预检查：提交前调接口检测，有风险就弹窗阻止，返回 false 表示需要用户确认
+// 妫板嫭顥呴弻銉窗閹绘劒姘﹂崜宥堢殶閹恒儱褰涘Λ鈧ù瀣剁礉閺堝顥撻梽鈺佹皑瀵湱鐛ラ梼缁橆剾閿涘矁绻戦崶?false 鐞涖劎銇氶棁鈧憰浣烘暏閹撮鈥樼拋
+
 const preCheckMixedChannelRisk = async (built: Record<string, unknown>): Promise<boolean> => {
   if (!canPreCheck()) return true
   if (mixedChannelConfirmed.value) return true
@@ -1780,8 +1708,8 @@ const preCheckMixedChannelRisk = async (built: Record<string, unknown>): Promise
     mixedChannelWarningMessage.value = result.message || t('admin.accounts.bulkEdit.failed')
     showMixedChannelWarning.value = true
     return false
-  } catch (error: any) {
-    appStore.showError(error.message || t('admin.accounts.bulkEdit.failed'))
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('admin.accounts.bulkEdit.failed')))
     return false
   }
 }
@@ -1832,7 +1760,7 @@ const handleSubmit = async () => {
 }
 
 const submitBulkUpdate = async (baseUpdates: Record<string, unknown>) => {
-  // 无论是预检查确认还是 409 兜底确认，只要 mixedChannelConfirmed 为 true 就带上 flag
+  // 閺冪姾顔戦弰顖烆暕濡偓閺屻儳鈥樼拋銈堢箷閺?409 閸忔粌绨崇涵顔款吇閿涘苯褰х憰?mixedChannelConfirmed 娑?true 鐏忓崬鐢稉?flag
   const updates = mixedChannelConfirmed.value
     ? { ...baseUpdates, confirm_mixed_channel_risk: true }
     : baseUpdates
@@ -1862,15 +1790,16 @@ const submitBulkUpdate = async (baseUpdates: Record<string, unknown>) => {
       emit('updated')
       handleClose()
     }
-  } catch (error: any) {
-    // 兜底：多平台混合场景下，预检查跳过，由后端 409 触发确认框
-    if (error.status === 409 && error.error === 'mixed_channel_warning') {
+  } catch (err: unknown) {
+    // 閸忔粌绨抽敍姘樋楠炲啿褰村ǎ宄版値閸︾儤娅欐稉瀣剁礉妫板嫭顥呴弻銉ㄧ儲鏉╁浄绱濋悽鍗炴倵缁?409 鐟欙箑褰傜涵顔款吇濡?
+    const apiErr = err as Record<string, unknown>
+    if (apiErr.status === 409 && apiErr.error === 'mixed_channel_warning') {
       pendingUpdatesForConfirm.value = baseUpdates
-      mixedChannelWarningMessage.value = error.message
+      mixedChannelWarningMessage.value = String(apiErr.message || '')
       showMixedChannelWarning.value = true
     } else {
-      appStore.showError(error.message || t('admin.accounts.bulkEdit.failed'))
-      console.error('Error bulk updating accounts:', error)
+      appStore.showError(extractApiErrorMessage(err, t('admin.accounts.bulkEdit.failed')))
+      console.error('Error bulk updating accounts:', err)
     }
   } finally {
     submitting.value = false
@@ -1924,6 +1853,7 @@ watch(
       modelMappings.value = []
       selectedErrorCodes.value = []
       customErrorCodeInput.value = null
+      customErrorCodesActive.value = true
       interceptWarmupRequests.value = false
       proxyId.value = null
       concurrency.value = 1

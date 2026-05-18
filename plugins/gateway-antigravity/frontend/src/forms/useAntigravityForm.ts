@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Antigravity account form composable (plugin-local).
  *
  * Migrated from host useAntigravityForm.ts. Host-internal imports
@@ -11,7 +11,7 @@ import type {
   OAuthFlowConfig, SdkAccount, SdkCreateAccountRequest, TempUnschedRuleForm,
   CommonAccountFields,
 } from '@sub2api/plugin-sdk'
-import { applyInterceptWarmup } from '@sub2api/plugin-sdk'
+import { applyInterceptWarmup, applyTempUnschedToCredentials } from '@sub2api/plugin-sdk'
 import { useAntigravityOAuth } from './useAntigravityOAuth'
 import { antigravityPresetMappings } from './presets'
 import { isValidWildcardPattern, buildModelMappingObject, fetchDefaultMappings } from './modelMapping'
@@ -88,6 +88,7 @@ export function useAntigravityForm(commonFields: Ref<CommonAccountFields>) {
       const mapping = buildMapping()
       if (mapping) credentials.model_mapping = mapping
       applyInterceptWarmup(credentials, interceptWarmupRequests.value, 'create')
+      applyTempUnschedToCredentials(credentials, tempUnschedEnabled.value, tempUnschedRules.value)
       return { credentials, extra: buildExtra(), common: commonFields.value, typeOverride: 'apikey' }
     }
     return { credentials: {}, extra: buildExtra(), common: commonFields.value, needsOAuthFlow: true }
@@ -97,6 +98,7 @@ export function useAntigravityForm(commonFields: Ref<CommonAccountFields>) {
     const mapping = buildMapping()
     if (mapping) credentials.model_mapping = mapping
     applyInterceptWarmup(credentials, interceptWarmupRequests.value, 'create')
+    applyTempUnschedToCredentials(credentials, tempUnschedEnabled.value, tempUnschedRules.value)
   }
 
   async function handleOAuthExchange(
@@ -148,7 +150,7 @@ export function useAntigravityForm(commonFields: Ref<CommonAccountFields>) {
       expires_at: (a.expires_at as number) ?? null,
       auto_pause_on_expired: (a.auto_pause_on_expired as boolean) ?? true,
       group_ids: (a.group_ids as number[]) ?? [],
-      quota_enabled: !!((a.extra as Record<string, unknown>)?.quota_limit || (a.extra as Record<string, unknown>)?.quota_daily_limit),
+      quota_enabled: !!((a.extra as Record<string, unknown>)?.quota_limit || (a.extra as Record<string, unknown>)?.quota_daily_limit || (a.extra as Record<string, unknown>)?.quota_weekly_limit),
       quota_limit: ((a.extra as Record<string, unknown>)?.quota_limit as number) ?? null,
       quota_daily_limit: ((a.extra as Record<string, unknown>)?.quota_daily_limit as number) ?? null,
       quota_weekly_limit: ((a.extra as Record<string, unknown>)?.quota_weekly_limit as number) ?? null,

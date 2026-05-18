@@ -14,7 +14,7 @@ import type {
   PlatformFormPayload, PlatformFormValidation, OAuthFlowConfig,
   ModelMapping, SdkAccount, SdkCreateAccountRequest,
 } from '@sub2api/plugin-sdk'
-import { applyInterceptWarmup, resolveAllProtocolModelIds, type TempUnschedRuleForm } from '@sub2api/plugin-sdk'
+import { applyInterceptWarmup, applyTempUnschedToCredentials, resolveAllProtocolModelIds, type TempUnschedRuleForm } from '@sub2api/plugin-sdk'
 import { getClient } from '../api/client'
 import { useAccountOAuth, type AddMethod } from '../composables/useAccountOAuth'
 import { useAnthropicBedrockForm } from './useAnthropicBedrockForm'
@@ -81,6 +81,8 @@ export function useAnthropicForm() {
       customErrorCodesEnabled: customErrorCodesEnabled.value,
       selectedErrorCodes: selectedErrorCodes.value,
       interceptWarmupRequests: interceptWarmupRequests.value,
+      tempUnschedEnabled: tempUnschedEnabled.value,
+      tempUnschedRules: tempUnschedRules.value,
     }
   }
 
@@ -110,6 +112,7 @@ export function useAnthropicForm() {
     const c: Record<string, unknown> = { service_account_json: vertexServiceAccountJson.value.trim(), project_id: vertexProjectId.value.trim(), client_email: vertexClientEmail.value.trim(), location: vertexLocation.value.trim(), tier_id: 'vertex' }
     const mm = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
     if (mm) c.model_mapping = mm
+    applyTempUnschedToCredentials(c, tempUnschedEnabled.value, tempUnschedRules.value)
     return { credentials: c, typeOverride: 'service_account' }
   }
 
@@ -149,6 +152,7 @@ export function useAnthropicForm() {
     if (syncToStreamMode.value !== 'default') extra.sync_to_stream = syncToStreamMode.value
     const creds: Record<string, unknown> = { ...ti }
     applyInterceptWarmup(creds, interceptWarmupRequests.value, 'create')
+    applyTempUnschedToCredentials(creds, tempUnschedEnabled.value, tempUnschedRules.value)
     return { name: '', platform: 'anthropic', type: addMethod.value, credentials: creds, extra: Object.keys(extra).length > 0 ? extra : undefined }
   }
 

@@ -78,6 +78,7 @@ import { usePlatforms } from '@/composables/usePlatforms'
 import { resolveFormComponentAsync } from './forms/platformFormRegistry'
 import type { PlatformFormContext, PlatformFormExposed } from './forms/types'
 import { extractApiErrorMessage } from '@/utils/apiError'
+import { applyQuotaToExtra } from '@sub2api/plugin-sdk'
 
 interface Props { show: boolean; account: Account | null; proxies: Proxy[]; groups: AdminGroup[] }
 const props = defineProps<Props>()
@@ -221,9 +222,22 @@ async function handleSubmit() {
       status: form.status,
     }
     if (ep) {
-      if (ep.credentials === undefined) return
+      if (ep.credentials === undefined) { if (ep.error) appStore.showError(t(ep.error)); return }
       if (ep.credentials) up.credentials = ep.credentials
       if (ep.extra !== undefined) up.extra = ep.extra
+    }
+    // Merge quota fields from common into extra (backend expects them in extra)
+    if (ep?.common) {
+      const extra = { ...((up.extra as Record<string, unknown>) || {}) }
+      applyQuotaToExtra(extra, {
+        quotaLimit: ep.common.quota_enabled ? (ep.common.quota_limit ?? null) : null,
+        quotaDailyLimit: ep.common.quota_enabled ? (ep.common.quota_daily_limit ?? null) : null,
+        quotaWeeklyLimit: ep.common.quota_enabled ? (ep.common.quota_weekly_limit ?? null) : null,
+        dailyResetMode: null, dailyResetHour: null,
+        weeklyResetMode: null, weeklyResetDay: null, weeklyResetHour: null,
+        resetTimezone: null,
+      })
+      up.extra = extra
     }
     // Merge common fields from plugin form
     if (ep?.common) {
@@ -233,7 +247,7 @@ async function handleSubmit() {
         load_factor: ep.common.load_factor,
         priority: ep.common.priority,
         rate_multiplier: ep.common.rate_multiplier,
-        expires_at: ep.common.expires_at,
+        expires_at: ep.common.expires_at ?? 0,  // null → 0 tells backend to clear expiration
         auto_pause_on_expired: ep.common.auto_pause_on_expired,
         group_ids: ep.common.group_ids,
       })

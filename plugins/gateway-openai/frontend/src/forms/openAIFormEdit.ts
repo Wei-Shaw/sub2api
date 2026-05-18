@@ -93,7 +93,8 @@ export function getEditPayload(
   const newCreds: Record<string, unknown> = { ...currentCreds }
   const currentExtra = (account.extra as Record<string, unknown>) || {}
   const newExtra: Record<string, unknown> = { ...currentExtra }
-  applyTempUnschedToCredentials(newCreds, refs.tempUnschedEnabled.value, refs.tempUnschedRules.value)
+  const unschedResult = applyTempUnschedToCredentials(newCreds, refs.tempUnschedEnabled.value, refs.tempUnschedRules.value)
+  if (!unschedResult.valid) return { credentials: undefined, error: unschedResult.error }
   const shouldApply = !refs.openaiPassthroughEnabled.value
   if (account.type === 'apikey' || account.type === 'oauth') {
     applyModelMappingToCredentials(

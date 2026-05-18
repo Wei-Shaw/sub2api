@@ -121,6 +121,8 @@ export interface EditFormPayload {
   credentials?: Record<string, unknown>
   extra?: Record<string, unknown>
   common?: Partial<CommonAccountFields>
+  /** Validation error from platform form — if set, credentials is undefined and save should be aborted. */
+  error?: string
 }
 
 export interface PlatformFormValidation {

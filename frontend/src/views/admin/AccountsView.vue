@@ -292,7 +292,7 @@
           </template>
           <template #cell-rate_multiplier="{ row }">
             <span class="text-sm font-mono text-gray-700 dark:text-gray-300">
-              {{ (row.rate_multiplier ?? 1).toFixed(2) }}x
+              {{ formatMultiplier(row.rate_multiplier ?? 1) }}x
             </span>
           </template>
           <template #cell-priority="{ value }">
@@ -412,6 +412,7 @@ import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRules
 import TLSFingerprintProfilesModal from '@/components/admin/TLSFingerprintProfilesModal.vue'
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
+import { formatMultiplier } from '@/utils/formatters'
 import {
   getAntigravityTierLabel as _getAntigravityTierLabel,
   getAntigravityTierClass,

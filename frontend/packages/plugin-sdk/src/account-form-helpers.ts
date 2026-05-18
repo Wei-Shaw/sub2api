@@ -212,7 +212,7 @@ export function applyTempUnschedToCredentials(
   }
   const built = buildTempUnschedRules(rules)
   if (built.length === 0) {
-    return { valid: false, error: 'tempUnschedulable.rulesInvalid' }
+    return { valid: false, error: 'admin.accounts.tempUnschedulable.rulesInvalid' }
   }
   creds.temp_unschedulable_enabled = true
   creds.temp_unschedulable_rules = built

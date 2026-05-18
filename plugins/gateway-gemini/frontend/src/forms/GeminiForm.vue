@@ -123,7 +123,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   Icon,
@@ -197,6 +197,11 @@ onMounted(() => {
   }
 })
 
+const reactiveOAuthConfig = computed(() => ({
+  ...oauthConfig,
+  showProjectId: geminiOAuthType.value === 'code_assist'
+}))
+
 defineExpose({
   validate: () => validate(props.context.accountCategory, props.context.mode),
   getPayload: () => getPayload(props.context.accountCategory),
@@ -204,10 +209,7 @@ defineExpose({
   reset: () => reset(),
   initFromAccount,
   getEditPayload,
-  oauthConfig: {
-    ...oauthConfig,
-    showProjectId: geminiOAuthType.value === 'code_assist'
-  },
+  get oauthConfig() { return reactiveOAuthConfig.value },
   getOAuthState: () => ({
     authUrl: geminiOAuth.authUrl.value,
     sessionId: geminiOAuth.sessionId.value,

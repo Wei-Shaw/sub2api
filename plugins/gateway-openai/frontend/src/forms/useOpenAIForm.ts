@@ -1,7 +1,7 @@
 import { ref, computed, watch, type Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useOpenAIOAuth } from '../composables/useOpenAIOAuth'
-import { buildModelMappingObject, resolveAllProtocolModelIds } from '@sub2api/plugin-sdk'
+import { buildModelMappingObject, resolveAllProtocolModelIds, applyTempUnschedToCredentials } from '@sub2api/plugin-sdk'
 import {
   OPENAI_WS_MODE_OFF,
   OPENAI_WS_MODE_CTX_POOL,
@@ -121,6 +121,11 @@ export function useOpenAIForm(commonFields: Ref<CommonAccountFields>) {
     else delete extra.codex_cli_only
     if (openAICompactMode.value !== 'auto') extra.openai_compact_mode = openAICompactMode.value
     else delete extra.openai_compact_mode
+    if (codexImageGenerationBridgeMode.value !== 'inherit') {
+      extra.codex_image_generation_bridge = codexImageGenerationBridgeMode.value === 'enabled'
+    } else {
+      delete extra.codex_image_generation_bridge
+    }
     return Object.keys(extra).length > 0 ? extra : undefined
   }
 
@@ -149,6 +154,7 @@ export function useOpenAIForm(commonFields: Ref<CommonAccountFields>) {
     applyModelRestriction(credentials)
     if (poolModeEnabled.value) { credentials.pool_mode = true; credentials.pool_mode_retry_count = poolModeRetryCount.value }
     if (customErrorCodesEnabled.value) { credentials.custom_error_codes_enabled = true; credentials.custom_error_codes = [...selectedErrorCodes.value] }
+    applyTempUnschedToCredentials(credentials, tempUnschedEnabled.value, tempUnschedRules.value)
     return { credentials, extra: buildExtra(category), common: commonFields.value }
   }
 
@@ -161,6 +167,7 @@ export function useOpenAIForm(commonFields: Ref<CommonAccountFields>) {
     const creds = openaiOAuth.buildCredentials(tokenInfo)
     const oauthX = openaiOAuth.buildExtraInfo(tokenInfo) as Record<string, unknown> | undefined
     applyModelRestriction(creds)
+    applyTempUnschedToCredentials(creds, tempUnschedEnabled.value, tempUnschedRules.value)
     return { name: '', platform: 'openai', type: 'oauth', credentials: creds, extra: buildExtra('oauth-based', oauthX) }
   }
 
@@ -178,6 +185,7 @@ export function useOpenAIForm(commonFields: Ref<CommonAccountFields>) {
       if (clientId) creds.client_id = clientId
       const oauthX = openaiOAuth.buildExtraInfo(info) as Record<string, unknown> | undefined
       applyModelRestriction(creds)
+      applyTempUnschedToCredentials(creds, tempUnschedEnabled.value, tempUnschedRules.value)
       results.push({ name: '', platform: 'openai', type: 'oauth', credentials: creds, extra: buildExtra('oauth-based', oauthX) })
     }
     return results.length === 1 ? results[0] : results.length > 0 ? results : null
@@ -237,7 +245,7 @@ export function useOpenAIForm(commonFields: Ref<CommonAccountFields>) {
         expires_at: (a.expires_at as number) ?? null,
         auto_pause_on_expired: (a.auto_pause_on_expired as boolean) ?? true,
         group_ids: (a.group_ids as number[]) ?? [],
-        quota_enabled: !!((a.extra as Record<string, unknown>)?.quota_limit || (a.extra as Record<string, unknown>)?.quota_daily_limit),
+        quota_enabled: !!((a.extra as Record<string, unknown>)?.quota_limit || (a.extra as Record<string, unknown>)?.quota_daily_limit || (a.extra as Record<string, unknown>)?.quota_weekly_limit),
         quota_limit: ((a.extra as Record<string, unknown>)?.quota_limit as number) ?? null,
         quota_daily_limit: ((a.extra as Record<string, unknown>)?.quota_daily_limit as number) ?? null,
         quota_weekly_limit: ((a.extra as Record<string, unknown>)?.quota_weekly_limit as number) ?? null,

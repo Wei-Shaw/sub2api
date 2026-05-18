@@ -23,6 +23,9 @@ import { useGeminiOAuth } from '../composables/useGeminiOAuth'
 import { buildModelMappingObject } from './geminiModels'
 import { resolveAllProtocolModelIds } from '@sub2api/plugin-sdk'
 
+/** Default Vertex AI location, matching backend vertexDefaultLocation. */
+const vertexDefaultLocation = 'us-central1'
+
 export function useGeminiForm(commonFields: Ref<CommonAccountFields>) {
   const { t } = useI18n()
   const geminiOAuth = useGeminiOAuth()
@@ -41,7 +44,7 @@ export function useGeminiForm(commonFields: Ref<CommonAccountFields>) {
   const vertexServiceAccountJson = ref('')
   const vertexProjectId = ref('')
   const vertexClientEmail = ref('')
-  const vertexLocation = ref('global')
+  const vertexLocation = ref(vertexDefaultLocation)
   const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
   const allowedModels = ref<string[]>([])
   const modelMappings = ref<ModelMapping[]>([])
@@ -51,6 +54,7 @@ export function useGeminiForm(commonFields: Ref<CommonAccountFields>) {
   const selectedErrorCodes = ref<number[]>([])
   const tempUnschedEnabled = ref(false)
   const tempUnschedRules = ref<TempUnschedRuleForm[]>([])
+  const isEditMode = ref(false)
 
   // ---- Computed ----
   const geminiSelectedTier = computed(() => {
@@ -97,7 +101,7 @@ export function useGeminiForm(commonFields: Ref<CommonAccountFields>) {
       return { valid: false, error: t('admin.accounts.pleaseEnterApiKey') }
     }
     if (accountCategory === 'service_account') {
-      if (!vertexServiceAccountJson.value.trim()) {
+      if (!isEditMode.value && !vertexServiceAccountJson.value.trim()) {
         return { valid: false, error: t('admin.accounts.vertexSaJsonMissingFields') }
       }
       if (!vertexLocation.value.trim()) {
@@ -127,6 +131,7 @@ export function useGeminiForm(commonFields: Ref<CommonAccountFields>) {
     }
     const mm = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
     if (mm) credentials.model_mapping = mm
+    applyTempUnschedToCredentials(credentials, tempUnschedEnabled.value, tempUnschedRules.value)
     return { credentials, typeOverride: 'service_account' }
   }
 
@@ -146,6 +151,7 @@ export function useGeminiForm(commonFields: Ref<CommonAccountFields>) {
       credentials.custom_error_codes_enabled = true
       credentials.custom_error_codes = [...selectedErrorCodes.value]
     }
+    applyTempUnschedToCredentials(credentials, tempUnschedEnabled.value, tempUnschedRules.value)
     return { credentials }
   }
 
@@ -166,12 +172,14 @@ export function useGeminiForm(commonFields: Ref<CommonAccountFields>) {
     if (!tokenInfo) return null
     const creds = geminiOAuth.buildCredentials(tokenInfo)
     const extra = geminiOAuth.buildExtraInfo(tokenInfo)
+    applyTempUnschedToCredentials(creds, tempUnschedEnabled.value, tempUnschedRules.value)
     return { name: '', platform: 'gemini', type: 'oauth', credentials: creds, extra }
   }
 
   // ---- Edit mode ----
   function initFromAccount(account: SdkAccount): void {
     reset()
+    isEditMode.value = true
     const credentials = account.credentials
     loadTempUnschedFromCredentials(credentials, tempUnschedEnabled, tempUnschedRules)
     if (account.type === 'service_account') {
@@ -179,7 +187,7 @@ export function useGeminiForm(commonFields: Ref<CommonAccountFields>) {
     } else if (account.type === 'apikey') {
       initApiKeyEdit(credentials)
     } else if (account.type === 'oauth') {
-      loadModelMappingFromCredentials(credentials, modelRestrictionMode, allowedModels, modelMappings)
+      initOAuthEdit(credentials)
     }
     const a = account as Record<string, unknown>
     commonFields.value = {
@@ -193,7 +201,7 @@ export function useGeminiForm(commonFields: Ref<CommonAccountFields>) {
       expires_at: (a.expires_at as number) ?? null,
       auto_pause_on_expired: (a.auto_pause_on_expired as boolean) ?? true,
       group_ids: (a.group_ids as number[]) ?? [],
-      quota_enabled: !!((a.extra as Record<string, unknown>)?.quota_limit || (a.extra as Record<string, unknown>)?.quota_daily_limit),
+      quota_enabled: !!((a.extra as Record<string, unknown>)?.quota_limit || (a.extra as Record<string, unknown>)?.quota_daily_limit || (a.extra as Record<string, unknown>)?.quota_weekly_limit),
       quota_limit: ((a.extra as Record<string, unknown>)?.quota_limit as number) ?? null,
       quota_daily_limit: ((a.extra as Record<string, unknown>)?.quota_daily_limit as number) ?? null,
       quota_weekly_limit: ((a.extra as Record<string, unknown>)?.quota_weekly_limit as number) ?? null,
@@ -203,22 +211,49 @@ export function useGeminiForm(commonFields: Ref<CommonAccountFields>) {
   function initServiceAccountEdit(credentials: Record<string, unknown> | undefined): void {
     vertexProjectId.value = (credentials?.project_id as string) || ''
     vertexClientEmail.value = (credentials?.client_email as string) || ''
-    vertexLocation.value = (credentials?.location as string) || (credentials?.vertex_location as string) || 'us-central1'
+    vertexLocation.value = (credentials?.location as string) || (credentials?.vertex_location as string) || vertexDefaultLocation
     loadModelMappingFromCredentials(credentials, modelRestrictionMode, allowedModels, modelMappings)
   }
 
   function initApiKeyEdit(credentials: Record<string, unknown> | undefined): void {
     apiKeyBaseUrl.value = (credentials?.base_url as string) || 'https://generativelanguage.googleapis.com'
     editApiKey.value = ''
+    const tierId = (credentials?.tier_id as string) || ''
+    if (tierId === 'aistudio_paid' || tierId === 'aistudio_free') {
+      geminiTierAIStudio.value = tierId
+    }
     loadModelMappingFromCredentials(credentials, modelRestrictionMode, allowedModels, modelMappings)
     loadPoolModeFromCredentials(credentials, poolModeEnabled, poolModeRetryCount)
     loadCustomErrorCodesFromCredentials(credentials, customErrorCodesEnabled, selectedErrorCodes)
   }
 
+  function initOAuthEdit(credentials: Record<string, unknown> | undefined): void {
+    const oauthType = (credentials?.oauth_type as string) || ''
+    if (oauthType === 'code_assist' || oauthType === 'google_one' || oauthType === 'ai_studio') {
+      geminiOAuthType.value = oauthType
+    }
+    const tierId = (credentials?.tier_id as string) || ''
+    if (geminiOAuthType.value === 'google_one') {
+      if (tierId === 'google_one_free' || tierId === 'google_ai_pro' || tierId === 'google_ai_ultra') {
+        geminiTierGoogleOne.value = tierId
+      }
+    } else if (geminiOAuthType.value === 'code_assist') {
+      if (tierId === 'gcp_standard' || tierId === 'gcp_enterprise') {
+        geminiTierGcp.value = tierId
+      }
+    } else if (geminiOAuthType.value === 'ai_studio') {
+      if (tierId === 'aistudio_paid' || tierId === 'aistudio_free') {
+        geminiTierAIStudio.value = tierId
+      }
+    }
+    loadModelMappingFromCredentials(credentials, modelRestrictionMode, allowedModels, modelMappings)
+  }
+
   function getEditPayload(account: SdkAccount): EditFormPayload {
     const currentCreds = (account.credentials) || {}
     const newCreds: Record<string, unknown> = { ...currentCreds }
-    applyTempUnschedToCredentials(newCreds, tempUnschedEnabled.value, tempUnschedRules.value)
+    const unschedResult = applyTempUnschedToCredentials(newCreds, tempUnschedEnabled.value, tempUnschedRules.value)
+    if (!unschedResult.valid) return { credentials: undefined, error: unschedResult.error, common: commonFields.value }
     if (account.type === 'service_account') {
       return { ...buildServiceAccountEditPayload(newCreds), common: commonFields.value }
     }
@@ -226,6 +261,8 @@ export function useGeminiForm(commonFields: Ref<CommonAccountFields>) {
       return { ...buildApiKeyEditPayload(newCreds), common: commonFields.value }
     }
     if (account.type === 'oauth') {
+      newCreds.oauth_type = geminiOAuthType.value
+      newCreds.tier_id = geminiSelectedTier.value
       applyModelMappingToCredentials(newCreds, modelRestrictionMode.value, allowedModels.value, modelMappings.value)
     }
     return { credentials: newCreds, common: commonFields.value }
@@ -245,6 +282,7 @@ export function useGeminiForm(commonFields: Ref<CommonAccountFields>) {
 
   function buildApiKeyEditPayload(newCreds: Record<string, unknown>): EditFormPayload {
     newCreds.base_url = apiKeyBaseUrl.value.trim() || 'https://generativelanguage.googleapis.com'
+    newCreds.tier_id = geminiTierAIStudio.value
     if (editApiKey.value.trim()) newCreds.api_key = editApiKey.value.trim()
     applyModelMappingToCredentials(newCreds, modelRestrictionMode.value, allowedModels.value, modelMappings.value)
     applyPoolModeToCredentials(newCreds, poolModeEnabled.value, poolModeRetryCount.value)
@@ -253,6 +291,7 @@ export function useGeminiForm(commonFields: Ref<CommonAccountFields>) {
   }
 
   function reset() {
+    isEditMode.value = false
     geminiOAuthType.value = 'google_one'
     geminiAIStudioOAuthEnabled.value = false
     showAdvancedOAuth.value = false
@@ -265,7 +304,7 @@ export function useGeminiForm(commonFields: Ref<CommonAccountFields>) {
     vertexServiceAccountJson.value = ''
     vertexProjectId.value = ''
     vertexClientEmail.value = ''
-    vertexLocation.value = 'global'
+    vertexLocation.value = vertexDefaultLocation
     modelRestrictionMode.value = 'whitelist'
     allowedModels.value = resolveAllProtocolModelIds(['gemini'])
     modelMappings.value = []

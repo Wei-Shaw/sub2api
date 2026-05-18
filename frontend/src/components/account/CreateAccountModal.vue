@@ -268,11 +268,13 @@ import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import { usePlatforms } from '@/composables/usePlatforms'
 import { resolveFormComponentAsync } from './forms/platformFormRegistry'
 import type {
+  CommonAccountFields,
   PlatformFormContext, PlatformFormExposed,
   OAuthFlowConfig, OAuthComposableState,
   AddMethod, AuthInputMethod,
 } from './forms/types'
 import { extractApiErrorMessage } from '@/utils/apiError'
+import { applyQuotaToExtra } from '@sub2api/plugin-sdk'
 
 // ---------------------------------------------------------------------------
 // OAuthAuthorizationFlow exposed interface
@@ -349,8 +351,8 @@ const form = reactive({
 })
 
 // Cached from plugin form payload before transitioning to OAuth Step 3
-const cachedName = ref('')
-const cachedNotes = ref('')
+// Stores ALL common fields so they survive the v-if destruction of the plugin form component
+const cachedCommonFields = ref<CommonAccountFields | null>(null)
 
 // ---------------------------------------------------------------------------
 // Account type -> category mapping (data-driven, no platform name checks)
@@ -598,8 +600,7 @@ async function handleSubmit() {
   const commonNotes = payload.common?.notes?.trim() || ''
   if (!commonName) { appStore.showError(t('admin.accounts.pleaseEnterAccountName')); return }
   if (payload.needsOAuthFlow) {
-    cachedName.value = commonName
-    cachedNotes.value = commonNotes
+    cachedCommonFields.value = payload.common ? { ...payload.common } : null
     if (payload.typeOverride) addMethod.value = payload.typeOverride as AddMethod
     const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => { step.value = 3 })
     if (!canContinue) return
@@ -607,13 +608,25 @@ async function handleSubmit() {
     return
   }
   const resolvedType = payload.typeOverride || form.type
+  // Merge quota fields from common into extra (backend expects them in extra)
+  const extra = { ...(payload.extra || {}) }
+  if (payload.common) {
+    applyQuotaToExtra(extra, {
+      quotaLimit: payload.common.quota_enabled ? payload.common.quota_limit : null,
+      quotaDailyLimit: payload.common.quota_enabled ? payload.common.quota_daily_limit : null,
+      quotaWeeklyLimit: payload.common.quota_enabled ? payload.common.quota_weekly_limit : null,
+      dailyResetMode: null, dailyResetHour: null,
+      weeklyResetMode: null, weeklyResetDay: null, weeklyResetHour: null,
+      resetTimezone: null,
+    })
+  }
   const request: CreateAccountRequest = {
     name: commonName,
     notes: commonNotes || undefined,
     platform: form.platform,
     type: resolvedType,
     credentials: payload.credentials,
-    extra: payload.extra,
+    extra,
     ...(payload.common ? {
       proxy_id: payload.common.proxy_id,
       concurrency: payload.common.concurrency,
@@ -667,12 +680,23 @@ async function handleCodexSessionImport(content: string) {
   if (!trimmed) return
 
   try {
-    const payload = platformFormRef.value?.getPayload()
-    const common = payload?.common
+    const common = cachedCommonFields.value
+    // Build extra with quota fields if enabled
+    const codexExtra: Record<string, unknown> = {}
+    if (common) {
+      applyQuotaToExtra(codexExtra, {
+        quotaLimit: common.quota_enabled ? common.quota_limit : null,
+        quotaDailyLimit: common.quota_enabled ? common.quota_daily_limit : null,
+        quotaWeeklyLimit: common.quota_enabled ? common.quota_weekly_limit : null,
+        dailyResetMode: null, dailyResetHour: null,
+        weeklyResetMode: null, weeklyResetDay: null, weeklyResetHour: null,
+        resetTimezone: null,
+      })
+    }
     const result = await adminAPI.accounts.importCodexSession({
       content: trimmed,
-      name: cachedName.value,
-      notes: cachedNotes.value || undefined,
+      name: common?.name || '',
+      notes: common?.notes || undefined,
       proxy_id: common?.proxy_id ?? undefined,
       concurrency: common?.concurrency,
       load_factor: common?.load_factor ?? undefined,
@@ -681,7 +705,7 @@ async function handleCodexSessionImport(content: string) {
       group_ids: common?.group_ids,
       expires_at: common?.expires_at,
       auto_pause_on_expired: common?.auto_pause_on_expired,
-      extra: payload?.extra,
+      extra: Object.keys(codexExtra).length > 0 ? codexExtra : undefined,
       update_existing: true,
     })
 
@@ -703,13 +727,13 @@ async function handleCodexSessionImport(content: string) {
 
 async function finalizeOAuthResult(result: CreateAccountRequest | CreateAccountRequest[]) {
   const requests = Array.isArray(result) ? result : [result]
-  const payload = platformFormRef.value?.getPayload()
-  const common = payload?.common
+  const common = cachedCommonFields.value
   for (let i = 0; i < requests.length; i++) {
     const req = { ...requests[i] }
-    const baseName = req.name || cachedName.value
+    const baseName = req.name || common?.name || ''
     req.name = requests.length > 1 ? `${baseName} #${i + 1}` : baseName
     if (common) {
+      req.notes = common.notes || undefined
       req.proxy_id = common.proxy_id
       req.concurrency = common.concurrency
       req.load_factor = common.load_factor
@@ -718,6 +742,17 @@ async function finalizeOAuthResult(result: CreateAccountRequest | CreateAccountR
       req.group_ids = common.group_ids
       req.expires_at = common.expires_at
       req.auto_pause_on_expired = common.auto_pause_on_expired
+      // Merge quota fields into extra
+      const extra = { ...(req.extra || {}) } as Record<string, unknown>
+      applyQuotaToExtra(extra, {
+        quotaLimit: common.quota_enabled ? common.quota_limit : null,
+        quotaDailyLimit: common.quota_enabled ? common.quota_daily_limit : null,
+        quotaWeeklyLimit: common.quota_enabled ? common.quota_weekly_limit : null,
+        dailyResetMode: null, dailyResetHour: null,
+        weeklyResetMode: null, weeklyResetDay: null, weeklyResetHour: null,
+        resetTimezone: null,
+      })
+      req.extra = extra
     }
     await submitCreateAccount(req)
   }
@@ -769,8 +804,7 @@ watch(() => form.platform, (newPlatform) => {
 // ---------------------------------------------------------------------------
 function resetForm() {
   step.value = 1
-  cachedName.value = ''
-  cachedNotes.value = ''
+  cachedCommonFields.value = null
   form.platform = (allPlatforms.value[0]?.platform || 'anthropic') as AccountPlatform
   form.type = 'oauth'
   form.credentials = {}

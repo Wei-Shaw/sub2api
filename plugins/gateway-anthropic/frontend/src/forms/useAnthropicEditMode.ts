@@ -81,7 +81,8 @@ export function getEditPayload(
 ): EditFormPayload {
   const newCreds: Record<string, unknown> = { ...(account.credentials || {}) }
   const newExtra: Record<string, unknown> = { ...(account.extra || {}) }
-  applyTempUnschedToCredentials(newCreds, refs.tempUnschedEnabled.value, refs.tempUnschedRules.value)
+  const unschedResult = applyTempUnschedToCredentials(newCreds, refs.tempUnschedEnabled.value, refs.tempUnschedRules.value)
+  if (!unschedResult.valid) return { credentials: undefined, error: unschedResult.error }
   applyInterceptWarmup(newCreds, refs.interceptWarmupRequests.value, 'edit')
 
   if (account.type === 'apikey') {
