@@ -78,6 +78,17 @@ func SetupRouter(
 				refreshFrameOrigins()
 				syncSEOEnabled(frontendServer, settingService)
 			})
+
+			// Register SEO crawler endpoints (always available; respect noindex via meta).
+			seoH := handler.NewSEOHandler(
+				frontendServer.SEORegistry(),
+				cfg.Server.FrontendURL,
+				&legalDocSourceAdapter{svc: settingService},
+			)
+			r.GET("/robots.txt", seoH.Robots)
+			r.GET("/sitemap.xml", seoH.Sitemap)
+			r.GET("/llms.txt", seoH.LLMsTxt)
+
 			r.Use(frontendServer.Middleware())
 		}
 	} else {
@@ -100,6 +111,26 @@ func syncSEOEnabled(fs *web.FrontendServer, svc *service.SettingService) {
 		return
 	}
 	fs.SetSEOEnabled(s.SEOEnabled)
+}
+
+// legalDocSourceAdapter bridges SettingService's public settings (which carry
+// login_agreement_documents) into the LegalDocSource interface that SEOHandler needs.
+type legalDocSourceAdapter struct {
+	svc *service.SettingService
+}
+
+func (a *legalDocSourceAdapter) ListPublic() []handler.LegalDoc {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	s, err := a.svc.GetPublicSettings(ctx)
+	if err != nil || s == nil {
+		return nil
+	}
+	out := make([]handler.LegalDoc, 0, len(s.LoginAgreementDocuments))
+	for _, d := range s.LoginAgreementDocuments {
+		out = append(out, handler.LegalDoc{ID: d.ID, Title: d.Title})
+	}
+	return out
 }
 
 // registerRoutes 注册所有 HTTP 路由
