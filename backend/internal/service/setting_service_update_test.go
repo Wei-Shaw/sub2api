@@ -325,3 +325,16 @@ func TestSettingService_UpdateSettings_RejectsInvalidPaymentVisibleMethodSource(
 	require.Equal(t, "INVALID_PAYMENT_VISIBLE_METHOD_SOURCE", infraerrors.Reason(err))
 	require.Nil(t, repo.updates)
 }
+
+func TestSettingService_UpdateSettings_SMTPFlags(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		SMTPUseTLS:        true,
+		SMTPSkipTLSVerify: true,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "true", repo.updates[SettingKeySMTPUseTLS])
+	require.Equal(t, "true", repo.updates[SettingKeySMTPSkipTLSVerify])
+}

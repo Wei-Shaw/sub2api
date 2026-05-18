@@ -5666,7 +5666,9 @@ export default {
         fromName: 'From Name',
         fromNamePlaceholder: 'Sub2API',
         useTls: 'Use TLS',
-        useTlsHint: 'Enable TLS encryption for SMTP connection'
+        useTlsHint: 'Enable TLS encryption for SMTP connection',
+        skipTlsVerify: 'Skip TLS certificate verification',
+        skipTlsVerifyHint: 'Enable only when the SMTP server uses a self-signed certificate or an incomplete chain'
       },
       testEmail: {
         title: 'Send Test Email',

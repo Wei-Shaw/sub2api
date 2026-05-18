@@ -5832,12 +5832,28 @@
                   }}</label>
                   <p class="text-sm text-gray-500 dark:text-gray-400">
                     {{ t("admin.settings.smtp.useTlsHint") }}
-                  </p>
-                </div>
-                <Toggle v-model="form.smtp_use_tls" />
+                </p>
               </div>
+              <Toggle v-model="form.smtp_use_tls" />
             </div>
+
+            <div
+              v-if="form.smtp_use_tls"
+              class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
+            >
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">{{
+                  t('admin.settings.smtp.skipTlsVerify')
+                }}</label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.smtp.skipTlsVerifyHint') }}
+                </p>
+              </div>
+              <Toggle v-model="form.smtp_skip_tls_verify" />
+            </div>
+
           </div>
+        </div>
 
           <!-- Send Test Email - Only show when email verification is enabled -->
           <div v-if="form.email_verify_enabled" class="card">
@@ -6507,6 +6523,7 @@ const form = reactive<SettingsForm>({
   smtp_from_email: "",
   smtp_from_name: "",
   smtp_use_tls: true,
+  smtp_skip_tls_verify: false,
   // Cloudflare Turnstile
   turnstile_enabled: false,
   turnstile_site_key: "",
@@ -7585,6 +7602,7 @@ async function saveSettings() {
       smtp_from_email: form.smtp_from_email,
       smtp_from_name: form.smtp_from_name,
       smtp_use_tls: form.smtp_use_tls,
+      smtp_skip_tls_verify: form.smtp_skip_tls_verify,
       turnstile_enabled: form.turnstile_enabled,
       turnstile_site_key: form.turnstile_site_key,
       turnstile_secret_key: form.turnstile_secret_key || undefined,
@@ -7844,6 +7862,7 @@ async function testSmtpConnection() {
       smtp_username: form.smtp_username,
       smtp_password: smtpPasswordForTest,
       smtp_use_tls: form.smtp_use_tls,
+      smtp_skip_tls_verify: form.smtp_skip_tls_verify
     });
     // API returns { message: "..." } on success, errors are thrown as exceptions
     appStore.showSuccess(
@@ -7878,6 +7897,7 @@ async function sendTestEmail() {
       smtp_from_email: form.smtp_from_email,
       smtp_from_name: form.smtp_from_name,
       smtp_use_tls: form.smtp_use_tls,
+      smtp_skip_tls_verify: form.smtp_skip_tls_verify
     });
     // API returns { message: "..." } on success, errors are thrown as exceptions
     appStore.showSuccess(result.message || t("admin.settings.testEmailSent"));

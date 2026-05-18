@@ -5827,7 +5827,9 @@ export default {
         fromName: '发件人名称',
         fromNamePlaceholder: 'Sub2API',
         useTls: '使用 TLS',
-        useTlsHint: '为 SMTP 连接启用 TLS 加密'
+        useTlsHint: '为 SMTP 连接启用 TLS 加密',
+        skipTlsVerify: '跳过 TLS 证书信任校验',
+        skipTlsVerifyHint: '仅在 SMTP 服务器使用自签名证书或证书链不完整时启用'
       },
       testEmail: {
         title: '发送测试邮件',

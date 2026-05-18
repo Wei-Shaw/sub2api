@@ -83,13 +83,14 @@ const (
 
 // SMTPConfig SMTP配置
 type SMTPConfig struct {
-	Host     string
-	Port     int
-	Username string
-	Password string
-	From     string
-	FromName string
-	UseTLS   bool
+	Host          string
+	Port          int
+	Username      string
+	Password      string
+	From          string
+	FromName      string
+	UseTLS        bool
+	SkipTLSVerify bool
 }
 
 // EmailService 邮件服务
@@ -116,6 +117,7 @@ func (s *EmailService) GetSMTPConfig(ctx context.Context) (*SMTPConfig, error) {
 		SettingKeySMTPFrom,
 		SettingKeySMTPFromName,
 		SettingKeySMTPUseTLS,
+		SettingKeySMTPSkipTLSVerify,
 	}
 
 	settings, err := s.settingRepo.GetMultiple(ctx, keys)
@@ -136,15 +138,17 @@ func (s *EmailService) GetSMTPConfig(ctx context.Context) (*SMTPConfig, error) {
 	}
 
 	useTLS := settings[SettingKeySMTPUseTLS] == "true"
+	skipTLSVerify := settings[SettingKeySMTPSkipTLSVerify] == "true"
 
 	return &SMTPConfig{
-		Host:     host,
-		Port:     port,
-		Username: strings.TrimSpace(settings[SettingKeySMTPUsername]),
-		Password: strings.TrimSpace(settings[SettingKeySMTPPassword]),
-		From:     strings.TrimSpace(settings[SettingKeySMTPFrom]),
-		FromName: strings.TrimSpace(settings[SettingKeySMTPFromName]),
-		UseTLS:   useTLS,
+		Host:          host,
+		Port:          port,
+		Username:      strings.TrimSpace(settings[SettingKeySMTPUsername]),
+		Password:      strings.TrimSpace(settings[SettingKeySMTPPassword]),
+		From:          strings.TrimSpace(settings[SettingKeySMTPFrom]),
+		FromName:      strings.TrimSpace(settings[SettingKeySMTPFromName]),
+		UseTLS:        useTLS,
+		SkipTLSVerify: skipTLSVerify,
 	}, nil
 }
 
@@ -178,14 +182,14 @@ func (s *EmailService) SendEmailWithConfig(config *SMTPConfig, to, subject, body
 	auth := smtp.PlainAuth("", config.Username, config.Password, config.Host)
 
 	if config.UseTLS {
-		return s.sendMailTLS(addr, auth, config.From, to, []byte(msg), config.Host)
+		return s.sendMailTLS(addr, auth, config.From, to, []byte(msg), config.Host, config.SkipTLSVerify)
 	}
 
-	return s.sendMailPlain(addr, auth, config.From, to, []byte(msg), config.Host)
+	return s.sendMailPlain(addr, auth, config.From, to, []byte(msg), config.Host, config.SkipTLSVerify)
 }
 
 // sendMailPlain sends mail without TLS using a dialer with timeout.
-func (s *EmailService) sendMailPlain(addr string, auth smtp.Auth, from, to string, msg []byte, host string) error {
+func (s *EmailService) sendMailPlain(addr string, auth smtp.Auth, from, to string, msg []byte, host string, skipTLSVerify bool) error {
 	dialer := &net.Dialer{Timeout: smtpDialTimeout}
 	conn, err := dialer.Dial("tcp", addr)
 	if err != nil {
@@ -203,7 +207,11 @@ func (s *EmailService) sendMailPlain(addr string, auth smtp.Auth, from, to strin
 	// Opportunistic STARTTLS: upgrade to encrypted connection if the server supports it.
 	// This mirrors the behavior of smtp.SendMail which we replaced for timeout support.
 	if ok, _ := client.Extension("STARTTLS"); ok {
-		if err = client.StartTLS(&tls.Config{ServerName: host, MinVersion: tls.VersionTLS12}); err != nil {
+		if err = client.StartTLS(&tls.Config{
+			ServerName:         host,
+			MinVersion:         tls.VersionTLS12,
+			InsecureSkipVerify: skipTLSVerify,
+		}); err != nil {
 			return fmt.Errorf("starttls: %w", err)
 		}
 	}
@@ -232,9 +240,10 @@ func (s *EmailService) sendMailPlain(addr string, auth smtp.Auth, from, to strin
 }
 
 // sendMailTLS 使用TLS发送邮件
-func (s *EmailService) sendMailTLS(addr string, auth smtp.Auth, from, to string, msg []byte, host string) error {
+func (s *EmailService) sendMailTLS(addr string, auth smtp.Auth, from, to string, msg []byte, host string, skipTLSVerify bool) error {
 	tlsConfig := &tls.Config{
-		ServerName: host,
+		ServerName:         host,
+		InsecureSkipVerify: skipTLSVerify,
 		// 强制 TLS 1.2+，避免协议降级导致的弱加密风险。
 		MinVersion: tls.VersionTLS12,
 	}
@@ -420,7 +429,8 @@ func (s *EmailService) TestSMTPConnectionWithConfig(config *SMTPConfig) error {
 
 	if config.UseTLS {
 		tlsConfig := &tls.Config{
-			ServerName: config.Host,
+			ServerName:         config.Host,
+			InsecureSkipVerify: config.SkipTLSVerify,
 			// 与发送逻辑一致，显式要求 TLS 1.2+。
 			MinVersion: tls.VersionTLS12,
 		}
