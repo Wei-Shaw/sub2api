@@ -348,6 +348,7 @@ import { useAppStore } from '@/stores/app'
 
 const { t } = useI18n()
 import { adminAPI } from '@/api/admin'
+import { formatUserDisplayName } from '@/utils/format'
 import type {
   DashboardStats,
   TrendDataPoint,
@@ -513,17 +514,12 @@ const userTrendChartData = computed(() => {
   if (!userTrend.value?.length) return null
 
   const getDisplayName = (point: UserUsageTrendPoint): string => {
-    const username = point.username?.trim()
-    if (username) {
-      return username
-    }
-
-    const email = point.email?.trim()
-    if (email) {
-      return email
-    }
-
-    return t('admin.redeem.userPrefix', { id: point.user_id })
+    return formatUserDisplayName({
+      device_code: point.device_code,
+      username: point.username,
+      email: point.email,
+      user_id: point.user_id
+    })
   }
 
   // Group by user_id to avoid merging different users with the same display name

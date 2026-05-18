@@ -364,3 +364,34 @@ export function formatRelativeWithDateTime(date: string | Date | null | undefine
 
   return `${relativeTime} · ${dateTime}`
 }
+
+/**
+ * Ellipsis a string in the middle if it exceeds maxLen.
+ * Example: "invite-8794805d94e3@example.com" → "invite-87…e.com"
+ */
+export function ellipseMiddle(str: string, maxLen: number = 16): string {
+  if (!str || str.length <= maxLen) return str
+  const headLen = Math.ceil((maxLen - 1) / 2)
+  const tailLen = Math.floor((maxLen - 1) / 2)
+  return `${str.slice(0, headLen)}…${str.slice(-tailLen)}`
+}
+
+/**
+ * Format a user display name for charts/labels.
+ * Priority: device_code > username (ellipsed) > email (ellipsed) > "User #id"
+ */
+export function formatUserDisplayName(
+  user: { device_code?: string; username?: string; email?: string; user_id?: number },
+  maxLen: number = 18
+): string {
+  const deviceCode = user.device_code?.trim()
+  if (deviceCode) return deviceCode
+
+  const username = user.username?.trim()
+  if (username) return ellipseMiddle(username, maxLen)
+
+  const email = user.email?.trim()
+  if (email) return ellipseMiddle(email, maxLen)
+
+  return `User #${user.user_id ?? '?'}`
+}

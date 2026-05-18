@@ -250,6 +250,7 @@ import { Doughnut } from 'vue-chartjs'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import UserBreakdownSubTable from './UserBreakdownSubTable.vue'
 import type { ModelStat, UserSpendingRankingItem, UserBreakdownItem } from '@/types'
+import { formatUserDisplayName } from '@/utils/format'
 import { getUserBreakdown } from '@/api/admin/dashboard'
 
 ChartJS.register(ArcElement, Tooltip, Legend)
@@ -495,8 +496,12 @@ const formatNumber = (value: number): string => {
 }
 
 const getRankingUserLabel = (item: UserSpendingRankingItem): string => {
-  if (item.email) return item.email
-  return t('admin.redeem.userPrefix', { id: item.user_id })
+  return formatUserDisplayName({
+    device_code: item.device_code,
+    username: item.username,
+    email: item.email,
+    user_id: item.user_id
+  })
 }
 
 const getRankingRowLabel = (item: RankingDisplayItem): string => {
