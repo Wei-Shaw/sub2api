@@ -413,8 +413,9 @@ func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64) (*U
 		return usage, nil
 	}
 
-	// API Key账号不支持usage查询
-	return nil, fmt.Errorf("account type %s does not support usage query", account.Type)
+	// 其余账号类型（API Key、Bedrock、Service Account 等）无平台级用量 API，
+	// 返回空 UsageInfo 让前端优雅降级（不显示用量指标），而非返回 500。
+	return &UsageInfo{Source: "active"}, nil
 }
 
 // GetPassiveUsage 从 Account.Extra 中的被动采样数据构建 UsageInfo，不调用外部 API。
