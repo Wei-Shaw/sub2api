@@ -344,7 +344,7 @@ onUnmounted(() => {
 }
 
 .select-icon {
-  @apply flex-shrink-0 text-gray-400 dark:text-dark-400;
+  @apply flex-shrink-0 text-gray-400 dark:text-dark-300;
 }
 
 .select-dropdown {
@@ -402,7 +402,7 @@ onUnmounted(() => {
 
 .select-empty {
   @apply px-4 py-8 text-center text-sm;
-  @apply text-gray-500 dark:text-dark-400;
+  @apply text-gray-500 dark:text-dark-300;
 }
 
 .test-btn {

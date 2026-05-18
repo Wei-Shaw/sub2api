@@ -107,6 +107,41 @@ export default {
     },
     footer: {
       allRightsReserved: '保留所有权利。'
+    },
+    // 新增：BerryCode 布局
+    hero: {
+      title: '一个密钥，畅用 AI 工具',
+      desc: '订阅账号转 API，Codex CLI / Claude Code / OpenAI SDK 一键接入，多号智能调度。',
+      viewGuide: '查看接入指南'
+    },
+    console: {
+      title: '服务状态面板',
+      subtitle: '当前网关运行指标',
+      baseUrl: 'Base URL',
+      models: '可用模型',
+      accounts: '号池账号',
+      protocol: '认证协议'
+    },
+    why: {
+      sectionLabel: '为什么选择',
+      sectionTitle: '稳定、透明、开发者优先',
+      security: 'Cloudflare Tunnel 加持',
+      securityDesc: '流量通过 Cloudflare 隧道转发，服务器无需暴露公网端口，WARP 代理出口防风控。',
+      stability: '多号自动调度',
+      stabilityDesc: '同组多个订阅账号自动负载均衡，单号触发限额时自动切换，保障服务不中断。',
+      transparency: '用量清晰透明',
+      transparencyDesc: '实时查看每个 Key 的调用次数、Token 消耗和错误率，用量一目了然。',
+      devFirst: '开发者优先',
+      devFirstDesc: '提供完整的接入文档和一键配置命令，Codex CLI / Claude Code / Cursor 开箱即用。'
+    },
+    quickConfig: {
+      label: '快速配置',
+      title: '三行配置，开始使用',
+      subtitle: '复制以下配置到你的开发工具',
+      codexTitle: 'Codex CLI / OpenAI SDK',
+      claudeTitle: 'Claude Code / Anthropic SDK',
+      createKey: '登录创建',
+      note: '创建 API Key 后，将 sk-your-key 替换为你的实际密钥'
     }
   },
 
@@ -346,8 +381,8 @@ export default {
     apiKeys: 'API 密钥',
     usage: '使用记录',
     redeem: '兑换',
-    affiliate: '邀请返利',
-    affiliateManagement: '邀请返利',
+    affiliate: '邀请有礼',
+    affiliateManagement: '邀请有礼',
     affiliateInviteRecords: '邀请记录',
     affiliateRebateRecords: '返利记录',
     affiliateTransferRecords: '提取记录',
@@ -368,6 +403,7 @@ export default {
     darkMode: '深色模式',
     collapse: '收起',
     expand: '展开',
+    docsCenter: '文档中心',
     logout: '退出登录',
     github: 'GitHub',
     mySubscriptions: '我的订阅',
@@ -391,6 +427,10 @@ export default {
     signInToAccount: '登录您的账户以继续',
     signIn: '登录',
     signingIn: '登录中...',
+    passwordLogin: '密码登录',
+    codeLogin: '验证码登录',
+    enterCode: '输入验证码',
+    codeSent: '验证码已发送',
     createAccount: '创建账户',
     signUpToStart: '注册以开始使用 {siteName}',
     signUp: '注册',
@@ -434,6 +474,7 @@ export default {
     resendCode: '重新发送验证码',
     sendCodeDesc: '我们将发送验证码到',
     codeSentSuccess: '验证码已发送！请查收您的邮箱。',
+    verifyCodeRequired: '请输入邮箱验证码',
     verifying: '验证中...',
     verifyAndCreate: '验证并创建账户',
     resendCountdown: '{countdown}秒后可重新发送',
@@ -454,6 +495,8 @@ export default {
     promoCodeValidating: '优惠码正在验证中，请稍候',
     promoCodeInvalidCannotRegister: '优惠码无效，请检查后重试或清空优惠码',
     invitationCodeLabel: '邀请码',
+    referralCodeLabel: '推荐码',
+    referralCodePlaceholder: '有推荐码吗？填写可获赠 $10 余额',
     invitationCodePlaceholder: '请输入邀请码',
     invitationCodeRequired: '请输入邀请码',
     invitationCodeValid: '邀请码有效',
@@ -612,7 +655,16 @@ export default {
     viewUsage: '查看使用记录',
     checkDetailedLogs: '查看详细的使用日志',
     redeemCode: '兑换码',
-    addBalanceWithCode: '使用兑换码充值'
+    addBalanceWithCode: '使用兑换码充值',
+    quickstart: '快速开始',
+    quickstartDesc: '选择工具，复制配置即可使用',
+    copyConfig: '复制',
+    copied: '已复制！',
+    viewFullGuide: '查看完整指南',
+    yourApiKey: 'sk-your-api-key',
+    codexHint: '写入 ~/.codex/config.toml，然后运行 codex',
+    hermesHint: '写入 ~/.hermes/config.yaml 的 model 部分',
+    openclawHint: '写入 ~/.openclaw/openclaw.json 的 models 部分'
   },
 
   // Groups (shared)
@@ -680,13 +732,18 @@ export default {
     useKey: '使用密钥',
     useKeyModal: {
       title: '使用 API 密钥',
-      description: '将以下环境变量添加到您的终端配置文件或直接在终端中运行。',
+      simpleDesc: '复制下方提示词和 API Key，发送给你的 AI 助手，它会自动帮你配置好。',
+      promptLabel: '配置提示词',
       copy: '复制',
       copied: '已复制',
-      note: '这些环境变量将在当前终端会话中生效。如需永久配置，请将其添加到 ~/.bashrc、~/.zshrc 或相应的配置文件中。',
+      supportedModels: '支持的模型',
+      usageTip: '将提示词和 API Key 一起发送给你的 AI 助手，它会自动帮你配置 Codex CLI。',
       noGroupTitle: '请先分配分组',
       noGroupDescription:
         '此 API 密钥尚未分配分组，请先在密钥列表中点击分组列进行分配，然后才能查看使用配置。',
+      // Legacy keys kept for backward compatibility
+      description: '将以下环境变量添加到您的终端配置文件或直接在终端中运行。',
+      note: '这些环境变量将在当前终端会话中生效。如需永久配置，请将其添加到 ~/.bashrc、~/.zshrc 或相应的配置文件中。',
       openai: {
         description: '将以下配置文件添加到 Codex CLI 配置目录中。',
         configTomlHint: '请确保以下内容位于 config.toml 文件的开头部分',
@@ -785,7 +842,9 @@ export default {
       active: '活跃',
       inactive: '已停用',
       quota_exhausted: '额度耗尽',
-      expired: '已过期'
+      expired: '已过期',
+      groupInactive: '分组已停用',
+      groupDeleted: '分组已删除',
     }
   },
 
@@ -988,8 +1047,8 @@ export default {
   },
 
   affiliate: {
-    title: '邀请返利',
-    description: '邀请新用户注册，并将返利额度转入账户余额',
+    title: '邀请有礼',
+    description: '邀请新用户注册，双方各获 $10 余额奖励',
     yourCode: '我的邀请码',
     inviteLink: '邀请链接',
     copyCode: '复制邀请码',
@@ -6312,6 +6371,7 @@ export default {
     endsAt: '结束时间',
     empty: '暂无公告',
     emptyUnread: '暂无未读公告',
+    subtitle: '查看系统公告和更新通知',
     total: '条公告',
     emptyDescription: '暂时没有任何系统公告',
     readStatus: '您已阅读此公告',
@@ -6360,9 +6420,9 @@ export default {
     // Admin tour steps
     admin: {
       welcome: {
-        title: '👋 欢迎使用 Sub2API',
+        title: '👋 欢迎使用 WILLEAI',
         description:
-          '<div style="line-height: 1.8;"><p style="margin-bottom: 16px;">Sub2API 是一个强大的 AI 服务中转平台，让您轻松管理和分发 AI 服务。</p><p style="margin-bottom: 12px;"><b>🎯 核心功能：</b></p><ul style="margin-left: 20px; margin-bottom: 16px;"><li>📦 <b>分组管理</b> - 创建不同的服务套餐（VIP、免费试用等）</li><li>🔗 <b>账号池</b> - 连接多个上游 AI 服务商账号</li><li>🔑 <b>密钥分发</b> - 为用户生成独立的 API Key</li><li>💰 <b>计费管理</b> - 灵活的费率和配额控制</li></ul><p style="color: #10b981; font-weight: 600;">接下来，我们将用 3 分钟带您完成首次配置 →</p></div>',
+          '<div style="line-height: 1.8;"><p style="margin-bottom: 16px;">WILLEAI 是一个强大的 AI 服务中转平台，让您轻松管理和分发 AI 服务。</p><p style="margin-bottom: 12px;"><b>🎯 核心功能：</b></p><ul style="margin-left: 20px; margin-bottom: 16px;"><li>📦 <b>分组管理</b> - 创建不同的服务套餐（VIP、免费试用等）</li><li>🔗 <b>账号池</b> - 连接多个上游 AI 服务商账号</li><li>🔑 <b>密钥分发</b> - 为用户生成独立的 API Key</li><li>💰 <b>计费管理</b> - 灵活的费率和配额控制</li></ul><p style="color: #10b981; font-weight: 600;">接下来，我们将用 3 分钟带您完成首次配置 →</p></div>',
         nextBtn: '开始配置 🚀',
         prevBtn: '跳过'
       },
@@ -6481,9 +6541,9 @@ export default {
     // User tour steps
     user: {
       welcome: {
-        title: '👋 欢迎使用 Sub2API',
+        title: '👋 欢迎使用 WILLEAI',
         description:
-          '<div style="line-height: 1.8;"><p style="margin-bottom: 16px;">您好！欢迎来到 Sub2API AI 服务平台。</p><p style="margin-bottom: 12px;"><b>🎯 快速开始：</b></p><ul style="margin-left: 20px; margin-bottom: 16px;"><li>🔑 创建 API 密钥</li><li>📋 复制密钥到您的应用</li><li>🚀 开始使用 AI 服务</li></ul><p style="color: #10b981; font-weight: 600;">只需 1 分钟，让我们开始吧 →</p></div>',
+          '<div style="line-height: 1.8;"><p style="margin-bottom: 16px;">您好！欢迎来到 WILLEAI AI 服务平台。</p><p style="margin-bottom: 12px;"><b>🎯 快速开始：</b></p><ul style="margin-left: 20px; margin-bottom: 16px;"><li>🔑 创建 API 密钥</li><li>📋 复制密钥到您的应用</li><li>🚀 开始使用 AI 服务</li></ul><p style="color: #10b981; font-weight: 600;">只需 1 分钟，让我们开始吧 →</p></div>',
         nextBtn: '开始 🚀',
         prevBtn: '跳过'
       },
@@ -6827,6 +6887,104 @@ export default {
         revoked: '已撤销',
       },
     },
+  },
+
+  // Setup Guide Page
+  guide: {
+    title: '配置指南',
+    subtitle: '选择你的工具，一键复制配置开始使用',
+    badge: '快速上手',
+    login: '登录',
+    backToLogin: '返回登录',
+    copied: '✓ 已复制',
+    createKey: '登录后创建',
+    backToHome: '返回首页',
+    toc: '本页目录',
+    copy: '复制',
+    troubleshoot: '常见问题排查',
+    solution: '解决方案',
+    errorMeaning: '含义',
+    nav: {
+      intro: '站点介绍',
+      quickStart: '快速接入',
+      account: '账户与规则',
+      overview: '总览',
+      errors: '错误码参考',
+    },
+    step1: '设置环境变量',
+    step2: '验证配置',
+    codex: {
+      title: 'Codex CLI',
+      intro: 'Codex CLI 是 OpenAI 的命令行编程助手，支持 GPT-5.5 等最新模型',
+      err1: '上游账号余额不足，请联系管理员充值',
+      err2: 'API Key 无效，请检查是否正确复制',
+      err3: '请求频率过高，系统会自动切换上游账号',
+    },
+    claude: {
+      title: 'Claude Code',
+      intro: 'Claude Code 是 Anthropic 的 AI 编程助手，通过 API 代理接入',
+      err1: 'Claude Code 需要 session token，请检查 Anthropic API Key 是否正确',
+      err2: '模型名称不在支持列表中，请用 /v1/models 查看可用模型',
+      err3: 'Claude Code 的 Base URL 不要加 /v1 后缀',
+    },
+    cursor: {
+      title: 'Cursor',
+      intro: 'Cursor 是 AI 代码编辑器，支持自定义 API 端点',
+      setting1: '打开 Settings → Models → OpenAI API Key，填入你的 API Key',
+      setting2: '在 Override OpenAI Base URL 中填入下方地址',
+      setting3: '保存设置后，新建对话即可开始使用',
+      test: '新建一个对话，发送消息测试 AI 是否正常响应',
+    },
+    sdk: {
+      title: 'OpenAI SDK',
+      intro: '适用于 Python / Node.js 项目中直接调用 OpenAI 兼容 API',
+    },
+    hermes: {
+      title: 'Hermes Agent',
+      intro: 'Hermes Agent 是开源 AI 编程助手，支持自定义 OpenAI 兼容端点接入',
+      step1desc: '编辑 ~/.hermes/config.yaml，添加自定义 provider：',
+      step2desc: '或在终端直接切换模型和 provider：',
+      err1: 'provider 名称未在 config.yaml 中配置，请检查 model.provider 字段',
+      err2: '模型名称不在 provider 支持列表中，请检查上游是否可用',
+      err3: 'base_url 连接失败，请检查网络或端点地址是否正确',
+    },
+    openclaw: {
+      title: 'OpenClaw',
+      intro: 'OpenClaw 是开源 AI Agent 平台，通过 JSON 配置文件接入自定义端点',
+      step1desc: '编辑 ~/.openclaw/openclaw.json，在 models.providers 中添加：',
+      step2desc: '配置完成后，通过 CLI 切换到新 provider：',
+      err1: 'provider 名称未在 openclaw.json 中注册，请检查 providers 字段',
+      err2: 'JSON 格式错误，请用 jsonlint 验证配置文件',
+      err3: '模型未在 provider 的 models 数组中声明，请补充模型配置',
+    },
+    opencode: {
+      title: 'OpenCode',
+      intro: 'OpenCode 是开源 AI 编程助手，支持 TUI 和 CLI 模式，通过 JSON 配置接入',
+      step1desc: '创建或编辑 ~/.config/opencode/opencode.jsonc，添加自定义 provider：',
+      step2desc: '配置完成后，通过 auth login 填入 API Key：',
+      err1: 'provider 名称未在 opencode.json 中注册，请检查 providers 配置',
+      err2: 'JSON 格式错误，请用 jsonlint 验证配置文件',
+      err3: '模型未在 provider 的 models 中声明，请补充模型配置',
+    },
+    faq: {
+      title: '常见问题',
+      q1: '支持哪些模型？',
+      a1: '支持 GPT-5.5、GPT-5.4、GPT-5.4-mini、GPT-5.3-codex 等模型，可通过 /v1/models 接口查看完整列表',
+      q2: 'API Key 在哪里获取？',
+      a2: '登录后在「API Keys」页面创建即可',
+      q3: '有调用次数限制吗？',
+      a3: '每个账号有独立的速率限制，多账号池会自动负载均衡',
+      q4: '连接超时怎么办？',
+      a4: '请检查网络环境，国内用户建议使用代理访问',
+    },
+    err401: '认证失败',
+    err401sol: '检查 API Key 是否正确，是否已过期或被禁用',
+    err403: '无权访问',
+    err403sol: '当前 Key 无权访问该模型或接口，请检查分组权限',
+    err429: '请求频率超限',
+    err429sol: '稍后重试，系统会自动切换上游账号进行负载均衡',
+    err502: '上游服务异常',
+    err502sol: '上游 API 暂时不可用，系统会自动重试，如持续出现请联系管理员',
   },
 
 }

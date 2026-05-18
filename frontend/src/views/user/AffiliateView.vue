@@ -10,31 +10,31 @@
       <template v-else-if="detail">
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div class="card p-5">
-            <p class="flex items-center gap-1.5 text-sm text-gray-500 dark:text-dark-400">
+            <p class="flex items-center gap-1.5 text-sm text-gray-500 dark:text-dark-300">
               <Icon name="dollar" size="sm" class="text-primary-500" />
               {{ t('affiliate.stats.rebateRate') }}
             </p>
             <p class="mt-2 text-2xl font-semibold text-primary-600 dark:text-primary-400">
               {{ formattedRebateRate }}<span class="ml-0.5 text-base font-medium">%</span>
             </p>
-            <p class="mt-1 text-xs text-gray-400 dark:text-dark-500">
+            <p class="mt-1 text-xs text-gray-400 dark:text-dark-300">
               {{ t('affiliate.stats.rebateRateHint') }}
             </p>
           </div>
           <div class="card p-5">
-            <p class="text-sm text-gray-500 dark:text-dark-400">{{ t('affiliate.stats.invitedUsers') }}</p>
+            <p class="text-sm text-gray-500 dark:text-dark-300">{{ t('affiliate.stats.invitedUsers') }}</p>
             <p class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">
               {{ formatCount(detail.aff_count) }}
             </p>
           </div>
           <div class="card p-5">
-            <p class="text-sm text-gray-500 dark:text-dark-400">{{ t('affiliate.stats.availableQuota') }}</p>
+            <p class="text-sm text-gray-500 dark:text-dark-300">{{ t('affiliate.stats.availableQuota') }}</p>
             <p class="mt-2 text-2xl font-semibold text-emerald-600 dark:text-emerald-400">
               {{ formatCurrency(detail.aff_quota) }}
             </p>
           </div>
           <div class="card p-5">
-            <p class="text-sm text-gray-500 dark:text-dark-400">{{ t('affiliate.stats.totalQuota') }}</p>
+            <p class="text-sm text-gray-500 dark:text-dark-300">{{ t('affiliate.stats.totalQuota') }}</p>
             <p class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">
               {{ formatCurrency(detail.aff_history_quota) }}
             </p>
@@ -46,7 +46,7 @@
 
         <div class="card p-6">
           <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('affiliate.title') }}</h3>
-          <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t('affiliate.description') }}</p>
+          <p class="mt-1 text-sm text-gray-500 dark:text-dark-300">{{ t('affiliate.description') }}</p>
 
           <div class="mt-5 grid gap-4 md:grid-cols-2">
             <div class="space-y-2">
@@ -87,7 +87,7 @@
           <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('affiliate.transfer.title') }}</h3>
-              <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t('affiliate.transfer.description') }}</p>
+              <p class="mt-1 text-sm text-gray-500 dark:text-dark-300">{{ t('affiliate.transfer.description') }}</p>
             </div>
             <button
               class="btn btn-primary"
@@ -106,13 +106,13 @@
 
         <div class="card p-6">
           <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('affiliate.invitees.title') }}</h3>
-          <div v-if="detail.invitees.length === 0" class="mt-4 rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500 dark:border-dark-700 dark:text-dark-400">
+          <div v-if="detail.invitees.length === 0" class="mt-4 rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500 dark:border-dark-700 dark:text-dark-300">
             {{ t('affiliate.invitees.empty') }}
           </div>
           <div v-else class="mt-4 overflow-x-auto">
             <table class="w-full min-w-[560px] text-left text-sm">
               <thead>
-                <tr class="border-b border-gray-200 text-gray-500 dark:border-dark-700 dark:text-dark-400">
+                <tr class="border-b border-gray-200 text-gray-500 dark:border-dark-700 dark:text-dark-300">
                   <th class="px-3 py-2 font-medium">{{ t('affiliate.invitees.columns.email') }}</th>
                   <th class="px-3 py-2 font-medium">{{ t('affiliate.invitees.columns.username') }}</th>
                   <th class="px-3 py-2 font-medium text-right">{{ t('affiliate.invitees.columns.rebate') }}</th>

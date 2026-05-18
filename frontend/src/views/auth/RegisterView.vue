@@ -6,7 +6,7 @@
         <h2 class="text-2xl font-bold text-gray-900 dark:text-white">
           {{ t('auth.createAccount') }}
         </h2>
-        <p class="mt-2 text-sm text-gray-500 dark:text-dark-400">
+        <p class="mt-2 text-sm text-gray-500 dark:text-dark-300">
           {{ t('auth.signUpToStart', { siteName }) }}
         </p>
       </div>
@@ -33,7 +33,7 @@
         />
         <div class="flex items-center gap-3">
           <div class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></div>
-          <span class="text-xs text-gray-500 dark:text-dark-400">
+          <span class="text-xs text-gray-500 dark:text-dark-300">
             {{ t('auth.oauthOrContinue') }}
           </span>
           <div class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></div>
@@ -64,7 +64,7 @@
           </label>
           <div class="relative">
             <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
-              <Icon name="mail" size="md" class="text-gray-400 dark:text-dark-500" />
+              <Icon name="mail" size="md" class="text-gray-400 dark:text-dark-300" />
             </div>
             <input
               id="email"
@@ -88,7 +88,7 @@
           </label>
           <div class="relative">
             <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
-              <Icon name="lock" size="md" class="text-gray-400 dark:text-dark-500" />
+              <Icon name="lock" size="md" class="text-gray-400 dark:text-dark-300" />
             </div>
             <input
               id="password"
@@ -122,7 +122,7 @@
           </label>
           <div class="relative">
             <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
-              <Icon name="key" size="md" :class="invitationValidation.valid ? 'text-green-500' : 'text-gray-400 dark:text-dark-500'" />
+              <Icon name="key" size="md" :class="invitationValidation.valid ? 'text-green-500' : 'text-gray-400 dark:text-dark-300'" />
             </div>
             <input
               id="invitation_code"
@@ -166,11 +166,11 @@
         <div v-if="promoCodeEnabled">
           <label for="promo_code" class="input-label">
             {{ t('auth.promoCodeLabel') }}
-            <span class="ml-1 text-xs font-normal text-gray-400 dark:text-dark-500">({{ t('common.optional') }})</span>
+            <span class="ml-1 text-xs font-normal text-gray-400 dark:text-dark-300">({{ t('common.optional') }})</span>
           </label>
           <div class="relative">
             <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
-              <Icon name="gift" size="md" :class="promoValidation.valid ? 'text-green-500' : 'text-gray-400 dark:text-dark-500'" />
+              <Icon name="gift" size="md" :class="promoValidation.valid ? 'text-green-500' : 'text-gray-400 dark:text-dark-300'" />
             </div>
             <input
               id="promo_code"
@@ -208,6 +208,76 @@
               </span>
             </div>
           </transition>
+        </div>
+
+        <!-- Email Verification Code -->
+        <div v-if="emailVerifyEnabled">
+          <label for="verify_code" class="input-label">
+            {{ t('auth.verificationCode') }}
+          </label>
+          <div class="flex gap-3">
+            <div class="relative flex-1">
+              <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
+                <Icon name="shield" size="md" class="text-gray-400 dark:text-dark-300" />
+              </div>
+              <input
+                id="verify_code"
+                v-model="formData.verify_code"
+                type="text"
+                maxlength="6"
+                inputmode="numeric"
+                autocomplete="one-time-code"
+                :disabled="isLoading"
+                class="input pl-11"
+                :class="{ 'input-error': errors.verify_code }"
+                :placeholder="t('auth.verificationCodeHint')"
+              />
+            </div>
+            <button
+              type="button"
+              :disabled="!formData.email.trim() || sendCodeCooldown > 0 || sendCodeLoading"
+              class="btn btn-secondary whitespace-nowrap px-4"
+              @click="handleSendCode"
+            >
+              <svg
+                v-if="sendCodeLoading"
+                class="-ml-1 mr-1.5 h-4 w-4 animate-spin"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              {{ sendCodeCooldown > 0 ? t('auth.resendCountdown', { countdown: sendCodeCooldown }) : t('auth.sendCode') }}
+            </button>
+          </div>
+          <transition name="fade">
+            <div v-if="codeSentMessage" class="mt-1.5 flex items-center gap-2">
+              <Icon name="checkCircle" size="sm" class="text-green-500" />
+              <span class="text-xs text-green-600">{{ codeSentMessage }}</span>
+            </div>
+          </transition>
+        </div>
+
+        <!-- Affiliate Referral Code (Optional) -->
+        <div>
+          <label for="aff_code" class="input-label">
+            {{ t('auth.referralCodeLabel') }}
+            <span class="ml-1 text-xs font-normal text-gray-400 dark:text-dark-300">({{ t('common.optional') }})</span>
+          </label>
+          <div class="relative">
+            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
+              <Icon name="gift" size="md" class="text-gray-400 dark:text-dark-300" />
+            </div>
+            <input
+              id="aff_code"
+              v-model="formData.aff_code"
+              type="text"
+              :disabled="isLoading"
+              class="input pl-11"
+              :placeholder="t('auth.referralCodePlaceholder')"
+            />
+          </div>
         </div>
 
         <!-- Turnstile Widget -->
@@ -248,20 +318,14 @@
             ></path>
           </svg>
           <Icon v-else name="userPlus" size="md" class="mr-2" />
-          {{
-            isLoading
-              ? t('auth.processing')
-              : emailVerifyEnabled
-                ? t('auth.continue')
-                : t('auth.createAccount')
-          }}
+          {{ isLoading ? t('auth.processing') : t('auth.createAccount') }}
         </button>
       </form>
     </div>
 
     <!-- Footer -->
     <template #footer>
-      <p class="text-gray-500 dark:text-dark-400">
+      <p class="text-gray-500 dark:text-dark-300">
         {{ t('auth.alreadyHaveAccount') }}
         <router-link
           to="/login"
@@ -289,7 +353,8 @@ import {
   getPublicSettings,
   isWeChatWebOAuthEnabled,
   validatePromoCode,
-  validateInvitationCode
+  validateInvitationCode,
+  sendVerifyCode
 } from '@/api/auth'
 import { buildAuthErrorMessage } from '@/utils/authError'
 import {
@@ -325,7 +390,7 @@ const promoCodeEnabled = ref<boolean>(true)
 const invitationCodeEnabled = ref<boolean>(false)
 const turnstileEnabled = ref<boolean>(false)
 const turnstileSiteKey = ref<string>('')
-const siteName = ref<string>('Sub2API')
+const siteName = ref<string>('WilleAI')
 const linuxdoOAuthEnabled = ref<boolean>(false)
 const wechatOAuthEnabled = ref<boolean>(false)
 const oidcOAuthEnabled = ref<boolean>(false)
@@ -358,6 +423,7 @@ let invitationValidateTimeout: ReturnType<typeof setTimeout> | null = null
 const formData = reactive({
   email: '',
   password: '',
+  verify_code: '',
   promo_code: '',
   invitation_code: '',
   aff_code: ''
@@ -366,6 +432,7 @@ const formData = reactive({
 const errors = reactive({
   email: '',
   password: '',
+  verify_code: '',
   turnstile: '',
   invitation_code: ''
 })
@@ -394,6 +461,12 @@ function syncAffiliateReferralCode(): string {
   return code
 }
 
+// Email verify code
+const sendCodeLoading = ref<boolean>(false)
+const sendCodeCooldown = ref<number>(0)
+const codeSentMessage = ref<string>('')
+let sendCodeTimer: ReturnType<typeof setInterval> | null = null
+
 // ==================== Lifecycle ====================
 
 onMounted(async () => {
@@ -407,7 +480,7 @@ onMounted(async () => {
     invitationCodeEnabled.value = settings.invitation_code_enabled
     turnstileEnabled.value = settings.turnstile_enabled
     turnstileSiteKey.value = settings.turnstile_site_key || ''
-    siteName.value = settings.site_name || 'Sub2API'
+    siteName.value = settings.site_name || 'WilleAI'
     linuxdoOAuthEnabled.value = settings.linuxdo_oauth_enabled
     wechatOAuthEnabled.value = isWeChatWebOAuthEnabled(settings)
     oidcOAuthEnabled.value = settings.oidc_oauth_enabled
@@ -446,6 +519,9 @@ onUnmounted(() => {
   }
   if (invitationValidateTimeout) {
     clearTimeout(invitationValidateTimeout)
+  }
+  if (sendCodeTimer) {
+    clearInterval(sendCodeTimer)
   }
 })
 
@@ -586,6 +662,43 @@ function getInvitationErrorMessage(errorCode?: string): string {
   }
 }
 
+// ==================== Send Verify Code ====================
+
+async function handleSendCode(): Promise<void> {
+  const email = formData.email.trim()
+  if (!email || !validateEmail(email)) {
+    errors.email = t('auth.invalidEmail')
+    return
+  }
+
+  sendCodeLoading.value = true
+  codeSentMessage.value = ''
+
+  try {
+    const result = await sendVerifyCode({
+      email,
+      turnstile_token: turnstileEnabled.value ? turnstileToken.value : undefined
+    })
+
+    codeSentMessage.value = t('auth.codeSentSuccess')
+
+    // Start cooldown
+    sendCodeCooldown.value = result.countdown || 60
+    if (sendCodeTimer) clearInterval(sendCodeTimer)
+    sendCodeTimer = setInterval(() => {
+      sendCodeCooldown.value--
+      if (sendCodeCooldown.value <= 0) {
+        sendCodeCooldown.value = 0
+        if (sendCodeTimer) clearInterval(sendCodeTimer)
+      }
+    }, 1000)
+  } catch (error) {
+    appStore.showError(t('auth.sendCodeFailed'))
+  } finally {
+    sendCodeLoading.value = false
+  }
+}
+
 // ==================== Turnstile Handlers ====================
 
 function onTurnstileVerify(token: string): void {
@@ -627,6 +740,7 @@ function validateForm(): boolean {
   // Reset errors
   errors.email = ''
   errors.password = ''
+  errors.verify_code = ''
   errors.turnstile = ''
   errors.invitation_code = ''
 
@@ -653,6 +767,14 @@ function validateForm(): boolean {
   } else if (formData.password.length < 6) {
     errors.password = t('auth.passwordMinLength')
     isValid = false
+  }
+
+  // Verify code validation (required when email verify is enabled)
+  if (emailVerifyEnabled.value) {
+    if (!formData.verify_code.trim()) {
+      errors.verify_code = t('auth.verifyCodeRequired')
+      isValid = false
+    }
   }
 
   // Invitation code validation (required when enabled)
@@ -729,30 +851,11 @@ async function handleRegister(): Promise<void> {
       formData.aff_code = affCode
     }
 
-    // If email verification is enabled, redirect to verification page
-    if (emailVerifyEnabled.value) {
-      // Store registration data in sessionStorage
-      sessionStorage.setItem(
-        'register_data',
-        JSON.stringify({
-          email: formData.email,
-          password: formData.password,
-          turnstile_token: turnstileToken.value,
-          promo_code: formData.promo_code || undefined,
-          invitation_code: formData.invitation_code || undefined,
-          ...(affCode ? { aff_code: affCode } : {})
-        })
-      )
-
-      // Navigate to email verification page
-      await router.push('/email-verify')
-      return
-    }
-
-    // Otherwise, directly register
+    // Directly register with all data including verify_code
     await authStore.register({
       email: formData.email,
       password: formData.password,
+      verify_code: emailVerifyEnabled.value ? formData.verify_code.trim() : undefined,
       turnstile_token: turnstileEnabled.value ? turnstileToken.value : undefined,
       promo_code: formData.promo_code || undefined,
       invitation_code: formData.invitation_code || undefined,

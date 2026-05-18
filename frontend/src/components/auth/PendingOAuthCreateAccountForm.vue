@@ -55,7 +55,7 @@
     <p v-if="sendCodeSuccess" class="text-sm text-green-600 dark:text-green-400">
       {{ t('auth.codeSentSuccess') }}
     </p>
-    <p v-else class="text-xs text-gray-500 dark:text-dark-400">
+    <p v-else class="text-xs text-gray-500 dark:text-dark-300">
       {{ t('auth.verificationCodeHint') }}
     </p>
     <input

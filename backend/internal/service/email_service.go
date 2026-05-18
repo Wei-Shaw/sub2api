@@ -160,6 +160,14 @@ func (s *EmailService) SendEmail(ctx context.Context, to, subject, body string) 
 const smtpDialTimeout = 10 * time.Second
 const smtpIOTimeout = 20 * time.Second
 
+// smtpDialer returns a dialer that forces IPv4 to avoid IPv6 connectivity issues in Docker.
+func smtpDialer() *net.Dialer {
+	return &net.Dialer{
+		Timeout:   smtpDialTimeout,
+		FallbackDelay: -1, // disable Happy Eyeballs, force IPv4
+	}
+}
+
 // SendEmailWithConfig 使用指定配置发送邮件
 func (s *EmailService) SendEmailWithConfig(config *SMTPConfig, to, subject, body string) error {
 	// Sanitize all SMTP header fields to prevent header injection (CR/LF removal).
@@ -186,7 +194,7 @@ func (s *EmailService) SendEmailWithConfig(config *SMTPConfig, to, subject, body
 
 // sendMailPlain sends mail without TLS using a dialer with timeout.
 func (s *EmailService) sendMailPlain(addr string, auth smtp.Auth, from, to string, msg []byte, host string) error {
-	dialer := &net.Dialer{Timeout: smtpDialTimeout}
+	dialer := smtpDialer()
 	conn, err := dialer.Dial("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("smtp dial: %w", err)
@@ -239,7 +247,7 @@ func (s *EmailService) sendMailTLS(addr string, auth smtp.Auth, from, to string,
 		MinVersion: tls.VersionTLS12,
 	}
 
-	dialer := &net.Dialer{Timeout: smtpDialTimeout}
+	dialer := smtpDialer()
 	conn, err := tls.DialWithDialer(dialer, "tcp", addr, tlsConfig)
 	if err != nil {
 		return fmt.Errorf("tls dial: %w", err)
@@ -444,12 +452,27 @@ func (s *EmailService) TestSMTPConnectionWithConfig(config *SMTPConfig) error {
 		return client.Quit()
 	}
 
-	// 非TLS连接测试
-	client, err := smtp.Dial(addr)
+	// 非TLS连接测试（STARTTLS）
+	dialer := smtpDialer()
+	conn, err := dialer.Dial("tcp", addr)
 	if err != nil {
-		return fmt.Errorf("smtp connection failed: %w", err)
+		return fmt.Errorf("smtp dial: %w", err)
+	}
+	_ = conn.SetDeadline(time.Now().Add(smtpIOTimeout))
+	defer func() { _ = conn.Close() }()
+
+	client, err := smtp.NewClient(conn, config.Host)
+	if err != nil {
+		return fmt.Errorf("smtp client creation failed: %w", err)
 	}
 	defer func() { _ = client.Close() }()
+
+	// Opportunistic STARTTLS: upgrade to encrypted connection if the server supports it.
+	if ok, _ := client.Extension("STARTTLS"); ok {
+		if err = client.StartTLS(&tls.Config{ServerName: config.Host, MinVersion: tls.VersionTLS12}); err != nil {
+			return fmt.Errorf("starttls: %w", err)
+		}
+	}
 
 	auth := smtp.PlainAuth("", config.Username, config.Password, config.Host)
 	if err = client.Auth(auth); err != nil {

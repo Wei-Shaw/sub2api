@@ -29,80 +29,62 @@
         class="absolute left-1/3 top-1/4 h-72 w-72 rounded-full bg-primary-300/10 blur-3xl"
       ></div>
       <div
-        class="absolute bottom-1/4 right-1/4 h-64 w-64 rounded-full bg-primary-400/10 blur-3xl"
-      ></div>
-      <div
-        class="absolute inset-0 bg-[linear-gradient(rgba(20,184,166,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(20,184,166,0.03)_1px,transparent_1px)] bg-[size:64px_64px]"
+        class="absolute inset-0 bg-[linear-gradient(rgba(212,165,116,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(212,165,116,0.03)_1px,transparent_1px)] bg-[size:64px_64px]"
       ></div>
     </div>
 
-    <!-- Header -->
-    <header class="relative z-20 px-6 py-4">
-      <nav class="mx-auto flex max-w-6xl items-center justify-between">
+    <!-- ==================== Nav ==================== -->
+    <header class="relative z-20 border-b border-gray-200/50 bg-white/40 backdrop-blur-md dark:border-dark-800/50 dark:bg-dark-950/40">
+      <nav class="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
         <!-- Logo -->
-        <div class="flex items-center">
-          <div class="h-10 w-10 overflow-hidden rounded-xl shadow-md">
+        <router-link to="/home" class="flex items-center gap-2.5">
+          <div class="h-8 w-8 overflow-hidden rounded-lg">
             <img :src="siteLogo || '/logo.png'" alt="Logo" class="h-full w-full object-contain" />
           </div>
-        </div>
+          <span class="text-lg font-bold text-gray-900 dark:text-white">{{ siteName }}</span>
+        </router-link>
 
         <!-- Nav Actions -->
-        <div class="flex items-center gap-3">
-          <!-- Language Switcher -->
+        <div class="flex items-center gap-2">
           <LocaleSwitcher />
-
-          <!-- Doc Link -->
           <a
             v-if="docUrl"
             :href="docUrl"
             target="_blank"
             rel="noopener noreferrer"
-            class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
-            :title="t('home.viewDocs')"
+            class="rounded-lg px-3 py-1.5 text-sm text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-dark-300 dark:hover:bg-dark-800 dark:hover:text-white"
           >
-            <Icon name="book" size="md" />
+            {{ t('home.docs') }}
           </a>
-
-          <!-- Theme Toggle -->
+          <router-link
+            to="/guide"
+            class="rounded-lg px-3 py-1.5 text-sm text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-dark-300 dark:hover:bg-dark-800 dark:hover:text-white"
+          >
+            {{ t('guide.title') }}
+          </router-link>
           <button
             @click="toggleTheme"
-            class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
-            :title="isDark ? t('home.switchToLight') : t('home.switchToDark')"
+            class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-dark-300 dark:hover:bg-dark-800 dark:hover:text-white"
           >
             <Icon v-if="isDark" name="sun" size="md" />
             <Icon v-else name="moon" size="md" />
           </button>
-
-          <!-- Login / Dashboard Button -->
           <router-link
             v-if="isAuthenticated"
             :to="dashboardPath"
-            class="inline-flex items-center gap-1.5 rounded-full bg-gray-900 py-1 pl-1 pr-2.5 transition-colors hover:bg-gray-800 dark:bg-gray-800 dark:hover:bg-gray-700"
+            class="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 dark:bg-gray-800 dark:hover:bg-gray-700"
           >
             <span
-              class="flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-primary-400 to-primary-600 text-[10px] font-semibold text-white"
+              class="flex h-5 w-5 items-center justify-center rounded-full bg-primary-400 text-[10px] font-semibold text-white"
             >
               {{ userInitial }}
             </span>
-            <span class="text-xs font-medium text-white">{{ t('home.dashboard') }}</span>
-            <svg
-              class="h-3 w-3 text-gray-400"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25"
-              />
-            </svg>
+            {{ t('home.dashboard') }}
           </router-link>
           <router-link
             v-else
             to="/login"
-            class="inline-flex items-center rounded-full bg-gray-900 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-gray-800 dark:bg-gray-800 dark:hover:bg-gray-700"
+            class="inline-flex items-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 dark:bg-gray-800 dark:hover:bg-gray-700"
           >
             {{ t('home.login') }}
           </router-link>
@@ -110,65 +92,98 @@
       </nav>
     </header>
 
-    <!-- Main Content -->
-    <main class="relative z-10 flex-1 px-6 py-16">
+    <!-- ==================== Hero: Left/Right Layout ==================== -->
+    <main class="relative z-10 flex-1 px-6 py-20">
       <div class="mx-auto max-w-6xl">
-        <!-- Hero Section - Left/Right Layout -->
-        <div class="mb-12 flex flex-col items-center justify-between gap-12 lg:flex-row lg:gap-16">
-          <!-- Left: Text Content -->
+        <div class="flex flex-col items-center gap-16 lg:flex-row lg:gap-20">
+          <!-- Left: Copy -->
           <div class="flex-1 text-center lg:text-left">
-            <h1
-              class="mb-4 text-4xl font-bold text-gray-900 dark:text-white md:text-5xl lg:text-6xl"
-            >
-              {{ siteName }}
+            <p class="mb-3 text-sm font-medium tracking-wider text-primary-500 uppercase">{{ siteSubtitle }}</p>
+            <h1 class="mb-5 text-4xl font-bold leading-tight text-gray-900 dark:text-white md:text-5xl lg:text-[3.25rem]">
+              {{ t('home.hero.title') }}
             </h1>
-            <p class="mb-8 text-lg text-gray-600 dark:text-dark-300 md:text-xl">
-              {{ siteSubtitle }}
+            <p class="mb-8 max-w-lg text-lg leading-relaxed text-gray-500 dark:text-dark-300 lg:text-xl">
+              {{ t('home.hero.desc') }}
             </p>
-
-            <!-- CTA Button -->
-            <div>
+            <div class="flex flex-wrap items-center justify-center gap-3 lg:justify-start">
               <router-link
                 :to="isAuthenticated ? dashboardPath : '/login'"
-                class="btn btn-primary px-8 py-3 text-base shadow-lg shadow-primary-500/30"
+                class="inline-flex items-center rounded-lg bg-gray-900 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-gray-800"
               >
                 {{ isAuthenticated ? t('home.goToDashboard') : t('home.getStarted') }}
-                <Icon name="arrowRight" size="md" class="ml-2" :stroke-width="2" />
+                <svg class="ml-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25" />
+                </svg>
+              </router-link>
+              <router-link
+                to="/guide"
+                class="inline-flex items-center rounded-lg border border-gray-300 bg-white px-6 py-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-800 dark:text-dark-200 dark:hover:bg-dark-700"
+              >
+                {{ t('home.hero.viewGuide') }}
               </router-link>
             </div>
+            <p class="mt-6 text-xs text-gray-400 dark:text-dark-300">
+              Codex Plus · Linux · Windows · macOS · 账号池调度
+            </p>
           </div>
 
-          <!-- Right: Terminal Animation -->
+          <!-- Right: Console Summary Card -->
           <div class="flex flex-1 justify-center lg:justify-end">
-            <div class="terminal-container">
-              <div class="terminal-window">
-                <!-- Window header -->
-                <div class="terminal-header">
-                  <div class="terminal-buttons">
-                    <span class="btn-close"></span>
-                    <span class="btn-minimize"></span>
-                    <span class="btn-maximize"></span>
-                  </div>
-                  <span class="terminal-title">terminal</span>
+            <div class="console-card w-full max-w-md">
+              <!-- Card Header -->
+              <div class="flex items-center justify-between border-b border-white/10 px-5 py-3">
+                <div class="flex items-center gap-2">
+                  <div class="h-2.5 w-2.5 rounded-full bg-red-400"></div>
+                  <div class="h-2.5 w-2.5 rounded-full bg-yellow-400"></div>
+                  <div class="h-2.5 w-2.5 rounded-full bg-green-400"></div>
                 </div>
-                <!-- Terminal content -->
-                <div class="terminal-body">
-                  <div class="code-line line-1">
-                    <span class="code-prompt">$</span>
-                    <span class="code-cmd">curl</span>
-                    <span class="code-flag">-X POST</span>
-                    <span class="code-url">/v1/messages</span>
+                <span class="font-mono text-xs text-gray-400">api.willeai.com</span>
+              </div>
+              <!-- Card Body -->
+              <div class="px-5 py-4">
+                <h3 class="mb-1 text-sm font-semibold text-white">{{ t('home.console.title') }}</h3>
+                <p class="mb-5 text-xs text-gray-400">{{ t('home.console.subtitle') }}</p>
+                <!-- Stats Grid -->
+                <div class="grid grid-cols-2 gap-4">
+                  <div>
+                    <p class="text-[10px] uppercase tracking-wider text-gray-500">{{ t('home.console.baseUrl') }}</p>
+                    <p class="mt-1 font-mono text-sm font-semibold text-primary-400">/v1</p>
                   </div>
-                  <div class="code-line line-2">
-                    <span class="code-comment"># Routing to upstream...</span>
+                  <div>
+                    <p class="text-[10px] uppercase tracking-wider text-gray-500">{{ t('home.console.models') }}</p>
+                    <p class="mt-1 font-mono text-sm font-semibold text-white">GPT-5.5</p>
                   </div>
-                  <div class="code-line line-3">
-                    <span class="code-success">200 OK</span>
-                    <span class="code-response">{ "content": "Hello!" }</span>
+                  <div>
+                    <p class="text-[10px] uppercase tracking-wider text-gray-500">{{ t('home.console.accounts') }}</p>
+                    <p class="mt-1 font-mono text-sm font-semibold text-white">2</p>
                   </div>
-                  <div class="code-line line-4">
-                    <span class="code-prompt">$</span>
-                    <span class="cursor"></span>
+                  <div>
+                    <p class="text-[10px] uppercase tracking-wider text-gray-500">{{ t('home.console.protocol') }}</p>
+                    <p class="mt-1 font-mono text-sm font-semibold text-white">OAuth</p>
+                  </div>
+                </div>
+                <!-- Tool Status -->
+                <div class="mt-5 space-y-2.5 border-t border-white/10 pt-4">
+                  <div class="flex items-center justify-between">
+                    <span class="text-xs font-medium text-gray-300">Codex CLI</span>
+                    <span class="flex items-center gap-1.5 text-xs">
+                      <span class="h-1.5 w-1.5 rounded-full bg-green-400"></span>
+                      <span class="text-green-400">Ready</span>
+                    </span>
+                  </div>
+                  <div class="flex items-center justify-between">
+                    <span class="text-xs font-medium text-gray-300">OpenAI SDK</span>
+                    <span class="flex items-center gap-1.5 text-xs">
+                      <span class="h-1.5 w-1.5 rounded-full bg-green-400"></span>
+                      <span class="text-green-400">Ready</span>
+                    </span>
+                  </div>
+                  <div class="flex items-center justify-between">
+                    <span class="text-xs font-medium text-gray-300">Claude Code</span>
+                    <span class="flex items-center gap-1.5 text-xs">
+                      <span class="h-1.5 w-1.5 rounded-full bg-green-400"></span>
+                      <span class="text-green-400">Ready</span>
+                    </span>
                   </div>
                 </div>
               </div>
@@ -176,225 +191,228 @@
           </div>
         </div>
 
-        <!-- Feature Tags - Centered -->
-        <div class="mb-12 flex flex-wrap items-center justify-center gap-4 md:gap-6">
-          <div
-            class="inline-flex items-center gap-2.5 rounded-full border border-gray-200/50 bg-white/80 px-5 py-2.5 shadow-sm backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/80"
-          >
-            <Icon name="swap" size="sm" class="text-primary-500" />
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{
-              t('home.tags.subscriptionToApi')
-            }}</span>
-          </div>
-          <div
-            class="inline-flex items-center gap-2.5 rounded-full border border-gray-200/50 bg-white/80 px-5 py-2.5 shadow-sm backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/80"
-          >
-            <Icon name="shield" size="sm" class="text-primary-500" />
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{
-              t('home.tags.stickySession')
-            }}</span>
-          </div>
-          <div
-            class="inline-flex items-center gap-2.5 rounded-full border border-gray-200/50 bg-white/80 px-5 py-2.5 shadow-sm backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/80"
-          >
-            <Icon name="chart" size="sm" class="text-primary-500" />
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{
-              t('home.tags.realtimeBilling')
-            }}</span>
-          </div>
-        </div>
-
-        <!-- Features Grid -->
-        <div class="mb-12 grid gap-6 md:grid-cols-3">
-          <!-- Feature 1: Unified Gateway -->
-          <div
-            class="group rounded-2xl border border-gray-200/50 bg-white/60 p-6 backdrop-blur-sm transition-all duration-300 hover:shadow-xl hover:shadow-primary-500/10 dark:border-dark-700/50 dark:bg-dark-800/60"
-          >
-            <div
-              class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg shadow-blue-500/30 transition-transform group-hover:scale-110"
-            >
-              <Icon name="server" size="lg" class="text-white" />
-            </div>
-            <h3 class="mb-2 text-lg font-semibold text-gray-900 dark:text-white">
-              {{ t('home.features.unifiedGateway') }}
-            </h3>
-            <p class="text-sm leading-relaxed text-gray-600 dark:text-dark-400">
-              {{ t('home.features.unifiedGatewayDesc') }}
-            </p>
-          </div>
-
-          <!-- Feature 2: Account Pool -->
-          <div
-            class="group rounded-2xl border border-gray-200/50 bg-white/60 p-6 backdrop-blur-sm transition-all duration-300 hover:shadow-xl hover:shadow-primary-500/10 dark:border-dark-700/50 dark:bg-dark-800/60"
-          >
-            <div
-              class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 shadow-lg shadow-primary-500/30 transition-transform group-hover:scale-110"
-            >
-              <svg
-                class="h-6 w-6 text-white"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                stroke-width="1.5"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z"
-                />
-              </svg>
-            </div>
-            <h3 class="mb-2 text-lg font-semibold text-gray-900 dark:text-white">
-              {{ t('home.features.multiAccount') }}
-            </h3>
-            <p class="text-sm leading-relaxed text-gray-600 dark:text-dark-400">
-              {{ t('home.features.multiAccountDesc') }}
-            </p>
-          </div>
-
-          <!-- Feature 3: Billing & Quota -->
-          <div
-            class="group rounded-2xl border border-gray-200/50 bg-white/60 p-6 backdrop-blur-sm transition-all duration-300 hover:shadow-xl hover:shadow-primary-500/10 dark:border-dark-700/50 dark:bg-dark-800/60"
-          >
-            <div
-              class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 shadow-lg shadow-purple-500/30 transition-transform group-hover:scale-110"
-            >
-              <svg
-                class="h-6 w-6 text-white"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                stroke-width="1.5"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z"
-                />
-              </svg>
-            </div>
-            <h3 class="mb-2 text-lg font-semibold text-gray-900 dark:text-white">
-              {{ t('home.features.balanceQuota') }}
-            </h3>
-            <p class="text-sm leading-relaxed text-gray-600 dark:text-dark-400">
-              {{ t('home.features.balanceQuotaDesc') }}
-            </p>
-          </div>
-        </div>
-
-        <!-- Supported Providers -->
-        <div class="mb-8 text-center">
-          <h2 class="mb-3 text-2xl font-bold text-gray-900 dark:text-white">
-            {{ t('home.providers.title') }}
+        <!-- ==================== Core Features: 3-col Numbered Cards ==================== -->
+        <section class="mt-24">
+            <p class="mb-2 text-center text-sm font-medium tracking-wider text-primary-500 uppercase">{{ t('home.solutions.title') }}</p>
+          <h2 class="mb-12 text-center text-2xl font-bold text-gray-900 dark:text-white md:text-3xl">
+            {{ t('home.hero.title') }}
           </h2>
-          <p class="text-sm text-gray-600 dark:text-dark-400">
-            {{ t('home.providers.description') }}
-          </p>
-        </div>
+          <div class="grid gap-8 md:grid-cols-3">
+            <!-- 01 -->
+            <div class="rounded-xl border border-gray-200/50 bg-white/60 p-6 backdrop-blur-sm transition-all duration-300 hover:shadow-lg hover:shadow-primary-500/5 dark:border-dark-700/50 dark:bg-dark-800/60">
+              <span class="mb-4 inline-block bg-gradient-to-r from-primary-400 to-primary-500 bg-clip-text text-3xl font-black text-transparent">01</span>
+              <h3 class="mb-2 text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t('home.features.unifiedGateway') }}
+              </h3>
+              <p class="text-sm leading-relaxed text-gray-500 dark:text-dark-300">
+                {{ t('home.features.unifiedGatewayDesc') }}
+              </p>
+            </div>
+            <!-- 02 -->
+            <div class="rounded-xl border border-gray-200/50 bg-white/60 p-6 backdrop-blur-sm transition-all duration-300 hover:shadow-lg hover:shadow-primary-500/5 dark:border-dark-700/50 dark:bg-dark-800/60">
+              <span class="mb-4 inline-block bg-gradient-to-r from-primary-400 to-primary-500 bg-clip-text text-3xl font-black text-transparent">02</span>
+              <h3 class="mb-2 text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t('home.features.multiAccount') }}
+              </h3>
+              <p class="text-sm leading-relaxed text-gray-500 dark:text-dark-300">
+                {{ t('home.features.multiAccountDesc') }}
+              </p>
+            </div>
+            <!-- 03 -->
+            <div class="rounded-xl border border-gray-200/50 bg-white/60 p-6 backdrop-blur-sm transition-all duration-300 hover:shadow-lg hover:shadow-primary-500/5 dark:border-dark-700/50 dark:bg-dark-800/60">
+              <span class="mb-4 inline-block bg-gradient-to-r from-primary-400 to-primary-500 bg-clip-text text-3xl font-black text-transparent">03</span>
+              <h3 class="mb-2 text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t('home.features.balanceQuota') }}
+              </h3>
+              <p class="text-sm leading-relaxed text-gray-500 dark:text-dark-300">
+                {{ t('home.features.balanceQuotaDesc') }}
+              </p>
+            </div>
+          </div>
+        </section>
 
-        <div class="mb-16 flex flex-wrap items-center justify-center gap-4">
-          <!-- Claude - Supported -->
-          <div
-            class="flex items-center gap-2 rounded-xl border border-primary-200 bg-white/60 px-5 py-3 ring-1 ring-primary-500/20 backdrop-blur-sm dark:border-primary-800 dark:bg-dark-800/60"
-          >
-            <div
-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-orange-400 to-orange-500"
-            >
-              <span class="text-xs font-bold text-white">C</span>
+        <!-- ==================== Supported Tools: Tool Tags ==================== -->
+        <section class="mt-16">
+          <div class="flex flex-wrap items-center justify-center gap-4">
+            <div class="flex items-center gap-2 rounded-lg border border-gray-200/50 bg-white/60 px-4 py-2.5 dark:border-dark-700/50 dark:bg-dark-800/60">
+              <svg class="h-4 w-4 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+              </svg>
+              <span class="text-sm font-medium text-gray-700 dark:text-dark-200">Codex CLI</span>
+              <span class="text-xs text-gray-400">{{ t('home.providers.supported') }}</span>
             </div>
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.claude') }}</span>
-            <span
-              class="rounded bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium text-primary-600 dark:bg-primary-900/30 dark:text-primary-400"
-              >{{ t('home.providers.supported') }}</span
-            >
-          </div>
-          <!-- GPT - Supported -->
-          <div
-            class="flex items-center gap-2 rounded-xl border border-primary-200 bg-white/60 px-5 py-3 ring-1 ring-primary-500/20 backdrop-blur-sm dark:border-primary-800 dark:bg-dark-800/60"
-          >
-            <div
-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-green-500 to-green-600"
-            >
-              <span class="text-xs font-bold text-white">G</span>
+            <div class="flex items-center gap-2 rounded-lg border border-gray-200/50 bg-white/60 px-4 py-2.5 dark:border-dark-700/50 dark:bg-dark-800/60">
+              <svg class="h-4 w-4 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+              <span class="text-sm font-medium text-gray-700 dark:text-dark-200">Claude Code</span>
+              <span class="text-xs text-gray-400">{{ t('home.providers.supported') }}</span>
             </div>
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">GPT</span>
-            <span
-              class="rounded bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium text-primary-600 dark:bg-primary-900/30 dark:text-primary-400"
-              >{{ t('home.providers.supported') }}</span
-            >
-          </div>
-          <!-- Gemini - Supported -->
-          <div
-            class="flex items-center gap-2 rounded-xl border border-primary-200 bg-white/60 px-5 py-3 ring-1 ring-primary-500/20 backdrop-blur-sm dark:border-primary-800 dark:bg-dark-800/60"
-          >
-            <div
-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-blue-600"
-            >
-              <span class="text-xs font-bold text-white">G</span>
+            <div class="flex items-center gap-2 rounded-lg border border-gray-200/50 bg-white/60 px-4 py-2.5 dark:border-dark-700/50 dark:bg-dark-800/60">
+              <svg class="h-4 w-4 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+              </svg>
+              <span class="text-sm font-medium text-gray-700 dark:text-dark-200">Cursor</span>
+              <span class="text-xs text-gray-400">{{ t('home.providers.supported') }}</span>
             </div>
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.gemini') }}</span>
-            <span
-              class="rounded bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium text-primary-600 dark:bg-primary-900/30 dark:text-primary-400"
-              >{{ t('home.providers.supported') }}</span
-            >
-          </div>
-          <!-- Antigravity - Supported -->
-          <div
-            class="flex items-center gap-2 rounded-xl border border-primary-200 bg-white/60 px-5 py-3 ring-1 ring-primary-500/20 backdrop-blur-sm dark:border-primary-800 dark:bg-dark-800/60"
-          >
-            <div
-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-rose-500 to-pink-600"
-            >
-              <span class="text-xs font-bold text-white">A</span>
+            <div class="flex items-center gap-2 rounded-lg border border-gray-200/50 bg-white/60 px-4 py-2.5 dark:border-dark-700/50 dark:bg-dark-800/60">
+              <svg class="h-4 w-4 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+              </svg>
+              <span class="text-sm font-medium text-gray-700 dark:text-dark-200">OpenAI SDK</span>
+              <span class="text-xs text-gray-400">{{ t('home.providers.supported') }}</span>
             </div>
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.antigravity') }}</span>
-            <span
-              class="rounded bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium text-primary-600 dark:bg-primary-900/30 dark:text-primary-400"
-              >{{ t('home.providers.supported') }}</span
-            >
           </div>
-          <!-- More - Coming Soon -->
-          <div
-            class="flex items-center gap-2 rounded-xl border border-gray-200/50 bg-white/40 px-5 py-3 opacity-60 backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/40"
-          >
-            <div
-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-gray-500 to-gray-600"
-            >
-              <span class="text-xs font-bold text-white">+</span>
+        </section>
+
+        <!-- ==================== Why Choose: 2x2 Grid ==================== -->
+        <section class="mt-24">
+          <p class="mb-2 text-center text-sm font-medium tracking-wider text-primary-500 uppercase">{{ t('home.why.sectionLabel') }}</p>
+          <h2 class="mb-12 text-center text-2xl font-bold text-gray-900 dark:text-white md:text-3xl">
+            {{ t('home.why.sectionTitle') }}
+          </h2>
+          <div class="grid gap-6 md:grid-cols-2">
+            <div class="rounded-xl border border-gray-200/50 bg-white/60 p-6 backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/60">
+              <h3 class="mb-2 text-base font-semibold text-gray-900 dark:text-white">{{ t('home.why.security') }}</h3>
+              <p class="text-sm leading-relaxed text-gray-500 dark:text-dark-300">{{ t('home.why.securityDesc') }}</p>
             </div>
-            <span class="text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.providers.more') }}</span>
-            <span
-              class="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-dark-700 dark:text-dark-400"
-              >{{ t('home.providers.soon') }}</span
-            >
+            <div class="rounded-xl border border-gray-200/50 bg-white/60 p-6 backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/60">
+              <h3 class="mb-2 text-base font-semibold text-gray-900 dark:text-white">{{ t('home.why.stability') }}</h3>
+              <p class="text-sm leading-relaxed text-gray-500 dark:text-dark-300">{{ t('home.why.stabilityDesc') }}</p>
+            </div>
+            <div class="rounded-xl border border-gray-200/50 bg-white/60 p-6 backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/60">
+              <h3 class="mb-2 text-base font-semibold text-gray-900 dark:text-white">{{ t('home.why.transparency') }}</h3>
+              <p class="text-sm leading-relaxed text-gray-500 dark:text-dark-300">{{ t('home.why.transparencyDesc') }}</p>
+            </div>
+            <div class="rounded-xl border border-gray-200/50 bg-white/60 p-6 backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/60">
+              <h3 class="mb-2 text-base font-semibold text-gray-900 dark:text-white">{{ t('home.why.devFirst') }}</h3>
+              <p class="text-sm leading-relaxed text-gray-500 dark:text-dark-300">{{ t('home.why.devFirstDesc') }}</p>
+            </div>
           </div>
-        </div>
+        </section>
+
+        <!-- ==================== Quick Config: Dark Panels ==================== -->
+        <section class="mt-24">
+          <p class="mb-2 text-center text-sm font-medium tracking-wider text-primary-500 uppercase">{{ t('home.quickConfig.label') }}</p>
+          <h2 class="mb-4 text-center text-2xl font-bold text-gray-900 dark:text-white md:text-3xl">
+            {{ t('home.quickConfig.title') }}
+          </h2>
+          <p class="mb-10 text-center text-sm text-gray-500 dark:text-dark-300">{{ t('home.quickConfig.subtitle') }}</p>
+          <div class="grid gap-6 md:grid-cols-2">
+            <!-- Codex / SDK Panel -->
+            <div class="config-panel rounded-xl p-5">
+              <h3 class="mb-4 text-sm font-semibold text-white">{{ t('home.quickConfig.codexTitle') }}</h3>
+              <dl class="space-y-3">
+                <div class="flex items-center justify-between">
+                  <dt class="text-xs uppercase tracking-wider text-gray-400">Base URL</dt>
+                  <dd class="flex items-center gap-2">
+                    <code class="font-mono text-sm text-gray-200">https://api.willeai.com/v1</code>
+                    <button @click="copy('https://api.willeai.com/v1')" class="copy-btn text-xs text-primary-400 hover:text-primary-300">{{ copied === 'codex-url' ? '✓' : '复制' }}</button>
+                  </dd>
+                </div>
+                <div class="flex items-center justify-between">
+                  <dt class="text-xs uppercase tracking-wider text-gray-400">API Key</dt>
+                  <dd class="flex items-center gap-2">
+                    <code class="font-mono text-sm text-gray-200">sk-your-key</code>
+                    <button class="text-xs text-gray-500">{{ t('home.quickConfig.createKey') }}</button>
+                  </dd>
+                </div>
+                <div class="flex items-center justify-between">
+                  <dt class="text-xs uppercase tracking-wider text-gray-400">Model</dt>
+                  <dd class="flex items-center gap-2">
+                    <code class="font-mono text-sm text-gray-200">gpt-5.5</code>
+                    <button @click="copy('gpt-5.5')" class="copy-btn text-xs text-primary-400 hover:text-primary-300">{{ copied === 'codex-model' ? '✓' : '复制' }}</button>
+                  </dd>
+                </div>
+              </dl>
+            </div>
+            <!-- Claude Code Panel -->
+            <div class="config-panel rounded-xl p-5">
+              <h3 class="mb-4 text-sm font-semibold text-white">{{ t('home.quickConfig.claudeTitle') }}</h3>
+              <dl class="space-y-3">
+                <div class="flex items-center justify-between">
+                  <dt class="text-xs uppercase tracking-wider text-gray-400">Base URL</dt>
+                  <dd class="flex items-center gap-2">
+                    <code class="font-mono text-sm text-gray-200">https://api.willeai.com</code>
+                    <button @click="copy('https://api.willeai.com')" class="copy-btn text-xs text-primary-400 hover:text-primary-300">{{ copied === 'claude-url' ? '✓' : '复制' }}</button>
+                  </dd>
+                </div>
+                <div class="flex items-center justify-between">
+                  <dt class="text-xs uppercase tracking-wider text-gray-400">API Key</dt>
+                  <dd class="flex items-center gap-2">
+                    <code class="font-mono text-sm text-gray-200">sk-your-key</code>
+                    <button class="text-xs text-gray-500">{{ t('home.quickConfig.createKey') }}</button>
+                  </dd>
+                </div>
+                <div class="flex items-center justify-between">
+                  <dt class="text-xs uppercase tracking-wider text-gray-400">Model</dt>
+                  <dd class="flex items-center gap-2">
+                    <code class="font-mono text-sm text-gray-200">claude-sonnet-4-6</code>
+                    <button @click="copy('claude-sonnet-4-6')" class="copy-btn text-xs text-primary-400 hover:text-primary-300">{{ copied === 'claude-model' ? '✓' : '复制' }}</button>
+                  </dd>
+                </div>
+              </dl>
+            </div>
+          </div>
+          <p class="mt-4 text-center text-xs text-gray-400">
+            {{ t('home.quickConfig.note') }}
+          </p>
+        </section>
+
+        <!-- ==================== FAQ ==================== -->
+        <section class="mt-24">
+          <h2 class="mb-8 text-center text-2xl font-bold text-gray-900 dark:text-white">{{ t('guide.faq.title') }}</h2>
+          <div class="mx-auto max-w-3xl space-y-3">
+            <details
+              v-for="(item, idx) in faqItems"
+              :key="idx"
+              class="group rounded-xl border border-gray-200/50 bg-white/60 backdrop-blur-sm transition-all hover:shadow-md dark:border-dark-700/50 dark:bg-dark-800/60 [&[open]]:border-primary-200 [&[open]]:shadow-lg [&[open]]:shadow-primary-500/5"
+            >
+              <summary class="flex cursor-pointer select-none items-center justify-between px-5 py-4 text-sm font-medium text-gray-800 dark:text-dark-200">
+                {{ item.question }}
+                <svg class="h-4 w-4 shrink-0 text-gray-400 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                </svg>
+              </summary>
+              <div class="border-t border-gray-100 px-5 py-4 text-sm leading-relaxed text-gray-500 dark:border-dark-700 dark:text-dark-300">
+                {{ item.answer }}
+              </div>
+            </details>
+          </div>
+        </section>
+
+        <!-- ==================== CTA ==================== -->
+        <section class="mt-24 text-center">
+          <h2 class="mb-3 text-2xl font-bold text-gray-900 dark:text-white">{{ t('home.cta.title') }}</h2>
+            <p class="mb-6 text-gray-500 dark:text-dark-300">{{ t('home.cta.description') }}</p>
+          <router-link
+            :to="isAuthenticated ? dashboardPath : '/login'"
+            class="inline-flex items-center rounded-lg bg-gray-900 px-8 py-3 text-sm font-medium text-white transition-colors hover:bg-gray-800"
+          >
+            {{ isAuthenticated ? t('home.goToDashboard') : t('home.getStarted') }}
+            <svg class="ml-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25" />
+            </svg>
+          </router-link>
+        </section>
       </div>
     </main>
 
-    <!-- Footer -->
+    <!-- ==================== Footer ==================== -->
     <footer class="relative z-10 border-t border-gray-200/50 px-6 py-8 dark:border-dark-800/50">
-      <div
-        class="mx-auto flex max-w-6xl flex-col items-center justify-center gap-4 text-center sm:flex-row sm:text-left"
-      >
-        <p class="text-sm text-gray-500 dark:text-dark-400">
-          &copy; {{ currentYear }} {{ siteName }}. {{ t('home.footer.allRightsReserved') }}
+      <div class="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 sm:flex-row">
+        <p class="text-sm text-gray-400 dark:text-dark-300">
+          &copy; {{ currentYear }} {{ siteName }}
         </p>
         <div class="flex items-center gap-4">
-          <a
-            v-if="docUrl"
-            :href="docUrl"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="text-sm text-gray-500 transition-colors hover:text-gray-700 dark:text-dark-400 dark:hover:text-white"
-          >
-            {{ t('home.docs') }}
-          </a>
+          <router-link to="/guide" class="text-sm text-gray-400 transition-colors hover:text-gray-600 dark:text-dark-300 dark:hover:text-white">
+            {{ t('guide.title') }}
+          </router-link>
           <a
             :href="githubUrl"
             target="_blank"
             rel="noopener noreferrer"
-            class="text-sm text-gray-500 transition-colors hover:text-gray-700 dark:text-dark-400 dark:hover:text-white"
+            class="text-sm text-gray-400 transition-colors hover:text-gray-600 dark:text-dark-300 dark:hover:text-white"
           >
             GitHub
           </a>
@@ -416,14 +434,13 @@ const { t } = useI18n()
 const authStore = useAuthStore()
 const appStore = useAppStore()
 
-// Site settings - directly from appStore (already initialized from injected config)
-const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || 'Sub2API')
+// Site settings
+const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || 'WilleAI')
 const siteLogo = computed(() => appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '')
-const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle || 'AI API Gateway Platform')
+const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle || 'AI API Gateway')
 const docUrl = computed(() => appStore.cachedPublicSettings?.doc_url || appStore.docUrl || '')
 const homeContent = computed(() => appStore.cachedPublicSettings?.home_content || '')
 
-// Check if homeContent is a URL (for iframe display)
 const isHomeContentUrl = computed(() => {
   const content = homeContent.value.trim()
   return content.startsWith('http://') || content.startsWith('https://')
@@ -445,8 +462,25 @@ const userInitial = computed(() => {
   return user.email.charAt(0).toUpperCase()
 })
 
-// Current year for footer
 const currentYear = computed(() => new Date().getFullYear())
+
+// Copy
+const copied = ref('')
+async function copy(text: string) {
+  try {
+    await navigator.clipboard.writeText(text)
+    copied.value = text
+    setTimeout(() => { copied.value = '' }, 1500)
+  } catch { /* fallback */ }
+}
+
+// FAQ
+const faqItems = computed(() => [
+  { question: t('guide.faq.q1'), answer: t('guide.faq.a1') },
+  { question: t('guide.faq.q2'), answer: t('guide.faq.a2') },
+  { question: t('guide.faq.q3'), answer: t('guide.faq.a3') },
+  { question: t('guide.faq.q4'), answer: t('guide.faq.a4') }
+])
 
 // Toggle theme
 function toggleTheme() {
@@ -455,7 +489,6 @@ function toggleTheme() {
   localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
 }
 
-// Initialize theme
 function initTheme() {
   const savedTheme = localStorage.getItem('theme')
   if (
@@ -469,11 +502,7 @@ function initTheme() {
 
 onMounted(() => {
   initTheme()
-
-  // Check auth state
   authStore.checkAuth()
-
-  // Ensure public settings are loaded (will use cache if already loaded from injected config)
   if (!appStore.publicSettingsLoaded) {
     appStore.fetchPublicSettings()
   }
@@ -481,164 +510,33 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* Terminal Container */
-.terminal-container {
-  position: relative;
-  display: inline-block;
-}
-
-/* Terminal Window */
-.terminal-window {
-  width: 420px;
+.console-card {
   background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
-  border-radius: 14px;
+  border-radius: 12px;
   box-shadow:
     0 25px 50px -12px rgba(0, 0, 0, 0.4),
-    0 0 0 1px rgba(255, 255, 255, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
   overflow: hidden;
   transform: perspective(1000px) rotateX(2deg) rotateY(-2deg);
-  transition: transform 0.3s ease;
+  transition: transform 0.4s ease;
 }
 
-.terminal-window:hover {
+.console-card:hover {
   transform: perspective(1000px) rotateX(0deg) rotateY(0deg) translateY(-4px);
 }
 
-/* Terminal Header */
-.terminal-header {
-  display: flex;
-  align-items: center;
-  padding: 12px 16px;
-  background: rgba(30, 41, 59, 0.8);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+.config-panel {
+  background: linear-gradient(145deg, #1a1a2e 0%, #16213e 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.3);
 }
 
-.terminal-buttons {
-  display: flex;
-  gap: 8px;
-}
-
-.terminal-buttons span {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-}
-
-.btn-close {
-  background: #ef4444;
-}
-.btn-minimize {
-  background: #eab308;
-}
-.btn-maximize {
-  background: #22c55e;
-}
-
-.terminal-title {
-  flex: 1;
-  text-align: center;
-  font-size: 12px;
-  font-family: ui-monospace, monospace;
-  color: #64748b;
-  margin-right: 52px;
-}
-
-/* Terminal Body */
-.terminal-body {
-  padding: 20px 24px;
-  font-family: ui-monospace, 'Fira Code', monospace;
-  font-size: 14px;
-  line-height: 2;
-}
-
-.code-line {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  opacity: 0;
-  animation: line-appear 0.5s ease forwards;
-}
-
-.line-1 {
-  animation-delay: 0.3s;
-}
-.line-2 {
-  animation-delay: 1s;
-}
-.line-3 {
-  animation-delay: 1.8s;
-}
-.line-4 {
-  animation-delay: 2.5s;
-}
-
-@keyframes line-appear {
-  from {
-    opacity: 0;
-    transform: translateY(5px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.code-prompt {
-  color: #22c55e;
-  font-weight: bold;
-}
-.code-cmd {
-  color: #38bdf8;
-}
-.code-flag {
-  color: #a78bfa;
-}
-.code-url {
-  color: #14b8a6;
-}
-.code-comment {
-  color: #64748b;
-  font-style: italic;
-}
-.code-success {
-  color: #22c55e;
-  background: rgba(34, 197, 94, 0.15);
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-weight: 600;
-}
-.code-response {
-  color: #fbbf24;
-}
-
-/* Blinking Cursor */
-.cursor {
-  display: inline-block;
-  width: 8px;
-  height: 16px;
-  background: #22c55e;
-  animation: blink 1s step-end infinite;
-}
-
-@keyframes blink {
-  0%,
-  50% {
-    opacity: 1;
-  }
-  51%,
-  100% {
-    opacity: 0;
-  }
-}
-
-/* Dark mode adjustments */
-:deep(.dark) .terminal-window {
+:deep(.dark) .console-card {
   box-shadow:
     0 25px 50px -12px rgba(0, 0, 0, 0.6),
-    0 0 0 1px rgba(20, 184, 166, 0.2),
-    0 0 40px rgba(20, 184, 166, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    0 0 0 1px rgba(212, 165, 116, 0.15),
+    0 0 40px rgba(212, 165, 116, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 </style>

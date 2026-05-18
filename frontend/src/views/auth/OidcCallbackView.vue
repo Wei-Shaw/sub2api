@@ -5,7 +5,7 @@
         <h2 class="text-2xl font-bold text-gray-900 dark:text-white">
           {{ t('auth.oidc.callbackTitle', { providerName }) }}
         </h2>
-        <p class="mt-2 text-sm text-gray-500 dark:text-dark-400">
+        <p class="mt-2 text-sm text-gray-500 dark:text-dark-300">
           {{
             isProcessing
               ? t('auth.oidc.callbackProcessing', { providerName })
@@ -35,7 +35,7 @@
                 <p class="text-sm font-medium text-gray-900 dark:text-white">
                   {{ t('auth.oauthFlow.profileDetailsTitle', { providerName }) }}
                 </p>
-                <p class="text-xs text-gray-500 dark:text-dark-400">
+                <p class="text-xs text-gray-500 dark:text-dark-300">
                   {{ t('auth.oauthFlow.profileDetailsDescription', { providerName }) }}
                 </p>
               </div>
@@ -49,7 +49,7 @@
                   <span class="block font-medium text-gray-900 dark:text-white">
                     {{ t('auth.oauthFlow.useDisplayName') }}
                   </span>
-                  <span class="block text-gray-500 dark:text-dark-400">
+                  <span class="block text-gray-500 dark:text-dark-300">
                     {{ suggestedDisplayName }}
                   </span>
                 </span>
@@ -69,7 +69,7 @@
                   <span class="block font-medium text-gray-900 dark:text-white">
                     {{ t('auth.oauthFlow.useAvatar') }}
                   </span>
-                  <span class="block break-all text-gray-500 dark:text-dark-400">
+                  <span class="block break-all text-gray-500 dark:text-dark-300">
                     {{ suggestedAvatarUrl }}
                   </span>
                 </span>
@@ -120,7 +120,7 @@
                   <p class="text-sm font-medium text-gray-900 dark:text-white">
                     {{ t('auth.oauthFlow.chooseHowToContinue') }}
                   </p>
-                  <p class="text-xs text-gray-500 dark:text-dark-400">
+                  <p class="text-xs text-gray-500 dark:text-dark-300">
                     {{
                       pendingAccountEmail
                         ? t('auth.oauthFlow.suggestedEmail', { email: pendingAccountEmail })

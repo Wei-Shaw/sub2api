@@ -6,7 +6,7 @@
         <h2 class="text-2xl font-bold text-gray-900 dark:text-white">
           {{ t('auth.welcomeBack') }}
         </h2>
-        <p class="mt-2 text-sm text-gray-500 dark:text-dark-400">
+        <p class="mt-2 text-sm text-gray-500 dark:text-dark-300">
           {{ t('auth.signInToAccount') }}
         </p>
       </div>
@@ -30,14 +30,14 @@
         />
         <div class="flex items-center gap-3">
           <div class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></div>
-          <span class="text-xs text-gray-500 dark:text-dark-400">
+          <span class="text-xs text-gray-500 dark:text-dark-300">
             {{ t('auth.oauthOrContinue') }}
           </span>
           <div class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></div>
         </div>
       </div>
 
-      <!-- Login Form -->
+      <!-- Password Login Form -->
       <form @submit.prevent="handleLogin" class="space-y-5">
         <!-- Email Input -->
         <div>
@@ -46,7 +46,7 @@
           </label>
           <div class="relative">
             <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
-              <Icon name="mail" size="md" class="text-gray-400 dark:text-dark-500" />
+              <Icon name="mail" size="md" class="text-gray-400 dark:text-dark-300" />
             </div>
             <input
               id="email"
@@ -70,7 +70,7 @@
           </label>
           <div class="relative">
             <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
-              <Icon name="lock" size="md" class="text-gray-400 dark:text-dark-500" />
+              <Icon name="lock" size="md" class="text-gray-400 dark:text-dark-300" />
             </div>
             <input
               id="password"
@@ -149,7 +149,7 @@
 
     <!-- Footer -->
     <template v-if="!backendModeEnabled" #footer>
-      <p class="text-gray-500 dark:text-dark-400">
+      <p class="text-gray-500 dark:text-dark-300">
         {{ t('auth.dontHaveAccount') }}
         <router-link
           to="/register"

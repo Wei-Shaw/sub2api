@@ -15,7 +15,7 @@
           <h1 class="text-lg font-semibold text-gray-900 dark:text-white">
             {{ pageTitle }}
           </h1>
-          <p v-if="pageDescription" class="text-xs text-gray-500 dark:text-dark-400">
+          <p v-if="pageDescription" class="text-xs text-gray-500 dark:text-dark-300">
             {{ pageDescription }}
           </p>
         </div>
@@ -32,7 +32,7 @@
           :href="docUrl"
           target="_blank"
           rel="noopener noreferrer"
-          class="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
+          class="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-dark-300 dark:hover:bg-dark-800 dark:hover:text-white"
         >
           <Icon name="book" size="sm" />
           <span class="hidden sm:inline">{{ t('nav.docs') }}</span>
@@ -47,7 +47,7 @@
         <!-- Balance Display -->
         <div
           v-if="user"
-          class="hidden items-center gap-2 rounded-xl bg-primary-50 px-3 py-1.5 dark:bg-primary-900/20 sm:flex"
+          class="hidden items-center gap-2 rounded-lg bg-primary-50 px-3 py-1.5 dark:bg-primary-900/20 sm:flex"
         >
           <svg
             class="h-4 w-4 text-primary-600 dark:text-primary-400"
@@ -71,10 +71,10 @@
         <div v-if="user" class="relative" ref="dropdownRef">
           <button
             @click="toggleDropdown"
-            class="flex items-center gap-2 rounded-xl p-1.5 transition-colors hover:bg-gray-100 dark:hover:bg-dark-800"
+            class="flex items-center gap-2 rounded-lg p-1.5 transition-colors hover:bg-gray-100 dark:hover:bg-dark-800"
             aria-label="User Menu"
           >
-            <div class="flex h-8 w-8 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 text-sm font-medium text-white shadow-sm">
+            <div class="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg bg-accent-800 text-sm font-medium text-white">
               <img
                 v-if="avatarUrl"
                 :src="avatarUrl"
@@ -87,7 +87,7 @@
               <div class="text-sm font-medium text-gray-900 dark:text-white">
                 {{ displayName }}
               </div>
-              <div class="text-xs capitalize text-gray-500 dark:text-dark-400">
+              <div class="text-xs capitalize text-gray-500 dark:text-dark-300">
                 {{ user.role }}
               </div>
             </div>
@@ -102,12 +102,12 @@
                 <div class="text-sm font-medium text-gray-900 dark:text-white">
                   {{ displayName }}
                 </div>
-                <div class="text-xs text-gray-500 dark:text-dark-400">{{ user.email }}</div>
+                <div class="text-xs text-gray-500 dark:text-dark-300">{{ user.email }}</div>
               </div>
 
               <!-- Balance (mobile only) -->
               <div class="border-b border-gray-100 px-4 py-2 dark:border-dark-700 sm:hidden">
-                <div class="text-xs text-gray-500 dark:text-dark-400">
+                <div class="text-xs text-gray-500 dark:text-dark-300">
                   {{ t('common.balance') }}
                 </div>
                 <div class="text-sm font-semibold text-primary-600 dark:text-primary-400">

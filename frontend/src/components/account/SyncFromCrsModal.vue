@@ -17,7 +17,7 @@
         {{ t('admin.accounts.syncFromCrsDesc') }}
       </div>
       <div
-        class="rounded-lg bg-gray-50 p-3 text-xs text-gray-500 dark:bg-dark-700/60 dark:text-dark-400"
+        class="rounded-lg bg-gray-50 p-3 text-xs text-gray-500 dark:bg-dark-700/60 dark:text-dark-300"
       >
         {{ t('admin.accounts.crsUpdateBehaviorNote') }}
       </div>
@@ -80,7 +80,7 @@
           {{ t('admin.accounts.crsExistingAccounts') }}
           <span class="ml-1 text-xs text-gray-400">({{ previewResult.existing_accounts.length }})</span>
         </div>
-        <div class="max-h-32 overflow-auto text-xs text-gray-500 dark:text-dark-400">
+        <div class="max-h-32 overflow-auto text-xs text-gray-500 dark:text-dark-300">
           <div
             v-for="acc in previewResult.existing_accounts"
             :key="acc.crs_account_id"
@@ -140,9 +140,9 @@
       </div>
 
       <!-- Sync options summary -->
-      <div class="flex items-center gap-2 text-xs text-gray-500 dark:text-dark-400">
+      <div class="flex items-center gap-2 text-xs text-gray-500 dark:text-dark-300">
         <span>{{ t('admin.accounts.syncProxies') }}:</span>
-        <span :class="form.sync_proxies ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-dark-500'">
+        <span :class="form.sync_proxies ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-dark-300'">
           {{ form.sync_proxies ? t('common.yes') : t('common.no') }}
         </span>
       </div>
@@ -150,7 +150,7 @@
       <!-- No new accounts -->
       <div
         v-if="!previewResult.new_accounts.length"
-        class="rounded-lg bg-gray-50 p-4 text-center text-sm text-gray-500 dark:bg-dark-700/60 dark:text-dark-400"
+        class="rounded-lg bg-gray-50 p-4 text-center text-sm text-gray-500 dark:bg-dark-700/60 dark:text-dark-300"
       >
         {{ t('admin.accounts.crsNoNewAccounts') }}
         <span v-if="previewResult.existing_accounts.length">

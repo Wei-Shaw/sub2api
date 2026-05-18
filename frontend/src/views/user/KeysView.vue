@@ -112,10 +112,12 @@
                   :subscription-type="row.group.subscription_type"
                   :rate-multiplier="row.group.rate_multiplier"
                   :user-rate-multiplier="userGroupRates[row.group.id]"
+                  :class="{ 'opacity-50': row.group.status === 'inactive' }"
                 />
-                <span v-else class="text-sm text-gray-400 dark:text-dark-500">{{
+                <span v-else class="text-sm text-gray-400 dark:text-dark-300">{{
                   t('keys.noGroup')
                 }}</span>
+                <span v-if="row.group?.status === 'inactive'" class="text-xs text-gray-400 dark:text-gray-500">({{ t('keys.status.groupInactive') }})</span>
                 <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('keys.selectGroup') }}</span>
                 <svg
                   class="h-3.5 w-3.5 text-gray-400 opacity-60 transition-opacity group-hover/dropdown:opacity-100"
@@ -273,21 +275,28 @@
                 {{ t('keys.resetUsage') }}
               </button>
             </div>
-            <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
+            <span v-else class="text-sm text-gray-400 dark:text-dark-300">-</span>
           </template>
 
           <template #cell-expires_at="{ value }">
             <span v-if="value" :class="[
               'text-sm',
-              new Date(value) < new Date() ? 'text-red-500 dark:text-red-400' : 'text-gray-500 dark:text-dark-400'
+              new Date(value) < new Date() ? 'text-red-500 dark:text-red-400' : 'text-gray-500 dark:text-dark-300'
             ]">
               {{ formatDateTime(value) }}
             </span>
-            <span v-else class="text-sm text-gray-400 dark:text-dark-500">{{ t('keys.noExpiration') }}</span>
+            <span v-else class="text-sm text-gray-400 dark:text-dark-300">{{ t('keys.noExpiration') }}</span>
           </template>
 
-          <template #cell-status="{ value }">
-            <span :class="[
+          <template #cell-status="{ value, row }">
+            <!-- Group inactive/deleted takes priority over key status -->
+            <span v-if="!row.group" :class="['badge', 'badge-gray']">
+              {{ t('keys.status.groupDeleted') }}
+            </span>
+            <span v-else-if="row.group.status === 'inactive'" :class="['badge', 'badge-gray']">
+              {{ t('keys.status.groupInactive') }}
+            </span>
+            <span v-else :class="[
               'badge',
               value === 'active' ? 'badge-success' :
               value === 'quota_exhausted' ? 'badge-warning' :
@@ -299,14 +308,14 @@
           </template>
 
           <template #cell-last_used_at="{ value }">
-            <span v-if="value" class="text-sm text-gray-500 dark:text-dark-400">
+            <span v-if="value" class="text-sm text-gray-500 dark:text-dark-300">
               {{ formatDateTime(value) }}
             </span>
-            <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
+            <span v-else class="text-sm text-gray-400 dark:text-dark-300">-</span>
           </template>
 
           <template #cell-created_at="{ value }">
-            <span class="text-sm text-gray-500 dark:text-dark-400">{{ formatDateTime(value) }}</span>
+            <span class="text-sm text-gray-500 dark:text-dark-300">{{ formatDateTime(value) }}</span>
           </template>
 
           <template #cell-actions="{ row }">

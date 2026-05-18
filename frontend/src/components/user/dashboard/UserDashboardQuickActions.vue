@@ -10,12 +10,12 @@
         </div>
         <div class="min-w-0 flex-1">
           <p class="text-sm font-medium text-gray-900 dark:text-white">{{ t('dashboard.createApiKey') }}</p>
-          <p class="text-xs text-gray-500 dark:text-dark-400">{{ t('dashboard.generateNewKey') }}</p>
+          <p class="text-xs text-gray-500 dark:text-dark-300">{{ t('dashboard.generateNewKey') }}</p>
         </div>
         <Icon
           name="chevronRight"
           size="md"
-          class="text-gray-400 transition-colors group-hover:text-primary-500 dark:text-dark-500"
+          class="text-gray-400 transition-colors group-hover:text-primary-500 dark:text-dark-300"
         />
       </button>
 
@@ -25,12 +25,12 @@
         </div>
         <div class="min-w-0 flex-1">
           <p class="text-sm font-medium text-gray-900 dark:text-white">{{ t('dashboard.viewUsage') }}</p>
-          <p class="text-xs text-gray-500 dark:text-dark-400">{{ t('dashboard.checkDetailedLogs') }}</p>
+          <p class="text-xs text-gray-500 dark:text-dark-300">{{ t('dashboard.checkDetailedLogs') }}</p>
         </div>
         <Icon
           name="chevronRight"
           size="md"
-          class="text-gray-400 transition-colors group-hover:text-emerald-500 dark:text-dark-500"
+          class="text-gray-400 transition-colors group-hover:text-emerald-500 dark:text-dark-300"
         />
       </button>
 
@@ -40,12 +40,12 @@
         </div>
         <div class="min-w-0 flex-1">
           <p class="text-sm font-medium text-gray-900 dark:text-white">{{ t('dashboard.redeemCode') }}</p>
-          <p class="text-xs text-gray-500 dark:text-dark-400">{{ t('dashboard.addBalanceWithCode') }}</p>
+          <p class="text-xs text-gray-500 dark:text-dark-300">{{ t('dashboard.addBalanceWithCode') }}</p>
         </div>
         <Icon
           name="chevronRight"
           size="md"
-          class="text-gray-400 transition-colors group-hover:text-amber-500 dark:text-dark-500"
+          class="text-gray-400 transition-colors group-hover:text-amber-500 dark:text-dark-300"
         />
       </button>
     </div>

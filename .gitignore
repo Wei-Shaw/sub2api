@@ -136,3 +136,5 @@ docs/*
 frontend/coverage/
 aicodex
 output/
+backend/sub2api-linux*
+backend/sub2api-*

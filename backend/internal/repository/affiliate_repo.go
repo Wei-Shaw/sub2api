@@ -979,6 +979,76 @@ func isAffiliateUniqueViolation(err error) bool {
 
 // UpdateUserAffCode 改写用户的邀请码（自定义专属邀请码）。
 // 唯一性冲突返回 ErrAffiliateCodeTaken。
+// CountRegisterBonusToday returns the number of register_bonus ledger entries
+// created by the given inviter today (UTC).
+func (r *affiliateRepository) CountRegisterBonusToday(ctx context.Context, inviterID int64) (int, error) {
+	client := clientFromContext(ctx, r.client)
+	rows, err := client.QueryContext(ctx,
+		`SELECT COUNT(*) FROM user_affiliate_ledger WHERE user_id = $1 AND action = 'register_bonus' AND created_at >= DATE_TRUNC('day', NOW())`,
+		inviterID,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("count register bonus today: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	if !rows.Next() {
+		return 0, rows.Err()
+	}
+	var count int
+	if err := rows.Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, rows.Close()
+}
+
+// GrantRegisterBonus awards a register bonus to both inviter and invitee.
+// It records a 'register_bonus' ledger for the inviter (for daily counting),
+// and directly adds the amount to both users' balance via UPDATE.
+func (r *affiliateRepository) GrantRegisterBonus(ctx context.Context, inviterID, inviteeID int64, amount float64) error {
+	return r.withTx(ctx, func(txCtx context.Context, txClient *dbent.Client) error {
+		// Add balance to inviter
+		if _, err := txClient.ExecContext(txCtx,
+			`UPDATE users SET balance = balance + $1, total_recharged = total_recharged + $1, updated_at = NOW() WHERE id = $2`,
+			amount, inviterID); err != nil {
+			return fmt.Errorf("grant register bonus to inviter: %w", err)
+		}
+		// Add balance to invitee
+		if _, err := txClient.ExecContext(txCtx,
+			`UPDATE users SET balance = balance + $1, total_recharged = total_recharged + $1, updated_at = NOW() WHERE id = $2`,
+			amount, inviteeID); err != nil {
+			return fmt.Errorf("grant register bonus to invitee: %w", err)
+		}
+		// Ledger for inviter (for daily counting & audit trail)
+		if _, err := txClient.ExecContext(txCtx,
+			`INSERT INTO user_affiliate_ledger (user_id, action, amount, source_user_id, created_at, updated_at) VALUES ($1, 'register_bonus', $2, $3, NOW(), NOW())`,
+			inviterID, amount, inviteeID); err != nil {
+			return fmt.Errorf("insert register bonus ledger for inviter: %w", err)
+		}
+		// Ledger for invitee (audit trail)
+		if _, err := txClient.ExecContext(txCtx,
+			`INSERT INTO user_affiliate_ledger (user_id, action, amount, source_user_id, created_at, updated_at) VALUES ($1, 'register_bonus', $2, $3, NOW(), NOW())`,
+			inviteeID, amount, inviterID); err != nil {
+			return fmt.Errorf("insert register bonus ledger for invitee: %w", err)
+		}
+		return nil
+	})
+}
+
+// GrantRegisterBonusToUser awards a register bonus to a single user (no transaction coupling).
+func (r *affiliateRepository) GrantRegisterBonusToUser(ctx context.Context, userID, sourceUserID int64, amount float64, action string) error {
+	if _, err := r.client.ExecContext(ctx,
+		`UPDATE users SET balance = balance + $1, total_recharged = total_recharged + $1, updated_at = NOW() WHERE id = $2`,
+		amount, userID); err != nil {
+		return fmt.Errorf("grant register bonus to user %d: %w", userID, err)
+	}
+	if _, err := r.client.ExecContext(ctx,
+		`INSERT INTO user_affiliate_ledger (user_id, action, amount, source_user_id, created_at, updated_at) VALUES ($1, $2, $3, $4, NOW(), NOW())`,
+		userID, action, amount, sourceUserID); err != nil {
+		return fmt.Errorf("insert register bonus ledger for user %d: %w", userID, err)
+	}
+	return nil
+}
+
 func (r *affiliateRepository) UpdateUserAffCode(ctx context.Context, userID int64, newCode string) error {
 	if userID <= 0 {
 		return service.ErrUserNotFound

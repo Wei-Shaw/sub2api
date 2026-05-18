@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -76,6 +78,7 @@ type RedeemService struct {
 	redeemRepo           RedeemCodeRepository
 	userRepo             UserRepository
 	subscriptionService  *SubscriptionService
+	affiliateService     *AffiliateService
 	cache                RedeemCache
 	billingCacheService  *BillingCacheService
 	entClient            *dbent.Client
@@ -87,6 +90,7 @@ func NewRedeemService(
 	redeemRepo RedeemCodeRepository,
 	userRepo UserRepository,
 	subscriptionService *SubscriptionService,
+	affiliateService *AffiliateService,
 	cache RedeemCache,
 	billingCacheService *BillingCacheService,
 	entClient *dbent.Client,
@@ -96,6 +100,7 @@ func NewRedeemService(
 		redeemRepo:           redeemRepo,
 		userRepo:             userRepo,
 		subscriptionService:  subscriptionService,
+		affiliateService:     affiliateService,
 		cache:                cache,
 		billingCacheService:  billingCacheService,
 		entClient:            entClient,
@@ -368,6 +373,13 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 
 	// 事务提交成功后失效缓存
 	s.invalidateRedeemCaches(ctx, userID, redeemCode)
+
+	// 触发邀请返利（仅余额类型兑换码）
+	if redeemCode.Type == RedeemTypeBalance && redeemCode.Value > 0 && s.affiliateService != nil {
+		if _, err := s.affiliateService.AccrueInviteRebate(ctx, userID, float64(redeemCode.Value)); err != nil {
+			logger.LegacyPrintf("service.redeem", "[Redeem] Failed to accrue affiliate rebate for user %d, amount %s: %v", userID, redeemCode.Value, err)
+		}
+	}
 
 	// 重新获取更新后的兑换码
 	redeemCode, err = s.redeemRepo.GetByID(ctx, redeemCode.ID)

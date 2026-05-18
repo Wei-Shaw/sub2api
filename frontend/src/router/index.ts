@@ -25,6 +25,16 @@ const routes: RouteRecordRaw[] = [
       title: 'Setup'
     }
   },
+  {
+    path: '/guide',
+    name: 'SetupGuide',
+    component: () => import('@/views/user/SetupGuideView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Setup Guide',
+      titleKey: 'guide.title'
+    }
+  },
 
   // ==================== Public Routes ====================
   {
@@ -219,6 +229,18 @@ const routes: RouteRecordRaw[] = [
       title: 'Available Channels',
       titleKey: 'availableChannels.title',
       descriptionKey: 'availableChannels.description'
+    }
+  },
+  {
+    path: '/announcements',
+    name: 'Announcements',
+    component: () => import('@/views/user/AnnouncementsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Announcements',
+      titleKey: 'nav.announcements',
+      descriptionKey: 'announcements.subtitle'
     }
   },
   {
@@ -694,7 +716,7 @@ router.beforeEach((to, _from, next) => {
     const menuItem = publicItems.find((item) => item.id === id)
       ?? (authStore.isAdmin ? adminSettingsStore.customMenuItems.find((item) => item.id === id) : undefined)
     if (menuItem?.label) {
-      const siteName = appStore.siteName || 'Sub2API'
+      const siteName = appStore.siteName || 'WilleAI'
       document.title = `${menuItem.label} - ${siteName}`
     } else {
       document.title = resolveDocumentTitle(to.meta.title, appStore.siteName, to.meta.titleKey as string)

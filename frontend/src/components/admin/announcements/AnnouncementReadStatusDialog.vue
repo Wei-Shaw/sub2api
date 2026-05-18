@@ -45,7 +45,7 @@
         </template>
 
         <template #cell-read_at="{ value }">
-          <span class="text-sm text-gray-500 dark:text-dark-400">
+          <span class="text-sm text-gray-500 dark:text-dark-300">
             {{ value ? formatDateTime(value) : t('admin.announcements.unread') }}
           </span>
         </template>

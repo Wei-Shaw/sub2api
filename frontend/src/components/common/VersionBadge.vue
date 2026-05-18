@@ -8,7 +8,7 @@
         :class="[
           hasUpdate
             ? 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:hover:bg-amber-900/50'
-            : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-800 dark:text-dark-400 dark:hover:bg-dark-700'
+            : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-800 dark:text-dark-300 dark:hover:bg-dark-700'
         ]"
         :title="hasUpdate ? t('version.updateAvailable') : t('version.upToDate')"
       >
@@ -85,7 +85,7 @@
                     class="text-2xl font-bold text-gray-900 dark:text-white"
                     >v{{ currentVersion }}</span
                   >
-                  <span v-else class="text-2xl font-bold text-gray-400 dark:text-dark-500">--</span>
+                  <span v-else class="text-2xl font-bold text-gray-400 dark:text-dark-300">--</span>
                   <!-- Show check mark when up to date -->
                   <span
                     v-if="!hasUpdate"
@@ -104,7 +104,7 @@
                     </svg>
                   </span>
                 </div>
-                <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">
+                <p class="mt-1 text-xs text-gray-500 dark:text-dark-300">
                   {{
                     hasUpdate
                       ? t('version.latestVersion') + ': v' + latestVersion
@@ -343,7 +343,7 @@
                   :href="releaseInfo.html_url"
                   target="_blank"
                   rel="noopener noreferrer"
-                  class="flex items-center justify-center gap-1 text-xs text-gray-500 transition-colors hover:text-gray-700 dark:text-dark-400 dark:hover:text-dark-200"
+                  class="flex items-center justify-center gap-1 text-xs text-gray-500 transition-colors hover:text-gray-700 dark:text-dark-300 dark:hover:text-dark-200"
                 >
                   {{ t('version.viewChangelog') }}
                   <Icon name="externalLink" size="xs" :stroke-width="2" />
@@ -356,7 +356,7 @@
                 :href="releaseInfo.html_url"
                 target="_blank"
                 rel="noopener noreferrer"
-                class="flex items-center justify-center gap-2 py-2 text-sm text-gray-500 transition-colors hover:text-gray-700 dark:text-dark-400 dark:hover:text-dark-200"
+                class="flex items-center justify-center gap-2 py-2 text-sm text-gray-500 transition-colors hover:text-gray-700 dark:text-dark-300 dark:hover:text-dark-200"
               >
                 <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
                   <path
@@ -374,7 +374,7 @@
     </template>
 
     <!-- Non-admin: Simple static version text -->
-    <span v-else-if="version" class="text-xs text-gray-500 dark:text-dark-400">
+    <span v-else-if="version" class="text-xs text-gray-500 dark:text-dark-300">
       v{{ version }}
     </span>
   </div>
