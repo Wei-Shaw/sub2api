@@ -7,6 +7,7 @@ import { resolveDocumentTitle } from '@/router/title'
 import AnnouncementPopup from '@/components/common/AnnouncementPopup.vue'
 import { useAppStore, useAuthStore, useSubscriptionStore, useAnnouncementStore } from '@/stores'
 import { getSetupStatus } from '@/api/setup'
+import { useSeoHead } from '@/composables/useSeoHead'
 
 const router = useRouter()
 const route = useRoute()
@@ -14,6 +15,9 @@ const appStore = useAppStore()
 const authStore = useAuthStore()
 const subscriptionStore = useSubscriptionStore()
 const announcementStore = useAnnouncementStore()
+
+// Sync SEO <head> tags with current route + locale on every navigation.
+useSeoHead()
 
 /**
  * Update favicon dynamically
