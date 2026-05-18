@@ -118,6 +118,108 @@ REDACTED
 	require.Contains(t, rec.Body.String(), "data: [DONE]")
 REDACTED
 
+func TestForwardAsRawChatCompletions_PreservesDeepSeekReasoningContentNonStreaming(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"deepseek-reasoner","messages":[{"role":"user","content":"hello"REDACTED],"stream":falseREDACTED`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstreamJSON := `{"id":"chatcmpl_reasoning","object":"chat.completion","model":"deepseek-reasoner","choices":[{"index":0,"message":{"role":"assistant","reasoning_content":"think first","content":"final answer"REDACTED,"finish_reason":"stop"REDACTED],"usage":{"prompt_tokens":3,"completion_tokens":5,"total_tokens":8REDACTEDREDACTED`
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"REDACTED, "x-request-id": []string{"rid_deepseek_reasoning_json"REDACTEDREDACTED,
+		Body:       io.NopCloser(strings.NewReader(upstreamJSON)),
+REDACTEDREDACTED
+
+	svc := &OpenAIGatewayService{
+		cfg:          rawChatCompletionsTestConfig(),
+		httpUpstream: upstream,
+REDACTED
+	account := rawChatCompletionsTestAccount()
+
+	result, err := svc.forwardAsRawChatCompletions(context.Background(), c, account, body, "")
+REDACTED
+	require.NotNil(t, result)
+	require.Equal(t, 3, result.Usage.InputTokens)
+	require.Equal(t, 5, result.Usage.OutputTokens)
+	require.Equal(t, "think first", gjson.Get(rec.Body.String(), "choices.0.message.reasoning_content").String())
+	require.Equal(t, "final answer", gjson.Get(rec.Body.String(), "choices.0.message.content").String())
+REDACTED
+
+func TestForwardAsRawChatCompletions_PreservesDeepSeekReasoningContentStreaming(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"deepseek-reasoner","messages":[{"role":"user","content":"hello"REDACTED],"stream":trueREDACTED`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstreamBody := strings.Join([]string{
+		`data: {"id":"chatcmpl_reasoning","object":"chat.completion.chunk","model":"deepseek-reasoner","choices":[{"index":0,"delta":{"role":"assistant"REDACTED,"finish_reason":nullREDACTED]REDACTED`,
+		"",
+		`data: {"id":"chatcmpl_reasoning","object":"chat.completion.chunk","model":"deepseek-reasoner","choices":[{"index":0,"delta":{"reasoning_content":"think first"REDACTED,"finish_reason":nullREDACTED]REDACTED`,
+		"",
+		`data: {"id":"chatcmpl_reasoning","object":"chat.completion.chunk","model":"deepseek-reasoner","choices":[{"index":0,"delta":{"content":"final answer"REDACTED,"finish_reason":nullREDACTED]REDACTED`,
+		"",
+		`data: {"id":"chatcmpl_reasoning","object":"chat.completion.chunk","model":"deepseek-reasoner","choices":[],"usage":{"prompt_tokens":3,"completion_tokens":5,"total_tokens":8REDACTEDREDACTED`,
+		"",
+		"data: [DONE]",
+		"",
+REDACTED, "\n")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTED, "x-request-id": []string{"rid_deepseek_reasoning_stream"REDACTEDREDACTED,
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+REDACTEDREDACTED
+
+	svc := &OpenAIGatewayService{
+		cfg:          rawChatCompletionsTestConfig(),
+		httpUpstream: upstream,
+REDACTED
+	account := rawChatCompletionsTestAccount()
+
+	result, err := svc.forwardAsRawChatCompletions(context.Background(), c, account, body, "")
+REDACTED
+	require.NotNil(t, result)
+	require.Equal(t, 3, result.Usage.InputTokens)
+	require.Equal(t, 5, result.Usage.OutputTokens)
+	require.Contains(t, rec.Body.String(), `"reasoning_content":"think first"`)
+	require.Contains(t, rec.Body.String(), `"content":"final answer"`)
+	require.Contains(t, rec.Body.String(), "data: [DONE]")
+REDACTED
+
+func TestForwardAsRawChatCompletions_PreservesDeepSeekReasoningContentInRequest(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"deepseek-v4-pro","messages":[{"role":"user","content":"weather"REDACTED,{"role":"assistant","reasoning_content":"need tool","content":"","tool_calls":[{"id":"call_1","type":"function","function":{"name":"get_weather","arguments":"{REDACTED"REDACTEDREDACTED]REDACTED,{"role":"tool","tool_call_id":"call_1","content":"cloudy"REDACTED],"stream":falseREDACTED`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"REDACTED, "x-request-id": []string{"rid_deepseek_reasoning_request"REDACTEDREDACTED,
+		Body:       io.NopCloser(strings.NewReader(`{"id":"chatcmpl_request","object":"chat.completion","model":"deepseek-v4-pro","choices":[{"index":0,"message":{"role":"assistant","content":"done"REDACTED,"finish_reason":"stop"REDACTED],"usage":{"prompt_tokens":4,"completion_tokens":2,"total_tokens":6REDACTEDREDACTED`)),
+REDACTEDREDACTED
+
+	svc := &OpenAIGatewayService{
+		cfg:          rawChatCompletionsTestConfig(),
+		httpUpstream: upstream,
+REDACTED
+	account := rawChatCompletionsTestAccount()
+
+	result, err := svc.forwardAsRawChatCompletions(context.Background(), c, account, body, "")
+REDACTED
+	require.NotNil(t, result)
+	require.Equal(t, "need tool", gjson.GetBytes(upstream.lastBody, "messages.1.reasoning_content").String())
+	require.Equal(t, "get_weather", gjson.GetBytes(upstream.lastBody, "messages.1.tool_calls.0.function.name").String())
+REDACTED
+
 func TestForwardAsRawChatCompletions_ClientDisconnectDrainsUsage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
