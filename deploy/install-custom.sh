@@ -915,13 +915,22 @@ main() {
             # Ensure we have the latest install-custom.sh and Dockerfile.runtime
             cd "$INSTALL_DIR"
             print_info "Syncing code (for Dockerfile.runtime and script updates)..."
+            local _hash_before _hash_after
+            _hash_before="$(sha256sum "$INSTALL_DIR/deploy/install-custom.sh" 2>/dev/null | awk '{print $1}')"
             sync_repo_to_deploy_branch
-            # curl|bash keeps functions in this process; git pull only updates files on disk.
-            # Re-exec the checkout copy so upgrade uses the same script as HEAD (avoids stale fast-download URLs).
+            _hash_after="$(sha256sum "$INSTALL_DIR/deploy/install-custom.sh" 2>/dev/null | awk '{print $1}')"
+            # Re-exec when:
+            #  - we were piped from curl|bash (BASH_SOURCE empty / different from disk copy), or
+            #  - git pull changed install-custom.sh on disk while we still hold stale function
+            #    definitions in memory (running locally with `bash deploy/install-custom.sh upgrade`).
+            # Without the hash check, a local-form upgrade would silently use yesterday's logic.
             local _pulled _running
             _pulled="$(readlink -f "$INSTALL_DIR/deploy/install-custom.sh" 2>/dev/null || echo "$INSTALL_DIR/deploy/install-custom.sh")"
             _running="$(readlink -f "${BASH_SOURCE[0]:-}" 2>/dev/null || true)"
-            if [ -z "$_running" ] || [ "$_running" != "$_pulled" ]; then
+            if [ -z "$_running" ] || [ "$_running" != "$_pulled" ] || [ "$_hash_before" != "$_hash_after" ]; then
+                if [ -n "$_hash_before" ] && [ "$_hash_before" != "$_hash_after" ]; then
+                    print_info "install-custom.sh updated by git pull — re-executing with fresh logic..."
+                fi
                 exec bash "$INSTALL_DIR/deploy/install-custom.sh" "$@"
             fi
             do_upgrade_fast
