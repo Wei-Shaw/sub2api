@@ -8,6 +8,17 @@ permissions:
   contents: read
 
 jobs:
+  validate-seo-schema:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+      - name: Validate shared/seo/seo.json against schema
+        run: npx -y ajv-cli@5 validate -s shared/seo/seo.schema.json -d shared/seo/seo.json --strict=false
+
   test:
     runs-on: ubuntu-latest
     steps:
