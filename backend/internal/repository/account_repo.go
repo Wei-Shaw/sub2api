@@ -160,6 +160,22 @@ func (r *accountRepository) GetByID(ctx context.Context, id int64) (*service.Acc
 	return &accounts[0], nil
 }
 
+func (r *accountRepository) GetByIDForUsage(ctx context.Context, id int64) (*service.Account, error) {
+	m, err := r.client.Account.Query().Where(dbaccount.IDEQ(id)).WithProxy().Only(ctx)
+	if err != nil {
+		return nil, translatePersistenceError(err, service.ErrAccountNotFound, nil)
+	}
+
+	account := accountEntityToService(m)
+	if account == nil {
+		return nil, service.ErrAccountNotFound
+	}
+	if m.Edges.Proxy != nil {
+		account.Proxy = proxyEntityToService(m.Edges.Proxy)
+	}
+	return account, nil
+}
+
 func (r *accountRepository) GetByIDs(ctx context.Context, ids []int64) ([]*service.Account, error) {
 	if len(ids) == 0 {
 		return []*service.Account{}, nil

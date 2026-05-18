@@ -207,3 +207,57 @@ func TestBuildCodexUsageProgressFromExtra_ZerosExpiredWindow(t *testing.T) {
 		}
 	})
 }
+
+type accountUsageLiteReaderRepo struct {
+	stubOpenAIAccountRepo
+	getByIDCalls         int
+	getByIDForUsageCalls int
+}
+
+func (r *accountUsageLiteReaderRepo) GetByID(ctx context.Context, id int64) (*Account, error) {
+	r.getByIDCalls++
+	return r.stubOpenAIAccountRepo.GetByID(ctx, id)
+}
+
+func (r *accountUsageLiteReaderRepo) GetByIDForUsage(ctx context.Context, id int64) (*Account, error) {
+	r.getByIDForUsageCalls++
+	return r.stubOpenAIAccountRepo.GetByID(ctx, id)
+}
+
+func TestAccountUsageService_GetUsage_PrefersUsageSpecificAccountReaderForOpenAI(t *testing.T) {
+	t.Parallel()
+
+	resetAt5h := time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339)
+	resetAt7d := time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339)
+	repo := &accountUsageLiteReaderRepo{
+		stubOpenAIAccountRepo: stubOpenAIAccountRepo{
+			accounts: []Account{{
+				ID:       101,
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeOAuth,
+				Status:   StatusActive,
+				Extra: map[string]any{
+					"codex_5h_used_percent": 12.0,
+					"codex_5h_reset_at":     resetAt5h,
+					"codex_7d_used_percent": 34.0,
+					"codex_7d_reset_at":     resetAt7d,
+				},
+			}},
+		},
+	}
+	svc := &AccountUsageService{accountRepo: repo}
+
+	usage, err := svc.GetUsage(context.Background(), 101)
+	if err != nil {
+		t.Fatalf("GetUsage() error = %v", err)
+	}
+	if usage == nil || usage.FiveHour == nil || usage.SevenDay == nil {
+		t.Fatalf("expected cached OpenAI usage windows, got %#v", usage)
+	}
+	if repo.getByIDCalls != 0 {
+		t.Fatalf("expected GetByID to be skipped, got %d calls", repo.getByIDCalls)
+	}
+	if repo.getByIDForUsageCalls != 1 {
+		t.Fatalf("expected GetByIDForUsage to be used once, got %d calls", repo.getByIDForUsageCalls)
+	}
+}

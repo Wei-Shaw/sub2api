@@ -83,6 +83,10 @@ type accountWindowStatsBatchReader interface {
 	GetAccountWindowStatsBatch(ctx context.Context, accountIDs []int64, startTime time.Time) (map[int64]*usagestats.AccountStats, error)
 }
 
+type accountUsageAccountReader interface {
+	GetByIDForUsage(ctx context.Context, id int64) (*Account, error)
+}
+
 // apiUsageCache 缓存从 Anthropic API 获取的使用率数据（utilization, resets_at）
 // 同时支持缓存错误响应（负缓存），防止 429 等错误导致的重试风暴
 type apiUsageCache struct {
@@ -296,7 +300,7 @@ func NewAccountUsageService(
 // Setup Token账号: 根据session_window推算5h窗口，7d数据不可用（没有profile scope）
 // API Key账号: 不支持usage查询
 func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64) (*UsageInfo, error) {
-	account, err := s.accountRepo.GetByID(ctx, accountID)
+	account, err := s.getAccountForUsage(ctx, accountID)
 	if err != nil {
 		return nil, fmt.Errorf("get account failed: %w", err)
 	}
@@ -417,10 +421,17 @@ func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64) (*U
 	return nil, fmt.Errorf("account type %s does not support usage query", account.Type)
 }
 
+func (s *AccountUsageService) getAccountForUsage(ctx context.Context, accountID int64) (*Account, error) {
+	if reader, ok := s.accountRepo.(accountUsageAccountReader); ok {
+		return reader.GetByIDForUsage(ctx, accountID)
+	}
+	return s.accountRepo.GetByID(ctx, accountID)
+}
+
 // GetPassiveUsage 从 Account.Extra 中的被动采样数据构建 UsageInfo，不调用外部 API。
 // 仅适用于 Anthropic OAuth / SetupToken 账号。
 func (s *AccountUsageService) GetPassiveUsage(ctx context.Context, accountID int64) (*UsageInfo, error) {
-	account, err := s.accountRepo.GetByID(ctx, accountID)
+	account, err := s.getAccountForUsage(ctx, accountID)
 	if err != nil {
 		return nil, fmt.Errorf("get account failed: %w", err)
 	}

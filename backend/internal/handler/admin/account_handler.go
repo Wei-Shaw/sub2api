@@ -264,6 +264,27 @@ func (h *AccountHandler) List(c *gin.Context) {
 		return
 	}
 
+	if lite {
+		items := make([]*dto.Account, len(accounts))
+		for i := range accounts {
+			items[i] = dto.AccountFromService(&accounts[i])
+		}
+
+		etag := buildAccountsListETag(items, total, page, pageSize, platform, accountType, status, search, true)
+		if etag != "" {
+			c.Header("ETag", etag)
+			c.Header("Vary", "If-None-Match")
+			if ifNoneMatchMatched(c.GetHeader("If-None-Match"), etag) {
+				c.Status(http.StatusNotModified)
+				return
+			}
+		}
+		response.Paginated(c, items, total, page, pageSize)
+		return
+	}
+
+	result := make([]AccountWithConcurrency, len(accounts))
+
 	// Get current concurrency counts for all accounts
 	accountIDs := make([]int64, len(accounts))
 	for i, acc := range accounts {
@@ -348,7 +369,6 @@ func (h *AccountHandler) List(c *gin.Context) {
 	}
 
 	// Build response with concurrency info
-	result := make([]AccountWithConcurrency, len(accounts))
 	for i := range accounts {
 		acc := &accounts[i]
 		item := AccountWithConcurrency{
@@ -394,22 +414,22 @@ func (h *AccountHandler) List(c *gin.Context) {
 }
 
 func buildAccountsListETag(
-	items []AccountWithConcurrency,
+	items any,
 	total int64,
 	page, pageSize int,
 	platform, accountType, status, search string,
 	lite bool,
 ) string {
 	payload := struct {
-		Total       int64                    `json:"total"`
-		Page        int                      `json:"page"`
-		PageSize    int                      `json:"page_size"`
-		Platform    string                   `json:"platform"`
-		AccountType string                   `json:"type"`
-		Status      string                   `json:"status"`
-		Search      string                   `json:"search"`
-		Lite        bool                     `json:"lite"`
-		Items       []AccountWithConcurrency `json:"items"`
+		Total       int64  `json:"total"`
+		Page        int    `json:"page"`
+		PageSize    int    `json:"page_size"`
+		Platform    string `json:"platform"`
+		AccountType string `json:"type"`
+		Status      string `json:"status"`
+		Search      string `json:"search"`
+		Lite        bool   `json:"lite"`
+		Items       any    `json:"items"`
 	}{
 		Total:       total,
 		Page:        page,
