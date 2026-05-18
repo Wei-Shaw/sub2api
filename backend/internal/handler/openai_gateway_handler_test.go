@@ -132,6 +132,50 @@ func TestOpenAIHandleStreamingAwareError_NonStreaming(t *testing.T) {
 	assert.Equal(t, "test error", errorObj["message"])
 }
 
+func TestOpenAIHandleStreamingAwareError_NonStreaming503IncludesScheduledAccount(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+	setOpsSelectedAccount(c, 42, "pool-account-42", service.PlatformOpenAI)
+
+	h := &OpenAIGatewayHandler{}
+	h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable", false)
+
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+	assert.Equal(t, "pool-account-42", w.Header().Get(scheduledAccountDebugHeader))
+
+	var parsed map[string]any
+	err := json.Unmarshal(w.Body.Bytes(), &parsed)
+	require.NoError(t, err)
+	errorObj, ok := parsed["error"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "api_error", errorObj["type"])
+	assert.Equal(t, "Service temporarily unavailable [scheduled account: pool-account-42]", errorObj["message"])
+}
+
+func TestOpenAIHandleFailoverExhaustedSimple_BackfillsUpstreamEvent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+	setOpsSelectedAccount(c, 7, "fallback-account", service.PlatformOpenAI)
+
+	h := &OpenAIGatewayHandler{}
+	h.handleFailoverExhaustedSimple(c, http.StatusServiceUnavailable, false)
+
+	v, ok := c.Get(service.OpsUpstreamErrorsKey)
+	require.True(t, ok)
+	events, ok := v.([]*service.OpsUpstreamErrorEvent)
+	require.True(t, ok)
+	require.Len(t, events, 1)
+	assert.Equal(t, int64(7), events[0].AccountID)
+	assert.Equal(t, "fallback-account", events[0].AccountName)
+	assert.Equal(t, http.StatusServiceUnavailable, events[0].UpstreamStatusCode)
+	assert.Equal(t, "failover", events[0].Kind)
+	assert.Contains(t, events[0].Message, "temporarily unavailable")
+}
+
 func TestReadRequestBodyWithPrealloc(t *testing.T) {
 	payload := `{"model":"gpt-5","input":"hello"}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(payload))

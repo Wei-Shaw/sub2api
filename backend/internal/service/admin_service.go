@@ -67,7 +67,7 @@ type AdminService interface {
 	ReplaceUserGroup(ctx context.Context, userID, oldGroupID, newGroupID int64) (*ReplaceUserGroupResult, error)
 
 	// Account management
-	ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string) ([]Account, int64, error)
+	ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, schedulable, search string, groupID int64, privacyMode, displayGroup, namePrefix, searchRegex, sortBy, sortOrder string) ([]Account, int64, error)
 	GetAccount(ctx context.Context, id int64) (*Account, error)
 	GetAccountsByIDs(ctx context.Context, ids []int64) ([]*Account, error)
 	CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error)
@@ -319,12 +319,16 @@ type BulkUpdateAccountsInput struct {
 }
 
 type BulkUpdateAccountFilters struct {
-	Platform    string
-	Type        string
-	Status      string
-	Group       string
-	Search      string
-	PrivacyMode string
+	Platform     string
+	Type         string
+	Status       string
+	Schedulable  string
+	Group        string
+	Search       string
+	PrivacyMode  string
+	DisplayGroup string
+	NamePrefix   string
+	SearchRegex  string
 }
 
 // BulkUpdateAccountResult captures the result for a single account update.
@@ -2323,8 +2327,19 @@ func (s *adminServiceImpl) ReplaceUserGroup(ctx context.Context, userID, oldGrou
 }
 
 // Account management implementations
-func (s *adminServiceImpl) ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string) ([]Account, int64, error) {
+func (s *adminServiceImpl) ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, schedulable, search string, groupID int64, privacyMode, displayGroup, namePrefix, searchRegex, sortBy, sortOrder string) ([]Account, int64, error) {
 	params := pagination.PaginationParams{Page: page, PageSize: pageSize, SortBy: sortBy, SortOrder: sortOrder}
+	if advancedRepo, ok := s.accountRepo.(accountRepoWithAdminFilters); ok {
+		accounts, result, err := advancedRepo.ListWithAdminFilters(ctx, params, platform, accountType, status, schedulable, search, groupID, privacyMode, displayGroup, namePrefix, searchRegex)
+		if err != nil {
+			return nil, 0, err
+		}
+		return accounts, result.Total, nil
+	}
+	if strings.TrimSpace(schedulable) != "" || strings.TrimSpace(displayGroup) != "" || strings.TrimSpace(namePrefix) != "" || strings.TrimSpace(searchRegex) != "" {
+		return listAccountsWithLegacyRepoAndExtraFilters(ctx, s.accountRepo, params, platform, accountType, status, schedulable, search, groupID, privacyMode, displayGroup, namePrefix, searchRegex)
+	}
+
 	accounts, result, err := s.accountRepo.ListWithFilters(ctx, params, platform, accountType, status, search, groupID, privacyMode)
 	if err != nil {
 		return nil, 0, err
@@ -2735,9 +2750,13 @@ func (s *adminServiceImpl) resolveBulkUpdateTargetIDs(ctx context.Context, filte
 			filters.Platform,
 			filters.Type,
 			filters.Status,
+			filters.Schedulable,
 			filters.Search,
 			groupID,
 			filters.PrivacyMode,
+			filters.DisplayGroup,
+			filters.NamePrefix,
+			filters.SearchRegex,
 			"",
 			"",
 		)

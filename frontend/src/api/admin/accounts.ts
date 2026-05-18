@@ -36,8 +36,12 @@ export async function list(
     platform?: string
     type?: string
     status?: string
+    schedulable?: string
     group?: string
+    display_group?: string
     search?: string
+    name_prefix?: string
+    search_regex?: string
     privacy_mode?: string
     lite?: string
     sort_by?: string
@@ -71,8 +75,12 @@ export async function listWithEtag(
     platform?: string
     type?: string
     status?: string
+    schedulable?: string
     group?: string
+    display_group?: string
     search?: string
+    name_prefix?: string
+    search_regex?: string
     privacy_mode?: string
     lite?: string
     sort_by?: string
@@ -509,9 +517,13 @@ export async function exportData(options?: {
     platform?: string
     type?: string
     status?: string
+    schedulable?: string
     group?: string
+    display_group?: string
     privacy_mode?: string
     search?: string
+    name_prefix?: string
+    search_regex?: string
     sort_by?: string
     sort_order?: 'asc' | 'desc'
   }
@@ -521,13 +533,17 @@ export async function exportData(options?: {
   if (options?.ids && options.ids.length > 0) {
     params.ids = options.ids.join(',')
   } else if (options?.filters) {
-    const { platform, type, status, group, privacy_mode, search, sort_by, sort_order } = options.filters
+    const { platform, type, status, schedulable, group, display_group, privacy_mode, search, name_prefix, search_regex, sort_by, sort_order } = options.filters
     if (platform) params.platform = platform
     if (type) params.type = type
     if (status) params.status = status
+    if (schedulable) params.schedulable = schedulable
     if (group) params.group = group
+    if (display_group) params.display_group = display_group
     if (privacy_mode) params.privacy_mode = privacy_mode
     if (search) params.search = search
+    if (name_prefix) params.name_prefix = name_prefix
+    if (search_regex) params.search_regex = search_regex
     if (sort_by) params.sort_by = sort_by
     if (sort_order) params.sort_order = sort_order
   }

@@ -246,7 +246,8 @@ SELECT
   COALESCE(e.upstream_endpoint, ''),
   COALESCE(e.requested_model, ''),
   COALESCE(e.upstream_model, ''),
-  e.request_type
+  e.request_type,
+  COALESCE(e.upstream_errors::text, '')
 FROM ops_error_logs e
 LEFT JOIN accounts a ON e.account_id = a.id
 LEFT JOIN groups g ON e.group_id = g.id
@@ -279,6 +280,7 @@ LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 		var resolvedByName string
 		var resolvedRetryID sql.NullInt64
 		var requestType sql.NullInt64
+		var upstreamErrorsRaw string
 		if err := rows.Scan(
 			&item.ID,
 			&item.CreatedAt,
@@ -315,6 +317,7 @@ LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 			&item.RequestedModel,
 			&item.UpstreamModel,
 			&requestType,
+			&upstreamErrorsRaw,
 		); err != nil {
 			return nil, err
 		}
@@ -350,6 +353,7 @@ LIMIT $` + itoa(len(args)+1) + ` OFFSET $` + itoa(len(args)+2)
 			item.AccountID = &v
 		}
 		item.AccountName = accountName
+		item.ScheduledAccountID, item.ScheduledAccountName = service.ResolveOpsScheduledAccount(item.AccountID, item.AccountName, upstreamErrorsRaw)
 		if groupID.Valid {
 			v := groupID.Int64
 			item.GroupID = &v
@@ -596,6 +600,7 @@ LIMIT 1`
 	if out.UpstreamErrors == "null" {
 		out.UpstreamErrors = ""
 	}
+	out.ScheduledAccountID, out.ScheduledAccountName = service.ResolveOpsScheduledAccount(out.AccountID, out.AccountName, out.UpstreamErrors)
 
 	return &out, nil
 }

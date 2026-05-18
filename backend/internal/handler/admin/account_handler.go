@@ -11,6 +11,7 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -151,12 +152,16 @@ type BulkUpdateAccountsRequest struct {
 }
 
 type BulkUpdateAccountFilters struct {
-	Platform    string `json:"platform"`
-	Type        string `json:"type"`
-	Status      string `json:"status"`
-	Group       string `json:"group"`
-	Search      string `json:"search"`
-	PrivacyMode string `json:"privacy_mode"`
+	Platform     string `json:"platform"`
+	Type         string `json:"type"`
+	Status       string `json:"status"`
+	Schedulable  string `json:"schedulable"`
+	Group        string `json:"group"`
+	Search       string `json:"search"`
+	PrivacyMode  string `json:"privacy_mode"`
+	DisplayGroup string `json:"display_group"`
+	NamePrefix   string `json:"name_prefix"`
+	SearchRegex  string `json:"search_regex"`
 }
 
 // CheckMixedChannelRequest represents check mixed channel risk request
@@ -177,6 +182,90 @@ type AccountWithConcurrency struct {
 }
 
 const accountListGroupUngroupedQueryValue = "ungrouped"
+
+type accountListQueryFilters struct {
+	platform     string
+	accountType  string
+	status       string
+	schedulable  string
+	search       string
+	groupID      int64
+	privacyMode  string
+	displayGroup string
+	namePrefix   string
+	searchRegex  string
+	sortBy       string
+	sortOrder    string
+}
+
+func normalizeSchedulableFilter(raw string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "", "all":
+		return "", nil
+	case "true", "1", "enabled", "on":
+		return "true", nil
+	case "false", "0", "disabled", "off":
+		return "false", nil
+	default:
+		return "", infraerrors.BadRequest("INVALID_SCHEDULABLE_FILTER", "invalid schedulable filter")
+	}
+}
+
+func parseAccountListQueryFilters(c *gin.Context) (*accountListQueryFilters, error) {
+	search := strings.TrimSpace(c.Query("search"))
+	if len(search) > 100 {
+		search = search[:100]
+	}
+	displayGroup := strings.TrimSpace(c.Query("display_group"))
+	if len(displayGroup) > 100 {
+		displayGroup = displayGroup[:100]
+	}
+	namePrefix := strings.TrimSpace(c.Query("name_prefix"))
+	if len(namePrefix) > 100 {
+		namePrefix = namePrefix[:100]
+	}
+	searchRegex := strings.TrimSpace(c.Query("search_regex"))
+	if len(searchRegex) > 512 {
+		return nil, infraerrors.BadRequest("INVALID_SEARCH_REGEX", "search regex is too long")
+	}
+	if searchRegex != "" {
+		if _, err := regexp.Compile(searchRegex); err != nil {
+			return nil, infraerrors.BadRequest("INVALID_SEARCH_REGEX", "invalid search regex")
+		}
+	}
+	schedulable, err := normalizeSchedulableFilter(c.Query("schedulable"))
+	if err != nil {
+		return nil, err
+	}
+
+	groupID := int64(0)
+	if groupIDStr := c.Query("group"); groupIDStr != "" {
+		if groupIDStr == accountListGroupUngroupedQueryValue {
+			groupID = service.AccountListGroupUngrouped
+		} else {
+			parsedGroupID, parseErr := strconv.ParseInt(groupIDStr, 10, 64)
+			if parseErr != nil || parsedGroupID < 0 {
+				return nil, infraerrors.BadRequest("INVALID_GROUP_FILTER", "invalid group filter")
+			}
+			groupID = parsedGroupID
+		}
+	}
+
+	return &accountListQueryFilters{
+		platform:     c.Query("platform"),
+		accountType:  c.Query("type"),
+		status:       c.Query("status"),
+		schedulable:  schedulable,
+		search:       search,
+		groupID:      groupID,
+		privacyMode:  strings.TrimSpace(c.Query("privacy_mode")),
+		displayGroup: displayGroup,
+		namePrefix:   namePrefix,
+		searchRegex:  searchRegex,
+		sortBy:       c.DefaultQuery("sort_by", "name"),
+		sortOrder:    c.DefaultQuery("sort_order", "asc"),
+	}, nil
+}
 
 func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, account *service.Account) AccountWithConcurrency {
 	item := AccountWithConcurrency{
@@ -226,39 +315,13 @@ func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, ac
 // GET /api/v1/admin/accounts
 func (h *AccountHandler) List(c *gin.Context) {
 	page, pageSize := response.ParsePagination(c)
-	platform := c.Query("platform")
-	accountType := c.Query("type")
-	status := c.Query("status")
-	search := c.Query("search")
-	privacyMode := strings.TrimSpace(c.Query("privacy_mode"))
-	sortBy := c.DefaultQuery("sort_by", "name")
-	sortOrder := c.DefaultQuery("sort_order", "asc")
-	// 标准化和验证 search 参数
-	search = strings.TrimSpace(search)
-	if len(search) > 100 {
-		search = search[:100]
+	filters, err := parseAccountListQueryFilters(c)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
 	}
 	lite := parseBoolQueryWithDefault(c.Query("lite"), false)
-
-	var groupID int64
-	if groupIDStr := c.Query("group"); groupIDStr != "" {
-		if groupIDStr == accountListGroupUngroupedQueryValue {
-			groupID = service.AccountListGroupUngrouped
-		} else {
-			parsedGroupID, parseErr := strconv.ParseInt(groupIDStr, 10, 64)
-			if parseErr != nil {
-				response.ErrorFrom(c, infraerrors.BadRequest("INVALID_GROUP_FILTER", "invalid group filter"))
-				return
-			}
-			if parsedGroupID < 0 {
-				response.ErrorFrom(c, infraerrors.BadRequest("INVALID_GROUP_FILTER", "invalid group filter"))
-				return
-			}
-			groupID = parsedGroupID
-		}
-	}
-
-	accounts, total, err := h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, privacyMode, sortBy, sortOrder)
+	accounts, total, err := h.adminService.ListAccounts(c.Request.Context(), page, pageSize, filters.platform, filters.accountType, filters.status, filters.schedulable, filters.search, filters.groupID, filters.privacyMode, filters.displayGroup, filters.namePrefix, filters.searchRegex, filters.sortBy, filters.sortOrder)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -380,7 +443,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 		result[i] = item
 	}
 
-	etag := buildAccountsListETag(result, total, page, pageSize, platform, accountType, status, search, lite)
+	etag := buildAccountsListETag(result, total, page, pageSize, filters.platform, filters.accountType, filters.status, filters.schedulable, filters.search, lite)
 	if etag != "" {
 		c.Header("ETag", etag)
 		c.Header("Vary", "If-None-Match")
@@ -397,7 +460,7 @@ func buildAccountsListETag(
 	items []AccountWithConcurrency,
 	total int64,
 	page, pageSize int,
-	platform, accountType, status, search string,
+	platform, accountType, status, schedulable, search string,
 	lite bool,
 ) string {
 	payload := struct {
@@ -407,6 +470,7 @@ func buildAccountsListETag(
 		Platform    string                   `json:"platform"`
 		AccountType string                   `json:"type"`
 		Status      string                   `json:"status"`
+		Schedulable string                   `json:"schedulable"`
 		Search      string                   `json:"search"`
 		Lite        bool                     `json:"lite"`
 		Items       []AccountWithConcurrency `json:"items"`
@@ -417,6 +481,7 @@ func buildAccountsListETag(
 		Platform:    platform,
 		AccountType: accountType,
 		Status:      status,
+		Schedulable: schedulable,
 		Search:      search,
 		Lite:        lite,
 		Items:       items,
@@ -1489,12 +1554,16 @@ func toServiceBulkUpdateAccountFilters(filters *BulkUpdateAccountFilters) *servi
 		return nil
 	}
 	return &service.BulkUpdateAccountFilters{
-		Platform:    filters.Platform,
-		Type:        filters.Type,
-		Status:      filters.Status,
-		Group:       filters.Group,
-		Search:      filters.Search,
-		PrivacyMode: filters.PrivacyMode,
+		Platform:     filters.Platform,
+		Type:         filters.Type,
+		Status:       filters.Status,
+		Schedulable:  filters.Schedulable,
+		Group:        filters.Group,
+		Search:       filters.Search,
+		PrivacyMode:  filters.PrivacyMode,
+		DisplayGroup: filters.DisplayGroup,
+		NamePrefix:   filters.NamePrefix,
+		SearchRegex:  filters.SearchRegex,
 	}
 }
 
@@ -2107,7 +2176,7 @@ func (h *AccountHandler) BatchRefreshTier(c *gin.Context) {
 	accounts := make([]*service.Account, 0)
 
 	if len(req.AccountIDs) == 0 {
-		allAccounts, _, err := h.adminService.ListAccounts(ctx, 1, 10000, "gemini", "oauth", "", "", 0, "", "name", "asc")
+		allAccounts, _, err := h.adminService.ListAccounts(ctx, 1, 10000, "gemini", "oauth", "", "", "", 0, "", "", "", "", "name", "asc")
 		if err != nil {
 			response.ErrorFrom(c, err)
 			return

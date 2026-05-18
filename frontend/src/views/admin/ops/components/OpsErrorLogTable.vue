@@ -33,6 +33,9 @@
                 {{ t('admin.ops.errorLog.user') }}
               </th>
               <th class="border-b border-gray-200 px-4 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:border-dark-700 dark:text-dark-400">
+                {{ t('admin.ops.errorLog.scheduledAccount') }}
+              </th>
+              <th class="border-b border-gray-200 px-4 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:border-dark-700 dark:text-dark-400">
                 {{ t('admin.ops.errorLog.status') }}
               </th>
               <th class="border-b border-gray-200 px-4 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:border-dark-700 dark:text-dark-400">
@@ -45,7 +48,7 @@
           </thead>
           <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
             <tr v-if="rows.length === 0">
-              <td colspan="10" class="py-12 text-center text-sm text-gray-400 dark:text-dark-500">
+              <td colspan="11" class="py-12 text-center text-sm text-gray-400 dark:text-dark-500">
                 {{ t('admin.ops.errorLog.noErrors') }}
               </td>
             </tr>
@@ -127,24 +130,24 @@
                 <span v-else class="text-xs text-gray-400">-</span>
               </td>
 
-              <!-- User / Account -->
+              <!-- User -->
               <td class="px-4 py-2">
-                <template v-if="isUpstreamRow(log)">
-                  <el-tooltip v-if="log.account_id" :content="t('admin.ops.errorLog.accountId') + ' ' + log.account_id" placement="top" :show-after="500">
-                    <span class="max-w-[100px] truncate text-xs font-medium text-gray-900 dark:text-gray-200">
-                      {{ log.account_name || '-' }}
-                    </span>
-                  </el-tooltip>
-                  <span v-else class="text-xs text-gray-400">-</span>
-                </template>
-                <template v-else>
-                  <el-tooltip v-if="log.user_id" :content="t('admin.ops.errorLog.userId') + ' ' + log.user_id" placement="top" :show-after="500">
-                    <span class="max-w-[100px] truncate text-xs font-medium text-gray-900 dark:text-gray-200">
-                      {{ log.user_email || '-' }}
-                    </span>
-                  </el-tooltip>
-                  <span v-else class="text-xs text-gray-400">-</span>
-                </template>
+                <el-tooltip v-if="log.user_id || log.user_email" :content="userTooltip(log)" placement="top" :show-after="500">
+                  <span class="max-w-[120px] truncate text-xs font-medium text-gray-900 dark:text-gray-200">
+                    {{ displayUser(log) }}
+                  </span>
+                </el-tooltip>
+                <span v-else class="text-xs text-gray-400">-</span>
+              </td>
+
+              <!-- Scheduled Account -->
+              <td class="px-4 py-2">
+                <el-tooltip v-if="log.scheduled_account_id || log.scheduled_account_name || log.account_id || log.account_name" :content="scheduledAccountTooltip(log)" placement="top" :show-after="500">
+                  <span class="max-w-[140px] truncate text-xs font-medium text-gray-900 dark:text-gray-200">
+                    {{ displayScheduledAccount(log) }}
+                  </span>
+                </el-tooltip>
+                <span v-else class="text-xs text-gray-400">-</span>
               </td>
 
               <!-- Status -->
@@ -222,6 +225,40 @@ function isUpstreamRow(log: OpsErrorLog): boolean {
   const phase = String(log.phase || '').toLowerCase()
   const owner = String(log.error_owner || '').toLowerCase()
   return phase === 'upstream' && owner === 'provider'
+}
+
+function displayUser(log: OpsErrorLog): string {
+  const email = String(log.user_email || '').trim()
+  if (email) return email
+  if (log.user_id != null) return String(log.user_id)
+  return '-'
+}
+
+function userTooltip(log: OpsErrorLog): string {
+  const parts: string[] = []
+  if (log.user_id != null) parts.push(`${t('admin.ops.errorLog.userId')} ${log.user_id}`)
+  if (log.user_email) parts.push(log.user_email)
+  return parts.join('\n') || '-'
+}
+
+function displayScheduledAccount(log: OpsErrorLog): string {
+  const scheduledName = String(log.scheduled_account_name || '').trim()
+  if (scheduledName) return scheduledName
+  if (log.scheduled_account_id != null) return String(log.scheduled_account_id)
+  const name = String(log.account_name || '').trim()
+  if (name) return name
+  if (log.account_id != null) return String(log.account_id)
+  return '-'
+}
+
+function scheduledAccountTooltip(log: OpsErrorLog): string {
+  const parts: string[] = []
+  if (log.scheduled_account_id != null) parts.push(`${t('admin.ops.errorLog.accountId')} ${log.scheduled_account_id}`)
+  if (log.scheduled_account_name) parts.push(log.scheduled_account_name)
+  if (parts.length > 0) return parts.join('\n')
+  if (log.account_id != null) parts.push(`${t('admin.ops.errorLog.accountId')} ${log.account_id}`)
+  if (log.account_name) parts.push(log.account_name)
+  return parts.join('\n') || '-'
 }
 
 function formatEndpointTooltip(log: OpsErrorLog): string {

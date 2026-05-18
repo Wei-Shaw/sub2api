@@ -2,14 +2,34 @@
   <AppLayout>
     <TablePageLayout>
       <template #filters>
+        <div class="mb-3 flex items-center gap-2">
+          <div class="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1">
+            <button
+              v-for="tab in filterTabs"
+              :key="tab.id"
+              type="button"
+              :class="[
+                'shrink-0 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors',
+                selectedFilterTabId === tab.id
+                  ? 'border-primary-500 bg-primary-500 text-white'
+                  : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-gray-500 dark:hover:text-white'
+              ]"
+              @click="selectFilterTab(tab.id)"
+            >
+              {{ tab.label }}
+            </button>
+          </div>
+          <button type="button" class="btn btn-secondary btn-sm shrink-0" @click="showFilterTabsEditor = true">
+            {{ t('admin.accounts.filterTabs.manage') }}
+          </button>
+        </div>
         <div class="flex flex-wrap-reverse items-start justify-between gap-3">
           <AccountTableFilters
             v-model:searchQuery="params.search"
             :filters="params"
-            :groups="groups"
-            @update:filters="(newFilters) => Object.assign(params, newFilters)"
-            @change="debouncedReload"
-            @update:searchQuery="debouncedReload"
+            @update:filters="handleAccountFiltersUpdated"
+            @change="handleAccountFiltersChanged"
+            @update:searchQuery="handleAccountSearchQueryUpdated"
           />
           <AccountTableActions
             :loading="loading"
@@ -220,6 +240,21 @@
               >
                 {{ row.extra.email_address }}
               </span>
+              <div v-if="getAccountUIDisplayGroups(row).length > 0" class="mt-1 flex flex-wrap gap-1">
+                <span
+                  v-for="group in getAccountUIDisplayGroups(row).slice(0, 4)"
+                  :key="group"
+                  class="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600 dark:bg-slate-800 dark:text-slate-200"
+                >
+                  {{ group }}
+                </span>
+                <span
+                  v-if="getAccountUIDisplayGroups(row).length > 4"
+                  class="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500 dark:bg-slate-800 dark:text-slate-300"
+                >
+                  +{{ getAccountUIDisplayGroups(row).length - 4 }}
+                </span>
+              </div>
             </div>
           </template>
           <template #cell-notes="{ value }">
@@ -371,17 +406,28 @@
     </ConfirmDialog>
     <ErrorPassthroughRulesModal :show="showErrorPassthrough" @close="showErrorPassthrough = false" />
     <TLSFingerprintProfilesModal :show="showTLSFingerprintProfiles" @close="showTLSFingerprintProfiles = false" />
+    <AccountFilterTabsEditorModal
+      :show="showFilterTabsEditor"
+      :tabs="customFilterTabs"
+      :default-tab-id="defaultFilterTabId"
+      :builtin-tabs="builtinFilterTabOptions"
+      :groups="groups"
+      @close="showFilterTabsEditor = false"
+      @save="handleSaveFilterTabs"
+    />
   </AppLayout>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, toRaw, watch } from 'vue'
-import { useIntervalFn } from '@vueuse/core'
+import { useDebounceFn, useIntervalFn } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
+import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
 import { useTableLoader } from '@/composables/useTableLoader'
+import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { useSwipeSelect, type SwipeSelectVirtualContext } from '@/composables/useSwipeSelect'
 import { useTableSelection } from '@/composables/useTableSelection'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -392,6 +438,7 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { CreateAccountModal, EditAccountModal, BulkEditAccountModal, SyncFromCrsModal, TempUnschedStatusModal } from '@/components/account'
 import AccountTableActions from '@/components/admin/account/AccountTableActions.vue'
 import AccountTableFilters from '@/components/admin/account/AccountTableFilters.vue'
+import AccountFilterTabsEditorModal from '@/components/admin/account/AccountFilterTabsEditorModal.vue'
 import AccountBulkActionsBar from '@/components/admin/account/AccountBulkActionsBar.vue'
 import AccountActionMenu from '@/components/admin/account/AccountActionMenu.vue'
 import ImportDataModal from '@/components/admin/account/ImportDataModal.vue'
@@ -410,17 +457,198 @@ import Icon from '@/components/icons/Icon.vue'
 import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRulesModal.vue'
 import TLSFingerprintProfilesModal from '@/components/admin/TLSFingerprintProfilesModal.vue'
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
+import { getUIDisplayGroups } from '@/utils/accountFormBulk'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import type { Account, AccountPlatform, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel } from '@/types'
 
 const { t } = useI18n()
 const appStore = useAppStore()
 const authStore = useAuthStore()
+const route = useRoute()
+const router = useRouter()
 
 const proxies = ref<AccountProxy[]>([])
 const groups = ref<AdminGroup[]>([])
 const accountTableRef = ref<HTMLElement | null>(null)
 const dataTableRef = ref<InstanceType<typeof DataTable> | null>(null)
+
+interface AccountFilterTabConfig {
+  id: string
+  label: string
+  group?: string
+  display_group?: string
+  search?: string
+  name_prefix?: string
+  search_regex?: string
+}
+
+interface AccountFilterTab extends AccountFilterTabConfig {
+  builtin?: boolean
+}
+
+const ACCOUNT_FILTER_TABS_STORAGE_KEY = 'account-filter-tabs-v1'
+const ACCOUNT_DEFAULT_FILTER_TAB_STORAGE_KEY = 'account-default-filter-tab-v1'
+const ACCOUNT_BUILTIN_ALL_TAB_ID = 'all'
+const ACCOUNT_BUILTIN_UNGROUPED_TAB_ID = 'ungrouped'
+const ACCOUNT_BUILTIN_GROUP_TAB_PREFIX = 'group:'
+const ACCOUNT_QUERY_KEYS = {
+  platform: 'platform',
+  type: 'type',
+  status: 'status',
+  schedulable: 'schedulable',
+  privacyMode: 'privacy_mode',
+  group: 'group',
+  displayGroup: 'display_group',
+  search: 'search',
+  namePrefix: 'name_prefix',
+  searchRegex: 'search_regex',
+  sortBy: 'sort_by',
+  sortOrder: 'sort_order',
+  page: 'page',
+  pageSize: 'page_size'
+} as const
+const EMPTY_ACCOUNT_TAB_FILTERS = {
+  group: '',
+  display_group: '',
+  search: '',
+  name_prefix: '',
+  search_regex: ''
+}
+
+const createAccountFilterTabId = () => `custom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+
+const readAccountQueryString = (key: string): string => {
+  const value = route.query[key]
+  if (typeof value === 'string') return value
+  if (Array.isArray(value) && typeof value[0] === 'string') return value[0]
+  return ''
+}
+
+const readAccountQueryNumber = (key: string): number | null => {
+  const raw = readAccountQueryString(key)
+  if (!raw) return null
+  const parsed = Number.parseInt(raw, 10)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+const hasAccountRouteQueryState = () => Object.values(ACCOUNT_QUERY_KEYS).some((key) => {
+  const value = route.query[key]
+  if (typeof value === 'string') return value !== ''
+  if (Array.isArray(value)) return value.some(item => typeof item === 'string' && item !== '')
+  return value != null
+})
+
+const normalizeAccountFilterTabs = (raw: unknown): AccountFilterTabConfig[] => {
+  if (!Array.isArray(raw)) return []
+  return raw.flatMap((item) => {
+    if (!item || typeof item !== 'object') return []
+    const candidate = item as Record<string, unknown>
+    const label = typeof candidate.label === 'string' ? candidate.label.trim() : ''
+    const id = typeof candidate.id === 'string' && candidate.id.trim()
+      ? candidate.id.trim()
+      : createAccountFilterTabId()
+    return [{
+      id,
+      label,
+      group: typeof candidate.group === 'string' ? candidate.group.trim() : '',
+      display_group: typeof candidate.display_group === 'string' ? candidate.display_group.trim() : '',
+      search: typeof candidate.search === 'string' ? candidate.search.trim() : '',
+      name_prefix: typeof candidate.name_prefix === 'string' ? candidate.name_prefix.trim() : '',
+      search_regex: typeof candidate.search_regex === 'string' ? candidate.search_regex.trim() : ''
+    }]
+  })
+}
+
+const loadStoredAccountFilterTabs = (): AccountFilterTabConfig[] => {
+  try {
+    const raw = localStorage.getItem(ACCOUNT_FILTER_TABS_STORAGE_KEY)
+    return raw ? normalizeAccountFilterTabs(JSON.parse(raw)) : []
+  } catch {
+    return []
+  }
+}
+
+const loadStoredDefaultAccountFilterTabId = (): string => {
+  try {
+    return localStorage.getItem(ACCOUNT_DEFAULT_FILTER_TAB_STORAGE_KEY) || ACCOUNT_BUILTIN_ALL_TAB_ID
+  } catch {
+    return ACCOUNT_BUILTIN_ALL_TAB_ID
+  }
+}
+
+const resolveFilterValuesFromTabId = (tabId: string, customTabs: AccountFilterTabConfig[]) => {
+  if (!tabId || tabId === ACCOUNT_BUILTIN_ALL_TAB_ID) {
+    return { group: '', display_group: '', search: '', name_prefix: '', search_regex: '' }
+  }
+  if (tabId === ACCOUNT_BUILTIN_UNGROUPED_TAB_ID) {
+    return { group: ACCOUNT_BUILTIN_UNGROUPED_TAB_ID, display_group: '', search: '', name_prefix: '', search_regex: '' }
+  }
+  if (tabId.startsWith(ACCOUNT_BUILTIN_GROUP_TAB_PREFIX)) {
+    return {
+      group: tabId.slice(ACCOUNT_BUILTIN_GROUP_TAB_PREFIX.length),
+      display_group: '',
+      search: '',
+      name_prefix: '',
+      search_regex: ''
+    }
+  }
+  const tab = customTabs.find(item => item.id === tabId)
+  const namePrefix = tab?.name_prefix || ''
+  return {
+    group: tab?.group || '',
+    display_group: tab?.display_group || '',
+    search: tab?.search || namePrefix,
+    name_prefix: namePrefix,
+    search_regex: tab?.search_regex || ''
+  }
+}
+
+const customFilterTabs = ref<AccountFilterTabConfig[]>(loadStoredAccountFilterTabs())
+const defaultFilterTabId = ref(loadStoredDefaultAccountFilterTabId())
+const selectedFilterTabId = ref(defaultFilterTabId.value || ACCOUNT_BUILTIN_ALL_TAB_ID)
+const initialTabFilters = resolveFilterValuesFromTabId(selectedFilterTabId.value, customFilterTabs.value)
+const showFilterTabsEditor = ref(false)
+
+const persistCustomFilterTabs = () => {
+  localStorage.setItem(ACCOUNT_FILTER_TABS_STORAGE_KEY, JSON.stringify(customFilterTabs.value))
+}
+
+const persistDefaultFilterTabId = () => {
+  localStorage.setItem(ACCOUNT_DEFAULT_FILTER_TAB_STORAGE_KEY, defaultFilterTabId.value || ACCOUNT_BUILTIN_ALL_TAB_ID)
+}
+
+const resolveAccountFilterTabId = (filters: {
+  group?: string
+  display_group?: string
+  search?: string
+  name_prefix?: string
+  search_regex?: string
+}) => {
+  const normalized = {
+    group: filters.group || '',
+    display_group: filters.display_group || '',
+    search: filters.search || '',
+    name_prefix: filters.name_prefix || '',
+    search_regex: filters.search_regex || ''
+  }
+  const hasOnlyGroup = normalized.group && !normalized.display_group && !normalized.search && !normalized.name_prefix && !normalized.search_regex
+  if (!normalized.group && !normalized.display_group && !normalized.search && !normalized.name_prefix && !normalized.search_regex) {
+    return ACCOUNT_BUILTIN_ALL_TAB_ID
+  }
+  if (hasOnlyGroup && normalized.group === ACCOUNT_BUILTIN_UNGROUPED_TAB_ID) {
+    return ACCOUNT_BUILTIN_UNGROUPED_TAB_ID
+  }
+  const matchedCustomTab = customFilterTabs.value.find(tab =>
+    (tab.group || '') === normalized.group &&
+    (tab.display_group || '') === normalized.display_group &&
+    (tab.search || '') === normalized.search &&
+    (tab.name_prefix || '') === normalized.name_prefix &&
+    (tab.search_regex || '') === normalized.search_regex
+  )
+  if (matchedCustomTab) return matchedCustomTab.id
+  if (hasOnlyGroup) return `${ACCOUNT_BUILTIN_GROUP_TAB_PREFIX}${normalized.group}`
+  return ACCOUNT_BUILTIN_ALL_TAB_ID
+}
 type AccountBulkEditTarget =
   | {
       mode: 'selected'
@@ -434,8 +662,12 @@ type AccountBulkEditTarget =
         platform?: string
         type?: string
         status?: string
+        schedulable?: string
         group?: string
+        display_group?: string
         search?: string
+        name_prefix?: string
+        search_regex?: string
         privacy_mode?: string
         sort_by?: string
         sort_order?: AccountSortOrder
@@ -528,6 +760,42 @@ const loadInitialAccountSortState = (): AccountSortState => {
   }
 }
 const sortState = reactive<AccountSortState>(loadInitialAccountSortState())
+
+const buildInitialAccountParams = () => {
+  const hasRouteState = hasAccountRouteQueryState()
+  const baseFilters = hasRouteState ? EMPTY_ACCOUNT_TAB_FILTERS : initialTabFilters
+  const querySortBy = readAccountQueryString(ACCOUNT_QUERY_KEYS.sortBy)
+  const querySortOrder = readAccountQueryString(ACCOUNT_QUERY_KEYS.sortOrder)
+
+  if (ACCOUNT_SORTABLE_KEYS.has(querySortBy)) {
+    sortState.sort_by = querySortBy
+  }
+  if (querySortOrder === 'asc' || querySortOrder === 'desc') {
+    sortState.sort_order = querySortOrder
+  }
+
+  const next = {
+    platform: readAccountQueryString(ACCOUNT_QUERY_KEYS.platform),
+    type: readAccountQueryString(ACCOUNT_QUERY_KEYS.type),
+    status: readAccountQueryString(ACCOUNT_QUERY_KEYS.status),
+    schedulable: readAccountQueryString(ACCOUNT_QUERY_KEYS.schedulable),
+    privacy_mode: readAccountQueryString(ACCOUNT_QUERY_KEYS.privacyMode),
+    group: readAccountQueryString(ACCOUNT_QUERY_KEYS.group) || baseFilters.group,
+    display_group: readAccountQueryString(ACCOUNT_QUERY_KEYS.displayGroup) || baseFilters.display_group,
+    search: readAccountQueryString(ACCOUNT_QUERY_KEYS.search) || baseFilters.search,
+    name_prefix: readAccountQueryString(ACCOUNT_QUERY_KEYS.namePrefix) || baseFilters.name_prefix,
+    search_regex: readAccountQueryString(ACCOUNT_QUERY_KEYS.searchRegex) || baseFilters.search_regex,
+    sort_by: sortState.sort_by,
+    sort_order: sortState.sort_order
+  }
+
+  selectedFilterTabId.value = resolveAccountFilterTabId(next)
+  return next
+}
+
+const initialAccountParams = buildInitialAccountParams()
+const initialAccountPage = Math.max(1, readAccountQueryNumber(ACCOUNT_QUERY_KEYS.page) || 1)
+const initialAccountPageSize = Math.max(1, readAccountQueryNumber(ACCOUNT_QUERY_KEYS.pageSize) || getPersistedPageSize())
 
 // Auto refresh settings
 const showAutoRefreshDropdown = ref(false)
@@ -721,17 +989,171 @@ const {
   handlePageSizeChange: baseHandlePageSizeChange
 } = useTableLoader<Account, any>({
   fetchFn: adminAPI.accounts.list,
-  initialParams: {
-    platform: '',
-    type: '',
-    status: '',
-    privacy_mode: '',
-    group: '',
-    search: '',
-    sort_by: sortState.sort_by,
-    sort_order: sortState.sort_order
-  }
+  initialParams: initialAccountParams
 })
+
+pagination.page = initialAccountPage
+pagination.page_size = initialAccountPageSize
+
+const isApplyingRouteQuery = ref(false)
+const isSyncingRouteQuery = ref(false)
+
+const builtinFilterTabs = computed<AccountFilterTab[]>(() => {
+  const tabs: AccountFilterTab[] = [
+    { id: ACCOUNT_BUILTIN_ALL_TAB_ID, label: t('admin.accounts.filterTabs.all'), builtin: true },
+    { id: ACCOUNT_BUILTIN_UNGROUPED_TAB_ID, label: t('admin.accounts.ungroupedGroup'), group: ACCOUNT_BUILTIN_UNGROUPED_TAB_ID, builtin: true }
+  ]
+  if (!authStore.isSimpleMode) {
+    for (const group of groups.value) {
+      tabs.push({
+        id: `${ACCOUNT_BUILTIN_GROUP_TAB_PREFIX}${group.id}`,
+        label: group.name,
+        group: String(group.id),
+        builtin: true
+      })
+    }
+  }
+  return tabs
+})
+
+const filterTabs = computed<AccountFilterTab[]>(() => [
+  ...builtinFilterTabs.value,
+  ...customFilterTabs.value.map(tab => ({ ...tab, builtin: false }))
+])
+
+const builtinFilterTabOptions = computed(() => builtinFilterTabs.value.map(tab => ({
+  id: tab.id,
+  label: tab.label
+})))
+
+const applyFilterTabSelection = (tabId: string) => {
+  const next = resolveFilterValuesFromTabId(tabId, customFilterTabs.value)
+  selectedFilterTabId.value = tabId
+  const requestParams = params as any
+  requestParams.group = next.group
+  requestParams.display_group = next.display_group
+  requestParams.search = next.search
+  requestParams.name_prefix = next.name_prefix
+  requestParams.search_regex = next.search_regex
+}
+
+const selectFilterTab = (tabId: string) => {
+  applyFilterTabSelection(tabId)
+  pagination.page = 1
+  load()
+}
+
+const syncSelectedFilterTabFromParams = () => {
+  const nextTabId = resolveAccountFilterTabId({
+    group: typeof params.group === 'string' ? params.group : '',
+    display_group: typeof params.display_group === 'string' ? params.display_group : '',
+    search: typeof params.search === 'string' ? params.search : '',
+    name_prefix: typeof params.name_prefix === 'string' ? params.name_prefix : '',
+    search_regex: typeof params.search_regex === 'string' ? params.search_regex : ''
+  })
+  if (selectedFilterTabId.value !== nextTabId) {
+    selectedFilterTabId.value = nextTabId
+  }
+}
+
+const applyRouteQueryToAccountState = () => {
+  const requestParams = params as Record<string, unknown>
+  const hasRouteState = hasAccountRouteQueryState()
+  const baseFilters = hasRouteState
+    ? EMPTY_ACCOUNT_TAB_FILTERS
+    : resolveFilterValuesFromTabId(defaultFilterTabId.value || ACCOUNT_BUILTIN_ALL_TAB_ID, customFilterTabs.value)
+  const defaultSort = loadInitialAccountSortState()
+  const querySortBy = readAccountQueryString(ACCOUNT_QUERY_KEYS.sortBy)
+  const querySortOrder = readAccountQueryString(ACCOUNT_QUERY_KEYS.sortOrder)
+
+  requestParams.platform = readAccountQueryString(ACCOUNT_QUERY_KEYS.platform)
+  requestParams.type = readAccountQueryString(ACCOUNT_QUERY_KEYS.type)
+  requestParams.status = readAccountQueryString(ACCOUNT_QUERY_KEYS.status)
+  requestParams.schedulable = readAccountQueryString(ACCOUNT_QUERY_KEYS.schedulable)
+  requestParams.privacy_mode = readAccountQueryString(ACCOUNT_QUERY_KEYS.privacyMode)
+  requestParams.group = readAccountQueryString(ACCOUNT_QUERY_KEYS.group) || baseFilters.group
+  requestParams.display_group = readAccountQueryString(ACCOUNT_QUERY_KEYS.displayGroup) || baseFilters.display_group
+  requestParams.search = readAccountQueryString(ACCOUNT_QUERY_KEYS.search) || baseFilters.search
+  requestParams.name_prefix = readAccountQueryString(ACCOUNT_QUERY_KEYS.namePrefix) || baseFilters.name_prefix
+  requestParams.search_regex = readAccountQueryString(ACCOUNT_QUERY_KEYS.searchRegex) || baseFilters.search_regex
+
+  sortState.sort_by = ACCOUNT_SORTABLE_KEYS.has(querySortBy) ? querySortBy : defaultSort.sort_by
+  sortState.sort_order = querySortOrder === 'desc' ? 'desc' : querySortOrder === 'asc' ? 'asc' : defaultSort.sort_order
+  requestParams.sort_by = sortState.sort_by
+  requestParams.sort_order = sortState.sort_order
+
+  pagination.page = Math.max(1, readAccountQueryNumber(ACCOUNT_QUERY_KEYS.page) || 1)
+  pagination.page_size = Math.max(1, readAccountQueryNumber(ACCOUNT_QUERY_KEYS.pageSize) || getPersistedPageSize())
+
+  syncSelectedFilterTabFromParams()
+}
+
+const buildAccountQueryForRoute = () => {
+  const next = { ...(route.query as Record<string, string>) }
+  Object.values(ACCOUNT_QUERY_KEYS).forEach((key) => {
+    delete next[key]
+  })
+  const filters = buildAccountQueryFilters()
+  if (filters.platform) next[ACCOUNT_QUERY_KEYS.platform] = filters.platform
+  if (filters.type) next[ACCOUNT_QUERY_KEYS.type] = filters.type
+  if (filters.status) next[ACCOUNT_QUERY_KEYS.status] = filters.status
+  if (filters.schedulable) next[ACCOUNT_QUERY_KEYS.schedulable] = filters.schedulable
+  if (filters.group) next[ACCOUNT_QUERY_KEYS.group] = filters.group
+  if (filters.display_group) next[ACCOUNT_QUERY_KEYS.displayGroup] = filters.display_group
+  if (filters.privacy_mode) next[ACCOUNT_QUERY_KEYS.privacyMode] = filters.privacy_mode
+  if (filters.search) next[ACCOUNT_QUERY_KEYS.search] = filters.search
+  if (filters.name_prefix) next[ACCOUNT_QUERY_KEYS.namePrefix] = filters.name_prefix
+  if (filters.search_regex) next[ACCOUNT_QUERY_KEYS.searchRegex] = filters.search_regex
+  next[ACCOUNT_QUERY_KEYS.sortBy] = sortState.sort_by
+  next[ACCOUNT_QUERY_KEYS.sortOrder] = sortState.sort_order
+  next[ACCOUNT_QUERY_KEYS.page] = String(Math.max(1, pagination.page))
+  next[ACCOUNT_QUERY_KEYS.pageSize] = String(Math.max(1, pagination.page_size))
+  return next
+}
+
+const syncAccountQueryToRoute = useDebounceFn(async () => {
+  if (isApplyingRouteQuery.value) return
+  const nextQuery = buildAccountQueryForRoute()
+  const currentQuery = route.query as Record<string, unknown>
+  const nextKeys = Object.keys(nextQuery).sort()
+  const currentKeys = Object.keys(currentQuery).sort()
+  const sameLength = nextKeys.length === currentKeys.length
+  const sameValues = sameLength && nextKeys.every((key, index) => {
+    const currentKey = currentKeys[index]
+    const currentValue = currentQuery[key]
+    const normalizedCurrent = Array.isArray(currentValue) ? currentValue.join('\u0000') : String(currentValue ?? '')
+    return currentKey === key && normalizedCurrent === nextQuery[key]
+  })
+  if (sameValues) return
+
+  try {
+    isSyncingRouteQuery.value = true
+    await router.replace({ query: nextQuery })
+  } finally {
+    isSyncingRouteQuery.value = false
+  }
+}, 150)
+
+const handleSaveFilterTabs = (payload: { tabs: AccountFilterTabConfig[]; defaultTabId: string }) => {
+  const previousDefaultTabId = defaultFilterTabId.value
+  customFilterTabs.value = normalizeAccountFilterTabs(payload.tabs)
+  defaultFilterTabId.value = payload.defaultTabId || ACCOUNT_BUILTIN_ALL_TAB_ID
+  persistCustomFilterTabs()
+  persistDefaultFilterTabId()
+  showFilterTabsEditor.value = false
+
+  const currentTabStillExists = filterTabs.value.some(tab => tab.id === selectedFilterTabId.value)
+  const defaultTabStillExists = filterTabs.value.some(tab => tab.id === defaultFilterTabId.value)
+  const shouldActivateDefaultTab = defaultTabStillExists && defaultFilterTabId.value !== previousDefaultTabId
+  const nextSelectedTabId = shouldActivateDefaultTab
+    ? defaultFilterTabId.value
+    : currentTabStillExists
+      ? selectedFilterTabId.value
+      : defaultFilterTabId.value
+  applyFilterTabSelection(nextSelectedTabId || ACCOUNT_BUILTIN_ALL_TAB_ID)
+  pagination.page = 1
+  load()
+}
 
 const {
   selectedIds: selIds,
@@ -815,6 +1237,25 @@ const handlePageSizeChange = (size: number) => {
   baseHandlePageSizeChange(size)
 }
 
+const resetAccountsToFirstPage = () => {
+  pagination.page = 1
+}
+
+const handleAccountFiltersUpdated = (newFilters: Record<string, unknown>) => {
+  Object.assign(params, newFilters)
+  resetAccountsToFirstPage()
+}
+
+const handleAccountFiltersChanged = () => {
+  resetAccountsToFirstPage()
+  debouncedReload()
+}
+
+const handleAccountSearchQueryUpdated = () => {
+  resetAccountsToFirstPage()
+  debouncedReload()
+}
+
 const handleSort = (key: string, order: AccountSortOrder) => {
   sortState.sort_by = key
   sortState.sort_order = order
@@ -827,6 +1268,42 @@ const handleSort = (key: string, order: AccountSortOrder) => {
   pendingTodayStatsRefresh.value = true
   load()
 }
+
+watch(
+  () => [
+    String(params.platform || ''),
+    String(params.type || ''),
+    String(params.status || ''),
+    String(params.schedulable || ''),
+    String(params.group || ''),
+    String(params.display_group || ''),
+    String(params.privacy_mode || ''),
+    String(params.search || ''),
+    String(params.name_prefix || ''),
+    String(params.search_regex || ''),
+    sortState.sort_by,
+    sortState.sort_order,
+    pagination.page,
+    pagination.page_size
+  ] as const,
+  () => {
+    if (isApplyingRouteQuery.value) return
+    syncSelectedFilterTabFromParams()
+    syncAccountQueryToRoute()
+  },
+  { immediate: true }
+)
+
+watch(
+  () => route.query,
+  async () => {
+    if (isSyncingRouteQuery.value) return
+    isApplyingRouteQuery.value = true
+    applyRouteQueryToAccountState()
+    isApplyingRouteQuery.value = false
+    await load()
+  }
+)
 
 watch(loading, (isLoading, wasLoading) => {
   if (wasLoading && !isLoading && pendingTodayStatsRefresh.value) {
@@ -931,7 +1408,10 @@ const refreshAccountsIncrementally = async () => {
         status?: string
         privacy_mode?: string
         group?: string
+        display_group?: string
         search?: string
+        name_prefix?: string
+        search_regex?: string
         sort_by?: string
         sort_order?: AccountSortOrder
 
@@ -1344,8 +1824,12 @@ const buildBulkEditFilterSnapshot = () => {
     platform: typeof rawParams.platform === 'string' ? rawParams.platform : '',
     type: typeof rawParams.type === 'string' ? rawParams.type : '',
     status: typeof rawParams.status === 'string' ? rawParams.status : '',
+    schedulable: typeof rawParams.schedulable === 'string' ? rawParams.schedulable : '',
     group: typeof rawParams.group === 'string' ? rawParams.group : '',
+    display_group: typeof rawParams.display_group === 'string' ? rawParams.display_group : '',
     search: typeof rawParams.search === 'string' ? rawParams.search : '',
+    name_prefix: typeof rawParams.name_prefix === 'string' ? rawParams.name_prefix : '',
+    search_regex: typeof rawParams.search_regex === 'string' ? rawParams.search_regex : '',
     privacy_mode: typeof rawParams.privacy_mode === 'string' ? rawParams.privacy_mode : '',
     sort_by: typeof rawParams.sort_by === 'string' ? rawParams.sort_by : '',
     sort_order: sortOrder
@@ -1395,12 +1879,17 @@ const buildAccountQueryFilters = () => ({
   platform: params.platform || '',
   type: params.type || '',
   status: params.status || '',
+  schedulable: params.schedulable || '',
   group: params.group || '',
+  display_group: params.display_group || '',
   privacy_mode: params.privacy_mode || '',
   search: params.search || '',
+  name_prefix: params.name_prefix || '',
+  search_regex: params.search_regex || '',
   sort_by: sortState.sort_by,
   sort_order: sortState.sort_order
 })
+const getAccountUIDisplayGroups = (account: Account) => getUIDisplayGroups(account.extra as Record<string, unknown> | undefined)
 const accountMatchesCurrentFilters = (account: Account) => {
   const filters = buildAccountQueryFilters()
   if (filters.platform && account.platform !== filters.platform) return false
@@ -1424,6 +1913,10 @@ const accountMatchesCurrentFilters = (account: Account) => {
       return false
     }
   }
+  if (filters.schedulable) {
+    const wantsSchedulable = filters.schedulable === 'true'
+    if (Boolean(account.schedulable) !== wantsSchedulable) return false
+  }
   if (filters.group) {
     const groupIds = account.group_ids ?? account.groups?.map((group) => group.id) ?? []
     if (filters.group === ACCOUNT_UNGROUPED_GROUP_QUERY_VALUE) {
@@ -1431,6 +1924,9 @@ const accountMatchesCurrentFilters = (account: Account) => {
     } else if (!groupIds.includes(Number(filters.group))) {
       return false
     }
+  }
+  if (filters.display_group && !getAccountUIDisplayGroups(account).includes(filters.display_group)) {
+    return false
   }
   const privacyMode = typeof account.extra?.privacy_mode === 'string' ? account.extra.privacy_mode : ''
   if (filters.privacy_mode) {
@@ -1442,6 +1938,21 @@ const accountMatchesCurrentFilters = (account: Account) => {
   }
   const search = String(filters.search || '').trim().toLowerCase()
   if (search && !account.name.toLowerCase().includes(search)) return false
+  const namePrefix = String(filters.name_prefix || '').trim().toLowerCase()
+  if (namePrefix && !account.name.toLowerCase().startsWith(namePrefix)) return false
+  const searchRegex = String(filters.search_regex || '').trim()
+  if (searchRegex) {
+    try {
+      const matcher = new RegExp(searchRegex, 'i')
+      const regexMatched =
+        matcher.test(account.name) ||
+        matcher.test(account.notes || '') ||
+        getAccountUIDisplayGroups(account).some(group => matcher.test(group))
+      if (!regexMatched) return false
+    } catch {
+      return false
+    }
+  }
   return true
 }
 const mergeRuntimeFields = (oldAccount: Account, updatedAccount: Account): Account => ({
@@ -1650,6 +2161,13 @@ onMounted(async () => {
     const [p, g] = await Promise.all([adminAPI.proxies.getAll(), adminAPI.groups.getAll()])
     proxies.value = p
     groups.value = g
+    if (!filterTabs.value.some(tab => tab.id === selectedFilterTabId.value)) {
+      const fallbackTabId = filterTabs.value.some(tab => tab.id === defaultFilterTabId.value)
+        ? defaultFilterTabId.value
+        : ACCOUNT_BUILTIN_ALL_TAB_ID
+      applyFilterTabSelection(fallbackTabId)
+      load()
+    }
   } catch (error) {
     console.error('Failed to load proxies/groups:', error)
   }

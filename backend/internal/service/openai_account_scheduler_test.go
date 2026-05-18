@@ -388,7 +388,8 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_DefaultDisabled_Require
 		OpenAIUpstreamTransportResponsesWebsocketV2,
 		false,
 	)
-	require.ErrorContains(t, err, "no available OpenAI accounts")
+	require.ErrorIs(t, err, ErrNoAvailableAccounts)
+	require.ErrorContains(t, err, "live_recheck")
 	require.Nil(t, selection)
 	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
 }
