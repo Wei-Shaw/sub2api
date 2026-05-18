@@ -34,13 +34,14 @@
 
       <!-- Whitelist Mode -->
       <div v-if="mode === 'whitelist'">
-        <!-- Host provides ModelWhitelistSelector via slot; SDK cannot depend on host component -->
+        <!-- Host provides ModelWhitelistSelector via slot; SDK provides ModelWhitelistSelect as default -->
         <slot name="whitelist-selector">
-          <textarea
-            :value="allowedModels.join(', ')"
-            @input="emit('update:allowedModels', ($event.target as HTMLTextAreaElement).value.split(',').map(s => s.trim()).filter(Boolean))"
-            class="input min-h-[80px]"
-            :placeholder="t('admin.accounts.modelWhitelist')"
+          <ModelWhitelistSelect
+            :model-value="allowedModels"
+            :available-models="availableModels"
+            :platform="platform"
+            :on-notify-info="onNotifyInfo"
+            @update:model-value="emit('update:allowedModels', $event)"
           />
         </slot>
         <p class="text-xs text-gray-500 dark:text-gray-400">
@@ -109,6 +110,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { createStableObjectKeyResolver } from '../../utils/stableObjectKey'
 import Icon from '../Icon.vue'
+import ModelWhitelistSelect from './ModelWhitelistSelect.vue'
 import type { ModelMapping } from '../../account-form-types'
 
 interface PresetMapping {
@@ -126,11 +128,14 @@ const props = withDefaults(defineProps<{
   presets?: PresetMapping[]
   disabled?: boolean
   keyPrefix?: string
+  /** Available models for the whitelist dropdown. Passed through to ModelWhitelistSelect. */
+  availableModels?: string[]
   /** Notification callback for info messages. Falls back to console.info. */
   onNotifyInfo?: (msg: string) => void
 }>(), {
   disabled: false,
   keyPrefix: 'model-restriction',
+  availableModels: () => [],
 })
 
 const emit = defineEmits<{

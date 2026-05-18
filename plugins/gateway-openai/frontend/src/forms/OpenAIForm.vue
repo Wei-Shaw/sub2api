@@ -23,6 +23,7 @@
         :mode="modelRestrictionMode"
         :allowed-models="allowedModels"
         :mappings="modelMappings"
+        :available-models="openaiModels"
         :disabled="isModelRestrictionDisabled"
         @update:mode="modelRestrictionMode = $event"
         @update:allowed-models="allowedModels = $event"
@@ -140,6 +141,7 @@ import {
 import type { OpenAIWSMode } from '../utils/openaiWsMode'
 import type { PlatformFormContext } from '@sub2api/plugin-sdk'
 import { useOpenAIForm } from './useOpenAIForm'
+import { openaiModels } from '../utils/openaiModels'
 import CodexImageGenBridgeSection from './CodexImageGenBridgeSection.vue'
 import CompactModeSection from './CompactModeSection.vue'
 
