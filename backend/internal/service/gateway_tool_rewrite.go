@@ -168,13 +168,13 @@ func buildToolNameRewriteFromBody(body []byte) *ToolNameRewrite {
 }
 
 // applyToolNameRewriteToBody 把已构造的 ToolNameRewrite 应用到 body 上：
-//   - 改写 $.tools[*].name（仅对 shouldMimicToolName 通过的 tool）
-//   - 在 $.tools[last].cache_control 上打 ephemeral 缓存断点（Parrot 行为对齐，
-//     ttl 客户端已有则透传，否则默认 claude.DefaultCacheControlTTL）
-//   - 改写 $.tool_choice.name（仅当 $.tool_choice.type == "tool"）
 //
-// 历史 $.messages[*].content[*].name（tool_use）不在请求侧改写——这与 Parrot 一致；
-// 响应侧 bytes.Replace 会连带还原它们。
+//   - 改写 $.tools[*].name（仅对 shouldMimicToolName 通过的 tool）
+//   - 改写 $.tool_choice.name（仅当 $.tool_choice.type == "tool"）
+//   - 改写 $.messages[*].content[*].name（仅当 type == "tool_use"）
+//   - 在 $.tools[last].cache_control 上打 ephemeral 缓存断点
+//
+// 响应侧 bytes.Replace 会连带还原假名 → 真名。
 func applyToolNameRewriteToBody(body []byte, rw *ToolNameRewrite) []byte {
 	if rw == nil || len(rw.Forward) == 0 {
 		body = applyToolsLastCacheBreakpoint(body)
@@ -211,6 +211,37 @@ func applyToolNameRewriteToBody(body []byte, rw *ToolNameRewrite) []byte {
 				body = next
 			}
 		}
+	}
+
+	// 同步改写历史消息中的 tool_use.name，确保它和 tools[] 中的假名一致。
+	// 否则 Anthropic 会因为 tool_use 引用了未声明的原始工具名而拒绝请求。
+	messages := gjson.GetBytes(body, "messages")
+	if messages.IsArray() {
+		messages.ForEach(func(msgKey, msg gjson.Result) bool {
+			msgIdx := int(msgKey.Num)
+			content := msg.Get("content")
+			if !content.IsArray() {
+				return true
+			}
+			content.ForEach(func(blkKey, blk gjson.Result) bool {
+				blkIdx := int(blkKey.Num)
+				if blk.Get("type").String() != "tool_use" {
+					return true
+				}
+				name := blk.Get("name").String()
+				if name == "" {
+					return true
+				}
+				if fake, ok := rw.Forward[name]; ok {
+					path := fmt.Sprintf("messages.%d.content.%d.name", msgIdx, blkIdx)
+					if next, err := sjson.SetBytes(body, path, fake); err == nil {
+						body = next
+					}
+				}
+				return true
+			})
+			return true
+		})
 	}
 
 	body = applyToolsLastCacheBreakpoint(body)

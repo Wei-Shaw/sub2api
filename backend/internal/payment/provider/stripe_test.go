@@ -16,7 +16,7 @@ func TestCreatePaymentCardUsesAutomaticPaymentMethods(t *testing.T) {
 		Subject:            "Test",
 		InstanceSubMethods: "card",
 	}
-	params, err := buildPaymentIntentParams(req)
+	params, err := buildPaymentIntentParams(req, payment.DefaultPaymentCurrency)
 	if err != nil {
 		t.Fatalf("buildPaymentIntentParams: %v", err)
 	}
@@ -39,7 +39,7 @@ func TestCreatePaymentAlipayUsesExplicitMethodTypes(t *testing.T) {
 		Subject:            "Test",
 		InstanceSubMethods: "alipay",
 	}
-	params, err := buildPaymentIntentParams(req)
+	params, err := buildPaymentIntentParams(req, payment.DefaultPaymentCurrency)
 	if err != nil {
 		t.Fatalf("buildPaymentIntentParams: %v", err)
 	}
@@ -59,7 +59,7 @@ func TestCreatePaymentWxpayUsesExplicitMethodTypesAndOptions(t *testing.T) {
 		Subject:            "Test",
 		InstanceSubMethods: "wxpay",
 	}
-	params, err := buildPaymentIntentParams(req)
+	params, err := buildPaymentIntentParams(req, payment.DefaultPaymentCurrency)
 	if err != nil {
 		t.Fatalf("buildPaymentIntentParams: %v", err)
 	}

@@ -773,10 +773,20 @@ func TestAPIContracts(t *testing.T) {
 					"backend_mode_enabled": false,
 					"enable_cch_signing": false,
 					"enable_anthropic_cache_ttl_1h_injection": false,
+					"rewrite_message_cache_control": false,
+					"antigravity_user_agent_version": "",
 					"enable_fingerprint_unification": true,
 					"enable_metadata_passthrough": false,
 					"disable_oauth_on_cc_responses": false,
 					"web_search_emulation_enabled": false,
+					"account_default_concurrency": 0,
+					"account_default_rpm": 0,
+					"ltb_ttl_days": 0,
+					"ltb_cleanup_interval_seconds": 0,
+					"session_account_fanout_limit": 0,
+					"session_account_fanout_window_sec": 0,
+					"bound_session_switch_jitter_min_ms": 0,
+					"bound_session_switch_jitter_max_ms": 0,
 					"payment_visible_method_alipay_source": "easypay_alipay",
 					"payment_visible_method_wxpay_source": "official_wxpay",
 					"payment_visible_method_alipay_enabled": true,
@@ -989,7 +999,18 @@ func TestAPIContracts(t *testing.T) {
 					"enable_metadata_passthrough": false,
 					"enable_cch_signing": false,
 					"enable_anthropic_cache_ttl_1h_injection": false,
+					"rewrite_message_cache_control": false,
+					"antigravity_user_agent_version": "",
+					"disable_oauth_on_cc_responses": false,
 					"web_search_emulation_enabled": false,
+					"account_default_concurrency": 0,
+					"account_default_rpm": 0,
+					"ltb_ttl_days": 0,
+					"ltb_cleanup_interval_seconds": 0,
+					"session_account_fanout_limit": 0,
+					"session_account_fanout_window_sec": 0,
+					"bound_session_switch_jitter_min_ms": 0,
+					"bound_session_switch_jitter_max_ms": 0,
 					"payment_visible_method_alipay_source": "",
 					"payment_visible_method_wxpay_source": "",
 					"payment_visible_method_alipay_enabled": false,
@@ -1190,7 +1211,7 @@ func newContractDeps(t *testing.T) *contractDeps {
 	settingRepo := newStubSettingRepo()
 	settingService := service.NewSettingService(settingRepo, cfg)
 
-	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil, redeemService, nil)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 	usageHandler := handler.NewUsageHandler(usageService, apiKeyService)
