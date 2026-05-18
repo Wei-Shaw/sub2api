@@ -100,48 +100,48 @@
         </div>
       </div>
 
-      <!-- Dynamic Account Type Selection -->
-      <div v-if="currentPlatformDecl && currentPlatformDecl.account_types.length > 0">
+      <!-- Dynamic Account Type Selection (grouped by category) -->
+      <div v-if="groupedTypeCards.length > 0">
         <label class="input-label">{{ t('admin.accounts.accountType') }}</label>
         <div
           class="mt-2 grid gap-3"
-          :class="currentPlatformDecl.account_types.length <= 2 ? 'grid-cols-2' : 'grid-cols-3'"
+          :class="groupedTypeCards.length <= 2 ? 'grid-cols-2' : 'grid-cols-3'"
           data-tour="account-form-type"
         >
           <button
-            v-for="at in currentPlatformDecl.account_types"
-            :key="at.type"
+            v-for="group in groupedTypeCards"
+            :key="group.category"
             type="button"
-            @click="onAccountTypeSelect(at)"
+            @click="onCategoryCardSelect(group)"
             :class="[
               'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
-              selectedAccountTypeId === at.type
+              accountCategory === group.category
                 ? 'bg-primary-50 dark:bg-primary-900/20'
                 : 'border-gray-200 hover:border-gray-300 dark:border-dark-600 dark:hover:border-dark-500'
             ]"
-            :style="selectedAccountTypeId === at.type && currentPlatformDecl.theme_color ? { borderColor: currentPlatformDecl.theme_color } : {}"
+            :style="accountCategory === group.category && currentPlatformDecl?.theme_color ? { borderColor: currentPlatformDecl.theme_color } : {}"
           >
             <div
               :class="[
                 'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors',
-                selectedAccountTypeId === at.type
+                accountCategory === group.category
                   ? 'text-white'
                   : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
               ]"
-              :style="selectedAccountTypeId === at.type && currentPlatformDecl.theme_color ? { backgroundColor: currentPlatformDecl.theme_color } : {}"
+              :style="accountCategory === group.category && currentPlatformDecl?.theme_color ? { backgroundColor: currentPlatformDecl.theme_color } : {}"
             >
-              <PlatformIcon v-if="at.icon_svg" :icon-svg="at.icon_svg" size="sm" />
+              <PlatformIcon v-if="group.iconSvg" :icon-svg="group.iconSvg" size="sm" />
               <Icon v-else name="key" size="sm" />
             </div>
             <div class="min-w-0">
-              <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ at.display_name }}</span>
-              <span v-if="at.description" class="block truncate text-xs text-gray-500 dark:text-gray-400">{{ at.description }}</span>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ group.displayName }}</span>
+              <span v-if="group.description" class="block truncate text-xs text-gray-500 dark:text-gray-400">{{ group.description }}</span>
             </div>
             <span
-              v-if="at.badge_label"
+              v-if="group.badgeLabel"
               class="ml-auto shrink-0 rounded-full px-2 py-0.5 text-xs font-medium"
-              :class="selectedAccountTypeId === at.type ? 'bg-white/80 text-gray-700' : 'bg-gray-100 text-gray-600 dark:bg-dark-600 dark:text-gray-400'"
-            >{{ at.badge_label }}</span>
+              :class="accountCategory === group.category ? 'bg-white/80 text-gray-700' : 'bg-gray-100 text-gray-600 dark:bg-dark-600 dark:text-gray-400'"
+            >{{ group.badgeLabel }}</span>
           </button>
         </div>
       </div>
@@ -159,7 +159,7 @@
           />
           <span>{{ currentPlatformDecl?.display_name }}</span>
           <span class="text-gray-400">&mdash;</span>
-          <span>{{ selectedAccountTypeDecl?.display_name }}</span>
+          <span>{{ selectedGroupDisplayName }}</span>
         </div>
         <button
           type="button"
@@ -334,7 +334,7 @@ const authStore = useAuthStore()
 // ---------------------------------------------------------------------------
 // Platform declarations
 // ---------------------------------------------------------------------------
-const { platforms, fetchPlatforms, getPlatformDecl, getAccountTypeDecl } = usePlatforms()
+const { platforms, fetchPlatforms, getPlatformDecl } = usePlatforms()
 
 const BUILTIN_PLATFORMS = new Set(['anthropic', 'openai', 'gemini', 'antigravity'])
 
@@ -353,8 +353,6 @@ const allPlatforms = computed(() => {
   return fromApi.length > 0 ? fromApi : BUILTIN_PLATFORM_FALLBACKS
 })
 const currentPlatformDecl = computed(() => getPlatformDecl(form.platform))
-const selectedAccountTypeDecl = computed(() =>
-  getAccountTypeDecl(form.platform, selectedAccountTypeId.value))
 
 // ---------------------------------------------------------------------------
 // Core state
@@ -389,9 +387,38 @@ function typeIdToCategory(typeId: string): 'oauth-based' | 'apikey' | 'bedrock' 
 }
 
 // ---------------------------------------------------------------------------
-// Account type selection
+// Account type selection — grouped by category
 // ---------------------------------------------------------------------------
 const selectedAccountTypeId = ref<string>('oauth')
+
+const groupedTypeCards = computed(() => {
+  const decl = currentPlatformDecl.value
+  if (!decl?.account_types.length) return []
+  const map = new Map<string, {
+    category: string; displayName: string; description: string
+    badgeLabel: string; iconSvg?: string; sortOrder: number; defaultTypeId: string
+  }>()
+  for (const at of decl.account_types) {
+    const cat = typeIdToCategory(at.type)
+    const existing = map.get(cat)
+    if (existing) {
+      existing.displayName += ' / ' + at.display_name
+      existing.description = ''
+      existing.badgeLabel = ''
+    } else {
+      map.set(cat, {
+        category: cat, displayName: at.display_name,
+        description: at.description || '', badgeLabel: at.badge_label || '',
+        iconSvg: at.icon_svg, sortOrder: at.sort_order, defaultTypeId: at.type,
+      })
+    }
+  }
+  return [...map.values()].sort((a, b) => a.sortOrder - b.sortOrder)
+})
+
+const selectedGroupDisplayName = computed(() =>
+  groupedTypeCards.value.find(g => g.category === accountCategory.value)?.displayName ?? ''
+)
 
 // ---------------------------------------------------------------------------
 // Dynamic platform form component (resolved async at Step 2 transition)
@@ -414,16 +441,13 @@ const platformFormContext = computed<PlatformFormContext>(() => ({
 
 const platformFormExtraProps = computed(() => ({ platform: form.platform }))
 
-function onAccountTypeSelect(at: { type: string }) {
-  const tp = at.type
-  selectedAccountTypeId.value = tp
-  const category = typeIdToCategory(tp)
-  accountCategory.value = category
-  if (category === 'oauth-based') {
-    addMethod.value = tp as AddMethod
-  }
+function onCategoryCardSelect(group: typeof groupedTypeCards.value[number]) {
+  const cat = group.category as typeof accountCategory.value
+  accountCategory.value = cat
+  selectedAccountTypeId.value = group.defaultTypeId
+  addMethod.value = cat === 'oauth-based' ? 'oauth' : 'oauth'
   if (!BUILTIN_PLATFORMS.has(form.platform)) {
-    form.type = tp
+    form.type = group.defaultTypeId
   }
 }
 
@@ -600,6 +624,7 @@ async function handleSubmit() {
   const payload = platformFormRef.value?.getPayload()
   if (!payload) return
   if (payload.needsOAuthFlow) {
+    if (payload.typeOverride) addMethod.value = payload.typeOverride as AddMethod
     const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => { step.value = 3 })
     if (!canContinue) return
     step.value = 3
@@ -753,9 +778,10 @@ watch(() => form.platform, (newPlatform) => {
   const decl = getPlatformDecl(newPlatform)
   if (decl?.account_types.length) {
     const firstType = decl.account_types[0]
+    const cat = typeIdToCategory(firstType.type)
+    accountCategory.value = cat
     selectedAccountTypeId.value = firstType.type
-    accountCategory.value = typeIdToCategory(firstType.type)
-    addMethod.value = OAUTH_TYPE_IDS.has(firstType.type) ? firstType.type as AddMethod : 'oauth'
+    addMethod.value = 'oauth'
     if (!BUILTIN_PLATFORMS.has(newPlatform)) {
       form.type = firstType.type
     }

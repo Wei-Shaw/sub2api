@@ -104,7 +104,7 @@ export function useAnthropicForm() {
     if (cat === 'bedrock') { const c = bedrock.buildBedrockCredentials(); applySharedCredentials(c, sharedOpts()); return { credentials: c, typeOverride: 'bedrock' } }
     if (cat === 'service_account') return buildServiceAccountPayload()
     if (cat === 'apikey') return buildApiKeyPayload()
-    return { credentials: {}, needsOAuthFlow: true }
+    return { credentials: {}, needsOAuthFlow: true, typeOverride: addMethod.value }
   }
 
   function buildServiceAccountPayload(): PlatformFormPayload {
