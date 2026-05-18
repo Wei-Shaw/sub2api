@@ -624,8 +624,9 @@ type OpenAIFastPolicySettings struct {
 }
 
 // DefaultOpenAIFastPolicySettings 返回默认的 OpenAI fast 策略配置。
-// 默认不配置任何规则，保留 OpenAI 上游 service_tier 语义；管理员如需
-// 限制 priority/flex，可以在 admin UI 中显式配置 filter 或 block 规则。
+// 默认不配置任何重写或过滤规则：用户显式请求的 priority/fast 透传到上游，
+// 其中 fast 仅归一化为 OpenAI 官方的 priority。管理员如需限制 priority/flex，
+// 可以在 admin UI 中显式配置 filter 或 block 规则。
 func DefaultOpenAIFastPolicySettings() *OpenAIFastPolicySettings {
 	return &OpenAIFastPolicySettings{
 		Rules: []OpenAIFastPolicyRule{},

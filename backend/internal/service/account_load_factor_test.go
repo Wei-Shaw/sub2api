@@ -44,3 +44,8 @@ func TestEffectiveLoadFactor_ZeroLoadFactor_ZeroConcurrency(t *testing.T) {
 	a := &Account{Concurrency: 0, LoadFactor: intPtrHelper(0)}
 	require.Equal(t, 1, a.EffectiveLoadFactor())
 }
+
+func TestEffectiveLoadFactor_KiroOAuth_UsesSingleFlightLimit(t *testing.T) {
+	a := &Account{Platform: PlatformKiro, Type: AccountTypeOAuth, Concurrency: 10}
+	require.Equal(t, 1, a.EffectiveLoadFactor())
+}

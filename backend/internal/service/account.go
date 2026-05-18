@@ -176,6 +176,16 @@ func (a *Account) EffectiveLoadFactor() int {
 	if a.LoadFactor != nil && *a.LoadFactor > 0 {
 		return *a.LoadFactor
 	}
+	return a.EffectiveConcurrencyLimit()
+}
+
+func (a *Account) EffectiveConcurrencyLimit() int {
+	if a == nil {
+		return 1
+	}
+	if a.Platform == PlatformKiro && a.Type == AccountTypeOAuth {
+		return 1
+	}
 	if a.Concurrency > 0 {
 		return a.Concurrency
 	}
