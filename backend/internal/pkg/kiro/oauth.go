@@ -401,6 +401,20 @@ func FetchOIDCUserEmail(ctx context.Context, proxyURL, accessToken, region strin
 }
 
 func ParseImportedToken(tokenJSON string, deviceRegistrationJSON string) (*TokenData, error) {
+	trimmed := strings.TrimSpace(tokenJSON)
+
+	// Detect cookie array format (EditThisCookie / Cookie-Editor export)
+	if len(trimmed) > 0 && trimmed[0] == '[' {
+		token, err := parseCookieArrayToken(trimmed)
+		if err != nil {
+			return nil, err
+		}
+		if token != nil {
+			return token, nil
+		}
+		// Fall through: not a valid cookie array, try normal parse
+	}
+
 	var token TokenData
 	if err := json.Unmarshal([]byte(tokenJSON), &token); err != nil {
 		return nil, fmt.Errorf("failed to parse kiro token: %w", err)
@@ -422,6 +436,93 @@ func ParseImportedToken(tokenJSON string, deviceRegistrationJSON string) (*Token
 		}
 	}
 	return &token, nil
+}
+
+// cookieEntry represents a single cookie from browser cookie export (EditThisCookie / Cookie-Editor format).
+type cookieEntry struct {
+	Name           string  `json:"name"`
+	Value          string  `json:"value"`
+	Domain         string  `json:"domain"`
+	ExpirationDate float64 `json:"expirationDate"`
+}
+
+// parseCookieArrayToken attempts to parse a JSON array of cookie objects and extract
+// Kiro auth tokens (AccessToken, RefreshToken, Idp, UserId) from app.kiro.dev cookies.
+func parseCookieArrayToken(jsonStr string) (*TokenData, error) {
+	var cookies []cookieEntry
+	if err := json.Unmarshal([]byte(jsonStr), &cookies); err != nil {
+		return nil, nil // not a valid cookie array, let caller fall through
+	}
+	if len(cookies) == 0 {
+		return nil, nil
+	}
+
+	// Check if this looks like kiro cookies (has domain containing kiro.dev)
+	hasKiroDomain := false
+	for _, c := range cookies {
+		if strings.Contains(c.Domain, "kiro.dev") {
+			hasKiroDomain = true
+			break
+		}
+	}
+	if !hasKiroDomain {
+		return nil, nil
+	}
+
+	var accessToken, refreshToken, idp, userID string
+	var accessTokenExpiry float64
+
+	for _, c := range cookies {
+		if !strings.Contains(c.Domain, "kiro.dev") {
+			continue
+		}
+		switch c.Name {
+		case "AccessToken":
+			accessToken = strings.TrimSpace(c.Value)
+			accessTokenExpiry = c.ExpirationDate
+		case "RefreshToken":
+			refreshToken = strings.TrimSpace(c.Value)
+		case "Idp":
+			idp = strings.TrimSpace(c.Value)
+		case "UserId":
+			userID = strings.TrimSpace(c.Value)
+		}
+	}
+
+	if accessToken == "" {
+		return nil, fmt.Errorf("cookie array does not contain AccessToken for kiro.dev")
+	}
+
+	token := &TokenData{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		AuthMethod:   "social",
+	}
+
+	// Map Idp to provider
+	switch strings.ToLower(idp) {
+	case "google":
+		token.Provider = "Google"
+	case "github", "Github":
+		token.Provider = "Github"
+	default:
+		if idp != "" {
+			token.Provider = idp
+		}
+	}
+
+	// Calculate expires_at from cookie expirationDate (unix timestamp as float64)
+	if accessTokenExpiry > 0 {
+		expiresAt := time.Unix(int64(accessTokenExpiry), 0).UTC()
+		token.ExpiresAt = expiresAt.Format(time.RFC3339)
+	}
+
+	// Store UserId as email placeholder if present (it's the AWS identity, useful for identification)
+	if userID != "" {
+		token.Email = userID
+	}
+
+	return token, nil
 }
 
 func getOIDCEndpoint(region string) string {

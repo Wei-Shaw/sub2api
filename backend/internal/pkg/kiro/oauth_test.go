@@ -37,6 +37,81 @@ func TestSessionStoreGetDeletesExpiredSession(t *testing.T) {
 	}
 }
 
+func TestParseCookieArrayToken_ValidKiroCookies(t *testing.T) {
+	cookieJSON := `[
+		{"domain":"app.kiro.dev","name":"AccessToken","value":"aoaTestAccessToken123","expirationDate":1779621875.084411},
+		{"domain":"app.kiro.dev","name":"RefreshToken","value":"aorTestRefreshToken456","expirationDate":1779621875.084479},
+		{"domain":"app.kiro.dev","name":"Idp","value":"Google","expirationDate":1779621875.084501},
+		{"domain":"app.kiro.dev","name":"UserId","value":"d-9067c98495.f49804c8-10c1-70ab-e00f-7d2bb88008fd","expirationDate":1779621921.78438},
+		{"domain":".app.kiro.dev","name":"kiro-visitor-id","value":"1779017052718-035o707cwa7w","expirationDate":1810553052.718802}
+	]`
+
+	token, err := ParseImportedToken(cookieJSON, "")
+	if err != nil {
+		t.Fatalf("ParseImportedToken(cookie array) error: %v", err)
+	}
+	if token.AccessToken != "aoaTestAccessToken123" {
+		t.Errorf("AccessToken = %q, want %q", token.AccessToken, "aoaTestAccessToken123")
+	}
+	if token.RefreshToken != "aorTestRefreshToken456" {
+		t.Errorf("RefreshToken = %q, want %q", token.RefreshToken, "aorTestRefreshToken456")
+	}
+	if token.Provider != "Google" {
+		t.Errorf("Provider = %q, want %q", token.Provider, "Google")
+	}
+	if token.AuthMethod != "social" {
+		t.Errorf("AuthMethod = %q, want %q", token.AuthMethod, "social")
+	}
+	if token.Email != "d-9067c98495.f49804c8-10c1-70ab-e00f-7d2bb88008fd" {
+		t.Errorf("Email = %q, want UserId value", token.Email)
+	}
+	if token.ExpiresAt == "" {
+		t.Error("ExpiresAt should be set from cookie expirationDate")
+	}
+	// Verify the expiry time is correct (1779621875 seconds)
+	expectedExpiry := time.Unix(1779621875, 0).UTC().Format(time.RFC3339)
+	if token.ExpiresAt != expectedExpiry {
+		t.Errorf("ExpiresAt = %q, want %q", token.ExpiresAt, expectedExpiry)
+	}
+}
+
+func TestParseCookieArrayToken_MissingAccessToken(t *testing.T) {
+	cookieJSON := `[
+		{"domain":"app.kiro.dev","name":"RefreshToken","value":"aorTestRefreshToken456"},
+		{"domain":"app.kiro.dev","name":"Idp","value":"Google"}
+	]`
+
+	_, err := ParseImportedToken(cookieJSON, "")
+	if err == nil {
+		t.Fatal("expected error for missing AccessToken, got nil")
+	}
+}
+
+func TestParseCookieArrayToken_NonKiroCookiesFallThrough(t *testing.T) {
+	// Non-kiro cookies should not be parsed as cookie array
+	cookieJSON := `[{"domain":"example.com","name":"session","value":"abc123"}]`
+
+	_, err := ParseImportedToken(cookieJSON, "")
+	if err == nil {
+		t.Fatal("expected error for non-kiro cookie array (no accessToken in TokenData), got nil")
+	}
+}
+
+func TestParseCookieArrayToken_GitHubProvider(t *testing.T) {
+	cookieJSON := `[
+		{"domain":"app.kiro.dev","name":"AccessToken","value":"testToken","expirationDate":1779621875},
+		{"domain":"app.kiro.dev","name":"Idp","value":"Github"}
+	]`
+
+	token, err := ParseImportedToken(cookieJSON, "")
+	if err != nil {
+		t.Fatalf("ParseImportedToken error: %v", err)
+	}
+	if token.Provider != "Github" {
+		t.Errorf("Provider = %q, want %q", token.Provider, "Github")
+	}
+}
+
 func TestSessionStoreSetPrunesExpiredSessions(t *testing.T) {
 	store := NewSessionStore()
 	now := time.Now()
