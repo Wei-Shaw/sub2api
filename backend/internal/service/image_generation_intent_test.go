@@ -148,14 +148,21 @@ func TestOpenAIImageOutputCounterDeduplicatesFinalImages(t *testing.T) {
 func TestOpenAIImageOutputCounterCountsImagesAPIStreamShapes(t *testing.T) {
 	counter := newOpenAIImageOutputCounter()
 	counter.AddSSEData([]byte(`{"type":"image_generation.completed","id":"ig_complete","b64_json":"final-a"}`))
+	counter.AddSSEData([]byte(`{"type":"image_edit.completed","id":"ig_edit_complete","b64_json":"final-edit"}`))
 	counter.AddSSEData([]byte(`{"type":"response.output_item.done","item":{"id":"ig_item","type":"image_generation_call","result":"final-b"}}`))
 	counter.AddSSEData([]byte(`{"type":"response.completed","response":{"output":[{"id":"ig_done","type":"image_generation_call","result":"final-c"}]}}`))
-	require.Equal(t, 3, counter.Count())
+	require.Equal(t, 4, counter.Count())
 
 	dataCounter := newOpenAIImageOutputCounter()
 	dataCounter.AddSSEData([]byte(`{"data":[{"b64_json":"a"},{"b64_json":"b"}]}`))
 	dataCounter.AddSSEData([]byte(`{"data":[{"b64_json":"a"},{"b64_json":"b"},{"b64_json":"c"}]}`))
 	require.Equal(t, 3, dataCounter.Count())
+}
+
+func TestOpenAIImageOutputCounterIgnoresPartialImageEditEvents(t *testing.T) {
+	counter := newOpenAIImageOutputCounter()
+	counter.AddSSEData([]byte(`{"type":"image_edit.partial_image","b64_json":"preview"}`))
+	require.Equal(t, 0, counter.Count())
 }
 
 func TestOpenAIImageOutputCounterCountsMultilineSSEDataPayload(t *testing.T) {
