@@ -1994,6 +1994,48 @@ REDACTED
 	response.Success(c, models)
 REDACTED
 
+// SyncUpstreamModels handles syncing live supported models from an account's upstream.
+// POST /api/v1/admin/accounts/:id/models/sync-upstream
+func (h *AccountHandler) SyncUpstreamModels(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+REDACTED
+
+	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
+	if err != nil {
+		response.NotFound(c, "Account not found")
+		return
+REDACTED
+
+	if h.accountTestService == nil {
+		response.InternalError(c, "Account test service is not configured")
+		return
+REDACTED
+
+	models, err := h.accountTestService.FetchUpstreamSupportedModels(c.Request.Context(), account)
+	if err != nil {
+		var syncErr *service.UpstreamModelSyncError
+		if errors.As(err, &syncErr) {
+			switch syncErr.Kind {
+			case service.UpstreamModelSyncErrorConfiguration, service.UpstreamModelSyncErrorUnsupported:
+				response.BadRequest(c, syncErr.SafeMessage())
+			default:
+				slog.Warn("sync_upstream_models_failed", "account_id", accountID, "kind", syncErr.Kind)
+				response.Error(c, http.StatusBadGateway, syncErr.SafeMessage())
+		REDACTED
+			return
+	REDACTED
+
+		slog.Warn("sync_upstream_models_failed", "account_id", accountID)
+		response.Error(c, http.StatusBadGateway, "Failed to sync upstream models from upstream")
+		return
+REDACTED
+
+	response.Success(c, gin.H{"models": modelsREDACTED)
+REDACTED
+
 // SetPrivacy handles setting privacy for a single OpenAI/Antigravity OAuth account
 // POST /api/v1/admin/accounts/:id/set-privacy
 func (h *AccountHandler) SetPrivacy(c *gin.Context) {
