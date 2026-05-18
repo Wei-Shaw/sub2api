@@ -324,6 +324,37 @@ EOF
     print_success "Compose override created (using local image)"
 }
 
+# ensure_compose_override is the idempotent wrapper used by install/upgrade/rollback.
+# - missing file   → create fresh
+# - already pins our image → leave alone (preserves user-added env/volumes)
+# - exists but missing image pin → back up + recreate, warn user to merge back
+# Without this, an upgrade after a stray `git checkout` can wipe the override and
+# silently fall back to the upstream image.
+ensure_compose_override() {
+    local override_file="$INSTALL_DIR/deploy/docker-compose.override.yml"
+
+    if [ ! -f "$override_file" ]; then
+        print_info "Compose override missing — creating..."
+        create_compose_override
+        return
+    fi
+
+    if grep -qE "image:[[:space:]]+${IMAGE_NAME}:" "$override_file"; then
+        return
+    fi
+
+    local backup="${override_file}.bak.$(date +%Y%m%d-%H%M%S)"
+    print_warning "docker-compose.override.yml exists but doesn't pin '${IMAGE_NAME}:latest'."
+    print_warning "Without that pin, the upstream image would be used. Fixing now."
+    cp "$override_file" "$backup"
+    print_warning "Existing override backed up to: $backup"
+    create_compose_override
+    print_warning "Recreated baseline override. If the backup contained custom"
+    print_warning "environment/volumes/networks, merge them back into:"
+    print_warning "  $override_file"
+    print_warning "then run: docker compose -p ${COMPOSE_PROJECT} up -d sub2api"
+}
+
 # =============================================================================
 # Start Services
 # =============================================================================
@@ -361,6 +392,7 @@ do_upgrade() {
     docker build -t "$IMAGE_NAME:latest" .
 
     cd "$INSTALL_DIR/deploy"
+    ensure_compose_override
     print_info "Restarting services..."
     docker compose -p "$COMPOSE_PROJECT" up -d
 
@@ -387,6 +419,7 @@ do_rollback() {
     docker tag "${IMAGE_NAME}:previous" "${IMAGE_NAME}:latest"
 
     cd "$INSTALL_DIR/deploy"
+    ensure_compose_override
     print_info "Restarting sub2api container..."
     docker compose -p "$COMPOSE_PROJECT" up -d sub2api
 
@@ -693,6 +726,7 @@ _upgrade_fast_switch() {
 
     print_info "Restarting sub2api container (PG and Redis unaffected)..."
     cd "$INSTALL_DIR/deploy"
+    ensure_compose_override
     docker compose -p "$COMPOSE_PROJECT" up -d sub2api
 
     print_info "Waiting for health check (max 60s)..."
@@ -941,7 +975,7 @@ main() {
     clone_repo
     build_image
     configure_env
-    create_compose_override
+    ensure_compose_override
     start_services
     print_completion
 }
