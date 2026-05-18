@@ -35,6 +35,32 @@ export interface BackupRecord {
   restored_at?: string
 }
 
+export interface BackupImportPreviewItem {
+  file_name: string
+  s3_key: string
+  size_bytes: number
+  last_modified?: string
+  has_record: boolean
+  record_id?: string
+  can_import: boolean
+  reason?: string
+}
+
+export interface BackupImportPreview {
+  prefix: string
+  total_objects: number
+  existing_count: number
+  missing_count: number
+  importable_count: number
+  items: BackupImportPreviewItem[]
+}
+
+export interface BackupImportResult {
+  imported_count: number
+  skipped_count: number
+  items: BackupRecord[]
+}
+
 export interface CreateBackupRequest {
   expire_days?: number
 }
@@ -96,6 +122,16 @@ export async function getDownloadURL(id: string): Promise<{ url: string }> {
   return data
 }
 
+export async function previewImportBackups(): Promise<BackupImportPreview> {
+  const { data } = await apiClient.get<BackupImportPreview>('/admin/backups/import-preview')
+  return data
+}
+
+export async function importMissingBackups(): Promise<BackupImportResult> {
+  const { data } = await apiClient.post<BackupImportResult>('/admin/backups/import', {})
+  return data
+}
+
 // Restore
 export async function restoreBackup(id: string, password: string): Promise<BackupRecord> {
   const { data } = await apiClient.post<BackupRecord>(`/admin/backups/${id}/restore`, { password })
@@ -113,6 +149,8 @@ export const backupAPI = {
   getBackup,
   deleteBackup,
   getDownloadURL,
+  previewImportBackups,
+  importMissingBackups,
   restoreBackup,
 }
 

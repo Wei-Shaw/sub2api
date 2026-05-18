@@ -1430,10 +1430,50 @@ export default {
       },
       trigger: {
         manual: 'Manual',
-        scheduled: 'Scheduled'
+        scheduled: 'Scheduled',
+        imported: 'Imported'
       },
       neverExpire: 'Never',
       empty: 'No backup records',
+      importRecords: {
+        title: 'Import Backup Records From Object Storage',
+        description: 'Scan the configured official backup prefix, compare it with existing backup_records, and import missing records after preview.',
+        scan: 'Scan Object Storage',
+        scanning: 'Scanning...',
+        importMissing: 'Import Missing Records',
+        importing: 'Importing...',
+        prefixLabel: 'Scan Prefix:',
+        nothingToImport: 'No missing backup records can be imported',
+        importConfirm: 'Import {count} missing backup records now?',
+        importSuccess: 'Imported {count} backup records successfully',
+        empty: 'No objects found under the current prefix',
+        summary: {
+          totalObjects: 'Total Objects',
+          existing: 'Recorded',
+          missing: 'Missing',
+          importable: 'Importable'
+        },
+        columns: {
+          status: 'Status',
+          fileName: 'File Name',
+          s3Key: 'Object Key',
+          size: 'Size',
+          lastModified: 'Last Modified',
+          recordId: 'Recorded ID',
+          reason: 'Reason'
+        },
+        status: {
+          recorded: 'Recorded',
+          missing: 'Importable',
+          skipped: 'Skipped'
+        },
+        reasons: {
+          already_recorded: 'This object already has an official record',
+          not_file_object: 'This object is not a file',
+          invalid_file_name: 'Invalid file name',
+          unsupported_file_type: 'Not an official PostgreSQL backup file (.sql.gz required)'
+        }
+      },
       actions: {
         download: 'Download',
         restore: 'Restore',

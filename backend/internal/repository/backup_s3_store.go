@@ -86,6 +86,40 @@ func (s *S3BackupStore) Download(ctx context.Context, key string) (io.ReadCloser
 	return result.Body, nil
 }
 
+func (s *S3BackupStore) List(ctx context.Context, prefix string) ([]service.BackupObjectInfo, error) {
+	input := &s3.ListObjectsV2Input{
+		Bucket: &s.bucket,
+	}
+	if prefix != "" {
+		input.Prefix = aws.String(prefix)
+	}
+
+	paginator := s3.NewListObjectsV2Paginator(s.client, input)
+	objects := make([]service.BackupObjectInfo, 0)
+
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("S3 ListObjectsV2: %w", err)
+		}
+		for _, object := range page.Contents {
+			if object.Key == nil {
+				continue
+			}
+			info := service.BackupObjectInfo{
+				Key:       aws.ToString(object.Key),
+				SizeBytes: aws.ToInt64(object.Size),
+			}
+			if object.LastModified != nil {
+				info.LastModified = object.LastModified.Format(time.RFC3339)
+			}
+			objects = append(objects, info)
+		}
+	}
+
+	return objects, nil
+}
+
 func (s *S3BackupStore) Delete(ctx context.Context, key string) error {
 	_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{
 		Bucket: &s.bucket,

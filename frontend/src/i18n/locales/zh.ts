@@ -1451,10 +1451,50 @@ export default {
       },
       trigger: {
         manual: '手动',
-        scheduled: '定时'
+        scheduled: '定时',
+        imported: '补录'
       },
       neverExpire: '永不过期',
       empty: '暂无备份记录',
+      importRecords: {
+        title: '对象存储备份记录补录',
+        description: '扫描当前官方备份前缀，对比已有 backup_records，预览并补录缺失记录。',
+        scan: '扫描对象存储',
+        scanning: '扫描中...',
+        importMissing: '导入缺失记录',
+        importing: '导入中...',
+        prefixLabel: '扫描前缀：',
+        nothingToImport: '没有可导入的缺失备份记录',
+        importConfirm: '确认导入 {count} 条缺失备份记录吗？',
+        importSuccess: '成功补录 {count} 条备份记录',
+        empty: '当前前缀下没有可预览的对象',
+        summary: {
+          totalObjects: '对象总数',
+          existing: '已有记录',
+          missing: '缺失记录',
+          importable: '可导入'
+        },
+        columns: {
+          status: '状态',
+          fileName: '文件名',
+          s3Key: '对象 Key',
+          size: '大小',
+          lastModified: '最后修改时间',
+          recordId: '已有记录 ID',
+          reason: '说明'
+        },
+        status: {
+          recorded: '已有记录',
+          missing: '可补录',
+          skipped: '跳过'
+        },
+        reasons: {
+          already_recorded: '该对象已有官方记录',
+          not_file_object: '该对象不是文件',
+          invalid_file_name: '文件名无效',
+          unsupported_file_type: '不是官方 PostgreSQL 备份文件（需为 .sql.gz）'
+        }
+      },
       actions: {
         download: '下载',
         restore: '恢复',

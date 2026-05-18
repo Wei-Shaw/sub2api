@@ -20,8 +20,19 @@ func NewPgDumper(cfg *config.Config) service.DBDumper {
 	return &PgDumper{cfg: &cfg.Database}
 }
 
+func requirePostgresClient(name string) error {
+	if _, err := exec.LookPath(name); err != nil {
+		return fmt.Errorf("%s not found in PATH; backup/restore requires PostgreSQL client tools in the runtime image: %w", name, err)
+	}
+	return nil
+}
+
 // Dump executes pg_dump and returns a streaming reader of the output
 func (d *PgDumper) Dump(ctx context.Context) (io.ReadCloser, error) {
+	if err := requirePostgresClient("pg_dump"); err != nil {
+		return nil, err
+	}
+
 	args := []string{
 		"-h", d.cfg.Host,
 		"-p", fmt.Sprintf("%d", d.cfg.Port),
@@ -56,11 +67,16 @@ func (d *PgDumper) Dump(ctx context.Context) (io.ReadCloser, error) {
 
 // Restore executes psql to restore from a streaming reader
 func (d *PgDumper) Restore(ctx context.Context, data io.Reader) error {
+	if err := requirePostgresClient("psql"); err != nil {
+		return err
+	}
+
 	args := []string{
 		"-h", d.cfg.Host,
 		"-p", fmt.Sprintf("%d", d.cfg.Port),
 		"-U", d.cfg.User,
 		"-d", d.cfg.DBName,
+		"-v", "ON_ERROR_STOP=1",
 		"--single-transaction",
 	}
 

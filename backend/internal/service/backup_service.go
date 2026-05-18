@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path"
 	"sort"
 	"strings"
 	"sync"
@@ -26,7 +27,8 @@ const (
 	settingKeyBackupSchedule = "backup_schedule"
 	settingKeyBackupRecords  = "backup_records"
 
-	maxBackupRecords = 100
+	defaultBackupExpireDays = 14
+	maxBackupRecords        = 0
 )
 
 var (
@@ -50,6 +52,7 @@ type DBDumper interface {
 type BackupObjectStore interface {
 	Upload(ctx context.Context, key string, body io.Reader, contentType string) (sizeBytes int64, err error)
 	Download(ctx context.Context, key string) (io.ReadCloser, error)
+	List(ctx context.Context, prefix string) ([]BackupObjectInfo, error)
 	Delete(ctx context.Context, key string) error
 	PresignURL(ctx context.Context, key string, expiry time.Duration) (string, error)
 	HeadBucket(ctx context.Context) error
@@ -101,6 +104,38 @@ type BackupRecord struct {
 	RestoreStatus string `json:"restore_status,omitempty"` // "", "running", "completed", "failed"
 	RestoreError  string `json:"restore_error,omitempty"`
 	RestoredAt    string `json:"restored_at,omitempty"`
+}
+
+type BackupObjectInfo struct {
+	Key          string `json:"key"`
+	SizeBytes    int64  `json:"size_bytes"`
+	LastModified string `json:"last_modified,omitempty"`
+}
+
+type BackupImportPreviewItem struct {
+	FileName     string `json:"file_name"`
+	S3Key        string `json:"s3_key"`
+	SizeBytes    int64  `json:"size_bytes"`
+	LastModified string `json:"last_modified,omitempty"`
+	HasRecord    bool   `json:"has_record"`
+	RecordID     string `json:"record_id,omitempty"`
+	CanImport    bool   `json:"can_import"`
+	Reason       string `json:"reason,omitempty"`
+}
+
+type BackupImportPreview struct {
+	Prefix          string                    `json:"prefix"`
+	TotalObjects    int                       `json:"total_objects"`
+	ExistingCount   int                       `json:"existing_count"`
+	MissingCount    int                       `json:"missing_count"`
+	ImportableCount int                       `json:"importable_count"`
+	Items           []BackupImportPreviewItem `json:"items"`
+}
+
+type BackupImportResult struct {
+	ImportedCount int            `json:"imported_count"`
+	SkippedCount  int            `json:"skipped_count"`
+	Items         []BackupRecord `json:"items"`
 }
 
 // BackupService 数据库备份恢复服务
@@ -178,26 +213,7 @@ func (s *BackupService) recoverStaleRecords() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	records, err := s.loadRecords(ctx)
-	if err != nil {
-		return
-	}
-	for i := range records {
-		if records[i].Status == "running" {
-			records[i].Status = "failed"
-			records[i].ErrorMsg = "interrupted by server restart"
-			records[i].Progress = ""
-			records[i].FinishedAt = time.Now().Format(time.RFC3339)
-			_ = s.saveRecord(ctx, &records[i])
-			logger.LegacyPrintf("service.backup", "[Backup] recovered stale running record: %s", records[i].ID)
-		}
-		if records[i].RestoreStatus == "running" {
-			records[i].RestoreStatus = "failed"
-			records[i].RestoreError = "interrupted by server restart"
-			_ = s.saveRecord(ctx, &records[i])
-			logger.LegacyPrintf("service.backup", "[Backup] recovered stale restoring record: %s", records[i].ID)
-		}
-	}
+	_ = s.failStaleRunningRecords(ctx, "interrupted by server restart")
 }
 
 // Stop 停止定时备份并等待活跃操作完成
@@ -393,7 +409,7 @@ func (s *BackupService) runScheduledBackup() {
 
 	// 读取定时备份配置中的过期天数
 	schedule, _ := s.GetSchedule(ctx)
-	expireDays := 14 // 默认14天过期
+	expireDays := defaultBackupExpireDays
 	if schedule != nil && schedule.RetainDays > 0 {
 		expireDays = schedule.RetainDays
 	}
@@ -758,6 +774,10 @@ func (s *BackupService) RestoreBackup(ctx context.Context, backupID string) erro
 		return fmt.Errorf("pg restore: %w", err)
 	}
 
+	if err := s.failStaleRunningRecords(ctx, "interrupted by database restore"); err != nil {
+		logger.LegacyPrintf("service.backup", "[Backup] 清理恢复后的孤立 running 记录失败: %v", err)
+	}
+
 	return nil
 }
 
@@ -865,6 +885,9 @@ func (s *BackupService) executeRestore(record *BackupRecord, objectStore BackupO
 	if err := s.saveRecord(context.Background(), record); err != nil {
 		logger.LegacyPrintf("service.backup", "[Backup] 保存恢复记录失败: %v", err)
 	}
+	if err := s.failStaleRunningRecords(context.Background(), "interrupted by database restore"); err != nil {
+		logger.LegacyPrintf("service.backup", "[Backup] 清理恢复后的孤立 running 记录失败: %v", err)
+	}
 }
 
 // ─── 备份记录管理 ───
@@ -956,6 +979,173 @@ func (s *BackupService) GetBackupDownloadURL(ctx context.Context, backupID strin
 	return url, nil
 }
 
+func (s *BackupService) PreviewImportBackups(ctx context.Context) (*BackupImportPreview, error) {
+	s3Cfg, err := s.loadS3Config(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if s3Cfg == nil || !s3Cfg.IsConfigured() {
+		return nil, ErrBackupS3NotConfigured
+	}
+
+	objectStore, err := s.getOrCreateStore(ctx, s3Cfg)
+	if err != nil {
+		return nil, fmt.Errorf("init object store: %w", err)
+	}
+
+	prefix := s.buildS3Prefix(s3Cfg)
+	objects, err := objectStore.List(ctx, prefix)
+	if err != nil {
+		return nil, fmt.Errorf("list backup objects: %w", err)
+	}
+
+	records, err := s.loadRecords(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	recordByKey := make(map[string]BackupRecord, len(records))
+	for _, record := range records {
+		if record.S3Key != "" {
+			recordByKey[record.S3Key] = record
+		}
+	}
+
+	preview := &BackupImportPreview{
+		Prefix:       prefix,
+		TotalObjects: len(objects),
+		Items:        make([]BackupImportPreviewItem, 0, len(objects)),
+	}
+
+	for _, object := range objects {
+		item := s.buildImportPreviewItem(object, recordByKey)
+		if item.HasRecord {
+			preview.ExistingCount++
+		} else {
+			preview.MissingCount++
+			if item.CanImport {
+				preview.ImportableCount++
+			}
+		}
+		preview.Items = append(preview.Items, item)
+	}
+
+	sort.Slice(preview.Items, func(i, j int) bool {
+		if preview.Items[i].LastModified == preview.Items[j].LastModified {
+			return preview.Items[i].S3Key > preview.Items[j].S3Key
+		}
+		return preview.Items[i].LastModified > preview.Items[j].LastModified
+	})
+
+	return preview, nil
+}
+
+func (s *BackupService) ImportMissingBackups(ctx context.Context) (*BackupImportResult, error) {
+	s3Cfg, err := s.loadS3Config(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if s3Cfg == nil || !s3Cfg.IsConfigured() {
+		return nil, ErrBackupS3NotConfigured
+	}
+
+	objectStore, err := s.getOrCreateStore(ctx, s3Cfg)
+	if err != nil {
+		return nil, fmt.Errorf("init object store: %w", err)
+	}
+
+	prefix := s.buildS3Prefix(s3Cfg)
+	objects, err := objectStore.List(ctx, prefix)
+	if err != nil {
+		return nil, fmt.Errorf("list backup objects: %w", err)
+	}
+
+	result := &BackupImportResult{}
+
+	s.recordsMu.Lock()
+	defer s.recordsMu.Unlock()
+
+	records, err := s.loadRecordsLocked(ctx)
+	if err != nil {
+		return nil, err
+	}
+	importExpireDays := s.loadImportExpireDays(ctx)
+
+	recordByKey := make(map[string]BackupRecord, len(records))
+	recordIndexByKey := make(map[string]int, len(records))
+	for i, record := range records {
+		if record.S3Key != "" {
+			recordByKey[record.S3Key] = record
+			recordIndexByKey[record.S3Key] = i
+		}
+	}
+
+	recordsChanged := false
+
+	for _, object := range objects {
+		if existingIndex, exists := recordIndexByKey[object.Key]; exists {
+			if importExpireDays > 0 &&
+				records[existingIndex].TriggeredBy == "imported" &&
+				strings.TrimSpace(records[existingIndex].ExpiresAt) == "" {
+				startedAt := backupObjectTimestamp(object.LastModified)
+				records[existingIndex].ExpiresAt = startedAt.AddDate(0, 0, importExpireDays).Format(time.RFC3339)
+				recordByKey[object.Key] = records[existingIndex]
+				recordsChanged = true
+			}
+			result.SkippedCount++
+			continue
+		}
+
+		fileName, reason := classifyImportableBackupObject(object)
+		if reason != "" {
+			result.SkippedCount++
+			continue
+		}
+
+		startedAt := backupObjectTimestamp(object.LastModified)
+		expiresAt := ""
+		if importExpireDays > 0 {
+			expiresAt = startedAt.AddDate(0, 0, importExpireDays).Format(time.RFC3339)
+		}
+
+		record := BackupRecord{
+			ID:          uuid.New().String()[:8],
+			Status:      "completed",
+			BackupType:  "postgres",
+			FileName:    fileName,
+			S3Key:       object.Key,
+			SizeBytes:   object.SizeBytes,
+			TriggeredBy: "imported",
+			StartedAt:   startedAt.Format(time.RFC3339),
+			FinishedAt:  startedAt.Format(time.RFC3339),
+			ExpiresAt:   expiresAt,
+		}
+
+		records = append(records, record)
+		recordByKey[object.Key] = record
+		result.Items = append(result.Items, record)
+		result.ImportedCount++
+	}
+
+	if len(result.Items) == 0 && !recordsChanged {
+		return result, nil
+	}
+
+	records = trimBackupRecords(records)
+	if err := s.saveRecordsLocked(ctx, records); err != nil {
+		return nil, err
+	}
+
+	sort.Slice(result.Items, func(i, j int) bool {
+		if result.Items[i].StartedAt == result.Items[j].StartedAt {
+			return result.Items[i].S3Key > result.Items[j].S3Key
+		}
+		return result.Items[i].StartedAt > result.Items[j].StartedAt
+	})
+
+	return result, nil
+}
+
 // ─── 内部方法 ───
 
 func (s *BackupService) loadS3Config(ctx context.Context) (*BackupS3Config, error) {
@@ -1002,11 +1192,32 @@ func (s *BackupService) getOrCreateStore(ctx context.Context, cfg *BackupS3Confi
 }
 
 func (s *BackupService) buildS3Key(cfg *BackupS3Config, fileName string) string {
-	prefix := strings.TrimRight(cfg.Prefix, "/")
+	return fmt.Sprintf("%s%s/%s", s.buildS3Prefix(cfg), time.Now().Format("2006/01/02"), fileName)
+}
+
+func (s *BackupService) buildS3Prefix(cfg *BackupS3Config) string {
+	prefix := "backups"
+	if cfg != nil {
+		prefix = strings.Trim(cfg.Prefix, "/")
+	}
 	if prefix == "" {
 		prefix = "backups"
 	}
-	return fmt.Sprintf("%s/%s/%s", prefix, time.Now().Format("2006/01/02"), fileName)
+	return prefix + "/"
+}
+
+func (s *BackupService) loadImportExpireDays(ctx context.Context) int {
+	raw, err := s.settingRepo.GetValue(ctx, settingKeyBackupSchedule)
+	if err != nil || strings.TrimSpace(raw) == "" {
+		return defaultBackupExpireDays
+	}
+
+	var cfg BackupScheduleConfig
+	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
+		return defaultBackupExpireDays
+	}
+
+	return cfg.RetainDays
 }
 
 // loadRecords 加载备份记录，区分"无数据"和"数据损坏"
@@ -1058,9 +1269,42 @@ func (s *BackupService) saveRecord(ctx context.Context, record *BackupRecord) er
 		records = append(records, *record)
 	}
 
-	// 限制记录数量
-	if len(records) > maxBackupRecords {
-		records = records[len(records)-maxBackupRecords:]
+	records = trimBackupRecords(records)
+
+	return s.saveRecordsLocked(ctx, records)
+}
+
+func (s *BackupService) failStaleRunningRecords(ctx context.Context, reason string) error {
+	s.recordsMu.Lock()
+	defer s.recordsMu.Unlock()
+
+	records, err := s.loadRecordsLocked(ctx)
+	if err != nil {
+		return err
+	}
+
+	now := time.Now().Format(time.RFC3339)
+	changed := false
+	for i := range records {
+		if records[i].Status == "running" {
+			records[i].Status = "failed"
+			records[i].ErrorMsg = reason
+			records[i].Progress = ""
+			if records[i].FinishedAt == "" {
+				records[i].FinishedAt = now
+			}
+			changed = true
+			logger.LegacyPrintf("service.backup", "[Backup] recovered stale running record: %s", records[i].ID)
+		}
+		if records[i].RestoreStatus == "running" {
+			records[i].RestoreStatus = "failed"
+			records[i].RestoreError = reason
+			changed = true
+			logger.LegacyPrintf("service.backup", "[Backup] recovered stale restoring record: %s", records[i].ID)
+		}
+	}
+	if !changed {
+		return nil
 	}
 
 	return s.saveRecordsLocked(ctx, records)
@@ -1088,6 +1332,11 @@ func (s *BackupService) cleanupOldBackups(ctx context.Context, schedule *BackupS
 	var toKeep []BackupRecord
 
 	for i, r := range records {
+		if r.TriggeredBy == "imported" {
+			toKeep = append(toKeep, r)
+			continue
+		}
+
 		shouldDelete := false
 
 		// 按保留份数清理
@@ -1134,4 +1383,82 @@ func (s *BackupService) deleteS3Object(ctx context.Context, key string) error {
 		return err
 	}
 	return objectStore.Delete(ctx, key)
+}
+
+func (s *BackupService) buildImportPreviewItem(object BackupObjectInfo, recordByKey map[string]BackupRecord) BackupImportPreviewItem {
+	item := BackupImportPreviewItem{
+		S3Key:        object.Key,
+		SizeBytes:    object.SizeBytes,
+		LastModified: object.LastModified,
+	}
+
+	if record, exists := recordByKey[object.Key]; exists {
+		item.HasRecord = true
+		item.RecordID = record.ID
+		item.FileName = record.FileName
+		if item.FileName == "" {
+			item.FileName = path.Base(object.Key)
+		}
+		item.Reason = "already_recorded"
+		return item
+	}
+
+	fileName, reason := classifyImportableBackupObject(object)
+	if reason == "" {
+		item.FileName = fileName
+		item.CanImport = true
+		return item
+	}
+
+	item.Reason = reason
+	return item
+}
+
+func classifyImportableBackupObject(object BackupObjectInfo) (string, string) {
+	key := strings.TrimSpace(object.Key)
+	if key == "" || strings.HasSuffix(key, "/") {
+		return "", "not_file_object"
+	}
+
+	fileName := path.Base(key)
+	if fileName == "" || fileName == "." || fileName == "/" {
+		return "", "invalid_file_name"
+	}
+
+	if !strings.HasSuffix(strings.ToLower(fileName), ".sql.gz") {
+		return fileName, "unsupported_file_type"
+	}
+
+	return fileName, ""
+}
+
+func backupObjectTimestamp(lastModified string) time.Time {
+	if strings.TrimSpace(lastModified) == "" {
+		return time.Now()
+	}
+
+	ts, err := time.Parse(time.RFC3339, lastModified)
+	if err != nil {
+		return time.Now()
+	}
+	return ts
+}
+
+func trimBackupRecords(records []BackupRecord) []BackupRecord {
+	if maxBackupRecords <= 0 {
+		return records
+	}
+
+	if len(records) <= maxBackupRecords {
+		return records
+	}
+
+	sort.SliceStable(records, func(i, j int) bool {
+		if records[i].StartedAt == records[j].StartedAt {
+			return records[i].ID < records[j].ID
+		}
+		return records[i].StartedAt < records[j].StartedAt
+	})
+
+	return records[len(records)-maxBackupRecords:]
 }
