@@ -64,5 +64,17 @@ declare module 'vue-router' {
      * i18n key for the page description
      */
     descriptionKey?: string
+
+    /**
+     * Key into shared/seo/seo.json used by SEO head injection.
+     * If unset, the route path is used.
+     */
+    seoKey?: string
+
+    /**
+     * Whether the route should appear in sitemap.xml / robots Allow list.
+     * Pages with sensitive content should set this to false.
+     */
+    indexable?: boolean
   }
 }

@@ -153,6 +153,17 @@ const routes: RouteRecordRaw[] = [
       title: 'Legal Document'
     }
   },
+  {
+    path: '/faq',
+    name: 'Faq',
+    component: () => import('@/views/public/FaqView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'FAQ',
+      seoKey: '/faq',
+      indexable: true
+    }
+  },
 
   // ==================== User Routes ====================
   {
