@@ -5053,7 +5053,7 @@ export default {
         switchRateTrend: 'Trend of account switches / total requests over the last 5 hours (avg switches).',
         latencyHistogram: 'Request duration distribution (ms) for successful requests.',
         errorTrend: 'Error counts over time (SLA scope excludes business limits; upstream excludes 429/529).',
-        errorDistribution: 'Error distribution by status code.',
+        errorDistribution: 'Error distribution by status code (SLA scope, excluding business limits).',
         goroutines:
           'Number of Go runtime goroutines (lightweight threads). There is no absolute "safe" number—use your historical baseline. Heuristic: <2k is common; 2k–8k watch; >8k plus rising queue/latency often suggests blocking/leaks.',
         cpu: 'CPU usage percentage, showing system processor load.',
