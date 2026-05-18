@@ -224,6 +224,10 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 		testModelID = account.GetMappedModel(testModelID)
 	}
 
+	if account.IsClaudePlatformAWS() {
+		return s.testClaudePlatformAWSAccountConnection(c, ctx, account, testModelID)
+	}
+
 	// Bedrock accounts use a separate test path
 	if account.IsBedrock() {
 		return s.testBedrockAccountConnection(c, ctx, account, testModelID)
@@ -405,6 +409,92 @@ func (s *AccountTestService) testClaudeVertexServiceAccountConnection(c *gin.Con
 	}
 
 	return s.processClaudeStream(c, resp.Body)
+}
+
+// testClaudePlatformAWSAccountConnection tests Claude Platform on AWS with the
+// native Anthropic Messages API shape.
+func (s *AccountTestService) testClaudePlatformAWSAccountConnection(c *gin.Context, ctx context.Context, account *Account, testModelID string) error {
+	if claudePlatformAWSWorkspaceID(account) == "" {
+		return s.sendErrorAndEnd(c, "workspace_id not configured")
+	}
+	apiKey := account.GetCredential("api_key")
+	if apiKey == "" {
+		return s.sendErrorAndEnd(c, "No API key available")
+	}
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+
+	testModelID = account.GetMappedModel(testModelID)
+	payload := map[string]any{
+		"model": testModelID,
+		"messages": []map[string]any{
+			{
+				"role": "user",
+				"content": []map[string]any{
+					{
+						"type": "text",
+						"text": "hi",
+					},
+				},
+			},
+		},
+		"max_tokens":  256,
+		"temperature": 1,
+	}
+	body, _ := json.Marshal(payload)
+
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
+
+	apiURL := BuildClaudePlatformAWSMessagesURL(claudePlatformAWSRegion(account))
+	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(body))
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create request")
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("anthropic-version", "2023-06-01")
+	req.Header.Set("anthropic-workspace-id", claudePlatformAWSWorkspaceID(account))
+	req.Header.Set("x-api-key", apiKey)
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+
+	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, _ = io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
+	}
+
+	var result struct {
+		Content []struct {
+			Text string `json:"text"`
+		} `json:"content"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to parse response: %s", err.Error()))
+	}
+
+	text := ""
+	if len(result.Content) > 0 {
+		text = result.Content[0].Text
+	}
+	if text == "" {
+		text = "(empty response)"
+	}
+
+	s.sendEvent(c, TestEvent{Type: "content", Text: text})
+	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+	return nil
 }
 
 // testBedrockAccountConnection tests a Bedrock (SigV4 or API Key) account using non-streaming invoke

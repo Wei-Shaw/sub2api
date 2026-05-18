@@ -369,6 +369,71 @@
             >
           </div>
         </div>
+
+        <!--
+          Resources / deep-dive section.
+          Renders the static-HTML deep pages so SPA users can reach them and
+          search/AI crawlers see internal links from the SPA-rendered DOM.
+          Locale-aware: Chinese users get Chinese static pages, English users
+          get the richer English cluster. The hidden <nav> at the end exposes
+          the *other* language's URLs to crawlers regardless of UI locale.
+        -->
+        <section class="mb-16" aria-labelledby="resources-heading">
+          <div class="mb-8 text-center">
+            <h2
+              id="resources-heading"
+              class="mb-3 text-2xl font-bold text-gray-900 dark:text-white"
+            >
+              {{ t('home.resources.title') }}
+            </h2>
+            <p class="mx-auto max-w-2xl text-sm text-gray-600 dark:text-dark-400">
+              {{ t('home.resources.subtitle') }}
+            </p>
+          </div>
+
+          <div class="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <div
+              v-for="group in resourceGroups"
+              :key="group.title"
+              class="rounded-2xl border border-gray-200/50 bg-white/60 p-6 backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/60"
+            >
+              <h3 class="mb-3 text-base font-semibold text-gray-900 dark:text-white">
+                {{ group.title }}
+              </h3>
+              <ul class="space-y-2">
+                <li v-for="link in group.links" :key="link.href">
+                  <a
+                    :href="link.href"
+                    :hreflang="link.hreflang"
+                    :rel="link.rel"
+                    class="text-sm text-primary-600 transition-colors hover:text-primary-700 hover:underline dark:text-primary-400 dark:hover:text-primary-300"
+                  >
+                    {{ link.label }}
+                  </a>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <!--
+            Crawler fallback: expose the alternate-language deep pages too,
+            so a single SPA render exposes both clusters' internal links
+            even though the visible UI only shows the active locale.
+          -->
+          <nav
+            class="sr-only"
+            :aria-label="t('home.resources.languageSwitchTitle')"
+          >
+            <h3>{{ t('home.resources.languageSwitchTitle') }}</h3>
+            <ul>
+              <li v-for="link in alternateLocaleLinks" :key="link.href">
+                <a :href="link.href" :hreflang="link.hreflang" rel="alternate">
+                  {{ link.label }}
+                </a>
+              </li>
+            </ul>
+          </nav>
+        </section>
       </div>
     </main>
 
@@ -411,7 +476,227 @@ import { useAuthStore, useAppStore } from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
+
+/**
+ * Whether the active UI locale is English.
+ * Anything that isn't an explicit Chinese variant is treated as English so the
+ * richer `/en/*` static cluster gets exposed by default.
+ */
+const isEnglishLocale = computed(() => !String(locale.value).toLowerCase().startsWith('zh'))
+
+interface ResourceLink {
+  label: string
+  href: string
+  hreflang?: string
+  rel?: string
+}
+
+interface ResourceGroup {
+  title: string
+  links: ResourceLink[]
+}
+
+/**
+ * Locale-aware deep-link groups.
+ * Chinese users see the (smaller) Chinese static cluster; English (and any
+ * non-Chinese) users see the full English cluster which is currently the
+ * highest-quality SEO/GEO surface.
+ */
+const resourceGroups = computed<ResourceGroup[]>(() => {
+  if (isEnglishLocale.value) {
+    return [
+      {
+        title: t('home.resources.compareTitle'),
+        links: [
+          {
+            label: t('home.resources.compareItems.claudeVsChatgpt'),
+            href: '/en/compare/claude-vs-chatgpt-api.html',
+            hreflang: 'en'
+          },
+          {
+            label: t('home.resources.compareItems.claudeCodeVsSubscription'),
+            href: '/en/compare/claude-code-relay-vs-subscription.html',
+            hreflang: 'en'
+          },
+          {
+            label: t('home.resources.compareItems.tokenproviderVsOfficial'),
+            href: '/en/compare/tokenprovider-vs-official-claude.html',
+            hreflang: 'en'
+          }
+        ]
+      },
+      {
+        title: t('home.resources.guidesTitle'),
+        links: [
+          {
+            label: t('home.resources.guidesItems.claudeCodeSetup'),
+            href: '/en/guides/claude-code-setup.html',
+            hreflang: 'en'
+          },
+          {
+            label: t('home.resources.guidesItems.cursorClaudeProxy'),
+            href: '/en/guides/cursor-claude-proxy.html',
+            hreflang: 'en'
+          },
+          {
+            label: t('home.resources.guidesItems.clineCheapClaude'),
+            href: '/en/guides/cline-cheap-claude.html',
+            hreflang: 'en'
+          }
+        ]
+      },
+      {
+        title: t('home.resources.glossaryTitle'),
+        links: [
+          {
+            label: t('home.resources.glossaryItems.whatIsClaudeRelay'),
+            href: '/en/glossary/what-is-claude-relay.html',
+            hreflang: 'en'
+          },
+          {
+            label: t('home.resources.glossaryItems.whatIsClaudeCode'),
+            href: '/en/glossary/what-is-claude-code.html',
+            hreflang: 'en'
+          },
+          {
+            label: t('home.resources.glossaryItems.whatIsAnAiToken'),
+            href: '/en/glossary/what-is-an-ai-token.html',
+            hreflang: 'en'
+          }
+        ]
+      },
+      {
+        title: t('home.resources.examplesTitle'),
+        links: [
+          {
+            label: t('home.resources.examplesItems.claudeApiPython'),
+            href: '/en/examples/claude-api-python.html',
+            hreflang: 'en'
+          },
+          {
+            label: t('home.resources.examplesItems.claudeApiNodejs'),
+            href: '/en/examples/claude-api-nodejs.html',
+            hreflang: 'en'
+          },
+          {
+            label: t('home.resources.examplesItems.chatgptApiCurl'),
+            href: '/en/examples/chatgpt-api-curl.html',
+            hreflang: 'en'
+          },
+          {
+            label: t('home.resources.examplesItems.geminiApiExample'),
+            href: '/en/examples/gemini-api-example.html',
+            hreflang: 'en'
+          }
+        ]
+      },
+      {
+        title: t('home.resources.trustTitle'),
+        links: [
+          {
+            label: t('home.resources.trustItems.trust'),
+            href: '/trust.html',
+            hreflang: 'en'
+          },
+          {
+            label: t('home.resources.trustItems.productHub'),
+            href: '/en.html',
+            hreflang: 'en'
+          }
+        ]
+      }
+    ]
+  }
+
+  // Chinese cluster (one canonical page per category today).
+  return [
+    {
+      title: t('home.resources.compareTitle'),
+      links: [
+        {
+          label: t('home.resources.compareItems.claudeVsChatgpt'),
+          href: '/compare/claude-vs-chatgpt-api.html',
+          hreflang: 'zh-CN'
+        }
+      ]
+    },
+    {
+      title: t('home.resources.guidesTitle'),
+      links: [
+        {
+          label: t('home.resources.guidesItems.claudeCodeSetup'),
+          href: '/guides/claude-code-setup.html',
+          hreflang: 'zh-CN'
+        }
+      ]
+    },
+    {
+      title: t('home.resources.glossaryTitle'),
+      links: [
+        {
+          label: t('home.resources.glossaryItems.whatIsClaudeRelay'),
+          href: '/glossary/what-is-claude-relay.html',
+          hreflang: 'zh-CN'
+        }
+      ]
+    },
+    {
+      title: t('home.resources.examplesTitle'),
+      links: [
+        {
+          label: t('home.resources.examplesItems.claudeApiPython'),
+          href: '/examples/claude-api-python.html',
+          hreflang: 'zh-CN'
+        }
+      ]
+    },
+    {
+      title: t('home.resources.trustTitle'),
+      links: [
+        {
+          label: t('home.resources.trustItems.xinyong'),
+          href: '/xinyong.html',
+          hreflang: 'zh-CN'
+        }
+      ]
+    }
+  ]
+})
+
+/**
+ * Hidden alternate-locale link list. Lets crawlers discover the *other*
+ * language's static pages in a single SPA render, even though the visible
+ * UI only shows the active locale's cluster.
+ */
+const alternateLocaleLinks = computed<ResourceLink[]>(() => {
+  if (isEnglishLocale.value) {
+    return [
+      {
+        label: t('home.resources.languageSwitchItems.chinese'),
+        href: '/',
+        hreflang: 'zh-CN'
+      },
+      { label: '中文 · 对比', href: '/compare/claude-vs-chatgpt-api.html', hreflang: 'zh-CN' },
+      { label: '中文 · 教程', href: '/guides/claude-code-setup.html', hreflang: 'zh-CN' },
+      { label: '中文 · 术语', href: '/glossary/what-is-claude-relay.html', hreflang: 'zh-CN' },
+      { label: '中文 · 示例', href: '/examples/claude-api-python.html', hreflang: 'zh-CN' },
+      { label: '中文 · 信任', href: '/xinyong.html', hreflang: 'zh-CN' }
+    ]
+  }
+  return [
+    {
+      label: t('home.resources.languageSwitchItems.english'),
+      href: '/en.html',
+      hreflang: 'en'
+    },
+    { label: 'EN · Compare', href: '/en/compare/claude-vs-chatgpt-api.html', hreflang: 'en' },
+    { label: 'EN · Guide', href: '/en/guides/claude-code-setup.html', hreflang: 'en' },
+    { label: 'EN · Glossary', href: '/en/glossary/what-is-claude-relay.html', hreflang: 'en' },
+    { label: 'EN · Example', href: '/en/examples/claude-api-python.html', hreflang: 'en' },
+    { label: 'EN · Trust', href: '/trust.html', hreflang: 'en' }
+  ]
+})
 
 const authStore = useAuthStore()
 const appStore = useAppStore()

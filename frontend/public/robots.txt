@@ -2,6 +2,13 @@
 User-agent: *
 Allow: /
 Allow: /en.html
+Allow: /trust.html
+Allow: /xinyong.html
+Allow: /en/
+Allow: /guides/
+Allow: /glossary/
+Allow: /compare/
+Allow: /examples/
 Allow: /login
 Allow: /register
 Allow: /home
@@ -40,6 +47,11 @@ Allow: /
 Allow: /en.html
 Allow: /trust.html
 Allow: /xinyong.html
+Allow: /en/
+Allow: /guides/
+Allow: /glossary/
+Allow: /compare/
+Allow: /examples/
 Disallow: /admin/
 Disallow: /dashboard
 Disallow: /keys

@@ -785,7 +785,7 @@
       <!-- Bedrock fields (for bedrock type, both SigV4 and API Key modes) -->
       <div v-if="account.type === 'bedrock'" class="space-y-4">
         <!-- SigV4 fields -->
-        <template v-if="!isBedrockAPIKeyMode">
+        <template v-if="!isBedrockAPIKeyMode && !isClaudePlatformAWSMode">
           <div>
             <label class="input-label">{{ t('admin.accounts.bedrockAccessKeyId') }}</label>
             <input
@@ -818,7 +818,7 @@
         </template>
 
         <!-- API Key field -->
-        <div v-if="isBedrockAPIKeyMode">
+        <div v-if="isBedrockAPIKeyMode || isClaudePlatformAWSMode">
           <label class="input-label">{{ t('admin.accounts.bedrockApiKeyInput') }}</label>
           <input
             v-model="editBedrockApiKeyValue"
@@ -827,6 +827,16 @@
             :placeholder="t('admin.accounts.bedrockApiKeyLeaveEmpty')"
           />
           <p class="input-hint">{{ t('admin.accounts.bedrockApiKeyLeaveEmpty') }}</p>
+        </div>
+        <div v-if="isClaudePlatformAWSMode">
+          <label class="input-label">{{ t('admin.accounts.claudePlatformAWSWorkspaceId') }}</label>
+          <input
+            v-model="editBedrockWorkspaceId"
+            type="text"
+            class="input font-mono"
+            placeholder="wrkspc_..."
+          />
+          <p class="input-hint">{{ t('admin.accounts.claudePlatformAWSWorkspaceIdHint') }}</p>
         </div>
 
         <!-- Shared: Region -->
@@ -909,7 +919,7 @@
               + {{ t('admin.accounts.addMapping') }}
             </button>
             <!-- Bedrock Preset Mappings -->
-            <div class="flex flex-wrap gap-2">
+            <div v-if="!isClaudePlatformAWSMode" class="flex flex-wrap gap-2">
               <button
                 v-for="preset in bedrockPresets"
                 :key="preset.from"
@@ -2419,9 +2429,14 @@ const editBedrockSessionToken = ref('')
 const editBedrockRegion = ref('')
 const editBedrockForceGlobal = ref(false)
 const editBedrockApiKeyValue = ref('')
+const editBedrockWorkspaceId = ref('')
 const isBedrockAPIKeyMode = computed(() =>
   props.account?.type === 'bedrock' &&
   (props.account?.credentials as Record<string, unknown>)?.auth_mode === 'apikey'
+)
+const isClaudePlatformAWSMode = computed(() =>
+  props.account?.type === 'bedrock' &&
+  (props.account?.credentials as Record<string, unknown>)?.auth_mode === 'claude_platform_aws'
 )
 // Vertex AI: legacy `vertex` uses gcp_project_id/gcp_region + gcp_service_account_json;
 // `service_account` uses project_id/location/client_email + service_account_json.
@@ -2917,8 +2932,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     const authMode = (bedrockCreds.auth_mode as string) || 'sigv4'
     editBedrockRegion.value = (bedrockCreds.aws_region as string) || ''
     editBedrockForceGlobal.value = (bedrockCreds.aws_force_global as string) === 'true'
+    editBedrockWorkspaceId.value = (bedrockCreds.workspace_id as string) || ''
 
-    if (authMode === 'apikey') {
+    if (authMode === 'apikey' || authMode === 'claude_platform_aws') {
       editBedrockApiKeyValue.value = ''
     } else {
       editBedrockAccessKeyId.value = (bedrockCreds.aws_access_key_id as string) || ''
@@ -3660,16 +3676,25 @@ const handleSubmit = async () => {
       const newCredentials: Record<string, unknown> = { ...currentCredentials }
 
       newCredentials.aws_region = editBedrockRegion.value.trim()
-      if (editBedrockForceGlobal.value) {
+      if (isClaudePlatformAWSMode.value) {
+        delete newCredentials.aws_force_global
+      } else if (editBedrockForceGlobal.value) {
         newCredentials.aws_force_global = 'true'
       } else {
         delete newCredentials.aws_force_global
       }
 
-      if (isBedrockAPIKeyMode.value) {
+      if (isBedrockAPIKeyMode.value || isClaudePlatformAWSMode.value) {
         // API Key mode: only update api_key if user provided new value
         if (editBedrockApiKeyValue.value.trim()) {
           newCredentials.api_key = editBedrockApiKeyValue.value.trim()
+        }
+        if (isClaudePlatformAWSMode.value) {
+          if (!editBedrockWorkspaceId.value.trim()) {
+            appStore.showError(t('admin.accounts.claudePlatformAWSWorkspaceIdRequired'))
+            return
+          }
+          newCredentials.workspace_id = editBedrockWorkspaceId.value.trim()
         }
       } else {
         // SigV4 mode

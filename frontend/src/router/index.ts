@@ -40,6 +40,29 @@ const routes: RouteRecordRaw[] = [
     path: '/home',
     redirect: '/'
   },
+  // Locale-forced home aliases.
+  // Crawler-visible URLs that pin the SPA UI locale regardless of browser
+  // Accept-Language. Bridges static /en.html → SPA English experience.
+  {
+    path: '/en',
+    name: 'HomeEn',
+    component: () => import('@/views/HomeView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'TokenProvider — Cheap Claude / ChatGPT API gateway',
+      forceLocale: 'en'
+    }
+  },
+  {
+    path: '/zh',
+    name: 'HomeZh',
+    component: () => import('@/views/HomeView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Claude / Claude Code / ChatGPT 中转站',
+      forceLocale: 'zh'
+    }
+  },
   {
     path: '/login',
     name: 'Login',
@@ -676,7 +699,8 @@ let authInitialized = false
 const navigationLoading = useNavigationLoadingState()
 // 延迟初始化预加载，传入 router 实例
 let routePrefetch: ReturnType<typeof useRoutePrefetch> | null = null
-const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/setup', '/payment/result', '/legal']
+const BACKEND_MODE_EXACT_PATHS = ['/', '/home', '/en', '/zh', '/login']
+const BACKEND_MODE_PREFIX_PATHS = ['/key-usage', '/setup', '/payment/result', '/legal']
 const BACKEND_MODE_CALLBACK_PATHS = [
   '/auth/callback',
   '/auth/linuxdo/callback',
@@ -687,7 +711,11 @@ const BACKEND_MODE_CALLBACK_PATHS = [
 const BACKEND_MODE_PENDING_AUTH_PATHS = ['/register', '/email-verify']
 
 function isBackendModePublicRouteAllowed(path: string, hasPendingAuthSession: boolean): boolean {
-  if (BACKEND_MODE_ALLOWED_PATHS.some((allowedPath) => path === allowedPath || path.startsWith(allowedPath))) {
+  if (BACKEND_MODE_EXACT_PATHS.includes(path)) {
+    return true
+  }
+
+  if (BACKEND_MODE_PREFIX_PATHS.some((allowedPath) => path === allowedPath || path.startsWith(`${allowedPath}/`))) {
     return true
   }
 
@@ -705,6 +733,18 @@ function isBackendModePublicRouteAllowed(path: string, hasPendingAuthSession: bo
 router.beforeEach((to, _from, next) => {
   // 开始导航加载状态
   navigationLoading.startNavigation()
+
+  // Honor explicit locale-forcing routes (e.g. /en, /zh).
+  // Fired & forgotten — setLocale is async but the guard does not need to await it,
+  // and HomeView will reactively re-render when the locale message bundle is ready.
+  const forceLocale = to.meta.forceLocale as string | undefined
+  if (forceLocale) {
+    void import('@/i18n').then(({ setLocale, getLocale }) => {
+      if (getLocale() !== forceLocale) {
+        void setLocale(forceLocale)
+      }
+    })
+  }
 
   const authStore = useAuthStore()
 

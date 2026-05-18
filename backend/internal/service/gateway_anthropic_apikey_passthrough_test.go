@@ -47,6 +47,24 @@ func newAnthropicAPIKeyAccountForTest() *Account {
 	}
 }
 
+func newClaudePlatformAWSAccountForTest() *Account {
+	return &Account{
+		ID:          202,
+		Name:        "claude-platform-aws-test",
+		Platform:    PlatformAnthropic,
+		Type:        AccountTypeBedrock,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"auth_mode":    "claude_platform_aws",
+			"api_key":      "aws-external-anthropic-api-key-test",
+			"workspace_id": "wrkspc_test123",
+			"aws_region":   "ap-northeast-1",
+		},
+		Status:      StatusActive,
+		Schedulable: true,
+	}
+}
+
 func (u *anthropicHTTPUpstreamRecorder) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
 	u.lastReq = req
 	if req != nil && req.Body != nil {
@@ -63,6 +81,86 @@ func (u *anthropicHTTPUpstreamRecorder) Do(req *http.Request, proxyURL string, a
 
 func (u *anthropicHTTPUpstreamRecorder) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile) (*http.Response, error) {
 	return u.Do(req, proxyURL, accountID, accountConcurrency)
+}
+
+func TestGatewayService_ClaudePlatformAWS_ForwardUsesNativeAnthropicEndpoint(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	c.Request.Header.Set("Authorization", "Bearer inbound-token")
+	c.Request.Header.Set("Anthropic-Beta", "interleaved-thinking-2025-05-14")
+
+	body := []byte(`{"model":"claude-sonnet-4-6","stream":false,"messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]}`)
+	parsed := &ParsedRequest{
+		Body:   body,
+		Model:  "claude-sonnet-4-6",
+		Stream: false,
+	}
+
+	upstream := &anthropicHTTPUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"application/json"},
+				"x-request-id": []string{"rid-aws-platform"},
+			},
+			Body: io.NopCloser(strings.NewReader(`{"content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":1,"output_tokens":1}}`)),
+		},
+	}
+	svc := &GatewayService{
+		cfg:              &config.Config{},
+		httpUpstream:     upstream,
+		rateLimitService: &RateLimitService{},
+		deferredService:  &DeferredService{},
+	}
+
+	result, err := svc.Forward(context.Background(), c, newClaudePlatformAWSAccountForTest(), parsed)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "https://aws-external-anthropic.ap-northeast-1.api.aws/v1/messages?beta=true", upstream.lastReq.URL.String())
+	require.Equal(t, "aws-external-anthropic-api-key-test", getHeaderRaw(upstream.lastReq.Header, "x-api-key"))
+	require.Equal(t, "wrkspc_test123", getHeaderRaw(upstream.lastReq.Header, "anthropic-workspace-id"))
+	require.Equal(t, "interleaved-thinking-2025-05-14", getHeaderRaw(upstream.lastReq.Header, "anthropic-beta"))
+	require.Empty(t, getHeaderRaw(upstream.lastReq.Header, "authorization"))
+	require.Equal(t, "claude-sonnet-4-6", gjson.GetBytes(upstream.lastBody, "model").String())
+}
+
+func TestGatewayService_ClaudePlatformAWS_ForwardCountTokensUsesWorkspaceHeader(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", nil)
+	c.Request.Header.Set("X-Api-Key", "inbound-api-key")
+
+	body := []byte(`{"model":"claude-haiku-4-5","messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]}`)
+	parsed := &ParsedRequest{
+		Body:  body,
+		Model: "claude-haiku-4-5",
+	}
+
+	upstream := &anthropicHTTPUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"input_tokens":42}`)),
+		},
+	}
+	svc := &GatewayService{
+		cfg:              &config.Config{},
+		httpUpstream:     upstream,
+		rateLimitService: &RateLimitService{},
+	}
+
+	err := svc.ForwardCountTokens(context.Background(), c, newClaudePlatformAWSAccountForTest(), parsed)
+	require.NoError(t, err)
+	require.Equal(t, "https://aws-external-anthropic.ap-northeast-1.api.aws/v1/messages/count_tokens?beta=true", upstream.lastReq.URL.String())
+	require.Equal(t, "aws-external-anthropic-api-key-test", getHeaderRaw(upstream.lastReq.Header, "x-api-key"))
+	require.Equal(t, "wrkspc_test123", getHeaderRaw(upstream.lastReq.Header, "anthropic-workspace-id"))
+	require.Empty(t, getHeaderRaw(upstream.lastReq.Header, "authorization"))
+	require.Equal(t, http.StatusOK, rec.Code)
 }
 
 type streamReadCloser struct {

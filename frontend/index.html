@@ -92,7 +92,8 @@
             "OpenAI-compatible proxy"
           ],
           "sameAs": [
-            "https://t.me/tokenprovider_official"
+            "https://t.me/tokenprovider_official",
+            "https://github.com/Wei-Shaw/sub2api"
           ],
           "contactPoint": {
             "@type": "ContactPoint",
@@ -310,6 +311,64 @@
             <li><a href="/en.html" hreflang="en" rel="alternate">English version</a></li>
           </ul>
         </nav>
+
+        <!--
+          English mirror block.
+          Crawlers that fetch `/` (root) need at least a comparable English
+          summary to compete with `/en.html` on English search queries.
+          The block is nested under <section lang="en"> so language detection
+          stays correct even though the outer document is lang="zh-CN".
+          Visible to crawlers and screen readers; hidden visually before
+          the SPA mounts via the existing #app opacity rule.
+        -->
+        <section lang="en" aria-label="English summary">
+          <p><strong>TL;DR (English):</strong> TokenProvider is a third-party AI API gateway. Use one OpenAI-compatible Base URL and key to call Claude, Claude Code, ChatGPT, and Gemini. Pay-as-you-go per token; rates and minimum top-up are visible in the dashboard after sign-up. Not affiliated with Anthropic, OpenAI, or Google.</p>
+
+          <h2>Cheap Claude API, Claude Code, ChatGPT &amp; Gemini — one gateway</h2>
+          <p>
+            TokenProvider routes your requests to upstream official models through a unified
+            <strong>OpenAI-compatible</strong> endpoint. Pay only for the tokens you use, see
+            real-time billing in the dashboard, and switch between Claude / Claude Code / ChatGPT
+            / Gemini without juggling multiple subscriptions.
+          </p>
+
+          <h2>Why developers pick TokenProvider</h2>
+          <ul>
+            <li><strong>One key, many models:</strong> Claude, Claude Code, ChatGPT, Gemini through a single OpenAI-compatible Base URL.</li>
+            <li><strong>Pay-as-you-go:</strong> Pre-fund a balance; per-request token billing; live rates in the dashboard.</li>
+            <li><strong>Sticky sessions:</strong> Long-context flows (Claude Code, agentic workflows) stay on a consistent upstream account.</li>
+            <li><strong>Static, citation-friendly docs:</strong> Comparisons, guides, and code examples published as plain HTML for easy indexing.</li>
+          </ul>
+
+          <h2>FAQ (English)</h2>
+          <h3>Is TokenProvider an official Anthropic / OpenAI / Google product?</h3>
+          <p>No. TokenProvider is an independent third-party API gateway. It forwards requests to the official upstream APIs and aggregates billing, routing, and authentication.</p>
+          <h3>How does pricing work?</h3>
+          <p>Pre-purchased balance, deducted per request based on input/output tokens reported by the upstream model. The current per-token rate, minimum top-up, and currency are shown in the dashboard after registration.</p>
+          <h3>Does it work with Claude Code?</h3>
+          <p>Yes. Set <code>ANTHROPIC_BASE_URL</code> to TokenProvider and use a TokenProvider key as <code>ANTHROPIC_API_KEY</code>. See the <a href="/en/guides/claude-code-setup.html" hreflang="en">5-minute Claude Code guide</a>.</p>
+
+          <nav aria-label="English deep-dive pages" class="seo-related">
+            <h2>English deep dives</h2>
+            <ul>
+              <li><a href="/en.html" hreflang="en" rel="alternate">Full English product page</a> — landing &amp; FAQ</li>
+              <li><a href="/en/compare/claude-vs-chatgpt-api.html" hreflang="en">Claude API vs ChatGPT API</a> — pricing &amp; coding</li>
+              <li><a href="/en/compare/claude-code-relay-vs-subscription.html" hreflang="en">Claude Code: relay vs subscription</a></li>
+              <li><a href="/en/compare/tokenprovider-vs-official-claude.html" hreflang="en">TokenProvider vs official Claude API</a></li>
+              <li><a href="/en/guides/claude-code-setup.html" hreflang="en">Claude Code setup (ANTHROPIC_BASE_URL)</a></li>
+              <li><a href="/en/guides/cursor-claude-proxy.html" hreflang="en">Cursor + Claude proxy</a></li>
+              <li><a href="/en/guides/cline-cheap-claude.html" hreflang="en">Cline with cheap Claude API</a></li>
+              <li><a href="/en/glossary/what-is-claude-relay.html" hreflang="en">What is a Claude API relay?</a></li>
+              <li><a href="/en/glossary/what-is-claude-code.html" hreflang="en">What is Claude Code?</a></li>
+              <li><a href="/en/glossary/what-is-an-ai-token.html" hreflang="en">What is an AI token?</a></li>
+              <li><a href="/en/examples/claude-api-python.html" hreflang="en">Claude API in Python</a></li>
+              <li><a href="/en/examples/claude-api-nodejs.html" hreflang="en">Claude API in Node.js</a></li>
+              <li><a href="/en/examples/chatgpt-api-curl.html" hreflang="en">ChatGPT API with curl</a></li>
+              <li><a href="/en/examples/gemini-api-example.html" hreflang="en">Gemini API example</a></li>
+              <li><a href="/trust.html" hreflang="en">Trust, logging &amp; billing overview</a></li>
+            </ul>
+          </nav>
+        </section>
       </main>
     </div>
     <script type="module" src="/src/main.ts"></script>

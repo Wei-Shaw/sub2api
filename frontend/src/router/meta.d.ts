@@ -64,5 +64,12 @@ declare module 'vue-router' {
      * i18n key for the page description
      */
     descriptionKey?: string
+
+    /**
+     * Force a specific UI locale when this route is entered.
+     * Used by /en and /zh aliases to pin the SPA language regardless of
+     * browser Accept-Language. Value must be a registered locale code (e.g. 'en', 'zh').
+     */
+    forceLocale?: 'en' | 'zh'
   }
 }

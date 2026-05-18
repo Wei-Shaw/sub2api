@@ -402,6 +402,8 @@ func isKnownFrontendRoute(path string) bool {
 		"/":                     {},
 		"/setup":                {},
 		"/home":                 {},
+		"/en":                   {},
+		"/zh":                   {},
 		"/login":                {},
 		"/register":             {},
 		"/email-verify":         {},

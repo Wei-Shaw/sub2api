@@ -1517,7 +1517,7 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 			logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue bulk update failed: err=%v", err)
 		}
 		shouldSync := false
-		if updates.Status != nil && (*updates.Status == service.StatusError || *updates.Status == service.StatusDisabled) {
+		if updates.Status != nil && *updates.Status != service.StatusActive {
 			shouldSync = true
 		}
 		if updates.Schedulable != nil && !*updates.Schedulable {

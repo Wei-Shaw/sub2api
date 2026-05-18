@@ -639,6 +639,23 @@ func (s *AccountRepoSuite) TestBulkUpdate_SyncSchedulerSnapshotOnDisabled() {
 	s.Require().Contains(ids, account2.ID)
 }
 
+func (s *AccountRepoSuite) TestBulkUpdate_SyncSchedulerSnapshotOnInactive() {
+	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "bulk-inactive", Status: service.StatusActive, Schedulable: true})
+	cacheRecorder := &schedulerCacheRecorder{}
+	s.repo.schedulerCache = cacheRecorder
+
+	inactive := "inactive"
+	rows, err := s.repo.BulkUpdate(s.ctx, []int64{account.ID}, service.AccountBulkUpdate{
+		Status: &inactive,
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(int64(1), rows)
+
+	s.Require().Len(cacheRecorder.setAccounts, 1)
+	s.Require().Equal(account.ID, cacheRecorder.setAccounts[0].ID)
+	s.Require().Equal(inactive, cacheRecorder.setAccounts[0].Status)
+}
+
 // --- SetOverloaded / SetRateLimited / ClearRateLimit ---
 
 func (s *AccountRepoSuite) TestSetOverloaded() {

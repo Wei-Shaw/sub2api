@@ -110,6 +110,45 @@ export default {
     },
     footer: {
       allRightsReserved: 'All rights reserved.'
+    },
+    // Deep-dive resources section (links to static HTML pages — strengthens SEO interlinking)
+    resources: {
+      title: 'Resources & deep dives',
+      subtitle: 'Comparisons, guides, glossary, and runnable code examples — high-density static pages indexed for search & AI citation',
+      compareTitle: 'Comparisons',
+      compareItems: {
+        claudeVsChatgpt: 'Claude API vs ChatGPT API',
+        claudeCodeVsSubscription: 'Claude Code: relay vs subscription',
+        tokenproviderVsOfficial: 'TokenProvider vs official Claude API'
+      },
+      guidesTitle: 'Setup guides',
+      guidesItems: {
+        claudeCodeSetup: 'Claude Code setup (ANTHROPIC_BASE_URL)',
+        cursorClaudeProxy: 'Cursor + Claude proxy',
+        clineCheapClaude: 'Cline with cheap Claude API'
+      },
+      glossaryTitle: 'Glossary',
+      glossaryItems: {
+        whatIsClaudeRelay: 'What is a Claude API relay?',
+        whatIsClaudeCode: 'What is Claude Code?',
+        whatIsAnAiToken: 'What is an AI token?'
+      },
+      examplesTitle: 'Code examples',
+      examplesItems: {
+        claudeApiPython: 'Claude API in Python',
+        claudeApiNodejs: 'Claude API in Node.js',
+        chatgptApiCurl: 'ChatGPT API with curl',
+        geminiApiExample: 'Gemini API example'
+      },
+      trustTitle: 'Trust & policies',
+      trustItems: {
+        trust: 'Trust, logging & billing overview',
+        productHub: 'English product hub (full landing page)'
+      },
+      languageSwitchTitle: 'Other languages',
+      languageSwitchItems: {
+        chinese: '中文版（产品介绍与文档）'
+      }
     }
   },
 
@@ -3390,6 +3429,10 @@ export default {
       bedrockAuthMode: 'Authentication Mode',
       bedrockAuthModeSigv4: 'SigV4 Signing',
       bedrockAuthModeApikey: 'Bedrock API Key',
+      claudePlatformAWS: 'Claude Platform on AWS',
+      claudePlatformAWSWorkspaceId: 'Workspace ID',
+      claudePlatformAWSWorkspaceIdHint: 'The wrkspc_... ID from AWS Console Claude Platform on AWS. It must match the selected region.',
+      claudePlatformAWSWorkspaceIdRequired: 'Please enter Workspace ID',
       bedrockApiKeyLabel: 'Bedrock API Key',
       bedrockApiKeyDesc: 'Bearer Token',
       bedrockApiKeyInput: 'API Key',

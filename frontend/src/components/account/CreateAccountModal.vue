@@ -1420,6 +1420,15 @@
               />
               <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('admin.accounts.bedrockAuthModeApikey') }}</span>
             </label>
+            <label class="flex cursor-pointer items-center">
+              <input
+                v-model="bedrockAuthMode"
+                type="radio"
+                value="claude_platform_aws"
+                class="mr-2 text-primary-600 focus:ring-primary-500"
+              />
+              <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('admin.accounts.claudePlatformAWS') }}</span>
+            </label>
           </div>
         </div>
 
@@ -1456,7 +1465,7 @@
         </template>
 
         <!-- API Key field -->
-        <div v-if="bedrockAuthMode === 'apikey'">
+        <div v-if="bedrockAuthMode === 'apikey' || bedrockAuthMode === 'claude_platform_aws'">
           <label class="input-label">{{ t('admin.accounts.bedrockApiKeyInput') }}</label>
           <input
             v-model="bedrockApiKeyValue"
@@ -1464,6 +1473,17 @@
             required
             class="input font-mono"
           />
+        </div>
+        <div v-if="bedrockAuthMode === 'claude_platform_aws'">
+          <label class="input-label">{{ t('admin.accounts.claudePlatformAWSWorkspaceId') }}</label>
+          <input
+            v-model="bedrockWorkspaceId"
+            type="text"
+            required
+            class="input font-mono"
+            placeholder="wrkspc_..."
+          />
+          <p class="input-hint">{{ t('admin.accounts.claudePlatformAWSWorkspaceIdHint') }}</p>
         </div>
 
         <!-- Shared: Region -->
@@ -1508,7 +1528,7 @@
         </div>
 
         <!-- Shared: Force Global -->
-        <div>
+        <div v-if="bedrockAuthMode !== 'claude_platform_aws'">
           <label class="flex items-center gap-2 cursor-pointer">
             <input
               v-model="bedrockForceGlobal"
@@ -1575,7 +1595,7 @@
               + {{ t('admin.accounts.addMapping') }}
             </button>
             <!-- Bedrock Preset Mappings -->
-            <div class="flex flex-wrap gap-2">
+            <div v-if="bedrockAuthMode !== 'claude_platform_aws'" class="flex flex-wrap gap-2">
               <button
                 v-for="preset in bedrockPresets"
                 :key="preset.from"
@@ -3318,13 +3338,14 @@ const antigravityPresetMappings = computed(() => getPresetMappingsByPlatform('an
 const bedrockPresets = computed(() => getPresetMappingsByPlatform('bedrock'))
 
 // Bedrock credentials
-const bedrockAuthMode = ref<'sigv4' | 'apikey'>('sigv4')
+const bedrockAuthMode = ref<'sigv4' | 'apikey' | 'claude_platform_aws'>('sigv4')
 const bedrockAccessKeyId = ref('')
 const bedrockSecretAccessKey = ref('')
 const bedrockSessionToken = ref('')
 const bedrockRegion = ref('us-east-1')
 const bedrockForceGlobal = ref(false)
 const bedrockApiKeyValue = ref('')
+const bedrockWorkspaceId = ref('')
 const vertexServiceAccountFileInput = ref<HTMLInputElement | null>(null)
 const vertexServiceAccountJson = ref('')
 const vertexProjectId = ref('')
@@ -3646,6 +3667,7 @@ watch(
     bedrockForceGlobal.value = false
     bedrockAuthMode.value = 'sigv4'
     bedrockApiKeyValue.value = ''
+    bedrockWorkspaceId.value = ''
     vertexServiceAccountJson.value = ''
     vertexProjectId.value = ''
     vertexClientEmail.value = ''
@@ -4303,9 +4325,16 @@ const handleSubmit = async () => {
         return
       }
       credentials.api_key = bedrockApiKeyValue.value.trim()
+      if (bedrockAuthMode.value === 'claude_platform_aws') {
+        if (!bedrockWorkspaceId.value.trim()) {
+          appStore.showError(t('admin.accounts.claudePlatformAWSWorkspaceIdRequired'))
+          return
+        }
+        credentials.workspace_id = bedrockWorkspaceId.value.trim()
+      }
     }
 
-    if (bedrockForceGlobal.value) {
+    if (bedrockAuthMode.value !== 'claude_platform_aws' && bedrockForceGlobal.value) {
       credentials.aws_force_global = 'true'
     }
 

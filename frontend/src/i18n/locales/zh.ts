@@ -110,6 +110,35 @@ export default {
     },
     footer: {
       allRightsReserved: '保留所有权利。'
+    },
+    // 深度内容/Resources 区块（指向静态 HTML 深度页，强化 SEO 内链）
+    resources: {
+      title: '深入了解',
+      subtitle: '对比、教程、术语与代码示例 —— 高信息密度静态页面',
+      compareTitle: '横向对比',
+      compareItems: {
+        claudeVsChatgpt: 'Claude API vs ChatGPT API 对比'
+      },
+      guidesTitle: '配置教程',
+      guidesItems: {
+        claudeCodeSetup: 'Claude Code 5 分钟接入教程'
+      },
+      glossaryTitle: '术语速读',
+      glossaryItems: {
+        whatIsClaudeRelay: '什么是 Claude 中转站？'
+      },
+      examplesTitle: '代码示例',
+      examplesItems: {
+        claudeApiPython: 'Claude API Python 示例'
+      },
+      trustTitle: '信任与合规',
+      trustItems: {
+        xinyong: '信任与合规说明（计费、日志边界）'
+      },
+      languageSwitchTitle: '其他语言',
+      languageSwitchItems: {
+        english: 'English version (full product page & docs)'
+      }
     }
   },
 
@@ -3529,6 +3558,10 @@ export default {
       bedrockAuthMode: '认证方式',
       bedrockAuthModeSigv4: 'SigV4 签名',
       bedrockAuthModeApikey: 'Bedrock API Key',
+      claudePlatformAWS: 'Claude Platform on AWS',
+      claudePlatformAWSWorkspaceId: 'Workspace ID',
+      claudePlatformAWSWorkspaceIdHint: '来自 AWS 控制台 Claude Platform on AWS 的 wrkspc_... ID，请与所选 Region 保持一致',
+      claudePlatformAWSWorkspaceIdRequired: '请输入 Workspace ID',
       bedrockApiKeyLabel: 'Bedrock API Key',
       bedrockApiKeyDesc: 'Bearer Token 认证',
       bedrockApiKeyInput: 'API Key',

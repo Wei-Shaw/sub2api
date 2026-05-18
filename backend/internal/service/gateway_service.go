@@ -644,38 +644,38 @@ func NewGatewayService(
 	modelsListTTL := resolveModelsListCacheTTL(cfg)
 
 	svc := &GatewayService{
-		accountRepo:           accountRepo,
-		groupRepo:             groupRepo,
-		usageLogRepo:          usageLogRepo,
-		usageBillingRepo:      usageBillingRepo,
-		userRepo:              userRepo,
-		userSubRepo:           userSubRepo,
-		userGroupRateRepo:     userGroupRateRepo,
-		cache:                 cache,
-		digestStore:           digestStore,
-		cfg:                   cfg,
-		schedulerSnapshot:     schedulerSnapshot,
-		concurrencyService:    concurrencyService,
-		billingService:        billingService,
-		rateLimitService:      rateLimitService,
-		billingCacheService:   billingCacheService,
-		identityService:       identityService,
-		httpUpstream:          httpUpstream,
-		deferredService:       deferredService,
-		claudeTokenProvider:   claudeTokenProvider,
-		sessionLimitCache:     sessionLimitCache,
-		rpmCache:              rpmCache,
-		userGroupRateCache:    gocache.New(userGroupRateTTL, time.Minute),
-		settingService:        settingService,
-		modelsListCache:       gocache.New(modelsListTTL, time.Minute),
-		modelsListCacheTTL:    modelsListTTL,
-		responseHeaderFilter:  compileResponseHeaderFilter(cfg),
-		tlsFPProfileService:   tlsFPProfileService,
-		channelService:        channelService,
-		resolver:              resolver,
-		balanceNotifyService:  balanceNotifyService,
-		bindingRepo:           bindingRepo,
-		bindingThresholdCache: gocache.New(30*time.Minute, 5*time.Minute),
+		accountRepo:            accountRepo,
+		groupRepo:              groupRepo,
+		usageLogRepo:           usageLogRepo,
+		usageBillingRepo:       usageBillingRepo,
+		userRepo:               userRepo,
+		userSubRepo:            userSubRepo,
+		userGroupRateRepo:      userGroupRateRepo,
+		cache:                  cache,
+		digestStore:            digestStore,
+		cfg:                    cfg,
+		schedulerSnapshot:      schedulerSnapshot,
+		concurrencyService:     concurrencyService,
+		billingService:         billingService,
+		rateLimitService:       rateLimitService,
+		billingCacheService:    billingCacheService,
+		identityService:        identityService,
+		httpUpstream:           httpUpstream,
+		deferredService:        deferredService,
+		claudeTokenProvider:    claudeTokenProvider,
+		sessionLimitCache:      sessionLimitCache,
+		rpmCache:               rpmCache,
+		userGroupRateCache:     gocache.New(userGroupRateTTL, time.Minute),
+		settingService:         settingService,
+		modelsListCache:        gocache.New(modelsListTTL, time.Minute),
+		modelsListCacheTTL:     modelsListTTL,
+		responseHeaderFilter:   compileResponseHeaderFilter(cfg),
+		tlsFPProfileService:    tlsFPProfileService,
+		channelService:         channelService,
+		resolver:               resolver,
+		balanceNotifyService:   balanceNotifyService,
+		bindingRepo:            bindingRepo,
+		bindingThresholdCache:  gocache.New(30*time.Minute, 5*time.Minute),
 		identityProfileService: identityProfileService,
 	}
 	svc.userGroupRateResolver = newUserGroupRateResolver(
@@ -4377,6 +4377,9 @@ func (s *GatewayService) isModelSupportedByAccount(account *Account, requestedMo
 		}
 		return mapAntigravityModel(account, requestedModel) != ""
 	}
+	if account.IsClaudePlatformAWS() {
+		return account.IsModelSupported(requestedModel)
+	}
 	if account.IsBedrock() {
 		_, ok := ResolveBedrockModelID(account, requestedModel)
 		return ok
@@ -4414,6 +4417,13 @@ func (s *GatewayService) GetAccessToken(ctx context.Context, account *Account) (
 		}
 		return apiKey, "apikey", nil
 	case AccountTypeBedrock:
+		if account.IsClaudePlatformAWS() {
+			apiKey := account.GetCredential("api_key")
+			if apiKey == "" {
+				return "", "", errors.New("api_key not found in credentials")
+			}
+			return apiKey, "apikey", nil
+		}
 		return "", "bedrock", nil // Bedrock 使用 SigV4 签名或 API Key，由 forwardBedrock 处理
 	case AccountTypeServiceAccount, AccountTypeVertex:
 		if account.Platform != PlatformAnthropic {
@@ -5003,6 +5013,25 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	// Web Search 模拟：纯 web_search 请求时，直接调用搜索 API 构造响应
 	if account != nil && s.shouldEmulateWebSearch(ctx, account, parsed.GroupID, parsed.Body) {
 		return s.handleWebSearchEmulation(ctx, c, account, parsed)
+	}
+
+	if account != nil && account.IsClaudePlatformAWS() {
+		passthroughBody := parsed.Body
+		passthroughModel := parsed.Model
+		if passthroughModel != "" {
+			if mappedModel := account.GetMappedModel(passthroughModel); mappedModel != passthroughModel {
+				passthroughBody = s.replaceModelInBody(passthroughBody, mappedModel)
+				logger.LegacyPrintf("service.gateway", "Claude Platform on AWS model mapping: %s -> %s (account: %s)", parsed.Model, mappedModel, account.Name)
+				passthroughModel = mappedModel
+			}
+		}
+		return s.forwardAnthropicAPIKeyPassthroughWithInput(ctx, c, account, anthropicPassthroughForwardInput{
+			Body:          passthroughBody,
+			RequestModel:  passthroughModel,
+			OriginalModel: parsed.Model,
+			RequestStream: parsed.Stream,
+			StartTime:     startTime,
+		})
 	}
 
 	if account != nil && account.IsAnthropicAPIKeyPassthroughEnabled() {
@@ -5919,8 +5948,18 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 	token string,
 ) (*http.Request, error) {
 	targetURL := claudeAPIURL
-	baseURL := account.GetBaseURL()
-	if baseURL != "" {
+	if account.IsClaudePlatformAWS() {
+		baseURL := strings.TrimSpace(account.GetCredential("base_url"))
+		if baseURL != "" {
+			validatedURL, err := s.validateUpstreamBaseURL(baseURL)
+			if err != nil {
+				return nil, err
+			}
+			targetURL = strings.TrimRight(validatedURL, "/") + "/v1/messages?beta=true"
+		} else {
+			targetURL = BuildClaudePlatformAWSMessagesURL(claudePlatformAWSRegion(account))
+		}
+	} else if baseURL := account.GetBaseURL(); baseURL != "" {
 		validatedURL, err := s.validateUpstreamBaseURL(baseURL)
 		if err != nil {
 			return nil, err
@@ -5952,6 +5991,13 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 	req.Header.Del("x-goog-api-key")
 	req.Header.Del("cookie")
 	setHeaderRaw(req.Header, "x-api-key", token)
+	if account.IsClaudePlatformAWS() {
+		workspaceID := claudePlatformAWSWorkspaceID(account)
+		if workspaceID == "" {
+			return nil, errors.New("workspace_id not found in credentials")
+		}
+		setHeaderRaw(req.Header, "anthropic-workspace-id", workspaceID)
+	}
 
 	if getHeaderRaw(req.Header, "content-type") == "" {
 		setHeaderRaw(req.Header, "content-type", "application/json")
@@ -9910,6 +9956,17 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 		return fmt.Errorf("parse request: empty request")
 	}
 
+	if account != nil && account.IsClaudePlatformAWS() {
+		passthroughBody := parsed.Body
+		if reqModel := parsed.Model; reqModel != "" {
+			if mappedModel := account.GetMappedModel(reqModel); mappedModel != reqModel {
+				passthroughBody = s.replaceModelInBody(passthroughBody, mappedModel)
+				logger.LegacyPrintf("service.gateway", "CountTokens Claude Platform on AWS model mapping: %s -> %s (account: %s)", reqModel, mappedModel, account.Name)
+			}
+		}
+		return s.forwardCountTokensAnthropicAPIKeyPassthrough(ctx, c, account, passthroughBody)
+	}
+
 	if account != nil && account.IsAnthropicAPIKeyPassthroughEnabled() {
 		passthroughBody := parsed.Body
 		if reqModel := parsed.Model; reqModel != "" {
@@ -10244,8 +10301,18 @@ func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthrough(
 	token string,
 ) (*http.Request, error) {
 	targetURL := claudeAPICountTokensURL
-	baseURL := account.GetBaseURL()
-	if baseURL != "" {
+	if account.IsClaudePlatformAWS() {
+		baseURL := strings.TrimSpace(account.GetCredential("base_url"))
+		if baseURL != "" {
+			validatedURL, err := s.validateUpstreamBaseURL(baseURL)
+			if err != nil {
+				return nil, err
+			}
+			targetURL = strings.TrimRight(validatedURL, "/") + "/v1/messages/count_tokens?beta=true"
+		} else {
+			targetURL = BuildClaudePlatformAWSCountTokensURL(claudePlatformAWSRegion(account))
+		}
+	} else if baseURL := account.GetBaseURL(); baseURL != "" {
 		validatedURL, err := s.validateUpstreamBaseURL(baseURL)
 		if err != nil {
 			return nil, err
@@ -10276,6 +10343,13 @@ func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthrough(
 	req.Header.Del("x-goog-api-key")
 	req.Header.Del("cookie")
 	req.Header.Set("x-api-key", token)
+	if account.IsClaudePlatformAWS() {
+		workspaceID := claudePlatformAWSWorkspaceID(account)
+		if workspaceID == "" {
+			return nil, errors.New("workspace_id not found in credentials")
+		}
+		req.Header.Set("anthropic-workspace-id", workspaceID)
+	}
 
 	if req.Header.Get("content-type") == "" {
 		req.Header.Set("content-type", "application/json")
