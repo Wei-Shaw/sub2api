@@ -277,6 +277,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			requireCompact,
 		)
 		if err != nil {
+			if len(failedAccountIDs) == 0 && h.handleSelectionError(c, err, streamStarted) {
+				return
+			}
 			reqLog.Warn("openai.account_select_failed",
 				zap.Error(err),
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
@@ -676,10 +679,11 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
 			if len(failedAccountIDs) == 0 {
-				if err != nil {
-					h.anthropicStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable", streamStarted)
+				if h.handleSelectionErrorAnthropic(c, err, streamStarted) {
 					return
 				}
+				h.anthropicStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable", streamStarted)
+				return
 			} else {
 				if lastFailoverErr != nil {
 					h.handleAnthropicFailoverExhausted(c, lastFailoverErr, streamStarted)
@@ -1593,6 +1597,34 @@ func (h *OpenAIGatewayHandler) acquireImageGenerationSlot(c *gin.Context, stream
 func (h *OpenAIGatewayHandler) handleConcurrencyError(c *gin.Context, err error, slotType string, streamStarted bool) {
 	h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error",
 		fmt.Sprintf("Concurrency limit exceeded for %s, please retry later", slotType), streamStarted)
+}
+
+func (h *OpenAIGatewayHandler) handleSelectionError(c *gin.Context, err error, streamStarted bool) bool {
+	var unsupportedErr *service.UnsupportedRequestedModelError
+	if errors.As(err, &unsupportedErr) {
+		h.handleStreamingAwareError(c, http.StatusBadRequest, "invalid_request_error", unsupportedErr.Error(), streamStarted)
+		return true
+	}
+	var deniedErr *service.ModelAccessDeniedError
+	if errors.As(err, &deniedErr) {
+		h.handleStreamingAwareError(c, http.StatusForbidden, "permission_error", deniedErr.Error(), streamStarted)
+		return true
+	}
+	return false
+}
+
+func (h *OpenAIGatewayHandler) handleSelectionErrorAnthropic(c *gin.Context, err error, streamStarted bool) bool {
+	var unsupportedErr *service.UnsupportedRequestedModelError
+	if errors.As(err, &unsupportedErr) {
+		h.anthropicStreamingAwareError(c, http.StatusBadRequest, "invalid_request_error", unsupportedErr.Error(), streamStarted)
+		return true
+	}
+	var deniedErr *service.ModelAccessDeniedError
+	if errors.As(err, &deniedErr) {
+		h.anthropicStreamingAwareError(c, http.StatusForbidden, "permission_error", deniedErr.Error(), streamStarted)
+		return true
+	}
+	return false
 }
 
 func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, streamStarted bool) {
