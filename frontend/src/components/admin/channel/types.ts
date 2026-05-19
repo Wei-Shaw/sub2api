@@ -115,8 +115,17 @@ export function findModelConflict(models: string[]): [string, string] | null {
 
 // ── 区间校验 ──────────────────────────────────────────────
 
-/** 校验区间列表的合法性，返回错误消息；通过则返回 null */
-export function validateIntervals(intervals: IntervalFormEntry[]): string | null {
+/** 校验区间列表的合法性，返回错误消息；通过则返回 null
+ *
+ * mode 决定区间语义：
+ * - token：区间是上下文 token 数分段 (min, max]，不能重叠，无上限段必须放最后
+ * - per_request / image：区间是按 tier_label 分层（1K/2K/4K 等），后端按 label
+ *   匹配，不依赖 min/max，因此跳过重叠 / last-unlimited 校验
+ */
+export function validateIntervals(
+  intervals: IntervalFormEntry[],
+  mode: BillingMode = 'token',
+): string | null {
   if (!intervals || intervals.length === 0) return null
 
   // 按 min_tokens 排序（不修改原数组）
@@ -126,6 +135,9 @@ export function validateIntervals(intervals: IntervalFormEntry[]): string | null
     const err = validateSingleInterval(sorted[i], i)
     if (err) return err
   }
+
+  // per_request / image 模式按 tier_label 匹配，不做 token 区间重叠校验
+  if (mode !== 'token') return null
   return checkIntervalOverlap(sorted)
 }
 

@@ -18,6 +18,7 @@ import (
 var (
 	ErrRedeemCodeNotFound  = infraerrors.NotFound("REDEEM_CODE_NOT_FOUND", "redeem code not found")
 	ErrRedeemCodeUsed      = infraerrors.Conflict("REDEEM_CODE_USED", "redeem code already used")
+	ErrRedeemCodeExpired   = infraerrors.Conflict("REDEEM_CODE_EXPIRED", "redeem code expired")
 	ErrInsufficientBalance = infraerrors.BadRequest("INSUFFICIENT_BALANCE", "insufficient balance")
 	ErrRedeemRateLimited   = infraerrors.TooManyRequests("REDEEM_RATE_LIMITED", "too many failed attempts, please try again later")
 	ErrRedeemCodeLocked    = infraerrors.Conflict("REDEEM_CODE_LOCKED", "redeem code is being processed, please try again")
@@ -207,6 +208,9 @@ func (s *RedeemService) CreateCode(ctx context.Context, code *RedeemCode) error 
 	if code.Status == "" {
 		code.Status = StatusUnused
 	}
+	if code.IsExpired() {
+		return ErrRedeemCodeExpired
+	}
 
 	if err := s.redeemRepo.Create(ctx, code); err != nil {
 		return fmt.Errorf("create redeem code: %w", err)
@@ -289,7 +293,11 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 		return nil, fmt.Errorf("get redeem code: %w", err)
 	}
 
-	// 检查兑换码状态
+	// 检查兑换码状态和码本身的过期时间
+	if redeemCode.IsExpired() {
+		s.incrementRedeemErrorCount(ctx, userID)
+		return nil, ErrRedeemCodeExpired
+	}
 	if !redeemCode.CanUse() {
 		s.incrementRedeemErrorCount(ctx, userID)
 		return nil, ErrRedeemCodeUsed

@@ -7,6 +7,7 @@ const routeState = vi.hoisted(() => ({
 
 const routerPush = vi.hoisted(() => vi.fn())
 const pollOrderStatus = vi.hoisted(() => vi.fn())
+const verifyOrder = vi.hoisted(() => vi.fn())
 const verifyOrderPublic = vi.hoisted(() => vi.fn())
 const resolveOrderPublicByResumeToken = vi.hoisted(() => vi.fn())
 
@@ -37,6 +38,7 @@ vi.mock('@/stores/payment', () => ({
 
 vi.mock('@/api/payment', () => ({
   paymentAPI: {
+    verifyOrder,
     verifyOrderPublic,
     resolveOrderPublicByResumeToken,
   },
@@ -86,6 +88,7 @@ describe('PaymentResultView', () => {
     routeState.query = {}
     routerPush.mockReset()
     pollOrderStatus.mockReset()
+    verifyOrder.mockReset()
     verifyOrderPublic.mockReset()
     resolveOrderPublicByResumeToken.mockReset()
     window.localStorage.clear()
@@ -329,6 +332,7 @@ describe('PaymentResultView', () => {
       out_trade_no: 'legacy-123',
       trade_status: 'TRADE_SUCCESS',
     }
+    verifyOrder.mockRejectedValue(new Error('auth required'))
     verifyOrderPublic.mockResolvedValue({
       data: orderFactory('PAID'),
     })
@@ -343,8 +347,33 @@ describe('PaymentResultView', () => {
 
     await flushPromises()
 
+    expect(verifyOrder).toHaveBeenCalledWith('legacy-123')
     expect(verifyOrderPublic).toHaveBeenCalledWith('legacy-123')
     expect(pollOrderStatus).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('payment.result.success')
+  })
+
+  it('prefers authenticated order verification before falling back to public lookup', async () => {
+    routeState.query = {
+      out_trade_no: 'auth-verify-123',
+      trade_status: 'TRADE_SUCCESS',
+    }
+    verifyOrder.mockResolvedValue({
+      data: orderFactory('COMPLETED'),
+    })
+
+    const wrapper = mount(PaymentResultView, {
+      global: {
+        stubs: {
+          OrderStatusBadge: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(verifyOrder).toHaveBeenCalledWith('auth-verify-123')
+    expect(verifyOrderPublic).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('payment.result.success')
   })
 
