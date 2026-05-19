@@ -739,6 +739,78 @@ func (_u *UsageLogUpdate) ClearImageSize() *UsageLogUpdate {
 	return _u
 REDACTED
 
+// SetImageInputSize sets the "image_input_size" field.
+func (_u *UsageLogUpdate) SetImageInputSize(v string) *UsageLogUpdate {
+	_u.mutation.SetImageInputSize(v)
+	return _u
+REDACTED
+
+// SetNillableImageInputSize sets the "image_input_size" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableImageInputSize(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetImageInputSize(*v)
+REDACTED
+	return _u
+REDACTED
+
+// ClearImageInputSize clears the value of the "image_input_size" field.
+func (_u *UsageLogUpdate) ClearImageInputSize() *UsageLogUpdate {
+	_u.mutation.ClearImageInputSize()
+	return _u
+REDACTED
+
+// SetImageOutputSize sets the "image_output_size" field.
+func (_u *UsageLogUpdate) SetImageOutputSize(v string) *UsageLogUpdate {
+	_u.mutation.SetImageOutputSize(v)
+	return _u
+REDACTED
+
+// SetNillableImageOutputSize sets the "image_output_size" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableImageOutputSize(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetImageOutputSize(*v)
+REDACTED
+	return _u
+REDACTED
+
+// ClearImageOutputSize clears the value of the "image_output_size" field.
+func (_u *UsageLogUpdate) ClearImageOutputSize() *UsageLogUpdate {
+	_u.mutation.ClearImageOutputSize()
+	return _u
+REDACTED
+
+// SetImageSizeSource sets the "image_size_source" field.
+func (_u *UsageLogUpdate) SetImageSizeSource(v string) *UsageLogUpdate {
+	_u.mutation.SetImageSizeSource(v)
+	return _u
+REDACTED
+
+// SetNillableImageSizeSource sets the "image_size_source" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableImageSizeSource(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetImageSizeSource(*v)
+REDACTED
+	return _u
+REDACTED
+
+// ClearImageSizeSource clears the value of the "image_size_source" field.
+func (_u *UsageLogUpdate) ClearImageSizeSource() *UsageLogUpdate {
+	_u.mutation.ClearImageSizeSource()
+	return _u
+REDACTED
+
+// SetImageSizeBreakdown sets the "image_size_breakdown" field.
+func (_u *UsageLogUpdate) SetImageSizeBreakdown(v map[string]int) *UsageLogUpdate {
+	_u.mutation.SetImageSizeBreakdown(v)
+	return _u
+REDACTED
+
+// ClearImageSizeBreakdown clears the value of the "image_size_breakdown" field.
+func (_u *UsageLogUpdate) ClearImageSizeBreakdown() *UsageLogUpdate {
+	_u.mutation.ClearImageSizeBreakdown()
+	return _u
+REDACTED
+
 // SetCacheTTLOverridden sets the "cache_ttl_overridden" field.
 func (_u *UsageLogUpdate) SetCacheTTLOverridden(v bool) *UsageLogUpdate {
 	_u.mutation.SetCacheTTLOverridden(v)
@@ -890,6 +962,21 @@ REDACTED
 	if v, ok := _u.mutation.ImageSize(); ok {
 		if err := usagelog.ImageSizeValidator(v); err != nil {
 			return &ValidationError{Name: "image_size", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_size": %w`, err)REDACTED
+	REDACTED
+REDACTED
+	if v, ok := _u.mutation.ImageInputSize(); ok {
+		if err := usagelog.ImageInputSizeValidator(v); err != nil {
+			return &ValidationError{Name: "image_input_size", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_input_size": %w`, err)REDACTED
+	REDACTED
+REDACTED
+	if v, ok := _u.mutation.ImageOutputSize(); ok {
+		if err := usagelog.ImageOutputSizeValidator(v); err != nil {
+			return &ValidationError{Name: "image_output_size", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_output_size": %w`, err)REDACTED
+	REDACTED
+REDACTED
+	if v, ok := _u.mutation.ImageSizeSource(); ok {
+		if err := usagelog.ImageSizeSourceValidator(v); err != nil {
+			return &ValidationError{Name: "image_size_source", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_size_source": %w`, err)REDACTED
 	REDACTED
 REDACTED
 	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
@@ -1098,6 +1185,30 @@ REDACTED
 REDACTED
 	if _u.mutation.ImageSizeCleared() {
 		_spec.ClearField(usagelog.FieldImageSize, field.TypeString)
+REDACTED
+	if value, ok := _u.mutation.ImageInputSize(); ok {
+		_spec.SetField(usagelog.FieldImageInputSize, field.TypeString, value)
+REDACTED
+	if _u.mutation.ImageInputSizeCleared() {
+		_spec.ClearField(usagelog.FieldImageInputSize, field.TypeString)
+REDACTED
+	if value, ok := _u.mutation.ImageOutputSize(); ok {
+		_spec.SetField(usagelog.FieldImageOutputSize, field.TypeString, value)
+REDACTED
+	if _u.mutation.ImageOutputSizeCleared() {
+		_spec.ClearField(usagelog.FieldImageOutputSize, field.TypeString)
+REDACTED
+	if value, ok := _u.mutation.ImageSizeSource(); ok {
+		_spec.SetField(usagelog.FieldImageSizeSource, field.TypeString, value)
+REDACTED
+	if _u.mutation.ImageSizeSourceCleared() {
+		_spec.ClearField(usagelog.FieldImageSizeSource, field.TypeString)
+REDACTED
+	if value, ok := _u.mutation.ImageSizeBreakdown(); ok {
+		_spec.SetField(usagelog.FieldImageSizeBreakdown, field.TypeJSON, value)
+REDACTED
+	if _u.mutation.ImageSizeBreakdownCleared() {
+		_spec.ClearField(usagelog.FieldImageSizeBreakdown, field.TypeJSON)
 REDACTED
 	if value, ok := _u.mutation.CacheTTLOverridden(); ok {
 		_spec.SetField(usagelog.FieldCacheTTLOverridden, field.TypeBool, value)
@@ -1974,6 +2085,78 @@ func (_u *UsageLogUpdateOne) ClearImageSize() *UsageLogUpdateOne {
 	return _u
 REDACTED
 
+// SetImageInputSize sets the "image_input_size" field.
+func (_u *UsageLogUpdateOne) SetImageInputSize(v string) *UsageLogUpdateOne {
+	_u.mutation.SetImageInputSize(v)
+	return _u
+REDACTED
+
+// SetNillableImageInputSize sets the "image_input_size" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableImageInputSize(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetImageInputSize(*v)
+REDACTED
+	return _u
+REDACTED
+
+// ClearImageInputSize clears the value of the "image_input_size" field.
+func (_u *UsageLogUpdateOne) ClearImageInputSize() *UsageLogUpdateOne {
+	_u.mutation.ClearImageInputSize()
+	return _u
+REDACTED
+
+// SetImageOutputSize sets the "image_output_size" field.
+func (_u *UsageLogUpdateOne) SetImageOutputSize(v string) *UsageLogUpdateOne {
+	_u.mutation.SetImageOutputSize(v)
+	return _u
+REDACTED
+
+// SetNillableImageOutputSize sets the "image_output_size" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableImageOutputSize(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetImageOutputSize(*v)
+REDACTED
+	return _u
+REDACTED
+
+// ClearImageOutputSize clears the value of the "image_output_size" field.
+func (_u *UsageLogUpdateOne) ClearImageOutputSize() *UsageLogUpdateOne {
+	_u.mutation.ClearImageOutputSize()
+	return _u
+REDACTED
+
+// SetImageSizeSource sets the "image_size_source" field.
+func (_u *UsageLogUpdateOne) SetImageSizeSource(v string) *UsageLogUpdateOne {
+	_u.mutation.SetImageSizeSource(v)
+	return _u
+REDACTED
+
+// SetNillableImageSizeSource sets the "image_size_source" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableImageSizeSource(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetImageSizeSource(*v)
+REDACTED
+	return _u
+REDACTED
+
+// ClearImageSizeSource clears the value of the "image_size_source" field.
+func (_u *UsageLogUpdateOne) ClearImageSizeSource() *UsageLogUpdateOne {
+	_u.mutation.ClearImageSizeSource()
+	return _u
+REDACTED
+
+// SetImageSizeBreakdown sets the "image_size_breakdown" field.
+func (_u *UsageLogUpdateOne) SetImageSizeBreakdown(v map[string]int) *UsageLogUpdateOne {
+	_u.mutation.SetImageSizeBreakdown(v)
+	return _u
+REDACTED
+
+// ClearImageSizeBreakdown clears the value of the "image_size_breakdown" field.
+func (_u *UsageLogUpdateOne) ClearImageSizeBreakdown() *UsageLogUpdateOne {
+	_u.mutation.ClearImageSizeBreakdown()
+	return _u
+REDACTED
+
 // SetCacheTTLOverridden sets the "cache_ttl_overridden" field.
 func (_u *UsageLogUpdateOne) SetCacheTTLOverridden(v bool) *UsageLogUpdateOne {
 	_u.mutation.SetCacheTTLOverridden(v)
@@ -2138,6 +2321,21 @@ REDACTED
 	if v, ok := _u.mutation.ImageSize(); ok {
 		if err := usagelog.ImageSizeValidator(v); err != nil {
 			return &ValidationError{Name: "image_size", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_size": %w`, err)REDACTED
+	REDACTED
+REDACTED
+	if v, ok := _u.mutation.ImageInputSize(); ok {
+		if err := usagelog.ImageInputSizeValidator(v); err != nil {
+			return &ValidationError{Name: "image_input_size", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_input_size": %w`, err)REDACTED
+	REDACTED
+REDACTED
+	if v, ok := _u.mutation.ImageOutputSize(); ok {
+		if err := usagelog.ImageOutputSizeValidator(v); err != nil {
+			return &ValidationError{Name: "image_output_size", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_output_size": %w`, err)REDACTED
+	REDACTED
+REDACTED
+	if v, ok := _u.mutation.ImageSizeSource(); ok {
+		if err := usagelog.ImageSizeSourceValidator(v); err != nil {
+			return &ValidationError{Name: "image_size_source", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_size_source": %w`, err)REDACTED
 	REDACTED
 REDACTED
 	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
@@ -2363,6 +2561,30 @@ REDACTED
 REDACTED
 	if _u.mutation.ImageSizeCleared() {
 		_spec.ClearField(usagelog.FieldImageSize, field.TypeString)
+REDACTED
+	if value, ok := _u.mutation.ImageInputSize(); ok {
+		_spec.SetField(usagelog.FieldImageInputSize, field.TypeString, value)
+REDACTED
+	if _u.mutation.ImageInputSizeCleared() {
+		_spec.ClearField(usagelog.FieldImageInputSize, field.TypeString)
+REDACTED
+	if value, ok := _u.mutation.ImageOutputSize(); ok {
+		_spec.SetField(usagelog.FieldImageOutputSize, field.TypeString, value)
+REDACTED
+	if _u.mutation.ImageOutputSizeCleared() {
+		_spec.ClearField(usagelog.FieldImageOutputSize, field.TypeString)
+REDACTED
+	if value, ok := _u.mutation.ImageSizeSource(); ok {
+		_spec.SetField(usagelog.FieldImageSizeSource, field.TypeString, value)
+REDACTED
+	if _u.mutation.ImageSizeSourceCleared() {
+		_spec.ClearField(usagelog.FieldImageSizeSource, field.TypeString)
+REDACTED
+	if value, ok := _u.mutation.ImageSizeBreakdown(); ok {
+		_spec.SetField(usagelog.FieldImageSizeBreakdown, field.TypeJSON, value)
+REDACTED
+	if _u.mutation.ImageSizeBreakdownCleared() {
+		_spec.ClearField(usagelog.FieldImageSizeBreakdown, field.TypeJSON)
 REDACTED
 	if value, ok := _u.mutation.CacheTTLOverridden(); ok {
 		_spec.SetField(usagelog.FieldCacheTTLOverridden, field.TypeBool, value)

@@ -400,9 +400,13 @@ type UsageLog struct {
 	FirstTokenMs *int   `json:"first_token_ms"`
 
 	// 图片生成字段
-	ImageCount int     `json:"image_count"`
-	ImageSize  *string `json:"image_size"`
-	MediaType  *string `json:"media_type"`
+	ImageCount         int            `json:"image_count"`
+	ImageSize          *string        `json:"image_size"`
+	ImageInputSize     *string        `json:"image_input_size"`
+	ImageOutputSize    *string        `json:"image_output_size"`
+	ImageSizeSource    *string        `json:"image_size_source"`
+	ImageSizeBreakdown map[string]int `json:"image_size_breakdown"`
+	MediaType          *string        `json:"media_type"`
 
 	// User-Agent
 	UserAgent *string `json:"user_agent"`

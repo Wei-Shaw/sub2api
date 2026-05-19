@@ -48,6 +48,21 @@ REDACTED
 	require.InDelta(t, 0.30, cost.TotalCost, 0.0001)
 REDACTED
 
+func TestCalculateImageCost_NormalizesInvalidSizeTo2K(t *testing.T) {
+	svc := &BillingService{REDACTED
+
+	price2K := 0.25
+	groupConfig := &ImagePriceConfig{Price2K: &price2KREDACTED
+
+	for _, imageSize := range []string{"", "auto", "not-a-size"REDACTED {
+		t.Run(imageSize, func(t *testing.T) {
+			cost := svc.CalculateImageCost("gemini-3-pro-image", imageSize, 2, groupConfig, 1.0)
+			require.InDelta(t, 0.50, cost.TotalCost, 0.0001)
+			require.InDelta(t, 0.50, cost.ActualCost, 0.0001)
+	REDACTED)
+REDACTED
+REDACTED
+
 // TestCalculateImageCost_4KDoublePrice 测试 4K 默认价格翻倍
 func TestCalculateImageCost_4KDoublePrice(t *testing.T) {
 	svc := &BillingService{REDACTED

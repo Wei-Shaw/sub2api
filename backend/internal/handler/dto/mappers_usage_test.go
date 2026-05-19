@@ -148,6 +148,65 @@ REDACTED
 	require.Equal(t, "claude-3", adminDTO.Model)
 REDACTED
 
+func TestUsageLogFromService_IncludesImageBillingMetadataForUserAndAdmin(t *testing.T) {
+	t.Parallel()
+
+	imageSize := "4K"
+	inputSize := "1024x1024"
+	outputSize := "3840x2160"
+	source := "output"
+	log := &service.UsageLog{
+		RequestID:          "req_image_metadata",
+		Model:              "gpt-image-2",
+		ImageCount:         2,
+		ImageSize:          &imageSize,
+		ImageInputSize:     &inputSize,
+		ImageOutputSize:    &outputSize,
+		ImageSizeSource:    &source,
+		ImageSizeBreakdown: map[string]int{"4K": 2REDACTED,
+REDACTED
+
+	userDTO := UsageLogFromService(log)
+	adminDTO := UsageLogFromServiceAdmin(log)
+
+	for _, got := range []*UsageLog{userDTO, &adminDTO.UsageLogREDACTED {
+		require.Equal(t, 2, got.ImageCount)
+		require.NotNil(t, got.ImageSize)
+		require.Equal(t, imageSize, *got.ImageSize)
+		require.NotNil(t, got.ImageInputSize)
+		require.Equal(t, inputSize, *got.ImageInputSize)
+		require.NotNil(t, got.ImageOutputSize)
+		require.Equal(t, outputSize, *got.ImageOutputSize)
+		require.NotNil(t, got.ImageSizeSource)
+		require.Equal(t, source, *got.ImageSizeSource)
+		require.Equal(t, map[string]int{"4K": 2REDACTED, got.ImageSizeBreakdown)
+REDACTED
+REDACTED
+
+func TestUsageLogFromService_PreservesHistoricalMissingImageSize(t *testing.T) {
+	t.Parallel()
+
+	log := &service.UsageLog{
+		RequestID:  "req_legacy_image_missing_size",
+		Model:      "gpt-image-2",
+		ImageCount: 1,
+		ImageSize:  nil,
+REDACTED
+
+	dto := UsageLogFromService(log)
+	require.Equal(t, 1, dto.ImageCount)
+	require.Nil(t, dto.ImageSize)
+	require.Nil(t, dto.ImageInputSize)
+	require.Nil(t, dto.ImageOutputSize)
+	require.Nil(t, dto.ImageSizeSource)
+	require.Nil(t, dto.ImageSizeBreakdown)
+
+	body, err := json.Marshal(dto)
+REDACTED
+	require.Contains(t, string(body), `"image_size":null`)
+	require.NotContains(t, string(body), `"image_size":"2K"`)
+REDACTED
+
 func f64Ptr(value float64) *float64 {
 	return &value
 REDACTED

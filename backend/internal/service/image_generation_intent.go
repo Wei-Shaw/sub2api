@@ -170,7 +170,13 @@ REDACTED
 	return out
 REDACTED
 
-func resolveOpenAIResponsesImageBillingConfig(reqBody map[string]any, fallbackModel string) (string, string, error) {
+type OpenAIResponsesImageBillingConfig struct {
+	Model     string
+	SizeTier  string
+	InputSize string
+REDACTED
+
+func resolveOpenAIResponsesImageBillingConfigDetailed(reqBody map[string]any, fallbackModel string) (OpenAIResponsesImageBillingConfig, error) {
 	imageModel := ""
 	imageSize := ""
 	hasImageTool := false
@@ -203,12 +209,24 @@ REDACTED
 		imageModel = strings.TrimSpace(fallbackModel)
 REDACTED
 	sizeTier := normalizeOpenAIImageSizeTier(imageSize)
-	return imageModel, sizeTier, nil
+	return OpenAIResponsesImageBillingConfig{
+		Model:     imageModel,
+		SizeTier:  sizeTier,
+		InputSize: imageSize,
+REDACTED, nil
 REDACTED
 
 func resolveOpenAIResponsesImageBillingConfigFromBody(body []byte, fallbackModel string) (string, string, error) {
+	cfg, err := resolveOpenAIResponsesImageBillingConfigDetailedFromBody(body, fallbackModel)
+	if err != nil {
+		return "", "", err
+REDACTED
+	return cfg.Model, cfg.SizeTier, nil
+REDACTED
+
+func resolveOpenAIResponsesImageBillingConfigDetailedFromBody(body []byte, fallbackModel string) (OpenAIResponsesImageBillingConfig, error) {
 	reqBody := cloneRequestMapForImageIntent(body)
-	return resolveOpenAIResponsesImageBillingConfig(reqBody, fallbackModel)
+	return resolveOpenAIResponsesImageBillingConfigDetailed(reqBody, fallbackModel)
 REDACTED
 
 func isOpenAIImageBillingModelAlias(model string) bool {

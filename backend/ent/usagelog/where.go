@@ -230,6 +230,21 @@ func ImageSize(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldImageSize, v))
 REDACTED
 
+// ImageInputSize applies equality check predicate on the "image_input_size" field. It's identical to ImageInputSizeEQ.
+func ImageInputSize(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldImageInputSize, v))
+REDACTED
+
+// ImageOutputSize applies equality check predicate on the "image_output_size" field. It's identical to ImageOutputSizeEQ.
+func ImageOutputSize(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldImageOutputSize, v))
+REDACTED
+
+// ImageSizeSource applies equality check predicate on the "image_size_source" field. It's identical to ImageSizeSourceEQ.
+func ImageSizeSource(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldImageSizeSource, v))
+REDACTED
+
 // CacheTTLOverridden applies equality check predicate on the "cache_ttl_overridden" field. It's identical to CacheTTLOverriddenEQ.
 func CacheTTLOverridden(v bool) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldCacheTTLOverridden, v))
@@ -1898,6 +1913,241 @@ REDACTED
 // ImageSizeContainsFold applies the ContainsFold predicate on the "image_size" field.
 func ImageSizeContainsFold(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldContainsFold(FieldImageSize, v))
+REDACTED
+
+// ImageInputSizeEQ applies the EQ predicate on the "image_input_size" field.
+func ImageInputSizeEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldImageInputSize, v))
+REDACTED
+
+// ImageInputSizeNEQ applies the NEQ predicate on the "image_input_size" field.
+func ImageInputSizeNEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldImageInputSize, v))
+REDACTED
+
+// ImageInputSizeIn applies the In predicate on the "image_input_size" field.
+func ImageInputSizeIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldImageInputSize, vs...))
+REDACTED
+
+// ImageInputSizeNotIn applies the NotIn predicate on the "image_input_size" field.
+func ImageInputSizeNotIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldImageInputSize, vs...))
+REDACTED
+
+// ImageInputSizeGT applies the GT predicate on the "image_input_size" field.
+func ImageInputSizeGT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldImageInputSize, v))
+REDACTED
+
+// ImageInputSizeGTE applies the GTE predicate on the "image_input_size" field.
+func ImageInputSizeGTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldImageInputSize, v))
+REDACTED
+
+// ImageInputSizeLT applies the LT predicate on the "image_input_size" field.
+func ImageInputSizeLT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldImageInputSize, v))
+REDACTED
+
+// ImageInputSizeLTE applies the LTE predicate on the "image_input_size" field.
+func ImageInputSizeLTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldImageInputSize, v))
+REDACTED
+
+// ImageInputSizeContains applies the Contains predicate on the "image_input_size" field.
+func ImageInputSizeContains(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContains(FieldImageInputSize, v))
+REDACTED
+
+// ImageInputSizeHasPrefix applies the HasPrefix predicate on the "image_input_size" field.
+func ImageInputSizeHasPrefix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasPrefix(FieldImageInputSize, v))
+REDACTED
+
+// ImageInputSizeHasSuffix applies the HasSuffix predicate on the "image_input_size" field.
+func ImageInputSizeHasSuffix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasSuffix(FieldImageInputSize, v))
+REDACTED
+
+// ImageInputSizeIsNil applies the IsNil predicate on the "image_input_size" field.
+func ImageInputSizeIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldImageInputSize))
+REDACTED
+
+// ImageInputSizeNotNil applies the NotNil predicate on the "image_input_size" field.
+func ImageInputSizeNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldImageInputSize))
+REDACTED
+
+// ImageInputSizeEqualFold applies the EqualFold predicate on the "image_input_size" field.
+func ImageInputSizeEqualFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEqualFold(FieldImageInputSize, v))
+REDACTED
+
+// ImageInputSizeContainsFold applies the ContainsFold predicate on the "image_input_size" field.
+func ImageInputSizeContainsFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContainsFold(FieldImageInputSize, v))
+REDACTED
+
+// ImageOutputSizeEQ applies the EQ predicate on the "image_output_size" field.
+func ImageOutputSizeEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldImageOutputSize, v))
+REDACTED
+
+// ImageOutputSizeNEQ applies the NEQ predicate on the "image_output_size" field.
+func ImageOutputSizeNEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldImageOutputSize, v))
+REDACTED
+
+// ImageOutputSizeIn applies the In predicate on the "image_output_size" field.
+func ImageOutputSizeIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldImageOutputSize, vs...))
+REDACTED
+
+// ImageOutputSizeNotIn applies the NotIn predicate on the "image_output_size" field.
+func ImageOutputSizeNotIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldImageOutputSize, vs...))
+REDACTED
+
+// ImageOutputSizeGT applies the GT predicate on the "image_output_size" field.
+func ImageOutputSizeGT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldImageOutputSize, v))
+REDACTED
+
+// ImageOutputSizeGTE applies the GTE predicate on the "image_output_size" field.
+func ImageOutputSizeGTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldImageOutputSize, v))
+REDACTED
+
+// ImageOutputSizeLT applies the LT predicate on the "image_output_size" field.
+func ImageOutputSizeLT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldImageOutputSize, v))
+REDACTED
+
+// ImageOutputSizeLTE applies the LTE predicate on the "image_output_size" field.
+func ImageOutputSizeLTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldImageOutputSize, v))
+REDACTED
+
+// ImageOutputSizeContains applies the Contains predicate on the "image_output_size" field.
+func ImageOutputSizeContains(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContains(FieldImageOutputSize, v))
+REDACTED
+
+// ImageOutputSizeHasPrefix applies the HasPrefix predicate on the "image_output_size" field.
+func ImageOutputSizeHasPrefix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasPrefix(FieldImageOutputSize, v))
+REDACTED
+
+// ImageOutputSizeHasSuffix applies the HasSuffix predicate on the "image_output_size" field.
+func ImageOutputSizeHasSuffix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasSuffix(FieldImageOutputSize, v))
+REDACTED
+
+// ImageOutputSizeIsNil applies the IsNil predicate on the "image_output_size" field.
+func ImageOutputSizeIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldImageOutputSize))
+REDACTED
+
+// ImageOutputSizeNotNil applies the NotNil predicate on the "image_output_size" field.
+func ImageOutputSizeNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldImageOutputSize))
+REDACTED
+
+// ImageOutputSizeEqualFold applies the EqualFold predicate on the "image_output_size" field.
+func ImageOutputSizeEqualFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEqualFold(FieldImageOutputSize, v))
+REDACTED
+
+// ImageOutputSizeContainsFold applies the ContainsFold predicate on the "image_output_size" field.
+func ImageOutputSizeContainsFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContainsFold(FieldImageOutputSize, v))
+REDACTED
+
+// ImageSizeSourceEQ applies the EQ predicate on the "image_size_source" field.
+func ImageSizeSourceEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldImageSizeSource, v))
+REDACTED
+
+// ImageSizeSourceNEQ applies the NEQ predicate on the "image_size_source" field.
+func ImageSizeSourceNEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldImageSizeSource, v))
+REDACTED
+
+// ImageSizeSourceIn applies the In predicate on the "image_size_source" field.
+func ImageSizeSourceIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldImageSizeSource, vs...))
+REDACTED
+
+// ImageSizeSourceNotIn applies the NotIn predicate on the "image_size_source" field.
+func ImageSizeSourceNotIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldImageSizeSource, vs...))
+REDACTED
+
+// ImageSizeSourceGT applies the GT predicate on the "image_size_source" field.
+func ImageSizeSourceGT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldImageSizeSource, v))
+REDACTED
+
+// ImageSizeSourceGTE applies the GTE predicate on the "image_size_source" field.
+func ImageSizeSourceGTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldImageSizeSource, v))
+REDACTED
+
+// ImageSizeSourceLT applies the LT predicate on the "image_size_source" field.
+func ImageSizeSourceLT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldImageSizeSource, v))
+REDACTED
+
+// ImageSizeSourceLTE applies the LTE predicate on the "image_size_source" field.
+func ImageSizeSourceLTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldImageSizeSource, v))
+REDACTED
+
+// ImageSizeSourceContains applies the Contains predicate on the "image_size_source" field.
+func ImageSizeSourceContains(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContains(FieldImageSizeSource, v))
+REDACTED
+
+// ImageSizeSourceHasPrefix applies the HasPrefix predicate on the "image_size_source" field.
+func ImageSizeSourceHasPrefix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasPrefix(FieldImageSizeSource, v))
+REDACTED
+
+// ImageSizeSourceHasSuffix applies the HasSuffix predicate on the "image_size_source" field.
+func ImageSizeSourceHasSuffix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasSuffix(FieldImageSizeSource, v))
+REDACTED
+
+// ImageSizeSourceIsNil applies the IsNil predicate on the "image_size_source" field.
+func ImageSizeSourceIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldImageSizeSource))
+REDACTED
+
+// ImageSizeSourceNotNil applies the NotNil predicate on the "image_size_source" field.
+func ImageSizeSourceNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldImageSizeSource))
+REDACTED
+
+// ImageSizeSourceEqualFold applies the EqualFold predicate on the "image_size_source" field.
+func ImageSizeSourceEqualFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEqualFold(FieldImageSizeSource, v))
+REDACTED
+
+// ImageSizeSourceContainsFold applies the ContainsFold predicate on the "image_size_source" field.
+func ImageSizeSourceContainsFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContainsFold(FieldImageSizeSource, v))
+REDACTED
+
+// ImageSizeBreakdownIsNil applies the IsNil predicate on the "image_size_breakdown" field.
+func ImageSizeBreakdownIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldImageSizeBreakdown))
+REDACTED
+
+// ImageSizeBreakdownNotNil applies the NotNil predicate on the "image_size_breakdown" field.
+func ImageSizeBreakdownNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldImageSizeBreakdown))
 REDACTED
 
 // CacheTTLOverriddenEQ applies the EQ predicate on the "cache_ttl_overridden" field.

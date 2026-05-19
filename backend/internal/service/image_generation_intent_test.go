@@ -140,9 +140,10 @@ REDACTED
 func TestOpenAIImageOutputCounterDeduplicatesFinalImages(t *testing.T) {
 	counter := newOpenAIImageOutputCounter()
 	counter.AddSSEData([]byte(`{"type":"response.image_generation_call.partial_image","partial_image_b64":"abc"REDACTED`))
-	counter.AddSSEData([]byte(`{"type":"response.output_item.done","item":{"id":"ig_1","type":"image_generation_call","result":"final-a"REDACTEDREDACTED`))
-	counter.AddSSEData([]byte(`{"type":"response.completed","response":{"output":[{"id":"ig_1","type":"image_generation_call","result":"final-a"REDACTED,{"id":"ig_2","type":"image_generation_call","result":"final-b"REDACTED]REDACTEDREDACTED`))
+	counter.AddSSEData([]byte(`{"type":"response.output_item.done","item":{"id":"ig_1","type":"image_generation_call","result":"final-a","size":"1024x1024"REDACTEDREDACTED`))
+	counter.AddSSEData([]byte(`{"type":"response.completed","response":{"output":[{"id":"ig_1","type":"image_generation_call","result":"final-a"REDACTED,{"id":"ig_2","type":"image_generation_call","result":"final-b","size":"3840x2160"REDACTED]REDACTEDREDACTED`))
 	require.Equal(t, 2, counter.Count())
+	require.Equal(t, []string{"1024x1024", "3840x2160"REDACTED, counter.Sizes())
 REDACTED
 
 func TestOpenAIImageOutputCounterCountsImagesAPIStreamShapes(t *testing.T) {
@@ -181,4 +182,37 @@ func TestOpenAIImageOutputCounterFallsBackForInvalidMultilineSSEBody(t *testing.
 			"data: {\"type\":\"image_generation.completed\",\"b64_json\":\"final-b\"REDACTED\n\n",
 	)
 	require.Equal(t, 2, counter.Count())
+REDACTED
+
+func TestCollectOpenAIResponseImageOutputSizesFromJSONBytes(t *testing.T) {
+	body := []byte(`{
+		"output": [
+			{"id":"ig_1","type":"image_generation_call","result":"final-a","size":"3840x2160"REDACTED,
+			{"id":"ig_2","type":"image_generation_call","result":"final-b","size":"1024x1024"REDACTED
+		]
+REDACTED`)
+
+	require.Equal(t, 2, countOpenAIResponseImageOutputsFromJSONBytes(body))
+	require.Equal(t, []string{"3840x2160", "1024x1024"REDACTED, collectOpenAIResponseImageOutputSizesFromJSONBytes(body))
+REDACTED
+
+func TestCollectOpenAIResponseImageOutputSizesFromImagesAPIData(t *testing.T) {
+	body := []byte(`{
+		"data": [
+			{"b64_json":"final-a","size":"2048x1152"REDACTED,
+			{"b64_json":"final-b","size":"2048x1152"REDACTED
+		]
+REDACTED`)
+
+	require.Equal(t, 2, countOpenAIResponseImageOutputsFromJSONBytes(body))
+	require.Equal(t, []string{"2048x1152", "2048x1152"REDACTED, collectOpenAIResponseImageOutputSizesFromJSONBytes(body))
+REDACTED
+
+func TestCollectOpenAIImageOutputSizesFromSSEBody(t *testing.T) {
+	body := "data: {\"type\":\"response.output_item.done\",\"item\":{\"id\":\"ig_1\",\"type\":\"image_generation_call\",\"result\":\"final-a\",\"size\":\"3840x2160\"REDACTEDREDACTED\n\n" +
+		"data: {\"type\":\"response.completed\",\"response\":{\"output\":[{\"id\":\"ig_1\",\"type\":\"image_generation_call\",\"result\":\"final-a\"REDACTED,{\"id\":\"ig_2\",\"type\":\"image_generation_call\",\"result\":\"final-b\",\"size\":\"1024x1024\"REDACTED]REDACTEDREDACTED\n\n" +
+		"data: [DONE]\n\n"
+
+	require.Equal(t, 2, countOpenAIImageOutputsFromSSEBody(body))
+	require.Equal(t, []string{"3840x2160", "1024x1024"REDACTED, collectOpenAIImageOutputSizesFromSSEBody(body))
 REDACTED

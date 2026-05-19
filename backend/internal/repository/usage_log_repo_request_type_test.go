@@ -76,6 +76,10 @@ REDACTED
 			sqlmock.AnyArg(), // ip_address
 			log.ImageCount,
 			sqlmock.AnyArg(), // image_size
+			sqlmock.AnyArg(), // image_input_size
+			sqlmock.AnyArg(), // image_output_size
+			sqlmock.AnyArg(), // image_size_source
+			sqlmock.AnyArg(), // image_size_breakdown
 			sqlmock.AnyArg(), // service_tier
 			sqlmock.AnyArg(), // reasoning_effort
 			sqlmock.AnyArg(), // inbound_endpoint
@@ -155,6 +159,10 @@ REDACTED
 			sqlmock.AnyArg(),
 			log.ImageCount,
 			sqlmock.AnyArg(),
+			sqlmock.AnyArg(), // image_input_size
+			sqlmock.AnyArg(), // image_output_size
+			sqlmock.AnyArg(), // image_size_source
+			sqlmock.AnyArg(), // image_size_breakdown
 			serviceTier,
 			sqlmock.AnyArg(),
 			sqlmock.AnyArg(),
@@ -230,10 +238,72 @@ REDACTED)
 	require.Len(t, prepared.args, len(usageLogInsertArgTypes))
 REDACTED
 
+func TestPrepareUsageLogInsert_PersistsImageSizeMetadata(t *testing.T) {
+	imageSize := "4K"
+	inputSize := "1024x1024"
+	outputSize := "3840x2160"
+	source := "output"
+	prepared := prepareUsageLogInsert(&service.UsageLog{
+		UserID:             1,
+		APIKeyID:           2,
+		AccountID:          3,
+		RequestID:          "req-image-metadata",
+		Model:              "gpt-image-2",
+		RequestedModel:     "gpt-image-2",
+		ImageCount:         2,
+		ImageSize:          &imageSize,
+		ImageInputSize:     &inputSize,
+		ImageOutputSize:    &outputSize,
+		ImageSizeSource:    &source,
+		ImageSizeBreakdown: map[string]int{"1K": 1, "4K": 1REDACTED,
+		CreatedAt:          time.Date(2025, 1, 6, 12, 0, 0, 0, time.UTC),
+REDACTED)
+
+	require.Equal(t, sql.NullString{String: imageSize, Valid: trueREDACTED, prepared.args[34])
+	require.Equal(t, sql.NullString{String: inputSize, Valid: trueREDACTED, prepared.args[35])
+	require.Equal(t, sql.NullString{String: outputSize, Valid: trueREDACTED, prepared.args[36])
+	require.Equal(t, sql.NullString{String: source, Valid: trueREDACTED, prepared.args[37])
+	breakdownJSON, ok := prepared.args[38].(string)
+	require.True(t, ok)
+	require.JSONEq(t, `{"1K":1,"4K":1REDACTED`, breakdownJSON)
+REDACTED
+
 func TestCoalesceTrimmedString(t *testing.T) {
 	require.Equal(t, "fallback", coalesceTrimmedString(sql.NullString{REDACTED, "fallback"))
 	require.Equal(t, "fallback", coalesceTrimmedString(sql.NullString{Valid: true, String: "   "REDACTED, "fallback"))
 	require.Equal(t, "value", coalesceTrimmedString(sql.NullString{Valid: true, String: "value"REDACTED, "fallback"))
+REDACTED
+
+func TestAppendUsageLogBillingModeWhereCondition(t *testing.T) {
+	tests := []struct {
+		name          string
+		billingMode   string
+		wantCondition string
+REDACTED{
+		{
+			name:          "image includes legacy image rows",
+			billingMode:   string(service.BillingModeImage),
+			wantCondition: "(billing_mode = $1 OR COALESCE(image_count, 0) > 0)",
+	REDACTED,
+		{
+			name:          "token includes legacy non-image rows",
+			billingMode:   string(service.BillingModeToken),
+			wantCondition: "(billing_mode = $1 OR ((billing_mode IS NULL OR billing_mode = '') AND COALESCE(image_count, 0) <= 0))",
+	REDACTED,
+		{
+			name:          "per request remains exact",
+			billingMode:   string(service.BillingModePerRequest),
+			wantCondition: "billing_mode = $1",
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			conditions, args := appendUsageLogBillingModeWhereCondition(nil, nil, tt.billingMode)
+			require.Equal(t, []string{tt.wantConditionREDACTED, conditions)
+			require.Equal(t, []any{tt.billingModeREDACTED, args)
+	REDACTED)
+REDACTED
 REDACTED
 
 func anySliceToDriverValues(values []any) []driver.Value {
@@ -528,6 +598,63 @@ REDACTED
 REDACTED
 
 func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
+	t.Run("image_size_metadata_is_scanned", func(t *testing.T) {
+		now := time.Now().UTC()
+		log, err := scanUsageLog(usageLogScannerStub{values: []any{
+			int64(4),
+			int64(13),
+			int64(23),
+			int64(33),
+			sql.NullString{Valid: true, String: "req-image-metadata"REDACTED,
+			"gpt-image-2",
+			sql.NullString{Valid: true, String: "gpt-image-2"REDACTED,
+			sql.NullString{REDACTED,
+			sql.NullInt64{REDACTED,
+			sql.NullInt64{REDACTED,
+			0, 0, 0, 0, 0, 0,
+			0, 0.0, // image_output_tokens, image_output_cost
+			0.0, 0.0, 0.0, 0.0, 0.8, 0.8,
+			1.0,
+			sql.NullFloat64{REDACTED,
+			int16(service.BillingTypeBalance),
+			int16(service.RequestTypeSync),
+			false,
+			false,
+			sql.NullInt64{REDACTED,
+			sql.NullInt64{REDACTED,
+			sql.NullString{REDACTED,
+			sql.NullString{REDACTED,
+			2,
+			sql.NullString{Valid: true, String: "4K"REDACTED,
+			sql.NullString{Valid: true, String: "1024x1024"REDACTED,
+			sql.NullString{Valid: true, String: "3840x2160"REDACTED,
+			sql.NullString{Valid: true, String: "output"REDACTED,
+			sql.NullString{Valid: true, String: `{"4K":2REDACTED`REDACTED,
+			sql.NullString{REDACTED,
+			sql.NullString{REDACTED,
+			sql.NullString{REDACTED,
+			sql.NullString{REDACTED,
+			false,
+			sql.NullInt64{REDACTED,
+			sql.NullString{REDACTED,
+			sql.NullString{REDACTED,
+			sql.NullString{REDACTED,
+			sql.NullFloat64{REDACTED,
+			now,
+	REDACTEDREDACTED)
+	REDACTED
+		require.Equal(t, 2, log.ImageCount)
+		require.NotNil(t, log.ImageSize)
+		require.Equal(t, "4K", *log.ImageSize)
+		require.NotNil(t, log.ImageInputSize)
+		require.Equal(t, "1024x1024", *log.ImageInputSize)
+		require.NotNil(t, log.ImageOutputSize)
+		require.Equal(t, "3840x2160", *log.ImageOutputSize)
+		require.NotNil(t, log.ImageSizeSource)
+		require.Equal(t, "output", *log.ImageSizeSource)
+		require.Equal(t, map[string]int{"4K": 2REDACTED, log.ImageSizeBreakdown)
+REDACTED)
+
 	t.Run("request_type_ws_v2_overrides_legacy", func(t *testing.T) {
 		now := time.Now().UTC()
 		log, err := scanUsageLog(usageLogScannerStub{values: []any{
@@ -567,6 +694,10 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{REDACTED,
 			0,
 			sql.NullString{REDACTED,
+			sql.NullString{REDACTED, // image_input_size
+			sql.NullString{REDACTED, // image_output_size
+			sql.NullString{REDACTED, // image_size_source
+			sql.NullString{REDACTED, // image_size_breakdown
 			sql.NullString{Valid: true, String: "priority"REDACTED,
 			sql.NullString{REDACTED,
 			sql.NullString{REDACTED,
@@ -615,6 +746,10 @@ REDACTED)
 			sql.NullString{REDACTED,
 			0,
 			sql.NullString{REDACTED,
+			sql.NullString{REDACTED, // image_input_size
+			sql.NullString{REDACTED, // image_output_size
+			sql.NullString{REDACTED, // image_size_source
+			sql.NullString{REDACTED, // image_size_breakdown
 			sql.NullString{Valid: true, String: "flex"REDACTED,
 			sql.NullString{REDACTED,
 			sql.NullString{REDACTED,
@@ -663,6 +798,10 @@ REDACTED)
 			sql.NullString{REDACTED,
 			0,
 			sql.NullString{REDACTED,
+			sql.NullString{REDACTED, // image_input_size
+			sql.NullString{REDACTED, // image_output_size
+			sql.NullString{REDACTED, // image_size_source
+			sql.NullString{REDACTED, // image_size_breakdown
 			sql.NullString{Valid: true, String: "priority"REDACTED,
 			sql.NullString{REDACTED,
 			sql.NullString{REDACTED,
