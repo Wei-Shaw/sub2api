@@ -9,6 +9,8 @@ import { useAppStore REDACTED from '@/stores/app'
 import { useAdminSettingsStore REDACTED from '@/stores/adminSettings'
 import { useNavigationLoadingState REDACTED from '@/composables/useNavigationLoading'
 import { useRoutePrefetch REDACTED from '@/composables/useRoutePrefetch'
+import { getSetupStatus REDACTED from '@/api/setup'
+import { resolveCompletedSetupRedirectPath REDACTED from './setupRedirect'
 import { resolveDocumentTitle REDACTED from './title'
 
 /**
@@ -694,7 +696,7 @@ function isBackendModePublicRouteAllowed(path: string, hasPendingAuthSession: bo
   return false
 REDACTED
 
-router.beforeEach((to, _from, next) => {
+router.beforeEach(async (to, _from, next) => {
   // 开始导航加载状态
   navigationLoading.startNavigation()
 
@@ -728,6 +730,18 @@ router.beforeEach((to, _from, next) => {
   // Check if route requires authentication
   const requiresAuth = to.meta.requiresAuth !== false // Default to true
   const requiresAdmin = to.meta.requiresAdmin === true
+
+  if (to.path === '/setup') {
+    try {
+      const status = await getSetupStatus()
+      if (!status.needs_setup) {
+        next(resolveCompletedSetupRedirectPath(authStore.isAuthenticated, authStore.isAdmin))
+        return
+      REDACTED
+    REDACTED catch {
+      // If setup status cannot be determined, keep the setup page reachable.
+    REDACTED
+  REDACTED
 
   // If route doesn't require auth, allow access
   if (!requiresAuth) {
