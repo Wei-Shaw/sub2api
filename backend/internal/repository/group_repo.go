@@ -327,11 +327,6 @@ func (r *groupRepository) listWithAccountCountSort(ctx context.Context, q *dbent
 		groupIDs[i] = r.ID
 		entries = append(entries, sortEntry{id: r.ID, sortOrder: r.SortOrder})
 	}
-	if configs, err := r.loadOAuthPauseConfigs(ctx, groupIDs); err == nil {
-		for i := range outGroups {
-			applyOAuthPauseConfig(&outGroups[i], configs[outGroups[i].ID])
-		}
-	}
 
 	// 第二步：批量加载 account counts（一次 SQL）。
 	counts, err := r.loadAccountCounts(ctx, groupIDs)
@@ -392,6 +387,11 @@ func (r *groupRepository) listWithAccountCountSort(ctx context.Context, q *dbent
 		g.RateLimitedAccountCount = c.RateLimited
 		if idx, ok := pageIdx[g.ID]; ok {
 			outGroups[idx] = *g
+		}
+	}
+	if configs, err := r.loadOAuthPauseConfigs(ctx, pageIDs); err == nil {
+		for i := range outGroups {
+			applyOAuthPauseConfig(&outGroups[i], configs[outGroups[i].ID])
 		}
 	}
 
