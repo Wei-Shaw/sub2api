@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/mail"
 	"strings"
 	"time"
@@ -18,7 +19,7 @@ func normalizeOAuthSignupSource(signupSource string) string {
 	switch signupSource {
 	case "", "email":
 		return "email"
-	case "linuxdo", "wechat", "oidc", "github", "google":
+	case "linuxdo", "wechat", "oidc", "github", "google", "dingtalk":
 		return signupSource
 	default:
 		return "email"
@@ -71,7 +72,7 @@ REDACTED
 	if err != nil {
 		return nil, ErrInvitationCodeInvalid
 REDACTED
-	if redeemCode.Type != RedeemTypeInvitation || redeemCode.Status != StatusUnused {
+	if redeemCode.Type != RedeemTypeInvitation || !redeemCode.CanUse() {
 		return nil, ErrInvitationCodeInvalid
 REDACTED
 	return redeemCode, nil
@@ -109,7 +110,7 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 	if s == nil {
 		return nil, nil, ErrServiceUnavailable
 REDACTED
-	if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
+	if s.settingService == nil || (!s.settingService.IsRegistrationEnabled(ctx) && !s.canBypassRegistrationDisabledForOAuth(ctx, signupSource)) {
 		return nil, nil, ErrRegDisabled
 REDACTED
 
@@ -118,18 +119,22 @@ REDACTED
 		return nil, nil, ErrEmailReserved
 REDACTED
 	if err := s.validateRegistrationEmailPolicy(ctx, email); err != nil {
+		slog.Error("oauth email register: policy rejected", "email", email, "error", err.Error())
 		return nil, nil, err
 REDACTED
 	if err := s.VerifyOAuthEmailCode(ctx, email, verifyCode); err != nil {
+		slog.Error("oauth email register: verify code failed", "email", email, "error", err.Error())
 		return nil, nil, err
 REDACTED
 
 	if _, err := s.validateOAuthRegistrationInvitation(ctx, invitationCode); err != nil {
+		slog.Error("oauth email register: invitation failed", "email", email, "error", err.Error())
 		return nil, nil, err
 REDACTED
 
 	existsEmail, err := s.userRepo.ExistsByEmail(ctx, email)
 	if err != nil {
+		slog.Error("oauth email register: ExistsByEmail failed", "email", email, "error", err.Error())
 		return nil, nil, ErrServiceUnavailable
 REDACTED
 	if existsEmail {
@@ -158,6 +163,7 @@ REDACTED
 		if errors.Is(err, ErrEmailExists) {
 			return nil, nil, ErrEmailExists
 	REDACTED
+		slog.Error("oauth email register: userRepo.Create failed", "email", email, "signup_source", signupSource, "error", err.Error())
 		return nil, nil, ErrServiceUnavailable
 REDACTED
 
@@ -181,7 +187,7 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 	if s == nil {
 		return nil, nil, ErrServiceUnavailable
 REDACTED
-	if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
+	if s.settingService == nil || (!s.settingService.IsRegistrationEnabled(ctx) && !s.canBypassRegistrationDisabledForOAuth(ctx, signupSource)) {
 		return nil, nil, ErrRegDisabled
 REDACTED
 
@@ -358,6 +364,7 @@ func (s *AuthService) loadOAuthRegistrationInvitation(ctx context.Context, invit
 			UsedAt:       entity.UsedAt,
 			Notes:        oauthEmailFlowStringValue(entity.Notes),
 			CreatedAt:    entity.CreatedAt,
+			ExpiresAt:    entity.ExpiresAt,
 			GroupID:      entity.GroupID,
 			ValidityDays: entity.ValidityDays,
 	REDACTED, nil
@@ -368,7 +375,11 @@ REDACTED
 func (s *AuthService) useOAuthRegistrationInvitation(ctx context.Context, invitationID, userID int64) error {
 	if client := s.oauthEmailFlowClient(ctx); client != nil {
 		affected, err := client.RedeemCode.Update().
-			Where(redeemcode.IDEQ(invitationID), redeemcode.StatusEQ(StatusUnused)).
+			Where(
+				redeemcode.IDEQ(invitationID),
+				redeemcode.StatusEQ(StatusUnused),
+				redeemcode.Or(redeemcode.ExpiresAtIsNil(), redeemcode.ExpiresAtGT(time.Now().UTC())),
+			).
 			SetStatus(StatusUsed).
 			SetUsedBy(userID).
 			SetUsedAt(time.Now().UTC()).
@@ -396,6 +407,11 @@ REDACTED
 			SetStatus(code.Status).
 			SetNotes(code.Notes).
 			SetValidityDays(code.ValidityDays)
+		if code.ExpiresAt != nil {
+			update = update.SetExpiresAt(*code.ExpiresAt)
+	REDACTED else {
+			update = update.ClearExpiresAt()
+	REDACTED
 		if code.UsedBy != nil {
 			update = update.SetUsedBy(*code.UsedBy)
 	REDACTED else {

@@ -262,6 +262,12 @@ REDACTED{
 			want:    "gpt-5.4",
 	REDACTED,
 		{
+			name:    "oauth preserves codex auto review model",
+			account: &Account{Type: AccountTypeOAuthREDACTED,
+			model:   "codex-auto-review",
+			want:    "codex-auto-review",
+	REDACTED,
+		{
 			name:    "apikey preserves custom compatible model",
 			account: &Account{Type: AccountTypeAPIKeyREDACTED,
 			model:   "gemini-3-flash-preview",
@@ -281,5 +287,19 @@ REDACTED
 				t.Fatalf("normalizeOpenAIModelForUpstream(...) = %q, want %q", got, tt.want)
 		REDACTED
 	REDACTED)
+REDACTED
+REDACTED
+
+func TestUsageBillingModelCandidatesPreserveCodexAutoReviewModel(t *testing.T) {
+	candidates := usageBillingModelCandidates("codex-auto-review")
+
+	expected := []string{"codex-auto-review"REDACTED
+	if len(candidates) != len(expected) {
+		t.Fatalf("usageBillingModelCandidates(codex-auto-review) = %#v, want %#v", candidates, expected)
+REDACTED
+	for i := range expected {
+		if candidates[i] != expected[i] {
+			t.Fatalf("usageBillingModelCandidates(codex-auto-review) = %#v, want %#v", candidates, expected)
+	REDACTED
 REDACTED
 REDACTED

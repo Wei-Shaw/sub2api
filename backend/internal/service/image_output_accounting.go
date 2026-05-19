@@ -10,12 +10,18 @@ import (
 
 type openAIImageOutputCounter struct {
 	seen         map[string]struct{REDACTED
+	seenSizes    map[string]string
+	seenOrder    []string
+	dataSizes    []string
 	count        int
 	maxDataCount int
 REDACTED
 
 func newOpenAIImageOutputCounter() *openAIImageOutputCounter {
-	return &openAIImageOutputCounter{seen: make(map[string]struct{REDACTED)REDACTED
+	return &openAIImageOutputCounter{
+		seen:      make(map[string]struct{REDACTED),
+		seenSizes: make(map[string]string),
+REDACTED
 REDACTED
 
 func (c *openAIImageOutputCounter) Count() int {
@@ -26,6 +32,25 @@ REDACTED
 		return c.maxDataCount
 REDACTED
 	return c.count
+REDACTED
+
+func (c *openAIImageOutputCounter) Sizes() []string {
+	if c == nil {
+		return nil
+REDACTED
+	sizes := make([]string, 0, len(c.seenOrder)+len(c.dataSizes))
+	for _, key := range c.seenOrder {
+		if size := strings.TrimSpace(c.seenSizes[key]); size != "" {
+			sizes = append(sizes, size)
+	REDACTED
+REDACTED
+	if len(sizes) == 0 && len(c.dataSizes) > 0 {
+		sizes = append(sizes, c.dataSizes...)
+REDACTED
+	if len(sizes) == 0 {
+		return nil
+REDACTED
+	return sizes
 REDACTED
 
 func (c *openAIImageOutputCounter) AddJSONResponse(body []byte) {
@@ -73,9 +98,19 @@ func (c *openAIImageOutputCounter) addDataArray(data gjson.Result) {
 	if !data.IsArray() {
 		return
 REDACTED
-	count := len(data.Array())
+	items := data.Array()
+	count := len(items)
 	if count > c.maxDataCount {
 		c.maxDataCount = count
+REDACTED
+	sizes := make([]string, 0, len(items))
+	for _, item := range items {
+		if size := strings.TrimSpace(item.Get("size").String()); size != "" {
+			sizes = append(sizes, size)
+	REDACTED
+REDACTED
+	if len(sizes) > 0 {
+		c.dataSizes = sizes
 REDACTED
 REDACTED
 
@@ -120,10 +155,18 @@ REDACTED
 	if key == "" {
 		return
 REDACTED
+	size := strings.TrimSpace(item.Get("size").String())
 	if _, exists := c.seen[key]; exists {
+		if size != "" && strings.TrimSpace(c.seenSizes[key]) == "" {
+			c.seenSizes[key] = size
+	REDACTED
 		return
 REDACTED
 	c.seen[key] = struct{REDACTED{REDACTED
+	c.seenOrder = append(c.seenOrder, key)
+	if size != "" {
+		c.seenSizes[key] = size
+REDACTED
 	c.count++
 REDACTED
 
@@ -142,8 +185,20 @@ func countOpenAIResponseImageOutputsFromJSONBytes(body []byte) int {
 	return counter.Count()
 REDACTED
 
+func collectOpenAIResponseImageOutputSizesFromJSONBytes(body []byte) []string {
+	counter := newOpenAIImageOutputCounter()
+	counter.AddJSONResponse(body)
+	return counter.Sizes()
+REDACTED
+
 func countOpenAIImageOutputsFromSSEBody(body string) int {
 	counter := newOpenAIImageOutputCounter()
 	counter.AddSSEBody(body)
 	return counter.Count()
+REDACTED
+
+func collectOpenAIImageOutputSizesFromSSEBody(body string) []string {
+	counter := newOpenAIImageOutputCounter()
+	counter.AddSSEBody(body)
+	return counter.Sizes()
 REDACTED

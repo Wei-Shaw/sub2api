@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach REDACTED from 'vitest'
 import { setActivePinia, createPinia REDACTED from 'pinia'
+import { resolveCompletedSetupRedirectPath REDACTED from '@/router/setupRedirect'
 
 // Mock 导航加载状态
 vi.mock('@/composables/useNavigationLoading', () => {
@@ -53,6 +54,7 @@ interface MockAuthState {
   isSimpleMode: boolean
   backendModeEnabled: boolean
   hasPendingAuthSession: boolean
+  setupNeedsSetup?: boolean
 REDACTED
 
 /**
@@ -65,6 +67,10 @@ function simulateGuard(
 ): string | null {
   const requiresAuth = toMeta.requiresAuth !== false
   const requiresAdmin = toMeta.requiresAdmin === true
+
+  if (toPath === '/setup' && authState.setupNeedsSetup === false) {
+    return resolveCompletedSetupRedirectPath(authState.isAuthenticated, authState.isAdmin)
+  REDACTED
 
   // 不需要认证的路由
   if (!requiresAuth) {
@@ -376,6 +382,32 @@ describe('路由守卫逻辑', () => {
       REDACTED
       const redirect = simulateGuard('/setup', { requiresAuth: false REDACTED, authState)
       expect(redirect).toBeNull()
+    REDACTED)
+
+    it('unauthenticated: initialized /setup redirects to /login', () => {
+      const authState: MockAuthState = {
+        isAuthenticated: false,
+        isAdmin: false,
+        isSimpleMode: false,
+        backendModeEnabled: true,
+        hasPendingAuthSession: false,
+        setupNeedsSetup: false,
+      REDACTED
+      const redirect = simulateGuard('/setup', { requiresAuth: false REDACTED, authState)
+      expect(redirect).toBe('/login')
+    REDACTED)
+
+    it('admin: initialized /setup redirects to /admin/dashboard', () => {
+      const authState: MockAuthState = {
+        isAuthenticated: true,
+        isAdmin: true,
+        isSimpleMode: false,
+        backendModeEnabled: true,
+        hasPendingAuthSession: false,
+        setupNeedsSetup: false,
+      REDACTED
+      const redirect = simulateGuard('/setup', { requiresAuth: false REDACTED, authState)
+      expect(redirect).toBe('/admin/dashboard')
     REDACTED)
 
     it('admin: /admin/dashboard is allowed', () => {

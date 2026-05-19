@@ -128,6 +128,20 @@ REDACTED
 	return _c
 REDACTED
 
+// SetExpiresAt sets the "expires_at" field.
+func (_c *RedeemCodeCreate) SetExpiresAt(v time.Time) *RedeemCodeCreate {
+	_c.mutation.SetExpiresAt(v)
+	return _c
+REDACTED
+
+// SetNillableExpiresAt sets the "expires_at" field if the given value is not nil.
+func (_c *RedeemCodeCreate) SetNillableExpiresAt(v *time.Time) *RedeemCodeCreate {
+	if v != nil {
+		_c.SetExpiresAt(*v)
+REDACTED
+	return _c
+REDACTED
+
 // SetGroupID sets the "group_id" field.
 func (_c *RedeemCodeCreate) SetGroupID(v int64) *RedeemCodeCreate {
 	_c.mutation.SetGroupID(v)
@@ -327,6 +341,10 @@ REDACTED
 		_spec.SetField(redeemcode.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
 REDACTED
+	if value, ok := _c.mutation.ExpiresAt(); ok {
+		_spec.SetField(redeemcode.FieldExpiresAt, field.TypeTime, value)
+		_node.ExpiresAt = &value
+REDACTED
 	if value, ok := _c.mutation.ValidityDays(); ok {
 		_spec.SetField(redeemcode.FieldValidityDays, field.TypeInt, value)
 		_node.ValidityDays = value
@@ -522,6 +540,24 @@ REDACTED
 // ClearNotes clears the value of the "notes" field.
 func (u *RedeemCodeUpsert) ClearNotes() *RedeemCodeUpsert {
 	u.SetNull(redeemcode.FieldNotes)
+	return u
+REDACTED
+
+// SetExpiresAt sets the "expires_at" field.
+func (u *RedeemCodeUpsert) SetExpiresAt(v time.Time) *RedeemCodeUpsert {
+	u.Set(redeemcode.FieldExpiresAt, v)
+	return u
+REDACTED
+
+// UpdateExpiresAt sets the "expires_at" field to the value that was provided on create.
+func (u *RedeemCodeUpsert) UpdateExpiresAt() *RedeemCodeUpsert {
+	u.SetExcluded(redeemcode.FieldExpiresAt)
+	return u
+REDACTED
+
+// ClearExpiresAt clears the value of the "expires_at" field.
+func (u *RedeemCodeUpsert) ClearExpiresAt() *RedeemCodeUpsert {
+	u.SetNull(redeemcode.FieldExpiresAt)
 	return u
 REDACTED
 
@@ -729,6 +765,27 @@ REDACTED
 func (u *RedeemCodeUpsertOne) ClearNotes() *RedeemCodeUpsertOne {
 	return u.Update(func(s *RedeemCodeUpsert) {
 		s.ClearNotes()
+REDACTED)
+REDACTED
+
+// SetExpiresAt sets the "expires_at" field.
+func (u *RedeemCodeUpsertOne) SetExpiresAt(v time.Time) *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.SetExpiresAt(v)
+REDACTED)
+REDACTED
+
+// UpdateExpiresAt sets the "expires_at" field to the value that was provided on create.
+func (u *RedeemCodeUpsertOne) UpdateExpiresAt() *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.UpdateExpiresAt()
+REDACTED)
+REDACTED
+
+// ClearExpiresAt clears the value of the "expires_at" field.
+func (u *RedeemCodeUpsertOne) ClearExpiresAt() *RedeemCodeUpsertOne {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.ClearExpiresAt()
 REDACTED)
 REDACTED
 
@@ -1108,6 +1165,27 @@ REDACTED
 func (u *RedeemCodeUpsertBulk) ClearNotes() *RedeemCodeUpsertBulk {
 	return u.Update(func(s *RedeemCodeUpsert) {
 		s.ClearNotes()
+REDACTED)
+REDACTED
+
+// SetExpiresAt sets the "expires_at" field.
+func (u *RedeemCodeUpsertBulk) SetExpiresAt(v time.Time) *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.SetExpiresAt(v)
+REDACTED)
+REDACTED
+
+// UpdateExpiresAt sets the "expires_at" field to the value that was provided on create.
+func (u *RedeemCodeUpsertBulk) UpdateExpiresAt() *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.UpdateExpiresAt()
+REDACTED)
+REDACTED
+
+// ClearExpiresAt clears the value of the "expires_at" field.
+func (u *RedeemCodeUpsertBulk) ClearExpiresAt() *RedeemCodeUpsertBulk {
+	return u.Update(func(s *RedeemCodeUpsert) {
+		s.ClearExpiresAt()
 REDACTED)
 REDACTED
 

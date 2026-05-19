@@ -750,3 +750,67 @@ REDACTED
 func (c *errorOnWriteFrameConn) Close() error {
 	return nil
 REDACTED
+
+func TestRelay_OnTurnComplete_RealOpenAIStream_FirstTokenMs(t *testing.T) {
+	t.Parallel()
+
+	clientConn := newPassthroughTestFrameConn(nil, false)
+	upstreamConn := newPassthroughTestFrameConn([]passthroughTestFrame{
+		{
+			msgType: coderws.MessageText,
+			payload: []byte(`{"type":"response.created","response":{"id":"resp_real"REDACTEDREDACTED`),
+	REDACTED,
+		{
+			msgType: coderws.MessageText,
+			payload: []byte(`{"type":"response.output_text.delta","delta":"He"REDACTED`),
+	REDACTED,
+		{
+			msgType: coderws.MessageText,
+			payload: []byte(`{"type":"response.output_text.delta","delta":"llo"REDACTED`),
+	REDACTED,
+		{
+			msgType: coderws.MessageText,
+			payload: []byte(`{"type":"response.output_text.delta","delta":" world"REDACTED`),
+	REDACTED,
+		{
+			msgType: coderws.MessageText,
+			payload: []byte(`{"type":"response.completed","response":{"id":"resp_real","usage":{"input_tokens":2,"output_tokens":3REDACTEDREDACTEDREDACTED`),
+	REDACTED,
+REDACTED, true)
+
+	firstPayload := []byte(`{"type":"response.create","model":"gpt-5.3-codex","input":[]REDACTED`)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	base := time.Unix(0, 0)
+	var nowTick atomic.Int64
+	nowFn := func() time.Time {
+		step := nowTick.Add(1)
+		return base.Add(time.Duration(step) * 10 * time.Millisecond)
+REDACTED
+
+	var turn RelayTurnResult
+	result, relayExit := Relay(ctx, clientConn, upstreamConn, firstPayload, RelayOptions{
+		Now: nowFn,
+		OnTurnComplete: func(current RelayTurnResult) {
+			turn = current
+	REDACTED,
+REDACTED)
+	require.Nil(t, relayExit)
+	require.Equal(t, "resp_real", turn.RequestID)
+	require.Equal(t, "response.completed", turn.TerminalEventType)
+
+	require.NotNil(t, turn.FirstTokenMs, "per-turn FirstTokenMs must be captured for real OpenAI streams")
+	require.Greater(t, turn.Duration.Milliseconds(), int64(0))
+
+	require.Less(t,
+		int64(*turn.FirstTokenMs),
+		turn.Duration.Milliseconds(),
+		"per-turn FirstTokenMs (%dms) should be strictly less than Duration (%dms); "+
+			"equality indicates the bug where first_token is mistakenly stamped on the terminal event",
+		*turn.FirstTokenMs, turn.Duration.Milliseconds(),
+	)
+
+	require.NotNil(t, result.FirstTokenMs)
+	require.Greater(t, *result.FirstTokenMs, 0)
+REDACTED

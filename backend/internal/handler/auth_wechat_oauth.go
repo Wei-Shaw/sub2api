@@ -548,7 +548,7 @@ REDACTED
 		return
 REDACTED
 
-	tokenPair, user, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), email, username, req.InvitationCode, req.AffCode)
+	tokenPair, user, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), email, username, req.InvitationCode, req.AffCode, "wechat")
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

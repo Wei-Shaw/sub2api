@@ -217,6 +217,7 @@ const props = withDefaults(
   defineProps<{
     user: User | null
     linuxdoEnabled?: boolean
+    dingtalkEnabled?: boolean
     oidcEnabled?: boolean
     oidcProviderName?: string
     wechatEnabled?: boolean
@@ -227,6 +228,7 @@ const props = withDefaults(
   REDACTED>(),
   {
     linuxdoEnabled: false,
+    dingtalkEnabled: false,
     oidcEnabled: false,
     oidcProviderName: 'OIDC',
     wechatEnabled: false,
@@ -406,6 +408,9 @@ function isProviderEnabledForBinding(provider: BindableProvider): boolean {
   if (provider === 'linuxdo') {
     return props.linuxdoEnabled
   REDACTED
+  if (provider === 'dingtalk') {
+    return props.dingtalkEnabled
+  REDACTED
   if (provider === 'oidc') {
     return props.oidcEnabled
   REDACTED
@@ -431,6 +436,17 @@ const providerItems = computed(() => [
       (getBindingDetails('linuxdo')?.can_bind ?? true),
     canUnbind: Boolean(getBindingStatus('linuxdo') && getBindingDetails('linuxdo')?.can_unbind),
     details: getBindingDetails('linuxdo'),
+  REDACTED,
+  {
+    provider: 'dingtalk' as const,
+    label: t('profile.authBindings.providers.dingtalk'),
+    bound: getBindingStatus('dingtalk'),
+    canBind:
+      !getBindingStatus('dingtalk') &&
+      isProviderEnabledForBinding('dingtalk') &&
+      (getBindingDetails('dingtalk')?.can_bind ?? true),
+    canUnbind: Boolean(getBindingStatus('dingtalk') && getBindingDetails('dingtalk')?.can_unbind),
+    details: getBindingDetails('dingtalk'),
   REDACTED,
   {
     provider: 'oidc' as const,
@@ -460,6 +476,9 @@ function providerInitial(provider: UserAuthProvider): string {
   if (provider === 'linuxdo') {
     return 'L'
   REDACTED
+  if (provider === 'dingtalk') {
+    return 'D'
+  REDACTED
   if (provider === 'wechat') {
     return 'W'
   REDACTED
@@ -472,6 +491,9 @@ REDACTED
 function providerIconClass(provider: UserAuthProvider): string {
   if (provider === 'linuxdo') {
     return 'bg-orange-100 text-orange-600 dark:bg-orange-900/20 dark:text-orange-300'
+  REDACTED
+  if (provider === 'dingtalk') {
+    return 'bg-blue-100 text-blue-600 dark:bg-blue-900/20 dark:text-blue-300'
   REDACTED
   if (provider === 'wechat') {
     return 'bg-green-100 text-green-600 dark:bg-green-900/20 dark:text-green-300'

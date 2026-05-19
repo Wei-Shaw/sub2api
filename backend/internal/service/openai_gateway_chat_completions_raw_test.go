@@ -5,6 +5,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -36,6 +37,7 @@ REDACTED{
 		// 第三方上游常见形式
 		{"third-party bare domain", "https://api.deepseek.com", "https://api.deepseek.com/v1/chat/completions"REDACTED,
 		{"third-party with path prefix", "https://api.gptgod.online/api", "https://api.gptgod.online/api/v1/chat/completions"REDACTED,
+		{"third-party versioned path", "https://open.bigmodel.cn/api/paas/v4", "https://open.bigmodel.cn/api/paas/v4/chat/completions"REDACTED,
 		// 带空白字符
 		{"whitespace trimmed", "  https://api.openai.com/v1  ", "https://api.openai.com/v1/chat/completions"REDACTED,
 REDACTED
@@ -64,6 +66,7 @@ REDACTED{
 		{"bare /v1", "https://api.openai.com/v1", "https://api.openai.com/v1/responses"REDACTED,
 		{"already /responses", "https://api.openai.com/v1/responses", "https://api.openai.com/v1/responses"REDACTED,
 		{"third-party bare domain", "https://api.deepseek.com", "https://api.deepseek.com/v1/responses"REDACTED,
+		{"third-party versioned path", "https://open.bigmodel.cn/api/paas/v4", "https://open.bigmodel.cn/api/paas/v4/responses"REDACTED,
 		{"only domain, no scheme", "api.gptgod.online", "api.gptgod.online/v1/responses"REDACTED,
 REDACTED
 
@@ -220,6 +223,157 @@ REDACTED
 	require.Equal(t, "get_weather", gjson.GetBytes(upstream.lastBody, "messages.1.tool_calls.0.function.name").String())
 REDACTED
 
+func TestForwardAsRawChatCompletions_SilentRefusalTriggersFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := largeRawChatCompletionsBody()
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstreamBody := strings.Join([]string{
+		`data: {"id":"chatcmpl_silent","object":"chat.completion.chunk","model":"gpt-5.5","choices":[{"index":0,"delta":{"role":"assistant"REDACTEDREDACTED]REDACTED`,
+		"",
+		`data: {"id":"chatcmpl_silent","object":"chat.completion.chunk","model":"gpt-5.5","choices":[{"index":0,"delta":{"content":""REDACTED,"finish_reason":"stop"REDACTED]REDACTED`,
+		"",
+		"data: [DONE]",
+		"",
+REDACTED, "\n")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTED, "x-request-id": []string{"rid_silent"REDACTEDREDACTED,
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+REDACTEDREDACTED
+
+	svc := &OpenAIGatewayService{
+		cfg:          rawChatCompletionsTestConfig(),
+		httpUpstream: upstream,
+REDACTED
+
+	result, err := svc.forwardAsRawChatCompletions(context.Background(), c, rawChatCompletionsTestAccount(), body, "")
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.True(t, errors.As(err, &failoverErr))
+	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+	require.True(t, IsOpenAISilentRefusalErrorBody(failoverErr.ResponseBody))
+	require.False(t, c.Writer.Written(), "silent refusal must not commit a 200 response before failover")
+	require.Empty(t, rec.Body.String())
+REDACTED
+
+func TestForwardAsRawChatCompletions_SilentRefusalToolCallsExempt(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := largeRawChatCompletionsBody()
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstreamBody := strings.Join([]string{
+		`data: {"id":"chatcmpl_tool","object":"chat.completion.chunk","model":"gpt-5.5","choices":[{"index":0,"delta":{"role":"assistant"REDACTEDREDACTED]REDACTED`,
+		"",
+		`data: {"id":"chatcmpl_tool","object":"chat.completion.chunk","model":"gpt-5.5","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"lookup","arguments":""REDACTEDREDACTED]REDACTEDREDACTED]REDACTED`,
+		"",
+		`data: {"id":"chatcmpl_tool","object":"chat.completion.chunk","model":"gpt-5.5","choices":[{"index":0,"delta":{REDACTED,"finish_reason":"tool_calls"REDACTED]REDACTED`,
+		"",
+		"data: [DONE]",
+		"",
+REDACTED, "\n")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTED, "x-request-id": []string{"rid_tool"REDACTEDREDACTED,
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+REDACTEDREDACTED
+
+	svc := &OpenAIGatewayService{
+		cfg:          rawChatCompletionsTestConfig(),
+		httpUpstream: upstream,
+REDACTED
+
+	result, err := svc.forwardAsRawChatCompletions(context.Background(), c, rawChatCompletionsTestAccount(), body, "")
+REDACTED
+	require.NotNil(t, result)
+	require.Contains(t, rec.Body.String(), `"tool_calls"`)
+	require.Contains(t, rec.Body.String(), `"finish_reason":"tool_calls"`)
+REDACTED
+
+func TestHandleChatStreamingResponse_SilentRefusalReasoningSummaryExempt(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+
+	upstreamBody := strings.Join([]string{
+		`data: {"type":"response.created","response":{"id":"resp_reasoning","model":"gpt-5.5"REDACTEDREDACTED`,
+		"",
+		`data: {"type":"response.reasoning_summary_text.delta","delta":"thinking only"REDACTED`,
+		"",
+		`data: {"type":"response.completed","response":{"id":"resp_reasoning","model":"gpt-5.5","status":"completed"REDACTEDREDACTED`,
+		"",
+REDACTED, "\n")
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTED, "x-request-id": []string{"rid_reasoning"REDACTEDREDACTED,
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+REDACTED
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig()REDACTED
+
+	result, err := svc.handleChatStreamingResponse(
+		resp,
+		c,
+		rawChatCompletionsTestAccount(),
+		"gpt-5.5",
+		"gpt-5.5",
+		"gpt-5.5",
+		false,
+		time.Now(),
+		openAISilentRefusalMinRequestBodyBytes,
+	)
+REDACTED
+	require.NotNil(t, result)
+	require.Contains(t, rec.Body.String(), `"reasoning_content":"thinking only"`)
+	require.Contains(t, rec.Body.String(), "data: [DONE]")
+REDACTED
+
+func TestForwardAsRawChatCompletions_SilentRefusalNormalContentExempt(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := largeRawChatCompletionsBody()
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstreamBody := strings.Join([]string{
+		`data: {"id":"chatcmpl_ok","object":"chat.completion.chunk","model":"gpt-5.5","choices":[{"index":0,"delta":{"role":"assistant"REDACTEDREDACTED]REDACTED`,
+		"",
+		`data: {"id":"chatcmpl_ok","object":"chat.completion.chunk","model":"gpt-5.5","choices":[{"index":0,"delta":{"content":"ok"REDACTEDREDACTED]REDACTED`,
+		"",
+		`data: {"id":"chatcmpl_ok","object":"chat.completion.chunk","model":"gpt-5.5","choices":[{"index":0,"delta":{"content":""REDACTED,"finish_reason":"stop"REDACTED]REDACTED`,
+		"",
+		"data: [DONE]",
+		"",
+REDACTED, "\n")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTED, "x-request-id": []string{"rid_ok"REDACTEDREDACTED,
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+REDACTEDREDACTED
+
+	svc := &OpenAIGatewayService{
+		cfg:          rawChatCompletionsTestConfig(),
+		httpUpstream: upstream,
+REDACTED
+
+	result, err := svc.forwardAsRawChatCompletions(context.Background(), c, rawChatCompletionsTestAccount(), body, "")
+REDACTED
+	require.NotNil(t, result)
+	require.Contains(t, rec.Body.String(), `"content":"ok"`)
+	require.Contains(t, rec.Body.String(), "data: [DONE]")
+REDACTED
+
 func TestForwardAsRawChatCompletions_ClientDisconnectDrainsUsage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -295,6 +449,49 @@ REDACTED
 	require.NoError(t, upstream.lastReq.Context().Err())
 REDACTED
 
+func TestForwardAsChatCompletions_UnknownResponsesSupportFallbackUsesVersionedChatURL(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"glm-4.5-air","messages":[{"role":"user","content":"hello"REDACTED],"stream":falseREDACTED`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{
+			StatusCode: http.StatusNotFound,
+			Header:     http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED,
+			Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"not found"REDACTEDREDACTED`)),
+	REDACTED,
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"REDACTED, "x-request-id": []string{"rid_raw_fallback"REDACTEDREDACTED,
+			Body: io.NopCloser(strings.NewReader(
+				`{"id":"chatcmpl_1","object":"chat.completion","model":"glm-4.5-air","choices":[{"index":0,"message":{"role":"assistant","content":"ok"REDACTED,"finish_reason":"stop"REDACTED],"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3REDACTEDREDACTED`,
+			)),
+	REDACTED,
+REDACTEDREDACTED
+
+	svc := &OpenAIGatewayService{
+		cfg:          rawChatCompletionsTestConfig(),
+		httpUpstream: upstream,
+REDACTED
+	account := rawChatCompletionsTestAccount()
+	account.Credentials["base_url"] = "https://open.bigmodel.cn/api/paas/v4"
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
+REDACTED
+	require.NotNil(t, result)
+	require.Equal(t, 1, result.Usage.InputTokens)
+	require.Equal(t, 2, result.Usage.OutputTokens)
+	require.Len(t, upstream.requests, 2)
+	require.Equal(t, "https://open.bigmodel.cn/api/paas/v4/responses", upstream.requests[0].URL.String())
+	require.Equal(t, "https://open.bigmodel.cn/api/paas/v4/chat/completions", upstream.requests[1].URL.String())
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), `"content":"ok"`)
+REDACTED
+
 func TestIsOpenAIChatUsageOnlyStreamChunk(t *testing.T) {
 	t.Parallel()
 
@@ -359,4 +556,10 @@ REDACTED
 			"base_url": "http://upstream.example",
 	REDACTED,
 REDACTED
+REDACTED
+
+func largeRawChatCompletionsBody() []byte {
+	return []byte(`{"model":"gpt-5.5","messages":[{"role":"user","content":"` +
+		strings.Repeat("x", openAISilentRefusalMinRequestBodyBytes) +
+		`"REDACTED],"stream":trueREDACTED`)
 REDACTED

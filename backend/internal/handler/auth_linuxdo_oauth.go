@@ -350,7 +350,8 @@ REDACTED
 	if email == "" ||
 		strings.HasSuffix(email, service.LinuxDoConnectSyntheticEmailDomain) ||
 		strings.HasSuffix(email, service.OIDCConnectSyntheticEmailDomain) ||
-		strings.HasSuffix(email, service.WeChatConnectSyntheticEmailDomain) {
+		strings.HasSuffix(email, service.WeChatConnectSyntheticEmailDomain) ||
+		strings.HasSuffix(email, service.DingTalkConnectSyntheticEmailDomain) {
 		return nil, nil
 REDACTED
 
@@ -519,7 +520,7 @@ REDACTED)
 		response.ErrorFrom(c, err)
 		return
 REDACTED
-	tokenPair, user, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), email, username, req.InvitationCode, req.AffCode)
+	tokenPair, user, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), email, username, req.InvitationCode, req.AffCode, "linuxdo")
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

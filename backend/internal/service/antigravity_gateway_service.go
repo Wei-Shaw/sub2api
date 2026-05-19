@@ -2094,7 +2094,8 @@ REDACTED
 REDACTED
 
 	// 解析请求以获取 image_size（用于图片计费）
-	imageSize := s.extractImageSize(body)
+	imageInputSize := s.extractImageInputSize(body)
+	imageSize := normalizeOpenAIImageSizeTier(imageInputSize)
 
 	switch action {
 	case "generateContent", "streamGenerateContent":
@@ -2465,6 +2466,7 @@ REDACTED
 		ClientDisconnect: clientDisconnect,
 		ImageCount:       imageCount,
 		ImageSize:        imageSize,
+		ImageInputSize:   imageInputSize,
 REDACTED, nil
 REDACTED
 
@@ -4063,21 +4065,17 @@ REDACTED
 REDACTED
 REDACTED
 
-// extractImageSize 从 Gemini 请求中提取 image_size 参数
-func (s *AntigravityGatewayService) extractImageSize(body []byte) string {
+func (s *AntigravityGatewayService) extractImageInputSize(body []byte) string {
 	var req antigravity.GeminiRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		return "2K" // 默认 2K
+		return ""
 REDACTED
 
 	if req.GenerationConfig != nil && req.GenerationConfig.ImageConfig != nil {
-		size := strings.ToUpper(strings.TrimSpace(req.GenerationConfig.ImageConfig.ImageSize))
-		if size == "1K" || size == "2K" || size == "4K" {
-			return size
-	REDACTED
+		return strings.TrimSpace(req.GenerationConfig.ImageConfig.ImageSize)
 REDACTED
 
-	return "2K" // 默认 2K
+	return ""
 REDACTED
 
 // isImageGenerationModel 判断模型是否为图片生成模型

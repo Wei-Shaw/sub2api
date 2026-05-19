@@ -951,7 +951,7 @@ REDACTED
 
 func validatePricingIntervals(pricingList []ChannelModelPricing) error {
 	for _, pricing := range pricingList {
-		if err := ValidateIntervals(pricing.Intervals); err != nil {
+		if err := ValidateIntervals(pricing.Intervals, pricing.BillingMode); err != nil {
 			return infraerrors.BadRequest(
 				"INVALID_PRICING_INTERVALS",
 				fmt.Sprintf("invalid pricing intervals for platform '%s' models %v: %v",

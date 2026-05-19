@@ -546,6 +546,8 @@ REDACTED
 		"responses_websockets_v2_enabled",
 		"openai_ws_enabled",
 		"openai_ws_force_http",
+		"openai_responses_mode",
+		"openai_responses_supported",
 REDACTED
 	filtered := make(map[string]any)
 	for _, key := range keys {
