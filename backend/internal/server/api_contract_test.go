@@ -2392,6 +2392,14 @@ func (r *stubUsageLogRepo) GetAllGroupUsageSummary(ctx context.Context, todaySta
 	return nil, errors.New("not implemented")
 }
 
+func (r *stubUsageLogRepo) GetRecentAccountUsers(ctx context.Context, accountID int64, minutes int) ([]service.RecentAccountUser, error) {
+	return nil, nil
+}
+
+func (r *stubUsageLogRepo) GetAccountUsersByTimeRange(ctx context.Context, accountID int64, startTime, endTime time.Time) ([]service.RecentAccountUser, error) {
+	return nil, nil
+}
+
 type stubSettingRepo struct {
 	all map[string]string
 }

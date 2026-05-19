@@ -124,6 +124,10 @@ func (s *helperConcurrencyCacheStub) CleanupStaleProcessSlots(ctx context.Contex
 	return nil
 }
 
+func (s *helperConcurrencyCacheStub) GetAccountActiveUserConcurrency(ctx context.Context, accountID int64) (map[int64]int, error) {
+	return nil, nil
+}
+
 func newHelperTestContext(method, path string) (*gin.Context, *httptest.ResponseRecorder) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()

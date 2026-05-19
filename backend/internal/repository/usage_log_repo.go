@@ -4392,3 +4392,69 @@ func setToSlice(set map[int64]struct{}) []int64 {
 	}
 	return out
 }
+
+// GetRecentAccountUsers returns users who used the account in the last N minutes
+func (r *usageLogRepository) GetRecentAccountUsers(ctx context.Context, accountID int64, minutes int) ([]service.RecentAccountUser, error) {
+	query := `
+		SELECT
+			ul.user_id,
+			COALESCE(u.email, '') as email,
+			COUNT(*) as requests,
+			COALESCE(SUM(COALESCE(ul.account_stats_cost, ul.total_cost) * COALESCE(ul.account_rate_multiplier, 1)), 0) as account_cost,
+			COALESCE(SUM(ul.actual_cost), 0) as user_cost,
+			MAX(ul.created_at) as last_used_at
+		FROM usage_logs ul
+		LEFT JOIN users u ON u.id = ul.user_id
+		WHERE ul.account_id = $1 AND ul.created_at >= NOW() - make_interval(mins => $2)
+		GROUP BY ul.user_id, u.email
+		ORDER BY last_used_at DESC
+		LIMIT 50
+	`
+	rows, err := r.db.QueryContext(ctx, query, accountID, minutes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close() //nolint:errcheck
+	var result []service.RecentAccountUser
+	for rows.Next() {
+		var u service.RecentAccountUser
+		if err := rows.Scan(&u.UserID, &u.Email, &u.Requests, &u.AccountCost, &u.UserCost, &u.LastUsedAt); err != nil {
+			return nil, err
+		}
+		result = append(result, u)
+	}
+	return result, rows.Err()
+}
+
+// GetAccountUsersByTimeRange returns users who used the account within a selected time range.
+func (r *usageLogRepository) GetAccountUsersByTimeRange(ctx context.Context, accountID int64, startTime, endTime time.Time) ([]service.RecentAccountUser, error) {
+	query := `
+		SELECT
+			ul.user_id,
+			COALESCE(u.email, '') as email,
+			COUNT(*) as requests,
+			COALESCE(SUM(COALESCE(ul.account_stats_cost, ul.total_cost) * COALESCE(ul.account_rate_multiplier, 1)), 0) as account_cost,
+			COALESCE(SUM(ul.actual_cost), 0) as user_cost,
+			MAX(ul.created_at) as last_used_at
+		FROM usage_logs ul
+		LEFT JOIN users u ON u.id = ul.user_id
+		WHERE ul.account_id = $1 AND ul.created_at >= $2 AND ul.created_at < $3
+		GROUP BY ul.user_id, u.email
+		ORDER BY requests DESC, last_used_at DESC
+		LIMIT 200
+	`
+	rows, err := r.db.QueryContext(ctx, query, accountID, startTime, endTime)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close() //nolint:errcheck
+	var result []service.RecentAccountUser
+	for rows.Next() {
+		var u service.RecentAccountUser
+		if err := rows.Scan(&u.UserID, &u.Email, &u.Requests, &u.AccountCost, &u.UserCost, &u.LastUsedAt); err != nil {
+			return nil, err
+		}
+		result = append(result, u)
+	}
+	return result, rows.Err()
+}

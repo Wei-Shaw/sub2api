@@ -257,6 +257,40 @@ func (c *concurrencyCache) GetAccountConcurrency(ctx context.Context, accountID 
 	return result, nil
 }
 
+func (c *concurrencyCache) GetAccountActiveUserConcurrency(ctx context.Context, accountID int64) (map[int64]int, error) {
+	key := accountSlotKey(accountID)
+
+	// Use server time to clean expired slots, then ZRANGE all current members
+	now, err := c.rdb.Time(ctx).Result()
+	if err != nil {
+		return nil, fmt.Errorf("redis TIME: %w", err)
+	}
+	cutoffTime := now.Unix() - int64(c.slotTTLSeconds)
+
+	// Pipeline: clean expired + get all members
+	pipe := c.rdb.Pipeline()
+	pipe.ZRemRangeByScore(ctx, key, "-inf", strconv.FormatInt(cutoffTime, 10))
+	membersCmd := pipe.ZRange(ctx, key, 0, -1)
+	if _, err := pipe.Exec(ctx); err != nil && !errors.Is(err, redis.Nil) {
+		return nil, fmt.Errorf("pipeline exec: %w", err)
+	}
+
+	members, err := membersCmd.Result()
+	if err != nil && !errors.Is(err, redis.Nil) {
+		return nil, fmt.Errorf("zrange: %w", err)
+	}
+
+	result := make(map[int64]int, len(members))
+	for _, member := range members {
+		userID := service.ParseAccountSlotMemberUserID(member)
+		if userID <= 0 {
+			continue
+		}
+		result[userID]++
+	}
+	return result, nil
+}
+
 func (c *concurrencyCache) GetAccountConcurrencyBatch(ctx context.Context, accountIDs []int64) (map[int64]int, error) {
 	if len(accountIDs) == 0 {
 		return map[int64]int{}, nil

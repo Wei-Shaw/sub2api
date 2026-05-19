@@ -95,6 +95,10 @@ func (c *stubConcurrencyCacheForTest) CleanupStaleProcessSlots(_ context.Context
 	return c.cleanupErr
 }
 
+func (c *stubConcurrencyCacheForTest) GetAccountActiveUserConcurrency(_ context.Context, _ int64) (map[int64]int, error) {
+	return nil, nil
+}
+
 type trackingConcurrencyCache struct {
 	stubConcurrencyCacheForTest
 	cleanupPrefix string

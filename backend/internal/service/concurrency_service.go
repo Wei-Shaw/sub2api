@@ -6,21 +6,78 @@ import (
 	"encoding/binary"
 	"os"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 )
+
+// EncodeAccountSlotMember encodes a requestID with optional userID metadata.
+// Format: requestID|u:{userID} (userID > 0) or plain requestID (userID <= 0).
+// The requestID prefix is kept first so startup cleanup by process prefix continues to work.
+func EncodeAccountSlotMember(requestID string, userID int64) string {
+	if userID <= 0 {
+		return requestID
+	}
+	return requestID + "|u:" + strconv.FormatInt(userID, 10)
+}
+
+// ParseAccountSlotMemberUserID extracts the userID from an encoded account slot member.
+// Returns 0 if no userID metadata is present or parsing fails.
+func ParseAccountSlotMemberUserID(member string) int64 {
+	idx := strings.Index(member, "|u:")
+	if idx < 0 {
+		return 0
+	}
+	uid, err := strconv.ParseInt(member[idx+3:], 10, 64)
+	if err != nil {
+		return 0
+	}
+	return uid
+}
+
+// ExtractRequestIDFromMember extracts the requestID portion from an encoded member.
+func ExtractRequestIDFromMember(member string) string {
+	if idx := strings.Index(member, "|u:"); idx >= 0 {
+		return member[:idx]
+	}
+	return member
+}
+
+// WithSub2APIUserID stores the current system user ID in context for account-slot tracking.
+func WithSub2APIUserID(ctx context.Context, userID int64) context.Context {
+	if userID <= 0 {
+		return ctx
+	}
+	return context.WithValue(ctx, ctxkey.Sub2APIUserID, userID)
+}
+
+// Sub2APIUserIDFromContext extracts the current system user ID from context.
+func Sub2APIUserIDFromContext(ctx context.Context) int64 {
+	if ctx == nil {
+		return 0
+	}
+	if uid, ok := ctx.Value(ctxkey.Sub2APIUserID).(int64); ok {
+		return uid
+	}
+	return 0
+}
 
 // ConcurrencyCache 定义并发控制的缓存接口
 // 使用有序集合存储槽位，按时间戳清理过期条目
 type ConcurrencyCache interface {
 	// 账号槽位管理
-	// 键格式: concurrency:account:{accountID}（有序集合，成员为 requestID）
+	// 键格式: concurrency:account:{accountID}（有序集合，成员为 requestID 或 requestID|u:{userID}）
 	AcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int, requestID string) (bool, error)
 	ReleaseAccountSlot(ctx context.Context, accountID int64, requestID string) error
 	GetAccountConcurrency(ctx context.Context, accountID int64) (int, error)
 	GetAccountConcurrencyBatch(ctx context.Context, accountIDs []int64) (map[int64]int, error)
+
+	// GetAccountActiveUserConcurrency 返回账号当前活跃用户的并发数映射。
+	// 清理过期槽位后，解析成员中的 userID 元数据并聚合计数，跳过 userID<=0 的成员。
+	GetAccountActiveUserConcurrency(ctx context.Context, accountID int64) (map[int64]int, error)
 
 	// 账号等待队列（账号级）
 	IncrementAccountWaitCount(ctx context.Context, accountID int64, maxWait int) (bool, error)
@@ -127,6 +184,13 @@ type UserLoadInfo struct {
 // If the account is at max concurrency, it waits until a slot is available or timeout.
 // Returns a release function that MUST be called when the request completes.
 func (s *ConcurrencyService) AcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int) (*AcquireResult, error) {
+	return s.AcquireAccountSlotForUser(ctx, accountID, Sub2APIUserIDFromContext(ctx), maxConcurrency)
+}
+
+// AcquireAccountSlotForUser attempts to acquire a concurrency slot for an account,
+// encoding the userID into the slot member for real-time active user tracking.
+// If userID <= 0, behaves identically to AcquireAccountSlot (no user metadata).
+func (s *ConcurrencyService) AcquireAccountSlotForUser(ctx context.Context, accountID int64, userID int64, maxConcurrency int) (*AcquireResult, error) {
 	// If maxConcurrency is 0 or negative, no limit
 	if maxConcurrency <= 0 {
 		return &AcquireResult{
@@ -137,8 +201,10 @@ func (s *ConcurrencyService) AcquireAccountSlot(ctx context.Context, accountID i
 
 	// Generate unique request ID for this slot
 	requestID := generateRequestID()
+	// Encode userID into the member for active user tracking
+	member := EncodeAccountSlotMember(requestID, userID)
 
-	acquired, err := s.cache.AcquireAccountSlot(ctx, accountID, maxConcurrency, requestID)
+	acquired, err := s.cache.AcquireAccountSlot(ctx, accountID, maxConcurrency, member)
 	if err != nil {
 		return nil, err
 	}
@@ -149,7 +215,7 @@ func (s *ConcurrencyService) AcquireAccountSlot(ctx context.Context, accountID i
 			ReleaseFunc: func() {
 				bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
-				if err := s.cache.ReleaseAccountSlot(bgCtx, accountID, requestID); err != nil {
+				if err := s.cache.ReleaseAccountSlot(bgCtx, accountID, member); err != nil {
 					logger.LegacyPrintf("service.concurrency", "Warning: failed to release account slot for %d (req=%s): %v", accountID, requestID, err)
 				}
 			},
@@ -364,4 +430,14 @@ func (s *ConcurrencyService) GetAccountConcurrencyBatch(ctx context.Context, acc
 	defer cancel()
 
 	return s.cache.GetAccountConcurrencyBatch(redisCtx, accountIDs)
+}
+
+// GetAccountActiveUserConcurrency returns a map of userID -> current in-flight request count
+// for the given account. It cleans expired slots, parses userID metadata from members,
+// and aggregates counts. Members without userID metadata (userID <= 0) are skipped.
+func (s *ConcurrencyService) GetAccountActiveUserConcurrency(ctx context.Context, accountID int64) (map[int64]int, error) {
+	if s.cache == nil {
+		return map[int64]int{}, nil
+	}
+	return s.cache.GetAccountActiveUserConcurrency(ctx, accountID)
 }

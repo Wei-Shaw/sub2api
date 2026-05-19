@@ -1667,6 +1667,49 @@ func (h *AccountHandler) GetUsage(c *gin.Context) {
 	response.Success(c, usage)
 }
 
+// GetRecentUsers handles getting recent users of an account
+// GET /api/v1/admin/accounts/:id/recent-users
+func (h *AccountHandler) GetRecentUsers(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+
+	var users []service.RecentAccountUser
+	startDateStr := strings.TrimSpace(c.Query("start_date"))
+	endDateStr := strings.TrimSpace(c.Query("end_date"))
+	if startDateStr != "" || endDateStr != "" {
+		if startDateStr == "" || endDateStr == "" {
+			response.BadRequest(c, "start_date and end_date are required together")
+			return
+		}
+		userTZ := c.Query("timezone")
+		startTime, parseErr := timezone.ParseInUserLocation("2006-01-02", startDateStr, userTZ)
+		if parseErr != nil {
+			response.BadRequest(c, "Invalid start_date format, use YYYY-MM-DD")
+			return
+		}
+		endTime, parseErr := timezone.ParseInUserLocation("2006-01-02", endDateStr, userTZ)
+		if parseErr != nil {
+			response.BadRequest(c, "Invalid end_date format, use YYYY-MM-DD")
+			return
+		}
+		users, err = h.accountUsageService.GetAccountUsersByTimeRange(c.Request.Context(), accountID, startTime, endTime.AddDate(0, 0, 1))
+	} else {
+		users, err = h.accountUsageService.GetRecentAccountUsers(c.Request.Context(), accountID, 5)
+	}
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if users == nil {
+		users = []service.RecentAccountUser{}
+	}
+
+	response.Success(c, gin.H{"users": users})
+}
+
 // ClearRateLimit handles clearing account rate limit status
 // POST /api/v1/admin/accounts/:id/clear-rate-limit
 func (h *AccountHandler) ClearRateLimit(c *gin.Context) {
