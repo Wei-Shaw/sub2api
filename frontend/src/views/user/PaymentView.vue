@@ -20,12 +20,13 @@
               <div class="lg:col-span-3 rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
                 <div class="mb-4 flex items-center gap-3"><span class="rounded-lg bg-gray-900 px-2.5 py-1 text-xs font-medium text-white dark:bg-white dark:text-gray-900">{{ selectedPlan.name }}</span><span class="text-sm text-gray-400">{{ platformLabel(selectedPlan.group_platform || '') }}</span></div>
                 <div class="flex items-baseline gap-2"><span v-if="selectedPlan.original_price" class="text-sm text-gray-400 line-through">&yen;{{ selectedPlan.original_price }}</span><span class="text-4xl font-bold text-gray-900 dark:text-white">&yen;{{ selectedPlan.price }}</span><span class="text-sm text-gray-400">/ {{ planValiditySuffix }}</span></div>
-                <div class="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
-                  <div class="rounded-xl bg-gray-50 p-3 dark:bg-gray-700/50"><p class="text-xs text-gray-400">Rate</p><p class="mt-1 text-lg font-bold text-gray-900 dark:text-white">x{{ selectedPlan.rate_multiplier ?? 1 }}</p></div>
-                  <div v-if="planFiveHourLimit(selectedPlan) != null" class="rounded-xl bg-gray-50 p-3 dark:bg-gray-700/50"><p class="text-xs text-gray-400">5h Window</p><p class="mt-1 text-lg font-bold text-gray-900 dark:text-white">${{ planFiveHourLimit(selectedPlan) }}</p></div>
-                  <div v-if="selectedPlan.weekly_limit_usd != null" class="rounded-xl bg-gray-50 p-3 dark:bg-gray-700/50"><p class="text-xs text-gray-400">Weekly</p><p class="mt-1 text-lg font-bold text-gray-900 dark:text-white">${{ selectedPlan.weekly_limit_usd }}</p></div>
-                  <div v-if="selectedPlan.monthly_limit_usd != null" class="rounded-xl bg-gray-50 p-3 dark:bg-gray-700/50"><p class="text-xs text-gray-400">Monthly</p><p class="mt-1 text-lg font-bold text-gray-900 dark:text-white">${{ selectedPlan.monthly_limit_usd }}</p></div>
-                </div>
+                <p v-if="selectedPlan.description" class="mt-3 text-sm leading-6 text-gray-500 dark:text-gray-400">{{ selectedPlan.description }}</p>
+                <ul v-if="planFeatures(selectedPlan).length" class="mt-5 space-y-3 text-sm text-gray-600 dark:text-gray-300">
+                  <li v-for="feature in planFeatures(selectedPlan)" :key="feature" class="flex gap-2">
+                    <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gray-900 dark:bg-white"></span>
+                    <span>{{ feature }}</span>
+                  </li>
+                </ul>
               </div>
               <div class="lg:col-span-2 rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
                 <h3 class="text-sm font-semibold text-gray-900 dark:text-white">购买方式</h3>
@@ -85,11 +86,14 @@
                     <div class="mt-2 flex items-baseline gap-2"><span v-if="plan.original_price" class="text-xs text-gray-400 line-through">&yen;{{ plan.original_price }}</span><span class="text-2xl font-bold text-gray-900 dark:text-white">&yen;{{ plan.price }}</span><span class="text-xs text-gray-400">/{{ plan.validity_days }}天</span></div>
                     <p v-if="plan.original_price" class="mt-1 text-xs text-gray-400">立省 &yen;{{ (plan.original_price - plan.price).toFixed(0) }}</p>
                   </div>
-                  <div class="mb-4 space-y-1.5 text-sm">
-                    <div class="flex justify-between"><span class="text-gray-400">Rate</span><span class="font-medium text-gray-700 dark:text-gray-300">x{{ plan.rate_multiplier ?? 1 }}</span></div>
-                    <div v-if="planFiveHourLimit(plan) != null" class="flex justify-between"><span class="text-gray-400">5h Window</span><span class="font-medium text-gray-700 dark:text-gray-300">${{ planFiveHourLimit(plan) }}</span></div>
-                    <div v-if="plan.weekly_limit_usd != null" class="flex justify-between"><span class="text-gray-400">Weekly</span><span class="font-medium text-gray-700 dark:text-gray-300">${{ plan.weekly_limit_usd }}</span></div>
-                    <div v-if="plan.monthly_limit_usd != null" class="flex justify-between"><span class="text-gray-400">Monthly</span><span class="font-medium text-gray-700 dark:text-gray-300">${{ plan.monthly_limit_usd }}</span></div>
+                  <div class="mb-4 space-y-2 text-sm text-gray-500 dark:text-gray-400">
+                    <p v-if="plan.description" class="leading-5">{{ plan.description }}</p>
+                    <ul v-if="planFeatures(plan).length" class="space-y-1.5 text-gray-600 dark:text-gray-300">
+                      <li v-for="feature in planFeatures(plan).slice(0, 4)" :key="feature" class="flex gap-2">
+                        <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gray-300 dark:bg-gray-500"></span>
+                        <span>{{ feature }}</span>
+                      </li>
+                    </ul>
                   </div>
                   <button class="w-full rounded-xl py-2.5 text-sm font-medium transition-colors" :class="plan._recommended ? 'bg-gray-900 text-white hover:bg-gray-800 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100' : 'border border-gray-200 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700'" @click="selectPlan(plan)">了解详情</button>
                 </div>
@@ -99,7 +103,7 @@
                 <div class="space-y-2">
                   <div v-for="sub in activeSubscriptions" :key="sub.id" class="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-800">
                     <div class="min-w-0 flex-1">
-                      <div class="flex items-center gap-2"><span class="text-sm font-semibold text-gray-900 dark:text-white">{{ sub.group?.name || 'Group ' + sub.group_id }}</span><span class="rounded-md bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500 dark:bg-gray-700 dark:text-gray-400">x{{ sub.group?.rate_multiplier ?? 1 }}</span></div>
+                      <div class="flex items-center gap-2"><span class="text-sm font-semibold text-gray-900 dark:text-white">{{ sub.group?.name || 'Group ' + sub.group_id }}</span></div>
                       <p class="mt-0.5 text-xs text-gray-400"><span v-if="sub.expires_at">剩余 {{ getDaysRemaining(sub.expires_at) }} 天</span><span v-else>永久有效</span></p>
                     </div>
                     <span class="rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-medium text-green-600 dark:bg-green-900/30 dark:text-green-400">生效中</span>
@@ -406,19 +410,10 @@ const sortedPlans = computed(() => {
   return plans.map(p => ({ ...p, _recommended: p.name === 'Standard' || p.name === '进阶' || p.group_name === 'Standard' || p.group_name === '进阶' }))
 })
 
-const PLAN_FIVE_HOUR_LIMITS: Record<string, number> = {
-  '轻享': 1.2,
-  '基础': 3.2,
-  '进阶': 7.2,
-  '旗舰': 14,
-  '至尊': 24,
-}
-
-function planFiveHourLimit(plan: SubscriptionPlan | null): number | null {
-  if (!plan) return null
-  if (plan.five_hour_limit_usd != null) return plan.five_hour_limit_usd
-  if (plan.daily_limit_usd != null) return plan.daily_limit_usd
-  return PLAN_FIVE_HOUR_LIMITS[plan.name] ?? PLAN_FIVE_HOUR_LIMITS[plan.group_name || ''] ?? null
+function planFeatures(plan: SubscriptionPlan | null): string[] {
+  if (!plan || !plan.features) return []
+  if (Array.isArray(plan.features)) return plan.features.filter(Boolean)
+  return String(plan.features).split('\n').map(item => item.trim()).filter(Boolean)
 }
 
 const planGridClass = computed(() => {
