@@ -1072,21 +1072,23 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 
 	// 图片生成计费
 	imageCount := 0
-	imageSize := s.extractImageSize(body)
+	imageInputSize := s.extractImageInputSize(body)
+	imageSize := normalizeOpenAIImageSizeTier(imageInputSize)
 	if isImageGenerationModel(originalModel) {
 		imageCount = 1
 	}
 
 	return &ForwardResult{
-		RequestID:     requestID,
-		Usage:         *usage,
-		Model:         originalModel,
-		UpstreamModel: mappedModel,
-		Stream:        req.Stream,
-		Duration:      time.Since(startTime),
-		FirstTokenMs:  firstTokenMs,
-		ImageCount:    imageCount,
-		ImageSize:     imageSize,
+		RequestID:      requestID,
+		Usage:          *usage,
+		Model:          originalModel,
+		UpstreamModel:  mappedModel,
+		Stream:         req.Stream,
+		Duration:       time.Since(startTime),
+		FirstTokenMs:   firstTokenMs,
+		ImageCount:     imageCount,
+		ImageSize:      imageSize,
+		ImageInputSize: imageInputSize,
 	}, nil
 }
 
@@ -1600,21 +1602,23 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 
 	// 图片生成计费
 	imageCount := 0
-	imageSize := s.extractImageSize(body)
+	imageInputSize := s.extractImageInputSize(body)
+	imageSize := normalizeOpenAIImageSizeTier(imageInputSize)
 	if isImageGenerationModel(originalModel) {
 		imageCount = 1
 	}
 
 	return &ForwardResult{
-		RequestID:     requestID,
-		Usage:         *usage,
-		Model:         originalModel,
-		UpstreamModel: mappedModel,
-		Stream:        stream,
-		Duration:      time.Since(startTime),
-		FirstTokenMs:  firstTokenMs,
-		ImageCount:    imageCount,
-		ImageSize:     imageSize,
+		RequestID:      requestID,
+		Usage:          *usage,
+		Model:          originalModel,
+		UpstreamModel:  mappedModel,
+		Stream:         stream,
+		Duration:       time.Since(startTime),
+		FirstTokenMs:   firstTokenMs,
+		ImageCount:     imageCount,
+		ImageSize:      imageSize,
+		ImageInputSize: imageInputSize,
 	}, nil
 }
 
@@ -3430,8 +3434,7 @@ func convertClaudeGenerationConfig(req map[string]any) map[string]any {
 	return out
 }
 
-// extractImageSize 从 Gemini 请求中提取 image_size 参数
-func (s *GeminiMessagesCompatService) extractImageSize(body []byte) string {
+func (s *GeminiMessagesCompatService) extractImageInputSize(body []byte) string {
 	var req struct {
 		GenerationConfig *struct {
 			ImageConfig *struct {
@@ -3440,15 +3443,12 @@ func (s *GeminiMessagesCompatService) extractImageSize(body []byte) string {
 		} `json:"generationConfig"`
 	}
 	if err := json.Unmarshal(body, &req); err != nil {
-		return "2K"
+		return ""
 	}
 
 	if req.GenerationConfig != nil && req.GenerationConfig.ImageConfig != nil {
-		size := strings.ToUpper(strings.TrimSpace(req.GenerationConfig.ImageConfig.ImageSize))
-		if size == "1K" || size == "2K" || size == "4K" {
-			return size
-		}
+		return strings.TrimSpace(req.GenerationConfig.ImageConfig.ImageSize)
 	}
 
-	return "2K"
+	return ""
 }
