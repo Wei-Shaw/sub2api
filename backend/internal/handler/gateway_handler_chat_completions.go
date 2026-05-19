@@ -335,5 +335,10 @@ REDACTED
 	if lastErr != nil && lastErr.StatusCode > 0 {
 		statusCode = lastErr.StatusCode
 REDACTED
+	if lastErr != nil && service.IsOpenAISilentRefusalErrorBody(lastErr.ResponseBody) {
+		service.SetOpsUpstreamError(c, statusCode, service.OpenAISilentRefusalClientMessage(), "")
+		h.chatCompletionsErrorResponse(c, http.StatusBadGateway, "upstream_error", service.OpenAISilentRefusalClientMessage())
+		return
+REDACTED
 	h.chatCompletionsErrorResponse(c, statusCode, "server_error", "All available accounts exhausted")
 REDACTED
