@@ -1582,6 +1582,86 @@
       </div>
 
       <div
+        v-if="account?.platform === 'openai' && account?.type === 'oauth'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.quotaStrategy') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.quotaStrategyDesc') }}
+            </p>
+          </div>
+          <button
+            type="button"
+            @click="openAIQuotaStrategyEnabled = !openAIQuotaStrategyEnabled"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              openAIQuotaStrategyEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                openAIQuotaStrategyEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+
+        <div
+          :class="!openAIQuotaStrategyEnabled && 'pointer-events-none opacity-50'"
+          class="mt-3 space-y-3"
+        >
+          <div>
+            <label class="input-label text-xs">{{ t('admin.accounts.openai.quotaStrategyMode') }}</label>
+            <div class="flex gap-2">
+              <button
+                type="button"
+                @click="openAIQuotaStrategy = 'prefer_5h'"
+                :class="[
+                  'flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-all',
+                  openAIQuotaStrategy === 'prefer_5h'
+                    ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+                ]"
+              >
+                {{ t('admin.accounts.openai.quotaStrategyPrefer5h') }}
+              </button>
+              <button
+                type="button"
+                @click="openAIQuotaStrategy = 'prefer_7d'"
+                :class="[
+                  'flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-all',
+                  openAIQuotaStrategy === 'prefer_7d'
+                    ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+                ]"
+              >
+                {{ t('admin.accounts.openai.quotaStrategyPrefer7d') }}
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label class="input-label text-xs" for="edit-openai-quota-stop-threshold">
+              {{ t('admin.accounts.openai.quotaStopThreshold') }}
+            </label>
+            <input
+              v-model.number="openAIQuotaStopThresholdPercent"
+              id="edit-openai-quota-stop-threshold"
+              type="number"
+              min="1"
+              max="100"
+              step="1"
+              class="input"
+            />
+            <p class="input-hint">{{ t('admin.accounts.openai.quotaStopThresholdDesc') }}</p>
+          </div>
+        </div>
+      </div>
+
+      <div
         v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'apikey')"
         class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
       >
@@ -2337,6 +2417,9 @@ const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OF
 const codexCLIOnlyEnabled = ref(false)
 type CodexImageGenerationBridgeMode = 'inherit' | 'enabled' | 'disabled'
 const codexImageGenerationBridgeMode = ref<CodexImageGenerationBridgeMode>('inherit')
+const openAIQuotaStrategyEnabled = ref(false)
+const openAIQuotaStrategy = ref<'prefer_5h' | 'prefer_7d'>('prefer_5h')
+const openAIQuotaStopThresholdPercent = ref(10)
 const anthropicPassthroughEnabled = ref(false)
 const webSearchEmulationMode = ref('default')
 const webSearchGlobalEnabled = ref(false)
@@ -2587,6 +2670,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   codexCLIOnlyEnabled.value = false
   codexImageGenerationBridgeMode.value = 'inherit'
+  openAIQuotaStrategyEnabled.value = false
+  openAIQuotaStrategy.value = 'prefer_5h'
+  openAIQuotaStopThresholdPercent.value = 10
   anthropicPassthroughEnabled.value = false
   webSearchEmulationMode.value = 'default'
   if (newAccount.platform === 'openai' && (newAccount.type === 'oauth' || newAccount.type === 'apikey')) {
@@ -2614,6 +2700,14 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     })
     if (newAccount.type === 'oauth') {
       codexCLIOnlyEnabled.value = extra?.codex_cli_only === true
+      const strategy = extra?.openai_quota_strategy
+      if (strategy === 'prefer_5h' || strategy === 'prefer_7d') {
+        openAIQuotaStrategyEnabled.value = true
+        openAIQuotaStrategy.value = strategy
+        const threshold = Number(extra?.openai_quota_stop_threshold_percent)
+        openAIQuotaStopThresholdPercent.value =
+          Number.isFinite(threshold) && threshold > 0 ? Math.min(100, Math.trunc(threshold)) : 10
+      }
     }
     const credentials = newAccount.credentials as Record<string, unknown> | undefined
     const compactMappings = credentials?.compact_model_mapping as Record<string, string> | undefined
@@ -3737,6 +3831,16 @@ const handleSubmit = async () => {
           newExtra.codex_cli_only = false
         } else {
           delete newExtra.codex_cli_only
+        }
+        if (openAIQuotaStrategyEnabled.value) {
+          newExtra.openai_quota_strategy = openAIQuotaStrategy.value
+          newExtra.openai_quota_stop_threshold_percent = Math.min(
+            100,
+            Math.max(1, Math.trunc(openAIQuotaStopThresholdPercent.value || 10))
+          )
+        } else {
+          delete newExtra.openai_quota_strategy
+          delete newExtra.openai_quota_stop_threshold_percent
         }
       }
 

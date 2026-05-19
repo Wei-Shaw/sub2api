@@ -130,6 +130,30 @@ describe('BulkEditAccountModal', () => {
     })
   })
 
+  it('提交 OpenAI 额度策略批量更新载荷', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['oauth']
+    })
+
+    await wrapper.get('#bulk-edit-openai-quota-strategy-enabled').setValue(true)
+    const prefer7dButton = wrapper.findAll('button')
+      .find((btn) => btn.text().includes('admin.accounts.openai.quotaStrategyPrefer7d'))
+    expect(prefer7dButton).toBeTruthy()
+    await prefer7dButton!.trigger('click')
+    await wrapper.get('#bulk-edit-openai-quota-stop-threshold').setValue(12)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      extra: {
+        openai_quota_strategy: 'prefer_7d',
+        openai_quota_stop_threshold_percent: 12
+      }
+    })
+  })
+
   it('OpenAI 账号批量编辑可开启自动透传', async () => {
     const wrapper = mountModal({
       selectedPlatforms: ['openai'],
