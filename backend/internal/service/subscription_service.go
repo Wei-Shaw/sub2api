@@ -176,13 +176,6 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 		return nil, false, ErrGroupNotSubscriptionType
 	}
 
-	// 查询是否已有订阅
-	existingSub, err := s.userSubRepo.GetByUserIDAndGroupID(ctx, input.UserID, input.GroupID)
-	if err != nil {
-		// 不存在记录是正常情况，其他错误需要返回
-		existingSub = nil
-	}
-
 	validityDays := input.ValidityDays
 	if validityDays <= 0 {
 		validityDays = 30
@@ -191,7 +184,20 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 		validityDays = MaxValidityDays
 	}
 
-	// 已有订阅，执行续期（在事务中完成所有更新）
+	// 先开事务，在事务内用 FOR UPDATE 行锁读取已有订阅，防止并发续期丢失更新。
+	tx, err := s.entClient.Tx(ctx)
+	if err != nil {
+		return nil, false, fmt.Errorf("begin transaction: %w", err)
+	}
+	txCtx := dbent.NewTxContext(ctx, tx)
+
+	existingSub, err := s.userSubRepo.GetByUserIDAndGroupIDForUpdate(txCtx, input.UserID, input.GroupID)
+	if err != nil {
+		// 不存在记录是正常情况，回滚事务走创建路径；其他错误直接返回
+		existingSub = nil
+	}
+
+	// 已有订阅，在事务内执行续期（ExtendExpiry + UpdateStatus + UpdateNotes）
 	if existingSub != nil {
 		now := time.Now()
 		var newExpiresAt time.Time
@@ -208,13 +214,6 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 		if newExpiresAt.After(MaxExpiresAt) {
 			newExpiresAt = MaxExpiresAt
 		}
-
-		// 开启事务：ExtendExpiry + UpdateStatus + UpdateNotes 在同一事务中完成
-		tx, err := s.entClient.Tx(ctx)
-		if err != nil {
-			return nil, false, fmt.Errorf("begin transaction: %w", err)
-		}
-		txCtx := dbent.NewTxContext(ctx, tx)
 
 		// 更新过期时间
 		if err := s.userSubRepo.ExtendExpiry(txCtx, existingSub.ID, newExpiresAt); err != nil {
@@ -263,6 +262,9 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 		sub, err := s.userSubRepo.GetByID(ctx, existingSub.ID)
 		return sub, true, err // true 表示是续期
 	}
+
+	// 不存在订阅，回滚事务走创建路径
+	_ = tx.Rollback()
 
 	// 没有订阅，创建新订阅
 	sub, err := s.createSubscription(ctx, input)
