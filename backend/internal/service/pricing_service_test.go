@@ -234,3 +234,60 @@ REDACTED
 	require.InDelta(t, 0.0000005, pricing.CacheReadInputTokenCostPriority, 1e-12)
 	require.True(t, pricing.SupportsServiceTier)
 REDACTED
+
+// ---------------------------------------------------------------------------
+// ListModelNamesByProvider
+// ---------------------------------------------------------------------------
+
+func TestListModelNamesByProvider_ReturnsMatchingModels(t *testing.T) {
+	svc := &PricingService{
+		pricingData: map[string]*LiteLLMModelPricing{
+			"claude-opus-4-5-20251101": {LiteLLMProvider: "anthropic", InputCostPerToken: 1.5e-5REDACTED,
+			"claude-sonnet-4-5":        {LiteLLMProvider: "anthropic", InputCostPerToken: 3e-6REDACTED,
+			"gpt-4o":                   {LiteLLMProvider: "openai", InputCostPerToken: 5e-6REDACTED,
+			"gemini-2.5-pro":           {LiteLLMProvider: "google", InputCostPerToken: 1.25e-6REDACTED,
+	REDACTED,
+REDACTED
+
+	got := svc.ListModelNamesByProvider("anthropic")
+	require.ElementsMatch(t, []string{"claude-opus-4-5-20251101", "claude-sonnet-4-5"REDACTED, got)
+	// Must be sorted
+	require.Equal(t, "claude-opus-4-5-20251101", got[0])
+	require.Equal(t, "claude-sonnet-4-5", got[1])
+REDACTED
+
+func TestListModelNamesByProvider_CaseInsensitive(t *testing.T) {
+	svc := &PricingService{
+		pricingData: map[string]*LiteLLMModelPricing{
+			"gpt-4o": {LiteLLMProvider: "OpenAI", InputCostPerToken: 5e-6REDACTED,
+	REDACTED,
+REDACTED
+
+	got := svc.ListModelNamesByProvider("openai")
+	require.Equal(t, []string{"gpt-4o"REDACTED, got)
+
+	got2 := svc.ListModelNamesByProvider("OPENAI")
+	require.Equal(t, []string{"gpt-4o"REDACTED, got2)
+REDACTED
+
+func TestListModelNamesByProvider_NoMatch(t *testing.T) {
+	svc := &PricingService{
+		pricingData: map[string]*LiteLLMModelPricing{
+			"gpt-4o": {LiteLLMProvider: "openai", InputCostPerToken: 5e-6REDACTED,
+	REDACTED,
+REDACTED
+
+	got := svc.ListModelNamesByProvider("anthropic")
+	require.NotNil(t, got)
+	require.Empty(t, got)
+REDACTED
+
+func TestListModelNamesByProvider_EmptyCatalog(t *testing.T) {
+	svc := &PricingService{
+		pricingData: map[string]*LiteLLMModelPricing{REDACTED,
+REDACTED
+
+	got := svc.ListModelNamesByProvider("openai")
+	require.NotNil(t, got)
+	require.Empty(t, got)
+REDACTED
