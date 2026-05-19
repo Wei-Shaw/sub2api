@@ -104,6 +104,8 @@ export interface SubscriptionPlan {
   group_name?: string
   rate_multiplier?: number
   daily_limit_usd?: number | null
+  /** 5-hour window quota. Older API versions may still return this as daily_limit_usd. */
+  five_hour_limit_usd?: number | null
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null
   supported_model_scopes?: string[]

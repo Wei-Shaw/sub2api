@@ -22,7 +22,7 @@
                 <div class="flex items-baseline gap-2"><span v-if="selectedPlan.original_price" class="text-sm text-gray-400 line-through">&yen;{{ selectedPlan.original_price }}</span><span class="text-4xl font-bold text-gray-900 dark:text-white">&yen;{{ selectedPlan.price }}</span><span class="text-sm text-gray-400">/ {{ planValiditySuffix }}</span></div>
                 <div class="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
                   <div class="rounded-xl bg-gray-50 p-3 dark:bg-gray-700/50"><p class="text-xs text-gray-400">Rate</p><p class="mt-1 text-lg font-bold text-gray-900 dark:text-white">x{{ selectedPlan.rate_multiplier ?? 1 }}</p></div>
-                  <div v-if="selectedPlan.daily_limit_usd != null" class="rounded-xl bg-gray-50 p-3 dark:bg-gray-700/50"><p class="text-xs text-gray-400">Daily</p><p class="mt-1 text-lg font-bold text-gray-900 dark:text-white">${{ selectedPlan.daily_limit_usd }}</p></div>
+                  <div v-if="planFiveHourLimit(selectedPlan) != null" class="rounded-xl bg-gray-50 p-3 dark:bg-gray-700/50"><p class="text-xs text-gray-400">5h Window</p><p class="mt-1 text-lg font-bold text-gray-900 dark:text-white">${{ planFiveHourLimit(selectedPlan) }}</p></div>
                   <div v-if="selectedPlan.weekly_limit_usd != null" class="rounded-xl bg-gray-50 p-3 dark:bg-gray-700/50"><p class="text-xs text-gray-400">Weekly</p><p class="mt-1 text-lg font-bold text-gray-900 dark:text-white">${{ selectedPlan.weekly_limit_usd }}</p></div>
                   <div v-if="selectedPlan.monthly_limit_usd != null" class="rounded-xl bg-gray-50 p-3 dark:bg-gray-700/50"><p class="text-xs text-gray-400">Monthly</p><p class="mt-1 text-lg font-bold text-gray-900 dark:text-white">${{ selectedPlan.monthly_limit_usd }}</p></div>
                 </div>
@@ -87,7 +87,7 @@
                   </div>
                   <div class="mb-4 space-y-1.5 text-sm">
                     <div class="flex justify-between"><span class="text-gray-400">Rate</span><span class="font-medium text-gray-700 dark:text-gray-300">x{{ plan.rate_multiplier ?? 1 }}</span></div>
-                    <div v-if="plan.daily_limit_usd != null" class="flex justify-between"><span class="text-gray-400">Daily</span><span class="font-medium text-gray-700 dark:text-gray-300">${{ plan.daily_limit_usd }}</span></div>
+                    <div v-if="planFiveHourLimit(plan) != null" class="flex justify-between"><span class="text-gray-400">5h Window</span><span class="font-medium text-gray-700 dark:text-gray-300">${{ planFiveHourLimit(plan) }}</span></div>
                     <div v-if="plan.weekly_limit_usd != null" class="flex justify-between"><span class="text-gray-400">Weekly</span><span class="font-medium text-gray-700 dark:text-gray-300">${{ plan.weekly_limit_usd }}</span></div>
                     <div v-if="plan.monthly_limit_usd != null" class="flex justify-between"><span class="text-gray-400">Monthly</span><span class="font-medium text-gray-700 dark:text-gray-300">${{ plan.monthly_limit_usd }}</span></div>
                   </div>
@@ -403,8 +403,23 @@ const creditedAmount = computed(() => Math.round((validAmount.value * balanceRec
 // Adaptive grid: center single card, 2-col for 2 plans, 3-col for 3+
 const sortedPlans = computed(() => {
   const plans = [...checkout.value.plans].sort((a, b) => a.price - b.price)
-  return plans.map(p => ({ ...p, _recommended: p.name === 'Standard' || p.group_name === 'Standard' }))
+  return plans.map(p => ({ ...p, _recommended: p.name === 'Standard' || p.name === '进阶' || p.group_name === 'Standard' || p.group_name === '进阶' }))
 })
+
+const PLAN_FIVE_HOUR_LIMITS: Record<string, number> = {
+  '轻享': 1.2,
+  '基础': 3.2,
+  '进阶': 7.2,
+  '旗舰': 14,
+  '至尊': 24,
+}
+
+function planFiveHourLimit(plan: SubscriptionPlan | null): number | null {
+  if (!plan) return null
+  if (plan.five_hour_limit_usd != null) return plan.five_hour_limit_usd
+  if (plan.daily_limit_usd != null) return plan.daily_limit_usd
+  return PLAN_FIVE_HOUR_LIMITS[plan.name] ?? PLAN_FIVE_HOUR_LIMITS[plan.group_name || ''] ?? null
+}
 
 const planGridClass = computed(() => {
   const n = checkout.value.plans.length

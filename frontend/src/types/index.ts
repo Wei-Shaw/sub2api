@@ -604,6 +604,8 @@ export interface CreateGroupRequest {
   is_exclusive?: boolean
   subscription_type?: SubscriptionType
   daily_limit_usd?: number | null
+  /** 5-hour window quota. Older API versions may still return this as daily_limit_usd. */
+  five_hour_limit_usd?: number | null
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null
   allow_image_generation?: boolean
@@ -632,6 +634,8 @@ export interface UpdateGroupRequest {
   status?: 'active' | 'inactive'
   subscription_type?: SubscriptionType
   daily_limit_usd?: number | null
+  /** 5-hour window quota. Older API versions may still return this as daily_limit_usd. */
+  five_hour_limit_usd?: number | null
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null
   allow_image_generation?: boolean
