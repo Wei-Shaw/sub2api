@@ -198,13 +198,15 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 	if a == nil {
 		return nil
 REDACTED
+	redactedCreds, credsStatus := RedactCredentials(a.Credentials)
 	out := &Account{
 		ID:                      a.ID,
 		Name:                    a.Name,
 		Notes:                   a.Notes,
 		Platform:                a.Platform,
 		Type:                    a.Type,
-		Credentials:             a.Credentials,
+		Credentials:             redactedCreds,
+		CredentialsStatus:       credsStatus,
 		Extra:                   a.Extra,
 		ProxyID:                 a.ProxyID,
 		Concurrency:             a.Concurrency,
