@@ -24,3 +24,34 @@ func TestDefaultAntigravityModelMapping_ImageCompatibilityAliases(t *testing.T) 
 		}
 	}
 }
+
+func TestPlatformKiroConstant(t *testing.T) {
+	t.Parallel()
+	if PlatformKiro != "kiro" {
+		t.Fatalf("PlatformKiro = %q, want %q", PlatformKiro, "kiro")
+	}
+}
+
+func TestDefaultKiroModelMapping_CoreModels(t *testing.T) {
+	t.Parallel()
+	cases := map[string]string{
+		"claude-sonnet-4-6":          "claude-sonnet-4.6",
+		"claude-sonnet-4-6-thinking": "claude-sonnet-4.6",
+		"claude-sonnet-4-5":          "claude-sonnet-4.5",
+		"claude-sonnet-4-5-thinking": "claude-sonnet-4.5",
+		"claude-sonnet-4":            "claude-sonnet-4",
+		"claude-opus-4-7":            "claude-opus-4.7",
+		"claude-opus-4-6":            "claude-opus-4.6",
+		"claude-opus-4-6-thinking":   "claude-opus-4.6",
+		"claude-haiku-4-5":           "claude-haiku-4.5",
+	}
+	for from, want := range cases {
+		got, ok := DefaultKiroModelMapping[from]
+		if !ok {
+			t.Fatalf("expected mapping for %q to exist", from)
+		}
+		if got != want {
+			t.Fatalf("unexpected mapping for %q: got %q want %q", from, got, want)
+		}
+	}
+}

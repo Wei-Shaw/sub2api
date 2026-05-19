@@ -22,6 +22,7 @@ const (
 	PlatformOpenAI      = "openai"
 	PlatformGemini      = "gemini"
 	PlatformAntigravity = "antigravity"
+	PlatformKiro        = "kiro"
 )
 
 // Account type constants
@@ -185,4 +186,21 @@ var DefaultBedrockModelMapping = map[string]string{
 	// Claude Haiku
 	"claude-haiku-4-5":          "us.anthropic.claude-haiku-4-5-20251001-v1:0",
 	"claude-haiku-4-5-20251001": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+}
+
+// DefaultKiroModelMapping 是 Kiro 平台的默认模型映射。
+// Kiro 上游接受形如 "claude-sonnet-4.6" 的简短模型 ID（点号分隔），
+// 这里将我们对外暴露的标准模型名映射到 Kiro 实际支持的 ID。
+// 请求转换层负责剥离 "-thinking" 后缀并将其表达为 inference flag，
+// 此映射表只关心纯模型名。
+var DefaultKiroModelMapping = map[string]string{
+	"claude-sonnet-4-6":          "claude-sonnet-4.6",
+	"claude-sonnet-4-6-thinking": "claude-sonnet-4.6",
+	"claude-sonnet-4-5":          "claude-sonnet-4.5",
+	"claude-sonnet-4-5-thinking": "claude-sonnet-4.5",
+	"claude-sonnet-4":            "claude-sonnet-4",
+	"claude-opus-4-7":            "claude-opus-4.7",
+	"claude-opus-4-6":            "claude-opus-4.6",
+	"claude-opus-4-6-thinking":   "claude-opus-4.6",
+	"claude-haiku-4-5":           "claude-haiku-4.5",
 }
