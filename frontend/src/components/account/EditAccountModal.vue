@@ -139,7 +139,7 @@
 
             <!-- Whitelist Mode -->
             <div v-if="modelRestrictionMode === 'whitelist'">
-              <ModelWhitelistSelector v-model="allowedModels" :platform="account?.platform || 'anthropic'" />
+              <ModelWhitelistSelector v-model="allowedModels" :platform="account?.platform || 'anthropic'" :account-id="account?.id" />
               <p class="text-xs text-gray-500 dark:text-gray-400">
                 {{ t('admin.accounts.selectedModels', { count: allowedModels.length REDACTED) REDACTEDREDACTED
                 <span v-if="allowedModels.length === 0">{{
@@ -454,7 +454,7 @@
 
           <!-- Whitelist Mode -->
           <div v-if="modelRestrictionMode === 'whitelist'">
-            <ModelWhitelistSelector v-model="allowedModels" :platform="account?.platform || 'anthropic'" />
+            <ModelWhitelistSelector v-model="allowedModels" :platform="account?.platform || 'anthropic'" :account-id="account?.id" />
             <p class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.selectedModels', { count: allowedModels.length REDACTED) REDACTEDREDACTED
               <span v-if="allowedModels.length === 0">{{
@@ -666,7 +666,7 @@
 
           <!-- Whitelist Mode -->
           <div v-if="modelRestrictionMode === 'whitelist'">
-            <ModelWhitelistSelector v-model="allowedModels" :platform="account?.platform || 'anthropic'" />
+            <ModelWhitelistSelector v-model="allowedModels" :platform="account?.platform || 'anthropic'" :account-id="account?.id" />
             <p class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.selectedModels', { count: allowedModels.length REDACTED) REDACTEDREDACTED
               <span v-if="allowedModels.length === 0">{{
@@ -985,6 +985,17 @@
         <div>
           <div class="mb-3 rounded-lg bg-purple-50 p-3 dark:bg-purple-900/20">
             <p class="text-xs text-purple-700 dark:text-purple-400">{{ t('admin.accounts.mapRequestModels') REDACTEDREDACTED</p>
+          </div>
+
+          <div class="mb-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              @click="syncAntigravityUpstreamModels"
+              :disabled="isSyncingAntigravityUpstream || !account?.id"
+              class="rounded-lg border border-emerald-200 px-3 py-1.5 text-sm text-emerald-600 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-900/30"
+            >
+              {{ isSyncingAntigravityUpstream ? t('admin.accounts.syncUpstreamModelsLoading') : t('admin.accounts.syncUpstreamModels') REDACTEDREDACTED
+            </button>
           </div>
 
           <div v-if="antigravityModelMappings.length > 0" class="mb-3 space-y-2">
@@ -2288,6 +2299,7 @@ const allowOverages = ref(false) // For antigravity accounts: enable AI Credits 
 const antigravityModelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const antigravityWhitelistModels = ref<string[]>([])
 const antigravityModelMappings = ref<ModelMapping[]>([])
+const isSyncingAntigravityUpstream = ref(false)
 const tempUnschedEnabled = ref(false)
 const tempUnschedRules = ref<TempUnschedRuleForm[]>([])
 const getModelMappingKey = createStableObjectKeyResolver<ModelMapping>('edit-model-mapping')
@@ -2933,6 +2945,40 @@ const addAntigravityPresetMapping = (from: string, to: string) => {
     return
   REDACTED
   antigravityModelMappings.value.push({ from, to REDACTED)
+REDACTED
+
+const syncAntigravityUpstreamModels = async () => {
+  if (!props.account?.id || isSyncingAntigravityUpstream.value) return
+
+  isSyncingAntigravityUpstream.value = true
+  try {
+    const result = await adminAPI.accounts.syncUpstreamModels(props.account.id)
+    const upstreamModels = result.models.map((model) => model.trim()).filter(Boolean)
+    if (upstreamModels.length === 0) {
+      appStore.showInfo(t('admin.accounts.syncUpstreamModelsEmpty'))
+      return
+    REDACTED
+
+    let addedCount = 0
+    for (const model of upstreamModels) {
+      const exists = antigravityModelMappings.value.some((mapping) => mapping.from === model)
+      if (!exists) {
+        antigravityModelMappings.value.push({ from: model, to: model REDACTED)
+        addedCount += 1
+      REDACTED
+    REDACTED
+
+    if (addedCount > 0) {
+      appStore.showSuccess(t('admin.accounts.syncUpstreamModelsSuccess', { count: addedCount, total: upstreamModels.length REDACTED))
+    REDACTED else {
+      appStore.showInfo(t('admin.accounts.syncUpstreamModelsNoChanges', { count: upstreamModels.length REDACTED))
+    REDACTED
+  REDACTED catch (error) {
+    const message = error instanceof Error ? error.message : t('admin.accounts.syncUpstreamModelsFailed')
+    appStore.showError(t('admin.accounts.syncUpstreamModelsError', { message REDACTED))
+  REDACTED finally {
+    isSyncingAntigravityUpstream.value = false
+  REDACTED
 REDACTED
 
 // Error code toggle helper
