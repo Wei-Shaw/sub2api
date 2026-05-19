@@ -25,7 +25,6 @@ import (
 const (
 	opsModelKey                  = "ops_model"
 	opsStreamKey                 = "ops_stream"
-	opsRequestBodyKey            = "ops_request_body"
 	opsAccountIDKey              = "ops_account_id"
 	opsRoutingCapacityLimitedKey = "ops_routing_capacity_limited"
 
@@ -336,16 +335,13 @@ REDACTED
 	return workerCount, queueSize
 REDACTED
 
-func setOpsRequestContext(c *gin.Context, model string, stream bool, requestBody []byte) {
+func setOpsRequestContext(c *gin.Context, model string, stream bool) {
 	if c == nil {
 		return
 REDACTED
 	model = strings.TrimSpace(model)
 	c.Set(opsModelKey, model)
 	c.Set(opsStreamKey, stream)
-	if len(requestBody) > 0 {
-		c.Set(opsRequestBodyKey, requestBody)
-REDACTED
 	if c.Request != nil && model != "" {
 		ctx := context.WithValue(c.Request.Context(), ctxkey.Model, model)
 		c.Request = c.Request.WithContext(ctx)
@@ -362,22 +358,6 @@ REDACTED
 		c.Set(opsUpstreamModelKey, upstreamModel)
 REDACTED
 	c.Set(opsRequestTypeKey, requestType)
-REDACTED
-
-func attachOpsRequestBodyToEntry(c *gin.Context, entry *service.OpsInsertErrorLogInput) {
-	if c == nil || entry == nil {
-		return
-REDACTED
-	v, ok := c.Get(opsRequestBodyKey)
-	if !ok {
-		return
-REDACTED
-	raw, ok := v.([]byte)
-	if !ok || len(raw) == 0 {
-		return
-REDACTED
-	entry.RequestBodyJSON, entry.RequestBodyTruncated, entry.RequestBodyBytes = service.PrepareOpsRequestBodyForQueue(raw)
-	opsErrorLogSanitized.Add(1)
 REDACTED
 
 func setOpsSelectedAccount(c *gin.Context, accountID int64, platform ...string) {
@@ -711,7 +691,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 
 				ErrorPhase: "upstream",
 				ErrorType:  "upstream_error",
-				// Severity/retryability should reflect the upstream failure, not the final client status (200).
+				// Severity should reflect the upstream failure, not the final client status (200).
 				Severity:          classifyOpsSeverity("upstream_error", effectiveUpstreamStatus),
 				StatusCode:        status,
 				IsBusinessLimited: false,
@@ -728,9 +708,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 				UpstreamErrorDetail:  upstreamErrorDetail,
 				UpstreamErrors:       events,
 
-				IsRetryable: classifyOpsIsRetryable("upstream_error", effectiveUpstreamStatus),
-				RetryCount:  0,
-				CreatedAt:   time.Now(),
+				CreatedAt: time.Now(),
 		REDACTED
 			applyOpsLatencyFieldsFromContext(c, entry)
 
@@ -753,10 +731,6 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 				clientIP = ip
 				entry.ClientIP = &clientIP
 		REDACTED
-
-			// Store request headers/body only when an upstream error occurred to keep overhead minimal.
-			entry.RequestHeadersJSON = extractOpsRetryRequestHeaders(c)
-			attachOpsRequestBodyToEntry(c, entry)
 
 			// Skip logging if a passthrough rule with skip_monitoring=true matched.
 			if v, ok := c.Get(service.OpsSkipPassthroughKey); ok {
@@ -870,9 +844,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			ErrorSource: errorSource,
 			ErrorOwner:  errorOwner,
 
-			IsRetryable: classifyOpsIsRetryable(normalizedType, status),
-			RetryCount:  0,
-			CreatedAt:   time.Now(),
+			CreatedAt: time.Now(),
 	REDACTED
 		applyOpsLatencyFieldsFromContext(c, entry)
 
@@ -950,18 +922,8 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			entry.ClientIP = &clientIP
 	REDACTED
 
-		// Persist only a minimal, whitelisted set of request headers to improve retry fidelity.
-		// Do NOT store Authorization/Cookie/etc.
-		entry.RequestHeadersJSON = extractOpsRetryRequestHeaders(c)
-		attachOpsRequestBodyToEntry(c, entry)
-
 		enqueueOpsErrorLog(ops, entry)
 REDACTED
-REDACTED
-
-var opsRetryRequestHeaderAllowlist = []string{
-	"anthropic-beta",
-	"anthropic-version",
 REDACTED
 
 // isCountTokensRequest checks if the request is a count_tokens request
@@ -970,32 +932,6 @@ func isCountTokensRequest(c *gin.Context) bool {
 		return false
 REDACTED
 	return strings.Contains(c.Request.URL.Path, "/count_tokens")
-REDACTED
-
-func extractOpsRetryRequestHeaders(c *gin.Context) *string {
-	if c == nil || c.Request == nil {
-		return nil
-REDACTED
-
-	headers := make(map[string]string, 4)
-	for _, key := range opsRetryRequestHeaderAllowlist {
-		v := strings.TrimSpace(c.GetHeader(key))
-		if v == "" {
-			continue
-	REDACTED
-		// Keep headers small even if a client sends something unexpected.
-		headers[key] = truncateString(v, 512)
-REDACTED
-	if len(headers) == 0 {
-		return nil
-REDACTED
-
-	raw, err := json.Marshal(headers)
-	if err != nil {
-		return nil
-REDACTED
-	s := string(raw)
-	return &s
 REDACTED
 
 func applyOpsLatencyFieldsFromContext(c *gin.Context, entry *service.OpsInsertErrorLogInput) {
@@ -1197,24 +1133,6 @@ REDACTED
 		return "P2"
 REDACTED
 	return "P3"
-REDACTED
-
-func classifyOpsIsRetryable(errType string, statusCode int) bool {
-	switch errType {
-	case "authentication_error", "invalid_request_error":
-		return false
-	case "timeout_error":
-		return true
-	case "rate_limit_error":
-		// May be transient (upstream or queue); retry can help.
-		return true
-	case "billing_error", "subscription_error":
-		return false
-	case "upstream_error", "overloaded_error":
-		return statusCode >= 500 || statusCode == 429 || statusCode == 529
-	default:
-		return statusCode >= 500
-REDACTED
 REDACTED
 
 func classifyOpsErrorLog(c *gin.Context, errType, message, code string, status int) (phase string, isBusinessLimited bool, errorOwner string, errorSource string) {

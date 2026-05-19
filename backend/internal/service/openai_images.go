@@ -588,11 +588,7 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	if !parsed.Multipart {
-		setOpsUpstreamRequestBody(c, forwardBody)
-REDACTED
-
-	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
+	upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, parsed.Stream)
 	defer releaseUpstreamCtx()
 
 	token, _, err := s.GetAccessToken(upstreamCtx, account)

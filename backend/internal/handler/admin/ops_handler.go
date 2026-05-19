@@ -1,9 +1,7 @@
 package admin
 
 import (
-	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -384,79 +382,6 @@ REDACTED
 	response.Paginated(c, result.Errors, int64(result.Total), result.Page, result.PageSize)
 REDACTED
 
-// RetryRequestErrorClient retries the client request based on stored request body.
-// POST /api/v1/admin/ops/request-errors/:id/retry-client
-func (h *OpsHandler) RetryRequestErrorClient(c *gin.Context) {
-	if h.opsService == nil {
-		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
-		return
-REDACTED
-	if err := h.opsService.RequireMonitoringEnabled(c.Request.Context()); err != nil {
-		response.ErrorFrom(c, err)
-		return
-REDACTED
-
-	subject, ok := middleware.GetAuthSubjectFromContext(c)
-	if !ok || subject.UserID <= 0 {
-		response.Error(c, http.StatusUnauthorized, "Unauthorized")
-		return
-REDACTED
-
-	idStr := strings.TrimSpace(c.Param("id"))
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil || id <= 0 {
-		response.BadRequest(c, "Invalid error id")
-		return
-REDACTED
-
-	result, err := h.opsService.RetryError(c.Request.Context(), subject.UserID, id, service.OpsRetryModeClient, nil)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-REDACTED
-	response.Success(c, result)
-REDACTED
-
-// RetryRequestErrorUpstreamEvent retries a specific upstream attempt using captured upstream_request_body.
-// POST /api/v1/admin/ops/request-errors/:id/upstream-errors/:idx/retry
-func (h *OpsHandler) RetryRequestErrorUpstreamEvent(c *gin.Context) {
-	if h.opsService == nil {
-		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
-		return
-REDACTED
-	if err := h.opsService.RequireMonitoringEnabled(c.Request.Context()); err != nil {
-		response.ErrorFrom(c, err)
-		return
-REDACTED
-
-	subject, ok := middleware.GetAuthSubjectFromContext(c)
-	if !ok || subject.UserID <= 0 {
-		response.Error(c, http.StatusUnauthorized, "Unauthorized")
-		return
-REDACTED
-
-	idStr := strings.TrimSpace(c.Param("id"))
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil || id <= 0 {
-		response.BadRequest(c, "Invalid error id")
-		return
-REDACTED
-
-	idxStr := strings.TrimSpace(c.Param("idx"))
-	idx, err := strconv.Atoi(idxStr)
-	if err != nil || idx < 0 {
-		response.BadRequest(c, "Invalid upstream idx")
-		return
-REDACTED
-
-	result, err := h.opsService.RetryUpstreamEvent(c.Request.Context(), subject.UserID, id, idx)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-REDACTED
-	response.Success(c, result)
-REDACTED
-
 // ResolveRequestError toggles resolved status.
 // PUT /api/v1/admin/ops/request-errors/:id/resolve
 func (h *OpsHandler) ResolveRequestError(c *gin.Context) {
@@ -562,39 +487,6 @@ REDACTED
 // GET /api/v1/admin/ops/upstream-errors/:id
 func (h *OpsHandler) GetUpstreamError(c *gin.Context) {
 	h.GetErrorLogByID(c)
-REDACTED
-
-// RetryUpstreamError retries upstream error using the original account_id.
-// POST /api/v1/admin/ops/upstream-errors/:id/retry
-func (h *OpsHandler) RetryUpstreamError(c *gin.Context) {
-	if h.opsService == nil {
-		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
-		return
-REDACTED
-	if err := h.opsService.RequireMonitoringEnabled(c.Request.Context()); err != nil {
-		response.ErrorFrom(c, err)
-		return
-REDACTED
-
-	subject, ok := middleware.GetAuthSubjectFromContext(c)
-	if !ok || subject.UserID <= 0 {
-		response.Error(c, http.StatusUnauthorized, "Unauthorized")
-		return
-REDACTED
-
-	idStr := strings.TrimSpace(c.Param("id"))
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil || id <= 0 {
-		response.BadRequest(c, "Invalid error id")
-		return
-REDACTED
-
-	result, err := h.opsService.RetryError(c.Request.Context(), subject.UserID, id, service.OpsRetryModeUpstream, nil)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-REDACTED
-	response.Success(c, result)
 REDACTED
 
 // ResolveUpstreamError toggles resolved status.
@@ -706,104 +598,8 @@ REDACTED
 	response.Paginated(c, out.Items, out.Total, out.Page, out.PageSize)
 REDACTED
 
-type opsRetryRequest struct {
-	Mode            string `json:"mode"`
-	PinnedAccountID *int64 `json:"pinned_account_id"`
-	Force           bool   `json:"force"`
-REDACTED
-
 type opsResolveRequest struct {
 	Resolved bool `json:"resolved"`
-REDACTED
-
-// RetryErrorRequest retries a failed request using stored request_body.
-// POST /api/v1/admin/ops/errors/:id/retry
-func (h *OpsHandler) RetryErrorRequest(c *gin.Context) {
-	if h.opsService == nil {
-		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
-		return
-REDACTED
-	if err := h.opsService.RequireMonitoringEnabled(c.Request.Context()); err != nil {
-		response.ErrorFrom(c, err)
-		return
-REDACTED
-
-	subject, ok := middleware.GetAuthSubjectFromContext(c)
-	if !ok || subject.UserID <= 0 {
-		response.Error(c, http.StatusUnauthorized, "Unauthorized")
-		return
-REDACTED
-
-	idStr := strings.TrimSpace(c.Param("id"))
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil || id <= 0 {
-		response.BadRequest(c, "Invalid error id")
-		return
-REDACTED
-
-	req := opsRetryRequest{Mode: service.OpsRetryModeClientREDACTED
-	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
-		response.BadRequest(c, "Invalid request: "+err.Error())
-		return
-REDACTED
-	if strings.TrimSpace(req.Mode) == "" {
-		req.Mode = service.OpsRetryModeClient
-REDACTED
-
-	// Force flag is currently a UI-level acknowledgement. Server may still enforce safety constraints.
-	_ = req.Force
-
-	// Legacy endpoint safety: only allow retrying the client request here.
-	// Upstream retries must go through the split endpoints.
-	if strings.EqualFold(strings.TrimSpace(req.Mode), service.OpsRetryModeUpstream) {
-		response.BadRequest(c, "upstream retry is not supported on this endpoint")
-		return
-REDACTED
-
-	result, err := h.opsService.RetryError(c.Request.Context(), subject.UserID, id, req.Mode, req.PinnedAccountID)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-REDACTED
-
-	response.Success(c, result)
-REDACTED
-
-// ListRetryAttempts lists retry attempts for an error log.
-// GET /api/v1/admin/ops/errors/:id/retries
-func (h *OpsHandler) ListRetryAttempts(c *gin.Context) {
-	if h.opsService == nil {
-		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
-		return
-REDACTED
-	if err := h.opsService.RequireMonitoringEnabled(c.Request.Context()); err != nil {
-		response.ErrorFrom(c, err)
-		return
-REDACTED
-
-	idStr := strings.TrimSpace(c.Param("id"))
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil || id <= 0 {
-		response.BadRequest(c, "Invalid error id")
-		return
-REDACTED
-
-	limit := 50
-	if v := strings.TrimSpace(c.Query("limit")); v != "" {
-		n, err := strconv.Atoi(v)
-		if err != nil || n <= 0 {
-			response.BadRequest(c, "Invalid limit")
-			return
-	REDACTED
-		limit = n
-REDACTED
-
-	items, err := h.opsService.ListRetryAttemptsByErrorID(c.Request.Context(), id, limit)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-REDACTED
-	response.Success(c, items)
 REDACTED
 
 // UpdateErrorResolution allows manual resolve/unresolve.
@@ -837,7 +633,7 @@ REDACTED
 		return
 REDACTED
 	uid := subject.UserID
-	if err := h.opsService.UpdateErrorResolution(c.Request.Context(), id, req.Resolved, &uid, nil); err != nil {
+	if err := h.opsService.UpdateErrorResolution(c.Request.Context(), id, req.Resolved, &uid); err != nil {
 		response.ErrorFrom(c, err)
 		return
 REDACTED
