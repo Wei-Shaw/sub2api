@@ -142,7 +142,7 @@
               <ModelWhitelistSelector v-model="allowedModels" :platform="account?.platform || 'anthropic'" :account-id="account?.id" />
               <p class="text-xs text-gray-500 dark:text-gray-400">
                 {{ t('admin.accounts.selectedModels', { count: allowedModels.length REDACTED) REDACTEDREDACTED
-                <span v-if="allowedModels.length === 0">{{
+                <span v-if="allowedModels.length === 0 && modelMappings.length === 0">{{
                   t('admin.accounts.supportsAllModels')
                 REDACTEDREDACTED</span>
               </p>
@@ -457,7 +457,7 @@
             <ModelWhitelistSelector v-model="allowedModels" :platform="account?.platform || 'anthropic'" :account-id="account?.id" />
             <p class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.selectedModels', { count: allowedModels.length REDACTED) REDACTEDREDACTED
-              <span v-if="allowedModels.length === 0">{{
+              <span v-if="allowedModels.length === 0 && modelMappings.length === 0">{{
                 t('admin.accounts.supportsAllModels')
               REDACTEDREDACTED</span>
             </p>
@@ -669,7 +669,7 @@
             <ModelWhitelistSelector v-model="allowedModels" :platform="account?.platform || 'anthropic'" :account-id="account?.id" />
             <p class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.selectedModels', { count: allowedModels.length REDACTED) REDACTEDREDACTED
-              <span v-if="allowedModels.length === 0">{{
+              <span v-if="allowedModels.length === 0 && modelMappings.length === 0">{{
                 t('admin.accounts.supportsAllModels')
               REDACTEDREDACTED</span>
             </p>
@@ -891,7 +891,7 @@
             <ModelWhitelistSelector v-model="allowedModels" platform="anthropic" />
             <p class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.selectedModels', { count: allowedModels.length REDACTED) REDACTEDREDACTED
-              <span v-if="allowedModels.length === 0">{{ t('admin.accounts.supportsAllModels') REDACTEDREDACTED</span>
+              <span v-if="allowedModels.length === 0 && modelMappings.length === 0">{{ t('admin.accounts.supportsAllModels') REDACTEDREDACTED</span>
             </p>
           </div>
 
@@ -2244,6 +2244,7 @@ import {
   getPresetMappingsByPlatform,
   commonErrorCodes,
   buildModelMappingObject,
+  splitModelMappingObject,
   isValidWildcardPattern
 REDACTED from '@/composables/useModelWhitelist'
 
@@ -2607,6 +2608,19 @@ const normalizePoolModeRetryCount = (value: number) => {
   return normalized
 REDACTED
 
+const loadModelRestrictionFromMapping = (rawMapping?: Record<string, unknown>) => {
+  const parsed = splitModelMappingObject(rawMapping)
+  allowedModels.value = parsed.allowedModels
+  modelMappings.value = parsed.modelMappings
+  modelRestrictionMode.value =
+    parsed.modelMappings.length > 0 && parsed.allowedModels.length === 0
+      ? 'mapping'
+      : 'whitelist'
+REDACTED
+
+const buildModelRestrictionMapping = () =>
+  buildModelMappingObject('combined', allowedModels.value, modelMappings.value)
+
 const syncFormFromAccount = (newAccount: Account | null) => {
   if (!newAccount) {
     return
@@ -2782,30 +2796,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     editBaseUrl.value = (credentials.base_url as string) || platformDefaultUrl
 
     // Load model mappings and detect mode
-    const existingMappings = credentials.model_mapping as Record<string, string> | undefined
-    if (existingMappings && typeof existingMappings === 'object') {
-      const entries = Object.entries(existingMappings)
-
-      // Detect if this is whitelist mode (all from === to) or mapping mode
-      const isWhitelistMode = entries.length > 0 && entries.every(([from, to]) => from === to)
-
-      if (isWhitelistMode) {
-        // Whitelist mode: populate allowedModels
-        modelRestrictionMode.value = 'whitelist'
-        allowedModels.value = entries.map(([from]) => from)
-        modelMappings.value = []
-      REDACTED else {
-        // Mapping mode: populate modelMappings
-        modelRestrictionMode.value = 'mapping'
-        modelMappings.value = entries.map(([from, to]) => ({ from, to REDACTED))
-        allowedModels.value = []
-      REDACTED
-    REDACTED else {
-      // No mappings: default to whitelist mode with empty selection (allow all)
-      modelRestrictionMode.value = 'whitelist'
-      modelMappings.value = []
-      allowedModels.value = []
-    REDACTED
+    loadModelRestrictionFromMapping(credentials.model_mapping as Record<string, unknown> | undefined)
 
     // Load pool mode
     poolModeEnabled.value = credentials.pool_mode === true
@@ -2849,24 +2840,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     loadQuotaNotifyFromExtra(bedrockExtra)
 
     // Load model mappings for bedrock
-    const existingMappings = bedrockCreds.model_mapping as Record<string, string> | undefined
-    if (existingMappings && typeof existingMappings === 'object') {
-      const entries = Object.entries(existingMappings)
-      const isWhitelistMode = entries.length > 0 && entries.every(([from, to]) => from === to)
-      if (isWhitelistMode) {
-        modelRestrictionMode.value = 'whitelist'
-        allowedModels.value = entries.map(([from]) => from)
-        modelMappings.value = []
-      REDACTED else {
-        modelRestrictionMode.value = 'mapping'
-        modelMappings.value = entries.map(([from, to]) => ({ from, to REDACTED))
-        allowedModels.value = []
-      REDACTED
-    REDACTED else {
-      modelRestrictionMode.value = 'whitelist'
-      modelMappings.value = []
-      allowedModels.value = []
-    REDACTED
+    loadModelRestrictionFromMapping(bedrockCreds.model_mapping as Record<string, unknown> | undefined)
   REDACTED else if (newAccount.type === 'upstream' && newAccount.credentials) {
     const credentials = newAccount.credentials as Record<string, unknown>
     editBaseUrl.value = (credentials.base_url as string) || ''
@@ -2877,24 +2851,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     editVertexLocation.value = (credentials.location as string) || (credentials.vertex_location as string) || 'us-central1'
 
     // Load model mappings for service_account
-    const existingMappings = credentials.model_mapping as Record<string, string> | undefined
-    if (existingMappings && typeof existingMappings === 'object') {
-      const entries = Object.entries(existingMappings)
-      const isWhitelistMode = entries.length > 0 && entries.every(([from, to]) => from === to)
-      if (isWhitelistMode) {
-        modelRestrictionMode.value = 'whitelist'
-        allowedModels.value = entries.map(([from]) => from)
-        modelMappings.value = []
-      REDACTED else {
-        modelRestrictionMode.value = 'mapping'
-        modelMappings.value = entries.map(([from, to]) => ({ from, to REDACTED))
-        allowedModels.value = []
-      REDACTED
-    REDACTED else {
-      modelRestrictionMode.value = 'whitelist'
-      modelMappings.value = []
-      allowedModels.value = []
-    REDACTED
+    loadModelRestrictionFromMapping(credentials.model_mapping as Record<string, unknown> | undefined)
   REDACTED else {
     const platformDefaultUrl =
       newAccount.platform === 'openai'
@@ -2907,24 +2864,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     // Load model mappings for OpenAI OAuth accounts
     if (newAccount.platform === 'openai' && newAccount.credentials) {
       const oauthCredentials = newAccount.credentials as Record<string, unknown>
-      const existingMappings = oauthCredentials.model_mapping as Record<string, string> | undefined
-      if (existingMappings && typeof existingMappings === 'object') {
-        const entries = Object.entries(existingMappings)
-        const isWhitelistMode = entries.length > 0 && entries.every(([from, to]) => from === to)
-        if (isWhitelistMode) {
-          modelRestrictionMode.value = 'whitelist'
-          allowedModels.value = entries.map(([from]) => from)
-          modelMappings.value = []
-        REDACTED else {
-          modelRestrictionMode.value = 'mapping'
-          modelMappings.value = entries.map(([from, to]) => ({ from, to REDACTED))
-          allowedModels.value = []
-        REDACTED
-      REDACTED else {
-        modelRestrictionMode.value = 'whitelist'
-        modelMappings.value = []
-        allowedModels.value = []
-      REDACTED
+      loadModelRestrictionFromMapping(oauthCredentials.model_mapping as Record<string, unknown> | undefined)
     REDACTED else {
       modelRestrictionMode.value = 'whitelist'
       modelMappings.value = []
@@ -3459,7 +3399,7 @@ const handleSubmit = async () => {
 
       // Add model mapping if configured（OpenAI 开启自动透传时保留现有映射，不再编辑）
       if (shouldApplyModelMapping) {
-        const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+        const modelMapping = buildModelRestrictionMapping()
         if (modelMapping) {
           newCredentials.model_mapping = modelMapping
         REDACTED else {
@@ -3547,7 +3487,7 @@ const handleSubmit = async () => {
       newCredentials.tier_id = 'vertex'
 
       // Add model mapping if configured
-      const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+      const modelMapping = buildModelRestrictionMapping()
       if (modelMapping) {
         newCredentials.model_mapping = modelMapping
       REDACTED else {
@@ -3597,7 +3537,7 @@ const handleSubmit = async () => {
       REDACTED
 
       // Model mapping
-      const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+      const modelMapping = buildModelRestrictionMapping()
       if (modelMapping) {
         newCredentials.model_mapping = modelMapping
       REDACTED else {
@@ -3631,7 +3571,7 @@ const handleSubmit = async () => {
       const shouldApplyModelMapping = !openaiPassthroughEnabled.value
 
       if (shouldApplyModelMapping) {
-        const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+        const modelMapping = buildModelRestrictionMapping()
         if (modelMapping) {
           newCredentials.model_mapping = modelMapping
         REDACTED else {
