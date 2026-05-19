@@ -310,8 +310,6 @@ const applyRouteQueryToState = () => {
   REDACTED
 REDACTED
 
-applyRouteQueryToState()
-
 const buildQueryFromState = () => {
   const next: Record<string, any> = { ...route.query REDACTED
 
@@ -379,6 +377,8 @@ REDACTED)
 
 const showSettingsDialog = ref(false)
 const showAlertRulesCard = ref(false)
+
+applyRouteQueryToState()
 
 // Auto refresh settings
 const showAlertEvents = ref(true)
