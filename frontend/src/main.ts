@@ -4,19 +4,12 @@ import App from './App.vue'
 import router from './router'
 import i18n, { initI18n } from './i18n'
 import { useAppStore } from '@/stores/app'
+import { disableLegacyThemePreference } from '@/utils/theme'
 import './style.css'
 
-function initThemeClass() {
-  const savedTheme = localStorage.getItem('theme')
-  const shouldUseDark =
-    savedTheme === 'dark' ||
-    (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)
-  document.documentElement.classList.toggle('dark', shouldUseDark)
-}
-
 async function bootstrap() {
-  // Apply theme class globally before app mount to keep all routes consistent.
-  initThemeClass()
+  // The site no longer supports a theme switcher; clear old saved choices.
+  disableLegacyThemePreference()
 
   const app = createApp(App)
   const pinia = createPinia()
