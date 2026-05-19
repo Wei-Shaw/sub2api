@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"runtime"
 	"runtime/debug"
@@ -22,10 +23,11 @@ import (
 )
 
 const (
-	opsModelKey       = "ops_model"
-	opsStreamKey      = "ops_stream"
-	opsRequestBodyKey = "ops_request_body"
-	opsAccountIDKey   = "ops_account_id"
+	opsModelKey                  = "ops_model"
+	opsStreamKey                 = "ops_stream"
+	opsRequestBodyKey            = "ops_request_body"
+	opsAccountIDKey              = "ops_account_id"
+	opsRoutingCapacityLimitedKey = "ops_routing_capacity_limited"
 
 	opsUpstreamModelKey = "ops_upstream_model"
 	opsRequestTypeKey   = "ops_request_type"
@@ -45,6 +47,8 @@ const (
 	opsCodeSubscriptionNotFound = "SUBSCRIPTION_NOT_FOUND"
 	opsCodeSubscriptionInvalid  = "SUBSCRIPTION_INVALID"
 	opsCodeUserInactive         = "USER_INACTIVE"
+	opsCodeInvalidAPIKey        = "INVALID_API_KEY"
+	opsCodeAPIKeyRequired       = "API_KEY_REQUIRED"
 )
 
 const (
@@ -391,6 +395,42 @@ func setOpsSelectedAccount(c *gin.Context, accountID int64, platform ...string) 
 		}
 		c.Request = c.Request.WithContext(ctx)
 	}
+}
+
+func markOpsRoutingCapacityLimited(c *gin.Context) {
+	if c == nil {
+		return
+	}
+	c.Set(opsRoutingCapacityLimitedKey, true)
+}
+
+func markOpsRoutingCapacityLimitedIfNoAvailable(c *gin.Context, err error) {
+	if !isOpsNoAvailableAccountError(err) {
+		return
+	}
+	markOpsRoutingCapacityLimited(c)
+}
+
+func isOpsRoutingCapacityLimited(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	v, ok := c.Get(opsRoutingCapacityLimitedKey)
+	if !ok {
+		return false
+	}
+	marked, _ := v.(bool)
+	return marked
+}
+
+func isOpsNoAvailableAccountError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, service.ErrNoAvailableAccounts) || errors.Is(err, service.ErrNoAvailableCompactAccounts) {
+		return true
+	}
+	return isOpsNoAvailableAccountMessage(err.Error())
 }
 
 type opsCaptureWriter struct {
@@ -775,11 +815,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 
 		normalizedType := normalizeOpsErrorType(parsed.ErrorType, parsed.Code)
 
-		phase := classifyOpsPhase(normalizedType, parsed.Message, parsed.Code)
-		isBusinessLimited := classifyOpsIsBusinessLimited(normalizedType, phase, parsed.Code, status, parsed.Message)
-
-		errorOwner := classifyOpsErrorOwner(phase, parsed.Message)
-		errorSource := classifyOpsErrorSource(phase, parsed.Message)
+		phase, isBusinessLimited, errorOwner, errorSource := classifyOpsErrorLog(c, normalizedType, parsed.Message, parsed.Code, status)
 
 		entry := &service.OpsInsertErrorLogInput{
 			RequestID:       requestID,
@@ -1114,6 +1150,9 @@ func classifyOpsPhase(errType, message, code string) string {
 	msg := strings.ToLower(message)
 	// Standardized phases: request|auth|routing|upstream|network|internal
 	// Map billing/concurrency/response => request; scheduling => routing.
+	if isOpsClientAuthError(code, msg) {
+		return "auth"
+	}
 	switch strings.TrimSpace(code) {
 	case opsCodeInsufficientBalance, opsCodeUsageLimitExceeded, opsCodeSubscriptionNotFound, opsCodeSubscriptionInvalid:
 		return "request"
@@ -1134,7 +1173,7 @@ func classifyOpsPhase(errType, message, code string) string {
 	case "upstream_error", "overloaded_error":
 		return "upstream"
 	case "api_error":
-		if strings.Contains(msg, opsErrNoAvailableAccounts) {
+		if isOpsNoAvailableAccountMessage(msg) {
 			return "routing"
 		}
 		return "internal"
@@ -1178,7 +1217,31 @@ func classifyOpsIsRetryable(errType string, statusCode int) bool {
 	}
 }
 
-func classifyOpsIsBusinessLimited(errType, phase, code string, status int, message string) bool {
+func classifyOpsErrorLog(c *gin.Context, errType, message, code string, status int) (phase string, isBusinessLimited bool, errorOwner string, errorSource string) {
+	phase = classifyOpsPhase(errType, message, code)
+	routingCapacityLimited := isOpsRoutingCapacityLimited(c)
+	clientBusinessLimited := service.HasOpsClientBusinessLimited(c)
+	upstreamError := hasOpsUpstreamErrorContext(c)
+	if upstreamError && !routingCapacityLimited {
+		phase = "upstream"
+	}
+	if clientBusinessLimited && !upstreamError && !routingCapacityLimited {
+		phase = "auth"
+	}
+	if routingCapacityLimited {
+		phase = "routing"
+	}
+	localClientAuthError := !upstreamError && phase == "auth" && isOpsClientAuthError(code, strings.ToLower(message))
+	isBusinessLimited = routingCapacityLimited || clientBusinessLimited || classifyOpsIsBusinessLimited(errType, phase, code, status, message, localClientAuthError)
+	errorOwner = classifyOpsErrorOwner(phase, message)
+	errorSource = classifyOpsErrorSource(phase, message)
+	return phase, isBusinessLimited, errorOwner, errorSource
+}
+
+func classifyOpsIsBusinessLimited(errType, phase, code string, status int, message string, localClientAuthError ...bool) bool {
+	if len(localClientAuthError) > 0 && localClientAuthError[0] {
+		return true
+	}
 	switch strings.TrimSpace(code) {
 	case opsCodeInsufficientBalance, opsCodeUsageLimitExceeded, opsCodeSubscriptionNotFound, opsCodeSubscriptionInvalid, opsCodeUserInactive:
 		return true
@@ -1193,6 +1256,47 @@ func classifyOpsIsBusinessLimited(errType, phase, code string, status int, messa
 	}
 	_ = status
 	return false
+}
+
+func isOpsClientAuthError(code string, msg string) bool {
+	switch strings.TrimSpace(code) {
+	case opsCodeInvalidAPIKey, opsCodeAPIKeyRequired:
+		return true
+	}
+	return strings.Contains(msg, "invalid api key") || strings.Contains(msg, "api key is required")
+}
+
+func hasOpsUpstreamErrorContext(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	if v, ok := c.Get(service.OpsUpstreamStatusCodeKey); ok {
+		switch code := v.(type) {
+		case int:
+			if code > 0 {
+				return true
+			}
+		case int64:
+			if code > 0 {
+				return true
+			}
+		}
+	}
+	if v, ok := c.Get(service.OpsUpstreamErrorsKey); ok {
+		if events, ok := v.([]*service.OpsUpstreamErrorEvent); ok && len(events) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func isOpsNoAvailableAccountMessage(message string) bool {
+	msg := strings.ToLower(message)
+	return strings.Contains(msg, opsErrNoAvailableAccounts) ||
+		strings.Contains(msg, "no available account") ||
+		strings.Contains(msg, "no available gemini accounts") ||
+		strings.Contains(msg, "no available openai accounts") ||
+		strings.Contains(msg, "no available compatible accounts")
 }
 
 func classifyOpsErrorOwner(phase string, message string) string {

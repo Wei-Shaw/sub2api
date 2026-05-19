@@ -201,10 +201,7 @@
                 }}</span>
                 <span
                   class="ml-1 font-medium text-emerald-600 dark:text-emerald-400"
-                  >{{
-                    (row.active_account_count || 0) -
-                    (row.rate_limited_account_count || 0)
-                  }}</span
+                  >{{ row.active_account_count || 0 }}</span
                 >
                 <span
                   class="ml-1 inline-flex items-center rounded bg-gray-100 px-1.5 py-0.5 font-medium text-gray-800 dark:bg-dark-600 dark:text-gray-300"
@@ -2865,6 +2862,7 @@ import {
   resetMessagesDispatchFormState,
   type MessagesDispatchMappingRow,
 } from "./groupsMessagesDispatch";
+import { normalizeSupportedModelScopesForPlatform } from "./groupsSupportedModelScopes";
 
 const { t } = useI18n();
 const appStore = useAppStore();
@@ -3710,6 +3708,10 @@ const handleCreateGroup = async () => {
       model_routing: convertRoutingRulesToApiFormat(
         createModelRoutingRules.value,
       ),
+      supported_model_scopes: normalizeSupportedModelScopesForPlatform(
+        createForm.platform,
+        createForm.supported_model_scopes,
+      ),
       messages_dispatch_model_config:
         createForm.platform === "openai"
           ? messagesDispatchFormStateToConfig({
@@ -3840,6 +3842,10 @@ const handleUpdateGroup = async () => {
           : editForm.fallback_group_id_on_invalid_request,
       model_routing: convertRoutingRulesToApiFormat(
         editModelRoutingRules.value,
+      ),
+      supported_model_scopes: normalizeSupportedModelScopesForPlatform(
+        editForm.platform,
+        editForm.supported_model_scopes,
       ),
       messages_dispatch_model_config:
         editForm.platform === "openai"
