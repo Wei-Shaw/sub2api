@@ -282,6 +282,7 @@ REDACTED
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
 			if len(failedAccountIDs) == 0 {
+				markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
 				if errors.Is(err, service.ErrNoAvailableCompactAccounts) {
 					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "compact_not_supported", "No available OpenAI accounts support /responses/compact", streamStarted)
 					return
@@ -297,6 +298,7 @@ REDACTED
 			return
 	REDACTED
 		if selection == nil || selection.Account == nil {
+			markOpsRoutingCapacityLimited(c)
 			h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts", streamStarted)
 			return
 	REDACTED
@@ -677,6 +679,7 @@ REDACTED
 			)
 			if len(failedAccountIDs) == 0 {
 				if err != nil {
+					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
 					h.anthropicStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable", streamStarted)
 					return
 			REDACTED
@@ -690,6 +693,7 @@ REDACTED
 		REDACTED
 	REDACTED
 		if selection == nil || selection.Account == nil {
+			markOpsRoutingCapacityLimited(c)
 			h.anthropicStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts", streamStarted)
 			return
 	REDACTED
@@ -992,6 +996,7 @@ func (h *OpenAIGatewayHandler) acquireResponsesAccountSlot(
 	reqLog *zap.Logger,
 ) (func(), bool) {
 	if selection == nil || selection.Account == nil {
+		markOpsRoutingCapacityLimited(c)
 		h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts", *streamStarted)
 		return nil, false
 REDACTED
@@ -1002,6 +1007,7 @@ REDACTED
 		return wrapReleaseOnDone(ctx, selection.ReleaseFunc), true
 REDACTED
 	if selection.WaitPlan == nil {
+		markOpsRoutingCapacityLimited(c)
 		h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts", *streamStarted)
 		return nil, false
 REDACTED

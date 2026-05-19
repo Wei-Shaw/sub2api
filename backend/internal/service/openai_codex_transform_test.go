@@ -41,7 +41,7 @@ REDACTED
 	second, ok := input[1].(map[string]any)
 	require.True(t, ok)
 	require.Equal(t, "o1", second["id"])
-	require.Equal(t, "fc1", second["call_id"])
+	require.Equal(t, "fc_1", second["call_id"])
 REDACTED
 
 func TestApplyCodexOAuthTransform_MessagesBridgePromptCacheKeyIsHeaderOnly(t *testing.T) {
@@ -120,11 +120,11 @@ REDACTED
 
 	first, ok := input[0].(map[string]any)
 	require.True(t, ok)
-	require.Equal(t, "fc1", first["id"])
+	require.Equal(t, "fc_1", first["id"])
 
 	second, ok := input[1].(map[string]any)
 	require.True(t, ok)
-	require.Equal(t, "fc1", second["call_id"])
+	require.Equal(t, "fc_1", second["call_id"])
 REDACTED
 
 func TestApplyCodexOAuthTransform_ToolSearchOutputPreservesCallID(t *testing.T) {
@@ -144,7 +144,7 @@ REDACTED
 	first, ok := input[0].(map[string]any)
 	require.True(t, ok)
 	require.Equal(t, "tool_search_output", first["type"])
-	require.Equal(t, "fc1", first["call_id"])
+	require.Equal(t, "fc_1", first["call_id"])
 REDACTED
 
 func TestApplyCodexOAuthTransform_CustomAndMCPToolOutputsPreserveCallID(t *testing.T) {
@@ -164,11 +164,11 @@ REDACTED
 
 	first, ok := input[0].(map[string]any)
 	require.True(t, ok)
-	require.Equal(t, "fccustom", first["call_id"])
+	require.Equal(t, "fc_custom", first["call_id"])
 
 	second, ok := input[1].(map[string]any)
 	require.True(t, ok)
-	require.Equal(t, "fcmcp", second["call_id"])
+	require.Equal(t, "fc_mcp", second["call_id"])
 REDACTED
 
 func TestApplyCodexOAuthTransform_ImageAndWebSearchCallsDoNotGainCallID(t *testing.T) {
@@ -221,7 +221,7 @@ REDACTED
 	item, ok := input[0].(map[string]any)
 	require.True(t, ok)
 	require.Equal(t, "function_call_output", item["type"])
-	require.Equal(t, "fc1", item["call_id"])
+	require.Equal(t, "fc_1", item["call_id"])
 	require.Equal(t, "ok", item["output"])
 	_, hasRole := item["role"]
 	require.False(t, hasRole)
@@ -340,7 +340,7 @@ REDACTED
 	require.True(t, ok)
 	require.Equal(t, "function_call", item["type"])
 	require.Equal(t, "tool", item["name"])
-	require.Equal(t, "fc1", item["call_id"])
+	require.Equal(t, "fc_1", item["call_id"])
 REDACTED
 
 func TestApplyCodexOAuthTransform_PreservesFunctionCallInputName(t *testing.T) {
@@ -359,7 +359,7 @@ REDACTED
 	item, ok := input[0].(map[string]any)
 	require.True(t, ok)
 	require.Equal(t, "shell", item["name"])
-	require.Equal(t, "fc1", item["call_id"])
+	require.Equal(t, "fc_1", item["call_id"])
 REDACTED
 
 func TestApplyCodexOAuthTransform_PreservesMCPToolCallIDAndName(t *testing.T) {
@@ -384,7 +384,7 @@ REDACTED
 	require.True(t, ok)
 	require.Equal(t, "mcp_tool_call", item["type"])
 	require.Equal(t, "remote_tool", item["name"])
-	require.Equal(t, "fcabc", item["call_id"])
+	require.Equal(t, "fc_abc", item["call_id"])
 REDACTED
 
 func TestCodexInputItemRequiresNameTypesAllowCallID(t *testing.T) {
