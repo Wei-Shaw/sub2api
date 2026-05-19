@@ -70,6 +70,11 @@ func Name(v string) predicate.ChannelMonitorRequestTemplate {
 	return predicate.ChannelMonitorRequestTemplate(sql.FieldEQ(FieldName, v))
 REDACTED
 
+// APIMode applies equality check predicate on the "api_mode" field. It's identical to APIModeEQ.
+func APIMode(v string) predicate.ChannelMonitorRequestTemplate {
+	return predicate.ChannelMonitorRequestTemplate(sql.FieldEQ(FieldAPIMode, v))
+REDACTED
+
 // Description applies equality check predicate on the "description" field. It's identical to DescriptionEQ.
 func Description(v string) predicate.ChannelMonitorRequestTemplate {
 	return predicate.ChannelMonitorRequestTemplate(sql.FieldEQ(FieldDescription, v))
@@ -243,6 +248,71 @@ REDACTED
 // ProviderNotIn applies the NotIn predicate on the "provider" field.
 func ProviderNotIn(vs ...Provider) predicate.ChannelMonitorRequestTemplate {
 	return predicate.ChannelMonitorRequestTemplate(sql.FieldNotIn(FieldProvider, vs...))
+REDACTED
+
+// APIModeEQ applies the EQ predicate on the "api_mode" field.
+func APIModeEQ(v string) predicate.ChannelMonitorRequestTemplate {
+	return predicate.ChannelMonitorRequestTemplate(sql.FieldEQ(FieldAPIMode, v))
+REDACTED
+
+// APIModeNEQ applies the NEQ predicate on the "api_mode" field.
+func APIModeNEQ(v string) predicate.ChannelMonitorRequestTemplate {
+	return predicate.ChannelMonitorRequestTemplate(sql.FieldNEQ(FieldAPIMode, v))
+REDACTED
+
+// APIModeIn applies the In predicate on the "api_mode" field.
+func APIModeIn(vs ...string) predicate.ChannelMonitorRequestTemplate {
+	return predicate.ChannelMonitorRequestTemplate(sql.FieldIn(FieldAPIMode, vs...))
+REDACTED
+
+// APIModeNotIn applies the NotIn predicate on the "api_mode" field.
+func APIModeNotIn(vs ...string) predicate.ChannelMonitorRequestTemplate {
+	return predicate.ChannelMonitorRequestTemplate(sql.FieldNotIn(FieldAPIMode, vs...))
+REDACTED
+
+// APIModeGT applies the GT predicate on the "api_mode" field.
+func APIModeGT(v string) predicate.ChannelMonitorRequestTemplate {
+	return predicate.ChannelMonitorRequestTemplate(sql.FieldGT(FieldAPIMode, v))
+REDACTED
+
+// APIModeGTE applies the GTE predicate on the "api_mode" field.
+func APIModeGTE(v string) predicate.ChannelMonitorRequestTemplate {
+	return predicate.ChannelMonitorRequestTemplate(sql.FieldGTE(FieldAPIMode, v))
+REDACTED
+
+// APIModeLT applies the LT predicate on the "api_mode" field.
+func APIModeLT(v string) predicate.ChannelMonitorRequestTemplate {
+	return predicate.ChannelMonitorRequestTemplate(sql.FieldLT(FieldAPIMode, v))
+REDACTED
+
+// APIModeLTE applies the LTE predicate on the "api_mode" field.
+func APIModeLTE(v string) predicate.ChannelMonitorRequestTemplate {
+	return predicate.ChannelMonitorRequestTemplate(sql.FieldLTE(FieldAPIMode, v))
+REDACTED
+
+// APIModeContains applies the Contains predicate on the "api_mode" field.
+func APIModeContains(v string) predicate.ChannelMonitorRequestTemplate {
+	return predicate.ChannelMonitorRequestTemplate(sql.FieldContains(FieldAPIMode, v))
+REDACTED
+
+// APIModeHasPrefix applies the HasPrefix predicate on the "api_mode" field.
+func APIModeHasPrefix(v string) predicate.ChannelMonitorRequestTemplate {
+	return predicate.ChannelMonitorRequestTemplate(sql.FieldHasPrefix(FieldAPIMode, v))
+REDACTED
+
+// APIModeHasSuffix applies the HasSuffix predicate on the "api_mode" field.
+func APIModeHasSuffix(v string) predicate.ChannelMonitorRequestTemplate {
+	return predicate.ChannelMonitorRequestTemplate(sql.FieldHasSuffix(FieldAPIMode, v))
+REDACTED
+
+// APIModeEqualFold applies the EqualFold predicate on the "api_mode" field.
+func APIModeEqualFold(v string) predicate.ChannelMonitorRequestTemplate {
+	return predicate.ChannelMonitorRequestTemplate(sql.FieldEqualFold(FieldAPIMode, v))
+REDACTED
+
+// APIModeContainsFold applies the ContainsFold predicate on the "api_mode" field.
+func APIModeContainsFold(v string) predicate.ChannelMonitorRequestTemplate {
+	return predicate.ChannelMonitorRequestTemplate(sql.FieldContainsFold(FieldAPIMode, v))
 REDACTED
 
 // DescriptionEQ applies the EQ predicate on the "description" field.

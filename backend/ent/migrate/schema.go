@@ -428,6 +428,7 @@ REDACTED
 		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
 		{Name: "name", Type: field.TypeString, Size: 100REDACTED,
 		{Name: "provider", Type: field.TypeEnum, Enums: []string{"openai", "anthropic", "gemini"REDACTEDREDACTED,
+		{Name: "api_mode", Type: field.TypeString, Size: 32, Default: "chat_completions"REDACTED,
 		{Name: "endpoint", Type: field.TypeString, Size: 500REDACTED,
 		{Name: "api_key_encrypted", Type: field.TypeStringREDACTED,
 		{Name: "primary_model", Type: field.TypeString, Size: 200REDACTED,
@@ -450,7 +451,7 @@ REDACTED
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "channel_monitors_channel_monitor_request_templates_request_template",
-				Columns:    []*schema.Column{ChannelMonitorsColumns[17]REDACTED,
+				Columns:    []*schema.Column{ChannelMonitorsColumns[18]REDACTED,
 				RefColumns: []*schema.Column{ChannelMonitorRequestTemplatesColumns[0]REDACTED,
 				OnDelete:   schema.SetNull,
 		REDACTED,
@@ -459,7 +460,7 @@ REDACTED
 			{
 				Name:    "channelmonitor_enabled_last_checked_at",
 				Unique:  false,
-				Columns: []*schema.Column{ChannelMonitorsColumns[10], ChannelMonitorsColumns[12]REDACTED,
+				Columns: []*schema.Column{ChannelMonitorsColumns[11], ChannelMonitorsColumns[13]REDACTED,
 		REDACTED,
 			{
 				Name:    "channelmonitor_provider",
@@ -467,14 +468,19 @@ REDACTED
 				Columns: []*schema.Column{ChannelMonitorsColumns[4]REDACTED,
 		REDACTED,
 			{
+				Name:    "channelmonitor_provider_api_mode",
+				Unique:  false,
+				Columns: []*schema.Column{ChannelMonitorsColumns[4], ChannelMonitorsColumns[5]REDACTED,
+		REDACTED,
+			{
 				Name:    "channelmonitor_group_name",
 				Unique:  false,
-				Columns: []*schema.Column{ChannelMonitorsColumns[9]REDACTED,
+				Columns: []*schema.Column{ChannelMonitorsColumns[10]REDACTED,
 		REDACTED,
 			{
 				Name:    "channelmonitor_template_id",
 				Unique:  false,
-				Columns: []*schema.Column{ChannelMonitorsColumns[17]REDACTED,
+				Columns: []*schema.Column{ChannelMonitorsColumns[18]REDACTED,
 		REDACTED,
 	REDACTED,
 REDACTED
@@ -566,6 +572,7 @@ REDACTED
 		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
 		{Name: "name", Type: field.TypeString, Size: 100REDACTED,
 		{Name: "provider", Type: field.TypeEnum, Enums: []string{"openai", "anthropic", "gemini"REDACTEDREDACTED,
+		{Name: "api_mode", Type: field.TypeString, Size: 32, Default: "chat_completions"REDACTED,
 		{Name: "description", Type: field.TypeString, Nullable: true, Size: 500, Default: ""REDACTED,
 		{Name: "extra_headers", Type: field.TypeJSONREDACTED,
 		{Name: "body_override_mode", Type: field.TypeString, Size: 10, Default: "off"REDACTED,
@@ -581,6 +588,11 @@ REDACTED
 				Name:    "channelmonitorrequesttemplate_provider_name",
 				Unique:  true,
 				Columns: []*schema.Column{ChannelMonitorRequestTemplatesColumns[4], ChannelMonitorRequestTemplatesColumns[3]REDACTED,
+		REDACTED,
+			{
+				Name:    "channelmonitorrequesttemplate_provider_api_mode",
+				Unique:  false,
+				Columns: []*schema.Column{ChannelMonitorRequestTemplatesColumns[4], ChannelMonitorRequestTemplatesColumns[5]REDACTED,
 		REDACTED,
 	REDACTED,
 REDACTED
