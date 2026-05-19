@@ -2920,6 +2920,7 @@ export default {
       allPlatforms: '全部平台',
       allTypes: '全部类型',
       allStatus: '全部状态',
+      allQuotaStrategies: '全部额度策略',
       allGroups: '全部分组',
       ungroupedGroup: '未分配分组',
       oauthType: 'OAuth',
@@ -3038,6 +3039,12 @@ export default {
       apiKey: 'API Key',
       deleteConfirm: "确定要删除账号 '{name}' 吗？此操作无法撤销。",
       failedToClearRateLimit: '清除速率限制失败',
+      quotaStrategy: {
+        prefer5h: '5小时窗口优先',
+        prefer7d: '7天窗口优先',
+        enabled: '已启用额度策略',
+        disabled: '未启用额度策略'
+      },
       platforms: {
         claude: 'Claude',
         openai: 'OpenAI',
@@ -3060,6 +3067,9 @@ export default {
       },
       status: {
         active: '正常',
+        activeExcludingQuotaStopped: '正常（排除超额度）',
+        openAI5HUsedZero: '5H额度已用0%',
+        openAI7DUsedZero: '7D额度已用0%',
         inactive: '停用',
         error: '错误',
         cooldown: '冷却中',
@@ -3196,12 +3206,15 @@ export default {
         clear: '清除选择',
         edit: '批量编辑账号',
         delete: '批量删除',
+        test: '批量测试',
         enableScheduling: '批量启用调度',
         disableScheduling: '批量停止调度',
         resetStatus: '批量重置状态',
         refreshToken: '批量刷新令牌',
         resetStatusSuccess: '已成功重置 {count} 个账号状态',
         refreshTokenSuccess: '已成功刷新 {count} 个账号令牌',
+        testSuccess: '已成功测试 {count} 个账号',
+        testFailed: '批量测试失败',
         partialSuccess: '操作部分完成：{success} 成功，{failed} 失败'
       },
       bulkEdit: {
@@ -3331,6 +3344,13 @@ export default {
         testMode: '测试模式',
         testModeDefault: '常规请求',
         testModeCompact: 'Compact 探测',
+        quotaStrategy: '额度策略',
+        quotaStrategyDesc: '根据 5 小时或 7 天窗口剩余额度决定该账号是否继续参与调度。',
+        quotaStrategyMode: '额度策略模式',
+        quotaStrategyPrefer5h: '按 5 小时窗口',
+        quotaStrategyPrefer7d: '按 7 天窗口',
+        quotaStopThreshold: '停止调度阈值（剩余额度 %）',
+        quotaStopThresholdDesc: '当剩余额度低于该百分比时，此账号不再参与新请求调度。',
         modelRestrictionDisabledByPassthrough: '已开启自动透传：模型白名单/映射不会生效。',
       },
       anthropic: {

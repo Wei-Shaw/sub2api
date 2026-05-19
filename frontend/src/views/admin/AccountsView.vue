@@ -7,7 +7,9 @@
             v-model:searchQuery="params.search"
             :filters="params"
             :groups="groups"
-            @update:filters="(newFilters) => Object.assign(params, newFilters)"
+            :model-groups="accountModelGroups"
+            :proxy-filter-proxies="proxyFilterProxies"
+            @update:filters="updateAccountFilters"
             @change="debouncedReload"
             @update:searchQuery="debouncedReload"
           />
@@ -175,6 +177,7 @@
         <AccountBulkActionsBar
           :selected-ids="selIds"
           @delete="handleBulkDelete"
+          @test="handleBulkTest"
           @reset-status="handleBulkResetStatus"
           @refresh-token="handleBulkRefreshToken"
           @edit-selected="openBulkEditSelected"
@@ -407,6 +410,7 @@ import AccountGroupsCell from '@/components/account/AccountGroupsCell.vue'
 import AccountCapacityCell from '@/components/account/AccountCapacityCell.vue'
 import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { normalizeAccountModelFilterValue, type AccountModelFilterGroup } from '@/components/admin/account/accountModelFilter'
 import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRulesModal.vue'
 import TLSFingerprintProfilesModal from '@/components/admin/TLSFingerprintProfilesModal.vue'
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
@@ -418,7 +422,9 @@ const appStore = useAppStore()
 const authStore = useAuthStore()
 
 const proxies = ref<AccountProxy[]>([])
+const proxyFilterProxies = ref<AccountProxy[]>([])
 const groups = ref<AdminGroup[]>([])
+const accountModelGroups = ref<AccountModelFilterGroup[]>([])
 const accountTableRef = ref<HTMLElement | null>(null)
 const dataTableRef = ref<InstanceType<typeof DataTable> | null>(null)
 type AccountBulkEditTarget =
@@ -432,6 +438,9 @@ type AccountBulkEditTarget =
       mode: 'filtered'
       filters: {
         platform?: string
+        model?: string
+        quota_strategy?: string
+        proxy_filter?: string
         type?: string
         status?: string
         group?: string
@@ -723,6 +732,9 @@ const {
   fetchFn: adminAPI.accounts.list,
   initialParams: {
     platform: '',
+    model: '',
+    quota_strategy: '',
+    proxy_filter: '',
     type: '',
     status: '',
     privacy_mode: '',
@@ -927,6 +939,9 @@ const refreshAccountsIncrementally = async () => {
       pagination.page_size,
       toRaw(params) as {
         platform?: string
+        model?: string
+        quota_strategy?: string
+        proxy_filter?: string
         type?: string
         status?: string
         privacy_mode?: string
@@ -1235,6 +1250,22 @@ const handleBulkRefreshToken = async () => {
     appStore.showError(String(error))
   }
 }
+const handleBulkTest = async () => {
+  if (!confirm(t('common.confirm'))) return
+  try {
+    const result = await adminAPI.accounts.batchTest(selIds.value)
+    if (result.failed > 0) {
+      appStore.showError(t('admin.accounts.bulkActions.partialSuccess', { success: result.success, failed: result.failed }))
+    } else {
+      appStore.showSuccess(t('admin.accounts.bulkActions.testSuccess', { count: result.success }))
+      clearSelection()
+    }
+    reload()
+  } catch (error) {
+    console.error('Failed to batch test accounts:', error)
+    appStore.showError(t('admin.accounts.bulkActions.testFailed'))
+  }
+}
 const updateSchedulableInList = (accountIds: number[], schedulable: boolean) => {
   if (accountIds.length === 0) return
   const idSet = new Set(accountIds)
@@ -1342,6 +1373,9 @@ const buildBulkEditFilterSnapshot = () => {
   const sortOrder: AccountSortOrder = rawParams.sort_order === 'desc' ? 'desc' : 'asc'
   return {
     platform: typeof rawParams.platform === 'string' ? rawParams.platform : '',
+    model: typeof rawParams.model === 'string' ? rawParams.model : '',
+    quota_strategy: typeof rawParams.quota_strategy === 'string' ? rawParams.quota_strategy : '',
+    proxy_filter: typeof rawParams.proxy_filter === 'string' ? rawParams.proxy_filter : '',
     type: typeof rawParams.type === 'string' ? rawParams.type : '',
     status: typeof rawParams.status === 'string' ? rawParams.status : '',
     group: typeof rawParams.group === 'string' ? rawParams.group : '',
@@ -1389,10 +1423,46 @@ const handleBulkUpdated = () => {
   reload()
 }
 const handleDataImported = () => { showImportData.value = false; reload() }
+const updateAccountFilters = (newFilters: Record<string, any>) => {
+  Object.assign(params, newFilters)
+}
+
+const loadAccountModelGroups = async (platform?: string) => {
+  const normalizedPlatform = String(platform || '')
+  params.model = normalizeAccountModelFilterValue(accountModelGroups.value, normalizedPlatform, String(params.model || ''))
+  try {
+    accountModelGroups.value = await adminAPI.accounts.getFilterModels(normalizedPlatform || undefined)
+    params.model = normalizeAccountModelFilterValue(accountModelGroups.value, normalizedPlatform, String(params.model || ''))
+  } catch (error) {
+    console.error('Failed to load account filter models:', error)
+    accountModelGroups.value = []
+    params.model = ''
+  }
+}
+
+const loadAllProxyFilterProxies = async (): Promise<AccountProxy[]> => {
+  const pageSize = 500
+  const allProxies: AccountProxy[] = []
+  let page = 1
+
+  for (;;) {
+    const result = await adminAPI.proxies.list(page, pageSize)
+    allProxies.push(...(result.items || []))
+    if (!result.pages || page >= result.pages || (result.items || []).length === 0) {
+      break
+    }
+    page += 1
+  }
+
+  return allProxies
+}
 const ACCOUNT_UNGROUPED_GROUP_QUERY_VALUE = 'ungrouped'
 const ACCOUNT_PRIVACY_MODE_UNSET_QUERY_VALUE = '__unset__'
 const buildAccountQueryFilters = () => ({
   platform: params.platform || '',
+  model: params.model || '',
+  quota_strategy: params.quota_strategy || '',
+  proxy_filter: params.proxy_filter || '',
   type: params.type || '',
   status: params.status || '',
   group: params.group || '',
@@ -1401,10 +1471,53 @@ const buildAccountQueryFilters = () => ({
   sort_by: sortState.sort_by,
   sort_order: sortState.sort_order
 })
+const parseWindowUsagePercent = (account: Account, window: '5h' | '7d') => {
+  const usedKey = window === '5h' ? 'codex_5h_used_percent' : 'codex_7d_used_percent'
+  const resetAtKey = window === '5h' ? 'codex_5h_reset_at' : 'codex_7d_reset_at'
+  const resetAfterKey = window === '5h' ? 'codex_5h_reset_after_seconds' : 'codex_7d_reset_after_seconds'
+  const usedRaw = Number(account.extra?.[usedKey] ?? Number.NaN)
+  if (!Number.isFinite(usedRaw)) return Number.NaN
+  let usedPercent = Math.min(100, Math.max(0, usedRaw))
+  const now = Date.now()
+  const resetAtValue = account.extra?.[resetAtKey]
+  const resetAt = typeof resetAtValue === 'string' ? new Date(resetAtValue).getTime() : Number.NaN
+  if (Number.isFinite(resetAt)) {
+    if (resetAt <= now) {
+      return 0
+    }
+    return usedPercent
+  }
+  const resetAfterRaw = Number(account.extra?.[resetAfterKey] ?? Number.NaN)
+  if (Number.isFinite(resetAfterRaw) && resetAfterRaw > 0) {
+    const updatedAtValue = account.extra?.codex_usage_updated_at
+    const updatedAt = typeof updatedAtValue === 'string' ? new Date(updatedAtValue).getTime() : now
+    const derivedResetAt = updatedAt + resetAfterRaw * 1000
+    if (Number.isFinite(derivedResetAt) && derivedResetAt <= now) {
+      return 0
+    }
+  }
+  return usedPercent
+}
 const accountMatchesCurrentFilters = (account: Account) => {
   const filters = buildAccountQueryFilters()
   if (filters.platform && account.platform !== filters.platform) return false
   if (filters.type && account.type !== filters.type) return false
+  const strategy = String(account.extra?.openai_quota_strategy || '').trim()
+  const thresholdRaw = Number(account.extra?.openai_quota_stop_threshold_percent ?? 10)
+  const threshold = Number.isFinite(thresholdRaw) && thresholdRaw > 0 ? Math.min(100, thresholdRaw) : 10
+  const usedPercent = strategy === 'prefer_5h'
+    ? parseWindowUsagePercent(account, '5h')
+    : strategy === 'prefer_7d'
+      ? parseWindowUsagePercent(account, '7d')
+      : Number.NaN
+  const remainingPercent = Number.isFinite(usedPercent) ? 100 - usedPercent : Number.NaN
+  const isQuotaStopped = (strategy === 'prefer_5h' || strategy === 'prefer_7d') &&
+    Number.isFinite(remainingPercent) &&
+    remainingPercent < threshold
+  const openAI5HUsedPercent = parseWindowUsagePercent(account, '5h')
+  const openAI7DUsedPercent = parseWindowUsagePercent(account, '7d')
+  const isOpenAI5HUsedZero = account.platform === 'openai' && account.type === 'oauth' && Number.isFinite(openAI5HUsedPercent) && openAI5HUsedPercent === 0
+  const isOpenAI7DUsedZero = account.platform === 'openai' && account.type === 'oauth' && Number.isFinite(openAI7DUsedPercent) && openAI7DUsedPercent === 0
   if (filters.status) {
     const now = Date.now()
     const rateLimitResetAt = account.rate_limit_reset_at ? new Date(account.rate_limit_reset_at).getTime() : Number.NaN
@@ -1414,6 +1527,12 @@ const accountMatchesCurrentFilters = (account: Account) => {
 
     if (filters.status === 'active') {
       if (account.status !== 'active' || isRateLimited || isTempUnschedulable || !account.schedulable) return false
+    } else if (filters.status === 'active_excluding_quota_stopped') {
+      if (account.status !== 'active' || isRateLimited || isTempUnschedulable || !account.schedulable || isQuotaStopped) return false
+    } else if (filters.status === 'openai_5h_used_zero') {
+      if (!isOpenAI5HUsedZero) return false
+    } else if (filters.status === 'openai_7d_used_zero') {
+      if (!isOpenAI7DUsedZero) return false
     } else if (filters.status === 'rate_limited') {
       if (account.status !== 'active' || !isRateLimited || isTempUnschedulable) return false
     } else if (filters.status === 'temp_unschedulable') {
@@ -1430,6 +1549,34 @@ const accountMatchesCurrentFilters = (account: Account) => {
       if (groupIds.length > 0) return false
     } else if (!groupIds.includes(Number(filters.group))) {
       return false
+    }
+  }
+  if (filters.model) {
+    const credentials = account.credentials as Record<string, unknown> | undefined
+    const geminiCredentials = credentials as { model_mapping?: Record<string, string> } | undefined
+    const modelMapping = geminiCredentials?.model_mapping
+    if (account.platform === 'gemini' && modelMapping && !Object.values(modelMapping).includes(filters.model)) {
+      return false
+    }
+  }
+  if (filters.quota_strategy) {
+    if (filters.quota_strategy === 'enabled') {
+      if (strategy !== 'prefer_5h' && strategy !== 'prefer_7d') return false
+    } else if (filters.quota_strategy === 'disabled') {
+      if (strategy === 'prefer_5h' || strategy === 'prefer_7d') return false
+    } else if (strategy !== filters.quota_strategy) {
+      return false
+    }
+  }
+  if (filters.proxy_filter) {
+    const proxyID = account.proxy_id
+    if (filters.proxy_filter === 'configured') {
+      if (!proxyID) return false
+    } else if (filters.proxy_filter === 'unconfigured') {
+      if (proxyID) return false
+    } else if (String(filters.proxy_filter).startsWith('proxy:')) {
+      const expectedProxyID = String(filters.proxy_filter).slice('proxy:'.length)
+      if (String(proxyID || '') !== expectedProxyID) return false
     }
   }
   const privacyMode = typeof account.extra?.privacy_mode === 'string' ? account.extra.privacy_mode : ''
@@ -1644,14 +1791,38 @@ const handleClickOutside = (event: MouseEvent) => {
   }
 }
 
+watch(
+  () => params.platform,
+  (platform) => {
+    loadAccountModelGroups(String(platform || ''))
+  }
+)
+
 onMounted(async () => {
   load()
-  try {
-    const [p, g] = await Promise.all([adminAPI.proxies.getAll(), adminAPI.groups.getAll()])
-    proxies.value = p
-    groups.value = g
-  } catch (error) {
-    console.error('Failed to load proxies/groups:', error)
+  const results = await Promise.allSettled([
+    adminAPI.proxies.getAll(),
+    loadAllProxyFilterProxies(),
+    adminAPI.groups.getAll(),
+    loadAccountModelGroups(String(params.platform || ''))
+  ])
+  if (results[0].status === 'fulfilled') {
+    proxies.value = results[0].value
+  } else {
+    console.error('Failed to load proxies:', results[0].reason)
+  }
+  if (results[1].status === 'fulfilled') {
+    proxyFilterProxies.value = results[1].value
+  } else {
+    console.error('Failed to load proxy filter options:', results[1].reason)
+  }
+  if (results[2].status === 'fulfilled') {
+    groups.value = results[2].value
+  } else {
+    console.error('Failed to load groups:', results[2].reason)
+  }
+  if (results[3].status !== 'fulfilled') {
+    console.error('Failed to load model filter options:', results[3].reason)
   }
   window.addEventListener('scroll', handleScroll, true)
   document.addEventListener('click', handleClickOutside)

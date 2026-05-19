@@ -21,6 +21,7 @@ import type {
   CheckMixedChannelRequest,
   CheckMixedChannelResponse
 } from '@/types'
+import type { AccountModelFilterGroup } from '@/components/admin/account/accountModelFilter'
 
 /**
  * List all accounts with pagination
@@ -37,6 +38,9 @@ export async function list(
     type?: string
     status?: string
     group?: string
+    model?: string
+    quota_strategy?: string
+    proxy_filter?: string
     search?: string
     privacy_mode?: string
     lite?: string
@@ -72,6 +76,9 @@ export async function listWithEtag(
     type?: string
     status?: string
     group?: string
+    model?: string
+    quota_strategy?: string
+    proxy_filter?: string
     search?: string
     privacy_mode?: string
     lite?: string
@@ -446,6 +453,13 @@ export async function getAvailableModels(id: number): Promise<ClaudeModel[]> {
   return data
 }
 
+export async function getFilterModels(platform?: string): Promise<AccountModelFilterGroup[]> {
+  const { data } = await apiClient.get<AccountModelFilterGroup[]>('/admin/accounts/filter-models', {
+    params: platform ? { platform } : undefined
+  })
+  return data
+}
+
 export interface CRSPreviewAccount {
   crs_account_id: string
   kind: string
@@ -510,6 +524,9 @@ export async function exportData(options?: {
     type?: string
     status?: string
     group?: string
+    model?: string
+    quota_strategy?: string
+    proxy_filter?: string
     privacy_mode?: string
     search?: string
     sort_by?: string
@@ -521,11 +538,14 @@ export async function exportData(options?: {
   if (options?.ids && options.ids.length > 0) {
     params.ids = options.ids.join(',')
   } else if (options?.filters) {
-    const { platform, type, status, group, privacy_mode, search, sort_by, sort_order } = options.filters
+    const { platform, type, status, group, model, quota_strategy, proxy_filter, privacy_mode, search, sort_by, sort_order } = options.filters
     if (platform) params.platform = platform
     if (type) params.type = type
     if (status) params.status = status
     if (group) params.group = group
+    if (model) params.model = model
+    if (quota_strategy) params.quota_strategy = quota_strategy
+    if (proxy_filter) params.proxy_filter = proxy_filter
     if (privacy_mode) params.privacy_mode = privacy_mode
     if (search) params.search = search
     if (sort_by) params.sort_by = sort_by
@@ -627,6 +647,15 @@ export async function batchRefresh(accountIds: number[]): Promise<BatchOperation
   return data
 }
 
+export async function batchTest(accountIds: number[]): Promise<BatchOperationResult> {
+  const { data } = await apiClient.post<BatchOperationResult>('/admin/accounts/batch-test', {
+    account_ids: accountIds,
+  }, {
+    timeout: 600000
+  })
+  return data
+}
+
 /**
  * Set privacy for an Antigravity OAuth account
  * @param id - Account ID
@@ -660,6 +689,7 @@ export const accountsAPI = {
   resetTempUnschedulable,
   setSchedulable,
   getAvailableModels,
+  getFilterModels,
   generateAuthUrl,
   exchangeCode,
   refreshOpenAIToken,
@@ -674,6 +704,7 @@ export const accountsAPI = {
   getAntigravityDefaultModelMapping,
   batchClearError,
   batchRefresh,
+  batchTest,
   setPrivacy
 }
 

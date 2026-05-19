@@ -2841,6 +2841,7 @@ export default {
       allPlatforms: 'All Platforms',
       allTypes: 'All Types',
       allStatus: 'All Status',
+      allQuotaStrategies: 'All Quota Strategies',
       allGroups: 'All Groups',
       ungroupedGroup: 'Ungrouped',
       oauthType: 'OAuth',
@@ -2873,6 +2874,9 @@ export default {
       },
       status: {
         active: 'Active',
+        activeExcludingQuotaStopped: 'Active (Exclude Quota-Stopped)',
+        openAI5HUsedZero: '5H Used 0%',
+        openAI7DUsedZero: '7D Used 0%',
         inactive: 'Inactive',
         error: 'Error',
         cooldown: 'Cooldown',
@@ -3049,12 +3053,15 @@ export default {
         clear: 'Clear selection',
         edit: 'Bulk Edit',
         delete: 'Bulk Delete',
+        test: 'Batch Test',
         enableScheduling: 'Enable Scheduling',
         disableScheduling: 'Disable Scheduling',
         resetStatus: 'Reset Status',
         refreshToken: 'Refresh Token',
         resetStatusSuccess: 'Successfully reset {count} account(s) status',
         refreshTokenSuccess: 'Successfully refreshed {count} account(s) token',
+        testSuccess: 'Successfully tested {count} account(s)',
+        testFailed: 'Batch test failed',
         partialSuccess: 'Partially completed: {success} succeeded, {failed} failed'
       },
       bulkEdit: {
@@ -3089,6 +3096,12 @@ export default {
       failedToDelete: 'Failed to delete account',
       failedToClearRateLimit: 'Failed to clear rate limit',
       deleteConfirm: "Are you sure you want to delete '{name}'? This action cannot be undone.",
+      quotaStrategy: {
+        prefer5h: 'Prefer 5H Window',
+        prefer7d: 'Prefer 7D Window',
+        enabled: 'Quota Strategy Enabled',
+        disabled: 'Quota Strategy Disabled'
+      },
       // Create/Edit Account Modal
       platform: 'Platform',
       accountName: 'Account Name',
@@ -3186,6 +3199,13 @@ export default {
         testMode: 'Test mode',
         testModeDefault: 'Default request',
         testModeCompact: 'Compact probe',
+        quotaStrategy: 'Quota Strategy',
+        quotaStrategyDesc: 'Decide whether this account continues to participate in scheduling based on remaining quota in the 5-hour or 7-day window.',
+        quotaStrategyMode: 'Quota Strategy Mode',
+        quotaStrategyPrefer5h: 'Use 5H Window',
+        quotaStrategyPrefer7d: 'Use 7D Window',
+        quotaStopThreshold: 'Stop Threshold (Remaining %)',
+        quotaStopThresholdDesc: 'When remaining quota falls below this percentage, the account is excluded from new request scheduling.',
         modelRestrictionDisabledByPassthrough: 'Automatic passthrough is enabled: model whitelist/mapping will not take effect.',
       },
       anthropic: {

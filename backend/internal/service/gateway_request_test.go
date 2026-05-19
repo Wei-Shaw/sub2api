@@ -5,6 +5,7 @@ package service
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -960,7 +961,7 @@ func TestParseGatewayRequest_MaxTokensBoundary(t *testing.T) {
 	tests := []struct {
 		name          string
 		body          string
-		wantMaxTokens int
+		wantMaxTokens int64
 		wantErr       bool
 	}{
 		{
@@ -979,9 +980,14 @@ func TestParseGatewayRequest_MaxTokensBoundary(t *testing.T) {
 			wantMaxTokens: -1,
 		},
 		{
-			name:          "超大值不 panic",
-			body:          `{"max_tokens":9999999999999999}`,
-			wantMaxTokens: 10000000000000000, // float64 精度导致 9999999999999999 → 1e16
+			name: "超大值不 panic",
+			body: `{"max_tokens":9999999999999999}`,
+			wantMaxTokens: func() int64 {
+				if strconv.IntSize == 32 {
+					return 0
+				}
+				return 10000000000000000
+			}(),
 		},
 		{
 			name:          "null 值被忽略",
@@ -998,7 +1004,7 @@ func TestParseGatewayRequest_MaxTokensBoundary(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			require.Equal(t, tt.wantMaxTokens, parsed.MaxTokens)
+			require.Equal(t, tt.wantMaxTokens, int64(parsed.MaxTokens))
 		})
 	}
 }

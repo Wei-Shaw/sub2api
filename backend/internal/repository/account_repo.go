@@ -457,10 +457,10 @@ func (r *accountRepository) Delete(ctx context.Context, id int64) error {
 }
 
 func (r *accountRepository) List(ctx context.Context, params pagination.PaginationParams) ([]service.Account, *pagination.PaginationResult, error) {
-	return r.ListWithFilters(ctx, params, "", "", "", "", 0, "")
+	return r.ListWithFilters(ctx, params, "", "", "", "", 0, "", "", "", "")
 }
 
-func (r *accountRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string) ([]service.Account, *pagination.PaginationResult, error) {
+func (r *accountRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, model, quotaStrategy, proxyFilter, privacyMode string) ([]service.Account, *pagination.PaginationResult, error) {
 	q := r.client.Account.Query()
 
 	if platform != "" {
@@ -486,6 +486,27 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 						entsql.LTE(col, entsql.Expr("NOW()")),
 					))
 				}),
+			)
+		case service.AccountStatusFilterActiveExcludingQuotaStopped:
+			q = q.Where(
+				dbaccount.StatusEQ(service.StatusActive),
+				dbaccount.SchedulableEQ(true),
+				dbaccount.Or(
+					dbaccount.RateLimitResetAtIsNil(),
+					dbaccount.RateLimitResetAtLTE(time.Now()),
+				),
+				dbpredicate.Account(func(s *entsql.Selector) {
+					col := s.C("temp_unschedulable_until")
+					s.Where(entsql.Or(
+						entsql.IsNull(col),
+						entsql.LTE(col, entsql.Expr("NOW()")),
+					))
+				}),
+			)
+		case service.AccountStatusFilterOpenAI5HUsedZero, service.AccountStatusFilterOpenAI7DUsedZero:
+			q = q.Where(
+				dbaccount.PlatformEQ(service.PlatformOpenAI),
+				dbaccount.TypeEQ(service.AccountTypeOAuth),
 			)
 		case "rate_limited":
 			q = q.Where(
@@ -533,6 +554,23 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 	if search != "" {
 		q = q.Where(dbaccount.NameContainsFold(search))
 	}
+	switch normalizedProxyFilter := strings.TrimSpace(proxyFilter); normalizedProxyFilter {
+	case "":
+	case "configured":
+		q = q.Where(dbaccount.ProxyIDNotNil())
+	case "unconfigured":
+		q = q.Where(dbaccount.ProxyIDIsNil())
+	default:
+		if !strings.HasPrefix(normalizedProxyFilter, "proxy:") {
+			return []service.Account{}, paginationResultFromTotal(0, params), nil
+		}
+		proxyIDText := strings.TrimSpace(strings.TrimPrefix(normalizedProxyFilter, "proxy:"))
+		proxyID, err := strconv.ParseInt(proxyIDText, 10, 64)
+		if err != nil || proxyID <= 0 {
+			return []service.Account{}, paginationResultFromTotal(0, params), nil
+		}
+		q = q.Where(dbaccount.ProxyIDEQ(proxyID))
+	}
 	if groupID == service.AccountListGroupUngrouped {
 		q = q.Where(dbaccount.Not(dbaccount.HasAccountGroups()))
 	} else if groupID > 0 {
@@ -551,6 +589,46 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 				s.Where(sqljson.ValueEQ(dbaccount.FieldExtra, privacyMode, path))
 			}
 		}))
+	}
+
+	normalizedStatus := strings.TrimSpace(status)
+	if normalizedStatus == service.AccountStatusFilterActiveExcludingQuotaStopped ||
+		normalizedStatus == service.AccountStatusFilterOpenAI5HUsedZero ||
+		normalizedStatus == service.AccountStatusFilterOpenAI7DUsedZero ||
+		strings.TrimSpace(model) != "" ||
+		strings.TrimSpace(quotaStrategy) != "" {
+		accountsQuery := q
+		for _, order := range accountListOrder(params) {
+			accountsQuery = accountsQuery.Order(order)
+		}
+		accounts, err := accountsQuery.All(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
+		outAccounts, err := r.accountsToService(ctx, accounts)
+		if err != nil {
+			return nil, nil, err
+		}
+		filtered := make([]service.Account, 0, len(outAccounts))
+		now := time.Now()
+		for i := range outAccounts {
+			matchesModel := strings.TrimSpace(model) == "" || service.IsAccountSupportedForModelFilter(&outAccounts[i], model)
+			if service.MatchesAccountListStatusFilter(&outAccounts[i], normalizedStatus, now) &&
+				matchesModel &&
+				service.MatchesOpenAIQuotaStrategyFilter(&outAccounts[i], quotaStrategy) {
+				filtered = append(filtered, outAccounts[i])
+			}
+		}
+		total := int64(len(filtered))
+		start := params.Offset()
+		if start >= len(filtered) {
+			return []service.Account{}, paginationResultFromTotal(total, params), nil
+		}
+		end := start + params.Limit()
+		if end > len(filtered) {
+			end = len(filtered)
+		}
+		return filtered[start:end], paginationResultFromTotal(total, params), nil
 	}
 
 	total, err := q.Count(ctx)
