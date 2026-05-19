@@ -267,10 +267,15 @@ async function resolveOrderFromResumeToken(resumeToken: string): Promise<Payment
 
 async function resolveOrderFromOutTradeNo(outTradeNo: string): Promise<PaymentOrder | null> {
   try {
-    const result = await paymentAPI.verifyOrderPublic(outTradeNo)
+    const result = await paymentAPI.verifyOrder(outTradeNo)
     return result.data
   } catch (_err: unknown) {
-    return null
+    try {
+      const result = await paymentAPI.verifyOrderPublic(outTradeNo)
+      return result.data
+    } catch (_innerErr: unknown) {
+      return null
+    }
   }
 }
 

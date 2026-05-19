@@ -85,6 +85,7 @@ func TestRateLimitService_HandleUpstreamError_OAuth401SetsTempUnschedulable(t *t
 			Platform: PlatformGemini,
 			Type:     AccountTypeOAuth,
 			Credentials: map[string]any{
+				"refresh_token":              "rt-100",
 				"temp_unschedulable_enabled": true,
 				"temp_unschedulable_rules": []any{
 					map[string]any{
@@ -138,6 +139,9 @@ func TestRateLimitService_HandleUpstreamError_OAuth401InvalidatorError(t *testin
 		ID:       101,
 		Platform: PlatformOpenAI,
 		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"refresh_token": "rt-101",
+		},
 	}
 
 	shouldDisable := service.HandleUpstreamError(context.Background(), account, 401, http.Header{}, []byte("unauthorized"))
@@ -175,7 +179,8 @@ func TestRateLimitService_HandleUpstreamError_OAuth401UsesCredentialsUpdater(t *
 		Platform: PlatformOpenAI,
 		Type:     AccountTypeOAuth,
 		Credentials: map[string]any{
-			"access_token": "token",
+			"access_token":  "token",
+			"refresh_token": "rt-103",
 		},
 	}
 
@@ -184,4 +189,53 @@ func TestRateLimitService_HandleUpstreamError_OAuth401UsesCredentialsUpdater(t *
 	require.True(t, shouldDisable)
 	require.Equal(t, 1, repo.updateCredentialsCalls)
 	require.NotEmpty(t, repo.lastCredentials["expires_at"])
+}
+
+// 缺少 refresh_token 的 OAuth 账号 401 应直接 SetError 永久禁用，
+// 不再走 10 分钟冷却（冷却期内无人能刷新它，结束后还会被选中再 502 一次）。
+func TestRateLimitService_HandleUpstreamError_OAuth401NoRefreshTokenSetsError(t *testing.T) {
+	t.Run("openai_no_refresh_token", func(t *testing.T) {
+		repo := &rateLimitAccountRepoStub{}
+		invalidator := &tokenCacheInvalidatorRecorder{}
+		service := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+		service.SetTokenCacheInvalidator(invalidator)
+		account := &Account{
+			ID:       2881,
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+			Credentials: map[string]any{
+				"access_token": "expired-at",
+				// no refresh_token
+			},
+		}
+
+		shouldDisable := service.HandleUpstreamError(context.Background(), account, 401, http.Header{}, []byte("unauthorized"))
+
+		require.True(t, shouldDisable)
+		require.Equal(t, 1, repo.setErrorCalls, "AT-only OAuth 401 must SetError")
+		require.Equal(t, 0, repo.tempCalls, "AT-only OAuth 401 must NOT temp-unschedule")
+		require.Equal(t, 0, repo.updateCredentialsCalls, "no point forcing expires_at when refresh is impossible")
+		require.Contains(t, repo.lastErrorMsg, "refresh_token missing")
+		require.Len(t, invalidator.accounts, 1, "cache should still be invalidated")
+	})
+
+	t.Run("openai_blank_refresh_token_treated_as_missing", func(t *testing.T) {
+		repo := &rateLimitAccountRepoStub{}
+		service := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+		account := &Account{
+			ID:       2882,
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+			Credentials: map[string]any{
+				"access_token":  "expired-at",
+				"refresh_token": "   ",
+			},
+		}
+
+		shouldDisable := service.HandleUpstreamError(context.Background(), account, 401, http.Header{}, []byte("unauthorized"))
+
+		require.True(t, shouldDisable)
+		require.Equal(t, 1, repo.setErrorCalls)
+		require.Equal(t, 0, repo.tempCalls)
+	})
 }

@@ -2,6 +2,8 @@ package service
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -109,6 +111,22 @@ func TestGetModelPricing_OpenAICompactAliasUsesStaticFallback(t *testing.T) {
 	require.NotNil(t, got)
 	require.InDelta(t, 2.5e-6, got.InputCostPerToken, 1e-12)
 	require.InDelta(t, 1.5e-5, got.OutputCostPerToken, 1e-12)
+}
+
+func TestDefaultPricingIncludesCodexAutoReview(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "resources", "model-pricing", "model_prices_and_context_window.json"))
+	require.NoError(t, err)
+
+	svc := &PricingService{}
+	pricingData, err := svc.parsePricingData(data)
+	require.NoError(t, err)
+	svc.pricingData = pricingData
+
+	got := svc.GetModelPricing("codex-auto-review")
+	require.NotNil(t, got)
+	require.InDelta(t, 2.5e-6, got.InputCostPerToken, 1e-12)
+	require.InDelta(t, 1.5e-5, got.OutputCostPerToken, 1e-12)
+	require.InDelta(t, 2.5e-7, got.CacheReadInputTokenCost, 1e-12)
 }
 
 func TestGetModelPricing_Gpt54MiniUsesDedicatedStaticFallbackWhenRemoteMissing(t *testing.T) {

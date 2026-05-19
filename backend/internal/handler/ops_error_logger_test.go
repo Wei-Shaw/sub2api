@@ -275,6 +275,218 @@ func TestNormalizeOpsErrorType(t *testing.T) {
 	}
 }
 
+func TestClassifyOpsNoAvailableAccountsExcludedFromSLA(t *testing.T) {
+	const message = "No available accounts"
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	markOpsRoutingCapacityLimited(c)
+
+	errType := normalizeOpsErrorType("api_error", "")
+	phase, isBusinessLimited, errorOwner, errorSource := classifyOpsErrorLog(c, errType, message, "", http.StatusServiceUnavailable)
+
+	require.Equal(t, "api_error", errType)
+	require.Equal(t, "routing", phase)
+	require.True(t, isBusinessLimited)
+	require.Equal(t, "platform", errorOwner)
+	require.Equal(t, "gateway", errorSource)
+}
+
+func TestClassifyOpsRoutingCapacityMarkerExcludesMaskedSelectionFailureFromSLA(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	markOpsRoutingCapacityLimited(c)
+
+	phase, isBusinessLimited, errorOwner, errorSource := classifyOpsErrorLog(
+		c,
+		"api_error",
+		"Service temporarily unavailable",
+		"",
+		http.StatusServiceUnavailable,
+	)
+
+	require.Equal(t, "routing", phase)
+	require.True(t, isBusinessLimited)
+	require.Equal(t, "platform", errorOwner)
+	require.Equal(t, "gateway", errorSource)
+}
+
+func TestClassifyOpsAuthClientErrorsExcludedFromSLA(t *testing.T) {
+	tests := []struct {
+		name    string
+		errType string
+		message string
+		code    string
+		status  int
+	}{
+		{
+			name:    "standard invalid API key",
+			errType: "api_error",
+			message: "Invalid API key",
+			code:    "INVALID_API_KEY",
+			status:  http.StatusUnauthorized,
+		},
+		{
+			name:    "standard missing API key",
+			errType: "api_error",
+			message: "API key is required in Authorization header (Bearer scheme), x-api-key header, or x-goog-api-key header",
+			code:    "API_KEY_REQUIRED",
+			status:  http.StatusUnauthorized,
+		},
+		{
+			name:    "google invalid API key",
+			errType: "api_error",
+			message: "Invalid API key",
+			code:    "401",
+			status:  http.StatusUnauthorized,
+		},
+		{
+			name:    "google missing API key",
+			errType: "api_error",
+			message: "API key is required",
+			code:    "401",
+			status:  http.StatusUnauthorized,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+
+			errType := normalizeOpsErrorType(tt.errType, tt.code)
+			phase, isBusinessLimited, errorOwner, errorSource := classifyOpsErrorLog(c, errType, tt.message, tt.code, tt.status)
+
+			require.Equal(t, "api_error", errType)
+			require.Equal(t, "auth", phase)
+			require.True(t, isBusinessLimited)
+			require.Equal(t, "client", errorOwner)
+			require.Equal(t, "client_request", errorSource)
+		})
+	}
+}
+
+func TestClassifyOpsIPRestrictionAccessDeniedExcludedFromSLA(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonIPRestriction)
+
+	errType := normalizeOpsErrorType("api_error", "ACCESS_DENIED")
+	phase, isBusinessLimited, errorOwner, errorSource := classifyOpsErrorLog(c, errType, "Access denied", "ACCESS_DENIED", http.StatusForbidden)
+
+	require.Equal(t, "api_error", errType)
+	require.Equal(t, "auth", phase)
+	require.True(t, isBusinessLimited)
+	require.Equal(t, "client", errorOwner)
+	require.Equal(t, "client_request", errorSource)
+}
+
+func TestClassifyOpsOtherErrorsStillCountForSLA(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	errType := normalizeOpsErrorType("api_error", "INTERNAL_ERROR")
+	phase, isBusinessLimited, errorOwner, errorSource := classifyOpsErrorLog(c, errType, "Failed to validate API key", "INTERNAL_ERROR", http.StatusInternalServerError)
+
+	require.Equal(t, "api_error", errType)
+	require.Equal(t, "internal", phase)
+	require.False(t, isBusinessLimited)
+	require.Equal(t, "platform", errorOwner)
+	require.Equal(t, "gateway", errorSource)
+}
+
+func TestClassifyOpsUnsupportedModelExcludedFromSLA(t *testing.T) {
+	tests := []string{
+		"No available accounts: no available accounts supporting model: made-up-model",
+		"No available accounts: no available OpenAI accounts supporting model: made-up-model",
+		"No available Gemini accounts: no available Gemini accounts supporting model: made-up-model",
+		"No available accounts: no available accounts supporting model: made-up-model (channel pricing restriction)",
+	}
+
+	for _, message := range tests {
+		t.Run(message, func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			markOpsRoutingCapacityLimited(c)
+
+			errType := normalizeOpsErrorType("api_error", "")
+			phase, isBusinessLimited, errorOwner, errorSource := classifyOpsErrorLog(c, errType, message, "", http.StatusServiceUnavailable)
+
+			require.Equal(t, "api_error", errType)
+			require.Equal(t, "routing", phase)
+			require.True(t, isBusinessLimited)
+			require.Equal(t, "platform", errorOwner)
+			require.Equal(t, "gateway", errorSource)
+		})
+	}
+}
+
+func TestClassifyOpsUnmarkedNoAvailableTextStillCountsForSLA(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	phase, isBusinessLimited, errorOwner, errorSource := classifyOpsErrorLog(
+		c,
+		"api_error",
+		"No available accounts",
+		"",
+		http.StatusServiceUnavailable,
+	)
+
+	require.Equal(t, "routing", phase)
+	require.False(t, isBusinessLimited)
+	require.Equal(t, "platform", errorOwner)
+	require.Equal(t, "gateway", errorSource)
+}
+
+func TestClassifyOpsUpstreamAuthTextStillCountsForSLA(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	service.SetOpsUpstreamError(c, http.StatusUnauthorized, "Invalid API key", "")
+
+	phase, isBusinessLimited, errorOwner, errorSource := classifyOpsErrorLog(
+		c,
+		"api_error",
+		"Invalid API key",
+		"401",
+		http.StatusUnauthorized,
+	)
+
+	require.Equal(t, "upstream", phase)
+	require.False(t, isBusinessLimited)
+	require.Equal(t, "provider", errorOwner)
+	require.Equal(t, "upstream_http", errorSource)
+}
+
+func TestClassifyOpsUpstreamNoAvailableTextStillCountsForSLA(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	service.SetOpsUpstreamError(c, http.StatusServiceUnavailable, "No available accounts", "")
+
+	phase, isBusinessLimited, errorOwner, errorSource := classifyOpsErrorLog(
+		c,
+		"api_error",
+		"No available accounts",
+		"",
+		http.StatusServiceUnavailable,
+	)
+
+	require.Equal(t, "upstream", phase)
+	require.False(t, isBusinessLimited)
+	require.Equal(t, "provider", errorOwner)
+	require.Equal(t, "upstream_http", errorSource)
+}
+
 func TestSetOpsEndpointContext_SetsContextKeys(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()

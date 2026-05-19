@@ -20,10 +20,13 @@ import (
 )
 
 type paymentOrderLifecycleQueryProvider struct {
-	lastQueryTradeNo string
-	queryCalls       int
-	responses        []*payment.QueryOrderResponse
-	resp             *payment.QueryOrderResponse
+	key               string
+	lastQueryTradeNo  string
+	lastCancelTradeNo string
+	queryCalls        int
+	cancelCalls       int
+	responses         []*payment.QueryOrderResponse
+	resp              *payment.QueryOrderResponse
 }
 
 type paymentOrderLifecycleRedeemRepo struct {
@@ -38,10 +41,15 @@ func (p *paymentOrderLifecycleQueryProvider) Name() string {
 	return "payment-order-lifecycle-query-provider"
 }
 
-func (p *paymentOrderLifecycleQueryProvider) ProviderKey() string { return payment.TypeAlipay }
+func (p *paymentOrderLifecycleQueryProvider) ProviderKey() string {
+	if p.key != "" {
+		return p.key
+	}
+	return payment.TypeAlipay
+}
 
 func (p *paymentOrderLifecycleQueryProvider) SupportedTypes() []payment.PaymentType {
-	return []payment.PaymentType{payment.TypeAlipay}
+	return []payment.PaymentType{p.ProviderKey()}
 }
 
 func (p *paymentOrderLifecycleQueryProvider) CreatePayment(context.Context, payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
@@ -67,6 +75,12 @@ func (p *paymentOrderLifecycleQueryProvider) VerifyNotification(context.Context,
 
 func (p *paymentOrderLifecycleQueryProvider) Refund(context.Context, payment.RefundRequest) (*payment.RefundResponse, error) {
 	panic("unexpected call")
+}
+
+func (p *paymentOrderLifecycleQueryProvider) CancelPayment(_ context.Context, tradeNo string) error {
+	p.lastCancelTradeNo = tradeNo
+	p.cancelCalls++
+	return nil
 }
 
 func (r *paymentOrderLifecycleRedeemRepo) Create(context.Context, *RedeemCode) error {
@@ -433,6 +447,222 @@ func TestVerifyOrderByOutTradeNoRejectsPaidQueryWithZeroAmount(t *testing.T) {
 
 	require.Equal(t, 0.0, userRepo.getByIDUser.Balance)
 	require.Empty(t, redeemRepo.useCalls)
+}
+
+func TestVerifyOrderByOutTradeNoDoesNotCancelUnpaidUpstreamOrder(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentOrderLifecycleTestClient(t)
+
+	user, err := client.User.Create().
+		SetEmail("checkpaid-pending@example.com").
+		SetPasswordHash("hash").
+		SetUsername("checkpaid-pending-user").
+		Save(ctx)
+	require.NoError(t, err)
+
+	order, err := client.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(88).
+		SetPayAmount(88).
+		SetFeeRate(0).
+		SetRechargeCode("CHECKPAID-PENDING").
+		SetOutTradeNo("sub2_checkpaid_pending").
+		SetPaymentType(payment.TypeAlipay).
+		SetPaymentTradeNo("").
+		SetOrderType(payment.OrderTypeBalance).
+		SetStatus(OrderStatusPending).
+		SetExpiresAt(time.Now().Add(time.Hour)).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("api.example.com").
+		Save(ctx)
+	require.NoError(t, err)
+
+	registry := payment.NewRegistry()
+	provider := &paymentOrderLifecycleQueryProvider{
+		resp: &payment.QueryOrderResponse{
+			TradeNo: order.OutTradeNo,
+			Status:  payment.ProviderStatusPending,
+			Amount:  0,
+		},
+	}
+	registry.Register(provider)
+
+	svc := &PaymentService{
+		entClient:       client,
+		registry:        registry,
+		providersLoaded: true,
+	}
+
+	got, err := svc.VerifyOrderByOutTradeNo(ctx, order.OutTradeNo, user.ID)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusPending, got.Status)
+	require.Equal(t, order.OutTradeNo, provider.lastQueryTradeNo)
+	require.Zero(t, provider.cancelCalls)
+
+	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusPending, reloaded.Status)
+}
+
+func TestCancelOrderStillClosesUnpaidUpstreamOrder(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentOrderLifecycleTestClient(t)
+
+	user, err := client.User.Create().
+		SetEmail("cancel-pending@example.com").
+		SetPasswordHash("hash").
+		SetUsername("cancel-pending-user").
+		Save(ctx)
+	require.NoError(t, err)
+
+	order, err := client.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(88).
+		SetPayAmount(88).
+		SetFeeRate(0).
+		SetRechargeCode("CANCEL-PENDING").
+		SetOutTradeNo("sub2_cancel_pending").
+		SetPaymentType(payment.TypeAlipay).
+		SetPaymentTradeNo("").
+		SetOrderType(payment.OrderTypeBalance).
+		SetStatus(OrderStatusPending).
+		SetExpiresAt(time.Now().Add(time.Hour)).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("api.example.com").
+		Save(ctx)
+	require.NoError(t, err)
+
+	registry := payment.NewRegistry()
+	provider := &paymentOrderLifecycleQueryProvider{
+		resp: &payment.QueryOrderResponse{
+			TradeNo: order.OutTradeNo,
+			Status:  payment.ProviderStatusPending,
+			Amount:  0,
+		},
+	}
+	registry.Register(provider)
+
+	svc := &PaymentService{
+		entClient:       client,
+		registry:        registry,
+		providersLoaded: true,
+	}
+
+	outcome, err := svc.CancelOrder(ctx, order.ID, user.ID)
+	require.NoError(t, err)
+	require.Equal(t, checkPaidResultCancelled, outcome)
+	require.Equal(t, order.OutTradeNo, provider.lastCancelTradeNo)
+	require.Equal(t, 1, provider.cancelCalls)
+
+	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusCancelled, reloaded.Status)
+}
+
+func TestReconcilePendingWxpayOrdersBackfillsPaidOrder(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentOrderLifecycleTestClient(t)
+
+	user, err := client.User.Create().
+		SetEmail("wxpay-reconcile@example.com").
+		SetPasswordHash("hash").
+		SetUsername("wxpay-reconcile-user").
+		Save(ctx)
+	require.NoError(t, err)
+
+	order, err := client.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(50).
+		SetPayAmount(50).
+		SetFeeRate(0).
+		SetRechargeCode("WXPAY-RECONCILE").
+		SetOutTradeNo("sub2_wxpay_reconcile").
+		SetPaymentType(payment.TypeWxpay).
+		SetPaymentTradeNo("").
+		SetOrderType(payment.OrderTypeBalance).
+		SetStatus(OrderStatusPending).
+		SetExpiresAt(time.Now().Add(time.Hour)).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("api.example.com").
+		Save(ctx)
+	require.NoError(t, err)
+
+	userRepo := &mockUserRepo{
+		getByIDUser: &User{
+			ID:       user.ID,
+			Email:    user.Email,
+			Username: user.Username,
+			Balance:  0,
+		},
+	}
+	userRepo.updateBalanceFn = func(ctx context.Context, id int64, amount float64) error {
+		require.Equal(t, user.ID, id)
+		if userRepo.getByIDUser != nil {
+			userRepo.getByIDUser.Balance += amount
+		}
+		return nil
+	}
+	redeemRepo := &paymentOrderLifecycleRedeemRepo{
+		codesByCode: map[string]*RedeemCode{
+			order.RechargeCode: {
+				ID:     1,
+				Code:   order.RechargeCode,
+				Type:   RedeemTypeBalance,
+				Value:  order.Amount,
+				Status: StatusUnused,
+			},
+		},
+	}
+	redeemService := NewRedeemService(
+		redeemRepo,
+		userRepo,
+		nil,
+		nil,
+		nil,
+		client,
+		nil,
+		nil,
+	)
+	registry := payment.NewRegistry()
+	provider := &paymentOrderLifecycleQueryProvider{
+		key: payment.TypeWxpay,
+		resp: &payment.QueryOrderResponse{
+			TradeNo: "wxpay-upstream-trade-123",
+			Status:  payment.ProviderStatusPaid,
+			Amount:  50,
+			Metadata: map[string]string{
+				"trade_state": "SUCCESS",
+			},
+		},
+	}
+	registry.Register(provider)
+
+	svc := &PaymentService{
+		entClient:       client,
+		registry:        registry,
+		redeemService:   redeemService,
+		userRepo:        userRepo,
+		providersLoaded: true,
+	}
+
+	recovered, err := svc.ReconcilePendingWxpayOrders(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, recovered)
+	require.Equal(t, order.OutTradeNo, provider.lastQueryTradeNo)
+	require.Zero(t, provider.cancelCalls)
+
+	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusCompleted, reloaded.Status)
+	require.Equal(t, "wxpay-upstream-trade-123", reloaded.PaymentTradeNo)
+	require.Equal(t, 50.0, userRepo.getByIDUser.Balance)
+	require.Len(t, redeemRepo.useCalls, 1)
 }
 
 func TestVerifyOrderByOutTradeNoUsesOutTradeNoWhenPaymentTradeNoAlreadyExistsForAlipay(t *testing.T) {

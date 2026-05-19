@@ -499,22 +499,39 @@ func selectedInstanceSupportedTypes(sel *payment.InstanceSelection) string {
 
 func (s *PaymentService) buildPaymentSubject(plan *dbent.SubscriptionPlan, limitAmount float64, cfg *PaymentConfig, sel *payment.InstanceSelection) string {
 	if plan != nil {
-		if plan.ProductName != "" {
-			return plan.ProductName
+		productName := plan.ProductName
+		if productName == "" {
+			productName = "Sub2API Subscription " + plan.Name
 		}
-		return "Sub2API Subscription " + plan.Name
+		return applyPaymentProductNameAffix(productName, cfg)
 	}
 	currency := payment.DefaultPaymentCurrency
 	if sel != nil {
 		currency = paymentProviderConfigCurrency(sel.ProviderKey, sel.Config)
 	}
 	amountStr := payment.FormatAmountForCurrency(limitAmount, currency)
-	pf := strings.TrimSpace(cfg.ProductNamePrefix)
-	sf := strings.TrimSpace(cfg.ProductNameSuffix)
-	if pf != "" || sf != "" {
-		return strings.TrimSpace(pf + " " + amountStr + " " + sf)
+	if hasPaymentProductNameAffix(cfg) {
+		return applyPaymentProductNameAffix(amountStr, cfg)
 	}
 	return "Sub2API " + amountStr + " " + currency
+}
+
+func hasPaymentProductNameAffix(cfg *PaymentConfig) bool {
+	if cfg == nil {
+		return false
+	}
+	pf := strings.TrimSpace(cfg.ProductNamePrefix)
+	sf := strings.TrimSpace(cfg.ProductNameSuffix)
+	return pf != "" || sf != ""
+}
+
+func applyPaymentProductNameAffix(productName string, cfg *PaymentConfig) string {
+	if !hasPaymentProductNameAffix(cfg) {
+		return productName
+	}
+	pf := strings.TrimSpace(cfg.ProductNamePrefix)
+	sf := strings.TrimSpace(cfg.ProductNameSuffix)
+	return strings.TrimSpace(pf + " " + productName + " " + sf)
 }
 
 func (s *PaymentService) maybeBuildWeChatOAuthRequiredResponse(ctx context.Context, req CreateOrderRequest, amount, payAmount, feeRate float64) (*CreateOrderResponse, error) {

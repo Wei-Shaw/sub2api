@@ -397,6 +397,7 @@ type GenerateRedeemCodesInput struct {
 	Value        float64
 	GroupID      *int64 // 订阅类型专用：关联的分组ID
 	ValidityDays int    // 订阅类型专用：有效天数
+	ExpiresAt    *time.Time
 }
 
 type ProxyBatchDeleteResult struct {
@@ -1238,7 +1239,7 @@ func (s *adminServiceImpl) BindUserAuthIdentity(ctx context.Context, userID int6
 	providerKey := strings.TrimSpace(input.ProviderKey)
 	providerSubject := strings.TrimSpace(input.ProviderSubject)
 	if providerType == "" {
-		return nil, infraerrors.BadRequest("INVALID_INPUT", "provider_type must be one of email, linuxdo, oidc, or wechat")
+		return nil, infraerrors.BadRequest("INVALID_INPUT", "provider_type must be one of email, linuxdo, oidc, wechat, or dingtalk")
 	}
 	if providerKey == "" || providerSubject == "" {
 		return nil, infraerrors.BadRequest("INVALID_INPUT", "provider_type, provider_key, and provider_subject are required")
@@ -1493,6 +1494,8 @@ func normalizeAdminAuthIdentityProviderType(input string) string {
 		return "oidc"
 	case "wechat":
 		return "wechat"
+	case "dingtalk":
+		return "dingtalk"
 	default:
 		return ""
 	}
@@ -2470,7 +2473,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		account.Notes = normalizeAccountNotes(input.Notes)
 	}
 	if len(input.Credentials) > 0 {
-		account.Credentials = input.Credentials
+		// 敏感子键采用"incoming 没提供就保留"的合并语义：前端响应已脱敏，
+		// 全对象 PUT 编辑时不会再带回 token，避免覆盖时清空已有凭证。
+		account.Credentials = MergePreservingSensitiveCreds(account.Credentials, input.Credentials)
 	}
 	// Extra 使用 map：需要区分“未提供(nil)”与“显式清空({})”。
 	// 关闭配额限制时前端会删除 quota_* 键并提交 extra:{}，此时也必须落库。
@@ -2966,6 +2971,10 @@ func (s *adminServiceImpl) GetRedeemCode(ctx context.Context, id int64) (*Redeem
 }
 
 func (s *adminServiceImpl) GenerateRedeemCodes(ctx context.Context, input *GenerateRedeemCodesInput) ([]RedeemCode, error) {
+	if input.ExpiresAt != nil && !input.ExpiresAt.After(time.Now()) {
+		return nil, ErrRedeemCodeExpired
+	}
+
 	// 如果是订阅类型，验证必须有 GroupID
 	if input.Type == RedeemTypeSubscription {
 		if input.GroupID == nil {
@@ -2988,10 +2997,11 @@ func (s *adminServiceImpl) GenerateRedeemCodes(ctx context.Context, input *Gener
 			return nil, err
 		}
 		code := RedeemCode{
-			Code:   codeValue,
-			Type:   input.Type,
-			Value:  input.Value,
-			Status: StatusUnused,
+			Code:      codeValue,
+			Type:      input.Type,
+			Value:     input.Value,
+			Status:    StatusUnused,
+			ExpiresAt: input.ExpiresAt,
 		}
 		// 订阅类型专用字段
 		if input.Type == RedeemTypeSubscription {
