@@ -30,6 +30,7 @@ func (r *redeemCodeRepository) Create(ctx context.Context, code *service.RedeemC
 		SetStatus(code.Status).
 		SetNotes(code.Notes).
 		SetValidityDays(code.ValidityDays).
+		SetNillableExpiresAt(code.ExpiresAt).
 		SetNillableUsedBy(code.UsedBy).
 		SetNillableUsedAt(code.UsedAt).
 		SetNillableGroupID(code.GroupID).
@@ -56,6 +57,7 @@ REDACTED
 			SetStatus(c.Status).
 			SetNotes(c.Notes).
 			SetValidityDays(c.ValidityDays).
+			SetNillableExpiresAt(c.ExpiresAt).
 			SetNillableUsedBy(c.UsedBy).
 			SetNillableUsedAt(c.UsedAt).
 			SetNillableGroupID(c.GroupID)
@@ -107,7 +109,28 @@ func (r *redeemCodeRepository) ListWithFilters(ctx context.Context, params pagin
 		q = q.Where(redeemcode.TypeEQ(codeType))
 REDACTED
 	if status != "" {
-		q = q.Where(redeemcode.StatusEQ(status))
+		now := time.Now()
+		switch status {
+		case service.StatusExpired:
+			q = q.Where(redeemcode.Or(
+				redeemcode.StatusEQ(service.StatusExpired),
+				redeemcode.And(
+					redeemcode.StatusEQ(service.StatusUnused),
+					redeemcode.ExpiresAtNotNil(),
+					redeemcode.ExpiresAtLTE(now),
+				),
+			))
+		case service.StatusUnused:
+			q = q.Where(
+				redeemcode.StatusEQ(service.StatusUnused),
+				redeemcode.Or(
+					redeemcode.ExpiresAtIsNil(),
+					redeemcode.ExpiresAtGT(now),
+				),
+			)
+		default:
+			q = q.Where(redeemcode.StatusEQ(status))
+	REDACTED
 REDACTED
 	if search != "" {
 		q = q.Where(
@@ -158,6 +181,8 @@ func redeemCodeListOrder(params pagination.PaginationParams) []func(*entsql.Sele
 		field = redeemcode.FieldUsedAt
 	case "created_at":
 		field = redeemcode.FieldCreatedAt
+	case "expires_at":
+		field = redeemcode.FieldExpiresAt
 	case "code":
 		field = redeemcode.FieldCode
 	default:
@@ -193,6 +218,11 @@ REDACTED
 		up.SetGroupID(*code.GroupID)
 REDACTED else {
 		up.ClearGroupID()
+REDACTED
+	if code.ExpiresAt != nil {
+		up.SetExpiresAt(*code.ExpiresAt)
+REDACTED else {
+		up.ClearExpiresAt()
 REDACTED
 
 	updated, err := up.Save(ctx)
@@ -307,6 +337,7 @@ REDACTED
 		UsedAt:       m.UsedAt,
 		Notes:        derefString(m.Notes),
 		CreatedAt:    m.CreatedAt,
+		ExpiresAt:    m.ExpiresAt,
 		GroupID:      m.GroupID,
 		ValidityDays: m.ValidityDays,
 REDACTED

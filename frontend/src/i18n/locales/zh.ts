@@ -4229,6 +4229,7 @@ export default {
         status: '状态',
         usedBy: '使用者',
         usedAt: '使用时间',
+        expiresAt: '过期时间',
         createdAt: '创建时间',
         actions: '操作'
       REDACTED,
@@ -4278,6 +4279,12 @@ export default {
       selectGroup: '选择分组',
       selectGroupPlaceholder: '选择订阅分组',
       validityDays: '有效天数',
+      codeExpiry: '兑换码过期',
+      neverExpires: '永不过期',
+      expiryPresetDays: '{daysREDACTED 天',
+      customExpiry: '自定义',
+      customExpiryDays: '自定义天数',
+      expiryDaysRequired: '请输入有效的过期天数',
       groupRequired: '请选择订阅分组',
       days: '天',
       status: {
