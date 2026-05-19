@@ -1431,6 +1431,13 @@ func (h *GatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *se
 	upstreamMsg := service.ExtractUpstreamErrorMessage(responseBody)
 	service.SetOpsUpstreamError(c, statusCode, upstreamMsg, "")
 
+	// 配额耗尽时返回 503 + 友好文案，避免客户端看到 400 误以为是自身请求错误
+	if failoverErr.QuotaExhausted {
+		h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "overloaded_error",
+			"All upstream accounts are temporarily exhausted, please retry later", streamStarted)
+		return
+	}
+
 	// 使用默认的错误映射
 	status, errType, errMsg := h.mapUpstreamError(statusCode)
 	h.handleStreamingAwareError(c, status, errType, errMsg, streamStarted)

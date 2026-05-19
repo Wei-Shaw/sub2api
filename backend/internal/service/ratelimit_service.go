@@ -66,6 +66,10 @@ const (
 	openAI403CounterWindowMinutes   = 180
 )
 
+// accountQuotaExhaustedCooldown 上游账号配额/积分耗尽时的临时不可调度冷却时间。
+// 使用 30 分钟而非永久禁用，因为第三方中转可能自动续额或手动充值后恢复。
+const accountQuotaExhaustedCooldown = 30 * time.Minute
+
 // NewRateLimitService 创建RateLimitService实例
 func NewRateLimitService(accountRepo AccountRepository, usageRepo UsageLogRepository, cfg *config.Config, geminiQuotaService *GeminiQuotaService, tempUnschedCache TempUnschedCache) *RateLimitService {
 	return &RateLimitService{
@@ -170,6 +174,22 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 			// Anthropic API key 余额不足（语义等同 402），停止调度
 			msg := "Credit balance exhausted (400): " + upstreamMsg
 			s.handleAuthError(ctx, account, msg)
+			shouldDisable = true
+		} else if IsQuotaExhaustedMessage(upstreamMsg) {
+			// 通用配额/积分/余额耗尽（覆盖第三方中转如 worldrouter 等）
+			// 设置临时不可调度 30 分钟，而非永久禁用（第三方中转可能自动续额）
+			msg := "Quota/credit exhausted (400): " + upstreamMsg
+			until := time.Now().Add(accountQuotaExhaustedCooldown)
+			if err := s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, msg); err != nil {
+				slog.Warn("quota_exhausted_set_temp_unschedulable_failed", "account_id", account.ID, "error", err)
+				s.handleAuthError(ctx, account, msg)
+			} else {
+				slog.Warn("account_quota_exhausted_temp_unschedulable",
+					"account_id", account.ID,
+					"until", until,
+					"upstream_msg", upstreamMsg,
+				)
+			}
 			shouldDisable = true
 		} else if strings.Contains(strings.ToLower(upstreamMsg), "identity verification is required") {
 			// KYC 身份验证要求 → 永久禁用，账号需完成身份验证后才能恢复

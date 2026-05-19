@@ -17,6 +17,12 @@ type TempUnscheduler interface {
 	TempUnscheduleRetryableError(ctx context.Context, accountID int64, failoverErr *service.UpstreamFailoverError)
 }
 
+// StickySessionUnbinder 用于 HandleFailoverError 中配额耗尽时清除粘性会话绑定。
+// GatewayService 隐式实现此接口。
+type StickySessionUnbinder interface {
+	UnbindStickySession(ctx context.Context, groupID *int64, sessionHash string) error
+}
+
 // SessionFanoutLimiter 扩展 TempUnscheduler，添加 P0-3 反扫荡能力。
 // GatewayService 隐式实现此接口。
 type SessionFanoutLimiter interface {
@@ -138,6 +144,17 @@ func (s *FailoverState) HandleFailoverError(
 	// 缓存计费判断
 	if needForceCacheBilling(s.hasBoundSession, failoverErr) {
 		s.ForceCacheBilling = true
+	}
+
+	// 配额耗尽时清除粘性会话绑定，避免后续请求继续粘到已耗尽的账号
+	if failoverErr.QuotaExhausted && s.hasBoundSession {
+		if unbinder, ok := gatewayService.(StickySessionUnbinder); ok && s.sessionHash != "" {
+			_ = unbinder.UnbindStickySession(ctx, s.groupID, s.sessionHash)
+			logger.FromContext(ctx).Warn("gateway.failover_quota_exhausted_unbind_sticky",
+				zap.Int64("account_id", accountID),
+				zap.String("session_hash", shortSessionHash(s.sessionHash)),
+			)
+		}
 	}
 
 	// 同账号重试：对 RetryableOnSameAccount 的临时性错误，先在同一账号上重试

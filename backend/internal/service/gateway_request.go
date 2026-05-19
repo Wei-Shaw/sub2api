@@ -368,6 +368,101 @@ func StripEmptyTextBlocks(body []byte) []byte {
 	return out
 }
 
+// StripRedactedThinkingBlocks removes all redacted_thinking blocks from assistant messages.
+// redacted_thinking blocks contain encrypted data that is only valid for the specific
+// account/session that generated them. When requests are routed to a different account
+// (e.g., after failover or group switch), these blocks cause upstream 400 errors like:
+// "Invalid `data` in `redacted_thinking` block"
+//
+// This is a lightweight unconditional pre-filter (no config toggle) that runs on every
+// request to prevent cross-account pollution. Unlike FilterInvalidSignatureThinkingBlocks
+// (which is gated behind IsSignatureRectifierEnabled), this always runs.
+//
+// Returns the original body unchanged if no redacted_thinking blocks are found.
+func StripRedactedThinkingBlocks(body []byte) []byte {
+	// Fast path: no redacted_thinking markers at all
+	if !bytes.Contains(body, patternTypeRedactedThinking) &&
+		!bytes.Contains(body, patternTypeRedactedSpaced) {
+		return body
+	}
+
+	jsonStr := *(*string)(unsafe.Pointer(&body))
+	msgsRes := gjson.Get(jsonStr, "messages")
+	if !msgsRes.Exists() || !msgsRes.IsArray() {
+		return body
+	}
+
+	var messages []any
+	if err := json.Unmarshal(sliceRawFromBody(body, msgsRes), &messages); err != nil {
+		return body
+	}
+
+	modified := false
+	for _, msg := range messages {
+		msgMap, ok := msg.(map[string]any)
+		if !ok {
+			continue
+		}
+		role, _ := msgMap["role"].(string)
+		if role != "assistant" {
+			continue
+		}
+		content, ok := msgMap["content"].([]any)
+		if !ok {
+			continue
+		}
+
+		var newContent []any
+		contentModified := false
+		for i, block := range content {
+			blockMap, ok := block.(map[string]any)
+			if !ok {
+				if newContent != nil {
+					newContent = append(newContent, block)
+				}
+				continue
+			}
+			blockType, _ := blockMap["type"].(string)
+			if blockType == "redacted_thinking" {
+				if newContent == nil {
+					newContent = make([]any, 0, len(content))
+					// Copy blocks seen so far
+					newContent = append(newContent, content[:i]...)
+				}
+				contentModified = true
+				continue
+			}
+			if newContent != nil {
+				newContent = append(newContent, block)
+			}
+		}
+
+		if contentModified {
+			modified = true
+			if len(newContent) == 0 {
+				// Replace empty content with placeholder to avoid upstream "content must not be empty"
+				msgMap["content"] = []any{map[string]any{"type": "text", "text": "(redacted content removed)"}}
+			} else {
+				msgMap["content"] = newContent
+			}
+		}
+	}
+
+	if !modified {
+		return body
+	}
+
+	msgsBytes, err := json.Marshal(messages)
+	if err != nil {
+		return body
+	}
+	out, err := sjson.SetRawBytes(body, "messages", msgsBytes)
+	if err != nil {
+		return body
+	}
+	return out
+}
+
 // FilterThinkingBlocks removes thinking blocks from request body
 // Returns filtered body or original body if filtering fails (fail-safe)
 // This prevents 400 errors from invalid thinking block signatures

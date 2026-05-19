@@ -536,6 +536,7 @@ type UpstreamFailoverError struct {
 	ResponseHeaders        http.Header // 上游响应头，用于透传 cf-ray/cf-mitigated/content-type 等诊断信息
 	ForceCacheBilling      bool        // Antigravity 粘性会话切换时设为 true
 	RetryableOnSameAccount bool        // 临时性错误（如 Google 间歇性 400、空响应），应在同一账号上重试 N 次再切换
+	QuotaExhausted         bool        // 上游账号配额/积分/余额耗尽，应清除粘性会话绑定
 }
 
 func (e *UpstreamFailoverError) Error() string {
@@ -555,6 +556,15 @@ func (s *GatewayService) TempUnscheduleRetryableError(ctx context.Context, accou
 	case http.StatusBadGateway:
 		tempUnscheduleEmptyResponse(ctx, s.rateLimitService, s.accountRepo, accountID, "[handler]")
 	}
+}
+
+// UnbindStickySession 清除粘性会话绑定，用于账号配额耗尽时主动解绑。
+// 避免后续请求继续粘到已耗尽的账号上。
+func (s *GatewayService) UnbindStickySession(ctx context.Context, groupID *int64, sessionHash string) error {
+	if s.cache == nil || sessionHash == "" {
+		return nil
+	}
+	return s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 }
 
 // GatewayService handles API gateway operations
@@ -5251,6 +5261,11 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	// Pre-filter: strip empty text blocks (including nested in tool_result) to prevent upstream 400.
 	body = StripEmptyTextBlocks(body)
 
+	// Pre-filter: strip redacted_thinking blocks unconditionally.
+	// These contain encrypted data only valid for the original account; cross-account they cause
+	// upstream 400 "Invalid `data` in `redacted_thinking` block".
+	body = StripRedactedThinkingBlocks(body)
+
 	// Preemptively strip thinking blocks that would cause upstream 400
 	// `Invalid signature in thinking block`. Gated by the same toggle that
 	// governs the retry-path rectifier.
@@ -5663,7 +5678,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 					logger.LegacyPrintf("service.gateway", "Account %d: 400 error, attempting failover", account.ID)
 				}
 				s.handleFailoverSideEffects(ctx, resp, account)
-				return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBody}
+				return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBody, QuotaExhausted: isQuotaExhaustedOn400(respBody)}
 			}
 		}
 		return s.handleErrorResponse(ctx, resp, c, account)
@@ -5765,6 +5780,9 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 	}
 	// Pre-filter: strip empty text blocks (including nested in tool_result) to prevent upstream 400.
 	input.Body = StripEmptyTextBlocks(input.Body)
+
+	// Pre-filter: strip redacted_thinking blocks unconditionally.
+	input.Body = StripRedactedThinkingBlocks(input.Body)
 
 	// 重试间复用同一请求体，避免每次 string(body) 产生额外分配。
 	setOpsUpstreamRequestBody(c, input.Body)
@@ -7946,6 +7964,11 @@ func (s *GatewayService) shouldFailoverOn400(respBody []byte) bool {
 		return false
 	}
 
+	// 账号配额/积分/余额耗尽：换到其他有额度的账号可以成功。
+	if IsQuotaExhaustedMessage(msg) {
+		return true
+	}
+
 	// 缺少/错误的 beta header：换账号/链路可能成功（尤其是混合调度时）。
 	// 更精确匹配 beta 相关的兼容性问题，避免误触发切换。
 	if strings.Contains(msg, "anthropic-beta") ||
@@ -7963,6 +7986,13 @@ func (s *GatewayService) shouldFailoverOn400(respBody []byte) bool {
 	}
 
 	return false
+}
+
+// isQuotaExhaustedOn400 检查 400 响应是否为配额/积分耗尽错误。
+// 用于在构造 UpstreamFailoverError 时设置 QuotaExhausted 标志。
+func isQuotaExhaustedOn400(respBody []byte) bool {
+	msg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
+	return IsQuotaExhaustedMessage(msg)
 }
 
 // sanitizeStreamError 返回不含网络地址的客户端可见错误描述。
@@ -8123,7 +8153,7 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 		shouldDisable = s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, body)
 	}
 	if shouldDisable {
-		return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: body}
+		return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: body, QuotaExhausted: IsQuotaExhaustedMessage(upstreamMsg)}
 	}
 
 	// 记录上游错误响应体摘要便于排障（可选：由配置控制；不回显到客户端）
@@ -10053,6 +10083,9 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 
 	// Pre-filter: strip empty text blocks to prevent upstream 400.
 	body = StripEmptyTextBlocks(body)
+
+	// Pre-filter: strip redacted_thinking blocks unconditionally.
+	body = StripRedactedThinkingBlocks(body)
 
 	isClaudeCodeCT := IsClaudeCodeClient(ctx) || isClaudeCodeClient(c.GetHeader("User-Agent"), parsed.MetadataUserID)
 	shouldMimicClaudeCode := account.IsOAuth() && !isClaudeCodeCT
