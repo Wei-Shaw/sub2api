@@ -173,6 +173,7 @@ func cloneRequestMapForImageIntent(body []byte) map[string]any {
 func resolveOpenAIResponsesImageBillingConfig(reqBody map[string]any, fallbackModel string) (string, string, error) {
 	imageModel := ""
 	imageSize := ""
+	imageQuality := ""
 	hasImageTool := false
 	if reqBody != nil {
 		rawTools, _ := reqBody["tools"].([]any)
@@ -184,10 +185,14 @@ func resolveOpenAIResponsesImageBillingConfig(reqBody map[string]any, fallbackMo
 			hasImageTool = true
 			imageModel = strings.TrimSpace(firstNonEmptyString(toolMap["model"]))
 			imageSize = strings.TrimSpace(firstNonEmptyString(toolMap["size"]))
+			imageQuality = strings.TrimSpace(firstNonEmptyString(toolMap["quality"]))
 			break
 		}
 		if imageSize == "" {
 			imageSize = strings.TrimSpace(firstNonEmptyString(reqBody["size"]))
+		}
+		if imageQuality == "" {
+			imageQuality = strings.TrimSpace(firstNonEmptyString(reqBody["quality"]))
 		}
 	}
 	if imageModel == "" && reqBody != nil {
@@ -202,7 +207,7 @@ func resolveOpenAIResponsesImageBillingConfig(reqBody map[string]any, fallbackMo
 	if imageModel == "" {
 		imageModel = strings.TrimSpace(fallbackModel)
 	}
-	sizeTier := normalizeOpenAIImageSizeTier(imageSize)
+	sizeTier := normalizeOpenAIImageSizeTier(imageSize, imageQuality)
 	return imageModel, sizeTier, nil
 }
 
