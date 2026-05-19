@@ -138,6 +138,41 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestBuildPaymentSubjectAppliesAffixToSubscriptionPlanProductName(t *testing.T) {
+	t.Parallel()
+
+	svc := &PaymentService{REDACTED
+	cfg := &PaymentConfig{
+		ProductNamePrefix: "PRE",
+		ProductNameSuffix: "SUF",
+REDACTED
+	plan := &dbent.SubscriptionPlan{
+		Name:        "Pro Monthly",
+		ProductName: "Claude Pro",
+REDACTED
+
+	got := svc.buildPaymentSubject(plan, 0, cfg, nil)
+	if got != "PRE Claude Pro SUF" {
+		t.Fatalf("buildPaymentSubject() = %q, want %q", got, "PRE Claude Pro SUF")
+REDACTED
+REDACTED
+
+func TestBuildPaymentSubjectAppliesAffixToSubscriptionPlanDefaultName(t *testing.T) {
+	t.Parallel()
+
+	svc := &PaymentService{REDACTED
+	cfg := &PaymentConfig{
+		ProductNamePrefix: "PRE",
+		ProductNameSuffix: "SUF",
+REDACTED
+	plan := &dbent.SubscriptionPlan{Name: "Team Monthly"REDACTED
+
+	got := svc.buildPaymentSubject(plan, 0, cfg, nil)
+	if got != "PRE Sub2API Subscription Team Monthly SUF" {
+		t.Fatalf("buildPaymentSubject() = %q, want %q", got, "PRE Sub2API Subscription Team Monthly SUF")
+REDACTED
+REDACTED
+
 func TestMaybeBuildWeChatOAuthRequiredResponse(t *testing.T) {
 	t.Setenv("PAYMENT_RESUME_SIGNING_KEY", "REDACTED")
 
