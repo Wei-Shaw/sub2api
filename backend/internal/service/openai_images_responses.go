@@ -6,6 +6,9 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"io"
 	"net/http"
 	"strings"
@@ -27,6 +30,23 @@ type openAIResponsesImageResult struct {
 	Background    string
 	Quality       string
 	Model         string
+}
+
+func openAIImagesRequestedLimit(requested int) int {
+	if requested <= 0 {
+		return 1
+	}
+	return requested
+}
+
+func limitOpenAIResponsesImageResults(results []openAIResponsesImageResult, requested int) []openAIResponsesImageResult {
+	limit := openAIImagesRequestedLimit(requested)
+	if len(results) <= limit {
+		return results
+	}
+	limited := make([]openAIResponsesImageResult, limit)
+	copy(limited, results[:limit])
+	return limited
 }
 
 func openAIResponsesImageResultKey(itemID string, result openAIResponsesImageResult) string {
@@ -201,6 +221,34 @@ func openAIImageUploadToDataURL(upload OpenAIImagesUpload) (string, error) {
 	return "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(upload.Data), nil
 }
 
+func normalizeOpenAIImageMaskUpload(upload OpenAIImagesUpload) OpenAIImagesUpload {
+	img, _, err := image.Decode(bytes.NewReader(upload.Data))
+	if err != nil {
+		return upload
+	}
+	bounds := img.Bounds()
+	if bounds.Empty() {
+		return upload
+	}
+	mask := image.NewNRGBA(bounds)
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			_, _, _, alpha := img.At(x, y).RGBA()
+			mask.SetNRGBA(x, y, color.NRGBA{R: 255, G: 255, B: 255, A: uint8(alpha >> 8)})
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, mask); err != nil {
+		return upload
+	}
+	upload.Data = buf.Bytes()
+	upload.ContentType = "image/png"
+	if strings.TrimSpace(upload.FileName) == "" {
+		upload.FileName = "mask.png"
+	}
+	return upload
+}
+
 func buildOpenAIImagesResponsesRequest(parsed *OpenAIImagesRequest, toolModel string) ([]byte, error) {
 	if parsed == nil {
 		return nil, fmt.Errorf("parsed images request is required")
@@ -227,6 +275,15 @@ func buildOpenAIImagesResponsesRequest(parsed *OpenAIImagesRequest, toolModel st
 		return nil, fmt.Errorf("image input is required")
 	}
 
+	maskImageURL := strings.TrimSpace(parsed.MaskImageURL)
+	if parsed.MaskUpload != nil {
+		maskUpload := normalizeOpenAIImageMaskUpload(*parsed.MaskUpload)
+		dataURL, err := openAIImageUploadToDataURL(maskUpload)
+		if err != nil {
+			return nil, err
+		}
+		maskImageURL = dataURL
+	}
 	req := []byte(`{"instructions":"","stream":true,"reasoning":{"effort":"medium","summary":"auto"},"parallel_tool_calls":true,"include":["reasoning.encrypted_content"],"model":"","store":false,"tool_choice":{"type":"image_generation"}}`)
 	req, _ = sjson.SetBytes(req, "model", openAIImagesResponsesMainModel)
 
@@ -269,14 +326,6 @@ func buildOpenAIImagesResponsesRequest(parsed *OpenAIImagesRequest, toolModel st
 		tool, _ = sjson.SetBytes(tool, "partial_images", *parsed.PartialImages)
 	}
 
-	maskImageURL := strings.TrimSpace(parsed.MaskImageURL)
-	if parsed.MaskUpload != nil {
-		dataURL, err := openAIImageUploadToDataURL(*parsed.MaskUpload)
-		if err != nil {
-			return nil, err
-		}
-		maskImageURL = dataURL
-	}
 	if maskImageURL != "" {
 		tool, _ = sjson.SetBytes(tool, "input_image_mask.image_url", maskImageURL)
 	}
@@ -547,6 +596,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 	c *gin.Context,
 	responseFormat string,
 	fallbackModel string,
+	requestedCount int,
 ) (OpenAIUsage, int, error) {
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
@@ -564,6 +614,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 	if len(results) == 0 {
 		return OpenAIUsage{}, 0, fmt.Errorf("upstream did not return image output")
 	}
+	results = limitOpenAIResponsesImageResults(results, requestedCount)
 	if strings.TrimSpace(firstMeta.Model) == "" {
 		firstMeta.Model = strings.TrimSpace(fallbackModel)
 	}
@@ -584,6 +635,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 	responseFormat string,
 	streamPrefix string,
 	fallbackModel string,
+	requestedCount int,
 ) (OpenAIUsage, int, *int, error) {
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	c.Header("Content-Type", "text/event-stream")
@@ -702,6 +754,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				processDataDone = true
 				return
 			}
+			finalResults = limitOpenAIResponsesImageResults(finalResults, requestedCount)
 			eventName := streamPrefix + ".completed"
 			for _, img := range finalResults {
 				key := openAIResponsesImageResultKey("", img)
@@ -742,7 +795,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 		}
 		if len(pendingResults) > 0 {
 			eventName := streamPrefix + ".completed"
-			for _, img := range pendingResults {
+			for _, img := range limitOpenAIResponsesImageResults(pendingResults, requestedCount) {
 				mergeOpenAIResponsesImageMeta(&img, streamMeta)
 				key := openAIResponsesImageResultKey("", img)
 				if _, exists := emitted[key]; exists {
@@ -932,11 +985,14 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 	}
 	logger.LegacyPrintf(
 		"service.openai_gateway",
-		"[OpenAI] Images request routing request_model=%s endpoint=%s account_type=%s uploads=%d",
+		"[OpenAI] Images request routing request_model=%s endpoint=%s account_type=%s uploads=%d mask_upload=%t mask_url=%t requested_n=%d",
 		requestModel,
 		parsed.Endpoint,
 		account.Type,
 		len(parsed.Uploads),
+		parsed.MaskUpload != nil,
+		strings.TrimSpace(parsed.MaskImageURL) != "",
+		parsed.N,
 	)
 	if parsed.N > 1 {
 		logger.LegacyPrintf(
@@ -1024,7 +1080,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 		firstTokenMs *int
 	)
 	if parsed.Stream {
-		usage, imageCount, firstTokenMs, err = s.handleOpenAIImagesOAuthStreamingResponse(resp, c, startTime, parsed.ResponseFormat, openAIImagesStreamPrefix(parsed), requestModel)
+		usage, imageCount, firstTokenMs, err = s.handleOpenAIImagesOAuthStreamingResponse(resp, c, startTime, parsed.ResponseFormat, openAIImagesStreamPrefix(parsed), requestModel, parsed.N)
 		if err != nil {
 			if imageCount > 0 {
 				return &OpenAIForwardResult{
@@ -1043,7 +1099,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 			return nil, err
 		}
 	} else {
-		usage, imageCount, err = s.handleOpenAIImagesOAuthNonStreamingResponse(resp, c, parsed.ResponseFormat, requestModel)
+		usage, imageCount, err = s.handleOpenAIImagesOAuthNonStreamingResponse(resp, c, parsed.ResponseFormat, requestModel, parsed.N)
 		if err != nil {
 			return nil, err
 		}
