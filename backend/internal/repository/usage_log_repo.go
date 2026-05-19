@@ -28,7 +28,7 @@ import (
 	gocache "github.com/patrickmn/go-cache"
 )
 
-const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, requested_model, upstream_model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, image_output_tokens, image_output_cost, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, account_rate_multiplier, billing_type, request_type, stream, openai_ws_mode, duration_ms, first_token_ms, user_agent, ip_address, image_count, image_size, service_tier, reasoning_effort, inbound_endpoint, upstream_endpoint, cache_ttl_overridden, channel_id, model_mapping_chain, billing_tier, billing_mode, account_stats_cost, created_at"
+const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, requested_model, upstream_model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, image_output_tokens, image_output_cost, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, account_rate_multiplier, billing_type, request_type, stream, openai_ws_mode, duration_ms, first_token_ms, user_agent, ip_address, image_count, image_size, image_input_size, image_output_size, image_size_source, image_size_breakdown, service_tier, reasoning_effort, inbound_endpoint, upstream_endpoint, cache_ttl_overridden, channel_id, model_mapping_chain, billing_tier, billing_mode, account_stats_cost, created_at"
 
 // usageLogInsertArgTypes must stay in the same order as:
 //  1. prepareUsageLogInsert().args
@@ -73,6 +73,10 @@ var usageLogInsertArgTypes = [...]string{
 	"text",        // ip_address
 	"integer",     // image_count
 	"text",        // image_size
+	"text",        // image_input_size
+	"text",        // image_output_size
+	"text",        // image_size_source
+	"jsonb",       // image_size_breakdown
 	"text",        // service_tier
 	"text",        // reasoning_effort
 	"text",        // inbound_endpoint
@@ -117,6 +121,24 @@ func appendRawUsageLogModelWhereCondition(conditions []string, args []any, model
 	}
 	conditions = append(conditions, fmt.Sprintf("%s = $%d", rawUsageLogModelColumn, len(args)+1))
 	args = append(args, model)
+	return conditions, args
+}
+
+func appendUsageLogBillingModeWhereCondition(conditions []string, args []any, billingMode string) ([]string, []any) {
+	mode := strings.TrimSpace(billingMode)
+	if mode == "" {
+		return conditions, args
+	}
+	placeholder := fmt.Sprintf("$%d", len(args)+1)
+	switch service.BillingMode(mode) {
+	case service.BillingModeImage:
+		conditions = append(conditions, fmt.Sprintf("(billing_mode = %s OR COALESCE(image_count, 0) > 0)", placeholder))
+	case service.BillingModeToken:
+		conditions = append(conditions, fmt.Sprintf("(billing_mode = %s OR ((billing_mode IS NULL OR billing_mode = '') AND COALESCE(image_count, 0) <= 0))", placeholder))
+	default:
+		conditions = append(conditions, fmt.Sprintf("billing_mode = %s", placeholder))
+	}
+	args = append(args, mode)
 	return conditions, args
 }
 
@@ -352,6 +374,10 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			ip_address,
 			image_count,
 			image_size,
+			image_input_size,
+			image_output_size,
+			image_size_source,
+			image_size_breakdown,
 			service_tier,
 			reasoning_effort,
 			inbound_endpoint,
@@ -369,7 +395,7 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			$10, $11, $12, $13,
 			$14, $15, $16, $17,
 			$18, $19, $20, $21, $22, $23,
-			$24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46
+			$24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 		RETURNING id, created_at
@@ -790,6 +816,10 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 			ip_address,
 			image_count,
 			image_size,
+			image_input_size,
+			image_output_size,
+			image_size_source,
+			image_size_breakdown,
 			service_tier,
 			reasoning_effort,
 			inbound_endpoint,
@@ -803,7 +833,7 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 			created_at
 		) AS (VALUES `)
 
-	args := make([]any, 0, len(keys)*46)
+	args := make([]any, 0, len(keys)*50)
 	argPos := 1
 	for idx, key := range keys {
 		if idx > 0 {
@@ -867,6 +897,10 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				ip_address,
 				image_count,
 				image_size,
+				image_input_size,
+				image_output_size,
+				image_size_source,
+				image_size_breakdown,
 				service_tier,
 				reasoning_effort,
 				inbound_endpoint,
@@ -915,6 +949,10 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				ip_address,
 				image_count,
 				image_size,
+				image_input_size,
+				image_output_size,
+				image_size_source,
+				image_size_breakdown,
 				service_tier,
 				reasoning_effort,
 				inbound_endpoint,
@@ -1003,6 +1041,10 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			ip_address,
 			image_count,
 			image_size,
+			image_input_size,
+			image_output_size,
+			image_size_source,
+			image_size_breakdown,
 			service_tier,
 			reasoning_effort,
 			inbound_endpoint,
@@ -1016,7 +1058,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			created_at
 		) AS (VALUES `)
 
-	args := make([]any, 0, len(preparedList)*46)
+	args := make([]any, 0, len(preparedList)*50)
 	argPos := 1
 	for idx, prepared := range preparedList {
 		if idx > 0 {
@@ -1077,6 +1119,10 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			ip_address,
 			image_count,
 			image_size,
+			image_input_size,
+			image_output_size,
+			image_size_source,
+			image_size_breakdown,
 			service_tier,
 			reasoning_effort,
 			inbound_endpoint,
@@ -1125,6 +1171,10 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			ip_address,
 			image_count,
 			image_size,
+			image_input_size,
+			image_output_size,
+			image_size_source,
+			image_size_breakdown,
 			service_tier,
 			reasoning_effort,
 			inbound_endpoint,
@@ -1181,6 +1231,10 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			ip_address,
 			image_count,
 			image_size,
+			image_input_size,
+			image_output_size,
+			image_size_source,
+			image_size_breakdown,
 			service_tier,
 			reasoning_effort,
 			inbound_endpoint,
@@ -1198,7 +1252,7 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			$10, $11, $12, $13,
 			$14, $15, $16, $17,
 			$18, $19, $20, $21, $22, $23,
-			$24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46
+			$24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 	`, prepared.args...)
@@ -1225,6 +1279,10 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 	userAgent := nullString(log.UserAgent)
 	ipAddress := nullString(log.IPAddress)
 	imageSize := nullString(log.ImageSize)
+	imageInputSize := nullString(log.ImageInputSize)
+	imageOutputSize := nullString(log.ImageOutputSize)
+	imageSizeSource := nullString(log.ImageSizeSource)
+	imageSizeBreakdown := nullStringIntMapJSON(log.ImageSizeBreakdown)
 	serviceTier := nullString(log.ServiceTier)
 	reasoningEffort := nullString(log.ReasoningEffort)
 	inboundEndpoint := nullString(log.InboundEndpoint)
@@ -1285,6 +1343,10 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 			ipAddress,
 			log.ImageCount,
 			imageSize,
+			imageInputSize,
+			imageOutputSize,
+			imageSizeSource,
+			imageSizeBreakdown,
 			serviceTier,
 			reasoningEffort,
 			inboundEndpoint,
@@ -2662,10 +2724,7 @@ func (r *usageLogRepository) ListWithFilters(ctx context.Context, params paginat
 		conditions = append(conditions, fmt.Sprintf("billing_type = $%d", len(args)+1))
 		args = append(args, int16(*filters.BillingType))
 	}
-	if filters.BillingMode != "" {
-		conditions = append(conditions, fmt.Sprintf("billing_mode = $%d", len(args)+1))
-		args = append(args, filters.BillingMode)
-	}
+	conditions, args = appendUsageLogBillingModeWhereCondition(conditions, args, filters.BillingMode)
 	if filters.StartTime != nil {
 		conditions = append(conditions, fmt.Sprintf("created_at >= $%d", len(args)+1))
 		args = append(args, *filters.StartTime)
@@ -3363,10 +3422,7 @@ func (r *usageLogRepository) GetStatsWithFilters(ctx context.Context, filters Us
 		conditions = append(conditions, fmt.Sprintf("billing_type = $%d", len(args)+1))
 		args = append(args, int16(*filters.BillingType))
 	}
-	if filters.BillingMode != "" {
-		conditions = append(conditions, fmt.Sprintf("billing_mode = $%d", len(args)+1))
-		args = append(args, filters.BillingMode)
-	}
+	conditions, args = appendUsageLogBillingModeWhereCondition(conditions, args, filters.BillingMode)
 	if filters.StartTime != nil {
 		conditions = append(conditions, fmt.Sprintf("created_at >= $%d", len(args)+1))
 		args = append(args, *filters.StartTime)
@@ -4084,6 +4140,10 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		ipAddress             sql.NullString
 		imageCount            int
 		imageSize             sql.NullString
+		imageInputSize        sql.NullString
+		imageOutputSize       sql.NullString
+		imageSizeSource       sql.NullString
+		imageSizeBreakdown    sql.NullString
 		serviceTier           sql.NullString
 		reasoningEffort       sql.NullString
 		inboundEndpoint       sql.NullString
@@ -4134,6 +4194,10 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		&ipAddress,
 		&imageCount,
 		&imageSize,
+		&imageInputSize,
+		&imageOutputSize,
+		&imageSizeSource,
+		&imageSizeBreakdown,
 		&serviceTier,
 		&reasoningEffort,
 		&inboundEndpoint,
@@ -4212,6 +4276,16 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 	if imageSize.Valid {
 		log.ImageSize = &imageSize.String
 	}
+	if imageInputSize.Valid {
+		log.ImageInputSize = &imageInputSize.String
+	}
+	if imageOutputSize.Valid {
+		log.ImageOutputSize = &imageOutputSize.String
+	}
+	if imageSizeSource.Valid {
+		log.ImageSizeSource = &imageSizeSource.String
+	}
+	log.ImageSizeBreakdown = stringIntMapFromNullJSON(imageSizeBreakdown)
 	if serviceTier.Valid {
 		log.ServiceTier = &serviceTier.String
 	}
@@ -4376,6 +4450,31 @@ func nullString(v *string) sql.NullString {
 		return sql.NullString{}
 	}
 	return sql.NullString{String: *v, Valid: true}
+}
+
+func nullStringIntMapJSON(v map[string]int) any {
+	if len(v) == 0 {
+		return nil
+	}
+	payload, err := json.Marshal(v)
+	if err != nil {
+		return nil
+	}
+	return string(payload)
+}
+
+func stringIntMapFromNullJSON(v sql.NullString) map[string]int {
+	if !v.Valid || strings.TrimSpace(v.String) == "" {
+		return nil
+	}
+	var out map[string]int
+	if err := json.Unmarshal([]byte(v.String), &out); err != nil {
+		return nil
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func coalesceTrimmedString(v sql.NullString, fallback string) string {

@@ -9174,14 +9174,6 @@ watch(
     0 1px 0 rgb(255 255 255 / 0.9) inset;
 }
 
-:global(.dark) .settings-tabs-shell {
-  border-color: rgb(51 65 85 / 0.65);
-  background: rgb(15 23 42 / 0.86);
-  box-shadow:
-    0 16px 36px rgb(0 0 0 / 0.28),
-    0 1px 0 rgb(255 255 255 / 0.06) inset;
-}
-
 .settings-tabs-scroll {
   @apply overflow-x-auto;
   -ms-overflow-style: none;
@@ -9225,10 +9217,6 @@ watch(
   opacity: 1;
 }
 
-:global(.dark) .settings-tab::before {
-  background: linear-gradient(135deg, rgb(30 41 59 / 0.9), rgb(51 65 85 / 0.62));
-}
-
 .settings-tab:focus-visible {
   @apply ring-2 ring-primary-500/40 ring-offset-2 ring-offset-white dark:ring-offset-dark-900;
 }
@@ -9238,12 +9226,6 @@ watch(
   box-shadow:
     0 8px 18px rgb(15 23 42 / 0.08),
     0 1px 0 rgb(255 255 255 / 0.92) inset;
-}
-
-:global(.dark) .settings-tab-active {
-  box-shadow:
-    0 12px 26px rgb(0 0 0 / 0.22),
-    0 1px 0 rgb(255 255 255 / 0.08) inset;
 }
 
 .settings-tab-active::before {
@@ -9276,5 +9258,28 @@ watch(
 
 .settings-tab-label {
   @apply min-w-0 overflow-hidden text-ellipsis whitespace-nowrap leading-none;
+}
+</style>
+
+<style>
+/* Dark-mode overrides for the settings tabs shell. Kept in an UNSCOPED block
+   because Vue's scoped-CSS compiler was dropping the `:global(.dark) ...`
+   rules in the production build, leaving inactive tabs unreadable on dark. */
+.dark .settings-tabs-shell {
+  border-color: rgb(51 65 85 / 0.65);
+  background: rgb(15 23 42 / 0.86);
+  box-shadow:
+    0 16px 36px rgb(0 0 0 / 0.28),
+    0 1px 0 rgb(255 255 255 / 0.06) inset;
+}
+
+.dark .settings-tab::before {
+  background: linear-gradient(135deg, rgb(30 41 59 / 0.9), rgb(51 65 85 / 0.62));
+}
+
+.dark .settings-tab-active {
+  box-shadow:
+    0 12px 26px rgb(0 0 0 / 0.22),
+    0 1px 0 rgb(255 255 255 / 0.08) inset;
 }
 </style>

@@ -554,6 +554,10 @@ func TestAPIContracts(t *testing.T) {
 							"first_token_ms": 50,
 							"image_count": 0,
 							"image_size": null,
+							"image_input_size": null,
+							"image_output_size": null,
+							"image_size_source": null,
+							"image_size_breakdown": null,
 							"media_type": null,
 							"cache_ttl_overridden": false,
 							"created_at": "2025-01-02T03:04:05Z",
@@ -784,14 +788,7 @@ func TestAPIContracts(t *testing.T) {
 					"payment_visible_method_wxpay_enabled": false,
 					"openai_advanced_scheduler_enabled": true,
 					"openai_fast_policy_settings": {
-						"rules": [
-							{
-								"service_tier": "priority",
-								"action": "filter",
-								"scope": "all",
-								"fallback_action": "pass"
-							}
-						]
+						"rules": []
 					},
 					"custom_menu_items": [],
 					"custom_endpoints": [],
@@ -1001,14 +998,7 @@ func TestAPIContracts(t *testing.T) {
 					"payment_visible_method_wxpay_enabled": false,
 					"openai_advanced_scheduler_enabled": false,
 					"openai_fast_policy_settings": {
-						"rules": [
-							{
-								"service_tier": "priority",
-								"action": "filter",
-								"scope": "all",
-								"fallback_action": "pass"
-							}
-						]
+						"rules": []
 					},
 					"payment_enabled": false,
 					"payment_min_amount": 0,

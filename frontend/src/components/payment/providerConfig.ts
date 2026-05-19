@@ -47,6 +47,11 @@ export const METHOD_ORDER = ['alipay', 'alipay_direct', 'wxpay', 'wxpay_direct',
 /** Payment mode constants */
 export const PAYMENT_MODE_QRCODE = 'qrcode'
 export const PAYMENT_MODE_POPUP = 'popup'
+/** Alipay-only: skip FACE_TO_FACE_PAYMENT precreate and open the Alipay
+ * checkout page in a new tab instead. Backend `alipay.go` matches on this
+ * literal (case-insensitive); other values fall back to the default
+ * precreate→pagepay flow. */
+export const PAYMENT_MODE_REDIRECT = 'redirect'
 
 export const PAYMENT_CURRENCY_OPTIONS: TypeOption[] = [
   { value: 'CNY', label: 'CNY' },
