@@ -43,17 +43,70 @@ func TestFetchProfile_Non200(t *testing.T) {
 	}
 }
 
-func TestFetchProfile_EmptyUserInfo(t *testing.T) {
+func TestFetchUsageLimits_FullResponse(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		// Some accounts return an empty userInfo block; we tolerate it.
-		_, _ = w.Write([]byte(`{"userInfo":{}}`))
+		_, _ = w.Write([]byte(`{
+			"userInfo": {"email": "u@e", "userId": "u-1"},
+			"subscriptionInfo": {
+				"subscriptionName": "Pro",
+				"subscriptionTitle": "Pro Plan",
+				"subscriptionType": "PRO",
+				"status": "ACTIVE"
+			},
+			"nextDateReset": "1735689600",
+			"usageBreakdownList": [
+				{
+					"resourceType": "AGENTIC_REQUEST",
+					"currentUsage": 123.45,
+					"usageLimit": 1000,
+					"currency": "USD",
+					"unit": "credits"
+				},
+				{
+					"resourceType": "OTHER",
+					"currentUsage": 0,
+					"usageLimit": 100
+				}
+			]
+		}`))
 	}))
 	defer srv.Close()
-	p, err := fetchProfileAt(srv.URL, "at", http.DefaultClient)
+
+	u, err := fetchUsageLimitsAt(srv.URL, "at", http.DefaultClient)
 	if err != nil {
-		t.Fatalf("expected nil error on empty userInfo, got %v", err)
+		t.Fatal(err)
 	}
-	if p.Email != "" || p.UserID != "" {
-		t.Fatalf("expected zero profile, got %+v", p)
+	if u.UserInfo == nil || u.UserInfo.Email != "u@e" {
+		t.Fatalf("user info wrong: %+v", u.UserInfo)
+	}
+	if u.SubscriptionInfo == nil || u.SubscriptionInfo.SubscriptionType != "PRO" {
+		t.Fatalf("subscription wrong: %+v", u.SubscriptionInfo)
+	}
+	agentic := u.AgenticUsage()
+	if agentic == nil {
+		t.Fatal("agentic usage missing")
+	}
+	if agentic.CurrentUsage != 123.45 || agentic.UsageLimit != 1000 {
+		t.Fatalf("agentic usage wrong: %+v", agentic)
+	}
+}
+
+func TestFetchUsageLimits_Non200(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer srv.Close()
+	_, err := fetchUsageLimitsAt(srv.URL, "at", http.DefaultClient)
+	if err == nil || !strings.Contains(err.Error(), "403") {
+		t.Fatalf("expected 403 error, got %v", err)
+	}
+}
+
+func TestUsageLimits_AgenticUsage_NoMatch(t *testing.T) {
+	u := &UsageLimits{
+		UsageBreakdown: []UsageBreakdown{{ResourceType: "OTHER"}},
+	}
+	if u.AgenticUsage() != nil {
+		t.Fatal("expected nil when no AGENTIC_REQUEST row")
 	}
 }

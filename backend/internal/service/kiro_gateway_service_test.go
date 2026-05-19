@@ -66,14 +66,6 @@ func (c *inMemTokenCache) ReleaseRefreshLock(_ context.Context, k string) error 
 	return nil
 }
 
-type stubUsageRecorder struct {
-	args []UsageRecordArgs
-}
-
-func (s *stubUsageRecorder) RecordKiroUsage(_ context.Context, a UsageRecordArgs) {
-	s.args = append(s.args, a)
-}
-
 func newKiroAccount() *Account {
 	return &Account{
 		ID:       42,
@@ -89,20 +81,19 @@ func newKiroAccount() *Account {
 	}
 }
 
-func newGatewayServiceWithFakeUpstream(t *testing.T, handler http.HandlerFunc) (*KiroGatewayService, *httptest.Server, *stubUsageRecorder) {
+func newGatewayServiceWithFakeUpstream(t *testing.T, handler http.HandlerFunc) (*KiroGatewayService, *httptest.Server) {
 	t.Helper()
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 	kiro.OverrideEndpointURLForTest(t, 0, srv.URL)
 
-	usage := &stubUsageRecorder{}
 	tp := NewKiroTokenProvider(nil, newInMemTokenCache(), nil)
-	gs := NewKiroGatewayService(tp, nil, usage)
-	return gs, srv, usage
+	gs := NewKiroGatewayService(tp, nil)
+	return gs, srv
 }
 
 func TestKiroGatewayService_StreamingForward(t *testing.T) {
-	gs, _, usage := newGatewayServiceWithFakeUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+	gs, _ := newGatewayServiceWithFakeUpstream(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer tok-x" {
 			t.Fatalf("bearer = %q", r.Header.Get("Authorization"))
 		}
@@ -157,16 +148,10 @@ func TestKiroGatewayService_StreamingForward(t *testing.T) {
 	if result.Usage.InputTokens != 10 || result.Usage.OutputTokens != 4 {
 		t.Fatalf("usage = %+v", result.Usage)
 	}
-	if len(usage.args) != 1 {
-		t.Fatalf("expected 1 usage record, got %d", len(usage.args))
-	}
-	if usage.args[0].InputTokens != 10 || usage.args[0].OutputTokens != 4 {
-		t.Fatalf("recorded usage wrong: %+v", usage.args[0])
-	}
 }
 
 func TestKiroGatewayService_NonStreamingForward(t *testing.T) {
-	gs, _, _ := newGatewayServiceWithFakeUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+	gs, _ := newGatewayServiceWithFakeUpstream(t, func(w http.ResponseWriter, r *http.Request) {
 		var buf bytes.Buffer
 		_ = kiro.EncodeEventStream(&buf, []kiro.Event{
 			{Type: "assistantResponseEvent", Payload: map[string]any{"content": "single"}},
@@ -212,7 +197,7 @@ func TestKiroGatewayService_NonStreamingForward(t *testing.T) {
 }
 
 func TestKiroGatewayService_BackfillsMachineID(t *testing.T) {
-	gs, _, _ := newGatewayServiceWithFakeUpstream(t, func(w http.ResponseWriter, _ *http.Request) {
+	gs, _ := newGatewayServiceWithFakeUpstream(t, func(w http.ResponseWriter, _ *http.Request) {
 		var buf bytes.Buffer
 		_ = kiro.EncodeEventStream(&buf, []kiro.Event{})
 		_, _ = w.Write(buf.Bytes())

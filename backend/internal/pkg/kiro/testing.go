@@ -17,3 +17,27 @@ func OverrideEndpointURLForTest(t *testing.T, i int, url string) {
 	endpoints[i].URL = url
 	t.Cleanup(func() { endpoints[i].URL = prev })
 }
+
+// profileURLForTest is the test-overridable copy of profileURL used by
+// FetchProfile and FetchUsageLimits. Defaults to the package-level
+// constant; OverrideProfileURLForTest swaps it temporarily.
+var profileURLForTest = ""
+
+// OverrideProfileURLForTest redirects FetchProfile / FetchUsageLimits to
+// the supplied URL for the duration of the test. Production callers are
+// unaffected (they always use the real profileURL constant).
+func OverrideProfileURLForTest(t *testing.T, url string) {
+	t.Helper()
+	prev := profileURLForTest
+	profileURLForTest = url
+	t.Cleanup(func() { profileURLForTest = prev })
+}
+
+// resolvedProfileURL returns the URL the production helpers should hit.
+// Returns the test override when one is active, the real URL otherwise.
+func resolvedProfileURL() string {
+	if profileURLForTest != "" {
+		return profileURLForTest
+	}
+	return profileURL
+}

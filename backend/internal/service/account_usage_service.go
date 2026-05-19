@@ -263,6 +263,7 @@ type AccountUsageService struct {
 	usageFetcher            ClaudeUsageFetcher
 	geminiQuotaService      *GeminiQuotaService
 	antigravityQuotaFetcher *AntigravityQuotaFetcher
+	kiroQuotaFetcher        *KiroQuotaFetcher
 	cache                   *UsageCache
 	identityCache           IdentityCache
 	tlsFPProfileService     *TLSFingerprintProfileService
@@ -275,6 +276,7 @@ func NewAccountUsageService(
 	usageFetcher ClaudeUsageFetcher,
 	geminiQuotaService *GeminiQuotaService,
 	antigravityQuotaFetcher *AntigravityQuotaFetcher,
+	kiroQuotaFetcher *KiroQuotaFetcher,
 	cache *UsageCache,
 	identityCache IdentityCache,
 	tlsFPProfileService *TLSFingerprintProfileService,
@@ -285,6 +287,7 @@ func NewAccountUsageService(
 		usageFetcher:            usageFetcher,
 		geminiQuotaService:      geminiQuotaService,
 		antigravityQuotaFetcher: antigravityQuotaFetcher,
+		kiroQuotaFetcher:        kiroQuotaFetcher,
 		cache:                   cache,
 		identityCache:           identityCache,
 		tlsFPProfileService:     tlsFPProfileService,
@@ -320,6 +323,15 @@ func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64) (*U
 	// Antigravity 平台：使用 AntigravityQuotaFetcher 获取额度
 	if account.Platform == PlatformAntigravity {
 		usage, err := s.getAntigravityUsage(ctx, account)
+		if err == nil {
+			s.tryClearRecoverableAccountError(ctx, account)
+		}
+		return usage, err
+	}
+
+	// Kiro 平台：使用 KiroQuotaFetcher 获取额度
+	if account.Platform == PlatformKiro {
+		usage, err := s.getKiroUsage(ctx, account)
 		if err == nil {
 			s.tryClearRecoverableAccountError(ctx, account)
 		}
@@ -824,6 +836,52 @@ func (s *AccountUsageService) getAntigravityUsage(ctx context.Context, account *
 		return &UsageInfo{UpdatedAt: &now}, nil
 	}
 	return usage, nil
+}
+
+// getKiroUsage fetches Kiro account quota and persists the raw quota
+// blob onto account.extra so the admin UI can render it.
+//
+// Phase 6 ships without the singleflight/cache layer that Antigravity
+// uses — quota lookups are infrequent (admin-driven, not request-path).
+// If load becomes an issue we can layer the same caching in here.
+func (s *AccountUsageService) getKiroUsage(ctx context.Context, account *Account) (*UsageInfo, error) {
+	if s.kiroQuotaFetcher == nil || !s.kiroQuotaFetcher.CanFetch(account) {
+		now := time.Now()
+		return &UsageInfo{UpdatedAt: &now}, nil
+	}
+
+	fetchCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	proxyURL := s.kiroQuotaFetcher.GetProxyURL(fetchCtx, account)
+	result, err := s.kiroQuotaFetcher.FetchQuota(fetchCtx, account, proxyURL)
+	if err != nil {
+		now := time.Now()
+		return &UsageInfo{UpdatedAt: &now}, err
+	}
+
+	// Persist the raw blob into account.extra so the admin UI sees it on
+	// the next load. Best-effort — admin GET can still return the live
+	// figures if persistence fails.
+	if result.Raw != nil {
+		if account.Extra == nil {
+			account.Extra = map[string]any{}
+		}
+		for k, v := range result.Raw {
+			account.Extra[k] = v
+		}
+		if s.accountRepo != nil {
+			if updateErr := persistAccountCredentials(ctx, s.accountRepo, account, account.Credentials); updateErr != nil {
+				slog.Warn("kiro_quota.persist_extra_failed",
+					"account_id", account.ID,
+					"error", updateErr,
+				)
+			}
+		}
+	}
+
+	enrichUsageWithAccountError(result.UsageInfo, account)
+	return result.UsageInfo, nil
 }
 
 // recalcAntigravityRemainingSeconds 重新计算 Antigravity UsageInfo 中各窗口的 RemainingSeconds

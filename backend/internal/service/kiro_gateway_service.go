@@ -24,48 +24,27 @@ const kiroStreamingTimeout = 10 * time.Minute
 
 // KiroGatewayService orchestrates Anthropic /v1/messages → Kiro for a
 // single account. It is the public surface called by the gateway
-// handler (Phase 4c).
+// handler.
+//
+// Usage logging happens at the gateway-handler layer via
+// GatewayService.RecordUsage(*ForwardResult, ...) once Forward returns —
+// the result we return contains all the fields RecordUsage needs.
 //
 // Phase 4 ships Anthropic inbound only. OpenAI Chat Completions support
 // arrives in Phase 5 via the same KiroGatewayService.
 type KiroGatewayService struct {
 	tokenProvider *KiroTokenProvider
 	proxyRepo     ProxyRepository
-	usageRecorder UsageRecorder
-}
-
-// UsageRecorder is the narrow interface the gateway needs to record one
-// request's usage. The default implementation in this codebase is
-// usage_record_worker_pool's RecordAsync; we declare it locally to avoid
-// dragging in the worker pool's full surface here.
-type UsageRecorder interface {
-	RecordKiroUsage(ctx context.Context, args UsageRecordArgs)
-}
-
-// UsageRecordArgs is the shape of a single Kiro usage record. Pruned
-// from the usage_log column set — gateway fills these in; the worker
-// pool persists.
-type UsageRecordArgs struct {
-	AccountID    int64
-	Model        string
-	InputTokens  int
-	OutputTokens int
-	Credits      float64
-	DurationMs   int64
-	Stream       bool
-	Error        string // empty for success
 }
 
 // NewKiroGatewayService constructs the service.
 func NewKiroGatewayService(
 	tokenProvider *KiroTokenProvider,
 	proxyRepo ProxyRepository,
-	usageRecorder UsageRecorder,
 ) *KiroGatewayService {
 	return &KiroGatewayService{
 		tokenProvider: tokenProvider,
 		proxyRepo:     proxyRepo,
-		usageRecorder: usageRecorder,
 	}
 }
 
@@ -140,7 +119,6 @@ func (s *KiroGatewayService) Forward(
 		HTTPClient:        httpClient,
 	})
 	if err != nil {
-		s.recordError(account, requestedModel, req.Stream, time.Since(startedAt), err)
 		return nil, err
 	}
 	defer callResult.Response.Body.Close()
@@ -187,7 +165,7 @@ func (s *KiroGatewayService) Forward(
 		InputTokens:  inputTokens,
 		OutputTokens: outputTokens,
 	}
-	s.recordSuccess(account, result, credits)
+	_ = credits // reserved for future per-account credit ledger
 	return result, streamErr
 }
 
@@ -207,34 +185,6 @@ func (s *KiroGatewayService) resolveProxyURL(ctx context.Context, account *Accou
 		return ""
 	}
 	return p.URL()
-}
-
-func (s *KiroGatewayService) recordSuccess(account *Account, result *ForwardResult, credits float64) {
-	if s.usageRecorder == nil {
-		return
-	}
-	s.usageRecorder.RecordKiroUsage(context.Background(), UsageRecordArgs{
-		AccountID:    account.ID,
-		Model:        result.Model,
-		InputTokens:  result.Usage.InputTokens,
-		OutputTokens: result.Usage.OutputTokens,
-		Credits:      credits,
-		DurationMs:   result.Duration.Milliseconds(),
-		Stream:       result.Stream,
-	})
-}
-
-func (s *KiroGatewayService) recordError(account *Account, model string, stream bool, d time.Duration, err error) {
-	if s.usageRecorder == nil {
-		return
-	}
-	s.usageRecorder.RecordKiroUsage(context.Background(), UsageRecordArgs{
-		AccountID:  account.ID,
-		Model:      model,
-		DurationMs: d.Milliseconds(),
-		Stream:     stream,
-		Error:      err.Error(),
-	})
 }
 
 // setKiroSSEHeaders sets the streaming response headers. Matches what
