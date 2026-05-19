@@ -147,6 +147,24 @@ func ProvideKiroTokenProvider(
 	return p
 }
 
+// ProvideKiroGatewayService constructs the Kiro gateway service. Phase 4
+// supplies a no-op UsageRecorder until the usage worker pool is wired up
+// to accept Kiro usage records — when that lands, swap nil out for the
+// recorder.
+func ProvideKiroGatewayService(
+	tokenProvider *KiroTokenProvider,
+	proxyRepo ProxyRepository,
+) *KiroGatewayService {
+	return NewKiroGatewayService(tokenProvider, proxyRepo, nopKiroUsageRecorder{})
+}
+
+// nopKiroUsageRecorder is the phase 4 placeholder. Future work attaches
+// the real usage_record_worker_pool here so Kiro usage flows into the
+// same persistence path as other providers.
+type nopKiroUsageRecorder struct{}
+
+func (nopKiroUsageRecorder) RecordKiroUsage(context.Context, UsageRecordArgs) {}
+
 // ProvideDashboardAggregationService 创建并启动仪表盘聚合服务
 func ProvideDashboardAggregationService(repo DashboardAggregationRepository, timingWheel *TimingWheelService, cfg *config.Config) *DashboardAggregationService {
 	svc := NewDashboardAggregationService(repo, timingWheel, cfg)
@@ -507,6 +525,7 @@ var ProviderSet = wire.NewSet(
 	NewGeminiMessagesCompatService,
 	ProvideAntigravityTokenProvider,
 	ProvideKiroTokenProvider,
+	ProvideKiroGatewayService,
 	ProvideOpenAITokenProvider,
 	ProvideClaudeTokenProvider,
 	NewAntigravityGatewayService,

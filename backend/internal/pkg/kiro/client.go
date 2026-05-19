@@ -15,6 +15,17 @@ import (
 // and socks5 schemes are supported by Go's net/http stack out of the box.
 // Empty proxyURL falls back to HTTP_PROXY / HTTPS_PROXY env vars.
 func HTTPClient(proxyURL string) *http.Client {
+	return buildHTTPClient(proxyURL, 30*time.Second)
+}
+
+// HTTPStreamingClient returns an *http.Client configured for the
+// long-lived generateAssistantResponse call. Uses a 10-minute timeout
+// to accommodate the largest realistic generation.
+func HTTPStreamingClient(proxyURL string) *http.Client {
+	return buildHTTPClient(proxyURL, 10*time.Minute)
+}
+
+func buildHTTPClient(proxyURL string, timeout time.Duration) *http.Client {
 	t := &http.Transport{
 		MaxIdleConns:        100,
 		MaxIdleConnsPerHost: 10,
@@ -31,7 +42,7 @@ func HTTPClient(proxyURL string) *http.Client {
 		t.Proxy = http.ProxyFromEnvironment
 	}
 	return &http.Client{
-		Timeout:   30 * time.Second,
+		Timeout:   timeout,
 		Transport: t,
 	}
 }
