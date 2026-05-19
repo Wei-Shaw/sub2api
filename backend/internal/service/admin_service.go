@@ -214,7 +214,11 @@ type CreateGroupInput struct {
 	RequirePrivacySet           bool
 	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig
 	// RPMLimit 分组 RPM 上限（0 = 不限制）
-	RPMLimit int
+	RPMLimit            int
+	OAuth5hPausePercent *float64
+	OAuth5hPauseAmount  *float64
+	OAuth7dPausePercent *float64
+	OAuth7dPauseAmount  *float64
 	// 从指定分组复制账号（创建分组后在同一事务内绑定）
 	CopyAccountsFromGroupIDs []int64
 }
@@ -255,7 +259,11 @@ type UpdateGroupInput struct {
 	RequirePrivacySet           *bool
 	MessagesDispatchModelConfig *OpenAIMessagesDispatchModelConfig
 	// RPMLimit 分组 RPM 上限（0 = 不限制），nil 表示未提供不改动。
-	RPMLimit *int
+	RPMLimit            *int
+	OAuth5hPausePercent *float64
+	OAuth5hPauseAmount  *float64
+	OAuth7dPausePercent *float64
+	OAuth7dPauseAmount  *float64
 	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
 	CopyAccountsFromGroupIDs []int64
 }
@@ -1696,6 +1704,10 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		DefaultMappedModel:              input.DefaultMappedModel,
 		MessagesDispatchModelConfig:     normalizeOpenAIMessagesDispatchModelConfig(input.MessagesDispatchModelConfig),
 		RPMLimit:                        input.RPMLimit,
+		OAuth5hPausePercent:             normalizePositiveFloatPtr(input.OAuth5hPausePercent),
+		OAuth5hPauseAmount:              normalizePositiveFloatPtr(input.OAuth5hPauseAmount),
+		OAuth7dPausePercent:             normalizePositiveFloatPtr(input.OAuth7dPausePercent),
+		OAuth7dPauseAmount:              normalizePositiveFloatPtr(input.OAuth7dPauseAmount),
 	}
 	sanitizeGroupMessagesDispatchFields(group)
 	if err := s.groupRepo.Create(ctx, group); err != nil {
@@ -1748,6 +1760,13 @@ func normalizePrice(price *float64) *float64 {
 		return nil
 	}
 	return price
+}
+
+func normalizePositiveFloatPtr(value *float64) *float64 {
+	if value == nil || *value <= 0 {
+		return nil
+	}
+	return value
 }
 
 // validateFallbackGroup 校验降级分组的有效性
@@ -1951,6 +1970,10 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.RPMLimit != nil {
 		group.RPMLimit = *input.RPMLimit
 	}
+	group.OAuth5hPausePercent = normalizePositiveFloatPtr(input.OAuth5hPausePercent)
+	group.OAuth5hPauseAmount = normalizePositiveFloatPtr(input.OAuth5hPauseAmount)
+	group.OAuth7dPausePercent = normalizePositiveFloatPtr(input.OAuth7dPausePercent)
+	group.OAuth7dPauseAmount = normalizePositiveFloatPtr(input.OAuth7dPauseAmount)
 	sanitizeGroupMessagesDispatchFields(group)
 
 	if err := s.groupRepo.Update(ctx, group); err != nil {

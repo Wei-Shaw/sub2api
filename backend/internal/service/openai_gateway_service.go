@@ -5714,6 +5714,21 @@ func (s *OpenAIGatewayService) updateCodexUsageSnapshot(ctx context.Context, acc
 		updateCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = s.accountRepo.UpdateExtra(updateCtx, accountID, updates)
+		account, err := s.accountRepo.GetByID(updateCtx, accountID)
+		if err != nil || account == nil {
+			return
+		}
+		for key, value := range updates {
+			if account.Extra == nil {
+				account.Extra = map[string]any{}
+			}
+			account.Extra[key] = value
+		}
+		if resetAt, ok := accountOAuthPreemptivePauseResetAt(account, time.Now()); ok {
+			if account.RateLimitResetAt == nil || account.RateLimitResetAt.Before(resetAt) {
+				_ = s.accountRepo.SetRateLimited(updateCtx, account.ID, resetAt)
+			}
+		}
 	}()
 }
 

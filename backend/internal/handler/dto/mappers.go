@@ -190,6 +190,10 @@ func groupFromServiceBase(g *service.Group) Group {
 		RequireOAuthOnly:                g.RequireOAuthOnly,
 		RequirePrivacySet:               g.RequirePrivacySet,
 		RPMLimit:                        g.RPMLimit,
+		OAuth5hPausePercent:             g.OAuth5hPausePercent,
+		OAuth5hPauseAmount:              g.OAuth5hPauseAmount,
+		OAuth7dPausePercent:             g.OAuth7dPausePercent,
+		OAuth7dPauseAmount:              g.OAuth7dPauseAmount,
 		CreatedAt:                       g.CreatedAt,
 		UpdatedAt:                       g.UpdatedAt,
 	}
@@ -354,6 +358,21 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		}
 		if threshold := a.GetQuotaNotifyTotalThreshold(); threshold > 0 {
 			out.QuotaNotifyTotalThreshold = &threshold
+		}
+	}
+
+	if a.SupportsOAuthOfficialWindowPause() {
+		if v := a.GetOAuth5hPausePercent(); v > 0 {
+			out.OAuth5hPausePercent = &v
+		}
+		if v := a.GetOAuth5hPauseAmount(); v > 0 {
+			out.OAuth5hPauseAmount = &v
+		}
+		if v := a.GetOAuth7dPausePercent(); v > 0 {
+			out.OAuth7dPausePercent = &v
+		}
+		if v := a.GetOAuth7dPauseAmount(); v > 0 {
+			out.OAuth7dPauseAmount = &v
 		}
 	}
 

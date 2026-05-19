@@ -1378,6 +1378,19 @@ func (s *RateLimitService) UpdateSessionWindow(ctx context.Context, account *Acc
 		if err := s.accountRepo.UpdateExtra(ctx, account.ID, extraUpdates); err != nil {
 			slog.Warn("passive_usage_update_failed", "account_id", account.ID, "error", err)
 		}
+		for key, value := range extraUpdates {
+			if account.Extra == nil {
+				account.Extra = map[string]any{}
+			}
+			account.Extra[key] = value
+		}
+		if resetAt, ok := accountOAuthPreemptivePauseResetAt(account, time.Now()); ok {
+			if account.RateLimitResetAt == nil || account.RateLimitResetAt.Before(resetAt) {
+				if err := s.accountRepo.SetRateLimited(ctx, account.ID, resetAt); err != nil {
+					slog.Warn("oauth_preemptive_pause_set_rate_limit_failed", "account_id", account.ID, "reset_at", resetAt, "error", err)
+				}
+			}
+		}
 	}
 
 	// 如果状态为allowed且之前有限流，说明窗口已重置，清除限流状态

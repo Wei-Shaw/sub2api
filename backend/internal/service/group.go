@@ -67,6 +67,12 @@ type Group struct {
 	// 一旦设置即接管该分组用户的限流（覆盖用户级 rpm_limit），可被 user-group rpm_override 进一步覆盖。
 	RPMLimit int
 
+	// OAuth 官方窗口提前休眠配置。账号未配置时继承所属分组中最严格的正数阈值。
+	OAuth5hPausePercent *float64
+	OAuth5hPauseAmount  *float64
+	OAuth7dPausePercent *float64
+	OAuth7dPauseAmount  *float64
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 

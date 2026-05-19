@@ -60,6 +60,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		schedulerSnapshotSvc,
 		tokenRefreshSvc,
 		accountExpirySvc,
+		nil, // oauthPreemptivePause
 		subscriptionExpirySvc,
 		&service.UsageCleanupService{},
 		idempotencyCleanupSvc,
@@ -77,6 +78,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		nil, // backupSvc
 		nil, // paymentOrderExpiry
 		nil, // channelMonitorRunner
+		nil, // modelPricingAdmin
 	)
 
 	require.NotPanics(t, func() {

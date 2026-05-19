@@ -118,6 +118,11 @@ type Group struct {
 	// RPMLimit 分组级每分钟请求数上限（0 = 不限制），设置后覆盖用户级 rpm_limit。
 	RPMLimit int `json:"rpm_limit"`
 
+	OAuth5hPausePercent *float64 `json:"oauth_5h_pause_percent"`
+	OAuth5hPauseAmount  *float64 `json:"oauth_5h_pause_amount_usd"`
+	OAuth7dPausePercent *float64 `json:"oauth_7d_pause_percent"`
+	OAuth7dPauseAmount  *float64 `json:"oauth_7d_pause_amount_usd"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -244,6 +249,11 @@ type Account struct {
 	QuotaNotifyWeeklyThreshold *float64 `json:"quota_notify_weekly_threshold,omitempty"`
 	QuotaNotifyTotalEnabled    *bool    `json:"quota_notify_total_enabled,omitempty"`
 	QuotaNotifyTotalThreshold  *float64 `json:"quota_notify_total_threshold,omitempty"`
+
+	OAuth5hPausePercent *float64 `json:"oauth_5h_pause_percent,omitempty"`
+	OAuth5hPauseAmount  *float64 `json:"oauth_5h_pause_amount_usd,omitempty"`
+	OAuth7dPausePercent *float64 `json:"oauth_7d_pause_percent,omitempty"`
+	OAuth7dPauseAmount  *float64 `json:"oauth_7d_pause_amount_usd,omitempty"`
 
 	Proxy         *Proxy         `json:"proxy,omitempty"`
 	AccountGroups []AccountGroup `json:"account_groups,omitempty"`

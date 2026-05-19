@@ -1384,6 +1384,57 @@ func (a *Account) IsAnthropicOAuthOrSetupToken() bool {
 	return a.Platform == PlatformAnthropic && (a.Type == AccountTypeOAuth || a.Type == AccountTypeSetupToken)
 }
 
+func (a *Account) GetOAuth5hPausePercent() float64 {
+	return a.getExtraFloat64("oauth_5h_pause_percent")
+}
+
+func (a *Account) GetOAuth5hPauseAmount() float64 {
+	return a.getExtraFloat64("oauth_5h_pause_amount_usd")
+}
+
+func (a *Account) GetOAuth7dPausePercent() float64 {
+	return a.getExtraFloat64("oauth_7d_pause_percent")
+}
+
+func (a *Account) GetOAuth7dPauseAmount() float64 {
+	return a.getExtraFloat64("oauth_7d_pause_amount_usd")
+}
+
+func (a *Account) GetEffectiveOAuth5hPausePercent() float64 {
+	if v := a.GetOAuth5hPausePercent(); v > 0 {
+		return v
+	}
+	return a.getExtraFloat64("effective_oauth_5h_pause_percent")
+}
+
+func (a *Account) GetEffectiveOAuth5hPauseAmount() float64 {
+	if v := a.GetOAuth5hPauseAmount(); v > 0 {
+		return v
+	}
+	return a.getExtraFloat64("effective_oauth_5h_pause_amount_usd")
+}
+
+func (a *Account) GetEffectiveOAuth7dPausePercent() float64 {
+	if v := a.GetOAuth7dPausePercent(); v > 0 {
+		return v
+	}
+	return a.getExtraFloat64("effective_oauth_7d_pause_percent")
+}
+
+func (a *Account) GetEffectiveOAuth7dPauseAmount() float64 {
+	if v := a.GetOAuth7dPauseAmount(); v > 0 {
+		return v
+	}
+	return a.getExtraFloat64("effective_oauth_7d_pause_amount_usd")
+}
+
+func (a *Account) SupportsOAuthOfficialWindowPause() bool {
+	if a == nil || a.Type != AccountTypeOAuth {
+		return false
+	}
+	return a.Platform == PlatformOpenAI || a.Platform == PlatformAnthropic
+}
+
 // IsTLSFingerprintEnabled 检查是否启用 TLS 指纹伪装
 // 仅适用于 Anthropic OAuth/SetupToken 类型账号
 // 启用后将模拟 Claude Code (Node.js) 客户端的 TLS 握手特征
