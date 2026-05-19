@@ -4,7 +4,7 @@ vi.mock('@/api/admin/accounts', () => ({
   getAntigravityDefaultModelMapping: vi.fn()
 }))
 
-import { buildModelMappingObject, getModelsByPlatform } from '../useModelWhitelist'
+import { buildModelMappingObject, getModelsByPlatform, splitModelMappingObject } from '../useModelWhitelist'
 
 describe('useModelWhitelist', () => {
   it('openai 模型列表包含 GPT-5.4 官方快照', () => {
@@ -71,6 +71,36 @@ describe('useModelWhitelist', () => {
 
     expect(mapping).toEqual({
       'gpt-5.4-mini': 'gpt-5.4-mini'
+    })
+  })
+
+  it('combined 模式会同时保留白名单身份映射和模型映射', () => {
+    const mapping = buildModelMappingObject(
+      'combined',
+      ['gpt-5.4', 'claude-*'],
+      [
+        { from: 'gpt-latest', to: 'gpt-5.4' },
+        { from: 'gpt-5.4', to: 'gpt-5.4-mini' }
+      ]
+    )
+
+    expect(mapping).toEqual({
+      'gpt-5.4': 'gpt-5.4-mini',
+      'gpt-latest': 'gpt-5.4'
+    })
+  })
+
+  it('splitModelMappingObject 会把身份映射还原成白名单，其余保留为映射', () => {
+    const parsed = splitModelMappingObject({
+      'gpt-5.4': 'gpt-5.4',
+      'gpt-latest': 'gpt-5.4',
+      ' ': 'gpt-empty',
+      broken: 123
+    })
+
+    expect(parsed).toEqual({
+      allowedModels: ['gpt-5.4'],
+      modelMappings: [{ from: 'gpt-latest', to: 'gpt-5.4' }]
     })
   })
 })

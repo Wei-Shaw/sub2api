@@ -96,6 +96,22 @@ const rawUsageLogModelColumn = "model"
 // Historical rows may contain upstream/billing model values, while newer rows store requested_model.
 // Requested/upstream/mapping analytics must use resolveModelDimensionExpression instead.
 
+// usageLogSuccessFilterUL 用于把"失败请求 usage log"（tokens=0、cost=0、不计费的占位记录）
+// 从统计性聚合中排除，避免污染 Dashboard / 用量拆分等指标。
+//
+// schema 中没有 success bool 列；新增列要做迁移，风险大；这里用 actual_cost > 0 作为代理：
+// 任何成功落账的请求都会产生 actual_cost（包括 token 计费、纯图片 token 计费、按次/按图计费），
+// 反之 failed-request usage log 的 actual_cost 为 0。
+// 早期版本用 4 项 token 和 > 0 判定会把"按次/按图计费"与"image_output_tokens 独立计费"的纯图片
+// 请求误判为失败，导致这部分请求从用量统计里消失，故改用 actual_cost。
+// 配合 `FROM usage_logs ul` JOIN 查询使用。
+const usageLogSuccessFilterUL = "ul.actual_cost > 0"
+
+// usageLogEffectivePlatformExpr 用于按"有效平台"维度聚合 usage_logs：
+// 优先取请求实际走的分组 platform，若分组未设置 platform 再 fallback 到 account.platform。
+// 配套要求查询里 LEFT JOIN groups g ON g.id = ul.group_id 与 LEFT JOIN accounts a ON a.id = ul.account_id。
+const usageLogEffectivePlatformExpr = "COALESCE(NULLIF(g.platform,''), a.platform)"
+
 // dateFormatWhitelist 将 granularity 参数映射为 PostgreSQL TO_CHAR 格式字符串，防止外部输入直接拼入 SQL
 var dateFormatWhitelist = map[string]string{
 	"hour":  "YYYY-MM-DD HH24:00",
@@ -2414,6 +2430,9 @@ func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTi
 // UserDashboardStats 用户仪表盘统计
 type UserDashboardStats = usagestats.UserDashboardStats
 
+// PlatformDashboardStats 单平台用量明细
+type PlatformDashboardStats = usagestats.PlatformDashboardStats
+
 // GetUserDashboardStats 获取用户专属的仪表盘统计
 func (r *usageLogRepository) GetUserDashboardStats(ctx context.Context, userID int64) (*UserDashboardStats, error) {
 	stats := &UserDashboardStats{}
@@ -2508,6 +2527,57 @@ func (r *usageLogRepository) GetUserDashboardStats(ctx context.Context, userID i
 	}
 	stats.Rpm = rpm
 	stats.Tpm = tpm
+
+	// 按"有效平台"维度拆分（group.platform 优先，否则 account.platform）。
+	// 与 ops 路径口径一致；HAVING 过滤掉无法确定平台的行（避免出现空字符串平台）。
+	// 与上面 totalStatsQuery/todayStatsQuery 的总值可能略微差异，原因有二：
+	//   1) 无平台归属的极少数行（group/account 都没 platform）会被 HAVING 排除；
+	//   2) usageLogSuccessFilterUL 会把 actual_cost = 0 的失败 placeholder 行排除，
+	//      而 totalStatsQuery/todayStatsQuery 没有这层过滤、会把这些行的 request 计数算进去。
+	platformQuery := `
+		SELECT
+			` + usageLogEffectivePlatformExpr + ` as platform,
+			COUNT(*) as total_requests,
+			COALESCE(SUM(ul.input_tokens + ul.output_tokens + ul.cache_creation_tokens + ul.cache_read_tokens), 0) as total_tokens,
+			COALESCE(SUM(ul.actual_cost), 0) as total_actual_cost,
+			COUNT(*) FILTER (WHERE ul.created_at >= $2) as today_requests,
+			COALESCE(SUM(ul.input_tokens + ul.output_tokens + ul.cache_creation_tokens + ul.cache_read_tokens) FILTER (WHERE ul.created_at >= $2), 0) as today_tokens,
+			COALESCE(SUM(ul.actual_cost) FILTER (WHERE ul.created_at >= $2), 0) as today_actual_cost
+		FROM usage_logs ul
+		LEFT JOIN groups g ON g.id = ul.group_id
+		LEFT JOIN accounts a ON a.id = ul.account_id
+		WHERE ul.user_id = $1
+		  AND ` + usageLogSuccessFilterUL + `
+		GROUP BY ` + usageLogEffectivePlatformExpr + `
+		HAVING ` + usageLogEffectivePlatformExpr + ` IS NOT NULL AND ` + usageLogEffectivePlatformExpr + ` <> ''
+		ORDER BY total_actual_cost DESC
+	`
+	rows, err := r.sql.QueryContext(ctx, platformQuery, userID, today)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var p PlatformDashboardStats
+		if err := rows.Scan(
+			&p.Platform,
+			&p.TotalRequests,
+			&p.TotalTokens,
+			&p.TotalActualCost,
+			&p.TodayRequests,
+			&p.TodayTokens,
+			&p.TodayActualCost,
+		); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		stats.ByPlatform = append(stats.ByPlatform, p)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
 	return stats, nil
 }
@@ -2769,6 +2839,9 @@ type UsageStats = usagestats.UsageStats
 // BatchUserUsageStats represents usage stats for a single user
 type BatchUserUsageStats = usagestats.BatchUserUsageStats
 
+// PlatformUsage represents per-platform usage breakdown
+type PlatformUsage = usagestats.PlatformUsage
+
 func normalizePositiveInt64IDs(ids []int64) []int64 {
 	if len(ids) == 0 {
 		return nil
@@ -2809,15 +2882,21 @@ func (r *usageLogRepository) GetBatchUserUsageStats(ctx context.Context, userIDs
 		result[id] = &BatchUserUsageStats{UserID: id}
 	}
 
+	// GROUP BY (user_id, effective_platform) 一次查询同时得到总值与按平台拆分。
+	// 应用层把同一 user_id 的多行累加为总值，并把非空 platform 行收集到 ByPlatform。
 	query := `
 		SELECT
-			user_id,
-			COALESCE(SUM(actual_cost) FILTER (WHERE created_at >= $2 AND created_at < $3), 0) as total_cost,
-			COALESCE(SUM(actual_cost) FILTER (WHERE created_at >= $4), 0) as today_cost
-		FROM usage_logs
-		WHERE user_id = ANY($1)
-		  AND created_at >= LEAST($2, $4)
-		GROUP BY user_id
+			ul.user_id,
+			` + usageLogEffectivePlatformExpr + ` as platform,
+			COALESCE(SUM(ul.actual_cost) FILTER (WHERE ul.created_at >= $2 AND ul.created_at < $3), 0) as total_cost,
+			COALESCE(SUM(ul.actual_cost) FILTER (WHERE ul.created_at >= $4), 0) as today_cost
+		FROM usage_logs ul
+		LEFT JOIN groups g ON g.id = ul.group_id
+		LEFT JOIN accounts a ON a.id = ul.account_id
+		WHERE ul.user_id = ANY($1)
+		  AND ul.created_at >= LEAST($2, $4)
+		  AND ` + usageLogSuccessFilterUL + `
+		GROUP BY ul.user_id, ` + usageLogEffectivePlatformExpr + `
 	`
 	today := timezone.Today()
 	rows, err := r.sql.QueryContext(ctx, query, pq.Array(normalizedUserIDs), startTime, endTime, today)
@@ -2826,15 +2905,25 @@ func (r *usageLogRepository) GetBatchUserUsageStats(ctx context.Context, userIDs
 	}
 	for rows.Next() {
 		var userID int64
+		var platform sql.NullString
 		var total float64
 		var todayTotal float64
-		if err := rows.Scan(&userID, &total, &todayTotal); err != nil {
+		if err := rows.Scan(&userID, &platform, &total, &todayTotal); err != nil {
 			_ = rows.Close()
 			return nil, err
 		}
-		if stats, ok := result[userID]; ok {
-			stats.TotalActualCost = total
-			stats.TodayActualCost = todayTotal
+		stats, ok := result[userID]
+		if !ok {
+			continue
+		}
+		stats.TotalActualCost += total
+		stats.TodayActualCost += todayTotal
+		if platform.Valid && platform.String != "" {
+			stats.ByPlatform = append(stats.ByPlatform, PlatformUsage{
+				Platform:        platform.String,
+				TotalActualCost: total,
+				TodayActualCost: todayTotal,
+			})
 		}
 	}
 	if err := rows.Close(); err != nil {

@@ -767,15 +767,7 @@ func (s *OpenAIGatewayService) buildOpenAIImagesRequest(
 }
 
 func buildOpenAIImagesURL(base string, endpoint string) string {
-	normalized := strings.TrimRight(strings.TrimSpace(base), "/")
-	relative := strings.TrimPrefix(strings.TrimSpace(endpoint), "/v1")
-	if strings.HasSuffix(normalized, endpoint) || strings.HasSuffix(normalized, relative) {
-		return normalized
-	}
-	if strings.HasSuffix(normalized, "/v1") {
-		return normalized + relative
-	}
-	return normalized + endpoint
+	return buildOpenAIEndpointURL(base, endpoint)
 }
 
 func rewriteOpenAIImagesModel(body []byte, contentType string, model string) ([]byte, string, error) {

@@ -46,6 +46,25 @@ type SystemSettings struct {
 	LinuxDoConnectClientSecretConfigured bool
 	LinuxDoConnectRedirectURL            string
 
+	// DingTalk Connect OAuth 登录
+	DingTalkConnectEnabled                 bool
+	DingTalkConnectClientID                string
+	DingTalkConnectClientSecret            string
+	DingTalkConnectClientSecretConfigured  bool
+	DingTalkConnectRedirectURL             string
+	DingTalkConnectCorpRestrictionPolicy   string
+	DingTalkConnectInternalCorpID          string
+	DingTalkConnectBypassRegistration      bool
+	DingTalkConnectSyncCorpEmail           bool
+	DingTalkConnectSyncDisplayName         bool
+	DingTalkConnectSyncDept                bool
+	DingTalkConnectSyncCorpEmailAttrKey    string
+	DingTalkConnectSyncDisplayNameAttrKey  string
+	DingTalkConnectSyncDeptAttrKey         string
+	DingTalkConnectSyncCorpEmailAttrName   string
+	DingTalkConnectSyncDisplayNameAttrName string
+	DingTalkConnectSyncDeptAttrName        string
+
 	// WeChat Connect OAuth 登录
 	WeChatConnectEnabled                   bool
 	WeChatConnectAppID                     string
@@ -237,6 +256,7 @@ type PublicSettings struct {
 	AIToolRewriteRules          string // AI 工具配置替换规则 JSON 数组
 
 	LinuxDoOAuthEnabled      bool
+	DingTalkOAuthEnabled     bool
 	WeChatOAuthEnabled       bool
 	WeChatOAuthOpenEnabled   bool
 	WeChatOAuthMPEnabled     bool

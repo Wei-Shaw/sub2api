@@ -419,6 +419,10 @@ func TestBuildOpenAIImagesURL_HandlesVersionedBaseURL(t *testing.T) {
 		buildOpenAIImagesURL("https://image-upstream.example/v1", openAIImagesGenerationsEndpoint),
 	)
 	require.Equal(t,
+		"https://open.bigmodel.cn/api/paas/v4/images/generations",
+		buildOpenAIImagesURL("https://open.bigmodel.cn/api/paas/v4", openAIImagesGenerationsEndpoint),
+	)
+	require.Equal(t,
 		"https://image-upstream.example/v1/images/edits",
 		buildOpenAIImagesURL("https://image-upstream.example/v1/", openAIImagesEditsEndpoint),
 	)

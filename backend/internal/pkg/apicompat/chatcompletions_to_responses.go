@@ -325,7 +325,14 @@ func marshalChatInputContent(content chatMessageContent) (json.RawMessage, error
 	if content.Text != nil {
 		return json.Marshal(*content.Text)
 	}
-	return json.Marshal(convertChatContentPartsToResponses(content.Parts))
+	parts := convertChatContentPartsToResponses(content.Parts)
+	if len(parts) == 0 {
+		// A nil slice marshals to JSON null, which the upstream Responses API
+		// rejects ("expected an array of objects or string, but got null").
+		// Fall back to an empty string when no usable parts remain.
+		return json.Marshal("")
+	}
+	return json.Marshal(parts)
 }
 
 func convertChatContentPartsToResponses(parts []ChatContentPart) []ResponsesContentPart {

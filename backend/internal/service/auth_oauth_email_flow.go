@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/mail"
 	"strings"
 	"time"
@@ -18,7 +19,7 @@ func normalizeOAuthSignupSource(signupSource string) string {
 	switch signupSource {
 	case "", "email":
 		return "email"
-	case "linuxdo", "wechat", "oidc", "github", "google":
+	case "linuxdo", "wechat", "oidc", "github", "google", "dingtalk":
 		return signupSource
 	default:
 		return "email"
@@ -109,7 +110,7 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 	if s == nil {
 		return nil, nil, ErrServiceUnavailable
 	}
-	if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
+	if s.settingService == nil || (!s.settingService.IsRegistrationEnabled(ctx) && !s.canBypassRegistrationDisabledForOAuth(ctx, signupSource)) {
 		return nil, nil, ErrRegDisabled
 	}
 
@@ -118,18 +119,22 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 		return nil, nil, ErrEmailReserved
 	}
 	if err := s.validateRegistrationEmailPolicy(ctx, email); err != nil {
+		slog.Error("oauth email register: policy rejected", "email", email, "error", err.Error())
 		return nil, nil, err
 	}
 	if err := s.VerifyOAuthEmailCode(ctx, email, verifyCode); err != nil {
+		slog.Error("oauth email register: verify code failed", "email", email, "error", err.Error())
 		return nil, nil, err
 	}
 
 	if _, err := s.validateOAuthRegistrationInvitation(ctx, invitationCode); err != nil {
+		slog.Error("oauth email register: invitation failed", "email", email, "error", err.Error())
 		return nil, nil, err
 	}
 
 	existsEmail, err := s.userRepo.ExistsByEmail(ctx, email)
 	if err != nil {
+		slog.Error("oauth email register: ExistsByEmail failed", "email", email, "error", err.Error())
 		return nil, nil, ErrServiceUnavailable
 	}
 	if existsEmail {
@@ -158,6 +163,7 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 		if errors.Is(err, ErrEmailExists) {
 			return nil, nil, ErrEmailExists
 		}
+		slog.Error("oauth email register: userRepo.Create failed", "email", email, "signup_source", signupSource, "error", err.Error())
 		return nil, nil, ErrServiceUnavailable
 	}
 
@@ -181,7 +187,7 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 	if s == nil {
 		return nil, nil, ErrServiceUnavailable
 	}
-	if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
+	if s.settingService == nil || (!s.settingService.IsRegistrationEnabled(ctx) && !s.canBypassRegistrationDisabledForOAuth(ctx, signupSource)) {
 		return nil, nil, ErrRegDisabled
 	}
 
