@@ -75,6 +75,35 @@ type AnthropicContentBlock struct {
 	IsError   bool            `json:"is_error,omitempty"`
 }
 
+// MarshalJSON ensures thinking/text content blocks always include their
+// corresponding field, even when empty (omitempty would drop it, causing
+// downstream schema validation to fail with "expected string, received undefined").
+func (b AnthropicContentBlock) MarshalJSON() ([]byte, error) {
+	type Alias AnthropicContentBlock
+	data, err := json.Marshal(Alias(b))
+	if err != nil {
+		return nil, err
+	}
+
+	needsPatch := (b.Type == "thinking" && b.Thinking == "") ||
+		(b.Type == "text" && b.Text == "")
+	if !needsPatch {
+		return data, nil
+	}
+
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil, err
+	}
+	switch b.Type {
+	case "thinking":
+		m["thinking"] = json.RawMessage(`""`)
+	case "text":
+		m["text"] = json.RawMessage(`""`)
+	}
+	return json.Marshal(m)
+}
+
 // AnthropicImageSource describes the source data for an image content block.
 type AnthropicImageSource struct {
 	Type      string `json:"type"` // "base64"

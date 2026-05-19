@@ -462,6 +462,13 @@ func TestStreamingTextOnly(t *testing.T) {
 	require.Len(t, events, 2) // content_block_start + content_block_delta
 	assert.Equal(t, "content_block_start", events[0].Type)
 	assert.Equal(t, "text", events[0].ContentBlock.Type)
+
+	// text block 序列化后必须包含 "text" 字段（即使为空字符串）
+	blockJSON, err := json.Marshal(events[0].ContentBlock)
+	require.NoError(t, err)
+	assert.Contains(t, string(blockJSON), `"text":""`)
+	assert.NotContains(t, string(blockJSON), `"thinking"`)
+
 	assert.Equal(t, "content_block_delta", events[1].Type)
 	assert.Equal(t, "text_delta", events[1].Delta.Type)
 	assert.Equal(t, "Hello", events[1].Delta.Text)
@@ -743,6 +750,13 @@ func TestStreamingReasoning(t *testing.T) {
 	require.Len(t, events, 1)
 	assert.Equal(t, "content_block_start", events[0].Type)
 	assert.Equal(t, "thinking", events[0].ContentBlock.Type)
+
+	// content_block_start 序列化后必须包含 "thinking" 字段（即使为空字符串），
+	// 否则下游 schema 校验会报 "expected string, received undefined"
+	blockJSON, err := json.Marshal(events[0].ContentBlock)
+	require.NoError(t, err)
+	assert.Contains(t, string(blockJSON), `"thinking":""`)
+	assert.NotContains(t, string(blockJSON), `"text"`)
 
 	// reasoning text delta
 	events = ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
