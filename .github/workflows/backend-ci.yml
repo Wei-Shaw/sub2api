@@ -2,6 +2,8 @@ name: CI
 
 on:
   push:
+    branches:
+      - '**'   # 只在 branch push 时触发，tag push 跳过
   pull_request:
 
 permissions:
