@@ -121,6 +121,13 @@
               >
                 {{ t('home.hero.viewGuide') }}
               </router-link>
+              <router-link
+                id="qiyuan-client-home-cta"
+                to="/client"
+                class="inline-flex items-center rounded-lg border border-gray-300 bg-white px-6 py-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-800 dark:text-dark-200 dark:hover:bg-dark-700"
+              >
+                {{ t('home.hero.clientCta') }}
+              </router-link>
             </div>
             <p class="mt-6 text-xs text-gray-400 dark:text-dark-300">
               Codex Plus · Linux · Windows · macOS · 账号池调度

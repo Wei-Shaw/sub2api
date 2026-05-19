@@ -111,7 +111,8 @@ export default {
     hero: {
       title: 'One Key, All AI Tools',
       desc: 'Subscription to API. Codex CLI / Claude Code / OpenAI SDK one-click setup, multi-account smart routing.',
-      viewGuide: 'View Setup Guide'
+      viewGuide: 'View Setup Guide',
+      clientCta: 'Download client setup'
     },
     console: {
       title: 'Service Status',

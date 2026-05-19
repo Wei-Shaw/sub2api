@@ -112,7 +112,8 @@ export default {
     hero: {
       title: '一个密钥，畅用 AI 工具',
       desc: '订阅账号转 API，Codex CLI / Claude Code / OpenAI SDK 一键接入，多号智能调度。',
-      viewGuide: '查看接入指南'
+      viewGuide: '查看接入指南',
+      clientCta: '下载客户端一键配置'
     },
     console: {
       title: '服务状态面板',
