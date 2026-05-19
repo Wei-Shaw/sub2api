@@ -126,13 +126,13 @@
           </template>
 
           <template #cell-used_by="{ value, row }">
-            <span class="text-sm text-gray-500 dark:text-dark-400">
+            <span class="text-sm text-gray-500 dark:text-dark-300">
               {{ row.user?.email || (value ? t('admin.redeem.userPrefix', { id: value }) : '-') }}
             </span>
           </template>
 
           <template #cell-used_at="{ value }">
-            <span class="text-sm text-gray-500 dark:text-dark-400">{{
+            <span class="text-sm text-gray-500 dark:text-dark-300">{{
               value ? formatDateTime(value) : '-'
             }}</span>
           </template>
@@ -154,7 +154,7 @@
                 </svg>
                 <span class="text-xs">{{ t('common.delete') }}</span>
               </button>
-              <span v-else class="text-gray-400 dark:text-dark-500">-</span>
+              <span v-else class="text-gray-400 dark:text-dark-300">-</span>
             </div>
           </template>
         </DataTable>

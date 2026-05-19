@@ -74,7 +74,7 @@
       @click="showPopover = false"
     />
   </div>
-  <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
+  <span v-else class="text-sm text-gray-400 dark:text-dark-300">-</span>
 </template>
 
 <script setup lang="ts">

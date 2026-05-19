@@ -68,7 +68,7 @@
                       <PlatformIcon :platform="config.platform" size="xs" />
                       <span>{{ config.platform }}</span>
                     </span>
-                    <span class="text-gray-300 dark:text-dark-500">•</span>
+                    <span class="text-gray-300 dark:text-dark-300">•</span>
                     <span class="text-gray-500 dark:text-gray-400">
                       {{ t('admin.users.defaultRate') }}: <span class="font-medium text-gray-700 dark:text-gray-300">{{ config.defaultRate }}x</span>
                     </span>
@@ -126,7 +126,7 @@
                       <PlatformIcon :platform="config.platform" size="xs" />
                       <span>{{ config.platform }}</span>
                     </span>
-                    <span class="text-gray-300 dark:text-dark-500">•</span>
+                    <span class="text-gray-300 dark:text-dark-300">•</span>
                     <span class="text-gray-500 dark:text-gray-400">
                       {{ t('admin.users.defaultRate') }}: <span class="font-medium text-gray-700 dark:text-gray-300">{{ config.defaultRate }}x</span>
                     </span>

@@ -70,6 +70,13 @@ type LoginRequest struct {
 	TurnstileToken string `json:"turnstile_token"`
 }
 
+// EmailCodeLoginRequest represents email verification code login request
+type EmailCodeLoginRequest struct {
+	Email          string `json:"email" binding:"required,email"`
+	Code           string `json:"code" binding:"required,min=4,max=8"`
+	TurnstileToken string `json:"turnstile_token"`
+}
+
 // AuthResponse 认证响应格式（匹配前端期望）
 type AuthResponse struct {
 	AccessToken  string    `json:"access_token"`
@@ -254,7 +261,36 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
+	h.respondWithTokenPair(c, user)
+}
 
+// EmailCodeLogin handles login via email verification code
+// POST /api/v1/auth/login/email-code
+func (h *AuthHandler) EmailCodeLogin(c *gin.Context) {
+	var req EmailCodeLoginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	// Turnstile 验证
+	if err := h.authService.VerifyTurnstile(c.Request.Context(), req.TurnstileToken, ip.GetClientIP(c)); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	user, err := h.authService.LoginByEmailCode(c.Request.Context(), req.Email, req.Code)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	if err := h.ensureBackendModeAllowsUser(c.Request.Context(), user); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
 	h.respondWithTokenPair(c, user)
 }
 

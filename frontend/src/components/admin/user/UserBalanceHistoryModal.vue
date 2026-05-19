@@ -20,13 +20,13 @@
                 {{ user.username }}
               </span>
             </div>
-            <p class="text-xs text-gray-400 dark:text-dark-500">
+            <p class="text-xs text-gray-400 dark:text-dark-300">
               {{ t('admin.users.createdAt') }}: {{ formatDateTime(user.created_at) }}
             </p>
           </div>
           <!-- Current balance: prominent display on the right -->
           <div class="flex-shrink-0 text-right">
-            <p class="text-xs text-gray-500 dark:text-dark-400">{{ t('admin.users.currentBalance') }}</p>
+            <p class="text-xs text-gray-500 dark:text-dark-300">{{ t('admin.users.currentBalance') }}</p>
             <p class="text-xl font-bold text-gray-900 dark:text-white">
               ${{ user.balance?.toFixed(2) || '0.00' }}
             </p>
@@ -34,11 +34,11 @@
         </div>
         <!-- Row 2: notes + total recharged -->
         <div class="mt-2.5 flex items-center justify-between border-t border-gray-200/60 pt-2.5 dark:border-dark-600/60">
-          <p class="min-w-0 flex-1 truncate text-xs text-gray-500 dark:text-dark-400" :title="user.notes || ''">
+          <p class="min-w-0 flex-1 truncate text-xs text-gray-500 dark:text-dark-300" :title="user.notes || ''">
             <template v-if="user.notes">{{ t('admin.users.notes') }}: {{ user.notes }}</template>
             <template v-else>&nbsp;</template>
           </p>
-          <p class="ml-4 flex-shrink-0 text-xs text-gray-500 dark:text-dark-400">
+          <p class="ml-4 flex-shrink-0 text-xs text-gray-500 dark:text-dark-300">
             {{ t('admin.users.totalRecharged') }}: <span class="font-semibold text-emerald-600 dark:text-emerald-400">${{ totalRecharged.toFixed(2) }}</span>
           </p>
         </div>
@@ -112,12 +112,12 @@
                 <!-- Notes (admin adjustment reason) -->
                 <p
                   v-if="item.notes"
-                  class="mt-0.5 text-xs text-gray-500 dark:text-dark-400"
+                  class="mt-0.5 text-xs text-gray-500 dark:text-dark-300"
                   :title="item.notes"
                 >
                   {{ item.notes.length > 60 ? item.notes.substring(0, 55) + '...' : item.notes }}
                 </p>
-                <p class="mt-0.5 text-xs text-gray-400 dark:text-dark-500">
+                <p class="mt-0.5 text-xs text-gray-400 dark:text-dark-300">
                   {{ formatDateTime(item.used_at || item.created_at) }}
                 </p>
               </div>
@@ -129,13 +129,13 @@
               </p>
               <p
                 v-if="isAdminType(item.type)"
-                class="text-xs text-gray-400 dark:text-dark-500"
+                class="text-xs text-gray-400 dark:text-dark-300"
               >
                 {{ t('redeem.adminAdjustment') }}
               </p>
               <p
                 v-else
-                class="font-mono text-xs text-gray-400 dark:text-dark-500"
+                class="font-mono text-xs text-gray-400 dark:text-dark-300"
               >
                 {{ item.code.slice(0, 8) }}...
               </p>
@@ -153,7 +153,7 @@
         >
           {{ t('pagination.previous') }}
         </button>
-        <span class="text-sm text-gray-500 dark:text-dark-400">
+        <span class="text-sm text-gray-500 dark:text-dark-300">
           {{ currentPage }} / {{ totalPages }}
         </span>
         <button

@@ -21,7 +21,7 @@
             <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
               {{ t('customPage.notFoundTitle') }}
             </h3>
-            <p class="mt-2 text-sm text-gray-500 dark:text-dark-400">
+            <p class="mt-2 text-sm text-gray-500 dark:text-dark-300">
               {{ t('customPage.notFoundDesc') }}
             </p>
           </div>
@@ -37,7 +37,7 @@
             <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
               {{ t('customPage.notConfiguredTitle') }}
             </h3>
-            <p class="mt-2 text-sm text-gray-500 dark:text-dark-400">
+            <p class="mt-2 text-sm text-gray-500 dark:text-dark-300">
               {{ t('customPage.notConfiguredDesc') }}
             </p>
           </div>

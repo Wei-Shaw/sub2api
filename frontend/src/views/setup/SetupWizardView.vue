@@ -11,7 +11,7 @@
           <Icon name="cog" size="xl" class="text-white" />
         </div>
         <h1 class="text-3xl font-bold text-gray-900 dark:text-white">{{ t('setup.title') }}</h1>
-        <p class="mt-2 text-gray-500 dark:text-dark-400">{{ t('setup.description') }}</p>
+        <p class="mt-2 text-gray-500 dark:text-dark-300">{{ t('setup.description') }}</p>
       </div>
 
       <!-- Progress Steps -->
@@ -26,7 +26,7 @@
                     ? 'bg-primary-500 text-white'
                     : currentStep === index
                       ? 'bg-primary-500 text-white ring-4 ring-primary-100 dark:ring-primary-900'
-                      : 'bg-gray-200 text-gray-500 dark:bg-dark-700 dark:text-dark-400'
+                      : 'bg-gray-200 text-gray-500 dark:bg-dark-700 dark:text-dark-300'
                 ]"
               >
                 <Icon
@@ -42,7 +42,7 @@
                 :class="
                   currentStep >= index
                     ? 'text-gray-900 dark:text-white'
-                    : 'text-gray-400 dark:text-dark-500'
+                    : 'text-gray-400 dark:text-dark-300'
                 "
               >
                 {{ step.title }}
@@ -65,7 +65,7 @@
             <h2 class="text-xl font-semibold text-gray-900 dark:text-white">
               {{ t('setup.database.title') }}
             </h2>
-            <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">
+            <p class="mt-1 text-sm text-gray-500 dark:text-dark-300">
               {{ t('setup.database.description') }}
             </p>
           </div>
@@ -96,7 +96,7 @@
               <p class="text-sm font-medium text-gray-900 dark:text-white">
                 {{ t("setup.redis.enableTls") }}
               </p>
-              <p class="text-xs text-gray-500 dark:text-dark-400">
+              <p class="text-xs text-gray-500 dark:text-dark-300">
                 {{ t("setup.redis.enableTlsHint") }}
               </p>
             </div>
@@ -190,7 +190,7 @@
             <h2 class="text-xl font-semibold text-gray-900 dark:text-white">
               {{ t('setup.redis.title') }}
             </h2>
-            <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">
+            <p class="mt-1 text-sm text-gray-500 dark:text-dark-300">
               {{ t('setup.redis.description') }}
             </p>
           </div>
@@ -242,7 +242,7 @@
               <p class="text-sm font-medium text-gray-900 dark:text-white">
                 {{ t("setup.redis.enableTls") }}
               </p>
-              <p class="text-xs text-gray-500 dark:text-dark-400">
+              <p class="text-xs text-gray-500 dark:text-dark-300">
                 {{ t("setup.redis.enableTlsHint") }}
               </p>
             </div>
@@ -297,7 +297,7 @@
             <h2 class="text-xl font-semibold text-gray-900 dark:text-white">
               {{ t('setup.admin.title') }}
             </h2>
-            <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">
+            <p class="mt-1 text-sm text-gray-500 dark:text-dark-300">
               {{ t('setup.admin.description') }}
             </p>
           </div>
@@ -345,14 +345,14 @@
             <h2 class="text-xl font-semibold text-gray-900 dark:text-white">
               {{ t('setup.ready.title') }}
             </h2>
-            <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">
+            <p class="mt-1 text-sm text-gray-500 dark:text-dark-300">
               {{ t('setup.ready.description') }}
             </p>
           </div>
 
           <div class="space-y-4">
             <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-700">
-              <h3 class="mb-2 text-sm font-medium text-gray-500 dark:text-dark-400">
+              <h3 class="mb-2 text-sm font-medium text-gray-500 dark:text-dark-300">
                 {{ t('setup.ready.database') }}
               </h3>
               <p class="text-gray-900 dark:text-white">
@@ -363,7 +363,7 @@
             </div>
 
             <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-700">
-              <h3 class="mb-2 text-sm font-medium text-gray-500 dark:text-dark-400">
+              <h3 class="mb-2 text-sm font-medium text-gray-500 dark:text-dark-300">
                 {{ t('setup.ready.redis') }}
               </h3>
               <p class="text-gray-900 dark:text-white">
@@ -372,7 +372,7 @@
             </div>
 
             <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-700">
-              <h3 class="mb-2 text-sm font-medium text-gray-500 dark:text-dark-400">
+              <h3 class="mb-2 text-sm font-medium text-gray-500 dark:text-dark-300">
                 {{ t('setup.ready.adminEmail') }}
               </h3>
               <p class="text-gray-900 dark:text-white">{{ formData.admin.email }}</p>

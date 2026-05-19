@@ -40,9 +40,9 @@ const sizeClasses = computed(() => {
 const colorClass = computed(() => {
   const colors: Record<SpinnerColor, string> = {
     primary: 'text-primary-500',
-    secondary: 'text-gray-500 dark:text-dark-400',
+    secondary: 'text-gray-500 dark:text-dark-300',
     white: 'text-white',
-    gray: 'text-gray-400 dark:text-dark-500'
+    gray: 'text-gray-400 dark:text-dark-300'
   }
   return colors[props.color]
 })

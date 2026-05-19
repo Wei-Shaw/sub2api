@@ -8268,7 +8268,7 @@ watch(
   @apply relative flex flex-1 items-center justify-center gap-1.5
          whitespace-nowrap rounded-xl px-2.5 py-2
          text-sm font-medium
-         text-gray-500 dark:text-dark-400
+         text-gray-500 dark:text-dark-300
          transition-all duration-200 ease-out;
 }
 

@@ -5,7 +5,7 @@
         <div class="text-sm font-medium text-gray-900 dark:text-white">
           {{ t('admin.announcements.form.targetingMode') }}
         </div>
-        <div class="mt-1 text-xs text-gray-500 dark:text-dark-400">
+        <div class="mt-1 text-xs text-gray-500 dark:text-dark-300">
           {{ mode === 'all' ? t('admin.announcements.form.targetingAll') : t('admin.announcements.form.targetingCustom') }}
         </div>
       </div>
@@ -40,7 +40,7 @@
       <div class="flex items-center justify-between">
         <div class="text-sm font-medium text-gray-900 dark:text-white">
           OR
-          <span class="ml-1 text-xs font-normal text-gray-500 dark:text-dark-400">
+          <span class="ml-1 text-xs font-normal text-gray-500 dark:text-dark-300">
             ({{ anyOf.length }}/50)
           </span>
         </div>
@@ -55,7 +55,7 @@
         </button>
       </div>
 
-      <div v-if="anyOf.length === 0" class="rounded-xl border border-dashed border-gray-300 p-4 text-sm text-gray-500 dark:border-dark-600 dark:text-dark-400">
+      <div v-if="anyOf.length === 0" class="rounded-xl border border-dashed border-gray-300 p-4 text-sm text-gray-500 dark:border-dark-600 dark:text-dark-300">
         {{ t('admin.announcements.form.targetingCustom') }}: {{ t('admin.announcements.form.addOrGroup') }}
       </div>
 
@@ -68,9 +68,9 @@
           <div class="min-w-0">
             <div class="text-sm font-medium text-gray-900 dark:text-white">
               {{ t('admin.announcements.form.targetingCustom') }} #{{ groupIndex + 1 }}
-              <span class="ml-2 text-xs font-normal text-gray-500 dark:text-dark-400">AND ({{ (group.all_of?.length || 0) }}/50)</span>
+              <span class="ml-2 text-xs font-normal text-gray-500 dark:text-dark-300">AND ({{ (group.all_of?.length || 0) }}/50)</span>
             </div>
-            <div class="mt-1 text-xs text-gray-500 dark:text-dark-400">
+            <div class="mt-1 text-xs text-gray-500 dark:text-dark-300">
               {{ t('admin.announcements.form.addAndCondition') }}
             </div>
           </div>

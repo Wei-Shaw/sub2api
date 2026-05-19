@@ -18,7 +18,7 @@
         <h3 class="mb-2 text-lg font-semibold text-gray-900 dark:text-white">
           {{ t('userSubscriptions.noActiveSubscriptions') }}
         </h3>
-        <p class="text-gray-500 dark:text-dark-400">
+        <p class="text-gray-500 dark:text-dark-300">
           {{ t('userSubscriptions.noActiveSubscriptionsDesc') }}
         </p>
       </div>
@@ -46,7 +46,7 @@
                     {{ platformLabel(subscription.group?.platform || '') }}
                   </span>
                 </div>
-                <p v-if="subscription.group?.description" class="mt-0.5 text-xs text-gray-500 dark:text-dark-400">
+                <p v-if="subscription.group?.description" class="mt-0.5 text-xs text-gray-500 dark:text-dark-300">
                   {{ subscription.group.description }}
                 </p>
               </div>
@@ -78,7 +78,7 @@
           <div class="space-y-4 p-4">
             <!-- Expiration Info -->
             <div v-if="subscription.expires_at" class="flex items-center justify-between text-sm">
-              <span class="text-gray-500 dark:text-dark-400">{{
+              <span class="text-gray-500 dark:text-dark-300">{{
                 t('userSubscriptions.expires')
               }}</span>
               <span :class="getExpirationClass(subscription.expires_at)">
@@ -86,7 +86,7 @@
               </span>
             </div>
             <div v-else class="flex items-center justify-between text-sm">
-              <span class="text-gray-500 dark:text-dark-400">{{
+              <span class="text-gray-500 dark:text-dark-300">{{
                 t('userSubscriptions.expires')
               }}</span>
               <span class="text-gray-700 dark:text-gray-300">{{
@@ -100,7 +100,7 @@
                 <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
                   {{ t('userSubscriptions.daily') }}
                 </span>
-                <span class="text-sm text-gray-500 dark:text-dark-400">
+                <span class="text-sm text-gray-500 dark:text-dark-300">
                   ${{ (subscription.daily_usage_usd || 0).toFixed(2) }} / ${{
                     subscription.group.daily_limit_usd.toFixed(2)
                   }}
@@ -125,7 +125,7 @@
               </div>
               <p
                 v-if="subscription.daily_window_start"
-                class="text-xs text-gray-500 dark:text-dark-400"
+                class="text-xs text-gray-500 dark:text-dark-300"
               >
                 {{
                   t('userSubscriptions.resetIn', {
@@ -141,7 +141,7 @@
                 <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
                   {{ t('userSubscriptions.weekly') }}
                 </span>
-                <span class="text-sm text-gray-500 dark:text-dark-400">
+                <span class="text-sm text-gray-500 dark:text-dark-300">
                   ${{ (subscription.weekly_usage_usd || 0).toFixed(2) }} / ${{
                     subscription.group.weekly_limit_usd.toFixed(2)
                   }}
@@ -166,7 +166,7 @@
               </div>
               <p
                 v-if="subscription.weekly_window_start"
-                class="text-xs text-gray-500 dark:text-dark-400"
+                class="text-xs text-gray-500 dark:text-dark-300"
               >
                 {{
                   t('userSubscriptions.resetIn', {
@@ -182,7 +182,7 @@
                 <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
                   {{ t('userSubscriptions.monthly') }}
                 </span>
-                <span class="text-sm text-gray-500 dark:text-dark-400">
+                <span class="text-sm text-gray-500 dark:text-dark-300">
                   ${{ (subscription.monthly_usage_usd || 0).toFixed(2) }} / ${{
                     subscription.group.monthly_limit_usd.toFixed(2)
                   }}
@@ -207,7 +207,7 @@
               </div>
               <p
                 v-if="subscription.monthly_window_start"
-                class="text-xs text-gray-500 dark:text-dark-400"
+                class="text-xs text-gray-500 dark:text-dark-300"
               >
                 {{
                   t('userSubscriptions.resetIn', {
@@ -224,7 +224,7 @@
                 !subscription.group?.weekly_limit_usd &&
                 !subscription.group?.monthly_limit_usd
               "
-              class="flex items-center justify-center rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 py-6 dark:from-emerald-900/20 dark:to-teal-900/20"
+              class="flex items-center justify-center rounded-xl bg-gradient-to-r from-primary-50 to-primary-100 py-6 dark:from-primary-900/20 dark:to-primary-900/30"
             >
               <div class="flex items-center gap-3">
                 <span class="text-4xl text-emerald-600 dark:text-emerald-400">∞</span>

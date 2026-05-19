@@ -274,16 +274,8 @@ type SendVerifyCodeResult struct {
 
 // SendVerifyCode 发送邮箱验证码（同步方式）
 func (s *AuthService) SendVerifyCode(ctx context.Context, email string) error {
-	// 检查是否开放注册（默认关闭）
-	if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
-		return ErrRegDisabled
-	}
-
 	if isReservedEmail(email) {
 		return ErrEmailReserved
-	}
-	if err := s.validateRegistrationEmailPolicy(ctx, email); err != nil {
-		return err
 	}
 
 	// 检查邮箱是否已存在
@@ -292,8 +284,18 @@ func (s *AuthService) SendVerifyCode(ctx context.Context, email string) error {
 		logger.LegacyPrintf("service.auth", "[Auth] Database error checking email exists: %v", err)
 		return ErrServiceUnavailable
 	}
+
 	if existsEmail {
-		return ErrEmailExists
+		// 已注册用户：允许发送验证码用于登录（不检查注册开关）
+		logger.LegacyPrintf("service.auth", "[Auth] Email exists, sending code for login: %s", email)
+	} else {
+		// 新用户注册：检查注册开关和邮箱策略
+		if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
+			return ErrRegDisabled
+		}
+		if err := s.validateRegistrationEmailPolicy(ctx, email); err != nil {
+			return err
+		}
 	}
 
 	// 发送验证码
@@ -314,17 +316,8 @@ func (s *AuthService) SendVerifyCode(ctx context.Context, email string) error {
 func (s *AuthService) SendVerifyCodeAsync(ctx context.Context, email string) (*SendVerifyCodeResult, error) {
 	logger.LegacyPrintf("service.auth", "[Auth] SendVerifyCodeAsync called for email: %s", email)
 
-	// 检查是否开放注册（默认关闭）
-	if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
-		logger.LegacyPrintf("service.auth", "%s", "[Auth] Registration is disabled")
-		return nil, ErrRegDisabled
-	}
-
 	if isReservedEmail(email) {
 		return nil, ErrEmailReserved
-	}
-	if err := s.validateRegistrationEmailPolicy(ctx, email); err != nil {
-		return nil, err
 	}
 
 	// 检查邮箱是否已存在
@@ -333,9 +326,19 @@ func (s *AuthService) SendVerifyCodeAsync(ctx context.Context, email string) (*S
 		logger.LegacyPrintf("service.auth", "[Auth] Database error checking email exists: %v", err)
 		return nil, ErrServiceUnavailable
 	}
+
 	if existsEmail {
-		logger.LegacyPrintf("service.auth", "[Auth] Email already exists: %s", email)
-		return nil, ErrEmailExists
+		// 已注册用户：允许发送验证码用于登录（不检查注册开关）
+		logger.LegacyPrintf("service.auth", "[Auth] Email exists, sending code for login: %s", email)
+	} else {
+		// 新用户注册：检查注册开关和邮箱策略
+		if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
+			logger.LegacyPrintf("service.auth", "%s", "[Auth] Registration is disabled")
+			return nil, ErrRegDisabled
+		}
+		if err := s.validateRegistrationEmailPolicy(ctx, email); err != nil {
+			return nil, err
+		}
 	}
 
 	// 检查邮件队列服务是否配置
@@ -460,6 +463,36 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (string
 	}
 
 	return token, user, nil
+}
+
+// LoginByEmailCode 用户通过邮箱验证码登录
+func (s *AuthService) LoginByEmailCode(ctx context.Context, email, code string) (*User, error) {
+	email = strings.TrimSpace(email)
+	code = strings.TrimSpace(code)
+
+	// 验证邮箱验证码
+	if s.emailService == nil {
+		return nil, infraerrors.BadRequest("EMAIL_NOT_CONFIGURED", "email service not configured")
+	}
+	if err := s.emailService.VerifyCode(ctx, email, code); err != nil {
+		return nil, infraerrors.BadRequest("INVALID_CODE", "invalid or expired verification code")
+	}
+
+	// 查找用户
+	user, err := s.userRepo.GetByEmail(ctx, email)
+	if err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			return nil, infraerrors.Unauthorized("USER_NOT_FOUND", "user not found")
+		}
+		logger.LegacyPrintf("service.auth", "[Auth] Database error during email code login: %v", err)
+		return nil, ErrServiceUnavailable
+	}
+
+	if !user.IsActive() {
+		return nil, ErrUserNotActive
+	}
+
+	return user, nil
 }
 
 // LoginOrRegisterOAuth 用于第三方 OAuth/SSO 登录：

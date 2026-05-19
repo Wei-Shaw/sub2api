@@ -338,7 +338,7 @@ onUnmounted(() => {
 }
 
 .date-picker-icon {
-  @apply text-gray-400 dark:text-dark-400;
+  @apply text-gray-400 dark:text-dark-300;
 }
 
 .date-picker-value {
@@ -346,7 +346,7 @@ onUnmounted(() => {
 }
 
 .date-picker-chevron {
-  @apply text-gray-400 dark:text-dark-400;
+  @apply text-gray-400 dark:text-dark-300;
 }
 
 .date-picker-dropdown {

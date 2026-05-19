@@ -20,7 +20,9 @@ var (
 )
 
 const (
-	affiliateInviteesLimit = 100
+	affiliateInviteesLimit      = 100
+	affiliateRegisterBonus      = 1.0 // 注册奖励 $1（双方各送）
+	affiliateRegisterBonusCap   = 10  // 同一邀请人每天最多获得 10 次注册奖励（被邀请人不限）
 	// AffiliateCodeMinLength / AffiliateCodeMaxLength bound both system-generated
 	// 12-char codes and admin-customized codes (e.g. "VIP2026").
 	AffiliateCodeMinLength = 4
@@ -103,6 +105,11 @@ type AffiliateRepository interface {
 	ThawFrozenQuota(ctx context.Context, userID int64) (float64, error)
 	TransferQuotaToBalance(ctx context.Context, userID int64) (float64, float64, error)
 	ListInvitees(ctx context.Context, inviterID int64, limit int) ([]AffiliateInvitee, error)
+
+	// 注册奖励：统计当天发放次数 + 发放奖励
+	CountRegisterBonusToday(ctx context.Context, inviterID int64) (int, error)
+	GrantRegisterBonus(ctx context.Context, inviterID, inviteeID int64, amount float64) error
+	GrantRegisterBonusToUser(ctx context.Context, userID, sourceUserID int64, amount float64, action string) error
 
 	// 管理端：用户级专属配置
 	UpdateUserAffCode(ctx context.Context, userID int64, newCode string) error
@@ -308,8 +315,56 @@ func (s *AffiliateService) BindInviterByCode(ctx context.Context, userID int64, 
 	if !bound {
 		return ErrAffiliateAlreadyBound
 	}
+
+	// Grant register bonus to both inviter and invitee (with daily cap).
+	// Best-effort: bonus failure does not block the binding.
+	s.grantRegisterBonusAsync(inviterSummary.UserID, userID)
+
 	return nil
 }
+
+// grantRegisterBonusAsync awards a register bonus to inviter and invitee in a
+// detached goroutine.  A daily cap (affiliateRegisterBonusCap) limits the
+// inviter's rewards; the invitee always receives their bonus regardless.
+func (s *AffiliateService) grantRegisterBonusAsync(inviterID, inviteeID int64) {
+	if s == nil || s.repo == nil {
+		return
+	}
+	const bonus = affiliateRegisterBonus
+	const dailyCap = affiliateRegisterBonusCap
+
+	go func() {
+		bgCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		// Always grant bonus to invitee (no limit).
+		if err := s.repo.GrantRegisterBonusToUser(bgCtx, inviteeID, inviterID, bonus, "register_bonus_invitee"); err != nil {
+			logger.LegacyPrintf("service.affiliate", "[Affiliate] Failed to grant register bonus to invitee %d: %v", inviteeID, err)
+		} else {
+			logger.LegacyPrintf("service.affiliate", "[Affiliate] Invitee bonus granted: invitee=%d amount=$%.2f", inviteeID, bonus)
+		}
+
+		// Check daily cap for inviter (0 = unlimited).
+		if dailyCap > 0 {
+			count, err := s.repo.CountRegisterBonusToday(bgCtx, inviterID)
+			if err != nil {
+				logger.LegacyPrintf("service.affiliate", "[Affiliate] Failed to count register bonus for inviter %d: %v", inviterID, err)
+				return
+			}
+			if count >= dailyCap {
+				logger.LegacyPrintf("service.affiliate", "[Affiliate] Inviter %d hit daily register bonus cap (%d), skipping inviter bonus", inviterID, dailyCap)
+				return
+			}
+		}
+
+		if err := s.repo.GrantRegisterBonusToUser(bgCtx, inviterID, inviteeID, bonus, "register_bonus"); err != nil {
+			logger.LegacyPrintf("service.affiliate", "[Affiliate] Failed to grant register bonus to inviter %d: %v", inviterID, err)
+		} else {
+			logger.LegacyPrintf("service.affiliate", "[Affiliate] Inviter bonus granted: inviter=%d invitee=%d amount=$%.2f", inviterID, inviteeID, bonus)
+		}
+	}()
+}
+
 
 func (s *AffiliateService) AccrueInviteRebate(ctx context.Context, inviteeUserID int64, baseRechargeAmount float64) (float64, error) {
 	return s.AccrueInviteRebateForOrder(ctx, inviteeUserID, baseRechargeAmount, nil)

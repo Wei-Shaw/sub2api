@@ -107,6 +107,41 @@ export default {
     },
     footer: {
       allRightsReserved: 'All rights reserved.'
+    },
+    hero: {
+      title: 'One Key, All AI Tools',
+      desc: 'Subscription to API. Codex CLI / Claude Code / OpenAI SDK one-click setup, multi-account smart routing.',
+      viewGuide: 'View Setup Guide',
+      clientCta: 'Download client setup'
+    },
+    console: {
+      title: 'Service Status',
+      subtitle: 'Current gateway metrics',
+      baseUrl: 'Base URL',
+      models: 'Models',
+      accounts: 'Pool Accounts',
+      protocol: 'Auth Protocol'
+    },
+    why: {
+      sectionLabel: 'Why Choose Us',
+      sectionTitle: 'Stable, Transparent, Developer-First',
+      security: 'Cloudflare Tunnel Protected',
+      securityDesc: 'Traffic routed through Cloudflare Tunnel. No public ports exposed. WARP proxy for anti-rate-limit.',
+      stability: 'Multi-Account Auto Routing',
+      stabilityDesc: 'Multiple subscription accounts in one group with automatic load balancing. Auto-failover on rate limits.',
+      transparency: 'Transparent Usage',
+      transparencyDesc: 'Real-time call counts, token consumption, and error rates per API Key.',
+      devFirst: 'Developer First',
+      devFirstDesc: 'Complete setup docs and one-click config commands. Codex CLI / Claude Code / Cursor ready out of the box.'
+    },
+    quickConfig: {
+      label: 'Quick Config',
+      title: 'Three Lines to Get Started',
+      subtitle: 'Copy the config below to your dev tools',
+      codexTitle: 'Codex CLI / OpenAI SDK',
+      claudeTitle: 'Claude Code / Anthropic SDK',
+      createKey: 'Sign in to create',
+      note: 'Replace sk-your-key with your actual API Key after creation'
     }
   },
 
@@ -346,8 +381,8 @@ export default {
     apiKeys: 'API Keys',
     usage: 'Usage',
     redeem: 'Redeem',
-    affiliate: 'Affiliate Rebates',
-    affiliateManagement: 'Affiliate Rebates',
+    affiliate: 'Invite & Earn',
+    affiliateManagement: 'Invite & Earn',
     affiliateInviteRecords: 'Invite Records',
     affiliateRebateRecords: 'Rebate Records',
     affiliateTransferRecords: 'Transfer Records',
@@ -368,6 +403,7 @@ export default {
     darkMode: 'Dark Mode',
     collapse: 'Collapse',
     expand: 'Expand',
+    docsCenter: 'Docs Center',
     logout: 'Logout',
     github: 'GitHub',
     mySubscriptions: 'My Subscriptions',
@@ -391,6 +427,10 @@ export default {
     signInToAccount: 'Sign in to your account to continue',
     signIn: 'Sign In',
     signingIn: 'Signing in...',
+    passwordLogin: 'Password',
+    codeLogin: 'Verification Code',
+    enterCode: 'Enter code',
+    codeSent: 'Code sent',
     createAccount: 'Create Account',
     signUpToStart: 'Sign up to start using {siteName}',
     signUp: 'Sign up',
@@ -435,6 +475,7 @@ export default {
     resendCode: 'Resend verification code',
     sendCodeDesc: "We'll send a verification code to",
     codeSentSuccess: 'Verification code sent! Please check your inbox.',
+    verifyCodeRequired: 'Please enter the verification code',
     verifying: 'Verifying...',
     verifyAndCreate: 'Verify & Create Account',
     resendCountdown: 'Resend code in {countdown}s',
@@ -455,6 +496,8 @@ export default {
     promoCodeValidating: 'Promo code is being validated, please wait',
     promoCodeInvalidCannotRegister: 'Invalid promo code. Please check and try again or clear the promo code field',
     invitationCodeLabel: 'Invitation Code',
+    referralCodeLabel: 'Referral Code',
+    referralCodePlaceholder: 'Have a referral code? Enter it to get $10 bonus',
     invitationCodePlaceholder: 'Enter invitation code',
     invitationCodeRequired: 'Invitation code is required',
     invitationCodeValid: 'Invitation code is valid',
@@ -613,7 +656,16 @@ export default {
     viewUsage: 'View Usage',
     checkDetailedLogs: 'Check detailed usage logs',
     redeemCode: 'Redeem Code',
-    addBalanceWithCode: 'Add balance with a code'
+    addBalanceWithCode: 'Add balance with a code',
+    quickstart: 'Quickstart',
+    quickstartDesc: 'Select a tool and copy the config',
+    copyConfig: 'Copy',
+    copied: 'Copied!',
+    viewFullGuide: 'View Full Guide',
+    yourApiKey: 'sk-your-api-key',
+    codexHint: 'Write to ~/.codex/config.toml, then run codex',
+    hermesHint: 'Write to the model section of ~/.hermes/config.yaml',
+    openclawHint: 'Write to the models section of ~/.openclaw/openclaw.json'
   },
 
   // Groups (shared)
@@ -681,13 +733,18 @@ export default {
     useKey: 'Use Key',
     useKeyModal: {
       title: 'Use API Key',
-      description:
-        'Add the following environment variables to your terminal profile or run directly in terminal to configure API access.',
+      simpleDesc: 'Copy the prompt and API Key below, send them to your AI assistant, and it will configure everything automatically.',
+      promptLabel: 'Configuration Prompt',
       copy: 'Copy',
       copied: 'Copied',
-      note: 'These environment variables will be active in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc, or the appropriate configuration file.',
+      supportedModels: 'Supported Models',
+      usageTip: 'Send the prompt and API Key to your AI assistant, and it will configure Codex CLI for you.',
       noGroupTitle: 'Please assign a group first',
       noGroupDescription: 'This API key has not been assigned to a group. Please click the group column in the key list to assign one before viewing the configuration.',
+      // Legacy keys kept for backward compatibility
+      description:
+        'Add the following environment variables to your terminal profile or run directly in terminal to configure API access.',
+      note: 'These environment variables will be active in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc, or the appropriate configuration file.',
       openai: {
         description: 'Add the following configuration files to your Codex CLI config directory.',
         configTomlHint: 'Make sure the following content is at the beginning of the config.toml file',
@@ -782,6 +839,8 @@ export default {
       inactive: 'Inactive',
       quota_exhausted: 'Quota Exhausted',
       expired: 'Expired',
+      groupInactive: 'Group Inactive',
+      groupDeleted: 'Group Deleted',
     },
   },
 
@@ -984,8 +1043,8 @@ export default {
   },
 
   affiliate: {
-    title: 'Affiliate Rebates',
-    description: 'Invite new users and convert your rebate quota into account balance',
+    title: 'Invite & Earn',
+    description: 'Invite new users — both you and your friend get $10 balance bonus',
     yourCode: 'Your Affiliate Code',
     inviteLink: 'Invite Link',
     copyCode: 'Copy Code',
@@ -6153,6 +6212,7 @@ export default {
     endsAt: 'Ends at',
     empty: 'No announcements',
     emptyUnread: 'No unread announcements',
+    subtitle: 'View system announcements and updates',
     total: 'announcements',
     emptyDescription: 'There are no system announcements at this time',
     readStatus: 'You have read this announcement',
@@ -6202,8 +6262,8 @@ export default {
     // Admin tour steps
     admin: {
       welcome: {
-        title: '👋 Welcome to Sub2API',
-        description: '<div style="line-height: 1.8;"><p style="margin-bottom: 16px;">Sub2API is a powerful AI service gateway platform that helps you easily manage and distribute AI services.</p><p style="margin-bottom: 12px;"><b>🎯 Core Features:</b></p><ul style="margin-left: 20px; margin-bottom: 16px;"><li>📦 <b>Group Management</b> - Create service tiers (VIP, Free Trial, etc.)</li><li>🔗 <b>Account Pool</b> - Connect multiple upstream AI service accounts</li><li>🔑 <b>Key Distribution</b> - Generate independent API Keys for users</li><li>💰 <b>Billing Control</b> - Flexible rate and quota management</li></ul><p style="color: #10b981; font-weight: 600;">Let\'s complete the initial setup in 3 minutes →</p></div>',
+        title: '👋 Welcome to WILLEAI',
+        description: '<div style="line-height: 1.8;"><p style="margin-bottom: 16px;">WILLEAI is a powerful AI service gateway platform that helps you easily manage and distribute AI services.</p><p style="margin-bottom: 12px;"><b>🎯 Core Features:</b></p><ul style="margin-left: 20px; margin-bottom: 16px;"><li>📦 <b>Group Management</b> - Create service tiers (VIP, Free Trial, etc.)</li><li>🔗 <b>Account Pool</b> - Connect multiple upstream AI service accounts</li><li>🔑 <b>Key Distribution</b> - Generate independent API Keys for users</li>💰 <b>Billing Control</b> - Flexible rate and quota management</li></ul><p style="color: #10b981; font-weight: 600;">Let\'s complete the initial setup in 3 minutes →</p></div>',
         nextBtn: 'Start Setup 🚀',
         prevBtn: 'Skip'
       },
@@ -6302,8 +6362,8 @@ export default {
     // User tour steps
     user: {
       welcome: {
-        title: '👋 Welcome to Sub2API',
-        description: '<div style="line-height: 1.8;"><p style="margin-bottom: 16px;">Hello! Welcome to the Sub2API AI service platform.</p><p style="margin-bottom: 12px;"><b>🎯 Quick Start:</b></p><ul style="margin-left: 20px; margin-bottom: 16px;"><li>🔑 Create API Key</li><li>📋 Copy key to your application</li><li>🚀 Start using AI services</li></ul><p style="color: #10b981; font-weight: 600;">Just 1 minute, let\'s get started →</p></div>',
+        title: '👋 Welcome to WILLEAI',
+        description: '<div style="line-height: 1.8;"><p style="margin-bottom: 16px;">Hello! Welcome to the WILLEAI AI service platform.</p><p style="margin-bottom: 12px;"><b>🎯 Quick Start:</b></p><ul style="margin-left: 20px; margin-bottom: 16px;"><li>🔑 Create API Key</li><li>📋 Copy key to your application</li><li>🚀 Start using AI services</li></ul><p style="color: #10b981; font-weight: 600;">Just 1 minute, let\'s get started →</p></div>',
         nextBtn: 'Start 🚀',
         prevBtn: 'Skip'
       },
@@ -6643,6 +6703,104 @@ export default {
         revoked: 'Revoked',
       },
     },
+  },
+
+  // Setup Guide Page
+  guide: {
+    title: 'Setup Guide',
+    subtitle: 'Choose your tool, copy the config and get started',
+    badge: 'Quick Start',
+    login: 'Login',
+    backToLogin: 'Back to Login',
+    copy: 'Copy',
+    copied: '✓ Copied',
+    createKey: 'Sign in to create',
+    backToHome: 'Back to Home',
+    toc: 'On this page',
+    troubleshoot: 'Troubleshooting',
+    solution: 'Solution',
+    errorMeaning: 'Meaning',
+    nav: {
+      intro: 'Introduction',
+      quickStart: 'Quick Start',
+      account: 'Account & Rules',
+      overview: 'Overview',
+      errors: 'Error Codes',
+    },
+    step1: 'Set Environment Variables',
+    step2: 'Verify Configuration',
+    codex: {
+      title: 'Codex CLI',
+      intro: 'Codex CLI is OpenAI\'s command-line coding assistant, supporting the latest models like GPT-5.5',
+      err1: 'Upstream account balance insufficient, contact admin to top up',
+      err2: 'Invalid API Key, check if copied correctly',
+      err3: 'Rate limited, system will auto-switch upstream accounts',
+    },
+    claude: {
+      title: 'Claude Code',
+      intro: 'Claude Code is Anthropic\'s AI coding assistant, accessible via API proxy',
+      err1: 'Claude Code requires a session token, check your Anthropic API Key',
+      err2: 'Model name not in supported list, use /v1/models to check available models',
+      err3: 'Claude Code Base URL should NOT include /v1 suffix',
+    },
+    cursor: {
+      title: 'Cursor',
+      intro: 'Cursor is an AI-powered code editor that supports custom API endpoints',
+      setting1: 'Open Settings → Models → OpenAI API Key and enter your API Key',
+      setting2: 'Enter the URL below in Override OpenAI Base URL',
+      setting3: 'Save settings and start a new conversation to begin',
+      test: 'Start a new conversation and send a message to test if AI responds correctly',
+    },
+    sdk: {
+      title: 'OpenAI SDK',
+      intro: 'For calling OpenAI-compatible APIs directly in Python / Node.js projects',
+    },
+    hermes: {
+      title: 'Hermes Agent',
+      intro: 'Hermes Agent is an open-source AI coding assistant that supports custom OpenAI-compatible endpoints',
+      step1desc: 'Edit ~/.hermes/config.yaml to add a custom provider:',
+      step2desc: 'Or switch model and provider directly from the terminal:',
+      err1: 'Provider name not configured in config.yaml, check the model.provider field',
+      err2: 'Model name not in the provider\'s supported list, check upstream availability',
+      err3: 'base_url connection failed, check network or endpoint address',
+    },
+    openclaw: {
+      title: 'OpenClaw',
+      intro: 'OpenClaw is an open-source AI agent platform that connects to custom endpoints via JSON config',
+      step1desc: 'Edit ~/.openclaw/openclaw.json and add to models.providers:',
+      step2desc: 'Once configured, switch to the new provider via CLI:',
+      err1: 'Provider name not registered in openclaw.json, check the providers field',
+      err2: 'Invalid JSON format, validate the config file with jsonlint',
+      err3: 'Model not declared in provider\'s models array, add model config',
+    },
+    opencode: {
+      title: 'OpenCode',
+      intro: 'OpenCode is an open-source AI coding assistant with TUI and CLI modes, configurable via JSON',
+      step1desc: 'Create or edit ~/.config/opencode/opencode.jsonc and add a custom provider:',
+      step2desc: 'Once configured, store your API key via auth login:',
+      err1: 'Provider name not registered in opencode.json, check the providers config',
+      err2: 'Invalid JSON format, validate the config file with jsonlint',
+      err3: 'Model not declared in provider\'s models, add model config',
+    },
+    faq: {
+      title: 'FAQ',
+      q1: 'Which models are supported?',
+      a1: 'GPT-5.5, GPT-5.4, GPT-5.4-mini, GPT-5.3-codex and more. View the full list via the /v1/models endpoint',
+      q2: 'Where do I get an API Key?',
+      a2: 'Log in and create one on the "API Keys" page',
+      q3: 'Are there rate limits?',
+      a3: 'Each account has independent rate limits. Multi-account pools automatically balance the load',
+      q4: 'What if the connection times out?',
+      a4: 'Please check your network environment. Users in China may need to use a proxy',
+    },
+    err401: 'Authentication failed',
+    err401sol: 'Check if your API Key is correct, expired or disabled',
+    err403: 'Access denied',
+    err403sol: 'Current Key lacks permission for this model or endpoint, check group settings',
+    err429: 'Rate limit exceeded',
+    err429sol: 'Retry later. System auto-switches upstream accounts for load balancing',
+    err502: 'Upstream service error',
+    err502sol: 'Upstream API temporarily unavailable. System will auto-retry. Contact admin if persistent',
   },
 
 }

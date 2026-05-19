@@ -59,7 +59,7 @@
           <template #cell-order="{ row }">
             <div class="space-y-0.5">
               <div class="font-mono text-sm text-gray-900 dark:text-white">#{{ row.order_id }}</div>
-              <div class="max-w-56 truncate text-sm text-gray-500 dark:text-dark-400">{{ row.out_trade_no }}</div>
+              <div class="max-w-56 truncate text-sm text-gray-500 dark:text-dark-300">{{ row.out_trade_no }}</div>
             </div>
           </template>
           <template #cell-payment_type="{ row }">
@@ -126,7 +126,7 @@
         <div class="rounded-lg border border-gray-100 bg-gray-50 p-4 dark:border-dark-700 dark:bg-dark-800">
           <div class="font-mono text-sm text-gray-900 dark:text-white">#{{ selectedOverview.user_id }}</div>
           <div class="mt-1 text-sm font-medium text-gray-900 dark:text-white">{{ selectedOverview.email || '-' }}</div>
-          <div class="mt-0.5 text-sm text-gray-500 dark:text-dark-400">{{ selectedOverview.username || '-' }}</div>
+          <div class="mt-0.5 text-sm text-gray-500 dark:text-dark-300">{{ selectedOverview.username || '-' }}</div>
         </div>
         <div class="grid gap-3 sm:grid-cols-2">
           <OverviewStat :label="t('admin.affiliates.overview.affCode')" :value="selectedOverview.aff_code || '-'" mono />
@@ -349,7 +349,7 @@ const UserCell = defineComponent({
         type: cellProps.clickable ? 'button' : undefined,
         onClick: cellProps.clickable ? () => emit('open', cellProps.id) : undefined,
       }, cellProps.email || '-'),
-      h('div', { class: 'max-w-56 truncate text-sm text-gray-500 dark:text-dark-400' }, cellProps.username || '-'),
+      h('div', { class: 'max-w-56 truncate text-sm text-gray-500 dark:text-dark-300' }, cellProps.username || '-'),
     ])
   },
 })
@@ -376,7 +376,7 @@ const NullableAmountText = defineComponent({
     return () => {
       const value = amountProps.value
       if (value === null || value === undefined) {
-        return h('span', { class: 'text-sm text-gray-400 dark:text-dark-500' }, '-')
+        return h('span', { class: 'text-sm text-gray-400 dark:text-dark-300' }, '-')
       }
       return h(AmountText, { value })
     }
@@ -391,7 +391,7 @@ const OverviewStat = defineComponent({
   },
   setup(statProps) {
     return () => h('div', { class: 'rounded-lg border border-gray-100 bg-white p-3 dark:border-dark-700 dark:bg-dark-900' }, [
-      h('div', { class: 'text-sm text-gray-500 dark:text-dark-400' }, statProps.label),
+      h('div', { class: 'text-sm text-gray-500 dark:text-dark-300' }, statProps.label),
       h('div', {
         class: statProps.mono
           ? 'mt-1 font-mono text-base font-semibold text-gray-900 dark:text-white'

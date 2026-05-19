@@ -76,7 +76,7 @@ onBeforeUnmount(() => {
         class="rounded bg-primary-50 px-1 py-px text-[10px] font-medium leading-tight text-primary-600 dark:bg-primary-900/30 dark:text-primary-400"
       >{{ t('keys.endpoints.default') }}</span>
 
-      <span class="text-gray-300 dark:text-dark-500">|</span>
+      <span class="text-gray-300 dark:text-dark-300">|</span>
 
       <div class="group/endpoint relative flex items-center gap-1.5">
         <div

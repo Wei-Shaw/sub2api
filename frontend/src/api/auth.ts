@@ -107,6 +107,30 @@ export async function login(credentials: LoginRequest): Promise<LoginResponse> {
 }
 
 /**
+ * Login by email verification code
+ */
+export async function loginByEmailCode(
+  email: string,
+  code: string,
+  turnstileToken?: string
+): Promise<AuthResponse> {
+  const { data } = await apiClient.post<AuthResponse>('/auth/login/email-code', {
+    email,
+    code,
+    turnstile_token: turnstileToken
+  })
+  setAuthToken(data.access_token)
+  if (data.refresh_token) {
+    setRefreshToken(data.refresh_token)
+  }
+  if (data.expires_in) {
+    setTokenExpiresAt(data.expires_in)
+  }
+  localStorage.setItem('auth_user', JSON.stringify(data.user))
+  return data
+}
+
+/**
  * Complete login with 2FA code
  * @param request - Temp token and TOTP code
  * @returns Authentication response with token and user data
