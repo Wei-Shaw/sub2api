@@ -388,6 +388,14 @@
                 <span class="text-xs">{{ t('admin.subscriptions.adjust') }}</span>
               </button>
               <button
+                v-if="row.status === 'active' || row.status === 'expired'"
+                @click="handleSwitch(row)"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-purple-50 hover:text-purple-600 dark:hover:bg-purple-900/20 dark:hover:text-purple-400"
+              >
+                <Icon name="swap" size="sm" />
+                <span class="text-xs">{{ t('admin.subscriptions.switchGroup') }}</span>
+              </button>
+              <button
                 v-if="row.status === 'active'"
                 @click="handleResetQuota(row)"
                 :disabled="resettingQuota && resettingSubscription?.id === row.id"
@@ -633,6 +641,77 @@
       </template>
     </BaseDialog>
 
+    <!-- Switch Subscription Group Modal -->
+    <BaseDialog
+      :show="showSwitchModal"
+      :title="t('admin.subscriptions.switchSubscriptionGroup')"
+      width="normal"
+      @close="closeSwitchModal"
+    >
+      <form
+        v-if="switchingSubscription"
+        id="switch-subscription-form"
+        @submit.prevent="handleSwitchSubscription"
+        class="space-y-5"
+      >
+        <div class="rounded-lg bg-gray-50 p-4 dark:bg-dark-700">
+          <p class="text-sm text-gray-600 dark:text-gray-400">
+            {{ t('admin.subscriptions.switchingFor') }}
+            <span class="font-medium text-gray-900 dark:text-white">{{ switchingSubscription.user?.email }}</span>
+          </p>
+          <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+            {{ t('admin.subscriptions.currentGroup') }}:
+            <span class="font-medium text-gray-900 dark:text-white">{{ switchingSubscription.group?.name || '-' }}</span>
+          </p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.subscriptions.form.group') }}</label>
+          <Select
+            v-model="switchForm.group_id"
+            :options="switchGroupOptions"
+            :placeholder="t('admin.subscriptions.selectGroup')"
+          >
+            <template #selected="{ option }">
+              <GroupBadge
+                v-if="option"
+                :name="(option as unknown as GroupOption).label"
+                :platform="(option as unknown as GroupOption).platform"
+                :subscription-type="(option as unknown as GroupOption).subscriptionType"
+                :rate-multiplier="(option as unknown as GroupOption).rate"
+              />
+              <span v-else class="text-gray-400">{{ t('admin.subscriptions.selectGroup') }}</span>
+            </template>
+            <template #option="{ option, selected }">
+              <GroupOptionItem
+                :name="(option as unknown as GroupOption).label"
+                :platform="(option as unknown as GroupOption).platform"
+                :subscription-type="(option as unknown as GroupOption).subscriptionType"
+                :rate-multiplier="(option as unknown as GroupOption).rate"
+                :description="(option as unknown as GroupOption).description"
+                :selected="selected"
+              />
+            </template>
+          </Select>
+          <p class="input-hint">{{ t('admin.subscriptions.switchGroupHint') }}</p>
+        </div>
+      </form>
+      <template #footer>
+        <div v-if="switchingSubscription" class="flex justify-end gap-3">
+          <button @click="closeSwitchModal" type="button" class="btn btn-secondary">
+            {{ t('common.cancel') }}
+          </button>
+          <button
+            type="submit"
+            form="switch-subscription-form"
+            :disabled="submitting"
+            class="btn btn-primary"
+          >
+            {{ submitting ? t('admin.subscriptions.switching') : t('admin.subscriptions.switchGroup') }}
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
+
     <!-- Revoke Confirmation Dialog -->
     <ConfirmDialog
       :show="showRevokeDialog"
@@ -777,6 +856,7 @@ const showGuideModal = ref(false)
 
 const guideActionRows = computed(() => [
   { action: t('admin.subscriptions.guide.actions.adjust'), desc: t('admin.subscriptions.guide.actions.adjustDesc') },
+  { action: t('admin.subscriptions.guide.actions.switchGroup'), desc: t('admin.subscriptions.guide.actions.switchGroupDesc') },
   { action: t('admin.subscriptions.guide.actions.resetQuota'), desc: t('admin.subscriptions.guide.actions.resetQuotaDesc') },
   { action: t('admin.subscriptions.guide.actions.revoke'), desc: t('admin.subscriptions.guide.actions.revokeDesc') }
 ])
@@ -939,12 +1019,15 @@ const pagination = reactive({
 
 const showAssignModal = ref(false)
 const showExtendModal = ref(false)
+const showSwitchModal = ref(false)
 const showRevokeDialog = ref(false)
 const showResetQuotaConfirm = ref(false)
 const submitting = ref(false)
 const resettingSubscription = ref<UserSubscription | null>(null)
 const resettingQuota = ref(false)
 const extendingSubscription = ref<UserSubscription | null>(null)
+const switchingSubscription = ref<UserSubscription | null>(null)
+const switchingUserGroupIds = ref<Set<number>>(new Set())
 const revokingSubscription = ref<UserSubscription | null>(null)
 
 const assignForm = reactive({
@@ -955,6 +1038,10 @@ const assignForm = reactive({
 
 const extendForm = reactive({
   days: 30
+})
+
+const switchForm = reactive({
+  group_id: null as number | null
 })
 
 // Group options for filter (all groups)
@@ -983,6 +1070,10 @@ const subscriptionGroupOptions = computed(() =>
       subscriptionType: g.subscription_type,
       rate: g.rate_multiplier
     }))
+)
+
+const switchGroupOptions = computed(() =>
+  subscriptionGroupOptions.value.filter((option) => !switchingUserGroupIds.value.has(option.value))
 )
 
 const applyFilters = () => {
@@ -1236,6 +1327,52 @@ const handleExtendSubscription = async () => {
   } catch (error: any) {
     appStore.showError(error.response?.data?.detail || t('admin.subscriptions.failedToAdjust'))
     console.error('Error adjusting subscription:', error)
+  } finally {
+    submitting.value = false
+  }
+}
+
+const handleSwitch = async (subscription: UserSubscription) => {
+  switchingSubscription.value = subscription
+  switchingUserGroupIds.value = new Set([subscription.group_id])
+  switchForm.group_id = null
+  showSwitchModal.value = true
+
+  try {
+    const response = await adminAPI.subscriptions.listByUser(subscription.user_id, 1, 100)
+    if (switchingSubscription.value?.id === subscription.id) {
+      switchingUserGroupIds.value = new Set(response.items.map((item) => item.group_id))
+    }
+  } catch (error) {
+    console.error('Error loading user subscriptions:', error)
+  }
+}
+
+const closeSwitchModal = () => {
+  showSwitchModal.value = false
+  switchingSubscription.value = null
+  switchingUserGroupIds.value = new Set()
+  switchForm.group_id = null
+}
+
+const handleSwitchSubscription = async () => {
+  if (!switchingSubscription.value) return
+  if (!switchForm.group_id) {
+    appStore.showError(t('admin.subscriptions.pleaseSelectGroup'))
+    return
+  }
+
+  submitting.value = true
+  try {
+    await adminAPI.subscriptions.switchGroup(switchingSubscription.value.id, {
+      group_id: switchForm.group_id
+    })
+    appStore.showSuccess(t('admin.subscriptions.subscriptionSwitched'))
+    closeSwitchModal()
+    loadSubscriptions()
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.subscriptions.failedToSwitch'))
+    console.error('Error switching subscription group:', error)
   } finally {
     submitting.value = false
   }

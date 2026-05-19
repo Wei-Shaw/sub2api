@@ -59,6 +59,10 @@ type AdjustSubscriptionRequest struct {
 	Days int `json:"days" binding:"required,min=-36500,max=36500"` // negative to shorten, positive to extend
 }
 
+type SwitchSubscriptionGroupRequest struct {
+	GroupID int64 `json:"group_id" binding:"required"`
+}
+
 // List handles listing all subscriptions with pagination and filters
 // GET /api/v1/admin/subscriptions
 func (h *SubscriptionHandler) List(c *gin.Context) {
@@ -210,6 +214,35 @@ func (h *SubscriptionHandler) Extend(c *gin.Context) {
 	}
 	executeAdminIdempotentJSON(c, "admin.subscriptions.extend", idempotencyPayload, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
 		subscription, execErr := h.subscriptionService.ExtendSubscription(ctx, subscriptionID, req.Days)
+		if execErr != nil {
+			return nil, execErr
+		}
+		return dto.UserSubscriptionFromServiceAdmin(subscription), nil
+	})
+}
+
+func (h *SubscriptionHandler) SwitchGroup(c *gin.Context) {
+	subscriptionID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid subscription ID")
+		return
+	}
+
+	var req SwitchSubscriptionGroupRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	idempotencyPayload := struct {
+		SubscriptionID int64                          `json:"subscription_id"`
+		Body           SwitchSubscriptionGroupRequest `json:"body"`
+	}{
+		SubscriptionID: subscriptionID,
+		Body:           req,
+	}
+	executeAdminIdempotentJSON(c, "admin.subscriptions.switch_group", idempotencyPayload, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		subscription, execErr := h.subscriptionService.SwitchSubscriptionGroup(ctx, subscriptionID, req.GroupID)
 		if execErr != nil {
 			return nil, execErr
 		}

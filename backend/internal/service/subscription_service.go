@@ -29,6 +29,7 @@ var (
 	ErrSubscriptionExpired        = infraerrors.Forbidden("SUBSCRIPTION_EXPIRED", "subscription has expired")
 	ErrSubscriptionSuspended      = infraerrors.Forbidden("SUBSCRIPTION_SUSPENDED", "subscription is suspended")
 	ErrSubscriptionAlreadyExists  = infraerrors.Conflict("SUBSCRIPTION_ALREADY_EXISTS", "subscription already exists for this user and group")
+	ErrSubscriptionSwitchConflict = infraerrors.Conflict("SUBSCRIPTION_SWITCH_CONFLICT", "target subscription group already exists for this user")
 	ErrSubscriptionAssignConflict = infraerrors.Conflict("SUBSCRIPTION_ASSIGN_CONFLICT", "subscription exists but request conflicts with existing assignment semantics")
 	ErrGroupNotSubscriptionType   = infraerrors.BadRequest("GROUP_NOT_SUBSCRIPTION_TYPE", "group is not a subscription type")
 	ErrInvalidInput               = infraerrors.BadRequest("INVALID_INPUT", "at least one of resetDaily, resetWeekly, or resetMonthly must be true")
@@ -603,6 +604,55 @@ func (s *SubscriptionService) ExtendSubscription(ctx context.Context, subscripti
 			cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			_ = s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
+		}()
+	}
+
+	return s.userSubRepo.GetByID(ctx, subscriptionID)
+}
+
+func (s *SubscriptionService) SwitchSubscriptionGroup(ctx context.Context, subscriptionID, targetGroupID int64) (*UserSubscription, error) {
+	sub, err := s.userSubRepo.GetByID(ctx, subscriptionID)
+	if err != nil {
+		return nil, ErrSubscriptionNotFound
+	}
+
+	targetGroup, err := s.groupRepo.GetByID(ctx, targetGroupID)
+	if err != nil {
+		return nil, err
+	}
+	if !targetGroup.IsActive() {
+		return nil, infraerrors.BadRequest("GROUP_NOT_ACTIVE", "group is not active")
+	}
+	if !targetGroup.IsSubscriptionType() {
+		return nil, ErrGroupNotSubscriptionType
+	}
+	if sub.GroupID == targetGroupID {
+		return sub, nil
+	}
+
+	exists, err := s.userSubRepo.ExistsByUserIDAndGroupID(ctx, sub.UserID, targetGroupID)
+	if err != nil {
+		return nil, err
+	}
+	if exists {
+		return nil, ErrSubscriptionSwitchConflict
+	}
+
+	oldGroupID := sub.GroupID
+	sub.GroupID = targetGroupID
+	if err := s.userSubRepo.Update(ctx, sub); err != nil {
+		return nil, err
+	}
+
+	s.InvalidateSubCache(sub.UserID, oldGroupID)
+	s.InvalidateSubCache(sub.UserID, targetGroupID)
+	if s.billingCacheService != nil {
+		userID := sub.UserID
+		go func() {
+			cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = s.billingCacheService.InvalidateSubscription(cacheCtx, userID, oldGroupID)
+			_ = s.billingCacheService.InvalidateSubscription(cacheCtx, userID, targetGroupID)
 		}()
 	}
 
