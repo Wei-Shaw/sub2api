@@ -106,9 +106,15 @@
 <script setup lang="ts">
 import { computed, ref, watch REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
-import type { BodyOverrideMode REDACTED from '@/api/admin/channelMonitor'
+import type { APIMode, BodyOverrideMode, Provider REDACTED from '@/api/admin/channelMonitor'
+import {
+  API_MODE_RESPONSES,
+  PROVIDER_OPENAI,
+REDACTED from '@/constants/channelMonitor'
 
 const props = defineProps<{
+  provider?: Provider
+  apiMode?: APIMode
   extraHeaders: Record<string, string>
   bodyOverrideMode: BodyOverrideMode
   bodyOverride: Record<string, unknown> | null
@@ -293,6 +299,18 @@ const bodyModeHint = computed(() => {
 REDACTED)
 
 const bodyPlaceholder = computed(() => {
+  if (props.provider === PROVIDER_OPENAI && props.apiMode === API_MODE_RESPONSES) {
+    if (props.bodyOverrideMode === 'merge') {
+      return '{\n  "max_output_tokens": 20\nREDACTED'
+    REDACTED
+    return '{\n  "model": "gpt-4o-mini",\n  "instructions": "You are a health check endpoint. Reply briefly.",\n  "input": "Reply with exactly: ok",\n  "max_output_tokens": 20,\n  "stream": false\nREDACTED'
+  REDACTED
+  if (props.provider === PROVIDER_OPENAI) {
+    if (props.bodyOverrideMode === 'merge') {
+      return '{\n  "max_tokens": 20\nREDACTED'
+    REDACTED
+    return '{\n  "model": "gpt-4o-mini",\n  "messages": [{"role":"user","content":"Reply with exactly: ok"REDACTED],\n  "max_tokens": 20,\n  "stream": false\nREDACTED'
+  REDACTED
   if (props.bodyOverrideMode === 'merge') {
     return '{\n  "system": "You are Claude Code..."\nREDACTED'
   REDACTED
