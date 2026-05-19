@@ -201,10 +201,7 @@
                 }}</span>
                 <span
                   class="ml-1 font-medium text-emerald-600 dark:text-emerald-400"
-                  >{{
-                    (row.active_account_count || 0) -
-                    (row.rate_limited_account_count || 0)
-                  }}</span
+                  >{{ getAvailableGroupAccountCount(row) }}</span
                 >
                 <span
                   class="ml-1 inline-flex items-center rounded bg-gray-100 px-1.5 py-0.5 font-medium text-gray-800 dark:bg-dark-600 dark:text-gray-300"
@@ -2855,6 +2852,7 @@ import GroupRateMultipliersModal from "@/components/admin/group/GroupRateMultipl
 import GroupRPMOverridesModal from "@/components/admin/group/GroupRPMOverridesModal.vue";
 import GroupCapacityBadge from "@/components/common/GroupCapacityBadge.vue";
 import { VueDraggable } from "vue-draggable-plus";
+import { getAvailableGroupAccountCount } from "@/utils/groupAccountStats";
 import { createStableObjectKeyResolver } from "@/utils/stableObjectKey";
 import { useKeyedDebouncedSearch } from "@/composables/useKeyedDebouncedSearch";
 import { getPersistedPageSize } from "@/composables/usePersistedPageSize";

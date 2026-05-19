@@ -150,6 +150,7 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 		SupportedModelScopes:        g.SupportedModelScopes,
 		AccountCount:                g.AccountCount,
 		ActiveAccountCount:          g.ActiveAccountCount,
+		AvailableAccountCount:       g.AvailableAccountCount,
 		RateLimitedAccountCount:     g.RateLimitedAccountCount,
 		SortOrder:                   g.SortOrder,
 	}

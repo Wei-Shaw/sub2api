@@ -72,6 +72,7 @@ type Group struct {
 	AccountGroups           []AccountGroup
 	AccountCount            int64
 	ActiveAccountCount      int64
+	AvailableAccountCount   int64
 	RateLimitedAccountCount int64
 }
 

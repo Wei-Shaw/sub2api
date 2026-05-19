@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"testing"
+	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -649,6 +650,59 @@ func (s *GroupRepoSuite) TestGetAccountCount_Empty() {
 	count, _, err := s.repo.GetAccountCount(s.ctx, group.ID)
 	s.Require().NoError(err)
 	s.Require().Zero(count)
+}
+
+func (s *GroupRepoSuite) TestLoadAccountCounts_UsesSchedulablePoolSemantics() {
+	group := mustCreateGroup(s.T(), s.tx.Client(), &service.Group{
+		Name:             "g-pool-counts",
+		Platform:         service.PlatformAnthropic,
+		RateMultiplier:   1.0,
+		IsExclusive:      false,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+	})
+
+	now := time.Now()
+
+	available := mustCreateAccount(s.T(), s.tx.Client(), &service.Account{Name: "available"})
+	rateLimited := mustCreateAccount(s.T(), s.tx.Client(), &service.Account{Name: "rate-limited"})
+	manualUnsched := mustCreateAccount(s.T(), s.tx.Client(), &service.Account{Name: "manual-unsched"})
+	expired := mustCreateAccount(s.T(), s.tx.Client(), &service.Account{Name: "expired"})
+	deleted := mustCreateAccount(s.T(), s.tx.Client(), &service.Account{Name: "deleted"})
+
+	s.Require().NoError(s.tx.Client().Account.UpdateOneID(rateLimited.ID).
+		SetRateLimitResetAt(now.Add(10 * time.Minute)).
+		Exec(s.ctx))
+	s.Require().NoError(s.tx.Client().Account.UpdateOneID(manualUnsched.ID).
+		SetSchedulable(false).
+		SetRateLimitResetAt(now.Add(10 * time.Minute)).
+		Exec(s.ctx))
+	s.Require().NoError(s.tx.Client().Account.UpdateOneID(expired.ID).
+		SetExpiresAt(now.Add(-10 * time.Minute)).
+		SetAutoPauseOnExpired(true).
+		Exec(s.ctx))
+	_, err := s.tx.ExecContext(s.ctx, "UPDATE accounts SET deleted_at = NOW() WHERE id = $1", deleted.ID)
+	s.Require().NoError(err)
+
+	for i, accountID := range []int64{available.ID, rateLimited.ID, manualUnsched.ID, expired.ID, deleted.ID} {
+		_, err = s.tx.ExecContext(
+			s.ctx,
+			"INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())",
+			accountID,
+			group.ID,
+			i+1,
+		)
+		s.Require().NoError(err)
+	}
+
+	counts, err := s.repo.loadAccountCounts(s.ctx, []int64{group.ID})
+	s.Require().NoError(err)
+
+	got := counts[group.ID]
+	s.Require().Equal(int64(5), got.Total)
+	s.Require().Equal(int64(4), got.Active, "active count should preserve the legacy status+manual-schedulable semantics")
+	s.Require().Equal(int64(2), got.RateLimited, "rate-limited count should preserve the legacy group visibility semantics")
+	s.Require().Equal(int64(1), got.Available, "available count should only include accounts currently selectable by the scheduler")
 }
 
 // --- DeleteAccountGroupsByGroupID ---

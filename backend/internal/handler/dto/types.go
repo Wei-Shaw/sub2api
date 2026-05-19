@@ -142,6 +142,7 @@ type AdminGroup struct {
 	AccountGroups           []AccountGroup `json:"account_groups,omitempty"`
 	AccountCount            int64          `json:"account_count,omitempty"`
 	ActiveAccountCount      int64          `json:"active_account_count,omitempty"`
+	AvailableAccountCount   int64          `json:"available_account_count"`
 	RateLimitedAccountCount int64          `json:"rate_limited_account_count,omitempty"`
 
 	// 分组排序

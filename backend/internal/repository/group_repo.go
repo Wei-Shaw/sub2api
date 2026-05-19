@@ -94,9 +94,14 @@ func (r *groupRepository) GetByID(ctx context.Context, id int64) (*service.Group
 	if err != nil {
 		return nil, err
 	}
-	total, active, _ := r.GetAccountCount(ctx, out.ID)
-	out.AccountCount = total
-	out.ActiveAccountCount = active
+	counts, countErr := r.loadAccountCounts(ctx, []int64{out.ID})
+	if countErr == nil {
+		c := counts[out.ID]
+		out.AccountCount = c.Total
+		out.ActiveAccountCount = c.Active
+		out.AvailableAccountCount = c.Available
+		out.RateLimitedAccountCount = c.RateLimited
+	}
 	return out, nil
 }
 
@@ -275,6 +280,7 @@ func (r *groupRepository) ListWithFilters(ctx context.Context, params pagination
 			c := counts[outGroups[i].ID]
 			outGroups[i].AccountCount = c.Total
 			outGroups[i].ActiveAccountCount = c.Active
+			outGroups[i].AvailableAccountCount = c.Available
 			outGroups[i].RateLimitedAccountCount = c.RateLimited
 		}
 	}
@@ -306,6 +312,7 @@ func (r *groupRepository) listWithAccountCountSort(ctx context.Context, q *dbent
 		c := counts[outGroups[i].ID]
 		outGroups[i].AccountCount = c.Total
 		outGroups[i].ActiveAccountCount = c.Active
+		outGroups[i].AvailableAccountCount = c.Available
 		outGroups[i].RateLimitedAccountCount = c.RateLimited
 	}
 
@@ -403,6 +410,7 @@ func (r *groupRepository) ListActive(ctx context.Context) ([]service.Group, erro
 			c := counts[outGroups[i].ID]
 			outGroups[i].AccountCount = c.Total
 			outGroups[i].ActiveAccountCount = c.Active
+			outGroups[i].AvailableAccountCount = c.Available
 			outGroups[i].RateLimitedAccountCount = c.RateLimited
 		}
 	}
@@ -433,6 +441,7 @@ func (r *groupRepository) ListActiveByPlatform(ctx context.Context, platform str
 			c := counts[outGroups[i].ID]
 			outGroups[i].AccountCount = c.Total
 			outGroups[i].ActiveAccountCount = c.Active
+			outGroups[i].AvailableAccountCount = c.Available
 			outGroups[i].RateLimitedAccountCount = c.RateLimited
 		}
 	}
@@ -498,9 +507,9 @@ func (r *groupRepository) GetAccountCount(ctx context.Context, groupID int64) (t
 		`SELECT COUNT(*),
 			COUNT(*) FILTER (WHERE a.status = 'active' AND a.schedulable = true),
 			COUNT(*) FILTER (WHERE a.status = 'active' AND (
-				a.rate_limit_reset_at > NOW() OR
-				a.overload_until > NOW() OR
-				a.temp_unschedulable_until > NOW()
+					a.rate_limit_reset_at > NOW() OR
+					a.overload_until > NOW() OR
+					a.temp_unschedulable_until > NOW()
 			))
 		FROM account_groups ag JOIN accounts a ON a.id = ag.account_id
 		WHERE ag.group_id = $1`,
@@ -634,6 +643,7 @@ func (r *groupRepository) DeleteCascade(ctx context.Context, id int64) ([]int64,
 type groupAccountCounts struct {
 	Total       int64
 	Active      int64
+	Available   int64
 	RateLimited int64
 }
 
@@ -648,10 +658,18 @@ func (r *groupRepository) loadAccountCounts(ctx context.Context, groupIDs []int6
 		`SELECT ag.group_id,
 			COUNT(*) AS total,
 			COUNT(*) FILTER (WHERE a.status = 'active' AND a.schedulable = true) AS active,
+			COUNT(*) FILTER (WHERE a.status = 'active'
+				AND a.deleted_at IS NULL
+				AND a.schedulable = true
+				AND (a.expires_at IS NULL OR a.expires_at > NOW() OR a.auto_pause_on_expired = false)
+				AND (a.rate_limit_reset_at IS NULL OR a.rate_limit_reset_at <= NOW())
+				AND (a.overload_until IS NULL OR a.overload_until <= NOW())
+				AND (a.temp_unschedulable_until IS NULL OR a.temp_unschedulable_until <= NOW())
+			) AS available,
 			COUNT(*) FILTER (WHERE a.status = 'active' AND (
-				a.rate_limit_reset_at > NOW() OR
-				a.overload_until > NOW() OR
-				a.temp_unschedulable_until > NOW()
+					a.rate_limit_reset_at > NOW() OR
+					a.overload_until > NOW() OR
+					a.temp_unschedulable_until > NOW()
 			)) AS rate_limited
 		FROM account_groups ag
 		JOIN accounts a ON a.id = ag.account_id
@@ -672,7 +690,7 @@ func (r *groupRepository) loadAccountCounts(ctx context.Context, groupIDs []int6
 	for rows.Next() {
 		var groupID int64
 		var c groupAccountCounts
-		if err = rows.Scan(&groupID, &c.Total, &c.Active, &c.RateLimited); err != nil {
+		if err = rows.Scan(&groupID, &c.Total, &c.Active, &c.Available, &c.RateLimited); err != nil {
 			return nil, err
 		}
 		counts[groupID] = c
