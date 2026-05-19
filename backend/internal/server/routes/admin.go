@@ -43,6 +43,8 @@ func RegisterAdminRoutes(
 
 		// Antigravity OAuth
 		registerAntigravityOAuthRoutes(admin, h)
+		// Kiro OAuth (Phase 2: Social only)
+		registerKiroOAuthRoutes(admin, h)
 
 		// 代理管理
 		registerProxyRoutes(admin, h)
@@ -369,6 +371,15 @@ func registerAntigravityOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers)
 		antigravity.POST("/oauth/auth-url", h.Admin.AntigravityOAuth.GenerateAuthURL)
 		antigravity.POST("/oauth/exchange-code", h.Admin.AntigravityOAuth.ExchangeCode)
 		antigravity.POST("/oauth/refresh-token", h.Admin.AntigravityOAuth.RefreshToken)
+	}
+}
+
+// registerKiroOAuthRoutes wires up Kiro auth admin endpoints.
+// Phase 2 ships /validate-social; Phase 3 adds IdC + Builder ID endpoints.
+func registerKiroOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	k := admin.Group("/kiro")
+	{
+		k.POST("/oauth/validate-social", h.Admin.KiroOAuth.ValidateSocialRefreshToken)
 	}
 }
 
