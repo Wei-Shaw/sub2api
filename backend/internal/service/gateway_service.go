@@ -6369,12 +6369,13 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 		} else {
 			// Claude Code 客户端：尽量透传原始 header，仅补齐 oauth beta
 			clientBetaHeader := getHeaderRaw(req.Header, "anthropic-beta")
-			setHeaderRaw(req.Header, "anthropic-beta", stripBetaTokensWithSet(s.getBetaHeader(modelID, clientBetaHeader), effectiveDropSet))
+			beta := stripBetaTokensWithSet(s.getBetaHeader(modelID, clientBetaHeader), effectiveDropSet)
+			setHeaderRaw(req.Header, "anthropic-beta", ensureBetaToken(beta, claude.BetaContext1M))
 		}
 	} else {
 		// API-key accounts: apply beta policy filter to strip controlled tokens
 		if existingBeta := getHeaderRaw(req.Header, "anthropic-beta"); existingBeta != "" {
-			setHeaderRaw(req.Header, "anthropic-beta", stripBetaTokensWithSet(existingBeta, effectiveDropSet))
+			setHeaderRaw(req.Header, "anthropic-beta", ensureBetaToken(stripBetaTokensWithSet(existingBeta, effectiveDropSet), claude.BetaContext1M))
 		} else if s.cfg != nil && s.cfg.Gateway.InjectBetaForAPIKey {
 			// API-key：仅在请求显式使用 beta 特性且客户端未提供时，按需补齐（默认关闭）
 			if requestNeedsBetaFeatures(body) {
@@ -6535,6 +6536,17 @@ func defaultAPIKeyBetaHeader(body []byte) string {
 		return claude.APIKeyHaikuBetaHeader
 	}
 	return claude.APIKeyBetaHeader
+}
+
+// ensureBetaToken appends betaToken to header if not already present.
+func ensureBetaToken(header string, betaToken string) string {
+	if header == "" {
+		return betaToken
+	}
+	if strings.Contains(header, betaToken) {
+		return header
+	}
+	return header + "," + betaToken
 }
 
 func applyClaudeOAuthHeaderDefaults(req *http.Request) {
@@ -9555,13 +9567,13 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 				if !strings.Contains(beta, claude.BetaTokenCounting) {
 					beta = beta + "," + claude.BetaTokenCounting
 				}
-				setHeaderRaw(req.Header, "anthropic-beta", stripBetaTokensWithSet(beta, ctEffectiveDropSet))
+				setHeaderRaw(req.Header, "anthropic-beta", ensureBetaToken(stripBetaTokensWithSet(beta, ctEffectiveDropSet), claude.BetaContext1M))
 			}
 		}
 	} else {
 		// API-key accounts: apply beta policy filter to strip controlled tokens
 		if existingBeta := getHeaderRaw(req.Header, "anthropic-beta"); existingBeta != "" {
-			setHeaderRaw(req.Header, "anthropic-beta", stripBetaTokensWithSet(existingBeta, ctEffectiveDropSet))
+			setHeaderRaw(req.Header, "anthropic-beta", ensureBetaToken(stripBetaTokensWithSet(existingBeta, ctEffectiveDropSet), claude.BetaContext1M))
 		} else if s.cfg != nil && s.cfg.Gateway.InjectBetaForAPIKey {
 			// API-key：与 messages 同步的按需 beta 注入（默认关闭）
 			if requestNeedsBetaFeatures(body) {
