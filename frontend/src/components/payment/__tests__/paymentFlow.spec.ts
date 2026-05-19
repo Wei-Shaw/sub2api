@@ -220,6 +220,36 @@ describe('decidePaymentLaunch', () => {
     expect(decision.jsapi?.appId).toBe('wx123')
     expect(decision.paymentState.orderType).toBe('subscription')
   REDACTED)
+
+  it('forces qr_waiting for mobile alipay when forceQRCode is enabled', () => {
+    const decision = decidePaymentLaunch(createOrderResult({
+      pay_url: 'https://pay.example.com/mobile/session',
+      qr_code: 'https://pay.example.com/qr/session',
+    REDACTED), {
+      visibleMethod: 'alipay',
+      orderType: 'balance',
+      isMobile: true,
+      forceQRCode: true,
+    REDACTED)
+
+    expect(decision.kind).toBe('qr_waiting')
+    expect(decision.paymentState.qrCode).toBe('https://pay.example.com/qr/session')
+  REDACTED)
+
+  it('does not affect non-alipay methods when forceQRCode is enabled', () => {
+    const decision = decidePaymentLaunch(createOrderResult({
+      pay_url: 'https://pay.example.com/mobile/session',
+      qr_code: 'https://pay.example.com/qr/session',
+    REDACTED), {
+      visibleMethod: 'wxpay',
+      orderType: 'balance',
+      isMobile: true,
+      forceQRCode: true,
+    REDACTED)
+
+    // wxpay mobile with pay_url still redirects
+    expect(decision.kind).toBe('redirect_waiting')
+  REDACTED)
 REDACTED)
 
 describe('buildCreateOrderPayload', () => {
@@ -258,6 +288,34 @@ describe('buildCreateOrderPayload', () => {
       return_url: 'https://app.example.com/payment/result',
       is_mobile: false,
       payment_source: 'wechat_in_app_resume',
+    REDACTED)
+  REDACTED)
+
+  it('passes is_mobile: false when forceQRCode is enabled for alipay', () => {
+    expect(buildCreateOrderPayload({
+      amount: 50,
+      paymentType: 'alipay',
+      orderType: 'balance',
+      origin: 'https://app.example.com',
+      isMobile: true,
+      isWechatBrowser: false,
+      forceQRCode: true,
+    REDACTED)).toMatchObject({
+      is_mobile: false,
+    REDACTED)
+  REDACTED)
+
+  it('still passes is_mobile: true when forceQRCode is enabled for non-alipay methods', () => {
+    expect(buildCreateOrderPayload({
+      amount: 50,
+      paymentType: 'wxpay',
+      orderType: 'balance',
+      origin: 'https://app.example.com',
+      isMobile: true,
+      isWechatBrowser: false,
+      forceQRCode: true,
+    REDACTED)).toMatchObject({
+      is_mobile: true,
     REDACTED)
   REDACTED)
 REDACTED)

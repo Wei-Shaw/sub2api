@@ -5635,6 +5635,8 @@ export default {
         cancelRateLimitWindowMode: 'Window Mode',
         cancelRateLimitWindowModeRolling: 'Rolling',
         cancelRateLimitWindowModeFixed: 'Fixed',
+        alipayForceQRCode: 'Force Alipay QR Code',
+        alipayForceQRCodeHint: 'When enabled, mobile Alipay users always see a QR code instead of being redirected to the mobile payment page',
         helpText: 'Help Text',
         helpImageUrl: 'Help Image URL',
         manageProviders: 'Manage Providers',

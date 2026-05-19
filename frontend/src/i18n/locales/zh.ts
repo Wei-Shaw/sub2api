@@ -5795,6 +5795,8 @@ export default {
         cancelRateLimitWindowMode: '窗口模式',
         cancelRateLimitWindowModeRolling: '滚动',
         cancelRateLimitWindowModeFixed: '固定',
+        alipayForceQRCode: '支付宝强制二维码支付',
+        alipayForceQRCodeHint: '启用后，移动端支付宝用户将统一使用二维码扫码支付，不再跳转至手机网站支付',
         helpText: '帮助文本',
         helpImageUrl: '帮助图片链接',
         manageProviders: '管理服务商',
