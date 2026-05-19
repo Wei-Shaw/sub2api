@@ -554,6 +554,13 @@ REDACTED
 	missingTerminalErr := func() (*OpenAIForwardResult, error) {
 		return resultWithUsage(), fmt.Errorf("stream usage incomplete: missing terminal event")
 REDACTED
+	processFrame := func(frame openAICompatSSEFrame) bool {
+		payload := openAICompatPayloadWithEventType(frame.Data, frame.EventType)
+		if strings.TrimSpace(payload) == "[DONE]" {
+			return false
+	REDACTED
+		return processDataLine(payload)
+REDACTED
 
 	// Determine keepalive interval
 	keepaliveInterval := time.Duration(0)
@@ -563,22 +570,31 @@ REDACTED
 
 	// No keepalive: fast synchronous path
 	if streamInterval <= 0 && keepaliveInterval <= 0 {
+		var parser openAICompatSSEFrameParser
 		for scanner.Scan() {
 			line := scanner.Text()
-			payload, ok := extractOpenAISSEDataLine(line)
+			frame, ok := parser.AddLine(line)
 			if !ok {
 				continue
 		REDACTED
-			if strings.TrimSpace(payload) == "[DONE]" {
+			if strings.TrimSpace(frame.Data) == "[DONE]" {
 				return missingTerminalErr()
 		REDACTED
-			if processDataLine(payload) {
+			if processFrame(frame) {
 				return finalizeStream()
 		REDACTED
 	REDACTED
 		if err := scanner.Err(); err != nil {
 			handleScanErr(err)
 			return resultWithUsage(), fmt.Errorf("stream usage incomplete: %w", err)
+	REDACTED
+		if frame, ok := parser.Finish(); ok {
+			if strings.TrimSpace(frame.Data) == "[DONE]" {
+				return missingTerminalErr()
+		REDACTED
+			if processFrame(frame) {
+				return finalizeStream()
+		REDACTED
 	REDACTED
 		return missingTerminalErr()
 REDACTED
@@ -624,11 +640,20 @@ REDACTED
 		keepaliveCh = keepaliveTicker.C
 REDACTED
 	lastDataAt := time.Now()
+	var parser openAICompatSSEFrameParser
 
 	for {
 		select {
 		case ev, ok := <-events:
 			if !ok {
+				if frame, ok := parser.Finish(); ok {
+					if strings.TrimSpace(frame.Data) == "[DONE]" {
+						return missingTerminalErr()
+				REDACTED
+					if processFrame(frame) {
+						return finalizeStream()
+				REDACTED
+			REDACTED
 				return missingTerminalErr()
 		REDACTED
 			if ev.err != nil {
@@ -637,14 +662,14 @@ REDACTED
 		REDACTED
 			lastDataAt = time.Now()
 			line := ev.line
-			payload, ok := extractOpenAISSEDataLine(line)
+			frame, ok := parser.AddLine(line)
 			if !ok {
 				continue
 		REDACTED
-			if strings.TrimSpace(payload) == "[DONE]" {
+			if strings.TrimSpace(frame.Data) == "[DONE]" {
 				return missingTerminalErr()
 		REDACTED
-			if processDataLine(payload) {
+			if processFrame(frame) {
 				return finalizeStream()
 		REDACTED
 
