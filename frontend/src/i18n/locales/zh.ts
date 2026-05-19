@@ -2092,6 +2092,12 @@ export default {
         rpmLimit: '每分钟请求数 (RPM)',
         rpmLimitPlaceholder: '0 表示不限制',
         rpmLimitHint: '每用户在本分组每分钟最大请求数，0 = 不限制；一旦设置即接管该用户的限流（覆盖用户级 rpm_limit）',
+        oauthPauseTitle: 'OAuth 5h / 7d 提前休眠',
+        oauthPauseHint: '账号未单独配置时继承本分组；百分比/金额填 0 或留空表示不启用。',
+        oauth5hPausePercent: '5h 已用百分比',
+        oauth5hPauseAmount: '5h 金额阈值',
+        oauth7dPausePercent: '7d 已用百分比',
+        oauth7dPauseAmount: '7d 金额阈值',
         exclusiveLabel: '专属分组',
         exclusiveHint: '专属分组，可以手动指定给用户',
         platformLabel: '平台限制',
@@ -3446,6 +3452,14 @@ export default {
       autoPauseOnExpired: '过期自动暂停调度',
       autoPauseOnExpiredDesc: '启用后，账号过期将自动暂停调度',
       // Quota control (Anthropic OAuth/SetupToken only)
+      oauthPause: {
+        title: 'OAuth 5h / 7d 提前休眠',
+        hint: '达到官方窗口已用百分比或窗口标准消费金额后，账号会休眠到官方 reset 时间。0 或留空表示继承分组或不启用。',
+        fiveHourPercent: '5h 已用百分比',
+        fiveHourAmount: '5h 金额阈值',
+        sevenDayPercent: '7d 已用百分比',
+        sevenDayAmount: '7d 金额阈值',
+      },
       quotaControl: {
         title: '配额控制',
         hint: '配置费用窗口、会话限制、客户端亲和等调度控制。',

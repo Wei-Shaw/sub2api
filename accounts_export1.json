@@ -1,0 +1,60 @@
+{
+  "exported_at": "2026-05-13T15:48:46.404Z",
+  "proxies": [],
+  "accounts": [
+    {
+      "name": "gerry.bushway@outlook.com",
+      "platform": "openai",
+      "type": "oauth",
+      "credentials": {
+        "access_token": "eyJhbGciOiJSUzI1NiIsImtpZCI6IjE5MzQ0ZTY1LWJiYzktNDRkMS1hOWQwLWY5NTdiMDc5YmQwZSIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS92MSJdLCJjbGllbnRfaWQiOiJhcHBfRU1vYW1FRVo3M2YwQ2tYYVhwN2hyYW5uIiwiZXhwIjoxNzc5NDkyOTUwLCJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiYW1yIjpbInB3ZCJdLCJjaGF0Z3B0X2NvbXB1dGVfcmVzaWRlbmN5Ijoibm9fY29uc3RyYWludCIsImNoYXRncHRfZGF0YV9yZXNpZGVuY3kiOiJub19jb25zdHJhaW50IiwibG9jYWxob3N0Ijp0cnVlLCJ1c2VyX2lkIjoidXNlci1HUVE1UmV2NWZrWndZYTFiQVhVZTBoM1MifSwiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS9wcm9maWxlIjp7ImVtYWlsIjoiZ2VycnkuYnVzaHdheUBvdXRsb29rLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlfSwiaWF0IjoxNzc4NjI4OTQ5LCJpc3MiOiJodHRwczovL2F1dGgub3BlbmFpLmNvbSIsImp0aSI6ImMyMjUyMTVlLTc4ZmUtNDliOC1iYjQ1LTdjMGU1YWJmYTIyMiIsIm5iZiI6MTc3ODYyODk0OSwicHdkX2F1dGhfdGltZSI6MTc3ODYyODk0Nzk3Miwic2NwIjpbIm9wZW5pZCIsInByb2ZpbGUiLCJlbWFpbCIsIm9mZmxpbmVfYWNjZXNzIl0sInNlc3Npb25faWQiOiJhdXRoc2Vzc19kbEJCMm13czNxU21XVUlWYUlDWTRMcUoiLCJzbCI6dHJ1ZSwic3ViIjoiYXV0aDB8N01pb0FWY3hZQzZUWmw4WmtWaHo1VmdtIn0.gzBdn0xUi2fw-jFTIwMEixq_Mxwy4sWNojd1JO-lfhtWKjZHzqj5qY3Q5zJOQ-MYQSUZ0YNWUbKSjahhc2dhB-ZTHiq9pux9SB32r4RjsNJYkNInmyZvOwoa2bw40Az70xmLMZku_JFDjn71sPegClUM64xgbUwplmyL6mGWyy286r1JHA8z-yP3lkYZNjGk7ELAQpeLxkOFMqfiwrc94CKv3iZv0NeraF1XsIAYMSItR_MYPmQffJ9B30j7rpPPMFWVHJTbZLjCZATlIgghLNTpxWQsOW_r2Aoj-fOGDM0j8KxzDh607_n6Sblr2PVvG96PBgM6grIusmmiTQFrB984Xt9RBjJdyPwKu5O3PLnRwKd9hGx5hiPAW7f8KL0H7oEmMF9fkDD70bkX4oPk2grsvVXEe0xcZdnMC3-i02k0NuP9G00nims5S8MIglGz6yCLkWjOlsg9665iOdBMSjpHZZEDuLE6TiPnyRiW8JUb7anxi4kjqn113aEzdfbEoux65FZksi3R_v7TmKvRwLZ9yQpILZ_o6pMLxYLqkL42QPxdvxkU5UYuka9zN1wzUuZBSiSR1KwAWOnuH4uJLwMd0odAXMDPy1ACF6N1uQc1dV3O_CZa62becdrxgzqA2AsSRHNMo_1E8jr_Pco12y1bHbU_SzFUcuWWfMtruwA",
+        "chatgpt_account_id": "d3d108f5-c69d-4af5-b1b7-9ccad0fc0571",
+        "chatgpt_user_id": "user-GQQ5Rev5fkZwYa1bAXUe0h3S",
+        "client_id": "app_EMoamEEZ73f0CkXaXp7hrann",
+        "email": "gerry.bushway@outlook.com",
+        "expires_at": 1779492950,
+        "id_token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImIxZGQzZjhmLTlhYWQtNDdmZS1iMGU3LWVkYjAwOTc3N2Q2YiIsInR5cCI6IkpXVCJ9.eyJhbXIiOlsicHdkIl0sImF0X2hhc2giOiJtRFhZZkhjdVJXeGY4MXgtTDFKdDBnIiwiYXVkIjpbImFwcF9FTW9hbUVFWjczZjBDa1hhWHA3aHJhbm4iXSwiYXV0aF9wcm92aWRlciI6InBhc3N3b3JkIiwiYXV0aF90aW1lIjoxNzc4NjI4OTQ3LCJlbWFpbCI6ImdlcnJ5LmJ1c2h3YXlAb3V0bG9vay5jb20iLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwiZXhwIjoxNzc4NjMyNTQ5LCJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiZ3JvdXBzIjpbXSwibG9jYWxob3N0Ijp0cnVlLCJvcmdhbml6YXRpb25zIjpbeyJpZCI6Im9yZy1ZNlAxbWk0aXAyaE45Smg5TGlxOFVoeFIiLCJpc19kZWZhdWx0Ijp0cnVlLCJyb2xlIjoib3duZXIiLCJ0aXRsZSI6IlBlcnNvbmFsIn1dLCJ1c2VyX2lkIjoidXNlci1HUVE1UmV2NWZrWndZYTFiQVhVZTBoM1MifSwiaWF0IjoxNzc4NjI4OTQ5LCJpc3MiOiJodHRwczovL2F1dGgub3BlbmFpLmNvbSIsImp0aSI6IjgxMjg2YTdmLWFjZTUtNDY1Zi1iYzFjLTQ1OWQxNzhlMzU0MiIsIm5hbWUiOiJPbGl2ZXIgTWFydGluIiwicmF0IjoxNzc4NjI4OTMxLCJzaWQiOiI1Y2M0MDY5My05MGE0LTRkOTgtYTAyMS1hNWIwNGRmMzFhODIiLCJzdWIiOiJhdXRoMHw3TWlvQVZjeFlDNlRabDhaa1ZoejVWZ20ifQ.ncPKXZGlTaXFfJHiVyabhMzoyqZqaGXUch0ntHASF3UQ7Xg6aWprPDYKEFj8pMGMbQoynsiF6NIyvVfPSinfxCjS1IdNaX33GoeLdgwlrP_kfuQqAn4FJkh3Bzqzy99Rv52vnZCzq3xpDjoSv4Zzj-PkqhjVxRYCGqjDfkMJQskiv1tqcduTgmkc4rPAn8hH7sMn5uuOClugX7LivUja3C5LUEDwa5ls8Jt_t4PzLSZVwJhvZPb43TbleM8h5_oqTN-3EJH9XYuGJGqE7wfT4-7wN6YRj-PjDSyHEB0NzZVWAn9zyjdT0DYttG3hYsunvJfmj3fnvvE4OxRkXUmZm1jRU4Ns__NPGvUSOpIDVQTXMulM0rEur81FSneH2X1JG6ogrYu4--nRu1boGD0AT3DjN2HZJ5jOjOZclBZ1yCJdjzD_7aSFW74Kar6JB9hWEy4EIWNEupshJjlghKYqOG9GdIi8IRS3iUNTfBTIaV5DHIYEpJUww2B9Ocxj-c6oxWNKnHnENxk44kmxBKftGgMUa5ZHjOYH6x1iTTTYna1nk-GywiSrWBKQUhH_NootJ6yBR9ZUYeBs7KZkvFli0PcQ52BvVrZAbgI6bMhd-yRHLdX229uL6i2E_mOHhrHeMnTNohAx5TsTvVYqK8pPy3soYqocRJUlbLwTqp5PEvk",
+        "organization_id": "org-Y6P1mi4ip2hN9Jh9Liq8UhxR",
+        "plan_type": "free",
+        "refresh_token": "rt_N5JjJzYSSW3fNEQWQv05qy1WPxxEXWf6MlwsGPbgMhM.E_dbTfFjP38_OLTJA-_ODwlFOoBTA3wPlBflhcEe2ao"
+      },
+      "extra": {
+        "email": "gerry.bushway@outlook.com",
+        "openai_oauth_responses_websockets_v2_enabled": false,
+        "openai_oauth_responses_websockets_v2_mode": "off",
+        "privacy_mode": "training_off"
+      },
+      "concurrency": 10,
+      "priority": 1,
+      "rate_multiplier": 1,
+      "auto_pause_on_expired": true
+    },
+    {
+      "name": "Bronwyn.Pfost@outlook.com",
+      "platform": "openai",
+      "type": "oauth",
+      "credentials": {
+        "access_token": "eyJhbGciOiJSUzI1NiIsImtpZCI6IjE5MzQ0ZTY1LWJiYzktNDRkMS1hOWQwLWY5NTdiMDc5YmQwZSIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS92MSJdLCJjbGllbnRfaWQiOiJhcHBfRU1vYW1FRVo3M2YwQ2tYYVhwN2hyYW5uIiwiZXhwIjoxNzc5NDkyOTQ5LCJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiYW1yIjpbInB3ZCJdLCJjaGF0Z3B0X2NvbXB1dGVfcmVzaWRlbmN5Ijoibm9fY29uc3RyYWludCIsImNoYXRncHRfZGF0YV9yZXNpZGVuY3kiOiJub19jb25zdHJhaW50IiwibG9jYWxob3N0Ijp0cnVlLCJ1c2VyX2lkIjoidXNlci1QRVVFdnBHN2FmVnNLY244cDY1TGF0R24ifSwiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS9wcm9maWxlIjp7ImVtYWlsIjoiQnJvbnd5bi5QZm9zdEBvdXRsb29rLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlfSwiaWF0IjoxNzc4NjI4OTQ4LCJpc3MiOiJodHRwczovL2F1dGgub3BlbmFpLmNvbSIsImp0aSI6Ijc3NTc1MmVlLTE3MDctNGNjMy05MmQ1LTQwNmUyMzE1ZWZjOSIsIm5iZiI6MTc3ODYyODk0OCwicHdkX2F1dGhfdGltZSI6MTc3ODYyODk0Njg0Niwic2NwIjpbIm9wZW5pZCIsInByb2ZpbGUiLCJlbWFpbCIsIm9mZmxpbmVfYWNjZXNzIl0sInNlc3Npb25faWQiOiJhdXRoc2Vzc19RYTMxVUdMdG5BZHpQTWRWczNLUmYyN1kiLCJzbCI6dHJ1ZSwic3ViIjoiYXV0aDB8bWF5bEdhVHpjUDlseUUxRVFWUklqM2NvIn0.MAVp-HqGDL9dMfchmD1mNNHA_vT9HpFhwi1-aqUmHay4sTfLTDBo8fzVi-CiQzvLWBiOn3Lj4-mdNDA0N4NeFy64rVmjFlBdHt_Auy_YigRExbDGe3FJRN98cb8DIFlk7SiYC9ELV3Kt-SHez5u_5UeMDtMhxhptQzdwRvZJfUPlABZxZ37xAhUOK0RZdDSVrPNeVbN9tSgKTpsSgxdNESUhC6w6JL9u1VjO8oqA31zTVbPpbqHimhGoaQbxR6QP-6Dae2vyyW4-axDP47grY_iCBJN63tJB59IcW_D5tR_TVK7bFaMHbLV3Mtw4oIU3xvjNH_LCv1MqAjCFmfe7PCIPdMrLA-_eVw55TVZ77AvBIzYzFe2LsbB6ncZmswrXqiHoMfMrDZM8DKRbu49u-Alb8IaLJGEhKU6j1-AY4P5s2B5hGItTGm_I6QpdCJEZLKiLPrd5QnikXlYc5THIkIiROaJtbWwlX-7Uc5r_jza1z-eLJJhmzAiM_d4OuQXq5MucUTFuvWlffHZu3IDFDRfvHK6ykmLV0TY1edOcnEcOL27pkrc4Z12LKA-zS_sR-poqnsQMhlxwGGVyH7Su9xbGXUXn641aW0Xntqq8n2J90wywlH17qcxoorbTgJxoP4Fk6KS_sE6I7P9glhy8DY7B9ua4ewiyj0noMKhP89Y",
+        "chatgpt_account_id": "293b8e9c-6927-479e-b6cb-cc6c33d67cdc",
+        "chatgpt_user_id": "user-PEUEvpG7afVsKcn8p65LatGn",
+        "client_id": "app_EMoamEEZ73f0CkXaXp7hrann",
+        "email": "Bronwyn.Pfost@outlook.com",
+        "expires_at": 1779492949,
+        "id_token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImIxZGQzZjhmLTlhYWQtNDdmZS1iMGU3LWVkYjAwOTc3N2Q2YiIsInR5cCI6IkpXVCJ9.eyJhbXIiOlsicHdkIl0sImF0X2hhc2giOiJueXBzbGk1WnAtSFF1VFMxeTRxRjNnIiwiYXVkIjpbImFwcF9FTW9hbUVFWjczZjBDa1hhWHA3aHJhbm4iXSwiYXV0aF9wcm92aWRlciI6InBhc3N3b3JkIiwiYXV0aF90aW1lIjoxNzc4NjI4OTQ3LCJlbWFpbCI6IkJyb253eW4uUGZvc3RAb3V0bG9vay5jb20iLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwiZXhwIjoxNzc4NjMyNTQ4LCJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiZ3JvdXBzIjpbXSwibG9jYWxob3N0Ijp0cnVlLCJvcmdhbml6YXRpb25zIjpbeyJpZCI6Im9yZy1GRmhaWjFvN0ZMS2prV2twVnlEcThwTlQiLCJpc19kZWZhdWx0Ijp0cnVlLCJyb2xlIjoib3duZXIiLCJ0aXRsZSI6IlBlcnNvbmFsIn1dLCJ1c2VyX2lkIjoidXNlci1QRVVFdnBHN2FmVnNLY244cDY1TGF0R24ifSwiaWF0IjoxNzc4NjI4OTQ4LCJpc3MiOiJodHRwczovL2F1dGgub3BlbmFpLmNvbSIsImp0aSI6ImQxYWMxYmFmLTU1NjctNDM0Ny1hZTUyLTc0MTliYzUzZTlmZSIsIm5hbWUiOiJFbWlseSBKb25lcyIsInJhdCI6MTc3ODYyODkyOCwic2lkIjoiZTE1YjMyODItOTU2Yi00YzdlLWFjMWMtOTM1N2ZlMzMxMmYzIiwic3ViIjoiYXV0aDB8bWF5bEdhVHpjUDlseUUxRVFWUklqM2NvIn0.seAjxCXxmstK0eoj3o-oknO0UI3nVsqpLL93xIzIC4ygjmn2CE60FKazAoMsFzyaTJTjfldWfFnELKvm6q3grQ_QHz-y-WWrvsYFM5j48QuO_-__E8hZxwO00SUDTWLpgkSwoiEzG_LRUxFro0F40Al0yeP_5FAe0DD7fsZ1Q6MXj3gqzWhQHprsGzCCRGFnAlkjkee_-532yRur6_gj-k_gQDGpKQ0UmvOZbtlWWfqMo-lid6JkvTQhadXOu4y2G3V_tAlsHCenInDskotSFwNxKb6rmiR1YOZVkJStQ1xcLmOrfIJ0-b-ISVbQMQ-pK0sMJn2w0VdhB0iHVvzoqaPjOLmNpwBlhWN4X8PoyEreu7mphUtMYD8LISs4W8xomF2rA0WoDiM6sEXesElWteqyDmWx27cjKZt4CpUPNyy7oA3K5_pQw6Qo9e8kodUygKRfv_k320TbMQg5ie5xwyf3Es8IGPqqsaEyfJij-t5Z3wtHPyQN1P5F2YOs6phLtMtW6XDgv9hPrIWxsNliAkoOmT1z3zpyYqgMpQ8AdCdFh20nSrV8CK7R-U9N2AqrDyfguDtntgKIyGGghRh1UoP6QCswuWC8CxdAIhSqf0Nk513aWAzRJOGZGotA5bV4DThr6y-0kHjWvqRH3Y3JvR39fklZ7HEphuiLn_0xDAI",
+        "organization_id": "org-FFhZZ1o7FLKjkWkpVyDq8pNT",
+        "plan_type": "free",
+        "refresh_token": "rt_HL4dBbehqXc-W6H_rjY4xLPwsay66-zcG8dyh66wrPg.-YUnU8c6CBh8DxqG1Qc4f4dkUqD14lo5cCf5OnBJzPU"
+      },
+      "extra": {
+        "email": "Bronwyn.Pfost@outlook.com",
+        "openai_oauth_responses_websockets_v2_enabled": false,
+        "openai_oauth_responses_websockets_v2_mode": "off",
+        "privacy_mode": "training_off"
+      },
+      "concurrency": 10,
+      "priority": 1,
+      "rate_multiplier": 1,
+      "auto_pause_on_expired": true
+    }
+  ]
+}

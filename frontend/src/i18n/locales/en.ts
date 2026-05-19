@@ -2034,7 +2034,13 @@ export default {
         exclusive: 'Exclusive Group',
         rpmLimit: 'Requests Per Minute (RPM)',
         rpmLimitPlaceholder: '0 = unlimited',
-        rpmLimitHint: 'Max requests per minute for each user in this group; 0 = unlimited. Once set, it takes over per-user rate limiting in this group (overrides the user-level rpm_limit fallback).'
+        rpmLimitHint: 'Max requests per minute for each user in this group; 0 = unlimited. Once set, it takes over per-user rate limiting in this group (overrides the user-level rpm_limit fallback).',
+        oauthPauseTitle: 'OAuth 5h / 7d Preemptive Pause',
+        oauthPauseHint: 'Accounts inherit this group when not configured individually. Empty or 0 disables a threshold.',
+        oauth5hPausePercent: '5h Used Percent',
+        oauth5hPauseAmount: '5h Amount Threshold',
+        oauth7dPausePercent: '7d Used Percent',
+        oauth7dPauseAmount: '7d Amount Threshold'
       },
       enterGroupName: 'Enter group name',
       optionalDescription: 'Optional description',
@@ -3305,6 +3311,14 @@ export default {
       autoPauseOnExpired: 'Auto Pause On Expired',
       autoPauseOnExpiredDesc: 'When enabled, the account will auto pause scheduling after it expires',
       // Quota control (Anthropic OAuth/SetupToken only)
+      oauthPause: {
+        title: 'OAuth 5h / 7d Preemptive Pause',
+        hint: 'When official window usage percent or standard window cost reaches the threshold, the account pauses until the official reset time. Empty or 0 inherits group settings or disables the threshold.',
+        fiveHourPercent: '5h Used Percent',
+        fiveHourAmount: '5h Amount Threshold',
+        sevenDayPercent: '7d Used Percent',
+        sevenDayAmount: '7d Amount Threshold',
+      },
       quotaControl: {
         title: 'Quota Control',
         hint: 'Configure cost window, session limits, client affinity and other scheduling controls.',

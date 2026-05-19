@@ -502,6 +502,10 @@ export interface Group {
   rate_multiplier: number
   display_rate_multiplier: number
   rpm_limit?: number // Group-level RPM cap (0 = unlimited); overrides user-level rpm_limit when set
+  oauth_5h_pause_percent?: number | null
+  oauth_5h_pause_amount_usd?: number | null
+  oauth_7d_pause_percent?: number | null
+  oauth_7d_pause_amount_usd?: number | null
   is_exclusive: boolean
   status: 'active' | 'inactive'
   subscription_type: SubscriptionType
@@ -881,6 +885,11 @@ export interface Account {
   quota_reset_timezone?: string | null
   quota_daily_reset_at?: string | null
   quota_weekly_reset_at?: string | null
+
+  oauth_5h_pause_percent?: number | null
+  oauth_5h_pause_amount_usd?: number | null
+  oauth_7d_pause_percent?: number | null
+  oauth_7d_pause_amount_usd?: number | null
 
   // 运行时状态（仅当启用对应限制时返回）
   current_window_cost?: number | null // 当前窗口费用

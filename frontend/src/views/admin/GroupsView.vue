@@ -535,6 +535,37 @@
           <p class="input-hint">{{ t("admin.groups.form.rpmLimitHint") }}</p>
         </div>
         <div
+          v-if="createForm.platform === 'openai' || createForm.platform === 'anthropic'"
+          class="md:col-span-2"
+        >
+          <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
+            <h3 class="input-label mb-1 text-base font-semibold">
+              {{ t("admin.groups.form.oauthPauseTitle") }}
+            </h3>
+            <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">
+              {{ t("admin.groups.form.oauthPauseHint") }}
+            </p>
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
+              <div>
+                <label class="input-label">{{ t("admin.groups.form.oauth5hPausePercent") }}</label>
+                <input v-model.number="createForm.oauth_5h_pause_percent" type="number" min="0" max="100" step="0.1" class="input" />
+              </div>
+              <div>
+                <label class="input-label">{{ t("admin.groups.form.oauth5hPauseAmount") }}</label>
+                <input v-model.number="createForm.oauth_5h_pause_amount_usd" type="number" min="0" step="0.01" class="input" />
+              </div>
+              <div>
+                <label class="input-label">{{ t("admin.groups.form.oauth7dPausePercent") }}</label>
+                <input v-model.number="createForm.oauth_7d_pause_percent" type="number" min="0" max="100" step="0.1" class="input" />
+              </div>
+              <div>
+                <label class="input-label">{{ t("admin.groups.form.oauth7dPauseAmount") }}</label>
+                <input v-model.number="createForm.oauth_7d_pause_amount_usd" type="number" min="0" step="0.01" class="input" />
+              </div>
+            </div>
+          </div>
+        </div>
+        <div
           v-if="createForm.subscription_type !== 'subscription'"
           data-tour="group-form-exclusive"
         >
@@ -1732,6 +1763,37 @@
             :placeholder="t('admin.groups.form.rpmLimitPlaceholder')"
           />
           <p class="input-hint">{{ t("admin.groups.form.rpmLimitHint") }}</p>
+        </div>
+        <div
+          v-if="editForm.platform === 'openai' || editForm.platform === 'anthropic'"
+          class="md:col-span-2"
+        >
+          <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
+            <h3 class="input-label mb-1 text-base font-semibold">
+              {{ t("admin.groups.form.oauthPauseTitle") }}
+            </h3>
+            <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">
+              {{ t("admin.groups.form.oauthPauseHint") }}
+            </p>
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
+              <div>
+                <label class="input-label">{{ t("admin.groups.form.oauth5hPausePercent") }}</label>
+                <input v-model.number="editForm.oauth_5h_pause_percent" type="number" min="0" max="100" step="0.1" class="input" />
+              </div>
+              <div>
+                <label class="input-label">{{ t("admin.groups.form.oauth5hPauseAmount") }}</label>
+                <input v-model.number="editForm.oauth_5h_pause_amount_usd" type="number" min="0" step="0.01" class="input" />
+              </div>
+              <div>
+                <label class="input-label">{{ t("admin.groups.form.oauth7dPausePercent") }}</label>
+                <input v-model.number="editForm.oauth_7d_pause_percent" type="number" min="0" max="100" step="0.1" class="input" />
+              </div>
+              <div>
+                <label class="input-label">{{ t("admin.groups.form.oauth7dPauseAmount") }}</label>
+                <input v-model.number="editForm.oauth_7d_pause_amount_usd" type="number" min="0" step="0.01" class="input" />
+              </div>
+            </div>
+          </div>
         </div>
         <div v-if="editForm.subscription_type !== 'subscription'">
           <div class="mb-1.5 flex items-center gap-1">
@@ -3183,6 +3245,10 @@ const createForm = reactive({
   copy_accounts_from_group_ids: [] as number[],
   // 分组级 RPM 限制（每用户每分钟最大请求数；0 = 不限制）
   rpm_limit: 0 as number,
+  oauth_5h_pause_percent: null as number | null,
+  oauth_5h_pause_amount_usd: null as number | null,
+  oauth_7d_pause_percent: null as number | null,
+  oauth_7d_pause_amount_usd: null as number | null,
 });
 
 // 简单账号类型（用于模型路由选择）
@@ -3470,6 +3536,10 @@ const editForm = reactive({
   copy_accounts_from_group_ids: [] as number[],
   // 分组级 RPM 限制（每用户每分钟最大请求数；0 = 不限制）
   rpm_limit: 0 as number,
+  oauth_5h_pause_percent: null as number | null,
+  oauth_5h_pause_amount_usd: null as number | null,
+  oauth_7d_pause_percent: null as number | null,
+  oauth_7d_pause_amount_usd: null as number | null,
 });
 
 type ImagePricingFormState = {
@@ -3702,6 +3772,10 @@ const closeCreateModal = () => {
   createForm.supported_model_scopes = ["claude", "gemini_text", "gemini_image"];
   createForm.mcp_xml_inject = true;
   createForm.copy_accounts_from_group_ids = [];
+  createForm.oauth_5h_pause_percent = null;
+  createForm.oauth_5h_pause_amount_usd = null;
+  createForm.oauth_7d_pause_percent = null;
+  createForm.oauth_7d_pause_amount_usd = null;
   createModelRoutingRules.value = [];
 };
 
@@ -3732,6 +3806,16 @@ const normalizeImageRateMultiplier = (
   }
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 1;
+};
+
+const normalizePositiveOptionalNumber = (
+  value: number | string | null | undefined,
+): number | null => {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 };
 
 const handleCreateGroup = async () => {
@@ -3775,6 +3859,10 @@ const handleCreateGroup = async () => {
     requestData.image_rate_multiplier = normalizeImageRateMultiplier(
       requestData.image_rate_multiplier,
     );
+    requestData.oauth_5h_pause_percent = normalizePositiveOptionalNumber(requestData.oauth_5h_pause_percent);
+    requestData.oauth_5h_pause_amount_usd = normalizePositiveOptionalNumber(requestData.oauth_5h_pause_amount_usd);
+    requestData.oauth_7d_pause_percent = normalizePositiveOptionalNumber(requestData.oauth_7d_pause_percent);
+    requestData.oauth_7d_pause_amount_usd = normalizePositiveOptionalNumber(requestData.oauth_7d_pause_amount_usd);
     await adminAPI.groups.create(requestData);
     appStore.showSuccess(t("admin.groups.groupCreated"));
     closeCreateModal();
@@ -3840,6 +3928,10 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.mcp_xml_inject = group.mcp_xml_inject ?? true;
   editForm.copy_accounts_from_group_ids = []; // 复制账号字段每次编辑时重置为空
   editForm.rpm_limit = group.rpm_limit ?? 0;
+  editForm.oauth_5h_pause_percent = group.oauth_5h_pause_percent ?? null;
+  editForm.oauth_5h_pause_amount_usd = group.oauth_5h_pause_amount_usd ?? null;
+  editForm.oauth_7d_pause_percent = group.oauth_7d_pause_percent ?? null;
+  editForm.oauth_7d_pause_amount_usd = group.oauth_7d_pause_amount_usd ?? null;
   // 加载模型路由规则（异步加载账号名称）
   editModelRoutingRules.value = await convertApiFormatToRoutingRules(
     group.model_routing,
@@ -3908,6 +4000,10 @@ const handleUpdateGroup = async () => {
     payload.image_rate_multiplier = normalizeImageRateMultiplier(
       payload.image_rate_multiplier,
     );
+    payload.oauth_5h_pause_percent = normalizePositiveOptionalNumber(payload.oauth_5h_pause_percent);
+    payload.oauth_5h_pause_amount_usd = normalizePositiveOptionalNumber(payload.oauth_5h_pause_amount_usd);
+    payload.oauth_7d_pause_percent = normalizePositiveOptionalNumber(payload.oauth_7d_pause_percent);
+    payload.oauth_7d_pause_amount_usd = normalizePositiveOptionalNumber(payload.oauth_7d_pause_amount_usd);
     await adminAPI.groups.update(editingGroup.value.id, payload);
     appStore.showSuccess(t("admin.groups.groupUpdated"));
     closeEditModal();
