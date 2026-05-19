@@ -460,7 +460,7 @@ export default {
     invitationCodeInvalid: '邀请码无效或已被使用',
     invitationCodeValidating: '正在验证邀请码...',
     invitationCodeInvalidCannotRegister: '邀请码无效，请检查后重试',
-    oauthOrContinue: '或使用邮箱密码继续',
+    oauthOrContinue: '或使用其他继续',
     linuxdo: {
       signIn: '使用 Linux.do 登录',
       orContinue: '或使用邮箱密码继续',
@@ -474,6 +474,34 @@ export default {
       completeRegistration: '完成注册',
       completing: '正在完成注册...',
       completeRegistrationFailed: '注册失败，请检查邀请码后重试。'
+    REDACTED,
+    dingtalk: {
+      signIn: '钉钉登录',
+      callbackTitle: '正在完成钉钉登录',
+      callbackProcessing: '正在验证钉钉登录信息，请稍候...',
+      callbackHint: '如果页面未自动跳转，请返回登录页重试。',
+      callbackMissingToken: '登录信息缺失，请返回重试。',
+      backToLogin: '返回登录',
+      invitationRequired: '该钉钉账号尚未注册，站点已开启邀请码注册，请输入邀请码以完成注册。',
+      invalidPendingToken: '注册凭证已失效，请重新使用钉钉登录。',
+      completeRegistration: '完成注册',
+      completing: '正在完成注册...',
+      completeRegistrationFailed: '注册失败，请检查邀请码后重试。',
+      createAccountTitle: '创建钉钉账户',
+      registrationDisabledRedirectToBind: '当前已禁止注册新账户，请使用已有账户邮箱和密码绑定钉钉登录',
+      error: {
+        title: '钉钉登录失败',
+        csrf: '登录会话已过期，请重新扫码登录',
+        corp_rejected: '您的钉钉账号不属于本企业，请联系管理员',
+        dingtalk_not_enabled: '钉钉登录暂未启用',
+        upstream_error: '钉钉服务暂时不可用，请稍后重试',
+        missing_browser_session: '浏览器会话丢失，请重新登录',
+        missing_params: '请求参数不完整',
+        invalid_state: '登录状态异常',
+        provider_error: '钉钉授权失败',
+        session_error: '会话创建失败，请重试',
+        retry: '重新登录'
+      REDACTED
     REDACTED,
     emailOAuth: {
       signIn: '使用 {providerNameREDACTED 登录'
@@ -522,6 +550,7 @@ export default {
       wechatNotConfigured: '微信登录尚未配置。'
     REDACTED,
     linuxdoCallbackPageTitle: 'LinuxDo 登录回调',
+    dingtalkCallbackPageTitle: '钉钉登录回调',
     oidcCallbackPageTitle: 'OIDC 登录回调',
     oauthCallbackPageTitle: 'OAuth 回调',
     wechatProviderName: '微信',
@@ -1252,6 +1281,7 @@ export default {
       providers: {
         email: '邮箱',
         linuxdo: 'LinuxDo',
+        dingtalk: '钉钉',
         oidc: '{providerNameREDACTED',
         wechat: '微信',
       REDACTED,
@@ -5446,6 +5476,46 @@ export default {
         redirectUrlHint: '需与 Connect.Linux.Do 中配置的回调地址一致（必须是 http(s) 完整 URL）',
         quickSetCopy: '使用当前站点生成并复制',
         redirectUrlSetAndCopied: '已使用当前站点生成回调地址并复制到剪贴板'
+      REDACTED,
+      dingtalk: {
+        title: '钉钉登录',
+        description: '配置钉钉 OAuth，用于 Sub2API 用户登录',
+        enable: '启用钉钉登录-企业内部应用',
+        enableHint: '在登录/注册页面显示钉钉登录入口',
+        clientId: 'Client ID（AppKey）',
+        clientIdPlaceholder: '例如：dingxxxxxxxxxxxxxxxx',
+        clientIdHint: '从钉钉开放平台应用详情页获取',
+        clientSecret: 'Client Secret（AppSecret）',
+        clientSecretPlaceholder: '********',
+        clientSecretHint: '用于后端交换 token（请保密）',
+        clientSecretConfiguredPlaceholder: '********',
+        clientSecretConfiguredHint: '密钥已配置，留空以保留当前值。',
+        redirectUrl: '回调地址（Redirect URL）',
+        redirectUrlPlaceholder: 'https://your-domain.com/api/v1/auth/oauth/dingtalk/callback',
+        redirectUrlHint: '需与钉钉开放平台中配置的回调地址一致（必须是 http(s) 完整 URL）',
+        corpPolicy: {
+          label: '企业限制策略',
+          hint: '控制哪些钉钉账号（企业）可以登录',
+          none: '不限制（所有钉钉账号均可登录）',
+          internalOnly: '仅本企业（Internal Only）'
+        REDACTED,
+        bypassRegistration: '开放钉钉注册',
+        bypassRegistrationHint: '即使「开放注册」关闭时也可以通过钉钉登录来注册',
+        syncDisplayName: '同步钉钉姓名',
+        syncDisplayNameHint: '登录时将钉钉姓名写入 username 字段（同时记录到 dingtalk_name 属性）',
+        syncCorpEmail: '同步企业邮箱',
+        syncCorpEmailHint: '登录时将钉钉企业邮箱写入 dingtalk_email 属性（不影响登录邮箱）',
+        syncCorpEmailPermissionHint: '需在钉钉开放平台 → 应用 → 权限管理中为本应用申请「邮箱等个人信息（fieldEmail）」权限，否则 OAPI 不会返回企业邮箱字段',
+        syncDept: '同步部门',
+        syncDeptHint: '登录时将钉钉首个部门完整路径写入 dingtalk_department 属性（每次登录实时拉取）',
+        syncDeptPermissionHint: '需在钉钉开放平台 → 应用 → 权限管理中为本应用申请「通讯录部门信息读权限（qyapi_get_department_list）」，否则无法递归出部门路径',
+        syncDisplayNameTarget: '属性键',
+        syncDisplayNameTargetHint: '默认 dingtalk_name / 钉钉姓名；保存设置时按上述属性键和显示名称自动创建用户属性（已存在则仅同步显示名称）',
+        syncCorpEmailTarget: '属性键',
+        syncCorpEmailTargetHint: '默认 dingtalk_email / 钉钉企业邮箱；保存设置时按上述属性键和显示名称自动创建用户属性（已存在则仅同步显示名称）',
+        syncDeptTarget: '属性键',
+        syncDeptTargetHint: '默认 dingtalk_department / 钉钉部门；保存设置时按上述属性键和显示名称自动创建用户属性（已存在则仅同步显示名称）',
+        syncAttrDisplayName: '显示名称'
       REDACTED,
       oidc: {
         title: 'OIDC 登录',
