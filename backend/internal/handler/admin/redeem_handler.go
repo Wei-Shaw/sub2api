@@ -36,6 +36,7 @@ type GenerateRedeemCodesRequest struct {
 	Count        int     `json:"count" binding:"required,min=1,max=100"`
 	Type         string  `json:"type" binding:"required,oneof=balance concurrency subscription invitation"`
 	Value        float64 `json:"value"`
+	Notes        string  `json:"notes" binding:"omitempty,max=500"`
 	GroupID      *int64  `json:"group_id"`      // 订阅类型必填
 	ValidityDays int     `json:"validity_days"` // 订阅类型使用，正数增加/负数退款扣减
 }
@@ -112,6 +113,7 @@ func (h *RedeemHandler) Generate(c *gin.Context) {
 			Count:        req.Count,
 			Type:         req.Type,
 			Value:        req.Value,
+			Notes:        strings.TrimSpace(req.Notes),
 			GroupID:      req.GroupID,
 			ValidityDays: req.ValidityDays,
 		})

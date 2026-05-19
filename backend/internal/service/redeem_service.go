@@ -377,7 +377,7 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 	// 触发邀请返利（仅余额类型兑换码）
 	if redeemCode.Type == RedeemTypeBalance && redeemCode.Value > 0 && s.affiliateService != nil {
 		if _, err := s.affiliateService.AccrueInviteRebate(ctx, userID, float64(redeemCode.Value)); err != nil {
-			logger.LegacyPrintf("service.redeem", "[Redeem] Failed to accrue affiliate rebate for user %d, amount %s: %v", userID, redeemCode.Value, err)
+			logger.LegacyPrintf("service.redeem", "[Redeem] Failed to accrue affiliate rebate for user %d, amount %.2f: %v", userID, redeemCode.Value, err)
 		}
 	}
 

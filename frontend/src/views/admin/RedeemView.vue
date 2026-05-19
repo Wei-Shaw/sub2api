@@ -110,6 +110,15 @@
             </span>
           </template>
 
+          <template #cell-notes="{ value }">
+            <span
+              class="block max-w-40 truncate text-sm text-gray-500 dark:text-dark-300"
+              :title="value || ''"
+            >
+              {{ value || '-' }}
+            </span>
+          </template>
+
           <template #cell-status="{ value }">
             <span
               :class="[
@@ -287,6 +296,16 @@
                 />
               </div>
             </template>
+            <div>
+              <label class="input-label">{{ t('admin.redeem.notes') }}</label>
+              <textarea
+                v-model.trim="generateForm.notes"
+                rows="3"
+                maxlength="500"
+                class="input resize-none"
+                :placeholder="t('admin.redeem.notesPlaceholder')"
+              ></textarea>
+            </div>
             <div>
               <label class="input-label">{{ t('admin.redeem.count') }}</label>
               <input
@@ -503,6 +522,7 @@ const columns = computed<Column[]>(() => [
   { key: 'code', label: t('admin.redeem.columns.code') },
   { key: 'type', label: t('admin.redeem.columns.type'), sortable: true },
   { key: 'value', label: t('admin.redeem.columns.value'), sortable: true },
+  { key: 'notes', label: t('admin.redeem.columns.notes') },
   { key: 'status', label: t('admin.redeem.columns.status'), sortable: true },
   { key: 'used_by', label: t('admin.redeem.columns.usedBy') },
   { key: 'used_at', label: t('admin.redeem.columns.usedAt'), sortable: true },
@@ -561,6 +581,7 @@ const generateForm = reactive({
   type: 'balance' as RedeemCodeType,
   value: 10,
   count: 1,
+  notes: '',
   group_id: null as number | null,
   validity_days: 30
 })
@@ -666,7 +687,8 @@ const handleGenerateCodes = async () => {
       generateForm.type,
       generateForm.value,
       generateForm.type === 'subscription' ? generateForm.group_id : undefined,
-      generateForm.type === 'subscription' ? generateForm.validity_days : undefined
+      generateForm.type === 'subscription' ? generateForm.validity_days : undefined,
+      generateForm.notes
     )
     showGenerateDialog.value = false
     generatedCodes.value = result
@@ -674,6 +696,7 @@ const handleGenerateCodes = async () => {
     // 重置表单
     generateForm.group_id = null
     generateForm.validity_days = 30
+    generateForm.notes = ''
     loadCodes()
   } catch (error: any) {
     appStore.showError(error.response?.data?.detail || t('admin.redeem.failedToGenerate'))

@@ -394,6 +394,7 @@ type GenerateRedeemCodesInput struct {
 	Count        int
 	Type         string
 	Value        float64
+	Notes        string
 	GroupID      *int64 // 订阅类型专用：关联的分组ID
 	ValidityDays int    // 订阅类型专用：有效天数
 }
@@ -2958,6 +2959,7 @@ func (s *adminServiceImpl) GenerateRedeemCodes(ctx context.Context, input *Gener
 			Type:   input.Type,
 			Value:  input.Value,
 			Status: StatusUnused,
+			Notes:  input.Notes,
 		}
 		// 订阅类型专用字段
 		if input.Type == RedeemTypeSubscription {

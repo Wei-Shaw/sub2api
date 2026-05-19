@@ -113,6 +113,7 @@ func (r *redeemCodeRepository) ListWithFilters(ctx context.Context, params pagin
 		q = q.Where(
 			redeemcode.Or(
 				redeemcode.CodeContainsFold(search),
+				redeemcode.NotesContainsFold(search),
 				redeemcode.HasUserWith(user.EmailContainsFold(search)),
 			),
 		)
