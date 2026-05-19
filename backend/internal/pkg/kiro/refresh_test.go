@@ -44,10 +44,59 @@ func TestRefreshToken_PropagatesSocialError(t *testing.T) {
 	})
 }
 
-func TestRefreshToken_IdCNotImplemented(t *testing.T) {
-	_, err := RefreshToken(&RefreshableAccount{AuthMethod: AuthMethodIdC})
-	if err == nil || !strings.Contains(err.Error(), "not implemented") {
-		t.Fatalf("expected not-implemented error, got %v", err)
+func TestRefreshToken_DispatchesIdC(t *testing.T) {
+	called := false
+	stub := func(a *RefreshableAccount) (*TokenInfo, error) {
+		called = true
+		if a.AuthMethod != AuthMethodIdC {
+			t.Fatalf("dispatch got method=%v", a.AuthMethod)
+		}
+		return &TokenInfo{AccessToken: "at", AuthMethod: AuthMethodIdC}, nil
+	}
+	withOIDCRefresher(stub, func() {
+		info, err := RefreshToken(&RefreshableAccount{
+			AuthMethod:   AuthMethodIdC,
+			RefreshToken: "rt",
+			ClientID:     "cid",
+			ClientSecret: "cs",
+			Region:       "us-east-1",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !called {
+			t.Fatal("oidc refresher not called")
+		}
+		if info.AuthMethod != AuthMethodIdC {
+			t.Fatalf("authMethod=%v", info.AuthMethod)
+		}
+	})
+}
+
+func TestRefreshToken_DispatchesBuilderID(t *testing.T) {
+	stub := func(a *RefreshableAccount) (*TokenInfo, error) {
+		if a.AuthMethod != AuthMethodBuilderID {
+			t.Fatalf("dispatch got method=%v", a.AuthMethod)
+		}
+		return &TokenInfo{AccessToken: "at", AuthMethod: AuthMethodBuilderID}, nil
+	}
+	withOIDCRefresher(stub, func() {
+		_, err := RefreshToken(&RefreshableAccount{
+			AuthMethod:   AuthMethodBuilderID,
+			RefreshToken: "rt",
+			ClientID:     "cid",
+			ClientSecret: "cs",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
+func TestRefreshOIDC_MissingClientCreds(t *testing.T) {
+	_, err := RefreshOIDC(&RefreshableAccount{AuthMethod: AuthMethodIdC, RefreshToken: "rt"})
+	if err == nil || !strings.Contains(err.Error(), "client_id/client_secret") {
+		t.Fatalf("expected missing-creds error, got %v", err)
 	}
 }
 

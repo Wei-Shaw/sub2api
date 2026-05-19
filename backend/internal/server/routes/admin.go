@@ -375,11 +375,15 @@ func registerAntigravityOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers)
 }
 
 // registerKiroOAuthRoutes wires up Kiro auth admin endpoints.
-// Phase 2 ships /validate-social; Phase 3 adds IdC + Builder ID endpoints.
+// Phase 2 ships /validate-social; phase 3 adds IdC + Builder ID endpoints.
 func registerKiroOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	k := admin.Group("/kiro")
 	{
 		k.POST("/oauth/validate-social", h.Admin.KiroOAuth.ValidateSocialRefreshToken)
+		k.POST("/oauth/idc/start", h.Admin.KiroOAuth.StartIdCLogin)
+		k.POST("/oauth/idc/complete", h.Admin.KiroOAuth.CompleteIdCLogin)
+		k.POST("/oauth/builderid/start", h.Admin.KiroOAuth.StartBuilderIDLogin)
+		k.POST("/oauth/builderid/poll", h.Admin.KiroOAuth.PollBuilderIDLogin)
 	}
 }
 
