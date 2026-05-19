@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -39,6 +40,134 @@ REDACTED
 
 func (s *geminiCompatHTTPUpstreamStub) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile) (*http.Response, error) {
 	return s.Do(req, proxyURL, accountID, accountConcurrency)
+REDACTED
+
+func TestGeminiForwardAsChatCompletions_OAuthRoutesToGeminiAndReturnsChatFormat(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	upstreamBody := `data: {"response":{"candidates":[{"content":{"parts":[{"text":"hello from gemini"REDACTED]REDACTED,"finishReason":"STOP"REDACTED],"usageMetadata":{"promptTokenCount":7,"candidatesTokenCount":3REDACTEDREDACTEDREDACTED` + "\n\n" +
+		"data: [DONE]\n\n"
+	httpStub := &geminiCompatHTTPUpstreamStub{
+		response: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTEDREDACTED,
+			Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+	REDACTED,
+REDACTED
+	svc := &GeminiMessagesCompatService{
+		tokenProvider: &GeminiTokenProvider{REDACTED,
+		httpUpstream:  httpStub,
+		cfg:           &config.Config{REDACTED,
+REDACTED
+	account := &Account{
+		ID:       101,
+REDACTED
+		Type:     AccountTypeOAuth,
+REDACTED
+			"access_token": "ya29.test-token",
+			"project_id":   "project-1",
+	REDACTED,
+		Concurrency: 1,
+REDACTED
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{"model":"gemini-2.5-flash","messages":[{"role":"user","content":"hi"REDACTED]REDACTED`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body)
+REDACTED
+	require.NotNil(t, result)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "gemini-2.5-flash", result.Model)
+	require.Equal(t, 7, result.Usage.InputTokens)
+	require.Equal(t, 3, result.Usage.OutputTokens)
+
+	require.NotNil(t, httpStub.lastReq)
+	require.Contains(t, httpStub.lastReq.URL.String(), "/v1internal:streamGenerateContent?alt=sse")
+	require.Equal(t, "Bearer ya29.test-token", httpStub.lastReq.Header.Get("Authorization"))
+	require.Empty(t, httpStub.lastReq.Header.Get("x-api-key"))
+	require.Empty(t, httpStub.lastReq.Header.Get("anthropic-version"))
+
+	var sent map[string]any
+	sentBody, err := io.ReadAll(httpStub.lastReq.Body)
+REDACTED
+	require.NoError(t, json.Unmarshal(sentBody, &sent))
+	require.Equal(t, "gemini-2.5-flash", sent["model"])
+	require.Equal(t, "project-1", sent["project"])
+	require.Contains(t, fmt.Sprint(sent["request"]), "hi")
+
+REDACTED
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.Equal(t, "chat.completion", got["object"])
+	require.Equal(t, "gemini-2.5-flash", got["model"])
+	choices, ok := got["choices"].([]any)
+	require.True(t, ok)
+	require.NotEmpty(t, choices)
+	choice, ok := choices[0].(map[string]any)
+	require.True(t, ok)
+	message, ok := choice["message"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "assistant", message["role"])
+	require.Equal(t, "hello from gemini", message["content"])
+	usage, ok := got["usage"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, float64(7), usage["prompt_tokens"])
+	require.Equal(t, float64(3), usage["completion_tokens"])
+	require.Equal(t, float64(10), usage["total_tokens"])
+REDACTED
+
+func TestGeminiForwardAsChatCompletions_StreamsOpenAIChunksFromGeminiSSE(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	upstreamBody := `data: {"candidates":[{"content":{"parts":[{"text":"hel"REDACTED]REDACTEDREDACTED],"usageMetadata":{"promptTokenCount":2,"candidatesTokenCount":1REDACTEDREDACTED` + "\n\n" +
+		`data: {"candidates":[{"content":{"parts":[{"text":"hello"REDACTED]REDACTED,"finishReason":"STOP"REDACTED],"usageMetadata":{"promptTokenCount":2,"candidatesTokenCount":2REDACTEDREDACTED` + "\n\n" +
+		"data: [DONE]\n\n"
+	httpStub := &geminiCompatHTTPUpstreamStub{
+		response: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTEDREDACTED,
+			Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+	REDACTED,
+REDACTED
+	svc := &GeminiMessagesCompatService{
+		httpUpstream: httpStub,
+		cfg:          &config.Config{REDACTED,
+REDACTED
+	account := &Account{
+		ID:       102,
+REDACTED
+		Type:     AccountTypeAPIKey,
+REDACTED
+			"api_key": "gemini-api-key",
+	REDACTED,
+		Concurrency: 1,
+REDACTED
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{"model":"gemini-2.5-flash","stream":true,"stream_options":{"include_usage":trueREDACTED,"messages":[{"role":"user","content":"hi"REDACTED]REDACTED`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body)
+REDACTED
+	require.NotNil(t, result)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.True(t, result.Stream)
+	require.Equal(t, 2, result.Usage.InputTokens)
+	require.Equal(t, 2, result.Usage.OutputTokens)
+
+	require.NotNil(t, httpStub.lastReq)
+	require.Contains(t, httpStub.lastReq.URL.String(), "/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse")
+	require.Equal(t, "gemini-api-key", httpStub.lastReq.Header.Get("x-goog-api-key"))
+
+	out := rec.Body.String()
+	require.Contains(t, out, `"object":"chat.completion.chunk"`)
+	require.Contains(t, out, `"role":"assistant"`)
+	require.Contains(t, out, `"content":"hel"`)
+	require.Contains(t, out, `"content":"lo"`)
+	require.Contains(t, out, `"usage":{"prompt_tokens":2,"completion_tokens":2,"total_tokens":4REDACTED`)
+	require.Contains(t, out, "data: [DONE]")
 REDACTED
 
 // TestConvertClaudeToolsToGeminiTools_CustomType 测试custom类型工具转换

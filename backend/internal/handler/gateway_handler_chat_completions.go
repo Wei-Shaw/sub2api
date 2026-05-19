@@ -161,12 +161,23 @@ REDACTED
 		APIKeyID:  apiKey.ID,
 REDACTED
 	sessionHash := h.gatewayService.GenerateSessionHash(parsedReq)
+	groupPlatform := ""
+	if apiKey.Group != nil {
+		groupPlatform = apiKey.Group.Platform
+REDACTED
+	selectionSessionHash := sessionHash
+	if groupPlatform == service.PlatformGemini && selectionSessionHash != "" {
+		selectionSessionHash = "gemini:" + selectionSessionHash
+REDACTED
 
 	// 3. Account selection + failover loop
 	fs := NewFailoverState(h.maxAccountSwitches, false)
+	if groupPlatform == service.PlatformGemini {
+		fs = NewFailoverState(h.maxAccountSwitchesGemini, false)
+REDACTED
 
 	for {
-		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionHash, reqModel, fs.FailedAccountIDs, "", int64(0))
+		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, selectionSessionHash, reqModel, fs.FailedAccountIDs, "", int64(0))
 		if err != nil {
 			if len(fs.FailedAccountIDs) == 0 {
 				markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
@@ -215,13 +226,33 @@ REDACTED
 	REDACTED
 		accountReleaseFunc = wrapReleaseOnDone(c.Request.Context(), accountReleaseFunc)
 
+		if groupPlatform == service.PlatformGemini && account.Platform != service.PlatformGemini {
+			if accountReleaseFunc != nil {
+				accountReleaseFunc()
+		REDACTED
+			fs.FailedAccountIDs[account.ID] = struct{REDACTED{REDACTED
+			continue
+	REDACTED
+
 		// 5. Forward request
 		writerSizeBeforeForward := c.Writer.Size()
 		forwardBody := body
 		if channelMapping.Mapped {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
 	REDACTED
-		result, err := h.gatewayService.ForwardAsChatCompletions(c.Request.Context(), c, account, forwardBody, parsedReq)
+		var result *service.ForwardResult
+		if account.Platform == service.PlatformGemini {
+			if h.geminiCompatService == nil {
+				h.chatCompletionsErrorResponse(c, http.StatusBadGateway, "upstream_error", "Gemini compatibility service is not configured")
+				if accountReleaseFunc != nil {
+					accountReleaseFunc()
+			REDACTED
+				return
+		REDACTED
+			result, err = h.geminiCompatService.ForwardAsChatCompletions(c.Request.Context(), c, account, forwardBody)
+	REDACTED else {
+			result, err = h.gatewayService.ForwardAsChatCompletions(c.Request.Context(), c, account, forwardBody, parsedReq)
+	REDACTED
 
 		if accountReleaseFunc != nil {
 			accountReleaseFunc()
