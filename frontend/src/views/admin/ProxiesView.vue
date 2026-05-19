@@ -118,8 +118,16 @@
             />
           </template>
 
-          <template #cell-name="{ value }">
-            <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
+          <template #cell-name="{ row, value }">
+            <div class="flex items-center gap-2">
+              <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
+              <span
+                v-if="row.id === defaultProxyId"
+                class="inline-flex items-center rounded bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+              >
+                {{ t('admin.proxies.defaultBadge') }}
+              </span>
+            </div>
           </template>
 
           <template #cell-protocol="{ value }">
@@ -252,6 +260,26 @@
 
           <template #cell-actions="{ row }">
             <div class="flex items-center gap-1">
+              <button
+                @click="handleSetDefaultProxy(row)"
+                :disabled="updatingDefaultProxyId === row.id || row.id === defaultProxyId"
+                :class="[
+                  'flex flex-col items-center gap-0.5 rounded-lg p-1.5 transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+                  row.id === defaultProxyId
+                    ? 'text-primary-600 dark:text-primary-400'
+                    : 'text-gray-500 hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-primary-900/20 dark:hover:text-primary-400'
+                ]"
+              >
+                <span class="text-xs font-medium">
+                  {{
+                    row.id === defaultProxyId
+                      ? t('admin.proxies.defaultBadgeShort')
+                      : updatingDefaultProxyId === row.id
+                        ? t('admin.proxies.settingDefault')
+                        : t('admin.proxies.setAsDefault')
+                  }}
+                </span>
+              </button>
               <button
                 @click="handleTestConnection(row)"
                 :disabled="testingProxyIds.has(row.id)"
@@ -940,6 +968,8 @@ const editStatusOptions = computed(() => [
 ])
 
 const proxies = ref<Proxy[]>([])
+const defaultProxyId = ref<number | null>(null)
+const updatingDefaultProxyId = ref<number | null>(null)
 const visiblePasswordIds = reactive(new Set<number>())
 const copyMenuProxyId = ref<number | null>(null)
 const loading = ref(false)
@@ -1072,6 +1102,31 @@ const buildProxyQueryFilters = () => ({
   sort_order: sortState.sort_order
 })
 
+const normalizeDefaultProxyId = (value: unknown) =>
+  typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.trunc(value) : null
+
+const loadDefaultProxySetting = async () => {
+  try {
+    const settings = await adminAPI.settings.getSettings()
+    defaultProxyId.value = normalizeDefaultProxyId(settings.default_proxy_id)
+  } catch (error) {
+    defaultProxyId.value = null
+    console.error('Error loading default proxy setting:', error)
+  }
+}
+
+const persistDefaultProxy = async (proxyId: number | null, successMessage?: string) => {
+  const currentSettings = await adminAPI.settings.getSettings()
+  await adminAPI.settings.updateSettings({
+    ...currentSettings,
+    default_proxy_id: proxyId
+  })
+  defaultProxyId.value = proxyId
+  if (successMessage) {
+    appStore.showSuccess(successMessage)
+  }
+}
+
 const loadProxies = async () => {
   if (abortController) {
     abortController.abort()
@@ -1103,6 +1158,34 @@ const loadProxies = async () => {
       loading.value = false
       abortController = null
     }
+  }
+}
+
+const handleSetDefaultProxy = async (proxy: Proxy) => {
+  if (defaultProxyId.value === proxy.id) {
+    return
+  }
+
+  updatingDefaultProxyId.value = proxy.id
+  try {
+    await persistDefaultProxy(proxy.id, t('admin.proxies.defaultProxySet'))
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.proxies.failedToSetDefault'))
+    console.error('Error setting default proxy:', error)
+  } finally {
+    updatingDefaultProxyId.value = null
+  }
+}
+
+const clearDefaultProxyIfDeleted = async (deletedIds: number[]) => {
+  if (defaultProxyId.value == null || !deletedIds.includes(defaultProxyId.value)) {
+    return
+  }
+  try {
+    await persistDefaultProxy(null)
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.proxies.failedToClearDefault'))
+    console.error('Error clearing default proxy after delete:', error)
   }
 }
 
@@ -1762,11 +1845,13 @@ const confirmDelete = async () => {
   if (!deletingProxy.value) return
 
   try {
+    const deletedProxyID = deletingProxy.value.id
     await adminAPI.proxies.delete(deletingProxy.value.id)
     appStore.showSuccess(t('admin.proxies.proxyDeleted'))
     showDeleteDialog.value = false
-    removeSelectedProxies([deletingProxy.value.id])
+    removeSelectedProxies([deletedProxyID])
     deletingProxy.value = null
+    await clearDefaultProxyIfDeleted([deletedProxyID])
     loadProxies()
   } catch (error: any) {
     appStore.showError(error.response?.data?.detail || t('admin.proxies.failedToDelete'))
@@ -1794,6 +1879,7 @@ const confirmBatchDelete = async () => {
 
     clearSelectedProxies()
     showBatchDeleteDialog.value = false
+    await clearDefaultProxyIfDeleted(result.deleted_ids || [])
     loadProxies()
   } catch (error: any) {
     appStore.showError(error.response?.data?.detail || t('admin.proxies.batchDeleteFailed'))
@@ -1871,6 +1957,7 @@ function closeCopyMenu() {
 
 onMounted(() => {
   loadProxies()
+  loadDefaultProxySetting()
   document.addEventListener('click', closeCopyMenu)
 })
 
