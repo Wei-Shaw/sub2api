@@ -189,8 +189,63 @@ REDACTED
 	if resp.PayURL == "" {
 		t.Fatal("expected pay_url for desktop page pay")
 REDACTED
-	if resp.QRCode != resp.PayURL {
-		t.Fatalf("qr_code = %q, want same as pay_url %q", resp.QRCode, resp.PayURL)
+	// page.pay returns a checkout page URL, not a scannable QR payload —
+	// it must never be exposed via QRCode (the frontend would render an
+	// unscannable image from it).
+	if resp.QRCode != "" {
+		t.Fatalf("qr_code = %q, want empty for page pay", resp.QRCode)
+REDACTED
+REDACTED
+
+// When the provider instance is configured with paymentMode == "redirect",
+// the desktop flow must skip precreate and go straight to page.pay.
+func TestCreateTradeRedirectModeSkipsPrecreate(t *testing.T) {
+	origPreCreate := alipayTradePreCreate
+	origPagePay := alipayTradePagePay
+	t.Cleanup(func() {
+		alipayTradePreCreate = origPreCreate
+		alipayTradePagePay = origPagePay
+REDACTED)
+
+	preCreateCalls := 0
+	pagePayCalls := 0
+	alipayTradePreCreate = func(ctx context.Context, client *alipay.Client, param alipay.TradePreCreate) (*alipay.TradePreCreateRsp, error) {
+		preCreateCalls++
+		return &alipay.TradePreCreateRsp{
+			Error:  alipay.Error{Code: alipay.CodeSuccessREDACTED,
+			QRCode: "https://qr.alipay.example.com/precreate-token",
+	REDACTED, nil
+REDACTED
+	alipayTradePagePay = func(client *alipay.Client, param alipay.TradePagePay) (*url.URL, error) {
+		pagePayCalls++
+		if param.ProductCode != alipayProductCodePagePay {
+			t.Fatalf("product_code = %q, want %q", param.ProductCode, alipayProductCodePagePay)
+	REDACTED
+		return url.Parse("https://openapi.alipay.com/gateway.do?page-pay")
+REDACTED
+
+	provider := &Alipay{
+		config: map[string]string{"paymentMode": "redirect"REDACTED,
+REDACTED
+	resp, err := provider.createDesktopTrade(context.Background(), &alipay.Client{REDACTED, payment.CreatePaymentRequest{
+		OrderID: "sub2_103",
+		Amount:  "12.00",
+		Subject: "Balance recharge",
+REDACTED, "https://merchant.example.com/api/v1/payment/webhook/alipay", "https://merchant.example.com/payment/result")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+REDACTED
+	if preCreateCalls != 0 {
+		t.Fatalf("precreate calls = %d, want 0 (redirect mode must skip precreate)", preCreateCalls)
+REDACTED
+	if pagePayCalls != 1 {
+		t.Fatalf("page pay calls = %d, want 1", pagePayCalls)
+REDACTED
+	if resp.PayURL == "" {
+		t.Fatal("expected pay_url for redirect mode")
+REDACTED
+	if resp.QRCode != "" {
+		t.Fatalf("qr_code = %q, want empty for redirect mode", resp.QRCode)
 REDACTED
 REDACTED
 
