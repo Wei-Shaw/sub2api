@@ -967,7 +967,7 @@ REDACTED
 		)
 REDACTED
 
-	upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, parsed.Stream)
+	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 	defer releaseUpstreamCtx()
 
 	token, _, err := s.GetAccessToken(upstreamCtx, account)
