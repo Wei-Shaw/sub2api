@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, shallowMount } from '@vue/test-utils'
 import PaymentView from '../PaymentView.vue'
+import AmountInput from '@/components/payment/AmountInput.vue'
 import { PAYMENT_RECOVERY_STORAGE_KEY } from '@/components/payment/paymentFlow'
 
 const routeState = vi.hoisted(() => ({
@@ -104,6 +105,7 @@ function checkoutInfoFixture() {
       balance_disabled: false,
       balance_recharge_multiplier: 1,
       recharge_fee_rate: 0,
+      quick_amounts: [6, 18, 88],
       help_text: '',
       help_image_url: '',
       stripe_publishable_key: '',
@@ -202,6 +204,26 @@ describe('PaymentView WeChat JSAPI flow', () => {
     ;(window as Window & { WeixinJSBridge?: { invoke: typeof bridgeInvoke } }).WeixinJSBridge = {
       invoke: bridgeInvoke,
     }
+  })
+
+  it('passes configured quick recharge amounts to amount input', async () => {
+    routeState.query = {}
+    const wrapper = shallowMount(PaymentView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          Teleport: true,
+          Transition: false,
+        },
+      },
+    })
+
+    await flushPromises()
+    await flushPromises()
+
+    const amountInput = wrapper.findComponent(AmountInput)
+    expect(amountInput.exists()).toBe(true)
+    expect(amountInput.props('amounts')).toEqual([6, 18, 88])
   })
 
   it('resets payment state and redirects to /payment/result after JSAPI reports success', async () => {

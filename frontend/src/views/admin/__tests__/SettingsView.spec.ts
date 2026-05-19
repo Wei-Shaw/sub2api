@@ -381,6 +381,7 @@ const baseSettingsResponse = {
   payment_balance_disabled: false,
   payment_balance_recharge_multiplier: 1,
   payment_recharge_fee_rate: 0,
+  payment_quick_amounts: [10, 20, 50, 100, 200, 500, 1000, 2000, 5000],
   payment_load_balance_strategy: "round-robin",
   payment_product_name_prefix: "",
   payment_product_name_suffix: "",
@@ -581,6 +582,29 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(payload).not.toHaveProperty("payment_visible_method_wxpay_source");
     expect(payload).not.toHaveProperty("payment_visible_method_alipay_enabled");
     expect(payload).not.toHaveProperty("payment_visible_method_wxpay_enabled");
+  });
+
+  it("submits configured payment quick amounts", async () => {
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openPaymentTab(wrapper);
+
+    const quickAmountInput = wrapper
+      .findAll("input")
+      .find((node) => node.attributes("placeholder") === "10,20,50,100,200,500");
+    expect(quickAmountInput).toBeDefined();
+    await quickAmountInput?.setValue("6, 18.5, 88");
+
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledTimes(1);
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payment_quick_amounts: [6, 18.5, 88],
+      }),
+    );
   });
 
   it("submits Anthropic cache TTL injection gateway setting", async () => {

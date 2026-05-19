@@ -102,22 +102,26 @@ func TestParsePaymentConfig(t *testing.T) {
 		if len(cfg.EnabledTypes) != 0 {
 			t.Fatalf("expected empty EnabledTypes, got %v", cfg.EnabledTypes)
 		}
+		if !floatSlicesEqual(cfg.QuickAmounts, []float64{10, 20, 50, 100, 200, 500, 1000, 2000, 5000}) {
+			t.Fatalf("QuickAmounts = %v, want default quick recharge amounts", cfg.QuickAmounts)
+		}
 	})
 
 	t.Run("all values populated", func(t *testing.T) {
 		t.Parallel()
 		vals := map[string]string{
-			SettingPaymentEnabled:      "true",
-			SettingMinRechargeAmount:   "5.00",
-			SettingMaxRechargeAmount:   "1000.00",
-			SettingDailyRechargeLimit:  "5000.00",
-			SettingOrderTimeoutMinutes: "15",
-			SettingMaxPendingOrders:    "5",
-			SettingEnabledPaymentTypes: "alipay,wxpay,stripe",
-			SettingBalancePayDisabled:  "true",
-			SettingLoadBalanceStrategy: "least_amount",
-			SettingProductNamePrefix:   "PRE",
-			SettingProductNameSuffix:   "SUF",
+			SettingPaymentEnabled:       "true",
+			SettingMinRechargeAmount:    "5.00",
+			SettingMaxRechargeAmount:    "1000.00",
+			SettingDailyRechargeLimit:   "5000.00",
+			SettingOrderTimeoutMinutes:  "15",
+			SettingMaxPendingOrders:     "5",
+			SettingEnabledPaymentTypes:  "alipay,wxpay,stripe",
+			SettingBalancePayDisabled:   "true",
+			SettingLoadBalanceStrategy:  "least_amount",
+			SettingProductNamePrefix:    "PRE",
+			SettingProductNameSuffix:    "SUF",
+			SettingQuickRechargeAmounts: "6, 18.5, 88",
 		}
 		cfg := svc.parsePaymentConfig(vals)
 
@@ -156,6 +160,19 @@ func TestParsePaymentConfig(t *testing.T) {
 		}
 		if cfg.ProductNameSuffix != "SUF" {
 			t.Fatalf("ProductNameSuffix = %q, want %q", cfg.ProductNameSuffix, "SUF")
+		}
+		if !floatSlicesEqual(cfg.QuickAmounts, []float64{6, 18.5, 88}) {
+			t.Fatalf("QuickAmounts = %v, want [6 18.5 88]", cfg.QuickAmounts)
+		}
+	})
+
+	t.Run("invalid quick amounts fall back to defaults", func(t *testing.T) {
+		t.Parallel()
+		cfg := svc.parsePaymentConfig(map[string]string{
+			SettingQuickRechargeAmounts: "0, -1, abc",
+		})
+		if !floatSlicesEqual(cfg.QuickAmounts, []float64{10, 20, 50, 100, 200, 500, 1000, 2000, 5000}) {
+			t.Fatalf("QuickAmounts = %v, want default quick recharge amounts", cfg.QuickAmounts)
 		}
 	})
 
@@ -402,6 +419,22 @@ func (s *paymentConfigSettingRepoStub) GetAll(context.Context) (map[string]strin
 }
 func (s *paymentConfigSettingRepoStub) Delete(context.Context, string) error { return nil }
 
+func TestUpdatePaymentConfig_PersistsQuickRechargeAmounts(t *testing.T) {
+	repo := &paymentConfigSettingRepoStub{values: map[string]string{}}
+	svc := &PaymentConfigService{settingRepo: repo}
+
+	err := svc.UpdatePaymentConfig(context.Background(), UpdatePaymentConfigRequest{
+		QuickAmounts: []float64{6, -1, 18.5, 0, 88},
+	})
+	if err != nil {
+		t.Fatalf("UpdatePaymentConfig returned error: %v", err)
+	}
+
+	if repo.values[SettingQuickRechargeAmounts] != "6,18.5,88" {
+		t.Fatalf("quick amounts = %q, want %q", repo.values[SettingQuickRechargeAmounts], "6,18.5,88")
+	}
+}
+
 func TestUpdatePaymentConfig_PersistsVisibleMethodRouting(t *testing.T) {
 	repo := &paymentConfigSettingRepoStub{values: map[string]string{}}
 	svc := &PaymentConfigService{settingRepo: repo}
@@ -434,4 +467,16 @@ func TestUpdatePaymentConfig_PersistsVisibleMethodRouting(t *testing.T) {
 
 func paymentConfigStrPtr(value string) *string {
 	return &value
+}
+
+func floatSlicesEqual(a, b []float64) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

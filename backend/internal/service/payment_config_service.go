@@ -14,26 +14,27 @@ import (
 )
 
 const (
-	SettingPaymentEnabled      = "payment_enabled"
-	SettingMinRechargeAmount   = "MIN_RECHARGE_AMOUNT"
-	SettingMaxRechargeAmount   = "MAX_RECHARGE_AMOUNT"
-	SettingDailyRechargeLimit  = "DAILY_RECHARGE_LIMIT"
-	SettingOrderTimeoutMinutes = "ORDER_TIMEOUT_MINUTES"
-	SettingMaxPendingOrders    = "MAX_PENDING_ORDERS"
-	SettingEnabledPaymentTypes = "ENABLED_PAYMENT_TYPES"
-	SettingLoadBalanceStrategy = "LOAD_BALANCE_STRATEGY"
-	SettingBalancePayDisabled  = "BALANCE_PAYMENT_DISABLED"
-	SettingBalanceRechargeMult = "BALANCE_RECHARGE_MULTIPLIER"
-	SettingRechargeFeeRate     = "RECHARGE_FEE_RATE"
-	SettingProductNamePrefix   = "PRODUCT_NAME_PREFIX"
-	SettingProductNameSuffix   = "PRODUCT_NAME_SUFFIX"
-	SettingHelpImageURL        = "PAYMENT_HELP_IMAGE_URL"
-	SettingHelpText            = "PAYMENT_HELP_TEXT"
-	SettingCancelRateLimitOn   = "CANCEL_RATE_LIMIT_ENABLED"
-	SettingCancelRateLimitMax  = "CANCEL_RATE_LIMIT_MAX"
-	SettingCancelWindowSize    = "CANCEL_RATE_LIMIT_WINDOW"
-	SettingCancelWindowUnit    = "CANCEL_RATE_LIMIT_UNIT"
-	SettingCancelWindowMode    = "CANCEL_RATE_LIMIT_WINDOW_MODE"
+	SettingPaymentEnabled       = "payment_enabled"
+	SettingMinRechargeAmount    = "MIN_RECHARGE_AMOUNT"
+	SettingMaxRechargeAmount    = "MAX_RECHARGE_AMOUNT"
+	SettingDailyRechargeLimit   = "DAILY_RECHARGE_LIMIT"
+	SettingOrderTimeoutMinutes  = "ORDER_TIMEOUT_MINUTES"
+	SettingMaxPendingOrders     = "MAX_PENDING_ORDERS"
+	SettingEnabledPaymentTypes  = "ENABLED_PAYMENT_TYPES"
+	SettingLoadBalanceStrategy  = "LOAD_BALANCE_STRATEGY"
+	SettingBalancePayDisabled   = "BALANCE_PAYMENT_DISABLED"
+	SettingBalanceRechargeMult  = "BALANCE_RECHARGE_MULTIPLIER"
+	SettingRechargeFeeRate      = "RECHARGE_FEE_RATE"
+	SettingQuickRechargeAmounts = "QUICK_RECHARGE_AMOUNTS"
+	SettingProductNamePrefix    = "PRODUCT_NAME_PREFIX"
+	SettingProductNameSuffix    = "PRODUCT_NAME_SUFFIX"
+	SettingHelpImageURL         = "PAYMENT_HELP_IMAGE_URL"
+	SettingHelpText             = "PAYMENT_HELP_TEXT"
+	SettingCancelRateLimitOn    = "CANCEL_RATE_LIMIT_ENABLED"
+	SettingCancelRateLimitMax   = "CANCEL_RATE_LIMIT_MAX"
+	SettingCancelWindowSize     = "CANCEL_RATE_LIMIT_WINDOW"
+	SettingCancelWindowUnit     = "CANCEL_RATE_LIMIT_UNIT"
+	SettingCancelWindowMode     = "CANCEL_RATE_LIMIT_WINDOW_MODE"
 )
 
 // Default values for payment configuration settings.
@@ -42,24 +43,27 @@ const (
 	defaultMaxPendingOrders = 3
 )
 
+var defaultQuickRechargeAmounts = []float64{10, 20, 50, 100, 200, 500, 1000, 2000, 5000}
+
 // PaymentConfig holds the payment system configuration.
 type PaymentConfig struct {
-	Enabled                   bool     `json:"enabled"`
-	MinAmount                 float64  `json:"min_amount"`
-	MaxAmount                 float64  `json:"max_amount"`
-	DailyLimit                float64  `json:"daily_limit"`
-	OrderTimeoutMin           int      `json:"order_timeout_minutes"`
-	MaxPendingOrders          int      `json:"max_pending_orders"`
-	EnabledTypes              []string `json:"enabled_payment_types"`
-	BalanceDisabled           bool     `json:"balance_disabled"`
-	BalanceRechargeMultiplier float64  `json:"balance_recharge_multiplier"`
-	RechargeFeeRate           float64  `json:"recharge_fee_rate"`
-	LoadBalanceStrategy       string   `json:"load_balance_strategy"`
-	ProductNamePrefix         string   `json:"product_name_prefix"`
-	ProductNameSuffix         string   `json:"product_name_suffix"`
-	HelpImageURL              string   `json:"help_image_url"`
-	HelpText                  string   `json:"help_text"`
-	StripePublishableKey      string   `json:"stripe_publishable_key,omitempty"`
+	Enabled                   bool      `json:"enabled"`
+	MinAmount                 float64   `json:"min_amount"`
+	MaxAmount                 float64   `json:"max_amount"`
+	DailyLimit                float64   `json:"daily_limit"`
+	OrderTimeoutMin           int       `json:"order_timeout_minutes"`
+	MaxPendingOrders          int       `json:"max_pending_orders"`
+	EnabledTypes              []string  `json:"enabled_payment_types"`
+	BalanceDisabled           bool      `json:"balance_disabled"`
+	BalanceRechargeMultiplier float64   `json:"balance_recharge_multiplier"`
+	RechargeFeeRate           float64   `json:"recharge_fee_rate"`
+	QuickAmounts              []float64 `json:"quick_amounts"`
+	LoadBalanceStrategy       string    `json:"load_balance_strategy"`
+	ProductNamePrefix         string    `json:"product_name_prefix"`
+	ProductNameSuffix         string    `json:"product_name_suffix"`
+	HelpImageURL              string    `json:"help_image_url"`
+	HelpText                  string    `json:"help_text"`
+	StripePublishableKey      string    `json:"stripe_publishable_key,omitempty"`
 
 	// Cancel rate limit settings
 	CancelRateLimitEnabled bool   `json:"cancel_rate_limit_enabled"`
@@ -71,21 +75,22 @@ type PaymentConfig struct {
 
 // UpdatePaymentConfigRequest contains fields to update payment configuration.
 type UpdatePaymentConfigRequest struct {
-	Enabled                   *bool    `json:"enabled"`
-	MinAmount                 *float64 `json:"min_amount"`
-	MaxAmount                 *float64 `json:"max_amount"`
-	DailyLimit                *float64 `json:"daily_limit"`
-	OrderTimeoutMin           *int     `json:"order_timeout_minutes"`
-	MaxPendingOrders          *int     `json:"max_pending_orders"`
-	EnabledTypes              []string `json:"enabled_payment_types"`
-	BalanceDisabled           *bool    `json:"balance_disabled"`
-	BalanceRechargeMultiplier *float64 `json:"balance_recharge_multiplier"`
-	RechargeFeeRate           *float64 `json:"recharge_fee_rate"`
-	LoadBalanceStrategy       *string  `json:"load_balance_strategy"`
-	ProductNamePrefix         *string  `json:"product_name_prefix"`
-	ProductNameSuffix         *string  `json:"product_name_suffix"`
-	HelpImageURL              *string  `json:"help_image_url"`
-	HelpText                  *string  `json:"help_text"`
+	Enabled                   *bool     `json:"enabled"`
+	MinAmount                 *float64  `json:"min_amount"`
+	MaxAmount                 *float64  `json:"max_amount"`
+	DailyLimit                *float64  `json:"daily_limit"`
+	OrderTimeoutMin           *int      `json:"order_timeout_minutes"`
+	MaxPendingOrders          *int      `json:"max_pending_orders"`
+	EnabledTypes              []string  `json:"enabled_payment_types"`
+	BalanceDisabled           *bool     `json:"balance_disabled"`
+	BalanceRechargeMultiplier *float64  `json:"balance_recharge_multiplier"`
+	RechargeFeeRate           *float64  `json:"recharge_fee_rate"`
+	QuickAmounts              []float64 `json:"quick_amounts"`
+	LoadBalanceStrategy       *string   `json:"load_balance_strategy"`
+	ProductNamePrefix         *string   `json:"product_name_prefix"`
+	ProductNameSuffix         *string   `json:"product_name_suffix"`
+	HelpImageURL              *string   `json:"help_image_url"`
+	HelpText                  *string   `json:"help_text"`
 
 	// Cancel rate limit settings
 	CancelRateLimitEnabled *bool   `json:"cancel_rate_limit_enabled"`
@@ -198,6 +203,7 @@ func (s *PaymentConfigService) GetPaymentConfig(ctx context.Context) (*PaymentCo
 		SettingPaymentEnabled, SettingMinRechargeAmount, SettingMaxRechargeAmount,
 		SettingDailyRechargeLimit, SettingOrderTimeoutMinutes, SettingMaxPendingOrders,
 		SettingEnabledPaymentTypes, SettingBalancePayDisabled, SettingBalanceRechargeMult, SettingRechargeFeeRate, SettingLoadBalanceStrategy,
+		SettingQuickRechargeAmounts,
 		SettingProductNamePrefix, SettingProductNameSuffix,
 		SettingHelpImageURL, SettingHelpText,
 		SettingCancelRateLimitOn, SettingCancelRateLimitMax,
@@ -226,6 +232,7 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 		BalanceDisabled:           vals[SettingBalancePayDisabled] == "true",
 		BalanceRechargeMultiplier: normalizeBalanceRechargeMultiplier(pcParseFloat(vals[SettingBalanceRechargeMult], defaultBalanceRechargeMultiplier)),
 		RechargeFeeRate:           pcParseFloat(vals[SettingRechargeFeeRate], 0),
+		QuickAmounts:              parseQuickRechargeAmounts(vals[SettingQuickRechargeAmounts]),
 		LoadBalanceStrategy:       vals[SettingLoadBalanceStrategy],
 		ProductNamePrefix:         vals[SettingProductNamePrefix],
 		ProductNameSuffix:         vals[SettingProductNameSuffix],
@@ -324,6 +331,9 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 	} else {
 		m[SettingEnabledPaymentTypes] = ""
 	}
+	if req.QuickAmounts != nil {
+		m[SettingQuickRechargeAmounts] = formatQuickRechargeAmounts(req.QuickAmounts)
+	}
 	return s.settingRepo.SetMultiple(ctx, m)
 }
 
@@ -346,6 +356,32 @@ func formatNonNegativeFloat(v *float64) string {
 		return ""
 	}
 	return strconv.FormatFloat(*v, 'f', 2, 64)
+}
+
+func parseQuickRechargeAmounts(raw string) []float64 {
+	amounts := make([]float64, 0)
+	for _, part := range strings.Split(raw, ",") {
+		value, err := strconv.ParseFloat(strings.TrimSpace(part), 64)
+		if err != nil || math.IsNaN(value) || math.IsInf(value, 0) || value <= 0 {
+			continue
+		}
+		amounts = append(amounts, value)
+	}
+	if len(amounts) == 0 {
+		return append([]float64(nil), defaultQuickRechargeAmounts...)
+	}
+	return amounts
+}
+
+func formatQuickRechargeAmounts(amounts []float64) string {
+	parts := make([]string, 0, len(amounts))
+	for _, amount := range amounts {
+		if math.IsNaN(amount) || math.IsInf(amount, 0) || amount <= 0 {
+			continue
+		}
+		parts = append(parts, strconv.FormatFloat(amount, 'f', -1, 64))
+	}
+	return strings.Join(parts, ",")
 }
 
 func formatPositiveInt(v *int) string {
