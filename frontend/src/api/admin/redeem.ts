@@ -60,6 +60,7 @@ REDACTED
  * @param value - Value of the code
  * @param groupId - Group ID (required for subscription type)
  * @param validityDays - Validity days (for subscription type)
+ * @param expiresInDays - Days before the code itself expires
  * @returns Array of generated redeem codes
  */
 export async function generate(
@@ -67,7 +68,8 @@ export async function generate(
   type: RedeemCodeType,
   value: number,
   groupId?: number | null,
-  validityDays?: number
+  validityDays?: number,
+  expiresInDays?: number | null
 ): Promise<RedeemCode[]> {
   const payload: GenerateRedeemCodesRequest = {
     count,
@@ -81,6 +83,9 @@ export async function generate(
     if (validityDays && validityDays > 0) {
       payload.validity_days = validityDays
     REDACTED
+  REDACTED
+  if (expiresInDays && expiresInDays > 0) {
+    payload.expires_in_days = expiresInDays
   REDACTED
 
   const { data REDACTED = await apiClient.post<RedeemCode[]>('/admin/redeem-codes/generate', payload)

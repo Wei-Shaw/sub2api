@@ -157,7 +157,7 @@ REDACTED
 			return "", nil, ErrInvitationCodeInvalid
 	REDACTED
 		// 检查类型和状态
-		if redeemCode.Type != RedeemTypeInvitation || redeemCode.Status != StatusUnused {
+		if redeemCode.Type != RedeemTypeInvitation || !redeemCode.CanUse() {
 			logger.LegacyPrintf("service.auth", "[Auth] Invitation code invalid: type=%s, status=%s", redeemCode.Type, redeemCode.Status)
 			return "", nil, ErrInvitationCodeInvalid
 	REDACTED
@@ -601,7 +601,7 @@ REDACTED
 				if err != nil {
 					return nil, nil, ErrInvitationCodeInvalid
 			REDACTED
-				if redeemCode.Type != RedeemTypeInvitation || redeemCode.Status != StatusUnused {
+				if redeemCode.Type != RedeemTypeInvitation || !redeemCode.CanUse() {
 					return nil, nil, ErrInvitationCodeInvalid
 			REDACTED
 				invitationRedeemCode = redeemCode

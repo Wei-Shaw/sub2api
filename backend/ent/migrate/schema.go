@@ -1120,6 +1120,7 @@ REDACTED
 		{Name: "used_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
 		{Name: "notes", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
 		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "expires_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
 		{Name: "validity_days", Type: field.TypeInt, Default: 30REDACTED,
 		{Name: "group_id", Type: field.TypeInt64, Nullable: trueREDACTED,
 		{Name: "used_by", Type: field.TypeInt64, Nullable: trueREDACTED,
@@ -1132,13 +1133,13 @@ REDACTED
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "redeem_codes_groups_redeem_codes",
-				Columns:    []*schema.Column{RedeemCodesColumns[9]REDACTED,
+				Columns:    []*schema.Column{RedeemCodesColumns[10]REDACTED,
 				RefColumns: []*schema.Column{GroupsColumns[0]REDACTED,
 				OnDelete:   schema.SetNull,
 		REDACTED,
 			{
 				Symbol:     "redeem_codes_users_redeem_codes",
-				Columns:    []*schema.Column{RedeemCodesColumns[10]REDACTED,
+				Columns:    []*schema.Column{RedeemCodesColumns[11]REDACTED,
 				RefColumns: []*schema.Column{UsersColumns[0]REDACTED,
 				OnDelete:   schema.SetNull,
 		REDACTED,
@@ -1152,12 +1153,17 @@ REDACTED
 			{
 				Name:    "redeemcode_used_by",
 				Unique:  false,
-				Columns: []*schema.Column{RedeemCodesColumns[10]REDACTED,
+				Columns: []*schema.Column{RedeemCodesColumns[11]REDACTED,
 		REDACTED,
 			{
 				Name:    "redeemcode_group_id",
 				Unique:  false,
-				Columns: []*schema.Column{RedeemCodesColumns[9]REDACTED,
+				Columns: []*schema.Column{RedeemCodesColumns[10]REDACTED,
+		REDACTED,
+			{
+				Name:    "redeemcode_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{RedeemCodesColumns[8]REDACTED,
 		REDACTED,
 	REDACTED,
 REDACTED

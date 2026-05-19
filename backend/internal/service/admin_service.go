@@ -397,6 +397,7 @@ type GenerateRedeemCodesInput struct {
 	Value        float64
 	GroupID      *int64 // 订阅类型专用：关联的分组ID
 	ValidityDays int    // 订阅类型专用：有效天数
+	ExpiresAt    *time.Time
 REDACTED
 
 type ProxyBatchDeleteResult struct {
@@ -2966,6 +2967,10 @@ func (s *adminServiceImpl) GetRedeemCode(ctx context.Context, id int64) (*Redeem
 REDACTED
 
 func (s *adminServiceImpl) GenerateRedeemCodes(ctx context.Context, input *GenerateRedeemCodesInput) ([]RedeemCode, error) {
+	if input.ExpiresAt != nil && !input.ExpiresAt.After(time.Now()) {
+		return nil, ErrRedeemCodeExpired
+REDACTED
+
 	// 如果是订阅类型，验证必须有 GroupID
 	if input.Type == RedeemTypeSubscription {
 		if input.GroupID == nil {
@@ -2988,10 +2993,11 @@ REDACTED
 			return nil, err
 	REDACTED
 		code := RedeemCode{
-			Code:   codeValue,
-			Type:   input.Type,
-			Value:  input.Value,
-			Status: StatusUnused,
+			Code:      codeValue,
+			Type:      input.Type,
+			Value:     input.Value,
+			Status:    StatusUnused,
+			ExpiresAt: input.ExpiresAt,
 	REDACTED
 		// 订阅类型专用字段
 		if input.Type == RedeemTypeSubscription {
