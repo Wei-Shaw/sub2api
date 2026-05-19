@@ -2781,7 +2781,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		var firstTokenMs *int
 		imageCount := 0
 		if reqStream {
-			streamResult, err := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, upstreamModel)
+			streamResult, err := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, upstreamModel, hasOpenAIImageGenerationTool(reqBody))
 			if err != nil {
 				return nil, err
 			}
@@ -2930,7 +2930,8 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	}
 	imageBillingModel := ""
 	imageSizeTier := ""
-	if IsImageGenerationIntent(openAIResponsesEndpoint, reqModel, body) {
+	isImageGenerationIntent := IsImageGenerationIntent(openAIResponsesEndpoint, reqModel, body)
+	if isImageGenerationIntent {
 		var imageCfgErr error
 		imageBillingModel, imageSizeTier, imageCfgErr = resolveOpenAIResponsesImageBillingConfigFromBody(body, reqModel)
 		if imageCfgErr != nil {
@@ -3030,7 +3031,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	var firstTokenMs *int
 	imageCount := 0
 	if reqStream {
-		result, err := s.handleStreamingResponsePassthrough(ctx, resp, c, account, startTime, reqModel, upstreamPassthroughModel)
+		result, err := s.handleStreamingResponsePassthrough(ctx, resp, c, account, startTime, reqModel, upstreamPassthroughModel, isImageGenerationIntent)
 		if err != nil {
 			return nil, err
 		}
@@ -3391,6 +3392,10 @@ func openAIStreamEventIsPreamble(eventType string) bool {
 	}
 }
 
+func openAIStreamPreambleStartsDownstream(eventType string, flushPreamble bool) bool {
+	return flushPreamble && openAIStreamEventIsPreamble(eventType)
+}
+
 func openAIStreamDataStartsClientOutput(data, eventType string) bool {
 	trimmed := strings.TrimSpace(data)
 	if trimmed == "" {
@@ -3493,6 +3498,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	startTime time.Time,
 	originalModel string,
 	mappedModel string,
+	flushPreamble bool,
 ) (*openaiStreamingResultPassthrough, error) {
 	writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 
@@ -3580,11 +3586,15 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			}
 			imageCounter.AddSSEData(dataBytes)
 			lineStartsClientOutput = forceFlushFailedEvent || openAIStreamDataStartsClientOutput(trimmedData, eventType)
+			lineStartsDownstream := lineStartsClientOutput || openAIStreamPreambleStartsDownstream(eventType, flushPreamble)
 			if firstTokenMs == nil && lineStartsClientOutput && trimmedData != "[DONE]" {
 				ms := int(time.Since(startTime).Milliseconds())
 				firstTokenMs = &ms
 			}
 			s.parseSSEUsageBytes(dataBytes, usage)
+			if lineStartsDownstream {
+				lineStartsClientOutput = true
+			}
 		}
 
 		if !clientDisconnected {
@@ -4199,7 +4209,7 @@ type openaiNonStreamingResult struct {
 	imageCount int
 }
 
-func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel string) (*openaiStreamingResult, error) {
+func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel string, flushPreamble bool) (*openaiStreamingResult, error) {
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	}
@@ -4285,6 +4295,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	clientOutputStarted := false
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
 	var streamFailoverErr error
+	flushAtNextEventBoundary := false
 	sendErrorEvent := func(reason string) {
 		if errorEventSent || clientDisconnected {
 			return
@@ -4414,6 +4425,11 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 				eventType = strings.TrimSpace(gjson.GetBytes(dataBytes, "type").String())
 			}
 			startsClientOutput := forceFlushFailedEvent || openAIStreamDataStartsClientOutput(data, eventType)
+			startsPreambleDownstream := openAIStreamPreambleStartsDownstream(eventType, flushPreamble)
+			startsDownstream := startsClientOutput || startsPreambleDownstream
+			if startsPreambleDownstream {
+				flushAtNextEventBoundary = true
+			}
 
 			// 写入客户端（客户端断开后继续 drain 上游）
 			if !clientDisconnected {
@@ -4433,7 +4449,9 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 						clientDisconnected = true
 						logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming flush, continuing to drain upstream for billing")
 					} else {
-						clientOutputStarted = true
+						if startsDownstream {
+							clientOutputStarted = true
+						}
 						lastDownstreamWriteAt = time.Now()
 					}
 				}
@@ -4456,12 +4474,13 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			} else if _, err := bufferedWriter.WriteString("\n"); err != nil {
 				clientDisconnected = true
 				logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
-			} else if queueDrained && clientOutputStarted {
+			} else if (queueDrained && clientOutputStarted) || (line == "" && flushAtNextEventBoundary) {
 				if err := flushBuffered(); err != nil {
 					clientDisconnected = true
 					logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming flush, continuing to drain upstream for billing")
 				} else {
 					clientOutputStarted = true
+					flushAtNextEventBoundary = false
 					lastDownstreamWriteAt = time.Now()
 				}
 			}
