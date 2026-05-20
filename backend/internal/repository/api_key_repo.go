@@ -699,7 +699,7 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		Status:                          g.Status,
 		Hydrated:                        true,
 		SubscriptionType:                g.SubscriptionType,
-				WeeklyLimitUSD:                  g.WeeklyLimitUsd,
+		WeeklyLimitUSD:                  g.WeeklyLimitUsd,
 		MonthlyLimitUSD:                 g.MonthlyLimitUsd,
 		FiveHourLimitUSD:                g.FiveHourLimitUsd,
 		DailyLimitUSD:                   g.DailyLimitUsd,

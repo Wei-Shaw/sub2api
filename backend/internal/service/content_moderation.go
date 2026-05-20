@@ -1242,15 +1242,6 @@ func (s *ContentModerationService) callModeration(ctx context.Context, cfg *Cont
 	return nil, lastErr
 }
 
-func (s *ContentModerationService) callModerationOnce(ctx context.Context, cfg *ContentModerationConfig, text string) (*moderationAPIResult, error) {
-	key := s.nextAPIKey(cfg)
-	return s.callModerationOnceWithKey(ctx, cfg, key, text, nil)
-}
-
-func (s *ContentModerationService) callModerationOnceWithKey(ctx context.Context, cfg *ContentModerationConfig, apiKey string, text string, httpStatus *int) (*moderationAPIResult, error) {
-	return s.callModerationOnceWithInput(ctx, cfg, apiKey, text, httpStatus)
-}
-
 func (s *ContentModerationService) callModerationOnceWithInput(ctx context.Context, cfg *ContentModerationConfig, apiKey string, input any, httpStatus *int) (*moderationAPIResult, error) {
 	base := strings.TrimRight(cfg.BaseURL, "/")
 	endpoint, err := url.JoinPath(base, "/v1/moderations")
@@ -1284,7 +1275,7 @@ func (s *ContentModerationService) callModerationOnceWithInput(ctx context.Conte
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if httpStatus != nil {
 		*httpStatus = resp.StatusCode
 	}

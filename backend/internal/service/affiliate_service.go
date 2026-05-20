@@ -20,9 +20,9 @@ var (
 )
 
 const (
-	affiliateInviteesLimit      = 100
-	affiliateRegisterBonus      = 1.0 // 注册奖励 $1（双方各送）
-	affiliateRegisterBonusCap   = 10  // 同一邀请人每天最多获得 10 次注册奖励（被邀请人不限）
+	affiliateInviteesLimit    = 100
+	affiliateRegisterBonus    = 1.0 // 注册奖励 $1（双方各送）
+	affiliateRegisterBonusCap = 10  // 同一邀请人每天最多获得 10 次注册奖励（被邀请人不限）
 	// AffiliateCodeMinLength / AffiliateCodeMaxLength bound both system-generated
 	// 12-char codes and admin-customized codes (e.g. "VIP2026").
 	AffiliateCodeMinLength = 4
@@ -364,7 +364,6 @@ func (s *AffiliateService) grantRegisterBonusAsync(inviterID, inviteeID int64) {
 		}
 	}()
 }
-
 
 func (s *AffiliateService) AccrueInviteRebate(ctx context.Context, inviteeUserID int64, baseRechargeAmount float64) (float64, error) {
 	return s.AccrueInviteRebateForOrder(ctx, inviteeUserID, baseRechargeAmount, nil)

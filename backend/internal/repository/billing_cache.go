@@ -225,12 +225,12 @@ func (c *billingCache) SetSubscriptionCache(ctx context.Context, userID, groupID
 	key := billingSubKey(userID, groupID)
 
 	fields := map[string]any{
-		subFieldStatus:       data.Status,
-		subFieldExpiresAt:    data.ExpiresAt.Unix(),
-		subFieldFiveHourUsage:   data.FiveHourUsage,
-		subFieldWeeklyUsage:  data.WeeklyUsage,
-		subFieldMonthlyUsage: data.MonthlyUsage,
-		subFieldVersion:      data.Version,
+		subFieldStatus:        data.Status,
+		subFieldExpiresAt:     data.ExpiresAt.Unix(),
+		subFieldFiveHourUsage: data.FiveHourUsage,
+		subFieldWeeklyUsage:   data.WeeklyUsage,
+		subFieldMonthlyUsage:  data.MonthlyUsage,
+		subFieldVersion:       data.Version,
 	}
 
 	pipe := c.rdb.Pipeline()

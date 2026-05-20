@@ -517,7 +517,7 @@ function amountFitsMethod(amt: number, methodType: string): boolean {
 }
 
 // Selected method's limits (for validation and error messages)
-const selectedLimit = computed(() => visibleMethods.value[selectedMethod.value])
+const _selectedLimit = computed(() => visibleMethods.value[selectedMethod.value])
 
 // Auto-switch to first available method when current selection can't handle the amount
 watch(() => [validAmount.value, selectedMethod.value] as const, ([amt, method]) => {
@@ -526,7 +526,7 @@ watch(() => [validAmount.value, selectedMethod.value] as const, ([amt, method]) 
   if (available) selectedMethod.value = available
 })
 
-function selectPlan(plan: SubscriptionPlan) {
+function _selectPlan(plan: SubscriptionPlan) {
   selectedPlan.value = plan
   errorMessage.value = ''
   errorHintMessage.value = ''

@@ -71,7 +71,7 @@ func (s *PaymentService) quoteSubscriptionPlanPurchaseForPlan(ctx context.Contex
 			quote.CurrentPlanName = target.Name
 			quote.CurrentGroupID = target.GroupID
 			quote.CurrentExpiresAt = &subs[i].ExpiresAt
-			remaining := int64(subs[i].ExpiresAt.Sub(time.Now()).Seconds())
+			remaining := int64(time.Until(subs[i].ExpiresAt).Seconds())
 			if remaining < 0 {
 				remaining = 0
 			}

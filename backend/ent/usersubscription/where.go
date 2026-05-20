@@ -95,6 +95,11 @@ func Status(v string) predicate.UserSubscription {
 	return predicate.UserSubscription(sql.FieldEQ(FieldStatus, v))
 }
 
+// DailyWindowStart applies equality check predicate on the "daily_window_start" field. It's identical to DailyWindowStartEQ.
+func DailyWindowStart(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldEQ(FieldDailyWindowStart, v))
+}
+
 // FiveHourWindowStart applies equality check predicate on the "five_hour_window_start" field. It's identical to FiveHourWindowStartEQ.
 func FiveHourWindowStart(v time.Time) predicate.UserSubscription {
 	return predicate.UserSubscription(sql.FieldEQ(FieldFiveHourWindowStart, v))
@@ -108,6 +113,11 @@ func WeeklyWindowStart(v time.Time) predicate.UserSubscription {
 // MonthlyWindowStart applies equality check predicate on the "monthly_window_start" field. It's identical to MonthlyWindowStartEQ.
 func MonthlyWindowStart(v time.Time) predicate.UserSubscription {
 	return predicate.UserSubscription(sql.FieldEQ(FieldMonthlyWindowStart, v))
+}
+
+// DailyUsageUsd applies equality check predicate on the "daily_usage_usd" field. It's identical to DailyUsageUsdEQ.
+func DailyUsageUsd(v float64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldEQ(FieldDailyUsageUsd, v))
 }
 
 // FiveHourUsageUsd applies equality check predicate on the "five_hour_usage_usd" field. It's identical to FiveHourUsageUsdEQ.
@@ -455,6 +465,56 @@ func StatusContainsFold(v string) predicate.UserSubscription {
 	return predicate.UserSubscription(sql.FieldContainsFold(FieldStatus, v))
 }
 
+// DailyWindowStartEQ applies the EQ predicate on the "daily_window_start" field.
+func DailyWindowStartEQ(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldEQ(FieldDailyWindowStart, v))
+}
+
+// DailyWindowStartNEQ applies the NEQ predicate on the "daily_window_start" field.
+func DailyWindowStartNEQ(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNEQ(FieldDailyWindowStart, v))
+}
+
+// DailyWindowStartIn applies the In predicate on the "daily_window_start" field.
+func DailyWindowStartIn(vs ...time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldIn(FieldDailyWindowStart, vs...))
+}
+
+// DailyWindowStartNotIn applies the NotIn predicate on the "daily_window_start" field.
+func DailyWindowStartNotIn(vs ...time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNotIn(FieldDailyWindowStart, vs...))
+}
+
+// DailyWindowStartGT applies the GT predicate on the "daily_window_start" field.
+func DailyWindowStartGT(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldGT(FieldDailyWindowStart, v))
+}
+
+// DailyWindowStartGTE applies the GTE predicate on the "daily_window_start" field.
+func DailyWindowStartGTE(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldGTE(FieldDailyWindowStart, v))
+}
+
+// DailyWindowStartLT applies the LT predicate on the "daily_window_start" field.
+func DailyWindowStartLT(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldLT(FieldDailyWindowStart, v))
+}
+
+// DailyWindowStartLTE applies the LTE predicate on the "daily_window_start" field.
+func DailyWindowStartLTE(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldLTE(FieldDailyWindowStart, v))
+}
+
+// DailyWindowStartIsNil applies the IsNil predicate on the "daily_window_start" field.
+func DailyWindowStartIsNil() predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldIsNull(FieldDailyWindowStart))
+}
+
+// DailyWindowStartNotNil applies the NotNil predicate on the "daily_window_start" field.
+func DailyWindowStartNotNil() predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNotNull(FieldDailyWindowStart))
+}
+
 // FiveHourWindowStartEQ applies the EQ predicate on the "five_hour_window_start" field.
 func FiveHourWindowStartEQ(v time.Time) predicate.UserSubscription {
 	return predicate.UserSubscription(sql.FieldEQ(FieldFiveHourWindowStart, v))
@@ -603,6 +663,46 @@ func MonthlyWindowStartIsNil() predicate.UserSubscription {
 // MonthlyWindowStartNotNil applies the NotNil predicate on the "monthly_window_start" field.
 func MonthlyWindowStartNotNil() predicate.UserSubscription {
 	return predicate.UserSubscription(sql.FieldNotNull(FieldMonthlyWindowStart))
+}
+
+// DailyUsageUsdEQ applies the EQ predicate on the "daily_usage_usd" field.
+func DailyUsageUsdEQ(v float64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldEQ(FieldDailyUsageUsd, v))
+}
+
+// DailyUsageUsdNEQ applies the NEQ predicate on the "daily_usage_usd" field.
+func DailyUsageUsdNEQ(v float64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNEQ(FieldDailyUsageUsd, v))
+}
+
+// DailyUsageUsdIn applies the In predicate on the "daily_usage_usd" field.
+func DailyUsageUsdIn(vs ...float64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldIn(FieldDailyUsageUsd, vs...))
+}
+
+// DailyUsageUsdNotIn applies the NotIn predicate on the "daily_usage_usd" field.
+func DailyUsageUsdNotIn(vs ...float64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNotIn(FieldDailyUsageUsd, vs...))
+}
+
+// DailyUsageUsdGT applies the GT predicate on the "daily_usage_usd" field.
+func DailyUsageUsdGT(v float64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldGT(FieldDailyUsageUsd, v))
+}
+
+// DailyUsageUsdGTE applies the GTE predicate on the "daily_usage_usd" field.
+func DailyUsageUsdGTE(v float64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldGTE(FieldDailyUsageUsd, v))
+}
+
+// DailyUsageUsdLT applies the LT predicate on the "daily_usage_usd" field.
+func DailyUsageUsdLT(v float64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldLT(FieldDailyUsageUsd, v))
+}
+
+// DailyUsageUsdLTE applies the LTE predicate on the "daily_usage_usd" field.
+func DailyUsageUsdLTE(v float64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldLTE(FieldDailyUsageUsd, v))
 }
 
 // FiveHourUsageUsdEQ applies the EQ predicate on the "five_hour_usage_usd" field.

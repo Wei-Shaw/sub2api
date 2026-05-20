@@ -28,6 +28,7 @@ type UserSubscriptionRepository interface {
 	ActivateWindows(ctx context.Context, id int64, start time.Time) error
 	ResetWeeklyUsage(ctx context.Context, id int64, newWindowStart time.Time) error
 	ResetMonthlyUsage(ctx context.Context, id int64, newWindowStart time.Time) error
+	ResetDailyUsage(ctx context.Context, id int64, newWindowStart time.Time) error
 	ResetFiveHourUsage(ctx context.Context, id int64, newWindowStart time.Time) error
 	IncrementUsage(ctx context.Context, id int64, costUSD float64) error
 

@@ -107,7 +107,7 @@ LIMIT $`+fmt.Sprint(len(queryArgs)-1)+` OFFSET $`+fmt.Sprint(len(queryArgs)),
 	if err != nil {
 		return nil, nil, fmt.Errorf("list content moderation logs: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	items := make([]service.ContentModerationLog, 0)
 	for rows.Next() {

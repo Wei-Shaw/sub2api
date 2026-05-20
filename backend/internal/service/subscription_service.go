@@ -696,9 +696,9 @@ func (s *SubscriptionService) CheckAndActivateWindow(ctx context.Context, sub *U
 	return s.userSubRepo.ActivateWindows(ctx, sub.ID, windowStart)
 }
 
-// AdminResetQuota manually resets the five-hour, weekly, and/or monthly usage windows.
-func (s *SubscriptionService) AdminResetQuota(ctx context.Context, subscriptionID int64, resetFiveHour, resetWeekly, resetMonthly bool) (*UserSubscription, error) {
-	if !resetFiveHour && !resetWeekly && !resetMonthly {
+// AdminResetQuota manually resets the daily, five-hour, weekly, and/or monthly usage windows.
+func (s *SubscriptionService) AdminResetQuota(ctx context.Context, subscriptionID int64, resetDaily, resetFiveHour, resetWeekly, resetMonthly bool) (*UserSubscription, error) {
+	if !resetDaily && !resetFiveHour && !resetWeekly && !resetMonthly {
 		return nil, ErrInvalidInput
 	}
 	sub, err := s.userSubRepo.GetByID(ctx, subscriptionID)
@@ -706,12 +706,19 @@ func (s *SubscriptionService) AdminResetQuota(ctx context.Context, subscriptionI
 		return nil, err
 	}
 	now := time.Now()
+	windowStart := startOfDay(now)
+	if resetDaily {
+		if err := s.userSubRepo.ResetDailyUsage(ctx, sub.ID, windowStart); err != nil {
+			return nil, err
+		}
+		sub.DailyWindowStart = &windowStart
+		sub.DailyUsageUSD = 0
+	}
 	if resetFiveHour {
 		if err := s.userSubRepo.ResetFiveHourUsage(ctx, sub.ID, now); err != nil {
 			return nil, err
 		}
 	}
-	windowStart := startOfDay(now)
 	if resetWeekly {
 		if err := s.userSubRepo.ResetWeeklyUsage(ctx, sub.ID, windowStart); err != nil {
 			return nil, err
@@ -754,6 +761,15 @@ func (s *SubscriptionService) CheckAndResetWindows(ctx context.Context, sub *Use
 	}
 
 	// 日窗口重置（24小时）
+	if sub.NeedsDailyReset() {
+		if err := s.userSubRepo.ResetDailyUsage(ctx, sub.ID, windowStart); err != nil {
+			return err
+		}
+		sub.DailyWindowStart = &windowStart
+		sub.DailyUsageUSD = 0
+		needsInvalidateCache = true
+	}
+
 	// 周窗口重置（7天）
 	if sub.NeedsWeeklyReset() {
 		if err := s.userSubRepo.ResetWeeklyUsage(ctx, sub.ID, windowStart); err != nil {

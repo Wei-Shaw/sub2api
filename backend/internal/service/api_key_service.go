@@ -793,16 +793,6 @@ func (s *APIKeyService) canUserBindUserVisibleGroup(user *User, group *Group, su
 	return user.CanBindGroup(group.ID, group.IsExclusive)
 }
 
-// canUserBindGroupInternal 内部方法，检查用户是否可以绑定分组（使用预加载的订阅数据）
-func (s *APIKeyService) canUserBindGroupInternal(user *User, group *Group, subscribedGroupIDs map[int64]bool) bool {
-	// 订阅类型分组：需要有效订阅
-	if group.IsSubscriptionType() {
-		return subscribedGroupIDs[group.ID]
-	}
-	// 标准类型分组：使用原有逻辑
-	return user.CanBindGroup(group.ID, group.IsExclusive)
-}
-
 func (s *APIKeyService) SearchAPIKeys(ctx context.Context, userID int64, keyword string, limit int) ([]APIKey, error) {
 	keys, err := s.apiKeyRepo.SearchAPIKeys(ctx, userID, keyword, limit)
 	if err != nil {

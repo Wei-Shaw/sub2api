@@ -46,13 +46,13 @@ func TestCalculateProgress_DailyUsage(t *testing.T) {
 	dailyStart := now.Add(-12 * time.Hour)
 
 	sub := &UserSubscription{
-		ID:               1,
-		ExpiresAt:        now.Add(10 * 24 * time.Hour),
+		ID:                  1,
+		ExpiresAt:           now.Add(10 * 24 * time.Hour),
 		FiveHourUsageUSD:    3.0,
 		FiveHourWindowStart: ptrTime(dailyStart),
 	}
 	group := &Group{
-		Name:          "Pro",
+		Name:             "Pro",
 		FiveHourLimitUSD: ptrFloat64(10.0),
 	}
 
@@ -121,13 +121,13 @@ func TestCalculateProgress_OverLimit_ClampedTo100Percent(t *testing.T) {
 	now := time.Now()
 
 	sub := &UserSubscription{
-		ID:               1,
-		ExpiresAt:        now.Add(10 * 24 * time.Hour),
+		ID:                  1,
+		ExpiresAt:           now.Add(10 * 24 * time.Hour),
 		FiveHourUsageUSD:    15.0, // 超过限额
 		FiveHourWindowStart: ptrTime(now.Add(-1 * time.Hour)),
 	}
 	group := &Group{
-		Name:          "Pro",
+		Name:             "Pro",
 		FiveHourLimitUSD: ptrFloat64(10.0),
 	}
 
@@ -144,15 +144,15 @@ func TestCalculateProgress_NoWindowStart_NoProgress(t *testing.T) {
 
 	// 有限额但无窗口起始时间（订阅未激活）
 	sub := &UserSubscription{
-		ID:             1,
-		ExpiresAt:      now.Add(10 * 24 * time.Hour),
-		FiveHourUsageUSD:  0,
-		WeeklyUsageUSD: 0,
+		ID:               1,
+		ExpiresAt:        now.Add(10 * 24 * time.Hour),
+		FiveHourUsageUSD: 0,
+		WeeklyUsageUSD:   0,
 	}
 	group := &Group{
-		Name:           "Pro",
-		FiveHourLimitUSD:  ptrFloat64(10.0),
-		WeeklyLimitUSD: ptrFloat64(50.0),
+		Name:             "Pro",
+		FiveHourLimitUSD: ptrFloat64(10.0),
+		WeeklyLimitUSD:   ptrFloat64(50.0),
 	}
 
 	progress := svc.calculateProgress(sub, group)
@@ -166,20 +166,20 @@ func TestCalculateProgress_AllLimits(t *testing.T) {
 	now := time.Now()
 
 	sub := &UserSubscription{
-		ID:                 1,
-		ExpiresAt:          now.Add(10 * 24 * time.Hour),
-		FiveHourUsageUSD:      5.0,
-		WeeklyUsageUSD:     20.0,
-		MonthlyUsageUSD:    60.0,
-		FiveHourWindowStart:   ptrTime(now.Add(-6 * time.Hour)),
-		WeeklyWindowStart:  ptrTime(now.Add(-3 * 24 * time.Hour)),
-		MonthlyWindowStart: ptrTime(now.Add(-15 * 24 * time.Hour)),
+		ID:                  1,
+		ExpiresAt:           now.Add(10 * 24 * time.Hour),
+		FiveHourUsageUSD:    5.0,
+		WeeklyUsageUSD:      20.0,
+		MonthlyUsageUSD:     60.0,
+		FiveHourWindowStart: ptrTime(now.Add(-6 * time.Hour)),
+		WeeklyWindowStart:   ptrTime(now.Add(-3 * 24 * time.Hour)),
+		MonthlyWindowStart:  ptrTime(now.Add(-15 * 24 * time.Hour)),
 	}
 	group := &Group{
-		Name:            "Full",
-		FiveHourLimitUSD:   ptrFloat64(10.0),
-		WeeklyLimitUSD:  ptrFloat64(50.0),
-		MonthlyLimitUSD: ptrFloat64(100.0),
+		Name:             "Full",
+		FiveHourLimitUSD: ptrFloat64(10.0),
+		WeeklyLimitUSD:   ptrFloat64(50.0),
+		MonthlyLimitUSD:  ptrFloat64(100.0),
 	}
 
 	progress := svc.calculateProgress(sub, group)
@@ -213,13 +213,13 @@ func TestCalculateProgress_ResetsInSeconds_NotNegative(t *testing.T) {
 	pastStart := time.Now().Add(-48 * time.Hour)
 
 	sub := &UserSubscription{
-		ID:               1,
-		ExpiresAt:        time.Now().Add(10 * 24 * time.Hour),
+		ID:                  1,
+		ExpiresAt:           time.Now().Add(10 * 24 * time.Hour),
 		FiveHourUsageUSD:    1.0,
 		FiveHourWindowStart: ptrTime(pastStart),
 	}
 	group := &Group{
-		Name:          "Test",
+		Name:             "Test",
 		FiveHourLimitUSD: ptrFloat64(10.0),
 	}
 

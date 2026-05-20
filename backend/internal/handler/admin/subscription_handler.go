@@ -218,16 +218,14 @@ func (h *SubscriptionHandler) Extend(c *gin.Context) {
 }
 
 // ResetSubscriptionQuotaRequest represents the reset quota request
-// Backward-compatible: daily is accepted as an alias for five_hour.
 type ResetSubscriptionQuotaRequest struct {
-	FiveHour bool `json:"five_hour"`
 	Daily    bool `json:"daily"`
+	FiveHour bool `json:"five_hour"`
 	Weekly   bool `json:"weekly"`
 	Monthly  bool `json:"monthly"`
 }
 
-// ResetQuota resets five-hour, weekly, and/or monthly usage for a subscription.
-// POST /api/v1/admin/subscriptions/:id/reset-quota
+// ResetQuota resets daily, five-hour, weekly, and/or monthly usage for a subscription.
 func (h *SubscriptionHandler) ResetQuota(c *gin.Context) {
 	subscriptionID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -239,12 +237,11 @@ func (h *SubscriptionHandler) ResetQuota(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
-	resetFiveHour := req.FiveHour || req.Daily
-	if !resetFiveHour && !req.Weekly && !req.Monthly {
-		response.BadRequest(c, "At least one of 'five_hour', 'weekly', or 'monthly' must be true")
+	if !req.Daily && !req.FiveHour && !req.Weekly && !req.Monthly {
+		response.BadRequest(c, "At least one of 'daily', 'five_hour', 'weekly', or 'monthly' must be true")
 		return
 	}
-	sub, err := h.subscriptionService.AdminResetQuota(c.Request.Context(), subscriptionID, resetFiveHour, req.Weekly, req.Monthly)
+	sub, err := h.subscriptionService.AdminResetQuota(c.Request.Context(), subscriptionID, req.Daily, req.FiveHour, req.Weekly, req.Monthly)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

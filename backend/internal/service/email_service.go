@@ -163,7 +163,7 @@ const smtpIOTimeout = 20 * time.Second
 // smtpDialer returns a dialer that forces IPv4 to avoid IPv6 connectivity issues in Docker.
 func smtpDialer() *net.Dialer {
 	return &net.Dialer{
-		Timeout:   smtpDialTimeout,
+		Timeout:       smtpDialTimeout,
 		FallbackDelay: -1, // disable Happy Eyeballs, force IPv4
 	}
 }
@@ -424,7 +424,7 @@ func (s *EmailService) buildVerifyCodeEmailBody(code, siteName string) string {
 
 // TestSMTPConnectionWithConfig 使用指定配置测试SMTP连接
 func (s *EmailService) TestSMTPConnectionWithConfig(config *SMTPConfig) error {
-	addr := fmt.Sprintf("%s:%d", config.Host, config.Port)
+	addr := net.JoinHostPort(config.Host, fmt.Sprintf("%d", config.Port))
 
 	if config.UseTLS {
 		tlsConfig := &tls.Config{

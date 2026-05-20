@@ -687,6 +687,10 @@ func (r *stubUserSubscriptionRepo) ResetFiveHourUsage(ctx context.Context, id in
 	return errors.New("not implemented")
 }
 
+func (r *stubUserSubscriptionRepo) ResetDailyUsage(_ context.Context, _ int64, _ time.Time) error {
+	return nil
+}
+
 func (r *stubUserSubscriptionRepo) ResetWeeklyUsage(ctx context.Context, id int64, newWindowStart time.Time) error {
 	if r.resetWeekly != nil {
 		return r.resetWeekly(ctx, id, newWindowStart)

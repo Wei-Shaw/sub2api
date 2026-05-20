@@ -27,12 +27,12 @@ var (
 
 // subscriptionCacheData 订阅缓存数据结构（内部使用）
 type subscriptionCacheData struct {
-	Status          string
-	ExpiresAt       time.Time
-		WeeklyUsage     float64
-	MonthlyUsage    float64
-	FiveHourUsage   float64
-	Version         int64
+	Status        string
+	ExpiresAt     time.Time
+	WeeklyUsage   float64
+	MonthlyUsage  float64
+	FiveHourUsage float64
+	Version       int64
 }
 
 // 缓存写入任务类型
