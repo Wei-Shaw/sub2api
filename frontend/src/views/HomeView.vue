@@ -198,6 +198,24 @@
           </div>
         </div>
 
+        <!-- ==================== After-sales QQ Group ==================== -->
+        <section class="mt-20">
+          <div class="mx-auto grid max-w-3xl items-center gap-6 rounded-xl border border-gray-200/50 bg-white/70 p-6 shadow-lg shadow-primary-500/5 backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/70 md:grid-cols-[1fr_260px] md:p-8">
+            <div class="text-center md:text-left">
+              <p class="mb-2 text-sm font-medium tracking-wider text-primary-500 uppercase">QQ Support</p>
+              <h2 class="text-2xl font-bold text-gray-900 dark:text-white">扫码加入售后群</h2>
+              <p class="mt-3 text-base text-gray-500 dark:text-dark-300">售后不迷路</p>
+            </div>
+            <div class="mx-auto w-full max-w-[260px] overflow-hidden rounded-lg border border-gray-100 bg-white p-3 shadow-sm dark:border-dark-700">
+              <img
+                src="/aftersales-qq-group.jpg"
+                alt="扫码加入售后群"
+                class="w-full object-contain"
+              />
+            </div>
+          </div>
+        </section>
+
         <!-- ==================== Core Features: 3-col Numbered Cards ==================== -->
         <section class="mt-24">
             <p class="mb-2 text-center text-sm font-medium tracking-wider text-primary-500 uppercase">{{ t('home.solutions.title') }}</p>
