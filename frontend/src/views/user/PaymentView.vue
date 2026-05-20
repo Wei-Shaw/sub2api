@@ -498,6 +498,7 @@ function planDisplayAmount(plan: SubscriptionPlan): string {
 
 function planPriceSuffix(plan: SubscriptionPlan): string {
   if (plan.purchase_quote?.action === 'extend') return `/${plan.validity_days}天延期`
+  if (plan.validity_days === 1) return '/天'
   return `/${plan.validity_days}天`
 }
 

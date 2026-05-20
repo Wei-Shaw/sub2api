@@ -310,7 +310,7 @@
                 >
                   <span>{{ t('home.pricing.from') }}</span>
                   <span class="ml-1 text-2xl font-bold text-gray-900 dark:text-white">¥{{ formatPrice(startingPrice) }}</span>
-                  <span class="ml-1">/ 30天</span>
+                  <span class="ml-1">/{{ startingPlanDays }}天</span>
                 </div>
                 <router-link
                   :to="purchaseLink"
@@ -346,7 +346,7 @@
                   <p v-if="plan.original_price" class="text-sm text-gray-400 line-through">¥{{ formatPrice(plan.original_price) }}</p>
                   <div class="mt-1 flex items-end gap-1">
                     <span class="text-3xl font-bold text-gray-900 dark:text-white">¥{{ formatPrice(plan.price) }}</span>
-                    <span class="pb-1 text-sm text-gray-500 dark:text-dark-300">/30天</span>
+                    <span class="pb-1 text-sm text-gray-500 dark:text-dark-300">/{{ plan.validity_days === 1 ? '天' : plan.validity_days + '天' }}</span>
                   </div>
                   <p v-if="formatSavings(plan)" class="mt-1 text-xs font-medium text-red-500">{{ t('home.pricing.save', { amount: formatSavings(plan) }) }}</p>
                 </div>
@@ -585,6 +585,11 @@ const recommendedPlanId = computed(() => {
 const startingPrice = computed(() => {
   if (!subscriptionPlans.value.length) return null
   return Math.min(...subscriptionPlans.value.map((plan) => Number(plan.price) || 0).filter((price) => price > 0))
+})
+const startingPlanDays = computed(() => {
+  if (!subscriptionPlans.value.length) return 30
+  const cheapest = subscriptionPlans.value.reduce((min, p) => (Number(p.price) || Infinity) < (Number(min.price) || Infinity) ? p : min, subscriptionPlans.value[0])
+  return cheapest.validity_days || 1
 })
 
 function parsePlanFeatures(features: SubscriptionPlan['features'] | string | undefined): string[] {
