@@ -651,6 +651,124 @@ func (s *GroupRepoSuite) TestGetAccountCount_Empty() {
 	s.Require().Zero(count)
 }
 
+// TestListWithFilters_ActiveAccountCount_LessThanTotal 验证 ActiveAccountCount 正确区分可用与不可用账号。
+// 当分组内存在 disabled 或 schedulable=false 的账号时，ActiveAccountCount 必须小于 AccountCount，
+// 且与 GetAccountCount 返回的 active 值一致。
+func (s *GroupRepoSuite) TestListWithFilters_ActiveAccountCount_LessThanTotal() {
+	g := &service.Group{
+		Name:             "g-mixed-status",
+		Platform:         service.PlatformAnthropic,
+		RateMultiplier:   1.0,
+		IsExclusive:      false,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, g))
+
+	insertAccount := func(name, status string, schedulable bool) int64 {
+		var id int64
+		s.Require().NoError(scanSingleRow(
+			s.ctx, s.tx,
+			"INSERT INTO accounts (name, platform, type, status, schedulable) VALUES ($1, $2, $3, $4, $5) RETURNING id",
+			[]any{name, service.PlatformAnthropic, service.AccountTypeOAuth, status, schedulable},
+			&id,
+		))
+		return id
+	}
+	link := func(accountID int64, priority int) {
+		_, err := s.tx.ExecContext(s.ctx,
+			"INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())",
+			accountID, g.ID, priority)
+		s.Require().NoError(err)
+	}
+
+	// account 1: active + schedulable → counts toward both total and active
+	link(insertAccount("acc-active-sched", service.StatusActive, true), 1)
+	// account 2: disabled → counts toward total only
+	link(insertAccount("acc-disabled", service.StatusDisabled, true), 2)
+	// account 3: active + not schedulable → counts toward total only
+	link(insertAccount("acc-unschedulable", service.StatusActive, false), 3)
+
+	// --- ListWithFilters path ---
+	isExclusive := false
+	groups, _, err := s.repo.ListWithFilters(s.ctx,
+		pagination.PaginationParams{Page: 1, PageSize: 100},
+		service.PlatformAnthropic, service.StatusActive, "", &isExclusive)
+	s.Require().NoError(err)
+
+	var found *service.Group
+	for i := range groups {
+		if groups[i].ID == g.ID {
+			found = &groups[i]
+			break
+		}
+	}
+	s.Require().NotNil(found, "created group must appear in ListWithFilters result")
+	s.Assert().Equal(int64(3), found.AccountCount, "AccountCount must count all 3 accounts")
+	s.Assert().Equal(int64(1), found.ActiveAccountCount, "ActiveAccountCount must count only the active+schedulable account")
+
+	// --- GetAccountCount must return identical values ---
+	total, active, err := s.repo.GetAccountCount(s.ctx, g.ID)
+	s.Require().NoError(err)
+	s.Assert().Equal(found.AccountCount, total, "GetAccountCount total must match ListWithFilters AccountCount")
+	s.Assert().Equal(found.ActiveAccountCount, active, "GetAccountCount active must match ListWithFilters ActiveAccountCount")
+}
+
+// TestListWithFilters_RateLimitedAccountCount 验证 RateLimitedAccountCount 正确统计临时受限账号。
+// 受限账号（rate_limit_reset_at 尚未过期）仍然计入 ActiveAccountCount，
+// 同时额外出现在 RateLimitedAccountCount 中。
+func (s *GroupRepoSuite) TestListWithFilters_RateLimitedAccountCount() {
+	g := &service.Group{
+		Name:             "g-rate-limited",
+		Platform:         service.PlatformAnthropic,
+		RateMultiplier:   1.0,
+		IsExclusive:      false,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, g))
+
+	var normalID int64
+	s.Require().NoError(scanSingleRow(s.ctx, s.tx,
+		"INSERT INTO accounts (name, platform, type) VALUES ($1, $2, $3) RETURNING id",
+		[]any{"acc-normal", service.PlatformAnthropic, service.AccountTypeOAuth},
+		&normalID))
+
+	var rateLimitedID int64
+	s.Require().NoError(scanSingleRow(s.ctx, s.tx,
+		"INSERT INTO accounts (name, platform, type, rate_limit_reset_at) VALUES ($1, $2, $3, NOW() + INTERVAL '1 hour') RETURNING id",
+		[]any{"acc-rate-limited", service.PlatformAnthropic, service.AccountTypeOAuth},
+		&rateLimitedID))
+
+	_, err := s.tx.ExecContext(s.ctx,
+		"INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())",
+		normalID, g.ID, 1)
+	s.Require().NoError(err)
+	_, err = s.tx.ExecContext(s.ctx,
+		"INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())",
+		rateLimitedID, g.ID, 2)
+	s.Require().NoError(err)
+
+	isExclusive := false
+	groups, _, err := s.repo.ListWithFilters(s.ctx,
+		pagination.PaginationParams{Page: 1, PageSize: 100},
+		service.PlatformAnthropic, service.StatusActive, "", &isExclusive)
+	s.Require().NoError(err)
+
+	var found *service.Group
+	for i := range groups {
+		if groups[i].ID == g.ID {
+			found = &groups[i]
+			break
+		}
+	}
+	s.Require().NotNil(found, "created group must appear in ListWithFilters result")
+	s.Assert().Equal(int64(2), found.AccountCount, "AccountCount must be 2")
+	// rate-limited account is still active+schedulable, so it counts toward active
+	s.Assert().Equal(int64(2), found.ActiveAccountCount, "rate-limited account still counts as active")
+	s.Assert().Equal(int64(1), found.RateLimitedAccountCount, "RateLimitedAccountCount must be 1")
+}
+
 // --- DeleteAccountGroupsByGroupID ---
 
 func (s *GroupRepoSuite) TestDeleteAccountGroupsByGroupID() {

@@ -1463,6 +1463,24 @@ func (s *ContentModerationService) applyFlaggedSideEffects(ctx context.Context, 
 
 func (s *ContentModerationService) sendViolationEmail(ctx context.Context, cfg *ContentModerationConfig, log *ContentModerationLog) error {
 	siteName := s.siteName(ctx)
+	if s.emailService.notificationEmailService != nil {
+		if err := s.emailService.notificationEmailService.Send(ctx, NotificationEmailSendInput{
+			Event:          NotificationEmailEventContentModerationViolation,
+			RecipientEmail: log.UserEmail,
+			RecipientName:  emailRecipientName(log.UserEmail),
+			UserID:         contentModerationEmailUserID(log),
+			SourceType:     "content_moderation",
+			SourceID:       contentModerationEmailSourceID(log),
+			Variables:      contentModerationEmailVariables(log, cfg),
+		}); err == nil {
+			return nil
+		} else {
+			if !shouldFallbackNotificationEmail(err) {
+				return err
+			}
+			slog.Warn("template content moderation violation email failed; falling back to built-in body", "log_id", log.ID, "recipient_hash", notificationEmailHash(log.UserEmail), "err", err.Error())
+		}
+	}
 	subject := fmt.Sprintf("[%s] 账户风控提醒 / Risk Control Notice", sanitizeEmailHeader(siteName))
 	body := buildContentModerationViolationEmailBody(siteName, log, cfg)
 	return s.emailService.SendEmail(ctx, log.UserEmail, subject, body)
@@ -1470,9 +1488,69 @@ func (s *ContentModerationService) sendViolationEmail(ctx context.Context, cfg *
 
 func (s *ContentModerationService) sendAccountDisabledEmail(ctx context.Context, cfg *ContentModerationConfig, log *ContentModerationLog) error {
 	siteName := s.siteName(ctx)
+	if s.emailService.notificationEmailService != nil {
+		if err := s.emailService.notificationEmailService.Send(ctx, NotificationEmailSendInput{
+			Event:          NotificationEmailEventContentModerationDisabled,
+			RecipientEmail: log.UserEmail,
+			RecipientName:  emailRecipientName(log.UserEmail),
+			UserID:         contentModerationEmailUserID(log),
+			SourceType:     "content_moderation",
+			SourceID:       contentModerationEmailSourceID(log),
+			Variables:      contentModerationEmailVariables(log, cfg),
+		}); err == nil {
+			return nil
+		} else {
+			if !shouldFallbackNotificationEmail(err) {
+				return err
+			}
+			slog.Warn("template content moderation disabled email failed; falling back to built-in body", "log_id", log.ID, "recipient_hash", notificationEmailHash(log.UserEmail), "err", err.Error())
+		}
+	}
 	subject := fmt.Sprintf("[%s] 账户已被禁用 / Account Disabled", sanitizeEmailHeader(siteName))
 	body := buildContentModerationAccountDisabledEmailBody(siteName, log, cfg)
 	return s.emailService.SendEmail(ctx, log.UserEmail, subject, body)
+}
+
+func contentModerationEmailUserID(log *ContentModerationLog) int64 {
+	if log == nil || log.UserID == nil {
+		return 0
+	}
+	return *log.UserID
+}
+
+func contentModerationEmailSourceID(log *ContentModerationLog) string {
+	if log == nil || log.ID <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d", log.ID)
+}
+
+func contentModerationEmailVariables(log *ContentModerationLog, cfg *ContentModerationConfig) map[string]string {
+	variables := map[string]string{
+		"triggered_at":        time.Now().UTC().Format(time.RFC3339),
+		"group_name":          "-",
+		"moderation_category": "-",
+		"moderation_score":    "0.000",
+		"violation_count":     "0",
+		"ban_threshold":       "0",
+	}
+	if log != nil {
+		if !log.CreatedAt.IsZero() {
+			variables["triggered_at"] = log.CreatedAt.UTC().Format(time.RFC3339)
+		}
+		if strings.TrimSpace(log.GroupName) != "" {
+			variables["group_name"] = strings.TrimSpace(log.GroupName)
+		}
+		if strings.TrimSpace(log.HighestCategory) != "" {
+			variables["moderation_category"] = strings.TrimSpace(log.HighestCategory)
+		}
+		variables["moderation_score"] = fmt.Sprintf("%.3f", log.HighestScore)
+		variables["violation_count"] = fmt.Sprintf("%d", log.ViolationCount)
+	}
+	if cfg != nil {
+		variables["ban_threshold"] = fmt.Sprintf("%d", cfg.BanThreshold)
+	}
+	return variables
 }
 
 func (s *ContentModerationService) siteName(ctx context.Context) string {

@@ -3780,6 +3780,36 @@
                   }}
                 </p>
               </div>
+
+              <!-- OpenAI Codex UA -->
+              <div>
+                <label
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{
+                    t(
+                      "admin.settings.gatewayForwarding.openaiCodexUserAgent",
+                    )
+                  }}
+                </label>
+                <input
+                  v-model="form.openai_codex_user_agent"
+                  type="text"
+                  class="input w-full font-mono text-sm"
+                  :placeholder="
+                    t(
+                      'admin.settings.gatewayForwarding.openaiCodexUserAgentPlaceholder',
+                    )
+                  "
+                />
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{
+                    t(
+                      "admin.settings.gatewayForwarding.openaiCodexUserAgentHint",
+                    )
+                  }}
+                </p>
+              </div>
             </div>
           </div>
           <!-- Web Search Emulation -->
@@ -6236,6 +6266,9 @@
               </div>
             </div>
           </div>
+
+          <EmailTemplateEditor />
+
           <!-- Balance Low Notification -->
           <div class="card">
             <div
@@ -6494,6 +6527,7 @@ import ProxySelector from "@/components/common/ProxySelector.vue";
 import ImageUpload from "@/components/common/ImageUpload.vue";
 import WeComOAuthSettingsSection from "@/components/admin/settings/WeComOAuthSettingsSection.vue";
 import BackupSettings from "@/views/admin/BackupView.vue";
+import EmailTemplateEditor from "@/views/admin/settings/EmailTemplateEditor.vue";
 import { useClipboard } from "@/composables/useClipboard";
 import { affiliatesAPI, type AffiliateAdminEntry, type SimpleUser as AffiliateSimpleUser } from "@/api/admin/affiliates";
 import { extractApiErrorMessage, extractI18nErrorMessage } from "@/utils/apiError";
@@ -6964,6 +6998,7 @@ const form = reactive<SettingsForm>({
   enable_anthropic_cache_ttl_1h_injection: false,
   rewrite_message_cache_control: false,
   antigravity_user_agent_version: "",
+  openai_codex_user_agent: "",
   // Balance & quota notification
   balance_low_notify_enabled: false,
   balance_low_notify_threshold: 0,
@@ -8081,6 +8116,8 @@ async function saveSettings() {
       rewrite_message_cache_control: form.rewrite_message_cache_control,
       antigravity_user_agent_version:
         form.antigravity_user_agent_version?.trim() || "",
+      openai_codex_user_agent:
+        form.openai_codex_user_agent?.trim() || "",
       // Payment configuration
       payment_enabled: form.payment_enabled,
       risk_control_enabled: form.risk_control_enabled,
