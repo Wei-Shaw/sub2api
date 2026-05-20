@@ -379,6 +379,37 @@ REDACTED`)
 	require.Equal(t, "Visible", content0["text"])
 REDACTED
 
+func TestFilterThinkingBlocksForRetry_DropsThinkingBlockWithEmptyContent(t *testing.T) {
+	// 跨模型场景：其他模型回过的 assistant 历史里携带了 type=thinking 但 thinking 字段为空，
+	// 喂给开启 extended thinking 的 claude 时上游会报：
+	//   "messages.1.content.0.thinking: each thinking block must contain thinking"
+	// 重试应当把空 thinking 块丢弃，并保留其它有效内容。
+	input := []byte(`{
+		"thinking":{"type":"enabled","budget_tokens":1024REDACTED,
+		"messages":[
+			{"role":"user","content":[{"type":"text","text":"Hi"REDACTED]REDACTED,
+			{"role":"assistant","content":[
+				{"type":"thinking","thinking":"","signature":"sig"REDACTED,
+				{"type":"text","text":"Answer"REDACTED
+			]REDACTED
+		]
+REDACTED`)
+
+	out := FilterThinkingBlocksForRetry(input)
+
+	var req map[string]any
+	require.NoError(t, json.Unmarshal(out, &req))
+	_, hasThinking := req["thinking"]
+	require.False(t, hasThinking, "top-level thinking should be removed")
+
+	msgs := req["messages"].([]any)
+	assistant := msgs[1].(map[string]any)
+	content := assistant["content"].([]any)
+	require.Len(t, content, 1, "empty thinking block should be dropped, only text remains")
+	require.Equal(t, "text", content[0].(map[string]any)["type"])
+	require.Equal(t, "Answer", content[0].(map[string]any)["text"])
+REDACTED
+
 func TestFilterThinkingBlocksForRetry_EmptyContentGetsPlaceholder(t *testing.T) {
 	input := []byte(`{
 		"thinking":{"type":"enabled"REDACTED,
