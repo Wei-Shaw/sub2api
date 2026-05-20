@@ -310,7 +310,85 @@ REDACTED
 		"creditedAmount": o.Amount,
 		"payAmount":      o.PayAmount,
 REDACTED)
+	s.dispatchPaymentFulfillmentNotification(o, auditAction)
 	return nil
+REDACTED
+
+func (s *PaymentService) dispatchPaymentFulfillmentNotification(o *dbent.PaymentOrder, auditAction string) {
+	if s == nil || s.notificationEmailService == nil || o == nil {
+		return
+REDACTED
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), emailSendTimeout)
+		defer cancel()
+		var err error
+		switch auditAction {
+		case "RECHARGE_SUCCESS":
+			err = s.sendBalanceRechargeSuccessNotification(ctx, o)
+		case "SUBSCRIPTION_SUCCESS":
+			err = s.sendSubscriptionPurchaseSuccessNotification(ctx, o)
+		default:
+			return
+	REDACTED
+		if err != nil {
+			slog.Warn("payment fulfillment notification email failed", "order_id", o.ID, "action", auditAction, "err", err.Error())
+	REDACTED
+REDACTED()
+REDACTED
+
+func (s *PaymentService) sendBalanceRechargeSuccessNotification(ctx context.Context, o *dbent.PaymentOrder) error {
+	currentBalance := ""
+	if s.userRepo != nil {
+		if user, err := s.userRepo.GetByID(ctx, o.UserID); err == nil && user != nil {
+			currentBalance = fmt.Sprintf("%.2f", user.Balance)
+	REDACTED
+REDACTED
+	return s.notificationEmailService.Send(ctx, NotificationEmailSendInput{
+		Event:          NotificationEmailEventBalanceRechargeSuccess,
+		RecipientEmail: o.UserEmail,
+		RecipientName:  firstNonEmpty(o.UserName, o.UserEmail),
+		UserID:         o.UserID,
+		SourceType:     "payment_order",
+		SourceID:       strconv.FormatInt(o.ID, 10),
+		Variables: map[string]string{
+			"recharge_amount": fmt.Sprintf("%.2f", o.Amount),
+			"current_balance": currentBalance,
+			"order_id":        strconv.FormatInt(o.ID, 10),
+	REDACTED,
+REDACTED)
+REDACTED
+
+func (s *PaymentService) sendSubscriptionPurchaseSuccessNotification(ctx context.Context, o *dbent.PaymentOrder) error {
+	variables := map[string]string{
+		"subscription_group": "Subscription",
+		"subscription_days":  "",
+		"expiry_time":        "",
+		"order_id":           strconv.FormatInt(o.ID, 10),
+REDACTED
+	if o.SubscriptionDays != nil {
+		variables["subscription_days"] = strconv.Itoa(*o.SubscriptionDays)
+REDACTED
+	if o.SubscriptionGroupID != nil {
+		if s.groupRepo != nil {
+			if group, err := s.groupRepo.GetByID(ctx, *o.SubscriptionGroupID); err == nil && group != nil && strings.TrimSpace(group.Name) != "" {
+				variables["subscription_group"] = group.Name
+		REDACTED
+	REDACTED
+		if s.subscriptionSvc != nil {
+			if sub, err := s.subscriptionSvc.GetActiveSubscription(ctx, o.UserID, *o.SubscriptionGroupID); err == nil && sub != nil {
+				variables["expiry_time"] = sub.ExpiresAt.Format("2006-01-02 15:04")
+		REDACTED
+	REDACTED
+REDACTED
+	return s.notificationEmailService.Send(ctx, NotificationEmailSendInput{
+		Event:          NotificationEmailEventSubscriptionPurchaseSuccess,
+		RecipientEmail: o.UserEmail,
+		RecipientName:  firstNonEmpty(o.UserName, o.UserEmail),
+		UserID:         o.UserID,
+		SourceType:     "payment_order",
+		SourceID:       strconv.FormatInt(o.ID, 10),
+		Variables:      variables,
+REDACTED)
 REDACTED
 
 func (s *PaymentService) ExecuteSubscriptionFulfillment(ctx context.Context, oid int64) error {
