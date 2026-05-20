@@ -252,6 +252,7 @@ type Account struct {
 
 	GroupIDs []int64  `json:"group_ids,omitempty"`
 	Groups   []*Group `json:"groups,omitempty"`
+	BatchID  *int64   `json:"batch_id,omitempty"`
 }
 
 type AccountGroup struct {

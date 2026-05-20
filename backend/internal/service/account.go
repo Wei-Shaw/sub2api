@@ -56,6 +56,7 @@ type Account struct {
 	AccountGroups []AccountGroup
 	GroupIDs      []int64
 	Groups        []*Group
+	BatchID       *int64
 
 	// model_mapping 热路径缓存（非持久化字段）
 	modelMappingCache               map[string]string

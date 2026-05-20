@@ -12,7 +12,7 @@ services:
   sub2api:
     build:
       context: ..
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dev
     container_name: sub2api-dev
     restart: unless-stopped
     ports:
@@ -59,7 +59,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 60s
 
   postgres:
     image: postgres:18-alpine

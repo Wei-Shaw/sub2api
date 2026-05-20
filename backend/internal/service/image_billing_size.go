@@ -11,6 +11,9 @@ const (
 	ImageBillingSize2K = "2K"
 	ImageBillingSize4K = "4K"
 
+	imageBillingStandardMaxPixels = 1536 * 1536
+	imageBillingHDMaxPixels       = 2560 * 2560
+
 	ImageSizeSourceOutput  = "output"
 	ImageSizeSourceInput   = "input"
 	ImageSizeSourceDefault = "default"
@@ -37,24 +40,17 @@ func ClassifyImageBillingTier(size string) (string, bool) {
 		return ImageBillingSize2K, true
 	case "4k":
 		return ImageBillingSize4K, true
-	case "2048x2048", "2048x1152":
-		return ImageBillingSize2K, true
-	case "3840x2160", "2160x3840":
-		return ImageBillingSize4K, true
 	}
 
 	width, height, ok := parseImageBillingDimensions(trimmed)
 	if !ok {
 		return "", false
 	}
-	maxEdge := width
-	if height > maxEdge {
-		maxEdge = height
-	}
+	area := width * height
 	switch {
-	case maxEdge <= 1024:
+	case area < imageBillingStandardMaxPixels:
 		return ImageBillingSize1K, true
-	case maxEdge <= 2048:
+	case area < imageBillingHDMaxPixels:
 		return ImageBillingSize2K, true
 	default:
 		return ImageBillingSize4K, true
@@ -171,6 +167,27 @@ func applyImageBillingResolution(
 	*outputSize = resolved.OutputSize
 	*source = resolved.Source
 	*breakdown = resolved.Breakdown
+}
+
+// ComputePixelArea 从 WxH 格式的尺寸字符串计算像素面积。
+// 返回 0 表示无法解析或尺寸无效。
+func ComputePixelArea(size string) int {
+	w, h, ok := parseImageBillingDimensions(size)
+	if !ok {
+		return 0
+	}
+	return w * h
+}
+
+// MaxPixelArea 取多个尺寸中最大的像素面积。
+func MaxPixelArea(sizes ...string) int {
+	maxArea := 0
+	for _, s := range sizes {
+		if area := ComputePixelArea(s); area > maxArea {
+			maxArea = area
+		}
+	}
+	return maxArea
 }
 
 func parseImageBillingDimensions(size string) (int, int, bool) {

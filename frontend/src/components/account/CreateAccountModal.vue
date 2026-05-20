@@ -2479,6 +2479,33 @@
         <p class="input-hint">{{ t('admin.accounts.expiresAtHint') }}</p>
       </div>
 
+      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.schedulable') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.schedulableHint') }}
+            </p>
+          </div>
+          <button
+            type="button"
+            :title="schedulable ? t('admin.accounts.schedulableEnabled') : t('admin.accounts.schedulableDisabled')"
+            @click="schedulable = !schedulable"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              schedulable ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                schedulable ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+      </div>
+
       <!-- OpenAI 自动透传开关（OAuth/API Key） -->
       <div
         v-if="form.platform === 'openai'"
@@ -2766,6 +2793,25 @@
           :mixed-scheduling="mixedScheduling"
           data-tour="account-form-groups"
         />
+
+        <!-- Batch Selection - 批次标签（必填） -->
+        <div v-if="batches && batches.length > 0">
+          <label class="input-label">
+            {{ t('admin.batches.label', '批次标签') }}
+            <span class="text-red-500">*</span>
+          </label>
+          <select v-model="selectedBatchId" class="input">
+            <option :value="null" disabled>{{ t('admin.batches.selectPlaceholder', '请选择批次') }}</option>
+            <option v-for="b in batches" :key="b.id" :value="b.id">{{ b.name }}</option>
+          </select>
+        </div>
+        <div v-else>
+          <label class="input-label">
+            {{ t('admin.batches.label', '批次标签') }}
+            <span class="text-red-500">*</span>
+          </label>
+          <p class="text-sm text-amber-600 dark:text-amber-400">{{ t('admin.batches.noBatches', '请先在"更多工具 → 批次管理"中创建批次') }}</p>
+        </div>
       </div>
 
     </form>
@@ -3210,6 +3256,7 @@ interface Props {
   show: boolean
   proxies: Proxy[]
   groups: AdminGroup[]
+  batches?: { id: number; name: string }[]
 }
 
 const props = defineProps<Props>()
@@ -3217,6 +3264,8 @@ const emit = defineEmits<{
   close: []
   created: []
 }>()
+
+const selectedBatchId = ref<number | null>(null)
 
 const appStore = useAppStore()
 
@@ -3299,6 +3348,7 @@ const customErrorCodesEnabled = ref(false)
 const selectedErrorCodes = ref<number[]>([])
 const customErrorCodeInput = ref<number | null>(null)
 const interceptWarmupRequests = ref(false)
+const schedulable = ref(true)
 const autoPauseOnExpired = ref(true)
 const openaiPassthroughEnabled = ref(false)
 const openAICompactMode = ref<OpenAICompactMode>('auto')
@@ -3592,6 +3642,7 @@ watch(
       }
     } else {
       resetForm()
+      selectedBatchId.value = null
     }
   }
 )
@@ -4068,6 +4119,7 @@ const resetForm = () => {
   selectedErrorCodes.value = []
   customErrorCodeInput.value = null
   interceptWarmupRequests.value = false
+  schedulable.value = true
   autoPauseOnExpired.value = true
   openaiPassthroughEnabled.value = false
   openAICompactMode.value = 'auto'
@@ -4280,6 +4332,12 @@ const handleVertexServiceAccountDrop = async (event: DragEvent) => {
 }
 
 const handleSubmit = async () => {
+  // Batch tag is mandatory for all account creation
+  if (!selectedBatchId.value) {
+    appStore.showError(t('admin.batches.required', '请先选择批次标签'))
+    return
+  }
+
   // For OAuth-based type, handle OAuth flow (goes to step 2)
   if (isOAuthFlow.value) {
     if (!form.name.trim()) {
@@ -4476,7 +4534,9 @@ const handleSubmit = async () => {
     ...form,
     group_ids: form.group_ids,
     extra,
-    auto_pause_on_expired: autoPauseOnExpired.value
+    batch_id: selectedBatchId.value,
+    auto_pause_on_expired: autoPauseOnExpired.value,
+    schedulable: schedulable.value
   })
 }
 
@@ -4584,8 +4644,10 @@ const createAccountAndFinish = async (
     priority: form.priority,
     rate_multiplier: form.rate_multiplier,
     group_ids: form.group_ids,
+    batch_id: selectedBatchId.value,
     expires_at: form.expires_at,
-    auto_pause_on_expired: autoPauseOnExpired.value
+    auto_pause_on_expired: autoPauseOnExpired.value,
+    schedulable: schedulable.value
   })
 }
 
@@ -4652,7 +4714,9 @@ const handleOpenAIExchange = async (authCode: string) => {
         rate_multiplier: form.rate_multiplier,
         group_ids: form.group_ids,
         expires_at: form.expires_at,
-        auto_pause_on_expired: autoPauseOnExpired.value
+        auto_pause_on_expired: autoPauseOnExpired.value,
+        schedulable: schedulable.value,
+        batch_id: selectedBatchId.value
       })
       appStore.showSuccess(t('admin.accounts.accountCreated'))
     }
@@ -4722,6 +4786,7 @@ const handleOpenAIImportCodexSession = async (content: string) => {
       content: trimmed,
       name: form.name,
       notes: form.notes || null,
+      batch_id: selectedBatchId.value,
       proxy_id: form.proxy_id,
       concurrency: form.concurrency,
       load_factor: form.load_factor ?? undefined,
@@ -4730,6 +4795,7 @@ const handleOpenAIImportCodexSession = async (content: string) => {
       group_ids: form.group_ids,
       expires_at: form.expires_at,
       auto_pause_on_expired: autoPauseOnExpired.value,
+      schedulable: schedulable.value,
       credential_extras: Object.keys(credentialExtras).length > 0 ? credentialExtras : undefined,
       extra,
       update_existing: true
@@ -4856,7 +4922,9 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
             rate_multiplier: form.rate_multiplier,
             group_ids: form.group_ids,
             expires_at: form.expires_at,
-            auto_pause_on_expired: autoPauseOnExpired.value
+            auto_pause_on_expired: autoPauseOnExpired.value,
+            schedulable: schedulable.value,
+            batch_id: selectedBatchId.value
           })
         }
 
@@ -4954,7 +5022,9 @@ const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
           rate_multiplier: form.rate_multiplier,
           group_ids: form.group_ids,
           expires_at: form.expires_at,
-          auto_pause_on_expired: autoPauseOnExpired.value
+          auto_pause_on_expired: autoPauseOnExpired.value,
+          schedulable: schedulable.value,
+          batch_id: selectedBatchId.value
         })
         await adminAPI.accounts.create(createPayload)
         successCount++
@@ -5295,7 +5365,9 @@ const handleCookieAuth = async (sessionKey: string) => {
           rate_multiplier: form.rate_multiplier,
           group_ids: form.group_ids,
           expires_at: form.expires_at,
-          auto_pause_on_expired: autoPauseOnExpired.value
+          auto_pause_on_expired: autoPauseOnExpired.value,
+          schedulable: schedulable.value,
+          batch_id: selectedBatchId.value
         })
 
         successCount++

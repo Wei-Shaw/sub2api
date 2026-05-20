@@ -107,6 +107,8 @@ type CreateAccountRequest struct {
 	RateMultiplier          *float64       `json:"rate_multiplier"`
 	LoadFactor              *int           `json:"load_factor"`
 	GroupIDs                []int64        `json:"group_ids"`
+	BatchID                 *int64         `json:"batch_id"`
+	Schedulable             *bool          `json:"schedulable"`
 	ExpiresAt               *int64         `json:"expires_at"`
 	AutoPauseOnExpired      *bool          `json:"auto_pause_on_expired"`
 	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
@@ -126,7 +128,9 @@ type UpdateAccountRequest struct {
 	RateMultiplier          *float64       `json:"rate_multiplier"`
 	LoadFactor              *int           `json:"load_factor"`
 	Status                  string         `json:"status" binding:"omitempty,oneof=active inactive error"`
+	Schedulable             *bool          `json:"schedulable"`
 	GroupIDs                *[]int64       `json:"group_ids"`
+	BatchID                 *int64         `json:"batch_id"`
 	ExpiresAt               *int64         `json:"expires_at"`
 	AutoPauseOnExpired      *bool          `json:"auto_pause_on_expired"`
 	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
@@ -145,6 +149,7 @@ type BulkUpdateAccountsRequest struct {
 	Status                  string                    `json:"status" binding:"omitempty,oneof=active inactive error"`
 	Schedulable             *bool                     `json:"schedulable"`
 	GroupIDs                *[]int64                  `json:"group_ids"`
+	BatchID                 *int64                    `json:"batch_id"`
 	Credentials             map[string]any            `json:"credentials"`
 	Extra                   map[string]any            `json:"extra"`
 	ConfirmMixedChannelRisk *bool                     `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
@@ -157,6 +162,7 @@ type BulkUpdateAccountFilters struct {
 	Group       string `json:"group"`
 	Search      string `json:"search"`
 	PrivacyMode string `json:"privacy_mode"`
+	BatchID     string `json:"batch_id"`
 }
 
 // CheckMixedChannelRequest represents check mixed channel risk request
@@ -240,6 +246,16 @@ func (h *AccountHandler) List(c *gin.Context) {
 	}
 	lite := parseBoolQueryWithDefault(c.Query("lite"), false)
 
+	var batchID int64
+	if batchIDStr := c.Query("batch_id"); batchIDStr != "" {
+		parsedBatchID, parseErr := strconv.ParseInt(batchIDStr, 10, 64)
+		if parseErr != nil {
+			response.BadRequest(c, "invalid batch_id filter")
+			return
+		}
+		batchID = parsedBatchID
+	}
+
 	var groupID int64
 	if groupIDStr := c.Query("group"); groupIDStr != "" {
 		if groupIDStr == accountListGroupUngroupedQueryValue {
@@ -258,7 +274,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 		}
 	}
 
-	accounts, total, err := h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, privacyMode, sortBy, sortOrder)
+	accounts, total, err := h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, privacyMode, sortBy, sortOrder, batchID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -546,6 +562,8 @@ func (h *AccountHandler) Create(c *gin.Context) {
 			RateMultiplier:        req.RateMultiplier,
 			LoadFactor:            req.LoadFactor,
 			GroupIDs:              req.GroupIDs,
+			BatchID:               req.BatchID,
+			Schedulable:           req.Schedulable,
 			ExpiresAt:             req.ExpiresAt,
 			AutoPauseOnExpired:    req.AutoPauseOnExpired,
 			SkipMixedChannelCheck: skipCheck,
@@ -624,7 +642,9 @@ func (h *AccountHandler) Update(c *gin.Context) {
 		RateMultiplier:        req.RateMultiplier,
 		LoadFactor:            req.LoadFactor,
 		Status:                req.Status,
+		Schedulable:           req.Schedulable,
 		GroupIDs:              req.GroupIDs,
+		BatchID:               req.BatchID,
 		ExpiresAt:             req.ExpiresAt,
 		AutoPauseOnExpired:    req.AutoPauseOnExpired,
 		SkipMixedChannelCheck: skipCheck,
@@ -1246,7 +1266,10 @@ func (h *AccountHandler) BatchCreate(c *gin.Context) {
 				Concurrency:           item.Concurrency,
 				Priority:              item.Priority,
 				RateMultiplier:        item.RateMultiplier,
+				LoadFactor:            item.LoadFactor,
 				GroupIDs:              item.GroupIDs,
+				BatchID:               item.BatchID,
+				Schedulable:           item.Schedulable,
 				ExpiresAt:             item.ExpiresAt,
 				AutoPauseOnExpired:    item.AutoPauseOnExpired,
 				SkipMixedChannelCheck: skipCheck,
@@ -1438,6 +1461,7 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 		req.Status != "" ||
 		req.Schedulable != nil ||
 		req.GroupIDs != nil ||
+		req.BatchID != nil ||
 		len(req.Credentials) > 0 ||
 		len(req.Extra) > 0
 
@@ -1458,6 +1482,7 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 		Status:                req.Status,
 		Schedulable:           req.Schedulable,
 		GroupIDs:              req.GroupIDs,
+		BatchID:               req.BatchID,
 		Credentials:           req.Credentials,
 		Extra:                 req.Extra,
 		SkipMixedChannelCheck: skipCheck,
@@ -1495,6 +1520,7 @@ func toServiceBulkUpdateAccountFilters(filters *BulkUpdateAccountFilters) *servi
 		Group:       filters.Group,
 		Search:      filters.Search,
 		PrivacyMode: filters.PrivacyMode,
+		BatchID:     filters.BatchID,
 	}
 }
 
@@ -2150,7 +2176,7 @@ func (h *AccountHandler) BatchRefreshTier(c *gin.Context) {
 	accounts := make([]*service.Account, 0)
 
 	if len(req.AccountIDs) == 0 {
-		allAccounts, _, err := h.adminService.ListAccounts(ctx, 1, 10000, "gemini", "oauth", "", "", 0, "", "name", "asc")
+		allAccounts, _, err := h.adminService.ListAccounts(ctx, 1, 10000, "gemini", "oauth", "", "", 0, "", "name", "asc", 0)
 		if err != nil {
 			response.ErrorFrom(c, err)
 			return

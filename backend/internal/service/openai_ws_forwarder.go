@@ -3989,11 +3989,19 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 		return nil, nil
 	}
+	if !s.accountMatchesSchedulingGroup(account, groupID) {
+		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+		return nil, nil
+	}
 	if requestedModel != "" && !account.IsModelSupported(requestedModel) {
 		return nil, nil
 	}
 	account = s.recheckSelectedOpenAIAccountFromDB(ctx, account, requestedModel, requireCompact)
 	if account == nil {
+		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+		return nil, nil
+	}
+	if !s.accountMatchesSchedulingGroup(account, groupID) {
 		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 		return nil, nil
 	}

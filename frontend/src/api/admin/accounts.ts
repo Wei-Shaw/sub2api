@@ -16,6 +16,7 @@ import type {
   TempUnschedulableStatus,
   AdminDataPayload,
   AdminDataImportResult,
+  AdminDataImportRequest,
   CodexSessionImportRequest,
   CodexSessionImportResult,
   CheckMixedChannelRequest,
@@ -37,6 +38,7 @@ export async function list(
     type?: string
     status?: string
     group?: string
+    batch_id?: string
     search?: string
     privacy_mode?: string
     lite?: string
@@ -72,6 +74,7 @@ export async function listWithEtag(
     type?: string
     status?: string
     group?: string
+    batch_id?: string
     search?: string
     privacy_mode?: string
     lite?: string
@@ -555,14 +558,8 @@ export async function exportData(options?: {
   return data
 }
 
-export async function importData(payload: {
-  data: AdminDataPayload
-  skip_default_group_bind?: boolean
-}): Promise<AdminDataImportResult> {
-  const { data } = await apiClient.post<AdminDataImportResult>('/admin/accounts/data', {
-    data: payload.data,
-    skip_default_group_bind: payload.skip_default_group_bind
-  })
+export async function importData(payload: AdminDataImportRequest): Promise<AdminDataImportResult> {
+  const { data } = await apiClient.post<AdminDataImportResult>('/admin/accounts/data', payload)
   return data
 }
 

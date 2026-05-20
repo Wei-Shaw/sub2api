@@ -111,6 +111,7 @@ func extractOpenAIResponsesImageMetaFromLifecycleEvent(payload []byte) (openAIRe
 }
 
 func buildOpenAIImagesStreamPartialPayload(
+	c *gin.Context,
 	eventType string,
 	b64 string,
 	partialImageIndex int64,
@@ -128,7 +129,7 @@ func buildOpenAIImagesStreamPartialPayload(
 	payload, _ = sjson.SetBytes(payload, "partial_image_index", partialImageIndex)
 	payload, _ = sjson.SetBytes(payload, "b64_json", b64)
 	if strings.EqualFold(strings.TrimSpace(responseFormat), "url") {
-		payload, _ = sjson.SetBytes(payload, "url", "data:"+openAIImageOutputMIMEType(meta.OutputFormat)+";base64,"+b64)
+		payload, _ = sjson.SetBytes(payload, "url", openAIImageURLFromBase64(c, b64, meta.OutputFormat))
 	}
 	if meta.Background != "" {
 		payload, _ = sjson.SetBytes(payload, "background", meta.Background)
@@ -149,6 +150,7 @@ func buildOpenAIImagesStreamPartialPayload(
 }
 
 func buildOpenAIImagesStreamCompletedPayload(
+	c *gin.Context,
 	eventType string,
 	img openAIResponsesImageResult,
 	responseFormat string,
@@ -164,7 +166,7 @@ func buildOpenAIImagesStreamCompletedPayload(
 	payload, _ = sjson.SetBytes(payload, "created_at", createdAt)
 	payload, _ = sjson.SetBytes(payload, "b64_json", img.Result)
 	if strings.EqualFold(strings.TrimSpace(responseFormat), "url") {
-		payload, _ = sjson.SetBytes(payload, "url", "data:"+openAIImageOutputMIMEType(img.OutputFormat)+";base64,"+img.Result)
+		payload, _ = sjson.SetBytes(payload, "url", openAIImageURLFromBase64(c, img.Result, img.OutputFormat))
 	}
 	if img.Background != "" {
 		payload, _ = sjson.SetBytes(payload, "background", img.Background)
@@ -204,6 +206,14 @@ func openAIImageOutputMIMEType(outputFormat string) string {
 	default:
 		return "image/png"
 	}
+}
+
+func openAIImageURLFromBase64(c *gin.Context, b64, outputFormat string) string {
+	id, err := storeGeneratedImageFromBase64(b64, outputFormat)
+	if err != nil {
+		return "data:" + openAIImageOutputMIMEType(outputFormat) + ";base64," + b64
+	}
+	return generatedImageURLForRequest(c, id)
 }
 
 func openAIImageUploadToDataURL(upload OpenAIImagesUpload) (string, error) {
@@ -456,6 +466,7 @@ func collectOpenAIImagesFromResponsesBody(body []byte) ([]openAIResponsesImageRe
 }
 
 func buildOpenAIImagesAPIResponse(
+	c *gin.Context,
 	results []openAIResponsesImageResult,
 	createdAt int64,
 	usageRaw []byte,
@@ -475,7 +486,7 @@ func buildOpenAIImagesAPIResponse(
 	for _, img := range results {
 		item := []byte(`{}`)
 		if format == "url" {
-			item, _ = sjson.SetBytes(item, "url", "data:"+openAIImageOutputMIMEType(img.OutputFormat)+";base64,"+img.Result)
+			item, _ = sjson.SetBytes(item, "url", openAIImageURLFromBase64(c, img.Result, img.OutputFormat))
 		} else {
 			item, _ = sjson.SetBytes(item, "b64_json", img.Result)
 		}
@@ -584,7 +595,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 		firstMeta.Model = strings.TrimSpace(fallbackModel)
 	}
 
-	responseBody, err := buildOpenAIImagesAPIResponse(results, createdAt, usageRaw, firstMeta, responseFormat)
+	responseBody, err := buildOpenAIImagesAPIResponse(c, results, createdAt, usageRaw, firstMeta, responseFormat)
 	if err != nil {
 		return OpenAIUsage{}, 0, nil, err
 	}
@@ -663,6 +674,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				Background:   strings.TrimSpace(gjson.GetBytes(dataBytes, "background").String()),
 			})
 			payload := buildOpenAIImagesStreamPartialPayload(
+				c,
 				eventName,
 				b64,
 				gjson.GetBytes(dataBytes, "partial_image_index").Int(),
@@ -725,7 +737,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				if _, exists := emitted[key]; exists {
 					continue
 				}
-				payload := buildOpenAIImagesStreamCompletedPayload(eventName, img, format, createdAt, usageRaw)
+				payload := buildOpenAIImagesStreamCompletedPayload(c, eventName, img, format, createdAt, usageRaw)
 				emitted[key] = struct{}{}
 				s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, eventName, payload)
 			}
@@ -766,7 +778,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 				if _, exists := emitted[key]; exists {
 					continue
 				}
-				payload := buildOpenAIImagesStreamCompletedPayload(eventName, img, format, createdAt, nil)
+				payload := buildOpenAIImagesStreamCompletedPayload(c, eventName, img, format, createdAt, nil)
 				emitted[key] = struct{}{}
 				s.tryWriteOpenAIImagesStreamEvent(c, flusher, &clientDisconnected, &lastDownstreamWriteAt, eventName, payload)
 			}

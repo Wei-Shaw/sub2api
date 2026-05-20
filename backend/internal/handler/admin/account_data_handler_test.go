@@ -275,3 +275,76 @@ func TestImportDataReusesProxyAndSkipsDefaultGroup(t *testing.T) {
 	require.Len(t, adminSvc.createdAccounts, 1)
 	require.True(t, adminSvc.createdAccounts[0].SkipDefaultGroupBind)
 }
+
+func TestImportDataAppliesSharedAccountOptions(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+
+	proxyID := int64(12)
+	batchID := int64(7)
+	groupIDs := []int64{2, 3}
+	loadFactor := 25
+	rateMultiplier := 0.5
+	expiresAt := int64(1893456000)
+	autoPauseOnExpired := false
+	schedulable := true
+
+	dataPayload := map[string]any{
+		"data": map[string]any{
+			"type":    dataType,
+			"version": dataVersion,
+			"proxies": []map[string]any{},
+			"accounts": []map[string]any{
+				{
+					"name":            "acc",
+					"platform":        service.PlatformOpenAI,
+					"type":            service.AccountTypeOAuth,
+					"credentials":     map[string]any{"token": "x", "keep": "file"},
+					"extra":           map[string]any{"file_extra": true},
+					"concurrency":     3,
+					"priority":        50,
+					"rate_multiplier": 2,
+				},
+			},
+		},
+		"skip_default_group_bind":    false,
+		"batch_id":                   batchID,
+		"group_ids":                  groupIDs,
+		"proxy_id":                   proxyID,
+		"concurrency":                9,
+		"priority":                   4,
+		"rate_multiplier":            rateMultiplier,
+		"load_factor":                loadFactor,
+		"expires_at":                 expiresAt,
+		"auto_pause_on_expired":      autoPauseOnExpired,
+		"schedulable":                schedulable,
+		"credential_extras":          map[string]any{"intercept_warmup_requests": true, "keep": "override"},
+		"extra":                      map[string]any{"shared_extra": "yes"},
+		"confirm_mixed_channel_risk": true,
+	}
+
+	body, _ := json.Marshal(dataPayload)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	require.Len(t, adminSvc.createdAccounts, 1)
+	created := adminSvc.createdAccounts[0]
+	require.Equal(t, &batchID, created.BatchID)
+	require.Equal(t, &proxyID, created.ProxyID)
+	require.Equal(t, 9, created.Concurrency)
+	require.Equal(t, 4, created.Priority)
+	require.Equal(t, &rateMultiplier, created.RateMultiplier)
+	require.Equal(t, &loadFactor, created.LoadFactor)
+	require.Equal(t, groupIDs, created.GroupIDs)
+	require.Equal(t, &expiresAt, created.ExpiresAt)
+	require.Equal(t, &autoPauseOnExpired, created.AutoPauseOnExpired)
+	require.Equal(t, &schedulable, created.Schedulable)
+	require.False(t, created.SkipDefaultGroupBind)
+	require.True(t, created.SkipMixedChannelCheck)
+	require.Equal(t, "override", created.Credentials["keep"])
+	require.Equal(t, true, created.Credentials["intercept_warmup_requests"])
+	require.Equal(t, true, created.Extra["file_extra"])
+	require.Equal(t, "yes", created.Extra["shared_extra"])
+}

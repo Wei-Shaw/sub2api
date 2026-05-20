@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -59,11 +60,25 @@ type DataAccount struct {
 	RateMultiplier     *float64       `json:"rate_multiplier,omitempty"`
 	ExpiresAt          *int64         `json:"expires_at,omitempty"`
 	AutoPauseOnExpired *bool          `json:"auto_pause_on_expired,omitempty"`
+	LoadFactor         *int           `json:"load_factor,omitempty"`
 }
 
 type DataImportRequest struct {
-	Data                 DataPayload `json:"data"`
-	SkipDefaultGroupBind *bool       `json:"skip_default_group_bind"`
+	Data                    DataPayload    `json:"data"`
+	SkipDefaultGroupBind    *bool          `json:"skip_default_group_bind"`
+	BatchID                 *int64         `json:"batch_id"`
+	GroupIDs                []int64        `json:"group_ids"`
+	ProxyID                 *int64         `json:"proxy_id"`
+	Concurrency             *int           `json:"concurrency"`
+	Priority                *int           `json:"priority"`
+	RateMultiplier          *float64       `json:"rate_multiplier"`
+	LoadFactor              *int           `json:"load_factor"`
+	ExpiresAt               *int64         `json:"expires_at"`
+	AutoPauseOnExpired      *bool          `json:"auto_pause_on_expired"`
+	Schedulable             *bool          `json:"schedulable"`
+	CredentialExtras        map[string]any `json:"credential_extras"`
+	Extra                   map[string]any `json:"extra"`
+	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"`
 }
 
 type DataImportResult struct {
@@ -186,10 +201,33 @@ func (h *AccountHandler) ImportData(c *gin.Context) {
 		response.BadRequest(c, err.Error())
 		return
 	}
+	if err := validateDataImportOptions(req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
 
-	executeAdminIdempotentJSON(c, "admin.accounts.import_data", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+	result, err := executeAdminIdempotent(c, "admin.accounts.import_data", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
 		return h.importData(ctx, req)
 	})
+	if err != nil {
+		var mixedErr *service.MixedChannelError
+		if errors.As(err, &mixedErr) {
+			c.JSON(http.StatusConflict, gin.H{
+				"error":   "mixed_channel_warning",
+				"message": mixedErr.Error(),
+			})
+			return
+		}
+		if retryAfter := service.RetryAfterSecondsFromError(err); retryAfter > 0 {
+			c.Header("Retry-After", strconv.Itoa(retryAfter))
+		}
+		response.ErrorFrom(c, err)
+		return
+	}
+	if result != nil && result.Replayed {
+		c.Header("X-Idempotency-Replayed", "true")
+	}
+	response.Success(c, result.Data)
 }
 
 func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) (DataImportResult, error) {
@@ -197,9 +235,16 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 	if req.SkipDefaultGroupBind != nil {
 		skipDefaultGroupBind = *req.SkipDefaultGroupBind
 	}
+	skipMixedChannelCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
 
 	dataPayload := req.Data
 	result := DataImportResult{}
+
+	if len(req.GroupIDs) > 0 && !skipMixedChannelCheck {
+		if err := h.checkDataImportMixedChannelRisk(ctx, dataPayload.Accounts, req.GroupIDs); err != nil {
+			return result, err
+		}
+	}
 
 	existingProxies, err := h.listAllProxies(ctx)
 	if err != nil {
@@ -287,7 +332,9 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 		}
 
 		var proxyID *int64
-		if item.ProxyKey != nil && *item.ProxyKey != "" {
+		if req.ProxyID != nil {
+			proxyID = normalizeImportProxyID(req.ProxyID)
+		} else if item.ProxyKey != nil && *item.ProxyKey != "" {
 			if id, ok := proxyKeyToID[*item.ProxyKey]; ok {
 				proxyID = &id
 			} else {
@@ -303,22 +350,28 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 		}
 
 		enrichCredentialsFromIDToken(&item)
+		credentials := mergeImportMaps(item.Credentials, req.CredentialExtras)
+		extra := mergeImportMaps(item.Extra, req.Extra)
 
 		accountInput := &service.CreateAccountInput{
-			Name:                 item.Name,
-			Notes:                item.Notes,
-			Platform:             item.Platform,
-			Type:                 item.Type,
-			Credentials:          item.Credentials,
-			Extra:                item.Extra,
-			ProxyID:              proxyID,
-			Concurrency:          item.Concurrency,
-			Priority:             item.Priority,
-			RateMultiplier:       item.RateMultiplier,
-			GroupIDs:             nil,
-			ExpiresAt:            item.ExpiresAt,
-			AutoPauseOnExpired:   item.AutoPauseOnExpired,
-			SkipDefaultGroupBind: skipDefaultGroupBind,
+			Name:                  item.Name,
+			Notes:                 item.Notes,
+			Platform:              item.Platform,
+			Type:                  item.Type,
+			Credentials:           credentials,
+			Extra:                 extra,
+			ProxyID:               proxyID,
+			Concurrency:           resolveImportInt(req.Concurrency, item.Concurrency),
+			Priority:              resolveImportInt(req.Priority, item.Priority),
+			RateMultiplier:        resolveImportFloat(req.RateMultiplier, item.RateMultiplier),
+			GroupIDs:              append([]int64(nil), req.GroupIDs...),
+			BatchID:               req.BatchID,
+			ExpiresAt:             resolveImportInt64(req.ExpiresAt, item.ExpiresAt),
+			AutoPauseOnExpired:    resolveImportBool(req.AutoPauseOnExpired, item.AutoPauseOnExpired),
+			Schedulable:           req.Schedulable,
+			SkipDefaultGroupBind:  skipDefaultGroupBind,
+			SkipMixedChannelCheck: skipMixedChannelCheck,
+			LoadFactor:            resolveImportIntPtr(req.LoadFactor, item.LoadFactor),
 		}
 
 		created, err := h.adminService.CreateAccount(ctx, accountInput)
@@ -358,6 +411,112 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 	return result, nil
 }
 
+func (h *AccountHandler) checkDataImportMixedChannelRisk(ctx context.Context, accounts []DataAccount, groupIDs []int64) error {
+	seenPlatforms := make(map[string]struct{})
+	for i := range accounts {
+		platform := strings.TrimSpace(accounts[i].Platform)
+		if platform == "" {
+			continue
+		}
+		if _, ok := seenPlatforms[platform]; ok {
+			continue
+		}
+		seenPlatforms[platform] = struct{}{}
+		if err := h.adminService.CheckMixedChannelRisk(ctx, 0, platform, groupIDs); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateDataImportOptions(req DataImportRequest) error {
+	if req.BatchID != nil && *req.BatchID <= 0 {
+		return errors.New("batch_id is invalid")
+	}
+	if req.ProxyID != nil && *req.ProxyID < 0 {
+		return errors.New("proxy_id is invalid")
+	}
+	if req.Concurrency != nil && *req.Concurrency < 0 {
+		return errors.New("concurrency must be >= 0")
+	}
+	if req.Priority != nil && *req.Priority < 0 {
+		return errors.New("priority must be >= 0")
+	}
+	if req.RateMultiplier != nil && *req.RateMultiplier < 0 {
+		return errors.New("rate_multiplier must be >= 0")
+	}
+	if req.LoadFactor != nil && *req.LoadFactor > 10000 {
+		return errors.New("load_factor must be <= 10000")
+	}
+	for _, groupID := range req.GroupIDs {
+		if groupID <= 0 {
+			return errors.New("group_ids contains invalid group id")
+		}
+	}
+	return nil
+}
+
+func normalizeImportProxyID(proxyID *int64) *int64 {
+	if proxyID == nil || *proxyID <= 0 {
+		return nil
+	}
+	value := *proxyID
+	return &value
+}
+
+func resolveImportInt(override *int, fallback int) int {
+	if override != nil {
+		return *override
+	}
+	return fallback
+}
+
+func resolveImportIntPtr(override *int, fallback *int) *int {
+	if override != nil {
+		value := *override
+		return &value
+	}
+	return fallback
+}
+
+func resolveImportInt64(override *int64, fallback *int64) *int64 {
+	if override != nil {
+		value := *override
+		return &value
+	}
+	return fallback
+}
+
+func resolveImportFloat(override *float64, fallback *float64) *float64 {
+	if override != nil {
+		value := *override
+		return &value
+	}
+	return fallback
+}
+
+func resolveImportBool(override *bool, fallback *bool) *bool {
+	if override != nil {
+		value := *override
+		return &value
+	}
+	return fallback
+}
+
+func mergeImportMaps(base map[string]any, override map[string]any) map[string]any {
+	if len(base) == 0 && len(override) == 0 {
+		return nil
+	}
+	merged := make(map[string]any, len(base)+len(override))
+	for key, value := range base {
+		merged[key] = value
+	}
+	for key, value := range override {
+		merged[key] = value
+	}
+	return merged
+}
+
 func (h *AccountHandler) listAllProxies(ctx context.Context) ([]service.Proxy, error) {
 	page := 1
 	pageSize := dataPageCap
@@ -381,7 +540,7 @@ func (h *AccountHandler) listAccountsFiltered(ctx context.Context, platform, acc
 	pageSize := dataPageCap
 	var out []service.Account
 	for {
-		items, total, err := h.adminService.ListAccounts(ctx, page, pageSize, platform, accountType, status, search, groupID, privacyMode, sortBy, sortOrder)
+		items, total, err := h.adminService.ListAccounts(ctx, page, pageSize, platform, accountType, status, search, groupID, privacyMode, sortBy, sortOrder, 0)
 		if err != nil {
 			return nil, err
 		}

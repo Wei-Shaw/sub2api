@@ -8555,6 +8555,16 @@ func (s *GatewayService) calculateImageCost(
 	multiplier float64,
 ) *CostBreakdown {
 	sizeTier := NormalizeImageBillingTierOrDefault(result.ImageSize)
+	// 计算像素面积：取输出尺寸和输入尺寸中最大的面积
+	sizes := append([]string{}, result.ImageOutputSizes...)
+	if result.ImageInputSize != "" {
+		sizes = append(sizes, result.ImageInputSize)
+	}
+	if result.ImageOutputSize != "" {
+		sizes = append(sizes, result.ImageOutputSize)
+	}
+	pixelArea := MaxPixelArea(sizes...)
+
 	if resolved := s.resolveChannelPricing(ctx, billingModel, apiKey); resolved != nil {
 		tokens := UsageTokens{
 			InputTokens:       result.Usage.InputTokens,
@@ -8569,6 +8579,7 @@ func (s *GatewayService) calculateImageCost(
 			Tokens:         tokens,
 			RequestCount:   result.ImageCount,
 			SizeTier:       sizeTier,
+			PixelArea:      pixelArea,
 			RateMultiplier: multiplier,
 			Resolver:       s.resolver,
 			Resolved:       resolved,

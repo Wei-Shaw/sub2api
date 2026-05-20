@@ -823,6 +823,7 @@ export interface Account {
   proxy?: Proxy
   group_ids?: number[] // Groups this account belongs to
   groups?: Group[] // Preloaded group objects
+  batch_id?: number | null // Batch classification ID
 
   // Rate limit & scheduling fields
   schedulable: boolean
@@ -1006,6 +1007,8 @@ export interface CreateAccountRequest {
   group_ids?: number[]
   expires_at?: number | null
   auto_pause_on_expired?: boolean
+  batch_id?: number | null
+  schedulable?: boolean
   confirm_mixed_channel_risk?: boolean
 }
 
@@ -1023,6 +1026,7 @@ export interface UpdateAccountRequest {
   schedulable?: boolean
   status?: 'active' | 'inactive' | 'error'
   group_ids?: number[]
+  batch_id?: number | null
   expires_at?: number | null
   auto_pause_on_expired?: boolean
   confirm_mixed_channel_risk?: boolean
@@ -1099,6 +1103,7 @@ export interface AdminDataAccount {
   rate_multiplier?: number | null
   expires_at?: number | null
   auto_pause_on_expired?: boolean
+  load_factor?: number | null
 }
 
 export interface AdminDataImportError {
@@ -1117,11 +1122,10 @@ export interface AdminDataImportResult {
   errors?: AdminDataImportError[]
 }
 
-export interface CodexSessionImportRequest {
-  content?: string
-  contents?: string[]
-  name?: string
-  notes?: string | null
+export interface AdminDataImportRequest {
+  data: AdminDataPayload
+  skip_default_group_bind?: boolean
+  batch_id?: number | null
   group_ids?: number[]
   proxy_id?: number | null
   concurrency?: number
@@ -1130,6 +1134,27 @@ export interface CodexSessionImportRequest {
   load_factor?: number | null
   expires_at?: number | null
   auto_pause_on_expired?: boolean
+  schedulable?: boolean
+  credential_extras?: Record<string, unknown>
+  extra?: Record<string, unknown>
+  confirm_mixed_channel_risk?: boolean
+}
+
+export interface CodexSessionImportRequest {
+  content?: string
+  contents?: string[]
+  name?: string
+  notes?: string | null
+  batch_id?: number | null
+  group_ids?: number[]
+  proxy_id?: number | null
+  concurrency?: number
+  priority?: number
+  rate_multiplier?: number
+  load_factor?: number | null
+  expires_at?: number | null
+  auto_pause_on_expired?: boolean
+  schedulable?: boolean
   credential_extras?: Record<string, unknown>
   extra?: Record<string, unknown>
   update_existing?: boolean

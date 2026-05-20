@@ -1310,6 +1310,47 @@ func isOpenAIAccountEligibleForRequest(account *Account, requestedModel string, 
 	return true
 }
 
+func (s *OpenAIGatewayService) enforceOpenAISchedulingGroupIsolation() bool {
+	if s == nil || s.cfg == nil {
+		return false
+	}
+	mode := strings.TrimSpace(s.cfg.RunMode)
+	if mode == "" {
+		return false
+	}
+	return config.NormalizeRunMode(mode) != config.RunModeSimple
+}
+
+func (s *OpenAIGatewayService) accountMatchesSchedulingGroup(account *Account, groupID *int64) bool {
+	if !s.enforceOpenAISchedulingGroupIsolation() {
+		return true
+	}
+	if account == nil {
+		return false
+	}
+
+	gid := derefGroupID(groupID)
+	if gid <= 0 {
+		return len(account.GroupIDs) == 0 && len(account.AccountGroups) == 0 && len(account.Groups) == 0
+	}
+	for _, id := range account.GroupIDs {
+		if id == gid {
+			return true
+		}
+	}
+	for _, group := range account.AccountGroups {
+		if group.GroupID == gid {
+			return true
+		}
+	}
+	for _, group := range account.Groups {
+		if group != nil && group.ID == gid {
+			return true
+		}
+	}
+	return false
+}
+
 // prioritizeOpenAICompactAccounts re-orders a slice so that accounts with known
 // compact support are tried first, followed by unknown, then explicitly unsupported.
 // The relative order within each tier is preserved.
@@ -1423,6 +1464,10 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 		return nil
 	}
+	if !s.accountMatchesSchedulingGroup(account, groupID) {
+		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+		return nil
+	}
 
 	// 验证账号是否可用于当前请求
 	// Verify account is usable for current request
@@ -1431,6 +1476,10 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 	}
 	account = s.recheckSelectedOpenAIAccountFromDB(ctx, account, requestedModel, requireCompact)
 	if account == nil {
+		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+		return nil
+	}
+	if !s.accountMatchesSchedulingGroup(account, groupID) {
 		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 		return nil
 	}
@@ -1467,6 +1516,9 @@ func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *i
 		if _, excluded := excludedIDs[acc.ID]; excluded {
 			continue
 		}
+		if !s.accountMatchesSchedulingGroup(acc, groupID) {
+			continue
+		}
 
 		fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, acc, requestedModel, false)
 		if fresh == nil {
@@ -1474,6 +1526,9 @@ func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *i
 		}
 		fresh = s.recheckSelectedOpenAIAccountFromDB(ctx, fresh, requestedModel, false)
 		if fresh == nil {
+			continue
+		}
+		if !s.accountMatchesSchedulingGroup(fresh, groupID) {
 			continue
 		}
 		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, fresh, requestedModel, requireCompact) {
@@ -1626,6 +1681,8 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 					account = s.recheckSelectedOpenAIAccountFromDB(ctx, account, requestedModel, requireCompact)
 					if account == nil {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+					} else if !s.accountMatchesSchedulingGroup(account, groupID) {
+						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 					} else if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, account, requestedModel, requireCompact) {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 					} else {
@@ -1656,6 +1713,9 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	for i := range accounts {
 		acc := &accounts[i]
 		if isExcluded(acc.ID) {
+			continue
+		}
+		if !s.accountMatchesSchedulingGroup(acc, groupID) {
 			continue
 		}
 		// Scheduler snapshots can be temporarily stale (bucket rebuild is throttled);
@@ -1700,6 +1760,9 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			}
 			fresh = s.recheckSelectedOpenAIAccountFromDB(ctx, fresh, requestedModel, requireCompact)
 			if fresh == nil {
+				continue
+			}
+			if !s.accountMatchesSchedulingGroup(fresh, groupID) {
 				continue
 			}
 			if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, fresh, requestedModel, requireCompact) {
@@ -1778,6 +1841,9 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 				if fresh == nil {
 					continue
 				}
+				if !s.accountMatchesSchedulingGroup(fresh, groupID) {
+					continue
+				}
 				if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, fresh, requestedModel, requireCompact) {
 					continue
 				}
@@ -1804,6 +1870,9 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		}
 		fresh = s.recheckSelectedOpenAIAccountFromDB(ctx, fresh, requestedModel, requireCompact)
 		if fresh == nil {
+			continue
+		}
+		if !s.accountMatchesSchedulingGroup(fresh, groupID) {
 			continue
 		}
 		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, fresh, requestedModel, requireCompact) {
@@ -5630,6 +5699,16 @@ func (s *OpenAIGatewayService) calculateOpenAIImageCost(
 	multiplier float64,
 ) *CostBreakdown {
 	sizeTier := NormalizeImageBillingTierOrDefault(result.ImageSize)
+	// 计算像素面积：取输出尺寸和输入尺寸中最大的面积
+	sizes := append([]string{}, result.ImageOutputSizes...)
+	if result.ImageInputSize != "" {
+		sizes = append(sizes, result.ImageInputSize)
+	}
+	if result.ImageOutputSize != "" {
+		sizes = append(sizes, result.ImageOutputSize)
+	}
+	pixelArea := MaxPixelArea(sizes...)
+
 	if resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey); resolved != nil &&
 		(resolved.Mode == BillingModePerRequest || resolved.Mode == BillingModeImage) {
 		gid := apiKey.Group.ID
@@ -5639,6 +5718,7 @@ func (s *OpenAIGatewayService) calculateOpenAIImageCost(
 			GroupID:        &gid,
 			RequestCount:   result.ImageCount,
 			SizeTier:       sizeTier,
+			PixelArea:      pixelArea,
 			RateMultiplier: multiplier,
 			Resolver:       s.resolver,
 			Resolved:       resolved,

@@ -85,7 +85,7 @@ func TestOpenAIGatewayServiceParseOpenAIImagesRequest_MultipartEdit(t *testing.T
 	require.Equal(t, "gpt-image-2", parsed.Model)
 	require.Equal(t, "replace background", parsed.Prompt)
 	require.Equal(t, "1536x1024", parsed.Size)
-	require.Equal(t, "2K", parsed.SizeTier)
+	require.Equal(t, "1K", parsed.SizeTier)
 	require.Len(t, parsed.Uploads, 1)
 	require.Equal(t, OpenAIImagesCapabilityNative, parsed.RequiredCapability)
 }
@@ -143,16 +143,19 @@ func TestOpenAIGatewayServiceParseOpenAIImagesRequest_NormalizesOfficialAndCusto
 		wantTier string
 	}{
 		{size: "1024x1024", wantTier: "1K"},
-		{size: "1536x1024", wantTier: "2K"},
-		{size: "1024x1536", wantTier: "2K"},
+		{size: "1536x1024", wantTier: "1K"},
+		{size: "1024x1536", wantTier: "1K"},
+		{size: "1088x1440", wantTier: "1K"},
+		{size: "2000x1000", wantTier: "1K"},
 		{size: "2048x2048", wantTier: "2K"},
 		{size: "2048x1152", wantTier: "2K"},
 		{size: "3840x2160", wantTier: "4K"},
 		{size: "2160x3840", wantTier: "4K"},
 		{size: "1024X768", wantTier: "1K"},
-		{size: "1280x768", wantTier: "2K"},
-		{size: "2560x1440", wantTier: "4K"},
-		{size: "2560x1600", wantTier: "4K"},
+		{size: "1280x768", wantTier: "1K"},
+		{size: "2560x1440", wantTier: "2K"},
+		{size: "2560x1600", wantTier: "2K"},
+		{size: "3072x4096", wantTier: "4K"},
 		{size: "auto", wantTier: "2K"},
 	}
 
@@ -184,8 +187,8 @@ func TestOpenAIGatewayServiceParseOpenAIImagesRequest_UnknownSizesDoNotBlockPass
 		wantTier string
 	}{
 		{size: "2048x1153", wantTier: "2K"},
-		{size: "4096x1024", wantTier: "4K"},
-		{size: "3840x1024", wantTier: "4K"},
+		{size: "4096x1024", wantTier: "2K"},
+		{size: "3840x1024", wantTier: "2K"},
 		{size: "512x512", wantTier: "1K"},
 		{size: "invalid", wantTier: "2K"},
 		{size: "999999999999999999999999999x2", wantTier: "2K"},
@@ -549,6 +552,55 @@ func TestOpenAIGatewayServiceForwardImages_OAuthUsesResponsesAPI(t *testing.T) {
 	require.Equal(t, "draw a cat", gjson.Get(rec.Body.String(), "data.0.revised_prompt").String())
 }
 
+func TestOpenAIGatewayServiceForwardImages_OAuthURLFormatReturnsDownloadURL(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","response_format":"url"}`)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Host = "api.example.com"
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+
+	svc := &OpenAIGatewayService{}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	svc.httpUpstream = &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"text/event-stream"},
+				"X-Request-Id": []string{"req_img_url"},
+			},
+			Body: io.NopCloser(strings.NewReader(
+				"data: {\"type\":\"response.completed\",\"response\":{\"created_at\":1710000000,\"tool_usage\":{\"image_gen\":{\"images\":1}},\"output\":[{\"type\":\"image_generation_call\",\"result\":\"aGVsbG8=\",\"output_format\":\"png\",\"size\":\"1024x1024\"}]}}\n\n" +
+					"data: [DONE]\n\n",
+			)),
+		},
+	}
+
+	account := &Account{
+		ID:       1,
+		Name:     "openai-oauth",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token": "token-123",
+		},
+	}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Empty(t, gjson.Get(rec.Body.String(), "data.0.b64_json").String())
+	url := gjson.Get(rec.Body.String(), "data.0.url").String()
+	require.True(t, strings.HasPrefix(url, "http://api.example.com/api/v1/generated-images/"), url)
+	require.NotContains(t, url, "base64")
+}
+
 func TestOpenAIGatewayServiceForwardImages_APIKeyGenerationUsesConfiguredV1BaseURL(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","response_format":"b64_json"}`)
@@ -873,7 +925,7 @@ func TestOpenAIGatewayServiceForwardImages_OAuthStreamingTransformsEvents(t *tes
 	require.Equal(t, "image_generation.partial_image", gjson.Get(partial.Data, "type").String())
 	require.Equal(t, int64(1710000001), gjson.Get(partial.Data, "created_at").Int())
 	require.Equal(t, "cGFydGlhbA==", gjson.Get(partial.Data, "b64_json").String())
-	require.Equal(t, "data:image/png;base64,cGFydGlhbA==", gjson.Get(partial.Data, "url").String())
+	require.True(t, strings.HasPrefix(gjson.Get(partial.Data, "url").String(), "http://example.com/api/v1/generated-images/"))
 	require.Equal(t, "gpt-image-2", gjson.Get(partial.Data, "model").String())
 	require.Equal(t, "png", gjson.Get(partial.Data, "output_format").String())
 	require.Equal(t, "high", gjson.Get(partial.Data, "quality").String())
@@ -885,7 +937,7 @@ func TestOpenAIGatewayServiceForwardImages_OAuthStreamingTransformsEvents(t *tes
 	require.Equal(t, "image_generation.completed", gjson.Get(completed.Data, "type").String())
 	require.Equal(t, int64(1710000001), gjson.Get(completed.Data, "created_at").Int())
 	require.Equal(t, "ZmluYWw=", gjson.Get(completed.Data, "b64_json").String())
-	require.Equal(t, "data:image/png;base64,ZmluYWw=", gjson.Get(completed.Data, "url").String())
+	require.True(t, strings.HasPrefix(gjson.Get(completed.Data, "url").String(), "http://example.com/api/v1/generated-images/"))
 	require.Equal(t, "gpt-image-2", gjson.Get(completed.Data, "model").String())
 	require.Equal(t, "png", gjson.Get(completed.Data, "output_format").String())
 	require.Equal(t, "high", gjson.Get(completed.Data, "quality").String())
@@ -1090,7 +1142,7 @@ func TestOpenAIGatewayServiceForwardImages_OAuthEditsStreamingTransformsEvents(t
 	require.Equal(t, "image_edit.partial_image", gjson.Get(partial.Data, "type").String())
 	require.Equal(t, int64(1710000003), gjson.Get(partial.Data, "created_at").Int())
 	require.Equal(t, "cGFydGlhbA==", gjson.Get(partial.Data, "b64_json").String())
-	require.Equal(t, "data:image/webp;base64,cGFydGlhbA==", gjson.Get(partial.Data, "url").String())
+	require.True(t, strings.HasPrefix(gjson.Get(partial.Data, "url").String(), "http://example.com/api/v1/generated-images/"))
 	require.Equal(t, "gpt-image-2", gjson.Get(partial.Data, "model").String())
 	require.Equal(t, "webp", gjson.Get(partial.Data, "output_format").String())
 	require.Equal(t, "high", gjson.Get(partial.Data, "quality").String())
@@ -1102,7 +1154,7 @@ func TestOpenAIGatewayServiceForwardImages_OAuthEditsStreamingTransformsEvents(t
 	require.Equal(t, "image_edit.completed", gjson.Get(completed.Data, "type").String())
 	require.Equal(t, int64(1710000003), gjson.Get(completed.Data, "created_at").Int())
 	require.Equal(t, "ZWRpdGVk", gjson.Get(completed.Data, "b64_json").String())
-	require.Equal(t, "data:image/webp;base64,ZWRpdGVk", gjson.Get(completed.Data, "url").String())
+	require.True(t, strings.HasPrefix(gjson.Get(completed.Data, "url").String(), "http://example.com/api/v1/generated-images/"))
 	require.Equal(t, "gpt-image-2", gjson.Get(completed.Data, "model").String())
 	require.Equal(t, "webp", gjson.Get(completed.Data, "output_format").String())
 	require.Equal(t, "high", gjson.Get(completed.Data, "quality").String())
@@ -1233,7 +1285,7 @@ func TestOpenAIGatewayServiceForwardImages_OAuthStreamingHandlesOutputItemDoneFa
 	require.Equal(t, "image_generation.completed", gjson.Get(completed.Data, "type").String())
 	require.Equal(t, int64(1710000005), gjson.Get(completed.Data, "created_at").Int())
 	require.Equal(t, "ZmluYWw=", gjson.Get(completed.Data, "b64_json").String())
-	require.Equal(t, "data:image/png;base64,ZmluYWw=", gjson.Get(completed.Data, "url").String())
+	require.True(t, strings.HasPrefix(gjson.Get(completed.Data, "url").String(), "http://example.com/api/v1/generated-images/"))
 	require.Equal(t, "gpt-image-2", gjson.Get(completed.Data, "model").String())
 	require.JSONEq(t, `{"images":1}`, gjson.Get(completed.Data, "usage").Raw)
 	require.NotContains(t, rec.Body.String(), "event: error")

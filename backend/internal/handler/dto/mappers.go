@@ -230,6 +230,7 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		SessionWindowEnd:        a.SessionWindowEnd,
 		SessionWindowStatus:     a.SessionWindowStatus,
 		GroupIDs:                a.GroupIDs,
+		BatchID:                 a.BatchID,
 	}
 
 	// 提取 5h 窗口费用控制和会话数量控制配置（仅 Anthropic OAuth/SetupToken 账号有效）

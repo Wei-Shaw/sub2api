@@ -7,8 +7,9 @@ import (
 )
 
 // SSRF 防护 helper：
-//   - validateEndpoint 在 admin 提交时阻止 http/loopback/私网/云元数据 URL
+//   - validateEndpoint 在 admin 提交时阻止公网 http/私网/云元数据 URL
 //   - safeDialContext 在 socket 层再次校验真实 IP，防止 DNS rebinding
+//   - localDialContext 仅允许显式 localhost/loopback，供本机调试监控使用
 //
 // 已知 cloud metadata hostname 拒绝列表（小写比较）。
 var monitorBlockedHostnames = map[string]struct{}{
@@ -65,6 +66,18 @@ func isBlockedHostname(hostname string) bool {
 	return blocked
 }
 
+// isLocalMonitorHostname 只放行显式本机名称；不通过 DNS 把任意 hostname 判成 local，
+// 避免外部域名临时解析到 127.0.0.1 后绕过公网 SSRF 策略。
+func isLocalMonitorHostname(hostname string) bool {
+	hostname = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(hostname)), ".")
+	if hostname == "" {
+		return false
+	}
+	return hostname == "localhost" ||
+		hostname == "localhost.localdomain" ||
+		strings.HasSuffix(hostname, ".localhost")
+}
+
 // isPrivateIP 判断 IP 是否落在禁止段（loopback/RFC1918/link-local/ULA 等）。
 func isPrivateIP(ip net.IP) bool {
 	if ip == nil {
@@ -79,6 +92,17 @@ func isPrivateIP(ip net.IP) bool {
 		}
 	}
 	return false
+}
+
+func isLoopbackIP(ip net.IP) bool {
+	return ip != nil && ip.IsLoopback()
+}
+
+func isExplicitLocalMonitorHost(hostname string) bool {
+	if ip := net.ParseIP(hostname); ip != nil {
+		return isLoopbackIP(ip)
+	}
+	return isLocalMonitorHostname(hostname)
 }
 
 // isPrivateOrLoopbackHost 解析 hostname 的所有 A/AAAA 记录，
@@ -147,6 +171,44 @@ func safeDialContext(ctx context.Context, network, address string) (net.Conn, er
 	}
 	if lastErr == nil {
 		lastErr = &net.AddrError{Err: "no usable addresses", Addr: host}
+	}
+	return nil, lastErr
+}
+
+// localDialContext 只连接显式本机 endpoint。它与 safeDialContext 分离，
+// 让本地调试可用，同时避免 localhost redirect 到公网/内网其它地址。
+func localDialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return nil, err
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		if !isLoopbackIP(ip) {
+			return nil, &net.AddrError{Err: "blocked by local monitor policy", Addr: address}
+		}
+		return monitorDialer.DialContext(ctx, network, address)
+	}
+	if !isLocalMonitorHostname(host) {
+		return nil, &net.AddrError{Err: "blocked by local monitor policy", Addr: address}
+	}
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	var lastErr error
+	for _, a := range addrs {
+		if !isLoopbackIP(a.IP) {
+			lastErr = &net.AddrError{Err: "blocked by local monitor policy", Addr: a.IP.String()}
+			continue
+		}
+		conn, err := monitorDialer.DialContext(ctx, network, net.JoinHostPort(a.IP.String(), port))
+		if err == nil {
+			return conn, nil
+		}
+		lastErr = err
+	}
+	if lastErr == nil {
+		lastErr = &net.AddrError{Err: "no usable local addresses", Addr: host}
 	}
 	return nil, lastErr
 }

@@ -15,6 +15,7 @@ type stubMonitorSvc struct {
 	enabled    []*ChannelMonitor
 	runCount   atomic.Int64
 	runCalled  chan int64 // 每次 RunCheck 触发时 push 一次（缓冲足够大避免阻塞）
+	deadlineCh chan time.Time
 	runErr     error
 	listErr    error
 	runHoldFor time.Duration // RunCheck 内额外阻塞的时长，用来测试 Stop 等待行为
@@ -33,6 +34,14 @@ func (s *stubMonitorSvc) RunCheck(ctx context.Context, id int64) ([]*CheckResult
 		select {
 		case s.runCalled <- id:
 		default:
+		}
+	}
+	if s.deadlineCh != nil {
+		if deadline, ok := ctx.Deadline(); ok {
+			select {
+			case s.deadlineCh <- deadline:
+			default:
+			}
 		}
 	}
 	if s.runHoldFor > 0 {
@@ -237,6 +246,32 @@ func TestStop_WaitsForInFlightCheck(t *testing.T) {
 	// Stop 必须等待 in-flight check 跑完（runHoldFor=200ms），耗时下界约 100ms。
 	if elapsed < 100*time.Millisecond {
 		t.Fatalf("Stop returned too fast (%v); did not wait for in-flight check", elapsed)
+	}
+}
+
+// TestRunOne_UsesImageSizedTimeout 验证 runner 的总超时覆盖图片模型检测耗时，
+// 避免 gpt-image-* 生成成功后写历史/标记状态被普通文本模型超时提前取消。
+func TestRunOne_UsesImageSizedTimeout(t *testing.T) {
+	deadlineCh := make(chan time.Time, 1)
+	svc := &stubMonitorSvc{deadlineCh: deadlineCh}
+	r := newRunnerForTest(svc)
+
+	start := time.Now()
+	if !r.tryAcquireInFlight(1) {
+		t.Fatal("expected acquire to succeed")
+	}
+	r.runOne(1, "image monitor")
+
+	select {
+	case deadline := <-deadlineCh:
+		got := deadline.Sub(start)
+		wantMin := monitorRunOneTimeout - time.Second
+		wantMax := monitorRunOneTimeout + time.Second
+		if got < wantMin || got > wantMax {
+			t.Fatalf("runOne deadline = %v after start, want about %v", got, monitorRunOneTimeout)
+		}
+	default:
+		t.Fatal("RunCheck did not receive a context deadline")
 	}
 }
 

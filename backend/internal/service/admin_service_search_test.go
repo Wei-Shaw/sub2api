@@ -170,7 +170,7 @@ func TestAdminService_ListAccounts_WithSearch(t *testing.T) {
 		}
 		svc := &adminServiceImpl{accountRepo: repo}
 
-		accounts, total, err := svc.ListAccounts(context.Background(), 1, 20, PlatformGemini, AccountTypeOAuth, StatusActive, "acc", 0, "", "name", "ASC")
+		accounts, total, err := svc.ListAccounts(context.Background(), 1, 20, PlatformGemini, AccountTypeOAuth, StatusActive, "acc", 0, "", "name", "ASC", 0)
 		require.NoError(t, err)
 		require.Equal(t, int64(10), total)
 		require.Equal(t, []Account{{ID: 1, Name: "acc"}}, accounts)
@@ -192,12 +192,33 @@ func TestAdminService_ListAccounts_WithPrivacyMode(t *testing.T) {
 		}
 		svc := &adminServiceImpl{accountRepo: repo}
 
-		accounts, total, err := svc.ListAccounts(context.Background(), 1, 20, PlatformOpenAI, AccountTypeOAuth, StatusActive, "acc2", 0, PrivacyModeCFBlocked, "", "")
+		accounts, total, err := svc.ListAccounts(context.Background(), 1, 20, PlatformOpenAI, AccountTypeOAuth, StatusActive, "acc2", 0, PrivacyModeCFBlocked, "", "", 0)
 		require.NoError(t, err)
 		require.Equal(t, int64(1), total)
 		require.Equal(t, []Account{{ID: 2, Name: "acc2"}}, accounts)
 		require.Equal(t, PrivacyModeCFBlocked, repo.listWithFiltersPrivacy)
 	})
+}
+
+func TestAdminService_ListAccounts_WithBatchFilterPaginatesAfterFiltering(t *testing.T) {
+	batchID := int64(7)
+	otherBatchID := int64(9)
+	repo := &accountRepoStubForAdminList{
+		listWithFiltersAccounts: []Account{
+			{ID: 1, Name: "skip", BatchID: &otherBatchID},
+			{ID: 2, Name: "match-1", BatchID: &batchID},
+			{ID: 3, Name: "match-2", BatchID: &batchID},
+		},
+		listWithFiltersResult: &pagination.PaginationResult{Total: 3},
+	}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	accounts, total, err := svc.ListAccounts(context.Background(), 2, 1, "", "", "", "", 0, "", "name", "ASC", batchID)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), total)
+	require.Equal(t, []Account{{ID: 3, Name: "match-2", BatchID: &batchID}}, accounts)
+	require.Equal(t, 1, repo.listWithFiltersCalls)
+	require.Equal(t, pagination.PaginationParams{Page: 1, PageSize: 1000, SortBy: "name", SortOrder: "ASC"}, repo.listWithFiltersParams)
 }
 
 func TestAdminService_ListProxies_WithSearch(t *testing.T) {

@@ -1,5 +1,14 @@
 import type { BillingMode, PricingInterval } from '@/api/admin/channels'
 
+export const IMAGE_BILLING_1_5K_AREA = 1536 * 1536
+export const IMAGE_BILLING_2_5K_AREA = 2560 * 2560
+
+export const DEFAULT_IMAGE_BILLING_TIERS = [
+  { min: 0, max: IMAGE_BILLING_1_5K_AREA, label: '1K' },
+  { min: IMAGE_BILLING_1_5K_AREA, max: IMAGE_BILLING_2_5K_AREA, label: '2K' },
+  { min: IMAGE_BILLING_2_5K_AREA, max: null, label: '4K' },
+] as const
+
 export interface IntervalFormEntry {
   min_tokens: number
   max_tokens: number | null
@@ -119,8 +128,9 @@ export function findModelConflict(models: string[]): [string, string] | null {
  *
  * mode 决定区间语义：
  * - token：区间是上下文 token 数分段 (min, max]，不能重叠，无上限段必须放最后
- * - per_request / image：区间是按 tier_label 分层（1K/2K/4K 等），后端按 label
+ * - per_request：区间是按 tier_label 分层（1K/2K/4K 等），后端按 label
  *   匹配，不依赖 min/max，因此跳过重叠 / last-unlimited 校验
+ * - image：区间按像素面积范围匹配 (min, max]，不能重叠，无上限段必须放最后
  */
 export function validateIntervals(
   intervals: IntervalFormEntry[],
@@ -136,8 +146,9 @@ export function validateIntervals(
     if (err) return err
   }
 
-  // per_request / image 模式按 tier_label 匹配，不做 token 区间重叠校验
-  if (mode !== 'token') return null
+  // per_request 模式按 tier_label 匹配，不做 token 区间重叠校验
+  // image 模式按面积范围匹配，需要做重叠校验
+  if (mode === 'per_request') return null
   return checkIntervalOverlap(sorted)
 }
 

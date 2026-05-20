@@ -299,7 +299,7 @@ func (s *stubAdminService) BatchSetGroupRPMOverrides(_ context.Context, _ int64,
 	return nil
 }
 
-func (s *stubAdminService) ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string) ([]service.Account, int64, error) {
+func (s *stubAdminService) ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string, batchID int64) ([]service.Account, int64, error) {
 	s.lastListAccounts.platform = platform
 	s.lastListAccounts.accountType = accountType
 	s.lastListAccounts.status = status

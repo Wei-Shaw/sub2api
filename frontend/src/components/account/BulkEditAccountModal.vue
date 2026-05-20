@@ -1035,6 +1035,32 @@
           />
         </div>
       </div>
+
+      <!-- Batch 标签 -->
+      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="mb-3 flex items-center justify-between">
+          <label
+            id="bulk-edit-batch-label"
+            class="input-label mb-0"
+            for="bulk-edit-batch-enabled"
+          >
+            {{ t('admin.batches.label', '批次标签') }}
+          </label>
+          <input
+            v-model="enableBatch"
+            id="bulk-edit-batch-enabled"
+            type="checkbox"
+            aria-controls="bulk-edit-batch"
+            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+        </div>
+        <div id="bulk-edit-batch" :class="!enableBatch && 'pointer-events-none opacity-50'">
+          <select v-model="batchId" class="input">
+            <option :value="null">{{ t('admin.batches.selectPlaceholder', '请选择批次') }}</option>
+            <option v-for="b in availableBatches" :key="b.id" :value="b.id">{{ b.name }}</option>
+          </select>
+        </div>
+      </div>
     </form>
 
     <template #footer>
@@ -1093,6 +1119,8 @@ import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
+import * as batchesAPI from '@/api/admin/batches'
+import type { Batch } from '@/api/admin/batches'
 import type { Proxy as ProxyConfig, AdminGroup, AccountPlatform, AccountType, OpenAICompactMode } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -1137,6 +1165,17 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const appStore = useAppStore()
+
+// Load batches for batch selector
+const availableBatches = ref<Batch[]>([])
+watch(() => props.show, async (v) => {
+  if (v) {
+    try {
+      const res = await batchesAPI.list()
+      availableBatches.value = res ?? []
+    } catch { availableBatches.value = [] }
+  }
+})
 
 // Platform awareness
 const targetMode = computed(() => props.target?.mode ?? 'selected')
@@ -1215,6 +1254,7 @@ const enablePriority = ref(false)
 const enableRateMultiplier = ref(false)
 const enableStatus = ref(false)
 const enableGroups = ref(false)
+const enableBatch = ref(false)
 const enableOpenAIPassthrough = ref(false)
 const enableOpenAIWSMode = ref(false)
 const enableOpenAIAPIKeyWSMode = ref(false)
@@ -1242,6 +1282,7 @@ const priority = ref(1)
 const rateMultiplier = ref(1)
 const status = ref<'active' | 'inactive'>('active')
 const groupIds = ref<number[]>([])
+const batchId = ref<number | null>(null)
 const openaiPassthroughEnabled = ref(false)
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
@@ -1429,6 +1470,10 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     updates.group_ids = groupIds.value
   }
 
+  if (enableBatch.value && batchId.value) {
+    updates.batch_id = batchId.value
+  }
+
   if (enableBaseUrl.value) {
     const baseUrlValue = baseUrl.value.trim()
     if (baseUrlValue) {
@@ -1599,6 +1644,7 @@ const handleSubmit = async () => {
     enableRateMultiplier.value ||
     enableStatus.value ||
     enableGroups.value ||
+    enableBatch.value ||
     enableOpenAIWSMode.value ||
     enableOpenAIAPIKeyWSMode.value ||
     enableCodexCLIOnly.value ||
@@ -1700,6 +1746,7 @@ watch(
       enableRateMultiplier.value = false
       enableStatus.value = false
       enableGroups.value = false
+      enableBatch.value = false
       enableOpenAIPassthrough.value = false
       enableOpenAIWSMode.value = false
       enableOpenAIAPIKeyWSMode.value = false
@@ -1724,6 +1771,7 @@ watch(
       rateMultiplier.value = 1
       status.value = 'active'
       groupIds.value = []
+      batchId.value = null
       openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       codexCLIOnlyEnabled.value = false
