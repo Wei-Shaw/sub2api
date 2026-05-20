@@ -1,6 +1,10 @@
 package handler
 
 import (
+	"html"
+	"net/http"
+	"strings"
+
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -10,8 +14,9 @@ import (
 
 // SettingHandler 公开设置处理器（无需认证）
 type SettingHandler struct {
-	settingService *service.SettingService
-	version        string
+	settingService           *service.SettingService
+	notificationEmailService *service.NotificationEmailService
+	version                  string
 REDACTED
 
 // NewSettingHandler 创建公开设置处理器
@@ -20,6 +25,12 @@ func NewSettingHandler(settingService *service.SettingService, version string) *
 		settingService: settingService,
 		version:        version,
 REDACTED
+REDACTED
+
+// SetNotificationEmailService attaches the public notification email service without
+// changing the constructor signature used by existing tests.
+func (h *SettingHandler) SetNotificationEmailService(notificationEmailService *service.NotificationEmailService) {
+	h.notificationEmailService = notificationEmailService
 REDACTED
 
 // GetPublicSettings 获取公开设置
@@ -88,6 +99,27 @@ REDACTED
 
 		RiskControlEnabled: settings.RiskControlEnabled,
 REDACTED)
+REDACTED
+
+// UnsubscribeNotificationEmail handles optional notification email opt-outs.
+// GET /api/v1/settings/email-unsubscribe?token=...
+func (h *SettingHandler) UnsubscribeNotificationEmail(c *gin.Context) {
+	if h.notificationEmailService == nil {
+		response.InternalError(c, "notification email service is not configured")
+		return
+REDACTED
+	token := strings.TrimSpace(c.Query("token"))
+	if token == "" {
+		response.BadRequest(c, "token is required")
+		return
+REDACTED
+	result, err := h.notificationEmailService.Unsubscribe(c.Request.Context(), token)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+REDACTED
+	body := "<!doctype html><html><head><meta charset=\"utf-8\"><title>Unsubscribed</title></head><body style=\"font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;padding:32px;\"><h1>Unsubscribed</h1><p>You have unsubscribed <strong>" + html.EscapeString(result.Email) + "</strong> from <strong>" + html.EscapeString(result.Event) + "</strong> emails.</p></body></html>"
+	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(body))
 REDACTED
 
 func publicLoginAgreementDocumentsToDTO(items []service.LoginAgreementDocument) []dto.LoginAgreementDocument {
