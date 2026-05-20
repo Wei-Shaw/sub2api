@@ -14,8 +14,6 @@ const (
 	SubscriptionPurchaseActionExtend = "extend"
 )
 
-const subscriptionBillingMonthSeconds = 30 * 24 * 60 * 60
-
 type SubscriptionPlanPurchaseQuote struct {
 	Action              string     `json:"action"`
 	Amount              float64    `json:"amount"`

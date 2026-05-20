@@ -1554,15 +1554,6 @@ func (cfg *ContentModerationConfig) apiKeys() []string {
 	return normalizeModerationAPIKeys(cfg.APIKeys)
 }
 
-func (s *ContentModerationService) nextAPIKey(cfg *ContentModerationConfig) string {
-	keys := cfg.apiKeys()
-	if len(keys) == 0 {
-		return ""
-	}
-	idx := int(s.apiKeyCursor.Add(1)-1) % len(keys)
-	return keys[idx]
-}
-
 func (s *ContentModerationService) nextUsableAPIKey(cfg *ContentModerationConfig) (string, bool) {
 	keys := cfg.apiKeys()
 	if len(keys) == 0 {
