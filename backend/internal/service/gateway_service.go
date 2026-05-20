@@ -6765,6 +6765,15 @@ REDACTED
 		return true
 REDACTED
 
+	// 检测 thinking block 缺少 thinking 字段的错误（跨模型切换时常见：
+	// 其他模型回过的 assistant 历史里有 type=thinking 但没有 thinking 文本，
+	// 喂给开启 extended thinking 的 claude 时会被拒）
+	// 例如: "messages.1.content.0.thinking: each thinking block must contain thinking"
+	if strings.Contains(msg, "thinking block must contain") {
+		logger.LegacyPrintf("service.gateway", "[SignatureCheck] Detected thinking block missing content error")
+		return true
+REDACTED
+
 	return false
 REDACTED
 
