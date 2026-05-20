@@ -1,4 +1,4 @@
-export const DEFAULT_PAYMENT_CURRENCY = 'CNY'
+export const DEFAULT_PAYMENT_CURRENCY = 'VND'
 
 const PAYMENT_CURRENCY_SYMBOLS: Record<string, string> = {
   USD: '$',
