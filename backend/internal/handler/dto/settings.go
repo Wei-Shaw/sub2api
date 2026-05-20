@@ -218,6 +218,9 @@ type SystemSettings struct {
 	PaymentCancelRateLimitUnit    string `json:"payment_cancel_rate_limit_unit"`
 	PaymentCancelRateLimitMode    string `json:"payment_cancel_rate_limit_window_mode"`
 
+	// Force Alipay mobile clients to use QR code payment instead of mobile redirect
+	PaymentAlipayForceQRCode bool `json:"payment_alipay_force_qrcode"`
+
 	// Balance low notification
 	BalanceLowNotifyEnabled     bool               `json:"balance_low_notify_enabled"`
 	BalanceLowNotifyThreshold   float64            `json:"balance_low_notify_threshold"`

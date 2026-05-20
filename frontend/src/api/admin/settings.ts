@@ -528,6 +528,7 @@ export interface SystemSettings {
   payment_cancel_rate_limit_window: number;
   payment_cancel_rate_limit_unit: string;
   payment_cancel_rate_limit_window_mode: string;
+  payment_alipay_force_qrcode?: boolean;
   payment_visible_method_alipay_source?: string;
   payment_visible_method_wxpay_source?: string;
   payment_visible_method_alipay_enabled?: boolean;
@@ -745,6 +746,7 @@ export interface UpdateSettingsRequest {
   payment_cancel_rate_limit_window?: number;
   payment_cancel_rate_limit_unit?: string;
   payment_cancel_rate_limit_window_mode?: string;
+  payment_alipay_force_qrcode?: boolean;
   payment_visible_method_alipay_source?: string;
   payment_visible_method_wxpay_source?: string;
   payment_visible_method_alipay_enabled?: boolean;
