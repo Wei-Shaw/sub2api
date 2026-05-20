@@ -31,14 +31,14 @@ const (
 	FieldExpiresAt = "expires_at"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
-	// FieldDailyWindowStart holds the string denoting the daily_window_start field in the database.
-	FieldDailyWindowStart = "daily_window_start"
+	// FieldFiveHourWindowStart holds the string denoting the five_hour_window_start field in the database.
+	FieldFiveHourWindowStart = "five_hour_window_start"
 	// FieldWeeklyWindowStart holds the string denoting the weekly_window_start field in the database.
 	FieldWeeklyWindowStart = "weekly_window_start"
 	// FieldMonthlyWindowStart holds the string denoting the monthly_window_start field in the database.
 	FieldMonthlyWindowStart = "monthly_window_start"
-	// FieldDailyUsageUsd holds the string denoting the daily_usage_usd field in the database.
-	FieldDailyUsageUsd = "daily_usage_usd"
+	// FieldFiveHourUsageUsd holds the string denoting the five_hour_usage_usd field in the database.
+	FieldFiveHourUsageUsd = "five_hour_usage_usd"
 	// FieldWeeklyUsageUsd holds the string denoting the weekly_usage_usd field in the database.
 	FieldWeeklyUsageUsd = "weekly_usage_usd"
 	// FieldMonthlyUsageUsd holds the string denoting the monthly_usage_usd field in the database.
@@ -100,10 +100,10 @@ var Columns = []string{
 	FieldStartsAt,
 	FieldExpiresAt,
 	FieldStatus,
-	FieldDailyWindowStart,
+	FieldFiveHourWindowStart,
 	FieldWeeklyWindowStart,
 	FieldMonthlyWindowStart,
-	FieldDailyUsageUsd,
+	FieldFiveHourUsageUsd,
 	FieldWeeklyUsageUsd,
 	FieldMonthlyUsageUsd,
 	FieldAssignedBy,
@@ -139,8 +139,8 @@ var (
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	StatusValidator func(string) error
-	// DefaultDailyUsageUsd holds the default value on creation for the "daily_usage_usd" field.
-	DefaultDailyUsageUsd float64
+	// DefaultFiveHourUsageUsd holds the default value on creation for the "five_hour_usage_usd" field.
+	DefaultFiveHourUsageUsd float64
 	// DefaultWeeklyUsageUsd holds the default value on creation for the "weekly_usage_usd" field.
 	DefaultWeeklyUsageUsd float64
 	// DefaultMonthlyUsageUsd holds the default value on creation for the "monthly_usage_usd" field.
@@ -197,9 +197,9 @@ func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
 }
 
-// ByDailyWindowStart orders the results by the daily_window_start field.
-func ByDailyWindowStart(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldDailyWindowStart, opts...).ToFunc()
+// ByFiveHourWindowStart orders the results by the five_hour_window_start field.
+func ByFiveHourWindowStart(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFiveHourWindowStart, opts...).ToFunc()
 }
 
 // ByWeeklyWindowStart orders the results by the weekly_window_start field.
@@ -212,9 +212,9 @@ func ByMonthlyWindowStart(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldMonthlyWindowStart, opts...).ToFunc()
 }
 
-// ByDailyUsageUsd orders the results by the daily_usage_usd field.
-func ByDailyUsageUsd(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldDailyUsageUsd, opts...).ToFunc()
+// ByFiveHourUsageUsd orders the results by the five_hour_usage_usd field.
+func ByFiveHourUsageUsd(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFiveHourUsageUsd, opts...).ToFunc()
 }
 
 // ByWeeklyUsageUsd orders the results by the weekly_usage_usd field.

@@ -72,31 +72,29 @@
 
               <!-- Progress bars for limited subscriptions -->
               <template v-else>
-                <div v-if="subscription.group?.daily_limit_usd" class="flex items-center gap-2">
+                <div v-if="subscription.group?.five_hour_limit_usd" class="flex items-center gap-2">
                   <span class="w-8 flex-shrink-0 text-[10px] text-gray-500">{{
-                    t('subscriptionProgress.daily')
+                    t('subscriptionProgress.fiveHour')
                   }}</span>
                   <div class="h-1.5 min-w-0 flex-1 rounded-full bg-gray-200 dark:bg-dark-600">
                     <div
                       class="h-1.5 rounded-full transition-all"
                       :class="
                         getProgressBarClass(
-                          subscription.daily_usage_usd,
-                          subscription.group?.daily_limit_usd
+                          subscription.five_hour_usage_usd,
+                          subscription.group.five_hour_limit_usd
                         )
                       "
                       :style="{
                         width: getProgressWidth(
-                          subscription.daily_usage_usd,
-                          subscription.group?.daily_limit_usd
+                          subscription.five_hour_usage_usd,
+                          subscription.group.five_hour_limit_usd
                         )
                       }"
                     ></div>
                   </div>
                   <span class="w-24 flex-shrink-0 text-right text-[10px] text-gray-500">
-                    {{
-                      formatUsage(subscription.daily_usage_usd, subscription.group?.daily_limit_usd)
-                    }}
+                    {{ formatUSD(subscription.five_hour_usage_usd || 0) }} / {{ formatUSD(subscription.group.five_hour_limit_usd) }}
                   </span>
                 </div>
 
@@ -204,10 +202,14 @@ const displaySubscriptions = computed(() => {
   })
 })
 
+function formatUSD(val: number): string {
+  return '$' + val.toFixed(2)
+}
+
 function getMaxUsagePercentage(sub: UserSubscription): number {
   const percentages: number[] = []
-  if (sub.group?.daily_limit_usd) {
-    percentages.push(((sub.daily_usage_usd || 0) / sub.group.daily_limit_usd) * 100)
+  if (sub.group?.five_hour_limit_usd) {
+    percentages.push(((sub.five_hour_usage_usd || 0) / sub.group.five_hour_limit_usd) * 100)
   }
   if (sub.group?.weekly_limit_usd) {
     percentages.push(((sub.weekly_usage_usd || 0) / sub.group.weekly_limit_usd) * 100)
@@ -220,7 +222,7 @@ function getMaxUsagePercentage(sub: UserSubscription): number {
 
 function isUnlimited(sub: UserSubscription): boolean {
   return (
-    !sub.group?.daily_limit_usd &&
+    !sub.group?.five_hour_limit_usd &&
     !sub.group?.weekly_limit_usd &&
     !sub.group?.monthly_limit_usd
   )

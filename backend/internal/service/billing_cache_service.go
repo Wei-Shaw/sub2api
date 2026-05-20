@@ -27,12 +27,12 @@ var (
 
 // subscriptionCacheData 订阅缓存数据结构（内部使用）
 type subscriptionCacheData struct {
-	Status       string
-	ExpiresAt    time.Time
-	DailyUsage   float64
-	WeeklyUsage  float64
-	MonthlyUsage float64
-	Version      int64
+	Status          string
+	ExpiresAt       time.Time
+		WeeklyUsage     float64
+	MonthlyUsage    float64
+	FiveHourUsage   float64
+	Version         int64
 }
 
 // 缓存写入任务类型
@@ -420,23 +420,23 @@ func (s *BillingCacheService) GetSubscriptionStatus(ctx context.Context, userID,
 
 func (s *BillingCacheService) convertFromPortsData(data *SubscriptionCacheData) *subscriptionCacheData {
 	return &subscriptionCacheData{
-		Status:       data.Status,
-		ExpiresAt:    data.ExpiresAt,
-		DailyUsage:   data.DailyUsage,
-		WeeklyUsage:  data.WeeklyUsage,
-		MonthlyUsage: data.MonthlyUsage,
-		Version:      data.Version,
+		Status:        data.Status,
+		ExpiresAt:     data.ExpiresAt,
+		WeeklyUsage:   data.WeeklyUsage,
+		MonthlyUsage:  data.MonthlyUsage,
+		FiveHourUsage: data.FiveHourUsage,
+		Version:       data.Version,
 	}
 }
 
 func (s *BillingCacheService) convertToPortsData(data *subscriptionCacheData) *SubscriptionCacheData {
 	return &SubscriptionCacheData{
-		Status:       data.Status,
-		ExpiresAt:    data.ExpiresAt,
-		DailyUsage:   data.DailyUsage,
-		WeeklyUsage:  data.WeeklyUsage,
-		MonthlyUsage: data.MonthlyUsage,
-		Version:      data.Version,
+		Status:        data.Status,
+		ExpiresAt:     data.ExpiresAt,
+		WeeklyUsage:   data.WeeklyUsage,
+		MonthlyUsage:  data.MonthlyUsage,
+		FiveHourUsage: data.FiveHourUsage,
+		Version:       data.Version,
 	}
 }
 
@@ -448,12 +448,12 @@ func (s *BillingCacheService) getSubscriptionFromDB(ctx context.Context, userID,
 	}
 
 	return &subscriptionCacheData{
-		Status:       sub.Status,
-		ExpiresAt:    sub.ExpiresAt,
-		DailyUsage:   sub.DailyUsageUSD,
-		WeeklyUsage:  sub.WeeklyUsageUSD,
-		MonthlyUsage: sub.MonthlyUsageUSD,
-		Version:      sub.UpdatedAt.Unix(),
+		Status:        sub.Status,
+		ExpiresAt:     sub.ExpiresAt,
+		WeeklyUsage:   sub.WeeklyUsageUSD,
+		MonthlyUsage:  sub.MonthlyUsageUSD,
+		FiveHourUsage: sub.FiveHourUsageUSD,
+		Version:       sub.UpdatedAt.Unix(),
 	}, nil
 }
 
@@ -830,8 +830,8 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 	}
 
 	// 检查限额（使用传入的Group限额配置）
-	if group.HasDailyLimit() && subData.DailyUsage >= *group.DailyLimitUSD {
-		return ErrDailyLimitExceeded
+	if group.HasFiveHourLimit() && subData.FiveHourUsage >= *group.FiveHourLimitUSD {
+		return ErrFiveHourLimitExceeded
 	}
 
 	if group.HasWeeklyLimit() && subData.WeeklyUsage >= *group.WeeklyLimitUSD {

@@ -138,19 +138,19 @@
               >
                 <template
                   v-if="
-                    row.daily_limit_usd ||
+                    row.five_hour_limit_usd ||
                     row.weekly_limit_usd ||
                     row.monthly_limit_usd
                   "
                 >
-                  <span v-if="row.daily_limit_usd"
-                    >${{ row.daily_limit_usd }}/{{
-                      t("admin.groups.limitDay")
+                  <span v-if="row.five_hour_limit_usd"
+                    >${{ row.five_hour_limit_usd }}/{{
+                      t("admin.groups.limitFiveHour")
                     }}</span
                   >
                   <span
                     v-if="
-                      row.daily_limit_usd &&
+                      row.five_hour_limit_usd &&
                       (row.weekly_limit_usd || row.monthly_limit_usd)
                     "
                     class="mx-1 text-gray-300 dark:text-gray-600"
@@ -609,10 +609,10 @@
           >
             <div>
               <label class="input-label">{{
-                t("admin.groups.subscription.dailyLimit")
+                t("admin.groups.subscription.fiveHourLimit")
               }}</label>
               <input
-                v-model.number="createForm.daily_limit_usd"
+                v-model.number="createForm.five_hour_limit_usd"
                 type="number"
                 step="0.01"
                 min="0"
@@ -1794,10 +1794,10 @@
           >
             <div>
               <label class="input-label">{{
-                t("admin.groups.subscription.dailyLimit")
+                t("admin.groups.subscription.fiveHourLimit")
               }}</label>
               <input
-                v-model.number="editForm.daily_limit_usd"
+                v-model.number="editForm.five_hour_limit_usd"
                 type="number"
                 step="0.01"
                 min="0"
@@ -3106,7 +3106,7 @@ const createForm = reactive({
   rate_multiplier: 1.0,
   is_exclusive: false,
   subscription_type: "standard" as SubscriptionType,
-  daily_limit_usd: null as number | null,
+  five_hour_limit_usd: null as number | null,
   weekly_limit_usd: null as number | null,
   monthly_limit_usd: null as number | null,
   // 图片生成计费配置
@@ -3391,7 +3391,7 @@ const editForm = reactive({
   is_exclusive: false,
   status: "active" as "active" | "inactive",
   subscription_type: "standard" as SubscriptionType,
-  daily_limit_usd: null as number | null,
+  five_hour_limit_usd: null as number | null,
   weekly_limit_usd: null as number | null,
   monthly_limit_usd: null as number | null,
   // 图片生成计费配置
@@ -3638,7 +3638,6 @@ const closeCreateModal = () => {
   createForm.rate_multiplier = 1.0;
   createForm.is_exclusive = false;
   createForm.subscription_type = "standard";
-  createForm.daily_limit_usd = null;
   createForm.weekly_limit_usd = null;
   createForm.monthly_limit_usd = null;
   createForm.allow_image_generation = false;
@@ -3698,8 +3697,8 @@ const handleCreateGroup = async () => {
     // 构建请求数据，包含模型路由配置
     const requestData = {
       ...createForm,
-      daily_limit_usd: normalizeOptionalLimit(
-        createForm.daily_limit_usd as number | string | null,
+      five_hour_limit_usd: normalizeOptionalLimit(
+        createForm.five_hour_limit_usd as number | string | null,
       ),
       weekly_limit_usd: normalizeOptionalLimit(
         createForm.weekly_limit_usd as number | string | null,
@@ -3723,8 +3722,7 @@ const handleCreateGroup = async () => {
     };
     // v-model.number 清空输入框时产生 ""，转为 null 让后端设为无限制
     const emptyToNull = (v: any) => (v === "" ? null : v);
-    requestData.daily_limit_usd = emptyToNull(requestData.daily_limit_usd);
-    requestData.weekly_limit_usd = emptyToNull(requestData.weekly_limit_usd);
+      requestData.weekly_limit_usd = emptyToNull(requestData.weekly_limit_usd);
     requestData.monthly_limit_usd = emptyToNull(requestData.monthly_limit_usd);
     requestData.image_rate_multiplier = normalizeImageRateMultiplier(
       requestData.image_rate_multiplier,
@@ -3757,7 +3755,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.is_exclusive = group.is_exclusive;
   editForm.status = group.status;
   editForm.subscription_type = group.subscription_type || "standard";
-  editForm.daily_limit_usd = group.daily_limit_usd;
+  editForm.five_hour_limit_usd = group.five_hour_limit_usd;
   editForm.weekly_limit_usd = group.weekly_limit_usd;
   editForm.monthly_limit_usd = group.monthly_limit_usd;
   editForm.allow_image_generation = group.allow_image_generation ?? false;
@@ -3823,8 +3821,8 @@ const handleUpdateGroup = async () => {
     // 转换 fallback_group_id: null -> 0 (后端使用 0 表示清除)
     const payload = {
       ...editForm,
-      daily_limit_usd: normalizeOptionalLimit(
-        editForm.daily_limit_usd as number | string | null,
+      five_hour_limit_usd: normalizeOptionalLimit(
+        editForm.five_hour_limit_usd as number | string | null,
       ),
       weekly_limit_usd: normalizeOptionalLimit(
         editForm.weekly_limit_usd as number | string | null,
@@ -3854,8 +3852,7 @@ const handleUpdateGroup = async () => {
     };
     // v-model.number 清空输入框时产生 ""，转为 null 让后端设为无限制
     const emptyToNull = (v: any) => (v === "" ? null : v);
-    payload.daily_limit_usd = emptyToNull(payload.daily_limit_usd);
-    payload.weekly_limit_usd = emptyToNull(payload.weekly_limit_usd);
+      payload.weekly_limit_usd = emptyToNull(payload.weekly_limit_usd);
     payload.monthly_limit_usd = emptyToNull(payload.monthly_limit_usd);
     payload.image_rate_multiplier = normalizeImageRateMultiplier(
       payload.image_rate_multiplier,

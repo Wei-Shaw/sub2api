@@ -58,10 +58,11 @@ func (Group) Fields() []ent.Field {
 		field.String("subscription_type").
 			MaxLen(20).
 			Default(domain.SubscriptionTypeStandard),
-		field.Float("daily_limit_usd").
+		field.Float("five_hour_limit_usd").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
+			Comment("每5小时费用上限（美元），0或nil表示不限制；与OpenAI原生5h窗口对齐"),
 		field.Float("weekly_limit_usd").
 			Optional().
 			Nillable().

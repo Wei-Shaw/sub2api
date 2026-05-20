@@ -38,29 +38,13 @@
         </div>
       </div>
 
-      <!-- Group quota info (compact) -->
-      <div class="mb-3 grid grid-cols-2 gap-x-3 gap-y-1 rounded-lg bg-gray-50 px-3 py-2 text-xs dark:bg-dark-700/50">
-        <div class="flex items-center justify-between">
-          <span class="text-gray-400 dark:text-dark-300">{{ t('payment.planCard.rate') }}</span>
-          <span class="font-medium text-gray-700 dark:text-gray-300">{{ rateDisplay }}</span>
-        </div>
-        <div v-if="plan.daily_limit_usd != null" class="flex items-center justify-between">
-          <span class="text-gray-400 dark:text-dark-300">{{ t('payment.planCard.dailyLimit') }}</span>
-          <span class="font-medium text-gray-700 dark:text-gray-300">${{ plan.daily_limit_usd }}</span>
-        </div>
-        <div v-if="plan.weekly_limit_usd != null" class="flex items-center justify-between">
-          <span class="text-gray-400 dark:text-dark-300">{{ t('payment.planCard.weeklyLimit') }}</span>
-          <span class="font-medium text-gray-700 dark:text-gray-300">${{ plan.weekly_limit_usd }}</span>
-        </div>
-        <div v-if="plan.monthly_limit_usd != null" class="flex items-center justify-between">
-          <span class="text-gray-400 dark:text-dark-300">{{ t('payment.planCard.monthlyLimit') }}</span>
-          <span class="font-medium text-gray-700 dark:text-gray-300">${{ plan.monthly_limit_usd }}</span>
-        </div>
-        <div v-if="plan.daily_limit_usd == null && plan.weekly_limit_usd == null && plan.monthly_limit_usd == null" class="flex items-center justify-between">
+      <!-- Group plan highlights (compact, no internal quota numbers) -->
+      <div class="mb-3 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:bg-dark-700/50 dark:text-gray-300">
+        <div class="flex items-center justify-between gap-3">
           <span class="text-gray-400 dark:text-dark-300">{{ t('payment.planCard.quota') }}</span>
-          <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.planCard.unlimited') }}</span>
+          <span class="font-medium text-gray-700 dark:text-gray-300">{{ quotaDisplay }}</span>
         </div>
-        <div v-if="modelScopeLabels.length > 0" class="col-span-2 flex items-center justify-between">
+        <div v-if="modelScopeLabels.length > 0" class="mt-2 flex items-center justify-between gap-3">
           <span class="text-gray-400 dark:text-dark-300">{{ t('payment.planCard.models') }}</span>
           <div class="flex flex-wrap justify-end gap-1">
             <span v-for="scope in modelScopeLabels" :key="scope"
@@ -139,9 +123,11 @@ const savingsAmount = computed(() => {
   return savings > 0 ? savings.toFixed(2) : '0'
 })
 
-const rateDisplay = computed(() => {
-  const rate = props.plan.rate_multiplier ?? 1
-  return `×${Number(rate.toPrecision(10))}`
+const quotaDisplay = computed(() => {
+  if (props.plan.has_quota) {
+    return t('payment.planCard.included')
+  }
+  return t('payment.planCard.unlimited')
 })
 
 const MODEL_SCOPE_LABELS: Record<string, string> = {

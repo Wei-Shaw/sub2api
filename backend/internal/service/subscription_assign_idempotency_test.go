@@ -113,6 +113,9 @@ func (userSubRepoNoop) ActivateWindows(context.Context, int64, time.Time) error 
 func (userSubRepoNoop) ResetDailyUsage(context.Context, int64, time.Time) error {
 	panic("unexpected ResetDailyUsage call")
 }
+func (userSubRepoNoop) ResetFiveHourUsage(context.Context, int64, time.Time) error {
+	panic("unexpected ResetFiveHourUsage call")
+}
 func (userSubRepoNoop) ResetWeeklyUsage(context.Context, int64, time.Time) error {
 	panic("unexpected ResetWeeklyUsage call")
 }

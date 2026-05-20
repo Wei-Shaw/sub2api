@@ -1998,10 +1998,10 @@ func init() {
 	usersubscription.DefaultStatus = usersubscriptionDescStatus.Default.(string)
 	// usersubscription.StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	usersubscription.StatusValidator = usersubscriptionDescStatus.Validators[0].(func(string) error)
-	// usersubscriptionDescDailyUsageUsd is the schema descriptor for daily_usage_usd field.
-	usersubscriptionDescDailyUsageUsd := usersubscriptionFields[8].Descriptor()
-	// usersubscription.DefaultDailyUsageUsd holds the default value on creation for the daily_usage_usd field.
-	usersubscription.DefaultDailyUsageUsd = usersubscriptionDescDailyUsageUsd.Default.(float64)
+	// usersubscriptionDescFiveHourUsageUsd is the schema descriptor for five_hour_usage_usd field.
+	usersubscriptionDescFiveHourUsageUsd := usersubscriptionFields[8].Descriptor()
+	// usersubscription.DefaultFiveHourUsageUsd holds the default value on creation for the five_hour_usage_usd field.
+	usersubscription.DefaultFiveHourUsageUsd = usersubscriptionDescFiveHourUsageUsd.Default.(float64)
 	// usersubscriptionDescWeeklyUsageUsd is the schema descriptor for weekly_usage_usd field.
 	usersubscriptionDescWeeklyUsageUsd := usersubscriptionFields[9].Descriptor()
 	// usersubscription.DefaultWeeklyUsageUsd holds the default value on creation for the weekly_usage_usd field.

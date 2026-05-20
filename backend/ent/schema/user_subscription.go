@@ -46,7 +46,7 @@ func (UserSubscription) Fields() []ent.Field {
 			MaxLen(20).
 			Default(domain.SubscriptionStatusActive),
 
-		field.Time("daily_window_start").
+		field.Time("five_hour_window_start").
 			Optional().
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
@@ -59,7 +59,7 @@ func (UserSubscription) Fields() []ent.Field {
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 
-		field.Float("daily_usage_usd").
+		field.Float("five_hour_usage_usd").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}).
 			Default(0),
 		field.Float("weekly_usage_usd").

@@ -20,7 +20,7 @@ type Group struct {
 	Hydrated       bool // indicates the group was loaded from a trusted repository source
 
 	SubscriptionType    string
-	DailyLimitUSD       *float64
+	FiveHourLimitUSD    *float64
 	WeeklyLimitUSD      *float64
 	MonthlyLimitUSD     *float64
 	DefaultValidityDays int
@@ -83,8 +83,8 @@ func (g *Group) IsSubscriptionType() bool {
 	return g.SubscriptionType == SubscriptionTypeSubscription
 }
 
-func (g *Group) HasDailyLimit() bool {
-	return g.DailyLimitUSD != nil && *g.DailyLimitUSD > 0
+func (g *Group) HasFiveHourLimit() bool {
+	return g.FiveHourLimitUSD != nil && *g.FiveHourLimitUSD > 0
 }
 
 func (g *Group) HasWeeklyLimit() bool {

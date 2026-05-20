@@ -28,7 +28,7 @@ func TestSimpleModeBypassesQuotaCheck(t *testing.T) {
 		Status:           service.StatusActive,
 		Hydrated:         true,
 		SubscriptionType: service.SubscriptionTypeSubscription,
-		DailyLimitUSD:    &limit,
+		FiveHourLimitUSD: &limit,
 	}
 	user := &service.User{
 		ID:          7,
@@ -66,13 +66,13 @@ func TestSimpleModeBypassesQuotaCheck(t *testing.T) {
 
 		past := time.Now().Add(-48 * time.Hour)
 		sub := &service.UserSubscription{
-			ID:               55,
-			UserID:           user.ID,
-			GroupID:          group.ID,
-			Status:           service.SubscriptionStatusActive,
-			ExpiresAt:        time.Now().Add(24 * time.Hour),
-			DailyWindowStart: &past,
-			DailyUsageUSD:    0,
+			ID:                  55,
+			UserID:              user.ID,
+			GroupID:             group.ID,
+			Status:              service.SubscriptionStatusActive,
+			ExpiresAt:           time.Now().Add(24 * time.Hour),
+			FiveHourWindowStart: &past,
+			FiveHourUsageUSD:    0,
 		}
 		maintenanceCalled := make(chan struct{}, 1)
 		subscriptionRepo := &stubUserSubscriptionRepo{
@@ -82,7 +82,7 @@ func TestSimpleModeBypassesQuotaCheck(t *testing.T) {
 			},
 			updateStatus:   func(ctx context.Context, subscriptionID int64, status string) error { return nil },
 			activateWindow: func(ctx context.Context, id int64, start time.Time) error { return nil },
-			resetDaily: func(ctx context.Context, id int64, start time.Time) error {
+			resetFiveHour: func(ctx context.Context, id int64, start time.Time) error {
 				maintenanceCalled <- struct{}{}
 				return nil
 			},
@@ -142,13 +142,13 @@ func TestSimpleModeBypassesQuotaCheck(t *testing.T) {
 
 		now := time.Now()
 		sub := &service.UserSubscription{
-			ID:               55,
-			UserID:           user.ID,
-			GroupID:          group.ID,
-			Status:           service.SubscriptionStatusActive,
-			ExpiresAt:        now.Add(24 * time.Hour),
-			DailyWindowStart: &now,
-			DailyUsageUSD:    10,
+			ID:                  55,
+			UserID:              user.ID,
+			GroupID:             group.ID,
+			Status:              service.SubscriptionStatusActive,
+			ExpiresAt:           now.Add(24 * time.Hour),
+			FiveHourWindowStart: &now,
+			FiveHourUsageUSD:    10,
 		}
 		subscriptionRepo := &stubUserSubscriptionRepo{
 			getActive: func(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error) {
@@ -160,7 +160,7 @@ func TestSimpleModeBypassesQuotaCheck(t *testing.T) {
 			},
 			updateStatus:   func(ctx context.Context, subscriptionID int64, status string) error { return nil },
 			activateWindow: func(ctx context.Context, id int64, start time.Time) error { return nil },
-			resetDaily:     func(ctx context.Context, id int64, start time.Time) error { return nil },
+			resetFiveHour:  func(ctx context.Context, id int64, start time.Time) error { return nil },
 			resetWeekly:    func(ctx context.Context, id int64, start time.Time) error { return nil },
 			resetMonthly:   func(ctx context.Context, id int64, start time.Time) error { return nil },
 		}
@@ -606,7 +606,7 @@ type stubUserSubscriptionRepo struct {
 	getActive      func(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error)
 	updateStatus   func(ctx context.Context, subscriptionID int64, status string) error
 	activateWindow func(ctx context.Context, id int64, start time.Time) error
-	resetDaily     func(ctx context.Context, id int64, start time.Time) error
+	resetFiveHour  func(ctx context.Context, id int64, start time.Time) error
 	resetWeekly    func(ctx context.Context, id int64, start time.Time) error
 	resetMonthly   func(ctx context.Context, id int64, start time.Time) error
 }
@@ -680,9 +680,9 @@ func (r *stubUserSubscriptionRepo) ActivateWindows(ctx context.Context, id int64
 	return errors.New("not implemented")
 }
 
-func (r *stubUserSubscriptionRepo) ResetDailyUsage(ctx context.Context, id int64, newWindowStart time.Time) error {
-	if r.resetDaily != nil {
-		return r.resetDaily(ctx, id, newWindowStart)
+func (r *stubUserSubscriptionRepo) ResetFiveHourUsage(ctx context.Context, id int64, newWindowStart time.Time) error {
+	if r.resetFiveHour != nil {
+		return r.resetFiveHour(ctx, id, newWindowStart)
 	}
 	return errors.New("not implemented")
 }

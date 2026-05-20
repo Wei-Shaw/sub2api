@@ -490,7 +490,7 @@ export interface Group {
   is_exclusive: boolean
   status: 'active' | 'inactive'
   subscription_type: SubscriptionType
-  daily_limit_usd: number | null
+  five_hour_limit_usd: number | null
   weekly_limit_usd: number | null
   monthly_limit_usd: number | null
   // 图片生成计费配置
@@ -603,8 +603,6 @@ export interface CreateGroupRequest {
   rate_multiplier?: number
   is_exclusive?: boolean
   subscription_type?: SubscriptionType
-  daily_limit_usd?: number | null
-  /** 5-hour window quota. Older API versions may still return this as daily_limit_usd. */
   five_hour_limit_usd?: number | null
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null
@@ -633,8 +631,6 @@ export interface UpdateGroupRequest {
   is_exclusive?: boolean
   status?: 'active' | 'inactive'
   subscription_type?: SubscriptionType
-  daily_limit_usd?: number | null
-  /** 5-hour window quota. Older API versions may still return this as daily_limit_usd. */
   five_hour_limit_usd?: number | null
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null
@@ -1221,7 +1217,7 @@ export interface RedeemCode {
   used_at: string | null
   created_at: string
   updated_at?: string
-  notes?: string
+  notes?: string | null
   group_id?: number | null // 订阅类型专用
   validity_days?: number // 订阅类型专用
   user?: User
@@ -1232,9 +1228,9 @@ export interface GenerateRedeemCodesRequest {
   count: number
   type: RedeemCodeType
   value: number
-  notes?: string
   group_id?: number | null // 订阅类型专用
   validity_days?: number // 订阅类型专用
+  notes?: string
 }
 
 export interface RedeemCodeRequest {
@@ -1427,10 +1423,10 @@ export interface UserSubscription {
   user_id: number
   group_id: number
   status: 'active' | 'expired' | 'revoked'
-  daily_usage_usd: number
+  five_hour_usage_usd: number
   weekly_usage_usd: number
   monthly_usage_usd: number
-  daily_window_start: string | null
+  five_hour_window_start: string | null
   weekly_window_start: string | null
   monthly_window_start: string | null
   created_at: string
@@ -1442,7 +1438,7 @@ export interface UserSubscription {
 
 export interface SubscriptionProgress {
   subscription_id: number
-  daily: {
+  five_hour: {
     used: number
     limit: number | null
     percentage: number
