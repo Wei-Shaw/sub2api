@@ -144,7 +144,7 @@
       <!-- External Links -->
       <a
         v-if="!sidebarCollapsed"
-        href="https://willeai.com/guide"
+        href="/guide"
         target="_blank"
         rel="noopener noreferrer"
         class="sidebar-link mb-1 flex w-full text-gray-400"

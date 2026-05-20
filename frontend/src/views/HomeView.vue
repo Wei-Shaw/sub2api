@@ -144,7 +144,7 @@
                   <div class="h-2.5 w-2.5 rounded-full bg-yellow-400"></div>
                   <div class="h-2.5 w-2.5 rounded-full bg-green-400"></div>
                 </div>
-                <span class="font-mono text-xs text-gray-400">api.willeai.com</span>
+                <span class="font-mono text-xs text-gray-400">api.mcorgai.com</span>
               </div>
               <!-- Card Body -->
               <div class="px-5 py-4">
@@ -391,8 +391,8 @@
                 <div class="flex items-center justify-between">
                   <dt class="text-xs uppercase tracking-wider text-gray-400">Base URL</dt>
                   <dd class="flex items-center gap-2">
-                    <code class="font-mono text-sm text-gray-200">https://api.willeai.com/v1</code>
-                    <button @click="copy('https://api.willeai.com/v1')" class="copy-btn text-xs text-primary-400 hover:text-primary-300">{{ copied === 'codex-url' ? '✓' : '复制' }}</button>
+                    <code class="font-mono text-sm text-gray-200">https://api.mcorgai.com/v1</code>
+                    <button @click="copy('https://api.mcorgai.com/v1')" class="copy-btn text-xs text-primary-400 hover:text-primary-300">{{ copied === 'codex-url' ? '✓' : '复制' }}</button>
                   </dd>
                 </div>
                 <div class="flex items-center justify-between">
@@ -418,8 +418,8 @@
                 <div class="flex items-center justify-between">
                   <dt class="text-xs uppercase tracking-wider text-gray-400">Base URL</dt>
                   <dd class="flex items-center gap-2">
-                    <code class="font-mono text-sm text-gray-200">https://api.willeai.com</code>
-                    <button @click="copy('https://api.willeai.com')" class="copy-btn text-xs text-primary-400 hover:text-primary-300">{{ copied === 'claude-url' ? '✓' : '复制' }}</button>
+                    <code class="font-mono text-sm text-gray-200">https://api.mcorgai.com</code>
+                    <button @click="copy('https://api.mcorgai.com')" class="copy-btn text-xs text-primary-400 hover:text-primary-300">{{ copied === 'claude-url' ? '✓' : '复制' }}</button>
                   </dd>
                 </div>
                 <div class="flex items-center justify-between">
@@ -522,7 +522,7 @@ const authStore = useAuthStore()
 const appStore = useAppStore()
 
 // Site settings
-const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || 'WilleAI')
+const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || '起源AI')
 const siteLogo = computed(() => appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '')
 const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle || 'AI API Gateway')
 const docUrl = computed(() => appStore.cachedPublicSettings?.doc_url || appStore.docUrl || '')

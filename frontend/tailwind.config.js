@@ -35,7 +35,7 @@ export default {
         },
         // 页面背景色
         surface: '#FAFAF8',
-        // 深色模式背景（暖灰色调，与 WilleAI 暖金品牌色搭配）
+        // 深色模式背景（暖灰色调，与 起源AI 暖金品牌色搭配）
         dark: {
           50: '#fafaf9',
           100: '#f5f5f4',

@@ -74,21 +74,21 @@
                   <div class="flex items-center justify-between">
                     <dt class="text-xs uppercase tracking-wider text-gray-400">Base URL (OpenAI)</dt>
                     <dd class="flex items-center gap-2">
-                      <code class="font-mono text-sm text-gray-200">https://api.willeai.com/v1</code>
-                      <button @click="copy('https://api.willeai.com/v1')" class="copy-btn text-xs text-primary-400 hover:text-primary-300">{{ copiedField === 'base-url-oai' ? '✓' : t('guide.copy') }}</button>
+                      <code class="font-mono text-sm text-gray-200">https://api.mcorgai.com/v1</code>
+                      <button @click="copy('https://api.mcorgai.com/v1')" class="copy-btn text-xs text-primary-400 hover:text-primary-300">{{ copiedField === 'base-url-oai' ? '✓' : t('guide.copy') }}</button>
                     </dd>
                   </div>
                   <div class="flex items-center justify-between">
                     <dt class="text-xs uppercase tracking-wider text-gray-400">Base URL (Anthropic)</dt>
                     <dd class="flex items-center gap-2">
-                      <code class="font-mono text-sm text-gray-200">https://api.willeai.com</code>
-                      <button @click="copy('https://api.willeai.com')" class="copy-btn text-xs text-primary-400 hover:text-primary-300">{{ copiedField === 'base-url-ant' ? '✓' : t('guide.copy') }}</button>
+                      <code class="font-mono text-sm text-gray-200">https://api.mcorgai.com</code>
+                      <button @click="copy('https://api.mcorgai.com')" class="copy-btn text-xs text-primary-400 hover:text-primary-300">{{ copiedField === 'base-url-ant' ? '✓' : t('guide.copy') }}</button>
                     </dd>
                   </div>
                   <div class="flex items-center justify-between">
                     <dt class="text-xs uppercase tracking-wider text-gray-400">API Key</dt>
                     <dd>
-                      <a href="https://api.willeai.com/keys" target="_blank" class="text-xs text-primary-400 hover:text-primary-300">{{ t('guide.createKey') }}</a>
+                      <a href="https://api.mcorgai.com/keys" target="_blank" class="text-xs text-primary-400 hover:text-primary-300">{{ t('guide.createKey') }}</a>
                     </dd>
                   </div>
                 </dl>
@@ -180,8 +180,8 @@
                 </ol>
               </div>
               <div class="code-block mb-6">
-                <button @click="copy('https://api.willeai.com/v1')" class="code-copy-btn">{{ copiedField === 'cursor-url' ? '✓' : t('guide.copy') }}</button>
-                <pre class="text-sm leading-relaxed text-gray-300"><code>https://api.willeai.com/v1</code></pre>
+                <button @click="copy('https://api.mcorgai.com/v1')" class="code-copy-btn">{{ copiedField === 'cursor-url' ? '✓' : t('guide.copy') }}</button>
+                <pre class="text-sm leading-relaxed text-gray-300"><code>https://api.mcorgai.com/v1</code></pre>
               </div>
 
               <h3 class="mb-2 text-sm font-semibold text-gray-800 dark:text-dark-200">{{ t('guide.step2') }}</h3>
@@ -397,7 +397,7 @@ import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 
 const { t } = useI18n()
 const appStore = useAppStore()
-const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || 'WilleAI')
+const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || '起源AI')
 const siteLogo = computed(() => appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '')
 const currentYear = computed(() => new Date().getFullYear())
 
@@ -437,21 +437,21 @@ async function copy(text: string) {
 }
 
 // Code content
-const codexConfig = `export OPENAI_BASE_URL="https://api.willeai.com/v1"
+const codexConfig = `export OPENAI_BASE_URL="https://api.mcorgai.com/v1"
 export OPENAI_API_KEY="sk-your-key"
 export OPENAI_MODEL="gpt-5.5"
 
 codex --model gpt-5.5`
 
-const codexVerify = `curl https://api.willeai.com/v1/models \\
+const codexVerify = `curl https://api.mcorgai.com/v1/models \\
   -H "Authorization: Bearer sk-your-key"`
 
-const claudeConfig = `export ANTHROPIC_BASE_URL="https://api.willeai.com"
+const claudeConfig = `export ANTHROPIC_BASE_URL="https://api.mcorgai.com"
 export ANTHROPIC_API_KEY="sk-your-key"
 
 claude`
 
-const claudeVerify = `curl https://api.willeai.com/v1/messages \\
+const claudeVerify = `curl https://api.mcorgai.com/v1/messages \\
   -H "x-api-key: sk-your-key" \\
   -H "anthropic-version: 2023-06-01" \\
   -H "content-type: application/json" \\
@@ -461,7 +461,7 @@ const pythonSdk = `from openai import OpenAI
 
 client = OpenAI(
     api_key="sk-your-key",
-    base_url="https://api.willeai.com/v1"
+    base_url="https://api.mcorgai.com/v1"
 )
 
 response = client.chat.completions.create(
@@ -474,7 +474,7 @@ const nodeSdk = `import OpenAI from "openai";
 
 const client = new OpenAI({
   apiKey: "sk-your-key",
-  baseURL: "https://api.willeai.com/v1",
+  baseURL: "https://api.mcorgai.com/v1",
 });
 
 const response = await client.chat.completions.create({
@@ -484,28 +484,28 @@ const response = await client.chat.completions.create({
 console.log(response.choices[0].message.content);`
 
 const hermesConfig = `model:
-  provider: willeai
-  base_url: https://api.willeai.com/v1`
+  provider: mcorgai
+  base_url: https://api.mcorgai.com/v1`
 
-const hermesModel = `hermes model --provider willeai --model gpt-5.4`
+const hermesModel = `hermes model --provider mcorgai --model gpt-5.4`
 
 const openclawConfig = `{
   "models": {
     "providers": {
-      "willeai": {
-        "baseUrl": "https://api.willeai.com/v1",
+      "mcorgai": {
+        "baseUrl": "https://api.mcorgai.com/v1",
         "apiKey": "sk-your-key",
         "api": "openai-completions",
         "models": [
           {
             "id": "gpt-5.4",
-            "name": "GPT-5.4 (WilleAI)",
+            "name": "GPT-5.4 (起源AI)",
             "contextWindow": 131072,
             "maxTokens": 16384
           },
           {
             "id": "gpt-5.4-mini",
-            "name": "GPT-5.4 Mini (WilleAI)",
+            "name": "GPT-5.4 Mini (起源AI)",
             "contextWindow": 131072,
             "maxTokens": 16384
           }
@@ -515,15 +515,15 @@ const openclawConfig = `{
   }
 }`
 
-const openclawModel = `openclaw model --provider willeai --model gpt-5.4`
+const openclawModel = `openclaw model --provider mcorgai --model gpt-5.4`
 
 const opencodeConfig = `{
   "$schema": "https://opencode.ai/config.json",
   "provider": {
-    "willeai": {
-      "name": "WilleAI",
+    "mcorgai": {
+      "name": "起源AI",
       "options": {
-        "baseURL": "https://api.willeai.com/v1"
+        "baseURL": "https://api.mcorgai.com/v1"
       },
       "models": {
         "gpt-5.5": {
@@ -542,7 +542,7 @@ const opencodeConfig = `{
 
 const opencodeModel = `opencode auth login
 # 1. Select provider → Other
-# 2. Enter provider id → willeai
+# 2. Enter provider id → mcorgai
 # 3. Enter your API key → sk-xxx`
 
 const faqItems = computed(() => [
