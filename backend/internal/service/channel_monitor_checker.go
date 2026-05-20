@@ -281,7 +281,52 @@ func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt
 	if err != nil {
 		return "", "", status, err
 	}
+	if provider == MonitorProviderOpenAI && apiMode == MonitorAPIModeResponses {
+		return extractOpenAIResponsesText(respBytes), string(respBytes), status, nil
+	}
 	return gjson.GetBytes(respBytes, adapter.textPath).String(), string(respBytes), status, nil
+}
+
+// extractOpenAIResponsesText 聚合 Responses API 的最终 assistant 文本。
+// Responses 的 output 数组顺序由模型决定：reasoning / tool-call item 可能排在 message 前面，
+// 因此不能假设文本永远在 output.0.content.0.text。
+func extractOpenAIResponsesText(respBytes []byte) string {
+	if text := gjson.GetBytes(respBytes, "output_text").String(); strings.TrimSpace(text) != "" {
+		return text
+	}
+
+	var texts []string
+	outputs := gjson.GetBytes(respBytes, "output")
+	if outputs.IsArray() {
+		outputs.ForEach(func(_, output gjson.Result) bool {
+			outputType := output.Get("type").String()
+			if outputType != "" && outputType != "message" {
+				return true
+			}
+
+			content := output.Get("content")
+			if !content.IsArray() {
+				return true
+			}
+
+			content.ForEach(func(_, block gjson.Result) bool {
+				blockType := block.Get("type").String()
+				if blockType != "" && blockType != "output_text" {
+					return true
+				}
+				if text := block.Get("text").String(); strings.TrimSpace(text) != "" {
+					texts = append(texts, text)
+				}
+				return true
+			})
+			return true
+		})
+	}
+
+	if len(texts) > 0 {
+		return strings.Join(texts, "")
+	}
+	return gjson.GetBytes(respBytes, providerOpenAIResponsesAdapter.textPath).String()
 }
 
 // mergeHeaders 把用户自定义 headers 合并到 adapter 默认 headers 上。

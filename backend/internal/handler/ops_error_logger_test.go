@@ -261,6 +261,34 @@ func TestClassifyOpsAuthClientErrorsExcludedFromSLA(t *testing.T) {
 			status:  http.StatusUnauthorized,
 		},
 		{
+			name:    "expired local API key",
+			errType: "api_error",
+			message: "API key 已过期",
+			code:    "API_KEY_EXPIRED",
+			status:  http.StatusForbidden,
+		},
+		{
+			name:    "disabled local API key",
+			errType: "api_error",
+			message: "API key is disabled",
+			code:    "API_KEY_DISABLED",
+			status:  http.StatusUnauthorized,
+		},
+		{
+			name:    "local API key user missing",
+			errType: "api_error",
+			message: "User associated with API key not found",
+			code:    "USER_NOT_FOUND",
+			status:  http.StatusUnauthorized,
+		},
+		{
+			name:    "inactive local API key user",
+			errType: "api_error",
+			message: "User account is not active",
+			code:    "USER_INACTIVE",
+			status:  http.StatusUnauthorized,
+		},
+		{
 			name:    "google invalid API key",
 			errType: "api_error",
 			message: "Invalid API key",
@@ -271,6 +299,27 @@ func TestClassifyOpsAuthClientErrorsExcludedFromSLA(t *testing.T) {
 			name:    "google missing API key",
 			errType: "api_error",
 			message: "API key is required",
+			code:    "401",
+			status:  http.StatusUnauthorized,
+		},
+		{
+			name:    "google disabled API key",
+			errType: "api_error",
+			message: "API key is disabled",
+			code:    "401",
+			status:  http.StatusUnauthorized,
+		},
+		{
+			name:    "google local API key user missing",
+			errType: "api_error",
+			message: "User associated with API key not found",
+			code:    "401",
+			status:  http.StatusUnauthorized,
+		},
+		{
+			name:    "google inactive local API key user",
+			errType: "api_error",
+			message: "User account is not active",
 			code:    "401",
 			status:  http.StatusUnauthorized,
 		},
@@ -287,6 +336,126 @@ func TestClassifyOpsAuthClientErrorsExcludedFromSLA(t *testing.T) {
 
 			require.Equal(t, "api_error", errType)
 			require.Equal(t, "auth", phase)
+			require.True(t, isBusinessLimited)
+			require.Equal(t, "client", errorOwner)
+			require.Equal(t, "client_request", errorSource)
+		})
+	}
+}
+
+func TestClassifyOpsLocalBusinessLimitErrorsExcludedFromSLA(t *testing.T) {
+	tests := []struct {
+		name        string
+		errType     string
+		message     string
+		code        string
+		status      int
+		wantErrType string
+		wantPhase   string
+	}{
+		{
+			name:        "standard API key quota exhausted",
+			errType:     "api_error",
+			message:     "API key 额度已用完",
+			code:        "API_KEY_QUOTA_EXHAUSTED",
+			status:      http.StatusTooManyRequests,
+			wantErrType: "api_error",
+			wantPhase:   "request",
+		},
+		{
+			name:        "standard query API key deprecated",
+			errType:     "api_error",
+			message:     "API key in query parameter is deprecated. Please use Authorization header instead.",
+			code:        "api_key_in_query_deprecated",
+			status:      http.StatusBadRequest,
+			wantErrType: "api_error",
+			wantPhase:   "request",
+		},
+		{
+			name:        "google query API key deprecated",
+			errType:     "api_error",
+			message:     "Query parameter api_key is deprecated. Use Authorization header or key instead.",
+			code:        "400",
+			status:      http.StatusBadRequest,
+			wantErrType: "api_error",
+			wantPhase:   "request",
+		},
+		{
+			name:        "google no active subscription",
+			errType:     "api_error",
+			message:     "No active subscription found for this group",
+			code:        "403",
+			status:      http.StatusForbidden,
+			wantErrType: "api_error",
+			wantPhase:   "request",
+		},
+		{
+			name:        "google insufficient account balance",
+			errType:     "api_error",
+			message:     "Insufficient account balance",
+			code:        "403",
+			status:      http.StatusForbidden,
+			wantErrType: "api_error",
+			wantPhase:   "request",
+		},
+		{
+			name:        "gateway billing cache insufficient balance",
+			errType:     "billing_error",
+			message:     "insufficient balance",
+			code:        "",
+			status:      http.StatusForbidden,
+			wantErrType: "billing_error",
+			wantPhase:   "request",
+		},
+		{
+			name:        "gemini group platform mismatch",
+			errType:     "api_error",
+			message:     "API key group platform is not gemini",
+			code:        "400",
+			status:      http.StatusBadRequest,
+			wantErrType: "api_error",
+			wantPhase:   "request",
+		},
+		{
+			name:        "gateway API key 5h rate limit",
+			errType:     "api_error",
+			message:     "api key 5小时限额已用完",
+			code:        "rate_limit_exceeded",
+			status:      http.StatusTooManyRequests,
+			wantErrType: "api_error",
+			wantPhase:   "request",
+		},
+		{
+			name:        "gateway group RPM limit",
+			errType:     "api_error",
+			message:     "group requests-per-minute limit exceeded",
+			code:        "rate_limit_exceeded",
+			status:      http.StatusTooManyRequests,
+			wantErrType: "api_error",
+			wantPhase:   "request",
+		},
+		{
+			name:        "google subscription daily limit",
+			errType:     "api_error",
+			message:     "daily usage limit exceeded",
+			code:        "429",
+			status:      http.StatusTooManyRequests,
+			wantErrType: "api_error",
+			wantPhase:   "request",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+
+			errType := normalizeOpsErrorType(tt.errType, tt.code)
+			phase, isBusinessLimited, errorOwner, errorSource := classifyOpsErrorLog(c, errType, tt.message, tt.code, tt.status)
+
+			require.Equal(t, tt.wantErrType, errType)
+			require.Equal(t, tt.wantPhase, phase)
 			require.True(t, isBusinessLimited)
 			require.Equal(t, "client", errorOwner)
 			require.Equal(t, "client_request", errorSource)
@@ -372,23 +541,71 @@ func TestClassifyOpsUnmarkedNoAvailableTextStillCountsForSLA(t *testing.T) {
 }
 
 func TestClassifyOpsUpstreamAuthTextStillCountsForSLA(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	service.SetOpsUpstreamError(c, http.StatusUnauthorized, "Invalid API key", "")
+	tests := []struct {
+		name    string
+		message string
+		code    string
+		status  int
+	}{
+		{
+			name:    "invalid API key",
+			message: "Invalid API key",
+			code:    "401",
+			status:  http.StatusUnauthorized,
+		},
+		{
+			name:    "disabled API key",
+			message: "API key is disabled",
+			code:    "API_KEY_DISABLED",
+			status:  http.StatusUnauthorized,
+		},
+		{
+			name:    "gemini group platform mismatch",
+			message: "API key group platform is not gemini",
+			code:    "400",
+			status:  http.StatusBadRequest,
+		},
+		{
+			name:    "provider balance error",
+			message: "Insufficient account balance",
+			code:    "INSUFFICIENT_BALANCE",
+			status:  http.StatusForbidden,
+		},
+		{
+			name:    "provider subscription error",
+			message: "No active subscription found for this group",
+			code:    "SUBSCRIPTION_NOT_FOUND",
+			status:  http.StatusForbidden,
+		},
+		{
+			name:    "provider quota error",
+			message: "api key 额度已用完",
+			code:    "API_KEY_QUOTA_EXHAUSTED",
+			status:  http.StatusTooManyRequests,
+		},
+	}
 
-	phase, isBusinessLimited, errorOwner, errorSource := classifyOpsErrorLog(
-		c,
-		"api_error",
-		"Invalid API key",
-		"401",
-		http.StatusUnauthorized,
-	)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			service.SetOpsUpstreamError(c, tt.status, tt.message, "")
 
-	require.Equal(t, "upstream", phase)
-	require.False(t, isBusinessLimited)
-	require.Equal(t, "provider", errorOwner)
-	require.Equal(t, "upstream_http", errorSource)
+			phase, isBusinessLimited, errorOwner, errorSource := classifyOpsErrorLog(
+				c,
+				"api_error",
+				tt.message,
+				tt.code,
+				tt.status,
+			)
+
+			require.Equal(t, "upstream", phase)
+			require.False(t, isBusinessLimited)
+			require.Equal(t, "provider", errorOwner)
+			require.Equal(t, "upstream_http", errorSource)
+		})
+	}
 }
 
 func TestClassifyOpsUpstreamNoAvailableTextStillCountsForSLA(t *testing.T) {

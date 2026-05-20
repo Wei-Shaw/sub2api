@@ -60,10 +60,11 @@ func setupFakeAnthropic(t *testing.T, handler *captureHandler) string {
 }
 
 type openAICaptureHandler struct {
-	lastBody    map[string]any
-	lastHeaders http.Header
-	lastPath    string
-	status      int
+	lastBody                  map[string]any
+	lastHeaders               http.Header
+	lastPath                  string
+	status                    int
+	responsesLeadingReasoning bool
 }
 
 func (h *openAICaptureHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -82,10 +83,23 @@ func (h *openAICaptureHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 
 	answer := answerFromOpenAIRequest(parsed)
 	if h.lastPath == providerOpenAIResponsesPath {
+		output := []map[string]any{}
+		if h.responsesLeadingReasoning {
+			output = append(output, map[string]any{
+				"type":    "reasoning",
+				"summary": []any{},
+			})
+		}
+		output = append(output, map[string]any{
+			"type":   "message",
+			"status": "completed",
+			"role":   "assistant",
+			"content": []map[string]any{
+				{"type": "output_text", "text": answer},
+			},
+		})
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"output": []map[string]any{{
-				"content": []map[string]any{{"type": "output_text", "text": answer}},
-			}},
+			"output": output,
 		})
 		return
 	}
@@ -209,6 +223,22 @@ func TestRunCheckForModel_OpenAIResponses_DefaultRequest(t *testing.T) {
 	}
 	if h.lastHeaders.Get("Authorization") != "Bearer sk-openai" {
 		t.Errorf("expected bearer auth header, got %q", h.lastHeaders.Get("Authorization"))
+	}
+}
+
+func TestRunCheckForModel_OpenAIResponses_SkipsLeadingReasoningItem(t *testing.T) {
+	h := &openAICaptureHandler{responsesLeadingReasoning: true}
+	endpoint := setupFakeOpenAI(t, h)
+
+	res := runCheckForModel(context.Background(), MonitorProviderOpenAI, endpoint, "sk-openai", "gpt-5.5", &CheckOptions{
+		APIMode: MonitorAPIModeResponses,
+	})
+
+	if res.Status != MonitorStatusOperational {
+		t.Fatalf("responses request should find text after leading reasoning item, got status=%s message=%q", res.Status, res.Message)
+	}
+	if h.lastPath != providerOpenAIResponsesPath {
+		t.Fatalf("expected responses path %q, got %q", providerOpenAIResponsesPath, h.lastPath)
 	}
 }
 
