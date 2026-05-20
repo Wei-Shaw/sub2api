@@ -203,7 +203,7 @@ export interface BalancePackage {
   group_subscription_type?: string
   badge: string
   popular: boolean
-  for_sale: boolean
+  for_sale?: boolean
   sort_order: number
   currency_overrides?: Record<string, number>
   created_at?: string
