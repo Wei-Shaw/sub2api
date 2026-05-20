@@ -719,13 +719,9 @@ describe('PaymentView payment methods', () => {
     const pkgCard = wrapper.findComponent({ name: 'BalancePackageCard' })
     pkgCard.vm.$emit('select', balancePkg)
     await flushPromises()
-
-    // Only one provider for KRW (paddle), so payment method selector should be hidden
-    expect(wrapper.find('[data-testid="payment-method-selector"]').exists()).toBe(false)
-
-    await wrapper.get('button.btn').trigger('click')
     await flushPromises()
 
+    // Only one provider for KRW (paddle), so auto-submits without showing confirm screen
     expect(createQuote).toHaveBeenCalledWith(expect.objectContaining({
       amount: 10000,
       amount_mode: 'payment',

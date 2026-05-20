@@ -332,7 +332,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
@@ -978,6 +978,10 @@ function selectBalancePackage(pkg: BalancePackage) {
   } else {
     selectedBalancePackage.value = pkg
     amount.value = resolveBalancePackagePaymentAmount(pkg)
+    // Auto-submit if only one payment method available (skip confirm screen)
+    if (currencySelectableMethods.value.length <= 1) {
+      nextTick(() => handleSubmitRecharge())
+    }
   }
 }
 
