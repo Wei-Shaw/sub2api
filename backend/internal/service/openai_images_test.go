@@ -474,9 +474,9 @@ REDACTED
 	return openAIImageTestSSEEvent{REDACTED, false
 REDACTED
 
-func TestOpenAIGatewayServiceForwardImages_OAuthUsesResponsesAPI(t *testing.T) {
+func TestOpenAIGatewayServiceForwardImages_OAuthPassesNAndReturnsAllImages(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","size":"1024x1024","quality":"high","n":2REDACTED`)
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","size":"1024x1024","quality":"high","n":3REDACTED`)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -497,7 +497,7 @@ REDACTED
 				"X-Request-Id": []string{"req_img_123"REDACTED,
 		REDACTED,
 			Body: io.NopCloser(strings.NewReader(
-				"data: {\"type\":\"response.completed\",\"response\":{\"created_at\":1710000000,\"usage\":{\"input_tokens\":11,\"output_tokens\":22,\"input_tokens_details\":{\"cached_tokens\":3REDACTED,\"output_tokens_details\":{\"image_tokens\":7REDACTEDREDACTED,\"tool_usage\":{\"image_gen\":{\"images\":1REDACTEDREDACTED,\"output\":[{\"type\":\"image_generation_call\",\"result\":\"aGVsbG8=\",\"revised_prompt\":\"draw a cat\",\"output_format\":\"png\",\"quality\":\"high\",\"size\":\"1024x1024\"REDACTED]REDACTEDREDACTED\n\n" +
+				"data: {\"type\":\"response.completed\",\"response\":{\"created_at\":1710000000,\"usage\":{\"input_tokens\":11,\"output_tokens\":22,\"input_tokens_details\":{\"cached_tokens\":3REDACTED,\"output_tokens_details\":{\"image_tokens\":7REDACTEDREDACTED,\"tool_usage\":{\"image_gen\":{\"images\":3REDACTEDREDACTED,\"output\":[{\"type\":\"image_generation_call\",\"result\":\"aW1hZ2UtMQ==\",\"revised_prompt\":\"draw a cat 1\",\"output_format\":\"png\",\"quality\":\"high\",\"size\":\"1024x1024\"REDACTED,{\"type\":\"image_generation_call\",\"result\":\"aW1hZ2UtMg==\",\"revised_prompt\":\"draw a cat 2\",\"output_format\":\"png\",\"quality\":\"high\",\"size\":\"1024x1024\"REDACTED,{\"type\":\"image_generation_call\",\"result\":\"aW1hZ2UtMw==\",\"revised_prompt\":\"draw a cat 3\",\"output_format\":\"png\",\"quality\":\"high\",\"size\":\"1024x1024\"REDACTED]REDACTEDREDACTED\n\n" +
 					"data: [DONE]\n\n",
 			)),
 	REDACTED,
@@ -520,7 +520,7 @@ REDACTED
 	require.NotNil(t, result)
 	require.Equal(t, "gpt-image-2", result.Model)
 	require.Equal(t, "gpt-image-2", result.UpstreamModel)
-	require.Equal(t, 1, result.ImageCount)
+	require.Equal(t, 3, result.ImageCount)
 	require.Equal(t, 11, result.Usage.InputTokens)
 	require.Equal(t, 22, result.Usage.OutputTokens)
 	require.Equal(t, 7, result.Usage.ImageOutputTokens)
@@ -540,13 +540,17 @@ REDACTED
 	require.Equal(t, "gpt-image-2", gjson.GetBytes(upstream.lastBody, "tools.0.model").String())
 	require.Equal(t, "1024x1024", gjson.GetBytes(upstream.lastBody, "tools.0.size").String())
 	require.Equal(t, "high", gjson.GetBytes(upstream.lastBody, "tools.0.quality").String())
-	require.False(t, gjson.GetBytes(upstream.lastBody, "tools.0.n").Exists())
+	require.Equal(t, int64(3), gjson.GetBytes(upstream.lastBody, "tools.0.n").Int())
 	require.Equal(t, "draw a cat", gjson.GetBytes(upstream.lastBody, "input.0.content.0.text").String())
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "gpt-image-2", gjson.Get(rec.Body.String(), "model").String())
-	require.Equal(t, "aGVsbG8=", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
-	require.Equal(t, "draw a cat", gjson.Get(rec.Body.String(), "data.0.revised_prompt").String())
+	require.Len(t, gjson.Get(rec.Body.String(), "data").Array(), 3)
+	require.Equal(t, "aW1hZ2UtMQ==", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
+	require.Equal(t, "aW1hZ2UtMg==", gjson.Get(rec.Body.String(), "data.1.b64_json").String())
+	require.Equal(t, "aW1hZ2UtMw==", gjson.Get(rec.Body.String(), "data.2.b64_json").String())
+	require.Equal(t, "draw a cat 1", gjson.Get(rec.Body.String(), "data.0.revised_prompt").String())
+	require.Equal(t, "draw a cat 3", gjson.Get(rec.Body.String(), "data.2.revised_prompt").String())
 REDACTED
 
 func TestOpenAIGatewayServiceForwardImages_APIKeyGenerationUsesConfiguredV1BaseURL(t *testing.T) {
@@ -1112,7 +1116,7 @@ REDACTED
 	require.False(t, gjson.Get(completed.Data, "revised_prompt").Exists())
 REDACTED
 
-func TestBuildOpenAIImagesResponsesRequest_DowngradesMultipleImagesToSingle(t *testing.T) {
+func TestBuildOpenAIImagesResponsesRequest_PassesThroughNForMultiImageModels(t *testing.T) {
 	parsed := &OpenAIImagesRequest{
 		Endpoint: openAIImagesGenerationsEndpoint,
 		Model:    "gpt-image-2",
@@ -1123,9 +1127,24 @@ REDACTED
 	body, err := buildOpenAIImagesResponsesRequest(parsed, "gpt-image-2")
 REDACTED
 	require.NotNil(t, body)
-	require.False(t, gjson.GetBytes(body, "tools.0.n").Exists())
+	require.Equal(t, int64(2), gjson.GetBytes(body, "tools.0.n").Int())
 	require.Equal(t, "gpt-image-2", gjson.GetBytes(body, "tools.0.model").String())
 	require.Equal(t, "draw a cat", gjson.GetBytes(body, "input.0.content.0.text").String())
+REDACTED
+
+func TestBuildOpenAIImagesResponsesRequest_DoesNotPassNForDallE3(t *testing.T) {
+	parsed := &OpenAIImagesRequest{
+		Endpoint: openAIImagesGenerationsEndpoint,
+		Model:    "dall-e-3",
+		Prompt:   "draw a cat",
+		N:        2,
+REDACTED
+
+	body, err := buildOpenAIImagesResponsesRequest(parsed, "dall-e-3")
+REDACTED
+	require.NotNil(t, body)
+	require.False(t, gjson.GetBytes(body, "tools.0.n").Exists())
+	require.Equal(t, "dall-e-3", gjson.GetBytes(body, "tools.0.model").String())
 REDACTED
 
 func TestBuildOpenAIImagesResponsesRequest_StripsInputFidelity(t *testing.T) {

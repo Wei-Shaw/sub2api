@@ -262,6 +262,9 @@ REDACTED
 	tool := []byte(`{"type":"image_generation","action":"","model":""REDACTED`)
 	tool, _ = sjson.SetBytes(tool, "action", action)
 	tool, _ = sjson.SetBytes(tool, "model", strings.TrimSpace(toolModel))
+	if shouldPassOpenAIImagesN(toolModel, parsed.N) {
+		tool, _ = sjson.SetBytes(tool, "n", parsed.N)
+REDACTED
 
 	for _, field := range []struct {
 		path  string
@@ -300,6 +303,13 @@ REDACTED
 	req, _ = sjson.SetRawBytes(req, "tools", []byte(`[]`))
 	req, _ = sjson.SetRawBytes(req, "tools.-1", tool)
 	return req, nil
+REDACTED
+
+func shouldPassOpenAIImagesN(model string, n int) bool {
+	if n <= 1 {
+		return false
+REDACTED
+	return !strings.EqualFold(strings.TrimSpace(model), "dall-e-3")
 REDACTED
 
 func extractOpenAIImagesFromResponsesCompleted(payload []byte) ([]openAIResponsesImageResult, int64, []byte, openAIResponsesImageResult, error) {
@@ -957,16 +967,6 @@ REDACTED
 		account.Type,
 		len(parsed.Uploads),
 	)
-	if parsed.N > 1 {
-		logger.LegacyPrintf(
-			"service.openai_gateway",
-			"[Warning] Codex /responses image tool requested n=%d; falling back to n=1 request_model=%s endpoint=%s",
-			parsed.N,
-			requestModel,
-			parsed.Endpoint,
-		)
-REDACTED
-
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 	defer releaseUpstreamCtx()
 
