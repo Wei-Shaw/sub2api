@@ -51,6 +51,26 @@ export async function redeem(code: string): Promise<{
 }
 
 /**
+ * Redeem a promo code after login.
+ * Reuses backend promo usage rules: each user can claim the same promo code once.
+ */
+export async function redeemPromo(code: string): Promise<{
+  message: string
+  bonus_amount: number
+  new_balance: number
+}> {
+  const payload: RedeemCodeRequest = { code }
+
+  const { data } = await apiClient.post<{
+    message: string
+    bonus_amount: number
+    new_balance: number
+  }>('/redeem/promo', payload)
+
+  return data
+}
+
+/**
  * Get user's redemption history
  * @returns List of redeemed codes
  */
@@ -61,6 +81,7 @@ export async function getHistory(): Promise<RedeemHistoryItem[]> {
 
 export const redeemAPI = {
   redeem,
+  redeemPromo,
   getHistory
 }
 
