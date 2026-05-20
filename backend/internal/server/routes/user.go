@@ -96,10 +96,11 @@ func RegisterUserRoutes(
 			announcements.POST("/:id/read", h.Announcement.MarkRead)
 		}
 
-		// 卡密兑换
+		// 卡密兑换 / 优惠码领取
 		redeem := authenticated.Group("/redeem")
 		{
 			redeem.POST("", h.Redeem.Redeem)
+			redeem.POST("/promo", h.Redeem.RedeemPromoCode)
 			redeem.GET("/history", h.Redeem.GetHistory)
 		}
 

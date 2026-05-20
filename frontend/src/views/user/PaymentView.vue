@@ -42,7 +42,6 @@
               <div class="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
                 <p class="text-sm text-gray-400">当前余额</p>
                 <p class="mt-1 text-3xl font-bold text-gray-900 dark:text-white">${{ user?.balance?.toFixed(2) || '0.00' }}</p>
-                <router-link to="/redeem" class="mt-3 inline-block text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400">已有兑换码？&rarr;</router-link>
               </div>
               <div class="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
                 <p class="text-sm text-gray-400">客服充值</p>
@@ -64,16 +63,31 @@
               <p class="mt-2 text-xs text-gray-400">示例：&yen;50 &rarr; $50 API 余额。这里的 $ 是平台内 API 余额计价单位，用于抵扣模型调用费用，不代表提现或法币兑换；支持最多两位小数。充值页已取消"充值满 &yen;50 额外赠送 $50 API 余额"活动，当前以页面实际到账与站内公告为准。</p>
             </div>
             <!-- Redeem Code -->
-            <div class="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
-              <p class="mb-3 text-sm text-gray-500 dark:text-gray-400">兑换码充值</p>
-              <div class="flex gap-2">
-                <input v-model="redeemCode" type="text" placeholder="输入兑换码" class="flex-1 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 outline-none transition-colors focus:border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500 dark:focus:border-gray-400" @keyup.enter="handleRedeem" />
-                <button class="rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:opacity-50 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100" :disabled="!redeemCode || redeeming" @click="handleRedeem">
-                  <span v-if="redeeming">兑换中...</span><span v-else>兑换</span>
-                </button>
+            <div class="grid gap-4 lg:grid-cols-2">
+              <div class="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+                <p class="mb-1 text-sm font-medium text-gray-700 dark:text-gray-200">兑换码充值</p>
+                <p class="mb-3 text-xs text-gray-400">购买后收到的卡密在这里兑换到账户余额。</p>
+                <div class="flex gap-2">
+                  <input v-model="redeemCode" type="text" placeholder="输入兑换码" class="flex-1 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 outline-none transition-colors focus:border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500 dark:focus:border-gray-400" @keyup.enter="handleRedeem" />
+                  <button class="rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:opacity-50 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100" :disabled="!redeemCode || redeeming" @click="handleRedeem">
+                    <span v-if="redeeming">兑换中...</span><span v-else>兑换</span>
+                  </button>
+                </div>
+                <p v-if="redeemError" class="mt-2 text-xs text-red-500">{{ redeemError }}</p>
+                <p v-if="redeemSuccess" class="mt-2 text-xs text-green-500">{{ redeemSuccess }}</p>
               </div>
-              <p v-if="redeemError" class="mt-2 text-xs text-red-500">{{ redeemError }}</p>
-              <p v-if="redeemSuccess" class="mt-2 text-xs text-green-500">{{ redeemSuccess }}</p>
+              <div class="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+                <p class="mb-1 text-sm font-medium text-gray-700 dark:text-gray-200">优惠码领取</p>
+                <p class="mb-3 text-xs text-gray-400">注册后有优惠码，也可以在这里领取一次性赠送余额。</p>
+                <div class="flex gap-2">
+                  <input v-model="promoCode" type="text" placeholder="输入优惠码" class="flex-1 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 outline-none transition-colors focus:border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500 dark:focus:border-gray-400" @keyup.enter="handleRedeemPromo" />
+                  <button class="rounded-xl border border-gray-900 px-5 py-2.5 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-white dark:text-white dark:hover:bg-gray-700" :disabled="!promoCode || promoRedeeming" @click="handleRedeemPromo">
+                    <span v-if="promoRedeeming">领取中...</span><span v-else>领取</span>
+                  </button>
+                </div>
+                <p v-if="promoError" class="mt-2 text-xs text-red-500">{{ promoError }}</p>
+                <p v-if="promoSuccess" class="mt-2 text-xs text-green-500">{{ promoSuccess }}</p>
+              </div>
             </div>
             <div>
               <h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">订阅套餐</h2>
@@ -198,6 +212,10 @@ const redeemCode = ref('')
 const redeeming = ref(false)
 const redeemError = ref('')
 const redeemSuccess = ref('')
+const promoCode = ref('')
+const promoRedeeming = ref(false)
+const promoError = ref('')
+const promoSuccess = ref('')
 
 async function handleRedeem() {
   if (!redeemCode.value || redeeming.value) return
@@ -214,6 +232,26 @@ async function handleRedeem() {
     redeemError.value = extractApiErrorMessage(e) || '兑换失败'
   } finally {
     redeeming.value = false
+  }
+}
+
+async function handleRedeemPromo() {
+  if (!promoCode.value || promoRedeeming.value) return
+  promoRedeeming.value = true
+  promoError.value = ''
+  promoSuccess.value = ''
+  try {
+    const result = await redeemAPI.redeemPromo(promoCode.value.trim())
+    promoSuccess.value = result?.bonus_amount
+      ? `领取成功！已到账 $${result.bonus_amount.toFixed(2)}`
+      : (result?.message || '领取成功！余额已更新')
+    promoCode.value = ''
+    await authStore.refreshUser()
+    setTimeout(() => { promoSuccess.value = '' }, 3000)
+  } catch (e: any) {
+    promoError.value = extractApiErrorMessage(e) || '领取失败'
+  } finally {
+    promoRedeeming.value = false
   }
 }
 const previewImage = ref('')
