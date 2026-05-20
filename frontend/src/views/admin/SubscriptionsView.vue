@@ -1332,6 +1332,21 @@ const handleExtendSubscription = async () => {
   }
 }
 
+const loadUserSubscriptionGroupIds = async (userId: number) => {
+  const groupIds = new Set<number>()
+  let page = 1
+  let pages = 1
+
+  do {
+    const response = await adminAPI.subscriptions.listByUser(userId, page, 100)
+    response.items.forEach((item) => groupIds.add(item.group_id))
+    pages = response.pages
+    page += 1
+  } while (page <= pages)
+
+  return groupIds
+}
+
 const handleSwitch = async (subscription: UserSubscription) => {
   switchingSubscription.value = subscription
   switchingUserGroupIds.value = new Set([subscription.group_id])
@@ -1339,9 +1354,9 @@ const handleSwitch = async (subscription: UserSubscription) => {
   showSwitchModal.value = true
 
   try {
-    const response = await adminAPI.subscriptions.listByUser(subscription.user_id, 1, 100)
+    const groupIds = await loadUserSubscriptionGroupIds(subscription.user_id)
     if (switchingSubscription.value?.id === subscription.id) {
-      switchingUserGroupIds.value = new Set(response.items.map((item) => item.group_id))
+      switchingUserGroupIds.value = groupIds
     }
   } catch (error) {
     console.error('Error loading user subscriptions:', error)

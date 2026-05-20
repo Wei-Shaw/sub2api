@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"math/rand/v2"
@@ -613,7 +614,10 @@ func (s *SubscriptionService) ExtendSubscription(ctx context.Context, subscripti
 func (s *SubscriptionService) SwitchSubscriptionGroup(ctx context.Context, subscriptionID, targetGroupID int64) (*UserSubscription, error) {
 	sub, err := s.userSubRepo.GetByID(ctx, subscriptionID)
 	if err != nil {
-		return nil, ErrSubscriptionNotFound
+		if errors.Is(err, ErrSubscriptionNotFound) {
+			return nil, ErrSubscriptionNotFound
+		}
+		return nil, err
 	}
 
 	targetGroup, err := s.groupRepo.GetByID(ctx, targetGroupID)
