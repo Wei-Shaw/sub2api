@@ -98,6 +98,15 @@
             </div>
             <div>
               <h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">订阅套餐</h2>
+              <div class="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20">
+                <div class="flex gap-3">
+                  <svg class="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>
+                  <div class="text-sm leading-6 text-amber-800 dark:text-amber-200">
+                    <p class="font-semibold mb-1">使用须知</p>
+                    <p>账号仅限本人使用，<strong>禁止共享、转售或代挂</strong>——违规将永久封禁且不退款。本服务仅供学习与工作用途，严禁用于违法违规或军工相关场景。<a href="/terms" class="underline hover:text-amber-900 dark:hover:text-amber-100">完整条款 →</a></p>
+                  </div>
+                </div>
+              </div>
               <div class="mb-6 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
                 <p class="mb-2 text-sm font-medium text-gray-700 dark:text-gray-200">额度说明</p>
                 <ul class="space-y-1 text-sm text-gray-500 dark:text-gray-400">
