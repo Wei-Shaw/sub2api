@@ -63,9 +63,9 @@ REDACTED
 REDACTED
 
 	if isMultipartImagesContentType(c.GetHeader("Content-Type")) {
-		setOpsRequestContext(c, "", false, nil)
+		setOpsRequestContext(c, "", false)
 REDACTED else {
-		setOpsRequestContext(c, "", false, body)
+		setOpsRequestContext(c, "", false)
 REDACTED
 
 	parsed, err := h.gatewayService.ParseOpenAIImagesRequest(c, body)
@@ -98,9 +98,9 @@ REDACTED
 REDACTED
 
 	if parsed.Multipart {
-		setOpsRequestContext(c, parsed.Model, parsed.Stream, nil)
+		setOpsRequestContext(c, parsed.Model, parsed.Stream)
 REDACTED else {
-		setOpsRequestContext(c, parsed.Model, parsed.Stream, body)
+		setOpsRequestContext(c, parsed.Model, parsed.Stream)
 REDACTED
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(parsed.Stream, false)))
 

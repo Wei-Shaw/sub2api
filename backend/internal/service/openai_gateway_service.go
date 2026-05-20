@@ -2473,9 +2473,6 @@ REDACTED
 		return nil, err
 REDACTED
 
-	// Capture upstream request body for ops retry of this attempt.
-	setOpsUpstreamRequestBody(c, body)
-
 	// 命中 WS 时仅走 WebSocket Mode；不再自动回退 HTTP。
 	if wsDecision.Transport == OpenAIUpstreamTransportResponsesWebsocketV2 {
 		wsReqBody := reqBody
@@ -2748,7 +2745,6 @@ REDACTED
 					if err != nil {
 						return nil, fmt.Errorf("serialize invalid_encrypted_content retry body: %w", err)
 				REDACTED
-					setOpsUpstreamRequestBody(c, body)
 					httpInvalidEncryptedContentRetryTried = true
 					logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Retrying non-WSv2 request once after invalid_encrypted_content (account: %s)", account.Name)
 					continue
@@ -2786,6 +2782,10 @@ REDACTED
 	REDACTED
 		defer func() { _ = resp.Body.Close() REDACTED()
 
+		reasoningEffort := extractOpenAIReasoningEffort(reqBody, originalModel)
+		serviceTier := extractOpenAIServiceTier(reqBody)
+		releaseOpenAIParsedRequestBody(c)
+
 		// Handle normal response
 		var usage *OpenAIUsage
 		var firstTokenMs *int
@@ -2820,9 +2820,6 @@ REDACTED
 		if usage == nil {
 			usage = &OpenAIUsage{REDACTED
 	REDACTED
-
-		reasoningEffort := extractOpenAIReasoningEffort(reqBody, originalModel)
-		serviceTier := extractOpenAIServiceTier(reqBody)
 
 		forwardResult := &OpenAIForwardResult{
 			RequestID:       resp.Header.Get("x-request-id"),
@@ -3006,7 +3003,6 @@ REDACTED
 		proxyURL = account.Proxy.URL()
 REDACTED
 
-	setOpsUpstreamRequestBody(c, body)
 	if c != nil {
 		c.Set("openai_passthrough", true)
 REDACTED
@@ -3045,6 +3041,8 @@ REDACTED
 		return nil, s.handleErrorResponsePassthrough(ctx, resp, c, account, body)
 REDACTED
 
+	serviceTier := extractOpenAIServiceTierFromBody(body)
+
 	var usage *OpenAIUsage
 	var firstTokenMs *int
 	imageCount := 0
@@ -3081,7 +3079,7 @@ REDACTED
 		Usage:           *usage,
 		Model:           reqModel,
 		UpstreamModel:   upstreamPassthroughModel,
-		ServiceTier:     extractOpenAIServiceTierFromBody(body),
+		ServiceTier:     serviceTier,
 		ReasoningEffort: reasoningEffort,
 		Stream:          reqStream,
 		OpenAIWSMode:    false,
@@ -6501,6 +6499,13 @@ REDACTED
 		c.Set(OpenAIParsedRequestBodyKey, reqBody)
 REDACTED
 	return reqBody, nil
+REDACTED
+
+func releaseOpenAIParsedRequestBody(c *gin.Context) {
+	if c == nil {
+		return
+REDACTED
+	delete(c.Keys, OpenAIParsedRequestBodyKey)
 REDACTED
 
 func extractOpenAIReasoningEffort(reqBody map[string]any, requestedModel string) *string {

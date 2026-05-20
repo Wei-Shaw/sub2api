@@ -16,25 +16,8 @@ import (
 var ErrOpsDisabled = infraerrors.NotFound("OPS_DISABLED", "Ops monitoring is disabled")
 
 const (
-	opsMaxStoredRequestBodyBytes = 256 * 1024
-	opsMaxStoredErrorBodyBytes   = 20 * 1024
+	opsMaxStoredErrorBodyBytes = 20 * 1024
 )
-
-// PrepareOpsRequestBodyForQueue 在入队前对请求体执行脱敏与裁剪，返回可直接写入 OpsInsertErrorLogInput 的字段。
-// 该方法用于避免异步队列持有大块原始请求体，减少错误风暴下的内存放大风险。
-func PrepareOpsRequestBodyForQueue(raw []byte) (requestBodyJSON *string, truncated bool, requestBodyBytes *int) {
-	if len(raw) == 0 {
-		return nil, false, nil
-REDACTED
-	sanitized, truncated, bytesLen := sanitizeAndTrimRequestBody(raw, opsMaxStoredRequestBodyBytes)
-	if sanitized != "" {
-		out := sanitized
-		requestBodyJSON = &out
-REDACTED
-	n := bytesLen
-	requestBodyBytes = &n
-	return requestBodyJSON, truncated, requestBodyBytes
-REDACTED
 
 // OpsService provides ingestion and query APIs for the Ops monitoring module.
 type OpsService struct {
@@ -138,8 +121,8 @@ REDACTED
 REDACTED
 REDACTED
 
-func (s *OpsService) RecordError(ctx context.Context, entry *OpsInsertErrorLogInput, rawRequestBody []byte) error {
-	prepared, ok, err := s.prepareErrorLogInput(ctx, entry, rawRequestBody)
+func (s *OpsService) RecordError(ctx context.Context, entry *OpsInsertErrorLogInput) error {
+	prepared, ok, err := s.prepareErrorLogInput(ctx, entry)
 	if err != nil {
 		log.Printf("[Ops] RecordError prepare failed: %v", err)
 		return err
@@ -162,7 +145,7 @@ func (s *OpsService) RecordErrorBatch(ctx context.Context, entries []*OpsInsertE
 REDACTED
 	prepared := make([]*OpsInsertErrorLogInput, 0, len(entries))
 	for _, entry := range entries {
-		item, ok, err := s.prepareErrorLogInput(ctx, entry, nil)
+		item, ok, err := s.prepareErrorLogInput(ctx, entry)
 		if err != nil {
 			log.Printf("[Ops] RecordErrorBatch prepare failed: %v", err)
 			continue
@@ -198,7 +181,7 @@ REDACTED
 	return nil
 REDACTED
 
-func (s *OpsService) prepareErrorLogInput(ctx context.Context, entry *OpsInsertErrorLogInput, rawRequestBody []byte) (*OpsInsertErrorLogInput, bool, error) {
+func (s *OpsService) prepareErrorLogInput(ctx context.Context, entry *OpsInsertErrorLogInput) (*OpsInsertErrorLogInput, bool, error) {
 	if entry == nil {
 		return nil, false, nil
 REDACTED
@@ -222,11 +205,6 @@ REDACTED
 REDACTED
 	if entry.ErrorType == "" {
 		entry.ErrorType = "api_error"
-REDACTED
-
-	// Sanitize + trim request body (errors only).
-	if len(rawRequestBody) > 0 {
-		entry.RequestBodyJSON, entry.RequestBodyTruncated, entry.RequestBodyBytes = PrepareOpsRequestBodyForQueue(rawRequestBody)
 REDACTED
 
 	// Sanitize + truncate error_body to avoid storing sensitive data.
@@ -315,25 +293,6 @@ REDACTED
 			out.Detail = ""
 	REDACTED
 
-		out.UpstreamRequestBody = strings.TrimSpace(out.UpstreamRequestBody)
-		if out.UpstreamRequestBody != "" {
-			// Reuse the same sanitization/trimming strategy as request body storage.
-			// Keep it small so it is safe to persist in ops_error_logs JSON.
-			sanitizedBody, truncated, _ := sanitizeAndTrimRequestBody([]byte(out.UpstreamRequestBody), 10*1024)
-			if sanitizedBody != "" {
-				out.UpstreamRequestBody = sanitizedBody
-				if truncated {
-					out.Kind = strings.TrimSpace(out.Kind)
-					if out.Kind == "" {
-						out.Kind = "upstream"
-				REDACTED
-					out.Kind = out.Kind + ":request_body_truncated"
-			REDACTED
-		REDACTED else {
-				out.UpstreamRequestBody = ""
-		REDACTED
-	REDACTED
-
 		// Drop fully-empty events (can happen if only status code was known).
 		if out.UpstreamStatusCode == 0 && out.Message == "" && out.Detail == "" {
 			continue
@@ -381,27 +340,7 @@ REDACTED
 	return detail, nil
 REDACTED
 
-func (s *OpsService) ListRetryAttemptsByErrorID(ctx context.Context, errorID int64, limit int) ([]*OpsRetryAttempt, error) {
-	if err := s.RequireMonitoringEnabled(ctx); err != nil {
-		return nil, err
-REDACTED
-	if s.opsRepo == nil {
-		return nil, infraerrors.ServiceUnavailable("OPS_REPO_UNAVAILABLE", "Ops repository not available")
-REDACTED
-	if errorID <= 0 {
-		return nil, infraerrors.BadRequest("OPS_ERROR_INVALID_ID", "invalid error id")
-REDACTED
-	items, err := s.opsRepo.ListRetryAttemptsByErrorID(ctx, errorID, limit)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return []*OpsRetryAttempt{REDACTED, nil
-	REDACTED
-		return nil, infraerrors.InternalServer("OPS_RETRY_LIST_FAILED", "Failed to list retry attempts").WithCause(err)
-REDACTED
-	return items, nil
-REDACTED
-
-func (s *OpsService) UpdateErrorResolution(ctx context.Context, errorID int64, resolved bool, resolvedByUserID *int64, resolvedRetryID *int64) error {
+func (s *OpsService) UpdateErrorResolution(ctx context.Context, errorID int64, resolved bool, resolvedByUserID *int64) error {
 	if err := s.RequireMonitoringEnabled(ctx); err != nil {
 		return err
 REDACTED
@@ -418,10 +357,10 @@ REDACTED
 	REDACTED
 		return infraerrors.InternalServer("OPS_ERROR_LOAD_FAILED", "Failed to load ops error log").WithCause(err)
 REDACTED
-	return s.opsRepo.UpdateErrorResolution(ctx, errorID, resolved, resolvedByUserID, resolvedRetryID, nil)
+	return s.opsRepo.UpdateErrorResolution(ctx, errorID, resolved, resolvedByUserID, nil)
 REDACTED
 
-func sanitizeAndTrimRequestBody(raw []byte, maxBytes int) (jsonString string, truncated bool, bytesLen int) {
+func sanitizeAndTrimJSONPayload(raw []byte, maxBytes int) (jsonString string, truncated bool, bytesLen int) {
 	bytesLen = len(raw)
 	if len(raw) == 0 {
 		return "", false, 0
@@ -429,7 +368,7 @@ REDACTED
 
 	var decoded any
 	if err := json.Unmarshal(raw, &decoded); err != nil {
-		// If it's not valid JSON, don't store (retry would not be reliable anyway).
+		// If it is not valid JSON, fall back to the caller's non-JSON handling.
 		return "", false, bytesLen
 REDACTED
 
@@ -465,7 +404,7 @@ REDACTED
 	// This avoids downstream code that expects certain top-level keys from crashing.
 	if root, ok := decoded.(map[string]any); ok {
 		placeholder := shallowCopyMap(root)
-		placeholder["request_body_truncated"] = true
+		placeholder["payload_truncated"] = true
 
 		// Replace potentially huge arrays/strings, but keep the keys present.
 		for _, k := range []string{"messages", "contents", "input", "prompt"REDACTED {
@@ -488,7 +427,7 @@ REDACTED
 REDACTED
 
 	// Final fallback: minimal valid JSON.
-	encoded4, err4 := json.Marshal(map[string]any{"request_body_truncated": trueREDACTED)
+	encoded4, err4 := json.Marshal(map[string]any{"payload_truncated": trueREDACTED)
 	if err4 != nil {
 		return "", true, bytesLen
 REDACTED
@@ -732,7 +671,7 @@ func sanitizeErrorBodyForStorage(raw string, maxBytes int) (sanitized string, tr
 REDACTED
 
 	// Prefer JSON-safe sanitization when possible.
-	if out, trunc, _ := sanitizeAndTrimRequestBody([]byte(raw), maxBytes); out != "" {
+	if out, trunc, _ := sanitizeAndTrimJSONPayload([]byte(raw), maxBytes); out != "" {
 		return out, trunc
 REDACTED
 

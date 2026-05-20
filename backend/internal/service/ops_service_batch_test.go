@@ -31,11 +31,10 @@ REDACTED
 			UpstreamErrorDetail:  strPtr(detail),
 			UpstreamErrors: []*OpsUpstreamErrorEvent{
 				{
-					AccountID:           -2,
-					UpstreamStatusCode:  429,
-					Message:             " token leaked ",
-					Detail:              `{"refresh_token":"secret"REDACTED`,
-					UpstreamRequestBody: `{"api_key":"secret","messages":[{"role":"user","content":"hello"REDACTED]REDACTED`,
+					AccountID:          -2,
+					UpstreamStatusCode: 429,
+					Message:            " token leaked ",
+					Detail:             `{"refresh_token":"secret"REDACTED`,
 			REDACTED,
 		REDACTED,
 	REDACTED,
