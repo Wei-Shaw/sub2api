@@ -28,6 +28,10 @@ const (
 	AirwallexDemoStaticDomain = "https://static-demo.airwallex.com"
 	// AirwallexDemoCheckoutDomain 是 Airwallex 沙箱环境收银台元素和 iframe 域名。
 	AirwallexDemoCheckoutDomain = "https://checkout-demo.airwallex.com"
+	// WeComJSSDKDomain 是企业微信登录组件官方 JSSDK 域名。
+	WeComJSSDKDomain = "https://wwcdn.weixin.qq.com"
+	// WeComLoginFrameDomain 是企业微信登录组件 iframe 域名。
+	WeComLoginFrameDomain = "https://login.work.weixin.qq.com"
 )
 
 var requiredCSPDirectiveValues = []struct {
@@ -47,6 +51,8 @@ var requiredCSPDirectiveValues = []struct {
 	{"style-src", AirwallexDemoStaticDomain},
 	{"style-src", AirwallexDemoCheckoutDomain},
 	{"frame-src", AirwallexDemoCheckoutDomain},
+	{"script-src", WeComJSSDKDomain},
+	{"frame-src", WeComLoginFrameDomain},
 }
 
 // GenerateNonce generates a cryptographically secure random nonce.

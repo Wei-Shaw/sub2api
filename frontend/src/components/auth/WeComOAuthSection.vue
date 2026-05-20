@@ -19,8 +19,8 @@
 import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { resolveWeComOAuthStart } from '@/api/auth'
 import { useAppStore } from '@/stores'
+import { resolveWeComOAuthStart } from '@/api/auth'
 import { resolveAffiliateReferralCode, storeOAuthAffiliateCode } from '@/utils/oauthAffiliate'
 
 const props = defineProps<{
@@ -32,10 +32,10 @@ const appStore = useAppStore()
 const route = useRoute()
 const { t } = useI18n()
 const providerName = computed(() => t('auth.wecomProviderName'))
-const resolvedStart = computed(() => resolveWeComOAuthStart(appStore.cachedPublicSettings))
-const buttonDisabled = computed(() => props.disabled || !resolvedStart.value.enabled)
+const wecomEnabled = computed(() => appStore.cachedPublicSettings?.wecom_oauth_enabled === true)
+const buttonDisabled = computed(() => props.disabled || !wecomEnabled.value)
 const disabledHint = computed(() => {
-  if (props.disabled || resolvedStart.value.enabled) {
+  if (props.disabled || wecomEnabled.value) {
     return ''
   }
   return t('auth.oauthFlow.wecomNotConfigured')
@@ -53,9 +53,12 @@ function startLogin(): void {
   }
   const redirectTo = (route.query.redirect as string) || '/dashboard'
   storeOAuthAffiliateCode(resolveAffiliateReferralCode(props.affCode, route.query.aff, route.query.aff_code))
-  const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '/api/v1'
-  const normalized = apiBase.replace(/\/$/, '')
-  const startURL = `${normalized}/auth/oauth/wecom/start?mode=${resolvedStart.value.mode}&redirect=${encodeURIComponent(redirectTo)}`
-  window.location.href = startURL
+  const params = new URLSearchParams({ redirect: redirectTo })
+  const start = resolveWeComOAuthStart(appStore.cachedPublicSettings)
+  if (start.mode === 'webview') {
+    window.location.href = `/api/v1/auth/oauth/wecom/start?mode=webview&${params.toString()}`
+    return
+  }
+  window.location.href = `/auth/wecom/mobile?${params.toString()}`
 }
 </script>

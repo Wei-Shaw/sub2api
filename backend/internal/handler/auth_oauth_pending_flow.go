@@ -72,6 +72,10 @@ type createPendingOAuthAccountRequest struct {
 	AdoptAvatar      *bool  `json:"adopt_avatar,omitempty"`
 }
 
+type createPendingOAuthAccountOptions struct {
+	TrustEnteredEmail bool
+}
+
 type sendPendingOAuthVerifyCodeRequest struct {
 	Email             string `json:"email" binding:"required,email"`
 	TurnstileToken    string `json:"turnstile_token,omitempty"`
@@ -1618,6 +1622,14 @@ func respondPendingOAuthBindingApplyError(c *gin.Context, err error) {
 }
 
 func (h *AuthHandler) createPendingOAuthAccount(c *gin.Context, provider string) {
+	h.createPendingOAuthAccountWithOptions(c, provider, createPendingOAuthAccountOptions{})
+}
+
+func (h *AuthHandler) createPendingOAuthAccountWithOptions(
+	c *gin.Context,
+	provider string,
+	options createPendingOAuthAccountOptions,
+) {
 	var req createPendingOAuthAccountRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
@@ -1672,14 +1684,7 @@ func (h *AuthHandler) createPendingOAuthAccount(c *gin.Context, provider string)
 		return
 	}
 
-	tokenPair, user, err := h.authService.RegisterOAuthEmailAccount(
-		c.Request.Context(),
-		email,
-		req.Password,
-		strings.TrimSpace(req.VerifyCode),
-		strings.TrimSpace(req.InvitationCode),
-		strings.TrimSpace(session.ProviderType),
-	)
+	tokenPair, user, err := h.registerPendingOAuthAccount(c, session, req, email, options)
 	if err != nil {
 		if errors.Is(err, service.ErrEmailExists) {
 			existingUser, lookupErr := findUserByNormalizedEmail(c.Request.Context(), client, email)
@@ -1794,6 +1799,32 @@ func (h *AuthHandler) createPendingOAuthAccount(c *gin.Context, provider string)
 	h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
 	clearCookies()
 	writeOAuthTokenPairResponse(c, tokenPair)
+}
+
+func (h *AuthHandler) registerPendingOAuthAccount(
+	c *gin.Context,
+	session *dbent.PendingAuthSession,
+	req createPendingOAuthAccountRequest,
+	email string,
+	options createPendingOAuthAccountOptions,
+) (*service.TokenPair, *service.User, error) {
+	if options.TrustEnteredEmail {
+		return h.authService.RegisterVerifiedOAuthEmailAccount(
+			c.Request.Context(),
+			email,
+			req.Password,
+			strings.TrimSpace(req.InvitationCode),
+			strings.TrimSpace(session.ProviderType),
+		)
+	}
+	return h.authService.RegisterOAuthEmailAccount(
+		c.Request.Context(),
+		email,
+		req.Password,
+		strings.TrimSpace(req.VerifyCode),
+		strings.TrimSpace(req.InvitationCode),
+		strings.TrimSpace(session.ProviderType),
+	)
 }
 
 // ExchangePendingOAuthCompletion redeems a pending OAuth browser session into a frontend-safe payload.

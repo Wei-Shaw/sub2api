@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
 func TestBuildWeComAuthorizeURLWebview(t *testing.T) {
@@ -93,7 +95,7 @@ func TestFetchWeComOAuthIdentityUsesCachedTokenAndParsesUserID(t *testing.T) {
 				http.Error(w, "unexpected userinfo query", http.StatusBadRequest)
 				return
 			}
-			_ = json.NewEncoder(w).Encode(weComUserInfoResponse{UserID: "zhangsan"})
+			_, _ = w.Write([]byte(`{"UserId":"zhangsan","errcode":0}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -130,6 +132,63 @@ func TestFetchWeComOAuthIdentityUsesCachedTokenAndParsesUserID(t *testing.T) {
 	}
 	if userInfoRequests != 2 {
 		t.Fatalf("expected two userinfo requests, got %d", userInfoRequests)
+	}
+}
+
+func TestEnrichWeComProfileClaimsFetchesDirectoryUserWhenTicketMissing(t *testing.T) {
+	tokenRequests := 0
+	userRequests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/cgi-bin/gettoken":
+			tokenRequests++
+			_ = json.NewEncoder(w).Encode(weComAccessTokenResponse{AccessToken: "token-1", ExpiresIn: 7200})
+		case "/cgi-bin/user/get":
+			userRequests++
+			if r.URL.Query().Get("access_token") != "token-1" || r.URL.Query().Get("userid") != "zhangsan" {
+				t.Errorf("unexpected user get query: %s", r.URL.RawQuery)
+			}
+			_ = json.NewEncoder(w).Encode(weComUserDetailResponse{
+				UserID:  "zhangsan",
+				Name:    "张三",
+				Email:   "zhangsan@example.com",
+				BizMail: "zhangsan@corp.example",
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	origTokenURL := weComOAuthGetTokenURL
+	origUserURL := weComOAuthGetUserURL
+	origCache := weComTokenCache
+	weComOAuthGetTokenURL = server.URL + "/cgi-bin/gettoken"
+	weComOAuthGetUserURL = server.URL + "/cgi-bin/user/get"
+	weComTokenCache = map[string]cachedWeComToken{}
+	defer func() {
+		weComOAuthGetTokenURL = origTokenURL
+		weComOAuthGetUserURL = origUserURL
+		weComTokenCache = origCache
+	}()
+
+	claims := map[string]any{"username": "zhangsan"}
+	username := enrichWeComProfileClaims(
+		context.Background(),
+		weComOAuthConfig{corpID: "wwcorp", secret: "secret", scope: "snsapi_privateinfo"},
+		weComUserInfoResponse{UserID: "zhangsan"},
+		"zhangsan",
+		claims,
+	)
+
+	if username != "张三" {
+		t.Fatalf("expected directory username, got %q", username)
+	}
+	if claims["wecom_email"] != "zhangsan@example.com" || claims["wecom_biz_mail"] != "zhangsan@corp.example" {
+		t.Fatalf("expected directory email claims, got %#v", claims)
+	}
+	if tokenRequests != 1 || userRequests != 1 {
+		t.Fatalf("expected one token and one user request, got token=%d user=%d", tokenRequests, userRequests)
 	}
 }
 
@@ -215,6 +274,114 @@ func TestEnrichWeComProfileClaimsFetchesPrivateInfoDetail(t *testing.T) {
 	}
 	if tokenRequests != 1 || detailRequests != 1 {
 		t.Fatalf("expected one token and one detail request, got token=%d detail=%d", tokenRequests, detailRequests)
+	}
+}
+
+func TestApplyWeComResolvedAvatarStoresUserAvatar(t *testing.T) {
+	handler, client := newOAuthPendingFlowTestHandlerWithDependencies(t, oauthPendingFlowTestHandlerOptions{})
+	ctx := context.Background()
+
+	userEntity, err := client.User.Create().
+		SetEmail("wecom-avatar@example.com").
+		SetUsername("wecom-avatar").
+		SetPasswordHash("hash").
+		SetRole(service.RoleUser).
+		SetBalance(0).
+		SetConcurrency(1).
+		SetStatus(service.StatusActive).
+		Save(ctx)
+	if err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+
+	resolved := weComResolvedOAuthIdentity{
+		upstreamClaims: map[string]any{
+			"suggested_avatar_url": "https://wework.qpic.cn/wwpic/avatar/0",
+		},
+	}
+	if err := handler.applyWeComResolvedAvatar(ctx, userEntity.ID, resolved); err != nil {
+		t.Fatalf("apply wecom avatar: %v", err)
+	}
+
+	record := loadUserAvatarRecord(t, client, userEntity.ID)
+	if record == nil {
+		t.Fatal("expected stored user avatar")
+	}
+	if record.StorageProvider != "remote_url" {
+		t.Fatalf("expected remote_url avatar, got %q", record.StorageProvider)
+	}
+	if record.URL != "https://wework.qpic.cn/wwpic/avatar/0" {
+		t.Fatalf("unexpected avatar url: %q", record.URL)
+	}
+}
+
+func TestEnrichWeComProfileClaimsSupplementsNameFromDirectory(t *testing.T) {
+	tokenRequests := 0
+	detailRequests := 0
+	userRequests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/cgi-bin/gettoken":
+			tokenRequests++
+			_ = json.NewEncoder(w).Encode(weComAccessTokenResponse{AccessToken: "token-1", ExpiresIn: 7200})
+		case "/cgi-bin/auth/getuserdetail":
+			detailRequests++
+			_ = json.NewEncoder(w).Encode(weComUserDetailResponse{
+				UserID:  "zhangsan",
+				Email:   "zhangsan@example.com",
+				BizMail: "zhangsan@corp.example",
+			})
+		case "/cgi-bin/user/get":
+			userRequests++
+			if r.URL.Query().Get("userid") != "zhangsan" {
+				t.Errorf("unexpected directory userid: %q", r.URL.Query().Get("userid"))
+			}
+			_ = json.NewEncoder(w).Encode(weComUserDetailResponse{
+				UserID: "zhangsan",
+				Name:   "张三",
+				Avatar: "https://cdn.example/directory-avatar.png",
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	origTokenURL := weComOAuthGetTokenURL
+	origDetailURL := weComOAuthGetUserDetailURL
+	origUserURL := weComOAuthGetUserURL
+	origCache := weComTokenCache
+	weComOAuthGetTokenURL = server.URL + "/cgi-bin/gettoken"
+	weComOAuthGetUserDetailURL = server.URL + "/cgi-bin/auth/getuserdetail"
+	weComOAuthGetUserURL = server.URL + "/cgi-bin/user/get"
+	weComTokenCache = map[string]cachedWeComToken{}
+	defer func() {
+		weComOAuthGetTokenURL = origTokenURL
+		weComOAuthGetUserDetailURL = origDetailURL
+		weComOAuthGetUserURL = origUserURL
+		weComTokenCache = origCache
+	}()
+
+	claims := map[string]any{"username": "zhangsan"}
+	username := enrichWeComProfileClaims(
+		context.Background(),
+		weComOAuthConfig{corpID: "wwcorp", secret: "secret", scope: "snsapi_privateinfo"},
+		weComUserInfoResponse{UserID: "zhangsan", UserTicket: "ticket-1"},
+		"zhangsan",
+		claims,
+	)
+
+	if username != "张三" || claims["suggested_display_name"] != "张三" {
+		t.Fatalf("expected directory display name, got username=%q claims=%#v", username, claims)
+	}
+	if claims["wecom_email"] != "zhangsan@example.com" || claims["wecom_biz_mail"] != "zhangsan@corp.example" {
+		t.Fatalf("expected private email claims to be preserved, got %#v", claims)
+	}
+	if claims["suggested_avatar_url"] != "https://cdn.example/directory-avatar.png" {
+		t.Fatalf("expected directory avatar, got %#v", claims["suggested_avatar_url"])
+	}
+	if tokenRequests != 1 || detailRequests != 1 || userRequests != 1 {
+		t.Fatalf("unexpected request counts token=%d detail=%d user=%d", tokenRequests, detailRequests, userRequests)
 	}
 }
 

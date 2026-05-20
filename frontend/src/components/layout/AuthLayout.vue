@@ -25,7 +25,7 @@
     </div>
 
     <!-- Content Container -->
-    <div class="relative z-10 w-full max-w-md">
+    <div :class="['relative z-10 w-full', wide ? 'max-w-xl' : 'max-w-md']">
       <!-- Logo/Brand -->
       <div class="mb-8 text-center">
         <!-- Custom Logo or Default Logo -->
@@ -66,6 +66,10 @@
 import { computed, onMounted } from 'vue'
 import { useAppStore } from '@/stores'
 import { sanitizeUrl } from '@/utils/url'
+
+defineProps<{
+  wide?: boolean
+}>()
 
 const appStore = useAppStore()
 

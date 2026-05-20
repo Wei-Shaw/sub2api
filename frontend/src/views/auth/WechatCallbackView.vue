@@ -473,6 +473,18 @@ function readLegacyFragmentLogin(params: URLSearchParams): OAuthTokenResponse | 
   return completion
 }
 
+async function redirectToWeComMobileOAuth(params: URLSearchParams, fallbackRedirect: string): Promise<boolean> {
+  if (!isWeComCallback.value || params.get('error') !== 'wecom_mobile_oauth_required') {
+    return false
+  }
+  const redirect = sanitizeRedirectPath(params.get('redirect') || fallbackRedirect || '/dashboard')
+  await router.replace({
+    path: '/auth/wecom/mobile',
+    query: { redirect }
+  })
+  return true
+}
+
 function sanitizeRedirectPath(path: string | null | undefined): string {
   if (!path) return '/dashboard'
   if (!path.startsWith('/')) return '/dashboard'
@@ -1042,6 +1054,10 @@ onMounted(async () => {
   )
 
   try {
+    if (await redirectToWeComMobileOAuth(params, redirect)) {
+      return
+    }
+
     if (legacyLogin) {
       persistOAuthTokenContext(legacyLogin)
       await authStore.setToken(legacyLogin.access_token)

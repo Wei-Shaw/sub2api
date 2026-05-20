@@ -1049,6 +1049,66 @@ func TestCreateOIDCOAuthAccountCreatesUserBindsIdentityAndConsumesSession(t *tes
 	require.NotNil(t, storedSession.ConsumedAt)
 }
 
+func TestCreateWeComOAuthAccountTrustsEnteredEmailWithoutVerifyCode(t *testing.T) {
+	handler, client := newOAuthPendingFlowTestHandler(t, false)
+	ctx := context.Background()
+
+	session, err := client.PendingAuthSession.Create().
+		SetSessionToken("wecom-create-account-session-token").
+		SetIntent("login").
+		SetProviderType("wecom").
+		SetProviderKey("wecom-main").
+		SetProviderSubject("wwcorp/user-123").
+		SetBrowserSessionKey("wecom-create-account-browser-session-key").
+		SetUpstreamIdentityClaims(map[string]any{
+			"username":               "张三",
+			"suggested_display_name": "张三",
+		}).
+		SetLocalFlowState(map[string]any{
+			oauthCompletionResponseKey: map[string]any{
+				"step":          oauthPendingChoiceStep,
+				"choice_reason": "wecom_email_missing",
+			},
+		}).
+		SetRedirectTo("/profile").
+		SetExpiresAt(time.Now().UTC().Add(10 * time.Minute)).
+		Save(ctx)
+	require.NoError(t, err)
+
+	body := bytes.NewBufferString(`{"email":"fresh-wecom@example.com","password":"secret-123","adopt_display_name":true}`)
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/oauth/wecom/create-account", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: oauthPendingSessionCookieName, Value: encodeCookieValue(session.SessionToken)})
+	req.AddCookie(&http.Cookie{Name: oauthPendingBrowserCookieName, Value: encodeCookieValue("wecom-create-account-browser-session-key")})
+	ginCtx.Request = req
+
+	handler.CreateWeComOAuthAccount(ginCtx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &payload))
+	require.NotEmpty(t, payload["access_token"])
+	require.NotEmpty(t, payload["refresh_token"])
+
+	createdUser, err := client.User.Query().Where(dbuser.EmailEQ("fresh-wecom@example.com")).Only(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "wecom", createdUser.SignupSource)
+	require.Equal(t, "张三", createdUser.Username)
+
+	identity, err := client.AuthIdentity.Query().
+		Where(
+			authidentity.ProviderTypeEQ("wecom"),
+			authidentity.ProviderKeyEQ("wecom-main"),
+			authidentity.ProviderSubjectEQ("wwcorp/user-123"),
+		).
+		Only(ctx)
+	require.NoError(t, err)
+	require.Equal(t, createdUser.ID, identity.UserID)
+}
+
 func TestCreateOIDCOAuthAccountExistingEmailReturnsChoicePendingSessionState(t *testing.T) {
 	handler, client := newOAuthPendingFlowTestHandlerWithEmailVerification(t, false, "owner@example.com", "135790")
 	ctx := context.Background()

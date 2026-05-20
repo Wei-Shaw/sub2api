@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -282,6 +283,81 @@ func TestSettingHandler_UpdateSettings_PreservesLegacyBlankPaymentVisibleMethodS
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "", repo.values[service.SettingPaymentVisibleMethodAlipaySource])
 	require.Equal(t, "true", repo.values[service.SettingPaymentVisibleMethodAlipayEnabled])
+}
+
+func TestSettingHandler_UpdateSettings_RejectsShortWeComSecretOverwrite(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &settingHandlerRepoStub{
+		values: map[string]string{
+			service.SettingKeyWeComOAuthEnabled:             "true",
+			service.SettingKeyWeComOAuthCorpID:              "wwcorp",
+			service.SettingKeyWeComOAuthAgentID:             "1000027",
+			service.SettingKeyWeComOAuthSecret:              strings.Repeat("a", 43),
+			service.SettingKeyWeComOAuthScope:               "snsapi_base",
+			service.SettingKeyWeComOAuthRedirectURL:         "https://example.com/api/v1/auth/oauth/wecom/callback",
+			service.SettingKeyWeComOAuthFrontendRedirectURL: "/auth/wecom/callback",
+		},
+	}
+	svc := service.NewSettingService(repo, &config.Config{Default: config.DefaultConfig{UserConcurrency: 5}})
+	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil)
+
+	body := map[string]any{
+		"wecom_oauth_enabled":               true,
+		"wecom_oauth_scope":                 "snsapi_privateinfo",
+		"wecom_oauth_secret":                "946321224",
+		"wecom_oauth_redirect_url":          "https://example.com/api/v1/auth/oauth/wecom/callback",
+		"wecom_oauth_frontend_redirect_url": "/auth/wecom/callback",
+	}
+	rawBody, err := json.Marshal(body)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(rawBody))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.UpdateSettings(c)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Equal(t, strings.Repeat("a", 43), repo.values[service.SettingKeyWeComOAuthSecret])
+	require.Equal(t, "snsapi_base", repo.values[service.SettingKeyWeComOAuthScope])
+}
+
+func TestSettingHandler_UpdateSettings_PreservesWeComSecretWhenOmitted(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &settingHandlerRepoStub{
+		values: map[string]string{
+			service.SettingKeyWeComOAuthEnabled:             "true",
+			service.SettingKeyWeComOAuthCorpID:              "wwcorp",
+			service.SettingKeyWeComOAuthAgentID:             "1000027",
+			service.SettingKeyWeComOAuthSecret:              strings.Repeat("b", 43),
+			service.SettingKeyWeComOAuthScope:               "snsapi_base",
+			service.SettingKeyWeComOAuthRedirectURL:         "https://example.com/api/v1/auth/oauth/wecom/callback",
+			service.SettingKeyWeComOAuthFrontendRedirectURL: "/auth/wecom/callback",
+		},
+	}
+	svc := service.NewSettingService(repo, &config.Config{Default: config.DefaultConfig{UserConcurrency: 5}})
+	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil)
+
+	body := map[string]any{
+		"wecom_oauth_enabled":               true,
+		"wecom_oauth_scope":                 "snsapi_privateinfo",
+		"wecom_oauth_redirect_url":          "https://example.com/api/v1/auth/oauth/wecom/callback",
+		"wecom_oauth_frontend_redirect_url": "/auth/wecom/callback",
+	}
+	rawBody, err := json.Marshal(body)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(rawBody))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.UpdateSettings(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, strings.Repeat("b", 43), repo.values[service.SettingKeyWeComOAuthSecret])
+	require.Equal(t, "snsapi_privateinfo", repo.values[service.SettingKeyWeComOAuthScope])
 }
 
 func TestSettingHandler_UpdateSettings_PersistsExplicitFalseOIDCCompatibilityFlags(t *testing.T) {

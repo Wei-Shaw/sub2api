@@ -15,6 +15,8 @@ import (
 	"sync"
 	"time"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/oauth"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -42,6 +44,7 @@ var (
 	weComOAuthGetTokenURL         = "https://qyapi.weixin.qq.com/cgi-bin/gettoken"
 	weComOAuthGetUserInfoURL      = "https://qyapi.weixin.qq.com/cgi-bin/auth/getuserinfo"
 	weComOAuthGetUserDetailURL    = "https://qyapi.weixin.qq.com/cgi-bin/auth/getuserdetail"
+	weComOAuthGetUserURL          = "https://qyapi.weixin.qq.com/cgi-bin/user/get"
 
 	weComTokenMu    sync.Mutex
 	weComTokenCache = map[string]cachedWeComToken{}
@@ -59,6 +62,16 @@ type weComOAuthConfig struct {
 	scope            string
 	redirectURI      string
 	frontendCallback string
+}
+
+type weComResolvedOAuthIdentity struct {
+	userID          string
+	providerSubject string
+	email           string
+	username        string
+	emailSource     string
+	identityRef     service.PendingAuthIdentityKey
+	upstreamClaims  map[string]any
 }
 
 type weComAccessTokenResponse struct {
@@ -88,6 +101,26 @@ type weComUserDetailResponse struct {
 	QRCode  string `json:"qr_code"`
 	ErrCode int64  `json:"errcode"`
 	ErrMsg  string `json:"errmsg"`
+}
+
+func (r weComUserInfoResponse) normalizedUserID() string {
+	return strings.TrimSpace(r.UserID)
+}
+
+func (r *weComUserInfoResponse) UnmarshalJSON(data []byte) error {
+	type alias weComUserInfoResponse
+	var raw struct {
+		alias
+		UserIDCompat string `json:"UserId"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*r = weComUserInfoResponse(raw.alias)
+	if r.UserID == "" {
+		r.UserID = raw.UserIDCompat
+	}
+	return nil
 }
 
 func (h *AuthHandler) WeComOAuthStart(c *gin.Context) {
@@ -189,34 +222,13 @@ func (h *AuthHandler) WeComOAuthCallback(c *gin.Context) {
 		redirectOAuthError(c, frontendCallback, "provider_error", "wecom_identity_fetch_failed", singleLine(err.Error()))
 		return
 	}
-	userID := strings.TrimSpace(userInfo.UserID)
+	userID := userInfo.normalizedUserID()
 	if userID == "" {
 		redirectOAuthError(c, frontendCallback, "provider_error", "wecom_member_required", "")
 		return
 	}
 
-	providerSubject := cfg.corpID + "/" + userID
-	email := weComSyntheticEmail(providerSubject)
-	username := weComFallbackUsername(userID, providerSubject)
-	upstreamClaims := map[string]any{
-		"email":            email,
-		"username":         username,
-		"subject":          providerSubject,
-		"corpid":           cfg.corpID,
-		"agentid":          cfg.agentID,
-		"userid":           userID,
-		"openid":           strings.TrimSpace(userInfo.OpenID),
-		"external_userid":  strings.TrimSpace(userInfo.ExternalUserID),
-		"user_ticket":      strings.TrimSpace(userInfo.UserTicket),
-		"mode":             strings.TrimSpace(mode),
-		"suggested_source": "wecom",
-	}
-	username = enrichWeComProfileClaims(c.Request.Context(), cfg, userInfo, username, upstreamClaims)
-	identityRef := service.PendingAuthIdentityKey{
-		ProviderType:    "wecom",
-		ProviderKey:     weComOAuthProviderKey,
-		ProviderSubject: providerSubject,
-	}
+	resolved := h.resolveWeComOAuthIdentity(c.Request.Context(), cfg, userInfo, strings.TrimSpace(mode))
 	normalizedIntent := normalizeWeChatOAuthIntent(intent)
 	if normalizedIntent == wechatOAuthIntentBind {
 		currentUser, err := h.readOAuthBindTargetUser(c, weComOAuthBindUserCookieName)
@@ -224,19 +236,50 @@ func (h *AuthHandler) WeComOAuthCallback(c *gin.Context) {
 			redirectOAuthError(c, frontendCallback, "auth_required", infraerrors.Reason(err), infraerrors.Message(err))
 			return
 		}
-		if err := h.ensureGenericBindOwnership(c.Request.Context(), currentUser.ID, identityRef); err != nil {
+		if err := h.ensureGenericBindOwnership(c.Request.Context(), currentUser.ID, resolved.identityRef); err != nil {
 			redirectOAuthError(c, frontendCallback, "ownership_conflict", infraerrors.Reason(err), infraerrors.Message(err))
 			return
 		}
 		if err := h.createOAuthPendingSession(c, oauthPendingSessionPayload{
 			Intent:                 wechatOAuthIntentBind,
-			Identity:               identityRef,
+			Identity:               resolved.identityRef,
 			TargetUserID:           &currentUser.ID,
 			ResolvedEmail:          currentUser.Email,
 			RedirectTo:             redirectTo,
 			BrowserSessionKey:      browserSessionKey,
-			UpstreamIdentityClaims: upstreamClaims,
+			UpstreamIdentityClaims: resolved.upstreamClaims,
 			CompletionResponse:     map[string]any{"redirect": redirectTo},
+		}); err != nil {
+			redirectOAuthError(c, frontendCallback, "session_error", infraerrors.Reason(err), infraerrors.Message(err))
+			return
+		}
+		redirectToFrontendCallback(c, frontendCallback)
+		return
+	}
+
+	existingIdentityUser, err := h.findOAuthIdentityUser(c.Request.Context(), resolved.identityRef)
+	if err != nil {
+		redirectOAuthError(c, frontendCallback, "session_error", infraerrors.Reason(err), infraerrors.Message(err))
+		return
+	}
+	if existingIdentityUser != nil {
+		h.redirectWeComBoundIdentityLogin(c, frontendCallback, redirectTo, entUserToService(existingIdentityUser))
+		return
+	}
+	if strings.EqualFold(strings.TrimSpace(mode), "web") {
+		redirectWeComMobileRequired(c, frontendCallback, redirectTo)
+		return
+	}
+
+	if resolved.emailSource == "synthetic" {
+		if err := h.createOAuthPendingSession(c, oauthPendingSessionPayload{
+			Intent:                 oauthIntentLogin,
+			Identity:               resolved.identityRef,
+			ResolvedEmail:          "",
+			RedirectTo:             redirectTo,
+			BrowserSessionKey:      browserSessionKey,
+			UpstreamIdentityClaims: resolved.upstreamClaims,
+			CompletionResponse:     buildWeComEmailRequiredResponse(redirectTo),
 		}); err != nil {
 			redirectOAuthError(c, frontendCallback, "session_error", infraerrors.Reason(err), infraerrors.Message(err))
 			return
@@ -248,24 +291,31 @@ func (h *AuthHandler) WeComOAuthCallback(c *gin.Context) {
 	tokenPair, user, authErr := h.authService.LoginOrRegisterVerifiedEmailOAuth(c.Request.Context(), service.EmailOAuthIdentityInput{
 		ProviderType:     "wecom",
 		ProviderKey:      weComOAuthProviderKey,
-		ProviderSubject:  providerSubject,
-		Email:            email,
+		ProviderSubject:  resolved.providerSubject,
+		Email:            resolved.email,
 		EmailVerified:    true,
-		Username:         username,
-		UpstreamMetadata: upstreamClaims,
+		Username:         resolved.username,
+		AvatarURL:        weComResolvedAvatarURL(resolved),
+		UpstreamMetadata: resolved.upstreamClaims,
 	})
 	var targetUserID *int64
 	if user != nil && user.ID > 0 {
+		if authErr == nil {
+			if err := h.applyWeComResolvedAvatar(c.Request.Context(), user.ID, resolved); err != nil {
+				redirectOAuthError(c, frontendCallback, "session_error", infraerrors.Reason(err), infraerrors.Message(err))
+				return
+			}
+		}
 		targetUserID = &user.ID
 	}
 	if err := h.createOAuthPendingSession(c, oauthPendingSessionPayload{
 		Intent:                 oauthIntentLogin,
-		Identity:               identityRef,
+		Identity:               resolved.identityRef,
 		TargetUserID:           targetUserID,
-		ResolvedEmail:          email,
+		ResolvedEmail:          resolved.email,
 		RedirectTo:             redirectTo,
 		BrowserSessionKey:      browserSessionKey,
-		UpstreamIdentityClaims: upstreamClaims,
+		UpstreamIdentityClaims: resolved.upstreamClaims,
 		CompletionResponse:     buildWeComCompletionResponse(redirectTo, tokenPair, authErr),
 	}); err != nil {
 		redirectOAuthError(c, frontendCallback, "session_error", infraerrors.Reason(err), infraerrors.Message(err))
@@ -312,6 +362,15 @@ func (h *AuthHandler) CompleteWeComOAuthRegistration(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	if updatedSession, handled, err := h.legacyCompleteRegistrationSessionStatus(c, session); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	} else if handled {
+		c.JSON(http.StatusOK, buildPendingOAuthSessionStatusPayload(updatedSession))
+		return
+	} else {
+		session = updatedSession
+	}
 	if !strings.EqualFold(strings.TrimSpace(session.ProviderType), "wecom") {
 		response.ErrorFrom(c, infraerrors.BadRequest("PENDING_AUTH_PROVIDER_MISMATCH", "pending oauth session provider mismatch"))
 		return
@@ -336,6 +395,7 @@ func (h *AuthHandler) CompleteWeComOAuthRegistration(c *gin.Context) {
 		Email:            email,
 		EmailVerified:    true,
 		Username:         username,
+		AvatarURL:        pendingSessionStringValue(session.UpstreamIdentityClaims, "suggested_avatar_url"),
 		UpstreamMetadata: session.UpstreamIdentityClaims,
 	}
 	tokenPair, user, err := h.authService.LoginOrRegisterVerifiedEmailOAuthWithInvitation(
@@ -379,7 +439,7 @@ func (h *AuthHandler) CompleteWeComOAuthRegistration(c *gin.Context) {
 }
 func (h *AuthHandler) BindWeComOAuthLogin(c *gin.Context) { h.bindPendingOAuthLogin(c, "wecom") }
 func (h *AuthHandler) CreateWeComOAuthAccount(c *gin.Context) {
-	h.createPendingOAuthAccount(c, "wecom")
+	h.createPendingOAuthAccountWithOptions(c, "wecom", createPendingOAuthAccountOptions{TrustEnteredEmail: true})
 }
 
 func (h *AuthHandler) getWeComOAuthConfig(ctx context.Context) (weComOAuthConfig, error) {
@@ -455,6 +515,42 @@ func buildWeComAuthorizeURL(cfg weComOAuthConfig, mode, state string) (string, e
 	return u.String(), nil
 }
 
+func (h *AuthHandler) resolveWeComOAuthIdentity(ctx context.Context, cfg weComOAuthConfig, userInfo weComUserInfoResponse, mode string) weComResolvedOAuthIdentity {
+	userID := userInfo.normalizedUserID()
+	providerSubject := cfg.corpID + "/" + userID
+	email := weComSyntheticEmail(providerSubject)
+	username := weComFallbackUsername(userID, providerSubject)
+	upstreamClaims := map[string]any{
+		"email":            email,
+		"username":         username,
+		"subject":          providerSubject,
+		"corpid":           cfg.corpID,
+		"agentid":          cfg.agentID,
+		"userid":           userID,
+		"openid":           strings.TrimSpace(userInfo.OpenID),
+		"external_userid":  strings.TrimSpace(userInfo.ExternalUserID),
+		"user_ticket":      strings.TrimSpace(userInfo.UserTicket),
+		"mode":             strings.TrimSpace(mode),
+		"suggested_source": "wecom",
+	}
+	username = enrichWeComProfileClaims(ctx, cfg, userInfo, username, upstreamClaims)
+	email = selectWeComRegistrationEmail(ctx, h.entClient(), email, upstreamClaims)
+	upstreamClaims["email"] = email
+	return weComResolvedOAuthIdentity{
+		userID:          userID,
+		providerSubject: providerSubject,
+		email:           email,
+		username:        username,
+		emailSource:     pendingSessionStringValue(upstreamClaims, "wecom_registration_email_source"),
+		identityRef: service.PendingAuthIdentityKey{
+			ProviderType:    "wecom",
+			ProviderKey:     weComOAuthProviderKey,
+			ProviderSubject: providerSubject,
+		},
+		upstreamClaims: upstreamClaims,
+	}
+}
+
 func enrichWeComProfileClaims(ctx context.Context, cfg weComOAuthConfig, userInfo weComUserInfoResponse, username string, upstreamClaims map[string]any) string {
 	detail, err := maybeFetchWeComUserDetail(ctx, cfg, userInfo)
 	if err != nil {
@@ -464,47 +560,122 @@ func enrichWeComProfileClaims(ctx context.Context, cfg weComOAuthConfig, userInf
 	if detail == nil {
 		return username
 	}
-	if name := strings.TrimSpace(detail.Name); name != "" {
-		username = name
-		upstreamClaims["username"] = name
-		upstreamClaims["name"] = name
-		upstreamClaims["suggested_display_name"] = name
+	username = applyWeComProfileDetailClaims(username, detail, upstreamClaims)
+	return supplementWeComDirectoryProfile(ctx, cfg, userInfo, username, detail, upstreamClaims)
+}
+
+func supplementWeComDirectoryProfile(ctx context.Context, cfg weComOAuthConfig, userInfo weComUserInfoResponse, username string, detail *weComUserDetailResponse, claims map[string]any) string {
+	if !isWeComPrivateInfoDetailFlow(cfg, userInfo) {
+		return username
 	}
-	if avatar := strings.TrimSpace(detail.Avatar); avatar != "" {
-		upstreamClaims["avatar"] = avatar
-		upstreamClaims["avatar_url"] = avatar
-		upstreamClaims["suggested_avatar_url"] = avatar
+	if !weComProfileNeedsDirectorySupplement(detail) {
+		return username
 	}
-	if email := strings.TrimSpace(detail.Email); email != "" {
-		upstreamClaims["wecom_email"] = email
+	directoryDetail, err := fetchWeComDirectoryUserDetail(ctx, cfg, userInfo)
+	if err != nil {
+		claims["wecom_directory_profile_error"] = singleLine(err.Error())
+		return username
 	}
-	if bizMail := strings.TrimSpace(detail.BizMail); bizMail != "" {
-		upstreamClaims["wecom_biz_mail"] = bizMail
+	if directoryDetail == nil {
+		return username
 	}
-	if mobile := strings.TrimSpace(detail.Mobile); mobile != "" {
-		upstreamClaims["wecom_mobile"] = mobile
+	return applyWeComProfileDetailClaims(username, directoryDetail, claims)
+}
+
+func isWeComPrivateInfoDetailFlow(cfg weComOAuthConfig, userInfo weComUserInfoResponse) bool {
+	return strings.TrimSpace(cfg.scope) == "snsapi_privateinfo" && strings.TrimSpace(userInfo.UserTicket) != ""
+}
+
+func weComProfileNeedsDirectorySupplement(detail *weComUserDetailResponse) bool {
+	if detail == nil {
+		return false
 	}
-	if gender := strings.TrimSpace(detail.Gender); gender != "" {
-		upstreamClaims["wecom_gender"] = gender
-	}
-	if qrCode := strings.TrimSpace(detail.QRCode); qrCode != "" {
-		upstreamClaims["wecom_qr_code"] = qrCode
-	}
-	if userID := strings.TrimSpace(detail.UserID); userID != "" {
-		upstreamClaims["wecom_detail_userid"] = userID
-	}
+	return strings.TrimSpace(detail.Name) == "" || strings.TrimSpace(detail.Avatar) == ""
+}
+
+func applyWeComProfileDetailClaims(username string, detail *weComUserDetailResponse, claims map[string]any) string {
+	username = applyWeComDisplayNameClaim(username, detail.Name, claims)
+	applyWeComAvatarClaim(detail.Avatar, claims)
+	applyWeComStringClaim(claims, "wecom_email", detail.Email)
+	applyWeComStringClaim(claims, "wecom_biz_mail", detail.BizMail)
+	applyWeComStringClaim(claims, "wecom_mobile", detail.Mobile)
+	applyWeComStringClaim(claims, "wecom_gender", detail.Gender)
+	applyWeComStringClaim(claims, "wecom_qr_code", detail.QRCode)
+	applyWeComStringClaim(claims, "wecom_detail_userid", detail.UserID)
 	return username
+}
+
+func applyWeComDisplayNameClaim(username string, name string, claims map[string]any) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return username
+	}
+	claims["username"] = name
+	claims["name"] = name
+	claims["suggested_display_name"] = name
+	return name
+}
+
+func applyWeComAvatarClaim(avatar string, claims map[string]any) {
+	avatar = strings.TrimSpace(avatar)
+	if avatar == "" {
+		return
+	}
+	claims["avatar"] = avatar
+	claims["avatar_url"] = avatar
+	claims["suggested_avatar_url"] = avatar
+}
+
+func weComResolvedAvatarURL(resolved weComResolvedOAuthIdentity) string {
+	return pendingSessionStringValue(resolved.upstreamClaims, "suggested_avatar_url")
+}
+
+func (h *AuthHandler) applyWeComResolvedAvatar(ctx context.Context, userID int64, resolved weComResolvedOAuthIdentity) error {
+	avatarURL := weComResolvedAvatarURL(resolved)
+	if avatarURL == "" || userID <= 0 {
+		return nil
+	}
+	if h == nil || h.userService == nil {
+		return infraerrors.ServiceUnavailable("USER_SERVICE_NOT_READY", "user service is not ready")
+	}
+	if err := service.ValidateUserAvatar(avatarURL); err != nil {
+		return err
+	}
+	if _, err := h.userService.SetAvatar(ctx, userID, avatarURL); err != nil {
+		return infraerrors.InternalServer("WECOM_AVATAR_APPLY_FAILED", "failed to apply wecom avatar").WithCause(err)
+	}
+	return nil
+}
+
+func applyWeComStringClaim(claims map[string]any, key string, value string) {
+	value = strings.TrimSpace(value)
+	if value == "" || pendingSessionStringValue(claims, key) != "" {
+		return
+	}
+	claims[key] = value
 }
 
 func maybeFetchWeComUserDetail(ctx context.Context, cfg weComOAuthConfig, userInfo weComUserInfoResponse) (*weComUserDetailResponse, error) {
 	if strings.TrimSpace(cfg.scope) != "snsapi_privateinfo" {
-		return nil, nil
+		return fetchWeComDirectoryUserDetail(ctx, cfg, userInfo)
 	}
 	userTicket := strings.TrimSpace(userInfo.UserTicket)
-	if userTicket == "" {
+	if userTicket != "" {
+		detail, err := fetchWeComUserDetail(ctx, cfg, userTicket)
+		if err != nil {
+			return nil, err
+		}
+		return &detail, nil
+	}
+	return fetchWeComDirectoryUserDetail(ctx, cfg, userInfo)
+}
+
+func fetchWeComDirectoryUserDetail(ctx context.Context, cfg weComOAuthConfig, userInfo weComUserInfoResponse) (*weComUserDetailResponse, error) {
+	userID := userInfo.normalizedUserID()
+	if userID == "" {
 		return nil, nil
 	}
-	detail, err := fetchWeComUserDetail(ctx, cfg, userTicket)
+	detail, err := fetchWeComUser(ctx, cfg, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -552,6 +723,29 @@ func fetchWeComUserDetail(ctx context.Context, cfg weComOAuthConfig, userTicket 
 	}
 	if result.ErrCode != 0 {
 		return result, fmt.Errorf("wecom getuserdetail failed: %d %s", result.ErrCode, result.ErrMsg)
+	}
+	return result, nil
+}
+
+func fetchWeComUser(ctx context.Context, cfg weComOAuthConfig, userID string) (weComUserDetailResponse, error) {
+	accessToken, err := fetchWeComAccessToken(ctx, cfg)
+	if err != nil {
+		return weComUserDetailResponse{}, err
+	}
+	u, err := url.Parse(weComOAuthGetUserURL)
+	if err != nil {
+		return weComUserDetailResponse{}, err
+	}
+	q := u.Query()
+	q.Set("access_token", accessToken)
+	q.Set("userid", strings.TrimSpace(userID))
+	u.RawQuery = q.Encode()
+	var result weComUserDetailResponse
+	if err := getJSON(ctx, u.String(), &result); err != nil {
+		return result, err
+	}
+	if result.ErrCode != 0 {
+		return result, fmt.Errorf("wecom user get failed: %d %s", result.ErrCode, result.ErrMsg)
 	}
 	return result, nil
 }
@@ -689,6 +883,87 @@ func buildWeComCompletionResponse(redirectTo string, tokenPair *service.TokenPai
 		completionResponse["token_type"] = "Bearer"
 	}
 	return completionResponse
+}
+
+func (h *AuthHandler) redirectWeComBoundIdentityLogin(c *gin.Context, frontendCallback string, redirectTo string, user *service.User) {
+	if err := ensureLoginUserActive(user); err != nil {
+		redirectOAuthError(c, frontendCallback, "login_blocked", infraerrors.Reason(err), infraerrors.Message(err))
+		return
+	}
+	if err := h.ensureBackendModeAllowsUser(c.Request.Context(), user); err != nil {
+		redirectOAuthError(c, frontendCallback, "login_blocked", infraerrors.Reason(err), infraerrors.Message(err))
+		return
+	}
+	tokenPair, err := h.authService.GenerateTokenPair(c.Request.Context(), user, "")
+	if err != nil {
+		redirectOAuthError(c, frontendCallback, "token_error", "failed to generate token pair", singleLine(err.Error()))
+		return
+	}
+	h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
+	fragment := url.Values{}
+	fragment.Set("access_token", tokenPair.AccessToken)
+	fragment.Set("refresh_token", tokenPair.RefreshToken)
+	fragment.Set("expires_in", fmt.Sprintf("%d", tokenPair.ExpiresIn))
+	fragment.Set("token_type", "Bearer")
+	fragment.Set("redirect", redirectTo)
+	fragment.Set("user", encodeOAuthFragmentUser(dto.UserFromService(user)))
+	redirectWithFragment(c, frontendCallback, fragment)
+}
+
+func entUserToService(user *dbent.User) *service.User {
+	if user == nil {
+		return nil
+	}
+	return &service.User{
+		ID:             user.ID,
+		Email:          user.Email,
+		Username:       user.Username,
+		Notes:          user.Notes,
+		PasswordHash:   user.PasswordHash,
+		Role:           user.Role,
+		Balance:        user.Balance,
+		Concurrency:    user.Concurrency,
+		Status:         user.Status,
+		SignupSource:   user.SignupSource,
+		LastLoginAt:    user.LastLoginAt,
+		LastActiveAt:   user.LastActiveAt,
+		TotpEnabled:    user.TotpEnabled,
+		TotpEnabledAt:  user.TotpEnabledAt,
+		RPMLimit:       user.RpmLimit,
+		CreatedAt:      user.CreatedAt,
+		UpdatedAt:      user.UpdatedAt,
+		TotalRecharged: user.TotalRecharged,
+	}
+}
+
+func encodeOAuthFragmentUser(user *dto.User) string {
+	if user == nil {
+		return ""
+	}
+	payload, err := json.Marshal(user)
+	if err != nil {
+		return ""
+	}
+	return string(payload)
+}
+
+func redirectWeComMobileRequired(c *gin.Context, frontendCallback string, redirectTo string) {
+	fragment := url.Values{}
+	fragment.Set("error", "wecom_mobile_oauth_required")
+	fragment.Set("redirect", redirectTo)
+	redirectWithFragment(c, frontendCallback, fragment)
+}
+
+func buildWeComEmailRequiredResponse(redirectTo string) map[string]any {
+	return map[string]any{
+		"redirect":                  redirectTo,
+		"step":                      oauthPendingChoiceStep,
+		"adoption_required":         true,
+		"force_email_on_signup":     true,
+		"email_binding_required":    true,
+		"existing_account_bindable": true,
+		"choice_reason":             "wecom_email_missing",
+	}
 }
 
 func firstNonEmptyString(values ...string) string {

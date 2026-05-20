@@ -102,6 +102,9 @@ func RegisterAuthRoutes(
 			h.Auth.WeComOAuthStart(c)
 		})
 		auth.GET("/oauth/wecom/callback", h.Auth.WeComOAuthCallback)
+		auth.POST("/oauth/wecom/mobile/start", h.Auth.WeComMobileOAuthStart)
+		auth.GET("/oauth/wecom/mobile/status", h.Auth.WeComMobileOAuthStatus)
+		auth.GET("/oauth/wecom/mobile/callback", h.Auth.WeComMobileOAuthCallback)
 		auth.GET("/oauth/wechat/payment/start", h.Auth.WeChatPaymentOAuthStart)
 		auth.GET("/oauth/wechat/payment/callback", h.Auth.WeChatPaymentOAuthCallback)
 		auth.POST("/oauth/pending/exchange",

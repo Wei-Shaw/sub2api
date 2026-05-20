@@ -68,25 +68,24 @@ func (s *AuthService) loginOrRegisterVerifiedEmailOAuth(
 	if email == "" || len(email) > 255 {
 		return nil, nil, infraerrors.BadRequest("INVALID_EMAIL", "invalid email")
 	}
-	if _, err := mail.ParseAddress(email); err != nil {
+	address, err := mail.ParseAddress(email)
+	if err != nil || address.Address != email {
 		return nil, nil, infraerrors.BadRequest("INVALID_EMAIL", "invalid email")
 	}
-	if isReservedEmail(email) && providerType != "wecom" {
+	if isReservedEmail(email) && (providerType != "wecom" || !strings.HasSuffix(email, WeComConnectSyntheticEmailDomain)) {
 		return nil, nil, ErrEmailReserved
 	}
 	if providerType != "wecom" {
 		if err := s.validateRegistrationEmailPolicy(ctx, email); err != nil {
 			return nil, nil, err
 		}
-	} else if !strings.HasSuffix(email, WeComConnectSyntheticEmailDomain) {
-		return nil, nil, infraerrors.BadRequest("INVALID_EMAIL", "invalid email")
 	}
 
 	identityUser, err := s.findEmailOAuthIdentityOwner(ctx, providerType, providerKey, providerSubject)
 	if err != nil {
 		return nil, nil, err
 	}
-	if identityUser != nil && !strings.EqualFold(strings.TrimSpace(identityUser.Email), email) {
+	if providerType != "wecom" && identityUser != nil && !strings.EqualFold(strings.TrimSpace(identityUser.Email), email) {
 		return nil, nil, infraerrors.Conflict("AUTH_IDENTITY_EMAIL_MISMATCH", "oauth identity belongs to a different email")
 	}
 
@@ -146,8 +145,8 @@ func (s *AuthService) loginOrRegisterVerifiedEmailOAuth(
 }
 
 func (s *AuthService) createEmailOAuthUser(ctx context.Context, email, username, providerType, invitationCode, affiliateCode string) (*User, error) {
-	if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
-		return nil, ErrRegDisabled
+	if err := s.ensureEmailOAuthAutoSignupAllowed(ctx, providerType); err != nil {
+		return nil, err
 	}
 	invitationRedeemCode, err := s.validateOAuthRegistrationInvitation(ctx, invitationCode)
 	if err != nil {
@@ -201,6 +200,16 @@ func (s *AuthService) createEmailOAuthUser(ctx context.Context, email, username,
 		}
 	}
 	return user, nil
+}
+
+func (s *AuthService) ensureEmailOAuthAutoSignupAllowed(ctx context.Context, providerType string) error {
+	if strings.EqualFold(strings.TrimSpace(providerType), "wecom") {
+		return nil
+	}
+	if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
+		return ErrRegDisabled
+	}
+	return nil
 }
 
 func (s *AuthService) findEmailOAuthIdentityOwner(ctx context.Context, providerType, providerKey, providerSubject string) (*User, error) {

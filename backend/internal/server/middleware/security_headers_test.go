@@ -344,6 +344,14 @@ func TestEnhanceCSPPolicy(t *testing.T) {
 		assert.Contains(t, enhanced, "frame-src 'self'")
 	})
 
+	t.Run("adds_wecom_domain_for_login_sdk", func(t *testing.T) {
+		policy := "default-src 'self'; script-src 'self' __CSP_NONCE__"
+		enhanced := enhanceCSPPolicy(policy)
+
+		assert.Equal(t, 1, countDirectiveValue(enhanced, "script-src", WeComJSSDKDomain))
+		assert.Equal(t, 1, countDirectiveValue(enhanced, "frame-src", WeComLoginFrameDomain))
+	})
+
 	t.Run("does_not_duplicate_airwallex_domains", func(t *testing.T) {
 		policy := "default-src 'self'; script-src 'self' https://static.airwallex.com https://static-demo.airwallex.com; frame-src https://checkout.airwallex.com https://checkout-demo.airwallex.com"
 		enhanced := enhanceCSPPolicy(policy)
@@ -358,6 +366,8 @@ func TestEnhanceCSPPolicy(t *testing.T) {
 		assert.Equal(t, 1, countDirectiveValue(enhanced, "style-src", AirwallexDemoStaticDomain))
 		assert.Equal(t, 1, countDirectiveValue(enhanced, "style-src", AirwallexDemoCheckoutDomain))
 		assert.Equal(t, 1, countDirectiveValue(enhanced, "frame-src", AirwallexDemoCheckoutDomain))
+		assert.Equal(t, 1, countDirectiveValue(enhanced, "script-src", WeComJSSDKDomain))
+		assert.Equal(t, 1, countDirectiveValue(enhanced, "frame-src", WeComLoginFrameDomain))
 	})
 }
 

@@ -31,14 +31,54 @@ export function isTotp2FARequired(response: LoginResponse): response is TotpLogi
 export function resolveWeComOAuthStart(
   settings: { wecom_oauth_enabled?: boolean } | null | undefined,
   userAgent?: string
-): { mode: 'web' | 'webview'; enabled: boolean } {
+): { mode: 'panel' | 'webview'; enabled: boolean } {
   const normalizedUserAgent = (userAgent
     ?? (typeof navigator !== 'undefined' ? navigator.userAgent : '')
     ?? '').trim()
   return {
     enabled: settings?.wecom_oauth_enabled === true,
-    mode: /wxwork/i.test(normalizedUserAgent) ? 'webview' : 'web'
+    mode: /wxwork/i.test(normalizedUserAgent) ? 'webview' : 'panel'
   }
+}
+
+export interface WeComMobileOAuthStartResponse {
+  session_id: string
+  authorize_url: string
+  expires_at: string
+  poll_interval_ms: number
+}
+
+export interface WeComMobileOAuthStatusResponse {
+  status: 'pending' | 'completed' | 'failed'
+  expires_at?: string
+  poll_interval_ms?: number
+  privateinfo_required?: boolean
+  authorize_url?: string
+  redirect?: string
+  provider?: string
+  error?: string
+  message?: string
+}
+
+export async function startWeComMobileOAuth(payload: {
+  redirect?: string
+  intent?: 'login' | 'bind_current_user'
+}): Promise<WeComMobileOAuthStartResponse> {
+  const { data } = await apiClient.post<WeComMobileOAuthStartResponse>(
+    '/auth/oauth/wecom/mobile/start',
+    payload
+  )
+  return data
+}
+
+export async function getWeComMobileOAuthStatus(
+  sessionId: string
+): Promise<WeComMobileOAuthStatusResponse> {
+  const { data } = await apiClient.get<WeComMobileOAuthStatusResponse>(
+    '/auth/oauth/wecom/mobile/status',
+    { params: { session_id: sessionId } }
+  )
+  return data
 }
 
 /**

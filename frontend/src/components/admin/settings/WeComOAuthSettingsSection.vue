@@ -82,6 +82,8 @@
               v-model="secret"
               data-testid="wecom-oauth-secret"
               type="password"
+              autocomplete="new-password"
+              spellcheck="false"
               class="input font-mono text-sm"
               :placeholder="
                 secretConfigured
@@ -107,8 +109,8 @@
             <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
               {{
                 localText(
-                  "MVP 推荐使用 snsapi_base，仅识别企业成员身份。",
-                  "MVP recommends snsapi_base to identify enterprise members only.",
+                  "使用 snsapi_privateinfo 才能读取姓名、邮箱和企业邮箱；snsapi_base 只能识别成员身份。",
+                  "Use snsapi_privateinfo to read name, email and biz mail; snsapi_base only identifies members.",
                 )
               }}
             </p>

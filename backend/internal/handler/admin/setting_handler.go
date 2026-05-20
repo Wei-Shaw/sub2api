@@ -25,6 +25,8 @@ var semverPattern = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 // menuItemIDPattern validates custom menu item IDs: alphanumeric, hyphens, underscores only.
 var menuItemIDPattern = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
+const minWeComOAuthSecretLength = 32
+
 // generateMenuItemID generates a short random hex ID for a custom menu item.
 func generateMenuItemID() (string, error) {
 	b := make([]byte, 8)
@@ -50,6 +52,11 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func looksLikeWeComOAuthSecret(value string) bool {
+	trimmed := strings.TrimSpace(value)
+	return len(trimmed) >= minWeComOAuthSecretLength && !strings.Contains(trimmed, "*")
 }
 
 // SettingHandler 系统设置处理器
@@ -930,7 +937,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	if req.WeComOAuthEnabled {
 		req.WeComOAuthCorpID = strings.TrimSpace(firstNonEmpty(req.WeComOAuthCorpID, previousSettings.WeComOAuthCorpID))
 		req.WeComOAuthAgentID = strings.TrimSpace(firstNonEmpty(req.WeComOAuthAgentID, previousSettings.WeComOAuthAgentID))
-		req.WeComOAuthSecret = strings.TrimSpace(firstNonEmpty(req.WeComOAuthSecret, previousSettings.WeComOAuthSecret))
+		req.WeComOAuthSecret = strings.TrimSpace(req.WeComOAuthSecret)
+		if req.WeComOAuthSecret == "" {
+			req.WeComOAuthSecret = strings.TrimSpace(previousSettings.WeComOAuthSecret)
+		}
 		req.WeComOAuthScope = strings.TrimSpace(firstNonEmpty(req.WeComOAuthScope, previousSettings.WeComOAuthScope, "snsapi_base"))
 		req.WeComOAuthRedirectURL = strings.TrimSpace(firstNonEmpty(req.WeComOAuthRedirectURL, previousSettings.WeComOAuthRedirectURL))
 		req.WeComOAuthFrontendRedirectURL = strings.TrimSpace(firstNonEmpty(req.WeComOAuthFrontendRedirectURL, previousSettings.WeComOAuthFrontendRedirectURL, "/auth/wecom/callback"))
@@ -944,6 +954,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		}
 		if req.WeComOAuthSecret == "" {
 			response.BadRequest(c, "WeCom Secret is required when enabled")
+			return
+		}
+		if !looksLikeWeComOAuthSecret(req.WeComOAuthSecret) {
+			response.BadRequest(c, "WeCom Secret is invalid; paste the full app Secret or leave it empty to keep the existing value")
 			return
 		}
 		if req.WeComOAuthRedirectURL == "" {

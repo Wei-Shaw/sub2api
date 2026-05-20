@@ -75,6 +75,19 @@ func (s *UserRepoSuite) TestCreateAndRead_PreservesSignupSourceAndActivityTimest
 	s.Require().True(got.LastActiveAt.Equal(lastActiveAt))
 }
 
+func (s *UserRepoSuite) TestCreate_PreservesAllAuthSignupSources() {
+	for _, signupSource := range []string{"wecom", "github", "google"} {
+		created := s.mustCreateUser(&service.User{
+			Email:        signupSource + "-identity-meta@example.com",
+			SignupSource: signupSource,
+		})
+
+		got, err := s.repo.GetByID(s.ctx, created.ID)
+		s.Require().NoError(err)
+		s.Require().Equal(signupSource, got.SignupSource)
+	}
+}
+
 func (s *UserRepoSuite) TestUpdate_PersistsSignupSourceAndActivityTimestamps() {
 	created := s.mustCreateUser(&service.User{Email: "identity-update@example.com"})
 	lastLoginAt := time.Now().Add(-90 * time.Minute).UTC().Truncate(time.Microsecond)

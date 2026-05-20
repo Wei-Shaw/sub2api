@@ -107,6 +107,16 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/auth/wecom/mobile',
+    name: 'WeComMobileOAuth',
+    component: () => import('@/views/auth/WeComMobileOAuthView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'WeCom Mobile OAuth',
+      titleKey: 'auth.wecomCallbackPageTitle'
+    }
+  },
+  {
     path: '/auth/wechat/payment/callback',
     name: 'WeChatPaymentOAuthCallback',
     component: () => import('@/views/auth/WechatPaymentCallbackView.vue'),
@@ -685,6 +695,7 @@ const BACKEND_MODE_CALLBACK_PATHS = [
   '/auth/oidc/callback',
   '/auth/wechat/callback',
   '/auth/wecom/callback',
+  '/auth/wecom/mobile',
   '/auth/wechat/payment/callback',
 ]
 const BACKEND_MODE_PENDING_AUTH_PATHS = ['/register', '/email-verify']

@@ -20,6 +20,7 @@ var authProviderTypes = map[string]struct{}{
 	"google":  {},
 	"linuxdo": {},
 	"oidc":    {},
+	"wecom":   {},
 	"wechat":  {},
 }
 

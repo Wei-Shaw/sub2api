@@ -157,6 +157,10 @@ export function buildOAuthBindingStartURL(
     params.set('mode', mode)
   }
 
+  if (provider === 'wecom') {
+    return `/auth/wecom/mobile?${params.toString()}`
+  }
+
   return `${normalized}/auth/oauth/${provider}/bind/start?${params.toString()}`
 }
 
