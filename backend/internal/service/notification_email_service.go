@@ -382,7 +382,7 @@ func (s *NotificationEmailService) Send(ctx context.Context, input NotificationE
 
 	deliveryKey := notificationEmailDeliveryKey(normalizedEvent, input.SourceType, input.SourceID, recipient, input.ReminderKey)
 	if deliveryKey != "" {
-		sent, err := s.deliveryExists(ctx, deliveryKey)
+		sent, err := s.deliveryExists(ctx, deliveryKey, legacyNotificationEmailDeliveryKey(normalizedEvent, input.SourceType, input.SourceID, recipient, input.ReminderKey))
 		if err != nil {
 			return err
 		}
@@ -398,7 +398,9 @@ func (s *NotificationEmailService) Send(ctx context.Context, input NotificationE
 		return notificationEmailDeliveryErr(err)
 	}
 	if deliveryKey != "" {
-		_ = s.settingRepo.Set(ctx, deliveryKey, time.Now().UTC().Format(time.RFC3339Nano))
+		if err := s.settingRepo.Set(ctx, deliveryKey, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -441,14 +443,19 @@ func (s *NotificationEmailService) IsUnsubscribed(ctx context.Context, email, ev
 	if !info.Optional {
 		return false, nil
 	}
-	value, err := s.settingRepo.GetValue(ctx, notificationEmailPreferenceKey(normalizedEvent, email))
-	if err != nil {
-		if errors.Is(err, ErrSettingNotFound) {
-			return false, nil
+	for _, key := range []string{notificationEmailPreferenceKey(normalizedEvent, email), legacyNotificationEmailPreferenceKey(normalizedEvent, email)} {
+		if strings.TrimSpace(key) == "" {
+			continue
 		}
-		return false, err
+		value, err := s.settingRepo.GetValue(ctx, key)
+		if err == nil {
+			return strings.EqualFold(strings.TrimSpace(value), "unsubscribed"), nil
+		}
+		if !errors.Is(err, ErrSettingNotFound) {
+			return false, err
+		}
 	}
-	return strings.EqualFold(strings.TrimSpace(value), "unsubscribed"), nil
+	return false, nil
 }
 
 func (s *NotificationEmailService) Unsubscribe(ctx context.Context, token string) (NotificationEmailUnsubscribeResult, error) {
@@ -610,15 +617,20 @@ func (s *NotificationEmailService) unsubscribeSecret(ctx context.Context) (strin
 	return secret, nil
 }
 
-func (s *NotificationEmailService) deliveryExists(ctx context.Context, key string) (bool, error) {
-	_, err := s.settingRepo.GetValue(ctx, key)
-	if err == nil {
-		return true, nil
+func (s *NotificationEmailService) deliveryExists(ctx context.Context, keys ...string) (bool, error) {
+	for _, key := range keys {
+		if strings.TrimSpace(key) == "" {
+			continue
+		}
+		_, err := s.settingRepo.GetValue(ctx, key)
+		if err == nil {
+			return true, nil
+		}
+		if !errors.Is(err, ErrSettingNotFound) {
+			return false, err
+		}
 	}
-	if errors.Is(err, ErrSettingNotFound) {
-		return false, nil
-	}
-	return false, err
+	return false, nil
 }
 
 func validateNotificationEmailTemplate(event, subject, htmlBody string) error {
@@ -749,10 +761,32 @@ func notificationEmailTemplateKey(event, locale string) string {
 }
 
 func notificationEmailPreferenceKey(event, email string) string {
+	if strings.TrimSpace(event) == "" || strings.TrimSpace(email) == "" {
+		return ""
+	}
+	identity := strings.TrimSpace(event) + "\x00" + strings.ToLower(strings.TrimSpace(email))
+	return notificationEmailPreferenceKeyPrefix + "v2:" + notificationEmailHash(identity)
+}
+
+func legacyNotificationEmailPreferenceKey(event, email string) string {
 	return notificationEmailPreferenceKeyPrefix + event + ":" + notificationEmailHash(email)
 }
 
 func notificationEmailDeliveryKey(event, sourceType, sourceID, recipient, reminderKey string) string {
+	if strings.TrimSpace(sourceType) == "" || strings.TrimSpace(sourceID) == "" || strings.TrimSpace(recipient) == "" {
+		return ""
+	}
+	identity := strings.Join([]string{
+		strings.ToLower(strings.TrimSpace(event)),
+		safeNotificationEmailKeyPart(sourceType),
+		safeNotificationEmailKeyPart(sourceID),
+		strings.ToLower(strings.TrimSpace(recipient)),
+		safeNotificationEmailKeyPart(reminderKey),
+	}, "\x00")
+	return notificationEmailDeliveryKeyPrefix + "v2:" + notificationEmailHash(identity)
+}
+
+func legacyNotificationEmailDeliveryKey(event, sourceType, sourceID, recipient, reminderKey string) string {
 	if strings.TrimSpace(sourceType) == "" || strings.TrimSpace(sourceID) == "" || strings.TrimSpace(recipient) == "" {
 		return ""
 	}

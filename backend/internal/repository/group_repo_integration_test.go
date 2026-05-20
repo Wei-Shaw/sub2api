@@ -714,9 +714,9 @@ func (s *GroupRepoSuite) TestListWithFilters_ActiveAccountCount_LessThanTotal() 
 	s.Assert().Equal(found.ActiveAccountCount, active, "GetAccountCount active must match ListWithFilters ActiveAccountCount")
 }
 
-// TestListWithFilters_RateLimitedAccountCount 验证 RateLimitedAccountCount 正确统计临时受限账号。
-// 受限账号（rate_limit_reset_at 尚未过期）仍然计入 ActiveAccountCount，
-// 同时额外出现在 RateLimitedAccountCount 中。
+// TestListWithFilters_RateLimitedAccountCount 验证临时受限账号不会计入可用账号数。
+// rate_limit / overload / temp_unschedulable 都会让账号退出当前调度池，
+// 因此 ActiveAccountCount 必须与真实调度查询口径一致。
 func (s *GroupRepoSuite) TestListWithFilters_RateLimitedAccountCount() {
 	g := &service.Group{
 		Name:             "g-rate-limited",
@@ -740,6 +740,24 @@ func (s *GroupRepoSuite) TestListWithFilters_RateLimitedAccountCount() {
 		[]any{"acc-rate-limited", service.PlatformAnthropic, service.AccountTypeOAuth},
 		&rateLimitedID))
 
+	var overloadedID int64
+	s.Require().NoError(scanSingleRow(s.ctx, s.tx,
+		"INSERT INTO accounts (name, platform, type, overload_until) VALUES ($1, $2, $3, NOW() + INTERVAL '1 hour') RETURNING id",
+		[]any{"acc-overloaded", service.PlatformAnthropic, service.AccountTypeOAuth},
+		&overloadedID))
+
+	var tempUnschedulableID int64
+	s.Require().NoError(scanSingleRow(s.ctx, s.tx,
+		"INSERT INTO accounts (name, platform, type, temp_unschedulable_until) VALUES ($1, $2, $3, NOW() + INTERVAL '1 hour') RETURNING id",
+		[]any{"acc-temp-unschedulable", service.PlatformAnthropic, service.AccountTypeOAuth},
+		&tempUnschedulableID))
+
+	var expiredID int64
+	s.Require().NoError(scanSingleRow(s.ctx, s.tx,
+		"INSERT INTO accounts (name, platform, type, expires_at, auto_pause_on_expired) VALUES ($1, $2, $3, NOW() - INTERVAL '1 hour', TRUE) RETURNING id",
+		[]any{"acc-expired", service.PlatformAnthropic, service.AccountTypeOAuth},
+		&expiredID))
+
 	_, err := s.tx.ExecContext(s.ctx,
 		"INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())",
 		normalID, g.ID, 1)
@@ -747,6 +765,18 @@ func (s *GroupRepoSuite) TestListWithFilters_RateLimitedAccountCount() {
 	_, err = s.tx.ExecContext(s.ctx,
 		"INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())",
 		rateLimitedID, g.ID, 2)
+	s.Require().NoError(err)
+	_, err = s.tx.ExecContext(s.ctx,
+		"INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())",
+		overloadedID, g.ID, 3)
+	s.Require().NoError(err)
+	_, err = s.tx.ExecContext(s.ctx,
+		"INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())",
+		tempUnschedulableID, g.ID, 4)
+	s.Require().NoError(err)
+	_, err = s.tx.ExecContext(s.ctx,
+		"INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())",
+		expiredID, g.ID, 5)
 	s.Require().NoError(err)
 
 	isExclusive := false
@@ -763,10 +793,20 @@ func (s *GroupRepoSuite) TestListWithFilters_RateLimitedAccountCount() {
 		}
 	}
 	s.Require().NotNil(found, "created group must appear in ListWithFilters result")
-	s.Assert().Equal(int64(2), found.AccountCount, "AccountCount must be 2")
-	// rate-limited account is still active+schedulable, so it counts toward active
-	s.Assert().Equal(int64(2), found.ActiveAccountCount, "rate-limited account still counts as active")
-	s.Assert().Equal(int64(1), found.RateLimitedAccountCount, "RateLimitedAccountCount must be 1")
+	s.Assert().Equal(int64(5), found.AccountCount, "AccountCount must include all linked accounts")
+	s.Assert().Equal(int64(1), found.ActiveAccountCount, "ActiveAccountCount must include only currently schedulable accounts")
+	s.Assert().Equal(int64(3), found.RateLimitedAccountCount, "RateLimitedAccountCount must include temporarily limited accounts")
+
+	total, active, err := s.repo.GetAccountCount(s.ctx, g.ID)
+	s.Require().NoError(err)
+	s.Assert().Equal(found.AccountCount, total, "GetAccountCount total must match ListWithFilters AccountCount")
+	s.Assert().Equal(found.ActiveAccountCount, active, "GetAccountCount active must match ListWithFilters ActiveAccountCount")
+
+	detail, err := s.repo.GetByID(s.ctx, g.ID)
+	s.Require().NoError(err)
+	s.Assert().Equal(found.AccountCount, detail.AccountCount, "GetByID AccountCount must match ListWithFilters")
+	s.Assert().Equal(found.ActiveAccountCount, detail.ActiveAccountCount, "GetByID ActiveAccountCount must match ListWithFilters")
+	s.Assert().Equal(found.RateLimitedAccountCount, detail.RateLimitedAccountCount, "GetByID RateLimitedAccountCount must match ListWithFilters")
 }
 
 // --- DeleteAccountGroupsByGroupID ---
