@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/rand/v2"
 	"net/http"
@@ -127,6 +128,13 @@ const (
 	maxBackoff = 2 * time.Second
 )
 
+const billingEligibilityMaxAttempts = 3
+
+var billingEligibilityRetryBackoffs = [...]time.Duration{
+	100 * time.Millisecond,
+	300 * time.Millisecond,
+}
+
 // SSEPingFormat defines the format of SSE ping events for different platforms
 type SSEPingFormat string
 
@@ -193,6 +201,72 @@ func wrapReleaseOnDone(ctx context.Context, releaseFunc func()) func() {
 	stop = context.AfterFunc(ctx, release)
 
 	return release
+}
+
+func checkBillingEligibilityWithRetry(ctx context.Context, billingCacheService *service.BillingCacheService, user *service.User, apiKey *service.APIKey, group *service.Group, subscription *service.UserSubscription) error {
+	return retryBillingEligibility(ctx, func(ctx context.Context) error {
+		return billingCacheService.CheckBillingEligibility(ctx, user, apiKey, group, subscription)
+	}, billingEligibilityRetryBackoffs[:])
+}
+
+func retryBillingEligibility(ctx context.Context, check func(context.Context) error, backoffs []time.Duration) error {
+	for attempt := 0; attempt < billingEligibilityMaxAttempts; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		err := check(ctx)
+		if err == nil {
+			return nil
+		}
+		if !errors.Is(err, service.ErrBillingServiceUnavailable) {
+			return err
+		}
+		if attempt == billingEligibilityMaxAttempts-1 {
+			return err
+		}
+		if err := waitBillingEligibilityRetryBackoff(ctx, attempt, backoffs); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func waitBillingEligibilityRetryBackoff(ctx context.Context, attempt int, backoffs []time.Duration) error {
+	delay := billingEligibilityRetryDelay(attempt, backoffs)
+	if delay <= 0 {
+		return nil
+	}
+
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+func billingEligibilityRetryDelay(attempt int, backoffs []time.Duration) time.Duration {
+	if attempt < 0 || attempt >= len(backoffs) {
+		return 0
+	}
+	base := backoffs[attempt]
+	if base <= 0 {
+		return 0
+	}
+	jitter := base / 10
+	if jitter <= 0 {
+		return base
+	}
+	delta := time.Duration(rand.Int64N(int64(jitter)*2+1)) - jitter
+	delay := base + delta
+	if delay < 0 {
+		return 0
+	}
+	return delay
 }
 
 // IncrementWaitCount increments the wait count for a user
