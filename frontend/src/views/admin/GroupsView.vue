@@ -1692,7 +1692,7 @@
           />
           <p class="input-hint">{{ t("admin.groups.form.rpmLimitHint") }}</p>
         </div>
-        <div v-if="editForm.subscription_type !== 'subscription'">
+        <div v-if="isEditExclusiveToggleVisible(editForm.subscription_type)">
           <div class="mb-1.5 flex items-center gap-1">
             <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
               {{ t("admin.groups.form.exclusive") }}
@@ -2863,6 +2863,7 @@ import {
   type MessagesDispatchMappingRow,
 } from "./groupsMessagesDispatch";
 import { normalizeSupportedModelScopesForPlatform } from "./groupsSupportedModelScopes";
+import { isEditExclusiveToggleVisible } from "./groupsEditExclusiveToggle";
 
 const { t } = useI18n();
 const appStore = useAppStore();
