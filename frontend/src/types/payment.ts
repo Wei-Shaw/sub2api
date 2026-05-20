@@ -97,7 +97,7 @@ export interface PaymentOrder {
 
 // ==================== Plans & Channels ====================
 
-export type SubscriptionPurchaseAction = 'new' | 'extend' | 'upgrade' | 'blocked_downgrade'
+export type SubscriptionPurchaseAction = 'new' | 'extend'
 
 export interface SubscriptionPurchaseQuote {
   action: SubscriptionPurchaseAction

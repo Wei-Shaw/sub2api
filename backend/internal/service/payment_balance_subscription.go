@@ -24,9 +24,6 @@ func (s *PaymentService) PurchaseSubscriptionWithBalance(ctx context.Context, us
 	if err != nil {
 		return nil, err
 	}
-	if quote.Blocked {
-		return nil, infraerrors.Conflict("SUBSCRIPTION_DOWNGRADE_NOT_ALLOWED", quote.Reason)
-	}
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("get user: %w", err)

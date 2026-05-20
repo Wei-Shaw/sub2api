@@ -301,11 +301,18 @@ function getProgressBarClass(used: number | undefined, limit: number | null | un
   return 'bg-green-500'
 }
 
-function formatExpirationDate(expiresAt: string): string {
-  const now = new Date()
+function getCalendarDaysRemaining(expiresAt: string): number {
   const expires = new Date(expiresAt)
-  const diff = expires.getTime() - now.getTime()
-  const days = Math.ceil(diff / (1000 * 60 * 60 * 24))
+  if (Number.isNaN(expires.getTime())) return 0
+  const now = new Date()
+  const expiresDay = Date.UTC(expires.getFullYear(), expires.getMonth(), expires.getDate())
+  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())
+  return Math.round((expiresDay - today) / (1000 * 60 * 60 * 24))
+}
+
+function formatExpirationDate(expiresAt: string): string {
+  const expires = new Date(expiresAt)
+  const days = getCalendarDaysRemaining(expiresAt)
 
   if (days < 0) {
     return t('userSubscriptions.status.expired')
@@ -324,10 +331,7 @@ function formatExpirationDate(expiresAt: string): string {
 }
 
 function getExpirationClass(expiresAt: string): string {
-  const now = new Date()
-  const expires = new Date(expiresAt)
-  const diff = expires.getTime() - now.getTime()
-  const days = Math.ceil(diff / (1000 * 60 * 60 * 24))
+  const days = getCalendarDaysRemaining(expiresAt)
 
   if (days <= 0) return 'text-red-600 dark:text-red-400 font-medium'
   if (days <= 3) return 'text-red-600 dark:text-red-400'

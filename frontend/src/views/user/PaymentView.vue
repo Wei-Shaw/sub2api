@@ -35,7 +35,7 @@
                   <p class="text-xs text-gray-400">当前可用余额</p>
                   <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">${{ user?.balance?.toFixed(2) || '0.00' }}</p>
                 </div>
-                <button class="mt-4 w-full rounded-xl bg-gray-900 py-3 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50 dark:bg-white dark:text-gray-900" :disabled="submitting || selectedPlan.purchase_quote?.blocked" @click="purchaseSelectedPlanWithBalance">
+                <button class="mt-4 w-full rounded-xl bg-gray-900 py-3 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50 dark:bg-white dark:text-gray-900" :disabled="submitting" @click="purchaseSelectedPlanWithBalance">
                   <span v-if="submitting">购买中...</span><span v-else>{{ planButtonText(selectedPlan) }}</span>
                 </button>
                 <p class="mt-3 text-xs leading-5 text-gray-400">余额不足时，请联系 QQ 591719412 充值后再购买。</p>
@@ -104,9 +104,7 @@
                   <div class="mb-4">
                     <div class="flex items-center justify-between"><span class="text-base font-bold text-gray-900 dark:text-white">{{ plan.name }}</span><span class="rounded-md bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-700 dark:text-gray-400">{{ platformLabel(plan.group_platform || '') }}</span></div>
                     <div class="mt-2 flex items-baseline gap-2"><span v-if="plan.original_price" class="text-xs text-gray-400 line-through">&yen;{{ plan.original_price }}</span><span class="text-2xl font-bold text-gray-900 dark:text-white">&yen;{{ planDisplayAmount(plan) }}</span><span class="text-xs text-gray-400">{{ planPriceSuffix(plan) }}</span></div>
-                    <p v-if="plan.purchase_quote?.action === 'upgrade'" class="mt-1 text-xs text-blue-600 dark:text-blue-400">升档补差价，剩余时间按秒折算</p>
-                    <p v-else-if="plan.purchase_quote?.action === 'extend'" class="mt-1 text-xs text-green-600 dark:text-green-400">当前套餐，购买后自动延期</p>
-                    <p v-else-if="plan.purchase_quote?.blocked" class="mt-1 text-xs text-amber-600 dark:text-amber-400">{{ plan.purchase_quote.reason || '当前只支持升档' }}</p>
+                    <p v-if="plan.purchase_quote?.action === 'extend'" class="mt-1 text-xs text-green-600 dark:text-green-400">当前套餐，购买后自动延期</p>
                     <p v-else-if="plan.original_price" class="mt-1 text-xs text-gray-400">立省 &yen;{{ (plan.original_price - plan.price).toFixed(0) }}</p>
                   </div>
                   <div class="mb-4 space-y-2 text-sm text-gray-500 dark:text-gray-400">
@@ -118,7 +116,7 @@
                       </li>
                     </ul>
                   </div>
-                  <button class="w-full rounded-xl py-2.5 text-sm font-medium transition-colors disabled:opacity-50" :class="plan._recommended ? 'bg-gray-900 text-white hover:bg-gray-800 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100' : 'border border-gray-200 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700'" :disabled="submitting || plan.purchase_quote?.blocked" @click="purchasePlanWithBalance(plan)">
+                  <button class="w-full rounded-xl py-2.5 text-sm font-medium transition-colors disabled:opacity-50" :class="plan._recommended ? 'bg-gray-900 text-white hover:bg-gray-800 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100' : 'border border-gray-200 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700'" :disabled="submitting" @click="purchasePlanWithBalance(plan)">
                     <span v-if="submitting && selectedPlan?.id === plan.id">购买中...</span><span v-else>{{ planButtonText(plan) }}</span>
                   </button>
                 </div>
@@ -207,8 +205,12 @@ const user = computed(() => authStore.user)
 const activeSubscriptions = computed(() => subscriptionStore.activeSubscriptions)
 
 function getDaysRemaining(expiresAt: string): number {
-  const diff = new Date(expiresAt).getTime() - Date.now()
-  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)))
+  const expires = new Date(expiresAt)
+  if (Number.isNaN(expires.getTime())) return 0
+  const now = new Date()
+  const expiresDay = Date.UTC(expires.getFullYear(), expires.getMonth(), expires.getDate())
+  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())
+  return Math.max(0, Math.round((expiresDay - today) / (1000 * 60 * 60 * 24)))
 }
 
 const loading = ref(true)
@@ -241,9 +243,6 @@ const balancePurchaseConfirmMessage = computed(() => {
   const action = plan.purchase_quote?.action
   const amount = planDisplayAmount(plan)
   const balance = user.value?.balance?.toFixed?.(2) || '0.00'
-  if (action === 'upgrade') {
-    return `确认将当前套餐升档为「${plan.name}」吗？本次将从账户余额扣除 $${amount}，升档后当前周期已使用量会保留。当前余额 $${balance}。`
-  }
   if (action === 'extend') {
     return `确认续费「${plan.name}」吗？本次将从账户余额扣除 $${amount}，购买成功后自动延长 ${plan.validity_days} 天。当前余额 $${balance}。`
   }
@@ -485,15 +484,11 @@ function planDisplayAmount(plan: SubscriptionPlan): string {
 }
 
 function planPriceSuffix(plan: SubscriptionPlan): string {
-  if (plan.purchase_quote?.action === 'upgrade') return '升档补差价'
   if (plan.purchase_quote?.action === 'extend') return `/${plan.validity_days}天延期`
-  if (plan.purchase_quote?.blocked) return '不可降档'
   return `/${plan.validity_days}天`
 }
 
 function planButtonText(plan: SubscriptionPlan): string {
-  if (plan.purchase_quote?.blocked) return '不可降档'
-  if (plan.purchase_quote?.action === 'upgrade') return '余额升档'
   if (plan.purchase_quote?.action === 'extend') return '余额延期'
   return '余额购买'
 }
@@ -529,7 +524,7 @@ async function purchaseSelectedPlanWithBalance() {
 }
 
 function openBalancePurchaseConfirm(plan: SubscriptionPlan) {
-  if (!plan || submitting.value || plan.purchase_quote?.blocked) return
+  if (!plan || submitting.value) return
   selectedPlan.value = plan
   pendingBalancePlan.value = plan
   showBalancePurchaseConfirm.value = true

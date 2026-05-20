@@ -55,9 +55,6 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 		if err != nil {
 			return nil, err
 		}
-		if quote.Blocked {
-			return nil, infraerrors.Conflict("SUBSCRIPTION_DOWNGRADE_NOT_ALLOWED", quote.Reason)
-		}
 		orderAmount = quote.Amount
 		limitAmount = quote.Amount
 	} else if req.OrderType == payment.OrderTypeBalance {

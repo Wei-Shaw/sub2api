@@ -2,20 +2,16 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"math"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
-	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
 const (
-	SubscriptionPurchaseActionNew              = "new"
-	SubscriptionPurchaseActionExtend           = "extend"
-	SubscriptionPurchaseActionUpgrade          = "upgrade"
-	SubscriptionPurchaseActionBlockedDowngrade = "blocked_downgrade"
+	SubscriptionPurchaseActionNew    = "new"
+	SubscriptionPurchaseActionExtend = "extend"
 )
 
 const subscriptionBillingMonthSeconds = 30 * 24 * 60 * 60
@@ -66,83 +62,26 @@ func (s *PaymentService) quoteSubscriptionPlanPurchaseForPlan(ctx context.Contex
 		return quote, nil
 	}
 
-	groupIDs := make([]int64, 0, len(subs))
-	seen := map[int64]bool{}
-	for _, sub := range subs {
-		if !seen[sub.GroupID] {
-			seen[sub.GroupID] = true
-			groupIDs = append(groupIDs, sub.GroupID)
-		}
-	}
-	plans, err := s.entClient.SubscriptionPlan.Query().
-		Where(subscriptionplan.GroupIDIn(groupIDs...), subscriptionplan.ForSaleEQ(true)).
-		All(ctx)
-	if err != nil {
-		return nil, err
-	}
-	planByGroup := make(map[int64]*dbent.SubscriptionPlan, len(plans))
-	for _, p := range plans {
-		if current, ok := planByGroup[p.GroupID]; !ok || normalizedMonthlyPlanPrice(p) > normalizedMonthlyPlanPrice(current) {
-			planByGroup[p.GroupID] = p
-		}
-	}
-
-	var currentSub *UserSubscription
-	var currentPlan *dbent.SubscriptionPlan
 	for i := range subs {
-		sub := &subs[i]
-		p := planByGroup[sub.GroupID]
-		if p == nil {
-			continue
+		if subs[i].GroupID == target.GroupID {
+			quote.Action = SubscriptionPurchaseActionExtend
+			quote.Amount = roundMoney(target.Price)
+			quote.DisplayAmount = quote.Amount
+			quote.CurrentPlanID = target.ID
+			quote.CurrentPlanName = target.Name
+			quote.CurrentGroupID = target.GroupID
+			quote.CurrentExpiresAt = &subs[i].ExpiresAt
+			remaining := int64(subs[i].ExpiresAt.Sub(time.Now()).Seconds())
+			if remaining < 0 {
+				remaining = 0
+			}
+			quote.RemainingSeconds = remaining
+			quote.CurrentMonthlyPrice = normalizedMonthlyPlanPrice(target)
+			quote.TargetMonthlyPrice = normalizedMonthlyPlanPrice(target)
+			return quote, nil
 		}
-		if currentSub == nil || normalizedMonthlyPlanPrice(p) > normalizedMonthlyPlanPrice(currentPlan) {
-			currentSub = sub
-			currentPlan = p
-		}
-	}
-	if currentSub == nil || currentPlan == nil {
-		return quote, nil
 	}
 
-	now := time.Now()
-	remaining := int64(currentSub.ExpiresAt.Sub(now).Seconds())
-	if remaining < 0 {
-		remaining = 0
-	}
-	quote.CurrentPlanID = currentPlan.ID
-	quote.CurrentPlanName = currentPlan.Name
-	quote.CurrentGroupID = currentSub.GroupID
-	quote.CurrentExpiresAt = &currentSub.ExpiresAt
-	quote.RemainingSeconds = remaining
-	quote.CurrentMonthlyPrice = normalizedMonthlyPlanPrice(currentPlan)
-	quote.TargetMonthlyPrice = normalizedMonthlyPlanPrice(target)
-
-	if currentSub.GroupID == target.GroupID {
-		quote.Action = SubscriptionPurchaseActionExtend
-		quote.Amount = roundMoney(target.Price)
-		quote.DisplayAmount = quote.Amount
-		return quote, nil
-	}
-
-	priceDelta := quote.TargetMonthlyPrice - quote.CurrentMonthlyPrice
-	if priceDelta <= 0 {
-		quote.Action = SubscriptionPurchaseActionBlockedDowngrade
-		quote.Blocked = true
-		quote.Reason = "当前只支持升档；低档套餐不能直接购买或预约降档。"
-		quote.Amount = 0
-		quote.DisplayAmount = 0
-		return quote, nil
-	}
-
-	rawFee := priceDelta * float64(remaining) / subscriptionBillingMonthSeconds
-	fee := math.Ceil(rawFee)
-	if fee < 1 {
-		fee = 1
-	}
-	quote.Action = SubscriptionPurchaseActionUpgrade
-	quote.Amount = fee
-	quote.DisplayAmount = fee
-	quote.RemainingCredit = math.Max(0, quote.CurrentMonthlyPrice*float64(remaining)/subscriptionBillingMonthSeconds)
 	return quote, nil
 }
 
@@ -151,50 +90,8 @@ func (s *PaymentService) ApplySubscriptionPlanPurchase(ctx context.Context, user
 	if err != nil {
 		return nil, "", err
 	}
-	if quote.Blocked {
-		return nil, quote.Action, infraerrors.Conflict("SUBSCRIPTION_DOWNGRADE_NOT_ALLOWED", quote.Reason)
-	}
-	if quote.Action != SubscriptionPurchaseActionUpgrade {
-		sub, _, err := s.subscriptionSvc.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{UserID: userID, GroupID: plan.GroupID, ValidityDays: psComputeValidityDays(plan.ValidityDays, plan.ValidityUnit), AssignedBy: 0, Notes: notes})
-		return sub, quote.Action, err
-	}
-
-	current, err := s.subscriptionSvc.userSubRepo.GetByUserIDAndGroupID(ctx, userID, quote.CurrentGroupID)
-	if err != nil {
-		return nil, quote.Action, err
-	}
-	// If an old row already exists for the target group, remove it first to avoid the soft-delete-aware unique constraint.
-	if existingTarget, targetErr := s.subscriptionSvc.userSubRepo.GetByUserIDAndGroupID(ctx, userID, plan.GroupID); targetErr == nil && existingTarget != nil && existingTarget.ID != current.ID {
-		if existingTarget.IsActive() {
-			return existingTarget, quote.Action, nil
-		}
-		if err := s.subscriptionSvc.userSubRepo.Delete(ctx, existingTarget.ID); err != nil {
-			return nil, quote.Action, fmt.Errorf("remove old target subscription: %w", err)
-		}
-	}
-	oldGroupID := current.GroupID
-	current.GroupID = plan.GroupID
-	if notes != "" {
-		if current.Notes != "" {
-			current.Notes += "\n"
-		}
-		current.Notes += notes
-	}
-	if err := s.subscriptionSvc.userSubRepo.Update(ctx, current); err != nil {
-		return nil, quote.Action, err
-	}
-	s.subscriptionSvc.InvalidateSubCache(userID, oldGroupID)
-	s.subscriptionSvc.InvalidateSubCache(userID, plan.GroupID)
-	if s.subscriptionSvc.billingCacheService != nil {
-		go func() {
-			cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			_ = s.subscriptionSvc.billingCacheService.InvalidateSubscription(cacheCtx, userID, oldGroupID)
-			_ = s.subscriptionSvc.billingCacheService.InvalidateSubscription(cacheCtx, userID, plan.GroupID)
-		}()
-	}
-	updated, err := s.subscriptionSvc.userSubRepo.GetByID(ctx, current.ID)
-	return updated, quote.Action, err
+	sub, _, err := s.subscriptionSvc.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{UserID: userID, GroupID: plan.GroupID, ValidityDays: psComputeValidityDays(plan.ValidityDays, plan.ValidityUnit), AssignedBy: 0, Notes: notes})
+	return sub, quote.Action, err
 }
 
 func normalizedMonthlyPlanPrice(plan *dbent.SubscriptionPlan) float64 {
