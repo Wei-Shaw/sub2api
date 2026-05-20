@@ -412,6 +412,15 @@ const (
 
 	// Web Search Emulation
 	SettingKeyWebSearchEmulationConfig = "web_search_emulation_config" // JSON 配置
+
+	// User Timezone Preference (用户时区偏好)
+	SettingKeyUserTimezonePrefix = "user_timezone:" // + userID
+
+	// Billing Statement Email (账单邮件)
+	SettingKeyBillingStatementEmailConfig = "billing_statement_email_config" // JSON 配置
+
+	// Billing Statement User Preference (用户账单邮件偏好)
+	SettingKeyBillingStatementUserPreferencePrefix = "billing_statement_user_pref:" // + userID
 )
 
 // AdminAPIKeyPrefix is the prefix for admin API keys (distinct from user "sk-" keys).

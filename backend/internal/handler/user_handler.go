@@ -50,6 +50,12 @@ type UpdateProfileRequest struct {
 	AvatarURL              *string  `json:"avatar_url"`
 	BalanceNotifyEnabled   *bool    `json:"balance_notify_enabled"`
 	BalanceNotifyThreshold *float64 `json:"balance_notify_threshold"`
+
+	// Billing statement email preferences
+	BillingStatementDailyEnabled   *bool   `json:"billing_statement_daily_enabled"`
+	BillingStatementWeeklyEnabled  *bool   `json:"billing_statement_weekly_enabled"`
+	BillingStatementMonthlyEnabled *bool   `json:"billing_statement_monthly_enabled"`
+	Timezone                       *string `json:"timezone"`
 }
 
 type userProfileResponse struct {
@@ -143,10 +149,14 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 	}
 
 	svcReq := service.UpdateProfileRequest{
-		Username:               req.Username,
-		AvatarURL:              req.AvatarURL,
-		BalanceNotifyEnabled:   req.BalanceNotifyEnabled,
-		BalanceNotifyThreshold: req.BalanceNotifyThreshold,
+		Username:                       req.Username,
+		AvatarURL:                      req.AvatarURL,
+		BalanceNotifyEnabled:           req.BalanceNotifyEnabled,
+		BalanceNotifyThreshold:         req.BalanceNotifyThreshold,
+		BillingStatementDailyEnabled:   req.BillingStatementDailyEnabled,
+		BillingStatementWeeklyEnabled:  req.BillingStatementWeeklyEnabled,
+		BillingStatementMonthlyEnabled: req.BillingStatementMonthlyEnabled,
+		Timezone:                       req.Timezone,
 	}
 	updatedUser, err := h.userService.UpdateProfile(c.Request.Context(), subject.UserID, svcReq)
 	if err != nil {

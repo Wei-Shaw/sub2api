@@ -58,6 +58,12 @@ type User struct {
 	// 避免每请求查 DB。字段不持久化到数据库。
 	UserGroupRPMOverride *int
 
+	// 账单邮件偏好（不持久化到 users 表，从 setting 表 hydrate）
+	BillingStatementDailyEnabled   bool
+	BillingStatementWeeklyEnabled  bool
+	BillingStatementMonthlyEnabled bool
+	Timezone                       string
+
 	APIKeys       []APIKey
 	Subscriptions []UserSubscription
 }

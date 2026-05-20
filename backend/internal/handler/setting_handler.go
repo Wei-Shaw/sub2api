@@ -86,7 +86,12 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 
 		AffiliateEnabled: settings.AffiliateEnabled,
 
-		RiskControlEnabled: settings.RiskControlEnabled,
+		RiskControlEnabled:             settings.RiskControlEnabled,
+		BillingStatementEmailEnabled:   settings.BillingStatementEmailEnabled,
+		BillingStatementDailyEnabled:   settings.BillingStatementDailyEnabled,
+		BillingStatementWeeklyEnabled:  settings.BillingStatementWeeklyEnabled,
+		BillingStatementMonthlyEnabled: settings.BillingStatementMonthlyEnabled,
+		ServerTimezone:                 settings.ServerTimezone,
 	})
 }
 

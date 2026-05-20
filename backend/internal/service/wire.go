@@ -517,6 +517,7 @@ var ProviderSet = wire.NewSet(
 	NewPaymentService,
 	ProvidePaymentOrderExpiryService,
 	ProvideBalanceNotifyService,
+	ProvideBillingStatementEmailService,
 	ProvideChannelMonitorService,
 	ProvideChannelMonitorRunner,
 	NewChannelMonitorRequestTemplateService,
@@ -547,6 +548,60 @@ func ProvideChannelMonitorService(
 	encryptor SecretEncryptor,
 ) *ChannelMonitorService {
 	return NewChannelMonitorService(repo, encryptor)
+}
+
+// ProvideBillingStatementEmailService creates and starts BillingStatementEmailService.
+func ProvideBillingStatementEmailService(
+	settingRepo SettingRepository,
+	userRepo UserRepository,
+	groupRepo GroupRepository,
+	usageRepo UsageLogRepository,
+	emailService *EmailService,
+	redisClient *redis.Client,
+	cfg *config.Config,
+) *BillingStatementEmailService {
+	svc := NewBillingStatementEmailService(settingRepo, userRepo, groupRepo, usageRepo, emailService, billingStatementRedisAdapter{client: redisClient}, cfg)
+	svc.Start()
+	return svc
+}
+
+type billingStatementRedisAdapter struct {
+	client *redis.Client
+}
+
+var billingStatementReleaseScript = redis.NewScript(`
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+  return redis.call("DEL", KEYS[1])
+end
+return 0
+`)
+
+func (a billingStatementRedisAdapter) SetNX(ctx context.Context, key string, value any, expiration time.Duration) (bool, error) {
+	if a.client == nil {
+		return false, nil
+	}
+	return a.client.SetNX(ctx, key, value, expiration).Result()
+}
+
+func (a billingStatementRedisAdapter) Get(ctx context.Context, key string) (string, error) {
+	if a.client == nil {
+		return "", nil
+	}
+	return a.client.Get(ctx, key).Result()
+}
+
+func (a billingStatementRedisAdapter) Set(ctx context.Context, key string, value any, expiration time.Duration) error {
+	if a.client == nil {
+		return nil
+	}
+	return a.client.Set(ctx, key, value, expiration).Err()
+}
+
+func (a billingStatementRedisAdapter) ReleaseIfValue(ctx context.Context, key string, value string) error {
+	if a.client == nil {
+		return nil
+	}
+	return billingStatementReleaseScript.Run(ctx, a.client, []string{key}, value).Err()
 }
 
 // ProvideChannelMonitorRunner 创建并启动渠道监控调度器。

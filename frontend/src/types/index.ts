@@ -93,6 +93,11 @@ export interface User {
   balance_notify_enabled: boolean
   balance_notify_threshold: number | null
   balance_notify_extra_emails: NotifyEmailEntry[]
+  timezone: string
+  // Billing statement email preferences
+  billing_statement_daily_enabled: boolean
+  billing_statement_weekly_enabled: boolean
+  billing_statement_monthly_enabled: boolean
   subscriptions?: UserSubscription[] // User's active subscriptions
   last_active_at?: string | null
   created_at: string
@@ -233,6 +238,11 @@ export interface PublicSettings {
   channel_monitor_default_interval_seconds: number
   available_channels_enabled: boolean
   affiliate_enabled: boolean
+  billing_statement_email_enabled: boolean
+  billing_statement_daily_enabled: boolean
+  billing_statement_weekly_enabled: boolean
+  billing_statement_monthly_enabled: boolean
+  server_timezone: string
 }
 
 export interface AuthResponse {

@@ -359,6 +359,11 @@ export const useAppStore = defineStore('app', () => {
         available_channels_enabled: false,
         risk_control_enabled: false,
         affiliate_enabled: false,
+        billing_statement_email_enabled: false,
+        billing_statement_daily_enabled: false,
+        billing_statement_weekly_enabled: false,
+        billing_statement_monthly_enabled: false,
+        server_timezone: 'UTC',
       }
     }
 
