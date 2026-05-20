@@ -230,6 +230,20 @@ type UserDashboardStats struct {
 	// 性能指标
 	Rpm int64 `json:"rpm"` // 近5分钟平均每分钟请求数
 	Tpm int64 `json:"tpm"` // 近5分钟平均每分钟Token数
+
+	// 按"有效平台"维度拆分（与 ops 路径口径一致：group.platform 优先，否则 account.platform）
+	ByPlatform []PlatformDashboardStats `json:"by_platform,omitempty"`
+}
+
+// PlatformDashboardStats 单个平台的用量明细。
+type PlatformDashboardStats struct {
+	Platform        string  `json:"platform"`
+	TotalRequests   int64   `json:"total_requests"`
+	TotalTokens     int64   `json:"total_tokens"`
+	TotalActualCost float64 `json:"total_actual_cost"`
+	TodayRequests   int64   `json:"today_requests"`
+	TodayTokens     int64   `json:"today_tokens"`
+	TodayActualCost float64 `json:"today_actual_cost"`
 }
 
 // UsageLogFilters represents filters for usage log queries
@@ -265,11 +279,20 @@ type UsageStats struct {
 	EndpointPaths     []EndpointStat `json:"endpoint_paths,omitempty"`
 }
 
-// BatchUserUsageStats represents usage stats for a single user
-type BatchUserUsageStats struct {
-	UserID          int64   `json:"user_id"`
+// PlatformUsage 表示某用户/某 API key 在单个"有效平台"维度的用量明细。
+// Platform 取值与 ops 路径口径一致：优先 groups.platform，否则 accounts.platform。
+type PlatformUsage struct {
+	Platform        string  `json:"platform"`
 	TodayActualCost float64 `json:"today_actual_cost"`
 	TotalActualCost float64 `json:"total_actual_cost"`
+}
+
+// BatchUserUsageStats represents usage stats for a single user
+type BatchUserUsageStats struct {
+	UserID          int64           `json:"user_id"`
+	TodayActualCost float64         `json:"today_actual_cost"`
+	TotalActualCost float64         `json:"total_actual_cost"`
+	ByPlatform      []PlatformUsage `json:"by_platform,omitempty"`
 }
 
 // BatchAPIKeyUsageStats represents usage stats for a single API key

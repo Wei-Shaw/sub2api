@@ -267,9 +267,8 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	// omits "model" — Realtime clients are allowed to send response.create
 	// without re-stating the model, in which case the upstream uses the model
 	// negotiated at session.update time. Without this fallback, an empty
-	// model would miss the default ["gpt-5.5","gpt-5.5*"] whitelist and be
-	// silently passed through, defeating the policy on every frame after
-	// the first.
+	// model would miss any admin-configured model whitelist and be silently
+	// passed through, defeating that policy on every frame after the first.
 	capturedSessionModel := openAIWSPassthroughPolicyModelForFrame(account, firstClientMessage)
 	initialRequestModel := ""
 	if hooks != nil {

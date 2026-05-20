@@ -406,9 +406,19 @@
             <div>
               <div class="mb-1 flex items-center justify-between">
                 <label class="input-label text-xs mb-0">{{ t('admin.channels.form.modelPricing', 'Model Pricing') }}</label>
-                <button type="button" @click="addPricingEntry(sIdx)" class="text-xs text-primary-600 hover:text-primary-700">
-                  + {{ t('common.add', 'Add') }}
-                </button>
+                <div class="flex items-center gap-2">
+                  <button
+                    type="button"
+                    @click="syncLatestModels(sIdx)"
+                    :disabled="syncingPlatform === section.platform"
+                    class="text-xs text-gray-500 hover:text-primary-600 disabled:opacity-50"
+                  >
+                    {{ syncingPlatform === section.platform ? t('admin.channels.form.syncingModels') : t('admin.channels.form.syncLatestModels') }}
+                  </button>
+                  <button type="button" @click="addPricingEntry(sIdx)" class="text-xs text-primary-600 hover:text-primary-700">
+                    + {{ t('common.add', 'Add') }}
+                  </button>
+                </div>
               </div>
               <div
                 v-if="section.model_pricing.length === 0"
@@ -832,6 +842,44 @@ function addPricingEntry(sectionIdx: number) {
     per_request_price: null,
     intervals: []
   })
+}
+
+const syncingPlatform = ref<string | null>(null)
+
+async function syncLatestModels(sectionIdx: number) {
+  const platform = form.platforms[sectionIdx].platform
+  if (syncingPlatform.value) return
+  syncingPlatform.value = platform
+  try {
+    const result = await adminAPI.channels.syncPricingModels(platform)
+    // Collect all model names already present in this platform's pricing entries
+    const existingModels = new Set<string>()
+    for (const entry of form.platforms[sectionIdx].model_pricing) {
+      for (const m of entry.models) existingModels.add(m)
+    }
+    const newModels = result.models.filter(m => !existingModels.has(m))
+    if (newModels.length === 0) {
+      appStore.showSuccess(t('admin.channels.form.syncModelsAlreadyUpToDate'))
+      return
+    }
+    // Add new models as a single new pricing entry (user fills in prices)
+    form.platforms[sectionIdx].model_pricing.push({
+      models: newModels,
+      billing_mode: 'token',
+      input_price: null,
+      output_price: null,
+      cache_write_price: null,
+      cache_read_price: null,
+      image_output_price: null,
+      per_request_price: null,
+      intervals: []
+    })
+    appStore.showSuccess(t('admin.channels.form.syncModelsSuccess', { count: newModels.length }))
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.channels.form.syncModelsError')))
+  } finally {
+    syncingPlatform.value = null
+  }
 }
 
 function updatePricingEntry(sectionIdx: number, idx: number, updated: PricingFormEntry) {
@@ -1418,7 +1466,7 @@ async function handleSubmit() {
   for (const section of form.platforms.filter(s => s.enabled)) {
     for (const entry of section.model_pricing) {
       if (!entry.intervals || entry.intervals.length === 0) continue
-      const intervalErr = validateIntervals(entry.intervals)
+      const intervalErr = validateIntervals(entry.intervals, entry.billing_mode)
       if (intervalErr) {
         const platformLabel = t('admin.groups.platforms.' + section.platform, section.platform)
         const modelLabel = entry.models.join(', ') || t('admin.channels.form.unnamed')

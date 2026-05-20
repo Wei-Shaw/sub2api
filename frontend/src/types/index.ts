@@ -34,7 +34,15 @@ export interface NotifyEmailEntry {
 
 // ==================== User & Auth Types ====================
 
-export type UserAuthProvider = 'email' | 'linuxdo' | 'oidc' | 'wechat' | 'wecom' | 'github' | 'google'
+export type UserAuthProvider =
+  | 'email'
+  | 'linuxdo'
+  | 'oidc'
+  | 'wechat'
+  | 'wecom'
+  | 'github'
+  | 'google'
+  | 'dingtalk'
 
 export interface UserAuthBindingStatus {
   bound?: boolean
@@ -216,6 +224,7 @@ export interface PublicSettings {
   custom_menu_items: CustomMenuItem[]
   custom_endpoints: CustomEndpoint[]
   linuxdo_oauth_enabled: boolean
+  dingtalk_oauth_enabled?: boolean
   wechat_oauth_enabled: boolean
   wechat_oauth_open_enabled?: boolean
   wechat_oauth_mp_enabled?: boolean
@@ -798,7 +807,12 @@ export interface Account {
   notes?: string | null
   platform: AccountPlatform
   type: AccountType
+  // 后端响应里 credentials 已脱敏：access_token / refresh_token / id_token /
+  // api_key / session_key / cookie / aws_secret_access_key / aws_session_token /
+  // service_account_json / service_account / private_key 不会出现，
+  // 改为通过 credentials_status.has_<key> 暴露存在性。
   credentials?: Record<string, unknown>
+  credentials_status?: Record<string, boolean>
   // Extra fields including Codex usage, OpenAI compact capability, and model-level rate limits.
   extra?: (CodexUsageSnapshot & OpenAICompactState & {
     model_rate_limits?: Record<string, { rate_limited_at: string; rate_limit_reset_at: string }>
@@ -973,6 +987,7 @@ export interface CodexUsageSnapshot {
 }
 
 export type OpenAICompactMode = 'auto' | 'force_on' | 'force_off'
+export type OpenAIResponsesMode = 'auto' | 'force_responses' | 'force_chat_completions'
 
 export interface OpenAICompactState {
   openai_compact_mode?: OpenAICompactMode
@@ -980,6 +995,11 @@ export interface OpenAICompactState {
   openai_compact_checked_at?: string
   openai_compact_last_status?: number
   openai_compact_last_error?: string
+}
+
+export interface OpenAIResponsesState {
+  openai_responses_mode?: OpenAIResponsesMode
+  openai_responses_supported?: boolean
 }
 
 export interface CreateAccountRequest {
@@ -1160,6 +1180,8 @@ export interface CodexSessionImportResult {
 
 export type RedeemCodeType = 'balance' | 'concurrency' | 'subscription' | 'invitation'
 export type UsageRequestType = 'unknown' | 'sync' | 'stream' | 'ws_v2'
+export type ImageSizeSource = 'output' | 'input' | 'default' | 'legacy'
+export type ImageSizeBreakdown = Record<string, number>
 
 export interface UsageLog {
   id: number
@@ -1201,6 +1223,10 @@ export interface UsageLog {
   // 图片生成字段
   image_count: number
   image_size: string | null
+  image_input_size: string | null
+  image_output_size: string | null
+  image_size_source: ImageSizeSource | null
+  image_size_breakdown: ImageSizeBreakdown | null
 
   // User-Agent
   user_agent: string | null
@@ -1281,6 +1307,7 @@ export interface RedeemCode {
   used_by: number | null
   used_at: string | null
   created_at: string
+  expires_at?: string | null
   updated_at?: string
   group_id?: number | null // 订阅类型专用
   validity_days?: number // 订阅类型专用
@@ -1294,6 +1321,8 @@ export interface GenerateRedeemCodesRequest {
   value: number
   group_id?: number | null // 订阅类型专用
   validity_days?: number // 订阅类型专用
+  expires_at?: string | null
+  expires_in_days?: number
 }
 
 export interface RedeemCodeRequest {
@@ -1486,6 +1515,7 @@ export interface UserSubscription {
   user_id: number
   group_id: number
   status: 'active' | 'expired' | 'revoked'
+  starts_at: string
   daily_usage_usd: number
   weekly_usage_usd: number
   monthly_usage_usd: number

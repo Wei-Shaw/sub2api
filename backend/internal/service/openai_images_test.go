@@ -149,9 +149,9 @@ func TestOpenAIGatewayServiceParseOpenAIImagesRequest_NormalizesOfficialAndCusto
 		{size: "2048x1152", wantTier: "2K"},
 		{size: "3840x2160", wantTier: "4K"},
 		{size: "2160x3840", wantTier: "4K"},
-		{size: "1024X768", wantTier: "2K"},
+		{size: "1024X768", wantTier: "1K"},
 		{size: "1280x768", wantTier: "2K"},
-		{size: "2560x1440", wantTier: "2K"},
+		{size: "2560x1440", wantTier: "4K"},
 		{size: "2560x1600", wantTier: "4K"},
 		{size: "auto", wantTier: "2K"},
 	}
@@ -186,7 +186,7 @@ func TestOpenAIGatewayServiceParseOpenAIImagesRequest_UnknownSizesDoNotBlockPass
 		{size: "2048x1153", wantTier: "2K"},
 		{size: "4096x1024", wantTier: "4K"},
 		{size: "3840x1024", wantTier: "4K"},
-		{size: "512x512", wantTier: "2K"},
+		{size: "512x512", wantTier: "1K"},
 		{size: "invalid", wantTier: "2K"},
 		{size: "999999999999999999999999999x2", wantTier: "2K"},
 	}
@@ -417,6 +417,10 @@ func TestBuildOpenAIImagesURL_HandlesVersionedBaseURL(t *testing.T) {
 	require.Equal(t,
 		"https://image-upstream.example/v1/images/generations",
 		buildOpenAIImagesURL("https://image-upstream.example/v1", openAIImagesGenerationsEndpoint),
+	)
+	require.Equal(t,
+		"https://open.bigmodel.cn/api/paas/v4/images/generations",
+		buildOpenAIImagesURL("https://open.bigmodel.cn/api/paas/v4", openAIImagesGenerationsEndpoint),
 	)
 	require.Equal(t,
 		"https://image-upstream.example/v1/images/edits",
