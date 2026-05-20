@@ -545,7 +545,7 @@ REDACTED else if err != nil && !errors.Is(err, service.ErrUserNotFound) {
 		return
 REDACTED
 
-	result, err := h.authService.SendPendingOAuthVerifyCode(c.Request.Context(), req.Email)
+	result, err := h.authService.SendPendingOAuthVerifyCode(c.Request.Context(), req.Email, c.GetHeader("Accept-Language"))
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
