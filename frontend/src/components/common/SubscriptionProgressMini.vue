@@ -93,8 +93,8 @@
                       }"
                     ></div>
                   </div>
-                  <span class="w-24 flex-shrink-0 text-right text-[10px] text-gray-500">
-                    {{ formatUSD(subscription.five_hour_usage_usd || 0) }} / {{ formatUSD(subscription.group.five_hour_limit_usd) }}
+                  <span class="w-14 flex-shrink-0 text-right text-[10px] text-gray-500">
+                    {{ formatPercent(subscription.five_hour_usage_usd, subscription.group.five_hour_limit_usd) }}
                   </span>
                 </div>
 
@@ -202,10 +202,6 @@ const displaySubscriptions = computed(() => {
   })
 })
 
-function formatUSD(val: number): string {
-  return '$' + val.toFixed(2)
-}
-
 function getMaxUsagePercentage(sub: UserSubscription): number {
   const percentages: number[] = []
   if (sub.group?.five_hour_limit_usd) {
@@ -257,6 +253,12 @@ function formatUsage(used: number | undefined, limit: number | null | undefined)
   const usedValue = (used || 0).toFixed(2)
   const limitValue = limit?.toFixed(2) || '∞'
   return `$${usedValue}/$${limitValue}`
+}
+
+function formatPercent(used: number | undefined, limit: number | null | undefined): string {
+  if (!limit || limit === 0) return '0%'
+  const percentage = Math.min(((used || 0) / limit) * 100, 100)
+  return `${Math.round(percentage)}%`
 }
 
 function formatDaysRemaining(expiresAt: string): string {

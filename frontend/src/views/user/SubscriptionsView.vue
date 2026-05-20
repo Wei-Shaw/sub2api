@@ -101,9 +101,7 @@
                   {{ t('userSubscriptions.fiveHour') }}
                 </span>
                 <span class="text-sm text-gray-500 dark:text-dark-300">
-                  ${{ (subscription.five_hour_usage_usd || 0).toFixed(2) }} / ${{
-                    subscription.group.five_hour_limit_usd.toFixed(2)
-                  }}
+                  {{ getProgressPercentText(subscription.five_hour_usage_usd, subscription.group.five_hour_limit_usd) }}
                 </span>
               </div>
               <div class="relative h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600">
@@ -284,6 +282,12 @@ function getProgressWidth(used: number | undefined, limit: number | null | undef
   if (!limit || limit === 0) return '0%'
   const percentage = Math.min(((used || 0) / limit) * 100, 100)
   return `${percentage}%`
+}
+
+function getProgressPercentText(used: number | undefined, limit: number | null | undefined): string {
+  if (!limit || limit === 0) return '0%'
+  const percentage = Math.min(((used || 0) / limit) * 100, 100)
+  return `${Math.round(percentage)}%`
 }
 
 function getProgressBarClass(used: number | undefined, limit: number | null | undefined): string {
