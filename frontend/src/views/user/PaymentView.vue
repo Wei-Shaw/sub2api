@@ -97,6 +97,15 @@
             </div>
             <div>
               <h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">订阅套餐</h2>
+              <div class="mb-6 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+                <p class="mb-2 text-sm font-medium text-gray-700 dark:text-gray-200">每个套餐都包含三层使用保护：</p>
+                <ul class="space-y-1 text-sm text-gray-500 dark:text-gray-400">
+                  <li><span class="font-medium text-gray-600 dark:text-gray-300">5小时窗口</span> — 适合短时间连续使用，避免高峰时突然被限制。</li>
+                  <li><span class="font-medium text-gray-600 dark:text-gray-300">一周窗口</span> — 保障一周内的持续使用节奏。</li>
+                  <li><span class="font-medium text-gray-600 dark:text-gray-300">一个月窗口</span> — 控制整月总使用量，适合长期稳定使用。</li>
+                </ul>
+                <p class="mt-2 text-xs text-gray-400 dark:text-gray-500">套餐等级越高，三个窗口的可用空间越大，适合更高频、更长时间的 AI 编程使用。</p>
+              </div>
               <div v-if="checkout.plans.length === 0" class="rounded-2xl border border-gray-200 bg-white py-16 text-center dark:border-gray-700 dark:bg-gray-800"><p class="text-gray-400">暂无套餐</p></div>
               <div v-else class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <div v-for="plan in sortedPlans" :key="plan.id" class="group relative rounded-2xl border border-gray-200 bg-white p-5 transition-all hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-500" :class="{ 'ring-2 ring-gray-900 dark:ring-white': plan._recommended }">
