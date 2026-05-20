@@ -27,6 +27,11 @@ export const paymentAPI = {
     return apiClient.get<SubscriptionPlan[]>('/payment/plans')
   },
 
+  /** Get public subscription plans for landing pages */
+  getPublicPlans() {
+    return apiClient.get<SubscriptionPlan[]>('/payment/public/plans')
+  },
+
   /** Get available payment channels */
   getChannels() {
     return apiClient.get<PaymentChannel[]>('/payment/channels')

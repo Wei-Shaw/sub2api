@@ -272,6 +272,84 @@
           </div>
         </section>
 
+        <!-- ==================== Pricing Guide ==================== -->
+        <section class="mt-24">
+          <div class="rounded-3xl border border-gray-200 bg-white/80 p-6 backdrop-blur-sm dark:border-dark-700 dark:bg-dark-900/80 md:p-8">
+            <div class="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <p class="mb-3 text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.pricing.label') }}</p>
+                <h2 class="text-3xl font-bold tracking-tight text-gray-900 dark:text-white md:text-4xl">
+                  {{ t('home.pricing.title') }}
+                </h2>
+                <p class="mt-3 max-w-2xl text-sm leading-relaxed text-gray-500 dark:text-dark-300 md:text-base">
+                  {{ t('home.pricing.subtitle') }}
+                </p>
+              </div>
+              <div class="flex flex-col gap-3 sm:flex-row lg:items-center">
+                <div
+                  v-if="startingPrice !== null"
+                  class="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-500 dark:border-dark-700 dark:bg-dark-800 dark:text-dark-300"
+                >
+                  <span>{{ t('home.pricing.from') }}</span>
+                  <span class="ml-1 text-2xl font-bold text-gray-900 dark:text-white">¥{{ formatPrice(startingPrice) }}</span>
+                  <span class="ml-1">/ 30天</span>
+                </div>
+                <router-link
+                  :to="isAuthenticated ? '/payment' : '/login?redirect=/payment'"
+                  class="inline-flex items-center justify-center rounded-xl border border-gray-900 bg-white px-5 py-3 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50 dark:border-dark-200 dark:bg-dark-900 dark:text-white dark:hover:bg-dark-800"
+                >
+                  {{ t('home.pricing.cta') }}
+                </router-link>
+              </div>
+            </div>
+
+            <div v-if="plansLoading" class="mt-8 grid gap-4 md:grid-cols-5">
+              <div v-for="idx in 5" :key="idx" class="h-44 animate-pulse rounded-2xl border border-gray-200 bg-gray-50 dark:border-dark-700 dark:bg-dark-800"></div>
+            </div>
+
+            <div v-else-if="visiblePlans.length" class="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+              <article
+                v-for="plan in visiblePlans"
+                :key="plan.id"
+                class="relative rounded-2xl border bg-white p-5 transition-colors dark:bg-dark-900"
+                :class="plan.id === recommendedPlanId ? 'border-gray-900 dark:border-white' : 'border-gray-200 dark:border-dark-700'"
+              >
+                <div
+                  v-if="plan.id === recommendedPlanId"
+                  class="absolute -right-2 -top-3 rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700 dark:bg-green-900/40 dark:text-green-300"
+                >
+                  {{ t('home.pricing.recommended') }}
+                </div>
+                <div class="flex items-start justify-between gap-3">
+                  <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ plan.name }}</h3>
+                  <span class="rounded-full border border-gray-200 px-2 py-0.5 text-[11px] text-gray-500 dark:border-dark-700 dark:text-dark-300">OpenAI</span>
+                </div>
+                <div class="mt-5">
+                  <p v-if="plan.original_price" class="text-sm text-gray-400 line-through">¥{{ formatPrice(plan.original_price) }}</p>
+                  <div class="mt-1 flex items-end gap-1">
+                    <span class="text-3xl font-bold text-gray-900 dark:text-white">¥{{ formatPrice(plan.price) }}</span>
+                    <span class="pb-1 text-sm text-gray-500 dark:text-dark-300">/30天</span>
+                  </div>
+                  <p v-if="formatSavings(plan)" class="mt-1 text-xs font-medium text-red-500">{{ t('home.pricing.save', { amount: formatSavings(plan) }) }}</p>
+                </div>
+                <p class="mt-4 line-clamp-3 text-sm leading-relaxed text-gray-500 dark:text-dark-300">
+                  {{ plan.description }}
+                </p>
+                <ul class="mt-4 space-y-2">
+                  <li
+                    v-for="feature in parsePlanFeatures(plan.features).slice(0, 2)"
+                    :key="feature"
+                    class="flex gap-2 text-xs leading-relaxed text-gray-500 dark:text-dark-300"
+                  >
+                    <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gray-900 dark:bg-white"></span>
+                    <span>{{ feature }}</span>
+                  </li>
+                </ul>
+              </article>
+            </div>
+          </div>
+        </section>
+
         <!-- ==================== Why Choose: 2x2 Grid ==================== -->
         <section class="mt-24">
           <p class="mb-2 text-center text-sm font-medium tracking-wider text-primary-500 uppercase">{{ t('home.why.sectionLabel') }}</p>
@@ -433,6 +511,8 @@
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore, useAppStore } from '@/stores'
+import { paymentAPI } from '@/api/payment'
+import type { SubscriptionPlan } from '@/types/payment'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
 
@@ -470,6 +550,62 @@ const userInitial = computed(() => {
 })
 
 const currentYear = computed(() => new Date().getFullYear())
+
+const subscriptionPlans = ref<SubscriptionPlan[]>([])
+const plansLoading = ref(false)
+
+const visiblePlans = computed(() => subscriptionPlans.value.slice(0, 5))
+const recommendedPlanId = computed(() => {
+  const advanced = subscriptionPlans.value.find((plan) => plan.name === '进阶')
+  return advanced?.id ?? subscriptionPlans.value[Math.min(2, subscriptionPlans.value.length - 1)]?.id
+})
+const startingPrice = computed(() => {
+  if (!subscriptionPlans.value.length) return null
+  return Math.min(...subscriptionPlans.value.map((plan) => Number(plan.price) || 0).filter((price) => price > 0))
+})
+
+function parsePlanFeatures(features: SubscriptionPlan['features'] | string | undefined): string[] {
+  if (Array.isArray(features)) {
+    return features.filter(Boolean)
+  }
+  if (typeof features === 'string') {
+    return features.split('\n').map((line) => line.trim()).filter(Boolean)
+  }
+  return []
+}
+
+function normalizePlan(plan: SubscriptionPlan): SubscriptionPlan {
+  return {
+    ...plan,
+    features: parsePlanFeatures(plan.features)
+  }
+}
+
+async function fetchSubscriptionPlans() {
+  plansLoading.value = true
+  try {
+    const response = await paymentAPI.getPublicPlans()
+    subscriptionPlans.value = (response.data || []).map(normalizePlan)
+  } catch (error) {
+    console.warn('[home] Failed to load public subscription plans:', error)
+    subscriptionPlans.value = []
+  } finally {
+    plansLoading.value = false
+  }
+}
+
+function formatPrice(value: number | string | undefined | null): string {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return '-'
+  return numeric.toFixed(numeric % 1 === 0 ? 0 : 2)
+}
+
+function formatSavings(plan: SubscriptionPlan): string | null {
+  const original = Number(plan.original_price || 0)
+  const price = Number(plan.price || 0)
+  if (!original || original <= price) return null
+  return formatPrice(original - price)
+}
 
 // Copy
 const copied = ref('')
@@ -513,6 +649,7 @@ onMounted(() => {
   if (!appStore.publicSettingsLoaded) {
     appStore.fetchPublicSettings()
   }
+  fetchSubscriptionPlans()
 })
 </script>
 

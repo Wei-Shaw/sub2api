@@ -143,6 +143,15 @@ export default {
       claudeTitle: 'Claude Code / Anthropic SDK',
       createKey: '登录创建',
       note: '创建 API Key 后，将 sk-your-key 替换为你的实际密钥'
+    },
+    pricing: {
+      label: '套餐导购',
+      title: '按使用量选套餐',
+      subtitle: '不确定就先从低档开始，用顺了再升级。首页展示真实在售价格，让你先看明白再购买。',
+      from: '低至',
+      cta: '进入购买页',
+      recommended: '推荐',
+      save: '立省 ¥{amount}'
     }
   },
 

@@ -142,6 +142,15 @@ export default {
       claudeTitle: 'Claude Code / Anthropic SDK',
       createKey: 'Sign in to create',
       note: 'Replace sk-your-key with your actual API Key after creation'
+    },
+    pricing: {
+      label: 'Plan Guide',
+      title: 'Choose by Usage',
+      subtitle: 'If unsure, start with a lower tier and upgrade later. Real prices are shown here before checkout.',
+      from: 'From',
+      cta: 'Go to Purchase',
+      recommended: 'Recommended',
+      save: 'Save ¥{amount}'
     }
   },
 
