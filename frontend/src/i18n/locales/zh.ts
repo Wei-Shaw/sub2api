@@ -2448,7 +2448,12 @@ export default {
         ruleAccountsHint: '留空表示匹配所有账号',
         ruleModelPricing: '模型定价',
         noGroupsInChannel: '上方平台标签页中未选择分组',
-        unnamed: '未命名'
+        unnamed: '未命名',
+        syncLatestModels: '同步最新模型',
+        syncingModels: '同步中...',
+        syncModelsSuccess: '已同步 {countREDACTED 个新模型',
+        syncModelsAlreadyUpToDate: '模型列表已是最新',
+        syncModelsError: '同步模型失败'
       REDACTED
     REDACTED,
 
