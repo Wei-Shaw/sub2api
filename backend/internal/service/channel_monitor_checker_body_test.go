@@ -60,10 +60,11 @@ REDACTED
 REDACTED
 
 type openAICaptureHandler struct {
-	lastBody    map[string]any
-	lastHeaders http.Header
-	lastPath    string
-	status      int
+	lastBody                  map[string]any
+	lastHeaders               http.Header
+	lastPath                  string
+	status                    int
+	responsesLeadingReasoning bool
 REDACTED
 
 func (h *openAICaptureHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -82,10 +83,23 @@ REDACTED
 
 	answer := answerFromOpenAIRequest(parsed)
 	if h.lastPath == providerOpenAIResponsesPath {
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"output": []map[string]any{{
-				"content": []map[string]any{{"type": "output_text", "text": answerREDACTEDREDACTED,
+		output := []map[string]any{REDACTED
+		if h.responsesLeadingReasoning {
+			output = append(output, map[string]any{
+				"type":    "reasoning",
+				"summary": []any{REDACTED,
+		REDACTED)
 	REDACTED
+		output = append(output, map[string]any{
+			"type":   "message",
+			"status": "completed",
+			"role":   "assistant",
+			"content": []map[string]any{
+				{"type": "output_text", "text": answerREDACTED,
+		REDACTED,
+	REDACTED)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"output": output,
 	REDACTED)
 		return
 REDACTED
@@ -209,6 +223,22 @@ REDACTED
 REDACTED
 	if h.lastHeaders.Get("Authorization") != "Bearer sk-openai" {
 		t.Errorf("expected bearer auth header, got %q", h.lastHeaders.Get("Authorization"))
+REDACTED
+REDACTED
+
+func TestRunCheckForModel_OpenAIResponses_SkipsLeadingReasoningItem(t *testing.T) {
+	h := &openAICaptureHandler{responsesLeadingReasoning: trueREDACTED
+	endpoint := setupFakeOpenAI(t, h)
+
+	res := runCheckForModel(context.Background(), MonitorProviderOpenAI, endpoint, "sk-openai", "gpt-5.5", &CheckOptions{
+		APIMode: MonitorAPIModeResponses,
+REDACTED)
+
+	if res.Status != MonitorStatusOperational {
+		t.Fatalf("responses request should find text after leading reasoning item, got status=%s message=%q", res.Status, res.Message)
+REDACTED
+	if h.lastPath != providerOpenAIResponsesPath {
+		t.Fatalf("expected responses path %q, got %q", providerOpenAIResponsesPath, h.lastPath)
 REDACTED
 REDACTED
 
