@@ -540,7 +540,7 @@ func (r *groupRepository) GetAccountCount(ctx context.Context, groupID int64) (t
 	err = scanSingleRow(ctx, r.sql,
 		`SELECT COUNT(*),
 			COUNT(*) FILTER (WHERE a.status = 'active' AND a.schedulable = true),
-			COUNT(*) FILTER (WHERE a.status = 'active' AND (
+			COUNT(*) FILTER (WHERE a.status = 'active' AND a.schedulable = true AND (
 				a.rate_limit_reset_at > NOW() OR
 				a.overload_until > NOW() OR
 				a.temp_unschedulable_until > NOW()
@@ -691,7 +691,7 @@ func (r *groupRepository) loadAccountCounts(ctx context.Context, groupIDs []int6
 		`SELECT ag.group_id,
 			COUNT(*) AS total,
 			COUNT(*) FILTER (WHERE a.status = 'active' AND a.schedulable = true) AS active,
-			COUNT(*) FILTER (WHERE a.status = 'active' AND (
+			COUNT(*) FILTER (WHERE a.status = 'active' AND a.schedulable = true AND (
 				a.rate_limit_reset_at > NOW() OR
 				a.overload_until > NOW() OR
 				a.temp_unschedulable_until > NOW()
