@@ -98,13 +98,12 @@
             <div>
               <h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">订阅套餐</h2>
               <div class="mb-6 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
-                <p class="mb-2 text-sm font-medium text-gray-700 dark:text-gray-200">每个套餐都包含三层使用保护：</p>
+                <p class="mb-2 text-sm font-medium text-gray-700 dark:text-gray-200">为什么订阅更划算？</p>
                 <ul class="space-y-1 text-sm text-gray-500 dark:text-gray-400">
-                  <li><span class="font-medium text-gray-600 dark:text-gray-300">5小时窗口</span> — 适合短时间连续使用，避免高峰时突然被限制。</li>
-                  <li><span class="font-medium text-gray-600 dark:text-gray-300">一周窗口</span> — 保障一周内的持续使用节奏。</li>
-                  <li><span class="font-medium text-gray-600 dark:text-gray-300">一个月窗口</span> — 控制整月总使用量，适合长期稳定使用。</li>
+                  <li>✦ 倍率更低 — 同样的余额，订阅用户能用更多 API</li>
+                  <li>✦ 越久越省 — 月卡日均仅 ¥8.33，比日卡省 16%</li>
+                  <li>✦ 每日额度自动重置 — 不用担心一次用完</li>
                 </ul>
-                <p class="mt-2 text-xs text-gray-400 dark:text-gray-500">套餐等级越高，三个窗口的可用空间越大，适合更高频、更长时间的 AI 编程使用。</p>
               </div>
               <div v-if="checkout.plans.length === 0" class="rounded-2xl border border-gray-200 bg-white py-16 text-center dark:border-gray-700 dark:bg-gray-800"><p class="text-gray-400">暂无套餐</p></div>
               <div v-else class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -113,8 +112,8 @@
                   <div class="mb-4">
                     <div class="flex items-center justify-between"><span class="text-base font-bold text-gray-900 dark:text-white">{{ plan.name }}</span><span class="rounded-md bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-700 dark:text-gray-400">{{ platformLabel(plan.group_platform || '') }}</span></div>
                     <div class="mt-2 flex items-baseline gap-2"><span v-if="plan.original_price" class="text-xs text-gray-400 line-through">&yen;{{ plan.original_price }}</span><span class="text-2xl font-bold text-gray-900 dark:text-white">&yen;{{ planDisplayAmount(plan) }}</span><span class="text-xs text-gray-400">{{ planPriceSuffix(plan) }}</span></div>
+                    <p v-if="plan.validity_days > 1" class="mt-1 text-xs text-green-600 dark:text-green-400">日均仅 &yen;{{ (plan.price / plan.validity_days).toFixed(2) }}，比日卡省 {{ Math.round((1 - plan.price / plan.validity_days / 9.9) * 100) }}%</p>
                     <p v-if="plan.purchase_quote?.action === 'extend'" class="mt-1 text-xs text-green-600 dark:text-green-400">当前套餐，购买后自动延期</p>
-                    <p v-else-if="plan.original_price" class="mt-1 text-xs text-gray-400">原价 ¥{{ plan.original_price }}，当前套餐价 ¥{{ plan.price }}</p>
                   </div>
                   <div class="mb-4 space-y-2 text-sm text-gray-500 dark:text-gray-400">
                     <p v-if="plan.description" class="leading-5">{{ plan.description }}</p>
@@ -253,9 +252,9 @@ const balancePurchaseConfirmMessage = computed(() => {
   const amount = planDisplayAmount(plan)
   const balance = user.value?.balance?.toFixed?.(2) || '0.00'
   if (action === 'extend') {
-    return `确认续费「${plan.name}」吗？本次将从账户余额扣除 $${amount}，购买成功后自动延长 ${plan.validity_days} 天。当前余额 $${balance}。`
+    return `确认续费「${plan.name}」吗？本次将从账户余额扣除 ¥${amount}，购买成功后自动延长 ${plan.validity_days} 天。当前余额 $${balance}。`
   }
-  return `确认购买「${plan.name}」吗？本次将从账户余额扣除 $${amount}，购买成功后立即生效。当前余额 $${balance}。`
+  return `确认购买「${plan.name}」吗？本次将从账户余额扣除 ¥${amount}，购买成功后立即生效。当前余额 $${balance}。`
 })
 
 async function handleRedeem() {
@@ -474,7 +473,7 @@ const validAmount = computed(() => amount.value ?? 0)
 // Adaptive grid: center single card, 2-col for 2 plans, 3-col for 3+
 const sortedPlans = computed(() => {
   const plans = [...checkout.value.plans].sort((a, b) => a.price - b.price)
-  return plans.map(p => ({ ...p, _recommended: p.name === 'Standard' || p.name === '进阶' || p.group_name === 'Standard' || p.group_name === '进阶' }))
+  return plans.map(p => ({ ...p, _recommended: p.name === '周卡' }))
 })
 
 function planFeatures(plan: SubscriptionPlan | null): string[] {
@@ -570,7 +569,7 @@ async function executeBalancePurchase(plan: SubscriptionPlan) {
       subscriptionStore.fetchActiveSubscriptions(true).catch(() => {}),
     ])
     selectedPlan.value = null
-    appStore.showSuccess?.(`${planButtonText(plan)}成功，已扣除 $${Number(result.amount || effectivePlanAmount(plan)).toFixed(2)}`)
+    appStore.showSuccess?.(`${planButtonText(plan)}成功，已扣除 ¥${Number(result.amount || effectivePlanAmount(plan)).toFixed(2)}`)
   } catch (err: unknown) {
     const metadata = (err && typeof err === 'object' && 'metadata' in err) ? (err as any).metadata : null
     if ((err as any)?.reason === 'INSUFFICIENT_BALANCE') {
