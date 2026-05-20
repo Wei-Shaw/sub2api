@@ -267,6 +267,33 @@ func (h *PaymentHandler) CreateOrder(c *gin.Context) {
 	response.Success(c, result)
 }
 
+// PurchaseSubscriptionWithBalanceRequest is the request body for buying a subscription with account balance.
+type PurchaseSubscriptionWithBalanceRequest struct {
+	PlanID int64 `json:"plan_id" binding:"required"`
+}
+
+// PurchaseSubscriptionWithBalance directly buys a subscription plan using account balance.
+// POST /api/v1/payment/orders/balance-subscription
+func (h *PaymentHandler) PurchaseSubscriptionWithBalance(c *gin.Context) {
+	subject, ok := requireAuth(c)
+	if !ok {
+		return
+	}
+
+	var req PurchaseSubscriptionWithBalanceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	result, err := h.paymentService.PurchaseSubscriptionWithBalance(c.Request.Context(), subject.UserID, req.PlanID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
 func applyWeChatPaymentResumeClaims(req *CreateOrderRequest, claims *service.WeChatPaymentResumeClaims) error {
 	if req == nil || claims == nil {
 		return infraerrors.BadRequest("INVALID_WECHAT_PAYMENT_RESUME_TOKEN", "wechat payment resume context is missing")

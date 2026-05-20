@@ -34,6 +34,7 @@ func RegisterPaymentRoutes(
 		orders := authenticated.Group("/orders")
 		{
 			orders.POST("", paymentHandler.CreateOrder)
+			orders.POST("/balance-subscription", paymentHandler.PurchaseSubscriptionWithBalance)
 			orders.POST("/verify", paymentHandler.VerifyOrder)
 			orders.GET("/my", paymentHandler.GetMyOrders)
 			orders.GET("/:id", paymentHandler.GetOrder)

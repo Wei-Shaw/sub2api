@@ -105,6 +105,18 @@ type CreateOrderResponse struct {
 	ResumeToken  string                          `json:"resume_token,omitempty"`
 }
 
+type BalanceSubscriptionPurchaseResponse struct {
+	OrderID          int64     `json:"order_id"`
+	PlanID           int64     `json:"plan_id"`
+	GroupID          int64     `json:"group_id"`
+	Amount           float64   `json:"amount"`
+	BalanceBefore    float64   `json:"balance_before"`
+	BalanceAfter     float64   `json:"balance_after"`
+	SubscriptionDays int       `json:"subscription_days"`
+	Status           string    `json:"status"`
+	CompletedAt      time.Time `json:"completed_at"`
+}
+
 type OrderListParams struct {
 	Page        int
 	PageSize    int

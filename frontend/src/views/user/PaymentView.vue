@@ -30,9 +30,15 @@
               </div>
               <div class="lg:col-span-2 rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
                 <h3 class="text-sm font-semibold text-gray-900 dark:text-white">购买方式</h3>
-                <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">加QQ客服获取收款二维码</p>
-                <div class="mt-4 flex items-center gap-2 rounded-xl bg-gray-50 px-4 py-3 dark:bg-gray-700/50"><svg class="h-5 w-5 text-[#12B7F5]" viewBox="0 0 24 24" fill="currentColor"><path d="M12.003 2c-2.265 0-6.29 1.364-6.29 7.325v1.195S3.55 14.96 3.55 17.474c0 .665.17 1.025.396 1.025.19 0 .46-.18.758-.625.775-1.15 1.525-2.76 1.997-3.775.14.02.282.03.425.03 1.47 0 2.97-.765 3.852-2.115.88 1.35 2.382 2.115 3.852 2.115.143 0 .284-.01.425-.03.472 1.015 1.222 2.625 1.997 3.775.298.445.568.625.758.625.226 0 .396-.36.396-1.025 0-2.514-2.163-6.954-2.163-6.954v-1.195C18.293 3.364 14.268 2 12.003 2z"/></svg><span class="text-sm font-semibold text-gray-900 dark:text-white">QQ: 591719412</span></div>
-                <button class="mt-4 w-full rounded-xl bg-gray-900 py-3 text-sm font-medium text-white hover:bg-gray-800 dark:bg-white dark:text-gray-900">联系客服购买</button>
+                <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">直接使用账户余额购买套餐</p>
+                <div class="mt-4 rounded-xl bg-gray-50 px-4 py-3 dark:bg-gray-700/50">
+                  <p class="text-xs text-gray-400">当前可用余额</p>
+                  <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">${{ user?.balance?.toFixed(2) || '0.00' }}</p>
+                </div>
+                <button class="mt-4 w-full rounded-xl bg-gray-900 py-3 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50 dark:bg-white dark:text-gray-900" :disabled="submitting" @click="purchaseSelectedPlanWithBalance">
+                  <span v-if="submitting">购买中...</span><span v-else>余额购买</span>
+                </button>
+                <p class="mt-3 text-xs leading-5 text-gray-400">余额不足时，请联系 QQ 591719412 充值后再购买。</p>
                 <router-link to="/redeem" class="mt-2 block w-full rounded-xl border border-gray-200 py-2.5 text-center text-sm text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300">已有兑换码？立即兑换</router-link>
               </div>
             </div>
@@ -109,7 +115,9 @@
                       </li>
                     </ul>
                   </div>
-                  <button class="w-full rounded-xl py-2.5 text-sm font-medium transition-colors" :class="plan._recommended ? 'bg-gray-900 text-white hover:bg-gray-800 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100' : 'border border-gray-200 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700'" @click="selectPlan(plan)">了解详情</button>
+                  <button class="w-full rounded-xl py-2.5 text-sm font-medium transition-colors disabled:opacity-50" :class="plan._recommended ? 'bg-gray-900 text-white hover:bg-gray-800 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100' : 'border border-gray-200 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700'" :disabled="submitting" @click="purchasePlanWithBalance(plan)">
+                    <span v-if="submitting && selectedPlan?.id === plan.id">购买中...</span><span v-else>余额购买</span>
+                  </button>
                 </div>
               </div>
               <div v-if="activeSubscriptions.length > 0" class="mt-6">
@@ -468,6 +476,42 @@ const planValiditySuffix = computed(() => {
 function selectPlan(plan: SubscriptionPlan) {
   selectedPlan.value = plan
   errorMessage.value = ''
+}
+
+async function purchaseSelectedPlanWithBalance() {
+  if (!selectedPlan.value) return
+  await purchasePlanWithBalance(selectedPlan.value)
+}
+
+async function purchasePlanWithBalance(plan: SubscriptionPlan) {
+  if (!plan || submitting.value) return
+  selectedPlan.value = plan
+  submitting.value = true
+  errorMessage.value = ''
+  errorHintMessage.value = ''
+  try {
+    const result = await paymentStore.purchaseSubscriptionWithBalance(plan.id)
+    await Promise.all([
+      authStore.refreshUser().catch(() => {}),
+      subscriptionStore.fetchActiveSubscriptions(true).catch(() => {}),
+    ])
+    selectedPlan.value = null
+    appStore.showSuccess?.(`购买成功，已扣除 $${Number(result.amount || plan.price).toFixed(2)}`)
+  } catch (err: unknown) {
+    const metadata = (err && typeof err === 'object' && 'metadata' in err) ? (err as any).metadata : null
+    if ((err as any)?.reason === 'INSUFFICIENT_BALANCE') {
+      const balance = metadata?.balance ?? user.value?.balance?.toFixed?.(2) ?? '0.00'
+      const required = metadata?.required ?? plan.price.toFixed(2)
+      errorMessage.value = `余额不足：当前可用 $${balance}，套餐需要 $${required}`
+      errorHintMessage.value = '请联系 QQ 591719412 充值后再购买。'
+    } else {
+      errorMessage.value = extractApiErrorMessage(err) || '购买失败'
+      errorHintMessage.value = ''
+    }
+    appStore.showError(buildPaymentErrorToastMessage(errorMessage.value, errorHintMessage.value))
+  } finally {
+    submitting.value = false
+  }
 }
 
 async function createOrder(orderAmount: number, orderType: OrderType, planId?: number, options: CreateOrderOptions = {}) {
