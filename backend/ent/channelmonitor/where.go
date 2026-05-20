@@ -70,6 +70,11 @@ func Name(v string) predicate.ChannelMonitor {
 	return predicate.ChannelMonitor(sql.FieldEQ(FieldName, v))
 REDACTED
 
+// APIMode applies equality check predicate on the "api_mode" field. It's identical to APIModeEQ.
+func APIMode(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldEQ(FieldAPIMode, v))
+REDACTED
+
 // Endpoint applies equality check predicate on the "endpoint" field. It's identical to EndpointEQ.
 func Endpoint(v string) predicate.ChannelMonitor {
 	return predicate.ChannelMonitor(sql.FieldEQ(FieldEndpoint, v))
@@ -283,6 +288,71 @@ REDACTED
 // ProviderNotIn applies the NotIn predicate on the "provider" field.
 func ProviderNotIn(vs ...Provider) predicate.ChannelMonitor {
 	return predicate.ChannelMonitor(sql.FieldNotIn(FieldProvider, vs...))
+REDACTED
+
+// APIModeEQ applies the EQ predicate on the "api_mode" field.
+func APIModeEQ(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldEQ(FieldAPIMode, v))
+REDACTED
+
+// APIModeNEQ applies the NEQ predicate on the "api_mode" field.
+func APIModeNEQ(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldNEQ(FieldAPIMode, v))
+REDACTED
+
+// APIModeIn applies the In predicate on the "api_mode" field.
+func APIModeIn(vs ...string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldIn(FieldAPIMode, vs...))
+REDACTED
+
+// APIModeNotIn applies the NotIn predicate on the "api_mode" field.
+func APIModeNotIn(vs ...string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldNotIn(FieldAPIMode, vs...))
+REDACTED
+
+// APIModeGT applies the GT predicate on the "api_mode" field.
+func APIModeGT(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldGT(FieldAPIMode, v))
+REDACTED
+
+// APIModeGTE applies the GTE predicate on the "api_mode" field.
+func APIModeGTE(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldGTE(FieldAPIMode, v))
+REDACTED
+
+// APIModeLT applies the LT predicate on the "api_mode" field.
+func APIModeLT(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldLT(FieldAPIMode, v))
+REDACTED
+
+// APIModeLTE applies the LTE predicate on the "api_mode" field.
+func APIModeLTE(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldLTE(FieldAPIMode, v))
+REDACTED
+
+// APIModeContains applies the Contains predicate on the "api_mode" field.
+func APIModeContains(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldContains(FieldAPIMode, v))
+REDACTED
+
+// APIModeHasPrefix applies the HasPrefix predicate on the "api_mode" field.
+func APIModeHasPrefix(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldHasPrefix(FieldAPIMode, v))
+REDACTED
+
+// APIModeHasSuffix applies the HasSuffix predicate on the "api_mode" field.
+func APIModeHasSuffix(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldHasSuffix(FieldAPIMode, v))
+REDACTED
+
+// APIModeEqualFold applies the EqualFold predicate on the "api_mode" field.
+func APIModeEqualFold(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldEqualFold(FieldAPIMode, v))
+REDACTED
+
+// APIModeContainsFold applies the ContainsFold predicate on the "api_mode" field.
+func APIModeContainsFold(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldContainsFold(FieldAPIMode, v))
 REDACTED
 
 // EndpointEQ applies the EQ predicate on the "endpoint" field.
