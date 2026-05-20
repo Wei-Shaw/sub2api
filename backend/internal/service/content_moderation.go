@@ -32,10 +32,17 @@ const (
 	contentModerationAPIKeysModeAppend  = "append"
 	contentModerationAPIKeysModeReplace = "replace"
 
-	ContentModerationActionAllow     = "allow"
-	ContentModerationActionBlock     = "block"
-	ContentModerationActionHashBlock = "hash_block"
-	ContentModerationActionError     = "error"
+	ContentModerationActionAllow        = "allow"
+	ContentModerationActionBlock        = "block"
+	ContentModerationActionHashBlock    = "hash_block"
+	ContentModerationActionKeywordBlock = "keyword_block"
+	ContentModerationActionError        = "error"
+
+	contentModerationKeywordCategory = "keyword"
+
+	ContentModerationKeywordModeKeywordOnly   = "keyword_only"
+	ContentModerationKeywordModeKeywordAndAPI = "keyword_and_api"
+	ContentModerationKeywordModeAPIOnly       = "api_only"
 
 	ContentModerationProtocolAnthropicMessages = "anthropic_messages"
 	ContentModerationProtocolOpenAIResponses   = "openai_responses"
@@ -71,6 +78,8 @@ const (
 	maxContentModerationTestImages               = maxContentModerationInputImages
 	maxContentModerationTestImageBytes           = 8 * 1024 * 1024
 	maxContentModerationTestImageDataURLBytes    = 12 * 1024 * 1024
+	maxContentModerationBlockedKeywords          = 10000
+	maxContentModerationBlockedKeywordRunes      = 200
 
 	contentModerationCleanupInterval = 24 * time.Hour
 	contentModerationCleanupTimeout  = 30 * time.Minute
@@ -142,6 +151,8 @@ type ContentModerationConfig struct {
 	HitRetentionDays     int                `json:"hit_retention_days"`
 	NonHitRetentionDays  int                `json:"non_hit_retention_days"`
 	PreHashCheckEnabled  bool               `json:"pre_hash_check_enabled"`
+	BlockedKeywords      []string           `json:"blocked_keywords"`
+	KeywordBlockingMode  string             `json:"keyword_blocking_mode"`
 REDACTED
 
 type ContentModerationConfigView struct {
@@ -171,6 +182,8 @@ type ContentModerationConfigView struct {
 	HitRetentionDays     int                             `json:"hit_retention_days"`
 	NonHitRetentionDays  int                             `json:"non_hit_retention_days"`
 	PreHashCheckEnabled  bool                            `json:"pre_hash_check_enabled"`
+	BlockedKeywords      []string                        `json:"blocked_keywords"`
+	KeywordBlockingMode  string                          `json:"keyword_blocking_mode"`
 REDACTED
 
 type ContentModerationAPIKeyStatus struct {
@@ -240,6 +253,8 @@ type UpdateContentModerationConfigInput struct {
 	HitRetentionDays     *int      `json:"hit_retention_days"`
 	NonHitRetentionDays  *int      `json:"non_hit_retention_days"`
 	PreHashCheckEnabled  *bool     `json:"pre_hash_check_enabled"`
+	BlockedKeywords      *[]string `json:"blocked_keywords"`
+	KeywordBlockingMode  *string   `json:"keyword_blocking_mode"`
 REDACTED
 
 type ContentModerationCheckInput struct {
@@ -560,6 +575,12 @@ REDACTED
 	if input.PreHashCheckEnabled != nil {
 		cfg.PreHashCheckEnabled = *input.PreHashCheckEnabled
 REDACTED
+	if input.BlockedKeywords != nil {
+		cfg.BlockedKeywords = normalizeBlockedKeywords(*input.BlockedKeywords)
+REDACTED
+	if input.KeywordBlockingMode != nil {
+		cfg.KeywordBlockingMode = strings.TrimSpace(*input.KeywordBlockingMode)
+REDACTED
 	if input.AllGroups != nil {
 		cfg.AllGroups = *input.AllGroups
 REDACTED
@@ -767,6 +788,44 @@ REDACTED
 		"protocol", input.Protocol,
 		"text_runes", len([]rune(content.Text)),
 		"image_count", len(content.Images))
+	if cfg.Mode == ContentModerationModePreBlock {
+		if cfg.KeywordBlockingMode != ContentModerationKeywordModeAPIOnly && len(cfg.BlockedKeywords) > 0 {
+			if keyword, hit := matchBlockedKeyword(content.Text, cfg.BlockedKeywords); hit {
+				slog.Info("content_moderation.keyword_block",
+					"user_id", input.UserID,
+					"api_key_id", input.APIKeyID,
+					"group_id", contentModerationLogGroupID(input.GroupID),
+					"endpoint", input.Endpoint,
+					"protocol", input.Protocol,
+					"keyword_blocking_mode", cfg.KeywordBlockingMode,
+					"keyword", keyword)
+				scores := map[string]float64{contentModerationKeywordCategory: 1.0REDACTED
+				log := s.buildLog(input, cfg, ContentModerationActionKeywordBlock, true, contentModerationKeywordCategory, 1.0, scores, content.ExcerptText(), nil, nil, "")
+				s.applyFlaggedSideEffects(ctx, cfg, log)
+				_ = s.repo.CreateLog(ctx, log)
+				return &ContentModerationDecision{
+					Allowed:         false,
+					Blocked:         true,
+					Flagged:         true,
+					Message:         cfg.BlockMessage,
+					StatusCode:      cfg.BlockStatus,
+					HighestCategory: contentModerationKeywordCategory,
+					HighestScore:    1.0,
+					CategoryScores:  scores,
+					Action:          ContentModerationActionKeywordBlock,
+			REDACTED, nil
+		REDACTED
+	REDACTED
+		if cfg.KeywordBlockingMode == ContentModerationKeywordModeKeywordOnly {
+			slog.Info("content_moderation.skip_api_keyword_only",
+				"user_id", input.UserID,
+				"api_key_id", input.APIKeyID,
+				"group_id", contentModerationLogGroupID(input.GroupID),
+				"endpoint", input.Endpoint,
+				"protocol", input.Protocol)
+			return allow, nil
+	REDACTED
+REDACTED
 	hashText := content.Hash()
 	if cfg.PreHashCheckEnabled && s.hashCache != nil {
 		matched, err := s.hashCache.HasFlaggedInputHash(ctx, hashText)
@@ -1451,6 +1510,8 @@ func defaultContentModerationConfig() *ContentModerationConfig {
 		HitRetentionDays:     defaultContentModerationHitRetentionDays,
 		NonHitRetentionDays:  defaultContentModerationNonHitRetentionDays,
 		PreHashCheckEnabled:  false,
+		BlockedKeywords:      []string{REDACTED,
+		KeywordBlockingMode:  ContentModerationKeywordModeKeywordAndAPI,
 REDACTED
 REDACTED
 
@@ -1529,6 +1590,8 @@ REDACTED
 REDACTED
 	cfg.GroupIDs = normalizeInt64IDs(cfg.GroupIDs)
 	cfg.Thresholds = mergeContentModerationThresholds(ContentModerationDefaultThresholds(), cfg.Thresholds)
+	cfg.BlockedKeywords = normalizeBlockedKeywords(cfg.BlockedKeywords)
+	cfg.KeywordBlockingMode = normalizeKeywordBlockingMode(cfg.KeywordBlockingMode)
 REDACTED
 
 func (cfg *ContentModerationConfig) includesGroup(groupID *int64) bool {
@@ -1705,6 +1768,8 @@ REDACTED
 		HitRetentionDays:     cfg.HitRetentionDays,
 		NonHitRetentionDays:  cfg.NonHitRetentionDays,
 		PreHashCheckEnabled:  cfg.PreHashCheckEnabled,
+		BlockedKeywords:      append([]string(nil), cfg.BlockedKeywords...),
+		KeywordBlockingMode:  cfg.KeywordBlockingMode,
 REDACTED
 REDACTED
 
@@ -1942,6 +2007,60 @@ REDACTED
 REDACTED
 	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] REDACTED)
 	return out
+REDACTED
+
+func normalizeBlockedKeywords(in []string) []string {
+	if len(in) == 0 {
+		return []string{REDACTED
+REDACTED
+	out := make([]string, 0, len(in))
+	seen := make(map[string]struct{REDACTED, len(in))
+	for _, raw := range in {
+		kw := strings.TrimSpace(raw)
+		if kw == "" {
+			continue
+	REDACTED
+		kw = trimRunes(kw, maxContentModerationBlockedKeywordRunes)
+		key := strings.ToLower(kw)
+		if _, ok := seen[key]; ok {
+			continue
+	REDACTED
+		seen[key] = struct{REDACTED{REDACTED
+		out = append(out, kw)
+		if len(out) >= maxContentModerationBlockedKeywords {
+			break
+	REDACTED
+REDACTED
+	return out
+REDACTED
+
+func normalizeKeywordBlockingMode(mode string) string {
+	switch strings.TrimSpace(mode) {
+	case ContentModerationKeywordModeKeywordOnly:
+		return ContentModerationKeywordModeKeywordOnly
+	case ContentModerationKeywordModeAPIOnly:
+		return ContentModerationKeywordModeAPIOnly
+	case ContentModerationKeywordModeKeywordAndAPI:
+		return ContentModerationKeywordModeKeywordAndAPI
+	default:
+		return ContentModerationKeywordModeKeywordAndAPI
+REDACTED
+REDACTED
+
+func matchBlockedKeyword(text string, keywords []string) (string, bool) {
+	if text == "" || len(keywords) == 0 {
+		return "", false
+REDACTED
+	lower := strings.ToLower(text)
+	for _, kw := range keywords {
+		if kw == "" {
+			continue
+	REDACTED
+		if strings.Contains(lower, strings.ToLower(kw)) {
+			return kw, true
+	REDACTED
+REDACTED
+	return "", false
 REDACTED
 
 func normalizeModerationAPIKeys(keys []string) []string {

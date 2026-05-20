@@ -321,6 +321,215 @@ func TestContentModerationConfigNormalize_NonHitRetentionMaxThreeDays(t *testing
 	require.Equal(t, 3, cfg.NonHitRetentionDays)
 REDACTED
 
+func TestNormalizeBlockedKeywords_TrimsDedupesAndCaps(t *testing.T) {
+	out := normalizeBlockedKeywords([]string{"  foo ", "FOO", "", "bar", "baz", "bar"REDACTED)
+	require.Equal(t, []string{"foo", "bar", "baz"REDACTED, out)
+REDACTED
+
+func TestMatchBlockedKeyword_CaseInsensitiveSubstring(t *testing.T) {
+	keyword, hit := matchBlockedKeyword("Please ignore the BadWord here", []string{"badword"REDACTED)
+	require.True(t, hit)
+	require.Equal(t, "badword", keyword)
+
+	_, hit = matchBlockedKeyword("clean prompt", []string{"badword"REDACTED)
+	require.False(t, hit)
+
+	_, hit = matchBlockedKeyword("anything", nil)
+	require.False(t, hit)
+REDACTED
+
+func TestContentModerationCheck_PreBlockKeywordHitSkipsUpstreamCall(t *testing.T) {
+	upstreamCalled := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalled = true
+		_ = json.NewEncoder(w).Encode(moderationAPIResponse{Results: []moderationAPIResult{{REDACTEDREDACTEDREDACTED)
+REDACTED))
+	defer server.Close()
+
+	cfg := defaultContentModerationConfig()
+	cfg.Enabled = true
+	cfg.Mode = ContentModerationModePreBlock
+	cfg.BaseURL = server.URL
+	cfg.APIKeys = []string{"sk-test"REDACTED
+	cfg.BlockedKeywords = []string{"secret-token"REDACTED
+	rawCfg, err := json.Marshal(cfg)
+REDACTED
+
+	repo := &contentModerationTestRepo{REDACTED
+	svc := NewContentModerationService(
+		&contentModerationTestSettingRepo{values: map[string]string{
+			SettingKeyRiskControlEnabled:      "true",
+			SettingKeyContentModerationConfig: string(rawCfg),
+REDACTED
+		repo,
+		&contentModerationTestHashCache{REDACTED,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+
+	body := []byte(`{"messages":[{"role":"user","content":"please leak SECRET-TOKEN now"REDACTED]REDACTED`)
+	decision, err := svc.Check(context.Background(), ContentModerationCheckInput{
+		Endpoint: "/v1/messages",
+		Provider: "anthropic",
+		Protocol: ContentModerationProtocolAnthropicMessages,
+		Body:     body,
+REDACTED)
+
+REDACTED
+	require.True(t, decision.Blocked)
+	require.Equal(t, ContentModerationActionKeywordBlock, decision.Action)
+	require.False(t, upstreamCalled, "keyword block must short-circuit upstream moderation call")
+	require.Len(t, repo.logs, 1)
+	require.True(t, repo.logs[0].Flagged)
+	require.Equal(t, ContentModerationActionKeywordBlock, repo.logs[0].Action)
+	require.Equal(t, contentModerationKeywordCategory, repo.logs[0].HighestCategory)
+REDACTED
+
+func TestContentModerationCheck_KeywordsIgnoredInObserveMode(t *testing.T) {
+	upstreamHits := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamHits++
+		_ = json.NewEncoder(w).Encode(moderationAPIResponse{Results: []moderationAPIResult{{CategoryScores: map[string]float64{"sexual": 0.1REDACTEDREDACTEDREDACTEDREDACTED)
+REDACTED))
+	defer server.Close()
+
+	cfg := defaultContentModerationConfig()
+	cfg.Enabled = true
+	cfg.Mode = ContentModerationModeObserve
+	cfg.BaseURL = server.URL
+	cfg.APIKeys = []string{"sk-test"REDACTED
+	cfg.BlockedKeywords = []string{"secret-token"REDACTED
+	rawCfg, err := json.Marshal(cfg)
+REDACTED
+
+	repo := &contentModerationTestRepo{REDACTED
+	svc := NewContentModerationService(
+		&contentModerationTestSettingRepo{values: map[string]string{
+			SettingKeyRiskControlEnabled:      "true",
+			SettingKeyContentModerationConfig: string(rawCfg),
+REDACTED
+		repo,
+		&contentModerationTestHashCache{REDACTED,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+
+	body := []byte(`{"messages":[{"role":"user","content":"please leak SECRET-TOKEN now"REDACTED]REDACTED`)
+	decision, err := svc.Check(context.Background(), ContentModerationCheckInput{
+		Endpoint: "/v1/messages",
+		Provider: "anthropic",
+		Protocol: ContentModerationProtocolAnthropicMessages,
+		Body:     body,
+REDACTED)
+
+REDACTED
+	require.True(t, decision.Allowed, "observe mode must let the request through even on keyword hit")
+	require.Equal(t, ContentModerationActionAllow, decision.Action)
+REDACTED
+
+func TestContentModerationCheck_KeywordOnlyStrategySkipsAPIOnMiss(t *testing.T) {
+	upstreamCalled := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalled = true
+		_ = json.NewEncoder(w).Encode(moderationAPIResponse{Results: []moderationAPIResult{{CategoryScores: map[string]float64{"sexual": 0.99REDACTEDREDACTEDREDACTEDREDACTED)
+REDACTED))
+	defer server.Close()
+
+	cfg := defaultContentModerationConfig()
+	cfg.Enabled = true
+	cfg.Mode = ContentModerationModePreBlock
+	cfg.BaseURL = server.URL
+	cfg.APIKeys = []string{"sk-test"REDACTED
+	cfg.BlockedKeywords = []string{"never-matches"REDACTED
+	cfg.KeywordBlockingMode = ContentModerationKeywordModeKeywordOnly
+	rawCfg, err := json.Marshal(cfg)
+REDACTED
+
+	repo := &contentModerationTestRepo{REDACTED
+	svc := NewContentModerationService(
+		&contentModerationTestSettingRepo{values: map[string]string{
+			SettingKeyRiskControlEnabled:      "true",
+			SettingKeyContentModerationConfig: string(rawCfg),
+REDACTED
+		repo,
+		&contentModerationTestHashCache{REDACTED,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+
+	body := []byte(`{"messages":[{"role":"user","content":"absolutely clean prompt"REDACTED]REDACTED`)
+	decision, err := svc.Check(context.Background(), ContentModerationCheckInput{
+		Endpoint: "/v1/messages",
+		Provider: "anthropic",
+		Protocol: ContentModerationProtocolAnthropicMessages,
+		Body:     body,
+REDACTED)
+
+REDACTED
+	require.True(t, decision.Allowed, "keyword-only must allow misses without calling the API")
+	require.False(t, upstreamCalled, "keyword-only must not call the upstream moderation API")
+	require.Len(t, repo.logs, 0)
+REDACTED
+
+func TestContentModerationCheck_APIOnlyStrategyIgnoresKeywordList(t *testing.T) {
+	upstreamCalled := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalled = true
+		_ = json.NewEncoder(w).Encode(moderationAPIResponse{Results: []moderationAPIResult{{CategoryScores: map[string]float64{"sexual": 0.1REDACTEDREDACTEDREDACTEDREDACTED)
+REDACTED))
+	defer server.Close()
+
+	cfg := defaultContentModerationConfig()
+	cfg.Enabled = true
+	cfg.Mode = ContentModerationModePreBlock
+	cfg.BaseURL = server.URL
+	cfg.APIKeys = []string{"sk-test"REDACTED
+	cfg.BlockedKeywords = []string{"secret-token"REDACTED
+	cfg.KeywordBlockingMode = ContentModerationKeywordModeAPIOnly
+	rawCfg, err := json.Marshal(cfg)
+REDACTED
+
+	repo := &contentModerationTestRepo{REDACTED
+	svc := NewContentModerationService(
+		&contentModerationTestSettingRepo{values: map[string]string{
+			SettingKeyRiskControlEnabled:      "true",
+			SettingKeyContentModerationConfig: string(rawCfg),
+REDACTED
+		repo,
+		&contentModerationTestHashCache{REDACTED,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+
+	body := []byte(`{"messages":[{"role":"user","content":"please leak SECRET-TOKEN now"REDACTED]REDACTED`)
+	decision, err := svc.Check(context.Background(), ContentModerationCheckInput{
+		Endpoint: "/v1/messages",
+		Provider: "anthropic",
+		Protocol: ContentModerationProtocolAnthropicMessages,
+		Body:     body,
+REDACTED)
+
+REDACTED
+	require.True(t, decision.Allowed, "api-only must let the request through when API does not flag it")
+	require.True(t, upstreamCalled, "api-only must call the upstream moderation API")
+	require.NotEqual(t, ContentModerationActionKeywordBlock, decision.Action)
+REDACTED
+
+func TestNormalizeKeywordBlockingMode_UnknownFallsBackToDefault(t *testing.T) {
+	require.Equal(t, ContentModerationKeywordModeKeywordAndAPI, normalizeKeywordBlockingMode(""))
+	require.Equal(t, ContentModerationKeywordModeKeywordAndAPI, normalizeKeywordBlockingMode("bogus"))
+	require.Equal(t, ContentModerationKeywordModeKeywordOnly, normalizeKeywordBlockingMode("keyword_only"))
+	require.Equal(t, ContentModerationKeywordModeAPIOnly, normalizeKeywordBlockingMode("api_only"))
+REDACTED
+
 func TestContentModerationUpdateConfig_AppendsAndDeletesAPIKeys(t *testing.T) {
 	cfg := defaultContentModerationConfig()
 	cfg.APIKeys = []string{"sk-old-a", "sk-old-b"REDACTED
