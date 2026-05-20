@@ -208,14 +208,18 @@ REDACTED from "@/api/admin/settings";
 import { useAppStore REDACTED from "@/stores";
 import { extractApiErrorMessage REDACTED from "@/utils/apiError";
 
-const { t REDACTED = useI18n();
+const { t, locale REDACTED = useI18n();
 const appStore = useAppStore();
 
 const fallbackPlaceholders = [
   "{{site_nameREDACTEDREDACTED",
   "{{recipient_nameREDACTEDREDACTED",
   "{{recipient_emailREDACTEDREDACTED",
+  "{{verification_codeREDACTEDREDACTED",
+  "{{expires_in_minutesREDACTEDREDACTED",
+  "{{reset_urlREDACTEDREDACTED",
   "{{subscription_groupREDACTEDREDACTED",
+  "{{subscription_daysREDACTEDREDACTED",
   "{{expiry_timeREDACTEDREDACTED",
   "{{days_remainingREDACTEDREDACTED",
   "{{current_balanceREDACTEDREDACTED",
@@ -224,6 +228,33 @@ const fallbackPlaceholders = [
   "{{recharge_amountREDACTEDREDACTED",
   "{{order_idREDACTEDREDACTED",
   "{{unsubscribe_urlREDACTEDREDACTED",
+  "{{account_idREDACTEDREDACTED",
+  "{{account_nameREDACTEDREDACTED",
+  "{{platformREDACTEDREDACTED",
+  "{{quota_dimensionREDACTEDREDACTED",
+  "{{quota_usedREDACTEDREDACTED",
+  "{{quota_limitREDACTEDREDACTED",
+  "{{quota_remainingREDACTEDREDACTED",
+  "{{quota_thresholdREDACTEDREDACTED",
+  "{{triggered_atREDACTEDREDACTED",
+  "{{group_nameREDACTEDREDACTED",
+  "{{moderation_categoryREDACTEDREDACTED",
+  "{{moderation_scoreREDACTEDREDACTED",
+  "{{violation_countREDACTEDREDACTED",
+  "{{ban_thresholdREDACTEDREDACTED",
+  "{{rule_nameREDACTEDREDACTED",
+  "{{severityREDACTEDREDACTED",
+  "{{alert_statusREDACTEDREDACTED",
+  "{{metric_typeREDACTEDREDACTED",
+  "{{operatorREDACTEDREDACTED",
+  "{{metric_valueREDACTEDREDACTED",
+  "{{threshold_valueREDACTEDREDACTED",
+  "{{alert_descriptionREDACTEDREDACTED",
+  "{{report_nameREDACTEDREDACTED",
+  "{{report_typeREDACTEDREDACTED",
+  "{{report_start_timeREDACTEDREDACTED",
+  "{{report_end_timeREDACTEDREDACTED",
+  "{{report_htmlREDACTEDREDACTED",
 ];
 
 const loadingList = ref(true);
@@ -297,6 +328,22 @@ function formatLocale(locale: string): string {
   return locale;
 REDACTED
 
+function selectInitialLocale(locales: string[]): string {
+  const currentLocale = locale.value.toLowerCase();
+  const exactMatch = locales.find(
+    (availableLocale) => availableLocale.toLowerCase() === currentLocale,
+  );
+  if (exactMatch) return exactMatch;
+
+  const currentLanguage = currentLocale.split("-")[0];
+  const languageMatch = locales.find(
+    (availableLocale) => availableLocale.toLowerCase().split("-")[0] === currentLanguage,
+  );
+  if (languageMatch) return languageMatch;
+
+  return locales[0] || "";
+REDACTED
+
 function applyTemplate(template: {
   subject: string;
   html: string;
@@ -306,9 +353,7 @@ REDACTED) {
   subject.value = template.subject;
   html.value = template.html;
   isCustomTemplate.value = template.is_custom === true;
-  if (template.placeholders?.length) {
-    placeholders.value = template.placeholders;
-  REDACTED
+  placeholders.value = template.placeholders || [];
 REDACTED
 
 async function loadTemplate() {
@@ -337,7 +382,7 @@ async function loadTemplateList() {
     placeholders.value = response.placeholders || [];
     initializingSelection.value = true;
     selectedEvent.value = eventOptions.value[0]?.value || "";
-    selectedLocale.value = response.locales[0] || "";
+    selectedLocale.value = selectInitialLocale(response.locales);
     await loadTemplate();
     initializingSelection.value = false;
   REDACTED catch (err: unknown) {
