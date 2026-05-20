@@ -1128,6 +1128,21 @@ func TestBuildOpenAIImagesResponsesRequest_DowngradesMultipleImagesToSingle(t *t
 	require.Equal(t, "draw a cat", gjson.GetBytes(body, "input.0.content.0.text").String())
 }
 
+func TestBuildOpenAIImagesResponsesRequest_UsesAutoToolChoice(t *testing.T) {
+	parsed := &OpenAIImagesRequest{
+		Endpoint: openAIImagesGenerationsEndpoint,
+		Model:    "gpt-image-1.5",
+		Prompt:   "draw a cat",
+	}
+
+	body, err := buildOpenAIImagesResponsesRequest(parsed, "gpt-image-1.5")
+	require.NoError(t, err)
+	require.NotNil(t, body)
+	require.Equal(t, "auto", gjson.GetBytes(body, "tool_choice").String())
+	require.Equal(t, "image_generation", gjson.GetBytes(body, "tools.0.type").String())
+	require.Equal(t, "gpt-image-1.5", gjson.GetBytes(body, "tools.0.model").String())
+}
+
 func TestBuildOpenAIImagesResponsesRequest_StripsInputFidelity(t *testing.T) {
 	parsed := &OpenAIImagesRequest{
 		Endpoint:      openAIImagesEditsEndpoint,
