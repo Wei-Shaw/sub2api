@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -77,6 +78,154 @@ REDACTED
 	require.Contains(t, err.Error(), "unsupported placeholder")
 REDACTED
 
+func TestNotificationEmailAuthTemplatesAreListedAndPreviewable(t *testing.T) {
+	ctx := context.Background()
+	svc := NewNotificationEmailService(newNotificationEmailMemorySettingRepo(), nil)
+
+	infos := svc.ListEventInfos()
+	events := make(map[string]NotificationEmailEventInfo, len(infos))
+	for _, info := range infos {
+		events[info.Event] = info
+REDACTED
+	require.Contains(t, events, NotificationEmailEventAuthVerifyCode)
+	require.Contains(t, events, NotificationEmailEventAuthPasswordReset)
+	require.False(t, events[NotificationEmailEventAuthVerifyCode].Optional)
+	require.False(t, events[NotificationEmailEventAuthPasswordReset].Optional)
+	require.Contains(t, events[NotificationEmailEventAuthVerifyCode].Placeholders, "verification_code")
+	require.Contains(t, events[NotificationEmailEventAuthPasswordReset].Placeholders, "reset_url")
+
+	verifyPreview, err := svc.PreviewTemplate(ctx, NotificationEmailPreviewInput{
+		Event:  NotificationEmailEventAuthVerifyCode,
+		Locale: "zh-CN",
+		Variables: map[string]string{
+			"verification_code":  "654321",
+			"expires_in_minutes": "15",
+	REDACTED,
+REDACTED)
+REDACTED
+	require.Contains(t, verifyPreview.Subject, "邮箱验证码")
+	require.Contains(t, verifyPreview.HTML, "654321")
+
+	resetPreview, err := svc.PreviewTemplate(ctx, NotificationEmailPreviewInput{
+		Event:  NotificationEmailEventAuthPasswordReset,
+		Locale: "en",
+		Variables: map[string]string{
+			"reset_url":          "https://example.com/reset?token=abc",
+			"expires_in_minutes": "30",
+	REDACTED,
+REDACTED)
+REDACTED
+	require.Contains(t, resetPreview.Subject, "Password reset")
+	require.Contains(t, resetPreview.HTML, "https://example.com/reset?token=abc")
+REDACTED
+
+func TestNotificationEmailAdditionalEventsAreListedAndPreviewable(t *testing.T) {
+	ctx := context.Background()
+	svc := NewNotificationEmailService(newNotificationEmailMemorySettingRepo(), nil)
+
+	infos := svc.ListEventInfos()
+	events := make(map[string]NotificationEmailEventInfo, len(infos))
+	for _, info := range infos {
+		events[info.Event] = info
+REDACTED
+
+	checks := []struct {
+		event       string
+		placeholder string
+REDACTED{
+		{NotificationEmailEventNotificationEmailVerifyCode, "verification_code"REDACTED,
+		{NotificationEmailEventAccountQuotaAlert, "account_name"REDACTED,
+		{NotificationEmailEventContentModerationViolation, "moderation_category"REDACTED,
+		{NotificationEmailEventContentModerationDisabled, "violation_count"REDACTED,
+		{NotificationEmailEventOpsAlert, "rule_name"REDACTED,
+		{NotificationEmailEventOpsScheduledReport, "report_html"REDACTED,
+REDACTED
+
+	for _, check := range checks {
+		info, ok := events[check.event]
+		require.Truef(t, ok, "expected %s to be listed", check.event)
+		require.False(t, info.Optional)
+		require.Contains(t, info.Placeholders, check.placeholder)
+
+		preview, err := svc.PreviewTemplate(ctx, NotificationEmailPreviewInput{Event: check.event, Locale: "zh"REDACTED)
+	REDACTED
+		require.NotEmpty(t, preview.Subject)
+		require.NotEmpty(t, preview.HTML)
+REDACTED
+REDACTED
+
+func TestNotificationEmailRawHTMLVariablesAreTrustedOnlyForHTMLPlaceholders(t *testing.T) {
+	require.True(t, notificationEmailRawHTMLAllowed(NotificationEmailEventOpsScheduledReport, "report_html"))
+	require.False(t, notificationEmailRawHTMLAllowed(NotificationEmailEventOpsScheduledReport, "recipient_name"))
+	require.False(t, notificationEmailRawHTMLAllowed(NotificationEmailEventOpsAlert, "report_html"))
+
+	preview, err := renderNotificationEmail(
+		NotificationEmailEventOpsScheduledReport,
+		"Report for {{recipient_nameREDACTEDREDACTED",
+		`<section>{{report_htmlREDACTEDREDACTED</section><p>{{recipient_nameREDACTEDREDACTED</p>`,
+		map[string]string{
+			"recipient_name": `<script>alert("x")</script>`,
+			"report_html":    `<p>escaped report</p>`,
+	REDACTED,
+		map[string]string{
+			"report_html": `<table><tr><td>trusted report</td></tr></table>`,
+	REDACTED,
+	)
+REDACTED
+	require.Contains(t, preview.HTML, `<table><tr><td>trusted report</td></tr></table>`)
+	require.NotContains(t, preview.HTML, `escaped report`)
+	require.Contains(t, preview.HTML, `&lt;script&gt;alert(&#34;x&#34;)&lt;/script&gt;`)
+	require.Contains(t, preview.Subject, `<script>alert("x")</script>`)
+
+	preview, err = renderNotificationEmail(
+		NotificationEmailEventOpsScheduledReport,
+		"Recipient {{recipient_nameREDACTEDREDACTED",
+		`<p>{{recipient_nameREDACTEDREDACTED</p>`,
+		map[string]string{"recipient_name": `<em>escaped</em>`REDACTED,
+		map[string]string{"recipient_name": `<strong>raw</strong>`REDACTED,
+	)
+REDACTED
+	require.Contains(t, preview.HTML, `&lt;em&gt;escaped&lt;/em&gt;`)
+	require.NotContains(t, preview.HTML, `<strong>raw</strong>`)
+REDACTED
+
+func TestNotificationEmailFallbackClassification(t *testing.T) {
+	templateErr := notificationEmailTemplateErr(errors.New("bad template"))
+	configErr := notificationEmailConfigErr(errors.New("missing email service"))
+	deliveryErr := notificationEmailDeliveryErr(errors.New("smtp timeout"))
+
+	require.True(t, shouldFallbackNotificationEmail(templateErr))
+	require.True(t, shouldFallbackNotificationEmail(configErr))
+	require.False(t, shouldFallbackNotificationEmail(deliveryErr))
+	require.True(t, isNotificationEmailDeliveryError(deliveryErr))
+	require.False(t, isNotificationEmailDeliveryError(templateErr))
+	require.False(t, shouldFallbackNotificationEmail(nil))
+REDACTED
+
+func TestEmailQueueTasksPreserveLocaleHints(t *testing.T) {
+	queue := &EmailQueueService{taskChan: make(chan EmailTask, 2)REDACTED
+	require.NoError(t, queue.EnqueueVerifyCode("user@example.com", "Sub2API", "zh-CN"))
+	require.NoError(t, queue.EnqueuePasswordReset("user@example.com", "Sub2API", "https://example.com/reset", "en-US"))
+
+	verifyTask := <-queue.taskChan
+	require.Equal(t, TaskTypeVerifyCode, verifyTask.TaskType)
+	require.Equal(t, "zh-CN", verifyTask.Locale)
+
+	resetTask := <-queue.taskChan
+	require.Equal(t, TaskTypePasswordReset, resetTask.TaskType)
+	require.Equal(t, "en-US", resetTask.Locale)
+REDACTED
+
+func TestOpsScheduledReportDeliverySourceIDIncludesReportIdentity(t *testing.T) {
+	report := &opsScheduledReport{Name: "日报", ReportType: "daily_summary", Schedule: "0 9 * * *"REDACTED
+	sourceID := opsScheduledReportDeliverySourceID(report)
+	require.Contains(t, sourceID, "daily_summary")
+	require.Contains(t, sourceID, "日报")
+	require.Contains(t, sourceID, "0 9 * * *")
+	require.NotEqual(t, sourceID, opsScheduledReportDeliverySourceID(&opsScheduledReport{Name: "周报", ReportType: "weekly_summary", Schedule: "0 9 * * 1"REDACTED))
+	require.Equal(t, "scheduled_report", opsScheduledReportDeliverySourceID(nil))
+REDACTED
+
 func TestNotificationEmailUnsubscribeOnlyAllowsOptionalEvents(t *testing.T) {
 	ctx := context.Background()
 	svc := NewNotificationEmailService(newNotificationEmailMemorySettingRepo(), nil)
@@ -94,6 +243,12 @@ REDACTED
 	transactionalToken, err := svc.createUnsubscribeToken(ctx, "user@example.com", NotificationEmailEventBalanceRechargeSuccess)
 REDACTED
 	_, err = svc.Unsubscribe(ctx, transactionalToken)
+REDACTED
+	require.Contains(t, err.Error(), "transactional")
+
+	authToken, err := svc.createUnsubscribeToken(ctx, "user@example.com", NotificationEmailEventAuthVerifyCode)
+REDACTED
+	_, err = svc.Unsubscribe(ctx, authToken)
 REDACTED
 	require.Contains(t, err.Error(), "transactional")
 REDACTED
