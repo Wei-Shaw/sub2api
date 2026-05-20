@@ -777,9 +777,9 @@ func safeNotificationEmailKeyPart(value string) string {
 	var builder strings.Builder
 	for _, r := range value {
 		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' || r == '-' || r == '.' {
-			builder.WriteRune(r)
+			_, _ = builder.WriteRune(r)
 	REDACTED else {
-			builder.WriteRune('_')
+			_, _ = builder.WriteRune('_')
 	REDACTED
 REDACTED
 	return builder.String()
@@ -787,7 +787,7 @@ REDACTED
 
 func signNotificationEmailToken(secret, payload string) string {
 	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte(payload))
+	_, _ = mac.Write([]byte(payload))
 	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 REDACTED
 
