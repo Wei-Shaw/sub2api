@@ -21,6 +21,20 @@ const PAYMENT_CURRENCY_SYMBOLS: Record<string, string> = {
   INR: '₹',
 }
 
+/** Map app locale to default payment currency.
+ *  - vi → VND
+ *  - ko → KRW
+ *  - zh → CNY
+ *  - en / anything else → VND (business default)
+ */
+export function getDefaultPaymentCurrencyByLocale(locale?: string): string {
+  const l = (locale || '').toLowerCase()
+  if (l === 'ko') return 'KRW'
+  if (l === 'zh') return 'CNY'
+  // vi, en, and all others default to VND
+  return 'VND'
+}
+
 export function normalizePaymentCurrency(currency?: string | null): string {
   const normalized = String(currency || '').trim().toUpperCase()
   return /^[A-Z]{3}$/.test(normalized) ? normalized : DEFAULT_PAYMENT_CURRENCY

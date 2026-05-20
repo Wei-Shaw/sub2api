@@ -7242,6 +7242,13 @@ export default {
     renewNow: '갱신',
     selectPlan: '플랜 선택',
     planFeatures: '기능 특성',
+    packageCard: {
+      credits: '크레딧',
+      group: '그룹',
+      select: '선택',
+      selected: '선택됨',
+      noPackages: '이용 가능한 패키지가 없습니다',
+    },
     planCard: {
       rate: '배수',
       dailyLimit: '일일 한도',

@@ -94,6 +94,22 @@ vi.mock('@/utils/device', () => ({
   isMobileDevice: () => true,
 }))
 
+function balancePackageFixture() {
+  return {
+    id: 1,
+    code: 'pkg-basic',
+    label: 'Basic',
+    description: 'Basic package',
+    amount_ledger: 10,
+    actual_credits: 1000000,
+    credit_unit: 'tokens',
+    badge: '',
+    popular: false,
+    for_sale: true,
+    sort_order: 1,
+  }
+}
+
 function checkoutInfoFixture(overrides: Partial<CheckoutInfoResponse> = {}) {
   const wxpayMethod: MethodLimit = {
     daily_limit: 0,
@@ -111,6 +127,7 @@ function checkoutInfoFixture(overrides: Partial<CheckoutInfoResponse> = {}) {
     global_min: 0,
     global_max: 0,
     plans: [],
+    balance_packages: [balancePackageFixture()],
     balance_disabled: false,
     balance_recharge_multiplier: 1,
     subscription_usd_to_cny_rate: 0,
@@ -125,10 +142,11 @@ function checkoutInfoFixture(overrides: Partial<CheckoutInfoResponse> = {}) {
     manual_fx_rates: { USD: 1 },
     currency_meta: { USD: { minor_units: 2, symbol: '$' } },
     fx_status: { source: 'manual', stale_after_seconds: 86400, stale: false, missing_currencies: [] },
+    ...overrides,
   }
 
   return {
-    data: { ...data, ...overrides },
+    data,
   }
 }
 
@@ -482,6 +500,12 @@ describe('PaymentView payment recovery', () => {
             props: ['selected'],
             template: '<div data-test="method-selector">{{ selected }}</div>',
           },
+          BalancePackageCard: {
+            name: 'BalancePackageCard',
+            props: ['pkg'],
+            emits: ['select'],
+            template: '<button data-test="select-package" @click="$emit(\'select\', pkg)">{{ pkg.label }}</button>',
+          },
           Teleport: true,
           Transition: false,
         },
@@ -490,6 +514,8 @@ describe('PaymentView payment recovery', () => {
     await flushPromises()
     await flushPromises()
     await wrapper.find('[data-test="payment-done"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="select-package"]').trigger('click')
     await flushPromises()
 
     expect(wrapper.find('[data-test="method-selector"]').text()).toBe('ldc')
@@ -558,7 +584,7 @@ describe('PaymentView payment methods', () => {
         allowed_payment_currencies: ['KRW', 'VND'],
         ledger_currency: 'USD',
         manual_fx_rates: { USD: 1, KRW: 0.0007, VND: 0.00004 },
-        currency_meta: {},
+        currency_meta: { KRW: { minor_units: 0, symbol: '₩' }, VND: { minor_units: 0, symbol: '₫' } },
         fx_status: { source: 'manual', stale_after_seconds: 86400, stale: false, missing_currencies: [] },
       },
     })
@@ -573,10 +599,23 @@ describe('PaymentView payment methods', () => {
             props: ['methods'],
             template: '<div data-testid="payment-method-selector"><span v-for="method in methods" :key="method.type">{{ method.type }}:{{ method.available }}</span></div>',
           },
+          BalancePackageCard: {
+            props: ['pkg'],
+            emits: ['select'],
+            template: `<button data-testid="select-package" @click="$emit('select', pkg)">{{ pkg.label }}</button>`,
+          },
         },
       },
     })
     await flushPromises()
+    await flushPromises()
+
+    // Switch currency to KRW (which has multiple providers: paddle + stripe)
+    await wrapper.get('select.input').setValue('KRW')
+    await flushPromises()
+
+    // Select a balance package to trigger the confirm screen (which shows payment method selector)
+    await wrapper.get('[data-testid="select-package"]').trigger('click')
     await flushPromises()
 
     expect(wrapper.get('[data-testid="payment-method-selector"]').text()).toContain('paddle:true')
@@ -648,6 +687,7 @@ describe('PaymentView payment methods', () => {
       payment_mode: 'inline',
     })
 
+    const balancePkg = { ...balancePackageFixture(), amount_ledger: 7, currency_overrides: { KRW: 10000 } }
     const wrapper = shallowMount(PaymentView, {
       global: {
         stubs: {
@@ -658,17 +698,31 @@ describe('PaymentView payment methods', () => {
             props: ['methods'],
             template: '<div data-testid="payment-method-selector"><span v-for="method in methods" :key="method.type">{{ method.type }}:{{ method.available }}</span></div>',
           },
+          BalancePackageCard: {
+            name: 'BalancePackageCard',
+            props: ['pkg'],
+            emits: ['select'],
+            template: `<button data-testid="select-package" @click="$emit('select', pkg)">{{ pkg.label }}</button>`,
+          },
         },
       },
     })
     await flushPromises()
     await flushPromises()
 
+    // Switch currency to KRW first (only paddle supports KRW → single provider)
+    await wrapper.get('select.input').setValue('KRW')
+    await flushPromises()
+
+    // Select a balance package to trigger the confirm screen
+    // Emit select with a package that has a KRW currency override
+    const pkgCard = wrapper.findComponent({ name: 'BalancePackageCard' })
+    pkgCard.vm.$emit('select', balancePkg)
+    await flushPromises()
+
+    // Only one provider for KRW (paddle), so payment method selector should be hidden
     expect(wrapper.find('[data-testid="payment-method-selector"]').exists()).toBe(false)
 
-    const amountInput = wrapper.findComponent({ name: 'AmountInput' })
-    await amountInput.vm.$emit('update:modelValue', 10000)
-    await flushPromises()
     await wrapper.get('button.btn').trigger('click')
     await flushPromises()
 
@@ -743,10 +797,23 @@ describe('PaymentView payment methods', () => {
             props: ['methods'],
             template: '<div data-testid="payment-method-selector"><span v-for="method in methods" :key="method.type">{{ method.type }}:{{ method.available }}</span></div>',
           },
+          BalancePackageCard: {
+            props: ['pkg'],
+            emits: ['select'],
+            template: `<button data-testid="select-package" @click="$emit('select', pkg)">{{ pkg.label }}</button>`,
+          },
         },
       },
     })
     await flushPromises()
+    await flushPromises()
+
+    // Switch currency to USD (which has multiple providers: paddle + stripe)
+    await wrapper.get('select.input').setValue('USD')
+    await flushPromises()
+
+    // Select a balance package to trigger the confirm screen
+    await wrapper.get('[data-testid="select-package"]').trigger('click')
     await flushPromises()
 
     const selector = wrapper.get('[data-testid="payment-method-selector"]')

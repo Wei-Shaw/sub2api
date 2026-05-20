@@ -519,6 +519,13 @@ export default {
     renewNow: '续费',
     selectPlan: '选择套餐',
     planFeatures: '功能特性',
+    packageCard: {
+      credits: '额度',
+      group: '分组',
+      select: '选择',
+      selected: '已选择',
+      noPackages: '暂无可用套餐',
+    },
     planCard: {
       rate: '倍率',
       peakRate: '高峰倍率',

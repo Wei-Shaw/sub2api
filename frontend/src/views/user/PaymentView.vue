@@ -61,8 +61,9 @@
               <p class="text-gray-500 dark:text-gray-400">{{ t('payment.notAvailable') }}</p>
             </div>
             <template v-else>
-            <div class="card p-6">
-              <div v-if="availablePaymentCurrencies.length > 1" class="mb-4">
+            <!-- Package list (select phase) -->
+            <template v-if="!selectedBalancePackage">
+              <div v-if="availablePaymentCurrencies.length > 1" class="card p-6">
                 <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                   {{ t('payment.paymentCurrency') }}
                 </label>
@@ -72,79 +73,90 @@
                   </option>
                 </select>
               </div>
-              <!-- Balance Package Selector -->
-              <div v-if="availableBalancePackages.length > 0" class="mb-4">
+              <div v-if="availableBalancePackages.length > 0" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <BalancePackageCard
+                  v-for="pkg in availableBalancePackages"
+                  :key="pkg.code"
+                  :pkg="pkg"
+                  :selected="false"
+                  :currency-symbol="paymentCurrencyMeta.symbol"
+                  :formatted-price="formatPaymentMoney(resolveBalancePackagePaymentAmount(pkg))"
+                  @select="selectBalancePackage($event)"
+                />
+              </div>
+              <div v-else class="card py-16 text-center">
+                <Icon name="gift" size="xl" class="mx-auto mb-3 text-gray-300 dark:text-dark-600" />
+                <p class="text-gray-500 dark:text-gray-400">{{ t('payment.packageCard.noPackages') }}</p>
+              </div>
+            </template>
+            <!-- Package confirm (shows after selecting a package) -->
+            <template v-if="selectedBalancePackage">
+              <div class="card p-5">
+                <h3 class="text-lg font-bold text-gray-900 dark:text-white">{{ selectedBalancePackage.label }}</h3>
+                <p v-if="selectedBalancePackage.description" class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ selectedBalancePackage.description }}</p>
+                <div class="mt-3 flex items-baseline gap-2">
+                  <span class="text-3xl font-bold text-primary-600 dark:text-primary-400">{{ formatPaymentMoney(validAmount) }}</span>
+                </div>
+                <div class="mt-3 grid grid-cols-2 gap-3">
+                  <div>
+                    <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.packageCard.credits') }}</span>
+                    <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">{{ formatTokens(selectedBalancePackage.actual_credits) }} tokens</div>
+                  </div>
+                  <div v-if="selectedBalancePackage.group_rate_multiplier && selectedBalancePackage.group_rate_multiplier !== 1">
+                    <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.planCard.rate') }}</span>
+                    <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">&times;{{ selectedBalancePackage.group_rate_multiplier }}</div>
+                  </div>
+                </div>
+              </div>
+              <div v-if="availablePaymentCurrencies.length > 1" class="card p-6">
                 <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {{ t('payment.selectPackage') || 'Select Package' }}
+                  {{ t('payment.paymentCurrency') }}
                 </label>
-                <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  <button
-                    v-for="pkg in availableBalancePackages"
-                    :key="pkg.code"
-                    :class="[
-                      'relative rounded-lg border p-3 text-left transition-all',
-                      selectedBalancePackage?.code === pkg.code
-                        ? 'border-primary-500 bg-primary-50 ring-2 ring-primary-500 dark:bg-primary-900/20'
-                        : 'border-gray-200 hover:border-primary-300 dark:border-dark-500 dark:hover:border-primary-600',
-                    ]"
-                    @click="selectBalancePackage(pkg)"
-                  >
-                    <span v-if="pkg.badge" class="absolute -top-2 right-2 rounded bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">{{ pkg.badge }}</span>
-                    <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ pkg.label }}</p>
-                    <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ formatTokens(pkg.actual_credits) }} tokens</p>
-                  </button>
+                <select v-model="selectedPaymentCurrency" class="input w-full">
+                  <option v-for="currency in availablePaymentCurrencies" :key="currency" :value="currency">
+                    {{ currencyMeta(currency, checkout.currency_meta).symbol }} {{ currency }}
+                  </option>
+                </select>
+              </div>
+              <div v-if="showPaymentMethodSelector" class="card p-6">
+                <PaymentMethodSelector
+                  :methods="methodOptions"
+                  :selected="selectedMethod"
+                  @select="selectedMethod = $event"
+                />
+              </div>
+              <div v-if="validAmount > 0" class="card p-6">
+                <div class="space-y-2 text-sm">
+                  <div class="flex justify-between">
+                    <span class="text-gray-500 dark:text-gray-400">{{ t('payment.paymentAmount') }}</span>
+                    <span class="text-gray-900 dark:text-white">{{ formatPaymentMoney(validAmount) }}</span>
+                  </div>
+                  <div v-if="feeRate > 0" class="flex justify-between">
+                    <span class="text-gray-500 dark:text-gray-400">{{ t('payment.fee') }} ({{ feeRate }}%)</span>
+                    <span class="text-gray-900 dark:text-white">{{ formatPaymentMoney(feeAmount) }}</span>
+                  </div>
+                  <div v-if="feeRate > 0" class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600">
+                    <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.actualPay') }}</span>
+                    <span class="text-lg font-bold text-primary-600 dark:text-primary-400">{{ formatPaymentMoney(totalAmount) }}</span>
+                  </div>
+                  <div class="flex justify-between" :class="{ 'border-t border-gray-200 pt-2 dark:border-dark-600': feeRate <= 0 }">
+                    <span class="text-gray-500 dark:text-gray-400">{{ t('payment.creditedBalance') }}</span>
+                    <span class="text-gray-900 dark:text-white">{{ formatLedgerMoney(creditedAmount) }}</span>
+                  </div>
+                  <p v-if="fxStatusMessage" class="text-xs" :class="fxStatusClass">
+                    {{ fxStatusMessage }}
+                  </p>
                 </div>
               </div>
-              <AmountInput
-                v-model="amount"
-                :amounts="localQuickAmounts"
-                :min="globalMinAmount"
-                :max="globalMaxAmount"
-                :currency-symbol="paymentCurrencyMeta.symbol"
-                :minor-units="paymentMinorUnits"
-              />
-              <p v-if="amountError" class="mt-2 text-xs text-amber-600 dark:text-amber-300">{{ amountError }}</p>
-            </div>
-            <div v-if="showPaymentMethodSelector" class="card p-6">
-              <PaymentMethodSelector
-                :methods="methodOptions"
-                :selected="selectedMethod"
-                @select="selectedMethod = $event"
-              />
-            </div>
-            <div v-if="validAmount > 0" class="card p-6">
-              <div class="space-y-2 text-sm">
-                <div class="flex justify-between">
-                  <span class="text-gray-500 dark:text-gray-400">{{ t('payment.paymentAmount') }}</span>
-                  <span class="text-gray-900 dark:text-white">{{ formatPaymentMoney(validAmount) }}</span>
-                </div>
-                <div v-if="feeRate > 0" class="flex justify-between">
-                  <span class="text-gray-500 dark:text-gray-400">{{ t('payment.fee') }} ({{ feeRate }}%)</span>
-                  <span class="text-gray-900 dark:text-white">{{ formatPaymentMoney(feeAmount) }}</span>
-                </div>
-                <div v-if="feeRate > 0" class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600">
-                  <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.actualPay') }}</span>
-                  <span class="text-lg font-bold text-primary-600 dark:text-primary-400">{{ formatPaymentMoney(totalAmount) }}</span>
-                </div>
-                <div class="flex justify-between" :class="{ 'border-t border-gray-200 pt-2 dark:border-dark-600': feeRate <= 0 }">
-                  <span class="text-gray-500 dark:text-gray-400">{{ t('payment.creditedBalance') }}</span>
-                  <span class="text-gray-900 dark:text-white">{{ formatLedgerMoney(creditedAmount) }}</span>
-                </div>
-                <p class="border-t border-gray-200 pt-2 text-xs text-gray-500 dark:border-dark-600 dark:text-gray-400">
-                  {{ t('payment.rechargeRatePreview', { local: formatPaymentMoney(1), usd: formatLedgerMoney(ledgerAmountFromPayment(1, paymentCurrency, ledgerCurrency, checkout.manual_fx_rates, checkout.currency_meta)) }) }}
-                </p>
-                <p v-if="fxStatusMessage" class="text-xs" :class="fxStatusClass">
-                  {{ fxStatusMessage }}
-                </p>
-              </div>
-            </div>
-            <button :class="['btn w-full py-3 text-base font-medium', paymentButtonClass]" :disabled="!canSubmit || submitting" @click="handleSubmitRecharge">
-              <span v-if="submitting" class="flex items-center justify-center gap-2">
-                <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
-                {{ t('common.processing') }}
-              </span>
-              <span v-else>{{ t('payment.createOrder') }} {{ formatPaymentMoney(totalAmount) }}</span>
-            </button>
+              <button :class="['btn w-full py-3 text-base font-medium', paymentButtonClass]" :disabled="!canSubmit || submitting" @click="handleSubmitRecharge">
+                <span v-if="submitting" class="flex items-center justify-center gap-2">
+                  <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
+                  {{ t('common.processing') }}
+                </span>
+                <span v-else>{{ t('payment.createOrder') }} {{ formatPaymentMoney(totalAmount) }}</span>
+              </button>
+              <button class="btn btn-secondary w-full" @click="selectedBalancePackage = null; amount = null">{{ t('common.cancel') }}</button>
+            </template>
             </template>
           </template>
           <!-- Subscribe Tab -->
@@ -333,10 +345,9 @@ import { isMobileDevice } from '@/utils/device'
 import { hasPeakRate, formatPeakRateWindow, serverTimezoneLabel, type PeakRateFields } from '@/utils/peak-rate'
 import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType, PaymentOrder, BalancePackage } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
-import AmountInput from '@/components/payment/AmountInput.vue'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
 import { METHOD_ORDER, getPaymentPopupFeatures, isBuiltInAlipayMethod, isBuiltInWxpayMethod } from '@/components/payment/providerConfig'
-import { ceilMoney, currencyMeta, currencyMinorUnits, formatMoney, ledgerAmountFromPayment, paymentAmountFromLedger, roundMoney } from '@/utils/money'
+import { ceilMoney, currencyMeta, formatMoney, ledgerAmountFromPayment, paymentAmountFromLedger, roundMoney } from '@/utils/money'
 import {
   PAYMENT_RECOVERY_STORAGE_KEY,
   buildCreateOrderPayload,
@@ -350,10 +361,16 @@ import {
 } from '@/components/payment/paymentFlow'
 import { platformAccentBarClass, platformBadgeLightClass, platformBadgeClass, platformTextClass, platformLabel } from '@/utils/platformColors'
 import SubscriptionPlanCard from '@/components/payment/SubscriptionPlanCard.vue'
+import BalancePackageCard from '@/components/payment/BalancePackageCard.vue'
 import PaymentStatusPanel from '@/components/payment/PaymentStatusPanel.vue'
 import PaddleCheckoutInline from '@/components/payment/PaddleCheckoutInline.vue'
 import Icon from '@/components/icons/Icon.vue'
-import { DEFAULT_PAYMENT_CURRENCY, formatPaymentAmount, normalizePaymentCurrency } from '@/components/payment/currency'
+import {
+  DEFAULT_PAYMENT_CURRENCY,
+  formatPaymentAmount,
+  getDefaultPaymentCurrencyByLocale,
+  normalizePaymentCurrency,
+} from '@/components/payment/currency'
 import { planValiditySuffix as validitySuffixOf } from '@/components/payment/validity'
 import type { PaymentMethodOption } from '@/components/payment/PaymentMethodSelector.vue'
 import { buildPaymentErrorToastMessage, describePaymentScenarioError } from './paymentUx'
@@ -644,6 +661,10 @@ function preferredPaymentCurrency(): string {
   const configured = checkout.value.allowed_payment_currencies
     ?.map(c => c.trim().toUpperCase())
     .filter(c => c && available.includes(c)) ?? []
+  const localeCurrency = getDefaultPaymentCurrencyByLocale(localeCode.value)
+  if (available.includes(localeCurrency) && visibleMethodTypes.value.some(method => methodSupportsCurrency(method, localeCurrency))) {
+    return localeCurrency
+  }
   for (const currency of configured) {
     if (visibleMethodTypes.value.some(method => methodSupportsCurrency(method, currency))) return currency
   }
@@ -665,7 +686,6 @@ const paymentCurrency = computed(() => {
   return availablePaymentCurrencies.value.includes(selected) ? selected : preferredPaymentCurrency()
 })
 const paymentCurrencyMeta = computed(() => currencyMeta(paymentCurrency.value, checkout.value.currency_meta))
-const paymentMinorUnits = computed(() => currencyMinorUnits(paymentCurrency.value, checkout.value.currency_meta))
 const enabledMethods = computed(() => Object.keys(visibleMethods.value).filter(methodSupportsCurrentSelection))
 const validAmount = computed(() => amount.value ?? 0)
 const ledgerPreviewAmount = computed(() => ledgerAmountFromPayment(
@@ -685,19 +705,6 @@ const subscriptionUsdToCnyRate = computed(() => {
   return Number.isFinite(rate) && rate > 0 ? rate : 0
 })
 const creditedAmount = computed(() => roundMoney(ledgerPreviewAmount.value * balanceRechargeMultiplier.value, ledgerCurrency.value, checkout.value.currency_meta))
-const localQuickAmounts = computed(() => {
-  const currency = paymentCurrency.value
-  if (currency === 'VND') return [50000, 100000, 200000, 500000, 1000000, 2000000, 5000000]
-  if (currency === 'KRW') return [5000, 10000, 20000, 50000, 100000, 200000, 500000]
-  if (currency === 'CNY') return [50, 100, 200, 500, 1000, 2000, 5000]
-  return [10, 20, 50, 100, 200, 500, 1000]
-})
-const localMinAmount = computed(() => checkout.value.global_min > 0
-  ? paymentAmountFromLedger(checkout.value.global_min, paymentCurrency.value, ledgerCurrency.value, checkout.value.manual_fx_rates, checkout.value.currency_meta)
-  : 0)
-const localMaxAmount = computed(() => checkout.value.global_max > 0
-  ? paymentAmountFromLedger(checkout.value.global_max, paymentCurrency.value, ledgerCurrency.value, checkout.value.manual_fx_rates, checkout.value.currency_meta)
-  : 0)
 function formatPaymentMoney(value: number): string {
   return formatMoney(value, paymentCurrency.value, checkout.value.currency_meta)
 }
@@ -788,13 +795,18 @@ function amountFitsMethod(amt: number, methodType: string): boolean {
   return true
 }
 
-// Visible methods decide the amount range shown to users.
-const globalMinAmount = computed(() => localMinAmount.value)
-const globalMaxAmount = computed(() => localMaxAmount.value)
 
 // Selected method's limits (for validation and error messages)
 const selectedLimit = computed(() => visibleMethods.value[selectedMethod.value])
 const selectedCurrency = computed(() => normalizePaymentCurrency(selectedLimit.value?.currency))
+const localeCode = computed(() => {
+  const raw = i18n.locale as unknown
+  if (typeof raw === 'string') return raw
+  if (raw && typeof raw === 'object' && 'value' in raw) {
+    return String((raw as { value?: string }).value || '')
+  }
+  return undefined
+})
 
 function subscriptionPaymentAmountForCurrency(value: number, currency: string): number {
   const rate = subscriptionUsdToCnyRate.value
@@ -829,21 +841,6 @@ const totalAmount = computed(() =>
     ? roundMoney(validAmount.value + feeAmount.value, paymentCurrency.value, checkout.value.currency_meta)
     : validAmount.value
 )
-
-const amountError = computed(() => {
-  if (validAmount.value <= 0) return ''
-  // No method can handle this amount
-  if (!enabledMethods.value.some((m) => amountFitsMethod(validAmount.value, m))) {
-    return t('payment.amountNoMethod')
-  }
-  // Selected method can't handle this amount (but others can)
-  const ml = selectedLimit.value
-  if (ml) {
-    if (ml.single_min > 0 && ledgerPreviewAmount.value < ml.single_min) return t('payment.amountTooLow', { min: formatPaymentMoney(localMinAmount.value) })
-    if (ml.single_max > 0 && ledgerPreviewAmount.value > ml.single_max) return t('payment.amountTooHigh', { max: formatPaymentMoney(localMaxAmount.value) })
-  }
-  return ''
-})
 
 const canSubmit = computed(() =>
   validAmount.value > 0
