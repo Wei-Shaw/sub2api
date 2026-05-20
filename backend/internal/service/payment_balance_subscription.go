@@ -20,6 +20,13 @@ func (s *PaymentService) PurchaseSubscriptionWithBalance(ctx context.Context, us
 	if err != nil {
 		return nil, err
 	}
+	quote, err := s.quoteSubscriptionPlanPurchaseForPlan(ctx, userID, plan)
+	if err != nil {
+		return nil, err
+	}
+	if quote.Blocked {
+		return nil, infraerrors.Conflict("SUBSCRIPTION_DOWNGRADE_NOT_ALLOWED", quote.Reason)
+	}
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("get user: %w", err)
@@ -27,8 +34,8 @@ func (s *PaymentService) PurchaseSubscriptionWithBalance(ctx context.Context, us
 	if user.Status != payment.EntityStatusActive {
 		return nil, infraerrors.Forbidden("USER_INACTIVE", "user account is disabled")
 	}
-	if user.Balance+1e-9 < plan.Price {
-		return nil, insufficientBalanceError(user.Balance, plan.Price)
+	if user.Balance+1e-9 < quote.Amount {
+		return nil, insufficientBalanceError(user.Balance, quote.Amount)
 	}
 
 	now := time.Now()
@@ -39,13 +46,13 @@ func (s *PaymentService) PurchaseSubscriptionWithBalance(ctx context.Context, us
 		PaymentType: "balance",
 		OrderType:   payment.OrderTypeSubscription,
 		PlanID:      planID,
-	}, user, plan, &PaymentConfig{OrderTimeoutMin: 24 * 60, MaxPendingOrders: 1000}, plan.Price, plan.Price, 0, plan.Price, nil)
+	}, user, plan, &PaymentConfig{OrderTimeoutMin: 24 * 60, MaxPendingOrders: 1000}, quote.Amount, quote.Amount, 0, quote.Amount, nil)
 	if err != nil {
 		return nil, err
 	}
 	updated, err := s.entClient.User.Update().
-		Where(dbuser.IDEQ(userID), dbuser.BalanceGTE(plan.Price)).
-		AddBalance(-plan.Price).
+		Where(dbuser.IDEQ(userID), dbuser.BalanceGTE(quote.Amount)).
+		AddBalance(-quote.Amount).
 		Save(ctx)
 	if err != nil {
 		_ = s.entClient.PaymentOrder.UpdateOneID(order.ID).SetStatus(OrderStatusFailed).SetFailedAt(now).SetFailedReason("deduct balance failed").Exec(ctx)
@@ -55,22 +62,23 @@ func (s *PaymentService) PurchaseSubscriptionWithBalance(ctx context.Context, us
 		_ = s.entClient.PaymentOrder.UpdateOneID(order.ID).SetStatus(OrderStatusFailed).SetFailedAt(now).SetFailedReason("insufficient balance").Exec(ctx)
 		fresh, freshErr := s.userRepo.GetByID(ctx, userID)
 		if freshErr == nil && fresh != nil {
-			return nil, insufficientBalanceError(fresh.Balance, plan.Price)
+			return nil, insufficientBalanceError(fresh.Balance, quote.Amount)
 		}
-		return nil, insufficientBalanceError(user.Balance, plan.Price)
+		return nil, insufficientBalanceError(user.Balance, quote.Amount)
 	}
 
 	s.writeAuditLog(ctx, order.ID, "BALANCE_PURCHASE_DEDUCTED", "system", map[string]any{
-		"amount":        plan.Price,
-		"balanceBefore": user.Balance,
-		"balanceAfter":  user.Balance - plan.Price,
-		"planID":        plan.ID,
-		"groupID":       plan.GroupID,
+		"amount":         quote.Amount,
+		"balanceBefore":  user.Balance,
+		"balanceAfter":   user.Balance - quote.Amount,
+		"planID":         plan.ID,
+		"groupID":        plan.GroupID,
+		"purchaseAction": quote.Action,
 	})
-	if err := s.toPaid(ctx, order, fmt.Sprintf("BALANCE-%d", order.ID), plan.Price, "balance"); err != nil {
+	if err := s.toPaid(ctx, order, fmt.Sprintf("BALANCE-%d", order.ID), quote.Amount, "balance"); err != nil {
 		// Roll back the balance deduction if subscription fulfillment fails.
-		if rollbackErr := s.userRepo.UpdateBalance(ctx, userID, plan.Price); rollbackErr != nil {
-			s.writeAuditLog(ctx, order.ID, "BALANCE_PURCHASE_ROLLBACK_FAILED", "system", map[string]any{"error": rollbackErr.Error(), "amount": plan.Price})
+		if rollbackErr := s.userRepo.UpdateBalance(ctx, userID, quote.Amount); rollbackErr != nil {
+			s.writeAuditLog(ctx, order.ID, "BALANCE_PURCHASE_ROLLBACK_FAILED", "system", map[string]any{"error": rollbackErr.Error(), "amount": quote.Amount})
 		}
 		return nil, err
 	}
@@ -79,12 +87,13 @@ func (s *PaymentService) PurchaseSubscriptionWithBalance(ctx context.Context, us
 		OrderID:          order.ID,
 		PlanID:           plan.ID,
 		GroupID:          plan.GroupID,
-		Amount:           plan.Price,
+		Amount:           quote.Amount,
 		BalanceBefore:    user.Balance,
-		BalanceAfter:     user.Balance - plan.Price,
+		BalanceAfter:     user.Balance - quote.Amount,
 		SubscriptionDays: validityDays,
 		Status:           OrderStatusCompleted,
 		CompletedAt:      now,
+		Action:           quote.Action,
 	}, nil
 }
 

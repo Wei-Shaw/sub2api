@@ -115,17 +115,30 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 	// Fetch plans with group info
 	plans, _ := h.configService.ListPlansForSale(ctx)
 	groupInfo := h.configService.GetGroupInfoMap(ctx, plans)
+	var subject middleware2.AuthSubject
+	hasSubject := false
+	if s, ok := middleware2.GetAuthSubjectFromContext(c); ok {
+		subject = s
+		hasSubject = true
+	}
 	planList := make([]checkoutPlan, 0, len(plans))
 	for _, p := range plans {
 		gi := groupInfo[p.GroupID]
-		planList = append(planList, checkoutPlan{
+		item := checkoutPlan{
 			ID: int64(p.ID), GroupID: p.GroupID,
 			GroupPlatform: gi.Platform, GroupName: gi.Name,
 			HasQuota: gi.HasQuota, ModelScopes: gi.ModelScopes,
 			Name: p.Name, Description: p.Description, Price: p.Price, OriginalPrice: p.OriginalPrice,
 			ValidityDays: p.ValidityDays, ValidityUnit: p.ValidityUnit, Features: parseFeatures(p.Features),
 			ProductName: p.ProductName,
-		})
+		}
+		if hasSubject {
+			quote, _, quoteErr := h.paymentService.QuoteSubscriptionPlanPurchase(ctx, subject.UserID, int64(p.ID))
+			if quoteErr == nil {
+				item.PurchaseQuote = quote
+			}
+		}
+		planList = append(planList, item)
 	}
 
 	response.Success(c, checkoutInfoResponse{
@@ -156,20 +169,21 @@ type checkoutInfoResponse struct {
 }
 
 type checkoutPlan struct {
-	ID            int64    `json:"id"`
-	GroupID       int64    `json:"group_id"`
-	GroupPlatform string   `json:"group_platform"`
-	GroupName     string   `json:"group_name"`
-	HasQuota      bool     `json:"has_quota"`
-	ModelScopes   []string `json:"supported_model_scopes"`
-	Name          string   `json:"name"`
-	Description   string   `json:"description"`
-	Price         float64  `json:"price"`
-	OriginalPrice *float64 `json:"original_price,omitempty"`
-	ValidityDays  int      `json:"validity_days"`
-	ValidityUnit  string   `json:"validity_unit"`
-	Features      []string `json:"features"`
-	ProductName   string   `json:"product_name"`
+	ID            int64                                  `json:"id"`
+	GroupID       int64                                  `json:"group_id"`
+	GroupPlatform string                                 `json:"group_platform"`
+	GroupName     string                                 `json:"group_name"`
+	HasQuota      bool                                   `json:"has_quota"`
+	ModelScopes   []string                               `json:"supported_model_scopes"`
+	Name          string                                 `json:"name"`
+	Description   string                                 `json:"description"`
+	Price         float64                                `json:"price"`
+	OriginalPrice *float64                               `json:"original_price,omitempty"`
+	ValidityDays  int                                    `json:"validity_days"`
+	ValidityUnit  string                                 `json:"validity_unit"`
+	Features      []string                               `json:"features"`
+	ProductName   string                                 `json:"product_name"`
+	PurchaseQuote *service.SubscriptionPlanPurchaseQuote `json:"purchase_quote,omitempty"`
 }
 
 // parseFeatures splits a newline-separated features string into a string slice.

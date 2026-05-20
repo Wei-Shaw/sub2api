@@ -31,8 +31,10 @@ func (r *userSubscriptionRepository) Create(ctx context.Context, sub *service.Us
 		SetExpiresAt(sub.ExpiresAt).
 		SetNillableWeeklyWindowStart(sub.WeeklyWindowStart).
 		SetNillableMonthlyWindowStart(sub.MonthlyWindowStart).
+		SetNillableFiveHourWindowStart(sub.FiveHourWindowStart).
 		SetWeeklyUsageUsd(sub.WeeklyUsageUSD).
 		SetMonthlyUsageUsd(sub.MonthlyUsageUSD).
+		SetFiveHourUsageUsd(sub.FiveHourUsageUSD).
 		SetNillableAssignedBy(sub.AssignedBy)
 
 	if sub.StartsAt.IsZero() {
@@ -113,8 +115,10 @@ func (r *userSubscriptionRepository) Update(ctx context.Context, sub *service.Us
 		SetStatus(sub.Status).
 		SetNillableWeeklyWindowStart(sub.WeeklyWindowStart).
 		SetNillableMonthlyWindowStart(sub.MonthlyWindowStart).
+		SetNillableFiveHourWindowStart(sub.FiveHourWindowStart).
 		SetWeeklyUsageUsd(sub.WeeklyUsageUSD).
 		SetMonthlyUsageUsd(sub.MonthlyUsageUSD).
+		SetFiveHourUsageUsd(sub.FiveHourUsageUSD).
 		SetNillableAssignedBy(sub.AssignedBy).
 		SetAssignedAt(sub.AssignedAt).
 		SetNotes(sub.Notes)
@@ -424,21 +428,23 @@ func userSubscriptionEntityToService(m *dbent.UserSubscription) *service.UserSub
 		return nil
 	}
 	out := &service.UserSubscription{
-		ID:                 m.ID,
-		UserID:             m.UserID,
-		GroupID:            m.GroupID,
-		StartsAt:           m.StartsAt,
-		ExpiresAt:          m.ExpiresAt,
-		Status:             m.Status,
-		WeeklyWindowStart:  m.WeeklyWindowStart,
-		MonthlyWindowStart: m.MonthlyWindowStart,
-		WeeklyUsageUSD:     m.WeeklyUsageUsd,
-		MonthlyUsageUSD:    m.MonthlyUsageUsd,
-		AssignedBy:         m.AssignedBy,
-		AssignedAt:         m.AssignedAt,
-		Notes:              derefString(m.Notes),
-		CreatedAt:          m.CreatedAt,
-		UpdatedAt:          m.UpdatedAt,
+		ID:                  m.ID,
+		UserID:              m.UserID,
+		GroupID:             m.GroupID,
+		StartsAt:            m.StartsAt,
+		ExpiresAt:           m.ExpiresAt,
+		Status:              m.Status,
+		FiveHourWindowStart: m.FiveHourWindowStart,
+		WeeklyWindowStart:   m.WeeklyWindowStart,
+		MonthlyWindowStart:  m.MonthlyWindowStart,
+		FiveHourUsageUSD:    m.FiveHourUsageUsd,
+		WeeklyUsageUSD:      m.WeeklyUsageUsd,
+		MonthlyUsageUSD:     m.MonthlyUsageUsd,
+		AssignedBy:          m.AssignedBy,
+		AssignedAt:          m.AssignedAt,
+		Notes:               derefString(m.Notes),
+		CreatedAt:           m.CreatedAt,
+		UpdatedAt:           m.UpdatedAt,
 	}
 	if m.Edges.User != nil {
 		out.User = userEntityToService(m.Edges.User)

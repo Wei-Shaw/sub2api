@@ -103,8 +103,11 @@
                   <div v-if="plan._recommended" class="absolute -top-3 left-4 rounded-full bg-gray-900 px-3 py-1 text-xs font-medium text-white dark:bg-white dark:text-gray-900">推荐</div>
                   <div class="mb-4">
                     <div class="flex items-center justify-between"><span class="text-base font-bold text-gray-900 dark:text-white">{{ plan.name }}</span><span class="rounded-md bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-700 dark:text-gray-400">{{ platformLabel(plan.group_platform || '') }}</span></div>
-                    <div class="mt-2 flex items-baseline gap-2"><span v-if="plan.original_price" class="text-xs text-gray-400 line-through">&yen;{{ plan.original_price }}</span><span class="text-2xl font-bold text-gray-900 dark:text-white">&yen;{{ plan.price }}</span><span class="text-xs text-gray-400">/{{ plan.validity_days }}天</span></div>
-                    <p v-if="plan.original_price" class="mt-1 text-xs text-gray-400">立省 &yen;{{ (plan.original_price - plan.price).toFixed(0) }}</p>
+                    <div class="mt-2 flex items-baseline gap-2"><span v-if="plan.original_price" class="text-xs text-gray-400 line-through">&yen;{{ plan.original_price }}</span><span class="text-2xl font-bold text-gray-900 dark:text-white">&yen;{{ planDisplayAmount(plan) }}</span><span class="text-xs text-gray-400">{{ planPriceSuffix(plan) }}</span></div>
+                    <p v-if="plan.purchase_quote?.action === 'upgrade'" class="mt-1 text-xs text-blue-600 dark:text-blue-400">升档补差价，剩余时间按秒折算</p>
+                    <p v-else-if="plan.purchase_quote?.action === 'extend'" class="mt-1 text-xs text-green-600 dark:text-green-400">当前套餐，购买后自动延期</p>
+                    <p v-else-if="plan.purchase_quote?.blocked" class="mt-1 text-xs text-amber-600 dark:text-amber-400">{{ plan.purchase_quote.reason || '当前只支持升档' }}</p>
+                    <p v-else-if="plan.original_price" class="mt-1 text-xs text-gray-400">立省 &yen;{{ (plan.original_price - plan.price).toFixed(0) }}</p>
                   </div>
                   <div class="mb-4 space-y-2 text-sm text-gray-500 dark:text-gray-400">
                     <p v-if="plan.description" class="leading-5">{{ plan.description }}</p>
@@ -115,8 +118,8 @@
                       </li>
                     </ul>
                   </div>
-                  <button class="w-full rounded-xl py-2.5 text-sm font-medium transition-colors disabled:opacity-50" :class="plan._recommended ? 'bg-gray-900 text-white hover:bg-gray-800 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100' : 'border border-gray-200 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700'" :disabled="submitting" @click="purchasePlanWithBalance(plan)">
-                    <span v-if="submitting && selectedPlan?.id === plan.id">购买中...</span><span v-else>余额购买</span>
+                  <button class="w-full rounded-xl py-2.5 text-sm font-medium transition-colors disabled:opacity-50" :class="plan._recommended ? 'bg-gray-900 text-white hover:bg-gray-800 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100' : 'border border-gray-200 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700'" :disabled="submitting || plan.purchase_quote?.blocked" @click="purchasePlanWithBalance(plan)">
+                    <span v-if="submitting && selectedPlan?.id === plan.id">购买中...</span><span v-else>{{ planButtonText(plan) }}</span>
                   </button>
                 </div>
               </div>
@@ -445,6 +448,29 @@ function planFeatures(plan: SubscriptionPlan | null): string[] {
   return String(plan.features).split('\n').map(item => item.trim()).filter(Boolean)
 }
 
+function effectivePlanAmount(plan: SubscriptionPlan): number {
+  return Number(plan.purchase_quote?.display_amount ?? plan.purchase_quote?.amount ?? plan.price)
+}
+
+function planDisplayAmount(plan: SubscriptionPlan): string {
+  const amount = effectivePlanAmount(plan)
+  return Number.isInteger(amount) ? String(amount) : amount.toFixed(2)
+}
+
+function planPriceSuffix(plan: SubscriptionPlan): string {
+  if (plan.purchase_quote?.action === 'upgrade') return '升档补差价'
+  if (plan.purchase_quote?.action === 'extend') return `/${plan.validity_days}天延期`
+  if (plan.purchase_quote?.blocked) return '不可降档'
+  return `/${plan.validity_days}天`
+}
+
+function planButtonText(plan: SubscriptionPlan): string {
+  if (plan.purchase_quote?.blocked) return '不可降档'
+  if (plan.purchase_quote?.action === 'upgrade') return '余额升档'
+  if (plan.purchase_quote?.action === 'extend') return '余额延期'
+  return '余额购买'
+}
+
 // Check if an amount fits a method's [min, max]. 0 = no limit.
 function amountFitsMethod(amt: number, methodType: string): boolean {
   if (amt <= 0) return true
@@ -501,7 +527,7 @@ async function purchasePlanWithBalance(plan: SubscriptionPlan) {
     const metadata = (err && typeof err === 'object' && 'metadata' in err) ? (err as any).metadata : null
     if ((err as any)?.reason === 'INSUFFICIENT_BALANCE') {
       const balance = metadata?.balance ?? user.value?.balance?.toFixed?.(2) ?? '0.00'
-      const required = metadata?.required ?? plan.price.toFixed(2)
+      const required = metadata?.required ?? effectivePlanAmount(plan).toFixed(2)
       errorMessage.value = `余额不足：当前可用 $${balance}，套餐需要 $${required}`
       errorHintMessage.value = '请联系 QQ 591719412 充值后再购买。'
     } else {

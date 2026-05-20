@@ -97,6 +97,24 @@ export interface PaymentOrder {
 
 // ==================== Plans & Channels ====================
 
+export type SubscriptionPurchaseAction = 'new' | 'extend' | 'upgrade' | 'blocked_downgrade'
+
+export interface SubscriptionPurchaseQuote {
+  action: SubscriptionPurchaseAction
+  amount: number
+  display_amount: number
+  blocked: boolean
+  reason?: string
+  current_plan_id?: number
+  current_plan_name?: string
+  current_group_id?: number
+  current_expires_at?: string
+  remaining_seconds?: number
+  remaining_credit?: number
+  target_monthly_price?: number
+  current_monthly_price?: number
+}
+
 export interface SubscriptionPlan {
   id: number
   group_id: number
@@ -114,6 +132,7 @@ export interface SubscriptionPlan {
   features: string[]
   for_sale: boolean
   sort_order: number
+  purchase_quote?: SubscriptionPurchaseQuote
 }
 
 export interface PaymentChannel {

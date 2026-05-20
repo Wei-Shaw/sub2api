@@ -115,6 +115,7 @@ type BalanceSubscriptionPurchaseResponse struct {
 	SubscriptionDays int       `json:"subscription_days"`
 	Status           string    `json:"status"`
 	CompletedAt      time.Time `json:"completed_at"`
+	Action           string    `json:"action"`
 }
 
 type OrderListParams struct {

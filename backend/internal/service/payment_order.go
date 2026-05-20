@@ -51,8 +51,15 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 	orderAmount := req.Amount
 	limitAmount := req.Amount
 	if plan != nil {
-		orderAmount = plan.Price
-		limitAmount = plan.Price
+		quote, _, err := s.QuoteSubscriptionPlanPurchase(ctx, req.UserID, plan.ID)
+		if err != nil {
+			return nil, err
+		}
+		if quote.Blocked {
+			return nil, infraerrors.Conflict("SUBSCRIPTION_DOWNGRADE_NOT_ALLOWED", quote.Reason)
+		}
+		orderAmount = quote.Amount
+		limitAmount = quote.Amount
 	} else if req.OrderType == payment.OrderTypeBalance {
 		orderAmount = calculateCreditedBalance(req.Amount, cfg.BalanceRechargeMultiplier)
 	}
