@@ -6249,7 +6249,7 @@ export default {
     noExpiration: 'No expiration',
     unlimited: 'Unlimited',
     unlimitedDesc: 'No usage limits on this subscription',
-    daily: 'Daily',
+    fiveHour: '5 hours',
     weekly: 'Weekly',
     monthly: 'Monthly',
     daysRemaining: '{days} days remaining',

@@ -6408,7 +6408,7 @@ export default {
     noExpiration: '无到期时间',
     unlimited: '无限制',
     unlimitedDesc: '该订阅无用量限制',
-    daily: '每日',
+    fiveHour: '5小时',
     weekly: '每周',
     monthly: '每月',
     daysRemaining: '剩余 {days} 天',

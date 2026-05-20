@@ -19,7 +19,7 @@
             <div class="grid gap-6 lg:grid-cols-5">
               <div class="lg:col-span-3 rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
                 <div class="mb-4 flex items-center gap-3"><span class="rounded-lg bg-gray-900 px-2.5 py-1 text-xs font-medium text-white dark:bg-white dark:text-gray-900">{{ selectedPlan.name }}</span><span class="text-sm text-gray-400">{{ platformLabel(selectedPlan.group_platform || '') }}</span></div>
-                <div class="flex items-baseline gap-2"><span v-if="selectedPlan.original_price" class="text-sm text-gray-400 line-through">&yen;{{ selectedPlan.original_price }}</span><span class="text-4xl font-bold text-gray-900 dark:text-white">&yen;{{ selectedPlan.price }}</span><span class="text-sm text-gray-400">/ {{ planValiditySuffix }}</span></div>
+                <div class="flex items-baseline gap-2"><span v-if="selectedPlan.original_price" class="text-sm text-gray-400 line-through">&yen;{{ selectedPlan.original_price }}</span><span class="text-4xl font-bold text-gray-900 dark:text-white">&yen;{{ planDisplayAmount(selectedPlan) }}</span><span class="text-sm text-gray-400">{{ planPriceSuffix(selectedPlan) }}</span></div>
                 <p v-if="selectedPlan.description" class="mt-3 text-sm leading-6 text-gray-500 dark:text-gray-400">{{ selectedPlan.description }}</p>
                 <ul v-if="planFeatures(selectedPlan).length" class="mt-5 space-y-3 text-sm text-gray-600 dark:text-gray-300">
                   <li v-for="feature in planFeatures(selectedPlan)" :key="feature" class="flex gap-2">
@@ -35,8 +35,8 @@
                   <p class="text-xs text-gray-400">当前可用余额</p>
                   <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">${{ user?.balance?.toFixed(2) || '0.00' }}</p>
                 </div>
-                <button class="mt-4 w-full rounded-xl bg-gray-900 py-3 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50 dark:bg-white dark:text-gray-900" :disabled="submitting" @click="purchaseSelectedPlanWithBalance">
-                  <span v-if="submitting">购买中...</span><span v-else>余额购买</span>
+                <button class="mt-4 w-full rounded-xl bg-gray-900 py-3 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50 dark:bg-white dark:text-gray-900" :disabled="submitting || selectedPlan.purchase_quote?.blocked" @click="purchaseSelectedPlanWithBalance">
+                  <span v-if="submitting">购买中...</span><span v-else>{{ planButtonText(selectedPlan) }}</span>
                 </button>
                 <p class="mt-3 text-xs leading-5 text-gray-400">余额不足时，请联系 QQ 591719412 充值后再购买。</p>
                 <router-link to="/redeem" class="mt-2 block w-full rounded-xl border border-gray-200 py-2.5 text-center text-sm text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300">已有兑换码？立即兑换</router-link>
@@ -148,6 +148,16 @@
         </div>
       </Transition>
     </Teleport>
+
+    <ConfirmDialog
+      :show="showBalancePurchaseConfirm"
+      title="确认购买套餐"
+      :message="balancePurchaseConfirmMessage"
+      :confirm-text="pendingBalancePlan ? planButtonText(pendingBalancePlan) : '确认购买'"
+      cancel-text="再想想"
+      @confirm="confirmBalancePurchase"
+      @cancel="cancelBalancePurchase"
+    />
   </AppLayout>
 </template>
 
@@ -181,6 +191,7 @@ import {
 } from '@/components/payment/paymentFlow'
 import { platformLabel } from '@/utils/platformColors'
 import PaymentStatusPanel from '@/components/payment/PaymentStatusPanel.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { buildPaymentErrorToastMessage, describePaymentScenarioError } from './paymentUx'
 import { hasWechatResumeQuery, parseWechatResumeRoute, stripWechatResumeQuery } from './paymentWechatResume'
 
@@ -222,6 +233,22 @@ const promoCode = ref('')
 const promoRedeeming = ref(false)
 const promoError = ref('')
 const promoSuccess = ref('')
+const showBalancePurchaseConfirm = ref(false)
+const pendingBalancePlan = ref<SubscriptionPlan | null>(null)
+const balancePurchaseConfirmMessage = computed(() => {
+  const plan = pendingBalancePlan.value
+  if (!plan) return ''
+  const action = plan.purchase_quote?.action
+  const amount = planDisplayAmount(plan)
+  const balance = user.value?.balance?.toFixed?.(2) || '0.00'
+  if (action === 'upgrade') {
+    return `确认将当前套餐升档为「${plan.name}」吗？本次将从账户余额扣除 $${amount}，升档后当前周期已使用量会保留。当前余额 $${balance}。`
+  }
+  if (action === 'extend') {
+    return `确认续费「${plan.name}」吗？本次将从账户余额扣除 $${amount}，购买成功后自动延长 ${plan.validity_days} 天。当前余额 $${balance}。`
+  }
+  return `确认购买「${plan.name}」吗？本次将从账户余额扣除 $${amount}，购买成功后立即生效。当前余额 $${balance}。`
+})
 
 async function handleRedeem() {
   if (!redeemCode.value || redeeming.value) return
@@ -491,14 +518,6 @@ watch(() => [validAmount.value, selectedMethod.value] as const, ([amt, method]) 
   if (available) selectedMethod.value = available
 })
 
-const planValiditySuffix = computed(() => {
-  if (!selectedPlan.value) return ''
-  const u = selectedPlan.value.validity_unit || 'day'
-  if (u === 'month') return t('payment.perMonth')
-  if (u === 'year') return t('payment.perYear')
-  return `${selectedPlan.value.validity_days}${t('payment.days')}`
-})
-
 function selectPlan(plan: SubscriptionPlan) {
   selectedPlan.value = plan
   errorMessage.value = ''
@@ -506,10 +525,34 @@ function selectPlan(plan: SubscriptionPlan) {
 
 async function purchaseSelectedPlanWithBalance() {
   if (!selectedPlan.value) return
-  await purchasePlanWithBalance(selectedPlan.value)
+  openBalancePurchaseConfirm(selectedPlan.value)
+}
+
+function openBalancePurchaseConfirm(plan: SubscriptionPlan) {
+  if (!plan || submitting.value || plan.purchase_quote?.blocked) return
+  selectedPlan.value = plan
+  pendingBalancePlan.value = plan
+  showBalancePurchaseConfirm.value = true
+}
+
+function cancelBalancePurchase() {
+  showBalancePurchaseConfirm.value = false
+  pendingBalancePlan.value = null
+}
+
+async function confirmBalancePurchase() {
+  const plan = pendingBalancePlan.value
+  showBalancePurchaseConfirm.value = false
+  pendingBalancePlan.value = null
+  if (!plan) return
+  await executeBalancePurchase(plan)
 }
 
 async function purchasePlanWithBalance(plan: SubscriptionPlan) {
+  openBalancePurchaseConfirm(plan)
+}
+
+async function executeBalancePurchase(plan: SubscriptionPlan) {
   if (!plan || submitting.value) return
   selectedPlan.value = plan
   submitting.value = true
@@ -522,7 +565,7 @@ async function purchasePlanWithBalance(plan: SubscriptionPlan) {
       subscriptionStore.fetchActiveSubscriptions(true).catch(() => {}),
     ])
     selectedPlan.value = null
-    appStore.showSuccess?.(`购买成功，已扣除 $${Number(result.amount || plan.price).toFixed(2)}`)
+    appStore.showSuccess?.(`${planButtonText(plan)}成功，已扣除 $${Number(result.amount || effectivePlanAmount(plan)).toFixed(2)}`)
   } catch (err: unknown) {
     const metadata = (err && typeof err === 'object' && 'metadata' in err) ? (err as any).metadata : null
     if ((err as any)?.reason === 'INSUFFICIENT_BALANCE') {
