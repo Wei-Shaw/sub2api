@@ -1,10 +1,13 @@
 package service
 
 import (
+	"bufio"
 	"context"
 	"errors"
+	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -262,6 +265,114 @@ func TestNotificationEmailLocaleMemoryNormalizesAcceptLanguage(t *testing.T) {
 	require.Equal(t, "zh", svc.ResolveRecipientLocale(ctx, 0, "user@example.com"))
 REDACTED
 
+func TestNotificationEmailDeliveryKeyUsesShortStableHash(t *testing.T) {
+	key := notificationEmailDeliveryKey(
+		NotificationEmailEventSubscriptionExpiryReminder,
+		"user_subscription",
+		"1234567890",
+		"User@Example.com",
+		"7d",
+	)
+	require.NotEmpty(t, key)
+	require.LessOrEqual(t, len(key), 100)
+	require.True(t, strings.HasPrefix(key, notificationEmailDeliveryKeyPrefix+"v2:"))
+	require.Equal(t, key, notificationEmailDeliveryKey(
+		NotificationEmailEventSubscriptionExpiryReminder,
+		"user_subscription",
+		"1234567890",
+		"user@example.com",
+		"7d",
+	))
+	require.NotEqual(t, key, notificationEmailDeliveryKey(
+		NotificationEmailEventSubscriptionExpiryReminder,
+		"user_subscription",
+		"1234567890",
+		"user@example.com",
+		"3d",
+	))
+
+	legacyKey := legacyNotificationEmailDeliveryKey(
+		NotificationEmailEventSubscriptionExpiryReminder,
+		"user_subscription",
+		"1234567890",
+		"user@example.com",
+		"7d",
+	)
+	require.Greater(t, len(legacyKey), 100)
+REDACTED
+
+func TestNotificationEmailPreferenceKeyUsesShortStableHashAndReadsLegacyKey(t *testing.T) {
+	ctx := context.Background()
+	repo := newNotificationEmailMemorySettingRepo()
+	svc := NewNotificationEmailService(repo, nil)
+
+	key := notificationEmailPreferenceKey(NotificationEmailEventSubscriptionExpiryReminder, "User@Example.com")
+	require.NotEmpty(t, key)
+	require.LessOrEqual(t, len(key), 100)
+	require.True(t, strings.HasPrefix(key, notificationEmailPreferenceKeyPrefix+"v2:"))
+	require.Equal(t, key, notificationEmailPreferenceKey(NotificationEmailEventSubscriptionExpiryReminder, "user@example.com"))
+
+	legacyKey := legacyNotificationEmailPreferenceKey(NotificationEmailEventSubscriptionExpiryReminder, "user@example.com")
+	require.Greater(t, len(legacyKey), 100)
+	require.NoError(t, repo.Set(ctx, legacyKey, "unsubscribed"))
+
+	unsubscribed, err := svc.IsUnsubscribed(ctx, "User@Example.com", NotificationEmailEventSubscriptionExpiryReminder)
+REDACTED
+	require.True(t, unsubscribed)
+REDACTED
+
+func TestNotificationEmailSendDeduplicatesSubscriptionExpiryReminder(t *testing.T) {
+	ctx := context.Background()
+	repo := newNotificationEmailMemorySettingRepo()
+	smtpServer := startNotificationEmailTestSMTPServer(t)
+	require.NoError(t, repo.SetMultiple(ctx, smtpServer.settings()))
+
+	emailSvc := NewEmailService(repo, nil)
+	svc := NewNotificationEmailService(repo, emailSvc)
+	input := NotificationEmailSendInput{
+		Event:          NotificationEmailEventSubscriptionExpiryReminder,
+		RecipientEmail: "User@Example.com",
+		RecipientName:  "User",
+		UserID:         42,
+		SourceType:     "user_subscription",
+		SourceID:       "1234567890",
+		ReminderKey:    "7d",
+		Variables: map[string]string{
+			"subscription_group": "Codex",
+			"expiry_time":        "2026-05-27 12:00",
+			"days_remaining":     "7",
+	REDACTED,
+REDACTED
+
+	require.NoError(t, svc.Send(ctx, input))
+	require.Equal(t, int64(1), smtpServer.messageCount())
+
+	key := notificationEmailDeliveryKey(input.Event, input.SourceType, input.SourceID, input.RecipientEmail, input.ReminderKey)
+	require.LessOrEqual(t, len(key), 100)
+	_, err := repo.GetValue(ctx, key)
+REDACTED
+
+	require.NoError(t, svc.Send(ctx, input))
+	require.Equal(t, int64(1), smtpServer.messageCount())
+REDACTED
+
+func TestNotificationEmailSendRespectsLegacyDeliveryKey(t *testing.T) {
+	ctx := context.Background()
+	repo := newNotificationEmailMemorySettingRepo()
+	svc := NewNotificationEmailService(repo, nil)
+	input := NotificationEmailSendInput{
+		Event:          NotificationEmailEventSubscriptionExpiryReminder,
+		RecipientEmail: "user@example.com",
+		SourceType:     "user_subscription",
+		SourceID:       "1234567890",
+		ReminderKey:    "7d",
+REDACTED
+	legacyKey := legacyNotificationEmailDeliveryKey(input.Event, input.SourceType, input.SourceID, input.RecipientEmail, input.ReminderKey)
+	require.NoError(t, repo.Set(ctx, legacyKey, "sent"))
+
+	require.NoError(t, svc.Send(ctx, input))
+REDACTED
+
 type notificationEmailMemorySettingRepo struct {
 	mu     sync.RWMutex
 	values map[string]string
@@ -340,4 +451,121 @@ REDACTED
 func TestNotificationEmailMemorySettingRepoSatisfiesInterface(t *testing.T) {
 	var _ SettingRepository = (*notificationEmailMemorySettingRepo)(nil)
 	require.False(t, strings.Contains(notificationEmailPreferenceKey(NotificationEmailEventBalanceLow, "User@Example.com"), "User@Example.com"))
+REDACTED
+
+type notificationEmailTestSMTPServer struct {
+	listener net.Listener
+	wg       sync.WaitGroup
+	messages atomic.Int64
+REDACTED
+
+func startNotificationEmailTestSMTPServer(t *testing.T) *notificationEmailTestSMTPServer {
+REDACTED
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+REDACTED
+
+	server := &notificationEmailTestSMTPServer{listener: listenerREDACTED
+	server.wg.Add(1)
+	go server.serve()
+	t.Cleanup(server.close)
+	return server
+REDACTED
+
+func (s *notificationEmailTestSMTPServer) settings() map[string]string {
+	host, port, _ := net.SplitHostPort(s.listener.Addr().String())
+	return map[string]string{
+		SettingKeySMTPHost:     host,
+		SettingKeySMTPPort:     port,
+		SettingKeySMTPUsername: "user",
+		SettingKeySMTPPassword: "password",
+		SettingKeySMTPFrom:     "noreply@example.com",
+		SettingKeySMTPFromName: "Sub2API",
+		SettingKeySMTPUseTLS:   "false",
+REDACTED
+REDACTED
+
+func (s *notificationEmailTestSMTPServer) messageCount() int64 {
+	return s.messages.Load()
+REDACTED
+
+func (s *notificationEmailTestSMTPServer) close() {
+	_ = s.listener.Close()
+	s.wg.Wait()
+REDACTED
+
+func (s *notificationEmailTestSMTPServer) serve() {
+	defer s.wg.Done()
+	for {
+		conn, err := s.listener.Accept()
+		if err != nil {
+			return
+	REDACTED
+		s.handleConn(conn)
+REDACTED
+REDACTED
+
+func (s *notificationEmailTestSMTPServer) handleConn(conn net.Conn) {
+	defer func() { _ = conn.Close() REDACTED()
+	rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
+	writeLine := func(line string) bool {
+		if _, err := rw.WriteString(line + "\r\n"); err != nil {
+			return false
+	REDACTED
+		return rw.Flush() == nil
+REDACTED
+	if !writeLine("220 localhost ESMTP") {
+		return
+REDACTED
+	for {
+		line, err := rw.ReadString('\n')
+		if err != nil {
+			return
+	REDACTED
+		cmd := strings.ToUpper(strings.TrimRight(line, "\r\n"))
+		switch {
+		case strings.HasPrefix(cmd, "EHLO"), strings.HasPrefix(cmd, "HELO"):
+			if _, err := rw.WriteString("250-localhost\r\n250 AUTH PLAIN\r\n"); err != nil {
+				return
+		REDACTED
+			if err := rw.Flush(); err != nil {
+				return
+		REDACTED
+		case strings.HasPrefix(cmd, "AUTH"):
+			if !writeLine("235 2.7.0 Authentication successful") {
+				return
+		REDACTED
+		case strings.HasPrefix(cmd, "MAIL FROM:"):
+			if !writeLine("250 2.1.0 OK") {
+				return
+		REDACTED
+		case strings.HasPrefix(cmd, "RCPT TO:"):
+			if !writeLine("250 2.1.5 OK") {
+				return
+		REDACTED
+		case strings.HasPrefix(cmd, "DATA"):
+			if !writeLine("354 End data with <CR><LF>.<CR><LF>") {
+				return
+		REDACTED
+			for {
+				dataLine, err := rw.ReadString('\n')
+				if err != nil {
+					return
+			REDACTED
+				if strings.TrimRight(dataLine, "\r\n") == "." {
+					break
+			REDACTED
+		REDACTED
+			s.messages.Add(1)
+			if !writeLine("250 2.0.0 OK") {
+				return
+		REDACTED
+		case strings.HasPrefix(cmd, "QUIT"):
+			_ = writeLine("221 2.0.0 Bye")
+			return
+		default:
+			if !writeLine("250 OK") {
+				return
+		REDACTED
+	REDACTED
+REDACTED
 REDACTED
