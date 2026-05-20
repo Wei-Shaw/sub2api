@@ -20,6 +20,7 @@
               <div class="lg:col-span-3 rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
                 <div class="mb-4 flex items-center gap-3"><span class="rounded-lg bg-gray-900 px-2.5 py-1 text-xs font-medium text-white dark:bg-white dark:text-gray-900">{{ selectedPlan.name }}</span><span class="text-sm text-gray-400">{{ platformLabel(selectedPlan.group_platform || '') }}</span></div>
                 <div class="flex items-baseline gap-2"><span v-if="selectedPlan.original_price" class="text-sm text-gray-400 line-through">&yen;{{ selectedPlan.original_price }}</span><span class="text-4xl font-bold text-gray-900 dark:text-white">&yen;{{ planDisplayAmount(selectedPlan) }}</span><span class="text-sm text-gray-400">{{ planPriceSuffix(selectedPlan) }}</span></div>
+                <p class="mt-1 text-sm text-gray-400">扣 ${{ (effectivePlanAmount(selectedPlan) * (checkout.balance_recharge_multiplier || 10)).toFixed(0) }} 余额（1 元 = {{ checkout.balance_recharge_multiplier || 10 }} 美刀额度）</p>
                 <p v-if="selectedPlan.description" class="mt-3 text-sm leading-6 text-gray-500 dark:text-gray-400">{{ selectedPlan.description }}</p>
                 <ul v-if="planFeatures(selectedPlan).length" class="mt-5 space-y-3 text-sm text-gray-600 dark:text-gray-300">
                   <li v-for="feature in planFeatures(selectedPlan)" :key="feature" class="flex gap-2">
@@ -98,11 +99,12 @@
             <div>
               <h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">订阅套餐</h2>
               <div class="mb-6 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
-                <p class="mb-2 text-sm font-medium text-gray-700 dark:text-gray-200">为什么订阅更划算？</p>
+                <p class="mb-2 text-sm font-medium text-gray-700 dark:text-gray-200">额度说明</p>
                 <ul class="space-y-1 text-sm text-gray-500 dark:text-gray-400">
-                  <li>✦ 倍率更低 — 同样的余额，订阅用户能用更多 API</li>
+                  <li>✦ 统一 1 倍率 — 充 ¥1 = $10 额度，公平透明</li>
+                  <li>✦ 套餐从余额扣除 — 如日卡 ¥9.9 扣 $99 余额</li>
+                  <li>✦ 日限额从购买时间滚动重置 — 每 24 小时自动刷新</li>
                   <li>✦ 越久越省 — 月卡日均仅 ¥8.33，比日卡省 16%</li>
-                  <li>✦ 每日额度自动重置 — 不用担心一次用完</li>
                 </ul>
               </div>
               <div v-if="checkout.plans.length === 0" class="rounded-2xl border border-gray-200 bg-white py-16 text-center dark:border-gray-700 dark:bg-gray-800"><p class="text-gray-400">暂无套餐</p></div>
@@ -112,6 +114,7 @@
                   <div class="mb-4">
                     <div class="flex items-center justify-between"><span class="text-base font-bold text-gray-900 dark:text-white">{{ plan.name }}</span><span class="rounded-md bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-700 dark:text-gray-400">{{ platformLabel(plan.group_platform || '') }}</span></div>
                     <div class="mt-2 flex items-baseline gap-2"><span v-if="plan.original_price" class="text-xs text-gray-400 line-through">&yen;{{ plan.original_price }}</span><span class="text-2xl font-bold text-gray-900 dark:text-white">&yen;{{ planDisplayAmount(plan) }}</span><span class="text-xs text-gray-400">{{ planPriceSuffix(plan) }}</span></div>
+                    <p class="mt-1 text-xs text-gray-400">扣 ${{ (effectivePlanAmount(plan) * (checkout.balance_recharge_multiplier || 10)).toFixed(0) }} 余额</p>
                     <p v-if="plan.validity_days > 1" class="mt-1 text-xs text-green-600 dark:text-green-400">日均仅 &yen;{{ (plan.price / plan.validity_days).toFixed(2) }}，比日卡省 {{ Math.round((1 - plan.price / plan.validity_days / 9.9) * 100) }}%</p>
                     <p v-if="plan.purchase_quote?.action === 'extend'" class="mt-1 text-xs text-green-600 dark:text-green-400">当前套餐，购买后自动延期</p>
                   </div>
@@ -249,12 +252,14 @@ const balancePurchaseConfirmMessage = computed(() => {
   const plan = pendingBalancePlan.value
   if (!plan) return ''
   const action = plan.purchase_quote?.action
-  const amount = planDisplayAmount(plan)
+  const cnyAmount = effectivePlanAmount(plan)
+  const multiplier = checkout.value.balance_recharge_multiplier || 10
+  const usdAmount = (cnyAmount * multiplier).toFixed(2)
   const balance = user.value?.balance?.toFixed?.(2) || '0.00'
   if (action === 'extend') {
-    return `确认续费「${plan.name}」吗？本次将从账户余额扣除 ¥${amount}，购买成功后自动延长 ${plan.validity_days} 天。当前余额 $${balance}。`
+    return `确认续费「${plan.name}」吗？本次将从账户余额扣除 $${usdAmount}（¥${planDisplayAmount(plan)} × ${multiplier} 倍率），购买成功后自动延长 ${plan.validity_days} 天。当前余额 $${balance}。`
   }
-  return `确认购买「${plan.name}」吗？本次将从账户余额扣除 ¥${amount}，购买成功后立即生效。当前余额 $${balance}。`
+  return `确认购买「${plan.name}」吗？本次将从账户余额扣除 $${usdAmount}（¥${planDisplayAmount(plan)} × ${multiplier} 倍率），购买成功后立即生效。当前余额 $${balance}。`
 })
 
 async function handleRedeem() {

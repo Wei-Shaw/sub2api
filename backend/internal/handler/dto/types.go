@@ -92,6 +92,7 @@ type Group struct {
 	WeeklyLimitUSD   *float64 `json:"weekly_limit_usd"`
 	MonthlyLimitUSD  *float64 `json:"monthly_limit_usd"`
 	FiveHourLimitUSD *float64 `json:"five_hour_limit_usd"`
+	DailyLimitUSD    *float64 `json:"daily_limit_usd"`
 
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration bool     `json:"allow_image_generation"`

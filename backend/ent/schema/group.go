@@ -63,6 +63,11 @@ func (Group) Fields() []ent.Field {
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
 			Comment("每5小时费用上限（美元），0或nil表示不限制；与OpenAI原生5h窗口对齐"),
+		field.Float("daily_limit_usd").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
+			Comment("每24小时滚动窗口费用上限（美元），0或nil表示不限制"),
 		field.Float("weekly_limit_usd").
 			Optional().
 			Nillable().

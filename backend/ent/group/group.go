@@ -38,6 +38,8 @@ const (
 	FieldSubscriptionType = "subscription_type"
 	// FieldFiveHourLimitUsd holds the string denoting the five_hour_limit_usd field in the database.
 	FieldFiveHourLimitUsd = "five_hour_limit_usd"
+	// FieldDailyLimitUsd holds the string denoting the daily_limit_usd field in the database.
+	FieldDailyLimitUsd = "daily_limit_usd"
 	// FieldWeeklyLimitUsd holds the string denoting the weekly_limit_usd field in the database.
 	FieldWeeklyLimitUsd = "weekly_limit_usd"
 	// FieldMonthlyLimitUsd holds the string denoting the monthly_limit_usd field in the database.
@@ -172,6 +174,7 @@ var Columns = []string{
 	FieldPlatform,
 	FieldSubscriptionType,
 	FieldFiveHourLimitUsd,
+	FieldDailyLimitUsd,
 	FieldWeeklyLimitUsd,
 	FieldMonthlyLimitUsd,
 	FieldDefaultValidityDays,
@@ -344,6 +347,11 @@ func BySubscriptionType(opts ...sql.OrderTermOption) OrderOption {
 // ByFiveHourLimitUsd orders the results by the five_hour_limit_usd field.
 func ByFiveHourLimitUsd(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldFiveHourLimitUsd, opts...).ToFunc()
+}
+
+// ByDailyLimitUsd orders the results by the daily_limit_usd field.
+func ByDailyLimitUsd(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDailyLimitUsd, opts...).ToFunc()
 }
 
 // ByWeeklyLimitUsd orders the results by the weekly_limit_usd field.

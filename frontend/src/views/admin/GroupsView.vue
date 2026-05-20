@@ -513,6 +513,18 @@
           <p class="input-hint">用户端看到的倍率（留空=与实际倍率相同）。计费始终使用实际倍率。</p>
         </div>
         <div>
+          <label class="input-label">日限额（USD）</label>
+          <input
+            v-model.number="createForm.daily_limit_usd"
+            type="number"
+            step="1"
+            min="0"
+            class="input"
+            placeholder="留空表示不限制"
+          />
+          <p class="input-hint">每 24 小时滚动窗口内的最大使用额度（美元）。留空不限制。</p>
+        </div>
+        <div>
           <label class="input-label">{{ t("admin.groups.form.rpmLimit") }}</label>
           <input
             v-model.number="createForm.rpm_limit"
@@ -1706,6 +1718,18 @@
             placeholder="留空则与实际倍率相同"
           />
           <p class="input-hint">用户端看到的倍率（留空=与实际倍率相同）。计费始终使用实际倍率。</p>
+        </div>
+        <div>
+          <label class="input-label">日限额（USD）</label>
+          <input
+            v-model.number="editForm.daily_limit_usd"
+            type="number"
+            step="1"
+            min="0"
+            class="input"
+            placeholder="留空表示不限制"
+          />
+          <p class="input-hint">每 24 小时滚动窗口内的最大使用额度（美元）。留空不限制。</p>
         </div>
         <div>
           <label class="input-label">{{ t("admin.groups.form.rpmLimit") }}</label>
@@ -3132,6 +3156,7 @@ const createForm = reactive({
   is_exclusive: false,
   subscription_type: "standard" as SubscriptionType,
   five_hour_limit_usd: null as number | null,
+  daily_limit_usd: null as number | null,
   weekly_limit_usd: null as number | null,
   monthly_limit_usd: null as number | null,
   // 图片生成计费配置
@@ -3418,6 +3443,7 @@ const editForm = reactive({
   status: "active" as "active" | "inactive",
   subscription_type: "standard" as SubscriptionType,
   five_hour_limit_usd: null as number | null,
+  daily_limit_usd: null as number | null,
   weekly_limit_usd: null as number | null,
   monthly_limit_usd: null as number | null,
   // 图片生成计费配置
@@ -3733,6 +3759,9 @@ const handleCreateGroup = async () => {
       monthly_limit_usd: normalizeOptionalLimit(
         createForm.monthly_limit_usd as number | string | null,
       ),
+      daily_limit_usd: normalizeOptionalLimit(
+        createForm.daily_limit_usd as number | string | null,
+      ),
       model_routing: convertRoutingRulesToApiFormat(
         createModelRoutingRules.value,
       ),
@@ -3751,6 +3780,7 @@ const handleCreateGroup = async () => {
     const emptyToNull = (v: any) => (v === "" ? null : v);
       requestData.weekly_limit_usd = emptyToNull(requestData.weekly_limit_usd);
     requestData.monthly_limit_usd = emptyToNull(requestData.monthly_limit_usd);
+    requestData.daily_limit_usd = emptyToNull(requestData.daily_limit_usd);
     requestData.image_rate_multiplier = normalizeImageRateMultiplier(
       requestData.image_rate_multiplier,
     );
@@ -3785,6 +3815,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.status = group.status;
   editForm.subscription_type = group.subscription_type || "standard";
   editForm.five_hour_limit_usd = group.five_hour_limit_usd;
+  editForm.daily_limit_usd = group.daily_limit_usd;
   editForm.weekly_limit_usd = group.weekly_limit_usd;
   editForm.monthly_limit_usd = group.monthly_limit_usd;
   editForm.allow_image_generation = group.allow_image_generation ?? false;
@@ -3859,6 +3890,9 @@ const handleUpdateGroup = async () => {
       monthly_limit_usd: normalizeOptionalLimit(
         editForm.monthly_limit_usd as number | string | null,
       ),
+      daily_limit_usd: normalizeOptionalLimit(
+        editForm.daily_limit_usd as number | string | null,
+      ),
       fallback_group_id:
         editForm.fallback_group_id === null ? 0 : editForm.fallback_group_id,
       fallback_group_id_on_invalid_request:
@@ -3883,6 +3917,7 @@ const handleUpdateGroup = async () => {
     const emptyToNull = (v: any) => (v === "" ? null : v);
       payload.weekly_limit_usd = emptyToNull(payload.weekly_limit_usd);
     payload.monthly_limit_usd = emptyToNull(payload.monthly_limit_usd);
+    payload.daily_limit_usd = emptyToNull(payload.daily_limit_usd);
     payload.image_rate_multiplier = normalizeImageRateMultiplier(
       payload.image_rate_multiplier,
     );

@@ -21,6 +21,7 @@ type Group struct {
 
 	SubscriptionType    string
 	FiveHourLimitUSD    *float64
+	DailyLimitUSD       *float64
 	WeeklyLimitUSD      *float64
 	MonthlyLimitUSD     *float64
 	DefaultValidityDays int
@@ -86,6 +87,10 @@ func (g *Group) IsSubscriptionType() bool {
 
 func (g *Group) HasFiveHourLimit() bool {
 	return g.FiveHourLimitUSD != nil && *g.FiveHourLimitUSD > 0
+}
+
+func (g *Group) HasDailyLimit() bool {
+	return g.DailyLimitUSD != nil && *g.DailyLimitUSD > 0
 }
 
 func (g *Group) HasWeeklyLimit() bool {
