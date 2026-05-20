@@ -210,8 +210,9 @@ type OpsUpstreamErrorEvent struct {
 	HasContext1MBeta    bool   `json:"has_context_1m_beta,omitempty"`
 
 	// Outcome
-	UpstreamStatusCode int    `json:"upstream_status_code,omitempty"`
-	UpstreamRequestID  string `json:"upstream_request_id,omitempty"`
+	UpstreamStatusCode  int    `json:"upstream_status_code,omitempty"`
+	UpstreamRequestID   string `json:"upstream_request_id,omitempty"`
+	UpstreamRequestBody string `json:"upstream_request_body,omitempty"`
 
 	// UpstreamURL is the actual upstream URL that was called (host + path, query/fragment stripped).
 	// Helps debug 404/routing errors by showing which endpoint was targeted.

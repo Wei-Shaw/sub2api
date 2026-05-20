@@ -21,3 +21,20 @@ func TestMigrationSchemaIncludesUserDevices(t *testing.T) {
 	`).Scan(&exists))
 	require.True(t, exists, "user_devices migration should be applied")
 }
+
+func TestMigrationSchemaAllowsPendingActivationUserDevices(t *testing.T) {
+	t.Parallel()
+
+	tx := testTx(t)
+	requireConstraintDefinitionContains(
+		t,
+		tx,
+		"user_devices",
+		"user_devices_status_check",
+		"status",
+		"'active'",
+		"'pending_activation'",
+		"'revoked'",
+		"'blocked'",
+	)
+}

@@ -103,7 +103,7 @@ func (RedeemCode) Indexes() []ent.Index {
 		index.Fields("status"),
 		index.Fields("used_by"),
 		index.Fields("group_id"),
-		index.Fields("expires_at"),
 		index.Fields("created_by"),
+		index.Fields("expires_at"),
 	}
 }

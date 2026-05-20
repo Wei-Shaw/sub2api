@@ -485,7 +485,7 @@ type OpenAIFastPolicySettings struct {
 	Rules []OpenAIFastPolicyRule `json:"rules"`
 }
 
-// EmailTemplateEventOption 描述可编辑的通知邮件事件。
+// EmailTemplateEventOption describes an editable notification email event.
 type EmailTemplateEventOption struct {
 	Value       string `json:"value"`
 	Label       string `json:"label,omitempty"`

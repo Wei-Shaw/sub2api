@@ -703,7 +703,7 @@ func (h *OpsHandler) UpdateErrorResolution(c *gin.Context) {
 		return
 	}
 	uid := subject.UserID
-	if err := h.opsService.UpdateErrorResolution(c.Request.Context(), id, req.Resolved, &uid); err != nil {
+	if err := h.opsService.UpdateErrorResolution(c.Request.Context(), id, req.Resolved, &uid, nil); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}

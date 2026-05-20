@@ -19,7 +19,8 @@ import (
 var ErrOpsDisabled = infraerrors.NotFound("OPS_DISABLED", "Ops monitoring is disabled")
 
 const (
-	opsMaxStoredErrorBodyBytes = 20 * 1024
+	opsMaxStoredRequestBodyBytes = 256 * 1024
+	opsMaxStoredErrorBodyBytes   = 20 * 1024
 	// OpsErrorLogQueueBodyMaxBytes bounds attacker-controlled response data while
 	// it waits in the asynchronous error-log queue.
 	OpsErrorLogQueueBodyMaxBytes = 8 * 1024
@@ -39,6 +40,22 @@ type OpsRuntimeSettingsRefreshHealth struct {
 	Running      bool   `json:"running"`
 	SuccessTotal uint64 `json:"success_total"`
 	FailureTotal uint64 `json:"failure_total"`
+}
+
+// PrepareOpsRequestBodyForQueue 在入队前对请求体执行脱敏与裁剪，返回可直接写入 OpsInsertErrorLogInput 的字段。
+// 该方法用于避免异步队列持有大块原始请求体，减少错误风暴下的内存放大风险。
+func PrepareOpsRequestBodyForQueue(raw []byte) (requestBodyJSON *string, truncated bool, requestBodyBytes *int) {
+	if len(raw) == 0 {
+		return nil, false, nil
+	}
+	sanitized, truncated, bytesLen := sanitizeAndTrimJSONPayload(raw, opsMaxStoredRequestBodyBytes)
+	if sanitized != "" {
+		out := sanitized
+		requestBodyJSON = &out
+	}
+	n := bytesLen
+	requestBodyBytes = &n
+	return requestBodyJSON, truncated, requestBodyBytes
 }
 
 // OpsService provides ingestion and query APIs for the Ops monitoring module.
@@ -721,7 +738,27 @@ func (s *OpsService) GetUserErrorRequestDetail(ctx context.Context, userID, id i
 	return ToUserErrorRequestDetail(detail), nil
 }
 
-func (s *OpsService) UpdateErrorResolution(ctx context.Context, errorID int64, resolved bool, resolvedByUserID *int64) error {
+func (s *OpsService) ListRetryAttemptsByErrorID(ctx context.Context, errorID int64, limit int) ([]*OpsRetryAttempt, error) {
+	if err := s.RequireMonitoringEnabled(ctx); err != nil {
+		return nil, err
+	}
+	if s.opsRepo == nil {
+		return nil, infraerrors.ServiceUnavailable("OPS_REPO_UNAVAILABLE", "Ops repository not available")
+	}
+	if errorID <= 0 {
+		return nil, infraerrors.BadRequest("OPS_ERROR_INVALID_ID", "invalid error id")
+	}
+	items, err := s.opsRepo.ListRetryAttemptsByErrorID(ctx, errorID, limit)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return []*OpsRetryAttempt{}, nil
+		}
+		return nil, infraerrors.InternalServer("OPS_RETRY_LIST_FAILED", "Failed to list retry attempts").WithCause(err)
+	}
+	return items, nil
+}
+
+func (s *OpsService) UpdateErrorResolution(ctx context.Context, errorID int64, resolved bool, resolvedByUserID *int64, resolvedRetryID *int64) error {
 	if err := s.RequireMonitoringEnabled(ctx); err != nil {
 		return err
 	}
@@ -738,7 +775,7 @@ func (s *OpsService) UpdateErrorResolution(ctx context.Context, errorID int64, r
 		}
 		return infraerrors.InternalServer("OPS_ERROR_LOAD_FAILED", "Failed to load ops error log").WithCause(err)
 	}
-	return s.opsRepo.UpdateErrorResolution(ctx, errorID, resolved, resolvedByUserID, nil)
+	return s.opsRepo.UpdateErrorResolution(ctx, errorID, resolved, resolvedByUserID, resolvedRetryID, nil)
 }
 
 func sanitizeAndTrimJSONPayload(raw []byte, maxBytes int) (jsonString string, truncated bool, bytesLen int) {
@@ -786,6 +823,7 @@ func sanitizeAndTrimJSONPayload(raw []byte, maxBytes int) (jsonString string, tr
 	if root, ok := decoded.(map[string]any); ok {
 		placeholder := shallowCopyMap(root)
 		placeholder["payload_truncated"] = true
+		placeholder["request_body_truncated"] = true
 
 		// Replace potentially huge arrays/strings, but keep the keys present.
 		for _, k := range []string{"messages", "contents", "input", "prompt"} {
@@ -808,7 +846,7 @@ func sanitizeAndTrimJSONPayload(raw []byte, maxBytes int) (jsonString string, tr
 	}
 
 	// Final fallback: minimal valid JSON.
-	encoded4, err4 := json.Marshal(map[string]any{"payload_truncated": true})
+	encoded4, err4 := json.Marshal(map[string]any{"payload_truncated": true, "request_body_truncated": true})
 	if err4 != nil {
 		return "", true, bytesLen
 	}

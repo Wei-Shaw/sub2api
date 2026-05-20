@@ -177,12 +177,12 @@ func (s *RedeemCodeRepoSuite) TestListWithFilters_StatusExpiredByExpiresAt() {
 	s.Require().NoError(s.repo.Create(s.ctx, &service.RedeemCode{Code: "STAT-EXPIRED-BY-TIME", Type: service.RedeemTypeBalance, Value: 0, Status: service.StatusUnused, ExpiresAt: &past}))
 	s.Require().NoError(s.repo.Create(s.ctx, &service.RedeemCode{Code: "STAT-UNUSED-FUTURE", Type: service.RedeemTypeBalance, Value: 0, Status: service.StatusUnused, ExpiresAt: &future}))
 
-	expired, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, "", service.StatusExpired, "")
+	expired, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, "", service.StatusExpired, "", nil)
 	s.Require().NoError(err)
 	s.Require().Len(expired, 1)
 	s.Require().Equal("STAT-EXPIRED-BY-TIME", expired[0].Code)
 
-	unused, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, "", service.StatusUnused, "")
+	unused, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, "", service.StatusUnused, "", nil)
 	s.Require().NoError(err)
 	s.Require().Len(unused, 1)
 	s.Require().Equal("STAT-UNUSED-FUTURE", unused[0].Code)

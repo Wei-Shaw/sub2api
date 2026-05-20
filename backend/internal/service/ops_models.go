@@ -43,10 +43,14 @@ type OpsErrorLog struct {
 	Platform   string `json:"platform"`
 	Model      string `json:"model"`
 
+	IsRetryable bool `json:"is_retryable"`
+	RetryCount  int  `json:"retry_count"`
+
 	Resolved           bool       `json:"resolved"`
 	ResolvedAt         *time.Time `json:"resolved_at"`
 	ResolvedByUserID   *int64     `json:"resolved_by_user_id"`
 	ResolvedByUserName string     `json:"resolved_by_user_name"`
+	ResolvedRetryID    *int64     `json:"resolved_retry_id"`
 	ResolvedStatusRaw  string     `json:"-"`
 
 	ClientRequestID string `json:"client_request_id"`
@@ -95,6 +99,12 @@ type OpsErrorLogDetail struct {
 	UpstreamLatencyMs  *int64 `json:"upstream_latency_ms"`
 	ResponseLatencyMs  *int64 `json:"response_latency_ms"`
 	TimeToFirstTokenMs *int64 `json:"time_to_first_token_ms"`
+
+	// Retry context
+	RequestBody          string `json:"request_body"`
+	RequestBodyTruncated bool   `json:"request_body_truncated"`
+	RequestBodyBytes     *int   `json:"request_body_bytes"`
+	RequestHeaders       string `json:"request_headers,omitempty"`
 
 	// vNext metric semantics
 	IsBusinessLimited bool `json:"is_business_limited"`
