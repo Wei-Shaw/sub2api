@@ -657,3 +657,233 @@ REDACTED
 	REDACTED)
 REDACTED
 REDACTED
+
+func TestIsBedrockOpus47OrNewer(t *testing.T) {
+	tests := []struct {
+		modelID string
+		expect  bool
+REDACTED{
+		{"us.anthropic.claude-opus-4-7-v1", trueREDACTED,
+		{"us.anthropic.claude-opus-4-6-v1", falseREDACTED,
+		{"us.anthropic.claude-opus-4-5-20251101-v1:0", falseREDACTED,
+		{"us.anthropic.claude-opus-5-0-v1", trueREDACTED,
+		// Sonnet 4.7 is not Opus → false
+		{"us.anthropic.claude-sonnet-4-7-v1", falseREDACTED,
+		{"us.anthropic.claude-sonnet-4-6", falseREDACTED,
+		// Haiku is not Opus
+		{"us.anthropic.REDACTED-v1:0", falseREDACTED,
+		// Non-Claude models
+		{"amazon.nova-pro-v1", falseREDACTED,
+REDACTED
+	for _, tt := range tests {
+		t.Run(tt.modelID, func(t *testing.T) {
+			assert.Equal(t, tt.expect, isBedrockOpus47OrNewer(tt.modelID))
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestSanitizeBedrockThinking(t *testing.T) {
+	t.Run("opus 4.7 converts enabled to adaptive", func(t *testing.T) {
+		input := `{"thinking":{"type":"enabled","budget_tokens":10000REDACTED,"messages":[]REDACTED`
+		result := sanitizeBedrockThinking([]byte(input), "us.anthropic.claude-opus-4-7-v1")
+		assert.Equal(t, "adaptive", gjson.GetBytes(result, "thinking.type").String())
+		assert.False(t, gjson.GetBytes(result, "thinking.budget_tokens").Exists())
+REDACTED)
+
+	t.Run("opus 4.7 keeps adaptive unchanged", func(t *testing.T) {
+		input := `{"thinking":{"type":"adaptive"REDACTED,"messages":[]REDACTED`
+		result := sanitizeBedrockThinking([]byte(input), "us.anthropic.claude-opus-4-7-v1")
+		assert.Equal(t, "adaptive", gjson.GetBytes(result, "thinking.type").String())
+REDACTED)
+
+	t.Run("opus 4.6 enabled without budget_tokens gets default", func(t *testing.T) {
+		input := `{"thinking":{"type":"enabled"REDACTED,"messages":[]REDACTED`
+		result := sanitizeBedrockThinking([]byte(input), "us.anthropic.claude-opus-4-6-v1")
+		assert.Equal(t, "enabled", gjson.GetBytes(result, "thinking.type").String())
+		assert.Equal(t, int64(defaultThinkingBudgetTokens), gjson.GetBytes(result, "thinking.budget_tokens").Int())
+REDACTED)
+
+	t.Run("opus 4.6 enabled with budget_tokens unchanged", func(t *testing.T) {
+		input := `{"thinking":{"type":"enabled","budget_tokens":20000REDACTED,"messages":[]REDACTED`
+		result := sanitizeBedrockThinking([]byte(input), "us.anthropic.claude-opus-4-6-v1")
+		assert.Equal(t, "enabled", gjson.GetBytes(result, "thinking.type").String())
+		assert.Equal(t, int64(20000), gjson.GetBytes(result, "thinking.budget_tokens").Int())
+REDACTED)
+
+	t.Run("no thinking field unchanged", func(t *testing.T) {
+		input := `{"messages":[]REDACTED`
+		result := sanitizeBedrockThinking([]byte(input), "us.anthropic.claude-opus-4-7-v1")
+		assert.JSONEq(t, input, string(result))
+REDACTED)
+
+	t.Run("sonnet 4.6 enabled without budget_tokens gets default", func(t *testing.T) {
+		input := `{"thinking":{"type":"enabled"REDACTED,"messages":[]REDACTED`
+		result := sanitizeBedrockThinking([]byte(input), "us.anthropic.claude-sonnet-4-6")
+		assert.Equal(t, "enabled", gjson.GetBytes(result, "thinking.type").String())
+		assert.Equal(t, int64(defaultThinkingBudgetTokens), gjson.GetBytes(result, "thinking.budget_tokens").Int())
+REDACTED)
+REDACTED
+
+func TestSanitizeBedrockToolUseIDs(t *testing.T) {
+	t.Run("clean IDs unchanged", func(t *testing.T) {
+		input := `{"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01AbCdEf","name":"bash","input":{REDACTEDREDACTED]REDACTED]REDACTED`
+		result := sanitizeBedrockToolUseIDs([]byte(input))
+		assert.Equal(t, "toolu_01AbCdEf", gjson.GetBytes(result, "messages.0.content.0.id").String())
+REDACTED)
+
+	t.Run("dots in tool_use ID replaced with underscores", func(t *testing.T) {
+		input := `{"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"toolu.01.Ab","name":"bash","input":{REDACTEDREDACTED]REDACTED]REDACTED`
+		result := sanitizeBedrockToolUseIDs([]byte(input))
+		assert.Equal(t, "toolu_01_Ab", gjson.GetBytes(result, "messages.0.content.0.id").String())
+REDACTED)
+
+	t.Run("special chars in tool_use ID sanitized", func(t *testing.T) {
+		input := `{"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"toolu:01@Ab#Cd","name":"bash","input":{REDACTEDREDACTED]REDACTED]REDACTED`
+		result := sanitizeBedrockToolUseIDs([]byte(input))
+		id := gjson.GetBytes(result, "messages.0.content.0.id").String()
+		assert.Regexp(t, `^[a-zA-Z0-9_-]+$`, id)
+REDACTED)
+
+	t.Run("tool_result tool_use_id sanitized", func(t *testing.T) {
+		input := `{"messages":[{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu.01.Ab","content":"ok"REDACTED]REDACTED]REDACTED`
+		result := sanitizeBedrockToolUseIDs([]byte(input))
+		assert.Equal(t, "toolu_01_Ab", gjson.GetBytes(result, "messages.0.content.0.tool_use_id").String())
+REDACTED)
+
+	t.Run("mixed clean and dirty IDs", func(t *testing.T) {
+		input := `{"messages":[
+			{"role":"assistant","content":[{"type":"tool_use","id":"clean_id-123","name":"a","input":{REDACTEDREDACTED]REDACTED,
+			{"role":"user","content":[{"type":"tool_result","tool_use_id":"dirty.id@456","content":"ok"REDACTED]REDACTED,
+			{"role":"assistant","content":[{"type":"tool_use","id":"also.dirty","name":"b","input":{REDACTEDREDACTED]REDACTED
+		]REDACTED`
+		result := sanitizeBedrockToolUseIDs([]byte(input))
+		assert.Equal(t, "clean_id-123", gjson.GetBytes(result, "messages.0.content.0.id").String())
+		assert.Equal(t, "dirty_id_456", gjson.GetBytes(result, "messages.1.content.0.tool_use_id").String())
+		assert.Equal(t, "also_dirty", gjson.GetBytes(result, "messages.2.content.0.id").String())
+REDACTED)
+
+	t.Run("no messages unchanged", func(t *testing.T) {
+		input := `{"system":[{"type":"text","text":"hi"REDACTED]REDACTED`
+		result := sanitizeBedrockToolUseIDs([]byte(input))
+		assert.JSONEq(t, input, string(result))
+REDACTED)
+
+	t.Run("string content skipped", func(t *testing.T) {
+		input := `{"messages":[{"role":"user","content":"plain text"REDACTED]REDACTED`
+		result := sanitizeBedrockToolUseIDs([]byte(input))
+		assert.JSONEq(t, input, string(result))
+REDACTED)
+
+	t.Run("empty ID skipped", func(t *testing.T) {
+		input := `{"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"","name":"a","input":{REDACTEDREDACTED]REDACTED]REDACTED`
+		result := sanitizeBedrockToolUseIDs([]byte(input))
+		assert.Equal(t, "", gjson.GetBytes(result, "messages.0.content.0.id").String())
+REDACTED)
+REDACTED
+
+func TestSanitizeBedrockThinking_EdgeCases(t *testing.T) {
+	t.Run("opus 4.7 enabled without budget_tokens converts to adaptive", func(t *testing.T) {
+		input := `{"thinking":{"type":"enabled"REDACTED,"messages":[]REDACTED`
+		result := sanitizeBedrockThinking([]byte(input), "us.anthropic.claude-opus-4-7-v1")
+		assert.Equal(t, "adaptive", gjson.GetBytes(result, "thinking.type").String())
+		assert.False(t, gjson.GetBytes(result, "thinking.budget_tokens").Exists())
+REDACTED)
+
+	t.Run("thinking type disabled unchanged", func(t *testing.T) {
+		input := `{"thinking":{"type":"disabled"REDACTED,"messages":[]REDACTED`
+		result := sanitizeBedrockThinking([]byte(input), "us.anthropic.claude-opus-4-7-v1")
+		assert.Equal(t, "disabled", gjson.GetBytes(result, "thinking.type").String())
+REDACTED)
+
+	t.Run("thinking type empty string unchanged", func(t *testing.T) {
+		input := `{"thinking":{"type":""REDACTED,"messages":[]REDACTED`
+		result := sanitizeBedrockThinking([]byte(input), "us.anthropic.claude-opus-4-7-v1")
+		assert.JSONEq(t, input, string(result))
+REDACTED)
+
+	t.Run("thinking is not an object unchanged", func(t *testing.T) {
+		input := `{"thinking":true,"messages":[]REDACTED`
+		result := sanitizeBedrockThinking([]byte(input), "us.anthropic.claude-opus-4-7-v1")
+		assert.JSONEq(t, input, string(result))
+REDACTED)
+
+	t.Run("opus 4.7 adaptive with budget_tokens preserved", func(t *testing.T) {
+		input := `{"thinking":{"type":"adaptive","budget_tokens":5000REDACTED,"messages":[]REDACTED`
+		result := sanitizeBedrockThinking([]byte(input), "us.anthropic.claude-opus-4-7-v1")
+		assert.Equal(t, "adaptive", gjson.GetBytes(result, "thinking.type").String())
+		assert.Equal(t, int64(5000), gjson.GetBytes(result, "thinking.budget_tokens").Int())
+REDACTED)
+
+	// Forward() passes parsed.Model (standard names like "claude-opus-4-7")
+	t.Run("standard model name opus 4.7 converts enabled to adaptive", func(t *testing.T) {
+		input := `{"thinking":{"type":"enabled","budget_tokens":10000REDACTED,"messages":[]REDACTED`
+		result := sanitizeBedrockThinking([]byte(input), "claude-opus-4-7")
+		assert.Equal(t, "adaptive", gjson.GetBytes(result, "thinking.type").String())
+		assert.False(t, gjson.GetBytes(result, "thinking.budget_tokens").Exists())
+REDACTED)
+
+	t.Run("standard model name opus 4.6 keeps enabled", func(t *testing.T) {
+		input := `{"thinking":{"type":"enabled","budget_tokens":10000REDACTED,"messages":[]REDACTED`
+		result := sanitizeBedrockThinking([]byte(input), "claude-opus-4-6")
+		assert.Equal(t, "enabled", gjson.GetBytes(result, "thinking.type").String())
+		assert.Equal(t, int64(10000), gjson.GetBytes(result, "thinking.budget_tokens").Int())
+REDACTED)
+REDACTED
+
+func TestIsBedrockOpus47OrNewer_EdgeCases(t *testing.T) {
+	tests := []struct {
+		modelID string
+		expect  bool
+REDACTED{
+		{"anthropic.claude-opus-4-7-v1", trueREDACTED,
+		{"us.anthropic.claude-opus-4-7-20270101-v1:0", trueREDACTED,
+		{"", falseREDACTED,
+		// Forward() passes parsed.Model (standard names), not Bedrock IDs
+		{"claude-opus-4-7", trueREDACTED,
+		{"claude-opus-4-6", falseREDACTED,
+		{"claude-sonnet-4-7", falseREDACTED,
+REDACTED
+	for _, tt := range tests {
+		t.Run(tt.modelID, func(t *testing.T) {
+			assert.Equal(t, tt.expect, isBedrockOpus47OrNewer(tt.modelID))
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestPrepareBedrockRequestBodyWithTokens_CCCompat(t *testing.T) {
+	input := `{
+		"model":"claude-opus-4-6",
+		"stream":true,
+		"max_tokens":16384,
+		"thinking":{"type":"enabled"REDACTED,
+		"messages":[
+			{"role":"assistant","content":[{"type":"tool_use","id":"toolu.01.Ab","name":"bash","input":{REDACTEDREDACTED]REDACTED,
+			{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu.01.Ab","content":"ok"REDACTED]REDACTED
+		]
+REDACTED`
+
+	t.Run("ccCompat=false skips thinking and toolUseID sanitization", func(t *testing.T) {
+		result, err := PrepareBedrockRequestBodyWithTokens([]byte(input), "us.anthropic.claude-opus-4-6-v1", nil, false)
+	REDACTED
+		assert.Equal(t, "enabled", gjson.GetBytes(result, "thinking.type").String())
+		assert.False(t, gjson.GetBytes(result, "thinking.budget_tokens").Exists())
+		assert.Equal(t, "toolu.01.Ab", gjson.GetBytes(result, "messages.0.content.0.id").String())
+REDACTED)
+
+	t.Run("ccCompat=true applies thinking fix and toolUseID sanitization (opus 4.6)", func(t *testing.T) {
+		result, err := PrepareBedrockRequestBodyWithTokens([]byte(input), "us.anthropic.claude-opus-4-6-v1", nil, true)
+	REDACTED
+		assert.Equal(t, "enabled", gjson.GetBytes(result, "thinking.type").String())
+		assert.Equal(t, int64(defaultThinkingBudgetTokens), gjson.GetBytes(result, "thinking.budget_tokens").Int())
+		assert.Equal(t, "toolu_01_Ab", gjson.GetBytes(result, "messages.0.content.0.id").String())
+		assert.Equal(t, "toolu_01_Ab", gjson.GetBytes(result, "messages.1.content.0.tool_use_id").String())
+REDACTED)
+
+	t.Run("ccCompat=true converts thinking to adaptive for opus 4.7", func(t *testing.T) {
+		result, err := PrepareBedrockRequestBodyWithTokens([]byte(input), "us.anthropic.claude-opus-4-7-v1", nil, true)
+	REDACTED
+		assert.Equal(t, "adaptive", gjson.GetBytes(result, "thinking.type").String())
+		assert.False(t, gjson.GetBytes(result, "thinking.budget_tokens").Exists())
+		assert.Equal(t, "toolu_01_Ab", gjson.GetBytes(result, "messages.0.content.0.id").String())
+REDACTED)
+REDACTED
