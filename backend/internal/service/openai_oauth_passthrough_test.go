@@ -548,6 +548,92 @@ func TestOpenAIGatewayService_OAuthPassthrough_DisabledUsesLegacyTransform(t *te
 	require.Contains(t, string(upstream.lastBody), `"stream":true`)
 }
 
+func TestOpenAIGatewayService_OAuthLegacy_StripsUnsupportedThinkingFromResponsesInput(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	inputBody := []byte(`{"model":"gpt-5.5","stream":false,"store":true,"input":[{"type":"message","role":"assistant","thinking":"internal trace","content":[{"type":"thinking","thinking":"nested trace"},{"type":"redacted_thinking","data":"sealed"},{"type":"output_text","text":"visible"}]},{"type":"reasoning","summary":[],"thinking":"unsupported but item is otherwise valid"}]}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(nil))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.1.0")
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid"}},
+		Body:       io.NopCloser(strings.NewReader("data: [DONE]\n\n")),
+	}}
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{Gateway: config.GatewayConfig{ForceCodexCLI: false}},
+		httpUpstream: upstream,
+	}
+	account := &Account{
+		ID:             123,
+		Name:           "acc",
+		Platform:       PlatformOpenAI,
+		Type:           AccountTypeOAuth,
+		Concurrency:    1,
+		Credentials:    map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"},
+		Extra:          map[string]any{"openai_passthrough": false},
+		Status:         StatusActive,
+		Schedulable:    true,
+		RateMultiplier: f64p(1),
+	}
+
+	_, err := svc.Forward(context.Background(), c, account, inputBody)
+	require.NoError(t, err)
+	require.NotNil(t, upstream.lastReq)
+	require.NotContains(t, string(upstream.lastBody), `"thinking"`)
+	require.NotContains(t, string(upstream.lastBody), `"redacted_thinking"`)
+	require.Contains(t, string(upstream.lastBody), "nested trace")
+	require.Contains(t, string(upstream.lastBody), "visible")
+}
+
+func TestOpenAIGatewayService_OAuthPassthrough_StripsUnsupportedThinkingFromResponsesInput(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	inputBody := []byte(`{"model":"gpt-5.5","instructions":"test","stream":false,"store":true,"input":[{"type":"message","role":"assistant","thinking":"internal trace","content":[{"type":"thinking","thinking":"nested trace"},{"type":"output_text","text":"visible","thinking":"stray field"}]},{"type":"reasoning","summary":[],"thinking":"unsupported but item is otherwise valid"}]}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(nil))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.1.0")
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid"}},
+		Body:       io.NopCloser(strings.NewReader("data: [DONE]\n\n")),
+	}}
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{Gateway: config.GatewayConfig{ForceCodexCLI: false}},
+		httpUpstream: upstream,
+	}
+	account := &Account{
+		ID:             123,
+		Name:           "acc",
+		Platform:       PlatformOpenAI,
+		Type:           AccountTypeOAuth,
+		Concurrency:    1,
+		Credentials:    map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"},
+		Extra:          map[string]any{"openai_passthrough": true},
+		Status:         StatusActive,
+		Schedulable:    true,
+		RateMultiplier: f64p(1),
+	}
+
+	_, err := svc.Forward(context.Background(), c, account, inputBody)
+	require.NoError(t, err)
+	require.NotNil(t, upstream.lastReq)
+	require.False(t, gjson.GetBytes(upstream.lastBody, "input.0.thinking").Exists())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "input.1.thinking").Exists())
+	require.Equal(t, "reasoning", gjson.GetBytes(upstream.lastBody, "input.1.type").String())
+	require.Equal(t, "output_text", gjson.GetBytes(upstream.lastBody, "input.0.content.0.type").String())
+	require.Equal(t, "nested trace", gjson.GetBytes(upstream.lastBody, "input.0.content.0.text").String())
+	require.Equal(t, "visible", gjson.GetBytes(upstream.lastBody, "input.0.content.1.text").String())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "input.0.content.1.thinking").Exists())
+	require.NotContains(t, string(upstream.lastBody), "stray field")
+}
+
 func TestOpenAIGatewayService_OAuthLegacy_UpstreamRequestIgnoresClientCancel(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
