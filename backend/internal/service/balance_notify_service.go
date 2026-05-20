@@ -372,8 +372,12 @@ REDACTED
 		REDACTED)
 			cancel()
 			if err != nil {
-				slog.Warn("template balance low notification failed; falling back to built-in body", "to", to, "err", err.Error())
-				fallbackRecipients = append(fallbackRecipients, to)
+				if shouldFallbackNotificationEmail(err) {
+					slog.Warn("template balance low notification failed; falling back to built-in body", "to", to, "err", err.Error())
+					fallbackRecipients = append(fallbackRecipients, to)
+			REDACTED else {
+					slog.Warn("template balance low notification delivery failed; not sending fallback to avoid duplicates", "to", to, "err", err.Error())
+			REDACTED
 		REDACTED
 	REDACTED
 		if len(fallbackRecipients) == 0 {
@@ -401,6 +405,44 @@ REDACTED
 	remaining := dim.limit - used
 	if remaining < 0 {
 		remaining = 0
+REDACTED
+
+	if s.notificationEmailService != nil {
+		fallbackRecipients := make([]string, 0, len(adminEmails))
+		for _, to := range adminEmails {
+			ctx, cancel := context.WithTimeout(context.Background(), emailSendTimeout)
+			err := s.notificationEmailService.Send(ctx, NotificationEmailSendInput{
+				Event:          NotificationEmailEventAccountQuotaAlert,
+				RecipientEmail: to,
+				RecipientName:  emailRecipientName(to),
+				SourceType:     "account_quota",
+				SourceID:       fmt.Sprintf("%d-%s", accountID, dim.name),
+				ReminderKey:    time.Now().UTC().Format("2006-01-02"),
+				Variables: map[string]string{
+					"account_id":      strconv.FormatInt(accountID, 10),
+					"account_name":    accountName,
+					"platform":        platform,
+					"quota_dimension": dimLabel,
+					"quota_used":      fmt.Sprintf("%.2f", used),
+					"quota_limit":     fmt.Sprintf("%.2f", dim.limit),
+					"quota_remaining": fmt.Sprintf("%.2f", remaining),
+					"quota_threshold": thresholdDisplay,
+			REDACTED,
+		REDACTED)
+			cancel()
+			if err != nil {
+				if shouldFallbackNotificationEmail(err) {
+					slog.Warn("template account quota alert failed; falling back to built-in body", "to", to, "account_id", accountID, "dimension", dim.name, "err", err.Error())
+					fallbackRecipients = append(fallbackRecipients, to)
+			REDACTED else {
+					slog.Warn("template account quota alert delivery failed; not sending fallback to avoid duplicates", "to", to, "account_id", accountID, "dimension", dim.name, "err", err.Error())
+			REDACTED
+		REDACTED
+	REDACTED
+		if len(fallbackRecipients) == 0 {
+			return
+	REDACTED
+		adminEmails = fallbackRecipients
 REDACTED
 
 	subject := fmt.Sprintf("[%s] 账号限额告警 / Account Quota Alert - %s", sanitizeEmailHeader(siteName), sanitizeEmailHeader(accountName))
