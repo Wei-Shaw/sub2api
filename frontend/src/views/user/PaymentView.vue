@@ -29,8 +29,8 @@
                 </ul>
               </div>
               <div class="lg:col-span-2 rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
-                <h3 class="text-sm font-semibold text-gray-900 dark:text-white">购买方式</h3>
-                <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">直接使用账户余额购买套餐</p>
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-white">余额购买</h3>
+                <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">套餐使用账户余额扣款，不会自动拉起在线支付。</p>
                 <div class="mt-4 rounded-xl bg-gray-50 px-4 py-3 dark:bg-gray-700/50">
                   <p class="text-xs text-gray-400">当前可用余额</p>
                   <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">${{ user?.balance?.toFixed(2) || '0.00' }}</p>
@@ -38,7 +38,7 @@
                 <button class="mt-4 w-full rounded-xl bg-gray-900 py-3 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50 dark:bg-white dark:text-gray-900" :disabled="submitting" @click="purchaseSelectedPlanWithBalance">
                   <span v-if="submitting">购买中...</span><span v-else>{{ planButtonText(selectedPlan) }}</span>
                 </button>
-                <p class="mt-3 text-xs leading-5 text-gray-400">余额不足时，请联系 QQ 591719412 充值后再购买。</p>
+                <p class="mt-3 text-xs leading-5 text-gray-400">余额不足时，请先联系 QQ 591719412 充值余额，或使用兑换码到账后再购买。</p>
                 <router-link to="/redeem" class="mt-2 block w-full rounded-xl border border-gray-200 py-2.5 text-center text-sm text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300">已有兑换码？立即兑换</router-link>
               </div>
             </div>
@@ -105,7 +105,7 @@
                     <div class="flex items-center justify-between"><span class="text-base font-bold text-gray-900 dark:text-white">{{ plan.name }}</span><span class="rounded-md bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-700 dark:text-gray-400">{{ platformLabel(plan.group_platform || '') }}</span></div>
                     <div class="mt-2 flex items-baseline gap-2"><span v-if="plan.original_price" class="text-xs text-gray-400 line-through">&yen;{{ plan.original_price }}</span><span class="text-2xl font-bold text-gray-900 dark:text-white">&yen;{{ planDisplayAmount(plan) }}</span><span class="text-xs text-gray-400">{{ planPriceSuffix(plan) }}</span></div>
                     <p v-if="plan.purchase_quote?.action === 'extend'" class="mt-1 text-xs text-green-600 dark:text-green-400">当前套餐，购买后自动延期</p>
-                    <p v-else-if="plan.original_price" class="mt-1 text-xs text-gray-400">立省 &yen;{{ (plan.original_price - plan.price).toFixed(0) }}</p>
+                    <p v-else-if="plan.original_price" class="mt-1 text-xs text-gray-400">原价 ¥{{ plan.original_price }}，当前套餐价 ¥{{ plan.price }}</p>
                   </div>
                   <div class="mb-4 space-y-2 text-sm text-gray-500 dark:text-gray-400">
                     <p v-if="plan.description" class="leading-5">{{ plan.description }}</p>
@@ -516,6 +516,7 @@ watch(() => [validAmount.value, selectedMethod.value] as const, ([amt, method]) 
 function selectPlan(plan: SubscriptionPlan) {
   selectedPlan.value = plan
   errorMessage.value = ''
+  errorHintMessage.value = ''
 }
 
 async function purchaseSelectedPlanWithBalance() {
@@ -567,7 +568,7 @@ async function executeBalancePurchase(plan: SubscriptionPlan) {
       const balance = metadata?.balance ?? user.value?.balance?.toFixed?.(2) ?? '0.00'
       const required = metadata?.required ?? effectivePlanAmount(plan).toFixed(2)
       errorMessage.value = `余额不足：当前可用 $${balance}，套餐需要 $${required}`
-      errorHintMessage.value = '请联系 QQ 591719412 充值后再购买。'
+      errorHintMessage.value = '请先联系 QQ 591719412 充值余额，或使用兑换码到账后再购买。'
     } else {
       errorMessage.value = extractApiErrorMessage(err) || '购买失败'
       errorHintMessage.value = ''
