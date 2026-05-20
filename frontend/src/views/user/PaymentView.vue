@@ -39,7 +39,7 @@
                 <button class="mt-4 w-full rounded-xl bg-gray-900 py-3 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50 dark:bg-white dark:text-gray-900" :disabled="submitting" @click="purchaseSelectedPlanWithBalance">
                   <span v-if="submitting">购买中...</span><span v-else>{{ planButtonText(selectedPlan) }}</span>
                 </button>
-                <p class="mt-3 text-xs leading-5 text-gray-400">余额不足时，请先联系 QQ 591719412 充值余额，或使用兑换码到账后再购买。</p>
+                <p class="mt-3 text-xs leading-5 text-gray-400">余额不足时，请使用兑换码到账后再购买，或加入交流群了解活动福利。</p>
                 <router-link to="/redeem" class="mt-2 block w-full rounded-xl border border-gray-200 py-2.5 text-center text-sm text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300">已有兑换码？立即兑换</router-link>
               </div>
             </div>
@@ -51,20 +51,20 @@
                 <p class="mt-1 text-3xl font-bold text-gray-900 dark:text-white">${{ user?.balance?.toFixed(2) || '0.00' }}</p>
               </div>
               <div class="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
-                <p class="text-sm text-gray-400">客服充值</p>
-                <div class="mt-2 flex items-center gap-2"><svg class="h-5 w-5 text-[#12B7F5]" viewBox="0 0 24 24" fill="currentColor"><path d="M12.003 2c-2.265 0-6.29 1.364-6.29 7.325v1.195S3.55 14.96 3.55 17.474c0 .665.17 1.025.396 1.025.19 0 .46-.18.758-.625.775-1.15 1.525-2.76 1.997-3.775.14.02.282.03.425.03 1.47 0 2.97-.765 3.852-2.115.88 1.35 2.382 2.115 3.852 2.115.143 0 .284-.01.425-.03.472 1.015 1.222 2.625 1.997 3.775.298.445.568.625.758.625.226 0 .396-.36.396-1.025 0-2.514-2.163-6.954-2.163-6.954v-1.195C18.293 3.364 14.268 2 12.003 2z"/></svg><span class="text-lg font-semibold text-gray-900 dark:text-white">QQ: 591719412</span></div>
-                <p class="mt-2 text-xs text-gray-400">加客服获取付款码 &rarr; 转账 &rarr; 获取兑换码</p>
+                <p class="text-sm text-gray-400">用户交流群</p>
+                <div class="mt-2 flex items-center gap-2"><svg class="h-5 w-5 text-[#12B7F5]" viewBox="0 0 24 24" fill="currentColor"><path d="M12.003 2c-2.265 0-6.29 1.364-6.29 7.325v1.195S3.55 14.96 3.55 17.474c0 .665.17 1.025.396 1.025.19 0 .46-.18.758-.625.775-1.15 1.525-2.76 1.997-3.775.14.02.282.03.425.03 1.47 0 2.97-.765 3.852-2.115.88 1.35 2.382 2.115 3.852 2.115.143 0 .284-.01.425-.03.472 1.015 1.222 2.625 1.997 3.775.298.445.568.625.758.625.226 0 .396-.36.396-1.025 0-2.514-2.163-6.954-2.163-6.954v-1.195C18.293 3.364 14.268 2 12.003 2z"/></svg><span class="text-lg font-semibold text-gray-900 dark:text-white">群号 774692252</span></div>
+                <p class="mt-2 text-xs text-gray-400">活动福利 · 更新通知 · 使用答疑</p>
               </div>
             </div>
             <div class="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
               <p class="mb-3 text-sm text-gray-500 dark:text-gray-400">选择充值金额</p>
-              <div class="mt-3 flex items-center gap-3">
-                <button v-for="amt in [10, 20, 50, 100, 200, 500]" :key="amt" class="rounded-xl border px-3 py-2.5 text-center text-sm font-medium transition-all active:scale-[0.97]" :class="qqSelectedAmount === amt ? 'border-gray-900 bg-gray-900 text-white dark:border-white dark:bg-white dark:text-gray-900' : 'border-gray-200 text-gray-600 hover:border-gray-400 dark:border-gray-600 dark:text-gray-300 dark:hover:border-gray-400'" @click="customAmount = ''; qqSelectedAmount = amt">&yen;{{ amt }}</button>
-                <div class="relative flex-1">
-                  <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-gray-400">&yen;</span>
-                  <input v-model="customAmount" type="number" min="1" step="0.01" placeholder="任意金额" class="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-7 pr-14 text-sm text-gray-900 placeholder-gray-400 outline-none transition-colors focus:border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500 dark:focus:border-gray-400" @input="qqSelectedAmount = 0" />
-                  <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-gray-400">人民币</span>
-                </div>
+              <div class="mt-3 flex flex-wrap items-center gap-2 sm:gap-3">
+                <button v-for="amt in [10, 20, 50, 100, 200, 500]" :key="amt" class="min-w-[3rem] flex-1 rounded-xl border px-3 py-2.5 text-center text-sm font-medium transition-all active:scale-[0.97] sm:min-w-0 sm:flex-none" :class="qqSelectedAmount === amt ? 'border-gray-900 bg-gray-900 text-white dark:border-white dark:bg-white dark:text-gray-900' : 'border-gray-200 text-gray-600 hover:border-gray-400 dark:border-gray-600 dark:text-gray-300 dark:hover:border-gray-400'" @click="customAmount = ''; qqSelectedAmount = amt">&yen;{{ amt }}</button>
+              </div>
+              <div class="relative mt-3">
+                <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-gray-400">&yen;</span>
+                <input v-model="customAmount" type="number" min="1" step="0.01" placeholder="任意金额" class="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-7 pr-14 text-sm text-gray-900 placeholder-gray-400 outline-none transition-colors focus:border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500 dark:focus:border-gray-400" @input="qqSelectedAmount = 0" />
+                <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-gray-400">人民币</span>
               </div>
               <p v-if="estimatedBalance > 0" class="mt-3 text-sm text-gray-500 dark:text-gray-400">预计到账：<span class="font-semibold text-gray-900 dark:text-white">${{ estimatedBalance.toFixed(2) }}</span></p>
               <p class="mt-2 text-xs text-gray-400">示例：&yen;50 &rarr; $50 API 余额。这里的 $ 是平台内 API 余额计价单位，用于抵扣模型调用费用，不代表提现或法币兑换；支持最多两位小数。充值页已取消"充值满 &yen;50 额外赠送 $50 API 余额"活动，当前以页面实际到账与站内公告为准。</p>
@@ -582,7 +582,7 @@ async function executeBalancePurchase(plan: SubscriptionPlan) {
       const balance = metadata?.balance ?? user.value?.balance?.toFixed?.(2) ?? '0.00'
       const required = metadata?.required ?? effectivePlanAmount(plan).toFixed(2)
       errorMessage.value = `余额不足：当前可用 $${balance}，套餐需要 $${required}`
-      errorHintMessage.value = '请先联系 QQ 591719412 充值余额，或使用兑换码到账后再购买。'
+      errorHintMessage.value = '请先使用兑换码充值余额后再购买，或加入交流群了解活动福利。'
     } else {
       errorMessage.value = extractApiErrorMessage(err) || '购买失败'
       errorHintMessage.value = ''
