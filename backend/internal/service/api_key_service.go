@@ -737,8 +737,8 @@ func (s *APIKeyService) IncrementUsage(ctx context.Context, keyID int64) error {
 
 // GetAvailableGroups 获取用户有权限绑定的分组列表
 // 返回用户可以选择的分组：
-// - 标准类型分组：公开的（非专属）或用户被明确允许的
-// - 订阅类型分组：用户有有效订阅的
+// - 按量分组：只返回 openai 平台的标准分组（余额按量计费入口）
+// - 订阅分组：只返回用户已购买且仍有效的套餐分组
 func (s *APIKeyService) GetAvailableGroups(ctx context.Context, userID int64) ([]Group, error) {
 	// 获取用户信息
 	user, err := s.userRepo.GetByID(ctx, userID)
@@ -764,15 +764,33 @@ func (s *APIKeyService) GetAvailableGroups(ctx context.Context, userID int64) ([
 		subscribedGroupIDs[sub.GroupID] = true
 	}
 
-	// 过滤出用户有权限的分组
+	// 过滤出用户有权限的分组。
+	// 用户侧只暴露 Codex/OpenAI 的按量入口 + 已购买订阅入口，避免 default/备用池/内部测试组出现在创建 Key 下拉框。
 	availableGroups := make([]Group, 0)
 	for _, group := range allGroups {
-		if s.canUserBindGroupInternal(user, &group, subscribedGroupIDs) {
+		if s.canUserBindUserVisibleGroup(user, &group, subscribedGroupIDs) {
 			availableGroups = append(availableGroups, group)
 		}
 	}
 
 	return availableGroups, nil
+}
+
+// canUserBindUserVisibleGroup 检查用户端创建 Key 下拉框可见/可绑定的分组。
+// 管理端仍保留完整分组管理能力；这里仅收敛普通用户入口。
+func (s *APIKeyService) canUserBindUserVisibleGroup(user *User, group *Group, subscribedGroupIDs map[int64]bool) bool {
+	// 订阅类型分组：仅已购买且仍有效的套餐可见。
+	if group.IsSubscriptionType() {
+		return subscribedGroupIDs[group.ID]
+	}
+
+	// 标准类型分组：用户端只保留 OpenAI/Codex 按量分组。
+	// Anthropic default 等内部/其他平台分组不再出现在用户创建 Key 的选择器里。
+	if group.Platform != PlatformOpenAI {
+		return false
+	}
+
+	return user.CanBindGroup(group.ID, group.IsExclusive)
 }
 
 // canUserBindGroupInternal 内部方法，检查用户是否可以绑定分组（使用预加载的订阅数据）

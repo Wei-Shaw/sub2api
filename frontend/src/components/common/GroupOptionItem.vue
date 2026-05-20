@@ -22,17 +22,10 @@
       </span>
     </div>
 
-    <!-- Right: rate pill + checkmark (vertically centered to first row) -->
+    <!-- Right: billing mode pill + checkmark (vertically centered to first row) -->
     <div class="flex shrink-0 items-center gap-2 pt-0.5">
-      <!-- Rate pill (platform color) -->
-      <span v-if="rateMultiplier !== undefined" :class="['inline-flex items-center whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold', ratePillClass]">
-        <template v-if="hasCustomRate">
-          <span class="mr-1 line-through opacity-50">{{ rateMultiplier }}x</span>
-          <span class="font-bold">{{ userRateMultiplier }}x</span>
-        </template>
-        <template v-else>
-          {{ rateMultiplier }}x 倍率
-        </template>
+      <span v-if="billingLabel" :class="['inline-flex items-center whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold', ratePillClass]">
+        {{ billingLabel }}
       </span>
       <!-- Checkmark -->
       <svg
@@ -58,8 +51,7 @@ interface Props {
   name: string
   platform: GroupPlatform
   subscriptionType?: SubscriptionType
-  rateMultiplier?: number
-  userRateMultiplier?: number | null
+  billingLabel?: string | null
   description?: string | null
   selected?: boolean
   showCheckmark?: boolean
@@ -69,17 +61,6 @@ const props = withDefaults(defineProps<Props>(), {
   subscriptionType: 'standard',
   selected: false,
   showCheckmark: true,
-  userRateMultiplier: null
-})
-
-// Whether user has a custom rate different from default
-const hasCustomRate = computed(() => {
-  return (
-    props.userRateMultiplier !== null &&
-    props.userRateMultiplier !== undefined &&
-    props.rateMultiplier !== undefined &&
-    props.userRateMultiplier !== props.rateMultiplier
-  )
 })
 
 // Rate pill color matches platform badge color

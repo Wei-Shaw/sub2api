@@ -426,21 +426,21 @@
             <template #selected="{ option }">
               <GroupBadge
                 v-if="option"
-                :name="(option as unknown as GroupOption).label"
+                :name="(option as unknown as GroupOption).displayName"
                 :platform="(option as unknown as GroupOption).platform"
                 :subscription-type="(option as unknown as GroupOption).subscriptionType"
                 :rate-multiplier="(option as unknown as GroupOption).rate"
                 :user-rate-multiplier="(option as unknown as GroupOption).userRate"
+                :show-rate="false"
               />
               <span v-else class="text-gray-400">{{ t('keys.selectGroup') }}</span>
             </template>
             <template #option="{ option, selected }">
               <GroupOptionItem
-                :name="(option as unknown as GroupOption).label"
+                :name="(option as unknown as GroupOption).displayName"
                 :platform="(option as unknown as GroupOption).platform"
                 :subscription-type="(option as unknown as GroupOption).subscriptionType"
-                :rate-multiplier="(option as unknown as GroupOption).rate"
-                :user-rate-multiplier="(option as unknown as GroupOption).userRate"
+                :billing-label="(option as unknown as GroupOption).billingLabel"
                 :description="(option as unknown as GroupOption).description"
                 :selected="selected"
               />
@@ -1031,11 +1031,10 @@
             :title="option.description || undefined"
           >
             <GroupOptionItem
-              :name="option.label"
+              :name="option.displayName"
               :platform="option.platform"
               :subscription-type="option.subscriptionType"
-              :rate-multiplier="option.rate"
-              :user-rate-multiplier="option.userRate"
+              :billing-label="option.billingLabel"
               :description="option.description"
               :selected="
                 selectedKeyForGroup?.group_id === option.value ||
@@ -1093,6 +1092,8 @@ const formatDateTimeLocal = (isoDate: string): string => {
 interface GroupOption {
   value: number
   label: string
+  displayName: string
+  billingLabel: string
   description: string | null
   rate: number
   userRate: number | null
@@ -1246,12 +1247,39 @@ const onStatusFilterChange = (value: string | number | boolean | null) => {
   onFilterChange()
 }
 
+const getGroupDisplayName = (group: Group) => {
+  if (group.subscription_type === 'subscription') {
+    return `${group.name}套餐`
+  }
+  return '按量计费'
+}
+
+const getGroupBillingLabel = (group: Group) => {
+  if (group.subscription_type === 'subscription') {
+    return '已购套餐'
+  }
+  return '余额按量'
+}
+
+const getGroupOptionDescription = (group: Group) => {
+  const billingLabel = getGroupBillingLabel(group)
+  if (group.description) {
+    return `${billingLabel} · ${group.description}`
+  }
+  if (group.subscription_type === 'subscription') {
+    return '已购买套餐对应分组，按套餐配额使用'
+  }
+  return '余额按量计费分组，适合充值余额后直接使用'
+}
+
 // Convert groups to Select options format with rate multiplier and subscription type
 const groupOptions = computed(() =>
   groups.value.map((group) => ({
     value: group.id,
-    label: group.name,
-    description: group.description,
+    label: `${getGroupDisplayName(group)} · ${getGroupBillingLabel(group)}`,
+    displayName: getGroupDisplayName(group),
+    billingLabel: getGroupBillingLabel(group),
+    description: getGroupOptionDescription(group),
     rate: group.rate_multiplier,
     userRate: userGroupRates.value[group.id] ?? null,
     subscriptionType: group.subscription_type,
