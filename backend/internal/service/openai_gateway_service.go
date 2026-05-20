@@ -3231,6 +3231,10 @@ REDACTED
 		req.Header.Set("user-agent", codexCLIUserAgent)
 REDACTED
 
+	// 浏览器型 UA 兜底：仅 OAuth（ChatGPT 内部接口）账号生效，若最终 user-agent 仍为浏览器
+	// （Chrome/Firefox/Safari/Edge 等），替换为后台配置的 Codex UA，避免 Cloudflare 触发 JS 质询。
+	s.overrideBrowserUserAgent(ctx, account, req)
+
 	if req.Header.Get("content-type") == "" {
 		req.Header.Set("content-type", "application/json")
 REDACTED
@@ -3947,12 +3951,40 @@ REDACTED
 		req.Header.Set("user-agent", codexCLIUserAgent)
 REDACTED
 
+	// 浏览器型 UA 兜底：仅 OAuth（ChatGPT 内部接口）账号生效，若最终 user-agent 仍为浏览器
+	// （Chrome/Firefox/Safari/Edge 等），替换为后台配置的 Codex UA，避免 Cloudflare 触发 JS 质询。
+	s.overrideBrowserUserAgent(ctx, account, req)
+
 	// Ensure required headers exist
 	if req.Header.Get("content-type") == "" {
 		req.Header.Set("content-type", "application/json")
 REDACTED
 
 	return req, nil
+REDACTED
+
+// overrideBrowserUserAgent 检查请求的最终 user-agent，若为浏览器 UA 则替换为后台配置的 Codex UA。
+// 用于规避 Cloudflare 对浏览器型 UA 在 ChatGPT 内部接口上的访问质询。
+// 影响范围严格限定：仅 OAuth（Codex/ChatGPT 内部接口）账号生效；API Key 等其他账号原样透传。
+// 仅在识别为浏览器（Mozilla/...）时改写，其他 CLI/工具 UA 不动。
+func (s *OpenAIGatewayService) overrideBrowserUserAgent(ctx context.Context, account *Account, req *http.Request) {
+	if req == nil || account == nil {
+		return
+REDACTED
+	if account.Type != AccountTypeOAuth {
+		return
+REDACTED
+	currentUA := req.Header.Get("user-agent")
+	if !openai.IsBrowserUserAgent(currentUA) {
+		return
+REDACTED
+	codexUA := DefaultOpenAICodexUserAgent
+	if s != nil && s.settingService != nil {
+		if v := strings.TrimSpace(s.settingService.GetOpenAICodexUserAgent(ctx)); v != "" {
+			codexUA = v
+	REDACTED
+REDACTED
+	req.Header.Set("user-agent", codexUA)
 REDACTED
 
 func (s *OpenAIGatewayService) handleErrorResponse(

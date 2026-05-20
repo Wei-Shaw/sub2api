@@ -371,6 +371,7 @@ const baseSettingsResponse = {
   enable_anthropic_cache_ttl_1h_injection: false,
   rewrite_message_cache_control: false,
   antigravity_user_agent_version: "",
+  openai_codex_user_agent: "",
   payment_enabled: true,
   payment_min_amount: 1,
   payment_max_amount: 10000,

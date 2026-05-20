@@ -504,6 +504,7 @@ export interface SystemSettings {
   enable_anthropic_cache_ttl_1h_injection: boolean;
   rewrite_message_cache_control: boolean;
   antigravity_user_agent_version: string;
+  openai_codex_user_agent: string;
   web_search_emulation_enabled?: boolean;
 
   // Payment configuration
@@ -724,6 +725,7 @@ export interface UpdateSettingsRequest {
   enable_anthropic_cache_ttl_1h_injection?: boolean;
   rewrite_message_cache_control?: boolean;
   antigravity_user_agent_version?: string;
+  openai_codex_user_agent?: string;
   // Payment configuration
   payment_enabled?: boolean;
   risk_control_enabled?: boolean;
