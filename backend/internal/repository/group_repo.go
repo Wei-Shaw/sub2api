@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
-	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -637,28 +636,18 @@ REDACTED
 	REDACTED
 REDACTED
 
-	// 2. Clear group_id for api keys bound to this group.
-	// 仅更新未软删除的记录，避免修改已删除数据，保证审计与历史回溯一致性。
-	// 与 APIKeyRepository 的软删除语义保持一致，减少跨模块行为差异。
-	if _, err := txClient.APIKey.Update().
-		Where(apikey.GroupIDEQ(id), apikey.DeletedAtIsNil()).
-		ClearGroupID().
-		Save(ctx); err != nil {
-		return nil, err
-REDACTED
-
-	// 3. Remove the group id from user_allowed_groups join table.
+	// 2. Remove the group id from user_allowed_groups join table.
 	// Legacy users.allowed_groups 列已弃用，不再同步。
 	if _, err := exec.ExecContext(ctx, "DELETE FROM user_allowed_groups WHERE group_id = $1", id); err != nil {
 		return nil, err
 REDACTED
 
-	// 4. Delete account_groups join rows.
+	// 3. Delete account_groups join rows.
 	if _, err := exec.ExecContext(ctx, "DELETE FROM account_groups WHERE group_id = $1", id); err != nil {
 		return nil, err
 REDACTED
 
-	// 5. Soft-delete group itself.
+	// 4. Soft-delete group itself.
 	if _, err := txClient.Group.Delete().Where(group.IDEQ(id)).Exec(ctx); err != nil {
 		return nil, err
 REDACTED

@@ -244,6 +244,21 @@ func (s *groupRepoStub) UpdateSortOrders(ctx context.Context, updates []GroupSor
 	return nil
 REDACTED
 
+type deleteGroupAPIKeyRepoStub struct {
+	apiKeyRepoStubForGroupUpdate
+	keys         []string
+	listErr      error
+	listGroupIDs []int64
+REDACTED
+
+func (s *deleteGroupAPIKeyRepoStub) ListKeysByGroupID(ctx context.Context, groupID int64) ([]string, error) {
+	s.listGroupIDs = append(s.listGroupIDs, groupID)
+	if s.listErr != nil {
+		return nil, s.listErr
+REDACTED
+	return s.keys, nil
+REDACTED
+
 type proxyRepoStub struct {
 	deleteErr    error
 	countErr     error
@@ -498,6 +513,23 @@ REDACTED
 		{userID: 11, groupID: 5REDACTED,
 		{userID: 12, groupID: 5REDACTED,
 REDACTED, calls)
+REDACTED
+
+func TestAdminService_DeleteGroup_InvalidatesAuthCacheForBoundKeys(t *testing.T) {
+	repo := &groupRepoStub{REDACTED
+	apiKeyRepo := &deleteGroupAPIKeyRepoStub{keys: []string{"k1", "k2"REDACTEDREDACTED
+	invalidator := &authCacheInvalidatorStub{REDACTED
+	svc := &adminServiceImpl{
+		groupRepo:            repo,
+		apiKeyRepo:           apiKeyRepo,
+		authCacheInvalidator: invalidator,
+REDACTED
+
+	err := svc.DeleteGroup(context.Background(), 5)
+REDACTED
+	require.Equal(t, []int64{5REDACTED, repo.deleteCalls)
+	require.Equal(t, []int64{5REDACTED, apiKeyRepo.listGroupIDs)
+	require.Equal(t, []string{"k1", "k2"REDACTED, invalidator.keys)
 REDACTED
 
 func TestAdminService_DeleteGroup_NotFound(t *testing.T) {
