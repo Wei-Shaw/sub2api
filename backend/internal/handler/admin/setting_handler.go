@@ -142,6 +142,7 @@ REDACTED
 		TurnstileEnabled:                       settings.TurnstileEnabled,
 		TurnstileSiteKey:                       settings.TurnstileSiteKey,
 		TurnstileSecretKeyConfigured:           settings.TurnstileSecretKeyConfigured,
+		APIKeyACLTrustForwardedIP:              settings.APIKeyACLTrustForwardedIP,
 		LinuxDoConnectEnabled:                  settings.LinuxDoConnectEnabled,
 		LinuxDoConnectClientID:                 settings.LinuxDoConnectClientID,
 		LinuxDoConnectClientSecretConfigured:   settings.LinuxDoConnectClientSecretConfigured,
@@ -398,6 +399,9 @@ type UpdateSettingsRequest struct {
 	TurnstileEnabled   bool   `json:"turnstile_enabled"`
 	TurnstileSiteKey   string `json:"turnstile_site_key"`
 	TurnstileSecretKey string `json:"turnstile_secret_key"`
+
+	// API Key IP 访问控制设置
+	APIKeyACLTrustForwardedIP *bool `json:"api_key_acl_trust_forwarded_ip"`
 
 	// LinuxDo Connect OAuth 登录
 	LinuxDoConnectEnabled      bool   `json:"linuxdo_connect_enabled"`
@@ -1432,28 +1436,34 @@ REDACTED
 REDACTED
 
 	settings := &service.SystemSettings{
-		RegistrationEnabled:                    req.RegistrationEnabled,
-		EmailVerifyEnabled:                     req.EmailVerifyEnabled,
-		RegistrationEmailSuffixWhitelist:       req.RegistrationEmailSuffixWhitelist,
-		PromoCodeEnabled:                       req.PromoCodeEnabled,
-		PasswordResetEnabled:                   req.PasswordResetEnabled,
-		FrontendURL:                            req.FrontendURL,
-		InvitationCodeEnabled:                  req.InvitationCodeEnabled,
-		TotpEnabled:                            req.TotpEnabled,
-		LoginAgreementEnabled:                  req.LoginAgreementEnabled,
-		LoginAgreementMode:                     loginAgreementMode,
-		LoginAgreementUpdatedAt:                loginAgreementUpdatedAt,
-		LoginAgreementDocuments:                loginAgreementDocuments,
-		SMTPHost:                               req.SMTPHost,
-		SMTPPort:                               req.SMTPPort,
-		SMTPUsername:                           req.SMTPUsername,
-		SMTPPassword:                           req.SMTPPassword,
-		SMTPFrom:                               req.SMTPFrom,
-		SMTPFromName:                           req.SMTPFromName,
-		SMTPUseTLS:                             req.SMTPUseTLS,
-		TurnstileEnabled:                       req.TurnstileEnabled,
-		TurnstileSiteKey:                       req.TurnstileSiteKey,
-		TurnstileSecretKey:                     req.TurnstileSecretKey,
+		RegistrationEnabled:              req.RegistrationEnabled,
+		EmailVerifyEnabled:               req.EmailVerifyEnabled,
+		RegistrationEmailSuffixWhitelist: req.RegistrationEmailSuffixWhitelist,
+		PromoCodeEnabled:                 req.PromoCodeEnabled,
+		PasswordResetEnabled:             req.PasswordResetEnabled,
+		FrontendURL:                      req.FrontendURL,
+		InvitationCodeEnabled:            req.InvitationCodeEnabled,
+		TotpEnabled:                      req.TotpEnabled,
+		LoginAgreementEnabled:            req.LoginAgreementEnabled,
+		LoginAgreementMode:               loginAgreementMode,
+		LoginAgreementUpdatedAt:          loginAgreementUpdatedAt,
+		LoginAgreementDocuments:          loginAgreementDocuments,
+		SMTPHost:                         req.SMTPHost,
+		SMTPPort:                         req.SMTPPort,
+		SMTPUsername:                     req.SMTPUsername,
+		SMTPPassword:                     req.SMTPPassword,
+		SMTPFrom:                         req.SMTPFrom,
+		SMTPFromName:                     req.SMTPFromName,
+		SMTPUseTLS:                       req.SMTPUseTLS,
+		TurnstileEnabled:                 req.TurnstileEnabled,
+		TurnstileSiteKey:                 req.TurnstileSiteKey,
+		TurnstileSecretKey:               req.TurnstileSecretKey,
+		APIKeyACLTrustForwardedIP: func() bool {
+			if req.APIKeyACLTrustForwardedIP != nil {
+				return *req.APIKeyACLTrustForwardedIP
+		REDACTED
+			return previousSettings.APIKeyACLTrustForwardedIP
+	REDACTED(),
 		LinuxDoConnectEnabled:                  req.LinuxDoConnectEnabled,
 		LinuxDoConnectClientID:                 req.LinuxDoConnectClientID,
 		LinuxDoConnectClientSecret:             req.LinuxDoConnectClientSecret,
@@ -1869,6 +1879,7 @@ REDACTED
 		TurnstileEnabled:                       updatedSettings.TurnstileEnabled,
 		TurnstileSiteKey:                       updatedSettings.TurnstileSiteKey,
 		TurnstileSecretKeyConfigured:           updatedSettings.TurnstileSecretKeyConfigured,
+		APIKeyACLTrustForwardedIP:              updatedSettings.APIKeyACLTrustForwardedIP,
 		LinuxDoConnectEnabled:                  updatedSettings.LinuxDoConnectEnabled,
 		LinuxDoConnectClientID:                 updatedSettings.LinuxDoConnectClientID,
 		LinuxDoConnectClientSecretConfigured:   updatedSettings.LinuxDoConnectClientSecretConfigured,
@@ -2144,6 +2155,9 @@ REDACTED
 REDACTED
 	if req.TurnstileSecretKey != "" {
 		changed = append(changed, "turnstile_secret_key")
+REDACTED
+	if before.APIKeyACLTrustForwardedIP != after.APIKeyACLTrustForwardedIP {
+		changed = append(changed, "api_key_acl_trust_forwarded_ip")
 REDACTED
 	if before.LinuxDoConnectEnabled != after.LinuxDoConnectEnabled {
 		changed = append(changed, "linuxdo_connect_enabled")

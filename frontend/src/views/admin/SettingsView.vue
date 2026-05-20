@@ -1564,6 +1564,33 @@
             </div>
           </div>
 
+          <!-- API Key IP ACL Settings -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.apiKeyAcl.title") REDACTEDREDACTED
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.apiKeyAcl.description") REDACTEDREDACTED
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">
+                    {{ t("admin.settings.apiKeyAcl.trustForwardedIp") REDACTEDREDACTED
+                  </label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.apiKeyAcl.trustForwardedIpHint") REDACTEDREDACTED
+                  </p>
+                </div>
+                <Toggle v-model="form.api_key_acl_trust_forwarded_ip" />
+              </div>
+            </div>
+          </div>
+
           <!-- Cloudflare Turnstile Settings -->
           <div class="card">
             <div
@@ -6868,6 +6895,7 @@ const form = reactive<SettingsForm>({
   turnstile_site_key: "",
   turnstile_secret_key: "",
   turnstile_secret_key_configured: false,
+  api_key_acl_trust_forwarded_ip: false,
   // LinuxDo Connect OAuth 登录
   linuxdo_connect_enabled: false,
   linuxdo_connect_client_id: "",
@@ -7972,6 +8000,7 @@ async function saveSettings() {
       turnstile_enabled: form.turnstile_enabled,
       turnstile_site_key: form.turnstile_site_key,
       turnstile_secret_key: form.turnstile_secret_key || undefined,
+      api_key_acl_trust_forwarded_ip: form.api_key_acl_trust_forwarded_ip,
       linuxdo_connect_enabled: form.linuxdo_connect_enabled,
       linuxdo_connect_client_id: form.linuxdo_connect_client_id,
       linuxdo_connect_client_secret:
