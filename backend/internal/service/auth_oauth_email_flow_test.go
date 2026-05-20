@@ -59,6 +59,10 @@ REDACTED
 	return nil
 REDACTED
 
+func (s *redeemCodeRepoStub) BatchUpdate(context.Context, []int64, RedeemCodeBatchUpdateFields) (int64, error) {
+	panic("unexpected BatchUpdate call")
+REDACTED
+
 func (s *redeemCodeRepoStub) Delete(context.Context, int64) error {
 	panic("unexpected Delete call")
 REDACTED

@@ -244,6 +244,21 @@ func (s *groupRepoStub) UpdateSortOrders(ctx context.Context, updates []GroupSor
 	return nil
 REDACTED
 
+type deleteGroupAPIKeyRepoStub struct {
+	apiKeyRepoStubForGroupUpdate
+	keys         []string
+	listErr      error
+	listGroupIDs []int64
+REDACTED
+
+func (s *deleteGroupAPIKeyRepoStub) ListKeysByGroupID(ctx context.Context, groupID int64) ([]string, error) {
+	s.listGroupIDs = append(s.listGroupIDs, groupID)
+	if s.listErr != nil {
+		return nil, s.listErr
+REDACTED
+	return s.keys, nil
+REDACTED
+
 type proxyRepoStub struct {
 	deleteErr    error
 	countErr     error
@@ -310,6 +325,12 @@ REDACTED
 type redeemRepoStub struct {
 	deleteErrByID map[int64]error
 	deletedIDs    []int64
+
+	batchUpdateIDs    []int64
+	batchUpdateFields RedeemCodeBatchUpdateFields
+	batchUpdateResult int64
+	batchUpdateErr    error
+	batchUpdateCalled bool
 REDACTED
 
 func (s *redeemRepoStub) Create(ctx context.Context, code *RedeemCode) error {
@@ -330,6 +351,19 @@ REDACTED
 
 func (s *redeemRepoStub) Update(ctx context.Context, code *RedeemCode) error {
 	panic("unexpected Update call")
+REDACTED
+
+func (s *redeemRepoStub) BatchUpdate(ctx context.Context, ids []int64, fields RedeemCodeBatchUpdateFields) (int64, error) {
+	s.batchUpdateCalled = true
+	s.batchUpdateIDs = append([]int64(nil), ids...)
+	s.batchUpdateFields = fields
+	if s.batchUpdateErr != nil {
+		return 0, s.batchUpdateErr
+REDACTED
+	if s.batchUpdateResult != 0 {
+		return s.batchUpdateResult, nil
+REDACTED
+	return int64(len(ids)), nil
 REDACTED
 
 func (s *redeemRepoStub) Delete(ctx context.Context, id int64) error {
@@ -498,6 +532,23 @@ REDACTED
 		{userID: 11, groupID: 5REDACTED,
 		{userID: 12, groupID: 5REDACTED,
 REDACTED, calls)
+REDACTED
+
+func TestAdminService_DeleteGroup_InvalidatesAuthCacheForBoundKeys(t *testing.T) {
+	repo := &groupRepoStub{REDACTED
+	apiKeyRepo := &deleteGroupAPIKeyRepoStub{keys: []string{"k1", "k2"REDACTEDREDACTED
+	invalidator := &authCacheInvalidatorStub{REDACTED
+	svc := &adminServiceImpl{
+		groupRepo:            repo,
+		apiKeyRepo:           apiKeyRepo,
+		authCacheInvalidator: invalidator,
+REDACTED
+
+	err := svc.DeleteGroup(context.Background(), 5)
+REDACTED
+	require.Equal(t, []int64{5REDACTED, repo.deleteCalls)
+	require.Equal(t, []int64{5REDACTED, apiKeyRepo.listGroupIDs)
+	require.Equal(t, []string{"k1", "k2"REDACTED, invalidator.keys)
 REDACTED
 
 func TestAdminService_DeleteGroup_NotFound(t *testing.T) {

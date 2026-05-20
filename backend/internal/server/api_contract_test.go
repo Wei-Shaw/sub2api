@@ -1849,6 +1849,10 @@ func (stubRedeemCodeRepo) Update(ctx context.Context, code *service.RedeemCode) 
 	return errors.New("not implemented")
 REDACTED
 
+func (stubRedeemCodeRepo) BatchUpdate(ctx context.Context, ids []int64, fields service.RedeemCodeBatchUpdateFields) (int64, error) {
+	return int64(len(ids)), nil
+REDACTED
+
 func (stubRedeemCodeRepo) Delete(ctx context.Context, id int64) error {
 	return errors.New("not implemented")
 REDACTED

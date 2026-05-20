@@ -7,6 +7,7 @@ import { apiClient REDACTED from '../client'
 import type {
   RedeemCode,
   GenerateRedeemCodesRequest,
+  BatchUpdateRedeemCodeFields,
   RedeemCodeType,
   PaginatedResponse
 REDACTED from '@/types'
@@ -23,7 +24,7 @@ export async function list(
   pageSize: number = 20,
   filters?: {
     type?: RedeemCodeType
-    status?: 'active' | 'used' | 'expired' | 'unused'
+    status?: 'active' | 'used' | 'expired' | 'unused' | 'disabled'
     search?: string
     sort_by?: string
     sort_order?: 'asc' | 'desc'
@@ -119,6 +120,26 @@ REDACTED> {
 REDACTED
 
 /**
+ * Batch update selected redeem code fields
+ * @param ids - Array of redeem code IDs
+ * @param fields - Field collection to update
+ * @returns Updated count
+ */
+export async function batchUpdate(
+  ids: number[],
+  fields: BatchUpdateRedeemCodeFields
+): Promise<{
+  updated: number
+  message: string
+REDACTED> {
+  const { data REDACTED = await apiClient.post<{
+    updated: number
+    message: string
+  REDACTED>('/admin/redeem-codes/batch-update', { ids, fields REDACTED)
+  return data
+REDACTED
+
+/**
  * Expire redeem code
  * @param id - Redeem code ID
  * @returns Updated redeem code
@@ -158,7 +179,7 @@ REDACTED
  */
 export async function exportCodes(filters?: {
   type?: RedeemCodeType
-  status?: 'used' | 'expired' | 'unused'
+  status?: 'used' | 'expired' | 'unused' | 'disabled'
   search?: string
   sort_by?: string
   sort_order?: 'asc' | 'desc'
@@ -176,6 +197,7 @@ export const redeemAPI = {
   generate,
   delete: deleteCode,
   batchDelete,
+  batchUpdate,
   expire,
   getStats,
   exportCodes
