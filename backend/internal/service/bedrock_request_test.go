@@ -946,3 +946,58 @@ func TestSanitizeBedrockCCFields(t *testing.T) {
 		assert.Equal(t, "enabled", gjson.GetBytes(result, "thinking.type").String())
 	})
 }
+
+func TestSanitizeBedrockCCBetaTokens(t *testing.T) {
+	t.Run("filters unsupported beta tokens", func(t *testing.T) {
+		input := `{"anthropic_beta":["prompt-caching-2024-07-31","interleaved-thinking-2025-05-14","unsupported-feature"],"messages":[]}`
+		result := sanitizeBedrockCCBetaTokens([]byte(input), "claude-opus-4-6")
+		beta := gjson.GetBytes(result, "anthropic_beta")
+		assert.True(t, beta.Exists())
+		assert.True(t, beta.IsArray())
+		tokens := beta.Array()
+		assert.Equal(t, 1, len(tokens))
+		assert.Equal(t, "interleaved-thinking-2025-05-14", tokens[0].String())
+	})
+
+	t.Run("removes anthropic_beta if all tokens filtered", func(t *testing.T) {
+		input := `{"anthropic_beta":["prompt-caching-2024-07-31","unsupported-feature"],"messages":[]}`
+		result := sanitizeBedrockCCBetaTokens([]byte(input), "claude-opus-4-6")
+		assert.False(t, gjson.GetBytes(result, "anthropic_beta").Exists())
+	})
+
+	t.Run("auto-injects required beta tokens", func(t *testing.T) {
+		input := `{"anthropic_beta":[],"thinking":{"type":"enabled"},"messages":[]}`
+		result := sanitizeBedrockCCBetaTokens([]byte(input), "claude-opus-4-6")
+		beta := gjson.GetBytes(result, "anthropic_beta")
+		assert.True(t, beta.Exists())
+		tokens := beta.Array()
+		assert.Equal(t, 1, len(tokens))
+		assert.Equal(t, "interleaved-thinking-2025-05-14", tokens[0].String())
+	})
+
+	t.Run("transforms advanced-tool-use to tool-search-tool", func(t *testing.T) {
+		input := `{"anthropic_beta":["advanced-tool-use-2025-11-20"],"messages":[]}`
+		result := sanitizeBedrockCCBetaTokens([]byte(input), "claude-opus-4-6")
+		beta := gjson.GetBytes(result, "anthropic_beta")
+		tokens := beta.Array()
+		assert.Equal(t, 2, len(tokens)) // tool-search-tool + tool-examples (auto-associated)
+		assert.Contains(t, []string{tokens[0].String(), tokens[1].String()}, "tool-search-tool-2025-10-19")
+		assert.Contains(t, []string{tokens[0].String(), tokens[1].String()}, "tool-examples-2025-10-29")
+	})
+
+	t.Run("no-op when anthropic_beta not present", func(t *testing.T) {
+		input := `{"messages":[]}`
+		result := sanitizeBedrockCCBetaTokens([]byte(input), "claude-opus-4-6")
+		assert.False(t, gjson.GetBytes(result, "anthropic_beta").Exists())
+	})
+
+	t.Run("preserves supported beta tokens", func(t *testing.T) {
+		input := `{"anthropic_beta":["computer-use-2025-11-24","context-1m-2025-08-07"],"messages":[]}`
+		result := sanitizeBedrockCCBetaTokens([]byte(input), "claude-opus-4-6")
+		beta := gjson.GetBytes(result, "anthropic_beta")
+		tokens := beta.Array()
+		assert.Equal(t, 2, len(tokens))
+		assert.Contains(t, []string{tokens[0].String(), tokens[1].String()}, "computer-use-2025-11-24")
+		assert.Contains(t, []string{tokens[0].String(), tokens[1].String()}, "context-1m-2025-08-07")
+	})
+}

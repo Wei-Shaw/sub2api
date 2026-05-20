@@ -725,3 +725,36 @@ func sanitizeBedrockCCFields(body []byte) []byte {
 	}
 	return body
 }
+
+// sanitizeBedrockCCBetaTokens 清理请求体中的 anthropic_beta 字段，只保留 Bedrock 支持的 beta token
+// CC 可能在请求体中注入了 Bedrock 不支持的 beta token（如 prompt-caching 等），导致 ValidationException
+func sanitizeBedrockCCBetaTokens(body []byte, modelID string) []byte {
+	betaField := gjson.GetBytes(body, "anthropic_beta")
+	if !betaField.Exists() {
+		return body
+	}
+
+	var tokens []string
+	if betaField.IsArray() {
+		for _, t := range betaField.Array() {
+			if t.Type == gjson.String {
+				tokens = append(tokens, t.String())
+			}
+		}
+	}
+
+	// 复用现有的 Bedrock beta token 过滤逻辑（自动注入 + 白名单过滤 + 转换）
+	// 即使 tokens 为空，也要执行自动注入（根据 body 内容补充必要的 beta token）
+	tokens = autoInjectBedrockBetaTokens(tokens, body, modelID)
+	tokens = filterBedrockBetaTokens(tokens)
+
+	if len(tokens) == 0 {
+		// 所有 token 都被过滤掉，删除 anthropic_beta 字段
+		body, _ = sjson.DeleteBytes(body, "anthropic_beta")
+	} else {
+		// 更新为过滤后的 token 列表
+		body, _ = sjson.SetBytes(body, "anthropic_beta", tokens)
+	}
+
+	return body
+}
