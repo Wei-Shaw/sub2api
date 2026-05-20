@@ -490,8 +490,7 @@ REDACTED
 REDACTED
 
 	cfg := &config.Config{RunMode: config.RunModeSimpleREDACTED
-	cfg.Security.TrustForwardedIPForAPIKeyACL = true
-	cfg.Security.TrustForwardedIPForAPIKeyACLLive.Store(true)
+	cfg.SetTrustForwardedIPForAPIKeyACL(true)
 	apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg)
 	router := gin.New()
 	require.NoError(t, router.SetTrustedProxies(nil))
