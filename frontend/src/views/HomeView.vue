@@ -313,7 +313,7 @@
                   <span class="ml-1">/ 30天</span>
                 </div>
                 <router-link
-                  :to="isAuthenticated ? '/payment' : '/login?redirect=/payment'"
+                  :to="purchaseLink"
                   class="inline-flex items-center justify-center rounded-xl border border-gray-900 bg-white px-5 py-3 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50 dark:border-dark-200 dark:bg-dark-900 dark:text-white dark:hover:bg-dark-800"
                 >
                   {{ t('home.pricing.cta') }}
@@ -561,6 +561,11 @@ const githubUrl = 'https://github.com/Wei-Shaw/sub2api'
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 const isAdmin = computed(() => authStore.isAdmin)
 const dashboardPath = computed(() => isAdmin.value ? '/admin/dashboard' : '/dashboard')
+const purchaseLink = computed(() => (
+  isAuthenticated.value
+    ? { path: '/purchase', query: { tab: 'subscription' } }
+    : { path: '/login', query: { redirect: '/purchase?tab=subscription' } }
+))
 const userInitial = computed(() => {
   const user = authStore.user
   if (!user || !user.email) return ''
