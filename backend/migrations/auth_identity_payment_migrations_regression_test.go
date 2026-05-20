@@ -167,4 +167,5 @@ func TestMigration137AllowsWeComAuthProvider(t *testing.T) {
 	require.Contains(t, sql, "pending_auth_sessions_provider_type_check")
 	require.Contains(t, sql, "user_provider_default_grants_provider_type_check")
 	require.Contains(t, sql, "'wecom'")
+	require.Contains(t, sql, "'dingtalk'")
 }

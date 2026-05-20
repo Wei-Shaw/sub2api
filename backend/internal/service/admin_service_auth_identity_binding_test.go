@@ -275,6 +275,37 @@ func TestAdminServiceBindUserAuthIdentityReusesLegacyWeChatAliasRecords(t *testi
 	require.Equal(t, 1, channelCount)
 }
 
+func TestAdminServiceBindUserAuthIdentityAllowsAllCanonicalProviderTypes(t *testing.T) {
+	client := newAdminServiceAuthIdentityBindingTestClient(t)
+	ctx := context.Background()
+
+	svc := &adminServiceImpl{
+		entClient: client,
+	}
+
+	providers := []string{"email", "linuxdo", "oidc", "wechat", "wecom", "github", "google", "dingtalk"}
+	for _, provider := range providers {
+		t.Run(provider, func(t *testing.T) {
+			user, err := client.User.Create().
+				SetEmail(provider + "-provider@example.com").
+				SetPasswordHash("hash").
+				SetRole(RoleUser).
+				SetStatus(StatusActive).
+				Save(ctx)
+			require.NoError(t, err)
+
+			svc.userRepo = &userRepoStub{user: &User{ID: user.ID, Email: user.Email, Status: StatusActive}}
+			result, err := svc.BindUserAuthIdentity(ctx, user.ID, AdminBindAuthIdentityInput{
+				ProviderType:    provider,
+				ProviderKey:     provider + "-main",
+				ProviderSubject: "subject-" + provider,
+			})
+			require.NoError(t, err)
+			require.Equal(t, provider, result.ProviderType)
+		})
+	}
+}
+
 func TestAdminServiceBindUserAuthIdentityRejectsInvalidProviderType(t *testing.T) {
 	client := newAdminServiceAuthIdentityBindingTestClient(t)
 	ctx := context.Background()
@@ -293,8 +324,8 @@ func TestAdminServiceBindUserAuthIdentityRejectsInvalidProviderType(t *testing.T
 	}
 
 	_, err = svc.BindUserAuthIdentity(ctx, user.ID, AdminBindAuthIdentityInput{
-		ProviderType:    "github",
-		ProviderKey:     "github-main",
+		ProviderType:    "unknown",
+		ProviderKey:     "unknown-main",
 		ProviderSubject: "subject-3",
 	})
 	require.Error(t, err)
