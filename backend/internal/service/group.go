@@ -29,6 +29,7 @@ type Group struct {
 	AllowImageGeneration bool
 	ImageRateIndependent bool
 	ImageRateMultiplier  float64
+	DisplayRateMultiplier *float64 // 用户端展示倍率；nil 表示与 RateMultiplier 相同
 	ImagePrice1K         *float64
 	ImagePrice2K         *float64
 	ImagePrice4K         *float64

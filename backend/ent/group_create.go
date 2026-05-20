@@ -259,6 +259,20 @@ func (_c *GroupCreate) SetNillableImageRateMultiplier(v *float64) *GroupCreate {
 	return _c
 }
 
+// SetDisplayRateMultiplier sets the "display_rate_multiplier" field.
+func (_c *GroupCreate) SetDisplayRateMultiplier(v float64) *GroupCreate {
+	_c.mutation.SetDisplayRateMultiplier(v)
+	return _c
+}
+
+// SetNillableDisplayRateMultiplier sets the "display_rate_multiplier" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableDisplayRateMultiplier(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetDisplayRateMultiplier(*v)
+	}
+	return _c
+}
+
 // SetImagePrice1k sets the "image_price_1k" field.
 func (_c *GroupCreate) SetImagePrice1k(v float64) *GroupCreate {
 	_c.mutation.SetImagePrice1k(v)
@@ -896,6 +910,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 		_spec.SetField(group.FieldImageRateMultiplier, field.TypeFloat64, value)
 		_node.ImageRateMultiplier = value
 	}
+	if value, ok := _c.mutation.DisplayRateMultiplier(); ok {
+		_spec.SetField(group.FieldDisplayRateMultiplier, field.TypeFloat64, value)
+		_node.DisplayRateMultiplier = &value
+	}
 	if value, ok := _c.mutation.ImagePrice1k(); ok {
 		_spec.SetField(group.FieldImagePrice1k, field.TypeFloat64, value)
 		_node.ImagePrice1k = &value
@@ -1375,6 +1393,30 @@ func (u *GroupUpsert) UpdateImageRateMultiplier() *GroupUpsert {
 // AddImageRateMultiplier adds v to the "image_rate_multiplier" field.
 func (u *GroupUpsert) AddImageRateMultiplier(v float64) *GroupUpsert {
 	u.Add(group.FieldImageRateMultiplier, v)
+	return u
+}
+
+// SetDisplayRateMultiplier sets the "display_rate_multiplier" field.
+func (u *GroupUpsert) SetDisplayRateMultiplier(v float64) *GroupUpsert {
+	u.Set(group.FieldDisplayRateMultiplier, v)
+	return u
+}
+
+// UpdateDisplayRateMultiplier sets the "display_rate_multiplier" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateDisplayRateMultiplier() *GroupUpsert {
+	u.SetExcluded(group.FieldDisplayRateMultiplier)
+	return u
+}
+
+// AddDisplayRateMultiplier adds v to the "display_rate_multiplier" field.
+func (u *GroupUpsert) AddDisplayRateMultiplier(v float64) *GroupUpsert {
+	u.Add(group.FieldDisplayRateMultiplier, v)
+	return u
+}
+
+// ClearDisplayRateMultiplier clears the value of the "display_rate_multiplier" field.
+func (u *GroupUpsert) ClearDisplayRateMultiplier() *GroupUpsert {
+	u.SetNull(group.FieldDisplayRateMultiplier)
 	return u
 }
 
@@ -2003,6 +2045,34 @@ func (u *GroupUpsertOne) AddImageRateMultiplier(v float64) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateImageRateMultiplier() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateImageRateMultiplier()
+	})
+}
+
+// SetDisplayRateMultiplier sets the "display_rate_multiplier" field.
+func (u *GroupUpsertOne) SetDisplayRateMultiplier(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetDisplayRateMultiplier(v)
+	})
+}
+
+// AddDisplayRateMultiplier adds v to the "display_rate_multiplier" field.
+func (u *GroupUpsertOne) AddDisplayRateMultiplier(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddDisplayRateMultiplier(v)
+	})
+}
+
+// UpdateDisplayRateMultiplier sets the "display_rate_multiplier" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateDisplayRateMultiplier() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateDisplayRateMultiplier()
+	})
+}
+
+// ClearDisplayRateMultiplier clears the value of the "display_rate_multiplier" field.
+func (u *GroupUpsertOne) ClearDisplayRateMultiplier() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearDisplayRateMultiplier()
 	})
 }
 
@@ -2844,6 +2914,34 @@ func (u *GroupUpsertBulk) AddImageRateMultiplier(v float64) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateImageRateMultiplier() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateImageRateMultiplier()
+	})
+}
+
+// SetDisplayRateMultiplier sets the "display_rate_multiplier" field.
+func (u *GroupUpsertBulk) SetDisplayRateMultiplier(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetDisplayRateMultiplier(v)
+	})
+}
+
+// AddDisplayRateMultiplier adds v to the "display_rate_multiplier" field.
+func (u *GroupUpsertBulk) AddDisplayRateMultiplier(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddDisplayRateMultiplier(v)
+	})
+}
+
+// UpdateDisplayRateMultiplier sets the "display_rate_multiplier" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateDisplayRateMultiplier() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateDisplayRateMultiplier()
+	})
+}
+
+// ClearDisplayRateMultiplier clears the value of the "display_rate_multiplier" field.
+func (u *GroupUpsertBulk) ClearDisplayRateMultiplier() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearDisplayRateMultiplier()
 	})
 }
 

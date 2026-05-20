@@ -497,6 +497,7 @@ export interface Group {
   allow_image_generation: boolean
   image_rate_independent: boolean
   image_rate_multiplier: number
+  display_rate_multiplier?: number // 用户端展示倍率（nil 表示与 rate_multiplier 相同）
   image_price_1k: number | null
   image_price_2k: number | null
   image_price_4k: number | null

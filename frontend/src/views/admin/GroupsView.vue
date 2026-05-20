@@ -501,6 +501,18 @@
           <p class="input-hint">{{ t("admin.groups.rateMultiplierHint") }}</p>
         </div>
         <div>
+          <label class="input-label">用户端展示倍率</label>
+          <input
+            v-model.number="createForm.display_rate_multiplier"
+            type="number"
+            step="0.01"
+            min="0"
+            class="input"
+            placeholder="留空则与实际倍率相同"
+          />
+          <p class="input-hint">用户端看到的倍率（留空=与实际倍率相同）。计费始终使用实际倍率。</p>
+        </div>
+        <div>
           <label class="input-label">{{ t("admin.groups.form.rpmLimit") }}</label>
           <input
             v-model.number="createForm.rpm_limit"
@@ -1682,6 +1694,18 @@
             class="input"
             data-tour="group-form-multiplier"
           />
+        </div>
+        <div>
+          <label class="input-label">用户端展示倍率</label>
+          <input
+            v-model.number="editForm.display_rate_multiplier"
+            type="number"
+            step="0.01"
+            min="0"
+            class="input"
+            placeholder="留空则与实际倍率相同"
+          />
+          <p class="input-hint">用户端看到的倍率（留空=与实际倍率相同）。计费始终使用实际倍率。</p>
         </div>
         <div>
           <label class="input-label">{{ t("admin.groups.form.rpmLimit") }}</label>
@@ -3104,6 +3128,7 @@ const createForm = reactive({
   description: "",
   platform: "anthropic" as GroupPlatform,
   rate_multiplier: 1.0,
+  display_rate_multiplier: null as number | null,
   is_exclusive: false,
   subscription_type: "standard" as SubscriptionType,
   five_hour_limit_usd: null as number | null,
@@ -3388,6 +3413,7 @@ const editForm = reactive({
   description: "",
   platform: "anthropic" as GroupPlatform,
   rate_multiplier: 1.0,
+  display_rate_multiplier: null as number | null,
   is_exclusive: false,
   status: "active" as "active" | "inactive",
   subscription_type: "standard" as SubscriptionType,
@@ -3636,6 +3662,7 @@ const closeCreateModal = () => {
   createForm.description = "";
   createForm.platform = "anthropic";
   createForm.rate_multiplier = 1.0;
+  createForm.display_rate_multiplier = null;
   createForm.is_exclusive = false;
   createForm.subscription_type = "standard";
   createForm.weekly_limit_usd = null;
@@ -3727,6 +3754,7 @@ const handleCreateGroup = async () => {
     requestData.image_rate_multiplier = normalizeImageRateMultiplier(
       requestData.image_rate_multiplier,
     );
+    requestData.display_rate_multiplier = emptyToNull(requestData.display_rate_multiplier);
     await adminAPI.groups.create(requestData);
     appStore.showSuccess(t("admin.groups.groupCreated"));
     closeCreateModal();
@@ -3752,6 +3780,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.description = group.description || "";
   editForm.platform = group.platform;
   editForm.rate_multiplier = group.rate_multiplier;
+  editForm.display_rate_multiplier = group.display_rate_multiplier ?? null;
   editForm.is_exclusive = group.is_exclusive;
   editForm.status = group.status;
   editForm.subscription_type = group.subscription_type || "standard";
@@ -3857,6 +3886,7 @@ const handleUpdateGroup = async () => {
     payload.image_rate_multiplier = normalizeImageRateMultiplier(
       payload.image_rate_multiplier,
     );
+    payload.display_rate_multiplier = emptyToNull(payload.display_rate_multiplier);
     await adminAPI.groups.update(editingGroup.value.id, payload);
     appStore.showSuccess(t("admin.groups.groupUpdated"));
     closeEditModal();

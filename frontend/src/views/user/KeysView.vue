@@ -111,6 +111,7 @@
                   :platform="row.group.platform"
                   :subscription-type="row.group.subscription_type"
                   :rate-multiplier="row.group.rate_multiplier"
+                  :display-rate-multiplier="row.group.display_rate_multiplier"
                   :user-rate-multiplier="userGroupRates[row.group.id]"
                   :class="{ 'opacity-50': row.group.status === 'inactive' }"
                 />
@@ -1281,6 +1282,7 @@ const groupOptions = computed(() =>
     billingLabel: getGroupBillingLabel(group),
     description: getGroupOptionDescription(group),
     rate: group.rate_multiplier,
+    displayRate: group.display_rate_multiplier,
     userRate: userGroupRates.value[group.id] ?? null,
     subscriptionType: group.subscription_type,
     platform: group.platform

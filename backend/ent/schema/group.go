@@ -85,6 +85,11 @@ func (Group) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
 			Default(1.0).
 			Comment("图片生成独立倍率，仅 image_rate_independent=true 时生效"),
+		field.Float("display_rate_multiplier").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
+			Comment("用户端展示倍率；nil/0 表示与 rate_multiplier 相同"),
 		field.Float("image_price_1k").
 			Optional().
 			Nillable().

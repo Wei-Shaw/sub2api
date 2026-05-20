@@ -97,6 +97,7 @@ type Group struct {
 	AllowImageGeneration bool     `json:"allow_image_generation"`
 	ImageRateIndependent bool     `json:"image_rate_independent"`
 	ImageRateMultiplier  float64  `json:"image_rate_multiplier"`
+	DisplayRateMultiplier *float64 `json:"display_rate_multiplier,omitempty"` // 用户端展示倍率
 	ImagePrice1K         *float64 `json:"image_price_1k"`
 	ImagePrice2K         *float64 `json:"image_price_2k"`
 	ImagePrice4K         *float64 `json:"image_price_4k"`

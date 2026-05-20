@@ -34,6 +34,7 @@ interface Props {
   platform?: GroupPlatform
   subscriptionType?: SubscriptionType
   rateMultiplier?: number
+  displayRateMultiplier?: number // 用户端展示倍率
   userRateMultiplier?: number | null // 用户专属倍率
   showRate?: boolean
   daysRemaining?: number | null // 剩余天数（订阅类型时使用）
@@ -57,8 +58,9 @@ const { t } = useI18n()
 
 const isSubscription = computed(() => props.subscriptionType === 'subscription')
 
-// 是否有专属倍率（且与默认倍率不同）
+// 是否有专属倍率（且与默认倍率不同）—— 订阅类型不显示专属倍率
 const hasCustomRate = computed(() => {
+  if (isSubscription.value) return false
   return (
     props.userRateMultiplier !== null &&
     props.userRateMultiplier !== undefined &&
@@ -76,9 +78,13 @@ const showLabel = computed(() => {
   return props.rateMultiplier !== undefined || hasCustomRate.value
 })
 
-// Label text
+// Label text — 订阅类型使用 displayRateMultiplier（用户端展示倍率）
 const labelText = computed(() => {
-  const rateLabel = props.rateMultiplier !== undefined ? `${props.rateMultiplier}x` : ''
+  // 优先使用 displayRateMultiplier；订阅类型没有设置时默认 1.0x
+  const effectiveDisplayRate = isSubscription.value
+    ? (props.displayRateMultiplier ?? 1.0)
+    : (props.rateMultiplier ?? 1.0)
+  const rateLabel = `${effectiveDisplayRate}x`
   if (isSubscription.value && !props.alwaysShowRate) {
     // 如果有剩余天数，显示天数
     if (props.daysRemaining !== null && props.daysRemaining !== undefined) {

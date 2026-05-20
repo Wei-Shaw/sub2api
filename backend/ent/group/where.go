@@ -140,6 +140,11 @@ func ImageRateMultiplier(v float64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldImageRateMultiplier, v))
 }
 
+// DisplayRateMultiplier applies equality check predicate on the "display_rate_multiplier" field. It's identical to DisplayRateMultiplierEQ.
+func DisplayRateMultiplier(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldDisplayRateMultiplier, v))
+}
+
 // ImagePrice1k applies equality check predicate on the "image_price_1k" field. It's identical to ImagePrice1kEQ.
 func ImagePrice1k(v float64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldImagePrice1k, v))
@@ -973,6 +978,56 @@ func ImageRateMultiplierLT(v float64) predicate.Group {
 // ImageRateMultiplierLTE applies the LTE predicate on the "image_rate_multiplier" field.
 func ImageRateMultiplierLTE(v float64) predicate.Group {
 	return predicate.Group(sql.FieldLTE(FieldImageRateMultiplier, v))
+}
+
+// DisplayRateMultiplierEQ applies the EQ predicate on the "display_rate_multiplier" field.
+func DisplayRateMultiplierEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldDisplayRateMultiplier, v))
+}
+
+// DisplayRateMultiplierNEQ applies the NEQ predicate on the "display_rate_multiplier" field.
+func DisplayRateMultiplierNEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldDisplayRateMultiplier, v))
+}
+
+// DisplayRateMultiplierIn applies the In predicate on the "display_rate_multiplier" field.
+func DisplayRateMultiplierIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldDisplayRateMultiplier, vs...))
+}
+
+// DisplayRateMultiplierNotIn applies the NotIn predicate on the "display_rate_multiplier" field.
+func DisplayRateMultiplierNotIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldDisplayRateMultiplier, vs...))
+}
+
+// DisplayRateMultiplierGT applies the GT predicate on the "display_rate_multiplier" field.
+func DisplayRateMultiplierGT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldDisplayRateMultiplier, v))
+}
+
+// DisplayRateMultiplierGTE applies the GTE predicate on the "display_rate_multiplier" field.
+func DisplayRateMultiplierGTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldDisplayRateMultiplier, v))
+}
+
+// DisplayRateMultiplierLT applies the LT predicate on the "display_rate_multiplier" field.
+func DisplayRateMultiplierLT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldDisplayRateMultiplier, v))
+}
+
+// DisplayRateMultiplierLTE applies the LTE predicate on the "display_rate_multiplier" field.
+func DisplayRateMultiplierLTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldDisplayRateMultiplier, v))
+}
+
+// DisplayRateMultiplierIsNil applies the IsNil predicate on the "display_rate_multiplier" field.
+func DisplayRateMultiplierIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldDisplayRateMultiplier))
+}
+
+// DisplayRateMultiplierNotNil applies the NotNil predicate on the "display_rate_multiplier" field.
+func DisplayRateMultiplierNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldDisplayRateMultiplier))
 }
 
 // ImagePrice1kEQ applies the EQ predicate on the "image_price_1k" field.

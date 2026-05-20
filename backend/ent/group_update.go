@@ -324,6 +324,33 @@ func (_u *GroupUpdate) AddImageRateMultiplier(v float64) *GroupUpdate {
 	return _u
 }
 
+// SetDisplayRateMultiplier sets the "display_rate_multiplier" field.
+func (_u *GroupUpdate) SetDisplayRateMultiplier(v float64) *GroupUpdate {
+	_u.mutation.ResetDisplayRateMultiplier()
+	_u.mutation.SetDisplayRateMultiplier(v)
+	return _u
+}
+
+// SetNillableDisplayRateMultiplier sets the "display_rate_multiplier" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableDisplayRateMultiplier(v *float64) *GroupUpdate {
+	if v != nil {
+		_u.SetDisplayRateMultiplier(*v)
+	}
+	return _u
+}
+
+// AddDisplayRateMultiplier adds value to the "display_rate_multiplier" field.
+func (_u *GroupUpdate) AddDisplayRateMultiplier(v float64) *GroupUpdate {
+	_u.mutation.AddDisplayRateMultiplier(v)
+	return _u
+}
+
+// ClearDisplayRateMultiplier clears the value of the "display_rate_multiplier" field.
+func (_u *GroupUpdate) ClearDisplayRateMultiplier() *GroupUpdate {
+	_u.mutation.ClearDisplayRateMultiplier()
+	return _u
+}
+
 // SetImagePrice1k sets the "image_price_1k" field.
 func (_u *GroupUpdate) SetImagePrice1k(v float64) *GroupUpdate {
 	_u.mutation.ResetImagePrice1k()
@@ -1023,6 +1050,15 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AddedImageRateMultiplier(); ok {
 		_spec.AddField(group.FieldImageRateMultiplier, field.TypeFloat64, value)
 	}
+	if value, ok := _u.mutation.DisplayRateMultiplier(); ok {
+		_spec.SetField(group.FieldDisplayRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedDisplayRateMultiplier(); ok {
+		_spec.AddField(group.FieldDisplayRateMultiplier, field.TypeFloat64, value)
+	}
+	if _u.mutation.DisplayRateMultiplierCleared() {
+		_spec.ClearField(group.FieldDisplayRateMultiplier, field.TypeFloat64)
+	}
 	if value, ok := _u.mutation.ImagePrice1k(); ok {
 		_spec.SetField(group.FieldImagePrice1k, field.TypeFloat64, value)
 	}
@@ -1717,6 +1753,33 @@ func (_u *GroupUpdateOne) SetNillableImageRateMultiplier(v *float64) *GroupUpdat
 // AddImageRateMultiplier adds value to the "image_rate_multiplier" field.
 func (_u *GroupUpdateOne) AddImageRateMultiplier(v float64) *GroupUpdateOne {
 	_u.mutation.AddImageRateMultiplier(v)
+	return _u
+}
+
+// SetDisplayRateMultiplier sets the "display_rate_multiplier" field.
+func (_u *GroupUpdateOne) SetDisplayRateMultiplier(v float64) *GroupUpdateOne {
+	_u.mutation.ResetDisplayRateMultiplier()
+	_u.mutation.SetDisplayRateMultiplier(v)
+	return _u
+}
+
+// SetNillableDisplayRateMultiplier sets the "display_rate_multiplier" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableDisplayRateMultiplier(v *float64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetDisplayRateMultiplier(*v)
+	}
+	return _u
+}
+
+// AddDisplayRateMultiplier adds value to the "display_rate_multiplier" field.
+func (_u *GroupUpdateOne) AddDisplayRateMultiplier(v float64) *GroupUpdateOne {
+	_u.mutation.AddDisplayRateMultiplier(v)
+	return _u
+}
+
+// ClearDisplayRateMultiplier clears the value of the "display_rate_multiplier" field.
+func (_u *GroupUpdateOne) ClearDisplayRateMultiplier() *GroupUpdateOne {
+	_u.mutation.ClearDisplayRateMultiplier()
 	return _u
 }
 
@@ -2448,6 +2511,15 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.AddedImageRateMultiplier(); ok {
 		_spec.AddField(group.FieldImageRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.DisplayRateMultiplier(); ok {
+		_spec.SetField(group.FieldDisplayRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedDisplayRateMultiplier(); ok {
+		_spec.AddField(group.FieldDisplayRateMultiplier, field.TypeFloat64, value)
+	}
+	if _u.mutation.DisplayRateMultiplierCleared() {
+		_spec.ClearField(group.FieldDisplayRateMultiplier, field.TypeFloat64)
 	}
 	if value, ok := _u.mutation.ImagePrice1k(); ok {
 		_spec.SetField(group.FieldImagePrice1k, field.TypeFloat64, value)

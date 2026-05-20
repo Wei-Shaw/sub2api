@@ -50,6 +50,8 @@ const (
 	FieldImageRateIndependent = "image_rate_independent"
 	// FieldImageRateMultiplier holds the string denoting the image_rate_multiplier field in the database.
 	FieldImageRateMultiplier = "image_rate_multiplier"
+	// FieldDisplayRateMultiplier holds the string denoting the display_rate_multiplier field in the database.
+	FieldDisplayRateMultiplier = "display_rate_multiplier"
 	// FieldImagePrice1k holds the string denoting the image_price_1k field in the database.
 	FieldImagePrice1k = "image_price_1k"
 	// FieldImagePrice2k holds the string denoting the image_price_2k field in the database.
@@ -176,6 +178,7 @@ var Columns = []string{
 	FieldAllowImageGeneration,
 	FieldImageRateIndependent,
 	FieldImageRateMultiplier,
+	FieldDisplayRateMultiplier,
 	FieldImagePrice1k,
 	FieldImagePrice2k,
 	FieldImagePrice4k,
@@ -371,6 +374,11 @@ func ByImageRateIndependent(opts ...sql.OrderTermOption) OrderOption {
 // ByImageRateMultiplier orders the results by the image_rate_multiplier field.
 func ByImageRateMultiplier(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldImageRateMultiplier, opts...).ToFunc()
+}
+
+// ByDisplayRateMultiplier orders the results by the display_rate_multiplier field.
+func ByDisplayRateMultiplier(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDisplayRateMultiplier, opts...).ToFunc()
 }
 
 // ByImagePrice1k orders the results by the image_price_1k field.

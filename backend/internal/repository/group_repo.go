@@ -53,6 +53,7 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 		SetAllowImageGeneration(groupIn.AllowImageGeneration).
 		SetImageRateIndependent(groupIn.ImageRateIndependent).
 		SetImageRateMultiplier(groupIn.ImageRateMultiplier).
+		SetNillableDisplayRateMultiplier(groupIn.DisplayRateMultiplier).
 		SetNillableImagePrice1k(groupIn.ImagePrice1K).
 		SetNillableImagePrice2k(groupIn.ImagePrice2K).
 		SetNillableImagePrice4k(groupIn.ImagePrice4K).
@@ -126,6 +127,7 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetAllowImageGeneration(groupIn.AllowImageGeneration).
 		SetImageRateIndependent(groupIn.ImageRateIndependent).
 		SetImageRateMultiplier(groupIn.ImageRateMultiplier).
+		SetNillableDisplayRateMultiplier(groupIn.DisplayRateMultiplier).
 		SetNillableImagePrice1k(groupIn.ImagePrice1K).
 		SetNillableImagePrice2k(groupIn.ImagePrice2K).
 		SetNillableImagePrice4k(groupIn.ImagePrice4K).
@@ -170,6 +172,12 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		builder = builder.SetImagePrice4k(*groupIn.ImagePrice4K)
 	} else {
 		builder = builder.ClearImagePrice4k()
+	}
+	// 处理 DisplayRateMultiplier：nil 时清除（回退使用 rate_multiplier），否则设置
+	if groupIn.DisplayRateMultiplier != nil {
+		builder = builder.SetDisplayRateMultiplier(*groupIn.DisplayRateMultiplier)
+	} else {
+		builder = builder.ClearDisplayRateMultiplier()
 	}
 
 	// 处理 FallbackGroupID：nil 时清除，否则设置
