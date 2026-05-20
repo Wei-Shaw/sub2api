@@ -378,6 +378,62 @@ type OpenAIFastPolicySettings struct {
 	Rules []OpenAIFastPolicyRule `json:"rules"`
 REDACTED
 
+// EmailTemplateEventOption describes an editable notification email event.
+type EmailTemplateEventOption struct {
+	Value       string `json:"value"`
+	Label       string `json:"label,omitempty"`
+	Description string `json:"description,omitempty"`
+REDACTED
+
+// EmailTemplateSummary is shown in the admin email template list.
+type EmailTemplateSummary struct {
+	Event     string `json:"event"`
+	Locale    string `json:"locale"`
+	Subject   string `json:"subject"`
+	IsCustom  bool   `json:"is_custom,omitempty"`
+	UpdatedAt string `json:"updated_at,omitempty"`
+REDACTED
+
+// EmailTemplateListResponse is returned by GET /admin/settings/email-templates.
+type EmailTemplateListResponse struct {
+	Events       []EmailTemplateEventOption `json:"events"`
+	Locales      []string                   `json:"locales"`
+	Templates    []EmailTemplateSummary     `json:"templates,omitempty"`
+	Placeholders []string                   `json:"placeholders,omitempty"`
+REDACTED
+
+// EmailTemplateDetail is returned for a specific event/locale template.
+type EmailTemplateDetail struct {
+	Event        string   `json:"event"`
+	Locale       string   `json:"locale"`
+	Subject      string   `json:"subject"`
+	HTML         string   `json:"html"`
+	IsCustom     bool     `json:"is_custom,omitempty"`
+	UpdatedAt    string   `json:"updated_at,omitempty"`
+	Placeholders []string `json:"placeholders,omitempty"`
+REDACTED
+
+// UpdateEmailTemplateRequest updates a template override.
+type UpdateEmailTemplateRequest struct {
+	Subject string `json:"subject"`
+	HTML    string `json:"html"`
+REDACTED
+
+// PreviewEmailTemplateRequest previews a template without saving it.
+type PreviewEmailTemplateRequest struct {
+	Event     string            `json:"event"`
+	Locale    string            `json:"locale"`
+	Subject   string            `json:"subject"`
+	HTML      string            `json:"html"`
+	Variables map[string]string `json:"variables,omitempty"`
+REDACTED
+
+// EmailTemplatePreviewResponse is the rendered preview payload.
+type EmailTemplatePreviewResponse struct {
+	Subject string `json:"subject"`
+	HTML    string `json:"html"`
+REDACTED
+
 // ParseCustomMenuItems parses a JSON string into a slice of CustomMenuItem.
 // Returns empty slice on empty/invalid input.
 func ParseCustomMenuItems(raw string) []CustomMenuItem {

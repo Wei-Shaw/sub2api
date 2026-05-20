@@ -686,6 +686,21 @@ REDACTED
 		if !s.emailLimiter.Allow(time.Now().UTC()) {
 			continue
 	REDACTED
+		if s.emailService.notificationEmailService != nil {
+			if err := s.emailService.notificationEmailService.Send(ctx, NotificationEmailSendInput{
+				Event:          NotificationEmailEventOpsAlert,
+				RecipientEmail: addr,
+				RecipientName:  emailRecipientName(addr),
+				SourceType:     "ops_alert",
+				SourceID:       fmt.Sprintf("%d", event.ID),
+				Variables:      opsAlertEmailVariables(rule, event),
+		REDACTED); err == nil {
+				anySent = true
+				continue
+		REDACTED else if !shouldFallbackNotificationEmail(err) {
+				continue
+		REDACTED
+	REDACTED
 		if err := s.emailService.SendEmail(ctx, addr, subject, body); err != nil {
 			// Ignore per-recipient failures; continue best-effort.
 			continue
@@ -697,6 +712,46 @@ REDACTED
 		_ = s.opsRepo.UpdateAlertEventEmailSent(context.Background(), event.ID, true)
 REDACTED
 	return anySent
+REDACTED
+
+func opsAlertEmailVariables(rule *OpsAlertRule, event *OpsAlertEvent) map[string]string {
+	variables := map[string]string{
+		"rule_name":         "-",
+		"severity":          "-",
+		"alert_status":      "-",
+		"metric_type":       "-",
+		"operator":          "-",
+		"metric_value":      "-",
+		"threshold_value":   "-",
+		"triggered_at":      time.Now().UTC().Format(time.RFC3339),
+		"alert_description": "-",
+REDACTED
+	if rule != nil {
+		variables["rule_name"] = strings.TrimSpace(rule.Name)
+		variables["severity"] = strings.TrimSpace(rule.Severity)
+		variables["metric_type"] = strings.TrimSpace(rule.MetricType)
+		variables["operator"] = strings.TrimSpace(rule.Operator)
+		variables["threshold_value"] = fmt.Sprintf("%.2f", rule.Threshold)
+		if strings.TrimSpace(rule.Description) != "" {
+			variables["alert_description"] = strings.TrimSpace(rule.Description)
+	REDACTED
+REDACTED
+	if event != nil {
+		variables["alert_status"] = strings.TrimSpace(event.Status)
+		if event.MetricValue != nil {
+			variables["metric_value"] = fmt.Sprintf("%.2f", *event.MetricValue)
+	REDACTED
+		if event.ThresholdValue != nil {
+			variables["threshold_value"] = fmt.Sprintf("%.2f", *event.ThresholdValue)
+	REDACTED
+		if !event.FiredAt.IsZero() {
+			variables["triggered_at"] = event.FiredAt.UTC().Format(time.RFC3339)
+	REDACTED
+		if strings.TrimSpace(event.Description) != "" {
+			variables["alert_description"] = strings.TrimSpace(event.Description)
+	REDACTED
+REDACTED
+	return variables
 REDACTED
 
 func buildOpsAlertEmailBody(rule *OpsAlertRule, event *OpsAlertEvent) string {

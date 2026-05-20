@@ -203,7 +203,7 @@ REDACTED
 		return
 REDACTED
 
-	result, err := h.authService.SendVerifyCodeAsync(c.Request.Context(), req.Email)
+	result, err := h.authService.SendVerifyCodeAsync(c.Request.Context(), req.Email, c.GetHeader("Accept-Language"))
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -602,7 +602,7 @@ REDACTED
 
 	// Request password reset (async)
 	// Note: This returns success even if email doesn't exist (to prevent enumeration)
-	if err := h.authService.RequestPasswordResetAsync(c.Request.Context(), req.Email, frontendBaseURL); err != nil {
+	if err := h.authService.RequestPasswordResetAsync(c.Request.Context(), req.Email, frontendBaseURL, c.GetHeader("Accept-Language")); err != nil {
 		response.ErrorFrom(c, err)
 		return
 REDACTED

@@ -854,6 +854,105 @@ export async function sendTestEmail(
   return data;
 REDACTED
 
+// ==================== Email Template Settings ====================
+
+export interface EmailTemplateOption {
+  value: string;
+  label?: string;
+  description?: string;
+REDACTED
+
+export type EmailTemplateEventOption = string | EmailTemplateOption;
+
+export interface EmailTemplateSummary {
+  event: string;
+  locale: string;
+  subject: string;
+  is_custom?: boolean;
+  updated_at?: string;
+REDACTED
+
+export interface EmailTemplateListResponse {
+  events: EmailTemplateEventOption[];
+  locales: string[];
+  templates?: EmailTemplateSummary[];
+  placeholders?: string[];
+REDACTED
+
+export interface EmailTemplateDetail {
+  event: string;
+  locale: string;
+  subject: string;
+  html: string;
+  is_custom?: boolean;
+  updated_at?: string;
+  placeholders?: string[];
+REDACTED
+
+export interface UpdateEmailTemplateRequest {
+  subject: string;
+  html: string;
+REDACTED
+
+export interface PreviewEmailTemplateRequest extends UpdateEmailTemplateRequest {
+  event: string;
+  locale: string;
+REDACTED
+
+export interface EmailTemplatePreviewResponse {
+  subject: string;
+  html: string;
+REDACTED
+
+export async function getEmailTemplates(): Promise<EmailTemplateListResponse> {
+  const { data REDACTED = await apiClient.get<EmailTemplateListResponse>(
+    "/admin/settings/email-templates",
+  );
+  return data;
+REDACTED
+
+export async function getEmailTemplate(
+  event: string,
+  locale: string,
+): Promise<EmailTemplateDetail> {
+  const { data REDACTED = await apiClient.get<EmailTemplateDetail>(
+    `/admin/settings/email-templates/${encodeURIComponent(event)REDACTED/${encodeURIComponent(locale)REDACTED`,
+  );
+  return data;
+REDACTED
+
+export async function updateEmailTemplate(
+  event: string,
+  locale: string,
+  request: UpdateEmailTemplateRequest,
+): Promise<EmailTemplateDetail> {
+  const { data REDACTED = await apiClient.put<EmailTemplateDetail>(
+    `/admin/settings/email-templates/${encodeURIComponent(event)REDACTED/${encodeURIComponent(locale)REDACTED`,
+    request,
+  );
+  return data;
+REDACTED
+
+export async function restoreOfficialEmailTemplate(
+  event: string,
+  locale: string,
+): Promise<EmailTemplateDetail> {
+  const { data REDACTED = await apiClient.post<EmailTemplateDetail>(
+    `/admin/settings/email-templates/${encodeURIComponent(event)REDACTED/${encodeURIComponent(locale)REDACTED/restore-official`,
+  );
+  return data;
+REDACTED
+
+export async function previewEmailTemplate(
+  request: PreviewEmailTemplateRequest,
+): Promise<EmailTemplatePreviewResponse> {
+  const { data REDACTED = await apiClient.post<EmailTemplatePreviewResponse>(
+    "/admin/settings/email-template-preview",
+    request,
+  );
+  return data;
+REDACTED
+
 /**
  * Admin API Key status response
  */
@@ -1160,6 +1259,11 @@ export const settingsAPI = {
   updateSettings,
   testSmtpConnection,
   sendTestEmail,
+  getEmailTemplates,
+  getEmailTemplate,
+  updateEmailTemplate,
+  restoreOfficialEmailTemplate,
+  previewEmailTemplate,
   getAdminApiKey,
   regenerateAdminApiKey,
   deleteAdminApiKey,

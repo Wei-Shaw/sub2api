@@ -94,7 +94,7 @@ REDACTED
 REDACTED
 
 // SendEmailIdentityBindCode sends a verification code for authenticated email binding flows.
-func (s *AuthService) SendEmailIdentityBindCode(ctx context.Context, userID int64, email string) error {
+func (s *AuthService) SendEmailIdentityBindCode(ctx context.Context, userID int64, email string, locale ...string) error {
 	if s == nil {
 		return ErrServiceUnavailable
 REDACTED
@@ -128,7 +128,7 @@ REDACTED
 	if s.settingService != nil {
 		siteName = s.settingService.GetSiteName(ctx)
 REDACTED
-	return s.emailService.SendVerifyCode(ctx, normalizedEmail, siteName)
+	return s.emailService.SendVerifyCode(ctx, normalizedEmail, siteName, firstEmailLocale(locale))
 REDACTED
 
 func normalizeEmailForIdentityBinding(email string) (string, error) {
