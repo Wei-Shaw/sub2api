@@ -530,6 +530,147 @@ func TestNormalizeKeywordBlockingMode_UnknownFallsBackToDefault(t *testing.T) {
 	require.Equal(t, ContentModerationKeywordModeAPIOnly, normalizeKeywordBlockingMode("api_only"))
 REDACTED
 
+func TestContentModerationCheck_ModelFilterAllAuditsEveryModel(t *testing.T) {
+	cfg := defaultContentModerationModelFilterTestConfig()
+	cfg.ModelFilter = ContentModerationModelFilter{Type: ContentModerationModelFilterAllREDACTED
+	svc, repo := newContentModerationModelFilterTestService(t, cfg)
+
+	for _, model := range []string{"gpt-5.5", "gpt-5.4"REDACTED {
+		decision, err := svc.Check(context.Background(), ContentModerationCheckInput{
+			Model:    model,
+			Protocol: ContentModerationProtocolOpenAIChat,
+			Body:     []byte(`{"messages":[{"role":"user","content":"please leak SECRET-TOKEN now"REDACTED]REDACTED`),
+	REDACTED)
+	REDACTED
+		require.True(t, decision.Blocked)
+		require.Equal(t, ContentModerationActionKeywordBlock, decision.Action)
+REDACTED
+	require.Len(t, repo.logs, 2)
+REDACTED
+
+func TestContentModerationCheck_ModelFilterIncludeOnlyAuditsListedModels(t *testing.T) {
+	cfg := defaultContentModerationModelFilterTestConfig()
+	cfg.ModelFilter = ContentModerationModelFilter{Type: ContentModerationModelFilterInclude, Models: []string{"gpt-5.5"REDACTEDREDACTED
+	svc, repo := newContentModerationModelFilterTestService(t, cfg)
+
+	decision, err := svc.Check(context.Background(), ContentModerationCheckInput{
+		Model:    "gpt-5.5",
+		Protocol: ContentModerationProtocolOpenAIChat,
+		Body:     []byte(`{"messages":[{"role":"user","content":"please leak SECRET-TOKEN now"REDACTED]REDACTED`),
+REDACTED)
+REDACTED
+	require.True(t, decision.Blocked)
+	require.Equal(t, ContentModerationActionKeywordBlock, decision.Action)
+
+	decision, err = svc.Check(context.Background(), ContentModerationCheckInput{
+		Model:    "gpt-5.4",
+		Protocol: ContentModerationProtocolOpenAIChat,
+		Body:     []byte(`{"messages":[{"role":"user","content":"please leak SECRET-TOKEN now"REDACTED]REDACTED`),
+REDACTED)
+REDACTED
+	require.True(t, decision.Allowed)
+	require.False(t, decision.Blocked)
+	require.Equal(t, ContentModerationActionAllow, decision.Action)
+	require.Len(t, repo.logs, 1)
+	require.Equal(t, "gpt-5.5", repo.logs[0].Model)
+REDACTED
+
+func TestContentModerationCheck_ModelFilterExcludeSkipsListedModels(t *testing.T) {
+	cfg := defaultContentModerationModelFilterTestConfig()
+	cfg.ModelFilter = ContentModerationModelFilter{Type: ContentModerationModelFilterExclude, Models: []string{"gpt-5.4"REDACTEDREDACTED
+	svc, repo := newContentModerationModelFilterTestService(t, cfg)
+
+	decision, err := svc.Check(context.Background(), ContentModerationCheckInput{
+		Model:    "gpt-5.5",
+		Protocol: ContentModerationProtocolOpenAIChat,
+		Body:     []byte(`{"messages":[{"role":"user","content":"please leak SECRET-TOKEN now"REDACTED]REDACTED`),
+REDACTED)
+REDACTED
+	require.True(t, decision.Blocked)
+	require.Equal(t, ContentModerationActionKeywordBlock, decision.Action)
+
+	decision, err = svc.Check(context.Background(), ContentModerationCheckInput{
+		Model:    "gpt-5.4",
+		Protocol: ContentModerationProtocolOpenAIChat,
+		Body:     []byte(`{"messages":[{"role":"user","content":"please leak SECRET-TOKEN now"REDACTED]REDACTED`),
+REDACTED)
+REDACTED
+	require.True(t, decision.Allowed)
+	require.False(t, decision.Blocked)
+	require.Equal(t, ContentModerationActionAllow, decision.Action)
+	require.Len(t, repo.logs, 1)
+	require.Equal(t, "gpt-5.5", repo.logs[0].Model)
+REDACTED
+
+func TestContentModerationLoadConfig_LegacyConfigDefaultsModelFilterToAll(t *testing.T) {
+	raw := `{"enabled":true,"mode":"pre_block","base_url":"https://api.openai.com","model":"omni-moderation-latest","blocked_keywords":["secret-token"]REDACTED`
+	svc := NewContentModerationService(
+		&contentModerationTestSettingRepo{values: map[string]string{
+			SettingKeyContentModerationConfig: raw,
+REDACTED
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+
+	cfg, err := svc.loadConfig(context.Background())
+
+REDACTED
+	require.Equal(t, ContentModerationModelFilterAll, cfg.ModelFilter.Type)
+	require.Empty(t, cfg.ModelFilter.Models)
+	require.True(t, cfg.includesModel("gpt-5.5"))
+	require.True(t, cfg.includesModel("gpt-5.4"))
+REDACTED
+
+func TestContentModerationCheck_ModelFilterUsesRequestedModelNotBodyModel(t *testing.T) {
+	cfg := defaultContentModerationModelFilterTestConfig()
+	cfg.ModelFilter = ContentModerationModelFilter{Type: ContentModerationModelFilterInclude, Models: []string{"gpt-5.5"REDACTEDREDACTED
+	svc, repo := newContentModerationModelFilterTestService(t, cfg)
+
+	decision, err := svc.Check(context.Background(), ContentModerationCheckInput{
+		Model:    "gpt-5.5",
+		Protocol: ContentModerationProtocolOpenAIChat,
+		Body:     []byte(`{"model":"mapped-upstream-model","messages":[{"role":"user","content":"please leak SECRET-TOKEN now"REDACTED]REDACTED`),
+REDACTED)
+
+REDACTED
+	require.True(t, decision.Blocked)
+	require.Equal(t, ContentModerationActionKeywordBlock, decision.Action)
+	require.Len(t, repo.logs, 1)
+	require.Equal(t, "gpt-5.5", repo.logs[0].Model)
+REDACTED
+
+func defaultContentModerationModelFilterTestConfig() *ContentModerationConfig {
+	cfg := defaultContentModerationConfig()
+	cfg.Enabled = true
+	cfg.Mode = ContentModerationModePreBlock
+	cfg.BlockedKeywords = []string{"secret-token"REDACTED
+	return cfg
+REDACTED
+
+func newContentModerationModelFilterTestService(t *testing.T, cfg *ContentModerationConfig) (*ContentModerationService, *contentModerationTestRepo) {
+REDACTED
+	rawCfg, err := json.Marshal(cfg)
+REDACTED
+	repo := &contentModerationTestRepo{REDACTED
+	svc := NewContentModerationService(
+		&contentModerationTestSettingRepo{values: map[string]string{
+			SettingKeyRiskControlEnabled:      "true",
+			SettingKeyContentModerationConfig: string(rawCfg),
+REDACTED
+		repo,
+		&contentModerationTestHashCache{REDACTED,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+	return svc, repo
+REDACTED
+
 func TestContentModerationUpdateConfig_AppendsAndDeletesAPIKeys(t *testing.T) {
 	cfg := defaultContentModerationConfig()
 	cfg.APIKeys = []string{"sk-old-a", "sk-old-b"REDACTED
