@@ -18,6 +18,8 @@ import (
 
 var (
 	// 这些字节模式用于 fast-path 判断，避免每次 []byte("...") 产生临时分配。
+	patternTypeField            = []byte(`"type"`)
+	patternThinkingString       = []byte(`"thinking"`)
 	patternTypeThinking         = []byte(`"type":"thinking"`)
 	patternTypeThinkingSpaced   = []byte(`"type": "thinking"`)
 	patternTypeRedactedThinking = []byte(`"type":"redacted_thinking"`)
@@ -366,6 +368,113 @@ func StripEmptyTextBlocks(body []byte) []byte {
 		return body
 	}
 	return out
+}
+
+// SanitizeInvalidThinkingBlocks 删除 messages[].content[] 里 type=thinking
+// 但缺少非空 thinking 字段的非法 block，避免上游 Anthropic 返回
+// 400 "each thinking block must contain thinking"。
+//
+// 典型触发场景：Cursor BYOK 等客户端在多轮对话或跨模型切换时，
+// 把历史 assistant 的 thinking block 裁剪成只剩 type / signature。
+//
+// 与 FilterThinkingBlocks / FilterThinkingBlocksForRetry 的区别：
+//   - 此函数是前置 sanitize，仅丢弃"非法"thinking block
+//   - 合法的 thinking block（有非空 thinking 文本）原样保留
+//   - 不动顶层 thinking 字段、不动 redacted_thinking、不动其他类型 block
+//   - 删完导致 content 为空时补 placeholder，避免触发 non-empty content 校验
+//
+// 返回 (sanitize 后的 body, 被删除的 block 数量)；未命中或解析失败时
+// 返回原 body 和 0，调用方据此决定是否记日志/标记 modified。
+func SanitizeInvalidThinkingBlocks(body []byte) ([]byte, int) {
+	if !bytes.Contains(body, patternTypeField) ||
+		!bytes.Contains(body, patternThinkingString) {
+		return body, 0
+	}
+
+	jsonStr := *(*string)(unsafe.Pointer(&body))
+	msgsRes := gjson.Get(jsonStr, "messages")
+	if !msgsRes.Exists() || !msgsRes.IsArray() {
+		return body, 0
+	}
+
+	var messages []any
+	if err := json.Unmarshal(sliceRawFromBody(body, msgsRes), &messages); err != nil {
+		return body, 0
+	}
+
+	dropped := 0
+	modified := false
+
+	for i := 0; i < len(messages); i++ {
+		msgMap, ok := messages[i].(map[string]any)
+		if !ok {
+			continue
+		}
+		content, ok := msgMap["content"].([]any)
+		if !ok {
+			continue
+		}
+
+		var newContent []any
+		droppedThisMsg := false
+
+		for bi := 0; bi < len(content); bi++ {
+			block := content[bi]
+			blockMap, ok := block.(map[string]any)
+			if !ok {
+				if newContent != nil {
+					newContent = append(newContent, block)
+				}
+				continue
+			}
+
+			if blockType, _ := blockMap["type"].(string); blockType == "thinking" {
+				thinking, _ := blockMap["thinking"].(string)
+				if strings.TrimSpace(thinking) == "" {
+					if newContent == nil {
+						newContent = make([]any, 0, len(content))
+						newContent = append(newContent, content[:bi]...)
+					}
+					dropped++
+					droppedThisMsg = true
+					continue
+				}
+			}
+
+			if newContent != nil {
+				newContent = append(newContent, block)
+			}
+		}
+
+		if !droppedThisMsg {
+			continue
+		}
+		modified = true
+
+		if len(newContent) == 0 {
+			role, _ := msgMap["role"].(string)
+			placeholder := "(content removed)"
+			if role == "assistant" {
+				placeholder = "(assistant content removed)"
+			}
+			newContent = []any{map[string]any{"type": "text", "text": placeholder}}
+		}
+		msgMap["content"] = newContent
+	}
+
+	if !modified {
+		return body, 0
+	}
+
+	msgsBytes, err := json.Marshal(messages)
+	if err != nil {
+		return body, 0
+	}
+	out, err := sjson.SetRawBytes(body, "messages", msgsBytes)
+	if err != nil {
+		return body, 0
+	}
+	return out, dropped
 }
 
 // FilterThinkingBlocks removes thinking blocks from request body

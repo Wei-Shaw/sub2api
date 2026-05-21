@@ -776,6 +776,61 @@ func TestGatewayService_AnthropicOAuth_ForwardPreservesBillingHeaderSystemBlock(
 	}
 }
 
+func TestGatewayService_AnthropicOAuth_ForwardSanitizesInvalidThinkingForClaudeCodeClient(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"claude-opus-4-7","stream":false,"metadata":{"user_id":"user_a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2_account_550e8400-e29b-41d4-a716-446655440000_session_123e4567-e89b-12d3-a456-426614174000"},"messages":[{"role":"user","content":"hi"},{"role":"assistant","content":[{"type":"thinking","signature":"sig_x"},{"type":"text","text":"hello"}]}]}`)
+	parsed, err := ParseGatewayRequest(body, PlatformAnthropic)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	c.Request.Header.Set("User-Agent", "claude-cli/2.1.92 (external, cli)")
+
+	upstream := &anthropicHTTPUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"application/json"},
+				"x-request-id": []string{"rid-oauth-sanitize"},
+			},
+			Body: io.NopCloser(strings.NewReader(`{"id":"msg_1","type":"message","role":"assistant","model":"claude-opus-4-7","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":12,"output_tokens":7}}`)),
+		},
+	}
+
+	cfg := &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}}
+	svc := &GatewayService{
+		cfg:                  cfg,
+		responseHeaderFilter: compileResponseHeaderFilter(cfg),
+		httpUpstream:         upstream,
+		rateLimitService:     &RateLimitService{},
+		deferredService:      &DeferredService{},
+	}
+	account := &Account{
+		ID:          302,
+		Name:        "anthropic-oauth-sanitize",
+		Platform:    PlatformAnthropic,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{"access_token": "oauth-token"},
+		Status:      StatusActive,
+		Schedulable: true,
+	}
+
+	result, err := svc.Forward(context.Background(), c, account, parsed)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, upstream.lastReq)
+
+	content := gjson.GetBytes(upstream.lastBody, "messages.1.content")
+	require.True(t, content.IsArray())
+	require.Len(t, content.Array(), 1)
+	require.Equal(t, "text", content.Get("0.type").String())
+	require.Equal(t, "hello", content.Get("0.text").String())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "messages.1.content.0.signature").Exists())
+}
+
 func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingStillCollectsUsageAfterClientDisconnect(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

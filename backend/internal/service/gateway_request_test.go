@@ -1248,3 +1248,172 @@ func BenchmarkParseGatewayRequest_New_Large(b *testing.B) {
 		_, _ = ParseGatewayRequest(data, "")
 	}
 }
+
+func TestSanitizeInvalidThinkingBlocks(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		wantDropped int
+		// 校验函数：对结果做断言（除 dropped 计数外）
+		check func(t *testing.T, body []byte)
+	}{
+		{
+			name: "drops thinking block missing thinking field",
+			input: `{"model":"claude-opus-4-7","messages":[` +
+				`{"role":"user","content":"hi"},` +
+				`{"role":"assistant","content":[{"type":"thinking","signature":"sig_x"},{"type":"text","text":"hello"}]}` +
+				`]}`,
+			wantDropped: 1,
+			check: func(t *testing.T, body []byte) {
+				content := getContent(t, body, 1)
+				require.Len(t, content, 1)
+				require.Equal(t, "text", content[0].(map[string]any)["type"])
+				require.Equal(t, "hello", content[0].(map[string]any)["text"])
+			},
+		},
+		{
+			name: "drops thinking block when type discriminator uses spaced colon",
+			input: `{"messages":[{"role":"assistant","content":[` +
+				`{"type" : "thinking","signature":"sig_x"},` +
+				`{"type":"text","text":"hello"}` +
+				`]}]}`,
+			wantDropped: 1,
+			check: func(t *testing.T, body []byte) {
+				content := getContent(t, body, 0)
+				require.Len(t, content, 1)
+				require.Equal(t, "text", content[0].(map[string]any)["type"])
+				require.Equal(t, "hello", content[0].(map[string]any)["text"])
+			},
+		},
+		{
+			name: "drops thinking block with empty thinking string",
+			input: `{"messages":[{"role":"assistant","content":[` +
+				`{"type":"thinking","thinking":"   ","signature":"s"},` +
+				`{"type":"text","text":"ok"}` +
+				`]}]}`,
+			wantDropped: 1,
+			check: func(t *testing.T, body []byte) {
+				content := getContent(t, body, 0)
+				require.Len(t, content, 1)
+				require.Equal(t, "text", content[0].(map[string]any)["type"])
+			},
+		},
+		{
+			name: "keeps thinking block with non-empty thinking field",
+			input: `{"messages":[{"role":"assistant","content":[` +
+				`{"type":"thinking","thinking":"reasoning","signature":"s"},` +
+				`{"type":"text","text":"ok"}` +
+				`]}]}`,
+			wantDropped: 0,
+			check: func(t *testing.T, body []byte) {
+				content := getContent(t, body, 0)
+				require.Len(t, content, 2)
+				require.Equal(t, "thinking", content[0].(map[string]any)["type"])
+				require.Equal(t, "reasoning", content[0].(map[string]any)["thinking"])
+			},
+		},
+		{
+			name: "adds placeholder when content becomes empty after drop (assistant)",
+			input: `{"messages":[{"role":"assistant","content":[` +
+				`{"type":"thinking","signature":"s"}` +
+				`]}]}`,
+			wantDropped: 1,
+			check: func(t *testing.T, body []byte) {
+				content := getContent(t, body, 0)
+				require.Len(t, content, 1)
+				require.Equal(t, "text", content[0].(map[string]any)["type"])
+				require.Equal(t, "(assistant content removed)", content[0].(map[string]any)["text"])
+			},
+		},
+		{
+			name: "adds non-assistant placeholder",
+			input: `{"messages":[{"role":"user","content":[` +
+				`{"type":"thinking","signature":"s"}` +
+				`]}]}`,
+			wantDropped: 1,
+			check: func(t *testing.T, body []byte) {
+				content := getContent(t, body, 0)
+				require.Equal(t, "(content removed)", content[0].(map[string]any)["text"])
+			},
+		},
+		{
+			name: "does not touch redacted_thinking blocks",
+			input: `{"messages":[{"role":"assistant","content":[` +
+				`{"type":"redacted_thinking","data":"xyz"},` +
+				`{"type":"text","text":"ok"}` +
+				`]}]}`,
+			wantDropped: 0,
+		},
+		{
+			name:        "fast path when no thinking marker in body",
+			input:       `{"messages":[{"role":"user","content":[{"type":"text","text":"hi"}]}]}`,
+			wantDropped: 0,
+		},
+		{
+			name:        "ignores invalid JSON gracefully",
+			input:       `{"messages":[{"role":"assistant","content":[{"type":"thinking"`,
+			wantDropped: 0,
+		},
+		{
+			name: "drops invalid blocks across multiple messages",
+			input: `{"messages":[` +
+				`{"role":"assistant","content":[{"type":"thinking","signature":"a"},{"type":"text","text":"x"}]},` +
+				`{"role":"user","content":"continue"},` +
+				`{"role":"assistant","content":[{"type":"thinking","signature":"b"},{"type":"text","text":"y"}]}` +
+				`]}`,
+			wantDropped: 2,
+			check: func(t *testing.T, body []byte) {
+				require.Len(t, getContent(t, body, 0), 1)
+				require.Len(t, getContent(t, body, 2), 1)
+			},
+		},
+		{
+			name: "does not touch top-level thinking field",
+			input: `{"thinking":{"type":"enabled","budget_tokens":1024},"messages":[` +
+				`{"role":"assistant","content":[{"type":"thinking","signature":"s"}]}` +
+				`]}`,
+			wantDropped: 1,
+			check: func(t *testing.T, body []byte) {
+				var req map[string]any
+				require.NoError(t, json.Unmarshal(body, &req))
+				thinking, ok := req["thinking"].(map[string]any)
+				require.True(t, ok, "top-level thinking must survive")
+				require.Equal(t, "enabled", thinking["type"])
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out, dropped := SanitizeInvalidThinkingBlocks([]byte(tt.input))
+			require.Equal(t, tt.wantDropped, dropped)
+
+			if tt.wantDropped == 0 {
+				// 未命中时不应改写 body
+				require.Equal(t, tt.input, string(out))
+				return
+			}
+
+			var parsed map[string]any
+			require.NoError(t, json.Unmarshal(out, &parsed), "result must be valid JSON")
+			if tt.check != nil {
+				tt.check(t, out)
+			}
+		})
+	}
+}
+
+// getContent 解析 body 并返回 messages[idx].content（必须是数组）。
+func getContent(t *testing.T, body []byte, idx int) []any {
+	t.Helper()
+	var req map[string]any
+	require.NoError(t, json.Unmarshal(body, &req))
+	messages, ok := req["messages"].([]any)
+	require.True(t, ok)
+	require.Greater(t, len(messages), idx)
+	msg, ok := messages[idx].(map[string]any)
+	require.True(t, ok)
+	content, ok := msg["content"].([]any)
+	require.True(t, ok, "messages[%d].content must be an array", idx)
+	return content
+}

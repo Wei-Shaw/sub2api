@@ -1080,6 +1080,16 @@ func normalizeClaudeOAuthRequestBody(body []byte, modelID string, opts claudeOAu
 	out := body
 	modified := false
 
+	// 前置 sanitize：删除 messages[].content[] 里 type=thinking 但缺非空 thinking
+	// 字段的非法 block。Cursor BYOK 等客户端在多轮/跨模型会话中容易把历史 thinking
+	// block 裁剪成只剩 type/signature，未清理直接转发会被上游返
+	// 400 "each thinking block must contain thinking"。
+	if next, dropped := SanitizeInvalidThinkingBlocks(out); dropped > 0 {
+		out = next
+		modified = true
+		logger.LegacyPrintf("service.gateway", "[Sanitize] Removed %d invalid thinking block(s) (missing thinking field) before forwarding", dropped)
+	}
+
 	if next, changed := normalizeClaudeOAuthSystemBody(out, opts); changed {
 		out = next
 		modified = true
@@ -4409,6 +4419,13 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			"model":        reqModel,
 			"stream":       strconv.FormatBool(reqStream),
 		})
+	}
+
+	if account.IsAnthropicOAuthOrSetupToken() {
+		if next, dropped := SanitizeInvalidThinkingBlocks(body); dropped > 0 {
+			body = next
+			logger.LegacyPrintf("service.gateway", "[Sanitize] Removed %d invalid thinking block(s) (missing thinking field) before forwarding", dropped)
+		}
 	}
 
 	// Claude Code 客户端判定：UA 匹配 claude-cli/* 且携带 metadata.user_id。
