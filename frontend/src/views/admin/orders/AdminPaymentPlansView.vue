@@ -21,6 +21,7 @@
           </span>
           <GroupBadge
             v-else-if="getGroup(value)"
+            admin-view
             :name="getGroup(value)!.name"
             :platform="getGroup(value)!.platform"
             :rate-multiplier="getGroup(value)!.rate_multiplier"

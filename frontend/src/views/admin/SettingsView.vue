@@ -2628,6 +2628,7 @@
                         <template #selected="{ option }">
                           <GroupBadge
                             v-if="option"
+                            admin-view
                             :name="
                               (
                                 option as unknown as DefaultSubscriptionGroupOption
@@ -2893,6 +2894,7 @@
                             <template #selected="{ option }">
                               <GroupBadge
                                 v-if="option"
+                                admin-view
                                 :name="
                                   (
                                     option as unknown as DefaultSubscriptionGroupOption

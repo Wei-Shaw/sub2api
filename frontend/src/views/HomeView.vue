@@ -655,7 +655,9 @@ const faqItems = computed(() => [
   { question: t('guide.faq.q1'), answer: t('guide.faq.a1') },
   { question: t('guide.faq.q2'), answer: t('guide.faq.a2') },
   { question: t('guide.faq.q3'), answer: t('guide.faq.a3') },
-  { question: t('guide.faq.q4'), answer: t('guide.faq.a4') }
+  { question: t('guide.faq.q4'), answer: t('guide.faq.a4') },
+  { question: t('guide.faq.q5'), answer: t('guide.faq.a5') },
+  { question: t('guide.faq.q6'), answer: t('guide.faq.a6') }
 ])
 
 // Toggle theme

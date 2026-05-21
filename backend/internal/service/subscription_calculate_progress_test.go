@@ -229,3 +229,75 @@ func TestCalculateProgress_ResetsInSeconds_NotNegative(t *testing.T) {
 	assert.GreaterOrEqual(t, progress.FiveHour.ResetsInSeconds, int64(0),
 		"ResetsInSeconds 不应为负数")
 }
+
+func TestValidateAndCheckLimits_SubscriptionOnlyChecksDailyLimit(t *testing.T) {
+	svc := newTestSubscriptionService()
+	now := time.Now()
+	weeklyLimit := 10.0
+	monthlyLimit := 20.0
+	dailyLimit := 100.0
+
+	sub := &UserSubscription{
+		Status:             SubscriptionStatusActive,
+		ExpiresAt:          now.Add(24 * time.Hour),
+		DailyUsageUSD:      50.0,
+		WeeklyUsageUSD:     99.0,  // 超过隐藏周额度也不应拦截
+		MonthlyUsageUSD:    999.0, // 超过隐藏月额度也不应拦截
+		DailyWindowStart:   ptrTime(now.Add(-2 * time.Hour)),
+		WeeklyWindowStart:  ptrTime(now.Add(-2 * time.Hour)),
+		MonthlyWindowStart: ptrTime(now.Add(-2 * time.Hour)),
+	}
+	group := &Group{
+		DailyLimitUSD:   ptrFloat64(dailyLimit),
+		WeeklyLimitUSD:  ptrFloat64(weeklyLimit),
+		MonthlyLimitUSD: ptrFloat64(monthlyLimit),
+	}
+
+	needsMaintenance, err := svc.ValidateAndCheckLimits(sub, group)
+	require.NoError(t, err)
+	assert.False(t, needsMaintenance)
+}
+
+func TestValidateAndCheckLimits_DailyWindowResetPreventsFalseReject(t *testing.T) {
+	svc := newTestSubscriptionService()
+	now := time.Now()
+	dailyLimit := 100.0
+
+	sub := &UserSubscription{
+		Status:           SubscriptionStatusActive,
+		ExpiresAt:        now.Add(24 * time.Hour),
+		DailyUsageUSD:    150.0,
+		DailyWindowStart: ptrTime(now.Add(-25 * time.Hour)),
+	}
+	group := &Group{DailyLimitUSD: ptrFloat64(dailyLimit)}
+
+	needsMaintenance, err := svc.ValidateAndCheckLimits(sub, group)
+	require.NoError(t, err)
+	assert.True(t, needsMaintenance)
+	assert.Equal(t, 0.0, sub.DailyUsageUSD)
+}
+
+func TestCalculateProgress_DailyLimitUsage(t *testing.T) {
+	svc := newTestSubscriptionService()
+	now := time.Now()
+	windowStart := now.Add(-6 * time.Hour)
+
+	sub := &UserSubscription{
+		ID:               1,
+		ExpiresAt:        now.Add(10 * 24 * time.Hour),
+		DailyUsageUSD:    40.0,
+		DailyWindowStart: ptrTime(windowStart),
+	}
+	group := &Group{
+		Name:          "日卡",
+		DailyLimitUSD: ptrFloat64(100.0),
+	}
+
+	progress := svc.calculateProgress(sub, group)
+
+	require.NotNil(t, progress.Daily)
+	assert.Equal(t, 100.0, progress.Daily.LimitUSD)
+	assert.Equal(t, 40.0, progress.Daily.UsedUSD)
+	assert.Equal(t, 60.0, progress.Daily.RemainingUSD)
+	assert.Equal(t, 40.0, progress.Daily.Percentage)
+}

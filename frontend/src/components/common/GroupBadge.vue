@@ -13,8 +13,8 @@
     <span v-if="showLabel" :class="labelClass">
       <template v-if="hasCustomRate">
         <!-- 原倍率删除线 + 专属倍率高亮 -->
-        <span class="line-through opacity-50 mr-0.5">{{ rateMultiplier }}x</span>
-        <span class="font-bold">{{ userRateMultiplier }}x</span>
+        <span class="line-through opacity-50 mr-0.5">{{ displayMultiplier }}x</span>
+        <span class="font-bold">{{ displayMultiplier }}x</span>
       </template>
       <template v-else>
         {{ labelText }}
@@ -36,6 +36,7 @@ interface Props {
   rateMultiplier?: number
   displayRateMultiplier?: number // 用户端展示倍率
   userRateMultiplier?: number | null // 用户专属倍率
+  adminView?: boolean // 管理员后台可查看真实倍率
   showRate?: boolean
   daysRemaining?: number | null // 剩余天数（订阅类型时使用）
   /**
@@ -51,6 +52,7 @@ const props = withDefaults(defineProps<Props>(), {
   showRate: true,
   daysRemaining: null,
   userRateMultiplier: null,
+  adminView: false,
   alwaysShowRate: false
 })
 
@@ -58,10 +60,15 @@ const { t } = useI18n()
 
 const isSubscription = computed(() => props.subscriptionType === 'subscription')
 
-// 是否有专属倍率（且与默认倍率不同）—— 订阅类型不显示专属倍率
+const internalMultiplier = computed(() => props.displayRateMultiplier ?? props.rateMultiplier ?? 1.0)
+
+// 用户侧统一只展示 1.0x；真实倍率和专属倍率只在管理员后台出现。
+const displayMultiplier = computed(() => (props.adminView ? internalMultiplier.value : 1.0))
+
+// 是否有专属倍率（且与默认倍率不同）—— 仅管理员后台显示
 const hasCustomRate = computed(() => {
-  if (isSubscription.value) return false
   return (
+    props.adminView &&
     props.userRateMultiplier !== null &&
     props.userRateMultiplier !== undefined &&
     props.rateMultiplier !== undefined &&
@@ -74,17 +81,13 @@ const showLabel = computed(() => {
   if (!props.showRate) return false
   // 订阅类型：显示天数或"订阅"
   if (isSubscription.value) return true
-  // 标准类型：显示倍率（包括专属倍率）
+  // 标准类型：显示用户侧统一倍率
   return props.rateMultiplier !== undefined || hasCustomRate.value
 })
 
-// Label text — 订阅类型使用 displayRateMultiplier（用户端展示倍率）
+// Label text — 用户侧所有分组统一展示 1.0x
 const labelText = computed(() => {
-  // 优先使用 displayRateMultiplier；订阅类型没有设置时默认 1.0x
-  const effectiveDisplayRate = isSubscription.value
-    ? (props.displayRateMultiplier ?? 1.0)
-    : (props.rateMultiplier ?? 1.0)
-  const rateLabel = `${effectiveDisplayRate}x`
+  const rateLabel = `${displayMultiplier.value}x`
   if (isSubscription.value && !props.alwaysShowRate) {
     // 如果有剩余天数，显示天数
     if (props.daysRemaining !== null && props.daysRemaining !== undefined) {

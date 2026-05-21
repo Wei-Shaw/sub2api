@@ -493,9 +493,7 @@
           </div>
           <div class="flex items-center justify-between gap-6">
             <span class="text-gray-400">{{ t('usage.rate') }}</span>
-            <span class="font-semibold text-blue-400"
-              >{{ tooltipData?.subscription_id ? '1.0' : formatMultiplier(tooltipData?.rate_multiplier || 1) }}x</span
-            >
+            <span class="font-semibold text-blue-400">1.0x</span>
           </div>
           <div class="flex items-center justify-between gap-6">
             <span class="text-gray-400">{{ t('usage.original') }}</span>
@@ -534,7 +532,7 @@ import type { UsageLog, ApiKey, UsageQueryParams, UsageStatsResponse } from '@/t
 import type { Column } from '@/components/common/types'
 import { formatDateTime, formatReasoningEffort } from '@/utils/format'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
-import { formatCacheTokens, formatMultiplier } from '@/utils/formatters'
+import { formatCacheTokens } from '@/utils/formatters'
 import { formatTokenPricePerMillion } from '@/utils/usagePricing'
 import { getUsageServiceTierLabel } from '@/utils/usageServiceTier'
 import { resolveUsageRequestType } from '@/utils/usageRequestType'
@@ -882,7 +880,7 @@ const exportToCSV = async () => {
         log.output_tokens,
         log.cache_read_tokens,
         log.cache_creation_tokens,
-        log.subscription_id ? 1.0 : log.rate_multiplier,
+        1.0,
         log.actual_cost.toFixed(8),
         log.total_cost.toFixed(8),
         log.first_token_ms ?? '',

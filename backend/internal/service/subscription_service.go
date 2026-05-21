@@ -805,14 +805,10 @@ func (s *SubscriptionService) CheckAndResetWindows(ctx context.Context, sub *Use
 // CheckUsageLimits 检查使用限额（返回错误如果超限）
 // 用于中间件的快速预检查，additionalCost 通常为 0
 func (s *SubscriptionService) CheckUsageLimits(ctx context.Context, sub *UserSubscription, group *Group, additionalCost float64) error {
-	if !sub.CheckFiveHourLimit(group, additionalCost) {
-		return ErrFiveHourLimitExceeded
-	}
-	if !sub.CheckWeeklyLimit(group, additionalCost) {
-		return ErrWeeklyLimitExceeded
-	}
-	if !sub.CheckMonthlyLimit(group, additionalCost) {
-		return ErrMonthlyLimitExceeded
+	// 订阅套餐只按「每日额度」限制。周/月/5小时窗口可继续记录历史数据，
+	// 但不能阻断套餐用户使用，避免用户买了日/周/月卡后被隐藏的周/月额度误拦截。
+	if !sub.CheckDailyLimit(group, additionalCost) {
+		return ErrDailyLimitExceeded
 	}
 	return nil
 }
@@ -834,6 +830,10 @@ func (s *SubscriptionService) ValidateAndCheckLimits(sub *UserSubscription, grou
 
 	// 2. 内存中修正过期窗口的用量，确保 CheckUsageLimits 不会误拒绝用户
 	//    实际的 DB 窗口重置由 DoWindowMaintenance 异步完成
+	if sub.NeedsDailyReset() {
+		sub.DailyUsageUSD = 0
+		needsMaintenance = true
+	}
 	if sub.NeedsFiveHourReset() {
 		sub.FiveHourUsageUSD = 0
 		needsMaintenance = true
@@ -854,16 +854,6 @@ func (s *SubscriptionService) ValidateAndCheckLimits(sub *UserSubscription, grou
 	if !sub.CheckDailyLimit(group, 0) {
 		return needsMaintenance, ErrDailyLimitExceeded
 	}
-	if !sub.CheckFiveHourLimit(group, 0) {
-		return needsMaintenance, ErrFiveHourLimitExceeded
-	}
-	if !sub.CheckWeeklyLimit(group, 0) {
-		return needsMaintenance, ErrWeeklyLimitExceeded
-	}
-	if !sub.CheckMonthlyLimit(group, 0) {
-		return needsMaintenance, ErrMonthlyLimitExceeded
-	}
-
 	return needsMaintenance, nil
 }
 
@@ -920,6 +910,7 @@ type SubscriptionProgress struct {
 	GroupName     string               `json:"group_name"`
 	ExpiresAt     time.Time            `json:"expires_at"`
 	ExpiresInDays int                  `json:"expires_in_days"`
+	Daily         *UsageWindowProgress `json:"daily,omitempty"`
 	FiveHour      *UsageWindowProgress `json:"five_hour,omitempty"`
 	Weekly        *UsageWindowProgress `json:"weekly,omitempty"`
 	Monthly       *UsageWindowProgress `json:"monthly,omitempty"`
@@ -961,6 +952,30 @@ func (s *SubscriptionService) calculateProgress(sub *UserSubscription, group *Gr
 		GroupName:     group.Name,
 		ExpiresAt:     sub.ExpiresAt,
 		ExpiresInDays: sub.DaysRemaining(),
+	}
+
+	// 日进度（订阅套餐只展示/限制日额度）
+	if group.HasDailyLimit() && sub.DailyWindowStart != nil {
+		limit := *group.DailyLimitUSD
+		resetsAt := sub.DailyWindowStart.Add(24 * time.Hour)
+		progress.Daily = &UsageWindowProgress{
+			LimitUSD:        limit,
+			UsedUSD:         sub.DailyUsageUSD,
+			RemainingUSD:    limit - sub.DailyUsageUSD,
+			Percentage:      (sub.DailyUsageUSD / limit) * 100,
+			WindowStart:     *sub.DailyWindowStart,
+			ResetsAt:        resetsAt,
+			ResetsInSeconds: int64(time.Until(resetsAt).Seconds()),
+		}
+		if progress.Daily.RemainingUSD < 0 {
+			progress.Daily.RemainingUSD = 0
+		}
+		if progress.Daily.Percentage > 100 {
+			progress.Daily.Percentage = 100
+		}
+		if progress.Daily.ResetsInSeconds < 0 {
+			progress.Daily.ResetsInSeconds = 0
+		}
 	}
 
 	// 5小时进度

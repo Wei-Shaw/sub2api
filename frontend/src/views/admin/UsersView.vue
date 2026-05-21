@@ -370,6 +370,7 @@
             >
               <GroupBadge
                 v-for="sub in row.subscriptions"
+                admin-view
                 :key="sub.id"
                 :name="sub.group?.name || ''"
                 :platform="sub.group?.platform"

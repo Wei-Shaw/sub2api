@@ -1282,8 +1282,8 @@ const groupOptions = computed(() =>
     billingLabel: getGroupBillingLabel(group),
     description: getGroupOptionDescription(group),
     rate: group.rate_multiplier,
-    displayRate: group.display_rate_multiplier,
-    userRate: userGroupRates.value[group.id] ?? null,
+    displayRate: 1.0,
+    userRate: null,
     subscriptionType: group.subscription_type,
     platform: group.platform
   }))

@@ -287,7 +287,7 @@ func (h *APIKeyHandler) GetAvailableGroups(c *gin.Context) {
 
 	out := make([]dto.Group, 0, len(groups))
 	for i := range groups {
-		out = append(out, *dto.GroupFromService(&groups[i]))
+		out = append(out, *dto.GroupFromServiceUser(&groups[i]))
 	}
 	response.Success(c, out)
 }
@@ -301,11 +301,13 @@ func (h *APIKeyHandler) GetUserGroupRates(c *gin.Context) {
 		return
 	}
 
-	rates, err := h.apiKeyService.GetUserGroupRates(c.Request.Context(), subject.UserID)
+	_, err := h.apiKeyService.GetUserGroupRates(c.Request.Context(), subject.UserID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
 
-	response.Success(c, rates)
+	// User-facing rate overrides are intentionally hidden. They affect internal
+	// billing only; the frontend must always present 1.0x to regular users.
+	response.Success(c, map[int64]float64{})
 }

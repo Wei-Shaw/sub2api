@@ -77,6 +77,10 @@ func APIKeyFromService(k *service.APIKey) *APIKey {
 	if k == nil {
 		return nil
 	}
+	// User-facing API key DTOs must never expose the internal billing multiplier.
+	// Admin routes have dedicated admin DTOs; the regular API key endpoints are
+	// consumed by the frontend user dashboard.
+	group := GroupFromServiceUser(k.Group)
 	out := &APIKey{
 		ID:            k.ID,
 		UserID:        k.UserID,
@@ -102,7 +106,7 @@ func APIKeyFromService(k *service.APIKey) *APIKey {
 		Window1dStart: k.Window1dStart,
 		Window7dStart: k.Window7dStart,
 		User:          UserFromServiceShallow(k.User),
-		Group:         GroupFromServiceShallow(k.Group),
+		Group:         group,
 	}
 	if k.Window5hStart != nil && !service.IsWindowExpired(k.Window5hStart, service.RateLimitWindow5h) {
 		t := k.Window5hStart.Add(service.RateLimitWindow5h)
@@ -125,6 +129,23 @@ func GroupFromServiceShallow(g *service.Group) *Group {
 	}
 	out := groupFromServiceBase(g)
 	return &out
+}
+
+// GroupFromServiceUser returns the sanitized group DTO for regular user APIs.
+// The real rate_multiplier is an internal/admin-only value. Users always see
+// 1.0x; billing still uses service.Group.RateMultiplier internally.
+func GroupFromServiceUser(g *service.Group) *Group {
+	if g == nil {
+		return nil
+	}
+	out := groupFromServiceBase(g)
+	out.RateMultiplier = 1.0
+	out.DisplayRateMultiplier = float64Ptr(1.0)
+	return &out
+}
+
+func float64Ptr(v float64) *float64 {
+	return &v
 }
 
 func GroupFromService(g *service.Group) *Group {
@@ -562,6 +583,7 @@ func AccountSummaryFromService(a *service.Account) *AccountSummary {
 
 func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 	// 普通用户 DTO：严禁包含管理员字段（例如 account_rate_multiplier、ip_address、account）。
+	// 倍率同样属于内部计费字段，用户端统一展示为 1.0x。
 	requestType := l.EffectiveRequestType()
 	stream, openAIWSMode := service.ApplyLegacyRequestFields(requestType, l.Stream, l.OpenAIWSMode)
 	requestedModel := l.RequestedModel
@@ -593,7 +615,7 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 		CacheReadCost:         l.CacheReadCost,
 		TotalCost:             l.TotalCost,
 		ActualCost:            l.ActualCost,
-		RateMultiplier:        l.RateMultiplier,
+		RateMultiplier:        1.0,
 		BillingType:           l.BillingType,
 		RequestType:           requestType.String(),
 		Stream:                stream,
@@ -609,7 +631,7 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 		CreatedAt:             l.CreatedAt,
 		User:                  UserFromServiceShallow(l.User),
 		APIKey:                APIKeyFromService(l.APIKey),
-		Group:                 GroupFromServiceShallow(l.Group),
+		Group:                 GroupFromServiceUser(l.Group),
 		Subscription:          UserSubscriptionFromService(l.Subscription),
 	}
 }

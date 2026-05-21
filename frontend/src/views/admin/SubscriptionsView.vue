@@ -202,6 +202,7 @@
           <template #cell-group="{ row }">
             <GroupBadge
               v-if="row.group"
+              admin-view
               :name="row.group.name"
               :platform="row.group.platform"
               :subscription-type="row.group.subscription_type"
@@ -500,6 +501,7 @@
             <template #selected="{ option }">
               <GroupBadge
                 v-if="option"
+                admin-view
                 :name="(option as unknown as GroupOption).label"
                 :platform="(option as unknown as GroupOption).platform"
                 :subscription-type="(option as unknown as GroupOption).subscriptionType"

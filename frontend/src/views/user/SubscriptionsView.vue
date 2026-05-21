@@ -101,123 +101,43 @@
               }}</span>
             </div>
 
-            <!-- 5h Usage (hidden — five_hour feature disabled)
-            <div v-if="subscription.group?.five_hour_limit_usd" class="space-y-2">
-              <div class="flex items-center justify-between">
-                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {{ t('userSubscriptions.fiveHour') }}
-                </span>
-                <span class="text-sm text-gray-500 dark:text-dark-300">
-                  {{ getProgressPercentText(subscription.five_hour_usage_usd, subscription.group.five_hour_limit_usd) }}
-                </span>
+            <!-- Daily Usage -->
+            <div v-if="subscription.group?.daily_limit_usd" class="space-y-3 rounded-xl border border-gray-100 bg-gray-50/70 p-4 dark:border-dark-700 dark:bg-dark-900/30">
+              <div class="flex items-start justify-between gap-4">
+                <div>
+                  <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('userSubscriptions.daily') }}</p>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-dark-300">{{ t('userSubscriptions.dailyDesc') }}</p>
+                </div>
+                <div class="text-right">
+                  <p class="text-sm font-semibold text-gray-900 dark:text-white">
+                    {{ formatUsd(getRemainingUsage(subscription.daily_usage_usd, subscription.group.daily_limit_usd)) }}
+                  </p>
+                  <p class="text-xs text-gray-500 dark:text-dark-300">{{ t('userSubscriptions.remaining') }}</p>
+                </div>
               </div>
               <div class="relative h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600">
                 <div
                   class="absolute inset-y-0 left-0 rounded-full transition-all duration-300"
-                  :class="
-                    getProgressBarClass(subscription.five_hour_usage_usd, subscription.group?.five_hour_limit_usd)
-                  "
-                  :style="{
-                    width: getProgressWidth(subscription.five_hour_usage_usd, subscription.group?.five_hour_limit_usd)
-                  }"
+                  :class="getProgressBarClass(subscription.daily_usage_usd, subscription.group.daily_limit_usd)"
+                  :style="{ width: getProgressWidth(subscription.daily_usage_usd, subscription.group.daily_limit_usd) }"
                 ></div>
               </div>
-              <p
-                v-if="subscription.five_hour_window_start"
-                class="text-xs text-gray-500 dark:text-dark-300"
-              >
-                {{
-                  t('userSubscriptions.resetIn', {
-                    time: formatResetTime(subscription.five_hour_window_start, 5)
-                  })
-                }}
+              <div class="flex items-center justify-between text-xs text-gray-500 dark:text-dark-300">
+                <span>{{ t('userSubscriptions.usedOfLimit', { used: formatUsd(subscription.daily_usage_usd), limit: formatUsd(subscription.group.daily_limit_usd) }) }}</span>
+                <span>{{ getProgressPercentText(subscription.daily_usage_usd, subscription.group.daily_limit_usd) }}</span>
+              </div>
+              <p v-if="subscription.daily_window_start" class="text-xs text-gray-500 dark:text-dark-300">
+                {{ t('userSubscriptions.resetIn', { time: formatResetTime(subscription.daily_window_start, 24) }) }}
               </p>
-            </div>
-            -->
-
-            <!-- Weekly Usage -->
-            <div v-if="subscription.group?.weekly_limit_usd" class="space-y-2">
-              <div class="flex items-center justify-between">
-                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {{ t('userSubscriptions.weekly') }}
-                </span>
-                <span class="text-sm text-gray-500 dark:text-dark-300">
-                  {{ getProgressPercentText(subscription.weekly_usage_usd, subscription.group.weekly_limit_usd) }}
-                </span>
-              </div>
-              <div class="relative h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600">
-                <div
-                  class="absolute inset-y-0 left-0 rounded-full transition-all duration-300"
-                  :class="
-                    getProgressBarClass(
-                      subscription.weekly_usage_usd,
-                      subscription.group.weekly_limit_usd
-                    )
-                  "
-                  :style="{
-                    width: getProgressWidth(
-                      subscription.weekly_usage_usd,
-                      subscription.group.weekly_limit_usd
-                    )
-                  }"
-                ></div>
-              </div>
-              <p
-                v-if="subscription.weekly_window_start"
-                class="text-xs text-gray-500 dark:text-dark-300"
-              >
-                {{
-                  t('userSubscriptions.resetIn', {
-                    time: formatResetTime(subscription.weekly_window_start, 168)
-                  })
-                }}
-              </p>
-            </div>
-
-            <!-- Monthly Usage -->
-            <div v-if="subscription.group?.monthly_limit_usd" class="space-y-2">
-              <div class="flex items-center justify-between">
-                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {{ t('userSubscriptions.monthly') }}
-                </span>
-                <span class="text-sm text-gray-500 dark:text-dark-300">
-                  {{ getProgressPercentText(subscription.monthly_usage_usd, subscription.group.monthly_limit_usd) }}
-                </span>
-              </div>
-              <div class="relative h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600">
-                <div
-                  class="absolute inset-y-0 left-0 rounded-full transition-all duration-300"
-                  :class="
-                    getProgressBarClass(
-                      subscription.monthly_usage_usd,
-                      subscription.group.monthly_limit_usd
-                    )
-                  "
-                  :style="{
-                    width: getProgressWidth(
-                      subscription.monthly_usage_usd,
-                      subscription.group.monthly_limit_usd
-                    )
-                  }"
-                ></div>
-              </div>
-              <p
-                v-if="subscription.monthly_window_start"
-                class="text-xs text-gray-500 dark:text-dark-300"
-              >
-                {{
-                  t('userSubscriptions.resetIn', {
-                    time: formatResetTime(subscription.monthly_window_start, 720)
-                  })
-                }}
+              <p v-else class="text-xs text-gray-500 dark:text-dark-300">
+                {{ t('userSubscriptions.windowNotActive') }}
               </p>
             </div>
 
             <!-- No limits configured - Unlimited badge -->
             <div
               v-if="
-                !subscription.group?.weekly_limit_usd &&
-                !subscription.group?.monthly_limit_usd
+                !subscription.group?.daily_limit_usd
               "
               class="flex items-center justify-center rounded-xl bg-gradient-to-r from-primary-50 to-primary-100 py-6 dark:from-primary-900/20 dark:to-primary-900/30"
             >
@@ -291,6 +211,16 @@ function getProgressPercentText(used: number | undefined, limit: number | null |
   if (!limit || limit === 0) return '0%'
   const percentage = Math.min(((used || 0) / limit) * 100, 100)
   return `${Math.round(percentage)}%`
+}
+
+function formatUsd(value: number | null | undefined): string {
+  const n = Number(value || 0)
+  return `$${n.toFixed(n >= 100 ? 0 : 2).replace(/\.00$/, '')}`
+}
+
+function getRemainingUsage(used: number | undefined, limit: number | null | undefined): number {
+  if (!limit || limit <= 0) return 0
+  return Math.max(limit - (used || 0), 0)
 }
 
 function getProgressBarClass(used: number | undefined, limit: number | null | undefined): string {

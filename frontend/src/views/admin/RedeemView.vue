@@ -263,6 +263,7 @@
                   <template #selected="{ option }">
                     <GroupBadge
                       v-if="option"
+                      admin-view
                       :name="(option as unknown as GroupOption).label"
                       :platform="(option as unknown as GroupOption).platform"
                       :subscription-type="(option as unknown as GroupOption).subscriptionType"

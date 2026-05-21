@@ -1427,9 +1427,11 @@ export interface UserSubscription {
   user_id: number
   group_id: number
   status: 'active' | 'expired' | 'revoked'
+  daily_usage_usd: number
   five_hour_usage_usd: number
   weekly_usage_usd: number
   monthly_usage_usd: number
+  daily_window_start: string | null
   five_hour_window_start: string | null
   weekly_window_start: string | null
   monthly_window_start: string | null
