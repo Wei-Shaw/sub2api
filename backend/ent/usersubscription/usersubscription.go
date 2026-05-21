@@ -31,6 +31,12 @@ const (
 	FieldExpiresAt = "expires_at"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
+	// FieldExpiryReminderKey holds the string denoting the expiry_reminder_key field in the database.
+	FieldExpiryReminderKey = "expiry_reminder_key"
+	// FieldExpiryReminderExpiresAt holds the string denoting the expiry_reminder_expires_at field in the database.
+	FieldExpiryReminderExpiresAt = "expiry_reminder_expires_at"
+	// FieldExpiryReminderSentAt holds the string denoting the expiry_reminder_sent_at field in the database.
+	FieldExpiryReminderSentAt = "expiry_reminder_sent_at"
 	// FieldDailyWindowStart holds the string denoting the daily_window_start field in the database.
 	FieldDailyWindowStart = "daily_window_start"
 	// FieldWeeklyWindowStart holds the string denoting the weekly_window_start field in the database.
@@ -100,6 +106,9 @@ var Columns = []string{
 	FieldStartsAt,
 	FieldExpiresAt,
 	FieldStatus,
+	FieldExpiryReminderKey,
+	FieldExpiryReminderExpiresAt,
+	FieldExpiryReminderSentAt,
 	FieldDailyWindowStart,
 	FieldWeeklyWindowStart,
 	FieldMonthlyWindowStart,
@@ -139,6 +148,8 @@ var (
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	StatusValidator func(string) error
+	// ExpiryReminderKeyValidator is a validator for the "expiry_reminder_key" field. It is called by the builders before save.
+	ExpiryReminderKeyValidator func(string) error
 	// DefaultDailyUsageUsd holds the default value on creation for the "daily_usage_usd" field.
 	DefaultDailyUsageUsd float64
 	// DefaultWeeklyUsageUsd holds the default value on creation for the "weekly_usage_usd" field.
@@ -195,6 +206,21 @@ func ByExpiresAt(opts ...sql.OrderTermOption) OrderOption {
 // ByStatus orders the results by the status field.
 func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
+}
+
+// ByExpiryReminderKey orders the results by the expiry_reminder_key field.
+func ByExpiryReminderKey(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldExpiryReminderKey, opts...).ToFunc()
+}
+
+// ByExpiryReminderExpiresAt orders the results by the expiry_reminder_expires_at field.
+func ByExpiryReminderExpiresAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldExpiryReminderExpiresAt, opts...).ToFunc()
+}
+
+// ByExpiryReminderSentAt orders the results by the expiry_reminder_sent_at field.
+func ByExpiryReminderSentAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldExpiryReminderSentAt, opts...).ToFunc()
 }
 
 // ByDailyWindowStart orders the results by the daily_window_start field.

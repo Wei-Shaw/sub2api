@@ -103,6 +103,10 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 
 	// user_subscriptions: deleted_at for soft delete support (migration 012)
 	requireColumn(t, tx, "user_subscriptions", "deleted_at", "timestamp with time zone", 0, true)
+	requireColumn(t, tx, "user_subscriptions", "expiry_reminder_key", "character varying", 32, true)
+	requireColumn(t, tx, "user_subscriptions", "expiry_reminder_expires_at", "timestamp with time zone", 0, true)
+	requireColumn(t, tx, "user_subscriptions", "expiry_reminder_sent_at", "timestamp with time zone", 0, true)
+	requireIndex(t, tx, "user_subscriptions", "idx_user_subscriptions_expiry_reminder_state")
 
 	// orphan_allowed_groups_audit table should exist (migration 013)
 	var orphanAuditRegclass sql.NullString

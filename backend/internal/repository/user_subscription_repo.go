@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -35,8 +36,13 @@ func (r *userSubscriptionRepository) Create(ctx context.Context, sub *service.Us
 		SetDailyUsageUsd(sub.DailyUsageUSD).
 		SetWeeklyUsageUsd(sub.WeeklyUsageUSD).
 		SetMonthlyUsageUsd(sub.MonthlyUsageUSD).
+		SetNillableExpiryReminderExpiresAt(sub.ExpiryReminderExpiresAt).
+		SetNillableExpiryReminderSentAt(sub.ExpiryReminderSentAt).
 		SetNillableAssignedBy(sub.AssignedBy)
 
+	if strings.TrimSpace(sub.ExpiryReminderKey) != "" {
+		builder.SetExpiryReminderKey(sub.ExpiryReminderKey)
+	}
 	if sub.StartsAt.IsZero() {
 		builder.SetStartsAt(time.Now())
 	} else {
@@ -122,6 +128,21 @@ func (r *userSubscriptionRepository) Update(ctx context.Context, sub *service.Us
 		SetNillableAssignedBy(sub.AssignedBy).
 		SetAssignedAt(sub.AssignedAt).
 		SetNotes(sub.Notes)
+	if strings.TrimSpace(sub.ExpiryReminderKey) == "" {
+		builder.ClearExpiryReminderKey()
+	} else {
+		builder.SetExpiryReminderKey(sub.ExpiryReminderKey)
+	}
+	if sub.ExpiryReminderExpiresAt == nil {
+		builder.ClearExpiryReminderExpiresAt()
+	} else {
+		builder.SetExpiryReminderExpiresAt(*sub.ExpiryReminderExpiresAt)
+	}
+	if sub.ExpiryReminderSentAt == nil {
+		builder.ClearExpiryReminderSentAt()
+	} else {
+		builder.SetExpiryReminderSentAt(*sub.ExpiryReminderSentAt)
+	}
 
 	updated, err := builder.Save(ctx)
 	if err == nil {
@@ -299,6 +320,16 @@ func (r *userSubscriptionRepository) UpdateNotes(ctx context.Context, subscripti
 	return translatePersistenceError(err, service.ErrSubscriptionNotFound, nil)
 }
 
+func (r *userSubscriptionRepository) MarkExpiryReminderSent(ctx context.Context, subscriptionID int64, reminderKey string, expiresAt, sentAt time.Time) error {
+	client := clientFromContext(ctx, r.client)
+	_, err := client.UserSubscription.UpdateOneID(subscriptionID).
+		SetExpiryReminderKey(reminderKey).
+		SetExpiryReminderExpiresAt(expiresAt).
+		SetExpiryReminderSentAt(sentAt).
+		Save(ctx)
+	return translatePersistenceError(err, service.ErrSubscriptionNotFound, nil)
+}
+
 func (r *userSubscriptionRepository) ActivateWindows(ctx context.Context, id int64, start time.Time) error {
 	client := clientFromContext(ctx, r.client)
 	_, err := client.UserSubscription.UpdateOneID(id).
@@ -430,23 +461,26 @@ func userSubscriptionEntityToService(m *dbent.UserSubscription) *service.UserSub
 		return nil
 	}
 	out := &service.UserSubscription{
-		ID:                 m.ID,
-		UserID:             m.UserID,
-		GroupID:            m.GroupID,
-		StartsAt:           m.StartsAt,
-		ExpiresAt:          m.ExpiresAt,
-		Status:             m.Status,
-		DailyWindowStart:   m.DailyWindowStart,
-		WeeklyWindowStart:  m.WeeklyWindowStart,
-		MonthlyWindowStart: m.MonthlyWindowStart,
-		DailyUsageUSD:      m.DailyUsageUsd,
-		WeeklyUsageUSD:     m.WeeklyUsageUsd,
-		MonthlyUsageUSD:    m.MonthlyUsageUsd,
-		AssignedBy:         m.AssignedBy,
-		AssignedAt:         m.AssignedAt,
-		Notes:              derefString(m.Notes),
-		CreatedAt:          m.CreatedAt,
-		UpdatedAt:          m.UpdatedAt,
+		ID:                      m.ID,
+		UserID:                  m.UserID,
+		GroupID:                 m.GroupID,
+		StartsAt:                m.StartsAt,
+		ExpiresAt:               m.ExpiresAt,
+		Status:                  m.Status,
+		ExpiryReminderKey:       derefString(m.ExpiryReminderKey),
+		ExpiryReminderExpiresAt: m.ExpiryReminderExpiresAt,
+		ExpiryReminderSentAt:    m.ExpiryReminderSentAt,
+		DailyWindowStart:        m.DailyWindowStart,
+		WeeklyWindowStart:       m.WeeklyWindowStart,
+		MonthlyWindowStart:      m.MonthlyWindowStart,
+		DailyUsageUSD:           m.DailyUsageUsd,
+		WeeklyUsageUSD:          m.WeeklyUsageUsd,
+		MonthlyUsageUSD:         m.MonthlyUsageUsd,
+		AssignedBy:              m.AssignedBy,
+		AssignedAt:              m.AssignedAt,
+		Notes:                   derefString(m.Notes),
+		CreatedAt:               m.CreatedAt,
+		UpdatedAt:               m.UpdatedAt,
 	}
 	if m.Edges.User != nil {
 		out.User = userEntityToService(m.Edges.User)

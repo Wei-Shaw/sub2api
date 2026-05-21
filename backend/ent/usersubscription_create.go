@@ -105,6 +105,48 @@ func (_c *UserSubscriptionCreate) SetNillableStatus(v *string) *UserSubscription
 	return _c
 }
 
+// SetExpiryReminderKey sets the "expiry_reminder_key" field.
+func (_c *UserSubscriptionCreate) SetExpiryReminderKey(v string) *UserSubscriptionCreate {
+	_c.mutation.SetExpiryReminderKey(v)
+	return _c
+}
+
+// SetNillableExpiryReminderKey sets the "expiry_reminder_key" field if the given value is not nil.
+func (_c *UserSubscriptionCreate) SetNillableExpiryReminderKey(v *string) *UserSubscriptionCreate {
+	if v != nil {
+		_c.SetExpiryReminderKey(*v)
+	}
+	return _c
+}
+
+// SetExpiryReminderExpiresAt sets the "expiry_reminder_expires_at" field.
+func (_c *UserSubscriptionCreate) SetExpiryReminderExpiresAt(v time.Time) *UserSubscriptionCreate {
+	_c.mutation.SetExpiryReminderExpiresAt(v)
+	return _c
+}
+
+// SetNillableExpiryReminderExpiresAt sets the "expiry_reminder_expires_at" field if the given value is not nil.
+func (_c *UserSubscriptionCreate) SetNillableExpiryReminderExpiresAt(v *time.Time) *UserSubscriptionCreate {
+	if v != nil {
+		_c.SetExpiryReminderExpiresAt(*v)
+	}
+	return _c
+}
+
+// SetExpiryReminderSentAt sets the "expiry_reminder_sent_at" field.
+func (_c *UserSubscriptionCreate) SetExpiryReminderSentAt(v time.Time) *UserSubscriptionCreate {
+	_c.mutation.SetExpiryReminderSentAt(v)
+	return _c
+}
+
+// SetNillableExpiryReminderSentAt sets the "expiry_reminder_sent_at" field if the given value is not nil.
+func (_c *UserSubscriptionCreate) SetNillableExpiryReminderSentAt(v *time.Time) *UserSubscriptionCreate {
+	if v != nil {
+		_c.SetExpiryReminderSentAt(*v)
+	}
+	return _c
+}
+
 // SetDailyWindowStart sets the "daily_window_start" field.
 func (_c *UserSubscriptionCreate) SetDailyWindowStart(v time.Time) *UserSubscriptionCreate {
 	_c.mutation.SetDailyWindowStart(v)
@@ -380,6 +422,11 @@ func (_c *UserSubscriptionCreate) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "UserSubscription.status": %w`, err)}
 		}
 	}
+	if v, ok := _c.mutation.ExpiryReminderKey(); ok {
+		if err := usersubscription.ExpiryReminderKeyValidator(v); err != nil {
+			return &ValidationError{Name: "expiry_reminder_key", err: fmt.Errorf(`ent: validator failed for field "UserSubscription.expiry_reminder_key": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.DailyUsageUsd(); !ok {
 		return &ValidationError{Name: "daily_usage_usd", err: errors.New(`ent: missing required field "UserSubscription.daily_usage_usd"`)}
 	}
@@ -448,6 +495,18 @@ func (_c *UserSubscriptionCreate) createSpec() (*UserSubscription, *sqlgraph.Cre
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(usersubscription.FieldStatus, field.TypeString, value)
 		_node.Status = value
+	}
+	if value, ok := _c.mutation.ExpiryReminderKey(); ok {
+		_spec.SetField(usersubscription.FieldExpiryReminderKey, field.TypeString, value)
+		_node.ExpiryReminderKey = &value
+	}
+	if value, ok := _c.mutation.ExpiryReminderExpiresAt(); ok {
+		_spec.SetField(usersubscription.FieldExpiryReminderExpiresAt, field.TypeTime, value)
+		_node.ExpiryReminderExpiresAt = &value
+	}
+	if value, ok := _c.mutation.ExpiryReminderSentAt(); ok {
+		_spec.SetField(usersubscription.FieldExpiryReminderSentAt, field.TypeTime, value)
+		_node.ExpiryReminderSentAt = &value
 	}
 	if value, ok := _c.mutation.DailyWindowStart(); ok {
 		_spec.SetField(usersubscription.FieldDailyWindowStart, field.TypeTime, value)
@@ -687,6 +746,60 @@ func (u *UserSubscriptionUpsert) SetStatus(v string) *UserSubscriptionUpsert {
 // UpdateStatus sets the "status" field to the value that was provided on create.
 func (u *UserSubscriptionUpsert) UpdateStatus() *UserSubscriptionUpsert {
 	u.SetExcluded(usersubscription.FieldStatus)
+	return u
+}
+
+// SetExpiryReminderKey sets the "expiry_reminder_key" field.
+func (u *UserSubscriptionUpsert) SetExpiryReminderKey(v string) *UserSubscriptionUpsert {
+	u.Set(usersubscription.FieldExpiryReminderKey, v)
+	return u
+}
+
+// UpdateExpiryReminderKey sets the "expiry_reminder_key" field to the value that was provided on create.
+func (u *UserSubscriptionUpsert) UpdateExpiryReminderKey() *UserSubscriptionUpsert {
+	u.SetExcluded(usersubscription.FieldExpiryReminderKey)
+	return u
+}
+
+// ClearExpiryReminderKey clears the value of the "expiry_reminder_key" field.
+func (u *UserSubscriptionUpsert) ClearExpiryReminderKey() *UserSubscriptionUpsert {
+	u.SetNull(usersubscription.FieldExpiryReminderKey)
+	return u
+}
+
+// SetExpiryReminderExpiresAt sets the "expiry_reminder_expires_at" field.
+func (u *UserSubscriptionUpsert) SetExpiryReminderExpiresAt(v time.Time) *UserSubscriptionUpsert {
+	u.Set(usersubscription.FieldExpiryReminderExpiresAt, v)
+	return u
+}
+
+// UpdateExpiryReminderExpiresAt sets the "expiry_reminder_expires_at" field to the value that was provided on create.
+func (u *UserSubscriptionUpsert) UpdateExpiryReminderExpiresAt() *UserSubscriptionUpsert {
+	u.SetExcluded(usersubscription.FieldExpiryReminderExpiresAt)
+	return u
+}
+
+// ClearExpiryReminderExpiresAt clears the value of the "expiry_reminder_expires_at" field.
+func (u *UserSubscriptionUpsert) ClearExpiryReminderExpiresAt() *UserSubscriptionUpsert {
+	u.SetNull(usersubscription.FieldExpiryReminderExpiresAt)
+	return u
+}
+
+// SetExpiryReminderSentAt sets the "expiry_reminder_sent_at" field.
+func (u *UserSubscriptionUpsert) SetExpiryReminderSentAt(v time.Time) *UserSubscriptionUpsert {
+	u.Set(usersubscription.FieldExpiryReminderSentAt, v)
+	return u
+}
+
+// UpdateExpiryReminderSentAt sets the "expiry_reminder_sent_at" field to the value that was provided on create.
+func (u *UserSubscriptionUpsert) UpdateExpiryReminderSentAt() *UserSubscriptionUpsert {
+	u.SetExcluded(usersubscription.FieldExpiryReminderSentAt)
+	return u
+}
+
+// ClearExpiryReminderSentAt clears the value of the "expiry_reminder_sent_at" field.
+func (u *UserSubscriptionUpsert) ClearExpiryReminderSentAt() *UserSubscriptionUpsert {
+	u.SetNull(usersubscription.FieldExpiryReminderSentAt)
 	return u
 }
 
@@ -993,6 +1106,69 @@ func (u *UserSubscriptionUpsertOne) SetStatus(v string) *UserSubscriptionUpsertO
 func (u *UserSubscriptionUpsertOne) UpdateStatus() *UserSubscriptionUpsertOne {
 	return u.Update(func(s *UserSubscriptionUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetExpiryReminderKey sets the "expiry_reminder_key" field.
+func (u *UserSubscriptionUpsertOne) SetExpiryReminderKey(v string) *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.SetExpiryReminderKey(v)
+	})
+}
+
+// UpdateExpiryReminderKey sets the "expiry_reminder_key" field to the value that was provided on create.
+func (u *UserSubscriptionUpsertOne) UpdateExpiryReminderKey() *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.UpdateExpiryReminderKey()
+	})
+}
+
+// ClearExpiryReminderKey clears the value of the "expiry_reminder_key" field.
+func (u *UserSubscriptionUpsertOne) ClearExpiryReminderKey() *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.ClearExpiryReminderKey()
+	})
+}
+
+// SetExpiryReminderExpiresAt sets the "expiry_reminder_expires_at" field.
+func (u *UserSubscriptionUpsertOne) SetExpiryReminderExpiresAt(v time.Time) *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.SetExpiryReminderExpiresAt(v)
+	})
+}
+
+// UpdateExpiryReminderExpiresAt sets the "expiry_reminder_expires_at" field to the value that was provided on create.
+func (u *UserSubscriptionUpsertOne) UpdateExpiryReminderExpiresAt() *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.UpdateExpiryReminderExpiresAt()
+	})
+}
+
+// ClearExpiryReminderExpiresAt clears the value of the "expiry_reminder_expires_at" field.
+func (u *UserSubscriptionUpsertOne) ClearExpiryReminderExpiresAt() *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.ClearExpiryReminderExpiresAt()
+	})
+}
+
+// SetExpiryReminderSentAt sets the "expiry_reminder_sent_at" field.
+func (u *UserSubscriptionUpsertOne) SetExpiryReminderSentAt(v time.Time) *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.SetExpiryReminderSentAt(v)
+	})
+}
+
+// UpdateExpiryReminderSentAt sets the "expiry_reminder_sent_at" field to the value that was provided on create.
+func (u *UserSubscriptionUpsertOne) UpdateExpiryReminderSentAt() *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.UpdateExpiryReminderSentAt()
+	})
+}
+
+// ClearExpiryReminderSentAt clears the value of the "expiry_reminder_sent_at" field.
+func (u *UserSubscriptionUpsertOne) ClearExpiryReminderSentAt() *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.ClearExpiryReminderSentAt()
 	})
 }
 
@@ -1491,6 +1667,69 @@ func (u *UserSubscriptionUpsertBulk) SetStatus(v string) *UserSubscriptionUpsert
 func (u *UserSubscriptionUpsertBulk) UpdateStatus() *UserSubscriptionUpsertBulk {
 	return u.Update(func(s *UserSubscriptionUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetExpiryReminderKey sets the "expiry_reminder_key" field.
+func (u *UserSubscriptionUpsertBulk) SetExpiryReminderKey(v string) *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.SetExpiryReminderKey(v)
+	})
+}
+
+// UpdateExpiryReminderKey sets the "expiry_reminder_key" field to the value that was provided on create.
+func (u *UserSubscriptionUpsertBulk) UpdateExpiryReminderKey() *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.UpdateExpiryReminderKey()
+	})
+}
+
+// ClearExpiryReminderKey clears the value of the "expiry_reminder_key" field.
+func (u *UserSubscriptionUpsertBulk) ClearExpiryReminderKey() *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.ClearExpiryReminderKey()
+	})
+}
+
+// SetExpiryReminderExpiresAt sets the "expiry_reminder_expires_at" field.
+func (u *UserSubscriptionUpsertBulk) SetExpiryReminderExpiresAt(v time.Time) *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.SetExpiryReminderExpiresAt(v)
+	})
+}
+
+// UpdateExpiryReminderExpiresAt sets the "expiry_reminder_expires_at" field to the value that was provided on create.
+func (u *UserSubscriptionUpsertBulk) UpdateExpiryReminderExpiresAt() *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.UpdateExpiryReminderExpiresAt()
+	})
+}
+
+// ClearExpiryReminderExpiresAt clears the value of the "expiry_reminder_expires_at" field.
+func (u *UserSubscriptionUpsertBulk) ClearExpiryReminderExpiresAt() *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.ClearExpiryReminderExpiresAt()
+	})
+}
+
+// SetExpiryReminderSentAt sets the "expiry_reminder_sent_at" field.
+func (u *UserSubscriptionUpsertBulk) SetExpiryReminderSentAt(v time.Time) *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.SetExpiryReminderSentAt(v)
+	})
+}
+
+// UpdateExpiryReminderSentAt sets the "expiry_reminder_sent_at" field to the value that was provided on create.
+func (u *UserSubscriptionUpsertBulk) UpdateExpiryReminderSentAt() *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.UpdateExpiryReminderSentAt()
+	})
+}
+
+// ClearExpiryReminderSentAt clears the value of the "expiry_reminder_sent_at" field.
+func (u *UserSubscriptionUpsertBulk) ClearExpiryReminderSentAt() *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.ClearExpiryReminderSentAt()
 	})
 }
 

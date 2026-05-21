@@ -33,3 +33,7 @@ type UserSubscriptionRepository interface {
 
 	BatchUpdateExpiredStatus(ctx context.Context) (int64, error)
 }
+
+type UserSubscriptionExpiryReminderRepository interface {
+	MarkExpiryReminderSent(ctx context.Context, subscriptionID int64, reminderKey string, expiresAt, sentAt time.Time) error
+}

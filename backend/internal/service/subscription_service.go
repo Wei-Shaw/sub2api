@@ -324,6 +324,9 @@ func renewedSubscriptionTerm(existingSub *UserSubscription, notes string, starts
 	renewed.DailyUsageUSD = 0
 	renewed.WeeklyUsageUSD = 0
 	renewed.MonthlyUsageUSD = 0
+	renewed.ExpiryReminderKey = ""
+	renewed.ExpiryReminderExpiresAt = nil
+	renewed.ExpiryReminderSentAt = nil
 	renewed.Notes = appendSubscriptionNotes(existingSub.Notes, notes)
 	return &renewed
 }

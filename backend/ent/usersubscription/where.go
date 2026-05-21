@@ -95,6 +95,21 @@ func Status(v string) predicate.UserSubscription {
 	return predicate.UserSubscription(sql.FieldEQ(FieldStatus, v))
 }
 
+// ExpiryReminderKey applies equality check predicate on the "expiry_reminder_key" field. It's identical to ExpiryReminderKeyEQ.
+func ExpiryReminderKey(v string) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldEQ(FieldExpiryReminderKey, v))
+}
+
+// ExpiryReminderExpiresAt applies equality check predicate on the "expiry_reminder_expires_at" field. It's identical to ExpiryReminderExpiresAtEQ.
+func ExpiryReminderExpiresAt(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldEQ(FieldExpiryReminderExpiresAt, v))
+}
+
+// ExpiryReminderSentAt applies equality check predicate on the "expiry_reminder_sent_at" field. It's identical to ExpiryReminderSentAtEQ.
+func ExpiryReminderSentAt(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldEQ(FieldExpiryReminderSentAt, v))
+}
+
 // DailyWindowStart applies equality check predicate on the "daily_window_start" field. It's identical to DailyWindowStartEQ.
 func DailyWindowStart(v time.Time) predicate.UserSubscription {
 	return predicate.UserSubscription(sql.FieldEQ(FieldDailyWindowStart, v))
@@ -453,6 +468,181 @@ func StatusEqualFold(v string) predicate.UserSubscription {
 // StatusContainsFold applies the ContainsFold predicate on the "status" field.
 func StatusContainsFold(v string) predicate.UserSubscription {
 	return predicate.UserSubscription(sql.FieldContainsFold(FieldStatus, v))
+}
+
+// ExpiryReminderKeyEQ applies the EQ predicate on the "expiry_reminder_key" field.
+func ExpiryReminderKeyEQ(v string) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldEQ(FieldExpiryReminderKey, v))
+}
+
+// ExpiryReminderKeyNEQ applies the NEQ predicate on the "expiry_reminder_key" field.
+func ExpiryReminderKeyNEQ(v string) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNEQ(FieldExpiryReminderKey, v))
+}
+
+// ExpiryReminderKeyIn applies the In predicate on the "expiry_reminder_key" field.
+func ExpiryReminderKeyIn(vs ...string) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldIn(FieldExpiryReminderKey, vs...))
+}
+
+// ExpiryReminderKeyNotIn applies the NotIn predicate on the "expiry_reminder_key" field.
+func ExpiryReminderKeyNotIn(vs ...string) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNotIn(FieldExpiryReminderKey, vs...))
+}
+
+// ExpiryReminderKeyGT applies the GT predicate on the "expiry_reminder_key" field.
+func ExpiryReminderKeyGT(v string) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldGT(FieldExpiryReminderKey, v))
+}
+
+// ExpiryReminderKeyGTE applies the GTE predicate on the "expiry_reminder_key" field.
+func ExpiryReminderKeyGTE(v string) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldGTE(FieldExpiryReminderKey, v))
+}
+
+// ExpiryReminderKeyLT applies the LT predicate on the "expiry_reminder_key" field.
+func ExpiryReminderKeyLT(v string) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldLT(FieldExpiryReminderKey, v))
+}
+
+// ExpiryReminderKeyLTE applies the LTE predicate on the "expiry_reminder_key" field.
+func ExpiryReminderKeyLTE(v string) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldLTE(FieldExpiryReminderKey, v))
+}
+
+// ExpiryReminderKeyContains applies the Contains predicate on the "expiry_reminder_key" field.
+func ExpiryReminderKeyContains(v string) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldContains(FieldExpiryReminderKey, v))
+}
+
+// ExpiryReminderKeyHasPrefix applies the HasPrefix predicate on the "expiry_reminder_key" field.
+func ExpiryReminderKeyHasPrefix(v string) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldHasPrefix(FieldExpiryReminderKey, v))
+}
+
+// ExpiryReminderKeyHasSuffix applies the HasSuffix predicate on the "expiry_reminder_key" field.
+func ExpiryReminderKeyHasSuffix(v string) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldHasSuffix(FieldExpiryReminderKey, v))
+}
+
+// ExpiryReminderKeyIsNil applies the IsNil predicate on the "expiry_reminder_key" field.
+func ExpiryReminderKeyIsNil() predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldIsNull(FieldExpiryReminderKey))
+}
+
+// ExpiryReminderKeyNotNil applies the NotNil predicate on the "expiry_reminder_key" field.
+func ExpiryReminderKeyNotNil() predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNotNull(FieldExpiryReminderKey))
+}
+
+// ExpiryReminderKeyEqualFold applies the EqualFold predicate on the "expiry_reminder_key" field.
+func ExpiryReminderKeyEqualFold(v string) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldEqualFold(FieldExpiryReminderKey, v))
+}
+
+// ExpiryReminderKeyContainsFold applies the ContainsFold predicate on the "expiry_reminder_key" field.
+func ExpiryReminderKeyContainsFold(v string) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldContainsFold(FieldExpiryReminderKey, v))
+}
+
+// ExpiryReminderExpiresAtEQ applies the EQ predicate on the "expiry_reminder_expires_at" field.
+func ExpiryReminderExpiresAtEQ(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldEQ(FieldExpiryReminderExpiresAt, v))
+}
+
+// ExpiryReminderExpiresAtNEQ applies the NEQ predicate on the "expiry_reminder_expires_at" field.
+func ExpiryReminderExpiresAtNEQ(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNEQ(FieldExpiryReminderExpiresAt, v))
+}
+
+// ExpiryReminderExpiresAtIn applies the In predicate on the "expiry_reminder_expires_at" field.
+func ExpiryReminderExpiresAtIn(vs ...time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldIn(FieldExpiryReminderExpiresAt, vs...))
+}
+
+// ExpiryReminderExpiresAtNotIn applies the NotIn predicate on the "expiry_reminder_expires_at" field.
+func ExpiryReminderExpiresAtNotIn(vs ...time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNotIn(FieldExpiryReminderExpiresAt, vs...))
+}
+
+// ExpiryReminderExpiresAtGT applies the GT predicate on the "expiry_reminder_expires_at" field.
+func ExpiryReminderExpiresAtGT(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldGT(FieldExpiryReminderExpiresAt, v))
+}
+
+// ExpiryReminderExpiresAtGTE applies the GTE predicate on the "expiry_reminder_expires_at" field.
+func ExpiryReminderExpiresAtGTE(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldGTE(FieldExpiryReminderExpiresAt, v))
+}
+
+// ExpiryReminderExpiresAtLT applies the LT predicate on the "expiry_reminder_expires_at" field.
+func ExpiryReminderExpiresAtLT(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldLT(FieldExpiryReminderExpiresAt, v))
+}
+
+// ExpiryReminderExpiresAtLTE applies the LTE predicate on the "expiry_reminder_expires_at" field.
+func ExpiryReminderExpiresAtLTE(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldLTE(FieldExpiryReminderExpiresAt, v))
+}
+
+// ExpiryReminderExpiresAtIsNil applies the IsNil predicate on the "expiry_reminder_expires_at" field.
+func ExpiryReminderExpiresAtIsNil() predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldIsNull(FieldExpiryReminderExpiresAt))
+}
+
+// ExpiryReminderExpiresAtNotNil applies the NotNil predicate on the "expiry_reminder_expires_at" field.
+func ExpiryReminderExpiresAtNotNil() predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNotNull(FieldExpiryReminderExpiresAt))
+}
+
+// ExpiryReminderSentAtEQ applies the EQ predicate on the "expiry_reminder_sent_at" field.
+func ExpiryReminderSentAtEQ(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldEQ(FieldExpiryReminderSentAt, v))
+}
+
+// ExpiryReminderSentAtNEQ applies the NEQ predicate on the "expiry_reminder_sent_at" field.
+func ExpiryReminderSentAtNEQ(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNEQ(FieldExpiryReminderSentAt, v))
+}
+
+// ExpiryReminderSentAtIn applies the In predicate on the "expiry_reminder_sent_at" field.
+func ExpiryReminderSentAtIn(vs ...time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldIn(FieldExpiryReminderSentAt, vs...))
+}
+
+// ExpiryReminderSentAtNotIn applies the NotIn predicate on the "expiry_reminder_sent_at" field.
+func ExpiryReminderSentAtNotIn(vs ...time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNotIn(FieldExpiryReminderSentAt, vs...))
+}
+
+// ExpiryReminderSentAtGT applies the GT predicate on the "expiry_reminder_sent_at" field.
+func ExpiryReminderSentAtGT(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldGT(FieldExpiryReminderSentAt, v))
+}
+
+// ExpiryReminderSentAtGTE applies the GTE predicate on the "expiry_reminder_sent_at" field.
+func ExpiryReminderSentAtGTE(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldGTE(FieldExpiryReminderSentAt, v))
+}
+
+// ExpiryReminderSentAtLT applies the LT predicate on the "expiry_reminder_sent_at" field.
+func ExpiryReminderSentAtLT(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldLT(FieldExpiryReminderSentAt, v))
+}
+
+// ExpiryReminderSentAtLTE applies the LTE predicate on the "expiry_reminder_sent_at" field.
+func ExpiryReminderSentAtLTE(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldLTE(FieldExpiryReminderSentAt, v))
+}
+
+// ExpiryReminderSentAtIsNil applies the IsNil predicate on the "expiry_reminder_sent_at" field.
+func ExpiryReminderSentAtIsNil() predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldIsNull(FieldExpiryReminderSentAt))
+}
+
+// ExpiryReminderSentAtNotNil applies the NotNil predicate on the "expiry_reminder_sent_at" field.
+func ExpiryReminderSentAtNotNil() predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNotNull(FieldExpiryReminderSentAt))
 }
 
 // DailyWindowStartEQ applies the EQ predicate on the "daily_window_start" field.

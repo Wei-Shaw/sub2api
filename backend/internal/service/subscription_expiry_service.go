@@ -107,6 +107,10 @@ func (s *SubscriptionExpiryService) sendExpiryReminderIfDue(ctx context.Context,
 	if daysRemaining != 7 && daysRemaining != 3 && daysRemaining != 1 {
 		return
 	}
+	reminderKey := subscriptionExpiryReminderKey(daysRemaining)
+	if sub.HasSentExpiryReminder(reminderKey) {
+		return
+	}
 	if err := s.notificationEmailService.Send(ctx, NotificationEmailSendInput{
 		Event:          NotificationEmailEventSubscriptionExpiryReminder,
 		RecipientEmail: sub.User.Email,
@@ -114,7 +118,7 @@ func (s *SubscriptionExpiryService) sendExpiryReminderIfDue(ctx context.Context,
 		UserID:         sub.UserID,
 		SourceType:     "user_subscription",
 		SourceID:       strconv.FormatInt(sub.ID, 10),
-		ReminderKey:    fmt.Sprintf("%dd", daysRemaining),
+		ReminderKey:    subscriptionExpiryReminderDeliveryKey(reminderKey, sub.ExpiresAt),
 		Variables: map[string]string{
 			"subscription_group": sub.Group.Name,
 			"expiry_time":        sub.ExpiresAt.Format("2006-01-02 15:04"),
@@ -122,5 +126,35 @@ func (s *SubscriptionExpiryService) sendExpiryReminderIfDue(ctx context.Context,
 		},
 	}); err != nil {
 		log.Printf("[SubscriptionExpiry] Send expiry reminder failed: subscription=%d user=%d err=%v", sub.ID, sub.UserID, err)
+		return
 	}
+	if err := s.markExpiryReminderSent(ctx, sub, reminderKey); err != nil {
+		log.Printf("[SubscriptionExpiry] Mark expiry reminder failed: subscription=%d user=%d err=%v", sub.ID, sub.UserID, err)
+	}
+}
+
+func subscriptionExpiryReminderKey(daysRemaining int) string {
+	return fmt.Sprintf("%dd", daysRemaining)
+}
+
+func subscriptionExpiryReminderDeliveryKey(reminderKey string, expiresAt time.Time) string {
+	return fmt.Sprintf("%s:%d", reminderKey, expiresAt.UTC().Unix())
+}
+
+func (s *SubscriptionExpiryService) markExpiryReminderSent(ctx context.Context, sub *UserSubscription, reminderKey string) error {
+	if s == nil || sub == nil {
+		return nil
+	}
+	repo, ok := s.userSubRepo.(UserSubscriptionExpiryReminderRepository)
+	if !ok {
+		return nil
+	}
+	sentAt := time.Now().UTC()
+	if err := repo.MarkExpiryReminderSent(ctx, sub.ID, reminderKey, sub.ExpiresAt, sentAt); err != nil {
+		return err
+	}
+	sub.ExpiryReminderKey = reminderKey
+	sub.ExpiryReminderExpiresAt = &sub.ExpiresAt
+	sub.ExpiryReminderSentAt = &sentAt
+	return nil
 }

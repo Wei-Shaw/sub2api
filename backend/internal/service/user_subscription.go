@@ -1,6 +1,9 @@
 package service
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 type UserSubscription struct {
 	ID      int64
@@ -10,6 +13,10 @@ type UserSubscription struct {
 	StartsAt  time.Time
 	ExpiresAt time.Time
 	Status    string
+
+	ExpiryReminderKey       string
+	ExpiryReminderExpiresAt *time.Time
+	ExpiryReminderSentAt    *time.Time
 
 	DailyWindowStart   *time.Time
 	WeeklyWindowStart  *time.Time
@@ -44,6 +51,16 @@ func (s *UserSubscription) DaysRemaining() int {
 		return 0
 	}
 	return int(time.Until(s.ExpiresAt).Hours() / 24)
+}
+
+func (s *UserSubscription) HasSentExpiryReminder(reminderKey string) bool {
+	if s == nil || s.ExpiryReminderExpiresAt == nil {
+		return false
+	}
+	if strings.TrimSpace(reminderKey) == "" || strings.TrimSpace(s.ExpiryReminderKey) != reminderKey {
+		return false
+	}
+	return s.ExpiryReminderExpiresAt.Equal(s.ExpiresAt)
 }
 
 func (s *UserSubscription) IsWindowActivated() bool {

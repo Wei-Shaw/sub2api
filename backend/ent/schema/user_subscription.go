@@ -45,6 +45,18 @@ func (UserSubscription) Fields() []ent.Field {
 		field.String("status").
 			MaxLen(20).
 			Default(domain.SubscriptionStatusActive),
+		field.String("expiry_reminder_key").
+			MaxLen(32).
+			Optional().
+			Nillable(),
+		field.Time("expiry_reminder_expires_at").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+		field.Time("expiry_reminder_sent_at").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 
 		field.Time("daily_window_start").
 			Optional().

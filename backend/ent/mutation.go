@@ -43114,39 +43114,42 @@ func (m *UserAttributeValueMutation) ResetEdge(name string) error {
 // UserSubscriptionMutation represents an operation that mutates the UserSubscription nodes in the graph.
 type UserSubscriptionMutation struct {
 	config
-	op                      Op
-	typ                     string
-	id                      *int64
-	created_at              *time.Time
-	updated_at              *time.Time
-	deleted_at              *time.Time
-	starts_at               *time.Time
-	expires_at              *time.Time
-	status                  *string
-	daily_window_start      *time.Time
-	weekly_window_start     *time.Time
-	monthly_window_start    *time.Time
-	daily_usage_usd         *float64
-	adddaily_usage_usd      *float64
-	weekly_usage_usd        *float64
-	addweekly_usage_usd     *float64
-	monthly_usage_usd       *float64
-	addmonthly_usage_usd    *float64
-	assigned_at             *time.Time
-	notes                   *string
-	clearedFields           map[string]struct{}
-	user                    *int64
-	cleareduser             bool
-	group                   *int64
-	clearedgroup            bool
-	assigned_by_user        *int64
-	clearedassigned_by_user bool
-	usage_logs              map[int64]struct{}
-	removedusage_logs       map[int64]struct{}
-	clearedusage_logs       bool
-	done                    bool
-	oldValue                func(context.Context) (*UserSubscription, error)
-	predicates              []predicate.UserSubscription
+	op                         Op
+	typ                        string
+	id                         *int64
+	created_at                 *time.Time
+	updated_at                 *time.Time
+	deleted_at                 *time.Time
+	starts_at                  *time.Time
+	expires_at                 *time.Time
+	status                     *string
+	expiry_reminder_key        *string
+	expiry_reminder_expires_at *time.Time
+	expiry_reminder_sent_at    *time.Time
+	daily_window_start         *time.Time
+	weekly_window_start        *time.Time
+	monthly_window_start       *time.Time
+	daily_usage_usd            *float64
+	adddaily_usage_usd         *float64
+	weekly_usage_usd           *float64
+	addweekly_usage_usd        *float64
+	monthly_usage_usd          *float64
+	addmonthly_usage_usd       *float64
+	assigned_at                *time.Time
+	notes                      *string
+	clearedFields              map[string]struct{}
+	user                       *int64
+	cleareduser                bool
+	group                      *int64
+	clearedgroup               bool
+	assigned_by_user           *int64
+	clearedassigned_by_user    bool
+	usage_logs                 map[int64]struct{}
+	removedusage_logs          map[int64]struct{}
+	clearedusage_logs          bool
+	done                       bool
+	oldValue                   func(context.Context) (*UserSubscription, error)
+	predicates                 []predicate.UserSubscription
 }
 
 var _ ent.Mutation = (*UserSubscriptionMutation)(nil)
@@ -43546,6 +43549,153 @@ func (m *UserSubscriptionMutation) OldStatus(ctx context.Context) (v string, err
 // ResetStatus resets all changes to the "status" field.
 func (m *UserSubscriptionMutation) ResetStatus() {
 	m.status = nil
+}
+
+// SetExpiryReminderKey sets the "expiry_reminder_key" field.
+func (m *UserSubscriptionMutation) SetExpiryReminderKey(s string) {
+	m.expiry_reminder_key = &s
+}
+
+// ExpiryReminderKey returns the value of the "expiry_reminder_key" field in the mutation.
+func (m *UserSubscriptionMutation) ExpiryReminderKey() (r string, exists bool) {
+	v := m.expiry_reminder_key
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExpiryReminderKey returns the old "expiry_reminder_key" field's value of the UserSubscription entity.
+// If the UserSubscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserSubscriptionMutation) OldExpiryReminderKey(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExpiryReminderKey is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExpiryReminderKey requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExpiryReminderKey: %w", err)
+	}
+	return oldValue.ExpiryReminderKey, nil
+}
+
+// ClearExpiryReminderKey clears the value of the "expiry_reminder_key" field.
+func (m *UserSubscriptionMutation) ClearExpiryReminderKey() {
+	m.expiry_reminder_key = nil
+	m.clearedFields[usersubscription.FieldExpiryReminderKey] = struct{}{}
+}
+
+// ExpiryReminderKeyCleared returns if the "expiry_reminder_key" field was cleared in this mutation.
+func (m *UserSubscriptionMutation) ExpiryReminderKeyCleared() bool {
+	_, ok := m.clearedFields[usersubscription.FieldExpiryReminderKey]
+	return ok
+}
+
+// ResetExpiryReminderKey resets all changes to the "expiry_reminder_key" field.
+func (m *UserSubscriptionMutation) ResetExpiryReminderKey() {
+	m.expiry_reminder_key = nil
+	delete(m.clearedFields, usersubscription.FieldExpiryReminderKey)
+}
+
+// SetExpiryReminderExpiresAt sets the "expiry_reminder_expires_at" field.
+func (m *UserSubscriptionMutation) SetExpiryReminderExpiresAt(t time.Time) {
+	m.expiry_reminder_expires_at = &t
+}
+
+// ExpiryReminderExpiresAt returns the value of the "expiry_reminder_expires_at" field in the mutation.
+func (m *UserSubscriptionMutation) ExpiryReminderExpiresAt() (r time.Time, exists bool) {
+	v := m.expiry_reminder_expires_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExpiryReminderExpiresAt returns the old "expiry_reminder_expires_at" field's value of the UserSubscription entity.
+// If the UserSubscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserSubscriptionMutation) OldExpiryReminderExpiresAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExpiryReminderExpiresAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExpiryReminderExpiresAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExpiryReminderExpiresAt: %w", err)
+	}
+	return oldValue.ExpiryReminderExpiresAt, nil
+}
+
+// ClearExpiryReminderExpiresAt clears the value of the "expiry_reminder_expires_at" field.
+func (m *UserSubscriptionMutation) ClearExpiryReminderExpiresAt() {
+	m.expiry_reminder_expires_at = nil
+	m.clearedFields[usersubscription.FieldExpiryReminderExpiresAt] = struct{}{}
+}
+
+// ExpiryReminderExpiresAtCleared returns if the "expiry_reminder_expires_at" field was cleared in this mutation.
+func (m *UserSubscriptionMutation) ExpiryReminderExpiresAtCleared() bool {
+	_, ok := m.clearedFields[usersubscription.FieldExpiryReminderExpiresAt]
+	return ok
+}
+
+// ResetExpiryReminderExpiresAt resets all changes to the "expiry_reminder_expires_at" field.
+func (m *UserSubscriptionMutation) ResetExpiryReminderExpiresAt() {
+	m.expiry_reminder_expires_at = nil
+	delete(m.clearedFields, usersubscription.FieldExpiryReminderExpiresAt)
+}
+
+// SetExpiryReminderSentAt sets the "expiry_reminder_sent_at" field.
+func (m *UserSubscriptionMutation) SetExpiryReminderSentAt(t time.Time) {
+	m.expiry_reminder_sent_at = &t
+}
+
+// ExpiryReminderSentAt returns the value of the "expiry_reminder_sent_at" field in the mutation.
+func (m *UserSubscriptionMutation) ExpiryReminderSentAt() (r time.Time, exists bool) {
+	v := m.expiry_reminder_sent_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExpiryReminderSentAt returns the old "expiry_reminder_sent_at" field's value of the UserSubscription entity.
+// If the UserSubscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserSubscriptionMutation) OldExpiryReminderSentAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExpiryReminderSentAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExpiryReminderSentAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExpiryReminderSentAt: %w", err)
+	}
+	return oldValue.ExpiryReminderSentAt, nil
+}
+
+// ClearExpiryReminderSentAt clears the value of the "expiry_reminder_sent_at" field.
+func (m *UserSubscriptionMutation) ClearExpiryReminderSentAt() {
+	m.expiry_reminder_sent_at = nil
+	m.clearedFields[usersubscription.FieldExpiryReminderSentAt] = struct{}{}
+}
+
+// ExpiryReminderSentAtCleared returns if the "expiry_reminder_sent_at" field was cleared in this mutation.
+func (m *UserSubscriptionMutation) ExpiryReminderSentAtCleared() bool {
+	_, ok := m.clearedFields[usersubscription.FieldExpiryReminderSentAt]
+	return ok
+}
+
+// ResetExpiryReminderSentAt resets all changes to the "expiry_reminder_sent_at" field.
+func (m *UserSubscriptionMutation) ResetExpiryReminderSentAt() {
+	m.expiry_reminder_sent_at = nil
+	delete(m.clearedFields, usersubscription.FieldExpiryReminderSentAt)
 }
 
 // SetDailyWindowStart sets the "daily_window_start" field.
@@ -44179,7 +44329,7 @@ func (m *UserSubscriptionMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserSubscriptionMutation) Fields() []string {
-	fields := make([]string, 0, 17)
+	fields := make([]string, 0, 20)
 	if m.created_at != nil {
 		fields = append(fields, usersubscription.FieldCreatedAt)
 	}
@@ -44203,6 +44353,15 @@ func (m *UserSubscriptionMutation) Fields() []string {
 	}
 	if m.status != nil {
 		fields = append(fields, usersubscription.FieldStatus)
+	}
+	if m.expiry_reminder_key != nil {
+		fields = append(fields, usersubscription.FieldExpiryReminderKey)
+	}
+	if m.expiry_reminder_expires_at != nil {
+		fields = append(fields, usersubscription.FieldExpiryReminderExpiresAt)
+	}
+	if m.expiry_reminder_sent_at != nil {
+		fields = append(fields, usersubscription.FieldExpiryReminderSentAt)
 	}
 	if m.daily_window_start != nil {
 		fields = append(fields, usersubscription.FieldDailyWindowStart)
@@ -44255,6 +44414,12 @@ func (m *UserSubscriptionMutation) Field(name string) (ent.Value, bool) {
 		return m.ExpiresAt()
 	case usersubscription.FieldStatus:
 		return m.Status()
+	case usersubscription.FieldExpiryReminderKey:
+		return m.ExpiryReminderKey()
+	case usersubscription.FieldExpiryReminderExpiresAt:
+		return m.ExpiryReminderExpiresAt()
+	case usersubscription.FieldExpiryReminderSentAt:
+		return m.ExpiryReminderSentAt()
 	case usersubscription.FieldDailyWindowStart:
 		return m.DailyWindowStart()
 	case usersubscription.FieldWeeklyWindowStart:
@@ -44298,6 +44463,12 @@ func (m *UserSubscriptionMutation) OldField(ctx context.Context, name string) (e
 		return m.OldExpiresAt(ctx)
 	case usersubscription.FieldStatus:
 		return m.OldStatus(ctx)
+	case usersubscription.FieldExpiryReminderKey:
+		return m.OldExpiryReminderKey(ctx)
+	case usersubscription.FieldExpiryReminderExpiresAt:
+		return m.OldExpiryReminderExpiresAt(ctx)
+	case usersubscription.FieldExpiryReminderSentAt:
+		return m.OldExpiryReminderSentAt(ctx)
 	case usersubscription.FieldDailyWindowStart:
 		return m.OldDailyWindowStart(ctx)
 	case usersubscription.FieldWeeklyWindowStart:
@@ -44380,6 +44551,27 @@ func (m *UserSubscriptionMutation) SetField(name string, value ent.Value) error 
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetStatus(v)
+		return nil
+	case usersubscription.FieldExpiryReminderKey:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExpiryReminderKey(v)
+		return nil
+	case usersubscription.FieldExpiryReminderExpiresAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExpiryReminderExpiresAt(v)
+		return nil
+	case usersubscription.FieldExpiryReminderSentAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExpiryReminderSentAt(v)
 		return nil
 	case usersubscription.FieldDailyWindowStart:
 		v, ok := value.(time.Time)
@@ -44516,6 +44708,15 @@ func (m *UserSubscriptionMutation) ClearedFields() []string {
 	if m.FieldCleared(usersubscription.FieldDeletedAt) {
 		fields = append(fields, usersubscription.FieldDeletedAt)
 	}
+	if m.FieldCleared(usersubscription.FieldExpiryReminderKey) {
+		fields = append(fields, usersubscription.FieldExpiryReminderKey)
+	}
+	if m.FieldCleared(usersubscription.FieldExpiryReminderExpiresAt) {
+		fields = append(fields, usersubscription.FieldExpiryReminderExpiresAt)
+	}
+	if m.FieldCleared(usersubscription.FieldExpiryReminderSentAt) {
+		fields = append(fields, usersubscription.FieldExpiryReminderSentAt)
+	}
 	if m.FieldCleared(usersubscription.FieldDailyWindowStart) {
 		fields = append(fields, usersubscription.FieldDailyWindowStart)
 	}
@@ -44547,6 +44748,15 @@ func (m *UserSubscriptionMutation) ClearField(name string) error {
 	switch name {
 	case usersubscription.FieldDeletedAt:
 		m.ClearDeletedAt()
+		return nil
+	case usersubscription.FieldExpiryReminderKey:
+		m.ClearExpiryReminderKey()
+		return nil
+	case usersubscription.FieldExpiryReminderExpiresAt:
+		m.ClearExpiryReminderExpiresAt()
+		return nil
+	case usersubscription.FieldExpiryReminderSentAt:
+		m.ClearExpiryReminderSentAt()
 		return nil
 	case usersubscription.FieldDailyWindowStart:
 		m.ClearDailyWindowStart()
@@ -44594,6 +44804,15 @@ func (m *UserSubscriptionMutation) ResetField(name string) error {
 		return nil
 	case usersubscription.FieldStatus:
 		m.ResetStatus()
+		return nil
+	case usersubscription.FieldExpiryReminderKey:
+		m.ResetExpiryReminderKey()
+		return nil
+	case usersubscription.FieldExpiryReminderExpiresAt:
+		m.ResetExpiryReminderExpiresAt()
+		return nil
+	case usersubscription.FieldExpiryReminderSentAt:
+		m.ResetExpiryReminderSentAt()
 		return nil
 	case usersubscription.FieldDailyWindowStart:
 		m.ResetDailyWindowStart()

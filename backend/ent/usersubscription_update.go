@@ -127,6 +127,66 @@ func (_u *UserSubscriptionUpdate) SetNillableStatus(v *string) *UserSubscription
 	return _u
 }
 
+// SetExpiryReminderKey sets the "expiry_reminder_key" field.
+func (_u *UserSubscriptionUpdate) SetExpiryReminderKey(v string) *UserSubscriptionUpdate {
+	_u.mutation.SetExpiryReminderKey(v)
+	return _u
+}
+
+// SetNillableExpiryReminderKey sets the "expiry_reminder_key" field if the given value is not nil.
+func (_u *UserSubscriptionUpdate) SetNillableExpiryReminderKey(v *string) *UserSubscriptionUpdate {
+	if v != nil {
+		_u.SetExpiryReminderKey(*v)
+	}
+	return _u
+}
+
+// ClearExpiryReminderKey clears the value of the "expiry_reminder_key" field.
+func (_u *UserSubscriptionUpdate) ClearExpiryReminderKey() *UserSubscriptionUpdate {
+	_u.mutation.ClearExpiryReminderKey()
+	return _u
+}
+
+// SetExpiryReminderExpiresAt sets the "expiry_reminder_expires_at" field.
+func (_u *UserSubscriptionUpdate) SetExpiryReminderExpiresAt(v time.Time) *UserSubscriptionUpdate {
+	_u.mutation.SetExpiryReminderExpiresAt(v)
+	return _u
+}
+
+// SetNillableExpiryReminderExpiresAt sets the "expiry_reminder_expires_at" field if the given value is not nil.
+func (_u *UserSubscriptionUpdate) SetNillableExpiryReminderExpiresAt(v *time.Time) *UserSubscriptionUpdate {
+	if v != nil {
+		_u.SetExpiryReminderExpiresAt(*v)
+	}
+	return _u
+}
+
+// ClearExpiryReminderExpiresAt clears the value of the "expiry_reminder_expires_at" field.
+func (_u *UserSubscriptionUpdate) ClearExpiryReminderExpiresAt() *UserSubscriptionUpdate {
+	_u.mutation.ClearExpiryReminderExpiresAt()
+	return _u
+}
+
+// SetExpiryReminderSentAt sets the "expiry_reminder_sent_at" field.
+func (_u *UserSubscriptionUpdate) SetExpiryReminderSentAt(v time.Time) *UserSubscriptionUpdate {
+	_u.mutation.SetExpiryReminderSentAt(v)
+	return _u
+}
+
+// SetNillableExpiryReminderSentAt sets the "expiry_reminder_sent_at" field if the given value is not nil.
+func (_u *UserSubscriptionUpdate) SetNillableExpiryReminderSentAt(v *time.Time) *UserSubscriptionUpdate {
+	if v != nil {
+		_u.SetExpiryReminderSentAt(*v)
+	}
+	return _u
+}
+
+// ClearExpiryReminderSentAt clears the value of the "expiry_reminder_sent_at" field.
+func (_u *UserSubscriptionUpdate) ClearExpiryReminderSentAt() *UserSubscriptionUpdate {
+	_u.mutation.ClearExpiryReminderSentAt()
+	return _u
+}
+
 // SetDailyWindowStart sets the "daily_window_start" field.
 func (_u *UserSubscriptionUpdate) SetDailyWindowStart(v time.Time) *UserSubscriptionUpdate {
 	_u.mutation.SetDailyWindowStart(v)
@@ -441,6 +501,11 @@ func (_u *UserSubscriptionUpdate) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "UserSubscription.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ExpiryReminderKey(); ok {
+		if err := usersubscription.ExpiryReminderKeyValidator(v); err != nil {
+			return &ValidationError{Name: "expiry_reminder_key", err: fmt.Errorf(`ent: validator failed for field "UserSubscription.expiry_reminder_key": %w`, err)}
+		}
+	}
 	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "UserSubscription.user"`)
 	}
@@ -479,6 +544,24 @@ func (_u *UserSubscriptionUpdate) sqlSave(ctx context.Context) (_node int, err e
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(usersubscription.FieldStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ExpiryReminderKey(); ok {
+		_spec.SetField(usersubscription.FieldExpiryReminderKey, field.TypeString, value)
+	}
+	if _u.mutation.ExpiryReminderKeyCleared() {
+		_spec.ClearField(usersubscription.FieldExpiryReminderKey, field.TypeString)
+	}
+	if value, ok := _u.mutation.ExpiryReminderExpiresAt(); ok {
+		_spec.SetField(usersubscription.FieldExpiryReminderExpiresAt, field.TypeTime, value)
+	}
+	if _u.mutation.ExpiryReminderExpiresAtCleared() {
+		_spec.ClearField(usersubscription.FieldExpiryReminderExpiresAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.ExpiryReminderSentAt(); ok {
+		_spec.SetField(usersubscription.FieldExpiryReminderSentAt, field.TypeTime, value)
+	}
+	if _u.mutation.ExpiryReminderSentAtCleared() {
+		_spec.ClearField(usersubscription.FieldExpiryReminderSentAt, field.TypeTime)
 	}
 	if value, ok := _u.mutation.DailyWindowStart(); ok {
 		_spec.SetField(usersubscription.FieldDailyWindowStart, field.TypeTime, value)
@@ -770,6 +853,66 @@ func (_u *UserSubscriptionUpdateOne) SetNillableStatus(v *string) *UserSubscript
 	if v != nil {
 		_u.SetStatus(*v)
 	}
+	return _u
+}
+
+// SetExpiryReminderKey sets the "expiry_reminder_key" field.
+func (_u *UserSubscriptionUpdateOne) SetExpiryReminderKey(v string) *UserSubscriptionUpdateOne {
+	_u.mutation.SetExpiryReminderKey(v)
+	return _u
+}
+
+// SetNillableExpiryReminderKey sets the "expiry_reminder_key" field if the given value is not nil.
+func (_u *UserSubscriptionUpdateOne) SetNillableExpiryReminderKey(v *string) *UserSubscriptionUpdateOne {
+	if v != nil {
+		_u.SetExpiryReminderKey(*v)
+	}
+	return _u
+}
+
+// ClearExpiryReminderKey clears the value of the "expiry_reminder_key" field.
+func (_u *UserSubscriptionUpdateOne) ClearExpiryReminderKey() *UserSubscriptionUpdateOne {
+	_u.mutation.ClearExpiryReminderKey()
+	return _u
+}
+
+// SetExpiryReminderExpiresAt sets the "expiry_reminder_expires_at" field.
+func (_u *UserSubscriptionUpdateOne) SetExpiryReminderExpiresAt(v time.Time) *UserSubscriptionUpdateOne {
+	_u.mutation.SetExpiryReminderExpiresAt(v)
+	return _u
+}
+
+// SetNillableExpiryReminderExpiresAt sets the "expiry_reminder_expires_at" field if the given value is not nil.
+func (_u *UserSubscriptionUpdateOne) SetNillableExpiryReminderExpiresAt(v *time.Time) *UserSubscriptionUpdateOne {
+	if v != nil {
+		_u.SetExpiryReminderExpiresAt(*v)
+	}
+	return _u
+}
+
+// ClearExpiryReminderExpiresAt clears the value of the "expiry_reminder_expires_at" field.
+func (_u *UserSubscriptionUpdateOne) ClearExpiryReminderExpiresAt() *UserSubscriptionUpdateOne {
+	_u.mutation.ClearExpiryReminderExpiresAt()
+	return _u
+}
+
+// SetExpiryReminderSentAt sets the "expiry_reminder_sent_at" field.
+func (_u *UserSubscriptionUpdateOne) SetExpiryReminderSentAt(v time.Time) *UserSubscriptionUpdateOne {
+	_u.mutation.SetExpiryReminderSentAt(v)
+	return _u
+}
+
+// SetNillableExpiryReminderSentAt sets the "expiry_reminder_sent_at" field if the given value is not nil.
+func (_u *UserSubscriptionUpdateOne) SetNillableExpiryReminderSentAt(v *time.Time) *UserSubscriptionUpdateOne {
+	if v != nil {
+		_u.SetExpiryReminderSentAt(*v)
+	}
+	return _u
+}
+
+// ClearExpiryReminderSentAt clears the value of the "expiry_reminder_sent_at" field.
+func (_u *UserSubscriptionUpdateOne) ClearExpiryReminderSentAt() *UserSubscriptionUpdateOne {
+	_u.mutation.ClearExpiryReminderSentAt()
 	return _u
 }
 
@@ -1100,6 +1243,11 @@ func (_u *UserSubscriptionUpdateOne) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "UserSubscription.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ExpiryReminderKey(); ok {
+		if err := usersubscription.ExpiryReminderKeyValidator(v); err != nil {
+			return &ValidationError{Name: "expiry_reminder_key", err: fmt.Errorf(`ent: validator failed for field "UserSubscription.expiry_reminder_key": %w`, err)}
+		}
+	}
 	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "UserSubscription.user"`)
 	}
@@ -1155,6 +1303,24 @@ func (_u *UserSubscriptionUpdateOne) sqlSave(ctx context.Context) (_node *UserSu
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(usersubscription.FieldStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ExpiryReminderKey(); ok {
+		_spec.SetField(usersubscription.FieldExpiryReminderKey, field.TypeString, value)
+	}
+	if _u.mutation.ExpiryReminderKeyCleared() {
+		_spec.ClearField(usersubscription.FieldExpiryReminderKey, field.TypeString)
+	}
+	if value, ok := _u.mutation.ExpiryReminderExpiresAt(); ok {
+		_spec.SetField(usersubscription.FieldExpiryReminderExpiresAt, field.TypeTime, value)
+	}
+	if _u.mutation.ExpiryReminderExpiresAtCleared() {
+		_spec.ClearField(usersubscription.FieldExpiryReminderExpiresAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.ExpiryReminderSentAt(); ok {
+		_spec.SetField(usersubscription.FieldExpiryReminderSentAt, field.TypeTime, value)
+	}
+	if _u.mutation.ExpiryReminderSentAtCleared() {
+		_spec.ClearField(usersubscription.FieldExpiryReminderSentAt, field.TypeTime)
 	}
 	if value, ok := _u.mutation.DailyWindowStart(); ok {
 		_spec.SetField(usersubscription.FieldDailyWindowStart, field.TypeTime, value)
