@@ -5,10 +5,12 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/md5"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"sort"
@@ -30,6 +32,8 @@ const (
 	signTypeMD5            = "MD5"
 	paymentModePopup       = "popup"
 	deviceMobile           = "mobile"
+	xunhuVersion           = "1.1"
+	xunhuStatusPaid        = "OD"
 )
 
 // EasyPay implements payment.Provider for the EasyPay aggregation platform.
@@ -55,7 +59,13 @@ func NewEasyPay(instanceID string, config map[string]string) (*EasyPay, error) {
 	return &EasyPay{
 		instanceID: instanceID,
 		config:     cfg,
-		httpClient: &http.Client{Timeout: easypayHTTPTimeout},
+		httpClient: &http.Client{
+			Timeout: easypayHTTPTimeout,
+			Transport: &http.Transport{
+				TLSClientConfig:   &tls.Config{MinVersion: tls.VersionTLS12},
+				ForceAttemptHTTP2: false,
+			},
+		},
 	}, nil
 }
 
@@ -110,6 +120,9 @@ func (e *EasyPay) MerchantIdentityMetadata() map[string]string {
 }
 
 func (e *EasyPay) CreatePayment(ctx context.Context, req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
+	if e.isXunhuPay() {
+		return e.createXunhuPayment(ctx, req)
+	}
 	// Payment mode determined by instance config, not payment type.
 	// "popup" → hosted page (submit.php); "qrcode"/default → API call (mapi.php).
 	mode := e.config["paymentMode"]
@@ -235,6 +248,150 @@ func (e *EasyPay) QueryOrder(ctx context.Context, tradeNo string) (*payment.Quer
 	}, nil
 }
 
+func (e *EasyPay) isXunhuPay() bool {
+	base := strings.ToLower(strings.TrimSpace(e.config["apiBase"]))
+	return strings.Contains(base, "xunhupay.com/payment/do.html") ||
+		strings.Contains(base, "dpweixin.com/payment/do.html") ||
+		strings.HasSuffix(base, "/payment/do.html")
+}
+
+func (e *EasyPay) createXunhuPayment(ctx context.Context, req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
+	notifyURL, returnURL := e.resolveURLs(req)
+	params := map[string]string{
+		"version":        xunhuVersion,
+		"appid":          e.config["pid"],
+		"trade_order_id": req.OrderID,
+		"total_fee":      req.Amount,
+		"title":          truncateXunhuTitle(req.Subject),
+		"time":           strconv.FormatInt(time.Now().Unix(), 10),
+		"notify_url":     notifyURL,
+		"return_url":     returnURL,
+		"nonce_str":      randomXunhuNonce(),
+	}
+	if req.IsMobile {
+		params["wap_url"] = xunhuWAPURL(returnURL)
+		params["wap_name"] = "mcorgai.com"
+	}
+	if req.PaymentType == payment.TypeWxpay {
+		params["type"] = "WAP"
+	}
+	params["hash"] = xunhuSign(params, e.config["pkey"])
+	body, err := e.post(ctx, e.apiBase(), params)
+	if err != nil {
+		return nil, fmt.Errorf("xunhupay create: %w", err)
+	}
+	var resp struct {
+		OpenID    any    `json:"openid"`
+		URL       string `json:"url"`
+		URLQRCode string `json:"url_qrcode"`
+		ErrCode   int    `json:"errcode"`
+		ErrMsg    string `json:"errmsg"`
+		Hash      string `json:"hash"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("xunhupay parse: %w", err)
+	}
+	if resp.ErrCode != 0 {
+		return nil, fmt.Errorf("xunhupay error: %s", resp.ErrMsg)
+	}
+	openID := fmt.Sprint(resp.OpenID)
+	// XunhuPay creation response hash is not documented consistently across account modes.
+	// The response is fetched over HTTPS and the payment notification callback is still
+	// signature-verified before crediting balance, so do not block order creation here.
+	return &payment.CreatePaymentResponse{TradeNo: openID, PayURL: resp.URL, QRCode: resp.URLQRCode}, nil
+}
+
+func (e *EasyPay) verifyXunhuNotification(params map[string]string) (*payment.PaymentNotification, error) {
+	sign := params["hash"]
+	if sign == "" {
+		return nil, fmt.Errorf("missing hash")
+	}
+	if !xunhuVerifySign(params, e.config["pkey"], sign) {
+		return nil, fmt.Errorf("invalid signature")
+	}
+	status := payment.ProviderStatusFailed
+	if params["status"] == xunhuStatusPaid {
+		status = payment.ProviderStatusSuccess
+	}
+	amount, _ := strconv.ParseFloat(params["total_fee"], 64)
+	return &payment.PaymentNotification{
+		OrderID: params["trade_order_id"],
+		TradeNo: firstNonEmpty(params["transaction_id"], params["open_order_id"]),
+		Status:  status,
+		Amount:  amount,
+		RawData: rawXunhuData(params),
+		Metadata: map[string]string{
+			"pid":           params["appid"],
+			"open_order_id": params["open_order_id"],
+		},
+	}, nil
+}
+
+func rawXunhuData(params map[string]string) string {
+	values := url.Values{}
+	for k, v := range params {
+		values.Set(k, v)
+	}
+	return values.Encode()
+}
+
+func truncateXunhuTitle(title string) string {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return "mcorgai recharge"
+	}
+	r := []rune(title)
+	if len(r) > 42 {
+		return string(r[:42])
+	}
+	return title
+}
+
+func randomXunhuNonce() string {
+	return fmt.Sprintf("%d%d", time.Now().UnixNano(), rand.Intn(1000000))
+}
+
+func xunhuWAPURL(returnURL string) string {
+	if u, err := url.Parse(returnURL); err == nil && u.Scheme != "" && u.Host != "" {
+		return u.Scheme + "://" + u.Host
+	}
+	return "https://mcorgai.com"
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func xunhuSign(params map[string]string, pkey string) string {
+	keys := make([]string, 0, len(params))
+	for k, v := range params {
+		if k == "hash" || v == "" {
+			continue
+		}
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var buf strings.Builder
+	for i, k := range keys {
+		if i > 0 {
+			_ = buf.WriteByte('&')
+		}
+		_, _ = buf.WriteString(k + "=" + params[k])
+	}
+	_, _ = buf.WriteString(pkey)
+	hash := md5.Sum([]byte(buf.String()))
+	return hex.EncodeToString(hash[:])
+}
+
+func xunhuVerifySign(params map[string]string, pkey string, sign string) bool {
+	return hmac.Equal([]byte(xunhuSign(params, pkey)), []byte(sign))
+}
+
 func (e *EasyPay) VerifyNotification(_ context.Context, rawBody string, _ map[string]string) (*payment.PaymentNotification, error) {
 	values, err := url.ParseQuery(rawBody)
 	if err != nil {
@@ -244,6 +401,9 @@ func (e *EasyPay) VerifyNotification(_ context.Context, rawBody string, _ map[st
 	params := make(map[string]string)
 	for k := range values {
 		params[k] = values.Get(k)
+	}
+	if e.isXunhuPay() {
+		return e.verifyXunhuNotification(params)
 	}
 	sign := params["sign"]
 	if sign == "" {
@@ -424,6 +584,9 @@ func (e *EasyPay) postRaw(ctx context.Context, endpoint string, params map[strin
 		return nil, 0, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36")
+	req.Header.Set("Accept", "application/json,text/plain,*/*")
+	req.Header.Set("Connection", "close")
 	client := e.httpClient
 	if client == nil {
 		client = &http.Client{Timeout: easypayHTTPTimeout}
