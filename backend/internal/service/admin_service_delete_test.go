@@ -123,6 +123,12 @@ func (s *userRepoStub) UpdateBalance(ctx context.Context, id int64, amount float
 	panic("unexpected UpdateBalance call")
 }
 
+func (s *userRepoStub) UpdateGiftBalance(context.Context, int64, float64) error { panic("unexpected UpdateGiftBalance call") }
+
+func (s *userRepoStub) UpdateFrozenGiftBalance(context.Context, int64, float64) error {
+	panic("unexpected UpdateFrozenGiftBalance call")
+}
+
 func (s *userRepoStub) DeductBalance(ctx context.Context, id int64, amount float64) error {
 	panic("unexpected DeductBalance call")
 }

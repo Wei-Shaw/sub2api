@@ -54,6 +54,9 @@ func TestAPIContracts(t *testing.T) {
 					"username": "alice",
 					"role": "user",
 					"balance": 12.5,
+					"cash_balance": 0,
+					"gift_balance": 0,
+					"frozen_gift_balance": 0,
 					"concurrency": 5,
 					"rpm_limit": 0,
 					"status": "active",
@@ -1289,6 +1292,10 @@ func (r *stubUserRepo) ListWithFilters(ctx context.Context, params pagination.Pa
 func (r *stubUserRepo) UpdateBalance(ctx context.Context, id int64, amount float64) error {
 	return errors.New("not implemented")
 }
+
+func (r *stubUserRepo) UpdateGiftBalance(context.Context, int64, float64) error { return nil }
+
+func (r *stubUserRepo) UpdateFrozenGiftBalance(context.Context, int64, float64) error { return nil }
 
 func (r *stubUserRepo) DeductBalance(ctx context.Context, id int64, amount float64) error {
 	return errors.New("not implemented")

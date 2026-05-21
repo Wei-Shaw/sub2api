@@ -810,6 +810,12 @@ func (s *emailBindUserRepoStub) UpdateUserLastActiveAt(context.Context, int64, t
 }
 
 func (s *emailBindUserRepoStub) UpdateBalance(context.Context, int64, float64) error { return nil }
+
+func (s *emailBindUserRepoStub) UpdateGiftBalance(context.Context, int64, float64) error { return nil }
+
+func (s *emailBindUserRepoStub) UpdateFrozenGiftBalance(context.Context, int64, float64) error {
+	return nil
+}
 func (s *emailBindUserRepoStub) DeductBalance(context.Context, int64, float64) error { return nil }
 func (s *emailBindUserRepoStub) UpdateConcurrency(context.Context, int64, int) error { return nil }
 
