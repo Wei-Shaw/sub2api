@@ -4207,6 +4207,22 @@ export default {
       codeDeleted: 'Redeem code deleted successfully',
       codesDeleted: 'Successfully deleted {count} unused code(s)',
       noUnusedCodes: 'No unused codes to delete',
+      selectedCount: '{count} selected',
+      clearSelection: 'Clear selection',
+      batchUpdate: 'Batch update',
+      batchUpdateTitle: 'Batch update redeem codes',
+      batchUpdateSuccess: 'Successfully updated {count} redeem code(s)',
+      failedToBatchUpdate: 'Failed to batch update redeem codes',
+      selectCodesFirst: 'Please select redeem codes first',
+      noBatchFieldsSelected: 'Select at least one field to update',
+      batchFields: {
+        status: 'Status',
+        expiresAt: 'Expires At',
+        notes: 'Notes',
+        group: 'Group'
+      },
+      batchNotesPlaceholder: 'Leave empty to clear notes',
+      clearGroup: 'Clear group',
       failedToLoad: 'Failed to load redeem codes',
       failedToGenerate: 'Failed to generate codes',
       failedToExport: 'Failed to export codes',
@@ -5322,7 +5338,15 @@ export default {
         siteKeyHint: 'Get this from your Cloudflare Dashboard',
         cloudflareDashboard: 'Cloudflare Dashboard',
         secretKeyHint: 'Server-side verification key (keep this secret)',
-        secretKeyConfiguredHint: 'Secret key configured. Leave empty to keep the current value.'      },
+        secretKeyConfiguredHint: 'Secret key configured. Leave empty to keep the current value.'
+      },
+      apiKeyAcl: {
+        title: 'API Key IP Access Control',
+        description: 'Choose which client IP is used by API Key allowlists and denylists',
+        trustForwardedIp: 'Trust forwarded client IP',
+        trustForwardedIpHint:
+          'Disabled by default. Enable only when the origin is reachable only through Cloudflare or Nginx reverse proxy. When enabled, API Key IP allowlists and denylists use CF-Connecting-IP, X-Real-IP, or X-Forwarded-For, matching the request IP shown in usage records.'
+      },
       linuxdo: {
         title: 'LinuxDo Connect Login',
         description: 'Configure LinuxDo Connect OAuth for Sub2API end-user login',

@@ -4336,6 +4336,22 @@ export default {
       codeDeleted: '兑换码删除成功',
       codesDeleted: '成功删除 {count} 个未使用的兑换码',
       noUnusedCodes: '没有未使用的兑换码可删除',
+      selectedCount: '已选 {count} 个',
+      clearSelection: '清空选择',
+      batchUpdate: '批量修改',
+      batchUpdateTitle: '批量修改兑换码',
+      batchUpdateSuccess: '成功修改 {count} 个兑换码',
+      failedToBatchUpdate: '批量修改兑换码失败',
+      selectCodesFirst: '请先选择兑换码',
+      noBatchFieldsSelected: '请选择至少一个要修改的字段',
+      batchFields: {
+        status: '状态',
+        expiresAt: '过期时间',
+        notes: '备注',
+        group: '分组'
+      },
+      batchNotesPlaceholder: '留空将清空备注',
+      clearGroup: '清除分组',
       userPrefix: '用户 #{id}',
       failedToExport: '导出兑换码失败',
       failedToDeleteUnused: '删除未使用的兑换码失败',
@@ -5486,6 +5502,13 @@ export default {
         cloudflareDashboard: 'Cloudflare Dashboard',
         secretKeyHint: '服务端验证密钥（请保密）',
         secretKeyConfiguredHint: '密钥已配置，留空以保留当前值。'
+      },
+      apiKeyAcl: {
+        title: 'API Key IP 访问控制',
+        description: '控制 API Key 白名单和黑名单使用哪个客户端 IP 判断',
+        trustForwardedIp: '信任反代传递的客户端 IP',
+        trustForwardedIpHint:
+          '默认关闭。仅在源站只允许 Cloudflare 或 Nginx 反代访问时开启；开启后 API Key IP 白/黑名单会使用 CF-Connecting-IP、X-Real-IP 或 X-Forwarded-For，与使用记录中的请求 IP 保持一致。'
       },
       linuxdo: {
         title: 'LinuxDo Connect 登录',
