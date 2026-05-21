@@ -23,6 +23,8 @@ const (
 	FieldName = "name"
 	// FieldProvider holds the string denoting the provider field in the database.
 	FieldProvider = "provider"
+	// FieldAPIMode holds the string denoting the api_mode field in the database.
+	FieldAPIMode = "api_mode"
 	// FieldDescription holds the string denoting the description field in the database.
 	FieldDescription = "description"
 	// FieldExtraHeaders holds the string denoting the extra_headers field in the database.
@@ -51,6 +53,7 @@ var Columns = []string{
 	FieldUpdatedAt,
 	FieldName,
 	FieldProvider,
+	FieldAPIMode,
 	FieldDescription,
 	FieldExtraHeaders,
 	FieldBodyOverrideMode,
@@ -76,6 +79,10 @@ var (
 	UpdateDefaultUpdatedAt func() time.Time
 	// NameValidator is a validator for the "name" field. It is called by the builders before save.
 	NameValidator func(string) error
+	// DefaultAPIMode holds the default value on creation for the "api_mode" field.
+	DefaultAPIMode string
+	// APIModeValidator is a validator for the "api_mode" field. It is called by the builders before save.
+	APIModeValidator func(string) error
 	// DefaultDescription holds the default value on creation for the "description" field.
 	DefaultDescription string
 	// DescriptionValidator is a validator for the "description" field. It is called by the builders before save.
@@ -138,6 +145,11 @@ func ByName(opts ...sql.OrderTermOption) OrderOption {
 // ByProvider orders the results by the provider field.
 func ByProvider(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldProvider, opts...).ToFunc()
+}
+
+// ByAPIMode orders the results by the api_mode field.
+func ByAPIMode(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAPIMode, opts...).ToFunc()
 }
 
 // ByDescription orders the results by the description field.

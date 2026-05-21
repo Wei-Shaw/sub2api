@@ -4,6 +4,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -21,8 +22,8 @@ type RedeemCodeRepoSuite struct {
 }
 
 func (s *RedeemCodeRepoSuite) SetupTest() {
-	s.ctx = context.Background()
 	tx := testEntTx(s.T())
+	s.ctx = dbent.NewTxContext(context.Background(), tx)
 	s.client = tx.Client()
 	s.repo = NewRedeemCodeRepository(s.client).(*redeemCodeRepository)
 }
@@ -235,6 +236,123 @@ func (s *RedeemCodeRepoSuite) TestUpdate() {
 	got, err := s.repo.GetByID(s.ctx, code.ID)
 	s.Require().NoError(err)
 	s.Require().Equal(float64(50), got.Value)
+}
+
+func (s *RedeemCodeRepoSuite) TestBatchUpdate_PartialFieldsAndClear() {
+	group := s.createGroup(uniqueTestValue(s.T(), "batch-update-group"))
+	groupID := group.ID
+	expiresAt := time.Now().UTC().Add(2 * time.Hour)
+	status := service.StatusDisabled
+	notes := "batch note"
+
+	codeA := &service.RedeemCode{
+		Code:   "BATCH-UP-A",
+		Type:   service.RedeemTypeBalance,
+		Value:  10,
+		Status: service.StatusUnused,
+		Notes:  "old",
+	}
+	codeB := &service.RedeemCode{
+		Code:   "BATCH-UP-B",
+		Type:   service.RedeemTypeBalance,
+		Value:  20,
+		Status: service.StatusUnused,
+		Notes:  "old",
+	}
+	untouched := &service.RedeemCode{
+		Code:   "BATCH-UP-C",
+		Type:   service.RedeemTypeBalance,
+		Value:  30,
+		Status: service.StatusUnused,
+		Notes:  "keep",
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, codeA))
+	s.Require().NoError(s.repo.Create(s.ctx, codeB))
+	s.Require().NoError(s.repo.Create(s.ctx, untouched))
+
+	updated, err := s.repo.BatchUpdate(s.ctx, []int64{codeA.ID, codeB.ID}, service.RedeemCodeBatchUpdateFields{
+		Status:    &status,
+		ExpiresAt: service.NullableTimeUpdate{Set: true, Value: &expiresAt},
+		Notes:     &notes,
+		GroupID:   service.NullableInt64Update{Set: true, Value: &groupID},
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(int64(2), updated)
+
+	gotA, err := s.repo.GetByID(s.ctx, codeA.ID)
+	s.Require().NoError(err)
+	s.Require().Equal("BATCH-UP-A", gotA.Code)
+	s.Require().Equal(service.RedeemTypeBalance, gotA.Type)
+	s.Require().Equal(float64(10), gotA.Value)
+	s.Require().Equal(service.StatusDisabled, gotA.Status)
+	s.Require().Equal(notes, gotA.Notes)
+	s.Require().NotNil(gotA.ExpiresAt)
+	s.Require().WithinDuration(expiresAt, *gotA.ExpiresAt, time.Second)
+	s.Require().NotNil(gotA.GroupID)
+	s.Require().Equal(groupID, *gotA.GroupID)
+
+	gotB, err := s.repo.GetByID(s.ctx, codeB.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(service.StatusDisabled, gotB.Status)
+	s.Require().Equal(notes, gotB.Notes)
+
+	gotUntouched, err := s.repo.GetByID(s.ctx, untouched.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(service.StatusUnused, gotUntouched.Status)
+	s.Require().Equal("keep", gotUntouched.Notes)
+	s.Require().Nil(gotUntouched.ExpiresAt)
+	s.Require().Nil(gotUntouched.GroupID)
+
+	updated, err = s.repo.BatchUpdate(s.ctx, []int64{codeA.ID}, service.RedeemCodeBatchUpdateFields{
+		ExpiresAt: service.NullableTimeUpdate{Set: true},
+		GroupID:   service.NullableInt64Update{Set: true},
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(int64(1), updated)
+
+	gotA, err = s.repo.GetByID(s.ctx, codeA.ID)
+	s.Require().NoError(err)
+	s.Require().Nil(gotA.ExpiresAt)
+	s.Require().Nil(gotA.GroupID)
+}
+
+func (s *RedeemCodeRepoSuite) TestBatchUpdate_InvalidIDRollsBack() {
+	code := &service.RedeemCode{
+		Code:   "BATCH-UP-ROLLBACK",
+		Type:   service.RedeemTypeBalance,
+		Value:  10,
+		Status: service.StatusUnused,
+		Notes:  "keep",
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, code))
+	notes := "changed"
+
+	_, err := s.repo.BatchUpdate(s.ctx, []int64{code.ID, 999999}, service.RedeemCodeBatchUpdateFields{Notes: &notes})
+	s.Require().Error(err)
+	s.Require().True(errors.Is(err, service.ErrRedeemCodeNotFound))
+
+	got, getErr := s.repo.GetByID(s.ctx, code.ID)
+	s.Require().NoError(getErr)
+	s.Require().Equal("keep", got.Notes)
+}
+
+func (s *RedeemCodeRepoSuite) TestBatchUpdate_UsedCodeRejectsSensitiveFields() {
+	code := &service.RedeemCode{
+		Code:   "BATCH-UP-USED",
+		Type:   service.RedeemTypeBalance,
+		Value:  10,
+		Status: service.StatusUsed,
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, code))
+	status := service.StatusDisabled
+
+	_, err := s.repo.BatchUpdate(s.ctx, []int64{code.ID}, service.RedeemCodeBatchUpdateFields{Status: &status})
+	s.Require().Error(err)
+	s.Require().True(errors.Is(err, service.ErrRedeemCodeUsed))
+
+	got, getErr := s.repo.GetByID(s.ctx, code.ID)
+	s.Require().NoError(getErr)
+	s.Require().Equal(service.StatusUsed, got.Status)
 }
 
 // --- Use ---

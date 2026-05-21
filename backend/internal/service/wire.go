@@ -151,8 +151,10 @@ func ProvideAccountExpiryService(accountRepo AccountRepository) *AccountExpirySe
 }
 
 // ProvideSubscriptionExpiryService creates and starts SubscriptionExpiryService.
-func ProvideSubscriptionExpiryService(userSubRepo UserSubscriptionRepository) *SubscriptionExpiryService {
+func ProvideSubscriptionExpiryService(userSubRepo UserSubscriptionRepository, settingRepo SettingRepository, notificationEmailService *NotificationEmailService) *SubscriptionExpiryService {
 	svc := NewSubscriptionExpiryService(userSubRepo, time.Minute)
+	svc.SetSettingRepository(settingRepo)
+	svc.SetNotificationEmailService(notificationEmailService)
 	svc.Start()
 	return svc
 }
@@ -396,6 +398,9 @@ func ProvideSettingService(settingRepo SettingRepository, groupRepo GroupReposit
 	svc := NewSettingService(settingRepo, cfg)
 	svc.SetDefaultSubscriptionGroupReader(groupRepo)
 	svc.SetProxyRepository(proxyRepo)
+	if err := svc.LoadAPIKeyACLTrustForwardedIPSetting(context.Background()); err != nil {
+		logger.LegacyPrintf("service.setting", "Warning: load api key acl forwarded ip setting failed: %v", err)
+	}
 	antigravity.SetUserAgentVersionResolver(svc.GetAntigravityUserAgentVersion)
 	return svc
 }
@@ -478,6 +483,7 @@ var ProviderSet = wire.NewSet(
 	ProvideOpsCleanupService,
 	ProvideOpsScheduledReportService,
 	NewEmailService,
+	NewNotificationEmailService,
 	ProvideEmailQueueService,
 	NewTurnstileService,
 	NewSubscriptionService,
@@ -514,7 +520,7 @@ var ProviderSet = wire.NewSet(
 	NewContentModerationService,
 	NewAffiliateService,
 	ProvidePaymentConfigService,
-	NewPaymentService,
+	ProvidePaymentService,
 	ProvidePaymentOrderExpiryService,
 	ProvideBalanceNotifyService,
 	ProvideChannelMonitorService,
@@ -529,8 +535,17 @@ func ProvidePaymentConfigService(entClient *dbent.Client, settingRepo SettingRep
 }
 
 // ProvideBalanceNotifyService creates BalanceNotifyService
-func ProvideBalanceNotifyService(emailService *EmailService, settingRepo SettingRepository, accountRepo AccountRepository) *BalanceNotifyService {
-	return NewBalanceNotifyService(emailService, settingRepo, accountRepo)
+func ProvideBalanceNotifyService(emailService *EmailService, settingRepo SettingRepository, accountRepo AccountRepository, notificationEmailService *NotificationEmailService) *BalanceNotifyService {
+	svc := NewBalanceNotifyService(emailService, settingRepo, accountRepo)
+	svc.SetNotificationEmailService(notificationEmailService)
+	return svc
+}
+
+// ProvidePaymentService creates PaymentService and attaches notification email delivery.
+func ProvidePaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository, affiliateService *AffiliateService, notificationEmailService *NotificationEmailService) *PaymentService {
+	svc := NewPaymentService(entClient, registry, loadBalancer, redeemService, subscriptionSvc, configService, userRepo, groupRepo, affiliateService)
+	svc.SetNotificationEmailService(notificationEmailService)
+	return svc
 }
 
 // ProvidePaymentOrderExpiryService creates and starts PaymentOrderExpiryService.

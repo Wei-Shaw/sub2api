@@ -151,7 +151,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		return
 	}
 
-	setOpsRequestContext(c, "", false, body)
+	setOpsRequestContext(c, "", false)
 
 	parsedReq, err := service.ParseGatewayRequest(body, domain.PlatformAnthropic)
 	if err != nil {
@@ -184,7 +184,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	// 在请求上下文中记录 thinking 状态，供 Antigravity 最终模型 key 推导/模型维度限流使用
 	c.Request = c.Request.WithContext(service.WithThinkingEnabled(c.Request.Context(), parsedReq.ThinkingEnabled, h.metadataBridgeEnabled()))
 
-	setOpsRequestContext(c, reqModel, reqStream, body)
+	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
 
 	// 验证 model 必填
@@ -1038,9 +1038,15 @@ func (h *GatewayHandler) Usage(c *gin.Context) {
 
 	// 解析可选的日期范围参数（用于 model_stats 查询）
 	startTime, endTime := h.parseUsageDateRange(c)
+	days, ok := parseAPIKeyDailyUsageDays(c.DefaultQuery("days", ""))
+	if !ok {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Invalid days, allowed range is 1-90")
+		return
+	}
 
 	// Best-effort: 获取用量统计（按当前 API Key 过滤），失败不影响基础响应
 	usageData := h.buildUsageData(ctx, apiKey.ID)
+	dailyUsage := h.buildAPIKeyDailyUsage(c, subject.UserID, apiKey.ID, days)
 
 	// Best-effort: 获取模型统计
 	var modelStats any
@@ -1054,11 +1060,11 @@ func (h *GatewayHandler) Usage(c *gin.Context) {
 	isQuotaLimited := apiKey.Quota > 0 || apiKey.HasRateLimits()
 
 	if isQuotaLimited {
-		h.usageQuotaLimited(c, ctx, apiKey, usageData, modelStats)
+		h.usageQuotaLimited(c, ctx, apiKey, usageData, dailyUsage, modelStats)
 		return
 	}
 
-	h.usageUnrestricted(c, ctx, apiKey, subject, usageData, modelStats)
+	h.usageUnrestricted(c, ctx, apiKey, subject, usageData, dailyUsage, modelStats)
 }
 
 // parseUsageDateRange 解析 start_date / end_date query params，默认返回近 30 天范围
@@ -1116,8 +1122,20 @@ func (h *GatewayHandler) buildUsageData(ctx context.Context, apiKeyID int64) gin
 	}
 }
 
+func (h *GatewayHandler) buildAPIKeyDailyUsage(c *gin.Context, userID, apiKeyID int64, days int) any {
+	if h.usageService == nil {
+		return nil
+	}
+	startTime, endTime := apiKeyDailyUsageRange(days, c.Query("timezone"))
+	stats, err := h.usageService.GetAPIKeyDailyUsage(c.Request.Context(), userID, apiKeyID, startTime, endTime)
+	if err != nil {
+		return nil
+	}
+	return stats
+}
+
 // usageQuotaLimited 处理 quota_limited 模式的响应
-func (h *GatewayHandler) usageQuotaLimited(c *gin.Context, ctx context.Context, apiKey *service.APIKey, usageData gin.H, modelStats any) {
+func (h *GatewayHandler) usageQuotaLimited(c *gin.Context, ctx context.Context, apiKey *service.APIKey, usageData gin.H, dailyUsage any, modelStats any) {
 	resp := gin.H{
 		"mode":    "quota_limited",
 		"isValid": apiKey.Status == service.StatusAPIKeyActive || apiKey.Status == service.StatusAPIKeyQuotaExhausted || apiKey.Status == service.StatusAPIKeyExpired,
@@ -1199,6 +1217,9 @@ func (h *GatewayHandler) usageQuotaLimited(c *gin.Context, ctx context.Context, 
 	if usageData != nil {
 		resp["usage"] = usageData
 	}
+	if dailyUsage != nil {
+		resp["daily_usage"] = dailyUsage
+	}
 	if modelStats != nil {
 		resp["model_stats"] = modelStats
 	}
@@ -1207,7 +1228,7 @@ func (h *GatewayHandler) usageQuotaLimited(c *gin.Context, ctx context.Context, 
 }
 
 // usageUnrestricted 处理 unrestricted 模式的响应（向后兼容）
-func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, apiKey *service.APIKey, subject middleware2.AuthSubject, usageData gin.H, modelStats any) {
+func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, apiKey *service.APIKey, subject middleware2.AuthSubject, usageData gin.H, dailyUsage any, modelStats any) {
 	// 订阅模式
 	if apiKey.Group != nil && apiKey.Group.IsSubscriptionType() {
 		resp := gin.H{
@@ -1236,6 +1257,9 @@ func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, 
 		if usageData != nil {
 			resp["usage"] = usageData
 		}
+		if dailyUsage != nil {
+			resp["daily_usage"] = dailyUsage
+		}
 		if modelStats != nil {
 			resp["model_stats"] = modelStats
 		}
@@ -1260,6 +1284,9 @@ func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, 
 	}
 	if usageData != nil {
 		resp["usage"] = usageData
+	}
+	if dailyUsage != nil {
+		resp["daily_usage"] = dailyUsage
 	}
 	if modelStats != nil {
 		resp["model_stats"] = modelStats
@@ -1512,7 +1539,7 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 		return
 	}
 
-	setOpsRequestContext(c, "", false, body)
+	setOpsRequestContext(c, "", false)
 
 	parsedReq, err := service.ParseGatewayRequest(body, domain.PlatformAnthropic)
 	if err != nil {
@@ -1531,7 +1558,7 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 		return
 	}
 
-	setOpsRequestContext(c, parsedReq.Model, parsedReq.Stream, body)
+	setOpsRequestContext(c, parsedReq.Model, parsedReq.Stream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(parsedReq.Stream, false)))
 
 	// 获取订阅信息（可能为nil）

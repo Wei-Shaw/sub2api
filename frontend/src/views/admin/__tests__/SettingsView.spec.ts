@@ -371,6 +371,7 @@ const baseSettingsResponse = {
   enable_anthropic_cache_ttl_1h_injection: false,
   rewrite_message_cache_control: false,
   antigravity_user_agent_version: "",
+  openai_codex_user_agent: "",
   payment_enabled: true,
   payment_min_amount: 1,
   payment_max_amount: 10000,
@@ -399,6 +400,7 @@ const baseSettingsResponse = {
   balance_low_notify_enabled: false,
   balance_low_notify_threshold: 0,
   balance_low_notify_recharge_url: "",
+  subscription_expiry_notify_enabled: true,
   account_quota_notify_enabled: false,
   account_quota_notify_emails: [],
 };
