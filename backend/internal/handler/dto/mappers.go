@@ -721,6 +721,10 @@ func UserSubscriptionFromService(sub *service.UserSubscription) *UserSubscriptio
 		return nil
 	}
 	out := userSubscriptionFromServiceBase(sub)
+	// Regular user subscription endpoints must not expose the internal billing
+	// multiplier through the embedded group. Admin endpoints use
+	// UserSubscriptionFromServiceAdmin and keep the real group values.
+	out.Group = GroupFromServiceUser(sub.Group)
 	return &out
 }
 

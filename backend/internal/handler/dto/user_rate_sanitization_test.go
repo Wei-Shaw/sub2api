@@ -74,3 +74,27 @@ func TestUsageLogFromServiceUserHidesRateMultiplier(t *testing.T) {
 	require.NotNil(t, out.Group)
 	require.Equal(t, 1.0, out.Group.RateMultiplier)
 }
+
+func TestUserSubscriptionFromServiceHidesGroupInternalRateMultiplier(t *testing.T) {
+	sub := &service.UserSubscription{
+		ID:      1,
+		UserID:  1,
+		GroupID: 9,
+		Group: &service.Group{
+			ID:                    9,
+			Name:                  "日卡",
+			Platform:              service.PlatformOpenAI,
+			RateMultiplier:        3.0,
+			DisplayRateMultiplier: float64Ptr(1.0),
+			SubscriptionType:      service.SubscriptionTypeSubscription,
+		},
+	}
+
+	out := UserSubscriptionFromService(sub)
+
+	require.NotNil(t, out)
+	require.NotNil(t, out.Group)
+	require.Equal(t, 1.0, out.Group.RateMultiplier)
+	require.NotNil(t, out.Group.DisplayRateMultiplier)
+	require.Equal(t, 1.0, *out.Group.DisplayRateMultiplier)
+}
