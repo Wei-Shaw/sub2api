@@ -5474,6 +5474,13 @@ export default {
         secretKeyHint: '服务端验证密钥（请保密）',
         secretKeyConfiguredHint: '密钥已配置，留空以保留当前值。'
       REDACTED,
+      apiKeyAcl: {
+        title: 'API Key IP 访问控制',
+        description: '控制 API Key 白名单和黑名单使用哪个客户端 IP 判断',
+        trustForwardedIp: '信任反代传递的客户端 IP',
+        trustForwardedIpHint:
+          '默认关闭。仅在源站只允许 Cloudflare 或 Nginx 反代访问时开启；开启后 API Key IP 白/黑名单会使用 CF-Connecting-IP、X-Real-IP 或 X-Forwarded-For，与使用记录中的请求 IP 保持一致。'
+      REDACTED,
       linuxdo: {
         title: 'LinuxDo Connect 登录',
         description: '配置 LinuxDo Connect OAuth，用于 Sub2API 用户登录',
