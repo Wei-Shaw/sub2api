@@ -128,6 +128,69 @@ func (_u *UserUpdate) AddBalance(v float64) *UserUpdate {
 	return _u
 }
 
+// SetCashBalance sets the "cash_balance" field.
+func (_u *UserUpdate) SetCashBalance(v float64) *UserUpdate {
+	_u.mutation.ResetCashBalance()
+	_u.mutation.SetCashBalance(v)
+	return _u
+}
+
+// SetNillableCashBalance sets the "cash_balance" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableCashBalance(v *float64) *UserUpdate {
+	if v != nil {
+		_u.SetCashBalance(*v)
+	}
+	return _u
+}
+
+// AddCashBalance adds value to the "cash_balance" field.
+func (_u *UserUpdate) AddCashBalance(v float64) *UserUpdate {
+	_u.mutation.AddCashBalance(v)
+	return _u
+}
+
+// SetGiftBalance sets the "gift_balance" field.
+func (_u *UserUpdate) SetGiftBalance(v float64) *UserUpdate {
+	_u.mutation.ResetGiftBalance()
+	_u.mutation.SetGiftBalance(v)
+	return _u
+}
+
+// SetNillableGiftBalance sets the "gift_balance" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableGiftBalance(v *float64) *UserUpdate {
+	if v != nil {
+		_u.SetGiftBalance(*v)
+	}
+	return _u
+}
+
+// AddGiftBalance adds value to the "gift_balance" field.
+func (_u *UserUpdate) AddGiftBalance(v float64) *UserUpdate {
+	_u.mutation.AddGiftBalance(v)
+	return _u
+}
+
+// SetFrozenGiftBalance sets the "frozen_gift_balance" field.
+func (_u *UserUpdate) SetFrozenGiftBalance(v float64) *UserUpdate {
+	_u.mutation.ResetFrozenGiftBalance()
+	_u.mutation.SetFrozenGiftBalance(v)
+	return _u
+}
+
+// SetNillableFrozenGiftBalance sets the "frozen_gift_balance" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableFrozenGiftBalance(v *float64) *UserUpdate {
+	if v != nil {
+		_u.SetFrozenGiftBalance(*v)
+	}
+	return _u
+}
+
+// AddFrozenGiftBalance adds value to the "frozen_gift_balance" field.
+func (_u *UserUpdate) AddFrozenGiftBalance(v float64) *UserUpdate {
+	_u.mutation.AddFrozenGiftBalance(v)
+	return _u
+}
+
 // SetConcurrency sets the "concurrency" field.
 func (_u *UserUpdate) SetConcurrency(v int) *UserUpdate {
 	_u.mutation.ResetConcurrency()
@@ -960,6 +1023,24 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AddedBalance(); ok {
 		_spec.AddField(user.FieldBalance, field.TypeFloat64, value)
 	}
+	if value, ok := _u.mutation.CashBalance(); ok {
+		_spec.SetField(user.FieldCashBalance, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedCashBalance(); ok {
+		_spec.AddField(user.FieldCashBalance, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.GiftBalance(); ok {
+		_spec.SetField(user.FieldGiftBalance, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedGiftBalance(); ok {
+		_spec.AddField(user.FieldGiftBalance, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.FrozenGiftBalance(); ok {
+		_spec.SetField(user.FieldFrozenGiftBalance, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedFrozenGiftBalance(); ok {
+		_spec.AddField(user.FieldFrozenGiftBalance, field.TypeFloat64, value)
+	}
 	if value, ok := _u.mutation.Concurrency(); ok {
 		_spec.SetField(user.FieldConcurrency, field.TypeInt, value)
 	}
@@ -1693,6 +1774,69 @@ func (_u *UserUpdateOne) SetNillableBalance(v *float64) *UserUpdateOne {
 // AddBalance adds value to the "balance" field.
 func (_u *UserUpdateOne) AddBalance(v float64) *UserUpdateOne {
 	_u.mutation.AddBalance(v)
+	return _u
+}
+
+// SetCashBalance sets the "cash_balance" field.
+func (_u *UserUpdateOne) SetCashBalance(v float64) *UserUpdateOne {
+	_u.mutation.ResetCashBalance()
+	_u.mutation.SetCashBalance(v)
+	return _u
+}
+
+// SetNillableCashBalance sets the "cash_balance" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableCashBalance(v *float64) *UserUpdateOne {
+	if v != nil {
+		_u.SetCashBalance(*v)
+	}
+	return _u
+}
+
+// AddCashBalance adds value to the "cash_balance" field.
+func (_u *UserUpdateOne) AddCashBalance(v float64) *UserUpdateOne {
+	_u.mutation.AddCashBalance(v)
+	return _u
+}
+
+// SetGiftBalance sets the "gift_balance" field.
+func (_u *UserUpdateOne) SetGiftBalance(v float64) *UserUpdateOne {
+	_u.mutation.ResetGiftBalance()
+	_u.mutation.SetGiftBalance(v)
+	return _u
+}
+
+// SetNillableGiftBalance sets the "gift_balance" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableGiftBalance(v *float64) *UserUpdateOne {
+	if v != nil {
+		_u.SetGiftBalance(*v)
+	}
+	return _u
+}
+
+// AddGiftBalance adds value to the "gift_balance" field.
+func (_u *UserUpdateOne) AddGiftBalance(v float64) *UserUpdateOne {
+	_u.mutation.AddGiftBalance(v)
+	return _u
+}
+
+// SetFrozenGiftBalance sets the "frozen_gift_balance" field.
+func (_u *UserUpdateOne) SetFrozenGiftBalance(v float64) *UserUpdateOne {
+	_u.mutation.ResetFrozenGiftBalance()
+	_u.mutation.SetFrozenGiftBalance(v)
+	return _u
+}
+
+// SetNillableFrozenGiftBalance sets the "frozen_gift_balance" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableFrozenGiftBalance(v *float64) *UserUpdateOne {
+	if v != nil {
+		_u.SetFrozenGiftBalance(*v)
+	}
+	return _u
+}
+
+// AddFrozenGiftBalance adds value to the "frozen_gift_balance" field.
+func (_u *UserUpdateOne) AddFrozenGiftBalance(v float64) *UserUpdateOne {
+	_u.mutation.AddFrozenGiftBalance(v)
 	return _u
 }
 
@@ -2557,6 +2701,24 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if value, ok := _u.mutation.AddedBalance(); ok {
 		_spec.AddField(user.FieldBalance, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.CashBalance(); ok {
+		_spec.SetField(user.FieldCashBalance, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedCashBalance(); ok {
+		_spec.AddField(user.FieldCashBalance, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.GiftBalance(); ok {
+		_spec.SetField(user.FieldGiftBalance, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedGiftBalance(); ok {
+		_spec.AddField(user.FieldGiftBalance, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.FrozenGiftBalance(); ok {
+		_spec.SetField(user.FieldFrozenGiftBalance, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedFrozenGiftBalance(); ok {
+		_spec.AddField(user.FieldFrozenGiftBalance, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.Concurrency(); ok {
 		_spec.SetField(user.FieldConcurrency, field.TypeInt, value)

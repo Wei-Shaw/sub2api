@@ -94,6 +94,8 @@ type UserRepository interface {
 	UpdateUserLastActiveAt(ctx context.Context, userID int64, activeAt time.Time) error
 
 	UpdateBalance(ctx context.Context, id int64, amount float64) error
+	UpdateGiftBalance(ctx context.Context, id int64, amount float64) error
+	UpdateFrozenGiftBalance(ctx context.Context, id int64, amount float64) error
 	DeductBalance(ctx context.Context, id int64, amount float64) error
 	UpdateConcurrency(ctx context.Context, id int64, amount int) error
 	ExistsByEmail(ctx context.Context, email string) (bool, error)

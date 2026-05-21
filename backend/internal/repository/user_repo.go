@@ -88,6 +88,9 @@ func (r *userRepository) Create(ctx context.Context, userIn *service.User) error
 		SetPasswordHash(userIn.PasswordHash).
 		SetRole(userIn.Role).
 		SetBalance(userIn.Balance).
+		SetCashBalance(userIn.CashBalance).
+		SetGiftBalance(userIn.GiftBalance).
+		SetFrozenGiftBalance(userIn.FrozenGiftBalance).
 		SetConcurrency(userIn.Concurrency).
 		SetStatus(userIn.Status).
 		SetSignupSource(userSignupSourceOrDefault(userIn.SignupSource)).
@@ -214,6 +217,9 @@ func (r *userRepository) Update(ctx context.Context, userIn *service.User) error
 		SetPasswordHash(userIn.PasswordHash).
 		SetRole(userIn.Role).
 		SetBalance(userIn.Balance).
+		SetCashBalance(userIn.CashBalance).
+		SetGiftBalance(userIn.GiftBalance).
+		SetFrozenGiftBalance(userIn.FrozenGiftBalance).
 		SetConcurrency(userIn.Concurrency).
 		SetStatus(userIn.Status).
 		SetBalanceNotifyEnabled(userIn.BalanceNotifyEnabled).
@@ -692,8 +698,11 @@ func (r *userRepository) filterUsersByAttributes(ctx context.Context, attrs map[
 
 func (r *userRepository) UpdateBalance(ctx context.Context, id int64, amount float64) error {
 	client := clientFromContext(ctx, r.client)
-	update := client.User.Update().Where(dbuser.IDEQ(id)).AddBalance(amount)
-	// Track cumulative recharge amount for percentage-based notifications
+	update := client.User.Update().Where(dbuser.IDEQ(id)).
+		AddBalance(amount).
+		AddCashBalance(amount)
+	// Track cumulative paid recharge amount for percentage-based notifications.
+	// Gift bonuses/rebates are handled by UpdateGiftBalance and must not count as recharge.
 	if amount > 0 {
 		update = update.AddTotalRecharged(amount)
 	}
@@ -707,19 +716,54 @@ func (r *userRepository) UpdateBalance(ctx context.Context, id int64, amount flo
 	return nil
 }
 
-// DeductBalance 扣除用户余额
-// 透支策略：允许余额变为负数，确保当前请求能够完成
+func (r *userRepository) UpdateGiftBalance(ctx context.Context, id int64, amount float64) error {
+	client := clientFromContext(ctx, r.client)
+	n, err := client.User.Update().Where(dbuser.IDEQ(id)).
+		AddBalance(amount).
+		AddGiftBalance(amount).
+		Save(ctx)
+	if err != nil {
+		return translatePersistenceError(err, service.ErrUserNotFound, nil)
+	}
+	if n == 0 {
+		return service.ErrUserNotFound
+	}
+	return nil
+}
+
+func (r *userRepository) UpdateFrozenGiftBalance(ctx context.Context, id int64, amount float64) error {
+	client := clientFromContext(ctx, r.client)
+	n, err := client.User.Update().Where(dbuser.IDEQ(id)).
+		AddFrozenGiftBalance(amount).
+		Save(ctx)
+	if err != nil {
+		return translatePersistenceError(err, service.ErrUserNotFound, nil)
+	}
+	if n == 0 {
+		return service.ErrUserNotFound
+	}
+	return nil
+}
+
+// DeductBalance 扣除用户可用余额
+// 透支策略：按量计费优先扣赠送余额，不足部分扣充值余额；如果并发导致总余额不足，允许现金余额变负，确保当前请求完成。
 // 中间件会阻止余额 <= 0 的用户发起后续请求
 func (r *userRepository) DeductBalance(ctx context.Context, id int64, amount float64) error {
+	if amount <= 0 {
+		return nil
+	}
 	client := clientFromContext(ctx, r.client)
-	n, err := client.User.Update().
-		Where(dbuser.IDEQ(id)).
-		AddBalance(-amount).
-		Save(ctx)
+	res, err := client.ExecContext(ctx, `
+UPDATE users
+SET balance = balance - $1,
+    gift_balance = GREATEST(gift_balance - $1, 0),
+    cash_balance = cash_balance - GREATEST($1 - gift_balance, 0),
+    updated_at = NOW()
+WHERE id = $2`, amount, id)
 	if err != nil {
 		return err
 	}
-	if n == 0 {
+	if n, _ := res.RowsAffected(); n == 0 {
 		return service.ErrUserNotFound
 	}
 	return nil

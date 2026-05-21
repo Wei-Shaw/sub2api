@@ -2790,6 +2790,14 @@ func (r *oauthPendingFlowUserRepo) UpdateBalance(context.Context, int64, float64
 	panic("unexpected UpdateBalance call")
 }
 
+func (r *oauthPendingFlowUserRepo) UpdateGiftBalance(context.Context, int64, float64) error {
+	panic("unexpected UpdateGiftBalance call")
+}
+
+func (r *oauthPendingFlowUserRepo) UpdateFrozenGiftBalance(context.Context, int64, float64) error {
+	panic("unexpected UpdateFrozenGiftBalance call")
+}
+
 func (r *oauthPendingFlowUserRepo) DeductBalance(context.Context, int64, float64) error {
 	panic("unexpected DeductBalance call")
 }

@@ -20,7 +20,7 @@
               <div class="lg:col-span-3 rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
                 <div class="mb-4 flex items-center gap-3"><span class="rounded-lg bg-gray-900 px-2.5 py-1 text-xs font-medium text-white dark:bg-white dark:text-gray-900">{{ selectedPlan.name }}</span><span class="text-sm text-gray-400">{{ platformLabel(selectedPlan.group_platform || '') }}</span></div>
                 <div class="flex items-baseline gap-2"><span v-if="selectedPlan.original_price" class="text-sm text-gray-400 line-through">&yen;{{ selectedPlan.original_price }}</span><span class="text-4xl font-bold text-gray-900 dark:text-white">&yen;{{ planDisplayAmount(selectedPlan) }}</span><span class="text-sm text-gray-400">{{ planPriceSuffix(selectedPlan) }}</span></div>
-                <p class="mt-1 text-sm text-gray-400">扣 ${{ (effectivePlanAmount(selectedPlan) * (checkout.balance_recharge_multiplier || 10)).toFixed(0) }} 余额（1 元 = {{ checkout.balance_recharge_multiplier || 10 }} 美刀额度）</p>
+                <p class="mt-1 text-sm text-gray-400">扣 ${{ (effectivePlanAmount(selectedPlan) * (checkout.balance_recharge_multiplier || 10)).toFixed(0) }} 充值余额（赠送余额不可购买套餐）</p>
                 <p v-if="selectedPlan.description" class="mt-3 text-sm leading-6 text-gray-500 dark:text-gray-400">{{ selectedPlan.description }}</p>
                 <ul v-if="planFeatures(selectedPlan).length" class="mt-5 space-y-3 text-sm text-gray-600 dark:text-gray-300">
                   <li v-for="feature in planFeatures(selectedPlan)" :key="feature" class="flex gap-2">
@@ -31,15 +31,16 @@
               </div>
               <div class="lg:col-span-2 rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
                 <h3 class="text-sm font-semibold text-gray-900 dark:text-white">余额购买</h3>
-                <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">套餐使用账户余额扣款，确认购买后默认直接生效；如果是当前套餐，会在原到期时间上自动延期。</p>
+                <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">套餐只能使用充值余额购买，赠送余额仅可用于按量计费；确认购买后默认直接生效。</p>
                 <div class="mt-4 rounded-xl bg-gray-50 px-4 py-3 dark:bg-gray-700/50">
-                  <p class="text-xs text-gray-400">当前可用余额</p>
-                  <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">${{ user?.balance?.toFixed(2) || '0.00' }}</p>
+                  <p class="text-xs text-gray-400">可买套餐的充值余额</p>
+                  <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">${{ cashBalanceDisplay }}</p>
+                  <p class="mt-1 text-xs text-gray-400">赠送余额 ${{ giftBalanceDisplay }} 只能抵扣按量调用</p>
                 </div>
                 <button class="mt-4 w-full rounded-xl bg-gray-900 py-3 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50 dark:bg-white dark:text-gray-900" :disabled="submitting" @click="purchaseSelectedPlanWithBalance">
                   <span v-if="submitting">购买中...</span><span v-else>{{ planButtonText(selectedPlan) }}</span>
                 </button>
-                <p class="mt-3 text-xs leading-5 text-gray-400">余额不足时，请使用兑换码到账后再购买，或加入交流群了解活动福利。</p>
+                <p class="mt-3 text-xs leading-5 text-gray-400">充值余额不足时，请使用兑换码或支付宝充值后再购买；赠送余额不能买套餐。</p>
                 <router-link to="/redeem" class="mt-2 block w-full rounded-xl border border-gray-200 py-2.5 text-center text-sm text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300">已有兑换码？立即兑换</router-link>
               </div>
             </div>
@@ -101,8 +102,19 @@
             <template v-else>
               <div class="grid gap-4 sm:grid-cols-2">
               <div class="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
-                <p class="text-sm text-gray-400">当前余额</p>
-                <p class="mt-1 text-3xl font-bold text-gray-900 dark:text-white">${{ user?.balance?.toFixed(2) || '0.00' }}</p>
+                <p class="text-sm text-gray-400">当前可用余额</p>
+                <p class="mt-1 text-3xl font-bold text-gray-900 dark:text-white">${{ totalBalanceDisplay }}</p>
+                <div class="mt-4 grid gap-2 text-xs text-gray-500 dark:text-gray-400 sm:grid-cols-3">
+                  <div class="rounded-xl bg-gray-50 px-3 py-2 dark:bg-gray-700/50">
+                    <p>充值余额</p><p class="mt-1 font-semibold text-gray-900 dark:text-white">${{ cashBalanceDisplay }}</p><p class="mt-1">可买套餐/按量</p>
+                  </div>
+                  <div class="rounded-xl bg-gray-50 px-3 py-2 dark:bg-gray-700/50">
+                    <p>赠送余额</p><p class="mt-1 font-semibold text-gray-900 dark:text-white">${{ giftBalanceDisplay }}</p><p class="mt-1">仅按量计费</p>
+                  </div>
+                  <div class="rounded-xl bg-gray-50 px-3 py-2 dark:bg-gray-700/50">
+                    <p>冻结赠送</p><p class="mt-1 font-semibold text-gray-900 dark:text-white">${{ frozenGiftBalanceDisplay }}</p><p class="mt-1">24 小时后解冻</p>
+                  </div>
+                </div>
               </div>
               <div class="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
                 <p class="text-sm text-gray-400">用户交流群</p>
@@ -131,7 +143,7 @@
             <div class="grid gap-4 lg:grid-cols-2">
               <div class="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
                 <p class="mb-1 text-sm font-medium text-gray-700 dark:text-gray-200">兑换码充值</p>
-                <p class="mb-3 text-xs text-gray-400">购买后收到的卡密在这里兑换到账户余额。</p>
+                <p class="mb-3 text-xs text-gray-400">购买后收到的卡密在这里兑换为充值余额，可用于购买套餐或按量计费。</p>
                 <div class="flex gap-2">
                   <input v-model="redeemCode" type="text" placeholder="输入兑换码" class="flex-1 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 outline-none transition-colors focus:border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500 dark:focus:border-gray-400" @keyup.enter="handleRedeem" />
                   <button class="rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:opacity-50 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100" :disabled="!redeemCode || redeeming" @click="handleRedeem">
@@ -171,7 +183,7 @@
                     <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-sm font-semibold text-gray-900 dark:bg-gray-700 dark:text-white">量</div>
                     <div>
                       <p class="text-sm font-semibold text-gray-900 dark:text-white">按量计费：不买套餐也能用</p>
-                      <p class="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">适合偶尔调用、先体验或低频使用。充值后选择「按量计费」分组，系统按每次 API 实际调用从账户余额扣除；充值 ¥1 会到账 $10 API 余额，用多少扣多少，不会产生订阅有效期。</p>
+                      <p class="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">适合偶尔调用、先体验或低频使用。充值后选择「按量计费」分组，系统按每次 API 实际调用扣费，优先扣赠送余额，不足再扣充值余额；充值 ¥1 会到账 $10 API 余额，用多少扣多少，不会产生订阅有效期。</p>
                     </div>
                   </div>
                 </div>
@@ -197,9 +209,10 @@
               <div class="mb-6 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
                 <p class="mb-2 text-sm font-medium text-gray-700 dark:text-gray-200">额度说明</p>
                 <ul class="space-y-1 text-sm text-gray-500 dark:text-gray-400">
-                  <li>✦ 按量计费 — 不买套餐，选择按量分组，默认按实际调用扣账户余额</li>
+                  <li>✦ 按量计费 — 不买套餐，选择按量分组，默认按实际调用扣可用余额，优先扣赠送余额</li>
                   <li>✦ 订阅套餐 — 购买后默认直接生效，使用对应套餐分组调用</li>
-                  <li>✦ 账户余额 — 充 ¥1 = $10 API 余额，套餐也可以用余额购买</li>
+                  <li>✦ 充值余额 — 充 ¥1 = $10 API 余额，可买套餐，也可按量抵扣</li>
+                  <li>✦ 赠送余额 — 注册奖励/邀请奖励只能用于按量计费，不能购买套餐</li>
                   <li>✦ 越久越省 — 月卡日均仅 ¥8.33，比日卡省 16%</li>
                 </ul>
               </div>
@@ -210,7 +223,7 @@
                   <div class="mb-4">
                     <div class="flex items-center justify-between"><span class="text-base font-bold text-gray-900 dark:text-white">{{ plan.name }}</span><span class="rounded-md bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-700 dark:text-gray-400">{{ platformLabel(plan.group_platform || '') }}</span></div>
                     <div class="mt-2 flex items-baseline gap-2"><span v-if="plan.original_price" class="text-xs text-gray-400 line-through">&yen;{{ plan.original_price }}</span><span class="text-2xl font-bold text-gray-900 dark:text-white">&yen;{{ planDisplayAmount(plan) }}</span><span class="text-xs text-gray-400">{{ planPriceSuffix(plan) }}</span></div>
-                    <p class="mt-1 text-xs text-gray-400">扣 ${{ (effectivePlanAmount(plan) * (checkout.balance_recharge_multiplier || 10)).toFixed(0) }} 余额</p>
+                    <p class="mt-1 text-xs text-gray-400">扣 ${{ (effectivePlanAmount(plan) * (checkout.balance_recharge_multiplier || 10)).toFixed(0) }} 充值余额</p>
                     <p v-if="plan.validity_days > 1" class="mt-1 text-xs text-green-600 dark:text-green-400">日均仅 &yen;{{ (plan.price / plan.validity_days).toFixed(2) }}，比日卡省 {{ Math.round((1 - plan.price / plan.validity_days / 9.9) * 100) }}%</p>
                     <p v-if="plan.purchase_quote?.action === 'extend'" class="mt-1 text-xs text-green-600 dark:text-green-400">当前套餐，购买后默认直接生效并自动延期</p>
                     <p v-else class="mt-1 text-xs text-green-600 dark:text-green-400">购买后默认直接生效</p>
@@ -317,6 +330,11 @@ const appStore = useAppStore()
 
 const user = computed(() => authStore.user)
 const activeSubscriptions = computed(() => subscriptionStore.activeSubscriptions)
+const formatBalance = (value?: number | null) => Number(value || 0).toFixed(2)
+const totalBalanceDisplay = computed(() => formatBalance(user.value?.balance))
+const cashBalanceDisplay = computed(() => formatBalance(user.value?.cash_balance ?? user.value?.balance))
+const giftBalanceDisplay = computed(() => formatBalance(user.value?.gift_balance))
+const frozenGiftBalanceDisplay = computed(() => formatBalance(user.value?.frozen_gift_balance))
 
 function getDaysRemaining(expiresAt: string): number {
   const expires = new Date(expiresAt)
@@ -376,11 +394,11 @@ const balancePurchaseConfirmMessage = computed(() => {
   const cnyAmount = effectivePlanAmount(plan)
   const multiplier = checkout.value.balance_recharge_multiplier || 10
   const usdAmount = (cnyAmount * multiplier).toFixed(2)
-  const balance = user.value?.balance?.toFixed?.(2) || '0.00'
+  const balance = cashBalanceDisplay.value
   if (action === 'extend') {
-    return `确认续费「${plan.name}」吗？本次将从账户余额扣除 $${usdAmount}（¥${planDisplayAmount(plan)} × ${multiplier} 倍率），购买成功后自动延长 ${plan.validity_days} 天。当前余额 $${balance}。`
+    return `确认续费「${plan.name}」吗？本次将从充值余额扣除 $${usdAmount}（¥${planDisplayAmount(plan)} × ${multiplier} 倍率），赠送余额不可用于购买套餐。购买成功后自动延长 ${plan.validity_days} 天。当前充值余额 $${balance}。`
   }
-  return `确认购买「${plan.name}」吗？本次将从账户余额扣除 $${usdAmount}（¥${planDisplayAmount(plan)} × ${multiplier} 倍率），购买成功后立即生效。当前余额 $${balance}。`
+  return `确认购买「${plan.name}」吗？本次将从充值余额扣除 $${usdAmount}（¥${planDisplayAmount(plan)} × ${multiplier} 倍率），赠送余额不可用于购买套餐。购买成功后立即生效。当前充值余额 $${balance}。`
 })
 
 async function handleRedeem() {
@@ -739,10 +757,10 @@ async function executeBalancePurchase(plan: SubscriptionPlan) {
   } catch (err: unknown) {
     const metadata = (err && typeof err === 'object' && 'metadata' in err) ? (err as any).metadata : null
     if ((err as any)?.reason === 'INSUFFICIENT_BALANCE') {
-      const balance = metadata?.balance ?? user.value?.balance?.toFixed?.(2) ?? '0.00'
+      const balance = metadata?.cash_balance ?? metadata?.balance ?? cashBalanceDisplay.value
       const required = metadata?.required ?? effectivePlanAmount(plan).toFixed(2)
-      errorMessage.value = `余额不足：当前可用 $${balance}，套餐需要 $${required}`
-      errorHintMessage.value = '请先使用兑换码充值余额后再购买，或加入交流群了解活动福利。'
+      errorMessage.value = `充值余额不足：当前充值余额 $${balance}，套餐需要 $${required}`
+      errorHintMessage.value = '赠送余额不能购买套餐，请先使用兑换码或支付宝充值后再购买。'
     } else {
       errorMessage.value = extractApiErrorMessage(err) || '购买失败'
       errorHintMessage.value = ''

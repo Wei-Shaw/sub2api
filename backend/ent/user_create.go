@@ -115,6 +115,48 @@ func (_c *UserCreate) SetNillableBalance(v *float64) *UserCreate {
 	return _c
 }
 
+// SetCashBalance sets the "cash_balance" field.
+func (_c *UserCreate) SetCashBalance(v float64) *UserCreate {
+	_c.mutation.SetCashBalance(v)
+	return _c
+}
+
+// SetNillableCashBalance sets the "cash_balance" field if the given value is not nil.
+func (_c *UserCreate) SetNillableCashBalance(v *float64) *UserCreate {
+	if v != nil {
+		_c.SetCashBalance(*v)
+	}
+	return _c
+}
+
+// SetGiftBalance sets the "gift_balance" field.
+func (_c *UserCreate) SetGiftBalance(v float64) *UserCreate {
+	_c.mutation.SetGiftBalance(v)
+	return _c
+}
+
+// SetNillableGiftBalance sets the "gift_balance" field if the given value is not nil.
+func (_c *UserCreate) SetNillableGiftBalance(v *float64) *UserCreate {
+	if v != nil {
+		_c.SetGiftBalance(*v)
+	}
+	return _c
+}
+
+// SetFrozenGiftBalance sets the "frozen_gift_balance" field.
+func (_c *UserCreate) SetFrozenGiftBalance(v float64) *UserCreate {
+	_c.mutation.SetFrozenGiftBalance(v)
+	return _c
+}
+
+// SetNillableFrozenGiftBalance sets the "frozen_gift_balance" field if the given value is not nil.
+func (_c *UserCreate) SetNillableFrozenGiftBalance(v *float64) *UserCreate {
+	if v != nil {
+		_c.SetFrozenGiftBalance(*v)
+	}
+	return _c
+}
+
 // SetConcurrency sets the "concurrency" field.
 func (_c *UserCreate) SetConcurrency(v int) *UserCreate {
 	_c.mutation.SetConcurrency(v)
@@ -578,6 +620,18 @@ func (_c *UserCreate) defaults() error {
 		v := user.DefaultBalance
 		_c.mutation.SetBalance(v)
 	}
+	if _, ok := _c.mutation.CashBalance(); !ok {
+		v := user.DefaultCashBalance
+		_c.mutation.SetCashBalance(v)
+	}
+	if _, ok := _c.mutation.GiftBalance(); !ok {
+		v := user.DefaultGiftBalance
+		_c.mutation.SetGiftBalance(v)
+	}
+	if _, ok := _c.mutation.FrozenGiftBalance(); !ok {
+		v := user.DefaultFrozenGiftBalance
+		_c.mutation.SetFrozenGiftBalance(v)
+	}
 	if _, ok := _c.mutation.Concurrency(); !ok {
 		v := user.DefaultConcurrency
 		_c.mutation.SetConcurrency(v)
@@ -659,6 +713,15 @@ func (_c *UserCreate) check() error {
 	}
 	if _, ok := _c.mutation.Balance(); !ok {
 		return &ValidationError{Name: "balance", err: errors.New(`ent: missing required field "User.balance"`)}
+	}
+	if _, ok := _c.mutation.CashBalance(); !ok {
+		return &ValidationError{Name: "cash_balance", err: errors.New(`ent: missing required field "User.cash_balance"`)}
+	}
+	if _, ok := _c.mutation.GiftBalance(); !ok {
+		return &ValidationError{Name: "gift_balance", err: errors.New(`ent: missing required field "User.gift_balance"`)}
+	}
+	if _, ok := _c.mutation.FrozenGiftBalance(); !ok {
+		return &ValidationError{Name: "frozen_gift_balance", err: errors.New(`ent: missing required field "User.frozen_gift_balance"`)}
 	}
 	if _, ok := _c.mutation.Concurrency(); !ok {
 		return &ValidationError{Name: "concurrency", err: errors.New(`ent: missing required field "User.concurrency"`)}
@@ -762,6 +825,18 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Balance(); ok {
 		_spec.SetField(user.FieldBalance, field.TypeFloat64, value)
 		_node.Balance = value
+	}
+	if value, ok := _c.mutation.CashBalance(); ok {
+		_spec.SetField(user.FieldCashBalance, field.TypeFloat64, value)
+		_node.CashBalance = value
+	}
+	if value, ok := _c.mutation.GiftBalance(); ok {
+		_spec.SetField(user.FieldGiftBalance, field.TypeFloat64, value)
+		_node.GiftBalance = value
+	}
+	if value, ok := _c.mutation.FrozenGiftBalance(); ok {
+		_spec.SetField(user.FieldFrozenGiftBalance, field.TypeFloat64, value)
+		_node.FrozenGiftBalance = value
 	}
 	if value, ok := _c.mutation.Concurrency(); ok {
 		_spec.SetField(user.FieldConcurrency, field.TypeInt, value)
@@ -1159,6 +1234,60 @@ func (u *UserUpsert) AddBalance(v float64) *UserUpsert {
 	return u
 }
 
+// SetCashBalance sets the "cash_balance" field.
+func (u *UserUpsert) SetCashBalance(v float64) *UserUpsert {
+	u.Set(user.FieldCashBalance, v)
+	return u
+}
+
+// UpdateCashBalance sets the "cash_balance" field to the value that was provided on create.
+func (u *UserUpsert) UpdateCashBalance() *UserUpsert {
+	u.SetExcluded(user.FieldCashBalance)
+	return u
+}
+
+// AddCashBalance adds v to the "cash_balance" field.
+func (u *UserUpsert) AddCashBalance(v float64) *UserUpsert {
+	u.Add(user.FieldCashBalance, v)
+	return u
+}
+
+// SetGiftBalance sets the "gift_balance" field.
+func (u *UserUpsert) SetGiftBalance(v float64) *UserUpsert {
+	u.Set(user.FieldGiftBalance, v)
+	return u
+}
+
+// UpdateGiftBalance sets the "gift_balance" field to the value that was provided on create.
+func (u *UserUpsert) UpdateGiftBalance() *UserUpsert {
+	u.SetExcluded(user.FieldGiftBalance)
+	return u
+}
+
+// AddGiftBalance adds v to the "gift_balance" field.
+func (u *UserUpsert) AddGiftBalance(v float64) *UserUpsert {
+	u.Add(user.FieldGiftBalance, v)
+	return u
+}
+
+// SetFrozenGiftBalance sets the "frozen_gift_balance" field.
+func (u *UserUpsert) SetFrozenGiftBalance(v float64) *UserUpsert {
+	u.Set(user.FieldFrozenGiftBalance, v)
+	return u
+}
+
+// UpdateFrozenGiftBalance sets the "frozen_gift_balance" field to the value that was provided on create.
+func (u *UserUpsert) UpdateFrozenGiftBalance() *UserUpsert {
+	u.SetExcluded(user.FieldFrozenGiftBalance)
+	return u
+}
+
+// AddFrozenGiftBalance adds v to the "frozen_gift_balance" field.
+func (u *UserUpsert) AddFrozenGiftBalance(v float64) *UserUpsert {
+	u.Add(user.FieldFrozenGiftBalance, v)
+	return u
+}
+
 // SetConcurrency sets the "concurrency" field.
 func (u *UserUpsert) SetConcurrency(v int) *UserUpsert {
 	u.Set(user.FieldConcurrency, v)
@@ -1545,6 +1674,69 @@ func (u *UserUpsertOne) AddBalance(v float64) *UserUpsertOne {
 func (u *UserUpsertOne) UpdateBalance() *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateBalance()
+	})
+}
+
+// SetCashBalance sets the "cash_balance" field.
+func (u *UserUpsertOne) SetCashBalance(v float64) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetCashBalance(v)
+	})
+}
+
+// AddCashBalance adds v to the "cash_balance" field.
+func (u *UserUpsertOne) AddCashBalance(v float64) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.AddCashBalance(v)
+	})
+}
+
+// UpdateCashBalance sets the "cash_balance" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateCashBalance() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateCashBalance()
+	})
+}
+
+// SetGiftBalance sets the "gift_balance" field.
+func (u *UserUpsertOne) SetGiftBalance(v float64) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetGiftBalance(v)
+	})
+}
+
+// AddGiftBalance adds v to the "gift_balance" field.
+func (u *UserUpsertOne) AddGiftBalance(v float64) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.AddGiftBalance(v)
+	})
+}
+
+// UpdateGiftBalance sets the "gift_balance" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateGiftBalance() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateGiftBalance()
+	})
+}
+
+// SetFrozenGiftBalance sets the "frozen_gift_balance" field.
+func (u *UserUpsertOne) SetFrozenGiftBalance(v float64) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetFrozenGiftBalance(v)
+	})
+}
+
+// AddFrozenGiftBalance adds v to the "frozen_gift_balance" field.
+func (u *UserUpsertOne) AddFrozenGiftBalance(v float64) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.AddFrozenGiftBalance(v)
+	})
+}
+
+// UpdateFrozenGiftBalance sets the "frozen_gift_balance" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateFrozenGiftBalance() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateFrozenGiftBalance()
 	})
 }
 
@@ -2141,6 +2333,69 @@ func (u *UserUpsertBulk) AddBalance(v float64) *UserUpsertBulk {
 func (u *UserUpsertBulk) UpdateBalance() *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateBalance()
+	})
+}
+
+// SetCashBalance sets the "cash_balance" field.
+func (u *UserUpsertBulk) SetCashBalance(v float64) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetCashBalance(v)
+	})
+}
+
+// AddCashBalance adds v to the "cash_balance" field.
+func (u *UserUpsertBulk) AddCashBalance(v float64) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.AddCashBalance(v)
+	})
+}
+
+// UpdateCashBalance sets the "cash_balance" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateCashBalance() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateCashBalance()
+	})
+}
+
+// SetGiftBalance sets the "gift_balance" field.
+func (u *UserUpsertBulk) SetGiftBalance(v float64) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetGiftBalance(v)
+	})
+}
+
+// AddGiftBalance adds v to the "gift_balance" field.
+func (u *UserUpsertBulk) AddGiftBalance(v float64) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.AddGiftBalance(v)
+	})
+}
+
+// UpdateGiftBalance sets the "gift_balance" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateGiftBalance() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateGiftBalance()
+	})
+}
+
+// SetFrozenGiftBalance sets the "frozen_gift_balance" field.
+func (u *UserUpsertBulk) SetFrozenGiftBalance(v float64) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetFrozenGiftBalance(v)
+	})
+}
+
+// AddFrozenGiftBalance adds v to the "frozen_gift_balance" field.
+func (u *UserUpsertBulk) AddFrozenGiftBalance(v float64) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.AddFrozenGiftBalance(v)
+	})
+}
+
+// UpdateFrozenGiftBalance sets the "frozen_gift_balance" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateFrozenGiftBalance() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateFrozenGiftBalance()
 	})
 }
 
