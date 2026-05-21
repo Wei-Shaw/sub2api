@@ -151,8 +151,9 @@ func ProvideAccountExpiryService(accountRepo AccountRepository) *AccountExpirySe
 REDACTED
 
 // ProvideSubscriptionExpiryService creates and starts SubscriptionExpiryService.
-func ProvideSubscriptionExpiryService(userSubRepo UserSubscriptionRepository, notificationEmailService *NotificationEmailService) *SubscriptionExpiryService {
+func ProvideSubscriptionExpiryService(userSubRepo UserSubscriptionRepository, settingRepo SettingRepository, notificationEmailService *NotificationEmailService) *SubscriptionExpiryService {
 	svc := NewSubscriptionExpiryService(userSubRepo, time.Minute)
+	svc.SetSettingRepository(settingRepo)
 	svc.SetNotificationEmailService(notificationEmailService)
 	svc.Start()
 	return svc

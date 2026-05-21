@@ -408,12 +408,15 @@ const (
 	// 用于避免 Cloudflare 对浏览器型 UA 的质询拦截。
 	SettingKeyOpenAICodexUserAgent = "openai_codex_user_agent"
 
-	// Balance Low Notification
+	// 余额不足提醒
 	SettingKeyBalanceLowNotifyEnabled     = "balance_low_notify_enabled"      // 全局开关
 	SettingKeyBalanceLowNotifyThreshold   = "balance_low_notify_threshold"    // 默认阈值（USD）
 	SettingKeyBalanceLowNotifyRechargeURL = "balance_low_notify_recharge_url" // 充值页面 URL
 
-	// Account Quota Notification
+	// 订阅到期提醒
+	SettingKeySubscriptionExpiryNotifyEnabled = "subscription_expiry_notify_enabled" // 订阅到期提醒全局开关，默认开启
+
+	// 账号限额通知
 	SettingKeyAccountQuotaNotifyEnabled = "account_quota_notify_enabled" // 全局开关
 	SettingKeyAccountQuotaNotifyEmails  = "account_quota_notify_emails"  // 管理员通知邮箱列表（JSON 数组）
 

@@ -5954,6 +5954,12 @@ export default {
         addEmail: '添加邮箱',
         emailPlaceholder: '输入邮箱地址',
       REDACTED,
+      subscriptionExpiryNotify: {
+        title: '订阅到期提醒',
+        description: '控制是否向用户发送订阅即将到期的邮件提醒。',
+        enabled: '启用订阅到期提醒',
+        enabledHint: '开启后，系统会在订阅到期前 7 天、3 天、1 天各发送一次提醒。'
+      REDACTED,
       smtp: {
         title: 'SMTP 设置',
         description: '配置用于发送验证码的邮件服务',

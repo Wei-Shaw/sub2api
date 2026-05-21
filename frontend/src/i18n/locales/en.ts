@@ -5795,6 +5795,12 @@ export default {
         addEmail: 'Add Email',
         emailPlaceholder: 'Enter email address',
       REDACTED,
+      subscriptionExpiryNotify: {
+        title: 'Subscription Expiry Reminder',
+        description: 'Control whether users receive subscription expiry reminder emails.',
+        enabled: 'Enable Subscription Expiry Reminder',
+        enabledHint: 'When enabled, the system sends reminders 7, 3, and 1 day before expiry.'
+      REDACTED,
       smtp: {
         title: 'SMTP Settings',
         description: 'Configure email sending for verification codes',

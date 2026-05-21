@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strconv"
@@ -14,6 +15,7 @@ import (
 // SubscriptionExpiryService periodically updates expired subscription status.
 type SubscriptionExpiryService struct {
 	userSubRepo              UserSubscriptionRepository
+	settingRepo              SettingRepository
 	notificationEmailService *NotificationEmailService
 	interval                 time.Duration
 	stopCh                   chan struct{REDACTED
@@ -27,6 +29,10 @@ func NewSubscriptionExpiryService(userSubRepo UserSubscriptionRepository, interv
 		interval:    interval,
 		stopCh:      make(chan struct{REDACTED),
 REDACTED
+REDACTED
+
+func (s *SubscriptionExpiryService) SetSettingRepository(settingRepo SettingRepository) {
+	s.settingRepo = settingRepo
 REDACTED
 
 func (s *SubscriptionExpiryService) SetNotificationEmailService(notificationEmailService *NotificationEmailService) {
@@ -84,6 +90,9 @@ func (s *SubscriptionExpiryService) sendExpiryReminders(ctx context.Context) {
 	if s == nil || s.userSubRepo == nil || s.notificationEmailService == nil {
 		return
 REDACTED
+	if !s.expiryReminderEnabled(ctx) {
+		return
+REDACTED
 	for page := 1; ; page++ {
 		subs, pag, err := s.userSubRepo.List(ctx, pagination.PaginationParams{Page: page, PageSize: 200REDACTED, nil, nil, SubscriptionStatusActive, "", "expires_at", "asc")
 		if err != nil {
@@ -97,6 +106,21 @@ REDACTED
 			return
 	REDACTED
 REDACTED
+REDACTED
+
+func (s *SubscriptionExpiryService) expiryReminderEnabled(ctx context.Context) bool {
+	if s == nil || s.settingRepo == nil {
+		return true
+REDACTED
+	value, err := s.settingRepo.GetValue(ctx, SettingKeySubscriptionExpiryNotifyEnabled)
+	if err != nil {
+		if errors.Is(err, ErrSettingNotFound) {
+			return true
+	REDACTED
+		log.Printf("[SubscriptionExpiry] Read expiry reminder switch failed: %v", err)
+		return false
+REDACTED
+	return !isFalseSettingValue(value)
 REDACTED
 
 func (s *SubscriptionExpiryService) sendExpiryReminderIfDue(ctx context.Context, sub *UserSubscription) {
