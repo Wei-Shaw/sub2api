@@ -536,6 +536,11 @@ export function useOnboardingTour(options: OnboardingOptions) {
       return
     }
 
+    // 购买/充值页是明确交易路径，不自动弹新手引导，避免遮挡套餐和支付入口
+    if (window.location.pathname === '/purchase') {
+      return
+    }
+
     // 只在管理员+标准模式下自动启动
     const isAdmin = userStore.user?.role === 'admin'
     if (!isAdmin) {
