@@ -454,6 +454,7 @@ REDACTED
 			return err
 	REDACTED
 REDACTED
+	r.deleteSchedulerAccountSnapshot(ctx, id)
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, buildSchedulerGroupPayload(groupIDs)); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue account delete failed: account=%d err=%v", id, err)
 REDACTED
@@ -751,6 +752,15 @@ REDACTED
 REDACTED
 	if err := r.schedulerCache.SetAccount(ctx, account); err != nil {
 		logger.LegacyPrintf("repository.account", "[Scheduler] sync account snapshot write failed: id=%d err=%v", accountID, err)
+REDACTED
+REDACTED
+
+func (r *accountRepository) deleteSchedulerAccountSnapshot(ctx context.Context, accountID int64) {
+	if r == nil || r.schedulerCache == nil || accountID <= 0 {
+		return
+REDACTED
+	if err := r.schedulerCache.DeleteAccount(ctx, accountID); err != nil {
+		logger.LegacyPrintf("repository.account", "[Scheduler] delete account snapshot failed: id=%d err=%v", accountID, err)
 REDACTED
 REDACTED
 
