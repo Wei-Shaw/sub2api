@@ -1001,11 +1001,23 @@ type GatewaySchedulingConfig struct {
 	StickySessionMaxWaiting  int           `mapstructure:"sticky_session_max_waiting"`
 	StickySessionWaitTimeout time.Duration `mapstructure:"sticky_session_wait_timeout"`
 
+	// 主账号选择策略：
+	// - "last_used"：默认，同优先级按最久未使用
+	// - "quota_remaining"：同优先级优先剩余额度最高
+	AccountSelectionMode string `mapstructure:"account_selection_mode"`
+	// 剩余额度快照周期：
+	// - 0：每次请求实时计算
+	// - >0：在该时间窗内复用第一次计算的额度快照
+	QuotaBalanceSnapshotInterval time.Duration `mapstructure:"quota_balance_snapshot_interval"`
+	// 当 OpenAI sticky 账号与同优先级最佳候选的剩余额度差值达到该百分比时，主动释放 sticky。
+	// 0 表示禁用。
+	StickyQuotaGapReleaseThresholdPercent float64 `mapstructure:"sticky_quota_gap_release_threshold_percent"`
+
 	// 兜底排队配置
 	FallbackWaitTimeout time.Duration `mapstructure:"fallback_wait_timeout"`
 	FallbackMaxWaiting  int           `mapstructure:"fallback_max_waiting"`
 
-	// 兜底层账户选择策略: "last_used"(按最后使用时间排序，默认) 或 "random"(随机)
+	// 兜底层账户选择策略: "last_used"(按最后使用时间排序，默认) / "random"(随机) / "quota_remaining"(同优先级优先剩余额度最高)
 	FallbackSelectionMode string `mapstructure:"fallback_selection_mode"`
 
 	// 负载计算
@@ -1824,6 +1836,9 @@ func setDefaults() {
 	viper.SetDefault("gateway.max_line_size", 500*1024*1024)
 	viper.SetDefault("gateway.scheduling.sticky_session_max_waiting", 3)
 	viper.SetDefault("gateway.scheduling.sticky_session_wait_timeout", 120*time.Second)
+	viper.SetDefault("gateway.scheduling.account_selection_mode", "last_used")
+	viper.SetDefault("gateway.scheduling.quota_balance_snapshot_interval", 0*time.Second)
+	viper.SetDefault("gateway.scheduling.sticky_quota_gap_release_threshold_percent", 0.0)
 	viper.SetDefault("gateway.scheduling.fallback_wait_timeout", 30*time.Second)
 	viper.SetDefault("gateway.scheduling.fallback_max_waiting", 100)
 	viper.SetDefault("gateway.scheduling.fallback_selection_mode", "last_used")
@@ -2628,11 +2643,27 @@ func (c *Config) Validate() error {
 	if c.Gateway.Scheduling.StickySessionWaitTimeout <= 0 {
 		return fmt.Errorf("gateway.scheduling.sticky_session_wait_timeout must be positive")
 	}
+	switch c.Gateway.Scheduling.AccountSelectionMode {
+	case "", "last_used", "quota_remaining":
+	default:
+		return fmt.Errorf("gateway.scheduling.account_selection_mode must be one of: last_used, quota_remaining")
+	}
+	if c.Gateway.Scheduling.QuotaBalanceSnapshotInterval < 0 {
+		return fmt.Errorf("gateway.scheduling.quota_balance_snapshot_interval must be non-negative")
+	}
+	if c.Gateway.Scheduling.StickyQuotaGapReleaseThresholdPercent < 0 {
+		return fmt.Errorf("gateway.scheduling.sticky_quota_gap_release_threshold_percent must be non-negative")
+	}
 	if c.Gateway.Scheduling.FallbackWaitTimeout <= 0 {
 		return fmt.Errorf("gateway.scheduling.fallback_wait_timeout must be positive")
 	}
 	if c.Gateway.Scheduling.FallbackMaxWaiting <= 0 {
 		return fmt.Errorf("gateway.scheduling.fallback_max_waiting must be positive")
+	}
+	switch c.Gateway.Scheduling.FallbackSelectionMode {
+	case "", "last_used", "random", "quota_remaining":
+	default:
+		return fmt.Errorf("gateway.scheduling.fallback_selection_mode must be one of: last_used, random, quota_remaining")
 	}
 	if c.Gateway.Scheduling.SnapshotMGetChunkSize <= 0 {
 		return fmt.Errorf("gateway.scheduling.snapshot_mget_chunk_size must be positive")
