@@ -410,6 +410,7 @@ import Icon from '@/components/icons/Icon.vue'
 import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRulesModal.vue'
 import TLSFingerprintProfilesModal from '@/components/admin/TLSFingerprintProfilesModal.vue'
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
+import { extractApiErrorMessage } from '@/utils/apiError'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import type { Account, AccountPlatform, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel } from '@/types'
 
@@ -1488,6 +1489,9 @@ const handleAccountUpdated = (updatedAccount: Account) => {
   patchAccountInList(updatedAccount)
   enterAutoRefreshSilentWindow()
 }
+const isAccountResponse = (value: unknown): value is Account => {
+  return Boolean(value && typeof value === 'object' && typeof (value as { id?: unknown }).id === 'number')
+}
 const formatExportTimestamp = () => {
   const now = new Date()
   const pad2 = (value: number) => String(value).padStart(2, '0')
@@ -1545,12 +1549,25 @@ const handleSchedule = async (a: Account) => {
 const closeSchedulePanel = () => { showSchedulePanel.value = false; scheduleAcc.value = null; scheduleModelOptions.value = [] }
 const handleReAuth = (a: Account) => { reAuthAcc.value = a; showReAuth.value = true }
 const handleRefresh = async (a: Account) => {
+  const loadingToastId = appStore.showInfo(t('admin.accounts.refreshingToken', { name: a.name }), undefined)
   try {
     const updated = await adminAPI.accounts.refreshCredentials(a.id)
-    patchAccountInList(updated)
+    if (isAccountResponse(updated)) {
+      patchAccountInList(updated)
+    } else {
+      await reload()
+    }
     enterAutoRefreshSilentWindow()
+    appStore.hideToast(loadingToastId)
+    if (!isAccountResponse(updated) && updated.warning === 'missing_project_id_temporary') {
+      appStore.showWarning(t('admin.accounts.tokenRefreshedWithProjectWarning'))
+    } else {
+      appStore.showSuccess(t('admin.accounts.tokenRefreshed'))
+    }
   } catch (error) {
     console.error('Failed to refresh credentials:', error)
+    appStore.hideToast(loadingToastId)
+    appStore.showError(extractApiErrorMessage(error, t('admin.accounts.failedToRefresh')))
   }
 }
 const handleRecoverState = async (a: Account) => {

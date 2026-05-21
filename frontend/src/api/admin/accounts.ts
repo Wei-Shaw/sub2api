@@ -199,8 +199,15 @@ export async function testAccount(id: number): Promise<{
  * @param id - Account ID
  * @returns Updated account
  */
-export async function refreshCredentials(id: number): Promise<Account> {
-  const { data } = await apiClient.post<Account>(`/admin/accounts/${id}/refresh`)
+export interface RefreshCredentialsWarningResult {
+  message?: string
+  warning: string
+}
+
+export type RefreshCredentialsResult = Account | RefreshCredentialsWarningResult
+
+export async function refreshCredentials(id: number): Promise<RefreshCredentialsResult> {
+  const { data } = await apiClient.post<RefreshCredentialsResult>(`/admin/accounts/${id}/refresh`)
   return data
 }
 
