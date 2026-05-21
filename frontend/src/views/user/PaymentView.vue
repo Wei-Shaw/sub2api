@@ -138,8 +138,8 @@
                   </div>
                   <div class="rounded-2xl border border-[#e8e6dc] bg-[#faf9f5] px-4 py-3 shadow-[0_0_0_1px_#f0eee6] dark:border-gray-700 dark:bg-gray-800">
                     <p class="text-xs text-gray-500">充值换算</p>
-                    <p class="mt-1 text-2xl font-black text-gray-950 dark:text-white">1={{ safeMultiplier }}</p>
-                    <p class="mt-1 text-xs text-gray-500">1 元 = {{ safeMultiplier }} API 余额</p>
+                    <p class="mt-1 text-2xl font-black text-gray-950 dark:text-white">1¥={{ safeMultiplier }}$</p>
+                    <p class="mt-1 text-xs text-gray-500">1 元 = {{ safeMultiplier }} 美金余额</p>
                   </div>
                   <div class="rounded-2xl border border-[#0e0f0c] bg-[#0e0f0c] px-4 py-3 text-white shadow-[rgba(50,50,93,0.22)_0px_18px_36px_-18px] dark:border-gray-700 dark:bg-white dark:text-gray-950">
                     <p class="text-xs opacity-70">最推荐</p>
@@ -246,7 +246,8 @@
                     <span class="text-5xl font-black tracking-tight text-gray-950 dark:text-white">&yen;{{ planDisplayAmount(plan) }}</span>
                     <span class="mb-2 text-sm text-gray-500">{{ planPriceSuffix(plan) }}</span>
                   </div>
-                  <p class="mt-2 text-sm font-semibold text-gray-900 dark:text-white">{{ planValueLine(plan) }}</p>
+                  <p class="mt-2 text-sm font-semibold text-gray-900 dark:text-white">{{ planQuotaLine(plan) }}</p>
+                  <p class="mt-1 text-xs text-gray-400">{{ planValueLine(plan) }}</p>
                   <p class="mt-1 text-xs text-gray-400">余额支付约扣 ${{ planDeductBalance(plan) }} 充值余额</p>
                 </div>
 
@@ -739,6 +740,12 @@ function planTagline(plan: SubscriptionPlan): string {
   if (plan.validity_days === 1) return '今天要赶项目，就别买一个月。'
   if (plan.validity_days <= 7) return '一周持续写代码，多数人选这个。'
   return '每天都用 AI 编程，月卡最省心。'
+}
+
+function planQuotaLine(plan: SubscriptionPlan): string {
+  if (plan.validity_days === 1) return '¥9.9 = $110 额度，当天可用。'
+  if (plan.validity_days <= 7) return '¥59.9 = 每天 $120 额度，连续 7 天。'
+  return '¥249.9 = 每天 $130 额度，连续 30 天。'
 }
 
 function planValueLine(plan: SubscriptionPlan): string {
