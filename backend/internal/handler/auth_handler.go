@@ -3,7 +3,6 @@ package handler
 import (
 	"context"
 	"log/slog"
-	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
@@ -608,7 +607,7 @@ type ForgotPasswordResponse struct {
 	Message string `json:"message"`
 }
 
-// ForgotPassword 请求密码重置
+// ForgotPassword 请求密码重置验证码
 // POST /api/v1/auth/forgot-password
 func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 	var req ForgotPasswordRequest
@@ -623,22 +622,15 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 		return
 	}
 
-	frontendBaseURL := strings.TrimSpace(h.settingSvc.GetFrontendURL(c.Request.Context()))
-	if frontendBaseURL == "" {
-		slog.Error("frontend_url not configured in settings or config; cannot build password reset link")
-		response.InternalError(c, "Password reset is not configured")
-		return
-	}
-
-	// Request password reset (async)
-	// Note: This returns success even if email doesn't exist (to prevent enumeration)
-	if err := h.authService.RequestPasswordResetAsync(c.Request.Context(), req.Email, frontendBaseURL); err != nil {
+	// Request password reset code.
+	// Note: This returns success even if email doesn't exist (to prevent enumeration).
+	if err := h.authService.RequestPasswordResetCode(c.Request.Context(), req.Email); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
 
 	response.Success(c, ForgotPasswordResponse{
-		Message: "If your email is registered, you will receive a password reset link shortly.",
+		Message: "If your email is registered, you will receive a password reset code shortly.",
 	})
 }
 

@@ -491,6 +491,48 @@ func (s *EmailService) GeneratePasswordResetToken() (string, error) {
 	return hex.EncodeToString(bytes), nil
 }
 
+// SendPasswordResetCodeEmail sends a password reset email with a 6-digit verification code.
+func (s *EmailService) SendPasswordResetCodeEmail(ctx context.Context, email, siteName string) error {
+	code, err := s.GenerateVerifyCode()
+	if err != nil {
+		return fmt.Errorf("generate reset code: %w", err)
+	}
+
+	data := &PasswordResetTokenData{
+		Token:     code,
+		CreatedAt: time.Now(),
+	}
+	if err := s.cache.SetPasswordResetToken(ctx, email, data, passwordResetTokenTTL); err != nil {
+		return fmt.Errorf("save reset code: %w", err)
+	}
+
+	subject := fmt.Sprintf("[%s] 密码重置验证码", siteName)
+	body := s.buildPasswordResetCodeEmailBody(code, siteName)
+	if err := s.SendEmail(ctx, email, subject, body); err != nil {
+		return fmt.Errorf("send email: %w", err)
+	}
+
+	return nil
+}
+
+// SendPasswordResetCodeEmailWithCooldown sends password reset code email with cooldown check.
+func (s *EmailService) SendPasswordResetCodeEmailWithCooldown(ctx context.Context, email, siteName string) error {
+	if s.cache.IsPasswordResetEmailInCooldown(ctx, email) {
+		slog.Info("password reset code email skipped due to cooldown", "email", email)
+		return nil
+	}
+
+	if err := s.SendPasswordResetCodeEmail(ctx, email, siteName); err != nil {
+		return err
+	}
+
+	if err := s.cache.SetPasswordResetEmailCooldown(ctx, email, passwordResetEmailCooldown); err != nil {
+		slog.Error("failed to set password reset cooldown", "email", email, "error", err)
+	}
+
+	return nil
+}
+
 // SendPasswordResetEmail sends a password reset email with a reset link
 func (s *EmailService) SendPasswordResetEmail(ctx context.Context, email, siteName, resetURL string) error {
 	var token string
@@ -586,6 +628,44 @@ func (s *EmailService) ConsumePasswordResetToken(ctx context.Context, email, tok
 		slog.Error("failed to delete password reset token after consumption", "email", email, "error", err)
 	}
 	return nil
+}
+
+// buildPasswordResetCodeEmailBody builds the HTML content for password reset verification code email.
+func (s *EmailService) buildPasswordResetCodeEmailBody(code, siteName string) string {
+	return fmt.Sprintf(`
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif; background-color: #f5f5f5; margin: 0; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .header { background: linear-gradient(135deg, #667eea 0%%, #764ba2 100%%); color: white; padding: 30px; text-align: center; }
+        .header h1 { margin: 0; font-size: 24px; }
+        .content { padding: 40px 30px; text-align: center; }
+        .code { display: inline-block; background-color: #f8f9fa; border: 2px dashed #667eea; border-radius: 8px; padding: 16px 28px; margin: 20px 0; font-size: 32px; font-weight: 700; letter-spacing: 8px; color: #333; }
+        .info { color: #666; font-size: 14px; line-height: 1.6; margin-top: 20px; }
+        .footer { background-color: #f8f9fa; padding: 20px; text-align: center; color: #999; font-size: 12px; }
+        .warning { color: #e74c3c; font-weight: 500; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header"><h1>%s</h1></div>
+        <div class="content">
+            <p style="font-size: 18px; color: #333;">密码重置验证码</p>
+            <p style="color: #666;">请在重置密码页面输入以下验证码：</p>
+            <div class="code">%s</div>
+            <div class="info">
+                <p>此验证码将在 <strong>30 分钟</strong>后失效。</p>
+                <p class="warning">如果您没有请求重置密码，请忽略此邮件。您的密码将保持不变。</p>
+            </div>
+        </div>
+        <div class="footer"><p>这是一封自动发送的邮件，请勿回复。</p></div>
+    </div>
+</body>
+</html>
+`, siteName, code)
 }
 
 // buildPasswordResetEmailBody builds the HTML content for password reset email

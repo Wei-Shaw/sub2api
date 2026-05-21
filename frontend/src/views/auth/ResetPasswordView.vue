@@ -1,7 +1,6 @@
 <template>
   <AuthLayout>
     <div class="space-y-6">
-      <!-- Title -->
       <div class="text-center">
         <h2 class="text-2xl font-bold text-gray-900 dark:text-white">
           {{ t('auth.resetPasswordTitle') }}
@@ -11,36 +10,7 @@
         </p>
       </div>
 
-      <!-- Invalid Link State -->
-      <div v-if="isInvalidLink" class="space-y-6">
-        <div class="rounded-xl border border-amber-200 bg-amber-50 p-6 dark:border-amber-800/50 dark:bg-amber-900/20">
-          <div class="flex flex-col items-center gap-4 text-center">
-            <div class="flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-800/50">
-              <Icon name="exclamationCircle" size="lg" class="text-amber-600 dark:text-amber-400" />
-            </div>
-            <div>
-              <h3 class="text-lg font-semibold text-amber-800 dark:text-amber-200">
-                {{ t('auth.invalidResetLink') }}
-              </h3>
-              <p class="mt-2 text-sm text-amber-700 dark:text-amber-300">
-                {{ t('auth.invalidResetLinkHint') }}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div class="text-center">
-          <router-link
-            to="/forgot-password"
-            class="inline-flex items-center gap-2 font-medium text-primary-600 transition-colors hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300"
-          >
-            {{ t('auth.requestNewResetLink') }}
-          </router-link>
-        </div>
-      </div>
-
-      <!-- Success State -->
-      <div v-else-if="isSuccess" class="space-y-6">
+      <div v-if="isSuccess" class="space-y-6">
         <div class="rounded-xl border border-green-200 bg-green-50 p-6 dark:border-green-800/50 dark:bg-green-900/20">
           <div class="flex flex-col items-center gap-4 text-center">
             <div class="flex h-12 w-12 items-center justify-center rounded-full bg-green-100 dark:bg-green-800/50">
@@ -68,9 +38,7 @@
         </div>
       </div>
 
-      <!-- Form State -->
       <form v-else @submit.prevent="handleSubmit" class="space-y-5">
-        <!-- Email (readonly) -->
         <div>
           <label for="email" class="input-label">
             {{ t('auth.emailLabel') }}
@@ -81,16 +49,45 @@
             </div>
             <input
               id="email"
-              :value="email"
+              v-model="formData.email"
               type="email"
-              readonly
-              disabled
-              class="input pl-11 bg-gray-50 dark:bg-dark-700"
+              required
+              autocomplete="email"
+              :disabled="isLoading"
+              class="input pl-11"
+              :class="{ 'input-error': errors.email }"
+              :placeholder="t('auth.emailPlaceholder')"
             />
           </div>
         </div>
 
-        <!-- New Password Input -->
+        <div>
+          <label for="code" class="input-label">
+            {{ t('auth.verificationCode') }}
+          </label>
+          <div class="relative">
+            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
+              <Icon name="shield" size="md" class="text-gray-400 dark:text-dark-300" />
+            </div>
+            <input
+              id="code"
+              v-model="formData.code"
+              type="text"
+              inputmode="numeric"
+              maxlength="6"
+              required
+              autocomplete="one-time-code"
+              :disabled="isLoading"
+              class="input pl-11 tracking-widest"
+              :class="{ 'input-error': errors.code }"
+              :placeholder="t('auth.resetCodePlaceholder')"
+            />
+          </div>
+          <p class="mt-2 text-xs text-gray-500 dark:text-dark-300">
+            {{ t('auth.resetCodeHint') }}
+          </p>
+        </div>
+
         <div>
           <label for="password" class="input-label">
             {{ t('auth.newPassword') }}
@@ -121,7 +118,6 @@
           </div>
         </div>
 
-        <!-- Confirm Password Input -->
         <div>
           <label for="confirmPassword" class="input-label">
             {{ t('auth.confirmPassword') }}
@@ -152,7 +148,6 @@
           </div>
         </div>
 
-        <!-- Submit Button -->
         <button
           type="submit"
           :disabled="isLoading"
@@ -181,10 +176,18 @@
           <Icon v-else name="checkCircle" size="md" class="mr-2" />
           {{ isLoading ? t('auth.resettingPassword') : t('auth.resetPassword') }}
         </button>
+
+        <div class="text-center text-sm">
+          <router-link
+            to="/forgot-password"
+            class="font-medium text-primary-600 transition-colors hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300"
+          >
+            {{ t('auth.requestNewResetLink') }}
+          </router-link>
+        </div>
       </form>
     </div>
 
-    <!-- Footer -->
     <template #footer>
       <p class="text-gray-500 dark:text-dark-300">
         {{ t('auth.rememberedPassword') }}
@@ -209,13 +212,8 @@ import { useAppStore } from '@/stores'
 import { resetPassword } from '@/api/auth'
 
 const { t } = useI18n()
-
-// ==================== Router & Stores ====================
-
 const route = useRoute()
 const appStore = useAppStore()
-
-// ==================== State ====================
 
 const isLoading = ref<boolean>(false)
 const isSuccess = ref<boolean>(false)
@@ -223,22 +221,22 @@ const errorMessage = ref<string>('')
 const showPassword = ref<boolean>(false)
 const showConfirmPassword = ref<boolean>(false)
 
-// URL parameters
-const email = ref<string>('')
-const token = ref<string>('')
-
 const formData = reactive({
+  email: '',
+  code: '',
   password: '',
   confirmPassword: ''
 })
 
 const errors = reactive({
+  email: '',
+  code: '',
   password: '',
   confirmPassword: ''
 })
 
 const validationToastMessage = computed(
-  () => errors.password || errors.confirmPassword || ''
+  () => errors.email || errors.code || errors.password || errors.confirmPassword || ''
 )
 
 watch(validationToastMessage, (value, previousValue) => {
@@ -247,30 +245,34 @@ watch(validationToastMessage, (value, previousValue) => {
   }
 })
 
-// Check if the reset link is valid (has email and token)
-const isInvalidLink = computed(() => !email.value || !token.value)
-
-// ==================== Lifecycle ====================
-
 onMounted(() => {
-  // Get email and token from URL query parameters
-  email.value = (route.query.email as string) || ''
-  token.value = (route.query.token as string) || ''
-
-  if (!email.value || !token.value) {
-    appStore.showError(t('auth.invalidResetLink'))
-  }
+  formData.email = (route.query.email as string) || ''
 })
 
-// ==================== Validation ====================
-
 function validateForm(): boolean {
+  errors.email = ''
+  errors.code = ''
   errors.password = ''
   errors.confirmPassword = ''
 
   let isValid = true
 
-  // Password validation
+  if (!formData.email.trim()) {
+    errors.email = t('auth.emailRequired')
+    isValid = false
+  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+    errors.email = t('auth.invalidEmail')
+    isValid = false
+  }
+
+  if (!formData.code.trim()) {
+    errors.code = t('auth.verificationCodeRequired')
+    isValid = false
+  } else if (!/^\d{6}$/.test(formData.code.trim())) {
+    errors.code = t('auth.invalidVerificationCode')
+    isValid = false
+  }
+
   if (!formData.password) {
     errors.password = t('auth.passwordRequired')
     isValid = false
@@ -279,7 +281,6 @@ function validateForm(): boolean {
     isValid = false
   }
 
-  // Confirm password validation
   if (!formData.confirmPassword) {
     errors.confirmPassword = t('auth.confirmPasswordRequired')
     isValid = false
@@ -290,8 +291,6 @@ function validateForm(): boolean {
 
   return isValid
 }
-
-// ==================== Form Handlers ====================
 
 async function handleSubmit(): Promise<void> {
   errorMessage.value = ''
@@ -304,8 +303,8 @@ async function handleSubmit(): Promise<void> {
 
   try {
     await resetPassword({
-      email: email.value,
-      token: token.value,
+      email: formData.email.trim(),
+      token: formData.code.trim(),
       new_password: formData.password
     })
 
@@ -314,15 +313,10 @@ async function handleSubmit(): Promise<void> {
   } catch (error: unknown) {
     const err = error as { message?: string; response?: { data?: { detail?: string; code?: string } } }
 
-    // Check for invalid/expired token error
     if (err.response?.data?.code === 'INVALID_RESET_TOKEN') {
       errorMessage.value = t('auth.invalidOrExpiredToken')
-    } else if (err.response?.data?.detail) {
-      errorMessage.value = err.response.data.detail
-    } else if (err.message) {
-      errorMessage.value = err.message
     } else {
-      errorMessage.value = t('auth.resetPasswordFailed')
+      errorMessage.value = err.response?.data?.detail || err.message || t('auth.resetPasswordFailed')
     }
 
     appStore.showError(errorMessage.value)

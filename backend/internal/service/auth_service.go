@@ -1249,10 +1249,35 @@ func (s *AuthService) preparePasswordReset(ctx context.Context, email, frontendB
 		siteName = s.settingService.GetSiteName(ctx)
 	}
 
-	// Build reset URL base
-	resetURL := fmt.Sprintf("%s/reset-password", strings.TrimSuffix(frontendBaseURL, "/"))
+	// Build reset URL base. Empty frontendBaseURL means the caller only needs an email code.
+	resetURL := ""
+	if strings.TrimSpace(frontendBaseURL) != "" {
+		resetURL = fmt.Sprintf("%s/reset-password", strings.TrimSuffix(frontendBaseURL, "/"))
+	}
 
 	return siteName, resetURL, true
+}
+
+func (s *AuthService) RequestPasswordResetCode(ctx context.Context, email string) error {
+	if !s.IsPasswordResetEnabled(ctx) {
+		return infraerrors.Forbidden("PASSWORD_RESET_DISABLED", "password reset is not enabled")
+	}
+	if s.emailService == nil {
+		return ErrServiceUnavailable
+	}
+
+	siteName, _, shouldProceed := s.preparePasswordReset(ctx, email, "")
+	if !shouldProceed {
+		return nil // Silent success to prevent enumeration
+	}
+
+	if err := s.emailService.SendPasswordResetCodeEmailWithCooldown(ctx, email, siteName); err != nil {
+		logger.LegacyPrintf("service.auth", "[Auth] Failed to send password reset code to %s: %v", email, err)
+		return nil // Silent success to prevent enumeration
+	}
+
+	logger.LegacyPrintf("service.auth", "[Auth] Password reset code sent to: %s", email)
+	return nil
 }
 
 // RequestPasswordReset 请求密码重置（同步发送）
