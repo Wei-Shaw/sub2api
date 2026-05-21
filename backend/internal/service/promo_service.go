@@ -123,9 +123,9 @@ func (s *PromoService) ApplyPromoCode(ctx context.Context, userID int64, code st
 		return ErrPromoCodeAlreadyUsed
 	}
 
-	// 增加用户余额
-	if err := s.userRepo.UpdateBalance(txCtx, userID, promoCode.BonusAmount); err != nil {
-		return fmt.Errorf("update user balance: %w", err)
+	// 增加赠送余额：优惠码属于平台赠送，只能用于按量计费，不能购买订阅。
+	if err := s.userRepo.UpdateGiftBalance(txCtx, userID, promoCode.BonusAmount); err != nil {
+		return fmt.Errorf("update user gift balance: %w", err)
 	}
 
 	// 创建使用记录

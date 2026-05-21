@@ -122,8 +122,8 @@ func (s *UsageService) Create(ctx context.Context, req CreateUsageLogRequest) (*
 	// 扣除用户余额
 	balanceUpdated := false
 	if inserted && req.ActualCost > 0 {
-		if err := s.userRepo.UpdateBalance(txCtx, req.UserID, -req.ActualCost); err != nil {
-			return nil, fmt.Errorf("update user balance: %w", err)
+		if err := s.userRepo.DeductBalance(txCtx, req.UserID, req.ActualCost); err != nil {
+			return nil, fmt.Errorf("deduct user balance: %w", err)
 		}
 		balanceUpdated = true
 	}

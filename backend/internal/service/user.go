@@ -7,22 +7,25 @@ import (
 )
 
 type User struct {
-	ID             int64
-	Email          string
-	Username       string
-	Notes          string
-	AvatarURL      string
-	AvatarSource   string
-	AvatarMIME     string
-	AvatarByteSize int
-	AvatarSHA256   string
-	PasswordHash   string
-	Role           string
-	Balance        float64
-	Concurrency    int
-	Status         string
-	AllowedGroups  []int64
-	TokenVersion   int64 // Incremented on password change to invalidate existing tokens
+	ID                int64
+	Email             string
+	Username          string
+	Notes             string
+	AvatarURL         string
+	AvatarSource      string
+	AvatarMIME        string
+	AvatarByteSize    int
+	AvatarSHA256      string
+	PasswordHash      string
+	Role              string
+	Balance           float64 // Available total balance: CashBalance + GiftBalance (kept for backward compatibility)
+	CashBalance       float64 // Recharged balance; can pay subscriptions and metered usage
+	GiftBalance       float64 // Bonus/rebate balance; can only pay metered usage
+	FrozenGiftBalance float64 // Gift balance pending anti-abuse freeze
+	Concurrency       int
+	Status            string
+	AllowedGroups     []int64
+	TokenVersion      int64 // Incremented on password change to invalidate existing tokens
 	// TokenVersionResolved indicates TokenVersion already contains the fingerprint-derived
 	// value expected in JWT claims and refresh-token state.
 	TokenVersionResolved bool

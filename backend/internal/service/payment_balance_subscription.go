@@ -46,8 +46,8 @@ func (s *PaymentService) PurchaseSubscriptionWithBalance(ctx context.Context, us
 	if user.Status != payment.EntityStatusActive {
 		return nil, infraerrors.Forbidden("USER_INACTIVE", "user account is disabled")
 	}
-	if user.Balance+1e-9 < deductAmount {
-		return nil, insufficientBalanceError(user.Balance, deductAmount)
+	if user.CashBalance+1e-9 < deductAmount {
+		return nil, insufficientBalanceError(user.CashBalance, deductAmount)
 	}
 
 	now := time.Now()
@@ -63,8 +63,9 @@ func (s *PaymentService) PurchaseSubscriptionWithBalance(ctx context.Context, us
 		return nil, err
 	}
 	updated, err := s.entClient.User.Update().
-		Where(dbuser.IDEQ(userID), dbuser.BalanceGTE(deductAmount)).
+		Where(dbuser.IDEQ(userID), dbuser.CashBalanceGTE(deductAmount)).
 		AddBalance(-deductAmount).
+		AddCashBalance(-deductAmount).
 		Save(ctx)
 	if err != nil {
 		_ = s.entClient.PaymentOrder.UpdateOneID(order.ID).SetStatus(OrderStatusFailed).SetFailedAt(now).SetFailedReason("deduct balance failed").Exec(ctx)
@@ -74,20 +75,20 @@ func (s *PaymentService) PurchaseSubscriptionWithBalance(ctx context.Context, us
 		_ = s.entClient.PaymentOrder.UpdateOneID(order.ID).SetStatus(OrderStatusFailed).SetFailedAt(now).SetFailedReason("insufficient balance").Exec(ctx)
 		fresh, freshErr := s.userRepo.GetByID(ctx, userID)
 		if freshErr == nil && fresh != nil {
-			return nil, insufficientBalanceError(fresh.Balance, deductAmount)
+			return nil, insufficientBalanceError(fresh.CashBalance, deductAmount)
 		}
-		return nil, insufficientBalanceError(user.Balance, deductAmount)
+		return nil, insufficientBalanceError(user.CashBalance, deductAmount)
 	}
 
 	s.writeAuditLog(ctx, order.ID, "BALANCE_PURCHASE_DEDUCTED", "system", map[string]any{
-		"amount":         deductAmount,
-		"planPriceCNY":   quote.Amount,
-		"multiplier":     multiplier,
-		"balanceBefore":  user.Balance,
-		"balanceAfter":   user.Balance - deductAmount,
-		"planID":         plan.ID,
-		"groupID":        plan.GroupID,
-		"purchaseAction": quote.Action,
+		"amount":            deductAmount,
+		"planPriceCNY":      quote.Amount,
+		"multiplier":        multiplier,
+		"cashBalanceBefore": user.CashBalance,
+		"cashBalanceAfter":  user.CashBalance - deductAmount,
+		"planID":            plan.ID,
+		"groupID":           plan.GroupID,
+		"purchaseAction":    quote.Action,
 	})
 	if err := s.toPaid(ctx, order, fmt.Sprintf("BALANCE-%d", order.ID), deductAmount, "balance"); err != nil {
 		// Roll back the balance deduction if subscription fulfillment fails.
@@ -102,8 +103,8 @@ func (s *PaymentService) PurchaseSubscriptionWithBalance(ctx context.Context, us
 		PlanID:           plan.ID,
 		GroupID:          plan.GroupID,
 		Amount:           deductAmount,
-		BalanceBefore:    user.Balance,
-		BalanceAfter:     user.Balance - deductAmount,
+		BalanceBefore:    user.CashBalance,
+		BalanceAfter:     user.CashBalance - deductAmount,
 		SubscriptionDays: validityDays,
 		Status:           OrderStatusCompleted,
 		CompletedAt:      now,
@@ -112,9 +113,10 @@ func (s *PaymentService) PurchaseSubscriptionWithBalance(ctx context.Context, us
 }
 
 func insufficientBalanceError(balance float64, required float64) error {
-	return infraerrors.Conflict("INSUFFICIENT_BALANCE", "账户余额不足，请联系 QQ 591719412 充值后再购买").WithMetadata(map[string]string{
-		"balance":  fmt.Sprintf("%.2f", balance),
-		"required": fmt.Sprintf("%.2f", required),
-		"qq":       "591719412",
+	return infraerrors.Conflict("INSUFFICIENT_BALANCE", "充值余额不足，赠送余额不能购买套餐，请联系 QQ 591719412 充值后再购买").WithMetadata(map[string]string{
+		"cash_balance": fmt.Sprintf("%.2f", balance),
+		"balance":      fmt.Sprintf("%.2f", balance),
+		"required":     fmt.Sprintf("%.2f", required),
+		"qq":           "591719412",
 	})
 }

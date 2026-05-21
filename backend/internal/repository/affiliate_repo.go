@@ -137,7 +137,17 @@ func (r *affiliateRepository) AccrueQuota(ctx context.Context, inviterID, invite
 			applied = false
 			return nil
 		}
-
+		if freezeHours > 0 {
+			if _, err = txClient.ExecContext(txCtx,
+				`UPDATE users SET frozen_gift_balance = frozen_gift_balance + $1, updated_at = NOW() WHERE id = $2`, amount, inviterID); err != nil {
+				return fmt.Errorf("credit frozen gift balance: %w", err)
+			}
+		} else {
+			if _, err = txClient.ExecContext(txCtx,
+				`UPDATE users SET balance = balance + $1, gift_balance = gift_balance + $1, updated_at = NOW() WHERE id = $2`, amount, inviterID); err != nil {
+				return fmt.Errorf("credit gift balance: %w", err)
+			}
+		}
 		if freezeHours > 0 {
 			if _, err = txClient.ExecContext(txCtx, `
 INSERT INTO user_affiliate_ledger (user_id, action, amount, source_user_id, source_order_id, frozen_until, created_at, updated_at)
@@ -229,6 +239,15 @@ WHERE user_id = $2`, thawed, userID)
 	if err != nil {
 		return 0, fmt.Errorf("move thawed quota: %w", err)
 	}
+	if _, err = txClient.ExecContext(txCtx, `
+UPDATE users
+SET balance = balance + $1,
+    gift_balance = gift_balance + $1,
+    frozen_gift_balance = GREATEST(frozen_gift_balance - $1, 0),
+    updated_at = NOW()
+WHERE id = $2`, thawed, userID); err != nil {
+		return 0, fmt.Errorf("move thawed gift balance: %w", err)
+	}
 	return thawed, nil
 }
 
@@ -288,11 +307,9 @@ FROM cleared`, userID)
 
 		affected, err := txClient.User.Update().
 			Where(user.IDEQ(userID)).
-			AddBalance(transferred).
-			AddTotalRecharged(transferred).
 			Save(txCtx)
 		if err != nil {
-			return fmt.Errorf("credit user balance by affiliate quota: %w", err)
+			return fmt.Errorf("clear affiliate quota: %w", err)
 		}
 		if affected == 0 {
 			return service.ErrUserNotFound
@@ -1008,13 +1025,13 @@ func (r *affiliateRepository) GrantRegisterBonus(ctx context.Context, inviterID,
 	return r.withTx(ctx, func(txCtx context.Context, txClient *dbent.Client) error {
 		// Add balance to inviter
 		if _, err := txClient.ExecContext(txCtx,
-			`UPDATE users SET balance = balance + $1, total_recharged = total_recharged + $1, updated_at = NOW() WHERE id = $2`,
+			`UPDATE users SET balance = balance + $1, gift_balance = gift_balance + $1, updated_at = NOW() WHERE id = $2`,
 			amount, inviterID); err != nil {
 			return fmt.Errorf("grant register bonus to inviter: %w", err)
 		}
 		// Add balance to invitee
 		if _, err := txClient.ExecContext(txCtx,
-			`UPDATE users SET balance = balance + $1, total_recharged = total_recharged + $1, updated_at = NOW() WHERE id = $2`,
+			`UPDATE users SET balance = balance + $1, gift_balance = gift_balance + $1, updated_at = NOW() WHERE id = $2`,
 			amount, inviteeID); err != nil {
 			return fmt.Errorf("grant register bonus to invitee: %w", err)
 		}
@@ -1036,17 +1053,35 @@ func (r *affiliateRepository) GrantRegisterBonus(ctx context.Context, inviterID,
 
 // GrantRegisterBonusToUser awards a register bonus to a single user (no transaction coupling).
 func (r *affiliateRepository) GrantRegisterBonusToUser(ctx context.Context, userID, sourceUserID int64, amount float64, action string) error {
-	if _, err := r.client.ExecContext(ctx,
-		`UPDATE users SET balance = balance + $1, total_recharged = total_recharged + $1, updated_at = NOW() WHERE id = $2`,
-		amount, userID); err != nil {
-		return fmt.Errorf("grant register bonus to user %d: %w", userID, err)
+	freezeUntilSQL := "NULL"
+	if action == "register_bonus" {
+		freezeUntilSQL = "NOW() + INTERVAL '24 hours'"
 	}
-	if _, err := r.client.ExecContext(ctx,
-		`INSERT INTO user_affiliate_ledger (user_id, action, amount, source_user_id, created_at, updated_at) VALUES ($1, $2, $3, $4, NOW(), NOW())`,
-		userID, action, amount, sourceUserID); err != nil {
-		return fmt.Errorf("insert register bonus ledger for user %d: %w", userID, err)
-	}
-	return nil
+	return r.withTx(ctx, func(txCtx context.Context, txClient *dbent.Client) error {
+		if action == "register_bonus" {
+			if _, err := txClient.ExecContext(txCtx,
+				`UPDATE users SET frozen_gift_balance = frozen_gift_balance + $1, updated_at = NOW() WHERE id = $2`,
+				amount, userID); err != nil {
+				return fmt.Errorf("grant frozen register bonus to user %d: %w", userID, err)
+			}
+			if _, err := txClient.ExecContext(txCtx,
+				`UPDATE user_affiliates SET aff_frozen_quota = aff_frozen_quota + $1, aff_history_quota = aff_history_quota + $1, updated_at = NOW() WHERE user_id = $2`,
+				amount, userID); err != nil {
+				return fmt.Errorf("grant frozen affiliate quota to user %d: %w", userID, err)
+			}
+		} else {
+			if _, err := txClient.ExecContext(txCtx,
+				`UPDATE users SET balance = balance + $1, gift_balance = gift_balance + $1, updated_at = NOW() WHERE id = $2`,
+				amount, userID); err != nil {
+				return fmt.Errorf("grant register bonus to user %d: %w", userID, err)
+			}
+		}
+		ledgerSQL := fmt.Sprintf(`INSERT INTO user_affiliate_ledger (user_id, action, amount, source_user_id, frozen_until, created_at, updated_at) VALUES ($1, $2, $3, $4, %s, NOW(), NOW())`, freezeUntilSQL)
+		if _, err := txClient.ExecContext(txCtx, ledgerSQL, userID, action, amount, sourceUserID); err != nil {
+			return fmt.Errorf("insert register bonus ledger for user %d: %w", userID, err)
+		}
+		return nil
+	})
 }
 
 func (r *affiliateRepository) UpdateUserAffCode(ctx context.Context, userID int64, newCode string) error {

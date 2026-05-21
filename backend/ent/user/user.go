@@ -29,6 +29,12 @@ const (
 	FieldRole = "role"
 	// FieldBalance holds the string denoting the balance field in the database.
 	FieldBalance = "balance"
+	// FieldCashBalance holds the string denoting the cash_balance field in the database.
+	FieldCashBalance = "cash_balance"
+	// FieldGiftBalance holds the string denoting the gift_balance field in the database.
+	FieldGiftBalance = "gift_balance"
+	// FieldFrozenGiftBalance holds the string denoting the frozen_gift_balance field in the database.
+	FieldFrozenGiftBalance = "frozen_gift_balance"
 	// FieldConcurrency holds the string denoting the concurrency field in the database.
 	FieldConcurrency = "concurrency"
 	// FieldStatus holds the string denoting the status field in the database.
@@ -190,6 +196,9 @@ var Columns = []string{
 	FieldPasswordHash,
 	FieldRole,
 	FieldBalance,
+	FieldCashBalance,
+	FieldGiftBalance,
+	FieldFrozenGiftBalance,
 	FieldConcurrency,
 	FieldStatus,
 	FieldUsername,
@@ -248,6 +257,12 @@ var (
 	RoleValidator func(string) error
 	// DefaultBalance holds the default value on creation for the "balance" field.
 	DefaultBalance float64
+	// DefaultCashBalance holds the default value on creation for the "cash_balance" field.
+	DefaultCashBalance float64
+	// DefaultGiftBalance holds the default value on creation for the "gift_balance" field.
+	DefaultGiftBalance float64
+	// DefaultFrozenGiftBalance holds the default value on creation for the "frozen_gift_balance" field.
+	DefaultFrozenGiftBalance float64
 	// DefaultConcurrency holds the default value on creation for the "concurrency" field.
 	DefaultConcurrency int
 	// DefaultStatus holds the default value on creation for the "status" field.
@@ -319,6 +334,21 @@ func ByRole(opts ...sql.OrderTermOption) OrderOption {
 // ByBalance orders the results by the balance field.
 func ByBalance(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldBalance, opts...).ToFunc()
+}
+
+// ByCashBalance orders the results by the cash_balance field.
+func ByCashBalance(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCashBalance, opts...).ToFunc()
+}
+
+// ByGiftBalance orders the results by the gift_balance field.
+func ByGiftBalance(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldGiftBalance, opts...).ToFunc()
+}
+
+// ByFrozenGiftBalance orders the results by the frozen_gift_balance field.
+func ByFrozenGiftBalance(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFrozenGiftBalance, opts...).ToFunc()
 }
 
 // ByConcurrency orders the results by the concurrency field.

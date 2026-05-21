@@ -37844,6 +37844,12 @@ type UserMutation struct {
 	role                          *string
 	balance                       *float64
 	addbalance                    *float64
+	cash_balance                  *float64
+	addcash_balance               *float64
+	gift_balance                  *float64
+	addgift_balance               *float64
+	frozen_gift_balance           *float64
+	addfrozen_gift_balance        *float64
 	concurrency                   *int
 	addconcurrency                *int
 	status                        *string
@@ -38287,6 +38293,174 @@ func (m *UserMutation) AddedBalance() (r float64, exists bool) {
 func (m *UserMutation) ResetBalance() {
 	m.balance = nil
 	m.addbalance = nil
+}
+
+// SetCashBalance sets the "cash_balance" field.
+func (m *UserMutation) SetCashBalance(f float64) {
+	m.cash_balance = &f
+	m.addcash_balance = nil
+}
+
+// CashBalance returns the value of the "cash_balance" field in the mutation.
+func (m *UserMutation) CashBalance() (r float64, exists bool) {
+	v := m.cash_balance
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCashBalance returns the old "cash_balance" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldCashBalance(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCashBalance is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCashBalance requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCashBalance: %w", err)
+	}
+	return oldValue.CashBalance, nil
+}
+
+// AddCashBalance adds f to the "cash_balance" field.
+func (m *UserMutation) AddCashBalance(f float64) {
+	if m.addcash_balance != nil {
+		*m.addcash_balance += f
+	} else {
+		m.addcash_balance = &f
+	}
+}
+
+// AddedCashBalance returns the value that was added to the "cash_balance" field in this mutation.
+func (m *UserMutation) AddedCashBalance() (r float64, exists bool) {
+	v := m.addcash_balance
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetCashBalance resets all changes to the "cash_balance" field.
+func (m *UserMutation) ResetCashBalance() {
+	m.cash_balance = nil
+	m.addcash_balance = nil
+}
+
+// SetGiftBalance sets the "gift_balance" field.
+func (m *UserMutation) SetGiftBalance(f float64) {
+	m.gift_balance = &f
+	m.addgift_balance = nil
+}
+
+// GiftBalance returns the value of the "gift_balance" field in the mutation.
+func (m *UserMutation) GiftBalance() (r float64, exists bool) {
+	v := m.gift_balance
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGiftBalance returns the old "gift_balance" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldGiftBalance(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGiftBalance is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGiftBalance requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGiftBalance: %w", err)
+	}
+	return oldValue.GiftBalance, nil
+}
+
+// AddGiftBalance adds f to the "gift_balance" field.
+func (m *UserMutation) AddGiftBalance(f float64) {
+	if m.addgift_balance != nil {
+		*m.addgift_balance += f
+	} else {
+		m.addgift_balance = &f
+	}
+}
+
+// AddedGiftBalance returns the value that was added to the "gift_balance" field in this mutation.
+func (m *UserMutation) AddedGiftBalance() (r float64, exists bool) {
+	v := m.addgift_balance
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetGiftBalance resets all changes to the "gift_balance" field.
+func (m *UserMutation) ResetGiftBalance() {
+	m.gift_balance = nil
+	m.addgift_balance = nil
+}
+
+// SetFrozenGiftBalance sets the "frozen_gift_balance" field.
+func (m *UserMutation) SetFrozenGiftBalance(f float64) {
+	m.frozen_gift_balance = &f
+	m.addfrozen_gift_balance = nil
+}
+
+// FrozenGiftBalance returns the value of the "frozen_gift_balance" field in the mutation.
+func (m *UserMutation) FrozenGiftBalance() (r float64, exists bool) {
+	v := m.frozen_gift_balance
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFrozenGiftBalance returns the old "frozen_gift_balance" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldFrozenGiftBalance(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFrozenGiftBalance is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFrozenGiftBalance requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFrozenGiftBalance: %w", err)
+	}
+	return oldValue.FrozenGiftBalance, nil
+}
+
+// AddFrozenGiftBalance adds f to the "frozen_gift_balance" field.
+func (m *UserMutation) AddFrozenGiftBalance(f float64) {
+	if m.addfrozen_gift_balance != nil {
+		*m.addfrozen_gift_balance += f
+	} else {
+		m.addfrozen_gift_balance = &f
+	}
+}
+
+// AddedFrozenGiftBalance returns the value that was added to the "frozen_gift_balance" field in this mutation.
+func (m *UserMutation) AddedFrozenGiftBalance() (r float64, exists bool) {
+	v := m.addfrozen_gift_balance
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetFrozenGiftBalance resets all changes to the "frozen_gift_balance" field.
+func (m *UserMutation) ResetFrozenGiftBalance() {
+	m.frozen_gift_balance = nil
+	m.addfrozen_gift_balance = nil
 }
 
 // SetConcurrency sets the "concurrency" field.
@@ -39693,7 +39867,7 @@ func (m *UserMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserMutation) Fields() []string {
-	fields := make([]string, 0, 23)
+	fields := make([]string, 0, 26)
 	if m.created_at != nil {
 		fields = append(fields, user.FieldCreatedAt)
 	}
@@ -39714,6 +39888,15 @@ func (m *UserMutation) Fields() []string {
 	}
 	if m.balance != nil {
 		fields = append(fields, user.FieldBalance)
+	}
+	if m.cash_balance != nil {
+		fields = append(fields, user.FieldCashBalance)
+	}
+	if m.gift_balance != nil {
+		fields = append(fields, user.FieldGiftBalance)
+	}
+	if m.frozen_gift_balance != nil {
+		fields = append(fields, user.FieldFrozenGiftBalance)
 	}
 	if m.concurrency != nil {
 		fields = append(fields, user.FieldConcurrency)
@@ -39785,6 +39968,12 @@ func (m *UserMutation) Field(name string) (ent.Value, bool) {
 		return m.Role()
 	case user.FieldBalance:
 		return m.Balance()
+	case user.FieldCashBalance:
+		return m.CashBalance()
+	case user.FieldGiftBalance:
+		return m.GiftBalance()
+	case user.FieldFrozenGiftBalance:
+		return m.FrozenGiftBalance()
 	case user.FieldConcurrency:
 		return m.Concurrency()
 	case user.FieldStatus:
@@ -39840,6 +40029,12 @@ func (m *UserMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldRole(ctx)
 	case user.FieldBalance:
 		return m.OldBalance(ctx)
+	case user.FieldCashBalance:
+		return m.OldCashBalance(ctx)
+	case user.FieldGiftBalance:
+		return m.OldGiftBalance(ctx)
+	case user.FieldFrozenGiftBalance:
+		return m.OldFrozenGiftBalance(ctx)
 	case user.FieldConcurrency:
 		return m.OldConcurrency(ctx)
 	case user.FieldStatus:
@@ -39929,6 +40124,27 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetBalance(v)
+		return nil
+	case user.FieldCashBalance:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCashBalance(v)
+		return nil
+	case user.FieldGiftBalance:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGiftBalance(v)
+		return nil
+	case user.FieldFrozenGiftBalance:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFrozenGiftBalance(v)
 		return nil
 	case user.FieldConcurrency:
 		v, ok := value.(int)
@@ -40053,6 +40269,15 @@ func (m *UserMutation) AddedFields() []string {
 	if m.addbalance != nil {
 		fields = append(fields, user.FieldBalance)
 	}
+	if m.addcash_balance != nil {
+		fields = append(fields, user.FieldCashBalance)
+	}
+	if m.addgift_balance != nil {
+		fields = append(fields, user.FieldGiftBalance)
+	}
+	if m.addfrozen_gift_balance != nil {
+		fields = append(fields, user.FieldFrozenGiftBalance)
+	}
 	if m.addconcurrency != nil {
 		fields = append(fields, user.FieldConcurrency)
 	}
@@ -40075,6 +40300,12 @@ func (m *UserMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
 	case user.FieldBalance:
 		return m.AddedBalance()
+	case user.FieldCashBalance:
+		return m.AddedCashBalance()
+	case user.FieldGiftBalance:
+		return m.AddedGiftBalance()
+	case user.FieldFrozenGiftBalance:
+		return m.AddedFrozenGiftBalance()
 	case user.FieldConcurrency:
 		return m.AddedConcurrency()
 	case user.FieldBalanceNotifyThreshold:
@@ -40098,6 +40329,27 @@ func (m *UserMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddBalance(v)
+		return nil
+	case user.FieldCashBalance:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCashBalance(v)
+		return nil
+	case user.FieldGiftBalance:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddGiftBalance(v)
+		return nil
+	case user.FieldFrozenGiftBalance:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddFrozenGiftBalance(v)
 		return nil
 	case user.FieldConcurrency:
 		v, ok := value.(int)
@@ -40213,6 +40465,15 @@ func (m *UserMutation) ResetField(name string) error {
 		return nil
 	case user.FieldBalance:
 		m.ResetBalance()
+		return nil
+	case user.FieldCashBalance:
+		m.ResetCashBalance()
+		return nil
+	case user.FieldGiftBalance:
+		m.ResetGiftBalance()
+		return nil
+	case user.FieldFrozenGiftBalance:
+		m.ResetFrozenGiftBalance()
 		return nil
 	case user.FieldConcurrency:
 		m.ResetConcurrency()

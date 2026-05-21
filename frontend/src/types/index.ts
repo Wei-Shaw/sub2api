@@ -85,7 +85,10 @@ export interface User {
   oidc_bound?: boolean
   wechat_bound?: boolean
   role: 'admin' | 'user' // User role for authorization
-  balance: number // User balance for API usage
+  balance: number // Available total balance for API usage
+  cash_balance?: number // Recharged balance; can pay subscriptions and metered usage
+  gift_balance?: number // Bonus/rebate balance; can only pay metered usage
+  frozen_gift_balance?: number // Frozen bonus balance pending anti-abuse delay
   concurrency: number // Allowed concurrent requests
   rpm_limit?: number // User-level RPM cap (0 = unlimited); effective as fallback when group has no rpm_limit
   status: 'active' | 'disabled' // Account status

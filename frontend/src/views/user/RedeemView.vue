@@ -13,7 +13,18 @@
           <p class="mt-2 text-4xl font-bold text-white">
             ${{ user?.balance?.toFixed(2) || '0.00' }}
           </p>
-          <p class="mt-2 text-sm text-primary-100">
+          <div class="mt-5 grid gap-2 text-left text-xs text-primary-50 sm:grid-cols-3">
+            <div class="rounded-xl bg-white/15 px-3 py-2 backdrop-blur-sm">
+              <p class="opacity-80">充值余额</p><p class="mt-1 font-semibold">${{ cashBalanceDisplay }}</p><p class="mt-1 opacity-80">可买套餐/按量</p>
+            </div>
+            <div class="rounded-xl bg-white/15 px-3 py-2 backdrop-blur-sm">
+              <p class="opacity-80">赠送余额</p><p class="mt-1 font-semibold">${{ giftBalanceDisplay }}</p><p class="mt-1 opacity-80">仅按量计费</p>
+            </div>
+            <div class="rounded-xl bg-white/15 px-3 py-2 backdrop-blur-sm">
+              <p class="opacity-80">冻结赠送</p><p class="mt-1 font-semibold">${{ frozenGiftBalanceDisplay }}</p><p class="mt-1 opacity-80">24 小时后解冻</p>
+            </div>
+          </div>
+          <p class="mt-3 text-sm text-primary-100">
             {{ t('redeem.concurrency') }}: {{ user?.concurrency || 0 }} {{ t('redeem.requests') }}
           </p>
         </div>
@@ -117,6 +128,9 @@
                     <p v-if="redeemResult.new_balance !== undefined">
                       {{ t('redeem.newBalance') }}:
                       <span class="font-semibold">${{ redeemResult.new_balance.toFixed(2) }}</span>
+                    </p>
+                    <p v-if="redeemResult.type === 'balance'" class="text-xs opacity-80">
+                      兑换码到账为充值余额，可用于购买套餐或按量计费。
                     </p>
                     <p v-if="redeemResult.new_concurrency !== undefined">
                       {{ t('redeem.newConcurrency') }}:
@@ -358,6 +372,10 @@ const appStore = useAppStore()
 const subscriptionStore = useSubscriptionStore()
 
 const user = computed(() => authStore.user)
+const formatBalance = (value?: number | null) => Number(value || 0).toFixed(2)
+const cashBalanceDisplay = computed(() => formatBalance(user.value?.cash_balance ?? user.value?.balance))
+const giftBalanceDisplay = computed(() => formatBalance(user.value?.gift_balance))
+const frozenGiftBalanceDisplay = computed(() => formatBalance(user.value?.frozen_gift_balance))
 
 const redeemCode = ref('')
 const submitting = ref(false)
