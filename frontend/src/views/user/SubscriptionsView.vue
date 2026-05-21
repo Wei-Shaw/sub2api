@@ -101,7 +101,7 @@
               }}</span>
             </div>
 
-            <!-- 5h Usage -->
+            <!-- 5h Usage (hidden — five_hour feature disabled)
             <div v-if="subscription.group?.five_hour_limit_usd" class="space-y-2">
               <div class="flex items-center justify-between">
                 <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -133,6 +133,7 @@
                 }}
               </p>
             </div>
+            -->
 
             <!-- Weekly Usage -->
             <div v-if="subscription.group?.weekly_limit_usd" class="space-y-2">
@@ -215,7 +216,6 @@
             <!-- No limits configured - Unlimited badge -->
             <div
               v-if="
-                !subscription.group?.five_hour_limit_usd &&
                 !subscription.group?.weekly_limit_usd &&
                 !subscription.group?.monthly_limit_usd
               "

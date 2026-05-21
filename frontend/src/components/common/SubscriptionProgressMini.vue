@@ -72,6 +72,7 @@
 
               <!-- Progress bars for limited subscriptions -->
               <template v-else>
+                <!-- 5h progress (hidden — five_hour feature disabled)
                 <div v-if="subscription.group?.five_hour_limit_usd" class="flex items-center gap-2">
                   <span class="w-8 flex-shrink-0 text-[10px] text-gray-500">{{
                     t('subscriptionProgress.fiveHour')
@@ -97,6 +98,7 @@
                     {{ formatPercent(subscription.five_hour_usage_usd, subscription.group.five_hour_limit_usd) }}
                   </span>
                 </div>
+                -->
 
                 <div v-if="subscription.group?.weekly_limit_usd" class="flex items-center gap-2">
                   <span class="w-8 flex-shrink-0 text-[10px] text-gray-500">{{
@@ -255,11 +257,11 @@ function formatUsage(used: number | undefined, limit: number | null | undefined)
   return `$${usedValue}/$${limitValue}`
 }
 
-function formatPercent(used: number | undefined, limit: number | null | undefined): string {
-  if (!limit || limit === 0) return '0%'
-  const percentage = Math.min(((used || 0) / limit) * 100, 100)
-  return `${Math.round(percentage)}%`
-}
+// function formatPercent(used: number | undefined, limit: number | null | undefined): string {
+//   if (!limit || limit === 0) return '0%'
+//   const percentage = Math.min(((used || 0) / limit) * 100, 100)
+//   return `${Math.round(percentage)}%`
+// }
 
 function formatDaysRemaining(expiresAt: string): string {
   const now = new Date()

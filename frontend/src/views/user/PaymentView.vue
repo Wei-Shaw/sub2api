@@ -245,7 +245,8 @@ const qqSelectedAmount = ref<number | null>(null)
 const customAmount = ref('')
 const estimatedBalance = computed(() => {
   const amt = customAmount.value ? parseFloat(customAmount.value) : (qqSelectedAmount.value || 0)
-  return amt > 0 ? amt : 0
+  const multiplier = checkout.value.balance_recharge_multiplier || 10
+  return amt > 0 ? amt * multiplier : 0
 })
 const redeemCode = ref('')
 const redeeming = ref(false)

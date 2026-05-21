@@ -40,7 +40,7 @@
         <div v-if="usageInfo.error" class="text-xs text-amber-600 dark:text-amber-400 truncate max-w-[200px]" :title="usageInfo.error">
           {{ usageInfo.error }}
         </div>
-        <!-- 5h Window -->
+        <!-- 5h Window (hidden — five_hour feature disabled)
         <UsageProgressBar
           v-if="usageInfo.five_hour"
           label="5h"
@@ -49,6 +49,7 @@
           :window-stats="usageInfo.five_hour.window_stats"
           color="indigo"
         />
+        -->
 
         <!-- 7d Window (OAuth only) -->
         <UsageProgressBar
@@ -108,6 +109,7 @@
     <!-- OpenAI OAuth accounts: single source from /usage API -->
     <template v-else-if="account.platform === 'openai' && account.type === 'oauth'">
       <div v-if="hasOpenAIUsageFallback" class="space-y-1">
+        <!-- 5h (hidden — five_hour feature disabled)
         <UsageProgressBar
           v-if="usageInfo?.five_hour"
           label="5h"
@@ -117,6 +119,7 @@
           :show-now-when-idle="true"
           color="indigo"
         />
+        -->
         <UsageProgressBar
           v-if="usageInfo?.seven_day"
           label="7d"
@@ -560,7 +563,7 @@ const geminiUsageAvailable = computed(() => {
 
 const hasOpenAIUsageFallback = computed(() => {
   if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return false
-  return !!usageInfo.value?.five_hour || !!usageInfo.value?.seven_day
+  return !!usageInfo.value?.seven_day
 })
 
 const openAIUsageRefreshKey = computed(() => buildOpenAIUsageRefreshKey(props.account))

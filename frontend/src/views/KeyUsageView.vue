@@ -558,7 +558,7 @@ const ringItems = computed<RingItem[]>(() => {
     if (data.subscription) {
       const sub = data.subscription
       const limits = [
-        { key: 'five_hour', label: t('keyUsage.limit5h'), usage: sub.five_hour_usage_usd, limit: sub.five_hour_limit_usd, iconType: 'clock' as const },
+        // { key: 'five_hour', label: t('keyUsage.limit5h'), usage: sub.five_hour_usage_usd, limit: sub.five_hour_limit_usd, iconType: 'clock' as const },
         { key: 'weekly', label: t('keyUsage.limitWeekly'), usage: sub.weekly_usage_usd, limit: sub.weekly_limit_usd, iconType: 'calendar' as const },
         { key: 'monthly', label: t('keyUsage.limitMonthly'), usage: sub.monthly_usage_usd, limit: sub.monthly_limit_usd, iconType: 'calendar' as const },
       ]
@@ -655,13 +655,13 @@ const detailRows = computed<DetailRow[]>(() => {
 
     if (data.subscription) {
       const sub = data.subscription
-      if (sub.five_hour_limit_usd > 0) {
-        const pct = (sub.five_hour_usage_usd / sub.five_hour_limit_usd) * 100
-        rows.push({
-          iconBg: 'bg-primary-500/10', iconColor: 'text-primary-500', iconSvg: ICON_DOLLAR,
-          label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '5小时' : '5h'})`, value: `${Math.min(Math.round(pct), 100)}%`, valueClass: getUsageColor(pct),
-        })
-      }
+      // if (sub.five_hour_limit_usd > 0) {
+      //   const pct = (sub.five_hour_usage_usd / sub.five_hour_limit_usd) * 100
+      //   rows.push({
+      //     iconBg: 'bg-primary-500/10', iconColor: 'text-primary-500', iconSvg: ICON_DOLLAR,
+      //     label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '5小时' : '5h'})`, value: `${Math.min(Math.round(pct), 100)}%`, valueClass: getUsageColor(pct),
+      //   })
+      // }
       if (sub.weekly_limit_usd > 0) {
         const pct = (sub.weekly_usage_usd / sub.weekly_limit_usd) * 100
         rows.push({
