@@ -196,7 +196,7 @@
                   </div>
                   <div class="space-y-2">
                     <button class="w-full rounded-xl bg-gray-900 py-2.5 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:opacity-50 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100" :disabled="submitting || !visibleMethods.alipay" @click="purchasePlanWithAlipay(plan)">
-                      <span v-if="submitting && selectedPlan?.id === plan.id">生成二维码中...</span><span v-else>支付宝支付</span>
+                      <span v-if="submitting && checkoutPlan?.id === plan.id">生成二维码中...</span><span v-else>支付宝支付</span>
                     </button>
                     <button class="w-full rounded-xl border border-gray-200 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700" :disabled="submitting" @click="purchasePlanWithBalance(plan)">
                       <span v-if="submitting && selectedPlan?.id === plan.id">购买中...</span><span v-else>{{ planButtonText(plan) }}</span>
@@ -672,7 +672,7 @@ async function rechargeWithAlipay() {
 
 async function purchasePlanWithAlipay(plan: SubscriptionPlan) {
   if (!plan || submitting.value) return
-  selectedPlan.value = plan
+  selectedPlan.value = null
   selectedMethod.value = 'alipay'
   checkoutPlan.value = plan
   checkoutMode.value = 'subscription'
