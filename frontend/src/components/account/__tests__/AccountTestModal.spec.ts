@@ -147,4 +147,46 @@ describe('AccountTestModal', () => {
       mode: 'compact'
     REDACTED)
   REDACTED)
+
+  it('renders Chat Completions path status from test SSE', async () => {
+    const encoder = new TextEncoder()
+    const chunks = [
+      encoder.encode('data: {"type":"status","text":"已通过 /v1/chat/completions 验证"REDACTED\n\n'),
+      encoder.encode('data: {"type":"test_complete","success":trueREDACTED\n\n')
+    ]
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      body: {
+        getReader: () => ({
+          read: vi.fn().mockImplementation(() => Promise.resolve(
+            chunks.length > 0
+              ? { done: false, value: chunks.shift() REDACTED
+              : { done: true, value: undefined REDACTED
+          ))
+        REDACTED)
+      REDACTED
+    REDACTED as any)
+
+    const wrapper = mount(AccountTestModal, {
+      props: {
+        show: true,
+        account: buildAccount()
+      REDACTED,
+      global: {
+        stubs: {
+          BaseDialog: BaseDialogStub,
+          Select: SelectStub,
+          TextArea: TextAreaStub,
+          Icon: true
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    await flushPromises()
+    ;(wrapper.vm as any).selectedModelId = 'gpt-5.4'
+    await (wrapper.vm as any).startTest()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('已通过 /v1/chat/completions 验证')
+  REDACTED)
 REDACTED)
