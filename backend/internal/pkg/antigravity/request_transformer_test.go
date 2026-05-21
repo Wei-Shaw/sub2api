@@ -424,6 +424,129 @@ func TestTransformClaudeToGeminiWithOptions_PreservesBillingHeaderSystemBlock(t 
 	}
 }
 
+func TestTransformClaudeToGeminiWithOptions_MapsToolChoiceToFunctionCallingConfig(t *testing.T) {
+	tests := []struct {
+		name                 string
+		toolChoice           json.RawMessage
+		wantMode             string
+		wantAllowedFunctions []string
+	}{
+		{
+			name:       "absent keeps validated default",
+			wantMode:   "VALIDATED",
+			toolChoice: nil,
+		},
+		{
+			name:       "auto maps to auto mode",
+			toolChoice: json.RawMessage(`{"type":"auto"}`),
+			wantMode:   "AUTO",
+		},
+		{
+			name:       "any maps to any mode",
+			toolChoice: json.RawMessage(`{"type":"any"}`),
+			wantMode:   "ANY",
+		},
+		{
+			name:                 "named tool maps to any mode with allowed function",
+			toolChoice:           json.RawMessage(`{"type":"tool","name":"get_weather"}`),
+			wantMode:             "ANY",
+			wantAllowedFunctions: []string{"get_weather"},
+		},
+		{
+			name:       "none maps to none mode",
+			toolChoice: json.RawMessage(`{"type":"none"}`),
+			wantMode:   "NONE",
+		},
+		{
+			name:                 "openai function choice maps to allowed function",
+			toolChoice:           json.RawMessage(`{"type":"function","function":{"name":"get_weather"}}`),
+			wantMode:             "ANY",
+			wantAllowedFunctions: []string{"get_weather"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			claudeReq := &ClaudeRequest{
+				Model: "claude-3-5-sonnet-latest",
+				Messages: []ClaudeMessage{
+					{
+						Role:    "user",
+						Content: json.RawMessage(`[{"type":"text","text":"what is the weather?"}]`),
+					},
+				},
+				Tools: []ClaudeTool{
+					{
+						Name:        "get_weather",
+						Description: "Get weather information",
+						InputSchema: map[string]any{"type": "object"},
+					},
+				},
+				ToolChoice: tt.toolChoice,
+			}
+
+			body, err := TransformClaudeToGeminiWithOptions(claudeReq, "project-1", "gemini-2.5-flash", DefaultTransformOptions())
+			require.NoError(t, err)
+
+			var req V1InternalRequest
+			require.NoError(t, json.Unmarshal(body, &req))
+			require.NotNil(t, req.Request.ToolConfig)
+			require.NotNil(t, req.Request.ToolConfig.FunctionCallingConfig)
+			require.Equal(t, tt.wantMode, req.Request.ToolConfig.FunctionCallingConfig.Mode)
+			require.Equal(t, tt.wantAllowedFunctions, req.Request.ToolConfig.FunctionCallingConfig.AllowedFunctionNames)
+		})
+	}
+}
+
+func TestTransformClaudeToGeminiWithOptions_MovesSystemIntoContentsWhenToolsPresent(t *testing.T) {
+	claudeReq := &ClaudeRequest{
+		Model:  "claude-3-5-sonnet-latest",
+		System: json.RawMessage(`"You are helpful"`),
+		Messages: []ClaudeMessage{
+			{
+				Role:    "user",
+				Content: json.RawMessage(`[{"type":"text","text":"What is the weather?"}]`),
+			},
+		},
+		Tools: []ClaudeTool{
+			{
+				Name:        "get_weather",
+				Description: "Get weather information",
+				InputSchema: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"location": map[string]any{"type": "string"},
+					},
+				},
+			},
+		},
+	}
+
+	body, err := TransformClaudeToGeminiWithOptions(claudeReq, "project-1", "gemini-2.5-flash", DefaultTransformOptions())
+	require.NoError(t, err)
+
+	var req V1InternalRequest
+	require.NoError(t, json.Unmarshal(body, &req))
+	require.Len(t, req.Request.Tools, 1)
+	require.Nil(t, req.Request.SystemInstruction, "tool requests must not set systemInstruction because upstream treats it as a conflicting oneof field")
+
+	foundSystem := false
+	foundUserMessage := false
+	for _, content := range req.Request.Contents {
+		for _, part := range content.Parts {
+			if strings.Contains(part.Text, "You are helpful") {
+				foundSystem = true
+			}
+			if strings.Contains(part.Text, "What is the weather?") {
+				foundUserMessage = true
+			}
+		}
+	}
+
+	require.True(t, foundSystem, "system prompt content must be preserved in contents when tools are present")
+	require.True(t, foundUserMessage, "original user message must remain in contents")
+}
+
 func TestTransformClaudeToGeminiWithOptions_PreservesWebSearchAlongsideFunctions(t *testing.T) {
 	claudeReq := &ClaudeRequest{
 		Model: "claude-3-5-sonnet-latest",

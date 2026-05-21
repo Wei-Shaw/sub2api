@@ -15,6 +15,7 @@ type ClaudeRequest struct {
 	TopP        *float64        `json:"top_p,omitempty"`
 	TopK        *int            `json:"top_k,omitempty"`
 	Tools       []ClaudeTool    `json:"tools,omitempty"`
+	ToolChoice  json.RawMessage `json:"tool_choice,omitempty"`
 	Thinking    *ThinkingConfig `json:"thinking,omitempty"`
 	Metadata    *ClaudeMetadata `json:"metadata,omitempty"`
 }
