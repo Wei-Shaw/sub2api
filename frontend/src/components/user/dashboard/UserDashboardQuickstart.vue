@@ -30,15 +30,20 @@
         <p class="mb-2 text-xs text-gray-500 dark:text-dark-300">{{ t('dashboard.codexHint') }}</p>
         <div class="relative rounded-lg bg-gray-900 p-4 font-mono text-xs leading-relaxed">
           <pre class="whitespace-pre-wrap text-gray-100"><span class="text-gray-500"># ~/.codex/config.toml</span>
-<span class="text-emerald-400">model_provider</span> = <span class="text-amber-300">"mcorgai"</span>
 <span class="text-emerald-400">model</span> = <span class="text-amber-300">"gpt-5.5"</span>
+<span class="text-emerald-400">model_provider</span> = <span class="text-amber-300">"OpenAI"</span>
+<span class="text-emerald-400">disable_response_storage</span> = <span class="text-amber-300">true</span>
 
-[<span class="text-emerald-400">model_providers.mcorgai</span>]
-<span class="text-emerald-400">name</span> = <span class="text-amber-300">"起源AI"</span>
-<span class="text-emerald-400">base_url</span> = <span class="text-amber-300">"https://api.mcorgai.com"</span>
+[<span class="text-emerald-400">model_providers.OpenAI</span>]
+<span class="text-emerald-400">name</span> = <span class="text-amber-300">"OpenAI"</span>
+<span class="text-emerald-400">base_url</span> = <span class="text-amber-300">"https://api.mcorgai.com/v1"</span>
 <span class="text-emerald-400">wire_api</span> = <span class="text-amber-300">"responses"</span>
-<span class="text-emerald-400">experimental_bearer_token</span> = <span class="text-amber-300">"{{ t('dashboard.yourApiKey') }}"</span>
-<span class="text-emerald-400">requires_openai_auth</span> = <span class="text-amber-300">true</span></pre>
+<span class="text-emerald-400">requires_openai_auth</span> = <span class="text-amber-300">true</span>
+
+<span class="text-gray-500"># ~/.codex/auth.json</span>
+{
+  <span class="text-emerald-400">"OPENAI_API_KEY"</span>: <span class="text-amber-300">"{{ t('dashboard.yourApiKey') }}"</span>
+}</pre>
           <button @click="copy('codex')" class="absolute top-3 right-3 rounded-md bg-gray-700 px-3 py-1 text-xs text-gray-300 transition-all hover:bg-gray-600 hover:text-white">
             {{ copiedTab === 'codex' ? '✓' : t('dashboard.copyConfig') }}
           </button>
@@ -117,27 +122,33 @@ const tabs = [
 ]
 
 const configs: Record<string, string> = {
-  codex: `model_provider = "mcorgai"
+  codex: `# ~/.codex/config.toml
 model = "gpt-5.5"
+model_provider = "OpenAI"
+disable_response_storage = true
 
-[model_providers.mcorgai]
-name = "起源AI"
-base_url = "https://api.mcorgai.com"
+[model_providers.OpenAI]
+name = "OpenAI"
+base_url = "https://api.mcorgai.com/v1"
 wire_api = "responses"
-experimental_bearer_token = "sk-your-api-key"
-requires_openai_auth = true`,
+requires_openai_auth = true
+
+# ~/.codex/auth.json
+{
+  "OPENAI_API_KEY": "***"
+}`,
   hermes: `model:
   default: gpt-5.5
   provider: openai
   base_url: https://api.mcorgai.com/v1
-  api_key: sk-your-api-key`,
+  api_key: ***`,
   openclaw: `{
   "models": {
     "mode": "merge",
     "providers": {
       "mcorgai": {
         "baseUrl": "https://api.mcorgai.com/v1",
-        "apiKey": "sk-your-api-key",
+        "apiKey": "***",
         "api": "openai-responses",
         "models": [
           { "id": "gpt-5.5" },
@@ -148,7 +159,6 @@ requires_openai_auth = true`,
   }
 }`,
 }
-
 const copy = async (tab: string) => {
   await navigator.clipboard.writeText(configs[tab])
   copiedTab.value = tab
