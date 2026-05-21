@@ -21,8 +21,8 @@ var (
 
 const (
 	affiliateInviteesLimit    = 100
-	affiliateRegisterBonus    = 1.0 // 注册奖励 $1（双方各送）
-	affiliateRegisterBonusCap = 10  // 同一邀请人每天最多获得 10 次注册奖励（被邀请人不限）
+	affiliateRegisterBonus    = 10.0 // 注册奖励 $10（双方各送）
+	affiliateRegisterBonusCap = 1    // 同一邀请人每天最多获得 $10 注册奖励
 	// AffiliateCodeMinLength / AffiliateCodeMaxLength bound both system-generated
 	// 12-char codes and admin-customized codes (e.g. "VIP2026").
 	AffiliateCodeMinLength = 4
