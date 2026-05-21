@@ -1,267 +1,352 @@
 <template>
   <AppLayout>
-    <div class="mx-auto max-w-5xl space-y-6">
-      <div v-if="loading" class="flex items-center justify-center py-20">
-        <div class="h-8 w-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent"></div>
+    <div class="mx-auto max-w-6xl text-[#141413]">
+      <div v-if="loading" class="flex items-center justify-center py-24">
+        <div class="h-8 w-8 animate-spin rounded-full border-4 border-gray-900 border-t-transparent dark:border-white dark:border-t-transparent"></div>
       </div>
+
       <template v-else>
-        <template v-if="paymentPhase === 'paying'">
-          <PaymentStatusPanel
-            :order-id="paymentState.orderId" :qr-code="paymentState.qrCode"
-            :expires-at="paymentState.expiresAt" :payment-type="paymentState.paymentType"
-            :pay-url="paymentState.payUrl" :order-type="paymentState.orderType"
-            @done="onPaymentDone" @success="onPaymentSuccess" @settled="onPaymentSettled"
-          />
-        </template>
-        <template v-else>
-          <template v-if="selectedPlan">
-            <div class="mb-2"><button class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400" @click="selectedPlan = null">&larr; 返回</button></div>
-            <div class="grid gap-6 lg:grid-cols-5">
-              <div class="lg:col-span-3 rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
-                <div class="mb-4 flex items-center gap-3"><span class="rounded-lg bg-gray-900 px-2.5 py-1 text-xs font-medium text-white dark:bg-white dark:text-gray-900">{{ selectedPlan.name }}</span><span class="text-sm text-gray-400">{{ platformLabel(selectedPlan.group_platform || '') }}</span></div>
-                <div class="flex items-baseline gap-2"><span v-if="selectedPlan.original_price" class="text-sm text-gray-400 line-through">&yen;{{ selectedPlan.original_price }}</span><span class="text-4xl font-bold text-gray-900 dark:text-white">&yen;{{ planDisplayAmount(selectedPlan) }}</span><span class="text-sm text-gray-400">{{ planPriceSuffix(selectedPlan) }}</span></div>
-                <p class="mt-1 text-sm text-gray-400">扣 ${{ (effectivePlanAmount(selectedPlan) * (checkout.balance_recharge_multiplier || 10)).toFixed(0) }} 充值余额（赠送余额不可购买套餐）</p>
-                <p v-if="selectedPlan.description" class="mt-3 text-sm leading-6 text-gray-500 dark:text-gray-400">{{ selectedPlan.description }}</p>
-                <ul v-if="planFeatures(selectedPlan).length" class="mt-5 space-y-3 text-sm text-gray-600 dark:text-gray-300">
-                  <li v-for="feature in planFeatures(selectedPlan)" :key="feature" class="flex gap-2">
-                    <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gray-900 dark:bg-white"></span>
-                    <span>{{ feature }}</span>
-                  </li>
-                </ul>
-              </div>
-              <div class="lg:col-span-2 rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
-                <h3 class="text-sm font-semibold text-gray-900 dark:text-white">余额购买</h3>
-                <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">套餐只能使用充值余额购买，赠送余额仅可用于按量计费；确认购买后默认直接生效。</p>
-                <div class="mt-4 rounded-xl bg-gray-50 px-4 py-3 dark:bg-gray-700/50">
-                  <p class="text-xs text-gray-400">可买套餐的充值余额</p>
-                  <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">${{ cashBalanceDisplay }}</p>
-                  <p class="mt-1 text-xs text-gray-400">赠送余额 ${{ giftBalanceDisplay }} 只能抵扣按量调用</p>
-                </div>
-                <button class="mt-4 w-full rounded-xl bg-gray-900 py-3 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50 dark:bg-white dark:text-gray-900" :disabled="submitting" @click="purchaseSelectedPlanWithBalance">
-                  <span v-if="submitting">购买中...</span><span v-else>{{ planButtonText(selectedPlan) }}</span>
-                </button>
-                <p class="mt-3 text-xs leading-5 text-gray-400">充值余额不足时，请使用兑换码或支付宝充值后再购买；赠送余额不能买套餐。</p>
-                <router-link to="/redeem" class="mt-2 block w-full rounded-xl border border-gray-200 py-2.5 text-center text-sm text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300">已有兑换码？立即兑换</router-link>
-              </div>
-            </div>
-          </template>
-          <template v-else>
-            <div v-if="checkoutMode" class="mx-auto max-w-xl space-y-5">
-              <button class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400" @click="closeCheckout">&larr; 返回选择</button>
-              <div class="rounded-3xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
-                <div class="mb-5 flex items-center justify-between">
-                  <div>
-                    <p class="text-xs text-gray-400">收银台</p>
-                    <h2 class="mt-1 text-xl font-semibold text-gray-900 dark:text-white">{{ checkoutTitle }}</h2>
-                  </div>
-                  <span class="rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-600 dark:bg-blue-900/30 dark:text-blue-300">支付宝</span>
-                </div>
+        <PaymentStatusPanel
+          v-if="paymentPhase === 'paying'"
+          :order-id="paymentState.orderId"
+          :qr-code="paymentState.qrCode"
+          :expires-at="paymentState.expiresAt"
+          :payment-type="paymentState.paymentType"
+          :pay-url="paymentState.payUrl"
+          :order-type="paymentState.orderType"
+          @done="onPaymentDone"
+          @success="onPaymentSuccess"
+          @settled="onPaymentSettled"
+        />
 
-                <div class="rounded-2xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-950/20">
-                  <p class="text-sm font-medium text-gray-900 dark:text-white">支付方式</p>
-                  <div class="mt-3 flex items-center gap-3 rounded-xl border border-blue-200 bg-white px-4 py-3 dark:border-blue-800 dark:bg-gray-800">
-                    <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-[#1677FF] text-lg font-bold text-white">支</span>
-                    <div>
-                      <p class="text-sm font-semibold text-gray-900 dark:text-white">支付宝</p>
-                      <p class="text-xs text-gray-400">扫码支付，实时到账</p>
-                    </div>
+        <template v-else-if="selectedPlan">
+          <div class="mb-4">
+            <button class="inline-flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white" @click="selectedPlan = null">
+              <span>&larr;</span><span>返回套餐选择</span>
+            </button>
+          </div>
+          <div class="grid gap-5 lg:grid-cols-5">
+            <section class="overflow-hidden rounded-[28px] border border-gray-900 bg-[#fffdf7] dark:border-gray-600 dark:bg-gray-900 lg:col-span-3">
+              <div class="border-b border-gray-900 bg-[#f6efe1] px-6 py-4 dark:border-gray-700 dark:bg-gray-800">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="rounded-full border border-gray-900 bg-gray-900 px-3 py-1 text-xs font-semibold text-white dark:border-white dark:bg-white dark:text-gray-900">{{ selectedPlan.name }}</span>
+                  <span class="rounded-full border border-gray-300 px-3 py-1 text-xs text-gray-500 dark:border-gray-600 dark:text-gray-400">{{ planBadge(selectedPlan) }}</span>
+                </div>
+              </div>
+              <div class="p-6 sm:p-8">
+                <p class="text-sm font-semibold uppercase tracking-[0.3em] text-gray-400">确认这一档</p>
+                <div class="mt-4 flex flex-wrap items-end gap-3">
+                  <span v-if="selectedPlan.original_price" class="mb-2 text-lg text-gray-400 line-through">&yen;{{ selectedPlan.original_price }}</span>
+                  <span class="text-5xl font-black tracking-tight text-gray-950 dark:text-white">&yen;{{ planDisplayAmount(selectedPlan) }}</span>
+                  <span class="mb-2 text-sm text-gray-500">{{ planPriceSuffix(selectedPlan) }}</span>
+                </div>
+                <p class="mt-4 max-w-xl text-2xl font-bold leading-tight text-gray-950 dark:text-white">{{ planTagline(selectedPlan) }}</p>
+                <p class="mt-3 text-sm leading-6 text-gray-500 dark:text-gray-400">{{ planValueLine(selectedPlan) }}</p>
+                <div class="mt-6 grid gap-3 sm:grid-cols-3">
+                  <div v-for="item in planBullets(selectedPlan)" :key="item" class="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">
+                    {{ item }}
                   </div>
                 </div>
+              </div>
+            </section>
 
-                <div class="mt-5 space-y-3 rounded-2xl bg-gray-50 p-4 text-sm dark:bg-gray-700/50">
-                  <div v-if="checkoutMode === 'subscription' && checkoutPlan" class="flex justify-between gap-4">
-                    <span class="text-gray-500 dark:text-gray-400">购买套餐</span>
-                    <span class="font-medium text-gray-900 dark:text-white">{{ checkoutPlan.name }}</span>
-                  </div>
-                  <div class="flex justify-between gap-4">
-                    <span class="text-gray-500 dark:text-gray-400">支付金额</span>
-                    <span class="font-medium text-gray-900 dark:text-white">¥{{ checkoutBaseAmount.toFixed(2) }}</span>
-                  </div>
-                  <div class="flex justify-between gap-4">
-                    <span class="text-gray-500 dark:text-gray-400">手续费（{{ checkoutFeeRate.toFixed(1) }}%）</span>
-                    <span class="font-medium text-gray-900 dark:text-white">¥{{ checkoutFeeAmount.toFixed(2) }}</span>
-                  </div>
-                  <div class="border-t border-gray-200 pt-3 dark:border-gray-600">
-                    <div class="flex items-center justify-between gap-4">
-                      <span class="text-gray-600 dark:text-gray-300">实付金额</span>
-                      <span class="text-2xl font-bold text-blue-600 dark:text-blue-300">¥{{ checkoutPayAmount.toFixed(2) }}</span>
-                    </div>
-                  </div>
-                  <div class="flex justify-between gap-4">
-                    <span class="text-gray-500 dark:text-gray-400">{{ checkoutMode === 'subscription' ? '等值扣除额度' : '到账余额' }}</span>
-                    <span class="font-medium text-gray-900 dark:text-white">${{ checkoutReceiveBalance.toFixed(2) }}</span>
-                  </div>
-                  <p class="pt-1 text-xs text-gray-400">当前汇率：1 CNY = {{ checkout.balance_recharge_multiplier || 10 }} API 余额；手续费由支付通道收取。</p>
+            <aside class="rounded-[28px] border border-gray-900 bg-white p-6 dark:border-gray-600 dark:bg-gray-800 lg:col-span-2">
+              <p class="text-sm font-semibold text-gray-900 dark:text-white">用充值余额买套餐</p>
+              <p class="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">套餐只扣充值余额。赠送余额留着按量调用，等于多一层缓冲。</p>
+              <div class="mt-5 grid gap-3">
+                <div class="rounded-2xl border border-gray-200 bg-[#fffaf0] px-4 py-3 dark:border-gray-700 dark:bg-gray-900/60">
+                  <p class="text-xs text-gray-500">可购买套餐</p>
+                  <p class="mt-1 text-2xl font-black text-gray-950 dark:text-white">${{ cashBalanceDisplay }}</p>
+                  <p class="mt-1 text-xs text-gray-500">充值余额</p>
                 </div>
-
-                <button class="mt-5 w-full rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-50" :disabled="submitting || checkoutBaseAmount <= 0" @click="confirmAlipayCheckout">
-                  <span v-if="submitting">生成支付宝订单中...</span><span v-else>{{ checkoutButtonText }}</span>
-                </button>
-              </div>
-            </div>
-            <template v-else>
-              <div class="grid gap-4 sm:grid-cols-2">
-              <div class="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
-                <p class="text-sm text-gray-400">当前可用余额</p>
-                <p class="mt-1 text-3xl font-bold text-gray-900 dark:text-white">${{ totalBalanceDisplay }}</p>
-                <div class="mt-4 grid gap-2 text-xs text-gray-500 dark:text-gray-400 sm:grid-cols-3">
-                  <div class="rounded-xl bg-gray-50 px-3 py-2 dark:bg-gray-700/50">
-                    <p>充值余额</p><p class="mt-1 font-semibold text-gray-900 dark:text-white">${{ cashBalanceDisplay }}</p><p class="mt-1">可买套餐/按量</p>
-                  </div>
-                  <div class="rounded-xl bg-gray-50 px-3 py-2 dark:bg-gray-700/50">
-                    <p>赠送余额</p><p class="mt-1 font-semibold text-gray-900 dark:text-white">${{ giftBalanceDisplay }}</p><p class="mt-1">仅按量计费</p>
-                  </div>
-                  <div class="rounded-xl bg-gray-50 px-3 py-2 dark:bg-gray-700/50">
-                    <p>冻结赠送</p><p class="mt-1 font-semibold text-gray-900 dark:text-white">${{ frozenGiftBalanceDisplay }}</p><p class="mt-1">24 小时后解冻</p>
-                  </div>
+                <div class="rounded-2xl border border-dashed border-gray-300 px-4 py-3 dark:border-gray-600">
+                  <p class="text-xs text-gray-500">赠送余额</p>
+                  <p class="mt-1 text-lg font-bold text-gray-900 dark:text-white">${{ giftBalanceDisplay }}</p>
+                  <p class="mt-1 text-xs text-gray-500">不买套餐，只抵扣按量调用</p>
                 </div>
               </div>
-              <div class="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
-                <p class="text-sm text-gray-400">用户交流群</p>
-                <div class="mt-2 flex items-center gap-2"><svg class="h-5 w-5 text-[#12B7F5]" viewBox="0 0 24 24" fill="currentColor"><path d="M12.003 2c-2.265 0-6.29 1.364-6.29 7.325v1.195S3.55 14.96 3.55 17.474c0 .665.17 1.025.396 1.025.19 0 .46-.18.758-.625.775-1.15 1.525-2.76 1.997-3.775.14.02.282.03.425.03 1.47 0 2.97-.765 3.852-2.115.88 1.35 2.382 2.115 3.852 2.115.143 0 .284-.01.425-.03.472 1.015 1.222 2.625 1.997 3.775.298.445.568.625.758.625.226 0 .396-.36.396-1.025 0-2.514-2.163-6.954-2.163-6.954v-1.195C18.293 3.364 14.268 2 12.003 2z"/></svg><span class="text-lg font-semibold text-gray-900 dark:text-white">群号 774692252</span></div>
-                <p class="mt-2 text-xs text-gray-400">活动福利 · 更新通知 · 使用答疑</p>
-              </div>
-            </div>
-            <div class="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
-              <p class="mb-3 text-sm text-gray-500 dark:text-gray-400">选择充值金额</p>
-              <div class="mt-3 flex flex-wrap items-center gap-2 sm:gap-3">
-                <button v-for="amt in [10, 20, 50, 100, 200, 500]" :key="amt" class="min-w-[3rem] flex-1 rounded-xl border px-3 py-2.5 text-center text-sm font-medium transition-all active:scale-[0.97] sm:min-w-0 sm:flex-none" :class="qqSelectedAmount === amt ? 'border-gray-900 bg-gray-900 text-white dark:border-white dark:bg-white dark:text-gray-900' : 'border-gray-200 text-gray-600 hover:border-gray-400 dark:border-gray-600 dark:text-gray-300 dark:hover:border-gray-400'" @click="customAmount = ''; qqSelectedAmount = amt">&yen;{{ amt }}</button>
-              </div>
-              <div class="relative mt-3">
-                <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-gray-400">&yen;</span>
-                <input v-model="customAmount" type="number" min="1" step="0.01" placeholder="任意金额" class="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-7 pr-14 text-sm text-gray-900 placeholder-gray-400 outline-none transition-colors focus:border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500 dark:focus:border-gray-400" @input="qqSelectedAmount = 0" />
-                <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-gray-400">人民币</span>
-              </div>
-              <p v-if="estimatedBalance > 0" class="mt-3 text-sm text-gray-500 dark:text-gray-400">预计到账：<span class="font-semibold text-gray-900 dark:text-white">${{ estimatedBalance.toFixed(2) }}</span></p>
-              <button class="mt-4 w-full rounded-xl bg-gray-900 py-3 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:opacity-50 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100" :disabled="submitting || !canPayRechargeWithAlipay" @click="rechargeWithAlipay">
-                <span v-if="submitting">生成二维码中...</span><span v-else>支付宝扫码充值</span>
+              <button class="mt-5 w-full rounded-2xl bg-gray-950 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-gray-800 disabled:opacity-50 dark:bg-white dark:text-gray-950" :disabled="submitting" @click="purchaseSelectedPlanWithBalance">
+                <span v-if="submitting">购买中...</span><span v-else>{{ planButtonText(selectedPlan) }}</span>
               </button>
-              <p v-if="!visibleMethods.alipay" class="mt-2 text-xs text-red-500">当前未启用支付宝支付，请稍后再试。</p>
-              <p class="mt-2 text-xs text-gray-400">示例：&yen;50 &rarr; ${{ (50 * (checkout.balance_recharge_multiplier || 10)).toFixed(0) }} API 余额。这里的 $ 是平台内 API 余额计价单位，用于抵扣模型调用费用，不代表提现或法币兑换；支持最多两位小数。</p>
-            </div>
-            <!-- Redeem Code -->
-            <div class="grid gap-4 lg:grid-cols-2">
-              <div class="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
-                <p class="mb-1 text-sm font-medium text-gray-700 dark:text-gray-200">兑换码充值</p>
-                <p class="mb-3 text-xs text-gray-400">购买后收到的卡密在这里兑换为充值余额，可用于购买套餐或按量计费。</p>
-                <div class="flex gap-2">
-                  <input v-model="redeemCode" type="text" placeholder="输入兑换码" class="flex-1 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 outline-none transition-colors focus:border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500 dark:focus:border-gray-400" @keyup.enter="handleRedeem" />
-                  <button class="rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:opacity-50 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100" :disabled="!redeemCode || redeeming" @click="handleRedeem">
-                    <span v-if="redeeming">兑换中...</span><span v-else>兑换</span>
-                  </button>
+              <button class="mt-3 w-full rounded-2xl border border-gray-900 py-3 text-sm font-semibold text-gray-900 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-500 dark:text-white dark:hover:bg-gray-700" :disabled="submitting || !visibleMethods.alipay" @click="purchasePlanWithAlipay(selectedPlan)">
+                支付宝支付
+              </button>
+              <router-link to="/redeem" class="mt-3 block text-center text-xs font-medium text-gray-500 underline underline-offset-4 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">已有兑换码，去兑换</router-link>
+            </aside>
+          </div>
+        </template>
+
+        <template v-else-if="checkoutMode">
+          <div class="mx-auto max-w-xl space-y-5">
+            <button class="text-sm font-medium text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white" @click="closeCheckout">&larr; 返回选择</button>
+            <div class="rounded-[28px] border border-gray-900 bg-white p-6 dark:border-gray-600 dark:bg-gray-800">
+              <div class="mb-5 flex items-center justify-between">
+                <div>
+                  <p class="text-xs uppercase tracking-[0.28em] text-gray-400">checkout</p>
+                  <h2 class="mt-1 text-2xl font-black text-gray-950 dark:text-white">{{ checkoutTitle }}</h2>
                 </div>
-                <p v-if="redeemError" class="mt-2 text-xs text-red-500">{{ redeemError }}</p>
-                <p v-if="redeemSuccess" class="mt-2 text-xs text-green-500">{{ redeemSuccess }}</p>
+                <span class="rounded-full border border-[#1677FF] px-3 py-1 text-xs font-semibold text-[#1677FF]">支付宝</span>
               </div>
-              <div class="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
-                <p class="mb-1 text-sm font-medium text-gray-700 dark:text-gray-200">优惠码领取</p>
-                <p class="mb-3 text-xs text-gray-400">注册后有优惠码，也可以在这里领取一次性赠送余额。</p>
-                <div class="flex gap-2">
-                  <input v-model="promoCode" type="text" placeholder="输入优惠码" class="flex-1 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 outline-none transition-colors focus:border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500 dark:focus:border-gray-400" @keyup.enter="handleRedeemPromo" />
-                  <button class="rounded-xl border border-gray-900 px-5 py-2.5 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-white dark:text-white dark:hover:bg-gray-700" :disabled="!promoCode || promoRedeeming" @click="handleRedeemPromo">
-                    <span v-if="promoRedeeming">领取中...</span><span v-else>领取</span>
-                  </button>
-                </div>
-                <p v-if="promoError" class="mt-2 text-xs text-red-500">{{ promoError }}</p>
-                <p v-if="promoSuccess" class="mt-2 text-xs text-green-500">{{ promoSuccess }}</p>
-              </div>
-            </div>
-            <div>
-              <h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">订阅套餐</h2>
-              <div class="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20">
-                <div class="flex gap-3">
-                  <svg class="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>
-                  <div class="text-sm leading-6 text-amber-800 dark:text-amber-200">
-                    <p class="font-semibold mb-1">使用须知</p>
-                    <p>账号仅限本人使用，<strong>禁止共享、转售或代挂</strong>——违规将永久封禁且不退款。本服务仅供学习与工作用途，严禁用于违法违规或军工相关场景。<a href="/terms" class="underline hover:text-amber-900 dark:hover:text-amber-100">完整条款 →</a></p>
+
+              <div class="rounded-2xl border border-gray-200 bg-[#fffdf7] p-4 dark:border-gray-700 dark:bg-gray-900/60">
+                <p class="text-sm font-semibold text-gray-900 dark:text-white">付款前再看一眼</p>
+                <div class="mt-4 space-y-3 text-sm">
+                  <div v-if="checkoutMode === 'subscription' && checkoutPlan" class="flex justify-between gap-4">
+                    <span class="text-gray-500">套餐</span><span class="font-semibold text-gray-900 dark:text-white">{{ checkoutPlan.name }}</span>
                   </div>
-                </div>
-              </div>
-              <div class="mb-6 grid gap-4 lg:grid-cols-2">
-                <div class="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
-                  <div class="flex items-start gap-3">
-                    <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-sm font-semibold text-gray-900 dark:bg-gray-700 dark:text-white">量</div>
-                    <div>
-                      <p class="text-sm font-semibold text-gray-900 dark:text-white">按量计费：不买套餐也能用</p>
-                      <p class="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">适合偶尔调用、先体验或低频使用。充值后选择「按量计费」分组，系统按每次 API 实际调用扣费，优先扣赠送余额，不足再扣充值余额；充值 ¥1 会到账 $10 API 余额，用多少扣多少，不会产生订阅有效期。</p>
+                  <div class="flex justify-between gap-4">
+                    <span class="text-gray-500">金额</span><span class="font-semibold text-gray-900 dark:text-white">¥{{ checkoutBaseAmount.toFixed(2) }}</span>
+                  </div>
+                  <div class="flex justify-between gap-4">
+                    <span class="text-gray-500">手续费</span><span class="font-semibold text-gray-900 dark:text-white">¥{{ checkoutFeeAmount.toFixed(2) }}</span>
+                  </div>
+                  <div class="border-t border-gray-200 pt-3 dark:border-gray-700">
+                    <div class="flex items-center justify-between gap-4">
+                      <span class="font-medium text-gray-700 dark:text-gray-200">实付</span>
+                      <span class="text-3xl font-black text-gray-950 dark:text-white">¥{{ checkoutPayAmount.toFixed(2) }}</span>
                     </div>
                   </div>
-                </div>
-                <div class="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
-                  <div class="flex items-start gap-3">
-                    <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gray-900 text-sm font-semibold text-white dark:bg-white dark:text-gray-900">订</div>
-                    <div>
-                      <p class="text-sm font-semibold text-gray-900 dark:text-white">按订阅计费：高频使用更划算</p>
-                      <p class="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">适合每天都用 Codex / GPT 编程、赶项目和持续开发。购买日卡、周卡或月卡后默认直接生效，API Key 选择对应订阅分组即可使用套餐权益；同一套餐再次购买会自动延期，周期越长日均越低。</p>
-                    </div>
+                  <div class="flex justify-between gap-4">
+                    <span class="text-gray-500">{{ checkoutMode === 'subscription' ? '等值扣除 API 余额' : '到账 API 余额' }}</span>
+                    <span class="font-semibold text-gray-900 dark:text-white">${{ checkoutReceiveBalance.toFixed(2) }}</span>
                   </div>
                 </div>
+                <p class="mt-3 text-xs text-gray-400">1 元 = {{ safeMultiplier }} API 余额。套餐买完默认生效。</p>
               </div>
-              <div class="mb-6 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
-                <p class="mb-2 text-sm font-medium text-gray-700 dark:text-gray-200">怎么选？</p>
-                <ul class="space-y-1 text-sm text-gray-500 dark:text-gray-400">
-                  <li>✦ 只是临时试用、偶尔请求：选按量计费，不买套餐也可以直接用。</li>
-                  <li>✦ 当天要高强度写代码、Debug、跑 Agent：选日卡，买完立即生效。</li>
-                  <li>✦ 连续几天或一周都要用：选周卡，日均更低，也是当前推荐方案。</li>
-                  <li>✦ 长期使用：选月卡，周期最长，日均成本最低。</li>
-                </ul>
-              </div>
-              <div class="mb-6 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
-                <p class="mb-2 text-sm font-medium text-gray-700 dark:text-gray-200">额度说明</p>
-                <ul class="space-y-1 text-sm text-gray-500 dark:text-gray-400">
-                  <li>✦ 按量计费 — 不买套餐，选择按量分组，默认按实际调用扣可用余额，优先扣赠送余额</li>
-                  <li>✦ 订阅套餐 — 购买后默认直接生效，使用对应套餐分组调用</li>
-                  <li>✦ 充值余额 — 充 ¥1 = $10 API 余额，可买套餐，也可按量抵扣</li>
-                  <li>✦ 赠送余额 — 注册奖励/邀请奖励只能用于按量计费，不能购买套餐</li>
-                  <li>✦ 越久越省 — 月卡日均仅 ¥8.33，比日卡省 16%</li>
-                </ul>
-              </div>
-              <div v-if="checkout.plans.length === 0" class="rounded-2xl border border-gray-200 bg-white py-16 text-center dark:border-gray-700 dark:bg-gray-800"><p class="text-gray-400">暂无套餐</p></div>
-              <div v-else class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <div v-for="plan in sortedPlans" :key="plan.id" class="group relative rounded-2xl border border-gray-200 bg-white p-5 transition-all hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-500" :class="{ 'ring-2 ring-gray-900 dark:ring-white': plan._recommended }">
-                  <div v-if="plan._recommended" class="absolute -top-3 left-4 rounded-full bg-gray-900 px-3 py-1 text-xs font-medium text-white dark:bg-white dark:text-gray-900">推荐</div>
-                  <div class="mb-4">
-                    <div class="flex items-center justify-between"><span class="text-base font-bold text-gray-900 dark:text-white">{{ plan.name }}</span><span class="rounded-md bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-700 dark:text-gray-400">{{ platformLabel(plan.group_platform || '') }}</span></div>
-                    <div class="mt-2 flex items-baseline gap-2"><span v-if="plan.original_price" class="text-xs text-gray-400 line-through">&yen;{{ plan.original_price }}</span><span class="text-2xl font-bold text-gray-900 dark:text-white">&yen;{{ planDisplayAmount(plan) }}</span><span class="text-xs text-gray-400">{{ planPriceSuffix(plan) }}</span></div>
-                    <p class="mt-1 text-xs text-gray-400">扣 ${{ (effectivePlanAmount(plan) * (checkout.balance_recharge_multiplier || 10)).toFixed(0) }} 充值余额</p>
-                    <p v-if="plan.validity_days > 1" class="mt-1 text-xs text-green-600 dark:text-green-400">日均仅 &yen;{{ (plan.price / plan.validity_days).toFixed(2) }}，比日卡省 {{ Math.round((1 - plan.price / plan.validity_days / 9.9) * 100) }}%</p>
-                    <p v-if="plan.purchase_quote?.action === 'extend'" class="mt-1 text-xs text-green-600 dark:text-green-400">当前套餐，购买后默认直接生效并自动延期</p>
-                    <p v-else class="mt-1 text-xs text-green-600 dark:text-green-400">购买后默认直接生效</p>
+
+              <button class="mt-5 w-full rounded-2xl bg-gray-950 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-gray-800 disabled:opacity-50 dark:bg-white dark:text-gray-950" :disabled="submitting || checkoutBaseAmount <= 0" @click="confirmAlipayCheckout">
+                <span v-if="submitting">生成支付宝订单中...</span><span v-else>{{ checkoutButtonText }}</span>
+              </button>
+            </div>
+          </div>
+        </template>
+
+        <template v-else>
+          <section class="overflow-hidden rounded-[32px] border border-[#e8e6dc] bg-[#f5f4ed] shadow-[rgba(50,50,93,0.16)_0px_30px_45px_-30px,rgba(0,0,0,0.08)_0px_18px_36px_-18px] dark:border-gray-600 dark:bg-gray-900">
+            <div class="grid gap-0 lg:grid-cols-[1.05fr_0.95fr]">
+              <div class="p-6 sm:p-8 lg:p-10">
+                <div class="inline-flex rounded-full border border-[#d1cfc5] bg-[#faf9f5] px-3 py-1 text-xs font-semibold text-[#4d4c48] dark:border-gray-500 dark:bg-gray-800 dark:text-white">不用先买一个月 · 用得多再开套餐</div>
+                <h1 class="mt-6 max-w-2xl text-4xl font-semibold leading-[1.02] tracking-[-0.04em] text-[#141413] dark:text-white sm:text-6xl">
+                  今天要跑 Agent，<br />就今天开。
+                </h1>
+                <p class="mt-5 max-w-xl text-base leading-7 text-[#5e5d59] dark:text-gray-300">日卡冲刺、周卡最稳、月卡日均最低。你买的是一段可控的高强度 AI 编程时间，不是被迫订一个月。</p>
+                <div class="mt-7 grid gap-3 sm:grid-cols-3">
+                  <div class="rounded-2xl border border-[#e8e6dc] bg-[#faf9f5] px-4 py-3 shadow-[0_0_0_1px_#f0eee6] dark:border-gray-700 dark:bg-gray-800">
+                    <p class="text-xs text-gray-500">新用户奖励</p>
+                    <p class="mt-1 text-2xl font-black text-gray-950 dark:text-white">$10</p>
+                    <p class="mt-1 text-xs text-gray-500">先按量试用</p>
                   </div>
-                  <div class="mb-4 space-y-2 text-sm text-gray-500 dark:text-gray-400">
-                    <p v-if="plan.description" class="leading-5">{{ plan.description }}</p>
-                    <ul v-if="planFeatures(plan).length" class="space-y-1.5 text-gray-600 dark:text-gray-300">
-                      <li v-for="feature in planFeatures(plan).slice(0, 4)" :key="feature" class="flex gap-2">
-                        <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gray-300 dark:bg-gray-500"></span>
-                        <span>{{ feature }}</span>
-                      </li>
-                    </ul>
+                  <div class="rounded-2xl border border-[#e8e6dc] bg-[#faf9f5] px-4 py-3 shadow-[0_0_0_1px_#f0eee6] dark:border-gray-700 dark:bg-gray-800">
+                    <p class="text-xs text-gray-500">充值换算</p>
+                    <p class="mt-1 text-2xl font-black text-gray-950 dark:text-white">1={{ safeMultiplier }}</p>
+                    <p class="mt-1 text-xs text-gray-500">1 元 = {{ safeMultiplier }} API 余额</p>
                   </div>
-                  <div class="space-y-2">
-                    <button class="w-full rounded-xl bg-gray-900 py-2.5 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:opacity-50 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100" :disabled="submitting || !visibleMethods.alipay" @click="purchasePlanWithAlipay(plan)">
+                  <div class="rounded-2xl border border-[#0e0f0c] bg-[#0e0f0c] px-4 py-3 text-white shadow-[rgba(50,50,93,0.22)_0px_18px_36px_-18px] dark:border-gray-700 dark:bg-white dark:text-gray-950">
+                    <p class="text-xs opacity-70">最推荐</p>
+                    <p class="mt-1 text-2xl font-black">周卡</p>
+                    <p class="mt-1 text-xs opacity-70">一周开发最划算</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="border-t border-[#141413] bg-[#141413] p-5 dark:border-gray-700 lg:border-l lg:border-t-0">
+                <div class="h-full rounded-[24px] border border-white/20 bg-black p-5 font-mono text-sm text-white">
+                  <div class="mb-5 flex items-center gap-2 border-b border-white/15 pb-4">
+                    <span class="h-3 w-3 rounded-full bg-[#ff5f57]"></span>
+                    <span class="h-3 w-3 rounded-full bg-[#ffbd2e]"></span>
+                    <span class="h-3 w-3 rounded-full bg-[#28c840]"></span>
+                    <span class="ml-auto text-xs text-white/40">mcorgai.run</span>
+                  </div>
+                  <div class="space-y-4 text-white/80">
+                    <p><span class="text-[#79ffe1]">$</span> 今天赶项目</p>
+                    <p class="pl-4 text-white">→ 开日卡，马上跑</p>
+                    <p><span class="text-[#79ffe1]">$</span> 一周持续开发</p>
+                    <p class="pl-4 text-white">→ 周卡，日均更低</p>
+                    <p><span class="text-[#79ffe1]">$</span> 长期高频使用</p>
+                    <p class="pl-4 text-white">→ 月卡，最省心</p>
+                  </div>
+                  <div class="mt-8 rounded-2xl border border-[#9fe870]/50 bg-[#9fe870]/10 p-4 text-xs leading-6 text-[#eaffdf]">
+                    不想订阅？也可以只按量扣余额。赠送余额优先抵扣按量调用，充值余额再兜底。
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="mt-6 grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+            <div class="rounded-[28px] border border-[#e5edf5] bg-white p-5 shadow-[rgba(50,50,93,0.12)_0px_20px_35px_-25px,rgba(0,0,0,0.08)_0px_10px_24px_-18px] dark:border-gray-600 dark:bg-gray-800">
+              <div class="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <p class="text-xs uppercase tracking-[0.28em] text-gray-400">wallet</p>
+                  <h2 class="mt-1 text-xl font-black text-gray-950 dark:text-white">余额拆开看，心里更清楚</h2>
+                </div>
+                <p class="text-sm text-gray-500">总可用 ${{ totalBalanceDisplay }}</p>
+              </div>
+              <div class="mt-4 grid gap-3 sm:grid-cols-3">
+                <div class="rounded-2xl border border-gray-200 bg-[#fffaf0] px-4 py-3 dark:border-gray-700 dark:bg-gray-900/60">
+                  <p class="text-xs text-gray-500">充值余额</p>
+                  <p class="mt-1 text-2xl font-black text-gray-950 dark:text-white">${{ cashBalanceDisplay }}</p>
+                  <p class="mt-1 text-xs text-gray-500">买套餐 / 按量都能用</p>
+                </div>
+                <div class="rounded-2xl border border-gray-200 px-4 py-3 dark:border-gray-700">
+                  <p class="text-xs text-gray-500">赠送余额</p>
+                  <p class="mt-1 text-2xl font-black text-gray-950 dark:text-white">${{ giftBalanceDisplay }}</p>
+                  <p class="mt-1 text-xs text-gray-500">只抵扣按量调用</p>
+                </div>
+                <div class="rounded-2xl border border-gray-200 px-4 py-3 dark:border-gray-700">
+                  <p class="text-xs text-gray-500">冻结赠送</p>
+                  <p class="mt-1 text-2xl font-black text-gray-950 dark:text-white">${{ frozenGiftBalanceDisplay }}</p>
+                  <p class="mt-1 text-xs text-gray-500">24 小时后解冻</p>
+                </div>
+              </div>
+            </div>
+            <div class="rounded-[28px] border border-[#d1cfc5] bg-[#faf9f5] p-5 shadow-[0_0_0_1px_#f0eee6] dark:border-gray-600 dark:bg-gray-900">
+              <p class="text-xs uppercase tracking-[0.28em] text-gray-500">how to pick</p>
+              <h2 class="mt-1 text-xl font-black text-gray-950 dark:text-white">怎么选</h2>
+              <div class="mt-4 space-y-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                <p>偶尔试试：先按量。</p>
+                <p>今天赶项目：日卡。</p>
+                <p>一周都在开发：周卡。</p>
+                <p>每天离不开：月卡。</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="mt-8">
+            <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p class="text-xs uppercase tracking-[0.3em] text-gray-400">plans</p>
+                <h2 class="mt-1 text-3xl font-black tracking-tight text-gray-950 dark:text-white">选择你的 AI 编程时间</h2>
+              </div>
+              <p class="text-sm text-gray-500 dark:text-gray-400">价格越长，日均越低；买完默认生效。</p>
+            </div>
+
+            <div v-if="checkout.plans.length === 0" class="rounded-[28px] border border-gray-200 bg-white py-16 text-center dark:border-gray-700 dark:bg-gray-800">
+              <p class="text-gray-400">暂无套餐</p>
+            </div>
+            <div v-else class="grid gap-4 lg:grid-cols-3">
+              <article
+                v-for="plan in sortedPlans"
+                :key="plan.id"
+                class="relative flex min-h-[430px] flex-col rounded-[28px] border bg-white p-5 shadow-[rgba(50,50,93,0.10)_0px_18px_34px_-26px,rgba(0,0,0,0.06)_0px_10px_22px_-18px] transition-transform hover:-translate-y-1 dark:bg-gray-800"
+                :class="plan._recommended ? 'border-[#0e0f0c] bg-[#f5f4ed] dark:border-white dark:bg-gray-900' : 'border-[#e5edf5] dark:border-gray-700'"
+              >
+                <div v-if="plan._recommended" class="absolute -top-3 left-5 rounded-full border border-[#163300] bg-[#9fe870] px-3 py-1 text-xs font-bold text-[#163300] shadow-[0_0_0_1px_rgba(14,15,12,0.12)] dark:border-white dark:bg-white dark:text-gray-950">多数人选这个</div>
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <p class="text-sm font-bold text-gray-500">{{ planBadge(plan) }}</p>
+                    <h3 class="mt-1 text-3xl font-black tracking-tight text-gray-950 dark:text-white">{{ plan.name }}</h3>
+                  </div>
+                  <button class="rounded-full border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-500 hover:border-gray-900 hover:text-gray-900 dark:border-gray-700 dark:hover:border-white dark:hover:text-white" @click="selectedPlan = plan">详情</button>
+                </div>
+
+                <div class="mt-6">
+                  <div class="flex items-end gap-2">
+                    <span v-if="plan.original_price" class="mb-1 text-sm text-gray-400 line-through">&yen;{{ plan.original_price }}</span>
+                    <span class="text-5xl font-black tracking-tight text-gray-950 dark:text-white">&yen;{{ planDisplayAmount(plan) }}</span>
+                    <span class="mb-2 text-sm text-gray-500">{{ planPriceSuffix(plan) }}</span>
+                  </div>
+                  <p class="mt-2 text-sm font-semibold text-gray-900 dark:text-white">{{ planValueLine(plan) }}</p>
+                  <p class="mt-1 text-xs text-gray-400">余额支付约扣 ${{ planDeductBalance(plan) }} 充值余额</p>
+                </div>
+
+                <div class="mt-6 rounded-2xl border border-gray-200 bg-white/70 p-4 dark:border-gray-700 dark:bg-gray-900/50">
+                  <p class="text-lg font-black leading-6 text-gray-950 dark:text-white">{{ planTagline(plan) }}</p>
+                  <div class="mt-4 space-y-2 text-sm text-gray-600 dark:text-gray-300">
+                    <p v-for="item in planBullets(plan)" :key="item" class="border-l border-gray-900 pl-3 dark:border-white">{{ item }}</p>
+                  </div>
+                </div>
+
+                <div class="mt-auto pt-5">
+                  <p v-if="plan.purchase_quote?.action === 'extend'" class="mb-3 text-xs font-semibold text-green-700 dark:text-green-400">当前套餐，再买自动延期</p>
+                  <p v-else class="mb-3 text-xs font-semibold text-green-700 dark:text-green-400">购买后默认直接生效</p>
+                  <div class="grid gap-2">
+                    <button class="rounded-full bg-[#0e0f0c] py-3 text-sm font-semibold text-white transition-transform hover:scale-[1.02] disabled:opacity-50 dark:bg-white dark:text-gray-950" :disabled="submitting || !visibleMethods.alipay" @click="purchasePlanWithAlipay(plan)">
                       <span v-if="submitting && checkoutPlan?.id === plan.id">生成二维码中...</span><span v-else>支付宝支付</span>
                     </button>
-                    <button class="w-full rounded-xl border border-gray-200 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700" :disabled="submitting" @click="purchasePlanWithBalance(plan)">
+                    <button class="rounded-full border border-[#0e0f0c] py-3 text-sm font-semibold text-[#0e0f0c] transition-transform hover:scale-[1.02] hover:bg-[#f5f4ed] disabled:opacity-50 dark:border-gray-500 dark:text-white dark:hover:bg-gray-700" :disabled="submitting" @click="purchasePlanWithBalance(plan)">
                       <span v-if="submitting && selectedPlan?.id === plan.id">购买中...</span><span v-else>{{ planButtonText(plan) }}</span>
                     </button>
                   </div>
                 </div>
+              </article>
+            </div>
+          </section>
+
+          <section class="mt-8 grid gap-4 lg:grid-cols-2">
+            <div class="rounded-[28px] border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+              <p class="text-xs uppercase tracking-[0.28em] text-gray-400">pay as you go</p>
+              <h2 class="mt-1 text-xl font-black text-gray-950 dark:text-white">不买套餐，也能直接用</h2>
+              <p class="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">充值后选择按量分组，按每次 API 调用扣费。赠送余额会优先抵扣，适合先试、偶尔用、临时补一点。</p>
+              <div class="mt-4 flex flex-wrap items-center gap-2">
+                <button v-for="amt in [10, 20, 50, 100, 200, 500]" :key="amt" class="rounded-xl border px-3 py-2 text-sm font-semibold transition-all active:scale-[0.97]" :class="qqSelectedAmount === amt ? 'border-gray-950 bg-gray-950 text-white dark:border-white dark:bg-white dark:text-gray-950' : 'border-gray-200 text-gray-600 hover:border-gray-900 dark:border-gray-700 dark:text-gray-300'" @click="customAmount = ''; qqSelectedAmount = amt">&yen;{{ amt }}</button>
               </div>
-              <div v-if="activeSubscriptions.length > 0" class="mt-6">
-                <h3 class="mb-3 text-sm font-medium text-gray-500 dark:text-gray-400">当前订阅</h3>
-                <div class="space-y-2">
-                  <div v-for="sub in activeSubscriptions" :key="sub.id" class="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-800">
-                    <div class="min-w-0 flex-1">
-                      <div class="flex items-center gap-2"><span class="text-sm font-semibold text-gray-900 dark:text-white">{{ sub.group?.name || 'Group ' + sub.group_id }}</span></div>
-                      <p class="mt-0.5 text-xs text-gray-400"><span v-if="sub.expires_at">剩余 {{ getDaysRemaining(sub.expires_at) }} 天</span><span v-else>永久有效</span></p>
+              <div class="relative mt-3">
+                <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-gray-400">&yen;</span>
+                <input v-model="customAmount" type="number" min="1" step="0.01" placeholder="任意金额" class="w-full rounded-2xl border border-gray-200 bg-white py-3 pl-7 pr-16 text-sm text-gray-900 placeholder-gray-400 outline-none transition-colors focus:border-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:focus:border-white" @input="qqSelectedAmount = 0" />
+                <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-gray-400">人民币</span>
+              </div>
+              <p v-if="estimatedBalance > 0" class="mt-3 text-sm text-gray-500 dark:text-gray-400">预计到账 <span class="font-black text-gray-950 dark:text-white">${{ estimatedBalance.toFixed(2) }}</span> API 余额</p>
+              <button class="mt-4 w-full rounded-2xl bg-gray-950 py-3 text-sm font-semibold text-white transition-colors hover:bg-gray-800 disabled:opacity-50 dark:bg-white dark:text-gray-950" :disabled="submitting || !canPayRechargeWithAlipay" @click="rechargeWithAlipay">
+                <span v-if="submitting">生成二维码中...</span><span v-else>支付宝扫码充值</span>
+              </button>
+              <p v-if="!visibleMethods.alipay" class="mt-2 text-xs text-red-500">当前未启用支付宝支付，请稍后再试。</p>
+            </div>
+
+            <div class="space-y-4">
+              <div class="rounded-[28px] border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+                <p class="text-sm font-bold text-gray-900 dark:text-white">兑换码 / 优惠码</p>
+                <div class="mt-4 space-y-3">
+                  <div>
+                    <p class="mb-2 text-xs text-gray-500">兑换码充值：到账充值余额，可买套餐</p>
+                    <div class="flex gap-2">
+                      <input v-model="redeemCode" type="text" placeholder="输入兑换码" class="min-w-0 flex-1 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none focus:border-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:focus:border-white" @keyup.enter="handleRedeem" />
+                      <button class="rounded-2xl bg-gray-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50 dark:bg-white dark:text-gray-950" :disabled="!redeemCode || redeeming" @click="handleRedeem"><span v-if="redeeming">兑换中</span><span v-else>兑换</span></button>
                     </div>
-                    <span class="rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-medium text-green-600 dark:bg-green-900/30 dark:text-green-400">生效中</span>
+                    <p v-if="redeemError" class="mt-2 text-xs text-red-500">{{ redeemError }}</p>
+                    <p v-if="redeemSuccess" class="mt-2 text-xs text-green-600">{{ redeemSuccess }}</p>
+                  </div>
+                  <div>
+                    <p class="mb-2 text-xs text-gray-500">优惠码领取：赠送余额，只能按量抵扣</p>
+                    <div class="flex gap-2">
+                      <input v-model="promoCode" type="text" placeholder="输入优惠码" class="min-w-0 flex-1 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none focus:border-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:focus:border-white" @keyup.enter="handleRedeemPromo" />
+                      <button class="rounded-2xl border border-gray-900 px-5 py-3 text-sm font-semibold text-gray-900 disabled:opacity-50 dark:border-gray-500 dark:text-white" :disabled="!promoCode || promoRedeeming" @click="handleRedeemPromo"><span v-if="promoRedeeming">领取中</span><span v-else>领取</span></button>
+                    </div>
+                    <p v-if="promoError" class="mt-2 text-xs text-red-500">{{ promoError }}</p>
+                    <p v-if="promoSuccess" class="mt-2 text-xs text-green-600">{{ promoSuccess }}</p>
                   </div>
                 </div>
               </div>
+
+              <div class="rounded-[28px] border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+                <p class="text-sm font-bold text-gray-900 dark:text-white">用户交流群</p>
+                <p class="mt-2 text-2xl font-black text-gray-950 dark:text-white">774692252</p>
+                <p class="mt-1 text-xs text-gray-500">活动福利 · 更新通知 · 使用答疑</p>
+              </div>
             </div>
-            </template>
-          </template>
+          </section>
+
+          <section v-if="activeSubscriptions.length > 0" class="mt-8 rounded-[28px] border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+            <h3 class="text-sm font-bold text-gray-900 dark:text-white">当前订阅</h3>
+            <div class="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              <div v-for="sub in activeSubscriptions" :key="sub.id" class="flex items-center justify-between gap-3 rounded-2xl border border-gray-200 px-4 py-3 dark:border-gray-700">
+                <div class="min-w-0">
+                  <p class="truncate text-sm font-semibold text-gray-900 dark:text-white">{{ sub.group?.name || 'Group ' + sub.group_id }}</p>
+                  <p class="mt-0.5 text-xs text-gray-400"><span v-if="sub.expires_at">剩余 {{ getDaysRemaining(sub.expires_at) }} 天</span><span v-else>永久有效</span></p>
+                </div>
+                <span class="rounded-full border border-green-600 px-2 py-0.5 text-[10px] font-bold text-green-700 dark:border-green-400 dark:text-green-400">生效中</span>
+              </div>
+            </div>
+          </section>
+
+          <details class="mt-8 rounded-[28px] border border-gray-200 bg-white p-5 text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400">
+            <summary class="cursor-pointer text-sm font-bold text-gray-900 dark:text-white">使用规则和风控说明</summary>
+            <div class="mt-4 space-y-2 leading-6">
+              <p>账号仅限本人使用，禁止共享、转售或代挂；违规将永久封禁且不退款。</p>
+              <p>按量计费优先扣赠送余额，不足再扣充值余额；套餐购买只扣充值余额。</p>
+              <p>注册和邀请奖励属于赠送余额，24 小时冻结规则用于防刷；完整条款见 <a href="/terms" class="underline underline-offset-4">使用条款</a>。</p>
+            </div>
+          </details>
         </template>
       </template>
     </div>
@@ -285,7 +370,6 @@
     />
   </AppLayout>
 </template>
-
 
 <script setup lang="ts">
 // @ts-nocheck
@@ -357,10 +441,13 @@ const checkoutMode = ref<'recharge' | 'subscription' | null>(null)
 const checkoutPlan = ref<SubscriptionPlan | null>(null)
 const qqSelectedAmount = ref<number | null>(10)
 const customAmount = ref('')
+const safeMultiplier = computed(() => {
+  const value = Number(checkout.value.balance_recharge_multiplier || 0)
+  return value > 1 ? value : 10
+})
 const estimatedBalance = computed(() => {
   const amt = customAmount.value ? parseFloat(customAmount.value) : (qqSelectedAmount.value || 0)
-  const multiplier = checkout.value.balance_recharge_multiplier || 10
-  return amt > 0 ? amt * multiplier : 0
+  return amt > 0 ? amt * safeMultiplier.value : 0
 })
 const rechargeAmount = computed(() => {
   const amt = customAmount.value ? parseFloat(customAmount.value) : (qqSelectedAmount.value || 0)
@@ -374,7 +461,7 @@ const checkoutBaseAmount = computed(() => checkoutMode.value === 'subscription' 
 const checkoutFeeRate = computed(() => checkout.value.recharge_fee_rate || 0)
 const checkoutFeeAmount = computed(() => checkoutBaseAmount.value * checkoutFeeRate.value / 100)
 const checkoutPayAmount = computed(() => checkoutBaseAmount.value + checkoutFeeAmount.value)
-const checkoutReceiveBalance = computed(() => checkoutBaseAmount.value * (checkout.value.balance_recharge_multiplier || 10))
+const checkoutReceiveBalance = computed(() => checkoutBaseAmount.value * safeMultiplier.value)
 const checkoutTitle = computed(() => checkoutMode.value === 'subscription' ? '套餐支付宝支付' : '支付宝扫码充值')
 const checkoutButtonText = computed(() => `确认支付 ¥${checkoutPayAmount.value.toFixed(2)}`)
 const redeemCode = ref('')
@@ -392,7 +479,7 @@ const balancePurchaseConfirmMessage = computed(() => {
   if (!plan) return ''
   const action = plan.purchase_quote?.action
   const cnyAmount = effectivePlanAmount(plan)
-  const multiplier = checkout.value.balance_recharge_multiplier || 10
+  const multiplier = safeMultiplier.value
   const usdAmount = (cnyAmount * multiplier).toFixed(2)
   const balance = cashBalanceDisplay.value
   if (action === 'extend') {
@@ -640,6 +727,45 @@ function planPriceSuffix(plan: SubscriptionPlan): string {
   if (plan.purchase_quote?.action === 'extend') return `/${plan.validity_days}天延期`
   if (plan.validity_days === 1) return '/天'
   return `/${plan.validity_days}天`
+}
+
+function planBadge(plan: SubscriptionPlan): string {
+  if (plan.validity_days === 1) return '临时冲刺'
+  if (plan.validity_days <= 7) return '一周开发'
+  return '长期高频'
+}
+
+function planTagline(plan: SubscriptionPlan): string {
+  if (plan.validity_days === 1) return '今天要赶项目，就别买一个月。'
+  if (plan.validity_days <= 7) return '一周持续写代码，多数人选这个。'
+  return '每天都用 AI 编程，月卡最省心。'
+}
+
+function planValueLine(plan: SubscriptionPlan): string {
+  if (plan.validity_days === 1) return '适合 Debug、临时冲刺、跑一次 Agent 工作流。'
+  if (plan.validity_days <= 7) return `日均约 ¥${dailyAverage(plan)}，比天天买日卡省 ${dailySavingPercent(plan)}%。`
+  return `日均约 ¥${dailyAverage(plan)}，比天天买日卡省 ${dailySavingPercent(plan)}%。`
+}
+
+function planBullets(plan: SubscriptionPlan): string[] {
+  if (plan.validity_days === 1) return ['当天高强度使用', '买完立即生效', '不用承担长期订阅']
+  if (plan.validity_days <= 7) return ['连续开发更稳', '日均成本更低', '适合大多数开发者']
+  return ['长期项目更省心', '每天打开就能用', '日均最低']
+}
+
+function dailyAverage(plan: SubscriptionPlan): string {
+  const days = Math.max(1, Number(plan.validity_days || 1))
+  return (Number(plan.price || 0) / days).toFixed(2)
+}
+
+function dailySavingPercent(plan: SubscriptionPlan): number {
+  const base = 9.9
+  const avg = Number(plan.price || 0) / Math.max(1, Number(plan.validity_days || 1))
+  return Math.max(0, Math.round((1 - avg / base) * 100))
+}
+
+function planDeductBalance(plan: SubscriptionPlan): string {
+  return (effectivePlanAmount(plan) * safeMultiplier.value).toFixed(0)
 }
 
 function planButtonText(plan: SubscriptionPlan): string {
