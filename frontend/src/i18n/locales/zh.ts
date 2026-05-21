@@ -349,6 +349,7 @@ export default {
     dashboard: '仪表盘',
     announcements: '公告',
     apiKeys: 'API 密钥',
+    playground: 'Playground',
     usage: '使用记录',
     redeem: '兑换',
     affiliate: '邀请返利',
@@ -388,6 +389,11 @@ export default {
     channelMonitor: '渠道监控',
     channelStatus: '渠道状态',
     riskControl: '风控中心',
+  },
+
+  playground: {
+    title: 'Playground',
+    description: '聊天与生图接口体验台',
   },
 
   // Auth
