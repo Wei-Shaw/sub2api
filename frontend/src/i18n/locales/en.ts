@@ -423,6 +423,7 @@ export default {
     emailSuffixNotAllowed: 'This email domain is not allowed for registration.',
     emailSuffixNotAllowedWithAllowed:
       'This email domain is not allowed. Allowed domains: {suffixesREDACTED',
+    emailSuffixAllowedMore: 'and {countREDACTED more',
     loginSuccess: 'Login successful! Welcome back.',
     accountCreatedSuccess: 'Account created successfully! Welcome to {siteNameREDACTED.',
     reloginRequired: 'Session expired. Please log in again.',
@@ -5282,9 +5283,9 @@ export default {
         emailVerificationHint: 'Require email verification for new registrations',
         emailSuffixWhitelist: 'Email Domain Whitelist',
         emailSuffixWhitelistHint:
-          "Only email addresses from the specified domains can register (for example, {'@'REDACTEDqq.com, {'@'REDACTEDgmail.com)",
-        emailSuffixWhitelistPlaceholder: 'example.com',
-        emailSuffixWhitelistInputHint: 'Leave empty for no restriction',
+          "Only email addresses from the specified domains can register (for example, {'@'REDACTEDqq.com, {'@'REDACTEDgmail.com, *.edu.cn)",
+        emailSuffixWhitelistPlaceholder: '@example.com, *.edu.cn',
+        emailSuffixWhitelistInputHint: 'Leave empty for no restriction. Use *.edu.cn to match edu.cn and its subdomains.',
         promoCode: 'Promo Code',
         promoCodeHint: 'Allow users to use promo codes during registration',
         invitationCode: 'Invitation Code Registration',

@@ -164,6 +164,7 @@ REDACTED from '@/api/auth'
 import { apiClient REDACTED from '@/api/client'
 import { buildAuthErrorMessage REDACTED from '@/utils/authError'
 import {
+  formatRegistrationEmailSuffixWhitelistForMessage,
   isRegistrationEmailSuffixAllowed,
   normalizeRegistrationEmailSuffixWhitelist
 REDACTED from '@/utils/registrationEmailPolicy'
@@ -574,7 +575,10 @@ function buildEmailSuffixNotAllowedMessage(): string {
   REDACTED
   const separator = String(locale.value || '').toLowerCase().startsWith('zh') ? '、' : ', '
   return t('auth.emailSuffixNotAllowedWithAllowed', {
-    suffixes: normalizedWhitelist.join(separator)
+    suffixes: formatRegistrationEmailSuffixWhitelistForMessage(normalizedWhitelist, {
+      separator,
+      more: (count) => t('auth.emailSuffixAllowedMore', { count REDACTED)
+    REDACTED)
   REDACTED)
 REDACTED
 </script>
