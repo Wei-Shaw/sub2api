@@ -77,6 +77,29 @@ func RegisterUserRoutes(
 			channels.GET("/available", h.AvailableChannel.List)
 		}
 
+		// Playground 工作台持久化接口
+		playground := authenticated.Group("/playground")
+		{
+			chat := playground.Group("/chat")
+			{
+				chat.GET("/sessions", h.Playground.ListChatSessions)
+				chat.POST("/sessions", h.Playground.CreateChatSession)
+				chat.PUT("/sessions/:session_id", h.Playground.UpdateChatSession)
+				chat.DELETE("/sessions/:session_id", h.Playground.DeleteChatSession)
+				chat.GET("/sessions/:session_id/messages", h.Playground.ListChatMessages)
+				chat.POST("/sessions/:session_id/messages", h.Playground.CreateChatMessage)
+			}
+
+			image := playground.Group("/image")
+			{
+				image.GET("/tasks", h.Playground.ListImageTasks)
+				image.POST("/tasks", h.Playground.CreateImageTask)
+				image.GET("/tasks/:task_id", h.Playground.GetImageTask)
+				image.PUT("/tasks/:task_id", h.Playground.UpdateImageTask)
+				image.DELETE("/tasks/:task_id", h.Playground.DeleteImageTask)
+			}
+		}
+
 		// 使用记录
 		usage := authenticated.Group("/usage")
 		{

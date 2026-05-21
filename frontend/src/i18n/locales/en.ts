@@ -350,6 +350,8 @@ export default {
     announcements: 'Announcements',
     apiKeys: 'API Keys',
     playground: 'Playground',
+    playgroundChat: 'Chat',
+    playgroundImage: 'Images',
     usage: 'Usage',
     redeem: 'Redeem',
     affiliate: 'Affiliate Rebates',
@@ -394,6 +396,10 @@ export default {
   playground: {
     title: 'Playground',
     description: 'Chat and image generation API playground',
+    chatTitle: 'Chat Playground',
+    chatDescription: 'Chat API playground',
+    imageTitle: 'Image Playground',
+    imageDescription: 'Image generation API playground',
   },
 
   // Auth

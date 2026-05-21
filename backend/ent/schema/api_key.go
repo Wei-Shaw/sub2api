@@ -130,6 +130,9 @@ func (APIKey) Edges() []ent.Edge {
 			Field("group_id").
 			Unique(),
 		edge.To("usage_logs", UsageLog.Type),
+		edge.To("playground_chat_sessions", PlaygroundChatSession.Type),
+		edge.To("playground_chat_messages", PlaygroundChatMessage.Type),
+		edge.To("playground_image_tasks", PlaygroundImageTask.Type),
 	}
 }
 

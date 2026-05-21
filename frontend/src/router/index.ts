@@ -242,14 +242,30 @@ const routes: RouteRecordRaw[] = [
   },
   {
     path: '/playground',
-    name: 'Playground',
+    redirect: '/playground/chat'
+  },
+  {
+    path: '/playground/chat',
+    name: 'PlaygroundChat',
     component: () => import('@/views/user/PlaygroundView.vue'),
     meta: {
       requiresAuth: true,
       requiresAdmin: false,
-      title: 'Playground',
-      titleKey: 'playground.title',
-      descriptionKey: 'playground.description'
+      title: 'Chat Playground',
+      titleKey: 'playground.chatTitle',
+      descriptionKey: 'playground.chatDescription'
+    }
+  },
+  {
+    path: '/playground/image',
+    name: 'PlaygroundImage',
+    component: () => import('@/views/user/PlaygroundView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Image Playground',
+      titleKey: 'playground.imageTitle',
+      descriptionKey: 'playground.imageDescription'
     }
   },
   {

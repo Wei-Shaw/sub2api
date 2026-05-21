@@ -838,6 +838,9 @@ function handleMenuItemClick(itemPath: string) {
 }
 
 function isActive(path: string): boolean {
+  if (path === '/playground') {
+    return route.path === path || route.path.startsWith('/playground/')
+  }
   return route.path === path || route.path.startsWith(path + '/')
 }
 

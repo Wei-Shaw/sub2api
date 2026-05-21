@@ -350,6 +350,8 @@ export default {
     announcements: '公告',
     apiKeys: 'API 密钥',
     playground: 'Playground',
+    playgroundChat: '聊天',
+    playgroundImage: '生图',
     usage: '使用记录',
     redeem: '兑换',
     affiliate: '邀请返利',
@@ -394,6 +396,10 @@ export default {
   playground: {
     title: 'Playground',
     description: '聊天与生图接口体验台',
+    chatTitle: '聊天体验台',
+    chatDescription: '聊天接口体验台',
+    imageTitle: '生图体验台',
+    imageDescription: '图片生成接口体验台',
   },
 
   // Auth
