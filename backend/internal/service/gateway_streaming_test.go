@@ -138,7 +138,6 @@ func TestParseSSEUsage_DoneEvent(t *testing.T) {
 // --- 流式响应端到端测试 ---
 
 func TestHandleStreamingResponse_CacheTokens(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	svc := newMinimalGatewayService()
 
 	rec := httptest.NewRecorder()
@@ -167,7 +166,6 @@ func TestHandleStreamingResponse_CacheTokens(t *testing.T) {
 }
 
 func TestHandleStreamingResponse_EmptyStream(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	svc := newMinimalGatewayService()
 
 	rec := httptest.NewRecorder()
@@ -190,7 +188,6 @@ func TestHandleStreamingResponse_EmptyStream(t *testing.T) {
 }
 
 func TestHandleStreamingResponse_SpecialCharactersInJSON(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	svc := newMinimalGatewayService()
 
 	rec := httptest.NewRecorder()
@@ -225,7 +222,6 @@ func TestHandleStreamingResponse_SpecialCharactersInJSON(t *testing.T) {
 // 上游中途读错误（如 HTTP/2 GOAWAY 触发的 unexpected EOF）发生在向客户端写入任何字节前：
 // 网关应返回 *UpstreamFailoverError 触发账号 failover/重试，而不是把错误事件直接发给客户端。
 func TestHandleStreamingResponse_StreamReadErrorBeforeOutput_TriggersFailover(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	svc := newMinimalGatewayService()
 
 	rec := httptest.NewRecorder()
@@ -264,7 +260,6 @@ func TestHandleStreamingResponse_StreamReadErrorBeforeOutput_TriggersFailover(t 
 // 上游已经发送过事件（c.Writer 已写过字节）后再发生读错误：
 // SSE 协议无 resume，网关只能透传 stream_read_error 错误事件给客户端，不能 failover。
 func TestHandleStreamingResponse_StreamReadErrorAfterOutput_PassesThrough(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	svc := newMinimalGatewayService()
 
 	rec := httptest.NewRecorder()
@@ -355,7 +350,6 @@ func TestSanitizeStreamError_KnownErrors(t *testing.T) {
 // failover ResponseBody 必须用 sanitize 过的消息，避免泄露给客户端 / 写入 ops 日志
 // 时携带内部地址信息。
 func TestHandleStreamingResponse_FailoverBodyDoesNotLeakAddresses(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	svc := newMinimalGatewayService()
 
 	rec := httptest.NewRecorder()

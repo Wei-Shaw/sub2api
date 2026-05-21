@@ -13,7 +13,6 @@ import (
 )
 
 func TestGatewayService_BuildAnthropicVertexServiceAccountRequest(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)

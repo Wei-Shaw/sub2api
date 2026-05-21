@@ -84,7 +84,6 @@ func (r *openAICodexExtraListRepo) ListWithFilters(_ context.Context, params pag
 }
 
 func TestOpenAIGatewayService_Forward_WSv2ErrorEventUsageLimitPersistsRateLimit(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	resetAt := time.Now().Add(2 * time.Hour).Unix()
 	upgrader := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
@@ -169,7 +168,6 @@ func TestOpenAIGatewayService_Forward_WSv2ErrorEventUsageLimitPersistsRateLimit(
 }
 
 func TestOpenAIGatewayService_Forward_WSv2Handshake429PersistsRateLimit(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("x-codex-primary-used-percent", "100")
@@ -240,7 +238,6 @@ func TestOpenAIGatewayService_Forward_WSv2Handshake429PersistsRateLimit(t *testi
 }
 
 func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_ErrorEventUsageLimitPersistsRateLimit(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	cfg := newOpenAIWSV2TestConfig()
 	cfg.Security.URLAllowlist.Enabled = false

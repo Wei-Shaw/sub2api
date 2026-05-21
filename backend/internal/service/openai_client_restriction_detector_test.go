@@ -24,7 +24,6 @@ func newCodexDetectorTestContext(ua string, originator string) *gin.Context {
 }
 
 func TestOpenAICodexClientRestrictionDetector_Detect(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	t.Run("未开启开关时绕过", func(t *testing.T) {
 		detector := NewOpenAICodexClientRestrictionDetector(nil)

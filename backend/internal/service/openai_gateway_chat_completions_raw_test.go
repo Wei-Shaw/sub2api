@@ -77,7 +77,6 @@ func TestBuildOpenAIResponsesURL_ProbeURL(t *testing.T) {
 }
 
 func TestForwardAsRawChatCompletions_ForcesStreamUsageUpstreamAndPassesUsageDownstream(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	body := []byte(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}],"stream":true}`)
 	rec := httptest.NewRecorder()
@@ -119,7 +118,6 @@ func TestForwardAsRawChatCompletions_ForcesStreamUsageUpstreamAndPassesUsageDown
 }
 
 func TestForwardAsRawChatCompletions_ClientDisconnectDrainsUsage(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	body := []byte(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}],"stream":true}`)
 	rec := httptest.NewRecorder()
@@ -158,7 +156,6 @@ func TestForwardAsRawChatCompletions_ClientDisconnectDrainsUsage(t *testing.T) {
 }
 
 func TestForwardAsRawChatCompletions_UpstreamRequestIgnoresClientCancel(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	reqCtx, cancel := context.WithCancel(context.Background())
 	body := []byte(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}],"stream":true}`)
@@ -215,7 +212,6 @@ func TestEnsureOpenAIChatStreamUsage(t *testing.T) {
 }
 
 func TestBufferRawChatCompletions_RejectsOversizedResponse(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)

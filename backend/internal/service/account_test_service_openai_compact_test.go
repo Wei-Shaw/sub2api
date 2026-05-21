@@ -15,7 +15,6 @@ import (
 )
 
 func TestAccountTestService_TestAccountConnection_OpenAICompactOAuthSuccessPersistsSupport(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	updateCalls := make(chan map[string]any, 1)
 	account := Account{
@@ -68,7 +67,6 @@ func TestAccountTestService_TestAccountConnection_OpenAICompactOAuthSuccessPersi
 }
 
 func TestAccountTestService_TestAccountConnection_OpenAICompactOAuth404MarksUnsupported(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	updateCalls := make(chan map[string]any, 1)
 	account := Account{
@@ -112,7 +110,6 @@ func TestAccountTestService_TestAccountConnection_OpenAICompactOAuth404MarksUnsu
 }
 
 func TestAccountTestService_TestAccountConnection_OpenAICompactAPIKeyUsesCompactPath(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	updateCalls := make(chan map[string]any, 1)
 	account := Account{
@@ -158,7 +155,6 @@ func TestAccountTestService_TestAccountConnection_OpenAICompactAPIKeyUsesCompact
 }
 
 func TestAccountTestService_TestAccountConnection_OpenAICompactAPIKeyDefaultBaseURLUsesV1Path(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	updateCalls := make(chan map[string]any, 1)
 	account := Account{

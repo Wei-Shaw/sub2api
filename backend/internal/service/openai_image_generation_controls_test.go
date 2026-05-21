@@ -16,7 +16,6 @@ import (
 )
 
 func TestOpenAIGatewayServiceForward_RejectsDisabledImageGenerationIntents(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	tests := []struct {
 		name string
@@ -55,7 +54,6 @@ func TestOpenAIGatewayServiceForward_RejectsDisabledImageGenerationIntents(t *te
 }
 
 func TestOpenAIGatewayServiceForward_DisabledGroupAllowsTextOnlyResponses(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	upstream := &httpUpstreamRecorder{
 		resp: &http.Response{
@@ -80,7 +78,6 @@ func TestOpenAIGatewayServiceForward_DisabledGroupAllowsTextOnlyResponses(t *tes
 }
 
 func TestOpenAIGatewayServiceForward_CodexImageInjectionRespectsGroupCapability(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	tests := []struct {
 		name          string
@@ -121,7 +118,6 @@ func TestOpenAIGatewayServiceForward_CodexImageInjectionRespectsGroupCapability(
 }
 
 func TestOpenAIGatewayServiceForward_ExplicitImageToolWorksWithBridgeDisabled(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	upstream := &httpUpstreamRecorder{
 		resp: &http.Response{
@@ -148,7 +144,6 @@ func TestOpenAIGatewayServiceForward_ExplicitImageToolWorksWithBridgeDisabled(t 
 }
 
 func TestOpenAIGatewayServiceForward_ChannelBridgeOverrideEnablesCodexInjection(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	upstream := &httpUpstreamRecorder{
 		resp: &http.Response{
@@ -269,7 +264,6 @@ func TestOpenAIGatewayService_CodexImageGenerationBridgeOverridePrecedence(t *te
 }
 
 func TestOpenAIGatewayServiceHandleResponsesImageOutputs_NonStreaming(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	svc := newOpenAIImageGenerationControlTestService(&httpUpstreamRecorder{})
 	c, _ := newOpenAIImageGenerationControlTestContext(true, "unit-test-agent/1.0")
@@ -296,7 +290,6 @@ func TestOpenAIGatewayServiceHandleResponsesImageOutputs_NonStreaming(t *testing
 }
 
 func TestOpenAIGatewayServiceHandleResponsesImageOutputs_Streaming(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 
 	svc := newOpenAIImageGenerationControlTestService(&httpUpstreamRecorder{})
 	c, _ := newOpenAIImageGenerationControlTestContext(true, "unit-test-agent/1.0")

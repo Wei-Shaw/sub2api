@@ -16,7 +16,6 @@ import (
 )
 
 func TestApplyErrorPassthroughRule_NoBoundService(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 
@@ -37,7 +36,6 @@ func TestApplyErrorPassthroughRule_NoBoundService(t *testing.T) {
 }
 
 func TestGatewayHandleErrorResponse_NoRuleKeepsDefault(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 
@@ -63,7 +61,6 @@ func TestGatewayHandleErrorResponse_NoRuleKeepsDefault(t *testing.T) {
 }
 
 func TestOpenAIHandleErrorResponse_NoRuleKeepsDefault(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 
@@ -89,7 +86,6 @@ func TestOpenAIHandleErrorResponse_NoRuleKeepsDefault(t *testing.T) {
 }
 
 func TestGeminiWriteGeminiMappedError_NoRuleKeepsDefault(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 
@@ -110,7 +106,6 @@ func TestGeminiWriteGeminiMappedError_NoRuleKeepsDefault(t *testing.T) {
 }
 
 func TestGatewayHandleErrorResponse_AppliesRuleFor422(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 
@@ -140,7 +135,6 @@ func TestGatewayHandleErrorResponse_AppliesRuleFor422(t *testing.T) {
 }
 
 func TestOpenAIHandleErrorResponse_AppliesRuleFor422(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 
@@ -170,7 +164,6 @@ func TestOpenAIHandleErrorResponse_AppliesRuleFor422(t *testing.T) {
 }
 
 func TestGeminiWriteGeminiMappedError_AppliesRuleFor422(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 
@@ -195,7 +188,6 @@ func TestGeminiWriteGeminiMappedError_AppliesRuleFor422(t *testing.T) {
 }
 
 func TestApplyErrorPassthroughRule_SkipMonitoringSetsContextKey(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 
@@ -225,7 +217,6 @@ func TestApplyErrorPassthroughRule_SkipMonitoringSetsContextKey(t *testing.T) {
 }
 
 func TestApplyErrorPassthroughRule_NoSkipMonitoringDoesNotSetContextKey(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 

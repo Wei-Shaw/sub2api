@@ -107,7 +107,6 @@ func TestExtractOpenAIReasoningEffortFromBody(t *testing.T) {
 }
 
 func TestGetOpenAIRequestBodyMap_UsesContextCache(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 
@@ -126,7 +125,6 @@ func TestGetOpenAIRequestBodyMap_ParseErrorWithoutCache(t *testing.T) {
 }
 
 func TestGetOpenAIRequestBodyMap_WriteBackContextCache(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 

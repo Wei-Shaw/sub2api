@@ -30,7 +30,6 @@ func TestSafeUpstreamURL(t *testing.T) {
 }
 
 func TestAppendOpsUpstreamError_UsesRequestBodyBytesFromContext(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 
@@ -49,7 +48,6 @@ func TestAppendOpsUpstreamError_UsesRequestBodyBytesFromContext(t *testing.T) {
 }
 
 func TestAppendOpsUpstreamError_UsesRequestBodyStringFromContext(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 
