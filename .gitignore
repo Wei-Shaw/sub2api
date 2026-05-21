@@ -86,6 +86,8 @@ temp/
 .cache/
 .dev/
 .serena/
+.pnpm-store/
+backups/
 
 # ===================
 # 构建产物
@@ -136,3 +138,10 @@ docs/*
 frontend/coverage/
 aicodex
 output/
+
+# keep codex LDAP sync skill scripts in repo
+!skills/
+!skills/sub2api-sync-ldap/
+!skills/sub2api-sync-ldap/SKILL.md
+!skills/sub2api-sync-ldap/scripts/
+!skills/sub2api-sync-ldap/scripts/*.sh

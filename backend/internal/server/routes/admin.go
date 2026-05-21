@@ -446,6 +446,10 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		adminSettings.PUT("/web-search-emulation", h.Admin.Setting.UpdateWebSearchEmulationConfig)
 		adminSettings.POST("/web-search-emulation/test", h.Admin.Setting.TestWebSearchEmulation)
 		adminSettings.POST("/web-search-emulation/reset-usage", h.Admin.Setting.ResetWebSearchUsage)
+
+		// LDAP/AD 接入测试与同步
+		adminSettings.POST("/ldap/test", h.Admin.Setting.TestLDAPConnection)
+		adminSettings.POST("/ldap/sync", h.Admin.Setting.SyncLDAPUsersNow)
 	}
 }
 

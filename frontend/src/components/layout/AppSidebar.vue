@@ -61,6 +61,7 @@
                   :to="child.path"
                   class="sidebar-link mb-0.5 py-1.5 text-sm"
                   :class="{ 'sidebar-link-active': route.path === child.path }"
+                  :id="child.path === '/admin/settings' ? 'sidebar-settings' : undefined"
                   @click="handleMenuItemClick(child.path)"
                 >
                   <component :is="child.icon" class="h-4 w-4 flex-shrink-0" />
@@ -80,6 +81,8 @@
                   ? 'sidebar-channel-manage'
                   : item.path === '/admin/groups'
                     ? 'sidebar-group-manage'
+                    : item.path === '/admin/settings'
+                      ? 'sidebar-settings'
                     : item.path === '/admin/redeem'
                       ? 'sidebar-wallet'
                       : undefined
@@ -812,6 +815,7 @@ function handleMenuItemClick(itemPath: string) {
   const pathToSelector: Record<string, string> = {
     '/admin/groups': '#sidebar-group-manage',
     '/admin/accounts': '#sidebar-channel-manage',
+    '/admin/settings': '#sidebar-settings',
     '/keys': '[data-tour="sidebar-my-keys"]'
   }
 

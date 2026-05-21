@@ -105,6 +105,11 @@ func Username(v string) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldUsername, v))
 }
 
+// AuthSource applies equality check predicate on the "auth_source" field. It's identical to AuthSourceEQ.
+func AuthSource(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldAuthSource, v))
+}
+
 // Notes applies equality check predicate on the "notes" field. It's identical to NotesEQ.
 func Notes(v string) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldNotes, v))
@@ -703,6 +708,71 @@ func UsernameEqualFold(v string) predicate.User {
 // UsernameContainsFold applies the ContainsFold predicate on the "username" field.
 func UsernameContainsFold(v string) predicate.User {
 	return predicate.User(sql.FieldContainsFold(FieldUsername, v))
+}
+
+// AuthSourceEQ applies the EQ predicate on the "auth_source" field.
+func AuthSourceEQ(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldAuthSource, v))
+}
+
+// AuthSourceNEQ applies the NEQ predicate on the "auth_source" field.
+func AuthSourceNEQ(v string) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldAuthSource, v))
+}
+
+// AuthSourceIn applies the In predicate on the "auth_source" field.
+func AuthSourceIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldIn(FieldAuthSource, vs...))
+}
+
+// AuthSourceNotIn applies the NotIn predicate on the "auth_source" field.
+func AuthSourceNotIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldAuthSource, vs...))
+}
+
+// AuthSourceGT applies the GT predicate on the "auth_source" field.
+func AuthSourceGT(v string) predicate.User {
+	return predicate.User(sql.FieldGT(FieldAuthSource, v))
+}
+
+// AuthSourceGTE applies the GTE predicate on the "auth_source" field.
+func AuthSourceGTE(v string) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldAuthSource, v))
+}
+
+// AuthSourceLT applies the LT predicate on the "auth_source" field.
+func AuthSourceLT(v string) predicate.User {
+	return predicate.User(sql.FieldLT(FieldAuthSource, v))
+}
+
+// AuthSourceLTE applies the LTE predicate on the "auth_source" field.
+func AuthSourceLTE(v string) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldAuthSource, v))
+}
+
+// AuthSourceContains applies the Contains predicate on the "auth_source" field.
+func AuthSourceContains(v string) predicate.User {
+	return predicate.User(sql.FieldContains(FieldAuthSource, v))
+}
+
+// AuthSourceHasPrefix applies the HasPrefix predicate on the "auth_source" field.
+func AuthSourceHasPrefix(v string) predicate.User {
+	return predicate.User(sql.FieldHasPrefix(FieldAuthSource, v))
+}
+
+// AuthSourceHasSuffix applies the HasSuffix predicate on the "auth_source" field.
+func AuthSourceHasSuffix(v string) predicate.User {
+	return predicate.User(sql.FieldHasSuffix(FieldAuthSource, v))
+}
+
+// AuthSourceEqualFold applies the EqualFold predicate on the "auth_source" field.
+func AuthSourceEqualFold(v string) predicate.User {
+	return predicate.User(sql.FieldEqualFold(FieldAuthSource, v))
+}
+
+// AuthSourceContainsFold applies the ContainsFold predicate on the "auth_source" field.
+func AuthSourceContainsFold(v string) predicate.User {
+	return predicate.User(sql.FieldContainsFold(FieldAuthSource, v))
 }
 
 // NotesEQ applies the EQ predicate on the "notes" field.

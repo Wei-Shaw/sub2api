@@ -37,18 +37,52 @@ func setupDefaultAdminConcurrency() int {
 	return defaultUserConcurrency
 }
 
+func isContainerRuntime() bool {
+	if _, err := os.Stat("/.dockerenv"); err == nil {
+		return true
+	}
+
+	// Fallback check for environments where /.dockerenv is not present.
+	if data, err := os.ReadFile("/proc/1/cgroup"); err == nil {
+		text := string(data)
+		if strings.Contains(text, "docker") || strings.Contains(text, "containerd") || strings.Contains(text, "kubepods") {
+			return true
+		}
+	}
+
+	return false
+}
+
 // GetDataDir returns the data directory for storing config and lock files.
-// Priority: DATA_DIR env > /app/data (if exists and writable) > current directory
+// Priority: DATA_DIR env > /app/data (Docker) > current directory (non-Docker only)
 func GetDataDir() string {
 	// Check DATA_DIR environment variable first
 	if dir := os.Getenv("DATA_DIR"); dir != "" {
 		return dir
 	}
 
-	// Check if /app/data exists and is writable (Docker environment)
+	// In container runtime, always use /app/data and do not fall back to ".".
+	// This avoids misleading errors like "open ./config.yaml" when volume permissions are wrong.
 	dockerDataDir := "/app/data"
+	if isContainerRuntime() {
+		if info, err := os.Stat(dockerDataDir); err != nil || !info.IsDir() {
+			_, _ = fmt.Fprintf(os.Stderr, "[setup] ERROR: %s is missing in container runtime. Please mount/create %s with correct permissions.\n", dockerDataDir, dockerDataDir)
+			return dockerDataDir
+		}
+
+		testFile := dockerDataDir + "/.write_test"
+		if f, err := os.Create(testFile); err == nil {
+			_ = f.Close()
+			_ = os.Remove(testFile)
+			return dockerDataDir
+		}
+
+		_, _ = fmt.Fprintf(os.Stderr, "[setup] ERROR: %s is not writable in container runtime. Please fix volume permissions (expected app UID/GID writable).\n", dockerDataDir)
+		return dockerDataDir
+	}
+
+	// Non-container fallback: prefer /app/data if it exists and is writable.
 	if info, err := os.Stat(dockerDataDir); err == nil && info.IsDir() {
-		// Try to check if writable by creating a temp file
 		testFile := dockerDataDir + "/.write_test"
 		if f, err := os.Create(testFile); err == nil {
 			_ = f.Close()

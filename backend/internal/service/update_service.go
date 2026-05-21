@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -24,12 +25,23 @@ const (
 	updateCacheTTL = 1200 // 20 minutes
 	githubRepo     = "Wei-Shaw/sub2api"
 
+	UpdateChannelGitHubRelease = "github_release"
+	UpdateChannelManualScript  = "manual_script"
+
+	manualUpgradeHint    = "This LDAP fork disables in-app online updates. Run the deploy upgrade script on the server instead."
+	manualUpgradeCommand = "cd deploy && bash upgrade_main.sh"
+
 	// Security: allowed download domains for updates
 	allowedDownloadHost = "github.com"
 	allowedAssetHost    = "objects.githubusercontent.com"
 
 	// Security: max download size (500MB)
 	maxDownloadSize = 500 * 1024 * 1024
+)
+
+var (
+	ErrManualUpgradeOnly  = errors.New("in-app update is disabled for this LDAP fork")
+	ErrManualRollbackOnly = errors.New("in-app rollback is disabled for this LDAP fork")
 )
 
 // UpdateCache defines cache operations for update service
@@ -72,6 +84,9 @@ type UpdateInfo struct {
 	Cached         bool         `json:"cached"`
 	Warning        string       `json:"warning,omitempty"`
 	BuildType      string       `json:"build_type"` // "source" or "release"
+	UpdateChannel  string       `json:"update_channel"`
+	UpgradeHint    string       `json:"upgrade_hint,omitempty"`
+	UpgradeCommand string       `json:"upgrade_command,omitempty"`
 }
 
 // ReleaseInfo contains GitHub release details
@@ -108,6 +123,10 @@ type GitHubAsset struct {
 
 // CheckUpdate checks for available updates
 func (s *UpdateService) CheckUpdate(ctx context.Context, force bool) (*UpdateInfo, error) {
+	if s.usesManualUpgradeChannel() {
+		return s.manualUpgradeInfo(), nil
+	}
+
 	// Try cache first
 	if !force {
 		if cached, err := s.getFromCache(ctx); err == nil && cached != nil {
@@ -140,6 +159,10 @@ func (s *UpdateService) CheckUpdate(ctx context.Context, force bool) (*UpdateInf
 // PerformUpdate downloads and applies the update
 // Uses atomic file replacement pattern for safe in-place updates
 func (s *UpdateService) PerformUpdate(ctx context.Context) error {
+	if s.usesManualUpgradeChannel() {
+		return fmt.Errorf("%w: use `%s` on the server", ErrManualUpgradeOnly, manualUpgradeCommand)
+	}
+
 	info, err := s.CheckUpdate(ctx, true)
 	if err != nil {
 		return err
@@ -251,6 +274,10 @@ func (s *UpdateService) PerformUpdate(ctx context.Context) error {
 
 // Rollback restores the previous version
 func (s *UpdateService) Rollback() error {
+	if s.usesManualUpgradeChannel() {
+		return fmt.Errorf("%w: use `bash upgrade_main.sh --restore latest` in the deploy directory", ErrManualRollbackOnly)
+	}
+
 	exePath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("failed to get executable path: %w", err)
@@ -271,6 +298,28 @@ func (s *UpdateService) Rollback() error {
 	}
 
 	return nil
+}
+
+func (s *UpdateService) usesManualUpgradeChannel() bool {
+	return true
+}
+
+func (s *UpdateService) manualUpgradeInfo() *UpdateInfo {
+	currentVersion := strings.TrimSpace(s.currentVersion)
+	if currentVersion == "" {
+		currentVersion = "0.0.0-dev"
+	}
+
+	return &UpdateInfo{
+		CurrentVersion: currentVersion,
+		LatestVersion:  currentVersion,
+		HasUpdate:      false,
+		Cached:         false,
+		BuildType:      s.buildType,
+		UpdateChannel:  UpdateChannelManualScript,
+		UpgradeHint:    manualUpgradeHint,
+		UpgradeCommand: manualUpgradeCommand,
+	}
 }
 
 func (s *UpdateService) fetchLatestRelease(ctx context.Context) (*UpdateInfo, error) {
@@ -301,8 +350,9 @@ func (s *UpdateService) fetchLatestRelease(ctx context.Context) (*UpdateInfo, er
 			HTMLURL:     release.HTMLURL,
 			Assets:      assets,
 		},
-		Cached:    false,
-		BuildType: s.buildType,
+		Cached:        false,
+		BuildType:     s.buildType,
+		UpdateChannel: UpdateChannelGitHubRelease,
 	}, nil
 }
 
@@ -493,6 +543,7 @@ func (s *UpdateService) getFromCache(ctx context.Context) (*UpdateInfo, error) {
 		ReleaseInfo:    cached.ReleaseInfo,
 		Cached:         true,
 		BuildType:      s.buildType,
+		UpdateChannel:  UpdateChannelGitHubRelease,
 	}, nil
 }
 

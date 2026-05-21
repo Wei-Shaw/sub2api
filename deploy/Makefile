@@ -7,12 +7,12 @@ wire:
 
 build:
 	@echo "构建后端（不嵌入前端）..."
-	@go build -o bin/server ./cmd/server
+	@go build -tags ldap -o bin/server ./cmd/server
 	@echo "构建完成: bin/server"
 
 build-embed:
 	@echo "构建后端（嵌入前端）..."
-	@go build -tags embed -o bin/server ./cmd/server
+	@go build -tags "embed ldap" -o bin/server ./cmd/server
 	@echo "构建完成: bin/server (with embedded frontend)"
 
 test-unit:

@@ -19,6 +19,28 @@ export const getAdminSteps = (t: (key: string) => string, isSimpleMode = false):
     }
   },
 
+  // ========== LDAP 入门（企业场景） ==========
+  {
+    element: '#sidebar-settings',
+    popover: {
+      title: t('onboarding.admin.ldapEntry.title'),
+      description: t('onboarding.admin.ldapEntry.description'),
+      side: 'right',
+      align: 'center',
+      showButtons: ['close']
+    }
+  },
+  {
+    element: '[data-tour="settings-ldap-card"]',
+    popover: {
+      title: t('onboarding.admin.ldapPanel.title'),
+      description: t('onboarding.admin.ldapPanel.description'),
+      side: 'top',
+      align: 'start',
+      showButtons: ['next', 'previous']
+    }
+  },
+
   // ========== 第一部分：创建分组 ==========
   {
     element: '#sidebar-group-manage',

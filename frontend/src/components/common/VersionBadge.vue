@@ -10,7 +10,7 @@
             ? 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:hover:bg-amber-900/50'
             : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-800 dark:text-dark-400 dark:hover:bg-dark-700'
         ]"
-        :title="hasUpdate ? t('version.updateAvailable') : t('version.upToDate')"
+        :title="badgeTitle"
       >
         <span v-if="currentVersion" class="font-medium">v{{ currentVersion }}</span>
         <span
@@ -88,7 +88,7 @@
                   <span v-else class="text-2xl font-bold text-gray-400 dark:text-dark-500">--</span>
                   <!-- Show check mark when up to date -->
                   <span
-                    v-if="!hasUpdate"
+                    v-if="!hasUpdate && !isManualUpgradeChannel"
                     class="flex h-5 w-5 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30"
                   >
                     <svg
@@ -105,16 +105,50 @@
                   </span>
                 </div>
                 <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">
-                  {{
-                    hasUpdate
-                      ? t('version.latestVersion') + ': v' + latestVersion
-                      : t('version.upToDate')
-                  }}
+                  {{ versionStatusText }}
                 </p>
               </div>
 
-              <!-- Priority 1: Update error (must check before hasUpdate) -->
-              <div v-if="updateError" class="space-y-2">
+              <!-- Priority 1: Manual script upgrade channel -->
+              <div v-if="isManualUpgradeChannel" class="space-y-3">
+                <div
+                  class="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800/50 dark:bg-blue-900/20"
+                >
+                  <div
+                    class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/50"
+                  >
+                    <Icon
+                      name="download"
+                      size="sm"
+                      :stroke-width="2"
+                      class="text-blue-600 dark:text-blue-400"
+                    />
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <p class="text-sm font-medium text-blue-700 dark:text-blue-300">
+                      {{ t('version.manualUpgradeOnly') }}
+                    </p>
+                    <p class="mt-1 text-xs leading-5 text-blue-600/80 dark:text-blue-300/80">
+                      {{ upgradeHint || t('version.manualUpgradeHint') }}
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  v-if="upgradeCommand"
+                  class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 dark:border-dark-700 dark:bg-dark-900"
+                >
+                  <p class="mb-1 text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-dark-400">
+                    {{ t('version.manualUpgradeCommand') }}
+                  </p>
+                  <code class="block break-all text-xs text-gray-700 dark:text-dark-200">
+                    {{ upgradeCommand }}
+                  </code>
+                </div>
+              </div>
+
+              <!-- Priority 2: Update error (must check before hasUpdate) -->
+              <div v-else-if="updateError" class="space-y-2">
                 <div
                   class="flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-800/50 dark:bg-red-900/20"
                 >
@@ -148,7 +182,7 @@
                 </button>
               </div>
 
-              <!-- Priority 2: Update success - need restart -->
+              <!-- Priority 3: Update success - need restart -->
               <div v-else-if="updateSuccess && needRestart" class="space-y-2">
                 <div
                   class="flex items-center gap-3 rounded-lg border border-green-200 bg-green-50 p-3 dark:border-green-800/50 dark:bg-green-900/20"
@@ -226,7 +260,7 @@
                 </button>
               </div>
 
-              <!-- Priority 3: Update available for source build - show git pull hint -->
+              <!-- Priority 4: Update available for source build - show git pull hint -->
               <div v-else-if="hasUpdate && !isReleaseBuild" class="space-y-2">
                 <a
                   v-if="releaseInfo?.html_url && releaseInfo.html_url !== '#'"
@@ -286,22 +320,22 @@
                 </div>
               </div>
 
-              <!-- Priority 4: Update available for release build - show update button -->
+              <!-- Priority 5: Update available for release build - show update button -->
               <div v-else-if="hasUpdate && isReleaseBuild" class="space-y-2">
                 <!-- Update info card -->
                 <div
                   class="flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800/50 dark:bg-amber-900/20"
                 >
-                <div
-                  class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/50"
-                >
-                  <Icon
-                    name="download"
-                    size="sm"
-                    :stroke-width="2"
-                    class="text-amber-600 dark:text-amber-400"
-                  />
-                </div>
+                  <div
+                    class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/50"
+                  >
+                    <Icon
+                      name="download"
+                      size="sm"
+                      :stroke-width="2"
+                      class="text-amber-600 dark:text-amber-400"
+                    />
+                  </div>
                   <div class="min-w-0 flex-1">
                     <p class="text-sm font-medium text-amber-700 dark:text-amber-300">
                       {{ t('version.updateAvailable') }}
@@ -350,7 +384,7 @@
                 </a>
               </div>
 
-              <!-- Priority 5: Up to date - show GitHub link -->
+              <!-- Priority 6: Up to date - show GitHub link -->
               <a
                 v-else-if="releaseInfo?.html_url && releaseInfo.html_url !== '#'"
                 :href="releaseInfo.html_url"
@@ -408,6 +442,9 @@ const latestVersion = computed(() => appStore.latestVersion)
 const hasUpdate = computed(() => appStore.hasUpdate)
 const releaseInfo = computed(() => appStore.releaseInfo)
 const buildType = computed(() => appStore.buildType)
+const updateChannel = computed(() => appStore.updateChannel)
+const upgradeHint = computed(() => appStore.upgradeHint)
+const upgradeCommand = computed(() => appStore.upgradeCommand)
 
 // Update process states (local to this component)
 const updating = ref(false)
@@ -419,6 +456,21 @@ const restartCountdown = ref(0)
 
 // Only show update check for release builds (binary/docker deployment)
 const isReleaseBuild = computed(() => buildType.value === 'release')
+const isManualUpgradeChannel = computed(() => updateChannel.value === 'manual_script')
+const badgeTitle = computed(() =>
+  isManualUpgradeChannel.value
+    ? t('version.manualUpgradeOnly')
+    : hasUpdate.value
+      ? t('version.updateAvailable')
+      : t('version.upToDate')
+)
+const versionStatusText = computed(() => {
+  if (isManualUpgradeChannel.value) {
+    return t('version.manualUpgradeOnly')
+  }
+
+  return hasUpdate.value ? `${t('version.latestVersion')}: v${latestVersion.value}` : t('version.upToDate')
+})
 
 function toggleDropdown() {
   dropdownOpen.value = !dropdownOpen.value
@@ -441,6 +493,10 @@ async function refreshVersion(force = true) {
 
 async function handleUpdate() {
   if (updating.value) return
+  if (isManualUpgradeChannel.value) {
+    updateError.value = upgradeHint.value || t('version.manualUpgradeHint')
+    return
+  }
 
   updating.value = true
   updateError.value = ''

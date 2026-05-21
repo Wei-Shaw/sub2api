@@ -19,7 +19,7 @@ import (
 func newDingTalkSettingsHandler() (*SettingHandler, *settingHandlerRepoStub) {
 	repo := &settingHandlerRepoStub{values: map[string]string{}}
 	svc := service.NewSettingService(repo, &config.Config{Default: config.DefaultConfig{UserConcurrency: 5}})
-	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil, nil)
+	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil, nil, nil)
 	return handler, repo
 }
 

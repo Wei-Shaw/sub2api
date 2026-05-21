@@ -177,6 +177,20 @@ func (_u *UserUpdate) SetNillableUsername(v *string) *UserUpdate {
 	return _u
 }
 
+// SetAuthSource sets the "auth_source" field.
+func (_u *UserUpdate) SetAuthSource(v string) *UserUpdate {
+	_u.mutation.SetAuthSource(v)
+	return _u
+}
+
+// SetNillableAuthSource sets the "auth_source" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableAuthSource(v *string) *UserUpdate {
+	if v != nil {
+		_u.SetAuthSource(*v)
+	}
+	return _u
+}
+
 // SetNotes sets the "notes" field.
 func (_u *UserUpdate) SetNotes(v string) *UserUpdate {
 	_u.mutation.SetNotes(v)
@@ -916,6 +930,11 @@ func (_u *UserUpdate) check() error {
 			return &ValidationError{Name: "username", err: fmt.Errorf(`ent: validator failed for field "User.username": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.AuthSource(); ok {
+		if err := user.AuthSourceValidator(v); err != nil {
+			return &ValidationError{Name: "auth_source", err: fmt.Errorf(`ent: validator failed for field "User.auth_source": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.SignupSource(); ok {
 		if err := user.SignupSourceValidator(v); err != nil {
 			return &ValidationError{Name: "signup_source", err: fmt.Errorf(`ent: validator failed for field "User.signup_source": %w`, err)}
@@ -971,6 +990,9 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.Username(); ok {
 		_spec.SetField(user.FieldUsername, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.AuthSource(); ok {
+		_spec.SetField(user.FieldAuthSource, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.Notes(); ok {
 		_spec.SetField(user.FieldNotes, field.TypeString, value)
@@ -1745,6 +1767,20 @@ func (_u *UserUpdateOne) SetNillableUsername(v *string) *UserUpdateOne {
 	return _u
 }
 
+// SetAuthSource sets the "auth_source" field.
+func (_u *UserUpdateOne) SetAuthSource(v string) *UserUpdateOne {
+	_u.mutation.SetAuthSource(v)
+	return _u
+}
+
+// SetNillableAuthSource sets the "auth_source" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableAuthSource(v *string) *UserUpdateOne {
+	if v != nil {
+		_u.SetAuthSource(*v)
+	}
+	return _u
+}
+
 // SetNotes sets the "notes" field.
 func (_u *UserUpdateOne) SetNotes(v string) *UserUpdateOne {
 	_u.mutation.SetNotes(v)
@@ -2497,6 +2533,11 @@ func (_u *UserUpdateOne) check() error {
 			return &ValidationError{Name: "username", err: fmt.Errorf(`ent: validator failed for field "User.username": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.AuthSource(); ok {
+		if err := user.AuthSourceValidator(v); err != nil {
+			return &ValidationError{Name: "auth_source", err: fmt.Errorf(`ent: validator failed for field "User.auth_source": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.SignupSource(); ok {
 		if err := user.SignupSourceValidator(v); err != nil {
 			return &ValidationError{Name: "signup_source", err: fmt.Errorf(`ent: validator failed for field "User.signup_source": %w`, err)}
@@ -2569,6 +2610,9 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if value, ok := _u.mutation.Username(); ok {
 		_spec.SetField(user.FieldUsername, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.AuthSource(); ok {
+		_spec.SetField(user.FieldAuthSource, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.Notes(); ok {
 		_spec.SetField(user.FieldNotes, field.TypeString, value)

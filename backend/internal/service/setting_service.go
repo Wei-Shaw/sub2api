@@ -702,6 +702,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyAvailableChannelsEnabled,
 		SettingKeyAffiliateEnabled,
 		SettingKeyRiskControlEnabled,
+		SettingKeyLDAPEnabled,
 	}
 
 	settings, err := s.settingRepo.GetMultiple(ctx, keys)
@@ -758,9 +759,11 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 	if v, err := strconv.ParseFloat(settings[SettingKeyBalanceLowNotifyThreshold], 64); err == nil && v >= 0 {
 		balanceLowNotifyThreshold = v
 	}
+	ldapEnabled := settings[SettingKeyLDAPEnabled] == "true"
+	registrationEnabled := settings[SettingKeyRegistrationEnabled] == "true" && !ldapEnabled
 
 	return &PublicSettings{
-		RegistrationEnabled:              settings[SettingKeyRegistrationEnabled] == "true",
+		RegistrationEnabled:              registrationEnabled,
 		EmailVerifyEnabled:               emailVerifyEnabled,
 		ForceEmailOnThirdPartySignup:     settings[SettingKeyForceEmailOnThirdPartySignup] == "true",
 		RegistrationEmailSuffixWhitelist: registrationEmailSuffixWhitelist,
@@ -797,6 +800,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		WeChatOAuthMobileEnabled:         weChatMobileEnabled,
 		BackendModeEnabled:               settings[SettingKeyBackendModeEnabled] == "true",
 		PaymentEnabled:                   settings[SettingPaymentEnabled] == "true",
+		LDAPEnabled:                      ldapEnabled,
 		OIDCOAuthEnabled:                 oidcEnabled,
 		OIDCOAuthProviderName:            oidcProviderName,
 		GitHubOAuthEnabled:               gitHubEnabled,
@@ -1054,6 +1058,7 @@ type PublicSettingsInjectionPayload struct {
 	GoogleOAuthEnabled               bool                     `json:"google_oauth_enabled"`
 	BackendModeEnabled               bool                     `json:"backend_mode_enabled"`
 	PaymentEnabled                   bool                     `json:"payment_enabled"`
+	LDAPEnabled                      bool                     `json:"ldap_enabled"`
 	Version                          string                   `json:"version"`
 	BalanceLowNotifyEnabled          bool                     `json:"balance_low_notify_enabled"`
 	AccountQuotaNotifyEnabled        bool                     `json:"account_quota_notify_enabled"`
@@ -1119,6 +1124,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		GoogleOAuthEnabled:               settings.GoogleOAuthEnabled,
 		BackendModeEnabled:               settings.BackendModeEnabled,
 		PaymentEnabled:                   settings.PaymentEnabled,
+		LDAPEnabled:                      settings.LDAPEnabled,
 		Version:                          s.version,
 		BalanceLowNotifyEnabled:          settings.BalanceLowNotifyEnabled,
 		AccountQuotaNotifyEnabled:        settings.AccountQuotaNotifyEnabled,
@@ -1683,6 +1689,40 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	if settings.WeChatConnectMobileAppSecret != "" {
 		updates[SettingKeyWeChatConnectMobileAppSecret] = settings.WeChatConnectMobileAppSecret
 	}
+
+	// LDAP/AD identity integration
+	ldapPort := settings.LDAPPort
+	if ldapPort <= 0 || ldapPort > 65535 {
+		ldapPort = 389
+	}
+	ldapSyncInterval := settings.LDAPSyncIntervalMinutes
+	if ldapSyncInterval <= 0 {
+		ldapSyncInterval = 1440
+	}
+	updates[SettingKeyLDAPEnabled] = strconv.FormatBool(settings.LDAPEnabled)
+	updates[SettingKeyLDAPHost] = strings.TrimSpace(settings.LDAPHost)
+	updates[SettingKeyLDAPPort] = strconv.Itoa(ldapPort)
+	updates[SettingKeyLDAPUseTLS] = strconv.FormatBool(settings.LDAPUseTLS)
+	updates[SettingKeyLDAPStartTLS] = strconv.FormatBool(settings.LDAPStartTLS)
+	updates[SettingKeyLDAPInsecureSkipVerify] = strconv.FormatBool(settings.LDAPInsecureSkipVerify)
+	updates[SettingKeyLDAPBindDN] = strings.TrimSpace(settings.LDAPBindDN)
+	updates[SettingKeyLDAPUserBaseDN] = strings.TrimSpace(settings.LDAPUserBaseDN)
+	updates[SettingKeyLDAPUserFilter] = strings.TrimSpace(settings.LDAPUserFilter)
+	updates[SettingKeyLDAPLoginAttr] = strings.TrimSpace(settings.LDAPLoginAttr)
+	updates[SettingKeyLDAPUIDAttr] = strings.TrimSpace(settings.LDAPUIDAttr)
+	updates[SettingKeyLDAPEmailAttr] = strings.TrimSpace(settings.LDAPEmailAttr)
+	updates[SettingKeyLDAPDisplayNameAttr] = strings.TrimSpace(settings.LDAPDisplayNameAttr)
+	updates[SettingKeyLDAPDepartmentAttr] = strings.TrimSpace(settings.LDAPDepartmentAttr)
+	updates[SettingKeyLDAPGroupAttr] = strings.TrimSpace(settings.LDAPGroupAttr)
+	updates[SettingKeyLDAPSyncEnabled] = strconv.FormatBool(settings.LDAPSyncEnabled)
+	updates[SettingKeyLDAPSyncIntervalMinutes] = strconv.Itoa(ldapSyncInterval)
+	if settings.LDAPBindPassword != "" {
+		updates[SettingKeyLDAPBindPassword] = settings.LDAPBindPassword
+	}
+	allowedGroupDNsBytes, _ := json.Marshal(settings.LDAPAllowedGroupDNs)
+	groupMappingsBytes, _ := json.Marshal(settings.LDAPGroupMappings)
+	updates[SettingKeyLDAPAllowedGroupDNs] = string(allowedGroupDNsBytes)
+	updates[SettingKeyLDAPGroupMappings] = string(groupMappingsBytes)
 
 	// OEM设置
 	updates[SettingKeySiteName] = settings.SiteName
@@ -2588,6 +2628,33 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyForceEmailOnThirdPartySignup:              "false",
 		SettingKeySMTPPort:                                  "587",
 		SettingKeySMTPUseTLS:                                "false",
+		// LinuxDo Connect defaults
+		SettingKeyLinuxDoConnectEnabled:      "false",
+		SettingKeyLinuxDoConnectClientID:     "",
+		SettingKeyLinuxDoConnectClientSecret: "",
+		SettingKeyLinuxDoConnectRedirectURL:  "",
+		// LDAP defaults
+		SettingKeyLDAPEnabled:             "false",
+		SettingKeyLDAPHost:                "",
+		SettingKeyLDAPPort:                "389",
+		SettingKeyLDAPUseTLS:              "false",
+		SettingKeyLDAPStartTLS:            "false",
+		SettingKeyLDAPInsecureSkipVerify:  "false",
+		SettingKeyLDAPBindDN:              "",
+		SettingKeyLDAPBindPassword:        "",
+		SettingKeyLDAPUserBaseDN:          "",
+		SettingKeyLDAPUserFilter:          "({login_attr}={login})",
+		SettingKeyLDAPLoginAttr:           "mail",
+		SettingKeyLDAPUIDAttr:             "uid",
+		SettingKeyLDAPEmailAttr:           "mail",
+		SettingKeyLDAPDisplayNameAttr:     "displayName",
+		SettingKeyLDAPDepartmentAttr:      "department",
+		SettingKeyLDAPGroupAttr:           "memberOf",
+		SettingKeyLDAPAllowedGroupDNs:     "[]",
+		SettingKeyLDAPGroupMappings:       "[]",
+		SettingKeyLDAPSyncEnabled:         "true",
+		SettingKeyLDAPSyncIntervalMinutes: "1440",
+		SettingKeyLDAPLastSyncAt:          "",
 		// Model fallback defaults
 		SettingKeyEnableModelFallback:      "false",
 		SettingKeyFallbackModelAnthropic:   "claude-3-5-sonnet-20241022",
@@ -3077,6 +3144,45 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.WeChatConnectRedirectURL = weChatEffective.RedirectURL
 	result.WeChatConnectFrontendRedirectURL = weChatEffective.FrontendRedirectURL
 
+	// LDAP settings
+	result.LDAPEnabled = settings[SettingKeyLDAPEnabled] == "true"
+	result.LDAPHost = strings.TrimSpace(settings[SettingKeyLDAPHost])
+	result.LDAPUseTLS = settings[SettingKeyLDAPUseTLS] == "true"
+	result.LDAPStartTLS = settings[SettingKeyLDAPStartTLS] == "true"
+	result.LDAPInsecureSkipVerify = settings[SettingKeyLDAPInsecureSkipVerify] == "true"
+	result.LDAPBindDN = strings.TrimSpace(settings[SettingKeyLDAPBindDN])
+	result.LDAPBindPassword = settings[SettingKeyLDAPBindPassword]
+	result.LDAPBindPasswordConfigured = strings.TrimSpace(result.LDAPBindPassword) != ""
+	result.LDAPUserBaseDN = strings.TrimSpace(settings[SettingKeyLDAPUserBaseDN])
+	result.LDAPUserFilter = s.getStringOrDefault(settings, SettingKeyLDAPUserFilter, "({login_attr}={login})")
+	result.LDAPLoginAttr = s.getStringOrDefault(settings, SettingKeyLDAPLoginAttr, "mail")
+	result.LDAPUIDAttr = s.getStringOrDefault(settings, SettingKeyLDAPUIDAttr, "uid")
+	result.LDAPEmailAttr = s.getStringOrDefault(settings, SettingKeyLDAPEmailAttr, "mail")
+	result.LDAPDisplayNameAttr = s.getStringOrDefault(settings, SettingKeyLDAPDisplayNameAttr, "displayName")
+	result.LDAPDepartmentAttr = s.getStringOrDefault(settings, SettingKeyLDAPDepartmentAttr, "department")
+	result.LDAPGroupAttr = s.getStringOrDefault(settings, SettingKeyLDAPGroupAttr, "memberOf")
+	result.LDAPAllowedGroupDNs = parseStringArraySetting(settings[SettingKeyLDAPAllowedGroupDNs])
+	result.LDAPGroupMappings = parseLDAPGroupMappingsSetting(settings[SettingKeyLDAPGroupMappings])
+	result.LDAPSyncEnabled = !isFalseSettingValue(settings[SettingKeyLDAPSyncEnabled])
+	result.LDAPSyncIntervalMinutes = 1440
+	if raw := strings.TrimSpace(settings[SettingKeyLDAPSyncIntervalMinutes]); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil {
+			if v < 5 {
+				v = 5
+			}
+			if v > 10080 {
+				v = 10080
+			}
+			result.LDAPSyncIntervalMinutes = v
+		}
+	}
+	result.LDAPPort = 389
+	if raw := strings.TrimSpace(settings[SettingKeyLDAPPort]); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil && v > 0 && v <= 65535 {
+			result.LDAPPort = v
+		}
+	}
+
 	// Model fallback settings
 	result.EnableModelFallback = settings[SettingKeyEnableModelFallback] == "true"
 	result.FallbackModelAnthropic = s.getStringOrDefault(settings, SettingKeyFallbackModelAnthropic, "claude-3-5-sonnet-20241022")
@@ -3359,12 +3465,159 @@ func normalizeTablePreferences(defaultPageSize int, options []int) (int, []int) 
 	return defaultPageSize, normalizedOptions
 }
 
+func parseStringArraySetting(raw string) []string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return []string{}
+	}
+	var out []string
+	if err := json.Unmarshal([]byte(trimmed), &out); err != nil {
+		return []string{}
+	}
+	result := make([]string, 0, len(out))
+	for _, item := range out {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		result = append(result, item)
+	}
+	return result
+}
+
+func parseLDAPGroupMappingsSetting(raw string) []LDAPGroupMapping {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return []LDAPGroupMapping{}
+	}
+	var out []LDAPGroupMapping
+	if err := json.Unmarshal([]byte(trimmed), &out); err != nil {
+		return []LDAPGroupMapping{}
+	}
+	result := make([]LDAPGroupMapping, 0, len(out))
+	for _, item := range out {
+		item.LDAPGroupDN = strings.TrimSpace(item.LDAPGroupDN)
+		if item.LDAPGroupDN == "" {
+			continue
+		}
+		item.TargetRole = strings.ToLower(strings.TrimSpace(item.TargetRole))
+		if item.TargetRole == "" {
+			item.TargetRole = RoleUser
+		}
+		if item.Concurrency < 0 {
+			item.Concurrency = 0
+		}
+		if item.Balance < 0 {
+			item.Balance = 0
+		}
+		result = append(result, item)
+	}
+	return result
+}
+
 // getStringOrDefault 获取字符串值或默认值
 func (s *SettingService) getStringOrDefault(settings map[string]string, key, defaultValue string) string {
 	if value, ok := settings[key]; ok && value != "" {
 		return value
 	}
 	return defaultValue
+}
+
+// IsLDAPEnabled returns whether LDAP authentication mode is enabled.
+func (s *SettingService) IsLDAPEnabled(ctx context.Context) bool {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyLDAPEnabled)
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(value) == "true"
+}
+
+// GetLDAPConfig returns parsed LDAP runtime configuration from settings.
+func (s *SettingService) GetLDAPConfig(ctx context.Context) (*LDAPConfig, error) {
+	keys := []string{
+		SettingKeyLDAPEnabled,
+		SettingKeyLDAPHost,
+		SettingKeyLDAPPort,
+		SettingKeyLDAPUseTLS,
+		SettingKeyLDAPStartTLS,
+		SettingKeyLDAPInsecureSkipVerify,
+		SettingKeyLDAPBindDN,
+		SettingKeyLDAPBindPassword,
+		SettingKeyLDAPUserBaseDN,
+		SettingKeyLDAPUserFilter,
+		SettingKeyLDAPLoginAttr,
+		SettingKeyLDAPUIDAttr,
+		SettingKeyLDAPEmailAttr,
+		SettingKeyLDAPDisplayNameAttr,
+		SettingKeyLDAPDepartmentAttr,
+		SettingKeyLDAPGroupAttr,
+		SettingKeyLDAPAllowedGroupDNs,
+		SettingKeyLDAPGroupMappings,
+		SettingKeyLDAPSyncEnabled,
+		SettingKeyLDAPSyncIntervalMinutes,
+	}
+	settings, err := s.settingRepo.GetMultiple(ctx, keys)
+	if err != nil {
+		return nil, fmt.Errorf("get ldap settings: %w", err)
+	}
+
+	cfg := &LDAPConfig{
+		Enabled:            settings[SettingKeyLDAPEnabled] == "true",
+		Host:               strings.TrimSpace(settings[SettingKeyLDAPHost]),
+		UseTLS:             settings[SettingKeyLDAPUseTLS] == "true",
+		StartTLS:           settings[SettingKeyLDAPStartTLS] == "true",
+		InsecureSkipVerify: settings[SettingKeyLDAPInsecureSkipVerify] == "true",
+		BindDN:             strings.TrimSpace(settings[SettingKeyLDAPBindDN]),
+		BindPassword:       settings[SettingKeyLDAPBindPassword],
+		UserBaseDN:         strings.TrimSpace(settings[SettingKeyLDAPUserBaseDN]),
+		UserFilter:         s.getStringOrDefault(settings, SettingKeyLDAPUserFilter, "({login_attr}={login})"),
+		LoginAttr:          s.getStringOrDefault(settings, SettingKeyLDAPLoginAttr, "mail"),
+		UIDAttr:            s.getStringOrDefault(settings, SettingKeyLDAPUIDAttr, "uid"),
+		EmailAttr:          s.getStringOrDefault(settings, SettingKeyLDAPEmailAttr, "mail"),
+		DisplayNameAttr:    s.getStringOrDefault(settings, SettingKeyLDAPDisplayNameAttr, "displayName"),
+		DepartmentAttr:     s.getStringOrDefault(settings, SettingKeyLDAPDepartmentAttr, "department"),
+		GroupAttr:          s.getStringOrDefault(settings, SettingKeyLDAPGroupAttr, "memberOf"),
+		AllowedGroupDNs:    parseStringArraySetting(settings[SettingKeyLDAPAllowedGroupDNs]),
+		GroupMappings:      parseLDAPGroupMappingsSetting(settings[SettingKeyLDAPGroupMappings]),
+		SyncEnabled:        !isFalseSettingValue(settings[SettingKeyLDAPSyncEnabled]),
+		SyncIntervalMins:   1440,
+	}
+	if port, convErr := strconv.Atoi(strings.TrimSpace(settings[SettingKeyLDAPPort])); convErr == nil && port > 0 && port <= 65535 {
+		cfg.Port = port
+	} else {
+		cfg.Port = 389
+	}
+	if syncInterval, convErr := strconv.Atoi(strings.TrimSpace(settings[SettingKeyLDAPSyncIntervalMinutes])); convErr == nil {
+		if syncInterval < 5 {
+			syncInterval = 5
+		}
+		if syncInterval > 10080 {
+			syncInterval = 10080
+		}
+		cfg.SyncIntervalMins = syncInterval
+	}
+	return cfg, nil
+}
+
+// GetLDAPLastSyncAt reads last sync timestamp; zero time means never synced.
+func (s *SettingService) GetLDAPLastSyncAt(ctx context.Context) time.Time {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyLDAPLastSyncAt)
+	if err != nil || strings.TrimSpace(value) == "" {
+		return time.Time{}
+	}
+	ts, parseErr := time.Parse(time.RFC3339, value)
+	if parseErr != nil {
+		return time.Time{}
+	}
+	return ts
+}
+
+// SetLDAPLastSyncAt stores last sync timestamp.
+func (s *SettingService) SetLDAPLastSyncAt(ctx context.Context, ts time.Time) error {
+	if ts.IsZero() {
+		return s.settingRepo.Set(ctx, SettingKeyLDAPLastSyncAt, "")
+	}
+	return s.settingRepo.Set(ctx, SettingKeyLDAPLastSyncAt, ts.UTC().Format(time.RFC3339))
 }
 
 // IsTurnstileEnabled 检查是否启用 Turnstile 验证

@@ -145,10 +145,11 @@ func runMainServer() {
 		BuildType: BuildType,
 	}
 
-	app, err := initializeApplication(buildInfo)
+	app, cleanup, err := initializeApplication(buildInfo)
 	if err != nil {
 		log.Fatalf("Failed to initialize application: %v", err)
 	}
+	defer cleanup()
 	defer app.Cleanup()
 
 	// 启动服务器

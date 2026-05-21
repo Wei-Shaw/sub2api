@@ -132,6 +132,7 @@ func newOAuthEmailFlowAuthService(
 	return NewAuthService(
 		nil,
 		userRepo,
+		nil,
 		redeemRepo,
 		refreshTokenCache,
 		cfg,

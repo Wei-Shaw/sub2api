@@ -590,6 +590,21 @@ func (s *AccountRepoSuite) TestListSchedulableByPlatform() {
 	s.Require().Equal(service.PlatformAnthropic, accounts[0].Platform)
 }
 
+func (s *AccountRepoSuite) TestListSchedulableByPlatform_GeminiIgnoresRateLimitReset() {
+	resetAt := time.Now().Add(30 * time.Minute)
+	mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:             "gemini-rate-limited",
+		Platform:         service.PlatformGemini,
+		Schedulable:      true,
+		RateLimitResetAt: &resetAt,
+	})
+
+	accounts, err := s.repo.ListSchedulableByPlatform(s.ctx, service.PlatformGemini)
+	s.Require().NoError(err)
+	s.Require().Len(accounts, 1)
+	s.Require().Equal(service.PlatformGemini, accounts[0].Platform)
+}
+
 func (s *AccountRepoSuite) TestListSchedulableByGroupIDAndPlatform() {
 	group := mustCreateGroup(s.T(), s.client, &service.Group{Name: "g-sp"})
 	a1 := mustCreateAccount(s.T(), s.client, &service.Account{Name: "a1", Platform: service.PlatformAnthropic, Schedulable: true})

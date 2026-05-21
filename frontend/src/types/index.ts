@@ -225,6 +225,7 @@ export interface PublicSettings {
   github_oauth_enabled: boolean
   google_oauth_enabled: boolean
   backend_mode_enabled: boolean
+  ldap_enabled: boolean
   version: string
   balance_low_notify_enabled: boolean
   account_quota_notify_enabled: boolean

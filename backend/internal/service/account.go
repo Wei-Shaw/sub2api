@@ -115,7 +115,7 @@ func (a *Account) IsSchedulable() bool {
 	if a.OverloadUntil != nil && now.Before(*a.OverloadUntil) {
 		return false
 	}
-	if a.RateLimitResetAt != nil && now.Before(*a.RateLimitResetAt) {
+	if a.Platform != PlatformGemini && a.RateLimitResetAt != nil && now.Before(*a.RateLimitResetAt) {
 		return false
 	}
 	if a.TempUnschedulableUntil != nil && now.Before(*a.TempUnschedulableUntil) {

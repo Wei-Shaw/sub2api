@@ -215,6 +215,29 @@ const (
 	SettingKeyGoogleOAuthRedirectURL         = "google_oauth_redirect_url"
 	SettingKeyGoogleOAuthFrontendRedirectURL = "google_oauth_frontend_redirect_url"
 
+	// LDAP/AD 身份接入设置
+	SettingKeyLDAPEnabled             = "ldap_enabled"
+	SettingKeyLDAPHost                = "ldap_host"
+	SettingKeyLDAPPort                = "ldap_port"
+	SettingKeyLDAPUseTLS              = "ldap_use_tls"
+	SettingKeyLDAPStartTLS            = "ldap_start_tls"
+	SettingKeyLDAPInsecureSkipVerify  = "ldap_insecure_skip_verify"
+	SettingKeyLDAPBindDN              = "ldap_bind_dn"
+	SettingKeyLDAPBindPassword        = "ldap_bind_password"
+	SettingKeyLDAPUserBaseDN          = "ldap_user_base_dn"
+	SettingKeyLDAPUserFilter          = "ldap_user_filter"
+	SettingKeyLDAPLoginAttr           = "ldap_login_attr"
+	SettingKeyLDAPUIDAttr             = "ldap_uid_attr"
+	SettingKeyLDAPEmailAttr           = "ldap_email_attr"
+	SettingKeyLDAPDisplayNameAttr     = "ldap_display_name_attr"
+	SettingKeyLDAPDepartmentAttr      = "ldap_department_attr"
+	SettingKeyLDAPGroupAttr           = "ldap_group_attr"
+	SettingKeyLDAPAllowedGroupDNs     = "ldap_allowed_group_dns"
+	SettingKeyLDAPGroupMappings       = "ldap_group_mappings"
+	SettingKeyLDAPSyncEnabled         = "ldap_sync_enabled"
+	SettingKeyLDAPSyncIntervalMinutes = "ldap_sync_interval_minutes"
+	SettingKeyLDAPLastSyncAt          = "ldap_last_sync_at"
+
 	// OEM设置
 	SettingKeySiteName                    = "site_name"                     // 网站名称
 	SettingKeySiteLogo                    = "site_logo"                     // 网站Logo (base64)

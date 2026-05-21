@@ -40,6 +40,7 @@ services:
       # Auto Setup (REQUIRED for Docker deployment)
       # =======================================================================
       - AUTO_SETUP=true
+      - DATA_DIR=/app/data
 
       # =======================================================================
       # Server Configuration
@@ -162,20 +163,10 @@ services:
     networks:
       - sub2api-network
     healthcheck:
-      test:
-        [
-          "CMD",
-          "wget",
-          "-q",
-          "-T",
-          "5",
-          "-O",
-          "/dev/null",
-          "http://localhost:8080/health",
-        ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      test: ["CMD-SHELL", "wget -q -T 5 -O /dev/null http://localhost:8080/health || curl -fsS http://localhost:8080/health >/dev/null 2>&1"]
+       interval: 30s
+       timeout: 10s
+       retries: 3
       start_period: 30s
 
   # ===========================================================================

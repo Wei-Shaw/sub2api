@@ -21,7 +21,7 @@ build-frontend:
 
 # 编译 datamanagementd（宿主机数据管理进程）
 build-datamanagementd:
-	@cd datamanagement && go build -o datamanagementd ./cmd/datamanagementd
+	@cd datamanagement && go build -tags="embed ldap" -o datamanagementd ./cmd/datamanagementd
 
 # 运行测试（后端 + 前端）
 test: test-backend test-frontend

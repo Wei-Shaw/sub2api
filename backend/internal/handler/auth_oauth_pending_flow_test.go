@@ -2223,6 +2223,7 @@ CREATE TABLE IF NOT EXISTS user_affiliates (
 	authSvc := service.NewAuthService(
 		client,
 		userRepo,
+		nil,
 		redeemRepo,
 		&oauthPendingFlowRefreshTokenCacheStub{},
 		cfg,

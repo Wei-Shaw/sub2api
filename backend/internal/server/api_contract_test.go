@@ -57,6 +57,7 @@ func TestAPIContracts(t *testing.T) {
 					"concurrency": 5,
 					"rpm_limit": 0,
 					"status": "active",
+					"auth_source": "local",
 					"allowed_groups": null,
 					"created_at": "2025-01-02T03:04:05Z",
 					"updated_at": "2025-01-02T03:04:05Z",
@@ -840,6 +841,26 @@ func TestAPIContracts(t *testing.T) {
 					},
 					"custom_menu_items": [],
 					"custom_endpoints": [],
+					"ldap_enabled": false,
+					"ldap_host": "",
+					"ldap_port": 389,
+					"ldap_use_tls": false,
+					"ldap_start_tls": false,
+					"ldap_insecure_skip_verify": false,
+					"ldap_bind_dn": "",
+					"ldap_bind_password_configured": false,
+					"ldap_user_base_dn": "",
+					"ldap_user_filter": "({login_attr}={login})",
+					"ldap_login_attr": "mail",
+					"ldap_display_name_attr": "displayName",
+					"ldap_email_attr": "mail",
+					"ldap_uid_attr": "uid",
+					"ldap_department_attr": "department",
+					"ldap_group_attr": "memberOf",
+					"ldap_allowed_group_dns": [],
+					"ldap_group_mappings": [],
+					"ldap_sync_enabled": true,
+					"ldap_sync_interval_minutes": 1440,
 					"payment_enabled": false,
 					"payment_min_amount": 0,
 					"payment_max_amount": 0,
@@ -1147,7 +1168,27 @@ func TestAPIContracts(t *testing.T) {
 					"auth_source_default_dingtalk_subscriptions": [],
 					"auth_source_default_dingtalk_grant_on_signup": false,
 					"auth_source_default_dingtalk_grant_on_first_bind": false,
-					"force_email_on_third_party_signup": false
+					"force_email_on_third_party_signup": false,
+					"ldap_enabled": false,
+					"ldap_host": "",
+					"ldap_port": 389,
+					"ldap_bind_dn": "",
+					"ldap_bind_password_configured": false,
+					"ldap_user_base_dn": "",
+					"ldap_user_filter": "({login_attr}={login})",
+					"ldap_uid_attr": "uid",
+					"ldap_login_attr": "mail",
+					"ldap_email_attr": "mail",
+					"ldap_display_name_attr": "displayName",
+					"ldap_department_attr": "department",
+					"ldap_group_attr": "memberOf",
+					"ldap_group_mappings": [],
+					"ldap_allowed_group_dns": [],
+					"ldap_use_tls": false,
+					"ldap_start_tls": false,
+					"ldap_insecure_skip_verify": false,
+					"ldap_sync_enabled": true,
+					"ldap_sync_interval_minutes": 1440
 				}
 			}`,
 		},
@@ -1219,6 +1260,7 @@ func newContractDeps(t *testing.T) *contractDeps {
 				Balance:       12.5,
 				Concurrency:   5,
 				Status:        service.StatusActive,
+				AuthSource:    "local",
 				AllowedGroups: nil,
 				CreatedAt:     now,
 				UpdatedAt:     now,
@@ -1260,7 +1302,7 @@ func newContractDeps(t *testing.T) *contractDeps {
 	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil, redeemService, nil, nil)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 	usageHandler := handler.NewUsageHandler(usageService, apiKeyService)
-	adminSettingHandler := adminhandler.NewSettingHandler(settingService, nil, nil, nil, nil, nil, nil)
+	adminSettingHandler := adminhandler.NewSettingHandler(settingService, nil, nil, nil, nil, nil, nil, nil)
 	adminAccountHandler := adminhandler.NewAccountHandler(adminService, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	jwtAuth := func(c *gin.Context) {

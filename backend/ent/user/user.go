@@ -35,6 +35,8 @@ const (
 	FieldStatus = "status"
 	// FieldUsername holds the string denoting the username field in the database.
 	FieldUsername = "username"
+	// FieldAuthSource holds the string denoting the auth_source field in the database.
+	FieldAuthSource = "auth_source"
 	// FieldNotes holds the string denoting the notes field in the database.
 	FieldNotes = "notes"
 	// FieldTotpSecretEncrypted holds the string denoting the totp_secret_encrypted field in the database.
@@ -193,6 +195,7 @@ var Columns = []string{
 	FieldConcurrency,
 	FieldStatus,
 	FieldUsername,
+	FieldAuthSource,
 	FieldNotes,
 	FieldTotpSecretEncrypted,
 	FieldTotpEnabled,
@@ -258,6 +261,10 @@ var (
 	DefaultUsername string
 	// UsernameValidator is a validator for the "username" field. It is called by the builders before save.
 	UsernameValidator func(string) error
+	// DefaultAuthSource holds the default value on creation for the "auth_source" field.
+	DefaultAuthSource string
+	// AuthSourceValidator is a validator for the "auth_source" field. It is called by the builders before save.
+	AuthSourceValidator func(string) error
 	// DefaultNotes holds the default value on creation for the "notes" field.
 	DefaultNotes string
 	// DefaultTotpEnabled holds the default value on creation for the "totp_enabled" field.
@@ -334,6 +341,11 @@ func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 // ByUsername orders the results by the username field.
 func ByUsername(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldUsername, opts...).ToFunc()
+}
+
+// ByAuthSource orders the results by the auth_source field.
+func ByAuthSource(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAuthSource, opts...).ToFunc()
 }
 
 // ByNotes orders the results by the notes field.

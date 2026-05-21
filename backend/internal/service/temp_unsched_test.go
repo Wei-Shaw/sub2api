@@ -120,6 +120,16 @@ func TestAccountIsSchedulable_TempUnschedulable(t *testing.T) {
 			},
 			want: false, // 临时限流生效
 		},
+		{
+			name: "gemini_ignores_rate_limit_reset",
+			account: &Account{
+				Status:           StatusActive,
+				Schedulable:      true,
+				Platform:         PlatformGemini,
+				RateLimitResetAt: &future,
+			},
+			want: true,
+		},
 	}
 
 	for _, tt := range tests {

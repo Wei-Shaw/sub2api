@@ -285,6 +285,9 @@ func (s *GeminiMessagesCompatService) isAccountValidForPlatform(account *Account
 }
 
 func (s *GeminiMessagesCompatService) passesRateLimitPreCheckWithCache(ctx context.Context, account *Account, requestedModel string, precheckResult map[int64]bool) bool {
+	if account != nil && account.Platform == PlatformGemini {
+		return true
+	}
 	if s.rateLimitService == nil || requestedModel == "" {
 		return true
 	}
@@ -2837,14 +2840,13 @@ func (s *GeminiMessagesCompatService) handleGeminiUpstreamError(ctx context.Cont
 				logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini 429] Account %d rate limited, fallback to 5min", account.ID)
 			}
 		}
-		_ = s.accountRepo.SetRateLimited(ctx, account.ID, ra)
+		logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini 429 passthrough] Account %d upstream limited until %v, but local Gemini rate-limit persistence is disabled", account.ID, ra)
 		return
 	}
 
 	// 使用解析到的重置时间
 	resetTime := time.Unix(*resetAt, 0)
-	_ = s.accountRepo.SetRateLimited(ctx, account.ID, resetTime)
-	logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini 429] Account %d rate limited until %v (oauth_type=%s, tier=%s)",
+	logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini 429 passthrough] Account %d upstream limited until %v (oauth_type=%s, tier=%s), but local Gemini rate-limit persistence is disabled",
 		account.ID, resetTime, oauthType, tierID)
 }
 

@@ -154,6 +154,8 @@ Nginx drops headers containing underscores by default (e.g. `session_id`), which
 
 One-click installation script that downloads pre-built binaries from GitHub Releases.
 
+> Note: this fork's public LDAP edition is published on `main` for Docker/source deployment. The binary installer below still targets official upstream releases and does not include this fork's LDAP customization.
+
 #### Prerequisites
 
 - Linux server (amd64 or arm64)
@@ -237,7 +239,7 @@ Use the automated deployment script for easy setup:
 mkdir -p sub2api-deploy && cd sub2api-deploy
 
 # Download and run deployment preparation script
-curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/docker-deploy.sh | bash
+curl -sSL https://raw.githubusercontent.com/big-dimple/sub2api/main/deploy/docker-deploy.sh | bash
 
 # Start services
 docker compose up -d
@@ -259,7 +261,7 @@ If you prefer manual setup:
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/Wei-Shaw/sub2api.git
+git clone https://github.com/big-dimple/sub2api.git
 cd sub2api/deploy
 
 # 2. Copy environment configuration
@@ -398,7 +400,7 @@ Build and run from source code for development or customization.
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/Wei-Shaw/sub2api.git
+git clone https://github.com/big-dimple/sub2api.git
 cd sub2api
 
 # 2. Install pnpm (if not already installed)

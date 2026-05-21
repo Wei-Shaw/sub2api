@@ -1390,6 +1390,7 @@ func newWeChatOAuthTestHandlerWithSettings(t *testing.T, invitationEnabled bool,
 	authSvc := service.NewAuthService(
 		client,
 		userRepo,
+		nil,
 		redeemRepo,
 		&wechatOAuthRefreshTokenCacheStub{},
 		cfg,

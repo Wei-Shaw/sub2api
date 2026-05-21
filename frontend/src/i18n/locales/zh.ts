@@ -6527,6 +6527,9 @@ export default {
     refresh: '刷新',
     sourceMode: '源码构建',
     sourceModeHint: '源码构建请使用 git pull 更新',
+    manualUpgradeOnly: '此 LDAP 版请用脚本升级',
+    manualUpgradeHint: '请登录部署服务器，在 deploy 目录执行升级脚本。',
+    manualUpgradeCommand: '升级命令',
     updateNow: '立即更新',
     updating: '正在更新...',
     updateComplete: '更新完成',
@@ -6630,6 +6633,16 @@ export default {
           '<div style="line-height: 1.8;"><p style="margin-bottom: 16px;">Sub2API 是一个强大的 AI 服务中转平台，让您轻松管理和分发 AI 服务。</p><p style="margin-bottom: 12px;"><b>🎯 核心功能：</b></p><ul style="margin-left: 20px; margin-bottom: 16px;"><li>📦 <b>分组管理</b> - 创建不同的服务套餐（VIP、免费试用等）</li><li>🔗 <b>账号池</b> - 连接多个上游 AI 服务商账号</li><li>🔑 <b>密钥分发</b> - 为用户生成独立的 API Key</li><li>💰 <b>计费管理</b> - 灵活的费率和配额控制</li></ul><p style="color: #10b981; font-weight: 600;">接下来，我们将用 3 分钟带您完成首次配置 →</p></div>',
         nextBtn: '开始配置 🚀',
         prevBtn: '跳过'
+      },
+      ldapEntry: {
+        title: '🏢 企业接入：先配置 LDAP',
+        description:
+          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">如果您是企业部署场景，建议先完成 LDAP/AD 接入，再创建分组和账号池。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px;"><b>📌 价值：</b><ul style="margin: 8px 0 0 16px;"><li>员工使用域账号直接登录</li><li>离职账号可自动禁用</li><li>避免手工注册与权限漂移</li></ul></div><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击左侧“系统设置”</p></div>'
+      },
+      ldapPanel: {
+        title: '🧭 LDAP 新手配置区',
+        description:
+          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">在系统设置里按“连接参数 → 用户检索 → 组映射 → 同步策略”顺序填写即可。</p><p style="padding: 8px 12px; background: #fef3c7; border-left: 3px solid #f59e0b; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚠️ 关键项：</b>Host、Bind DN、Bind Password、User Base DN、Login Attr、UID Attr、允许组 DN。</p><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 建议：</b>先用测试账号登录验证，再切换到全员使用。</p></div>'
       },
       groupManage: {
         title: '📦 第一步：分组管理',

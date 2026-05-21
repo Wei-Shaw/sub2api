@@ -660,6 +660,7 @@ func userEntityToService(u *dbent.User) *service.User {
 		Email:                      u.Email,
 		Username:                   u.Username,
 		Notes:                      u.Notes,
+		AuthSource:                 u.AuthSource,
 		PasswordHash:               u.PasswordHash,
 		Role:                       u.Role,
 		Balance:                    u.Balance,

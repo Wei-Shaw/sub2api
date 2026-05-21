@@ -53,6 +53,15 @@ func (h *SystemHandler) CheckUpdates(c *gin.Context) {
 // PerformUpdate downloads and applies the update
 // POST /api/v1/admin/system/update
 func (h *SystemHandler) PerformUpdate(c *gin.Context) {
+	if info, err := h.updateSvc.CheckUpdate(c.Request.Context(), false); err == nil && info != nil && info.UpdateChannel == service.UpdateChannelManualScript {
+		message := service.ErrManualUpgradeOnly.Error()
+		if strings.TrimSpace(info.UpgradeCommand) != "" {
+			message += ": use `" + info.UpgradeCommand + "` on the server"
+		}
+		response.Error(c, http.StatusConflict, message)
+		return
+	}
+
 	operationID := buildSystemOperationID(c, "update")
 	payload := gin.H{"operation_id": operationID}
 	executeAdminIdempotentJSON(c, "admin.system.update", payload, service.DefaultSystemOperationIdempotencyTTL(), func(ctx context.Context) (any, error) {
@@ -83,6 +92,11 @@ func (h *SystemHandler) PerformUpdate(c *gin.Context) {
 // Rollback restores the previous version
 // POST /api/v1/admin/system/rollback
 func (h *SystemHandler) Rollback(c *gin.Context) {
+	if info, err := h.updateSvc.CheckUpdate(c.Request.Context(), false); err == nil && info != nil && info.UpdateChannel == service.UpdateChannelManualScript {
+		response.Error(c, http.StatusConflict, service.ErrManualRollbackOnly.Error()+": use `bash upgrade_main.sh --restore latest` in the deploy directory")
+		return
+	}
+
 	operationID := buildSystemOperationID(c, "rollback")
 	payload := gin.H{"operation_id": operationID}
 	executeAdminIdempotentJSON(c, "admin.system.rollback", payload, service.DefaultSystemOperationIdempotencyTTL(), func(ctx context.Context) (any, error) {

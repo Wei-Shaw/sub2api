@@ -30,6 +30,7 @@ services:
       # Auto Setup
       # =======================================================================
       - AUTO_SETUP=true
+      - DATA_DIR=/app/data
 
       # =======================================================================
       # Server Configuration
@@ -106,7 +107,7 @@ services:
       - GATEWAY_IMAGE_CONCURRENCY_WAIT_TIMEOUT_SECONDS=${GATEWAY_IMAGE_CONCURRENCY_WAIT_TIMEOUT_SECONDS:-30}
       - GATEWAY_IMAGE_CONCURRENCY_MAX_WAITING_REQUESTS=${GATEWAY_IMAGE_CONCURRENCY_MAX_WAITING_REQUESTS:-100}
     healthcheck:
-      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://localhost:8080/health"]
+      test: ["CMD-SHELL", "wget -q -T 5 -O /dev/null http://localhost:8080/health || curl -fsS http://localhost:8080/health >/dev/null 2>&1"]
       interval: 30s
       timeout: 10s
       retries: 3

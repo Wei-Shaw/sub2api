@@ -69,6 +69,13 @@ const AUTH_SOURCE_TYPES: AuthSourceType[] = [
 ];
 const AUTH_SOURCE_DEFAULT_BALANCE = 0;
 const AUTH_SOURCE_DEFAULT_CONCURRENCY = 5;
+const DEFAULT_AUTH_SOURCE_DEFAULTS: AuthSourceDefaultsValue = {
+  balance: AUTH_SOURCE_DEFAULT_BALANCE,
+  concurrency: AUTH_SOURCE_DEFAULT_CONCURRENCY,
+  subscriptions: [],
+  grant_on_signup: false,
+  grant_on_first_bind: false,
+};
 const PAYMENT_VISIBLE_METHOD_SOURCE_OPTIONS: Record<
   PaymentVisibleMethod,
   PaymentVisibleMethodSourceOption[]
@@ -205,7 +212,7 @@ export function appendAuthSourceDefaultsToUpdateRequest(
   const target = payload as Record<string, unknown>;
 
   for (const source of AUTH_SOURCE_TYPES) {
-    const current = authSourceDefaults[source];
+    const current = authSourceDefaults[source] ?? DEFAULT_AUTH_SOURCE_DEFAULTS;
     target[`auth_source_default_${source}_balance`] =
       Number(current.balance) || 0;
     target[`auth_source_default_${source}_concurrency`] = Math.max(
@@ -305,6 +312,14 @@ export function deriveWeChatConnectStoredMode(
   if (mobileEnabled) return "mobile";
   if (openEnabled) return "open";
   return normalizeWeChatConnectMode(legacyMode);
+}
+
+export interface LDAPGroupMapping {
+  ldap_group_dn: string
+  target_role: string
+  balance: number
+  concurrency: number
+  priority: number
 }
 
 /**
@@ -473,6 +488,28 @@ export interface SystemSettings {
   google_oauth_client_secret_configured: boolean;
   google_oauth_redirect_url: string;
   google_oauth_frontend_redirect_url: string;
+
+  // LDAP/AD settings
+  ldap_enabled: boolean
+  ldap_host: string
+  ldap_port: number
+  ldap_use_tls: boolean
+  ldap_start_tls: boolean
+  ldap_insecure_skip_verify: boolean
+  ldap_bind_dn: string
+  ldap_bind_password_configured: boolean
+  ldap_user_base_dn: string
+  ldap_user_filter: string
+  ldap_login_attr: string
+  ldap_uid_attr: string
+  ldap_email_attr: string
+  ldap_display_name_attr: string
+  ldap_department_attr: string
+  ldap_group_attr: string
+  ldap_allowed_group_dns: string[]
+  ldap_group_mappings: LDAPGroupMapping[]
+  ldap_sync_enabled: boolean
+  ldap_sync_interval_minutes: number
 
   // Model fallback configuration
   enable_model_fallback: boolean;
@@ -707,6 +744,26 @@ export interface UpdateSettingsRequest {
   google_oauth_client_secret?: string;
   google_oauth_redirect_url?: string;
   google_oauth_frontend_redirect_url?: string;
+  ldap_enabled?: boolean;
+  ldap_host?: string;
+  ldap_port?: number;
+  ldap_use_tls?: boolean;
+  ldap_start_tls?: boolean;
+  ldap_insecure_skip_verify?: boolean;
+  ldap_bind_dn?: string;
+  ldap_bind_password?: string;
+  ldap_user_base_dn?: string;
+  ldap_user_filter?: string;
+  ldap_login_attr?: string;
+  ldap_uid_attr?: string;
+  ldap_email_attr?: string;
+  ldap_display_name_attr?: string;
+  ldap_department_attr?: string;
+  ldap_group_attr?: string;
+  ldap_allowed_group_dns?: string[];
+  ldap_group_mappings?: LDAPGroupMapping[];
+  ldap_sync_enabled?: boolean;
+  ldap_sync_interval_minutes?: number;
   enable_model_fallback?: boolean;
   fallback_model_anthropic?: string;
   fallback_model_openai?: string;
@@ -1283,6 +1340,16 @@ export const settingsAPI = {
   updateWebSearchEmulationConfig,
   testWebSearchEmulation,
   resetWebSearchUsage,
+  testLDAPConnection: async () => {
+    const { data } = await apiClient.post<{ message: string }>('/admin/settings/ldap/test');
+    return data;
+  },
+  syncLDAPUsersNow: async () => {
+    const { data } = await apiClient.post<{ checked: number; disabled: number; updated: number }>(
+      '/admin/settings/ldap/sync',
+    );
+    return data;
+  },
 };
 
 export default settingsAPI;

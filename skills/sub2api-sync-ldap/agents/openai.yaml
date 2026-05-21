@@ -1,0 +1,4 @@
+interface:
+  display_name: "Sub2API LDAP Sync"
+  short_description: "Sync and publish the Sub2API LDAP fork safely"
+  default_prompt: "Use $sub2api-sync-ldap to sync the LDAP fork to latest upstream, validate it, and publish only real branch changes."

@@ -157,6 +157,20 @@ func (_c *UserCreate) SetNillableUsername(v *string) *UserCreate {
 	return _c
 }
 
+// SetAuthSource sets the "auth_source" field.
+func (_c *UserCreate) SetAuthSource(v string) *UserCreate {
+	_c.mutation.SetAuthSource(v)
+	return _c
+}
+
+// SetNillableAuthSource sets the "auth_source" field if the given value is not nil.
+func (_c *UserCreate) SetNillableAuthSource(v *string) *UserCreate {
+	if v != nil {
+		_c.SetAuthSource(*v)
+	}
+	return _c
+}
+
 // SetNotes sets the "notes" field.
 func (_c *UserCreate) SetNotes(v string) *UserCreate {
 	_c.mutation.SetNotes(v)
@@ -590,6 +604,10 @@ func (_c *UserCreate) defaults() error {
 		v := user.DefaultUsername
 		_c.mutation.SetUsername(v)
 	}
+	if _, ok := _c.mutation.AuthSource(); !ok {
+		v := user.DefaultAuthSource
+		_c.mutation.SetAuthSource(v)
+	}
 	if _, ok := _c.mutation.Notes(); !ok {
 		v := user.DefaultNotes
 		_c.mutation.SetNotes(v)
@@ -677,6 +695,14 @@ func (_c *UserCreate) check() error {
 	if v, ok := _c.mutation.Username(); ok {
 		if err := user.UsernameValidator(v); err != nil {
 			return &ValidationError{Name: "username", err: fmt.Errorf(`ent: validator failed for field "User.username": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.AuthSource(); !ok {
+		return &ValidationError{Name: "auth_source", err: errors.New(`ent: missing required field "User.auth_source"`)}
+	}
+	if v, ok := _c.mutation.AuthSource(); ok {
+		if err := user.AuthSourceValidator(v); err != nil {
+			return &ValidationError{Name: "auth_source", err: fmt.Errorf(`ent: validator failed for field "User.auth_source": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.Notes(); !ok {
@@ -774,6 +800,10 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Username(); ok {
 		_spec.SetField(user.FieldUsername, field.TypeString, value)
 		_node.Username = value
+	}
+	if value, ok := _c.mutation.AuthSource(); ok {
+		_spec.SetField(user.FieldAuthSource, field.TypeString, value)
+		_node.AuthSource = value
 	}
 	if value, ok := _c.mutation.Notes(); ok {
 		_spec.SetField(user.FieldNotes, field.TypeString, value)
@@ -1201,6 +1231,18 @@ func (u *UserUpsert) UpdateUsername() *UserUpsert {
 	return u
 }
 
+// SetAuthSource sets the "auth_source" field.
+func (u *UserUpsert) SetAuthSource(v string) *UserUpsert {
+	u.Set(user.FieldAuthSource, v)
+	return u
+}
+
+// UpdateAuthSource sets the "auth_source" field to the value that was provided on create.
+func (u *UserUpsert) UpdateAuthSource() *UserUpsert {
+	u.SetExcluded(user.FieldAuthSource)
+	return u
+}
+
 // SetNotes sets the "notes" field.
 func (u *UserUpsert) SetNotes(v string) *UserUpsert {
 	u.Set(user.FieldNotes, v)
@@ -1594,6 +1636,20 @@ func (u *UserUpsertOne) SetUsername(v string) *UserUpsertOne {
 func (u *UserUpsertOne) UpdateUsername() *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateUsername()
+	})
+}
+
+// SetAuthSource sets the "auth_source" field.
+func (u *UserUpsertOne) SetAuthSource(v string) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetAuthSource(v)
+	})
+}
+
+// UpdateAuthSource sets the "auth_source" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateAuthSource() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateAuthSource()
 	})
 }
 
@@ -2190,6 +2246,20 @@ func (u *UserUpsertBulk) SetUsername(v string) *UserUpsertBulk {
 func (u *UserUpsertBulk) UpdateUsername() *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateUsername()
+	})
+}
+
+// SetAuthSource sets the "auth_source" field.
+func (u *UserUpsertBulk) SetAuthSource(v string) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetAuthSource(v)
+	})
+}
+
+// UpdateAuthSource sets the "auth_source" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateAuthSource() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateAuthSource()
 	})
 }
 

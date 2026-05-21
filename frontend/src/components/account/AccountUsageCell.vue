@@ -533,12 +533,19 @@ const activeQueryLoading = ref(false)
 const error = ref<string | null>(null)
 const usageInfo = ref<AccountUsageInfo | null>(null)
 const rootRef = ref<HTMLElement | null>(null)
+const getDesktopViewportMediaQuery = (): MediaQueryList | null => {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return null
+  }
+  return window.matchMedia(desktopViewportQuery)
+}
 const isDesktopViewport = ref(
-  typeof window === 'undefined' ? true : window.matchMedia(desktopViewportQuery).matches
+  getDesktopViewportMediaQuery()?.matches ?? true
 )
 const hasEnteredViewport = ref(false)
 const pendingAutoLoad = ref(false)
 const pendingAutoLoadSource = ref<'passive' | 'active' | undefined>(undefined)
+const pendingAutoLoadBypassCache = ref(false)
 
 let desktopViewportMediaQuery: MediaQueryList | null = null
 let desktopViewportListener: ((event: MediaQueryListEvent) => void) | null = null
@@ -1044,21 +1051,24 @@ const loadUsage = async (options?: { source?: 'passive' | 'active'; bypassCache?
 const flushPendingAutoLoad = () => {
   if (!pendingAutoLoad.value) return
   const source = pendingAutoLoadSource.value
+  const bypassCache = pendingAutoLoadBypassCache.value
   pendingAutoLoad.value = false
   pendingAutoLoadSource.value = undefined
-  loadUsage({ source }).catch((e) => {
+  pendingAutoLoadBypassCache.value = false
+  loadUsage({ source, bypassCache }).catch((e) => {
     console.error('Failed to load deferred usage:', e)
   })
 }
 
-const requestAutoLoad = (source?: 'passive' | 'active') => {
+const requestAutoLoad = (options?: { source?: 'passive' | 'active'; bypassCache?: boolean }) => {
   if (!shouldFetchUsage.value) return
   if (shouldLazyLoadOnMobile.value && !hasEnteredViewport.value) {
     pendingAutoLoad.value = true
-    pendingAutoLoadSource.value = source
+    pendingAutoLoadSource.value = options?.source
+    pendingAutoLoadBypassCache.value = options?.bypassCache === true
     return
   }
-  loadUsage({ source }).catch((e) => {
+  loadUsage(options).catch((e) => {
     console.error('Failed to auto load usage:', e)
   })
 }
@@ -1191,7 +1201,9 @@ const formatKeyUserCost = computed(() => {
 
 onMounted(() => {
   if (typeof window !== 'undefined') {
-    desktopViewportMediaQuery = window.matchMedia(desktopViewportQuery)
+    desktopViewportMediaQuery = getDesktopViewportMediaQuery()
+  }
+  if (desktopViewportMediaQuery) {
     isDesktopViewport.value = desktopViewportMediaQuery.matches
     desktopViewportListener = (event: MediaQueryListEvent) => {
       isDesktopViewport.value = event.matches
@@ -1205,14 +1217,15 @@ onMounted(() => {
 
   if (!shouldAutoLoadUsageOnMount.value) return
   const source = isAnthropicOAuthOrSetupToken.value ? 'passive' : undefined
-  requestAutoLoad(source)
+  requestAutoLoad({ source })
 })
 
 watch(openAIUsageRefreshKey, (nextKey, prevKey) => {
   if (!prevKey || nextKey === prevKey) return
   if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return
 
-  requestAutoLoad()
+  _usageCache.delete(props.account.id)
+  requestAutoLoad({ bypassCache: true })
 })
 
 watch(

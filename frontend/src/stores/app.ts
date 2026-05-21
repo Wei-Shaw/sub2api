@@ -41,6 +41,9 @@ export const useAppStore = defineStore('app', () => {
   const hasUpdate = ref<boolean>(false)
   const buildType = ref<string>('source')
   const releaseInfo = ref<ReleaseInfo | null>(null)
+  const updateChannel = ref<string>('manual_script')
+  const upgradeHint = ref<string>('')
+  const upgradeCommand = ref<string>('')
 
   // Auto-incrementing ID for toasts
   let toastIdCounter = 0
@@ -247,6 +250,9 @@ export const useAppStore = defineStore('app', () => {
         has_update: hasUpdate.value,
         build_type: buildType.value,
         release_info: releaseInfo.value || undefined,
+        update_channel: updateChannel.value,
+        upgrade_hint: upgradeHint.value || undefined,
+        upgrade_command: upgradeCommand.value || undefined,
         cached: true
       }
     }
@@ -264,6 +270,9 @@ export const useAppStore = defineStore('app', () => {
       hasUpdate.value = data.has_update
       buildType.value = data.build_type || 'source'
       releaseInfo.value = data.release_info || null
+      updateChannel.value = data.update_channel || 'manual_script'
+      upgradeHint.value = data.upgrade_hint || ''
+      upgradeCommand.value = data.upgrade_command || ''
       versionLoaded.value = true
       return data
     } catch (error) {
@@ -280,6 +289,7 @@ export const useAppStore = defineStore('app', () => {
   function clearVersionCache(): void {
     versionLoaded.value = false
     hasUpdate.value = false
+    releaseInfo.value = null
   }
 
   // ==================== Public Settings Management ====================
@@ -350,6 +360,7 @@ export const useAppStore = defineStore('app', () => {
         github_oauth_enabled: false,
         google_oauth_enabled: false,
         backend_mode_enabled: false,
+        ldap_enabled: false,
         version: siteVersion.value,
         balance_low_notify_enabled: false,
         account_quota_notify_enabled: false,
@@ -428,6 +439,9 @@ export const useAppStore = defineStore('app', () => {
     hasUpdate,
     buildType,
     releaseInfo,
+    updateChannel,
+    upgradeHint,
+    upgradeCommand,
 
     // Computed
     hasActiveToasts,

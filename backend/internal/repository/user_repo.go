@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	entsql "entgo.io/ent/dialect/sql"
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
@@ -22,8 +23,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
-
-	entsql "entgo.io/ent/dialect/sql"
 )
 
 type userRepository struct {
@@ -31,11 +30,19 @@ type userRepository struct {
 	sql    sqlExecutor
 }
 
-func NewUserRepository(client *dbent.Client, sqlDB *sql.DB) service.UserRepository {
+func NewUserRepository(client *dbent.Client, sqlDB *sql.DB) *userRepository {
 	return newUserRepositoryWithSQL(client, sqlDB)
 }
 
 func newUserRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *userRepository {
+	// When the backing DB is SQLite (unit tests) the raw-SQL helpers use
+	// PostgreSQL-specific syntax (ANY, BIGINT columns added via migration,
+	// etc.) that SQLite does not support.  All raw-SQL helper functions
+	// already short-circuit when r.sql == nil, so setting it to nil here
+	// is safe and keeps unit tests simple and self-contained.
+	if isSQLite(sqlq) {
+		sqlq = nil
+	}
 	return &userRepository{client: client, sql: sqlq}
 }
 
@@ -112,6 +119,12 @@ func (r *userRepository) Create(ctx context.Context, userIn *service.User) error
 		}
 	}
 
+	if tx != nil {
+		if err := r.persistUserExtendedFields(ctx, created.ID, userIn.TokenVersion, userIn.AuthSource); err != nil {
+			return err
+		}
+	}
+
 	applyUserEntityToService(userIn, created)
 	return nil
 }
@@ -123,6 +136,9 @@ func (r *userRepository) GetByID(ctx context.Context, id int64) (*service.User, 
 	}
 
 	out := userEntityToService(m)
+	if err := r.populateExtendedUserFields(ctx, out); err != nil {
+		return nil, err
+	}
 	groups, err := r.loadAllowedGroups(ctx, []int64{id})
 	if err != nil {
 		return nil, err
@@ -150,6 +166,9 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*service
 	m := matches[0]
 
 	out := userEntityToService(m)
+	if err := r.populateExtendedUserFields(ctx, out); err != nil {
+		return nil, err
+	}
 	groups, err := r.loadAllowedGroups(ctx, []int64{m.ID})
 	if err != nil {
 		return nil, err
@@ -248,6 +267,9 @@ func (r *userRepository) Update(ctx context.Context, userIn *service.User) error
 
 	if tx != nil {
 		if err := tx.Commit(); err != nil {
+			return err
+		}
+		if err := r.persistUserExtendedFields(ctx, updated.ID, userIn.TokenVersion, userIn.AuthSource); err != nil {
 			return err
 		}
 	}
@@ -474,6 +496,17 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 		u := userEntityToService(users[i])
 		outUsers = append(outUsers, *u)
 		userMap[u.ID] = &outUsers[len(outUsers)-1]
+	}
+
+	extendedFields, err := r.loadExtendedUserFieldsBatch(ctx, userIDs)
+	if err != nil {
+		return nil, nil, err
+	}
+	for id, u := range userMap {
+		if ext, ok := extendedFields[id]; ok {
+			u.TokenVersion = ext.tokenVersion
+			u.AuthSource = ext.authSource
+		}
 	}
 
 	shouldLoadSubscriptions := filters.IncludeSubscriptions == nil || *filters.IncludeSubscriptions
@@ -867,6 +900,9 @@ func (r *userRepository) GetFirstAdmin(ctx context.Context) (*service.User, erro
 	}
 
 	out := userEntityToService(m)
+	if err := r.populateExtendedUserFields(ctx, out); err != nil {
+		return nil, err
+	}
 	groups, err := r.loadAllowedGroups(ctx, []int64{m.ID})
 	if err != nil {
 		return nil, err
@@ -967,6 +1003,234 @@ func userSignupSourceOrDefault(signupSource string) string {
 // marshalExtraEmails serializes notify email entries to JSON for storage.
 func marshalExtraEmails(entries []service.NotifyEmailEntry) string {
 	return service.MarshalNotifyEmails(entries)
+}
+
+type userExtendedFields struct {
+	tokenVersion int64
+	authSource   string
+}
+
+func normalizeAuthSource(source string) string {
+	source = strings.ToLower(strings.TrimSpace(source))
+	if source == "" {
+		return "local"
+	}
+	return source
+}
+
+func (r *userRepository) persistUserExtendedFields(ctx context.Context, userID, tokenVersion int64, authSource string) error {
+	if r.sql == nil {
+		return nil
+	}
+	_, err := r.sql.ExecContext(
+		ctx,
+		`UPDATE users SET token_version = $2, auth_source = $3, updated_at = NOW() WHERE id = $1`,
+		userID,
+		tokenVersion,
+		normalizeAuthSource(authSource),
+	)
+	return err
+}
+
+func (r *userRepository) populateExtendedUserFields(ctx context.Context, user *service.User) error {
+	if user == nil {
+		return nil
+	}
+	fields, err := r.loadExtendedUserFieldsBatch(ctx, []int64{user.ID})
+	if err != nil {
+		return err
+	}
+	if ext, ok := fields[user.ID]; ok {
+		user.TokenVersion = ext.tokenVersion
+		user.AuthSource = ext.authSource
+	} else {
+		user.TokenVersion = 0
+		user.AuthSource = "local"
+	}
+	return nil
+}
+
+func (r *userRepository) loadExtendedUserFieldsBatch(ctx context.Context, userIDs []int64) (map[int64]userExtendedFields, error) {
+	out := make(map[int64]userExtendedFields, len(userIDs))
+	if len(userIDs) == 0 || r.sql == nil {
+		return out, nil
+	}
+
+	rows, err := r.sql.QueryContext(
+		ctx,
+		`SELECT id, token_version, COALESCE(auth_source, 'local') FROM users WHERE id = ANY($1)`,
+		pq.Array(userIDs),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var (
+			userID       int64
+			tokenVersion int64
+			authSource   string
+		)
+		if scanErr := rows.Scan(&userID, &tokenVersion, &authSource); scanErr != nil {
+			return nil, scanErr
+		}
+		out[userID] = userExtendedFields{
+			tokenVersion: tokenVersion,
+			authSource:   normalizeAuthSource(authSource),
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (r *userRepository) GetByLDAPUID(ctx context.Context, ldapUID string) (*service.User, error) {
+	if strings.TrimSpace(ldapUID) == "" || r.sql == nil {
+		return nil, service.ErrUserNotFound
+	}
+	rows, err := r.sql.QueryContext(
+		ctx,
+		`SELECT user_id FROM user_ldap_profiles WHERE ldap_uid = $1 AND active = TRUE LIMIT 1`,
+		strings.TrimSpace(ldapUID),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	if !rows.Next() {
+		return nil, service.ErrUserNotFound
+	}
+	var userID int64
+	if err := rows.Scan(&userID); err != nil {
+		return nil, err
+	}
+	return r.GetByID(ctx, userID)
+}
+
+func (r *userRepository) GetLDAPProfileByUserID(ctx context.Context, userID int64) (*service.LDAPUserProfile, error) {
+	if r.sql == nil {
+		return nil, service.ErrUserNotFound
+	}
+	rows, err := r.sql.QueryContext(
+		ctx,
+		`SELECT user_id, ldap_uid, ldap_username, ldap_email, display_name, department, groups_hash, active, last_synced_at
+		 FROM user_ldap_profiles
+		 WHERE user_id = $1
+		 LIMIT 1`,
+		userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	if !rows.Next() {
+		return nil, service.ErrUserNotFound
+	}
+
+	var profile service.LDAPUserProfile
+	if err := rows.Scan(
+		&profile.UserID,
+		&profile.LDAPUID,
+		&profile.LDAPUsername,
+		&profile.LDAPEmail,
+		&profile.DisplayName,
+		&profile.Department,
+		&profile.GroupsHash,
+		&profile.Active,
+		&profile.LastSyncedAt,
+	); err != nil {
+		return nil, err
+	}
+	return &profile, nil
+}
+
+func (r *userRepository) UpsertLDAPProfile(ctx context.Context, profile *service.LDAPUserProfile) error {
+	if profile == nil || r.sql == nil {
+		return nil
+	}
+	_, err := r.sql.ExecContext(
+		ctx,
+		`INSERT INTO user_ldap_profiles (
+			user_id, ldap_uid, ldap_username, ldap_email, display_name, department, groups_hash, active, last_synced_at, created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+		ON CONFLICT (user_id) DO UPDATE SET
+			ldap_uid = EXCLUDED.ldap_uid,
+			ldap_username = EXCLUDED.ldap_username,
+			ldap_email = EXCLUDED.ldap_email,
+			display_name = EXCLUDED.display_name,
+			department = EXCLUDED.department,
+			groups_hash = EXCLUDED.groups_hash,
+			active = EXCLUDED.active,
+			last_synced_at = EXCLUDED.last_synced_at,
+			updated_at = NOW()`,
+		profile.UserID,
+		strings.TrimSpace(profile.LDAPUID),
+		strings.TrimSpace(profile.LDAPUsername),
+		strings.TrimSpace(profile.LDAPEmail),
+		strings.TrimSpace(profile.DisplayName),
+		strings.TrimSpace(profile.Department),
+		strings.TrimSpace(profile.GroupsHash),
+		profile.Active,
+		profile.LastSyncedAt,
+	)
+	return err
+}
+
+func (r *userRepository) ListActiveLDAPSyncTargets(ctx context.Context) ([]service.LDAPSyncTarget, error) {
+	out := make([]service.LDAPSyncTarget, 0, 32)
+	if r.sql == nil {
+		return out, nil
+	}
+	rows, err := r.sql.QueryContext(
+		ctx,
+		`SELECT u.id, u.email, p.ldap_uid, p.ldap_username
+		 FROM user_ldap_profiles p
+		 JOIN users u ON u.id = p.user_id
+		 WHERE p.active = TRUE
+		   AND u.deleted_at IS NULL
+		   AND u.status = $1
+		   AND u.role != $2`,
+		service.StatusActive,
+		service.RoleAdmin,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var item service.LDAPSyncTarget
+		if err := rows.Scan(&item.UserID, &item.Email, &item.LDAPUID, &item.LDAPUsername); err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (r *userRepository) DisableUser(ctx context.Context, userID int64) error {
+	client := clientFromContext(ctx, r.client)
+	affected, err := client.User.Update().
+		Where(dbuser.IDEQ(userID)).
+		SetStatus(service.StatusDisabled).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return service.ErrUserNotFound
+	}
+	if r.sql != nil {
+		_, _ = r.sql.ExecContext(ctx, `UPDATE user_ldap_profiles SET active = FALSE, updated_at = NOW() WHERE user_id = $1`, userID)
+	}
+	return nil
 }
 
 // UpdateTotpSecret 更新用户的 TOTP 加密密钥
