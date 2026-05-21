@@ -624,7 +624,7 @@ func TestApiKeyAuthWithSubscriptionGoogle_SubscriptionLimitExceededReturns429(t 
 		Platform:         service.PlatformGemini,
 		Hydrated:         true,
 		SubscriptionType: service.SubscriptionTypeSubscription,
-		FiveHourLimitUSD: &limit,
+		DailyLimitUSD:    &limit,
 	}
 	user := &service.User{
 		ID:          999,
@@ -655,13 +655,13 @@ func TestApiKeyAuthWithSubscriptionGoogle_SubscriptionLimitExceededReturns429(t 
 
 	now := time.Now().Add(-1 * time.Hour)
 	sub := &service.UserSubscription{
-		ID:                  601,
-		UserID:              user.ID,
-		GroupID:             group.ID,
-		Status:              service.SubscriptionStatusActive,
-		ExpiresAt:           now.Add(24 * time.Hour),
-		FiveHourWindowStart: &now,
-		FiveHourUsageUSD:    10,
+		ID:               601,
+		UserID:           user.ID,
+		GroupID:          group.ID,
+		Status:           service.SubscriptionStatusActive,
+		ExpiresAt:        now.Add(24 * time.Hour),
+		DailyWindowStart: &now,
+		DailyUsageUSD:    10,
 	}
 	subscriptionService := service.NewSubscriptionService(nil, fakeGoogleSubscriptionRepo{
 		getActive: func(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error) {
@@ -673,6 +673,7 @@ func TestApiKeyAuthWithSubscriptionGoogle_SubscriptionLimitExceededReturns429(t 
 		},
 		updateStatus:   func(ctx context.Context, subscriptionID int64, status string) error { return nil },
 		activateWindow: func(ctx context.Context, id int64, start time.Time) error { return nil },
+		resetDaily:     func(ctx context.Context, id int64, start time.Time) error { return nil },
 		resetFiveHour:  func(ctx context.Context, id int64, start time.Time) error { return nil },
 		resetWeekly:    func(ctx context.Context, id int64, start time.Time) error { return nil },
 		resetMonthly:   func(ctx context.Context, id int64, start time.Time) error { return nil },
@@ -692,5 +693,5 @@ func TestApiKeyAuthWithSubscriptionGoogle_SubscriptionLimitExceededReturns429(t 
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.Equal(t, http.StatusTooManyRequests, resp.Error.Code)
 	require.Equal(t, "RESOURCE_EXHAUSTED", resp.Error.Status)
-	require.Contains(t, resp.Error.Message, "five-hour usage limit exceeded")
+	require.Contains(t, resp.Error.Message, "daily usage limit exceeded")
 }

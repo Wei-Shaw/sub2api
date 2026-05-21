@@ -850,7 +850,7 @@ func (s *SubscriptionService) ValidateAndCheckLimits(sub *UserSubscription, grou
 		needsMaintenance = true
 	}
 
-	// 3. 检查用量限额
+	// 3. 检查用量限额。当前套餐方案只按日限额控制。
 	if !sub.CheckDailyLimit(group, 0) {
 		return needsMaintenance, ErrDailyLimitExceeded
 	}

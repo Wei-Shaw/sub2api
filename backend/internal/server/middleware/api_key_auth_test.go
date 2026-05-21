@@ -28,7 +28,7 @@ func TestSimpleModeBypassesQuotaCheck(t *testing.T) {
 		Status:           service.StatusActive,
 		Hydrated:         true,
 		SubscriptionType: service.SubscriptionTypeSubscription,
-		FiveHourLimitUSD: &limit,
+		DailyLimitUSD:    &limit,
 	}
 	user := &service.User{
 		ID:          7,
@@ -142,13 +142,13 @@ func TestSimpleModeBypassesQuotaCheck(t *testing.T) {
 
 		now := time.Now()
 		sub := &service.UserSubscription{
-			ID:                  55,
-			UserID:              user.ID,
-			GroupID:             group.ID,
-			Status:              service.SubscriptionStatusActive,
-			ExpiresAt:           now.Add(24 * time.Hour),
-			FiveHourWindowStart: &now,
-			FiveHourUsageUSD:    10,
+			ID:               55,
+			UserID:           user.ID,
+			GroupID:          group.ID,
+			Status:           service.SubscriptionStatusActive,
+			ExpiresAt:        now.Add(24 * time.Hour),
+			DailyWindowStart: &now,
+			DailyUsageUSD:    10,
 		}
 		subscriptionRepo := &stubUserSubscriptionRepo{
 			getActive: func(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error) {
