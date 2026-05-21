@@ -307,6 +307,7 @@ FROM cleared`, userID)
 
 		affected, err := txClient.User.Update().
 			Where(user.IDEQ(userID)).
+			AddGiftBalance(transferred).
 			Save(txCtx)
 		if err != nil {
 			return fmt.Errorf("clear affiliate quota: %w", err)
