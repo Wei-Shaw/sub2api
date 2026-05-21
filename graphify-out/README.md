@@ -7,6 +7,11 @@ Files:
 - `GRAPH_REPORT.md` — human-readable graph summary: god nodes, communities, suggested questions.
 - `graph.json` — queryable graphify knowledge graph for code structure.
 
+Automation:
+
+- `tools/graphify/rebuild-code-graph.py` rebuilds this graph deterministically from code ASTs.
+- `tools/graphify/install-hooks.sh` installs a local pre-commit hook so code commits refresh and stage the graph automatically.
+
 Generation notes:
 
 - Scope: code AST extraction only.

@@ -87,6 +87,11 @@ temp/
 .dev/
 .serena/
 
+# graphify generated cache/temp files (keep graph.json and GRAPH_REPORT.md tracked)
+graphify-out/cache/
+graphify-out/.graphify_*.json
+graphify-out/.graphify_python
+
 # ===================
 # 构建产物
 # ===================
