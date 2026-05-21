@@ -454,6 +454,28 @@ REDACTED
 	REDACTED
 REDACTED
 
+	// Fast-path: when the upstream supplies a verified email and the deployment
+	// does not require any extra confirmation (force_email_on_third_party_signup
+	// disabled + invitation code disabled) and no local account collides with the
+	// upstream email, trust the upstream identity and finish login without
+	// rendering the choice page. Any failure falls through to the regular choice
+	// flow below.
+	if compatEmailUser == nil &&
+		strings.TrimSpace(compatEmail) != "" &&
+		emailVerified != nil && *emailVerified {
+		if h.tryOIDCVerifiedEmailFastPath(
+			c,
+			frontendCallback,
+			redirectTo,
+			identityRef,
+			compatEmail,
+			username,
+			upstreamClaims,
+		) {
+			return
+	REDACTED
+REDACTED
+
 	if h.isForceEmailOnThirdPartySignup(c.Request.Context()) {
 		if err := h.createOIDCOAuthChoicePendingSession(
 			c,
@@ -1189,4 +1211,67 @@ func oidcClearCookie(c *gin.Context, name string, secure bool) {
 		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 REDACTED)
+REDACTED
+
+// tryOIDCVerifiedEmailFastPath attempts to skip the choice/pending page when
+// the upstream identity carries a verified email and the deployment does not
+// require any additional confirmation. It mirrors the behaviour already used
+// for verified github/google logins via LoginOrRegisterVerifiedEmailOAuth.
+//
+// Returns true when the flow has completed (token issued and browser
+// redirected); a false return tells the caller to fall through to the regular
+// choice flow.
+func (h *AuthHandler) tryOIDCVerifiedEmailFastPath(
+	c *gin.Context,
+	frontendCallback string,
+	redirectTo string,
+	identity service.PendingAuthIdentityKey,
+	compatEmail string,
+	username string,
+	upstreamClaims map[string]any,
+) bool {
+	if h == nil || h.authService == nil || h.settingSvc == nil {
+		return false
+REDACTED
+	ctx := c.Request.Context()
+	if h.isForceEmailOnThirdPartySignup(ctx) {
+		return false
+REDACTED
+	if h.settingSvc.IsInvitationCodeEnabled(ctx) {
+		return false
+REDACTED
+
+	upstreamMetadata := make(map[string]any, len(upstreamClaims))
+	for k, v := range upstreamClaims {
+		upstreamMetadata[k] = v
+REDACTED
+	input := service.EmailOAuthIdentityInput{
+		ProviderType:     "oidc",
+		ProviderKey:      strings.TrimSpace(identity.ProviderKey),
+		ProviderSubject:  strings.TrimSpace(identity.ProviderSubject),
+		Email:            strings.TrimSpace(strings.ToLower(compatEmail)),
+		EmailVerified:    true,
+		Username:         strings.TrimSpace(username),
+		DisplayName:      pendingSessionStringValue(upstreamClaims, "suggested_display_name"),
+		AvatarURL:        pendingSessionStringValue(upstreamClaims, "suggested_avatar_url"),
+		UpstreamMetadata: upstreamMetadata,
+REDACTED
+	tokenPair, user, err := h.authService.LoginOrRegisterVerifiedEmailOAuthWithInvitation(ctx, input, "", "")
+	if err != nil {
+		log.Printf("[OIDC OAuth] verified-email fast path skipped: %v", err)
+		return false
+REDACTED
+	if err := h.ensureBackendModeAllowsUser(ctx, user); err != nil {
+		log.Printf("[OIDC OAuth] verified-email fast path blocked by backend mode: %v", err)
+		return false
+REDACTED
+
+	fragment := url.Values{REDACTED
+	fragment.Set("access_token", tokenPair.AccessToken)
+	fragment.Set("refresh_token", tokenPair.RefreshToken)
+	fragment.Set("expires_in", fmt.Sprintf("%d", tokenPair.ExpiresIn))
+	fragment.Set("token_type", "Bearer")
+	fragment.Set("redirect", redirectTo)
+	redirectWithFragment(c, frontendCallback, fragment)
+	return true
 REDACTED
