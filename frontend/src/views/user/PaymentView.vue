@@ -31,7 +31,7 @@
               </div>
               <div class="lg:col-span-2 rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
                 <h3 class="text-sm font-semibold text-gray-900 dark:text-white">余额购买</h3>
-                <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">套餐使用账户余额扣款，不会自动拉起在线支付。</p>
+                <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">套餐使用账户余额扣款，确认购买后默认直接生效；如果是当前套餐，会在原到期时间上自动延期。</p>
                 <div class="mt-4 rounded-xl bg-gray-50 px-4 py-3 dark:bg-gray-700/50">
                   <p class="text-xs text-gray-400">当前可用余额</p>
                   <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">${{ user?.balance?.toFixed(2) || '0.00' }}</p>
@@ -165,12 +165,41 @@
                   </div>
                 </div>
               </div>
+              <div class="mb-6 grid gap-4 lg:grid-cols-2">
+                <div class="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+                  <div class="flex items-start gap-3">
+                    <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-sm font-semibold text-gray-900 dark:bg-gray-700 dark:text-white">量</div>
+                    <div>
+                      <p class="text-sm font-semibold text-gray-900 dark:text-white">按量计费：不买套餐也能用</p>
+                      <p class="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">适合偶尔调用、先体验或低频使用。充值后选择「按量计费」分组，系统按每次 API 实际调用从账户余额扣除；充值 ¥1 会到账 $10 API 余额，用多少扣多少，不会产生订阅有效期。</p>
+                    </div>
+                  </div>
+                </div>
+                <div class="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+                  <div class="flex items-start gap-3">
+                    <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gray-900 text-sm font-semibold text-white dark:bg-white dark:text-gray-900">订</div>
+                    <div>
+                      <p class="text-sm font-semibold text-gray-900 dark:text-white">按订阅计费：高频使用更划算</p>
+                      <p class="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">适合每天都用 Codex / GPT 编程、赶项目和持续开发。购买日卡、周卡或月卡后默认直接生效，API Key 选择对应订阅分组即可使用套餐权益；同一套餐再次购买会自动延期，周期越长日均越低。</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="mb-6 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+                <p class="mb-2 text-sm font-medium text-gray-700 dark:text-gray-200">怎么选？</p>
+                <ul class="space-y-1 text-sm text-gray-500 dark:text-gray-400">
+                  <li>✦ 只是临时试用、偶尔请求：选按量计费，不买套餐也可以直接用。</li>
+                  <li>✦ 当天要高强度写代码、Debug、跑 Agent：选日卡，买完立即生效。</li>
+                  <li>✦ 连续几天或一周都要用：选周卡，日均更低，也是当前推荐方案。</li>
+                  <li>✦ 长期使用：选月卡，周期最长，日均成本最低。</li>
+                </ul>
+              </div>
               <div class="mb-6 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
                 <p class="mb-2 text-sm font-medium text-gray-700 dark:text-gray-200">额度说明</p>
                 <ul class="space-y-1 text-sm text-gray-500 dark:text-gray-400">
-                  <li>✦ 统一 1 倍率 — 充 ¥1 = $10 额度，公平透明</li>
-                  <li>✦ 套餐从余额扣除 — 如日卡 ¥9.9 扣 $99 余额</li>
-                  <li>✦ 日限额从购买时间滚动重置 — 每 24 小时自动刷新</li>
+                  <li>✦ 按量计费 — 不买套餐，选择按量分组，默认按实际调用扣账户余额</li>
+                  <li>✦ 订阅套餐 — 购买后默认直接生效，使用对应套餐分组调用</li>
+                  <li>✦ 账户余额 — 充 ¥1 = $10 API 余额，套餐也可以用余额购买</li>
                   <li>✦ 越久越省 — 月卡日均仅 ¥8.33，比日卡省 16%</li>
                 </ul>
               </div>
@@ -183,7 +212,8 @@
                     <div class="mt-2 flex items-baseline gap-2"><span v-if="plan.original_price" class="text-xs text-gray-400 line-through">&yen;{{ plan.original_price }}</span><span class="text-2xl font-bold text-gray-900 dark:text-white">&yen;{{ planDisplayAmount(plan) }}</span><span class="text-xs text-gray-400">{{ planPriceSuffix(plan) }}</span></div>
                     <p class="mt-1 text-xs text-gray-400">扣 ${{ (effectivePlanAmount(plan) * (checkout.balance_recharge_multiplier || 10)).toFixed(0) }} 余额</p>
                     <p v-if="plan.validity_days > 1" class="mt-1 text-xs text-green-600 dark:text-green-400">日均仅 &yen;{{ (plan.price / plan.validity_days).toFixed(2) }}，比日卡省 {{ Math.round((1 - plan.price / plan.validity_days / 9.9) * 100) }}%</p>
-                    <p v-if="plan.purchase_quote?.action === 'extend'" class="mt-1 text-xs text-green-600 dark:text-green-400">当前套餐，购买后自动延期</p>
+                    <p v-if="plan.purchase_quote?.action === 'extend'" class="mt-1 text-xs text-green-600 dark:text-green-400">当前套餐，购买后默认直接生效并自动延期</p>
+                    <p v-else class="mt-1 text-xs text-green-600 dark:text-green-400">购买后默认直接生效</p>
                   </div>
                   <div class="mb-4 space-y-2 text-sm text-gray-500 dark:text-gray-400">
                     <p v-if="plan.description" class="leading-5">{{ plan.description }}</p>
