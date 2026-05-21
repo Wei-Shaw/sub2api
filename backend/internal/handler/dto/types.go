@@ -1,6 +1,8 @@
 package dto
 
 import (
+	"bytes"
+	"encoding/json"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
@@ -357,6 +359,59 @@ type AdminRedeemCode struct {
 	RedeemCode
 
 	Notes string `json:"notes"`
+REDACTED
+
+type NullableTimeField struct {
+	Set   bool
+	Value *time.Time
+REDACTED
+
+func (f *NullableTimeField) UnmarshalJSON(data []byte) error {
+	f.Set = true
+	if bytes.Equal(data, []byte("null")) {
+		f.Value = nil
+		return nil
+REDACTED
+	var value time.Time
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+REDACTED
+	f.Value = &value
+	return nil
+REDACTED
+
+type NullableInt64Field struct {
+	Set   bool
+	Value *int64
+REDACTED
+
+func (f *NullableInt64Field) UnmarshalJSON(data []byte) error {
+	f.Set = true
+	if bytes.Equal(data, []byte("null")) {
+		f.Value = nil
+		return nil
+REDACTED
+	var value int64
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+REDACTED
+	f.Value = &value
+	return nil
+REDACTED
+
+type BatchUpdateRedeemCodeFields struct {
+	Status    *string            `json:"status,omitempty"`
+	ExpiresAt NullableTimeField  `json:"expires_at,omitempty"`
+	Notes     *string            `json:"notes,omitempty"`
+	GroupID   NullableInt64Field `json:"group_id,omitempty"`
+
+	Type  *string  `json:"type,omitempty"`
+	Value *float64 `json:"value,omitempty"`
+REDACTED
+
+type BatchUpdateRedeemCodesRequest struct {
+	IDs    []int64                     `json:"ids" binding:"required,min=1"`
+	Fields BatchUpdateRedeemCodeFields `json:"fields" binding:"required"`
 REDACTED
 
 // UsageLog 是普通用户接口使用的 usage log DTO（不包含管理员字段）。

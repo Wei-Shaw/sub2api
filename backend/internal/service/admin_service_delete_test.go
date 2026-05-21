@@ -325,6 +325,12 @@ REDACTED
 type redeemRepoStub struct {
 	deleteErrByID map[int64]error
 	deletedIDs    []int64
+
+	batchUpdateIDs    []int64
+	batchUpdateFields RedeemCodeBatchUpdateFields
+	batchUpdateResult int64
+	batchUpdateErr    error
+	batchUpdateCalled bool
 REDACTED
 
 func (s *redeemRepoStub) Create(ctx context.Context, code *RedeemCode) error {
@@ -345,6 +351,19 @@ REDACTED
 
 func (s *redeemRepoStub) Update(ctx context.Context, code *RedeemCode) error {
 	panic("unexpected Update call")
+REDACTED
+
+func (s *redeemRepoStub) BatchUpdate(ctx context.Context, ids []int64, fields RedeemCodeBatchUpdateFields) (int64, error) {
+	s.batchUpdateCalled = true
+	s.batchUpdateIDs = append([]int64(nil), ids...)
+	s.batchUpdateFields = fields
+	if s.batchUpdateErr != nil {
+		return 0, s.batchUpdateErr
+REDACTED
+	if s.batchUpdateResult != 0 {
+		return s.batchUpdateResult, nil
+REDACTED
+	return int64(len(ids)), nil
 REDACTED
 
 func (s *redeemRepoStub) Delete(ctx context.Context, id int64) error {
