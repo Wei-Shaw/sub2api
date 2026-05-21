@@ -547,6 +547,8 @@ export default {
       wechatBrowserOnly: '현재 WeChat 로그인 흐름은 WeChat 내장 브라우저에서만 계속할 수 있습니다.',
       wechatNotConfigured: 'WeChat 로그인이 아직 설정되지 않았습니다.'
     },
+    dingtalkProviderName: 'DingTalk (钉钉)',
+    dingtalkCallbackPageTitle: 'DingTalk 로그인 콜백',
     linuxdoCallbackPageTitle: 'LinuxDo 로그인 콜백',
     oidcCallbackPageTitle: 'OIDC 로그인 콜백',
     oauthCallbackPageTitle: 'OAuth 콜백',
@@ -6508,6 +6510,7 @@ export default {
       rebatesDescription: 'View recharge orders that generated affiliate rebates',
       records: {
         affCode: 'Invite Code',
+        deviceCode: '디바이스 코드',
         availableQuotaAfter: 'Available After',
         balanceAfter: 'Balance After',
         endAt: 'End date',

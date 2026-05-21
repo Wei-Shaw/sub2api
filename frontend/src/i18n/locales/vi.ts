@@ -547,6 +547,8 @@ export default {
       wechatBrowserOnly: 'Luồng đăng nhập WeChat hiện chỉ hỗ trợ tiếp tục trong trình duyệt tích hợp của WeChat.',
       wechatNotConfigured: 'Đăng nhập WeChat vẫn chưa được cấu hình.'
     },
+    dingtalkProviderName: 'DingTalk',
+    dingtalkCallbackPageTitle: 'Callback đăng nhập DingTalk',
     linuxdoCallbackPageTitle: 'Callback đăng nhập LinuxDo',
     oidcCallbackPageTitle: 'Callback đăng nhập OIDC',
     oauthCallbackPageTitle: 'Callback OAuth',
@@ -4655,6 +4657,7 @@ export default {
         group: 'Nhóm',
         user: 'Người dùng',
         userId: 'ID người dùng',
+        deviceCode: 'Mã thiết bị',
         account: 'Tài khoản',
         accountId: 'ID tài khoản',
         status: 'Mã trạng thái',
@@ -6507,6 +6510,7 @@ export default {
       rebatesDescription: 'Xem các đơn nạp tiền đã tạo hoa hồng affiliate',
       records: {
         affCode: 'Mã mời',
+        deviceCode: 'Mã thiết bị',
         availableQuotaAfter: 'Quota khả dụng sau đó',
         balanceAfter: 'Số dư sau đó',
         endAt: 'Ngày kết thúc',

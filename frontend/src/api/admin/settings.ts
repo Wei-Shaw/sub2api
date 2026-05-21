@@ -1486,105 +1486,6 @@ export async function resetWebSearchUsage(payload: {
   );
 }
 
-// ==================== Email Template Settings ====================
-
-export interface EmailTemplateOption {
-  value: string;
-  label?: string;
-  description?: string;
-}
-
-export type EmailTemplateEventOption = string | EmailTemplateOption;
-
-export interface EmailTemplateSummary {
-  event: string;
-  locale: string;
-  subject: string;
-  is_custom?: boolean;
-  updated_at?: string;
-}
-
-export interface EmailTemplateListResponse {
-  events: EmailTemplateEventOption[];
-  locales: string[];
-  templates?: EmailTemplateSummary[];
-  placeholders?: string[];
-}
-
-export interface EmailTemplateDetail {
-  event: string;
-  locale: string;
-  subject: string;
-  html: string;
-  is_custom?: boolean;
-  updated_at?: string;
-  placeholders?: string[];
-}
-
-export interface UpdateEmailTemplateRequest {
-  subject: string;
-  html: string;
-}
-
-export interface PreviewEmailTemplateRequest extends UpdateEmailTemplateRequest {
-  event: string;
-  locale: string;
-}
-
-export interface EmailTemplatePreviewResponse {
-  subject: string;
-  html: string;
-}
-
-export async function getEmailTemplates(): Promise<EmailTemplateListResponse> {
-  const { data } = await apiClient.get<EmailTemplateListResponse>(
-    "/admin/settings/email-templates",
-  );
-  return data;
-}
-
-export async function getEmailTemplate(
-  event: string,
-  locale: string,
-): Promise<EmailTemplateDetail> {
-  const { data } = await apiClient.get<EmailTemplateDetail>(
-    `/admin/settings/email-templates/${encodeURIComponent(event)}/${encodeURIComponent(locale)}`,
-  );
-  return data;
-}
-
-export async function updateEmailTemplate(
-  event: string,
-  locale: string,
-  request: UpdateEmailTemplateRequest,
-): Promise<EmailTemplateDetail> {
-  const { data } = await apiClient.put<EmailTemplateDetail>(
-    `/admin/settings/email-templates/${encodeURIComponent(event)}/${encodeURIComponent(locale)}`,
-    request,
-  );
-  return data;
-}
-
-export async function restoreOfficialEmailTemplate(
-  event: string,
-  locale: string,
-): Promise<EmailTemplateDetail> {
-  const { data } = await apiClient.post<EmailTemplateDetail>(
-    `/admin/settings/email-templates/${encodeURIComponent(event)}/${encodeURIComponent(locale)}/restore-official`,
-  );
-  return data;
-}
-
-export async function previewEmailTemplate(
-  request: PreviewEmailTemplateRequest,
-): Promise<EmailTemplatePreviewResponse> {
-  const { data } = await apiClient.post<EmailTemplatePreviewResponse>(
-    "/admin/settings/email-template-preview",
-    request,
-  );
-  return data;
-}
-
 export const settingsAPI = {
   getSettings,
   updateSettings,
@@ -1614,11 +1515,6 @@ export const settingsAPI = {
   updateWebSearchEmulationConfig,
   testWebSearchEmulation,
   resetWebSearchUsage,
-  getEmailTemplates,
-  getEmailTemplate,
-  updateEmailTemplate,
-  restoreOfficialEmailTemplate,
-  previewEmailTemplate,
 };
 
 export default settingsAPI;
