@@ -802,6 +802,14 @@ func (m *mockGeminiProxyRepo) ExistsByHostPortAuth(ctx context.Context, host str
 func (m *mockGeminiProxyRepo) CountAccountsByProxyID(ctx context.Context, proxyID int64) (int64, error) {
 	panic("not impl")
 }
+func (m *mockGeminiProxyRepo) ListExpiringBefore(ctx context.Context, deadline time.Time) ([]Proxy, error) {
+	return nil, nil
+}
+
+func (m *mockGeminiProxyRepo) DeactivateExpired(ctx context.Context, now time.Time) ([]Proxy, error) {
+	return nil, nil
+}
+
 func (m *mockGeminiProxyRepo) ListAccountSummariesByProxyID(ctx context.Context, proxyID int64) ([]ProxyAccountSummary, error) {
 	panic("not impl")
 }

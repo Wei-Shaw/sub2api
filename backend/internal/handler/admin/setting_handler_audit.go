@@ -528,6 +528,42 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if !equalNotifyEmailEntries(before.AccountQuotaNotifyEmails, after.AccountQuotaNotifyEmails) {
 		changed = append(changed, "account_quota_notify_emails")
 	}
+	if before.TelegramBotTokenConfigured != after.TelegramBotTokenConfigured {
+		changed = append(changed, "telegram_bot_token")
+	}
+	if before.TelegramChatID != after.TelegramChatID {
+		changed = append(changed, "telegram_chat_id")
+	}
+	if before.TelegramNotifyNewUser != after.TelegramNotifyNewUser {
+		changed = append(changed, "telegram_notify_new_user")
+	}
+	if before.TelegramNotifyAccountError != after.TelegramNotifyAccountError {
+		changed = append(changed, "telegram_notify_account_error")
+	}
+	if before.TelegramNotifyAccountExpired != after.TelegramNotifyAccountExpired {
+		changed = append(changed, "telegram_notify_account_expired")
+	}
+	if before.TelegramNotifyPaymentSuccess != after.TelegramNotifyPaymentSuccess {
+		changed = append(changed, "telegram_notify_payment_success")
+	}
+	if before.TelegramNotifyPaymentFailed != after.TelegramNotifyPaymentFailed {
+		changed = append(changed, "telegram_notify_payment_failed")
+	}
+	if before.TelegramNotifyRefund != after.TelegramNotifyRefund {
+		changed = append(changed, "telegram_notify_refund")
+	}
+	if before.TelegramNotifySubExpired != after.TelegramNotifySubExpired {
+		changed = append(changed, "telegram_notify_sub_expired")
+	}
+	if before.TelegramNotifyBalanceLow != after.TelegramNotifyBalanceLow {
+		changed = append(changed, "telegram_notify_balance_low")
+	}
+	if before.TelegramNotifyOpsAlert != after.TelegramNotifyOpsAlert {
+		changed = append(changed, "telegram_notify_ops_alert")
+	}
+	if before.TelegramNotifyProxyExpired != after.TelegramNotifyProxyExpired {
+		changed = append(changed, "telegram_notify_proxy_expired")
+	}
 	if before.ChannelMonitorEnabled != after.ChannelMonitorEnabled {
 		changed = append(changed, "channel_monitor_enabled")
 	}

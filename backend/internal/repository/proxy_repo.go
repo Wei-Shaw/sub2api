@@ -167,7 +167,11 @@ func updateProxyAndInvalidateProbeSnapshots(ctx context.Context, client *dbent.C
 		builder.ClearPassword()
 	}
 	if proxyIn.ExpiresAt != nil {
-		builder.SetExpiresAt(*proxyIn.ExpiresAt)
+		if proxyIn.ExpiresAt.IsZero() {
+			builder.ClearExpiresAt()
+		} else {
+			builder.SetExpiresAt(*proxyIn.ExpiresAt)
+		}
 	} else {
 		builder.ClearExpiresAt()
 	}
@@ -521,6 +525,97 @@ func (r *proxyRepository) ListAccountSummariesByProxyID(ctx context.Context, pro
 	return out, nil
 }
 
+// ListExpiringBefore returns active proxies whose expires_at is before the given deadline.
+func (r *proxyRepository) ListExpiringBefore(ctx context.Context, deadline time.Time) ([]service.Proxy, error) {
+	rows, err := r.sql.QueryContext(ctx, `
+		SELECT id, name, protocol, host, port, username, password, status, expires_at, created_at, updated_at
+		FROM proxies
+		WHERE expires_at IS NOT NULL
+		  AND expires_at <= $1
+		  AND expires_at > NOW()
+		  AND status = 'active'
+		  AND deleted_at IS NULL
+		ORDER BY expires_at ASC
+	`, deadline)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := make([]service.Proxy, 0)
+	for rows.Next() {
+		var (
+			p         service.Proxy
+			username  sql.NullString
+			password  sql.NullString
+			expiresAt sql.NullTime
+		)
+		if err := rows.Scan(&p.ID, &p.Name, &p.Protocol, &p.Host, &p.Port, &username, &password, &p.Status, &expiresAt, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			return nil, err
+		}
+		if username.Valid {
+			p.Username = username.String
+		}
+		if password.Valid {
+			p.Password = password.String
+		}
+		if expiresAt.Valid {
+			p.ExpiresAt = &expiresAt.Time
+		}
+		out = append(out, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// DeactivateExpired sets status='inactive' for active proxies whose expires_at has passed.
+// Returns the list of proxies that were deactivated.
+func (r *proxyRepository) DeactivateExpired(ctx context.Context, now time.Time) ([]service.Proxy, error) {
+	// First, find expired active proxies
+	rows, err := r.sql.QueryContext(ctx, `
+		UPDATE proxies
+		SET status = 'inactive', updated_at = NOW()
+		WHERE expires_at IS NOT NULL
+		  AND expires_at <= $1
+		  AND status = 'active'
+		  AND deleted_at IS NULL
+		RETURNING id, name, protocol, host, port, username, password, status, expires_at, created_at, updated_at
+	`, now)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := make([]service.Proxy, 0)
+	for rows.Next() {
+		var (
+			p         service.Proxy
+			username  sql.NullString
+			password  sql.NullString
+			expiresAt sql.NullTime
+		)
+		if err := rows.Scan(&p.ID, &p.Name, &p.Protocol, &p.Host, &p.Port, &username, &password, &p.Status, &expiresAt, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			return nil, err
+		}
+		if username.Valid {
+			p.Username = username.String
+		}
+		if password.Valid {
+			p.Password = password.String
+		}
+		if expiresAt.Valid {
+			p.ExpiresAt = &expiresAt.Time
+		}
+		out = append(out, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // GetAccountCountsForProxies returns a map of proxy ID to account count for all proxies
 func (r *proxyRepository) GetAccountCountsForProxies(ctx context.Context) (counts map[int64]int64, err error) {
 	rows, err := r.sql.QueryContext(ctx, "SELECT proxy_id, COUNT(*) AS count FROM accounts WHERE proxy_id IS NOT NULL AND deleted_at IS NULL GROUP BY proxy_id")
@@ -603,6 +698,9 @@ func proxyEntityToService(m *dbent.Proxy) *service.Proxy {
 	}
 	if m.Password != nil {
 		out.Password = *m.Password
+	}
+	if m.ExpiresAt != nil {
+		out.ExpiresAt = m.ExpiresAt
 	}
 	return out
 }

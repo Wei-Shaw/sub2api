@@ -987,7 +987,7 @@ func TestAPIContracts(t *testing.T) {
 					"openai_fast_policy_settings": {
 						"rules": []
 					},
-					"custom_menu_items": null,
+					"custom_menu_items": [],
 					"custom_endpoints": [],
 					"payment_enabled": false,
 					"payment_min_amount": 0,
@@ -1028,6 +1028,18 @@ func TestAPIContracts(t *testing.T) {
 					"balance_low_notify_threshold": 0,
 					"balance_low_notify_recharge_url": "",
 					"account_quota_notify_emails": [],
+					"telegram_bot_token_configured": false,
+					"telegram_chat_id": "",
+					"telegram_notify_new_user": false,
+					"telegram_notify_account_error": false,
+					"telegram_notify_account_expired": false,
+					"telegram_notify_payment_success": false,
+					"telegram_notify_payment_failed": false,
+					"telegram_notify_refund": false,
+					"telegram_notify_sub_expired": false,
+					"telegram_notify_balance_low": false,
+					"telegram_notify_ops_alert": false,
+					"telegram_notify_proxy_expired": false,
 					"channel_monitor_enabled": true,
 					"channel_monitor_default_interval_seconds": 60,
 					"available_channels_enabled": false,
@@ -1329,6 +1341,18 @@ func TestAPIContracts(t *testing.T) {
 					"balance_low_notify_threshold": 0,
 					"balance_low_notify_recharge_url": "",
 					"account_quota_notify_emails": [],
+					"telegram_bot_token_configured": false,
+					"telegram_chat_id": "",
+					"telegram_notify_new_user": false,
+					"telegram_notify_account_error": false,
+					"telegram_notify_account_expired": false,
+					"telegram_notify_payment_success": false,
+					"telegram_notify_payment_failed": false,
+					"telegram_notify_refund": false,
+					"telegram_notify_sub_expired": false,
+					"telegram_notify_balance_low": false,
+					"telegram_notify_ops_alert": false,
+					"telegram_notify_proxy_expired": false,
 					"channel_monitor_enabled": true,
 					"channel_monitor_default_interval_seconds": 60,
 					"available_channels_enabled": false,
@@ -2121,7 +2145,15 @@ func (stubProxyRepo) CountAccountsByProxyID(ctx context.Context, proxyID int64) 
 }
 
 func (stubProxyRepo) ListAccountSummariesByProxyID(ctx context.Context, proxyID int64) ([]service.ProxyAccountSummary, error) {
-	return nil, errors.New("not implemented")
+	return nil, nil
+}
+
+func (stubProxyRepo) ListExpiringBefore(ctx context.Context, deadline time.Time) ([]service.Proxy, error) {
+	return nil, nil
+}
+
+func (stubProxyRepo) DeactivateExpired(ctx context.Context, now time.Time) ([]service.Proxy, error) {
+	return nil, nil
 }
 
 func (stubProxyRepo) SweepExpiredProxies(ctx context.Context, now time.Time) (int64, error) {

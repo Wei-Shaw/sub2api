@@ -1062,6 +1062,7 @@ func shrinkToEssentials(root map[string]any) map[string]any {
 	}
 
 	// Keep only the last element of the conversation array.
+	out["request_body_truncated"] = true
 	if v, ok := root["messages"]; ok {
 		if arr, ok := v.([]any); ok && len(arr) > 0 {
 			out["messages"] = []any{arr[len(arr)-1]}

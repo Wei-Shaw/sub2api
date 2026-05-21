@@ -912,6 +912,21 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 
 	result.AllowUserViewErrorRequests = settings[SettingKeyAllowUserViewErrorRequests] == "true" // default false
 
+	// Telegram bot notifications
+	result.TelegramBotToken = settings[SettingTelegramBotToken]
+	result.TelegramBotTokenConfigured = settings[SettingTelegramBotToken] != ""
+	result.TelegramChatID = settings[SettingTelegramChatID]
+	result.TelegramNotifyNewUser = settings[SettingTelegramNotifyNewUser] == "true"
+	result.TelegramNotifyAccountError = settings[SettingTelegramNotifyAccountError] == "true"
+	result.TelegramNotifyAccountExpired = settings[SettingTelegramNotifyAccountExpired] == "true"
+	result.TelegramNotifyPaymentSuccess = settings[SettingTelegramNotifyPaymentSuccess] == "true"
+	result.TelegramNotifyPaymentFailed = settings[SettingTelegramNotifyPaymentFailed] == "true"
+	result.TelegramNotifyRefund = settings[SettingTelegramNotifyRefund] == "true"
+	result.TelegramNotifySubExpired = settings[SettingTelegramNotifySubExpired] == "true"
+	result.TelegramNotifyBalanceLow = settings[SettingTelegramNotifyBalanceLow] == "true"
+	result.TelegramNotifyOpsAlert = settings[SettingTelegramNotifyOpsAlert] == "true"
+	result.TelegramNotifyProxyExpired = settings[SettingTelegramNotifyProxyExpired] == "true"
+
 	return result
 }
 

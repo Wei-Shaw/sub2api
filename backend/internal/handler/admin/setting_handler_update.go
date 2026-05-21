@@ -281,6 +281,20 @@ type UpdateSettingsRequest struct {
 	AccountQuotaNotifyEnabled       *bool                   `json:"account_quota_notify_enabled"`
 	AccountQuotaNotifyEmails        *[]dto.NotifyEmailEntry `json:"account_quota_notify_emails"`
 
+	// Telegram bot notifications
+	TelegramBotToken             *string `json:"telegram_bot_token"`
+	TelegramChatID               *string `json:"telegram_chat_id"`
+	TelegramNotifyNewUser        *bool   `json:"telegram_notify_new_user"`
+	TelegramNotifyAccountError   *bool   `json:"telegram_notify_account_error"`
+	TelegramNotifyAccountExpired *bool   `json:"telegram_notify_account_expired"`
+	TelegramNotifyPaymentSuccess *bool   `json:"telegram_notify_payment_success"`
+	TelegramNotifyPaymentFailed  *bool   `json:"telegram_notify_payment_failed"`
+	TelegramNotifyRefund         *bool   `json:"telegram_notify_refund"`
+	TelegramNotifySubExpired     *bool   `json:"telegram_notify_sub_expired"`
+	TelegramNotifyBalanceLow     *bool   `json:"telegram_notify_balance_low"`
+	TelegramNotifyOpsAlert       *bool   `json:"telegram_notify_ops_alert"`
+	TelegramNotifyProxyExpired   *bool   `json:"telegram_notify_proxy_expired"`
+
 	// Payment configuration (integrated into settings, full replace)
 	PaymentEnabled                   *bool    `json:"payment_enabled"`
 	PaymentMinAmount                 *float64 `json:"payment_min_amount"`
@@ -1686,6 +1700,84 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.AccountQuotaNotifyEmails
 		}(),
+		TelegramBotToken: func() string {
+			if req.TelegramBotToken != nil {
+				return strings.TrimSpace(*req.TelegramBotToken)
+			}
+			return previousSettings.TelegramBotToken
+		}(),
+		TelegramBotTokenConfigured: func() bool {
+			if req.TelegramBotToken != nil {
+				return strings.TrimSpace(*req.TelegramBotToken) != ""
+			}
+			return previousSettings.TelegramBotTokenConfigured
+		}(),
+		TelegramChatID: func() string {
+			if req.TelegramChatID != nil {
+				return strings.TrimSpace(*req.TelegramChatID)
+			}
+			return previousSettings.TelegramChatID
+		}(),
+		TelegramNotifyNewUser: func() bool {
+			if req.TelegramNotifyNewUser != nil {
+				return *req.TelegramNotifyNewUser
+			}
+			return previousSettings.TelegramNotifyNewUser
+		}(),
+		TelegramNotifyAccountError: func() bool {
+			if req.TelegramNotifyAccountError != nil {
+				return *req.TelegramNotifyAccountError
+			}
+			return previousSettings.TelegramNotifyAccountError
+		}(),
+		TelegramNotifyAccountExpired: func() bool {
+			if req.TelegramNotifyAccountExpired != nil {
+				return *req.TelegramNotifyAccountExpired
+			}
+			return previousSettings.TelegramNotifyAccountExpired
+		}(),
+		TelegramNotifyPaymentSuccess: func() bool {
+			if req.TelegramNotifyPaymentSuccess != nil {
+				return *req.TelegramNotifyPaymentSuccess
+			}
+			return previousSettings.TelegramNotifyPaymentSuccess
+		}(),
+		TelegramNotifyPaymentFailed: func() bool {
+			if req.TelegramNotifyPaymentFailed != nil {
+				return *req.TelegramNotifyPaymentFailed
+			}
+			return previousSettings.TelegramNotifyPaymentFailed
+		}(),
+		TelegramNotifyRefund: func() bool {
+			if req.TelegramNotifyRefund != nil {
+				return *req.TelegramNotifyRefund
+			}
+			return previousSettings.TelegramNotifyRefund
+		}(),
+		TelegramNotifySubExpired: func() bool {
+			if req.TelegramNotifySubExpired != nil {
+				return *req.TelegramNotifySubExpired
+			}
+			return previousSettings.TelegramNotifySubExpired
+		}(),
+		TelegramNotifyBalanceLow: func() bool {
+			if req.TelegramNotifyBalanceLow != nil {
+				return *req.TelegramNotifyBalanceLow
+			}
+			return previousSettings.TelegramNotifyBalanceLow
+		}(),
+		TelegramNotifyOpsAlert: func() bool {
+			if req.TelegramNotifyOpsAlert != nil {
+				return *req.TelegramNotifyOpsAlert
+			}
+			return previousSettings.TelegramNotifyOpsAlert
+		}(),
+		TelegramNotifyProxyExpired: func() bool {
+			if req.TelegramNotifyProxyExpired != nil {
+				return *req.TelegramNotifyProxyExpired
+			}
+			return previousSettings.TelegramNotifyProxyExpired
+		}(),
 		ChannelMonitorEnabled: func() bool {
 			if req.ChannelMonitorEnabled != nil {
 				return *req.ChannelMonitorEnabled
@@ -2096,6 +2188,18 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SubscriptionExpiryNotifyEnabled:                        updatedSettings.SubscriptionExpiryNotifyEnabled,
 		AccountQuotaNotifyEnabled:                              updatedSettings.AccountQuotaNotifyEnabled,
 		AccountQuotaNotifyEmails:                               dto.NotifyEmailEntriesFromService(updatedSettings.AccountQuotaNotifyEmails),
+		TelegramBotTokenConfigured:                             updatedSettings.TelegramBotTokenConfigured,
+		TelegramChatID:                                         updatedSettings.TelegramChatID,
+		TelegramNotifyNewUser:                                  updatedSettings.TelegramNotifyNewUser,
+		TelegramNotifyAccountError:                             updatedSettings.TelegramNotifyAccountError,
+		TelegramNotifyAccountExpired:                           updatedSettings.TelegramNotifyAccountExpired,
+		TelegramNotifyPaymentSuccess:                           updatedSettings.TelegramNotifyPaymentSuccess,
+		TelegramNotifyPaymentFailed:                            updatedSettings.TelegramNotifyPaymentFailed,
+		TelegramNotifyRefund:                                   updatedSettings.TelegramNotifyRefund,
+		TelegramNotifySubExpired:                               updatedSettings.TelegramNotifySubExpired,
+		TelegramNotifyBalanceLow:                               updatedSettings.TelegramNotifyBalanceLow,
+		TelegramNotifyOpsAlert:                                 updatedSettings.TelegramNotifyOpsAlert,
+		TelegramNotifyProxyExpired:                             updatedSettings.TelegramNotifyProxyExpired,
 		PaymentEnabled:                                         updatedPaymentCfg.Enabled,
 		PaymentMinAmount:                                       updatedPaymentCfg.MinAmount,
 		PaymentMaxAmount:                                       updatedPaymentCfg.MaxAmount,

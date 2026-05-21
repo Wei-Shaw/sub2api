@@ -54,7 +54,8 @@ type OpsAlertEvaluatorService struct {
 	skipLogMu sync.Mutex
 	skipLogAt time.Time
 
-	warnNoRedisOnce sync.Once
+	warnNoRedisOnce   sync.Once
+	telegramNotifySvc *TelegramNotifyService
 }
 
 type opsAlertRuleState struct {
@@ -81,6 +82,10 @@ func NewOpsAlertEvaluatorService(
 		ruleStates:   map[int64]*opsAlertRuleState{},
 		emailLimiter: newSlidingWindowLimiter(0, time.Hour),
 	}
+}
+
+func (s *OpsAlertEvaluatorService) SetTelegramNotifyService(svc *TelegramNotifyService) {
+	s.telegramNotifySvc = svc
 }
 
 func (s *OpsAlertEvaluatorService) Start() {
@@ -294,6 +299,14 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 			if created != nil && created.ID > 0 {
 				if s.maybeSendAlertEmail(ctx, runtimeCfg, rule, created) {
 					emailsSent++
+				}
+				// Telegram notification
+				if s.telegramNotifySvc != nil {
+					metricVal := float64(0)
+					if created.MetricValue != nil {
+						metricVal = *created.MetricValue
+					}
+					go s.telegramNotifySvc.NotifyOpsAlert(context.Background(), rule.Name, rule.Severity, created.Description, metricVal)
 				}
 			}
 			continue

@@ -177,6 +177,9 @@ func (s *PaymentService) RequestRefund(ctx context.Context, oid, uid int64, reas
 		return infraerrors.Conflict("CONFLICT", "order status changed")
 	}
 	s.writeAuditLog(ctx, oid, "REFUND_REQUESTED", fmt.Sprintf("user:%d", uid), map[string]any{"amount": o.Amount, "reason": nr})
+	if s.telegramNotifySvc != nil {
+		go s.telegramNotifySvc.NotifyRefund(context.Background(), strconv.FormatInt(oid, 10), o.Amount, nr, false)
+	}
 	return nil
 }
 
@@ -569,6 +572,9 @@ func (s *PaymentService) markRefundOk(ctx context.Context, p *RefundPlan) (*Refu
 		return nil, fmt.Errorf("mark refund: %w", err)
 	}
 	s.writeAuditLog(ctx, p.OrderID, "REFUND_SUCCESS", "admin", map[string]any{"refundAmount": p.RefundAmount, "reason": p.Reason, "balanceDeducted": p.BalanceToDeduct, "force": p.Force})
+	if s.telegramNotifySvc != nil {
+		go s.telegramNotifySvc.NotifyRefund(context.Background(), strconv.FormatInt(p.OrderID, 10), p.RefundAmount, p.Reason, true)
+	}
 	return &RefundResult{Success: true, BalanceDeducted: p.BalanceToDeduct, SubDaysDeducted: p.SubDaysToDeduct}, nil
 }
 

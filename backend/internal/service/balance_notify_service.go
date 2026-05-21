@@ -43,6 +43,7 @@ type BalanceNotifyService struct {
 	settingRepo              SettingRepository
 	accountRepo              AccountQuotaReader
 	notificationEmailService *NotificationEmailService
+	telegramNotifySvc        *TelegramNotifyService
 }
 
 // NewBalanceNotifyService creates a new BalanceNotifyService.
@@ -56,6 +57,10 @@ func NewBalanceNotifyService(emailService *EmailService, settingRepo SettingRepo
 
 func (s *BalanceNotifyService) SetNotificationEmailService(notificationEmailService *NotificationEmailService) {
 	s.notificationEmailService = notificationEmailService
+}
+
+func (s *BalanceNotifyService) SetTelegramNotifyService(svc *TelegramNotifyService) {
+	s.telegramNotifySvc = svc
 }
 
 // resolveBalanceThreshold returns the effective balance threshold.
@@ -132,6 +137,10 @@ func (s *BalanceNotifyService) dispatchBalanceLowEmail(ctx context.Context, user
 		}()
 		s.sendBalanceLowEmails(recipients, user.ID, user.Username, user.Email, newBalance, threshold, siteName, rechargeURL)
 	}()
+	// Telegram notification
+	if s.telegramNotifySvc != nil {
+		go s.telegramNotifySvc.NotifyBalanceLow(context.Background(), user.Email, newBalance, threshold)
+	}
 }
 
 // quotaDim describes one quota dimension for notification checking.

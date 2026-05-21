@@ -61,6 +61,7 @@ type SettingHandler struct {
 	notificationEmailService *service.NotificationEmailService
 	totpService              *service.TotpService
 	userService              *service.UserService
+	telegramNotifyService    *service.TelegramNotifyService
 }
 
 // NewSettingHandler 创建系统设置处理器
@@ -89,6 +90,11 @@ func (h *SettingHandler) SetNotificationEmailService(notificationEmailService *s
 func (h *SettingHandler) SetStepUpDeps(totpService *service.TotpService, userService *service.UserService) {
 	h.totpService = totpService
 	h.userService = userService
+}
+
+// SetTelegramNotifyService attaches the Telegram notification service for test endpoint.
+func (h *SettingHandler) SetTelegramNotifyService(telegramNotifyService *service.TelegramNotifyService) {
+	h.telegramNotifyService = telegramNotifyService
 }
 
 // GetSettings 获取所有系统设置
@@ -326,6 +332,18 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		SubscriptionExpiryNotifyEnabled:                        settings.SubscriptionExpiryNotifyEnabled,
 		AccountQuotaNotifyEnabled:                              settings.AccountQuotaNotifyEnabled,
 		AccountQuotaNotifyEmails:                               dto.NotifyEmailEntriesFromService(settings.AccountQuotaNotifyEmails),
+		TelegramBotTokenConfigured:                             settings.TelegramBotTokenConfigured,
+		TelegramChatID:                                         settings.TelegramChatID,
+		TelegramNotifyNewUser:                                  settings.TelegramNotifyNewUser,
+		TelegramNotifyAccountError:                             settings.TelegramNotifyAccountError,
+		TelegramNotifyAccountExpired:                           settings.TelegramNotifyAccountExpired,
+		TelegramNotifyPaymentSuccess:                           settings.TelegramNotifyPaymentSuccess,
+		TelegramNotifyPaymentFailed:                            settings.TelegramNotifyPaymentFailed,
+		TelegramNotifyRefund:                                   settings.TelegramNotifyRefund,
+		TelegramNotifySubExpired:                               settings.TelegramNotifySubExpired,
+		TelegramNotifyBalanceLow:                               settings.TelegramNotifyBalanceLow,
+		TelegramNotifyOpsAlert:                                 settings.TelegramNotifyOpsAlert,
+		TelegramNotifyProxyExpired:                             settings.TelegramNotifyProxyExpired,
 		PaymentEnabled:                                         paymentCfg.Enabled,
 		PaymentMinAmount:                                       paymentCfg.MinAmount,
 		PaymentMaxAmount:                                       paymentCfg.MaxAmount,
@@ -502,4 +520,36 @@ func systemSettingsResponseData(settings dto.SystemSettings, authSourceDefaults 
 	data["force_email_on_third_party_signup"] = authSourceDefaults.ForceEmailOnThirdPartySignup
 
 	return data
+}
+
+// TestTelegramConnectionRequest optional override for testing with unsaved config.
+type TestTelegramConnectionRequest struct {
+	ChatID string `json:"telegram_chat_id"`
+}
+
+// TestTelegramConnection tests the Telegram bot configuration by sending a test message.
+// POST /api/v1/admin/settings/telegram/test
+// Uses saved bot token + chat_id from settings. Optionally overrides chat_id from request body.
+// Never returns or logs the bot token.
+func (h *SettingHandler) TestTelegramConnection(c *gin.Context) {
+	if h.telegramNotifyService == nil {
+		response.BadRequest(c, "Telegram notification service is not configured")
+		return
+	}
+
+	var req TestTelegramConnectionRequest
+	_ = c.ShouldBindJSON(&req)
+
+	ctx := c.Request.Context()
+	if strings.TrimSpace(req.ChatID) != "" {
+		if err := h.telegramNotifyService.SendTestMessageWithChatID(ctx, strings.TrimSpace(req.ChatID)); err != nil {
+			response.BadRequest(c, "Telegram test failed: "+err.Error())
+			return
+		}
+	} else if err := h.telegramNotifyService.SendTestMessage(ctx); err != nil {
+		response.BadRequest(c, "Telegram test failed: "+err.Error())
+		return
+	}
+
+	response.Success(c, gin.H{"message": "Telegram test message sent successfully"})
 }

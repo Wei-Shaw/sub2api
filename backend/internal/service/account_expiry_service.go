@@ -9,11 +9,12 @@ import (
 
 // AccountExpiryService periodically pauses expired accounts when auto-pause is enabled.
 type AccountExpiryService struct {
-	accountRepo AccountRepository
-	interval    time.Duration
-	stopCh      chan struct{}
-	stopOnce    sync.Once
-	wg          sync.WaitGroup
+	accountRepo       AccountRepository
+	interval          time.Duration
+	stopCh            chan struct{}
+	stopOnce          sync.Once
+	wg                sync.WaitGroup
+	telegramNotifySvc *TelegramNotifyService
 }
 
 func NewAccountExpiryService(accountRepo AccountRepository, interval time.Duration) *AccountExpiryService {
@@ -22,6 +23,10 @@ func NewAccountExpiryService(accountRepo AccountRepository, interval time.Durati
 		interval:    interval,
 		stopCh:      make(chan struct{}),
 	}
+}
+
+func (s *AccountExpiryService) SetTelegramNotifyService(svc *TelegramNotifyService) {
+	s.telegramNotifySvc = svc
 }
 
 func (s *AccountExpiryService) Start() {
@@ -67,5 +72,8 @@ func (s *AccountExpiryService) runOnce() {
 	}
 	if updated > 0 {
 		log.Printf("[AccountExpiry] Auto paused %d expired accounts", updated)
+		if s.telegramNotifySvc != nil {
+			go s.telegramNotifySvc.NotifyAccountExpired(context.Background(), updated)
+		}
 	}
 }

@@ -143,23 +143,22 @@ func (h *ProxyHandler) Create(c *gin.Context) {
 	}
 
 	executeAdminIdempotentJSON(c, "admin.proxies.create", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
-		var expiresAt *time.Time
-		if req.ExpiresAt != nil && *req.ExpiresAt > 0 {
-			t := time.Unix(*req.ExpiresAt, 0).UTC()
-			expiresAt = &t
-		}
-		proxy, err := h.adminService.CreateProxy(ctx, &service.CreateProxyInput{
+		input := &service.CreateProxyInput{
 			Name:           strings.TrimSpace(req.Name),
 			Protocol:       strings.TrimSpace(req.Protocol),
 			Host:           strings.TrimSpace(req.Host),
 			Port:           req.Port,
 			Username:       strings.TrimSpace(req.Username),
 			Password:       strings.TrimSpace(req.Password),
-			ExpiresAt:      expiresAt,
 			FallbackMode:   strings.TrimSpace(req.FallbackMode),
 			BackupProxyID:  req.BackupProxyID,
 			ExpiryWarnDays: req.ExpiryWarnDays,
-		})
+		}
+		if req.ExpiresAt != nil && *req.ExpiresAt > 0 {
+			t := time.Unix(*req.ExpiresAt, 0).UTC()
+			input.ExpiresAt = &t
+		}
+		proxy, err := h.adminService.CreateProxy(ctx, input)
 		if err != nil {
 			return nil, err
 		}
@@ -182,12 +181,7 @@ func (h *ProxyHandler) Update(c *gin.Context) {
 		return
 	}
 
-	var expiresAt *time.Time
-	if req.ExpiresAt != nil && *req.ExpiresAt > 0 {
-		t := time.Unix(*req.ExpiresAt, 0).UTC()
-		expiresAt = &t
-	}
-	proxy, err := h.adminService.UpdateProxy(c.Request.Context(), proxyID, &service.UpdateProxyInput{
+	input := &service.UpdateProxyInput{
 		Name:           strings.TrimSpace(req.Name),
 		Protocol:       strings.TrimSpace(req.Protocol),
 		Host:           strings.TrimSpace(req.Host),
@@ -195,11 +189,21 @@ func (h *ProxyHandler) Update(c *gin.Context) {
 		Username:       strings.TrimSpace(req.Username),
 		Password:       strings.TrimSpace(req.Password),
 		Status:         strings.TrimSpace(req.Status),
-		ExpiresAt:      expiresAt,
 		FallbackMode:   strings.TrimSpace(req.FallbackMode),
 		BackupProxyID:  req.BackupProxyID,
 		ExpiryWarnDays: req.ExpiryWarnDays,
-	})
+	}
+	if req.ExpiresAt != nil {
+		if *req.ExpiresAt > 0 {
+			t := time.Unix(*req.ExpiresAt, 0).UTC()
+			input.ExpiresAt = &t
+		} else {
+			// ExpiresAt = 0 means clear expiration.
+			nilTime := time.Time{}
+			input.ExpiresAt = &nilTime
+		}
+	}
+	proxy, err := h.adminService.UpdateProxy(c.Request.Context(), proxyID, input)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

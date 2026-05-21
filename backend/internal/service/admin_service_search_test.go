@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
@@ -120,6 +121,14 @@ func (s *proxyRepoStubForAdminList) ListWithFiltersAndAccountCount(_ context.Con
 	}
 
 	return s.listWithFiltersAndAccountCountProxies, result, nil
+}
+
+func (s *proxyRepoStubForAdminList) ListExpiringBefore(_ context.Context, _ time.Time) ([]Proxy, error) {
+	return nil, nil
+}
+
+func (s *proxyRepoStubForAdminList) DeactivateExpired(_ context.Context, _ time.Time) ([]Proxy, error) {
+	return nil, nil
 }
 
 type redeemRepoStubForAdminList struct {

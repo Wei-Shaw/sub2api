@@ -1746,12 +1746,12 @@ const editExpiresDays = computed<number | null>({
 })
 
 const expiryLabel = (row: Proxy): string => {
-  const { key, params } = proxyExpiryLabelKey(row.expires_at, row.status)
+  const { key, params } = proxyExpiryLabelKey(row.expires_at ?? null, row.status)
   return params ? t(key, params) : t(key)
 }
 
 const expiryBadgeClass = (row: Proxy): string =>
-  proxyExpiryBadgeClass(row.expires_at, row.status)
+  proxyExpiryBadgeClass(row.expires_at ?? null, row.status)
 
 const qualityOverallClass = (status?: string) => {
   if (status === 'healthy') return 'badge-success'

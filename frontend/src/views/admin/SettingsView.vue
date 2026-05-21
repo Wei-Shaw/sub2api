@@ -8242,6 +8242,216 @@
 
           <EmailTemplateEditor />
 
+          <!-- Telegram Bot Notifications -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <div>
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                  {{ t("admin.settings.telegramNotifications.title") }}
+                </h2>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.telegramNotifications.description") }}
+                </p>
+              </div>
+            </div>
+            <div class="space-y-6 p-6">
+              <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+                <div>
+                  <label
+                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.telegramNotifications.botToken") }}
+                  </label>
+                  <input
+                    v-model="form.telegram_bot_token"
+                    type="password"
+                    class="input"
+                    autocomplete="new-password"
+                    autocapitalize="off"
+                    spellcheck="false"
+                    :placeholder="
+                      form.telegram_bot_token_configured
+                        ? t('admin.settings.telegramNotifications.botTokenConfiguredPlaceholder')
+                        : t('admin.settings.telegramNotifications.botTokenPlaceholder')
+                    "
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{
+                      form.telegram_bot_token_configured
+                        ? t("admin.settings.telegramNotifications.botTokenConfiguredHint")
+                        : t("admin.settings.telegramNotifications.botTokenHint")
+                    }}
+                  </p>
+                </div>
+                <div>
+                  <label
+                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.telegramNotifications.chatId") }}
+                  </label>
+                  <input
+                    v-model="form.telegram_chat_id"
+                    type="text"
+                    class="input"
+                    :placeholder="t('admin.settings.telegramNotifications.chatIdPlaceholder')"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.telegramNotifications.chatIdHint") }}
+                  </p>
+                </div>
+              </div>
+
+              <!-- Test Connection Button -->
+              <div class="flex items-center gap-3 border-t border-gray-100 pt-4 dark:border-dark-700">
+                <button
+                  type="button"
+                  class="btn btn-secondary"
+                  :disabled="testingTelegram || (!form.telegram_bot_token_configured && !form.telegram_bot_token) || !form.telegram_chat_id || loadFailed"
+                  @click="testTelegramConnection"
+                >
+                  {{
+                    testingTelegram
+                      ? t("admin.settings.telegramNotifications.testing")
+                      : t("admin.settings.telegramNotifications.testConnection")
+                  }}
+                </button>
+              </div>
+
+              <!-- Notification toggles -->
+              <div
+                class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
+              >
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">{{
+                    t("admin.settings.telegramNotifications.notifyNewUser")
+                  }}</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.telegramNotifications.notifyNewUserHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.telegram_notify_new_user" />
+              </div>
+              <div
+                class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
+              >
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">{{
+                    t("admin.settings.telegramNotifications.notifyAccountError")
+                  }}</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.telegramNotifications.notifyAccountErrorHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.telegram_notify_account_error" />
+              </div>
+              <div
+                class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
+              >
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">{{
+                    t("admin.settings.telegramNotifications.notifyAccountExpired")
+                  }}</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.telegramNotifications.notifyAccountExpiredHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.telegram_notify_account_expired" />
+              </div>
+              <div
+                class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
+              >
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">{{
+                    t("admin.settings.telegramNotifications.notifyPaymentSuccess")
+                  }}</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.telegramNotifications.notifyPaymentSuccessHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.telegram_notify_payment_success" />
+              </div>
+              <div
+                class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
+              >
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">{{
+                    t("admin.settings.telegramNotifications.notifyPaymentFailed")
+                  }}</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.telegramNotifications.notifyPaymentFailedHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.telegram_notify_payment_failed" />
+              </div>
+              <div
+                class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
+              >
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">{{
+                    t("admin.settings.telegramNotifications.notifyRefund")
+                  }}</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.telegramNotifications.notifyRefundHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.telegram_notify_refund" />
+              </div>
+              <div
+                class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
+              >
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">{{
+                    t("admin.settings.telegramNotifications.notifySubExpired")
+                  }}</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.telegramNotifications.notifySubExpiredHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.telegram_notify_sub_expired" />
+              </div>
+              <div
+                class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
+              >
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">{{
+                    t("admin.settings.telegramNotifications.notifyBalanceLow")
+                  }}</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.telegramNotifications.notifyBalanceLowHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.telegram_notify_balance_low" />
+              </div>
+              <div
+                class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
+              >
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">{{
+                    t("admin.settings.telegramNotifications.notifyOpsAlert")
+                  }}</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.telegramNotifications.notifyOpsAlertHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.telegram_notify_ops_alert" />
+              </div>
+              <div
+                class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
+              >
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">{{
+                    t("admin.settings.telegramNotifications.notifyProxyExpired")
+                  }}</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.telegramNotifications.notifyProxyExpiredHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.telegram_notify_proxy_expired" />
+              </div>
+            </div>
+          </div>
           <!-- Balance Low Notification -->
           <div class="card">
             <div
@@ -8634,6 +8844,7 @@ const loading = ref(true);
 const loadFailed = ref(false);
 const saving = ref(false);
 const testingSmtp = ref(false);
+const testingTelegram = ref(false);
 const sendingTestEmail = ref(false);
 const smtpPasswordManuallyEdited = ref(false);
 const testEmailAddress = ref("");
@@ -9206,6 +9417,7 @@ type SettingsForm = Omit<
   openai_advanced_scheduler_weight_session_sticky: string;
   // 系统全局平台限额 map；form 内始终归一化为全 4 平台对象（模板非空绑定依赖此不变量）
   default_platform_quotas: DefaultPlatformQuotasMap;
+  telegram_bot_token: string;
 };
 
 const form = reactive<SettingsForm>({
@@ -9473,6 +9685,20 @@ const form = reactive<SettingsForm>({
   affiliate_enabled: false,
   // Allow user view error requests
   allow_user_view_error_requests: false,
+  // Telegram Bot Notifications
+  telegram_bot_token: "",
+  telegram_bot_token_configured: false,
+  telegram_chat_id: "",
+  telegram_notify_new_user: false,
+  telegram_notify_account_error: false,
+  telegram_notify_account_expired: false,
+  telegram_notify_payment_success: false,
+  telegram_notify_payment_failed: false,
+  telegram_notify_refund: false,
+  telegram_notify_sub_expired: false,
+  telegram_notify_balance_low: false,
+  telegram_notify_ops_alert: false,
+  telegram_notify_proxy_expired: false,
 });
 
 type OpenAIAdvancedSchedulerOverrideKey =
@@ -11687,6 +11913,19 @@ async function saveSettings() {
       // Affiliate (邀请返利) feature switch
       affiliate_enabled: form.affiliate_enabled,
       allow_user_view_error_requests: form.allow_user_view_error_requests,
+      // Telegram Bot Notifications
+      telegram_bot_token: form.telegram_bot_token || undefined,
+      telegram_chat_id: form.telegram_chat_id,
+      telegram_notify_new_user: form.telegram_notify_new_user,
+      telegram_notify_account_error: form.telegram_notify_account_error,
+      telegram_notify_account_expired: form.telegram_notify_account_expired,
+      telegram_notify_payment_success: form.telegram_notify_payment_success,
+      telegram_notify_payment_failed: form.telegram_notify_payment_failed,
+      telegram_notify_refund: form.telegram_notify_refund,
+      telegram_notify_sub_expired: form.telegram_notify_sub_expired,
+      telegram_notify_balance_low: form.telegram_notify_balance_low,
+      telegram_notify_ops_alert: form.telegram_notify_ops_alert,
+      telegram_notify_proxy_expired: form.telegram_notify_proxy_expired,
     };
 
     // 仅当 openai_fast_policy_settings 已成功从后端加载时才回写，
@@ -11828,6 +12067,24 @@ async function saveSettings() {
     );
   } finally {
     saving.value = false;
+  }
+}
+
+async function testTelegramConnection() {
+  testingTelegram.value = true;
+  try {
+    const result = await adminAPI.settings.testTelegramConnection({
+      telegram_chat_id: form.telegram_chat_id || undefined,
+    });
+    appStore.showSuccess(
+      result.message || t("admin.settings.telegramNotifications.testSuccess"),
+    );
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(error, t("admin.settings.telegramNotifications.testFailed")),
+    );
+  } finally {
+    testingTelegram.value = false;
   }
 }
 

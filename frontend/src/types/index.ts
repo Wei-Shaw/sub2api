@@ -868,7 +868,7 @@ export interface Proxy {
   quality_grade?: string
   quality_summary?: string
   quality_checked?: number
-  expires_at: string | null
+  expires_at?: string | null
   fallback_mode: 'none' | 'proxy' | 'direct'
   backup_proxy_id?: number | null
   expiry_warn_days: number

@@ -35,6 +35,8 @@ type ProxyRepository interface {
 	ListAllForFallback(ctx context.Context) ([]Proxy, error)
 	CountExpired(ctx context.Context) (int64, error)
 	CountExpiringSoon(ctx context.Context, now time.Time) (int64, error)
+	ListExpiringBefore(ctx context.Context, deadline time.Time) ([]Proxy, error)
+	DeactivateExpired(ctx context.Context, now time.Time) ([]Proxy, error)
 }
 
 // CreateProxyRequest 创建代理请求

@@ -272,6 +272,21 @@ type SystemSettings struct {
 	AccountQuotaNotifyEnabled bool
 	AccountQuotaNotifyEmails  []NotifyEmailEntry
 
+	// Telegram bot notifications
+	TelegramBotToken             string
+	TelegramBotTokenConfigured   bool
+	TelegramChatID               string
+	TelegramNotifyNewUser        bool
+	TelegramNotifyAccountError   bool
+	TelegramNotifyAccountExpired bool
+	TelegramNotifyPaymentSuccess bool
+	TelegramNotifyPaymentFailed  bool
+	TelegramNotifyRefund         bool
+	TelegramNotifySubExpired     bool
+	TelegramNotifyBalanceLow     bool
+	TelegramNotifyOpsAlert       bool
+	TelegramNotifyProxyExpired   bool
+
 	// 系统全局默认平台配额（key = platform，nil/缺省 = 不限制）
 	DefaultPlatformQuotas map[string]*DefaultPlatformQuotaSetting `json:"default_platform_quotas"`
 

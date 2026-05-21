@@ -476,6 +476,24 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyAccountQuotaNotifyEnabled] = strconv.FormatBool(settings.AccountQuotaNotifyEnabled)
 	updates[SettingKeyAccountQuotaNotifyEmails] = MarshalNotifyEmails(settings.AccountQuotaNotifyEmails)
 
+	// Telegram bot notifications
+	if settings.TelegramBotToken != "" {
+		updates[SettingTelegramBotToken] = settings.TelegramBotToken
+	} else if !settings.TelegramBotTokenConfigured {
+		updates[SettingTelegramBotToken] = ""
+	}
+	updates[SettingTelegramChatID] = settings.TelegramChatID
+	updates[SettingTelegramNotifyNewUser] = strconv.FormatBool(settings.TelegramNotifyNewUser)
+	updates[SettingTelegramNotifyAccountError] = strconv.FormatBool(settings.TelegramNotifyAccountError)
+	updates[SettingTelegramNotifyAccountExpired] = strconv.FormatBool(settings.TelegramNotifyAccountExpired)
+	updates[SettingTelegramNotifyPaymentSuccess] = strconv.FormatBool(settings.TelegramNotifyPaymentSuccess)
+	updates[SettingTelegramNotifyPaymentFailed] = strconv.FormatBool(settings.TelegramNotifyPaymentFailed)
+	updates[SettingTelegramNotifyRefund] = strconv.FormatBool(settings.TelegramNotifyRefund)
+	updates[SettingTelegramNotifySubExpired] = strconv.FormatBool(settings.TelegramNotifySubExpired)
+	updates[SettingTelegramNotifyBalanceLow] = strconv.FormatBool(settings.TelegramNotifyBalanceLow)
+	updates[SettingTelegramNotifyOpsAlert] = strconv.FormatBool(settings.TelegramNotifyOpsAlert)
+	updates[SettingTelegramNotifyProxyExpired] = strconv.FormatBool(settings.TelegramNotifyProxyExpired)
+
 	// 系统全局 platform quota：整体替换语义（null/缺省 = 不限制）。
 	if settings.DefaultPlatformQuotas != nil {
 		if err := validateDefaultPlatformQuotaMap(settings.DefaultPlatformQuotas); err != nil {

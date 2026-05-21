@@ -360,6 +360,14 @@ func (s *proxyRepoStub) CountAccountsByProxyID(ctx context.Context, proxyID int6
 	return s.accountCount, nil
 }
 
+func (s *proxyRepoStub) ListExpiringBefore(ctx context.Context, deadline time.Time) ([]Proxy, error) {
+	return nil, nil
+}
+
+func (s *proxyRepoStub) DeactivateExpired(ctx context.Context, now time.Time) ([]Proxy, error) {
+	return nil, nil
+}
+
 func (s *proxyRepoStub) ListAccountSummariesByProxyID(ctx context.Context, proxyID int64) ([]ProxyAccountSummary, error) {
 	panic("unexpected ListAccountSummariesByProxyID call")
 }

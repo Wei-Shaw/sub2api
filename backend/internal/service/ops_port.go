@@ -121,14 +121,6 @@ type OpsInsertErrorLogInput struct {
 	ResponseLatencyMs  *int64
 	TimeToFirstTokenMs *int64
 
-	RequestBodyJSON      *string // sanitized json string (not raw bytes)
-	RequestBodyTruncated bool
-	RequestBodyBytes     *int
-	RequestHeadersJSON   *string // optional json string
-
-	IsRetryable bool
-	RetryCount  int
-
 	CreatedAt time.Time
 
 	// 有效(未删除)key 报错时快照的 key 脱敏前缀(前 8 位)。

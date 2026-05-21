@@ -2142,9 +2142,9 @@ const isExpired = (value: number | null) => {
   return value * 1000 <= Date.now()
 }
 // 所绑定代理的有效期(逻辑同 /admin/proxies,见 utils/proxyExpiry)
-const proxyExpiryBadge = (p: AccountProxy): string => proxyExpiryBadgeClass(p.expires_at, p.status)
+const proxyExpiryBadge = (p: AccountProxy): string => proxyExpiryBadgeClass(p.expires_at ?? null, p.status)
 const proxyExpiryText = (p: AccountProxy): string => {
-  const { key, params } = proxyExpiryLabelKey(p.expires_at, p.status)
+  const { key, params } = proxyExpiryLabelKey(p.expires_at ?? null, p.status)
   return params ? t(key, params) : t(key)
 }
 

@@ -49,6 +49,8 @@ type accountRepository struct {
 	// Used to proactively sync account snapshot to cache when status changes,
 	// ensuring sticky sessions can promptly detect unavailable accounts.
 	schedulerCache service.SchedulerCache
+	// onAccountError is an optional callback fired after SetError succeeds.
+	onAccountError func(ctx context.Context, id int64, errorMsg string)
 }
 
 var schedulerNeutralExtraKeyPrefixes = []string{
@@ -79,6 +81,14 @@ func NewAccountRepository(client *dbent.Client, sqlDB *sql.DB, schedulerCache se
 // as an explicit dependency of the admin service.
 func NewAdminAccountRepository(client *dbent.Client, sqlDB *sql.DB, schedulerCache service.SchedulerCache) service.AdminAccountRepository {
 	return newAccountRepositoryWithSQL(client, sqlDB, schedulerCache)
+}
+
+// SetAccountRepoOnErrorHook sets an optional callback that fires after SetError succeeds.
+// This is used to wire Telegram notifications without circular dependencies.
+func SetAccountRepoOnErrorHook(repo service.AccountRepository, hook func(ctx context.Context, id int64, errorMsg string)) {
+	if r, ok := repo.(*accountRepository); ok {
+		r.onAccountError = hook
+	}
 }
 
 // newAccountRepositoryWithSQL 是内部构造函数，支持依赖注入 SQL 执行器。
@@ -289,9 +299,12 @@ func (r *accountRepository) GetByIDs(ctx context.Context, ids []int64) ([]*servi
 			continue
 		}
 
-		// Prefer the preloaded proxy edge when available.
+		// Prefer the preloaded proxy edge when available (skip inactive proxies).
 		if entAcc.Edges.Proxy != nil {
-			out.Proxy = proxyEntityToService(entAcc.Edges.Proxy)
+			p := proxyEntityToService(entAcc.Edges.Proxy)
+			if p != nil && p.IsActive() {
+				out.Proxy = p
+			}
 		}
 
 		if groups, ok := groupsByAccount[entAcc.ID]; ok {
@@ -1267,6 +1280,9 @@ func (r *accountRepository) SetError(ctx context.Context, id int64, errorMsg str
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue set error failed: account=%d err=%v", id, err)
 	}
 	r.syncSchedulerAccountSnapshot(ctx, id)
+	if r.onAccountError != nil {
+		r.onAccountError(ctx, id, errorMsg)
+	}
 	return nil
 }
 
@@ -3015,7 +3031,7 @@ func (r *accountRepository) accountsToService(ctx context.Context, accounts []*d
 			continue
 		}
 		if acc.ProxyID != nil {
-			if proxy, ok := proxyMap[*acc.ProxyID]; ok {
+			if proxy, ok := proxyMap[*acc.ProxyID]; ok && proxy.IsActive() {
 				out.Proxy = proxy
 			}
 		}
