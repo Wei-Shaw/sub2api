@@ -1246,7 +1246,7 @@ REDACTED
 		upstreamMetadata[k] = v
 REDACTED
 	input := service.EmailOAuthIdentityInput{
-		ProviderType:     "oidc",
+		ProviderType:     strings.TrimSpace(identity.ProviderType),
 		ProviderKey:      strings.TrimSpace(identity.ProviderKey),
 		ProviderSubject:  strings.TrimSpace(identity.ProviderSubject),
 		Email:            strings.TrimSpace(strings.ToLower(compatEmail)),
@@ -1258,11 +1258,11 @@ REDACTED
 REDACTED
 	tokenPair, user, err := h.authService.LoginOrRegisterVerifiedEmailOAuthWithInvitation(ctx, input, "", "")
 	if err != nil {
-		log.Printf("[OIDC OAuth] verified-email fast path skipped: %v", err)
+		log.Printf("[OIDC OAuth] verified-email fast path skipped: reason=%s", infraerrors.Reason(err))
 		return false
 REDACTED
 	if err := h.ensureBackendModeAllowsUser(ctx, user); err != nil {
-		log.Printf("[OIDC OAuth] verified-email fast path blocked by backend mode: %v", err)
+		log.Printf("[OIDC OAuth] verified-email fast path blocked by backend mode: reason=%s", infraerrors.Reason(err))
 		return false
 REDACTED
 
