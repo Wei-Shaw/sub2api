@@ -176,6 +176,111 @@ func (s *KiroGatewayService) IsModelSupported(requestedModel string) bool {
 	return strings.HasPrefix(strings.ToLower(mapped), "claude-")
 }
 
+// ForwardOpenAI proxies an OpenAI /v1/chat/completions request to Kiro
+// using the supplied account. Mirrors Forward but with the OpenAI
+// request/response shapes — same upstream Kiro Payload format, same
+// endpoint fallback, different SSE protocol on the client side.
+//
+// Returns *OpenAIForwardResult so it slots into the OpenAI gateway
+// handler's existing usage-recording path.
+func (s *KiroGatewayService) ForwardOpenAI(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	body []byte,
+) (*OpenAIForwardResult, error) {
+	if account == nil {
+		return nil, errors.New("kiro gateway: nil account")
+	}
+
+	startedAt := time.Now()
+	req := &kiro.OpenAIRequest{}
+	if err := json.Unmarshal(body, req); err != nil {
+		return nil, fmt.Errorf("kiro gateway openai: decode request: %w", err)
+	}
+	requestedModel := req.Model
+
+	profileARN := account.GetExtraString("profile_arn")
+	machineID := account.GetExtraString("machine_id")
+	if machineID == "" {
+		machineID = kiro.GenerateMachineID()
+		if account.Extra == nil {
+			account.Extra = map[string]any{}
+		}
+		account.Extra["machine_id"] = machineID
+	}
+
+	payload, err := kiro.TransformOpenAIRequest(req, profileARN)
+	if err != nil {
+		return nil, fmt.Errorf("kiro gateway openai: transform request: %w", err)
+	}
+
+	accessToken, err := s.tokenProvider.GetAccessToken(ctx, account)
+	if err != nil {
+		return nil, fmt.Errorf("kiro gateway openai: get access token: %w", err)
+	}
+
+	httpClient := kiro.HTTPStreamingClient(s.resolveProxyURL(ctx, account))
+	prefEndpoint := account.GetExtraString("preferred_endpoint")
+	callCtx, cancel := context.WithTimeout(ctx, kiroStreamingTimeout)
+	defer cancel()
+
+	callResult, err := kiro.Call(callCtx, kiro.CallOptions{
+		AccessToken:       accessToken,
+		MachineID:         machineID,
+		PreferredEndpoint: prefEndpoint,
+		EndpointFallback:  true,
+		Payload:           payload,
+		HTTPClient:        httpClient,
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer callResult.Response.Body.Close()
+
+	result := &OpenAIForwardResult{
+		RequestID: "req_" + uuid.New().String(),
+		Model:     requestedModel,
+		Stream:    req.Stream,
+	}
+	mappedModel := kiro.MapModel(requestedModel)
+	if mappedModel != "" && mappedModel != requestedModel {
+		result.UpstreamModel = mappedModel
+	}
+
+	var inputTokens, outputTokens int
+	var credits float64
+	var streamErr error
+
+	if req.Stream {
+		setKiroSSEHeaders(c)
+		writer := kiro.NewOpenAISSEWriter(c.Writer, c.Writer.Flush, mappedModel)
+		dispatch, finalize := kiro.ProcessEventsFromCallback(payload.ToolNameMap, writer.Callback())
+		dispatch = wrapDispatchForUsage(dispatch, &inputTokens, &outputTokens, &credits)
+		streamErr = kiro.DecodeEventStream(callResult.Response.Body, dispatch)
+		finalize()
+		result.Duration = time.Since(startedAt)
+	} else {
+		var events []kiro.Event
+		streamErr = kiro.DecodeEventStream(callResult.Response.Body, func(e kiro.Event) {
+			events = append(events, e)
+		})
+		resp := kiro.BuildOpenAINonStreamingResponse(events, mappedModel, payload.ToolNameMap)
+		c.JSON(http.StatusOK, resp)
+		inputTokens = resp.Usage["prompt_tokens"]
+		outputTokens = resp.Usage["completion_tokens"]
+		credits = sumMeteringFromEvents(events)
+		result.Duration = time.Since(startedAt)
+	}
+
+	result.Usage = OpenAIUsage{
+		InputTokens:  inputTokens,
+		OutputTokens: outputTokens,
+	}
+	_ = credits
+	return result, streamErr
+}
+
 func (s *KiroGatewayService) resolveProxyURL(ctx context.Context, account *Account) string {
 	if s.proxyRepo == nil || account == nil || account.ProxyID == nil {
 		return ""

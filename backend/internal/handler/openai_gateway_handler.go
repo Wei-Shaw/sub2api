@@ -30,6 +30,7 @@ import (
 type OpenAIGatewayHandler struct {
 	gatewayService           *service.OpenAIGatewayService
 	coreGateway              *service.GatewayService // 用于 P0-2 长期 user→account 绑定（账号共享加固）
+	kiroGatewayService       *service.KiroGatewayService
 	billingCacheService      *service.BillingCacheService
 	apiKeyService            *service.APIKeyService
 	usageRecordWorkerPool    *service.UsageRecordWorkerPool
@@ -53,6 +54,7 @@ func resolveOpenAIMessagesDispatchMappedModel(apiKey *service.APIKey, requestedM
 func NewOpenAIGatewayHandler(
 	gatewayService *service.OpenAIGatewayService,
 	coreGateway *service.GatewayService,
+	kiroGatewayService *service.KiroGatewayService,
 	concurrencyService *service.ConcurrencyService,
 	billingCacheService *service.BillingCacheService,
 	apiKeyService *service.APIKeyService,
@@ -72,6 +74,7 @@ func NewOpenAIGatewayHandler(
 	return &OpenAIGatewayHandler{
 		gatewayService:           gatewayService,
 		coreGateway:              coreGateway,
+		kiroGatewayService:       kiroGatewayService,
 		billingCacheService:      billingCacheService,
 		apiKeyService:            apiKeyService,
 		usageRecordWorkerPool:    usageRecordWorkerPool,
@@ -377,7 +380,13 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		if channelMapping.Mapped {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
 		}
-		result, err := h.gatewayService.Forward(c.Request.Context(), c, account, forwardBody)
+		var result *service.OpenAIForwardResult
+		var err error
+		if account.Platform == service.PlatformKiro {
+			result, err = h.kiroGatewayService.ForwardOpenAI(c.Request.Context(), c, account, forwardBody)
+		} else {
+			result, err = h.gatewayService.Forward(c.Request.Context(), c, account, forwardBody)
+		}
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
 		if accountReleaseFunc != nil {
 			accountReleaseFunc()
