@@ -99,7 +99,7 @@ func (s *PaymentConfigService) GetGroupInfoMap(ctx context.Context, plans []*dbe
 		m[int64(g.ID)] = PlanGroupInfo{
 			Platform:    g.Platform,
 			Name:        g.Name,
-			HasQuota:    hasPositiveLimit(g.FiveHourLimitUsd) || hasPositiveLimit(g.WeeklyLimitUsd) || hasPositiveLimit(g.MonthlyLimitUsd),
+			HasQuota:    hasPositiveLimit(g.DailyLimitUsd) || hasPositiveLimit(g.FiveHourLimitUsd) || hasPositiveLimit(g.WeeklyLimitUsd) || hasPositiveLimit(g.MonthlyLimitUsd),
 			ModelScopes: g.SupportedModelScopes,
 		}
 	}
