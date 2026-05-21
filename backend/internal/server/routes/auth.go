@@ -63,6 +63,22 @@ func RegisterAuthRoutes(
 			FailureMode: middleware.RateLimitFailClose,
 		}), h.Auth.ResetPassword)
 		auth.GET("/oauth/linuxdo/start", h.Auth.LinuxDoOAuthStart)
+		auth.GET("/oauth/github/start", h.Auth.GitHubOAuthStart)
+		auth.GET("/oauth/github/callback", h.Auth.GitHubOAuthCallback)
+		auth.POST("/oauth/github/complete-registration",
+			rateLimiter.LimitWithOptions("oauth-github-complete", 10, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+			}),
+			h.Auth.CompleteGitHubOAuthRegistration,
+		)
+		auth.GET("/oauth/google/start", h.Auth.GoogleOAuthStart)
+		auth.GET("/oauth/google/callback", h.Auth.GoogleOAuthCallback)
+		auth.POST("/oauth/google/complete-registration",
+			rateLimiter.LimitWithOptions("oauth-google-complete", 10, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+			}),
+			h.Auth.CompleteGoogleOAuthRegistration,
+		)
 		auth.GET("/oauth/linuxdo/bind/start", func(c *gin.Context) {
 			query := c.Request.URL.Query()
 			query.Set("intent", "bind_current_user")
@@ -166,12 +182,39 @@ func RegisterAuthRoutes(
 			}),
 			h.Auth.CreateOIDCOAuthAccount,
 		)
+		auth.GET("/oauth/dingtalk/start", h.Auth.DingTalkOAuthStart)
+		auth.GET("/oauth/dingtalk/bind/start", func(c *gin.Context) {
+			query := c.Request.URL.Query()
+			query.Set("intent", "bind_current_user")
+			c.Request.URL.RawQuery = query.Encode()
+			h.Auth.DingTalkOAuthStart(c)
+		})
+		auth.GET("/oauth/dingtalk/callback", h.Auth.DingTalkOAuthCallback)
+		auth.POST("/oauth/dingtalk/complete-registration",
+			rateLimiter.LimitWithOptions("oauth-dingtalk-complete", 10, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+			}),
+			h.Auth.CompleteDingTalkOAuthRegistration,
+		)
+		auth.POST("/oauth/dingtalk/bind-login",
+			rateLimiter.LimitWithOptions("oauth-dingtalk-bind-login", 20, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+			}),
+			h.Auth.BindDingTalkOAuthLogin,
+		)
+		auth.POST("/oauth/dingtalk/create-account",
+			rateLimiter.LimitWithOptions("oauth-dingtalk-create-account", 10, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+			}),
+			h.Auth.CreateDingTalkOAuthAccount,
+		)
 	}
 
 	// 公开设置（无需认证）
 	settings := v1.Group("/settings")
 	{
 		settings.GET("/public", h.Setting.GetPublicSettings)
+		settings.GET("/email-unsubscribe", h.Setting.UnsubscribeNotificationEmail)
 	}
 
 	// 需要认证的当前用户信息

@@ -515,6 +515,10 @@ func (s *GeminiMessagesCompatService) SelectAccountForAIStudioEndpoints(ctx cont
 			}
 			// Code Assist OAuth tokens often lack AI Studio scopes for models listing.
 			return 3
+		case AccountTypeServiceAccount:
+			// Vertex service accounts use aiplatform.googleapis.com, not the AI Studio
+			// endpoint (generativelanguage.googleapis.com), so they cannot serve these requests.
+			return 999
 		default:
 			return 10
 		}
@@ -579,7 +583,7 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 
 	originalModel := req.Model
 	mappedModel := req.Model
-	if account.Type == AccountTypeAPIKey {
+	if account.Type == AccountTypeAPIKey || account.Type == AccountTypeServiceAccount {
 		mappedModel = account.GetMappedModel(req.Model)
 	}
 
@@ -712,6 +716,36 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 		}
 		requestIDHeader = "x-request-id"
 
+	case AccountTypeServiceAccount:
+		buildReq = func(ctx context.Context) (*http.Request, string, error) {
+			if s.tokenProvider == nil {
+				return nil, "", errors.New("gemini token provider not configured")
+			}
+			accessToken, err := s.tokenProvider.GetAccessToken(ctx, account)
+			if err != nil {
+				return nil, "", err
+			}
+
+			action := "generateContent"
+			if req.Stream {
+				action = "streamGenerateContent"
+			}
+			fullURL, err := buildVertexGeminiURL(account.VertexProjectID(), account.VertexLocation(mappedModel), mappedModel, action, req.Stream)
+			if err != nil {
+				return nil, "", err
+			}
+
+			restGeminiReq := normalizeGeminiRequestForAIStudio(geminiReq)
+			upstreamReq, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(restGeminiReq))
+			if err != nil {
+				return nil, "", err
+			}
+			upstreamReq.Header.Set("Content-Type", "application/json")
+			upstreamReq.Header.Set("Authorization", "Bearer "+accessToken)
+			return upstreamReq, "x-request-id", nil
+		}
+		requestIDHeader = "x-request-id"
+
 	default:
 		return nil, fmt.Errorf("unsupported account type: %s", account.Type)
 	}
@@ -731,12 +765,6 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 			return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", err.Error())
 		}
 		requestIDHeader = idHeader
-
-		// Capture upstream request body for ops retry of this attempt.
-		if c != nil {
-			// In this code path `body` is already the JSON sent to upstream.
-			c.Set(OpsUpstreamRequestBodyKey, string(body))
-		}
 
 		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 		if err != nil {
@@ -1038,21 +1066,23 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 
 	// 图片生成计费
 	imageCount := 0
-	imageSize := s.extractImageSize(body)
+	imageInputSize := s.extractImageInputSize(body)
+	imageSize := normalizeOpenAIImageSizeTier(imageInputSize)
 	if isImageGenerationModel(originalModel) {
 		imageCount = 1
 	}
 
 	return &ForwardResult{
-		RequestID:     requestID,
-		Usage:         *usage,
-		Model:         originalModel,
-		UpstreamModel: mappedModel,
-		Stream:        req.Stream,
-		Duration:      time.Since(startTime),
-		FirstTokenMs:  firstTokenMs,
-		ImageCount:    imageCount,
-		ImageSize:     imageSize,
+		RequestID:      requestID,
+		Usage:          *usage,
+		Model:          originalModel,
+		UpstreamModel:  mappedModel,
+		Stream:         req.Stream,
+		Duration:       time.Since(startTime),
+		FirstTokenMs:   firstTokenMs,
+		ImageCount:     imageCount,
+		ImageSize:      imageSize,
+		ImageInputSize: imageInputSize,
 	}, nil
 }
 
@@ -1094,7 +1124,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 	body = ensureGeminiFunctionCallThoughtSignatures(body)
 
 	mappedModel := originalModel
-	if account.Type == AccountTypeAPIKey {
+	if account.Type == AccountTypeAPIKey || account.Type == AccountTypeServiceAccount {
 		mappedModel = account.GetMappedModel(originalModel)
 	}
 
@@ -1213,6 +1243,31 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 		}
 		requestIDHeader = "x-request-id"
 
+	case AccountTypeServiceAccount:
+		buildReq = func(ctx context.Context) (*http.Request, string, error) {
+			if s.tokenProvider == nil {
+				return nil, "", errors.New("gemini token provider not configured")
+			}
+			accessToken, err := s.tokenProvider.GetAccessToken(ctx, account)
+			if err != nil {
+				return nil, "", err
+			}
+
+			fullURL, err := buildVertexGeminiURL(account.VertexProjectID(), account.VertexLocation(mappedModel), mappedModel, upstreamAction, useUpstreamStream)
+			if err != nil {
+				return nil, "", err
+			}
+
+			upstreamReq, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(body))
+			if err != nil {
+				return nil, "", err
+			}
+			upstreamReq.Header.Set("Content-Type", "application/json")
+			upstreamReq.Header.Set("Authorization", "Bearer "+accessToken)
+			return upstreamReq, "x-request-id", nil
+		}
+		requestIDHeader = "x-request-id"
+
 	default:
 		return nil, s.writeGoogleError(c, http.StatusBadGateway, "Unsupported account type: "+account.Type)
 	}
@@ -1231,12 +1286,6 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 			return nil, s.writeGoogleError(c, http.StatusBadGateway, err.Error())
 		}
 		requestIDHeader = idHeader
-
-		// Capture upstream request body for ops retry of this attempt.
-		if c != nil {
-			// In this code path `body` is already the JSON sent to upstream.
-			c.Set(OpsUpstreamRequestBodyKey, string(body))
-		}
 
 		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 		if err != nil {
@@ -1541,21 +1590,23 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 
 	// 图片生成计费
 	imageCount := 0
-	imageSize := s.extractImageSize(body)
+	imageInputSize := s.extractImageInputSize(body)
+	imageSize := normalizeOpenAIImageSizeTier(imageInputSize)
 	if isImageGenerationModel(originalModel) {
 		imageCount = 1
 	}
 
 	return &ForwardResult{
-		RequestID:     requestID,
-		Usage:         *usage,
-		Model:         originalModel,
-		UpstreamModel: mappedModel,
-		Stream:        stream,
-		Duration:      time.Since(startTime),
-		FirstTokenMs:  firstTokenMs,
-		ImageCount:    imageCount,
-		ImageSize:     imageSize,
+		RequestID:      requestID,
+		Usage:          *usage,
+		Model:          originalModel,
+		UpstreamModel:  mappedModel,
+		Stream:         stream,
+		Duration:       time.Since(startTime),
+		FirstTokenMs:   firstTokenMs,
+		ImageCount:     imageCount,
+		ImageSize:      imageSize,
+		ImageInputSize: imageInputSize,
 	}, nil
 }
 
@@ -2763,14 +2814,18 @@ func (s *GeminiMessagesCompatService) handleGeminiUpstreamError(ctx context.Cont
 	if resetAt == nil {
 		// 根据账号类型使用不同的默认重置时间
 		var ra time.Time
-		if isCodeAssist {
-			// Code Assist: fallback cooldown by tier
+		if isCodeAssist || oauthType == "google_one" {
+			// Gemini CLI / Google One: fallback cooldown by tier
 			cooldown := geminiCooldownForTier(tierID)
 			if s.rateLimitService != nil {
 				cooldown = s.rateLimitService.GeminiCooldown(ctx, account)
 			}
 			ra = time.Now().Add(cooldown)
-			logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini 429] Account %d (Code Assist, tier=%s, project=%s) rate limited, cooldown=%v", account.ID, tierID, projectID, time.Until(ra).Truncate(time.Second))
+			if isCodeAssist {
+				logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini 429] Account %d (Code Assist, tier=%s, project=%s) rate limited, cooldown=%v", account.ID, tierID, projectID, time.Until(ra).Truncate(time.Second))
+			} else {
+				logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini 429] Account %d (Google One OAuth, tier=%s, project=%s) rate limited, cooldown=%v", account.ID, tierID, projectID, time.Until(ra).Truncate(time.Second))
+			}
 		} else {
 			// API Key / AI Studio OAuth: PST 午夜
 			if ts := nextGeminiDailyResetUnix(); ts != nil {
@@ -3371,8 +3426,7 @@ func convertClaudeGenerationConfig(req map[string]any) map[string]any {
 	return out
 }
 
-// extractImageSize 从 Gemini 请求中提取 image_size 参数
-func (s *GeminiMessagesCompatService) extractImageSize(body []byte) string {
+func (s *GeminiMessagesCompatService) extractImageInputSize(body []byte) string {
 	var req struct {
 		GenerationConfig *struct {
 			ImageConfig *struct {
@@ -3381,15 +3435,12 @@ func (s *GeminiMessagesCompatService) extractImageSize(body []byte) string {
 		} `json:"generationConfig"`
 	}
 	if err := json.Unmarshal(body, &req); err != nil {
-		return "2K"
+		return ""
 	}
 
 	if req.GenerationConfig != nil && req.GenerationConfig.ImageConfig != nil {
-		size := strings.ToUpper(strings.TrimSpace(req.GenerationConfig.ImageConfig.ImageSize))
-		if size == "1K" || size == "2K" || size == "4K" {
-			return size
-		}
+		return strings.TrimSpace(req.GenerationConfig.ImageConfig.ImageSize)
 	}
 
-	return "2K"
+	return ""
 }

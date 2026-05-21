@@ -16,6 +16,8 @@ import type {
   TempUnschedulableStatus,
   AdminDataPayload,
   AdminDataImportResult,
+  CodexSessionImportRequest,
+  CodexSessionImportResult,
   CheckMixedChannelRequest,
   CheckMixedChannelResponse
 } from '@/types'
@@ -234,9 +236,12 @@ export async function clearError(id: number): Promise<Account> {
  * @param id - Account ID
  * @returns Account usage info
  */
-export async function getUsage(id: number, source?: 'passive' | 'active'): Promise<AccountUsageInfo> {
+export async function getUsage(id: number, source?: 'passive' | 'active', force?: boolean): Promise<AccountUsageInfo> {
+  const params: Record<string, string> = {}
+  if (source) params.source = source
+  if (force) params.force = 'true'
   const { data } = await apiClient.get<AccountUsageInfo>(`/admin/accounts/${id}/usage`, {
-    params: source ? { source } : undefined
+    params: Object.keys(params).length > 0 ? params : undefined
   })
   return data
 }
@@ -374,8 +379,8 @@ export async function batchUpdateCredentials(request: {
  * @returns Success confirmation
  */
 export async function bulkUpdate(
-  accountIds: number[],
-  updates: Record<string, unknown>
+  accountIdsOrPayload: number[] | Record<string, unknown>,
+  updates?: Record<string, unknown>
 ): Promise<{
   success: number
   failed: number
@@ -383,16 +388,19 @@ export async function bulkUpdate(
   failed_ids?: number[]
   results: Array<{ account_id: number; success: boolean; error?: string }>
   }> {
+  const payload = Array.isArray(accountIdsOrPayload)
+    ? {
+        account_ids: accountIdsOrPayload,
+        ...(updates ?? {})
+      }
+    : accountIdsOrPayload
   const { data } = await apiClient.post<{
     success: number
     failed: number
     success_ids?: number[]
     failed_ids?: number[]
     results: Array<{ account_id: number; success: boolean; error?: string }>
-  }>('/admin/accounts/bulk-update', {
-    account_ids: accountIds,
-    ...updates
-  })
+  }>('/admin/accounts/bulk-update', payload)
   return data
 }
 
@@ -442,6 +450,20 @@ export async function setSchedulable(id: number, schedulable: boolean): Promise<
  */
 export async function getAvailableModels(id: number): Promise<ClaudeModel[]> {
   const { data } = await apiClient.get<ClaudeModel[]>(`/admin/accounts/${id}/models`)
+  return data
+}
+
+export interface SyncUpstreamModelsResult {
+  models: string[]
+}
+
+/**
+ * Sync live supported models from the account's upstream model-list endpoint
+ * @param id - Account ID
+ * @returns List of model IDs returned by the upstream
+ */
+export async function syncUpstreamModels(id: number): Promise<SyncUpstreamModelsResult> {
+  const { data } = await apiClient.post<SyncUpstreamModelsResult>(`/admin/accounts/${id}/models/sync-upstream`)
   return data
 }
 
@@ -547,6 +569,11 @@ export async function importData(payload: {
     data: payload.data,
     skip_default_group_bind: payload.skip_default_group_bind
   })
+  return data
+}
+
+export async function importCodexSession(payload: CodexSessionImportRequest): Promise<CodexSessionImportResult> {
+  const { data } = await apiClient.post<CodexSessionImportResult>('/admin/accounts/import/codex-session', payload)
   return data
 }
 
@@ -697,6 +724,7 @@ export const accountsAPI = {
   resetTempUnschedulable,
   setSchedulable,
   getAvailableModels,
+  syncUpstreamModels,
   generateAuthUrl,
   exchangeCode,
   refreshOpenAIToken,
@@ -707,6 +735,7 @@ export const accountsAPI = {
   syncFromCrs,
   exportData,
   importData,
+  importCodexSession,
   getAntigravityDefaultModelMapping,
   batchClearError,
   batchRefresh,

@@ -15,15 +15,17 @@ const VISIBLE_METHOD_ALIASES = {
   wxpay: 'wxpay',
   wxpay_direct: 'wxpay',
   stripe: 'stripe',
+  airwallex: 'airwallex',
 } as const
 
-export type VisiblePaymentMethod = 'alipay' | 'wxpay' | 'stripe'
+export type VisiblePaymentMethod = 'alipay' | 'wxpay' | 'stripe' | 'airwallex'
 export type StripeVisibleMethod = 'alipay' | 'wechat_pay'
 export type PaymentLaunchKind =
   | 'qr_waiting'
   | 'redirect_waiting'
   | 'stripe_popup'
   | 'stripe_route'
+  | 'airwallex_route'
   | 'wechat_oauth'
   | 'wechat_jsapi'
   | 'unhandled'
@@ -37,6 +39,10 @@ export interface PaymentRecoverySnapshot {
   payUrl: string
   outTradeNo: string
   clientSecret: string
+  intentId: string
+  currency: string
+  countryCode: string
+  paymentEnv: string
   payAmount: number
   orderType: OrderType | ''
   paymentMode: string
@@ -49,9 +55,12 @@ export interface PaymentLaunchContext {
   orderType: OrderType
   isMobile: boolean
   isWechatBrowser?: boolean
+  /** When true, Alipay payments always use QR code regardless of device type */
+  forceQRCode?: boolean
   now?: number
   stripePopupUrl?: string
   stripeRouteUrl?: string
+  airwallexRouteUrl?: string
 }
 
 export interface PaymentLaunchDecision {
@@ -71,6 +80,8 @@ export interface BuildCreateOrderPayloadInput {
   origin?: string
   isMobile: boolean
   isWechatBrowser: boolean
+  /** When true, Alipay payments always use QR code (passes is_mobile: false to backend) */
+  forceQRCode?: boolean
 }
 
 type CreateOrderFlowResult = CreateOrderResult & {
@@ -104,11 +115,16 @@ export function getVisibleMethods(methods: Record<string, MethodLimit>): Record<
 export function buildCreateOrderPayload(input: BuildCreateOrderPayloadInput): CreateOrderRequest {
   const visibleMethod = normalizeVisibleMethod(input.paymentType) || input.paymentType.trim()
   const normalizedOrigin = (input.origin || '').trim().replace(/\/+$/, '')
+  // When forceQRCode is enabled for alipay, always tell the backend this is not a mobile
+  // request so it generates a QR code instead of a mobile-redirect URL.
+  const effectiveMobile = (input.forceQRCode && visibleMethod === 'alipay')
+    ? false
+    : input.isMobile
   const payload: CreateOrderRequest = {
     amount: input.amount,
     payment_type: visibleMethod,
     order_type: input.orderType,
-    is_mobile: input.isMobile,
+    is_mobile: effectiveMobile,
     payment_source: visibleMethod === 'wxpay' && input.isWechatBrowser
       ? 'wechat_in_app_resume'
       : 'hosted_redirect',
@@ -138,11 +154,23 @@ export function decidePaymentLaunch(
     payUrl: result.pay_url || '',
     outTradeNo: result.out_trade_no || '',
     clientSecret: result.client_secret || '',
+    intentId: result.intent_id || '',
+    currency: result.currency || '',
+    countryCode: result.country_code || '',
+    paymentEnv: result.payment_env || '',
     payAmount: result.pay_amount,
     orderType: context.orderType,
     paymentMode: (result.payment_mode || '').trim(),
     resumeToken: result.resume_token || '',
   }, context.now)
+
+  if (visibleMethod === 'airwallex' && baseState.clientSecret && baseState.intentId) {
+    if (!context.airwallexRouteUrl) {
+      return { kind: 'unhandled', paymentState: baseState, recovery: baseState }
+    }
+    const paymentState = { ...baseState, payUrl: context.airwallexRouteUrl || '' }
+    return { kind: 'airwallex_route', paymentState, recovery: paymentState }
+  }
 
   if (baseState.clientSecret) {
     // visibleMethod === 'stripe' means the user clicked the dedicated Stripe button
@@ -171,9 +199,14 @@ export function decidePaymentLaunch(
   }
 
   const normalizedPaymentMode = baseState.paymentMode.trim().toLowerCase()
+  // When forceQRCode is on for alipay, treat the device as desktop so the mobile-redirect
+  // branch is bypassed and we fall through to qr_waiting.
+  const effectiveMobile = (context.forceQRCode && visibleMethod === 'alipay')
+    ? false
+    : context.isMobile
   const prefersRedirect = normalizedPaymentMode === 'redirect'
     || normalizedPaymentMode === 'popup'
-    || (context.isMobile && !!baseState.payUrl)
+    || (effectiveMobile && !!baseState.payUrl)
   const prefersQr = normalizedPaymentMode === 'qrcode'
     || normalizedPaymentMode === 'native'
     || (!prefersRedirect && !!baseState.qrCode)
@@ -239,6 +272,10 @@ export function readPaymentRecoverySnapshot(
       || typeof parsed.payUrl !== 'string'
       || (parsed.outTradeNo != null && typeof parsed.outTradeNo !== 'string')
       || typeof parsed.clientSecret !== 'string'
+      || (parsed.intentId != null && typeof parsed.intentId !== 'string')
+      || (parsed.currency != null && typeof parsed.currency !== 'string')
+      || (parsed.countryCode != null && typeof parsed.countryCode !== 'string')
+      || (parsed.paymentEnv != null && typeof parsed.paymentEnv !== 'string')
       || typeof parsed.payAmount !== 'number'
       || typeof parsed.paymentMode !== 'string'
       || typeof parsed.resumeToken !== 'string'
@@ -265,6 +302,10 @@ export function readPaymentRecoverySnapshot(
       payUrl: parsed.payUrl,
       outTradeNo: parsed.outTradeNo || '',
       clientSecret: parsed.clientSecret,
+      intentId: parsed.intentId || '',
+      currency: parsed.currency || '',
+      countryCode: parsed.countryCode || '',
+      paymentEnv: parsed.paymentEnv || '',
       payAmount: parsed.payAmount,
       orderType: parsed.orderType === 'subscription' ? 'subscription' : 'balance',
       paymentMode: parsed.paymentMode,

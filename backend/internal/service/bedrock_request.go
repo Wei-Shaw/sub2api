@@ -15,6 +15,9 @@ import (
 
 const defaultBedrockRegion = "us-east-1"
 
+// featureKeyBedrockCCCompat is the key used in Channel.FeaturesConfig for Bedrock CC compatibility.
+const featureKeyBedrockCCCompat = "bedrock_cc_compat"
+
 var bedrockCrossRegionPrefixes = []string{"us.", "eu.", "apac.", "jp.", "au.", "us-gov.", "global."}
 
 // BedrockCrossRegionPrefix 根据 AWS Region 返回 Bedrock 跨区域推理的模型 ID 前缀
@@ -179,13 +182,16 @@ func BuildBedrockURL(region, modelID string, stream bool) string {
 //  3. 移除 Bedrock 不支持的字段（model, stream, output_format, output_config）
 //  4. 移除工具定义中的 custom 字段（Claude Code 会发送 custom: {defer_loading: true}）
 //  5. 清理 cache_control 中 Bedrock 不支持的字段（scope, ttl）
+//  6. 修复 thinking 字段兼容性（Opus 4.7 仅支持 adaptive，enabled 需要 budget_tokens）
+//  7. 清理 tool_use.id / tool_use_id 中 Bedrock 不接受的字符
 func PrepareBedrockRequestBody(body []byte, modelID string, betaHeader string) ([]byte, error) {
 	betaTokens := ResolveBedrockBetaTokens(betaHeader, body, modelID)
-	return PrepareBedrockRequestBodyWithTokens(body, modelID, betaTokens)
+	return PrepareBedrockRequestBodyWithTokens(body, modelID, betaTokens, false)
 }
 
 // PrepareBedrockRequestBodyWithTokens prepares a Bedrock request using pre-resolved beta tokens.
-func PrepareBedrockRequestBodyWithTokens(body []byte, modelID string, betaTokens []string) ([]byte, error) {
+// ccCompat 启用 CC 兼容模式时额外处理 thinking 类型转换和 tool_use.id 清理。
+func PrepareBedrockRequestBodyWithTokens(body []byte, modelID string, betaTokens []string, ccCompat bool) ([]byte, error) {
 	var err error
 
 	// 注入 anthropic_version（Bedrock 要求）
@@ -234,6 +240,12 @@ func PrepareBedrockRequestBodyWithTokens(body []byte, modelID string, betaTokens
 
 	// 清理 cache_control 中 Bedrock 不支持的字段
 	body = sanitizeBedrockCacheControl(body, modelID)
+
+	// CC 兼容模式：修复 CC 发送的 Bedrock 不兼容字段
+	if ccCompat {
+		body = sanitizeBedrockThinking(body, modelID)
+		body = sanitizeBedrockToolUseIDs(body)
+	}
 
 	return body, nil
 }
@@ -604,4 +616,89 @@ func filterBedrockBetaTokens(tokens []string) []string {
 	}
 
 	return result
+}
+
+// bedrockToolUseIDRe 匹配 Bedrock 允许的 tool_use ID 字符（字母、数字、下划线、连字符）
+var bedrockToolUseIDRe = regexp.MustCompile(`[^a-zA-Z0-9_-]`)
+
+// isBedrockOpus47OrNewer 判断 Bedrock 模型 ID 是否为 Claude Opus 4.7 或更新版本
+// Opus 4.7 仅支持 thinking.type: "adaptive"，不支持 "enabled"
+func isBedrockOpus47OrNewer(modelID string) bool {
+	lower := strings.ToLower(modelID)
+	if !strings.Contains(lower, "opus") {
+		return false
+	}
+	matches := claudeVersionRe.FindStringSubmatch(lower)
+	if matches == nil {
+		return false
+	}
+	major, _ := strconv.Atoi(matches[1])
+	minor, _ := strconv.Atoi(matches[2])
+	return major > 4 || (major == 4 && minor >= 7)
+}
+
+const defaultThinkingBudgetTokens = 10000
+
+// sanitizeBedrockThinking 修复 thinking 字段的 Bedrock 兼容性问题：
+//   - Opus 4.7+: 仅支持 "adaptive"，将 "enabled" 转换为 "adaptive" 并移除 budget_tokens
+//   - 其他模型: "enabled" 必须带 budget_tokens，缺失时补充默认值
+func sanitizeBedrockThinking(body []byte, modelID string) []byte {
+	thinking := gjson.GetBytes(body, "thinking")
+	if !thinking.Exists() || !thinking.IsObject() {
+		return body
+	}
+
+	thinkingType := thinking.Get("type").String()
+	if thinkingType == "" {
+		return body
+	}
+
+	if isBedrockOpus47OrNewer(modelID) {
+		if thinkingType == "enabled" {
+			body, _ = sjson.SetBytes(body, "thinking.type", "adaptive")
+			body, _ = sjson.DeleteBytes(body, "thinking.budget_tokens")
+		}
+		return body
+	}
+
+	if thinkingType == "enabled" && !thinking.Get("budget_tokens").Exists() {
+		body, _ = sjson.SetBytes(body, "thinking.budget_tokens", defaultThinkingBudgetTokens)
+	}
+
+	return body
+}
+
+// sanitizeBedrockToolUseIDs 清理 messages 中 tool_use.id 和 tool_result.tool_use_id
+// 的非法字符。Bedrock 要求 ID 匹配 '^[a-zA-Z0-9_-]+$'。
+func sanitizeBedrockToolUseIDs(body []byte) []byte {
+	messages := gjson.GetBytes(body, "messages")
+	if !messages.Exists() || !messages.IsArray() {
+		return body
+	}
+	for mi, msg := range messages.Array() {
+		content := msg.Get("content")
+		if !content.Exists() || !content.IsArray() {
+			continue
+		}
+		for ci, block := range content.Array() {
+			switch block.Get("type").String() {
+			case "tool_use":
+				body = sanitizeIDField(body, block.Get("id").String(), fmt.Sprintf("messages.%d.content.%d.id", mi, ci))
+			case "tool_result":
+				body = sanitizeIDField(body, block.Get("tool_use_id").String(), fmt.Sprintf("messages.%d.content.%d.tool_use_id", mi, ci))
+			}
+		}
+	}
+	return body
+}
+
+func sanitizeIDField(body []byte, id, path string) []byte {
+	if id == "" {
+		return body
+	}
+	sanitized := bedrockToolUseIDRe.ReplaceAllString(id, "_")
+	if sanitized != id {
+		body, _ = sjson.SetBytes(body, path, sanitized)
+	}
+	return body
 }

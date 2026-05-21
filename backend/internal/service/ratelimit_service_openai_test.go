@@ -46,7 +46,7 @@ func TestCalculateOpenAI429ResetTime_7dExhausted(t *testing.T) {
 func TestCalculateOpenAI429ResetTime_5hExhausted(t *testing.T) {
 	svc := &RateLimitService{}
 
-	// 7d 未耗尽但 5h 耗尽时，应按 5h 恢复时间账号级限流。
+	// Simulate headers when 5h limit is exhausted (100% used)
 	headers := http.Header{}
 	headers.Set("x-codex-primary-used-percent", "50")
 	headers.Set("x-codex-primary-reset-after-seconds", "500000")
@@ -63,6 +63,7 @@ func TestCalculateOpenAI429ResetTime_5hExhausted(t *testing.T) {
 		t.Fatal("expected non-nil resetAt")
 	}
 
+	// Should be approximately 3600 seconds from now
 	expectedDuration := 3600 * time.Second
 	minExpected := before.Add(expectedDuration)
 	maxExpected := after.Add(expectedDuration)
@@ -125,6 +126,7 @@ func TestCalculateOpenAI429ResetTime_ReversedWindowOrder(t *testing.T) {
 		t.Fatal("expected non-nil resetAt")
 	}
 
+	// Should correctly identify that primary is 5h (smaller window) and use its reset time
 	expectedDuration := 3600 * time.Second
 	minExpected := before.Add(expectedDuration)
 	maxExpected := after.Add(expectedDuration)
@@ -136,8 +138,10 @@ func TestCalculateOpenAI429ResetTime_ReversedWindowOrder(t *testing.T) {
 
 type openAI429SnapshotRepo struct {
 	mockAccountRepoForGemini
-	rateLimitedID int64
-	updatedExtra  map[string]any
+	rateLimitedID      int64
+	updatedExtra       map[string]any
+	bulkUpdatedIDs     []int64
+	bulkUpdatedPayload AccountBulkUpdate
 }
 
 func (r *openAI429SnapshotRepo) SetRateLimited(_ context.Context, id int64, _ time.Time) error {
@@ -148,6 +152,12 @@ func (r *openAI429SnapshotRepo) SetRateLimited(_ context.Context, id int64, _ ti
 func (r *openAI429SnapshotRepo) UpdateExtra(_ context.Context, _ int64, updates map[string]any) error {
 	r.updatedExtra = updates
 	return nil
+}
+
+func (r *openAI429SnapshotRepo) BulkUpdate(_ context.Context, ids []int64, updates AccountBulkUpdate) (int64, error) {
+	r.bulkUpdatedIDs = append([]int64(nil), ids...)
+	r.bulkUpdatedPayload = updates
+	return int64(len(ids)), nil
 }
 
 func TestHandle429_OpenAIPersistsCodexSnapshotImmediately(t *testing.T) {
@@ -177,6 +187,25 @@ func TestHandle429_OpenAIPersistsCodexSnapshotImmediately(t *testing.T) {
 	if got := repo.updatedExtra["codex_7d_used_percent"]; got != 100.0 {
 		t.Fatalf("codex_7d_used_percent = %v, want 100", got)
 	}
+}
+
+func TestHandle429_OpenAISyncsObservedPlanType(t *testing.T) {
+	repo := &openAI429SnapshotRepo{}
+	svc := NewRateLimitService(repo, nil, nil, nil, nil)
+	account := &Account{
+		ID:          124,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Credentials: map[string]any{"plan_type": "plus"},
+	}
+	body := []byte(`{"error":{"type":"usage_limit_reached","message":"limit reached","plan_type":"free","resets_at":1777283883}}`)
+
+	svc.handle429(context.Background(), account, http.Header{}, body)
+
+	require.Equal(t, []int64{account.ID}, repo.bulkUpdatedIDs)
+	require.Equal(t, "free", repo.bulkUpdatedPayload.Credentials["plan_type"])
+	require.Equal(t, "free", account.Credentials["plan_type"])
+	require.Equal(t, account.ID, repo.rateLimitedID)
 }
 
 func TestHandle429_OpenAICodexSnapshotOnlyDoesNotSetAccountRateLimit(t *testing.T) {

@@ -61,13 +61,14 @@ func newTestContext() (*gin.Context, *httptest.ResponseRecorder) {
 
 type openAIAccountTestRepo struct {
 	mockAccountRepoForGemini
-	updatedExtra   map[string]any
-	updatedCreds   map[string]any
-	rateLimitedID  int64
-	rateLimitedAt  *time.Time
-	clearedErrorID int64
-	setErrorID     int64
-	setErrorMsg    string
+	updatedExtra       map[string]any
+	bulkUpdatedIDs     []int64
+	bulkUpdatedPayload AccountBulkUpdate
+	rateLimitedID      int64
+	rateLimitedAt      *time.Time
+	clearedErrorID     int64
+	setErrorID         int64
+	setErrorMsg        string
 }
 
 func (r *openAIAccountTestRepo) UpdateExtra(_ context.Context, _ int64, updates map[string]any) error {
@@ -75,9 +76,10 @@ func (r *openAIAccountTestRepo) UpdateExtra(_ context.Context, _ int64, updates 
 	return nil
 }
 
-func (r *openAIAccountTestRepo) UpdateCredentials(_ context.Context, _ int64, credentials map[string]any) error {
-	r.updatedCreds = credentials
-	return nil
+func (r *openAIAccountTestRepo) BulkUpdate(_ context.Context, ids []int64, updates AccountBulkUpdate) (int64, error) {
+	r.bulkUpdatedIDs = append([]int64(nil), ids...)
+	r.bulkUpdatedPayload = updates
+	return int64(len(ids)), nil
 }
 
 func (r *openAIAccountTestRepo) SetRateLimited(_ context.Context, id int64, resetAt time.Time) error {
@@ -128,38 +130,6 @@ func TestAccountTestService_OpenAISuccessPersistsSnapshotFromHeaders(t *testing.
 	require.NotEmpty(t, repo.updatedExtra)
 	require.Equal(t, 42.0, repo.updatedExtra["codex_5h_used_percent"])
 	require.Equal(t, 88.0, repo.updatedExtra["codex_7d_used_percent"])
-	require.Contains(t, recorder.Body.String(), "test_complete")
-}
-
-func TestAccountTestService_OpenAISuccessPersistsTestedModel(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	ctx, recorder := newTestContext()
-
-	resp := newJSONResponse(http.StatusOK, "")
-	resp.Body = io.NopCloser(strings.NewReader(`data: {"type":"response.completed"}
-
-`))
-
-	repo := &openAIAccountTestRepo{}
-	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
-	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream}
-	account := &Account{
-		ID:          90,
-		Platform:    PlatformOpenAI,
-		Type:        AccountTypeOAuth,
-		Concurrency: 1,
-		Credentials: map[string]any{
-			"access_token":     "test-token",
-			"supported_models": []any{"gpt-5.4"},
-			"model_mapping":    map[string]any{"gpt-5.4": "gpt-5.4"},
-		},
-	}
-
-	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.5", "", "")
-	require.NoError(t, err)
-	require.NotNil(t, repo.updatedCreds)
-	require.Equal(t, []string{"gpt-5.4", "gpt-5.5"}, repo.updatedCreds["supported_models"])
-	require.Equal(t, map[string]any{"gpt-5.4": "gpt-5.4", "gpt-5.5": "gpt-5.5"}, repo.updatedCreds["model_mapping"])
 	require.Contains(t, recorder.Body.String(), "test_complete")
 }
 
@@ -252,6 +222,33 @@ func TestAccountTestService_OpenAI429BodyOnlyPersistsRateLimitAndClearsStaleErro
 	require.Empty(t, account.ErrorMessage)
 	require.NotNil(t, account.RateLimitResetAt)
 	require.Empty(t, repo.updatedExtra)
+}
+
+func TestAccountTestService_OpenAI429SyncsObservedPlanType(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := newTestContext()
+
+	resp := newJSONResponse(http.StatusTooManyRequests, `{"error":{"type":"usage_limit_reached","message":"limit reached","plan_type":"free","resets_at":1777283883}}`)
+
+	repo := &openAIAccountTestRepo{}
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
+	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream}
+	account := &Account{
+		ID:          81,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Concurrency: 1,
+		Credentials: map[string]any{"access_token": "test-token", "plan_type": "plus"},
+	}
+
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "")
+	require.Error(t, err)
+	require.Equal(t, []int64{account.ID}, repo.bulkUpdatedIDs)
+	require.Equal(t, "free", repo.bulkUpdatedPayload.Credentials["plan_type"])
+	require.Equal(t, "free", account.Credentials["plan_type"])
+	require.Equal(t, account.ID, repo.rateLimitedID)
+	require.NotNil(t, account.RateLimitResetAt)
 }
 
 func TestAccountTestService_OpenAI429ActiveAccountDoesNotClearError(t *testing.T) {

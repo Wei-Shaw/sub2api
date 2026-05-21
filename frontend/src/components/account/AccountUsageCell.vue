@@ -126,6 +126,30 @@
           :show-now-when-idle="true"
           color="emerald"
         />
+        <div class="flex items-center gap-1.5 mt-0.5">
+          <button
+            type="button"
+            class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-medium text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30 transition-colors"
+            :disabled="activeQueryLoading"
+            @click="loadActiveUsage"
+          >
+            <svg
+              class="h-2.5 w-2.5"
+              :class="{ 'animate-spin': activeQueryLoading }"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+            {{ t('admin.accounts.usageWindow.activeQuery') }}
+          </button>
+        </div>
       </div>
       <div v-else-if="loading" class="space-y-1.5">
         <div class="flex items-center gap-1">
@@ -332,6 +356,37 @@
 
       <!-- Usage data or unlimited flow -->
       <div class="space-y-1">
+        <div
+          v-if="showGeminiTodayStats && todayStats"
+          class="mb-0.5 flex items-center"
+        >
+          <div class="flex items-center gap-1.5 text-[9px] text-gray-500 dark:text-gray-400">
+            <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">
+              {{ formatKeyRequests }} req
+            </span>
+            <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">
+              {{ formatKeyTokens }}
+            </span>
+            <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800" :title="t('usage.accountBilled')">
+              A ${{ formatKeyCost }}
+            </span>
+            <span
+              v-if="todayStats.user_cost != null"
+              class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800"
+              :title="t('usage.userBilled')"
+            >
+              U ${{ formatKeyUserCost }}
+            </span>
+          </div>
+        </div>
+        <div
+          v-else-if="showGeminiTodayStats && todayStatsLoading"
+          class="mb-0.5 flex items-center gap-1"
+        >
+          <div class="h-3 w-10 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-3 w-8 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-3 w-12 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+        </div>
         <div v-if="loading" class="space-y-1">
           <div class="flex items-center gap-1">
             <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
@@ -510,6 +565,10 @@ const shouldFetchUsage = computed(() => {
     return props.account.type === 'oauth'
   }
   return false
+})
+
+const showGeminiTodayStats = computed(() => {
+  return props.account.platform === 'gemini' && props.account.type === 'service_account'
 })
 
 const geminiUsageAvailable = computed(() => {
@@ -1035,7 +1094,7 @@ const attachVisibilityObserver = () => {
 const loadActiveUsage = async () => {
   activeQueryLoading.value = true
   try {
-    usageInfo.value = await adminAPI.accounts.getUsage(props.account.id, 'active')
+    usageInfo.value = await adminAPI.accounts.getUsage(props.account.id, 'active', true)
   } catch (e: any) {
     console.error('Failed to load active usage:', e)
   } finally {

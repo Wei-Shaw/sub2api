@@ -390,7 +390,7 @@ func (h *UserHandler) GetUserUsage(c *gin.Context) {
 // GetBalanceHistory handles getting user's balance/concurrency change history
 // GET /api/v1/admin/users/:id/balance-history
 // Query params:
-//   - type: filter by record type (balance, admin_balance, concurrency, admin_concurrency, subscription)
+//   - type: filter by record type (balance, affiliate_balance, admin_balance, concurrency, admin_concurrency, subscription)
 func (h *UserHandler) GetBalanceHistory(c *gin.Context) {
 	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -476,4 +476,64 @@ func (h *UserHandler) GetUserRPMStatus(c *gin.Context) {
 	}
 
 	response.Success(c, status)
+}
+
+// BatchUpdateConcurrency 批量修改用户并发数
+// POST /api/v1/admin/users/batch-concurrency
+type BatchUpdateConcurrencyRequest struct {
+	UserIDs     []int64 `json:"user_ids"`
+	All         bool    `json:"all"`
+	Concurrency int     `json:"concurrency"`
+	Mode        string  `json:"mode" binding:"required,oneof=set add"`
+}
+
+func (h *UserHandler) BatchUpdateConcurrency(c *gin.Context) {
+	var req BatchUpdateConcurrencyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if !req.All && len(req.UserIDs) == 0 {
+		response.BadRequest(c, "user_ids is required unless all=true")
+		return
+	}
+	if len(req.UserIDs) > 500 {
+		response.BadRequest(c, "user_ids cannot exceed 500")
+		return
+	}
+
+	var userIDs []int64
+	if req.All {
+		// Fetch all user IDs via pagination
+		page := 1
+		const pageSize = 500
+		for {
+			users, _, err := h.adminService.ListUsers(c.Request.Context(), page, pageSize, service.UserListFilters{}, "id", "asc")
+			if err != nil {
+				response.ErrorFrom(c, err)
+				return
+			}
+			for _, u := range users {
+				userIDs = append(userIDs, u.ID)
+			}
+			if len(users) < pageSize {
+				break
+			}
+			page++
+		}
+	} else {
+		userIDs = req.UserIDs
+	}
+
+	if len(userIDs) == 0 {
+		response.Success(c, gin.H{"affected": 0})
+		return
+	}
+
+	affected, err := h.adminService.BatchUpdateConcurrency(c.Request.Context(), userIDs, req.Concurrency, req.Mode)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"affected": affected})
 }

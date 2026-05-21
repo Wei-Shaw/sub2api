@@ -137,7 +137,7 @@ func (p *testClaudeTokenProvider) GetAccessToken(ctx context.Context, account *A
 		return "", errors.New("account is nil")
 	}
 	if account.Platform != PlatformAnthropic || account.Type != AccountTypeOAuth {
-		return "", errors.New("not an anthropic oauth account")
+		return "", errors.New("not an anthropic oauth or service account")
 	}
 
 	cacheKey := ClaudeTokenCacheKey(account)
@@ -371,7 +371,7 @@ func TestClaudeTokenProvider_WrongPlatform(t *testing.T) {
 
 	token, err := provider.GetAccessToken(context.Background(), account)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "not an anthropic oauth account")
+	require.Contains(t, err.Error(), "not an anthropic oauth or service account")
 	require.Empty(t, token)
 }
 
@@ -385,7 +385,7 @@ func TestClaudeTokenProvider_WrongAccountType(t *testing.T) {
 
 	token, err := provider.GetAccessToken(context.Background(), account)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "not an anthropic oauth account")
+	require.Contains(t, err.Error(), "not an anthropic oauth or service account")
 	require.Empty(t, token)
 }
 
@@ -399,7 +399,7 @@ func TestClaudeTokenProvider_SetupTokenType(t *testing.T) {
 
 	token, err := provider.GetAccessToken(context.Background(), account)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "not an anthropic oauth account")
+	require.Contains(t, err.Error(), "not an anthropic oauth or service account")
 	require.Empty(t, token)
 }
 

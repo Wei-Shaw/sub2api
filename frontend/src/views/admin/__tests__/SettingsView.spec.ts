@@ -11,6 +11,8 @@ const {
   updateWebSearchEmulationConfig,
   getAdminApiKey,
   getOverloadCooldownSettings,
+  getRateLimit429CooldownSettings,
+  updateRateLimit429CooldownSettings,
   getStreamTimeoutSettings,
   getRectifierSettings,
   getBetaPolicySettings,
@@ -31,6 +33,8 @@ const {
   updateWebSearchEmulationConfig: vi.fn(),
   getAdminApiKey: vi.fn(),
   getOverloadCooldownSettings: vi.fn(),
+  getRateLimit429CooldownSettings: vi.fn(),
+  updateRateLimit429CooldownSettings: vi.fn(),
   getStreamTimeoutSettings: vi.fn(),
   getRectifierSettings: vi.fn(),
   getBetaPolicySettings: vi.fn(),
@@ -57,6 +61,8 @@ vi.mock("@/api", () => ({
       updateWebSearchEmulationConfig,
       getAdminApiKey,
       getOverloadCooldownSettings,
+      getRateLimit429CooldownSettings,
+      updateRateLimit429CooldownSettings,
       getStreamTimeoutSettings,
       getRectifierSettings,
       getBetaPolicySettings,
@@ -362,6 +368,10 @@ const baseSettingsResponse = {
   enable_fingerprint_unification: true,
   enable_metadata_passthrough: false,
   enable_cch_signing: false,
+  enable_anthropic_cache_ttl_1h_injection: false,
+  rewrite_message_cache_control: false,
+  antigravity_user_agent_version: "",
+  openai_codex_user_agent: "",
   payment_enabled: true,
   payment_min_amount: 1,
   payment_max_amount: 10000,
@@ -390,6 +400,7 @@ const baseSettingsResponse = {
   balance_low_notify_enabled: false,
   balance_low_notify_threshold: 0,
   balance_low_notify_recharge_url: "",
+  subscription_expiry_notify_enabled: true,
   account_quota_notify_enabled: false,
   account_quota_notify_emails: [],
 };
@@ -453,6 +464,8 @@ describe("admin SettingsView payment visible method controls", () => {
     updateWebSearchEmulationConfig.mockReset();
     getAdminApiKey.mockReset();
     getOverloadCooldownSettings.mockReset();
+    getRateLimit429CooldownSettings.mockReset();
+    updateRateLimit429CooldownSettings.mockReset();
     getStreamTimeoutSettings.mockReset();
     getRectifierSettings.mockReset();
     getBetaPolicySettings.mockReset();
@@ -489,6 +502,11 @@ describe("admin SettingsView payment visible method controls", () => {
       enabled: true,
       cooldown_minutes: 10,
     });
+    getRateLimit429CooldownSettings.mockResolvedValue({
+      enabled: true,
+      cooldown_seconds: 5,
+    });
+    updateRateLimit429CooldownSettings.mockImplementation(async (payload) => payload);
     getStreamTimeoutSettings.mockResolvedValue({
       enabled: true,
       action: "temp_unsched",
@@ -565,6 +583,66 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(payload).not.toHaveProperty("payment_visible_method_wxpay_source");
     expect(payload).not.toHaveProperty("payment_visible_method_alipay_enabled");
     expect(payload).not.toHaveProperty("payment_visible_method_wxpay_enabled");
+  });
+
+  it("submits Anthropic cache TTL injection gateway setting", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      enable_anthropic_cache_ttl_1h_injection: true,
+    });
+
+    const wrapper = mountView();
+
+    await flushPromises();
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledTimes(1);
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        enable_anthropic_cache_ttl_1h_injection: true,
+      }),
+    );
+  });
+
+  it("submits message cache_control rewrite gateway setting", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      rewrite_message_cache_control: true,
+    });
+
+    const wrapper = mountView();
+
+    await flushPromises();
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledTimes(1);
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rewrite_message_cache_control: true,
+      }),
+    );
+  });
+
+  it("submits Antigravity user agent version gateway setting", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      antigravity_user_agent_version: "1.23.2",
+    });
+
+    const wrapper = mountView();
+
+    await flushPromises();
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledTimes(1);
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        antigravity_user_agent_version: "1.23.2",
+      }),
+    );
   });
 
   it("updates provider enablement immediately and reloads providers", async () => {
@@ -669,6 +747,8 @@ describe("admin SettingsView wechat connect controls", () => {
     updateWebSearchEmulationConfig.mockReset();
     getAdminApiKey.mockReset();
     getOverloadCooldownSettings.mockReset();
+    getRateLimit429CooldownSettings.mockReset();
+    updateRateLimit429CooldownSettings.mockReset();
     getStreamTimeoutSettings.mockReset();
     getRectifierSettings.mockReset();
     getBetaPolicySettings.mockReset();
@@ -708,6 +788,11 @@ describe("admin SettingsView wechat connect controls", () => {
       enabled: true,
       cooldown_minutes: 10,
     });
+    getRateLimit429CooldownSettings.mockResolvedValue({
+      enabled: true,
+      cooldown_seconds: 5,
+    });
+    updateRateLimit429CooldownSettings.mockImplementation(async (payload) => payload);
     getStreamTimeoutSettings.mockResolvedValue({
       enabled: true,
       action: "temp_unsched",
@@ -774,6 +859,24 @@ describe("admin SettingsView wechat connect controls", () => {
           .element as HTMLInputElement
       ).value,
     ).toBe("/auth/wechat/callback");
+  });
+
+  it("links GitHub OAuth Apps guide to GitHub developer settings", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      github_oauth_enabled: true,
+    });
+
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openSecurityTab(wrapper);
+
+    const link = wrapper.get('[data-testid="github-oauth-apps-guide-link"]');
+    expect(link.text()).toContain("OAuth Apps");
+    expect(link.attributes("href")).toBe("https://github.com/settings/developers");
+    expect(link.attributes("target")).toBe("_blank");
+    expect(link.attributes("rel")).toContain("noopener");
   });
 
   it("saves WeChat Connect fields using the backend contract and clears the secret after save", async () => {

@@ -2,12 +2,12 @@ package service
 
 import "strings"
 
-// resolveOpenAIForwardModel determines the upstream model for OpenAI-compatible
-// forwarding. Group-level default mapping only applies when the account itself
-// did not match any explicit model_mapping rule.
+// resolveOpenAIForwardModel 解析 OpenAI 兼容转发使用的模型。
+// defaultMappedModel 只服务于 /v1/messages 的 Claude 系列显式调度映射，
+// 不作为普通 OpenAI 请求的未知模型兜底。
 func resolveOpenAIForwardModel(account *Account, requestedModel, defaultMappedModel string) string {
 	if account == nil {
-		if defaultMappedModel != "" {
+		if defaultMappedModel != "" && claudeMessagesDispatchFamily(requestedModel) != "" {
 			return defaultMappedModel
 		}
 		return requestedModel
@@ -18,7 +18,7 @@ func resolveOpenAIForwardModel(account *Account, requestedModel, defaultMappedMo
 	}
 
 	mappedModel, matched := account.ResolveMappedModel(requestedModel)
-	if !matched && defaultMappedModel != "" && !isExplicitCodexModel(requestedModel) {
+	if !matched && defaultMappedModel != "" && claudeMessagesDispatchFamily(requestedModel) != "" {
 		return defaultMappedModel
 	}
 	return mappedModel
@@ -61,19 +61,20 @@ func normalizeOpenAIGPT55RequestedModel(requestedModel string) (normalizedOpenAI
 	}
 
 	lowered := strings.ToLower(modelPart)
-	if lowered == "gpt-5.5" {
+	switch lowered {
+	case "gpt-5.5":
 		return normalizedOpenAIGPT55Model{
 			original: prefix + "gpt-5.5",
 			fallback: prefix + "gpt-5.4",
 		}, true
-	}
-	if lowered == "gpt-5.5-openai-compact" {
+	case "gpt-5.5-openai-compact":
 		return normalizedOpenAIGPT55Model{
 			original: prefix + "gpt-5.5-openai-compact",
 			fallback: prefix + "gpt-5.4-openai-compact",
 		}, true
+	default:
+		return normalizedOpenAIGPT55Model{}, false
 	}
-	return normalizedOpenAIGPT55Model{}, false
 }
 
 func openAIAccountAdvertisesModel(account *Account, model string) bool {
@@ -100,26 +101,6 @@ func openAIAccountAdvertisesModel(account *Account, model string) bool {
 	}
 	normalized := strings.TrimSpace(strings.TrimPrefix(model, "openai/"))
 	return normalized != model && mappingSupportsRequestedModel(mapping, normalized)
-}
-
-func isExplicitCodexModel(model string) bool {
-	model = strings.TrimSpace(model)
-	if model == "" {
-		return false
-	}
-	if strings.Contains(model, "/") {
-		parts := strings.Split(model, "/")
-		model = parts[len(parts)-1]
-	}
-	model = strings.ToLower(strings.TrimSpace(model))
-	if getNormalizedCodexModel(model) != "" {
-		return true
-	}
-	if strings.HasSuffix(model, "-openai-compact") {
-		base := strings.TrimSuffix(model, "-openai-compact")
-		return getNormalizedCodexModel(base) != ""
-	}
-	return false
 }
 
 // resolveOpenAICompactForwardModel determines the compact-only upstream model

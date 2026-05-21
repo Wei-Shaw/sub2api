@@ -8752,6 +8752,7 @@ type ChannelMonitorMutation struct {
 	updated_at              *time.Time
 	name                    *string
 	provider                *channelmonitor.Provider
+	api_mode                *string
 	endpoint                *string
 	api_key_encrypted       *string
 	primary_model           *string
@@ -9021,6 +9022,42 @@ func (m *ChannelMonitorMutation) OldProvider(ctx context.Context) (v channelmoni
 // ResetProvider resets all changes to the "provider" field.
 func (m *ChannelMonitorMutation) ResetProvider() {
 	m.provider = nil
+}
+
+// SetAPIMode sets the "api_mode" field.
+func (m *ChannelMonitorMutation) SetAPIMode(s string) {
+	m.api_mode = &s
+}
+
+// APIMode returns the value of the "api_mode" field in the mutation.
+func (m *ChannelMonitorMutation) APIMode() (r string, exists bool) {
+	v := m.api_mode
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAPIMode returns the old "api_mode" field's value of the ChannelMonitor entity.
+// If the ChannelMonitor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorMutation) OldAPIMode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAPIMode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAPIMode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAPIMode: %w", err)
+	}
+	return oldValue.APIMode, nil
+}
+
+// ResetAPIMode resets all changes to the "api_mode" field.
+func (m *ChannelMonitorMutation) ResetAPIMode() {
+	m.api_mode = nil
 }
 
 // SetEndpoint sets the "endpoint" field.
@@ -9780,7 +9817,7 @@ func (m *ChannelMonitorMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ChannelMonitorMutation) Fields() []string {
-	fields := make([]string, 0, 17)
+	fields := make([]string, 0, 18)
 	if m.created_at != nil {
 		fields = append(fields, channelmonitor.FieldCreatedAt)
 	}
@@ -9792,6 +9829,9 @@ func (m *ChannelMonitorMutation) Fields() []string {
 	}
 	if m.provider != nil {
 		fields = append(fields, channelmonitor.FieldProvider)
+	}
+	if m.api_mode != nil {
+		fields = append(fields, channelmonitor.FieldAPIMode)
 	}
 	if m.endpoint != nil {
 		fields = append(fields, channelmonitor.FieldEndpoint)
@@ -9848,6 +9888,8 @@ func (m *ChannelMonitorMutation) Field(name string) (ent.Value, bool) {
 		return m.Name()
 	case channelmonitor.FieldProvider:
 		return m.Provider()
+	case channelmonitor.FieldAPIMode:
+		return m.APIMode()
 	case channelmonitor.FieldEndpoint:
 		return m.Endpoint()
 	case channelmonitor.FieldAPIKeyEncrypted:
@@ -9891,6 +9933,8 @@ func (m *ChannelMonitorMutation) OldField(ctx context.Context, name string) (ent
 		return m.OldName(ctx)
 	case channelmonitor.FieldProvider:
 		return m.OldProvider(ctx)
+	case channelmonitor.FieldAPIMode:
+		return m.OldAPIMode(ctx)
 	case channelmonitor.FieldEndpoint:
 		return m.OldEndpoint(ctx)
 	case channelmonitor.FieldAPIKeyEncrypted:
@@ -9953,6 +9997,13 @@ func (m *ChannelMonitorMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetProvider(v)
+		return nil
+	case channelmonitor.FieldAPIMode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAPIMode(v)
 		return nil
 	case channelmonitor.FieldEndpoint:
 		v, ok := value.(string)
@@ -10159,6 +10210,9 @@ func (m *ChannelMonitorMutation) ResetField(name string) error {
 		return nil
 	case channelmonitor.FieldProvider:
 		m.ResetProvider()
+		return nil
+	case channelmonitor.FieldAPIMode:
+		m.ResetAPIMode()
 		return nil
 	case channelmonitor.FieldEndpoint:
 		m.ResetEndpoint()
@@ -12591,6 +12645,7 @@ type ChannelMonitorRequestTemplateMutation struct {
 	updated_at         *time.Time
 	name               *string
 	provider           *channelmonitorrequesttemplate.Provider
+	api_mode           *string
 	description        *string
 	extra_headers      *map[string]string
 	body_override_mode *string
@@ -12844,6 +12899,42 @@ func (m *ChannelMonitorRequestTemplateMutation) OldProvider(ctx context.Context)
 // ResetProvider resets all changes to the "provider" field.
 func (m *ChannelMonitorRequestTemplateMutation) ResetProvider() {
 	m.provider = nil
+}
+
+// SetAPIMode sets the "api_mode" field.
+func (m *ChannelMonitorRequestTemplateMutation) SetAPIMode(s string) {
+	m.api_mode = &s
+}
+
+// APIMode returns the value of the "api_mode" field in the mutation.
+func (m *ChannelMonitorRequestTemplateMutation) APIMode() (r string, exists bool) {
+	v := m.api_mode
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAPIMode returns the old "api_mode" field's value of the ChannelMonitorRequestTemplate entity.
+// If the ChannelMonitorRequestTemplate object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorRequestTemplateMutation) OldAPIMode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAPIMode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAPIMode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAPIMode: %w", err)
+	}
+	return oldValue.APIMode, nil
+}
+
+// ResetAPIMode resets all changes to the "api_mode" field.
+func (m *ChannelMonitorRequestTemplateMutation) ResetAPIMode() {
+	m.api_mode = nil
 }
 
 // SetDescription sets the "description" field.
@@ -13104,7 +13195,7 @@ func (m *ChannelMonitorRequestTemplateMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ChannelMonitorRequestTemplateMutation) Fields() []string {
-	fields := make([]string, 0, 8)
+	fields := make([]string, 0, 9)
 	if m.created_at != nil {
 		fields = append(fields, channelmonitorrequesttemplate.FieldCreatedAt)
 	}
@@ -13116,6 +13207,9 @@ func (m *ChannelMonitorRequestTemplateMutation) Fields() []string {
 	}
 	if m.provider != nil {
 		fields = append(fields, channelmonitorrequesttemplate.FieldProvider)
+	}
+	if m.api_mode != nil {
+		fields = append(fields, channelmonitorrequesttemplate.FieldAPIMode)
 	}
 	if m.description != nil {
 		fields = append(fields, channelmonitorrequesttemplate.FieldDescription)
@@ -13145,6 +13239,8 @@ func (m *ChannelMonitorRequestTemplateMutation) Field(name string) (ent.Value, b
 		return m.Name()
 	case channelmonitorrequesttemplate.FieldProvider:
 		return m.Provider()
+	case channelmonitorrequesttemplate.FieldAPIMode:
+		return m.APIMode()
 	case channelmonitorrequesttemplate.FieldDescription:
 		return m.Description()
 	case channelmonitorrequesttemplate.FieldExtraHeaders:
@@ -13170,6 +13266,8 @@ func (m *ChannelMonitorRequestTemplateMutation) OldField(ctx context.Context, na
 		return m.OldName(ctx)
 	case channelmonitorrequesttemplate.FieldProvider:
 		return m.OldProvider(ctx)
+	case channelmonitorrequesttemplate.FieldAPIMode:
+		return m.OldAPIMode(ctx)
 	case channelmonitorrequesttemplate.FieldDescription:
 		return m.OldDescription(ctx)
 	case channelmonitorrequesttemplate.FieldExtraHeaders:
@@ -13214,6 +13312,13 @@ func (m *ChannelMonitorRequestTemplateMutation) SetField(name string, value ent.
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetProvider(v)
+		return nil
+	case channelmonitorrequesttemplate.FieldAPIMode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAPIMode(v)
 		return nil
 	case channelmonitorrequesttemplate.FieldDescription:
 		v, ok := value.(string)
@@ -13318,6 +13423,9 @@ func (m *ChannelMonitorRequestTemplateMutation) ResetField(name string) error {
 		return nil
 	case channelmonitorrequesttemplate.FieldProvider:
 		m.ResetProvider()
+		return nil
+	case channelmonitorrequesttemplate.FieldAPIMode:
+		m.ResetAPIMode()
 		return nil
 	case channelmonitorrequesttemplate.FieldDescription:
 		m.ResetDescription()
@@ -14764,6 +14872,10 @@ type GroupMutation struct {
 	addmonthly_limit_usd                    *float64
 	default_validity_days                   *int
 	adddefault_validity_days                *int
+	allow_image_generation                  *bool
+	image_rate_independent                  *bool
+	image_rate_multiplier                   *float64
+	addimage_rate_multiplier                *float64
 	image_price_1k                          *float64
 	addimage_price_1k                       *float64
 	image_price_2k                          *float64
@@ -15581,6 +15693,134 @@ func (m *GroupMutation) AddedDefaultValidityDays() (r int, exists bool) {
 func (m *GroupMutation) ResetDefaultValidityDays() {
 	m.default_validity_days = nil
 	m.adddefault_validity_days = nil
+}
+
+// SetAllowImageGeneration sets the "allow_image_generation" field.
+func (m *GroupMutation) SetAllowImageGeneration(b bool) {
+	m.allow_image_generation = &b
+}
+
+// AllowImageGeneration returns the value of the "allow_image_generation" field in the mutation.
+func (m *GroupMutation) AllowImageGeneration() (r bool, exists bool) {
+	v := m.allow_image_generation
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAllowImageGeneration returns the old "allow_image_generation" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldAllowImageGeneration(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAllowImageGeneration is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAllowImageGeneration requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAllowImageGeneration: %w", err)
+	}
+	return oldValue.AllowImageGeneration, nil
+}
+
+// ResetAllowImageGeneration resets all changes to the "allow_image_generation" field.
+func (m *GroupMutation) ResetAllowImageGeneration() {
+	m.allow_image_generation = nil
+}
+
+// SetImageRateIndependent sets the "image_rate_independent" field.
+func (m *GroupMutation) SetImageRateIndependent(b bool) {
+	m.image_rate_independent = &b
+}
+
+// ImageRateIndependent returns the value of the "image_rate_independent" field in the mutation.
+func (m *GroupMutation) ImageRateIndependent() (r bool, exists bool) {
+	v := m.image_rate_independent
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldImageRateIndependent returns the old "image_rate_independent" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldImageRateIndependent(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldImageRateIndependent is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldImageRateIndependent requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldImageRateIndependent: %w", err)
+	}
+	return oldValue.ImageRateIndependent, nil
+}
+
+// ResetImageRateIndependent resets all changes to the "image_rate_independent" field.
+func (m *GroupMutation) ResetImageRateIndependent() {
+	m.image_rate_independent = nil
+}
+
+// SetImageRateMultiplier sets the "image_rate_multiplier" field.
+func (m *GroupMutation) SetImageRateMultiplier(f float64) {
+	m.image_rate_multiplier = &f
+	m.addimage_rate_multiplier = nil
+}
+
+// ImageRateMultiplier returns the value of the "image_rate_multiplier" field in the mutation.
+func (m *GroupMutation) ImageRateMultiplier() (r float64, exists bool) {
+	v := m.image_rate_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldImageRateMultiplier returns the old "image_rate_multiplier" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldImageRateMultiplier(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldImageRateMultiplier is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldImageRateMultiplier requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldImageRateMultiplier: %w", err)
+	}
+	return oldValue.ImageRateMultiplier, nil
+}
+
+// AddImageRateMultiplier adds f to the "image_rate_multiplier" field.
+func (m *GroupMutation) AddImageRateMultiplier(f float64) {
+	if m.addimage_rate_multiplier != nil {
+		*m.addimage_rate_multiplier += f
+	} else {
+		m.addimage_rate_multiplier = &f
+	}
+}
+
+// AddedImageRateMultiplier returns the value that was added to the "image_rate_multiplier" field in this mutation.
+func (m *GroupMutation) AddedImageRateMultiplier() (r float64, exists bool) {
+	v := m.addimage_rate_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetImageRateMultiplier resets all changes to the "image_rate_multiplier" field.
+func (m *GroupMutation) ResetImageRateMultiplier() {
+	m.image_rate_multiplier = nil
+	m.addimage_rate_multiplier = nil
 }
 
 // SetImagePrice1k sets the "image_price_1k" field.
@@ -16791,7 +17031,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 31)
+	fields := make([]string, 0, 34)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -16833,6 +17073,15 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.default_validity_days != nil {
 		fields = append(fields, group.FieldDefaultValidityDays)
+	}
+	if m.allow_image_generation != nil {
+		fields = append(fields, group.FieldAllowImageGeneration)
+	}
+	if m.image_rate_independent != nil {
+		fields = append(fields, group.FieldImageRateIndependent)
+	}
+	if m.image_rate_multiplier != nil {
+		fields = append(fields, group.FieldImageRateMultiplier)
 	}
 	if m.image_price_1k != nil {
 		fields = append(fields, group.FieldImagePrice1k)
@@ -16921,6 +17170,12 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.MonthlyLimitUsd()
 	case group.FieldDefaultValidityDays:
 		return m.DefaultValidityDays()
+	case group.FieldAllowImageGeneration:
+		return m.AllowImageGeneration()
+	case group.FieldImageRateIndependent:
+		return m.ImageRateIndependent()
+	case group.FieldImageRateMultiplier:
+		return m.ImageRateMultiplier()
 	case group.FieldImagePrice1k:
 		return m.ImagePrice1k()
 	case group.FieldImagePrice2k:
@@ -16992,6 +17247,12 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldMonthlyLimitUsd(ctx)
 	case group.FieldDefaultValidityDays:
 		return m.OldDefaultValidityDays(ctx)
+	case group.FieldAllowImageGeneration:
+		return m.OldAllowImageGeneration(ctx)
+	case group.FieldImageRateIndependent:
+		return m.OldImageRateIndependent(ctx)
+	case group.FieldImageRateMultiplier:
+		return m.OldImageRateMultiplier(ctx)
 	case group.FieldImagePrice1k:
 		return m.OldImagePrice1k(ctx)
 	case group.FieldImagePrice2k:
@@ -17132,6 +17393,27 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetDefaultValidityDays(v)
+		return nil
+	case group.FieldAllowImageGeneration:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAllowImageGeneration(v)
+		return nil
+	case group.FieldImageRateIndependent:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetImageRateIndependent(v)
+		return nil
+	case group.FieldImageRateMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetImageRateMultiplier(v)
 		return nil
 	case group.FieldImagePrice1k:
 		v, ok := value.(float64)
@@ -17275,6 +17557,9 @@ func (m *GroupMutation) AddedFields() []string {
 	if m.adddefault_validity_days != nil {
 		fields = append(fields, group.FieldDefaultValidityDays)
 	}
+	if m.addimage_rate_multiplier != nil {
+		fields = append(fields, group.FieldImageRateMultiplier)
+	}
 	if m.addimage_price_1k != nil {
 		fields = append(fields, group.FieldImagePrice1k)
 	}
@@ -17314,6 +17599,8 @@ func (m *GroupMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedMonthlyLimitUsd()
 	case group.FieldDefaultValidityDays:
 		return m.AddedDefaultValidityDays()
+	case group.FieldImageRateMultiplier:
+		return m.AddedImageRateMultiplier()
 	case group.FieldImagePrice1k:
 		return m.AddedImagePrice1k()
 	case group.FieldImagePrice2k:
@@ -17371,6 +17658,13 @@ func (m *GroupMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddDefaultValidityDays(v)
+		return nil
+	case group.FieldImageRateMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddImageRateMultiplier(v)
 		return nil
 	case group.FieldImagePrice1k:
 		v, ok := value.(float64)
@@ -17558,6 +17852,15 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldDefaultValidityDays:
 		m.ResetDefaultValidityDays()
+		return nil
+	case group.FieldAllowImageGeneration:
+		m.ResetAllowImageGeneration()
+		return nil
+	case group.FieldImageRateIndependent:
+		m.ResetImageRateIndependent()
+		return nil
+	case group.FieldImageRateMultiplier:
+		m.ResetImageRateMultiplier()
 		return nil
 	case group.FieldImagePrice1k:
 		m.ResetImagePrice1k()
@@ -28407,6 +28710,7 @@ type RedeemCodeMutation struct {
 	used_at          *time.Time
 	notes            *string
 	created_at       *time.Time
+	expires_at       *time.Time
 	validity_days    *int
 	addvalidity_days *int
 	clearedFields    map[string]struct{}
@@ -28864,6 +29168,55 @@ func (m *RedeemCodeMutation) ResetCreatedAt() {
 	m.created_at = nil
 }
 
+// SetExpiresAt sets the "expires_at" field.
+func (m *RedeemCodeMutation) SetExpiresAt(t time.Time) {
+	m.expires_at = &t
+}
+
+// ExpiresAt returns the value of the "expires_at" field in the mutation.
+func (m *RedeemCodeMutation) ExpiresAt() (r time.Time, exists bool) {
+	v := m.expires_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExpiresAt returns the old "expires_at" field's value of the RedeemCode entity.
+// If the RedeemCode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RedeemCodeMutation) OldExpiresAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExpiresAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExpiresAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExpiresAt: %w", err)
+	}
+	return oldValue.ExpiresAt, nil
+}
+
+// ClearExpiresAt clears the value of the "expires_at" field.
+func (m *RedeemCodeMutation) ClearExpiresAt() {
+	m.expires_at = nil
+	m.clearedFields[redeemcode.FieldExpiresAt] = struct{}{}
+}
+
+// ExpiresAtCleared returns if the "expires_at" field was cleared in this mutation.
+func (m *RedeemCodeMutation) ExpiresAtCleared() bool {
+	_, ok := m.clearedFields[redeemcode.FieldExpiresAt]
+	return ok
+}
+
+// ResetExpiresAt resets all changes to the "expires_at" field.
+func (m *RedeemCodeMutation) ResetExpiresAt() {
+	m.expires_at = nil
+	delete(m.clearedFields, redeemcode.FieldExpiresAt)
+}
+
 // SetGroupID sets the "group_id" field.
 func (m *RedeemCodeMutation) SetGroupID(i int64) {
 	m.group = &i
@@ -29070,7 +29423,7 @@ func (m *RedeemCodeMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RedeemCodeMutation) Fields() []string {
-	fields := make([]string, 0, 10)
+	fields := make([]string, 0, 11)
 	if m.code != nil {
 		fields = append(fields, redeemcode.FieldCode)
 	}
@@ -29094,6 +29447,9 @@ func (m *RedeemCodeMutation) Fields() []string {
 	}
 	if m.created_at != nil {
 		fields = append(fields, redeemcode.FieldCreatedAt)
+	}
+	if m.expires_at != nil {
+		fields = append(fields, redeemcode.FieldExpiresAt)
 	}
 	if m.group != nil {
 		fields = append(fields, redeemcode.FieldGroupID)
@@ -29125,6 +29481,8 @@ func (m *RedeemCodeMutation) Field(name string) (ent.Value, bool) {
 		return m.Notes()
 	case redeemcode.FieldCreatedAt:
 		return m.CreatedAt()
+	case redeemcode.FieldExpiresAt:
+		return m.ExpiresAt()
 	case redeemcode.FieldGroupID:
 		return m.GroupID()
 	case redeemcode.FieldValidityDays:
@@ -29154,6 +29512,8 @@ func (m *RedeemCodeMutation) OldField(ctx context.Context, name string) (ent.Val
 		return m.OldNotes(ctx)
 	case redeemcode.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
+	case redeemcode.FieldExpiresAt:
+		return m.OldExpiresAt(ctx)
 	case redeemcode.FieldGroupID:
 		return m.OldGroupID(ctx)
 	case redeemcode.FieldValidityDays:
@@ -29222,6 +29582,13 @@ func (m *RedeemCodeMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCreatedAt(v)
+		return nil
+	case redeemcode.FieldExpiresAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExpiresAt(v)
 		return nil
 	case redeemcode.FieldGroupID:
 		v, ok := value.(int64)
@@ -29303,6 +29670,9 @@ func (m *RedeemCodeMutation) ClearedFields() []string {
 	if m.FieldCleared(redeemcode.FieldNotes) {
 		fields = append(fields, redeemcode.FieldNotes)
 	}
+	if m.FieldCleared(redeemcode.FieldExpiresAt) {
+		fields = append(fields, redeemcode.FieldExpiresAt)
+	}
 	if m.FieldCleared(redeemcode.FieldGroupID) {
 		fields = append(fields, redeemcode.FieldGroupID)
 	}
@@ -29328,6 +29698,9 @@ func (m *RedeemCodeMutation) ClearField(name string) error {
 		return nil
 	case redeemcode.FieldNotes:
 		m.ClearNotes()
+		return nil
+	case redeemcode.FieldExpiresAt:
+		m.ClearExpiresAt()
 		return nil
 	case redeemcode.FieldGroupID:
 		m.ClearGroupID()
@@ -29363,6 +29736,9 @@ func (m *RedeemCodeMutation) ResetField(name string) error {
 		return nil
 	case redeemcode.FieldCreatedAt:
 		m.ResetCreatedAt()
+		return nil
+	case redeemcode.FieldExpiresAt:
+		m.ResetExpiresAt()
 		return nil
 	case redeemcode.FieldGroupID:
 		m.ResetGroupID()
@@ -34065,6 +34441,10 @@ type UsageLogMutation struct {
 	image_count                 *int
 	addimage_count              *int
 	image_size                  *string
+	image_input_size            *string
+	image_output_size           *string
+	image_size_source           *string
+	image_size_breakdown        *map[string]int
 	cache_ttl_overridden        *bool
 	created_at                  *time.Time
 	clearedFields               map[string]struct{}
@@ -36007,6 +36387,202 @@ func (m *UsageLogMutation) ResetImageSize() {
 	delete(m.clearedFields, usagelog.FieldImageSize)
 }
 
+// SetImageInputSize sets the "image_input_size" field.
+func (m *UsageLogMutation) SetImageInputSize(s string) {
+	m.image_input_size = &s
+}
+
+// ImageInputSize returns the value of the "image_input_size" field in the mutation.
+func (m *UsageLogMutation) ImageInputSize() (r string, exists bool) {
+	v := m.image_input_size
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldImageInputSize returns the old "image_input_size" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldImageInputSize(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldImageInputSize is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldImageInputSize requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldImageInputSize: %w", err)
+	}
+	return oldValue.ImageInputSize, nil
+}
+
+// ClearImageInputSize clears the value of the "image_input_size" field.
+func (m *UsageLogMutation) ClearImageInputSize() {
+	m.image_input_size = nil
+	m.clearedFields[usagelog.FieldImageInputSize] = struct{}{}
+}
+
+// ImageInputSizeCleared returns if the "image_input_size" field was cleared in this mutation.
+func (m *UsageLogMutation) ImageInputSizeCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldImageInputSize]
+	return ok
+}
+
+// ResetImageInputSize resets all changes to the "image_input_size" field.
+func (m *UsageLogMutation) ResetImageInputSize() {
+	m.image_input_size = nil
+	delete(m.clearedFields, usagelog.FieldImageInputSize)
+}
+
+// SetImageOutputSize sets the "image_output_size" field.
+func (m *UsageLogMutation) SetImageOutputSize(s string) {
+	m.image_output_size = &s
+}
+
+// ImageOutputSize returns the value of the "image_output_size" field in the mutation.
+func (m *UsageLogMutation) ImageOutputSize() (r string, exists bool) {
+	v := m.image_output_size
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldImageOutputSize returns the old "image_output_size" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldImageOutputSize(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldImageOutputSize is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldImageOutputSize requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldImageOutputSize: %w", err)
+	}
+	return oldValue.ImageOutputSize, nil
+}
+
+// ClearImageOutputSize clears the value of the "image_output_size" field.
+func (m *UsageLogMutation) ClearImageOutputSize() {
+	m.image_output_size = nil
+	m.clearedFields[usagelog.FieldImageOutputSize] = struct{}{}
+}
+
+// ImageOutputSizeCleared returns if the "image_output_size" field was cleared in this mutation.
+func (m *UsageLogMutation) ImageOutputSizeCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldImageOutputSize]
+	return ok
+}
+
+// ResetImageOutputSize resets all changes to the "image_output_size" field.
+func (m *UsageLogMutation) ResetImageOutputSize() {
+	m.image_output_size = nil
+	delete(m.clearedFields, usagelog.FieldImageOutputSize)
+}
+
+// SetImageSizeSource sets the "image_size_source" field.
+func (m *UsageLogMutation) SetImageSizeSource(s string) {
+	m.image_size_source = &s
+}
+
+// ImageSizeSource returns the value of the "image_size_source" field in the mutation.
+func (m *UsageLogMutation) ImageSizeSource() (r string, exists bool) {
+	v := m.image_size_source
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldImageSizeSource returns the old "image_size_source" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldImageSizeSource(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldImageSizeSource is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldImageSizeSource requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldImageSizeSource: %w", err)
+	}
+	return oldValue.ImageSizeSource, nil
+}
+
+// ClearImageSizeSource clears the value of the "image_size_source" field.
+func (m *UsageLogMutation) ClearImageSizeSource() {
+	m.image_size_source = nil
+	m.clearedFields[usagelog.FieldImageSizeSource] = struct{}{}
+}
+
+// ImageSizeSourceCleared returns if the "image_size_source" field was cleared in this mutation.
+func (m *UsageLogMutation) ImageSizeSourceCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldImageSizeSource]
+	return ok
+}
+
+// ResetImageSizeSource resets all changes to the "image_size_source" field.
+func (m *UsageLogMutation) ResetImageSizeSource() {
+	m.image_size_source = nil
+	delete(m.clearedFields, usagelog.FieldImageSizeSource)
+}
+
+// SetImageSizeBreakdown sets the "image_size_breakdown" field.
+func (m *UsageLogMutation) SetImageSizeBreakdown(value map[string]int) {
+	m.image_size_breakdown = &value
+}
+
+// ImageSizeBreakdown returns the value of the "image_size_breakdown" field in the mutation.
+func (m *UsageLogMutation) ImageSizeBreakdown() (r map[string]int, exists bool) {
+	v := m.image_size_breakdown
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldImageSizeBreakdown returns the old "image_size_breakdown" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldImageSizeBreakdown(ctx context.Context) (v map[string]int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldImageSizeBreakdown is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldImageSizeBreakdown requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldImageSizeBreakdown: %w", err)
+	}
+	return oldValue.ImageSizeBreakdown, nil
+}
+
+// ClearImageSizeBreakdown clears the value of the "image_size_breakdown" field.
+func (m *UsageLogMutation) ClearImageSizeBreakdown() {
+	m.image_size_breakdown = nil
+	m.clearedFields[usagelog.FieldImageSizeBreakdown] = struct{}{}
+}
+
+// ImageSizeBreakdownCleared returns if the "image_size_breakdown" field was cleared in this mutation.
+func (m *UsageLogMutation) ImageSizeBreakdownCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldImageSizeBreakdown]
+	return ok
+}
+
+// ResetImageSizeBreakdown resets all changes to the "image_size_breakdown" field.
+func (m *UsageLogMutation) ResetImageSizeBreakdown() {
+	m.image_size_breakdown = nil
+	delete(m.clearedFields, usagelog.FieldImageSizeBreakdown)
+}
+
 // SetCacheTTLOverridden sets the "cache_ttl_overridden" field.
 func (m *UsageLogMutation) SetCacheTTLOverridden(b bool) {
 	m.cache_ttl_overridden = &b
@@ -36248,7 +36824,7 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 37)
+	fields := make([]string, 0, 41)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 	}
@@ -36354,6 +36930,18 @@ func (m *UsageLogMutation) Fields() []string {
 	if m.image_size != nil {
 		fields = append(fields, usagelog.FieldImageSize)
 	}
+	if m.image_input_size != nil {
+		fields = append(fields, usagelog.FieldImageInputSize)
+	}
+	if m.image_output_size != nil {
+		fields = append(fields, usagelog.FieldImageOutputSize)
+	}
+	if m.image_size_source != nil {
+		fields = append(fields, usagelog.FieldImageSizeSource)
+	}
+	if m.image_size_breakdown != nil {
+		fields = append(fields, usagelog.FieldImageSizeBreakdown)
+	}
 	if m.cache_ttl_overridden != nil {
 		fields = append(fields, usagelog.FieldCacheTTLOverridden)
 	}
@@ -36438,6 +37026,14 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.ImageCount()
 	case usagelog.FieldImageSize:
 		return m.ImageSize()
+	case usagelog.FieldImageInputSize:
+		return m.ImageInputSize()
+	case usagelog.FieldImageOutputSize:
+		return m.ImageOutputSize()
+	case usagelog.FieldImageSizeSource:
+		return m.ImageSizeSource()
+	case usagelog.FieldImageSizeBreakdown:
+		return m.ImageSizeBreakdown()
 	case usagelog.FieldCacheTTLOverridden:
 		return m.CacheTTLOverridden()
 	case usagelog.FieldCreatedAt:
@@ -36521,6 +37117,14 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldImageCount(ctx)
 	case usagelog.FieldImageSize:
 		return m.OldImageSize(ctx)
+	case usagelog.FieldImageInputSize:
+		return m.OldImageInputSize(ctx)
+	case usagelog.FieldImageOutputSize:
+		return m.OldImageOutputSize(ctx)
+	case usagelog.FieldImageSizeSource:
+		return m.OldImageSizeSource(ctx)
+	case usagelog.FieldImageSizeBreakdown:
+		return m.OldImageSizeBreakdown(ctx)
 	case usagelog.FieldCacheTTLOverridden:
 		return m.OldCacheTTLOverridden(ctx)
 	case usagelog.FieldCreatedAt:
@@ -36778,6 +37382,34 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetImageSize(v)
+		return nil
+	case usagelog.FieldImageInputSize:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetImageInputSize(v)
+		return nil
+	case usagelog.FieldImageOutputSize:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetImageOutputSize(v)
+		return nil
+	case usagelog.FieldImageSizeSource:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetImageSizeSource(v)
+		return nil
+	case usagelog.FieldImageSizeBreakdown:
+		v, ok := value.(map[string]int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetImageSizeBreakdown(v)
 		return nil
 	case usagelog.FieldCacheTTLOverridden:
 		v, ok := value.(bool)
@@ -37096,6 +37728,18 @@ func (m *UsageLogMutation) ClearedFields() []string {
 	if m.FieldCleared(usagelog.FieldImageSize) {
 		fields = append(fields, usagelog.FieldImageSize)
 	}
+	if m.FieldCleared(usagelog.FieldImageInputSize) {
+		fields = append(fields, usagelog.FieldImageInputSize)
+	}
+	if m.FieldCleared(usagelog.FieldImageOutputSize) {
+		fields = append(fields, usagelog.FieldImageOutputSize)
+	}
+	if m.FieldCleared(usagelog.FieldImageSizeSource) {
+		fields = append(fields, usagelog.FieldImageSizeSource)
+	}
+	if m.FieldCleared(usagelog.FieldImageSizeBreakdown) {
+		fields = append(fields, usagelog.FieldImageSizeBreakdown)
+	}
 	return fields
 }
 
@@ -37151,6 +37795,18 @@ func (m *UsageLogMutation) ClearField(name string) error {
 		return nil
 	case usagelog.FieldImageSize:
 		m.ClearImageSize()
+		return nil
+	case usagelog.FieldImageInputSize:
+		m.ClearImageInputSize()
+		return nil
+	case usagelog.FieldImageOutputSize:
+		m.ClearImageOutputSize()
+		return nil
+	case usagelog.FieldImageSizeSource:
+		m.ClearImageSizeSource()
+		return nil
+	case usagelog.FieldImageSizeBreakdown:
+		m.ClearImageSizeBreakdown()
 		return nil
 	}
 	return fmt.Errorf("unknown UsageLog nullable field %s", name)
@@ -37264,6 +37920,18 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldImageSize:
 		m.ResetImageSize()
+		return nil
+	case usagelog.FieldImageInputSize:
+		m.ResetImageInputSize()
+		return nil
+	case usagelog.FieldImageOutputSize:
+		m.ResetImageOutputSize()
+		return nil
+	case usagelog.FieldImageSizeSource:
+		m.ResetImageSizeSource()
+		return nil
+	case usagelog.FieldImageSizeBreakdown:
+		m.ResetImageSizeBreakdown()
 		return nil
 	case usagelog.FieldCacheTTLOverridden:
 		m.ResetCacheTTLOverridden()

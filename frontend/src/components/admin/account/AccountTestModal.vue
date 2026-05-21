@@ -55,17 +55,6 @@
         />
       </div>
 
-      <div v-if="isOpenAIAccount" class="space-y-1.5">
-        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
-          {{ t('admin.accounts.openai.testMode') }}
-        </label>
-        <Select
-          v-model="testMode"
-          :options="openAITestModeOptions"
-          :disabled="status === 'connecting'"
-        />
-      </div>
-
       <div v-if="supportsImageTest" class="space-y-1.5">
         <TextArea
           v-model="testPrompt"
@@ -272,7 +261,6 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'close'): void
-  (e: 'tested', accountId: number): void
 }>()
 
 const terminalRef = ref<HTMLElement | null>(null)
@@ -284,16 +272,10 @@ const availableModels = ref<ClaudeModel[]>([])
 const selectedModelId = ref('')
 const testPrompt = ref('')
 const loadingModels = ref(false)
-const testMode = ref<'default' | 'compact'>('default')
 let abortController: AbortController | null = null
 const generatedImages = ref<PreviewImage[]>([])
 const previewImageUrl = ref('')
-const isOpenAIAccount = computed(() => props.account?.platform === 'openai')
-const openAITestModeOptions = computed(() => [
-  { value: 'default', label: t('admin.accounts.openai.testModeDefault') },
-  { value: 'compact', label: t('admin.accounts.openai.testModeCompact') }
-])
-const prioritizedGeminiModels = ['gemini-3.1-flash-image', 'gemini-2.5-flash-image', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-3-flash-preview', 'gemini-3-pro-preview', 'gemini-2.0-flash']
+const prioritizedGeminiModels = ['gemini-3.1-flash-image', 'gemini-2.5-flash-image', 'gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-3-flash-preview', 'gemini-3-pro-preview', 'gemini-2.0-flash']
 const supportsGeminiImageTest = computed(() => {
   const modelID = selectedModelId.value.toLowerCase()
   if (!modelID.startsWith('gemini-') || !modelID.includes('-image')) return false
@@ -326,7 +308,6 @@ watch(
   async (newVal) => {
     if (newVal && props.account) {
       testPrompt.value = ''
-      testMode.value = 'default'
       resetState()
       await loadAvailableModels()
     } else {
@@ -429,10 +410,9 @@ const startTest = async () => {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model_id: selectedModelId.value,
-        prompt: supportsImageTest.value ? testPrompt.value.trim() : '',
-        mode: isOpenAIAccount.value ? testMode.value : 'default'
-      }),
+              model_id: selectedModelId.value,
+              prompt: supportsImageTest.value ? testPrompt.value.trim() : ''
+            }),
       signal: abortController.signal
     })
 
@@ -532,9 +512,6 @@ const handleEvent = (event: {
       }
       if (event.success) {
         status.value = 'success'
-        if (props.account?.id) {
-          emit('tested', props.account.id)
-        }
       } else {
         status.value = 'error'
         errorMessage.value = event.error || 'Test failed'

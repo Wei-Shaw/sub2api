@@ -324,6 +324,30 @@ func (s *UsageService) GetAPIKeyModelStats(ctx context.Context, apiKeyID int64, 
 	return stats, nil
 }
 
+// GetAPIKeyDailyUsage returns daily usage stats for a user's API key.
+func (s *UsageService) GetAPIKeyDailyUsage(ctx context.Context, userID, apiKeyID int64, startTime, endTime time.Time) ([]usagestats.APIKeyDailyUsagePoint, error) {
+	trend, err := s.usageRepo.GetUsageTrendWithFilters(ctx, startTime, endTime, "day", userID, apiKeyID, 0, 0, "", nil, nil, nil)
+	if err != nil {
+		return nil, fmt.Errorf("get api key daily usage: %w", err)
+	}
+
+	points := make([]usagestats.APIKeyDailyUsagePoint, 0, len(trend))
+	for _, row := range trend {
+		points = append(points, usagestats.APIKeyDailyUsagePoint{
+			Date:             row.Date,
+			Requests:         row.Requests,
+			InputTokens:      row.InputTokens,
+			OutputTokens:     row.OutputTokens,
+			CacheReadTokens:  row.CacheReadTokens,
+			CacheWriteTokens: row.CacheCreationTokens,
+			TotalTokens:      row.TotalTokens,
+			Cost:             row.Cost,
+			ActualCost:       row.ActualCost,
+		})
+	}
+	return points, nil
+}
+
 // GetBatchAPIKeyUsageStats returns today/total actual_cost for given api keys.
 func (s *UsageService) GetBatchAPIKeyUsageStats(ctx context.Context, apiKeyIDs []int64, startTime, endTime time.Time) (map[int64]*usagestats.BatchAPIKeyUsageStats, error) {
 	stats, err := s.usageRepo.GetBatchAPIKeyUsageStats(ctx, apiKeyIDs, startTime, endTime)

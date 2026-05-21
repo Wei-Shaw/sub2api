@@ -91,10 +91,8 @@ temp/
 # 构建产物
 # ===================
 dist/
-dist-packages/
 build/
 release/
-release-verify/
 
 # 后端嵌入的前端构建产物
 # Keep a placeholder file so `//go:embed all:dist` always has a match in CI/lint,
@@ -125,7 +123,6 @@ scripts
 #openspec/
 code-reviews/
 AGENTS.md
-tools/backup_and_add_openai_gpt55.sh
 backend/cmd/server/server
 deploy/docker-compose.override.yml
 .gocache/
@@ -139,4 +136,3 @@ docs/*
 frontend/coverage/
 aicodex
 output/
-backups/

@@ -428,7 +428,8 @@ func normalizeAnthropicInputSchema(schema json.RawMessage) json.RawMessage {
 //	"auto"                                     → {"type":"auto"}
 //	"required"                                 → {"type":"any"}
 //	"none"                                     → {"type":"none"}
-//	{"type":"function","function":{"name":"X"}} → {"type":"tool","name":"X"}
+//	{"type":"function","name":"X"}                 → {"type":"tool","name":"X"}
+//	{"type":"function","function":{"name":"X"}}     → {"type":"tool","name":"X"} // legacy
 func convertResponsesToAnthropicToolChoice(raw json.RawMessage) (json.RawMessage, error) {
 	// Try as string first
 	var s string
@@ -448,14 +449,22 @@ func convertResponsesToAnthropicToolChoice(raw json.RawMessage) (json.RawMessage
 	// Try as object with type=function
 	var tc struct {
 		Type     string `json:"type"`
+		Name     string `json:"name"`
 		Function struct {
 			Name string `json:"name"`
 		} `json:"function"`
 	}
-	if err := json.Unmarshal(raw, &tc); err == nil && tc.Type == "function" && tc.Function.Name != "" {
+	if err := json.Unmarshal(raw, &tc); err == nil && tc.Type == "function" {
+		name := strings.TrimSpace(tc.Name)
+		if name == "" {
+			name = strings.TrimSpace(tc.Function.Name)
+		}
+		if name == "" {
+			return raw, nil
+		}
 		return json.Marshal(map[string]string{
 			"type": "tool",
-			"name": tc.Function.Name,
+			"name": name,
 		})
 	}
 

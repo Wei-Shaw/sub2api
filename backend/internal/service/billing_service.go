@@ -2,8 +2,8 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
-
 	"log"
 	"strings"
 
@@ -109,6 +109,10 @@ type CostBreakdown struct {
 	ActualCost        float64 // 应用倍率后的实际费用
 	BillingMode       string  // 计费模式（"token"/"per_request"/"image"），由 CalculateCostUnified 填充
 }
+
+// ErrModelPricingUnavailable indicates that none of the configured pricing
+// sources can price the requested model.
+var ErrModelPricingUnavailable = errors.New("pricing not found")
 
 // BillingService 计费服务
 type BillingService struct {
@@ -226,6 +230,12 @@ func (s *BillingService) initFallbackPricing() {
 		CacheReadPricePerToken: 7.5e-8,
 		SupportsCacheBreakdown: false,
 	}
+	s.fallbackPrices["gpt-5.4-nano"] = &ModelPricing{
+		InputPricePerToken:     2e-7,
+		OutputPricePerToken:    1.25e-6,
+		CacheReadPricePerToken: 2e-8,
+		SupportsCacheBreakdown: false,
+	}
 	// OpenAI GPT-5.2（本地兜底）
 	s.fallbackPrices["gpt-5.2"] = &ModelPricing{
 		InputPricePerToken:             1.75e-6,
@@ -288,13 +298,14 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	}
 
 	// OpenAI 仅匹配已知 GPT-5/Codex 族，避免未知 OpenAI 型号误计价。
-	if strings.Contains(modelLower, "gpt-5") || strings.Contains(modelLower, "codex") {
-		normalized := normalizeCodexModel(modelLower)
+	if normalized := normalizeKnownOpenAICodexModel(modelLower); normalized != "" {
 		switch normalized {
 		case "gpt-5.5":
 			return s.fallbackPrices["gpt-5.5"]
 		case "gpt-5.4-mini":
 			return s.fallbackPrices["gpt-5.4-mini"]
+		case "gpt-5.4-nano":
+			return s.fallbackPrices["gpt-5.4-nano"]
 		case "gpt-5.4":
 			return s.fallbackPrices["gpt-5.4"]
 		case "gpt-5.2":
@@ -348,7 +359,7 @@ func (s *BillingService) GetModelPricing(model string) (*ModelPricing, error) {
 		return s.applyModelSpecificPricingPolicy(model, fallback), nil
 	}
 
-	return nil, fmt.Errorf("pricing not found for model: %s", model)
+	return nil, fmt.Errorf("%w for model: %s", ErrModelPricingUnavailable, model)
 }
 
 // GetModelPricingWithChannel 获取模型定价，渠道配置的价格覆盖默认值
@@ -445,7 +456,7 @@ func (s *BillingService) calculateTokenCost(resolved *ResolvedPricing, input Cos
 
 	pricing := input.Resolver.GetIntervalPricing(resolved, totalContext)
 	if pricing == nil {
-		return nil, fmt.Errorf("no pricing available for model: %s", input.Model)
+		return nil, fmt.Errorf("no pricing available for model: %s: %w", input.Model, ErrModelPricingUnavailable)
 	}
 
 	pricing = s.applyModelSpecificPricingPolicy(input.Model, pricing)
@@ -636,13 +647,10 @@ func (s *BillingService) shouldApplySessionLongContextPricing(tokens UsageTokens
 }
 
 func isOpenAIGPT54Model(model string) bool {
-	trimmed := strings.TrimSpace(strings.ToLower(model))
-	// 仅当模型字符串实际属于 GPT-5/Codex 族时才做归一判定，避免 normalizeCodexModel
-	// 的默认兜底把非 OpenAI 模型（claude-*、gemini-*、gpt-4o）误识别为 gpt-5.4。
-	if !strings.Contains(trimmed, "gpt-5") && !strings.Contains(trimmed, "codex") {
-		return false
-	}
-	normalized := normalizeCodexModel(trimmed)
+	// 仅当模型字符串实际属于已知 GPT-5/Codex 族时才做归一判定，避免
+	// normalizeCodexModel 的默认兜底把非 OpenAI 模型（claude-*、gemini-*、gpt-4o）
+	// 误识别为 gpt-5.4。
+	normalized := normalizeKnownOpenAICodexModel(model)
 	return normalized == "gpt-5.4" || normalized == "gpt-5.5"
 }
 
@@ -801,6 +809,7 @@ func (s *BillingService) CalculateImageCost(model string, imageSize string, imag
 	if imageCount <= 0 {
 		return &CostBreakdown{}
 	}
+	imageSize = NormalizeImageBillingTierOrDefault(imageSize)
 
 	// 获取单价
 	unitPrice := s.getImageUnitPrice(model, imageSize, groupConfig)
