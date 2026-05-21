@@ -317,6 +317,10 @@ func (r *accountRepository) Update(ctx context.Context, account *service.Account
 	if account == nil {
 		return nil
 REDACTED
+	schedulable := account.Schedulable
+	if account.Status == service.StatusError {
+		schedulable = false
+REDACTED
 
 	builder := r.client.Account.UpdateOneID(account.ID).
 		SetName(account.Name).
@@ -329,7 +333,7 @@ REDACTED
 		SetPriority(account.Priority).
 		SetStatus(account.Status).
 		SetErrorMessage(account.ErrorMessage).
-		SetSchedulable(account.Schedulable).
+		SetSchedulable(schedulable).
 		SetAutoPauseOnExpired(account.AutoPauseOnExpired)
 
 	if account.RateMultiplier != nil {
@@ -716,6 +720,7 @@ func (r *accountRepository) SetError(ctx context.Context, id int64, errorMsg str
 		Where(dbaccount.IDEQ(id)).
 		SetStatus(service.StatusError).
 		SetErrorMessage(errorMsg).
+		SetSchedulable(false).
 		Save(ctx)
 	if err != nil {
 		return err

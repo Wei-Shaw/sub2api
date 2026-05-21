@@ -729,7 +729,7 @@ REDACTED
 // --- SetError ---
 
 func (s *AccountRepoSuite) TestSetError() {
-	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-err", Status: service.StatusActiveREDACTED)
+	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-err", Status: service.StatusActive, Schedulable: trueREDACTED)
 
 	s.Require().NoError(s.repo.SetError(s.ctx, account.ID, "something went wrong"))
 
@@ -737,6 +737,22 @@ func (s *AccountRepoSuite) TestSetError() {
 	s.Require().NoError(err)
 	s.Require().Equal(service.StatusError, got.Status)
 	s.Require().Equal("something went wrong", got.ErrorMessage)
+	s.Require().False(got.Schedulable)
+REDACTED
+
+func (s *AccountRepoSuite) TestUpdateErrorStatusUnschedulesAccount() {
+	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-update-err", Status: service.StatusActive, Schedulable: trueREDACTED)
+	account.Status = service.StatusError
+	account.ErrorMessage = "token revoked"
+	account.Schedulable = true
+
+	s.Require().NoError(s.repo.Update(s.ctx, account))
+
+	got, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(service.StatusError, got.Status)
+	s.Require().Equal("token revoked", got.ErrorMessage)
+	s.Require().False(got.Schedulable)
 REDACTED
 
 func (s *AccountRepoSuite) TestClearError_SyncSchedulerSnapshotOnRecovery() {
