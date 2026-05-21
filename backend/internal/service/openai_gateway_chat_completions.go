@@ -15,7 +15,6 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -48,11 +47,11 @@ var cursorResponsesUnsupportedFields = []string{
 // 正确的，但 sub2api 接入 DeepSeek/Kimi/GLM 等第三方 OpenAI 兼容上游后假设破裂：
 // 这些上游普遍只支持 /v1/chat/completions，无 /v1/responses 端点。
 //
-// 当前路由策略（基于账号探测标记，详见 openai_compat.ShouldUseResponsesAPI）：
-//   - APIKey 账号 + 探测确认不支持 Responses → 走 forwardAsRawChatCompletions
-//     直转上游 /v1/chat/completions，不做协议转换
-//   - 其他所有情况（OAuth、APIKey 探测确认支持、未探测）→ 走原有 CC→Responses
-//     转换路径（保留旧行为，存量未探测账号零兼容破坏）
+// 当前路由策略：
+//   - APIKey 账号 + 明确不支持 Responses，或未探测但带第三方 custom base_url
+//     → 走 forwardAsRawChatCompletions 直转上游 /v1/chat/completions，不做协议转换
+//   - 其他情况（OAuth、官方 OpenAI APIKey 未探测/确认支持）
+//     → 走原有 CC→Responses 转换路径
 func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	ctx context.Context,
 	c *gin.Context,
@@ -61,9 +60,9 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	promptCacheKey string,
 	defaultMappedModel string,
 ) (*OpenAIForwardResult, error) {
-	// 入口分流：APIKey 账号 + 已探测且确认上游不支持 Responses，走 CC 直转。
-	// 标记缺失（未探测）按"现状即证据"原则继续走下方原 Responses 转换路径。
-	if account.Type == AccountTypeAPIKey && !openai_compat.ShouldUseResponsesAPI(account.Extra) {
+	// 入口分流：APIKey 账号 + 明确不支持 Responses，或未探测但自定义 third-party
+	// base_url 时，直接走 CC 原生转发，避免误打 /v1/responses。
+	if account.ShouldUseRawOpenAIChatCompletions() {
 		return s.forwardAsRawChatCompletions(ctx, c, account, body, defaultMappedModel)
 	}
 

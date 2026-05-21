@@ -51,8 +51,8 @@ func openaiResponsesProbePayload(modelID string) []byte {
 //
 // 探测策略（参见包文档 internal/pkg/openai_compat）：
 //   - 上游 404 / 405 → 不支持，写 false
-//   - 上游 2xx / 其他 4xx（401/422/400 等）/ 5xx → 支持，写 true
-//   - 网络层失败（连接错误、超时）→ 不写标记，保持 unknown
+//   - 上游 2xx / 明确业务层 4xx（401/403/422/400 等）→ 支持，写 true
+//   - 上游 5xx / 网络层失败（连接错误、超时）→ 不写标记，保持 unknown
 //     （后续请求仍按"现状即证据"默认走 Responses）
 //
 // 该方法是幂等的：重复调用会以最新探测结果覆盖标记。
@@ -115,13 +115,14 @@ func (s *AccountTestService) ProbeOpenAIAPIKeyResponsesSupport(ctx context.Conte
 		_ = resp.Body.Close()
 	}()
 
-	supported := isResponsesEndpointSupportedByStatus(resp.StatusCode)
-
-	if err := s.accountRepo.UpdateExtra(ctx, accountID, map[string]any{
-		openai_compat.ExtraKeyResponsesSupported: supported,
-	}); err != nil {
-		logger.LegacyPrintf("service.openai_probe", "probe_persist_failed: account_id=%d supported=%v err=%v", accountID, supported, err)
-		return
+	supported, persist := resolveOpenAIResponsesProbeSupportDecision(resp.StatusCode)
+	if persist {
+		if err := s.accountRepo.UpdateExtra(ctx, accountID, map[string]any{
+			openai_compat.ExtraKeyResponsesSupported: supported,
+		}); err != nil {
+			logger.LegacyPrintf("service.openai_probe", "probe_persist_failed: account_id=%d supported=%v err=%v", accountID, supported, err)
+			return
+		}
 	}
 
 	logger.LegacyPrintf("service.openai_probe",
@@ -130,20 +131,44 @@ func (s *AccountTestService) ProbeOpenAIAPIKeyResponsesSupport(ctx context.Conte
 	)
 }
 
-// isResponsesEndpointSupportedByStatus 根据探测响应的 HTTP 状态码判定上游
-// 是否暴露 /v1/responses 端点。
+// resolveOpenAIResponsesProbeSupportDecision 根据探测响应的 HTTP 状态码判断
+// 是否应将 /v1/responses 支持性持久化到账号 extra。
 //
 // 关键观察：第三方 OpenAI 兼容上游（DeepSeek/Kimi 等）对未知端点统一返回 404
 // 或 405；而 OpenAI 官方/有 Responses 实现的上游会因为请求体最简（缺字段）
 // 返回 400/422 等业务错误，但端点本身存在。
 //
-// 因此：仅 404 和 405 视为"端点不存在"，其他 status 视为"端点存在"。
-//
-// 5xx 也视为"端点存在"——上游偶发故障不应误判为不支持。
-func isResponsesEndpointSupportedByStatus(status int) bool {
+// 因此：
+//   - 404 / 405：可明确判定为不支持，持久化 false
+//   - 2xx / 明确业务层 4xx：可明确判定为支持，持久化 true
+//   - 5xx：保持 unknown，避免把临时故障误持久化为 true
+func resolveOpenAIResponsesProbeSupportDecision(status int) (supported bool, persist bool) {
 	switch status {
 	case http.StatusNotFound, http.StatusMethodNotAllowed:
-		return false
+		return false, true
+	case http.StatusOK,
+		http.StatusCreated,
+		http.StatusAccepted,
+		http.StatusNoContent,
+		http.StatusBadRequest,
+		http.StatusUnauthorized,
+		http.StatusForbidden,
+		http.StatusUnprocessableEntity:
+		return true, true
+	case http.StatusInternalServerError,
+		http.StatusBadGateway,
+		http.StatusServiceUnavailable,
+		http.StatusGatewayTimeout:
+		return false, false
 	}
-	return true
+	if status >= 200 && status < 300 {
+		return true, true
+	}
+	if status >= 400 && status < 500 {
+		return true, true
+	}
+	if status >= 500 {
+		return false, false
+	}
+	return false, false
 }

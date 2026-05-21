@@ -6,6 +6,7 @@ import (
 	"errors"
 	"hash/fnv"
 	"log/slog"
+	"net/url"
 	"reflect"
 	"sort"
 	"strconv"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 )
 
 type Account struct {
@@ -731,6 +733,32 @@ func (a *Account) GetBaseURL() string {
 		return strings.TrimRight(baseURL, "/") + "/antigravity"
 	}
 	return baseURL
+}
+
+func (a *Account) ShouldUseRawOpenAIChatCompletions() bool {
+	if a == nil || a.Platform != PlatformOpenAI || a.Type != AccountTypeAPIKey {
+		return false
+	}
+	if v, ok := a.Extra[openai_compat.ExtraKeyResponsesSupported].(bool); ok {
+		return !v
+	}
+	return a.hasCustomThirdPartyOpenAIBaseURL()
+}
+
+func (a *Account) hasCustomThirdPartyOpenAIBaseURL() bool {
+	baseURL := strings.TrimSpace(a.GetCredential("base_url"))
+	if baseURL == "" {
+		return false
+	}
+	parsed, err := url.Parse(baseURL)
+	if err != nil {
+		return true
+	}
+	host := strings.ToLower(parsed.Hostname())
+	if host == "" {
+		return true
+	}
+	return host != "api.openai.com"
 }
 
 // GetGeminiBaseURL 返回 Gemini 兼容端点的 base URL。

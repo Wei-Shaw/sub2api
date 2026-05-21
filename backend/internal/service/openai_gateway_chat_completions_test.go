@@ -11,11 +11,108 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
+
+func TestForwardAsChatCompletions_APIKeyUnknownResponsesSupportWithCustomBaseURLUsesRawChatCompletions(t *testing.T) {
+
+	supported, persist := resolveOpenAIResponsesProbeSupportDecision(http.StatusServiceUnavailable)
+	require.False(t, supported)
+	require.False(t, persist)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{"model":"deepseek-v4-pro","messages":[{"role":"user","content":"hello"}],"stream":false}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{"rid_probe_5xx_unknown_route"}},
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"type":"invalid_request_error","message":"stop after route capture"}}`)),
+	}}
+
+	svc := &OpenAIGatewayService{cfg: &config.Config{
+		Security: config.SecurityConfig{
+			URLAllowlist: config.URLAllowlistConfig{Enabled: false, AllowInsecureHTTP: true},
+		},
+	}, httpUpstream: upstream}
+	account := &Account{
+		ID:          501,
+		Name:        "openai-apikey-unknown-support",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":  "sk-test",
+			"base_url": "http://upstream.example",
+		},
+		Extra: nil,
+	}
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
+	require.Error(t, err)
+	require.Nil(t, result)
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, "http://upstream.example/v1/chat/completions", upstream.lastReq.URL.String())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "input").Exists(), "custom third-party base_url should bypass Responses conversion")
+	require.True(t, gjson.GetBytes(upstream.lastBody, "messages").Exists(), "raw chat-completions path should preserve messages field")
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestAccountShouldUseRawOpenAIChatCompletions(t *testing.T) {
+	tests := []struct {
+		name    string
+		account *Account
+		want    bool
+	}{
+		{
+			name: "explicitly unsupported responses",
+			account: &Account{
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeAPIKey,
+				Extra:    map[string]any{"openai_responses_supported": false},
+			},
+			want: true,
+		},
+		{
+			name: "unknown support with third-party base_url",
+			account: &Account{
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeAPIKey,
+				Credentials: map[string]any{"base_url": "https://relay.example.com"},
+			},
+			want: true,
+		},
+		{
+			name: "unknown support with official openai host",
+			account: &Account{
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeAPIKey,
+				Credentials: map[string]any{"base_url": "https://api.openai.com/v1"},
+			},
+			want: false,
+		},
+		{
+			name: "unknown support without custom base_url",
+			account: &Account{
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeAPIKey,
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, tt.account.ShouldUseRawOpenAIChatCompletions())
+		})
+	}
+}
 
 type openAIChatFailingWriter struct {
 	gin.ResponseWriter
