@@ -123,10 +123,6 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 		}
 		requestIDHeader = idHeader
 
-		if c != nil {
-			c.Set(OpsUpstreamRequestBodyKey, string(geminiReq))
-		}
-
 		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 		if err != nil {
 			safeErr := sanitizeUpstreamErrorMessage(err.Error())

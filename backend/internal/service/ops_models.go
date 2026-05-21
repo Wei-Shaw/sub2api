@@ -37,14 +37,10 @@ type OpsErrorLog struct {
 	Platform   string `json:"platform"`
 	Model      string `json:"model"`
 
-	IsRetryable bool `json:"is_retryable"`
-	RetryCount  int  `json:"retry_count"`
-
 	Resolved           bool       `json:"resolved"`
 	ResolvedAt         *time.Time `json:"resolved_at"`
 	ResolvedByUserID   *int64     `json:"resolved_by_user_id"`
 	ResolvedByUserName string     `json:"resolved_by_user_name"`
-	ResolvedRetryID    *int64     `json:"resolved_retry_id"`
 	ResolvedStatusRaw  string     `json:"-"`
 
 	ClientRequestID string `json:"client_request_id"`
@@ -89,12 +85,6 @@ type OpsErrorLogDetail struct {
 	ResponseLatencyMs  *int64 `json:"response_latency_ms"`
 	TimeToFirstTokenMs *int64 `json:"time_to_first_token_ms"`
 
-	// Retry context
-	RequestBody          string `json:"request_body"`
-	RequestBodyTruncated bool   `json:"request_body_truncated"`
-	RequestBodyBytes     *int   `json:"request_body_bytes"`
-	RequestHeaders       string `json:"request_headers,omitempty"`
-
 	// vNext metric semantics
 	IsBusinessLimited bool `json:"is_business_limited"`
 }
@@ -135,56 +125,4 @@ type OpsErrorLogList struct {
 	Total    int            `json:"total"`
 	Page     int            `json:"page"`
 	PageSize int            `json:"page_size"`
-}
-
-type OpsRetryAttempt struct {
-	ID        int64     `json:"id"`
-	CreatedAt time.Time `json:"created_at"`
-
-	RequestedByUserID int64  `json:"requested_by_user_id"`
-	SourceErrorID     int64  `json:"source_error_id"`
-	Mode              string `json:"mode"`
-	PinnedAccountID   *int64 `json:"pinned_account_id"`
-	PinnedAccountName string `json:"pinned_account_name"`
-
-	Status     string     `json:"status"`
-	StartedAt  *time.Time `json:"started_at"`
-	FinishedAt *time.Time `json:"finished_at"`
-	DurationMs *int64     `json:"duration_ms"`
-
-	// Persisted execution results (best-effort)
-	Success           *bool   `json:"success"`
-	HTTPStatusCode    *int    `json:"http_status_code"`
-	UpstreamRequestID *string `json:"upstream_request_id"`
-	UsedAccountID     *int64  `json:"used_account_id"`
-	UsedAccountName   string  `json:"used_account_name"`
-	ResponsePreview   *string `json:"response_preview"`
-	ResponseTruncated *bool   `json:"response_truncated"`
-
-	// Optional correlation
-	ResultRequestID *string `json:"result_request_id"`
-	ResultErrorID   *int64  `json:"result_error_id"`
-
-	ErrorMessage *string `json:"error_message"`
-}
-
-type OpsRetryResult struct {
-	AttemptID int64  `json:"attempt_id"`
-	Mode      string `json:"mode"`
-	Status    string `json:"status"`
-
-	PinnedAccountID *int64 `json:"pinned_account_id"`
-	UsedAccountID   *int64 `json:"used_account_id"`
-
-	HTTPStatusCode    int    `json:"http_status_code"`
-	UpstreamRequestID string `json:"upstream_request_id"`
-
-	ResponsePreview   string `json:"response_preview"`
-	ResponseTruncated bool   `json:"response_truncated"`
-
-	ErrorMessage string `json:"error_message"`
-
-	StartedAt  time.Time `json:"started_at"`
-	FinishedAt time.Time `json:"finished_at"`
-	DurationMs int64     `json:"duration_ms"`
 }

@@ -766,12 +766,6 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 		}
 		requestIDHeader = idHeader
 
-		// Capture upstream request body for ops retry of this attempt.
-		if c != nil {
-			// In this code path `body` is already the JSON sent to upstream.
-			c.Set(OpsUpstreamRequestBodyKey, string(body))
-		}
-
 		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 		if err != nil {
 			safeErr := sanitizeUpstreamErrorMessage(err.Error())
@@ -1292,12 +1286,6 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 			return nil, s.writeGoogleError(c, http.StatusBadGateway, err.Error())
 		}
 		requestIDHeader = idHeader
-
-		// Capture upstream request body for ops retry of this attempt.
-		if c != nil {
-			// In this code path `body` is already the JSON sent to upstream.
-			c.Set(OpsUpstreamRequestBodyKey, string(body))
-		}
 
 		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 		if err != nil {

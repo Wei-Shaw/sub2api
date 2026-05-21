@@ -90,6 +90,9 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		// 注意：错误信息故意模糊，避免暴露具体的 IP 限制机制
 		if len(apiKey.IPWhitelist) > 0 || len(apiKey.IPBlacklist) > 0 {
 			clientIP := ip.GetTrustedClientIP(c)
+			if cfg.TrustForwardedIPForAPIKeyACL() {
+				clientIP = ip.GetClientIP(c)
+			}
 			allowed, _ := ip.CheckIPRestrictionWithCompiledRules(clientIP, apiKey.CompiledIPWhitelist, apiKey.CompiledIPBlacklist)
 			if !allowed {
 				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonIPRestriction)
@@ -107,6 +110,9 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		// 检查用户状态
 		if !apiKey.User.IsActive() {
 			AbortWithError(c, 401, "USER_INACTIVE", "User account is not active")
+			return
+		}
+		if abortIfAPIKeyGroupUnavailable(c, apiKey) {
 			return
 		}
 
@@ -250,4 +256,27 @@ func setGroupContext(c *gin.Context, group *service.Group) {
 	}
 	ctx := context.WithValue(c.Request.Context(), ctxkey.Group, group)
 	c.Request = c.Request.WithContext(ctx)
+}
+
+func abortIfAPIKeyGroupUnavailable(c *gin.Context, apiKey *service.APIKey) bool {
+	code, message, ok := validateAPIKeyGroupAvailable(apiKey)
+	if ok {
+		return false
+	}
+	AbortWithError(c, 403, code, message)
+	return true
+}
+
+func validateAPIKeyGroupAvailable(apiKey *service.APIKey) (string, string, bool) {
+	if apiKey == nil || apiKey.GroupID == nil {
+		return "", "", true
+	}
+	group := apiKey.Group
+	if group == nil || strings.EqualFold(group.Status, "deleted") {
+		return "GROUP_DELETED", "API Key 所属分组已删除", false
+	}
+	if !group.IsActive() {
+		return "GROUP_DISABLED", "API Key 所属分组已停用", false
+	}
+	return "", "", true
 }

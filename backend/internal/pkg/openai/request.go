@@ -30,6 +30,17 @@ var CodexOfficialClientOriginatorPrefixes = []string{
 	"codex ",
 }
 
+// IsBrowserUserAgent 判断 User-Agent 是否来自浏览器（Chrome/Firefox/Safari/Edge/Opera 等）。
+// 所有现代浏览器的 UA 均以 "Mozilla/" 作为前缀，CLI 工具（codex/claude/curl/postman/python-requests 等）不会。
+// 该判定用于避免 Cloudflare 对浏览器型 UA 在 OpenAI 上游接口上触发 JS 质询。
+func IsBrowserUserAgent(userAgent string) bool {
+	ua := strings.TrimSpace(userAgent)
+	if ua == "" {
+		return false
+	}
+	return strings.HasPrefix(strings.ToLower(ua), "mozilla/")
+}
+
 // IsCodexCLIRequest checks if the User-Agent indicates a Codex CLI request
 func IsCodexCLIRequest(userAgent string) bool {
 	ua := normalizeCodexClientHeader(userAgent)

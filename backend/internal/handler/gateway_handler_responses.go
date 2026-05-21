@@ -60,7 +60,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		return
 	}
 
-	setOpsRequestContext(c, "", false, body)
+	setOpsRequestContext(c, "", false)
 
 	// Validate JSON
 	if !gjson.ValidBytes(body) {
@@ -78,7 +78,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 	reqStream := gjson.GetBytes(body, "stream").Bool()
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
 
-	setOpsRequestContext(c, reqModel, reqStream, body)
+	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
 
 	// 解析渠道级模型映射

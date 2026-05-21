@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"testing"
 
@@ -32,6 +33,13 @@ func findCookie(cookies []*http.Cookie, name string) *http.Cookie {
 	return nil
 }
 
+func requireCookieCleared(t *testing.T, recorder *httptest.ResponseRecorder, name string) {
+	t.Helper()
+	cookie := findCookie(recorder.Result().Cookies(), name)
+	require.NotNil(t, cookie)
+	require.Equal(t, -1, cookie.MaxAge)
+}
+
 func decodeCookieValueForTest(t *testing.T, value string) string {
 	t.Helper()
 	decoded, err := decodeCookieValue(value)
@@ -40,6 +48,13 @@ func decodeCookieValueForTest(t *testing.T, value string) string {
 }
 
 func assertOAuthRedirectError(t *testing.T, location string, errorCode string, errorMessage string) {
+	t.Helper()
+	values := parseOAuthRedirectFragment(t, location)
+	require.Equal(t, errorCode, values.Get("error"))
+	require.Equal(t, errorMessage, values.Get("error_message"))
+}
+
+func parseOAuthRedirectFragment(t *testing.T, location string) url.Values {
 	t.Helper()
 	require.NotEmpty(t, location)
 
@@ -52,6 +67,5 @@ func assertOAuthRedirectError(t *testing.T, location string, errorCode string, e
 	}
 	values, err := url.ParseQuery(rawValues)
 	require.NoError(t, err)
-	require.Equal(t, errorCode, values.Get("error"))
-	require.Equal(t, errorMessage, values.Get("error_message"))
+	return values
 }

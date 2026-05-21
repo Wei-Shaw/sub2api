@@ -337,6 +337,7 @@ func (s *OpsScheduledReportService) runReport(ctx context.Context, report *opsSc
 	}
 
 	subject := fmt.Sprintf("[Ops Report] %s", strings.TrimSpace(report.Name))
+	templateVariables := opsScheduledReportEmailVariables(report, now)
 
 	attempts := 0
 	for _, to := range recipients {
@@ -345,12 +346,70 @@ func (s *OpsScheduledReportService) runReport(ctx context.Context, report *opsSc
 			continue
 		}
 		attempts++
+		if s.emailService.notificationEmailService != nil {
+			if err := s.emailService.notificationEmailService.Send(ctx, NotificationEmailSendInput{
+				Event:          NotificationEmailEventOpsScheduledReport,
+				RecipientEmail: addr,
+				RecipientName:  emailRecipientName(addr),
+				SourceType:     "ops_scheduled_report",
+				SourceID:       opsScheduledReportDeliverySourceID(report),
+				ReminderKey:    now.UTC().Format("2006-01-02T15:04"),
+				Variables:      templateVariables,
+				RawHTMLVariables: map[string]string{
+					"report_html": content,
+				},
+			}); err == nil {
+				continue
+			} else if !shouldFallbackNotificationEmail(err) {
+				continue
+			}
+		}
 		if err := s.emailService.SendEmail(ctx, addr, subject, content); err != nil {
 			// Ignore per-recipient failures; continue best-effort.
 			continue
 		}
 	}
 	return attempts, nil
+}
+
+func opsScheduledReportDeliverySourceID(report *opsScheduledReport) string {
+	if report == nil {
+		return "scheduled_report"
+	}
+	parts := []string{
+		strings.TrimSpace(report.ReportType),
+		strings.TrimSpace(report.Name),
+		strings.TrimSpace(report.Schedule),
+	}
+	joined := strings.Trim(strings.Join(parts, ":"), ":")
+	if joined == "" {
+		return "scheduled_report"
+	}
+	return joined
+}
+
+func opsScheduledReportEmailVariables(report *opsScheduledReport, now time.Time) map[string]string {
+	end := now.UTC()
+	start := end
+	name := "Ops report"
+	reportType := "scheduled_report"
+	if report != nil {
+		if strings.TrimSpace(report.Name) != "" {
+			name = strings.TrimSpace(report.Name)
+		}
+		if strings.TrimSpace(report.ReportType) != "" {
+			reportType = strings.TrimSpace(report.ReportType)
+		}
+		if report.TimeRange > 0 {
+			start = end.Add(-report.TimeRange)
+		}
+	}
+	return map[string]string{
+		"report_name":       name,
+		"report_type":       reportType,
+		"report_start_time": start.Format(time.RFC3339),
+		"report_end_time":   end.Format(time.RFC3339),
+	}
 }
 
 func (s *OpsScheduledReportService) generateReportHTML(ctx context.Context, report *opsScheduledReport, now time.Time) (string, error) {
