@@ -45,7 +45,61 @@
             </div>
           </template>
           <template v-else>
-            <div class="grid gap-4 sm:grid-cols-2">
+            <div v-if="checkoutMode" class="mx-auto max-w-xl space-y-5">
+              <button class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400" @click="closeCheckout">&larr; 返回选择</button>
+              <div class="rounded-3xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+                <div class="mb-5 flex items-center justify-between">
+                  <div>
+                    <p class="text-xs text-gray-400">收银台</p>
+                    <h2 class="mt-1 text-xl font-semibold text-gray-900 dark:text-white">{{ checkoutTitle }}</h2>
+                  </div>
+                  <span class="rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-600 dark:bg-blue-900/30 dark:text-blue-300">支付宝</span>
+                </div>
+
+                <div class="rounded-2xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-950/20">
+                  <p class="text-sm font-medium text-gray-900 dark:text-white">支付方式</p>
+                  <div class="mt-3 flex items-center gap-3 rounded-xl border border-blue-200 bg-white px-4 py-3 dark:border-blue-800 dark:bg-gray-800">
+                    <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-[#1677FF] text-lg font-bold text-white">支</span>
+                    <div>
+                      <p class="text-sm font-semibold text-gray-900 dark:text-white">支付宝</p>
+                      <p class="text-xs text-gray-400">扫码支付，实时到账</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="mt-5 space-y-3 rounded-2xl bg-gray-50 p-4 text-sm dark:bg-gray-700/50">
+                  <div v-if="checkoutMode === 'subscription' && checkoutPlan" class="flex justify-between gap-4">
+                    <span class="text-gray-500 dark:text-gray-400">购买套餐</span>
+                    <span class="font-medium text-gray-900 dark:text-white">{{ checkoutPlan.name }}</span>
+                  </div>
+                  <div class="flex justify-between gap-4">
+                    <span class="text-gray-500 dark:text-gray-400">支付金额</span>
+                    <span class="font-medium text-gray-900 dark:text-white">¥{{ checkoutBaseAmount.toFixed(2) }}</span>
+                  </div>
+                  <div class="flex justify-between gap-4">
+                    <span class="text-gray-500 dark:text-gray-400">手续费（{{ checkoutFeeRate.toFixed(1) }}%）</span>
+                    <span class="font-medium text-gray-900 dark:text-white">¥{{ checkoutFeeAmount.toFixed(2) }}</span>
+                  </div>
+                  <div class="border-t border-gray-200 pt-3 dark:border-gray-600">
+                    <div class="flex items-center justify-between gap-4">
+                      <span class="text-gray-600 dark:text-gray-300">实付金额</span>
+                      <span class="text-2xl font-bold text-blue-600 dark:text-blue-300">¥{{ checkoutPayAmount.toFixed(2) }}</span>
+                    </div>
+                  </div>
+                  <div class="flex justify-between gap-4">
+                    <span class="text-gray-500 dark:text-gray-400">{{ checkoutMode === 'subscription' ? '等值扣除额度' : '到账余额' }}</span>
+                    <span class="font-medium text-gray-900 dark:text-white">${{ checkoutReceiveBalance.toFixed(2) }}</span>
+                  </div>
+                  <p class="pt-1 text-xs text-gray-400">当前汇率：1 CNY = {{ checkout.balance_recharge_multiplier || 10 }} API 余额；手续费由支付通道收取。</p>
+                </div>
+
+                <button class="mt-5 w-full rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-50" :disabled="submitting || checkoutBaseAmount <= 0" @click="confirmAlipayCheckout">
+                  <span v-if="submitting">生成支付宝订单中...</span><span v-else>{{ checkoutButtonText }}</span>
+                </button>
+              </div>
+            </div>
+            <template v-else>
+              <div class="grid gap-4 sm:grid-cols-2">
               <div class="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
                 <p class="text-sm text-gray-400">当前余额</p>
                 <p class="mt-1 text-3xl font-bold text-gray-900 dark:text-white">${{ user?.balance?.toFixed(2) || '0.00' }}</p>
@@ -67,7 +121,11 @@
                 <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-gray-400">人民币</span>
               </div>
               <p v-if="estimatedBalance > 0" class="mt-3 text-sm text-gray-500 dark:text-gray-400">预计到账：<span class="font-semibold text-gray-900 dark:text-white">${{ estimatedBalance.toFixed(2) }}</span></p>
-              <p class="mt-2 text-xs text-gray-400">示例：&yen;50 &rarr; $50 API 余额。这里的 $ 是平台内 API 余额计价单位，用于抵扣模型调用费用，不代表提现或法币兑换；支持最多两位小数。充值页已取消"充值满 &yen;50 额外赠送 $50 API 余额"活动，当前以页面实际到账与站内公告为准。</p>
+              <button class="mt-4 w-full rounded-xl bg-gray-900 py-3 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:opacity-50 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100" :disabled="submitting || !canPayRechargeWithAlipay" @click="rechargeWithAlipay">
+                <span v-if="submitting">生成二维码中...</span><span v-else>支付宝扫码充值</span>
+              </button>
+              <p v-if="!visibleMethods.alipay" class="mt-2 text-xs text-red-500">当前未启用支付宝支付，请稍后再试。</p>
+              <p class="mt-2 text-xs text-gray-400">示例：&yen;50 &rarr; ${{ (50 * (checkout.balance_recharge_multiplier || 10)).toFixed(0) }} API 余额。这里的 $ 是平台内 API 余额计价单位，用于抵扣模型调用费用，不代表提现或法币兑换；支持最多两位小数。</p>
             </div>
             <!-- Redeem Code -->
             <div class="grid gap-4 lg:grid-cols-2">
@@ -136,9 +194,14 @@
                       </li>
                     </ul>
                   </div>
-                  <button class="w-full rounded-xl py-2.5 text-sm font-medium transition-colors disabled:opacity-50" :class="plan._recommended ? 'bg-gray-900 text-white hover:bg-gray-800 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100' : 'border border-gray-200 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700'" :disabled="submitting" @click="purchasePlanWithBalance(plan)">
-                    <span v-if="submitting && selectedPlan?.id === plan.id">购买中...</span><span v-else>{{ planButtonText(plan) }}</span>
-                  </button>
+                  <div class="space-y-2">
+                    <button class="w-full rounded-xl bg-gray-900 py-2.5 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:opacity-50 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100" :disabled="submitting || !visibleMethods.alipay" @click="purchasePlanWithAlipay(plan)">
+                      <span v-if="submitting && selectedPlan?.id === plan.id">生成二维码中...</span><span v-else>支付宝支付</span>
+                    </button>
+                    <button class="w-full rounded-xl border border-gray-200 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700" :disabled="submitting" @click="purchasePlanWithBalance(plan)">
+                      <span v-if="submitting && selectedPlan?.id === plan.id">购买中...</span><span v-else>{{ planButtonText(plan) }}</span>
+                    </button>
+                  </div>
                 </div>
               </div>
               <div v-if="activeSubscriptions.length > 0" class="mt-6">
@@ -154,6 +217,7 @@
                 </div>
               </div>
             </div>
+            </template>
           </template>
         </template>
       </template>
@@ -241,13 +305,30 @@ const activeTab = ref<'recharge' | 'subscription'>('recharge')
 const amount = ref<number | null>(null)
 const selectedMethod = ref('')
 const selectedPlan = ref<SubscriptionPlan | null>(null)
-const qqSelectedAmount = ref<number | null>(null)
+const checkoutMode = ref<'recharge' | 'subscription' | null>(null)
+const checkoutPlan = ref<SubscriptionPlan | null>(null)
+const qqSelectedAmount = ref<number | null>(10)
 const customAmount = ref('')
 const estimatedBalance = computed(() => {
   const amt = customAmount.value ? parseFloat(customAmount.value) : (qqSelectedAmount.value || 0)
   const multiplier = checkout.value.balance_recharge_multiplier || 10
   return amt > 0 ? amt * multiplier : 0
 })
+const rechargeAmount = computed(() => {
+  const amt = customAmount.value ? parseFloat(customAmount.value) : (qqSelectedAmount.value || 0)
+  return Number.isFinite(amt) ? amt : 0
+})
+const canPayRechargeWithAlipay = computed(() => {
+  const amt = rechargeAmount.value
+  return !!visibleMethods.value.alipay && amt > 0 && amountFitsMethod(amt, 'alipay')
+})
+const checkoutBaseAmount = computed(() => checkoutMode.value === 'subscription' && checkoutPlan.value ? effectivePlanAmount(checkoutPlan.value) : rechargeAmount.value)
+const checkoutFeeRate = computed(() => checkout.value.recharge_fee_rate || 0)
+const checkoutFeeAmount = computed(() => checkoutBaseAmount.value * checkoutFeeRate.value / 100)
+const checkoutPayAmount = computed(() => checkoutBaseAmount.value + checkoutFeeAmount.value)
+const checkoutReceiveBalance = computed(() => checkoutBaseAmount.value * (checkout.value.balance_recharge_multiplier || 10))
+const checkoutTitle = computed(() => checkoutMode.value === 'subscription' ? '套餐支付宝支付' : '支付宝扫码充值')
+const checkoutButtonText = computed(() => `确认支付 ¥${checkoutPayAmount.value.toFixed(2)}`)
 const redeemCode = ref('')
 const redeeming = ref(false)
 const redeemError = ref('')
@@ -397,6 +478,7 @@ function removeRecoverySnapshot() {
 function resetPayment() {
   paymentPhase.value = 'select'
   paymentState.value = emptyPaymentState()
+  closeCheckout()
   removeRecoverySnapshot()
 }
 
@@ -570,6 +652,44 @@ async function confirmBalancePurchase() {
 
 async function purchasePlanWithBalance(plan: SubscriptionPlan) {
   openBalancePurchaseConfirm(plan)
+}
+
+async function rechargeWithAlipay() {
+  const amt = rechargeAmount.value
+  if (amt <= 0) {
+    appStore.showError('请选择或输入充值金额')
+    return
+  }
+  if (!amountFitsMethod(amt, 'alipay')) {
+    appStore.showError('当前金额不在支付宝支付范围内')
+    return
+  }
+  amount.value = amt
+  selectedMethod.value = 'alipay'
+  checkoutPlan.value = null
+  checkoutMode.value = 'recharge'
+}
+
+async function purchasePlanWithAlipay(plan: SubscriptionPlan) {
+  if (!plan || submitting.value) return
+  selectedPlan.value = plan
+  selectedMethod.value = 'alipay'
+  checkoutPlan.value = plan
+  checkoutMode.value = 'subscription'
+}
+
+function closeCheckout() {
+  checkoutMode.value = null
+  checkoutPlan.value = null
+}
+
+async function confirmAlipayCheckout() {
+  if (checkoutMode.value === 'subscription' && checkoutPlan.value) {
+    await createOrder(effectivePlanAmount(checkoutPlan.value), 'subscription', checkoutPlan.value.id, { paymentType: 'alipay' })
+    return
+  }
+  const amt = rechargeAmount.value
+  await createOrder(amt, 'balance', undefined, { paymentType: 'alipay' })
 }
 
 async function executeBalancePurchase(plan: SubscriptionPlan) {
