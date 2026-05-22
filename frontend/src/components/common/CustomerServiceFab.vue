@@ -1,12 +1,12 @@
 <template>
   <Teleport to="body">
-    <div class="cs-fab-root" :class="{ 'cs-fab-open': expanded }">
+    <div class="cs-fab-root" :class="{ 'cs-fab-open': isOpen }">
       <!-- Expanded panel -->
       <Transition name="cs-panel">
-        <div v-if="expanded" class="cs-panel">
+        <div v-if="isOpen" class="cs-panel">
           <div class="cs-panel-header">
             <span class="cs-panel-title">用户交流群</span>
-            <button class="cs-panel-close" @click="expanded = false">
+            <button class="cs-panel-close" @click="close">
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
             </button>
           </div>
@@ -36,9 +36,9 @@
       </Transition>
 
       <!-- FAB button -->
-      <button class="cs-fab-btn" :class="{ 'cs-fab-btn-pulse': !expanded && !dismissed }" :title="expanded ? '关闭' : '联系客服'" @click="toggle">
+      <button class="cs-fab-btn" :class="{ 'cs-fab-btn-pulse': !isOpen && !dismissed }" :title="isOpen ? '关闭' : '联系客服'" @click="toggle">
         <Transition name="cs-icon" mode="out-in">
-          <svg v-if="expanded" key="close" width="22" height="22" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          <svg v-if="isOpen" key="close" width="22" height="22" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
           <svg v-else key="qq" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12.003 2c-2.265 0-6.29 1.364-6.29 7.325v1.195S3.55 14.96 3.55 17.474c0 .665.17 1.025.396 1.025.19 0 .46-.18.758-.625.775-1.15 1.525-2.76 1.997-3.775.14.02.282.03.425.03 1.47 0 2.97-.765 3.852-2.115.88 1.35 2.382 2.115 3.852 2.115.143 0 .284-.01.425-.03.472 1.015 1.222 2.625 1.997 3.775.298.445.568.625.758.625.226 0 .396-.36.396-1.025 0-2.514-2.163-6.954-2.163-6.954v-1.195C18.293 3.364 14.268 2 12.003 2z"/></svg>
         </Transition>
       </button>
@@ -47,30 +47,31 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { useCustomerService } from '@/composables/useCustomerService'
 
-const expanded = ref(false)
+const { isOpen, close, toggle } = useCustomerService()
 const dismissed = ref(false)
 
-function toggle() {
-  expanded.value = !expanded.value
-  if (expanded.value) dismissed.value = true
-}
-
 function onKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape' && expanded.value) expanded.value = false
+  if (e.key === 'Escape' && isOpen.value) close()
 }
 
 function onClickOutside(e: MouseEvent) {
-  if (!expanded.value) return
+  if (!isOpen.value) return
   const root = document.querySelector('.cs-fab-root')
-  if (root && !root.contains(e.target as Node)) expanded.value = false
+  const headerBtn = document.querySelector('.cs-header-btn')
+  if (root && !root.contains(e.target as Node) && !headerBtn?.contains(e.target as Node)) close()
 }
+
+// Mark dismissed when opened via any trigger
+watch(isOpen, (val) => {
+  if (val) dismissed.value = true
+})
 
 onMounted(() => {
   document.addEventListener('keydown', onKeydown)
   document.addEventListener('click', onClickOutside, true)
-  // Stop pulse after 8 seconds
   setTimeout(() => { dismissed.value = true }, 8000)
 })
 
@@ -276,7 +277,7 @@ onUnmounted(() => {
   opacity: 0;
 }
 
-/* Mobile: smaller, closer to edge */
+/* Mobile */
 @media (max-width: 640px) {
   .cs-fab-root {
     bottom: 16px;
