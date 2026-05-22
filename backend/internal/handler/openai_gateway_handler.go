@@ -381,7 +381,6 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
 		}
 		var result *service.OpenAIForwardResult
-		var err error
 		if account.Platform == service.PlatformKiro {
 			result, err = h.kiroGatewayService.ForwardOpenAI(c.Request.Context(), c, account, forwardBody)
 		} else {
