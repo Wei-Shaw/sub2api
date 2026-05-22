@@ -62,10 +62,10 @@ INSERT INTO user_affiliates (user_id, aff_code, aff_quota, aff_history_quota, cr
 VALUES ($1, $2, $3, $3, NOW(), NOW())`, u.ID, affCode, 12.34)
 	require.NoError(t, err)
 
-	transferred, balance, err := repo.TransferQuotaToBalance(txCtx, u.ID)
+	transferred, giftBalance, err := repo.TransferQuotaToBalance(txCtx, u.ID)
 	require.NoError(t, err)
 	require.InDelta(t, 12.34, transferred, 1e-9)
-	require.InDelta(t, 17.84, balance, 1e-9)
+	require.InDelta(t, 12.34, giftBalance, 1e-9)
 
 	affQuota := querySingleFloat(t, txCtx, client,
 		"SELECT aff_quota::double precision FROM user_affiliates WHERE user_id = $1", u.ID)
@@ -73,7 +73,10 @@ VALUES ($1, $2, $3, $3, NOW(), NOW())`, u.ID, affCode, 12.34)
 
 	persistedBalance := querySingleFloat(t, txCtx, client,
 		"SELECT balance::double precision FROM users WHERE id = $1", u.ID)
-	require.InDelta(t, 17.84, persistedBalance, 1e-9)
+	require.InDelta(t, 5.5, persistedBalance, 1e-9)
+	persistedGiftBalance := querySingleFloat(t, txCtx, client,
+		"SELECT gift_balance::double precision FROM users WHERE id = $1", u.ID)
+	require.InDelta(t, 12.34, persistedGiftBalance, 1e-9)
 
 	ledgerCount := querySingleInt(t, txCtx, client,
 		"SELECT COUNT(*) FROM user_affiliate_ledger WHERE user_id = $1 AND action = 'transfer'", u.ID)
@@ -94,7 +97,7 @@ LIMIT 1`, u.ID)
 	var amount, balanceAfter, quotaAfter, frozenAfter, historyAfter float64
 	require.NoError(t, rows.Scan(&amount, &balanceAfter, &quotaAfter, &frozenAfter, &historyAfter))
 	require.InDelta(t, 12.34, amount, 1e-9)
-	require.InDelta(t, 17.84, balanceAfter, 1e-9)
+	require.InDelta(t, 12.34, balanceAfter, 1e-9)
 	require.InDelta(t, 0.0, quotaAfter, 1e-9)
 	require.InDelta(t, 0.0, frozenAfter, 1e-9)
 	require.InDelta(t, 12.34, historyAfter, 1e-9)
