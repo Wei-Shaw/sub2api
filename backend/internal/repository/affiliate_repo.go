@@ -316,7 +316,7 @@ FROM cleared`, userID)
 			return service.ErrUserNotFound
 		}
 
-		newBalance, err = queryUserBalance(txCtx, txClient, userID)
+		newBalance, err = queryUserGiftBalance(txCtx, txClient, userID)
 		if err != nil {
 			return err
 		}
@@ -907,8 +907,19 @@ LIMIT 1`, strings.ToUpper(strings.TrimSpace(code)))
 }
 
 func queryUserBalance(ctx context.Context, client affiliateQueryExecer, userID int64) (float64, error) {
+	return queryUserNumericBalance(ctx, client, userID, "balance")
+}
+
+func queryUserGiftBalance(ctx context.Context, client affiliateQueryExecer, userID int64) (float64, error) {
+	return queryUserNumericBalance(ctx, client, userID, "gift_balance")
+}
+
+func queryUserNumericBalance(ctx context.Context, client affiliateQueryExecer, userID int64, column string) (float64, error) {
+	if column != "balance" && column != "gift_balance" {
+		return 0, fmt.Errorf("unsupported balance column: %s", column)
+	}
 	rows, err := client.QueryContext(ctx,
-		"SELECT balance::double precision FROM users WHERE id = $1 LIMIT 1",
+		fmt.Sprintf("SELECT %s::double precision FROM users WHERE id = $1 LIMIT 1", column),
 		userID,
 	)
 	if err != nil {
