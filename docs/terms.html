@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>使用条款与免责声明 - 卡卡AI</title>
+<style>
+  :root {
+    --bg: #f9fafb; --card: #ffffff; --text: #111827; --text2: #6b7280;
+    --primary: #2563eb; --primary-bg: #eff6ff; --border: #e5e7eb;
+    --orange: #f97316; --red: #ef4444;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #030712; --card: #111827; --text: #f9fafb; --text2: #9ca3af;
+      --primary: #3b82f6; --primary-bg: #1e293b; --border: #1f2937;
+    }
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); line-height: 1.8; }
+
+  .header { position: sticky; top: 0; z-index: 50; border-bottom: 1px solid var(--border); background: var(--card); backdrop-filter: blur(12px); }
+  .header-inner { max-width: 860px; margin: 0 auto; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; }
+  .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); font-weight: 600; font-size: 18px; }
+  .logo-icon { width: 32px; height: 32px; border-radius: 8px; display: block; object-fit: contain; }
+
+  .container { max-width: 860px; margin: 0 auto; padding: 40px 24px 80px; }
+  .back-link { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 24px; color: var(--text2); font-size: 14px; text-decoration: none; }
+  .back-link:hover { color: var(--text); }
+
+  h1 { font-size: 28px; font-weight: 800; letter-spacing: -0.03em; margin-bottom: 8px; }
+  .subtitle { color: var(--text2); font-size: 15px; margin-bottom: 36px; }
+  .last-update { display: inline-block; font-size: 13px; color: var(--text2); background: rgba(0,0,0,0.04); padding: 4px 12px; border-radius: 6px; margin-bottom: 36px; }
+  @media (prefers-color-scheme: dark) { .last-update { background: rgba(255,255,255,0.06); } }
+
+  h2 { font-size: 18px; font-weight: 700; margin: 36px 0 16px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+  h2:first-of-type { margin-top: 0; }
+
+  .section { margin-bottom: 28px; }
+  .section p, .section li { color: var(--text2); font-size: 15px; }
+  .section ul { padding-left: 20px; }
+  .section li { margin-bottom: 10px; }
+  .section li strong { color: var(--text); }
+
+  .highlight-box { background: #fef3c7; border: 1px solid #fde68a; border-radius: 12px; padding: 16px 20px; margin: 20px 0; font-size: 14px; color: #92400e; line-height: 1.7; }
+  @media (prefers-color-scheme: dark) { .highlight-box { background: rgba(251, 191, 36, 0.1); border-color: rgba(251, 191, 36, 0.25); color: #fcd34d; } }
+
+  .danger-box { background: #fef2f2; border: 1px solid #fecaca; border-radius: 12px; padding: 16px 20px; margin: 20px 0; font-size: 14px; color: #991b1b; line-height: 1.7; }
+  @media (prefers-color-scheme: dark) { .danger-box { background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.25); color: #fca5a5; } }
+
+  .info-box { background: var(--primary-bg); border: 1px solid rgba(37,99,235,0.15); border-radius: 12px; padding: 16px 20px; margin: 20px 0; font-size: 14px; color: var(--text2); line-height: 1.7; }
+
+  .clause { counter-reset: clause; }
+  .clause li { list-style: none; counter-increment: clause; position: relative; padding-left: 28px; }
+  .clause li::before { content: counter(clause) "."; position: absolute; left: 0; color: var(--primary); font-weight: 700; font-size: 14px; }
+
+  footer { margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--border); text-align: center; color: var(--text2); font-size: 13px; line-height: 1.8; }
+  footer a { color: var(--primary); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="header-inner">
+    <a href="/" class="logo">
+      <img class="logo-icon" src="/logo.png?v=1779089404" alt="卡卡AI Logo">
+      卡卡AI
+    </a>
+    <a href="/keys" style="font-size:14px; color: var(--primary); text-decoration:none;">我的 API Key →</a>
+  </div>
+</header>
+
+<div class="container">
+  <a href="/" class="back-link">← 返回首页</a>
+
+  <h1>使用条款与免责声明</h1>
+  <p class="subtitle">请在使用卡卡AI服务前仔细阅读以下条款</p>
+  <span class="last-update">最后更新：2026 年 5 月</span>
+
+  <div class="highlight-box">
+    <strong>📌 活动声明：</strong>本活动最终解释权归卡卡AI所有；严禁任何形式的作弊、虚假注册、批量小号、刷单或套利行为。
+  </div>
+
+  <h2>一、订阅与定价</h2>
+  <div class="section">
+    <ol class="clause">
+      <li>当前页面金额、额度与模型开放范围，以最终购买页与站内公告为准。</li>
+      <li>订阅期限按订阅开始日计算一个自然月；例如 5 月 3 日开通，下次配额更新日在下个月同一时间附近。</li>
+      <li>同类别订阅套餐不支持叠加。如果当前已有同类别且未到期的订阅，再次购买将按续期处理。</li>
+      <li>未到期时再次购买同类别套餐，不会并行叠加新的套餐权益，只会顺延当前套餐时间。</li>
+    </ol>
+  </div>
+
+  <h2>二、使用规范</h2>
+  <div class="section">
+    <ol class="clause">
+      <li>订阅仅限本人或本团队内部使用，<strong>禁止转售、代挂、外借或公开分享账号与密钥</strong>。</li>
+      <li><strong>严禁</strong>将本服务用于黄赌毒、诈骗、洗钱、侵权、外挂、黑灰产等违法违规场景。</li>
+      <li><strong>严禁</strong>用于军事打击、武器控制、监控镇压或其他高风险军工用途。</li>
+    </ol>
+  </div>
+
+  <div class="danger-box">
+    <strong>⚠️ 违规处理：</strong>一经发现上述违规行为，平台有权立即冻结账号、清除余额、终止服务，且不予退款。情节严重者将依法追究法律责任。
+  </div>
+
+  <h2>三、风控与服务保障</h2>
+  <div class="section">
+    <ol class="clause">
+      <li>若出现异常高频调用、风险内容或其他未尽事宜，平台有权风控、限流、暂停或终止服务。</li>
+      <li>公益支持、正式开放时间与后续支付说明，请以站内公告和最终购买页为准。</li>
+    </ol>
+  </div>
+
+  <div class="info-box">
+    <strong>💡 温馨提示：</strong>建议合理使用 API 额度，避免短时间内大量并发请求触发限流。如遇服务异常，请联系客服处理。
+  </div>
+
+  <h2>四、推荐返利规则</h2>
+  <div class="section">
+    <ul>
+      <li>邀请好友注册，双方各获 <strong>$1</strong> 注册奖励。</li>
+      <li>被邀请人注册后 <strong>30 天内</strong>的充值、兑换或订阅购买，邀请人可获得 <strong>3%</strong> 返利。</li>
+      <li>返利额度冻结 <strong>24 小时</strong>后自动解冻，可用于购买套餐或转入余额消费。</li>
+      <li>同一邀请人每日注册奖励上限 <strong>$10</strong>（10 次）。</li>
+      <li>严禁任何形式的虚假注册、批量小号、自我邀请等作弊行为，一经发现取消所有返利并冻结账号。</li>
+    </ul>
+  </div>
+
+  <footer>
+    © 2026 卡卡AI · AI API Gateway<br>
+    <a href="/">返回首页</a> · <a href="/guide">接入指南</a> · <a href="/register">注册账号</a>
+  </footer>
+</div>
+
+</body>
+</html>

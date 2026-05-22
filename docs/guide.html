@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>接入指南 - 卡卡AI</title>
+<style>
+  :root {
+    --bg: #f9fafb; --card: #ffffff; --text: #111827; --text2: #6b7280;
+    --primary: #2563eb; --primary-bg: #eff6ff; --border: #e5e7eb;
+    --code-bg: #1e293b; --code-text: #e2e8f0; --orange: #f97316;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #030712; --card: #111827; --text: #f9fafb; --text2: #9ca3af;
+      --primary: #3b82f6; --primary-bg: #1e293b; --border: #1f2937;
+      --code-bg: #0f172a; --code-text: #e2e8f0;
+    }
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+  
+  /* Header */
+  .header { position: sticky; top: 0; z-index: 50; border-bottom: 1px solid var(--border); background: var(--card); backdrop-filter: blur(8px); }
+  .header-inner { max-width: 1200px; margin: 0 auto; padding: 0 24px; height: 60px; display: flex; align-items: center; justify-content: space-between; }
+  .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); font-weight: 600; font-size: 18px; }
+  .logo-icon { width: 32px; height: 32px; border-radius: 8px; display: block; object-fit: contain; }
+  .header-actions { display: flex; align-items: center; gap: 12px; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 8px; font-size: 14px; font-weight: 500; text-decoration: none; border: none; cursor: pointer; transition: all 0.15s; }
+  .btn-primary { background: var(--primary); color: white; }
+  .btn-primary:hover { opacity: 0.9; }
+  .btn-ghost { background: transparent; color: var(--text2); }
+  .btn-ghost:hover { background: var(--primary-bg); color: var(--text); }
+
+  /* Layout */
+  .layout { max-width: 1200px; margin: 0 auto; display: flex; gap: 40px; padding: 32px 24px; }
+  .sidebar { width: 220px; flex-shrink: 0; position: sticky; top: 92px; align-self: flex-start; }
+  .main { flex: 1; min-width: 0; }
+
+  /* Sidebar */
+  .nav-group { margin-bottom: 24px; }
+  .nav-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text2); padding: 0 12px; margin-bottom: 8px; }
+  .nav-item { display: block; padding: 6px 12px; border-radius: 6px; color: var(--text2); text-decoration: none; font-size: 14px; transition: all 0.15s; }
+  .nav-item:hover, .nav-item.active { background: var(--primary-bg); color: var(--primary); font-weight: 500; }
+
+  /* Content */
+  .section { margin-bottom: 48px; }
+  h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+  .subtitle { color: var(--text2); font-size: 16px; margin-bottom: 32px; }
+
+  h2 { font-size: 20px; font-weight: 600; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 16px; font-weight: 600; margin: 20px 0 12px; }
+  p { margin-bottom: 12px; color: var(--text2); }
+
+  /* Config cards */
+  .config-cards { display: flex; flex-direction: column; gap: 12px; margin-bottom: 32px; }
+  .config-card { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; }
+  .config-label { font-size: 14px; font-weight: 500; color: var(--text); }
+  .config-value { display: flex; align-items: center; gap: 8px; }
+  .config-value code { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 14px; background: var(--primary-bg); padding: 6px 12px; border-radius: 6px; color: var(--primary); }
+  .copy-btn { padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--card); color: var(--text2); font-size: 12px; cursor: pointer; transition: all 0.15s; }
+  .copy-btn:hover { border-color: var(--primary); color: var(--primary); }
+  .copy-btn.copied { border-color: #10b981; color: #10b981; }
+
+  /* Code blocks */
+  .code-block { position: relative; margin: 12px 0 20px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); }
+  .code-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: var(--border); font-size: 12px; color: var(--text2); }
+  pre { padding: 16px 20px; background: var(--code-bg); color: var(--code-text); overflow-x: auto; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; line-height: 1.7; margin: 0; }
+  .kw { color: #c084fc; } .str { color: #34d399; } .var { color: #60a5fa; } .cmt { color: #64748b; }
+
+  /* Steps */
+  .steps { margin: 12px 0 20px; padding-left: 0; list-style: none; counter-reset: step; }
+  .steps li { counter-increment: step; padding: 8px 0 8px 36px; position: relative; color: var(--text2); font-size: 14px; }
+  .steps li::before { content: counter(step); position: absolute; left: 0; top: 8px; width: 22px; height: 22px; border-radius: 50%; background: var(--primary-bg); color: var(--primary); font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center; }
+
+  /* Table */
+  .table-wrap { margin: 12px 0 20px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); }
+  table { width: 100%; border-collapse: collapse; }
+  th { padding: 12px 16px; text-align: left; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text2); background: var(--bg); border-bottom: 1px solid var(--border); }
+  td { padding: 12px 16px; font-size: 14px; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+  .error-code { font-family: monospace; color: #ef4444; font-weight: 500; font-size: 13px; }
+
+  /* Link */
+  a { color: var(--primary); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* Mobile */
+  @media (max-width: 768px) {
+    .layout { flex-direction: column; padding: 16px; gap: 20px; }
+    .sidebar { width: 100%; position: static; display: flex; flex-wrap: wrap; gap: 4px; }
+    .nav-group { margin-bottom: 8px; }
+    .nav-item { padding: 4px 10px; font-size: 13px; }
+    .config-card { flex-direction: column; align-items: flex-start; gap: 8px; }
+  }
+
+  /* Back link */
+  .back-link { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 24px; color: var(--text2); font-size: 14px; text-decoration: none; }
+  .back-link:hover { color: var(--text); }
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="header-inner">
+    <a href="/" class="logo">
+      <img class="logo-icon" src="/logo.png?v=1779089404" alt="卡卡AI Logo">
+      卡卡AI
+    </a>
+    <div class="header-actions">
+      <a href="/keys" class="btn btn-primary">我的 API Key</a>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <nav class="sidebar">
+    <div class="nav-group">
+      <div class="nav-label">快速开始</div>
+      <a href="#overview" class="nav-item active">基本信息</a>
+      <a href="#codex" class="nav-item">Codex CLI</a>
+      <a href="#cursor" class="nav-item">Cursor</a>
+      <a href="#sdk" class="nav-item">OpenAI SDK</a>
+      <a href="#env" class="nav-item">环境变量</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-label">参考</div>
+      <a href="#models" class="nav-item">可用模型</a>
+      <a href="#errors" class="nav-item">错误码</a>
+      <a href="#faq" class="nav-item">常见问题</a>
+    </div>
+  </nav>
+
+  <main class="main">
+    <a href="/" class="back-link">← 返回首页</a>
+    
+    <h1>接入指南</h1>
+    <p class="subtitle">选择你的工具，复制配置，开始使用</p>
+
+    <!-- Basic Info -->
+    <div class="section" id="overview">
+      <div class="config-cards">
+        <div class="config-card">
+          <span class="config-label">Base URL (OpenAI)</span>
+          <div class="config-value">
+            <code id="base-url">https://api.kaiaigo.com/v1</code>
+            <button class="copy-btn" onclick="copyText('base-url')">复制</button>
+          </div>
+        </div>
+        <div class="config-card">
+          <span class="config-label">API Key</span>
+          <div class="config-value">
+            <a href="/keys" style="font-size:14px; color: var(--primary);">打开 API Keys 页面 →</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Codex CLI -->
+    <div class="section" id="codex">
+      <h2>Codex CLI</h2>
+      <p>Codex CLI 是 OpenAI 的命令行编码助手，支持 GPT-5.5 等最新模型。</p>
+
+      <h3>配置环境变量</h3>
+      <div class="code-block">
+        <div class="code-header"><span>Terminal</span><button class="copy-btn" onclick="copyCode(this)">复制</button></div>
+<pre><span class="cmt"># 设置 API 地址和密钥</span>
+<span class="kw">export</span> <span class="var">OPENAI_BASE_URL</span>=<span class="str">"https://api.kaiaigo.com/v1"</span>
+<span class="kw">export</span> <span class="var">OPENAI_API_KEY</span>=<span class="str">"sk-your-key"</span>
+
+<span class="cmt"># 使用 GPT-5.5</span>
+codex --model gpt-5.5</pre>
+      </div>
+
+      <h3>验证配置</h3>
+      <div class="code-block">
+        <div class="code-header"><span>Terminal</span><button class="copy-btn" onclick="copyCode(this)">复制</button></div>
+<pre><span class="kw">curl</span> https://api.kaiaigo.com/v1/models \
+  -H <span class="str">"Authorization: Bearer sk-your-key"</span></pre>
+      </div>
+
+      <h3>常见问题</h3>
+      <div class="table-wrap">
+        <table>
+          <tr><th>错误</th><th>解决方案</th></tr>
+          <tr><td><span class="error-code">INSUFFICIENT_BALANCE</span></td><td>上游账号余额不足，请联系管理员</td></tr>
+          <tr><td><span class="error-code">401 Unauthorized</span></td><td>API Key 无效，检查是否完整复制</td></tr>
+          <tr><td><span class="error-code">429 Rate Limited</span></td><td>被限流，系统会自动切换上游账号</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <!-- Cursor -->
+    <div class="section" id="cursor">
+      <h2>Cursor</h2>
+      <p>Cursor 是 AI 驱动的代码编辑器，支持自定义 API 端点。</p>
+
+      <h3>配置步骤</h3>
+      <ol class="steps">
+        <li>打开 Settings → Models → OpenAI API Key，输入你的 API Key</li>
+        <li>在 Override OpenAI Base URL 中输入以下地址</li>
+        <li>保存设置，开始新对话即可使用</li>
+      </ol>
+      <div class="config-cards">
+        <div class="config-card">
+          <span class="config-label">Override OpenAI Base URL</span>
+          <div class="config-value">
+            <code id="cursor-url">https://api.kaiaigo.com/v1</code>
+            <button class="copy-btn" onclick="copyText('cursor-url')">复制</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- OpenAI SDK -->
+    <div class="section" id="sdk">
+      <h2>OpenAI SDK</h2>
+      <p>适用于 Python / Node.js 项目中直接调用 OpenAI 兼容 API。</p>
+
+      <h3>Python</h3>
+      <div class="code-block">
+        <div class="code-header"><span>Python</span><button class="copy-btn" onclick="copyCode(this)">复制</button></div>
+<pre><span class="kw">from</span> openai <span class="kw">import</span> OpenAI
+
+client = OpenAI(
+    api_key=<span class="str">"sk-your-key"</span>,
+    base_url=<span class="str">"https://api.kaiaigo.com/v1"</span>
+)
+
+response = client.responses.create(
+    model=<span class="str">"gpt-5.4-mini"</span>,
+    input=<span class="str">"Hello!"</span>
+)
+print(response.output_text)</pre>
+      </div>
+
+      <h3>Node.js</h3>
+      <div class="code-block">
+        <div class="code-header"><span>JavaScript</span><button class="copy-btn" onclick="copyCode(this)">复制</button></div>
+<pre><span class="kw">import</span> OpenAI <span class="kw">from</span> <span class="str">"openai"</span>;
+
+<span class="kw">const</span> client = <span class="kw">new</span> OpenAI({
+  apiKey: <span class="str">"sk-your-key"</span>,
+  baseURL: <span class="str">"https://api.kaiaigo.com/v1"</span>,
+});
+
+<span class="kw">const</span> response = <span class="kw">await</span> client.responses.create({
+  model: <span class="str">"gpt-5.4-mini"</span>,
+  input: <span class="str">"Hello!"</span>,
+});
+console.log(response.output_text);</pre>
+      </div>
+    </div>
+
+    <!-- Environment Variables -->
+    <div class="section" id="env">
+      <h2>通用环境变量</h2>
+      <p>适用于任何支持 OpenAI API 的工具和框架。</p>
+      <div class="code-block">
+        <div class="code-header"><span>Terminal</span><button class="copy-btn" onclick="copyCode(this)">复制</button></div>
+<pre><span class="cmt"># 添加到 ~/.bashrc 或 ~/.zshrc</span>
+<span class="kw">export</span> <span class="var">OPENAI_BASE_URL</span>=<span class="str">"https://api.kaiaigo.com/v1"</span>
+<span class="kw">export</span> <span class="var">OPENAI_API_KEY</span>=<span class="str">"sk-your-key"</span></pre>
+      </div>
+    </div>
+
+    <!-- Available Models -->
+    <div class="section" id="models">
+      <h2>可用模型</h2>
+      <div class="table-wrap">
+        <table>
+          <tr><th>模型 ID</th><th>说明</th></tr>
+          <tr><td><code>gpt-5.5</code></td><td>最新旗舰模型，最强推理能力</td></tr>
+          <tr><td><code>gpt-5.4</code></td><td>高性能模型，最大 1M 上下文</td></tr>
+          <tr><td><code>gpt-5.4-mini</code></td><td>轻量高速模型，适合日常编码</td></tr>
+          <tr><td><code>gpt-5.3-codex</code></td><td>Codex 专用模型</td></tr>
+          <tr><td><code>gpt-5.2</code></td><td>稳定可靠的基础模型</td></tr>
+          <tr><td><code>gpt-image-2</code></td><td>图像生成模型</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <!-- Error Codes -->
+    <div class="section" id="errors">
+      <h2>错误码</h2>
+      <div class="table-wrap">
+        <table>
+          <tr><th>状态码</th><th>含义</th><th>解决方案</th></tr>
+          <tr><td><span class="error-code">200</span></td><td>请求成功</td><td>—</td></tr>
+          <tr><td><span class="error-code">401</span></td><td>认证失败</td><td>检查 API Key 是否正确</td></tr>
+          <tr><td><span class="error-code">403</span></td><td>权限不足</td><td>检查 API Key 是否有该模型的权限</td></tr>
+          <tr><td><span class="error-code">429</span></td><td>请求频率超限</td><td>降低请求频率，系统会自动切换上游账号</td></tr>
+          <tr><td><span class="error-code">502</span></td><td>上游服务错误</td><td>上游账号暂时不可用，请稍后重试</td></tr>
+          <tr><td><span class="error-code">503</span></td><td>无可用账号</td><td>所有上游账号暂不可用，请联系管理员</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <!-- FAQ -->
+    <div class="section" id="faq">
+      <h2>常见问题</h2>
+      
+      <h3>支持哪些模型？</h3>
+      <p>目前支持 OpenAI Codex 系列模型（gpt-5.x），包括 gpt-5.5、gpt-5.4、gpt-5.4-mini、gpt-5.3-codex、gpt-5.2 和 gpt-image-2。</p>
+
+      <h3>API Key 怎么获取？</h3>
+      <p>打开 <a href="/keys">API Keys</a> 页面创建或查看你的 API Key。</p>
+
+      <h3>支持 Claude / Gemini 吗？</h3>
+      <p>暂不支持。本站专注于 OpenAI Codex 系列模型。</p>
+
+      <h3>请求报 503 怎么办？</h3>
+      <p>503 表示当前没有可用的上游账号。可能是所有账号都在限流冷却中，请等待 1-2 分钟后重试。</p>
+
+      <h3>Base URL 要加 /v1 吗？</h3>
+      <p>OpenAI 兼容接口需要加 <code>/v1</code>。Codex CLI 的 <code>OPENAI_BASE_URL</code> 也需要包含 <code>/v1</code>。</p>
+    </div>
+
+    <div style="text-align:center; padding: 32px 0; color: var(--text2); font-size: 13px; border-top: 1px solid var(--border); margin-top: 32px;">
+      © 2026 卡卡AI · AI API Gateway · <a href="/">返回首页</a> · <a href="/terms">使用条款</a>
+    </div>
+  </main>
+</div>
+
+<script>
+function copyText(elementId) {
+  const text = document.getElementById(elementId).textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = event.target;
+    const original = btn.textContent;
+    btn.textContent = '已复制 ✓';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = original; btn.classList.remove('copied'); }, 2000);
+  });
+}
+function copyCode(btn) {
+  const pre = btn.closest('.code-block').querySelector('pre');
+  const text = pre.textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const original = btn.textContent;
+    btn.textContent = '已复制 ✓';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = original; btn.classList.remove('copied'); }, 2000);
+  });
+}
+// Active nav tracking
+const navItems = document.querySelectorAll('.nav-item');
+const sections = document.querySelectorAll('.section[id]');
+window.addEventListener('scroll', () => {
+  let current = '';
+  sections.forEach(s => { if (s.getBoundingClientRect().top <= 120) current = s.id; });
+  navItems.forEach(item => {
+    item.classList.toggle('active', item.getAttribute('href') === '#' + current);
+  });
+});
+</script>
+</body>
+</html>
