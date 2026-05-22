@@ -513,6 +513,12 @@ REDACTED) => {
       REDACTED
       break
 
+    case 'status':
+      if (event.text) {
+        addLine(event.text, 'text-cyan-300')
+      REDACTED
+      break
+
     case 'image':
       if (event.image_url) {
         generatedImages.value.push({
