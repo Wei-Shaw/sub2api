@@ -147,6 +147,19 @@
             <Icon name="cloud" size="sm" />
             Antigravity
           </button>
+          <button
+            type="button"
+            @click="form.platform = 'kiro'"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'kiro'
+                ? 'bg-white text-teal-600 shadow-sm dark:bg-dark-600 dark:text-teal-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <Icon name="cloud" size="sm" />
+            Kiro
+          </button>
         </div>
       </div>
 
@@ -718,6 +731,66 @@
           </div>
           <p class="input-hint">{{ t('admin.accounts.gemini.tier.hint') }}</p>
         </div>
+
+      </div>
+
+      <!-- Kiro OAuth section: paste a refresh token captured from the
+           Kiro desktop app, validate it, then save the account. -->
+      <div v-if="form.platform === 'kiro'" class="space-y-3 border-t border-gray-200 pt-4 dark:border-dark-600">
+        <label class="input-label">Kiro Auth Method</label>
+        <div class="flex flex-wrap gap-2">
+          <button
+            type="button"
+            @click="kiroAuthMethod = 'social'"
+            :class="[
+              'rounded-md px-3 py-1.5 text-sm font-medium transition-all',
+              kiroAuthMethod === 'social'
+                ? 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300'
+                : 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-400'
+            ]"
+          >Social (paste refresh token)</button>
+          <button
+            type="button"
+            disabled
+            class="cursor-not-allowed rounded-md bg-gray-50 px-3 py-1.5 text-sm text-gray-400 dark:bg-dark-800 dark:text-gray-500"
+            title="Use the admin API: POST /admin/kiro/oauth/idc/start"
+          >IdC SSO (API)</button>
+          <button
+            type="button"
+            disabled
+            class="cursor-not-allowed rounded-md bg-gray-50 px-3 py-1.5 text-sm text-gray-400 dark:bg-dark-800 dark:text-gray-500"
+            title="Use the admin API: POST /admin/kiro/oauth/builderid/start"
+          >Builder ID (API)</button>
+        </div>
+
+        <div v-if="kiroAuthMethod === 'social'" class="space-y-2">
+          <label class="input-label">Kiro refresh token</label>
+          <textarea
+            v-model="kiroRefreshTokenInput"
+            class="input-field font-mono text-xs"
+            rows="3"
+            placeholder="Paste the refreshToken captured from the Kiro desktop app"
+          />
+          <button
+            type="button"
+            class="btn btn-primary"
+            :disabled="kiroOAuth.loading.value || !kiroRefreshTokenInput.trim()"
+            @click="validateKiroSocialRefreshToken"
+          >
+            {{ kiroOAuth.loading.value ? 'Validating…' : 'Validate token' }}
+          </button>
+          <p v-if="kiroOAuth.error.value" class="text-sm text-red-600 dark:text-red-400">{{ kiroOAuth.error.value }}</p>
+          <p class="input-hint">
+            On success, the account name and credentials fields below are auto-populated.
+            Click Save to persist the account.
+          </p>
+        </div>
+        <p v-else class="input-hint">
+          IdC SSO and Builder ID flows are available via the admin API
+          (<code>/admin/kiro/oauth/idc/start</code>, <code>/admin/kiro/oauth/builderid/start</code>).
+          UI integration coming in a follow-up release.
+        </p>
+      </div>
       </div>
 
       <!-- Account Type Selection (Antigravity - OAuth or Upstream) -->
@@ -3146,6 +3219,7 @@ import {
 import { useOpenAIOAuth } from '@/composables/useOpenAIOAuth'
 import { useGeminiOAuth } from '@/composables/useGeminiOAuth'
 import { useAntigravityOAuth } from '@/composables/useAntigravityOAuth'
+import { useKiroOAuth } from '@/composables/useKiroOAuth'
 import type {
   Proxy,
   AdminGroup,
@@ -3234,6 +3308,20 @@ const oauth = useAccountOAuth() // For Anthropic OAuth
 const openaiOAuth = useOpenAIOAuth() // For OpenAI OAuth
 const geminiOAuth = useGeminiOAuth() // For Gemini OAuth
 const antigravityOAuth = useAntigravityOAuth() // For Antigravity OAuth
+const kiroOAuth = useKiroOAuth() // For Kiro OAuth (Social / IdC / Builder ID)
+const kiroRefreshTokenInput = ref('')
+const kiroAuthMethod = ref<'social' | 'idc' | 'builderid'>('social')
+
+async function validateKiroSocialRefreshToken() {
+  const info = await kiroOAuth.validateSocialRefreshToken(kiroRefreshTokenInput.value, form.proxy_id)
+  if (!info) return
+  // Populate form: name from email/userId, credentials from token info, type=oauth.
+  form.type = 'oauth'
+  if (!form.name) {
+    form.name = kiroOAuth.suggestAccountName(info)
+  }
+  form.credentials = kiroOAuth.buildCredentials(info)
+}
 
 // Computed: current OAuth state for template binding
 const currentAuthUrl = computed(() => {
