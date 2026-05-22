@@ -751,25 +751,34 @@
           >Social (paste refresh token)</button>
           <button
             type="button"
-            disabled
-            class="cursor-not-allowed rounded-md bg-gray-50 px-3 py-1.5 text-sm text-gray-400 dark:bg-dark-800 dark:text-gray-500"
-            title="Use the admin API: POST /admin/kiro/oauth/idc/start"
-          >IdC SSO (API)</button>
+            @click="kiroAuthMethod = 'idc'"
+            :class="[
+              'rounded-md px-3 py-1.5 text-sm font-medium transition-all',
+              kiroAuthMethod === 'idc'
+                ? 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-700 dark:text-gray-400'
+            ]"
+          >IdC SSO</button>
           <button
             type="button"
-            disabled
-            class="cursor-not-allowed rounded-md bg-gray-50 px-3 py-1.5 text-sm text-gray-400 dark:bg-dark-800 dark:text-gray-500"
-            title="Use the admin API: POST /admin/kiro/oauth/builderid/start"
-          >Builder ID (API)</button>
+            @click="kiroAuthMethod = 'builderid'"
+            :class="[
+              'rounded-md px-3 py-1.5 text-sm font-medium transition-all',
+              kiroAuthMethod === 'builderid'
+                ? 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-700 dark:text-gray-400'
+            ]"
+          >Builder ID</button>
         </div>
 
+        <!-- Social: paste refresh token -->
         <div v-if="kiroAuthMethod === 'social'" class="space-y-2">
           <label class="input-label">Kiro refresh token</label>
           <textarea
             v-model="kiroRefreshTokenInput"
             class="input-field font-mono text-xs"
             rows="3"
-            placeholder="Paste the refreshToken captured from the Kiro desktop app"
+            placeholder="Paste the refreshToken from ~/.aws/sso/cache/kiro-auth-token.json"
           />
           <button
             type="button"
@@ -781,14 +790,71 @@
           </button>
           <p v-if="kiroOAuth.error.value" class="text-sm text-red-600 dark:text-red-400">{{ kiroOAuth.error.value }}</p>
           <p class="input-hint">
-            On success, the account name and credentials fields below are auto-populated.
-            Click Save to persist the account.
+            On Kiro desktop login, the refresh token is saved at
+            <code>~/.aws/sso/cache/kiro-auth-token.json</code>. Copy the
+            <code>refreshToken</code> field. After Validate, click 下一步 to save.
           </p>
         </div>
-        <p v-else class="input-hint">
-          IdC SSO and Builder ID flows are available via the admin API
-          (<code>/admin/kiro/oauth/idc/start</code>, <code>/admin/kiro/oauth/builderid/start</code>).
-          UI integration coming in a follow-up release.
+
+        <!-- IdC SSO: PKCE -->
+        <div v-if="kiroAuthMethod === 'idc'" class="space-y-2">
+          <label class="input-label">AWS Identity Center start URL</label>
+          <input v-model="kiroIdCStartUrl" class="input-field" placeholder="https://d-xxxxxx.awsapps.com/start" />
+          <label class="input-label">Region</label>
+          <input v-model="kiroIdCRegion" class="input-field" placeholder="us-east-1" />
+          <button
+            type="button"
+            class="btn btn-primary"
+            :disabled="kiroOAuth.loading.value || !kiroIdCStartUrl.trim()"
+            @click="startKiroIdCLogin"
+          >
+            {{ kiroOAuth.loading.value ? 'Starting…' : 'Start IdC login' }}
+          </button>
+          <div v-if="kiroIdCAuthUrl" class="space-y-2 rounded border border-gray-200 p-3 dark:border-dark-600">
+            <p class="text-sm">1. Open this URL in a new tab, sign in to AWS Identity Center:</p>
+            <a :href="kiroIdCAuthUrl" target="_blank" class="block break-all font-mono text-xs text-teal-600 underline dark:text-teal-400">{{ kiroIdCAuthUrl }}</a>
+            <p class="text-sm">2. After login, copy the full redirected URL (starts with <code>http://127.0.0.1/oauth/callback?code=…</code>) and paste it here:</p>
+            <textarea
+              v-model="kiroIdCCallbackUrl"
+              class="input-field font-mono text-xs"
+              rows="2"
+              placeholder="http://127.0.0.1/oauth/callback?code=...&state=..."
+            />
+            <button
+              type="button"
+              class="btn btn-primary"
+              :disabled="kiroOAuth.loading.value || !kiroIdCCallbackUrl.trim()"
+              @click="completeKiroIdCLogin"
+            >
+              {{ kiroOAuth.loading.value ? 'Completing…' : 'Complete IdC login' }}
+            </button>
+          </div>
+          <p v-if="kiroOAuth.error.value" class="text-sm text-red-600 dark:text-red-400">{{ kiroOAuth.error.value }}</p>
+        </div>
+
+        <!-- Builder ID: device code -->
+        <div v-if="kiroAuthMethod === 'builderid'" class="space-y-2">
+          <label class="input-label">Region</label>
+          <input v-model="kiroIdCRegion" class="input-field" placeholder="us-east-1" />
+          <button
+            type="button"
+            class="btn btn-primary"
+            :disabled="kiroOAuth.loading.value || kiroBidPolling"
+            @click="startKiroBuilderIDLogin"
+          >
+            {{ kiroOAuth.loading.value ? 'Starting…' : 'Start Builder ID login' }}
+          </button>
+          <div v-if="kiroBidUserCode" class="space-y-2 rounded border border-gray-200 p-3 dark:border-dark-600">
+            <p class="text-sm">1. Open <a :href="kiroBidVerificationUri" target="_blank" class="text-teal-600 underline dark:text-teal-400">{{ kiroBidVerificationUri }}</a> in a new tab</p>
+            <p class="text-sm">2. Enter this code: <code class="rounded bg-gray-100 px-2 py-1 font-mono text-base font-bold dark:bg-dark-700">{{ kiroBidUserCode }}</code></p>
+            <p class="text-sm">3. Sign in with AWS Builder ID. This dialog will auto-detect completion.</p>
+            <p v-if="kiroBidPolling" class="text-sm text-teal-600 dark:text-teal-400">Waiting for authorization…</p>
+          </div>
+          <p v-if="kiroOAuth.error.value" class="text-sm text-red-600 dark:text-red-400">{{ kiroOAuth.error.value }}</p>
+        </div>
+
+        <p v-if="form.credentials && Object.keys(form.credentials).length > 0" class="rounded bg-green-50 px-3 py-2 text-sm text-green-700 dark:bg-green-900/20 dark:text-green-300">
+          ✓ Kiro token validated. Click 下一步 below to save the account.
         </p>
       </div>
 
@@ -3310,16 +3376,68 @@ const antigravityOAuth = useAntigravityOAuth() // For Antigravity OAuth
 const kiroOAuth = useKiroOAuth() // For Kiro OAuth (Social / IdC / Builder ID)
 const kiroRefreshTokenInput = ref('')
 const kiroAuthMethod = ref<'social' | 'idc' | 'builderid'>('social')
+const kiroIdCStartUrl = ref('')
+const kiroIdCRegion = ref('us-east-1')
+const kiroIdCAuthUrl = ref('')
+const kiroIdCSessionId = ref('')
+const kiroIdCCallbackUrl = ref('')
+const kiroBidUserCode = ref('')
+const kiroBidVerificationUri = ref('')
+const kiroBidSessionId = ref('')
+const kiroBidInterval = ref(5)
+const kiroBidPolling = ref(false)
+let kiroBidTimer: ReturnType<typeof setTimeout> | null = null
+
+function applyKiroTokenToForm(info: any) {
+  form.type = 'oauth'
+  if (!form.name) form.name = kiroOAuth.suggestAccountName(info)
+  form.credentials = kiroOAuth.buildCredentials(info)
+}
 
 async function validateKiroSocialRefreshToken() {
   const info = await kiroOAuth.validateSocialRefreshToken(kiroRefreshTokenInput.value, form.proxy_id)
-  if (!info) return
-  // Populate form: name from email/userId, credentials from token info, type=oauth.
-  form.type = 'oauth'
-  if (!form.name) {
-    form.name = kiroOAuth.suggestAccountName(info)
+  if (info) applyKiroTokenToForm(info)
+}
+
+async function startKiroIdCLogin() {
+  const result = await kiroOAuth.startIdCLogin(kiroIdCStartUrl.value, kiroIdCRegion.value, form.proxy_id)
+  if (!result) return
+  kiroIdCAuthUrl.value = result.auth_url
+  kiroIdCSessionId.value = result.session_id
+}
+
+async function completeKiroIdCLogin() {
+  if (!kiroIdCSessionId.value || !kiroIdCCallbackUrl.value.trim()) return
+  const info = await kiroOAuth.completeIdCLogin(kiroIdCSessionId.value, kiroIdCCallbackUrl.value)
+  if (info) applyKiroTokenToForm(info)
+}
+
+async function startKiroBuilderIDLogin() {
+  const result = await kiroOAuth.startBuilderIDLogin(kiroIdCRegion.value, form.proxy_id)
+  if (!result) return
+  kiroBidUserCode.value = result.user_code
+  kiroBidVerificationUri.value = result.verification_uri
+  kiroBidSessionId.value = result.session_id
+  kiroBidInterval.value = result.interval || 5
+  kiroPollBuilderID()
+}
+
+async function kiroPollBuilderID() {
+  if (!kiroBidSessionId.value) return
+  kiroBidPolling.value = true
+  const result = await kiroOAuth.pollBuilderIDLogin(kiroBidSessionId.value)
+  if (!result) {
+    kiroBidPolling.value = false
+    return
   }
-  form.credentials = kiroOAuth.buildCredentials(info)
+  if (result.status === 'completed' && result.token_info) {
+    applyKiroTokenToForm(result.token_info)
+    kiroBidPolling.value = false
+    return
+  }
+  // pending or slow_down → schedule next poll
+  if (kiroBidTimer) clearTimeout(kiroBidTimer)
+  kiroBidTimer = setTimeout(kiroPollBuilderID, kiroBidInterval.value * 1000)
 }
 
 // Computed: current OAuth state for template binding
@@ -3631,6 +3749,10 @@ const isOAuthFlow = computed(() => {
     form.platform === 'anthropic' &&
     (accountCategory.value === 'bedrock' || accountCategory.value === 'service_account')
   ) {
+    return false
+  }
+  // Kiro 在表单内联完成 Social refresh-token paste 验证,不走多步 OAuth 向导
+  if (form.platform === 'kiro') {
     return false
   }
   return accountCategory.value === 'oauth-based'
@@ -4381,6 +4503,22 @@ const handleSubmit = async () => {
       return
     }
     step.value = 2
+    return
+  }
+
+  // For Kiro accounts, the Social refresh token has been validated inline
+  // via the "Validate token" button (which populates form.credentials).
+  // Just persist the account directly — no multi-step wizard needed.
+  if (form.platform === 'kiro') {
+    if (!form.name.trim()) {
+      appStore.showError(t('admin.accounts.pleaseEnterAccountName'))
+      return
+    }
+    if (!form.credentials || Object.keys(form.credentials).length === 0) {
+      appStore.showError('Please paste a Kiro refresh token and click "Validate token" first.')
+      return
+    }
+    await createAccountAndFinish('kiro', 'oauth', form.credentials as Record<string, unknown>)
     return
   }
 
