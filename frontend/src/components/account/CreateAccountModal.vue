@@ -776,7 +776,7 @@
           <label class="input-label">Kiro refresh token</label>
           <textarea
             v-model="kiroRefreshTokenInput"
-            class="input-field font-mono text-xs"
+            class="input font-mono text-xs"
             rows="3"
             placeholder="Paste the refreshToken from ~/.aws/sso/cache/kiro-auth-token.json"
           />
@@ -799,9 +799,9 @@
         <!-- IdC SSO: PKCE -->
         <div v-if="kiroAuthMethod === 'idc'" class="space-y-2">
           <label class="input-label">AWS Identity Center start URL</label>
-          <input v-model="kiroIdCStartUrl" class="input-field" placeholder="https://d-xxxxxx.awsapps.com/start" />
+          <input v-model="kiroIdCStartUrl" class="input" placeholder="https://d-xxxxxx.awsapps.com/start" />
           <label class="input-label">Region</label>
-          <input v-model="kiroIdCRegion" class="input-field" placeholder="us-east-1" />
+          <input v-model="kiroIdCRegion" class="input" placeholder="us-east-1" />
           <button
             type="button"
             class="btn btn-primary"
@@ -816,7 +816,7 @@
             <p class="text-sm">2. After login, copy the full redirected URL (starts with <code>http://127.0.0.1/oauth/callback?code=…</code>) and paste it here:</p>
             <textarea
               v-model="kiroIdCCallbackUrl"
-              class="input-field font-mono text-xs"
+              class="input font-mono text-xs"
               rows="2"
               placeholder="http://127.0.0.1/oauth/callback?code=...&state=..."
             />
@@ -835,7 +835,7 @@
         <!-- Builder ID: device code -->
         <div v-if="kiroAuthMethod === 'builderid'" class="space-y-2">
           <label class="input-label">Region</label>
-          <input v-model="kiroIdCRegion" class="input-field" placeholder="us-east-1" />
+          <input v-model="kiroIdCRegion" class="input" placeholder="us-east-1" />
           <button
             type="button"
             class="btn btn-primary"
