@@ -6443,9 +6443,9 @@ export default {
     // Admin tour steps
     admin: {
       welcome: {
-        title: '👋 欢迎使用 起源AI',
+        title: '👋 欢迎使用 卡卡AI',
         description:
-          '<div style="line-height: 1.8;"><p style="margin-bottom: 16px;">起源AI 是一个强大的 AI 服务中转平台，让您轻松管理和分发 AI 服务。</p><p style="margin-bottom: 12px;"><b>🎯 核心功能：</b></p><ul style="margin-left: 20px; margin-bottom: 16px;"><li>📦 <b>分组管理</b> - 创建不同的服务套餐（VIP、免费试用等）</li><li>🔗 <b>账号池</b> - 连接多个上游 AI 服务商账号</li><li>🔑 <b>密钥分发</b> - 为用户生成独立的 API Key</li><li>💰 <b>计费管理</b> - 灵活的费率和配额控制</li></ul><p style="color: #10b981; font-weight: 600;">接下来，我们将用 3 分钟带您完成首次配置 →</p></div>',
+          '<div style="line-height: 1.8;"><p style="margin-bottom: 16px;">卡卡AI 是一个强大的 AI 服务中转平台，让您轻松管理和分发 AI 服务。</p><p style="margin-bottom: 12px;"><b>🎯 核心功能：</b></p><ul style="margin-left: 20px; margin-bottom: 16px;"><li>📦 <b>分组管理</b> - 创建不同的服务套餐（VIP、免费试用等）</li><li>🔗 <b>账号池</b> - 连接多个上游 AI 服务商账号</li><li>🔑 <b>密钥分发</b> - 为用户生成独立的 API Key</li><li>💰 <b>计费管理</b> - 灵活的费率和配额控制</li></ul><p style="color: #10b981; font-weight: 600;">接下来，我们将用 3 分钟带您完成首次配置 →</p></div>',
         nextBtn: '开始配置 🚀',
         prevBtn: '跳过'
       },
@@ -6564,9 +6564,9 @@ export default {
     // User tour steps
     user: {
       welcome: {
-        title: '👋 欢迎使用 起源AI',
+        title: '👋 欢迎使用 卡卡AI',
         description:
-          '<div style="line-height: 1.8;"><p style="margin-bottom: 16px;">您好！欢迎来到 起源AI AI 服务平台。</p><p style="margin-bottom: 12px;"><b>🎯 快速开始：</b></p><ul style="margin-left: 20px; margin-bottom: 16px;"><li>🔑 创建 API 密钥</li><li>📋 复制密钥到您的应用</li><li>🚀 开始使用 AI 服务</li></ul><p style="color: #10b981; font-weight: 600;">只需 1 分钟，让我们开始吧 →</p></div>',
+          '<div style="line-height: 1.8;"><p style="margin-bottom: 16px;">您好！欢迎来到 卡卡AI AI 服务平台。</p><p style="margin-bottom: 12px;"><b>🎯 快速开始：</b></p><ul style="margin-left: 20px; margin-bottom: 16px;"><li>🔑 创建 API 密钥</li><li>📋 复制密钥到您的应用</li><li>🚀 开始使用 AI 服务</li></ul><p style="color: #10b981; font-weight: 600;">只需 1 分钟，让我们开始吧 →</p></div>',
         nextBtn: '开始 🚀',
         prevBtn: '跳过'
       },
@@ -6999,7 +6999,7 @@ export default {
       q3: '有调用次数限制吗？',
       a3: '每个账号有独立的速率限制，多账号池会自动负载均衡',
       q4: '购买套餐后怎么配置？',
-      a4: '购买套餐后先到「API Keys」页面创建一个 API Key，再回到本页选择你的工具复制配置。Codex / OpenAI SDK 使用 https://api.mcorgai.com/v1；Claude Code 使用 https://api.mcorgai.com（不要加 /v1）。把 sk-xxx 替换成你的 API Key 后即可使用。',
+      a4: '购买套餐后先到「API Keys」页面创建一个 API Key，再回到本页选择你的工具复制配置。Codex / OpenAI SDK 使用 https://api.kaiaigo.com/v1；Claude Code 使用 https://api.kaiaigo.com（不要加 /v1）。把 sk-xxx 替换成你的 API Key 后即可使用。',
       q5: '每天额度在哪里看？',
       a5: '登录后进入「我的订阅」页面，可以看到套餐到期时间、今日已用额度、今日剩余额度和重置倒计时。订阅套餐只按每日额度限制，不再看隐藏的周额度、月额度。',
       q6: '商务合作、采购或开发票怎么联系？',

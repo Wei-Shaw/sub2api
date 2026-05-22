@@ -155,7 +155,7 @@
                     <span class="h-3 w-3 rounded-full bg-[#ff5f57]"></span>
                     <span class="h-3 w-3 rounded-full bg-[#ffbd2e]"></span>
                     <span class="h-3 w-3 rounded-full bg-[#28c840]"></span>
-                    <span class="ml-auto text-xs text-white/40">mcorgai.run</span>
+                    <span class="ml-auto text-xs text-white/40">kaiaigo.run</span>
                   </div>
                   <div class="space-y-4 text-white/80">
                     <p><span class="text-[#79ffe1]">$</span> 今天赶项目</p>

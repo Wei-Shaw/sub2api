@@ -36,7 +36,7 @@
 
 [<span class="text-emerald-400">model_providers.OpenAI</span>]
 <span class="text-emerald-400">name</span> = <span class="text-amber-300">"OpenAI"</span>
-<span class="text-emerald-400">base_url</span> = <span class="text-amber-300">"https://api.mcorgai.com/v1"</span>
+<span class="text-emerald-400">base_url</span> = <span class="text-amber-300">"https://api.kaiaigo.com/v1"</span>
 <span class="text-emerald-400">wire_api</span> = <span class="text-amber-300">"responses"</span>
 <span class="text-emerald-400">requires_openai_auth</span> = <span class="text-amber-300">true</span>
 
@@ -61,7 +61,7 @@
 <span class="text-emerald-400">model</span>:
   <span class="text-emerald-400">default</span>: <span class="text-amber-300">gpt-5.5</span>
   <span class="text-emerald-400">provider</span>: <span class="text-amber-300">openai</span>
-  <span class="text-emerald-400">base_url</span>: <span class="text-amber-300">https://api.mcorgai.com/v1</span>
+  <span class="text-emerald-400">base_url</span>: <span class="text-amber-300">https://api.kaiaigo.com/v1</span>
   <span class="text-emerald-400">api_key</span>: <span class="text-amber-300">sk-your-api-key</span></pre>
           <button @click="copy('hermes')" class="absolute top-3 right-3 rounded-md bg-gray-700 px-3 py-1 text-xs text-gray-300 transition-all hover:bg-gray-600 hover:text-white">
             {{ copiedTab === 'hermes' ? '✓' : t('dashboard.copyConfig') }}
@@ -81,8 +81,8 @@
   <span class="text-emerald-400">"models"</span>: {
     <span class="text-emerald-400">"mode"</span>: <span class="text-amber-300">"merge"</span>,
     <span class="text-emerald-400">"providers"</span>: {
-      <span class="text-emerald-400">"mcorgai"</span>: {
-        <span class="text-emerald-400">"baseUrl"</span>: <span class="text-amber-300">"https://api.mcorgai.com/v1"</span>,
+      <span class="text-emerald-400">"kakaai"</span>: {
+        <span class="text-emerald-400">"baseUrl"</span>: <span class="text-amber-300">"https://api.kaiaigo.com/v1"</span>,
         <span class="text-emerald-400">"apiKey"</span>: <span class="text-amber-300">"sk-your-api-key"</span>,
         <span class="text-emerald-400">"api"</span>: <span class="text-amber-300">"openai-responses"</span>,
         <span class="text-emerald-400">"models"</span>: [
@@ -98,7 +98,7 @@
           </button>
         </div>
         <div class="mt-2 rounded-lg bg-amber-50 p-3 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">
-          💡 <strong>gpt-image-2</strong>：已在 providers.models 中添加，使用 <code class="rounded bg-amber-100 px-1 dark:bg-amber-900/40">mcorgai/gpt-image-2</code> 调用。
+          💡 <strong>gpt-image-2</strong>：已在 providers.models 中添加，使用 <code class="rounded bg-amber-100 px-1 dark:bg-amber-900/40">kakaai/gpt-image-2</code> 调用。
         </div>
       </div>
     </div>
@@ -129,7 +129,7 @@ disable_response_storage = true
 
 [model_providers.OpenAI]
 name = "OpenAI"
-base_url = "https://api.mcorgai.com/v1"
+base_url = "https://api.kaiaigo.com/v1"
 wire_api = "responses"
 requires_openai_auth = true
 
@@ -140,14 +140,14 @@ requires_openai_auth = true
   hermes: `model:
   default: gpt-5.5
   provider: openai
-  base_url: https://api.mcorgai.com/v1
+  base_url: https://api.kaiaigo.com/v1
   api_key: ***`,
   openclaw: `{
   "models": {
     "mode": "merge",
     "providers": {
-      "mcorgai": {
-        "baseUrl": "https://api.mcorgai.com/v1",
+      "kakaai": {
+        "baseUrl": "https://api.kaiaigo.com/v1",
         "apiKey": "***",
         "api": "openai-responses",
         "models": [

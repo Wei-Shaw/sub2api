@@ -270,7 +270,7 @@ func (e *EasyPay) createXunhuPayment(ctx context.Context, req payment.CreatePaym
 	}
 	if req.IsMobile {
 		params["wap_url"] = xunhuWAPURL(returnURL)
-		params["wap_name"] = "mcorgai.com"
+		params["wap_name"] = "kaiaigo.com"
 	}
 	if req.PaymentType == payment.TypeWxpay {
 		params["type"] = "WAP"
@@ -338,7 +338,7 @@ func rawXunhuData(params map[string]string) string {
 func truncateXunhuTitle(title string) string {
 	title = strings.TrimSpace(title)
 	if title == "" {
-		return "mcorgai recharge"
+		return "kaiaigo recharge"
 	}
 	r := []rune(title)
 	if len(r) > 42 {
@@ -355,7 +355,7 @@ func xunhuWAPURL(returnURL string) string {
 	if u, err := url.Parse(returnURL); err == nil && u.Scheme != "" && u.Host != "" {
 		return u.Scheme + "://" + u.Host
 	}
-	return "https://mcorgai.com"
+	return "https://kaiaigo.com"
 }
 
 func firstNonEmpty(values ...string) string {

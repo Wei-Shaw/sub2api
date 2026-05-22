@@ -6284,8 +6284,8 @@ export default {
     // Admin tour steps
     admin: {
       welcome: {
-        title: '👋 Welcome to 起源AI',
-        description: '<div style="line-height: 1.8;"><p style="margin-bottom: 16px;">起源AI is a powerful AI service gateway platform that helps you easily manage and distribute AI services.</p><p style="margin-bottom: 12px;"><b>🎯 Core Features:</b></p><ul style="margin-left: 20px; margin-bottom: 16px;"><li>📦 <b>Group Management</b> - Create service tiers (VIP, Free Trial, etc.)</li><li>🔗 <b>Account Pool</b> - Connect multiple upstream AI service accounts</li><li>🔑 <b>Key Distribution</b> - Generate independent API Keys for users</li>💰 <b>Billing Control</b> - Flexible rate and quota management</li></ul><p style="color: #10b981; font-weight: 600;">Let\'s complete the initial setup in 3 minutes →</p></div>',
+        title: '👋 Welcome to 卡卡AI',
+        description: '<div style="line-height: 1.8;"><p style="margin-bottom: 16px;">卡卡AI is a powerful AI service gateway platform that helps you easily manage and distribute AI services.</p><p style="margin-bottom: 12px;"><b>🎯 Core Features:</b></p><ul style="margin-left: 20px; margin-bottom: 16px;"><li>📦 <b>Group Management</b> - Create service tiers (VIP, Free Trial, etc.)</li><li>🔗 <b>Account Pool</b> - Connect multiple upstream AI service accounts</li><li>🔑 <b>Key Distribution</b> - Generate independent API Keys for users</li>💰 <b>Billing Control</b> - Flexible rate and quota management</li></ul><p style="color: #10b981; font-weight: 600;">Let\'s complete the initial setup in 3 minutes →</p></div>',
         nextBtn: 'Start Setup 🚀',
         prevBtn: 'Skip'
       },
@@ -6384,8 +6384,8 @@ export default {
     // User tour steps
     user: {
       welcome: {
-        title: '👋 Welcome to 起源AI',
-        description: '<div style="line-height: 1.8;"><p style="margin-bottom: 16px;">Hello! Welcome to the 起源AI AI service platform.</p><p style="margin-bottom: 12px;"><b>🎯 Quick Start:</b></p><ul style="margin-left: 20px; margin-bottom: 16px;"><li>🔑 Create API Key</li><li>📋 Copy key to your application</li><li>🚀 Start using AI services</li></ul><p style="color: #10b981; font-weight: 600;">Just 1 minute, let\'s get started →</p></div>',
+        title: '👋 Welcome to 卡卡AI',
+        description: '<div style="line-height: 1.8;"><p style="margin-bottom: 16px;">Hello! Welcome to the 卡卡AI AI service platform.</p><p style="margin-bottom: 12px;"><b>🎯 Quick Start:</b></p><ul style="margin-left: 20px; margin-bottom: 16px;"><li>🔑 Create API Key</li><li>📋 Copy key to your application</li><li>🚀 Start using AI services</li></ul><p style="color: #10b981; font-weight: 600;">Just 1 minute, let\'s get started →</p></div>',
         nextBtn: 'Start 🚀',
         prevBtn: 'Skip'
       },
@@ -6814,7 +6814,7 @@ export default {
       q3: 'Are there rate limits?',
       a3: 'Each account has independent rate limits. Multi-account pools automatically balance the load',
       q4: 'How do I configure after buying a plan?',
-      a4: 'After purchase, create an API Key on the "API Keys" page, then return here and copy the config for your tool. Codex / OpenAI SDK use https://api.mcorgai.com/v1; Claude Code uses https://api.mcorgai.com without /v1. Replace sk-xxx with your API Key and start using it.',
+      a4: 'After purchase, create an API Key on the "API Keys" page, then return here and copy the config for your tool. Codex / OpenAI SDK use https://api.kaiaigo.com/v1; Claude Code uses https://api.kaiaigo.com without /v1. Replace sk-xxx with your API Key and start using it.',
       q5: 'Where can I see my daily quota?',
       a5: "Open \"My Subscriptions\" after logging in. You can see the plan expiration time, today's used quota, today's remaining quota and reset countdown. Subscription plans are limited only by daily quota, not hidden weekly/monthly quota.",
       q6: 'Who should I contact for business, procurement or invoices?',

@@ -14,7 +14,7 @@
             <div class="cs-qr-wrap">
               <img src="/aftersales-qq-group.jpg" alt="扫码加入交流群" class="cs-qr-img" />
             </div>
-            <p class="cs-panel-hint">QQ 扫码加入「起源AI交流群」</p>
+            <p class="cs-panel-hint">QQ 扫码加入「卡卡AI交流群」</p>
             <div class="cs-panel-divider"></div>
             <div class="cs-panel-info">
               <div class="cs-info-row">

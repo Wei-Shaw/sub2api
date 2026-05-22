@@ -62,7 +62,7 @@
               <span class="h-2.5 w-2.5 rounded-full bg-yellow-400"></span>
               <span class="h-2.5 w-2.5 rounded-full bg-green-400"></span>
             </div>
-            <span class="font-mono text-xs text-gray-400">mcorgai.com/client</span>
+            <span class="font-mono text-xs text-gray-400">kaiaigo.com/client</span>
           </div>
           <div class="space-y-4">
             <div class="rounded-lg bg-gray-50 p-4 dark:bg-dark-900/70">
@@ -72,7 +72,7 @@
             <div class="grid gap-3 sm:grid-cols-2">
               <div class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900">
                 <p class="text-xs text-gray-400">Base URL</p>
-                <p class="mt-1 font-mono text-sm text-primary-500">https://api.mcorgai.com</p>
+                <p class="mt-1 font-mono text-sm text-primary-500">https://api.kaiaigo.com</p>
               </div>
               <div class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900">
                 <p class="text-xs text-gray-400">工具支持</p>

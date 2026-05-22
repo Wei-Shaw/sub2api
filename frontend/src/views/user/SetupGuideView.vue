@@ -53,10 +53,10 @@
               选对工具，复制配置，马上能跑
             </div>
             <h1 class="guide-title max-w-2xl text-4xl font-semibold tracking-[-0.04em] text-[#17130f] sm:text-6xl dark:text-white">
-              起源AI 接入指南
+              卡卡AI 接入指南
             </h1>
             <p class="mt-5 max-w-2xl text-base leading-8 text-[#6f675b] sm:text-lg dark:text-dark-300">
-              这里不堆概念，只告诉你三件事：用哪个地址、Key 放哪里、怎么验证。OpenAI 兼容工具统一走 <code>https://api.mcorgai.com/v1</code>；Claude Code 单独走 <code>https://api.mcorgai.com</code>。
+              这里不堆概念，只告诉你三件事：用哪个地址、Key 放哪里、怎么验证。OpenAI 兼容工具统一走 <code>https://api.kaiaigo.com/v1</code>；Claude Code 单独走 <code>https://api.kaiaigo.com</code>。
             </p>
           </div>
           <div class="relative mt-8 grid gap-3 md:grid-cols-3">
@@ -173,7 +173,7 @@ import { useAppStore } from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 
 const appStore = useAppStore()
-const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || '起源AI')
+const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || '卡卡AI')
 const siteLogo = computed(() => appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '')
 const currentYear = computed(() => new Date().getFullYear())
 const activeSection = ref('overview')
@@ -186,7 +186,7 @@ disable_response_storage = true
 
 [model_providers.OpenAI]
 name = "OpenAI"
-base_url = "https://api.mcorgai.com/v1"
+base_url = "https://api.kaiaigo.com/v1"
 wire_api = "responses"
 requires_openai_auth = true
 
@@ -198,15 +198,15 @@ requires_openai_auth = true
 # 使用
 codex --model gpt-5.5`
 
-const codexVerify = `curl https://api.mcorgai.com/v1/models \\
+const codexVerify = `curl https://api.kaiaigo.com/v1/models \\
   -H "Authorization: Bearer sk-your-key"`
 
-const claudeConfig = `export ANTHROPIC_BASE_URL="https://api.mcorgai.com"
+const claudeConfig = `export ANTHROPIC_BASE_URL="https://api.kaiaigo.com"
 export ANTHROPIC_API_KEY="sk-your-key"
 
 claude --model claude-sonnet-4-6`
 
-const claudeVerify = `curl https://api.mcorgai.com/v1/messages \\
+const claudeVerify = `curl https://api.kaiaigo.com/v1/messages \\
   -H "x-api-key: sk-your-key" \\
   -H "anthropic-version: 2023-06-01" \\
   -H "content-type: application/json" \\
@@ -216,7 +216,7 @@ const pythonSdk = `from openai import OpenAI
 
 client = OpenAI(
     api_key="sk-your-key",
-    base_url="https://api.mcorgai.com/v1",
+    base_url="https://api.kaiaigo.com/v1",
 )
 
 response = client.chat.completions.create(
@@ -229,7 +229,7 @@ const nodeSdk = `import OpenAI from "openai";
 
 const client = new OpenAI({
   apiKey: "sk-your-key",
-  baseURL: "https://api.mcorgai.com/v1",
+  baseURL: "https://api.kaiaigo.com/v1",
 });
 
 const response = await client.chat.completions.create({
@@ -242,21 +242,21 @@ const hermesConfig = `# ~/.hermes/config.yaml
 model:
   provider: openai
   default: gpt-5.5
-  base_url: https://api.mcorgai.com/v1
+  base_url: https://api.kaiaigo.com/v1
   api_key: sk-your-key
 
 # 或用命令设置
 hermes config set model.provider openai
 hermes config set model.default gpt-5.5
-hermes config set model.base_url https://api.mcorgai.com/v1`
+hermes config set model.base_url https://api.kaiaigo.com/v1`
 
 const openclawConfig = `// ~/.openclaw/openclaw.json
 {
   "models": {
     "mode": "merge",
     "providers": {
-      "mcorgai": {
-        "baseUrl": "https://api.mcorgai.com/v1",
+      "kakaai": {
+        "baseUrl": "https://api.kaiaigo.com/v1",
         "apiKey": "sk-your-key",
         "api": "openai-responses",
         "models": [
@@ -273,10 +273,10 @@ const opencodeConfig = `// ~/.config/opencode/opencode.jsonc
 {
   "$schema": "https://opencode.ai/config.json",
   "provider": {
-    "mcorgai": {
-      "name": "起源AI",
+    "kakaai": {
+      "name": "卡卡AI",
       "options": {
-        "baseURL": "https://api.mcorgai.com/v1"
+        "baseURL": "https://api.kaiaigo.com/v1"
       },
       "models": {
         "gpt-5.5": { "name": "GPT-5.5" },
@@ -288,11 +288,11 @@ const opencodeConfig = `// ~/.config/opencode/opencode.jsonc
 }
 
 opencode auth login
-# Provider 选 Other，provider id 填 mcorgai，再粘贴 sk-your-key`
+# Provider 选 Other，provider id 填 kakaai，再粘贴 sk-your-key`
 
 const heroFacts = [
-  { label: 'OpenAI Base URL', value: 'https://api.mcorgai.com/v1', note: 'Codex、Cursor、OpenAI SDK、OpenCode 都用这个。' },
-  { label: 'Claude Base URL', value: 'https://api.mcorgai.com', note: 'Claude Code 不要加 /v1，环境变量用 ANTHROPIC_BASE_URL。' },
+  { label: 'OpenAI Base URL', value: 'https://api.kaiaigo.com/v1', note: 'Codex、Cursor、OpenAI SDK、OpenCode 都用这个。' },
+  { label: 'Claude Base URL', value: 'https://api.kaiaigo.com', note: 'Claude Code 不要加 /v1，环境变量用 ANTHROPIC_BASE_URL。' },
   { label: 'API Key', value: 'sk-your-key', note: '登录后在 API Keys 页面创建，复制到配置里即可。' },
 ]
 
@@ -304,10 +304,10 @@ const pickCards = [
 
 const tools = [
   { id: 'codex', name: 'Codex CLI', category: '推荐', badge: '最稳', file: '~/.codex/config.toml + auth.json', desc: '实测稳定方案是 config.toml + auth.json 两段式。不要使用旧版 bearer token 实验配置。', code: codexConfig, verify: codexVerify, tips: ['OpenAI 兼容地址必须带 /v1。', 'Key 放 auth.json，config.toml 只写 provider 和 base_url。'] },
-  { id: 'claude', name: 'Claude Code', category: 'Anthropic', file: 'Shell env', desc: 'Claude Code 使用 Anthropic 协议，Base URL 写根地址，不要加 /v1。', code: claudeConfig, verify: claudeVerify, tips: ['ANTHROPIC_BASE_URL=https://api.mcorgai.com', '如果报模型不存在，先用 /v1/models 看当前可用模型。'] },
+  { id: 'claude', name: 'Claude Code', category: 'Anthropic', file: 'Shell env', desc: 'Claude Code 使用 Anthropic 协议，Base URL 写根地址，不要加 /v1。', code: claudeConfig, verify: claudeVerify, tips: ['ANTHROPIC_BASE_URL=https://api.kaiaigo.com', '如果报模型不存在，先用 /v1/models 看当前可用模型。'] },
   { id: 'sdk', name: 'OpenAI SDK', category: '开发调用', file: 'Python / Node.js', desc: '在自己的项目里调用最简单：base_url / baseURL 指向 OpenAI 兼容地址。', code: `${pythonSdk}\n\n# ---------- Node.js ----------\n${nodeSdk}`, verify: codexVerify, tips: ['Python 参数名是 base_url。', 'Node.js 参数名是 baseURL。'] },
   { id: 'hermes', name: 'Hermes Agent', category: 'Agent', file: '~/.hermes/config.yaml', desc: 'Hermes 可以按 OpenAI 兼容 provider 接入，适合多工具、多模型的 Agent 工作流。', code: hermesConfig, tips: ['如果 Hermes 版本较新，也可以用 hermes config set 写入配置。'] },
-  { id: 'openclaw', name: 'OpenClaw', category: 'Agent', file: '~/.openclaw/openclaw.json', desc: '通过 models.providers 添加自定义 provider，api 推荐使用 openai-responses。', code: openclawConfig, tips: ['provider id 建议固定为 mcorgai，后续切模型更清楚。'] },
+  { id: 'openclaw', name: 'OpenClaw', category: 'Agent', file: '~/.openclaw/openclaw.json', desc: '通过 models.providers 添加自定义 provider，api 推荐使用 openai-responses。', code: openclawConfig, tips: ['provider id 建议固定为 kakaai，后续切模型更清楚。'] },
   { id: 'opencode', name: 'OpenCode', category: 'CLI', file: '~/.config/opencode/opencode.jsonc', desc: 'OpenCode 通过 JSONC 添加 provider，再用 auth login 保存 API Key。', code: opencodeConfig, tips: ['配置文件可以是 opencode.jsonc 或 opencode.json。'] },
 ]
 
