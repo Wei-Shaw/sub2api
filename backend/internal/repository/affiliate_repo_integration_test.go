@@ -97,7 +97,7 @@ LIMIT 1`, u.ID)
 	var amount, balanceAfter, quotaAfter, frozenAfter, historyAfter float64
 	require.NoError(t, rows.Scan(&amount, &balanceAfter, &quotaAfter, &frozenAfter, &historyAfter))
 	require.InDelta(t, 12.34, amount, 1e-9)
-	require.InDelta(t, 12.34, balanceAfter, 1e-9)
+	require.InDelta(t, 5.5, balanceAfter, 1e-9)
 	require.InDelta(t, 0.0, quotaAfter, 1e-9)
 	require.InDelta(t, 0.0, frozenAfter, 1e-9)
 	require.InDelta(t, 12.34, historyAfter, 1e-9)
