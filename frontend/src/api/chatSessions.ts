@@ -4,6 +4,14 @@ export type ChatSessionStatus = 'active' | 'archived'
 export type ChatMessageStatus = 'pending' | 'streaming' | 'completed' | 'stopped' | 'failed'
 export type ChatMessageRole = 'system' | 'developer' | 'user' | 'assistant'
 
+export interface ChatMessageAttachmentRecord {
+  type: 'image' | string
+  image_url: string
+  mime_type: string
+  name?: string
+  size?: number
+}
+
 export interface ChatSessionRecord {
   id: number
   api_key_id: number
@@ -21,6 +29,7 @@ export interface ChatMessageRecord {
   session_id: number
   role: ChatMessageRole
   content: string
+  attachments?: ChatMessageAttachmentRecord[]
   status: ChatMessageStatus | string
   model?: string | null
   duration_ms?: number | null
@@ -46,6 +55,7 @@ export interface UpdateChatSessionPayload {
 export interface CreateChatMessagePayload {
   role: ChatMessageRole
   content: string
+  attachments?: ChatMessageAttachmentRecord[]
   status?: ChatMessageStatus | string
   model?: string
   duration_ms?: number

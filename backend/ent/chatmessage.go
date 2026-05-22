@@ -3,6 +3,7 @@
 package ent
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/chatsession"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 // ChatMessage is the model entity for the ChatMessage schema.
@@ -32,6 +34,8 @@ type ChatMessage struct {
 	Role string `json:"role,omitempty"`
 	// Content holds the value of the "content" field.
 	Content string `json:"content,omitempty"`
+	// Attachments holds the value of the "attachments" field.
+	Attachments []domain.ChatMessageAttachment `json:"attachments,omitempty"`
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
 	// Model holds the value of the "model" field.
@@ -101,6 +105,8 @@ func (*ChatMessage) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case chatmessage.FieldAttachments:
+			values[i] = new([]byte)
 		case chatmessage.FieldActualCost:
 			values[i] = new(sql.NullFloat64)
 		case chatmessage.FieldID, chatmessage.FieldSessionID, chatmessage.FieldUserID, chatmessage.FieldDurationMs, chatmessage.FieldUsageLogID:
@@ -165,6 +171,14 @@ func (_m *ChatMessage) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field content", values[i])
 			} else if value.Valid {
 				_m.Content = value.String
+			}
+		case chatmessage.FieldAttachments:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field attachments", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.Attachments); err != nil {
+					return fmt.Errorf("unmarshal field attachments: %w", err)
+				}
 			}
 		case chatmessage.FieldStatus:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -275,6 +289,9 @@ func (_m *ChatMessage) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("content=")
 	builder.WriteString(_m.Content)
+	builder.WriteString(", ")
+	builder.WriteString("attachments=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Attachments))
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(_m.Status)

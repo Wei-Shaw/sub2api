@@ -13509,30 +13509,32 @@ func (m *ChannelMonitorRequestTemplateMutation) ResetEdge(name string) error {
 // ChatMessageMutation represents an operation that mutates the ChatMessage nodes in the graph.
 type ChatMessageMutation struct {
 	config
-	op               Op
-	typ              string
-	id               *int64
-	created_at       *time.Time
-	updated_at       *time.Time
-	role             *string
-	content          *string
-	status           *string
-	model            *string
-	duration_ms      *int
-	addduration_ms   *int
-	actual_cost      *float64
-	addactual_cost   *float64
-	error_message    *string
-	clearedFields    map[string]struct{}
-	session          *int64
-	clearedsession   bool
-	user             *int64
-	cleareduser      bool
-	usage_log        *int64
-	clearedusage_log bool
-	done             bool
-	oldValue         func(context.Context) (*ChatMessage, error)
-	predicates       []predicate.ChatMessage
+	op                Op
+	typ               string
+	id                *int64
+	created_at        *time.Time
+	updated_at        *time.Time
+	role              *string
+	content           *string
+	attachments       *[]domain.ChatMessageAttachment
+	appendattachments []domain.ChatMessageAttachment
+	status            *string
+	model             *string
+	duration_ms       *int
+	addduration_ms    *int
+	actual_cost       *float64
+	addactual_cost    *float64
+	error_message     *string
+	clearedFields     map[string]struct{}
+	session           *int64
+	clearedsession    bool
+	user              *int64
+	cleareduser       bool
+	usage_log         *int64
+	clearedusage_log  bool
+	done              bool
+	oldValue          func(context.Context) (*ChatMessage, error)
+	predicates        []predicate.ChatMessage
 }
 
 var _ ent.Mutation = (*ChatMessageMutation)(nil)
@@ -13847,6 +13849,57 @@ func (m *ChatMessageMutation) OldContent(ctx context.Context) (v string, err err
 // ResetContent resets all changes to the "content" field.
 func (m *ChatMessageMutation) ResetContent() {
 	m.content = nil
+}
+
+// SetAttachments sets the "attachments" field.
+func (m *ChatMessageMutation) SetAttachments(dma []domain.ChatMessageAttachment) {
+	m.attachments = &dma
+	m.appendattachments = nil
+}
+
+// Attachments returns the value of the "attachments" field in the mutation.
+func (m *ChatMessageMutation) Attachments() (r []domain.ChatMessageAttachment, exists bool) {
+	v := m.attachments
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAttachments returns the old "attachments" field's value of the ChatMessage entity.
+// If the ChatMessage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChatMessageMutation) OldAttachments(ctx context.Context) (v []domain.ChatMessageAttachment, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAttachments is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAttachments requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAttachments: %w", err)
+	}
+	return oldValue.Attachments, nil
+}
+
+// AppendAttachments adds dma to the "attachments" field.
+func (m *ChatMessageMutation) AppendAttachments(dma []domain.ChatMessageAttachment) {
+	m.appendattachments = append(m.appendattachments, dma...)
+}
+
+// AppendedAttachments returns the list of values that were appended to the "attachments" field in this mutation.
+func (m *ChatMessageMutation) AppendedAttachments() ([]domain.ChatMessageAttachment, bool) {
+	if len(m.appendattachments) == 0 {
+		return nil, false
+	}
+	return m.appendattachments, true
+}
+
+// ResetAttachments resets all changes to the "attachments" field.
+func (m *ChatMessageMutation) ResetAttachments() {
+	m.attachments = nil
+	m.appendattachments = nil
 }
 
 // SetStatus sets the "status" field.
@@ -14287,7 +14340,7 @@ func (m *ChatMessageMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ChatMessageMutation) Fields() []string {
-	fields := make([]string, 0, 12)
+	fields := make([]string, 0, 13)
 	if m.created_at != nil {
 		fields = append(fields, chatmessage.FieldCreatedAt)
 	}
@@ -14305,6 +14358,9 @@ func (m *ChatMessageMutation) Fields() []string {
 	}
 	if m.content != nil {
 		fields = append(fields, chatmessage.FieldContent)
+	}
+	if m.attachments != nil {
+		fields = append(fields, chatmessage.FieldAttachments)
 	}
 	if m.status != nil {
 		fields = append(fields, chatmessage.FieldStatus)
@@ -14344,6 +14400,8 @@ func (m *ChatMessageMutation) Field(name string) (ent.Value, bool) {
 		return m.Role()
 	case chatmessage.FieldContent:
 		return m.Content()
+	case chatmessage.FieldAttachments:
+		return m.Attachments()
 	case chatmessage.FieldStatus:
 		return m.Status()
 	case chatmessage.FieldModel:
@@ -14377,6 +14435,8 @@ func (m *ChatMessageMutation) OldField(ctx context.Context, name string) (ent.Va
 		return m.OldRole(ctx)
 	case chatmessage.FieldContent:
 		return m.OldContent(ctx)
+	case chatmessage.FieldAttachments:
+		return m.OldAttachments(ctx)
 	case chatmessage.FieldStatus:
 		return m.OldStatus(ctx)
 	case chatmessage.FieldModel:
@@ -14439,6 +14499,13 @@ func (m *ChatMessageMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetContent(v)
+		return nil
+	case chatmessage.FieldAttachments:
+		v, ok := value.([]domain.ChatMessageAttachment)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAttachments(v)
 		return nil
 	case chatmessage.FieldStatus:
 		v, ok := value.(string)
@@ -14608,6 +14675,9 @@ func (m *ChatMessageMutation) ResetField(name string) error {
 		return nil
 	case chatmessage.FieldContent:
 		m.ResetContent()
+		return nil
+	case chatmessage.FieldAttachments:
+		m.ResetAttachments()
 		return nil
 	case chatmessage.FieldStatus:
 		m.ResetStatus()

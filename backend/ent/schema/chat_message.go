@@ -2,6 +2,7 @@ package schema
 
 import (
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
@@ -39,6 +40,9 @@ func (ChatMessage) Fields() []ent.Field {
 		field.String("content").
 			SchemaType(map[string]string{dialect.Postgres: "text"}).
 			Default(""),
+		field.JSON("attachments", []domain.ChatMessageAttachment{}).
+			Default(func() []domain.ChatMessageAttachment { return []domain.ChatMessageAttachment{} }).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 		field.String("status").
 			MaxLen(20).
 			Default("completed"),

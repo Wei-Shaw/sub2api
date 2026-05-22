@@ -8,6 +8,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/chatmessage"
 	"github.com/Wei-Shaw/sub2api/ent/chatsession"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/gin-gonic/gin"
@@ -40,6 +41,7 @@ type chatMessageDTO struct {
 	SessionID    int64     `json:"session_id"`
 	Role         string    `json:"role"`
 	Content      string    `json:"content"`
+	Attachments  []domain.ChatMessageAttachment `json:"attachments"`
 	Status       string    `json:"status"`
 	Model        *string   `json:"model,omitempty"`
 	DurationMs   *int      `json:"duration_ms,omitempty"`
@@ -65,6 +67,7 @@ type updateChatSessionRequest struct {
 type createChatMessageRequest struct {
 	Role         string   `json:"role" binding:"required"`
 	Content      string   `json:"content"`
+	Attachments  []domain.ChatMessageAttachment `json:"attachments"`
 	Status       string   `json:"status"`
 	Model        *string  `json:"model"`
 	DurationMs   *int     `json:"duration_ms"`
@@ -75,6 +78,7 @@ type createChatMessageRequest struct {
 
 type updateChatMessageRequest struct {
 	Content      *string  `json:"content"`
+	Attachments  *[]domain.ChatMessageAttachment `json:"attachments"`
 	Status       *string  `json:"status"`
 	Model        *string  `json:"model"`
 	DurationMs   *int     `json:"duration_ms"`
@@ -237,6 +241,7 @@ func (h *ChatSessionHandler) CreateMessage(c *gin.Context) {
 		SetUserID(session.UserID).
 		SetRole(strings.TrimSpace(req.Role)).
 		SetContent(req.Content).
+		SetAttachments(normalizeChatMessageAttachments(req.Attachments)).
 		SetStatus(status)
 	if req.Model != nil {
 		create.SetModel(strings.TrimSpace(*req.Model))
@@ -288,6 +293,9 @@ func (h *ChatSessionHandler) UpdateMessage(c *gin.Context) {
 	update := h.client.ChatMessage.UpdateOneID(message.ID)
 	if req.Content != nil {
 		update.SetContent(*req.Content)
+	}
+	if req.Attachments != nil {
+		update.SetAttachments(normalizeChatMessageAttachments(*req.Attachments))
 	}
 	if req.Status != nil {
 		update.SetStatus(strings.TrimSpace(*req.Status))
@@ -360,6 +368,42 @@ func normalizeChatTitle(title string) string {
 	return title
 }
 
+func normalizeChatMessageAttachments(input []domain.ChatMessageAttachment) []domain.ChatMessageAttachment {
+	if len(input) == 0 {
+		return []domain.ChatMessageAttachment{}
+	}
+	out := make([]domain.ChatMessageAttachment, 0, len(input))
+	for _, attachment := range input {
+		attachment.Type = strings.TrimSpace(attachment.Type)
+		attachment.ImageURL = strings.TrimSpace(attachment.ImageURL)
+		attachment.MimeType = strings.TrimSpace(attachment.MimeType)
+		attachment.Name = strings.TrimSpace(attachment.Name)
+		if attachment.Type != "image" {
+			continue
+		}
+		if !strings.HasPrefix(attachment.ImageURL, "data:image/") {
+			continue
+		}
+		if !isAllowedChatImageMimeType(attachment.MimeType) {
+			continue
+		}
+		if attachment.Size < 0 {
+			attachment.Size = 0
+		}
+		out = append(out, attachment)
+	}
+	return out
+}
+
+func isAllowedChatImageMimeType(mimeType string) bool {
+	switch mimeType {
+	case "image/png", "image/jpeg", "image/webp", "image/gif":
+		return true
+	default:
+		return false
+	}
+}
+
 func toChatSessionDTO(session *ent.ChatSession) chatSessionDTO {
 	return chatSessionDTO{
 		ID:        session.ID,
@@ -380,6 +424,7 @@ func toChatMessageDTO(message *ent.ChatMessage) chatMessageDTO {
 		SessionID:    message.SessionID,
 		Role:         message.Role,
 		Content:      message.Content,
+		Attachments:  message.Attachments,
 		Status:       message.Status,
 		Model:        message.Model,
 		DurationMs:   message.DurationMs,

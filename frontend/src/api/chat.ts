@@ -4,9 +4,24 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 
 export type ChatRole = 'system' | 'developer' | 'user' | 'assistant'
 
+export interface ChatTextPart {
+  type: 'text'
+  text: string
+}
+
+export interface ChatImagePart {
+  type: 'image'
+  imageUrl: string
+  mimeType?: string
+  name?: string
+  size?: number
+}
+
+export type ChatContentPart = ChatTextPart | ChatImagePart
+
 export interface ChatMessage {
   role: ChatRole
-  content: string
+  content: string | ChatContentPart[]
 }
 
 export interface ChatCompletionOptions {
@@ -105,7 +120,7 @@ function buildStreamRequest(options: StreamChatCompletionOptions): StreamRequest
           model: options.model,
           input: options.messages.map((message) => ({
             role: message.role,
-            content: message.content,
+            content: toResponsesContent(message.content),
           })),
           stream: true,
         }, options.promptCacheKey),
@@ -125,7 +140,7 @@ function buildStreamRequest(options: StreamChatCompletionOptions): StreamRequest
             .filter((message) => message.role !== 'system' && message.role !== 'developer')
             .map((message) => ({
               role: message.role === 'assistant' ? 'model' : 'user',
-              parts: [{ text: message.content }],
+              parts: toGeminiParts(message.content),
             })),
         },
       }
@@ -136,7 +151,10 @@ function buildStreamRequest(options: StreamChatCompletionOptions): StreamRequest
         protocol: 'chat_completions',
         body: withPromptCacheKey({
           model: options.model,
-          messages: options.messages,
+          messages: options.messages.map((message) => ({
+            role: message.role,
+            content: toChatCompletionsContent(message.content),
+          })),
           stream: true,
         }, options.promptCacheKey),
       }
@@ -146,7 +164,7 @@ function buildStreamRequest(options: StreamChatCompletionOptions): StreamRequest
 function buildAnthropicMessagesBody(options: StreamChatCompletionOptions): Record<string, unknown> {
   const system = options.messages
     .filter((message) => message.role === 'system' || message.role === 'developer')
-    .map((message) => message.content.trim())
+    .map((message) => textFromContent(message.content).trim())
     .filter(Boolean)
     .join('\n\n')
   const body: Record<string, unknown> = {
@@ -158,10 +176,88 @@ function buildAnthropicMessagesBody(options: StreamChatCompletionOptions): Recor
     .filter((message) => message.role === 'user' || message.role === 'assistant')
     .map((message) => ({
       role: message.role,
-      content: message.content,
+      content: toAnthropicContent(message.content),
     }))
   body.stream = true
   return body
+}
+
+function normalizeContentParts(content: ChatMessage['content']): ChatContentPart[] {
+  if (typeof content === 'string') return [{ type: 'text', text: content }]
+  return content
+}
+
+function hasImagePart(content: ChatMessage['content']): boolean {
+  return normalizeContentParts(content).some((part) => part.type === 'image')
+}
+
+function textFromContent(content: ChatMessage['content']): string {
+  return normalizeContentParts(content)
+    .filter((part): part is ChatTextPart => part.type === 'text')
+    .map((part) => part.text)
+    .join('\n')
+}
+
+function toResponsesContent(content: ChatMessage['content']): unknown {
+  if (!hasImagePart(content) && typeof content === 'string') return content
+  return normalizeContentParts(content).map((part) => {
+    if (part.type === 'text') {
+      return { type: 'input_text', text: part.text }
+    }
+    return { type: 'input_image', image_url: part.imageUrl }
+  })
+}
+
+function toChatCompletionsContent(content: ChatMessage['content']): unknown {
+  if (!hasImagePart(content) && typeof content === 'string') return content
+  return normalizeContentParts(content).map((part) => {
+    if (part.type === 'text') {
+      return { type: 'text', text: part.text }
+    }
+    return { type: 'image_url', image_url: { url: part.imageUrl } }
+  })
+}
+
+function toGeminiParts(content: ChatMessage['content']): unknown[] {
+  return normalizeContentParts(content).map((part) => {
+    if (part.type === 'text') return { text: part.text }
+    const image = splitImageDataUrl(part)
+    return {
+      inline_data: {
+        mime_type: image.mimeType,
+        data: image.data,
+      },
+    }
+  })
+}
+
+function toAnthropicContent(content: ChatMessage['content']): unknown {
+  if (!hasImagePart(content) && typeof content === 'string') return content
+  return normalizeContentParts(content).map((part) => {
+    if (part.type === 'text') {
+      return { type: 'text', text: part.text }
+    }
+    const image = splitImageDataUrl(part)
+    return {
+      type: 'image',
+      source: {
+        type: 'base64',
+        media_type: image.mimeType,
+        data: image.data,
+      },
+    }
+  })
+}
+
+function splitImageDataUrl(part: ChatImagePart): { mimeType: string, data: string } {
+  const match = /^data:([^;,]+);base64,(.+)$/i.exec(part.imageUrl)
+  if (!match) {
+    throw new Error('Image attachments must use base64 data URLs')
+  }
+  return {
+    mimeType: part.mimeType || match[1],
+    data: match[2],
+  }
 }
 
 function resolveProtocol(platform?: string): ChatProtocol {

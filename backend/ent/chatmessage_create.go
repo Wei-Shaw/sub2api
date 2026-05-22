@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/chatsession"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 // ChatMessageCreate is the builder for creating a ChatMessage entity.
@@ -82,6 +83,12 @@ func (_c *ChatMessageCreate) SetNillableContent(v *string) *ChatMessageCreate {
 	if v != nil {
 		_c.SetContent(*v)
 	}
+	return _c
+}
+
+// SetAttachments sets the "attachments" field.
+func (_c *ChatMessageCreate) SetAttachments(v []domain.ChatMessageAttachment) *ChatMessageCreate {
+	_c.mutation.SetAttachments(v)
 	return _c
 }
 
@@ -231,6 +238,10 @@ func (_c *ChatMessageCreate) defaults() {
 		v := chatmessage.DefaultContent
 		_c.mutation.SetContent(v)
 	}
+	if _, ok := _c.mutation.Attachments(); !ok {
+		v := chatmessage.DefaultAttachments()
+		_c.mutation.SetAttachments(v)
+	}
 	if _, ok := _c.mutation.Status(); !ok {
 		v := chatmessage.DefaultStatus
 		_c.mutation.SetStatus(v)
@@ -261,6 +272,9 @@ func (_c *ChatMessageCreate) check() error {
 	}
 	if _, ok := _c.mutation.Content(); !ok {
 		return &ValidationError{Name: "content", err: errors.New(`ent: missing required field "ChatMessage.content"`)}
+	}
+	if _, ok := _c.mutation.Attachments(); !ok {
+		return &ValidationError{Name: "attachments", err: errors.New(`ent: missing required field "ChatMessage.attachments"`)}
 	}
 	if _, ok := _c.mutation.Status(); !ok {
 		return &ValidationError{Name: "status", err: errors.New(`ent: missing required field "ChatMessage.status"`)}
@@ -323,6 +337,10 @@ func (_c *ChatMessageCreate) createSpec() (*ChatMessage, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Content(); ok {
 		_spec.SetField(chatmessage.FieldContent, field.TypeString, value)
 		_node.Content = value
+	}
+	if value, ok := _c.mutation.Attachments(); ok {
+		_spec.SetField(chatmessage.FieldAttachments, field.TypeJSON, value)
+		_node.Attachments = value
 	}
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(chatmessage.FieldStatus, field.TypeString, value)
@@ -504,6 +522,18 @@ func (u *ChatMessageUpsert) SetContent(v string) *ChatMessageUpsert {
 // UpdateContent sets the "content" field to the value that was provided on create.
 func (u *ChatMessageUpsert) UpdateContent() *ChatMessageUpsert {
 	u.SetExcluded(chatmessage.FieldContent)
+	return u
+}
+
+// SetAttachments sets the "attachments" field.
+func (u *ChatMessageUpsert) SetAttachments(v []domain.ChatMessageAttachment) *ChatMessageUpsert {
+	u.Set(chatmessage.FieldAttachments, v)
+	return u
+}
+
+// UpdateAttachments sets the "attachments" field to the value that was provided on create.
+func (u *ChatMessageUpsert) UpdateAttachments() *ChatMessageUpsert {
+	u.SetExcluded(chatmessage.FieldAttachments)
 	return u
 }
 
@@ -733,6 +763,20 @@ func (u *ChatMessageUpsertOne) SetContent(v string) *ChatMessageUpsertOne {
 func (u *ChatMessageUpsertOne) UpdateContent() *ChatMessageUpsertOne {
 	return u.Update(func(s *ChatMessageUpsert) {
 		s.UpdateContent()
+	})
+}
+
+// SetAttachments sets the "attachments" field.
+func (u *ChatMessageUpsertOne) SetAttachments(v []domain.ChatMessageAttachment) *ChatMessageUpsertOne {
+	return u.Update(func(s *ChatMessageUpsert) {
+		s.SetAttachments(v)
+	})
+}
+
+// UpdateAttachments sets the "attachments" field to the value that was provided on create.
+func (u *ChatMessageUpsertOne) UpdateAttachments() *ChatMessageUpsertOne {
+	return u.Update(func(s *ChatMessageUpsert) {
+		s.UpdateAttachments()
 	})
 }
 
@@ -1147,6 +1191,20 @@ func (u *ChatMessageUpsertBulk) SetContent(v string) *ChatMessageUpsertBulk {
 func (u *ChatMessageUpsertBulk) UpdateContent() *ChatMessageUpsertBulk {
 	return u.Update(func(s *ChatMessageUpsert) {
 		s.UpdateContent()
+	})
+}
+
+// SetAttachments sets the "attachments" field.
+func (u *ChatMessageUpsertBulk) SetAttachments(v []domain.ChatMessageAttachment) *ChatMessageUpsertBulk {
+	return u.Update(func(s *ChatMessageUpsert) {
+		s.SetAttachments(v)
+	})
+}
+
+// UpdateAttachments sets the "attachments" field to the value that was provided on create.
+func (u *ChatMessageUpsertBulk) UpdateAttachments() *ChatMessageUpsertBulk {
+	return u.Update(func(s *ChatMessageUpsert) {
+		s.UpdateAttachments()
 	})
 }
 

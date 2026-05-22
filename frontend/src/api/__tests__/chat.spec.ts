@@ -129,6 +129,103 @@ describe('chat API', () => {
     expect(onDelta).toHaveBeenNthCalledWith(2, 'llo')
   })
 
+  it('maps image parts for OpenAI Responses requests', async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.close()
+      },
+    })
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      body: stream,
+      headers: new Headers({ 'content-type': 'text/event-stream' }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { streamChatCompletion } = await import('../chat')
+
+    await streamChatCompletion({
+      apiKey: 'sk-user',
+      model: 'gpt-5.5',
+      platform: 'openai',
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: 'describe this' },
+          {
+            type: 'image',
+            imageUrl: 'data:image/png;base64,ZmFrZQ==',
+            mimeType: 'image/png',
+            name: 'shot.png',
+            size: 4,
+          },
+        ],
+      }],
+      onDelta: vi.fn(),
+    })
+
+    expect(fetchMock).toHaveBeenCalledWith('/v1/responses', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({
+        model: 'gpt-5.5',
+        input: [{
+          role: 'user',
+          content: [
+            { type: 'input_text', text: 'describe this' },
+            { type: 'input_image', image_url: 'data:image/png;base64,ZmFrZQ==' },
+          ],
+        }],
+        stream: true,
+      }),
+    }))
+  })
+
+  it('maps image parts for default chat completions requests', async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.close()
+      },
+    })
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      body: stream,
+      headers: new Headers({ 'content-type': 'text/event-stream' }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { streamChatCompletion } = await import('../chat')
+
+    await streamChatCompletion({
+      apiKey: 'sk-user',
+      model: 'gpt-5.5',
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: 'describe this' },
+          {
+            type: 'image',
+            imageUrl: 'data:image/png;base64,ZmFrZQ==',
+            mimeType: 'image/png',
+          },
+        ],
+      }],
+      onDelta: vi.fn(),
+    })
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/chat/completions', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({
+        model: 'gpt-5.5',
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'text', text: 'describe this' },
+            { type: 'image_url', image_url: { url: 'data:image/png;base64,ZmFrZQ==' } },
+          ],
+        }],
+        stream: true,
+      }),
+    }))
+  })
+
   it('streams Anthropic platform chats through the Messages endpoint', async () => {
     const chunks = [
       'event: content_block_delta\n',
@@ -176,6 +273,62 @@ describe('chat API', () => {
     expect(onDelta).toHaveBeenCalledWith('ok')
   })
 
+  it('maps image parts for Anthropic platform messages', async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.close()
+      },
+    })
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      body: stream,
+      headers: new Headers({ 'content-type': 'text/event-stream' }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { streamChatCompletion } = await import('../chat')
+
+    await streamChatCompletion({
+      apiKey: 'sk-user',
+      model: 'claude-sonnet-4-5',
+      platform: 'anthropic',
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: 'describe this' },
+          {
+            type: 'image',
+            imageUrl: 'data:image/jpeg;base64,ZmFrZQ==',
+            mimeType: 'image/jpeg',
+          },
+        ],
+      }],
+      onDelta: vi.fn(),
+    })
+
+    expect(fetchMock).toHaveBeenCalledWith('/v1/messages', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-5',
+        max_tokens: 4096,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'text', text: 'describe this' },
+            {
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: 'image/jpeg',
+                data: 'ZmFrZQ==',
+              },
+            },
+          ],
+        }],
+        stream: true,
+      }),
+    }))
+  })
+
   it('streams Gemini platform chats through the native Gemini endpoint', async () => {
     const chunks = [
       'data: {"candidates":[{"content":{"parts":[{"text":"he"}]}}]}\n\n',
@@ -219,6 +372,57 @@ describe('chat API', () => {
     }))
     expect(onDelta).toHaveBeenNthCalledWith(1, 'he')
     expect(onDelta).toHaveBeenNthCalledWith(2, 'llo')
+  })
+
+  it('maps image parts for Gemini platform contents', async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.close()
+      },
+    })
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      body: stream,
+      headers: new Headers({ 'content-type': 'text/event-stream' }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { streamChatCompletion } = await import('../chat')
+
+    await streamChatCompletion({
+      apiKey: 'sk-user',
+      model: 'gemini-2.5-pro',
+      platform: 'gemini',
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: 'describe this' },
+          {
+            type: 'image',
+            imageUrl: 'data:image/webp;base64,ZmFrZQ==',
+            mimeType: 'image/webp',
+          },
+        ],
+      }],
+      onDelta: vi.fn(),
+    })
+
+    expect(fetchMock).toHaveBeenCalledWith('/v1beta/models/gemini-2.5-pro:streamGenerateContent?alt=sse', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({
+        contents: [{
+          role: 'user',
+          parts: [
+            { text: 'describe this' },
+            {
+              inline_data: {
+                mime_type: 'image/webp',
+                data: 'ZmFrZQ==',
+              },
+            },
+          ],
+        }],
+      }),
+    }))
   })
 
 })

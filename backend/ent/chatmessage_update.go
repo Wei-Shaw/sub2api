@@ -10,12 +10,14 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/chatmessage"
 	"github.com/Wei-Shaw/sub2api/ent/chatsession"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 // ChatMessageUpdate is the builder for updating ChatMessage entities.
@@ -90,6 +92,18 @@ func (_u *ChatMessageUpdate) SetNillableContent(v *string) *ChatMessageUpdate {
 	if v != nil {
 		_u.SetContent(*v)
 	}
+	return _u
+}
+
+// SetAttachments sets the "attachments" field.
+func (_u *ChatMessageUpdate) SetAttachments(v []domain.ChatMessageAttachment) *ChatMessageUpdate {
+	_u.mutation.SetAttachments(v)
+	return _u
+}
+
+// AppendAttachments appends value to the "attachments" field.
+func (_u *ChatMessageUpdate) AppendAttachments(v []domain.ChatMessageAttachment) *ChatMessageUpdate {
+	_u.mutation.AppendAttachments(v)
 	return _u
 }
 
@@ -342,6 +356,14 @@ func (_u *ChatMessageUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	if value, ok := _u.mutation.Content(); ok {
 		_spec.SetField(chatmessage.FieldContent, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.Attachments(); ok {
+		_spec.SetField(chatmessage.FieldAttachments, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedAttachments(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, chatmessage.FieldAttachments, value)
+		})
+	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(chatmessage.FieldStatus, field.TypeString, value)
 	}
@@ -541,6 +563,18 @@ func (_u *ChatMessageUpdateOne) SetNillableContent(v *string) *ChatMessageUpdate
 	if v != nil {
 		_u.SetContent(*v)
 	}
+	return _u
+}
+
+// SetAttachments sets the "attachments" field.
+func (_u *ChatMessageUpdateOne) SetAttachments(v []domain.ChatMessageAttachment) *ChatMessageUpdateOne {
+	_u.mutation.SetAttachments(v)
+	return _u
+}
+
+// AppendAttachments appends value to the "attachments" field.
+func (_u *ChatMessageUpdateOne) AppendAttachments(v []domain.ChatMessageAttachment) *ChatMessageUpdateOne {
+	_u.mutation.AppendAttachments(v)
 	return _u
 }
 
@@ -822,6 +856,14 @@ func (_u *ChatMessageUpdateOne) sqlSave(ctx context.Context) (_node *ChatMessage
 	}
 	if value, ok := _u.mutation.Content(); ok {
 		_spec.SetField(chatmessage.FieldContent, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Attachments(); ok {
+		_spec.SetField(chatmessage.FieldAttachments, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedAttachments(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, chatmessage.FieldAttachments, value)
+		})
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(chatmessage.FieldStatus, field.TypeString, value)

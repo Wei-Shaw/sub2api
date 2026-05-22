@@ -166,6 +166,64 @@ func TestChatSessionHandlerRejectsCrossUserMessagesAndSavesOwnMessages(t *testin
 	require.Equal(t, "hello", resp.Data[0].Content)
 }
 
+func TestChatSessionHandlerPersistsImageAttachments(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	client := newChatSessionHandlerTestClient(t)
+	userID, key := seedChatSessionUserAndKey(t, client, "chat-attachments@example.com")
+	session := client.ChatSession.Create().
+		SetUserID(userID).
+		SetAPIKeyID(key.ID).
+		SetTitle("Attachments").
+		SetModel("gpt-5.5").
+		SetExpiresAt(time.Now().Add(24 * time.Hour)).
+		SaveX(context.Background())
+
+	h := NewChatSessionHandler(client)
+	body := []byte(`{
+		"role":"user",
+		"content":"look",
+		"status":"completed",
+		"attachments":[{
+			"type":"image",
+			"image_url":"data:image/png;base64,ZmFrZQ==",
+			"mime_type":"image/png",
+			"name":"shot.png",
+			"size":4
+		}]
+	}`)
+	c, recorder := chatSessionTestContext(http.MethodPost, "/api/v1/chat/sessions/1/messages", body, userID)
+	c.Params = gin.Params{{Key: "id", Value: formatTestID(session.ID)}}
+	h.CreateMessage(c)
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	c, recorder = chatSessionTestContext(http.MethodGet, "/api/v1/chat/sessions/1/messages", nil, userID)
+	c.Params = gin.Params{{Key: "id", Value: formatTestID(session.ID)}}
+	h.ListMessages(c)
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	var resp struct {
+		Data []struct {
+			Content     string `json:"content"`
+			Attachments []struct {
+				Type     string `json:"type"`
+				ImageURL string `json:"image_url"`
+				MimeType string `json:"mime_type"`
+				Name     string `json:"name"`
+				Size     int64  `json:"size"`
+			} `json:"attachments"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
+	require.Len(t, resp.Data, 1)
+	require.Equal(t, "look", resp.Data[0].Content)
+	require.Len(t, resp.Data[0].Attachments, 1)
+	require.Equal(t, "image", resp.Data[0].Attachments[0].Type)
+	require.Equal(t, "data:image/png;base64,ZmFrZQ==", resp.Data[0].Attachments[0].ImageURL)
+	require.Equal(t, "image/png", resp.Data[0].Attachments[0].MimeType)
+	require.Equal(t, "shot.png", resp.Data[0].Attachments[0].Name)
+	require.EqualValues(t, 4, resp.Data[0].Attachments[0].Size)
+}
+
 func TestChatSessionHandlerUpdatesAssistantMessageAndDeletesSession(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	client := newChatSessionHandlerTestClient(t)

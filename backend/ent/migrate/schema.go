@@ -591,6 +591,7 @@ var (
 		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "role", Type: field.TypeString, Size: 20},
 		{Name: "content", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "attachments", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
 		{Name: "status", Type: field.TypeString, Size: 20, Default: "completed"},
 		{Name: "model", Type: field.TypeString, Nullable: true, Size: 100},
 		{Name: "duration_ms", Type: field.TypeInt, Nullable: true},
@@ -608,19 +609,19 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "chat_messages_chat_sessions_messages",
-				Columns:    []*schema.Column{ChatMessagesColumns[10]},
+				Columns:    []*schema.Column{ChatMessagesColumns[11]},
 				RefColumns: []*schema.Column{ChatSessionsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "chat_messages_usage_logs_chat_messages",
-				Columns:    []*schema.Column{ChatMessagesColumns[11]},
+				Columns:    []*schema.Column{ChatMessagesColumns[12]},
 				RefColumns: []*schema.Column{UsageLogsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "chat_messages_users_chat_messages",
-				Columns:    []*schema.Column{ChatMessagesColumns[12]},
+				Columns:    []*schema.Column{ChatMessagesColumns[13]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -629,22 +630,22 @@ var (
 			{
 				Name:    "chatmessage_session_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{ChatMessagesColumns[10], ChatMessagesColumns[1]},
+				Columns: []*schema.Column{ChatMessagesColumns[11], ChatMessagesColumns[1]},
 			},
 			{
 				Name:    "chatmessage_user_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{ChatMessagesColumns[12], ChatMessagesColumns[1]},
+				Columns: []*schema.Column{ChatMessagesColumns[13], ChatMessagesColumns[1]},
 			},
 			{
 				Name:    "chatmessage_usage_log_id",
 				Unique:  false,
-				Columns: []*schema.Column{ChatMessagesColumns[11]},
+				Columns: []*schema.Column{ChatMessagesColumns[12]},
 			},
 			{
 				Name:    "chatmessage_status",
 				Unique:  false,
-				Columns: []*schema.Column{ChatMessagesColumns[5]},
+				Columns: []*schema.Column{ChatMessagesColumns[6]},
 			},
 		},
 	}

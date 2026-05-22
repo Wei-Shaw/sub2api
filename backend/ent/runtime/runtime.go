@@ -716,14 +716,18 @@ func init() {
 	chatmessageDescContent := chatmessageFields[3].Descriptor()
 	// chatmessage.DefaultContent holds the default value on creation for the content field.
 	chatmessage.DefaultContent = chatmessageDescContent.Default.(string)
+	// chatmessageDescAttachments is the schema descriptor for attachments field.
+	chatmessageDescAttachments := chatmessageFields[4].Descriptor()
+	// chatmessage.DefaultAttachments holds the default value on creation for the attachments field.
+	chatmessage.DefaultAttachments = chatmessageDescAttachments.Default.(func() []domain.ChatMessageAttachment)
 	// chatmessageDescStatus is the schema descriptor for status field.
-	chatmessageDescStatus := chatmessageFields[4].Descriptor()
+	chatmessageDescStatus := chatmessageFields[5].Descriptor()
 	// chatmessage.DefaultStatus holds the default value on creation for the status field.
 	chatmessage.DefaultStatus = chatmessageDescStatus.Default.(string)
 	// chatmessage.StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	chatmessage.StatusValidator = chatmessageDescStatus.Validators[0].(func(string) error)
 	// chatmessageDescModel is the schema descriptor for model field.
-	chatmessageDescModel := chatmessageFields[5].Descriptor()
+	chatmessageDescModel := chatmessageFields[6].Descriptor()
 	// chatmessage.ModelValidator is a validator for the "model" field. It is called by the builders before save.
 	chatmessage.ModelValidator = chatmessageDescModel.Validators[0].(func(string) error)
 	chatsessionMixin := schema.ChatSession{}.Mixin()

@@ -258,6 +258,82 @@ describe('ChatCompletionView', () => {
     expect(sendButton.element.disabled).toBe(false)
   })
 
+  it('allows image-only sending for a vision-capable model', async () => {
+    getAvailableChannels.mockResolvedValueOnce([
+      {
+        name: 'OpenAI',
+        platforms: [
+          {
+            platform: 'openai',
+            base_url: 'https://api.openai.com',
+            groups: [{ id: 10, name: 'Default' }],
+            supported_models: [{ name: 'gpt-5.5', platform: 'openai' }],
+          },
+        ],
+      },
+    ])
+    const wrapper = mount(ChatCompletionView)
+    await flushPromises()
+    const file = new File(['fake'], 'screenshot.png', { type: 'image/png' })
+    Object.defineProperty(file, 'size', { value: 4 })
+    vi.spyOn(FileReader.prototype, 'readAsDataURL').mockImplementation(function (this: FileReader) {
+      Object.defineProperty(this, 'result', {
+        value: 'data:image/png;base64,ZmFrZQ==',
+        configurable: true,
+      })
+      this.onload?.(new ProgressEvent('load'))
+    })
+
+    await wrapper.get('[data-testid="chat-message-input"]').trigger('paste', {
+      clipboardData: {
+        files: [file],
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.get<HTMLButtonElement>('[data-testid="chat-send-button"]').element.disabled).toBe(false)
+  })
+
+  it('disables image sending for a non-vision model while keeping text-only sends available', async () => {
+    getAvailableChannels.mockResolvedValueOnce([
+      {
+        name: 'DeepSeek',
+        platforms: [
+          {
+            platform: 'deepseek',
+            base_url: 'https://api.deepseek.com',
+            groups: [{ id: 10, name: 'Default' }],
+            supported_models: [{ name: 'deepseek-chat', platform: 'deepseek' }],
+          },
+        ],
+      },
+    ])
+    const wrapper = mount(ChatCompletionView)
+    await flushPromises()
+    await wrapper.get('[data-testid="chat-message-input"]').setValue('hello')
+    expect(wrapper.get<HTMLButtonElement>('[data-testid="chat-send-button"]').element.disabled).toBe(false)
+
+    const file = new File(['fake'], 'screenshot.png', { type: 'image/png' })
+    Object.defineProperty(file, 'size', { value: 4 })
+    vi.spyOn(FileReader.prototype, 'readAsDataURL').mockImplementation(function (this: FileReader) {
+      Object.defineProperty(this, 'result', {
+        value: 'data:image/png;base64,ZmFrZQ==',
+        configurable: true,
+      })
+      this.onload?.(new ProgressEvent('load'))
+    })
+
+    await wrapper.get('[data-testid="chat-message-input"]').trigger('paste', {
+      clipboardData: {
+        files: [file],
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('chatCompletion.imageModelUnsupported')
+    expect(wrapper.get<HTMLButtonElement>('[data-testid="chat-send-button"]').element.disabled).toBe(true)
+  })
+
   it('uses a spacious readable composer input', async () => {
     const wrapper = mount(ChatCompletionView)
     await flushPromises()
@@ -285,6 +361,71 @@ describe('ChatCompletionView', () => {
     expect(regenerateButton.attributes('aria-label')).toBe('chatCompletion.regenerate')
     expect(sendButton.text()).toBe('')
     expect(regenerateButton.text()).toBe('')
+  })
+
+  it('adds a pasted screenshot as a removable attachment preview', async () => {
+    const wrapper = mount(ChatCompletionView)
+    await flushPromises()
+    const file = new File(['fake'], 'screenshot.png', { type: 'image/png' })
+    Object.defineProperty(file, 'size', { value: 4 })
+    vi.spyOn(FileReader.prototype, 'readAsDataURL').mockImplementation(function (this: FileReader) {
+      Object.defineProperty(this, 'result', {
+        value: 'data:image/png;base64,ZmFrZQ==',
+        configurable: true,
+      })
+      this.onload?.(new ProgressEvent('load'))
+    })
+
+    await wrapper.get('[data-testid="chat-message-input"]').trigger('paste', {
+      clipboardData: {
+        files: [file],
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="chat-attachment-preview"]').text()).toContain('screenshot.png')
+    await wrapper.get('[data-testid="chat-remove-attachment"]').trigger('click')
+    expect(wrapper.find('[data-testid="chat-attachment-preview"]').exists()).toBe(false)
+  })
+
+  it('adds a selected local image as an attachment preview', async () => {
+    const wrapper = mount(ChatCompletionView)
+    await flushPromises()
+    const file = new File(['fake'], 'local.jpg', { type: 'image/jpeg' })
+    Object.defineProperty(file, 'size', { value: 4 })
+    vi.spyOn(FileReader.prototype, 'readAsDataURL').mockImplementation(function (this: FileReader) {
+      Object.defineProperty(this, 'result', {
+        value: 'data:image/jpeg;base64,ZmFrZQ==',
+        configurable: true,
+      })
+      this.onload?.(new ProgressEvent('load'))
+    })
+    const input = wrapper.get<HTMLInputElement>('[data-testid="chat-image-input"]')
+    Object.defineProperty(input.element, 'files', {
+      value: [file],
+      configurable: true,
+    })
+
+    await input.trigger('change')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="chat-attachment-preview"]').text()).toContain('local.jpg')
+  })
+
+  it('rejects unsupported attachment file types', async () => {
+    const wrapper = mount(ChatCompletionView)
+    await flushPromises()
+    const file = new File(['fake'], 'notes.txt', { type: 'text/plain' })
+
+    await wrapper.get('[data-testid="chat-message-input"]').trigger('paste', {
+      clipboardData: {
+        files: [file],
+      },
+    })
+    await flushPromises()
+
+    expect(showError).toHaveBeenCalledWith('chatCompletion.unsupportedImageType')
+    expect(wrapper.find('[data-testid="chat-attachment-preview"]').exists()).toBe(false)
   })
 
   it('loads server-backed sessions into the history sidebar', async () => {
@@ -371,6 +512,194 @@ describe('ChatCompletionView', () => {
     expect(wrapper.get<HTMLTextAreaElement>('[data-testid="chat-message-input"]').element.value).toBe('')
   })
 
+  it('sends text and image attachments as multimodal content', async () => {
+    getAvailableChannels.mockResolvedValueOnce([
+      {
+        name: 'OpenAI',
+        platforms: [
+          {
+            platform: 'openai',
+            base_url: 'https://api.openai.com',
+            groups: [{ id: 10, name: 'Default' }],
+            supported_models: [{ name: 'gpt-5.5', platform: 'openai' }],
+          },
+        ],
+      },
+    ])
+    const wrapper = mount(ChatCompletionView)
+    await flushPromises()
+    const file = new File(['fake'], 'screenshot.png', { type: 'image/png' })
+    Object.defineProperty(file, 'size', { value: 4 })
+    vi.spyOn(FileReader.prototype, 'readAsDataURL').mockImplementation(function (this: FileReader) {
+      Object.defineProperty(this, 'result', {
+        value: 'data:image/png;base64,ZmFrZQ==',
+        configurable: true,
+      })
+      this.onload?.(new ProgressEvent('load'))
+    })
+
+    await wrapper.get('[data-testid="chat-message-input"]').setValue('what is this?')
+    await wrapper.get('[data-testid="chat-message-input"]').trigger('paste', {
+      clipboardData: {
+        files: [file],
+      },
+    })
+    await flushPromises()
+    await wrapper.get('[data-testid="chat-composer"]').trigger('submit')
+    await flushPromises()
+
+    expect(createChatMessage).toHaveBeenCalledWith(100, expect.objectContaining({
+      role: 'user',
+      content: 'what is this?',
+      attachments: [{
+        type: 'image',
+        image_url: 'data:image/png;base64,ZmFrZQ==',
+        mime_type: 'image/png',
+        name: 'screenshot.png',
+        size: 4,
+      }],
+    }))
+    expect(streamChatCompletion).toHaveBeenCalledWith(expect.objectContaining({
+      model: 'gpt-5.5',
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: 'what is this?' },
+          {
+            type: 'image',
+            imageUrl: 'data:image/png;base64,ZmFrZQ==',
+            mimeType: 'image/png',
+            name: 'screenshot.png',
+            size: 4,
+          },
+        ],
+      }],
+    }))
+    expect(wrapper.find('[data-testid="chat-attachment-preview"]').exists()).toBe(false)
+    const messageImages = wrapper.findAll('[data-testid="chat-message-image"]')
+    expect(messageImages).toHaveLength(1)
+    expect(messageImages[0].attributes('src')).toBe('data:image/png;base64,ZmFrZQ==')
+    expect(messageImages[0].attributes('alt')).toBe('screenshot.png')
+    expect(messageImages[0].classes()).toContain('h-20')
+    expect(messageImages[0].classes()).toContain('w-20')
+
+    const walker = document.createTreeWalker(wrapper.element, NodeFilter.SHOW_TEXT)
+    let promptNode: Node | null = null
+    while (walker.nextNode()) {
+      if (walker.currentNode.textContent?.includes('what is this?')) {
+        promptNode = walker.currentNode
+        break
+      }
+    }
+    expect(promptNode).not.toBeNull()
+    expect(
+      messageImages[0].element.compareDocumentPosition(promptNode as Node) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+
+    const imageBubble = wrapper.get('[data-testid="chat-message-image-bubble"]')
+    const textBubble = wrapper.get('[data-testid="chat-user-text-bubble"]')
+    expect(imageBubble.find('[data-testid="chat-message-image"]').exists()).toBe(true)
+    expect(textBubble.text()).toContain('what is this?')
+    expect(textBubble.find('[data-testid="chat-message-image"]').exists()).toBe(false)
+  })
+
+  it('opens and closes a larger image preview from a message thumbnail', async () => {
+    getAvailableChannels.mockResolvedValueOnce([
+      {
+        name: 'OpenAI',
+        platforms: [
+          {
+            platform: 'openai',
+            base_url: 'https://api.openai.com',
+            groups: [{ id: 10, name: 'Default' }],
+            supported_models: [{ name: 'gpt-5.5', platform: 'openai' }],
+          },
+        ],
+      },
+    ])
+    const wrapper = mount(ChatCompletionView)
+    await flushPromises()
+    const file = new File(['fake'], 'screenshot.png', { type: 'image/png' })
+    Object.defineProperty(file, 'size', { value: 4 })
+    vi.spyOn(FileReader.prototype, 'readAsDataURL').mockImplementation(function (this: FileReader) {
+      Object.defineProperty(this, 'result', {
+        value: 'data:image/png;base64,ZmFrZQ==',
+        configurable: true,
+      })
+      this.onload?.(new ProgressEvent('load'))
+    })
+
+    await wrapper.get('[data-testid="chat-message-input"]').trigger('paste', {
+      clipboardData: {
+        files: [file],
+      },
+    })
+    await flushPromises()
+    await wrapper.get('[data-testid="chat-composer"]').trigger('submit')
+    await flushPromises()
+
+    await wrapper.get('[data-testid="chat-message-image"]').trigger('click')
+    expect(wrapper.get('[data-testid="chat-image-preview"]').attributes('src')).toBe('data:image/png;base64,ZmFrZQ==')
+
+    await wrapper.get('[data-testid="chat-image-preview-close"]').trigger('click')
+    expect(wrapper.find('[data-testid="chat-image-preview"]').exists()).toBe(false)
+  })
+
+  it('sends image-only messages with a persisted placeholder', async () => {
+    getAvailableChannels.mockResolvedValueOnce([
+      {
+        name: 'OpenAI',
+        platforms: [
+          {
+            platform: 'openai',
+            base_url: 'https://api.openai.com',
+            groups: [{ id: 10, name: 'Default' }],
+            supported_models: [{ name: 'gpt-5.5', platform: 'openai' }],
+          },
+        ],
+      },
+    ])
+    const wrapper = mount(ChatCompletionView)
+    await flushPromises()
+    const file = new File(['fake'], 'screenshot.png', { type: 'image/png' })
+    Object.defineProperty(file, 'size', { value: 4 })
+    vi.spyOn(FileReader.prototype, 'readAsDataURL').mockImplementation(function (this: FileReader) {
+      Object.defineProperty(this, 'result', {
+        value: 'data:image/png;base64,ZmFrZQ==',
+        configurable: true,
+      })
+      this.onload?.(new ProgressEvent('load'))
+    })
+
+    await wrapper.get('[data-testid="chat-message-input"]').trigger('paste', {
+      clipboardData: {
+        files: [file],
+      },
+    })
+    await flushPromises()
+    await wrapper.get('[data-testid="chat-composer"]').trigger('submit')
+    await flushPromises()
+
+    expect(createChatMessage).toHaveBeenCalledWith(100, expect.objectContaining({
+      role: 'user',
+      content: 'chatCompletion.imagePlaceholder',
+    }))
+    expect(streamChatCompletion).toHaveBeenCalledWith(expect.objectContaining({
+      messages: [{
+        role: 'user',
+        content: [{
+          type: 'image',
+          imageUrl: 'data:image/png;base64,ZmFrZQ==',
+          mimeType: 'image/png',
+          name: 'screenshot.png',
+          size: 4,
+        }],
+      }],
+    }))
+    expect(wrapper.get('[data-testid="chat-message-image"]').attributes('src')).toBe('data:image/png;base64,ZmFrZQ==')
+    expect(wrapper.find('[data-testid="chat-user-text-bubble"]').exists()).toBe(false)
+  })
+
   it('does not render role labels in chat bubbles', async () => {
     streamChatCompletion.mockImplementationOnce(({ onDelta }) => {
       onDelta('Saved answer')
@@ -434,6 +763,48 @@ describe('ChatCompletionView', () => {
 
     expect(copyToClipboard).toHaveBeenNthCalledWith(1, 'Saved question', 'chatCompletion.copied')
     expect(copyToClipboard).toHaveBeenNthCalledWith(2, 'Saved answer', 'chatCompletion.copied')
+  })
+
+  it('restores persisted image attachments from chat history', async () => {
+    getChatSessionMessages.mockResolvedValueOnce([
+      {
+        id: 300,
+        session_id: 77,
+        role: 'user',
+        content: 'Saved screenshot',
+        attachments: [{
+          type: 'image',
+          image_url: 'data:image/png;base64,ZmFrZQ==',
+          mime_type: 'image/png',
+          name: 'saved.png',
+          size: 4,
+        }],
+        status: 'completed',
+        created_at: '2026-05-13T00:00:00Z',
+        updated_at: '2026-05-13T00:00:00Z',
+      },
+    ])
+    listChatSessions.mockResolvedValueOnce([
+      {
+        id: 77,
+        api_key_id: 1,
+        title: 'Saved chat',
+        model: 'gpt-5.5',
+        status: 'active',
+        expires_at: '2026-06-12T00:00:00Z',
+        created_at: '2026-05-13T00:00:00Z',
+        updated_at: '2026-05-13T00:00:00Z',
+      },
+    ])
+    const wrapper = mount(ChatCompletionView)
+    await flushPromises()
+
+    await wrapper.get('[data-testid="chat-session-item"]').trigger('click')
+    await flushPromises()
+
+    const image = wrapper.get('[data-testid="chat-message-image"]')
+    expect(image.attributes('src')).toBe('data:image/png;base64,ZmFrZQ==')
+    expect(image.attributes('alt')).toBe('saved.png')
   })
 
   it('jumps to the bottom without smooth animation when loading a history conversation', async () => {

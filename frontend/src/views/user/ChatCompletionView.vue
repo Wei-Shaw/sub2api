@@ -196,45 +196,36 @@
                     :class="message.role === 'user' ? 'justify-end' : 'justify-start'"
                   >
                     <article
+                      v-if="message.role === 'assistant'"
                       class="min-w-0 max-w-[min(720px,92%)] rounded-[22px] px-4 py-3 text-sm leading-6"
-                      :class="message.role === 'user'
-                        ? 'rounded-br-lg bg-gray-950 text-white shadow-sm dark:bg-white dark:text-dark-950'
-                        : 'w-full rounded-bl-lg bg-white/75 text-gray-800 shadow-sm ring-1 ring-gray-100/70 dark:bg-dark-900/80 dark:text-gray-100 dark:ring-white/5'"
+                      :class="'w-full rounded-bl-lg bg-white/75 text-gray-800 shadow-sm ring-1 ring-gray-100/70 dark:bg-dark-900/80 dark:text-gray-100 dark:ring-white/5'"
                     >
-                      <div v-if="message.role === 'assistant'">
-                        <MarkdownMessage v-if="message.content" :content="message.content" />
-                        <div
-                          v-else-if="isGeneratingMessage(message)"
-                          data-testid="chat-generating-indicator"
-                          class="inline-flex items-center gap-2 text-gray-500 dark:text-gray-400"
-                        >
-                          <span class="flex items-center gap-1" aria-hidden="true">
-                            <span class="h-1.5 w-1.5 animate-bounce rounded-full bg-current [animation-delay:-0.2s]"></span>
-                            <span class="h-1.5 w-1.5 animate-bounce rounded-full bg-current [animation-delay:-0.1s]"></span>
-                            <span class="h-1.5 w-1.5 animate-bounce rounded-full bg-current"></span>
-                          </span>
-                          <span>{{ t('chatCompletion.generatingReply') }}</span>
-                        </div>
-                        <div
-                          v-else
-                          data-testid="chat-empty-reply"
-                          class="text-gray-400 dark:text-gray-500"
-                        >
-                          {{ t('chatCompletion.emptyReply') }}
-                        </div>
+                      <MarkdownMessage v-if="message.content" :content="message.content" />
+                      <div
+                        v-else-if="isGeneratingMessage(message)"
+                        data-testid="chat-generating-indicator"
+                        class="inline-flex items-center gap-2 text-gray-500 dark:text-gray-400"
+                      >
+                        <span class="flex items-center gap-1" aria-hidden="true">
+                          <span class="h-1.5 w-1.5 animate-bounce rounded-full bg-current [animation-delay:-0.2s]"></span>
+                          <span class="h-1.5 w-1.5 animate-bounce rounded-full bg-current [animation-delay:-0.1s]"></span>
+                          <span class="h-1.5 w-1.5 animate-bounce rounded-full bg-current"></span>
+                        </span>
+                        <span>{{ t('chatCompletion.generatingReply') }}</span>
                       </div>
-                      <div v-else class="whitespace-pre-wrap break-words">
-                        {{ message.content }}
+                      <div
+                        v-else
+                        data-testid="chat-empty-reply"
+                        class="text-gray-400 dark:text-gray-500"
+                      >
+                        {{ t('chatCompletion.emptyReply') }}
                       </div>
 
                       <div v-if="message.content" class="mt-2 flex justify-start">
                         <button
                           type="button"
                           data-testid="chat-copy-message-button"
-                          class="inline-flex h-8 w-8 items-center justify-center rounded-xl transition"
-                          :class="message.role === 'user'
-                            ? 'text-white/60 hover:bg-white/10 hover:text-white dark:text-dark-950/50 dark:hover:bg-dark-950/10 dark:hover:text-dark-950'
-                            : 'text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-white/10 dark:hover:text-gray-100'"
+                          class="inline-flex h-8 w-8 items-center justify-center rounded-xl text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-white/10 dark:hover:text-gray-100"
                           :aria-label="t('chatCompletion.copy')"
                           :title="t('chatCompletion.copy')"
                           @click="copyMessage(message.content)"
@@ -251,6 +242,52 @@
                         <span>{{ message.error_message || t('chatCompletion.error') }}</span>
                       </div>
                     </article>
+                    <div
+                      v-else
+                      class="flex max-w-[min(720px,92%)] flex-col items-end gap-2"
+                    >
+                      <div
+                        v-if="message.attachments?.length"
+                        data-testid="chat-message-image-bubble"
+                        class="flex flex-wrap justify-end gap-2"
+                      >
+                        <button
+                          v-for="attachment in message.attachments"
+                          :key="attachment.id"
+                          type="button"
+                          class="group h-20 w-20 overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-200 transition hover:ring-gray-400 dark:bg-dark-900 dark:ring-white/10 dark:hover:ring-white/35"
+                          @click="previewAttachment = attachment"
+                        >
+                          <img
+                            data-testid="chat-message-image"
+                            :src="attachment.imageUrl"
+                            :alt="attachment.name"
+                            class="h-20 w-20 object-cover"
+                          >
+                        </button>
+                      </div>
+                      <article
+                        v-if="message.content && message.content !== t('chatCompletion.imagePlaceholder')"
+                        data-testid="chat-user-text-bubble"
+                        class="min-w-0 rounded-[22px] rounded-br-lg bg-gray-950 px-4 py-3 text-sm leading-6 text-white shadow-sm dark:bg-white dark:text-dark-950"
+                      >
+                        <div class="whitespace-pre-wrap break-words">
+                          {{ message.content }}
+                        </div>
+                        <div class="mt-2 flex justify-start">
+                          <button
+                            type="button"
+                            data-testid="chat-copy-message-button"
+                            class="inline-flex h-8 w-8 items-center justify-center rounded-xl text-white/60 transition hover:bg-white/10 hover:text-white dark:text-dark-950/50 dark:hover:bg-dark-950/10 dark:hover:text-dark-950"
+                            :aria-label="t('chatCompletion.copy')"
+                            :title="t('chatCompletion.copy')"
+                            @click="copyMessage(message.content)"
+                          >
+                            <Icon name="copy" size="sm" />
+                          </button>
+                        </div>
+                      </article>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -266,57 +303,146 @@
               >
                 <div
                   data-testid="chat-composer-shell"
-                  class="pointer-events-auto mx-auto flex max-w-3xl items-end gap-2 rounded-[28px] bg-white/95 p-2 shadow-[0_18px_50px_-24px_rgba(15,23,42,0.55)] ring-1 ring-gray-200/80 backdrop-blur dark:bg-dark-900/95 dark:ring-white/10"
+                  class="pointer-events-auto mx-auto flex max-w-3xl flex-col rounded-[28px] bg-white/95 p-2 shadow-[0_18px_50px_-24px_rgba(15,23,42,0.55)] ring-1 ring-gray-200/80 backdrop-blur dark:bg-dark-900/95 dark:ring-white/10"
                 >
-                  <textarea
-                    id="chat-message"
-                    v-model="draft"
-                    data-testid="chat-message-input"
-                    class="min-h-[84px] flex-1 resize-none rounded-[22px] border-0 bg-transparent px-4 py-3 text-base leading-7 text-gray-950 placeholder:text-gray-500 focus:outline-none focus:ring-0 disabled:cursor-not-allowed disabled:opacity-60 dark:text-gray-100 dark:placeholder:text-gray-400"
-                    :placeholder="composerPlaceholder"
-                    :disabled="streaming || !selectedApiKey || !selectedModel"
-                    @keydown="handleComposerKeydown"
-                  />
-                  <div class="flex shrink-0 items-center gap-1 pb-1 pr-1">
-                    <button
-                      type="button"
-                      data-testid="chat-regenerate-button"
-                      class="inline-flex h-10 w-10 items-center justify-center rounded-2xl text-gray-500 transition hover:bg-gray-100 hover:text-gray-950 disabled:cursor-not-allowed disabled:opacity-35 dark:text-gray-400 dark:hover:bg-dark-800 dark:hover:text-white"
-                      :aria-label="t('chatCompletion.regenerate')"
-                      :title="t('chatCompletion.regenerate')"
-                      :disabled="streaming || !canRegenerate"
-                      @click="regenerateLast"
+                  <div
+                    v-if="imageAttachments.length > 0"
+                    class="flex w-full gap-2 overflow-x-auto px-2 pb-2"
+                  >
+                    <div
+                      v-for="attachment in imageAttachments"
+                      :key="attachment.id"
+                      data-testid="chat-attachment-preview"
+                      class="flex h-16 min-w-0 max-w-56 items-center gap-2 rounded-2xl bg-gray-50 p-2 ring-1 ring-gray-100 dark:bg-dark-800 dark:ring-white/5"
                     >
-                      <Icon name="refresh" size="sm" />
-                    </button>
-                    <button
-                      v-if="streaming"
-                      type="button"
-                      data-testid="chat-stop-button"
-                      class="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-gray-950 text-white shadow-sm transition hover:bg-gray-800 dark:bg-white dark:text-dark-950 dark:hover:bg-gray-200"
-                      :aria-label="t('chatCompletion.stop')"
-                      :title="t('chatCompletion.stop')"
-                      @click="stopStreaming"
-                    >
-                      <Icon name="x" size="sm" />
-                    </button>
-                    <button
-                      v-else
-                      type="submit"
-                      data-testid="chat-send-button"
-                      class="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-gray-950 text-white shadow-sm transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400 dark:bg-white dark:text-dark-950 dark:hover:bg-gray-200 dark:disabled:bg-dark-700 dark:disabled:text-gray-500"
-                      :aria-label="t('chatCompletion.send')"
-                      :title="t('chatCompletion.send')"
-                      :disabled="!canSend"
-                    >
-                      <Icon name="arrowUp" size="sm" />
-                    </button>
+                      <img
+                        :src="attachment.imageUrl"
+                        :alt="attachment.name"
+                        class="h-12 w-12 shrink-0 rounded-xl object-cover"
+                      >
+                      <div class="min-w-0 flex-1">
+                        <div class="truncate text-xs font-medium text-gray-800 dark:text-gray-100">
+                          {{ attachment.name }}
+                        </div>
+                        <div class="text-[11px] text-gray-500 dark:text-gray-400">
+                          {{ formatFileSize(attachment.size) }}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        data-testid="chat-remove-attachment"
+                        class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-xl text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-dark-700 dark:hover:text-gray-100"
+                        :aria-label="t('chatCompletion.removeImage')"
+                        :title="t('chatCompletion.removeImage')"
+                        @click="removeAttachment(attachment.id)"
+                      >
+                        <Icon name="x" size="xs" />
+                      </button>
+                    </div>
+                  </div>
+                  <div
+                    v-if="imageModelWarning"
+                    class="w-full px-3 pb-2 text-xs text-amber-600 dark:text-amber-300"
+                  >
+                    {{ imageModelWarning }}
+                  </div>
+                  <div class="flex w-full items-end gap-2">
+                    <textarea
+                      id="chat-message"
+                      v-model="draft"
+                      data-testid="chat-message-input"
+                      class="min-h-[84px] flex-1 resize-none rounded-[22px] border-0 bg-transparent px-4 py-3 text-base leading-7 text-gray-950 placeholder:text-gray-500 focus:outline-none focus:ring-0 disabled:cursor-not-allowed disabled:opacity-60 dark:text-gray-100 dark:placeholder:text-gray-400"
+                      :placeholder="composerPlaceholder"
+                      :disabled="streaming || !selectedApiKey || !selectedModel"
+                      @keydown="handleComposerKeydown"
+                      @paste="handleComposerPaste"
+                    />
+                    <div class="flex shrink-0 items-center gap-1 pb-1 pr-1">
+                      <input
+                        ref="imageInputRef"
+                        data-testid="chat-image-input"
+                        class="hidden"
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/gif"
+                        multiple
+                        @change="handleImageInputChange"
+                      >
+                      <button
+                        type="button"
+                        data-testid="chat-attach-image-button"
+                        class="inline-flex h-10 w-10 items-center justify-center rounded-2xl text-gray-500 transition hover:bg-gray-100 hover:text-gray-950 disabled:cursor-not-allowed disabled:opacity-35 dark:text-gray-400 dark:hover:bg-dark-800 dark:hover:text-white"
+                        :aria-label="t('chatCompletion.attachImage')"
+                        :title="t('chatCompletion.attachImage')"
+                        :disabled="streaming || !selectedApiKey || !selectedModel"
+                        @click="openImagePicker"
+                      >
+                        <Icon name="upload" size="sm" />
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="chat-regenerate-button"
+                        class="inline-flex h-10 w-10 items-center justify-center rounded-2xl text-gray-500 transition hover:bg-gray-100 hover:text-gray-950 disabled:cursor-not-allowed disabled:opacity-35 dark:text-gray-400 dark:hover:bg-dark-800 dark:hover:text-white"
+                        :aria-label="t('chatCompletion.regenerate')"
+                        :title="t('chatCompletion.regenerate')"
+                        :disabled="streaming || !canRegenerate"
+                        @click="regenerateLast"
+                      >
+                        <Icon name="refresh" size="sm" />
+                      </button>
+                      <button
+                        v-if="streaming"
+                        type="button"
+                        data-testid="chat-stop-button"
+                        class="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-gray-950 text-white shadow-sm transition hover:bg-gray-800 dark:bg-white dark:text-dark-950 dark:hover:bg-gray-200"
+                        :aria-label="t('chatCompletion.stop')"
+                        :title="t('chatCompletion.stop')"
+                        @click="stopStreaming"
+                      >
+                        <Icon name="x" size="sm" />
+                      </button>
+                      <button
+                        v-else
+                        type="submit"
+                        data-testid="chat-send-button"
+                        class="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-gray-950 text-white shadow-sm transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400 dark:bg-white dark:text-dark-950 dark:hover:bg-gray-200 dark:disabled:bg-dark-700 dark:disabled:text-gray-500"
+                        :aria-label="t('chatCompletion.send')"
+                        :title="t('chatCompletion.send')"
+                        :disabled="!canSend"
+                      >
+                        <Icon name="arrowUp" size="sm" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </form>
             </main>
           </div>
         </section>
+
+        <div
+          v-if="previewAttachment"
+          class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          @click.self="previewAttachment = null"
+        >
+          <div class="relative max-h-full max-w-5xl">
+            <button
+              type="button"
+              data-testid="chat-image-preview-close"
+              class="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-black/55 text-white transition hover:bg-black/75"
+              :aria-label="t('chatCompletion.closeImagePreview')"
+              :title="t('chatCompletion.closeImagePreview')"
+              @click="previewAttachment = null"
+            >
+              <Icon name="x" size="sm" />
+            </button>
+            <img
+              data-testid="chat-image-preview"
+              :src="previewAttachment.imageUrl"
+              :alt="previewAttachment.name"
+              class="max-h-[88vh] max-w-[92vw] rounded-2xl bg-white object-contain shadow-2xl"
+            >
+          </div>
+        </div>
       </template>
     </div>
   </AppLayout>
@@ -330,7 +456,7 @@ import MarkdownMessage from '@/components/chat/MarkdownMessage.vue'
 import Icon from '@/components/icons/Icon.vue'
 import userChannelsAPI, { type UserAvailableChannel } from '@/api/channels'
 import { keysAPI } from '@/api/keys'
-import { streamChatCompletion, type ChatMessage, type ChatModel } from '@/api/chat'
+import { streamChatCompletion, type ChatContentPart, type ChatMessage, type ChatModel } from '@/api/chat'
 import { BILLING_MODE_IMAGE } from '@/constants/channel'
 import {
   createChatMessage,
@@ -339,6 +465,7 @@ import {
   getChatSessionMessages,
   listChatSessions,
   updateChatMessage,
+  type ChatMessageAttachmentRecord,
   type ChatMessageRecord,
   type ChatSessionRecord,
 } from '@/api/chatSessions'
@@ -349,15 +476,32 @@ import type { ApiKey } from '@/types'
 const storageKey = 'sub2api.chat.selected_key_id'
 const modelStorageKey = 'sub2api.chat.selected_model'
 
-type LocalChatMessage = ChatMessage & {
+type LocalChatMessage = {
   localId: string
   id?: number
+  role: ChatMessage['role']
+  content: string
+  attachments?: LocalImageAttachment[]
   status?: string
   model?: string | null
   duration_ms?: number | null
   actual_cost?: number | null
   error_message?: string | null
 }
+
+type CompletionChatMessage = ChatMessage
+
+interface LocalImageAttachment {
+  id: string
+  name: string
+  size: number
+  mimeType: string
+  imageUrl: string
+}
+
+const allowedImageMimeTypes = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
+const maxImageAttachments = 4
+const maxImageAttachmentBytes = 10 * 1024 * 1024
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -373,6 +517,9 @@ const activeSessionId = ref<number | null>(null)
 const draft = ref('')
 const messages = ref<LocalChatMessage[]>([])
 const messageListRef = ref<HTMLElement | null>(null)
+const imageInputRef = ref<HTMLInputElement | null>(null)
+const imageAttachments = ref<LocalImageAttachment[]>([])
+const previewAttachment = ref<LocalImageAttachment | null>(null)
 const streaming = ref(false)
 const loadingKeys = ref(false)
 const loadingChannels = ref(false)
@@ -393,6 +540,13 @@ const activeApiKeys = computed(() => apiKeys.value.filter((key) => {
 
 const selectedApiKey = computed(() => activeApiKeys.value.find((key) => String(key.id) === selectedKeyId.value) || null)
 const selectedChatModel = computed(() => chatModels.value.find((item) => item.id === selectedModel.value) || null)
+const hasAttachments = computed(() => imageAttachments.value.length > 0)
+const supportsSelectedModelImageInput = computed(() => supportsImageInput(selectedModel.value))
+const imageModelWarning = computed(() =>
+  hasAttachments.value && !supportsSelectedModelImageInput.value
+    ? t('chatCompletion.imageModelUnsupported')
+    : '',
+)
 
 const modelPlaceholder = computed(() => {
   if (!selectedApiKey.value) return t('chatCompletion.selectKeyFirst')
@@ -424,7 +578,8 @@ const canSend = computed(() =>
   !streaming.value &&
   Boolean(selectedApiKey.value?.key) &&
   Boolean(selectedModel.value) &&
-  Boolean(draft.value.trim()),
+  Boolean(draft.value.trim() || hasAttachments.value) &&
+  (!hasAttachments.value || supportsSelectedModelImageInput.value),
 )
 
 const canRegenerate = computed(() => Boolean(activeSessionId.value && lastUserMessageIndex() >= 0))
@@ -592,22 +747,32 @@ async function sendMessage() {
   if (!canSend.value || !selectedApiKey.value) return
 
   const prompt = draft.value.trim()
+  const attachments = [...imageAttachments.value]
+  const storedContent = prompt || t('chatCompletion.imagePlaceholder')
+  const completionContent = buildUserCompletionContent(prompt, attachments)
   draft.value = ''
+  imageAttachments.value = []
   errorMessage.value = ''
 
   try {
-    const session = await ensureActiveSession(prompt)
+    const session = await ensureActiveSession(storedContent)
     const userRecord = await createChatMessage(session.id, {
       role: 'user',
-      content: prompt,
+      content: storedContent,
+      attachments: attachments.map(toAttachmentRecord),
       status: 'completed',
       model: selectedModel.value,
     })
     const userMessage = toLocalMessage(userRecord)
+    userMessage.attachments = attachments
     messages.value.push(userMessage)
     scrollMessagesToBottom()
-    await streamAssistantResponse(session.id, messages.value)
+    await streamAssistantResponse(session.id, [
+      ...messages.value.slice(0, -1).map(toCompletionMessage),
+      { role: 'user', content: completionContent },
+    ])
   } catch (error) {
+    imageAttachments.value = attachments
     if ((error as { name?: string }).name !== 'AbortError') {
       handleError(error)
     }
@@ -619,6 +784,75 @@ function handleComposerKeydown(event: KeyboardEvent) {
   if (event.isComposing || event.keyCode === 229) return
   event.preventDefault()
   void sendMessage()
+}
+
+function handleComposerPaste(event: ClipboardEvent) {
+  const files = Array.from(event.clipboardData?.files || [])
+  if (files.length === 0) return
+  event.preventDefault()
+  void addImageFiles(files)
+}
+
+function handleImageInputChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const files = Array.from(input.files || [])
+  if (files.length > 0) {
+    void addImageFiles(files)
+  }
+  input.value = ''
+}
+
+function openImagePicker() {
+  imageInputRef.value?.click()
+}
+
+async function addImageFiles(files: File[]) {
+  for (const file of files) {
+    if (!allowedImageMimeTypes.has(file.type)) {
+      handleError(new Error(t('chatCompletion.unsupportedImageType')))
+      continue
+    }
+    if (file.size > maxImageAttachmentBytes) {
+      handleError(new Error(t('chatCompletion.imageTooLarge')))
+      continue
+    }
+    if (imageAttachments.value.length >= maxImageAttachments) {
+      handleError(new Error(t('chatCompletion.tooManyImages')))
+      break
+    }
+
+    try {
+      const imageUrl = await readFileAsDataURL(file)
+      imageAttachments.value.push({
+        id: `${Date.now()}-${imageAttachments.value.length}-${file.name}`,
+        name: file.name,
+        size: file.size,
+        mimeType: file.type,
+        imageUrl,
+      })
+    } catch {
+      handleError(new Error(t('chatCompletion.imageReadFailed')))
+    }
+  }
+}
+
+function readFileAsDataURL(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result)
+        return
+      }
+      reject(new Error('Invalid image result'))
+    }
+    reader.onerror = () => reject(reader.error || new Error('Failed to read image'))
+    reader.readAsDataURL(file)
+  })
+}
+
+function removeAttachment(id: string) {
+  imageAttachments.value = imageAttachments.value.filter((attachment) => attachment.id !== id)
 }
 
 async function ensureActiveSession(prompt: string): Promise<ChatSessionRecord> {
@@ -636,11 +870,10 @@ async function ensureActiveSession(prompt: string): Promise<ChatSessionRecord> {
   return session
 }
 
-async function streamAssistantResponse(sessionId: number, contextMessages: LocalChatMessage[]) {
+async function streamAssistantResponse(sessionId: number, completionMessages: CompletionChatMessage[]) {
   if (!selectedApiKey.value) return
 
   const startedAt = Date.now()
-  const completionMessages = contextMessages.map(toCompletionMessage)
   const assistantRecord = await createChatMessage(sessionId, {
     role: 'assistant',
     content: '',
@@ -721,7 +954,7 @@ async function regenerateLast() {
   messages.value = context
   errorMessage.value = ''
   try {
-    await streamAssistantResponse(activeSessionId.value, context)
+    await streamAssistantResponse(activeSessionId.value, context.map(toCompletionMessage))
   } catch (error) {
     if ((error as { name?: string }).name !== 'AbortError') {
       handleError(error)
@@ -813,6 +1046,7 @@ function toLocalMessage(record: ChatMessageRecord): LocalChatMessage {
     id: record.id,
     role: record.role,
     content: record.content || '',
+    attachments: (record.attachments || []).map(fromAttachmentRecord),
     status: record.status,
     model: record.model,
     duration_ms: record.duration_ms,
@@ -821,11 +1055,49 @@ function toLocalMessage(record: ChatMessageRecord): LocalChatMessage {
   }
 }
 
+function toAttachmentRecord(attachment: LocalImageAttachment): ChatMessageAttachmentRecord {
+  return {
+    type: 'image',
+    image_url: attachment.imageUrl,
+    mime_type: attachment.mimeType,
+    name: attachment.name,
+    size: attachment.size,
+  }
+}
+
+function fromAttachmentRecord(record: ChatMessageAttachmentRecord): LocalImageAttachment {
+  return {
+    id: `${record.image_url}-${record.name || ''}`,
+    name: record.name || t('chatCompletion.imagePlaceholder'),
+    size: record.size || 0,
+    mimeType: record.mime_type,
+    imageUrl: record.image_url,
+  }
+}
+
 function toCompletionMessage(message: LocalChatMessage): ChatMessage {
   return {
     role: message.role,
     content: message.content,
   }
+}
+
+function buildUserCompletionContent(prompt: string, attachments: LocalImageAttachment[]): string | ChatContentPart[] {
+  if (attachments.length === 0) return prompt
+  const parts: ChatContentPart[] = []
+  if (prompt) {
+    parts.push({ type: 'text', text: prompt })
+  }
+  for (const attachment of attachments) {
+    parts.push({
+      type: 'image',
+      imageUrl: attachment.imageUrl,
+      mimeType: attachment.mimeType,
+      name: attachment.name,
+      size: attachment.size,
+    })
+  }
+  return parts
 }
 
 function lastUserMessageIndex(): number {
@@ -855,5 +1127,25 @@ function shouldShowAssistantMeta(message: LocalChatMessage): boolean {
 function maskKey(key: string): string {
   if (key.length <= 12) return key
   return `${key.slice(0, 6)}...${key.slice(-4)}`
+}
+
+function formatFileSize(size: number): string {
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
+  return `${(size / 1024 / 1024).toFixed(1)} MB`
+}
+
+function supportsImageInput(model: string): boolean {
+  const name = model.toLowerCase()
+  return [
+    'gpt-5.5',
+    'vision',
+    'omni',
+    'gpt-4o',
+    'gpt-4.1',
+    'gemini',
+    'claude-3',
+    'claude-4',
+  ].some((marker) => name.includes(marker))
 }
 </script>

@@ -7,6 +7,7 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 const (
@@ -26,6 +27,8 @@ const (
 	FieldRole = "role"
 	// FieldContent holds the string denoting the content field in the database.
 	FieldContent = "content"
+	// FieldAttachments holds the string denoting the attachments field in the database.
+	FieldAttachments = "attachments"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
 	// FieldModel holds the string denoting the model field in the database.
@@ -78,6 +81,7 @@ var Columns = []string{
 	FieldUserID,
 	FieldRole,
 	FieldContent,
+	FieldAttachments,
 	FieldStatus,
 	FieldModel,
 	FieldDurationMs,
@@ -107,6 +111,8 @@ var (
 	RoleValidator func(string) error
 	// DefaultContent holds the default value on creation for the "content" field.
 	DefaultContent string
+	// DefaultAttachments holds the default value on creation for the "attachments" field.
+	DefaultAttachments func() []domain.ChatMessageAttachment
 	// DefaultStatus holds the default value on creation for the "status" field.
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
