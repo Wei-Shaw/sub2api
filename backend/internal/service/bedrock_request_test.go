@@ -216,7 +216,7 @@ func TestPrepareBedrockRequestBody_FullIntegration(t *testing.T) {
 		]
 REDACTED`
 
-	betaHeader := "REDACTED, context-1m-2025-08-07, compact-2026-01-12"
+	betaHeader := "context-1m-2025-08-07, compact-2026-01-12"
 	result, err := PrepareBedrockRequestBody([]byte(input), "us.anthropic.claude-opus-4-6-v1", betaHeader)
 REDACTED
 
@@ -228,10 +228,9 @@ REDACTED
 
 	// anthropic_beta 应包含所有 beta tokens
 	betaArr := gjson.GetBytes(result, "anthropic_beta").Array()
-	require.Len(t, betaArr, 3)
-	assert.Equal(t, "REDACTED", betaArr[0].String())
-	assert.Equal(t, "context-1m-2025-08-07", betaArr[1].String())
-	assert.Equal(t, "compact-2026-01-12", betaArr[2].String())
+	require.Len(t, betaArr, 2)
+	assert.Equal(t, "context-1m-2025-08-07", betaArr[0].String())
+	assert.Equal(t, "compact-2026-01-12", betaArr[1].String())
 
 	// output_format 应被移除，schema 内联到最后一条 user message
 	assert.False(t, gjson.GetBytes(result, "output_format").Exists())
@@ -264,29 +263,29 @@ func TestPrepareBedrockRequestBody_BetaHeader(t *testing.T) {
 REDACTED)
 
 	t.Run("single beta token", func(t *testing.T) {
-		result, err := PrepareBedrockRequestBody([]byte(input), "us.anthropic.claude-opus-4-6-v1", "REDACTED")
+		result, err := PrepareBedrockRequestBody([]byte(input), "us.anthropic.claude-opus-4-6-v1", "context-1m-2025-08-07")
 	REDACTED
 		arr := gjson.GetBytes(result, "anthropic_beta").Array()
 		require.Len(t, arr, 1)
-		assert.Equal(t, "REDACTED", arr[0].String())
+		assert.Equal(t, "context-1m-2025-08-07", arr[0].String())
 REDACTED)
 
 	t.Run("multiple beta tokens with spaces", func(t *testing.T) {
-		result, err := PrepareBedrockRequestBody([]byte(input), "us.anthropic.claude-opus-4-6-v1", "REDACTED , context-1m-2025-08-07 ")
+		result, err := PrepareBedrockRequestBody([]byte(input), "us.anthropic.claude-opus-4-6-v1", "context-1m-2025-08-07 , compact-2026-01-12 ")
 	REDACTED
 		arr := gjson.GetBytes(result, "anthropic_beta").Array()
 		require.Len(t, arr, 2)
-		assert.Equal(t, "REDACTED", arr[0].String())
-		assert.Equal(t, "context-1m-2025-08-07", arr[1].String())
+		assert.Equal(t, "context-1m-2025-08-07", arr[0].String())
+		assert.Equal(t, "compact-2026-01-12", arr[1].String())
 REDACTED)
 
 	t.Run("json array beta header", func(t *testing.T) {
-		result, err := PrepareBedrockRequestBody([]byte(input), "us.anthropic.claude-opus-4-6-v1", `["REDACTED","context-1m-2025-08-07"]`)
+		result, err := PrepareBedrockRequestBody([]byte(input), "us.anthropic.claude-opus-4-6-v1", `["context-1m-2025-08-07","compact-2026-01-12"]`)
 	REDACTED
 		arr := gjson.GetBytes(result, "anthropic_beta").Array()
 		require.Len(t, arr, 2)
-		assert.Equal(t, "REDACTED", arr[0].String())
-		assert.Equal(t, "context-1m-2025-08-07", arr[1].String())
+		assert.Equal(t, "context-1m-2025-08-07", arr[0].String())
+		assert.Equal(t, "compact-2026-01-12", arr[1].String())
 REDACTED)
 REDACTED
 
@@ -301,15 +300,15 @@ REDACTED
 
 func TestFilterBedrockBetaTokens(t *testing.T) {
 	t.Run("supported tokens pass through", func(t *testing.T) {
-		tokens := []string{"REDACTED", "context-1m-2025-08-07", "compact-2026-01-12"REDACTED
+		tokens := []string{"context-1m-2025-08-07", "compact-2026-01-12", "computer-use-2025-11-24"REDACTED
 		result := filterBedrockBetaTokens(tokens)
 		assert.Equal(t, tokens, result)
 REDACTED)
 
 	t.Run("unsupported tokens are filtered out", func(t *testing.T) {
-		tokens := []string{"REDACTED", "output-128k-2025-02-19", "files-api-2025-04-14", "structured-outputs-2025-11-13"REDACTED
+		tokens := []string{"context-1m-2025-08-07", "output-128k-2025-02-19", "files-api-2025-04-14", "structured-outputs-2025-11-13"REDACTED
 		result := filterBedrockBetaTokens(tokens)
-		assert.Equal(t, []string{"REDACTED"REDACTED, result)
+		assert.Equal(t, []string{"context-1m-2025-08-07"REDACTED, result)
 REDACTED)
 
 	t.Run("advanced-tool-use transforms to tool-search-tool", func(t *testing.T) {
@@ -361,11 +360,11 @@ func TestPrepareBedrockRequestBody_BetaFiltering(t *testing.T) {
 
 	t.Run("unsupported beta tokens are filtered", func(t *testing.T) {
 		result, err := PrepareBedrockRequestBody([]byte(input), "us.anthropic.claude-opus-4-6-v1",
-			"REDACTED, output-128k-2025-02-19, files-api-2025-04-14")
+			"compact-2026-01-12, output-128k-2025-02-19, files-api-2025-04-14")
 	REDACTED
 		arr := gjson.GetBytes(result, "anthropic_beta").Array()
 		require.Len(t, arr, 1)
-		assert.Equal(t, "REDACTED", arr[0].String())
+		assert.Equal(t, "compact-2026-01-12", arr[0].String())
 REDACTED)
 
 	t.Run("advanced-tool-use transformed in full pipeline", func(t *testing.T) {
@@ -498,22 +497,17 @@ REDACTED)
 REDACTED
 
 func TestAutoInjectBedrockBetaTokens(t *testing.T) {
-	t.Run("inject interleaved-thinking when thinking present", func(t *testing.T) {
+	t.Run("no auto-inject for thinking (interleaved-thinking not supported)", func(t *testing.T) {
 		body := []byte(`{"thinking":{"type":"enabled","budget_tokens":10000REDACTED,"messages":[{"role":"user","content":"hi"REDACTED]REDACTED`)
 		result := autoInjectBedrockBetaTokens(nil, body, "us.anthropic.claude-opus-4-6-v1")
-		assert.Contains(t, result, "REDACTED")
+		// REDACTED 已从白名单移除，不应自动注入
+		assert.Empty(t, result)
 REDACTED)
 
 	t.Run("no duplicate when already present", func(t *testing.T) {
 		body := []byte(`{"thinking":{"type":"enabled","budget_tokens":10000REDACTED,"messages":[{"role":"user","content":"hi"REDACTED]REDACTED`)
-		result := autoInjectBedrockBetaTokens([]string{"REDACTED"REDACTED, body, "us.anthropic.claude-opus-4-6-v1")
-		count := 0
-		for _, t := range result {
-			if t == "REDACTED" {
-				count++
-		REDACTED
-	REDACTED
-		assert.Equal(t, 1, count)
+		result := autoInjectBedrockBetaTokens([]string{"context-1m-2025-08-07"REDACTED, body, "us.anthropic.claude-opus-4-6-v1")
+		assert.Equal(t, []string{"context-1m-2025-08-07"REDACTED, result)
 REDACTED)
 
 	t.Run("inject computer-use when computer tool present", func(t *testing.T) {
@@ -574,7 +568,8 @@ REDACTED)
 		result := autoInjectBedrockBetaTokens(existing, body, "us.anthropic.claude-opus-4-6-v1")
 		assert.Contains(t, result, "context-1m-2025-08-07")
 		assert.Contains(t, result, "compact-2026-01-12")
-		assert.Contains(t, result, "REDACTED")
+		// interleaved-thinking 不再自动注入
+		assert.NotContains(t, result, "REDACTED")
 REDACTED)
 REDACTED
 
@@ -588,27 +583,21 @@ REDACTED)
 
 	t.Run("unsupported client beta tokens are filtered out", func(t *testing.T) {
 		body := []byte(`{"messages":[{"role":"user","content":"hi"REDACTED]REDACTED`)
-		result := ResolveBedrockBetaTokens("REDACTED,files-api-2025-04-14", body, "us.anthropic.claude-opus-4-6-v1")
-		assert.Equal(t, []string{"REDACTED"REDACTED, result)
+		result := ResolveBedrockBetaTokens("context-1m-2025-08-07,files-api-2025-04-14", body, "us.anthropic.claude-opus-4-6-v1")
+		assert.Equal(t, []string{"context-1m-2025-08-07"REDACTED, result)
 REDACTED)
 REDACTED
 
 func TestPrepareBedrockRequestBody_AutoBetaInjection(t *testing.T) {
-	t.Run("thinking in body auto-injects beta without header", func(t *testing.T) {
+	t.Run("thinking in body does not auto-inject beta (not supported)", func(t *testing.T) {
 		input := `{"messages":[{"role":"user","content":"hi"REDACTED],"max_tokens":100,"thinking":{"type":"enabled","budget_tokens":10000REDACTEDREDACTED`
 		result, err := PrepareBedrockRequestBody([]byte(input), "us.anthropic.claude-opus-4-6-v1", "")
 	REDACTED
-		arr := gjson.GetBytes(result, "anthropic_beta").Array()
-		found := false
-		for _, v := range arr {
-			if v.String() == "REDACTED" {
-				found = true
-		REDACTED
-	REDACTED
-		assert.True(t, found, "interleaved-thinking should be auto-injected")
+		// interleaved-thinking 已从白名单移除，不应自动注入
+		assert.False(t, gjson.GetBytes(result, "anthropic_beta").Exists())
 REDACTED)
 
-	t.Run("header tokens merged with auto-injected tokens", func(t *testing.T) {
+	t.Run("header tokens preserved without auto-injection", func(t *testing.T) {
 		input := `{"messages":[{"role":"user","content":"hi"REDACTED],"max_tokens":100,"thinking":{"type":"enabled","budget_tokens":10000REDACTEDREDACTED`
 		result, err := PrepareBedrockRequestBody([]byte(input), "us.anthropic.claude-opus-4-6-v1", "context-1m-2025-08-07")
 	REDACTED
@@ -618,7 +607,8 @@ REDACTED)
 			names[i] = v.String()
 	REDACTED
 		assert.Contains(t, names, "context-1m-2025-08-07")
-		assert.Contains(t, names, "REDACTED")
+		// interleaved-thinking 不再自动注入
+		assert.NotContains(t, names, "REDACTED")
 REDACTED)
 REDACTED
 
@@ -885,5 +875,135 @@ REDACTED)
 		assert.Equal(t, "adaptive", gjson.GetBytes(result, "thinking.type").String())
 		assert.False(t, gjson.GetBytes(result, "thinking.budget_tokens").Exists())
 		assert.Equal(t, "toolu_01_Ab", gjson.GetBytes(result, "messages.0.content.0.id").String())
+REDACTED)
+REDACTED
+
+func TestSanitizeBedrockCCFields(t *testing.T) {
+	t.Run("removes service_tier and interface_geo", func(t *testing.T) {
+		body := []byte(`{"model":"claude-opus-4-6","service_tier":"standard","interface_geo":"us","messages":[]REDACTED`)
+		result := sanitizeBedrockCCFields(body)
+		assert.False(t, gjson.GetBytes(result, "service_tier").Exists())
+		assert.False(t, gjson.GetBytes(result, "interface_geo").Exists())
+		assert.True(t, gjson.GetBytes(result, "messages").Exists())
+REDACTED)
+
+	t.Run("removes context_management", func(t *testing.T) {
+		body := []byte(`{"model":"claude-opus-4-6","context_management":{"edits":[{"type":"clear_thinking_20251015","keep":"all"REDACTED]REDACTED,"messages":[]REDACTED`)
+		result := sanitizeBedrockCCFields(body)
+		assert.False(t, gjson.GetBytes(result, "context_management").Exists())
+		assert.True(t, gjson.GetBytes(result, "messages").Exists())
+REDACTED)
+
+	t.Run("injects max_tokens when missing", func(t *testing.T) {
+		body := []byte(`{"model":"claude-opus-4-6","messages":[]REDACTED`)
+		result := sanitizeBedrockCCFields(body)
+		assert.Equal(t, int64(defaultCCMaxTokens), gjson.GetBytes(result, "max_tokens").Int())
+REDACTED)
+
+	t.Run("preserves existing max_tokens", func(t *testing.T) {
+		body := []byte(`{"model":"claude-opus-4-6","max_tokens":4096,"messages":[]REDACTED`)
+		result := sanitizeBedrockCCFields(body)
+		assert.Equal(t, int64(4096), gjson.GetBytes(result, "max_tokens").Int())
+REDACTED)
+
+	t.Run("injects anthropic_version when missing", func(t *testing.T) {
+		body := []byte(`{"model":"claude-opus-4-6","messages":[]REDACTED`)
+		result := sanitizeBedrockCCFields(body)
+		assert.Equal(t, "bedrock-2023-05-31", gjson.GetBytes(result, "anthropic_version").String())
+REDACTED)
+
+	t.Run("preserves existing anthropic_version", func(t *testing.T) {
+		body := []byte(`{"model":"claude-opus-4-6","anthropic_version":"bedrock-2023-05-31","messages":[]REDACTED`)
+		result := sanitizeBedrockCCFields(body)
+		assert.Equal(t, "bedrock-2023-05-31", gjson.GetBytes(result, "anthropic_version").String())
+REDACTED)
+
+	t.Run("no-op when fields already clean", func(t *testing.T) {
+		body := []byte(`{"model":"claude-opus-4-6","max_tokens":81920,"anthropic_version":"bedrock-2023-05-31","messages":[]REDACTED`)
+		result := sanitizeBedrockCCFields(body)
+		assert.Equal(t, int64(defaultCCMaxTokens), gjson.GetBytes(result, "max_tokens").Int())
+		assert.Equal(t, "bedrock-2023-05-31", gjson.GetBytes(result, "anthropic_version").String())
+		assert.False(t, gjson.GetBytes(result, "service_tier").Exists())
+		assert.False(t, gjson.GetBytes(result, "interface_geo").Exists())
+		assert.False(t, gjson.GetBytes(result, "context_management").Exists())
+REDACTED)
+
+	t.Run("full CC request sanitization", func(t *testing.T) {
+		body := []byte(`{
+			"model":"claude-opus-4-6",
+			"service_tier":"standard",
+			"interface_geo":"us",
+			"context_management":{"edits":[{"type":"clear_thinking_20251015","keep":"all"REDACTED]REDACTED,
+			"messages":[{"role":"user","content":"hello"REDACTED],
+			"thinking":{"type":"enabled"REDACTED
+	REDACTED`)
+		result := sanitizeBedrockCCFields(body)
+		assert.False(t, gjson.GetBytes(result, "service_tier").Exists())
+		assert.False(t, gjson.GetBytes(result, "interface_geo").Exists())
+		assert.False(t, gjson.GetBytes(result, "context_management").Exists())
+		assert.Equal(t, int64(defaultCCMaxTokens), gjson.GetBytes(result, "max_tokens").Int())
+		assert.Equal(t, "bedrock-2023-05-31", gjson.GetBytes(result, "anthropic_version").String())
+		assert.Equal(t, "enabled", gjson.GetBytes(result, "thinking.type").String())
+REDACTED)
+REDACTED
+
+func TestSanitizeBedrockCCBetaTokens(t *testing.T) {
+	t.Run("filters unsupported beta tokens", func(t *testing.T) {
+		input := `{"anthropic_beta":["prompt-caching-2024-07-31","context-1m-2025-08-07","unsupported-feature"],"messages":[]REDACTED`
+		result := sanitizeBedrockCCBetaTokens([]byte(input), "claude-opus-4-6")
+		beta := gjson.GetBytes(result, "anthropic_beta")
+		assert.True(t, beta.Exists())
+		assert.True(t, beta.IsArray())
+		tokens := beta.Array()
+		assert.Equal(t, 1, len(tokens))
+		assert.Equal(t, "context-1m-2025-08-07", tokens[0].String())
+REDACTED)
+
+	t.Run("removes anthropic_beta if all tokens filtered", func(t *testing.T) {
+		input := `{"anthropic_beta":["prompt-caching-2024-07-31","unsupported-feature"],"messages":[]REDACTED`
+		result := sanitizeBedrockCCBetaTokens([]byte(input), "claude-opus-4-6")
+		assert.False(t, gjson.GetBytes(result, "anthropic_beta").Exists())
+REDACTED)
+
+	t.Run("thinking alone does not auto-inject beta tokens", func(t *testing.T) {
+		input := `{"anthropic_beta":[],"thinking":{"type":"enabled"REDACTED,"messages":[]REDACTED`
+		result := sanitizeBedrockCCBetaTokens([]byte(input), "claude-opus-4-6")
+		assert.False(t, gjson.GetBytes(result, "anthropic_beta").Exists())
+REDACTED)
+
+	t.Run("auto-injects computer-use beta token", func(t *testing.T) {
+		input := `{"anthropic_beta":[],"tools":[{"type":"computer_20250124","name":"computer"REDACTED],"messages":[]REDACTED`
+		result := sanitizeBedrockCCBetaTokens([]byte(input), "claude-opus-4-6")
+		beta := gjson.GetBytes(result, "anthropic_beta")
+		assert.True(t, beta.Exists())
+		tokens := beta.Array()
+		assert.Equal(t, 1, len(tokens))
+		assert.Equal(t, "computer-use-2025-11-24", tokens[0].String())
+REDACTED)
+
+	t.Run("transforms advanced-tool-use to tool-search-tool", func(t *testing.T) {
+		input := `{"anthropic_beta":["advanced-tool-use-2025-11-20"],"messages":[]REDACTED`
+		result := sanitizeBedrockCCBetaTokens([]byte(input), "claude-opus-4-6")
+		beta := gjson.GetBytes(result, "anthropic_beta")
+		tokens := beta.Array()
+		assert.Equal(t, 2, len(tokens)) // tool-search-tool + tool-examples (auto-associated)
+		assert.Contains(t, []string{tokens[0].String(), tokens[1].String()REDACTED, "tool-search-tool-2025-10-19")
+		assert.Contains(t, []string{tokens[0].String(), tokens[1].String()REDACTED, "tool-examples-2025-10-29")
+REDACTED)
+
+	t.Run("no-op when anthropic_beta not present", func(t *testing.T) {
+		input := `{"messages":[]REDACTED`
+		result := sanitizeBedrockCCBetaTokens([]byte(input), "claude-opus-4-6")
+		assert.False(t, gjson.GetBytes(result, "anthropic_beta").Exists())
+REDACTED)
+
+	t.Run("preserves supported beta tokens", func(t *testing.T) {
+		input := `{"anthropic_beta":["computer-use-2025-11-24","context-1m-2025-08-07"],"messages":[]REDACTED`
+		result := sanitizeBedrockCCBetaTokens([]byte(input), "claude-opus-4-6")
+		beta := gjson.GetBytes(result, "anthropic_beta")
+		tokens := beta.Array()
+		assert.Equal(t, 2, len(tokens))
+		assert.Contains(t, []string{tokens[0].String(), tokens[1].String()REDACTED, "computer-use-2025-11-24")
+		assert.Contains(t, []string{tokens[0].String(), tokens[1].String()REDACTED, "context-1m-2025-08-07")
 REDACTED)
 REDACTED
