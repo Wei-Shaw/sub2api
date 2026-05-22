@@ -1,6 +1,13 @@
 import { apiClient } from '../client'
 
 export type ModerationMode = 'off' | 'observe' | 'pre_block'
+export type KeywordBlockingMode = 'keyword_only' | 'keyword_and_api' | 'api_only'
+export type ContentModerationModelFilterType = 'all' | 'include' | 'exclude'
+
+export interface ContentModerationModelFilter {
+  type: ContentModerationModelFilterType
+  models: string[]
+}
 
 export interface ContentModerationConfig {
   enabled: boolean
@@ -29,6 +36,9 @@ export interface ContentModerationConfig {
   hit_retention_days: number
   non_hit_retention_days: number
   pre_hash_check_enabled: boolean
+  blocked_keywords: string[]
+  keyword_blocking_mode: KeywordBlockingMode
+  model_filter: ContentModerationModelFilter
 }
 
 export type ContentModerationAPIKeyStatusValue = 'unknown' | 'ok' | 'error' | 'frozen'
@@ -100,6 +110,9 @@ export interface UpdateContentModerationConfig {
   hit_retention_days?: number
   non_hit_retention_days?: number
   pre_hash_check_enabled?: boolean
+  blocked_keywords?: string[]
+  keyword_blocking_mode?: KeywordBlockingMode
+  model_filter?: ContentModerationModelFilter
 }
 
 export interface ContentModerationRuntimeStatus {

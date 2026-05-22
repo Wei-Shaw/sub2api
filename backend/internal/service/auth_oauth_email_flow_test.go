@@ -59,6 +59,10 @@ func (s *redeemCodeRepoStub) Update(_ context.Context, code *RedeemCode) error {
 	return nil
 }
 
+func (s *redeemCodeRepoStub) BatchUpdate(context.Context, []int64, RedeemCodeBatchUpdateFields) (int64, error) {
+	panic("unexpected BatchUpdate call")
+}
+
 func (s *redeemCodeRepoStub) Delete(context.Context, int64) error {
 	panic("unexpected Delete call")
 }

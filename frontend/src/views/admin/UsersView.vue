@@ -199,15 +199,22 @@
                   <button
                     v-for="col in toggleableColumns"
                     :key="col.key"
+                    :disabled="isForcedVisibleColumn(col.key)"
                     @click="toggleColumn(col.key)"
-                    class="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
+                    :class="[
+                      'flex w-full items-center justify-between px-4 py-2 text-left text-sm',
+                      isForcedVisibleColumn(col.key)
+                        ? 'cursor-not-allowed text-gray-400 dark:text-gray-500'
+                        : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700'
+                    ]"
+                    :title="isForcedVisibleColumn(col.key) ? t('admin.users.columnAlwaysVisible') : ''"
                   >
                     <span>{{ col.label }}</span>
                     <Icon
                       v-if="isColumnVisible(col.key)"
                       name="check"
                       size="sm"
-                      class="text-primary-500"
+                      :class="isForcedVisibleColumn(col.key) ? 'text-gray-400 dark:text-gray-500' : 'text-primary-500'"
                       :stroke-width="2"
                     />
                   </button>
@@ -237,7 +244,7 @@
       <template #table>
         <DataTable
           :columns="columns"
-          :data="users"
+          :data="sortedUsers"
           :loading="loading"
           :actions-count="7"
           :server-side-sort="true"
@@ -413,21 +420,107 @@
             </div>
           </template>
 
-          <template #cell-usage="{ row }">
-            <div class="text-sm">
-              <div class="flex items-center gap-1.5">
-                <span class="text-gray-500 dark:text-gray-400">{{ t('admin.users.today') }}:</span>
-                <span class="font-medium text-gray-900 dark:text-white">
-                  ${{ (usageStats[row.id]?.today_actual_cost ?? 0).toFixed(4) }}
-                </span>
-              </div>
-              <div class="mt-0.5 flex items-center gap-1.5">
-                <span class="text-gray-500 dark:text-gray-400">{{ t('admin.users.total') }}:</span>
-                <span class="font-medium text-gray-900 dark:text-white">
-                  ${{ (usageStats[row.id]?.total_actual_cost ?? 0).toFixed(4) }}
-                </span>
+          <!-- 用量列自定义表头：列名 + 单个排序图标按钮，点击展开"今日/近30天"菜单。
+               column.sortable=false，DataTable 内置点击逻辑不会触发；
+               菜单项三态循环：desc → asc → off。 -->
+          <template
+            v-for="usageKey in USAGE_COLUMN_KEYS"
+            :key="usageKey"
+            #[`header-${usageKey}`]="{ column }"
+          >
+            <div class="flex items-center gap-1.5">
+              <span>{{ column.label }}</span>
+              <div class="usage-sort-trigger relative">
+                <button
+                  type="button"
+                  class="flex items-center gap-1 rounded px-1 py-0.5 transition-colors hover:bg-gray-200 dark:hover:bg-dark-700"
+                  :class="usageSort && usageSort.key === usageKey
+                    ? 'text-primary-600 dark:text-primary-400'
+                    : 'text-gray-400 dark:text-dark-500'"
+                  :title="t('admin.users.sortBy')"
+                  @click.stop="toggleUsageSortMenu(usageKey)"
+                >
+                  <span
+                    v-if="usageSort && usageSort.key === usageKey"
+                    class="text-[10px] normal-case font-medium tracking-normal"
+                  >{{ usageSort.metric === 'today' ? t('admin.users.today') : t('admin.users.total') }}</span>
+                  <svg
+                    v-if="usageSort && usageSort.key === usageKey"
+                    class="h-3.5 w-3.5"
+                    :class="{ 'rotate-180': usageSort.order === 'desc' }"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
+                    <path
+                      fill-rule="evenodd"
+                      d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z"
+                      clip-rule="evenodd"
+                    />
+                  </svg>
+                  <svg v-else class="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M10 3l-4 5h8l-4-5zM10 17l4-5H6l4 5z" />
+                  </svg>
+                </button>
+                <!-- 弹出菜单：今日 / 近30天，点击进行三态循环切换。 -->
+                <div
+                  v-if="openUsageSortMenu === usageKey"
+                  class="absolute right-0 top-full z-50 mt-1 min-w-[120px] rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-dark-600 dark:bg-dark-800"
+                >
+                  <button
+                    v-for="metric in (['today', 'total'] as const)"
+                    :key="metric"
+                    type="button"
+                    class="flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-xs normal-case tracking-normal hover:bg-gray-100 dark:hover:bg-dark-700"
+                    :class="isUsageSortActive(usageKey, metric)
+                      ? 'font-medium text-primary-600 dark:text-primary-400'
+                      : 'text-gray-700 dark:text-gray-300'"
+                    @click.stop="toggleUsageSort(usageKey, metric)"
+                  >
+                    <span>{{ metric === 'today' ? t('admin.users.today') : t('admin.users.total') }}</span>
+                    <svg
+                      v-if="getUsageSortOrder(usageKey, metric)"
+                      class="h-3 w-3"
+                      :class="{ 'rotate-180': getUsageSortOrder(usageKey, metric) === 'desc' }"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                    >
+                      <path
+                        fill-rule="evenodd"
+                        d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z"
+                        clip-rule="evenodd"
+                      />
+                    </svg>
+                  </button>
+                  <div class="mt-1 border-t border-gray-100 px-3 py-1 text-[10px] normal-case tracking-normal text-gray-400 dark:border-dark-700 dark:text-dark-500">
+                    {{ t('admin.users.sortCurrentPageOnly') }}
+                  </div>
+                </div>
               </div>
             </div>
+          </template>
+
+          <template #cell-usage="{ row }">
+            <PlatformUsageBreakdown
+              :today="usageStats[row.id]?.today_actual_cost ?? 0"
+              :total="usageStats[row.id]?.total_actual_cost ?? 0"
+              :by-platform="usageStats[row.id]?.by_platform"
+            />
+          </template>
+
+          <template #cell-usage_anthropic="{ row }">
+            <PlatformCostCell :usage="getPlatformUsage(row.id, 'anthropic')" />
+          </template>
+
+          <template #cell-usage_openai="{ row }">
+            <PlatformCostCell :usage="getPlatformUsage(row.id, 'openai')" />
+          </template>
+
+          <template #cell-usage_gemini="{ row }">
+            <PlatformCostCell :usage="getPlatformUsage(row.id, 'gemini')" />
+          </template>
+
+          <template #cell-usage_antigravity="{ row }">
+            <PlatformCostCell :usage="getPlatformUsage(row.id, 'antigravity')" />
           </template>
 
           <template #cell-concurrency="{ row }">
@@ -641,6 +734,8 @@ import GroupBadge from '@/components/common/GroupBadge.vue'
 import Select from '@/components/common/Select.vue'
 import UserAttributesConfigModal from '@/components/user/UserAttributesConfigModal.vue'
 import UserConcurrencyCell from '@/components/user/UserConcurrencyCell.vue'
+import PlatformUsageBreakdown from '@/components/user/PlatformUsageBreakdown.vue'
+import PlatformCostCell from '@/components/user/PlatformCostCell.vue'
 import UserCreateModal from '@/components/admin/user/UserCreateModal.vue'
 import UserEditModal from '@/components/admin/user/UserEditModal.vue'
 import UserApiKeysModal from '@/components/admin/user/UserApiKeysModal.vue'
@@ -710,6 +805,10 @@ const allColumns = computed<Column[]>(() => [
   { key: 'subscriptions', label: t('admin.users.columns.subscriptions'), sortable: false },
   { key: 'balance', label: t('admin.users.columns.balance'), sortable: true },
   { key: 'usage', label: t('admin.users.columns.usage'), sortable: false },
+  { key: 'usage_anthropic', label: t('admin.users.columns.usageAnthropic'), sortable: false },
+  { key: 'usage_openai', label: t('admin.users.columns.usageOpenAI'), sortable: false },
+  { key: 'usage_gemini', label: t('admin.users.columns.usageGemini'), sortable: false },
+  { key: 'usage_antigravity', label: t('admin.users.columns.usageAntigravity'), sortable: false },
   { key: 'concurrency', label: t('admin.users.columns.concurrency'), sortable: true },
   { key: 'status', label: t('admin.users.columns.status'), sortable: true },
   { key: 'last_active_at', label: t('admin.users.columns.lastActive'), sortable: true },
@@ -728,12 +827,25 @@ const toggleableColumns = computed(() =>
 const hiddenColumns = reactive<Set<string>>(new Set())
 
 // Default hidden columns (columns hidden by default on first load)
-const DEFAULT_HIDDEN_COLUMNS = ['notes', 'groups', 'subscriptions', 'usage', 'concurrency']
+const DEFAULT_HIDDEN_COLUMNS = [
+  'notes', 'groups', 'subscriptions', 'usage', 'concurrency',
+  'usage_anthropic', 'usage_openai', 'usage_gemini', 'usage_antigravity'
+]
 const REMOVED_COLUMNS = new Set(['last_login_at'])
-const FORCED_VISIBLE_COLUMNS = new Set(['last_active_at'])
+// 强制可见列：加载时会被强制移出 hiddenColumns，并在列设置 UI 上 disabled。
+// 当前没有列需要强制可见 —— last_active_at 已改为可被用户隐藏。
+const FORCED_VISIBLE_COLUMNS = new Set<string>()
 
-// localStorage key for column settings
+// localStorage keys for column settings
 const HIDDEN_COLUMNS_KEY = 'user-hidden-columns'
+// 列设置 schema 版本号。每次给 DEFAULT_HIDDEN_COLUMNS 新增列时 bump 一次，
+// 并在 VERSION_NEW_HIDDEN_COLUMNS 中登记该版本新增的 key。
+// 这样老用户升级后这些新列会被自动隐藏一次，而不会影响他们对其它老列的偏好。
+const COLUMN_SETTINGS_VERSION_KEY = 'user-column-settings-version'
+const COLUMN_SETTINGS_VERSION = 2
+const VERSION_NEW_HIDDEN_COLUMNS: Record<number, string[]> = {
+  2: ['usage_anthropic', 'usage_openai', 'usage_gemini', 'usage_antigravity']
+}
 
 // Load saved column settings
 const loadSavedColumns = () => {
@@ -744,9 +856,27 @@ const loadSavedColumns = () => {
       parsed
         .filter(key => !REMOVED_COLUMNS.has(key) && !FORCED_VISIBLE_COLUMNS.has(key))
         .forEach(key => hiddenColumns.add(key))
+
+      // 老用户升级：把每个未应用过的版本里新增的默认隐藏列自动追加到 hiddenColumns。
+      const storedVersion = Number(localStorage.getItem(COLUMN_SETTINGS_VERSION_KEY) ?? '1')
+      if (storedVersion < COLUMN_SETTINGS_VERSION) {
+        let mutated = false
+        for (let v = storedVersion + 1; v <= COLUMN_SETTINGS_VERSION; v++) {
+          for (const key of VERSION_NEW_HIDDEN_COLUMNS[v] ?? []) {
+            if (REMOVED_COLUMNS.has(key) || FORCED_VISIBLE_COLUMNS.has(key)) continue
+            if (!hiddenColumns.has(key)) {
+              hiddenColumns.add(key)
+              mutated = true
+            }
+          }
+        }
+        if (mutated) saveColumnsToStorage()
+        else localStorage.setItem(COLUMN_SETTINGS_VERSION_KEY, String(COLUMN_SETTINGS_VERSION))
+      }
     } else {
       // Use default hidden columns on first load
       DEFAULT_HIDDEN_COLUMNS.forEach(key => hiddenColumns.add(key))
+      localStorage.setItem(COLUMN_SETTINGS_VERSION_KEY, String(COLUMN_SETTINGS_VERSION))
     }
   } catch (e) {
     console.error('Failed to load saved columns:', e)
@@ -758,13 +888,18 @@ const loadSavedColumns = () => {
 const saveColumnsToStorage = () => {
   try {
     localStorage.setItem(HIDDEN_COLUMNS_KEY, JSON.stringify([...hiddenColumns]))
+    localStorage.setItem(COLUMN_SETTINGS_VERSION_KEY, String(COLUMN_SETTINGS_VERSION))
   } catch (e) {
     console.error('Failed to save columns:', e)
   }
 }
 
 // Toggle column visibility
+const isForcedVisibleColumn = (key: string) => FORCED_VISIBLE_COLUMNS.has(key)
 const toggleColumn = (key: string) => {
+  // 强制可见列(如 last_active_at)在加载时会被恢复成可见，
+  // 这里阻止用户在当前会话隐藏它，避免"取消勾选 → 刷新又恢复"的反直觉行为。
+  if (FORCED_VISIBLE_COLUMNS.has(key)) return
   const wasHidden = hiddenColumns.has(key)
   if (hiddenColumns.has(key)) {
     hiddenColumns.delete(key)
@@ -772,7 +907,7 @@ const toggleColumn = (key: string) => {
     hiddenColumns.add(key)
   }
   saveColumnsToStorage()
-  if (wasHidden && (key === 'usage' || key.startsWith('attr_'))) {
+  if (wasHidden && (key === 'usage' || key.startsWith('usage_') || key.startsWith('attr_'))) {
     refreshCurrentPageSecondaryData()
   }
   if (key === 'subscriptions') {
@@ -785,7 +920,22 @@ const toggleColumn = (key: string) => {
 
 // Check if column is visible (not in hidden set)
 const isColumnVisible = (key: string) => !hiddenColumns.has(key)
-const hasVisibleUsageColumn = computed(() => !hiddenColumns.has('usage'))
+// usage 主列或任意 usage_<platform> 子列可见时都需要批量拉取用量数据
+// 列 key → 平台名（'usage' 主列汇总所有平台时为 null）
+// 显式数组取代 Object.keys()：保证迭代顺序（决定列头排序按钮渲染顺序）
+// 不会因 JS 引擎差异或 USAGE_COLUMN_PLATFORMS 属性顺序调整而静默变化。
+const USAGE_COLUMN_KEYS: readonly string[] = ['usage', 'usage_anthropic', 'usage_openai', 'usage_gemini', 'usage_antigravity']
+const USAGE_COLUMN_PLATFORMS: Record<string, string | null> = {
+  usage: null,
+  usage_anthropic: 'anthropic',
+  usage_openai: 'openai',
+  usage_gemini: 'gemini',
+  usage_antigravity: 'antigravity'
+}
+const PLATFORM_USAGE_COLUMNS = USAGE_COLUMN_KEYS.filter((k) => k !== 'usage')
+const hasVisibleUsageColumn = computed(
+  () => !hiddenColumns.has('usage') || PLATFORM_USAGE_COLUMNS.some((k) => !hiddenColumns.has(k))
+)
 const hasVisibleSubscriptionsColumn = computed(() => !hiddenColumns.has('subscriptions'))
 const hasVisibleGroupsColumn = computed(() => !hiddenColumns.has('groups'))
 const hasVisibleAttributeColumns = computed(() =>
@@ -945,6 +1095,97 @@ const getAttributeDefinition = (attrId: number): UserAttributeDefinition | undef
   return attributeDefinitions.value.find(d => d.id === attrId)
 }
 const usageStats = ref<Record<string, BatchUserUsageStats>>({})
+
+const getPlatformUsage = (userId: number, platform: string) =>
+  usageStats.value[userId]?.by_platform?.find((p) => p.platform === platform)
+
+// 用量列前端排序：DataTable 工作在 server-side-sort 模式，所有 sortable
+// 字段都会触发后端查询，而用量列数据是异步批量拉取后再合并到当前页，
+// 因此采用独立的前端排序状态对当前页 users 做本地排序。
+// 排序状态独立于后端 sortState 持久化；缺失数据按 0 处理（desc 沉底、asc 置顶）。
+type UsageMetric = 'today' | 'total'
+type UsageSortState = { key: string; metric: UsageMetric; order: 'asc' | 'desc' } | null
+const USAGE_SORT_STORAGE_KEY = 'admin-users-usage-sort'
+
+const loadInitialUsageSort = (): UsageSortState => {
+  try {
+    const raw = localStorage.getItem(USAGE_SORT_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<{ key: string; metric: string; order: string }>
+    if (!parsed.key || !USAGE_COLUMN_KEYS.includes(parsed.key)) return null
+    const metric: UsageMetric = parsed.metric === 'total' ? 'total' : 'today'
+    const order: 'asc' | 'desc' = parsed.order === 'asc' ? 'asc' : 'desc'
+    return { key: parsed.key, metric, order }
+  } catch {
+    return null
+  }
+}
+const usageSort = ref<UsageSortState>(loadInitialUsageSort())
+const persistUsageSort = () => {
+  try {
+    if (usageSort.value) {
+      localStorage.setItem(USAGE_SORT_STORAGE_KEY, JSON.stringify(usageSort.value))
+    } else {
+      localStorage.removeItem(USAGE_SORT_STORAGE_KEY)
+    }
+  } catch (e) {
+    console.error('Failed to persist usage sort:', e)
+  }
+}
+
+const isUsageSortActive = (key: string, metric: UsageMetric) =>
+  !!usageSort.value && usageSort.value.key === key && usageSort.value.metric === metric
+const getUsageSortOrder = (key: string, metric: UsageMetric): 'asc' | 'desc' | null =>
+  isUsageSortActive(key, metric) ? usageSort.value!.order : null
+
+// 三态循环：desc → asc → off。选完即关闭菜单（用户大多希望"选中即应用"，
+// 想再切换 order 时重新打开菜单点同一项即可）。
+const toggleUsageSort = (key: string, metric: UsageMetric) => {
+  const cur = usageSort.value
+  if (cur && cur.key === key && cur.metric === metric) {
+    usageSort.value = cur.order === 'desc' ? { key, metric, order: 'asc' } : null
+  } else {
+    usageSort.value = { key, metric, order: 'desc' }
+  }
+  persistUsageSort()
+  openUsageSortMenu.value = null
+}
+
+// 列头排序按钮点击后弹出的"今日/近30天"选择菜单，同时只允许一个列展开。
+// 点击图标本身不触发排序，仅开关菜单；首次排序由用户在菜单内选择 metric 触发（默认 desc，详见 toggleUsageSort）。
+const openUsageSortMenu = ref<string | null>(null)
+const toggleUsageSortMenu = (key: string) => {
+  openUsageSortMenu.value = openUsageSortMenu.value === key ? null : key
+}
+
+const getUsageValue = (userId: number, key: string, metric: UsageMetric): number => {
+  const stats = usageStats.value[userId]
+  if (!stats) return 0
+  const platform = USAGE_COLUMN_PLATFORMS[key]
+  if (platform === null) {
+    return metric === 'today' ? stats.today_actual_cost ?? 0 : stats.total_actual_cost ?? 0
+  }
+  const p = stats.by_platform?.find((x) => x.platform === platform)
+  if (!p) return 0
+  return metric === 'today' ? p.today_actual_cost ?? 0 : p.total_actual_cost ?? 0
+}
+
+// 在 server-side 排序结果之上叠加用量列的本地排序；无 usageSort 时直接透传原数组。
+// 稳定排序：等值按原 index 保序，避免拉取新用量数据时表行抖动。
+const sortedUsers = computed(() => {
+  const s = usageSort.value
+  if (!s) return users.value
+  return [...users.value]
+    .map((row, index) => ({ row, index }))
+    .sort((a, b) => {
+      const av = getUsageValue(a.row.id, s.key, s.metric)
+      const bv = getUsageValue(b.row.id, s.key, s.metric)
+      if (av !== bv) return s.order === 'asc' ? av - bv : bv - av
+      return a.index - b.index
+    })
+    .map((x) => x.row)
+})
+
 // User attribute definitions and values
 const attributeDefinitions = ref<UserAttributeDefinition[]>([])
 const userAttributeValues = ref<Record<number, Record<number, string>>>({})
@@ -1094,6 +1335,10 @@ const handleClickOutside = (event: MouseEvent) => {
   // Close column dropdown when clicking outside
   if (columnDropdownRef.value && !columnDropdownRef.value.contains(target)) {
     showColumnDropdown.value = false
+  }
+  // Close usage sort dropdown when clicking outside any usage-sort-trigger
+  if (openUsageSortMenu.value !== null && !target.closest('.usage-sort-trigger')) {
+    openUsageSortMenu.value = null
   }
   // Close expanded group dropdown when clicking outside
   if (expandedGroupUserId.value !== null) {

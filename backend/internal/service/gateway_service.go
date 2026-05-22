@@ -5281,9 +5281,6 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		}
 	}
 
-	// 重试间复用同一请求体，避免每次 string(body) 产生额外分配。
-	setOpsUpstreamRequestBody(c, body)
-
 	// 重试循环
 	var resp *http.Response
 	retryStart := time.Now()
@@ -5788,9 +5785,6 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 
 	// Pre-filter: strip redacted_thinking blocks unconditionally.
 	input.Body = StripRedactedThinkingBlocks(input.Body)
-
-	// 重试间复用同一请求体，避免每次 string(body) 产生额外分配。
-	setOpsUpstreamRequestBody(c, input.Body)
 
 	var resp *http.Response
 	retryStart := time.Now()
@@ -6432,6 +6426,31 @@ func writeAnthropicPassthroughResponseHeaders(dst http.Header, src http.Header, 
 }
 
 // forwardBedrock 转发请求到 AWS Bedrock
+// ApplyBedrockCCCompat 应用 Bedrock CC 兼容转换（渠道级模型映射后调用）
+// 清理 Anthropic API 专有字段、注入 Bedrock 必需字段、修复 thinking/tool_use ID
+func (s *GatewayService) ApplyBedrockCCCompat(ctx context.Context, body []byte, model string, account *Account, groupID *int64) []byte {
+	if !s.isBedrockCCCompatEnabled(ctx, account, groupID) {
+		return body
+	}
+	body = sanitizeBedrockCCFields(body)
+	body = sanitizeBedrockThinking(body, model)
+	body = sanitizeBedrockToolUseIDs(body)
+	body = sanitizeBedrockCCBetaTokens(body, model)
+	return body
+}
+
+// isBedrockCCCompatEnabled 检查渠道是否启用了 Bedrock CC 兼容模式
+func (s *GatewayService) isBedrockCCCompatEnabled(ctx context.Context, account *Account, groupID *int64) bool {
+	if groupID == nil || s.channelService == nil {
+		return false
+	}
+	ch, err := s.channelService.GetChannelForGroup(ctx, *groupID)
+	if err != nil || ch == nil {
+		return false
+	}
+	return ch.IsBedrockCCCompatEnabled(account.Platform)
+}
+
 func (s *GatewayService) forwardBedrock(
 	ctx context.Context,
 	c *gin.Context,
@@ -6463,7 +6482,7 @@ func (s *GatewayService) forwardBedrock(
 		return nil, err
 	}
 
-	bedrockBody, err := PrepareBedrockRequestBodyWithTokens(body, mappedModel, betaTokens)
+	bedrockBody, err := PrepareBedrockRequestBodyWithTokens(body, mappedModel, betaTokens, false)
 	if err != nil {
 		return nil, fmt.Errorf("prepare bedrock request body: %w", err)
 	}
@@ -7342,7 +7361,6 @@ func (s *GatewayService) buildUpstreamRequestAnthropicVertex(
 	if err != nil {
 		return nil, err
 	}
-	setOpsUpstreamRequestBody(c, vertexBody)
 	fullURL, err := buildVertexAnthropicURL(account.VertexProjectID(), account.VertexLocation(modelID), modelID, reqStream)
 	if err != nil {
 		return nil, err

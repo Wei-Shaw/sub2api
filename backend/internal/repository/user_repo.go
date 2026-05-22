@@ -334,7 +334,8 @@ func normalizeEmailAuthIdentitySubject(email string) string {
 	}
 	if strings.HasSuffix(normalized, service.LinuxDoConnectSyntheticEmailDomain) ||
 		strings.HasSuffix(normalized, service.OIDCConnectSyntheticEmailDomain) ||
-		strings.HasSuffix(normalized, service.WeChatConnectSyntheticEmailDomain) {
+		strings.HasSuffix(normalized, service.WeChatConnectSyntheticEmailDomain) ||
+		strings.HasSuffix(normalized, service.DingTalkConnectSyntheticEmailDomain) {
 		return ""
 	}
 	return normalized
@@ -956,7 +957,7 @@ func userSignupSourceOrDefault(signupSource string) string {
 	switch strings.TrimSpace(strings.ToLower(signupSource)) {
 	case "", "email":
 		return "email"
-	case "linuxdo", "wechat", "oidc":
+	case "linuxdo", "wechat", "oidc", "dingtalk":
 		return strings.TrimSpace(strings.ToLower(signupSource))
 	default:
 		return "email"

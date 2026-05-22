@@ -11,7 +11,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -38,8 +37,6 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		h.errorResponse(c, http.StatusInternalServerError, "api_error", "User context not found")
 		return
 	}
-	// P0-3 §4.4 task 2: 将 subject.UserID 写入 ctx，供 service 层 IdentityProfile 注入读取。
-	c.Set(string(ctxkey.SubjectUserID), subject.UserID)
 	reqLog := requestLogger(
 		c,
 		"handler.openai_gateway.chat_completions",
@@ -81,7 +78,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
 
-	setOpsRequestContext(c, reqModel, reqStream, body)
+	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
 
 	if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIChat, reqModel, body); decision != nil && decision.Blocked {
@@ -121,42 +118,6 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 
 	sessionHash := h.gatewayService.GenerateSessionHash(c, body)
 	promptCacheKey := h.gatewayService.ExtractSessionID(c, body)
-
-	// === P0-2: 长期 user→account 绑定（账号共享加固） ===
-	chatLTBGroupID := int64(0)
-	if apiKey.GroupID != nil {
-		chatLTBGroupID = *apiKey.GroupID
-	}
-	chatProjectFP, chatIsStableFP := "", false
-	chatHasBoundSession := false
-	if h.coreGateway != nil {
-		chatProjectFP, chatIsStableFP = h.coreGateway.ExtractProjectFPRaw(
-			"", // ChatCompletions 没有 metadata.user_id 约定，走 IP fallback
-			apiKey.ID,
-			ip.GetClientIP(c),
-			chatLTBGroupID,
-		)
-		if chatProjectFP != "" && sessionHash != "" {
-			if ltbAccountID := h.coreGateway.ResolveLongTermBinding(c.Request.Context(), chatProjectFP, chatLTBGroupID); ltbAccountID > 0 {
-				if err := h.gatewayService.BindStickySession(c.Request.Context(), apiKey.GroupID, sessionHash, ltbAccountID); err != nil {
-					reqLog.Debug("openai_chat_completions.ltb_warm_sticky_failed", zap.Int64("account_id", ltbAccountID), zap.Error(err))
-				} else {
-					chatHasBoundSession = true
-					reqLog.Debug("openai_chat_completions.ltb_resolved",
-						zap.Int64("account_id", ltbAccountID),
-						zap.Bool("stable_fp", chatIsStableFP),
-					)
-				}
-			}
-		}
-		// 瑕疵 1 修复：把 projectFP 写入 ctx，让 service 层的 6 处 binding 自动清理
-		// 路径在上游 401 / 账号被禁 / sticky cache miss 时也能命中。否则 OpenAI
-		// 用户的失效 binding 只能等后台 cleanup（最长 1 小时）或 lazy delete，
-		// 导致 WriteRebindTotal 计数膨胀。
-		if chatProjectFP != "" {
-			c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), ctxkey.PrefetchedProjectFP, chatProjectFP))
-		}
-	}
 
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
@@ -217,6 +178,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		if channelMapping.Mapped {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
 		}
+		writerSizeBeforeForward := c.Writer.Size()
 		result, err := h.gatewayService.ForwardAsChatCompletions(c.Request.Context(), c, account, forwardBody, promptCacheKey, "")
 
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
@@ -233,88 +195,64 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			service.SetOpsLatencyMs(c, service.OpsTimeToFirstTokenMsKey, int64(*result.FirstTokenMs))
 		}
 		if err != nil {
-			// Image generation partial errors: skip failover, log and continue.
 			if result != nil && result.ImageCount > 0 {
 				reqLog.Warn("openai_chat_completions.forward_partial_error_with_image_result",
 					zap.Int64("account_id", account.ID),
 					zap.Int("image_count", result.ImageCount),
 					zap.Error(err),
 				)
-				continue
-			}
-			var failoverErr *service.UpstreamFailoverError
-			if errors.As(err, &failoverErr) {
-				h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
-				// Pool mode: retry on the same account
-				if failoverErr.RetryableOnSameAccount {
-					retryLimit := account.GetPoolModeRetryCount()
-					if sameAccountRetryCount[account.ID] < retryLimit {
-						sameAccountRetryCount[account.ID]++
-						reqLog.Warn("openai_chat_completions.pool_mode_same_account_retry",
-							zap.Int64("account_id", account.ID),
-							zap.Int("upstream_status", failoverErr.StatusCode),
-							zap.Int("retry_limit", retryLimit),
-							zap.Int("retry_count", sameAccountRetryCount[account.ID]),
-						)
-						select {
-						case <-c.Request.Context().Done():
-							return
-						case <-time.After(sameAccountRetryDelay):
-						}
-						continue
+			} else {
+				var failoverErr *service.UpstreamFailoverError
+				if errors.As(err, &failoverErr) {
+					if c.Writer.Size() != writerSizeBeforeForward {
+						h.handleFailoverExhausted(c, failoverErr, true)
+						return
 					}
+					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
+					// Pool mode: retry on the same account
+					if failoverErr.RetryableOnSameAccount {
+						retryLimit := account.GetPoolModeRetryCount()
+						if sameAccountRetryCount[account.ID] < retryLimit {
+							sameAccountRetryCount[account.ID]++
+							reqLog.Warn("openai_chat_completions.pool_mode_same_account_retry",
+								zap.Int64("account_id", account.ID),
+								zap.Int("upstream_status", failoverErr.StatusCode),
+								zap.Int("retry_limit", retryLimit),
+								zap.Int("retry_count", sameAccountRetryCount[account.ID]),
+							)
+							select {
+							case <-c.Request.Context().Done():
+								return
+							case <-time.After(sameAccountRetryDelay):
+							}
+							continue
+						}
+					}
+					h.gatewayService.RecordOpenAIAccountSwitch()
+					failedAccountIDs[account.ID] = struct{}{}
+					lastFailoverErr = failoverErr
+					if switchCount >= maxAccountSwitches {
+						h.handleFailoverExhausted(c, failoverErr, streamStarted)
+						return
+					}
+					switchCount++
+					reqLog.Warn("openai_chat_completions.upstream_failover_switching",
+						zap.Int64("account_id", account.ID),
+						zap.Int("upstream_status", failoverErr.StatusCode),
+						zap.Int("switch_count", switchCount),
+						zap.Int("max_switches", maxAccountSwitches),
+					)
+					continue
 				}
-				h.gatewayService.RecordOpenAIAccountSwitch()
-				failedAccountIDs[account.ID] = struct{}{}
-				lastFailoverErr = failoverErr
-				// 瑕疵 2 修复：P0-3 sessionHash 维度反扫荡。
-				// OpenAI 原生 loop 不走 FailoverState，所以这里手动调用 helper，
-				// 行为与 FailoverState.HandleFailoverError 中的 fanout 段一致。
-				if recordOpenAIFanoutAndCheckExhausted(
-					c.Request.Context(),
-					h.coreGateway,
-					h.coreGateway,
-					account.ID,
-					sessionHash,
-					apiKey.GroupID,
-					failoverErr.StatusCode,
-					reqLog,
-				) {
-					h.handleFailoverExhausted(c, failoverErr, streamStarted)
-					return
-				}
-				if switchCount >= maxAccountSwitches {
-					h.handleFailoverExhausted(c, failoverErr, streamStarted)
-					return
-				}
-				switchCount++
-				reqLog.Warn("openai_chat_completions.upstream_failover_switching",
+				h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
+				wroteFallback := h.ensureForwardErrorResponse(c, streamStarted)
+				reqLog.Warn("openai_chat_completions.forward_failed",
 					zap.Int64("account_id", account.ID),
-					zap.Int("upstream_status", failoverErr.StatusCode),
-					zap.Int("switch_count", switchCount),
-					zap.Int("max_switches", maxAccountSwitches),
+					zap.Bool("fallback_error_response_written", wroteFallback),
+					zap.Error(err),
 				)
-				// 瑕疵 2 修复：P0-3 跨账号抖动。绑定会话使用更长延迟（默认 2-10s），
-				// 普通会话维持 0-600ms。第 1 次切换不引入抖动。
-				if !applyOpenAIFailoverJitter(
-					c.Request.Context(),
-					h.coreGateway,
-					chatHasBoundSession,
-					switchCount,
-					reqLog,
-				) {
-					return
-				}
-				continue
+				return
 			}
-			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
-			wroteFallback := h.ensureForwardErrorResponse(c, streamStarted)
-			reqLog.Warn("openai_chat_completions.forward_failed",
-				zap.Int64("account_id", account.ID),
-				zap.Bool("fallback_error_response_written", wroteFallback),
-				zap.Error(err),
-			)
-			return
 		}
 		if result != nil {
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, true, result.FirstTokenMs)
@@ -351,10 +289,6 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				).Error("openai_chat_completions.record_usage_failed", zap.Error(err))
 			}
 		})
-		// P0-2: 成功响应后写入/刷新长期 user→account 绑定。
-		if h.coreGateway != nil && chatProjectFP != "" {
-			h.coreGateway.MaybeWriteBinding(c.Request.Context(), chatProjectFP, chatIsStableFP, account.ID, chatLTBGroupID)
-		}
 		reqLog.Debug("openai_chat_completions.request_completed",
 			zap.Int64("account_id", account.ID),
 			zap.Int("switch_count", switchCount),
@@ -365,7 +299,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 
 // resolveRawCCUpstreamEndpoint returns the actual upstream endpoint for
 // OpenAI Chat Completions requests. For APIKey accounts whose upstream
-// has been probed to not support the Responses API, the request is
+// is forced or probed to not support the Responses API, the request is
 // forwarded directly to /v1/chat/completions — not through the default
 // CC→Responses conversion path.
 func resolveRawCCUpstreamEndpoint(c *gin.Context, account *service.Account) string {

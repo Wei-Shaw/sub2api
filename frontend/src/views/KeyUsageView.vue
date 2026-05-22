@@ -289,6 +289,62 @@
             </div>
           </div>
 
+          <!-- Daily Usage Table -->
+          <div
+            v-if="showDailyUsage"
+            class="fade-up fade-up-delay-4 rounded-2xl border border-gray-200 bg-white/90 backdrop-blur-sm overflow-hidden dark:border-dark-700 dark:bg-dark-900/90"
+          >
+            <div class="flex flex-col gap-3 px-8 py-5 border-b border-gray-200 dark:border-dark-700 sm:flex-row sm:items-center sm:justify-between">
+              <h3 class="text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.dailyDetail') }}</h3>
+              <div class="inline-flex rounded-lg border border-gray-200 bg-white p-0.5 dark:border-dark-700 dark:bg-dark-950">
+                <button
+                  v-for="option in dailyUsageOptions"
+                  :key="option.value"
+                  @click="setDailyUsageDays(option.value)"
+                  class="min-w-12 rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
+                  :class="dailyUsageDays === option.value
+                    ? 'bg-primary-500 text-white'
+                    : 'text-gray-600 hover:bg-gray-100 dark:text-dark-300 dark:hover:bg-dark-800'"
+                >
+                  {{ option.label }}
+                </button>
+              </div>
+            </div>
+            <div v-if="dailyUsageRows.length > 0" class="overflow-x-auto">
+              <table class="w-full">
+                <thead>
+                  <tr class="border-b border-gray-200 bg-gray-50 dark:border-dark-700 dark:bg-dark-950">
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.date') }}</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.requests') }}</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.inputTokens') }}</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.outputTokens') }}</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.cacheReadTokens') }}</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.cacheWriteTokens') }}</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.cost') }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="row in dailyUsageRows"
+                    :key="row.date"
+                    class="border-b border-gray-100 last:border-b-0 dark:border-dark-800"
+                  >
+                    <td class="px-4 py-3 text-sm font-medium whitespace-nowrap text-gray-900 dark:text-white">{{ row.date }}</td>
+                    <td class="px-4 py-3 text-sm tabular-nums text-right text-gray-700 dark:text-dark-200">{{ fmtNum(row.requests) }}</td>
+                    <td class="px-4 py-3 text-sm tabular-nums text-right text-gray-700 dark:text-dark-200">{{ fmtNum(row.input_tokens) }}</td>
+                    <td class="px-4 py-3 text-sm tabular-nums text-right text-gray-700 dark:text-dark-200">{{ fmtNum(row.output_tokens) }}</td>
+                    <td class="px-4 py-3 text-sm tabular-nums text-right text-gray-700 dark:text-dark-200">{{ fmtNum(row.cache_read_tokens) }}</td>
+                    <td class="px-4 py-3 text-sm tabular-nums text-right text-gray-700 dark:text-dark-200">{{ fmtNum(row.cache_write_tokens) }}</td>
+                    <td class="px-4 py-3 text-sm tabular-nums text-right font-medium text-gray-900 dark:text-white">{{ usd(row.actual_cost != null ? row.actual_cost : row.cost) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div v-else class="px-8 py-8 text-center text-sm text-gray-500 dark:text-dark-400">
+              {{ t('keyUsage.noDailyUsage') }}
+            </div>
+          </div>
+
           <!-- Model Stats Table -->
           <div
             v-if="modelStats.length > 0"
@@ -408,12 +464,19 @@ type DateRangeKey = 'today' | '7d' | '30d' | 'custom'
 const currentRange = ref<DateRangeKey>('today')
 const customStartDate = ref('')
 const customEndDate = ref('')
+const dailyUsageDays = ref<7 | 30 | 90>(30)
 
 const dateRanges = computed(() => [
   { key: 'today' as const, label: t('keyUsage.dateRangeToday') },
   { key: '7d' as const, label: t('keyUsage.dateRange7d') },
   { key: '30d' as const, label: t('keyUsage.dateRange30d') },
   { key: 'custom' as const, label: t('keyUsage.dateRangeCustom') },
+])
+
+const dailyUsageOptions = computed(() => [
+  { value: 7 as const, label: t('keyUsage.dateRange7d') },
+  { value: 30 as const, label: t('keyUsage.dateRange30d') },
+  { value: 90 as const, label: t('keyUsage.dateRange90d') },
 ])
 
 function setDateRange(key: DateRangeKey) {
@@ -426,23 +489,36 @@ function setDateRange(key: DateRangeKey) {
 function getDateParams(): string {
   const now = new Date()
   const fmt = (d: Date) => d.toISOString().split('T')[0]
+  const params = new URLSearchParams()
 
   if (currentRange.value === 'custom') {
     if (customStartDate.value && customEndDate.value) {
-      return `start_date=${customStartDate.value}&end_date=${customEndDate.value}`
+      params.set('start_date', customStartDate.value)
+      params.set('end_date', customEndDate.value)
     }
-    return ''
+  } else {
+    const end = fmt(now)
+    let start: string
+    switch (currentRange.value) {
+      case 'today': start = end; break
+      case '7d': start = fmt(new Date(now.getTime() - 7 * 86400000)); break
+      case '30d': start = fmt(new Date(now.getTime() - 30 * 86400000)); break
+      default: start = fmt(new Date(now.getTime() - 30 * 86400000))
+    }
+    params.set('start_date', start)
+    params.set('end_date', end)
   }
+  params.set('days', String(dailyUsageDays.value))
+  params.set('timezone', getBrowserTimezone())
+  return params.toString()
+}
 
-  const end = fmt(now)
-  let start: string
-  switch (currentRange.value) {
-    case 'today': start = end; break
-    case '7d': start = fmt(new Date(now.getTime() - 7 * 86400000)); break
-    case '30d': start = fmt(new Date(now.getTime() - 30 * 86400000)); break
-    default: start = fmt(new Date(now.getTime() - 30 * 86400000))
+function setDailyUsageDays(days: 7 | 30 | 90) {
+  if (dailyUsageDays.value === days) return
+  dailyUsageDays.value = days
+  if (resultData.value && apiKey.value.trim()) {
+    queryKey()
   }
-  return `start_date=${start}&end_date=${end}`
 }
 
 // ==================== Ring Animation ====================
@@ -731,6 +807,24 @@ const usageStatCells = computed<StatCell[]>(() => {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const modelStats = computed<any[]>(() => resultData.value?.model_stats || [])
 
+interface DailyUsageRow {
+  date: string
+  requests: number
+  input_tokens: number
+  output_tokens: number
+  cache_read_tokens: number
+  cache_write_tokens: number
+  cost: number
+  actual_cost?: number
+}
+
+const dailyUsageRows = computed<DailyUsageRow[]>(() => {
+  const rows = resultData.value?.daily_usage
+  return Array.isArray(rows) ? rows : []
+})
+
+const showDailyUsage = computed(() => Boolean(resultData.value && Array.isArray(resultData.value.daily_usage)))
+
 // ==================== Utility Functions ====================
 
 function usd(value: number | null | undefined): string {
@@ -748,6 +842,14 @@ function formatDate(iso: string | null | undefined): string {
   const d = new Date(iso)
   const loc = locale.value === 'zh' ? 'zh-CN' : 'en-US'
   return d.toLocaleDateString(loc, { year: 'numeric', month: 'long', day: 'numeric' })
+}
+
+function getBrowserTimezone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+  } catch {
+    return 'UTC'
+  }
 }
 
 // ==================== API Query ====================

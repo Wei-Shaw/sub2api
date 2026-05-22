@@ -75,6 +75,28 @@ type AnthropicContentBlock struct {
 	IsError   bool            `json:"is_error,omitempty"`
 }
 
+func (b AnthropicContentBlock) MarshalJSON() ([]byte, error) {
+	type anthropicContentBlock AnthropicContentBlock
+	base := struct {
+		anthropicContentBlock
+	}{anthropicContentBlock: anthropicContentBlock(b)}
+
+	switch b.Type {
+	case "text":
+		return json.Marshal(struct {
+			Text string `json:"text"`
+			anthropicContentBlock
+		}{Text: b.Text, anthropicContentBlock: anthropicContentBlock(b)})
+	case "thinking":
+		return json.Marshal(struct {
+			Thinking string `json:"thinking"`
+			anthropicContentBlock
+		}{Thinking: b.Thinking, anthropicContentBlock: anthropicContentBlock(b)})
+	default:
+		return json.Marshal(base)
+	}
+}
+
 // AnthropicImageSource describes the source data for an image content block.
 type AnthropicImageSource struct {
 	Type      string `json:"type"` // "base64"

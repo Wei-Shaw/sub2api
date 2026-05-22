@@ -15,7 +15,6 @@ import (
 	"net/http/httptest"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -62,14 +61,6 @@ func isOpenAIImageModel(model string) bool {
 	return strings.HasPrefix(strings.ToLower(model), "gpt-image-")
 }
 
-// isOfficialOpenAIBaseURL returns true if the base URL points to the official OpenAI API.
-// Third-party OpenAI-compatible providers typically only support /chat/completions,
-// not the newer /responses endpoint.
-func isOfficialOpenAIBaseURL(baseURL string) bool {
-	lower := strings.ToLower(baseURL)
-	return strings.Contains(lower, "api.openai.com")
-}
-
 // AccountTestService handles account testing operations
 type AccountTestService struct {
 	accountRepo               AccountRepository
@@ -79,11 +70,6 @@ type AccountTestService struct {
 	httpUpstream              HTTPUpstream
 	cfg                       *config.Config
 	tlsFPProfileService       *TLSFingerprintProfileService
-
-	// vertexTokenProvider lazy-loaded for Vertex account health checks.
-	// Not a constructor parameter to keep wire-up backward compatible.
-	vertexTokenProviderOnce sync.Once
-	vertexTokenProvider     *VertexTokenProvider
 }
 
 // NewAccountTestService creates a new AccountTestService
@@ -224,21 +210,12 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 		testModelID = account.GetMappedModel(testModelID)
 	}
 
-	if account.IsClaudePlatformAWS() {
-		return s.testClaudePlatformAWSAccountConnection(c, ctx, account, testModelID)
-	}
-
 	// Bedrock accounts use a separate test path
 	if account.IsBedrock() {
 		return s.testBedrockAccountConnection(c, ctx, account, testModelID)
 	}
 	if account.Type == AccountTypeServiceAccount {
 		return s.testClaudeVertexServiceAccountConnection(c, ctx, account, testModelID)
-	}
-
-	// Vertex AI accounts use a separate test path (different auth + endpoint shape)
-	if account.IsVertex() {
-		return s.testVertexAccountConnection(c, ctx, account, testModelID)
 	}
 
 	// Determine authentication method and API URL
@@ -411,92 +388,6 @@ func (s *AccountTestService) testClaudeVertexServiceAccountConnection(c *gin.Con
 	return s.processClaudeStream(c, resp.Body)
 }
 
-// testClaudePlatformAWSAccountConnection tests Claude Platform on AWS with the
-// native Anthropic Messages API shape.
-func (s *AccountTestService) testClaudePlatformAWSAccountConnection(c *gin.Context, ctx context.Context, account *Account, testModelID string) error {
-	if claudePlatformAWSWorkspaceID(account) == "" {
-		return s.sendErrorAndEnd(c, "workspace_id not configured")
-	}
-	apiKey := account.GetCredential("api_key")
-	if apiKey == "" {
-		return s.sendErrorAndEnd(c, "No API key available")
-	}
-
-	c.Writer.Header().Set("Content-Type", "text/event-stream")
-	c.Writer.Header().Set("Cache-Control", "no-cache")
-	c.Writer.Header().Set("Connection", "keep-alive")
-	c.Writer.Header().Set("X-Accel-Buffering", "no")
-	c.Writer.Flush()
-
-	testModelID = account.GetMappedModel(testModelID)
-	payload := map[string]any{
-		"model": testModelID,
-		"messages": []map[string]any{
-			{
-				"role": "user",
-				"content": []map[string]any{
-					{
-						"type": "text",
-						"text": "hi",
-					},
-				},
-			},
-		},
-		"max_tokens":  256,
-		"temperature": 1,
-	}
-	body, _ := json.Marshal(payload)
-
-	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
-
-	apiURL := BuildClaudePlatformAWSMessagesURL(claudePlatformAWSRegion(account))
-	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(body))
-	if err != nil {
-		return s.sendErrorAndEnd(c, "Failed to create request")
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("anthropic-version", "2023-06-01")
-	req.Header.Set("anthropic-workspace-id", claudePlatformAWSWorkspaceID(account))
-	req.Header.Set("x-api-key", apiKey)
-
-	proxyURL := ""
-	if account.ProxyID != nil && account.Proxy != nil {
-		proxyURL = account.Proxy.URL()
-	}
-
-	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
-	if err != nil {
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	body, _ = io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
-	}
-
-	var result struct {
-		Content []struct {
-			Text string `json:"text"`
-		} `json:"content"`
-	}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to parse response: %s", err.Error()))
-	}
-
-	text := ""
-	if len(result.Content) > 0 {
-		text = result.Content[0].Text
-	}
-	if text == "" {
-		text = "(empty response)"
-	}
-
-	s.sendEvent(c, TestEvent{Type: "content", Text: text})
-	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
-	return nil
-}
-
 // testBedrockAccountConnection tests a Bedrock (SigV4 or API Key) account using non-streaming invoke
 func (s *AccountTestService) testBedrockAccountConnection(c *gin.Context, ctx context.Context, account *Account, testModelID string) error {
 	region := bedrockRuntimeRegion(account)
@@ -600,119 +491,9 @@ func (s *AccountTestService) testBedrockAccountConnection(c *gin.Context, ctx co
 	return nil
 }
 
-// getVertexTokenProvider lazy-loads the Vertex token provider for the test path.
-func (s *AccountTestService) getVertexTokenProvider() *VertexTokenProvider {
-	s.vertexTokenProviderOnce.Do(func() {
-		s.vertexTokenProvider = NewVertexTokenProvider()
-	})
-	return s.vertexTokenProvider
-}
-
-// testVertexAccountConnection tests a Vertex AI account by issuing a minimal
-// non-streaming :rawPredict against the configured project/region with a
-// 1-token Claude prompt. Validates SA-JSON parsing, token fetch, and that
-// the requested model is actually available in the configured region.
-func (s *AccountTestService) testVertexAccountConnection(c *gin.Context, ctx context.Context, account *Account, testModelID string) error {
-	projectID := vertexProjectID(account)
-	if projectID == "" {
-		return s.sendErrorAndEnd(c, "gcp_project_id not configured")
-	}
-	region := vertexRegion(account)
-	if region == "" {
-		return s.sendErrorAndEnd(c, "gcp_region not configured")
-	}
-
-	resolvedModelID, ok := ResolveVertexModelID(account, testModelID)
-	if !ok {
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Unsupported Vertex model: %s", testModelID))
-	}
-
-	// Set SSE headers (test UI expects SSE)
-	c.Writer.Header().Set("Content-Type", "text/event-stream")
-	c.Writer.Header().Set("Cache-Control", "no-cache")
-	c.Writer.Header().Set("Connection", "keep-alive")
-	c.Writer.Header().Set("X-Accel-Buffering", "no")
-	c.Writer.Flush()
-
-	vertexPayload := map[string]any{
-		"anthropic_version": vertexAnthropicVersion,
-		"messages": []map[string]any{
-			{
-				"role": "user",
-				"content": []map[string]any{
-					{
-						"type": "text",
-						"text": "hi",
-					},
-				},
-			},
-		},
-		"max_tokens":  256,
-		"temperature": 1,
-	}
-	vertexBody, _ := json.Marshal(vertexPayload)
-
-	apiURL := BuildVertexURL(projectID, region, resolvedModelID, false)
-
-	s.sendEvent(c, TestEvent{Type: "test_start", Model: resolvedModelID})
-
-	accessToken, err := s.getVertexTokenProvider().GetAccessToken(ctx, account)
-	if err != nil {
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to obtain Vertex access token: %s", err.Error()))
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(vertexBody))
-	if err != nil {
-		return s.sendErrorAndEnd(c, "Failed to create request")
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	attachVertexAuth(req, accessToken)
-
-	proxyURL := ""
-	if account.ProxyID != nil && account.Proxy != nil {
-		proxyURL = account.Proxy.URL()
-	}
-
-	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, nil)
-	if err != nil {
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	body, _ := io.ReadAll(resp.Body)
-
-	if resp.StatusCode != http.StatusOK {
-		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
-	}
-
-	// Vertex non-streaming response is standard Anthropic Messages JSON
-	var result struct {
-		Content []struct {
-			Text string `json:"text"`
-		} `json:"content"`
-	}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to parse response: %s", err.Error()))
-	}
-
-	text := ""
-	if len(result.Content) > 0 {
-		text = result.Content[0].Text
-	}
-	if text == "" {
-		text = "(empty response)"
-	}
-
-	s.sendEvent(c, TestEvent{Type: "content", Text: text})
-	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
-	return nil
-}
-
 // testOpenAIAccountConnection tests an OpenAI account's connection
 func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account *Account, modelID string, prompt string, mode string) error {
 	ctx := c.Request.Context()
-	_ = prompt
 	mode = normalizeAccountTestMode(mode)
 
 	// Default to openai.DefaultTestModel for OpenAI testing
@@ -773,20 +554,10 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		if err != nil {
 			return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
 		}
-		// Use /chat/completions for non-official OpenAI base URLs (third-party compatible APIs).
-		// Official OpenAI API uses /responses; third-party providers only support /chat/completions.
-		baseHost := strings.TrimSuffix(normalizedBaseURL, "/")
-		if isOfficialOpenAIBaseURL(baseHost) {
-			if !openai_compat.ShouldUseResponsesAPI(account.Extra) {
-				return s.sendErrorAndEnd(c,
-					"账号已被探测为不支持 OpenAI Responses API（如 DeepSeek/Kimi 等三方兼容上游），"+
-						"账号本身可正常使用，但当前测试接口仅支持 Responses API 路径。请直接通过实际 API 调用验证。",
-				)
-			}
-			apiURL = buildOpenAIResponsesURL(normalizedBaseURL)
-		} else {
-			apiURL = baseHost + "/chat/completions"
+		if !openai_compat.ShouldUseResponsesAPI(account.Extra) {
+			return s.testOpenAIChatCompletionsConnection(c, account, testModelID, prompt, normalizedBaseURL, authToken)
 		}
+		apiURL = buildOpenAIResponsesURL(normalizedBaseURL)
 	} else {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Unsupported account type: %s", account.Type))
 	}
@@ -798,16 +569,9 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	c.Writer.Flush()
 
-	// Use Responses API format for OAuth and official OpenAI; Chat Completions for third-party.
-	useResponsesAPI := isOAuth || strings.Contains(apiURL, "/responses")
-	var payloadBytes []byte
-	if useResponsesAPI {
-		payload := createOpenAITestPayload(testModelID, isOAuth)
-		payloadBytes, _ = json.Marshal(payload)
-	} else {
-		payload := createOpenAIChatTestPayload(testModelID)
-		payloadBytes, _ = json.Marshal(payload)
-	}
+	// Create OpenAI Responses API payload
+	payload := createOpenAITestPayload(testModelID, isOAuth)
+	payloadBytes, _ := json.Marshal(payload)
 
 	// Send test_start event
 	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
@@ -863,10 +627,66 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	}
 
 	// Process SSE stream
-	if useResponsesAPI {
-		return s.processOpenAIStream(c, resp.Body)
+	return s.processOpenAIStream(c, resp.Body)
+}
+
+// testOpenAIChatCompletionsConnection tests an OpenAI-compatible APIKey account
+// through the raw /v1/chat/completions endpoint.
+func (s *AccountTestService) testOpenAIChatCompletionsConnection(
+	c *gin.Context,
+	account *Account,
+	testModelID string,
+	prompt string,
+	normalizedBaseURL string,
+	authToken string,
+) error {
+	ctx := c.Request.Context()
+	apiURL := buildOpenAIChatCompletionsURL(normalizedBaseURL)
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+
+	payload := createOpenAIChatCompletionsTestPayload(testModelID, prompt)
+	payloadBytes, _ := json.Marshal(payload)
+
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
+	s.sendEvent(c, TestEvent{Type: "status", Text: "正在通过 /v1/chat/completions 测试连接"})
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(payloadBytes))
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create Chat Completions request")
 	}
-	return s.processOpenAIChatStream(c, resp.Body)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "text/event-stream")
+	req.Header.Set("Authorization", "Bearer "+authToken)
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+
+	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Chat Completions API (/v1/chat/completions) request failed: %s", err.Error()))
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode == http.StatusTooManyRequests {
+			s.reconcileOpenAI429State(ctx, account, resp.Header, body)
+		}
+		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
+			errMsg := fmt.Sprintf("Chat Completions authentication failed (401): %s", string(body))
+			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
+		}
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Chat Completions API (/v1/chat/completions) returned %d: %s", resp.StatusCode, string(body)))
+	}
+
+	return s.processOpenAIChatCompletionsStream(c, resp.Body)
 }
 
 // testOpenAICompactConnection probes /responses/compact and persists the
@@ -1429,76 +1249,21 @@ func createOpenAITestPayload(modelID string, isOAuth bool) map[string]any {
 	return payload
 }
 
-// createOpenAIChatTestPayload creates a /chat/completions compatible test payload.
-// Used for third-party OpenAI-compatible APIs that don't support the Responses API.
-func createOpenAIChatTestPayload(modelID string) map[string]any {
+func createOpenAIChatCompletionsTestPayload(modelID string, prompt string) map[string]any {
+	testPrompt := strings.TrimSpace(prompt)
+	if testPrompt == "" {
+		testPrompt = "hi"
+	}
+
 	return map[string]any{
 		"model": modelID,
 		"messages": []map[string]any{
 			{
 				"role":    "user",
-				"content": "hi",
+				"content": testPrompt,
 			},
 		},
-		"stream":     true,
-		"max_tokens": 50,
-	}
-}
-
-// processOpenAIChatStream processes SSE stream from /chat/completions endpoint.
-func (s *AccountTestService) processOpenAIChatStream(c *gin.Context, body io.Reader) error {
-	reader := bufio.NewReader(body)
-
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			if err == io.EOF {
-				s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
-				return nil
-			}
-			return s.sendErrorAndEnd(c, fmt.Sprintf("Stream read error: %s", err.Error()))
-		}
-
-		line = strings.TrimSpace(line)
-		if line == "" || !sseDataPrefix.MatchString(line) {
-			continue
-		}
-
-		jsonStr := sseDataPrefix.ReplaceAllString(line, "")
-		if jsonStr == "[DONE]" {
-			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
-			return nil
-		}
-
-		var data map[string]any
-		if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
-			continue
-		}
-
-		// Extract text from choices[0].delta.content
-		if choices, ok := data["choices"].([]any); ok && len(choices) > 0 {
-			if choice, ok := choices[0].(map[string]any); ok {
-				if delta, ok := choice["delta"].(map[string]any); ok {
-					if content, ok := delta["content"].(string); ok && content != "" {
-						s.sendEvent(c, TestEvent{Type: "content", Text: content})
-					}
-				}
-				// finish_reason signals end of stream
-				if reason, ok := choice["finish_reason"].(string); ok && reason != "" {
-					s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
-					return nil
-				}
-			}
-		}
-
-		// Handle error events
-		if errData, ok := data["error"].(map[string]any); ok {
-			errMsg := "Unknown error"
-			if msg, ok := errData["message"].(string); ok && msg != "" {
-				errMsg = msg
-			}
-			return s.sendErrorAndEnd(c, errMsg)
-		}
+		"stream": true,
 	}
 }
 
@@ -1552,6 +1317,82 @@ func (s *AccountTestService) processClaudeStream(c *gin.Context, body io.Reader)
 				}
 			}
 			return s.sendErrorAndEnd(c, errorMsg)
+		}
+	}
+}
+
+// processOpenAIChatCompletionsStream processes SSE chunks from the
+// OpenAI-compatible Chat Completions API.
+func (s *AccountTestService) processOpenAIChatCompletionsStream(c *gin.Context, body io.Reader) error {
+	reader := bufio.NewReader(body)
+	seenJSON := false
+	seenFinish := false
+
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			if err == io.EOF {
+				if seenFinish {
+					s.sendEvent(c, TestEvent{Type: "status", Text: "已通过 /v1/chat/completions 验证"})
+					s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+					return nil
+				}
+				if seenJSON {
+					return s.sendErrorAndEnd(c, "Chat Completions stream from /v1/chat/completions ended before [DONE]")
+				}
+				return s.sendErrorAndEnd(c, "Invalid Chat Completions response from /v1/chat/completions: expected SSE JSON data")
+			}
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Chat Completions stream read error from /v1/chat/completions: %s", err.Error()))
+		}
+
+		line = strings.TrimSpace(line)
+		if line == "" || !sseDataPrefix.MatchString(line) {
+			continue
+		}
+
+		jsonStr := sseDataPrefix.ReplaceAllString(line, "")
+		if jsonStr == "[DONE]" {
+			s.sendEvent(c, TestEvent{Type: "status", Text: "已通过 /v1/chat/completions 验证"})
+			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+			return nil
+		}
+
+		var data map[string]any
+		if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
+			return s.sendErrorAndEnd(c, "Invalid Chat Completions response from /v1/chat/completions: expected JSON data")
+		}
+		seenJSON = true
+
+		if errData, ok := data["error"].(map[string]any); ok {
+			errorMsg := "Chat Completions API (/v1/chat/completions) returned an error"
+			if msg, ok := errData["message"].(string); ok && msg != "" {
+				errorMsg = msg
+			}
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Chat Completions API (/v1/chat/completions) error: %s", errorMsg))
+		}
+
+		choices, ok := data["choices"].([]any)
+		if !ok {
+			continue
+		}
+		for _, choiceValue := range choices {
+			choice, ok := choiceValue.(map[string]any)
+			if !ok {
+				continue
+			}
+			if delta, ok := choice["delta"].(map[string]any); ok {
+				if text, ok := delta["content"].(string); ok && text != "" {
+					s.sendEvent(c, TestEvent{Type: "content", Text: text})
+				}
+			}
+			if message, ok := choice["message"].(map[string]any); ok {
+				if text, ok := message["content"].(string); ok && text != "" {
+					s.sendEvent(c, TestEvent{Type: "content", Text: text})
+				}
+			}
+			if finishReason, ok := choice["finish_reason"].(string); ok && finishReason != "" {
+				seenFinish = true
+			}
 		}
 	}
 }

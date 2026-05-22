@@ -69,6 +69,8 @@ export interface CheckoutInfoResponse {
   help_text: string
   help_image_url: string
   stripe_publishable_key: string
+  /** When true, Alipay payments on mobile always show the QR code instead of redirecting */
+  alipay_force_qrcode?: boolean
 }
 
 // ==================== Orders ====================
