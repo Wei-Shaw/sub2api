@@ -4931,11 +4931,6 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	if reqStream {
 		streamResult, err := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, reqModel, shouldMimicClaudeCode)
 		if err != nil {
-			if err.Error() == "have error in stream" {
-				return nil, &UpstreamFailoverError{
-					StatusCode: 403,
-				}
-			}
 			return nil, err
 		}
 		usage = streamResult.usage
@@ -7362,7 +7357,14 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 		}
 
 		if eventName == "error" {
-			return nil, dataLine, nil, errors.New("have error in stream")
+			body := []byte(strings.TrimSpace(dataLine))
+			if len(body) == 0 {
+				body = []byte(`{"type":"error","error":{"type":"upstream_error","message":"upstream stream returned an error event"}}`)
+			}
+			return nil, dataLine, nil, &UpstreamFailoverError{
+				StatusCode:   http.StatusForbidden,
+				ResponseBody: body,
+			}
 		}
 
 		if dataLine == "" {

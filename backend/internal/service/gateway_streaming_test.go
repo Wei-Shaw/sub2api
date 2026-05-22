@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -259,6 +260,35 @@ func TestHandleStreamingResponse_StreamReadErrorBeforeOutput_TriggersFailover(t 
 
 	// 客户端应收不到任何 stream_read_error 事件，由 handler 层根据 failover 结果再决定
 	require.NotContains(t, rec.Body.String(), "stream_read_error")
+}
+
+func TestHandleStreamingResponse_StreamErrorBeforeOutput_ReturnsFailoverWithBody(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := newMinimalGatewayService()
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	upstreamBody := `{"type":"error","error":{"type":"permission_error","message":"model unavailable for this account"}}`
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body: io.NopCloser(strings.NewReader("event: error\n" +
+			"data: " + upstreamBody + "\n\n")),
+	}
+
+	result, err := svc.handleStreamingResponse(context.Background(), resp, c, &Account{ID: 1}, time.Now(), "model", "model", false)
+
+	require.Error(t, err)
+	require.Nil(t, result)
+
+	var failoverErr *UpstreamFailoverError
+	require.True(t, errors.As(err, &failoverErr))
+	require.Equal(t, http.StatusForbidden, failoverErr.StatusCode)
+	require.JSONEq(t, upstreamBody, string(failoverErr.ResponseBody))
+	require.Equal(t, "model unavailable for this account", ExtractUpstreamErrorMessage(failoverErr.ResponseBody))
+	require.Empty(t, rec.Body.String(), "未向客户端写出前应保留给 handler 层 failover/ops 处理")
 }
 
 // 上游已经发送过事件（c.Writer 已写过字节）后再发生读错误：
