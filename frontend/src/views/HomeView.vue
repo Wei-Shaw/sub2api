@@ -200,23 +200,40 @@
 
         <!-- ==================== Community QQ Group ==================== -->
         <section class="mt-20">
-          <div class="mx-auto grid max-w-3xl items-center gap-6 rounded-xl border border-gray-200/50 bg-white/70 p-6 backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/70 md:grid-cols-[1fr_260px] md:p-8">
-            <div class="text-center md:text-left">
-              <p class="mb-2 text-sm font-medium tracking-wider text-primary-500 uppercase">Community</p>
-              <h2 class="text-2xl font-bold text-gray-900 dark:text-white">加入用户交流群</h2>
-              <p class="mt-3 text-base text-gray-500 dark:text-dark-300">不定期发放优惠福利、第一时间获取功能更新和活动通知</p>
-              <div class="mt-4 flex flex-wrap justify-center gap-2 md:justify-start">
-                <span class="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600 dark:bg-dark-700 dark:text-dark-300">活动福利</span>
-                <span class="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600 dark:bg-dark-700 dark:text-dark-300">更新通知</span>
-                <span class="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600 dark:bg-dark-700 dark:text-dark-300">使用答疑</span>
+          <div class="mx-auto max-w-3xl rounded-xl border border-primary-200/60 bg-gradient-to-br from-primary-50/80 to-white p-6 dark:border-primary-700/30 dark:from-dark-800/80 dark:to-dark-900/80 md:p-8">
+            <div class="flex flex-col items-center gap-6 md:flex-row md:items-start">
+              <!-- Left: Text + CTA -->
+              <div class="flex-1 text-center md:text-left">
+                <p class="mb-2 text-sm font-semibold tracking-wider text-primary-500 uppercase">Community</p>
+                <h2 class="text-2xl font-bold text-gray-900 dark:text-white">加入卡卡AI 用户群</h2>
+                <p class="mt-2 text-sm text-primary-600 dark:text-primary-400">🎁 限时不定期发放优惠额度，加群即可使用</p>
+                <p class="mt-1 text-base text-gray-500 dark:text-dark-300">第一时间获取功能更新、活动通知和技术答疑</p>
+                <div class="mt-4 flex flex-wrap justify-center gap-2 md:justify-start">
+                  <span class="rounded-full bg-primary-100 px-3 py-1 text-xs font-medium text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">🎁 优惠福利</span>
+                  <span class="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600 dark:bg-dark-700 dark:text-dark-300">📢 更新通知</span>
+                  <span class="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600 dark:bg-dark-700 dark:text-dark-300">💬 使用答疑</span>
+                </div>
+                <!-- QQ Group link button -->
+                <a
+                  href="https://qm.qq.com/q/IgQv6V7SEw"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="mt-5 inline-flex items-center gap-2 rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-gray-800 dark:bg-gray-800 dark:hover:bg-gray-700"
+                >
+                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15h-2v-2h2v2zm0-4h-2V7h2v6zm4 4h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+                  点击加入 QQ 群 774692252
+                  <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25" /></svg>
+                </a>
               </div>
-            </div>
-            <div class="mx-auto w-full max-w-[260px] overflow-hidden rounded-lg border border-gray-100 bg-white p-3 shadow-sm dark:border-dark-700">
-              <img
-                src="/aftersales-qq-group.jpg"
-                alt="扫码加入交流群"
-                class="w-full object-contain"
-              />
+              <!-- Right: QR Code -->
+              <div class="mx-auto w-full max-w-[240px] shrink-0 overflow-hidden rounded-lg border border-gray-100 bg-white p-3 shadow-sm dark:border-dark-700">
+                <img
+                  src="/aftersales-qq-group.jpg"
+                  alt="扫码加入卡卡AI用户群"
+                  class="w-full object-contain"
+                />
+                <p class="mt-2 text-center text-xs text-gray-400">扫一扫加入群聊</p>
+              </div>
             </div>
           </div>
         </section>

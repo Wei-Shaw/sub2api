@@ -48,6 +48,25 @@
           class="text-gray-400 transition-colors group-hover:text-amber-500 dark:text-dark-300"
         />
       </button>
+
+      <!-- QQ Group Card -->
+      <a
+        href="https://qm.qq.com/q/IgQv6V7SEw"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="group flex w-full items-center gap-4 rounded-xl border border-primary-200/60 bg-gradient-to-r from-primary-50/80 to-white p-4 text-left transition-all duration-200 hover:shadow-md hover:shadow-primary-500/5 dark:border-primary-700/30 dark:from-primary-900/20 dark:to-dark-800/50"
+      >
+        <div class="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-primary-100 transition-transform group-hover:scale-105 dark:bg-primary-900/40">
+          <span class="text-xl">💬</span>
+        </div>
+        <div class="min-w-0 flex-1">
+          <p class="text-sm font-medium text-gray-900 dark:text-white">加入卡卡AI 用户群</p>
+          <p class="text-xs text-primary-600 dark:text-primary-400">🎁 限时不定期发放优惠额度，加群即可使用</p>
+        </div>
+        <svg class="h-4 w-4 shrink-0 text-primary-400 transition-transform group-hover:translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25" />
+        </svg>
+      </a>
     </div>
   </div>
 </template>
