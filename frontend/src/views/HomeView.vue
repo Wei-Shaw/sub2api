@@ -1,70 +1,37 @@
 <template>
   <!-- Custom Home Content: Full Page Mode -->
   <div v-if="homeContent" class="min-h-screen">
-    <!-- iframe mode -->
     <iframe
       v-if="isHomeContentUrl"
       :src="homeContent.trim()"
       class="h-screen w-full border-0"
       allowfullscreen
     ></iframe>
-    <!-- HTML mode - SECURITY: homeContent is admin-only setting, XSS risk is acceptable -->
     <div v-else v-html="homeContent"></div>
   </div>
 
   <!-- Default Home Page -->
-  <div
-    v-else
-    class="relative flex min-h-screen flex-col overflow-hidden bg-gradient-to-br from-gray-50 via-primary-50/30 to-gray-100 dark:from-dark-950 dark:via-dark-900 dark:to-dark-950"
-  >
-    <!-- Background Decorations -->
-    <div class="pointer-events-none absolute inset-0 overflow-hidden">
-      <div
-        class="absolute -right-40 -top-40 h-96 w-96 rounded-full bg-primary-400/20 blur-3xl"
-      ></div>
-      <div
-        class="absolute -bottom-40 -left-40 h-96 w-96 rounded-full bg-primary-500/15 blur-3xl"
-      ></div>
-      <div
-        class="absolute left-1/3 top-1/4 h-72 w-72 rounded-full bg-primary-300/10 blur-3xl"
-      ></div>
-      <div
-        class="absolute inset-0 bg-[linear-gradient(rgba(212,165,116,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(212,165,116,0.03)_1px,transparent_1px)] bg-[size:64px_64px]"
-      ></div>
-    </div>
-
+  <div v-else class="flex min-h-screen flex-col bg-white dark:bg-dark-950">
     <!-- ==================== Nav ==================== -->
-    <header class="relative z-20 border-b border-gray-200/50 bg-white/40 backdrop-blur-md dark:border-dark-800/50 dark:bg-dark-950/40">
-      <nav class="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
-        <!-- Logo -->
-        <router-link to="/home" class="flex items-center gap-2.5">
-          <div class="h-8 w-8 overflow-hidden rounded-lg">
+    <header class="border-b border-gray-200 dark:border-dark-800">
+      <nav class="mx-auto flex max-w-5xl items-center justify-between px-6 py-3">
+        <router-link to="/home" class="flex items-center gap-2">
+          <div class="h-7 w-7 overflow-hidden rounded-md">
             <img :src="siteLogo || '/logo.png'" alt="Logo" class="h-full w-full object-contain" />
           </div>
-          <span class="text-lg font-bold text-gray-900 dark:text-white">{{ siteName }}</span>
+          <span class="text-base font-semibold text-gray-900 dark:text-white">{{ siteName }}</span>
         </router-link>
-
-        <!-- Nav Actions -->
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-1">
           <LocaleSwitcher />
-          <a
-            v-if="docUrl"
-            :href="docUrl"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="rounded-lg px-3 py-1.5 text-sm text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-dark-300 dark:hover:bg-dark-800 dark:hover:text-white"
-          >
-            {{ t('home.docs') }}
-          </a>
           <router-link
             to="/guide"
-            class="rounded-lg px-3 py-1.5 text-sm text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-dark-300 dark:hover:bg-dark-800 dark:hover:text-white"
+            class="rounded-md px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-900 dark:text-dark-300 dark:hover:bg-dark-800 dark:hover:text-white"
           >
             {{ t('guide.title') }}
           </router-link>
           <button
             @click="toggleTheme"
-            class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-dark-300 dark:hover:bg-dark-800 dark:hover:text-white"
+            class="rounded-md p-2 text-gray-400 hover:bg-gray-50 hover:text-gray-600 dark:hover:bg-dark-800 dark:hover:text-white"
           >
             <Icon v-if="isDark" name="sun" size="md" />
             <Icon v-else name="moon" size="md" />
@@ -72,19 +39,14 @@
           <router-link
             v-if="isAuthenticated"
             :to="dashboardPath"
-            class="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 dark:bg-gray-800 dark:hover:bg-gray-700"
+            class="ml-2 inline-flex items-center gap-1.5 rounded-md bg-gray-900 px-3.5 py-1.5 text-sm font-medium text-white hover:bg-gray-800 dark:bg-gray-800 dark:hover:bg-gray-700"
           >
-            <span
-              class="flex h-5 w-5 items-center justify-center rounded-full bg-primary-400 text-[10px] font-semibold text-white"
-            >
-              {{ userInitial }}
-            </span>
             {{ t('home.dashboard') }}
           </router-link>
           <router-link
             v-else
             to="/login"
-            class="inline-flex items-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 dark:bg-gray-800 dark:hover:bg-gray-700"
+            class="ml-2 rounded-md bg-gray-900 px-3.5 py-1.5 text-sm font-medium text-white hover:bg-gray-800 dark:bg-gray-800 dark:hover:bg-gray-700"
           >
             {{ t('home.login') }}
           </router-link>
@@ -92,452 +54,336 @@
       </nav>
     </header>
 
-    <!-- ==================== Hero: Left/Right Layout ==================== -->
-    <main class="relative z-10 flex-1 px-6 py-20">
-      <div class="mx-auto max-w-6xl">
-        <div class="flex flex-col items-center gap-16 lg:flex-row lg:gap-20">
-          <!-- Left: Copy -->
-          <div class="flex-1 text-center lg:text-left">
-            <p class="mb-3 text-sm font-medium tracking-wider text-primary-500 uppercase">{{ siteSubtitle }}</p>
-            <h1 class="mb-5 text-4xl font-bold leading-tight text-gray-900 dark:text-white md:text-5xl lg:text-[3.25rem]">
+    <main class="flex-1">
+      <!-- ==================== Hero (compact) ==================== -->
+      <section class="border-b border-gray-100 dark:border-dark-800">
+        <div class="mx-auto max-w-5xl px-6 py-16 md:py-20">
+          <div class="max-w-2xl">
+            <p class="mb-3 text-xs font-medium tracking-widest text-gray-400 uppercase dark:text-dark-400">{{ siteSubtitle }}</p>
+            <h1 class="text-3xl font-bold leading-tight text-gray-900 dark:text-white md:text-4xl">
               {{ t('home.hero.title') }}
             </h1>
-            <p class="mb-8 max-w-lg text-lg leading-relaxed text-gray-500 dark:text-dark-300 lg:text-xl">
+            <p class="mt-4 text-base leading-relaxed text-gray-500 dark:text-dark-300 md:text-lg">
               {{ t('home.hero.desc') }}
             </p>
-            <div class="flex flex-wrap items-center justify-center gap-3 lg:justify-start">
+            <div class="mt-6 flex flex-wrap gap-3">
               <router-link
                 :to="isAuthenticated ? dashboardPath : '/login'"
-                class="inline-flex items-center rounded-lg bg-gray-900 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-gray-800"
+                class="inline-flex items-center gap-1.5 rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
               >
                 {{ isAuthenticated ? t('home.goToDashboard') : t('home.getStarted') }}
-                <svg class="ml-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25" />
-                </svg>
+                <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25" /></svg>
               </router-link>
               <router-link
                 to="/guide"
-                class="inline-flex items-center rounded-lg border border-gray-300 bg-white px-6 py-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-800 dark:text-dark-200 dark:hover:bg-dark-700"
+                class="inline-flex items-center rounded-md border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:border-dark-700 dark:text-dark-300 dark:hover:bg-dark-800 dark:hover:text-white"
               >
                 {{ t('home.hero.viewGuide') }}
               </router-link>
               <router-link
                 id="qiyuan-client-home-cta"
                 to="/client"
-                class="inline-flex items-center rounded-lg border border-gray-300 bg-white px-6 py-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-800 dark:text-dark-200 dark:hover:bg-dark-700"
+                class="inline-flex items-center rounded-md border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:border-dark-700 dark:text-dark-300 dark:hover:bg-dark-800 dark:hover:text-white"
               >
                 {{ t('home.hero.clientCta') }}
               </router-link>
             </div>
-            <p class="mt-6 text-xs text-gray-400 dark:text-dark-300">
-              Codex Plus · Linux · Windows · macOS · 账号池调度
-            </p>
-          </div>
-
-          <!-- Right: Console Summary Card -->
-          <div class="flex flex-1 justify-center lg:justify-end">
-            <div class="console-card w-full max-w-md">
-              <!-- Card Header -->
-              <div class="flex items-center justify-between border-b border-white/10 px-5 py-3">
-                <div class="flex items-center gap-2">
-                  <div class="h-2.5 w-2.5 rounded-full bg-red-400"></div>
-                  <div class="h-2.5 w-2.5 rounded-full bg-yellow-400"></div>
-                  <div class="h-2.5 w-2.5 rounded-full bg-green-400"></div>
-                </div>
-                <span class="font-mono text-xs text-gray-400">api.kaiaigo.com</span>
-              </div>
-              <!-- Card Body -->
-              <div class="px-5 py-4">
-                <h3 class="mb-1 text-sm font-semibold text-white">{{ t('home.console.title') }}</h3>
-                <p class="mb-5 text-xs text-gray-400">{{ t('home.console.subtitle') }}</p>
-                <!-- Stats Grid -->
-                <div class="grid grid-cols-2 gap-4">
-                  <div>
-                    <p class="text-[10px] uppercase tracking-wider text-gray-500">{{ t('home.console.baseUrl') }}</p>
-                    <p class="mt-1 font-mono text-sm font-semibold text-primary-400">/v1</p>
-                  </div>
-                  <div>
-                    <p class="text-[10px] uppercase tracking-wider text-gray-500">{{ t('home.console.models') }}</p>
-                    <p class="mt-1 font-mono text-sm font-semibold text-white">GPT-5.5</p>
-                  </div>
-                  <div>
-                    <p class="text-[10px] uppercase tracking-wider text-gray-500">{{ t('home.console.accounts') }}</p>
-                    <p class="mt-1 font-mono text-sm font-semibold text-white">2</p>
-                  </div>
-                  <div>
-                    <p class="text-[10px] uppercase tracking-wider text-gray-500">{{ t('home.console.protocol') }}</p>
-                    <p class="mt-1 font-mono text-sm font-semibold text-white">OAuth</p>
-                  </div>
-                </div>
-                <!-- Tool Status -->
-                <div class="mt-5 space-y-2.5 border-t border-white/10 pt-4">
-                  <div class="flex items-center justify-between">
-                    <span class="text-xs font-medium text-gray-300">Codex CLI</span>
-                    <span class="flex items-center gap-1.5 text-xs">
-                      <span class="h-1.5 w-1.5 rounded-full bg-green-400"></span>
-                      <span class="text-green-400">Ready</span>
-                    </span>
-                  </div>
-                  <div class="flex items-center justify-between">
-                    <span class="text-xs font-medium text-gray-300">OpenAI SDK</span>
-                    <span class="flex items-center gap-1.5 text-xs">
-                      <span class="h-1.5 w-1.5 rounded-full bg-green-400"></span>
-                      <span class="text-green-400">Ready</span>
-                    </span>
-                  </div>
-                  <div class="flex items-center justify-between">
-                    <span class="text-xs font-medium text-gray-300">Claude Code</span>
-                    <span class="flex items-center gap-1.5 text-xs">
-                      <span class="h-1.5 w-1.5 rounded-full bg-green-400"></span>
-                      <span class="text-green-400">Ready</span>
-                    </span>
-                  </div>
-                </div>
-              </div>
+            <div class="mt-6 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400 dark:text-dark-400">
+              <span>Codex CLI</span>
+              <span class="text-gray-200 dark:text-dark-600">/</span>
+              <span>Claude Code</span>
+              <span class="text-gray-200 dark:text-dark-600">/</span>
+              <span>OpenAI SDK</span>
+              <span class="text-gray-200 dark:text-dark-600">/</span>
+              <span>Cursor</span>
             </div>
           </div>
         </div>
+      </section>
 
-        <!-- ==================== Community QQ Group ==================== -->
-        <section class="mt-20">
-          <div class="mx-auto max-w-3xl rounded-xl border border-primary-200/60 bg-gradient-to-br from-primary-50/80 to-white p-6 dark:border-primary-700/30 dark:from-dark-800/80 dark:to-dark-900/80 md:p-8">
-            <div class="flex flex-col items-center gap-6 md:flex-row md:items-start">
-              <!-- Left: Text + CTA -->
-              <div class="flex-1 text-center md:text-left">
-                <p class="mb-2 text-sm font-semibold tracking-wider text-primary-500 uppercase">Community</p>
-                <h2 class="text-2xl font-bold text-gray-900 dark:text-white">加入卡卡AI 用户群</h2>
-                <p class="mt-2 text-sm text-primary-600 dark:text-primary-400">🎁 限时不定期发放优惠额度，加群即可使用</p>
-                <p class="mt-1 text-base text-gray-500 dark:text-dark-300">第一时间获取功能更新、活动通知和技术答疑</p>
-                <div class="mt-4 flex flex-wrap justify-center gap-2 md:justify-start">
-                  <span class="rounded-full bg-primary-100 px-3 py-1 text-xs font-medium text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">🎁 优惠福利</span>
-                  <span class="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600 dark:bg-dark-700 dark:text-dark-300">📢 更新通知</span>
-                  <span class="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600 dark:bg-dark-700 dark:text-dark-300">💬 使用答疑</span>
-                </div>
-                <!-- QQ Group link button -->
-                <a
-                  href="https://qm.qq.com/q/IgQv6V7SEw"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="mt-5 inline-flex items-center gap-2 rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-gray-800 dark:bg-gray-800 dark:hover:bg-gray-700"
-                >
-                  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15h-2v-2h2v2zm0-4h-2V7h2v6zm4 4h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
-                  点击加入 QQ 群 774692252
-                  <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25" /></svg>
-                </a>
-              </div>
-              <!-- Right: QR Code -->
-              <div class="mx-auto w-full max-w-[240px] shrink-0 overflow-hidden rounded-lg border border-gray-100 bg-white p-3 shadow-sm dark:border-dark-700">
-                <img
-                  src="/aftersales-qq-group.jpg"
-                  alt="扫码加入卡卡AI用户群"
-                  class="w-full object-contain"
-                />
-                <p class="mt-2 text-center text-xs text-gray-400">扫一扫加入群聊</p>
-              </div>
+      <!-- ==================== Pricing (front and center) ==================== -->
+      <section class="border-b border-gray-100 dark:border-dark-800">
+        <div class="mx-auto max-w-5xl px-6 py-16">
+          <div class="mb-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p class="mb-1 text-xs font-medium tracking-widest text-gray-400 uppercase dark:text-dark-400">{{ t('home.pricing.label') }}</p>
+              <h2 class="text-2xl font-bold text-gray-900 dark:text-white md:text-3xl">{{ t('home.pricing.title') }}</h2>
+              <p class="mt-2 text-sm text-gray-500 dark:text-dark-300">{{ t('home.pricing.subtitle') }}</p>
+            </div>
+            <div v-if="startingPrice !== null" class="shrink-0 rounded-md border border-gray-200 px-4 py-2.5 dark:border-dark-700">
+              <span class="text-sm text-gray-500 dark:text-dark-300">{{ t('home.pricing.from') }}</span>
+              <span class="ml-1 text-xl font-bold text-gray-900 dark:text-white">¥{{ formatPrice(startingPrice) }}</span>
+              <span class="text-sm text-gray-500 dark:text-dark-300">/{{ startingPlanDays }}天</span>
             </div>
           </div>
-        </section>
 
-        <!-- ==================== Core Features: 3-col Numbered Cards ==================== -->
-        <section class="mt-24">
-            <p class="mb-2 text-center text-sm font-medium tracking-wider text-primary-500 uppercase">{{ t('home.solutions.title') }}</p>
-          <h2 class="mb-12 text-center text-2xl font-bold text-gray-900 dark:text-white md:text-3xl">
+          <div v-if="plansLoading" class="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
+            <div v-for="idx in 5" :key="idx" class="h-52 animate-pulse rounded-lg border border-gray-100 bg-gray-50 dark:border-dark-800 dark:bg-dark-900"></div>
+          </div>
+
+          <div v-else-if="visiblePlans.length" class="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
+            <article
+              v-for="plan in visiblePlans"
+              :key="plan.id"
+              class="relative rounded-lg border p-5 transition-colors dark:bg-dark-900"
+              :class="plan.id === recommendedPlanId ? 'border-gray-900 dark:border-white' : 'border-gray-200 dark:border-dark-700'"
+            >
+              <div
+                v-if="plan.id === recommendedPlanId"
+                class="absolute -right-1.5 -top-2.5 rounded bg-gray-900 px-2 py-0.5 text-[10px] font-medium text-white dark:bg-white dark:text-gray-900"
+              >
+                {{ t('home.pricing.recommended') }}
+              </div>
+              <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ plan.name }}</h3>
+              <div class="mt-4">
+                <p v-if="plan.original_price" class="text-xs text-gray-400 line-through">¥{{ formatPrice(plan.original_price) }}</p>
+                <div class="mt-0.5 flex items-baseline gap-0.5">
+                  <span class="text-2xl font-bold text-gray-900 dark:text-white">¥{{ formatPrice(plan.price) }}</span>
+                  <span class="text-xs text-gray-400">/{{ plan.validity_days === 1 ? '天' : plan.validity_days + '天' }}</span>
+                </div>
+                <p v-if="formatSavings(plan)" class="mt-1 text-[11px] font-medium text-red-500">{{ t('home.pricing.save', { amount: formatSavings(plan) }) }}</p>
+              </div>
+              <ul class="mt-4 space-y-1.5">
+                <li
+                  v-for="feature in parsePlanFeatures(plan.features).slice(0, 2)"
+                  :key="feature"
+                  class="flex gap-2 text-xs leading-relaxed text-gray-500 dark:text-dark-300"
+                >
+                  <span class="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-gray-900 dark:bg-white"></span>
+                  <span>{{ feature }}</span>
+                </li>
+              </ul>
+              <router-link
+                :to="purchaseLink"
+                class="mt-5 block w-full rounded-md border py-2 text-center text-xs font-medium transition-colors"
+                :class="plan.id === recommendedPlanId
+                  ? 'border-gray-900 bg-gray-900 text-white hover:bg-gray-800 dark:border-white dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100'
+                  : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-dark-700 dark:bg-dark-800 dark:text-dark-200 dark:hover:bg-dark-700'"
+              >
+                {{ t('home.pricing.cta') }}
+              </router-link>
+            </article>
+          </div>
+
+          <div class="mt-6 text-center">
+            <a
+              href="https://qm.qq.com/q/IgQv6V7SEw"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="inline-flex items-center gap-1.5 text-sm font-medium text-primary-500 hover:text-primary-600 dark:text-primary-400"
+            >
+              加群领取限时优惠额度
+              <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25" /></svg>
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== Community QQ Group ==================== -->
+      <section class="border-b border-gray-100 bg-gray-50/50 dark:border-dark-800 dark:bg-dark-900/30">
+        <div class="mx-auto max-w-5xl px-6 py-14">
+          <div class="flex flex-col items-center gap-8 md:flex-row md:items-start">
+            <div class="flex-1 text-center md:text-left">
+              <p class="text-xs font-medium tracking-widest text-gray-400 uppercase dark:text-dark-400">Community</p>
+              <h2 class="mt-2 text-xl font-bold text-gray-900 dark:text-white">加入卡卡AI 用户群</h2>
+              <p class="mt-3 text-sm text-gray-500 dark:text-dark-300">
+                限时不定期发放优惠额度，第一时间获取功能更新和技术答疑
+              </p>
+              <div class="mt-4 flex flex-wrap justify-center gap-4 text-xs text-gray-400 dark:text-dark-400 md:justify-start">
+                <span>优惠福利</span>
+                <span>更新通知</span>
+                <span>使用答疑</span>
+              </div>
+              <a
+                href="https://qm.qq.com/q/IgQv6V7SEw"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="mt-6 inline-flex items-center gap-2 rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 dark:bg-gray-800 dark:hover:bg-gray-700"
+              >
+                加入 QQ 群 774692252
+                <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25" /></svg>
+              </a>
+            </div>
+            <div class="w-full max-w-[200px] shrink-0 overflow-hidden rounded-lg border border-gray-200 bg-white p-2 dark:border-dark-700">
+              <img
+                src="/aftersales-qq-group.jpg"
+                alt="扫码加入卡卡AI用户群"
+                class="w-full object-contain"
+              />
+              <p class="mt-1.5 text-center text-[10px] text-gray-400">扫码加入群聊</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== Features ==================== -->
+      <section class="border-b border-gray-100 dark:border-dark-800">
+        <div class="mx-auto max-w-5xl px-6 py-16">
+          <p class="mb-1 text-center text-xs font-medium tracking-widest text-gray-400 uppercase dark:text-dark-400">{{ t('home.solutions.title') }}</p>
+          <h2 class="mb-10 text-center text-xl font-bold text-gray-900 dark:text-white md:text-2xl">
             {{ t('home.hero.title') }}
           </h2>
-          <div class="grid gap-8 md:grid-cols-3">
-            <!-- 01 -->
-            <div class="rounded-xl border border-gray-200/50 bg-white/60 p-6 backdrop-blur-sm transition-all duration-300 hover:shadow-lg hover:shadow-primary-500/5 dark:border-dark-700/50 dark:bg-dark-800/60">
-              <span class="mb-4 inline-block bg-gradient-to-r from-primary-400 to-primary-500 bg-clip-text text-3xl font-black text-transparent">01</span>
-              <h3 class="mb-2 text-lg font-semibold text-gray-900 dark:text-white">
+          <div class="grid gap-6 md:grid-cols-3">
+            <div class="rounded-lg border border-gray-200 p-5 dark:border-dark-700">
+              <span class="text-xs font-bold text-primary-500">01</span>
+              <h3 class="mt-2 text-sm font-semibold text-gray-900 dark:text-white">
                 {{ t('home.features.unifiedGateway') }}
               </h3>
-              <p class="text-sm leading-relaxed text-gray-500 dark:text-dark-300">
+              <p class="mt-2 text-xs leading-relaxed text-gray-500 dark:text-dark-300">
                 {{ t('home.features.unifiedGatewayDesc') }}
               </p>
             </div>
-            <!-- 02 -->
-            <div class="rounded-xl border border-gray-200/50 bg-white/60 p-6 backdrop-blur-sm transition-all duration-300 hover:shadow-lg hover:shadow-primary-500/5 dark:border-dark-700/50 dark:bg-dark-800/60">
-              <span class="mb-4 inline-block bg-gradient-to-r from-primary-400 to-primary-500 bg-clip-text text-3xl font-black text-transparent">02</span>
-              <h3 class="mb-2 text-lg font-semibold text-gray-900 dark:text-white">
+            <div class="rounded-lg border border-gray-200 p-5 dark:border-dark-700">
+              <span class="text-xs font-bold text-primary-500">02</span>
+              <h3 class="mt-2 text-sm font-semibold text-gray-900 dark:text-white">
                 {{ t('home.features.multiAccount') }}
               </h3>
-              <p class="text-sm leading-relaxed text-gray-500 dark:text-dark-300">
+              <p class="mt-2 text-xs leading-relaxed text-gray-500 dark:text-dark-300">
                 {{ t('home.features.multiAccountDesc') }}
               </p>
             </div>
-            <!-- 03 -->
-            <div class="rounded-xl border border-gray-200/50 bg-white/60 p-6 backdrop-blur-sm transition-all duration-300 hover:shadow-lg hover:shadow-primary-500/5 dark:border-dark-700/50 dark:bg-dark-800/60">
-              <span class="mb-4 inline-block bg-gradient-to-r from-primary-400 to-primary-500 bg-clip-text text-3xl font-black text-transparent">03</span>
-              <h3 class="mb-2 text-lg font-semibold text-gray-900 dark:text-white">
+            <div class="rounded-lg border border-gray-200 p-5 dark:border-dark-700">
+              <span class="text-xs font-bold text-primary-500">03</span>
+              <h3 class="mt-2 text-sm font-semibold text-gray-900 dark:text-white">
                 {{ t('home.features.balanceQuota') }}
               </h3>
-              <p class="text-sm leading-relaxed text-gray-500 dark:text-dark-300">
+              <p class="mt-2 text-xs leading-relaxed text-gray-500 dark:text-dark-300">
                 {{ t('home.features.balanceQuotaDesc') }}
               </p>
             </div>
           </div>
-        </section>
+        </div>
+      </section>
 
-        <!-- ==================== Supported Tools: Tool Tags ==================== -->
-        <section class="mt-16">
-          <div class="flex flex-wrap items-center justify-center gap-4">
-            <div class="flex items-center gap-2 rounded-lg border border-gray-200/50 bg-white/60 px-4 py-2.5 dark:border-dark-700/50 dark:bg-dark-800/60">
-              <svg class="h-4 w-4 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
-              </svg>
-              <span class="text-sm font-medium text-gray-700 dark:text-dark-200">Codex CLI</span>
-              <span class="text-xs text-gray-400">{{ t('home.providers.supported') }}</span>
-            </div>
-            <div class="flex items-center gap-2 rounded-lg border border-gray-200/50 bg-white/60 px-4 py-2.5 dark:border-dark-700/50 dark:bg-dark-800/60">
-              <svg class="h-4 w-4 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
-              <span class="text-sm font-medium text-gray-700 dark:text-dark-200">Claude Code</span>
-              <span class="text-xs text-gray-400">{{ t('home.providers.supported') }}</span>
-            </div>
-            <div class="flex items-center gap-2 rounded-lg border border-gray-200/50 bg-white/60 px-4 py-2.5 dark:border-dark-700/50 dark:bg-dark-800/60">
-              <svg class="h-4 w-4 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-              </svg>
-              <span class="text-sm font-medium text-gray-700 dark:text-dark-200">Cursor</span>
-              <span class="text-xs text-gray-400">{{ t('home.providers.supported') }}</span>
-            </div>
-            <div class="flex items-center gap-2 rounded-lg border border-gray-200/50 bg-white/60 px-4 py-2.5 dark:border-dark-700/50 dark:bg-dark-800/60">
-              <svg class="h-4 w-4 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-              </svg>
-              <span class="text-sm font-medium text-gray-700 dark:text-dark-200">OpenAI SDK</span>
-              <span class="text-xs text-gray-400">{{ t('home.providers.supported') }}</span>
-            </div>
-          </div>
-        </section>
-
-        <!-- ==================== Pricing Guide ==================== -->
-        <section class="mt-24">
-          <div class="rounded-3xl border border-gray-200 bg-white/80 p-6 backdrop-blur-sm dark:border-dark-700 dark:bg-dark-900/80 md:p-8">
-            <div class="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-              <div>
-                <p class="mb-3 text-sm font-medium text-gray-700 dark:text-dark-200">{{ t('home.pricing.label') }}</p>
-                <h2 class="text-3xl font-bold tracking-tight text-gray-900 dark:text-white md:text-4xl">
-                  {{ t('home.pricing.title') }}
-                </h2>
-                <p class="mt-3 max-w-2xl text-sm leading-relaxed text-gray-500 dark:text-dark-300 md:text-base">
-                  {{ t('home.pricing.subtitle') }}
-                </p>
-              </div>
-              <div class="flex flex-col gap-3 sm:flex-row lg:items-center">
-                <div
-                  v-if="startingPrice !== null"
-                  class="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-500 dark:border-dark-700 dark:bg-dark-800 dark:text-dark-300"
-                >
-                  <span>{{ t('home.pricing.from') }}</span>
-                  <span class="ml-1 text-2xl font-bold text-gray-900 dark:text-white">¥{{ formatPrice(startingPrice) }}</span>
-                  <span class="ml-1">/{{ startingPlanDays }}天</span>
-                </div>
-                <router-link
-                  :to="purchaseLink"
-                  class="inline-flex items-center justify-center rounded-xl border border-gray-900 bg-white px-5 py-3 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50 dark:border-dark-200 dark:bg-dark-900 dark:text-white dark:hover:bg-dark-800"
-                >
-                  {{ t('home.pricing.cta') }}
-                </router-link>
-              </div>
-            </div>
-
-            <div v-if="plansLoading" class="mt-8 grid gap-4 md:grid-cols-5">
-              <div v-for="idx in 5" :key="idx" class="h-44 animate-pulse rounded-2xl border border-gray-200 bg-gray-50 dark:border-dark-700 dark:bg-dark-800"></div>
-            </div>
-
-            <div v-else-if="visiblePlans.length" class="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-              <article
-                v-for="plan in visiblePlans"
-                :key="plan.id"
-                class="relative rounded-2xl border bg-white p-5 transition-colors dark:bg-dark-900"
-                :class="plan.id === recommendedPlanId ? 'border-gray-900 dark:border-white' : 'border-gray-200 dark:border-dark-700'"
-              >
-                <div
-                  v-if="plan.id === recommendedPlanId"
-                  class="absolute -right-2 -top-3 rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700 dark:bg-green-900/40 dark:text-green-300"
-                >
-                  {{ t('home.pricing.recommended') }}
-                </div>
-                <div class="flex items-start justify-between gap-3">
-                  <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ plan.name }}</h3>
-                  <span class="rounded-full border border-gray-200 px-2 py-0.5 text-[11px] text-gray-500 dark:border-dark-700 dark:text-dark-300">OpenAI</span>
-                </div>
-                <div class="mt-5">
-                  <p v-if="plan.original_price" class="text-sm text-gray-400 line-through">¥{{ formatPrice(plan.original_price) }}</p>
-                  <div class="mt-1 flex items-end gap-1">
-                    <span class="text-3xl font-bold text-gray-900 dark:text-white">¥{{ formatPrice(plan.price) }}</span>
-                    <span class="pb-1 text-sm text-gray-500 dark:text-dark-300">/{{ plan.validity_days === 1 ? '天' : plan.validity_days + '天' }}</span>
-                  </div>
-                  <p v-if="formatSavings(plan)" class="mt-1 text-xs font-medium text-red-500">{{ t('home.pricing.save', { amount: formatSavings(plan) }) }}</p>
-                </div>
-                <p class="mt-4 line-clamp-3 text-sm leading-relaxed text-gray-500 dark:text-dark-300">
-                  {{ plan.description }}
-                </p>
-                <ul class="mt-4 space-y-2">
-                  <li
-                    v-for="feature in parsePlanFeatures(plan.features).slice(0, 2)"
-                    :key="feature"
-                    class="flex gap-2 text-xs leading-relaxed text-gray-500 dark:text-dark-300"
-                  >
-                    <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gray-900 dark:bg-white"></span>
-                    <span>{{ feature }}</span>
-                  </li>
-                </ul>
-              </article>
-            </div>
-          </div>
-        </section>
-
-        <!-- ==================== Why Choose: 2x2 Grid ==================== -->
-        <section class="mt-24">
-          <p class="mb-2 text-center text-sm font-medium tracking-wider text-primary-500 uppercase">{{ t('home.why.sectionLabel') }}</p>
-          <h2 class="mb-12 text-center text-2xl font-bold text-gray-900 dark:text-white md:text-3xl">
-            {{ t('home.why.sectionTitle') }}
-          </h2>
-          <div class="grid gap-6 md:grid-cols-2">
-            <div class="rounded-xl border border-gray-200/50 bg-white/60 p-6 backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/60">
-              <h3 class="mb-2 text-base font-semibold text-gray-900 dark:text-white">{{ t('home.why.security') }}</h3>
-              <p class="text-sm leading-relaxed text-gray-500 dark:text-dark-300">{{ t('home.why.securityDesc') }}</p>
-            </div>
-            <div class="rounded-xl border border-gray-200/50 bg-white/60 p-6 backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/60">
-              <h3 class="mb-2 text-base font-semibold text-gray-900 dark:text-white">{{ t('home.why.stability') }}</h3>
-              <p class="text-sm leading-relaxed text-gray-500 dark:text-dark-300">{{ t('home.why.stabilityDesc') }}</p>
-            </div>
-            <div class="rounded-xl border border-gray-200/50 bg-white/60 p-6 backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/60">
-              <h3 class="mb-2 text-base font-semibold text-gray-900 dark:text-white">{{ t('home.why.transparency') }}</h3>
-              <p class="text-sm leading-relaxed text-gray-500 dark:text-dark-300">{{ t('home.why.transparencyDesc') }}</p>
-            </div>
-            <div class="rounded-xl border border-gray-200/50 bg-white/60 p-6 backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/60">
-              <h3 class="mb-2 text-base font-semibold text-gray-900 dark:text-white">{{ t('home.why.devFirst') }}</h3>
-              <p class="text-sm leading-relaxed text-gray-500 dark:text-dark-300">{{ t('home.why.devFirstDesc') }}</p>
-            </div>
-          </div>
-        </section>
-
-        <!-- ==================== Quick Config: Dark Panels ==================== -->
-        <section class="mt-24">
-          <p class="mb-2 text-center text-sm font-medium tracking-wider text-primary-500 uppercase">{{ t('home.quickConfig.label') }}</p>
-          <h2 class="mb-4 text-center text-2xl font-bold text-gray-900 dark:text-white md:text-3xl">
-            {{ t('home.quickConfig.title') }}
-          </h2>
-          <p class="mb-10 text-center text-sm text-gray-500 dark:text-dark-300">{{ t('home.quickConfig.subtitle') }}</p>
-          <div class="grid gap-6 md:grid-cols-2">
-            <!-- Codex / SDK Panel -->
-            <div class="config-panel rounded-xl p-5">
-              <h3 class="mb-4 text-sm font-semibold text-white">{{ t('home.quickConfig.codexTitle') }}</h3>
+      <!-- ==================== Quick Config ==================== -->
+      <section class="border-b border-gray-100 dark:border-dark-800">
+        <div class="mx-auto max-w-5xl px-6 py-16">
+          <p class="mb-1 text-center text-xs font-medium tracking-widest text-gray-400 uppercase dark:text-dark-400">{{ t('home.quickConfig.label') }}</p>
+          <h2 class="mb-2 text-center text-xl font-bold text-gray-900 dark:text-white md:text-2xl">{{ t('home.quickConfig.title') }}</h2>
+          <p class="mb-8 text-center text-sm text-gray-500 dark:text-dark-300">{{ t('home.quickConfig.subtitle') }}</p>
+          <div class="grid gap-4 md:grid-cols-2">
+            <!-- Codex / SDK -->
+            <div class="rounded-lg border border-gray-200 bg-gray-900 p-5 dark:border-dark-700 dark:bg-dark-900">
+              <h3 class="mb-4 text-xs font-semibold tracking-wider text-gray-300 uppercase">{{ t('home.quickConfig.codexTitle') }}</h3>
               <dl class="space-y-3">
                 <div class="flex items-center justify-between">
-                  <dt class="text-xs uppercase tracking-wider text-gray-400">Base URL</dt>
+                  <dt class="text-[10px] uppercase tracking-wider text-gray-500">Base URL</dt>
                   <dd class="flex items-center gap-2">
-                    <code class="font-mono text-sm text-gray-200">https://api.kaiaigo.com/v1</code>
-                    <button @click="copy('https://api.kaiaigo.com/v1')" class="copy-btn text-xs text-primary-400 hover:text-primary-300">{{ copied === 'codex-url' ? '✓' : '复制' }}</button>
+                    <code class="font-mono text-xs text-gray-200">https://api.kaiaigo.com/v1</code>
+                    <button @click="copy('https://api.kaiaigo.com/v1')" class="text-[10px] text-primary-400 hover:text-primary-300">{{ copied === 'codex-url' ? 'OK' : 'Copy' }}</button>
                   </dd>
                 </div>
                 <div class="flex items-center justify-between">
-                  <dt class="text-xs uppercase tracking-wider text-gray-400">API Key</dt>
+                  <dt class="text-[10px] uppercase tracking-wider text-gray-500">API Key</dt>
                   <dd class="flex items-center gap-2">
-                    <code class="font-mono text-sm text-gray-200">sk-your-key</code>
-                    <button class="text-xs text-gray-500">{{ t('home.quickConfig.createKey') }}</button>
+                    <code class="font-mono text-xs text-gray-200">sk-your-key</code>
+                    <button class="text-[10px] text-gray-500">{{ t('home.quickConfig.createKey') }}</button>
                   </dd>
                 </div>
                 <div class="flex items-center justify-between">
-                  <dt class="text-xs uppercase tracking-wider text-gray-400">Model</dt>
+                  <dt class="text-[10px] uppercase tracking-wider text-gray-500">Model</dt>
                   <dd class="flex items-center gap-2">
-                    <code class="font-mono text-sm text-gray-200">gpt-5.5</code>
-                    <button @click="copy('gpt-5.5')" class="copy-btn text-xs text-primary-400 hover:text-primary-300">{{ copied === 'codex-model' ? '✓' : '复制' }}</button>
+                    <code class="font-mono text-xs text-gray-200">gpt-5.5</code>
+                    <button @click="copy('gpt-5.5')" class="text-[10px] text-primary-400 hover:text-primary-300">{{ copied === 'codex-model' ? 'OK' : 'Copy' }}</button>
                   </dd>
                 </div>
               </dl>
             </div>
-            <!-- Claude Code Panel -->
-            <div class="config-panel rounded-xl p-5">
-              <h3 class="mb-4 text-sm font-semibold text-white">{{ t('home.quickConfig.claudeTitle') }}</h3>
+            <!-- Claude Code -->
+            <div class="rounded-lg border border-gray-200 bg-gray-900 p-5 dark:border-dark-700 dark:bg-dark-900">
+              <h3 class="mb-4 text-xs font-semibold tracking-wider text-gray-300 uppercase">{{ t('home.quickConfig.claudeTitle') }}</h3>
               <dl class="space-y-3">
                 <div class="flex items-center justify-between">
-                  <dt class="text-xs uppercase tracking-wider text-gray-400">Base URL</dt>
+                  <dt class="text-[10px] uppercase tracking-wider text-gray-500">Base URL</dt>
                   <dd class="flex items-center gap-2">
-                    <code class="font-mono text-sm text-gray-200">https://api.kaiaigo.com</code>
-                    <button @click="copy('https://api.kaiaigo.com')" class="copy-btn text-xs text-primary-400 hover:text-primary-300">{{ copied === 'claude-url' ? '✓' : '复制' }}</button>
+                    <code class="font-mono text-xs text-gray-200">https://api.kaiaigo.com</code>
+                    <button @click="copy('https://api.kaiaigo.com')" class="text-[10px] text-primary-400 hover:text-primary-300">{{ copied === 'claude-url' ? 'OK' : 'Copy' }}</button>
                   </dd>
                 </div>
                 <div class="flex items-center justify-between">
-                  <dt class="text-xs uppercase tracking-wider text-gray-400">API Key</dt>
+                  <dt class="text-[10px] uppercase tracking-wider text-gray-500">API Key</dt>
                   <dd class="flex items-center gap-2">
-                    <code class="font-mono text-sm text-gray-200">sk-your-key</code>
-                    <button class="text-xs text-gray-500">{{ t('home.quickConfig.createKey') }}</button>
+                    <code class="font-mono text-xs text-gray-200">sk-your-key</code>
+                    <button class="text-[10px] text-gray-500">{{ t('home.quickConfig.createKey') }}</button>
                   </dd>
                 </div>
                 <div class="flex items-center justify-between">
-                  <dt class="text-xs uppercase tracking-wider text-gray-400">Model</dt>
+                  <dt class="text-[10px] uppercase tracking-wider text-gray-500">Model</dt>
                   <dd class="flex items-center gap-2">
-                    <code class="font-mono text-sm text-gray-200">claude-sonnet-4-6</code>
-                    <button @click="copy('claude-sonnet-4-6')" class="copy-btn text-xs text-primary-400 hover:text-primary-300">{{ copied === 'claude-model' ? '✓' : '复制' }}</button>
+                    <code class="font-mono text-xs text-gray-200">claude-sonnet-4-6</code>
+                    <button @click="copy('claude-sonnet-4-6')" class="text-[10px] text-primary-400 hover:text-primary-300">{{ copied === 'claude-model' ? 'OK' : 'Copy' }}</button>
                   </dd>
                 </div>
               </dl>
             </div>
           </div>
-          <p class="mt-4 text-center text-xs text-gray-400">
+          <p class="mt-3 text-center text-[11px] text-gray-400">
             {{ t('home.quickConfig.note') }}
           </p>
-        </section>
+        </div>
+      </section>
 
-        <!-- ==================== FAQ ==================== -->
-        <section class="mt-24">
-          <h2 class="mb-8 text-center text-2xl font-bold text-gray-900 dark:text-white">{{ t('guide.faq.title') }}</h2>
-          <div class="mx-auto max-w-3xl space-y-3">
+      <!-- ==================== FAQ ==================== -->
+      <section class="border-b border-gray-100 dark:border-dark-800">
+        <div class="mx-auto max-w-3xl px-6 py-16">
+          <h2 class="mb-8 text-center text-xl font-bold text-gray-900 dark:text-white">{{ t('guide.faq.title') }}</h2>
+          <div class="space-y-2">
             <details
               v-for="(item, idx) in faqItems"
               :key="idx"
-              class="group rounded-xl border border-gray-200/50 bg-white/60 backdrop-blur-sm transition-all hover:shadow-md dark:border-dark-700/50 dark:bg-dark-800/60 [&[open]]:border-primary-200 [&[open]]:shadow-lg [&[open]]:shadow-primary-500/5"
+              class="group rounded-lg border border-gray-200 transition-colors open:border-gray-900 dark:border-dark-700 dark:open:border-white"
             >
-              <summary class="flex cursor-pointer select-none items-center justify-between px-5 py-4 text-sm font-medium text-gray-800 dark:text-dark-200">
+              <summary class="flex cursor-pointer select-none items-center justify-between px-4 py-3.5 text-sm font-medium text-gray-700 dark:text-dark-200">
                 {{ item.question }}
-                <svg class="h-4 w-4 shrink-0 text-gray-400 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="h-3.5 w-3.5 shrink-0 text-gray-400 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
                 </svg>
               </summary>
-              <div class="border-t border-gray-100 px-5 py-4 text-sm leading-relaxed text-gray-500 dark:border-dark-700 dark:text-dark-300">
+              <div class="border-t border-gray-100 px-4 py-3 text-sm leading-relaxed text-gray-500 dark:border-dark-700 dark:text-dark-300">
                 {{ item.answer }}
               </div>
             </details>
           </div>
-        </section>
+        </div>
+      </section>
 
-        <!-- ==================== CTA ==================== -->
-        <section class="mt-24 text-center">
-          <h2 class="mb-3 text-2xl font-bold text-gray-900 dark:text-white">{{ t('home.cta.title') }}</h2>
-            <p class="mb-6 text-gray-500 dark:text-dark-300">{{ t('home.cta.description') }}</p>
-          <router-link
-            :to="isAuthenticated ? dashboardPath : '/login'"
-            class="inline-flex items-center rounded-lg bg-gray-900 px-8 py-3 text-sm font-medium text-white transition-colors hover:bg-gray-800"
-          >
-            {{ isAuthenticated ? t('home.goToDashboard') : t('home.getStarted') }}
-            <svg class="ml-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25" />
-            </svg>
-          </router-link>
-        </section>
-      </div>
+      <!-- ==================== CTA ==================== -->
+      <section class="py-16 text-center">
+        <router-link
+          :to="isAuthenticated ? dashboardPath : '/login'"
+          class="inline-flex items-center gap-2 rounded-md bg-gray-900 px-6 py-3 text-sm font-medium text-white hover:bg-gray-800"
+        >
+          {{ isAuthenticated ? t('home.goToDashboard') : t('home.getStarted') }}
+          <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25" />
+          </svg>
+        </router-link>
+      </section>
     </main>
 
     <!-- ==================== Footer ==================== -->
-    <footer class="relative z-10 border-t border-gray-200/50 px-6 py-8 dark:border-dark-800/50">
-      <div class="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 sm:flex-row">
-        <p class="text-sm text-gray-400 dark:text-dark-300">
+    <footer class="border-t border-gray-200 px-6 py-6 dark:border-dark-800">
+      <div class="mx-auto flex max-w-5xl flex-col items-center justify-between gap-3 sm:flex-row">
+        <p class="text-xs text-gray-400 dark:text-dark-400">
           &copy; {{ currentYear }} {{ siteName }}
         </p>
         <div class="flex items-center gap-4">
-          <router-link to="/guide" class="text-sm text-gray-400 transition-colors hover:text-gray-600 dark:text-dark-300 dark:hover:text-white">
+          <router-link to="/guide" class="text-xs text-gray-400 hover:text-gray-600 dark:text-dark-400 dark:hover:text-white">
             {{ t('guide.title') }}
           </router-link>
+          <a
+            href="https://qm.qq.com/q/IgQv6V7SEw"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-xs text-gray-400 hover:text-gray-600 dark:text-dark-400 dark:hover:text-white"
+          >
+            QQ 群
+          </a>
           <a
             :href="githubUrl"
             target="_blank"
             rel="noopener noreferrer"
-            class="text-sm text-gray-400 transition-colors hover:text-gray-600 dark:text-dark-300 dark:hover:text-white"
+            class="text-xs text-gray-400 hover:text-gray-600 dark:text-dark-400 dark:hover:text-white"
           >
             GitHub
           </a>
@@ -565,7 +411,6 @@ const appStore = useAppStore()
 const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || '卡卡AI')
 const siteLogo = computed(() => appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '')
 const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle || 'AI API Gateway')
-const docUrl = computed(() => appStore.cachedPublicSettings?.doc_url || appStore.docUrl || '')
 const homeContent = computed(() => appStore.cachedPublicSettings?.home_content || '')
 
 const isHomeContentUrl = computed(() => {
@@ -588,11 +433,6 @@ const purchaseLink = computed(() => (
     ? { path: '/purchase', query: { tab: 'subscription' } }
     : { path: '/login', query: { redirect: '/purchase?tab=subscription' } }
 ))
-const userInitial = computed(() => {
-  const user = authStore.user
-  if (!user || !user.email) return ''
-  return user.email.charAt(0).toUpperCase()
-})
 
 const currentYear = computed(() => new Date().getFullYear())
 
@@ -704,35 +544,3 @@ onMounted(() => {
   fetchSubscriptionPlans()
 })
 </script>
-
-<style scoped>
-.console-card {
-  background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
-  border-radius: 12px;
-  box-shadow:
-    0 25px 50px -12px rgba(0, 0, 0, 0.4),
-    0 0 0 1px rgba(255, 255, 255, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  overflow: hidden;
-  transform: perspective(1000px) rotateX(2deg) rotateY(-2deg);
-  transition: transform 0.4s ease;
-}
-
-.console-card:hover {
-  transform: perspective(1000px) rotateX(0deg) rotateY(0deg) translateY(-4px);
-}
-
-.config-panel {
-  background: linear-gradient(145deg, #1a1a2e 0%, #16213e 100%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.3);
-}
-
-:deep(.dark) .console-card {
-  box-shadow:
-    0 25px 50px -12px rgba(0, 0, 0, 0.6),
-    0 0 0 1px rgba(212, 165, 116, 0.15),
-    0 0 40px rgba(212, 165, 116, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
-}
-</style>
