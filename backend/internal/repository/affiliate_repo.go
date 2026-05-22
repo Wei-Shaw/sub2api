@@ -906,10 +906,6 @@ LIMIT 1`, strings.ToUpper(strings.TrimSpace(code)))
 	return &out, nil
 }
 
-func queryUserBalance(ctx context.Context, client affiliateQueryExecer, userID int64) (float64, error) {
-	return queryUserNumericBalance(ctx, client, userID, "balance")
-}
-
 func queryUserGiftBalance(ctx context.Context, client affiliateQueryExecer, userID int64) (float64, error) {
 	return queryUserNumericBalance(ctx, client, userID, "gift_balance")
 }
