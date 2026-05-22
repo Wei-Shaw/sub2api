@@ -38,16 +38,14 @@
         </button>
 
         <!-- Docs Link -->
-        <a
+        <button
           v-if="docUrl"
-          :href="docUrl"
-          target="_blank"
-          rel="noopener noreferrer"
           class="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-dark-300 dark:hover:bg-dark-800 dark:hover:text-white"
+          @click="navigateToDocs"
         >
           <Icon name="book" size="sm" />
           <span class="hidden sm:inline">{{ t('nav.docs') }}</span>
-        </a>
+        </button>
 
         <!-- Language Switcher -->
         <LocaleSwitcher />
@@ -224,6 +222,14 @@ const dropdownRef = ref<HTMLElement | null>(null)
 const docUrl = computed(() => appStore.docUrl)
 
 const { open: openCustomerService } = useCustomerService()
+
+const navigateToDocs = () => {
+  if (docUrl.value.startsWith('/')) {
+    router.push(docUrl.value)
+  } else {
+    window.open(docUrl.value, '_blank', 'noopener,noreferrer')
+  }
+}
 const avatarUrl = computed(() => user.value?.avatar_url?.trim() || '')
 
 // 只在标准模式的管理员下显示新手引导按钮
