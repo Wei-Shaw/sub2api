@@ -744,6 +744,10 @@ func TestStreamingReasoning(t *testing.T) {
 	assert.Equal(t, "content_block_start", events[0].Type)
 	assert.Equal(t, "thinking", events[0].ContentBlock.Type)
 
+	sse, err := ResponsesAnthropicEventToSSE(events[0])
+	require.NoError(t, err)
+	assert.Contains(t, sse, `"content_block":{"thinking":"","type":"thinking"}`)
+
 	// reasoning text delta
 	events = ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
 		Type:        "response.reasoning_summary_text.delta",
@@ -1519,4 +1523,50 @@ func TestAnthropicToResponses_ToolWithNilSchema(t *testing.T) {
 	require.NoError(t, json.Unmarshal(resp.Tools[0].Parameters, &params))
 	assert.JSONEq(t, `"object"`, string(params["type"]))
 	assert.JSONEq(t, `{}`, string(params["properties"]))
+}
+
+// ---------------------------------------------------------------------------
+// isReasoningModel / temperature-stripping tests
+// ---------------------------------------------------------------------------
+
+func TestAnthropicToResponses_TemperatureStrippedForReasoningModel(t *testing.T) {
+	temp := 0.7
+	req := &AnthropicRequest{
+		Model:       "gpt-5.2",
+		MaxTokens:   1024,
+		Messages:    []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
+		Temperature: &temp,
+		TopP:        &temp,
+	}
+
+	resp, err := AnthropicToResponses(req)
+	require.NoError(t, err)
+	assert.Nil(t, resp.Temperature, "reasoning model: temperature must be stripped")
+	assert.Nil(t, resp.TopP, "reasoning model: top_p must be stripped")
+
+	// Verify the fields are absent from the serialised JSON.
+	b, err := json.Marshal(resp)
+	require.NoError(t, err)
+	assert.NotContains(t, string(b), `"temperature"`)
+	assert.NotContains(t, string(b), `"top_p"`)
+}
+
+func TestAnthropicToResponses_TemperatureStrippedForAllGpt5Variants(t *testing.T) {
+	temp := 1.0
+	models := []string{"gpt-5.2", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex", "gpt-5.5"}
+	for _, model := range models {
+		t.Run(model, func(t *testing.T) {
+			req := &AnthropicRequest{
+				Model:       model,
+				MaxTokens:   1024,
+				Messages:    []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
+				Temperature: &temp,
+				TopP:        &temp,
+			}
+			resp, err := AnthropicToResponses(req)
+			require.NoError(t, err)
+			assert.Nil(t, resp.Temperature, "model %s: temperature must be stripped", model)
+			assert.Nil(t, resp.TopP, "model %s: top_p must be stripped", model)
+		})
+	}
 }

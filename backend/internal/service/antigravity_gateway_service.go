@@ -628,11 +628,6 @@ urlFallbackLoop:
 				return nil, err
 			}
 
-			// Capture upstream request body for ops retry of this attempt.
-			if p.c != nil && len(p.body) > 0 {
-				p.c.Set(OpsUpstreamRequestBodyKey, string(p.body))
-			}
-
 			resp, err = p.httpUpstream.Do(upstreamReq, p.proxyURL, p.account.ID, p.account.Concurrency)
 			if err == nil && resp == nil {
 				err = errors.New("upstream returned nil response")
