@@ -131,19 +131,117 @@
       </div>
     </div>
   </div>
+
+  <!-- Row 3: Per-platform breakdown -->
+  <div v-if="!isSimple && platformCards.length > 0" class="card p-4">
+    <div class="mb-3 flex items-center justify-between">
+      <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('dashboard.platformBreakdown') }}</h3>
+      <span class="text-xs text-gray-500 dark:text-gray-400">
+        {{ t('dashboard.platformCount', { count: sortedPlatforms.length }) }}
+      </span>
+    </div>
+    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div
+        v-for="item in platformCards"
+        :key="item.platform"
+        :class="[
+          'rounded-lg border p-3',
+          item.isOther
+            ? 'border-dashed border-gray-300 bg-gray-50 dark:border-dark-500 dark:bg-dark-700/30'
+            : 'border-gray-200 dark:border-dark-600'
+        ]"
+      >
+        <div class="flex items-center justify-between">
+          <span class="text-sm font-semibold text-gray-900 dark:text-white">
+            {{ item.isOther ? t('dashboard.platformOther') : platformLabel(item.platform) }}
+          </span>
+          <span class="font-mono text-sm text-purple-600 dark:text-purple-400" :title="t('dashboard.actual')">
+            ${{ formatCost(item.total_actual_cost) }}
+          </span>
+        </div>
+        <div class="mt-2 space-y-1 text-xs">
+          <div class="flex items-center justify-between">
+            <span class="text-gray-500 dark:text-gray-400">{{ t('dashboard.todayCost') }}</span>
+            <span class="font-mono text-gray-900 dark:text-white">${{ formatCost(item.today_actual_cost) }}</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-gray-500 dark:text-gray-400">{{ t('dashboard.requests') }}</span>
+            <span class="font-mono text-gray-700 dark:text-gray-300">
+              {{ item.total_requests > 0 ? formatNumber(item.total_requests) : '-' }}
+            </span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-gray-500 dark:text-gray-400">{{ t('dashboard.tokens') }}</span>
+            <span class="font-mono text-gray-700 dark:text-gray-300">
+              {{ item.total_tokens > 0 ? formatTokens(item.total_tokens) : '-' }}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import type { UserDashboardStats as UserStatsType } from '@/api/usage'
 
-defineProps<{
+const props = defineProps<{
   stats: UserStatsType
   balance: number
   isSimple: boolean
 }>()
 const { t } = useI18n()
+
+const PLATFORM_LABELS: Record<string, string> = {
+  anthropic: 'Claude',
+  openai: 'OpenAI',
+  gemini: 'Gemini',
+  antigravity: 'Antigravity'
+}
+
+const platformLabel = (p: string) => PLATFORM_LABELS[p] ?? p
+
+const sortedPlatforms = computed(() => {
+  const list = props.stats?.by_platform ?? []
+  return [...list].sort((a, b) => b.total_actual_cost - a.total_actual_cost)
+})
+
+// 处理"各平台之和 < 总值"的差值：后端按平台聚合时过滤了无法归属平台的行
+// （group 与 account 都缺 platform）。这里把差值作为"其他"卡片显式展示，
+// 避免 Row 1 总值与 Row 3 平台拆分加总对不上、用户困惑。
+const OTHER_THRESHOLD = 0.0001
+const platformCards = computed(() => {
+  const cards: Array<{
+    platform: string
+    total_actual_cost: number
+    today_actual_cost: number
+    total_requests: number
+    total_tokens: number
+    isOther?: boolean
+  }> = sortedPlatforms.value.map((p) => ({ ...p }))
+
+  const total = props.stats?.total_actual_cost ?? 0
+  const today = props.stats?.today_actual_cost ?? 0
+  const sumTotal = cards.reduce((s, c) => s + c.total_actual_cost, 0)
+  const sumToday = cards.reduce((s, c) => s + c.today_actual_cost, 0)
+  const diffTotal = Math.max(0, total - sumTotal)
+  const diffToday = Math.max(0, today - sumToday)
+
+  if (diffTotal > OTHER_THRESHOLD || diffToday > OTHER_THRESHOLD) {
+    cards.push({
+      platform: '__other__',
+      total_actual_cost: diffTotal,
+      today_actual_cost: diffToday,
+      total_requests: 0,
+      total_tokens: 0,
+      isOther: true
+    })
+  }
+  return cards
+})
 
 const formatBalance = (b: number) =>
   new Intl.NumberFormat('en-US', {

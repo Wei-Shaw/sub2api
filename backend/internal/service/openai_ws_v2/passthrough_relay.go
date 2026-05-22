@@ -82,6 +82,7 @@ type relayState struct {
 	terminalEventType string
 	firstTokenMs      *int
 	turnTimingByID    map[string]*relayTurnTiming
+	activeTurn        *relayTurnTiming
 }
 
 type relayExitSignal struct {
@@ -550,6 +551,12 @@ func observeUpstreamMessage(
 		if ms >= 0 {
 			state.firstTokenMs = &ms
 		}
+		if state.activeTurn != nil && state.activeTurn.firstTokenMs == nil {
+			tms := int(now.Sub(state.activeTurn.startAt).Milliseconds())
+			if tms >= 0 {
+				state.activeTurn.firstTokenMs = &tms
+			}
+		}
 	}
 	parsedUsage := parseUsageAndAccumulate(state, message, eventType, onUsageParseFailure)
 	observed := observedUpstreamEvent{
@@ -622,6 +629,7 @@ func openAIWSRelayGetOrInitTurnTiming(state *relayState, responseID string, now 
 	if !ok || timing == nil || timing.startAt.IsZero() {
 		timing = &relayTurnTiming{startAt: now}
 		state.turnTimingByID[responseID] = timing
+		state.activeTurn = timing
 		return timing
 	}
 	return timing
@@ -636,6 +644,9 @@ func openAIWSRelayDeleteTurnTiming(state *relayState, responseID string) (relayT
 		return relayTurnTiming{}, false
 	}
 	delete(state.turnTimingByID, responseID)
+	if state.activeTurn == timing {
+		state.activeTurn = nil
+	}
 	return *timing, true
 }
 

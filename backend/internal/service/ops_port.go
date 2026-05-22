@@ -16,11 +16,7 @@ type OpsRepository interface {
 	DeleteSystemLogs(ctx context.Context, filter *OpsSystemLogCleanupFilter) (int64, error)
 	InsertSystemLogCleanupAudit(ctx context.Context, input *OpsSystemLogCleanupAudit) error
 
-	InsertRetryAttempt(ctx context.Context, input *OpsInsertRetryAttemptInput) (int64, error)
-	UpdateRetryAttempt(ctx context.Context, input *OpsUpdateRetryAttemptInput) error
-	GetLatestRetryAttemptForError(ctx context.Context, sourceErrorID int64) (*OpsRetryAttempt, error)
-	ListRetryAttemptsByErrorID(ctx context.Context, sourceErrorID int64, limit int) ([]*OpsRetryAttempt, error)
-	UpdateErrorResolution(ctx context.Context, errorID int64, resolved bool, resolvedByUserID *int64, resolvedRetryID *int64, resolvedAt *time.Time) error
+	UpdateErrorResolution(ctx context.Context, errorID int64, resolved bool, resolvedByUserID *int64, resolvedAt *time.Time) error
 
 	// Lightweight window stats (for realtime WS / quick sampling).
 	GetWindowStats(ctx context.Context, filter *OpsDashboardFilter) (*OpsWindowStats, error)
@@ -121,49 +117,7 @@ type OpsInsertErrorLogInput struct {
 	ResponseLatencyMs  *int64
 	TimeToFirstTokenMs *int64
 
-	RequestBodyJSON      *string // sanitized json string (not raw bytes)
-	RequestBodyTruncated bool
-	RequestBodyBytes     *int
-	RequestHeadersJSON   *string // optional json string
-
-	IsRetryable bool
-	RetryCount  int
-
 	CreatedAt time.Time
-}
-
-type OpsInsertRetryAttemptInput struct {
-	RequestedByUserID int64
-	SourceErrorID     int64
-	Mode              string
-	PinnedAccountID   *int64
-
-	// running|queued etc.
-	Status    string
-	StartedAt time.Time
-}
-
-type OpsUpdateRetryAttemptInput struct {
-	ID int64
-
-	// succeeded|failed
-	Status     string
-	FinishedAt time.Time
-	DurationMs int64
-
-	// Persisted execution results (best-effort)
-	Success           *bool
-	HTTPStatusCode    *int
-	UpstreamRequestID *string
-	UsedAccountID     *int64
-	ResponsePreview   *string
-	ResponseTruncated *bool
-
-	// Optional correlation (legacy fields kept)
-	ResultRequestID *string
-	ResultErrorID   *int64
-
-	ErrorMessage *string
 }
 
 type OpsInsertSystemMetricsInput struct {

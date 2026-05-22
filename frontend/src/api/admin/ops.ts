@@ -1,50 +1,16 @@
 /**
  * Admin Ops API endpoints (vNext)
- * - Error logs list/detail + retry (client/upstream)
+ * - Error logs list/detail
  * - Dashboard overview (raw path)
  */
 
 import { apiClient } from '../client'
 import type { PaginatedResponse } from '@/types'
 
-export type OpsRetryMode = 'client' | 'upstream'
 export type OpsQueryMode = 'auto' | 'raw' | 'preagg'
 
 export interface OpsRequestOptions {
   signal?: AbortSignal
-}
-
-export interface OpsRetryRequest {
-  mode: OpsRetryMode
-  pinned_account_id?: number
-  force?: boolean
-}
-
-export interface OpsRetryAttempt {
-  id: number
-  created_at: string
-  requested_by_user_id: number
-  source_error_id: number
-  mode: string
-  pinned_account_id?: number | null
-  pinned_account_name?: string
-
-  status: string
-  started_at?: string | null
-  finished_at?: string | null
-  duration_ms?: number | null
-
-  success?: boolean | null
-  http_status_code?: number | null
-  upstream_request_id?: string | null
-  used_account_id?: number | null
-  used_account_name?: string
-  response_preview?: string | null
-  response_truncated?: boolean | null
-
-  result_request_id?: string | null
-  result_error_id?: number | null
-  error_message?: string | null
 }
 
 export type OpsUpstreamErrorEvent = {
@@ -54,31 +20,9 @@ export type OpsUpstreamErrorEvent = {
   account_name?: string
   upstream_status_code?: number
   upstream_request_id?: string
-  upstream_request_body?: string
   kind?: string
   message?: string
   detail?: string
-}
-
-export interface OpsRetryResult {
-  attempt_id: number
-  mode: OpsRetryMode
-  status: 'running' | 'succeeded' | 'failed' | string
-
-  pinned_account_id?: number | null
-  used_account_id?: number | null
-
-  http_status_code: number
-  upstream_request_id: string
-
-  response_preview: string
-  response_truncated: boolean
-
-  error_message: string
-
-  started_at: string
-  finished_at: string
-  duration_ms: number
 }
 
 export interface OpsDashboardOverview {
@@ -946,13 +890,9 @@ export interface OpsErrorLog {
   platform: string
   model: string
 
-  is_retryable: boolean
-  retry_count: number
-
   resolved: boolean
   resolved_at?: string | null
   resolved_by_user_id?: number | null
-  resolved_retry_id?: number | null
 
   client_request_id: string
   request_id: string
@@ -993,10 +933,6 @@ export interface OpsErrorDetail extends OpsErrorLog {
   upstream_latency_ms?: number | null
   response_latency_ms?: number | null
   time_to_first_token_ms?: number | null
-
-  request_body: string
-  request_body_truncated: boolean
-  request_body_bytes?: number | null
 
   is_business_limited: boolean
 }
@@ -1156,16 +1092,6 @@ export async function getErrorLogDetail(id: number): Promise<OpsErrorDetail> {
   return data
 }
 
-export async function retryErrorRequest(id: number, req: OpsRetryRequest): Promise<OpsRetryResult> {
-  const { data } = await apiClient.post<OpsRetryResult>(`/admin/ops/errors/${id}/retry`, req)
-  return data
-}
-
-export async function listRetryAttempts(errorId: number, limit = 50): Promise<OpsRetryAttempt[]> {
-  const { data } = await apiClient.get<OpsRetryAttempt[]>(`/admin/ops/errors/${errorId}/retries`, { params: { limit } })
-  return data
-}
-
 export async function updateErrorResolved(errorId: number, resolved: boolean): Promise<void> {
   await apiClient.put(`/admin/ops/errors/${errorId}/resolve`, { resolved })
 }
@@ -1188,21 +1114,6 @@ export async function getRequestErrorDetail(id: number): Promise<OpsErrorDetail>
 
 export async function getUpstreamErrorDetail(id: number): Promise<OpsErrorDetail> {
   const { data } = await apiClient.get<OpsErrorDetail>(`/admin/ops/upstream-errors/${id}`)
-  return data
-}
-
-export async function retryRequestErrorClient(id: number): Promise<OpsRetryResult> {
-  const { data } = await apiClient.post<OpsRetryResult>(`/admin/ops/request-errors/${id}/retry-client`, {})
-  return data
-}
-
-export async function retryRequestErrorUpstreamEvent(id: number, idx: number): Promise<OpsRetryResult> {
-  const { data } = await apiClient.post<OpsRetryResult>(`/admin/ops/request-errors/${id}/upstream-errors/${idx}/retry`, {})
-  return data
-}
-
-export async function retryUpstreamError(id: number): Promise<OpsRetryResult> {
-  const { data } = await apiClient.post<OpsRetryResult>(`/admin/ops/upstream-errors/${id}/retry`, {})
   return data
 }
 
@@ -1380,8 +1291,6 @@ export const opsAPI = {
   // Legacy unified endpoints
   listErrorLogs,
   getErrorLogDetail,
-  retryErrorRequest,
-  listRetryAttempts,
   updateErrorResolved,
 
   // New split endpoints
@@ -1389,9 +1298,6 @@ export const opsAPI = {
   listUpstreamErrors,
   getRequestErrorDetail,
   getUpstreamErrorDetail,
-  retryRequestErrorClient,
-  retryRequestErrorUpstreamEvent,
-  retryUpstreamError,
   updateRequestErrorResolved,
   updateUpstreamErrorResolved,
   listRequestErrorUpstreamErrors,

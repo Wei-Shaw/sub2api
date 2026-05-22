@@ -41,6 +41,7 @@ const geminiModels = [
   'gemini-2.0-flash',
   'gemini-2.5-flash',
   'gemini-2.5-pro',
+  'gemini-3.5-flash',
   'gemini-3-flash-preview',
   'gemini-3-pro-preview'
 ]
@@ -262,6 +263,7 @@ const geminiPresetMappings = [
   { label: '2.5 Flash', from: 'gemini-2.5-flash', to: 'gemini-2.5-flash', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400' },
   { label: '2.5 Image', from: 'gemini-2.5-flash-image', to: 'gemini-2.5-flash-image', color: 'bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-900/30 dark:text-sky-400' },
   { label: '2.5 Pro', from: 'gemini-2.5-pro', to: 'gemini-2.5-pro', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' },
+  { label: '3.5 Flash', from: 'gemini-3.5-flash', to: 'gemini-3.5-flash', color: 'bg-violet-100 text-violet-700 hover:bg-violet-200 dark:bg-violet-900/30 dark:text-violet-400' },
   { label: '3.1 Image', from: 'gemini-3.1-flash-image', to: 'gemini-3.1-flash-image', color: 'bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-900/30 dark:text-sky-400' }
 ]
 
@@ -395,23 +397,60 @@ export function isValidWildcardPattern(pattern: string): boolean {
   return starIndex === pattern.length - 1 && pattern.lastIndexOf('*') === starIndex
 }
 
+export type ModelRestrictionMode = 'whitelist' | 'mapping' | 'combined'
+
+export interface ModelMappingEntry {
+  from: string
+  to: string
+}
+
+export function splitModelMappingObject(
+  modelMapping?: Record<string, unknown> | null
+): { allowedModels: string[]; modelMappings: ModelMappingEntry[] } {
+  const allowedModels: string[] = []
+  const modelMappings: ModelMappingEntry[] = []
+
+  if (!modelMapping || typeof modelMapping !== 'object') {
+    return { allowedModels, modelMappings }
+  }
+
+  for (const [rawFrom, rawTo] of Object.entries(modelMapping)) {
+    if (typeof rawTo !== 'string') continue
+    const from = rawFrom.trim()
+    const to = rawTo.trim()
+    if (!from || !to) continue
+
+    if (from === to) {
+      allowedModels.push(from)
+    } else {
+      modelMappings.push({ from, to })
+    }
+  }
+
+  return { allowedModels, modelMappings }
+}
+
 export function buildModelMappingObject(
-  mode: 'whitelist' | 'mapping',
+  mode: ModelRestrictionMode,
   allowedModels: string[],
-  modelMappings: { from: string; to: string }[]
+  modelMappings: ModelMappingEntry[]
 ): Record<string, string> | null {
   const mapping: Record<string, string> = {}
 
-  if (mode === 'whitelist') {
+  if (mode === 'whitelist' || mode === 'combined') {
     for (const model of allowedModels) {
+      const normalizedModel = model.trim()
+      if (!normalizedModel) continue
       // whitelist 模式的本意是"精确模型列表"，如果用户输入了通配符（如 claude-*），
       // 写入 model_mapping 会导致 GetMappedModel() 把真实模型映射成 "claude-*"，从而转发失败。
       // 因此这里跳过包含通配符的条目。
-      if (!model.includes('*')) {
-        mapping[model] = model
+      if (!normalizedModel.includes('*')) {
+        mapping[normalizedModel] = normalizedModel
       }
     }
-  } else {
+  }
+
+  if (mode === 'mapping' || mode === 'combined') {
     for (const m of modelMappings) {
       const from = m.from.trim()
       const to = m.to.trim()
