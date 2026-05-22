@@ -791,7 +791,6 @@
           UI integration coming in a follow-up release.
         </p>
       </div>
-      </div>
 
       <!-- Account Type Selection (Antigravity - OAuth or Upstream) -->
       <div v-if="form.platform === 'antigravity'">
