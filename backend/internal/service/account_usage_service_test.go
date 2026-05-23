@@ -5,7 +5,23 @@ import (
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 )
+
+type accountUsageWindowStatsRepo struct {
+	UsageLogRepository
+	statsByStart map[int64]*usagestats.AccountStats
+	calls        []time.Time
+}
+
+func (r *accountUsageWindowStatsRepo) GetAccountWindowStats(_ context.Context, _ int64, startTime time.Time) (*usagestats.AccountStats, error) {
+	r.calls = append(r.calls, startTime)
+	if stats, ok := r.statsByStart[startTime.UnixNano()]; ok {
+		return stats, nil
+	}
+	return &usagestats.AccountStats{}, nil
+}
 
 type accountUsageCodexProbeRepo struct {
 	stubOpenAIAccountRepo
@@ -63,6 +79,50 @@ func TestShouldRefreshOpenAICodexSnapshot(t *testing.T) {
 		},
 	}, usage, now) {
 		t.Fatal("expected stale ws snapshot to trigger refresh")
+	}
+}
+
+func TestAccountUsageService_AddWindowStatsAttachesAnthropicSevenDay(t *testing.T) {
+	now := time.Now().UTC()
+	fiveHourStart := now.Add(-2 * time.Hour).Truncate(time.Second)
+	fiveHourEnd := now.Add(3 * time.Hour).Truncate(time.Second)
+	sevenDayReset := now.Add(48 * time.Hour).Truncate(time.Second)
+	sevenDayStart := sevenDayReset.Add(-7 * 24 * time.Hour)
+
+	repo := &accountUsageWindowStatsRepo{statsByStart: map[int64]*usagestats.AccountStats{
+		fiveHourStart.UnixNano(): {
+			Requests:     5,
+			Tokens:       50,
+			StandardCost: 0.5,
+		},
+		sevenDayStart.UnixNano(): {
+			Requests:     70,
+			Tokens:       700,
+			StandardCost: 7,
+		},
+	}}
+	svc := &AccountUsageService{usageLogRepo: repo, cache: NewUsageCache()}
+	usage := &UsageInfo{
+		FiveHour: &UsageProgress{Utilization: 10},
+		SevenDay: &UsageProgress{Utilization: 20, ResetsAt: &sevenDayReset},
+	}
+	account := &Account{ID: 42, SessionWindowStart: &fiveHourStart, SessionWindowEnd: &fiveHourEnd}
+
+	svc.addWindowStats(context.Background(), account, usage)
+
+	if usage.FiveHour.WindowStats == nil || usage.FiveHour.WindowStats.Requests != 5 {
+		t.Fatalf("FiveHour.WindowStats = %#v, want requests=5", usage.FiveHour.WindowStats)
+	}
+	if usage.SevenDay.WindowStats == nil || usage.SevenDay.WindowStats.Requests != 70 {
+		t.Fatalf("SevenDay.WindowStats = %#v, want requests=70", usage.SevenDay.WindowStats)
+	}
+	if len(repo.calls) != 2 {
+		t.Fatalf("GetAccountWindowStats calls = %d, want 2", len(repo.calls))
+	}
+
+	svc.addWindowStats(context.Background(), account, usage)
+	if len(repo.calls) != 2 {
+		t.Fatalf("GetAccountWindowStats calls after cache hit = %d, want 2", len(repo.calls))
 	}
 }
 

@@ -97,6 +97,11 @@ type windowStatsCache struct {
 	timestamp time.Time
 }
 
+type windowStatsCacheKey struct {
+	accountID     int64
+	startUnixNano int64
+}
+
 // antigravityUsageCache 缓存 Antigravity 额度数据
 type antigravityUsageCache struct {
 	usageInfo *UsageInfo
@@ -116,7 +121,7 @@ const (
 // UsageCache 封装账户使用量相关的缓存
 type UsageCache struct {
 	apiCache          sync.Map           // accountID -> *apiUsageCache
-	windowStatsCache  sync.Map           // accountID -> *windowStatsCache
+	windowStatsCache  sync.Map           // windowStatsCacheKey -> *windowStatsCache
 	antigravityCache  sync.Map           // accountID -> *antigravityUsageCache
 	apiFlight         singleflight.Group // 防止同一账号的并发请求击穿缓存（Anthropic）
 	antigravityFlight singleflight.Group // 防止同一 Antigravity 账号的并发请求击穿缓存
@@ -928,44 +933,65 @@ func (s *AccountUsageService) addWindowStats(ctx context.Context, account *Accou
 		return
 	}
 
-	// 检查窗口统计缓存（1 分钟）
-	var windowStats *WindowStats
-	if cached, ok := s.cache.windowStatsCache.Load(account.ID); ok {
-		if cache, ok := cached.(*windowStatsCache); ok && time.Since(cache.timestamp) < windowStatsCacheTTL {
-			windowStats = cache.stats
-		}
-	}
-
-	// 如果没有缓存，从数据库查询
-	if windowStats == nil {
-		// 使用统一的窗口开始时间计算逻辑（考虑窗口过期情况）
-		startTime := account.GetCurrentWindowStartTime()
-
-		stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, startTime)
-		if err != nil {
-			log.Printf("Failed to get window stats for account %d: %v", account.ID, err)
-			return
-		}
-
-		windowStats = &WindowStats{
-			Requests:     stats.Requests,
-			Tokens:       stats.Tokens,
-			Cost:         stats.Cost,
-			StandardCost: stats.StandardCost,
-			UserCost:     stats.UserCost,
-		}
-
-		// 缓存窗口统计（1 分钟）
-		s.cache.windowStatsCache.Store(account.ID, &windowStatsCache{
-			stats:     windowStats,
-			timestamp: time.Now(),
-		})
-	}
-
 	// 为 FiveHour 添加 WindowStats（5h 窗口统计）
 	if usage.FiveHour != nil {
-		usage.FiveHour.WindowStats = windowStats
+		if windowStats, err := s.accountWindowStats(ctx, account.ID, account.GetCurrentWindowStartTime()); err == nil {
+			usage.FiveHour.WindowStats = windowStats
+		} else {
+			log.Printf("Failed to get 5h window stats for account %d: %v", account.ID, err)
+		}
 	}
+
+	if usage.SevenDay != nil {
+		if startTime, ok := usageWindowStartFromReset(usage.SevenDay, 7*24*time.Hour); ok {
+			if windowStats, err := s.accountWindowStats(ctx, account.ID, startTime); err == nil {
+				usage.SevenDay.WindowStats = windowStats
+			} else {
+				log.Printf("Failed to get 7d window stats for account %d: %v", account.ID, err)
+			}
+		}
+	}
+
+	if usage.SevenDaySonnet != nil {
+		if startTime, ok := usageWindowStartFromReset(usage.SevenDaySonnet, 7*24*time.Hour); ok {
+			if windowStats, err := s.accountWindowStats(ctx, account.ID, startTime); err == nil {
+				usage.SevenDaySonnet.WindowStats = windowStats
+			} else {
+				log.Printf("Failed to get 7d Sonnet window stats for account %d: %v", account.ID, err)
+			}
+		}
+	}
+}
+
+func (s *AccountUsageService) accountWindowStats(ctx context.Context, accountID int64, startTime time.Time) (*WindowStats, error) {
+	key := windowStatsCacheKey{accountID: accountID, startUnixNano: startTime.UnixNano()}
+	if cached, ok := s.cache.windowStatsCache.Load(key); ok {
+		if cache, ok := cached.(*windowStatsCache); ok && time.Since(cache.timestamp) < windowStatsCacheTTL {
+			return cache.stats, nil
+		}
+	}
+
+	stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, accountID, startTime)
+	if err != nil {
+		return nil, err
+	}
+
+	windowStats := windowStatsFromAccountStats(stats)
+	s.cache.windowStatsCache.Store(key, &windowStatsCache{
+		stats:     windowStats,
+		timestamp: time.Now(),
+	})
+	return windowStats, nil
+}
+
+func usageWindowStartFromReset(progress *UsageProgress, duration time.Duration) (time.Time, bool) {
+	if progress == nil || progress.ResetsAt == nil || duration <= 0 {
+		return time.Time{}, false
+	}
+	if !progress.ResetsAt.After(time.Now()) {
+		return time.Time{}, false
+	}
+	return progress.ResetsAt.Add(-duration), true
 }
 
 // GetTodayStats 获取账号今日统计
