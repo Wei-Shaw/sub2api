@@ -33,7 +33,60 @@
           <label for="email" class="input-label">
             {{ t('auth.emailLabel') }}
           </label>
-          <div class="relative">
+          <div
+            v-if="useRegistrationEmailSuffixSelector"
+            class="flex min-h-[42px] overflow-hidden rounded-xl border bg-white transition-all duration-200 focus-within:border-primary-500 focus-within:ring-2 focus-within:ring-primary-500/30 dark:bg-dark-800"
+            :class="[
+              errors.email
+                ? 'border-red-500 focus-within:border-red-500 focus-within:ring-red-500/30'
+                : 'border-gray-200 dark:border-dark-600',
+              registrationActionDisabled ? 'bg-gray-100 dark:bg-dark-900' : ''
+            ]"
+          >
+            <div class="relative min-w-0 flex-1">
+              <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
+                <Icon name="mail" size="md" class="text-gray-400 dark:text-dark-500" />
+              </div>
+              <input
+                id="email"
+                v-model="registrationEmailLocalPart"
+                type="text"
+                required
+                autofocus
+                inputmode="email"
+                autocomplete="email"
+                :disabled="registrationActionDisabled"
+                class="h-full w-full bg-transparent py-2.5 pl-11 pr-3 text-sm text-gray-900 outline-none placeholder:text-gray-400 disabled:cursor-not-allowed dark:text-gray-100 dark:placeholder:text-dark-400"
+                :placeholder="t('auth.emailLocalPartPlaceholder')"
+                data-testid="register-email-local-part"
+                @input="handleRegistrationEmailLocalPartInput"
+              />
+            </div>
+            <select
+              v-if="exactRegistrationEmailSuffixOptions.length > 1"
+              v-model="selectedRegistrationEmailSuffix"
+              :aria-label="t('auth.emailDomainSelectLabel')"
+              :disabled="registrationActionDisabled"
+              class="shrink-0 border-l border-gray-200 bg-gray-50 px-3 text-sm font-medium text-gray-700 outline-none transition-colors hover:bg-gray-100 disabled:cursor-not-allowed dark:border-dark-600 dark:bg-dark-700 dark:text-gray-200 dark:hover:bg-dark-600"
+              data-testid="register-email-suffix-select"
+            >
+              <option
+                v-for="suffix in exactRegistrationEmailSuffixOptions"
+                :key="suffix"
+                :value="suffix"
+              >
+                {{ suffix }}
+              </option>
+            </select>
+            <span
+              v-else
+              class="flex shrink-0 items-center border-l border-gray-200 bg-gray-50 px-3 text-sm font-medium text-gray-700 dark:border-dark-600 dark:bg-dark-700 dark:text-gray-200"
+              data-testid="register-email-fixed-suffix"
+            >
+              {{ selectedRegistrationEmailSuffix }}
+            </span>
+          </div>
+          <div v-else class="relative">
             <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
               <Icon name="mail" size="md" class="text-gray-400 dark:text-dark-500" />
             </div>
@@ -48,8 +101,31 @@
               class="input pl-11"
               :class="{ 'input-error': errors.email }"
               :placeholder="t('auth.emailPlaceholder')"
+              data-testid="register-email-input"
             />
           </div>
+          <p v-if="showCustomRegistrationEmailInputToggle" class="input-hint">
+            <button
+              type="button"
+              class="font-medium text-primary-600 transition-colors hover:text-primary-500 disabled:cursor-not-allowed disabled:text-gray-400 dark:text-primary-400 dark:hover:text-primary-300 dark:disabled:text-dark-500"
+              :disabled="registrationActionDisabled"
+              data-testid="register-email-custom-toggle"
+              @click="switchToCustomRegistrationEmailInput"
+            >
+              {{ t('auth.useCustomEmailDomain') }}
+            </button>
+          </p>
+          <p v-else-if="showListedRegistrationEmailInputToggle" class="input-hint">
+            <button
+              type="button"
+              class="font-medium text-primary-600 transition-colors hover:text-primary-500 disabled:cursor-not-allowed disabled:text-gray-400 dark:text-primary-400 dark:hover:text-primary-300 dark:disabled:text-dark-500"
+              :disabled="registrationActionDisabled"
+              data-testid="register-email-listed-toggle"
+              @click="switchToRegistrationEmailSuffixSelector"
+            >
+              {{ t('auth.useListedEmailDomain') }}
+            </button>
+          </p>
         </div>
 
         <!-- Password Input -->
@@ -361,6 +437,9 @@ const oidcOAuthProviderName = ref<string>('OIDC')
 const githubOAuthEnabled = ref<boolean>(false)
 const googleOAuthEnabled = ref<boolean>(false)
 const registrationEmailSuffixWhitelist = ref<string[]>([])
+const registrationEmailLocalPart = ref<string>('')
+const selectedRegistrationEmailSuffix = ref<string>('')
+const useCustomRegistrationEmailInput = ref<boolean>(false)
 const loginAgreementEnabled = ref<boolean>(false)
 const loginAgreementMode = ref<'modal' | 'checkbox' | string>('modal')
 const loginAgreementUpdatedAt = ref<string>('')
@@ -426,6 +505,27 @@ const showOAuthLogin = computed(
     googleOAuthEnabled.value
 )
 
+const exactRegistrationEmailSuffixOptions = computed(() =>
+  registrationEmailSuffixWhitelist.value.filter((suffix) => suffix.startsWith('@'))
+)
+
+const hasWildcardRegistrationEmailSuffix = computed(() =>
+  registrationEmailSuffixWhitelist.value.some((suffix) => suffix.startsWith('*.'))
+)
+
+const useRegistrationEmailSuffixSelector = computed(
+  () =>
+    exactRegistrationEmailSuffixOptions.value.length > 0 && !useCustomRegistrationEmailInput.value
+)
+
+const showCustomRegistrationEmailInputToggle = computed(
+  () => useRegistrationEmailSuffixSelector.value && hasWildcardRegistrationEmailSuffix.value
+)
+
+const showListedRegistrationEmailInputToggle = computed(
+  () => useCustomRegistrationEmailInput.value && exactRegistrationEmailSuffixOptions.value.length > 0
+)
+
 const agreementGateActive = computed(
   () => loginAgreementEnabled.value && !agreementAccepted.value
 )
@@ -439,6 +539,85 @@ watch(validationToastMessage, (value, previousValue) => {
     appStore.showError(value)
   }
 })
+
+watch(
+  [registrationEmailLocalPart, selectedRegistrationEmailSuffix, useCustomRegistrationEmailInput],
+  () => {
+    syncRegistrationEmailFromSelector()
+  }
+)
+
+function syncSelectedRegistrationEmailSuffix(): void {
+  const options = exactRegistrationEmailSuffixOptions.value
+  if (options.length === 0) {
+    selectedRegistrationEmailSuffix.value = ''
+    return
+  }
+  if (!options.includes(selectedRegistrationEmailSuffix.value)) {
+    selectedRegistrationEmailSuffix.value = options[0]
+  }
+}
+
+function buildRegistrationEmailFromSelector(): string {
+  const localPart = registrationEmailLocalPart.value.trim()
+  if (!localPart) {
+    return ''
+  }
+  if (localPart.includes('@')) {
+    return localPart
+  }
+  return selectedRegistrationEmailSuffix.value
+    ? `${localPart}${selectedRegistrationEmailSuffix.value}`
+    : localPart
+}
+
+function syncRegistrationEmailFromSelector(): void {
+  if (useRegistrationEmailSuffixSelector.value) {
+    formData.email = buildRegistrationEmailFromSelector()
+  }
+}
+
+function handleRegistrationEmailLocalPartInput(event: Event): void {
+  errors.email = ''
+  const value = (event.target as HTMLInputElement).value.trim()
+  const atIndex = value.indexOf('@')
+  if (atIndex <= 0 || value.indexOf('@', atIndex + 1) !== -1) {
+    return
+  }
+
+  const suffix = `@${value.slice(atIndex + 1).toLowerCase()}`
+  if (exactRegistrationEmailSuffixOptions.value.includes(suffix)) {
+    registrationEmailLocalPart.value = value.slice(0, atIndex)
+    selectedRegistrationEmailSuffix.value = suffix
+    syncRegistrationEmailFromSelector()
+    return
+  }
+
+  if (hasWildcardRegistrationEmailSuffix.value) {
+    formData.email = value
+    useCustomRegistrationEmailInput.value = true
+  }
+}
+
+function switchToCustomRegistrationEmailInput(): void {
+  syncRegistrationEmailFromSelector()
+  useCustomRegistrationEmailInput.value = true
+}
+
+function switchToRegistrationEmailSuffixSelector(): void {
+  syncSelectedRegistrationEmailSuffix()
+  const email = formData.email.trim()
+  const atIndex = email.indexOf('@')
+  if (atIndex > 0 && email.indexOf('@', atIndex + 1) === -1) {
+    const suffix = `@${email.slice(atIndex + 1).toLowerCase()}`
+    if (exactRegistrationEmailSuffixOptions.value.includes(suffix)) {
+      registrationEmailLocalPart.value = email.slice(0, atIndex)
+      selectedRegistrationEmailSuffix.value = suffix
+    }
+  }
+  useCustomRegistrationEmailInput.value = false
+  syncRegistrationEmailFromSelector()
+}
 
 function syncAffiliateReferralCode(): string {
   const code = resolveAffiliateReferralCode(route.query.aff, route.query.aff_code)
@@ -471,6 +650,7 @@ onMounted(async () => {
     registrationEmailSuffixWhitelist.value = normalizeRegistrationEmailSuffixWhitelist(
       settings.registration_email_suffix_whitelist || []
     )
+    syncSelectedRegistrationEmailSuffix()
     applyLoginAgreementSettings(settings)
 
     // Read promo code from URL parameter only if promo code is enabled
@@ -748,6 +928,8 @@ function buildEmailSuffixNotAllowedMessage(): string {
 }
 
 function validateForm(): boolean {
+  syncRegistrationEmailFromSelector()
+
   // Reset errors
   errors.email = ''
   errors.password = ''

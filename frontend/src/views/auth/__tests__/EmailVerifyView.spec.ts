@@ -336,7 +336,6 @@ describe('EmailVerifyView', () => {
       email: 'fresh@example.com',
       password: 'secret-123',
       verify_code: '123456',
-      aff_code: 'AFF123',
     })
     expect(persistOAuthTokenContextMock).toHaveBeenCalledWith({
       access_token: 'oauth-access-token',
@@ -452,5 +451,89 @@ describe('EmailVerifyView', () => {
     })
     expect(apiClientPostMock).not.toHaveBeenCalled()
     expect(pushMock).toHaveBeenCalledWith('/dashboard')
+  })
+
+  it('updates the verification email with a selected whitelisted domain and resends code', async () => {
+    getPublicSettingsMock.mockResolvedValue({
+      turnstile_enabled: false,
+      turnstile_site_key: '',
+      site_name: 'Sub2API',
+      registration_email_suffix_whitelist: ['@example.com', '@gmail.com'],
+    })
+    sessionStorage.setItem(
+      'register_data',
+      JSON.stringify({
+        email: 'old@example.com',
+        password: 'secret-456',
+      })
+    )
+
+    const wrapper = mount(EmailVerifyView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /><slot name="footer" /></div>' },
+          Icon: true,
+          TurnstileWidget: true,
+          transition: false,
+        },
+      },
+    })
+
+    await flushPromises()
+    expect(sendVerifyCodeMock).toHaveBeenCalledTimes(1)
+    expect(sendVerifyCodeMock).toHaveBeenLastCalledWith({
+      email: 'old@example.com',
+    })
+
+    await wrapper.get('[data-testid="email-verify-edit-trigger"]').trigger('click')
+    await wrapper.get('[data-testid="email-verify-email-local-part"]').setValue('new')
+    await wrapper.get('[data-testid="email-verify-email-suffix-select"]').setValue('@gmail.com')
+    await wrapper.get('[data-testid="email-verify-email-save"]').trigger('click')
+    await flushPromises()
+
+    expect(sendVerifyCodeMock).toHaveBeenCalledTimes(2)
+    expect(sendVerifyCodeMock).toHaveBeenLastCalledWith({
+      email: 'new@gmail.com',
+    })
+    expect(JSON.parse(sessionStorage.getItem('register_data') || '{}').email).toBe('new@gmail.com')
+  })
+
+  it('allows switching email verification to a wildcard whitelisted domain', async () => {
+    getPublicSettingsMock.mockResolvedValue({
+      turnstile_enabled: false,
+      turnstile_site_key: '',
+      site_name: 'Sub2API',
+      registration_email_suffix_whitelist: ['@example.com', '*.edu.cn'],
+    })
+    sessionStorage.setItem(
+      'register_data',
+      JSON.stringify({
+        email: 'old@example.com',
+        password: 'secret-456',
+      })
+    )
+
+    const wrapper = mount(EmailVerifyView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /><slot name="footer" /></div>' },
+          Icon: true,
+          TurnstileWidget: true,
+          transition: false,
+        },
+      },
+    })
+
+    await flushPromises()
+    await wrapper.get('[data-testid="email-verify-edit-trigger"]').trigger('click')
+    await wrapper.get('[data-testid="email-verify-email-custom-toggle"]').trigger('click')
+    await wrapper.get('[data-testid="email-verify-email-input"]').setValue('student@cs.edu.cn')
+    await wrapper.get('[data-testid="email-verify-email-save"]').trigger('click')
+    await flushPromises()
+
+    expect(sendVerifyCodeMock).toHaveBeenLastCalledWith({
+      email: 'student@cs.edu.cn',
+    })
+    expect(JSON.parse(sessionStorage.getItem('register_data') || '{}').email).toBe('student@cs.edu.cn')
   })
 })
