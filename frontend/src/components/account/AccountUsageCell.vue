@@ -56,6 +56,7 @@
           label="7d"
           :utilization="usageInfo.seven_day.utilization"
           :resets-at="usageInfo.seven_day.resets_at"
+          :window-stats="usageInfo.seven_day.window_stats"
           color="emerald"
         />
 
@@ -65,6 +66,7 @@
           label="7d S"
           :utilization="usageInfo.seven_day_sonnet.utilization"
           :resets-at="usageInfo.seven_day_sonnet.resets_at"
+          :window-stats="usageInfo.seven_day_sonnet.window_stats"
           color="purple"
         />
 
