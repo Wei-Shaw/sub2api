@@ -1,6 +1,6 @@
 <template>
   <AppLayout>
-    <div class="mx-auto flex h-[calc(100vh-8rem)] w-full max-w-7xl flex-col overflow-hidden">
+    <div class="mx-auto flex h-[calc(100vh-7rem)] w-full max-w-[1500px] flex-col overflow-hidden px-2 sm:px-4">
       <div v-if="!loadingKeys && activeKeys.length === 0" class="flex flex-1 flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 bg-white p-8 text-center dark:border-dark-600 dark:bg-dark-800">
         <Icon name="key" size="xl" class="text-gray-400 dark:text-gray-500" />
         <h2 class="mt-4 text-lg font-semibold text-gray-900 dark:text-white">{{ t('textChat.noKeysTitle') }}</h2>
@@ -11,20 +11,23 @@
         </router-link>
       </div>
 
-      <div v-else class="grid min-h-0 flex-1 grid-cols-[150px_minmax(0,1fr)] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-dark-700 dark:bg-dark-800 sm:grid-cols-[190px_minmax(0,1fr)] lg:grid-cols-[240px_minmax(0,1fr)]">
-        <aside class="flex min-h-0 flex-col border-r border-gray-200 dark:border-dark-700">
-          <div class="border-b border-gray-200 px-3 py-2 dark:border-dark-700">
+      <div v-else class="grid min-h-0 flex-1 grid-cols-[170px_minmax(0,1fr)] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm ring-1 ring-black/[0.02] dark:border-dark-700 dark:bg-dark-800 sm:grid-cols-[220px_minmax(0,1fr)] lg:grid-cols-[260px_minmax(0,1fr)]">
+        <aside class="flex min-h-0 flex-col border-r border-gray-200 bg-gray-50/70 dark:border-dark-700 dark:bg-dark-900/40">
+          <div class="flex items-center justify-between border-b border-gray-200 px-3 py-2.5 dark:border-dark-700">
             <h2 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('textChat.history') }}</h2>
+            <span class="rounded-full bg-white px-2 py-0.5 text-[11px] font-medium text-gray-500 ring-1 ring-gray-200 dark:bg-dark-800 dark:text-gray-400 dark:ring-dark-600">
+              {{ sortedConversations.length }}
+            </span>
           </div>
           <div class="min-h-0 flex-1 overflow-y-auto p-2">
             <div
               v-for="conversation in sortedConversations"
               :key="conversation.id"
-              class="group mb-1 flex items-center gap-1 rounded-md px-2 py-1.5 transition"
+              class="group mb-1 flex items-center gap-1 rounded-lg border px-2 py-2 transition"
               :class="
                 conversation.id === currentConversationId
-                  ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
-                  : 'text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-dark-700'
+                  ? 'border-primary-200 bg-primary-50 text-primary-700 shadow-sm dark:border-primary-800 dark:bg-primary-900/30 dark:text-primary-300'
+                  : 'border-transparent text-gray-700 hover:border-gray-200 hover:bg-white dark:text-gray-300 dark:hover:border-dark-600 dark:hover:bg-dark-800'
               "
             >
               <button type="button" class="min-w-0 flex-1 text-left" @click="loadConversation(conversation.id)">
@@ -45,7 +48,7 @@
               {{ t('textChat.noHistory') }}
             </div>
           </div>
-          <div class="space-y-2 border-t border-gray-200 p-2 dark:border-dark-700">
+          <div class="space-y-2 border-t border-gray-200 bg-white p-2 dark:border-dark-700 dark:bg-dark-800">
             <button class="btn btn-primary w-full justify-center px-2 py-2 text-sm" :disabled="sending" @click="startNewConversation">
               <Icon name="plus" size="sm" class="mr-2" />
               {{ t('textChat.newConversation') }}
@@ -57,20 +60,22 @@
           </div>
         </aside>
 
-        <section class="flex min-h-0 flex-col overflow-hidden">
+        <section class="flex min-h-0 flex-col overflow-hidden bg-white dark:bg-dark-800">
           <div v-if="modelError" class="border-b border-gray-200 px-3 py-2 text-sm text-red-600 dark:border-dark-700 dark:text-red-400">
             {{ modelError }}
           </div>
-          <div ref="messagesEl" class="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+          <div ref="messagesEl" class="min-h-0 flex-1 space-y-3 overflow-y-auto bg-gray-50/50 p-4 dark:bg-dark-950/25">
             <div v-if="messages.length === 0" class="flex h-full flex-col items-center justify-center text-center text-gray-500 dark:text-gray-400">
-              <Icon name="chat" size="lg" class="mb-2" />
+              <div class="mb-3 flex h-11 w-11 items-center justify-center rounded-lg bg-white text-gray-400 shadow-sm ring-1 ring-gray-200 dark:bg-dark-800 dark:ring-dark-700">
+                <Icon name="chat" size="lg" />
+              </div>
               <p class="text-sm">{{ t('textChat.empty') }}</p>
               <div class="mt-4 grid w-full max-w-2xl gap-2 sm:grid-cols-2">
                 <button
                   v-for="suggestion in suggestions"
                   :key="suggestion"
                   type="button"
-                  class="rounded-md border border-gray-200 px-3 py-2 text-left text-xs text-gray-700 transition hover:border-primary-300 hover:bg-primary-50 dark:border-dark-600 dark:text-gray-300 dark:hover:border-primary-600 dark:hover:bg-primary-900/20 sm:text-sm"
+                  class="rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-left text-xs text-gray-700 shadow-sm transition hover:border-primary-300 hover:bg-primary-50 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-primary-600 dark:hover:bg-primary-900/20 sm:text-sm"
                   @click="draft = suggestion"
                 >
                   {{ suggestion }}
@@ -80,11 +85,11 @@
 
             <div v-for="(message, index) in messages" :key="index" class="flex" :class="message.role === 'user' ? 'justify-end' : 'justify-start'">
               <div
-                class="max-w-[88%] rounded-lg px-3 py-2.5 text-sm leading-6 shadow-sm"
+                class="max-w-[86%] rounded-lg px-3.5 py-2.5 text-sm leading-6 shadow-sm"
                 :class="
                   message.role === 'user'
                     ? 'bg-primary-600 text-white'
-                    : 'border border-gray-200 bg-gray-50 text-gray-900 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-100'
+                    : 'border border-gray-200 bg-white text-gray-900 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-100'
                 "
               >
                 <div class="mb-1 flex items-center justify-between gap-3">
@@ -149,10 +154,10 @@
             </div>
           </div>
 
-          <div class="border-t border-gray-200 p-2 dark:border-dark-700">
+          <div class="border-t border-gray-200 bg-white/95 p-2.5 dark:border-dark-700 dark:bg-dark-800/95">
             <p v-if="submitError" class="mb-2 text-sm text-red-600 dark:text-red-400">{{ submitError }}</p>
             <div
-              class="rounded-lg border border-gray-200 bg-gray-50 p-2 transition dark:border-dark-700 dark:bg-dark-900"
+              class="rounded-lg border border-gray-200 bg-white p-2 shadow-sm transition dark:border-dark-700 dark:bg-dark-900"
               :class="
                 draggingFiles
                   ? 'border-primary-400 bg-primary-50/50 ring-2 ring-primary-500/20 dark:border-primary-500 dark:bg-primary-900/10'
@@ -196,7 +201,7 @@
               <textarea
                 v-model="draft"
                 rows="2"
-                class="w-full resize-none border-0 bg-transparent px-2 py-1.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none dark:text-white"
+                class="min-h-[56px] w-full resize-none border-0 bg-transparent px-2 py-1.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none dark:text-white"
                 :placeholder="t('textChat.inputPlaceholder')"
                 @keydown.enter.exact.prevent="send"
               />
@@ -219,7 +224,7 @@
                     <button
                     type="button"
                     data-testid="ai-chat-model-picker"
-                    class="flex h-10 w-[178px] max-w-[46vw] items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-left text-xs transition hover:border-primary-300 hover:bg-gray-50 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 disabled:cursor-not-allowed disabled:opacity-60 dark:border-dark-600 dark:bg-dark-800 dark:hover:border-primary-600 dark:hover:bg-dark-700 sm:w-[210px]"
+                    class="flex h-10 w-[168px] max-w-[44vw] items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-left text-xs transition hover:border-primary-300 hover:bg-gray-50 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 disabled:cursor-not-allowed disabled:opacity-60 dark:border-dark-600 dark:bg-dark-800 dark:hover:border-primary-600 dark:hover:bg-dark-700 sm:w-[200px]"
                     :disabled="loadingModels || modelOptions.length === 0"
                     @click="toggleModelPicker"
                   >
