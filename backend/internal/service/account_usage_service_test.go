@@ -207,3 +207,53 @@ func TestBuildCodexUsageProgressFromExtra_ZerosExpiredWindow(t *testing.T) {
 		}
 	})
 }
+
+func TestCodexWindowStart(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 3, 16, 12, 0, 0, 0, time.UTC)
+
+	t.Run("uses reset minus 5h window length", func(t *testing.T) {
+		extra := map[string]any{
+			"codex_5h_reset_at":       "2026-03-16T15:30:00Z",
+			"codex_5h_window_minutes": 300,
+		}
+		got := codexWindowStart(extra, "5h", now)
+		want := time.Date(2026, 3, 16, 10, 30, 0, 0, time.UTC)
+		if !got.Equal(want) {
+			t.Fatalf("codexWindowStart() = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("uses reset minus 7d window length", func(t *testing.T) {
+		extra := map[string]any{
+			"codex_7d_reset_at":       "2026-03-20T00:00:00Z",
+			"codex_7d_window_minutes": 10080,
+		}
+		got := codexWindowStart(extra, "7d", now)
+		want := time.Date(2026, 3, 13, 0, 0, 0, 0, time.UTC)
+		if !got.Equal(want) {
+			t.Fatalf("codexWindowStart() = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("falls back to rolling window when metadata is missing", func(t *testing.T) {
+		got := codexWindowStart(map[string]any{}, "5h", now)
+		want := now.Add(-5 * time.Hour)
+		if !got.Equal(want) {
+			t.Fatalf("codexWindowStart() = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("falls back to rolling window when reset is expired", func(t *testing.T) {
+		extra := map[string]any{
+			"codex_5h_reset_at":       "2026-03-16T10:00:00Z",
+			"codex_5h_window_minutes": 300,
+		}
+		got := codexWindowStart(extra, "5h", now)
+		want := now.Add(-5 * time.Hour)
+		if !got.Equal(want) {
+			t.Fatalf("codexWindowStart() = %v, want %v", got, want)
+		}
+	})
+}

@@ -528,14 +528,14 @@ func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Accou
 		return usage, nil
 	}
 
-	if stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, now.Add(-5*time.Hour)); err == nil {
+	if stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, codexWindowStart(account.Extra, "5h", now)); err == nil {
 		if usage.FiveHour == nil {
 			usage.FiveHour = &UsageProgress{Utilization: 0}
 		}
 		usage.FiveHour.WindowStats = windowStatsFromAccountStats(stats)
 	}
 
-	if stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, now.Add(-7*24*time.Hour)); err == nil {
+	if stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, codexWindowStart(account.Extra, "7d", now)); err == nil {
 		if usage.SevenDay == nil {
 			usage.SevenDay = &UsageProgress{Utilization: 0}
 		}
@@ -1118,6 +1118,43 @@ func buildCodexUsageProgressFromExtra(extra map[string]any, window string, now t
 	}
 
 	return progress
+}
+
+func codexWindowStart(extra map[string]any, window string, now time.Time) time.Time {
+	var (
+		resetAtKey      string
+		windowMinuteKey string
+		fallback        time.Time
+	)
+
+	switch window {
+	case "5h":
+		resetAtKey = "codex_5h_reset_at"
+		windowMinuteKey = "codex_5h_window_minutes"
+		fallback = now.Add(-5 * time.Hour)
+	case "7d":
+		resetAtKey = "codex_7d_reset_at"
+		windowMinuteKey = "codex_7d_window_minutes"
+		fallback = now.Add(-7 * 24 * time.Hour)
+	default:
+		return now
+	}
+
+	resetAtRaw, hasResetAt := extra[resetAtKey]
+	windowMinutes := parseExtraInt(extra[windowMinuteKey])
+	if !hasResetAt || windowMinutes <= 0 {
+		return fallback
+	}
+
+	resetAt, err := parseTime(fmt.Sprint(resetAtRaw))
+	if err != nil {
+		return fallback
+	}
+	if !now.Before(resetAt) {
+		return fallback
+	}
+
+	return resetAt.Add(-time.Duration(windowMinutes) * time.Minute)
 }
 
 func (s *AccountUsageService) GetAccountUsageStats(ctx context.Context, accountID int64, startTime, endTime time.Time) (*usagestats.AccountUsageStatsResponse, error) {
