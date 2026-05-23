@@ -76,6 +76,12 @@ func RegisterUserRoutes(
 			channels.GET("/available", h.AvailableChannel.List)
 		}
 
+		// 图片生成工作台辅助接口
+		images := authenticated.Group("/images")
+		{
+			images.GET("/models", h.ImageGeneration.Models)
+		}
+
 		// 使用记录
 		usage := authenticated.Group("/usage")
 		{
