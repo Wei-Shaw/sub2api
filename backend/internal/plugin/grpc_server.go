@@ -27,6 +27,9 @@ const txCleanupInterval = 10 * time.Second
 // maxActiveTxPerPlugin 限制每个插件的最大活跃事务数,防止单个插件耗尽连接池。
 const maxActiveTxPerPlugin = 16
 
+// maxQueryRows caps the number of rows returned to a plugin per Query/TxQuery call.
+const maxQueryRows = 10000
+
 // SDKServer 实现了 SQLProxy / RedisProxy 两个 gRPC 服务,
 // 并通过内嵌 eventBusAdapter 暴露 EventBus 服务。
 // 这是核心暴露给插件的 SDK 入口。
@@ -476,6 +479,10 @@ func scanRowsToResponse(rows *sql.Rows) (*pluginsdk.SQLResponse, error) {
 
 	resp := &pluginsdk.SQLResponse{Columns: cols, ColumnTypes: typeNames}
 	for rows.Next() {
+		if len(resp.Rows) >= maxQueryRows {
+			return nil, status.Errorf(codes.ResourceExhausted,
+				"plugin sql result exceeds %d rows; use pagination", maxQueryRows)
+		}
 		holders := make([]any, len(cols))
 		ptrs := make([]any, len(cols))
 		for i := range holders {

@@ -135,6 +135,11 @@ func (r *PluginRouter) CurrentTable() *RouteTable {
 
 // ServeHTTP 实现 http.Handler 接口。
 func (r *PluginRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	if strings.Contains(req.URL.Path, "..") || strings.Contains(req.URL.Path, "//") {
+		http.Error(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+
 	table := r.routeTable.Load()
 	entry, ok := table.Match(req.Method, req.URL.Path)
 	if !ok {

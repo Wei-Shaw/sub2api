@@ -143,7 +143,7 @@ func ProvideHTTPServer(cfg *config.Config, router *gin.Engine, pluginRouter *plu
 	// 根据配置决定是否启用 H2C
 	if cfg.Server.H2C.Enabled {
 		h2cConfig := cfg.Server.H2C
-		httpHandler = h2c.NewHandler(router, &http2.Server{
+		httpHandler = h2c.NewHandler(httpHandler, &http2.Server{
 			MaxConcurrentStreams:         h2cConfig.MaxConcurrentStreams,
 			IdleTimeout:                  time.Duration(h2cConfig.IdleTimeout) * time.Second,
 			MaxReadFrameSize:             uint32(h2cConfig.MaxReadFrameSize),

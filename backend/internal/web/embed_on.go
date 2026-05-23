@@ -242,7 +242,8 @@ func pluginImportMap() string {
 // 端点 /api/v1/plugin-assets/__shared__/plugin-sdk.css 仍然保留, 由 plugin 端按需拉取.
 
 func (s *FrontendServer) injectSettings(settingsJSON []byte) []byte {
-	script := []byte(`<script nonce="` + NonceHTMLPlaceholder + `">window.__APP_CONFIG__=` + string(settingsJSON) + `;</script>`)
+	safeSettings := bytes.ReplaceAll(settingsJSON, []byte("</"), []byte(`<\/`))
+	script := []byte(`<script nonce="` + NonceHTMLPlaceholder + `">window.__APP_CONFIG__=` + string(safeSettings) + `;</script>`)
 
 	// Plugin-related injections only fire when a plugin manifest provider is
 	// wired AND has at least one plugin to expose. Without active plugins:
@@ -256,7 +257,8 @@ func (s *FrontendServer) injectSettings(settingsJSON []byte) []byte {
 	hasPlugins := false
 	if s.pluginManifests != nil {
 		if manifestJSON := s.pluginManifests.GetPluginManifestsJSON(); len(manifestJSON) > 0 {
-			pluginScript = []byte(`<script nonce="` + NonceHTMLPlaceholder + `">window.__PLUGIN_MANIFESTS__=` + string(manifestJSON) + `;</script>`)
+			safeManifest := bytes.ReplaceAll(manifestJSON, []byte("</"), []byte(`<\/`))
+			pluginScript = []byte(`<script nonce="` + NonceHTMLPlaceholder + `">window.__PLUGIN_MANIFESTS__=` + string(safeManifest) + `;</script>`)
 			hasPlugins = true
 		}
 	}
