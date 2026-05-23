@@ -70,7 +70,8 @@ func TestAdminService_ClearAccountError_AlsoClearsRecoverableRuntimeState(t *tes
 			TempUnschedulableReason: "missing refresh token",
 	REDACTED,
 REDACTED
-	svc := &adminServiceImpl{accountRepo: repoREDACTED
+	blocker := &runtimeBlockRecorder{REDACTED
+	svc := &adminServiceImpl{accountRepo: repo, runtimeBlocker: blockerREDACTED
 
 	updated, err := svc.ClearAccountError(context.Background(), 31)
 REDACTED
@@ -83,4 +84,5 @@ REDACTED
 	require.Nil(t, updated.RateLimitResetAt)
 	require.Nil(t, updated.TempUnschedulableUntil)
 	require.Empty(t, updated.TempUnschedulableReason)
+	require.Equal(t, []int64{31REDACTED, blocker.clearedIDs)
 REDACTED

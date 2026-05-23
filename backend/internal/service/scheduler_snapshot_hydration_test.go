@@ -114,6 +114,31 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestOpenAINewAcquiredSelectionResult_ReleasesSlotWhenHydrationFails(t *testing.T) {
+	cache := &snapshotHydrationCache{
+		accounts: map[int64]*Account{REDACTED,
+REDACTED
+	schedulerSnapshot := NewSchedulerSnapshotService(cache, nil, stubOpenAIAccountRepo{REDACTED, nil, nil)
+	svc := &OpenAIGatewayService{
+		schedulerSnapshot: schedulerSnapshot,
+REDACTED
+	releaseCalls := 0
+
+	selection, err := svc.newAcquiredSelectionResult(context.Background(), &Account{ID: 1001REDACTED, func() {
+		releaseCalls++
+REDACTED)
+
+	if err == nil {
+		t.Fatalf("expected hydration error")
+REDACTED
+	if selection != nil {
+		t.Fatalf("expected nil selection on hydration error")
+REDACTED
+	if releaseCalls != 1 {
+		t.Fatalf("expected release to be called once, got %d", releaseCalls)
+REDACTED
+REDACTED
+
 func TestGatewaySelectAccountWithLoadAwareness_HydratesSelectedAccountFromSchedulerSnapshot(t *testing.T) {
 	cache := &snapshotHydrationCache{
 		snapshot: []*Account{
