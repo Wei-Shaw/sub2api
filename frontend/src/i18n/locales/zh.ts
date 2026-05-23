@@ -4097,6 +4097,9 @@ export default {
       createProxy: '添加代理',
       editProxy: '编辑代理',
       deleteProxy: '删除代理',
+      ad: {
+        inline: '正在寻找合适的代理 IP？'
+      REDACTED,
       deleteConfirmMessage: "确定要删除代理 '{nameREDACTED' 吗？",
       testProxy: '测试代理',
       dataImport: '导入',
