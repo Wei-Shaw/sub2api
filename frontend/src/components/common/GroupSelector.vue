@@ -50,7 +50,12 @@
         v-if="filteredGroups.length === 0"
         class="col-span-2 py-2 text-center text-sm text-gray-500 dark:text-gray-400"
       >
-        {{ t('common.noGroupsAvailable') }}
+        <template v-if="props.platform">
+          未找到 <b>{{ props.platform }}</b> 平台的分组。请先到「分组管理 → 新建分组」创建一个 {{ props.platform }} 分组，再回到这里挑选。
+        </template>
+        <template v-else>
+          {{ t('common.noGroupsAvailable') }}
+        </template>
       </div>
     </div>
   </div>

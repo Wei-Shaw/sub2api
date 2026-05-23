@@ -792,7 +792,7 @@
           <p class="input-hint">
             On Kiro desktop login, the refresh token is saved at
             <code>~/.aws/sso/cache/kiro-auth-token.json</code>. Copy the
-            <code>refreshToken</code> field. After Validate, click 下一步 to save.
+            <code>refreshToken</code> field. After Validate, click 保存 to save.
           </p>
         </div>
 
@@ -854,7 +854,7 @@
         </div>
 
         <p v-if="form.credentials && Object.keys(form.credentials).length > 0" class="rounded bg-green-50 px-3 py-2 text-sm text-green-700 dark:bg-green-900/20 dark:text-green-300">
-          ✓ Kiro token validated. Click 下一步 below to save the account.
+          ✓ Kiro token validated. Click 保存 below to save the account.
         </p>
       </div>
 
