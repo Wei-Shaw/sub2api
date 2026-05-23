@@ -1422,6 +1422,37 @@
         </div>
       </div>
 
+      <!-- Force 1M context window (Anthropic) -->
+      <div
+        v-if="account?.platform === 'anthropic'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">强制启用 1M 上下文</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              开启后，经由此账号的所有请求会自动注入 <code>anthropic-beta: context-1m-2025-08-07</code>，
+              无论客户端是否设置。适合某些上游（如 anyrouter）强制要求 1M 上下文的场景。
+            </p>
+          </div>
+          <button
+            type="button"
+            @click="force1MContext = !force1MContext"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              force1MContext ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                force1MContext ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+      </div>
+
       <div>
         <label class="input-label">{{ t('admin.accounts.proxy') }}</label>
         <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
@@ -2494,6 +2525,7 @@ const customErrorCodesEnabled = ref(false)
 const selectedErrorCodes = ref<number[]>([])
 const customErrorCodeInput = ref<number | null>(null)
 const interceptWarmupRequests = ref(false)
+const force1MContext = ref(false)
 const autoPauseOnExpired = ref(false)
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
 const allowOverages = ref(false) // For antigravity accounts: enable AI Credits overages
@@ -2821,6 +2853,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   // Load intercept warmup requests setting (applies to all account types)
   const credentials = newAccount.credentials as Record<string, unknown> | undefined
   interceptWarmupRequests.value = credentials?.intercept_warmup_requests === true
+  // Load force 1M context flag from extra
+  const accountExtra = (newAccount.extra as Record<string, unknown> | undefined) || {}
+  force1MContext.value = accountExtra.force_1m_context === true
   autoPauseOnExpired.value = newAccount.auto_pause_on_expired === true
   editVertexProjectId.value = ''
   editVertexClientEmail.value = ''
@@ -3522,6 +3557,20 @@ const handleClose = () => {
 }
 
 const submitUpdateAccount = async (accountID: number, updatePayload: Record<string, unknown>) => {
+  // Force 1M context lives in account.extra and applies to any Anthropic account
+  // type (oauth, apikey, bedrock). Merge late so it survives every branch above.
+  if (props.account?.platform === 'anthropic') {
+    const merged: Record<string, unknown> = {
+      ...((props.account.extra as Record<string, unknown>) || {}),
+      ...((updatePayload.extra as Record<string, unknown>) || {}),
+    }
+    if (force1MContext.value) {
+      merged.force_1m_context = true
+    } else {
+      delete merged.force_1m_context
+    }
+    updatePayload.extra = merged
+  }
   submitting.value = true
   try {
     const updatedAccount = await adminAPI.accounts.update(accountID, withAntigravityConfirmFlag(updatePayload))

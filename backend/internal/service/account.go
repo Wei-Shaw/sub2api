@@ -809,6 +809,29 @@ func (a *Account) GetExtraString(key string) string {
 	return ""
 }
 
+// GetExtraBool returns a bool flag stored in Account.Extra under the given key.
+// Accepts native bool or the string "true" (case-insensitive).
+func (a *Account) GetExtraBool(key string) bool {
+	if a.Extra == nil {
+		return false
+	}
+	switch v := a.Extra[key].(type) {
+	case bool:
+		return v
+	case string:
+		return strings.EqualFold(strings.TrimSpace(v), "true")
+	}
+	return false
+}
+
+// ForceContext1M reports whether the account is configured to force the
+// Claude `context-1m-2025-08-07` beta into every outbound request.
+// Useful for upstream providers (e.g. anyrouter) that auto-enable 1M context
+// and reject requests that omit the flag.
+func (a *Account) ForceContext1M() bool {
+	return a.GetExtraBool("force_1m_context")
+}
+
 func (a *Account) GetClaudeUserID() string {
 	if v := strings.TrimSpace(a.GetExtraString("claude_user_id")); v != "" {
 		return v

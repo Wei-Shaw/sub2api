@@ -7317,6 +7317,14 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 		}
 	}
 
+	// Force 1M context beta when the account is configured for it.
+	// Some upstreams (e.g. anyrouter) auto-enable 1M context and reject
+	// requests that omit `context-1m-2025-08-07`, regardless of model.
+	if account != nil && account.ForceContext1M() {
+		current := getHeaderRaw(req.Header, "anthropic-beta")
+		setHeaderRaw(req.Header, "anthropic-beta", mergeAnthropicBetaDropping([]string{claude.BetaContext1M}, current, nil))
+	}
+
 	// 同步 X-Claude-Code-Session-Id 头：取 body 中已处理的 metadata.user_id 的 session_id 覆盖
 	if sessionHeader := getHeaderRaw(req.Header, "X-Claude-Code-Session-Id"); sessionHeader != "" {
 		if uid := gjson.GetBytes(body, "metadata.user_id").String(); uid != "" {
@@ -10674,7 +10682,7 @@ func (s *GatewayService) validateUpstreamBaseURL(raw string) (string, error) {
 		}
 		return normalized, nil
 	}
-	normalized, err := urlvalidator.ValidateHTTPSURL(raw, urlvalidator.ValidationOptions{
+	normalized, err := urlvalidator.ValidateHTTPURL(raw, s.cfg.Security.URLAllowlist.AllowInsecureHTTP, urlvalidator.ValidationOptions{
 		AllowedHosts:     s.cfg.Security.URLAllowlist.UpstreamHosts,
 		RequireAllowlist: true,
 		AllowPrivate:     s.cfg.Security.URLAllowlist.AllowPrivateHosts,
