@@ -918,9 +918,14 @@ export interface AntigravityModelQuota {
 export interface AccountUsageInfo {
   source?: 'passive' | 'active'
   updated_at: string | null
+  plan_type?: string
   five_hour: UsageProgress | null
   seven_day: UsageProgress | null
   seven_day_sonnet: UsageProgress | null
+  codex_spark_five_hour?: UsageProgress | null
+  codex_spark_seven_day?: UsageProgress | null
+  codex_spark_limit_name?: string
+  codex_spark_metered_feature?: string
   gemini_shared_daily?: UsageProgress | null
   gemini_pro_daily?: UsageProgress | null
   gemini_flash_daily?: UsageProgress | null
@@ -973,6 +978,18 @@ export interface CodexUsageSnapshot {
   codex_7d_window_minutes?: number // 7d window in minutes (should be ~10080)
 
   codex_usage_updated_at?: string // Last update timestamp
+
+  codex_spark_5h_used_percent?: number // Spark 5-hour window usage percentage
+  codex_spark_5h_reset_after_seconds?: number
+  codex_spark_5h_reset_at?: string
+  codex_spark_5h_window_minutes?: number
+  codex_spark_7d_used_percent?: number // Spark 7-day window usage percentage
+  codex_spark_7d_reset_after_seconds?: number
+  codex_spark_7d_reset_at?: string
+  codex_spark_7d_window_minutes?: number
+  codex_spark_usage_updated_at?: string
+  codex_spark_limit_name?: string
+  codex_spark_metered_feature?: string
 }
 
 export type OpenAICompactMode = 'auto' | 'force_on' | 'force_off'

@@ -126,6 +126,22 @@
           :show-now-when-idle="true"
           color="emerald"
         />
+        <UsageProgressBar
+          v-if="usageInfo?.codex_spark_five_hour"
+          label="S 5h"
+          :utilization="usageInfo.codex_spark_five_hour.utilization"
+          :resets-at="usageInfo.codex_spark_five_hour.resets_at"
+          :show-now-when-idle="true"
+          color="purple"
+        />
+        <UsageProgressBar
+          v-if="usageInfo?.codex_spark_seven_day"
+          label="S 7d"
+          :utilization="usageInfo.codex_spark_seven_day.utilization"
+          :resets-at="usageInfo.codex_spark_seven_day.resets_at"
+          :show-now-when-idle="true"
+          color="amber"
+        />
         <div class="flex items-center gap-1.5 mt-0.5">
           <button
             type="button"
@@ -522,6 +538,10 @@ const props = withDefaults(
   }
 )
 
+const emit = defineEmits<{
+  'plan-type-updated': [payload: { accountId: number; planType: string }]
+}>()
+
 const { t } = useI18n()
 const desktopViewportQuery = '(min-width: 768px)'
 
@@ -584,7 +604,12 @@ const geminiUsageAvailable = computed(() => {
 
 const hasOpenAIUsageFallback = computed(() => {
   if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return false
-  return !!usageInfo.value?.five_hour || !!usageInfo.value?.seven_day
+  return (
+    !!usageInfo.value?.five_hour ||
+    !!usageInfo.value?.seven_day ||
+    !!usageInfo.value?.codex_spark_five_hour ||
+    !!usageInfo.value?.codex_spark_seven_day
+  )
 })
 
 const openAIUsageRefreshKey = computed(() => buildOpenAIUsageRefreshKey(props.account))
@@ -596,6 +621,14 @@ const shouldAutoLoadUsageOnMount = computed(() => {
 const shouldLazyLoadOnMobile = computed(() => {
   return shouldFetchUsage.value && !isDesktopViewport.value
 })
+
+const syncOpenAIPlanType = (usage: AccountUsageInfo | null) => {
+  if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return
+  const planType = typeof usage?.plan_type === 'string' ? usage.plan_type.trim().toLowerCase() : ''
+  if (!planType) return
+  if (String(props.account.credentials?.plan_type ?? '').trim().toLowerCase() === planType) return
+  emit('plan-type-updated', { accountId: props.account.id, planType })
+}
 
 // Antigravity quota types (用于 API 返回的数据)
 interface AntigravityUsageResult {
@@ -1016,6 +1049,7 @@ const loadUsage = async (options?: { source?: 'passive' | 'active'; bypassCache?
     const cached = _usageCache.get(props.account.id)
     if (cached && Date.now() - cached.ts < USAGE_CACHE_TTL) {
       usageInfo.value = cached.data
+      syncOpenAIPlanType(cached.data)
       loading.value = false
       return
     }
@@ -1030,6 +1064,7 @@ const loadUsage = async (options?: { source?: 'passive' | 'active'; bypassCache?
     if (!unmounted.value) {
       usageInfo.value = result
       _usageCache.set(props.account.id, { data: result, ts: Date.now() })
+      syncOpenAIPlanType(result)
     }
   } catch (e: any) {
     if (!unmounted.value) {
@@ -1094,7 +1129,10 @@ const attachVisibilityObserver = () => {
 const loadActiveUsage = async () => {
   activeQueryLoading.value = true
   try {
-    usageInfo.value = await adminAPI.accounts.getUsage(props.account.id, 'active', true)
+    const result = await adminAPI.accounts.getUsage(props.account.id, 'active', true)
+    usageInfo.value = result
+    _usageCache.set(props.account.id, { data: result, ts: Date.now() })
+    syncOpenAIPlanType(result)
   } catch (e: any) {
     console.error('Failed to load active usage:', e)
   } finally {
@@ -1212,6 +1250,7 @@ watch(openAIUsageRefreshKey, (nextKey, prevKey) => {
   if (!prevKey || nextKey === prevKey) return
   if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return
 
+  _usageCache.delete(props.account.id)
   requestAutoLoad()
 })
 

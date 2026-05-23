@@ -416,6 +416,9 @@ func isNonRetryableRefreshError(err error) bool {
 		return false
 	}
 	msg := strings.ToLower(err.Error())
+	if isOpenAIRefreshTokenReuseError(msg) {
+		return true
+	}
 	nonRetryable := []string{
 		"invalid_grant",        // refresh_token 已失效
 		"refresh_token_reused", // OpenAI refresh_token 已被使用，必须重新授权
@@ -431,6 +434,20 @@ func isNonRetryableRefreshError(err error) bool {
 		}
 	}
 	return false
+}
+
+func isOpenAIRefreshTokenReuseError(msg string) bool {
+	msg = strings.ToLower(strings.TrimSpace(msg))
+	if msg == "" {
+		return false
+	}
+	if strings.Contains(msg, `"code":"refresh_token_reused"`) ||
+		strings.Contains(msg, `"code": "refresh_token_reused"`) ||
+		strings.Contains(msg, "code=refresh_token_reused") {
+		return true
+	}
+	return strings.Contains(msg, "refresh token has already been used") ||
+		strings.Contains(msg, "refresh_token has already been used")
 }
 
 // ensureOpenAIPrivacy 检查 OpenAI OAuth 账号是否已设置 privacy_mode，

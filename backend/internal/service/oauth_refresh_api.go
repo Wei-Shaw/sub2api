@@ -128,9 +128,9 @@ func (api *OAuthRefreshAPI) RefreshIfNeeded(
 	// 4. 执行平台特定刷新逻辑
 	newCredentials, refreshErr := executor.Refresh(ctx, freshAccount)
 	if refreshErr != nil {
-		// 竞争恢复：invalid_grant 可能是另一个 worker 已消费了旧 refresh_token
+		// 竞争恢复：invalid_grant/refresh_token_reused 可能是另一个 worker 已消费了旧 refresh_token
 		// 重新读取 DB，如果 refresh_token 已更新则说明是竞争，返回成功
-		if isInvalidGrantError(refreshErr) {
+		if isRefreshRaceRecoverableError(refreshErr) {
 			if recoveredAccount, recovered := api.tryRecoverFromRefreshRace(ctx, freshAccount); recovered {
 				slog.Info("oauth_refresh_race_recovered",
 					"account_id", freshAccount.ID,
@@ -165,9 +165,13 @@ func (api *OAuthRefreshAPI) RefreshIfNeeded(
 	}, nil
 }
 
-// isInvalidGrantError 检查错误是否为 invalid_grant
-func isInvalidGrantError(err error) bool {
-	return err != nil && strings.Contains(strings.ToLower(err.Error()), "invalid_grant")
+// isRefreshRaceRecoverableError 检查错误是否可能由并发刷新竞争导致。
+func isRefreshRaceRecoverableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "invalid_grant") || isOpenAIRefreshTokenReuseError(msg)
 }
 
 // tryRecoverFromRefreshRace 在 invalid_grant 错误后尝试竞争恢复
