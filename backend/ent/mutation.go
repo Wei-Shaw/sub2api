@@ -19,6 +19,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
+	"github.com/Wei-Shaw/sub2api/ent/billingpool"
+	"github.com/Wei-Shaw/sub2api/ent/billingpoolgroup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
@@ -66,6 +68,8 @@ const (
 	TypeAnnouncementRead              = "AnnouncementRead"
 	TypeAuthIdentity                  = "AuthIdentity"
 	TypeAuthIdentityChannel           = "AuthIdentityChannel"
+	TypeBillingPool                   = "BillingPool"
+	TypeBillingPoolGroup              = "BillingPoolGroup"
 	TypeChannelMonitor                = "ChannelMonitor"
 	TypeChannelMonitorDailyRollup     = "ChannelMonitorDailyRollup"
 	TypeChannelMonitorHistory         = "ChannelMonitorHistory"
@@ -98,51 +102,57 @@ const (
 // APIKeyMutation represents an operation that mutates the APIKey nodes in the graph.
 type APIKeyMutation struct {
 	config
-	op                 Op
-	typ                string
-	id                 *int64
-	created_at         *time.Time
-	updated_at         *time.Time
-	deleted_at         *time.Time
-	key                *string
-	name               *string
-	status             *string
-	last_used_at       *time.Time
-	ip_whitelist       *[]string
-	appendip_whitelist []string
-	ip_blacklist       *[]string
-	appendip_blacklist []string
-	quota              *float64
-	addquota           *float64
-	quota_used         *float64
-	addquota_used      *float64
-	expires_at         *time.Time
-	rate_limit_5h      *float64
-	addrate_limit_5h   *float64
-	rate_limit_1d      *float64
-	addrate_limit_1d   *float64
-	rate_limit_7d      *float64
-	addrate_limit_7d   *float64
-	usage_5h           *float64
-	addusage_5h        *float64
-	usage_1d           *float64
-	addusage_1d        *float64
-	usage_7d           *float64
-	addusage_7d        *float64
-	window_5h_start    *time.Time
-	window_1d_start    *time.Time
-	window_7d_start    *time.Time
-	clearedFields      map[string]struct{}
-	user               *int64
-	cleareduser        bool
-	group              *int64
-	clearedgroup       bool
-	usage_logs         map[int64]struct{}
-	removedusage_logs  map[int64]struct{}
-	clearedusage_logs  bool
-	done               bool
-	oldValue           func(context.Context) (*APIKey, error)
-	predicates         []predicate.APIKey
+	op                              Op
+	typ                             string
+	id                              *int64
+	created_at                      *time.Time
+	updated_at                      *time.Time
+	deleted_at                      *time.Time
+	key                             *string
+	name                            *string
+	status                          *string
+	billing_mode                    *string
+	use_pool_default_order          *bool
+	custom_fallback_group_ids       *[]int64
+	appendcustom_fallback_group_ids []int64
+	last_used_at                    *time.Time
+	ip_whitelist                    *[]string
+	appendip_whitelist              []string
+	ip_blacklist                    *[]string
+	appendip_blacklist              []string
+	quota                           *float64
+	addquota                        *float64
+	quota_used                      *float64
+	addquota_used                   *float64
+	expires_at                      *time.Time
+	rate_limit_5h                   *float64
+	addrate_limit_5h                *float64
+	rate_limit_1d                   *float64
+	addrate_limit_1d                *float64
+	rate_limit_7d                   *float64
+	addrate_limit_7d                *float64
+	usage_5h                        *float64
+	addusage_5h                     *float64
+	usage_1d                        *float64
+	addusage_1d                     *float64
+	usage_7d                        *float64
+	addusage_7d                     *float64
+	window_5h_start                 *time.Time
+	window_1d_start                 *time.Time
+	window_7d_start                 *time.Time
+	clearedFields                   map[string]struct{}
+	user                            *int64
+	cleareduser                     bool
+	group                           *int64
+	clearedgroup                    bool
+	billing_pool                    *int64
+	clearedbilling_pool             bool
+	usage_logs                      map[int64]struct{}
+	removedusage_logs               map[int64]struct{}
+	clearedusage_logs               bool
+	done                            bool
+	oldValue                        func(context.Context) (*APIKey, error)
+	predicates                      []predicate.APIKey
 }
 
 var _ ent.Mutation = (*APIKeyMutation)(nil)
@@ -521,6 +531,55 @@ func (m *APIKeyMutation) ResetGroupID() {
 	delete(m.clearedFields, apikey.FieldGroupID)
 }
 
+// SetBillingPoolID sets the "billing_pool_id" field.
+func (m *APIKeyMutation) SetBillingPoolID(i int64) {
+	m.billing_pool = &i
+}
+
+// BillingPoolID returns the value of the "billing_pool_id" field in the mutation.
+func (m *APIKeyMutation) BillingPoolID() (r int64, exists bool) {
+	v := m.billing_pool
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBillingPoolID returns the old "billing_pool_id" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldBillingPoolID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBillingPoolID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBillingPoolID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBillingPoolID: %w", err)
+	}
+	return oldValue.BillingPoolID, nil
+}
+
+// ClearBillingPoolID clears the value of the "billing_pool_id" field.
+func (m *APIKeyMutation) ClearBillingPoolID() {
+	m.billing_pool = nil
+	m.clearedFields[apikey.FieldBillingPoolID] = struct{}{}
+}
+
+// BillingPoolIDCleared returns if the "billing_pool_id" field was cleared in this mutation.
+func (m *APIKeyMutation) BillingPoolIDCleared() bool {
+	_, ok := m.clearedFields[apikey.FieldBillingPoolID]
+	return ok
+}
+
+// ResetBillingPoolID resets all changes to the "billing_pool_id" field.
+func (m *APIKeyMutation) ResetBillingPoolID() {
+	m.billing_pool = nil
+	delete(m.clearedFields, apikey.FieldBillingPoolID)
+}
+
 // SetStatus sets the "status" field.
 func (m *APIKeyMutation) SetStatus(s string) {
 	m.status = &s
@@ -555,6 +614,143 @@ func (m *APIKeyMutation) OldStatus(ctx context.Context) (v string, err error) {
 // ResetStatus resets all changes to the "status" field.
 func (m *APIKeyMutation) ResetStatus() {
 	m.status = nil
+}
+
+// SetBillingMode sets the "billing_mode" field.
+func (m *APIKeyMutation) SetBillingMode(s string) {
+	m.billing_mode = &s
+}
+
+// BillingMode returns the value of the "billing_mode" field in the mutation.
+func (m *APIKeyMutation) BillingMode() (r string, exists bool) {
+	v := m.billing_mode
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBillingMode returns the old "billing_mode" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldBillingMode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBillingMode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBillingMode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBillingMode: %w", err)
+	}
+	return oldValue.BillingMode, nil
+}
+
+// ResetBillingMode resets all changes to the "billing_mode" field.
+func (m *APIKeyMutation) ResetBillingMode() {
+	m.billing_mode = nil
+}
+
+// SetUsePoolDefaultOrder sets the "use_pool_default_order" field.
+func (m *APIKeyMutation) SetUsePoolDefaultOrder(b bool) {
+	m.use_pool_default_order = &b
+}
+
+// UsePoolDefaultOrder returns the value of the "use_pool_default_order" field in the mutation.
+func (m *APIKeyMutation) UsePoolDefaultOrder() (r bool, exists bool) {
+	v := m.use_pool_default_order
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUsePoolDefaultOrder returns the old "use_pool_default_order" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldUsePoolDefaultOrder(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUsePoolDefaultOrder is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUsePoolDefaultOrder requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUsePoolDefaultOrder: %w", err)
+	}
+	return oldValue.UsePoolDefaultOrder, nil
+}
+
+// ResetUsePoolDefaultOrder resets all changes to the "use_pool_default_order" field.
+func (m *APIKeyMutation) ResetUsePoolDefaultOrder() {
+	m.use_pool_default_order = nil
+}
+
+// SetCustomFallbackGroupIds sets the "custom_fallback_group_ids" field.
+func (m *APIKeyMutation) SetCustomFallbackGroupIds(i []int64) {
+	m.custom_fallback_group_ids = &i
+	m.appendcustom_fallback_group_ids = nil
+}
+
+// CustomFallbackGroupIds returns the value of the "custom_fallback_group_ids" field in the mutation.
+func (m *APIKeyMutation) CustomFallbackGroupIds() (r []int64, exists bool) {
+	v := m.custom_fallback_group_ids
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCustomFallbackGroupIds returns the old "custom_fallback_group_ids" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldCustomFallbackGroupIds(ctx context.Context) (v []int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCustomFallbackGroupIds is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCustomFallbackGroupIds requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCustomFallbackGroupIds: %w", err)
+	}
+	return oldValue.CustomFallbackGroupIds, nil
+}
+
+// AppendCustomFallbackGroupIds adds i to the "custom_fallback_group_ids" field.
+func (m *APIKeyMutation) AppendCustomFallbackGroupIds(i []int64) {
+	m.appendcustom_fallback_group_ids = append(m.appendcustom_fallback_group_ids, i...)
+}
+
+// AppendedCustomFallbackGroupIds returns the list of values that were appended to the "custom_fallback_group_ids" field in this mutation.
+func (m *APIKeyMutation) AppendedCustomFallbackGroupIds() ([]int64, bool) {
+	if len(m.appendcustom_fallback_group_ids) == 0 {
+		return nil, false
+	}
+	return m.appendcustom_fallback_group_ids, true
+}
+
+// ClearCustomFallbackGroupIds clears the value of the "custom_fallback_group_ids" field.
+func (m *APIKeyMutation) ClearCustomFallbackGroupIds() {
+	m.custom_fallback_group_ids = nil
+	m.appendcustom_fallback_group_ids = nil
+	m.clearedFields[apikey.FieldCustomFallbackGroupIds] = struct{}{}
+}
+
+// CustomFallbackGroupIdsCleared returns if the "custom_fallback_group_ids" field was cleared in this mutation.
+func (m *APIKeyMutation) CustomFallbackGroupIdsCleared() bool {
+	_, ok := m.clearedFields[apikey.FieldCustomFallbackGroupIds]
+	return ok
+}
+
+// ResetCustomFallbackGroupIds resets all changes to the "custom_fallback_group_ids" field.
+func (m *APIKeyMutation) ResetCustomFallbackGroupIds() {
+	m.custom_fallback_group_ids = nil
+	m.appendcustom_fallback_group_ids = nil
+	delete(m.clearedFields, apikey.FieldCustomFallbackGroupIds)
 }
 
 // SetLastUsedAt sets the "last_used_at" field.
@@ -1434,6 +1630,33 @@ func (m *APIKeyMutation) ResetGroup() {
 	m.clearedgroup = false
 }
 
+// ClearBillingPool clears the "billing_pool" edge to the BillingPool entity.
+func (m *APIKeyMutation) ClearBillingPool() {
+	m.clearedbilling_pool = true
+	m.clearedFields[apikey.FieldBillingPoolID] = struct{}{}
+}
+
+// BillingPoolCleared reports if the "billing_pool" edge to the BillingPool entity was cleared.
+func (m *APIKeyMutation) BillingPoolCleared() bool {
+	return m.BillingPoolIDCleared() || m.clearedbilling_pool
+}
+
+// BillingPoolIDs returns the "billing_pool" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// BillingPoolID instead. It exists only for internal usage by the builders.
+func (m *APIKeyMutation) BillingPoolIDs() (ids []int64) {
+	if id := m.billing_pool; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetBillingPool resets all changes to the "billing_pool" edge.
+func (m *APIKeyMutation) ResetBillingPool() {
+	m.billing_pool = nil
+	m.clearedbilling_pool = false
+}
+
 // AddUsageLogIDs adds the "usage_logs" edge to the UsageLog entity by ids.
 func (m *APIKeyMutation) AddUsageLogIDs(ids ...int64) {
 	if m.usage_logs == nil {
@@ -1522,7 +1745,7 @@ func (m *APIKeyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *APIKeyMutation) Fields() []string {
-	fields := make([]string, 0, 23)
+	fields := make([]string, 0, 27)
 	if m.created_at != nil {
 		fields = append(fields, apikey.FieldCreatedAt)
 	}
@@ -1544,8 +1767,20 @@ func (m *APIKeyMutation) Fields() []string {
 	if m.group != nil {
 		fields = append(fields, apikey.FieldGroupID)
 	}
+	if m.billing_pool != nil {
+		fields = append(fields, apikey.FieldBillingPoolID)
+	}
 	if m.status != nil {
 		fields = append(fields, apikey.FieldStatus)
+	}
+	if m.billing_mode != nil {
+		fields = append(fields, apikey.FieldBillingMode)
+	}
+	if m.use_pool_default_order != nil {
+		fields = append(fields, apikey.FieldUsePoolDefaultOrder)
+	}
+	if m.custom_fallback_group_ids != nil {
+		fields = append(fields, apikey.FieldCustomFallbackGroupIds)
 	}
 	if m.last_used_at != nil {
 		fields = append(fields, apikey.FieldLastUsedAt)
@@ -1614,8 +1849,16 @@ func (m *APIKeyMutation) Field(name string) (ent.Value, bool) {
 		return m.Name()
 	case apikey.FieldGroupID:
 		return m.GroupID()
+	case apikey.FieldBillingPoolID:
+		return m.BillingPoolID()
 	case apikey.FieldStatus:
 		return m.Status()
+	case apikey.FieldBillingMode:
+		return m.BillingMode()
+	case apikey.FieldUsePoolDefaultOrder:
+		return m.UsePoolDefaultOrder()
+	case apikey.FieldCustomFallbackGroupIds:
+		return m.CustomFallbackGroupIds()
 	case apikey.FieldLastUsedAt:
 		return m.LastUsedAt()
 	case apikey.FieldIPWhitelist:
@@ -1669,8 +1912,16 @@ func (m *APIKeyMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldName(ctx)
 	case apikey.FieldGroupID:
 		return m.OldGroupID(ctx)
+	case apikey.FieldBillingPoolID:
+		return m.OldBillingPoolID(ctx)
 	case apikey.FieldStatus:
 		return m.OldStatus(ctx)
+	case apikey.FieldBillingMode:
+		return m.OldBillingMode(ctx)
+	case apikey.FieldUsePoolDefaultOrder:
+		return m.OldUsePoolDefaultOrder(ctx)
+	case apikey.FieldCustomFallbackGroupIds:
+		return m.OldCustomFallbackGroupIds(ctx)
 	case apikey.FieldLastUsedAt:
 		return m.OldLastUsedAt(ctx)
 	case apikey.FieldIPWhitelist:
@@ -1759,12 +2010,40 @@ func (m *APIKeyMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetGroupID(v)
 		return nil
+	case apikey.FieldBillingPoolID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBillingPoolID(v)
+		return nil
 	case apikey.FieldStatus:
 		v, ok := value.(string)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetStatus(v)
+		return nil
+	case apikey.FieldBillingMode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBillingMode(v)
+		return nil
+	case apikey.FieldUsePoolDefaultOrder:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUsePoolDefaultOrder(v)
+		return nil
+	case apikey.FieldCustomFallbackGroupIds:
+		v, ok := value.([]int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCustomFallbackGroupIds(v)
 		return nil
 	case apikey.FieldLastUsedAt:
 		v, ok := value.(time.Time)
@@ -2006,6 +2285,12 @@ func (m *APIKeyMutation) ClearedFields() []string {
 	if m.FieldCleared(apikey.FieldGroupID) {
 		fields = append(fields, apikey.FieldGroupID)
 	}
+	if m.FieldCleared(apikey.FieldBillingPoolID) {
+		fields = append(fields, apikey.FieldBillingPoolID)
+	}
+	if m.FieldCleared(apikey.FieldCustomFallbackGroupIds) {
+		fields = append(fields, apikey.FieldCustomFallbackGroupIds)
+	}
 	if m.FieldCleared(apikey.FieldLastUsedAt) {
 		fields = append(fields, apikey.FieldLastUsedAt)
 	}
@@ -2046,6 +2331,12 @@ func (m *APIKeyMutation) ClearField(name string) error {
 		return nil
 	case apikey.FieldGroupID:
 		m.ClearGroupID()
+		return nil
+	case apikey.FieldBillingPoolID:
+		m.ClearBillingPoolID()
+		return nil
+	case apikey.FieldCustomFallbackGroupIds:
+		m.ClearCustomFallbackGroupIds()
 		return nil
 	case apikey.FieldLastUsedAt:
 		m.ClearLastUsedAt()
@@ -2097,8 +2388,20 @@ func (m *APIKeyMutation) ResetField(name string) error {
 	case apikey.FieldGroupID:
 		m.ResetGroupID()
 		return nil
+	case apikey.FieldBillingPoolID:
+		m.ResetBillingPoolID()
+		return nil
 	case apikey.FieldStatus:
 		m.ResetStatus()
+		return nil
+	case apikey.FieldBillingMode:
+		m.ResetBillingMode()
+		return nil
+	case apikey.FieldUsePoolDefaultOrder:
+		m.ResetUsePoolDefaultOrder()
+		return nil
+	case apikey.FieldCustomFallbackGroupIds:
+		m.ResetCustomFallbackGroupIds()
 		return nil
 	case apikey.FieldLastUsedAt:
 		m.ResetLastUsedAt()
@@ -2151,12 +2454,15 @@ func (m *APIKeyMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *APIKeyMutation) AddedEdges() []string {
-	edges := make([]string, 0, 3)
+	edges := make([]string, 0, 4)
 	if m.user != nil {
 		edges = append(edges, apikey.EdgeUser)
 	}
 	if m.group != nil {
 		edges = append(edges, apikey.EdgeGroup)
+	}
+	if m.billing_pool != nil {
+		edges = append(edges, apikey.EdgeBillingPool)
 	}
 	if m.usage_logs != nil {
 		edges = append(edges, apikey.EdgeUsageLogs)
@@ -2176,6 +2482,10 @@ func (m *APIKeyMutation) AddedIDs(name string) []ent.Value {
 		if id := m.group; id != nil {
 			return []ent.Value{*id}
 		}
+	case apikey.EdgeBillingPool:
+		if id := m.billing_pool; id != nil {
+			return []ent.Value{*id}
+		}
 	case apikey.EdgeUsageLogs:
 		ids := make([]ent.Value, 0, len(m.usage_logs))
 		for id := range m.usage_logs {
@@ -2188,7 +2498,7 @@ func (m *APIKeyMutation) AddedIDs(name string) []ent.Value {
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *APIKeyMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 3)
+	edges := make([]string, 0, 4)
 	if m.removedusage_logs != nil {
 		edges = append(edges, apikey.EdgeUsageLogs)
 	}
@@ -2211,12 +2521,15 @@ func (m *APIKeyMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *APIKeyMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 3)
+	edges := make([]string, 0, 4)
 	if m.cleareduser {
 		edges = append(edges, apikey.EdgeUser)
 	}
 	if m.clearedgroup {
 		edges = append(edges, apikey.EdgeGroup)
+	}
+	if m.clearedbilling_pool {
+		edges = append(edges, apikey.EdgeBillingPool)
 	}
 	if m.clearedusage_logs {
 		edges = append(edges, apikey.EdgeUsageLogs)
@@ -2232,6 +2545,8 @@ func (m *APIKeyMutation) EdgeCleared(name string) bool {
 		return m.cleareduser
 	case apikey.EdgeGroup:
 		return m.clearedgroup
+	case apikey.EdgeBillingPool:
+		return m.clearedbilling_pool
 	case apikey.EdgeUsageLogs:
 		return m.clearedusage_logs
 	}
@@ -2248,6 +2563,9 @@ func (m *APIKeyMutation) ClearEdge(name string) error {
 	case apikey.EdgeGroup:
 		m.ClearGroup()
 		return nil
+	case apikey.EdgeBillingPool:
+		m.ClearBillingPool()
+		return nil
 	}
 	return fmt.Errorf("unknown APIKey unique edge %s", name)
 }
@@ -2261,6 +2579,9 @@ func (m *APIKeyMutation) ResetEdge(name string) error {
 		return nil
 	case apikey.EdgeGroup:
 		m.ResetGroup()
+		return nil
+	case apikey.EdgeBillingPool:
+		m.ResetBillingPool()
 		return nil
 	case apikey.EdgeUsageLogs:
 		m.ResetUsageLogs()
@@ -8742,6 +9063,1951 @@ func (m *AuthIdentityChannelMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown AuthIdentityChannel edge %s", name)
 }
 
+// BillingPoolMutation represents an operation that mutates the BillingPool nodes in the graph.
+type BillingPoolMutation struct {
+	config
+	op                           Op
+	typ                          string
+	id                           *int64
+	created_at                   *time.Time
+	updated_at                   *time.Time
+	deleted_at                   *time.Time
+	name                         *string
+	code                         *string
+	description                  *string
+	status                       *string
+	platform_scope               *string
+	allow_user_reorder           *bool
+	require_primary_subscription *bool
+	allow_balance_fallback       *bool
+	clearedFields                map[string]struct{}
+	members                      map[int64]struct{}
+	removedmembers               map[int64]struct{}
+	clearedmembers               bool
+	api_keys                     map[int64]struct{}
+	removedapi_keys              map[int64]struct{}
+	clearedapi_keys              bool
+	done                         bool
+	oldValue                     func(context.Context) (*BillingPool, error)
+	predicates                   []predicate.BillingPool
+}
+
+var _ ent.Mutation = (*BillingPoolMutation)(nil)
+
+// billingpoolOption allows management of the mutation configuration using functional options.
+type billingpoolOption func(*BillingPoolMutation)
+
+// newBillingPoolMutation creates new mutation for the BillingPool entity.
+func newBillingPoolMutation(c config, op Op, opts ...billingpoolOption) *BillingPoolMutation {
+	m := &BillingPoolMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeBillingPool,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withBillingPoolID sets the ID field of the mutation.
+func withBillingPoolID(id int64) billingpoolOption {
+	return func(m *BillingPoolMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *BillingPool
+		)
+		m.oldValue = func(ctx context.Context) (*BillingPool, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().BillingPool.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withBillingPool sets the old BillingPool of the mutation.
+func withBillingPool(node *BillingPool) billingpoolOption {
+	return func(m *BillingPoolMutation) {
+		m.oldValue = func(context.Context) (*BillingPool, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m BillingPoolMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m BillingPoolMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *BillingPoolMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *BillingPoolMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().BillingPool.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *BillingPoolMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *BillingPoolMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the BillingPool entity.
+// If the BillingPool object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BillingPoolMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *BillingPoolMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *BillingPoolMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *BillingPoolMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the BillingPool entity.
+// If the BillingPool object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BillingPoolMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *BillingPoolMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (m *BillingPoolMutation) SetDeletedAt(t time.Time) {
+	m.deleted_at = &t
+}
+
+// DeletedAt returns the value of the "deleted_at" field in the mutation.
+func (m *BillingPoolMutation) DeletedAt() (r time.Time, exists bool) {
+	v := m.deleted_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDeletedAt returns the old "deleted_at" field's value of the BillingPool entity.
+// If the BillingPool object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BillingPoolMutation) OldDeletedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDeletedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDeletedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDeletedAt: %w", err)
+	}
+	return oldValue.DeletedAt, nil
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (m *BillingPoolMutation) ClearDeletedAt() {
+	m.deleted_at = nil
+	m.clearedFields[billingpool.FieldDeletedAt] = struct{}{}
+}
+
+// DeletedAtCleared returns if the "deleted_at" field was cleared in this mutation.
+func (m *BillingPoolMutation) DeletedAtCleared() bool {
+	_, ok := m.clearedFields[billingpool.FieldDeletedAt]
+	return ok
+}
+
+// ResetDeletedAt resets all changes to the "deleted_at" field.
+func (m *BillingPoolMutation) ResetDeletedAt() {
+	m.deleted_at = nil
+	delete(m.clearedFields, billingpool.FieldDeletedAt)
+}
+
+// SetName sets the "name" field.
+func (m *BillingPoolMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *BillingPoolMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the BillingPool entity.
+// If the BillingPool object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BillingPoolMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *BillingPoolMutation) ResetName() {
+	m.name = nil
+}
+
+// SetCode sets the "code" field.
+func (m *BillingPoolMutation) SetCode(s string) {
+	m.code = &s
+}
+
+// Code returns the value of the "code" field in the mutation.
+func (m *BillingPoolMutation) Code() (r string, exists bool) {
+	v := m.code
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCode returns the old "code" field's value of the BillingPool entity.
+// If the BillingPool object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BillingPoolMutation) OldCode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCode: %w", err)
+	}
+	return oldValue.Code, nil
+}
+
+// ResetCode resets all changes to the "code" field.
+func (m *BillingPoolMutation) ResetCode() {
+	m.code = nil
+}
+
+// SetDescription sets the "description" field.
+func (m *BillingPoolMutation) SetDescription(s string) {
+	m.description = &s
+}
+
+// Description returns the value of the "description" field in the mutation.
+func (m *BillingPoolMutation) Description() (r string, exists bool) {
+	v := m.description
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDescription returns the old "description" field's value of the BillingPool entity.
+// If the BillingPool object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BillingPoolMutation) OldDescription(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDescription is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDescription requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDescription: %w", err)
+	}
+	return oldValue.Description, nil
+}
+
+// ClearDescription clears the value of the "description" field.
+func (m *BillingPoolMutation) ClearDescription() {
+	m.description = nil
+	m.clearedFields[billingpool.FieldDescription] = struct{}{}
+}
+
+// DescriptionCleared returns if the "description" field was cleared in this mutation.
+func (m *BillingPoolMutation) DescriptionCleared() bool {
+	_, ok := m.clearedFields[billingpool.FieldDescription]
+	return ok
+}
+
+// ResetDescription resets all changes to the "description" field.
+func (m *BillingPoolMutation) ResetDescription() {
+	m.description = nil
+	delete(m.clearedFields, billingpool.FieldDescription)
+}
+
+// SetStatus sets the "status" field.
+func (m *BillingPoolMutation) SetStatus(s string) {
+	m.status = &s
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *BillingPoolMutation) Status() (r string, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the BillingPool entity.
+// If the BillingPool object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BillingPoolMutation) OldStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *BillingPoolMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetPlatformScope sets the "platform_scope" field.
+func (m *BillingPoolMutation) SetPlatformScope(s string) {
+	m.platform_scope = &s
+}
+
+// PlatformScope returns the value of the "platform_scope" field in the mutation.
+func (m *BillingPoolMutation) PlatformScope() (r string, exists bool) {
+	v := m.platform_scope
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPlatformScope returns the old "platform_scope" field's value of the BillingPool entity.
+// If the BillingPool object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BillingPoolMutation) OldPlatformScope(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPlatformScope is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPlatformScope requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPlatformScope: %w", err)
+	}
+	return oldValue.PlatformScope, nil
+}
+
+// ResetPlatformScope resets all changes to the "platform_scope" field.
+func (m *BillingPoolMutation) ResetPlatformScope() {
+	m.platform_scope = nil
+}
+
+// SetAllowUserReorder sets the "allow_user_reorder" field.
+func (m *BillingPoolMutation) SetAllowUserReorder(b bool) {
+	m.allow_user_reorder = &b
+}
+
+// AllowUserReorder returns the value of the "allow_user_reorder" field in the mutation.
+func (m *BillingPoolMutation) AllowUserReorder() (r bool, exists bool) {
+	v := m.allow_user_reorder
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAllowUserReorder returns the old "allow_user_reorder" field's value of the BillingPool entity.
+// If the BillingPool object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BillingPoolMutation) OldAllowUserReorder(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAllowUserReorder is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAllowUserReorder requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAllowUserReorder: %w", err)
+	}
+	return oldValue.AllowUserReorder, nil
+}
+
+// ResetAllowUserReorder resets all changes to the "allow_user_reorder" field.
+func (m *BillingPoolMutation) ResetAllowUserReorder() {
+	m.allow_user_reorder = nil
+}
+
+// SetRequirePrimarySubscription sets the "require_primary_subscription" field.
+func (m *BillingPoolMutation) SetRequirePrimarySubscription(b bool) {
+	m.require_primary_subscription = &b
+}
+
+// RequirePrimarySubscription returns the value of the "require_primary_subscription" field in the mutation.
+func (m *BillingPoolMutation) RequirePrimarySubscription() (r bool, exists bool) {
+	v := m.require_primary_subscription
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRequirePrimarySubscription returns the old "require_primary_subscription" field's value of the BillingPool entity.
+// If the BillingPool object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BillingPoolMutation) OldRequirePrimarySubscription(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRequirePrimarySubscription is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRequirePrimarySubscription requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRequirePrimarySubscription: %w", err)
+	}
+	return oldValue.RequirePrimarySubscription, nil
+}
+
+// ResetRequirePrimarySubscription resets all changes to the "require_primary_subscription" field.
+func (m *BillingPoolMutation) ResetRequirePrimarySubscription() {
+	m.require_primary_subscription = nil
+}
+
+// SetAllowBalanceFallback sets the "allow_balance_fallback" field.
+func (m *BillingPoolMutation) SetAllowBalanceFallback(b bool) {
+	m.allow_balance_fallback = &b
+}
+
+// AllowBalanceFallback returns the value of the "allow_balance_fallback" field in the mutation.
+func (m *BillingPoolMutation) AllowBalanceFallback() (r bool, exists bool) {
+	v := m.allow_balance_fallback
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAllowBalanceFallback returns the old "allow_balance_fallback" field's value of the BillingPool entity.
+// If the BillingPool object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BillingPoolMutation) OldAllowBalanceFallback(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAllowBalanceFallback is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAllowBalanceFallback requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAllowBalanceFallback: %w", err)
+	}
+	return oldValue.AllowBalanceFallback, nil
+}
+
+// ResetAllowBalanceFallback resets all changes to the "allow_balance_fallback" field.
+func (m *BillingPoolMutation) ResetAllowBalanceFallback() {
+	m.allow_balance_fallback = nil
+}
+
+// AddMemberIDs adds the "members" edge to the BillingPoolGroup entity by ids.
+func (m *BillingPoolMutation) AddMemberIDs(ids ...int64) {
+	if m.members == nil {
+		m.members = make(map[int64]struct{})
+	}
+	for i := range ids {
+		m.members[ids[i]] = struct{}{}
+	}
+}
+
+// ClearMembers clears the "members" edge to the BillingPoolGroup entity.
+func (m *BillingPoolMutation) ClearMembers() {
+	m.clearedmembers = true
+}
+
+// MembersCleared reports if the "members" edge to the BillingPoolGroup entity was cleared.
+func (m *BillingPoolMutation) MembersCleared() bool {
+	return m.clearedmembers
+}
+
+// RemoveMemberIDs removes the "members" edge to the BillingPoolGroup entity by IDs.
+func (m *BillingPoolMutation) RemoveMemberIDs(ids ...int64) {
+	if m.removedmembers == nil {
+		m.removedmembers = make(map[int64]struct{})
+	}
+	for i := range ids {
+		delete(m.members, ids[i])
+		m.removedmembers[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedMembers returns the removed IDs of the "members" edge to the BillingPoolGroup entity.
+func (m *BillingPoolMutation) RemovedMembersIDs() (ids []int64) {
+	for id := range m.removedmembers {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// MembersIDs returns the "members" edge IDs in the mutation.
+func (m *BillingPoolMutation) MembersIDs() (ids []int64) {
+	for id := range m.members {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetMembers resets all changes to the "members" edge.
+func (m *BillingPoolMutation) ResetMembers() {
+	m.members = nil
+	m.clearedmembers = false
+	m.removedmembers = nil
+}
+
+// AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by ids.
+func (m *BillingPoolMutation) AddAPIKeyIDs(ids ...int64) {
+	if m.api_keys == nil {
+		m.api_keys = make(map[int64]struct{})
+	}
+	for i := range ids {
+		m.api_keys[ids[i]] = struct{}{}
+	}
+}
+
+// ClearAPIKeys clears the "api_keys" edge to the APIKey entity.
+func (m *BillingPoolMutation) ClearAPIKeys() {
+	m.clearedapi_keys = true
+}
+
+// APIKeysCleared reports if the "api_keys" edge to the APIKey entity was cleared.
+func (m *BillingPoolMutation) APIKeysCleared() bool {
+	return m.clearedapi_keys
+}
+
+// RemoveAPIKeyIDs removes the "api_keys" edge to the APIKey entity by IDs.
+func (m *BillingPoolMutation) RemoveAPIKeyIDs(ids ...int64) {
+	if m.removedapi_keys == nil {
+		m.removedapi_keys = make(map[int64]struct{})
+	}
+	for i := range ids {
+		delete(m.api_keys, ids[i])
+		m.removedapi_keys[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedAPIKeys returns the removed IDs of the "api_keys" edge to the APIKey entity.
+func (m *BillingPoolMutation) RemovedAPIKeysIDs() (ids []int64) {
+	for id := range m.removedapi_keys {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// APIKeysIDs returns the "api_keys" edge IDs in the mutation.
+func (m *BillingPoolMutation) APIKeysIDs() (ids []int64) {
+	for id := range m.api_keys {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetAPIKeys resets all changes to the "api_keys" edge.
+func (m *BillingPoolMutation) ResetAPIKeys() {
+	m.api_keys = nil
+	m.clearedapi_keys = false
+	m.removedapi_keys = nil
+}
+
+// Where appends a list predicates to the BillingPoolMutation builder.
+func (m *BillingPoolMutation) Where(ps ...predicate.BillingPool) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the BillingPoolMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *BillingPoolMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.BillingPool, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *BillingPoolMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *BillingPoolMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (BillingPool).
+func (m *BillingPoolMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *BillingPoolMutation) Fields() []string {
+	fields := make([]string, 0, 11)
+	if m.created_at != nil {
+		fields = append(fields, billingpool.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, billingpool.FieldUpdatedAt)
+	}
+	if m.deleted_at != nil {
+		fields = append(fields, billingpool.FieldDeletedAt)
+	}
+	if m.name != nil {
+		fields = append(fields, billingpool.FieldName)
+	}
+	if m.code != nil {
+		fields = append(fields, billingpool.FieldCode)
+	}
+	if m.description != nil {
+		fields = append(fields, billingpool.FieldDescription)
+	}
+	if m.status != nil {
+		fields = append(fields, billingpool.FieldStatus)
+	}
+	if m.platform_scope != nil {
+		fields = append(fields, billingpool.FieldPlatformScope)
+	}
+	if m.allow_user_reorder != nil {
+		fields = append(fields, billingpool.FieldAllowUserReorder)
+	}
+	if m.require_primary_subscription != nil {
+		fields = append(fields, billingpool.FieldRequirePrimarySubscription)
+	}
+	if m.allow_balance_fallback != nil {
+		fields = append(fields, billingpool.FieldAllowBalanceFallback)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *BillingPoolMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case billingpool.FieldCreatedAt:
+		return m.CreatedAt()
+	case billingpool.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case billingpool.FieldDeletedAt:
+		return m.DeletedAt()
+	case billingpool.FieldName:
+		return m.Name()
+	case billingpool.FieldCode:
+		return m.Code()
+	case billingpool.FieldDescription:
+		return m.Description()
+	case billingpool.FieldStatus:
+		return m.Status()
+	case billingpool.FieldPlatformScope:
+		return m.PlatformScope()
+	case billingpool.FieldAllowUserReorder:
+		return m.AllowUserReorder()
+	case billingpool.FieldRequirePrimarySubscription:
+		return m.RequirePrimarySubscription()
+	case billingpool.FieldAllowBalanceFallback:
+		return m.AllowBalanceFallback()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *BillingPoolMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case billingpool.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case billingpool.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case billingpool.FieldDeletedAt:
+		return m.OldDeletedAt(ctx)
+	case billingpool.FieldName:
+		return m.OldName(ctx)
+	case billingpool.FieldCode:
+		return m.OldCode(ctx)
+	case billingpool.FieldDescription:
+		return m.OldDescription(ctx)
+	case billingpool.FieldStatus:
+		return m.OldStatus(ctx)
+	case billingpool.FieldPlatformScope:
+		return m.OldPlatformScope(ctx)
+	case billingpool.FieldAllowUserReorder:
+		return m.OldAllowUserReorder(ctx)
+	case billingpool.FieldRequirePrimarySubscription:
+		return m.OldRequirePrimarySubscription(ctx)
+	case billingpool.FieldAllowBalanceFallback:
+		return m.OldAllowBalanceFallback(ctx)
+	}
+	return nil, fmt.Errorf("unknown BillingPool field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *BillingPoolMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case billingpool.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case billingpool.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case billingpool.FieldDeletedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDeletedAt(v)
+		return nil
+	case billingpool.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case billingpool.FieldCode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCode(v)
+		return nil
+	case billingpool.FieldDescription:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDescription(v)
+		return nil
+	case billingpool.FieldStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case billingpool.FieldPlatformScope:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPlatformScope(v)
+		return nil
+	case billingpool.FieldAllowUserReorder:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAllowUserReorder(v)
+		return nil
+	case billingpool.FieldRequirePrimarySubscription:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRequirePrimarySubscription(v)
+		return nil
+	case billingpool.FieldAllowBalanceFallback:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAllowBalanceFallback(v)
+		return nil
+	}
+	return fmt.Errorf("unknown BillingPool field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *BillingPoolMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *BillingPoolMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *BillingPoolMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown BillingPool numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *BillingPoolMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(billingpool.FieldDeletedAt) {
+		fields = append(fields, billingpool.FieldDeletedAt)
+	}
+	if m.FieldCleared(billingpool.FieldDescription) {
+		fields = append(fields, billingpool.FieldDescription)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *BillingPoolMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *BillingPoolMutation) ClearField(name string) error {
+	switch name {
+	case billingpool.FieldDeletedAt:
+		m.ClearDeletedAt()
+		return nil
+	case billingpool.FieldDescription:
+		m.ClearDescription()
+		return nil
+	}
+	return fmt.Errorf("unknown BillingPool nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *BillingPoolMutation) ResetField(name string) error {
+	switch name {
+	case billingpool.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case billingpool.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case billingpool.FieldDeletedAt:
+		m.ResetDeletedAt()
+		return nil
+	case billingpool.FieldName:
+		m.ResetName()
+		return nil
+	case billingpool.FieldCode:
+		m.ResetCode()
+		return nil
+	case billingpool.FieldDescription:
+		m.ResetDescription()
+		return nil
+	case billingpool.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case billingpool.FieldPlatformScope:
+		m.ResetPlatformScope()
+		return nil
+	case billingpool.FieldAllowUserReorder:
+		m.ResetAllowUserReorder()
+		return nil
+	case billingpool.FieldRequirePrimarySubscription:
+		m.ResetRequirePrimarySubscription()
+		return nil
+	case billingpool.FieldAllowBalanceFallback:
+		m.ResetAllowBalanceFallback()
+		return nil
+	}
+	return fmt.Errorf("unknown BillingPool field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *BillingPoolMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.members != nil {
+		edges = append(edges, billingpool.EdgeMembers)
+	}
+	if m.api_keys != nil {
+		edges = append(edges, billingpool.EdgeAPIKeys)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *BillingPoolMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case billingpool.EdgeMembers:
+		ids := make([]ent.Value, 0, len(m.members))
+		for id := range m.members {
+			ids = append(ids, id)
+		}
+		return ids
+	case billingpool.EdgeAPIKeys:
+		ids := make([]ent.Value, 0, len(m.api_keys))
+		for id := range m.api_keys {
+			ids = append(ids, id)
+		}
+		return ids
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *BillingPoolMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.removedmembers != nil {
+		edges = append(edges, billingpool.EdgeMembers)
+	}
+	if m.removedapi_keys != nil {
+		edges = append(edges, billingpool.EdgeAPIKeys)
+	}
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *BillingPoolMutation) RemovedIDs(name string) []ent.Value {
+	switch name {
+	case billingpool.EdgeMembers:
+		ids := make([]ent.Value, 0, len(m.removedmembers))
+		for id := range m.removedmembers {
+			ids = append(ids, id)
+		}
+		return ids
+	case billingpool.EdgeAPIKeys:
+		ids := make([]ent.Value, 0, len(m.removedapi_keys))
+		for id := range m.removedapi_keys {
+			ids = append(ids, id)
+		}
+		return ids
+	}
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *BillingPoolMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.clearedmembers {
+		edges = append(edges, billingpool.EdgeMembers)
+	}
+	if m.clearedapi_keys {
+		edges = append(edges, billingpool.EdgeAPIKeys)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *BillingPoolMutation) EdgeCleared(name string) bool {
+	switch name {
+	case billingpool.EdgeMembers:
+		return m.clearedmembers
+	case billingpool.EdgeAPIKeys:
+		return m.clearedapi_keys
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *BillingPoolMutation) ClearEdge(name string) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown BillingPool unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *BillingPoolMutation) ResetEdge(name string) error {
+	switch name {
+	case billingpool.EdgeMembers:
+		m.ResetMembers()
+		return nil
+	case billingpool.EdgeAPIKeys:
+		m.ResetAPIKeys()
+		return nil
+	}
+	return fmt.Errorf("unknown BillingPool edge %s", name)
+}
+
+// BillingPoolGroupMutation represents an operation that mutates the BillingPoolGroup nodes in the graph.
+type BillingPoolGroupMutation struct {
+	config
+	op                  Op
+	typ                 string
+	id                  *int64
+	created_at          *time.Time
+	updated_at          *time.Time
+	deleted_at          *time.Time
+	chain_order         *int
+	addchain_order      *int
+	can_be_primary      *bool
+	can_be_fallback     *bool
+	clearedFields       map[string]struct{}
+	billing_pool        *int64
+	clearedbilling_pool bool
+	group               *int64
+	clearedgroup        bool
+	done                bool
+	oldValue            func(context.Context) (*BillingPoolGroup, error)
+	predicates          []predicate.BillingPoolGroup
+}
+
+var _ ent.Mutation = (*BillingPoolGroupMutation)(nil)
+
+// billingpoolgroupOption allows management of the mutation configuration using functional options.
+type billingpoolgroupOption func(*BillingPoolGroupMutation)
+
+// newBillingPoolGroupMutation creates new mutation for the BillingPoolGroup entity.
+func newBillingPoolGroupMutation(c config, op Op, opts ...billingpoolgroupOption) *BillingPoolGroupMutation {
+	m := &BillingPoolGroupMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeBillingPoolGroup,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withBillingPoolGroupID sets the ID field of the mutation.
+func withBillingPoolGroupID(id int64) billingpoolgroupOption {
+	return func(m *BillingPoolGroupMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *BillingPoolGroup
+		)
+		m.oldValue = func(ctx context.Context) (*BillingPoolGroup, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().BillingPoolGroup.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withBillingPoolGroup sets the old BillingPoolGroup of the mutation.
+func withBillingPoolGroup(node *BillingPoolGroup) billingpoolgroupOption {
+	return func(m *BillingPoolGroupMutation) {
+		m.oldValue = func(context.Context) (*BillingPoolGroup, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m BillingPoolGroupMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m BillingPoolGroupMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *BillingPoolGroupMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *BillingPoolGroupMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().BillingPoolGroup.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *BillingPoolGroupMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *BillingPoolGroupMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the BillingPoolGroup entity.
+// If the BillingPoolGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BillingPoolGroupMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *BillingPoolGroupMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *BillingPoolGroupMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *BillingPoolGroupMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the BillingPoolGroup entity.
+// If the BillingPoolGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BillingPoolGroupMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *BillingPoolGroupMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (m *BillingPoolGroupMutation) SetDeletedAt(t time.Time) {
+	m.deleted_at = &t
+}
+
+// DeletedAt returns the value of the "deleted_at" field in the mutation.
+func (m *BillingPoolGroupMutation) DeletedAt() (r time.Time, exists bool) {
+	v := m.deleted_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDeletedAt returns the old "deleted_at" field's value of the BillingPoolGroup entity.
+// If the BillingPoolGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BillingPoolGroupMutation) OldDeletedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDeletedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDeletedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDeletedAt: %w", err)
+	}
+	return oldValue.DeletedAt, nil
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (m *BillingPoolGroupMutation) ClearDeletedAt() {
+	m.deleted_at = nil
+	m.clearedFields[billingpoolgroup.FieldDeletedAt] = struct{}{}
+}
+
+// DeletedAtCleared returns if the "deleted_at" field was cleared in this mutation.
+func (m *BillingPoolGroupMutation) DeletedAtCleared() bool {
+	_, ok := m.clearedFields[billingpoolgroup.FieldDeletedAt]
+	return ok
+}
+
+// ResetDeletedAt resets all changes to the "deleted_at" field.
+func (m *BillingPoolGroupMutation) ResetDeletedAt() {
+	m.deleted_at = nil
+	delete(m.clearedFields, billingpoolgroup.FieldDeletedAt)
+}
+
+// SetBillingPoolID sets the "billing_pool_id" field.
+func (m *BillingPoolGroupMutation) SetBillingPoolID(i int64) {
+	m.billing_pool = &i
+}
+
+// BillingPoolID returns the value of the "billing_pool_id" field in the mutation.
+func (m *BillingPoolGroupMutation) BillingPoolID() (r int64, exists bool) {
+	v := m.billing_pool
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBillingPoolID returns the old "billing_pool_id" field's value of the BillingPoolGroup entity.
+// If the BillingPoolGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BillingPoolGroupMutation) OldBillingPoolID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBillingPoolID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBillingPoolID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBillingPoolID: %w", err)
+	}
+	return oldValue.BillingPoolID, nil
+}
+
+// ResetBillingPoolID resets all changes to the "billing_pool_id" field.
+func (m *BillingPoolGroupMutation) ResetBillingPoolID() {
+	m.billing_pool = nil
+}
+
+// SetGroupID sets the "group_id" field.
+func (m *BillingPoolGroupMutation) SetGroupID(i int64) {
+	m.group = &i
+}
+
+// GroupID returns the value of the "group_id" field in the mutation.
+func (m *BillingPoolGroupMutation) GroupID() (r int64, exists bool) {
+	v := m.group
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGroupID returns the old "group_id" field's value of the BillingPoolGroup entity.
+// If the BillingPoolGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BillingPoolGroupMutation) OldGroupID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGroupID: %w", err)
+	}
+	return oldValue.GroupID, nil
+}
+
+// ResetGroupID resets all changes to the "group_id" field.
+func (m *BillingPoolGroupMutation) ResetGroupID() {
+	m.group = nil
+}
+
+// SetChainOrder sets the "chain_order" field.
+func (m *BillingPoolGroupMutation) SetChainOrder(i int) {
+	m.chain_order = &i
+	m.addchain_order = nil
+}
+
+// ChainOrder returns the value of the "chain_order" field in the mutation.
+func (m *BillingPoolGroupMutation) ChainOrder() (r int, exists bool) {
+	v := m.chain_order
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldChainOrder returns the old "chain_order" field's value of the BillingPoolGroup entity.
+// If the BillingPoolGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BillingPoolGroupMutation) OldChainOrder(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldChainOrder is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldChainOrder requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldChainOrder: %w", err)
+	}
+	return oldValue.ChainOrder, nil
+}
+
+// AddChainOrder adds i to the "chain_order" field.
+func (m *BillingPoolGroupMutation) AddChainOrder(i int) {
+	if m.addchain_order != nil {
+		*m.addchain_order += i
+	} else {
+		m.addchain_order = &i
+	}
+}
+
+// AddedChainOrder returns the value that was added to the "chain_order" field in this mutation.
+func (m *BillingPoolGroupMutation) AddedChainOrder() (r int, exists bool) {
+	v := m.addchain_order
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetChainOrder resets all changes to the "chain_order" field.
+func (m *BillingPoolGroupMutation) ResetChainOrder() {
+	m.chain_order = nil
+	m.addchain_order = nil
+}
+
+// SetCanBePrimary sets the "can_be_primary" field.
+func (m *BillingPoolGroupMutation) SetCanBePrimary(b bool) {
+	m.can_be_primary = &b
+}
+
+// CanBePrimary returns the value of the "can_be_primary" field in the mutation.
+func (m *BillingPoolGroupMutation) CanBePrimary() (r bool, exists bool) {
+	v := m.can_be_primary
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCanBePrimary returns the old "can_be_primary" field's value of the BillingPoolGroup entity.
+// If the BillingPoolGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BillingPoolGroupMutation) OldCanBePrimary(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCanBePrimary is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCanBePrimary requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCanBePrimary: %w", err)
+	}
+	return oldValue.CanBePrimary, nil
+}
+
+// ResetCanBePrimary resets all changes to the "can_be_primary" field.
+func (m *BillingPoolGroupMutation) ResetCanBePrimary() {
+	m.can_be_primary = nil
+}
+
+// SetCanBeFallback sets the "can_be_fallback" field.
+func (m *BillingPoolGroupMutation) SetCanBeFallback(b bool) {
+	m.can_be_fallback = &b
+}
+
+// CanBeFallback returns the value of the "can_be_fallback" field in the mutation.
+func (m *BillingPoolGroupMutation) CanBeFallback() (r bool, exists bool) {
+	v := m.can_be_fallback
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCanBeFallback returns the old "can_be_fallback" field's value of the BillingPoolGroup entity.
+// If the BillingPoolGroup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BillingPoolGroupMutation) OldCanBeFallback(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCanBeFallback is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCanBeFallback requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCanBeFallback: %w", err)
+	}
+	return oldValue.CanBeFallback, nil
+}
+
+// ResetCanBeFallback resets all changes to the "can_be_fallback" field.
+func (m *BillingPoolGroupMutation) ResetCanBeFallback() {
+	m.can_be_fallback = nil
+}
+
+// ClearBillingPool clears the "billing_pool" edge to the BillingPool entity.
+func (m *BillingPoolGroupMutation) ClearBillingPool() {
+	m.clearedbilling_pool = true
+	m.clearedFields[billingpoolgroup.FieldBillingPoolID] = struct{}{}
+}
+
+// BillingPoolCleared reports if the "billing_pool" edge to the BillingPool entity was cleared.
+func (m *BillingPoolGroupMutation) BillingPoolCleared() bool {
+	return m.clearedbilling_pool
+}
+
+// BillingPoolIDs returns the "billing_pool" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// BillingPoolID instead. It exists only for internal usage by the builders.
+func (m *BillingPoolGroupMutation) BillingPoolIDs() (ids []int64) {
+	if id := m.billing_pool; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetBillingPool resets all changes to the "billing_pool" edge.
+func (m *BillingPoolGroupMutation) ResetBillingPool() {
+	m.billing_pool = nil
+	m.clearedbilling_pool = false
+}
+
+// ClearGroup clears the "group" edge to the Group entity.
+func (m *BillingPoolGroupMutation) ClearGroup() {
+	m.clearedgroup = true
+	m.clearedFields[billingpoolgroup.FieldGroupID] = struct{}{}
+}
+
+// GroupCleared reports if the "group" edge to the Group entity was cleared.
+func (m *BillingPoolGroupMutation) GroupCleared() bool {
+	return m.clearedgroup
+}
+
+// GroupIDs returns the "group" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// GroupID instead. It exists only for internal usage by the builders.
+func (m *BillingPoolGroupMutation) GroupIDs() (ids []int64) {
+	if id := m.group; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetGroup resets all changes to the "group" edge.
+func (m *BillingPoolGroupMutation) ResetGroup() {
+	m.group = nil
+	m.clearedgroup = false
+}
+
+// Where appends a list predicates to the BillingPoolGroupMutation builder.
+func (m *BillingPoolGroupMutation) Where(ps ...predicate.BillingPoolGroup) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the BillingPoolGroupMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *BillingPoolGroupMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.BillingPoolGroup, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *BillingPoolGroupMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *BillingPoolGroupMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (BillingPoolGroup).
+func (m *BillingPoolGroupMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *BillingPoolGroupMutation) Fields() []string {
+	fields := make([]string, 0, 8)
+	if m.created_at != nil {
+		fields = append(fields, billingpoolgroup.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, billingpoolgroup.FieldUpdatedAt)
+	}
+	if m.deleted_at != nil {
+		fields = append(fields, billingpoolgroup.FieldDeletedAt)
+	}
+	if m.billing_pool != nil {
+		fields = append(fields, billingpoolgroup.FieldBillingPoolID)
+	}
+	if m.group != nil {
+		fields = append(fields, billingpoolgroup.FieldGroupID)
+	}
+	if m.chain_order != nil {
+		fields = append(fields, billingpoolgroup.FieldChainOrder)
+	}
+	if m.can_be_primary != nil {
+		fields = append(fields, billingpoolgroup.FieldCanBePrimary)
+	}
+	if m.can_be_fallback != nil {
+		fields = append(fields, billingpoolgroup.FieldCanBeFallback)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *BillingPoolGroupMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case billingpoolgroup.FieldCreatedAt:
+		return m.CreatedAt()
+	case billingpoolgroup.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case billingpoolgroup.FieldDeletedAt:
+		return m.DeletedAt()
+	case billingpoolgroup.FieldBillingPoolID:
+		return m.BillingPoolID()
+	case billingpoolgroup.FieldGroupID:
+		return m.GroupID()
+	case billingpoolgroup.FieldChainOrder:
+		return m.ChainOrder()
+	case billingpoolgroup.FieldCanBePrimary:
+		return m.CanBePrimary()
+	case billingpoolgroup.FieldCanBeFallback:
+		return m.CanBeFallback()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *BillingPoolGroupMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case billingpoolgroup.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case billingpoolgroup.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case billingpoolgroup.FieldDeletedAt:
+		return m.OldDeletedAt(ctx)
+	case billingpoolgroup.FieldBillingPoolID:
+		return m.OldBillingPoolID(ctx)
+	case billingpoolgroup.FieldGroupID:
+		return m.OldGroupID(ctx)
+	case billingpoolgroup.FieldChainOrder:
+		return m.OldChainOrder(ctx)
+	case billingpoolgroup.FieldCanBePrimary:
+		return m.OldCanBePrimary(ctx)
+	case billingpoolgroup.FieldCanBeFallback:
+		return m.OldCanBeFallback(ctx)
+	}
+	return nil, fmt.Errorf("unknown BillingPoolGroup field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *BillingPoolGroupMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case billingpoolgroup.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case billingpoolgroup.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case billingpoolgroup.FieldDeletedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDeletedAt(v)
+		return nil
+	case billingpoolgroup.FieldBillingPoolID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBillingPoolID(v)
+		return nil
+	case billingpoolgroup.FieldGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGroupID(v)
+		return nil
+	case billingpoolgroup.FieldChainOrder:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetChainOrder(v)
+		return nil
+	case billingpoolgroup.FieldCanBePrimary:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCanBePrimary(v)
+		return nil
+	case billingpoolgroup.FieldCanBeFallback:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCanBeFallback(v)
+		return nil
+	}
+	return fmt.Errorf("unknown BillingPoolGroup field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *BillingPoolGroupMutation) AddedFields() []string {
+	var fields []string
+	if m.addchain_order != nil {
+		fields = append(fields, billingpoolgroup.FieldChainOrder)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *BillingPoolGroupMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case billingpoolgroup.FieldChainOrder:
+		return m.AddedChainOrder()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *BillingPoolGroupMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case billingpoolgroup.FieldChainOrder:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddChainOrder(v)
+		return nil
+	}
+	return fmt.Errorf("unknown BillingPoolGroup numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *BillingPoolGroupMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(billingpoolgroup.FieldDeletedAt) {
+		fields = append(fields, billingpoolgroup.FieldDeletedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *BillingPoolGroupMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *BillingPoolGroupMutation) ClearField(name string) error {
+	switch name {
+	case billingpoolgroup.FieldDeletedAt:
+		m.ClearDeletedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown BillingPoolGroup nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *BillingPoolGroupMutation) ResetField(name string) error {
+	switch name {
+	case billingpoolgroup.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case billingpoolgroup.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case billingpoolgroup.FieldDeletedAt:
+		m.ResetDeletedAt()
+		return nil
+	case billingpoolgroup.FieldBillingPoolID:
+		m.ResetBillingPoolID()
+		return nil
+	case billingpoolgroup.FieldGroupID:
+		m.ResetGroupID()
+		return nil
+	case billingpoolgroup.FieldChainOrder:
+		m.ResetChainOrder()
+		return nil
+	case billingpoolgroup.FieldCanBePrimary:
+		m.ResetCanBePrimary()
+		return nil
+	case billingpoolgroup.FieldCanBeFallback:
+		m.ResetCanBeFallback()
+		return nil
+	}
+	return fmt.Errorf("unknown BillingPoolGroup field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *BillingPoolGroupMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.billing_pool != nil {
+		edges = append(edges, billingpoolgroup.EdgeBillingPool)
+	}
+	if m.group != nil {
+		edges = append(edges, billingpoolgroup.EdgeGroup)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *BillingPoolGroupMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case billingpoolgroup.EdgeBillingPool:
+		if id := m.billing_pool; id != nil {
+			return []ent.Value{*id}
+		}
+	case billingpoolgroup.EdgeGroup:
+		if id := m.group; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *BillingPoolGroupMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *BillingPoolGroupMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *BillingPoolGroupMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.clearedbilling_pool {
+		edges = append(edges, billingpoolgroup.EdgeBillingPool)
+	}
+	if m.clearedgroup {
+		edges = append(edges, billingpoolgroup.EdgeGroup)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *BillingPoolGroupMutation) EdgeCleared(name string) bool {
+	switch name {
+	case billingpoolgroup.EdgeBillingPool:
+		return m.clearedbilling_pool
+	case billingpoolgroup.EdgeGroup:
+		return m.clearedgroup
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *BillingPoolGroupMutation) ClearEdge(name string) error {
+	switch name {
+	case billingpoolgroup.EdgeBillingPool:
+		m.ClearBillingPool()
+		return nil
+	case billingpoolgroup.EdgeGroup:
+		m.ClearGroup()
+		return nil
+	}
+	return fmt.Errorf("unknown BillingPoolGroup unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *BillingPoolGroupMutation) ResetEdge(name string) error {
+	switch name {
+	case billingpoolgroup.EdgeBillingPool:
+		m.ResetBillingPool()
+		return nil
+	case billingpoolgroup.EdgeGroup:
+		m.ResetGroup()
+		return nil
+	}
+	return fmt.Errorf("unknown BillingPoolGroup edge %s", name)
+}
+
 // ChannelMonitorMutation represents an operation that mutates the ChannelMonitor nodes in the graph.
 type ChannelMonitorMutation struct {
 	config
@@ -14905,6 +17171,9 @@ type GroupMutation struct {
 	api_keys                                map[int64]struct{}
 	removedapi_keys                         map[int64]struct{}
 	clearedapi_keys                         bool
+	billing_pool_memberships                map[int64]struct{}
+	removedbilling_pool_memberships         map[int64]struct{}
+	clearedbilling_pool_memberships         bool
 	redeem_codes                            map[int64]struct{}
 	removedredeem_codes                     map[int64]struct{}
 	clearedredeem_codes                     bool
@@ -16727,6 +18996,60 @@ func (m *GroupMutation) ResetAPIKeys() {
 	m.removedapi_keys = nil
 }
 
+// AddBillingPoolMembershipIDs adds the "billing_pool_memberships" edge to the BillingPoolGroup entity by ids.
+func (m *GroupMutation) AddBillingPoolMembershipIDs(ids ...int64) {
+	if m.billing_pool_memberships == nil {
+		m.billing_pool_memberships = make(map[int64]struct{})
+	}
+	for i := range ids {
+		m.billing_pool_memberships[ids[i]] = struct{}{}
+	}
+}
+
+// ClearBillingPoolMemberships clears the "billing_pool_memberships" edge to the BillingPoolGroup entity.
+func (m *GroupMutation) ClearBillingPoolMemberships() {
+	m.clearedbilling_pool_memberships = true
+}
+
+// BillingPoolMembershipsCleared reports if the "billing_pool_memberships" edge to the BillingPoolGroup entity was cleared.
+func (m *GroupMutation) BillingPoolMembershipsCleared() bool {
+	return m.clearedbilling_pool_memberships
+}
+
+// RemoveBillingPoolMembershipIDs removes the "billing_pool_memberships" edge to the BillingPoolGroup entity by IDs.
+func (m *GroupMutation) RemoveBillingPoolMembershipIDs(ids ...int64) {
+	if m.removedbilling_pool_memberships == nil {
+		m.removedbilling_pool_memberships = make(map[int64]struct{})
+	}
+	for i := range ids {
+		delete(m.billing_pool_memberships, ids[i])
+		m.removedbilling_pool_memberships[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedBillingPoolMemberships returns the removed IDs of the "billing_pool_memberships" edge to the BillingPoolGroup entity.
+func (m *GroupMutation) RemovedBillingPoolMembershipsIDs() (ids []int64) {
+	for id := range m.removedbilling_pool_memberships {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// BillingPoolMembershipsIDs returns the "billing_pool_memberships" edge IDs in the mutation.
+func (m *GroupMutation) BillingPoolMembershipsIDs() (ids []int64) {
+	for id := range m.billing_pool_memberships {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetBillingPoolMemberships resets all changes to the "billing_pool_memberships" edge.
+func (m *GroupMutation) ResetBillingPoolMemberships() {
+	m.billing_pool_memberships = nil
+	m.clearedbilling_pool_memberships = false
+	m.removedbilling_pool_memberships = nil
+}
+
 // AddRedeemCodeIDs adds the "redeem_codes" edge to the RedeemCode entity by ids.
 func (m *GroupMutation) AddRedeemCodeIDs(ids ...int64) {
 	if m.redeem_codes == nil {
@@ -17919,9 +20242,12 @@ func (m *GroupMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *GroupMutation) AddedEdges() []string {
-	edges := make([]string, 0, 6)
+	edges := make([]string, 0, 7)
 	if m.api_keys != nil {
 		edges = append(edges, group.EdgeAPIKeys)
+	}
+	if m.billing_pool_memberships != nil {
+		edges = append(edges, group.EdgeBillingPoolMemberships)
 	}
 	if m.redeem_codes != nil {
 		edges = append(edges, group.EdgeRedeemCodes)
@@ -17948,6 +20274,12 @@ func (m *GroupMutation) AddedIDs(name string) []ent.Value {
 	case group.EdgeAPIKeys:
 		ids := make([]ent.Value, 0, len(m.api_keys))
 		for id := range m.api_keys {
+			ids = append(ids, id)
+		}
+		return ids
+	case group.EdgeBillingPoolMemberships:
+		ids := make([]ent.Value, 0, len(m.billing_pool_memberships))
+		for id := range m.billing_pool_memberships {
 			ids = append(ids, id)
 		}
 		return ids
@@ -17987,9 +20319,12 @@ func (m *GroupMutation) AddedIDs(name string) []ent.Value {
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *GroupMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 6)
+	edges := make([]string, 0, 7)
 	if m.removedapi_keys != nil {
 		edges = append(edges, group.EdgeAPIKeys)
+	}
+	if m.removedbilling_pool_memberships != nil {
+		edges = append(edges, group.EdgeBillingPoolMemberships)
 	}
 	if m.removedredeem_codes != nil {
 		edges = append(edges, group.EdgeRedeemCodes)
@@ -18016,6 +20351,12 @@ func (m *GroupMutation) RemovedIDs(name string) []ent.Value {
 	case group.EdgeAPIKeys:
 		ids := make([]ent.Value, 0, len(m.removedapi_keys))
 		for id := range m.removedapi_keys {
+			ids = append(ids, id)
+		}
+		return ids
+	case group.EdgeBillingPoolMemberships:
+		ids := make([]ent.Value, 0, len(m.removedbilling_pool_memberships))
+		for id := range m.removedbilling_pool_memberships {
 			ids = append(ids, id)
 		}
 		return ids
@@ -18055,9 +20396,12 @@ func (m *GroupMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *GroupMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 6)
+	edges := make([]string, 0, 7)
 	if m.clearedapi_keys {
 		edges = append(edges, group.EdgeAPIKeys)
+	}
+	if m.clearedbilling_pool_memberships {
+		edges = append(edges, group.EdgeBillingPoolMemberships)
 	}
 	if m.clearedredeem_codes {
 		edges = append(edges, group.EdgeRedeemCodes)
@@ -18083,6 +20427,8 @@ func (m *GroupMutation) EdgeCleared(name string) bool {
 	switch name {
 	case group.EdgeAPIKeys:
 		return m.clearedapi_keys
+	case group.EdgeBillingPoolMemberships:
+		return m.clearedbilling_pool_memberships
 	case group.EdgeRedeemCodes:
 		return m.clearedredeem_codes
 	case group.EdgeSubscriptions:
@@ -18111,6 +20457,9 @@ func (m *GroupMutation) ResetEdge(name string) error {
 	switch name {
 	case group.EdgeAPIKeys:
 		m.ResetAPIKeys()
+		return nil
+	case group.EdgeBillingPoolMemberships:
+		m.ResetBillingPoolMemberships()
 		return nil
 	case group.EdgeRedeemCodes:
 		m.ResetRedeemCodes()

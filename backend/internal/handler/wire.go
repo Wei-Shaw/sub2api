@@ -2,6 +2,7 @@ package handler
 
 import (
 	"github.com/Wei-Shaw/sub2api/internal/handler/admin"
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/google/wire"
@@ -11,6 +12,7 @@ import (
 func ProvideAdminHandlers(
 	dashboardHandler *admin.DashboardHandler,
 	userHandler *admin.UserHandler,
+	billingPoolHandler *admin.BillingPoolHandler,
 	groupHandler *admin.GroupHandler,
 	accountHandler *admin.AccountHandler,
 	announcementHandler *admin.AnnouncementHandler,
@@ -43,6 +45,7 @@ func ProvideAdminHandlers(
 	return &AdminHandlers{
 		Dashboard:              dashboardHandler,
 		User:                   userHandler,
+		BillingPool:            billingPoolHandler,
 		Group:                  groupHandler,
 		Account:                accountHandler,
 		Announcement:           announcementHandler,
@@ -90,6 +93,68 @@ func ProvideSettingHandler(settingService *service.SettingService, buildInfo Bui
 func ProvideAdminSettingHandler(settingService *service.SettingService, emailService *service.EmailService, turnstileService *service.TurnstileService, opsService *service.OpsService, paymentConfigService *service.PaymentConfigService, paymentService *service.PaymentService, userAttributeService *service.UserAttributeService, notificationEmailService *service.NotificationEmailService) *admin.SettingHandler {
 	h := admin.NewSettingHandler(settingService, emailService, turnstileService, opsService, paymentConfigService, paymentService, userAttributeService)
 	h.SetNotificationEmailService(notificationEmailService)
+	return h
+}
+
+func ProvideGatewayHandler(
+	gatewayService *service.GatewayService,
+	geminiCompatService *service.GeminiMessagesCompatService,
+	antigravityGatewayService *service.AntigravityGatewayService,
+	userService *service.UserService,
+	concurrencyService *service.ConcurrencyService,
+	billingCacheService *service.BillingCacheService,
+	usageService *service.UsageService,
+	apiKeyService *service.APIKeyService,
+	usageRecordWorkerPool *service.UsageRecordWorkerPool,
+	errorPassthroughService *service.ErrorPassthroughService,
+	contentModerationService *service.ContentModerationService,
+	userMsgQueueService *service.UserMessageQueueService,
+	cfg *config.Config,
+	settingService *service.SettingService,
+	subscriptionService *service.SubscriptionService,
+) *GatewayHandler {
+	h := NewGatewayHandler(
+		gatewayService,
+		geminiCompatService,
+		antigravityGatewayService,
+		userService,
+		concurrencyService,
+		billingCacheService,
+		usageService,
+		apiKeyService,
+		usageRecordWorkerPool,
+		errorPassthroughService,
+		contentModerationService,
+		userMsgQueueService,
+		cfg,
+		settingService,
+	)
+	h.SetSubscriptionService(subscriptionService)
+	return h
+}
+
+func ProvideOpenAIGatewayHandler(
+	gatewayService *service.OpenAIGatewayService,
+	concurrencyService *service.ConcurrencyService,
+	billingCacheService *service.BillingCacheService,
+	apiKeyService *service.APIKeyService,
+	usageRecordWorkerPool *service.UsageRecordWorkerPool,
+	errorPassthroughService *service.ErrorPassthroughService,
+	contentModerationService *service.ContentModerationService,
+	cfg *config.Config,
+	subscriptionService *service.SubscriptionService,
+) *OpenAIGatewayHandler {
+	h := NewOpenAIGatewayHandler(
+		gatewayService,
+		concurrencyService,
+		billingCacheService,
+		apiKeyService,
+		usageRecordWorkerPool,
+		errorPassthroughService,
+		contentModerationService,
+		cfg,
+	)
+	h.SetSubscriptionService(subscriptionService)
 	return h
 }
 
@@ -145,8 +210,8 @@ var ProviderSet = wire.NewSet(
 	NewSubscriptionHandler,
 	NewAnnouncementHandler,
 	NewChannelMonitorUserHandler,
-	NewGatewayHandler,
-	NewOpenAIGatewayHandler,
+	ProvideGatewayHandler,
+	ProvideOpenAIGatewayHandler,
 	NewTotpHandler,
 	ProvideSettingHandler,
 	NewPaymentHandler,
@@ -156,6 +221,7 @@ var ProviderSet = wire.NewSet(
 	// Admin handlers
 	admin.NewDashboardHandler,
 	admin.NewUserHandler,
+	admin.NewBillingPoolHandler,
 	admin.NewGroupHandler,
 	admin.NewAccountHandler,
 	admin.NewAnnouncementHandler,

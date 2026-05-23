@@ -53,6 +53,10 @@ type APIKey struct {
 	Key         string     `json:"key"`
 	Name        string     `json:"name"`
 	GroupID     *int64     `json:"group_id"`
+	BillingMode string     `json:"billing_mode"`
+	BillingPoolID *int64   `json:"billing_pool_id"`
+	UsePoolDefaultOrder bool `json:"use_pool_default_order"`
+	CustomFallbackGroupIDs []int64 `json:"custom_fallback_group_ids"`
 	Status      string     `json:"status"`
 	IPWhitelist []string   `json:"ip_whitelist"`
 	IPBlacklist []string   `json:"ip_blacklist"`
@@ -77,8 +81,10 @@ type APIKey struct {
 	Reset1dAt     *time.Time `json:"reset_1d_at,omitempty"`
 	Reset7dAt     *time.Time `json:"reset_7d_at,omitempty"`
 
-	User  *User  `json:"user,omitempty"`
-	Group *Group `json:"group,omitempty"`
+	BillingPool         *BillingPoolSummary       `json:"billing_pool"`
+	BillingChainPreview []BillingChainPreviewItem `json:"billing_chain_preview"`
+	User                *User                     `json:"user,omitempty"`
+	Group               *Group                    `json:"group,omitempty"`
 }
 
 type Group struct {
@@ -115,6 +121,11 @@ type Group struct {
 	// 账号过滤控制（仅 OpenAI/Antigravity 平台有效）
 	RequireOAuthOnly  bool `json:"require_oauth_only"`
 	RequirePrivacySet bool `json:"require_privacy_set"`
+	DefaultBillingPoolID     *int64  `json:"default_billing_pool_id"`
+	BillingPoolName          *string `json:"billing_pool_name"`
+	BillingPoolPlatformScope *string `json:"billing_pool_platform_scope"`
+	RecommendedBillingMode   *string `json:"recommended_billing_mode"`
+	SupportsPoolFallback     bool    `json:"supports_pool_fallback"`
 
 	// RPMLimit 分组级每分钟请求数上限（0 = 不限制），设置后覆盖用户级 rpm_limit。
 	RPMLimit int `json:"rpm_limit"`
@@ -148,6 +159,60 @@ type AdminGroup struct {
 
 	// 分组排序
 	SortOrder int `json:"sort_order"`
+}
+
+type BillingPoolSummary struct {
+	ID                         int64     `json:"id"`
+	Name                       string    `json:"name"`
+	Status                     string    `json:"status"`
+	PlatformScope              string    `json:"platform_scope"`
+	AllowUserReorder           bool      `json:"allow_user_reorder"`
+	RequirePrimarySubscription bool      `json:"require_primary_subscription"`
+	AllowBalanceFallback       bool      `json:"allow_balance_fallback"`
+	CreatedAt                  time.Time `json:"created_at,omitempty"`
+	UpdatedAt                  time.Time `json:"updated_at,omitempty"`
+}
+
+type BillingChainPreviewItem struct {
+	Type        string  `json:"type"`
+	GroupID     *int64  `json:"group_id,omitempty"`
+	GroupName   *string `json:"group_name,omitempty"`
+	Platform    *string `json:"platform,omitempty"`
+	Required    *bool   `json:"required,omitempty"`
+	SourceLabel string  `json:"source_label"`
+}
+
+type BillingPoolGroupMember struct {
+	GroupID          int64  `json:"group_id"`
+	GroupName        string `json:"group_name"`
+	Platform         string `json:"platform"`
+	SubscriptionType string `json:"subscription_type"`
+	ChainOrder       int    `json:"chain_order"`
+	CanBePrimary     bool   `json:"can_be_primary"`
+	CanBeFallback    bool   `json:"can_be_fallback"`
+}
+
+type BillingPool struct {
+	ID                         int64                    `json:"id"`
+	Name                       string                   `json:"name"`
+	Code                       string                   `json:"code"`
+	Description                string                   `json:"description"`
+	Status                     string                   `json:"status"`
+	PlatformScope              string                   `json:"platform_scope"`
+	AllowUserReorder           bool                     `json:"allow_user_reorder"`
+	RequirePrimarySubscription bool                     `json:"require_primary_subscription"`
+	AllowBalanceFallback       bool                     `json:"allow_balance_fallback"`
+	GroupCount                 int                      `json:"group_count"`
+	Groups                     []BillingPoolGroupMember `json:"groups,omitempty"`
+	CreatedAt                  time.Time                `json:"created_at"`
+	UpdatedAt                  time.Time                `json:"updated_at"`
+}
+
+type BillingPoolLookup struct {
+	ID            int64  `json:"id"`
+	Name          string `json:"name"`
+	Status        string `json:"status"`
+	PlatformScope string `json:"platform_scope"`
 }
 
 type Account struct {

@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/billingpool"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
@@ -120,6 +121,26 @@ func (_u *APIKeyUpdate) ClearGroupID() *APIKeyUpdate {
 	return _u
 }
 
+// SetBillingPoolID sets the "billing_pool_id" field.
+func (_u *APIKeyUpdate) SetBillingPoolID(v int64) *APIKeyUpdate {
+	_u.mutation.SetBillingPoolID(v)
+	return _u
+}
+
+// SetNillableBillingPoolID sets the "billing_pool_id" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableBillingPoolID(v *int64) *APIKeyUpdate {
+	if v != nil {
+		_u.SetBillingPoolID(*v)
+	}
+	return _u
+}
+
+// ClearBillingPoolID clears the value of the "billing_pool_id" field.
+func (_u *APIKeyUpdate) ClearBillingPoolID() *APIKeyUpdate {
+	_u.mutation.ClearBillingPoolID()
+	return _u
+}
+
 // SetStatus sets the "status" field.
 func (_u *APIKeyUpdate) SetStatus(v string) *APIKeyUpdate {
 	_u.mutation.SetStatus(v)
@@ -131,6 +152,52 @@ func (_u *APIKeyUpdate) SetNillableStatus(v *string) *APIKeyUpdate {
 	if v != nil {
 		_u.SetStatus(*v)
 	}
+	return _u
+}
+
+// SetBillingMode sets the "billing_mode" field.
+func (_u *APIKeyUpdate) SetBillingMode(v string) *APIKeyUpdate {
+	_u.mutation.SetBillingMode(v)
+	return _u
+}
+
+// SetNillableBillingMode sets the "billing_mode" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableBillingMode(v *string) *APIKeyUpdate {
+	if v != nil {
+		_u.SetBillingMode(*v)
+	}
+	return _u
+}
+
+// SetUsePoolDefaultOrder sets the "use_pool_default_order" field.
+func (_u *APIKeyUpdate) SetUsePoolDefaultOrder(v bool) *APIKeyUpdate {
+	_u.mutation.SetUsePoolDefaultOrder(v)
+	return _u
+}
+
+// SetNillableUsePoolDefaultOrder sets the "use_pool_default_order" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableUsePoolDefaultOrder(v *bool) *APIKeyUpdate {
+	if v != nil {
+		_u.SetUsePoolDefaultOrder(*v)
+	}
+	return _u
+}
+
+// SetCustomFallbackGroupIds sets the "custom_fallback_group_ids" field.
+func (_u *APIKeyUpdate) SetCustomFallbackGroupIds(v []int64) *APIKeyUpdate {
+	_u.mutation.SetCustomFallbackGroupIds(v)
+	return _u
+}
+
+// AppendCustomFallbackGroupIds appends value to the "custom_fallback_group_ids" field.
+func (_u *APIKeyUpdate) AppendCustomFallbackGroupIds(v []int64) *APIKeyUpdate {
+	_u.mutation.AppendCustomFallbackGroupIds(v)
+	return _u
+}
+
+// ClearCustomFallbackGroupIds clears the value of the "custom_fallback_group_ids" field.
+func (_u *APIKeyUpdate) ClearCustomFallbackGroupIds() *APIKeyUpdate {
+	_u.mutation.ClearCustomFallbackGroupIds()
 	return _u
 }
 
@@ -448,6 +515,11 @@ func (_u *APIKeyUpdate) SetGroup(v *Group) *APIKeyUpdate {
 	return _u.SetGroupID(v.ID)
 }
 
+// SetBillingPool sets the "billing_pool" edge to the BillingPool entity.
+func (_u *APIKeyUpdate) SetBillingPool(v *BillingPool) *APIKeyUpdate {
+	return _u.SetBillingPoolID(v.ID)
+}
+
 // AddUsageLogIDs adds the "usage_logs" edge to the UsageLog entity by IDs.
 func (_u *APIKeyUpdate) AddUsageLogIDs(ids ...int64) *APIKeyUpdate {
 	_u.mutation.AddUsageLogIDs(ids...)
@@ -477,6 +549,12 @@ func (_u *APIKeyUpdate) ClearUser() *APIKeyUpdate {
 // ClearGroup clears the "group" edge to the Group entity.
 func (_u *APIKeyUpdate) ClearGroup() *APIKeyUpdate {
 	_u.mutation.ClearGroup()
+	return _u
+}
+
+// ClearBillingPool clears the "billing_pool" edge to the BillingPool entity.
+func (_u *APIKeyUpdate) ClearBillingPool() *APIKeyUpdate {
+	_u.mutation.ClearBillingPool()
 	return _u
 }
 
@@ -560,6 +638,11 @@ func (_u *APIKeyUpdate) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "APIKey.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.BillingMode(); ok {
+		if err := apikey.BillingModeValidator(v); err != nil {
+			return &ValidationError{Name: "billing_mode", err: fmt.Errorf(`ent: validator failed for field "APIKey.billing_mode": %w`, err)}
+		}
+	}
 	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "APIKey.user"`)
 	}
@@ -595,6 +678,23 @@ func (_u *APIKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(apikey.FieldStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.BillingMode(); ok {
+		_spec.SetField(apikey.FieldBillingMode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.UsePoolDefaultOrder(); ok {
+		_spec.SetField(apikey.FieldUsePoolDefaultOrder, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.CustomFallbackGroupIds(); ok {
+		_spec.SetField(apikey.FieldCustomFallbackGroupIds, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedCustomFallbackGroupIds(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, apikey.FieldCustomFallbackGroupIds, value)
+		})
+	}
+	if _u.mutation.CustomFallbackGroupIdsCleared() {
+		_spec.ClearField(apikey.FieldCustomFallbackGroupIds, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.LastUsedAt(); ok {
 		_spec.SetField(apikey.FieldLastUsedAt, field.TypeTime, value)
@@ -747,6 +847,35 @@ func (_u *APIKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(group.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.BillingPoolCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   apikey.BillingPoolTable,
+			Columns: []string{apikey.BillingPoolColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(billingpool.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.BillingPoolIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   apikey.BillingPoolTable,
+			Columns: []string{apikey.BillingPoolColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(billingpool.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {
@@ -907,6 +1036,26 @@ func (_u *APIKeyUpdateOne) ClearGroupID() *APIKeyUpdateOne {
 	return _u
 }
 
+// SetBillingPoolID sets the "billing_pool_id" field.
+func (_u *APIKeyUpdateOne) SetBillingPoolID(v int64) *APIKeyUpdateOne {
+	_u.mutation.SetBillingPoolID(v)
+	return _u
+}
+
+// SetNillableBillingPoolID sets the "billing_pool_id" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableBillingPoolID(v *int64) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetBillingPoolID(*v)
+	}
+	return _u
+}
+
+// ClearBillingPoolID clears the value of the "billing_pool_id" field.
+func (_u *APIKeyUpdateOne) ClearBillingPoolID() *APIKeyUpdateOne {
+	_u.mutation.ClearBillingPoolID()
+	return _u
+}
+
 // SetStatus sets the "status" field.
 func (_u *APIKeyUpdateOne) SetStatus(v string) *APIKeyUpdateOne {
 	_u.mutation.SetStatus(v)
@@ -918,6 +1067,52 @@ func (_u *APIKeyUpdateOne) SetNillableStatus(v *string) *APIKeyUpdateOne {
 	if v != nil {
 		_u.SetStatus(*v)
 	}
+	return _u
+}
+
+// SetBillingMode sets the "billing_mode" field.
+func (_u *APIKeyUpdateOne) SetBillingMode(v string) *APIKeyUpdateOne {
+	_u.mutation.SetBillingMode(v)
+	return _u
+}
+
+// SetNillableBillingMode sets the "billing_mode" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableBillingMode(v *string) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetBillingMode(*v)
+	}
+	return _u
+}
+
+// SetUsePoolDefaultOrder sets the "use_pool_default_order" field.
+func (_u *APIKeyUpdateOne) SetUsePoolDefaultOrder(v bool) *APIKeyUpdateOne {
+	_u.mutation.SetUsePoolDefaultOrder(v)
+	return _u
+}
+
+// SetNillableUsePoolDefaultOrder sets the "use_pool_default_order" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableUsePoolDefaultOrder(v *bool) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetUsePoolDefaultOrder(*v)
+	}
+	return _u
+}
+
+// SetCustomFallbackGroupIds sets the "custom_fallback_group_ids" field.
+func (_u *APIKeyUpdateOne) SetCustomFallbackGroupIds(v []int64) *APIKeyUpdateOne {
+	_u.mutation.SetCustomFallbackGroupIds(v)
+	return _u
+}
+
+// AppendCustomFallbackGroupIds appends value to the "custom_fallback_group_ids" field.
+func (_u *APIKeyUpdateOne) AppendCustomFallbackGroupIds(v []int64) *APIKeyUpdateOne {
+	_u.mutation.AppendCustomFallbackGroupIds(v)
+	return _u
+}
+
+// ClearCustomFallbackGroupIds clears the value of the "custom_fallback_group_ids" field.
+func (_u *APIKeyUpdateOne) ClearCustomFallbackGroupIds() *APIKeyUpdateOne {
+	_u.mutation.ClearCustomFallbackGroupIds()
 	return _u
 }
 
@@ -1235,6 +1430,11 @@ func (_u *APIKeyUpdateOne) SetGroup(v *Group) *APIKeyUpdateOne {
 	return _u.SetGroupID(v.ID)
 }
 
+// SetBillingPool sets the "billing_pool" edge to the BillingPool entity.
+func (_u *APIKeyUpdateOne) SetBillingPool(v *BillingPool) *APIKeyUpdateOne {
+	return _u.SetBillingPoolID(v.ID)
+}
+
 // AddUsageLogIDs adds the "usage_logs" edge to the UsageLog entity by IDs.
 func (_u *APIKeyUpdateOne) AddUsageLogIDs(ids ...int64) *APIKeyUpdateOne {
 	_u.mutation.AddUsageLogIDs(ids...)
@@ -1264,6 +1464,12 @@ func (_u *APIKeyUpdateOne) ClearUser() *APIKeyUpdateOne {
 // ClearGroup clears the "group" edge to the Group entity.
 func (_u *APIKeyUpdateOne) ClearGroup() *APIKeyUpdateOne {
 	_u.mutation.ClearGroup()
+	return _u
+}
+
+// ClearBillingPool clears the "billing_pool" edge to the BillingPool entity.
+func (_u *APIKeyUpdateOne) ClearBillingPool() *APIKeyUpdateOne {
+	_u.mutation.ClearBillingPool()
 	return _u
 }
 
@@ -1360,6 +1566,11 @@ func (_u *APIKeyUpdateOne) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "APIKey.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.BillingMode(); ok {
+		if err := apikey.BillingModeValidator(v); err != nil {
+			return &ValidationError{Name: "billing_mode", err: fmt.Errorf(`ent: validator failed for field "APIKey.billing_mode": %w`, err)}
+		}
+	}
 	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "APIKey.user"`)
 	}
@@ -1412,6 +1623,23 @@ func (_u *APIKeyUpdateOne) sqlSave(ctx context.Context) (_node *APIKey, err erro
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(apikey.FieldStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.BillingMode(); ok {
+		_spec.SetField(apikey.FieldBillingMode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.UsePoolDefaultOrder(); ok {
+		_spec.SetField(apikey.FieldUsePoolDefaultOrder, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.CustomFallbackGroupIds(); ok {
+		_spec.SetField(apikey.FieldCustomFallbackGroupIds, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedCustomFallbackGroupIds(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, apikey.FieldCustomFallbackGroupIds, value)
+		})
+	}
+	if _u.mutation.CustomFallbackGroupIdsCleared() {
+		_spec.ClearField(apikey.FieldCustomFallbackGroupIds, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.LastUsedAt(); ok {
 		_spec.SetField(apikey.FieldLastUsedAt, field.TypeTime, value)
@@ -1564,6 +1792,35 @@ func (_u *APIKeyUpdateOne) sqlSave(ctx context.Context) (_node *APIKey, err erro
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(group.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.BillingPoolCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   apikey.BillingPoolTable,
+			Columns: []string{apikey.BillingPoolColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(billingpool.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.BillingPoolIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   apikey.BillingPoolTable,
+			Columns: []string{apikey.BillingPoolColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(billingpool.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

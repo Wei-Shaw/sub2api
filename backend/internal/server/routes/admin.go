@@ -24,6 +24,7 @@ func RegisterAdminRoutes(
 		registerUserManagementRoutes(admin, h)
 
 		// 分组管理
+		registerBillingPoolRoutes(admin, h)
 		registerGroupRoutes(admin, h)
 
 		// 账号管理
@@ -97,6 +98,19 @@ func RegisterAdminRoutes(
 
 		// 邀请返利（专属用户管理）
 		registerAffiliateRoutes(admin, h)
+	}
+}
+
+func registerBillingPoolRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	billingPools := admin.Group("/billing-pools")
+	{
+		billingPools.GET("", h.Admin.BillingPool.List)
+		billingPools.GET("/lookup", h.Admin.BillingPool.Lookup)
+		billingPools.GET("/:id", h.Admin.BillingPool.GetByID)
+		billingPools.POST("", h.Admin.BillingPool.Create)
+		billingPools.PUT("/:id", h.Admin.BillingPool.Update)
+		billingPools.DELETE("/:id", h.Admin.BillingPool.Delete)
+		billingPools.PUT("/:id/members", h.Admin.BillingPool.ReplaceMembers)
 	}
 }
 

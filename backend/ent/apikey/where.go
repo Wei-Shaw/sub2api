@@ -90,9 +90,24 @@ func GroupID(v int64) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldGroupID, v))
 }
 
+// BillingPoolID applies equality check predicate on the "billing_pool_id" field. It's identical to BillingPoolIDEQ.
+func BillingPoolID(v int64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldBillingPoolID, v))
+}
+
 // Status applies equality check predicate on the "status" field. It's identical to StatusEQ.
 func Status(v string) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldStatus, v))
+}
+
+// BillingMode applies equality check predicate on the "billing_mode" field. It's identical to BillingModeEQ.
+func BillingMode(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldBillingMode, v))
+}
+
+// UsePoolDefaultOrder applies equality check predicate on the "use_pool_default_order" field. It's identical to UsePoolDefaultOrderEQ.
+func UsePoolDefaultOrder(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldUsePoolDefaultOrder, v))
 }
 
 // LastUsedAt applies equality check predicate on the "last_used_at" field. It's identical to LastUsedAtEQ.
@@ -470,6 +485,36 @@ func GroupIDNotNil() predicate.APIKey {
 	return predicate.APIKey(sql.FieldNotNull(FieldGroupID))
 }
 
+// BillingPoolIDEQ applies the EQ predicate on the "billing_pool_id" field.
+func BillingPoolIDEQ(v int64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldBillingPoolID, v))
+}
+
+// BillingPoolIDNEQ applies the NEQ predicate on the "billing_pool_id" field.
+func BillingPoolIDNEQ(v int64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldBillingPoolID, v))
+}
+
+// BillingPoolIDIn applies the In predicate on the "billing_pool_id" field.
+func BillingPoolIDIn(vs ...int64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldIn(FieldBillingPoolID, vs...))
+}
+
+// BillingPoolIDNotIn applies the NotIn predicate on the "billing_pool_id" field.
+func BillingPoolIDNotIn(vs ...int64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotIn(FieldBillingPoolID, vs...))
+}
+
+// BillingPoolIDIsNil applies the IsNil predicate on the "billing_pool_id" field.
+func BillingPoolIDIsNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldIsNull(FieldBillingPoolID))
+}
+
+// BillingPoolIDNotNil applies the NotNil predicate on the "billing_pool_id" field.
+func BillingPoolIDNotNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotNull(FieldBillingPoolID))
+}
+
 // StatusEQ applies the EQ predicate on the "status" field.
 func StatusEQ(v string) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldStatus, v))
@@ -533,6 +578,91 @@ func StatusEqualFold(v string) predicate.APIKey {
 // StatusContainsFold applies the ContainsFold predicate on the "status" field.
 func StatusContainsFold(v string) predicate.APIKey {
 	return predicate.APIKey(sql.FieldContainsFold(FieldStatus, v))
+}
+
+// BillingModeEQ applies the EQ predicate on the "billing_mode" field.
+func BillingModeEQ(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldBillingMode, v))
+}
+
+// BillingModeNEQ applies the NEQ predicate on the "billing_mode" field.
+func BillingModeNEQ(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldBillingMode, v))
+}
+
+// BillingModeIn applies the In predicate on the "billing_mode" field.
+func BillingModeIn(vs ...string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldIn(FieldBillingMode, vs...))
+}
+
+// BillingModeNotIn applies the NotIn predicate on the "billing_mode" field.
+func BillingModeNotIn(vs ...string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotIn(FieldBillingMode, vs...))
+}
+
+// BillingModeGT applies the GT predicate on the "billing_mode" field.
+func BillingModeGT(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGT(FieldBillingMode, v))
+}
+
+// BillingModeGTE applies the GTE predicate on the "billing_mode" field.
+func BillingModeGTE(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGTE(FieldBillingMode, v))
+}
+
+// BillingModeLT applies the LT predicate on the "billing_mode" field.
+func BillingModeLT(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLT(FieldBillingMode, v))
+}
+
+// BillingModeLTE applies the LTE predicate on the "billing_mode" field.
+func BillingModeLTE(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLTE(FieldBillingMode, v))
+}
+
+// BillingModeContains applies the Contains predicate on the "billing_mode" field.
+func BillingModeContains(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldContains(FieldBillingMode, v))
+}
+
+// BillingModeHasPrefix applies the HasPrefix predicate on the "billing_mode" field.
+func BillingModeHasPrefix(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldHasPrefix(FieldBillingMode, v))
+}
+
+// BillingModeHasSuffix applies the HasSuffix predicate on the "billing_mode" field.
+func BillingModeHasSuffix(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldHasSuffix(FieldBillingMode, v))
+}
+
+// BillingModeEqualFold applies the EqualFold predicate on the "billing_mode" field.
+func BillingModeEqualFold(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEqualFold(FieldBillingMode, v))
+}
+
+// BillingModeContainsFold applies the ContainsFold predicate on the "billing_mode" field.
+func BillingModeContainsFold(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldContainsFold(FieldBillingMode, v))
+}
+
+// UsePoolDefaultOrderEQ applies the EQ predicate on the "use_pool_default_order" field.
+func UsePoolDefaultOrderEQ(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldUsePoolDefaultOrder, v))
+}
+
+// UsePoolDefaultOrderNEQ applies the NEQ predicate on the "use_pool_default_order" field.
+func UsePoolDefaultOrderNEQ(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldUsePoolDefaultOrder, v))
+}
+
+// CustomFallbackGroupIdsIsNil applies the IsNil predicate on the "custom_fallback_group_ids" field.
+func CustomFallbackGroupIdsIsNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldIsNull(FieldCustomFallbackGroupIds))
+}
+
+// CustomFallbackGroupIdsNotNil applies the NotNil predicate on the "custom_fallback_group_ids" field.
+func CustomFallbackGroupIdsNotNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotNull(FieldCustomFallbackGroupIds))
 }
 
 // LastUsedAtEQ applies the EQ predicate on the "last_used_at" field.
@@ -1163,6 +1293,29 @@ func HasGroup() predicate.APIKey {
 func HasGroupWith(preds ...predicate.Group) predicate.APIKey {
 	return predicate.APIKey(func(s *sql.Selector) {
 		step := newGroupStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasBillingPool applies the HasEdge predicate on the "billing_pool" edge.
+func HasBillingPool() predicate.APIKey {
+	return predicate.APIKey(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, BillingPoolTable, BillingPoolColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasBillingPoolWith applies the HasEdge predicate on the "billing_pool" edge with a given conditions (other predicates).
+func HasBillingPoolWith(preds ...predicate.BillingPool) predicate.APIKey {
+	return predicate.APIKey(func(s *sql.Selector) {
+		step := newBillingPoolStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

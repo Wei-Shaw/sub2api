@@ -22,6 +22,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
+	"github.com/Wei-Shaw/sub2api/ent/billingpool"
+	"github.com/Wei-Shaw/sub2api/ent/billingpoolgroup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
@@ -72,6 +74,10 @@ type Client struct {
 	AuthIdentity *AuthIdentityClient
 	// AuthIdentityChannel is the client for interacting with the AuthIdentityChannel builders.
 	AuthIdentityChannel *AuthIdentityChannelClient
+	// BillingPool is the client for interacting with the BillingPool builders.
+	BillingPool *BillingPoolClient
+	// BillingPoolGroup is the client for interacting with the BillingPoolGroup builders.
+	BillingPoolGroup *BillingPoolGroupClient
 	// ChannelMonitor is the client for interacting with the ChannelMonitor builders.
 	ChannelMonitor *ChannelMonitorClient
 	// ChannelMonitorDailyRollup is the client for interacting with the ChannelMonitorDailyRollup builders.
@@ -144,6 +150,8 @@ func (c *Client) init() {
 	c.AnnouncementRead = NewAnnouncementReadClient(c.config)
 	c.AuthIdentity = NewAuthIdentityClient(c.config)
 	c.AuthIdentityChannel = NewAuthIdentityChannelClient(c.config)
+	c.BillingPool = NewBillingPoolClient(c.config)
+	c.BillingPoolGroup = NewBillingPoolGroupClient(c.config)
 	c.ChannelMonitor = NewChannelMonitorClient(c.config)
 	c.ChannelMonitorDailyRollup = NewChannelMonitorDailyRollupClient(c.config)
 	c.ChannelMonitorHistory = NewChannelMonitorHistoryClient(c.config)
@@ -270,6 +278,8 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		AnnouncementRead:              NewAnnouncementReadClient(cfg),
 		AuthIdentity:                  NewAuthIdentityClient(cfg),
 		AuthIdentityChannel:           NewAuthIdentityChannelClient(cfg),
+		BillingPool:                   NewBillingPoolClient(cfg),
+		BillingPoolGroup:              NewBillingPoolGroupClient(cfg),
 		ChannelMonitor:                NewChannelMonitorClient(cfg),
 		ChannelMonitorDailyRollup:     NewChannelMonitorDailyRollupClient(cfg),
 		ChannelMonitorHistory:         NewChannelMonitorHistoryClient(cfg),
@@ -323,6 +333,8 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		AnnouncementRead:              NewAnnouncementReadClient(cfg),
 		AuthIdentity:                  NewAuthIdentityClient(cfg),
 		AuthIdentityChannel:           NewAuthIdentityChannelClient(cfg),
+		BillingPool:                   NewBillingPoolClient(cfg),
+		BillingPoolGroup:              NewBillingPoolGroupClient(cfg),
 		ChannelMonitor:                NewChannelMonitorClient(cfg),
 		ChannelMonitorDailyRollup:     NewChannelMonitorDailyRollupClient(cfg),
 		ChannelMonitorHistory:         NewChannelMonitorHistoryClient(cfg),
@@ -380,8 +392,8 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
-		c.AuthIdentity, c.AuthIdentityChannel, c.ChannelMonitor,
-		c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
+		c.AuthIdentity, c.AuthIdentityChannel, c.BillingPool, c.BillingPoolGroup,
+		c.ChannelMonitor, c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
 		c.ChannelMonitorRequestTemplate, c.ErrorPassthroughRule, c.Group,
 		c.IdempotencyRecord, c.IdentityAdoptionDecision, c.PaymentAuditLog,
 		c.PaymentOrder, c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode,
@@ -399,8 +411,8 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
-		c.AuthIdentity, c.AuthIdentityChannel, c.ChannelMonitor,
-		c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
+		c.AuthIdentity, c.AuthIdentityChannel, c.BillingPool, c.BillingPoolGroup,
+		c.ChannelMonitor, c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
 		c.ChannelMonitorRequestTemplate, c.ErrorPassthroughRule, c.Group,
 		c.IdempotencyRecord, c.IdentityAdoptionDecision, c.PaymentAuditLog,
 		c.PaymentOrder, c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode,
@@ -430,6 +442,10 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.AuthIdentity.mutate(ctx, m)
 	case *AuthIdentityChannelMutation:
 		return c.AuthIdentityChannel.mutate(ctx, m)
+	case *BillingPoolMutation:
+		return c.BillingPool.mutate(ctx, m)
+	case *BillingPoolGroupMutation:
+		return c.BillingPoolGroup.mutate(ctx, m)
 	case *ChannelMonitorMutation:
 		return c.ChannelMonitor.mutate(ctx, m)
 	case *ChannelMonitorDailyRollupMutation:
@@ -622,6 +638,22 @@ func (c *APIKeyClient) QueryGroup(_m *APIKey) *GroupQuery {
 			sqlgraph.From(apikey.Table, apikey.FieldID, id),
 			sqlgraph.To(group.Table, group.FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, true, apikey.GroupTable, apikey.GroupColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryBillingPool queries the billing_pool edge of a APIKey.
+func (c *APIKeyClient) QueryBillingPool(_m *APIKey) *BillingPoolQuery {
+	query := (&BillingPoolClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(apikey.Table, apikey.FieldID, id),
+			sqlgraph.To(billingpool.Table, billingpool.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, apikey.BillingPoolTable, apikey.BillingPoolColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -1631,6 +1663,340 @@ func (c *AuthIdentityChannelClient) mutate(ctx context.Context, m *AuthIdentityC
 	}
 }
 
+// BillingPoolClient is a client for the BillingPool schema.
+type BillingPoolClient struct {
+	config
+}
+
+// NewBillingPoolClient returns a client for the BillingPool from the given config.
+func NewBillingPoolClient(c config) *BillingPoolClient {
+	return &BillingPoolClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `billingpool.Hooks(f(g(h())))`.
+func (c *BillingPoolClient) Use(hooks ...Hook) {
+	c.hooks.BillingPool = append(c.hooks.BillingPool, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `billingpool.Intercept(f(g(h())))`.
+func (c *BillingPoolClient) Intercept(interceptors ...Interceptor) {
+	c.inters.BillingPool = append(c.inters.BillingPool, interceptors...)
+}
+
+// Create returns a builder for creating a BillingPool entity.
+func (c *BillingPoolClient) Create() *BillingPoolCreate {
+	mutation := newBillingPoolMutation(c.config, OpCreate)
+	return &BillingPoolCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of BillingPool entities.
+func (c *BillingPoolClient) CreateBulk(builders ...*BillingPoolCreate) *BillingPoolCreateBulk {
+	return &BillingPoolCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *BillingPoolClient) MapCreateBulk(slice any, setFunc func(*BillingPoolCreate, int)) *BillingPoolCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &BillingPoolCreateBulk{err: fmt.Errorf("calling to BillingPoolClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*BillingPoolCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &BillingPoolCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for BillingPool.
+func (c *BillingPoolClient) Update() *BillingPoolUpdate {
+	mutation := newBillingPoolMutation(c.config, OpUpdate)
+	return &BillingPoolUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *BillingPoolClient) UpdateOne(_m *BillingPool) *BillingPoolUpdateOne {
+	mutation := newBillingPoolMutation(c.config, OpUpdateOne, withBillingPool(_m))
+	return &BillingPoolUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *BillingPoolClient) UpdateOneID(id int64) *BillingPoolUpdateOne {
+	mutation := newBillingPoolMutation(c.config, OpUpdateOne, withBillingPoolID(id))
+	return &BillingPoolUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for BillingPool.
+func (c *BillingPoolClient) Delete() *BillingPoolDelete {
+	mutation := newBillingPoolMutation(c.config, OpDelete)
+	return &BillingPoolDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *BillingPoolClient) DeleteOne(_m *BillingPool) *BillingPoolDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *BillingPoolClient) DeleteOneID(id int64) *BillingPoolDeleteOne {
+	builder := c.Delete().Where(billingpool.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &BillingPoolDeleteOne{builder}
+}
+
+// Query returns a query builder for BillingPool.
+func (c *BillingPoolClient) Query() *BillingPoolQuery {
+	return &BillingPoolQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeBillingPool},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a BillingPool entity by its id.
+func (c *BillingPoolClient) Get(ctx context.Context, id int64) (*BillingPool, error) {
+	return c.Query().Where(billingpool.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *BillingPoolClient) GetX(ctx context.Context, id int64) *BillingPool {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryMembers queries the members edge of a BillingPool.
+func (c *BillingPoolClient) QueryMembers(_m *BillingPool) *BillingPoolGroupQuery {
+	query := (&BillingPoolGroupClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(billingpool.Table, billingpool.FieldID, id),
+			sqlgraph.To(billingpoolgroup.Table, billingpoolgroup.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, billingpool.MembersTable, billingpool.MembersColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryAPIKeys queries the api_keys edge of a BillingPool.
+func (c *BillingPoolClient) QueryAPIKeys(_m *BillingPool) *APIKeyQuery {
+	query := (&APIKeyClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(billingpool.Table, billingpool.FieldID, id),
+			sqlgraph.To(apikey.Table, apikey.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, billingpool.APIKeysTable, billingpool.APIKeysColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *BillingPoolClient) Hooks() []Hook {
+	hooks := c.hooks.BillingPool
+	return append(hooks[:len(hooks):len(hooks)], billingpool.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *BillingPoolClient) Interceptors() []Interceptor {
+	inters := c.inters.BillingPool
+	return append(inters[:len(inters):len(inters)], billingpool.Interceptors[:]...)
+}
+
+func (c *BillingPoolClient) mutate(ctx context.Context, m *BillingPoolMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&BillingPoolCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&BillingPoolUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&BillingPoolUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&BillingPoolDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown BillingPool mutation op: %q", m.Op())
+	}
+}
+
+// BillingPoolGroupClient is a client for the BillingPoolGroup schema.
+type BillingPoolGroupClient struct {
+	config
+}
+
+// NewBillingPoolGroupClient returns a client for the BillingPoolGroup from the given config.
+func NewBillingPoolGroupClient(c config) *BillingPoolGroupClient {
+	return &BillingPoolGroupClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `billingpoolgroup.Hooks(f(g(h())))`.
+func (c *BillingPoolGroupClient) Use(hooks ...Hook) {
+	c.hooks.BillingPoolGroup = append(c.hooks.BillingPoolGroup, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `billingpoolgroup.Intercept(f(g(h())))`.
+func (c *BillingPoolGroupClient) Intercept(interceptors ...Interceptor) {
+	c.inters.BillingPoolGroup = append(c.inters.BillingPoolGroup, interceptors...)
+}
+
+// Create returns a builder for creating a BillingPoolGroup entity.
+func (c *BillingPoolGroupClient) Create() *BillingPoolGroupCreate {
+	mutation := newBillingPoolGroupMutation(c.config, OpCreate)
+	return &BillingPoolGroupCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of BillingPoolGroup entities.
+func (c *BillingPoolGroupClient) CreateBulk(builders ...*BillingPoolGroupCreate) *BillingPoolGroupCreateBulk {
+	return &BillingPoolGroupCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *BillingPoolGroupClient) MapCreateBulk(slice any, setFunc func(*BillingPoolGroupCreate, int)) *BillingPoolGroupCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &BillingPoolGroupCreateBulk{err: fmt.Errorf("calling to BillingPoolGroupClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*BillingPoolGroupCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &BillingPoolGroupCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for BillingPoolGroup.
+func (c *BillingPoolGroupClient) Update() *BillingPoolGroupUpdate {
+	mutation := newBillingPoolGroupMutation(c.config, OpUpdate)
+	return &BillingPoolGroupUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *BillingPoolGroupClient) UpdateOne(_m *BillingPoolGroup) *BillingPoolGroupUpdateOne {
+	mutation := newBillingPoolGroupMutation(c.config, OpUpdateOne, withBillingPoolGroup(_m))
+	return &BillingPoolGroupUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *BillingPoolGroupClient) UpdateOneID(id int64) *BillingPoolGroupUpdateOne {
+	mutation := newBillingPoolGroupMutation(c.config, OpUpdateOne, withBillingPoolGroupID(id))
+	return &BillingPoolGroupUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for BillingPoolGroup.
+func (c *BillingPoolGroupClient) Delete() *BillingPoolGroupDelete {
+	mutation := newBillingPoolGroupMutation(c.config, OpDelete)
+	return &BillingPoolGroupDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *BillingPoolGroupClient) DeleteOne(_m *BillingPoolGroup) *BillingPoolGroupDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *BillingPoolGroupClient) DeleteOneID(id int64) *BillingPoolGroupDeleteOne {
+	builder := c.Delete().Where(billingpoolgroup.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &BillingPoolGroupDeleteOne{builder}
+}
+
+// Query returns a query builder for BillingPoolGroup.
+func (c *BillingPoolGroupClient) Query() *BillingPoolGroupQuery {
+	return &BillingPoolGroupQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeBillingPoolGroup},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a BillingPoolGroup entity by its id.
+func (c *BillingPoolGroupClient) Get(ctx context.Context, id int64) (*BillingPoolGroup, error) {
+	return c.Query().Where(billingpoolgroup.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *BillingPoolGroupClient) GetX(ctx context.Context, id int64) *BillingPoolGroup {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryBillingPool queries the billing_pool edge of a BillingPoolGroup.
+func (c *BillingPoolGroupClient) QueryBillingPool(_m *BillingPoolGroup) *BillingPoolQuery {
+	query := (&BillingPoolClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(billingpoolgroup.Table, billingpoolgroup.FieldID, id),
+			sqlgraph.To(billingpool.Table, billingpool.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, billingpoolgroup.BillingPoolTable, billingpoolgroup.BillingPoolColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryGroup queries the group edge of a BillingPoolGroup.
+func (c *BillingPoolGroupClient) QueryGroup(_m *BillingPoolGroup) *GroupQuery {
+	query := (&GroupClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(billingpoolgroup.Table, billingpoolgroup.FieldID, id),
+			sqlgraph.To(group.Table, group.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, billingpoolgroup.GroupTable, billingpoolgroup.GroupColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *BillingPoolGroupClient) Hooks() []Hook {
+	hooks := c.hooks.BillingPoolGroup
+	return append(hooks[:len(hooks):len(hooks)], billingpoolgroup.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *BillingPoolGroupClient) Interceptors() []Interceptor {
+	inters := c.inters.BillingPoolGroup
+	return append(inters[:len(inters):len(inters)], billingpoolgroup.Interceptors[:]...)
+}
+
+func (c *BillingPoolGroupClient) mutate(ctx context.Context, m *BillingPoolGroupMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&BillingPoolGroupCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&BillingPoolGroupUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&BillingPoolGroupUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&BillingPoolGroupDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown BillingPoolGroup mutation op: %q", m.Op())
+	}
+}
+
 // ChannelMonitorClient is a client for the ChannelMonitor schema.
 type ChannelMonitorClient struct {
 	config
@@ -2509,6 +2875,22 @@ func (c *GroupClient) QueryAPIKeys(_m *Group) *APIKeyQuery {
 			sqlgraph.From(group.Table, group.FieldID, id),
 			sqlgraph.To(apikey.Table, apikey.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, group.APIKeysTable, group.APIKeysColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryBillingPoolMemberships queries the billing_pool_memberships edge of a Group.
+func (c *GroupClient) QueryBillingPoolMemberships(_m *Group) *BillingPoolGroupQuery {
+	query := (&BillingPoolGroupClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(group.Table, group.FieldID, id),
+			sqlgraph.To(billingpoolgroup.Table, billingpoolgroup.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, group.BillingPoolMembershipsTable, group.BillingPoolMembershipsColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -6019,23 +6401,25 @@ func (c *UserSubscriptionClient) mutate(ctx context.Context, m *UserSubscription
 type (
 	hooks struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
-		AuthIdentityChannel, ChannelMonitor, ChannelMonitorDailyRollup,
-		ChannelMonitorHistory, ChannelMonitorRequestTemplate, ErrorPassthroughRule,
-		Group, IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog,
-		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
-		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
-		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
-		UserAttributeDefinition, UserAttributeValue, UserSubscription []ent.Hook
+		AuthIdentityChannel, BillingPool, BillingPoolGroup, ChannelMonitor,
+		ChannelMonitorDailyRollup, ChannelMonitorHistory,
+		ChannelMonitorRequestTemplate, ErrorPassthroughRule, Group, IdempotencyRecord,
+		IdentityAdoptionDecision, PaymentAuditLog, PaymentOrder,
+		PaymentProviderInstance, PendingAuthSession, PromoCode, PromoCodeUsage, Proxy,
+		RedeemCode, SecuritySecret, Setting, SubscriptionPlan, TLSFingerprintProfile,
+		UsageCleanupTask, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
+		UserAttributeValue, UserSubscription []ent.Hook
 	}
 	inters struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
-		AuthIdentityChannel, ChannelMonitor, ChannelMonitorDailyRollup,
-		ChannelMonitorHistory, ChannelMonitorRequestTemplate, ErrorPassthroughRule,
-		Group, IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog,
-		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
-		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
-		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
-		UserAttributeDefinition, UserAttributeValue, UserSubscription []ent.Interceptor
+		AuthIdentityChannel, BillingPool, BillingPoolGroup, ChannelMonitor,
+		ChannelMonitorDailyRollup, ChannelMonitorHistory,
+		ChannelMonitorRequestTemplate, ErrorPassthroughRule, Group, IdempotencyRecord,
+		IdentityAdoptionDecision, PaymentAuditLog, PaymentOrder,
+		PaymentProviderInstance, PendingAuthSession, PromoCode, PromoCodeUsage, Proxy,
+		RedeemCode, SecuritySecret, Setting, SubscriptionPlan, TLSFingerprintProfile,
+		UsageCleanupTask, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
+		UserAttributeValue, UserSubscription []ent.Interceptor
 	}
 )
 

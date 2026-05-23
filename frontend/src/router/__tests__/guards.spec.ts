@@ -118,6 +118,7 @@ function simulateGuard(
   if (authState.isSimpleMode) {
     const restrictedPaths = [
       '/admin/groups',
+      '/admin/billing-pools',
       '/admin/subscriptions',
       '/admin/redeem',
       '/subscriptions',

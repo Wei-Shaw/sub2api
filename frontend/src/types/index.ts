@@ -488,6 +488,95 @@ export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity'
 
 export type SubscriptionType = 'standard' | 'subscription'
 
+export type BillingMode =
+  | 'strict'
+  | 'primary_then_balance'
+  | 'primary_then_pool_then_balance'
+
+export type BillingPoolPlatformScope = 'same_platform' | 'mixed_platform'
+export type BillingPoolStatus = 'active' | 'inactive'
+
+export interface BillingPoolGroupMember {
+  group_id: number
+  group_name: string
+  platform: GroupPlatform | string
+  subscription_type: SubscriptionType | string
+  chain_order: number
+  can_be_primary: boolean
+  can_be_fallback: boolean
+}
+
+export interface BillingPoolSummary {
+  id: number
+  name: string
+  status: BillingPoolStatus
+  platform_scope: BillingPoolPlatformScope
+  allow_user_reorder: boolean
+  require_primary_subscription: boolean
+  allow_balance_fallback: boolean
+}
+
+export interface BillingPool extends BillingPoolSummary {
+  code: string
+  description: string
+  group_count: number
+  groups?: BillingPoolGroupMember[]
+  created_at: string
+  updated_at: string
+}
+
+export interface BillingPoolLookup {
+  id: number
+  name: string
+  status: BillingPoolStatus
+  platform_scope: BillingPoolPlatformScope
+}
+
+export type BillingPoolListResponse = PaginatedResponse<BillingPool>
+
+export interface BillingPoolMemberRequest {
+  group_id: number
+  chain_order: number
+  can_be_primary: boolean
+  can_be_fallback: boolean
+}
+
+export interface CreateBillingPoolRequest {
+  name: string
+  code: string
+  description?: string
+  status?: BillingPoolStatus
+  platform_scope?: BillingPoolPlatformScope
+  allow_user_reorder?: boolean
+  require_primary_subscription?: boolean
+  allow_balance_fallback?: boolean
+  groups?: BillingPoolMemberRequest[]
+}
+
+export interface UpdateBillingPoolRequest {
+  name?: string
+  code?: string
+  description?: string
+  status?: BillingPoolStatus
+  platform_scope?: BillingPoolPlatformScope
+  allow_user_reorder?: boolean
+  require_primary_subscription?: boolean
+  allow_balance_fallback?: boolean
+}
+
+export interface ReplaceBillingPoolMembersRequest {
+  groups: BillingPoolMemberRequest[]
+}
+
+export interface BillingChainPreviewItem {
+  type: 'subscription' | 'balance'
+  group_id?: number
+  group_name?: string
+  platform?: string
+  required?: boolean
+  source_label: string
+}
+
 export interface OpenAIMessagesDispatchModelConfig {
   opus_mapped_model?: string
   sonnet_mapped_model?: string
@@ -523,6 +612,11 @@ export interface Group {
   allow_messages_dispatch?: boolean
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
+  default_billing_pool_id?: number | null
+  billing_pool_name?: string | null
+  billing_pool_platform_scope?: BillingPoolPlatformScope | null
+  recommended_billing_mode?: BillingMode | null
+  supports_pool_fallback?: boolean
   require_oauth_only: boolean
   require_privacy_set: boolean
   created_at: string
@@ -559,6 +653,12 @@ export interface ApiKey {
   key: string
   name: string
   group_id: number | null
+  billing_mode?: BillingMode | null
+  billing_pool_id?: number | null
+  use_pool_default_order?: boolean
+  custom_fallback_group_ids?: number[]
+  billing_pool?: BillingPoolSummary | null
+  billing_chain_preview?: BillingChainPreviewItem[]
   status: 'active' | 'inactive' | 'quota_exhausted' | 'expired'
   ip_whitelist: string[]
   ip_blacklist: string[]
@@ -586,6 +686,10 @@ export interface ApiKey {
 export interface CreateApiKeyRequest {
   name: string
   group_id?: number | null
+  billing_mode?: BillingMode
+  billing_pool_id?: number | null
+  use_pool_default_order?: boolean
+  custom_fallback_group_ids?: number[]
   custom_key?: string // Optional custom API Key
   ip_whitelist?: string[]
   ip_blacklist?: string[]
@@ -599,6 +703,10 @@ export interface CreateApiKeyRequest {
 export interface UpdateApiKeyRequest {
   name?: string
   group_id?: number | null
+  billing_mode?: BillingMode
+  billing_pool_id?: number | null
+  use_pool_default_order?: boolean
+  custom_fallback_group_ids?: number[]
   status?: 'active' | 'inactive'
   ip_whitelist?: string[]
   ip_blacklist?: string[]

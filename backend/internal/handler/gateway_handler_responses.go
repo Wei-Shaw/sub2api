@@ -145,7 +145,8 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 	}
 
 	// 2. Re-check billing
-	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
+	decision, err := resolveRequestBillingDecision(c, apiKey, subscription, h.subscriptionService, h.billingCacheService)
+	if err != nil {
 		reqLog.Info("gateway.responses.billing_check_failed", zap.Error(err))
 		status, code, message, retryAfter := billingErrorDetails(err)
 		if retryAfter > 0 {
@@ -154,6 +155,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		h.responsesErrorResponse(c, status, code, message)
 		return
 	}
+	subscription = decision.Subscription
 
 	// Parse request for session hash
 	parsedReq, _ := service.ParseGatewayRequest(body, "responses")

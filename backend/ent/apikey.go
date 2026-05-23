@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/billingpool"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 )
@@ -34,8 +35,16 @@ type APIKey struct {
 	Name string `json:"name,omitempty"`
 	// GroupID holds the value of the "group_id" field.
 	GroupID *int64 `json:"group_id,omitempty"`
+	// BillingPoolID holds the value of the "billing_pool_id" field.
+	BillingPoolID *int64 `json:"billing_pool_id,omitempty"`
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
+	// BillingMode holds the value of the "billing_mode" field.
+	BillingMode string `json:"billing_mode,omitempty"`
+	// UsePoolDefaultOrder holds the value of the "use_pool_default_order" field.
+	UsePoolDefaultOrder bool `json:"use_pool_default_order,omitempty"`
+	// Custom fallback group order within billing pool
+	CustomFallbackGroupIds []int64 `json:"custom_fallback_group_ids,omitempty"`
 	// Last usage time of this API key
 	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
 	// Allowed IPs/CIDRs, e.g. ["192.168.1.100", "10.0.0.0/8"]
@@ -78,11 +87,13 @@ type APIKeyEdges struct {
 	User *User `json:"user,omitempty"`
 	// Group holds the value of the group edge.
 	Group *Group `json:"group,omitempty"`
+	// BillingPool holds the value of the billing_pool edge.
+	BillingPool *BillingPool `json:"billing_pool,omitempty"`
 	// UsageLogs holds the value of the usage_logs edge.
 	UsageLogs []*UsageLog `json:"usage_logs,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [3]bool
+	loadedTypes [4]bool
 }
 
 // UserOrErr returns the User value or an error if the edge
@@ -107,10 +118,21 @@ func (e APIKeyEdges) GroupOrErr() (*Group, error) {
 	return nil, &NotLoadedError{edge: "group"}
 }
 
+// BillingPoolOrErr returns the BillingPool value or an error if the edge
+// was not loaded in eager-loading, or loaded but was not found.
+func (e APIKeyEdges) BillingPoolOrErr() (*BillingPool, error) {
+	if e.BillingPool != nil {
+		return e.BillingPool, nil
+	} else if e.loadedTypes[2] {
+		return nil, &NotFoundError{label: billingpool.Label}
+	}
+	return nil, &NotLoadedError{edge: "billing_pool"}
+}
+
 // UsageLogsOrErr returns the UsageLogs value or an error if the edge
 // was not loaded in eager-loading.
 func (e APIKeyEdges) UsageLogsOrErr() ([]*UsageLog, error) {
-	if e.loadedTypes[2] {
+	if e.loadedTypes[3] {
 		return e.UsageLogs, nil
 	}
 	return nil, &NotLoadedError{edge: "usage_logs"}
@@ -121,13 +143,15 @@ func (*APIKey) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case apikey.FieldIPWhitelist, apikey.FieldIPBlacklist:
+		case apikey.FieldCustomFallbackGroupIds, apikey.FieldIPWhitelist, apikey.FieldIPBlacklist:
 			values[i] = new([]byte)
+		case apikey.FieldUsePoolDefaultOrder:
+			values[i] = new(sql.NullBool)
 		case apikey.FieldQuota, apikey.FieldQuotaUsed, apikey.FieldRateLimit5h, apikey.FieldRateLimit1d, apikey.FieldRateLimit7d, apikey.FieldUsage5h, apikey.FieldUsage1d, apikey.FieldUsage7d:
 			values[i] = new(sql.NullFloat64)
-		case apikey.FieldID, apikey.FieldUserID, apikey.FieldGroupID:
+		case apikey.FieldID, apikey.FieldUserID, apikey.FieldGroupID, apikey.FieldBillingPoolID:
 			values[i] = new(sql.NullInt64)
-		case apikey.FieldKey, apikey.FieldName, apikey.FieldStatus:
+		case apikey.FieldKey, apikey.FieldName, apikey.FieldStatus, apikey.FieldBillingMode:
 			values[i] = new(sql.NullString)
 		case apikey.FieldCreatedAt, apikey.FieldUpdatedAt, apikey.FieldDeletedAt, apikey.FieldLastUsedAt, apikey.FieldExpiresAt, apikey.FieldWindow5hStart, apikey.FieldWindow1dStart, apikey.FieldWindow7dStart:
 			values[i] = new(sql.NullTime)
@@ -196,11 +220,38 @@ func (_m *APIKey) assignValues(columns []string, values []any) error {
 				_m.GroupID = new(int64)
 				*_m.GroupID = value.Int64
 			}
+		case apikey.FieldBillingPoolID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field billing_pool_id", values[i])
+			} else if value.Valid {
+				_m.BillingPoolID = new(int64)
+				*_m.BillingPoolID = value.Int64
+			}
 		case apikey.FieldStatus:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field status", values[i])
 			} else if value.Valid {
 				_m.Status = value.String
+			}
+		case apikey.FieldBillingMode:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field billing_mode", values[i])
+			} else if value.Valid {
+				_m.BillingMode = value.String
+			}
+		case apikey.FieldUsePoolDefaultOrder:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field use_pool_default_order", values[i])
+			} else if value.Valid {
+				_m.UsePoolDefaultOrder = value.Bool
+			}
+		case apikey.FieldCustomFallbackGroupIds:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field custom_fallback_group_ids", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.CustomFallbackGroupIds); err != nil {
+					return fmt.Errorf("unmarshal field custom_fallback_group_ids: %w", err)
+				}
 			}
 		case apikey.FieldLastUsedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -324,6 +375,11 @@ func (_m *APIKey) QueryGroup() *GroupQuery {
 	return NewAPIKeyClient(_m.config).QueryGroup(_m)
 }
 
+// QueryBillingPool queries the "billing_pool" edge of the APIKey entity.
+func (_m *APIKey) QueryBillingPool() *BillingPoolQuery {
+	return NewAPIKeyClient(_m.config).QueryBillingPool(_m)
+}
+
 // QueryUsageLogs queries the "usage_logs" edge of the APIKey entity.
 func (_m *APIKey) QueryUsageLogs() *UsageLogQuery {
 	return NewAPIKeyClient(_m.config).QueryUsageLogs(_m)
@@ -377,8 +433,22 @@ func (_m *APIKey) String() string {
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")
+	if v := _m.BillingPoolID; v != nil {
+		builder.WriteString("billing_pool_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(_m.Status)
+	builder.WriteString(", ")
+	builder.WriteString("billing_mode=")
+	builder.WriteString(_m.BillingMode)
+	builder.WriteString(", ")
+	builder.WriteString("use_pool_default_order=")
+	builder.WriteString(fmt.Sprintf("%v", _m.UsePoolDefaultOrder))
+	builder.WriteString(", ")
+	builder.WriteString("custom_fallback_group_ids=")
+	builder.WriteString(fmt.Sprintf("%v", _m.CustomFallbackGroupIds))
 	builder.WriteString(", ")
 	if v := _m.LastUsedAt; v != nil {
 		builder.WriteString("last_used_at=")

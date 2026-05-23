@@ -93,6 +93,30 @@ func (f AuthIdentityChannelFunc) Mutate(ctx context.Context, m ent.Mutation) (en
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AuthIdentityChannelMutation", m)
 }
 
+// The BillingPoolFunc type is an adapter to allow the use of ordinary
+// function as BillingPool mutator.
+type BillingPoolFunc func(context.Context, *ent.BillingPoolMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f BillingPoolFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.BillingPoolMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.BillingPoolMutation", m)
+}
+
+// The BillingPoolGroupFunc type is an adapter to allow the use of ordinary
+// function as BillingPoolGroup mutator.
+type BillingPoolGroupFunc func(context.Context, *ent.BillingPoolGroupMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f BillingPoolGroupFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.BillingPoolGroupMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.BillingPoolGroupMutation", m)
+}
+
 // The ChannelMonitorFunc type is an adapter to allow the use of ordinary
 // function as ChannelMonitor mutator.
 type ChannelMonitorFunc func(context.Context, *ent.ChannelMonitorMutation) (ent.Value, error)

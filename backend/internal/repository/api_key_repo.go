@@ -9,6 +9,8 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/billingpool"
+	"github.com/Wei-Shaw/sub2api/ent/billingpoolgroup"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	"github.com/Wei-Shaw/sub2api/ent/user"
@@ -37,13 +39,28 @@ func (r *apiKeyRepository) activeQuery() *dbent.APIKeyQuery {
 	return r.client.APIKey.Query().Where(apikey.DeletedAtIsNil())
 }
 
+func (r *apiKeyRepository) withBillingPoolDetails(q *dbent.APIKeyQuery) *dbent.APIKeyQuery {
+	return q.WithBillingPool(func(bq *dbent.BillingPoolQuery) {
+		bq.Where(billingpool.DeletedAtIsNil())
+		bq.WithMembers(func(mq *dbent.BillingPoolGroupQuery) {
+			mq.Where(billingpoolgroup.DeletedAtIsNil())
+			mq.Order(dbent.Asc(billingpoolgroup.FieldChainOrder), dbent.Asc(billingpoolgroup.FieldGroupID))
+			mq.WithGroup()
+		})
+	})
+}
+
 func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) error {
 	builder := r.client.APIKey.Create().
 		SetUserID(key.UserID).
 		SetKey(key.Key).
 		SetName(key.Name).
+		SetBillingMode(service.NormalizeAPIKeyBillingMode(key.BillingMode)).
+		SetUsePoolDefaultOrder(key.UsePoolDefaultOrder).
+		SetCustomFallbackGroupIds(cloneInt64Slice(key.CustomFallbackGroupIDs)).
 		SetStatus(key.Status).
 		SetNillableGroupID(key.GroupID).
+		SetNillableBillingPoolID(key.BillingPoolID).
 		SetNillableLastUsedAt(key.LastUsedAt).
 		SetQuota(key.Quota).
 		SetQuotaUsed(key.QuotaUsed).
@@ -70,7 +87,7 @@ func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) erro
 }
 
 func (r *apiKeyRepository) GetByID(ctx context.Context, id int64) (*service.APIKey, error) {
-	m, err := r.activeQuery().
+	m, err := r.withBillingPoolDetails(r.activeQuery()).
 		Where(apikey.IDEQ(id)).
 		WithUser().
 		WithGroup().
@@ -104,7 +121,7 @@ func (r *apiKeyRepository) GetKeyAndOwnerID(ctx context.Context, id int64) (stri
 }
 
 func (r *apiKeyRepository) GetByKey(ctx context.Context, key string) (*service.APIKey, error) {
-	m, err := r.activeQuery().
+	m, err := r.withBillingPoolDetails(r.activeQuery()).
 		Where(apikey.KeyEQ(key)).
 		WithUser().
 		WithGroup().
@@ -125,8 +142,12 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 			apikey.FieldID,
 			apikey.FieldUserID,
 			apikey.FieldGroupID,
+			apikey.FieldBillingPoolID,
 			apikey.FieldName,
 			apikey.FieldStatus,
+			apikey.FieldBillingMode,
+			apikey.FieldUsePoolDefaultOrder,
+			apikey.FieldCustomFallbackGroupIds,
 			apikey.FieldIPWhitelist,
 			apikey.FieldIPBlacklist,
 			apikey.FieldQuota,
@@ -207,6 +228,9 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey) erro
 	builder := client.APIKey.Update().
 		Where(apikey.IDEQ(key.ID), apikey.DeletedAtIsNil()).
 		SetName(key.Name).
+		SetBillingMode(service.NormalizeAPIKeyBillingMode(key.BillingMode)).
+		SetUsePoolDefaultOrder(key.UsePoolDefaultOrder).
+		SetCustomFallbackGroupIds(cloneInt64Slice(key.CustomFallbackGroupIDs)).
 		SetStatus(key.Status).
 		SetQuota(key.Quota).
 		SetQuotaUsed(key.QuotaUsed).
@@ -221,6 +245,11 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey) erro
 		builder.SetGroupID(*key.GroupID)
 	} else {
 		builder.ClearGroupID()
+	}
+	if key.BillingPoolID != nil {
+		builder.SetBillingPoolID(*key.BillingPoolID)
+	} else {
+		builder.ClearBillingPoolID()
 	}
 
 	// Expiration time
@@ -329,7 +358,7 @@ func (r *apiKeyRepository) ListByUserID(ctx context.Context, userID int64, param
 		return nil, nil, err
 	}
 
-	keysQuery := q.
+	keysQuery := r.withBillingPoolDetails(q).
 		WithGroup().
 		Offset(params.Offset()).
 		Limit(params.Limit())
@@ -382,8 +411,9 @@ func (r *apiKeyRepository) ListByGroupID(ctx context.Context, groupID int64, par
 		return nil, nil, err
 	}
 
-	keysQuery := q.
+	keysQuery := r.withBillingPoolDetails(q).
 		WithUser().
+		WithGroup().
 		Offset(params.Offset()).
 		Limit(params.Limit())
 	for _, order := range apiKeyListOrder(params) {
@@ -440,7 +470,11 @@ func (r *apiKeyRepository) SearchAPIKeys(ctx context.Context, userID int64, keyw
 		q = q.Where(apikey.NameContainsFold(keyword))
 	}
 
-	keys, err := q.Limit(limit).Order(dbent.Desc(apikey.FieldID)).All(ctx)
+	keys, err := r.withBillingPoolDetails(q).
+		WithGroup().
+		Limit(limit).
+		Order(dbent.Desc(apikey.FieldID)).
+		All(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -618,29 +652,33 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 		return nil
 	}
 	out := &service.APIKey{
-		ID:            m.ID,
-		UserID:        m.UserID,
-		Key:           m.Key,
-		Name:          m.Name,
-		Status:        m.Status,
-		IPWhitelist:   m.IPWhitelist,
-		IPBlacklist:   m.IPBlacklist,
-		LastUsedAt:    m.LastUsedAt,
-		CreatedAt:     m.CreatedAt,
-		UpdatedAt:     m.UpdatedAt,
-		GroupID:       m.GroupID,
-		Quota:         m.Quota,
-		QuotaUsed:     m.QuotaUsed,
-		ExpiresAt:     m.ExpiresAt,
-		RateLimit5h:   m.RateLimit5h,
-		RateLimit1d:   m.RateLimit1d,
-		RateLimit7d:   m.RateLimit7d,
-		Usage5h:       m.Usage5h,
-		Usage1d:       m.Usage1d,
-		Usage7d:       m.Usage7d,
-		Window5hStart: m.Window5hStart,
-		Window1dStart: m.Window1dStart,
-		Window7dStart: m.Window7dStart,
+		ID:                     m.ID,
+		UserID:                 m.UserID,
+		Key:                    m.Key,
+		Name:                   m.Name,
+		GroupID:                m.GroupID,
+		BillingPoolID:          m.BillingPoolID,
+		Status:                 m.Status,
+		IPWhitelist:            m.IPWhitelist,
+		IPBlacklist:            m.IPBlacklist,
+		LastUsedAt:             m.LastUsedAt,
+		CreatedAt:              m.CreatedAt,
+		UpdatedAt:              m.UpdatedAt,
+		BillingMode:            m.BillingMode,
+		UsePoolDefaultOrder:    m.UsePoolDefaultOrder,
+		CustomFallbackGroupIDs: cloneInt64Slice(m.CustomFallbackGroupIds),
+		Quota:                  m.Quota,
+		QuotaUsed:              m.QuotaUsed,
+		ExpiresAt:              m.ExpiresAt,
+		RateLimit5h:            m.RateLimit5h,
+		RateLimit1d:            m.RateLimit1d,
+		RateLimit7d:            m.RateLimit7d,
+		Usage5h:                m.Usage5h,
+		Usage1d:                m.Usage1d,
+		Usage7d:                m.Usage7d,
+		Window5hStart:          m.Window5hStart,
+		Window1dStart:          m.Window1dStart,
+		Window7dStart:          m.Window7dStart,
 	}
 	if m.Edges.User != nil {
 		out.User = userEntityToService(m.Edges.User)
@@ -648,7 +686,17 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 	if m.Edges.Group != nil {
 		out.Group = groupEntityToService(m.Edges.Group)
 	}
+	if m.Edges.BillingPool != nil {
+		out.BillingPool = billingPoolEntityToService(m.Edges.BillingPool)
+	}
 	return out
+}
+
+func cloneInt64Slice(values []int64) []int64 {
+	if len(values) == 0 {
+		return []int64{}
+	}
+	return append([]int64(nil), values...)
 }
 
 func userEntityToService(u *dbent.User) *service.User {

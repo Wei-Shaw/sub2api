@@ -29,8 +29,16 @@ const (
 	FieldName = "name"
 	// FieldGroupID holds the string denoting the group_id field in the database.
 	FieldGroupID = "group_id"
+	// FieldBillingPoolID holds the string denoting the billing_pool_id field in the database.
+	FieldBillingPoolID = "billing_pool_id"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
+	// FieldBillingMode holds the string denoting the billing_mode field in the database.
+	FieldBillingMode = "billing_mode"
+	// FieldUsePoolDefaultOrder holds the string denoting the use_pool_default_order field in the database.
+	FieldUsePoolDefaultOrder = "use_pool_default_order"
+	// FieldCustomFallbackGroupIds holds the string denoting the custom_fallback_group_ids field in the database.
+	FieldCustomFallbackGroupIds = "custom_fallback_group_ids"
 	// FieldLastUsedAt holds the string denoting the last_used_at field in the database.
 	FieldLastUsedAt = "last_used_at"
 	// FieldIPWhitelist holds the string denoting the ip_whitelist field in the database.
@@ -65,6 +73,8 @@ const (
 	EdgeUser = "user"
 	// EdgeGroup holds the string denoting the group edge name in mutations.
 	EdgeGroup = "group"
+	// EdgeBillingPool holds the string denoting the billing_pool edge name in mutations.
+	EdgeBillingPool = "billing_pool"
 	// EdgeUsageLogs holds the string denoting the usage_logs edge name in mutations.
 	EdgeUsageLogs = "usage_logs"
 	// Table holds the table name of the apikey in the database.
@@ -83,6 +93,13 @@ const (
 	GroupInverseTable = "groups"
 	// GroupColumn is the table column denoting the group relation/edge.
 	GroupColumn = "group_id"
+	// BillingPoolTable is the table that holds the billing_pool relation/edge.
+	BillingPoolTable = "api_keys"
+	// BillingPoolInverseTable is the table name for the BillingPool entity.
+	// It exists in this package in order to avoid circular dependency with the "billingpool" package.
+	BillingPoolInverseTable = "billing_pools"
+	// BillingPoolColumn is the table column denoting the billing_pool relation/edge.
+	BillingPoolColumn = "billing_pool_id"
 	// UsageLogsTable is the table that holds the usage_logs relation/edge.
 	UsageLogsTable = "usage_logs"
 	// UsageLogsInverseTable is the table name for the UsageLog entity.
@@ -102,7 +119,11 @@ var Columns = []string{
 	FieldKey,
 	FieldName,
 	FieldGroupID,
+	FieldBillingPoolID,
 	FieldStatus,
+	FieldBillingMode,
+	FieldUsePoolDefaultOrder,
+	FieldCustomFallbackGroupIds,
 	FieldLastUsedAt,
 	FieldIPWhitelist,
 	FieldIPBlacklist,
@@ -152,6 +173,12 @@ var (
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	StatusValidator func(string) error
+	// DefaultBillingMode holds the default value on creation for the "billing_mode" field.
+	DefaultBillingMode string
+	// BillingModeValidator is a validator for the "billing_mode" field. It is called by the builders before save.
+	BillingModeValidator func(string) error
+	// DefaultUsePoolDefaultOrder holds the default value on creation for the "use_pool_default_order" field.
+	DefaultUsePoolDefaultOrder bool
 	// DefaultQuota holds the default value on creation for the "quota" field.
 	DefaultQuota float64
 	// DefaultQuotaUsed holds the default value on creation for the "quota_used" field.
@@ -213,9 +240,24 @@ func ByGroupID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldGroupID, opts...).ToFunc()
 }
 
+// ByBillingPoolID orders the results by the billing_pool_id field.
+func ByBillingPoolID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBillingPoolID, opts...).ToFunc()
+}
+
 // ByStatus orders the results by the status field.
 func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
+}
+
+// ByBillingMode orders the results by the billing_mode field.
+func ByBillingMode(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBillingMode, opts...).ToFunc()
+}
+
+// ByUsePoolDefaultOrder orders the results by the use_pool_default_order field.
+func ByUsePoolDefaultOrder(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUsePoolDefaultOrder, opts...).ToFunc()
 }
 
 // ByLastUsedAt orders the results by the last_used_at field.
@@ -297,6 +339,13 @@ func ByGroupField(field string, opts ...sql.OrderTermOption) OrderOption {
 	}
 }
 
+// ByBillingPoolField orders the results by billing_pool field.
+func ByBillingPoolField(field string, opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newBillingPoolStep(), sql.OrderByField(field, opts...))
+	}
+}
+
 // ByUsageLogsCount orders the results by usage_logs count.
 func ByUsageLogsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -322,6 +371,13 @@ func newGroupStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(GroupInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2O, true, GroupTable, GroupColumn),
+	)
+}
+func newBillingPoolStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(BillingPoolInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2O, true, BillingPoolTable, BillingPoolColumn),
 	)
 }
 func newUsageLogsStep() *sqlgraph.Step {

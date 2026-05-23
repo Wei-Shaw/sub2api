@@ -123,7 +123,8 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		defer userReleaseFunc()
 	}
 
-	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
+	decision, err := resolveRequestBillingDecision(c, apiKey, subscription, h.subscriptionService, h.billingCacheService)
+	if err != nil {
 		reqLog.Info("openai.images.billing_eligibility_check_failed", zap.Error(err))
 		status, code, message, retryAfter := billingErrorDetails(err)
 		if retryAfter > 0 {
@@ -132,6 +133,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		h.handleStreamingAwareError(c, status, code, message, streamStarted)
 		return
 	}
+	subscription = decision.Subscription
 
 	sessionHash := h.gatewayService.GenerateExplicitSessionHash(c, body)
 

@@ -1463,6 +1463,29 @@ func HasAPIKeysWith(preds ...predicate.APIKey) predicate.Group {
 	})
 }
 
+// HasBillingPoolMemberships applies the HasEdge predicate on the "billing_pool_memberships" edge.
+func HasBillingPoolMemberships() predicate.Group {
+	return predicate.Group(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, BillingPoolMembershipsTable, BillingPoolMembershipsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasBillingPoolMembershipsWith applies the HasEdge predicate on the "billing_pool_memberships" edge with a given conditions (other predicates).
+func HasBillingPoolMembershipsWith(preds ...predicate.BillingPoolGroup) predicate.Group {
+	return predicate.Group(func(s *sql.Selector) {
+		step := newBillingPoolMembershipsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // HasRedeemCodes applies the HasEdge predicate on the "redeem_codes" edge.
 func HasRedeemCodes() predicate.Group {
 	return predicate.Group(func(s *sql.Selector) {

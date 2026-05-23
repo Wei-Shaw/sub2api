@@ -426,6 +426,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/billing-pools',
+    name: 'AdminBillingPools',
+    component: () => import('@/views/admin/BillingPoolsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Billing Pool Management',
+      titleKey: 'admin.billingPools.title',
+      descriptionKey: 'admin.billingPools.description'
+    }
+  },
+  {
     path: '/admin/channels',
     redirect: '/admin/channels/pricing'
   },
@@ -829,6 +841,7 @@ router.beforeEach(async (to, _from, next) => {
   if (authStore.isSimpleMode) {
     const restrictedPaths = [
       '/admin/groups',
+      '/admin/billing-pools',
       '/admin/subscriptions',
       '/admin/redeem',
       '/subscriptions',

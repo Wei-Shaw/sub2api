@@ -16,6 +16,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/accountgroup"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/billingpoolgroup"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
@@ -28,19 +29,20 @@ import (
 // GroupQuery is the builder for querying Group entities.
 type GroupQuery struct {
 	config
-	ctx                   *QueryContext
-	order                 []group.OrderOption
-	inters                []Interceptor
-	predicates            []predicate.Group
-	withAPIKeys           *APIKeyQuery
-	withRedeemCodes       *RedeemCodeQuery
-	withSubscriptions     *UserSubscriptionQuery
-	withUsageLogs         *UsageLogQuery
-	withAccounts          *AccountQuery
-	withAllowedUsers      *UserQuery
-	withAccountGroups     *AccountGroupQuery
-	withUserAllowedGroups *UserAllowedGroupQuery
-	modifiers             []func(*sql.Selector)
+	ctx                        *QueryContext
+	order                      []group.OrderOption
+	inters                     []Interceptor
+	predicates                 []predicate.Group
+	withAPIKeys                *APIKeyQuery
+	withBillingPoolMemberships *BillingPoolGroupQuery
+	withRedeemCodes            *RedeemCodeQuery
+	withSubscriptions          *UserSubscriptionQuery
+	withUsageLogs              *UsageLogQuery
+	withAccounts               *AccountQuery
+	withAllowedUsers           *UserQuery
+	withAccountGroups          *AccountGroupQuery
+	withUserAllowedGroups      *UserAllowedGroupQuery
+	modifiers                  []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -92,6 +94,28 @@ func (_q *GroupQuery) QueryAPIKeys() *APIKeyQuery {
 			sqlgraph.From(group.Table, group.FieldID, selector),
 			sqlgraph.To(apikey.Table, apikey.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, group.APIKeysTable, group.APIKeysColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryBillingPoolMemberships chains the current query on the "billing_pool_memberships" edge.
+func (_q *GroupQuery) QueryBillingPoolMemberships() *BillingPoolGroupQuery {
+	query := (&BillingPoolGroupClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(group.Table, group.FieldID, selector),
+			sqlgraph.To(billingpoolgroup.Table, billingpoolgroup.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, group.BillingPoolMembershipsTable, group.BillingPoolMembershipsColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -440,19 +464,20 @@ func (_q *GroupQuery) Clone() *GroupQuery {
 		return nil
 	}
 	return &GroupQuery{
-		config:                _q.config,
-		ctx:                   _q.ctx.Clone(),
-		order:                 append([]group.OrderOption{}, _q.order...),
-		inters:                append([]Interceptor{}, _q.inters...),
-		predicates:            append([]predicate.Group{}, _q.predicates...),
-		withAPIKeys:           _q.withAPIKeys.Clone(),
-		withRedeemCodes:       _q.withRedeemCodes.Clone(),
-		withSubscriptions:     _q.withSubscriptions.Clone(),
-		withUsageLogs:         _q.withUsageLogs.Clone(),
-		withAccounts:          _q.withAccounts.Clone(),
-		withAllowedUsers:      _q.withAllowedUsers.Clone(),
-		withAccountGroups:     _q.withAccountGroups.Clone(),
-		withUserAllowedGroups: _q.withUserAllowedGroups.Clone(),
+		config:                     _q.config,
+		ctx:                        _q.ctx.Clone(),
+		order:                      append([]group.OrderOption{}, _q.order...),
+		inters:                     append([]Interceptor{}, _q.inters...),
+		predicates:                 append([]predicate.Group{}, _q.predicates...),
+		withAPIKeys:                _q.withAPIKeys.Clone(),
+		withBillingPoolMemberships: _q.withBillingPoolMemberships.Clone(),
+		withRedeemCodes:            _q.withRedeemCodes.Clone(),
+		withSubscriptions:          _q.withSubscriptions.Clone(),
+		withUsageLogs:              _q.withUsageLogs.Clone(),
+		withAccounts:               _q.withAccounts.Clone(),
+		withAllowedUsers:           _q.withAllowedUsers.Clone(),
+		withAccountGroups:          _q.withAccountGroups.Clone(),
+		withUserAllowedGroups:      _q.withUserAllowedGroups.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -467,6 +492,17 @@ func (_q *GroupQuery) WithAPIKeys(opts ...func(*APIKeyQuery)) *GroupQuery {
 		opt(query)
 	}
 	_q.withAPIKeys = query
+	return _q
+}
+
+// WithBillingPoolMemberships tells the query-builder to eager-load the nodes that are connected to
+// the "billing_pool_memberships" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *GroupQuery) WithBillingPoolMemberships(opts ...func(*BillingPoolGroupQuery)) *GroupQuery {
+	query := (&BillingPoolGroupClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withBillingPoolMemberships = query
 	return _q
 }
 
@@ -625,8 +661,9 @@ func (_q *GroupQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Group,
 	var (
 		nodes       = []*Group{}
 		_spec       = _q.querySpec()
-		loadedTypes = [8]bool{
+		loadedTypes = [9]bool{
 			_q.withAPIKeys != nil,
+			_q.withBillingPoolMemberships != nil,
 			_q.withRedeemCodes != nil,
 			_q.withSubscriptions != nil,
 			_q.withUsageLogs != nil,
@@ -661,6 +698,15 @@ func (_q *GroupQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Group,
 		if err := _q.loadAPIKeys(ctx, query, nodes,
 			func(n *Group) { n.Edges.APIKeys = []*APIKey{} },
 			func(n *Group, e *APIKey) { n.Edges.APIKeys = append(n.Edges.APIKeys, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withBillingPoolMemberships; query != nil {
+		if err := _q.loadBillingPoolMemberships(ctx, query, nodes,
+			func(n *Group) { n.Edges.BillingPoolMemberships = []*BillingPoolGroup{} },
+			func(n *Group, e *BillingPoolGroup) {
+				n.Edges.BillingPoolMemberships = append(n.Edges.BillingPoolMemberships, e)
+			}); err != nil {
 			return nil, err
 		}
 	}
@@ -744,6 +790,36 @@ func (_q *GroupQuery) loadAPIKeys(ctx context.Context, query *APIKeyQuery, nodes
 		node, ok := nodeids[*fk]
 		if !ok {
 			return fmt.Errorf(`unexpected referenced foreign-key "group_id" returned %v for node %v`, *fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *GroupQuery) loadBillingPoolMemberships(ctx context.Context, query *BillingPoolGroupQuery, nodes []*Group, init func(*Group), assign func(*Group, *BillingPoolGroup)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[int64]*Group)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(billingpoolgroup.FieldGroupID)
+	}
+	query.Where(predicate.BillingPoolGroup(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(group.BillingPoolMembershipsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.GroupID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "group_id" returned %v for node %v`, fk, n.ID)
 		}
 		assign(node, n)
 	}

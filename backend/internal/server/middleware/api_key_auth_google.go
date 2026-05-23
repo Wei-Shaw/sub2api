@@ -75,39 +75,19 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 
 		isSubscriptionType := apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
 		if isSubscriptionType && subscriptionService != nil {
-			subscription, err := subscriptionService.GetActiveSubscription(
-				c.Request.Context(),
-				apiKey.User.ID,
-				apiKey.Group.ID,
-			)
+			decision, err := subscriptionService.ResolveBillingDecision(c.Request.Context(), apiKey, service.ResolveBillingDecisionOptions{})
 			if err != nil {
-				abortWithGoogleError(c, 403, "No active subscription found for this group")
+				status, _, message := billingAuthErrorDetails(err)
+				abortWithGoogleError(c, status, message)
 				return
 			}
-
-			needsMaintenance, err := subscriptionService.ValidateAndCheckLimits(subscription, apiKey.Group)
-			if err != nil {
-				status := 403
-				if errors.Is(err, service.ErrDailyLimitExceeded) ||
-					errors.Is(err, service.ErrWeeklyLimitExceeded) ||
-					errors.Is(err, service.ErrMonthlyLimitExceeded) {
-					status = 429
-				}
-				abortWithGoogleError(c, status, err.Error())
-				return
-			}
-
-			c.Set(string(ContextKeySubscription), subscription)
-
-			if needsMaintenance {
-				maintenanceCopy := *subscription
-				subscriptionService.DoWindowMaintenance(&maintenanceCopy)
-			}
+			BindBillingDecision(c, decision)
 		} else {
 			if apiKey.User.Balance <= 0 {
 				abortWithGoogleError(c, 403, "Insufficient account balance")
 				return
 			}
+			BindBillingDecision(c, &service.BillingDecision{})
 		}
 
 		c.Set(string(ContextKeyAPIKey), apiKey)

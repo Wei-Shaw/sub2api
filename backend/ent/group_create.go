@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/billingpoolgroup"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
@@ -496,6 +497,21 @@ func (_c *GroupCreate) AddAPIKeys(v ...*APIKey) *GroupCreate {
 	return _c.AddAPIKeyIDs(ids...)
 }
 
+// AddBillingPoolMembershipIDs adds the "billing_pool_memberships" edge to the BillingPoolGroup entity by IDs.
+func (_c *GroupCreate) AddBillingPoolMembershipIDs(ids ...int64) *GroupCreate {
+	_c.mutation.AddBillingPoolMembershipIDs(ids...)
+	return _c
+}
+
+// AddBillingPoolMemberships adds the "billing_pool_memberships" edges to the BillingPoolGroup entity.
+func (_c *GroupCreate) AddBillingPoolMemberships(v ...*BillingPoolGroup) *GroupCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddBillingPoolMembershipIDs(ids...)
+}
+
 // AddRedeemCodeIDs adds the "redeem_codes" edge to the RedeemCode entity by IDs.
 func (_c *GroupCreate) AddRedeemCodeIDs(ids ...int64) *GroupCreate {
 	_c.mutation.AddRedeemCodeIDs(ids...)
@@ -973,6 +989,22 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(apikey.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.BillingPoolMembershipsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   group.BillingPoolMembershipsTable,
+			Columns: []string{group.BillingPoolMembershipsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(billingpoolgroup.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

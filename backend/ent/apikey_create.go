@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/billingpool"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
@@ -99,6 +100,20 @@ func (_c *APIKeyCreate) SetNillableGroupID(v *int64) *APIKeyCreate {
 	return _c
 }
 
+// SetBillingPoolID sets the "billing_pool_id" field.
+func (_c *APIKeyCreate) SetBillingPoolID(v int64) *APIKeyCreate {
+	_c.mutation.SetBillingPoolID(v)
+	return _c
+}
+
+// SetNillableBillingPoolID sets the "billing_pool_id" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableBillingPoolID(v *int64) *APIKeyCreate {
+	if v != nil {
+		_c.SetBillingPoolID(*v)
+	}
+	return _c
+}
+
 // SetStatus sets the "status" field.
 func (_c *APIKeyCreate) SetStatus(v string) *APIKeyCreate {
 	_c.mutation.SetStatus(v)
@@ -110,6 +125,40 @@ func (_c *APIKeyCreate) SetNillableStatus(v *string) *APIKeyCreate {
 	if v != nil {
 		_c.SetStatus(*v)
 	}
+	return _c
+}
+
+// SetBillingMode sets the "billing_mode" field.
+func (_c *APIKeyCreate) SetBillingMode(v string) *APIKeyCreate {
+	_c.mutation.SetBillingMode(v)
+	return _c
+}
+
+// SetNillableBillingMode sets the "billing_mode" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableBillingMode(v *string) *APIKeyCreate {
+	if v != nil {
+		_c.SetBillingMode(*v)
+	}
+	return _c
+}
+
+// SetUsePoolDefaultOrder sets the "use_pool_default_order" field.
+func (_c *APIKeyCreate) SetUsePoolDefaultOrder(v bool) *APIKeyCreate {
+	_c.mutation.SetUsePoolDefaultOrder(v)
+	return _c
+}
+
+// SetNillableUsePoolDefaultOrder sets the "use_pool_default_order" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableUsePoolDefaultOrder(v *bool) *APIKeyCreate {
+	if v != nil {
+		_c.SetUsePoolDefaultOrder(*v)
+	}
+	return _c
+}
+
+// SetCustomFallbackGroupIds sets the "custom_fallback_group_ids" field.
+func (_c *APIKeyCreate) SetCustomFallbackGroupIds(v []int64) *APIKeyCreate {
+	_c.mutation.SetCustomFallbackGroupIds(v)
 	return _c
 }
 
@@ -317,6 +366,11 @@ func (_c *APIKeyCreate) SetGroup(v *Group) *APIKeyCreate {
 	return _c.SetGroupID(v.ID)
 }
 
+// SetBillingPool sets the "billing_pool" edge to the BillingPool entity.
+func (_c *APIKeyCreate) SetBillingPool(v *BillingPool) *APIKeyCreate {
+	return _c.SetBillingPoolID(v.ID)
+}
+
 // AddUsageLogIDs adds the "usage_logs" edge to the UsageLog entity by IDs.
 func (_c *APIKeyCreate) AddUsageLogIDs(ids ...int64) *APIKeyCreate {
 	_c.mutation.AddUsageLogIDs(ids...)
@@ -387,6 +441,14 @@ func (_c *APIKeyCreate) defaults() error {
 		v := apikey.DefaultStatus
 		_c.mutation.SetStatus(v)
 	}
+	if _, ok := _c.mutation.BillingMode(); !ok {
+		v := apikey.DefaultBillingMode
+		_c.mutation.SetBillingMode(v)
+	}
+	if _, ok := _c.mutation.UsePoolDefaultOrder(); !ok {
+		v := apikey.DefaultUsePoolDefaultOrder
+		_c.mutation.SetUsePoolDefaultOrder(v)
+	}
 	if _, ok := _c.mutation.Quota(); !ok {
 		v := apikey.DefaultQuota
 		_c.mutation.SetQuota(v)
@@ -456,6 +518,17 @@ func (_c *APIKeyCreate) check() error {
 		if err := apikey.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "APIKey.status": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.BillingMode(); !ok {
+		return &ValidationError{Name: "billing_mode", err: errors.New(`ent: missing required field "APIKey.billing_mode"`)}
+	}
+	if v, ok := _c.mutation.BillingMode(); ok {
+		if err := apikey.BillingModeValidator(v); err != nil {
+			return &ValidationError{Name: "billing_mode", err: fmt.Errorf(`ent: validator failed for field "APIKey.billing_mode": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.UsePoolDefaultOrder(); !ok {
+		return &ValidationError{Name: "use_pool_default_order", err: errors.New(`ent: missing required field "APIKey.use_pool_default_order"`)}
 	}
 	if _, ok := _c.mutation.Quota(); !ok {
 		return &ValidationError{Name: "quota", err: errors.New(`ent: missing required field "APIKey.quota"`)}
@@ -534,6 +607,18 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(apikey.FieldStatus, field.TypeString, value)
 		_node.Status = value
+	}
+	if value, ok := _c.mutation.BillingMode(); ok {
+		_spec.SetField(apikey.FieldBillingMode, field.TypeString, value)
+		_node.BillingMode = value
+	}
+	if value, ok := _c.mutation.UsePoolDefaultOrder(); ok {
+		_spec.SetField(apikey.FieldUsePoolDefaultOrder, field.TypeBool, value)
+		_node.UsePoolDefaultOrder = value
+	}
+	if value, ok := _c.mutation.CustomFallbackGroupIds(); ok {
+		_spec.SetField(apikey.FieldCustomFallbackGroupIds, field.TypeJSON, value)
+		_node.CustomFallbackGroupIds = value
 	}
 	if value, ok := _c.mutation.LastUsedAt(); ok {
 		_spec.SetField(apikey.FieldLastUsedAt, field.TypeTime, value)
@@ -627,6 +712,23 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
 		_node.GroupID = &nodes[0]
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.BillingPoolIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   apikey.BillingPoolTable,
+			Columns: []string{apikey.BillingPoolColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(billingpool.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_node.BillingPoolID = &nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	if nodes := _c.mutation.UsageLogsIDs(); len(nodes) > 0 {
@@ -781,6 +883,24 @@ func (u *APIKeyUpsert) ClearGroupID() *APIKeyUpsert {
 	return u
 }
 
+// SetBillingPoolID sets the "billing_pool_id" field.
+func (u *APIKeyUpsert) SetBillingPoolID(v int64) *APIKeyUpsert {
+	u.Set(apikey.FieldBillingPoolID, v)
+	return u
+}
+
+// UpdateBillingPoolID sets the "billing_pool_id" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateBillingPoolID() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldBillingPoolID)
+	return u
+}
+
+// ClearBillingPoolID clears the value of the "billing_pool_id" field.
+func (u *APIKeyUpsert) ClearBillingPoolID() *APIKeyUpsert {
+	u.SetNull(apikey.FieldBillingPoolID)
+	return u
+}
+
 // SetStatus sets the "status" field.
 func (u *APIKeyUpsert) SetStatus(v string) *APIKeyUpsert {
 	u.Set(apikey.FieldStatus, v)
@@ -790,6 +910,48 @@ func (u *APIKeyUpsert) SetStatus(v string) *APIKeyUpsert {
 // UpdateStatus sets the "status" field to the value that was provided on create.
 func (u *APIKeyUpsert) UpdateStatus() *APIKeyUpsert {
 	u.SetExcluded(apikey.FieldStatus)
+	return u
+}
+
+// SetBillingMode sets the "billing_mode" field.
+func (u *APIKeyUpsert) SetBillingMode(v string) *APIKeyUpsert {
+	u.Set(apikey.FieldBillingMode, v)
+	return u
+}
+
+// UpdateBillingMode sets the "billing_mode" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateBillingMode() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldBillingMode)
+	return u
+}
+
+// SetUsePoolDefaultOrder sets the "use_pool_default_order" field.
+func (u *APIKeyUpsert) SetUsePoolDefaultOrder(v bool) *APIKeyUpsert {
+	u.Set(apikey.FieldUsePoolDefaultOrder, v)
+	return u
+}
+
+// UpdateUsePoolDefaultOrder sets the "use_pool_default_order" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateUsePoolDefaultOrder() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldUsePoolDefaultOrder)
+	return u
+}
+
+// SetCustomFallbackGroupIds sets the "custom_fallback_group_ids" field.
+func (u *APIKeyUpsert) SetCustomFallbackGroupIds(v []int64) *APIKeyUpsert {
+	u.Set(apikey.FieldCustomFallbackGroupIds, v)
+	return u
+}
+
+// UpdateCustomFallbackGroupIds sets the "custom_fallback_group_ids" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateCustomFallbackGroupIds() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldCustomFallbackGroupIds)
+	return u
+}
+
+// ClearCustomFallbackGroupIds clears the value of the "custom_fallback_group_ids" field.
+func (u *APIKeyUpsert) ClearCustomFallbackGroupIds() *APIKeyUpsert {
+	u.SetNull(apikey.FieldCustomFallbackGroupIds)
 	return u
 }
 
@@ -1206,6 +1368,27 @@ func (u *APIKeyUpsertOne) ClearGroupID() *APIKeyUpsertOne {
 	})
 }
 
+// SetBillingPoolID sets the "billing_pool_id" field.
+func (u *APIKeyUpsertOne) SetBillingPoolID(v int64) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetBillingPoolID(v)
+	})
+}
+
+// UpdateBillingPoolID sets the "billing_pool_id" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateBillingPoolID() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateBillingPoolID()
+	})
+}
+
+// ClearBillingPoolID clears the value of the "billing_pool_id" field.
+func (u *APIKeyUpsertOne) ClearBillingPoolID() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearBillingPoolID()
+	})
+}
+
 // SetStatus sets the "status" field.
 func (u *APIKeyUpsertOne) SetStatus(v string) *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
@@ -1217,6 +1400,55 @@ func (u *APIKeyUpsertOne) SetStatus(v string) *APIKeyUpsertOne {
 func (u *APIKeyUpsertOne) UpdateStatus() *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetBillingMode sets the "billing_mode" field.
+func (u *APIKeyUpsertOne) SetBillingMode(v string) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetBillingMode(v)
+	})
+}
+
+// UpdateBillingMode sets the "billing_mode" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateBillingMode() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateBillingMode()
+	})
+}
+
+// SetUsePoolDefaultOrder sets the "use_pool_default_order" field.
+func (u *APIKeyUpsertOne) SetUsePoolDefaultOrder(v bool) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetUsePoolDefaultOrder(v)
+	})
+}
+
+// UpdateUsePoolDefaultOrder sets the "use_pool_default_order" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateUsePoolDefaultOrder() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateUsePoolDefaultOrder()
+	})
+}
+
+// SetCustomFallbackGroupIds sets the "custom_fallback_group_ids" field.
+func (u *APIKeyUpsertOne) SetCustomFallbackGroupIds(v []int64) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetCustomFallbackGroupIds(v)
+	})
+}
+
+// UpdateCustomFallbackGroupIds sets the "custom_fallback_group_ids" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateCustomFallbackGroupIds() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateCustomFallbackGroupIds()
+	})
+}
+
+// ClearCustomFallbackGroupIds clears the value of the "custom_fallback_group_ids" field.
+func (u *APIKeyUpsertOne) ClearCustomFallbackGroupIds() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearCustomFallbackGroupIds()
 	})
 }
 
@@ -1844,6 +2076,27 @@ func (u *APIKeyUpsertBulk) ClearGroupID() *APIKeyUpsertBulk {
 	})
 }
 
+// SetBillingPoolID sets the "billing_pool_id" field.
+func (u *APIKeyUpsertBulk) SetBillingPoolID(v int64) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetBillingPoolID(v)
+	})
+}
+
+// UpdateBillingPoolID sets the "billing_pool_id" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateBillingPoolID() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateBillingPoolID()
+	})
+}
+
+// ClearBillingPoolID clears the value of the "billing_pool_id" field.
+func (u *APIKeyUpsertBulk) ClearBillingPoolID() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearBillingPoolID()
+	})
+}
+
 // SetStatus sets the "status" field.
 func (u *APIKeyUpsertBulk) SetStatus(v string) *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
@@ -1855,6 +2108,55 @@ func (u *APIKeyUpsertBulk) SetStatus(v string) *APIKeyUpsertBulk {
 func (u *APIKeyUpsertBulk) UpdateStatus() *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetBillingMode sets the "billing_mode" field.
+func (u *APIKeyUpsertBulk) SetBillingMode(v string) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetBillingMode(v)
+	})
+}
+
+// UpdateBillingMode sets the "billing_mode" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateBillingMode() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateBillingMode()
+	})
+}
+
+// SetUsePoolDefaultOrder sets the "use_pool_default_order" field.
+func (u *APIKeyUpsertBulk) SetUsePoolDefaultOrder(v bool) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetUsePoolDefaultOrder(v)
+	})
+}
+
+// UpdateUsePoolDefaultOrder sets the "use_pool_default_order" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateUsePoolDefaultOrder() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateUsePoolDefaultOrder()
+	})
+}
+
+// SetCustomFallbackGroupIds sets the "custom_fallback_group_ids" field.
+func (u *APIKeyUpsertBulk) SetCustomFallbackGroupIds(v []int64) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetCustomFallbackGroupIds(v)
+	})
+}
+
+// UpdateCustomFallbackGroupIds sets the "custom_fallback_group_ids" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateCustomFallbackGroupIds() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateCustomFallbackGroupIds()
+	})
+}
+
+// ClearCustomFallbackGroupIds clears the value of the "custom_fallback_group_ids" field.
+func (u *APIKeyUpsertBulk) ClearCustomFallbackGroupIds() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearCustomFallbackGroupIds()
 	})
 }
 

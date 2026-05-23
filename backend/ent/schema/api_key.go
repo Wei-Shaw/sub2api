@@ -44,9 +44,20 @@ func (APIKey) Fields() []ent.Field {
 		field.Int64("group_id").
 			Optional().
 			Nillable(),
+		field.Int64("billing_pool_id").
+			Optional().
+			Nillable(),
 		field.String("status").
 			MaxLen(20).
 			Default(domain.StatusActive),
+		field.String("billing_mode").
+			MaxLen(64).
+			Default("primary_then_balance"),
+		field.Bool("use_pool_default_order").
+			Default(true),
+		field.JSON("custom_fallback_group_ids", []int64{}).
+			Optional().
+			Comment("Custom fallback group order within billing pool"),
 		field.Time("last_used_at").
 			Optional().
 			Nillable().
@@ -129,6 +140,10 @@ func (APIKey) Edges() []ent.Edge {
 			Ref("api_keys").
 			Field("group_id").
 			Unique(),
+		edge.From("billing_pool", BillingPool.Type).
+			Ref("api_keys").
+			Field("billing_pool_id").
+			Unique(),
 		edge.To("usage_logs", UsageLog.Type),
 	}
 }
@@ -138,7 +153,9 @@ func (APIKey) Indexes() []ent.Index {
 		// key 字段已在 Fields() 中声明 Unique()，无需重复索引
 		index.Fields("user_id"),
 		index.Fields("group_id"),
+		index.Fields("billing_pool_id"),
 		index.Fields("status"),
+		index.Fields("billing_mode"),
 		index.Fields("deleted_at"),
 		index.Fields("last_used_at"),
 		// Index for quota queries

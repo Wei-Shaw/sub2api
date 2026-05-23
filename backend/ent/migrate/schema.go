@@ -18,6 +18,9 @@ var (
 		{Name: "key", Type: field.TypeString, Unique: true, Size: 128},
 		{Name: "name", Type: field.TypeString, Size: 100},
 		{Name: "status", Type: field.TypeString, Size: 20, Default: "active"},
+		{Name: "billing_mode", Type: field.TypeString, Size: 64, Default: "primary_then_balance"},
+		{Name: "use_pool_default_order", Type: field.TypeBool, Default: true},
+		{Name: "custom_fallback_group_ids", Type: field.TypeJSON, Nullable: true},
 		{Name: "last_used_at", Type: field.TypeTime, Nullable: true},
 		{Name: "ip_whitelist", Type: field.TypeJSON, Nullable: true},
 		{Name: "ip_blacklist", Type: field.TypeJSON, Nullable: true},
@@ -33,6 +36,7 @@ var (
 		{Name: "window_5h_start", Type: field.TypeTime, Nullable: true},
 		{Name: "window_1d_start", Type: field.TypeTime, Nullable: true},
 		{Name: "window_7d_start", Type: field.TypeTime, Nullable: true},
+		{Name: "billing_pool_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "group_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "user_id", Type: field.TypeInt64},
 	}
@@ -43,14 +47,20 @@ var (
 		PrimaryKey: []*schema.Column{APIKeysColumns[0]},
 		ForeignKeys: []*schema.ForeignKey{
 			{
+				Symbol:     "api_keys_billing_pools_api_keys",
+				Columns:    []*schema.Column{APIKeysColumns[25]},
+				RefColumns: []*schema.Column{BillingPoolsColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+			{
 				Symbol:     "api_keys_groups_api_keys",
-				Columns:    []*schema.Column{APIKeysColumns[22]},
+				Columns:    []*schema.Column{APIKeysColumns[26]},
 				RefColumns: []*schema.Column{GroupsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "api_keys_users_api_keys",
-				Columns:    []*schema.Column{APIKeysColumns[23]},
+				Columns:    []*schema.Column{APIKeysColumns[27]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -59,17 +69,27 @@ var (
 			{
 				Name:    "apikey_user_id",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[23]},
+				Columns: []*schema.Column{APIKeysColumns[27]},
 			},
 			{
 				Name:    "apikey_group_id",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[22]},
+				Columns: []*schema.Column{APIKeysColumns[26]},
+			},
+			{
+				Name:    "apikey_billing_pool_id",
+				Unique:  false,
+				Columns: []*schema.Column{APIKeysColumns[25]},
 			},
 			{
 				Name:    "apikey_status",
 				Unique:  false,
 				Columns: []*schema.Column{APIKeysColumns[6]},
+			},
+			{
+				Name:    "apikey_billing_mode",
+				Unique:  false,
+				Columns: []*schema.Column{APIKeysColumns[7]},
 			},
 			{
 				Name:    "apikey_deleted_at",
@@ -79,17 +99,17 @@ var (
 			{
 				Name:    "apikey_last_used_at",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[7]},
+				Columns: []*schema.Column{APIKeysColumns[10]},
 			},
 			{
 				Name:    "apikey_quota_quota_used",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[10], APIKeysColumns[11]},
+				Columns: []*schema.Column{APIKeysColumns[13], APIKeysColumns[14]},
 			},
 			{
 				Name:    "apikey_expires_at",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[12]},
+				Columns: []*schema.Column{APIKeysColumns[15]},
 			},
 		},
 	}
@@ -418,6 +438,98 @@ var (
 				Name:    "authidentitychannel_identity_id",
 				Unique:  false,
 				Columns: []*schema.Column{AuthIdentityChannelsColumns[9]},
+			},
+		},
+	}
+	// BillingPoolsColumns holds the columns for the "billing_pools" table.
+	BillingPoolsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "name", Type: field.TypeString, Size: 100},
+		{Name: "code", Type: field.TypeString, Size: 100},
+		{Name: "description", Type: field.TypeString, Nullable: true},
+		{Name: "status", Type: field.TypeString, Size: 20, Default: "active"},
+		{Name: "platform_scope", Type: field.TypeString, Size: 32, Default: "same_platform"},
+		{Name: "allow_user_reorder", Type: field.TypeBool, Default: false},
+		{Name: "require_primary_subscription", Type: field.TypeBool, Default: true},
+		{Name: "allow_balance_fallback", Type: field.TypeBool, Default: true},
+	}
+	// BillingPoolsTable holds the schema information for the "billing_pools" table.
+	BillingPoolsTable = &schema.Table{
+		Name:       "billing_pools",
+		Columns:    BillingPoolsColumns,
+		PrimaryKey: []*schema.Column{BillingPoolsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "billingpool_status",
+				Unique:  false,
+				Columns: []*schema.Column{BillingPoolsColumns[7]},
+			},
+			{
+				Name:    "billingpool_deleted_at",
+				Unique:  false,
+				Columns: []*schema.Column{BillingPoolsColumns[3]},
+			},
+			{
+				Name:    "billingpool_platform_scope",
+				Unique:  false,
+				Columns: []*schema.Column{BillingPoolsColumns[8]},
+			},
+		},
+	}
+	// BillingPoolGroupsColumns holds the columns for the "billing_pool_groups" table.
+	BillingPoolGroupsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "chain_order", Type: field.TypeInt, Default: 0},
+		{Name: "can_be_primary", Type: field.TypeBool, Default: true},
+		{Name: "can_be_fallback", Type: field.TypeBool, Default: true},
+		{Name: "billing_pool_id", Type: field.TypeInt64},
+		{Name: "group_id", Type: field.TypeInt64},
+	}
+	// BillingPoolGroupsTable holds the schema information for the "billing_pool_groups" table.
+	BillingPoolGroupsTable = &schema.Table{
+		Name:       "billing_pool_groups",
+		Columns:    BillingPoolGroupsColumns,
+		PrimaryKey: []*schema.Column{BillingPoolGroupsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "billing_pool_groups_billing_pools_members",
+				Columns:    []*schema.Column{BillingPoolGroupsColumns[7]},
+				RefColumns: []*schema.Column{BillingPoolsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "billing_pool_groups_groups_billing_pool_memberships",
+				Columns:    []*schema.Column{BillingPoolGroupsColumns[8]},
+				RefColumns: []*schema.Column{GroupsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "billingpoolgroup_billing_pool_id",
+				Unique:  false,
+				Columns: []*schema.Column{BillingPoolGroupsColumns[7]},
+			},
+			{
+				Name:    "billingpoolgroup_group_id",
+				Unique:  false,
+				Columns: []*schema.Column{BillingPoolGroupsColumns[8]},
+			},
+			{
+				Name:    "billingpoolgroup_chain_order",
+				Unique:  false,
+				Columns: []*schema.Column{BillingPoolGroupsColumns[4]},
+			},
+			{
+				Name:    "billingpoolgroup_deleted_at",
+				Unique:  false,
+				Columns: []*schema.Column{BillingPoolGroupsColumns[3]},
 			},
 		},
 	}
@@ -1710,6 +1822,8 @@ var (
 		AnnouncementReadsTable,
 		AuthIdentitiesTable,
 		AuthIdentityChannelsTable,
+		BillingPoolsTable,
+		BillingPoolGroupsTable,
 		ChannelMonitorsTable,
 		ChannelMonitorDailyRollupsTable,
 		ChannelMonitorHistoriesTable,
@@ -1741,8 +1855,9 @@ var (
 )
 
 func init() {
-	APIKeysTable.ForeignKeys[0].RefTable = GroupsTable
-	APIKeysTable.ForeignKeys[1].RefTable = UsersTable
+	APIKeysTable.ForeignKeys[0].RefTable = BillingPoolsTable
+	APIKeysTable.ForeignKeys[1].RefTable = GroupsTable
+	APIKeysTable.ForeignKeys[2].RefTable = UsersTable
 	APIKeysTable.Annotation = &entsql.Annotation{
 		Table: "api_keys",
 	}
@@ -1770,6 +1885,14 @@ func init() {
 	AuthIdentityChannelsTable.ForeignKeys[0].RefTable = AuthIdentitiesTable
 	AuthIdentityChannelsTable.Annotation = &entsql.Annotation{
 		Table: "auth_identity_channels",
+	}
+	BillingPoolsTable.Annotation = &entsql.Annotation{
+		Table: "billing_pools",
+	}
+	BillingPoolGroupsTable.ForeignKeys[0].RefTable = BillingPoolsTable
+	BillingPoolGroupsTable.ForeignKeys[1].RefTable = GroupsTable
+	BillingPoolGroupsTable.Annotation = &entsql.Annotation{
+		Table: "billing_pool_groups",
 	}
 	ChannelMonitorsTable.ForeignKeys[0].RefTable = ChannelMonitorRequestTemplatesTable
 	ChannelMonitorsTable.Annotation = &entsql.Annotation{

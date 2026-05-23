@@ -140,19 +140,24 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		isSubscriptionType := apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
 
 		if isSubscriptionType && subscriptionService != nil {
-			sub, subErr := subscriptionService.GetActiveSubscription(
-				c.Request.Context(),
-				apiKey.User.ID,
-				apiKey.Group.ID,
-			)
-			if subErr != nil {
-				if !skipBilling {
-					AbortWithError(c, 403, "SUBSCRIPTION_NOT_FOUND", "No active subscription found for this group")
+			if !skipBilling {
+				decision, decisionErr := subscriptionService.ResolveBillingDecision(c.Request.Context(), apiKey, service.ResolveBillingDecisionOptions{})
+				if decisionErr != nil {
+					status, code, message := billingAuthErrorDetails(decisionErr)
+					AbortWithError(c, status, code, message)
 					return
 				}
-				// skipBilling: 订阅不存在也放行，handler 会返回可用的数据
+				BindBillingDecision(c, decision)
+				subscription = decision.Subscription
 			} else {
-				subscription = sub
+				sub, subErr := subscriptionService.GetActiveSubscription(
+					c.Request.Context(),
+					apiKey.User.ID,
+					apiKey.Group.ID,
+				)
+				if subErr == nil {
+					subscription = sub
+				}
 			}
 		}
 
@@ -179,29 +184,8 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 				return
 			}
 
-			// 订阅模式：验证订阅限额
-			if subscription != nil {
-				needsMaintenance, validateErr := subscriptionService.ValidateAndCheckLimits(subscription, apiKey.Group)
-				if validateErr != nil {
-					code := "SUBSCRIPTION_INVALID"
-					status := 403
-					if errors.Is(validateErr, service.ErrDailyLimitExceeded) ||
-						errors.Is(validateErr, service.ErrWeeklyLimitExceeded) ||
-						errors.Is(validateErr, service.ErrMonthlyLimitExceeded) {
-						code = "USAGE_LIMIT_EXCEEDED"
-						status = 429
-					}
-					AbortWithError(c, status, code, validateErr.Error())
-					return
-				}
-
-				// 窗口维护异步化（不阻塞请求）
-				if needsMaintenance {
-					maintenanceCopy := *subscription
-					subscriptionService.DoWindowMaintenance(&maintenanceCopy)
-				}
-			} else {
-				// 非订阅模式 或 订阅模式但 subscriptionService 未注入：回退到余额检查
+			if !isSubscriptionType || subscriptionService == nil {
+				// 非订阅模式 或 订阅服务未注入时：回退到余额检查
 				if apiKey.User.Balance <= 0 {
 					AbortWithError(c, 403, "INSUFFICIENT_BALANCE", "Insufficient account balance")
 					return
@@ -211,8 +195,8 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 
 		// ── 7. 设置上下文 → Next ─────────────────────────────────────
 
-		if subscription != nil {
-			c.Set(string(ContextKeySubscription), subscription)
+		if _, exists := c.Get(string(ContextKeyBillingDecision)); !exists {
+			BindBillingDecision(c, &service.BillingDecision{Subscription: subscription})
 		}
 		c.Set(string(ContextKeyAPIKey), apiKey)
 		c.Set(string(ContextKeyUser), AuthSubject{
@@ -244,7 +228,61 @@ func GetSubscriptionFromContext(c *gin.Context) (*service.UserSubscription, bool
 		return nil, false
 	}
 	subscription, ok := value.(*service.UserSubscription)
+	if !ok || subscription == nil {
+		return nil, false
+	}
 	return subscription, ok
+}
+
+// GetBillingDecisionFromContext 从上下文中获取扣费来源解析结果。
+func GetBillingDecisionFromContext(c *gin.Context) (*service.BillingDecision, bool) {
+	value, exists := c.Get(string(ContextKeyBillingDecision))
+	if !exists {
+		return nil, false
+	}
+	decision, ok := value.(*service.BillingDecision)
+	if !ok || decision == nil {
+		return nil, false
+	}
+	return decision, true
+}
+
+// BindBillingDecision 将扣费来源解析结果和最终命中的订阅绑定到当前请求上下文。
+func BindBillingDecision(c *gin.Context, decision *service.BillingDecision) {
+	if c == nil {
+		return
+	}
+	if decision == nil {
+		c.Set(string(ContextKeyBillingDecision), (*service.BillingDecision)(nil))
+		c.Set(string(ContextKeySubscription), (*service.UserSubscription)(nil))
+		return
+	}
+	c.Set(string(ContextKeyBillingDecision), decision)
+	c.Set(string(ContextKeySubscription), decision.Subscription)
+}
+
+func billingAuthErrorDetails(err error) (status int, code, message string) {
+	message = err.Error()
+	status = 403
+	code = "SUBSCRIPTION_INVALID"
+	switch {
+	case errors.Is(err, service.ErrPrimarySubscriptionRequired):
+		code = "SUBSCRIPTION_NOT_FOUND"
+		message = "No active subscription found for this group"
+	case errors.Is(err, service.ErrInsufficientBalance):
+		code = "INSUFFICIENT_BALANCE"
+		message = "Insufficient account balance"
+	case errors.Is(err, service.ErrBillingServiceUnavailable):
+		status = 503
+		code = "BILLING_SERVICE_ERROR"
+		message = "Billing service temporarily unavailable. Please retry later."
+	case errors.Is(err, service.ErrDailyLimitExceeded),
+		errors.Is(err, service.ErrWeeklyLimitExceeded),
+		errors.Is(err, service.ErrMonthlyLimitExceeded):
+		status = 429
+		code = "USAGE_LIMIT_EXCEEDED"
+	}
+	return status, code, message
 }
 
 func setGroupContext(c *gin.Context, group *service.Group) {

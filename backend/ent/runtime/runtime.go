@@ -12,6 +12,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
+	"github.com/Wei-Shaw/sub2api/ent/billingpool"
+	"github.com/Wei-Shaw/sub2api/ent/billingpoolgroup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
@@ -103,41 +105,51 @@ func init() {
 		}
 	}()
 	// apikeyDescStatus is the schema descriptor for status field.
-	apikeyDescStatus := apikeyFields[4].Descriptor()
+	apikeyDescStatus := apikeyFields[5].Descriptor()
 	// apikey.DefaultStatus holds the default value on creation for the status field.
 	apikey.DefaultStatus = apikeyDescStatus.Default.(string)
 	// apikey.StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	apikey.StatusValidator = apikeyDescStatus.Validators[0].(func(string) error)
+	// apikeyDescBillingMode is the schema descriptor for billing_mode field.
+	apikeyDescBillingMode := apikeyFields[6].Descriptor()
+	// apikey.DefaultBillingMode holds the default value on creation for the billing_mode field.
+	apikey.DefaultBillingMode = apikeyDescBillingMode.Default.(string)
+	// apikey.BillingModeValidator is a validator for the "billing_mode" field. It is called by the builders before save.
+	apikey.BillingModeValidator = apikeyDescBillingMode.Validators[0].(func(string) error)
+	// apikeyDescUsePoolDefaultOrder is the schema descriptor for use_pool_default_order field.
+	apikeyDescUsePoolDefaultOrder := apikeyFields[7].Descriptor()
+	// apikey.DefaultUsePoolDefaultOrder holds the default value on creation for the use_pool_default_order field.
+	apikey.DefaultUsePoolDefaultOrder = apikeyDescUsePoolDefaultOrder.Default.(bool)
 	// apikeyDescQuota is the schema descriptor for quota field.
-	apikeyDescQuota := apikeyFields[8].Descriptor()
+	apikeyDescQuota := apikeyFields[12].Descriptor()
 	// apikey.DefaultQuota holds the default value on creation for the quota field.
 	apikey.DefaultQuota = apikeyDescQuota.Default.(float64)
 	// apikeyDescQuotaUsed is the schema descriptor for quota_used field.
-	apikeyDescQuotaUsed := apikeyFields[9].Descriptor()
+	apikeyDescQuotaUsed := apikeyFields[13].Descriptor()
 	// apikey.DefaultQuotaUsed holds the default value on creation for the quota_used field.
 	apikey.DefaultQuotaUsed = apikeyDescQuotaUsed.Default.(float64)
 	// apikeyDescRateLimit5h is the schema descriptor for rate_limit_5h field.
-	apikeyDescRateLimit5h := apikeyFields[11].Descriptor()
+	apikeyDescRateLimit5h := apikeyFields[15].Descriptor()
 	// apikey.DefaultRateLimit5h holds the default value on creation for the rate_limit_5h field.
 	apikey.DefaultRateLimit5h = apikeyDescRateLimit5h.Default.(float64)
 	// apikeyDescRateLimit1d is the schema descriptor for rate_limit_1d field.
-	apikeyDescRateLimit1d := apikeyFields[12].Descriptor()
+	apikeyDescRateLimit1d := apikeyFields[16].Descriptor()
 	// apikey.DefaultRateLimit1d holds the default value on creation for the rate_limit_1d field.
 	apikey.DefaultRateLimit1d = apikeyDescRateLimit1d.Default.(float64)
 	// apikeyDescRateLimit7d is the schema descriptor for rate_limit_7d field.
-	apikeyDescRateLimit7d := apikeyFields[13].Descriptor()
+	apikeyDescRateLimit7d := apikeyFields[17].Descriptor()
 	// apikey.DefaultRateLimit7d holds the default value on creation for the rate_limit_7d field.
 	apikey.DefaultRateLimit7d = apikeyDescRateLimit7d.Default.(float64)
 	// apikeyDescUsage5h is the schema descriptor for usage_5h field.
-	apikeyDescUsage5h := apikeyFields[14].Descriptor()
+	apikeyDescUsage5h := apikeyFields[18].Descriptor()
 	// apikey.DefaultUsage5h holds the default value on creation for the usage_5h field.
 	apikey.DefaultUsage5h = apikeyDescUsage5h.Default.(float64)
 	// apikeyDescUsage1d is the schema descriptor for usage_1d field.
-	apikeyDescUsage1d := apikeyFields[15].Descriptor()
+	apikeyDescUsage1d := apikeyFields[19].Descriptor()
 	// apikey.DefaultUsage1d holds the default value on creation for the usage_1d field.
 	apikey.DefaultUsage1d = apikeyDescUsage1d.Default.(float64)
 	// apikeyDescUsage7d is the schema descriptor for usage_7d field.
-	apikeyDescUsage7d := apikeyFields[16].Descriptor()
+	apikeyDescUsage7d := apikeyFields[20].Descriptor()
 	// apikey.DefaultUsage7d holds the default value on creation for the usage_7d field.
 	apikey.DefaultUsage7d = apikeyDescUsage7d.Default.(float64)
 	accountMixin := schema.Account{}.Mixin()
@@ -431,6 +443,116 @@ func init() {
 	authidentitychannelDescMetadata := authidentitychannelFields[6].Descriptor()
 	// authidentitychannel.DefaultMetadata holds the default value on creation for the metadata field.
 	authidentitychannel.DefaultMetadata = authidentitychannelDescMetadata.Default.(func() map[string]interface{})
+	billingpoolMixin := schema.BillingPool{}.Mixin()
+	billingpoolMixinHooks1 := billingpoolMixin[1].Hooks()
+	billingpool.Hooks[0] = billingpoolMixinHooks1[0]
+	billingpoolMixinInters1 := billingpoolMixin[1].Interceptors()
+	billingpool.Interceptors[0] = billingpoolMixinInters1[0]
+	billingpoolMixinFields0 := billingpoolMixin[0].Fields()
+	_ = billingpoolMixinFields0
+	billingpoolFields := schema.BillingPool{}.Fields()
+	_ = billingpoolFields
+	// billingpoolDescCreatedAt is the schema descriptor for created_at field.
+	billingpoolDescCreatedAt := billingpoolMixinFields0[0].Descriptor()
+	// billingpool.DefaultCreatedAt holds the default value on creation for the created_at field.
+	billingpool.DefaultCreatedAt = billingpoolDescCreatedAt.Default.(func() time.Time)
+	// billingpoolDescUpdatedAt is the schema descriptor for updated_at field.
+	billingpoolDescUpdatedAt := billingpoolMixinFields0[1].Descriptor()
+	// billingpool.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	billingpool.DefaultUpdatedAt = billingpoolDescUpdatedAt.Default.(func() time.Time)
+	// billingpool.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	billingpool.UpdateDefaultUpdatedAt = billingpoolDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// billingpoolDescName is the schema descriptor for name field.
+	billingpoolDescName := billingpoolFields[0].Descriptor()
+	// billingpool.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	billingpool.NameValidator = func() func(string) error {
+		validators := billingpoolDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// billingpoolDescCode is the schema descriptor for code field.
+	billingpoolDescCode := billingpoolFields[1].Descriptor()
+	// billingpool.CodeValidator is a validator for the "code" field. It is called by the builders before save.
+	billingpool.CodeValidator = func() func(string) error {
+		validators := billingpoolDescCode.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(code string) error {
+			for _, fn := range fns {
+				if err := fn(code); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// billingpoolDescStatus is the schema descriptor for status field.
+	billingpoolDescStatus := billingpoolFields[3].Descriptor()
+	// billingpool.DefaultStatus holds the default value on creation for the status field.
+	billingpool.DefaultStatus = billingpoolDescStatus.Default.(string)
+	// billingpool.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	billingpool.StatusValidator = billingpoolDescStatus.Validators[0].(func(string) error)
+	// billingpoolDescPlatformScope is the schema descriptor for platform_scope field.
+	billingpoolDescPlatformScope := billingpoolFields[4].Descriptor()
+	// billingpool.DefaultPlatformScope holds the default value on creation for the platform_scope field.
+	billingpool.DefaultPlatformScope = billingpoolDescPlatformScope.Default.(string)
+	// billingpool.PlatformScopeValidator is a validator for the "platform_scope" field. It is called by the builders before save.
+	billingpool.PlatformScopeValidator = billingpoolDescPlatformScope.Validators[0].(func(string) error)
+	// billingpoolDescAllowUserReorder is the schema descriptor for allow_user_reorder field.
+	billingpoolDescAllowUserReorder := billingpoolFields[5].Descriptor()
+	// billingpool.DefaultAllowUserReorder holds the default value on creation for the allow_user_reorder field.
+	billingpool.DefaultAllowUserReorder = billingpoolDescAllowUserReorder.Default.(bool)
+	// billingpoolDescRequirePrimarySubscription is the schema descriptor for require_primary_subscription field.
+	billingpoolDescRequirePrimarySubscription := billingpoolFields[6].Descriptor()
+	// billingpool.DefaultRequirePrimarySubscription holds the default value on creation for the require_primary_subscription field.
+	billingpool.DefaultRequirePrimarySubscription = billingpoolDescRequirePrimarySubscription.Default.(bool)
+	// billingpoolDescAllowBalanceFallback is the schema descriptor for allow_balance_fallback field.
+	billingpoolDescAllowBalanceFallback := billingpoolFields[7].Descriptor()
+	// billingpool.DefaultAllowBalanceFallback holds the default value on creation for the allow_balance_fallback field.
+	billingpool.DefaultAllowBalanceFallback = billingpoolDescAllowBalanceFallback.Default.(bool)
+	billingpoolgroupMixin := schema.BillingPoolGroup{}.Mixin()
+	billingpoolgroupMixinHooks1 := billingpoolgroupMixin[1].Hooks()
+	billingpoolgroup.Hooks[0] = billingpoolgroupMixinHooks1[0]
+	billingpoolgroupMixinInters1 := billingpoolgroupMixin[1].Interceptors()
+	billingpoolgroup.Interceptors[0] = billingpoolgroupMixinInters1[0]
+	billingpoolgroupMixinFields0 := billingpoolgroupMixin[0].Fields()
+	_ = billingpoolgroupMixinFields0
+	billingpoolgroupFields := schema.BillingPoolGroup{}.Fields()
+	_ = billingpoolgroupFields
+	// billingpoolgroupDescCreatedAt is the schema descriptor for created_at field.
+	billingpoolgroupDescCreatedAt := billingpoolgroupMixinFields0[0].Descriptor()
+	// billingpoolgroup.DefaultCreatedAt holds the default value on creation for the created_at field.
+	billingpoolgroup.DefaultCreatedAt = billingpoolgroupDescCreatedAt.Default.(func() time.Time)
+	// billingpoolgroupDescUpdatedAt is the schema descriptor for updated_at field.
+	billingpoolgroupDescUpdatedAt := billingpoolgroupMixinFields0[1].Descriptor()
+	// billingpoolgroup.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	billingpoolgroup.DefaultUpdatedAt = billingpoolgroupDescUpdatedAt.Default.(func() time.Time)
+	// billingpoolgroup.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	billingpoolgroup.UpdateDefaultUpdatedAt = billingpoolgroupDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// billingpoolgroupDescChainOrder is the schema descriptor for chain_order field.
+	billingpoolgroupDescChainOrder := billingpoolgroupFields[2].Descriptor()
+	// billingpoolgroup.DefaultChainOrder holds the default value on creation for the chain_order field.
+	billingpoolgroup.DefaultChainOrder = billingpoolgroupDescChainOrder.Default.(int)
+	// billingpoolgroupDescCanBePrimary is the schema descriptor for can_be_primary field.
+	billingpoolgroupDescCanBePrimary := billingpoolgroupFields[3].Descriptor()
+	// billingpoolgroup.DefaultCanBePrimary holds the default value on creation for the can_be_primary field.
+	billingpoolgroup.DefaultCanBePrimary = billingpoolgroupDescCanBePrimary.Default.(bool)
+	// billingpoolgroupDescCanBeFallback is the schema descriptor for can_be_fallback field.
+	billingpoolgroupDescCanBeFallback := billingpoolgroupFields[4].Descriptor()
+	// billingpoolgroup.DefaultCanBeFallback holds the default value on creation for the can_be_fallback field.
+	billingpoolgroup.DefaultCanBeFallback = billingpoolgroupDescCanBeFallback.Default.(bool)
 	channelmonitorMixin := schema.ChannelMonitor{}.Mixin()
 	channelmonitorMixinFields0 := channelmonitorMixin[0].Fields()
 	_ = channelmonitorMixinFields0

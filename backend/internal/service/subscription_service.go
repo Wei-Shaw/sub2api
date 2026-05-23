@@ -44,6 +44,7 @@ type SubscriptionService struct {
 	groupRepo           GroupRepository
 	userSubRepo         UserSubscriptionRepository
 	billingCacheService *BillingCacheService
+	billingDecisionLoader billingDecisionRuntimeLoader
 	entClient           *dbent.Client
 
 	// L1 缓存：加速中间件热路径的订阅查询
@@ -61,6 +62,7 @@ func NewSubscriptionService(groupRepo GroupRepository, userSubRepo UserSubscript
 		groupRepo:           groupRepo,
 		userSubRepo:         userSubRepo,
 		billingCacheService: billingCacheService,
+		billingDecisionLoader: newSQLBillingDecisionRuntimeLoader(entClient),
 		entClient:           entClient,
 	}
 	svc.initSubCache(cfg)

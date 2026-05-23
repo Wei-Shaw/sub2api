@@ -27,6 +27,12 @@ type AuthIdentity func(*sql.Selector)
 // AuthIdentityChannel is the predicate function for authidentitychannel builders.
 type AuthIdentityChannel func(*sql.Selector)
 
+// BillingPool is the predicate function for billingpool builders.
+type BillingPool func(*sql.Selector)
+
+// BillingPoolGroup is the predicate function for billingpoolgroup builders.
+type BillingPoolGroup func(*sql.Selector)
+
 // ChannelMonitor is the predicate function for channelmonitor builders.
 type ChannelMonitor func(*sql.Selector)
 

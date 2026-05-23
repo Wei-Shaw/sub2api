@@ -9,6 +9,13 @@ import (
 
 type OpenAIMessagesDispatchModelConfig = domain.OpenAIMessagesDispatchModelConfig
 
+type BillingPoolPlatformScope string
+
+const (
+	BillingPoolPlatformScopeSamePlatform BillingPoolPlatformScope = "same_platform"
+	BillingPoolPlatformScopeMixedPlatform BillingPoolPlatformScope = "mixed_platform"
+)
+
 type Group struct {
 	ID             int64
 	Name           string
@@ -65,6 +72,13 @@ type Group struct {
 	// RPMLimit 分组级每分钟请求数上限（0 = 不限制）。
 	// 一旦设置即接管该分组用户的限流（覆盖用户级 rpm_limit），可被 user-group rpm_override 进一步覆盖。
 	RPMLimit int
+
+	// Billing pool presentation fields are derived metadata for user/admin APIs.
+	DefaultBillingPoolID        *int64
+	BillingPoolName             string
+	BillingPoolPlatformScope    string
+	RecommendedBillingMode      string
+	SupportsPoolFallback        bool
 
 	CreatedAt time.Time
 	UpdatedAt time.Time

@@ -434,6 +434,11 @@ func ProvideAPIKeyService(
 	return svc
 }
 
+// ProvideBillingPoolService wires BillingPoolService to the runtime repository.
+func ProvideBillingPoolService(repo BillingPoolRepository, groupRepo GroupRepository) *BillingPoolService {
+	return NewBillingPoolService(repo, groupRepo)
+}
+
 // ProviderSet is the Wire provider set for all services
 var ProviderSet = wire.NewSet(
 	// Core services
@@ -450,6 +455,8 @@ var ProviderSet = wire.NewSet(
 	NewDashboardService,
 	ProvidePricingService,
 	NewBillingService,
+	ProvideBillingPoolService,
+	wire.Bind(new(BillingPoolManager), new(*BillingPoolService)),
 	ProvideBillingCacheService,
 	NewAnnouncementService,
 	NewAdminService,

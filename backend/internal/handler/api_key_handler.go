@@ -2,7 +2,10 @@
 package handler
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -30,13 +33,17 @@ func NewAPIKeyHandler(apiKeyService *service.APIKeyService) *APIKeyHandler {
 
 // CreateAPIKeyRequest represents the create API key request payload
 type CreateAPIKeyRequest struct {
-	Name          string   `json:"name" binding:"required"`
-	GroupID       *int64   `json:"group_id"`        // nullable
-	CustomKey     *string  `json:"custom_key"`      // 可选的自定义key
-	IPWhitelist   []string `json:"ip_whitelist"`    // IP 白名单
-	IPBlacklist   []string `json:"ip_blacklist"`    // IP 黑名单
-	Quota         *float64 `json:"quota"`           // 配额限制 (USD)
-	ExpiresInDays *int     `json:"expires_in_days"` // 过期天数
+	Name                   string             `json:"name" binding:"required"`
+	GroupID                *int64             `json:"group_id"` // nullable
+	BillingMode            string             `json:"billing_mode" binding:"omitempty,oneof=strict primary_then_balance primary_then_pool_then_balance"`
+	BillingPoolID          optionalInt64Field `json:"billing_pool_id"`
+	UsePoolDefaultOrder    *bool              `json:"use_pool_default_order"`
+	CustomFallbackGroupIDs []int64            `json:"custom_fallback_group_ids"`
+	CustomKey              *string            `json:"custom_key"`      // 可选的自定义key
+	IPWhitelist            []string           `json:"ip_whitelist"`    // IP 白名单
+	IPBlacklist            []string           `json:"ip_blacklist"`    // IP 黑名单
+	Quota                  *float64           `json:"quota"`           // 配额限制 (USD)
+	ExpiresInDays          *int               `json:"expires_in_days"` // 过期天数
 
 	// Rate limit fields (0 = unlimited)
 	RateLimit5h *float64 `json:"rate_limit_5h"`
@@ -46,20 +53,77 @@ type CreateAPIKeyRequest struct {
 
 // UpdateAPIKeyRequest represents the update API key request payload
 type UpdateAPIKeyRequest struct {
-	Name        string   `json:"name"`
-	GroupID     *int64   `json:"group_id"`
-	Status      string   `json:"status" binding:"omitempty,oneof=active inactive"`
-	IPWhitelist []string `json:"ip_whitelist"` // IP 白名单
-	IPBlacklist []string `json:"ip_blacklist"` // IP 黑名单
-	Quota       *float64 `json:"quota"`        // 配额限制 (USD), 0=无限制
-	ExpiresAt   *string  `json:"expires_at"`   // 过期时间 (ISO 8601)
-	ResetQuota  *bool    `json:"reset_quota"`  // 重置已用配额
+	Name                   string             `json:"name"`
+	GroupID                *int64             `json:"group_id"`
+	BillingMode            *string            `json:"billing_mode" binding:"omitempty,oneof=strict primary_then_balance primary_then_pool_then_balance"`
+	BillingPoolID          optionalInt64Field `json:"billing_pool_id"`
+	UsePoolDefaultOrder    *bool              `json:"use_pool_default_order"`
+	CustomFallbackGroupIDs []int64            `json:"custom_fallback_group_ids"`
+	Status                 string             `json:"status" binding:"omitempty,oneof=active inactive"`
+	IPWhitelist            []string           `json:"ip_whitelist"` // IP 白名单
+	IPBlacklist            []string           `json:"ip_blacklist"` // IP 黑名单
+	Quota                  *float64           `json:"quota"`        // 配额限制 (USD), 0=无限制
+	ExpiresAt              *string            `json:"expires_at"`   // 过期时间 (ISO 8601)
+	ResetQuota             *bool              `json:"reset_quota"`  // 重置已用配额
 
 	// Rate limit fields (nil = no change, 0 = unlimited)
 	RateLimit5h         *float64 `json:"rate_limit_5h"`
 	RateLimit1d         *float64 `json:"rate_limit_1d"`
 	RateLimit7d         *float64 `json:"rate_limit_7d"`
 	ResetRateLimitUsage *bool    `json:"reset_rate_limit_usage"` // 重置限速用量
+}
+
+type optionalInt64Field struct {
+	set   bool
+	value *int64
+}
+
+func (f *optionalInt64Field) UnmarshalJSON(data []byte) error {
+	f.set = true
+
+	trimmed := bytes.TrimSpace(data)
+	if bytes.Equal(trimmed, []byte("null")) {
+		f.value = nil
+		return nil
+	}
+
+	var number int64
+	if err := json.Unmarshal(trimmed, &number); err == nil {
+		f.value = &number
+		return nil
+	}
+
+	var text string
+	if err := json.Unmarshal(trimmed, &text); err == nil {
+		text = strings.TrimSpace(text)
+		if text == "" {
+			f.value = nil
+			return nil
+		}
+		number, err = strconv.ParseInt(text, 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid int64 value %q: %w", text, err)
+		}
+		f.value = &number
+		return nil
+	}
+
+	return fmt.Errorf("invalid int64 value: %s", string(trimmed))
+}
+
+func (f optionalInt64Field) MarshalJSON() ([]byte, error) {
+	if f.value == nil {
+		return []byte("null"), nil
+	}
+	return json.Marshal(*f.value)
+}
+
+func (f optionalInt64Field) IsSet() bool {
+	return f.set
+}
+
+func (f optionalInt64Field) Value() *int64 {
+	return f.value
 }
 
 // List handles listing user's API keys with pagination
@@ -154,12 +218,16 @@ func (h *APIKeyHandler) Create(c *gin.Context) {
 	}
 
 	svcReq := service.CreateAPIKeyRequest{
-		Name:          req.Name,
-		GroupID:       req.GroupID,
-		CustomKey:     req.CustomKey,
-		IPWhitelist:   req.IPWhitelist,
-		IPBlacklist:   req.IPBlacklist,
-		ExpiresInDays: req.ExpiresInDays,
+		Name:                   req.Name,
+		GroupID:                req.GroupID,
+		BillingMode:            req.BillingMode,
+		BillingPoolID:          req.BillingPoolID.Value(),
+		UsePoolDefaultOrder:    req.UsePoolDefaultOrder,
+		CustomFallbackGroupIDs: append([]int64(nil), req.CustomFallbackGroupIDs...),
+		CustomKey:              req.CustomKey,
+		IPWhitelist:            req.IPWhitelist,
+		IPBlacklist:            req.IPBlacklist,
+		ExpiresInDays:          req.ExpiresInDays,
 	}
 	if req.Quota != nil {
 		svcReq.Quota = *req.Quota
@@ -205,19 +273,27 @@ func (h *APIKeyHandler) Update(c *gin.Context) {
 	}
 
 	svcReq := service.UpdateAPIKeyRequest{
-		IPWhitelist:         req.IPWhitelist,
-		IPBlacklist:         req.IPBlacklist,
-		Quota:               req.Quota,
-		ResetQuota:          req.ResetQuota,
-		RateLimit5h:         req.RateLimit5h,
-		RateLimit1d:         req.RateLimit1d,
-		RateLimit7d:         req.RateLimit7d,
-		ResetRateLimitUsage: req.ResetRateLimitUsage,
+		BillingMode:               req.BillingMode,
+		UsePoolDefaultOrder:       req.UsePoolDefaultOrder,
+		CustomFallbackGroupIDs:    append([]int64(nil), req.CustomFallbackGroupIDs...),
+		SetCustomFallbackGroupIDs: req.CustomFallbackGroupIDs != nil,
+		IPWhitelist:               req.IPWhitelist,
+		IPBlacklist:               req.IPBlacklist,
+		Quota:                     req.Quota,
+		ResetQuota:                req.ResetQuota,
+		RateLimit5h:               req.RateLimit5h,
+		RateLimit1d:               req.RateLimit1d,
+		RateLimit7d:               req.RateLimit7d,
+		ResetRateLimitUsage:       req.ResetRateLimitUsage,
 	}
 	if req.Name != "" {
 		svcReq.Name = &req.Name
 	}
 	svcReq.GroupID = req.GroupID
+	if req.BillingPoolID.IsSet() {
+		svcReq.BillingPoolID = req.BillingPoolID.Value()
+		svcReq.ClearBillingPool = req.BillingPoolID.Value() == nil
+	}
 	if req.Status != "" {
 		svcReq.Status = &req.Status
 	}

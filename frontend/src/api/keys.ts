@@ -4,7 +4,20 @@
  */
 
 import { apiClient } from './client'
-import type { ApiKey, CreateApiKeyRequest, UpdateApiKeyRequest, PaginatedResponse } from '@/types'
+import type {
+  ApiKey,
+  BillingMode,
+  CreateApiKeyRequest,
+  UpdateApiKeyRequest,
+  PaginatedResponse
+} from '@/types'
+
+interface ApiKeyBillingPayload {
+  billing_mode?: BillingMode
+  billing_pool_id?: number | null
+  use_pool_default_order?: boolean
+  custom_fallback_group_ids?: number[]
+}
 
 /**
  * List all API keys for current user
@@ -65,7 +78,8 @@ export async function create(
   ipBlacklist?: string[],
   quota?: number,
   expiresInDays?: number,
-  rateLimitData?: { rate_limit_5h?: number; rate_limit_1d?: number; rate_limit_7d?: number }
+  rateLimitData?: { rate_limit_5h?: number; rate_limit_1d?: number; rate_limit_7d?: number },
+  billingData?: ApiKeyBillingPayload
 ): Promise<ApiKey> {
   const payload: CreateApiKeyRequest = { name }
   if (groupId !== undefined) {
@@ -94,6 +108,18 @@ export async function create(
   }
   if (rateLimitData?.rate_limit_7d && rateLimitData.rate_limit_7d > 0) {
     payload.rate_limit_7d = rateLimitData.rate_limit_7d
+  }
+  if (billingData?.billing_mode !== undefined) {
+    payload.billing_mode = billingData.billing_mode
+  }
+  if (billingData?.billing_pool_id !== undefined) {
+    payload.billing_pool_id = billingData.billing_pool_id
+  }
+  if (billingData?.use_pool_default_order !== undefined) {
+    payload.use_pool_default_order = billingData.use_pool_default_order
+  }
+  if (billingData?.custom_fallback_group_ids !== undefined) {
+    payload.custom_fallback_group_ids = billingData.custom_fallback_group_ids
   }
 
   const { data } = await apiClient.post<ApiKey>('/keys', payload)

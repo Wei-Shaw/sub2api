@@ -407,11 +407,12 @@
         <div>
           <label class="input-label">{{ t('keys.groupLabel') }}</label>
           <Select
-            v-model="formData.group_id"
+            :model-value="formData.group_id"
             :options="groupOptions"
             :placeholder="t('keys.selectGroup')"
             :searchable="true"
             :search-placeholder="t('keys.searchGroup')"
+            @update:model-value="handleFormGroupChange"
             data-tour="key-form-group"
           >
             <template #selected="{ option }">
@@ -437,6 +438,181 @@
               />
             </template>
           </Select>
+        </div>
+
+        <div
+          v-if="showBillingStrategySection"
+          class="space-y-4 rounded-xl border border-gray-200 bg-gray-50/80 p-4 dark:border-dark-600 dark:bg-dark-800/60"
+        >
+          <div class="space-y-1">
+            <label class="input-label mb-0">{{ t('keys.billingStrategy') }}</label>
+            <p class="text-sm text-gray-500 dark:text-gray-400">
+              {{ t('keys.billingStrategyHint') }}
+            </p>
+            <p
+              v-if="selectedBillingGroup?.billing_pool_name"
+              class="text-sm text-gray-500 dark:text-gray-400"
+            >
+              {{ t('keys.billingPoolNotice', { name: selectedBillingGroup.billing_pool_name }) }}
+            </p>
+            <p
+              v-if="selectedBillingGroup?.billing_pool_platform_scope === 'mixed_platform'"
+              class="text-sm text-amber-600 dark:text-amber-400"
+            >
+              {{ t('keys.billingPoolMixedPlatformNotice') }}
+            </p>
+          </div>
+
+          <div class="space-y-2">
+            <label
+              v-for="option in billingModeOptions"
+              :key="option.value"
+              class="flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-3 transition-colors"
+              :class="
+                formData.billing_mode === option.value
+                  ? 'border-primary-500 bg-primary-50 dark:border-primary-500 dark:bg-primary-900/20'
+                  : 'border-gray-200 bg-white hover:border-gray-300 dark:border-dark-600 dark:bg-dark-700 dark:hover:border-dark-500'
+              "
+            >
+              <input
+                v-model="formData.billing_mode"
+                type="radio"
+                name="billing_mode"
+                class="mt-1 h-4 w-4 border-gray-300 text-primary-600 focus:ring-primary-500"
+                :value="option.value"
+                @change="handleBillingModeChange(option.value)"
+              />
+              <div class="min-w-0 flex-1">
+                <div class="font-medium text-gray-900 dark:text-white">{{ option.label }}</div>
+                <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {{ option.description }}
+                </div>
+              </div>
+            </label>
+          </div>
+
+          <div
+            v-if="showBillingAdvancedSettings"
+            class="space-y-4 rounded-lg border border-dashed border-gray-300 bg-white/80 p-4 dark:border-dark-500 dark:bg-dark-700/50"
+          >
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div class="text-sm font-medium text-gray-900 dark:text-white">
+                  {{ t('keys.billingAdvancedSettings') }}
+                </div>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('keys.usePoolDefaultOrderHint') }}
+                </p>
+              </div>
+              <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                <input
+                  v-model="formData.use_pool_default_order"
+                  type="checkbox"
+                  class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                  @change="handleUsePoolDefaultOrderChange"
+                />
+                <span>{{ t('keys.usePoolDefaultOrder') }}</span>
+              </label>
+            </div>
+
+            <div v-if="!formData.use_pool_default_order" class="space-y-3">
+              <div>
+                <label class="input-label">{{ t('keys.customFallbackGroups') }}</label>
+                <p
+                  v-if="selectedCustomFallbackItems.length === 0"
+                  class="text-sm text-gray-500 dark:text-gray-400"
+                >
+                  {{ t('keys.customFallbackEmpty') }}
+                </p>
+              </div>
+
+              <div v-if="selectedCustomFallbackItems.length > 0" class="space-y-2">
+                <div
+                  v-for="(item, index) in selectedCustomFallbackItems"
+                  :key="item.id"
+                  class="flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2.5 dark:border-dark-600 dark:bg-dark-800"
+                >
+                  <div class="min-w-0 flex-1">
+                    <GroupBadge
+                      v-if="item.group"
+                      :name="item.group.name"
+                      :platform="item.group.platform"
+                      :subscription-type="item.group.subscription_type"
+                      :rate-multiplier="item.group.rate_multiplier"
+                      :user-rate-multiplier="userGroupRates[item.group.id]"
+                      :show-rate="false"
+                    />
+                    <span v-else class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      #{{ item.id }}
+                    </span>
+                  </div>
+                  <div class="flex items-center gap-1">
+                    <button
+                      type="button"
+                      class="rounded-md px-2 py-1 text-xs text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-dark-700 dark:hover:text-gray-200"
+                      :disabled="index === 0"
+                      @click="moveFallbackGroup(item.id, -1)"
+                    >
+                      {{ t('keys.moveUp') }}
+                    </button>
+                    <button
+                      type="button"
+                      class="rounded-md px-2 py-1 text-xs text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-dark-700 dark:hover:text-gray-200"
+                      :disabled="index === selectedCustomFallbackItems.length - 1"
+                      @click="moveFallbackGroup(item.id, 1)"
+                    >
+                      {{ t('keys.moveDown') }}
+                    </button>
+                    <button
+                      type="button"
+                      class="rounded-md px-2 py-1 text-xs text-red-500 transition-colors hover:bg-red-50 dark:hover:bg-red-900/20"
+                      @click="removeFallbackGroup(item.id)"
+                    >
+                      {{ t('keys.removeFallbackGroup') }}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div
+                v-if="availableCustomFallbackGroups.length > 0"
+                class="flex flex-wrap gap-2"
+              >
+                <button
+                  v-for="group in availableCustomFallbackGroups"
+                  :key="group.id"
+                  type="button"
+                  class="inline-flex items-center gap-2 rounded-lg border border-dashed border-gray-300 px-3 py-2 text-sm text-gray-600 transition-colors hover:border-primary-400 hover:text-primary-600 dark:border-dark-500 dark:text-gray-300 dark:hover:border-primary-500 dark:hover:text-primary-400"
+                  @click="addFallbackGroup(group.id)"
+                >
+                  <span>{{ t('keys.addFallbackGroup') }}</span>
+                  <GroupBadge
+                    :name="group.name"
+                    :platform="group.platform"
+                    :subscription-type="group.subscription_type"
+                    :rate-multiplier="group.rate_multiplier"
+                    :user-rate-multiplier="userGroupRates[group.id]"
+                    :show-rate="false"
+                  />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="space-y-2 rounded-lg bg-white/70 px-3 py-3 dark:bg-dark-700/40">
+            <div class="text-sm font-medium text-gray-900 dark:text-white">
+              {{ t('keys.billingPreview') }}
+            </div>
+            <div class="text-sm text-gray-600 dark:text-gray-300">
+              {{ billingPreviewText || t('keys.billingPreviewEmpty') }}
+            </div>
+            <p
+              v-if="formData.billing_mode !== 'strict'"
+              class="text-xs text-gray-500 dark:text-gray-400"
+            >
+              {{ t('keys.billingBalanceFallbackNotice') }}
+            </p>
+          </div>
         </div>
 
         <!-- Custom Key Section (only for create) -->
@@ -1068,7 +1244,14 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 	import EndpointPopover from '@/components/keys/EndpointPopover.vue'
 	import GroupBadge from '@/components/common/GroupBadge.vue'
 	import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
-	import type { ApiKey, Group, PublicSettings, SubscriptionType, GroupPlatform } from '@/types'
+	import type {
+	  ApiKey,
+	  BillingMode,
+	  Group,
+	  PublicSettings,
+	  SubscriptionType,
+	  GroupPlatform
+	} from '@/types'
 import type { Column } from '@/components/common/types'
 import type { BatchApiKeyUsageStats } from '@/api/usage'
 import { formatDateTime } from '@/utils/format'
@@ -1094,6 +1277,52 @@ interface GroupOption {
   subscriptionType: SubscriptionType
   platform: GroupPlatform
 }
+
+interface BillingModeOption {
+  value: BillingMode
+  label: string
+  description: string
+}
+
+interface SelectedFallbackGroupItem {
+  id: number
+  group: Group | null
+}
+
+const BILLING_MODES: BillingMode[] = [
+  'strict',
+  'primary_then_balance',
+  'primary_then_pool_then_balance'
+]
+
+const isBillingMode = (value: unknown): value is BillingMode =>
+  BILLING_MODES.includes(value as BillingMode)
+
+const createDefaultFormData = () => ({
+  name: '',
+  group_id: null as number | null,
+  status: 'active' as 'active' | 'inactive',
+  billing_mode: 'strict' as BillingMode,
+  billing_pool_id: null as number | null,
+  use_pool_default_order: true,
+  custom_fallback_group_ids: [] as number[],
+  use_custom_key: false,
+  custom_key: '',
+  enable_ip_restriction: false,
+  ip_whitelist: '',
+  ip_blacklist: '',
+  // Quota settings (empty = unlimited)
+  enable_quota: false,
+  quota: null as number | null,
+  // Rate limit settings
+  enable_rate_limit: false,
+  rate_limit_5h: null as number | null,
+  rate_limit_1d: null as number | null,
+  rate_limit_7d: null as number | null,
+  enable_expiration: false,
+  expiration_preset: '30' as '7' | '30' | '90' | 'custom',
+  expiration_date: ''
+})
 
 const appStore = useAppStore()
 const onboardingStore = useOnboardingStore()
@@ -1168,27 +1397,7 @@ const setGroupButtonRef = (keyId: number, el: Element | ComponentPublicInstance 
   }
 }
 
-const formData = ref({
-  name: '',
-  group_id: null as number | null,
-  status: 'active' as 'active' | 'inactive',
-  use_custom_key: false,
-  custom_key: '',
-  enable_ip_restriction: false,
-  ip_whitelist: '',
-  ip_blacklist: '',
-  // Quota settings (empty = unlimited)
-  enable_quota: false,
-  quota: null as number | null,
-  // Rate limit settings
-  enable_rate_limit: false,
-  rate_limit_5h: null as number | null,
-  rate_limit_1d: null as number | null,
-  rate_limit_7d: null as number | null,
-  enable_expiration: false,
-  expiration_preset: '30' as '7' | '30' | '90' | 'custom',
-  expiration_date: ''
-})
+const formData = ref(createDefaultFormData())
 
 // 自定义Key验证
 const customKeyError = computed(() => {
@@ -1253,6 +1462,258 @@ const groupOptions = computed(() =>
     platform: group.platform
   }))
 )
+
+const getGroupById = (groupId: number | null): Group | null => {
+  if (typeof groupId !== 'number') return null
+  return groups.value.find((group) => group.id === groupId) || null
+}
+
+const getFallbackCandidateGroups = (group: Group | null): Group[] => {
+  if (!group || group.default_billing_pool_id === null || group.default_billing_pool_id === undefined) {
+    return []
+  }
+
+  return groups.value.filter(
+    (candidate) =>
+      candidate.id !== group.id &&
+      candidate.subscription_type === 'subscription' &&
+      candidate.default_billing_pool_id === group.default_billing_pool_id
+  )
+}
+
+const normalizeBillingMode = (value: unknown): BillingMode | null =>
+  isBillingMode(value) ? value : null
+
+const resolveBillingPoolId = (group: Group | null, fallback: number | null = null): number | null => {
+  if (group?.default_billing_pool_id !== undefined) {
+    return group.default_billing_pool_id ?? null
+  }
+  return fallback
+}
+
+const getDefaultBillingModeForGroup = (group: Group | null): BillingMode => {
+  if (!group || group.subscription_type !== 'subscription') {
+    return 'strict'
+  }
+
+  const recommendedMode = normalizeBillingMode(group.recommended_billing_mode)
+  if (recommendedMode) {
+    return recommendedMode
+  }
+
+  if (group.supports_pool_fallback !== false && getFallbackCandidateGroups(group).length > 0) {
+    return 'primary_then_pool_then_balance'
+  }
+
+  return 'strict'
+}
+
+const resetBillingStrategyForGroup = (groupId: number | null) => {
+  const group = getGroupById(groupId)
+  formData.value.billing_mode = getDefaultBillingModeForGroup(group)
+  formData.value.billing_pool_id = resolveBillingPoolId(group)
+  formData.value.use_pool_default_order = true
+  formData.value.custom_fallback_group_ids = []
+}
+
+const selectedBillingGroup = computed(() => getGroupById(formData.value.group_id))
+
+const showBillingStrategySection = computed(
+  () => selectedBillingGroup.value?.subscription_type === 'subscription'
+)
+
+const fallbackCandidateGroups = computed(() => getFallbackCandidateGroups(selectedBillingGroup.value))
+
+const hasBillingPoolMetadata = computed(() => {
+  const group = selectedBillingGroup.value
+  return !!group && (
+    group.default_billing_pool_id !== undefined ||
+    group.billing_pool_name !== undefined ||
+    group.billing_pool_platform_scope !== undefined ||
+    group.recommended_billing_mode !== undefined ||
+    group.supports_pool_fallback !== undefined
+  )
+})
+
+const shouldShowPoolMode = computed(() => {
+  if (!showBillingStrategySection.value) {
+    return false
+  }
+  if (formData.value.billing_mode === 'primary_then_pool_then_balance') {
+    return true
+  }
+  if (selectedBillingGroup.value?.supports_pool_fallback === false) {
+    return false
+  }
+  return fallbackCandidateGroups.value.length > 0
+})
+
+const billingModeOptions = computed<BillingModeOption[]>(() => {
+  if (!showBillingStrategySection.value) {
+    return []
+  }
+
+  const options: BillingModeOption[] = [
+    {
+      value: 'strict',
+      label: t('keys.billingMode.strict'),
+      description: t('keys.billingModeDescriptions.strict')
+    },
+    {
+      value: 'primary_then_balance',
+      label: t('keys.billingMode.primaryThenBalance'),
+      description: t('keys.billingModeDescriptions.primaryThenBalance')
+    }
+  ]
+
+  if (shouldShowPoolMode.value) {
+    options.push({
+      value: 'primary_then_pool_then_balance',
+      label: t('keys.billingMode.primaryThenPoolThenBalance'),
+      description: t('keys.billingModeDescriptions.primaryThenPoolThenBalance')
+    })
+  }
+
+  return options
+})
+
+const showBillingAdvancedSettings = computed(() => {
+  return (
+    showBillingStrategySection.value &&
+    formData.value.billing_mode === 'primary_then_pool_then_balance' &&
+    hasBillingPoolMetadata.value &&
+    fallbackCandidateGroups.value.length > 0
+  )
+})
+
+const selectedCustomFallbackItems = computed<SelectedFallbackGroupItem[]>(() => {
+  return formData.value.custom_fallback_group_ids.map((groupId) => ({
+    id: groupId,
+    group: getGroupById(groupId)
+  }))
+})
+
+const availableCustomFallbackGroups = computed(() => {
+  const selectedIds = new Set(formData.value.custom_fallback_group_ids)
+  return fallbackCandidateGroups.value.filter((group) => !selectedIds.has(group.id))
+})
+
+const billingPreviewText = computed(() => {
+  const group = selectedBillingGroup.value
+  if (!group) {
+    return ''
+  }
+
+  const labels = [group.name]
+  if (formData.value.billing_mode === 'primary_then_pool_then_balance') {
+    const fallbackLabels = formData.value.use_pool_default_order
+      ? fallbackCandidateGroups.value.map((candidate) => candidate.name)
+      : selectedCustomFallbackItems.value.map((item) => item.group?.name || `#${item.id}`)
+
+    labels.push(...fallbackLabels)
+    labels.push(t('common.balance'))
+    return labels.join(' -> ')
+  }
+
+  if (formData.value.billing_mode === 'primary_then_balance') {
+    labels.push(t('common.balance'))
+  }
+
+  return labels.join(' -> ')
+})
+
+const handleFormGroupChange = (value: string | number | boolean | null) => {
+  const nextGroupId = typeof value === 'number' ? value : null
+  if (formData.value.group_id === nextGroupId) {
+    return
+  }
+
+  formData.value.group_id = nextGroupId
+  resetBillingStrategyForGroup(nextGroupId)
+}
+
+const handleBillingModeChange = (mode: BillingMode) => {
+  formData.value.billing_mode = mode
+  if (mode !== 'primary_then_pool_then_balance') {
+    formData.value.use_pool_default_order = true
+    formData.value.custom_fallback_group_ids = []
+    return
+  }
+
+  if (formData.value.billing_pool_id === null) {
+    formData.value.billing_pool_id = resolveBillingPoolId(
+      selectedBillingGroup.value,
+      formData.value.billing_pool_id
+    )
+  }
+}
+
+const handleUsePoolDefaultOrderChange = () => {
+  if (
+    !formData.value.use_pool_default_order &&
+    formData.value.custom_fallback_group_ids.length === 0
+  ) {
+    formData.value.custom_fallback_group_ids = fallbackCandidateGroups.value.map((group) => group.id)
+  }
+}
+
+const addFallbackGroup = (groupId: number) => {
+  if (formData.value.custom_fallback_group_ids.includes(groupId)) {
+    return
+  }
+  formData.value.custom_fallback_group_ids = [...formData.value.custom_fallback_group_ids, groupId]
+}
+
+const removeFallbackGroup = (groupId: number) => {
+  formData.value.custom_fallback_group_ids = formData.value.custom_fallback_group_ids.filter(
+    (id) => id !== groupId
+  )
+}
+
+const moveFallbackGroup = (groupId: number, direction: -1 | 1) => {
+  const currentIndex = formData.value.custom_fallback_group_ids.indexOf(groupId)
+  const targetIndex = currentIndex + direction
+
+  if (
+    currentIndex === -1 ||
+    targetIndex < 0 ||
+    targetIndex >= formData.value.custom_fallback_group_ids.length
+  ) {
+    return
+  }
+
+  const nextIds = [...formData.value.custom_fallback_group_ids]
+  ;[nextIds[currentIndex], nextIds[targetIndex]] = [nextIds[targetIndex], nextIds[currentIndex]]
+  formData.value.custom_fallback_group_ids = nextIds
+}
+
+const buildBillingPayload = () => {
+  if (selectedBillingGroup.value?.subscription_type !== 'subscription') {
+    return {
+      billing_mode: 'strict' as BillingMode,
+      billing_pool_id: null,
+      use_pool_default_order: true,
+      custom_fallback_group_ids: [] as number[]
+    }
+  }
+
+  return {
+    billing_mode: formData.value.billing_mode,
+    billing_pool_id:
+      formData.value.billing_mode === 'primary_then_pool_then_balance'
+        ? resolveBillingPoolId(selectedBillingGroup.value, formData.value.billing_pool_id)
+        : null,
+    use_pool_default_order:
+      formData.value.billing_mode === 'primary_then_pool_then_balance'
+        ? formData.value.use_pool_default_order
+        : true,
+    custom_fallback_group_ids:
+      formData.value.billing_mode === 'primary_then_pool_then_balance' &&
+      !formData.value.use_pool_default_order
+        ? [...formData.value.custom_fallback_group_ids]
+        : []
+  }
+}
 
 // Group dropdown search
 const groupSearchQuery = ref('')
@@ -1389,12 +1850,18 @@ const handleSort = (key: string, order: 'asc' | 'desc') => {
 
 const editKey = (key: ApiKey) => {
   selectedKey.value = key
+  const selectedGroup = getGroupById(key.group_id)
   const hasIPRestriction = (key.ip_whitelist?.length > 0) || (key.ip_blacklist?.length > 0)
   const hasExpiration = !!key.expires_at
   formData.value = {
+    ...createDefaultFormData(),
     name: key.name,
     group_id: key.group_id,
     status: key.status === 'quota_exhausted' || key.status === 'expired' ? 'inactive' : key.status,
+    billing_mode: normalizeBillingMode(key.billing_mode) ?? getDefaultBillingModeForGroup(selectedGroup),
+    billing_pool_id: key.billing_pool_id ?? resolveBillingPoolId(selectedGroup),
+    use_pool_default_order: key.use_pool_default_order ?? true,
+    custom_fallback_group_ids: [...(key.custom_fallback_group_ids || [])],
     use_custom_key: false,
     custom_key: '',
     enable_ip_restriction: hasIPRestriction,
@@ -1539,12 +2006,18 @@ const handleSubmit = async () => {
     rate_limit_7d: formData.value.rate_limit_7d && formData.value.rate_limit_7d > 0 ? formData.value.rate_limit_7d : 0,
   } : { rate_limit_5h: 0, rate_limit_1d: 0, rate_limit_7d: 0 }
 
+  const billingData = buildBillingPayload()
+
   submitting.value = true
   try {
     if (showEditModal.value && selectedKey.value) {
       await keysAPI.update(selectedKey.value.id, {
         name: formData.value.name,
         group_id: formData.value.group_id,
+        billing_mode: billingData.billing_mode,
+        billing_pool_id: billingData.billing_pool_id,
+        use_pool_default_order: billingData.use_pool_default_order,
+        custom_fallback_group_ids: billingData.custom_fallback_group_ids,
         status: formData.value.status,
         ip_whitelist: ipWhitelist,
         ip_blacklist: ipBlacklist,
@@ -1565,7 +2038,8 @@ const handleSubmit = async () => {
         ipBlacklist,
         quota,
         expiresInDays,
-        rateLimitData
+        rateLimitData,
+        billingData
       )
       appStore.showSuccess(t('keys.keyCreatedSuccess'))
       // Only advance tour if active, on submit step, and creation succeeded
@@ -1608,25 +2082,7 @@ const closeModals = () => {
   showCreateModal.value = false
   showEditModal.value = false
   selectedKey.value = null
-  formData.value = {
-    name: '',
-    group_id: null,
-    status: 'active',
-    use_custom_key: false,
-    custom_key: '',
-    enable_ip_restriction: false,
-    ip_whitelist: '',
-    ip_blacklist: '',
-    enable_quota: false,
-    quota: null,
-    enable_rate_limit: false,
-    rate_limit_5h: null,
-    rate_limit_1d: null,
-    rate_limit_7d: null,
-    enable_expiration: false,
-    expiration_preset: '30',
-    expiration_date: ''
-  }
+  formData.value = createDefaultFormData()
 }
 
 // Show reset quota confirmation dialog

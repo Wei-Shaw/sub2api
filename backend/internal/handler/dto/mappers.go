@@ -3,6 +3,7 @@ package dto
 
 import (
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -78,31 +79,37 @@ func APIKeyFromService(k *service.APIKey) *APIKey {
 		return nil
 	}
 	out := &APIKey{
-		ID:            k.ID,
-		UserID:        k.UserID,
-		Key:           k.Key,
-		Name:          k.Name,
-		GroupID:       k.GroupID,
-		Status:        k.Status,
-		IPWhitelist:   k.IPWhitelist,
-		IPBlacklist:   k.IPBlacklist,
-		LastUsedAt:    k.LastUsedAt,
-		Quota:         k.Quota,
-		QuotaUsed:     k.QuotaUsed,
-		ExpiresAt:     k.ExpiresAt,
-		CreatedAt:     k.CreatedAt,
-		UpdatedAt:     k.UpdatedAt,
-		RateLimit5h:   k.RateLimit5h,
-		RateLimit1d:   k.RateLimit1d,
-		RateLimit7d:   k.RateLimit7d,
-		Usage5h:       k.EffectiveUsage5h(),
-		Usage1d:       k.EffectiveUsage1d(),
-		Usage7d:       k.EffectiveUsage7d(),
-		Window5hStart: k.Window5hStart,
-		Window1dStart: k.Window1dStart,
-		Window7dStart: k.Window7dStart,
-		User:          UserFromServiceShallow(k.User),
-		Group:         GroupFromServiceShallow(k.Group),
+		ID:                     k.ID,
+		UserID:                 k.UserID,
+		Key:                    k.Key,
+		Name:                   k.Name,
+		GroupID:                k.GroupID,
+		BillingMode:            service.NormalizeAPIKeyBillingMode(k.BillingMode),
+		BillingPoolID:          k.BillingPoolID,
+		UsePoolDefaultOrder:    k.UsePoolDefaultOrder || len(k.CustomFallbackGroupIDs) == 0,
+		CustomFallbackGroupIDs: copyInt64Slice(k.CustomFallbackGroupIDs),
+		Status:                 k.Status,
+		IPWhitelist:            k.IPWhitelist,
+		IPBlacklist:            k.IPBlacklist,
+		LastUsedAt:             k.LastUsedAt,
+		Quota:                  k.Quota,
+		QuotaUsed:              k.QuotaUsed,
+		ExpiresAt:              k.ExpiresAt,
+		CreatedAt:              k.CreatedAt,
+		UpdatedAt:              k.UpdatedAt,
+		RateLimit5h:            k.RateLimit5h,
+		RateLimit1d:            k.RateLimit1d,
+		RateLimit7d:            k.RateLimit7d,
+		Usage5h:                k.EffectiveUsage5h(),
+		Usage1d:                k.EffectiveUsage1d(),
+		Usage7d:                k.EffectiveUsage7d(),
+		Window5hStart:          k.Window5hStart,
+		Window1dStart:          k.Window1dStart,
+		Window7dStart:          k.Window7dStart,
+		BillingPool:            BillingPoolSummaryFromService(k.BillingPool),
+		BillingChainPreview:    buildBillingChainPreview(k),
+		User:                   UserFromServiceShallow(k.User),
+		Group:                  GroupFromServiceShallow(k.Group),
 	}
 	if k.Window5hStart != nil && !service.IsWindowExpired(k.Window5hStart, service.RateLimitWindow5h) {
 		t := k.Window5hStart.Add(service.RateLimitWindow5h)
@@ -188,10 +195,229 @@ func groupFromServiceBase(g *service.Group) Group {
 		AllowMessagesDispatch:           g.AllowMessagesDispatch,
 		RequireOAuthOnly:                g.RequireOAuthOnly,
 		RequirePrivacySet:               g.RequirePrivacySet,
+		DefaultBillingPoolID:            g.DefaultBillingPoolID,
+		BillingPoolName:                 stringPtrOrNil(g.BillingPoolName),
+		BillingPoolPlatformScope:        stringPtrOrNil(g.BillingPoolPlatformScope),
+		RecommendedBillingMode:          recommendedBillingModeForGroup(g),
+		SupportsPoolFallback:            g.SupportsPoolFallback,
 		RPMLimit:                        g.RPMLimit,
 		CreatedAt:                       g.CreatedAt,
 		UpdatedAt:                       g.UpdatedAt,
 	}
+}
+
+func BillingPoolSummaryFromService(pool *service.BillingPool) *BillingPoolSummary {
+	if pool == nil {
+		return nil
+	}
+	return &BillingPoolSummary{
+		ID:                         pool.ID,
+		Name:                       pool.Name,
+		Status:                     pool.Status,
+		PlatformScope:              pool.PlatformScope,
+		AllowUserReorder:           pool.AllowUserReorder,
+		RequirePrimarySubscription: pool.RequirePrimarySubscription,
+		AllowBalanceFallback:       pool.AllowBalanceFallback,
+		CreatedAt:                  pool.CreatedAt,
+		UpdatedAt:                  pool.UpdatedAt,
+	}
+}
+
+func BillingPoolGroupMemberFromService(member *service.BillingPoolMember) *BillingPoolGroupMember {
+	if member == nil {
+		return nil
+	}
+	out := &BillingPoolGroupMember{
+		GroupID:       member.GroupID,
+		ChainOrder:    member.ChainOrder,
+		CanBePrimary:  member.CanBePrimary,
+		CanBeFallback: member.CanBeFallback,
+	}
+	if member.Group != nil {
+		out.GroupName = member.Group.Name
+		out.Platform = member.Group.Platform
+		out.SubscriptionType = member.Group.SubscriptionType
+	}
+	return out
+}
+
+func BillingPoolFromService(pool *service.BillingPool) *BillingPool {
+	if pool == nil {
+		return nil
+	}
+	out := &BillingPool{
+		ID:                         pool.ID,
+		Name:                       pool.Name,
+		Code:                       pool.Code,
+		Description:                pool.Description,
+		Status:                     pool.Status,
+		PlatformScope:              pool.PlatformScope,
+		AllowUserReorder:           pool.AllowUserReorder,
+		RequirePrimarySubscription: pool.RequirePrimarySubscription,
+		AllowBalanceFallback:       pool.AllowBalanceFallback,
+		GroupCount:                 len(pool.Members),
+		CreatedAt:                  pool.CreatedAt,
+		UpdatedAt:                  pool.UpdatedAt,
+	}
+	if len(pool.Members) > 0 {
+		out.Groups = make([]BillingPoolGroupMember, 0, len(pool.Members))
+		for i := range pool.Members {
+			member := BillingPoolGroupMemberFromService(&pool.Members[i])
+			if member != nil {
+				out.Groups = append(out.Groups, *member)
+			}
+		}
+	}
+	return out
+}
+
+func BillingPoolLookupFromService(lookup *service.BillingPoolLookup) *BillingPoolLookup {
+	if lookup == nil {
+		return nil
+	}
+	return &BillingPoolLookup{
+		ID:            lookup.ID,
+		Name:          lookup.Name,
+		Status:        lookup.Status,
+		PlatformScope: lookup.PlatformScope,
+	}
+}
+
+func buildBillingChainPreview(k *service.APIKey) []BillingChainPreviewItem {
+	if k == nil {
+		return []BillingChainPreviewItem{}
+	}
+
+	preview := make([]BillingChainPreviewItem, 0, 4)
+	mode := service.NormalizeAPIKeyBillingMode(k.BillingMode)
+
+	if k.Group != nil {
+		required := true
+		preview = append(preview, BillingChainPreviewItem{
+			Type:        service.BillingSourceTypeSubscription,
+			GroupID:     &k.Group.ID,
+			GroupName:   stringPtrOrNil(k.Group.Name),
+			Platform:    stringPtrOrNil(k.Group.Platform),
+			Required:    &required,
+			SourceLabel: "主分组订阅",
+		})
+	}
+
+	if mode == service.APIKeyBillingModePrimaryThenPoolThenBalance && k.BillingPool != nil {
+		preview = appendPoolFallbackPreview(preview, k)
+	}
+
+	if mode == service.APIKeyBillingModePrimaryThenBalance || mode == service.APIKeyBillingModePrimaryThenPoolThenBalance {
+		preview = append(preview, BillingChainPreviewItem{
+			Type:        service.BillingSourceTypeBalance,
+			SourceLabel: "余额",
+		})
+	}
+
+	return preview
+}
+
+func appendPoolFallbackPreview(preview []BillingChainPreviewItem, k *service.APIKey) []BillingChainPreviewItem {
+	members := orderedFallbackMembers(k)
+	primaryGroupID := int64(0)
+	if k.GroupID != nil {
+		primaryGroupID = *k.GroupID
+	}
+	for _, member := range members {
+		if member.Group == nil || member.GroupID == primaryGroupID {
+			continue
+		}
+		required := false
+		sourceLabel := "池内备选订阅"
+		if containsInt64(k.CustomFallbackGroupIDs, member.GroupID) && !k.UsePoolDefaultOrder {
+			sourceLabel = "自定义 fallback"
+		}
+		groupID := member.GroupID
+		preview = append(preview, BillingChainPreviewItem{
+			Type:        service.BillingSourceTypeSubscription,
+			GroupID:     &groupID,
+			GroupName:   stringPtrOrNil(member.Group.Name),
+			Platform:    stringPtrOrNil(member.Group.Platform),
+			Required:    &required,
+			SourceLabel: sourceLabel,
+		})
+	}
+	return preview
+}
+
+func orderedFallbackMembers(k *service.APIKey) []service.BillingPoolMember {
+	if k == nil || k.BillingPool == nil {
+		return nil
+	}
+	defaultMembers := k.BillingPool.SortedFallbackMembers()
+	if len(k.CustomFallbackGroupIDs) == 0 || k.UsePoolDefaultOrder {
+		return defaultMembers
+	}
+
+	byGroupID := make(map[int64]service.BillingPoolMember, len(defaultMembers))
+	for i := range defaultMembers {
+		byGroupID[defaultMembers[i].GroupID] = defaultMembers[i]
+	}
+
+	ordered := make([]service.BillingPoolMember, 0, len(defaultMembers))
+	seen := make(map[int64]struct{}, len(defaultMembers))
+	for _, groupID := range k.CustomFallbackGroupIDs {
+		member, ok := byGroupID[groupID]
+		if !ok {
+			continue
+		}
+		ordered = append(ordered, member)
+		seen[groupID] = struct{}{}
+	}
+	for _, member := range defaultMembers {
+		if _, ok := seen[member.GroupID]; ok {
+			continue
+		}
+		ordered = append(ordered, member)
+	}
+	return ordered
+}
+
+func stringPtrOrNil(value string) *string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
+func recommendedBillingModeForGroup(group *service.Group) *string {
+	if group == nil {
+		return nil
+	}
+	if value := stringPtrOrNil(group.RecommendedBillingMode); value != nil {
+		return value
+	}
+	if group.SupportsPoolFallback {
+		return stringPtrOrNil(service.APIKeyBillingModePrimaryThenPoolThenBalance)
+	}
+	if group.IsSubscriptionType() || group.DefaultBillingPoolID != nil {
+		return stringPtrOrNil(service.APIKeyBillingModePrimaryThenBalance)
+	}
+	return nil
+}
+
+func copyInt64Slice(values []int64) []int64 {
+	if values == nil {
+		return []int64{}
+	}
+	out := make([]int64, len(values))
+	copy(out, values)
+	return out
+}
+
+func containsInt64(values []int64, target int64) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 func AccountFromServiceShallow(a *service.Account) *Account {

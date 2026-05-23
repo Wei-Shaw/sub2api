@@ -33,6 +33,7 @@ type APIKey struct {
 	Key         string
 	Name        string
 	GroupID     *int64
+	BillingPoolID *int64
 	Status      string
 	IPWhitelist []string
 	IPBlacklist []string
@@ -44,6 +45,10 @@ type APIKey struct {
 	UpdatedAt           time.Time
 	User                *User
 	Group               *Group
+	BillingMode         string
+	UsePoolDefaultOrder bool
+	CustomFallbackGroupIDs []int64
+	BillingPool         *BillingPool
 
 	// Quota fields
 	Quota     float64    // Quota limit in USD (0 = unlimited)

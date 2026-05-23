@@ -42,6 +42,7 @@ type GatewayHandler struct {
 	antigravityGatewayService *service.AntigravityGatewayService
 	userService               *service.UserService
 	billingCacheService       *service.BillingCacheService
+	subscriptionService       *service.SubscriptionService
 	usageService              *service.UsageService
 	apiKeyService             *service.APIKeyService
 	usageRecordWorkerPool     *service.UsageRecordWorkerPool
@@ -53,6 +54,13 @@ type GatewayHandler struct {
 	maxAccountSwitchesGemini  int
 	cfg                       *config.Config
 	settingService            *service.SettingService
+}
+
+func (h *GatewayHandler) SetSubscriptionService(subscriptionService *service.SubscriptionService) {
+	if h == nil {
+		return
+	}
+	h.subscriptionService = subscriptionService
 }
 
 // NewGatewayHandler creates a new GatewayHandler
@@ -250,7 +258,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	}
 
 	// 2. 【新增】Wait后二次检查余额/订阅
-	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
+	decision, err := resolveRequestBillingDecision(c, apiKey, subscription, h.subscriptionService, h.billingCacheService)
+	if err != nil {
 		reqLog.Info("gateway.billing_eligibility_check_failed", zap.Error(err))
 		status, code, message, retryAfter := billingErrorDetails(err)
 		if retryAfter > 0 {
@@ -259,6 +268,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		h.handleStreamingAwareError(c, status, code, message, streamStarted)
 		return
 	}
+	subscription = decision.Subscription
 
 	// 设置请求所属分组 ID（用于渠道级功能判断，如 WebSearch 模拟）
 	parsedReq.GroupID = apiKey.GroupID
@@ -1568,7 +1578,8 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 
 	// 校验 billing eligibility（订阅/余额）
 	// 【注意】不计算并发，但需要校验订阅/余额
-	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
+	decision, err := resolveRequestBillingDecision(c, apiKey, subscription, h.subscriptionService, h.billingCacheService)
+	if err != nil {
 		status, code, message, retryAfter := billingErrorDetails(err)
 		if retryAfter > 0 {
 			c.Header("Retry-After", strconv.Itoa(retryAfter))
@@ -1576,6 +1587,7 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 		h.errorResponse(c, status, code, message)
 		return
 	}
+	subscription = decision.Subscription
 
 	// 计算粘性会话 hash
 	parsedReq.SessionContext = &service.SessionContext{

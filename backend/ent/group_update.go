@@ -14,6 +14,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/billingpoolgroup"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
@@ -652,6 +653,21 @@ func (_u *GroupUpdate) AddAPIKeys(v ...*APIKey) *GroupUpdate {
 	return _u.AddAPIKeyIDs(ids...)
 }
 
+// AddBillingPoolMembershipIDs adds the "billing_pool_memberships" edge to the BillingPoolGroup entity by IDs.
+func (_u *GroupUpdate) AddBillingPoolMembershipIDs(ids ...int64) *GroupUpdate {
+	_u.mutation.AddBillingPoolMembershipIDs(ids...)
+	return _u
+}
+
+// AddBillingPoolMemberships adds the "billing_pool_memberships" edges to the BillingPoolGroup entity.
+func (_u *GroupUpdate) AddBillingPoolMemberships(v ...*BillingPoolGroup) *GroupUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddBillingPoolMembershipIDs(ids...)
+}
+
 // AddRedeemCodeIDs adds the "redeem_codes" edge to the RedeemCode entity by IDs.
 func (_u *GroupUpdate) AddRedeemCodeIDs(ids ...int64) *GroupUpdate {
 	_u.mutation.AddRedeemCodeIDs(ids...)
@@ -751,6 +767,27 @@ func (_u *GroupUpdate) RemoveAPIKeys(v ...*APIKey) *GroupUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveAPIKeyIDs(ids...)
+}
+
+// ClearBillingPoolMemberships clears all "billing_pool_memberships" edges to the BillingPoolGroup entity.
+func (_u *GroupUpdate) ClearBillingPoolMemberships() *GroupUpdate {
+	_u.mutation.ClearBillingPoolMemberships()
+	return _u
+}
+
+// RemoveBillingPoolMembershipIDs removes the "billing_pool_memberships" edge to BillingPoolGroup entities by IDs.
+func (_u *GroupUpdate) RemoveBillingPoolMembershipIDs(ids ...int64) *GroupUpdate {
+	_u.mutation.RemoveBillingPoolMembershipIDs(ids...)
+	return _u
+}
+
+// RemoveBillingPoolMemberships removes "billing_pool_memberships" edges to BillingPoolGroup entities.
+func (_u *GroupUpdate) RemoveBillingPoolMemberships(v ...*BillingPoolGroup) *GroupUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveBillingPoolMembershipIDs(ids...)
 }
 
 // ClearRedeemCodes clears all "redeem_codes" edges to the RedeemCode entity.
@@ -1156,6 +1193,51 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(apikey.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.BillingPoolMembershipsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   group.BillingPoolMembershipsTable,
+			Columns: []string{group.BillingPoolMembershipsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(billingpoolgroup.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedBillingPoolMembershipsIDs(); len(nodes) > 0 && !_u.mutation.BillingPoolMembershipsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   group.BillingPoolMembershipsTable,
+			Columns: []string{group.BillingPoolMembershipsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(billingpoolgroup.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.BillingPoolMembershipsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   group.BillingPoolMembershipsTable,
+			Columns: []string{group.BillingPoolMembershipsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(billingpoolgroup.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {
@@ -2048,6 +2130,21 @@ func (_u *GroupUpdateOne) AddAPIKeys(v ...*APIKey) *GroupUpdateOne {
 	return _u.AddAPIKeyIDs(ids...)
 }
 
+// AddBillingPoolMembershipIDs adds the "billing_pool_memberships" edge to the BillingPoolGroup entity by IDs.
+func (_u *GroupUpdateOne) AddBillingPoolMembershipIDs(ids ...int64) *GroupUpdateOne {
+	_u.mutation.AddBillingPoolMembershipIDs(ids...)
+	return _u
+}
+
+// AddBillingPoolMemberships adds the "billing_pool_memberships" edges to the BillingPoolGroup entity.
+func (_u *GroupUpdateOne) AddBillingPoolMemberships(v ...*BillingPoolGroup) *GroupUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddBillingPoolMembershipIDs(ids...)
+}
+
 // AddRedeemCodeIDs adds the "redeem_codes" edge to the RedeemCode entity by IDs.
 func (_u *GroupUpdateOne) AddRedeemCodeIDs(ids ...int64) *GroupUpdateOne {
 	_u.mutation.AddRedeemCodeIDs(ids...)
@@ -2147,6 +2244,27 @@ func (_u *GroupUpdateOne) RemoveAPIKeys(v ...*APIKey) *GroupUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveAPIKeyIDs(ids...)
+}
+
+// ClearBillingPoolMemberships clears all "billing_pool_memberships" edges to the BillingPoolGroup entity.
+func (_u *GroupUpdateOne) ClearBillingPoolMemberships() *GroupUpdateOne {
+	_u.mutation.ClearBillingPoolMemberships()
+	return _u
+}
+
+// RemoveBillingPoolMembershipIDs removes the "billing_pool_memberships" edge to BillingPoolGroup entities by IDs.
+func (_u *GroupUpdateOne) RemoveBillingPoolMembershipIDs(ids ...int64) *GroupUpdateOne {
+	_u.mutation.RemoveBillingPoolMembershipIDs(ids...)
+	return _u
+}
+
+// RemoveBillingPoolMemberships removes "billing_pool_memberships" edges to BillingPoolGroup entities.
+func (_u *GroupUpdateOne) RemoveBillingPoolMemberships(v ...*BillingPoolGroup) *GroupUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveBillingPoolMembershipIDs(ids...)
 }
 
 // ClearRedeemCodes clears all "redeem_codes" edges to the RedeemCode entity.
@@ -2582,6 +2700,51 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(apikey.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.BillingPoolMembershipsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   group.BillingPoolMembershipsTable,
+			Columns: []string{group.BillingPoolMembershipsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(billingpoolgroup.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedBillingPoolMembershipsIDs(); len(nodes) > 0 && !_u.mutation.BillingPoolMembershipsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   group.BillingPoolMembershipsTable,
+			Columns: []string{group.BillingPoolMembershipsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(billingpoolgroup.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.BillingPoolMembershipsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   group.BillingPoolMembershipsTable,
+			Columns: []string{group.BillingPoolMembershipsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(billingpoolgroup.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {
