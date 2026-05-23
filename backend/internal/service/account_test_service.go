@@ -292,6 +292,15 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 		req.Header.Set("x-api-key", authToken)
 	}
 
+	// Force context-1m beta when the account is configured to require it,
+	// matching what the actual gateway forward path does. Without this, the
+	// test connection fails against upstreams (e.g. anyrouter) that auto-enable
+	// 1M context and reject requests missing the beta header.
+	if account.ForceContext1M() {
+		current := req.Header.Get("anthropic-beta")
+		req.Header.Set("anthropic-beta", mergeAnthropicBetaDropping([]string{claude.BetaContext1M}, current, nil))
+	}
+
 	// Get proxy URL
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
