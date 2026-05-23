@@ -174,6 +174,10 @@
       <template #table>
         <AccountBulkActionsBar
           :selected-ids="selIds"
+          @batch-test="showBatchHealth = true"
+          @join-health-pool="handleBulkHealthCheckSettings(true, null)"
+          @leave-health-pool="handleBulkHealthCheckSettings(false, null)"
+          @protect-health="handleBulkHealthCheckSettings(null, true)"
           @delete="handleBulkDelete"
           @reset-status="handleBulkResetStatus"
           @refresh-token="handleBulkRefreshToken"
@@ -256,6 +260,34 @@
           <template #cell-status="{ row }">
             <div class="flex items-center gap-1.5">
               <AccountStatusIndicator :account="row" @show-temp-unsched="handleShowTempUnsched" />
+            </div>
+          </template>
+          <template #cell-health_check="{ row }">
+            <div class="flex flex-col gap-1 text-xs">
+              <div class="flex flex-wrap items-center gap-1.5">
+                <span
+                  :class="[
+                    'rounded px-1.5 py-0.5 font-medium',
+                    row.health_check_enabled
+                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+                      : 'bg-gray-100 text-gray-600 dark:bg-dark-600 dark:text-gray-300'
+                  ]"
+                >
+                  {{ row.health_check_enabled ? t('admin.accounts.health.inPool') : t('admin.accounts.health.notInPool') }}
+                </span>
+                <span
+                  v-if="row.health_check_protected"
+                  class="rounded bg-blue-100 px-1.5 py-0.5 font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+                >
+                  {{ t('admin.accounts.health.protected') }}
+                </span>
+              </div>
+              <div class="text-[11px] text-gray-500 dark:text-gray-400">
+                {{ row.health_check_fail_streak > 0 ? t('admin.accounts.health.failStreakShort', { count: row.health_check_fail_streak }) : '0' }}
+              </div>
+              <div v-if="row.last_health_check_status" class="text-[11px] text-gray-500 dark:text-gray-400">
+                {{ row.last_health_check_status }}
+              </div>
             </div>
           </template>
           <template #cell-schedulable="{ row }">
@@ -342,6 +374,7 @@
       <template #pagination><Pagination v-if="pagination.total > 0" :page="pagination.page" :total="pagination.total" :page-size="pagination.page_size" @update:page="handlePageChange" @update:pageSize="handlePageSizeChange" /></template>
     </TablePageLayout>
     <CreateAccountModal :show="showCreate" :proxies="proxies" :groups="groups" @close="showCreate = false" @created="reload" />
+    <BatchHealthTestModal :show="showBatchHealth" :selected-ids="selIds" @close="showBatchHealth = false" @started="reload" />
     <EditAccountModal :show="showEdit" :account="edAcc" :proxies="proxies" :groups="groups" @close="showEdit = false" @updated="handleAccountUpdated" />
     <ReAuthAccountModal :show="showReAuth" :account="reAuthAcc" @close="closeReAuthModal" @reauthorized="handleAccountUpdated" />
     <AccountTestModal :show="showTest" :account="testingAcc" @close="closeTestModal" />
@@ -393,6 +426,7 @@ import { CreateAccountModal, EditAccountModal, BulkEditAccountModal, SyncFromCrs
 import AccountTableActions from '@/components/admin/account/AccountTableActions.vue'
 import AccountTableFilters from '@/components/admin/account/AccountTableFilters.vue'
 import AccountBulkActionsBar from '@/components/admin/account/AccountBulkActionsBar.vue'
+import BatchHealthTestModal from '@/components/admin/account/BatchHealthTestModal.vue'
 import AccountActionMenu from '@/components/admin/account/AccountActionMenu.vue'
 import ImportDataModal from '@/components/admin/account/ImportDataModal.vue'
 import ReAuthAccountModal from '@/components/admin/account/ReAuthAccountModal.vue'
@@ -468,6 +502,7 @@ const showExportDataDialog = ref(false)
 const includeProxyOnExport = ref(true)
 const showBulkEdit = ref(false)
 const bulkEditTarget = ref<AccountBulkEditTarget | null>(null)
+const showBatchHealth = ref(false)
 const showTempUnsched = ref(false)
 const showDeleteDialog = ref(false)
 const showReAuth = ref(false)
@@ -1116,6 +1151,7 @@ const allColumns = computed(() => {
     { key: 'capacity', label: t('admin.accounts.columns.capacity'), sortable: false },
     { key: 'status', label: t('admin.accounts.columns.status'), sortable: true },
     { key: 'schedulable', label: t('admin.accounts.columns.schedulable'), sortable: true },
+    { key: 'health_check', label: t('admin.accounts.columns.healthCheck'), sortable: false },
     { key: 'today_stats', label: t('admin.accounts.columns.todayStats'), sortable: false }
   ]
   if (!authStore.isSimpleMode) {
@@ -1337,6 +1373,33 @@ const handleBulkToggleSchedulable = async (schedulable: boolean) => {
     appStore.showError(t('common.error'))
   }
 }
+
+const handleBulkHealthCheckSettings = async (
+  healthCheckEnabled: boolean | null,
+  healthCheckProtected: boolean | null
+) => {
+  const accountIds = [...selIds.value]
+  if (accountIds.length === 0) return
+  try {
+    const result = await adminAPI.accounts.bulkHealthCheckSettings({
+      account_ids: accountIds,
+      ...(healthCheckEnabled !== null ? { health_check_enabled: healthCheckEnabled } : {}),
+      ...(healthCheckProtected !== null ? { health_check_protected: healthCheckProtected } : {})
+    })
+    if (healthCheckEnabled === true && healthCheckProtected === null) {
+      appStore.showSuccess(t('admin.accounts.health.joinedPool', { count: result.updated }))
+    } else if (healthCheckEnabled === false && healthCheckProtected === null) {
+      appStore.showSuccess(t('admin.accounts.health.leftPool', { count: result.updated }))
+    } else {
+      appStore.showSuccess(t('admin.accounts.health.protectedUpdated', { count: result.updated }))
+    }
+    reload()
+  } catch (error) {
+    console.error('Failed to bulk update health check settings:', error)
+    appStore.showError(t('common.error'))
+  }
+}
+
 const buildBulkEditFilterSnapshot = () => {
   const rawParams = toRaw(params) as Record<string, unknown>
   const sortOrder: AccountSortOrder = rawParams.sort_order === 'desc' ? 'desc' : 'asc'

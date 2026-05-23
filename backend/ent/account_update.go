@@ -503,6 +503,115 @@ func (_u *AccountUpdate) ClearSessionWindowStatus() *AccountUpdate {
 	return _u
 }
 
+// SetHealthCheckEnabled sets the "health_check_enabled" field.
+func (_u *AccountUpdate) SetHealthCheckEnabled(v bool) *AccountUpdate {
+	_u.mutation.SetHealthCheckEnabled(v)
+	return _u
+}
+
+// SetNillableHealthCheckEnabled sets the "health_check_enabled" field if the given value is not nil.
+func (_u *AccountUpdate) SetNillableHealthCheckEnabled(v *bool) *AccountUpdate {
+	if v != nil {
+		_u.SetHealthCheckEnabled(*v)
+	}
+	return _u
+}
+
+// SetHealthCheckProtected sets the "health_check_protected" field.
+func (_u *AccountUpdate) SetHealthCheckProtected(v bool) *AccountUpdate {
+	_u.mutation.SetHealthCheckProtected(v)
+	return _u
+}
+
+// SetNillableHealthCheckProtected sets the "health_check_protected" field if the given value is not nil.
+func (_u *AccountUpdate) SetNillableHealthCheckProtected(v *bool) *AccountUpdate {
+	if v != nil {
+		_u.SetHealthCheckProtected(*v)
+	}
+	return _u
+}
+
+// SetHealthCheckFailStreak sets the "health_check_fail_streak" field.
+func (_u *AccountUpdate) SetHealthCheckFailStreak(v int) *AccountUpdate {
+	_u.mutation.ResetHealthCheckFailStreak()
+	_u.mutation.SetHealthCheckFailStreak(v)
+	return _u
+}
+
+// SetNillableHealthCheckFailStreak sets the "health_check_fail_streak" field if the given value is not nil.
+func (_u *AccountUpdate) SetNillableHealthCheckFailStreak(v *int) *AccountUpdate {
+	if v != nil {
+		_u.SetHealthCheckFailStreak(*v)
+	}
+	return _u
+}
+
+// AddHealthCheckFailStreak adds value to the "health_check_fail_streak" field.
+func (_u *AccountUpdate) AddHealthCheckFailStreak(v int) *AccountUpdate {
+	_u.mutation.AddHealthCheckFailStreak(v)
+	return _u
+}
+
+// SetLastHealthCheckAt sets the "last_health_check_at" field.
+func (_u *AccountUpdate) SetLastHealthCheckAt(v time.Time) *AccountUpdate {
+	_u.mutation.SetLastHealthCheckAt(v)
+	return _u
+}
+
+// SetNillableLastHealthCheckAt sets the "last_health_check_at" field if the given value is not nil.
+func (_u *AccountUpdate) SetNillableLastHealthCheckAt(v *time.Time) *AccountUpdate {
+	if v != nil {
+		_u.SetLastHealthCheckAt(*v)
+	}
+	return _u
+}
+
+// ClearLastHealthCheckAt clears the value of the "last_health_check_at" field.
+func (_u *AccountUpdate) ClearLastHealthCheckAt() *AccountUpdate {
+	_u.mutation.ClearLastHealthCheckAt()
+	return _u
+}
+
+// SetLastHealthCheckStatus sets the "last_health_check_status" field.
+func (_u *AccountUpdate) SetLastHealthCheckStatus(v string) *AccountUpdate {
+	_u.mutation.SetLastHealthCheckStatus(v)
+	return _u
+}
+
+// SetNillableLastHealthCheckStatus sets the "last_health_check_status" field if the given value is not nil.
+func (_u *AccountUpdate) SetNillableLastHealthCheckStatus(v *string) *AccountUpdate {
+	if v != nil {
+		_u.SetLastHealthCheckStatus(*v)
+	}
+	return _u
+}
+
+// ClearLastHealthCheckStatus clears the value of the "last_health_check_status" field.
+func (_u *AccountUpdate) ClearLastHealthCheckStatus() *AccountUpdate {
+	_u.mutation.ClearLastHealthCheckStatus()
+	return _u
+}
+
+// SetLastHealthCheckError sets the "last_health_check_error" field.
+func (_u *AccountUpdate) SetLastHealthCheckError(v string) *AccountUpdate {
+	_u.mutation.SetLastHealthCheckError(v)
+	return _u
+}
+
+// SetNillableLastHealthCheckError sets the "last_health_check_error" field if the given value is not nil.
+func (_u *AccountUpdate) SetNillableLastHealthCheckError(v *string) *AccountUpdate {
+	if v != nil {
+		_u.SetLastHealthCheckError(*v)
+	}
+	return _u
+}
+
+// ClearLastHealthCheckError clears the value of the "last_health_check_error" field.
+func (_u *AccountUpdate) ClearLastHealthCheckError() *AccountUpdate {
+	_u.mutation.ClearLastHealthCheckError()
+	return _u
+}
+
 // AddGroupIDs adds the "groups" edge to the Group entity by IDs.
 func (_u *AccountUpdate) AddGroupIDs(ids ...int64) *AccountUpdate {
 	_u.mutation.AddGroupIDs(ids...)
@@ -660,6 +769,11 @@ func (_u *AccountUpdate) check() error {
 			return &ValidationError{Name: "session_window_status", err: fmt.Errorf(`ent: validator failed for field "Account.session_window_status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.LastHealthCheckStatus(); ok {
+		if err := account.LastHealthCheckStatusValidator(v); err != nil {
+			return &ValidationError{Name: "last_health_check_status", err: fmt.Errorf(`ent: validator failed for field "Account.last_health_check_status": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -806,6 +920,36 @@ func (_u *AccountUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.SessionWindowStatusCleared() {
 		_spec.ClearField(account.FieldSessionWindowStatus, field.TypeString)
+	}
+	if value, ok := _u.mutation.HealthCheckEnabled(); ok {
+		_spec.SetField(account.FieldHealthCheckEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.HealthCheckProtected(); ok {
+		_spec.SetField(account.FieldHealthCheckProtected, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.HealthCheckFailStreak(); ok {
+		_spec.SetField(account.FieldHealthCheckFailStreak, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedHealthCheckFailStreak(); ok {
+		_spec.AddField(account.FieldHealthCheckFailStreak, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.LastHealthCheckAt(); ok {
+		_spec.SetField(account.FieldLastHealthCheckAt, field.TypeTime, value)
+	}
+	if _u.mutation.LastHealthCheckAtCleared() {
+		_spec.ClearField(account.FieldLastHealthCheckAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.LastHealthCheckStatus(); ok {
+		_spec.SetField(account.FieldLastHealthCheckStatus, field.TypeString, value)
+	}
+	if _u.mutation.LastHealthCheckStatusCleared() {
+		_spec.ClearField(account.FieldLastHealthCheckStatus, field.TypeString)
+	}
+	if value, ok := _u.mutation.LastHealthCheckError(); ok {
+		_spec.SetField(account.FieldLastHealthCheckError, field.TypeString, value)
+	}
+	if _u.mutation.LastHealthCheckErrorCleared() {
+		_spec.ClearField(account.FieldLastHealthCheckError, field.TypeString)
 	}
 	if _u.mutation.GroupsCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -1430,6 +1574,115 @@ func (_u *AccountUpdateOne) ClearSessionWindowStatus() *AccountUpdateOne {
 	return _u
 }
 
+// SetHealthCheckEnabled sets the "health_check_enabled" field.
+func (_u *AccountUpdateOne) SetHealthCheckEnabled(v bool) *AccountUpdateOne {
+	_u.mutation.SetHealthCheckEnabled(v)
+	return _u
+}
+
+// SetNillableHealthCheckEnabled sets the "health_check_enabled" field if the given value is not nil.
+func (_u *AccountUpdateOne) SetNillableHealthCheckEnabled(v *bool) *AccountUpdateOne {
+	if v != nil {
+		_u.SetHealthCheckEnabled(*v)
+	}
+	return _u
+}
+
+// SetHealthCheckProtected sets the "health_check_protected" field.
+func (_u *AccountUpdateOne) SetHealthCheckProtected(v bool) *AccountUpdateOne {
+	_u.mutation.SetHealthCheckProtected(v)
+	return _u
+}
+
+// SetNillableHealthCheckProtected sets the "health_check_protected" field if the given value is not nil.
+func (_u *AccountUpdateOne) SetNillableHealthCheckProtected(v *bool) *AccountUpdateOne {
+	if v != nil {
+		_u.SetHealthCheckProtected(*v)
+	}
+	return _u
+}
+
+// SetHealthCheckFailStreak sets the "health_check_fail_streak" field.
+func (_u *AccountUpdateOne) SetHealthCheckFailStreak(v int) *AccountUpdateOne {
+	_u.mutation.ResetHealthCheckFailStreak()
+	_u.mutation.SetHealthCheckFailStreak(v)
+	return _u
+}
+
+// SetNillableHealthCheckFailStreak sets the "health_check_fail_streak" field if the given value is not nil.
+func (_u *AccountUpdateOne) SetNillableHealthCheckFailStreak(v *int) *AccountUpdateOne {
+	if v != nil {
+		_u.SetHealthCheckFailStreak(*v)
+	}
+	return _u
+}
+
+// AddHealthCheckFailStreak adds value to the "health_check_fail_streak" field.
+func (_u *AccountUpdateOne) AddHealthCheckFailStreak(v int) *AccountUpdateOne {
+	_u.mutation.AddHealthCheckFailStreak(v)
+	return _u
+}
+
+// SetLastHealthCheckAt sets the "last_health_check_at" field.
+func (_u *AccountUpdateOne) SetLastHealthCheckAt(v time.Time) *AccountUpdateOne {
+	_u.mutation.SetLastHealthCheckAt(v)
+	return _u
+}
+
+// SetNillableLastHealthCheckAt sets the "last_health_check_at" field if the given value is not nil.
+func (_u *AccountUpdateOne) SetNillableLastHealthCheckAt(v *time.Time) *AccountUpdateOne {
+	if v != nil {
+		_u.SetLastHealthCheckAt(*v)
+	}
+	return _u
+}
+
+// ClearLastHealthCheckAt clears the value of the "last_health_check_at" field.
+func (_u *AccountUpdateOne) ClearLastHealthCheckAt() *AccountUpdateOne {
+	_u.mutation.ClearLastHealthCheckAt()
+	return _u
+}
+
+// SetLastHealthCheckStatus sets the "last_health_check_status" field.
+func (_u *AccountUpdateOne) SetLastHealthCheckStatus(v string) *AccountUpdateOne {
+	_u.mutation.SetLastHealthCheckStatus(v)
+	return _u
+}
+
+// SetNillableLastHealthCheckStatus sets the "last_health_check_status" field if the given value is not nil.
+func (_u *AccountUpdateOne) SetNillableLastHealthCheckStatus(v *string) *AccountUpdateOne {
+	if v != nil {
+		_u.SetLastHealthCheckStatus(*v)
+	}
+	return _u
+}
+
+// ClearLastHealthCheckStatus clears the value of the "last_health_check_status" field.
+func (_u *AccountUpdateOne) ClearLastHealthCheckStatus() *AccountUpdateOne {
+	_u.mutation.ClearLastHealthCheckStatus()
+	return _u
+}
+
+// SetLastHealthCheckError sets the "last_health_check_error" field.
+func (_u *AccountUpdateOne) SetLastHealthCheckError(v string) *AccountUpdateOne {
+	_u.mutation.SetLastHealthCheckError(v)
+	return _u
+}
+
+// SetNillableLastHealthCheckError sets the "last_health_check_error" field if the given value is not nil.
+func (_u *AccountUpdateOne) SetNillableLastHealthCheckError(v *string) *AccountUpdateOne {
+	if v != nil {
+		_u.SetLastHealthCheckError(*v)
+	}
+	return _u
+}
+
+// ClearLastHealthCheckError clears the value of the "last_health_check_error" field.
+func (_u *AccountUpdateOne) ClearLastHealthCheckError() *AccountUpdateOne {
+	_u.mutation.ClearLastHealthCheckError()
+	return _u
+}
+
 // AddGroupIDs adds the "groups" edge to the Group entity by IDs.
 func (_u *AccountUpdateOne) AddGroupIDs(ids ...int64) *AccountUpdateOne {
 	_u.mutation.AddGroupIDs(ids...)
@@ -1600,6 +1853,11 @@ func (_u *AccountUpdateOne) check() error {
 			return &ValidationError{Name: "session_window_status", err: fmt.Errorf(`ent: validator failed for field "Account.session_window_status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.LastHealthCheckStatus(); ok {
+		if err := account.LastHealthCheckStatusValidator(v); err != nil {
+			return &ValidationError{Name: "last_health_check_status", err: fmt.Errorf(`ent: validator failed for field "Account.last_health_check_status": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -1763,6 +2021,36 @@ func (_u *AccountUpdateOne) sqlSave(ctx context.Context) (_node *Account, err er
 	}
 	if _u.mutation.SessionWindowStatusCleared() {
 		_spec.ClearField(account.FieldSessionWindowStatus, field.TypeString)
+	}
+	if value, ok := _u.mutation.HealthCheckEnabled(); ok {
+		_spec.SetField(account.FieldHealthCheckEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.HealthCheckProtected(); ok {
+		_spec.SetField(account.FieldHealthCheckProtected, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.HealthCheckFailStreak(); ok {
+		_spec.SetField(account.FieldHealthCheckFailStreak, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedHealthCheckFailStreak(); ok {
+		_spec.AddField(account.FieldHealthCheckFailStreak, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.LastHealthCheckAt(); ok {
+		_spec.SetField(account.FieldLastHealthCheckAt, field.TypeTime, value)
+	}
+	if _u.mutation.LastHealthCheckAtCleared() {
+		_spec.ClearField(account.FieldLastHealthCheckAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.LastHealthCheckStatus(); ok {
+		_spec.SetField(account.FieldLastHealthCheckStatus, field.TypeString, value)
+	}
+	if _u.mutation.LastHealthCheckStatusCleared() {
+		_spec.ClearField(account.FieldLastHealthCheckStatus, field.TypeString)
+	}
+	if value, ok := _u.mutation.LastHealthCheckError(); ok {
+		_spec.SetField(account.FieldLastHealthCheckError, field.TypeString, value)
+	}
+	if _u.mutation.LastHealthCheckErrorCleared() {
+		_spec.ClearField(account.FieldLastHealthCheckError, field.TypeString)
 	}
 	if _u.mutation.GroupsCleared() {
 		edge := &sqlgraph.EdgeSpec{

@@ -75,6 +75,18 @@ type Account struct {
 	SessionWindowEnd *time.Time `json:"session_window_end,omitempty"`
 	// SessionWindowStatus holds the value of the "session_window_status" field.
 	SessionWindowStatus *string `json:"session_window_status,omitempty"`
+	// HealthCheckEnabled holds the value of the "health_check_enabled" field.
+	HealthCheckEnabled bool `json:"health_check_enabled,omitempty"`
+	// HealthCheckProtected holds the value of the "health_check_protected" field.
+	HealthCheckProtected bool `json:"health_check_protected,omitempty"`
+	// HealthCheckFailStreak holds the value of the "health_check_fail_streak" field.
+	HealthCheckFailStreak int `json:"health_check_fail_streak,omitempty"`
+	// LastHealthCheckAt holds the value of the "last_health_check_at" field.
+	LastHealthCheckAt *time.Time `json:"last_health_check_at,omitempty"`
+	// LastHealthCheckStatus holds the value of the "last_health_check_status" field.
+	LastHealthCheckStatus *string `json:"last_health_check_status,omitempty"`
+	// LastHealthCheckError holds the value of the "last_health_check_error" field.
+	LastHealthCheckError *string `json:"last_health_check_error,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the AccountQuery when eager-loading is set.
 	Edges        AccountEdges `json:"edges"`
@@ -141,15 +153,15 @@ func (*Account) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case account.FieldCredentials, account.FieldExtra:
 			values[i] = new([]byte)
-		case account.FieldAutoPauseOnExpired, account.FieldSchedulable:
+		case account.FieldAutoPauseOnExpired, account.FieldSchedulable, account.FieldHealthCheckEnabled, account.FieldHealthCheckProtected:
 			values[i] = new(sql.NullBool)
 		case account.FieldRateMultiplier:
 			values[i] = new(sql.NullFloat64)
-		case account.FieldID, account.FieldProxyID, account.FieldConcurrency, account.FieldLoadFactor, account.FieldPriority:
+		case account.FieldID, account.FieldProxyID, account.FieldConcurrency, account.FieldLoadFactor, account.FieldPriority, account.FieldHealthCheckFailStreak:
 			values[i] = new(sql.NullInt64)
-		case account.FieldName, account.FieldNotes, account.FieldPlatform, account.FieldType, account.FieldStatus, account.FieldErrorMessage, account.FieldTempUnschedulableReason, account.FieldSessionWindowStatus:
+		case account.FieldName, account.FieldNotes, account.FieldPlatform, account.FieldType, account.FieldStatus, account.FieldErrorMessage, account.FieldTempUnschedulableReason, account.FieldSessionWindowStatus, account.FieldLastHealthCheckStatus, account.FieldLastHealthCheckError:
 			values[i] = new(sql.NullString)
-		case account.FieldCreatedAt, account.FieldUpdatedAt, account.FieldDeletedAt, account.FieldLastUsedAt, account.FieldExpiresAt, account.FieldRateLimitedAt, account.FieldRateLimitResetAt, account.FieldOverloadUntil, account.FieldTempUnschedulableUntil, account.FieldSessionWindowStart, account.FieldSessionWindowEnd:
+		case account.FieldCreatedAt, account.FieldUpdatedAt, account.FieldDeletedAt, account.FieldLastUsedAt, account.FieldExpiresAt, account.FieldRateLimitedAt, account.FieldRateLimitResetAt, account.FieldOverloadUntil, account.FieldTempUnschedulableUntil, account.FieldSessionWindowStart, account.FieldSessionWindowEnd, account.FieldLastHealthCheckAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -359,6 +371,45 @@ func (_m *Account) assignValues(columns []string, values []any) error {
 				_m.SessionWindowStatus = new(string)
 				*_m.SessionWindowStatus = value.String
 			}
+		case account.FieldHealthCheckEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field health_check_enabled", values[i])
+			} else if value.Valid {
+				_m.HealthCheckEnabled = value.Bool
+			}
+		case account.FieldHealthCheckProtected:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field health_check_protected", values[i])
+			} else if value.Valid {
+				_m.HealthCheckProtected = value.Bool
+			}
+		case account.FieldHealthCheckFailStreak:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field health_check_fail_streak", values[i])
+			} else if value.Valid {
+				_m.HealthCheckFailStreak = int(value.Int64)
+			}
+		case account.FieldLastHealthCheckAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field last_health_check_at", values[i])
+			} else if value.Valid {
+				_m.LastHealthCheckAt = new(time.Time)
+				*_m.LastHealthCheckAt = value.Time
+			}
+		case account.FieldLastHealthCheckStatus:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field last_health_check_status", values[i])
+			} else if value.Valid {
+				_m.LastHealthCheckStatus = new(string)
+				*_m.LastHealthCheckStatus = value.String
+			}
+		case account.FieldLastHealthCheckError:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field last_health_check_error", values[i])
+			} else if value.Valid {
+				_m.LastHealthCheckError = new(string)
+				*_m.LastHealthCheckError = value.String
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -526,6 +577,30 @@ func (_m *Account) String() string {
 	builder.WriteString(", ")
 	if v := _m.SessionWindowStatus; v != nil {
 		builder.WriteString("session_window_status=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	builder.WriteString("health_check_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.HealthCheckEnabled))
+	builder.WriteString(", ")
+	builder.WriteString("health_check_protected=")
+	builder.WriteString(fmt.Sprintf("%v", _m.HealthCheckProtected))
+	builder.WriteString(", ")
+	builder.WriteString("health_check_fail_streak=")
+	builder.WriteString(fmt.Sprintf("%v", _m.HealthCheckFailStreak))
+	builder.WriteString(", ")
+	if v := _m.LastHealthCheckAt; v != nil {
+		builder.WriteString("last_health_check_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	if v := _m.LastHealthCheckStatus; v != nil {
+		builder.WriteString("last_health_check_status=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.LastHealthCheckError; v != nil {
+		builder.WriteString("last_health_check_error=")
 		builder.WriteString(*v)
 	}
 	builder.WriteByte(')')

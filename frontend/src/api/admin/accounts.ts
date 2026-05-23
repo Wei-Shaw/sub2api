@@ -6,6 +6,9 @@
 import { apiClient } from '../client'
 import type {
   Account,
+  AccountBatchTestDetailResponse,
+  AccountBatchTestListResponse,
+  AccountBatchTestTask,
   CreateAccountRequest,
   UpdateAccountRequest,
   PaginatedResponse,
@@ -191,6 +194,56 @@ export async function testAccount(id: number): Promise<{
     message: string
     latency_ms?: number
   }>(`/admin/accounts/${id}/test`)
+  return data
+}
+
+export async function createBatchTest(payload: {
+  account_ids: number[]
+  model_id?: string
+  concurrency?: number
+  auto_disable?: boolean
+}): Promise<AccountBatchTestTask> {
+  const { data } = await apiClient.post<AccountBatchTestTask>('/admin/accounts/batch-test', payload)
+  return data
+}
+
+export async function listBatchTests(params?: {
+  limit?: number
+  offset?: number
+}): Promise<AccountBatchTestListResponse> {
+  const { data } = await apiClient.get<AccountBatchTestListResponse>('/admin/accounts/batch-tests', {
+    params
+  })
+  return data
+}
+
+export async function getBatchTest(id: number, params?: {
+  limit?: number
+  offset?: number
+}): Promise<AccountBatchTestDetailResponse> {
+  const { data } = await apiClient.get<AccountBatchTestDetailResponse>(`/admin/accounts/batch-tests/${id}`, {
+    params
+  })
+  return data
+}
+
+export async function updateHealthCheckSettings(
+  id: number,
+  payload: {
+    health_check_enabled?: boolean
+    health_check_protected?: boolean
+  }
+): Promise<Account> {
+  const { data } = await apiClient.post<Account>(`/admin/accounts/${id}/health-check-settings`, payload)
+  return data
+}
+
+export async function bulkHealthCheckSettings(payload: {
+  account_ids: number[]
+  health_check_enabled?: boolean
+  health_check_protected?: boolean
+}): Promise<{ updated: number }> {
+  const { data } = await apiClient.post<{ updated: number }>('/admin/accounts/bulk-health-check-settings', payload)
   return data
 }
 
@@ -664,6 +717,11 @@ export const accountsAPI = {
   delete: deleteAccount,
   toggleStatus,
   testAccount,
+  createBatchTest,
+  listBatchTests,
+  getBatchTest,
+  updateHealthCheckSettings,
+  bulkHealthCheckSettings,
   refreshCredentials,
   getStats,
   clearError,

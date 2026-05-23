@@ -377,6 +377,90 @@ func (_c *AccountCreate) SetNillableSessionWindowStatus(v *string) *AccountCreat
 	return _c
 }
 
+// SetHealthCheckEnabled sets the "health_check_enabled" field.
+func (_c *AccountCreate) SetHealthCheckEnabled(v bool) *AccountCreate {
+	_c.mutation.SetHealthCheckEnabled(v)
+	return _c
+}
+
+// SetNillableHealthCheckEnabled sets the "health_check_enabled" field if the given value is not nil.
+func (_c *AccountCreate) SetNillableHealthCheckEnabled(v *bool) *AccountCreate {
+	if v != nil {
+		_c.SetHealthCheckEnabled(*v)
+	}
+	return _c
+}
+
+// SetHealthCheckProtected sets the "health_check_protected" field.
+func (_c *AccountCreate) SetHealthCheckProtected(v bool) *AccountCreate {
+	_c.mutation.SetHealthCheckProtected(v)
+	return _c
+}
+
+// SetNillableHealthCheckProtected sets the "health_check_protected" field if the given value is not nil.
+func (_c *AccountCreate) SetNillableHealthCheckProtected(v *bool) *AccountCreate {
+	if v != nil {
+		_c.SetHealthCheckProtected(*v)
+	}
+	return _c
+}
+
+// SetHealthCheckFailStreak sets the "health_check_fail_streak" field.
+func (_c *AccountCreate) SetHealthCheckFailStreak(v int) *AccountCreate {
+	_c.mutation.SetHealthCheckFailStreak(v)
+	return _c
+}
+
+// SetNillableHealthCheckFailStreak sets the "health_check_fail_streak" field if the given value is not nil.
+func (_c *AccountCreate) SetNillableHealthCheckFailStreak(v *int) *AccountCreate {
+	if v != nil {
+		_c.SetHealthCheckFailStreak(*v)
+	}
+	return _c
+}
+
+// SetLastHealthCheckAt sets the "last_health_check_at" field.
+func (_c *AccountCreate) SetLastHealthCheckAt(v time.Time) *AccountCreate {
+	_c.mutation.SetLastHealthCheckAt(v)
+	return _c
+}
+
+// SetNillableLastHealthCheckAt sets the "last_health_check_at" field if the given value is not nil.
+func (_c *AccountCreate) SetNillableLastHealthCheckAt(v *time.Time) *AccountCreate {
+	if v != nil {
+		_c.SetLastHealthCheckAt(*v)
+	}
+	return _c
+}
+
+// SetLastHealthCheckStatus sets the "last_health_check_status" field.
+func (_c *AccountCreate) SetLastHealthCheckStatus(v string) *AccountCreate {
+	_c.mutation.SetLastHealthCheckStatus(v)
+	return _c
+}
+
+// SetNillableLastHealthCheckStatus sets the "last_health_check_status" field if the given value is not nil.
+func (_c *AccountCreate) SetNillableLastHealthCheckStatus(v *string) *AccountCreate {
+	if v != nil {
+		_c.SetLastHealthCheckStatus(*v)
+	}
+	return _c
+}
+
+// SetLastHealthCheckError sets the "last_health_check_error" field.
+func (_c *AccountCreate) SetLastHealthCheckError(v string) *AccountCreate {
+	_c.mutation.SetLastHealthCheckError(v)
+	return _c
+}
+
+// SetNillableLastHealthCheckError sets the "last_health_check_error" field if the given value is not nil.
+func (_c *AccountCreate) SetNillableLastHealthCheckError(v *string) *AccountCreate {
+	if v != nil {
+		_c.SetLastHealthCheckError(*v)
+	}
+	return _c
+}
+
 // AddGroupIDs adds the "groups" edge to the Group entity by IDs.
 func (_c *AccountCreate) AddGroupIDs(ids ...int64) *AccountCreate {
 	_c.mutation.AddGroupIDs(ids...)
@@ -501,6 +585,18 @@ func (_c *AccountCreate) defaults() error {
 		v := account.DefaultSchedulable
 		_c.mutation.SetSchedulable(v)
 	}
+	if _, ok := _c.mutation.HealthCheckEnabled(); !ok {
+		v := account.DefaultHealthCheckEnabled
+		_c.mutation.SetHealthCheckEnabled(v)
+	}
+	if _, ok := _c.mutation.HealthCheckProtected(); !ok {
+		v := account.DefaultHealthCheckProtected
+		_c.mutation.SetHealthCheckProtected(v)
+	}
+	if _, ok := _c.mutation.HealthCheckFailStreak(); !ok {
+		v := account.DefaultHealthCheckFailStreak
+		_c.mutation.SetHealthCheckFailStreak(v)
+	}
 	return nil
 }
 
@@ -568,6 +664,20 @@ func (_c *AccountCreate) check() error {
 	if v, ok := _c.mutation.SessionWindowStatus(); ok {
 		if err := account.SessionWindowStatusValidator(v); err != nil {
 			return &ValidationError{Name: "session_window_status", err: fmt.Errorf(`ent: validator failed for field "Account.session_window_status": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.HealthCheckEnabled(); !ok {
+		return &ValidationError{Name: "health_check_enabled", err: errors.New(`ent: missing required field "Account.health_check_enabled"`)}
+	}
+	if _, ok := _c.mutation.HealthCheckProtected(); !ok {
+		return &ValidationError{Name: "health_check_protected", err: errors.New(`ent: missing required field "Account.health_check_protected"`)}
+	}
+	if _, ok := _c.mutation.HealthCheckFailStreak(); !ok {
+		return &ValidationError{Name: "health_check_fail_streak", err: errors.New(`ent: missing required field "Account.health_check_fail_streak"`)}
+	}
+	if v, ok := _c.mutation.LastHealthCheckStatus(); ok {
+		if err := account.LastHealthCheckStatusValidator(v); err != nil {
+			return &ValidationError{Name: "last_health_check_status", err: fmt.Errorf(`ent: validator failed for field "Account.last_health_check_status": %w`, err)}
 		}
 	}
 	return nil
@@ -704,6 +814,30 @@ func (_c *AccountCreate) createSpec() (*Account, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.SessionWindowStatus(); ok {
 		_spec.SetField(account.FieldSessionWindowStatus, field.TypeString, value)
 		_node.SessionWindowStatus = &value
+	}
+	if value, ok := _c.mutation.HealthCheckEnabled(); ok {
+		_spec.SetField(account.FieldHealthCheckEnabled, field.TypeBool, value)
+		_node.HealthCheckEnabled = value
+	}
+	if value, ok := _c.mutation.HealthCheckProtected(); ok {
+		_spec.SetField(account.FieldHealthCheckProtected, field.TypeBool, value)
+		_node.HealthCheckProtected = value
+	}
+	if value, ok := _c.mutation.HealthCheckFailStreak(); ok {
+		_spec.SetField(account.FieldHealthCheckFailStreak, field.TypeInt, value)
+		_node.HealthCheckFailStreak = value
+	}
+	if value, ok := _c.mutation.LastHealthCheckAt(); ok {
+		_spec.SetField(account.FieldLastHealthCheckAt, field.TypeTime, value)
+		_node.LastHealthCheckAt = &value
+	}
+	if value, ok := _c.mutation.LastHealthCheckStatus(); ok {
+		_spec.SetField(account.FieldLastHealthCheckStatus, field.TypeString, value)
+		_node.LastHealthCheckStatus = &value
+	}
+	if value, ok := _c.mutation.LastHealthCheckError(); ok {
+		_spec.SetField(account.FieldLastHealthCheckError, field.TypeString, value)
+		_node.LastHealthCheckError = &value
 	}
 	if nodes := _c.mutation.GroupsIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -1245,6 +1379,102 @@ func (u *AccountUpsert) UpdateSessionWindowStatus() *AccountUpsert {
 // ClearSessionWindowStatus clears the value of the "session_window_status" field.
 func (u *AccountUpsert) ClearSessionWindowStatus() *AccountUpsert {
 	u.SetNull(account.FieldSessionWindowStatus)
+	return u
+}
+
+// SetHealthCheckEnabled sets the "health_check_enabled" field.
+func (u *AccountUpsert) SetHealthCheckEnabled(v bool) *AccountUpsert {
+	u.Set(account.FieldHealthCheckEnabled, v)
+	return u
+}
+
+// UpdateHealthCheckEnabled sets the "health_check_enabled" field to the value that was provided on create.
+func (u *AccountUpsert) UpdateHealthCheckEnabled() *AccountUpsert {
+	u.SetExcluded(account.FieldHealthCheckEnabled)
+	return u
+}
+
+// SetHealthCheckProtected sets the "health_check_protected" field.
+func (u *AccountUpsert) SetHealthCheckProtected(v bool) *AccountUpsert {
+	u.Set(account.FieldHealthCheckProtected, v)
+	return u
+}
+
+// UpdateHealthCheckProtected sets the "health_check_protected" field to the value that was provided on create.
+func (u *AccountUpsert) UpdateHealthCheckProtected() *AccountUpsert {
+	u.SetExcluded(account.FieldHealthCheckProtected)
+	return u
+}
+
+// SetHealthCheckFailStreak sets the "health_check_fail_streak" field.
+func (u *AccountUpsert) SetHealthCheckFailStreak(v int) *AccountUpsert {
+	u.Set(account.FieldHealthCheckFailStreak, v)
+	return u
+}
+
+// UpdateHealthCheckFailStreak sets the "health_check_fail_streak" field to the value that was provided on create.
+func (u *AccountUpsert) UpdateHealthCheckFailStreak() *AccountUpsert {
+	u.SetExcluded(account.FieldHealthCheckFailStreak)
+	return u
+}
+
+// AddHealthCheckFailStreak adds v to the "health_check_fail_streak" field.
+func (u *AccountUpsert) AddHealthCheckFailStreak(v int) *AccountUpsert {
+	u.Add(account.FieldHealthCheckFailStreak, v)
+	return u
+}
+
+// SetLastHealthCheckAt sets the "last_health_check_at" field.
+func (u *AccountUpsert) SetLastHealthCheckAt(v time.Time) *AccountUpsert {
+	u.Set(account.FieldLastHealthCheckAt, v)
+	return u
+}
+
+// UpdateLastHealthCheckAt sets the "last_health_check_at" field to the value that was provided on create.
+func (u *AccountUpsert) UpdateLastHealthCheckAt() *AccountUpsert {
+	u.SetExcluded(account.FieldLastHealthCheckAt)
+	return u
+}
+
+// ClearLastHealthCheckAt clears the value of the "last_health_check_at" field.
+func (u *AccountUpsert) ClearLastHealthCheckAt() *AccountUpsert {
+	u.SetNull(account.FieldLastHealthCheckAt)
+	return u
+}
+
+// SetLastHealthCheckStatus sets the "last_health_check_status" field.
+func (u *AccountUpsert) SetLastHealthCheckStatus(v string) *AccountUpsert {
+	u.Set(account.FieldLastHealthCheckStatus, v)
+	return u
+}
+
+// UpdateLastHealthCheckStatus sets the "last_health_check_status" field to the value that was provided on create.
+func (u *AccountUpsert) UpdateLastHealthCheckStatus() *AccountUpsert {
+	u.SetExcluded(account.FieldLastHealthCheckStatus)
+	return u
+}
+
+// ClearLastHealthCheckStatus clears the value of the "last_health_check_status" field.
+func (u *AccountUpsert) ClearLastHealthCheckStatus() *AccountUpsert {
+	u.SetNull(account.FieldLastHealthCheckStatus)
+	return u
+}
+
+// SetLastHealthCheckError sets the "last_health_check_error" field.
+func (u *AccountUpsert) SetLastHealthCheckError(v string) *AccountUpsert {
+	u.Set(account.FieldLastHealthCheckError, v)
+	return u
+}
+
+// UpdateLastHealthCheckError sets the "last_health_check_error" field to the value that was provided on create.
+func (u *AccountUpsert) UpdateLastHealthCheckError() *AccountUpsert {
+	u.SetExcluded(account.FieldLastHealthCheckError)
+	return u
+}
+
+// ClearLastHealthCheckError clears the value of the "last_health_check_error" field.
+func (u *AccountUpsert) ClearLastHealthCheckError() *AccountUpsert {
+	u.SetNull(account.FieldLastHealthCheckError)
 	return u
 }
 
@@ -1801,6 +2031,118 @@ func (u *AccountUpsertOne) UpdateSessionWindowStatus() *AccountUpsertOne {
 func (u *AccountUpsertOne) ClearSessionWindowStatus() *AccountUpsertOne {
 	return u.Update(func(s *AccountUpsert) {
 		s.ClearSessionWindowStatus()
+	})
+}
+
+// SetHealthCheckEnabled sets the "health_check_enabled" field.
+func (u *AccountUpsertOne) SetHealthCheckEnabled(v bool) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetHealthCheckEnabled(v)
+	})
+}
+
+// UpdateHealthCheckEnabled sets the "health_check_enabled" field to the value that was provided on create.
+func (u *AccountUpsertOne) UpdateHealthCheckEnabled() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateHealthCheckEnabled()
+	})
+}
+
+// SetHealthCheckProtected sets the "health_check_protected" field.
+func (u *AccountUpsertOne) SetHealthCheckProtected(v bool) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetHealthCheckProtected(v)
+	})
+}
+
+// UpdateHealthCheckProtected sets the "health_check_protected" field to the value that was provided on create.
+func (u *AccountUpsertOne) UpdateHealthCheckProtected() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateHealthCheckProtected()
+	})
+}
+
+// SetHealthCheckFailStreak sets the "health_check_fail_streak" field.
+func (u *AccountUpsertOne) SetHealthCheckFailStreak(v int) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetHealthCheckFailStreak(v)
+	})
+}
+
+// AddHealthCheckFailStreak adds v to the "health_check_fail_streak" field.
+func (u *AccountUpsertOne) AddHealthCheckFailStreak(v int) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.AddHealthCheckFailStreak(v)
+	})
+}
+
+// UpdateHealthCheckFailStreak sets the "health_check_fail_streak" field to the value that was provided on create.
+func (u *AccountUpsertOne) UpdateHealthCheckFailStreak() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateHealthCheckFailStreak()
+	})
+}
+
+// SetLastHealthCheckAt sets the "last_health_check_at" field.
+func (u *AccountUpsertOne) SetLastHealthCheckAt(v time.Time) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetLastHealthCheckAt(v)
+	})
+}
+
+// UpdateLastHealthCheckAt sets the "last_health_check_at" field to the value that was provided on create.
+func (u *AccountUpsertOne) UpdateLastHealthCheckAt() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateLastHealthCheckAt()
+	})
+}
+
+// ClearLastHealthCheckAt clears the value of the "last_health_check_at" field.
+func (u *AccountUpsertOne) ClearLastHealthCheckAt() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearLastHealthCheckAt()
+	})
+}
+
+// SetLastHealthCheckStatus sets the "last_health_check_status" field.
+func (u *AccountUpsertOne) SetLastHealthCheckStatus(v string) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetLastHealthCheckStatus(v)
+	})
+}
+
+// UpdateLastHealthCheckStatus sets the "last_health_check_status" field to the value that was provided on create.
+func (u *AccountUpsertOne) UpdateLastHealthCheckStatus() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateLastHealthCheckStatus()
+	})
+}
+
+// ClearLastHealthCheckStatus clears the value of the "last_health_check_status" field.
+func (u *AccountUpsertOne) ClearLastHealthCheckStatus() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearLastHealthCheckStatus()
+	})
+}
+
+// SetLastHealthCheckError sets the "last_health_check_error" field.
+func (u *AccountUpsertOne) SetLastHealthCheckError(v string) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetLastHealthCheckError(v)
+	})
+}
+
+// UpdateLastHealthCheckError sets the "last_health_check_error" field to the value that was provided on create.
+func (u *AccountUpsertOne) UpdateLastHealthCheckError() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateLastHealthCheckError()
+	})
+}
+
+// ClearLastHealthCheckError clears the value of the "last_health_check_error" field.
+func (u *AccountUpsertOne) ClearLastHealthCheckError() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearLastHealthCheckError()
 	})
 }
 
@@ -2523,6 +2865,118 @@ func (u *AccountUpsertBulk) UpdateSessionWindowStatus() *AccountUpsertBulk {
 func (u *AccountUpsertBulk) ClearSessionWindowStatus() *AccountUpsertBulk {
 	return u.Update(func(s *AccountUpsert) {
 		s.ClearSessionWindowStatus()
+	})
+}
+
+// SetHealthCheckEnabled sets the "health_check_enabled" field.
+func (u *AccountUpsertBulk) SetHealthCheckEnabled(v bool) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetHealthCheckEnabled(v)
+	})
+}
+
+// UpdateHealthCheckEnabled sets the "health_check_enabled" field to the value that was provided on create.
+func (u *AccountUpsertBulk) UpdateHealthCheckEnabled() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateHealthCheckEnabled()
+	})
+}
+
+// SetHealthCheckProtected sets the "health_check_protected" field.
+func (u *AccountUpsertBulk) SetHealthCheckProtected(v bool) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetHealthCheckProtected(v)
+	})
+}
+
+// UpdateHealthCheckProtected sets the "health_check_protected" field to the value that was provided on create.
+func (u *AccountUpsertBulk) UpdateHealthCheckProtected() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateHealthCheckProtected()
+	})
+}
+
+// SetHealthCheckFailStreak sets the "health_check_fail_streak" field.
+func (u *AccountUpsertBulk) SetHealthCheckFailStreak(v int) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetHealthCheckFailStreak(v)
+	})
+}
+
+// AddHealthCheckFailStreak adds v to the "health_check_fail_streak" field.
+func (u *AccountUpsertBulk) AddHealthCheckFailStreak(v int) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.AddHealthCheckFailStreak(v)
+	})
+}
+
+// UpdateHealthCheckFailStreak sets the "health_check_fail_streak" field to the value that was provided on create.
+func (u *AccountUpsertBulk) UpdateHealthCheckFailStreak() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateHealthCheckFailStreak()
+	})
+}
+
+// SetLastHealthCheckAt sets the "last_health_check_at" field.
+func (u *AccountUpsertBulk) SetLastHealthCheckAt(v time.Time) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetLastHealthCheckAt(v)
+	})
+}
+
+// UpdateLastHealthCheckAt sets the "last_health_check_at" field to the value that was provided on create.
+func (u *AccountUpsertBulk) UpdateLastHealthCheckAt() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateLastHealthCheckAt()
+	})
+}
+
+// ClearLastHealthCheckAt clears the value of the "last_health_check_at" field.
+func (u *AccountUpsertBulk) ClearLastHealthCheckAt() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearLastHealthCheckAt()
+	})
+}
+
+// SetLastHealthCheckStatus sets the "last_health_check_status" field.
+func (u *AccountUpsertBulk) SetLastHealthCheckStatus(v string) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetLastHealthCheckStatus(v)
+	})
+}
+
+// UpdateLastHealthCheckStatus sets the "last_health_check_status" field to the value that was provided on create.
+func (u *AccountUpsertBulk) UpdateLastHealthCheckStatus() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateLastHealthCheckStatus()
+	})
+}
+
+// ClearLastHealthCheckStatus clears the value of the "last_health_check_status" field.
+func (u *AccountUpsertBulk) ClearLastHealthCheckStatus() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearLastHealthCheckStatus()
+	})
+}
+
+// SetLastHealthCheckError sets the "last_health_check_error" field.
+func (u *AccountUpsertBulk) SetLastHealthCheckError(v string) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetLastHealthCheckError(v)
+	})
+}
+
+// UpdateLastHealthCheckError sets the "last_health_check_error" field to the value that was provided on create.
+func (u *AccountUpsertBulk) UpdateLastHealthCheckError() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateLastHealthCheckError()
+	})
+}
+
+// ClearLastHealthCheckError clears the value of the "last_health_check_error" field.
+func (u *AccountUpsertBulk) ClearLastHealthCheckError() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearLastHealthCheckError()
 	})
 }
 

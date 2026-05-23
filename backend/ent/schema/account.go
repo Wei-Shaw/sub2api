@@ -193,6 +193,27 @@ func (Account) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			MaxLen(20),
+
+		// health_check_*: 后台健康维护池字段。
+		// 默认不加入维护池，避免自动巡检影响现有账号池和当前 API 调用链。
+		field.Bool("health_check_enabled").
+			Default(false),
+		field.Bool("health_check_protected").
+			Default(false),
+		field.Int("health_check_fail_streak").
+			Default(0),
+		field.Time("last_health_check_at").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+		field.String("last_health_check_status").
+			Optional().
+			Nillable().
+			MaxLen(20),
+		field.String("last_health_check_error").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "text"}),
 	}
 }
 
@@ -231,6 +252,8 @@ func (Account) Indexes() []ent.Index {
 		// 调度热路径复合索引（线上由 SQL 迁移创建部分索引，schema 仅用于模型可读性对齐）
 		index.Fields("platform", "priority"),
 		index.Fields("priority", "status"),
+		index.Fields("health_check_enabled"),
+		index.Fields("health_check_protected"),
 		index.Fields("deleted_at"), // 软删除查询优化
 	}
 }

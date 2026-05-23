@@ -274,6 +274,10 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	accounts := admin.Group("/accounts")
 	{
 		accounts.GET("", h.Admin.Account.List)
+		accounts.POST("/batch-test", h.Admin.AccountHealthCheck.CreateBatchTest)
+		accounts.GET("/batch-tests", h.Admin.AccountHealthCheck.ListBatchTests)
+		accounts.GET("/batch-tests/:id", h.Admin.AccountHealthCheck.GetBatchTest)
+		accounts.POST("/bulk-health-check-settings", h.Admin.AccountHealthCheck.BulkUpdateSettings)
 		accounts.GET("/:id", h.Admin.Account.GetByID)
 		accounts.POST("", h.Admin.Account.Create)
 		accounts.POST("/check-mixed-channel", h.Admin.Account.CheckMixedChannel)
@@ -283,6 +287,7 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		accounts.PUT("/:id", h.Admin.Account.Update)
 		accounts.DELETE("/:id", h.Admin.Account.Delete)
 		accounts.POST("/:id/test", h.Admin.Account.Test)
+		accounts.POST("/:id/health-check-settings", h.Admin.AccountHealthCheck.UpdateSettings)
 		accounts.POST("/:id/recover-state", h.Admin.Account.RecoverState)
 		accounts.POST("/:id/refresh", h.Admin.Account.Refresh)
 		accounts.POST("/:id/set-privacy", h.Admin.Account.SetPrivacy)

@@ -363,6 +363,15 @@ func ProvideScheduledTestRunnerService(
 	return svc
 }
 
+func ProvideAccountHealthCheckRunnerService(
+	healthSvc *AccountHealthCheckService,
+	cfg *config.Config,
+) *AccountHealthCheckRunnerService {
+	svc := NewAccountHealthCheckRunnerService(healthSvc, cfg)
+	svc.Start()
+	return svc
+}
+
 // ProvideOpsScheduledReportService creates and starts OpsScheduledReportService.
 func ProvideOpsScheduledReportService(
 	opsService *OpsService,
@@ -476,6 +485,8 @@ var ProviderSet = wire.NewSet(
 	ProvideRateLimitService,
 	NewAccountUsageService,
 	NewAccountTestService,
+	wire.Bind(new(AccountBackgroundTestRunner), new(*AccountTestService)),
+	NewAccountHealthCheckService,
 	ProvideSettingService,
 	NewDataManagementService,
 	ProvideBackupService,
@@ -518,6 +529,7 @@ var ProviderSet = wire.NewSet(
 	ProvideIdempotencyCleanupService,
 	ProvideScheduledTestService,
 	ProvideScheduledTestRunnerService,
+	ProvideAccountHealthCheckRunnerService,
 	NewGroupCapacityService,
 	NewChannelService,
 	NewModelPricingResolver,

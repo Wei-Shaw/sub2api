@@ -1765,6 +1765,12 @@ func accountEntityToService(m *dbent.Account) *service.Account {
 		SessionWindowStart:      m.SessionWindowStart,
 		SessionWindowEnd:        m.SessionWindowEnd,
 		SessionWindowStatus:     derefString(m.SessionWindowStatus),
+		HealthCheckEnabled:      m.HealthCheckEnabled,
+		HealthCheckProtected:    m.HealthCheckProtected,
+		HealthCheckFailStreak:   m.HealthCheckFailStreak,
+		LastHealthCheckAt:       m.LastHealthCheckAt,
+		LastHealthCheckStatus:   m.LastHealthCheckStatus,
+		LastHealthCheckError:    m.LastHealthCheckError,
 	}
 }
 

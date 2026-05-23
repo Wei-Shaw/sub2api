@@ -71,6 +71,18 @@ const (
 	FieldSessionWindowEnd = "session_window_end"
 	// FieldSessionWindowStatus holds the string denoting the session_window_status field in the database.
 	FieldSessionWindowStatus = "session_window_status"
+	// FieldHealthCheckEnabled holds the string denoting the health_check_enabled field in the database.
+	FieldHealthCheckEnabled = "health_check_enabled"
+	// FieldHealthCheckProtected holds the string denoting the health_check_protected field in the database.
+	FieldHealthCheckProtected = "health_check_protected"
+	// FieldHealthCheckFailStreak holds the string denoting the health_check_fail_streak field in the database.
+	FieldHealthCheckFailStreak = "health_check_fail_streak"
+	// FieldLastHealthCheckAt holds the string denoting the last_health_check_at field in the database.
+	FieldLastHealthCheckAt = "last_health_check_at"
+	// FieldLastHealthCheckStatus holds the string denoting the last_health_check_status field in the database.
+	FieldLastHealthCheckStatus = "last_health_check_status"
+	// FieldLastHealthCheckError holds the string denoting the last_health_check_error field in the database.
+	FieldLastHealthCheckError = "last_health_check_error"
 	// EdgeGroups holds the string denoting the groups edge name in mutations.
 	EdgeGroups = "groups"
 	// EdgeProxy holds the string denoting the proxy edge name in mutations.
@@ -140,6 +152,12 @@ var Columns = []string{
 	FieldSessionWindowStart,
 	FieldSessionWindowEnd,
 	FieldSessionWindowStatus,
+	FieldHealthCheckEnabled,
+	FieldHealthCheckProtected,
+	FieldHealthCheckFailStreak,
+	FieldLastHealthCheckAt,
+	FieldLastHealthCheckStatus,
+	FieldLastHealthCheckError,
 }
 
 var (
@@ -198,6 +216,14 @@ var (
 	DefaultSchedulable bool
 	// SessionWindowStatusValidator is a validator for the "session_window_status" field. It is called by the builders before save.
 	SessionWindowStatusValidator func(string) error
+	// DefaultHealthCheckEnabled holds the default value on creation for the "health_check_enabled" field.
+	DefaultHealthCheckEnabled bool
+	// DefaultHealthCheckProtected holds the default value on creation for the "health_check_protected" field.
+	DefaultHealthCheckProtected bool
+	// DefaultHealthCheckFailStreak holds the default value on creation for the "health_check_fail_streak" field.
+	DefaultHealthCheckFailStreak int
+	// LastHealthCheckStatusValidator is a validator for the "last_health_check_status" field. It is called by the builders before save.
+	LastHealthCheckStatusValidator func(string) error
 )
 
 // OrderOption defines the ordering options for the Account queries.
@@ -336,6 +362,36 @@ func BySessionWindowEnd(opts ...sql.OrderTermOption) OrderOption {
 // BySessionWindowStatus orders the results by the session_window_status field.
 func BySessionWindowStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSessionWindowStatus, opts...).ToFunc()
+}
+
+// ByHealthCheckEnabled orders the results by the health_check_enabled field.
+func ByHealthCheckEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldHealthCheckEnabled, opts...).ToFunc()
+}
+
+// ByHealthCheckProtected orders the results by the health_check_protected field.
+func ByHealthCheckProtected(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldHealthCheckProtected, opts...).ToFunc()
+}
+
+// ByHealthCheckFailStreak orders the results by the health_check_fail_streak field.
+func ByHealthCheckFailStreak(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldHealthCheckFailStreak, opts...).ToFunc()
+}
+
+// ByLastHealthCheckAt orders the results by the last_health_check_at field.
+func ByLastHealthCheckAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLastHealthCheckAt, opts...).ToFunc()
+}
+
+// ByLastHealthCheckStatus orders the results by the last_health_check_status field.
+func ByLastHealthCheckStatus(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLastHealthCheckStatus, opts...).ToFunc()
+}
+
+// ByLastHealthCheckError orders the results by the last_health_check_error field.
+func ByLastHealthCheckError(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLastHealthCheckError, opts...).ToFunc()
 }
 
 // ByGroupsCount orders the results by groups count.
