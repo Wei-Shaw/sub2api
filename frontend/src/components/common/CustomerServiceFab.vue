@@ -19,7 +19,7 @@
             <div class="cs-panel-info">
               <div class="cs-info-row">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12.003 2c-2.265 0-6.29 1.364-6.29 7.325v1.195S3.55 14.96 3.55 17.474c0 .665.17 1.025.396 1.025.19 0 .46-.18.758-.625.775-1.15 1.525-2.76 1.997-3.775.14.02.282.03.425.03 1.47 0 2.97-.765 3.852-2.115.88 1.35 2.382 2.115 3.852 2.115.143 0 .284-.01.425-.03.472 1.015 1.222 2.625 1.997 3.775.298.445.568.625.758.625.226 0 .396-.36.396-1.025 0-2.514-2.163-6.954-2.163-6.954v-1.195C18.293 3.364 14.268 2 12.003 2z"/></svg>
-                <span>群号：774692252</span>
+                <span>点击下方链接加入</span>
               </div>
               <div class="cs-info-row">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 3h9l3 3v15H6V3Z" stroke="currentColor" stroke-width="1.6"/><path d="M14 3v4h4M8.5 11h7M8.5 15h7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>

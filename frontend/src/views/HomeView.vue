@@ -167,7 +167,7 @@
 
           <div class="mt-6 text-center">
             <a
-              href="https://qm.qq.com/q/IgQv6V7SEw"
+              href="https://qm.qq.com/q/qwg4E6BGEM"
               target="_blank"
               rel="noopener noreferrer"
               class="inline-flex items-center gap-1.5 text-sm font-medium text-primary-500 hover:text-primary-600 dark:text-primary-400"
@@ -195,12 +195,12 @@
                 <span>使用答疑</span>
               </div>
               <a
-                href="https://qm.qq.com/q/IgQv6V7SEw"
+                href="https://qm.qq.com/q/qwg4E6BGEM"
                 target="_blank"
                 rel="noopener noreferrer"
                 class="mt-6 inline-flex items-center gap-2 rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 dark:bg-gray-800 dark:hover:bg-gray-700"
               >
-                加入 QQ 群 774692252
+                加入卡卡AI交流群
                 <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25" /></svg>
               </a>
             </div>
@@ -372,7 +372,7 @@
             {{ t('guide.title') }}
           </router-link>
           <a
-            href="https://qm.qq.com/q/IgQv6V7SEw"
+            href="https://qm.qq.com/q/qwg4E6BGEM"
             target="_blank"
             rel="noopener noreferrer"
             class="text-xs text-gray-400 hover:text-gray-600 dark:text-dark-400 dark:hover:text-white"
