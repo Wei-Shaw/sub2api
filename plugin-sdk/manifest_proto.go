@@ -14,6 +14,13 @@ func (m *Manifest) toProto() *pb.ManifestResponse {
 		return &pb.ManifestResponse{}
 	}
 	caps := append([]string(nil), m.Capabilities...)
+	// MigrationFiles is the deprecated checksum-less list. When the plugin
+	// populates the new Migrations slice, skip MigrationFiles entirely so
+	// the host doesn't double-track migrations under the legacy field.
+	var migrationFiles []string
+	if len(m.Migrations) == 0 {
+		migrationFiles = append([]string(nil), m.MigrationFiles...)
+	}
 	resp := &pb.ManifestResponse{
 		Name:                  m.Name,
 		DisplayName:           m.DisplayName,
@@ -22,7 +29,7 @@ func (m *Manifest) toProto() *pb.ManifestResponse {
 		Author:                m.Author,
 		GatewayEndpoints:      endpointsToProto(m.GatewayEndpoints),
 		PluginEndpoints:       endpointsToProto(m.PluginEndpoints),
-		MigrationFiles:        append([]string(nil), m.MigrationFiles...),
+		MigrationFiles:        migrationFiles,
 		Migrations:            migrationsToProto(m.Migrations),
 		IconSvg:               m.IconSVG,
 		SubscribedEvents:      append([]string(nil), m.SubscribedEvents...),

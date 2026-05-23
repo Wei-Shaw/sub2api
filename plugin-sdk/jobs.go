@@ -117,9 +117,9 @@ type JobsClient interface {
 
 // Sentinel errors returned by JobsClient.
 var (
-	ErrJobUnknown     = errors.New("plugin-sdk: no handler registered for job")
-	ErrJobsNotReady   = errors.New("plugin-sdk: jobs client not initialised")
-	ErrJobsRegistered = errors.New("plugin-sdk: cannot register after Subscribe stream is open")
+	ErrJobUnknown     = errors.New("pluginsdk: no handler registered for job")
+	ErrJobsNotReady   = errors.New("pluginsdk: jobs client not initialised")
+	ErrJobsRegistered = errors.New("pluginsdk: cannot register after Subscribe stream is open")
 )
 
 // jobsClient is the concrete JobsClient. It is created during Init and lives
@@ -175,10 +175,10 @@ func (c *jobsClient) Register(spec JobSpec, h JobHandler) error {
 		return ErrJobsNotReady
 	}
 	if spec.Name == "" {
-		return errors.New("plugin-sdk: job spec name is required")
+		return errors.New("pluginsdk: job spec name is required")
 	}
 	if h == nil {
-		return fmt.Errorf("plugin-sdk: job %q handler is nil", spec.Name)
+		return fmt.Errorf("pluginsdk: job %q handler is nil", spec.Name)
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -430,24 +430,24 @@ func convertJobSpec(spec JobSpec) (*pb.JobSpec, error) {
 	switch spec.Trigger.Kind {
 	case TriggerInterval:
 		if spec.Trigger.Interval <= 0 {
-			return nil, fmt.Errorf("plugin-sdk: job %q interval must be > 0", spec.Name)
+			return nil, fmt.Errorf("pluginsdk: job %q interval must be > 0", spec.Name)
 		}
 		pbSpec.Kind = string(TriggerInterval)
 		pbSpec.IntervalNanos = spec.Trigger.Interval.Nanoseconds()
 	case TriggerCron:
 		if spec.Trigger.CronSpec == "" {
-			return nil, fmt.Errorf("plugin-sdk: job %q cron spec must be non-empty", spec.Name)
+			return nil, fmt.Errorf("pluginsdk: job %q cron spec must be non-empty", spec.Name)
 		}
 		pbSpec.Kind = string(TriggerCron)
 		pbSpec.CronSpec = spec.Trigger.CronSpec
 	case TriggerFixedDelay:
 		if spec.Trigger.FixedDelay <= 0 {
-			return nil, fmt.Errorf("plugin-sdk: job %q fixed_delay must be > 0", spec.Name)
+			return nil, fmt.Errorf("pluginsdk: job %q fixed_delay must be > 0", spec.Name)
 		}
 		pbSpec.Kind = string(TriggerFixedDelay)
 		pbSpec.FixedDelayNanos = spec.Trigger.FixedDelay.Nanoseconds()
 	default:
-		return nil, fmt.Errorf("plugin-sdk: job %q unknown trigger kind %q", spec.Name, spec.Trigger.Kind)
+		return nil, fmt.Errorf("pluginsdk: job %q unknown trigger kind %q", spec.Name, spec.Trigger.Kind)
 	}
 	return pbSpec, nil
 }

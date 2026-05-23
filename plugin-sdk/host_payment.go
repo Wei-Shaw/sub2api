@@ -104,10 +104,10 @@ type HostUserInfo struct {
 }
 
 var (
-	ErrHostBalanceUnavailable      = errors.New("plugin-sdk: host balance service not registered")
-	ErrHostSubscriptionUnavailable = errors.New("plugin-sdk: host subscription assigner not registered")
-	ErrHostAffiliateUnavailable    = errors.New("plugin-sdk: host affiliate accruer not registered")
-	ErrHostUserLookupUnavailable   = errors.New("plugin-sdk: host user lookup not registered")
+	ErrHostBalanceUnavailable      = errors.New("pluginsdk: host balance service not registered")
+	ErrHostSubscriptionUnavailable = errors.New("pluginsdk: host subscription assigner not registered")
+	ErrHostAffiliateUnavailable    = errors.New("pluginsdk: host affiliate accruer not registered")
+	ErrHostUserLookupUnavailable   = errors.New("pluginsdk: host user lookup not registered")
 )
 
 // Compile-time proof that the SDK's concrete types satisfy

@@ -5,7 +5,6 @@ package admin
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -20,16 +19,17 @@ import (
 // hook is set per test to verify wiring (path param parsing, error mapping,
 // query parsing) without spinning up a real plugin subsystem.
 type fakePluginManager struct {
-	listFn      func(ctx context.Context) ([]plugin.PluginInfo, error)
-	listExtFn   func(ctx context.Context, includeUninstalled bool) ([]plugin.PluginInfo, error)
-	getFn       func(ctx context.Context, name string) (*plugin.PluginInfo, error)
-	enableFn    func(ctx context.Context, name string) error
-	disableFn   func(ctx context.Context, name string) error
-	restartFn   func(ctx context.Context, name string) error
-	updateCfgFn func(ctx context.Context, name string, cfg map[string]any) error
-	uninstallFn func(ctx context.Context, name string) error
-	installFn   func(ctx context.Context, name string) error
-	purgeFn     func(ctx context.Context, name string) error
+	listFn        func(ctx context.Context) ([]plugin.PluginInfo, error)
+	listExtFn     func(ctx context.Context, includeUninstalled bool) ([]plugin.PluginInfo, error)
+	getFn         func(ctx context.Context, name string) (*plugin.PluginInfo, error)
+	enableFn      func(ctx context.Context, name string) error
+	disableFn     func(ctx context.Context, name string) error
+	restartFn     func(ctx context.Context, name string) error
+	updateCfgFn   func(ctx context.Context, name string, cfg map[string]any) error
+	uninstallFn   func(ctx context.Context, name string) error
+	installFn     func(ctx context.Context, name string) error
+	purgeFn       func(ctx context.Context, name string) error
+	removeFilesFn func(ctx context.Context, name string) error
 }
 
 func (f *fakePluginManager) List(ctx context.Context) ([]plugin.PluginInfo, error) {
@@ -89,6 +89,12 @@ func (f *fakePluginManager) Install(ctx context.Context, name string) error {
 func (f *fakePluginManager) Purge(ctx context.Context, name string) error {
 	if f.purgeFn != nil {
 		return f.purgeFn(ctx, name)
+	}
+	return nil
+}
+func (f *fakePluginManager) RemoveFiles(ctx context.Context, name string) error {
+	if f.removeFilesFn != nil {
+		return f.removeFilesFn(ctx, name)
 	}
 	return nil
 }
@@ -268,8 +274,3 @@ func TestUninstallHandler_ManagerNilReturns503(t *testing.T) {
 		t.Fatalf("expected 503, got %d", w.Code)
 	}
 }
-
-// Sanity check: ensure ErrInvalidPluginName mapping is wired up too — not
-// strictly part of P13/C-1 but it's the second new top-level error mapping
-// and should not regress.
-var _ = errors.Is

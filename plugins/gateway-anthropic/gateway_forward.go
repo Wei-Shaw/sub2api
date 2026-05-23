@@ -128,27 +128,35 @@ func (s *gatewayProviderServer) handleErrorResponse(
 	)
 }
 
+// responseHeaderWhitelist lists upstream headers forwarded to the host.
+// Only safe, non-sensitive headers are included; Set-Cookie / Server /
+// X-Powered-By and other infrastructure leakage headers are dropped.
+var responseHeaderWhitelist = []string{
+	"x-request-id",
+	"retry-after",
+	"anthropic-ratelimit-requests-limit",
+	"anthropic-ratelimit-requests-remaining",
+	"anthropic-ratelimit-requests-reset",
+	"anthropic-ratelimit-tokens-limit",
+	"anthropic-ratelimit-tokens-remaining",
+	"anthropic-ratelimit-tokens-reset",
+	"anthropic-ratelimit-input-tokens-limit",
+	"anthropic-ratelimit-input-tokens-remaining",
+	"anthropic-ratelimit-input-tokens-reset",
+	"anthropic-ratelimit-output-tokens-limit",
+	"anthropic-ratelimit-output-tokens-remaining",
+	"anthropic-ratelimit-output-tokens-reset",
+}
+
 // sendResponseHeaders sends the initial GatewayResponseHeaders chunk
-// containing the upstream status code and headers.
+// containing the upstream status code and a curated set of headers.
+// Only headers in responseHeaderWhitelist are forwarded; Content-Type is
+// always propagated for downstream rendering.
 func sendResponseHeaders(
 	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
 	resp *http.Response,
 ) error {
-	headers := make(map[string]string)
-	for key, values := range resp.Header {
-		if len(values) > 0 {
-			headers[key] = values[0]
-		}
-	}
-
-	return stream.Send(&pb.GatewayForwardChunk{
-		Chunk: &pb.GatewayForwardChunk_Headers{
-			Headers: &pb.GatewayResponseHeaders{
-				StatusCode: int32(resp.StatusCode),
-				Headers:    headers,
-			},
-		},
-	})
+	return gatewayutil.SendResponseHeaders(stream, resp, responseHeaderWhitelist)
 }
 
 // buildDoneChunk constructs the terminal GatewayForwardChunk_Done message

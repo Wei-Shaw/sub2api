@@ -30,7 +30,7 @@ type PluginContext interface {
 
 	// Secrets returns the SecretEncryptor backed by the host's
 	// SecretEncryption gRPC service. Returns nil when the plugin did not
-	// declare CapabilitySecretEncryption — the SDK refuses to wire the
+	// declare CapabilitySecretsEncrypt — the SDK refuses to wire the
 	// client in that case so a forgotten manifest entry surfaces as an
 	// obvious nil-pointer instead of silent passthrough.
 	Secrets() SecretEncryptor

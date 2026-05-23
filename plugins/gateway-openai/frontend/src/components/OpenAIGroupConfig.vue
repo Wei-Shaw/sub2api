@@ -58,6 +58,7 @@ import { useI18n } from "vue-i18n";
 import {
   SharedImagePricing,
   SharedAccountFilters,
+  type GroupConfigGroup,
 } from "@sub2api/plugin-sdk";
 import FamilyMappingSection from "./FamilyMappingSection.vue";
 import ExactMappingSection from "./ExactMappingSection.vue";
@@ -67,7 +68,7 @@ defineProps<{
   mode: "create" | "edit";
   platform: string;
   formData: Record<string, unknown>;
-  groups: unknown[];
+  groups: GroupConfigGroup[];
   editingGroupId?: number | null;
 }>();
 

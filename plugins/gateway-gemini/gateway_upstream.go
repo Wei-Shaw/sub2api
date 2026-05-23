@@ -1,42 +1,23 @@
 package main
 
 import (
-	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"bytes"
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 	"google.golang.org/grpc"
 )
 
-// defaultHTTPClient is a shared HTTP client with sensible timeouts for
-// upstream requests. Streaming responses need long timeouts since SSE
-// connections stay open until the model finishes generating.
-var defaultHTTPClient = &http.Client{
-	// No overall timeout — streaming responses can take minutes.
-	// Individual read deadlines are handled at the io level.
-	Transport: &http.Transport{
-		DialContext: (&net.Dialer{
-			Timeout:   30 * time.Second,
-			KeepAlive: 30 * time.Second,
-		}).DialContext,
-		TLSClientConfig:       &tls.Config{MinVersion: tls.VersionTLS12},
-		TLSHandshakeTimeout:   15 * time.Second,
-		MaxIdleConns:          100,
-		MaxIdleConnsPerHost:   20,
-		IdleConnTimeout:       90 * time.Second,
-		ResponseHeaderTimeout: 60 * time.Second,
-		ForceAttemptHTTP2:     true,
-	},
-}
+// defaultHTTPClient is a shared HTTP client tuned for streaming upstream
+// requests. See gatewayutil.NewStreamingHTTPClient for tuning rationale.
+var defaultHTTPClient = gatewayutil.NewStreamingHTTPClient()
 
 // upstreamRequestInfo holds a fully-built HTTP request ready to send to
 // the upstream, along with model metadata needed for billing.
@@ -223,18 +204,12 @@ func resolveModelMapping(
 	if info == nil {
 		return requestedModel
 	}
-	acctType := info.GetAccountType()
-	if acctType != accountTypeAPIKey && acctType != accountTypeServiceAccount {
-		return requestedModel
-	}
-	mapping := gatewayutil.ExtractModelMapping(info.GetCredentialsJson())
-	if len(mapping) == 0 {
-		return requestedModel
-	}
-	if mapped, ok := mapping[requestedModel]; ok {
-		return mapped
-	}
-	return requestedModel
+	return gatewayutil.ResolveModelMapping(
+		requestedModel,
+		info.GetCredentialsJson(),
+		[]string{accountTypeAPIKey, accountTypeServiceAccount},
+		info.GetAccountType(),
+	)
 }
 
 

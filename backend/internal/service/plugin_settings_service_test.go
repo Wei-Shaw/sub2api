@@ -145,15 +145,15 @@ func TestGetByKey_ReturnsSchemaVersions(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"value_json", "revision", "schema_version_at_write"}).
 			AddRow("42", int64(7), "1.0.0"))
 
-	val, rev, stored, current, err := svc.GetByKey(context.Background(), "p", "k")
+	res, err := svc.GetByKey(context.Background(), "p", "k")
 	if err != nil {
 		t.Fatalf("GetByKey: %v", err)
 	}
-	if string(val) != "42" || rev != 7 {
-		t.Fatalf("value/revision wrong: %s %d", val, rev)
+	if string(res.Value) != "42" || res.Revision != 7 {
+		t.Fatalf("value/revision wrong: %s %d", res.Value, res.Revision)
 	}
-	if stored != "1.0.0" || current != "2.0.0" {
-		t.Fatalf("schema versions: stored=%q current=%q", stored, current)
+	if res.StoredVersion != "1.0.0" || res.CurrentVersion != "2.0.0" {
+		t.Fatalf("schema versions: stored=%q current=%q", res.StoredVersion, res.CurrentVersion)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("expectations: %v", err)
@@ -179,21 +179,21 @@ func TestGetByKey_FallbackToDefault_StampsZeroStored(t *testing.T) {
 	`).WithArgs("p", "k").
 		WillReturnRows(sqlmock.NewRows([]string{"value_json", "revision", "schema_version_at_write"}))
 
-	val, rev, stored, current, err := svc.GetByKey(context.Background(), "p", "k")
+	res, err := svc.GetByKey(context.Background(), "p", "k")
 	if err != nil {
 		t.Fatalf("GetByKey: %v", err)
 	}
-	if !strings.Contains(string(val), "defaulted") {
-		t.Fatalf("expected default value, got %s", val)
+	if !strings.Contains(string(res.Value), "defaulted") {
+		t.Fatalf("expected default value, got %s", res.Value)
 	}
-	if rev != 0 {
-		t.Fatalf("synthetic default must carry revision=0, got %d", rev)
+	if res.Revision != 0 {
+		t.Fatalf("synthetic default must carry revision=0, got %d", res.Revision)
 	}
-	if stored != schemaVersionUndeclared {
-		t.Fatalf("synthetic default must carry stored=0, got %q", stored)
+	if res.StoredVersion != schemaVersionUndeclared {
+		t.Fatalf("synthetic default must carry stored=0, got %q", res.StoredVersion)
 	}
-	if current != "1.0.0" {
-		t.Fatalf("currentVersion: got %q", current)
+	if res.CurrentVersion != "1.0.0" {
+		t.Fatalf("currentVersion: got %q", res.CurrentVersion)
 	}
 }
 

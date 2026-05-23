@@ -103,10 +103,10 @@ func BackfillPaymentResumeSigningKey(
 	// schema register path itself does NOT seed secret-visibility keys
 	// (see seedDefaults), so a missing row genuinely means "operator
 	// has not configured a key yet" — safe to backfill.
-	existing, _, _, _, err := settings.GetByKey(ctx, PaymentPluginName, PaymentResumeSigningKeySettingKey)
+	existing, err := settings.GetByKey(ctx, PaymentPluginName, PaymentResumeSigningKeySettingKey)
 	switch {
 	case err == nil:
-		if !isEmptyOrBlankJSONString(existing) {
+		if !isEmptyOrBlankJSONString(existing.Value) {
 			slog.Info("payment resume signing key backfill: setting already populated, leaving intact",
 				"plugin", PaymentPluginName, "key", PaymentResumeSigningKeySettingKey)
 			return nil

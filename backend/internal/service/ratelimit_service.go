@@ -1848,3 +1848,13 @@ func (s *RateLimitService) triggerStreamTimeoutError(ctx context.Context, accoun
 	slog.Warn("stream_timeout_account_error", "account_id", account.ID, "model", model)
 	return true
 }
+
+// publishAccountRateLimitTriggered emits account.rate_limit.triggered.
+// nil-safe so the service can be wired before the plugin manager finishes
+// booting.
+func (s *RateLimitService) publishAccountRateLimitTriggered(payload *pb.AccountRateLimitTriggered) {
+	if s == nil || s.eventPublisher == nil {
+		return
+	}
+	s.eventPublisher.PublishAccountRateLimitTriggered(payload)
+}

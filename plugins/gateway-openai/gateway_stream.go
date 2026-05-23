@@ -36,25 +36,7 @@ func sendResponseHeaders(
 	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
 	resp *http.Response,
 ) error {
-	headers := make(map[string]string)
-	for _, key := range responseHeaderWhitelist {
-		if v := resp.Header.Get(key); v != "" {
-			headers[key] = v
-		}
-	}
-	// Always propagate Content-Type for downstream rendering
-	if ct := resp.Header.Get("Content-Type"); ct != "" {
-		headers["Content-Type"] = ct
-	}
-
-	return stream.Send(&pb.GatewayForwardChunk{
-		Chunk: &pb.GatewayForwardChunk_Headers{
-			Headers: &pb.GatewayResponseHeaders{
-				StatusCode: int32(resp.StatusCode),
-				Headers:    headers,
-			},
-		},
-	})
+	return gatewayutil.SendResponseHeaders(stream, resp, responseHeaderWhitelist)
 }
 
 // responseHeaderWhitelist lists the upstream headers forwarded to the

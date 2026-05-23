@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
+	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 )
 
 // extraFailoverCodes lists platform-specific status codes that trigger
@@ -14,6 +15,28 @@ var extraFailoverCodes = map[int]bool{
 // beyond the common 503.
 var extraOverloadedCodes = []int{529}
 
+// classifyShouldFailover determines whether a failed forward should be
+// retried with a different account based on the error context.
+//
+// Policy:
+//   - UpstreamFailoverError from our own Forward: always failover
+//   - Network/connection errors: failover
+//   - Other errors: no failover (likely client error)
+func classifyShouldFailover(req *pb.GatewayFailoverRequest) bool {
+	errType := req.GetErrorType()
+	errMsg := req.GetErrorMessage()
+
+	if errType == "UpstreamFailoverError" || errType == "*service.UpstreamFailoverError" {
+		return true
+	}
+
+	if gatewayutil.IsNetworkError(errMsg) {
+		return true
+	}
+
+	return false
+}
+
 // shouldFailoverStatus returns true for status codes that warrant failover.
 // Antigravity includes 529 (Anthropic overloaded) as an extra code.
 func shouldFailoverStatus(statusCode int) bool {
@@ -25,7 +48,3 @@ func shouldFailoverStatus(statusCode int) bool {
 func classifyErrorType(statusCode int) string {
 	return gatewayutil.ClassifyErrorType(statusCode, extraOverloadedCodes)
 }
-
-// maxErrorBodyForProto caps the upstream error body embedded in the proto
-// message to avoid excessive gRPC message sizes.
-const maxErrorBodyForProto = gatewayutil.MaxErrorBodyForProto

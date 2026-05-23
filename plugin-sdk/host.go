@@ -73,7 +73,7 @@ const hostRPCTimeout = 2 * time.Second
 // PricingResolver was not wired into PluginManager). Plugins may
 // switch on this sentinel to log at Debug once rather than on every
 // failing request.
-var ErrHostPricingUnavailable = errors.New("plugin-sdk: host pricing unavailable (HostService not registered)")
+var ErrHostPricingUnavailable = errors.New("pluginsdk: host pricing unavailable (HostService not registered)")
 
 // hostClient is the SDK-side concrete implementation wrapping the
 // generated gRPC client. It is always wired (see runner_init.go

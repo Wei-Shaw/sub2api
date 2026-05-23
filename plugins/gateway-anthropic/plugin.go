@@ -3,9 +3,6 @@ package main
 import (
 	"embed"
 	"io/fs"
-	"log/slog"
-	"path"
-	"sync/atomic"
 
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
@@ -25,7 +22,7 @@ const pluginVersion = "0.1.0"
 // AnthropicGatewayPlugin is the top-level plugin struct implementing
 // pluginsdk.Plugin and optional extension interfaces.
 type AnthropicGatewayPlugin struct {
-	ctx atomic.Pointer[pluginsdk.PluginContext]
+	pluginsdk.BasePlugin
 
 	// accountPlatformServer handles account-level operations (validate,
 	// test, refresh). Constructed in RegisterGRPCServices; data sources
@@ -42,16 +39,22 @@ func (p *AnthropicGatewayPlugin) Manifest() *pluginsdk.Manifest {
 	return buildManifest()
 }
 
-// Init stores the SDK-supplied context for handlers to use.
+// Init stores the SDK-supplied context and wires the embedded frontend
+// bundle so BasePlugin.OpenFrontendFile can serve assets.
 func (p *AnthropicGatewayPlugin) Init(ctx pluginsdk.PluginContext) error {
-	p.ctx.Store(&ctx)
+	p.SetContext(ctx)
+	sub, err := fs.Sub(frontendAssets, "frontend")
+	if err != nil {
+		return err
+	}
+	p.FrontendFS = sub
 	ctx.Logger().Info("gateway-anthropic plugin initialised", "version", pluginVersion)
 	return nil
 }
 
 // Shutdown releases resources.
 func (p *AnthropicGatewayPlugin) Shutdown() error {
-	if c := p.context(); c != nil {
+	if c := p.Context(); c != nil {
 		c.Logger().Info("gateway-anthropic plugin shutting down")
 	}
 	return nil
@@ -68,42 +71,9 @@ func (p *AnthropicGatewayPlugin) RegisterGRPCServices(server *grpc.Server) {
 	pb.RegisterGatewayProviderExtensionServer(server, p.gatewayProviderServer)
 }
 
-// OpenFrontendFile implements pluginsdk.FrontendBundleProvider so the core can
-// fetch frontend assets (entry.js / entry.css / source maps) over gRPC.
-//
-// rel comes from manifest.Frontend.EntryJS / EntryCSS or the host
-// /api/v1/plugin-assets HTTP handler. The caller already validates against
-// path traversal; this method does minimal sanitisation as a safety net.
-func (p *AnthropicGatewayPlugin) OpenFrontendFile(rel string) ([]byte, error) {
-	clean := path.Clean("/" + rel)
-	if clean == "/" || clean == "/." {
-		return nil, fs.ErrInvalid
-	}
-	clean = clean[1:] // strip leading "/"
-	return frontendAssets.ReadFile("frontend/" + clean)
-}
-
-// context returns the live PluginContext or nil if Init has not run yet.
-func (p *AnthropicGatewayPlugin) context() pluginsdk.PluginContext {
-	c := p.ctx.Load()
-	if c == nil {
-		return nil
-	}
-	return *c
-}
-
-// logger returns the plugin logger or a no-op fallback.
-func (p *AnthropicGatewayPlugin) logger() *slog.Logger {
-	if ctx := p.context(); ctx != nil {
-		return ctx.Logger()
-	}
-	return slog.Default()
-}
-
 // compile-time interface assertions
 var (
-	_ pluginsdk.Plugin                = (*AnthropicGatewayPlugin)(nil)
-	_ pluginsdk.GRPCServiceRegistrar  = (*AnthropicGatewayPlugin)(nil)
+	_ pluginsdk.Plugin                 = (*AnthropicGatewayPlugin)(nil)
+	_ pluginsdk.GRPCServiceRegistrar   = (*AnthropicGatewayPlugin)(nil)
 	_ pluginsdk.FrontendBundleProvider = (*AnthropicGatewayPlugin)(nil)
 )
-

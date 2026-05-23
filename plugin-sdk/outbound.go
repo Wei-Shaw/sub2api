@@ -14,12 +14,6 @@ import (
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 )
 
-// CapabilitySafeOutboundHTTP is the capability identifier a plugin declares to
-// signal that it intends to issue outbound HTTP via the SDK's SafeHTTPClient.
-// V5 makes the capability advisory (default-grant); V6 will use it to gate
-// per-host allow-lists.
-const CapabilitySafeOutboundHTTP = "safe_outbound_http"
-
 // Sentinel errors returned by SafeHTTPClient. Plugins can errors.Is() against
 // these to distinguish SSRF blocks from regular network errors.
 var (

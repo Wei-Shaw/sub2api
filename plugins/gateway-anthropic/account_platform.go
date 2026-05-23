@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
+	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
 	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"google.golang.org/grpc"
 )
@@ -29,17 +30,13 @@ const (
 	// apiKeyBetaHeader is the anthropic-beta header for API key accounts.
 	apiKeyBetaHeader = "claude-code-20250219,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14"
 
-	// accountTypeOAuth identifies OAuth session accounts.
-	accountTypeOAuth = "oauth"
-
-	// accountTypeSetupToken identifies setup-token (inference-only) accounts.
-	accountTypeSetupToken = "setup-token"
-
-	// accountTypeAPIKey identifies API key accounts.
-	accountTypeAPIKey = "apikey"
-
-	// accountTypeBedrock identifies AWS Bedrock accounts.
-	accountTypeBedrock = "bedrock"
+	// Re-exported account-type identifiers from pluginsdk to keep the
+	// rest of this package terse. The canonical definitions live in
+	// plugin-sdk/account_type_constants.go.
+	accountTypeOAuth      = pluginsdk.AccountTypeOAuth
+	accountTypeSetupToken = pluginsdk.AccountTypeSetupToken
+	accountTypeAPIKey     = pluginsdk.AccountTypeAPIKey
+	accountTypeBedrock    = pluginsdk.AccountTypeBedrock
 
 	// claudeCodeSystemPrompt is the minimal system prompt for test payloads.
 	claudeCodeSystemPrompt = "You are Claude Code, Anthropic's official CLI for Claude."

@@ -1,5 +1,3 @@
-import type { AxiosInstance } from 'axios'
-
 /**
  * Plugin API client wrapper.
  *
@@ -13,16 +11,6 @@ import type { AxiosInstance } from 'axios'
  * configured with `/api/v1` baseURL, so call sites use paths like
  * `/payment/orders` or `/admin/payment/dashboard`.
  */
+import { createApiClient } from '@sub2api/plugin-sdk'
 
-let client: AxiosInstance | null = null
-
-export function setClient(instance: AxiosInstance): void {
-  client = instance
-}
-
-export function getClient(): AxiosInstance {
-  if (!client) {
-    throw new Error('[plugin-payment] API client not initialized. Call setClient() during plugin install.')
-  }
-  return client
-}
+export const { setClient, getClient } = createApiClient('plugin-payment')

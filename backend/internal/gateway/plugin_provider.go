@@ -18,6 +18,22 @@ import (
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 )
 
+const (
+	// pluginShouldFailoverRPCTimeout caps the failover decision RPC. We
+	// keep this short because the host has already taken an upstream error
+	// and is deciding whether to retry; a slow plugin shouldn't extend the
+	// outage. On timeout we fall back to DefaultShouldFailover.
+	pluginShouldFailoverRPCTimeout = 2 * time.Second
+
+	// pluginStreamMaxBytes caps the cumulative response body bytes a single
+	// plugin Forward stream may emit. A misbehaving or compromised plugin
+	// could otherwise stream unbounded data, exhausting host memory or
+	// downstream client buffers. 256 MiB is comfortably above any
+	// legitimate single-response payload (largest observed: full image
+	// generation responses around tens of MiB).
+	pluginStreamMaxBytes int64 = 256 << 20
+)
+
 // PluginGatewayProvider implements GatewayProvider by forwarding requests
 // to a plugin's GatewayProviderExtension gRPC service. It bridges the
 // ProviderRegistry with out-of-process plugin providers.
@@ -109,7 +125,7 @@ func (p *PluginGatewayProvider) ShouldFailover(
 		ErrorType:    fmt.Sprintf("%T", err),
 	}
 
-	rpcCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	rpcCtx, cancel := context.WithTimeout(ctx, pluginShouldFailoverRPCTimeout)
 	defer cancel()
 
 	resp, rpcErr := p.stub.ShouldFailover(rpcCtx, failoverReq)
@@ -268,12 +284,17 @@ func (p *PluginGatewayProvider) buildAccountInfo(req *ForwardRequest) (*pb.Gatew
 // consumeStream reads the plugin's Forward response stream and writes
 // chunks to the HTTP ResponseWriter. Returns the ForwardResult extracted
 // from the final Done message.
+//
+// The cumulative body size is capped at pluginStreamMaxBytes. Once exceeded,
+// the stream is aborted with an error. This is a defensive limit against a
+// runaway / malicious plugin streaming unbounded data through the host.
 func (p *PluginGatewayProvider) consumeStream(
 	stream pb.GatewayProviderExtension_ForwardClient,
 	w http.ResponseWriter,
 	req *ForwardRequest,
 ) (*ForwardResult, error) {
 	var result *ForwardResult
+	var bodyBytes int64
 	headersSent := false
 	flusher, canFlush := w.(http.Flusher)
 
@@ -297,7 +318,18 @@ func (p *PluginGatewayProvider) consumeStream(
 			req.UpstreamAccepted = true
 
 		case *pb.GatewayForwardChunk_Body:
-			if _, writeErr := w.Write(c.Body.GetData()); writeErr != nil {
+			data := c.Body.GetData()
+			bodyBytes += int64(len(data))
+			if bodyBytes > pluginStreamMaxBytes {
+				p.logger.Warn("plugin Forward stream exceeded byte cap, aborting",
+					"limit_bytes", pluginStreamMaxBytes,
+					"received_bytes", bodyBytes,
+					"request_id", req.RequestID)
+				return result, fmt.Errorf(
+					"plugin gateway: stream exceeded %d byte cap (received %d)",
+					pluginStreamMaxBytes, bodyBytes)
+			}
+			if _, writeErr := w.Write(data); writeErr != nil {
 				return result, fmt.Errorf("plugin gateway: write body: %w", writeErr)
 			}
 			if canFlush {

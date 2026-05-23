@@ -1588,3 +1588,12 @@ func resolvedTokenVersion(user *User) int64 {
 	fingerprint := int64(binary.BigEndian.Uint64(sum[:8]) & 0x7fffffffffffffff)
 	return user.TokenVersion ^ fingerprint
 }
+
+// publishAuthUserRegistered emits auth.user.registered. nil-safe so the
+// service can be wired before the plugin manager finishes booting.
+func (s *AuthService) publishAuthUserRegistered(payload *pb.AuthUserRegistered) {
+	if s == nil || s.eventPublisher == nil {
+		return
+	}
+	s.eventPublisher.PublishAuthUserRegistered(payload)
+}

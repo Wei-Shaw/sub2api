@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
+	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
 	"google.golang.org/grpc"
 )
 
@@ -29,17 +30,11 @@ const (
 	// defaultInstructions is a minimal instruction for the test payload.
 	defaultInstructions = "You are a helpful assistant."
 
-	// accountTypeOAuth identifies OAuth session accounts.
-	accountTypeOAuth = "oauth"
-
-	// accountTypeSetupToken identifies setup-token (inference-only) accounts.
-	accountTypeSetupToken = "setup-token"
-
-	// accountTypeAPIKey identifies API key accounts.
-	accountTypeAPIKey = "apikey"
-
-	// accountTypeUpstream identifies upstream pass-through accounts.
-	accountTypeUpstream = "upstream"
+	// Re-exported account-type identifiers from pluginsdk.
+	accountTypeOAuth      = pluginsdk.AccountTypeOAuth
+	accountTypeSetupToken = pluginsdk.AccountTypeSetupToken
+	accountTypeAPIKey     = pluginsdk.AccountTypeAPIKey
+	accountTypeUpstream   = pluginsdk.AccountTypeUpstream
 
 	// OpenAI OAuth constants — mirrored from backend/internal/pkg/openai/oauth.go.
 	// The plugin cannot import host internal packages, so these are duplicated.

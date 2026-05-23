@@ -34,7 +34,7 @@ func (s *gatewayProviderServer) ShouldFailover(
 	errType := req.GetErrorType()
 
 	// UpstreamFailoverError from our own Forward: always failover.
-	if errType == "UpstreamFailoverError" {
+	if errType == "UpstreamFailoverError" || errType == "*service.UpstreamFailoverError" {
 		return &pb.GatewayFailoverResponse{ShouldFailover: true}, nil
 	}
 

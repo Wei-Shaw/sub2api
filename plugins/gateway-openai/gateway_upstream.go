@@ -1,16 +1,13 @@
 package main
 
 import (
-	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"bytes"
 	"context"
-	"crypto/tls"
 	"fmt"
-	"net"
 	"net/http"
 	"strings"
-	"time"
 
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 )
 
@@ -19,30 +16,15 @@ const (
 	upstreamChatGPTCodexURL = "https://chatgpt.com/backend-api/codex/responses"
 	// upstreamOpenAIPlatformURL is the default API key endpoint.
 	upstreamOpenAIPlatformURL = "https://api.openai.com/v1/responses"
-	// maxResponseBodySize limits error response reads to prevent OOM.
-	maxResponseBodySize = 2 << 20 // 2 MB
 )
 
-// defaultHTTPClient is a shared HTTP client with sensible timeouts for
-// upstream requests. Streaming responses need long timeouts since SSE
-// connections stay open until the model finishes generating.
-var defaultHTTPClient = &http.Client{
-	// No overall timeout — streaming responses can take minutes.
-	// Individual read deadlines are handled at the io level.
-	Transport: &http.Transport{
-		DialContext: (&net.Dialer{
-			Timeout:   30 * time.Second,
-			KeepAlive: 30 * time.Second,
-		}).DialContext,
-		TLSClientConfig:       &tls.Config{MinVersion: tls.VersionTLS12},
-		TLSHandshakeTimeout:   15 * time.Second,
-		MaxIdleConns:          100,
-		MaxIdleConnsPerHost:   20,
-		IdleConnTimeout:       90 * time.Second,
-		ResponseHeaderTimeout: 60 * time.Second,
-		ForceAttemptHTTP2:     true,
-	},
-}
+// maxResponseBodySize is the shared upper bound for upstream response body
+// reads. See gatewayutil.MaxResponseBodySize for rationale.
+const maxResponseBodySize = gatewayutil.MaxResponseBodySize
+
+// defaultHTTPClient is a shared HTTP client tuned for streaming upstream
+// requests. See gatewayutil.NewStreamingHTTPClient for tuning rationale.
+var defaultHTTPClient = gatewayutil.NewStreamingHTTPClient()
 
 // upstreamRequestInfo holds a fully-built HTTP request ready to send to
 // the upstream, along with model metadata needed for billing and response
@@ -143,17 +125,12 @@ func resolveModelMapping(
 	acct *decodedAccount,
 	info *pb.GatewayAccountInfo,
 ) string {
-	if acct.AccountType != accountTypeAPIKey && acct.AccountType != accountTypeUpstream {
-		return requestedModel
-	}
-	mapping := gatewayutil.ExtractModelMapping(info.GetCredentialsJson())
-	if len(mapping) == 0 {
-		return requestedModel
-	}
-	if mapped, ok := mapping[requestedModel]; ok {
-		return mapped
-	}
-	return requestedModel
+	return gatewayutil.ResolveModelMapping(
+		requestedModel,
+		info.GetCredentialsJson(),
+		[]string{accountTypeAPIKey, accountTypeUpstream},
+		acct.AccountType,
+	)
 }
 
 

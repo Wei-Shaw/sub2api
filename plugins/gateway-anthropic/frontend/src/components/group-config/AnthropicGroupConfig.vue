@@ -74,7 +74,7 @@
 
     <!-- Invalid Request Fallback (non-subscription only) -->
     <SharedInvalidRequestFallback
-      v-if="formData.subscription_type !== 'subscription'"
+      v-if="formData.subscription_type !== SUBSCRIPTION_TYPE_SUBSCRIPTION"
       :form-data="formData"
       :groups="groups"
       :editing-group-id="editingGroupId"
@@ -101,6 +101,7 @@ import {
   Select,
   SharedInvalidRequestFallback,
   SharedAccountFilters,
+  SUBSCRIPTION_TYPE_SUBSCRIPTION,
   type GroupConfigGroup,
 } from "@sub2api/plugin-sdk";
 import ModelRoutingSection from "./ModelRoutingSection.vue";

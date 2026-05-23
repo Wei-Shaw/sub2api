@@ -26,12 +26,12 @@ const (
 // It handles upstream API forwarding for the Gemini platform.
 type gatewayProviderServer struct {
 	pb.UnimplementedGatewayProviderExtensionServer
-	logger *slog.Logger
+	logger func() *slog.Logger
 }
 
-func newGatewayProviderServer(logger *slog.Logger) *gatewayProviderServer {
+func newGatewayProviderServer(logFn func() *slog.Logger) *gatewayProviderServer {
 	return &gatewayProviderServer{
-		logger: logger,
+		logger: logFn,
 	}
 }
 
@@ -60,7 +60,7 @@ func (s *gatewayProviderServer) Forward(
 		return fmt.Errorf("gateway-gemini: parse credentials: %w", err)
 	}
 
-	s.logger.Info("forward request",
+	s.logger().Info("forward request",
 		"request_id", req.GetRequestId(),
 		"model", req.GetModel(),
 		"account_type", acct.GetAccountType(),
@@ -240,14 +240,6 @@ func (s *gatewayProviderServer) handleErrorResponse(
 ) error {
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodySize))
 
-	// Send the error body to the host so it can forward to the client
-	// if it decides not to failover.
-	if len(body) > 0 {
-		if err := gatewayutil.SendBodyChunk(stream, body); err != nil {
-			return err
-		}
-	}
-
 	result := &pb.GatewayForwardResult{
 		RequestId:     resp.Header.Get("x-goog-request-id"),
 		Model:         upstream.originalModel,
@@ -256,18 +248,10 @@ func (s *gatewayProviderServer) handleErrorResponse(
 		DurationMs:    time.Since(startTime).Milliseconds(),
 	}
 
-	// Attach structured upstream error for failover-eligible status codes.
-	if shouldFailoverStatus(resp.StatusCode) {
-		result.UpstreamError = &pb.GatewayUpstreamError{
-			StatusCode:   int32(resp.StatusCode),
-			ErrorType:    classifyErrorType(resp.StatusCode),
-			ResponseBody: gatewayutil.TruncateBytes(body, gatewayutil.MaxErrorBodyForProto),
-			ResponseHeaders: gatewayutil.CollectResponseHeaders(resp, nil),
-		}
-	}
-
-	errMsg := fmt.Sprintf("upstream returned %d", resp.StatusCode)
-	return sendDone(stream, result, errMsg)
+	return gatewayutil.HandleErrorResponse(
+		stream, resp.StatusCode, body, result,
+		gatewayutil.CollectResponseHeaders(resp, nil), nil, nil,
+	)
 }
 
 // ShouldFailover determines whether a failed forward should be retried

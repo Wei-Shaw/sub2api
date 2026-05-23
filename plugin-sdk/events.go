@@ -340,10 +340,3 @@ func (c *eventsClient) deliver(ctx context.Context, evt *HostEvent, handler Even
 	}
 	handler(ctx, evt)
 }
-
-// isRetryableStreamError was the local fatal-vs-retryable classifier
-// in T25. T30 lifted the responsibility into streamutil; the helper is
-// now streamutil.GRPCDefaultClassifier and the events loop calls
-// LoopWithRetryClass with it. The function is intentionally removed
-// rather than kept as a thin alias to make sure no future caller in
-// this file accidentally re-introduces a parallel implementation.

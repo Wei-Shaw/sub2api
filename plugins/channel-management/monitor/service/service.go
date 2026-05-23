@@ -1,5 +1,11 @@
 // Package monitorservice — channel-monitor 服务层。
 //
+// 包名与目录名（service/）不一致是有意为之：直接命名 `service` 会与
+// `plugins/channel-management/service`（频道 CRUD 服务）撞名，所有导入方
+// 都得起别名。这里改用 `monitorservice` 让导入方写一次别名即可
+// （`monitorservice "github.com/Wei-Shaw/sub2api/plugins/channel-management/monitor/service"`），
+// 阅读端语义更清晰。Go 允许包名与目录名不同。
+//
 // 文件分布（同 receiver `*ChannelMonitorService`、同 package）：
 //   - service.go              类型定义、构造器、CRUD（List / Get / Create / Update /
 //     Delete / ListHistory）以及 update 字段 dispatcher。

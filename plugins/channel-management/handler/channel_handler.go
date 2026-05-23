@@ -20,6 +20,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/plugins/channel-management/service"
 
 	"github.com/gin-gonic/gin"
+	"github.com/shopspring/decimal"
 )
 
 // ModelPricingLookup is the minimal interface the handler needs from the
@@ -35,12 +36,17 @@ type ModelPricingLookup interface {
 // ModelDefaultPricing is the per-token default pricing returned by the
 // core billing service. Mirrors the subset the GetModelDefaultPricing
 // endpoint reads.
+//
+// Fields use decimal.Decimal to preserve precision across the host->plugin
+// boundary (CLAUDE.md: "金额计算必须用 shopspring/decimal"). Conversion to
+// float64 happens only at the JSON-response edge, where the frontend
+// contract (channels.ts ModelDefaultPricing) expects numbers.
 type ModelDefaultPricing struct {
-	InputPricePerToken         float64
-	OutputPricePerToken        float64
-	CacheCreationPricePerToken float64
-	CacheReadPricePerToken     float64
-	ImageOutputPricePerToken   float64
+	InputPricePerToken         decimal.Decimal
+	OutputPricePerToken        decimal.Decimal
+	CacheCreationPricePerToken decimal.Decimal
+	CacheReadPricePerToken     decimal.Decimal
+	ImageOutputPricePerToken   decimal.Decimal
 }
 
 // ChannelHandler exposes the admin channel CRUD + pricing endpoints.
@@ -176,10 +182,10 @@ func (h *ChannelHandler) GetModelDefaultPricing(c *gin.Context) {
 
 	response.Success(c, gin.H{
 		"found":              true,
-		"input_price":        pricing.InputPricePerToken,
-		"output_price":       pricing.OutputPricePerToken,
-		"cache_write_price":  pricing.CacheCreationPricePerToken,
-		"cache_read_price":   pricing.CacheReadPricePerToken,
-		"image_output_price": pricing.ImageOutputPricePerToken,
+		"input_price":        pricing.InputPricePerToken.InexactFloat64(),
+		"output_price":       pricing.OutputPricePerToken.InexactFloat64(),
+		"cache_write_price":  pricing.CacheCreationPricePerToken.InexactFloat64(),
+		"cache_read_price":   pricing.CacheReadPricePerToken.InexactFloat64(),
+		"image_output_price": pricing.ImageOutputPricePerToken.InexactFloat64(),
 	})
 }

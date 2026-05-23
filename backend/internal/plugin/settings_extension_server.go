@@ -71,7 +71,7 @@ func (s *SettingsExtensionServer) Get(
 	if req.GetKey() == "" {
 		return nil, status.Error(codes.InvalidArgument, "settings: empty key")
 	}
-	val, rev, stored, current, err := s.svc.GetByKey(ctx, pluginName, req.GetKey())
+	res, err := s.svc.GetByKey(ctx, pluginName, req.GetKey())
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			// Even on miss we surface current_schema_version so the SDK can
@@ -86,11 +86,11 @@ func (s *SettingsExtensionServer) Get(
 		return nil, status.Errorf(codes.Internal, "settings get: %v", err)
 	}
 	return &pb.SettingsGetResponse{
-		ValueJson:            val,
+		ValueJson:            res.Value,
 		Exists:               true,
-		Revision:             rev,
-		StoredSchemaVersion:  stored,
-		CurrentSchemaVersion: current,
+		Revision:             res.Revision,
+		StoredSchemaVersion:  res.StoredVersion,
+		CurrentSchemaVersion: res.CurrentVersion,
 	}, nil
 }
 
@@ -197,8 +197,8 @@ func (s *SettingsExtensionServer) sendSnapshot(
 	if key != "" {
 		// SettingsChangeEvent has no schema_version fields by design
 		// (DESIGN §3.5: Watch carries values only; Get/snapshot carries
-		// versions). Drop the two trailing returns.
-		val, rev, _, _, err := s.svc.GetByKey(ctx, pluginName, key)
+		// versions). Drop the version fields here.
+		res, err := s.svc.GetByKey(ctx, pluginName, key)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return nil
@@ -206,7 +206,7 @@ func (s *SettingsExtensionServer) sendSnapshot(
 			return status.Errorf(codes.Internal, "settings snapshot: %v", err)
 		}
 		return stream.Send(&pb.SettingsChangeEvent{
-			Key: key, ValueJson: val, Revision: rev,
+			Key: key, ValueJson: res.Value, Revision: res.Revision,
 		})
 	}
 	values, err := s.svc.GetAll(ctx, pluginName)

@@ -6,7 +6,7 @@
     <SharedAccountFilters :form-data="formData" />
 
     <SharedInvalidRequestFallback
-      v-if="formData.subscription_type !== 'subscription'"
+      v-if="formData.subscription_type !== SUBSCRIPTION_TYPE_SUBSCRIPTION"
       :form-data="formData"
       :groups="groups"
       :editing-group-id="editingGroupId"
@@ -20,6 +20,7 @@ import {
   SharedImagePricing,
   SharedAccountFilters,
   SharedInvalidRequestFallback,
+  SUBSCRIPTION_TYPE_SUBSCRIPTION,
   type GroupConfigGroup,
 } from "@sub2api/plugin-sdk";
 import SupportedScopesSection from "./SupportedScopesSection.vue";

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"bytes"
 	"context"
 	"fmt"
@@ -10,14 +9,40 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 	"google.golang.org/grpc"
 )
 
 const (
 	// maxResponseBodyRead limits how much of an error response body we read.
-	maxResponseBodyRead = 2 << 20 // 2 MB
+	// Shared with sibling plugins via gatewayutil.MaxResponseBodySize.
+	maxResponseBodyRead = gatewayutil.MaxResponseBodySize
 )
+
+// responseHeaderWhitelist lists the upstream headers forwarded to the host.
+// Only safe, non-sensitive headers are included. Set-Cookie / Server /
+// X-Powered-By and other infrastructure leakage headers are dropped.
+//
+// Antigravity proxies both Anthropic Messages and Gemini protocols so the
+// list covers rate-limit / request-id headers from both upstream families.
+var responseHeaderWhitelist = []string{
+	"x-request-id",
+	"x-goog-request-id",
+	"retry-after",
+	"anthropic-ratelimit-requests-limit",
+	"anthropic-ratelimit-requests-remaining",
+	"anthropic-ratelimit-requests-reset",
+	"anthropic-ratelimit-tokens-limit",
+	"anthropic-ratelimit-tokens-remaining",
+	"anthropic-ratelimit-tokens-reset",
+	"anthropic-ratelimit-input-tokens-limit",
+	"anthropic-ratelimit-input-tokens-remaining",
+	"anthropic-ratelimit-input-tokens-reset",
+	"anthropic-ratelimit-output-tokens-limit",
+	"anthropic-ratelimit-output-tokens-remaining",
+	"anthropic-ratelimit-output-tokens-reset",
+}
 
 // upstreamReq bundles everything needed to make a single upstream
 // HTTP request and stream the response back through gRPC.
@@ -66,9 +91,7 @@ type upstreamClient struct {
 
 func newUpstreamClient() *upstreamClient {
 	return &upstreamClient{
-		httpClient: &http.Client{
-			Timeout: 5 * time.Minute,
-		},
+		httpClient: gatewayutil.NewStreamingHTTPClient(),
 	}
 }
 
@@ -125,26 +148,24 @@ func (c *upstreamClient) streamResponse(
 }
 
 // sendResponseHeaders sends the initial GatewayResponseHeaders chunk.
+// Only headers in responseHeaderWhitelist are forwarded; Content-Type is
+// always propagated for downstream rendering. Sensitive headers like
+// Set-Cookie / Server / X-Powered-By are dropped.
 func sendResponseHeaders(
 	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
 	resp *http.Response,
 ) error {
-	respHeaders := make(map[string]string)
-	for key := range resp.Header {
-		respHeaders[key] = resp.Header.Get(key)
-	}
-	return stream.Send(&pb.GatewayForwardChunk{
-		Chunk: &pb.GatewayForwardChunk_Headers{
-			Headers: &pb.GatewayResponseHeaders{
-				StatusCode: int32(resp.StatusCode),
-				Headers:    respHeaders,
-			},
-		},
-	})
+	return gatewayutil.SendResponseHeaders(stream, resp, responseHeaderWhitelist)
 }
 
 // handleErrorResponse processes upstream 4xx/5xx responses with
 // structured GatewayUpstreamError for failover decisions.
+//
+// Note: this does not delegate to gatewayutil.HandleErrorResponse because
+// antigravity needs to set GatewayUpstreamError.ForceCacheBilling, which
+// the SDK helper does not expose. Other building blocks (SendBodyChunk,
+// TruncateBytes, CollectResponseHeaders, MaxErrorBodyForProto) are reused
+// from the SDK.
 func (c *upstreamClient) handleErrorResponse(
 	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
 	resp *http.Response,

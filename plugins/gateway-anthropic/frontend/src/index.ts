@@ -32,9 +32,11 @@ function install(sdk: HostSdk): PluginRuntimeAssets {
   })
 
   return {
-    // No Shadow DOM views -- this plugin only provides form components
+    // Plugin only contributes form/group/usage/test components rendered in the
+    // host Vue tree; calling mount() means the host routed to a non-existent
+    // shadow-root view, which is a configuration error — fail fast.
     mount() {
-      return { unmount() {} }
+      throw new Error('[gateway-anthropic] This plugin does not provide mountable views')
     },
     // Account form components rendered in host Vue tree
     formComponents: {

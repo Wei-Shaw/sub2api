@@ -264,8 +264,11 @@ func servePluginSharedAsset(c *gin.Context, asset string) {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "shared runtime not registered: " + asset})
 		return
 	}
-	// importmap 共享文件每次都返回相同内容, 用文件名作为 ETag 让浏览器走 304.
-	etag := `"shared-` + asset + `"`
+	// ETag = "shared-<asset>-<sha256(body)[:8]>": 文件名标识身份, hash 跟随
+	// re-export 模板内容变化, 让浏览器在 host 升级 (新增 / 删除 named export)
+	// 后能正确触发 200 而不是误命中 304 拿到旧代理.
+	sum := sha256.Sum256([]byte(body))
+	etag := `"shared-` + asset + `-` + hex.EncodeToString(sum[:8]) + `"`
 	if match := c.GetHeader("If-None-Match"); match == etag {
 		c.Header("ETag", etag)
 		c.Status(http.StatusNotModified)

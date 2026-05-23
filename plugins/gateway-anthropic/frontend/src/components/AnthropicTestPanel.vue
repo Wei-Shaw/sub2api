@@ -35,7 +35,7 @@ import {
 } from '@sub2api/plugin-sdk'
 
 const props = defineProps<{
-  context: SdkTestContext
+  testContext: SdkTestContext
 }>()
 
 const { t } = useI18n()
@@ -74,7 +74,7 @@ function sortModels(
 }
 
 const sortedModels = computed(() =>
-  sortModels(props.context.hostData.availableModels ?? []),
+  sortModels(props.testContext.hostData.availableModels ?? []),
 )
 
 const modelOptions = computed<SelectOption[]>(() =>
@@ -97,7 +97,7 @@ const selectedModelId = ref<string | number | boolean | null>(defaultModelId.val
 // Test stream
 // ---------------------------------------------------------------------------
 
-const accountId = computed(() => props.context.account.id)
+const accountId = computed(() => props.testContext.account.id)
 const stream = useAccountTest(accountId)
 
 const isRunning = computed(

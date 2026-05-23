@@ -40,7 +40,7 @@ export async function fetchDefaultMappings(): Promise<ModelMapping[]> {
     const mapping = await getDefaultModelMapping()
     defaultMappingsCache = Object.entries(mapping).map(([from, to]) => ({ from, to }))
   } catch (e: unknown) {
-    console.warn('[gateway-antigravity] default mappings API failed, using empty fallback', e)
+    console.warn('[plugin-gateway-antigravity] default mappings API failed, using empty fallback', e)
     defaultMappingsCache = []
   }
   return defaultMappingsCache

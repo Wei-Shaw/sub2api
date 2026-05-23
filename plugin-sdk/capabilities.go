@@ -45,7 +45,7 @@ var CapabilityRegistry = []CapabilityDecl{
 	{Canonical: CapabilityHTTPRegisterGateway, Description: "Register HTTP handlers on gateway paths (/v1/*)."},
 	{Canonical: CapabilityEventsSubscribeGateway, LegacyAliases: []string{CapabilityLegacyEventsGateway}, Description: "Subscribe to high-frequency gateway events."},
 	{Canonical: CapabilitySecretsEncrypt, LegacyAliases: []string{CapabilitySecretEncryption}, Description: "Call PluginContext.Secrets().Encrypt/Decrypt with AES-256-GCM."},
-	{Canonical: CapabilityOutboundHTTP, LegacyAliases: []string{"safe_outbound_http"}, Description: "Plugin outbound HTTP via SafeOutboundHTTP client."},
+	{Canonical: CapabilityOutboundHTTP, LegacyAliases: []string{CapabilityLegacySafeOutboundHTTP}, Description: "Plugin outbound HTTP via SafeOutboundHTTP client."},
 	{Canonical: CapabilityRedisRaw, LegacyAliases: []string{CapabilityRedisRawKeys}, Description: "Bypass per-plugin Redis namespace (PluginContext.Redis().Raw())."},
 	{Canonical: CapabilityDBCoreRead, Description: "Read host-shared core tables (whitelisted)."},
 	{Canonical: CapabilityDBCoreWrite, Description: "Write host-shared core tables (DANGEROUS; Phase 2 admin-approve)."},

@@ -12,6 +12,11 @@ const MaxErrorBodyForProto = 8 << 10 // 8 KB
 // error messages during token refresh operations.
 const TruncateErrorBodyLen = 200
 
+// MaxResponseBodySize caps how much of an upstream HTTP response body is
+// read into memory (both error responses and non-streaming success bodies).
+// Shared across gateway plugins so the OOM-prevention bound stays consistent.
+const MaxResponseBodySize = 10 << 20 // 10 MB
+
 // TruncateBytes returns b truncated to at most maxLen bytes.
 func TruncateBytes(b []byte, maxLen int) []byte {
 	if len(b) <= maxLen {

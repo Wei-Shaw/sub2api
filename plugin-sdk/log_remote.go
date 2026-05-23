@@ -50,9 +50,10 @@ const remoteSlogShutdownDrain = 2 * time.Second
 // The handler is safe for concurrent Handle calls and intentionally never
 // blocks the caller — slog must stay cheap inside business code.
 //
-// droppedCount 用指针存储以便 WithAttrs / WithGroup 派生出的新 handler 与
-// 原 handler 共享同一份计数器（语义：同一条 LogProxy 流上的 dropped 总数），
-// 同时避免 go vet 的 "lock value copy" 告警 —— atomic.Uint64 不能值复制。
+// droppedCount is a pointer so handlers derived via WithAttrs / WithGroup
+// share the same counter (semantically: total dropped on one LogProxy
+// stream), and to avoid go vet's "lock value copy" warning since
+// atomic.Uint64 must not be copied by value.
 type remoteSlogHandler struct {
 	level        slog.Leveler
 	ch           chan *pb.LogRecord
@@ -115,9 +116,10 @@ func (h *remoteSlogHandler) Handle(_ context.Context, r slog.Record) error {
 // shared by pointer so the new logger stays wired to the same stream and
 // produces accurate dropped totals.
 //
-// 字段显式列出（不再 `clone := *h`）：避免 go vet 的 "lock value copy"
-// 告警 —— 即使 droppedCount 现在是指针，显式构造也明确了"哪些字段独立、
-// 哪些字段共享"的语义。
+// Fields are listed explicitly (instead of `clone := *h`) to avoid
+// go vet's "lock value copy" warning, and to make it clear which
+// fields are independent vs shared even though droppedCount is now
+// a pointer.
 func (h *remoteSlogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	return &remoteSlogHandler{
 		level:        h.level,
@@ -222,7 +224,8 @@ func appendAttr(out []*pb.LogAttr, prefix string, a slog.Attr) []*pb.LogAttr {
 //   - the classifier marks the host's response fatal (Unauthenticated /
 //     PermissionDenied / Unimplemented / InvalidArgument).
 //
-// 复用 (1)：与 events / jobs / settings 共用 GRPCDefaultClassifier 单一来源。
+// Reuse (1): shares the single GRPCDefaultClassifier source with
+// events / jobs / settings.
 //
 // log_remote fallback after fatal exit
 // ------------------------------------

@@ -134,12 +134,6 @@ func (s *gatewayProviderServer) handleErrorResponse(
 ) error {
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodySize))
 
-	if len(body) > 0 {
-		if err := gatewayutil.SendBodyChunk(stream, body); err != nil {
-			return err
-		}
-	}
-
 	respHeaders := gatewayutil.CollectResponseHeaders(resp, openaiExtraHeaderKeys)
 
 	result := &pb.GatewayForwardResult{
@@ -151,26 +145,9 @@ func (s *gatewayProviderServer) handleErrorResponse(
 		ResponseHeaders: respHeaders,
 	}
 
-	// Attach structured upstream error for failover-eligible codes.
-	if shouldFailoverStatus(resp.StatusCode) {
-		result.UpstreamError = &pb.GatewayUpstreamError{
-			StatusCode:      int32(resp.StatusCode),
-			ErrorType:       classifyErrorType(resp.StatusCode),
-			ResponseBody:    gatewayutil.TruncateBytes(body, gatewayutil.MaxErrorBodyForProto),
-			ResponseHeaders: respHeaders,
-		}
-	}
-
-	errMsg := fmt.Sprintf("upstream returned %d", resp.StatusCode)
-	done := &pb.GatewayForwardChunk{
-		Chunk: &pb.GatewayForwardChunk_Done{
-			Done: &pb.GatewayResponseDone{
-				Error:  errMsg,
-				Result: result,
-			},
-		},
-	}
-	return stream.Send(done)
+	return gatewayutil.HandleErrorResponse(
+		stream, resp.StatusCode, body, result, respHeaders, nil, nil,
+	)
 }
 
 // ShouldFailover determines whether a failed forward should be retried

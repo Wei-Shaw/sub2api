@@ -23,21 +23,9 @@
  */
 import type {
   HostSdk,
-  PluginInstance,
   PluginRuntimeAssets,
-  PluginRuntimeContext,
 } from '@sub2api/plugin-sdk'
-import {
-  Icon,
-  DataTable,
-  BaseDialog,
-  ConfirmDialog,
-  Select,
-  Pagination,
-  EmptyState,
-  Toggle,
-  PlatformIcon,
-} from '@sub2api/plugin-sdk'
+import { SDK_GLOBAL_COMPONENTS, createPluginMount } from '@sub2api/plugin-sdk'
 import type { AxiosInstance } from 'axios'
 import type { Component } from 'vue'
 import './style.css'
@@ -61,18 +49,7 @@ const VIEWS: Record<string, Component> = {
   'ChannelStatusView.vue': ChannelStatusView,
 }
 
-/** 注册到 plugin app 的 SDK 共享组件全局, 让 plugin SFC 不用每个文件都 import. */
-const SDK_GLOBAL_COMPONENTS: Record<string, Component> = {
-  Icon,
-  DataTable,
-  BaseDialog,
-  ConfirmDialog,
-  Select,
-  Pagination,
-  EmptyState,
-  Toggle,
-  PlatformIcon,
-}
+/** SDK 共享组件全局注册表统一由 @sub2api/plugin-sdk 提供 (SDK_GLOBAL_COMPONENTS). */
 
 function install(sdk: HostSdk): PluginRuntimeAssets {
   // 1. 注入 host axios 实例 — plugin channels API 调用复用 host 的 auth header / 错误拦截器.
@@ -95,43 +72,9 @@ function install(sdk: HostSdk): PluginRuntimeAssets {
 
   // 3. V2 协议: 返回 mount 函数, 由 host 在 ShadowRoot 内调用.
   return {
-    mount(shadowRoot: ShadowRoot, ctx: PluginRuntimeContext): PluginInstance {
-      const view = VIEWS[ctx.componentPath]
-      if (!view) {
-        // 未知 componentPath — 渲染降级文案到 shadow root.
-        const fallback = document.createElement('div')
-        fallback.style.padding = '2rem'
-        fallback.style.color = '#dc2626'
-        fallback.textContent = `[channel-management] unknown component: ${ctx.componentPath || '(empty)'}`
-        // mount-plugin 已经创建了 .plugin-shadow-root div, 我们 append 到它里面.
-        const root = shadowRoot.querySelector('.plugin-shadow-root') as HTMLElement | null
-        if (root) {
-          root.appendChild(fallback)
-        } else {
-          shadowRoot.appendChild(fallback)
-        }
-        return {
-          unmount(): void {
-            fallback.remove()
-          },
-        }
-      }
-
-      // mount-plugin 已经在 shadow root 里创建了 .plugin-shadow-root 容器.
-      const target = shadowRoot.querySelector('.plugin-shadow-root') as HTMLElement | null
-      if (!target) {
-        throw new Error('[channel-management] plugin-shadow-root container not found in shadow root')
-      }
-
-      const instance = sdk.runtime.createApp(view, target, {
-        components: SDK_GLOBAL_COMPONENTS,
-      })
-      return {
-        unmount(): void {
-          instance.unmount()
-        },
-      }
-    },
+    mount: createPluginMount(sdk, VIEWS, 'plugin-channel-management', {
+      globalComponents: SDK_GLOBAL_COMPONENTS,
+    }),
   }
 }
 

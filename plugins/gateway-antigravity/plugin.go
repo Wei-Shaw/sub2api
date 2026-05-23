@@ -3,9 +3,6 @@ package main
 import (
 	"embed"
 	"io/fs"
-	"log/slog"
-	"path"
-	"sync/atomic"
 
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
@@ -20,7 +17,7 @@ const pluginVersion = "0.1.0"
 // AntigravityGatewayPlugin is the top-level plugin struct implementing
 // pluginsdk.Plugin and optional extension interfaces.
 type AntigravityGatewayPlugin struct {
-	ctx atomic.Pointer[pluginsdk.PluginContext]
+	pluginsdk.BasePlugin
 
 	// accountPlatformServer handles account-level operations (validate,
 	// test, refresh). Constructed in RegisterGRPCServices; data sources
@@ -37,16 +34,22 @@ func (p *AntigravityGatewayPlugin) Manifest() *pluginsdk.Manifest {
 	return buildManifest()
 }
 
-// Init stores the SDK-supplied context for handlers to use.
+// Init stores the SDK-supplied context and wires the embedded frontend
+// bundle so BasePlugin.OpenFrontendFile can serve assets.
 func (p *AntigravityGatewayPlugin) Init(ctx pluginsdk.PluginContext) error {
-	p.ctx.Store(&ctx)
+	p.SetContext(ctx)
+	sub, err := fs.Sub(frontendAssets, "frontend")
+	if err != nil {
+		return err
+	}
+	p.FrontendFS = sub
 	ctx.Logger().Info("gateway-antigravity plugin initialised", "version", pluginVersion)
 	return nil
 }
 
 // Shutdown releases resources.
 func (p *AntigravityGatewayPlugin) Shutdown() error {
-	if c := p.context(); c != nil {
+	if c := p.Context(); c != nil {
 		c.Logger().Info("gateway-antigravity plugin shutting down")
 	}
 	return nil
@@ -60,42 +63,13 @@ func (p *AntigravityGatewayPlugin) RegisterGRPCServices(server *grpc.Server) {
 	p.accountPlatformServer = newAccountPlatformServer()
 	pb.RegisterAccountPlatformExtensionServer(server, p.accountPlatformServer)
 
-	p.gatewayProviderServer = newGatewayProviderServer(p.logger())
+	p.gatewayProviderServer = newGatewayProviderServer(p.Logger)
 	pb.RegisterGatewayProviderExtensionServer(server, p.gatewayProviderServer)
-}
-
-// context returns the live PluginContext or nil if Init has not run yet.
-func (p *AntigravityGatewayPlugin) context() pluginsdk.PluginContext {
-	c := p.ctx.Load()
-	if c == nil {
-		return nil
-	}
-	return *c
-}
-
-// logger returns the plugin logger or a no-op fallback.
-func (p *AntigravityGatewayPlugin) logger() *slog.Logger {
-	if ctx := p.context(); ctx != nil {
-		return ctx.Logger()
-	}
-	return slog.Default()
-}
-
-// OpenFrontendFile implements pluginsdk.FrontendBundleProvider so the core can
-// fetch frontend assets (entry.js / entry.css) over gRPC.
-func (p *AntigravityGatewayPlugin) OpenFrontendFile(rel string) ([]byte, error) {
-	clean := path.Clean("/" + rel)
-	if clean == "/" || clean == "/." {
-		return nil, fs.ErrInvalid
-	}
-	clean = clean[1:]
-	return frontendAssets.ReadFile("frontend/" + clean)
 }
 
 // compile-time interface assertions
 var (
-	_ pluginsdk.Plugin                = (*AntigravityGatewayPlugin)(nil)
-	_ pluginsdk.GRPCServiceRegistrar  = (*AntigravityGatewayPlugin)(nil)
+	_ pluginsdk.Plugin                 = (*AntigravityGatewayPlugin)(nil)
+	_ pluginsdk.GRPCServiceRegistrar   = (*AntigravityGatewayPlugin)(nil)
 	_ pluginsdk.FrontendBundleProvider = (*AntigravityGatewayPlugin)(nil)
 )
-

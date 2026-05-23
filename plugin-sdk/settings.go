@@ -123,10 +123,11 @@ type SettingsClient interface {
 // It is goroutine-safe; the cache uses sync.Map for lock-free reads and
 // the watcher table uses a mutex because slice appends are short.
 //
-// cacheWriteMu 串行化 Get / applyEvent 的写入路径：两条路径都先 Load
-// 当前条目，比较 revision 后再决定是否 Store。互斥写入避免 Get 路径用
-// 旧 revision 覆盖 watch 已 store 的更高 revision（写后写竞态）。读路径
-// 仍走 sync.Map 无锁。
+// cacheWriteMu serializes the write paths of Get / applyEvent: both load
+// the current entry, compare revisions, and then decide whether to Store.
+// Serializing writes prevents the Get path from overwriting a higher
+// revision already stored by the watcher (write-after-write race). Reads
+// still go through sync.Map without locking.
 type settingsClient struct {
 	grpc       pb.SettingsExtensionClient
 	pluginName string
@@ -207,9 +208,9 @@ func (c *settingsClient) Get(ctx context.Context, key string) (json.RawMessage, 
 		return nil, fmt.Errorf("pluginsdk: settings get %q: %w", key, err)
 	}
 	if !resp.GetExists() {
-		// 缓存 negative answer：但仍要走 storeIfNewer 防止 watch 在我们 RPC
-		// 期间已写入更高 revision 的真实值；revision 设为 0 让任何 watch 写入
-		// 都能覆盖它。
+		// Cache the negative answer; still go through storeIfNewer so a
+		// watch push that landed during our RPC with a higher revision
+		// is not clobbered. revision = 0 lets any watch write win.
 		c.storeIfNewer(key, &cachedSetting{exists: false, fetchedAt: time.Now()})
 		return nil, ErrSettingNotFound
 	}
@@ -222,7 +223,8 @@ func (c *settingsClient) Get(ctx context.Context, key string) (json.RawMessage, 
 		storedSchemaVersion:  resp.GetStoredSchemaVersion(),
 		currentSchemaVersion: resp.GetCurrentSchemaVersion(),
 	})
-	// 返回值用从缓存里取到的最新版本（可能已被 watch 覆盖为更高 revision）。
+	// Return the freshest entry from the cache (a watch push may have
+	// already replaced it with a higher revision).
 	if v, ok := c.cache.Load(key); ok {
 		if entry := v.(*cachedSetting); entry.exists {
 			return entry.value, nil
@@ -231,19 +233,22 @@ func (c *settingsClient) Get(ctx context.Context, key string) (json.RawMessage, 
 	return val, nil
 }
 
-// storeIfNewer 将 next 写入 cache，但仅当 next.revision >= 当前条目 revision
-// 时才覆盖。两个写入路径(Get RPC 完成 / applyEvent 收到 watch 推送)都走它，
-// 由 cacheWriteMu 串行化以避免"已过期 RPC 结果覆盖较新 watch 推送"。
+// storeIfNewer writes next into the cache, but only when next.revision is
+// >= the current entry's revision. Both write paths (Get RPC completion
+// and applyEvent watch push) call it, serialized by cacheWriteMu to avoid
+// a stale RPC result overwriting a newer watch push.
 //
-// revision == 0 由 RPC 在 host 没有给出版本号时返回；此时退化为"按时间最新者
-// 胜"，与之前的语义保持一致。
+// revision == 0 is returned by the RPC when the host does not supply a
+// version; in that case the behaviour degrades to "latest-write-wins",
+// matching the previous semantics.
 func (c *settingsClient) storeIfNewer(key string, next *cachedSetting) {
 	c.cacheWriteMu.Lock()
 	defer c.cacheWriteMu.Unlock()
 	if v, ok := c.cache.Load(key); ok {
 		cur := v.(*cachedSetting)
-		// 只有 next 的 revision 严格大于等于现存条目 才允许覆盖。watch 拿到的
-		// 总是 >= host 当前发布 revision；Get 路径在 RPC 等待期间可能落后。
+		// Only allow overwrite when next.revision >= the existing one.
+		// Watch always carries >= the host's currently published
+		// revision; the Get path may lag while the RPC is in flight.
 		if cur.revision > next.revision {
 			return
 		}

@@ -23,13 +23,13 @@ const (
 type gatewayProviderServer struct {
 	pb.UnimplementedGatewayProviderExtensionServer
 	upstreamClient *upstreamClient
-	logger         *slog.Logger
+	logger         func() *slog.Logger
 }
 
-func newGatewayProviderServer(logger *slog.Logger) *gatewayProviderServer {
+func newGatewayProviderServer(logFn func() *slog.Logger) *gatewayProviderServer {
 	return &gatewayProviderServer{
 		upstreamClient: newUpstreamClient(),
-		logger:         logger,
+		logger:         logFn,
 	}
 }
 
@@ -51,7 +51,7 @@ func (s *gatewayProviderServer) Forward(
 		return fmt.Errorf("gateway-antigravity: parse credentials: %w", err)
 	}
 
-	s.logger.Info("forward request",
+	s.logger().Info("forward request",
 		"request_id", req.GetRequestId(),
 		"model", req.GetModel(),
 		"protocol", req.GetProtocol(),
@@ -73,16 +73,8 @@ func (s *gatewayProviderServer) ShouldFailover(
 	_ context.Context,
 	req *pb.GatewayFailoverRequest,
 ) (*pb.GatewayFailoverResponse, error) {
-	errType := req.GetErrorType()
-	errMsg := req.GetErrorMessage()
-
-	if errType == "UpstreamFailoverError" || errType == "*service.UpstreamFailoverError" {
-		return &pb.GatewayFailoverResponse{ShouldFailover: true}, nil
-	}
-	if gatewayutil.IsNetworkError(errMsg) {
-		return &pb.GatewayFailoverResponse{ShouldFailover: true}, nil
-	}
-	return &pb.GatewayFailoverResponse{ShouldFailover: false}, nil
+	should := classifyShouldFailover(req)
+	return &pb.GatewayFailoverResponse{ShouldFailover: should}, nil
 }
 
 // forwardUpstream handles upstream pass-through accounts.
@@ -405,17 +397,11 @@ func collectClientHeaders(req *pb.GatewayForwardRequest) map[string]string {
 
 // resolveModelMapping applies model_mapping from account credentials.
 func resolveModelMapping(requestedModel string, acct *pb.GatewayAccountInfo) string {
-	accountType := acct.GetAccountType()
-	if accountType != accountTypeAPIKey && accountType != accountTypeUpstream {
-		return requestedModel
-	}
-	mapping := gatewayutil.ExtractModelMapping(acct.GetCredentialsJson())
-	if len(mapping) == 0 {
-		return requestedModel
-	}
-	if mapped, ok := mapping[requestedModel]; ok {
-		return mapped
-	}
-	return requestedModel
+	return gatewayutil.ResolveModelMapping(
+		requestedModel,
+		acct.GetCredentialsJson(),
+		[]string{accountTypeAPIKey, accountTypeUpstream},
+		acct.GetAccountType(),
+	)
 }
 

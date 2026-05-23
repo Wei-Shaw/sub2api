@@ -1,16 +1,3 @@
-import type { AxiosInstance } from 'axios'
+import { createApiClient } from '@sub2api/plugin-sdk'
 
-let client: AxiosInstance | null = null
-
-export function setClient(instance: AxiosInstance): void {
-  client = instance
-}
-
-export function getClient(): AxiosInstance {
-  if (!client) {
-    throw new Error(
-      '[plugin-gateway-openai] API client not initialized. Call setClient() during plugin install.',
-    )
-  }
-  return client
-}
+export const { setClient, getClient } = createApiClient('plugin-gateway-openai')

@@ -4,15 +4,53 @@
  * Named re-export of UI components, utilities and types shared between
  * sub2api host frontend and plugin frontends.
  */
-export { default as Icon } from './components/Icon.vue'
-export { default as DataTable } from './components/DataTable.vue'
-export { default as BaseDialog } from './components/BaseDialog.vue'
-export { default as ConfirmDialog } from './components/ConfirmDialog.vue'
-export { default as Select } from './components/Select.vue'
-export { default as Pagination } from './components/Pagination.vue'
-export { default as EmptyState } from './components/EmptyState.vue'
-export { default as Toggle } from './components/Toggle.vue'
-export { default as PlatformIcon } from './components/PlatformIcon.vue'
+import type { Component } from 'vue'
+
+import IconComponent from './components/Icon.vue'
+import DataTableComponent from './components/DataTable.vue'
+import BaseDialogComponent from './components/BaseDialog.vue'
+import ConfirmDialogComponent from './components/ConfirmDialog.vue'
+import SelectComponent from './components/Select.vue'
+import PaginationComponent from './components/Pagination.vue'
+import EmptyStateComponent from './components/EmptyState.vue'
+import ToggleComponent from './components/Toggle.vue'
+import PlatformIconComponent from './components/PlatformIcon.vue'
+import GroupBadgeComponent from './components/GroupBadge.vue'
+
+export const Icon = IconComponent
+export const DataTable = DataTableComponent
+export const BaseDialog = BaseDialogComponent
+export const ConfirmDialog = ConfirmDialogComponent
+export const Select = SelectComponent
+export const Pagination = PaginationComponent
+export const EmptyState = EmptyStateComponent
+export const Toggle = ToggleComponent
+export const PlatformIcon = PlatformIconComponent
+export const GroupBadge = GroupBadgeComponent
+
+/**
+ * SDK-provided components registered globally on plugin Vue apps so SFCs
+ * can reference them by tag name without import boilerplate.
+ *
+ * Plugins should pass this map to `sdk.runtime.createApp(view, target, {
+ *   components: SDK_GLOBAL_COMPONENTS,
+ * })` (or use the helper {@link registerSdkGlobals}).
+ *
+ * Single source of truth — adding a new SDK component to the global set
+ * means appending one line here, not touching every plugin index.ts.
+ */
+export const SDK_GLOBAL_COMPONENTS: Record<string, Component> = {
+  Icon,
+  DataTable,
+  BaseDialog,
+  ConfirmDialog,
+  Select,
+  Pagination,
+  EmptyState,
+  Toggle,
+  PlatformIcon,
+  GroupBadge,
+}
 
 // Layout primitives (Plan B D1)
 export { default as PluginPageLayout } from './components/PluginPageLayout.vue'
@@ -93,6 +131,22 @@ export { default as UsageProgressBar } from './components/account/UsageProgressB
 // Account constants
 export { VERTEX_LOCATION_OPTIONS } from './constants/account'
 
+// Subscription type constants — shared between gateway plugins (group config
+// gating) and the payment plugin (plan binding).
+export {
+  SUBSCRIPTION_TYPE_SUBSCRIPTION,
+  SUBSCRIPTION_TYPE_STANDARD,
+  type SubscriptionType,
+} from './constants/subscription'
+
+// Mount helper for V2 Shadow DOM plugins. Encapsulates the duplicated
+// componentPath dispatch / fallback / shadow root lookup boilerplate.
+export {
+  createPluginMount,
+  type PluginMountFn,
+  type CreatePluginMountOptions,
+} from './createPluginMount'
+
 // Utilities used by account form widgets
 export { createStableObjectKeyResolver } from './utils/stableObjectKey'
 
@@ -100,6 +154,14 @@ export { createStableObjectKeyResolver } from './utils/stableObjectKey'
 export { formatCompactNumber } from './utils/formatCompact'
 
 export * from './host-sdk'
+
+// Plugin frontend bootstrap helpers (sdk / axios accessor factories)
+export {
+  createSdkAccessor,
+  createApiClient,
+  type SdkAccessor,
+  type ApiClientAccessor,
+} from './accessor'
 
 // Group config shared components
 export {

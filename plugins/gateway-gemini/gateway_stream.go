@@ -1,7 +1,6 @@
 package main
 
 import (
-	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"bufio"
 	"encoding/json"
 	"io"
@@ -9,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 	"google.golang.org/grpc"
 )
@@ -18,7 +18,8 @@ const (
 	maxSSELineSize = 1 << 20
 
 	// maxResponseBodySize limits non-streaming and error response reads.
-	maxResponseBodySize = 10 << 20 // 10 MB
+	// Shared with sibling plugins via gatewayutil.MaxResponseBodySize.
+	maxResponseBodySize = gatewayutil.MaxResponseBodySize
 )
 
 // streamResult holds accumulated usage data from a completed SSE stream
@@ -39,25 +40,7 @@ func sendResponseHeaders(
 	stream grpc.ServerStreamingServer[pb.GatewayForwardChunk],
 	resp *http.Response,
 ) error {
-	headers := make(map[string]string)
-	for _, key := range responseHeaderWhitelist {
-		if v := resp.Header.Get(key); v != "" {
-			headers[key] = v
-		}
-	}
-	// Always propagate Content-Type for downstream rendering.
-	if ct := resp.Header.Get("Content-Type"); ct != "" {
-		headers["Content-Type"] = ct
-	}
-
-	return stream.Send(&pb.GatewayForwardChunk{
-		Chunk: &pb.GatewayForwardChunk_Headers{
-			Headers: &pb.GatewayResponseHeaders{
-				StatusCode: int32(resp.StatusCode),
-				Headers:    headers,
-			},
-		},
-	})
+	return gatewayutil.SendResponseHeaders(stream, resp, responseHeaderWhitelist)
 }
 
 // responseHeaderWhitelist lists the upstream headers forwarded to the

@@ -12,21 +12,9 @@
  */
 import type {
   HostSdk,
-  PluginInstance,
   PluginRuntimeAssets,
-  PluginRuntimeContext,
 } from '@sub2api/plugin-sdk'
-import {
-  Icon,
-  DataTable,
-  BaseDialog,
-  ConfirmDialog,
-  Select,
-  Pagination,
-  EmptyState,
-  Toggle,
-  PlatformIcon,
-} from '@sub2api/plugin-sdk'
+import { SDK_GLOBAL_COMPONENTS, createPluginMount } from '@sub2api/plugin-sdk'
 import type { AxiosInstance } from 'axios'
 import type { Component } from 'vue'
 import './style.css'
@@ -87,18 +75,7 @@ const VIEWS: Record<string, Component> = {
   'WechatPaymentCallbackView.vue': WechatPaymentCallbackView,
 }
 
-/** SDK-shared components registered globally so SFCs can reference them by name. */
-const SDK_GLOBAL_COMPONENTS: Record<string, Component> = {
-  Icon,
-  DataTable,
-  BaseDialog,
-  ConfirmDialog,
-  Select,
-  Pagination,
-  EmptyState,
-  Toggle,
-  PlatformIcon,
-}
+/** SDK-shared components registered globally are imported from the SDK. See SDK_GLOBAL_COMPONENTS. */
 
 function install(sdk: HostSdk): PluginRuntimeAssets {
   // 1. Inject host axios. Type cast: axios may resolve to two different
@@ -116,30 +93,9 @@ function install(sdk: HostSdk): PluginRuntimeAssets {
   })
 
   return {
-    mount(shadowRoot: ShadowRoot, ctx: PluginRuntimeContext): PluginInstance {
-      const view = VIEWS[ctx.componentPath]
-      if (!view) {
-        const fallback = document.createElement('div')
-        fallback.style.padding = '2rem'
-        fallback.style.color = '#dc2626'
-        fallback.textContent = `[payment] unknown component: ${ctx.componentPath || '(empty)'}`
-        const root = shadowRoot.querySelector('.plugin-shadow-root') as HTMLElement | null
-        ;(root || shadowRoot).appendChild(fallback)
-        return { unmount: () => fallback.remove() }
-      }
-
-      const target = shadowRoot.querySelector('.plugin-shadow-root') as HTMLElement | null
-      if (!target) {
-        throw new Error('[payment] plugin-shadow-root container not found in shadow root')
-      }
-
-      const instance = sdk.runtime.createApp(view, target, {
-        components: SDK_GLOBAL_COMPONENTS,
-      })
-      return {
-        unmount: () => instance.unmount(),
-      }
-    },
+    mount: createPluginMount(sdk, VIEWS, 'plugin-payment', {
+      globalComponents: SDK_GLOBAL_COMPONENTS,
+    }),
   }
 }
 

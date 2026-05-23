@@ -1,12 +1,6 @@
 /**
- * Host module type shims for gateway-openai plugin.
+ * Plugin shim — re-references the shared host module declarations from
+ * @sub2api/plugin-sdk so vue-tsc resolves @tanstack/vue-virtual and
+ * window.__APP_CONFIG__ during type checking.
  */
-
-declare module '@tanstack/vue-virtual' {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  export function useVirtualizer(options: any): any
-}
-
-interface Window {
-  __APP_CONFIG__?: Record<string, unknown>
-}
+/// <reference path="../node_modules/@sub2api/plugin-sdk/src/types/host-modules.d.ts" />

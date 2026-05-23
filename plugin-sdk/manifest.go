@@ -119,6 +119,9 @@ const (
 	// CapabilityEventsSubscribeGateway.
 	// Deprecated: migrate to CapabilityEventsSubscribeGateway.
 	CapabilityLegacyEventsGateway = "events.gateway"
+	// CapabilityLegacySafeOutboundHTTP is the legacy alias for
+	// CapabilityOutboundHTTP. Deprecated: migrate to CapabilityOutboundHTTP.
+	CapabilityLegacySafeOutboundHTTP = "safe_outbound_http"
 )
 
 // Manifest is the Go-level representation of pluginsdk.ManifestResponse.

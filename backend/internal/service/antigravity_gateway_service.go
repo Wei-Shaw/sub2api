@@ -4566,3 +4566,12 @@ func (s *AntigravityGatewayService) extractClaudeUsage(body []byte) *ClaudeUsage
 	}
 	return usage
 }
+
+// publishGatewayModelInvoked emits gateway.model.invoked. nil-safe so the
+// service can be wired before the plugin manager finishes booting.
+func (s *AntigravityGatewayService) publishGatewayModelInvoked(payload *pb.GatewayModelInvoked) {
+	if s == nil || s.eventPublisher == nil {
+		return
+	}
+	s.eventPublisher.PublishGatewayModelInvoked(payload)
+}

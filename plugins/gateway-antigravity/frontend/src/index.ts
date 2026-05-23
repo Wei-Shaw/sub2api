@@ -9,6 +9,7 @@
 import type { HostSdk, PluginRuntimeAssets } from '@sub2api/plugin-sdk'
 import type { AxiosInstance } from 'axios'
 import { setClient } from './api/client'
+import { setSdk } from './api/sdk'
 import AntigravityForm from './forms/AntigravityForm.vue'
 import AntigravityUsageSection from './components/AntigravityUsageSection.vue'
 import AntigravityGroupConfig from './components/AntigravityGroupConfig.vue'
@@ -21,6 +22,7 @@ const I18N_NAMESPACE = 'gateway-antigravity'
 function install(sdk: HostSdk): PluginRuntimeAssets {
   // Inject host axios instance for API calls
   setClient(sdk.http.apiClient as unknown as AxiosInstance)
+  setSdk(sdk)
 
   // Register plugin i18n (currently empty, but ready for future keys)
   sdk.i18n.registerNamespace(I18N_NAMESPACE, {
@@ -30,7 +32,7 @@ function install(sdk: HostSdk): PluginRuntimeAssets {
 
   return {
     mount() {
-      throw new Error('[gateway-antigravity] has no mountable views')
+      throw new Error('[plugin-gateway-antigravity] This plugin does not provide mountable views')
     },
     formComponents: {
       AntigravityForm,

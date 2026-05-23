@@ -18,7 +18,8 @@ const (
 	// maxSSELineSize is the maximum size of a single SSE line (1 MB).
 	maxSSELineSize = 1 << 20
 	// maxResponseBodySize is the limit for non-streaming response bodies.
-	maxResponseBodySize = 10 << 20 // 10 MB
+	// Shared with sibling plugins via gatewayutil.MaxResponseBodySize.
+	maxResponseBodySize = gatewayutil.MaxResponseBodySize
 )
 
 // streamResult holds the accumulated usage data from a completed SSE stream.

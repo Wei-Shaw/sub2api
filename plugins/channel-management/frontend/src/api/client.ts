@@ -1,5 +1,3 @@
-import type { AxiosInstance } from 'axios'
-
 /**
  * Plugin API client wrapper.
  *
@@ -10,16 +8,6 @@ import type { AxiosInstance } from 'axios'
  * All plugin endpoints live under /api/v1/plugin/channel-management/* — the
  * caller is expected to set baseURL or full paths so requests resolve there.
  */
+import { createApiClient } from '@sub2api/plugin-sdk'
 
-let client: AxiosInstance | null = null
-
-export function setClient(instance: AxiosInstance): void {
-  client = instance
-}
-
-export function getClient(): AxiosInstance {
-  if (!client) {
-    throw new Error('[plugin-channel-management] API client not initialized. Call setClient() during plugin install.')
-  }
-  return client
-}
+export const { setClient, getClient } = createApiClient('plugin-channel-management')

@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
+	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
 	"google.golang.org/grpc"
 )
 
@@ -21,14 +22,10 @@ const (
 	// antigravityProdBaseURL is the Antigravity API production endpoint.
 	antigravityProdBaseURL = "https://cloudcode-pa.googleapis.com"
 
-	// accountTypeOAuth identifies OAuth session accounts.
-	accountTypeOAuth = "oauth"
-
-	// accountTypeAPIKey identifies API key accounts.
-	accountTypeAPIKey = "apikey"
-
-	// accountTypeUpstream identifies upstream pass-through accounts.
-	accountTypeUpstream = "upstream"
+	// Re-exported account-type identifiers from pluginsdk.
+	accountTypeOAuth    = pluginsdk.AccountTypeOAuth
+	accountTypeAPIKey   = pluginsdk.AccountTypeAPIKey
+	accountTypeUpstream = pluginsdk.AccountTypeUpstream
 
 	// Google OAuth token endpoint for token refresh.
 	googleTokenURL = "https://oauth2.googleapis.com/token"

@@ -137,7 +137,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import { Icon, PlatformIcon } from '@sub2api/plugin-sdk'
-import GroupBadge from './GroupBadge.vue'
+import { GroupBadge } from '@sub2api/plugin-sdk'
 import SupportedModelChip from './SupportedModelChip.vue'
 import type {
   UserAvailableChannel,
@@ -146,7 +146,7 @@ import type {
 } from '../../api/user/availableChannels'
 import { platformBadgeClass } from '@sub2api/plugin-sdk'
 
-const props = defineProps<{
+defineProps<{
   columns: {
     name: string
     description: string
@@ -162,8 +162,6 @@ const props = defineProps<{
   emptyLabel: string
   userGroupRates: Record<number, number>
 }>()
-
-void props.userGroupRates
 
 const { t } = useI18n()
 

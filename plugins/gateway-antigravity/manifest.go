@@ -28,7 +28,7 @@ func buildManifest() *pluginsdk.Manifest {
 				DisplayName: "Antigravity",
 				IconSVG:     antigravityIconSVG,
 				ThemeColor:         "#7c3aed",
-				SortOrder:          3,
+				SortOrder:          4,
 				CompatibleGateways: []string{"antigravity"},
 				FrontendMeta: json.RawMessage(`{
 					"cli_config": {

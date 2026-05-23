@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
+	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -14,7 +15,7 @@ import (
 const (
 	vertexDefaultLocation    = "us-central1"
 	vertexAnthropicVersion   = "vertex-2023-10-16"
-	accountTypeServiceAccount = "service_account"
+	accountTypeServiceAccount = pluginsdk.AccountTypeServiceAccount
 )
 
 var (

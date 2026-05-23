@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -20,38 +21,42 @@ func (h *GroupHandler) SetPlatformRegistry(registry *plugin.PlatformRegistry) {
 
 // validateGroupConfigResult holds the plugin validation outcome.
 type validateGroupConfigResult struct {
-	FieldErrors          map[string]string
+	FieldErrors         map[string]string
 	ProcessedGroupExtra map[string]any
 }
 
 // tryPluginValidateGroupConfig delegates group_extra validation to the
-// plugin for plugin-owned platforms. Returns (result, handled):
-//   - handled=true, result.FieldErrors non-empty -> validation failed
-//   - handled=true, result.FieldErrors empty -> validation passed (use ProcessedGroupExtra if set)
-//   - handled=false -> plugin unavailable or returned Unimplemented; skip validation
+// plugin for plugin-owned platforms. Returns (result, err):
+//   - result==nil, err==nil  -> plugin unavailable / Unimplemented; skip validation
+//   - result!=nil, err==nil  -> validation completed; check FieldErrors / ProcessedGroupExtra
+//   - err!=nil               -> transient plugin failure (crash / network); caller should
+//     not fall through to "skip" silently.
 func (h *GroupHandler) tryPluginValidateGroupConfig(
 	ctx context.Context,
 	platform string,
 	groupExtra map[string]any,
 	isUpdate bool,
-) (*validateGroupConfigResult, bool) {
+) (*validateGroupConfigResult, error) {
 	if h.platformRegistry == nil || len(groupExtra) == 0 {
-		return nil, false
+		return nil, nil
 	}
 
 	client, err := plugin.ClientForPlatform(h.platformRegistry, platform)
 	if err != nil {
-		return nil, false
+		return nil, nil
 	}
 
-	extraJSON, _ := json.Marshal(groupExtra)
+	extraJSON, err := json.Marshal(groupExtra)
+	if err != nil {
+		return nil, fmt.Errorf("marshal group_extra for plugin validation: %w", err)
+	}
 
 	resp, err := client.ValidateGroupConfig(ctx, platform, extraJSON, isUpdate)
 	if err != nil {
 		if s, ok := status.FromError(err); ok && s.Code() == codes.Unimplemented {
-			return nil, false
+			return nil, nil
 		}
-		return nil, false
+		return nil, fmt.Errorf("plugin validation failed: %w", err)
 	}
 
 	result := &validateGroupConfigResult{
@@ -63,7 +68,7 @@ func (h *GroupHandler) tryPluginValidateGroupConfig(
 			result.ProcessedGroupExtra = processed
 		}
 	}
-	return result, true
+	return result, nil
 }
 
 // applyGroupConfigValidation runs plugin-side group_extra validation and
@@ -76,10 +81,14 @@ func (h *GroupHandler) applyGroupConfigValidation(
 	groupExtra map[string]any,
 	isUpdate bool,
 ) (processedExtra map[string]any, abort bool) {
-	vr, handled := h.tryPluginValidateGroupConfig(
+	vr, err := h.tryPluginValidateGroupConfig(
 		c.Request.Context(), platform, groupExtra, isUpdate,
 	)
-	if !handled {
+	if err != nil {
+		response.InternalError(c, err.Error())
+		return nil, true
+	}
+	if vr == nil {
 		return nil, false
 	}
 	if len(vr.FieldErrors) > 0 {

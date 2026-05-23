@@ -2,11 +2,11 @@
 //
 // Bridges pluginsdk.HostClient.ResolveModelPricing (which returns
 // *decimal.Decimal fields) to the handler.ModelPricingLookup interface
-// (which expects float64 fields). This adapter is the only piece that
-// was missing to make the "model default pricing" autofill work: the
-// plugin was passing nil as the pricingLookup argument to
-// NewChannelHandler, causing the GET /admin/channels/model-pricing
-// endpoint to unconditionally return {found: false}.
+// (which holds the same precision in decimal.Decimal). This adapter is
+// the only piece that was missing to make the "model default pricing"
+// autofill work: the plugin was passing nil as the pricingLookup
+// argument to NewChannelHandler, causing the GET /admin/channels/
+// model-pricing endpoint to unconditionally return {found: false}.
 //
 // Error handling follows the same pattern as
 // service/channel_available.go: ErrHostPricingUnavailable degrades
@@ -23,9 +23,8 @@ import (
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
 )
 
-// hostPricingLookup adapts pluginsdk.HostClient to ModelPricingLookup,
-// bridging the SDK's *decimal.Decimal fields to the handler's float64
-// fields.
+// hostPricingLookup adapts pluginsdk.HostClient to ModelPricingLookup.
+// Both sides use decimal.Decimal so no precision is lost in the bridge.
 type hostPricingLookup struct {
 	host pluginsdk.HostClient
 }
@@ -52,22 +51,20 @@ func (a *hostPricingLookup) GetModelPricing(model string) (*ModelDefaultPricing,
 		return nil, nil
 	}
 	return &ModelDefaultPricing{
-		InputPricePerToken:         decimalPtrToFloat64(hp.InputPrice),
-		OutputPricePerToken:        decimalPtrToFloat64(hp.OutputPrice),
-		CacheCreationPricePerToken: decimalPtrToFloat64(hp.CacheWritePrice),
-		CacheReadPricePerToken:     decimalPtrToFloat64(hp.CacheReadPrice),
-		ImageOutputPricePerToken:   decimalPtrToFloat64(hp.ImageOutputPrice),
+		InputPricePerToken:         derefDecimal(hp.InputPrice),
+		OutputPricePerToken:        derefDecimal(hp.OutputPrice),
+		CacheCreationPricePerToken: derefDecimal(hp.CacheWritePrice),
+		CacheReadPricePerToken:     derefDecimal(hp.CacheReadPrice),
+		ImageOutputPricePerToken:   derefDecimal(hp.ImageOutputPrice),
 	}, nil
 }
 
-// decimalPtrToFloat64 converts a *decimal.Decimal to float64. nil
-// collapses to 0 which matches the handler's JSON output contract
-// (absent fields serialise as 0, and the frontend interprets 0 as
-// "no price configured" for that dimension).
-func decimalPtrToFloat64(d *decimal.Decimal) float64 {
+// derefDecimal collapses a nil *decimal.Decimal to decimal.Zero, matching
+// the handler's JSON output contract (absent fields serialise as 0, and
+// the frontend interprets 0 as "no price configured" for that dimension).
+func derefDecimal(d *decimal.Decimal) decimal.Decimal {
 	if d == nil {
-		return 0
+		return decimal.Zero
 	}
-	f, _ := d.Float64()
-	return f
+	return *d
 }

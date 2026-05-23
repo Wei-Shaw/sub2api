@@ -57,12 +57,12 @@ var (
 	// ErrSecretTooLarge is returned when plaintext (Encrypt) or ciphertext
 	// (Decrypt) exceeds MaxSecretBytes (with a small overhead allowance for
 	// nonce + tag on the Decrypt side).
-	ErrSecretTooLarge = errors.New("plugin-sdk: secret too large (>64KiB)")
+	ErrSecretTooLarge = errors.New("pluginsdk: secret too large (>64KiB)")
 	// ErrSecretInvalid signals an authentication/integrity failure during
 	// Decrypt. The plugin must treat this as untrusted input — it might
 	// indicate corrupted storage or, worse, an attempt by another plugin to
 	// decrypt this plugin's data.
-	ErrSecretInvalid = errors.New("plugin-sdk: secret decrypt failed (corrupted or cross-plugin)")
+	ErrSecretInvalid = errors.New("pluginsdk: secret decrypt failed (corrupted or cross-plugin)")
 )
 
 // secretsClient is the SDK-side concrete implementation that wraps the

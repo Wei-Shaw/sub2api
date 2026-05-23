@@ -22,6 +22,12 @@ import (
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 )
 
+// pluginSchedulerStopGracePeriod bounds how long stop() waits for the cron
+// scheduler's main loop to exit before falling through to ticker cleanup.
+// We do NOT block on possibly long-running user jobs here.
+const pluginSchedulerStopGracePeriod = 2 * time.Second
+
+
 // pluginScheduler owns one plugin's cron / interval / fixed-delay state and
 // the bidirectional stream goroutine pair. All public methods are safe for
 // concurrent callers.
@@ -159,7 +165,7 @@ func (ps *pluginScheduler) stop() {
 		// long-running user job.
 		select {
 		case <-ctx.Done():
-		case <-time.After(2 * time.Second):
+		case <-time.After(pluginSchedulerStopGracePeriod):
 		}
 		for _, t := range ps.intervals {
 			t.Stop()

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 )
@@ -17,7 +18,7 @@ import (
 // value-read path. Same concrete type (*service.PluginSettingsService) is
 // expected to implement both at wire time.
 type PluginSettingsReader interface {
-	GetByKey(ctx context.Context, pluginName, key string) (json.RawMessage, int64, string, string, error)
+	GetByKey(ctx context.Context, pluginName, key string) (*service.GetByKeyResult, error)
 }
 
 // SetPluginSettingsReader installs the read-side seam used by GetPublicFlags
@@ -189,8 +190,8 @@ func resolvePublicFlagValue(
 		if settingsKey == "" || reader == nil {
 			return decodePublicFlagJSON(pluginName, decl, defaultRaw)
 		}
-		raw, _, _, _, err := reader.GetByKey(ctx, pluginName, settingsKey)
-		if err != nil || len(raw) == 0 {
+		raw, err := reader.GetByKey(ctx, pluginName, settingsKey)
+		if err != nil || raw == nil || len(raw.Value) == 0 {
 			if err != nil {
 				slog.Warn("plugin: PublicFlag settings lookup failed, using default",
 					"plugin", pluginName, "key", decl.GetKey(),
@@ -198,7 +199,7 @@ func resolvePublicFlagValue(
 			}
 			return decodePublicFlagJSON(pluginName, decl, defaultRaw)
 		}
-		if v, ok := decodePublicFlagJSON(pluginName, decl, string(raw)); ok {
+		if v, ok := decodePublicFlagJSON(pluginName, decl, string(raw.Value)); ok {
 			return v, true
 		}
 		// Stored value is unparseable for the declared type → fall back to default.

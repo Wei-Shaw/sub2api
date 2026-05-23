@@ -15,6 +15,13 @@
 // passes the same instance to every business service that needs to emit
 // events. Implementations MUST be non-blocking — host main paths cannot
 // wait on plugin delivery.
+//
+// Per-receiver publish helpers (publishGatewayModelInvoked,
+// publishAuthUserRegistered, publishAccountRateLimitTriggered) live next
+// to their owning service file (antigravity_gateway_service.go,
+// auth_service.go, ratelimit_service.go) so each service owns its own
+// event surface and this file stays a pure interface declaration.
+// PaymentService publish helpers were already migrated to plugins/payment/.
 package service
 
 import pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
@@ -30,35 +37,4 @@ type PluginEventPublisher interface {
 	PublishGatewayModelInvoked(*pb.GatewayModelInvoked)
 	PublishAuthUserRegistered(*pb.AuthUserRegistered)
 	PublishAccountRateLimitTriggered(*pb.AccountRateLimitTriggered)
-}
-
-// --- Helpers per receiver ---
-//
-// PaymentService publish helpers 已迁移到 plugins/payment/。
-// 本接口保留 PublishPaymentOrderCreated / PublishPaymentOrderFulfilled
-// 的方法定义只是因为 plugin/event_publisher 实现了它们 — 当 plugin
-// 自己持有 publisher 时可以直接调用。
-
-// publishGatewayModelInvoked emits gateway.model.invoked.
-func (s *AntigravityGatewayService) publishGatewayModelInvoked(payload *pb.GatewayModelInvoked) {
-	if s == nil || s.eventPublisher == nil {
-		return
-	}
-	s.eventPublisher.PublishGatewayModelInvoked(payload)
-}
-
-// publishAuthUserRegistered emits auth.user.registered.
-func (s *AuthService) publishAuthUserRegistered(payload *pb.AuthUserRegistered) {
-	if s == nil || s.eventPublisher == nil {
-		return
-	}
-	s.eventPublisher.PublishAuthUserRegistered(payload)
-}
-
-// publishAccountRateLimitTriggered emits account.rate_limit.triggered.
-func (s *RateLimitService) publishAccountRateLimitTriggered(payload *pb.AccountRateLimitTriggered) {
-	if s == nil || s.eventPublisher == nil {
-		return
-	}
-	s.eventPublisher.PublishAccountRateLimitTriggered(payload)
 }

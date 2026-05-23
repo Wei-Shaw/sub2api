@@ -1,4 +1,4 @@
-﻿package pluginsdk
+package pluginsdk
 
 import "encoding/json"
 
@@ -11,11 +11,11 @@ type PlatformDecl struct {
 	IconSVG     string
 	ThemeColor  string
 
-	AccountTypes    []AccountTypeDecl
-	CapacityDisplay *CapacityDisplayConfig
-	UsageDisplay    *UsageDisplayConfig
-	CustomActions   []CustomActionDecl
-	TestConfig      *TestConnectionConfig
+	AccountTypes       []AccountTypeDecl
+	CapacityDisplay    *CapacityDisplayConfig
+	UsageDisplay       *UsageDisplayConfig
+	CustomActions      []CustomActionDecl
+	TestConfig         *TestConnectionConfig
 	SortOrder          int
 	PrivacyStates      []PrivacyStateDecl
 	CompatibleGateways []string

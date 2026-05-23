@@ -1,6 +1,6 @@
 <template>
   <BaseDialog :show="show" :title="plan ? t('payment.admin.editPlan') : t('payment.admin.createPlan')" width="wide" @close="emit('close')">
-    <form id="plan-form" @submit.prevent="handleSavePlan" class="space-y-4">
+    <form id="plan-form" @submit.prevent="handleSubmit" class="space-y-4">
       <div class="grid grid-cols-2 gap-4">
         <div>
           <label class="input-label">{{ t('payment.admin.planName') }} <span class="text-red-500">*</span></label>
@@ -77,35 +77,48 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch } from 'vue'
+import { reactive, computed, watch, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '../../stores/host'
-import { adminPaymentAPI } from '../../api/admin/payment'
-import { extractApiErrorMessage } from '@sub2api/plugin-sdk'
 import { money, formatMoney } from '../../utils/decimal'
 import type { SubscriptionPlan } from '../../types/payment'
 import type { AdminGroup } from '../../types/index'
 import { BaseDialog } from '@sub2api/plugin-sdk'
 import { Select } from '@sub2api/plugin-sdk'
 import { Icon } from '@sub2api/plugin-sdk'
-import GroupBadge from '../../components/common/GroupBadge.vue'
+import { GroupBadge } from '@sub2api/plugin-sdk'
 import { platformTextClass } from '@sub2api/plugin-sdk'
+import { SUBSCRIPTION_TYPE_SUBSCRIPTION } from '@sub2api/plugin-sdk'
+
+export interface PlanPayload {
+  name: string
+  group_id: number | null
+  description: string
+  price: string
+  original_price: string
+  validity_days: number
+  validity_unit: string
+  sort_order: number
+  for_sale: boolean
+  features: string
+}
 
 const props = defineProps<{
   show: boolean
   plan: SubscriptionPlan | null
   groups: AdminGroup[]
+  saving?: boolean
 }>()
 
 const emit = defineEmits<{
   close: []
-  saved: []
+  save: [payload: PlanPayload]
 }>()
 
 const { t } = useI18n()
 const appStore = useAppStore()
 
-const saving = ref(false)
+const saving = computed(() => props.saving ?? false)
 // price / original_price are bound as strings (decimal) end-to-end so we
 // never coerce through JS Number. backend's shopspring/decimal accepts the
 // canonical "10.00" form directly.
@@ -120,7 +133,7 @@ const validityUnitOptions = computed(() => [
 
 const groupOptions = computed(() =>
   props.groups
-    .filter(g => g.subscription_type === 'subscription')
+    .filter(g => g.subscription_type === SUBSCRIPTION_TYPE_SUBSCRIPTION)
     .map(g => ({
       value: g.id,
       label: `${g.name} — ${g.platform} (${g.rate_multiplier}x)`,
@@ -145,25 +158,7 @@ watch(() => props.show, (visible) => {
   }
 })
 
-/** Build request payload with snake_case keys matching backend JSON tags */
-function buildPlanPayload() {
-  const features = planFeaturesText.value.split('\n').map(f => f.trim()).filter(Boolean).join('\n')
-  return {
-    name: planForm.name,
-    group_id: planForm.group_id,
-    description: planForm.description,
-    // Send as decimal strings; Go shopspring/decimal will unmarshal directly.
-    price: formatMoney(planForm.price),
-    original_price: formatMoney(planForm.original_price),
-    validity_days: planForm.validity_days,
-    validity_unit: planForm.validity_unit,
-    sort_order: planForm.sort_order,
-    for_sale: planForm.for_sale,
-    features,
-  }
-}
-
-async function handleSavePlan() {
+function handleSubmit() {
   if (!planForm.group_id) {
     appStore.showError(t('payment.admin.groupRequired'))
     return
@@ -176,15 +171,18 @@ async function handleSavePlan() {
     appStore.showError(t('payment.admin.validityDaysRequired'))
     return
   }
-  saving.value = true
-  try {
-    const data = buildPlanPayload()
-    if (props.plan) { await adminPaymentAPI.updatePlan(props.plan.id, data) }
-    else { await adminPaymentAPI.createPlan(data) }
-    appStore.showSuccess(t('common.saved'))
-    emit('close')
-    emit('saved')
-  } catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) }
-  finally { saving.value = false }
+  const features = planFeaturesText.value.split('\n').map(f => f.trim()).filter(Boolean).join('\n')
+  emit('save', {
+    name: planForm.name,
+    group_id: planForm.group_id,
+    description: planForm.description,
+    price: formatMoney(planForm.price),
+    original_price: formatMoney(planForm.original_price),
+    validity_days: planForm.validity_days,
+    validity_unit: planForm.validity_unit,
+    sort_order: planForm.sort_order,
+    for_sale: planForm.for_sale,
+    features,
+  })
 }
 </script>

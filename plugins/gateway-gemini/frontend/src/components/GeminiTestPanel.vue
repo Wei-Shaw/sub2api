@@ -51,17 +51,17 @@ import {
   AccountTestTerminal,
   useAccountTest,
 } from '@sub2api/plugin-sdk'
-import type { SdkTestContext } from '@sub2api/plugin-sdk'
+import type { SdkTestContext, AccountTestExposed } from '@sub2api/plugin-sdk'
 
 const { t } = useI18n()
 
 const props = defineProps<{
-  context: SdkTestContext
+  testContext: SdkTestContext
 }>()
 
-const account = computed(() => props.context.account)
+const account = computed(() => props.testContext.account)
 const availableModels = computed(
-  () => props.context.hostData.availableModels ?? [],
+  () => props.testContext.hostData.availableModels ?? [],
 )
 
 const selectedModelId = ref('')
@@ -134,9 +134,11 @@ const startTest = () => {
   })
 }
 
-defineExpose({
+defineExpose<AccountTestExposed>({
   startTest,
   abort: stream.abort,
-  isRunning,
+  get isRunning() {
+    return isRunning.value
+  },
 })
 </script>

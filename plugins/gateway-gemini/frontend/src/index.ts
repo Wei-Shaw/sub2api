@@ -31,7 +31,7 @@ function install(sdk: HostSdk): PluginRuntimeAssets {
 
   return {
     mount() {
-      throw new Error('[gateway-gemini] This plugin does not support Shadow DOM mounting. Use formComponents instead.')
+      throw new Error('[gateway-gemini] This plugin does not provide mountable views')
     },
     formComponents: {
       GeminiForm,

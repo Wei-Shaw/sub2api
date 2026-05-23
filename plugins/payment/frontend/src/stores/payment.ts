@@ -35,7 +35,7 @@ export const usePaymentStore = defineStore('payment', () => {
       configLoaded.value = true
       return config.value
     } catch (error: unknown) {
-      console.error('[payment] Failed to fetch config:', error)
+      console.error('[plugin-payment] Failed to fetch config:', error)
       return null
     } finally {
       configLoading.value = false
@@ -55,7 +55,7 @@ export const usePaymentStore = defineStore('payment', () => {
       }))
       return plans.value
     } catch (error: unknown) {
-      console.error('[payment] Failed to fetch plans:', error)
+      console.error('[plugin-payment] Failed to fetch plans:', error)
       return []
     }
   }
@@ -76,7 +76,7 @@ export const usePaymentStore = defineStore('payment', () => {
       }
       return order
     } catch (error: unknown) {
-      console.error('[payment] Failed to poll order status:', error)
+      console.error('[plugin-payment] Failed to poll order status:', error)
       return null
     }
   }

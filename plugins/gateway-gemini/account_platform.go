@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
+	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
 	"google.golang.org/grpc"
 )
 
@@ -23,14 +24,10 @@ const (
 	// aiStudioBaseURL is the Google AI Studio generativelanguage API base.
 	aiStudioBaseURL = "https://generativelanguage.googleapis.com"
 
-	// accountTypeOAuth identifies Google OAuth accounts.
-	accountTypeOAuth = "oauth"
-
-	// accountTypeAPIKey identifies API key accounts.
-	accountTypeAPIKey = "apikey"
-
-	// accountTypeServiceAccount identifies Google Service Account accounts.
-	accountTypeServiceAccount = "service_account"
+	// Re-exported account-type identifiers from pluginsdk.
+	accountTypeOAuth          = pluginsdk.AccountTypeOAuth
+	accountTypeAPIKey         = pluginsdk.AccountTypeAPIKey
+	accountTypeServiceAccount = pluginsdk.AccountTypeServiceAccount
 
 	// vertexDefaultLocation is the default GCP region for Vertex AI.
 	vertexDefaultLocation = "us-central1"
