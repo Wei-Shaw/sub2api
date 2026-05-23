@@ -5301,7 +5301,7 @@ export default {
         emailSuffixWhitelist: 'Email Domain Whitelist',
         emailSuffixWhitelistHint:
           "Only email addresses from the specified domains can register (for example, {'@'REDACTEDqq.com, {'@'REDACTEDgmail.com, *.edu.cn)",
-        emailSuffixWhitelistPlaceholder: '@example.com, *.edu.cn',
+        emailSuffixWhitelistPlaceholder: "{'@'REDACTEDexample.com, *.edu.cn",
         emailSuffixWhitelistInputHint: 'Leave empty for no restriction. Use *.edu.cn to match edu.cn and its subdomains.',
         promoCode: 'Promo Code',
         promoCodeHint: 'Allow users to use promo codes during registration',
