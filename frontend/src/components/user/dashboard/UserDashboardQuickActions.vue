@@ -51,7 +51,7 @@
 
       <!-- QQ Group Card -->
       <a
-        href="https://qm.qq.com/q/IgQv6V7SEw"
+        href="https://qm.qq.com/q/qwg4E6BGEM"
         target="_blank"
         rel="noopener noreferrer"
         class="group flex w-full items-center gap-4 rounded-xl border border-primary-200/60 bg-gradient-to-r from-primary-50/80 to-white p-4 text-left transition-all duration-200 hover:shadow-md hover:shadow-primary-500/5 dark:border-primary-700/30 dark:from-primary-900/20 dark:to-dark-800/50"

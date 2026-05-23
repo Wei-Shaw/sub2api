@@ -321,7 +321,7 @@
 
               <div class="rounded-[28px] border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
                 <p class="text-sm font-bold text-gray-900 dark:text-white">用户交流群</p>
-                <p class="mt-2 text-2xl font-black text-gray-950 dark:text-white">774692252</p>
+                <p class="mt-2 text-2xl font-black text-gray-950 dark:text-white">卡卡AI交流群</p>
                 <p class="mt-1 text-xs text-gray-500">活动福利 · 更新通知 · 使用答疑</p>
               </div>
             </div>
