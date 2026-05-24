@@ -84,6 +84,8 @@ export interface PlatformFormContext {
     groups: SdkGroup[]
     isSimpleMode: boolean
     quotaNotifyGlobalEnabled: boolean
+    platform?: string
+    compatiblePlatforms?: string[]
   }
 }
 

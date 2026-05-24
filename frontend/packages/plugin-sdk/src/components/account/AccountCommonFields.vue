@@ -142,7 +142,14 @@ const showIdentity = computed(() => (props.mode ?? 'full') !== 'settings')
 const showSettings = computed(() => (props.mode ?? 'full') !== 'identity')
 
 const proxies = computed(() => props.context.hostData?.proxies ?? [])
-const groups = computed(() => props.context.hostData?.groups ?? [])
+const allGroups = computed(() => props.context.hostData?.groups ?? [])
+const groups = computed(() => {
+  const platform = props.context.hostData?.platform
+  if (!platform) return allGroups.value
+  const compat = props.context.hostData?.compatiblePlatforms ?? []
+  const allowed = new Set([platform, ...compat])
+  return allGroups.value.filter((g) => !g.platform || allowed.has(g.platform))
+})
 const isSimpleMode = computed(() => props.context.hostData?.isSimpleMode ?? false)
 const showQuota = computed(() =>
   props.context.accountCategory === 'apikey' || props.context.accountCategory === 'bedrock'

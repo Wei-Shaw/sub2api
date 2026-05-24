@@ -414,6 +414,8 @@ const platformFormContext = computed<PlatformFormContext>(() => ({
     groups: props.groups,
     isSimpleMode: authStore.isSimpleMode,
     quotaNotifyGlobalEnabled: false,
+    platform: form.platform,
+    compatiblePlatforms: getPlatformDecl(form.platform)?.compatible_gateways ?? [],
   },
 }))
 
