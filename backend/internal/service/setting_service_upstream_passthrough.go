@@ -169,15 +169,10 @@ func normalizeCategoryDefault(in UpstreamPassthroughCategoryDefault, cat Upstrea
 }
 
 // GetUpstreamPassthroughGlobalOverride returns the emergency kill switch mode.
-// Defaults to GlobalOverrideAuto when absent or invalid.
-// This setting is read on every gateway request; intentionally simple read
-// (no cache) — the settingRepo layer may have its own caching.
+// Defaults to GlobalOverrideAuto when absent or invalid. Uses a 10s in-process
+// cache to handle the per-request read amplification when the FeatureFlag is on.
 func (s *SettingService) GetUpstreamPassthroughGlobalOverride(ctx context.Context) GlobalOverrideMode {
-	raw, err := s.settingRepo.GetValue(ctx, SettingKeyUpstreamPassthroughGlobalOverride)
-	if err != nil {
-		return GlobalOverrideAuto
-	}
-	return ParseGlobalOverrideMode(raw)
+	return s.loadCachedUpstreamPassthroughGlobalOverride(ctx)
 }
 
 // SetUpstreamPassthroughGlobalOverride persists the kill switch. Rejects
@@ -193,6 +188,7 @@ func (s *SettingService) SetUpstreamPassthroughGlobalOverride(ctx context.Contex
 	if err := s.settingRepo.Set(ctx, SettingKeyUpstreamPassthroughGlobalOverride, string(mode)); err != nil {
 		return fmt.Errorf("persist upstream_passthrough_global_override: %w", err)
 	}
+	invalidateUpstreamPassthroughGlobalOverrideCache()
 	if s.onUpdate != nil {
 		s.onUpdate()
 	}
