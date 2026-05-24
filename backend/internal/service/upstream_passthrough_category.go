@@ -1,7 +1,5 @@
 package service
 
-import "strings"
-
 // DeriveUpstreamCategory classifies an upstream account into one of three
 // categories. The decision is a pure function of the account's Type + Platform
 // fields, with an optional admin override in extra.upstream_passthrough.category_override.
@@ -23,7 +21,7 @@ func DeriveUpstreamCategory(a *Account) UpstreamCategory {
 	}
 
 	// Rule 0: explicit override wins (only if valid value)
-	if override := upstreamCategoryOverride(a); override != "" {
+	if override := a.GetUpstreamPassthroughCategoryOverride(); override != "" {
 		return override
 	}
 
@@ -51,24 +49,4 @@ func DeriveUpstreamCategory(a *Account) UpstreamCategory {
 
 	// Rule 5: fallback
 	return CategoryOfficial
-}
-
-// upstreamCategoryOverride extracts a valid category override from
-// extra.upstream_passthrough.category_override. Returns "" if absent or invalid.
-func upstreamCategoryOverride(a *Account) UpstreamCategory {
-	if a == nil || a.Extra == nil {
-		return ""
-	}
-	upRaw, ok := a.Extra["upstream_passthrough"].(map[string]any)
-	if !ok {
-		return ""
-	}
-	raw, _ := upRaw["category_override"].(string)
-	raw = strings.ToLower(strings.TrimSpace(raw))
-	switch UpstreamCategory(raw) {
-	case CategoryRelay, CategoryOfficial, CategoryReverse:
-		return UpstreamCategory(raw)
-	default:
-		return ""
-	}
 }
