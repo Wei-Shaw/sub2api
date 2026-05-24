@@ -111,3 +111,43 @@ func TestResolveAndStorePolicy_NilSettingServiceReturnsOriginalCtx(t *testing.T)
 	_, ok := GetUpstreamPolicyFromContext(got)
 	require.False(t, ok)
 }
+
+func TestShouldScrubBody_LegacyWhenAbsent(t *testing.T) {
+	// No policy in ctx → return true (do the legacy scrub)
+	require.True(t, ShouldScrubBody(context.Background()))
+}
+
+func TestShouldScrubBody_PolicyAbsentSkipMatchesLegacy(t *testing.T) {
+	// Policy in ctx with SkipBodyScrub=false → do scrub (matches Protected/Strict)
+	policy := EffectiveUpstreamPolicy{SkipBodyScrub: false}
+	ctx := SetUpstreamPolicyInContext(context.Background(), &policy)
+	require.True(t, ShouldScrubBody(ctx))
+}
+
+func TestShouldScrubBody_PolicyWithSkipReturnsFalse(t *testing.T) {
+	// Policy in ctx with SkipBodyScrub=true → skip scrub (matches Transparent)
+	policy := EffectiveUpstreamPolicy{SkipBodyScrub: true}
+	ctx := SetUpstreamPolicyInContext(context.Background(), &policy)
+	require.False(t, ShouldScrubBody(ctx))
+}
+
+func TestShouldInjectSystemPrompt_LegacyWhenAbsent(t *testing.T) {
+	// No policy in ctx → return true (run the legacy maybeInjectClaudeCodeSystemBlocks,
+	// which still consults cfg.Gateway.InjectCCSystemBlocks internally)
+	require.True(t, ShouldInjectSystemPrompt(context.Background()))
+}
+
+func TestShouldInjectSystemPrompt_ProtectedSkipsInject(t *testing.T) {
+	// Policy in ctx with SkipSystemPromptInject=true (Protected default) → don't inject
+	policy := EffectiveUpstreamPolicy{SkipSystemPromptInject: true}
+	ctx := SetUpstreamPolicyInContext(context.Background(), &policy)
+	require.False(t, ShouldInjectSystemPrompt(ctx))
+}
+
+func TestShouldInjectSystemPrompt_StrictRunsInject(t *testing.T) {
+	// Policy in ctx with SkipSystemPromptInject=false (Strict) → run the legacy injector,
+	// which will inject if cfg.Gateway.InjectCCSystemBlocks is on
+	policy := EffectiveUpstreamPolicy{SkipSystemPromptInject: false}
+	ctx := SetUpstreamPolicyInContext(context.Background(), &policy)
+	require.True(t, ShouldInjectSystemPrompt(ctx))
+}

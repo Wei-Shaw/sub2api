@@ -87,3 +87,45 @@ func ResolveAndStorePolicy(ctx context.Context, account *Account, settingService
 	policy := ResolveUpstreamPassthroughPolicy(account, &defaults, override)
 	return SetUpstreamPolicyInContext(ctx, &policy)
 }
+
+// ShouldScrubBody reports whether downstream code should run ScrubThirdPartyBody
+// and similar body-cleanup steps.
+//
+// Returns true (= "do the legacy scrub") when:
+//   - No policy is in ctx (FeatureFlag OFF — preserves today's behavior)
+//   - A policy is in ctx with SkipBodyScrub == false (Protected/Strict profiles)
+//
+// Returns false only when a policy is present with SkipBodyScrub == true
+// (Transparent profile — relay accounts where the upstream relay will do its own
+// hygiene).
+//
+// This is the call-site read pattern for Phase B-2: legacy-by-default,
+// policy-overrides-when-present.
+func ShouldScrubBody(ctx context.Context) bool {
+	p, ok := GetUpstreamPolicyFromContext(ctx)
+	if !ok {
+		return true
+	}
+	return !p.SkipBodyScrub
+}
+
+// ShouldInjectSystemPrompt reports whether downstream code should run the
+// Claude Code system block injector (or similar client-impersonation
+// system-prompt injection).
+//
+// Returns true (= "run the legacy injector, which itself may be a no-op
+// depending on cfg.Gateway.InjectCCSystemBlocks") when:
+//   - No policy is in ctx (FeatureFlag OFF — preserves today's behavior)
+//   - A policy is in ctx with SkipSystemPromptInject == false (Strict profile —
+//     reverse-client accounts that MUST inject to look like the impersonated client)
+//
+// Returns false when policy is present with SkipSystemPromptInject == true
+// (Transparent or Protected profiles — relay accounts or official direct accounts
+// where the client/user owns their system prompt).
+func ShouldInjectSystemPrompt(ctx context.Context) bool {
+	p, ok := GetUpstreamPolicyFromContext(ctx)
+	if !ok {
+		return true
+	}
+	return !p.SkipSystemPromptInject
+}
