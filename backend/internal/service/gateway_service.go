@@ -10082,6 +10082,8 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 		return fmt.Errorf("parse request: empty request")
 	}
 
+	ctx = ResolveAndStorePolicy(ctx, account, s.settingService)
+
 	if account != nil && account.IsClaudePlatformAWS() {
 		passthroughBody := parsed.Body
 		if reqModel := parsed.Model; reqModel != "" {
