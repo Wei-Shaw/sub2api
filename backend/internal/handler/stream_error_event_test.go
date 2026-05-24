@@ -175,6 +175,57 @@ func TestGatewayHandleStreamingAwareError_MessagesStreamingKeepsLegacy(t *testin
 	assert.True(t, strings.HasPrefix(body, `data: {"type":"error"`), "got: %q", body)
 REDACTED
 
+// 项目里 /responses 注册在多组路由：/v1/responses（gateway）、裸 /responses（top-level）、
+// /backend-api/codex/responses（codex direct）。我们 fix 必须覆盖全部，
+// 否则一些客户端走的路径就不会发 response.failed，照样报 stream closed。
+// 这是生产 2026-05-24 ~11:05 UTC user 16 实际命中的 bug。
+func TestInboundIsResponses_CoversAllRoutes(t *testing.T) {
+	cases := []struct {
+		route string
+		want  bool
+REDACTED{
+		{"/v1/responses", trueREDACTED,
+		{"/v1/responses/compact", trueREDACTED,
+		{"/responses", trueREDACTED,                       // <-- 用户 16 实际走这条
+		{"/responses/compact", trueREDACTED,
+		{"/backend-api/codex/responses", trueREDACTED,
+		{"/backend-api/codex/responses/compact", trueREDACTED,
+		{"/v1/chat/completions", falseREDACTED,
+		{"/v1/messages", falseREDACTED,
+		{"/", falseREDACTED,
+		{"/responses-fake", falseREDACTED,
+REDACTED
+	for _, tc := range cases {
+		t.Run(tc.route, func(t *testing.T) {
+			c, _ := newGinContextForEndpoint(t, tc.route)
+			assert.Equal(t, tc.want, inboundIsResponses(c), "route=%q", tc.route)
+	REDACTED)
+REDACTED
+REDACTED
+
+// 用 c.Request.URL.Path 作为 fallback（当 c.FullPath() 为空时，例如某些测试 fixture）。
+func TestInboundIsResponses_FallsBackToURLPath(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/responses", nil)
+	// 这种情况下 c.FullPath() 是 ""，必须 fallback 到 URL.Path
+	assert.True(t, inboundIsResponses(c), "URL.Path fallback must work when FullPath is empty")
+REDACTED
+
+// 回归生产事故：用户 16 走 /responses 路径，必须发 response.failed。
+func TestOpenAIHandleStreamingAwareError_BareResponsesRouteEmitsResponseFailed(t *testing.T) {
+	c, w := newGinContextForEndpoint(t, "/responses")
+	h := &OpenAIGatewayHandler{REDACTED
+	h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error",
+		"Concurrency limit exceeded for user, please retry later", true)
+
+	resp, errObj := parseResponsesFailedSSE(t, w.Body.String())
+	id, _ := resp["id"].(string)
+	assert.True(t, strings.HasPrefix(id, "resp_"))
+	assert.Equal(t, "rate_limit_exceeded", errObj["code"])
+REDACTED
+
 // Synthesized response.failed id falls back to uuid when no request_id is present.
 func TestSynthesizeResponseID_FallbackUUID(t *testing.T) {
 	c, _ := newGinContextForEndpoint(t, EndpointResponses)

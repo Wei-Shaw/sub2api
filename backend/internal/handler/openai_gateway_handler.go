@@ -1695,7 +1695,7 @@ func (h *OpenAIGatewayHandler) handleStreamingAwareError(c *gin.Context, status 
 		// response.completed/failed/incomplete/cancelled 集合。
 		// 通用 `event: error` 帧不被识别为终止事件，会导致
 		// "stream closed before response.completed"。
-		if GetInboundEndpoint(c) == EndpointResponses {
+		if inboundIsResponses(c) {
 			if writeResponsesFailedSSE(c, errType, message) {
 				return
 		REDACTED

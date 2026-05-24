@@ -1423,7 +1423,7 @@ func (h *GatewayHandler) handleStreamingAwareError(c *gin.Context, status int, e
 		// /v1/responses 的严格 SDK（Codex CLI）要求终止事件必须属于
 		// response.completed/failed/incomplete/cancelled 集合。
 		// Anthropic-backed Responses 路径同样会因为通用 error 帧被拒。
-		if GetInboundEndpoint(c) == EndpointResponses {
+		if inboundIsResponses(c) {
 			if writeResponsesFailedSSE(c, errType, message) {
 				return
 		REDACTED
