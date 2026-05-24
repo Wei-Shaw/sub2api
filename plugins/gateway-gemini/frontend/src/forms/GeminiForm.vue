@@ -1,5 +1,8 @@
 <template>
   <div class="space-y-5">
+    <!-- Name + Notes at top -->
+    <AccountCommonFields v-model="commonFields" :context="context" mode="identity" />
+
     <!-- Gemini help button -->
     <div class="flex justify-end">
       <button type="button" @click="showGeminiHelpDialog = true"
@@ -118,7 +121,7 @@
       @update:rules="tempUnschedRules = $event"
     />
 
-    <AccountCommonFields v-model="commonFields" :context="context" />
+    <AccountCommonFields v-model="commonFields" :context="context" mode="settings" />
   </div>
 </template>
 

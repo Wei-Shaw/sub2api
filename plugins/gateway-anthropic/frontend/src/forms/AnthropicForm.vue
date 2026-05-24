@@ -1,5 +1,8 @@
 <template>
   <div class="space-y-5">
+    <!-- Name + Notes at top -->
+    <AccountCommonFields v-model="commonFields" :context="context" mode="identity" />
+
     <!-- API Key inputs -->
     <template v-if="context.accountCategory === 'apikey'">
       <div>
@@ -160,7 +163,7 @@
       @update:rules="tempUnschedRules = $event" />
 
     <!-- Common operational fields (proxy, concurrency, quota, groups, expiry) -->
-    <AccountCommonFields v-model="commonFields" :context="context" />
+    <AccountCommonFields v-model="commonFields" :context="context" mode="settings" />
   </div>
 </template>
 

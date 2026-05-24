@@ -1,5 +1,8 @@
 <template>
   <div class="space-y-5">
+    <!-- Name + Notes at top -->
+    <AccountCommonFields v-model="commonFields" :context="context" mode="identity" />
+
     <!-- apikey: credentials (create only) + Model Restriction + Pool Mode + Custom Error Codes -->
     <template v-if="context.accountCategory === 'apikey'">
       <div>
@@ -122,7 +125,7 @@
       @update:compact-model-mappings="openAICompactModelMappings = $event"
     />
 
-    <AccountCommonFields v-model="commonFields" :context="context" />
+    <AccountCommonFields v-model="commonFields" :context="context" mode="settings" />
   </div>
 </template>
 

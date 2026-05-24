@@ -1,5 +1,8 @@
 <template>
   <div class="space-y-5">
+    <!-- Name + Notes at top -->
+    <AccountCommonFields v-model="commonFields" :context="context" mode="identity" />
+
     <!-- Upstream config -->
     <div v-if="antigravityAccountType === 'upstream'" class="space-y-4">
       <div>
@@ -103,7 +106,7 @@
       />
     </div>
 
-    <AccountCommonFields v-model="commonFields" :context="context" />
+    <AccountCommonFields v-model="commonFields" :context="context" mode="settings" />
   </div>
 </template>
 
