@@ -209,3 +209,20 @@ func (s *SettingService) IsUpstreamPolicyV1Enabled(ctx context.Context) bool {
 	}
 	return raw == "true"
 }
+
+// SetUpstreamPolicyV1Enabled persists the FeatureFlag that gates Phase B
+// call-site reads. Stored as the literal strings "true" or "false". Fires
+// the onUpdate callback so dependent caches can refresh.
+func (s *SettingService) SetUpstreamPolicyV1Enabled(ctx context.Context, enabled bool) error {
+	v := "false"
+	if enabled {
+		v = "true"
+	}
+	if err := s.settingRepo.Set(ctx, SettingKeyUpstreamPolicyV1Enabled, v); err != nil {
+		return fmt.Errorf("persist upstream_policy_v1_enabled: %w", err)
+	}
+	if s.onUpdate != nil {
+		s.onUpdate()
+	}
+	return nil
+}

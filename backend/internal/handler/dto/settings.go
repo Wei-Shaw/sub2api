@@ -152,6 +152,11 @@ type SystemSettings struct {
 	// Account sharing hardening runtime knobs.
 	AccountDefaultConcurrency             int `json:"account_default_concurrency"`
 	AccountDefaultRPM                     int `json:"account_default_rpm"`
+
+	// Upstream Passthrough Policy (Phase A, 2026-05-24)
+	UpstreamPassthroughDefaults       UpstreamPassthroughDefaultsDTO `json:"upstream_passthrough_defaults"`
+	UpstreamPassthroughGlobalOverride string                         `json:"upstream_passthrough_global_override"`
+	UpstreamPolicyV1Enabled           bool                           `json:"upstream_policy_v1_enabled"`
 	LongTermBindingTTLDays                int `json:"ltb_ttl_days"`
 	LongTermBindingCleanupIntervalSeconds int `json:"ltb_cleanup_interval_seconds"`
 	SessionAccountFanoutLimit             int `json:"session_account_fanout_limit"`
@@ -447,6 +452,21 @@ type PreviewEmailTemplateRequest struct {
 type EmailTemplatePreviewResponse struct {
 	Subject string `json:"subject"`
 	HTML    string `json:"html"`
+}
+
+// UpstreamPassthroughDefaultsDTO is the JSON shape exposed to admin UI.
+// Mirrors service.UpstreamPassthroughDefaults but kept as DTO for serialization stability.
+type UpstreamPassthroughDefaultsDTO struct {
+	Relay    UpstreamPassthroughCategoryDefaultDTO `json:"relay"`
+	Official UpstreamPassthroughCategoryDefaultDTO `json:"official"`
+	Reverse  UpstreamPassthroughCategoryDefaultDTO `json:"reverse"`
+}
+
+// UpstreamPassthroughCategoryDefaultDTO carries the per-category profile selection
+// and a sparse map of toggle overrides applied on top of the profile preset.
+type UpstreamPassthroughCategoryDefaultDTO struct {
+	Profile   string          `json:"profile"`
+	Overrides map[string]bool `json:"overrides,omitempty"`
 }
 
 // ParseCustomMenuItems parses a JSON string into a slice of CustomMenuItem.

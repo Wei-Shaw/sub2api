@@ -236,6 +236,9 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		DefaultSubscriptions:                   defaultSubscriptions,
 		AccountDefaultConcurrency:              settings.AccountDefaultConcurrency,
 		AccountDefaultRPM:                      settings.AccountDefaultRPM,
+		UpstreamPassthroughDefaults:            toUpstreamPassthroughDTO(h.settingService.GetUpstreamPassthroughDefaults(c.Request.Context())),
+		UpstreamPassthroughGlobalOverride:      string(h.settingService.GetUpstreamPassthroughGlobalOverride(c.Request.Context())),
+		UpstreamPolicyV1Enabled:                h.settingService.IsUpstreamPolicyV1Enabled(c.Request.Context()),
 		LongTermBindingTTLDays:                 settings.LongTermBindingTTLDays,
 		LongTermBindingCleanupIntervalSeconds:  settings.LongTermBindingCleanupIntervalSeconds,
 		SessionAccountFanoutLimit:              settings.SessionAccountFanoutLimit,
@@ -655,6 +658,11 @@ type UpdateSettingsRequest struct {
 
 	// OpenAI fast/flex policy (optional, only updated when provided)
 	OpenAIFastPolicySettings *dto.OpenAIFastPolicySettings `json:"openai_fast_policy_settings,omitempty"`
+
+	// Upstream Passthrough Policy (Phase A, 2026-05-24)
+	UpstreamPassthroughDefaults       *dto.UpstreamPassthroughDefaultsDTO `json:"upstream_passthrough_defaults,omitempty"`
+	UpstreamPassthroughGlobalOverride *string                             `json:"upstream_passthrough_global_override,omitempty"`
+	UpstreamPolicyV1Enabled           *bool                               `json:"upstream_policy_v1_enabled,omitempty"`
 }
 
 // UpdateSettings 更新系统设置
@@ -1861,6 +1869,30 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		}
 	}
 
+	// Update upstream passthrough policy (Phase A, 2026-05-24).
+	// Each of the three settings is stored under its own setting key and is
+	// optional in the PUT body. Validation lives in SettingService Set methods;
+	// any error is surfaced as a 400 to the admin client.
+	if req.UpstreamPassthroughDefaults != nil {
+		if err := h.settingService.SetUpstreamPassthroughDefaults(c.Request.Context(), fromUpstreamPassthroughDTO(req.UpstreamPassthroughDefaults)); err != nil {
+			response.BadRequest(c, "upstream_passthrough_defaults: "+err.Error())
+			return
+		}
+	}
+	if req.UpstreamPassthroughGlobalOverride != nil {
+		mode := service.GlobalOverrideMode(strings.ToLower(strings.TrimSpace(*req.UpstreamPassthroughGlobalOverride)))
+		if err := h.settingService.SetUpstreamPassthroughGlobalOverride(c.Request.Context(), mode); err != nil {
+			response.BadRequest(c, "upstream_passthrough_global_override: "+err.Error())
+			return
+		}
+	}
+	if req.UpstreamPolicyV1Enabled != nil {
+		if err := h.settingService.SetUpstreamPolicyV1Enabled(c.Request.Context(), *req.UpstreamPolicyV1Enabled); err != nil {
+			response.BadRequest(c, "upstream_policy_v1_enabled: "+err.Error())
+			return
+		}
+	}
+
 	// Update payment configuration (integrated into system settings).
 	// Skip if no payment fields were provided (prevents accidental wipe).
 	if h.paymentConfigService != nil && hasPaymentFields(req) {
@@ -2045,6 +2077,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		DefaultSubscriptions:                   updatedDefaultSubscriptions,
 		AccountDefaultConcurrency:              updatedSettings.AccountDefaultConcurrency,
 		AccountDefaultRPM:                      updatedSettings.AccountDefaultRPM,
+		UpstreamPassthroughDefaults:            toUpstreamPassthroughDTO(h.settingService.GetUpstreamPassthroughDefaults(c.Request.Context())),
+		UpstreamPassthroughGlobalOverride:      string(h.settingService.GetUpstreamPassthroughGlobalOverride(c.Request.Context())),
+		UpstreamPolicyV1Enabled:                h.settingService.IsUpstreamPolicyV1Enabled(c.Request.Context()),
 		LongTermBindingTTLDays:                 updatedSettings.LongTermBindingTTLDays,
 		LongTermBindingCleanupIntervalSeconds:  updatedSettings.LongTermBindingCleanupIntervalSeconds,
 		SessionAccountFanoutLimit:              updatedSettings.SessionAccountFanoutLimit,
@@ -3652,4 +3687,43 @@ func emailTemplatePlaceholderUnion(events []service.NotificationEmailEventInfo) 
 		}
 	}
 	return placeholders
+}
+
+// toUpstreamPassthroughDTO converts the service-layer per-category default
+// structure into its DTO representation for admin response payloads.
+func toUpstreamPassthroughDTO(d service.UpstreamPassthroughDefaults) dto.UpstreamPassthroughDefaultsDTO {
+	return dto.UpstreamPassthroughDefaultsDTO{
+		Relay:    toUpstreamPassthroughCategoryDTO(d.Relay),
+		Official: toUpstreamPassthroughCategoryDTO(d.Official),
+		Reverse:  toUpstreamPassthroughCategoryDTO(d.Reverse),
+	}
+}
+
+func toUpstreamPassthroughCategoryDTO(c service.UpstreamPassthroughCategoryDefault) dto.UpstreamPassthroughCategoryDefaultDTO {
+	return dto.UpstreamPassthroughCategoryDefaultDTO{
+		Profile:   string(c.Profile),
+		Overrides: c.Overrides,
+	}
+}
+
+// fromUpstreamPassthroughDTO converts the admin request DTO back into the
+// service-layer struct expected by SetUpstreamPassthroughDefaults. A nil DTO
+// is normalized to an empty struct (caller-side guarded; here we still treat
+// nil defensively).
+func fromUpstreamPassthroughDTO(d *dto.UpstreamPassthroughDefaultsDTO) service.UpstreamPassthroughDefaults {
+	if d == nil {
+		return service.UpstreamPassthroughDefaults{}
+	}
+	return service.UpstreamPassthroughDefaults{
+		Relay:    fromUpstreamPassthroughCategoryDTO(d.Relay),
+		Official: fromUpstreamPassthroughCategoryDTO(d.Official),
+		Reverse:  fromUpstreamPassthroughCategoryDTO(d.Reverse),
+	}
+}
+
+func fromUpstreamPassthroughCategoryDTO(c dto.UpstreamPassthroughCategoryDefaultDTO) service.UpstreamPassthroughCategoryDefault {
+	return service.UpstreamPassthroughCategoryDefault{
+		Profile:   service.PassthroughProfile(c.Profile),
+		Overrides: c.Overrides,
+	}
 }
