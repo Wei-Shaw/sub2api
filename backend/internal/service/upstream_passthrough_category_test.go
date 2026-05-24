@@ -48,20 +48,24 @@ func TestDeriveUpstreamCategory(t *testing.T) {
 			want: CategoryReverse,
 		},
 
-		// Rule 4: OAuth + recognized client → reverse
+		// Rule 4: OAuth on Anthropic/OpenAI → reverse (conservative default; marker not required)
+		// Conservative default for OAuth on Anthropic/OpenAI: reverse regardless
+		// of credentials.client marker. The three sub-cases below exercise the
+		// same code path but document the most common impersonated clients for
+		// future readers.
 		{
-			name: "OAuth Anthropic with credentials.client=claude-cli → reverse",
-			acct: &Account{Type: AccountTypeOAuth, Platform: PlatformAnthropic, Credentials: map[string]any{"client": "claude-cli"}},
+			name: "OAuth Anthropic (conservative reverse) — example client: claude-cli",
+			acct: &Account{Type: AccountTypeOAuth, Platform: PlatformAnthropic},
 			want: CategoryReverse,
 		},
 		{
-			name: "OAuth Anthropic with credentials.client=claude-code → reverse",
-			acct: &Account{Type: AccountTypeOAuth, Platform: PlatformAnthropic, Credentials: map[string]any{"client": "claude-code"}},
+			name: "OAuth Anthropic (conservative reverse) — example client: claude-code",
+			acct: &Account{Type: AccountTypeOAuth, Platform: PlatformAnthropic},
 			want: CategoryReverse,
 		},
 		{
-			name: "OAuth OpenAI with credentials.client=codex → reverse",
-			acct: &Account{Type: AccountTypeOAuth, Platform: PlatformOpenAI, Credentials: map[string]any{"client": "codex"}},
+			name: "OAuth OpenAI (conservative reverse) — example client: codex",
+			acct: &Account{Type: AccountTypeOAuth, Platform: PlatformOpenAI},
 			want: CategoryReverse,
 		},
 		{
