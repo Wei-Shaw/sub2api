@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"sync/atomic"
 	"time"
@@ -90,4 +91,79 @@ func (s *SettingService) GetUpstreamPassthroughDefaults(ctx context.Context) Ups
 // (used by Set methods after a successful write).
 func invalidateUpstreamPassthroughDefaultsCache() {
 	upstreamPassthroughDefaultsCache.Store((*cachedUpstreamPassthroughDefaults)(nil))
+}
+
+// SetUpstreamPassthroughDefaults validates, persists, and invalidates cache
+// for the per-category default policy. Invalid profiles are rejected (no write).
+// Unknown toggle keys in overrides are silently dropped during normalization.
+func (s *SettingService) SetUpstreamPassthroughDefaults(ctx context.Context, input UpstreamPassthroughDefaults) error {
+	normalized, err := normalizeUpstreamPassthroughDefaults(input)
+	if err != nil {
+		return err
+	}
+	raw, err := json.Marshal(normalized)
+	if err != nil {
+		return fmt.Errorf("marshal upstream_passthrough_defaults: %w", err)
+	}
+	if err := s.settingRepo.Set(ctx, SettingKeyUpstreamPassthroughDefaults, string(raw)); err != nil {
+		return fmt.Errorf("persist upstream_passthrough_defaults: %w", err)
+	}
+	invalidateUpstreamPassthroughDefaultsCache()
+	if s.onUpdate != nil {
+		s.onUpdate()
+	}
+	return nil
+}
+
+func normalizeUpstreamPassthroughDefaults(in UpstreamPassthroughDefaults) (UpstreamPassthroughDefaults, error) {
+	out := UpstreamPassthroughDefaults{}
+	var err error
+	out.Relay, err = normalizeCategoryDefault(in.Relay, CategoryRelay)
+	if err != nil {
+		return out, err
+	}
+	out.Official, err = normalizeCategoryDefault(in.Official, CategoryOfficial)
+	if err != nil {
+		return out, err
+	}
+	out.Reverse, err = normalizeCategoryDefault(in.Reverse, CategoryReverse)
+	if err != nil {
+		return out, err
+	}
+	return out, nil
+}
+
+func normalizeCategoryDefault(in UpstreamPassthroughCategoryDefault, cat UpstreamCategory) (UpstreamPassthroughCategoryDefault, error) {
+	out := UpstreamPassthroughCategoryDefault{
+		Profile:   in.Profile,
+		Overrides: map[string]bool{},
+	}
+	if out.Profile == "" {
+		out.Profile = CategoryDefaultProfile(cat)
+	}
+	switch out.Profile {
+	case ProfileTransparent, ProfileProtected, ProfileStrict:
+		// ok
+	default:
+		return out, fmt.Errorf("invalid profile %q for category %q (must be transparent/protected/strict)", out.Profile, cat)
+	}
+	knownToggles := []string{
+		ToggleForwardClientHeaders,
+		ToggleForwardUserNetworkInfo,
+		ToggleSkipBodyScrub,
+		ToggleSkipSystemPromptInject,
+		ToggleForwardClientUA,
+		ToggleForwardBetaFlags,
+		ToggleSkipModelRewrite,
+	}
+	for _, k := range knownToggles {
+		if v, ok := in.Overrides[k]; ok {
+			out.Overrides[k] = v
+		}
+	}
+	// drop empty map to reduce serialized payload (omitempty omits nil)
+	if len(out.Overrides) == 0 {
+		out.Overrides = nil
+	}
+	return out, nil
 }

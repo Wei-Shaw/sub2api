@@ -123,3 +123,73 @@ func TestSettingService_GetUpstreamPassthroughDefaults_CachesAcrossCalls(t *test
 	_ = svc.GetUpstreamPassthroughDefaults(context.Background())
 	require.Equal(t, firstCalls, repo.getCalls, "subsequent calls should hit cache")
 }
+
+func TestSettingService_SetUpstreamPassthroughDefaults_PersistAndInvalidate(t *testing.T) {
+	resetUpstreamPassthroughDefaultsCache()
+	repo := &fakeSettingRepoForUpstream{values: map[string]string{}}
+	svc := NewSettingService(repo, &config.Config{})
+
+	// Warm cache with code defaults
+	_ = svc.GetUpstreamPassthroughDefaults(context.Background())
+	priorCalls := repo.getCalls
+
+	// Write a custom value
+	custom := UpstreamPassthroughDefaults{
+		Relay:    UpstreamPassthroughCategoryDefault{Profile: ProfileStrict},
+		Official: UpstreamPassthroughCategoryDefault{Profile: ProfileProtected},
+		Reverse:  UpstreamPassthroughCategoryDefault{Profile: ProfileStrict},
+	}
+	require.NoError(t, svc.SetUpstreamPassthroughDefaults(context.Background(), custom))
+
+	// Next Get must read fresh from repo (cache invalidated) and return the custom value
+	got := svc.GetUpstreamPassthroughDefaults(context.Background())
+	require.Equal(t, custom, got)
+	require.Greater(t, repo.getCalls, priorCalls, "Set must invalidate cache so next Get refetches")
+
+	// And the persisted JSON round-trips
+	saved := repo.values[SettingKeyUpstreamPassthroughDefaults]
+	require.NotEmpty(t, saved)
+	var parsed UpstreamPassthroughDefaults
+	require.NoError(t, json.Unmarshal([]byte(saved), &parsed))
+	require.Equal(t, custom, parsed)
+}
+
+func TestSettingService_SetUpstreamPassthroughDefaults_RejectsInvalidProfile(t *testing.T) {
+	resetUpstreamPassthroughDefaultsCache()
+	repo := &fakeSettingRepoForUpstream{values: map[string]string{}}
+	svc := NewSettingService(repo, &config.Config{})
+
+	bad := UpstreamPassthroughDefaults{
+		Relay:    UpstreamPassthroughCategoryDefault{Profile: PassthroughProfile("nonexistent")},
+		Official: UpstreamPassthroughCategoryDefault{Profile: ProfileProtected},
+		Reverse:  UpstreamPassthroughCategoryDefault{Profile: ProfileStrict},
+	}
+	err := svc.SetUpstreamPassthroughDefaults(context.Background(), bad)
+	require.Error(t, err)
+	require.Empty(t, repo.values[SettingKeyUpstreamPassthroughDefaults], "must not persist invalid value")
+}
+
+func TestSettingService_SetUpstreamPassthroughDefaults_StripsUnknownToggleKeys(t *testing.T) {
+	resetUpstreamPassthroughDefaultsCache()
+	repo := &fakeSettingRepoForUpstream{values: map[string]string{}}
+	svc := NewSettingService(repo, &config.Config{})
+
+	input := UpstreamPassthroughDefaults{
+		Relay: UpstreamPassthroughCategoryDefault{
+			Profile: ProfileTransparent,
+			Overrides: map[string]bool{
+				"forward_client_headers": true,
+				"unknown_garbage_toggle": true,
+			},
+		},
+		Official: UpstreamPassthroughCategoryDefault{Profile: ProfileProtected},
+		Reverse:  UpstreamPassthroughCategoryDefault{Profile: ProfileStrict},
+	}
+	require.NoError(t, svc.SetUpstreamPassthroughDefaults(context.Background(), input))
+
+	got := svc.GetUpstreamPassthroughDefaults(context.Background())
+	require.Len(t, got.Relay.Overrides, 1)
+	require.True(t, got.Relay.Overrides[ToggleForwardClientHeaders])
+	_, exists := got.Relay.Overrides["unknown_garbage_toggle"]
+	require.False(t, exists)
+}
