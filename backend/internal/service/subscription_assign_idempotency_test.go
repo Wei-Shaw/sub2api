@@ -482,6 +482,36 @@ func TestAssignSubscriptionConflictWhenSemanticsMismatch(t *testing.T) {
 	require.Equal(t, 0, subRepo.createCalls, "conflict should not create or mutate existing subscription")
 }
 
+func TestAssignSubscriptionRenewsExpiredExistingSubscription(t *testing.T) {
+	start := time.Now().AddDate(0, 0, -5)
+	groupRepo := &subscriptionGroupRepoStub{
+		group: &Group{ID: 1, SubscriptionType: SubscriptionTypeSubscription},
+	}
+	subRepo := newSubscriptionUserSubRepoStub()
+	subRepo.seed(&UserSubscription{
+		ID:        12,
+		UserID:    3001,
+		GroupID:   1,
+		StartsAt:  start,
+		ExpiresAt: start.AddDate(0, 0, 3),
+		Status:    SubscriptionStatusExpired,
+		Notes:     "auto assigned by first device claim",
+	})
+
+	svc := NewSubscriptionService(groupRepo, subRepo, nil, nil, nil)
+	sub, err := svc.AssignSubscription(context.Background(), &AssignSubscriptionInput{
+		UserID:       3001,
+		GroupID:      1,
+		ValidityDays: 3,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, int64(12), sub.ID)
+	require.Equal(t, SubscriptionStatusActive, sub.Status)
+	require.True(t, sub.ExpiresAt.After(time.Now().Add(48*time.Hour)))
+	require.Equal(t, 0, subRepo.createCalls, "renewal should reuse the existing subscription row")
+}
+
 func TestBulkAssignSubscriptionCreatedReusedAndConflict(t *testing.T) {
 	start := time.Now().Add(-time.Hour)
 	groupRepo := &subscriptionGroupRepoStub{

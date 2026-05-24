@@ -539,6 +539,9 @@ func (s *dcTestRedeemRepo) Create(_ context.Context, code *RedeemCode) error {
 	return nil
 }
 func (s *dcTestRedeemRepo) CreateBatch(context.Context, []RedeemCode) error { return nil }
+func (s *dcTestRedeemRepo) BatchUpdate(context.Context, []int64, RedeemCodeBatchUpdateFields) (int64, error) {
+	return 0, nil
+}
 func (s *dcTestRedeemRepo) Update(_ context.Context, code *RedeemCode) error {
 	if code != nil {
 		clone := *code
