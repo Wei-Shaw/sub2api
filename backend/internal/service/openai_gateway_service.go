@@ -2052,6 +2052,7 @@ func (s *OpenAIGatewayService) handleFailoverSideEffects(ctx context.Context, re
 // Forward forwards request to OpenAI API
 func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*OpenAIForwardResult, error) {
 	startTime := time.Now()
+	ctx = ResolveAndStorePolicy(ctx, account, s.settingService)
 
 	restrictionResult := s.detectCodexClientRestriction(c, account)
 	apiKeyID := getAPIKeyIDFromContext(c)
