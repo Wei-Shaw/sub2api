@@ -73,6 +73,9 @@ func TestLoadDefaultSchedulingConfig(t *testing.T) {
 	if !cfg.Gateway.Scheduling.LoadBatchEnabled {
 		t.Fatalf("LoadBatchEnabled = false, want true")
 	}
+	if cfg.Gateway.Scheduling.LoadBatchCacheTTLMS != 200 {
+		t.Fatalf("LoadBatchCacheTTLMS = %d, want 200", cfg.Gateway.Scheduling.LoadBatchCacheTTLMS)
+	}
 	if cfg.Gateway.Scheduling.SlotCleanupInterval != 30*time.Second {
 		t.Fatalf("SlotCleanupInterval = %v, want 30s", cfg.Gateway.Scheduling.SlotCleanupInterval)
 	}
@@ -1414,6 +1417,11 @@ func TestValidateConfigErrors(t *testing.T) {
 			name:    "gateway scheduling sticky waiting",
 			mutate:  func(c *Config) { c.Gateway.Scheduling.StickySessionMaxWaiting = 0 },
 			wantErr: "gateway.scheduling.sticky_session_max_waiting",
+		},
+		{
+			name:    "gateway scheduling load batch cache ttl",
+			mutate:  func(c *Config) { c.Gateway.Scheduling.LoadBatchCacheTTLMS = -1 },
+			wantErr: "gateway.scheduling.load_batch_cache_ttl_ms",
 		},
 		{
 			name:    "gateway scheduling outbox poll",

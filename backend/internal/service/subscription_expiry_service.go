@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strconv"
@@ -14,6 +15,7 @@ import (
 // SubscriptionExpiryService periodically updates expired subscription status.
 type SubscriptionExpiryService struct {
 	userSubRepo              UserSubscriptionRepository
+	settingRepo              SettingRepository
 	notificationEmailService *NotificationEmailService
 	interval                 time.Duration
 	stopCh                   chan struct{}
@@ -27,6 +29,10 @@ func NewSubscriptionExpiryService(userSubRepo UserSubscriptionRepository, interv
 		interval:    interval,
 		stopCh:      make(chan struct{}),
 	}
+}
+
+func (s *SubscriptionExpiryService) SetSettingRepository(settingRepo SettingRepository) {
+	s.settingRepo = settingRepo
 }
 
 func (s *SubscriptionExpiryService) SetNotificationEmailService(notificationEmailService *NotificationEmailService) {
@@ -84,6 +90,9 @@ func (s *SubscriptionExpiryService) sendExpiryReminders(ctx context.Context) {
 	if s == nil || s.userSubRepo == nil || s.notificationEmailService == nil {
 		return
 	}
+	if !s.expiryReminderEnabled(ctx) {
+		return
+	}
 	for page := 1; ; page++ {
 		subs, pag, err := s.userSubRepo.List(ctx, pagination.PaginationParams{Page: page, PageSize: 200}, nil, nil, SubscriptionStatusActive, "", "expires_at", "asc")
 		if err != nil {
@@ -97,6 +106,21 @@ func (s *SubscriptionExpiryService) sendExpiryReminders(ctx context.Context) {
 			return
 		}
 	}
+}
+
+func (s *SubscriptionExpiryService) expiryReminderEnabled(ctx context.Context) bool {
+	if s == nil || s.settingRepo == nil {
+		return true
+	}
+	value, err := s.settingRepo.GetValue(ctx, SettingKeySubscriptionExpiryNotifyEnabled)
+	if err != nil {
+		if errors.Is(err, ErrSettingNotFound) {
+			return true
+		}
+		log.Printf("[SubscriptionExpiry] Read expiry reminder switch failed: %v", err)
+		return false
+	}
+	return !isFalseSettingValue(value)
 }
 
 func (s *SubscriptionExpiryService) sendExpiryReminderIfDue(ctx context.Context, sub *UserSubscription) {
