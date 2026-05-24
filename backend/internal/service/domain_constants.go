@@ -251,6 +251,11 @@ const (
 	SettingKeyGatewayIdentityProfileInjectEnabled          = "identity_profile_inject_enabled"
 	SettingKeyGatewayIdentityProfileRotationDays           = "identity_profile_rotation_days"
 
+	// Upstream Passthrough Policy (Phase A, 2026-05-24)
+	SettingKeyUpstreamPassthroughDefaults       = "upstream_passthrough_defaults"        // JSON: per-category profile + 7-toggle defaults
+	SettingKeyUpstreamPassthroughGlobalOverride = "upstream_passthrough_global_override" // "auto" | "force_transparent" | "force_protected" | "force_strict"
+	SettingKeyUpstreamPolicyV1Enabled           = "upstream_policy_v1_enabled"           // FeatureFlag: gate Phase B call-site reads. Default false.
+
 	// 第三方认证来源默认授予配置
 	SettingKeyAuthSourceDefaultEmailBalance             = "auth_source_default_email_balance"
 	SettingKeyAuthSourceDefaultEmailConcurrency         = "auth_source_default_email_concurrency"
