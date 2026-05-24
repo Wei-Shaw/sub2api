@@ -858,6 +858,57 @@
             </div>
           </div>
 
+          <div v-else-if="activeSettingsTab === 'thresholds'" class="space-y-5">
+            <div class="flex items-start gap-3 rounded-lg border border-blue-100 bg-blue-50 p-4 dark:border-blue-900/40 dark:bg-blue-900/20">
+              <Icon name="chart" size="md" class="mt-0.5 text-blue-500" />
+              <div class="text-sm leading-6">
+                <p class="font-medium text-blue-900 dark:text-blue-100">{{ t('admin.riskControl.thresholds.title') }}</p>
+                <p class="mt-1 text-xs text-blue-700/70 dark:text-blue-300/70">{{ t('admin.riskControl.thresholds.description') }}</p>
+              </div>
+            </div>
+            <div class="flex justify-end">
+              <button type="button" class="btn btn-secondary text-xs" @click="resetThresholdsToDefault">
+                <Icon name="refresh" size="xs" class="mr-1" />
+                {{ t('admin.riskControl.thresholds.resetDefault') }}
+              </button>
+            </div>
+            <div class="space-y-3">
+              <div
+                v-for="cat in moderationCategories"
+                :key="cat.key"
+                class="flex items-center gap-4 rounded-lg border border-gray-100 px-4 py-3 dark:border-dark-700"
+              >
+                <div class="w-48 flex-shrink-0 text-sm font-medium text-gray-700 dark:text-gray-200">
+                  {{ t(`admin.riskControl.thresholds.categories.${cat.label}`) }}
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  class="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-gray-200 accent-primary-500 dark:bg-dark-600"
+                  :value="Math.round((configForm.thresholds[cat.key] ?? cat.default) * 100)"
+                  @input="configForm.thresholds[cat.key] = Number(($event.target as HTMLInputElement).value) / 100"
+                />
+                <div class="flex items-center gap-1">
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    class="input w-16 text-center text-sm"
+                    :value="Math.round((configForm.thresholds[cat.key] ?? cat.default) * 100)"
+                    @input="configForm.thresholds[cat.key] = Math.min(100, Math.max(0, Number(($event.target as HTMLInputElement).value))) / 100"
+                  />
+                  <span class="text-xs text-gray-400">%</span>
+                </div>
+                <span class="w-20 flex-shrink-0 text-right text-xs text-gray-400">
+                  {{ t('admin.riskControl.thresholds.defaultLabel') }} {{ Math.round(cat.default * 100) }}%
+                </span>
+              </div>
+            </div>
+          </div>
+
           <div v-else class="grid grid-cols-1 gap-5 lg:grid-cols-2">
             <div>
               <label class="input-label">{{ t('admin.riskControl.hitRetentionDays') }}</label>
@@ -972,7 +1023,7 @@ import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { formatDateTime as formatDateTimeValue } from '@/utils/format'
 
-type SettingsTab = 'basic' | 'scope' | 'runtime' | 'response' | 'retention' | 'keywords'
+type SettingsTab = 'basic' | 'scope' | 'runtime' | 'response' | 'retention' | 'keywords' | 'thresholds'
 type WorkerSlotState = 'active' | 'idle' | 'disabled'
 type APIKeysWriteMode = 'append' | 'replace'
 type OverviewIcon = 'shield' | 'key' | 'users' | 'document'
@@ -1056,6 +1107,7 @@ const configForm = reactive({
   pre_hash_check_enabled: false,
   blocked_keywords_text: '',
   keyword_blocking_mode: 'keyword_and_api' as KeywordBlockingMode,
+  thresholds: {} as Record<string, number>,
   model_filter_type: 'all' as ContentModerationModelFilterType,
   model_filter_models: [] as string[],
 })
@@ -1082,6 +1134,7 @@ const settingsTabs = computed<Array<{ id: SettingsTab; label: string }>>(() => [
   { id: 'runtime', label: t('admin.riskControl.tabs.runtime') },
   { id: 'response', label: t('admin.riskControl.tabs.response') },
   { id: 'keywords', label: t('admin.riskControl.tabs.keywords') },
+  { id: 'thresholds', label: t('admin.riskControl.tabs.thresholds') },
   { id: 'retention', label: t('admin.riskControl.tabs.retention') },
 ])
 
@@ -1238,6 +1291,28 @@ const inputApiKeyCount = computed(() => parseApiKeys(configForm.api_keys_text).l
 const blockedKeywordList = computed(() => parseBlockedKeywords(configForm.blocked_keywords_text))
 
 const blockedKeywordCount = computed(() => blockedKeywordList.value.length)
+
+const moderationCategories = [
+  { key: 'harassment', label: 'harassment', default: 0.98 },
+  { key: 'harassment/threatening', label: 'harassmentThreatening', default: 0.90 },
+  { key: 'hate', label: 'hate', default: 0.65 },
+  { key: 'hate/threatening', label: 'hateThreatening', default: 0.65 },
+  { key: 'illicit', label: 'illicit', default: 0.95 },
+  { key: 'illicit/violent', label: 'illicitViolent', default: 0.95 },
+  { key: 'self-harm', label: 'selfHarm', default: 0.65 },
+  { key: 'self-harm/intent', label: 'selfHarmIntent', default: 0.85 },
+  { key: 'self-harm/instructions', label: 'selfHarmInstructions', default: 0.65 },
+  { key: 'sexual', label: 'sexual', default: 0.65 },
+  { key: 'sexual/minors', label: 'sexualMinors', default: 0.65 },
+  { key: 'violence', label: 'violence', default: 0.95 },
+  { key: 'violence/graphic', label: 'violenceGraphic', default: 0.95 },
+]
+
+function resetThresholdsToDefault() {
+  for (const cat of moderationCategories) {
+    configForm.thresholds[cat.key] = cat.default
+  }
+}
 
 const pendingDeletedApiKeyCount = computed(() => pendingDeleteApiKeyHashes.value.length)
 
@@ -1447,6 +1522,7 @@ function applyConfig(config: ContentModerationConfig) {
   configForm.pre_hash_check_enabled = config.pre_hash_check_enabled ?? false
   configForm.blocked_keywords_text = Array.isArray(config.blocked_keywords) ? config.blocked_keywords.join('\n') : ''
   configForm.keyword_blocking_mode = normalizeKeywordBlockingMode(config.keyword_blocking_mode)
+  configForm.thresholds = { ...(config.thresholds ?? {}) }
   const modelFilter = normalizeModelFilter(config.model_filter)
   configForm.model_filter_type = modelFilter.type
   configForm.model_filter_models = modelFilter.models
@@ -1526,6 +1602,7 @@ async function saveConfig() {
       pre_hash_check_enabled: configForm.pre_hash_check_enabled,
       blocked_keywords: blockedKeywordList.value,
       keyword_blocking_mode: configForm.keyword_blocking_mode,
+      thresholds: { ...configForm.thresholds },
       model_filter: modelFilterPayload,
     }
     const keys = parseApiKeys(configForm.api_keys_text)

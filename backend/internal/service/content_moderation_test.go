@@ -1354,3 +1354,66 @@ func TestContentModerationUnbanUser_ActiveUserOnlyInvalidatesAuthCache(t *testin
 func contentModerationIntPtr(v int) *int {
 	return &v
 }
+
+func TestContentModerationUpdateConfig_RejectsUnknownThresholdCategory(t *testing.T) {
+	cfg := defaultContentModerationConfig()
+	rawCfg, err := json.Marshal(cfg)
+	require.NoError(t, err)
+
+	repo := &contentModerationTestSettingRepo{values: map[string]string{
+		SettingKeyContentModerationConfig: string(rawCfg),
+	}}
+	svc := NewContentModerationService(repo, nil, nil, nil, nil, nil, nil)
+	thresholds := map[string]float64{"not-a-real-category": 0.5}
+
+	_, err = svc.UpdateConfig(context.Background(), UpdateContentModerationConfigInput{
+		Thresholds: &thresholds,
+	})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "INVALID_CONTENT_MODERATION_THRESHOLD_CATEGORY")
+}
+
+func TestContentModerationUpdateConfig_RejectsOutOfRangeThreshold(t *testing.T) {
+	cfg := defaultContentModerationConfig()
+	rawCfg, err := json.Marshal(cfg)
+	require.NoError(t, err)
+
+	repo := &contentModerationTestSettingRepo{values: map[string]string{
+		SettingKeyContentModerationConfig: string(rawCfg),
+	}}
+	svc := NewContentModerationService(repo, nil, nil, nil, nil, nil, nil)
+	thresholds := map[string]float64{"violence": 1.5}
+
+	_, err = svc.UpdateConfig(context.Background(), UpdateContentModerationConfigInput{
+		Thresholds: &thresholds,
+	})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "INVALID_CONTENT_MODERATION_THRESHOLD_VALUE")
+}
+
+func TestContentModerationUpdateConfig_PersistsValidThresholds(t *testing.T) {
+	cfg := defaultContentModerationConfig()
+	rawCfg, err := json.Marshal(cfg)
+	require.NoError(t, err)
+
+	repo := &contentModerationTestSettingRepo{values: map[string]string{
+		SettingKeyContentModerationConfig: string(rawCfg),
+	}}
+	svc := NewContentModerationService(repo, nil, nil, nil, nil, nil, nil)
+	thresholds := map[string]float64{"violence": 0.4, "harassment": 0.7}
+
+	view, err := svc.UpdateConfig(context.Background(), UpdateContentModerationConfigInput{
+		Thresholds: &thresholds,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 0.4, view.Thresholds["violence"])
+	require.Equal(t, 0.7, view.Thresholds["harassment"])
+
+	var saved ContentModerationConfig
+	require.NoError(t, json.Unmarshal([]byte(repo.values[SettingKeyContentModerationConfig]), &saved))
+	require.Equal(t, 0.4, saved.Thresholds["violence"])
+	require.Equal(t, 0.7, saved.Thresholds["harassment"])
+}
