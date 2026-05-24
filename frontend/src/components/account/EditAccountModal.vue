@@ -117,6 +117,13 @@ watch(
   { immediate: true },
 )
 
+// Re-init form after async component load completes (fixes race with syncFormFromAccount)
+watch(resolvedFormComponent, (comp) => {
+  if (comp && props.show && props.account) {
+    nextTick(() => { platformFormRef.value?.initFromAccount?.(props.account!) })
+  }
+})
+
 const platformDecl = computed(() => getPlatformDecl(props.account?.platform || ''))
 const accountTypeDecl = computed(() => getAccountTypeDecl(props.account?.platform || '', props.account?.type || ''))
 

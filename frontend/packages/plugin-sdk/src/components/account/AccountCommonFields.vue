@@ -1,14 +1,14 @@
 <template>
   <div class="space-y-5">
     <!-- Name -->
-    <div>
+    <div v-if="showIdentity">
       <label class="input-label">{{ t('admin.accounts.accountName') }}</label>
       <input :value="modelValue.name" type="text" required class="input"
         :placeholder="t('admin.accounts.enterAccountName')"
         @input="update('name', ($event.target as HTMLInputElement).value)" />
     </div>
     <!-- Notes -->
-    <div>
+    <div v-if="showIdentity">
       <label class="input-label">{{ t('admin.accounts.notes') }}</label>
       <textarea :value="modelValue.notes" rows="2" class="input"
         :placeholder="t('admin.accounts.notesPlaceholder')"
@@ -17,14 +17,14 @@
     </div>
 
     <!-- Proxy -->
-    <div class="border-t border-gray-200 pt-5 dark:border-dark-600">
+    <div v-if="showSettings" class="border-t border-gray-200 pt-5 dark:border-dark-600">
       <label class="input-label">{{ t('admin.accounts.proxy') }}</label>
       <ProxySelect :model-value="modelValue.proxy_id" :proxies="proxies"
         @update:model-value="update('proxy_id', $event)" />
     </div>
 
     <!-- Numeric grid: concurrency, load_factor, priority, rate_multiplier -->
-    <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+    <div v-if="showSettings" class="grid grid-cols-2 gap-4 lg:grid-cols-4">
       <div>
         <label class="input-label">{{ t('admin.accounts.concurrency') }}</label>
         <input :value="modelValue.concurrency" type="number" min="1" class="input"
@@ -52,7 +52,7 @@
     </div>
 
     <!-- Quota control (apikey/bedrock types) -->
-    <div v-if="showQuota" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+    <div v-if="showSettings && showQuota" class="border-t border-gray-200 pt-4 dark:border-dark-600">
       <div class="mb-3 flex items-center justify-between">
         <div>
           <label class="input-label mb-0">{{ t('admin.accounts.quotaControl.enableQuotaLimit') }}</label>
@@ -90,7 +90,7 @@
     </div>
 
     <!-- Expiration -->
-    <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+    <div v-if="showSettings" class="border-t border-gray-200 pt-4 dark:border-dark-600">
       <label class="input-label">{{ t('admin.accounts.expiresAt') }}</label>
       <input :value="expiresAtDisplay" type="datetime-local" class="input"
         @input="onExpiresAtInput(($event.target as HTMLInputElement).value)" />
@@ -98,7 +98,7 @@
     </div>
 
     <!-- Auto pause on expired -->
-    <div class="flex items-center justify-between">
+    <div v-if="showSettings" class="flex items-center justify-between">
       <div>
         <span class="input-label mb-0">{{ t('admin.accounts.autoPauseOnExpired') }}</span>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.autoPauseOnExpiredDesc') }}</p>
@@ -112,7 +112,7 @@
     </div>
 
     <!-- Groups -->
-    <div v-if="!isSimpleMode" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+    <div v-if="showSettings && !isSimpleMode" class="border-t border-gray-200 pt-4 dark:border-dark-600">
       <GroupSelect :model-value="modelValue.group_ids" :groups="groups"
         @update:model-value="update('group_ids', $event)" />
     </div>
@@ -129,6 +129,7 @@ import GroupSelect from './GroupSelect.vue'
 const props = defineProps<{
   modelValue: CommonAccountFields
   context: PlatformFormContext
+  mode?: 'full' | 'identity' | 'settings'
 }>()
 
 const emit = defineEmits<{
@@ -136,6 +137,9 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+
+const showIdentity = computed(() => (props.mode ?? 'full') !== 'settings')
+const showSettings = computed(() => (props.mode ?? 'full') !== 'identity')
 
 const proxies = computed(() => props.context.hostData?.proxies ?? [])
 const groups = computed(() => props.context.hostData?.groups ?? [])
