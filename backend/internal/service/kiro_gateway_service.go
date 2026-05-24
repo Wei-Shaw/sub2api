@@ -77,6 +77,8 @@ func (s *KiroGatewayService) Forward(
 		return nil, errors.New("kiro gateway: nil account")
 	}
 
+	ctx = ResolveAndStorePolicy(ctx, account, s.settingService)
+
 	startedAt := time.Now()
 	req := &kiro.AnthropicRequest{}
 	if err := json.Unmarshal(body, req); err != nil {
@@ -195,6 +197,8 @@ func (s *KiroGatewayService) ForwardOpenAI(
 	if account == nil {
 		return nil, errors.New("kiro gateway: nil account")
 	}
+
+	ctx = ResolveAndStorePolicy(ctx, account, s.settingService)
 
 	startedAt := time.Now()
 	req := &kiro.OpenAIRequest{}
