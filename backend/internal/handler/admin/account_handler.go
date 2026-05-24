@@ -524,6 +524,7 @@ func (h *AccountHandler) Create(c *gin.Context) {
 	}
 	// base_rpm 输入校验：负值归零，超过 10000 截断
 	sanitizeExtraBaseRPM(req.Extra)
+	sanitizeExtraUpstreamPassthrough(req.Extra)
 
 	// P1-1: Capture registration fingerprint from browser User-Agent for OAuth accounts.
 	// This lets us serve per-account OS/arch hints to non-CC clients later, matching
@@ -622,6 +623,7 @@ func (h *AccountHandler) Update(c *gin.Context) {
 	}
 	// base_rpm 输入校验：负值归零，超过 10000 截断
 	sanitizeExtraBaseRPM(req.Extra)
+	sanitizeExtraUpstreamPassthrough(req.Extra)
 
 	// 确定是否跳过混合渠道检查
 	skipCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
@@ -1246,6 +1248,7 @@ func (h *AccountHandler) BatchCreate(c *gin.Context) {
 
 			// base_rpm 输入校验：负值归零，超过 10000 截断
 			sanitizeExtraBaseRPM(item.Extra)
+			sanitizeExtraUpstreamPassthrough(item.Extra)
 
 			skipCheck := item.ConfirmMixedChannelRisk != nil && *item.ConfirmMixedChannelRisk
 
@@ -1439,6 +1442,7 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 	}
 	// base_rpm 输入校验：负值归零，超过 10000 截断
 	sanitizeExtraBaseRPM(req.Extra)
+	sanitizeExtraUpstreamPassthrough(req.Extra)
 
 	// 确定是否跳过混合渠道检查
 	skipCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
@@ -2280,4 +2284,65 @@ func sanitizeExtraBaseRPM(extra map[string]any) {
 		v = 10000
 	}
 	extra["base_rpm"] = v
+}
+
+// sanitizeExtraUpstreamPassthrough validates and normalizes the
+// upstream_passthrough sub-object of account.Extra. Invalid values are dropped
+// (not rejected with error) so that partial UI updates don't fail the whole
+// request — the resolver layer treats absent fields as "inherit defaults".
+func sanitizeExtraUpstreamPassthrough(extra map[string]any) {
+	if extra == nil {
+		return
+	}
+	up, ok := extra["upstream_passthrough"].(map[string]any)
+	if !ok {
+		return
+	}
+	clean := map[string]any{}
+
+	// profile: must be one of the known PassthroughProfile values
+	if rawProfile, ok := up["profile"].(string); ok {
+		normalized := strings.ToLower(strings.TrimSpace(rawProfile))
+		switch service.PassthroughProfile(normalized) {
+		case service.ProfileTransparent, service.ProfileProtected, service.ProfileStrict:
+			clean["profile"] = normalized
+		}
+	}
+
+	// category_override: must be one of the known UpstreamCategory values
+	if rawCat, ok := up["category_override"].(string); ok {
+		normalized := strings.ToLower(strings.TrimSpace(rawCat))
+		switch service.UpstreamCategory(normalized) {
+		case service.CategoryRelay, service.CategoryOfficial, service.CategoryReverse:
+			clean["category_override"] = normalized
+		}
+	}
+
+	// overrides: keep only known toggle keys with bool values
+	if rawOverrides, ok := up["overrides"].(map[string]any); ok {
+		cleanOverrides := map[string]any{}
+		knownToggles := []string{
+			service.ToggleForwardClientHeaders,
+			service.ToggleForwardUserNetworkInfo,
+			service.ToggleSkipBodyScrub,
+			service.ToggleSkipSystemPromptInject,
+			service.ToggleForwardClientUA,
+			service.ToggleForwardBetaFlags,
+			service.ToggleSkipModelRewrite,
+		}
+		for _, k := range knownToggles {
+			if v, ok := rawOverrides[k].(bool); ok {
+				cleanOverrides[k] = v
+			}
+		}
+		if len(cleanOverrides) > 0 {
+			clean["overrides"] = cleanOverrides
+		}
+	}
+
+	if len(clean) == 0 {
+		delete(extra, "upstream_passthrough")
+		return
+	}
+	extra["upstream_passthrough"] = clean
 }
