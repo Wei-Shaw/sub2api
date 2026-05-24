@@ -109,7 +109,9 @@ func (s *GatewayService) ForwardAsResponses(
 		anthropicBody = s.applyClaudeCodeOAuthMimicryToBody(ctx, c, account, anthropicBody, anthropicReq.System, mappedModel)
 		// Fork-specific: feature-flagged 3-block system injector. Runs AFTER the
 		// shared mimicry pipeline so it sees the rewritten Claude Code identity system block.
-		anthropicBody = s.maybeInjectClaudeCodeSystemBlocks(anthropicBody)
+		if ShouldInjectSystemPrompt(ctx) {
+			anthropicBody = s.maybeInjectClaudeCodeSystemBlocks(anthropicBody)
+		}
 	}
 
 	// 7. Enforce cache_control block limit
