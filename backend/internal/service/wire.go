@@ -154,8 +154,9 @@ func ProvideKiroTokenProvider(
 func ProvideKiroGatewayService(
 	tokenProvider *KiroTokenProvider,
 	proxyRepo ProxyRepository,
+	settingService *SettingService,
 ) *KiroGatewayService {
-	return NewKiroGatewayService(tokenProvider, proxyRepo)
+	return NewKiroGatewayService(tokenProvider, proxyRepo, settingService)
 }
 
 // ProvideDashboardAggregationService 创建并启动仪表盘聚合服务

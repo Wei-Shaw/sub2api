@@ -88,7 +88,7 @@ func newGatewayServiceWithFakeUpstream(t *testing.T, handler http.HandlerFunc) (
 	kiro.OverrideEndpointURLForTest(t, 0, srv.URL)
 
 	tp := NewKiroTokenProvider(nil, newInMemTokenCache(), nil)
-	gs := NewKiroGatewayService(tp, nil)
+	gs := NewKiroGatewayService(tp, nil, nil)
 	return gs, srv
 }
 

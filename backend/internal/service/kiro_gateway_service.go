@@ -33,18 +33,21 @@ const kiroStreamingTimeout = 10 * time.Minute
 // Phase 4 ships Anthropic inbound only. OpenAI Chat Completions support
 // arrives in Phase 5 via the same KiroGatewayService.
 type KiroGatewayService struct {
-	tokenProvider *KiroTokenProvider
-	proxyRepo     ProxyRepository
+	tokenProvider  *KiroTokenProvider
+	proxyRepo      ProxyRepository
+	settingService *SettingService
 }
 
 // NewKiroGatewayService constructs the service.
 func NewKiroGatewayService(
 	tokenProvider *KiroTokenProvider,
 	proxyRepo ProxyRepository,
+	settingService *SettingService,
 ) *KiroGatewayService {
 	return &KiroGatewayService{
-		tokenProvider: tokenProvider,
-		proxyRepo:     proxyRepo,
+		tokenProvider:  tokenProvider,
+		proxyRepo:      proxyRepo,
+		settingService: settingService,
 	}
 }
 
