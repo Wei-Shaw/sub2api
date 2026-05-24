@@ -16,12 +16,104 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type createAPIKeyService interface {
+	Create(context.Context, int64, service.CreateAPIKeyRequest) (*service.APIKey, error)
+}
+
 func setupAPIKeyHandler(adminSvc service.AdminService) *gin.Engine {
+	return setupAPIKeyHandlerWithCreate(adminSvc, nil)
+}
+
+func setupAPIKeyHandlerWithCreate(adminSvc service.AdminService, apiKeyService createAPIKeyService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	h := NewAdminAPIKeyHandler(adminSvc)
+	h := NewAdminAPIKeyHandler(adminSvc, apiKeyService)
 	router.PUT("/api/v1/admin/api-keys/:id", h.UpdateGroup)
+	router.POST("/api/v1/admin/users/:id/api-keys", h.CreateForUser)
 	return router
+}
+
+type stubCreateAPIKeyService struct {
+	key    *service.APIKey
+	err    error
+	userID int64
+	req    service.CreateAPIKeyRequest
+}
+
+func (s *stubCreateAPIKeyService) Create(ctx context.Context, userID int64, req service.CreateAPIKeyRequest) (*service.APIKey, error) {
+	s.userID = userID
+	s.req = req
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.key, nil
+}
+
+func TestAdminAPIKeyHandler_CreateForUser(t *testing.T) {
+	now := time.Now().UTC()
+	apiKeyService := &stubCreateAPIKeyService{
+		key: &service.APIKey{
+			ID:        12,
+			UserID:    7,
+			Key:       "sk-created-secret",
+			Name:      "Console key",
+			Status:    service.StatusActive,
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+	}
+	router := setupAPIKeyHandlerWithCreate(newStubAdminService(), apiKeyService)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/users/7/api-keys", bytes.NewBufferString(`{"name":"Console key"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusCreated, rec.Code)
+	require.Equal(t, int64(7), apiKeyService.userID)
+	require.Equal(t, "Console key", apiKeyService.req.Name)
+
+	var resp struct {
+		Code int `json:"code"`
+		Data struct {
+			ID     int64  `json:"id"`
+			UserID int64  `json:"user_id"`
+			Key    string `json:"key"`
+			Name   string `json:"name"`
+			Status string `json:"status"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, 0, resp.Code)
+	require.Equal(t, int64(12), resp.Data.ID)
+	require.Equal(t, int64(7), resp.Data.UserID)
+	require.Equal(t, "sk-created-secret", resp.Data.Key)
+	require.Equal(t, "Console key", resp.Data.Name)
+	require.Equal(t, service.StatusActive, resp.Data.Status)
+}
+
+func TestAdminAPIKeyHandler_CreateForUser_InvalidUserID(t *testing.T) {
+	router := setupAPIKeyHandlerWithCreate(newStubAdminService(), &stubCreateAPIKeyService{})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/users/abc/api-keys", bytes.NewBufferString(`{"name":"Console key"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, rec.Body.String(), "Invalid user ID")
+}
+
+func TestAdminAPIKeyHandler_CreateForUser_ServiceError(t *testing.T) {
+	apiKeyService := &stubCreateAPIKeyService{err: errors.New("create failed")}
+	router := setupAPIKeyHandlerWithCreate(newStubAdminService(), apiKeyService)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/users/7/api-keys", bytes.NewBufferString(`{"name":"Console key"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusInternalServerError, rec.Code)
 }
 
 func TestAdminAPIKeyHandler_UpdateGroup_InvalidID(t *testing.T) {
