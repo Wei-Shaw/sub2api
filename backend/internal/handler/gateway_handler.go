@@ -1446,9 +1446,15 @@ REDACTED
 REDACTED
 
 // ensureForwardErrorResponse 在 Forward 返回错误但尚未写响应时补写统一错误响应。
+// Writer 已被写过时（ping 已 flush）走 streamStarted 分支，
+// 让 handleStreamingAwareError 通过 SSE 发协议合规的终止事件，
+// 否则下游收到的就是 silent EOF。
 func (h *GatewayHandler) ensureForwardErrorResponse(c *gin.Context, streamStarted bool) bool {
-	if c == nil || c.Writer == nil || c.Writer.Written() {
+	if c == nil || c.Writer == nil {
 		return false
+REDACTED
+	if c.Writer.Written() {
+		streamStarted = true
 REDACTED
 	h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed", streamStarted)
 	return true
