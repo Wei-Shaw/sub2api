@@ -5166,7 +5166,9 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		// Scrub 第三方客户端指纹：零宽空格混淆敏感词 + 剥离 [System Instructions]/XML
 		// 编排标签 + 工具名 TitleCase 映射。ScrubThirdPartyBody 的 remap 表暂不使用
 		// （响应反向映射未实装），客户端会看到 TitleCase 工具名。
-		body, _ = ScrubThirdPartyBody(body)
+		if ShouldScrubBody(ctx) {
+			body, _ = ScrubThirdPartyBody(body)
+		}
 
 		// system 被重写时保留 CC prompt 的 cache_control: ephemeral（匹配真实 Claude Code 行为）；
 		// 未重写时（haiku / 已含 CC 前缀）剥离客户端 cache_control，与原有行为一致。
