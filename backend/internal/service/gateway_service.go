@@ -5160,7 +5160,9 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			// full 3-block Claude Code structure (billing header + identity
 			// + static core prompt). Default off; only enable if production
 			// sees Third-party 400s resurface.
-			body = s.maybeInjectClaudeCodeSystemBlocks(body)
+			if ShouldInjectSystemPrompt(ctx) {
+				body = s.maybeInjectClaudeCodeSystemBlocks(body)
+			}
 		}
 
 		// Scrub 第三方客户端指纹：零宽空格混淆敏感词 + 剥离 [System Instructions]/XML
