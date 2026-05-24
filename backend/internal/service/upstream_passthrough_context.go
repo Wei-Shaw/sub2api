@@ -1,6 +1,9 @@
 package service
 
-import "context"
+import (
+	"context"
+	"net/http"
+)
 
 // upstreamPolicyContextKey is the unexported type used as the context key.
 // Using an unexported struct type as the key prevents collisions with other
@@ -128,4 +131,78 @@ func ShouldInjectSystemPrompt(ctx context.Context) bool {
 		return true
 	}
 	return !p.SkipSystemPromptInject
+}
+
+// userNetworkInfoHeaderKeys lists the request headers that carry the end-user's
+// network identity. These are NOT in the default outbound whitelist and are
+// silently dropped on the upstream request — protecting official API accounts
+// from leaking client IPs that might trigger anomaly detection.
+//
+// When policy.ForwardUserNetworkInfo == true (Transparent profile, relay accounts),
+// these headers are copied from the client request to the upstream request.
+//
+// Keys are written in canonical http.Header form (the form Go produces after
+// parsing inbound requests), so http.Header.Get() lookups succeed against
+// inbound request headers.
+var userNetworkInfoHeaderKeys = []string{
+	"X-Forwarded-For",
+	"X-Real-Ip", // Go canonical: X-Real-Ip (not X-Real-IP)
+	"Forwarded",
+	"Cf-Connecting-Ip", // Go canonical: Cf-Connecting-Ip
+	"True-Client-Ip",   // Go canonical: True-Client-Ip
+}
+
+// ShouldForwardUserNetworkInfo reports whether downstream code should copy
+// the user's network identity headers (X-Forwarded-For, X-Real-IP, Forwarded,
+// CF-Connecting-IP, True-Client-IP) from the client request to the upstream
+// request.
+//
+// Returns false (= don't forward) when:
+//   - No policy is in ctx (FeatureFlag OFF — preserves today's behavior, which
+//     never forwards these headers)
+//   - A policy is in ctx with ForwardUserNetworkInfo == false (Protected/Strict)
+//
+// Returns true only when a policy is present with ForwardUserNetworkInfo == true
+// (Transparent profile — relay accounts where the relay may need the real IP
+// for audit/billing).
+//
+// This is the inverse fallback shape of ShouldScrubBody/ShouldInjectSystemPrompt:
+// those are "Skip" toggles (legacy = do the thing); this is a "Forward" toggle
+// (legacy = don't forward).
+func ShouldForwardUserNetworkInfo(ctx context.Context) bool {
+	p, ok := GetUpstreamPolicyFromContext(ctx)
+	if !ok {
+		return false
+	}
+	return p.ForwardUserNetworkInfo
+}
+
+// ForwardUserNetworkInfoHeaders copies the user-network headers from
+// clientHeaders to upstreamHeaders IFF ShouldForwardUserNetworkInfo(ctx) is
+// true. No-op when policy is absent or set to false.
+//
+// nil-safe on both header maps. Headers absent from the client request are
+// silently skipped (no empty value set on upstream).
+//
+// Storage uses Go canonical key form (e.g., "X-Real-Ip") so http.Header.Get
+// lookups succeed regardless of caller casing. Go's HTTP client writes these
+// canonical keys onto the wire; intermediate proxies and upstream parsers
+// treat HTTP header names case-insensitively per RFC 7230 §3.2, so any
+// upstream that cares about XFF will still see it.
+func ForwardUserNetworkInfoHeaders(ctx context.Context, upstreamHeaders, clientHeaders http.Header) {
+	if !ShouldForwardUserNetworkInfo(ctx) {
+		return
+	}
+	if upstreamHeaders == nil || clientHeaders == nil {
+		return
+	}
+	for _, canonKey := range userNetworkInfoHeaderKeys {
+		values := clientHeaders.Values(canonKey)
+		if len(values) == 0 {
+			continue
+		}
+		for _, v := range values {
+			upstreamHeaders.Add(canonKey, v)
+		}
+	}
 }
