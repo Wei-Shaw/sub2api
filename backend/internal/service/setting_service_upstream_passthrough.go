@@ -167,3 +167,45 @@ func normalizeCategoryDefault(in UpstreamPassthroughCategoryDefault, cat Upstrea
 	}
 	return out, nil
 }
+
+// GetUpstreamPassthroughGlobalOverride returns the emergency kill switch mode.
+// Defaults to GlobalOverrideAuto when absent or invalid.
+// This setting is read on every gateway request; intentionally simple read
+// (no cache) — the settingRepo layer may have its own caching.
+func (s *SettingService) GetUpstreamPassthroughGlobalOverride(ctx context.Context) GlobalOverrideMode {
+	raw, err := s.settingRepo.GetValue(ctx, SettingKeyUpstreamPassthroughGlobalOverride)
+	if err != nil {
+		return GlobalOverrideAuto
+	}
+	return ParseGlobalOverrideMode(raw)
+}
+
+// SetUpstreamPassthroughGlobalOverride persists the kill switch. Rejects
+// values that don't parse to a valid GlobalOverrideMode. Storing GlobalOverrideAuto
+// persists the literal "auto" string.
+func (s *SettingService) SetUpstreamPassthroughGlobalOverride(ctx context.Context, mode GlobalOverrideMode) error {
+	switch mode {
+	case GlobalOverrideAuto, GlobalOverrideForceTransparent, GlobalOverrideForceProtected, GlobalOverrideForceStrict:
+		// ok
+	default:
+		return fmt.Errorf("invalid global override mode %q", mode)
+	}
+	if err := s.settingRepo.Set(ctx, SettingKeyUpstreamPassthroughGlobalOverride, string(mode)); err != nil {
+		return fmt.Errorf("persist upstream_passthrough_global_override: %w", err)
+	}
+	if s.onUpdate != nil {
+		s.onUpdate()
+	}
+	return nil
+}
+
+// IsUpstreamPolicyV1Enabled reads the FeatureFlag that Phase B call-site
+// reads will check. Default false in Phase A; Phase B will set it true after
+// validation, Phase C UI may expose admin toggle.
+func (s *SettingService) IsUpstreamPolicyV1Enabled(ctx context.Context) bool {
+	raw, err := s.settingRepo.GetValue(ctx, SettingKeyUpstreamPolicyV1Enabled)
+	if err != nil {
+		return false
+	}
+	return raw == "true"
+}

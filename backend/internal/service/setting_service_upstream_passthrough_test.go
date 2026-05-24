@@ -193,3 +193,57 @@ func TestSettingService_SetUpstreamPassthroughDefaults_StripsUnknownToggleKeys(t
 	_, exists := got.Relay.Overrides["unknown_garbage_toggle"]
 	require.False(t, exists)
 }
+
+func TestSettingService_GetSetGlobalOverride(t *testing.T) {
+	repo := &fakeSettingRepoForUpstream{values: map[string]string{}}
+	svc := NewSettingService(repo, &config.Config{})
+
+	t.Run("absent returns auto", func(t *testing.T) {
+		require.Equal(t, GlobalOverrideAuto, svc.GetUpstreamPassthroughGlobalOverride(context.Background()))
+	})
+
+	t.Run("set then get round-trip", func(t *testing.T) {
+		require.NoError(t, svc.SetUpstreamPassthroughGlobalOverride(context.Background(), GlobalOverrideForceStrict))
+		require.Equal(t, GlobalOverrideForceStrict, svc.GetUpstreamPassthroughGlobalOverride(context.Background()))
+	})
+
+	t.Run("set invalid value rejected", func(t *testing.T) {
+		err := svc.SetUpstreamPassthroughGlobalOverride(context.Background(), GlobalOverrideMode("garbage"))
+		require.Error(t, err)
+	})
+
+	t.Run("set auto persists empty string equivalent", func(t *testing.T) {
+		require.NoError(t, svc.SetUpstreamPassthroughGlobalOverride(context.Background(), GlobalOverrideAuto))
+		require.Equal(t, GlobalOverrideAuto, svc.GetUpstreamPassthroughGlobalOverride(context.Background()))
+	})
+
+	t.Run("stored garbage in db returns auto (fail-open)", func(t *testing.T) {
+		repo.mu.Lock()
+		repo.values[SettingKeyUpstreamPassthroughGlobalOverride] = "definitely-not-valid"
+		repo.mu.Unlock()
+		require.Equal(t, GlobalOverrideAuto, svc.GetUpstreamPassthroughGlobalOverride(context.Background()))
+	})
+}
+
+func TestSettingService_IsUpstreamPolicyV1Enabled(t *testing.T) {
+	repo := &fakeSettingRepoForUpstream{values: map[string]string{}}
+	svc := NewSettingService(repo, &config.Config{})
+
+	t.Run("absent returns false (Phase A default OFF)", func(t *testing.T) {
+		require.False(t, svc.IsUpstreamPolicyV1Enabled(context.Background()))
+	})
+
+	t.Run("set true", func(t *testing.T) {
+		repo.mu.Lock()
+		repo.values[SettingKeyUpstreamPolicyV1Enabled] = "true"
+		repo.mu.Unlock()
+		require.True(t, svc.IsUpstreamPolicyV1Enabled(context.Background()))
+	})
+
+	t.Run("non-true value returns false", func(t *testing.T) {
+		repo.mu.Lock()
+		repo.values[SettingKeyUpstreamPolicyV1Enabled] = "anything-else"
+		repo.mu.Unlock()
+		require.False(t, svc.IsUpstreamPolicyV1Enabled(context.Background()))
+	})
+}
