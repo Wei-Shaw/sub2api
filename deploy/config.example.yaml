@@ -951,6 +951,24 @@ default:
   rate_multiplier: 1.0
 
 # =============================================================================
+# Batch Account Test
+# 批量账号测试
+# =============================================================================
+batch_account_test:
+  # Default worker concurrency for batch account connectivity tests
+  # 批量账号连通性测试的默认并发数
+  default_concurrency: 5
+  # Maximum worker concurrency allowed for one batch account test request
+  # 单次批量账号测试允许的最大并发数
+  max_concurrency: 10
+  # Maximum accounts allowed in one batch account test request
+  # 单次批量账号测试允许的最大账号数量
+  max_accounts: 500
+  # Per-account timeout in seconds for batch account connectivity tests
+  # 批量账号连通性测试中单个账号的超时时间（秒）
+  per_account_timeout_seconds: 30
+
+# =============================================================================
 # Rate Limiting
 # 速率限制
 # =============================================================================

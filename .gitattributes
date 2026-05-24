@@ -1,3 +1,6 @@
+.gitattributes text eol=lf
+deploy/.env.example text eol=lf
+
 # 确保所有 SQL 迁移文件使用 LF 换行符
 backend/migrations/*.sql text eol=lf
 

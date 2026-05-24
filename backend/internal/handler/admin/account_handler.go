@@ -703,6 +703,27 @@ type TestAccountRequest struct {
 	Mode    string `json:"mode"`
 }
 
+const (
+	batchAccountTestStreamEventStart    = "start"
+	batchAccountTestStreamEventResult   = "result"
+	batchAccountTestStreamEventComplete = "complete"
+	batchAccountTestStreamEventError    = "error"
+)
+
+type BatchAccountTestStreamEvent struct {
+	Type           string                           `json:"type"`
+	Total          int                              `json:"total,omitempty"`
+	Completed      int                              `json:"completed,omitempty"`
+	Success        int                              `json:"success,omitempty"`
+	Failed         int                              `json:"failed,omitempty"`
+	Unauthorized   int                              `json:"unauthorized,omitempty"`
+	Concurrency    int                              `json:"concurrency,omitempty"`
+	TimeoutSeconds int                              `json:"timeout_seconds,omitempty"`
+	Result         *service.BatchAccountTestResult  `json:"result,omitempty"`
+	Results        []service.BatchAccountTestResult `json:"results,omitempty"`
+	Message        string                           `json:"message,omitempty"`
+}
+
 type SyncFromCRSRequest struct {
 	BaseURL            string   `json:"base_url" binding:"required"`
 	Username           string   `json:"username" binding:"required"`
@@ -741,6 +762,95 @@ func (h *AccountHandler) Test(c *gin.Context) {
 			_ = c.Error(err)
 		}
 	}
+}
+
+// BatchAccountTestStream streams batch account test progress.
+// POST /api/v1/admin/accounts/batch-account-test/stream
+func (h *AccountHandler) BatchAccountTestStream(c *gin.Context) {
+	var req service.BatchAccountTestRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if len(req.AccountIDs) == 0 {
+		response.BadRequest(c, "account_ids is required")
+		return
+	}
+	if h.accountTestService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Account test service unavailable")
+		return
+	}
+	batchTestConfig := h.accountTestService.BatchAccountTestConfig()
+	if len(req.AccountIDs) > batchTestConfig.MaxAccounts {
+		response.BadRequest(c, fmt.Sprintf("account_ids cannot exceed %d", batchTestConfig.MaxAccounts))
+		return
+	}
+
+	concurrency := service.ResolveBatchAccountTestConcurrency(req.Concurrency, len(req.AccountIDs), batchTestConfig)
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+
+	h.sendBatchAccountTestStreamEvent(c, BatchAccountTestStreamEvent{
+		Type:           batchAccountTestStreamEventStart,
+		Total:          len(req.AccountIDs),
+		Concurrency:    concurrency,
+		TimeoutSeconds: batchTestConfig.PerAccountTimeoutSeconds,
+	})
+
+	var streamMu sync.Mutex
+	results, progress, err := h.accountTestService.RunBatchAccountTest(c.Request.Context(), req, func(result service.BatchAccountTestResult, progress service.BatchAccountTestProgress) {
+		if result.Success && h.rateLimitService != nil {
+			if _, err := h.rateLimitService.RecoverAccountAfterSuccessfulTest(c.Request.Context(), result.AccountID); err != nil {
+				log.Printf("[WARN] Failed to recover account %d after batch test: %v", result.AccountID, err)
+			}
+		}
+
+		streamMu.Lock()
+		defer streamMu.Unlock()
+		h.sendBatchAccountTestStreamEvent(c, BatchAccountTestStreamEvent{
+			Type:         batchAccountTestStreamEventResult,
+			Total:        len(req.AccountIDs),
+			Completed:    progress.Completed,
+			Success:      progress.Success,
+			Failed:       progress.Failed,
+			Unauthorized: progress.Unauthorized,
+			Result:       &result,
+		})
+	})
+	if err != nil {
+		streamMu.Lock()
+		defer streamMu.Unlock()
+		h.sendBatchAccountTestStreamEvent(c, BatchAccountTestStreamEvent{
+			Type:    batchAccountTestStreamEventError,
+			Message: err.Error(),
+		})
+		return
+	}
+
+	streamMu.Lock()
+	defer streamMu.Unlock()
+	h.sendBatchAccountTestStreamEvent(c, BatchAccountTestStreamEvent{
+		Type:         batchAccountTestStreamEventComplete,
+		Total:        len(results),
+		Completed:    progress.Completed,
+		Success:      progress.Success,
+		Failed:       progress.Failed,
+		Unauthorized: progress.Unauthorized,
+		Results:      results,
+	})
+}
+
+func (h *AccountHandler) sendBatchAccountTestStreamEvent(c *gin.Context, event BatchAccountTestStreamEvent) {
+	payload, err := json.Marshal(event)
+	if err != nil {
+		log.Printf("[WARN] Failed to marshal batch test stream event: %v", err)
+		return
+	}
+	fmt.Fprintf(c.Writer, "data: %s\n\n", payload)
+	c.Writer.Flush()
 }
 
 // RecoverState handles unified recovery of recoverable account runtime state.

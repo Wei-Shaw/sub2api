@@ -4,6 +4,7 @@
  */
 
 import { apiClient } from '../client'
+import { getLocale } from '@/i18n'
 import type {
   Account,
   CreateAccountRequest,
@@ -19,8 +20,11 @@ import type {
   CodexSessionImportRequest,
   CodexSessionImportResult,
   CheckMixedChannelRequest,
-  CheckMixedChannelResponse
+  CheckMixedChannelResponse,
+  BatchAccountTestStreamEvent
 } from '@/types'
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 
 /**
  * List all accounts with pagination
@@ -644,6 +648,74 @@ export async function batchRefresh(accountIds: number[]): Promise<BatchOperation
   return data
 }
 
+export async function streamBatchAccountTest(
+  accountIds: number[],
+  onEvent: (event: BatchAccountTestStreamEvent) => void,
+  options?: { signal?: AbortSignal }
+): Promise<void> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Accept-Language': getLocale()
+  }
+  const token = localStorage.getItem('auth_token')
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
+  }
+
+  const response = await fetch(`${API_BASE_URL}/admin/accounts/batch-account-test/stream`, {
+    method: 'POST',
+    credentials: 'include',
+    headers,
+    signal: options?.signal,
+    body: JSON.stringify({ account_ids: accountIds })
+  })
+
+  if (!response.ok) {
+    let message = `HTTP ${response.status}`
+    try {
+      const payload = await response.json()
+      message = payload?.message || payload?.error || message
+    } catch {
+      // keep HTTP status fallback
+    }
+    throw new Error(message)
+  }
+  if (!response.body) {
+    throw new Error('Batch account test stream is unavailable')
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  const consumeChunk = (chunk: string) => {
+    buffer += chunk
+    const frames = buffer.split(/\r?\n\r?\n/)
+    buffer = frames.pop() || ''
+    for (const frame of frames) {
+      const lines = frame.split(/\r?\n/)
+      const dataLines = lines
+        .filter((line) => line.startsWith('data:'))
+        .map((line) => line.replace(/^data:\s?/, ''))
+      if (dataLines.length === 0) continue
+      const data = dataLines.join('\n')
+      if (data === '[DONE]') continue
+      const event = JSON.parse(data) as BatchAccountTestStreamEvent
+      if (event.type === 'error') {
+        throw new Error(event.message || 'Batch account test failed')
+      }
+      onEvent(event)
+    }
+  }
+
+  while (true) {
+    const { value, done } = await reader.read()
+    if (done) break
+    consumeChunk(decoder.decode(value, { stream: true }))
+  }
+  consumeChunk(decoder.decode())
+}
+
 /**
  * Set privacy for an Antigravity OAuth account
  * @param id - Account ID
@@ -692,6 +764,7 @@ export const accountsAPI = {
   getAntigravityDefaultModelMapping,
   batchClearError,
   batchRefresh,
+  streamBatchAccountTest,
   setPrivacy
 }
 

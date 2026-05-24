@@ -1017,6 +1017,15 @@ type TestConnectionResult struct {
 	MappedModel string // 实际使用的模型
 }
 
+type antigravityTestConnectionHTTPStatusError struct {
+	statusCode int
+	message    string
+}
+
+func (e *antigravityTestConnectionHTTPStatusError) Error() string {
+	return e.message
+}
+
 // TestConnection 测试 Antigravity 账号连接。
 // 复用 antigravityRetryLoop 的完整重试 / credits overages / 智能重试逻辑，
 // 与真实调度行为一致。差异：不做账号切换（测试指定账号）、不记录 ops 错误。
@@ -1096,7 +1105,11 @@ func (s *AntigravityGatewayService) TestConnection(ctx context.Context, account 
 	}
 
 	if result.resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("API 返回 %d: %s", result.resp.StatusCode, string(respBody))
+		message := fmt.Sprintf("API 返回 %d: %s", result.resp.StatusCode, string(respBody))
+		return nil, &antigravityTestConnectionHTTPStatusError{
+			statusCode: result.resp.StatusCode,
+			message:    message,
+		}
 	}
 
 	text := extractTextFromSSEResponse(respBody)

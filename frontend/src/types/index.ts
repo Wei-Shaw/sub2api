@@ -1854,3 +1854,40 @@ export interface UpdateScheduledTestPlanRequest {
 
 // Payment types
 export type { SubscriptionPlan, PaymentOrder, CheckoutInfoResponse } from './payment'
+
+
+// ==================== Batch Account Test Types ====================
+
+
+export interface BatchAccountTestResult {
+  account_id: number
+  success: boolean
+  status: string
+  latency_ms: number
+  error_message?: string
+  response_text?: string
+}
+
+export interface BatchAccountTestResponse {
+  total: number
+  success: number
+  failed: number
+  unauthorized: number
+  results: BatchAccountTestResult[]
+}
+
+export type BatchAccountTestStreamEventType = 'start' | 'result' | 'complete' | 'error'
+
+export interface BatchAccountTestStreamEvent {
+  type: BatchAccountTestStreamEventType
+  total?: number
+  completed?: number
+  success?: number
+  failed?: number
+  unauthorized?: number
+  concurrency?: number
+  timeout_seconds?: number
+  result?: BatchAccountTestResult
+  results?: BatchAccountTestResult[]
+  message?: string
+}
