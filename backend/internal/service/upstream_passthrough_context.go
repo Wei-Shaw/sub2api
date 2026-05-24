@@ -60,3 +60,30 @@ func RequireUpstreamPolicyFromContext(ctx context.Context) EffectiveUpstreamPoli
 		ProfileApplied:         ProfileProtected,
 	}
 }
+
+// ResolveAndStorePolicy is the single entry point used by gateway services to
+// resolve the per-request upstream policy and attach it to ctx. Returns ctx
+// unchanged in these defensive cases:
+//   - settingService is nil
+//   - account is nil
+//   - FeatureFlag (SettingKeyUpstreamPolicyV1Enabled) is false (Phase B-1 default)
+//
+// In all other cases, calls ResolveUpstreamPassthroughPolicy with the live
+// system defaults + kill switch, stores the result in ctx, and returns the
+// enriched ctx. Downstream code retrieves via RequireUpstreamPolicyFromContext.
+//
+// This helper is the central seam: Phase B-2 will read from ctx (no settingService
+// dependency at call sites), and the FeatureFlag flip happens by setting the
+// SettingKey to "true" (no code change needed at the call sites).
+func ResolveAndStorePolicy(ctx context.Context, account *Account, settingService *SettingService) context.Context {
+	if settingService == nil || account == nil {
+		return ctx
+	}
+	if !settingService.IsUpstreamPolicyV1Enabled(ctx) {
+		return ctx
+	}
+	defaults := settingService.GetUpstreamPassthroughDefaults(ctx)
+	override := settingService.GetUpstreamPassthroughGlobalOverride(ctx)
+	policy := ResolveUpstreamPassthroughPolicy(account, &defaults, override)
+	return SetUpstreamPolicyInContext(ctx, &policy)
+}
