@@ -52,6 +52,7 @@
           value-key="id"
           label-key="display_name"
           :placeholder="loadingModels ? t('common.loading') + '...' : t('admin.accounts.selectTestModel')"
+          searchable
         />
       </div>
 
@@ -316,7 +317,10 @@ watch(
   }
 )
 
-watch(selectedModelId, () => {
+watch(selectedModelId, (newVal) => {
+  if (newVal) {
+    localStorage.setItem('last_test_model_id', newVal)
+  }
   if (supportsImageTest.value && !testPrompt.value.trim()) {
     testPrompt.value = t('admin.accounts.imagePromptDefault')
   }
@@ -334,7 +338,10 @@ const loadAvailableModels = async () => {
       : models
     // Default selection by platform
     if (availableModels.value.length > 0) {
-      if (props.account.platform === 'gemini') {
+      const lastUsed = localStorage.getItem('last_test_model_id')
+      if (lastUsed && availableModels.value.some((m) => m.id === lastUsed)) {
+        selectedModelId.value = lastUsed
+      } else if (props.account.platform === 'gemini') {
         selectedModelId.value = availableModels.value[0].id
       } else {
         // Try to select Sonnet as default, otherwise use first model
