@@ -1345,6 +1345,7 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 		return s.ForwardUpstream(ctx, c, account, body)
 	}
 
+	ctx = ResolveAndStorePolicy(ctx, account, s.settingService)
 	startTime := time.Now()
 
 	sessionID := getSessionID(c)
@@ -2073,6 +2074,7 @@ func stripSignatureSensitiveBlocksFromClaudeRequest(req *antigravity.ClaudeReque
 //	          ├─ 成功 → 正常返回
 //	          └─ 失败 → 设置模型限流 + 清除粘性绑定 → 切换账号
 func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Context, account *Account, originalModel string, action string, stream bool, body []byte, isStickySession bool) (*ForwardResult, error) {
+	ctx = ResolveAndStorePolicy(ctx, account, s.settingService)
 	startTime := time.Now()
 
 	sessionID := getSessionID(c)
@@ -4224,6 +4226,7 @@ func filterEmptyPartsFromGeminiRequest(body []byte) ([]byte, error) {
 
 // ForwardUpstream 使用 base_url + /v1/messages + 双 header 认证透传上游 Claude 请求
 func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.Context, account *Account, body []byte) (*ForwardResult, error) {
+	ctx = ResolveAndStorePolicy(ctx, account, s.settingService)
 	startTime := time.Now()
 	sessionID := getSessionID(c)
 	prefix := logPrefix(sessionID, account.Name)
