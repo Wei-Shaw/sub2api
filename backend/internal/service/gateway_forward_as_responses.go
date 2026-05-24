@@ -36,6 +36,7 @@ func (s *GatewayService) ForwardAsResponses(
 	parsed *ParsedRequest,
 ) (*ForwardResult, error) {
 	startTime := time.Now()
+	ctx = ResolveAndStorePolicy(ctx, account, s.settingService)
 
 	// 0. Routing policy: optionally exclude OAuth accounts from this endpoint.
 	// See SettingKeyDisableOAuthOnCCResponses; mirrors ForwardAsChatCompletions.

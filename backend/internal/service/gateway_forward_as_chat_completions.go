@@ -35,6 +35,7 @@ func (s *GatewayService) ForwardAsChatCompletions(
 	parsed *ParsedRequest,
 ) (*ForwardResult, error) {
 	startTime := time.Now()
+	ctx = ResolveAndStorePolicy(ctx, account, s.settingService)
 
 	// 0. Routing policy: optionally exclude OAuth accounts from this endpoint.
 	// When enabled, OAuth accounts get handed back via UpstreamFailoverError so
