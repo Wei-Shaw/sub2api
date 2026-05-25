@@ -357,45 +357,50 @@
       @close="closeCreateModal"
     >
       <!-- Tab Switch -->
-      <div class="mb-6 flex border-b border-gray-200 dark:border-dark-600">
-        <button
-          type="button"
-          @click="createMode = 'standard'"
-          :class="[
-            '-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors',
-            createMode === 'standard'
-              ? 'border-primary-500 text-primary-600 dark:text-primary-400'
-              : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
-          ]"
-        >
-          <Icon name="plus" size="sm" class="mr-1.5 inline" />
-          {{ t('admin.proxies.standardAdd') }}
-        </button>
-        <button
-          type="button"
-          @click="createMode = 'batch'"
-          :class="[
-            '-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors',
-            createMode === 'batch'
-              ? 'border-primary-500 text-primary-600 dark:text-primary-400'
-              : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
-          ]"
-        >
-          <svg
-            class="mr-1.5 inline h-4 w-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            stroke-width="1.5"
+      <div
+        class="mb-6 flex items-center justify-between gap-3 border-b border-gray-200 dark:border-dark-600"
+      >
+        <div class="flex min-w-0 shrink-0">
+          <button
+            type="button"
+            @click="createMode = 'standard'"
+            :class="[
+              '-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors',
+              createMode === 'standard'
+                ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
+            ]"
           >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z"
-            />
-          </svg>
-          {{ t('admin.proxies.batchAdd') }}
-        </button>
+            <Icon name="plus" size="sm" class="mr-1.5 inline" />
+            {{ t('admin.proxies.standardAdd') }}
+          </button>
+          <button
+            type="button"
+            @click="createMode = 'batch'"
+            :class="[
+              '-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors',
+              createMode === 'batch'
+                ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
+            ]"
+          >
+            <svg
+              class="mr-1.5 inline h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              stroke-width="1.5"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z"
+              />
+            </svg>
+            {{ t('admin.proxies.batchAdd') }}
+          </button>
+        </div>
+        <ProxyAdBanner />
       </div>
 
       <!-- Standard Add Form -->
@@ -887,6 +892,7 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import ImportDataModal from '@/components/admin/proxy/ImportDataModal.vue'
 import Select from '@/components/common/Select.vue'
+import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
 import Icon from '@/components/icons/Icon.vue'
 import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
 import { useClipboard } from '@/composables/useClipboard'

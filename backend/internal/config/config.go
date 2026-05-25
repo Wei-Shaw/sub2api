@@ -1009,7 +1009,8 @@ type GatewaySchedulingConfig struct {
 	FallbackSelectionMode string `mapstructure:"fallback_selection_mode"`
 
 	// 负载计算
-	LoadBatchEnabled bool `mapstructure:"load_batch_enabled"`
+	LoadBatchEnabled    bool `mapstructure:"load_batch_enabled"`
+	LoadBatchCacheTTLMS int  `mapstructure:"load_batch_cache_ttl_ms"`
 	// 快照桶读取时的 MGET 分块大小
 	SnapshotMGetChunkSize int `mapstructure:"snapshot_mget_chunk_size"`
 	// 快照重建时的缓存写入分块大小
@@ -1828,6 +1829,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.scheduling.fallback_max_waiting", 100)
 	viper.SetDefault("gateway.scheduling.fallback_selection_mode", "last_used")
 	viper.SetDefault("gateway.scheduling.load_batch_enabled", true)
+	viper.SetDefault("gateway.scheduling.load_batch_cache_ttl_ms", 200)
 	viper.SetDefault("gateway.scheduling.snapshot_mget_chunk_size", 128)
 	viper.SetDefault("gateway.scheduling.snapshot_write_chunk_size", 256)
 	viper.SetDefault("gateway.scheduling.slot_cleanup_interval", 30*time.Second)
@@ -2633,6 +2635,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.Scheduling.FallbackMaxWaiting <= 0 {
 		return fmt.Errorf("gateway.scheduling.fallback_max_waiting must be positive")
+	}
+	if c.Gateway.Scheduling.LoadBatchCacheTTLMS < 0 {
+		return fmt.Errorf("gateway.scheduling.load_batch_cache_ttl_ms must be non-negative")
 	}
 	if c.Gateway.Scheduling.SnapshotMGetChunkSize <= 0 {
 		return fmt.Errorf("gateway.scheduling.snapshot_mget_chunk_size must be positive")
