@@ -3215,9 +3215,12 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	// 透传客户端请求头（安全白名单）。
 	allowTimeoutHeaders := s.isOpenAIPassthroughTimeoutHeadersAllowed()
 	if c != nil && c.Request != nil {
+		legacyAllow := func(k string) bool {
+			return isOpenAIPassthroughAllowedRequestHeader(k, allowTimeoutHeaders)
+		}
 		for key, values := range c.Request.Header {
 			lower := strings.ToLower(strings.TrimSpace(key))
-			if !isOpenAIPassthroughAllowedRequestHeader(lower, allowTimeoutHeaders) {
+			if !ShouldCopyClientHeader(ctx, lower, legacyAllow) {
 				continue
 			}
 			for _, v := range values {
@@ -3958,10 +3961,11 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	// Whitelist passthrough headers
 	for key, values := range c.Request.Header {
 		lowerKey := strings.ToLower(key)
-		if openaiAllowedHeaders[lowerKey] {
-			for _, v := range values {
-				req.Header.Add(key, v)
-			}
+		if !ShouldCopyClientHeader(ctx, lowerKey, func(k string) bool { return openaiAllowedHeaders[k] }) {
+			continue
+		}
+		for _, v := range values {
+			req.Header.Add(key, v)
 		}
 	}
 

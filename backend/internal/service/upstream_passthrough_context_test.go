@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -220,6 +221,59 @@ func TestShouldCopyClientHeader_NilWhitelistInLegacyReturnsFalse(t *testing.T) {
 	// and must not silently forward everything.
 	ctx := context.Background()
 	require.False(t, ShouldCopyClientHeader(ctx, "user-agent", nil))
+}
+
+// Reproduces the loop pattern at each B-2d call site to lock in the contract
+// at the use-site level: legacy whitelist mode passes only known headers;
+// forward mode passes everything except the blacklist.
+func TestShouldCopyClientHeader_LoopPattern_LegacyVsForward(t *testing.T) {
+	clientHeaders := http.Header{
+		"User-Agent":    []string{"my-client/1.0"},   // whitelisted
+		"X-App":         []string{"app-x"},           // whitelisted
+		"X-Custom":      []string{"custom-value"},    // NOT whitelisted
+		"Cookie":        []string{"session=secret"},  // blacklisted
+		"Authorization": []string{"Bearer secret"},   // blacklisted
+		"X-Api-Key":     []string{"client-api-key"},  // blacklisted
+	}
+	miniWhitelist := func(k string) bool {
+		return k == "user-agent" || k == "x-app"
+	}
+
+	copyUnderPolicy := func(ctx context.Context) http.Header {
+		out := http.Header{}
+		for key, values := range clientHeaders {
+			lower := strings.ToLower(key)
+			if !ShouldCopyClientHeader(ctx, lower, miniWhitelist) {
+				continue
+			}
+			for _, v := range values {
+				out.Add(key, v)
+			}
+		}
+		return out
+	}
+
+	t.Run("legacy: only whitelisted headers pass", func(t *testing.T) {
+		out := copyUnderPolicy(context.Background())
+		require.Equal(t, "my-client/1.0", out.Get("User-Agent"))
+		require.Equal(t, "app-x", out.Get("X-App"))
+		require.Empty(t, out.Get("X-Custom"))
+		require.Empty(t, out.Get("Cookie"))
+		require.Empty(t, out.Get("Authorization"))
+		require.Empty(t, out.Get("X-Api-Key"))
+	})
+
+	t.Run("forward mode: blacklist is the only filter", func(t *testing.T) {
+		policy := EffectiveUpstreamPolicy{ForwardClientHeaders: true}
+		ctx := SetUpstreamPolicyInContext(context.Background(), &policy)
+		out := copyUnderPolicy(ctx)
+		require.Equal(t, "my-client/1.0", out.Get("User-Agent"))
+		require.Equal(t, "app-x", out.Get("X-App"))
+		require.Equal(t, "custom-value", out.Get("X-Custom"), "forward mode must pass non-whitelisted headers")
+		require.Empty(t, out.Get("Cookie"), "blacklist still applies")
+		require.Empty(t, out.Get("Authorization"), "blacklist still applies")
+		require.Empty(t, out.Get("X-Api-Key"), "blacklist still applies")
+	})
 }
 
 func TestShouldForwardClientUA_LegacyWhenAbsent(t *testing.T) {

@@ -6020,7 +6020,7 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 	if c != nil && c.Request != nil {
 		for key, values := range c.Request.Header {
 			lowerKey := strings.ToLower(strings.TrimSpace(key))
-			if !allowedHeaders[lowerKey] {
+			if !ShouldCopyClientHeader(ctx, lowerKey, func(k string) bool { return allowedHeaders[k] }) {
 				continue
 			}
 			wireKey := resolveWireCasing(key)
@@ -7254,11 +7254,12 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	if tokenType != "oauth" || !mimicClaudeCode {
 		for key, values := range clientHeaders {
 			lowerKey := strings.ToLower(key)
-			if allowedHeaders[lowerKey] {
-				wireKey := resolveWireCasing(key)
-				for _, v := range values {
-					addHeaderRaw(req.Header, wireKey, v)
-				}
+			if !ShouldCopyClientHeader(ctx, lowerKey, func(k string) bool { return allowedHeaders[k] }) {
+				continue
+			}
+			wireKey := resolveWireCasing(key)
+			for _, v := range values {
+				addHeaderRaw(req.Header, wireKey, v)
 			}
 		}
 
@@ -7400,9 +7401,21 @@ func (s *GatewayService) buildUpstreamRequestAnthropicVertex(
 	}
 
 	if c != nil && c.Request != nil {
+		// Vertex strips anthropic-version unconditionally (the upstream rejects
+		// it). That filter sits on top of the policy-aware predicate so it
+		// fires in both legacy whitelist mode and forward-mode.
+		vertexAllow := func(k string) bool {
+			if k == "anthropic-version" {
+				return false
+			}
+			return allowedHeaders[k]
+		}
 		for key, values := range c.Request.Header {
 			lowerKey := strings.ToLower(strings.TrimSpace(key))
-			if !allowedHeaders[lowerKey] || lowerKey == "anthropic-version" {
+			if lowerKey == "anthropic-version" {
+				continue
+			}
+			if !ShouldCopyClientHeader(ctx, lowerKey, vertexAllow) {
 				continue
 			}
 			wireKey := resolveWireCasing(key)
@@ -10480,7 +10493,7 @@ func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthrough(
 	if c != nil && c.Request != nil {
 		for key, values := range c.Request.Header {
 			lowerKey := strings.ToLower(strings.TrimSpace(key))
-			if !allowedHeaders[lowerKey] {
+			if !ShouldCopyClientHeader(ctx, lowerKey, func(k string) bool { return allowedHeaders[k] }) {
 				continue
 			}
 			wireKey := resolveWireCasing(key)
