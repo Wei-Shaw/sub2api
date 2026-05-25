@@ -76,6 +76,32 @@
       </div>
     </div>
 
+    <!-- GPT-5.5 fallback / unsupported indicators -->
+    <div v-if="showGPT55FallbackIndicator" class="group relative">
+      <span class="inline-flex items-center gap-1 rounded bg-sky-100 px-1.5 py-0.5 text-xs font-medium text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">
+        5.5→5.4
+      </span>
+      <div
+        class="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-60 -translate-x-1/2 whitespace-normal rounded bg-gray-900 px-3 py-2 text-center text-xs leading-relaxed text-white opacity-0 transition-opacity group-hover:opacity-100 dark:bg-gray-700"
+      >
+        {{ t('admin.accounts.status.gpt55FallbackEnabled') }}
+        <div class="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-gray-900 dark:border-t-gray-700"></div>
+      </div>
+    </div>
+
+    <div v-if="showGPT55UnsupportedIndicator" class="group relative">
+      <span class="inline-flex items-center gap-1 rounded bg-orange-100 px-1.5 py-0.5 text-xs font-medium text-orange-700 dark:bg-orange-900/30 dark:text-orange-300">
+        <Icon name="exclamationTriangle" size="xs" :stroke-width="2" />
+        5.5
+      </span>
+      <div
+        class="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-64 -translate-x-1/2 whitespace-normal rounded bg-gray-900 px-3 py-2 text-center text-xs leading-relaxed text-white opacity-0 transition-opacity group-hover:opacity-100 dark:bg-gray-700"
+      >
+        {{ gpt55UnsupportedTooltip }}
+        <div class="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-gray-900 dark:border-t-gray-700"></div>
+      </div>
+    </div>
+
     <!-- Model Status Indicators (普通限流 / 超量请求中) -->
     <div
       v-if="activeModelStatuses.length > 0"
@@ -252,6 +278,26 @@ const activeModelStatuses = computed<AccountModelStatusItem[]>(() => {
   }
 
   return items
+})
+
+const credentials = computed(() => props.account.credentials as Record<string, unknown> | undefined)
+
+const showGPT55FallbackIndicator = computed(() => {
+  return props.account.platform === 'openai' && props.account.type === 'oauth' && credentials.value?.gpt55_fallback_enabled === true
+})
+
+const showGPT55UnsupportedIndicator = computed(() => {
+  return props.account.platform === 'openai' &&
+    props.account.type === 'oauth' &&
+    credentials.value?.gpt55_disabled_reason === 'upstream_not_supported'
+})
+
+const gpt55UnsupportedTooltip = computed(() => {
+  const markedAt = credentials.value?.gpt55_disabled_at
+  if (typeof markedAt === 'string' && markedAt.trim()) {
+    return t('admin.accounts.status.gpt55UnsupportedAt', { time: formatDateTime(markedAt) })
+  }
+  return t('admin.accounts.status.gpt55Unsupported')
 })
 
 const formatScopeName = (scope: string): string => {

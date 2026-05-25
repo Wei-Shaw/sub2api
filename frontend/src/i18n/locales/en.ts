@@ -3002,6 +3002,9 @@ export default {
         modelCreditOveragesUntil: '{model} using AI Credits until {time}',
         creditsExhausted: 'Credits Exhausted',
         creditsExhaustedUntil: 'AI Credits exhausted, expected recovery at {time}',
+        gpt55FallbackEnabled: 'This account explicitly falls back GPT-5.5 scheduling to GPT-5.4',
+        gpt55Unsupported: 'Upstream marked this account as not supporting GPT-5.5',
+        gpt55UnsupportedAt: 'Upstream marked this account as not supporting GPT-5.5 at {time}',
         overloadedUntil: 'Overloaded until {time}',
         viewTempUnschedDetails: 'View temp unschedulable details'
       },
