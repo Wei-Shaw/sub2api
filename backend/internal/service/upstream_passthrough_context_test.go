@@ -276,6 +276,22 @@ func TestShouldCopyClientHeader_LoopPattern_LegacyVsForward(t *testing.T) {
 	})
 }
 
+func TestShouldForwardBetaFlags_LegacyWhenAbsent(t *testing.T) {
+	require.False(t, ShouldForwardBetaFlags(context.Background()))
+}
+
+func TestShouldForwardBetaFlags_PolicyFalseMatchesLegacy(t *testing.T) {
+	policy := EffectiveUpstreamPolicy{ForwardBetaFlags: false}
+	ctx := SetUpstreamPolicyInContext(context.Background(), &policy)
+	require.False(t, ShouldForwardBetaFlags(ctx))
+}
+
+func TestShouldForwardBetaFlags_PolicyTrueReturnsTrue(t *testing.T) {
+	policy := EffectiveUpstreamPolicy{ForwardBetaFlags: true}
+	ctx := SetUpstreamPolicyInContext(context.Background(), &policy)
+	require.True(t, ShouldForwardBetaFlags(ctx))
+}
+
 func TestShouldForwardClientUA_LegacyWhenAbsent(t *testing.T) {
 	require.False(t, ShouldForwardClientUA(context.Background()))
 }

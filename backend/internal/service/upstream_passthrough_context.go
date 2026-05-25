@@ -247,6 +247,32 @@ func ShouldCopyClientHeader(ctx context.Context, lowerKey string, legacyWhitelis
 	return legacyWhitelist(lowerKey)
 }
 
+// ShouldForwardBetaFlags reports whether downstream code should pass the
+// client's anthropic-beta / OpenAI-Beta header through to the upstream
+// without applying platform-decided beta merging, stripping, or injection
+// (e.g., the OAuth-required claude.BetaOAuth set or force_1m_context).
+//
+// Returns false (= keep legacy platform-decided beta logic) when:
+//   - No policy is in ctx (FeatureFlag OFF — preserves today's behavior)
+//   - A policy is in ctx with ForwardBetaFlags == false (Protected/Strict)
+//
+// Returns true only when a policy is present with ForwardBetaFlags == true
+// (Transparent profile — relay accounts whose upstream relay decides beta
+// semantics itself).
+//
+// Per spec §4.2, "true" means the platform's beta-decision block — including
+// the force_1m_context injection of context-1m-2025-08-07 — is skipped
+// entirely. Relay accounts whose upstream auto-enables 1M context are still
+// safe because they typically don't require sub2api to inject the beta flag
+// (the upstream handles its own gating).
+func ShouldForwardBetaFlags(ctx context.Context) bool {
+	p, ok := GetUpstreamPolicyFromContext(ctx)
+	if !ok {
+		return false
+	}
+	return p.ForwardBetaFlags
+}
+
 // ShouldForwardClientUA reports whether downstream code should preserve the
 // client's original User-Agent header on the upstream request instead of
 // substituting a platform-specific mimic value (e.g., Claude CLI UA on the

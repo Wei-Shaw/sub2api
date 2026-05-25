@@ -3259,7 +3259,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 		} else if req.Header.Get("accept") == "" {
 			req.Header.Set("accept", "text/event-stream")
 		}
-		if req.Header.Get("OpenAI-Beta") == "" {
+		if !ShouldForwardBetaFlags(ctx) && req.Header.Get("OpenAI-Beta") == "" {
 			req.Header.Set("OpenAI-Beta", "responses=experimental")
 		}
 		if req.Header.Get("originator") == "" {
@@ -3977,12 +3977,14 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 		req.Header.Del("conversation_id")
 		req.Header.Del("session_id")
 
-		if compatMessagesBridge {
-			req.Header.Del("OpenAI-Beta")
-			req.Header.Del("originator")
-		} else {
-			req.Header.Set("OpenAI-Beta", "responses=experimental")
-			req.Header.Set("originator", resolveOpenAIUpstreamOriginator(c, isCodexCLI))
+		if !ShouldForwardBetaFlags(ctx) {
+			if compatMessagesBridge {
+				req.Header.Del("OpenAI-Beta")
+				req.Header.Del("originator")
+			} else {
+				req.Header.Set("OpenAI-Beta", "responses=experimental")
+				req.Header.Set("originator", resolveOpenAIUpstreamOriginator(c, isCodexCLI))
+			}
 		}
 		apiKeyID := getAPIKeyIDFromContext(c)
 		// P0-3 §4.4 task 2：把 (sub2api_user, OpenAI) 维度的 MachineID 作为混入种子，

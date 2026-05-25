@@ -7282,69 +7282,80 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 		applyClaudeOAuthHeaderDefaults(req)
 	}
 
-	// Build effective drop set: merge static defaults with dynamic beta policy filter rules
-	policyFilterSet := s.getBetaPolicyFilterSet(ctx, c, account, modelID)
-	effectiveDropSet := mergeDropSets(policyFilterSet)
+	// OAuth + mimic: apply Claude Code mimic headers (UA, x-stainless-*, x-app, etc.)
+	// before the beta-decision block. These are independent of ForwardBetaFlags —
+	// the mimic identity scope is controlled by ForwardClientUA / ForwardClientHeaders,
+	// not by ForwardBetaFlags.
+	if tokenType == "oauth" && mimicClaudeCode {
+		applyClaudeCodeMimicHeaders(req, reqStream)
 
-	// 处理 anthropic-beta header（OAuth 账号需要包含 oauth beta）
-	if tokenType == "oauth" {
-		if mimicClaudeCode {
-			// 非 Claude Code 客户端：按 opencode 的策略处理：
-			// - 强制 Claude Code 指纹相关请求头（尤其是 user-agent/x-stainless/x-app）
-			// - 保留 incoming beta 的同时，确保 OAuth 所需 beta 存在
-			applyClaudeCodeMimicHeaders(req, reqStream)
-
-			// ForwardClientUA policy override: when the resolved policy says we
-			// must surface the client's real UA (relay/Transparent profile that
-			// happens to route through an OAuth account), restore the client UA
-			// after the mimic pass wrote the platform default. Sticky-session
-			// hashing is unaffected — it reads a normalized UA from the parsed
-			// request body/SessionContext, not the upstream wire UA.
-			if ShouldForwardClientUA(ctx) {
-				if clientUA := strings.TrimSpace(clientHeaders.Get("User-Agent")); clientUA != "" {
-					setHeaderRaw(req.Header, "User-Agent", clientUA)
-				}
-			}
-
-			incomingBeta := getHeaderRaw(req.Header, "anthropic-beta")
-			// Claude Code OAuth credentials are scoped to Claude Code.
-			// Non-haiku models MUST include claude-code beta for Anthropic to recognize
-			// this as a legitimate Claude Code request; without it, the request is
-			// rejected as third-party ("out of extra usage").
-			// Haiku models are exempt from third-party detection and don't need it.
-			requiredBetas := []string{claude.BetaOAuth, claude.BetaInterleavedThinking}
-			if !strings.Contains(strings.ToLower(modelID), "haiku") {
-				requiredBetas = claude.FullClaudeCodeMimicryBetas()
-			}
-			if bodyNeedsContextManagementBeta(body) {
-				requiredBetas = append(requiredBetas, claude.BetaContextManagement)
-			}
-			setHeaderRaw(req.Header, "anthropic-beta", mergeAnthropicBetaDropping(requiredBetas, incomingBeta, effectiveDropSet))
-		} else {
-			// Claude Code 客户端：尽量透传原始 header，仅补齐 oauth beta
-			clientBetaHeader := getHeaderRaw(req.Header, "anthropic-beta")
-			setHeaderRaw(req.Header, "anthropic-beta", stripBetaTokensWithSet(s.getBetaHeader(modelID, clientBetaHeader), effectiveDropSet))
-		}
-	} else {
-		// API-key accounts: apply beta policy filter to strip controlled tokens
-		if existingBeta := getHeaderRaw(req.Header, "anthropic-beta"); existingBeta != "" {
-			setHeaderRaw(req.Header, "anthropic-beta", stripBetaTokensWithSet(existingBeta, effectiveDropSet))
-		} else if s.cfg != nil && s.cfg.Gateway.InjectBetaForAPIKey {
-			// API-key：仅在请求显式使用 beta 特性且客户端未提供时，按需补齐（默认关闭）
-			if requestNeedsBetaFeatures(body) {
-				if beta := defaultAPIKeyBetaHeader(body); beta != "" {
-					setHeaderRaw(req.Header, "anthropic-beta", beta)
-				}
+		// ForwardClientUA policy override: when the resolved policy says we
+		// must surface the client's real UA (relay/Transparent profile that
+		// happens to route through an OAuth account), restore the client UA
+		// after the mimic pass wrote the platform default. Sticky-session
+		// hashing is unaffected — it reads a normalized UA from the parsed
+		// request body/SessionContext, not the upstream wire UA.
+		if ShouldForwardClientUA(ctx) {
+			if clientUA := strings.TrimSpace(clientHeaders.Get("User-Agent")); clientUA != "" {
+				setHeaderRaw(req.Header, "User-Agent", clientUA)
 			}
 		}
 	}
 
-	// Force 1M context beta when the account is configured for it.
-	// Some upstreams (e.g. anyrouter) auto-enable 1M context and reject
-	// requests that omit `context-1m-2025-08-07`, regardless of model.
-	if account != nil && account.ForceContext1M() {
-		current := getHeaderRaw(req.Header, "anthropic-beta")
-		setHeaderRaw(req.Header, "anthropic-beta", mergeAnthropicBetaDropping([]string{claude.BetaContext1M}, current, nil))
+	// ForwardBetaFlags policy override: when the resolved policy says forward
+	// (Transparent / relay accounts), trust the client-supplied anthropic-beta
+	// header verbatim and skip every platform-decided beta merge/strip/inject
+	// path below (including force_1m_context). The client beta is already in
+	// req.Header via the upstream header-copy loop above (anthropic-beta is in
+	// the legacy whitelist and is never blacklisted).
+	if !ShouldForwardBetaFlags(ctx) {
+		// Build effective drop set: merge static defaults with dynamic beta policy filter rules
+		policyFilterSet := s.getBetaPolicyFilterSet(ctx, c, account, modelID)
+		effectiveDropSet := mergeDropSets(policyFilterSet)
+
+		// 处理 anthropic-beta header（OAuth 账号需要包含 oauth beta）
+		if tokenType == "oauth" {
+			if mimicClaudeCode {
+				incomingBeta := getHeaderRaw(req.Header, "anthropic-beta")
+				// Claude Code OAuth credentials are scoped to Claude Code.
+				// Non-haiku models MUST include claude-code beta for Anthropic to recognize
+				// this as a legitimate Claude Code request; without it, the request is
+				// rejected as third-party ("out of extra usage").
+				// Haiku models are exempt from third-party detection and don't need it.
+				requiredBetas := []string{claude.BetaOAuth, claude.BetaInterleavedThinking}
+				if !strings.Contains(strings.ToLower(modelID), "haiku") {
+					requiredBetas = claude.FullClaudeCodeMimicryBetas()
+				}
+				if bodyNeedsContextManagementBeta(body) {
+					requiredBetas = append(requiredBetas, claude.BetaContextManagement)
+				}
+				setHeaderRaw(req.Header, "anthropic-beta", mergeAnthropicBetaDropping(requiredBetas, incomingBeta, effectiveDropSet))
+			} else {
+				// Claude Code 客户端：尽量透传原始 header，仅补齐 oauth beta
+				clientBetaHeader := getHeaderRaw(req.Header, "anthropic-beta")
+				setHeaderRaw(req.Header, "anthropic-beta", stripBetaTokensWithSet(s.getBetaHeader(modelID, clientBetaHeader), effectiveDropSet))
+			}
+		} else {
+			// API-key accounts: apply beta policy filter to strip controlled tokens
+			if existingBeta := getHeaderRaw(req.Header, "anthropic-beta"); existingBeta != "" {
+				setHeaderRaw(req.Header, "anthropic-beta", stripBetaTokensWithSet(existingBeta, effectiveDropSet))
+			} else if s.cfg != nil && s.cfg.Gateway.InjectBetaForAPIKey {
+				// API-key：仅在请求显式使用 beta 特性且客户端未提供时，按需补齐（默认关闭）
+				if requestNeedsBetaFeatures(body) {
+					if beta := defaultAPIKeyBetaHeader(body); beta != "" {
+						setHeaderRaw(req.Header, "anthropic-beta", beta)
+					}
+				}
+			}
+		}
+
+		// Force 1M context beta when the account is configured for it.
+		// Some upstreams (e.g. anyrouter) auto-enable 1M context and reject
+		// requests that omit `context-1m-2025-08-07`, regardless of model.
+		if account != nil && account.ForceContext1M() {
+			current := getHeaderRaw(req.Header, "anthropic-beta")
+			setHeaderRaw(req.Header, "anthropic-beta", mergeAnthropicBetaDropping([]string{claude.BetaContext1M}, current, nil))
+		}
 	}
 
 	// 同步 X-Claude-Code-Session-Id 头：取 body 中已处理的 metadata.user_id 的 session_id 覆盖
