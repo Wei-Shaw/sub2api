@@ -1494,6 +1494,39 @@ var (
 			},
 		},
 	}
+	// UserAllowedAccountsColumns holds the columns for the "user_allowed_accounts" table.
+	UserAllowedAccountsColumns = []*schema.Column{
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "account_id", Type: field.TypeInt64},
+	}
+	// UserAllowedAccountsTable holds the schema information for the "user_allowed_accounts" table.
+	UserAllowedAccountsTable = &schema.Table{
+		Name:       "user_allowed_accounts",
+		Columns:    UserAllowedAccountsColumns,
+		PrimaryKey: []*schema.Column{UserAllowedAccountsColumns[1], UserAllowedAccountsColumns[2]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "user_allowed_accounts_users_user",
+				Columns:    []*schema.Column{UserAllowedAccountsColumns[1]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "user_allowed_accounts_accounts_account",
+				Columns:    []*schema.Column{UserAllowedAccountsColumns[2]},
+				RefColumns: []*schema.Column{AccountsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "userallowedaccount_account_id",
+				Unique:  false,
+				Columns: []*schema.Column{UserAllowedAccountsColumns[2]},
+			},
+		},
+	}
 	// UserAllowedGroupsColumns holds the columns for the "user_allowed_groups" table.
 	UserAllowedGroupsColumns = []*schema.Column{
 		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
@@ -1734,6 +1767,7 @@ var (
 		UsageCleanupTasksTable,
 		UsageLogsTable,
 		UsersTable,
+		UserAllowedAccountsTable,
 		UserAllowedGroupsTable,
 		UserAttributeDefinitionsTable,
 		UserAttributeValuesTable,
@@ -1856,6 +1890,11 @@ func init() {
 	}
 	UsersTable.Annotation = &entsql.Annotation{
 		Table: "users",
+	}
+	UserAllowedAccountsTable.ForeignKeys[0].RefTable = UsersTable
+	UserAllowedAccountsTable.ForeignKeys[1].RefTable = AccountsTable
+	UserAllowedAccountsTable.Annotation = &entsql.Annotation{
+		Table: "user_allowed_accounts",
 	}
 	UserAllowedGroupsTable.ForeignKeys[0].RefTable = UsersTable
 	UserAllowedGroupsTable.ForeignKeys[1].RefTable = GroupsTable

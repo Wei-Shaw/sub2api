@@ -89,11 +89,15 @@ type AccountEdges struct {
 	Proxy *Proxy `json:"proxy,omitempty"`
 	// UsageLogs holds the value of the usage_logs edge.
 	UsageLogs []*UsageLog `json:"usage_logs,omitempty"`
+	// AllowedUsageViewers holds the value of the allowed_usage_viewers edge.
+	AllowedUsageViewers []*User `json:"allowed_usage_viewers,omitempty"`
 	// AccountGroups holds the value of the account_groups edge.
 	AccountGroups []*AccountGroup `json:"account_groups,omitempty"`
+	// UserAllowedAccounts holds the value of the user_allowed_accounts edge.
+	UserAllowedAccounts []*UserAllowedAccount `json:"user_allowed_accounts,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [4]bool
+	loadedTypes [6]bool
 }
 
 // GroupsOrErr returns the Groups value or an error if the edge
@@ -125,13 +129,31 @@ func (e AccountEdges) UsageLogsOrErr() ([]*UsageLog, error) {
 	return nil, &NotLoadedError{edge: "usage_logs"}
 }
 
+// AllowedUsageViewersOrErr returns the AllowedUsageViewers value or an error if the edge
+// was not loaded in eager-loading.
+func (e AccountEdges) AllowedUsageViewersOrErr() ([]*User, error) {
+	if e.loadedTypes[3] {
+		return e.AllowedUsageViewers, nil
+	}
+	return nil, &NotLoadedError{edge: "allowed_usage_viewers"}
+}
+
 // AccountGroupsOrErr returns the AccountGroups value or an error if the edge
 // was not loaded in eager-loading.
 func (e AccountEdges) AccountGroupsOrErr() ([]*AccountGroup, error) {
-	if e.loadedTypes[3] {
+	if e.loadedTypes[4] {
 		return e.AccountGroups, nil
 	}
 	return nil, &NotLoadedError{edge: "account_groups"}
+}
+
+// UserAllowedAccountsOrErr returns the UserAllowedAccounts value or an error if the edge
+// was not loaded in eager-loading.
+func (e AccountEdges) UserAllowedAccountsOrErr() ([]*UserAllowedAccount, error) {
+	if e.loadedTypes[5] {
+		return e.UserAllowedAccounts, nil
+	}
+	return nil, &NotLoadedError{edge: "user_allowed_accounts"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -387,9 +409,19 @@ func (_m *Account) QueryUsageLogs() *UsageLogQuery {
 	return NewAccountClient(_m.config).QueryUsageLogs(_m)
 }
 
+// QueryAllowedUsageViewers queries the "allowed_usage_viewers" edge of the Account entity.
+func (_m *Account) QueryAllowedUsageViewers() *UserQuery {
+	return NewAccountClient(_m.config).QueryAllowedUsageViewers(_m)
+}
+
 // QueryAccountGroups queries the "account_groups" edge of the Account entity.
 func (_m *Account) QueryAccountGroups() *AccountGroupQuery {
 	return NewAccountClient(_m.config).QueryAccountGroups(_m)
+}
+
+// QueryUserAllowedAccounts queries the "user_allowed_accounts" edge of the Account entity.
+func (_m *Account) QueryUserAllowedAccounts() *UserAllowedAccountQuery {
+	return NewAccountClient(_m.config).QueryUserAllowedAccounts(_m)
 }
 
 // Update returns a builder for updating this Account.

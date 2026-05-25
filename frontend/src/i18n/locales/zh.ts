@@ -1923,6 +1923,10 @@ export default {
       allowedGroupsUpdated: '允许分组更新成功',
       failedToLoadGroups: '加载分组列表失败',
       failedToUpdateAllowedGroups: '更新允许分组失败',
+      allowedAccounts: '允许查看账号',
+      allowedAccountsHint: '仅用量查看员生效；未选择账号时不能查看任何账号用量。',
+      noAccountsAvailable: '暂无账号',
+      failedToLoadAccounts: '加载账号列表失败',
       // 用户分组配置
       groupConfig: '用户分组配置',
       groupConfigHint: '为用户 {email} 配置专属分组倍率（覆盖分组默认倍率）',

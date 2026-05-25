@@ -39,6 +39,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
+	"github.com/Wei-Shaw/sub2api/ent/userallowedaccount"
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/ent/userattributedefinition"
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
@@ -911,6 +912,33 @@ func (f TraverseUser) Traverse(ctx context.Context, q ent.Query) error {
 	return fmt.Errorf("unexpected query type %T. expect *ent.UserQuery", q)
 }
 
+// The UserAllowedAccountFunc type is an adapter to allow the use of ordinary function as a Querier.
+type UserAllowedAccountFunc func(context.Context, *ent.UserAllowedAccountQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f UserAllowedAccountFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.UserAllowedAccountQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.UserAllowedAccountQuery", q)
+}
+
+// The TraverseUserAllowedAccount type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseUserAllowedAccount func(context.Context, *ent.UserAllowedAccountQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseUserAllowedAccount) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseUserAllowedAccount) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.UserAllowedAccountQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.UserAllowedAccountQuery", q)
+}
+
 // The UserAllowedGroupFunc type is an adapter to allow the use of ordinary function as a Querier.
 type UserAllowedGroupFunc func(context.Context, *ent.UserAllowedGroupQuery) (ent.Value, error)
 
@@ -1082,6 +1110,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.UsageLogQuery, predicate.UsageLog, usagelog.OrderOption]{typ: ent.TypeUsageLog, tq: q}, nil
 	case *ent.UserQuery:
 		return &query[*ent.UserQuery, predicate.User, user.OrderOption]{typ: ent.TypeUser, tq: q}, nil
+	case *ent.UserAllowedAccountQuery:
+		return &query[*ent.UserAllowedAccountQuery, predicate.UserAllowedAccount, userallowedaccount.OrderOption]{typ: ent.TypeUserAllowedAccount, tq: q}, nil
 	case *ent.UserAllowedGroupQuery:
 		return &query[*ent.UserAllowedGroupQuery, predicate.UserAllowedGroup, userallowedgroup.OrderOption]{typ: ent.TypeUserAllowedGroup, tq: q}, nil
 	case *ent.UserAttributeDefinitionQuery:

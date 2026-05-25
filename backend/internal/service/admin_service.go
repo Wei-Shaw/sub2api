@@ -116,27 +116,29 @@ type AdminService interface {
 
 // CreateUserInput represents input for creating a new user via admin operations.
 type CreateUserInput struct {
-	Email         string
-	Password      string
-	Username      string
-	Notes         string
-	Balance       float64
-	Concurrency   int
-	RPMLimit      int
-	AllowedGroups []int64
+	Email           string
+	Password        string
+	Username        string
+	Notes           string
+	Balance         float64
+	Concurrency     int
+	RPMLimit        int
+	AllowedGroups   []int64
+	AllowedAccounts []int64
 }
 
 type UpdateUserInput struct {
-	Email         string
-	Password      string
-	Username      *string
-	Notes         *string
-	Balance       *float64 // 使用指针区分"未提供"和"设置为0"
-	Concurrency   *int     // 使用指针区分"未提供"和"设置为0"
-	RPMLimit      *int     // 使用指针区分"未提供"和"设置为0"
-	Status        string
-	Role          string
-	AllowedGroups *[]int64 // 使用指针区分"未提供"和"设置为空数组"
+	Email           string
+	Password        string
+	Username        *string
+	Notes           *string
+	Balance         *float64 // 使用指针区分"未提供"和"设置为0"
+	Concurrency     *int     // 使用指针区分"未提供"和"设置为0"
+	RPMLimit        *int     // 使用指针区分"未提供"和"设置为0"
+	Status          string
+	Role            string
+	AllowedGroups   *[]int64 // 使用指针区分"未提供"和"设置为空数组"
+	AllowedAccounts *[]int64 // usage_viewer 可查看账号 ID，nil 表示未提供
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]*rate，nil 表示删除该分组的专属倍率
 	GroupRates map[int64]*float64
@@ -669,15 +671,16 @@ func (s *adminServiceImpl) GetUser(ctx context.Context, id int64) (*User, error)
 
 func (s *adminServiceImpl) CreateUser(ctx context.Context, input *CreateUserInput) (*User, error) {
 	user := &User{
-		Email:         input.Email,
-		Username:      input.Username,
-		Notes:         input.Notes,
-		Role:          RoleUser, // Always create as regular user, never admin
-		Balance:       input.Balance,
-		Concurrency:   input.Concurrency,
-		RPMLimit:      input.RPMLimit,
-		Status:        StatusActive,
-		AllowedGroups: input.AllowedGroups,
+		Email:           input.Email,
+		Username:        input.Username,
+		Notes:           input.Notes,
+		Role:            RoleUser, // Always create as regular user, never admin
+		Balance:         input.Balance,
+		Concurrency:     input.Concurrency,
+		RPMLimit:        input.RPMLimit,
+		Status:          StatusActive,
+		AllowedGroups:   input.AllowedGroups,
+		AllowedAccounts: input.AllowedAccounts,
 	}
 	if err := user.SetPassword(input.Password); err != nil {
 		return nil, err
@@ -769,6 +772,9 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 
 	if input.AllowedGroups != nil {
 		user.AllowedGroups = *input.AllowedGroups
+	}
+	if input.AllowedAccounts != nil {
+		user.AllowedAccounts = *input.AllowedAccounts
 	}
 
 	if err := s.userRepo.Update(ctx, user); err != nil {

@@ -1862,6 +1862,10 @@ export default {
       allowedGroupsUpdated: 'Allowed groups updated successfully',
       failedToLoadGroups: 'Failed to load groups',
       failedToUpdateAllowedGroups: 'Failed to update allowed groups',
+      allowedAccounts: 'Allowed Accounts',
+      allowedAccountsHint: 'Only applies to usage viewers. If empty, no account usage is visible.',
+      noAccountsAvailable: 'No accounts available',
+      failedToLoadAccounts: 'Failed to load accounts',
       // User Group Configuration
       groupConfig: 'User Group Configuration',
       groupConfigHint: 'Configure custom rate multipliers for user {email} (overrides group defaults)',

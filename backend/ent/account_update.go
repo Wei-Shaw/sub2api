@@ -16,6 +16,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
+	"github.com/Wei-Shaw/sub2api/ent/user"
 )
 
 // AccountUpdate is the builder for updating Account entities.
@@ -538,6 +539,21 @@ func (_u *AccountUpdate) AddUsageLogs(v ...*UsageLog) *AccountUpdate {
 	return _u.AddUsageLogIDs(ids...)
 }
 
+// AddAllowedUsageViewerIDs adds the "allowed_usage_viewers" edge to the User entity by IDs.
+func (_u *AccountUpdate) AddAllowedUsageViewerIDs(ids ...int64) *AccountUpdate {
+	_u.mutation.AddAllowedUsageViewerIDs(ids...)
+	return _u
+}
+
+// AddAllowedUsageViewers adds the "allowed_usage_viewers" edges to the User entity.
+func (_u *AccountUpdate) AddAllowedUsageViewers(v ...*User) *AccountUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddAllowedUsageViewerIDs(ids...)
+}
+
 // Mutation returns the AccountMutation object of the builder.
 func (_u *AccountUpdate) Mutation() *AccountMutation {
 	return _u.mutation
@@ -589,6 +605,27 @@ func (_u *AccountUpdate) RemoveUsageLogs(v ...*UsageLog) *AccountUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveUsageLogIDs(ids...)
+}
+
+// ClearAllowedUsageViewers clears all "allowed_usage_viewers" edges to the User entity.
+func (_u *AccountUpdate) ClearAllowedUsageViewers() *AccountUpdate {
+	_u.mutation.ClearAllowedUsageViewers()
+	return _u
+}
+
+// RemoveAllowedUsageViewerIDs removes the "allowed_usage_viewers" edge to User entities by IDs.
+func (_u *AccountUpdate) RemoveAllowedUsageViewerIDs(ids ...int64) *AccountUpdate {
+	_u.mutation.RemoveAllowedUsageViewerIDs(ids...)
+	return _u
+}
+
+// RemoveAllowedUsageViewers removes "allowed_usage_viewers" edges to User entities.
+func (_u *AccountUpdate) RemoveAllowedUsageViewers(v ...*User) *AccountUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveAllowedUsageViewerIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -936,6 +973,63 @@ func (_u *AccountUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		for _, k := range nodes {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.AllowedUsageViewersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   account.AllowedUsageViewersTable,
+			Columns: account.AllowedUsageViewersPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
+			},
+		}
+		createE := &UserAllowedAccountCreate{config: _u.config, mutation: newUserAllowedAccountMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedAllowedUsageViewersIDs(); len(nodes) > 0 && !_u.mutation.AllowedUsageViewersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   account.AllowedUsageViewersTable,
+			Columns: account.AllowedUsageViewersPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &UserAllowedAccountCreate{config: _u.config, mutation: newUserAllowedAccountMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.AllowedUsageViewersIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   account.AllowedUsageViewersTable,
+			Columns: account.AllowedUsageViewersPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &UserAllowedAccountCreate{config: _u.config, mutation: newUserAllowedAccountMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
@@ -1465,6 +1559,21 @@ func (_u *AccountUpdateOne) AddUsageLogs(v ...*UsageLog) *AccountUpdateOne {
 	return _u.AddUsageLogIDs(ids...)
 }
 
+// AddAllowedUsageViewerIDs adds the "allowed_usage_viewers" edge to the User entity by IDs.
+func (_u *AccountUpdateOne) AddAllowedUsageViewerIDs(ids ...int64) *AccountUpdateOne {
+	_u.mutation.AddAllowedUsageViewerIDs(ids...)
+	return _u
+}
+
+// AddAllowedUsageViewers adds the "allowed_usage_viewers" edges to the User entity.
+func (_u *AccountUpdateOne) AddAllowedUsageViewers(v ...*User) *AccountUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddAllowedUsageViewerIDs(ids...)
+}
+
 // Mutation returns the AccountMutation object of the builder.
 func (_u *AccountUpdateOne) Mutation() *AccountMutation {
 	return _u.mutation
@@ -1516,6 +1625,27 @@ func (_u *AccountUpdateOne) RemoveUsageLogs(v ...*UsageLog) *AccountUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveUsageLogIDs(ids...)
+}
+
+// ClearAllowedUsageViewers clears all "allowed_usage_viewers" edges to the User entity.
+func (_u *AccountUpdateOne) ClearAllowedUsageViewers() *AccountUpdateOne {
+	_u.mutation.ClearAllowedUsageViewers()
+	return _u
+}
+
+// RemoveAllowedUsageViewerIDs removes the "allowed_usage_viewers" edge to User entities by IDs.
+func (_u *AccountUpdateOne) RemoveAllowedUsageViewerIDs(ids ...int64) *AccountUpdateOne {
+	_u.mutation.RemoveAllowedUsageViewerIDs(ids...)
+	return _u
+}
+
+// RemoveAllowedUsageViewers removes "allowed_usage_viewers" edges to User entities.
+func (_u *AccountUpdateOne) RemoveAllowedUsageViewers(v ...*User) *AccountUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveAllowedUsageViewerIDs(ids...)
 }
 
 // Where appends a list predicates to the AccountUpdate builder.
@@ -1893,6 +2023,63 @@ func (_u *AccountUpdateOne) sqlSave(ctx context.Context) (_node *Account, err er
 		for _, k := range nodes {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.AllowedUsageViewersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   account.AllowedUsageViewersTable,
+			Columns: account.AllowedUsageViewersPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
+			},
+		}
+		createE := &UserAllowedAccountCreate{config: _u.config, mutation: newUserAllowedAccountMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedAllowedUsageViewersIDs(); len(nodes) > 0 && !_u.mutation.AllowedUsageViewersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   account.AllowedUsageViewersTable,
+			Columns: account.AllowedUsageViewersPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &UserAllowedAccountCreate{config: _u.config, mutation: newUserAllowedAccountMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.AllowedUsageViewersIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   account.AllowedUsageViewersTable,
+			Columns: account.AllowedUsageViewersPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		createE := &UserAllowedAccountCreate{config: _u.config, mutation: newUserAllowedAccountMutation(_u.config, OpCreate)}
+		createE.defaults()
+		_, specE := createE.createSpec()
+		edge.Target.Fields = specE.Fields
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
 	_node = &Account{config: _u.config}

@@ -17,6 +17,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
+	"github.com/Wei-Shaw/sub2api/ent/userallowedaccount"
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -102,6 +103,9 @@ func (r *userRepository) Create(ctx context.Context, userIn *service.User) error
 	if err := r.syncUserAllowedGroupsWithClient(txCtx, txClient, created.ID, userIn.AllowedGroups); err != nil {
 		return err
 	}
+	if err := r.syncUserAllowedAccountsWithClient(txCtx, txClient, created.ID, userIn.AllowedAccounts); err != nil {
+		return err
+	}
 	if err := ensureEmailAuthIdentityWithClient(txCtx, txClient, created.ID, created.Email, "user_repo_create"); err != nil {
 		return err
 	}
@@ -130,6 +134,13 @@ func (r *userRepository) GetByID(ctx context.Context, id int64) (*service.User, 
 	if v, ok := groups[id]; ok {
 		out.AllowedGroups = v
 	}
+	accounts, err := r.loadAllowedAccounts(ctx, []int64{id})
+	if err != nil {
+		return nil, err
+	}
+	if v, ok := accounts[id]; ok {
+		out.AllowedAccounts = v
+	}
 	return out, nil
 }
 
@@ -156,6 +167,13 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*service
 	}
 	if v, ok := groups[m.ID]; ok {
 		out.AllowedGroups = v
+	}
+	accounts, err := r.loadAllowedAccounts(ctx, []int64{m.ID})
+	if err != nil {
+		return nil, err
+	}
+	if v, ok := accounts[m.ID]; ok {
+		out.AllowedAccounts = v
 	}
 	return out, nil
 }
@@ -240,6 +258,9 @@ func (r *userRepository) Update(ctx context.Context, userIn *service.User) error
 	}
 
 	if err := r.syncUserAllowedGroupsWithClient(txCtx, txClient, updated.ID, userIn.AllowedGroups); err != nil {
+		return err
+	}
+	if err := r.syncUserAllowedAccountsWithClient(txCtx, txClient, updated.ID, userIn.AllowedAccounts); err != nil {
 		return err
 	}
 	if err := replaceEmailAuthIdentityWithClient(txCtx, txClient, updated.ID, oldEmail, updated.Email, "user_repo_update"); err != nil {
@@ -504,6 +525,16 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 	for id, u := range userMap {
 		if groups, ok := allowedGroupsByUser[id]; ok {
 			u.AllowedGroups = groups
+		}
+	}
+
+	allowedAccountsByUser, err := r.loadAllowedAccounts(ctx, userIDs)
+	if err != nil {
+		return nil, nil, err
+	}
+	for id, u := range userMap {
+		if accounts, ok := allowedAccountsByUser[id]; ok {
+			u.AllowedAccounts = accounts
 		}
 	}
 
@@ -874,6 +905,13 @@ func (r *userRepository) GetFirstAdmin(ctx context.Context) (*service.User, erro
 	if v, ok := groups[m.ID]; ok {
 		out.AllowedGroups = v
 	}
+	accounts, err := r.loadAllowedAccounts(ctx, []int64{m.ID})
+	if err != nil {
+		return nil, err
+	}
+	if v, ok := accounts[m.ID]; ok {
+		out.AllowedAccounts = v
+	}
 	return out, nil
 }
 
@@ -892,6 +930,30 @@ func (r *userRepository) loadAllowedGroups(ctx context.Context, userIDs []int64)
 
 	for i := range rows {
 		out[rows[i].UserID] = append(out[rows[i].UserID], rows[i].GroupID)
+	}
+
+	for userID := range out {
+		sort.Slice(out[userID], func(i, j int) bool { return out[userID][i] < out[userID][j] })
+	}
+
+	return out, nil
+}
+
+func (r *userRepository) loadAllowedAccounts(ctx context.Context, userIDs []int64) (map[int64][]int64, error) {
+	out := make(map[int64][]int64, len(userIDs))
+	if len(userIDs) == 0 {
+		return out, nil
+	}
+
+	rows, err := r.client.UserAllowedAccount.Query().
+		Where(userallowedaccount.UserIDIn(userIDs...)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range rows {
+		out[rows[i].UserID] = append(out[rows[i].UserID], rows[i].AccountID)
 	}
 
 	for userID := range out {
@@ -936,6 +998,45 @@ func (r *userRepository) syncUserAllowedGroupsWithClient(ctx context.Context, cl
 			}
 			return err
 		}
+	}
+
+	return nil
+}
+
+func (r *userRepository) syncUserAllowedAccountsWithClient(ctx context.Context, client *dbent.Client, userID int64, accountIDs []int64) error {
+	if client == nil {
+		return nil
+	}
+
+	if _, err := client.UserAllowedAccount.Delete().Where(userallowedaccount.UserIDEQ(userID)).Exec(ctx); err != nil {
+		return err
+	}
+
+	unique := make(map[int64]struct{}, len(accountIDs))
+	for _, id := range accountIDs {
+		if id <= 0 {
+			continue
+		}
+		unique[id] = struct{}{}
+	}
+
+	if len(unique) == 0 {
+		return nil
+	}
+
+	creates := make([]*dbent.UserAllowedAccountCreate, 0, len(unique))
+	for accountID := range unique {
+		creates = append(creates, client.UserAllowedAccount.Create().SetUserID(userID).SetAccountID(accountID))
+	}
+	if err := client.UserAllowedAccount.
+		CreateBulk(creates...).
+		OnConflictColumns(userallowedaccount.FieldUserID, userallowedaccount.FieldAccountID).
+		DoNothing().
+		Exec(ctx); err != nil {
+		if isSQLNoRowsError(err) {
+			return nil
+		}
+		return err
 	}
 
 	return nil

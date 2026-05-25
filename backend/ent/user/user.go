@@ -73,6 +73,8 @@ const (
 	EdgeAnnouncementReads = "announcement_reads"
 	// EdgeAllowedGroups holds the string denoting the allowed_groups edge name in mutations.
 	EdgeAllowedGroups = "allowed_groups"
+	// EdgeAllowedAccounts holds the string denoting the allowed_accounts edge name in mutations.
+	EdgeAllowedAccounts = "allowed_accounts"
 	// EdgeUsageLogs holds the string denoting the usage_logs edge name in mutations.
 	EdgeUsageLogs = "usage_logs"
 	// EdgeAttributeValues holds the string denoting the attribute_values edge name in mutations.
@@ -87,6 +89,8 @@ const (
 	EdgePendingAuthSessions = "pending_auth_sessions"
 	// EdgeUserAllowedGroups holds the string denoting the user_allowed_groups edge name in mutations.
 	EdgeUserAllowedGroups = "user_allowed_groups"
+	// EdgeUserAllowedAccounts holds the string denoting the user_allowed_accounts edge name in mutations.
+	EdgeUserAllowedAccounts = "user_allowed_accounts"
 	// Table holds the table name of the user in the database.
 	Table = "users"
 	// APIKeysTable is the table that holds the api_keys relation/edge.
@@ -129,6 +133,11 @@ const (
 	// AllowedGroupsInverseTable is the table name for the Group entity.
 	// It exists in this package in order to avoid circular dependency with the "group" package.
 	AllowedGroupsInverseTable = "groups"
+	// AllowedAccountsTable is the table that holds the allowed_accounts relation/edge. The primary key declared below.
+	AllowedAccountsTable = "user_allowed_accounts"
+	// AllowedAccountsInverseTable is the table name for the Account entity.
+	// It exists in this package in order to avoid circular dependency with the "account" package.
+	AllowedAccountsInverseTable = "accounts"
 	// UsageLogsTable is the table that holds the usage_logs relation/edge.
 	UsageLogsTable = "usage_logs"
 	// UsageLogsInverseTable is the table name for the UsageLog entity.
@@ -178,6 +187,13 @@ const (
 	UserAllowedGroupsInverseTable = "user_allowed_groups"
 	// UserAllowedGroupsColumn is the table column denoting the user_allowed_groups relation/edge.
 	UserAllowedGroupsColumn = "user_id"
+	// UserAllowedAccountsTable is the table that holds the user_allowed_accounts relation/edge.
+	UserAllowedAccountsTable = "user_allowed_accounts"
+	// UserAllowedAccountsInverseTable is the table name for the UserAllowedAccount entity.
+	// It exists in this package in order to avoid circular dependency with the "userallowedaccount" package.
+	UserAllowedAccountsInverseTable = "user_allowed_accounts"
+	// UserAllowedAccountsColumn is the table column denoting the user_allowed_accounts relation/edge.
+	UserAllowedAccountsColumn = "user_id"
 )
 
 // Columns holds all SQL columns for user fields.
@@ -212,6 +228,9 @@ var (
 	// AllowedGroupsPrimaryKey and AllowedGroupsColumn2 are the table columns denoting the
 	// primary key for the allowed_groups relation (M2M).
 	AllowedGroupsPrimaryKey = []string{"user_id", "group_id"}
+	// AllowedAccountsPrimaryKey and AllowedAccountsColumn2 are the table columns denoting the
+	// primary key for the allowed_accounts relation (M2M).
+	AllowedAccountsPrimaryKey = []string{"user_id", "account_id"}
 )
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -485,6 +504,20 @@ func ByAllowedGroups(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByAllowedAccountsCount orders the results by allowed_accounts count.
+func ByAllowedAccountsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newAllowedAccountsStep(), opts...)
+	}
+}
+
+// ByAllowedAccounts orders the results by allowed_accounts terms.
+func ByAllowedAccounts(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newAllowedAccountsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByUsageLogsCount orders the results by usage_logs count.
 func ByUsageLogsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -582,6 +615,20 @@ func ByUserAllowedGroups(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption
 		sqlgraph.OrderByNeighborTerms(s, newUserAllowedGroupsStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
+
+// ByUserAllowedAccountsCount orders the results by user_allowed_accounts count.
+func ByUserAllowedAccountsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newUserAllowedAccountsStep(), opts...)
+	}
+}
+
+// ByUserAllowedAccounts orders the results by user_allowed_accounts terms.
+func ByUserAllowedAccounts(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newUserAllowedAccountsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
 func newAPIKeysStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -622,6 +669,13 @@ func newAllowedGroupsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(AllowedGroupsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2M, false, AllowedGroupsTable, AllowedGroupsPrimaryKey...),
+	)
+}
+func newAllowedAccountsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(AllowedAccountsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2M, false, AllowedAccountsTable, AllowedAccountsPrimaryKey...),
 	)
 }
 func newUsageLogsStep() *sqlgraph.Step {
@@ -671,5 +725,12 @@ func newUserAllowedGroupsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(UserAllowedGroupsInverseTable, UserAllowedGroupsColumn),
 		sqlgraph.Edge(sqlgraph.O2M, true, UserAllowedGroupsTable, UserAllowedGroupsColumn),
+	)
+}
+func newUserAllowedAccountsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(UserAllowedAccountsInverseTable, UserAllowedAccountsColumn),
+		sqlgraph.Edge(sqlgraph.O2M, true, UserAllowedAccountsTable, UserAllowedAccountsColumn),
 	)
 }

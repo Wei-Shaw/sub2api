@@ -11,6 +11,7 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,11 +26,14 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
+	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/sync/errgroup"
 )
+
+var errUsageViewerAccountForbidden = infraerrors.Forbidden("USAGE_VIEWER_ACCOUNT_FORBIDDEN", "account is not allowed for this usage viewer")
 
 // OAuthHandler handles OAuth-related operations for accounts
 type OAuthHandler struct {
@@ -222,6 +226,66 @@ func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, ac
 	return item
 }
 
+func (h *AccountHandler) usageViewerAllowedAccountIDs(c *gin.Context) ([]int64, bool, error) {
+	role, ok := middleware.GetUserRoleFromContext(c)
+	if !ok || role != service.RoleUsageViewer {
+		return nil, false, nil
+	}
+
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok || subject.UserID <= 0 {
+		return nil, true, infraerrors.Unauthorized("UNAUTHORIZED", "user not found in context")
+	}
+
+	user, err := h.adminService.GetUser(c.Request.Context(), subject.UserID)
+	if err != nil {
+		return nil, true, err
+	}
+	return normalizeInt64IDList(user.AllowedAccounts), true, nil
+}
+
+func allowedAccountSet(accountIDs []int64) map[int64]struct{} {
+	out := make(map[int64]struct{}, len(accountIDs))
+	for _, id := range accountIDs {
+		if id > 0 {
+			out[id] = struct{}{}
+		}
+	}
+	return out
+}
+
+func filterAllowedAccountIDs(requestedIDs []int64, allowedIDs []int64) []int64 {
+	if len(requestedIDs) == 0 || len(allowedIDs) == 0 {
+		return []int64{}
+	}
+	allowed := allowedAccountSet(allowedIDs)
+	out := make([]int64, 0, len(requestedIDs))
+	for _, id := range requestedIDs {
+		if _, ok := allowed[id]; ok {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+func (h *AccountHandler) ensureUsageViewerAccountAllowed(c *gin.Context, accountID int64) bool {
+	allowedIDs, scoped, err := h.usageViewerAllowedAccountIDs(c)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return false
+	}
+	if !scoped {
+		return true
+	}
+	for _, id := range allowedIDs {
+		if id == accountID {
+			return true
+		}
+	}
+	response.ErrorFrom(c, errUsageViewerAccountForbidden)
+	return false
+}
+
 // List handles listing all accounts with pagination
 // GET /api/v1/admin/accounts
 func (h *AccountHandler) List(c *gin.Context) {
@@ -258,12 +322,41 @@ func (h *AccountHandler) List(c *gin.Context) {
 		}
 	}
 
+	allowedIDs, scoped, err := h.usageViewerAllowedAccountIDs(c)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if scoped {
+		if len(allowedIDs) == 0 {
+			response.Paginated(c, []AccountWithConcurrency{}, 0, page, pageSize)
+			return
+		}
+		accounts, err := h.adminService.GetAccountsByIDs(c.Request.Context(), allowedIDs)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		filtered := make([]service.Account, 0, len(accounts))
+		for _, account := range accounts {
+			if accountMatchesUsageViewerListFilters(account, platform, accountType, status, search, groupID, privacyMode) {
+				filtered = append(filtered, *account)
+			}
+		}
+		accountsPage, total := paginateUsageViewerAccounts(filtered, page, pageSize, sortBy, sortOrder)
+		h.respondAccountList(c, accountsPage, total, page, pageSize, platform, accountType, status, search, lite)
+		return
+	}
+
 	accounts, total, err := h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, privacyMode, sortBy, sortOrder)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
+	h.respondAccountList(c, accounts, total, page, pageSize, platform, accountType, status, search, lite)
+}
 
+func (h *AccountHandler) respondAccountList(c *gin.Context, accounts []service.Account, total int64, page, pageSize int, platform, accountType, status, search string, lite bool) {
 	// Get current concurrency counts for all accounts
 	accountIDs := make([]int64, len(accounts))
 	for i, acc := range accounts {
@@ -393,6 +486,179 @@ func (h *AccountHandler) List(c *gin.Context) {
 	response.Paginated(c, result, total, page, pageSize)
 }
 
+func accountMatchesUsageViewerListFilters(account *service.Account, platform, accountType, status, search string, groupID int64, privacyMode string) bool {
+	if account == nil {
+		return false
+	}
+	if platform != "" && account.Platform != platform {
+		return false
+	}
+	if accountType != "" && account.Type != accountType {
+		return false
+	}
+	if !accountMatchesStatusFilter(account, status) {
+		return false
+	}
+	if search != "" && !strings.Contains(strings.ToLower(account.Name), strings.ToLower(search)) {
+		return false
+	}
+	if !accountMatchesGroupFilter(account, groupID) {
+		return false
+	}
+	return accountMatchesPrivacyFilter(account, privacyMode)
+}
+
+func accountMatchesStatusFilter(account *service.Account, status string) bool {
+	if status == "" {
+		return true
+	}
+	now := time.Now()
+	switch status {
+	case service.StatusActive:
+		return account.Status == service.StatusActive &&
+			account.Schedulable &&
+			(account.RateLimitResetAt == nil || !account.RateLimitResetAt.After(now)) &&
+			(account.TempUnschedulableUntil == nil || !account.TempUnschedulableUntil.After(now))
+	case "rate_limited":
+		return account.Status == service.StatusActive &&
+			account.RateLimitResetAt != nil &&
+			account.RateLimitResetAt.After(now) &&
+			(account.TempUnschedulableUntil == nil || !account.TempUnschedulableUntil.After(now))
+	case "temp_unschedulable":
+		return account.Status == service.StatusActive &&
+			account.TempUnschedulableUntil != nil &&
+			account.TempUnschedulableUntil.After(now)
+	case "unschedulable":
+		return account.Status == service.StatusActive &&
+			!account.Schedulable &&
+			(account.RateLimitResetAt == nil || !account.RateLimitResetAt.After(now)) &&
+			(account.TempUnschedulableUntil == nil || !account.TempUnschedulableUntil.After(now))
+	default:
+		return account.Status == status
+	}
+}
+
+func accountMatchesGroupFilter(account *service.Account, groupID int64) bool {
+	switch {
+	case groupID == 0:
+		return true
+	case groupID == service.AccountListGroupUngrouped:
+		return len(account.GroupIDs) == 0
+	case groupID > 0:
+		for _, id := range account.GroupIDs {
+			if id == groupID {
+				return true
+			}
+		}
+		return false
+	default:
+		return false
+	}
+}
+
+func accountMatchesPrivacyFilter(account *service.Account, privacyMode string) bool {
+	if privacyMode == "" {
+		return true
+	}
+	value := ""
+	if account.Extra != nil {
+		if raw, ok := account.Extra["privacy_mode"]; ok && raw != nil {
+			value = strings.TrimSpace(fmt.Sprint(raw))
+		}
+	}
+	if privacyMode == service.AccountPrivacyModeUnsetFilter {
+		return value == ""
+	}
+	return value == privacyMode
+}
+
+func paginateUsageViewerAccounts(accounts []service.Account, page, pageSize int, sortBy, sortOrder string) ([]service.Account, int64) {
+	sortUsageViewerAccounts(accounts, sortBy, sortOrder)
+	total := int64(len(accounts))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 20
+	}
+	start := (page - 1) * pageSize
+	if start >= len(accounts) {
+		return []service.Account{}, total
+	}
+	end := start + pageSize
+	if end > len(accounts) {
+		end = len(accounts)
+	}
+	return accounts[start:end], total
+}
+
+func sortUsageViewerAccounts(accounts []service.Account, sortBy, sortOrder string) {
+	desc := strings.EqualFold(sortOrder, "desc")
+	sort.SliceStable(accounts, func(i, j int) bool {
+		if desc {
+			return usageViewerAccountLess(accounts[j], accounts[i], sortBy)
+		}
+		return usageViewerAccountLess(accounts[i], accounts[j], sortBy)
+	})
+}
+
+func usageViewerAccountLess(a, b service.Account, sortBy string) bool {
+	switch strings.ToLower(strings.TrimSpace(sortBy)) {
+	case "id":
+		return a.ID < b.ID
+	case "status":
+		if a.Status == b.Status {
+			return a.ID < b.ID
+		}
+		return a.Status < b.Status
+	case "schedulable":
+		if a.Schedulable == b.Schedulable {
+			return a.ID < b.ID
+		}
+		return !a.Schedulable && b.Schedulable
+	case "priority":
+		if a.Priority == b.Priority {
+			return a.ID < b.ID
+		}
+		return a.Priority < b.Priority
+	case "rate_multiplier":
+		av, bv := a.BillingRateMultiplier(), b.BillingRateMultiplier()
+		if av == bv {
+			return a.ID < b.ID
+		}
+		return av < bv
+	case "last_used_at":
+		return timePtrLess(a.LastUsedAt, b.LastUsedAt, a.ID, b.ID)
+	case "expires_at":
+		return timePtrLess(a.ExpiresAt, b.ExpiresAt, a.ID, b.ID)
+	case "created_at":
+		if a.CreatedAt.Equal(b.CreatedAt) {
+			return a.ID < b.ID
+		}
+		return a.CreatedAt.Before(b.CreatedAt)
+	default:
+		if a.Name == b.Name {
+			return a.ID < b.ID
+		}
+		return a.Name < b.Name
+	}
+}
+
+func timePtrLess(a, b *time.Time, aID, bID int64) bool {
+	switch {
+	case a == nil && b == nil:
+		return aID < bID
+	case a == nil:
+		return false
+	case b == nil:
+		return true
+	case a.Equal(*b):
+		return aID < bID
+	default:
+		return a.Before(*b)
+	}
+}
+
 func buildAccountsListETag(
 	items []AccountWithConcurrency,
 	total int64,
@@ -454,6 +720,9 @@ func (h *AccountHandler) GetByID(c *gin.Context) {
 	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	if !h.ensureUsageViewerAccountAllowed(c, accountID) {
 		return
 	}
 
@@ -1650,6 +1919,9 @@ func (h *AccountHandler) GetUsage(c *gin.Context) {
 		response.BadRequest(c, "Invalid account ID")
 		return
 	}
+	if !h.ensureUsageViewerAccountAllowed(c, accountID) {
+		return
+	}
 
 	source := c.DefaultQuery("source", "active")
 	force := c.Query("force") == "true"
@@ -1766,6 +2038,9 @@ func (h *AccountHandler) GetTodayStats(c *gin.Context) {
 		response.BadRequest(c, "Invalid account ID")
 		return
 	}
+	if !h.ensureUsageViewerAccountAllowed(c, accountID) {
+		return
+	}
 
 	stats, err := h.accountUsageService.GetTodayStats(c.Request.Context(), accountID)
 	if err != nil {
@@ -1794,6 +2069,18 @@ func (h *AccountHandler) GetBatchTodayStats(c *gin.Context) {
 	if len(accountIDs) == 0 {
 		response.Success(c, gin.H{"stats": map[string]any{}})
 		return
+	}
+	allowedIDs, scoped, err := h.usageViewerAllowedAccountIDs(c)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if scoped {
+		accountIDs = filterAllowedAccountIDs(accountIDs, allowedIDs)
+		if len(accountIDs) == 0 {
+			response.Success(c, gin.H{"stats": map[string]any{}})
+			return
+		}
 	}
 
 	cacheKey := buildAccountTodayStatsBatchCacheKey(accountIDs)

@@ -56,6 +56,49 @@
         />
         <p class="input-hint">{{ t('admin.users.form.rpmLimitHint') }}</p>
       </div>
+      <div v-if="form.role === 'usage_viewer'">
+        <label class="input-label">
+          {{ t('admin.users.allowedAccounts') }}
+          <span class="font-normal text-gray-400">{{ t('common.selectedCount', { count: form.allowed_accounts.length }) }}</span>
+        </label>
+        <div class="rounded-lg border border-gray-200 bg-gray-50 p-2 dark:border-dark-600 dark:bg-dark-800">
+          <div
+            v-if="accountOptions.length > 5"
+            class="mb-2 flex items-center gap-2 rounded-md bg-white px-3 py-2 dark:bg-dark-700"
+          >
+            <Icon name="search" size="sm" class="shrink-0 text-gray-400" />
+            <input
+              v-model="accountSearch"
+              type="text"
+              :placeholder="t('common.searchPlaceholder')"
+              class="flex-1 bg-transparent text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none dark:text-gray-100 dark:placeholder:text-dark-400"
+            />
+          </div>
+          <div class="grid max-h-40 grid-cols-1 gap-1 overflow-y-auto sm:grid-cols-2">
+            <label
+              v-for="account in filteredAccountOptions"
+              :key="account.id"
+              class="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm transition-colors hover:bg-white dark:hover:bg-dark-700"
+            >
+              <input
+                type="checkbox"
+                :checked="form.allowed_accounts.includes(account.id)"
+                class="h-3.5 w-3.5 shrink-0 rounded border-gray-300 text-primary-500 focus:ring-primary-500 dark:border-dark-500"
+                @change="toggleAllowedAccount(account.id, ($event.target as HTMLInputElement).checked)"
+              />
+              <span class="min-w-0 flex-1 truncate text-gray-800 dark:text-gray-100">{{ account.name }}</span>
+              <span class="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500 dark:bg-dark-600 dark:text-dark-300">{{ account.platform }}</span>
+            </label>
+            <div
+              v-if="filteredAccountOptions.length === 0"
+              class="col-span-2 py-2 text-center text-sm text-gray-500 dark:text-gray-400"
+            >
+              {{ t('admin.users.noAccountsAvailable') }}
+            </div>
+          </div>
+        </div>
+        <p class="input-hint">{{ t('admin.users.allowedAccountsHint') }}</p>
+      </div>
       <UserAttributeForm v-model="form.customAttributes" :user-id="user?.id" />
     </form>
     <template #footer>
@@ -70,12 +113,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch } from 'vue'
+import { computed, ref, reactive, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useClipboard } from '@/composables/useClipboard'
 import { adminAPI } from '@/api/admin'
-import type { AdminUser, UserAttributeValuesMap } from '@/types'
+import type { Account, AdminUser, UserAttributeValuesMap } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
 import UserAttributeForm from '@/components/user/UserAttributeForm.vue'
@@ -86,6 +129,8 @@ const emit = defineEmits(['close', 'success'])
 const { t } = useI18n(); const appStore = useAppStore(); const { copyToClipboard } = useClipboard()
 
 const submitting = ref(false); const passwordCopied = ref(false)
+const accountOptions = ref<Account[]>([])
+const accountSearch = ref('')
 type EditableUserRole = 'admin' | 'user' | 'usage_viewer'
 
 const roleOptions = [
@@ -93,14 +138,64 @@ const roleOptions = [
   { value: 'user', label: t('admin.users.roles.user') },
   { value: 'usage_viewer', label: t('admin.users.roles.usage_viewer') }
 ]
-const form = reactive({ email: '', password: '', username: '', notes: '', role: 'user' as EditableUserRole, concurrency: 1, rpm_limit: 0, customAttributes: {} as UserAttributeValuesMap })
+const form = reactive({
+  email: '',
+  password: '',
+  username: '',
+  notes: '',
+  role: 'user' as EditableUserRole,
+  concurrency: 1,
+  rpm_limit: 0,
+  allowed_accounts: [] as number[],
+  customAttributes: {} as UserAttributeValuesMap
+})
+
+const filteredAccountOptions = computed(() => {
+  const q = accountSearch.value.trim().toLowerCase()
+  if (!q) return accountOptions.value
+  return accountOptions.value.filter((account) => {
+    return account.name.toLowerCase().includes(q) || account.platform.toLowerCase().includes(q)
+  })
+})
 
 watch(() => props.user, (u) => {
   if (u) {
-    Object.assign(form, { email: u.email, password: '', username: u.username || '', notes: u.notes || '', role: u.role, concurrency: u.concurrency, rpm_limit: u.rpm_limit ?? 0, customAttributes: {} })
+    Object.assign(form, {
+      email: u.email,
+      password: '',
+      username: u.username || '',
+      notes: u.notes || '',
+      role: u.role,
+      concurrency: u.concurrency,
+      rpm_limit: u.rpm_limit ?? 0,
+      allowed_accounts: [...(u.allowed_accounts || [])],
+      customAttributes: {}
+    })
     passwordCopied.value = false
+    accountSearch.value = ''
   }
 }, { immediate: true })
+
+watch(() => props.show, (show) => {
+  if (show) void loadAccountOptions()
+})
+
+const loadAccountOptions = async () => {
+  try {
+    const res = await adminAPI.accounts.list(1, 10000, { sort_by: 'name', sort_order: 'asc' })
+    accountOptions.value = res.items || []
+  } catch (e: any) {
+    appStore.showError(e.response?.data?.detail || t('admin.users.failedToLoadAccounts'))
+  }
+}
+
+const toggleAllowedAccount = (accountId: number, checked: boolean) => {
+  if (checked) {
+    if (!form.allowed_accounts.includes(accountId)) form.allowed_accounts.push(accountId)
+    return
+  }
+  form.allowed_accounts = form.allowed_accounts.filter((id) => id !== accountId)
+}
 
 const generatePassword = () => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%^&*'
@@ -125,6 +220,7 @@ const handleUpdateUser = async () => {
   submitting.value = true
   try {
     const data: any = { email: form.email, username: form.username, notes: form.notes, role: form.role, concurrency: form.concurrency, rpm_limit: form.rpm_limit }
+    data.allowed_accounts = form.role === 'usage_viewer' ? [...form.allowed_accounts] : []
     if (form.password.trim()) data.password = form.password.trim()
     await adminAPI.users.update(props.user.id, data)
     if (Object.keys(form.customAttributes).length > 0) await adminAPI.userAttributes.updateUserAttributeValues(props.user.id, form.customAttributes)

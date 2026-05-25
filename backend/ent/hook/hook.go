@@ -369,6 +369,18 @@ func (f UserFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error)
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.UserMutation", m)
 }
 
+// The UserAllowedAccountFunc type is an adapter to allow the use of ordinary
+// function as UserAllowedAccount mutator.
+type UserAllowedAccountFunc func(context.Context, *ent.UserAllowedAccountMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f UserAllowedAccountFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.UserAllowedAccountMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.UserAllowedAccountMutation", m)
+}
+
 // The UserAllowedGroupFunc type is an adapter to allow the use of ordinary
 // function as UserAllowedGroup mutator.
 type UserAllowedGroupFunc func(context.Context, *ent.UserAllowedGroupMutation) (ent.Value, error)
