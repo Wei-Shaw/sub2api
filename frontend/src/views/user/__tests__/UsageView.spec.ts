@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 
-import UsageContent from '../UsageContent.vue'
+import UsageView from '../UsageView.vue'
 
 const { query, getStatsByDateRange, list, showError, showWarning, showSuccess, showInfo } = vi.hoisted(() => ({
   query: vi.fn(),
@@ -169,7 +169,7 @@ describe('user UsageView tooltip', () => {
     })
     list.mockResolvedValue({ items: [] })
 
-    const wrapper = mount(UsageContent, {
+    const wrapper = mount(UsageView, {
       global: {
         stubs: {
           AppLayout: AppLayoutStub,
@@ -268,7 +268,7 @@ describe('user UsageView tooltip', () => {
     window.URL.revokeObjectURL = vi.fn(() => {}) as typeof window.URL.revokeObjectURL
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
 
-    const wrapper = mount(UsageContent, {
+    const wrapper = mount(UsageView, {
       global: {
         stubs: {
           AppLayout: AppLayoutStub,
@@ -362,7 +362,7 @@ describe('user UsageView tooltip', () => {
     window.URL.revokeObjectURL = vi.fn(() => {}) as typeof window.URL.revokeObjectURL
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
 
-    const wrapper = mount(UsageContent, {
+    const wrapper = mount(UsageView, {
       global: {
         stubs: {
           AppLayout: AppLayoutStub,
@@ -442,7 +442,7 @@ describe('user UsageView tooltip', () => {
     })
     list.mockResolvedValue({ items: [] })
 
-    const wrapper = mount(UsageContent, {
+    const wrapper = mount(UsageView, {
       global: {
         stubs: {
           AppLayout: AppLayoutStub,
@@ -481,7 +481,7 @@ describe('user UsageView tooltip', () => {
     })
     list.mockResolvedValue({ items: [] })
 
-    const wrapper = mount(UsageContent, {
+    const wrapper = mount(UsageView, {
       global: {
         stubs: {
           AppLayout: AppLayoutStub,
