@@ -977,7 +977,7 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatible(ctx context.C
 	if fallbackModel, ok := resolveOpenAIGPT55FallbackModel(account, requestedModel); ok {
 		requestedModel = fallbackModel
 	}
-	if requestedModel != "" && !account.IsModelSupported(requestedModel) {
+	if requestedModel != "" && !isOpenAIAccountModelSchedulable(account, requestedModel) {
 		return false
 	}
 	if req.GroupID != nil && s != nil && s.service != nil &&

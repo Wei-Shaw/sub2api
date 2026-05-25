@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -16,6 +17,37 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
+
+func normalizeResponsesRequestServiceTier(req *apicompat.ResponsesRequest) {
+	if req == nil {
+		return
+	}
+	if tier := normalizeOpenAIServiceTier(req.ServiceTier); tier != nil {
+		req.ServiceTier = *tier
+		return
+	}
+	req.ServiceTier = ""
+}
+
+func normalizeResponsesBodyServiceTier(body []byte) ([]byte, string, error) {
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, "", err
+	}
+	rawTier, _ := payload["service_tier"].(string)
+	tier := normalizeOpenAIServiceTier(rawTier)
+	if tier == nil {
+		delete(payload, "service_tier")
+		updated, err := json.Marshal(payload)
+		return updated, "", err
+	}
+	payload["service_tier"] = *tier
+	updated, err := json.Marshal(payload)
+	if err != nil {
+		return nil, "", err
+	}
+	return updated, *tier, nil
+}
 
 type openAIChatFailingWriter struct {
 	gin.ResponseWriter

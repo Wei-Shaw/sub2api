@@ -1315,13 +1315,31 @@ func isOpenAIAccountEligibleForRequest(account *Account, requestedModel string, 
 	if account == nil || !account.IsSchedulable() || !account.IsOpenAI() {
 		return false
 	}
-	if requestedModel != "" && !account.IsModelSupported(requestedModel) {
+	if requestedModel != "" && !isOpenAIAccountModelSchedulable(account, requestedModel) {
 		return false
 	}
 	if requireCompact && openAICompactSupportTier(account) == 0 {
 		return false
 	}
 	return true
+}
+
+// isOpenAIAccountModelSchedulable keeps OAuth accounts close to upstream's
+// default behavior: new models are allowed to try unless another explicit
+// request-level restriction blocks them. API-key accounts still use
+// model_mapping as their allowlist because it describes the configured upstream
+// model surface for that key.
+func isOpenAIAccountModelSchedulable(account *Account, requestedModel string) bool {
+	if account == nil || strings.TrimSpace(requestedModel) == "" {
+		return true
+	}
+	if !account.IsOpenAI() {
+		return account.IsModelSupported(requestedModel)
+	}
+	if account.Type == AccountTypeOAuth || account.Type == AccountTypeSetupToken {
+		return true
+	}
+	return account.IsModelSupported(requestedModel)
 }
 
 // prioritizeOpenAICompactAccounts re-orders a slice so that accounts with known
@@ -1696,7 +1714,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		if s.isOpenAIAccountRuntimeBlocked(acc) {
 			continue
 		}
-		if requestedModel != "" && !acc.IsModelSupported(requestedModel) {
+		if requestedModel != "" && !isOpenAIAccountModelSchedulable(acc, requestedModel) {
 			continue
 		}
 		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, acc, requestedModel, requireCompact) {
@@ -3389,10 +3407,11 @@ func (s *OpenAIGatewayService) maybeDisableOpenAIOAuthGPT55(ctx context.Context,
 	if account == nil || account.Type != AccountTypeOAuth || account.Platform != PlatformOpenAI {
 		return
 	}
-	if !strings.Contains(strings.ToLower(strings.TrimSpace(upstreamMsg)), "gpt-5.5") {
+	normalizedMsg := strings.ToLower(strings.TrimSpace(upstreamMsg))
+	if !strings.Contains(normalizedMsg, "gpt-5.5") {
 		return
 	}
-	if !strings.Contains(strings.ToLower(upstreamMsg), "not supported when using codex with a chatgpt account") {
+	if !strings.Contains(normalizedMsg, "not supported") || !strings.Contains(normalizedMsg, "chatgpt account") {
 		return
 	}
 
@@ -3427,6 +3446,7 @@ func (s *OpenAIGatewayService) handleErrorResponsePassthrough(
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
 	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+	s.maybeDisableOpenAIOAuthGPT55(ctx, account, upstreamMsg)
 	upstreamDetail := ""
 	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
 		maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
@@ -4118,6 +4138,7 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
 	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+	s.maybeDisableOpenAIOAuthGPT55(ctx, account, upstreamMsg)
 	upstreamDetail := ""
 	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
 		maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes

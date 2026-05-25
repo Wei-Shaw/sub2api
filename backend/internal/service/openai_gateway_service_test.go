@@ -550,12 +550,42 @@ func TestOpenAISelectAccountWithLoadAwareness_StickyUnschedulableClearsSession(t
 	}
 }
 
-func TestOpenAISelectAccountForModelWithExclusions_NoModelSupport(t *testing.T) {
+func TestOpenAISelectAccountForModelWithExclusions_OAuthAllowsNewModelDespiteMapping(t *testing.T) {
 	repo := stubOpenAIAccountRepo{
 		accounts: []Account{
 			{
 				ID:          1,
 				Platform:    PlatformOpenAI,
+				Type:        AccountTypeOAuth,
+				Status:      StatusActive,
+				Schedulable: true,
+				Credentials: map[string]any{"model_mapping": map[string]any{"gpt-3.5-turbo": "gpt-3.5-turbo"}},
+			},
+		},
+	}
+	cache := &stubGatewayCache{}
+
+	svc := &OpenAIGatewayService{
+		accountRepo: repo,
+		cache:       cache,
+	}
+
+	acc, err := svc.SelectAccountForModelWithExclusions(context.Background(), nil, "", "gpt-4", nil)
+	if err != nil {
+		t.Fatalf("expected OAuth account to allow new model, got error: %v", err)
+	}
+	if acc == nil || acc.ID != 1 {
+		t.Fatalf("expected account 1, got %+v", acc)
+	}
+}
+
+func TestOpenAISelectAccountForModelWithExclusions_APIKeyNoModelSupport(t *testing.T) {
+	repo := stubOpenAIAccountRepo{
+		accounts: []Account{
+			{
+				ID:          1,
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeAPIKey,
 				Status:      StatusActive,
 				Schedulable: true,
 				Credentials: map[string]any{"model_mapping": map[string]any{"gpt-3.5-turbo": "gpt-3.5-turbo"}},

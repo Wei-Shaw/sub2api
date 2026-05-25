@@ -216,7 +216,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_GPT55FallsBackToOAuthGP
 	require.Equal(t, int64(71030), selection.Account.ID, "gpt-5.5 should fall back to gpt-5.4 on the same OAuth account")
 }
 
-func TestOpenAIGatewayService_SelectAccountWithScheduler_GPT55RejectsWhenNoGPT54Fallback(t *testing.T) {
+func TestOpenAIGatewayService_SelectAccountWithScheduler_OAuthAllowsGPT55WithoutFallback(t *testing.T) {
 	resetOpenAIAdvancedSchedulerSettingCacheForTest()
 
 	ctx := context.Background()
@@ -232,6 +232,50 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_GPT55RejectsWhenNoGPT54
 			Priority:    0,
 			Credentials: map[string]any{
 				"supported_models": []any{"gpt-4o"},
+			},
+		},
+	}
+	cfg := &config.Config{}
+	cfg.Gateway.Scheduling.LoadBatchEnabled = false
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: accounts},
+		cache:              &schedulerTestGatewayCache{},
+		cfg:                cfg,
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{}),
+	}
+
+	selection, _, err := svc.SelectAccountWithScheduler(
+		ctx,
+		&groupID,
+		"",
+		"",
+		"gpt-5.5",
+		nil,
+		OpenAIUpstreamTransportAny,
+		false,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, int64(71040), selection.Account.ID, "OAuth accounts should stay close to upstream and allow new models by default")
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_APIKeyRejectsUnsupportedModel(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	ctx := context.Background()
+	groupID := int64(91006)
+	accounts := []Account{
+		{
+			ID:          71050,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Priority:    0,
+			Credentials: map[string]any{
+				"model_mapping": map[string]any{"gpt-4o": "gpt-4o"},
 			},
 		},
 	}
