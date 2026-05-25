@@ -6028,6 +6028,8 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 				addHeaderRaw(req.Header, wireKey, v)
 			}
 		}
+
+		ForwardUserNetworkInfoHeaders(ctx, req.Header, c.Request.Header)
 	}
 
 	// 覆盖入站鉴权残留，并注入上游认证
@@ -7259,6 +7261,8 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 				}
 			}
 		}
+
+		ForwardUserNetworkInfoHeaders(ctx, req.Header, clientHeaders)
 	}
 
 	// OAuth账号：应用缓存的指纹到请求头（覆盖白名单透传的头）
@@ -7394,6 +7398,8 @@ func (s *GatewayService) buildUpstreamRequestAnthropicVertex(
 				addHeaderRaw(req.Header, wireKey, v)
 			}
 		}
+
+		ForwardUserNetworkInfoHeaders(ctx, req.Header, c.Request.Header)
 	}
 
 	req.Header.Del("authorization")
@@ -10470,6 +10476,8 @@ func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthrough(
 				addHeaderRaw(req.Header, wireKey, v)
 			}
 		}
+
+		ForwardUserNetworkInfoHeaders(ctx, req.Header, c.Request.Header)
 	}
 
 	req.Header.Del("authorization")

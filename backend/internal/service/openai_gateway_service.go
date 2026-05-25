@@ -3224,6 +3224,8 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 				req.Header.Add(key, v)
 			}
 		}
+
+		ForwardUserNetworkInfoHeaders(ctx, req.Header, c.Request.Header)
 	}
 
 	// 覆盖入站鉴权残留，并注入上游认证
@@ -3962,6 +3964,8 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 			}
 		}
 	}
+
+	ForwardUserNetworkInfoHeaders(ctx, req.Header, c.Request.Header)
 	if account.Type == AccountTypeOAuth {
 		compatMessagesBridge := isOpenAICompatMessagesBridgeContext(c) || isOpenAICompatMessagesBridgeBody(body)
 		// 清除客户端透传的 session 头，后续用隔离后的值重新设置，防止跨用户会话碰撞。
