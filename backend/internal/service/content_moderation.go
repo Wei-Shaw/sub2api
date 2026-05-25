@@ -192,6 +192,7 @@ type ContentModerationConfigView struct {
 	BlockedKeywords      []string                        `json:"blocked_keywords"`
 	KeywordBlockingMode  string                          `json:"keyword_blocking_mode"`
 	ModelFilter          ContentModerationModelFilter    `json:"model_filter"`
+	Thresholds           map[string]float64              `json:"thresholds"`
 }
 
 type ContentModerationAPIKeyStatus struct {
@@ -264,6 +265,7 @@ type UpdateContentModerationConfigInput struct {
 	BlockedKeywords      *[]string                     `json:"blocked_keywords"`
 	KeywordBlockingMode  *string                       `json:"keyword_blocking_mode"`
 	ModelFilter          *ContentModerationModelFilter `json:"model_filter"`
+	Thresholds           *map[string]float64           `json:"thresholds"`
 }
 
 type ContentModerationModelFilter struct {
@@ -597,6 +599,9 @@ func (s *ContentModerationService) UpdateConfig(ctx context.Context, input Updat
 	}
 	if input.ModelFilter != nil {
 		cfg.ModelFilter = *input.ModelFilter
+	}
+	if input.Thresholds != nil {
+		cfg.Thresholds = *input.Thresholds
 	}
 	if input.AllGroups != nil {
 		cfg.AllGroups = *input.AllGroups
@@ -1295,6 +1300,19 @@ func (s *ContentModerationService) validateConfig(ctx context.Context, cfg *Cont
 	if cfg == nil {
 		return infraerrors.BadRequest("INVALID_CONTENT_MODERATION_CONFIG", "内容审计配置不能为空")
 	}
+	if cfg.Thresholds != nil {
+		valid := ContentModerationDefaultThresholds()
+		for k, v := range cfg.Thresholds {
+			if _, ok := valid[k]; !ok {
+				return infraerrors.BadRequest("INVALID_CONTENT_MODERATION_THRESHOLD_CATEGORY",
+					fmt.Sprintf("内容审计阈值类别无效: %s", k))
+			}
+			if v < 0 || v > 1 {
+				return infraerrors.BadRequest("INVALID_CONTENT_MODERATION_THRESHOLD_VALUE",
+					fmt.Sprintf("内容审计阈值必须在 0-1 之间: %s=%v", k, v))
+			}
+		}
+	}
 	cfg.normalize()
 	switch cfg.Mode {
 	case ContentModerationModeOff, ContentModerationModeObserve, ContentModerationModePreBlock:
@@ -1909,6 +1927,7 @@ func (s *ContentModerationService) configView(cfg *ContentModerationConfig) *Con
 		BlockedKeywords:      append([]string(nil), cfg.BlockedKeywords...),
 		KeywordBlockingMode:  cfg.KeywordBlockingMode,
 		ModelFilter:          cloneContentModerationModelFilter(cfg.ModelFilter),
+		Thresholds:           cloneFloatMap(cfg.Thresholds),
 	}
 }
 
