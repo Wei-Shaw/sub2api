@@ -77,7 +77,7 @@ func (s *GatewayService) ForwardAsChatCompletions(
 	// 4. Model mapping
 	mappedModel := originalModel
 	if account.Type == AccountTypeAPIKey || account.Type == AccountTypeServiceAccount {
-		mappedModel = account.GetMappedModel(originalModel)
+		mappedModel = account.GetMappedModelForUpstream(ctx, originalModel)
 	}
 	if mappedModel == originalModel && account.Platform == PlatformAnthropic && account.Type == AccountTypeServiceAccount {
 		normalized := normalizeVertexAnthropicModelID(claude.NormalizeModelID(originalModel))

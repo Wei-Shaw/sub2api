@@ -5059,7 +5059,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		passthroughBody := parsed.Body
 		passthroughModel := parsed.Model
 		if passthroughModel != "" {
-			if mappedModel := account.GetMappedModel(passthroughModel); mappedModel != passthroughModel {
+			if mappedModel := account.GetMappedModelForUpstream(ctx, passthroughModel); mappedModel != passthroughModel {
 				passthroughBody = s.replaceModelInBody(passthroughBody, mappedModel)
 				logger.LegacyPrintf("service.gateway", "Claude Platform on AWS model mapping: %s -> %s (account: %s)", parsed.Model, mappedModel, account.Name)
 				passthroughModel = mappedModel
@@ -5078,7 +5078,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		passthroughBody := parsed.Body
 		passthroughModel := parsed.Model
 		if passthroughModel != "" {
-			if mappedModel := account.GetMappedModel(passthroughModel); mappedModel != passthroughModel {
+			if mappedModel := account.GetMappedModelForUpstream(ctx, passthroughModel); mappedModel != passthroughModel {
 				passthroughBody = s.replaceModelInBody(passthroughBody, mappedModel)
 				logger.LegacyPrintf("service.gateway", "Passthrough model mapping: %s -> %s (account: %s)", parsed.Model, mappedModel, account.Name)
 				passthroughModel = mappedModel
@@ -5213,7 +5213,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	mappedModel := reqModel
 	mappingSource := ""
 	if account.Type == AccountTypeAPIKey {
-		mappedModel = account.GetMappedModel(reqModel)
+		mappedModel = account.GetMappedModelForUpstream(ctx, reqModel)
 		if mappedModel != reqModel {
 			mappingSource = "account"
 		}
@@ -10133,7 +10133,7 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 	if account != nil && account.IsClaudePlatformAWS() {
 		passthroughBody := parsed.Body
 		if reqModel := parsed.Model; reqModel != "" {
-			if mappedModel := account.GetMappedModel(reqModel); mappedModel != reqModel {
+			if mappedModel := account.GetMappedModelForUpstream(ctx, reqModel); mappedModel != reqModel {
 				passthroughBody = s.replaceModelInBody(passthroughBody, mappedModel)
 				logger.LegacyPrintf("service.gateway", "CountTokens Claude Platform on AWS model mapping: %s -> %s (account: %s)", reqModel, mappedModel, account.Name)
 			}
@@ -10144,7 +10144,7 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 	if account != nil && account.IsAnthropicAPIKeyPassthroughEnabled() {
 		passthroughBody := parsed.Body
 		if reqModel := parsed.Model; reqModel != "" {
-			if mappedModel := account.GetMappedModel(reqModel); mappedModel != reqModel {
+			if mappedModel := account.GetMappedModelForUpstream(ctx, reqModel); mappedModel != reqModel {
 				passthroughBody = s.replaceModelInBody(passthroughBody, mappedModel)
 				logger.LegacyPrintf("service.gateway", "CountTokens passthrough model mapping: %s -> %s (account: %s)", reqModel, mappedModel, account.Name)
 			}
@@ -10213,7 +10213,7 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 		mappedModel := reqModel
 		mappingSource := ""
 		if account.Type == AccountTypeAPIKey {
-			mappedModel = account.GetMappedModel(reqModel)
+			mappedModel = account.GetMappedModelForUpstream(ctx, reqModel)
 			if mappedModel != reqModel {
 				mappingSource = "account"
 			}
