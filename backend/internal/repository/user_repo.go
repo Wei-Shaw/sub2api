@@ -17,7 +17,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
-	"github.com/Wei-Shaw/sub2api/ent/userallowedaccount"
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -945,15 +944,37 @@ func (r *userRepository) loadAllowedAccounts(ctx context.Context, userIDs []int6
 		return out, nil
 	}
 
-	rows, err := r.client.UserAllowedAccount.Query().
-		Where(userallowedaccount.UserIDIn(userIDs...)).
-		All(ctx)
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return nil, fmt.Errorf("sql executor is not configured")
+	}
+
+	placeholders := make([]string, 0, len(userIDs))
+	args := make([]any, 0, len(userIDs))
+	for i, userID := range userIDs {
+		placeholders = append(placeholders, fmt.Sprintf("$%d", i+1))
+		args = append(args, userID)
+	}
+	rows, err := exec.QueryContext(ctx, fmt.Sprintf(`
+		SELECT user_id, account_id
+		FROM user_allowed_accounts
+		WHERE user_id IN (%s)
+	`, strings.Join(placeholders, ",")), args...)
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 
-	for i := range rows {
-		out[rows[i].UserID] = append(out[rows[i].UserID], rows[i].AccountID)
+	for rows.Next() {
+		var userID int64
+		var accountID int64
+		if err := rows.Scan(&userID, &accountID); err != nil {
+			return nil, err
+		}
+		out[userID] = append(out[userID], accountID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	for userID := range out {
@@ -1004,11 +1025,12 @@ func (r *userRepository) syncUserAllowedGroupsWithClient(ctx context.Context, cl
 }
 
 func (r *userRepository) syncUserAllowedAccountsWithClient(ctx context.Context, client *dbent.Client, userID int64, accountIDs []int64) error {
-	if client == nil {
-		return nil
+	exec := txAwareSQLExecutor(ctx, r.sql, client)
+	if exec == nil {
+		return fmt.Errorf("sql executor is not configured")
 	}
 
-	if _, err := client.UserAllowedAccount.Delete().Where(userallowedaccount.UserIDEQ(userID)).Exec(ctx); err != nil {
+	if _, err := exec.ExecContext(ctx, "DELETE FROM user_allowed_accounts WHERE user_id = $1", userID); err != nil {
 		return err
 	}
 
@@ -1024,19 +1046,14 @@ func (r *userRepository) syncUserAllowedAccountsWithClient(ctx context.Context, 
 		return nil
 	}
 
-	creates := make([]*dbent.UserAllowedAccountCreate, 0, len(unique))
 	for accountID := range unique {
-		creates = append(creates, client.UserAllowedAccount.Create().SetUserID(userID).SetAccountID(accountID))
-	}
-	if err := client.UserAllowedAccount.
-		CreateBulk(creates...).
-		OnConflictColumns(userallowedaccount.FieldUserID, userallowedaccount.FieldAccountID).
-		DoNothing().
-		Exec(ctx); err != nil {
-		if isSQLNoRowsError(err) {
-			return nil
+		if _, err := exec.ExecContext(ctx, `
+			INSERT INTO user_allowed_accounts (user_id, account_id)
+			VALUES ($1, $2)
+			ON CONFLICT (user_id, account_id) DO NOTHING
+		`, userID, accountID); err != nil {
+			return err
 		}
-		return err
 	}
 
 	return nil

@@ -33,6 +33,16 @@ func newUserEntRepo(t *testing.T) (*userRepository, *dbent.Client) {
 	client := enttest.NewClient(t, enttest.WithOptions(dbent.Driver(drv)))
 	t.Cleanup(func() { _ = client.Close() })
 
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS user_allowed_accounts (
+			user_id INTEGER NOT NULL,
+			account_id INTEGER NOT NULL,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (user_id, account_id)
+		)
+	`)
+	require.NoError(t, err)
+
 	return newUserRepositoryWithSQL(client, db), client
 }
 

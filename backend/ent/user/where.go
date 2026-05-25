@@ -1478,29 +1478,6 @@ func HasAllowedGroupsWith(preds ...predicate.Group) predicate.User {
 	})
 }
 
-// HasAllowedAccounts applies the HasEdge predicate on the "allowed_accounts" edge.
-func HasAllowedAccounts() predicate.User {
-	return predicate.User(func(s *sql.Selector) {
-		step := sqlgraph.NewStep(
-			sqlgraph.From(Table, FieldID),
-			sqlgraph.Edge(sqlgraph.M2M, false, AllowedAccountsTable, AllowedAccountsPrimaryKey...),
-		)
-		sqlgraph.HasNeighbors(s, step)
-	})
-}
-
-// HasAllowedAccountsWith applies the HasEdge predicate on the "allowed_accounts" edge with a given conditions (other predicates).
-func HasAllowedAccountsWith(preds ...predicate.Account) predicate.User {
-	return predicate.User(func(s *sql.Selector) {
-		step := newAllowedAccountsStep()
-		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
-			for _, p := range preds {
-				p(s)
-			}
-		})
-	})
-}
-
 // HasUsageLogs applies the HasEdge predicate on the "usage_logs" edge.
 func HasUsageLogs() predicate.User {
 	return predicate.User(func(s *sql.Selector) {
@@ -1654,29 +1631,6 @@ func HasUserAllowedGroups() predicate.User {
 func HasUserAllowedGroupsWith(preds ...predicate.UserAllowedGroup) predicate.User {
 	return predicate.User(func(s *sql.Selector) {
 		step := newUserAllowedGroupsStep()
-		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
-			for _, p := range preds {
-				p(s)
-			}
-		})
-	})
-}
-
-// HasUserAllowedAccounts applies the HasEdge predicate on the "user_allowed_accounts" edge.
-func HasUserAllowedAccounts() predicate.User {
-	return predicate.User(func(s *sql.Selector) {
-		step := sqlgraph.NewStep(
-			sqlgraph.From(Table, FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, true, UserAllowedAccountsTable, UserAllowedAccountsColumn),
-		)
-		sqlgraph.HasNeighbors(s, step)
-	})
-}
-
-// HasUserAllowedAccountsWith applies the HasEdge predicate on the "user_allowed_accounts" edge with a given conditions (other predicates).
-func HasUserAllowedAccountsWith(preds ...predicate.UserAllowedAccount) predicate.User {
-	return predicate.User(func(s *sql.Selector) {
-		step := newUserAllowedAccountsStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

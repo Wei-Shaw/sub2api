@@ -45,7 +45,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
-	"github.com/Wei-Shaw/sub2api/ent/userallowedaccount"
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/ent/userattributedefinition"
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
@@ -119,8 +118,6 @@ type Client struct {
 	UsageLog *UsageLogClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
-	// UserAllowedAccount is the client for interacting with the UserAllowedAccount builders.
-	UserAllowedAccount *UserAllowedAccountClient
 	// UserAllowedGroup is the client for interacting with the UserAllowedGroup builders.
 	UserAllowedGroup *UserAllowedGroupClient
 	// UserAttributeDefinition is the client for interacting with the UserAttributeDefinition builders.
@@ -170,7 +167,6 @@ func (c *Client) init() {
 	c.UsageCleanupTask = NewUsageCleanupTaskClient(c.config)
 	c.UsageLog = NewUsageLogClient(c.config)
 	c.User = NewUserClient(c.config)
-	c.UserAllowedAccount = NewUserAllowedAccountClient(c.config)
 	c.UserAllowedGroup = NewUserAllowedGroupClient(c.config)
 	c.UserAttributeDefinition = NewUserAttributeDefinitionClient(c.config)
 	c.UserAttributeValue = NewUserAttributeValueClient(c.config)
@@ -297,7 +293,6 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		UsageCleanupTask:              NewUsageCleanupTaskClient(cfg),
 		UsageLog:                      NewUsageLogClient(cfg),
 		User:                          NewUserClient(cfg),
-		UserAllowedAccount:            NewUserAllowedAccountClient(cfg),
 		UserAllowedGroup:              NewUserAllowedGroupClient(cfg),
 		UserAttributeDefinition:       NewUserAttributeDefinitionClient(cfg),
 		UserAttributeValue:            NewUserAttributeValueClient(cfg),
@@ -351,7 +346,6 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		UsageCleanupTask:              NewUsageCleanupTaskClient(cfg),
 		UsageLog:                      NewUsageLogClient(cfg),
 		User:                          NewUserClient(cfg),
-		UserAllowedAccount:            NewUserAllowedAccountClient(cfg),
 		UserAllowedGroup:              NewUserAllowedGroupClient(cfg),
 		UserAttributeDefinition:       NewUserAttributeDefinitionClient(cfg),
 		UserAttributeValue:            NewUserAttributeValueClient(cfg),
@@ -393,8 +387,8 @@ func (c *Client) Use(hooks ...Hook) {
 		c.PaymentOrder, c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode,
 		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
 		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
-		c.User, c.UserAllowedAccount, c.UserAllowedGroup, c.UserAttributeDefinition,
-		c.UserAttributeValue, c.UserSubscription,
+		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
+		c.UserSubscription,
 	} {
 		n.Use(hooks...)
 	}
@@ -412,8 +406,8 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.PaymentOrder, c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode,
 		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
 		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
-		c.User, c.UserAllowedAccount, c.UserAllowedGroup, c.UserAttributeDefinition,
-		c.UserAttributeValue, c.UserSubscription,
+		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
+		c.UserSubscription,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -482,8 +476,6 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.UsageLog.mutate(ctx, m)
 	case *UserMutation:
 		return c.User.mutate(ctx, m)
-	case *UserAllowedAccountMutation:
-		return c.UserAllowedAccount.mutate(ctx, m)
 	case *UserAllowedGroupMutation:
 		return c.UserAllowedGroup.mutate(ctx, m)
 	case *UserAttributeDefinitionMutation:
@@ -836,22 +828,6 @@ func (c *AccountClient) QueryUsageLogs(_m *Account) *UsageLogQuery {
 	return query
 }
 
-// QueryAllowedUsageViewers queries the allowed_usage_viewers edge of a Account.
-func (c *AccountClient) QueryAllowedUsageViewers(_m *Account) *UserQuery {
-	query := (&UserClient{config: c.config}).Query()
-	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := _m.ID
-		step := sqlgraph.NewStep(
-			sqlgraph.From(account.Table, account.FieldID, id),
-			sqlgraph.To(user.Table, user.FieldID),
-			sqlgraph.Edge(sqlgraph.M2M, true, account.AllowedUsageViewersTable, account.AllowedUsageViewersPrimaryKey...),
-		)
-		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
-		return fromV, nil
-	}
-	return query
-}
-
 // QueryAccountGroups queries the account_groups edge of a Account.
 func (c *AccountClient) QueryAccountGroups(_m *Account) *AccountGroupQuery {
 	query := (&AccountGroupClient{config: c.config}).Query()
@@ -861,22 +837,6 @@ func (c *AccountClient) QueryAccountGroups(_m *Account) *AccountGroupQuery {
 			sqlgraph.From(account.Table, account.FieldID, id),
 			sqlgraph.To(accountgroup.Table, accountgroup.AccountColumn),
 			sqlgraph.Edge(sqlgraph.O2M, true, account.AccountGroupsTable, account.AccountGroupsColumn),
-		)
-		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
-		return fromV, nil
-	}
-	return query
-}
-
-// QueryUserAllowedAccounts queries the user_allowed_accounts edge of a Account.
-func (c *AccountClient) QueryUserAllowedAccounts(_m *Account) *UserAllowedAccountQuery {
-	query := (&UserAllowedAccountClient{config: c.config}).Query()
-	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := _m.ID
-		step := sqlgraph.NewStep(
-			sqlgraph.From(account.Table, account.FieldID, id),
-			sqlgraph.To(userallowedaccount.Table, userallowedaccount.AccountColumn),
-			sqlgraph.Edge(sqlgraph.O2M, true, account.UserAllowedAccountsTable, account.UserAllowedAccountsColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -5285,22 +5245,6 @@ func (c *UserClient) QueryAllowedGroups(_m *User) *GroupQuery {
 	return query
 }
 
-// QueryAllowedAccounts queries the allowed_accounts edge of a User.
-func (c *UserClient) QueryAllowedAccounts(_m *User) *AccountQuery {
-	query := (&AccountClient{config: c.config}).Query()
-	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := _m.ID
-		step := sqlgraph.NewStep(
-			sqlgraph.From(user.Table, user.FieldID, id),
-			sqlgraph.To(account.Table, account.FieldID),
-			sqlgraph.Edge(sqlgraph.M2M, false, user.AllowedAccountsTable, user.AllowedAccountsPrimaryKey...),
-		)
-		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
-		return fromV, nil
-	}
-	return query
-}
-
 // QueryUsageLogs queries the usage_logs edge of a User.
 func (c *UserClient) QueryUsageLogs(_m *User) *UsageLogQuery {
 	query := (&UsageLogClient{config: c.config}).Query()
@@ -5413,22 +5357,6 @@ func (c *UserClient) QueryUserAllowedGroups(_m *User) *UserAllowedGroupQuery {
 	return query
 }
 
-// QueryUserAllowedAccounts queries the user_allowed_accounts edge of a User.
-func (c *UserClient) QueryUserAllowedAccounts(_m *User) *UserAllowedAccountQuery {
-	query := (&UserAllowedAccountClient{config: c.config}).Query()
-	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := _m.ID
-		step := sqlgraph.NewStep(
-			sqlgraph.From(user.Table, user.FieldID, id),
-			sqlgraph.To(userallowedaccount.Table, userallowedaccount.UserColumn),
-			sqlgraph.Edge(sqlgraph.O2M, true, user.UserAllowedAccountsTable, user.UserAllowedAccountsColumn),
-		)
-		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
-		return fromV, nil
-	}
-	return query
-}
-
 // Hooks returns the client hooks.
 func (c *UserClient) Hooks() []Hook {
 	hooks := c.hooks.User
@@ -5453,122 +5381,6 @@ func (c *UserClient) mutate(ctx context.Context, m *UserMutation) (Value, error)
 		return (&UserDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown User mutation op: %q", m.Op())
-	}
-}
-
-// UserAllowedAccountClient is a client for the UserAllowedAccount schema.
-type UserAllowedAccountClient struct {
-	config
-}
-
-// NewUserAllowedAccountClient returns a client for the UserAllowedAccount from the given config.
-func NewUserAllowedAccountClient(c config) *UserAllowedAccountClient {
-	return &UserAllowedAccountClient{config: c}
-}
-
-// Use adds a list of mutation hooks to the hooks stack.
-// A call to `Use(f, g, h)` equals to `userallowedaccount.Hooks(f(g(h())))`.
-func (c *UserAllowedAccountClient) Use(hooks ...Hook) {
-	c.hooks.UserAllowedAccount = append(c.hooks.UserAllowedAccount, hooks...)
-}
-
-// Intercept adds a list of query interceptors to the interceptors stack.
-// A call to `Intercept(f, g, h)` equals to `userallowedaccount.Intercept(f(g(h())))`.
-func (c *UserAllowedAccountClient) Intercept(interceptors ...Interceptor) {
-	c.inters.UserAllowedAccount = append(c.inters.UserAllowedAccount, interceptors...)
-}
-
-// Create returns a builder for creating a UserAllowedAccount entity.
-func (c *UserAllowedAccountClient) Create() *UserAllowedAccountCreate {
-	mutation := newUserAllowedAccountMutation(c.config, OpCreate)
-	return &UserAllowedAccountCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// CreateBulk returns a builder for creating a bulk of UserAllowedAccount entities.
-func (c *UserAllowedAccountClient) CreateBulk(builders ...*UserAllowedAccountCreate) *UserAllowedAccountCreateBulk {
-	return &UserAllowedAccountCreateBulk{config: c.config, builders: builders}
-}
-
-// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
-// a builder and applies setFunc on it.
-func (c *UserAllowedAccountClient) MapCreateBulk(slice any, setFunc func(*UserAllowedAccountCreate, int)) *UserAllowedAccountCreateBulk {
-	rv := reflect.ValueOf(slice)
-	if rv.Kind() != reflect.Slice {
-		return &UserAllowedAccountCreateBulk{err: fmt.Errorf("calling to UserAllowedAccountClient.MapCreateBulk with wrong type %T, need slice", slice)}
-	}
-	builders := make([]*UserAllowedAccountCreate, rv.Len())
-	for i := 0; i < rv.Len(); i++ {
-		builders[i] = c.Create()
-		setFunc(builders[i], i)
-	}
-	return &UserAllowedAccountCreateBulk{config: c.config, builders: builders}
-}
-
-// Update returns an update builder for UserAllowedAccount.
-func (c *UserAllowedAccountClient) Update() *UserAllowedAccountUpdate {
-	mutation := newUserAllowedAccountMutation(c.config, OpUpdate)
-	return &UserAllowedAccountUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOne returns an update builder for the given entity.
-func (c *UserAllowedAccountClient) UpdateOne(_m *UserAllowedAccount) *UserAllowedAccountUpdateOne {
-	mutation := newUserAllowedAccountMutation(c.config, OpUpdateOne)
-	mutation.user = &_m.UserID
-	mutation.account = &_m.AccountID
-	return &UserAllowedAccountUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// Delete returns a delete builder for UserAllowedAccount.
-func (c *UserAllowedAccountClient) Delete() *UserAllowedAccountDelete {
-	mutation := newUserAllowedAccountMutation(c.config, OpDelete)
-	return &UserAllowedAccountDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// Query returns a query builder for UserAllowedAccount.
-func (c *UserAllowedAccountClient) Query() *UserAllowedAccountQuery {
-	return &UserAllowedAccountQuery{
-		config: c.config,
-		ctx:    &QueryContext{Type: TypeUserAllowedAccount},
-		inters: c.Interceptors(),
-	}
-}
-
-// QueryUser queries the user edge of a UserAllowedAccount.
-func (c *UserAllowedAccountClient) QueryUser(_m *UserAllowedAccount) *UserQuery {
-	return c.Query().
-		Where(userallowedaccount.UserID(_m.UserID), userallowedaccount.AccountID(_m.AccountID)).
-		QueryUser()
-}
-
-// QueryAccount queries the account edge of a UserAllowedAccount.
-func (c *UserAllowedAccountClient) QueryAccount(_m *UserAllowedAccount) *AccountQuery {
-	return c.Query().
-		Where(userallowedaccount.UserID(_m.UserID), userallowedaccount.AccountID(_m.AccountID)).
-		QueryAccount()
-}
-
-// Hooks returns the client hooks.
-func (c *UserAllowedAccountClient) Hooks() []Hook {
-	return c.hooks.UserAllowedAccount
-}
-
-// Interceptors returns the client interceptors.
-func (c *UserAllowedAccountClient) Interceptors() []Interceptor {
-	return c.inters.UserAllowedAccount
-}
-
-func (c *UserAllowedAccountClient) mutate(ctx context.Context, m *UserAllowedAccountMutation) (Value, error) {
-	switch m.Op() {
-	case OpCreate:
-		return (&UserAllowedAccountCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdate:
-		return (&UserAllowedAccountUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdateOne:
-		return (&UserAllowedAccountUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpDelete, OpDeleteOne:
-		return (&UserAllowedAccountDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
-	default:
-		return nil, fmt.Errorf("ent: unknown UserAllowedAccount mutation op: %q", m.Op())
 	}
 }
 
@@ -6212,9 +6024,8 @@ type (
 		Group, IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog,
 		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
 		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
-		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedAccount,
-		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
-		UserSubscription []ent.Hook
+		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
+		UserAttributeDefinition, UserAttributeValue, UserSubscription []ent.Hook
 	}
 	inters struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
@@ -6223,9 +6034,8 @@ type (
 		Group, IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog,
 		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
 		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
-		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedAccount,
-		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
-		UserSubscription []ent.Interceptor
+		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
+		UserAttributeDefinition, UserAttributeValue, UserSubscription []ent.Interceptor
 	}
 )
 

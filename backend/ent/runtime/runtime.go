@@ -36,7 +36,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
-	"github.com/Wei-Shaw/sub2api/ent/userallowedaccount"
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/ent/userattributedefinition"
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
@@ -1888,12 +1887,6 @@ func init() {
 	userDescRpmLimit := userFields[19].Descriptor()
 	// user.DefaultRpmLimit holds the default value on creation for the rpm_limit field.
 	user.DefaultRpmLimit = userDescRpmLimit.Default.(int)
-	userallowedaccountFields := schema.UserAllowedAccount{}.Fields()
-	_ = userallowedaccountFields
-	// userallowedaccountDescCreatedAt is the schema descriptor for created_at field.
-	userallowedaccountDescCreatedAt := userallowedaccountFields[2].Descriptor()
-	// userallowedaccount.DefaultCreatedAt holds the default value on creation for the created_at field.
-	userallowedaccount.DefaultCreatedAt = userallowedaccountDescCreatedAt.Default.(func() time.Time)
 	userallowedgroupFields := schema.UserAllowedGroup{}.Fields()
 	_ = userallowedgroupFields
 	// userallowedgroupDescCreatedAt is the schema descriptor for created_at field.

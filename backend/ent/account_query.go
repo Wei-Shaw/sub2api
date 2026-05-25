@@ -19,24 +19,20 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
-	"github.com/Wei-Shaw/sub2api/ent/user"
-	"github.com/Wei-Shaw/sub2api/ent/userallowedaccount"
 )
 
 // AccountQuery is the builder for querying Account entities.
 type AccountQuery struct {
 	config
-	ctx                     *QueryContext
-	order                   []account.OrderOption
-	inters                  []Interceptor
-	predicates              []predicate.Account
-	withGroups              *GroupQuery
-	withProxy               *ProxyQuery
-	withUsageLogs           *UsageLogQuery
-	withAllowedUsageViewers *UserQuery
-	withAccountGroups       *AccountGroupQuery
-	withUserAllowedAccounts *UserAllowedAccountQuery
-	modifiers               []func(*sql.Selector)
+	ctx               *QueryContext
+	order             []account.OrderOption
+	inters            []Interceptor
+	predicates        []predicate.Account
+	withGroups        *GroupQuery
+	withProxy         *ProxyQuery
+	withUsageLogs     *UsageLogQuery
+	withAccountGroups *AccountGroupQuery
+	modifiers         []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -139,28 +135,6 @@ func (_q *AccountQuery) QueryUsageLogs() *UsageLogQuery {
 	return query
 }
 
-// QueryAllowedUsageViewers chains the current query on the "allowed_usage_viewers" edge.
-func (_q *AccountQuery) QueryAllowedUsageViewers() *UserQuery {
-	query := (&UserClient{config: _q.config}).Query()
-	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
-		if err := _q.prepareQuery(ctx); err != nil {
-			return nil, err
-		}
-		selector := _q.sqlQuery(ctx)
-		if err := selector.Err(); err != nil {
-			return nil, err
-		}
-		step := sqlgraph.NewStep(
-			sqlgraph.From(account.Table, account.FieldID, selector),
-			sqlgraph.To(user.Table, user.FieldID),
-			sqlgraph.Edge(sqlgraph.M2M, true, account.AllowedUsageViewersTable, account.AllowedUsageViewersPrimaryKey...),
-		)
-		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
-		return fromU, nil
-	}
-	return query
-}
-
 // QueryAccountGroups chains the current query on the "account_groups" edge.
 func (_q *AccountQuery) QueryAccountGroups() *AccountGroupQuery {
 	query := (&AccountGroupClient{config: _q.config}).Query()
@@ -176,28 +150,6 @@ func (_q *AccountQuery) QueryAccountGroups() *AccountGroupQuery {
 			sqlgraph.From(account.Table, account.FieldID, selector),
 			sqlgraph.To(accountgroup.Table, accountgroup.AccountColumn),
 			sqlgraph.Edge(sqlgraph.O2M, true, account.AccountGroupsTable, account.AccountGroupsColumn),
-		)
-		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
-		return fromU, nil
-	}
-	return query
-}
-
-// QueryUserAllowedAccounts chains the current query on the "user_allowed_accounts" edge.
-func (_q *AccountQuery) QueryUserAllowedAccounts() *UserAllowedAccountQuery {
-	query := (&UserAllowedAccountClient{config: _q.config}).Query()
-	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
-		if err := _q.prepareQuery(ctx); err != nil {
-			return nil, err
-		}
-		selector := _q.sqlQuery(ctx)
-		if err := selector.Err(); err != nil {
-			return nil, err
-		}
-		step := sqlgraph.NewStep(
-			sqlgraph.From(account.Table, account.FieldID, selector),
-			sqlgraph.To(userallowedaccount.Table, userallowedaccount.AccountColumn),
-			sqlgraph.Edge(sqlgraph.O2M, true, account.UserAllowedAccountsTable, account.UserAllowedAccountsColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -392,17 +344,15 @@ func (_q *AccountQuery) Clone() *AccountQuery {
 		return nil
 	}
 	return &AccountQuery{
-		config:                  _q.config,
-		ctx:                     _q.ctx.Clone(),
-		order:                   append([]account.OrderOption{}, _q.order...),
-		inters:                  append([]Interceptor{}, _q.inters...),
-		predicates:              append([]predicate.Account{}, _q.predicates...),
-		withGroups:              _q.withGroups.Clone(),
-		withProxy:               _q.withProxy.Clone(),
-		withUsageLogs:           _q.withUsageLogs.Clone(),
-		withAllowedUsageViewers: _q.withAllowedUsageViewers.Clone(),
-		withAccountGroups:       _q.withAccountGroups.Clone(),
-		withUserAllowedAccounts: _q.withUserAllowedAccounts.Clone(),
+		config:            _q.config,
+		ctx:               _q.ctx.Clone(),
+		order:             append([]account.OrderOption{}, _q.order...),
+		inters:            append([]Interceptor{}, _q.inters...),
+		predicates:        append([]predicate.Account{}, _q.predicates...),
+		withGroups:        _q.withGroups.Clone(),
+		withProxy:         _q.withProxy.Clone(),
+		withUsageLogs:     _q.withUsageLogs.Clone(),
+		withAccountGroups: _q.withAccountGroups.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -442,17 +392,6 @@ func (_q *AccountQuery) WithUsageLogs(opts ...func(*UsageLogQuery)) *AccountQuer
 	return _q
 }
 
-// WithAllowedUsageViewers tells the query-builder to eager-load the nodes that are connected to
-// the "allowed_usage_viewers" edge. The optional arguments are used to configure the query builder of the edge.
-func (_q *AccountQuery) WithAllowedUsageViewers(opts ...func(*UserQuery)) *AccountQuery {
-	query := (&UserClient{config: _q.config}).Query()
-	for _, opt := range opts {
-		opt(query)
-	}
-	_q.withAllowedUsageViewers = query
-	return _q
-}
-
 // WithAccountGroups tells the query-builder to eager-load the nodes that are connected to
 // the "account_groups" edge. The optional arguments are used to configure the query builder of the edge.
 func (_q *AccountQuery) WithAccountGroups(opts ...func(*AccountGroupQuery)) *AccountQuery {
@@ -461,17 +400,6 @@ func (_q *AccountQuery) WithAccountGroups(opts ...func(*AccountGroupQuery)) *Acc
 		opt(query)
 	}
 	_q.withAccountGroups = query
-	return _q
-}
-
-// WithUserAllowedAccounts tells the query-builder to eager-load the nodes that are connected to
-// the "user_allowed_accounts" edge. The optional arguments are used to configure the query builder of the edge.
-func (_q *AccountQuery) WithUserAllowedAccounts(opts ...func(*UserAllowedAccountQuery)) *AccountQuery {
-	query := (&UserAllowedAccountClient{config: _q.config}).Query()
-	for _, opt := range opts {
-		opt(query)
-	}
-	_q.withUserAllowedAccounts = query
 	return _q
 }
 
@@ -553,13 +481,11 @@ func (_q *AccountQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Acco
 	var (
 		nodes       = []*Account{}
 		_spec       = _q.querySpec()
-		loadedTypes = [6]bool{
+		loadedTypes = [4]bool{
 			_q.withGroups != nil,
 			_q.withProxy != nil,
 			_q.withUsageLogs != nil,
-			_q.withAllowedUsageViewers != nil,
 			_q.withAccountGroups != nil,
-			_q.withUserAllowedAccounts != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -603,26 +529,10 @@ func (_q *AccountQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Acco
 			return nil, err
 		}
 	}
-	if query := _q.withAllowedUsageViewers; query != nil {
-		if err := _q.loadAllowedUsageViewers(ctx, query, nodes,
-			func(n *Account) { n.Edges.AllowedUsageViewers = []*User{} },
-			func(n *Account, e *User) { n.Edges.AllowedUsageViewers = append(n.Edges.AllowedUsageViewers, e) }); err != nil {
-			return nil, err
-		}
-	}
 	if query := _q.withAccountGroups; query != nil {
 		if err := _q.loadAccountGroups(ctx, query, nodes,
 			func(n *Account) { n.Edges.AccountGroups = []*AccountGroup{} },
 			func(n *Account, e *AccountGroup) { n.Edges.AccountGroups = append(n.Edges.AccountGroups, e) }); err != nil {
-			return nil, err
-		}
-	}
-	if query := _q.withUserAllowedAccounts; query != nil {
-		if err := _q.loadUserAllowedAccounts(ctx, query, nodes,
-			func(n *Account) { n.Edges.UserAllowedAccounts = []*UserAllowedAccount{} },
-			func(n *Account, e *UserAllowedAccount) {
-				n.Edges.UserAllowedAccounts = append(n.Edges.UserAllowedAccounts, e)
-			}); err != nil {
 			return nil, err
 		}
 	}
@@ -752,67 +662,6 @@ func (_q *AccountQuery) loadUsageLogs(ctx context.Context, query *UsageLogQuery,
 	}
 	return nil
 }
-func (_q *AccountQuery) loadAllowedUsageViewers(ctx context.Context, query *UserQuery, nodes []*Account, init func(*Account), assign func(*Account, *User)) error {
-	edgeIDs := make([]driver.Value, len(nodes))
-	byID := make(map[int64]*Account)
-	nids := make(map[int64]map[*Account]struct{})
-	for i, node := range nodes {
-		edgeIDs[i] = node.ID
-		byID[node.ID] = node
-		if init != nil {
-			init(node)
-		}
-	}
-	query.Where(func(s *sql.Selector) {
-		joinT := sql.Table(account.AllowedUsageViewersTable)
-		s.Join(joinT).On(s.C(user.FieldID), joinT.C(account.AllowedUsageViewersPrimaryKey[0]))
-		s.Where(sql.InValues(joinT.C(account.AllowedUsageViewersPrimaryKey[1]), edgeIDs...))
-		columns := s.SelectedColumns()
-		s.Select(joinT.C(account.AllowedUsageViewersPrimaryKey[1]))
-		s.AppendSelect(columns...)
-		s.SetDistinct(false)
-	})
-	if err := query.prepareQuery(ctx); err != nil {
-		return err
-	}
-	qr := QuerierFunc(func(ctx context.Context, q Query) (Value, error) {
-		return query.sqlAll(ctx, func(_ context.Context, spec *sqlgraph.QuerySpec) {
-			assign := spec.Assign
-			values := spec.ScanValues
-			spec.ScanValues = func(columns []string) ([]any, error) {
-				values, err := values(columns[1:])
-				if err != nil {
-					return nil, err
-				}
-				return append([]any{new(sql.NullInt64)}, values...), nil
-			}
-			spec.Assign = func(columns []string, values []any) error {
-				outValue := values[0].(*sql.NullInt64).Int64
-				inValue := values[1].(*sql.NullInt64).Int64
-				if nids[inValue] == nil {
-					nids[inValue] = map[*Account]struct{}{byID[outValue]: {}}
-					return assign(columns[1:], values[1:])
-				}
-				nids[inValue][byID[outValue]] = struct{}{}
-				return nil
-			}
-		})
-	})
-	neighbors, err := withInterceptors[[]*User](ctx, query, qr, query.inters)
-	if err != nil {
-		return err
-	}
-	for _, n := range neighbors {
-		nodes, ok := nids[n.ID]
-		if !ok {
-			return fmt.Errorf(`unexpected "allowed_usage_viewers" node returned %v`, n.ID)
-		}
-		for kn := range nodes {
-			assign(kn, n)
-		}
-	}
-	return nil
-}
 func (_q *AccountQuery) loadAccountGroups(ctx context.Context, query *AccountGroupQuery, nodes []*Account, init func(*Account), assign func(*Account, *AccountGroup)) error {
 	fks := make([]driver.Value, 0, len(nodes))
 	nodeids := make(map[int64]*Account)
@@ -828,36 +677,6 @@ func (_q *AccountQuery) loadAccountGroups(ctx context.Context, query *AccountGro
 	}
 	query.Where(predicate.AccountGroup(func(s *sql.Selector) {
 		s.Where(sql.InValues(s.C(account.AccountGroupsColumn), fks...))
-	}))
-	neighbors, err := query.All(ctx)
-	if err != nil {
-		return err
-	}
-	for _, n := range neighbors {
-		fk := n.AccountID
-		node, ok := nodeids[fk]
-		if !ok {
-			return fmt.Errorf(`unexpected referenced foreign-key "account_id" returned %v for node %v`, fk, n)
-		}
-		assign(node, n)
-	}
-	return nil
-}
-func (_q *AccountQuery) loadUserAllowedAccounts(ctx context.Context, query *UserAllowedAccountQuery, nodes []*Account, init func(*Account), assign func(*Account, *UserAllowedAccount)) error {
-	fks := make([]driver.Value, 0, len(nodes))
-	nodeids := make(map[int64]*Account)
-	for i := range nodes {
-		fks = append(fks, nodes[i].ID)
-		nodeids[nodes[i].ID] = nodes[i]
-		if init != nil {
-			init(nodes[i])
-		}
-	}
-	if len(query.ctx.Fields) > 0 {
-		query.ctx.AppendFieldOnce(userallowedaccount.FieldAccountID)
-	}
-	query.Where(predicate.UserAllowedAccount(func(s *sql.Selector) {
-		s.Where(sql.InValues(s.C(account.UserAllowedAccountsColumn), fks...))
 	}))
 	neighbors, err := query.All(ctx)
 	if err != nil {

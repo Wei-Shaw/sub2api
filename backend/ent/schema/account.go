@@ -211,9 +211,6 @@ func (Account) Edges() []ent.Edge {
 			Unique(),
 		// usage_logs: 该账户的使用日志
 		edge.To("usage_logs", UsageLog.Type),
-		edge.From("allowed_usage_viewers", User.Type).
-			Ref("allowed_accounts").
-			Through("user_allowed_accounts", UserAllowedAccount.Type),
 	}
 }
 
