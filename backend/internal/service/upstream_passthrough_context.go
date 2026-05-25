@@ -177,6 +177,76 @@ func ShouldForwardUserNetworkInfo(ctx context.Context) bool {
 	return p.ForwardUserNetworkInfo
 }
 
+// clientHeaderForwardBlacklist names the headers that MUST always be stripped
+// from upstream requests, even when the resolved policy says
+// ForwardClientHeaders=true. These leak inbound auth/session secrets or are
+// otherwise nonsensical on a relay-mode forward.
+//
+// Keys are lowercase (matching the strings.ToLower comparison done at each
+// call site).
+var clientHeaderForwardBlacklist = map[string]struct{}{
+	"authorization":       {},
+	"proxy-authorization": {},
+	"cookie":              {},
+	"set-cookie":          {},
+	"x-api-key":           {},
+	"x-goog-api-key":      {},
+}
+
+// IsClientHeaderBlacklistedForForward reports whether a lowercase header key
+// must be stripped from upstream requests regardless of any allow rule. Used
+// by the ForwardClientHeaders blacklist-mode forwarding.
+//
+// The caller must pass a lowercased key. The blacklist intentionally does not
+// strip platform-specific identity headers (e.g., x-app, anthropic-beta) —
+// those are dropped via the legacy whitelist when ForwardClientHeaders=false
+// and kept when =true (because in true mode the caller has explicitly opted
+// out of strict mimicry).
+func IsClientHeaderBlacklistedForForward(lowerKey string) bool {
+	_, ok := clientHeaderForwardBlacklist[lowerKey]
+	return ok
+}
+
+// ShouldForwardClientHeaders reports whether downstream code should switch
+// the upstream-header copy loop from strict whitelist mode (current default)
+// to permissive blacklist mode (Transparent profile).
+//
+// Returns false (= keep legacy strict whitelist) when:
+//   - No policy is in ctx (FeatureFlag OFF — preserves today's behavior)
+//   - A policy is in ctx with ForwardClientHeaders == false (Protected/Strict)
+//
+// Returns true only when a policy is present with ForwardClientHeaders == true
+// (Transparent profile — relay accounts where every client header should reach
+// the upstream relay, except the secret blacklist).
+func ShouldForwardClientHeaders(ctx context.Context) bool {
+	p, ok := GetUpstreamPolicyFromContext(ctx)
+	if !ok {
+		return false
+	}
+	return p.ForwardClientHeaders
+}
+
+// ShouldCopyClientHeader applies the ForwardClientHeaders policy to a single
+// inbound header key. It is the single seam each call site uses to decide
+// whether to copy a client header to the upstream request.
+//
+//   - When ShouldForwardClientHeaders(ctx) is true: copies everything except
+//     IsClientHeaderBlacklistedForForward(lowerKey).
+//   - Otherwise: delegates to the call-site-specific whitelist predicate
+//     (e.g., allowedHeaders[lowerKey] for the Anthropic paths,
+//     isOpenAIPassthroughAllowedRequestHeader for the OpenAI passthrough path).
+//
+// The caller must pass a lowercased key.
+func ShouldCopyClientHeader(ctx context.Context, lowerKey string, legacyWhitelist func(string) bool) bool {
+	if ShouldForwardClientHeaders(ctx) {
+		return !IsClientHeaderBlacklistedForForward(lowerKey)
+	}
+	if legacyWhitelist == nil {
+		return false
+	}
+	return legacyWhitelist(lowerKey)
+}
+
 // ShouldForwardClientUA reports whether downstream code should preserve the
 // client's original User-Agent header on the upstream request instead of
 // substituting a platform-specific mimic value (e.g., Claude CLI UA on the

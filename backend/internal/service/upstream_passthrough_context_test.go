@@ -153,6 +153,75 @@ func TestShouldInjectSystemPrompt_StrictRunsInject(t *testing.T) {
 	require.True(t, ShouldInjectSystemPrompt(ctx))
 }
 
+func TestIsClientHeaderBlacklistedForForward_BlacklistEntries(t *testing.T) {
+	for _, key := range []string{"authorization", "proxy-authorization", "cookie", "set-cookie", "x-api-key", "x-goog-api-key"} {
+		require.True(t, IsClientHeaderBlacklistedForForward(key), "expected %q to be blacklisted", key)
+	}
+}
+
+func TestIsClientHeaderBlacklistedForForward_NonBlacklistedKeysPass(t *testing.T) {
+	for _, key := range []string{"user-agent", "x-app", "anthropic-beta", "accept-language", "x-custom"} {
+		require.False(t, IsClientHeaderBlacklistedForForward(key), "expected %q to NOT be blacklisted", key)
+	}
+}
+
+func TestShouldForwardClientHeaders_LegacyWhenAbsent(t *testing.T) {
+	require.False(t, ShouldForwardClientHeaders(context.Background()))
+}
+
+func TestShouldForwardClientHeaders_PolicyWithForwardFalseMatchesLegacy(t *testing.T) {
+	policy := EffectiveUpstreamPolicy{ForwardClientHeaders: false}
+	ctx := SetUpstreamPolicyInContext(context.Background(), &policy)
+	require.False(t, ShouldForwardClientHeaders(ctx))
+}
+
+func TestShouldForwardClientHeaders_PolicyWithForwardTrueReturnsTrue(t *testing.T) {
+	policy := EffectiveUpstreamPolicy{ForwardClientHeaders: true}
+	ctx := SetUpstreamPolicyInContext(context.Background(), &policy)
+	require.True(t, ShouldForwardClientHeaders(ctx))
+}
+
+func TestShouldCopyClientHeader_LegacyDelegatesToWhitelist(t *testing.T) {
+	whitelist := func(k string) bool { return k == "user-agent" }
+	ctx := context.Background()
+
+	require.True(t, ShouldCopyClientHeader(ctx, "user-agent", whitelist))
+	require.False(t, ShouldCopyClientHeader(ctx, "x-custom", whitelist))
+	// Even auth headers fall back to whitelist when policy absent — preserves
+	// legacy behavior at every call site that already strips auth post-loop.
+	require.False(t, ShouldCopyClientHeader(ctx, "authorization", whitelist))
+}
+
+func TestShouldCopyClientHeader_PolicyTrueIgnoresWhitelistAndUsesBlacklist(t *testing.T) {
+	whitelist := func(k string) bool { return false } // legacy would block everything
+	policy := EffectiveUpstreamPolicy{ForwardClientHeaders: true}
+	ctx := SetUpstreamPolicyInContext(context.Background(), &policy)
+
+	// User-Agent is not whitelisted by the (hostile) closure but blacklist mode passes it.
+	require.True(t, ShouldCopyClientHeader(ctx, "user-agent", whitelist))
+	require.True(t, ShouldCopyClientHeader(ctx, "x-custom-header", whitelist))
+	// Blacklisted keys are stripped even in forward mode.
+	require.False(t, ShouldCopyClientHeader(ctx, "authorization", whitelist))
+	require.False(t, ShouldCopyClientHeader(ctx, "cookie", whitelist))
+	require.False(t, ShouldCopyClientHeader(ctx, "x-api-key", whitelist))
+}
+
+func TestShouldCopyClientHeader_PolicyFalseUsesWhitelist(t *testing.T) {
+	whitelist := func(k string) bool { return k == "user-agent" }
+	policy := EffectiveUpstreamPolicy{ForwardClientHeaders: false}
+	ctx := SetUpstreamPolicyInContext(context.Background(), &policy)
+
+	require.True(t, ShouldCopyClientHeader(ctx, "user-agent", whitelist))
+	require.False(t, ShouldCopyClientHeader(ctx, "x-custom", whitelist))
+}
+
+func TestShouldCopyClientHeader_NilWhitelistInLegacyReturnsFalse(t *testing.T) {
+	// Defensive: a buggy call site that passes nil whitelist must not panic
+	// and must not silently forward everything.
+	ctx := context.Background()
+	require.False(t, ShouldCopyClientHeader(ctx, "user-agent", nil))
+}
+
 func TestShouldForwardClientUA_LegacyWhenAbsent(t *testing.T) {
 	require.False(t, ShouldForwardClientUA(context.Background()))
 }
