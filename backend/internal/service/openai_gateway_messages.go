@@ -35,6 +35,8 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 ) (*OpenAIForwardResult, error) {
 	startTime := time.Now()
 
+	ctx = ResolveAndStorePolicy(ctx, account, s.settingService)
+
 	// 1. Parse Anthropic request
 	var anthropicReq apicompat.AnthropicRequest
 	if err := json.Unmarshal(body, &anthropicReq); err != nil {
