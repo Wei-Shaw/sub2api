@@ -4207,6 +4207,9 @@ export default {
       // Batch import
       standardAdd: '标准添加',
       batchAdd: '快捷添加',
+      batchNamePrefix: '名称前缀',
+      batchNamePrefixPlaceholder: '例如：tokyo-proxy',
+      batchNamePrefixHint: '新建代理将按 tokyo-proxy-001、tokyo-proxy-002 的格式自动命名。',
       batchInput: '代理列表',
       batchInputPlaceholder:
         "每行输入一个代理，支持以下格式：\nsocks5://user:pass{'@'}192.168.1.1:1080\nhttp://192.168.1.1:8080\nhttps://user:pass{'@'}proxy.example.com:443",
@@ -4264,6 +4267,7 @@ export default {
       failedToCreate: '创建代理失败',
       failedToUpdate: '更新代理失败',
       failedToTest: '测试代理失败',
+      batchNamePrefixRequired: '请输入批量导入名称前缀',
       nameRequired: '请输入代理名称',
       hostRequired: '请输入主机地址',
       portInvalid: '端口必须在 1-65535 之间',

@@ -44,6 +44,7 @@ func setupAdminRouter() (*gin.Engine, *stubAdminService) {
 	router.GET("/api/v1/admin/proxies/all", proxyHandler.GetAll)
 	router.GET("/api/v1/admin/proxies/:id", proxyHandler.GetByID)
 	router.POST("/api/v1/admin/proxies", proxyHandler.Create)
+	router.POST("/api/v1/admin/proxies/batch", proxyHandler.BatchCreate)
 	router.PUT("/api/v1/admin/proxies/:id", proxyHandler.Update)
 	router.DELETE("/api/v1/admin/proxies/:id", proxyHandler.Delete)
 	router.POST("/api/v1/admin/proxies/batch-delete", proxyHandler.BatchDelete)
@@ -246,6 +247,18 @@ func TestProxyHandlerEndpoints(t *testing.T) {
 
 	rec = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/api/v1/admin/proxies/batch-delete", bytes.NewBufferString(`{"ids":[1,2]}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	body, _ = json.Marshal(map[string]any{
+		"name_prefix": "tokyo",
+		"proxies": []map[string]any{
+			{"protocol": "http", "host": "10.0.0.1", "port": 8080},
+		},
+	})
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/admin/proxies/batch", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)

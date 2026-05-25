@@ -4089,6 +4089,9 @@ export default {
       // Batch import
       standardAdd: 'Standard Add',
       batchAdd: 'Quick Add',
+      batchNamePrefix: 'Name Prefix',
+      batchNamePrefixPlaceholder: 'Example: tokyo-proxy',
+      batchNamePrefixHint: 'New proxies will be named like tokyo-proxy-001, tokyo-proxy-002.',
       batchInput: 'Proxy List',
       batchInputPlaceholder:
         "Enter one proxy per line in the following formats:\nsocks5://user:pass{'@'}192.168.1.1:1080\nhttp://192.168.1.1:8080\nhttps://user:pass{'@'}proxy.example.com:443",
@@ -4139,6 +4142,7 @@ export default {
       failedToUpdate: 'Failed to update proxy',
       failedToDelete: 'Failed to delete proxy',
       failedToTest: 'Failed to test proxy',
+      batchNamePrefixRequired: 'Please enter a name prefix for batch import',
       nameRequired: 'Please enter proxy name',
       hostRequired: 'Please enter host address',
       portInvalid: 'Port must be between 1-65535',

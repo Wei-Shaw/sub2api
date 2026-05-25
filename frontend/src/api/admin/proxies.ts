@@ -194,13 +194,16 @@ export async function getProxyAccounts(id: number): Promise<ProxyAccountSummary[
  * @returns Creation result with count of created and skipped
  */
 export async function batchCreate(
-  proxies: Array<{
-    protocol: string
-    host: string
-    port: number
-    username?: string
-    password?: string
-  }>
+  payload: {
+    name_prefix?: string
+    proxies: Array<{
+      protocol: string
+      host: string
+      port: number
+      username?: string
+      password?: string
+    }>
+  }
 ): Promise<{
   created: number
   skipped: number
@@ -208,7 +211,7 @@ export async function batchCreate(
   const { data } = await apiClient.post<{
     created: number
     skipped: number
-  }>('/admin/proxies/batch', { proxies })
+  }>('/admin/proxies/batch', payload)
   return data
 }
 

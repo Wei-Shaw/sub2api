@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -24,6 +25,7 @@ type stubAdminService struct {
 	updatedProxyIDs      []int64
 	updatedProxies       []*service.UpdateProxyInput
 	testedProxyIDs       []int64
+	existingProxyKeys    map[string]bool
 	createAccountErr     error
 	updateAccountErr     error
 	bulkUpdateAccountErr error
@@ -126,13 +128,14 @@ func newStubAdminService() *stubAdminService {
 		CreatedAt: now,
 	}
 	return &stubAdminService{
-		users:       []service.User{user},
-		apiKeys:     []service.APIKey{apiKey},
-		groups:      []service.Group{group},
-		accounts:    []service.Account{account},
-		proxies:     []service.Proxy{proxy},
-		proxyCounts: []service.ProxyWithAccountCount{{Proxy: proxy, AccountCount: 1}},
-		redeems:     []service.RedeemCode{redeem},
+		users:             []service.User{user},
+		apiKeys:           []service.APIKey{apiKey},
+		groups:            []service.Group{group},
+		accounts:          []service.Account{account},
+		proxies:           []service.Proxy{proxy},
+		proxyCounts:       []service.ProxyWithAccountCount{{Proxy: proxy, AccountCount: 1}},
+		redeems:           []service.RedeemCode{redeem},
+		existingProxyKeys: map[string]bool{},
 	}
 }
 
@@ -481,7 +484,10 @@ func (s *stubAdminService) GetProxyAccounts(ctx context.Context, proxyID int64) 
 }
 
 func (s *stubAdminService) CheckProxyExists(ctx context.Context, host string, port int, username, password string) (bool, error) {
-	return false, nil
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := strings.Join([]string{host, strconv.Itoa(port), username, password}, "|")
+	return s.existingProxyKeys[key], nil
 }
 
 func (s *stubAdminService) TestProxy(ctx context.Context, id int64) (*service.ProxyTestResult, error) {

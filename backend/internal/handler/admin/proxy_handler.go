@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -310,7 +311,8 @@ type BatchCreateProxyItem struct {
 
 // BatchCreateRequest represents batch create proxies request
 type BatchCreateRequest struct {
-	Proxies []BatchCreateProxyItem `json:"proxies" binding:"required,min=1"`
+	NamePrefix string                 `json:"name_prefix"`
+	Proxies    []BatchCreateProxyItem `json:"proxies" binding:"required,min=1"`
 }
 
 // BatchCreate handles batch creating proxies
@@ -324,6 +326,7 @@ func (h *ProxyHandler) BatchCreate(c *gin.Context) {
 
 	created := 0
 	skipped := 0
+	namePrefix := strings.TrimSpace(req.NamePrefix)
 
 	for _, item := range req.Proxies {
 		// Trim all string fields
@@ -344,9 +347,13 @@ func (h *ProxyHandler) BatchCreate(c *gin.Context) {
 			continue
 		}
 
-		// Create proxy with default name
+		name := "default"
+		if namePrefix != "" {
+			name = fmt.Sprintf("%s-%03d", namePrefix, created+1)
+		}
+
 		_, err = h.adminService.CreateProxy(c.Request.Context(), &service.CreateProxyInput{
-			Name:     "default",
+			Name:     name,
 			Protocol: protocol,
 			Host:     host,
 			Port:     item.Port,
