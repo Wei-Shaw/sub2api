@@ -217,6 +217,11 @@ describe('路由守卫逻辑', () => {
       expect(redirect).toBeNull()
     })
 
+    it('访问 /usage-only 允许通过', () => {
+      const redirect = simulateGuard('/usage-only', { requiresAuth: true }, authState)
+      expect(redirect).toBeNull()
+    })
+
     it('访问管理页面被拒绝，重定向到 /dashboard', () => {
       const redirect = simulateGuard('/admin/dashboard', { requiresAdmin: true }, authState)
       expect(redirect).toBe('/dashboard')

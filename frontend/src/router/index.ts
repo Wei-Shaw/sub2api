@@ -237,6 +237,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/usage-only',
+    name: 'UsageOnly',
+    component: () => import('@/views/user/UsageOnlyView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Usage Records',
+      titleKey: 'usage.title',
+      descriptionKey: 'usage.description'
+    }
+  },
+  {
     path: '/redeem',
     name: 'Redeem',
     component: () => import('@/views/user/RedeemView.vue'),
