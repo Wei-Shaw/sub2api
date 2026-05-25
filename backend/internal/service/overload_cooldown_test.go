@@ -223,7 +223,7 @@ func TestHandle529_DisabledFromDB_SkipsAccount(t *testing.T) {
 	require.Equal(t, 0, accountRepo.overloadCalls, "should NOT pause when disabled")
 }
 
-func TestHandle529_NilSettingService_FallsBackToConfig(t *testing.T) {
+func TestHandle529_NilSettingService_FallsBackToExplicitConfig(t *testing.T) {
 	accountRepo := &overloadAccountRepoStub{}
 	cfg := &config.Config{}
 	cfg.RateLimit.OverloadCooldownMinutes = 20
@@ -238,16 +238,14 @@ func TestHandle529_NilSettingService_FallsBackToConfig(t *testing.T) {
 	require.WithinDuration(t, before.Add(20*time.Minute), accountRepo.lastOverloadEnd, 2*time.Second)
 }
 
-func TestHandle529_NilSettingService_ZeroConfig_DefaultsTen(t *testing.T) {
+func TestHandle529_NilSettingService_ZeroConfig_RuntimeOnly(t *testing.T) {
 	accountRepo := &overloadAccountRepoStub{}
 	svc := NewRateLimitService(accountRepo, nil, &config.Config{}, nil, nil)
 
 	account := &Account{ID: 88, Platform: PlatformAnthropic, Type: AccountTypeOAuth}
-	before := time.Now()
 	svc.handle529(context.Background(), account)
 
-	require.Equal(t, 1, accountRepo.overloadCalls)
-	require.WithinDuration(t, before.Add(10*time.Minute), accountRepo.lastOverloadEnd, 2*time.Second)
+	require.Equal(t, 0, accountRepo.overloadCalls)
 }
 
 func TestHandle529_DBReadError_FallsBackToConfig(t *testing.T) {
@@ -275,7 +273,7 @@ func TestHandle529_DBReadError_FallsBackToConfig(t *testing.T) {
 
 func TestDefaultOverloadCooldownSettings(t *testing.T) {
 	d := DefaultOverloadCooldownSettings()
-	require.True(t, d.Enabled)
+	require.False(t, d.Enabled)
 	require.Equal(t, 10, d.CooldownMinutes)
 }
 

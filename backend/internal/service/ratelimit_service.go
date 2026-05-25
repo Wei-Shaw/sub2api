@@ -1305,17 +1305,17 @@ func (s *RateLimitService) handle529(ctx context.Context, account *Account) {
 			settings = nil
 		}
 	}
-	// 回退到配置文件
-	if settings == nil {
-		cooldown := s.cfg.RateLimit.OverloadCooldownMinutes
-		if cooldown <= 0 {
-			cooldown = 10
+
+	if settings == nil && s.cfg != nil && s.cfg.RateLimit.OverloadCooldownMinutes > 0 {
+		settings = &OverloadCooldownSettings{
+			Enabled:         true,
+			CooldownMinutes: s.cfg.RateLimit.OverloadCooldownMinutes,
 		}
-		settings = &OverloadCooldownSettings{Enabled: true, CooldownMinutes: cooldown}
 	}
 
-	if !settings.Enabled {
-		slog.Info("account_529_ignored", "account_id", account.ID, "reason", "overload_cooldown_disabled")
+	if settings == nil || !settings.Enabled {
+		s.notifyAccountSchedulingBlocked(account, time.Time{}, "529_runtime")
+		slog.Info("account_529_runtime_only", "account_id", account.ID, "reason", "overload_cooldown_disabled")
 		return
 	}
 

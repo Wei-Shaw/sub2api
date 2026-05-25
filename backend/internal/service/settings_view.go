@@ -451,10 +451,11 @@ type RateLimit429CooldownSettings struct {
 	CooldownSeconds int `json:"cooldown_seconds"`
 }
 
-// DefaultOverloadCooldownSettings 返回默认的过载冷却配置（启用，10分钟）
+// DefaultOverloadCooldownSettings 返回默认的过载冷却配置。
+// 默认关闭持久化 529 过载冷却，保持更接近上游的轻量临时失败处理。
 func DefaultOverloadCooldownSettings() *OverloadCooldownSettings {
 	return &OverloadCooldownSettings{
-		Enabled:         true,
+		Enabled:         false,
 		CooldownMinutes: 10,
 	}
 }
