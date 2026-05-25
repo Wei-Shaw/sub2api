@@ -1046,10 +1046,20 @@ func calculateOpenAI429ResetTime(headers http.Header) *time.Time {
 		return &resetAt
 	}
 
-	// If neither window is exhausted, keep the parsed snapshot but do not mark
-	// the account rate-limited; OpenAI can return 429-like responses for
-	// request-scoped conditions that should not remove the account from rotation.
-	slog.Info("openai_429_no_exhausted_window", "has_7d_reset", normalized.Reset7dSeconds != nil, "has_5h_reset", normalized.Reset5hSeconds != nil)
+	// 都未达到100%但收到429，使用较长的重置时间
+	var maxResetSecs int
+	if normalized.Reset7dSeconds != nil && *normalized.Reset7dSeconds > maxResetSecs {
+		maxResetSecs = *normalized.Reset7dSeconds
+	}
+	if normalized.Reset5hSeconds != nil && *normalized.Reset5hSeconds > maxResetSecs {
+		maxResetSecs = *normalized.Reset5hSeconds
+	}
+	if maxResetSecs > 0 {
+		resetAt := now.Add(time.Duration(maxResetSecs) * time.Second)
+		slog.Info("openai_429_using_max_reset", "max_reset_seconds", maxResetSecs, "reset_at", resetAt)
+		return &resetAt
+	}
+
 	return nil
 }
 
