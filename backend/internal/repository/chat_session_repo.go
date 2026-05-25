@@ -406,7 +406,7 @@ func (r *chatSessionRepository) ListRecentMessagesByAPIKey(ctx context.Context, 
 				m.created_at
 			FROM chat_messages m
 			INNER JOIN chat_sessions s ON s.id = m.session_id
-			WHERE s.user_id = $1 AND s.api_key_id = $2 AND m.direction = 'inbound' AND m.role = 'user'
+			WHERE s.user_id = $1 AND s.api_key_id = $2
 			ORDER BY m.created_at DESC, m.id DESC
 			LIMIT $3
 		) x

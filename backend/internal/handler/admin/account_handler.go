@@ -1390,7 +1390,7 @@ func (h *AccountHandler) BatchFetchAccountInfo(c *gin.Context) {
 		}
 	}
 
-	const maxConcurrency = 10
+	const maxConcurrency = 3
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(maxConcurrency)
 
@@ -1416,6 +1416,14 @@ func (h *AccountHandler) BatchFetchAccountInfo(c *gin.Context) {
 		}
 
 		g.Go(func() error {
+			if acc.ID > 0 {
+				jitter := time.Duration(acc.ID%5) * 200 * time.Millisecond
+				select {
+				case <-gctx.Done():
+					return nil
+				case <-time.After(jitter):
+				}
+			}
 			if !acc.IsOpenAIOAuth() {
 				mu.Lock()
 				failedCount++

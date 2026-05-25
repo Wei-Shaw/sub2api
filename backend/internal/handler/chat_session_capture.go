@@ -8,74 +8,8 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
-	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 )
-
-const chatSessionCaptureLimit = 256 * 1024
-
-type chatSessionCaptureWriter struct {
-	gin.ResponseWriter
-	buf       bytes.Buffer
-	limit     int
-	truncated bool
-}
-
-func newChatSessionCaptureWriter(rw gin.ResponseWriter, limit int) *chatSessionCaptureWriter {
-	if limit <= 0 {
-		limit = chatSessionCaptureLimit
-	}
-	return &chatSessionCaptureWriter{
-		ResponseWriter: rw,
-		limit:          limit,
-	}
-}
-
-func (w *chatSessionCaptureWriter) Write(data []byte) (int, error) {
-	w.capture(data)
-	return w.ResponseWriter.Write(data)
-}
-
-func (w *chatSessionCaptureWriter) WriteString(s string) (int, error) {
-	w.capture([]byte(s))
-	return w.ResponseWriter.WriteString(s)
-}
-
-func (w *chatSessionCaptureWriter) capture(data []byte) {
-	if w == nil || len(data) == 0 || w.limit <= 0 {
-		return
-	}
-	remaining := w.limit - w.buf.Len()
-	if remaining <= 0 {
-		w.truncated = true
-		return
-	}
-	if len(data) > remaining {
-		_, _ = w.buf.Write(data[:remaining])
-		w.truncated = true
-		return
-	}
-	_, _ = w.buf.Write(data)
-}
-
-func (w *chatSessionCaptureWriter) Bytes() []byte {
-	if w == nil {
-		return nil
-	}
-	return w.buf.Bytes()
-}
-
-func attachChatSessionCapture(c *gin.Context) (*chatSessionCaptureWriter, func()) {
-	if c == nil {
-		return nil, func() {}
-	}
-	original := c.Writer
-	capture := newChatSessionCaptureWriter(original, chatSessionCaptureLimit)
-	c.Writer = capture
-	return capture, func() {
-		c.Writer = original
-	}
-}
 
 func recordChatSessionAsync(
 	ctx context.Context,
@@ -84,7 +18,6 @@ func recordChatSessionAsync(
 	account *service.Account,
 	input *service.ChatSessionRecordInput,
 	requestBody []byte,
-	responseBody []byte,
 	finalOutputText string,
 ) {
 	if recorder == nil || apiKey == nil || input == nil {
@@ -101,7 +34,7 @@ func recordChatSessionAsync(
 		input.CreatedAt = time.Now()
 	}
 
-	messages, _ := buildChatSessionMessages(input.InboundEndpoint, requestBody, responseBody)
+	messages, _ := buildChatSessionMessages(input.InboundEndpoint, requestBody, finalOutputText)
 	if len(messages) == 0 {
 		return
 	}
@@ -115,14 +48,23 @@ func recordChatSessionAsync(
 	}(input)
 }
 
-func buildChatSessionMessages(inboundEndpoint *string, requestBody, responseBody []byte) ([]service.ChatMessageRecordInput, []service.ChatMessageEventRecordInput) {
+func buildChatSessionMessages(inboundEndpoint *string, requestBody []byte, finalOutputText string) ([]service.ChatMessageRecordInput, []service.ChatMessageEventRecordInput) {
 	endpoint := ""
 	if inboundEndpoint != nil {
 		endpoint = strings.TrimSpace(*inboundEndpoint)
 	}
 
 	inboundMessages, _ := parseInboundChatMessages(endpoint, requestBody)
-	return inboundMessages, nil
+	messages := make([]service.ChatMessageRecordInput, 0, len(inboundMessages)+1)
+	messages = append(messages, inboundMessages...)
+	if text := strings.TrimSpace(finalOutputText); text != "" {
+		messages = append(messages, service.ChatMessageRecordInput{
+			Role:        "assistant",
+			Direction:   "outbound",
+			ContentText: text,
+		})
+	}
+	return messages, nil
 }
 
 func parseInboundChatMessages(endpoint string, body []byte) ([]service.ChatMessageRecordInput, []service.ChatMessageEventRecordInput) {

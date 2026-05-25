@@ -426,7 +426,7 @@ func (s *OpenAIOAuthService) BuildAccountCredentials(tokenInfo *OpenAITokenInfo)
 		"access_token": tokenInfo.AccessToken,
 	}
 	if tokenInfo.ExpiresAt > 0 {
-		creds["expires_at"] = time.Unix(tokenInfo.ExpiresAt, 0).Format(time.RFC3339)
+		creds["expires_at"] = time.Unix(tokenInfo.ExpiresAt, 0).UTC().Format(time.RFC3339)
 	}
 	// 仅在刷新响应返回了新的 refresh_token 时才更新，防止用空值覆盖已有令牌
 	if strings.TrimSpace(tokenInfo.RefreshToken) != "" {

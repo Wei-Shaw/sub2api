@@ -674,9 +674,8 @@ func (s *AccountUsageService) persistOpenAICodexProbeSnapshot(accountID int64, u
 		updateCtx, updateCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer updateCancel()
 		if err := s.accountRepo.UpdateExtra(updateCtx, accountID, updates); err != nil {
-			return
+			slog.Warn("openai_codex_probe_extra_update_failed", "account_id", accountID, "error", err)
 		}
-		syncOpenAICodexAccountRateLimitFromUsageWindow(updateCtx, s.accountRepo, accountID, updates, time.Now())
 	}()
 }
 
@@ -703,75 +702,6 @@ func mergeAccountExtra(account *Account, updates map[string]any) {
 	for k, v := range updates {
 		account.Extra[k] = v
 	}
-}
-
-type openAICodexRateLimitSetter interface {
-	SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error
-}
-
-type openAICodexRateLimitFieldClearer interface {
-	ClearRateLimitFields(ctx context.Context, id int64) error
-}
-
-func syncOpenAICodexAccountRateLimitFromUsageWindow(ctx context.Context, repo any, accountID int64, updates map[string]any, now time.Time) {
-	if repo == nil || accountID <= 0 || len(updates) == 0 {
-		return
-	}
-
-	resetAt := openAICodexRateLimitResetAtFromUpdates(updates, now)
-	if resetAt == nil {
-		if _, has7d := updates["codex_7d_used_percent"]; !has7d {
-			if _, has5h := updates["codex_5h_used_percent"]; !has5h {
-				return
-			}
-		}
-		clearOpenAICodexAccountRateLimit(ctx, repo, accountID)
-		return
-	}
-
-	if setter, ok := repo.(openAICodexRateLimitSetter); ok {
-		if err := setter.SetRateLimited(ctx, accountID, *resetAt); err != nil {
-			slog.Warn("openai_codex_usage_window_rate_limit_set_failed", "account_id", accountID, "error", err)
-		}
-	}
-}
-
-func clearOpenAICodexAccountRateLimit(ctx context.Context, repo any, accountID int64) {
-	clearer, ok := repo.(openAICodexRateLimitFieldClearer)
-	if !ok {
-		return
-	}
-	if err := clearer.ClearRateLimitFields(ctx, accountID); err != nil {
-		slog.Warn("openai_codex_usage_window_rate_limit_clear_failed", "account_id", accountID, "error", err)
-	}
-}
-
-func openAICodexRateLimitResetAtFromUpdates(updates map[string]any, now time.Time) *time.Time {
-	if parseExtraFloat64(updates["codex_7d_used_percent"]) >= 100 {
-		if resetAt := openAICodexResetAtFromUpdates(updates, "codex_7d_reset_at", "codex_7d_reset_after_seconds", now); resetAt != nil && resetAt.After(now) {
-			return resetAt
-		}
-		return nil
-	}
-	if parseExtraFloat64(updates["codex_5h_used_percent"]) >= 100 {
-		if resetAt := openAICodexResetAtFromUpdates(updates, "codex_5h_reset_at", "codex_5h_reset_after_seconds", now); resetAt != nil && resetAt.After(now) {
-			return resetAt
-		}
-	}
-	return nil
-}
-
-func openAICodexResetAtFromUpdates(updates map[string]any, resetAtKey, resetAfterKey string, now time.Time) *time.Time {
-	if raw, ok := updates[resetAtKey]; ok {
-		if resetAt, err := parseTime(fmt.Sprint(raw)); err == nil {
-			return &resetAt
-		}
-	}
-	if seconds := parseExtraInt(updates[resetAfterKey]); seconds > 0 {
-		resetAt := now.Add(time.Duration(seconds) * time.Second)
-		return &resetAt
-	}
-	return nil
 }
 
 func (s *AccountUsageService) getGeminiUsage(ctx context.Context, account *Account) (*UsageInfo, error) {

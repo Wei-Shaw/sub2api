@@ -80,8 +80,6 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 
 	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
-	captureWriter, restoreWriter := attachChatSessionCapture(c)
-	defer restoreWriter()
 
 	if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIChat, reqModel, body); decision != nil && decision.Blocked {
 		h.errorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
@@ -319,7 +317,6 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				result.UpstreamModel,
 			),
 			body,
-			captureWriter.Bytes(),
 			result.FinalOutputText,
 		)
 		reqLog.Debug("openai_chat_completions.request_completed",

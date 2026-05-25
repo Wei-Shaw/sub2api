@@ -1411,6 +1411,12 @@ const accountMatchesCurrentFilters = (account: Account) => {
     const isRateLimited = Number.isFinite(rateLimitResetAt) && rateLimitResetAt > now
     const tempUnschedUntil = account.temp_unschedulable_until ? new Date(account.temp_unschedulable_until).getTime() : Number.NaN
     const isTempUnschedulable = Number.isFinite(tempUnschedUntil) && tempUnschedUntil > now
+    const credentials = account.credentials as Record<string, unknown> | undefined
+    const extra = account.extra as Record<string, unknown> | undefined
+    const modelLimits = extra?.model_rate_limits as Record<string, { rate_limit_reset_at?: string }> | undefined
+    const creditsResetAt = modelLimits?.AICredits?.rate_limit_reset_at
+    const creditsResetMs = creditsResetAt ? new Date(creditsResetAt).getTime() : Number.NaN
+    const isCreditsExhausted = Number.isFinite(creditsResetMs) && creditsResetMs > now
 
     if (filters.status === 'active') {
       if (account.status !== 'active' || isRateLimited || isTempUnschedulable || !account.schedulable) return false
@@ -1420,6 +1426,10 @@ const accountMatchesCurrentFilters = (account: Account) => {
       if (account.status !== 'active' || !isTempUnschedulable) return false
     } else if (filters.status === 'unschedulable') {
       if (account.status !== 'active' || account.schedulable || isRateLimited || isTempUnschedulable) return false
+    } else if (filters.status === 'gpt55_disabled') {
+      if (account.platform !== 'openai' || account.type !== 'oauth' || credentials?.gpt55_disabled_reason !== 'upstream_not_supported') return false
+    } else if (filters.status === 'credits_exhausted') {
+      if (account.platform !== 'antigravity' || !isCreditsExhausted) return false
     } else if (account.status !== filters.status) {
       return false
     }

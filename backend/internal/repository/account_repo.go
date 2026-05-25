@@ -537,6 +537,28 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 					))
 				}),
 			)
+		case "gpt55_disabled":
+			q = q.Where(
+				dbaccount.PlatformEQ(service.PlatformOpenAI),
+				dbaccount.TypeEQ(service.AccountTypeOAuth),
+				dbpredicate.Account(func(s *entsql.Selector) {
+					s.Where(entsql.ExprP("credentials->>'gpt55_disabled_reason' = 'upstream_not_supported'"))
+				}),
+			)
+		case "credits_exhausted":
+			q = q.Where(
+				dbaccount.PlatformEQ(service.PlatformAntigravity),
+				dbpredicate.Account(func(s *entsql.Selector) {
+					s.Where(entsql.ExprP(`
+						CASE
+							WHEN extra->'model_rate_limits'->'AICredits'->>'rate_limit_reset_at' ~
+								'^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$'
+							THEN (extra->'model_rate_limits'->'AICredits'->>'rate_limit_reset_at')::timestamptz > NOW()
+							ELSE FALSE
+						END
+					`))
+				}),
+			)
 		default:
 			q = q.Where(dbaccount.StatusEQ(status))
 		}

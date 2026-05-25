@@ -55,6 +55,10 @@ func TestAccountHandlerBatchFetchAccountInfo(t *testing.T) {
 				"access_token":    "token-1",
 				"organization_id": "org-1",
 				"expires_at":      time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+				"model_mapping": map[string]any{
+					"gpt-5.5": "gpt-5.4",
+				},
+				"gpt55_disabled_reason": "upstream_not_supported",
 			},
 		},
 		{
@@ -132,4 +136,6 @@ func TestAccountHandlerBatchFetchAccountInfo(t *testing.T) {
 	require.Equal(t, "2026-06-01T00:00:00Z", updated.Credentials["subscription_expires_at"])
 	require.Equal(t, []string{"gpt-5.4-mini", "gpt-5.5"}, updated.Credentials["supported_models"])
 	require.NotEmpty(t, updated.Credentials["supported_models_synced_at"])
+	require.Equal(t, map[string]any{"gpt-5.5": "gpt-5.4"}, updated.Credentials["model_mapping"])
+	require.Equal(t, "upstream_not_supported", updated.Credentials["gpt55_disabled_reason"])
 }
