@@ -153,6 +153,22 @@ func TestShouldInjectSystemPrompt_StrictRunsInject(t *testing.T) {
 	require.True(t, ShouldInjectSystemPrompt(ctx))
 }
 
+func TestShouldForwardClientUA_LegacyWhenAbsent(t *testing.T) {
+	require.False(t, ShouldForwardClientUA(context.Background()))
+}
+
+func TestShouldForwardClientUA_PolicyWithForwardFalseMatchesLegacy(t *testing.T) {
+	policy := EffectiveUpstreamPolicy{ForwardClientUA: false}
+	ctx := SetUpstreamPolicyInContext(context.Background(), &policy)
+	require.False(t, ShouldForwardClientUA(ctx))
+}
+
+func TestShouldForwardClientUA_PolicyWithForwardTrueReturnsTrue(t *testing.T) {
+	policy := EffectiveUpstreamPolicy{ForwardClientUA: true}
+	ctx := SetUpstreamPolicyInContext(context.Background(), &policy)
+	require.True(t, ShouldForwardClientUA(ctx))
+}
+
 func TestShouldForwardUserNetworkInfo_LegacyWhenAbsent(t *testing.T) {
 	// No policy in ctx → return false (don't forward; preserves today's behavior)
 	require.False(t, ShouldForwardUserNetworkInfo(context.Background()))

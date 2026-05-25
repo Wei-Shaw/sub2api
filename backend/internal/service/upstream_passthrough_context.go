@@ -177,6 +177,31 @@ func ShouldForwardUserNetworkInfo(ctx context.Context) bool {
 	return p.ForwardUserNetworkInfo
 }
 
+// ShouldForwardClientUA reports whether downstream code should preserve the
+// client's original User-Agent header on the upstream request instead of
+// substituting a platform-specific mimic value (e.g., Claude CLI UA on the
+// OAuth+mimicClaudeCode path).
+//
+// Returns false (= keep legacy mimic) when:
+//   - No policy is in ctx (FeatureFlag OFF — preserves today's behavior)
+//   - A policy is in ctx with ForwardClientUA == false (Protected/Strict)
+//
+// Returns true only when a policy is present with ForwardClientUA == true
+// (Transparent profile — relay accounts where the upstream should see the
+// real client UA).
+//
+// Note: per spec §4.2, sticky-session hash is computed from a normalized UA
+// value (see GenerateSessionHash + SessionContext.UserAgent) and is NOT
+// affected by this toggle. The toggle only controls the User-Agent that goes
+// on the upstream wire.
+func ShouldForwardClientUA(ctx context.Context) bool {
+	p, ok := GetUpstreamPolicyFromContext(ctx)
+	if !ok {
+		return false
+	}
+	return p.ForwardClientUA
+}
+
 // ForwardUserNetworkInfoHeaders copies the user-network headers from
 // clientHeaders to upstreamHeaders IFF ShouldForwardUserNetworkInfo(ctx) is
 // true. No-op when policy is absent or set to false.

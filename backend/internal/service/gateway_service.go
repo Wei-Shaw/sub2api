@@ -7293,6 +7293,18 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 			// - 保留 incoming beta 的同时，确保 OAuth 所需 beta 存在
 			applyClaudeCodeMimicHeaders(req, reqStream)
 
+			// ForwardClientUA policy override: when the resolved policy says we
+			// must surface the client's real UA (relay/Transparent profile that
+			// happens to route through an OAuth account), restore the client UA
+			// after the mimic pass wrote the platform default. Sticky-session
+			// hashing is unaffected — it reads a normalized UA from the parsed
+			// request body/SessionContext, not the upstream wire UA.
+			if ShouldForwardClientUA(ctx) {
+				if clientUA := strings.TrimSpace(clientHeaders.Get("User-Agent")); clientUA != "" {
+					setHeaderRaw(req.Header, "User-Agent", clientUA)
+				}
+			}
+
 			incomingBeta := getHeaderRaw(req.Header, "anthropic-beta")
 			// Claude Code OAuth credentials are scoped to Claude Code.
 			// Non-haiku models MUST include claude-code beta for Anthropic to recognize

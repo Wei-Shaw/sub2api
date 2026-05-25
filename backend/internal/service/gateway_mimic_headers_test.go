@@ -1,8 +1,10 @@
 package service
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -86,4 +88,69 @@ func TestApplyClaudeCodeMimicHeaders_PartialCacheFillsOnlyGaps(t *testing.T) {
 	require.Equal(t, claude.DefaultHeaders["X-Stainless-Arch"], getHeaderRaw(req.Header, "X-Stainless-Arch"))
 	require.Equal(t, claude.DefaultHeaders["X-Stainless-Runtime"], getHeaderRaw(req.Header, "X-Stainless-Runtime"))
 	require.Equal(t, claude.DefaultHeaders["X-Stainless-Runtime-Version"], getHeaderRaw(req.Header, "X-Stainless-Runtime-Version"))
+}
+
+// Mirrors the B-2c integration: after applyClaudeCodeMimicHeaders writes the
+// platform-default UA, if policy.ForwardClientUA is on and the client provided
+// a non-empty UA, the client UA wins on the upstream wire.
+func TestForwardClientUA_OverridesMimicUAOnOAuthPath(t *testing.T) {
+	applyOverride := func(req *http.Request, clientHeaders http.Header, ctx context.Context) {
+		applyClaudeCodeMimicHeaders(req, true)
+		if ShouldForwardClientUA(ctx) {
+			if clientUA := strings.TrimSpace(clientHeaders.Get("User-Agent")); clientUA != "" {
+				setHeaderRaw(req.Header, "User-Agent", clientUA)
+			}
+		}
+	}
+
+	t.Run("no policy in ctx → mimic UA wins (legacy)", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "https://api.anthropic.com/v1/messages?beta=true", nil)
+		clientHeaders := http.Header{"User-Agent": []string{"my-custom-client/1.0"}}
+
+		applyOverride(req, clientHeaders, context.Background())
+
+		require.Equal(t, claude.DefaultHeaders["User-Agent"], getHeaderRaw(req.Header, "User-Agent"))
+	})
+
+	t.Run("policy ForwardClientUA=false → mimic UA wins", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "https://api.anthropic.com/v1/messages?beta=true", nil)
+		clientHeaders := http.Header{"User-Agent": []string{"my-custom-client/1.0"}}
+		ctx := SetUpstreamPolicyInContext(context.Background(), &EffectiveUpstreamPolicy{ForwardClientUA: false})
+
+		applyOverride(req, clientHeaders, ctx)
+
+		require.Equal(t, claude.DefaultHeaders["User-Agent"], getHeaderRaw(req.Header, "User-Agent"))
+	})
+
+	t.Run("policy ForwardClientUA=true → client UA wins", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "https://api.anthropic.com/v1/messages?beta=true", nil)
+		clientHeaders := http.Header{"User-Agent": []string{"my-custom-client/1.0"}}
+		ctx := SetUpstreamPolicyInContext(context.Background(), &EffectiveUpstreamPolicy{ForwardClientUA: true})
+
+		applyOverride(req, clientHeaders, ctx)
+
+		require.Equal(t, "my-custom-client/1.0", getHeaderRaw(req.Header, "User-Agent"))
+		// Sibling mimic headers must still be set — the override is narrow to UA only.
+		require.Equal(t, claude.DefaultHeaders["X-Stainless-Lang"], getHeaderRaw(req.Header, "X-Stainless-Lang"))
+	})
+
+	t.Run("policy ForwardClientUA=true but client UA empty → mimic UA stays", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "https://api.anthropic.com/v1/messages?beta=true", nil)
+		clientHeaders := http.Header{} // no UA from client
+		ctx := SetUpstreamPolicyInContext(context.Background(), &EffectiveUpstreamPolicy{ForwardClientUA: true})
+
+		applyOverride(req, clientHeaders, ctx)
+
+		require.Equal(t, claude.DefaultHeaders["User-Agent"], getHeaderRaw(req.Header, "User-Agent"))
+	})
+
+	t.Run("policy ForwardClientUA=true with whitespace-only client UA → mimic UA stays", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "https://api.anthropic.com/v1/messages?beta=true", nil)
+		clientHeaders := http.Header{"User-Agent": []string{"   "}}
+		ctx := SetUpstreamPolicyInContext(context.Background(), &EffectiveUpstreamPolicy{ForwardClientUA: true})
+
+		applyOverride(req, clientHeaders, ctx)
+
+		require.Equal(t, claude.DefaultHeaders["User-Agent"], getHeaderRaw(req.Header, "User-Agent"))
+	})
 }
