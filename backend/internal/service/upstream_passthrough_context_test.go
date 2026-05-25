@@ -276,6 +276,56 @@ func TestShouldCopyClientHeader_LoopPattern_LegacyVsForward(t *testing.T) {
 	})
 }
 
+func TestShouldSkipModelRewrite_LegacyWhenAbsent(t *testing.T) {
+	require.False(t, ShouldSkipModelRewrite(context.Background()))
+}
+
+func TestShouldSkipModelRewrite_PolicyFalseMatchesLegacy(t *testing.T) {
+	policy := EffectiveUpstreamPolicy{SkipModelRewrite: false}
+	ctx := SetUpstreamPolicyInContext(context.Background(), &policy)
+	require.False(t, ShouldSkipModelRewrite(ctx))
+}
+
+func TestShouldSkipModelRewrite_PolicyTrueReturnsTrue(t *testing.T) {
+	policy := EffectiveUpstreamPolicy{SkipModelRewrite: true}
+	ctx := SetUpstreamPolicyInContext(context.Background(), &policy)
+	require.True(t, ShouldSkipModelRewrite(ctx))
+}
+
+func TestAccount_GetMappedModelForUpstream_LegacyAppliesMapping(t *testing.T) {
+	a := &Account{
+		Credentials: map[string]any{"model_mapping": map[string]any{"claude-3-7-sonnet-20250219": "claude-3-haiku-20240307"}},
+	}
+	// No policy → legacy mapping applies
+	require.Equal(t, "claude-3-haiku-20240307", a.GetMappedModelForUpstream(context.Background(), "claude-3-7-sonnet-20250219"))
+	// Unmapped model → returns raw
+	require.Equal(t, "claude-3-5-haiku-20241022", a.GetMappedModelForUpstream(context.Background(), "claude-3-5-haiku-20241022"))
+}
+
+func TestAccount_GetMappedModelForUpstream_PolicySkipReturnsRaw(t *testing.T) {
+	a := &Account{
+		Credentials: map[string]any{"model_mapping": map[string]any{"claude-3-7-sonnet-20250219": "claude-3-haiku-20240307"}},
+	}
+	policy := EffectiveUpstreamPolicy{SkipModelRewrite: true}
+	ctx := SetUpstreamPolicyInContext(context.Background(), &policy)
+	// With SkipModelRewrite=true, raw model wins even when mapping would match.
+	require.Equal(t, "claude-3-7-sonnet-20250219", a.GetMappedModelForUpstream(ctx, "claude-3-7-sonnet-20250219"))
+}
+
+func TestAccount_GetMappedModelForUpstream_PolicyFalseAppliesMapping(t *testing.T) {
+	a := &Account{
+		Credentials: map[string]any{"model_mapping": map[string]any{"claude-3-7-sonnet-20250219": "claude-3-haiku-20240307"}},
+	}
+	policy := EffectiveUpstreamPolicy{SkipModelRewrite: false}
+	ctx := SetUpstreamPolicyInContext(context.Background(), &policy)
+	require.Equal(t, "claude-3-haiku-20240307", a.GetMappedModelForUpstream(ctx, "claude-3-7-sonnet-20250219"))
+}
+
+func TestAccount_GetMappedModelForUpstream_NilSafe(t *testing.T) {
+	var a *Account
+	require.Equal(t, "anything", a.GetMappedModelForUpstream(context.Background(), "anything"))
+}
+
 func TestShouldForwardBetaFlags_LegacyWhenAbsent(t *testing.T) {
 	require.False(t, ShouldForwardBetaFlags(context.Background()))
 }

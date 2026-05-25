@@ -2,6 +2,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"hash/fnv"
@@ -678,6 +679,25 @@ func (a *Account) IsModelSupported(requestedModel string) bool {
 func (a *Account) GetMappedModel(requestedModel string) string {
 	mappedModel, _ := a.ResolveMappedModel(requestedModel)
 	return mappedModel
+}
+
+// GetMappedModelForUpstream resolves the model string to put on the upstream
+// wire, honoring the resolved upstream passthrough policy. Returns the
+// requested model verbatim when policy.SkipModelRewrite is true (Transparent
+// profile — relay accounts whose upstream relay handles model resolution);
+// otherwise delegates to GetMappedModel.
+//
+// Callers that key rate-limit buckets, billing rows, or admin views off the
+// model name should NOT use this — keep GetMappedModel there so internal
+// bookkeeping uses a stable mapped name regardless of the wire value.
+func (a *Account) GetMappedModelForUpstream(ctx context.Context, requestedModel string) string {
+	if a == nil {
+		return requestedModel
+	}
+	if ShouldSkipModelRewrite(ctx) {
+		return requestedModel
+	}
+	return a.GetMappedModel(requestedModel)
 }
 
 // ResolveMappedModel 获取映射后的模型名，并返回是否命中了账号级映射。

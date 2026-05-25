@@ -247,6 +247,31 @@ func ShouldCopyClientHeader(ctx context.Context, lowerKey string, legacyWhitelis
 	return legacyWhitelist(lowerKey)
 }
 
+// ShouldSkipModelRewrite reports whether downstream code should bypass the
+// account's per-model rewrite map (e.g., Account.GetModelMapping /
+// GetMappedModel) and send the client's requested model string verbatim to
+// the upstream.
+//
+// Returns false (= apply legacy model rewrite) when:
+//   - No policy is in ctx (FeatureFlag OFF — preserves today's behavior)
+//   - A policy is in ctx with SkipModelRewrite == false (Protected/Strict)
+//
+// Returns true only when a policy is present with SkipModelRewrite == true
+// (Transparent profile — relay accounts whose upstream relay does its own
+// model resolution).
+//
+// Per spec §4.2, this toggle only affects the upstream-facing wire model
+// (request body / URL). Rate-limit buckets, billing keys, and admin views
+// continue to use the mapped name so internal bookkeeping stays consistent
+// regardless of what string was sent on the wire.
+func ShouldSkipModelRewrite(ctx context.Context) bool {
+	p, ok := GetUpstreamPolicyFromContext(ctx)
+	if !ok {
+		return false
+	}
+	return p.SkipModelRewrite
+}
+
 // ShouldForwardBetaFlags reports whether downstream code should pass the
 // client's anthropic-beta / OpenAI-Beta header through to the upstream
 // without applying platform-decided beta merging, stripping, or injection
