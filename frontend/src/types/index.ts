@@ -1854,3 +1854,11 @@ REDACTED
 
 // Payment types
 export type { SubscriptionPlan, PaymentOrder, CheckoutInfoResponse REDACTED from './payment'
+
+export type {
+  PlatformQuotaItem,
+  PlatformQuotaUpdateItem,
+  PlatformQuotaPlatform,
+  PlatformQuotaWindow,
+  PlatformQuotasResponse,
+REDACTED from '@/api/admin/users'

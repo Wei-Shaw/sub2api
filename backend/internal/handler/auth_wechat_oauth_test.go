@@ -1400,6 +1400,7 @@ REDACTED
 		nil,
 		nil,
 		nil,
+		nil,
 	)
 
 	return &AuthHandler{

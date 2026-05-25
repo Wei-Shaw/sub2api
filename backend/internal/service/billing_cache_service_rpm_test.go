@@ -74,7 +74,7 @@ func newBillingServiceForRPM(t *testing.T, cache UserRPMCache, rateRepo UserGrou
 REDACTED
 	// 用 nil BillingCache 走 "无缓存" 分支，避免 CheckBillingEligibility 副作用。
 	// 我们只直接测 checkRPM。
-	svc := NewBillingCacheService(nil, nil, nil, nil, cache, rateRepo, &config.Config{REDACTED)
+	svc := NewBillingCacheService(nil, nil, nil, nil, cache, rateRepo, &config.Config{REDACTED, nil)
 	t.Cleanup(svc.Stop)
 	return svc
 REDACTED

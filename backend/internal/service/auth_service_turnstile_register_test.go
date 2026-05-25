@@ -55,6 +55,7 @@ REDACTED
 		nil, // promoService
 		nil, // defaultSubAssigner
 		nil, // affiliateService
+		nil, // userPlatformQuotaRepo
 	)
 REDACTED
 
