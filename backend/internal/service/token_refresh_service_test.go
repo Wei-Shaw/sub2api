@@ -666,6 +666,31 @@ func TestPathA_AlreadyRefreshed(t *testing.T) {
 	require.Equal(t, 0, invalidator.calls)
 }
 
+func TestPathA_AlreadyRefreshedClearsTempUnschedulable(t *testing.T) {
+	until := time.Now().Add(10 * time.Minute)
+	account := &Account{
+		ID:                     112,
+		Platform:               PlatformOpenAI,
+		Type:                   AccountTypeOAuth,
+		TempUnschedulableUntil: &until,
+	}
+	repo := &tokenRefreshAccountRepo{}
+	repo.accountsByID = map[int64]*Account{account.ID: account}
+	invalidator := &tokenCacheInvalidatorStub{}
+	tempCache := &tempUnschedCacheStub{}
+	cache := &mockTokenCacheForRefreshAPI{lockResult: true}
+
+	service, _ := buildPathAService(repo, cache, invalidator)
+	service.tempUnschedCache = tempCache
+
+	err := service.refreshWithRetry(context.Background(), account, &tokenRefresherStub{}, &alwaysFreshRefresherStub{}, time.Hour)
+	require.ErrorIs(t, err, errRefreshSkipped)
+	require.Equal(t, 0, repo.updateCalls)
+	require.Equal(t, 1, repo.clearTempCalls)
+	require.Equal(t, 1, tempCache.deleteCalls)
+	require.Equal(t, 1, invalidator.calls)
+}
+
 // alwaysFreshRefresherStub 二次检查时认为不需要刷新（模拟已被其他路径刷新）
 type alwaysFreshRefresherStub struct{}
 

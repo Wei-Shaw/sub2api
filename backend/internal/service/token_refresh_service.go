@@ -278,7 +278,12 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 				// 锁被其他 worker 持有，由调用侧策略决定如何计数
 				return s.refreshPolicy.handleLockHeld()
 			} else if !result.Refreshed {
-				// 已被其他路径刷新，由调用侧策略决定如何计数
+				// 已被其他路径刷新，仍执行成功后清理，避免 OAuth 401 写入的
+				// 临时不可调度状态在 token 已恢复后继续阻塞调度。
+				if result.Account != nil {
+					account = result.Account
+				}
+				s.postRefreshActions(ctx, account)
 				return s.refreshPolicy.handleAlreadyRefreshed()
 			} else {
 				account = result.Account
