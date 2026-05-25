@@ -185,8 +185,9 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_GPT55FallsBackToOAuthGP
 			Concurrency: 1,
 			Priority:    0,
 			Credentials: map[string]any{
-				"model_mapping":    map[string]any{"gpt-5.4": "gpt-5.4"},
-				"supported_models": []any{"gpt-5.4"},
+				"gpt55_fallback_enabled": true,
+				"model_mapping":          map[string]any{"gpt-5.4": "gpt-5.4"},
+				"supported_models":       []any{"gpt-5.4"},
 			},
 		},
 	}

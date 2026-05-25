@@ -1795,7 +1795,7 @@ func TestOpenAIUpdateCodexUsageSnapshotFromHeaders(t *testing.T) {
 	}
 }
 
-func TestOpenAIHandleErrorResponse_RemovesUnsupportedGPT55FromOAuthAccount(t *testing.T) {
+func TestOpenAIHandleErrorResponse_MarksUnsupportedGPT55OnOAuthAccount(t *testing.T) {
 	repo := &snapshotUpdateAccountRepo{updateCredentialsCalls: make(chan map[string]any, 1)}
 	svc := &OpenAIGatewayService{
 		accountRepo: repo,
@@ -1830,8 +1830,11 @@ func TestOpenAIHandleErrorResponse_RemovesUnsupportedGPT55FromOAuthAccount(t *te
 
 	select {
 	case credentials := <-repo.updateCredentialsCalls:
-		require.Equal(t, []string{"gpt-5.4"}, credentials["supported_models"])
-		require.Equal(t, map[string]any{"gpt-5.4": "gpt-5.4"}, credentials["model_mapping"])
+		require.Equal(t, []any{"gpt-5.4", "gpt-5.5"}, credentials["supported_models"])
+		require.Equal(t, map[string]any{"gpt-5.4": "gpt-5.4", "gpt-5.5": "gpt-5.5"}, credentials["model_mapping"])
+		require.Equal(t, "upstream_not_supported", credentials["gpt55_disabled_reason"])
+		_, err := time.Parse(time.RFC3339, credentials["gpt55_disabled_at"].(string))
+		require.NoError(t, err)
 	case <-time.After(2 * time.Second):
 		t.Fatal("expected UpdateCredentials to be called")
 	}

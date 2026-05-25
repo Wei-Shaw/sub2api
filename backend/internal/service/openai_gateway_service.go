@@ -3397,108 +3397,23 @@ func (s *OpenAIGatewayService) maybeDisableOpenAIOAuthGPT55(ctx context.Context,
 	}
 
 	credentials := cloneCredentials(account.Credentials)
-	changed := false
-
-	if rawSupported, ok := credentials["supported_models"]; ok {
-		if filtered, removed := removeModelFromCredentialList(rawSupported, "gpt-5.5"); removed {
-			credentials["supported_models"] = filtered
-			changed = true
-		}
-	}
-
-	if rawMapping, ok := credentials["model_mapping"]; ok {
-		if filtered, removed := removeModelFromCredentialMap(rawMapping, "gpt-5.5"); removed {
-			credentials["model_mapping"] = filtered
-			changed = true
-		}
-	}
-
-	if !changed {
+	if strings.TrimSpace(fmt.Sprint(credentials["gpt55_disabled_reason"])) == "upstream_not_supported" &&
+		strings.TrimSpace(fmt.Sprint(credentials["gpt55_disabled_at"])) != "" {
 		return
 	}
+	credentials["gpt55_disabled_at"] = time.Now().UTC().Format(time.RFC3339)
+	credentials["gpt55_disabled_reason"] = "upstream_not_supported"
 
 	updateCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := persistAccountCredentials(updateCtx, s.accountRepo, account, credentials); err != nil {
-		logger.LegacyPrintf("service.openai_gateway", "Warning: persist GPT-5.5 unsupported downgrade failed for account %d: %v", account.ID, err)
+		logger.LegacyPrintf("service.openai_gateway", "Warning: persist GPT-5.5 unsupported marker failed for account %d: %v", account.ID, err)
 		return
 	}
 	if s.schedulerSnapshot != nil {
 		_ = s.schedulerSnapshot.UpdateAccountInCache(updateCtx, account)
 	}
-	logger.LegacyPrintf("service.openai_gateway", "OpenAI OAuth account %d marked GPT-5.5 unsupported; removed from advertised models", account.ID)
-}
-
-func removeModelFromCredentialList(raw any, target string) ([]string, bool) {
-	target = strings.TrimSpace(target)
-	models := make([]string, 0)
-	removed := false
-
-	switch v := raw.(type) {
-	case []string:
-		for _, item := range v {
-			if strings.TrimSpace(item) == target {
-				removed = true
-				continue
-			}
-			models = append(models, item)
-		}
-	case []any:
-		for _, item := range v {
-			modelID, ok := item.(string)
-			if !ok {
-				continue
-			}
-			if strings.TrimSpace(modelID) == target {
-				removed = true
-				continue
-			}
-			models = append(models, modelID)
-		}
-	default:
-		return nil, false
-	}
-
-	if !removed {
-		return nil, false
-	}
-	return models, true
-}
-
-func removeModelFromCredentialMap(raw any, target string) (map[string]any, bool) {
-	target = strings.TrimSpace(target)
-	switch v := raw.(type) {
-	case map[string]any:
-		out := make(map[string]any, len(v))
-		removed := false
-		for key, value := range v {
-			if strings.TrimSpace(key) == target {
-				removed = true
-				continue
-			}
-			out[key] = value
-		}
-		if !removed {
-			return nil, false
-		}
-		return out, true
-	case map[string]string:
-		out := make(map[string]any, len(v))
-		removed := false
-		for key, value := range v {
-			if strings.TrimSpace(key) == target {
-				removed = true
-				continue
-			}
-			out[key] = value
-		}
-		if !removed {
-			return nil, false
-		}
-		return out, true
-	default:
-		return nil, false
-	}
+	logger.LegacyPrintf("service.openai_gateway", "OpenAI OAuth account %d marked GPT-5.5 unsupported", account.ID)
 }
 
 func (s *OpenAIGatewayService) handleErrorResponsePassthrough(

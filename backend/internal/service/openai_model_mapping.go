@@ -28,6 +28,9 @@ func resolveOpenAIGPT55FallbackModel(account *Account, requestedModel string) (s
 	if account == nil || account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth {
 		return "", false
 	}
+	if !openAIGPT55FallbackEnabled(account) {
+		return "", false
+	}
 
 	normalized, ok := normalizeOpenAIGPT55RequestedModel(requestedModel)
 	if !ok {
@@ -40,6 +43,20 @@ func resolveOpenAIGPT55FallbackModel(account *Account, requestedModel string) (s
 		return normalized.fallback, true
 	}
 	return "", false
+}
+
+func openAIGPT55FallbackEnabled(account *Account) bool {
+	if account == nil || account.Credentials == nil {
+		return false
+	}
+	switch v := account.Credentials["gpt55_fallback_enabled"].(type) {
+	case bool:
+		return v
+	case string:
+		return strings.EqualFold(strings.TrimSpace(v), "true") || strings.TrimSpace(v) == "1"
+	default:
+		return false
+	}
 }
 
 type normalizedOpenAIGPT55Model struct {
