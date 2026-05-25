@@ -1463,6 +1463,13 @@
           <label class="input-label">{{ t('admin.accounts.concurrency') }}</label>
           <input v-model.number="form.concurrency" type="number" min="1" class="input"
             @input="form.concurrency = Math.max(1, form.concurrency || 1)" />
+          <p
+            v-if="upstreamPolicyV1Enabled"
+            class="input-hint"
+            :title="t('admin.accounts.upstreamPassthrough.concurrencyHint')"
+          >
+            {{ t('admin.accounts.upstreamPassthrough.concurrencyHint') }}
+          </p>
         </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.loadFactor') }}</label>
@@ -2082,6 +2089,12 @@
                 :placeholder="t('admin.accounts.quotaControl.rpmLimit.baseRpmPlaceholder')"
               />
               <p class="input-hint">{{ t('admin.accounts.quotaControl.rpmLimit.baseRpmHint') }}</p>
+              <p
+                v-if="upstreamPolicyV1Enabled"
+                class="input-hint text-blue-600 dark:text-blue-400"
+              >
+                {{ t('admin.accounts.upstreamPassthrough.baseRpmHint') }}
+              </p>
             </div>
 
             <div>
