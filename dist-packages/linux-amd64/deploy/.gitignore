@@ -1,0 +1,19 @@
+# =============================================================================
+# Sub2API Deploy Directory - Git Ignore
+# =============================================================================
+
+# Data directories (generated at runtime when using docker-compose.local.yml)
+data/
+postgres_data/
+redis_data/
+
+# Environment configuration (contains sensitive information)
+.env
+
+# Backup files
+*.backup
+*.bak
+
+# Temporary files
+*.tmp
+*.log

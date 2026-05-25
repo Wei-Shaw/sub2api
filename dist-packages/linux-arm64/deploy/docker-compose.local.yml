@@ -1,0 +1,233 @@
+# =============================================================================
+# Sub2API Docker Compose - Local Directory Version
+# =============================================================================
+# This configuration uses local directories for data storage instead of named
+# volumes, making it easy to migrate the entire deployment by simply copying
+# the deploy directory.
+#
+# Quick Start:
+#   1. Copy .env.example to .env and configure
+#   2. mkdir -p data postgres_data redis_data
+#   3. docker-compose -f docker-compose.local.yml up -d
+#   4. Check logs: docker-compose -f docker-compose.local.yml logs -f sub2api
+#   5. Access: http://localhost:8080
+#
+# Migration to New Server:
+#   1. docker-compose -f docker-compose.local.yml down
+#   2. tar czf sub2api-deploy.tar.gz deploy/
+#   3. Transfer to new server and extract
+#   4. docker-compose -f docker-compose.local.yml up -d
+# =============================================================================
+
+services:
+  # ===========================================================================
+  # Sub2API Application
+  # ===========================================================================
+  sub2api:
+    image: weishaw/sub2api:latest
+    container_name: sub2api
+    restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 100000
+        hard: 100000
+    ports:
+      - "${BIND_HOST:-0.0.0.0}:${SERVER_PORT:-8080}:8080"
+    volumes:
+      # Local directory mapping for easy migration
+      - ./data:/app/data
+      # Optional: Mount custom config.yaml (uncomment and create the file first)
+      # Copy config.example.yaml to config.yaml, modify it, then uncomment:
+      # - ./config.yaml:/app/data/config.yaml
+    environment:
+      # =======================================================================
+      # Auto Setup (REQUIRED for Docker deployment)
+      # =======================================================================
+      - AUTO_SETUP=true
+
+      # =======================================================================
+      # Server Configuration
+      # =======================================================================
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=8080
+      - SERVER_MODE=${SERVER_MODE:-release}
+      - RUN_MODE=${RUN_MODE:-standard}
+
+      # =======================================================================
+      # Database Configuration (PostgreSQL)
+      # =======================================================================
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - DATABASE_USER=${POSTGRES_USER:-sub2api}
+      - DATABASE_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      - DATABASE_DBNAME=${POSTGRES_DB:-sub2api}
+      - DATABASE_SSLMODE=disable
+      - DATABASE_MAX_OPEN_CONNS=${DATABASE_MAX_OPEN_CONNS:-50}
+      - DATABASE_MAX_IDLE_CONNS=${DATABASE_MAX_IDLE_CONNS:-10}
+      - DATABASE_CONN_MAX_LIFETIME_MINUTES=${DATABASE_CONN_MAX_LIFETIME_MINUTES:-30}
+      - DATABASE_CONN_MAX_IDLE_TIME_MINUTES=${DATABASE_CONN_MAX_IDLE_TIME_MINUTES:-5}
+
+      # =======================================================================
+      # Redis Configuration
+      # =======================================================================
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_DB=${REDIS_DB:-0}
+      - REDIS_POOL_SIZE=${REDIS_POOL_SIZE:-1024}
+      - REDIS_MIN_IDLE_CONNS=${REDIS_MIN_IDLE_CONNS:-10}
+      - REDIS_ENABLE_TLS=${REDIS_ENABLE_TLS:-false}
+
+      # =======================================================================
+      # Admin Account (auto-created on first run)
+      # =======================================================================
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@sub2api.local}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+
+      # =======================================================================
+      # JWT Configuration
+      # =======================================================================
+      # IMPORTANT: Set a fixed JWT_SECRET to prevent login sessions from being
+      # invalidated after container restarts. If left empty, a random secret
+      # will be generated on each startup.
+      # Generate a secure secret: openssl rand -hex 32
+      - JWT_SECRET=${JWT_SECRET:-}
+      - JWT_EXPIRE_HOUR=${JWT_EXPIRE_HOUR:-24}
+
+      # =======================================================================
+      # TOTP (2FA) Configuration
+      # =======================================================================
+      # IMPORTANT: Set a fixed encryption key for TOTP secrets. If left empty,
+      # a random key will be generated on each startup, causing all existing
+      # TOTP configurations to become invalid (users won't be able to login
+      # with 2FA).
+      # Generate a secure key: openssl rand -hex 32
+      - TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY:-}
+
+      # =======================================================================
+      # Timezone Configuration
+      # This affects ALL time operations in the application:
+      # - Database timestamps
+      # - Usage statistics "today" boundary
+      # - Subscription expiry times
+      # - Log timestamps
+      # Common values: Asia/Shanghai, America/New_York, Europe/London, UTC
+      # =======================================================================
+      - TZ=${TZ:-Asia/Shanghai}
+
+      # =======================================================================
+      # Gemini OAuth Configuration (for Gemini accounts)
+      # =======================================================================
+      - GEMINI_OAUTH_CLIENT_ID=${GEMINI_OAUTH_CLIENT_ID:-}
+      - GEMINI_OAUTH_CLIENT_SECRET=${GEMINI_OAUTH_CLIENT_SECRET:-}
+      - GEMINI_OAUTH_SCOPES=${GEMINI_OAUTH_SCOPES:-}
+      - GEMINI_QUOTA_POLICY=${GEMINI_QUOTA_POLICY:-}
+
+      # Built-in OAuth client secrets (optional)
+      # SECURITY: This repo does not embed third-party client_secret.
+      - GEMINI_CLI_OAUTH_CLIENT_SECRET=${GEMINI_CLI_OAUTH_CLIENT_SECRET:-}
+      - ANTIGRAVITY_OAUTH_CLIENT_SECRET=${ANTIGRAVITY_OAUTH_CLIENT_SECRET:-}
+
+      # =======================================================================
+      # Security Configuration (URL Allowlist)
+      # =======================================================================
+      # Enable URL allowlist validation (false to skip allowlist checks)
+      - SECURITY_URL_ALLOWLIST_ENABLED=${SECURITY_URL_ALLOWLIST_ENABLED:-false}
+      # Allow insecure HTTP URLs when allowlist is disabled (default: false, requires https)
+      - SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=${SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP:-false}
+      # Allow private IP addresses for upstream/pricing/CRS (for internal deployments)
+      - SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS=${SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS:-false}
+      # Upstream hosts whitelist (comma-separated, only used when enabled=true)
+      - SECURITY_URL_ALLOWLIST_UPSTREAM_HOSTS=${SECURITY_URL_ALLOWLIST_UPSTREAM_HOSTS:-}
+
+      # =======================================================================
+      # Update Configuration (在线更新配置)
+      # =======================================================================
+      # Proxy for accessing GitHub (online updates + pricing data)
+      # Examples: http://host:port, socks5://host:port
+      - UPDATE_PROXY_URL=${UPDATE_PROXY_URL:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - sub2api-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ===========================================================================
+  # PostgreSQL Database
+  # ===========================================================================
+  postgres:
+    image: postgres:18-alpine
+    container_name: sub2api-postgres
+    restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 100000
+        hard: 100000
+    volumes:
+      # Local directory mapping for easy migration
+      - ./postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-sub2api}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      - POSTGRES_DB=${POSTGRES_DB:-sub2api}
+      - PGDATA=/var/lib/postgresql/data
+      - TZ=${TZ:-Asia/Shanghai}
+    networks:
+      - sub2api-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sub2api} -d ${POSTGRES_DB:-sub2api}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    # 注意：不暴露端口到宿主机，应用通过内部网络连接
+    # 如需调试，可临时添加：ports: ["127.0.0.1:5433:5432"]
+
+  # ===========================================================================
+  # Redis Cache
+  # ===========================================================================
+  redis:
+    image: redis:8-alpine
+    container_name: sub2api-redis
+    restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 100000
+        hard: 100000
+    volumes:
+      # Local directory mapping for easy migration
+      - ./redis_data:/data
+    command: >
+        sh -c '
+          redis-server
+          --save 60 1
+          --appendonly yes
+          --appendfsync everysec
+          ${REDIS_PASSWORD:+--requirepass "$REDIS_PASSWORD"}'
+    environment:
+      - TZ=${TZ:-Asia/Shanghai}
+      # REDISCLI_AUTH is used by redis-cli for authentication (safer than -a flag)
+      - REDISCLI_AUTH=${REDIS_PASSWORD:-}
+    networks:
+      - sub2api-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  sub2api-network:
+    driver: bridge

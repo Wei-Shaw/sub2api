@@ -1,0 +1,105 @@
+# =============================================================================
+# Sub2API Docker Compose - Standalone Configuration
+# =============================================================================
+# This configuration runs only the Sub2API application.
+# PostgreSQL and Redis must be provided externally.
+#
+# Usage:
+#   1. Copy .env.example to .env and configure database/redis connection
+#   2. docker-compose -f docker-compose.standalone.yml up -d
+#   3. Access: http://localhost:8080
+# =============================================================================
+
+services:
+  sub2api:
+    image: weishaw/sub2api:latest
+    container_name: sub2api
+    restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 100000
+        hard: 100000
+    ports:
+      - "${BIND_HOST:-0.0.0.0}:${SERVER_PORT:-8080}:8080"
+    volumes:
+      - sub2api_data:/app/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      # =======================================================================
+      # Auto Setup
+      # =======================================================================
+      - AUTO_SETUP=true
+
+      # =======================================================================
+      # Server Configuration
+      # =======================================================================
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=8080
+      - SERVER_MODE=${SERVER_MODE:-release}
+      - RUN_MODE=${RUN_MODE:-standard}
+
+      # =======================================================================
+      # Database Configuration (PostgreSQL) - Required
+      # =======================================================================
+      - DATABASE_HOST=${DATABASE_HOST:?DATABASE_HOST is required}
+      - DATABASE_PORT=${DATABASE_PORT:-5432}
+      - DATABASE_USER=${DATABASE_USER:-sub2api}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD:?DATABASE_PASSWORD is required}
+      - DATABASE_DBNAME=${DATABASE_DBNAME:-sub2api}
+      - DATABASE_SSLMODE=${DATABASE_SSLMODE:-disable}
+      - DATABASE_MAX_OPEN_CONNS=${DATABASE_MAX_OPEN_CONNS:-50}
+      - DATABASE_MAX_IDLE_CONNS=${DATABASE_MAX_IDLE_CONNS:-10}
+      - DATABASE_CONN_MAX_LIFETIME_MINUTES=${DATABASE_CONN_MAX_LIFETIME_MINUTES:-30}
+      - DATABASE_CONN_MAX_IDLE_TIME_MINUTES=${DATABASE_CONN_MAX_IDLE_TIME_MINUTES:-5}
+
+      # =======================================================================
+      # Redis Configuration - Required
+      # =======================================================================
+      - REDIS_HOST=${REDIS_HOST:?REDIS_HOST is required}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_DB=${REDIS_DB:-0}
+      - REDIS_POOL_SIZE=${REDIS_POOL_SIZE:-1024}
+      - REDIS_MIN_IDLE_CONNS=${REDIS_MIN_IDLE_CONNS:-10}
+      - REDIS_ENABLE_TLS=${REDIS_ENABLE_TLS:-false}
+
+      # =======================================================================
+      # Admin Account (auto-created on first run)
+      # =======================================================================
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@sub2api.local}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+
+      # =======================================================================
+      # JWT Configuration
+      # =======================================================================
+      - JWT_SECRET=${JWT_SECRET:-}
+      - JWT_EXPIRE_HOUR=${JWT_EXPIRE_HOUR:-24}
+
+      # =======================================================================
+      # Timezone Configuration
+      # =======================================================================
+      - TZ=${TZ:-Asia/Shanghai}
+
+      # =======================================================================
+      # Gemini OAuth Configuration (optional)
+      # =======================================================================
+      - GEMINI_OAUTH_CLIENT_ID=${GEMINI_OAUTH_CLIENT_ID:-}
+      - GEMINI_OAUTH_CLIENT_SECRET=${GEMINI_OAUTH_CLIENT_SECRET:-}
+      - GEMINI_OAUTH_SCOPES=${GEMINI_OAUTH_SCOPES:-}
+      - GEMINI_QUOTA_POLICY=${GEMINI_QUOTA_POLICY:-}
+
+      # Built-in OAuth client secrets (optional)
+      # SECURITY: This repo does not embed third-party client_secret.
+      - GEMINI_CLI_OAUTH_CLIENT_SECRET=${GEMINI_CLI_OAUTH_CLIENT_SECRET:-}
+      - ANTIGRAVITY_OAUTH_CLIENT_SECRET=${ANTIGRAVITY_OAUTH_CLIENT_SECRET:-}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  sub2api_data:
+    driver: local
