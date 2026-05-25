@@ -1680,6 +1680,21 @@
         </div>
       </div>
 
+      <!-- Upstream Passthrough Policy (Phase C-5) — universal section, all platforms/types -->
+      <div
+        v-if="upstreamPolicyV1Enabled"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <AccountUpstreamPassthroughSection
+          v-model="upstreamPassthroughOverride"
+          :account-type="account?.type"
+          :account-platform="account?.platform"
+          :account-extra="(account?.extra as Record<string, unknown>) || {}"
+          :system-defaults="upstreamPassthroughSystemDefaults"
+          :global-override="upstreamPassthroughGlobalOverride"
+        />
+      </div>
+
       <!-- 配额控制 (Anthropic apikey/bedrock/vertex/service_account: 配额限制 + 亲和) -->
       <div
         v-if="account?.platform === 'anthropic' && isAccountQuotaEligibleType(account?.type)"
@@ -2415,6 +2430,11 @@ import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import type { Account, Proxy, AdminGroup, CheckMixedChannelResponse, OpenAICompactMode, OpenAIResponsesMode } from '@/types'
+import type {
+  AccountUpstreamPassthroughOverride,
+  UpstreamPassthroughDefaults,
+  UpstreamPassthroughGlobalOverride,
+} from '@/api/admin/settings'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
@@ -2423,6 +2443,7 @@ import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
+import AccountUpstreamPassthroughSection from '@/components/account/AccountUpstreamPassthroughSection.vue'
 import { applyInterceptWarmup } from '@/components/account/credentialsBuilder'
 import { formatDateTime, formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
@@ -2586,6 +2607,12 @@ const codexImageGenerationBridgeMode = ref<CodexImageGenerationBridgeMode>('inhe
 const anthropicPassthroughEnabled = ref(false)
 const webSearchEmulationMode = ref('default')
 const webSearchGlobalEnabled = ref(false)
+
+// Upstream passthrough policy (Phase C-5)
+const upstreamPassthroughOverride = ref<AccountUpstreamPassthroughOverride>({})
+const upstreamPolicyV1Enabled = ref(false)
+const upstreamPassthroughGlobalOverride = ref<UpstreamPassthroughGlobalOverride>('auto')
+const upstreamPassthroughSystemDefaults = ref<UpstreamPassthroughDefaults | null>(null)
 const {
   globalEnabled: quotaNotifyGlobalEnabled,
   state: quotaNotifyState,
@@ -2599,6 +2626,18 @@ const {
 adminAPI.settings.getWebSearchEmulationConfig().then(cfg => {
   webSearchGlobalEnabled.value = cfg?.enabled === true && (cfg?.providers?.length ?? 0) > 0
 }).catch(() => { webSearchGlobalEnabled.value = false })
+
+// Upstream passthrough: pull system defaults + kill-switch once so the
+// account modal's live-preview reflects exactly what the resolver would
+// produce on the next request.
+adminAPI.settings.getSettings().then(settings => {
+  upstreamPolicyV1Enabled.value = settings.upstream_policy_v1_enabled === true
+  upstreamPassthroughGlobalOverride.value =
+    (settings.upstream_passthrough_global_override as UpstreamPassthroughGlobalOverride) || 'auto'
+  upstreamPassthroughSystemDefaults.value = settings.upstream_passthrough_defaults ?? null
+}).catch(() => {
+  upstreamPassthroughSystemDefaults.value = null
+})
 
 loadQuotaNotifyGlobal()
 const editQuotaLimit = ref<number | null>(null)
@@ -2914,6 +2953,10 @@ const syncFormFromAccount = (newAccount: Account | null) => {
       openAICompactModelMappings.value = Object.entries(compactMappings).map(([from, to]) => ({ from, to }))
     }
   }
+  // Upstream passthrough policy: read account.extra.upstream_passthrough sparse override
+  upstreamPassthroughOverride.value =
+    (extra?.upstream_passthrough as AccountUpstreamPassthroughOverride | undefined) ?? {}
+
   if (newAccount.platform === 'anthropic' && newAccount.type === 'apikey') {
     anthropicPassthroughEnabled.value = extra?.anthropic_passthrough === true
     // 三态：string "default"/"enabled"/"disabled"，向后兼容旧 bool
@@ -3571,6 +3614,25 @@ const submitUpdateAccount = async (accountID: number, updatePayload: Record<stri
     }
     updatePayload.extra = merged
   }
+
+  // Upstream passthrough policy: merge sparse override into extra (or drop the
+  // key when the admin reset everything back to inheriting defaults).
+  {
+    const currentExtra = (updatePayload.extra as Record<string, unknown>) || ((props.account?.extra as Record<string, unknown>) ?? {})
+    const mergedUp: Record<string, unknown> = { ...currentExtra }
+    const ovr = upstreamPassthroughOverride.value || {}
+    const hasAny =
+      !!ovr.category_override ||
+      !!ovr.profile ||
+      (ovr.overrides && Object.keys(ovr.overrides).length > 0)
+    if (hasAny) {
+      mergedUp.upstream_passthrough = ovr
+    } else {
+      delete mergedUp.upstream_passthrough
+    }
+    updatePayload.extra = mergedUp
+  }
+
   submitting.value = true
   try {
     const updatedAccount = await adminAPI.accounts.update(accountID, withAntigravityConfirmFlag(updatePayload))

@@ -1800,6 +1800,21 @@
         </div>
       </div>
 
+      <!-- Upstream Passthrough Policy (Phase C-5) — universal section, all platforms/types -->
+      <div
+        v-if="upstreamPolicyV1Enabled"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <AccountUpstreamPassthroughSection
+          v-model="upstreamPassthroughOverride"
+          :account-type="form.type"
+          :account-platform="form.platform"
+          :account-extra="{}"
+          :system-defaults="upstreamPassthroughSystemDefaults"
+          :global-override="upstreamPassthroughGlobalOverride"
+        />
+      </div>
+
       <!-- 配额控制 (Anthropic apikey/bedrock/vertex/service_account: 配额限制 + 亲和) -->
       <div
         v-if="
@@ -3357,6 +3372,12 @@ import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
+import AccountUpstreamPassthroughSection from '@/components/account/AccountUpstreamPassthroughSection.vue'
+import type {
+  AccountUpstreamPassthroughOverride,
+  UpstreamPassthroughDefaults,
+  UpstreamPassthroughGlobalOverride,
+} from '@/api/admin/settings'
 import { applyInterceptWarmup } from '@/components/account/credentialsBuilder'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
@@ -3578,6 +3599,12 @@ const codexCLIOnlyEnabled = ref(false)
 const anthropicPassthroughEnabled = ref(false)
 const webSearchEmulationMode = ref('default')
 const webSearchGlobalEnabled = ref(false)
+
+// Upstream passthrough policy (Phase C-5)
+const upstreamPassthroughOverride = ref<AccountUpstreamPassthroughOverride>({})
+const upstreamPolicyV1Enabled = ref(false)
+const upstreamPassthroughGlobalOverride = ref<UpstreamPassthroughGlobalOverride>('auto')
+const upstreamPassthroughSystemDefaults = ref<UpstreamPassthroughDefaults | null>(null)
 const {
   globalEnabled: quotaNotifyGlobalEnabled,
   state: quotaNotifyState,
@@ -3589,6 +3616,17 @@ const {
 adminAPI.settings.getWebSearchEmulationConfig().then(cfg => {
   webSearchGlobalEnabled.value = cfg?.enabled === true && (cfg?.providers?.length ?? 0) > 0
 }).catch(() => { webSearchGlobalEnabled.value = false })
+
+// Upstream passthrough: pull system defaults + kill-switch once so the
+// account modal's live-preview reflects what the resolver would produce.
+adminAPI.settings.getSettings().then(settings => {
+  upstreamPolicyV1Enabled.value = settings.upstream_policy_v1_enabled === true
+  upstreamPassthroughGlobalOverride.value =
+    (settings.upstream_passthrough_global_override as UpstreamPassthroughGlobalOverride) || 'auto'
+  upstreamPassthroughSystemDefaults.value = settings.upstream_passthrough_defaults ?? null
+}).catch(() => {
+  upstreamPassthroughSystemDefaults.value = null
+})
 
 loadQuotaNotifyGlobal()
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
@@ -4281,10 +4319,35 @@ const ensureAntigravityMixedChannelConfirmed = async (onConfirm: () => Promise<v
   }
 }
 
+/**
+ * Merge the sparse account.extra.upstream_passthrough override (driven by the
+ * passthrough section in this modal) into a create-payload's extra field.
+ * Omits the key entirely when the admin left everything inheriting defaults,
+ * so the backend sees a clean payload identical to today's wire shape.
+ */
+const applyUpstreamPassthroughToCreatePayload = (payload: CreateAccountRequest): CreateAccountRequest => {
+  const ovr = upstreamPassthroughOverride.value || {}
+  const hasAny =
+    !!ovr.category_override ||
+    !!ovr.profile ||
+    (ovr.overrides && Object.keys(ovr.overrides).length > 0)
+  if (!hasAny) {
+    return payload
+  }
+  const currentExtra = (payload.extra as Record<string, unknown>) || {}
+  return {
+    ...payload,
+    extra: {
+      ...currentExtra,
+      upstream_passthrough: ovr,
+    },
+  }
+}
+
 const submitCreateAccount = async (payload: CreateAccountRequest) => {
   submitting.value = true
   try {
-    await adminAPI.accounts.create(withAntigravityConfirmFlag(payload))
+    await adminAPI.accounts.create(withAntigravityConfirmFlag(applyUpstreamPassthroughToCreatePayload(payload)))
     appStore.showSuccess(t('admin.accounts.accountCreated'))
     emit('created')
     handleClose()
@@ -4967,7 +5030,7 @@ const handleOpenAIExchange = async (authCode: string) => {
     }
 
     if (shouldCreateOpenAI) {
-      await adminAPI.accounts.create({
+      await adminAPI.accounts.create(applyUpstreamPassthroughToCreatePayload({
         name: form.name,
         notes: form.notes,
         platform: 'openai',
@@ -4982,7 +5045,7 @@ const handleOpenAIExchange = async (authCode: string) => {
         group_ids: form.group_ids,
         expires_at: form.expires_at,
         auto_pause_on_expired: autoPauseOnExpired.value
-      })
+      }))
       appStore.showSuccess(t('admin.accounts.accountCreated'))
     }
 
@@ -5171,7 +5234,7 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
         const accountName = refreshTokens.length > 1 ? `${baseName} #${i + 1}` : baseName
 
         if (shouldCreateOpenAI) {
-          await adminAPI.accounts.create({
+          await adminAPI.accounts.create(applyUpstreamPassthroughToCreatePayload({
             name: accountName,
             notes: form.notes,
             platform: 'openai',
@@ -5186,7 +5249,7 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
             group_ids: form.group_ids,
             expires_at: form.expires_at,
             auto_pause_on_expired: autoPauseOnExpired.value
-          })
+          }))
         }
 
         successCount++
@@ -5285,7 +5348,7 @@ const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
           expires_at: form.expires_at,
           auto_pause_on_expired: autoPauseOnExpired.value
         })
-        await adminAPI.accounts.create(createPayload)
+        await adminAPI.accounts.create(applyUpstreamPassthroughToCreatePayload(createPayload))
         successCount++
       } catch (error: any) {
         failedCount++
@@ -5610,7 +5673,7 @@ const handleCookieAuth = async (sessionKey: string) => {
           credentials.temp_unschedulable_rules = tempUnschedPayload
         }
 
-        await adminAPI.accounts.create({
+        await adminAPI.accounts.create(applyUpstreamPassthroughToCreatePayload({
           name: accountName,
           notes: form.notes,
           platform: form.platform,
@@ -5625,7 +5688,7 @@ const handleCookieAuth = async (sessionKey: string) => {
           group_ids: form.group_ids,
           expires_at: form.expires_at,
           auto_pause_on_expired: autoPauseOnExpired.value
-        })
+        }))
 
         successCount++
       } catch (error: any) {
