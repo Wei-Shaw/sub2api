@@ -565,6 +565,11 @@ export interface SystemSettings {
 
   // OpenAI fast/flex policy
   openai_fast_policy_settings?: OpenAIFastPolicySettings;
+
+  // Upstream passthrough policy (Phase B-2 + Phase C)
+  upstream_passthrough_defaults?: UpstreamPassthroughDefaults;
+  upstream_passthrough_global_override?: UpstreamPassthroughGlobalOverride;
+  upstream_policy_v1_enabled?: boolean;
 }
 
 export interface UpdateSettingsRequest {
@@ -793,6 +798,88 @@ export interface UpdateSettingsRequest {
 
   // OpenAI fast/flex policy
   openai_fast_policy_settings?: OpenAIFastPolicySettings;
+
+  // Upstream passthrough policy (Phase B-2 + Phase C)
+  upstream_passthrough_defaults?: UpstreamPassthroughDefaults;
+  upstream_passthrough_global_override?: UpstreamPassthroughGlobalOverride;
+  upstream_policy_v1_enabled?: boolean;
+}
+
+/**
+ * Upstream passthrough policy types — TS mirror of Go backend DTOs.
+ * Backend: backend/internal/handler/dto/settings.go (UpstreamPassthroughDefaultsDTO).
+ *
+ * IMPORTANT: any change here must also land in the TS Resolver
+ * (frontend/src/utils/upstreamPassthrough/resolver.ts) and the Go counterpart.
+ */
+
+/** Three account categories derived from Type+Platform+Extra (or category_override). */
+export type UpstreamCategory = "relay" | "official" | "reverse";
+
+/** Three preset profiles; per-toggle overrides are applied on top. */
+export type UpstreamPassthroughProfile = "transparent" | "protected" | "strict";
+
+/** Kill-switch modes. "auto" = per-category derivation; force_* = global override. */
+export type UpstreamPassthroughGlobalOverride =
+  | "auto"
+  | "force_transparent"
+  | "force_protected"
+  | "force_strict";
+
+/** The seven toggles in the policy. Keys mirror backend field names (camelCase → snake_case
+ *  on the wire is handled by the JSON tag on the Go side; we use snake_case directly here
+ *  to keep the override map keys 1:1 with backend overrides map). */
+export type UpstreamPassthroughToggleKey =
+  | "forward_client_headers"
+  | "forward_user_network_info"
+  | "skip_body_scrub"
+  | "skip_system_prompt_inject"
+  | "forward_client_ua"
+  | "forward_beta_flags"
+  | "skip_model_rewrite";
+
+export const UPSTREAM_PASSTHROUGH_TOGGLE_KEYS: UpstreamPassthroughToggleKey[] = [
+  "forward_client_headers",
+  "forward_user_network_info",
+  "skip_body_scrub",
+  "skip_system_prompt_inject",
+  "forward_client_ua",
+  "forward_beta_flags",
+  "skip_model_rewrite",
+];
+
+/**
+ * Sparse overrides map: only keys explicitly set by the admin appear. Each
+ * value pins the toggle to true or false regardless of the underlying profile.
+ */
+export type UpstreamPassthroughOverrides = Partial<
+  Record<UpstreamPassthroughToggleKey, boolean>
+>;
+
+/** Per-category default: which profile to start from, plus sparse overrides. */
+export interface UpstreamPassthroughCategoryDefault {
+  profile: UpstreamPassthroughProfile;
+  overrides?: UpstreamPassthroughOverrides;
+}
+
+/** Global defaults for all three categories. Saved as a single setting. */
+export interface UpstreamPassthroughDefaults {
+  relay: UpstreamPassthroughCategoryDefault;
+  official: UpstreamPassthroughCategoryDefault;
+  reverse: UpstreamPassthroughCategoryDefault;
+}
+
+/**
+ * Account-side sparse config that lives in account.extra.upstream_passthrough.
+ * Used to feed the per-account override section in the modal.
+ */
+export interface AccountUpstreamPassthroughOverride {
+  /** "" = auto-derive (default); otherwise overrides DeriveUpstreamCategory. */
+  category_override?: "" | UpstreamCategory;
+  /** "" = inherit category default profile; otherwise overrides it. */
+  profile?: "" | UpstreamPassthroughProfile;
+  /** Sparse toggle overrides; absent keys mean "inherit from profile". */
+  overrides?: UpstreamPassthroughOverrides;
 }
 
 /**
