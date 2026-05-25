@@ -276,6 +276,91 @@ func TestShouldCopyClientHeader_LoopPattern_LegacyVsForward(t *testing.T) {
 	})
 }
 
+func TestAccount_IsAnthropicAPIKeyPassthroughEnabledWithContext_LegacyWhenAbsent(t *testing.T) {
+	a := &Account{
+		Platform: PlatformAnthropic,
+		Type:     AccountTypeAPIKey,
+		Extra:    map[string]any{"anthropic_passthrough": true},
+	}
+	require.True(t, a.IsAnthropicAPIKeyPassthroughEnabledWithContext(context.Background()),
+		"no policy in ctx → falls back to legacy field")
+}
+
+func TestAccount_IsAnthropicAPIKeyPassthroughEnabledWithContext_PolicyTransparentReturnsTrue(t *testing.T) {
+	a := &Account{
+		Platform: PlatformAnthropic,
+		Type:     AccountTypeAPIKey,
+		Extra:    map[string]any{"anthropic_passthrough": false},
+	}
+	policy := EffectiveUpstreamPolicy{ProfileApplied: ProfileTransparent}
+	ctx := SetUpstreamPolicyInContext(context.Background(), &policy)
+	require.True(t, a.IsAnthropicAPIKeyPassthroughEnabledWithContext(ctx),
+		"Transparent profile → passthrough enabled regardless of legacy field")
+}
+
+func TestAccount_IsAnthropicAPIKeyPassthroughEnabledWithContext_PolicyProtectedReturnsFalse(t *testing.T) {
+	a := &Account{
+		Platform: PlatformAnthropic,
+		Type:     AccountTypeAPIKey,
+		Extra:    map[string]any{"anthropic_passthrough": true},
+	}
+	policy := EffectiveUpstreamPolicy{ProfileApplied: ProfileProtected}
+	ctx := SetUpstreamPolicyInContext(context.Background(), &policy)
+	require.False(t, a.IsAnthropicAPIKeyPassthroughEnabledWithContext(ctx),
+		"explicit Protected profile → DO NOT silently route to passthrough even though legacy field is true")
+}
+
+func TestAccount_IsAnthropicAPIKeyPassthroughEnabledWithContext_PolicyStrictReturnsFalse(t *testing.T) {
+	a := &Account{
+		Platform: PlatformAnthropic,
+		Type:     AccountTypeAPIKey,
+		Extra:    map[string]any{"anthropic_passthrough": true},
+	}
+	policy := EffectiveUpstreamPolicy{ProfileApplied: ProfileStrict}
+	ctx := SetUpstreamPolicyInContext(context.Background(), &policy)
+	require.False(t, a.IsAnthropicAPIKeyPassthroughEnabledWithContext(ctx),
+		"explicit Strict profile → DO NOT route to passthrough")
+}
+
+func TestAccount_IsAnthropicAPIKeyPassthroughEnabledWithContext_NonAnthropicAccountReturnsFalse(t *testing.T) {
+	a := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	policy := EffectiveUpstreamPolicy{ProfileApplied: ProfileTransparent}
+	ctx := SetUpstreamPolicyInContext(context.Background(), &policy)
+	require.False(t, a.IsAnthropicAPIKeyPassthroughEnabledWithContext(ctx),
+		"non-Anthropic platform never matches this builder regardless of policy")
+}
+
+func TestAccount_IsOpenAIPassthroughEnabledWithContext_LegacyWhenAbsent(t *testing.T) {
+	a := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Extra:    map[string]any{"openai_passthrough": true},
+	}
+	require.True(t, a.IsOpenAIPassthroughEnabledWithContext(context.Background()))
+}
+
+func TestAccount_IsOpenAIPassthroughEnabledWithContext_PolicyTransparentReturnsTrue(t *testing.T) {
+	a := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Extra:    map[string]any{"openai_passthrough": false},
+	}
+	policy := EffectiveUpstreamPolicy{ProfileApplied: ProfileTransparent}
+	ctx := SetUpstreamPolicyInContext(context.Background(), &policy)
+	require.True(t, a.IsOpenAIPassthroughEnabledWithContext(ctx))
+}
+
+func TestAccount_IsOpenAIPassthroughEnabledWithContext_PolicyProtectedReturnsFalse(t *testing.T) {
+	a := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Extra:    map[string]any{"openai_passthrough": true},
+	}
+	policy := EffectiveUpstreamPolicy{ProfileApplied: ProfileProtected}
+	ctx := SetUpstreamPolicyInContext(context.Background(), &policy)
+	require.False(t, a.IsOpenAIPassthroughEnabledWithContext(ctx))
+}
+
 func TestShouldSkipModelRewrite_LegacyWhenAbsent(t *testing.T) {
 	require.False(t, ShouldSkipModelRewrite(context.Background()))
 }

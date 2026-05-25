@@ -1245,6 +1245,25 @@ func (a *Account) IsOpenAIPassthroughEnabled() bool {
 	return false
 }
 
+// IsOpenAIPassthroughEnabledWithContext is the ctx-aware bridge that prefers
+// the resolved upstream policy when present. When ctx carries a policy with
+// ProfileApplied == Transparent, returns true regardless of the legacy
+// Extra.openai_passthrough field (the user opted into Transparent through
+// the new system). When the policy is present with any non-Transparent
+// profile, returns false (the user explicitly chose Protected/Strict and
+// the legacy field should NOT silently route to passthrough). Falls back to
+// IsOpenAIPassthroughEnabled when no policy is in ctx (FeatureFlag OFF —
+// preserves today's behavior).
+func (a *Account) IsOpenAIPassthroughEnabledWithContext(ctx context.Context) bool {
+	if a == nil || !a.IsOpenAI() {
+		return false
+	}
+	if p, ok := GetUpstreamPolicyFromContext(ctx); ok {
+		return p.ProfileApplied == ProfileTransparent
+	}
+	return a.IsOpenAIPassthroughEnabled()
+}
+
 // IsOpenAIResponsesWebSocketV2Enabled 返回 OpenAI 账号是否开启 Responses WebSocket v2。
 //
 // 分类型新字段：
@@ -1425,6 +1444,23 @@ func (a *Account) IsAnthropicAPIKeyPassthroughEnabled() bool {
 	}
 	enabled, ok := a.Extra["anthropic_passthrough"].(bool)
 	return ok && enabled
+}
+
+// IsAnthropicAPIKeyPassthroughEnabledWithContext is the ctx-aware bridge that
+// prefers the resolved upstream policy when present. When ctx carries a policy
+// with ProfileApplied == Transparent, returns true regardless of the legacy
+// Extra.anthropic_passthrough field. When the policy is present with any
+// non-Transparent profile, returns false. Falls back to
+// IsAnthropicAPIKeyPassthroughEnabled when no policy is in ctx (FeatureFlag
+// OFF — preserves today's behavior).
+func (a *Account) IsAnthropicAPIKeyPassthroughEnabledWithContext(ctx context.Context) bool {
+	if a == nil || a.Platform != PlatformAnthropic || a.Type != AccountTypeAPIKey {
+		return false
+	}
+	if p, ok := GetUpstreamPolicyFromContext(ctx); ok {
+		return p.ProfileApplied == ProfileTransparent
+	}
+	return a.IsAnthropicAPIKeyPassthroughEnabled()
 }
 
 // WebSearch 模拟三态常量

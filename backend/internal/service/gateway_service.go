@@ -5074,7 +5074,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		})
 	}
 
-	if account != nil && account.IsAnthropicAPIKeyPassthroughEnabled() {
+	if account != nil && account.IsAnthropicAPIKeyPassthroughEnabledWithContext(ctx) {
 		passthroughBody := parsed.Body
 		passthroughModel := parsed.Model
 		if passthroughModel != "" {
@@ -10141,7 +10141,7 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 		return s.forwardCountTokensAnthropicAPIKeyPassthrough(ctx, c, account, passthroughBody)
 	}
 
-	if account != nil && account.IsAnthropicAPIKeyPassthroughEnabled() {
+	if account != nil && account.IsAnthropicAPIKeyPassthroughEnabledWithContext(ctx) {
 		passthroughBody := parsed.Body
 		if reqModel := parsed.Model; reqModel != "" {
 			if mappedModel := account.GetMappedModelForUpstream(ctx, reqModel); mappedModel != reqModel {
