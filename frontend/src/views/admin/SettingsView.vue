@@ -3967,6 +3967,14 @@
               </div>
             </div>
           </div>
+
+          <!-- Upstream Passthrough Policy (Phase B-2 + Phase C) -->
+          <UpstreamPassthroughSettingsCard
+            v-model:feature-flag-enabled="form.upstream_policy_v1_enabled"
+            v-model:global-override="form.upstream_passthrough_global_override"
+            v-model:defaults="form.upstream_passthrough_defaults"
+          />
+
           <!-- Web Search Emulation -->
           <div class="card">
             <div
@@ -6686,6 +6694,8 @@ import type {
   UpdateSettingsRequest,
   DefaultSubscriptionSetting,
   OpenAIFastPolicyRule,
+  UpstreamPassthroughDefaults,
+  UpstreamPassthroughGlobalOverride,
   WeChatConnectMode,
   WebSearchEmulationConfig,
   WebSearchProviderConfig,
@@ -6711,6 +6721,7 @@ import ProxySelector from "@/components/common/ProxySelector.vue";
 import ImageUpload from "@/components/common/ImageUpload.vue";
 import BackupSettings from "@/views/admin/BackupView.vue";
 import EmailTemplateEditor from "@/views/admin/settings/EmailTemplateEditor.vue";
+import UpstreamPassthroughSettingsCard from "@/views/admin/settings/UpstreamPassthroughSettingsCard.vue";
 import { useClipboard } from "@/composables/useClipboard";
 import { affiliatesAPI, type AffiliateAdminEntry, type SimpleUser as AffiliateSimpleUser } from "@/api/admin/affiliates";
 import { extractApiErrorMessage, extractI18nErrorMessage } from "@/utils/apiError";
@@ -6962,6 +6973,9 @@ type SettingsForm = Omit<
   | "wechat_connect_open_enabled"
   | "wechat_connect_mp_enabled"
   | "wechat_connect_mobile_enabled"
+  | "upstream_passthrough_defaults"
+  | "upstream_passthrough_global_override"
+  | "upstream_policy_v1_enabled"
 > & {
   smtp_password: string;
   turnstile_secret_key: string;
@@ -6972,6 +6986,12 @@ type SettingsForm = Omit<
   wechat_connect_mp_app_secret: string;
   wechat_connect_mobile_app_secret: string;
   wechat_connect_open_enabled: boolean;
+  // Upstream passthrough policy (Phase B-2 + Phase C) — backend ships these as
+  // optional fields on SystemSettings (older deployments may not have them yet),
+  // but the form needs concrete defaults so v-model bindings stay strict.
+  upstream_policy_v1_enabled: boolean;
+  upstream_passthrough_global_override: UpstreamPassthroughGlobalOverride;
+  upstream_passthrough_defaults: UpstreamPassthroughDefaults;
   wechat_connect_mp_enabled: boolean;
   wechat_connect_mobile_enabled: boolean;
   oidc_connect_client_secret: string;
@@ -7181,6 +7201,18 @@ const form = reactive<SettingsForm>({
   rewrite_message_cache_control: false,
   antigravity_user_agent_version: "",
   openai_codex_user_agent: "",
+  // Upstream passthrough policy (Phase B-2 + Phase C)
+  upstream_policy_v1_enabled: false,
+  upstream_passthrough_global_override: "auto" as
+    | "auto"
+    | "force_transparent"
+    | "force_protected"
+    | "force_strict",
+  upstream_passthrough_defaults: {
+    relay: { profile: "transparent" as const },
+    official: { profile: "protected" as const },
+    reverse: { profile: "strict" as const },
+  } as UpstreamPassthroughDefaults,
   // 余额、订阅到期与账号限额通知
   balance_low_notify_enabled: false,
   balance_low_notify_threshold: 0,
@@ -8299,6 +8331,11 @@ async function saveSettings() {
         form.antigravity_user_agent_version?.trim() || "",
       openai_codex_user_agent:
         form.openai_codex_user_agent?.trim() || "",
+      // Upstream passthrough policy (Phase B-2 + Phase C)
+      upstream_policy_v1_enabled: form.upstream_policy_v1_enabled,
+      upstream_passthrough_global_override:
+        form.upstream_passthrough_global_override,
+      upstream_passthrough_defaults: form.upstream_passthrough_defaults,
       // Payment configuration
       payment_enabled: form.payment_enabled,
       risk_control_enabled: form.risk_control_enabled,
