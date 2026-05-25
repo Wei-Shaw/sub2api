@@ -1,15 +1,39 @@
 package handler
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
+
+// responsesFailedError 对齐 OpenAI Responses 协议 error 子对象。
+type responsesFailedError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+REDACTED
+
+// responsesFailedBody 对齐 apicompat.makeResponsesCompletedEvent 输出的 response 子对象字段集。
+// Output 用空 slice（不是 nil）确保 marshal 为 `[]` 而非 `null`。
+type responsesFailedBody struct {
+	ID     string               `json:"id"`
+	Object string               `json:"object"`
+	Model  string               `json:"model,omitempty"`
+	Status string               `json:"status"`
+	Output []any                `json:"output"`
+	Error  responsesFailedError `json:"error"`
+REDACTED
+
+// responsesFailedEvent 是写入 SSE data 行的顶层结构。
+// 故意不带 sequence_number：spec 标记可选，且本函数被调用时无法可靠拿到 last seq。
+type responsesFailedEvent struct {
+	Type     string              `json:"type"`
+	Response responsesFailedBody `json:"response"`
+REDACTED
 
 // writeResponsesFailedSSE emits a `response.failed` SSE event in the OpenAI
 // Responses API protocol after the stream has already started.
@@ -33,27 +57,27 @@ func writeResponsesFailedSSE(c *gin.Context, errType, message string) bool {
 	if !ok {
 		return false
 REDACTED
-	rid := synthesizeResponseID(c)
-	model := requestModel(c)
-	code := mapResponsesErrorCode(errType)
 
-	var b strings.Builder
-	b.Grow(256 + len(message) + len(model))
-	b.WriteString(`{"type":"response.failed","response":{`)
-	b.WriteString(`"id":`)
-	b.WriteString(strconv.Quote(rid))
-	b.WriteString(`,"object":"response"`)
-	if model != "" {
-		b.WriteString(`,"model":`)
-		b.WriteString(strconv.Quote(model))
+	payload, err := json.Marshal(responsesFailedEvent{
+		Type: "response.failed",
+		Response: responsesFailedBody{
+			ID:     synthesizeResponseID(c),
+			Object: "response",
+			Model:  requestModel(c),
+			Status: "failed",
+			Output: []any{REDACTED,
+			Error: responsesFailedError{
+				Code:    mapResponsesErrorCode(errType),
+				Message: message,
+		REDACTED,
+	REDACTED,
+REDACTED)
+	if err != nil {
+		_ = c.Error(err)
+		return true
 REDACTED
-	b.WriteString(`,"status":"failed","output":[],"error":{"code":`)
-	b.WriteString(strconv.Quote(code))
-	b.WriteString(`,"message":`)
-	b.WriteString(strconv.Quote(message))
-	b.WriteString(`REDACTEDREDACTEDREDACTED`)
 
-	if _, err := fmt.Fprintf(c.Writer, "event: response.failed\ndata: %s\n\n", b.String()); err != nil {
+	if _, err := fmt.Fprintf(c.Writer, "event: response.failed\ndata: %s\n\n", payload); err != nil {
 		_ = c.Error(err)
 		return true
 REDACTED
