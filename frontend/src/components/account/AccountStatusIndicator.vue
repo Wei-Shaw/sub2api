@@ -15,7 +15,7 @@
     <!-- Main Status Badge (shown when not rate limited/overloaded) -->
     <template v-else>
       <button
-        v-if="isTempUnschedulable"
+        v-if="isTempUnschedulable && allowTempUnschedDetails"
         type="button"
         :class="['badge text-xs', statusClass, 'cursor-pointer']"
         :title="t('admin.accounts.status.viewTempUnschedDetails')"
@@ -165,6 +165,7 @@ const { t } = useI18n()
 
 const props = defineProps<{
   account: Account
+  allowTempUnschedDetails?: boolean
 }>()
 
 const emit = defineEmits<{

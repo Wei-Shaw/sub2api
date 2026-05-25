@@ -150,7 +150,7 @@ func validateAdminAPIKey(
 	return true
 }
 
-// validateJWTForAdmin 验证 JWT 并检查管理员权限
+// validateJWTForAdmin 验证 JWT 并检查后台访问权限
 func validateJWTForAdmin(
 	c *gin.Context,
 	token string,
@@ -187,8 +187,7 @@ func validateJWTForAdmin(
 		return false
 	}
 
-	// 检查管理员权限
-	if !user.IsAdmin() {
+	if !user.CanAccessAdminUsage() {
 		AbortWithError(c, 403, "FORBIDDEN", "Admin access required")
 		return false
 	}

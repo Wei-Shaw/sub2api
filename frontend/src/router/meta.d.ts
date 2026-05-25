@@ -20,6 +20,12 @@ declare module 'vue-router' {
     requiresAdmin?: boolean
 
     /**
+     * Whether this admin route can be opened by usage_viewer role
+     * @default false
+     */
+    allowsUsageViewer?: boolean
+
+    /**
      * Page title for this route
      */
     title?: string

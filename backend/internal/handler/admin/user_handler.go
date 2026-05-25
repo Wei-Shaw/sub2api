@@ -55,6 +55,7 @@ type UpdateUserRequest struct {
 	Concurrency   *int     `json:"concurrency"`
 	RPMLimit      *int     `json:"rpm_limit"`
 	Status        string   `json:"status" binding:"omitempty,oneof=active disabled"`
+	Role          string   `json:"role" binding:"omitempty,oneof=admin user usage_viewer"`
 	AllowedGroups *[]int64 `json:"allowed_groups"`
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]*rate，nil 表示删除该分组的专属倍率
@@ -281,6 +282,7 @@ func (h *UserHandler) Update(c *gin.Context) {
 		Concurrency:   req.Concurrency,
 		RPMLimit:      req.RPMLimit,
 		Status:        req.Status,
+		Role:          req.Role,
 		AllowedGroups: req.AllowedGroups,
 		GroupRates:    req.GroupRates,
 	})

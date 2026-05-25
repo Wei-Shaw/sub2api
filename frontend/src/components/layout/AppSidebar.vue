@@ -118,6 +118,24 @@
         </div>
       </template>
 
+      <!-- Usage Viewer View -->
+      <template v-else-if="authStore.isUsageViewer">
+        <div class="sidebar-section">
+          <router-link
+            v-for="item in usageViewerNavItems"
+            :key="item.path"
+            :to="item.path"
+            class="sidebar-link mb-1"
+            :class="{ 'sidebar-link-active': isActive(item.path), 'sidebar-link-collapsed': sidebarCollapsed }"
+            :title="sidebarCollapsed ? item.label : undefined"
+            @click="handleMenuItemClick(item.path)"
+          >
+            <component :is="item.icon" class="h-5 w-5 flex-shrink-0" />
+            <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
+          </router-link>
+        </div>
+      </template>
+
       <!-- Regular User View -->
       <template v-else-if="!appStore.backendModeEnabled">
         <div class="sidebar-section">
@@ -698,6 +716,11 @@ const userNavItems = computed((): NavItem[] => finalizeNav(buildSelfNavItems(tru
 // Admins access 可用渠道 from this section just like regular users — there is no
 // separate admin entry, since the page is purely a user-facing view.
 const personalNavItems = computed((): NavItem[] => finalizeNav(buildSelfNavItems(false)))
+
+const usageViewerNavItems = computed((): NavItem[] => [
+  { path: '/usage-only', label: t('nav.usage'), icon: ChartIcon },
+  { path: '/admin/accounts', label: t('nav.accounts'), icon: GlobeIcon }
+])
 
 // Custom menu items filtered by visibility
 const customMenuItemsForUser = computed(() => {

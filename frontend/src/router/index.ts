@@ -517,7 +517,8 @@ const routes: RouteRecordRaw[] = [
       requiresAdmin: true,
       title: 'Account Management',
       titleKey: 'admin.accounts.title',
-      descriptionKey: 'admin.accounts.description'
+      descriptionKey: 'admin.accounts.description',
+      allowsUsageViewer: true
     }
   },
   {
@@ -785,6 +786,7 @@ router.beforeEach(async (to, _from, next) => {
   // Check if route requires authentication
   const requiresAuth = to.meta.requiresAuth !== false // Default to true
   const requiresAdmin = to.meta.requiresAdmin === true
+  const allowsUsageViewer = to.meta.allowsUsageViewer === true
 
   if (to.path === '/setup') {
     try {
@@ -802,6 +804,10 @@ router.beforeEach(async (to, _from, next) => {
   if (!requiresAuth) {
     // If already authenticated and trying to access login/register, redirect to appropriate dashboard
     if (authStore.isAuthenticated && (to.path === '/login' || to.path === '/register')) {
+      if (authStore.isUsageViewer) {
+        next('/usage-only')
+        return
+      }
       // In backend mode, non-admin users should NOT be redirected away from login
       // (they are blocked from all protected routes, so redirecting would cause a loop)
       if (appStore.backendModeEnabled && !authStore.isAdmin) {
@@ -831,6 +837,15 @@ router.beforeEach(async (to, _from, next) => {
       path: '/login',
       query: { redirect: to.fullPath } // Save intended destination
     })
+    return
+  }
+
+  if (authStore.isUsageViewer) {
+    if (to.path === '/usage-only' || (requiresAdmin && allowsUsageViewer)) {
+      next()
+      return
+    }
+    next('/usage-only')
     return
   }
 

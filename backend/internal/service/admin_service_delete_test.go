@@ -307,7 +307,7 @@ func (s *proxyRepoStub) ListWithFiltersAndAccountCount(ctx context.Context, para
 	panic("unexpected ListWithFiltersAndAccountCount call")
 }
 
-func (s *proxyRepoStub) ExistsByHostPortAuth(ctx context.Context, host string, port int, username, password string) (bool, error) {
+func (s *proxyRepoStub) ExistsByHostPortAuth(ctx context.Context, host string, port int, username, password, basePath string) (bool, error) {
 	panic("unexpected ExistsByHostPortAuth call")
 }
 

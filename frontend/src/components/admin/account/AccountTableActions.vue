@@ -6,7 +6,7 @@
     </button>
     <slot name="after"></slot>
     <slot name="beforeCreate"></slot>
-    <button @click="$emit('create')" class="btn btn-primary">{{ t('admin.accounts.createAccount') }}</button>
+    <button v-if="showCreate" @click="$emit('create')" class="btn btn-primary">{{ t('admin.accounts.createAccount') }}</button>
     <slot name="afterCreate"></slot>
   </div>
 </template>
@@ -15,7 +15,9 @@
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 
-defineProps(['loading'])
+withDefaults(defineProps<{ loading?: boolean; showCreate?: boolean }>(), {
+  showCreate: true
+})
 defineEmits(['refresh', 'create'])
 
 const { t } = useI18n()
