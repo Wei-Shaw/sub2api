@@ -696,6 +696,36 @@ REDACTED)
 REDACTED)
 REDACTED
 
+func TestOpenAIWSRawPayloadHasToolCallOutput(t *testing.T) {
+	t.Parallel()
+
+	for _, typ := range []string{
+		"function_call_output",
+		"tool_search_output",
+		"custom_tool_call_output",
+		"mcp_tool_call_output",
+REDACTED {
+		typ := typ
+		t.Run(typ, func(t *testing.T) {
+			t.Parallel()
+			payload := []byte(`{"input":[{"type":"` + typ + `","call_id":"call_1","output":"ok"REDACTED]REDACTED`)
+			require.True(t, openAIWSRawPayloadHasToolCallOutput(payload))
+	REDACTED)
+REDACTED
+
+	t.Run("object_input", func(t *testing.T) {
+		t.Parallel()
+		payload := []byte(`{"input":{"type":"tool_search_output","call_id":"call_1","output":"ok"REDACTEDREDACTED`)
+		require.True(t, openAIWSRawPayloadHasToolCallOutput(payload))
+REDACTED)
+
+	t.Run("non_tool_output", func(t *testing.T) {
+		t.Parallel()
+		payload := []byte(`{"input":[{"type":"input_text","text":"hello"REDACTED]REDACTED`)
+		require.False(t, openAIWSRawPayloadHasToolCallOutput(payload))
+REDACTED)
+REDACTED
+
 func TestSetOpenAIWSPayloadInputSequence(t *testing.T) {
 	t.Parallel()
 
