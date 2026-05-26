@@ -153,12 +153,6 @@ Sub2API 是一个 AI API 网关平台，用于分发和管理 AI 产品订阅的
 
 ---
 
-## Nginx 反向代理注意事项
-
-通过 Nginx 反向代理 Sub2API（或 CRS 服务）并搭配 Codex CLI 使用时，当前 OpenAI/Codex 会话路由不再需要额外开启下划线请求头。Sub2API 的 OpenAI 端点使用符合 RFC 的 `session-id` 和 `thread-id` 请求头。
-
----
-
 ## 部署方式
 
 ### 方式一：脚本安装（推荐）
