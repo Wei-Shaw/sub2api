@@ -61,7 +61,7 @@
           <!-- Options list -->
           <div class="select-options" ref="optionsListRef">
             <div
-              v-for="(option, index) in filteredOptions"
+              v-for="(option, index) in visibleOptions"
               :key="`${typeof getOptionValue(option)}:${String(getOptionValue(option) ?? '')}`"
               role="option"
               :aria-selected="isSelected(option)"
@@ -95,7 +95,10 @@
             </div>
 
             <!-- Empty state -->
-            <div v-if="filteredOptions.length === 0" class="select-empty">
+            <div v-if="loading" class="select-empty">
+              {{ loadingTextDisplay }}
+            </div>
+            <div v-else-if="visibleOptions.length === 0" class="select-empty">
               {{ emptyTextDisplay }}
             </div>
           </div>
@@ -131,23 +134,29 @@ interface Props {
   searchable?: boolean | 'auto'
   searchPlaceholder?: string
   emptyText?: string
+  loading?: boolean
+  loadingText?: string
   valueKey?: string
   labelKey?: string
   creatable?: boolean
   creatablePrefix?: string
+  remoteSearch?: boolean
 }
 
 interface Emits {
   (e: 'update:modelValue', value: string | number | boolean | null): void
   (e: 'change', value: string | number | boolean | null, option: SelectOption | null): void
+  (e: 'search', query: string): void
 }
 
 const props = withDefaults(defineProps<Props>(), {
   disabled: false,
   error: false,
   searchable: 'auto',
+  loading: false,
   creatable: false,
   creatablePrefix: '',
+  remoteSearch: false,
   valueKey: 'value',
   labelKey: 'label'
 })
@@ -169,6 +178,7 @@ const triggerRect = ref<DOMRect | null>(null)
 const placeholderText = computed(() => props.placeholder ?? t('common.selectOption'))
 const searchPlaceholderText = computed(() => props.searchPlaceholder ?? t('common.searchPlaceholder'))
 const emptyTextDisplay = computed(() => props.emptyText ?? t('common.noOptionsFound'))
+const loadingTextDisplay = computed(() => props.loadingText ?? t('common.processing'))
 
 const isSearchable = computed(() => {
   if (props.searchable === 'auto') return props.options.length > 5
@@ -241,7 +251,7 @@ const selectedLabel = computed(() => {
 
 const filteredOptions = computed(() => {
   let opts = props.options as any[]
-  if (isSearchable.value && searchQuery.value) {
+  if (isSearchable.value && searchQuery.value && !props.remoteSearch) {
     const query = searchQuery.value.toLowerCase()
     opts = opts.filter((opt) => {
       // Match label
@@ -260,12 +270,20 @@ const filteredOptions = computed(() => {
   return opts
 })
 
+const visibleOptions = computed(() => (props.loading ? [] : filteredOptions.value))
+
+watch(searchQuery, (query) => {
+  if (props.remoteSearch && isSearchable.value) {
+    emit('search', query)
+  }
+})
+
 const isSelected = (option: any): boolean => {
   return getOptionValue(option) === props.modelValue
 }
 
 const findNextEnabledIndex = (startIndex: number): number => {
-  const opts = filteredOptions.value
+  const opts = visibleOptions.value
   if (opts.length === 0) return -1
   for (let offset = 0; offset < opts.length; offset++) {
     const idx = (startIndex + offset) % opts.length
@@ -275,7 +293,7 @@ const findNextEnabledIndex = (startIndex: number): number => {
 }
 
 const findPrevEnabledIndex = (startIndex: number): number => {
-  const opts = filteredOptions.value
+  const opts = visibleOptions.value
   if (opts.length === 0) return -1
   for (let offset = 0; offset < opts.length; offset++) {
     const idx = (startIndex - offset + opts.length) % opts.length
@@ -323,12 +341,12 @@ watch(isOpen, (open) => {
   if (open) {
     calculateDropdownPosition()
     // Reset focused index to current selection or first item
-    if (filteredOptions.value.length === 0) {
+    if (visibleOptions.value.length === 0) {
       focusedIndex.value = -1
     } else {
-      const selectedIdx = filteredOptions.value.findIndex(isSelected)
+      const selectedIdx = visibleOptions.value.findIndex(isSelected)
       const initialIdx = selectedIdx >= 0 ? selectedIdx : 0
-      focusedIndex.value = isOptionDisabled(filteredOptions.value[initialIdx])
+      focusedIndex.value = isOptionDisabled(visibleOptions.value[initialIdx])
         ? findNextEnabledIndex(initialIdx + 1)
         : initialIdx
     }
@@ -376,8 +394,8 @@ const onDropdownKeyDown = (e: KeyboardEvent) => {
       break
     case 'Enter':
       e.preventDefault()
-      if (focusedIndex.value >= 0 && focusedIndex.value < filteredOptions.value.length) {
-        const opt = filteredOptions.value[focusedIndex.value]
+      if (focusedIndex.value >= 0 && focusedIndex.value < visibleOptions.value.length) {
+        const opt = visibleOptions.value[focusedIndex.value]
         if (!isOptionDisabled(opt)) selectOption(opt)
       }
       break

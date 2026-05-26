@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 
@@ -132,6 +132,10 @@ describe('user UsageView tooltip', () => {
     }
   })
 
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('shows fast service tier and unit prices in user tooltip', async () => {
     query.mockResolvedValue({
       items: [
@@ -214,6 +218,165 @@ describe('user UsageView tooltip', () => {
     expect(text).toContain('$0.092883')
     expect(text).toContain('$5.0000 / 1M tokens')
     expect(text).toContain('$30.0000 / 1M tokens')
+  })
+
+  it('searches api keys remotely for the usage key filter', async () => {
+    vi.useFakeTimers()
+    query.mockResolvedValue({
+      items: [],
+      total: 0,
+      pages: 0,
+    })
+    getStatsByDateRange.mockResolvedValue({
+      total_requests: 0,
+      total_tokens: 0,
+      total_cost: 0,
+      avg_duration_ms: 0,
+    })
+    list
+      .mockResolvedValueOnce({
+        items: [{ id: 1, name: 'first-page-key' }],
+        total: 175,
+        pages: 9,
+      })
+      .mockResolvedValueOnce({
+        items: [{ id: 2, name: 'remote-only-key' }],
+        total: 1,
+        pages: 1,
+      })
+      .mockResolvedValueOnce({
+        items: [{ id: 1, name: 'first-page-key' }],
+        total: 175,
+        pages: 9,
+      })
+
+    const wrapper = mount(UsageView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          TablePageLayout: TablePageLayoutStub,
+          Pagination: true,
+          EmptyState: true,
+          Select: true,
+          DateRangePicker: true,
+          DataTable: DataTableStub,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+    await nextTick()
+
+    const setupState = (wrapper.vm as any).$?.setupState
+    expect(list).toHaveBeenNthCalledWith(1, 1, 20, undefined)
+    expect(setupState.apiKeyOptions.map((option: { label: string }) => option.label)).toEqual([
+      'All API Keys',
+      'first-page-key',
+    ])
+
+    setupState.handleApiKeySearch('remote-only')
+    await vi.advanceTimersByTimeAsync(250)
+    await flushPromises()
+
+    expect(list).toHaveBeenNthCalledWith(2, 1, 20, { search: 'remote-only' })
+    expect(setupState.apiKeyOptions.map((option: { label: string }) => option.label)).toEqual([
+      'All API Keys',
+      'remote-only-key',
+    ])
+
+    setupState.handleApiKeyChange(2, { value: 2, label: 'remote-only-key' })
+    setupState.handleApiKeySearch('')
+    await vi.advanceTimersByTimeAsync(250)
+    await flushPromises()
+
+    expect(list).toHaveBeenNthCalledWith(3, 1, 20, undefined)
+    expect(setupState.apiKeyOptions.map((option: { label: string }) => option.label)).toEqual([
+      'All API Keys',
+      'remote-only-key',
+      'first-page-key',
+    ])
+    vi.useRealTimers()
+  })
+
+  it('ignores stale api key search responses while a new search is debounced', async () => {
+    vi.useFakeTimers()
+    query.mockResolvedValue({
+      items: [],
+      total: 0,
+      pages: 0,
+    })
+    getStatsByDateRange.mockResolvedValue({
+      total_requests: 0,
+      total_tokens: 0,
+      total_cost: 0,
+      avg_duration_ms: 0,
+    })
+
+    let resolveOldSearch: (value: unknown) => void = () => {}
+    const oldSearch = new Promise((resolve) => {
+      resolveOldSearch = resolve
+    })
+    list
+      .mockResolvedValueOnce({
+        items: [{ id: 1, name: 'first-page-key' }],
+        total: 175,
+        pages: 9,
+      })
+      .mockImplementationOnce(() => oldSearch as any)
+      .mockResolvedValueOnce({
+        items: [{ id: 3, name: 'current-result-key' }],
+        total: 1,
+        pages: 1,
+      })
+
+    const wrapper = mount(UsageView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          TablePageLayout: TablePageLayoutStub,
+          Pagination: true,
+          EmptyState: true,
+          Select: true,
+          DateRangePicker: true,
+          DataTable: DataTableStub,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+    await nextTick()
+
+    const setupState = (wrapper.vm as any).$?.setupState
+    setupState.handleApiKeySearch('old')
+    await vi.advanceTimersByTimeAsync(250)
+    expect(list).toHaveBeenNthCalledWith(2, 1, 20, { search: 'old' })
+
+    setupState.handleApiKeySearch('current')
+    resolveOldSearch({
+      items: [{ id: 2, name: 'old-result' }],
+      total: 1,
+      pages: 1,
+    })
+    await flushPromises()
+
+    expect(setupState.apiKeyOptions.map((option: { label: string }) => option.label)).toEqual([
+      'All API Keys',
+      'first-page-key',
+    ])
+
+    await vi.advanceTimersByTimeAsync(250)
+    await flushPromises()
+
+    expect(list).toHaveBeenNthCalledWith(3, 1, 20, { search: 'current' })
+    expect(setupState.apiKeyOptions.map((option: { label: string }) => option.label)).toEqual([
+      'All API Keys',
+      'current-result-key',
+    ])
+    vi.useRealTimers()
   })
 
   it('exports csv with input and output unit price columns', async () => {

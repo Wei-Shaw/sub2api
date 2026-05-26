@@ -97,7 +97,11 @@
                 v-model="filters.api_key_id"
                 :options="apiKeyOptions"
                 :placeholder="t('usage.allApiKeys')"
-                @change="applyFilters"
+                :searchable="true"
+                :remote-search="true"
+                :loading="apiKeySearchLoading"
+                @search="handleApiKeySearch"
+                @change="handleApiKeyChange"
               />
             </div>
 
@@ -538,7 +542,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive, onMounted } from 'vue'
+import { ref, computed, reactive, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { usageAPI, keysAPI } from '@/api'
@@ -609,14 +613,27 @@ const usageLogs = ref<UsageLog[]>([])
 const apiKeys = ref<ApiKey[]>([])
 const loading = ref(false)
 const exporting = ref(false)
+const apiKeySearchLoading = ref(false)
+const selectedApiKeyOption = ref<{ value: number; label: string } | null>(null)
+const API_KEY_FILTER_PAGE_SIZE = 20
+let apiKeySearchTimer: ReturnType<typeof setTimeout> | null = null
+let apiKeySearchRequestId = 0
 
 const apiKeyOptions = computed(() => {
+  const options = apiKeys.value.map((key) => ({
+    value: key.id,
+    label: key.name
+  }))
+  if (
+    selectedApiKeyOption.value &&
+    !options.some((option) => option.value === selectedApiKeyOption.value?.value)
+  ) {
+    options.unshift(selectedApiKeyOption.value)
+  }
+
   return [
     { value: null, label: t('usage.allApiKeys') },
-    ...apiKeys.value.map((key) => ({
-      value: key.id,
-      label: key.name
-    }))
+    ...options
   ]
 })
 
@@ -782,13 +799,48 @@ const loadUsageLogs = async () => {
   }
 }
 
-const loadApiKeys = async () => {
+const loadApiKeys = async (search?: string, requestId = ++apiKeySearchRequestId) => {
+  apiKeySearchLoading.value = true
   try {
-    const response = await keysAPI.list(1, 100)
-    apiKeys.value = response.items
+    const filters = search?.trim() ? { search: search.trim() } : undefined
+    const response = await keysAPI.list(1, API_KEY_FILTER_PAGE_SIZE, filters)
+    if (requestId === apiKeySearchRequestId) {
+      apiKeys.value = response.items
+    }
   } catch (error) {
     console.error('Failed to load API keys:', error)
+  } finally {
+    if (requestId === apiKeySearchRequestId) {
+      apiKeySearchLoading.value = false
+    }
   }
+}
+
+const handleApiKeySearch = (query: string) => {
+  const requestId = ++apiKeySearchRequestId
+  apiKeySearchLoading.value = true
+  if (apiKeySearchTimer) {
+    clearTimeout(apiKeySearchTimer)
+  }
+  apiKeySearchTimer = setTimeout(() => {
+    apiKeySearchTimer = null
+    loadApiKeys(query, requestId)
+  }, 250)
+}
+
+const handleApiKeyChange = (
+  value: string | number | boolean | null,
+  option: { value: string | number | boolean | null; label: string } | null
+) => {
+  if (value === null) {
+    selectedApiKeyOption.value = null
+  } else if (option) {
+    selectedApiKeyOption.value = {
+      value: Number(option.value),
+      label: option.label
+    }
+  }
+  applyFilters()
 }
 
 const loadUsageStats = async () => {
@@ -992,5 +1044,11 @@ onMounted(() => {
   loadApiKeys()
   loadUsageLogs()
   loadUsageStats()
+})
+
+onUnmounted(() => {
+  if (apiKeySearchTimer) {
+    clearTimeout(apiKeySearchTimer)
+  }
 })
 </script>
