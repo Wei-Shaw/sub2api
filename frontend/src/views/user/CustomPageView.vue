@@ -124,7 +124,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useAdminSettingsStore } from '@/stores/adminSettings'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
-import { buildEmbeddedUrl, detectTheme } from '@/utils/embedded-url'
+import { buildEmbeddedUrl, DEFAULT_EMBEDDED_QUERY_PARAM_KEYS, detectTheme, type EmbeddedQueryParamKey } from '@/utils/embedded-url'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 
@@ -174,12 +174,21 @@ const isMarkdownMode = computed(() => !!markdownSlug.value)
 
 const embeddedUrl = computed(() => {
   if (!menuItem.value || isMarkdownMode.value) return ''
+  const paramKeys = Array.isArray(menuItem.value.embedded_param_keys)
+    ? menuItem.value.embedded_param_keys.filter((key): key is EmbeddedQueryParamKey =>
+      DEFAULT_EMBEDDED_QUERY_PARAM_KEYS.includes(key as EmbeddedQueryParamKey)
+    )
+    : undefined
   return buildEmbeddedUrl(
     menuItem.value.url,
     authStore.user?.id,
     authStore.token,
     pageTheme.value,
     locale.value,
+    {
+      appendParams: menuItem.value.append_embed_params !== false,
+      paramKeys,
+    },
   )
 })
 
