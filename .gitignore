@@ -66,6 +66,7 @@ docker-compose.override.yml
 .project
 .settings/
 .classpath
+.codebuddy/
 
 # ===================
 # 操作系统
@@ -136,3 +137,5 @@ docs/*
 frontend/coverage/
 aicodex
 output/
+.github/prompts/
+.github/skills/

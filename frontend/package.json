@@ -28,7 +28,7 @@
     "marked": "^17.0.1",
     "pinia": "^2.1.7",
     "qrcode": "^1.5.4",
-    "vue": "^3.4.0",
+    "vue": "^3.5.34",
     "vue-chartjs": "^5.3.0",
     "vue-draggable-plus": "^0.6.1",
     "vue-i18n": "^9.14.5",

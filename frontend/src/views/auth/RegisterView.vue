@@ -182,14 +182,15 @@
           </transition>
         </div>
 
-        <!-- Turnstile Widget -->
-        <div v-if="turnstileEnabled && turnstileSiteKey">
-          <TurnstileWidget
-            ref="turnstileRef"
-            :site-key="turnstileSiteKey"
-            @verify="onTurnstileVerify"
-            @expire="onTurnstileExpire"
-            @error="onTurnstileError"
+        <!-- Captcha Widget -->
+        <div v-if="captchaEnabled && captchaSiteKey">
+          <CaptchaWidget
+            ref="captchaRef"
+            :provider="captchaProvider"
+            :site-key="captchaSiteKey"
+            @verify="onCaptchaVerify"
+            @expire="onCaptchaExpire"
+            @error="onCaptchaError"
           />
         </div>
 
@@ -208,7 +209,7 @@
         <!-- Submit Button -->
         <button
           type="submit"
-          :disabled="registrationActionDisabled || (turnstileEnabled && !turnstileToken)"
+          :disabled="registrationActionDisabled || (captchaEnabled && captchaProvider !== 'tencent_captcha' && !captchaToken)"
           class="btn btn-primary w-full"
         >
           <svg
@@ -308,7 +309,8 @@ import WechatOAuthSection from '@/components/auth/WechatOAuthSection.vue'
 import EmailOAuthButtons from '@/components/auth/EmailOAuthButtons.vue'
 import LoginAgreementPrompt from '@/components/auth/LoginAgreementPrompt.vue'
 import Icon from '@/components/icons/Icon.vue'
-import TurnstileWidget from '@/components/TurnstileWidget.vue'
+import CaptchaWidget from '@/components/CaptchaWidget.vue'
+import { useCaptchaSubmit, type CaptchaSubmitError } from '@/composables/useCaptchaSubmit'
 import { useAuthStore, useAppStore } from '@/stores'
 import {
   getPublicSettings,
@@ -351,8 +353,9 @@ const registrationEnabled = ref<boolean>(true)
 const emailVerifyEnabled = ref<boolean>(false)
 const promoCodeEnabled = ref<boolean>(true)
 const invitationCodeEnabled = ref<boolean>(false)
-const turnstileEnabled = ref<boolean>(false)
-const turnstileSiteKey = ref<string>('')
+const captchaEnabled = ref<boolean>(false)
+const captchaProvider = ref<'turnstile' | 'hcaptcha' | 'tencent_captcha'>('turnstile')
+const captchaSiteKey = ref<string>('')
 const siteName = ref<string>('Sub2API')
 const linuxdoOAuthEnabled = ref<boolean>(false)
 const wechatOAuthEnabled = ref<boolean>(false)
@@ -369,9 +372,9 @@ const loginAgreementDocuments = ref<LoginAgreementDocument[]>([])
 const agreementAccepted = ref<boolean>(false)
 const showAgreementModal = ref<boolean>(false)
 
-// Turnstile
-const turnstileRef = ref<InstanceType<typeof TurnstileWidget> | null>(null)
-const turnstileToken = ref<string>('')
+// Captcha
+const captchaRef = ref<InstanceType<typeof CaptchaWidget> | null>(null)
+const captchaToken = ref<string>('')
 
 // Promo code validation
 const promoValidating = ref<boolean>(false)
@@ -403,7 +406,7 @@ const formData = reactive({
 const errors = reactive({
   email: '',
   password: '',
-  turnstile: '',
+  captcha: '',
   invitation_code: ''
 })
 
@@ -413,7 +416,7 @@ const validationToastMessage = computed(() =>
   (invitationValidation.invalid ? invitationValidation.message : '') ||
   errors.invitation_code ||
   (promoValidation.invalid ? promoValidation.message : '') ||
-  errors.turnstile ||
+  errors.captcha ||
   ''
 )
 
@@ -459,8 +462,14 @@ onMounted(async () => {
     emailVerifyEnabled.value = settings.email_verify_enabled
     promoCodeEnabled.value = settings.promo_code_enabled
     invitationCodeEnabled.value = settings.invitation_code_enabled
-    turnstileEnabled.value = settings.turnstile_enabled
-    turnstileSiteKey.value = settings.turnstile_site_key || ''
+    captchaEnabled.value = settings.captcha_enabled ?? settings.turnstile_enabled
+    captchaProvider.value =
+      settings.captcha_provider === 'hcaptcha'
+        ? 'hcaptcha'
+        : settings.captcha_provider === 'tencent_captcha'
+          ? 'tencent_captcha'
+          : 'turnstile'
+    captchaSiteKey.value = settings.captcha_site_key || settings.turnstile_site_key || ''
     siteName.value = settings.site_name || 'Sub2API'
     linuxdoOAuthEnabled.value = settings.linuxdo_oauth_enabled
     wechatOAuthEnabled.value = isWeChatWebOAuthEnabled(settings)
@@ -707,21 +716,21 @@ function getInvitationErrorMessage(errorCode?: string): string {
   }
 }
 
-// ==================== Turnstile Handlers ====================
+// ==================== Captcha Handlers ====================
 
-function onTurnstileVerify(token: string): void {
-  turnstileToken.value = token
-  errors.turnstile = ''
+function onCaptchaVerify(token: string): void {
+  captchaToken.value = token
+  errors.captcha = ''
 }
 
-function onTurnstileExpire(): void {
-  turnstileToken.value = ''
-  errors.turnstile = t('auth.turnstileExpired')
+function onCaptchaExpire(): void {
+  captchaToken.value = ''
+  errors.captcha = t('auth.captchaExpired')
 }
 
-function onTurnstileError(): void {
-  turnstileToken.value = ''
-  errors.turnstile = t('auth.turnstileFailed')
+function onCaptchaError(): void {
+  captchaToken.value = ''
+  errors.captcha = t('auth.captchaFailed')
 }
 
 // ==================== Validation ====================
@@ -751,7 +760,7 @@ function validateForm(): boolean {
   // Reset errors
   errors.email = ''
   errors.password = ''
-  errors.turnstile = ''
+  errors.captcha = ''
   errors.invitation_code = ''
 
   let isValid = true
@@ -795,9 +804,11 @@ function validateForm(): boolean {
     }
   }
 
-  // Turnstile validation
-  if (turnstileEnabled.value && !turnstileToken.value) {
-    errors.turnstile = t('auth.completeVerification')
+  // Captcha validation
+  // 天御 (tencent_captcha) 是 popup 形态：用户点提交后才弹挑战，没有"先验证后提交"概念，
+  // 所以这里只对声明式 widget（turnstile / hcaptcha）做 token 缺失拦截。
+  if (captchaEnabled.value && captchaProvider.value !== 'tencent_captcha' && !captchaToken.value) {
+    errors.captcha = t('auth.completeCaptchaVerification')
     isValid = false
   }
 
@@ -805,6 +816,61 @@ function validateForm(): boolean {
 }
 
 // ==================== Form Handlers ====================
+
+// captchaSubmit: 抽离的 captcha-gated submit 状态机（design.md D5 / spec "前端层 fallback 重试 1 次"）。
+// 注意 RegisterView 有两条出口：
+//   1. emailVerifyEnabled → 把 captcha_payload 暂存到 sessionStorage，然后跳到 EmailVerifyView 完成最终注册
+//   2. 直接走 authStore.register（无邮箱验证流程）
+// 两条路径在 submitFn 内部分发。
+const captchaSubmit = useCaptchaSubmit({
+  captchaRef,
+  captchaEnabled: () => captchaEnabled.value,
+  getCachedToken: () => captchaToken.value,
+  submitFn: async (payload) => {
+    const affCode = formData.aff_code.trim() || loadAffiliateReferralCode()
+    if (affCode) {
+      formData.aff_code = affCode
+    }
+
+    // If email verification is enabled, redirect to verification page
+    if (emailVerifyEnabled.value) {
+      sessionStorage.setItem(
+        'register_data',
+        JSON.stringify({
+          email: formData.email,
+          password: formData.password,
+          // captcha_payload 是新协议字段，captcha_token 留作兼容窗口（EmailVerifyView 在最终注册时回传，
+          // 后端 extractCaptchaPayload helper 优先取 captcha_payload）。
+          captcha_payload: captchaEnabled.value ? payload : undefined,
+          captcha_token: captchaToken.value,
+          promo_code: formData.promo_code || undefined,
+          invitation_code: formData.invitation_code || undefined,
+          ...(affCode ? { aff_code: affCode } : {})
+        })
+      )
+
+      await router.push('/email-verify')
+      return
+    }
+
+    // Otherwise, directly register
+    await authStore.register({
+      email: formData.email,
+      password: formData.password,
+      captcha_payload: captchaEnabled.value ? payload : undefined,
+      promo_code: formData.promo_code || undefined,
+      invitation_code: formData.invitation_code || undefined,
+      ...(affCode ? { aff_code: affCode } : {})
+    })
+    clearAffiliateReferralCode()
+
+    // Show success toast
+    appStore.showSuccess(t('auth.accountCreatedSuccess', { siteName: siteName.value }))
+
+    // Redirect to dashboard
+    await router.push('/dashboard')
+  }
+})
 
 async function handleRegister(): Promise<void> {
   // Clear previous error
@@ -856,58 +922,23 @@ async function handleRegister(): Promise<void> {
   isLoading.value = true
 
   try {
-    const affCode = formData.aff_code.trim() || loadAffiliateReferralCode()
-    if (affCode) {
-      formData.aff_code = affCode
-    }
-
-    // If email verification is enabled, redirect to verification page
-    if (emailVerifyEnabled.value) {
-      // Store registration data in sessionStorage
-      sessionStorage.setItem(
-        'register_data',
-        JSON.stringify({
-          email: formData.email,
-          password: formData.password,
-          turnstile_token: turnstileToken.value,
-          promo_code: formData.promo_code || undefined,
-          invitation_code: formData.invitation_code || undefined,
-          ...(affCode ? { aff_code: affCode } : {})
-        })
-      )
-
-      // Navigate to email verification page
-      await router.push('/email-verify')
-      return
-    }
-
-    // Otherwise, directly register
-    await authStore.register({
-      email: formData.email,
-      password: formData.password,
-      turnstile_token: turnstileEnabled.value ? turnstileToken.value : undefined,
-      promo_code: formData.promo_code || undefined,
-      invitation_code: formData.invitation_code || undefined,
-      ...(affCode ? { aff_code: affCode } : {})
-    })
-    clearAffiliateReferralCode()
-
-    // Show success toast
-    appStore.showSuccess(t('auth.accountCreatedSuccess', { siteName: siteName.value }))
-
-    // Redirect to dashboard
-    await router.push('/dashboard')
+    await captchaSubmit.submit()
   } catch (error: unknown) {
-    // Reset Turnstile on error
-    if (turnstileRef.value) {
-      turnstileRef.value.reset()
-      turnstileToken.value = ''
+    const captchaErr = error as CaptchaSubmitError
+    // Reset Captcha on error
+    if (captchaRef.value) {
+      captchaRef.value.reset()
+      captchaToken.value = ''
     }
 
-    // Handle registration error
-    errorMessage.value = buildAuthErrorMessage(error, {
-      fallback: t('auth.registrationFailed')
-    })
+    if (captchaErr.reason === 'cancelled') {
+      errorMessage.value = t('auth.captchaFailed')
+    } else {
+      const cause = (captchaErr as Error & { cause?: unknown }).cause ?? error
+      errorMessage.value = buildAuthErrorMessage(cause, {
+        fallback: t('auth.registrationFailed')
+      })
+    }
 
     // Also show error toast
     appStore.showError(errorMessage.value)

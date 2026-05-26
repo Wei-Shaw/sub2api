@@ -199,7 +199,9 @@ describe('PendingOAuthCreateAccountForm', () => {
 
     expect(sendPendingOAuthVerifyCode).toHaveBeenCalledWith({
       email: 'user@example.com',
-      turnstile_token: 'turnstile-token'
+      // 新协议（design.md D2）：发送 captcha_payload 结构化字段；
+      // turnstile/hcaptcha 走 {token}，腾讯天御走 {ticket, randstr}。
+      captcha_payload: { token: 'turnstile-token' }
     })
   })
 })

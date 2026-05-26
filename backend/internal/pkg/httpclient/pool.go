@@ -4,7 +4,7 @@
 // 原实现在多个服务中重复创建 http.Client：
 // 1. proxy_probe_service.go: 每次探测创建新客户端
 // 2. pricing_service.go: 每次请求创建新客户端
-// 3. turnstile_service.go: 每次验证创建新客户端
+// 3. captcha_verifier.go: 每次验证创建新客户端
 // 4. github_release_service.go: 每次请求创建新客户端
 // 5. claude_usage_service.go: 每次请求创建新客户端
 //

@@ -511,6 +511,8 @@ export async function validateInvitationCode(code: string): Promise<ValidateInvi
  */
 export interface ForgotPasswordRequest {
   email: string
+  captcha_payload?: Record<string, string>
+  captcha_token?: string
   turnstile_token?: string
 }
 

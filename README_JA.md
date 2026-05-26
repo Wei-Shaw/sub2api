@@ -489,6 +489,7 @@ default:
 - `billing.circuit_breaker` - 課金エラー時にフェイルクローズ
 - `server.trusted_proxies` - X-Forwarded-For パースの有効化
 - `turnstile.required` - リリースモードでの Turnstile 必須化
+- `captcha.required` - リリースモードで CAPTCHA プロバイダーを必須化（管理画面で Cloudflare Turnstile / hCaptcha / 騰訊天御 (TencentCaptcha) を選択可能）
 
 **⚠️ セキュリティ警告: HTTP URL 設定**
 

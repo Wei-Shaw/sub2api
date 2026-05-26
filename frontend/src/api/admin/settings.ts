@@ -450,6 +450,15 @@ export interface SystemSettings {
   turnstile_enabled: boolean;
   turnstile_site_key: string;
   turnstile_secret_key_configured: boolean;
+  captcha_provider: string;
+  captcha_enabled: boolean;
+  captcha_site_key: string;
+  captcha_secret_key_configured: boolean;
+  // 腾讯天御特有的 *_configured 标志（design.md D7 / 后端 §3.2 Settings DTO）：
+  // 后端 mask 后字段从原值剥离，前端用这两个标志渲染"已配置"占位。
+  captcha_tencent_secret_id_configured: boolean;
+  captcha_tencent_secret_key_configured: boolean;
+  captcha_config: Record<string, string>;
   api_key_acl_trust_forwarded_ip: boolean;
 
   // LinuxDo Connect OAuth settings
@@ -702,6 +711,8 @@ export interface UpdateSettingsRequest {
   turnstile_enabled?: boolean;
   turnstile_site_key?: string;
   turnstile_secret_key?: string;
+  captcha_provider?: string;
+  captcha_config?: Record<string, string>;
   api_key_acl_trust_forwarded_ip?: boolean;
   linuxdo_connect_enabled?: boolean;
   linuxdo_connect_client_id?: string;
