@@ -95,6 +95,16 @@ var (
 	modelsListCacheHitTotal   atomic.Int64
 	modelsListCacheMissTotal  atomic.Int64
 	modelsListCacheStoreTotal atomic.Int64
+
+	// userPlatformQuotaDBIncrErrorTotal 统计 finalizePostUsageBilling 异步 goroutine
+	// 中 IncrementUsageWithReset 失败次数。Redis 已成功累加 + DB 写失败意味着
+	// Redis cache TTL 过期或被清后该笔 cost 会丢失（与实际消费偏差）。
+	// oncall 通过 GatewayUserPlatformQuotaIncrStats() 暴露给 ops 面板做阈值告警。
+	userPlatformQuotaDBIncrErrorTotal atomic.Int64
+	// userPlatformQuotaDBIncrLegacyErrorTotal 统计 legacy postUsageBilling
+	// （applyUsageBilling 在 repo==nil 时 fallback）路径下的失败次数；
+	// 与 DB Incr 失败分开计数，便于区分"主路径暂时故障"vs"基础设施长期未配齐"。
+	userPlatformQuotaDBIncrLegacyErrorTotal atomic.Int64
 )
 
 func GatewayWindowCostPrefetchStats() (cacheHit, cacheMiss, batchSQL, fallback, errCount int64) {
@@ -115,6 +125,15 @@ func GatewayUserGroupRateCacheStats() (cacheHit, cacheMiss, load, singleflightSh
 
 func GatewayModelsListCacheStats() (cacheHit, cacheMiss, store int64) {
 	return modelsListCacheHitTotal.Load(), modelsListCacheMissTotal.Load(), modelsListCacheStoreTotal.Load()
+}
+
+// GatewayUserPlatformQuotaIncrStats 返回 (mainPathErr, legacyPathErr)。
+// mainPathErr：finalizePostUsageBilling 异步 goroutine 写 DB 失败累计次数；
+// legacyPathErr：postUsageBilling fallback 路径写 DB 失败累计次数。
+// ops 监控面板可以按"持续上升斜率"做告警阈值。
+func GatewayUserPlatformQuotaIncrStats() (mainPathErr, legacyPathErr int64) {
+	return userPlatformQuotaDBIncrErrorTotal.Load(),
+		userPlatformQuotaDBIncrLegacyErrorTotal.Load()
 }
 
 func openAIStreamEventIsTerminal(data string) bool {
@@ -575,6 +594,7 @@ type GatewayService struct {
 	debugGatewayBodyFile  atomic.Pointer[os.File] // non-nil when SUB2API_DEBUG_GATEWAY_BODY is set
 	tlsFPProfileService   *TLSFingerprintProfileService
 	balanceNotifyService  *BalanceNotifyService
+	userPlatformQuotaRepo UserPlatformQuotaRepository
 }
 
 // NewGatewayService creates a new GatewayService
@@ -605,41 +625,43 @@ func NewGatewayService(
 	channelService *ChannelService,
 	resolver *ModelPricingResolver,
 	balanceNotifyService *BalanceNotifyService,
+	userPlatformQuotaRepo UserPlatformQuotaRepository,
 ) *GatewayService {
 	userGroupRateTTL := resolveUserGroupRateCacheTTL(cfg)
 	modelsListTTL := resolveModelsListCacheTTL(cfg)
 
 	svc := &GatewayService{
-		accountRepo:          accountRepo,
-		groupRepo:            groupRepo,
-		usageLogRepo:         usageLogRepo,
-		usageBillingRepo:     usageBillingRepo,
-		userRepo:             userRepo,
-		userSubRepo:          userSubRepo,
-		userGroupRateRepo:    userGroupRateRepo,
-		cache:                cache,
-		digestStore:          digestStore,
-		cfg:                  cfg,
-		schedulerSnapshot:    schedulerSnapshot,
-		concurrencyService:   concurrencyService,
-		billingService:       billingService,
-		rateLimitService:     rateLimitService,
-		billingCacheService:  billingCacheService,
-		identityService:      identityService,
-		httpUpstream:         httpUpstream,
-		deferredService:      deferredService,
-		claudeTokenProvider:  claudeTokenProvider,
-		sessionLimitCache:    sessionLimitCache,
-		rpmCache:             rpmCache,
-		userGroupRateCache:   gocache.New(userGroupRateTTL, time.Minute),
-		settingService:       settingService,
-		modelsListCache:      gocache.New(modelsListTTL, time.Minute),
-		modelsListCacheTTL:   modelsListTTL,
-		responseHeaderFilter: compileResponseHeaderFilter(cfg),
-		tlsFPProfileService:  tlsFPProfileService,
-		channelService:       channelService,
-		resolver:             resolver,
-		balanceNotifyService: balanceNotifyService,
+		accountRepo:           accountRepo,
+		groupRepo:             groupRepo,
+		usageLogRepo:          usageLogRepo,
+		usageBillingRepo:      usageBillingRepo,
+		userRepo:              userRepo,
+		userSubRepo:           userSubRepo,
+		userGroupRateRepo:     userGroupRateRepo,
+		cache:                 cache,
+		digestStore:           digestStore,
+		cfg:                   cfg,
+		schedulerSnapshot:     schedulerSnapshot,
+		concurrencyService:    concurrencyService,
+		billingService:        billingService,
+		rateLimitService:      rateLimitService,
+		billingCacheService:   billingCacheService,
+		identityService:       identityService,
+		httpUpstream:          httpUpstream,
+		deferredService:       deferredService,
+		claudeTokenProvider:   claudeTokenProvider,
+		sessionLimitCache:     sessionLimitCache,
+		rpmCache:              rpmCache,
+		userGroupRateCache:    gocache.New(userGroupRateTTL, time.Minute),
+		settingService:        settingService,
+		modelsListCache:       gocache.New(modelsListTTL, time.Minute),
+		modelsListCacheTTL:    modelsListTTL,
+		responseHeaderFilter:  compileResponseHeaderFilter(cfg),
+		tlsFPProfileService:   tlsFPProfileService,
+		channelService:        channelService,
+		resolver:              resolver,
+		balanceNotifyService:  balanceNotifyService,
+		userPlatformQuotaRepo: userPlatformQuotaRepo,
 	}
 	svc.userGroupRateResolver = newUserGroupRateResolver(
 		userGroupRateRepo,
@@ -7949,6 +7971,7 @@ type RecordUsageInput struct {
 	RequestPayloadHash string             // 请求体语义哈希，用于降低 request_id 误复用时的静默误去重风险
 	ForceCacheBilling  bool               // 强制缓存计费：将 input_tokens 转为 cache_read 计费（用于粘性会话切换）
 	APIKeyService      APIKeyQuotaUpdater // 可选：用于更新API Key配额
+	QuotaPlatform      string             // user×platform 配额计量平台：handler 在请求 ctx 内经 QuotaPlatform() 算定后传入（后扣运行在 worker 池 background ctx 上，取不到 ForcePlatform）
 
 	ChannelUsageFields // 渠道映射信息（由 handler 在 Forward 前解析）
 }
@@ -7978,6 +8001,31 @@ type postUsageBillingParams struct {
 	IsSubscriptionBill    bool
 	AccountRateMultiplier float64
 	APIKeyService         APIKeyQuotaUpdater
+	Platform              string // 来自 APIKey 关联 Group 的平台标识
+}
+
+// PlatformFromAPIKey 从 APIKey 关联的 Group 推导 platform 名称。
+// apiKey 为 nil 或 Group 信息缺失时返回空串（调用方据此 short-circuit quota 累加）。
+// 导出供 handler 层调用。
+func PlatformFromAPIKey(apiKey *APIKey) string {
+	if apiKey == nil || apiKey.Group == nil {
+		return ""
+	}
+	return apiKey.Group.Platform
+}
+
+// QuotaPlatform 返回 user×platform 配额计量使用的平台标识。
+// 强制平台路由（如 /antigravity）优先按 ctx 中的 ForcePlatform 计量，否则回退到
+// APIKey 关联 Group 的平台。
+//
+// 注意：必须用带 ForcePlatform 的请求 context 调用（如 handler 的 c.Request.Context()）。
+// 后扣运行在 worker 池的 background ctx 上没有 ForcePlatform，因此后扣平台由 handler
+// 预先算定、经 RecordUsageInput.QuotaPlatform 传入，不要在后扣链路用 worker ctx 调用本函数。
+func QuotaPlatform(ctx context.Context, apiKey *APIKey) string {
+	if fp, ok := ctx.Value(ctxkey.ForcePlatform).(string); ok && fp != "" {
+		return fp
+	}
+	return PlatformFromAPIKey(apiKey)
 }
 
 func (p *postUsageBillingParams) shouldDeductAPIKeyQuota() bool {
@@ -8033,6 +8081,21 @@ func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *bill
 		accountCost := cost.TotalCost * p.AccountRateMultiplier
 		if err := deps.accountRepo.IncrementQuotaUsed(billingCtx, p.Account.ID, accountCost); err != nil {
 			slog.Error("increment account quota used failed", "account_id", p.Account.ID, "cost", accountCost, "error", err)
+		}
+	}
+
+	// Platform quota DB-only 累加（与 finalizePostUsageBilling 行为对齐的兜底）：
+	//   - 仅对 standard（余额）模式生效；订阅模式豁免
+	//   - 直接走 DB，不经 Redis Incr 队列：legacy 路径在 repo==nil（仓库未注入）
+	//     时被触发，此时整套 billing repo 都不可用，没有"双队列"风险
+	//   - 失败仅记 ALERT log + counter，不阻断主扣费流程；与正常路径一致
+	//
+	// 历史背景：原 legacy path 完全跳过此累加，导致部署中如果 repo 偶然为 nil
+	// 时用户消费可绕过 platform quota，存在静默资金风险。
+	if !p.IsSubscriptionBill && p.Platform != "" && cost.ActualCost > 0 && p.User != nil && deps.userPlatformQuotaRepo != nil {
+		if err := deps.userPlatformQuotaRepo.IncrementUsageWithReset(billingCtx, p.User.ID, p.Platform, cost.ActualCost, time.Now().UTC()); err != nil {
+			userPlatformQuotaDBIncrLegacyErrorTotal.Add(1)
+			logger.LegacyPrintf("service.gateway", "ALERT: legacy incr user platform quota DB failed user=%d platform=%s cost=%f: %v", p.User.ID, p.Platform, cost.ActualCost, err)
 		}
 	}
 
@@ -8159,11 +8222,11 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 		}
 	}
 
-	finalizePostUsageBilling(p, deps, result)
+	finalizePostUsageBilling(billingCtx, p, deps, result)
 	return true, nil
 }
 
-func finalizePostUsageBilling(p *postUsageBillingParams, deps *billingDeps, result *UsageBillingApplyResult) {
+func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *billingDeps, result *UsageBillingApplyResult) {
 	if p == nil || p.Cost == nil || deps == nil {
 		return
 	}
@@ -8181,6 +8244,32 @@ func finalizePostUsageBilling(p *postUsageBillingParams, deps *billingDeps, resu
 	}
 
 	deps.deferredService.ScheduleLastUsedUpdate(p.Account.ID)
+
+	// Platform quota 累加：仅在 standard（余额）模式生效；订阅模式豁免
+	// Redis 同步写 + DB 异步持久化:
+	//   - Redis 同步:确保下次 preflight 立即看到最新 usage,把 TOCTOU 超支窗口
+	//     限制在并发 in-flight 请求数量内（旧实现的异步入队会让超支无限累积直到 worker 处理）
+	//   - DB 异步:在独立 goroutine 中走 detached context,失败用 ALERT log 触发 oncall 对账
+	if !p.IsSubscriptionBill && p.Platform != "" && p.Cost.ActualCost > 0 && p.User != nil && deps.userPlatformQuotaRepo != nil {
+		deps.billingCacheService.IncrementUserPlatformQuotaUsage(p.User.ID, p.Platform, p.Cost.ActualCost)
+		dbCtx, dbCancel := detachUpstreamContext(ctx)
+		userID, platform, cost := p.User.ID, p.Platform, p.Cost.ActualCost
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					logger.LegacyPrintf("service.gateway", "ALERT: panic in user platform quota incr goroutine user=%d platform=%s: %v", userID, platform, r)
+				}
+			}()
+			defer dbCancel()
+			if err := deps.userPlatformQuotaRepo.IncrementUsageWithReset(dbCtx, userID, platform, cost, time.Now().UTC()); err != nil {
+				// 失败计数器:暴露给 GatewayUserPlatformQuotaIncrStats(),由 ops 面板做斜率告警。
+				userPlatformQuotaDBIncrErrorTotal.Add(1)
+				// ALERT 级别:DB 持久化失败意味着 Redis cache 失效后该笔 cost 永久丢失,
+				// 用户配额视图与实际消费会偏差,oncall 需要据此对账或人工补录。
+				logger.LegacyPrintf("service.gateway", "ALERT: incr user platform quota DB failed user=%d platform=%s cost=%f: %v", userID, platform, cost, err)
+			}
+		}()
+	}
 
 	// Notification checks run async — all parameters are already captured,
 	// no dependency on the request context or upstream connection.
@@ -8287,22 +8376,24 @@ func detachUpstreamContext(ctx context.Context) (context.Context, context.Cancel
 
 // billingDeps 扣费逻辑依赖的服务（由各 gateway service 提供）
 type billingDeps struct {
-	accountRepo          AccountRepository
-	userRepo             UserRepository
-	userSubRepo          UserSubscriptionRepository
-	billingCacheService  *BillingCacheService
-	deferredService      *DeferredService
-	balanceNotifyService *BalanceNotifyService
+	accountRepo           AccountRepository
+	userRepo              UserRepository
+	userSubRepo           UserSubscriptionRepository
+	billingCacheService   *BillingCacheService
+	deferredService       *DeferredService
+	balanceNotifyService  *BalanceNotifyService
+	userPlatformQuotaRepo UserPlatformQuotaRepository
 }
 
 func (s *GatewayService) billingDeps() *billingDeps {
 	return &billingDeps{
-		accountRepo:          s.accountRepo,
-		userRepo:             s.userRepo,
-		userSubRepo:          s.userSubRepo,
-		billingCacheService:  s.billingCacheService,
-		deferredService:      s.deferredService,
-		balanceNotifyService: s.balanceNotifyService,
+		accountRepo:           s.accountRepo,
+		userRepo:              s.userRepo,
+		userSubRepo:           s.userSubRepo,
+		billingCacheService:   s.billingCacheService,
+		deferredService:       s.deferredService,
+		balanceNotifyService:  s.balanceNotifyService,
+		userPlatformQuotaRepo: s.userPlatformQuotaRepo,
 	}
 }
 
@@ -8360,6 +8451,7 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 		RequestPayloadHash: input.RequestPayloadHash,
 		ForceCacheBilling:  input.ForceCacheBilling,
 		APIKeyService:      input.APIKeyService,
+		QuotaPlatform:      input.QuotaPlatform,
 		ChannelUsageFields: input.ChannelUsageFields,
 	}, &recordUsageOpts{
 		EnableClaudePath: true,
@@ -8382,6 +8474,7 @@ type RecordUsageLongContextInput struct {
 	LongContextMultiplier float64            // 超出阈值部分的倍率（如 2.0）
 	ForceCacheBilling     bool               // 强制缓存计费：将 input_tokens 转为 cache_read 计费（用于粘性会话切换）
 	APIKeyService         APIKeyQuotaUpdater // API Key 配额服务（可选）
+	QuotaPlatform         string             // user×platform 配额计量平台：handler 在请求 ctx 内经 QuotaPlatform() 算定后传入（后扣运行在 worker 池 background ctx 上，取不到 ForcePlatform）
 
 	ChannelUsageFields // 渠道映射信息（由 handler 在 Forward 前解析）
 }
@@ -8401,6 +8494,7 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 		RequestPayloadHash: input.RequestPayloadHash,
 		ForceCacheBilling:  input.ForceCacheBilling,
 		APIKeyService:      input.APIKeyService,
+		QuotaPlatform:      input.QuotaPlatform,
 		ChannelUsageFields: input.ChannelUsageFields,
 	}, &recordUsageOpts{
 		LongContextThreshold:  input.LongContextThreshold,
@@ -8422,6 +8516,7 @@ type recordUsageCoreInput struct {
 	RequestPayloadHash string
 	ForceCacheBilling  bool
 	APIKeyService      APIKeyQuotaUpdater
+	QuotaPlatform      string
 	ChannelUsageFields
 }
 
@@ -8519,6 +8614,13 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		return nil
 	}
 
+	// 配额平台由 handler 在请求 ctx 内经 QuotaPlatform() 算定并通过 input 传入；
+	// 后扣运行在 worker 池的 background ctx 上，无法再从 ctx 取 ForcePlatform。
+	// 缺省（未设置）时回退到分组平台，保持对其它调用方的兼容。
+	quotaPlatform := input.QuotaPlatform
+	if quotaPlatform == "" {
+		quotaPlatform = PlatformFromAPIKey(apiKey)
+	}
 	requestID := usageLog.RequestID
 	_, billingErr := applyUsageBilling(ctx, requestID, usageLog, &postUsageBillingParams{
 		Cost:                  cost,
@@ -8530,6 +8632,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		IsSubscriptionBill:    isSubscriptionBilling,
 		AccountRateMultiplier: accountRateMultiplier,
 		APIKeyService:         input.APIKeyService,
+		Platform:              quotaPlatform,
 	}, s.billingDeps(), s.usageBillingRepo)
 
 	if billingErr != nil {

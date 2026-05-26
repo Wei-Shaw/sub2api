@@ -380,6 +380,8 @@ type ResponsesStreamEvent struct {
 
 	// response.created / response.completed / response.done / response.failed / response.incomplete
 	Response *ResponsesResponse `json:"response,omitempty"`
+	// 部分 OpenAI 兼容上游会把 usage 放在终止事件顶层，而不是 response.usage。
+	Usage *ResponsesUsage `json:"usage,omitempty"`
 
 	// response.output_item.added / response.output_item.done
 	Item *ResponsesOutput `json:"item,omitempty"`

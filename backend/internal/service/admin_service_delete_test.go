@@ -459,6 +459,22 @@ func (s *billingCacheStub) InvalidateAPIKeyRateLimit(ctx context.Context, keyID 
 	panic("unexpected InvalidateAPIKeyRateLimit call")
 }
 
+func (s *billingCacheStub) GetUserPlatformQuotaCache(ctx context.Context, userID int64, platform string) (*UserPlatformQuotaCacheEntry, bool, error) {
+	panic("unexpected GetUserPlatformQuotaCache call")
+}
+
+func (s *billingCacheStub) SetUserPlatformQuotaCache(ctx context.Context, userID int64, platform string, entry *UserPlatformQuotaCacheEntry, ttl time.Duration) error {
+	panic("unexpected SetUserPlatformQuotaCache call")
+}
+
+func (s *billingCacheStub) DeleteUserPlatformQuotaCache(ctx context.Context, userID int64, platform string) error {
+	panic("unexpected DeleteUserPlatformQuotaCache call")
+}
+
+func (s *billingCacheStub) IncrUserPlatformQuotaUsageCache(ctx context.Context, userID int64, platform string, cost float64, ttl time.Duration) error {
+	panic("unexpected IncrUserPlatformQuotaUsageCache call")
+}
+
 func waitForInvalidations(t *testing.T, ch <-chan subscriptionInvalidateCall, expected int) []subscriptionInvalidateCall {
 	t.Helper()
 	calls := make([]subscriptionInvalidateCall, 0, expected)

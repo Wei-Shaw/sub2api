@@ -53,6 +53,8 @@ const (
 	opsCodeUserNotFound          = "USER_NOT_FOUND"
 	opsCodeAPIKeyQuotaExhausted  = "API_KEY_QUOTA_EXHAUSTED"
 	opsCodeAPIKeyQueryDeprecated = "api_key_in_query_deprecated"
+	opsCodeGroupDeleted          = "GROUP_DELETED"
+	opsCodeGroupDisabled         = "GROUP_DISABLED"
 )
 
 const (
@@ -1012,6 +1014,8 @@ func parseOpsErrorResponse(body []byte) parsedOpsError {
 		var code string
 		if v, ok := errObj["code"]; ok {
 			switch n := v.(type) {
+			case string:
+				code = strings.TrimSpace(n)
 			case float64:
 				code = strconvItoa(int(n))
 			case int:
@@ -1188,14 +1192,19 @@ func isOpsClientAuthError(code string, msg string) bool {
 		opsCodeAPIKeyExpired,
 		opsCodeAPIKeyDisabled,
 		opsCodeUserNotFound,
-		opsCodeUserInactive:
+		opsCodeUserInactive,
+		opsCodeGroupDeleted,
+		opsCodeGroupDisabled:
 		return true
 	}
 	return strings.Contains(msg, "invalid api key") ||
 		strings.Contains(msg, "api key is required") ||
 		strings.Contains(msg, "api key is disabled") ||
 		strings.Contains(msg, "user associated with api key not found") ||
-		strings.Contains(msg, "user account is not active")
+		strings.Contains(msg, "user account is not active") ||
+		strings.Contains(msg, "api key 所属分组已删除") ||
+		strings.Contains(msg, "api key 所属分组已停用") ||
+		strings.Contains(msg, "api key is not assigned to any group")
 }
 
 func isOpsLocalBusinessLimitError(code string, msg string) bool {
@@ -1211,6 +1220,7 @@ func isOpsLocalBusinessLimitError(code string, msg string) bool {
 	return strings.Contains(msg, "api key in query parameter is deprecated") ||
 		strings.Contains(msg, "query parameter api_key is deprecated") ||
 		strings.Contains(msg, "no active subscription found for this group") ||
+		strings.Contains(msg, "subscription is invalid or expired") ||
 		strings.Contains(msg, opsErrInsufficientBalance) ||
 		strings.Contains(msg, "insufficient account balance") ||
 		strings.Contains(msg, "api key group platform is not gemini") ||
@@ -1221,7 +1231,22 @@ func isOpsLocalBusinessLimitError(code string, msg string) bool {
 		strings.Contains(msg, "daily usage limit exceeded") ||
 		strings.Contains(msg, "weekly usage limit exceeded") ||
 		strings.Contains(msg, "monthly usage limit exceeded") ||
-		strings.Contains(msg, "requests-per-minute limit exceeded")
+		strings.Contains(msg, "usage quota exhausted for this platform") ||
+		strings.Contains(msg, "requests-per-minute limit exceeded") ||
+		strings.Contains(msg, "too many pending requests") ||
+		strings.Contains(msg, "concurrency limit exceeded") ||
+		strings.Contains(msg, "image generation concurrency limit exceeded") ||
+		strings.Contains(msg, "this group is restricted to claude code clients") ||
+		strings.Contains(msg, "this group does not allow /v1/messages dispatch") ||
+		strings.Contains(msg, "image generation is not enabled for this group") ||
+		strings.Contains(msg, "token counting is not supported for this platform") ||
+		strings.Contains(msg, "images api is not supported for this platform") ||
+		(strings.Contains(msg, "model ") && strings.Contains(msg, " not in whitelist")) ||
+		(strings.Contains(msg, "beta feature ") && strings.Contains(msg, " is not allowed")) ||
+		(strings.Contains(msg, "openai service_tier=") && strings.Contains(msg, " is not allowed for model")) ||
+		strings.Contains(msg, "this account only allows codex official clients") ||
+		strings.Contains(msg, "openai wsv1 is temporarily unsupported") ||
+		strings.Contains(msg, "openai codex passthrough requires a non-empty instructions field")
 }
 
 func hasOpsUpstreamErrorContext(c *gin.Context) bool {
