@@ -24,6 +24,7 @@ export interface ContentModerationConfig {
   all_groups: boolean
   group_ids: number[]
   record_non_hits: boolean
+  thresholds: Record<string, number>
   worker_count: number
   queue_size: number
   block_status: number
@@ -98,6 +99,7 @@ export interface UpdateContentModerationConfig {
   all_groups?: boolean
   group_ids?: number[]
   record_non_hits?: boolean
+  thresholds?: Record<string, number>
   worker_count?: number
   queue_size?: number
   block_status?: number
