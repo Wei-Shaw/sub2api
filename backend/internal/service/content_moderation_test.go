@@ -726,6 +726,37 @@ func TestContentModerationUpdateConfig_ReplacesAPIKeysWhenRequested(t *testing.T
 	require.Equal(t, []string{"sk-new-only"}, saved.apiKeys())
 }
 
+func TestContentModerationUpdateConfig_SavesCustomThresholds(t *testing.T) {
+	cfg := defaultContentModerationConfig()
+	rawCfg, err := json.Marshal(cfg)
+	require.NoError(t, err)
+
+	repo := &contentModerationTestSettingRepo{values: map[string]string{
+		SettingKeyContentModerationConfig: string(rawCfg),
+	}}
+	svc := NewContentModerationService(repo, nil, nil, nil, nil, nil, nil)
+	thresholds := map[string]float64{
+		"sexual":     0.72,
+		"harassment": 1.25,
+		"unknown":    0.01,
+	}
+
+	view, err := svc.UpdateConfig(context.Background(), UpdateContentModerationConfigInput{
+		Thresholds: &thresholds,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 0.72, view.Thresholds["sexual"])
+	require.Equal(t, 1.0, view.Thresholds["harassment"])
+	require.NotContains(t, view.Thresholds, "unknown")
+
+	var saved ContentModerationConfig
+	require.NoError(t, json.Unmarshal([]byte(repo.values[SettingKeyContentModerationConfig]), &saved))
+	require.Equal(t, 0.72, saved.Thresholds["sexual"])
+	require.Equal(t, 1.0, saved.Thresholds["harassment"])
+	require.NotContains(t, saved.Thresholds, "unknown")
+}
+
 func TestExtractContentModerationInput_AnthropicImageSourceOnlyParticipatesInMemory(t *testing.T) {
 	body := []byte(`{
 		"messages": [
