@@ -95,6 +95,7 @@ func RegisterUserRoutes(
 			entitlements.GET("", h.Entitlement.List)
 			entitlements.POST("/refresh", h.Entitlement.Refresh)
 			entitlements.POST("/switch", h.Entitlement.Switch)
+			entitlements.POST("/auto-switch", h.Entitlement.AutoSwitch)
 		}
 
 		// 用户可用渠道（非管理员接口）

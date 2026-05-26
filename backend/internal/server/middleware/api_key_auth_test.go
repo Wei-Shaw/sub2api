@@ -50,6 +50,25 @@ func TestAPIKeyAuthRejectsOversizedCredentialsBeforeLookup(t *testing.T) {
 	require.Zero(t, calls.Load())
 }
 
+func TestProviderIDForAutoSwitchPlatformUsesVClawCatalogMapping(t *testing.T) {
+	tests := []struct {
+		platform string
+		want     string
+	}{
+		{platform: "", want: ""},
+		{platform: service.PlatformOpenAI, want: "v-claw-openai"},
+		{platform: service.PlatformAnthropic, want: "v-claw-anthropic"},
+		{platform: service.PlatformGemini, want: "v-claw-google"},
+		{platform: service.PlatformAntigravity, want: "v-claw-google"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.platform, func(t *testing.T) {
+			require.Equal(t, tt.want, providerIDForAutoSwitchPlatform(tt.platform))
+		})
+	}
+}
+
 func TestSimpleModeBypassesQuotaCheck(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -267,6 +286,12 @@ func TestSimpleModeBypassesQuotaCheck(t *testing.T) {
 
 		require.Equal(t, http.StatusTooManyRequests, w.Code)
 		require.Contains(t, w.Body.String(), "USAGE_LIMIT_EXCEEDED")
+		require.Equal(t, "subscription_limit_exceeded", w.Header().Get("X-Sub2API-Billing-Code"))
+		require.Equal(t, "true", w.Header().Get("X-Sub2API-Auto-Switchable"))
+		var body ErrorResponse
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+		require.Equal(t, "subscription_limit_exceeded", body.Metadata["billing_code"])
+		require.Equal(t, true, body.Metadata["auto_switchable"])
 	})
 }
 
@@ -1499,6 +1524,158 @@ func TestAPIKeyAuthQuotaErrorKeepsLegacyFormatOutsideResponses(t *testing.T) {
 	requireAPIKeyAuthError(t, w, "API_KEY_QUOTA_EXHAUSTED", "API key 额度已用完")
 }
 
+func TestAPIKeyAuthAutoSwitchesSubscriptionLimitToFallbackGroup(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	dailyLimit := 1.0
+	fallbackGroupID := int64(43)
+	subscriptionGroup := &service.Group{
+		ID:               42,
+		Name:             "sub-plan",
+		Status:           service.StatusActive,
+		Platform:         service.PlatformAnthropic,
+		Hydrated:         true,
+		SubscriptionType: service.SubscriptionTypeSubscription,
+		DailyLimitUSD:    &dailyLimit,
+		FallbackGroupID:  &fallbackGroupID,
+	}
+	creditGroup := &service.Group{
+		ID:               fallbackGroupID,
+		Name:             "credit-fallback",
+		Status:           service.StatusActive,
+		Platform:         service.PlatformAnthropic,
+		Hydrated:         true,
+		SubscriptionType: service.SubscriptionTypeStandard,
+	}
+	user := &service.User{
+		ID:          7,
+		Role:        service.RoleUser,
+		Status:      service.StatusActive,
+		Balance:     10,
+		Concurrency: 3,
+	}
+	keyStore := map[int64]*service.APIKey{}
+	currentKey := &service.APIKey{
+		ID:      100,
+		UserID:  user.ID,
+		Key:     "sub-key",
+		Status:  service.StatusActive,
+		User:    user,
+		GroupID: &subscriptionGroup.ID,
+		Group:   subscriptionGroup,
+	}
+	keyStore[currentKey.ID] = currentKey
+
+	cloneStoredKey := func(key *service.APIKey) *service.APIKey {
+		if key == nil {
+			return nil
+		}
+		clone := *key
+		if key.GroupID != nil {
+			groupID := *key.GroupID
+			clone.GroupID = &groupID
+		}
+		return &clone
+	}
+	apiKeyRepo := &stubApiKeyRepo{
+		getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
+			if key != currentKey.Key {
+				return nil, service.ErrAPIKeyNotFound
+			}
+			return cloneStoredKey(keyStore[currentKey.ID]), nil
+		},
+		getByID: func(ctx context.Context, id int64) (*service.APIKey, error) {
+			key := keyStore[id]
+			if key == nil {
+				return nil, service.ErrAPIKeyNotFound
+			}
+			return cloneStoredKey(key), nil
+		},
+		listByUserID: func(ctx context.Context, userID int64, params pagination.PaginationParams, filters service.APIKeyListFilters) ([]service.APIKey, *pagination.PaginationResult, error) {
+			require.Equal(t, user.ID, userID)
+			clone := cloneStoredKey(keyStore[currentKey.ID])
+			return []service.APIKey{*clone}, &pagination.PaginationResult{Total: 1, Page: 1, PageSize: 1000}, nil
+		},
+	}
+	apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, &config.Config{RunMode: config.RunModeStandard})
+
+	now := time.Now()
+	subscription := service.UserSubscription{
+		ID:               55,
+		UserID:           user.ID,
+		GroupID:          subscriptionGroup.ID,
+		Status:           service.SubscriptionStatusActive,
+		StartsAt:         now.Add(-24 * time.Hour),
+		ExpiresAt:        now.Add(24 * time.Hour),
+		DailyWindowStart: &now,
+		DailyUsageUSD:    10,
+	}
+	subscriptionRepo := &stubUserSubscriptionRepo{
+		getActive: func(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error) {
+			if userID != subscription.UserID || groupID != subscription.GroupID {
+				return nil, service.ErrSubscriptionNotFound
+			}
+			clone := subscription
+			return &clone, nil
+		},
+		listByUserID: func(ctx context.Context, userID int64) ([]service.UserSubscription, error) {
+			require.Equal(t, user.ID, userID)
+			return []service.UserSubscription{subscription}, nil
+		},
+		updateStatus:   func(ctx context.Context, subscriptionID int64, status string) error { return nil },
+		activateWindow: func(ctx context.Context, id int64, start time.Time) error { return nil },
+		resetDaily:     func(ctx context.Context, id int64, start time.Time) error { return nil },
+		resetWeekly:    func(ctx context.Context, id int64, start time.Time) error { return nil },
+		resetMonthly:   func(ctx context.Context, id int64, start time.Time) error { return nil },
+	}
+	subscriptionService := service.NewSubscriptionService(nil, subscriptionRepo, nil, nil, &config.Config{RunMode: config.RunModeStandard})
+
+	groups := map[int64]*service.Group{
+		subscriptionGroup.ID: subscriptionGroup,
+		creditGroup.ID:       creditGroup,
+	}
+	entitlementService := service.NewEntitlementService(
+		&stubEntitlementUserRepo{user: user},
+		&stubEntitlementGroupRepo{groups: groups},
+		&stubEntitlementAPIKeyUpdater{update: func(ctx context.Context, id, userID int64, req service.UpdateAPIKeyRequest) (*service.APIKey, error) {
+			require.Equal(t, currentKey.ID, id)
+			require.Equal(t, user.ID, userID)
+			require.NotNil(t, req.GroupID)
+			require.Equal(t, creditGroup.ID, *req.GroupID)
+			stored := keyStore[id]
+			stored.GroupID = req.GroupID
+			stored.Group = creditGroup
+			return cloneStoredKey(stored), nil
+		}},
+		apiKeyRepo,
+		subscriptionRepo,
+	)
+
+	router := gin.New()
+	router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddlewareWithEntitlements(apiKeyService, subscriptionService, entitlementService, &config.Config{RunMode: config.RunModeStandard})))
+	router.GET("/t", func(c *gin.Context) {
+		keyFromCtx, ok := GetAPIKeyFromContext(c)
+		require.True(t, ok)
+		require.NotNil(t, keyFromCtx.GroupID)
+		require.Equal(t, creditGroup.ID, *keyFromCtx.GroupID)
+		require.Equal(t, creditGroup.ID, c.Request.Context().Value(ctxkey.Group).(*service.Group).ID)
+		_, hasSubscription := GetSubscriptionFromContext(c)
+		require.False(t, hasSubscription, "fallback credit group must not keep exhausted subscription context")
+		c.JSON(http.StatusOK, gin.H{"api_key_id": keyFromCtx.ID, "group_id": *keyFromCtx.GroupID})
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/t", nil)
+	req.Header.Set("x-api-key", currentKey.Key)
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, "true", w.Header().Get("X-Sub2API-Auto-Switched"))
+	require.Equal(t, service.EntitlementSwitchActionGroup, w.Header().Get("X-Sub2API-Auto-Switch-Action"))
+	require.Equal(t, creditGroup.Name, w.Header().Get("X-Sub2API-Auto-Switch-Target-Group"))
+	require.Contains(t, w.Body.String(), `"group_id":43`)
+}
+
 func newAuthTestRouter(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) *gin.Engine {
 	router := gin.New()
 	router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, subscriptionService, cfg)))
@@ -1523,7 +1700,10 @@ func requireAPIKeyAuthError(t *testing.T, w *httptest.ResponseRecorder, code, me
 }
 
 type stubApiKeyRepo struct {
+	getByID        func(ctx context.Context, id int64) (*service.APIKey, error)
 	getByKey       func(ctx context.Context, key string) (*service.APIKey, error)
+	update         func(ctx context.Context, key *service.APIKey) error
+	listByUserID   func(ctx context.Context, userID int64, params pagination.PaginationParams, filters service.APIKeyListFilters) ([]service.APIKey, *pagination.PaginationResult, error)
 	updateLastUsed func(ctx context.Context, id int64, usedAt time.Time) error
 }
 
@@ -1532,6 +1712,9 @@ func (r *stubApiKeyRepo) Create(ctx context.Context, key *service.APIKey) error 
 }
 
 func (r *stubApiKeyRepo) GetByID(ctx context.Context, id int64) (*service.APIKey, error) {
+	if r.getByID != nil {
+		return r.getByID(ctx, id)
+	}
 	return nil, errors.New("not implemented")
 }
 
@@ -1551,6 +1734,9 @@ func (r *stubApiKeyRepo) GetByKeyForAuth(ctx context.Context, key string) (*serv
 }
 
 func (r *stubApiKeyRepo) Update(ctx context.Context, key *service.APIKey, _ service.APIKeyUpdateFields) error {
+	if r.update != nil {
+		return r.update(ctx, key)
+	}
 	return errors.New("not implemented")
 }
 
@@ -1562,7 +1748,10 @@ func (r *stubApiKeyRepo) DeleteWithAudit(ctx context.Context, id int64) error {
 	return errors.New("not implemented")
 }
 
-func (r *stubApiKeyRepo) ListByUserID(ctx context.Context, userID int64, params pagination.PaginationParams, _ service.APIKeyListFilters) ([]service.APIKey, *pagination.PaginationResult, error) {
+func (r *stubApiKeyRepo) ListByUserID(ctx context.Context, userID int64, params pagination.PaginationParams, filters service.APIKeyListFilters) ([]service.APIKey, *pagination.PaginationResult, error) {
+	if r.listByUserID != nil {
+		return r.listByUserID(ctx, userID, params, filters)
+	}
 	return nil, nil, errors.New("not implemented")
 }
 
@@ -1630,6 +1819,7 @@ func (r *stubApiKeyRepo) GetRateLimitData(ctx context.Context, id int64) (*servi
 type stubUserSubscriptionRepo struct {
 	getByID        func(ctx context.Context, id int64) (*service.UserSubscription, error)
 	getActive      func(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error)
+	listByUserID   func(ctx context.Context, userID int64) ([]service.UserSubscription, error)
 	updateStatus   func(ctx context.Context, subscriptionID int64, status string) error
 	activateWindow func(ctx context.Context, id int64, start time.Time) error
 	resetDaily     func(ctx context.Context, id int64, start time.Time) error
@@ -1711,6 +1901,9 @@ func (r *stubUserSubscriptionRepo) Restore(ctx context.Context, subscriptionID i
 }
 
 func (r *stubUserSubscriptionRepo) ListByUserID(ctx context.Context, userID int64) ([]service.UserSubscription, error) {
+	if r.listByUserID != nil {
+		return r.listByUserID(ctx, userID)
+	}
 	return nil, errors.New("not implemented")
 }
 
@@ -1787,4 +1980,48 @@ func (r *stubUserSubscriptionRepo) IncrementUsage(ctx context.Context, id int64,
 
 func (r *stubUserSubscriptionRepo) BatchUpdateExpiredStatus(ctx context.Context) (int64, error) {
 	return 0, errors.New("not implemented")
+}
+
+type stubEntitlementUserRepo struct {
+	user *service.User
+}
+
+func (r *stubEntitlementUserRepo) GetByID(ctx context.Context, id int64) (*service.User, error) {
+	if r.user != nil && r.user.ID == id {
+		clone := *r.user
+		return &clone, nil
+	}
+	return nil, service.ErrUserNotFound
+}
+
+type stubEntitlementGroupRepo struct {
+	groups map[int64]*service.Group
+}
+
+func (r *stubEntitlementGroupRepo) GetByID(ctx context.Context, id int64) (*service.Group, error) {
+	group := r.groups[id]
+	if group == nil {
+		return nil, service.ErrGroupNotFound
+	}
+	clone := *group
+	if group.FallbackGroupID != nil {
+		fallbackGroupID := *group.FallbackGroupID
+		clone.FallbackGroupID = &fallbackGroupID
+	}
+	if group.DailyLimitUSD != nil {
+		dailyLimit := *group.DailyLimitUSD
+		clone.DailyLimitUSD = &dailyLimit
+	}
+	return &clone, nil
+}
+
+type stubEntitlementAPIKeyUpdater struct {
+	update func(ctx context.Context, id, userID int64, req service.UpdateAPIKeyRequest) (*service.APIKey, error)
+}
+
+func (u *stubEntitlementAPIKeyUpdater) Update(ctx context.Context, id, userID int64, req service.UpdateAPIKeyRequest) (*service.APIKey, error) {
+	if u.update != nil {
+		return u.update(ctx, id, userID, req)
+	}
+	return nil, errors.New("not implemented")
 }

@@ -139,6 +139,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		if retryAfter > 0 {
 			c.Header("Retry-After", strconv.Itoa(retryAfter))
 		}
+		setBillingResponseHeaders(c, billingResponseMetadata(code))
 		h.chatCompletionsErrorResponse(c, status, code, message)
 		return
 	}

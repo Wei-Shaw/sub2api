@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -24,7 +25,11 @@ type entitlementGroupRepoStub struct {
 }
 
 func (s *entitlementGroupRepoStub) GetByID(_ context.Context, id int64) (*Group, error) {
-	return s.groups[id], nil
+	group := s.groups[id]
+	if group == nil {
+		return nil, fmt.Errorf("group %d not found", id)
+	}
+	return group, nil
 }
 
 type entitlementAPIKeyRepoStub struct {
@@ -41,20 +46,42 @@ func (s *entitlementAPIKeyRepoStub) ListByUserID(_ context.Context, userID int64
 	return out, &pagination.PaginationResult{Total: int64(len(out))}, nil
 }
 
+func (s *entitlementAPIKeyRepoStub) upsert(key APIKey) {
+	for i := range s.keys {
+		if s.keys[i].ID == key.ID {
+			s.keys[i] = key
+			return
+		}
+	}
+	s.keys = append(s.keys, key)
+}
+
 type entitlementAPIKeyUpdaterStub struct {
 	updatedID     int64
 	updatedUserID int64
 	updatedGroup  *int64
 	updatedKey    *APIKey
+	keys          *entitlementAPIKeyRepoStub
 }
 
 func (s *entitlementAPIKeyUpdaterStub) Update(_ context.Context, id, userID int64, req UpdateAPIKeyRequest) (*APIKey, error) {
 	s.updatedID = id
 	s.updatedUserID = userID
 	s.updatedGroup = req.GroupID
-	key := &APIKey{ID: id, UserID: userID, Status: StatusActive, GroupID: req.GroupID}
-	s.updatedKey = key
-	return key, nil
+	key := APIKey{ID: id, UserID: userID, Status: StatusActive, GroupID: req.GroupID}
+	if s.keys != nil {
+		for _, existing := range s.keys.keys {
+			if existing.ID == id {
+				key = existing
+				key.UserID = userID
+				key.GroupID = req.GroupID
+				break
+			}
+		}
+		s.keys.upsert(key)
+	}
+	s.updatedKey = &key
+	return &key, nil
 }
 
 type entitlementUserSubRepoStub struct {
@@ -257,4 +284,118 @@ func TestEntitlementService_GetUserEntitlements_UsageRepoErrorDoesNotFailRespons
 	require.Nil(t, state.CreditUsage, "credit_usage must be empty when repo errs")
 	require.Len(t, state.Entitlements, 1)
 	require.Nil(t, state.Entitlements[0].CreditQuota)
+}
+
+func TestEntitlementService_GetUserEntitlements_SanitizesAPIKeyAndRecommendsFallbackGroup(t *testing.T) {
+	now := time.Now()
+	later := now.Add(30 * 24 * time.Hour)
+	subscriptionGroupID := int64(8)
+	fallbackGroupID := int64(2)
+	dailyLimit := 1.0
+	keyRepo := &entitlementAPIKeyRepoStub{keys: []APIKey{{ID: 100, UserID: 42, Key: "sk-secret", Name: "desktop", Status: StatusActive, GroupID: &subscriptionGroupID}}}
+	svc := NewEntitlementService(
+		&entitlementUserRepoStub{users: map[int64]*User{42: {ID: 42, Balance: 12.5}}},
+		&entitlementGroupRepoStub{groups: map[int64]*Group{
+			8: {ID: 8, Name: "OpenAI Subscription", Platform: PlatformOpenAI, Status: StatusActive, SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &dailyLimit, FallbackGroupID: &fallbackGroupID, SupportedModelScopes: []string{"openai"}},
+			2: {ID: 2, Name: "OpenAI Credit", Platform: PlatformOpenAI, Status: StatusActive, SubscriptionType: SubscriptionTypeStandard, SupportedModelScopes: []string{"openai"}},
+		}},
+		&entitlementAPIKeyUpdaterStub{keys: keyRepo},
+		keyRepo,
+		&entitlementUserSubRepoStub{subs: []UserSubscription{{ID: 7, UserID: 42, GroupID: subscriptionGroupID, Status: StatusActive, StartsAt: now, ExpiresAt: later, DailyUsageUSD: 1.1}}},
+	)
+
+	state, err := svc.GetUserEntitlements(context.Background(), 42)
+	require.NoError(t, err)
+	require.NotNil(t, state.APIKey)
+	require.Equal(t, int64(100), state.APIKey.ID)
+	require.Empty(t, state.APIKey.Key, "GET /entitlements must not expose raw API key secrets")
+	require.True(t, state.Fallback.Available)
+	require.Equal(t, "credit_balance_available", state.Fallback.Reason)
+	require.NotNil(t, state.Fallback.TargetGroup)
+	require.Equal(t, fallbackGroupID, state.Fallback.TargetGroup.GroupID)
+	require.Equal(t, "v-claw-openai", state.Fallback.TargetGroup.ProviderID)
+	require.NotEmpty(t, state.SwitchTargets)
+	target := state.SwitchTargets[0]
+	require.Equal(t, EntitlementModeBalance, target.Mode)
+	require.Equal(t, int64(100), target.APIKeyID)
+	require.Equal(t, fallbackGroupID, target.GroupID)
+	require.Equal(t, "subscription_fallback_group", target.Reason)
+	require.True(t, target.Switchable)
+}
+
+func TestEntitlementService_AutoSwitchEntitlement_UsesFallbackBalanceGroup(t *testing.T) {
+	now := time.Now()
+	later := now.Add(30 * 24 * time.Hour)
+	subscriptionGroupID := int64(8)
+	fallbackGroupID := int64(2)
+	dailyLimit := 1.0
+	keyRepo := &entitlementAPIKeyRepoStub{keys: []APIKey{{ID: 100, UserID: 42, Key: "sk-secret", Name: "desktop", Status: StatusActive, GroupID: &subscriptionGroupID}}}
+	updater := &entitlementAPIKeyUpdaterStub{keys: keyRepo}
+	svc := NewEntitlementService(
+		&entitlementUserRepoStub{users: map[int64]*User{42: {ID: 42, Balance: 12.5}}},
+		&entitlementGroupRepoStub{groups: map[int64]*Group{
+			8: {ID: 8, Name: "OpenAI Subscription", Platform: PlatformOpenAI, Status: StatusActive, SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &dailyLimit, FallbackGroupID: &fallbackGroupID, SupportedModelScopes: []string{"openai"}},
+			2: {ID: 2, Name: "OpenAI Credit", Platform: PlatformOpenAI, Status: StatusActive, SubscriptionType: SubscriptionTypeStandard, SupportedModelScopes: []string{"openai"}},
+		}},
+		updater,
+		keyRepo,
+		&entitlementUserSubRepoStub{subs: []UserSubscription{{ID: 7, UserID: 42, GroupID: subscriptionGroupID, Status: StatusActive, StartsAt: now, ExpiresAt: later, DailyUsageUSD: 1.1}}},
+	)
+
+	result, err := svc.AutoSwitchEntitlement(context.Background(), 42, AutoSwitchEntitlementRequest{Reason: "subscription_limit_exceeded", ErrorCode: "USAGE_LIMIT_EXCEEDED", CurrentAPIKeyID: &[]int64{100}[0], CurrentGroupID: &[]int64{subscriptionGroupID}[0], ProviderID: "v-claw-openai", AllowAPIKeyChange: true, AllowProviderChange: true})
+	require.NoError(t, err)
+	require.True(t, result.Switched)
+	require.Equal(t, "switch_group", result.Action)
+	require.NotNil(t, result.Target)
+	require.Equal(t, fallbackGroupID, result.Target.GroupID)
+	require.Equal(t, int64(100), result.Target.APIKeyID)
+	require.NotNil(t, result.Runtime)
+	require.True(t, result.Runtime.RequiresRestart)
+	require.True(t, result.Runtime.RetryOriginalRequest)
+	require.Equal(t, 1, result.Runtime.RetryLimit)
+	require.Equal(t, fallbackGroupID, *updater.updatedGroup)
+	require.NotNil(t, result.State)
+	require.NotNil(t, result.State.APIKey)
+	require.Empty(t, result.State.APIKey.Key, "auto-switch response state must not expose raw API key secrets")
+}
+
+func TestEntitlementService_AutoSwitchEntitlement_CurrentKeyExhaustedUsesAlternateKey(t *testing.T) {
+	balanceGroupID := int64(2)
+	keyRepo := &entitlementAPIKeyRepoStub{keys: []APIKey{
+		{ID: 100, UserID: 42, Key: "sk-exhausted", Name: "old", Status: StatusAPIKeyQuotaExhausted, GroupID: &balanceGroupID},
+		{ID: 101, UserID: 42, Key: "sk-active", Name: "new", Status: StatusActive, GroupID: &balanceGroupID},
+	}}
+	updater := &entitlementAPIKeyUpdaterStub{keys: keyRepo}
+	svc := NewEntitlementService(
+		&entitlementUserRepoStub{users: map[int64]*User{42: {ID: 42, Balance: 5}}},
+		&entitlementGroupRepoStub{groups: map[int64]*Group{2: {ID: 2, Name: "OpenAI Credit", Platform: PlatformOpenAI, Status: StatusActive, SubscriptionType: SubscriptionTypeStandard, SupportedModelScopes: []string{"openai"}}}},
+		updater,
+		keyRepo,
+		&entitlementUserSubRepoStub{},
+	)
+
+	result, err := svc.AutoSwitchEntitlement(context.Background(), 42, AutoSwitchEntitlementRequest{Reason: "api_key_quota_exhausted", ErrorCode: "API_KEY_QUOTA_EXHAUSTED", CurrentAPIKeyID: &[]int64{100}[0], ProviderID: "v-claw-openai", AllowAPIKeyChange: true})
+	require.NoError(t, err)
+	require.True(t, result.Switched)
+	require.Equal(t, "switch_api_key", result.Action)
+	require.NotNil(t, result.Target)
+	require.Equal(t, int64(101), result.Target.APIKeyID)
+	require.Equal(t, balanceGroupID, result.Target.GroupID)
+	require.Zero(t, updater.updatedID, "alternate key is already bound to target group; no group mutation needed")
+}
+
+func TestEntitlementService_AutoSwitchEntitlement_NoCandidateReturnsActionableError(t *testing.T) {
+	balanceGroupID := int64(2)
+	keyRepo := &entitlementAPIKeyRepoStub{keys: []APIKey{{ID: 100, UserID: 42, Key: "sk-exhausted", Status: StatusAPIKeyQuotaExhausted, GroupID: &balanceGroupID}}}
+	svc := NewEntitlementService(
+		&entitlementUserRepoStub{users: map[int64]*User{42: {ID: 42, Balance: 0}}},
+		&entitlementGroupRepoStub{groups: map[int64]*Group{2: {ID: 2, Name: "OpenAI Credit", Platform: PlatformOpenAI, Status: StatusActive, SubscriptionType: SubscriptionTypeStandard}}},
+		&entitlementAPIKeyUpdaterStub{keys: keyRepo},
+		keyRepo,
+		&entitlementUserSubRepoStub{},
+	)
+
+	_, err := svc.AutoSwitchEntitlement(context.Background(), 42, AutoSwitchEntitlementRequest{Reason: "api_key_quota_exhausted", ErrorCode: "API_KEY_QUOTA_EXHAUSTED", CurrentAPIKeyID: &[]int64{100}[0], AllowAPIKeyChange: true})
+	require.ErrorIs(t, err, ErrEntitlementAutoSwitchNotAvailable)
+	require.Equal(t, "api_key_quota_exhausted_no_candidate", AutoSwitchUnavailableReason(err))
 }

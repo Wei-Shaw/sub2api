@@ -68,6 +68,25 @@ func (h *EntitlementHandler) Switch(c *gin.Context) {
 	response.Success(c, result)
 }
 
+func (h *EntitlementHandler) AutoSwitch(c *gin.Context) {
+	userID, ok := currentUserID(c)
+	if !ok {
+		response.ErrorFrom(c, infraerrors.Unauthorized("AUTH_REQUIRED", "authentication required"))
+		return
+	}
+	var req service.AutoSwitchEntitlementRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.ErrorFrom(c, infraerrors.BadRequest("INVALID_REQUEST", err.Error()))
+		return
+	}
+	result, err := h.entitlementService.AutoSwitchEntitlement(c.Request.Context(), userID, req)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
 func currentUserID(c *gin.Context) (int64, bool) {
 	subject, ok := middleware.GetAuthSubjectFromContext(c)
 	if !ok || subject.UserID <= 0 {

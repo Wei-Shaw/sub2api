@@ -243,11 +243,11 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	// 2) billing eligibility check (after wait)
 	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
 		reqLog.Info("gemini.billing_eligibility_check_failed", zap.Error(err))
-		status, _, message, retryAfter := billingErrorDetails(err)
+		status, code, message, retryAfter := billingErrorDetails(err)
 		if retryAfter > 0 {
 			c.Header("Retry-After", strconv.Itoa(retryAfter))
 		}
-		googleError(c, status, message)
+		googleBillingError(c, status, code, message)
 		return
 	}
 
@@ -672,6 +672,19 @@ func googleError(c *gin.Context, status int, message string) {
 			"message": message,
 			"status":  googleapi.HTTPStatusToGoogleStatus(status),
 		},
+	})
+}
+
+func googleBillingError(c *gin.Context, status int, billingCode, message string) {
+	metadata := billingResponseMetadata(billingCode)
+	setBillingResponseHeaders(c, metadata)
+	c.JSON(status, gin.H{
+		"error": gin.H{
+			"code":    status,
+			"message": message,
+			"status":  googleapi.HTTPStatusToGoogleStatus(status),
+		},
+		"metadata": billingResponseMetadataBody(metadata),
 	})
 }
 

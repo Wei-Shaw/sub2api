@@ -267,6 +267,7 @@ type googleErrorResponse struct {
 		Message string `json:"message"`
 		Status  string `json:"status"`
 	} `json:"error"`
+	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
 func newTestAPIKeyService(repo service.APIKeyRepository) *service.APIKeyService {
@@ -612,6 +613,51 @@ func TestApiKeyAuthWithSubscriptionGoogle_InsufficientBalance(t *testing.T) {
 	require.Equal(t, http.StatusForbidden, resp.Error.Code)
 	require.Equal(t, "Insufficient account balance", resp.Error.Message)
 	require.Equal(t, "PERMISSION_DENIED", resp.Error.Status)
+	require.Equal(t, "insufficient_balance", rec.Header().Get("X-Sub2API-Billing-Code"))
+	require.Equal(t, "false", rec.Header().Get("X-Sub2API-Auto-Switchable"))
+	require.Equal(t, "insufficient_balance", resp.Metadata["billing_code"])
+	require.Equal(t, false, resp.Metadata["auto_switchable"])
+}
+
+func TestApiKeyAuthWithSubscriptionGoogle_APIKeyQuotaExhaustedIsSwitchable(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	user := &service.User{ID: 321, Role: service.RoleUser, Status: service.StatusActive, Balance: 10, Concurrency: 3}
+	apiKey := &service.APIKey{
+		ID:     777,
+		UserID: user.ID,
+		Key:    "google-key-quota-exhausted",
+		Status: service.StatusAPIKeyQuotaExhausted,
+		User:   user,
+	}
+
+	r := gin.New()
+	apiKeyService := newTestAPIKeyService(fakeAPIKeyRepo{
+		getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
+			if key != apiKey.Key {
+				return nil, service.ErrAPIKeyNotFound
+			}
+			clone := *apiKey
+			return &clone, nil
+		},
+	})
+	r.Use(APIKeyAuthWithSubscriptionGoogle(apiKeyService, nil, &config.Config{RunMode: config.RunModeStandard}))
+	r.GET("/v1beta/test", func(c *gin.Context) { c.JSON(200, gin.H{"ok": true}) })
+
+	req := httptest.NewRequest(http.MethodGet, "/v1beta/test", nil)
+	req.Header.Set("x-goog-api-key", apiKey.Key)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusTooManyRequests, rec.Code)
+	var resp googleErrorResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, http.StatusTooManyRequests, resp.Error.Code)
+	require.Equal(t, "RESOURCE_EXHAUSTED", resp.Error.Status)
+	require.Equal(t, "api_key_quota_exhausted", rec.Header().Get("X-Sub2API-Billing-Code"))
+	require.Equal(t, "true", rec.Header().Get("X-Sub2API-Auto-Switchable"))
+	require.Equal(t, "api_key_quota_exhausted", resp.Metadata["billing_code"])
+	require.Equal(t, true, resp.Metadata["auto_switchable"])
 }
 
 func TestApiKeyAuthWithSubscriptionGoogle_BalanceBelowMinimumReserve(t *testing.T) {
@@ -903,4 +949,8 @@ func TestApiKeyAuthWithSubscriptionGoogle_SubscriptionLimitExceededReturns429(t 
 	require.Equal(t, http.StatusTooManyRequests, resp.Error.Code)
 	require.Equal(t, "RESOURCE_EXHAUSTED", resp.Error.Status)
 	require.Contains(t, resp.Error.Message, "daily usage limit exceeded")
+	require.Equal(t, "subscription_limit_exceeded", rec.Header().Get("X-Sub2API-Billing-Code"))
+	require.Equal(t, "true", rec.Header().Get("X-Sub2API-Auto-Switchable"))
+	require.Equal(t, "subscription_limit_exceeded", resp.Metadata["billing_code"])
+	require.Equal(t, true, resp.Metadata["auto_switchable"])
 }

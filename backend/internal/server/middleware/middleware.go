@@ -62,8 +62,9 @@ func GetForcePlatformFromContext(c *gin.Context) (string, bool) {
 
 // ErrorResponse 标准错误响应结构
 type ErrorResponse struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Code     string         `json:"code"`
+	Message  string         `json:"message"`
+	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
 // NewErrorResponse 创建错误响应
@@ -74,9 +75,49 @@ func NewErrorResponse(code, message string) ErrorResponse {
 	}
 }
 
+func newBillingErrorResponse(code, message string) ErrorResponse {
+	resp := NewErrorResponse(code, message)
+	if metadata := billingErrorMetadata(code); metadata != nil {
+		resp.Metadata = metadata
+	}
+	return resp
+}
+
+func billingErrorMetadata(code string) map[string]any {
+	switch code {
+	case "USAGE_LIMIT_EXCEEDED":
+		return map[string]any{"billing_code": "subscription_limit_exceeded", "auto_switchable": true}
+	case "API_KEY_QUOTA_EXHAUSTED":
+		return map[string]any{"billing_code": "api_key_quota_exhausted", "auto_switchable": true}
+	case "INSUFFICIENT_BALANCE":
+		return map[string]any{"billing_code": "insufficient_balance", "auto_switchable": false}
+	case "RATE_LIMIT_EXCEEDED":
+		return map[string]any{"billing_code": "rate_limit_exceeded", "auto_switchable": false}
+	default:
+		return nil
+	}
+}
+
+func setBillingErrorHeaders(c *gin.Context, code string) {
+	metadata := billingErrorMetadata(code)
+	if metadata == nil {
+		return
+	}
+	billingCode, _ := metadata["billing_code"].(string)
+	if billingCode != "" {
+		c.Header("X-Sub2API-Billing-Code", billingCode)
+	}
+	if metadata["auto_switchable"] == true {
+		c.Header("X-Sub2API-Auto-Switchable", "true")
+		return
+	}
+	c.Header("X-Sub2API-Auto-Switchable", "false")
+}
+
 // AbortWithError 中断请求并返回JSON错误
 func AbortWithError(c *gin.Context, statusCode int, code, message string) {
-	c.JSON(statusCode, NewErrorResponse(code, message))
+	setBillingErrorHeaders(c, code)
+	c.JSON(statusCode, newBillingErrorResponse(code, message))
 	c.Abort()
 }
 

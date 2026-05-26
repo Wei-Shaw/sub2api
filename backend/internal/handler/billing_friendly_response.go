@@ -46,21 +46,57 @@ func respondBillingAsAssistantMessage(c *gin.Context, err error, protocol string
 	if msg == "" {
 		return false
 	}
+	_, billingCode, _, _ := billingErrorDetails(err)
+	metadata := billingResponseMetadata(billingCode)
+	setBillingResponseHeaders(c, metadata)
 
 	switch protocol {
 	case "anthropic":
-		respondAnthropicBillingMessage(c, msg)
+		respondAnthropicBillingMessage(c, msg, metadata)
 	case "openai":
-		respondOpenAIChatBillingMessage(c, msg)
+		respondOpenAIChatBillingMessage(c, msg, metadata)
 	default:
 		return false
 	}
 	return true
 }
 
+type billingMetadata struct {
+	Code           string
+	AutoSwitchable bool
+}
+
+func billingResponseMetadata(code string) billingMetadata {
+	return billingMetadata{
+		Code:           code,
+		AutoSwitchable: code == "subscription_limit_exceeded" || code == "api_key_quota_exhausted",
+	}
+}
+
+func setBillingResponseHeaders(c *gin.Context, metadata billingMetadata) {
+	if c == nil {
+		return
+	}
+	if metadata.Code != "" {
+		c.Header("X-Sub2API-Billing-Code", metadata.Code)
+	}
+	if metadata.AutoSwitchable {
+		c.Header("X-Sub2API-Auto-Switchable", "true")
+		return
+	}
+	c.Header("X-Sub2API-Auto-Switchable", "false")
+}
+
+func billingResponseMetadataBody(metadata billingMetadata) gin.H {
+	return gin.H{
+		"billing_code":    metadata.Code,
+		"auto_switchable": metadata.AutoSwitchable,
+	}
+}
+
 // respondAnthropicBillingMessage writes a valid Anthropic Messages API response
 // with the billing message as assistant content.
-func respondAnthropicBillingMessage(c *gin.Context, message string) {
+func respondAnthropicBillingMessage(c *gin.Context, message string, metadata billingMetadata) {
 	c.JSON(http.StatusOK, gin.H{
 		"id":   fmt.Sprintf("msg_billing_%d", time.Now().UnixNano()),
 		"type": "message",
@@ -71,6 +107,7 @@ func respondAnthropicBillingMessage(c *gin.Context, message string) {
 				"text": message,
 			},
 		},
+		"metadata":      billingResponseMetadataBody(metadata),
 		"model":         "system",
 		"stop_reason":   "end_turn",
 		"stop_sequence": nil,
@@ -83,7 +120,7 @@ func respondAnthropicBillingMessage(c *gin.Context, message string) {
 
 // respondOpenAIChatBillingMessage writes a valid OpenAI Chat Completions API response
 // with the billing message as assistant content.
-func respondOpenAIChatBillingMessage(c *gin.Context, message string) {
+func respondOpenAIChatBillingMessage(c *gin.Context, message string, metadata billingMetadata) {
 	c.JSON(http.StatusOK, gin.H{
 		"id":      fmt.Sprintf("chatcmpl-billing-%d", time.Now().UnixNano()),
 		"object":  "chat.completion",
@@ -99,6 +136,7 @@ func respondOpenAIChatBillingMessage(c *gin.Context, message string) {
 				"finish_reason": "stop",
 			},
 		},
+		"metadata": billingResponseMetadataBody(metadata),
 		"usage": gin.H{
 			"prompt_tokens":     0,
 			"completion_tokens": 0,

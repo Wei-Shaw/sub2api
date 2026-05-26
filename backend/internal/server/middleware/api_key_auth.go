@@ -19,7 +19,14 @@ const maxAPIKeyAuthorizationHeaderBytes = service.MaxAPIKeyCredentialBytes + 128
 
 // NewAPIKeyAuthMiddleware 创建 API Key 认证中间件
 func NewAPIKeyAuthMiddleware(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) APIKeyAuthMiddleware {
-	return APIKeyAuthMiddleware(apiKeyAuthWithSubscription(apiKeyService, subscriptionService, cfg))
+	return NewAPIKeyAuthMiddlewareWithEntitlements(apiKeyService, subscriptionService, nil, cfg)
+}
+
+// NewAPIKeyAuthMiddlewareWithEntitlements creates the gateway API-key middleware with
+// server-side entitlement auto-switch enabled for quota/limit failures. This is the
+// real OpenClaw/provider traffic surface; renderer/titlebar hooks do not see these calls.
+func NewAPIKeyAuthMiddlewareWithEntitlements(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, entitlementService *service.EntitlementService, cfg *config.Config) APIKeyAuthMiddleware {
+	return APIKeyAuthMiddleware(apiKeyAuthWithSubscription(apiKeyService, subscriptionService, entitlementService, cfg))
 }
 
 // apiKeyAuthWithSubscription API Key认证中间件（支持订阅验证）
@@ -31,7 +38,7 @@ func NewAPIKeyAuthMiddleware(apiKeyService *service.APIKeyService, subscriptionS
 // /v1/usage、/v1/sub2api/billing 端点与异步生图任务查询只需鉴权，不需要计费执行。
 // usage 允许过期/配额耗尽的 Key 查询自身用量，billing 用于读取当前 Key 的倍率配置，
 // 异步生图查询允许已耗尽额度的 Key 拉取自身任务结果。
-func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) gin.HandlerFunc {
+func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, entitlementService *service.EntitlementService, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// ── 1. 提取 API Key ──────────────────────────────────────────
 		if rejectInvalidAuthAbuse(c, apiKeyService) {
@@ -217,6 +224,11 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			// Key 状态检查
 			switch apiKey.Status {
 			case service.StatusAPIKeyQuotaExhausted:
+				if switchedKey, ok := tryAutoSwitchAPIKey(c, apiKeyService, entitlementService, apiKey, "api_key_quota_exhausted", "API_KEY_QUOTA_EXHAUSTED", true, false); ok {
+					apiKey = switchedKey
+					subscription = nil
+					break
+				}
 				abortWithAPIKeyQuotaError(c)
 				return
 			case service.StatusAPIKeyExpired:
@@ -230,8 +242,13 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 				return
 			}
 			if apiKey.IsQuotaExhausted() {
-				abortWithAPIKeyQuotaError(c)
-				return
+				if switchedKey, ok := tryAutoSwitchAPIKey(c, apiKeyService, entitlementService, apiKey, "api_key_quota_exhausted", "API_KEY_QUOTA_EXHAUSTED", true, false); ok {
+					apiKey = switchedKey
+					subscription = nil
+				} else {
+					abortWithAPIKeyQuotaError(c)
+					return
+				}
 			}
 
 			// 订阅模式：验证订阅限额
@@ -254,11 +271,20 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 						errors.Is(validateErr, service.ErrMonthlyLimitExceeded) {
 						code = "USAGE_LIMIT_EXCEEDED"
 						status = 429
+						if switchedKey, ok := tryAutoSwitchAPIKey(c, apiKeyService, entitlementService, apiKey, "subscription_limit_exceeded", code, true, true); ok {
+							apiKey = switchedKey
+							subscription = nil
+						} else {
+							AbortWithError(c, status, code, validateErr.Error())
+							return
+						}
+					} else {
+						AbortWithError(c, status, code, validateErr.Error())
+						return
 					}
-					AbortWithError(c, status, code, validateErr.Error())
-					return
 				}
-			} else {
+			}
+			if subscription == nil {
 				// 非订阅模式 或 订阅模式但 subscriptionService 未注入：回退到余额检查
 				if apiKeyBalanceBelowAuthThreshold(apiKey.User.Balance, cfg) {
 					AbortWithError(c, 403, "INSUFFICIENT_BALANCE", "Insufficient account balance")
@@ -338,6 +364,60 @@ func isAsyncImageTaskRead(method, path string) bool {
 		return false
 	}
 	return strings.HasPrefix(path, "/v1/images/tasks/") || strings.HasPrefix(path, "/images/tasks/")
+}
+
+func tryAutoSwitchAPIKey(c *gin.Context, apiKeyService *service.APIKeyService, entitlementService *service.EntitlementService, apiKey *service.APIKey, reason, errorCode string, allowAPIKeyChange, allowProviderChange bool) (*service.APIKey, bool) {
+	if c == nil || apiKeyService == nil || entitlementService == nil || apiKey == nil || apiKey.User == nil {
+		return nil, false
+	}
+	currentAPIKeyID := apiKey.ID
+	var currentGroupID *int64
+	if apiKey.GroupID != nil {
+		groupID := *apiKey.GroupID
+		currentGroupID = &groupID
+	}
+	providerID := ""
+	if apiKey.Group != nil {
+		providerID = providerIDForAutoSwitchPlatform(apiKey.Group.Platform)
+	}
+	result, err := entitlementService.AutoSwitchEntitlement(c.Request.Context(), apiKey.User.ID, service.AutoSwitchEntitlementRequest{
+		Reason:              reason,
+		ErrorCode:           errorCode,
+		CurrentAPIKeyID:     &currentAPIKeyID,
+		CurrentGroupID:      currentGroupID,
+		ProviderID:          providerID,
+		AllowAPIKeyChange:   allowAPIKeyChange,
+		AllowProviderChange: allowProviderChange,
+	})
+	if err != nil || result == nil || !result.Switched || result.Target == nil {
+		return nil, false
+	}
+	switchedKey, err := apiKeyService.GetByID(c.Request.Context(), result.Target.APIKeyID)
+	if err != nil || switchedKey == nil || switchedKey.User == nil || switchedKey.User.ID != apiKey.User.ID {
+		return nil, false
+	}
+	if !switchedKey.IsActive() || switchedKey.IsExpired() || switchedKey.IsQuotaExhausted() {
+		return nil, false
+	}
+	if _, _, ok := validateAPIKeyGroupAvailable(switchedKey); !ok {
+		return nil, false
+	}
+	c.Header("X-Sub2API-Auto-Switched", "true")
+	c.Header("X-Sub2API-Auto-Switch-Action", result.Action)
+	c.Header("X-Sub2API-Auto-Switch-Target-Group", result.Target.GroupName)
+	return switchedKey, true
+}
+
+func providerIDForAutoSwitchPlatform(platform string) string {
+	platform = strings.ToLower(strings.TrimSpace(platform))
+	switch platform {
+	case "":
+		return ""
+	case service.PlatformGemini, service.PlatformAntigravity:
+		return "v-claw-google"
+	default:
+		return "v-claw-" + platform
+	}
 }
 
 // GetAPIKeyFromContext 从上下文中获取API key
