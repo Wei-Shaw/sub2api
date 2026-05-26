@@ -349,6 +349,10 @@ REDACTED
 	return &account, nil
 REDACTED
 
+func (s *stubAdminService) UpdateAccountExtra(ctx context.Context, id int64, updates map[string]any) error {
+	return nil
+REDACTED
+
 func (s *stubAdminService) DeleteAccount(ctx context.Context, id int64) error {
 	return nil
 REDACTED
