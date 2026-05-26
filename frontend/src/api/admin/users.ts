@@ -297,6 +297,78 @@ export async function bindUserAuthIdentity(
   return data
 REDACTED
 
+/**
+ * Platform quota types
+ */
+export type PlatformQuotaPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity'
+export type PlatformQuotaWindow = 'daily' | 'weekly' | 'monthly'
+
+export interface PlatformQuotaItem {
+  platform: PlatformQuotaPlatform
+  daily_limit_usd: number | null
+  weekly_limit_usd: number | null
+  monthly_limit_usd: number | null
+  daily_usage_usd: number
+  weekly_usage_usd: number
+  monthly_usage_usd: number
+  daily_window_start?: string | null
+  weekly_window_start?: string | null
+  monthly_window_start?: string | null
+  daily_window_resets_at?: string | null
+  weekly_window_resets_at?: string | null
+  monthly_window_resets_at?: string | null
+REDACTED
+
+export interface PlatformQuotaUpdateItem {
+  platform: PlatformQuotaPlatform
+  daily_limit_usd: number | null
+  weekly_limit_usd: number | null
+  monthly_limit_usd: number | null
+REDACTED
+
+export interface PlatformQuotasResponse {
+  platform_quotas: PlatformQuotaItem[]
+REDACTED
+
+/**
+ * Get user's platform quotas
+ */
+export async function getPlatformQuotas(id: number): Promise<PlatformQuotasResponse> {
+  const { data REDACTED = await apiClient.get<PlatformQuotasResponse>(
+    `/admin/users/${idREDACTED/platform-quotas`
+  )
+  return data
+REDACTED
+
+/**
+ * Replace user's platform quotas (全量替换)
+ */
+export async function updatePlatformQuotas(
+  id: number,
+  quotas: PlatformQuotaUpdateItem[]
+): Promise<PlatformQuotasResponse> {
+  const { data REDACTED = await apiClient.put<PlatformQuotasResponse>(
+    `/admin/users/${idREDACTED/platform-quotas`,
+    { quotas REDACTED
+  )
+  return data
+REDACTED
+
+/**
+ * Reset a single (platform, window) usage immediately
+ */
+export async function resetPlatformQuotaWindow(
+  id: number,
+  platform: PlatformQuotaPlatform,
+  window: PlatformQuotaWindow
+): Promise<PlatformQuotasResponse> {
+  const { data REDACTED = await apiClient.post<PlatformQuotasResponse>(
+    `/admin/users/${idREDACTED/platform-quotas/reset`,
+    { platform, window REDACTED
+  )
+  return data
+REDACTED
+
 export const usersAPI = {
   list,
   getById,
@@ -310,7 +382,10 @@ export const usersAPI = {
   getUserUsageStats,
   getUserBalanceHistory,
   replaceGroup,
-  bindUserAuthIdentity
+  bindUserAuthIdentity,
+  getPlatformQuotas,
+  updatePlatformQuotas,
+  resetPlatformQuotaWindow,
 REDACTED
 
 export default usersAPI

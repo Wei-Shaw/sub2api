@@ -112,6 +112,7 @@ func newOAuthEmailFlowAuthService(
 	refreshTokenCache RefreshTokenCache,
 	settings map[string]string,
 	emailCache EmailCache,
+	quotaRepo UserPlatformQuotaRepository, // 新增
 ) *AuthService {
 	cfg := &config.Config{
 		JWT: config.JWTConfig{
@@ -142,6 +143,7 @@ REDACTED
 		nil,
 		nil,
 		nil,
+		quotaRepo, // 替换原来的 nil
 	)
 REDACTED
 
@@ -175,6 +177,7 @@ REDACTED
 			SettingKeyEmailVerifyEnabled:    "true",
 	REDACTED,
 		emailCache,
+		nil,
 	)
 
 	tokenPair, user, err := authService.RegisterOAuthEmailAccount(
@@ -215,6 +218,7 @@ REDACTED
 			SettingKeyEmailVerifyEnabled:  "true",
 	REDACTED,
 		emailCache,
+		nil,
 	)
 
 	tokenPair, user, err := authService.RegisterOAuthEmailAccount(
@@ -274,6 +278,7 @@ REDACTED
 					SettingKeyEmailVerifyEnabled:  "true",
 			REDACTED,
 				emailCache,
+				nil,
 			)
 
 			tokenPair, user, err := authService.RegisterOAuthEmailAccount(
@@ -313,6 +318,7 @@ REDACTED
 			SettingKeyEmailVerifyEnabled:  "true",
 	REDACTED,
 		emailCache,
+		nil,
 	)
 
 	tokenPair, user, err := authService.RegisterOAuthEmailAccount(
@@ -360,6 +366,7 @@ REDACTED
 			SettingKeyInvitationCodeEnabled: "true",
 	REDACTED,
 		&emailCacheStub{REDACTED,
+		nil,
 	)
 
 	err := authService.RollbackOAuthEmailAccountCreation(context.Background(), 42, "INVITE123")
@@ -382,10 +389,62 @@ func TestRollbackOAuthEmailAccountCreationPropagatesDeleteError(t *testing.T) {
 			SettingKeyRegistrationEnabled: "true",
 	REDACTED,
 		&emailCacheStub{REDACTED,
+		nil,
 	)
 
 	err := authService.RollbackOAuthEmailAccountCreation(context.Background(), 42, "")
 
 REDACTED
 	require.Contains(t, err.Error(), "delete created oauth user")
+REDACTED
+
+func TestFinalizeOAuthEmailAccount_SnapshotsPlatformQuotaDefaults(t *testing.T) {
+	userRepo := &userRepoStub{nextID: 99REDACTED
+	quotaRepo := &userPlatformQuotaRepoStub{REDACTED
+
+	authService := newOAuthEmailFlowAuthService(
+		userRepo,
+		nil,
+		&refreshTokenCacheStub{REDACTED,
+		map[string]string{
+			SettingKeyRegistrationEnabled:   "true",
+			SettingKeyEmailVerifyEnabled:    "true",
+			SettingKeyDefaultPlatformQuotas: `{"anthropic": {"daily": 5.5REDACTEDREDACTED`,
+	REDACTED,
+		&emailCacheStub{REDACTED,
+		quotaRepo,
+	)
+
+	user := &User{
+		ID:           99,
+		Email:        "newuser@example.com",
+		Role:         RoleUser,
+		Status:       StatusActive,
+		SignupSource: "oidc",
+REDACTED
+
+	err := authService.FinalizeOAuthEmailAccount(
+		context.Background(),
+		user,
+		"",
+		"oidc",
+		"",
+	)
+
+REDACTED
+
+	require.Len(t, quotaRepo.bulkInsertCalls, 1, "snapshotPlatformQuotaDefaults must call BulkInsertInitial once on successful OAuth signup")
+
+	records := quotaRepo.bulkInsertCalls[0]
+	var anthropicRecord *UserPlatformQuotaRecord
+	for i := range records {
+		if records[i].Platform == "anthropic" {
+			anthropicRecord = &records[i]
+			break
+	REDACTED
+REDACTED
+	require.NotNil(t, anthropicRecord, "expected anthropic platform record")
+	require.Equal(t, int64(99), anthropicRecord.UserID)
+	require.NotNil(t, anthropicRecord.DailyLimitUSD)
+	require.InDelta(t, 5.5, *anthropicRecord.DailyLimitUSD, 0.0001)
 REDACTED

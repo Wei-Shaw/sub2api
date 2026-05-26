@@ -202,7 +202,7 @@ REDACTED
 
 func (m *mockUserRepo) BatchSetConcurrency(context.Context, []int64, int) (int, error) { return 0, nil REDACTED
 func (m *mockUserRepo) BatchAddConcurrency(context.Context, []int64, int) (int, error) { return 0, nil REDACTED
-func (m *mockUserRepo) AddGroupToAllowedGroups(context.Context, int64, int64) error { return nil REDACTED
+func (m *mockUserRepo) AddGroupToAllowedGroups(context.Context, int64, int64) error    { return nil REDACTED
 func (m *mockUserRepo) ListUserAuthIdentities(context.Context, int64) ([]UserAuthIdentityRecord, error) {
 	out := make([]UserAuthIdentityRecord, len(m.identities))
 	copy(out, m.identities)
@@ -312,6 +312,22 @@ func (m *mockBillingCache) UpdateAPIKeyRateLimitUsage(context.Context, int64, fl
 	return nil
 REDACTED
 func (m *mockBillingCache) InvalidateAPIKeyRateLimit(context.Context, int64) error {
+	return nil
+REDACTED
+
+func (m *mockBillingCache) GetUserPlatformQuotaCache(context.Context, int64, string) (*UserPlatformQuotaCacheEntry, bool, error) {
+	return nil, false, nil
+REDACTED
+
+func (m *mockBillingCache) SetUserPlatformQuotaCache(context.Context, int64, string, *UserPlatformQuotaCacheEntry, time.Duration) error {
+	return nil
+REDACTED
+
+func (m *mockBillingCache) DeleteUserPlatformQuotaCache(context.Context, int64, string) error {
+	return nil
+REDACTED
+
+func (m *mockBillingCache) IncrUserPlatformQuotaUsageCache(context.Context, int64, string, float64, time.Duration) error {
 	return nil
 REDACTED
 

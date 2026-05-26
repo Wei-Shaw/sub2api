@@ -3,8 +3,10 @@ package handler
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
+	"github.com/Wei-Shaw/sub2api/internal/handler/quotaview"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -14,11 +16,12 @@ import (
 
 // UserHandler handles user-related requests
 type UserHandler struct {
-	userService      *service.UserService
-	authService      *service.AuthService
-	emailService     *service.EmailService
-	emailCache       service.EmailCache
-	affiliateService *service.AffiliateService
+	userService           *service.UserService
+	authService           *service.AuthService
+	emailService          *service.EmailService
+	emailCache            service.EmailCache
+	affiliateService      *service.AffiliateService
+	userPlatformQuotaRepo service.UserPlatformQuotaRepository
 REDACTED
 
 // NewUserHandler creates a new UserHandler
@@ -28,14 +31,42 @@ func NewUserHandler(
 	emailService *service.EmailService,
 	emailCache service.EmailCache,
 	affiliateService *service.AffiliateService,
+	userPlatformQuotaRepo service.UserPlatformQuotaRepository,
 ) *UserHandler {
 	return &UserHandler{
-		userService:      userService,
-		authService:      authService,
-		emailService:     emailService,
-		emailCache:       emailCache,
-		affiliateService: affiliateService,
+		userService:           userService,
+		authService:           authService,
+		emailService:          emailService,
+		emailCache:            emailCache,
+		affiliateService:      affiliateService,
+		userPlatformQuotaRepo: userPlatformQuotaRepo,
 REDACTED
+REDACTED
+
+// GetMyPlatformQuotas GET /user/platform-quotas
+// 返回当前 JWT 用户的 platform quota 状态。
+// D14: 对每条记录逐档判断窗口过期，过期档位 usage=0、window_resets_at=null（不写 DB）
+func (h *UserHandler) GetMyPlatformQuotas(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+REDACTED
+	if h.userPlatformQuotaRepo == nil {
+		response.Success(c, map[string]any{"platform_quotas": []any{REDACTEDREDACTED)
+		return
+REDACTED
+	records, err := h.userPlatformQuotaRepo.ListByUser(c.Request.Context(), subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+	now := time.Now().UTC()
+	out := make([]map[string]any, 0, len(records))
+	for _, r := range records {
+		out = append(out, quotaview.LazyZeroQuotaForResponse(r, now, false))
+REDACTED
+	response.Success(c, map[string]any{"platform_quotas": outREDACTED)
 REDACTED
 
 // ChangePasswordRequest represents the change password request payload

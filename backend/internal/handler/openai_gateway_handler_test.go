@@ -1201,7 +1201,7 @@ REDACTED
 	REDACTED, nil, nil, nil)
 REDACTED
 
-	billingCacheSvc := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg)
+	billingCacheSvc := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
 	gatewaySvc := service.NewOpenAIGatewayService(
 		accountRepo,
 		usageRepo,
@@ -1223,6 +1223,7 @@ REDACTED
 		channelSvc,
 		nil,
 		nil,
+		nil, // userPlatformQuotaRepo
 	)
 
 	cache := &concurrencyCacheMock{

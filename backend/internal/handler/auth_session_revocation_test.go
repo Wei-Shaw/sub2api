@@ -35,7 +35,7 @@ REDACTED
 			ExpireHour: 1,
 	REDACTED,
 REDACTED
-	authService := service.NewAuthService(nil, repo, nil, refreshTokenCache, cfg, nil, nil, nil, nil, nil, nil, nil)
+	authService := service.NewAuthService(nil, repo, nil, refreshTokenCache, cfg, nil, nil, nil, nil, nil, nil, nil, nil)
 	handler := &AuthHandler{authService: authServiceREDACTED
 
 	recorder := httptest.NewRecorder()

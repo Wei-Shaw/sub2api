@@ -46,6 +46,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/ent/userattributedefinition"
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
+	"github.com/Wei-Shaw/sub2api/ent/userplatformquota"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
@@ -92,6 +93,7 @@ const (
 	TypeUserAllowedGroup              = "UserAllowedGroup"
 	TypeUserAttributeDefinition       = "UserAttributeDefinition"
 	TypeUserAttributeValue            = "UserAttributeValue"
+	TypeUserPlatformQuota             = "UserPlatformQuota"
 	TypeUserSubscription              = "UserSubscription"
 )
 
@@ -38160,6 +38162,9 @@ type UserMutation struct {
 	pending_auth_sessions         map[int64]struct{REDACTED
 	removedpending_auth_sessions  map[int64]struct{REDACTED
 	clearedpending_auth_sessions  bool
+	platform_quotas               map[int64]struct{REDACTED
+	removedplatform_quotas        map[int64]struct{REDACTED
+	clearedplatform_quotas        bool
 	done                          bool
 	oldValue                      func(context.Context) (*User, error)
 	predicates                    []predicate.User
@@ -39918,6 +39923,60 @@ func (m *UserMutation) ResetPendingAuthSessions() {
 	m.removedpending_auth_sessions = nil
 REDACTED
 
+// AddPlatformQuotaIDs adds the "platform_quotas" edge to the UserPlatformQuota entity by ids.
+func (m *UserMutation) AddPlatformQuotaIDs(ids ...int64) {
+	if m.platform_quotas == nil {
+		m.platform_quotas = make(map[int64]struct{REDACTED)
+REDACTED
+	for i := range ids {
+		m.platform_quotas[ids[i]] = struct{REDACTED{REDACTED
+REDACTED
+REDACTED
+
+// ClearPlatformQuotas clears the "platform_quotas" edge to the UserPlatformQuota entity.
+func (m *UserMutation) ClearPlatformQuotas() {
+	m.clearedplatform_quotas = true
+REDACTED
+
+// PlatformQuotasCleared reports if the "platform_quotas" edge to the UserPlatformQuota entity was cleared.
+func (m *UserMutation) PlatformQuotasCleared() bool {
+	return m.clearedplatform_quotas
+REDACTED
+
+// RemovePlatformQuotaIDs removes the "platform_quotas" edge to the UserPlatformQuota entity by IDs.
+func (m *UserMutation) RemovePlatformQuotaIDs(ids ...int64) {
+	if m.removedplatform_quotas == nil {
+		m.removedplatform_quotas = make(map[int64]struct{REDACTED)
+REDACTED
+	for i := range ids {
+		delete(m.platform_quotas, ids[i])
+		m.removedplatform_quotas[ids[i]] = struct{REDACTED{REDACTED
+REDACTED
+REDACTED
+
+// RemovedPlatformQuotas returns the removed IDs of the "platform_quotas" edge to the UserPlatformQuota entity.
+func (m *UserMutation) RemovedPlatformQuotasIDs() (ids []int64) {
+	for id := range m.removedplatform_quotas {
+		ids = append(ids, id)
+REDACTED
+	return
+REDACTED
+
+// PlatformQuotasIDs returns the "platform_quotas" edge IDs in the mutation.
+func (m *UserMutation) PlatformQuotasIDs() (ids []int64) {
+	for id := range m.platform_quotas {
+		ids = append(ids, id)
+REDACTED
+	return
+REDACTED
+
+// ResetPlatformQuotas resets all changes to the "platform_quotas" edge.
+func (m *UserMutation) ResetPlatformQuotas() {
+	m.platform_quotas = nil
+	m.clearedplatform_quotas = false
+	m.removedplatform_quotas = nil
+REDACTED
+
 // Where appends a list predicates to the UserMutation builder.
 func (m *UserMutation) Where(ps ...predicate.User) {
 	m.predicates = append(m.predicates, ps...)
@@ -40527,7 +40586,7 @@ REDACTED
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *UserMutation) AddedEdges() []string {
-	edges := make([]string, 0, 12)
+	edges := make([]string, 0, 13)
 	if m.api_keys != nil {
 		edges = append(edges, user.EdgeAPIKeys)
 REDACTED
@@ -40563,6 +40622,9 @@ REDACTED
 REDACTED
 	if m.pending_auth_sessions != nil {
 		edges = append(edges, user.EdgePendingAuthSessions)
+REDACTED
+	if m.platform_quotas != nil {
+		edges = append(edges, user.EdgePlatformQuotas)
 REDACTED
 	return edges
 REDACTED
@@ -40643,13 +40705,19 @@ func (m *UserMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 	REDACTED
 		return ids
+	case user.EdgePlatformQuotas:
+		ids := make([]ent.Value, 0, len(m.platform_quotas))
+		for id := range m.platform_quotas {
+			ids = append(ids, id)
+	REDACTED
+		return ids
 REDACTED
 	return nil
 REDACTED
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *UserMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 12)
+	edges := make([]string, 0, 13)
 	if m.removedapi_keys != nil {
 		edges = append(edges, user.EdgeAPIKeys)
 REDACTED
@@ -40685,6 +40753,9 @@ REDACTED
 REDACTED
 	if m.removedpending_auth_sessions != nil {
 		edges = append(edges, user.EdgePendingAuthSessions)
+REDACTED
+	if m.removedplatform_quotas != nil {
+		edges = append(edges, user.EdgePlatformQuotas)
 REDACTED
 	return edges
 REDACTED
@@ -40765,13 +40836,19 @@ func (m *UserMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 	REDACTED
 		return ids
+	case user.EdgePlatformQuotas:
+		ids := make([]ent.Value, 0, len(m.removedplatform_quotas))
+		for id := range m.removedplatform_quotas {
+			ids = append(ids, id)
+	REDACTED
+		return ids
 REDACTED
 	return nil
 REDACTED
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *UserMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 12)
+	edges := make([]string, 0, 13)
 	if m.clearedapi_keys {
 		edges = append(edges, user.EdgeAPIKeys)
 REDACTED
@@ -40808,6 +40885,9 @@ REDACTED
 	if m.clearedpending_auth_sessions {
 		edges = append(edges, user.EdgePendingAuthSessions)
 REDACTED
+	if m.clearedplatform_quotas {
+		edges = append(edges, user.EdgePlatformQuotas)
+REDACTED
 	return edges
 REDACTED
 
@@ -40839,6 +40919,8 @@ func (m *UserMutation) EdgeCleared(name string) bool {
 		return m.clearedauth_identities
 	case user.EdgePendingAuthSessions:
 		return m.clearedpending_auth_sessions
+	case user.EdgePlatformQuotas:
+		return m.clearedplatform_quotas
 REDACTED
 	return false
 REDACTED
@@ -40890,6 +40972,9 @@ func (m *UserMutation) ResetEdge(name string) error {
 		return nil
 	case user.EdgePendingAuthSessions:
 		m.ResetPendingAuthSessions()
+		return nil
+	case user.EdgePlatformQuotas:
+		m.ResetPlatformQuotas()
 		return nil
 REDACTED
 	return fmt.Errorf("unknown User edge %s", name)
@@ -43109,6 +43194,1428 @@ func (m *UserAttributeValueMutation) ResetEdge(name string) error {
 		return nil
 REDACTED
 	return fmt.Errorf("unknown UserAttributeValue edge %s", name)
+REDACTED
+
+// UserPlatformQuotaMutation represents an operation that mutates the UserPlatformQuota nodes in the graph.
+type UserPlatformQuotaMutation struct {
+	config
+	op                   Op
+	typ                  string
+	id                   *int64
+	created_at           *time.Time
+	updated_at           *time.Time
+	deleted_at           *time.Time
+	platform             *string
+	daily_limit_usd      *float64
+	adddaily_limit_usd   *float64
+	weekly_limit_usd     *float64
+	addweekly_limit_usd  *float64
+	monthly_limit_usd    *float64
+	addmonthly_limit_usd *float64
+	daily_usage_usd      *float64
+	adddaily_usage_usd   *float64
+	weekly_usage_usd     *float64
+	addweekly_usage_usd  *float64
+	monthly_usage_usd    *float64
+	addmonthly_usage_usd *float64
+	daily_window_start   *time.Time
+	weekly_window_start  *time.Time
+	monthly_window_start *time.Time
+	clearedFields        map[string]struct{REDACTED
+	user                 *int64
+	cleareduser          bool
+	done                 bool
+	oldValue             func(context.Context) (*UserPlatformQuota, error)
+	predicates           []predicate.UserPlatformQuota
+REDACTED
+
+var _ ent.Mutation = (*UserPlatformQuotaMutation)(nil)
+
+// userplatformquotaOption allows management of the mutation configuration using functional options.
+type userplatformquotaOption func(*UserPlatformQuotaMutation)
+
+// newUserPlatformQuotaMutation creates new mutation for the UserPlatformQuota entity.
+func newUserPlatformQuotaMutation(c config, op Op, opts ...userplatformquotaOption) *UserPlatformQuotaMutation {
+	m := &UserPlatformQuotaMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeUserPlatformQuota,
+		clearedFields: make(map[string]struct{REDACTED),
+REDACTED
+	for _, opt := range opts {
+		opt(m)
+REDACTED
+	return m
+REDACTED
+
+// withUserPlatformQuotaID sets the ID field of the mutation.
+func withUserPlatformQuotaID(id int64) userplatformquotaOption {
+	return func(m *UserPlatformQuotaMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *UserPlatformQuota
+		)
+		m.oldValue = func(ctx context.Context) (*UserPlatformQuota, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+			REDACTED else {
+					value, err = m.Client().UserPlatformQuota.Get(ctx, id)
+			REDACTED
+		REDACTED)
+			return value, err
+	REDACTED
+		m.id = &id
+REDACTED
+REDACTED
+
+// withUserPlatformQuota sets the old UserPlatformQuota of the mutation.
+func withUserPlatformQuota(node *UserPlatformQuota) userplatformquotaOption {
+	return func(m *UserPlatformQuotaMutation) {
+		m.oldValue = func(context.Context) (*UserPlatformQuota, error) {
+			return node, nil
+	REDACTED
+		m.id = &node.ID
+REDACTED
+REDACTED
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m UserPlatformQuotaMutation) Client() *Client {
+	client := &Client{config: m.configREDACTED
+	client.init()
+	return client
+REDACTED
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m UserPlatformQuotaMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+REDACTED
+	tx := &Tx{config: m.configREDACTED
+	tx.init()
+	return tx, nil
+REDACTED
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *UserPlatformQuotaMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+REDACTED
+	return *m.id, true
+REDACTED
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *UserPlatformQuotaMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{idREDACTED, nil
+	REDACTED
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().UserPlatformQuota.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+REDACTED
+REDACTED
+
+// SetCreatedAt sets the "created_at" field.
+func (m *UserPlatformQuotaMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+REDACTED
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *UserPlatformQuotaMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldCreatedAt returns the old "created_at" field's value of the UserPlatformQuota entity.
+// If the UserPlatformQuota object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserPlatformQuotaMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+REDACTED
+	return oldValue.CreatedAt, nil
+REDACTED
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *UserPlatformQuotaMutation) ResetCreatedAt() {
+	m.created_at = nil
+REDACTED
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *UserPlatformQuotaMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+REDACTED
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *UserPlatformQuotaMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldUpdatedAt returns the old "updated_at" field's value of the UserPlatformQuota entity.
+// If the UserPlatformQuota object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserPlatformQuotaMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+REDACTED
+	return oldValue.UpdatedAt, nil
+REDACTED
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *UserPlatformQuotaMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+REDACTED
+
+// SetDeletedAt sets the "deleted_at" field.
+func (m *UserPlatformQuotaMutation) SetDeletedAt(t time.Time) {
+	m.deleted_at = &t
+REDACTED
+
+// DeletedAt returns the value of the "deleted_at" field in the mutation.
+func (m *UserPlatformQuotaMutation) DeletedAt() (r time.Time, exists bool) {
+	v := m.deleted_at
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldDeletedAt returns the old "deleted_at" field's value of the UserPlatformQuota entity.
+// If the UserPlatformQuota object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserPlatformQuotaMutation) OldDeletedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDeletedAt is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDeletedAt requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDeletedAt: %w", err)
+REDACTED
+	return oldValue.DeletedAt, nil
+REDACTED
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (m *UserPlatformQuotaMutation) ClearDeletedAt() {
+	m.deleted_at = nil
+	m.clearedFields[userplatformquota.FieldDeletedAt] = struct{REDACTED{REDACTED
+REDACTED
+
+// DeletedAtCleared returns if the "deleted_at" field was cleared in this mutation.
+func (m *UserPlatformQuotaMutation) DeletedAtCleared() bool {
+	_, ok := m.clearedFields[userplatformquota.FieldDeletedAt]
+	return ok
+REDACTED
+
+// ResetDeletedAt resets all changes to the "deleted_at" field.
+func (m *UserPlatformQuotaMutation) ResetDeletedAt() {
+	m.deleted_at = nil
+	delete(m.clearedFields, userplatformquota.FieldDeletedAt)
+REDACTED
+
+// SetUserID sets the "user_id" field.
+func (m *UserPlatformQuotaMutation) SetUserID(i int64) {
+	m.user = &i
+REDACTED
+
+// UserID returns the value of the "user_id" field in the mutation.
+func (m *UserPlatformQuotaMutation) UserID() (r int64, exists bool) {
+	v := m.user
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldUserID returns the old "user_id" field's value of the UserPlatformQuota entity.
+// If the UserPlatformQuota object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserPlatformQuotaMutation) OldUserID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserID is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserID requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserID: %w", err)
+REDACTED
+	return oldValue.UserID, nil
+REDACTED
+
+// ResetUserID resets all changes to the "user_id" field.
+func (m *UserPlatformQuotaMutation) ResetUserID() {
+	m.user = nil
+REDACTED
+
+// SetPlatform sets the "platform" field.
+func (m *UserPlatformQuotaMutation) SetPlatform(s string) {
+	m.platform = &s
+REDACTED
+
+// Platform returns the value of the "platform" field in the mutation.
+func (m *UserPlatformQuotaMutation) Platform() (r string, exists bool) {
+	v := m.platform
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldPlatform returns the old "platform" field's value of the UserPlatformQuota entity.
+// If the UserPlatformQuota object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserPlatformQuotaMutation) OldPlatform(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPlatform is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPlatform requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPlatform: %w", err)
+REDACTED
+	return oldValue.Platform, nil
+REDACTED
+
+// ResetPlatform resets all changes to the "platform" field.
+func (m *UserPlatformQuotaMutation) ResetPlatform() {
+	m.platform = nil
+REDACTED
+
+// SetDailyLimitUsd sets the "daily_limit_usd" field.
+func (m *UserPlatformQuotaMutation) SetDailyLimitUsd(f float64) {
+	m.daily_limit_usd = &f
+	m.adddaily_limit_usd = nil
+REDACTED
+
+// DailyLimitUsd returns the value of the "daily_limit_usd" field in the mutation.
+func (m *UserPlatformQuotaMutation) DailyLimitUsd() (r float64, exists bool) {
+	v := m.daily_limit_usd
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldDailyLimitUsd returns the old "daily_limit_usd" field's value of the UserPlatformQuota entity.
+// If the UserPlatformQuota object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserPlatformQuotaMutation) OldDailyLimitUsd(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDailyLimitUsd is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDailyLimitUsd requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDailyLimitUsd: %w", err)
+REDACTED
+	return oldValue.DailyLimitUsd, nil
+REDACTED
+
+// AddDailyLimitUsd adds f to the "daily_limit_usd" field.
+func (m *UserPlatformQuotaMutation) AddDailyLimitUsd(f float64) {
+	if m.adddaily_limit_usd != nil {
+		*m.adddaily_limit_usd += f
+REDACTED else {
+		m.adddaily_limit_usd = &f
+REDACTED
+REDACTED
+
+// AddedDailyLimitUsd returns the value that was added to the "daily_limit_usd" field in this mutation.
+func (m *UserPlatformQuotaMutation) AddedDailyLimitUsd() (r float64, exists bool) {
+	v := m.adddaily_limit_usd
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ClearDailyLimitUsd clears the value of the "daily_limit_usd" field.
+func (m *UserPlatformQuotaMutation) ClearDailyLimitUsd() {
+	m.daily_limit_usd = nil
+	m.adddaily_limit_usd = nil
+	m.clearedFields[userplatformquota.FieldDailyLimitUsd] = struct{REDACTED{REDACTED
+REDACTED
+
+// DailyLimitUsdCleared returns if the "daily_limit_usd" field was cleared in this mutation.
+func (m *UserPlatformQuotaMutation) DailyLimitUsdCleared() bool {
+	_, ok := m.clearedFields[userplatformquota.FieldDailyLimitUsd]
+	return ok
+REDACTED
+
+// ResetDailyLimitUsd resets all changes to the "daily_limit_usd" field.
+func (m *UserPlatformQuotaMutation) ResetDailyLimitUsd() {
+	m.daily_limit_usd = nil
+	m.adddaily_limit_usd = nil
+	delete(m.clearedFields, userplatformquota.FieldDailyLimitUsd)
+REDACTED
+
+// SetWeeklyLimitUsd sets the "weekly_limit_usd" field.
+func (m *UserPlatformQuotaMutation) SetWeeklyLimitUsd(f float64) {
+	m.weekly_limit_usd = &f
+	m.addweekly_limit_usd = nil
+REDACTED
+
+// WeeklyLimitUsd returns the value of the "weekly_limit_usd" field in the mutation.
+func (m *UserPlatformQuotaMutation) WeeklyLimitUsd() (r float64, exists bool) {
+	v := m.weekly_limit_usd
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldWeeklyLimitUsd returns the old "weekly_limit_usd" field's value of the UserPlatformQuota entity.
+// If the UserPlatformQuota object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserPlatformQuotaMutation) OldWeeklyLimitUsd(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWeeklyLimitUsd is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWeeklyLimitUsd requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWeeklyLimitUsd: %w", err)
+REDACTED
+	return oldValue.WeeklyLimitUsd, nil
+REDACTED
+
+// AddWeeklyLimitUsd adds f to the "weekly_limit_usd" field.
+func (m *UserPlatformQuotaMutation) AddWeeklyLimitUsd(f float64) {
+	if m.addweekly_limit_usd != nil {
+		*m.addweekly_limit_usd += f
+REDACTED else {
+		m.addweekly_limit_usd = &f
+REDACTED
+REDACTED
+
+// AddedWeeklyLimitUsd returns the value that was added to the "weekly_limit_usd" field in this mutation.
+func (m *UserPlatformQuotaMutation) AddedWeeklyLimitUsd() (r float64, exists bool) {
+	v := m.addweekly_limit_usd
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ClearWeeklyLimitUsd clears the value of the "weekly_limit_usd" field.
+func (m *UserPlatformQuotaMutation) ClearWeeklyLimitUsd() {
+	m.weekly_limit_usd = nil
+	m.addweekly_limit_usd = nil
+	m.clearedFields[userplatformquota.FieldWeeklyLimitUsd] = struct{REDACTED{REDACTED
+REDACTED
+
+// WeeklyLimitUsdCleared returns if the "weekly_limit_usd" field was cleared in this mutation.
+func (m *UserPlatformQuotaMutation) WeeklyLimitUsdCleared() bool {
+	_, ok := m.clearedFields[userplatformquota.FieldWeeklyLimitUsd]
+	return ok
+REDACTED
+
+// ResetWeeklyLimitUsd resets all changes to the "weekly_limit_usd" field.
+func (m *UserPlatformQuotaMutation) ResetWeeklyLimitUsd() {
+	m.weekly_limit_usd = nil
+	m.addweekly_limit_usd = nil
+	delete(m.clearedFields, userplatformquota.FieldWeeklyLimitUsd)
+REDACTED
+
+// SetMonthlyLimitUsd sets the "monthly_limit_usd" field.
+func (m *UserPlatformQuotaMutation) SetMonthlyLimitUsd(f float64) {
+	m.monthly_limit_usd = &f
+	m.addmonthly_limit_usd = nil
+REDACTED
+
+// MonthlyLimitUsd returns the value of the "monthly_limit_usd" field in the mutation.
+func (m *UserPlatformQuotaMutation) MonthlyLimitUsd() (r float64, exists bool) {
+	v := m.monthly_limit_usd
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldMonthlyLimitUsd returns the old "monthly_limit_usd" field's value of the UserPlatformQuota entity.
+// If the UserPlatformQuota object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserPlatformQuotaMutation) OldMonthlyLimitUsd(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMonthlyLimitUsd is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMonthlyLimitUsd requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMonthlyLimitUsd: %w", err)
+REDACTED
+	return oldValue.MonthlyLimitUsd, nil
+REDACTED
+
+// AddMonthlyLimitUsd adds f to the "monthly_limit_usd" field.
+func (m *UserPlatformQuotaMutation) AddMonthlyLimitUsd(f float64) {
+	if m.addmonthly_limit_usd != nil {
+		*m.addmonthly_limit_usd += f
+REDACTED else {
+		m.addmonthly_limit_usd = &f
+REDACTED
+REDACTED
+
+// AddedMonthlyLimitUsd returns the value that was added to the "monthly_limit_usd" field in this mutation.
+func (m *UserPlatformQuotaMutation) AddedMonthlyLimitUsd() (r float64, exists bool) {
+	v := m.addmonthly_limit_usd
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ClearMonthlyLimitUsd clears the value of the "monthly_limit_usd" field.
+func (m *UserPlatformQuotaMutation) ClearMonthlyLimitUsd() {
+	m.monthly_limit_usd = nil
+	m.addmonthly_limit_usd = nil
+	m.clearedFields[userplatformquota.FieldMonthlyLimitUsd] = struct{REDACTED{REDACTED
+REDACTED
+
+// MonthlyLimitUsdCleared returns if the "monthly_limit_usd" field was cleared in this mutation.
+func (m *UserPlatformQuotaMutation) MonthlyLimitUsdCleared() bool {
+	_, ok := m.clearedFields[userplatformquota.FieldMonthlyLimitUsd]
+	return ok
+REDACTED
+
+// ResetMonthlyLimitUsd resets all changes to the "monthly_limit_usd" field.
+func (m *UserPlatformQuotaMutation) ResetMonthlyLimitUsd() {
+	m.monthly_limit_usd = nil
+	m.addmonthly_limit_usd = nil
+	delete(m.clearedFields, userplatformquota.FieldMonthlyLimitUsd)
+REDACTED
+
+// SetDailyUsageUsd sets the "daily_usage_usd" field.
+func (m *UserPlatformQuotaMutation) SetDailyUsageUsd(f float64) {
+	m.daily_usage_usd = &f
+	m.adddaily_usage_usd = nil
+REDACTED
+
+// DailyUsageUsd returns the value of the "daily_usage_usd" field in the mutation.
+func (m *UserPlatformQuotaMutation) DailyUsageUsd() (r float64, exists bool) {
+	v := m.daily_usage_usd
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldDailyUsageUsd returns the old "daily_usage_usd" field's value of the UserPlatformQuota entity.
+// If the UserPlatformQuota object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserPlatformQuotaMutation) OldDailyUsageUsd(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDailyUsageUsd is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDailyUsageUsd requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDailyUsageUsd: %w", err)
+REDACTED
+	return oldValue.DailyUsageUsd, nil
+REDACTED
+
+// AddDailyUsageUsd adds f to the "daily_usage_usd" field.
+func (m *UserPlatformQuotaMutation) AddDailyUsageUsd(f float64) {
+	if m.adddaily_usage_usd != nil {
+		*m.adddaily_usage_usd += f
+REDACTED else {
+		m.adddaily_usage_usd = &f
+REDACTED
+REDACTED
+
+// AddedDailyUsageUsd returns the value that was added to the "daily_usage_usd" field in this mutation.
+func (m *UserPlatformQuotaMutation) AddedDailyUsageUsd() (r float64, exists bool) {
+	v := m.adddaily_usage_usd
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ResetDailyUsageUsd resets all changes to the "daily_usage_usd" field.
+func (m *UserPlatformQuotaMutation) ResetDailyUsageUsd() {
+	m.daily_usage_usd = nil
+	m.adddaily_usage_usd = nil
+REDACTED
+
+// SetWeeklyUsageUsd sets the "weekly_usage_usd" field.
+func (m *UserPlatformQuotaMutation) SetWeeklyUsageUsd(f float64) {
+	m.weekly_usage_usd = &f
+	m.addweekly_usage_usd = nil
+REDACTED
+
+// WeeklyUsageUsd returns the value of the "weekly_usage_usd" field in the mutation.
+func (m *UserPlatformQuotaMutation) WeeklyUsageUsd() (r float64, exists bool) {
+	v := m.weekly_usage_usd
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldWeeklyUsageUsd returns the old "weekly_usage_usd" field's value of the UserPlatformQuota entity.
+// If the UserPlatformQuota object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserPlatformQuotaMutation) OldWeeklyUsageUsd(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWeeklyUsageUsd is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWeeklyUsageUsd requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWeeklyUsageUsd: %w", err)
+REDACTED
+	return oldValue.WeeklyUsageUsd, nil
+REDACTED
+
+// AddWeeklyUsageUsd adds f to the "weekly_usage_usd" field.
+func (m *UserPlatformQuotaMutation) AddWeeklyUsageUsd(f float64) {
+	if m.addweekly_usage_usd != nil {
+		*m.addweekly_usage_usd += f
+REDACTED else {
+		m.addweekly_usage_usd = &f
+REDACTED
+REDACTED
+
+// AddedWeeklyUsageUsd returns the value that was added to the "weekly_usage_usd" field in this mutation.
+func (m *UserPlatformQuotaMutation) AddedWeeklyUsageUsd() (r float64, exists bool) {
+	v := m.addweekly_usage_usd
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ResetWeeklyUsageUsd resets all changes to the "weekly_usage_usd" field.
+func (m *UserPlatformQuotaMutation) ResetWeeklyUsageUsd() {
+	m.weekly_usage_usd = nil
+	m.addweekly_usage_usd = nil
+REDACTED
+
+// SetMonthlyUsageUsd sets the "monthly_usage_usd" field.
+func (m *UserPlatformQuotaMutation) SetMonthlyUsageUsd(f float64) {
+	m.monthly_usage_usd = &f
+	m.addmonthly_usage_usd = nil
+REDACTED
+
+// MonthlyUsageUsd returns the value of the "monthly_usage_usd" field in the mutation.
+func (m *UserPlatformQuotaMutation) MonthlyUsageUsd() (r float64, exists bool) {
+	v := m.monthly_usage_usd
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldMonthlyUsageUsd returns the old "monthly_usage_usd" field's value of the UserPlatformQuota entity.
+// If the UserPlatformQuota object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserPlatformQuotaMutation) OldMonthlyUsageUsd(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMonthlyUsageUsd is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMonthlyUsageUsd requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMonthlyUsageUsd: %w", err)
+REDACTED
+	return oldValue.MonthlyUsageUsd, nil
+REDACTED
+
+// AddMonthlyUsageUsd adds f to the "monthly_usage_usd" field.
+func (m *UserPlatformQuotaMutation) AddMonthlyUsageUsd(f float64) {
+	if m.addmonthly_usage_usd != nil {
+		*m.addmonthly_usage_usd += f
+REDACTED else {
+		m.addmonthly_usage_usd = &f
+REDACTED
+REDACTED
+
+// AddedMonthlyUsageUsd returns the value that was added to the "monthly_usage_usd" field in this mutation.
+func (m *UserPlatformQuotaMutation) AddedMonthlyUsageUsd() (r float64, exists bool) {
+	v := m.addmonthly_usage_usd
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ResetMonthlyUsageUsd resets all changes to the "monthly_usage_usd" field.
+func (m *UserPlatformQuotaMutation) ResetMonthlyUsageUsd() {
+	m.monthly_usage_usd = nil
+	m.addmonthly_usage_usd = nil
+REDACTED
+
+// SetDailyWindowStart sets the "daily_window_start" field.
+func (m *UserPlatformQuotaMutation) SetDailyWindowStart(t time.Time) {
+	m.daily_window_start = &t
+REDACTED
+
+// DailyWindowStart returns the value of the "daily_window_start" field in the mutation.
+func (m *UserPlatformQuotaMutation) DailyWindowStart() (r time.Time, exists bool) {
+	v := m.daily_window_start
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldDailyWindowStart returns the old "daily_window_start" field's value of the UserPlatformQuota entity.
+// If the UserPlatformQuota object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserPlatformQuotaMutation) OldDailyWindowStart(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDailyWindowStart is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDailyWindowStart requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDailyWindowStart: %w", err)
+REDACTED
+	return oldValue.DailyWindowStart, nil
+REDACTED
+
+// ClearDailyWindowStart clears the value of the "daily_window_start" field.
+func (m *UserPlatformQuotaMutation) ClearDailyWindowStart() {
+	m.daily_window_start = nil
+	m.clearedFields[userplatformquota.FieldDailyWindowStart] = struct{REDACTED{REDACTED
+REDACTED
+
+// DailyWindowStartCleared returns if the "daily_window_start" field was cleared in this mutation.
+func (m *UserPlatformQuotaMutation) DailyWindowStartCleared() bool {
+	_, ok := m.clearedFields[userplatformquota.FieldDailyWindowStart]
+	return ok
+REDACTED
+
+// ResetDailyWindowStart resets all changes to the "daily_window_start" field.
+func (m *UserPlatformQuotaMutation) ResetDailyWindowStart() {
+	m.daily_window_start = nil
+	delete(m.clearedFields, userplatformquota.FieldDailyWindowStart)
+REDACTED
+
+// SetWeeklyWindowStart sets the "weekly_window_start" field.
+func (m *UserPlatformQuotaMutation) SetWeeklyWindowStart(t time.Time) {
+	m.weekly_window_start = &t
+REDACTED
+
+// WeeklyWindowStart returns the value of the "weekly_window_start" field in the mutation.
+func (m *UserPlatformQuotaMutation) WeeklyWindowStart() (r time.Time, exists bool) {
+	v := m.weekly_window_start
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldWeeklyWindowStart returns the old "weekly_window_start" field's value of the UserPlatformQuota entity.
+// If the UserPlatformQuota object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserPlatformQuotaMutation) OldWeeklyWindowStart(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWeeklyWindowStart is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWeeklyWindowStart requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWeeklyWindowStart: %w", err)
+REDACTED
+	return oldValue.WeeklyWindowStart, nil
+REDACTED
+
+// ClearWeeklyWindowStart clears the value of the "weekly_window_start" field.
+func (m *UserPlatformQuotaMutation) ClearWeeklyWindowStart() {
+	m.weekly_window_start = nil
+	m.clearedFields[userplatformquota.FieldWeeklyWindowStart] = struct{REDACTED{REDACTED
+REDACTED
+
+// WeeklyWindowStartCleared returns if the "weekly_window_start" field was cleared in this mutation.
+func (m *UserPlatformQuotaMutation) WeeklyWindowStartCleared() bool {
+	_, ok := m.clearedFields[userplatformquota.FieldWeeklyWindowStart]
+	return ok
+REDACTED
+
+// ResetWeeklyWindowStart resets all changes to the "weekly_window_start" field.
+func (m *UserPlatformQuotaMutation) ResetWeeklyWindowStart() {
+	m.weekly_window_start = nil
+	delete(m.clearedFields, userplatformquota.FieldWeeklyWindowStart)
+REDACTED
+
+// SetMonthlyWindowStart sets the "monthly_window_start" field.
+func (m *UserPlatformQuotaMutation) SetMonthlyWindowStart(t time.Time) {
+	m.monthly_window_start = &t
+REDACTED
+
+// MonthlyWindowStart returns the value of the "monthly_window_start" field in the mutation.
+func (m *UserPlatformQuotaMutation) MonthlyWindowStart() (r time.Time, exists bool) {
+	v := m.monthly_window_start
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldMonthlyWindowStart returns the old "monthly_window_start" field's value of the UserPlatformQuota entity.
+// If the UserPlatformQuota object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserPlatformQuotaMutation) OldMonthlyWindowStart(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMonthlyWindowStart is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMonthlyWindowStart requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMonthlyWindowStart: %w", err)
+REDACTED
+	return oldValue.MonthlyWindowStart, nil
+REDACTED
+
+// ClearMonthlyWindowStart clears the value of the "monthly_window_start" field.
+func (m *UserPlatformQuotaMutation) ClearMonthlyWindowStart() {
+	m.monthly_window_start = nil
+	m.clearedFields[userplatformquota.FieldMonthlyWindowStart] = struct{REDACTED{REDACTED
+REDACTED
+
+// MonthlyWindowStartCleared returns if the "monthly_window_start" field was cleared in this mutation.
+func (m *UserPlatformQuotaMutation) MonthlyWindowStartCleared() bool {
+	_, ok := m.clearedFields[userplatformquota.FieldMonthlyWindowStart]
+	return ok
+REDACTED
+
+// ResetMonthlyWindowStart resets all changes to the "monthly_window_start" field.
+func (m *UserPlatformQuotaMutation) ResetMonthlyWindowStart() {
+	m.monthly_window_start = nil
+	delete(m.clearedFields, userplatformquota.FieldMonthlyWindowStart)
+REDACTED
+
+// ClearUser clears the "user" edge to the User entity.
+func (m *UserPlatformQuotaMutation) ClearUser() {
+	m.cleareduser = true
+	m.clearedFields[userplatformquota.FieldUserID] = struct{REDACTED{REDACTED
+REDACTED
+
+// UserCleared reports if the "user" edge to the User entity was cleared.
+func (m *UserPlatformQuotaMutation) UserCleared() bool {
+	return m.cleareduser
+REDACTED
+
+// UserIDs returns the "user" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// UserID instead. It exists only for internal usage by the builders.
+func (m *UserPlatformQuotaMutation) UserIDs() (ids []int64) {
+	if id := m.user; id != nil {
+		ids = append(ids, *id)
+REDACTED
+	return
+REDACTED
+
+// ResetUser resets all changes to the "user" edge.
+func (m *UserPlatformQuotaMutation) ResetUser() {
+	m.user = nil
+	m.cleareduser = false
+REDACTED
+
+// Where appends a list predicates to the UserPlatformQuotaMutation builder.
+func (m *UserPlatformQuotaMutation) Where(ps ...predicate.UserPlatformQuota) {
+	m.predicates = append(m.predicates, ps...)
+REDACTED
+
+// WhereP appends storage-level predicates to the UserPlatformQuotaMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *UserPlatformQuotaMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.UserPlatformQuota, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+REDACTED
+	m.Where(p...)
+REDACTED
+
+// Op returns the operation name.
+func (m *UserPlatformQuotaMutation) Op() Op {
+	return m.op
+REDACTED
+
+// SetOp allows setting the mutation operation.
+func (m *UserPlatformQuotaMutation) SetOp(op Op) {
+	m.op = op
+REDACTED
+
+// Type returns the node type of this mutation (UserPlatformQuota).
+func (m *UserPlatformQuotaMutation) Type() string {
+	return m.typ
+REDACTED
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *UserPlatformQuotaMutation) Fields() []string {
+	fields := make([]string, 0, 14)
+	if m.created_at != nil {
+		fields = append(fields, userplatformquota.FieldCreatedAt)
+REDACTED
+	if m.updated_at != nil {
+		fields = append(fields, userplatformquota.FieldUpdatedAt)
+REDACTED
+	if m.deleted_at != nil {
+		fields = append(fields, userplatformquota.FieldDeletedAt)
+REDACTED
+	if m.user != nil {
+		fields = append(fields, userplatformquota.FieldUserID)
+REDACTED
+	if m.platform != nil {
+		fields = append(fields, userplatformquota.FieldPlatform)
+REDACTED
+	if m.daily_limit_usd != nil {
+		fields = append(fields, userplatformquota.FieldDailyLimitUsd)
+REDACTED
+	if m.weekly_limit_usd != nil {
+		fields = append(fields, userplatformquota.FieldWeeklyLimitUsd)
+REDACTED
+	if m.monthly_limit_usd != nil {
+		fields = append(fields, userplatformquota.FieldMonthlyLimitUsd)
+REDACTED
+	if m.daily_usage_usd != nil {
+		fields = append(fields, userplatformquota.FieldDailyUsageUsd)
+REDACTED
+	if m.weekly_usage_usd != nil {
+		fields = append(fields, userplatformquota.FieldWeeklyUsageUsd)
+REDACTED
+	if m.monthly_usage_usd != nil {
+		fields = append(fields, userplatformquota.FieldMonthlyUsageUsd)
+REDACTED
+	if m.daily_window_start != nil {
+		fields = append(fields, userplatformquota.FieldDailyWindowStart)
+REDACTED
+	if m.weekly_window_start != nil {
+		fields = append(fields, userplatformquota.FieldWeeklyWindowStart)
+REDACTED
+	if m.monthly_window_start != nil {
+		fields = append(fields, userplatformquota.FieldMonthlyWindowStart)
+REDACTED
+	return fields
+REDACTED
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *UserPlatformQuotaMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case userplatformquota.FieldCreatedAt:
+		return m.CreatedAt()
+	case userplatformquota.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case userplatformquota.FieldDeletedAt:
+		return m.DeletedAt()
+	case userplatformquota.FieldUserID:
+		return m.UserID()
+	case userplatformquota.FieldPlatform:
+		return m.Platform()
+	case userplatformquota.FieldDailyLimitUsd:
+		return m.DailyLimitUsd()
+	case userplatformquota.FieldWeeklyLimitUsd:
+		return m.WeeklyLimitUsd()
+	case userplatformquota.FieldMonthlyLimitUsd:
+		return m.MonthlyLimitUsd()
+	case userplatformquota.FieldDailyUsageUsd:
+		return m.DailyUsageUsd()
+	case userplatformquota.FieldWeeklyUsageUsd:
+		return m.WeeklyUsageUsd()
+	case userplatformquota.FieldMonthlyUsageUsd:
+		return m.MonthlyUsageUsd()
+	case userplatformquota.FieldDailyWindowStart:
+		return m.DailyWindowStart()
+	case userplatformquota.FieldWeeklyWindowStart:
+		return m.WeeklyWindowStart()
+	case userplatformquota.FieldMonthlyWindowStart:
+		return m.MonthlyWindowStart()
+REDACTED
+	return nil, false
+REDACTED
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *UserPlatformQuotaMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case userplatformquota.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case userplatformquota.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case userplatformquota.FieldDeletedAt:
+		return m.OldDeletedAt(ctx)
+	case userplatformquota.FieldUserID:
+		return m.OldUserID(ctx)
+	case userplatformquota.FieldPlatform:
+		return m.OldPlatform(ctx)
+	case userplatformquota.FieldDailyLimitUsd:
+		return m.OldDailyLimitUsd(ctx)
+	case userplatformquota.FieldWeeklyLimitUsd:
+		return m.OldWeeklyLimitUsd(ctx)
+	case userplatformquota.FieldMonthlyLimitUsd:
+		return m.OldMonthlyLimitUsd(ctx)
+	case userplatformquota.FieldDailyUsageUsd:
+		return m.OldDailyUsageUsd(ctx)
+	case userplatformquota.FieldWeeklyUsageUsd:
+		return m.OldWeeklyUsageUsd(ctx)
+	case userplatformquota.FieldMonthlyUsageUsd:
+		return m.OldMonthlyUsageUsd(ctx)
+	case userplatformquota.FieldDailyWindowStart:
+		return m.OldDailyWindowStart(ctx)
+	case userplatformquota.FieldWeeklyWindowStart:
+		return m.OldWeeklyWindowStart(ctx)
+	case userplatformquota.FieldMonthlyWindowStart:
+		return m.OldMonthlyWindowStart(ctx)
+REDACTED
+	return nil, fmt.Errorf("unknown UserPlatformQuota field %s", name)
+REDACTED
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *UserPlatformQuotaMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case userplatformquota.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetCreatedAt(v)
+		return nil
+	case userplatformquota.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetUpdatedAt(v)
+		return nil
+	case userplatformquota.FieldDeletedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetDeletedAt(v)
+		return nil
+	case userplatformquota.FieldUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetUserID(v)
+		return nil
+	case userplatformquota.FieldPlatform:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetPlatform(v)
+		return nil
+	case userplatformquota.FieldDailyLimitUsd:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetDailyLimitUsd(v)
+		return nil
+	case userplatformquota.FieldWeeklyLimitUsd:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetWeeklyLimitUsd(v)
+		return nil
+	case userplatformquota.FieldMonthlyLimitUsd:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetMonthlyLimitUsd(v)
+		return nil
+	case userplatformquota.FieldDailyUsageUsd:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetDailyUsageUsd(v)
+		return nil
+	case userplatformquota.FieldWeeklyUsageUsd:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetWeeklyUsageUsd(v)
+		return nil
+	case userplatformquota.FieldMonthlyUsageUsd:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetMonthlyUsageUsd(v)
+		return nil
+	case userplatformquota.FieldDailyWindowStart:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetDailyWindowStart(v)
+		return nil
+	case userplatformquota.FieldWeeklyWindowStart:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetWeeklyWindowStart(v)
+		return nil
+	case userplatformquota.FieldMonthlyWindowStart:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetMonthlyWindowStart(v)
+		return nil
+REDACTED
+	return fmt.Errorf("unknown UserPlatformQuota field %s", name)
+REDACTED
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *UserPlatformQuotaMutation) AddedFields() []string {
+	var fields []string
+	if m.adddaily_limit_usd != nil {
+		fields = append(fields, userplatformquota.FieldDailyLimitUsd)
+REDACTED
+	if m.addweekly_limit_usd != nil {
+		fields = append(fields, userplatformquota.FieldWeeklyLimitUsd)
+REDACTED
+	if m.addmonthly_limit_usd != nil {
+		fields = append(fields, userplatformquota.FieldMonthlyLimitUsd)
+REDACTED
+	if m.adddaily_usage_usd != nil {
+		fields = append(fields, userplatformquota.FieldDailyUsageUsd)
+REDACTED
+	if m.addweekly_usage_usd != nil {
+		fields = append(fields, userplatformquota.FieldWeeklyUsageUsd)
+REDACTED
+	if m.addmonthly_usage_usd != nil {
+		fields = append(fields, userplatformquota.FieldMonthlyUsageUsd)
+REDACTED
+	return fields
+REDACTED
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *UserPlatformQuotaMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case userplatformquota.FieldDailyLimitUsd:
+		return m.AddedDailyLimitUsd()
+	case userplatformquota.FieldWeeklyLimitUsd:
+		return m.AddedWeeklyLimitUsd()
+	case userplatformquota.FieldMonthlyLimitUsd:
+		return m.AddedMonthlyLimitUsd()
+	case userplatformquota.FieldDailyUsageUsd:
+		return m.AddedDailyUsageUsd()
+	case userplatformquota.FieldWeeklyUsageUsd:
+		return m.AddedWeeklyUsageUsd()
+	case userplatformquota.FieldMonthlyUsageUsd:
+		return m.AddedMonthlyUsageUsd()
+REDACTED
+	return nil, false
+REDACTED
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *UserPlatformQuotaMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case userplatformquota.FieldDailyLimitUsd:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddDailyLimitUsd(v)
+		return nil
+	case userplatformquota.FieldWeeklyLimitUsd:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddWeeklyLimitUsd(v)
+		return nil
+	case userplatformquota.FieldMonthlyLimitUsd:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddMonthlyLimitUsd(v)
+		return nil
+	case userplatformquota.FieldDailyUsageUsd:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddDailyUsageUsd(v)
+		return nil
+	case userplatformquota.FieldWeeklyUsageUsd:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddWeeklyUsageUsd(v)
+		return nil
+	case userplatformquota.FieldMonthlyUsageUsd:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddMonthlyUsageUsd(v)
+		return nil
+REDACTED
+	return fmt.Errorf("unknown UserPlatformQuota numeric field %s", name)
+REDACTED
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *UserPlatformQuotaMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(userplatformquota.FieldDeletedAt) {
+		fields = append(fields, userplatformquota.FieldDeletedAt)
+REDACTED
+	if m.FieldCleared(userplatformquota.FieldDailyLimitUsd) {
+		fields = append(fields, userplatformquota.FieldDailyLimitUsd)
+REDACTED
+	if m.FieldCleared(userplatformquota.FieldWeeklyLimitUsd) {
+		fields = append(fields, userplatformquota.FieldWeeklyLimitUsd)
+REDACTED
+	if m.FieldCleared(userplatformquota.FieldMonthlyLimitUsd) {
+		fields = append(fields, userplatformquota.FieldMonthlyLimitUsd)
+REDACTED
+	if m.FieldCleared(userplatformquota.FieldDailyWindowStart) {
+		fields = append(fields, userplatformquota.FieldDailyWindowStart)
+REDACTED
+	if m.FieldCleared(userplatformquota.FieldWeeklyWindowStart) {
+		fields = append(fields, userplatformquota.FieldWeeklyWindowStart)
+REDACTED
+	if m.FieldCleared(userplatformquota.FieldMonthlyWindowStart) {
+		fields = append(fields, userplatformquota.FieldMonthlyWindowStart)
+REDACTED
+	return fields
+REDACTED
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *UserPlatformQuotaMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+REDACTED
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *UserPlatformQuotaMutation) ClearField(name string) error {
+	switch name {
+	case userplatformquota.FieldDeletedAt:
+		m.ClearDeletedAt()
+		return nil
+	case userplatformquota.FieldDailyLimitUsd:
+		m.ClearDailyLimitUsd()
+		return nil
+	case userplatformquota.FieldWeeklyLimitUsd:
+		m.ClearWeeklyLimitUsd()
+		return nil
+	case userplatformquota.FieldMonthlyLimitUsd:
+		m.ClearMonthlyLimitUsd()
+		return nil
+	case userplatformquota.FieldDailyWindowStart:
+		m.ClearDailyWindowStart()
+		return nil
+	case userplatformquota.FieldWeeklyWindowStart:
+		m.ClearWeeklyWindowStart()
+		return nil
+	case userplatformquota.FieldMonthlyWindowStart:
+		m.ClearMonthlyWindowStart()
+		return nil
+REDACTED
+	return fmt.Errorf("unknown UserPlatformQuota nullable field %s", name)
+REDACTED
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *UserPlatformQuotaMutation) ResetField(name string) error {
+	switch name {
+	case userplatformquota.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case userplatformquota.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case userplatformquota.FieldDeletedAt:
+		m.ResetDeletedAt()
+		return nil
+	case userplatformquota.FieldUserID:
+		m.ResetUserID()
+		return nil
+	case userplatformquota.FieldPlatform:
+		m.ResetPlatform()
+		return nil
+	case userplatformquota.FieldDailyLimitUsd:
+		m.ResetDailyLimitUsd()
+		return nil
+	case userplatformquota.FieldWeeklyLimitUsd:
+		m.ResetWeeklyLimitUsd()
+		return nil
+	case userplatformquota.FieldMonthlyLimitUsd:
+		m.ResetMonthlyLimitUsd()
+		return nil
+	case userplatformquota.FieldDailyUsageUsd:
+		m.ResetDailyUsageUsd()
+		return nil
+	case userplatformquota.FieldWeeklyUsageUsd:
+		m.ResetWeeklyUsageUsd()
+		return nil
+	case userplatformquota.FieldMonthlyUsageUsd:
+		m.ResetMonthlyUsageUsd()
+		return nil
+	case userplatformquota.FieldDailyWindowStart:
+		m.ResetDailyWindowStart()
+		return nil
+	case userplatformquota.FieldWeeklyWindowStart:
+		m.ResetWeeklyWindowStart()
+		return nil
+	case userplatformquota.FieldMonthlyWindowStart:
+		m.ResetMonthlyWindowStart()
+		return nil
+REDACTED
+	return fmt.Errorf("unknown UserPlatformQuota field %s", name)
+REDACTED
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *UserPlatformQuotaMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.user != nil {
+		edges = append(edges, userplatformquota.EdgeUser)
+REDACTED
+	return edges
+REDACTED
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *UserPlatformQuotaMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case userplatformquota.EdgeUser:
+		if id := m.user; id != nil {
+			return []ent.Value{*idREDACTED
+	REDACTED
+REDACTED
+	return nil
+REDACTED
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *UserPlatformQuotaMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+REDACTED
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *UserPlatformQuotaMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+REDACTED
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *UserPlatformQuotaMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.cleareduser {
+		edges = append(edges, userplatformquota.EdgeUser)
+REDACTED
+	return edges
+REDACTED
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *UserPlatformQuotaMutation) EdgeCleared(name string) bool {
+	switch name {
+	case userplatformquota.EdgeUser:
+		return m.cleareduser
+REDACTED
+	return false
+REDACTED
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *UserPlatformQuotaMutation) ClearEdge(name string) error {
+	switch name {
+	case userplatformquota.EdgeUser:
+		m.ClearUser()
+		return nil
+REDACTED
+	return fmt.Errorf("unknown UserPlatformQuota unique edge %s", name)
+REDACTED
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *UserPlatformQuotaMutation) ResetEdge(name string) error {
+	switch name {
+	case userplatformquota.EdgeUser:
+		m.ResetUser()
+		return nil
+REDACTED
+	return fmt.Errorf("unknown UserPlatformQuota edge %s", name)
 REDACTED
 
 // UserSubscriptionMutation represents an operation that mutates the UserSubscription nodes in the graph.

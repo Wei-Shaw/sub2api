@@ -110,7 +110,7 @@ REDACTED
 		emailSvc = service.NewEmailService(settingRepo, emailCache)
 REDACTED
 
-	svc := service.NewAuthService(client, repo, nil, refreshTokenCache, cfg, settingSvc, emailSvc, nil, nil, nil, defaultSubAssigner, nil)
+	svc := service.NewAuthService(client, repo, nil, refreshTokenCache, cfg, settingSvc, emailSvc, nil, nil, nil, defaultSubAssigner, nil, nil)
 	return svc, repo, client
 REDACTED
 
@@ -467,7 +467,7 @@ REDACTED)
 	REDACTED,
 REDACTED
 	emailService := service.NewEmailService(nil, cache)
-	svc := service.NewAuthService(nil, userRepo, nil, refreshTokenCache, cfg, nil, emailService, nil, nil, nil, nil, nil)
+	svc := service.NewAuthService(nil, userRepo, nil, refreshTokenCache, cfg, nil, emailService, nil, nil, nil, nil, nil, nil)
 
 	oldTokenPair, err := svc.GenerateTokenPair(ctx, &service.User{
 		ID:           41,
@@ -810,8 +810,8 @@ func (s *emailBindUserRepoStub) UpdateUserLastActiveAt(context.Context, int64, t
 REDACTED
 
 func (s *emailBindUserRepoStub) UpdateBalance(context.Context, int64, float64) error { return nil REDACTED
-func (s *emailBindUserRepoStub) DeductBalance(context.Context, int64, float64) error  { return nil REDACTED
-func (s *emailBindUserRepoStub) UpdateConcurrency(context.Context, int64, int) error   { return nil REDACTED
+func (s *emailBindUserRepoStub) DeductBalance(context.Context, int64, float64) error { return nil REDACTED
+func (s *emailBindUserRepoStub) UpdateConcurrency(context.Context, int64, int) error { return nil REDACTED
 
 func (s *emailBindUserRepoStub) ExistsByEmail(_ context.Context, email string) (bool, error) {
 	s.mu.Lock()
@@ -820,8 +820,12 @@ func (s *emailBindUserRepoStub) ExistsByEmail(_ context.Context, email string) (
 	return ok, nil
 REDACTED
 
-func (s *emailBindUserRepoStub) BatchSetConcurrency(context.Context, []int64, int) (int, error) { return 0, nil REDACTED
-func (s *emailBindUserRepoStub) BatchAddConcurrency(context.Context, []int64, int) (int, error) { return 0, nil REDACTED
+func (s *emailBindUserRepoStub) BatchSetConcurrency(context.Context, []int64, int) (int, error) {
+	return 0, nil
+REDACTED
+func (s *emailBindUserRepoStub) BatchAddConcurrency(context.Context, []int64, int) (int, error) {
+	return 0, nil
+REDACTED
 
 func (s *emailBindUserRepoStub) RemoveGroupFromAllowedGroups(context.Context, int64) (int64, error) {
 	return 0, nil
