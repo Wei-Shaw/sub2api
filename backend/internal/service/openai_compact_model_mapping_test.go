@@ -51,6 +51,7 @@ func TestOpenAIGatewayService_Forward_CompactOnlyModelMappingOverridesOAuthUpstr
 	require.Equal(t, "gpt-5.4", result.Model)
 	require.Equal(t, "gpt-5.4-openai-compact", result.UpstreamModel)
 	require.Equal(t, "gpt-5.4-openai-compact", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Equal(t, HTTPUpstreamProfileOpenAICompact, HTTPUpstreamProfileFromContext(upstream.lastReq.Context()))
 }
 
 func TestOpenAIGatewayService_Forward_NonCompactRequestIgnoresCompactOnlyModelMapping(t *testing.T) {
@@ -90,6 +91,7 @@ func TestOpenAIGatewayService_Forward_NonCompactRequestIgnoresCompactOnlyModelMa
 	require.Equal(t, "gpt-5.4", result.Model)
 	require.Equal(t, "gpt-5.4", result.UpstreamModel)
 	require.Equal(t, "gpt-5.4", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Equal(t, HTTPUpstreamProfileOpenAI, HTTPUpstreamProfileFromContext(upstream.lastReq.Context()))
 }
 
 func TestOpenAIGatewayService_OAuthPassthrough_CompactOnlyModelMappingOverridesUpstreamModel(t *testing.T) {
@@ -132,4 +134,5 @@ func TestOpenAIGatewayService_OAuthPassthrough_CompactOnlyModelMappingOverridesU
 	require.Equal(t, "gpt-5.4-openai-compact", result.UpstreamModel)
 	require.Equal(t, "gpt-5.4-openai-compact", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.Equal(t, "gpt-5.4", gjson.GetBytes(rec.Body.Bytes(), "model").String())
+	require.Equal(t, HTTPUpstreamProfileOpenAICompact, HTTPUpstreamProfileFromContext(upstream.lastReq.Context()))
 }

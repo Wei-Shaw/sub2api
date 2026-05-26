@@ -1841,7 +1841,7 @@ func TestOpenAIBuildUpstreamRequestOpenAIPassthroughPreservesCompactPath(t *test
 	require.Equal(t, "application/json", req.Header.Get("Accept"))
 	require.Equal(t, codexCLIVersion, req.Header.Get("Version"))
 	require.NotEmpty(t, req.Header.Get("Session_Id"))
-	require.Equal(t, HTTPUpstreamProfileOpenAI, HTTPUpstreamProfileFromContext(req.Context()))
+	require.Equal(t, HTTPUpstreamProfileOpenAICompact, HTTPUpstreamProfileFromContext(req.Context()))
 }
 
 func TestOpenAIBuildUpstreamRequestCompactForcesJSONAcceptForOAuth(t *testing.T) {
@@ -1862,7 +1862,7 @@ func TestOpenAIBuildUpstreamRequestCompactForcesJSONAcceptForOAuth(t *testing.T)
 	require.Equal(t, "application/json", req.Header.Get("Accept"))
 	require.Equal(t, codexCLIVersion, req.Header.Get("Version"))
 	require.NotEmpty(t, req.Header.Get("Session_Id"))
-	require.Equal(t, HTTPUpstreamProfileOpenAI, HTTPUpstreamProfileFromContext(req.Context()))
+	require.Equal(t, HTTPUpstreamProfileOpenAICompact, HTTPUpstreamProfileFromContext(req.Context()))
 }
 
 func TestOpenAIBuildUpstreamRequestOAuthMessagesBridgeUsesSessionOnly(t *testing.T) {
@@ -1908,6 +1908,7 @@ func TestOpenAIBuildUpstreamRequestPreservesCompactPathForAPIKeyBaseURL(t *testi
 	req, err := svc.buildUpstreamRequest(c.Request.Context(), c, account, []byte(`{"model":"gpt-5"}`), "token", false, "", false)
 	require.NoError(t, err)
 	require.Equal(t, "https://example.com/v1/responses/compact", req.URL.String())
+	require.Equal(t, HTTPUpstreamProfileOpenAICompact, HTTPUpstreamProfileFromContext(req.Context()))
 }
 
 func TestOpenAIBuildUpstreamRequestOAuthOfficialClientOriginatorCompatibility(t *testing.T) {

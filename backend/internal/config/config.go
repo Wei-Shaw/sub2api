@@ -689,6 +689,8 @@ type GatewayConfig struct {
 	// OpenAIResponseHeaderTimeout: OpenAI/Codex 上游等待响应头的超时时间（秒），0表示无超时
 	// OpenAI/Codex 请求可能在上游排队较久；默认不使用通用响应头超时截断。
 	OpenAIResponseHeaderTimeout int `mapstructure:"openai_response_header_timeout"`
+	// CompactResponseHeaderTimeout: /v1/responses/compact 上游响应头超时（秒），0 表示沿用 openai 或全局值
+	CompactResponseHeaderTimeout int `mapstructure:"compact_response_header_timeout"`
 	// 请求体最大字节数，用于网关请求体大小限制
 	MaxBodySize int64 `mapstructure:"max_body_size"`
 	// 非流式上游响应体读取上限（字节），用于防止无界读取导致内存放大
@@ -794,6 +796,25 @@ type GatewayConfig struct {
 	// UserMessageQueue: 用户消息串行队列配置
 	// 对 role:"user" 的真实用户消息实施账号级串行化 + RPM 自适应延迟
 	UserMessageQueue UserMessageQueueConfig `mapstructure:"user_message_queue"`
+}
+
+// EffectiveResponseHeaderTimeout resolves the upstream response-header timeout.
+// For OpenAI requests, a zero OpenAIResponseHeaderTimeout intentionally means
+// no local response-header timeout, matching the OpenAI profile behavior.
+func (g *GatewayConfig) EffectiveResponseHeaderTimeout(isCompact bool, isOpenAI bool) time.Duration {
+	if g == nil {
+		return 0
+	}
+	if isCompact && g.CompactResponseHeaderTimeout > 0 {
+		return time.Duration(g.CompactResponseHeaderTimeout) * time.Second
+	}
+	if isOpenAI {
+		if g.OpenAIResponseHeaderTimeout > 0 {
+			return time.Duration(g.OpenAIResponseHeaderTimeout) * time.Second
+		}
+		return 0
+	}
+	return time.Duration(g.ResponseHeaderTimeout) * time.Second
 }
 
 // GatewayOpenAIHTTP2Config OpenAI HTTP 上游协议配置。
@@ -1771,6 +1792,7 @@ func setDefaults() {
 	// Gateway
 	viper.SetDefault("gateway.response_header_timeout", 600) // 600秒(10分钟)等待上游响应头，LLM高负载时可能排队较久
 	viper.SetDefault("gateway.openai_response_header_timeout", 0)
+	viper.SetDefault("gateway.compact_response_header_timeout", 0)
 	viper.SetDefault("gateway.log_upstream_error_body", true)
 	viper.SetDefault("gateway.log_upstream_error_body_max_bytes", 2048)
 	viper.SetDefault("gateway.inject_beta_for_apikey", false)
@@ -2404,6 +2426,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.OpenAIResponseHeaderTimeout < 0 {
 		return fmt.Errorf("gateway.openai_response_header_timeout must be non-negative")
+	}
+	if c.Gateway.CompactResponseHeaderTimeout < 0 {
+		return fmt.Errorf("gateway.compact_response_header_timeout must be non-negative")
 	}
 	if strings.TrimSpace(c.Gateway.ConnectionPoolIsolation) != "" {
 		switch c.Gateway.ConnectionPoolIsolation {

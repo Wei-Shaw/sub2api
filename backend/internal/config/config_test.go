@@ -189,6 +189,14 @@ func TestLoadDefaultOpenAIResponseHeaderTimeoutUnlimited(t *testing.T) {
 	require.Equal(t, 0, cfg.Gateway.OpenAIResponseHeaderTimeout)
 }
 
+func TestLoadDefaultCompactResponseHeaderTimeoutFallback(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, 0, cfg.Gateway.CompactResponseHeaderTimeout)
+}
+
 func TestLoadOpenAIResponseHeaderTimeoutFromEnv(t *testing.T) {
 	resetViperWithJWTSecret(t)
 	t.Setenv("GATEWAY_OPENAI_RESPONSE_HEADER_TIMEOUT", "1800")
@@ -196,6 +204,41 @@ func TestLoadOpenAIResponseHeaderTimeoutFromEnv(t *testing.T) {
 	cfg, err := Load()
 	require.NoError(t, err)
 	require.Equal(t, 1800, cfg.Gateway.OpenAIResponseHeaderTimeout)
+}
+
+func TestLoadCompactResponseHeaderTimeoutFromEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("GATEWAY_COMPACT_RESPONSE_HEADER_TIMEOUT", "1200")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, 1200, cfg.Gateway.CompactResponseHeaderTimeout)
+}
+
+func TestGatewayEffectiveResponseHeaderTimeout(t *testing.T) {
+	gateway := GatewayConfig{
+		ResponseHeaderTimeout:        60,
+		OpenAIResponseHeaderTimeout:  180,
+		CompactResponseHeaderTimeout: 900,
+	}
+
+	require.Equal(t, 900*time.Second, gateway.EffectiveResponseHeaderTimeout(true, true))
+	require.Equal(t, 180*time.Second, gateway.EffectiveResponseHeaderTimeout(false, true))
+	require.Equal(t, 900*time.Second, gateway.EffectiveResponseHeaderTimeout(true, false))
+	require.Equal(t, 60*time.Second, gateway.EffectiveResponseHeaderTimeout(false, false))
+}
+
+func TestGatewayEffectiveResponseHeaderTimeoutZeroFallback(t *testing.T) {
+	gateway := GatewayConfig{
+		ResponseHeaderTimeout:       60,
+		OpenAIResponseHeaderTimeout: 180,
+	}
+
+	require.Equal(t, 180*time.Second, gateway.EffectiveResponseHeaderTimeout(true, true))
+
+	gateway.OpenAIResponseHeaderTimeout = 0
+	require.Equal(t, time.Duration(0), gateway.EffectiveResponseHeaderTimeout(true, true))
+	require.Equal(t, 60*time.Second, gateway.EffectiveResponseHeaderTimeout(true, false))
 }
 
 func TestLoadOpenAIWSStickyTTLCompatibility(t *testing.T) {
@@ -1264,6 +1307,11 @@ func TestValidateConfigErrors(t *testing.T) {
 			name:    "gateway openai response header timeout",
 			mutate:  func(c *Config) { c.Gateway.OpenAIResponseHeaderTimeout = -1 },
 			wantErr: "gateway.openai_response_header_timeout",
+		},
+		{
+			name:    "gateway compact response header timeout",
+			mutate:  func(c *Config) { c.Gateway.CompactResponseHeaderTimeout = -1 },
+			wantErr: "gateway.compact_response_header_timeout",
 		},
 		{
 			name:    "gateway max idle conns",

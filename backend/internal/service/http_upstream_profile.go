@@ -7,8 +7,9 @@ import "context"
 type HTTPUpstreamProfile string
 
 const (
-	HTTPUpstreamProfileDefault HTTPUpstreamProfile = ""
-	HTTPUpstreamProfileOpenAI  HTTPUpstreamProfile = "openai"
+	HTTPUpstreamProfileDefault       HTTPUpstreamProfile = ""
+	HTTPUpstreamProfileOpenAI        HTTPUpstreamProfile = "openai"
+	HTTPUpstreamProfileOpenAICompact HTTPUpstreamProfile = "openai_compact"
 )
 
 type httpUpstreamProfileContextKey struct{}
@@ -34,9 +35,19 @@ func HTTPUpstreamProfileFromContext(ctx context.Context) HTTPUpstreamProfile {
 		return HTTPUpstreamProfileDefault
 	}
 	switch profile {
-	case HTTPUpstreamProfileOpenAI:
+	case HTTPUpstreamProfileOpenAI, HTTPUpstreamProfileOpenAICompact:
 		return profile
 	default:
 		return HTTPUpstreamProfileDefault
 	}
+}
+
+// IsHTTPUpstreamProfileOpenAI reports whether profile should use OpenAI upstream policy.
+func IsHTTPUpstreamProfileOpenAI(profile HTTPUpstreamProfile) bool {
+	return profile == HTTPUpstreamProfileOpenAI || profile == HTTPUpstreamProfileOpenAICompact
+}
+
+// IsHTTPUpstreamProfileCompact reports whether profile represents /responses/compact.
+func IsHTTPUpstreamProfileCompact(profile HTTPUpstreamProfile) bool {
+	return profile == HTTPUpstreamProfileOpenAICompact
 }

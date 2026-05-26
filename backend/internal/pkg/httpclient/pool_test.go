@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -112,4 +113,18 @@ func TestValidatedTransport_ValidationErrorStopsRoundTrip(t *testing.T) {
 	_, err = transport.RoundTrip(req)
 	require.ErrorIs(t, err, expectedErr)
 	require.Equal(t, int32(0), atomic.LoadInt32(&baseCalls))
+}
+
+func TestGetClient_ResponseHeaderTimeoutIsPartOfCacheKey(t *testing.T) {
+	sharedClients = sync.Map{}
+
+	clientA, err := GetClient(Options{ResponseHeaderTimeout: time.Second})
+	require.NoError(t, err)
+	clientAAgain, err := GetClient(Options{ResponseHeaderTimeout: time.Second})
+	require.NoError(t, err)
+	clientB, err := GetClient(Options{ResponseHeaderTimeout: 2 * time.Second})
+	require.NoError(t, err)
+
+	require.Same(t, clientA, clientAAgain)
+	require.NotSame(t, clientA, clientB)
 }

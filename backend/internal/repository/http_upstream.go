@@ -264,8 +264,8 @@ func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID i
 	settings := s.resolvePoolSettings(isolation, accountConcurrency)
 	settings = s.applyProfilePoolSettings(settings, upstreamProfile)
 	// TLS 指纹客户端使用独立的缓存键，加 "tls:" 前缀
-	cacheKey := "tls:" + buildCacheKey(isolation, proxyKey, accountID, upstreamProtocolModeDefault)
-	poolKey := buildPoolKey(settings, upstreamProtocolModeDefault) + ":tls"
+	cacheKey := "tls:" + appendUpstreamProfileClassToKey(buildCacheKey(isolation, proxyKey, accountID, upstreamProtocolModeDefault), upstreamProfile)
+	poolKey := appendUpstreamProfileClassToKey(buildPoolKey(settings, upstreamProtocolModeDefault), upstreamProfile) + ":tls"
 
 	now := time.Now()
 	nowUnix := now.UnixNano()
@@ -424,9 +424,9 @@ func (s *httpUpstreamService) getClientEntry(proxyURL string, accountID int64, a
 	settings := s.resolvePoolSettings(isolation, accountConcurrency)
 	settings = s.applyProfilePoolSettings(settings, profile)
 	// 构建缓存键（根据隔离策略不同）
-	cacheKey := buildCacheKey(isolation, proxyKey, accountID, protocolMode)
+	cacheKey := appendUpstreamProfileClassToKey(buildCacheKey(isolation, proxyKey, accountID, protocolMode), profile)
 	// 构建连接池配置键（用于检测配置变更）
-	poolKey := buildPoolKey(settings, protocolMode)
+	poolKey := appendUpstreamProfileClassToKey(buildPoolKey(settings, protocolMode), profile)
 
 	now := time.Now()
 	nowUnix := now.UnixNano()
@@ -667,13 +667,17 @@ func (s *httpUpstreamService) resolvePoolSettings(isolation string, accountConcu
 }
 
 func (s *httpUpstreamService) applyProfilePoolSettings(settings poolSettings, profile service.HTTPUpstreamProfile) poolSettings {
-	if profile != service.HTTPUpstreamProfileOpenAI {
+	if !service.IsHTTPUpstreamProfileOpenAI(profile) {
+		return settings
+	}
+	if s != nil && s.cfg != nil {
+		settings.responseHeaderTimeout = s.cfg.Gateway.EffectiveResponseHeaderTimeout(
+			service.IsHTTPUpstreamProfileCompact(profile),
+			true,
+		)
 		return settings
 	}
 	settings.responseHeaderTimeout = 0
-	if s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIResponseHeaderTimeout > 0 {
-		settings.responseHeaderTimeout = time.Duration(s.cfg.Gateway.OpenAIResponseHeaderTimeout) * time.Second
-	}
 	return settings
 }
 
@@ -691,6 +695,13 @@ func buildPoolKey(settings poolSettings, protocolMode string) string {
 		return base
 	}
 	return base + "|proto:" + protocolMode
+}
+
+func appendUpstreamProfileClassToKey(base string, profile service.HTTPUpstreamProfile) string {
+	if service.IsHTTPUpstreamProfileCompact(profile) {
+		return base + "|class:compact"
+	}
+	return base
 }
 
 // buildCacheKey 构建客户端缓存键
@@ -751,7 +762,7 @@ func (s *httpUpstreamService) resolveOpenAIHTTP2Settings() openAIHTTP2Settings {
 }
 
 func (s *httpUpstreamService) resolveProtocolMode(profile service.HTTPUpstreamProfile, proxyKey string, parsedProxy *url.URL) string {
-	if profile != service.HTTPUpstreamProfileOpenAI {
+	if !service.IsHTTPUpstreamProfileOpenAI(profile) {
 		return upstreamProtocolModeDefault
 	}
 	settings := s.resolveOpenAIHTTP2Settings()
@@ -856,7 +867,7 @@ func isUpstreamTimeoutError(err error) bool {
 }
 
 func (s *httpUpstreamService) recordOpenAIHTTP2Failure(profile service.HTTPUpstreamProfile, protocolMode, proxyKey string, err error) {
-	if profile != service.HTTPUpstreamProfileOpenAI || protocolMode != upstreamProtocolModeOpenAIH2 {
+	if !service.IsHTTPUpstreamProfileOpenAI(profile) || protocolMode != upstreamProtocolModeOpenAIH2 {
 		return
 	}
 	settings := s.resolveOpenAIHTTP2Settings()
@@ -876,7 +887,7 @@ func (s *httpUpstreamService) recordOpenAIHTTP2Failure(profile service.HTTPUpstr
 }
 
 func (s *httpUpstreamService) recordOpenAIHTTP2Success(profile service.HTTPUpstreamProfile, protocolMode, proxyKey string) {
-	if profile != service.HTTPUpstreamProfileOpenAI || protocolMode != upstreamProtocolModeOpenAIH2 {
+	if !service.IsHTTPUpstreamProfileOpenAI(profile) || protocolMode != upstreamProtocolModeOpenAIH2 {
 		return
 	}
 	if !isHTTPProxyKey(proxyKey) {
@@ -1018,9 +1029,7 @@ func defaultPoolSettings(cfg *config.Config) poolSettings {
 		if cfg.Gateway.IdleConnTimeoutSeconds > 0 {
 			idleConnTimeout = time.Duration(cfg.Gateway.IdleConnTimeoutSeconds) * time.Second
 		}
-		if cfg.Gateway.ResponseHeaderTimeout >= 0 {
-			responseHeaderTimeout = time.Duration(cfg.Gateway.ResponseHeaderTimeout) * time.Second
-		}
+		responseHeaderTimeout = cfg.Gateway.EffectiveResponseHeaderTimeout(false, false)
 	}
 
 	return poolSettings{

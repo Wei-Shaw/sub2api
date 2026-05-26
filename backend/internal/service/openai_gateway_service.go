@@ -3233,7 +3233,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	if err != nil {
 		return nil, err
 	}
-	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI))
+	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), openAIHTTPUpstreamProfileForRequest(c)))
 
 	// 透传客户端请求头（安全白名单）。
 	allowTimeoutHeaders := s.isOpenAIPassthroughTimeoutHeadersAllowed()
@@ -3956,7 +3956,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	if err != nil {
 		return nil, err
 	}
-	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI))
+	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), openAIHTTPUpstreamProfileForRequest(c)))
 
 	// Set authentication header
 	req.Header.Set("authorization", "Bearer "+token)
@@ -5317,6 +5317,13 @@ func NormalizeOpenAICompactRequestBodyForTest(body []byte) ([]byte, bool, error)
 func isOpenAIResponsesCompactPath(c *gin.Context) bool {
 	suffix := strings.TrimSpace(openAIResponsesRequestPathSuffix(c))
 	return suffix == "/compact" || strings.HasPrefix(suffix, "/compact/")
+}
+
+func openAIHTTPUpstreamProfileForRequest(c *gin.Context) HTTPUpstreamProfile {
+	if isOpenAIResponsesCompactPath(c) {
+		return HTTPUpstreamProfileOpenAICompact
+	}
+	return HTTPUpstreamProfileOpenAI
 }
 
 func normalizeOpenAICompactRequestBody(body []byte) ([]byte, bool, error) {

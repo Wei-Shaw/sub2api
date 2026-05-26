@@ -117,6 +117,71 @@ func (s *HTTPUpstreamSuite) TestOpenAIProfileCustomHeaderTimeout() {
 	require.Equal(s.T(), 1800*time.Second, transport.ResponseHeaderTimeout)
 }
 
+func (s *HTTPUpstreamSuite) TestOpenAICompactProfileCustomHeaderTimeoutUsesDedicatedClient() {
+	s.cfg.Gateway = config.GatewayConfig{
+		ResponseHeaderTimeout:        60,
+		OpenAIResponseHeaderTimeout:  180,
+		CompactResponseHeaderTimeout: 1200,
+		OpenAIHTTP2: config.GatewayOpenAIHTTP2Config{
+			Enabled: true,
+		},
+	}
+	svc := s.newService()
+
+	openAIEntry, err := svc.getClientEntry("", 1, 1, service.HTTPUpstreamProfileOpenAI, false, false)
+	require.NoError(s.T(), err)
+	compactEntry, err := svc.getClientEntry("", 1, 1, service.HTTPUpstreamProfileOpenAICompact, false, false)
+	require.NoError(s.T(), err)
+	require.NotSame(s.T(), openAIEntry, compactEntry, "compact profile should use a dedicated client")
+
+	openAITransport, ok := openAIEntry.client.Transport.(*http.Transport)
+	require.True(s.T(), ok, "expected OpenAI *http.Transport")
+	compactTransport, ok := compactEntry.client.Transport.(*http.Transport)
+	require.True(s.T(), ok, "expected compact *http.Transport")
+	require.Equal(s.T(), 180*time.Second, openAITransport.ResponseHeaderTimeout)
+	require.Equal(s.T(), 1200*time.Second, compactTransport.ResponseHeaderTimeout)
+	require.True(s.T(), compactTransport.ForceAttemptHTTP2, "compact profile should preserve OpenAI HTTP/2 policy")
+	require.Equal(s.T(), 2, len(svc.clients), "OpenAI and compact clients should be cached separately")
+}
+
+func (s *HTTPUpstreamSuite) TestOpenAICompactProfileFallsBackToOpenAITimeout() {
+	s.cfg.Gateway = config.GatewayConfig{
+		ResponseHeaderTimeout:       60,
+		OpenAIResponseHeaderTimeout: 180,
+		OpenAIHTTP2: config.GatewayOpenAIHTTP2Config{
+			Enabled: true,
+		},
+	}
+	svc := s.newService()
+
+	compactEntry, err := svc.getClientEntry("", 1, 1, service.HTTPUpstreamProfileOpenAICompact, false, false)
+	require.NoError(s.T(), err)
+	transport, ok := compactEntry.client.Transport.(*http.Transport)
+	require.True(s.T(), ok, "expected compact *http.Transport")
+	require.Equal(s.T(), 180*time.Second, transport.ResponseHeaderTimeout)
+}
+
+func (s *HTTPUpstreamSuite) TestOpenAICompactProfileDefaultKeepsNoHeaderTimeoutAndDedicatedClient() {
+	s.cfg.Gateway = config.GatewayConfig{
+		ResponseHeaderTimeout: 60,
+		OpenAIHTTP2: config.GatewayOpenAIHTTP2Config{
+			Enabled: true,
+		},
+	}
+	svc := s.newService()
+
+	openAIEntry, err := svc.getClientEntry("", 1, 1, service.HTTPUpstreamProfileOpenAI, false, false)
+	require.NoError(s.T(), err)
+	compactEntry, err := svc.getClientEntry("", 1, 1, service.HTTPUpstreamProfileOpenAICompact, false, false)
+	require.NoError(s.T(), err)
+	require.NotSame(s.T(), openAIEntry, compactEntry, "compact profile should be isolated even when timeout matches")
+
+	compactTransport, ok := compactEntry.client.Transport.(*http.Transport)
+	require.True(s.T(), ok, "expected compact *http.Transport")
+	require.Equal(s.T(), time.Duration(0), compactTransport.ResponseHeaderTimeout)
+	require.Equal(s.T(), 2, len(svc.clients), "OpenAI and compact clients should be cached separately")
+}
+
 func (s *HTTPUpstreamSuite) TestOpenAIProfileTLSFingerprintDoesNotInheritGenericHeaderTimeout() {
 	s.cfg.Gateway = config.GatewayConfig{
 		ResponseHeaderTimeout: 600,
@@ -130,6 +195,23 @@ func (s *HTTPUpstreamSuite) TestOpenAIProfileTLSFingerprintDoesNotInheritGeneric
 	transport, ok := entry.client.Transport.(*http.Transport)
 	require.True(s.T(), ok, "expected *http.Transport")
 	require.Equal(s.T(), time.Duration(0), transport.ResponseHeaderTimeout, "OpenAI TLS path should not inherit generic header timeout")
+}
+
+func (s *HTTPUpstreamSuite) TestOpenAICompactProfileTLSFingerprintUsesCompactHeaderTimeout() {
+	s.cfg.Gateway = config.GatewayConfig{
+		ResponseHeaderTimeout:        60,
+		OpenAIResponseHeaderTimeout:  180,
+		CompactResponseHeaderTimeout: 1200,
+		OpenAIHTTP2: config.GatewayOpenAIHTTP2Config{
+			Enabled: true,
+		},
+	}
+	svc := s.newService()
+	entry, err := svc.getClientEntryWithTLS("", 1, 1, &tlsfingerprint.Profile{Name: "test"}, service.HTTPUpstreamProfileOpenAICompact, false, false)
+	require.NoError(s.T(), err)
+	transport, ok := entry.client.Transport.(*http.Transport)
+	require.True(s.T(), ok, "expected *http.Transport")
+	require.Equal(s.T(), 1200*time.Second, transport.ResponseHeaderTimeout)
 }
 
 func (s *HTTPUpstreamSuite) TestOpenAIProfileHTTP2DisabledUsesHTTP1Transport() {
