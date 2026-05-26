@@ -330,7 +330,7 @@ func TestForwardAsAnthropic_AutoDerivesPromptCacheKeyWhenMessagesDispatchHasNoSe
 	cacheKey := gjson.GetBytes(upstream.lastBody, "prompt_cache_key").String()
 	require.NotEmpty(t, cacheKey)
 	require.True(t, strings.HasPrefix(cacheKey, "anthropic-digest-"))
-	require.Equal(t, generateSessionUUID(isolateOpenAISessionID(0, cacheKey)), upstream.lastReq.Header.Get("session_id"))
+	require.Equal(t, generateSessionUUID(isolateOpenAISessionID(0, cacheKey)), upstream.lastReq.Header.Get("session-id"))
 }
 
 func TestForwardAsAnthropic_DoesNotAutoDerivePromptCacheKeyForNonCodexModel(t *testing.T) {
@@ -375,7 +375,7 @@ func TestForwardAsAnthropic_DoesNotAutoDerivePromptCacheKeyForNonCodexModel(t *t
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.False(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_key").Exists())
-	require.Empty(t, upstream.lastReq.Header.Get("session_id"))
+	require.Empty(t, upstream.lastReq.Header.Get("session-id"))
 }
 
 func TestForwardAsAnthropic_TrimsFullReplayOnlyForCodexCompatModels(t *testing.T) {
@@ -850,8 +850,8 @@ func TestForwardAsAnthropic_ReusesOAuthCodexTurnState(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, secondResult)
 	require.Equal(t, "turn_state_first", upstream.requests[1].Header.Get("x-codex-turn-state"))
-	require.Equal(t, generateSessionUUID(isolateOpenAISessionID(0, "stable-cache-key")), upstream.requests[1].Header.Get("session_id"))
-	require.Empty(t, upstream.requests[1].Header.Get("conversation_id"))
+	require.Equal(t, generateSessionUUID(isolateOpenAISessionID(0, "stable-cache-key")), upstream.requests[1].Header.Get("session-id"))
+	require.Empty(t, upstream.requests[1].Header.Get("thread-id"))
 	require.Empty(t, upstream.requests[1].Header.Get("OpenAI-Beta"))
 	require.Empty(t, upstream.requests[1].Header.Get("originator"))
 	require.False(t, gjson.GetBytes(upstream.bodies[1], "prompt_cache_key").Exists())
@@ -893,7 +893,7 @@ func TestForwardAsAnthropic_OAuthDigestFallbackReusesTurnStateWithoutExplicitKey
 	firstResult, err := svc.ForwardAsAnthropic(context.Background(), firstCtx, account, firstBody, "", "gpt-5.4")
 	require.NoError(t, err)
 	require.NotNil(t, firstResult)
-	firstSessionID := upstream.requests[0].Header.Get("session_id")
+	firstSessionID := upstream.requests[0].Header.Get("session-id")
 	require.NotEmpty(t, firstSessionID)
 	require.Empty(t, upstream.requests[0].Header.Get("x-codex-turn-state"))
 	require.False(t, gjson.GetBytes(upstream.bodies[0], "prompt_cache_key").Exists())
@@ -907,9 +907,9 @@ func TestForwardAsAnthropic_OAuthDigestFallbackReusesTurnStateWithoutExplicitKey
 	secondResult, err := svc.ForwardAsAnthropic(context.Background(), secondCtx, account, secondBody, "", "gpt-5.4")
 	require.NoError(t, err)
 	require.NotNil(t, secondResult)
-	require.Equal(t, firstSessionID, upstream.requests[1].Header.Get("session_id"))
+	require.Equal(t, firstSessionID, upstream.requests[1].Header.Get("session-id"))
 	require.Equal(t, "turn_state_digest_first", upstream.requests[1].Header.Get("x-codex-turn-state"))
-	require.Empty(t, upstream.requests[1].Header.Get("conversation_id"))
+	require.Empty(t, upstream.requests[1].Header.Get("thread-id"))
 	require.False(t, gjson.GetBytes(upstream.bodies[1], "prompt_cache_key").Exists())
 	require.False(t, gjson.GetBytes(upstream.bodies[1], "previous_response_id").Exists())
 }
@@ -950,7 +950,7 @@ func TestForwardAsAnthropic_OAuthMetadataSessionSurvivesDigestPrefixRewrite(t *t
 	firstResult, err := svc.ForwardAsAnthropic(context.Background(), firstCtx, account, firstBody, "", "gpt-5.5")
 	require.NoError(t, err)
 	require.NotNil(t, firstResult)
-	firstSessionID := upstream.requests[0].Header.Get("session_id")
+	firstSessionID := upstream.requests[0].Header.Get("session-id")
 	require.NotEmpty(t, firstSessionID)
 	require.Empty(t, upstream.requests[0].Header.Get("x-codex-turn-state"))
 	require.False(t, gjson.GetBytes(upstream.bodies[0], "prompt_cache_key").Exists())
@@ -964,9 +964,9 @@ func TestForwardAsAnthropic_OAuthMetadataSessionSurvivesDigestPrefixRewrite(t *t
 	secondResult, err := svc.ForwardAsAnthropic(context.Background(), secondCtx, account, secondBody, "", "gpt-5.5")
 	require.NoError(t, err)
 	require.NotNil(t, secondResult)
-	require.Equal(t, firstSessionID, upstream.requests[1].Header.Get("session_id"))
+	require.Equal(t, firstSessionID, upstream.requests[1].Header.Get("session-id"))
 	require.Equal(t, "turn_state_metadata_first", upstream.requests[1].Header.Get("x-codex-turn-state"))
-	require.Empty(t, upstream.requests[1].Header.Get("conversation_id"))
+	require.Empty(t, upstream.requests[1].Header.Get("thread-id"))
 	require.False(t, gjson.GetBytes(upstream.bodies[1], "prompt_cache_key").Exists())
 	require.False(t, gjson.GetBytes(upstream.bodies[1], "previous_response_id").Exists())
 }
@@ -1007,7 +1007,7 @@ func TestForwardAsAnthropic_OAuthMetadataSessionSurvivesChangingCacheControlAnch
 	firstResult, err := svc.ForwardAsAnthropic(context.Background(), firstCtx, account, firstBody, "", "gpt-5.5")
 	require.NoError(t, err)
 	require.NotNil(t, firstResult)
-	firstSessionID := upstream.requests[0].Header.Get("session_id")
+	firstSessionID := upstream.requests[0].Header.Get("session-id")
 	require.NotEmpty(t, firstSessionID)
 	require.Empty(t, upstream.requests[0].Header.Get("x-codex-turn-state"))
 	require.False(t, gjson.GetBytes(upstream.bodies[0], "prompt_cache_key").Exists())
@@ -1021,9 +1021,9 @@ func TestForwardAsAnthropic_OAuthMetadataSessionSurvivesChangingCacheControlAnch
 	secondResult, err := svc.ForwardAsAnthropic(context.Background(), secondCtx, account, secondBody, "", "gpt-5.5")
 	require.NoError(t, err)
 	require.NotNil(t, secondResult)
-	require.Equal(t, firstSessionID, upstream.requests[1].Header.Get("session_id"))
+	require.Equal(t, firstSessionID, upstream.requests[1].Header.Get("session-id"))
 	require.Equal(t, "turn_state_cache_anchor_first", upstream.requests[1].Header.Get("x-codex-turn-state"))
-	require.Empty(t, upstream.requests[1].Header.Get("conversation_id"))
+	require.Empty(t, upstream.requests[1].Header.Get("thread-id"))
 	require.False(t, gjson.GetBytes(upstream.bodies[1], "prompt_cache_key").Exists())
 	require.False(t, gjson.GetBytes(upstream.bodies[1], "previous_response_id").Exists())
 }

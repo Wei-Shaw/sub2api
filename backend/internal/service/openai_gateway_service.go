@@ -65,10 +65,10 @@ const (
 var openaiAllowedHeaders = map[string]bool{
 	"accept-language":       true,
 	"content-type":          true,
-	"conversation_id":       true,
+	"thread-id":             true,
 	"user-agent":            true,
 	"originator":            true,
-	"session_id":            true,
+	"session-id":            true,
 	"x-codex-turn-state":    true,
 	"x-codex-turn-metadata": true,
 }
@@ -79,11 +79,11 @@ var openaiPassthroughAllowedHeaders = map[string]bool{
 	"accept":                true,
 	"accept-language":       true,
 	"content-type":          true,
-	"conversation_id":       true,
+	"thread-id":             true,
 	"openai-beta":           true,
 	"user-agent":            true,
 	"originator":            true,
-	"session_id":            true,
+	"session-id":            true,
 	"x-codex-turn-state":    true,
 	"x-codex-turn-metadata": true,
 }
@@ -96,8 +96,8 @@ var codexCLIOnlyDebugHeaderWhitelist = []string{
 	"Accept-Language",
 	"OpenAI-Beta",
 	"Originator",
-	"Session_ID",
-	"Conversation_ID",
+	"Session-Id",
+	"Thread-Id",
 	"X-Request-ID",
 	"X-Client-Request-ID",
 	"X-Forwarded-For",
@@ -124,6 +124,58 @@ type NormalizedCodexLimits struct {
 	Used7dPercent   *float64
 	Reset7dSeconds  *int
 	Window7dMinutes *int
+}
+
+func openAIClientSessionIDFromHeaders(headers http.Header) string {
+	if headers == nil {
+		return ""
+	}
+	return strings.TrimSpace(headers.Get("session-id"))
+}
+
+func openAIClientThreadIDFromHeaders(headers http.Header) string {
+	if headers == nil {
+		return ""
+	}
+	return strings.TrimSpace(headers.Get("thread-id"))
+}
+
+func openAIClientSessionID(c *gin.Context) string {
+	if c == nil || c.Request == nil {
+		return ""
+	}
+	return openAIClientSessionIDFromHeaders(c.Request.Header)
+}
+
+func openAIClientThreadID(c *gin.Context) string {
+	if c == nil || c.Request == nil {
+		return ""
+	}
+	return openAIClientThreadIDFromHeaders(c.Request.Header)
+}
+
+func clearOpenAISessionHeaders(headers http.Header) {
+	if headers == nil {
+		return
+	}
+	for _, key := range []string{
+		"session-id",
+		"thread-id",
+	} {
+		headers.Del(key)
+	}
+}
+
+func setOpenAIUpstreamSessionHeaders(headers http.Header, sessionID, threadID string) {
+	if headers == nil {
+		return
+	}
+	if sessionID = strings.TrimSpace(sessionID); sessionID != "" {
+		headers.Set("session-id", sessionID)
+	}
+	if threadID = strings.TrimSpace(threadID); threadID != "" {
+		headers.Set("thread-id", threadID)
+	}
 }
 
 // Normalize converts primary/secondary fields to canonical 5h/7d fields.
@@ -920,7 +972,7 @@ func getAPIKeyIDFromContext(c *gin.Context) int64 {
 }
 
 // isolateOpenAISessionID 将 apiKeyID 混入 session 标识符，
-// 确保不同 API Key 的用户即使使用相同的原始 session_id/conversation_id，
+// 确保不同 API Key 的用户即使使用相同的原始 session-id/thread-id，
 // 到达上游的标识符也不同，防止跨用户会话碰撞。
 func isolateOpenAISessionID(apiKeyID int64, raw string) string {
 	raw = strings.TrimSpace(raw)
@@ -1159,9 +1211,9 @@ func (s *OpenAIGatewayService) ExtractSessionID(c *gin.Context, body []byte) str
 	if c == nil {
 		return ""
 	}
-	sessionID := strings.TrimSpace(c.GetHeader("session_id"))
+	sessionID := openAIClientSessionID(c)
 	if sessionID == "" {
-		sessionID = strings.TrimSpace(c.GetHeader("conversation_id"))
+		sessionID = openAIClientThreadID(c)
 	}
 	if sessionID == "" && len(body) > 0 {
 		sessionID = strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String())
@@ -1174,9 +1226,9 @@ func explicitOpenAISessionID(c *gin.Context, body []byte) string {
 		return ""
 	}
 
-	sessionID := strings.TrimSpace(c.GetHeader("session_id"))
+	sessionID := openAIClientSessionID(c)
 	if sessionID == "" {
-		sessionID = strings.TrimSpace(c.GetHeader("conversation_id"))
+		sessionID = openAIClientThreadID(c)
 	}
 	if sessionID == "" && len(body) > 0 {
 		sessionID = strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String())
@@ -1201,8 +1253,8 @@ func (s *OpenAIGatewayService) GenerateExplicitSessionHash(c *gin.Context, body 
 // GenerateSessionHash generates a sticky-session hash for OpenAI requests.
 //
 // Priority:
-//  1. Header: session_id
-//  2. Header: conversation_id
+//  1. Header: session-id
+//  2. Header: thread-id
 //  3. Body:   prompt_cache_key (opencode)
 //  4. Body:   content-based fallback (model + system + tools + first user message)
 func (s *OpenAIGatewayService) GenerateSessionHash(c *gin.Context, body []byte) string {
@@ -1224,7 +1276,7 @@ func (s *OpenAIGatewayService) GenerateSessionHash(c *gin.Context, body []byte) 
 }
 
 // GenerateSessionHashWithFallback 先按常规信号生成会话哈希；
-// 当未携带 session_id/conversation_id/prompt_cache_key 时，使用 fallbackSeed 生成稳定哈希。
+// 当未携带 OpenAI session/thread header 或 prompt_cache_key 时，使用 fallbackSeed 生成稳定哈希。
 // 该方法用于 WS ingress，避免会话信号缺失时发生跨账号漂移。
 func (s *OpenAIGatewayService) GenerateSessionHashWithFallback(c *gin.Context, body []byte, fallbackSeed string) string {
 	sessionHash := s.GenerateSessionHash(c, body)
@@ -3255,6 +3307,10 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	req.Header.Del("x-goog-api-key")
 	req.Header.Set("authorization", "Bearer "+token)
 
+	clientSessionID := openAIClientSessionIDFromHeaders(req.Header)
+	clientThreadID := openAIClientThreadIDFromHeaders(req.Header)
+	clearOpenAISessionHeaders(req.Header)
+
 	// OAuth 透传到 ChatGPT internal API 时补齐必要头。
 	if account.Type == AccountTypeOAuth {
 		promptCacheKey := strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String())
@@ -3264,8 +3320,6 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 		}
 		apiKeyID := getAPIKeyIDFromContext(c)
 		// 先保存客户端原始值，再做 compact 补充，避免后续统一隔离时读到已处理的值。
-		clientSessionID := strings.TrimSpace(req.Header.Get("session_id"))
-		clientConversationID := strings.TrimSpace(req.Header.Get("conversation_id"))
 		if isOpenAIResponsesCompactPath(c) {
 			req.Header.Set("accept", "application/json")
 			if req.Header.Get("version") == "" {
@@ -3287,15 +3341,17 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 		if clientSessionID == "" {
 			clientSessionID = promptCacheKey
 		}
-		if clientConversationID == "" {
-			clientConversationID = promptCacheKey
+		if clientThreadID == "" {
+			clientThreadID = promptCacheKey
 		}
 		if clientSessionID != "" {
-			req.Header.Set("session_id", isolateOpenAISessionID(apiKeyID, clientSessionID))
+			req.Header.Set("session-id", isolateOpenAISessionID(apiKeyID, clientSessionID))
 		}
-		if clientConversationID != "" {
-			req.Header.Set("conversation_id", isolateOpenAISessionID(apiKeyID, clientConversationID))
+		if clientThreadID != "" {
+			req.Header.Set("thread-id", isolateOpenAISessionID(apiKeyID, clientThreadID))
 		}
+	} else {
+		setOpenAIUpstreamSessionHeaders(req.Header, clientSessionID, clientThreadID)
 	}
 
 	// 透传模式也支持账户自定义 User-Agent 与 ForceCodexCLI 兜底。
@@ -3981,12 +4037,12 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 			}
 		}
 	}
+	clientSessionID := openAIClientSessionIDFromHeaders(req.Header)
+	clientThreadID := openAIClientThreadIDFromHeaders(req.Header)
+	clearOpenAISessionHeaders(req.Header)
+
 	if account.Type == AccountTypeOAuth {
 		compatMessagesBridge := isOpenAICompatMessagesBridgeContext(c) || isOpenAICompatMessagesBridgeBody(body)
-		// 清除客户端透传的 session 头，后续用隔离后的值重新设置，防止跨用户会话碰撞。
-		clientConversationID := strings.TrimSpace(req.Header.Get("conversation_id"))
-		req.Header.Del("conversation_id")
-		req.Header.Del("session_id")
 
 		if compatMessagesBridge {
 			req.Header.Del("OpenAI-Beta")
@@ -4002,17 +4058,25 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 				req.Header.Set("version", codexCLIVersion)
 			}
 			compactSession := resolveOpenAICompactSessionID(c)
-			req.Header.Set("session_id", isolateOpenAISessionID(apiKeyID, compactSession))
+			req.Header.Set("session-id", isolateOpenAISessionID(apiKeyID, compactSession))
 		} else {
 			req.Header.Set("accept", "text/event-stream")
+			if clientSessionID != "" {
+				req.Header.Set("session-id", isolateOpenAISessionID(apiKeyID, clientSessionID))
+			}
+		}
+		if clientThreadID != "" {
+			req.Header.Set("thread-id", isolateOpenAISessionID(apiKeyID, clientThreadID))
 		}
 		if promptCacheKey != "" {
 			isolated := isolateOpenAISessionID(apiKeyID, promptCacheKey)
-			req.Header.Set("session_id", isolated)
-			if !compatMessagesBridge || clientConversationID != "" {
-				req.Header.Set("conversation_id", isolated)
+			req.Header.Set("session-id", isolated)
+			if !compatMessagesBridge || clientThreadID != "" {
+				req.Header.Set("thread-id", isolated)
 			}
 		}
+	} else {
+		setOpenAIUpstreamSessionHeaders(req.Header, clientSessionID, clientThreadID)
 	}
 
 	// Apply custom User-Agent if configured
@@ -5356,11 +5420,11 @@ func normalizeOpenAICompactRequestBody(body []byte) ([]byte, bool, error) {
 
 func resolveOpenAICompactSessionID(c *gin.Context) string {
 	if c != nil {
-		if sessionID := strings.TrimSpace(c.GetHeader("session_id")); sessionID != "" {
+		if sessionID := openAIClientSessionID(c); sessionID != "" {
 			return sessionID
 		}
-		if conversationID := strings.TrimSpace(c.GetHeader("conversation_id")); conversationID != "" {
-			return conversationID
+		if threadID := openAIClientThreadID(c); threadID != "" {
+			return threadID
 		}
 		if seed, ok := c.Get(openAICompactSessionSeedKey); ok {
 			if seedStr, ok := seed.(string); ok && strings.TrimSpace(seedStr) != "" {

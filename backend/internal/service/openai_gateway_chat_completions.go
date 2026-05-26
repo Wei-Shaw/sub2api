@@ -214,7 +214,7 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	}
 
 	if promptCacheKey != "" {
-		upstreamReq.Header.Set("session_id", generateSessionUUID(promptCacheKey))
+		upstreamReq.Header.Set("session-id", generateSessionUUID(promptCacheKey))
 	}
 
 	// 7. Send request

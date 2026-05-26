@@ -22,7 +22,7 @@ func TestIsolateOpenAISessionID(t *testing.T) {
 	t.Run("different_apiKeyID_different_result", func(t *testing.T) {
 		a := isolateOpenAISessionID(1, "same_session")
 		b := isolateOpenAISessionID(2, "same_session")
-		require.NotEqual(t, a, b, "不同 API Key 使用相同 session_id 应产生不同隔离值")
+		require.NotEqual(t, a, b, "不同 API Key 使用相同 session-id 应产生不同隔离值")
 	})
 
 	t.Run("different_raw_different_result", func(t *testing.T) {

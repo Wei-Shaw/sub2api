@@ -515,8 +515,8 @@ func TestOpenAIGatewayService_Forward_WSv2_OAuthStoreFalseByDefault(t *testing.T
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
 	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.98.0")
-	c.Request.Header.Set("session_id", "sess-oauth-1")
-	c.Request.Header.Set("conversation_id", "conv-oauth-1")
+	c.Request.Header.Set("session-id", "sess-oauth-1")
+	c.Request.Header.Set("thread-id", "thread-oauth-1")
 
 	cfg := &config.Config{}
 	cfg.Security.URLAllowlist.Enabled = false
@@ -576,10 +576,10 @@ func TestOpenAIGatewayService_Forward_WSv2_OAuthStoreFalseByDefault(t *testing.T
 	require.True(t, gjson.Get(requestJSON, "stream").Exists(), "WSv2 payload 应保留 stream 字段")
 	require.True(t, gjson.Get(requestJSON, "stream").Bool(), "OAuth Codex 规范化后应强制 stream=true")
 	require.Equal(t, openAIWSBetaV2Value, captureDialer.lastHeaders.Get("OpenAI-Beta"))
-	// OAuth 账号的 session_id/conversation_id 应被 isolateOpenAISessionID 隔离，
+	// OAuth 账号的 session-id/thread-id 应被 isolateOpenAISessionID 隔离，
 	// 测试中未设置 api_key 到 context，apiKeyID=0。
-	require.Equal(t, isolateOpenAISessionID(0, "sess-oauth-1"), captureDialer.lastHeaders.Get("session_id"))
-	require.Equal(t, isolateOpenAISessionID(0, "conv-oauth-1"), captureDialer.lastHeaders.Get("conversation_id"))
+	require.Equal(t, isolateOpenAISessionID(0, "sess-oauth-1"), captureDialer.lastHeaders.Get("session-id"))
+	require.Equal(t, isolateOpenAISessionID(0, "thread-oauth-1"), captureDialer.lastHeaders.Get("thread-id"))
 }
 
 func TestOpenAIGatewayService_Forward_WSv2_OAuthOriginatorCompatibility(t *testing.T) {
@@ -720,9 +720,9 @@ func TestOpenAIGatewayService_Forward_WSv2_HeaderSessionFallbackFromPromptCacheK
 	require.NotNil(t, result)
 	require.Equal(t, "resp_prompt_cache_key", result.RequestID)
 
-	// OAuth 账号的 session_id 应被 isolateOpenAISessionID 隔离（apiKeyID=0，未在 context 设置）。
-	require.Equal(t, isolateOpenAISessionID(0, "pcache_123"), captureDialer.lastHeaders.Get("session_id"))
-	require.Empty(t, captureDialer.lastHeaders.Get("conversation_id"))
+	// OAuth 账号的 session-id 应被 isolateOpenAISessionID 隔离（apiKeyID=0，未在 context 设置）。
+	require.Equal(t, isolateOpenAISessionID(0, "pcache_123"), captureDialer.lastHeaders.Get("session-id"))
+	require.Empty(t, captureDialer.lastHeaders.Get("thread-id"))
 	require.NotNil(t, captureConn.lastWrite)
 	require.True(t, gjson.Get(requestToJSONString(captureConn.lastWrite), "stream").Exists())
 }
@@ -873,7 +873,7 @@ func TestOpenAIGatewayService_Forward_WSv2_TurnStateAndMetadataReplayOnReconnect
 	rec1 := httptest.NewRecorder()
 	c1, _ := gin.CreateTestContext(rec1)
 	c1.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
-	c1.Request.Header.Set("session_id", "session_turn_state")
+	c1.Request.Header.Set("session-id", "session_turn_state")
 	c1.Request.Header.Set("x-codex-turn-metadata", "turn_meta_1")
 	result1, err := svc.Forward(context.Background(), c1, account, reqBody)
 	require.NoError(t, err)
@@ -893,7 +893,7 @@ func TestOpenAIGatewayService_Forward_WSv2_TurnStateAndMetadataReplayOnReconnect
 	rec2 := httptest.NewRecorder()
 	c2, _ := gin.CreateTestContext(rec2)
 	c2.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
-	c2.Request.Header.Set("session_id", "session_turn_state")
+	c2.Request.Header.Set("session-id", "session_turn_state")
 	c2.Request.Header.Set("x-codex-turn-metadata", "turn_meta_2")
 	result2, err := svc.Forward(context.Background(), c2, account, reqBody)
 	require.NoError(t, err)
@@ -912,7 +912,7 @@ func TestOpenAIGatewayService_Forward_WSv2_GeneratePrewarm(t *testing.T) {
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
-	c.Request.Header.Set("session_id", "session-prewarm")
+	c.Request.Header.Set("session-id", "session-prewarm")
 
 	cfg := &config.Config{}
 	cfg.Security.URLAllowlist.Enabled = false
@@ -1079,7 +1079,7 @@ func TestOpenAIGatewayService_Forward_WSv2_TurnMetadataInPayloadOnConnReuse(t *t
 	rec1 := httptest.NewRecorder()
 	c1, _ := gin.CreateTestContext(rec1)
 	c1.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
-	c1.Request.Header.Set("session_id", "session-metadata-reuse")
+	c1.Request.Header.Set("session-id", "session-metadata-reuse")
 	c1.Request.Header.Set("x-codex-turn-metadata", "turn_meta_payload_1")
 	result1, err := svc.Forward(context.Background(), c1, account, body)
 	require.NoError(t, err)
@@ -1093,7 +1093,7 @@ func TestOpenAIGatewayService_Forward_WSv2_TurnMetadataInPayloadOnConnReuse(t *t
 	rec2 := httptest.NewRecorder()
 	c2, _ := gin.CreateTestContext(rec2)
 	c2.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
-	c2.Request.Header.Set("session_id", "session-metadata-reuse")
+	c2.Request.Header.Set("session-id", "session-metadata-reuse")
 	c2.Request.Header.Set("x-codex-turn-metadata", "turn_meta_payload_2")
 	result2, err := svc.Forward(context.Background(), c2, account, body)
 	require.NoError(t, err)
@@ -1191,7 +1191,7 @@ func TestOpenAIGatewayService_Forward_WSv2StoreFalseSessionConnIsolation(t *test
 	rec1 := httptest.NewRecorder()
 	c1, _ := gin.CreateTestContext(rec1)
 	c1.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
-	c1.Request.Header.Set("session_id", "session_store_false_a")
+	c1.Request.Header.Set("session-id", "session_store_false_a")
 	result1, err := svc.Forward(context.Background(), c1, account, body)
 	require.NoError(t, err)
 	require.NotNil(t, result1)
@@ -1200,7 +1200,7 @@ func TestOpenAIGatewayService_Forward_WSv2StoreFalseSessionConnIsolation(t *test
 	rec2 := httptest.NewRecorder()
 	c2, _ := gin.CreateTestContext(rec2)
 	c2.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
-	c2.Request.Header.Set("session_id", "session_store_false_a")
+	c2.Request.Header.Set("session-id", "session_store_false_a")
 	result2, err := svc.Forward(context.Background(), c2, account, body)
 	require.NoError(t, err)
 	require.NotNil(t, result2)
@@ -1209,7 +1209,7 @@ func TestOpenAIGatewayService_Forward_WSv2StoreFalseSessionConnIsolation(t *test
 	rec3 := httptest.NewRecorder()
 	c3, _ := gin.CreateTestContext(rec3)
 	c3.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
-	c3.Request.Header.Set("session_id", "session_store_false_b")
+	c3.Request.Header.Set("session-id", "session_store_false_b")
 	result3, err := svc.Forward(context.Background(), c3, account, body)
 	require.NoError(t, err)
 	require.NotNil(t, result3)
@@ -1298,7 +1298,7 @@ func TestOpenAIGatewayService_Forward_WSv2StoreFalseDisableForceNewConnAllowsReu
 	rec1 := httptest.NewRecorder()
 	c1, _ := gin.CreateTestContext(rec1)
 	c1.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
-	c1.Request.Header.Set("session_id", "session_store_false_reuse_a")
+	c1.Request.Header.Set("session-id", "session_store_false_reuse_a")
 	result1, err := svc.Forward(context.Background(), c1, account, body)
 	require.NoError(t, err)
 	require.NotNil(t, result1)
@@ -1307,7 +1307,7 @@ func TestOpenAIGatewayService_Forward_WSv2StoreFalseDisableForceNewConnAllowsReu
 	rec2 := httptest.NewRecorder()
 	c2, _ := gin.CreateTestContext(rec2)
 	c2.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
-	c2.Request.Header.Set("session_id", "session_store_false_reuse_b")
+	c2.Request.Header.Set("session-id", "session_store_false_reuse_b")
 	result2, err := svc.Forward(context.Background(), c2, account, body)
 	require.NoError(t, err)
 	require.NotNil(t, result2)

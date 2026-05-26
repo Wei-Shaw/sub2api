@@ -154,13 +154,7 @@ Community projects that extend or integrate with Sub2API:
 
 ## Nginx Reverse Proxy Note
 
-When using Nginx as a reverse proxy for Sub2API (or CRS) with Codex CLI, add the following to the `http` block in your Nginx configuration:
-
-```nginx
-underscores_in_headers on;
-```
-
-Nginx drops headers containing underscores by default (e.g. `session_id`), which breaks sticky session routing in multi-account setups.
+When using Nginx as a reverse proxy for Sub2API (or CRS) with Codex CLI, no special underscore-header setting is required for current OpenAI/Codex session routing. Sub2API uses the RFC-compliant `session-id` and `thread-id` headers for OpenAI endpoints.
 
 ---
 

@@ -24,7 +24,7 @@ import (
 // openaiCCRawAllowedHeaders 是 CC 直转路径专用的客户端 header 透传白名单。
 //
 // **关键**：不能复用 openaiAllowedHeaders——后者含 Codex 客户端专属 header
-// （originator / session_id / x-codex-turn-state / x-codex-turn-metadata / conversation_id），
+// （originator / session-id / thread-id / x-codex-turn-state / x-codex-turn-metadata），
 // 这些在 ChatGPT OAuth 上游是必需的，但透传给 DeepSeek/Kimi/GLM 等第三方
 // OpenAI 兼容上游会造成：
 //   - 完全忽略（多数友好厂商）——隐性污染上游统计
