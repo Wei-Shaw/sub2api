@@ -1,0 +1,4 @@
+@import '@sub2api/plugin-sdk/src/components.css';
+
+@tailwind components;
+@tailwind utilities;

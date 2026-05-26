@@ -1,5 +1,6 @@
 # 确保所有 SQL 迁移文件使用 LF 换行符
 backend/migrations/*.sql text eol=lf
+plugins/*/migrations/*.sql text eol=lf
 
 # Go 源代码文件
 *.go text eol=lf
@@ -18,5 +19,12 @@ backend/migrations/*.sql text eol=lf
 *.yaml text eol=lf
 *.yml text eol=lf
 
+# JSON 配置/数据文件（含指纹基线 baseline JSON）
+*.json text eol=lf
+
 # Dockerfile
 Dockerfile text eol=lf
+
+# Patch / diff 文件必须保持 LF，否则 git apply 在 *nix 环境失败
+*.patch text eol=lf
+*.diff text eol=lf

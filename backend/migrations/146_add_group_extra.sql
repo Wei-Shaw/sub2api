@@ -1,0 +1,1 @@
+ALTER TABLE groups ADD COLUMN IF NOT EXISTS group_extra JSONB DEFAULT '{}';

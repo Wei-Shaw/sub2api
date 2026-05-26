@@ -1,0 +1,252 @@
+package service
+
+import (
+	"strings"
+)
+
+// plannedRow 是笛卡尔展开的中间态：单个 (rule, path, limiter, scope_user) 组合。
+// 写入到结果前要经 applyFilter 过滤，再经 fetchSnapshots 填入 current 值。
+//
+// scopeUserID == nil 时该行对应 shared 计数器（counter_mode=shared 或 user 模式
+// 在 admin 视角下尚未限定具体 user 时不会进入这条分支——见 scopeUsersForRule）。
+type plannedRow struct {
+	rule        *ServiceQuotaRule
+	path        ServiceQuotaPathDef
+	pathIndex   int
+	limiter     ServiceQuotaLimiterDef
+	scopeUserID *int64
+}
+
+// expandTargets 把规则集合展开成 plannedRow 列表。
+//
+// counter_mode 与 filter 共同决定 scope_user 的展开方式（详见 scopeUsersForRule
+// 的注释）。返回 nil scope user 列表的规则在当前 filter 下完全跳过——例如
+// admin 不带 user filter 时所有 per_user 规则都不会出现在结果中（不会出占位行）。
+//
+// path_index 是规则内 path 的 1-based 位置（按 rule.Paths 顺序）。
+func (s *serviceQuotaMonitorService) expandTargets(rules []*ServiceQuotaRule, filter MonitorSnapshotFilter) []plannedRow {
+	if len(rules) == 0 {
+		return nil
+	}
+	out := make([]plannedRow, 0)
+	for _, rule := range rules {
+		if rule == nil || !rule.Enabled {
+			continue
+		}
+		users := scopeUsersForRule(rule, filter)
+		if len(users) == 0 {
+			continue
+		}
+		expandRuleRows(rule, users, &out)
+	}
+	return out
+}
+
+// expandRuleRows 是 expandTargets 的子流程：单条 rule × 该 rule 的 scope user 集合，
+// 笛卡尔展开成 plannedRow。拆出来是为了让 expandTargets 保持 ≤30 行。
+func expandRuleRows(rule *ServiceQuotaRule, users []*int64, out *[]plannedRow) {
+	for pathIdx, path := range rule.Paths {
+		for _, lim := range rule.Limiters {
+			for _, scopeUser := range users {
+				*out = append(*out, plannedRow{
+					rule:        rule,
+					path:        path,
+					pathIndex:   pathIdx + 1,
+					limiter:     lim,
+					scopeUserID: scopeUser,
+				})
+			}
+		}
+	}
+}
+
+// applyFilter 在 plannedRow 上做最终过滤。UserScope 优先级最高（用户视角），
+// 否则按 admin path 维度逐个匹配（user filter 已在 scopeUsersForRule 阶段消化）。
+func applyFilter(filter MonitorSnapshotFilter, rows []plannedRow) []plannedRow {
+	if len(rows) == 0 {
+		return rows
+	}
+	out := make([]plannedRow, 0, len(rows))
+	for _, row := range rows {
+		if filter.UserScope != nil {
+			if matchesUserScope(filter.UserScope.UserID, row) {
+				out = append(out, row)
+			}
+			continue
+		}
+		if matchesAdminFilter(filter, row) {
+			out = append(out, row)
+		}
+	}
+	return out
+}
+
+// matchesUserScope 判断给定 row 是否对该 user 可见。
+//
+//   - counter_mode=shared：对全体可见
+//   - counter_mode=user：rule 必须 target 该 user，且本行 scope_user_id 必须等于该 user
+//   - counter_mode=per_user：scope_user_id 必须等于该 user
+func matchesUserScope(userID int64, row plannedRow) bool {
+	switch row.rule.CounterMode {
+	case ServiceQuotaCounterModeShared:
+		return true
+	case ServiceQuotaCounterModeUser:
+		if row.scopeUserID == nil || *row.scopeUserID != userID {
+			return false
+		}
+		return ruleTargetsUser(row.rule, userID)
+	case ServiceQuotaCounterModePerUser:
+		return row.scopeUserID != nil && *row.scopeUserID == userID
+	default:
+		return false
+	}
+}
+
+// matchesAdminFilter 处理 admin 视角下的 path 维度过滤；nil filter 字段视为"不限制该维度"。
+//
+// path 维度（Platform/ChannelID/GroupID/AccountID）按"path 字段 nil 视为命中"语义：
+// 例如 path.ChannelID=nil 时该 path 同时命中所有 ChannelID 过滤值。
+//
+// RuleID 与 UserID 维度已在 scopeUsersForRule 阶段消化（user filter 决定 scope user
+// 展开），此处只补一个 RuleID 兜底过滤。
+func matchesAdminFilter(filter MonitorSnapshotFilter, row plannedRow) bool {
+	if filter.RuleID != nil && row.rule.ID != *filter.RuleID {
+		return false
+	}
+	if filter.Platform != nil && row.path.Platform != nil && !strings.EqualFold(*filter.Platform, *row.path.Platform) {
+		return false
+	}
+	if filter.ChannelID != nil && row.path.ChannelID != nil && *filter.ChannelID != *row.path.ChannelID {
+		return false
+	}
+	if filter.GroupID != nil && row.path.GroupID != nil && *filter.GroupID != *row.path.GroupID {
+		return false
+	}
+	if filter.AccountID != nil && row.path.AccountID != nil && *filter.AccountID != *row.path.AccountID {
+		return false
+	}
+	return true
+}
+
+// assembleRuntime 把 plannedRow + 对应位置的 LimiterSnapshot 拼装成 LimiterRuntime。
+//
+// userScope=true 时抹掉 PathSummary / ScopeUserID / CounterMode 三个 admin 专属字段。
+// snapshots 长度可能小于 rows（极端 fail-soft 情况），缺失位以 Exists=false 兜底。
+func assembleRuntime(rows []plannedRow, snapshots []LimiterSnapshot, userScope bool) []LimiterRuntime {
+	if len(rows) == 0 {
+		return []LimiterRuntime{}
+	}
+	out := make([]LimiterRuntime, 0, len(rows))
+	for i, row := range rows {
+		var snap LimiterSnapshot
+		if i < len(snapshots) {
+			snap = snapshots[i]
+		}
+		out = append(out, buildLimiterRuntime(row, snap, userScope))
+	}
+	return out
+}
+
+// buildLimiterRuntime 单条转换。拆出来便于测试。
+//
+// ResetAtUnixMs 由底层 limiter snapshot 透传：
+//   - fixed window：key 真实 PTTL（计数器到此时刻自然清零）
+//   - rolling window：当前窗口右端 = now + window 长度
+//   - concurrency 或 key 不存在：0（前端据此隐藏倒计时）
+func buildLimiterRuntime(row plannedRow, snap LimiterSnapshot, userScope bool) LimiterRuntime {
+	rt := LimiterRuntime{
+		RuleID:         row.rule.ID,
+		RuleName:       ruleDisplayName(row.rule),
+		PathID:         row.path.ID,
+		PathIndex:      row.pathIndex,
+		LimiterType:    row.limiter.LimiterType,
+		WindowMode:     monitorWindowLabel(row.limiter),
+		LimitValue:     row.limiter.LimitValue,
+		Current:        snap.Current,
+		UtilizationPct: utilizationPct(snap.Current, row.limiter.LimitValue),
+		IsFallback:     row.rule.IsFallback,
+		Exists:         snap.Exists,
+		ResetAtUnixMs:  snap.ResetAtUnixMs,
+		// counter_mode 是规则的 enum 类型描述（'shared' / 'user' / 'per_user'），不属于敏感字段：
+		// admin 端公开，user 端也需要它来区分"全局共享限额"和"用户独立限额"（前端按此渲染"全"badge）。
+		CounterMode: row.rule.CounterMode,
+	}
+	applyScopeFields(&rt, row, userScope)
+	return rt
+}
+
+// applyScopeFields 按视角填充 / 抹除字段：
+//   - admin (userScope=false)：暴露 5 维 PathSummary + ScopeUserID
+//   - user  (userScope=true) ：仅 platform / model_pattern + 抹掉 RuleID / IsFallback
+//
+// 拆出来让 buildLimiterRuntime 主体保持 ≤30 行；视角差异在此一处收敛，
+// 后续若要新增"hide X for user"或"only-admin Y"只需改这里。
+func applyScopeFields(rt *LimiterRuntime, row plannedRow, userScope bool) {
+	if !userScope {
+		rt.PathSummary = pathSummaryFrom(row.path)
+		rt.ScopeUserID = row.scopeUserID
+		return
+	}
+	// user 视角下仍透出 platform 与 model_pattern，让用户能看到自己被
+	// 限流的"业务路径"；channel/group/account 是内部资源拓扑，故意不暴露
+	// （避免侧信道泄露平台架构信息）。
+	rt.PathSummary = pathSummaryFromForUser(row.path)
+	// 抹掉规则内部标识：rule_id 是 admin 才需要的内部关键字（用于 ResetCounter 等管理动作）；
+	// is_fallback 是规则编排细节，不应暴露给最终用户。最小信息暴露原则。
+	rt.RuleID = 0
+	rt.IsFallback = false
+}
+
+// pathSummaryFrom 把 ServiceQuotaPathDef 浅拷贝成 PathSummary（admin 视角，5 维都暴露）。
+func pathSummaryFrom(p ServiceQuotaPathDef) *PathSummary {
+	return &PathSummary{
+		Platform:     p.Platform,
+		ChannelID:    p.ChannelID,
+		GroupID:      p.GroupID,
+		AccountID:    p.AccountID,
+		ModelPattern: p.ModelPattern,
+	}
+}
+
+// pathSummaryFromForUser 是用户视角的 PathSummary：仅暴露 platform 与 model_pattern。
+//
+// 当两者都为 nil 时（即 path 完全 wildcard），返回 nil 让前端 isPathAllStar
+// 走"所有请求"分支；否则返回对象，让用户能看到平台 chip 和模型限制。
+func pathSummaryFromForUser(p ServiceQuotaPathDef) *PathSummary {
+	if p.Platform == nil && p.ModelPattern == nil {
+		return nil
+	}
+	return &PathSummary{
+		Platform:     p.Platform,
+		ModelPattern: p.ModelPattern,
+		// ChannelID / GroupID / AccountID 故意不设——内部资源拓扑不向用户暴露
+	}
+}
+
+// monitorWindowLabel 与 limiterWindowLabel 同语义（concurrency=none，否则 fixed/rolling）。
+// 复用现有函数避免双份实现，只是把返回值映射到本文件常量名以便维护。
+func monitorWindowLabel(lim ServiceQuotaLimiterDef) string {
+	switch limiterWindowLabel(lim) {
+	case ServiceQuotaWindowFixed:
+		return monitorWindowFixed
+	case ServiceQuotaWindowRolling:
+		return monitorWindowRolling
+	default:
+		return monitorWindowNone
+	}
+}
+
+// utilizationPct 计算"已用量占比"，limit<=0 时返回 0；上限 100，避免 UI 出现 120%。
+func utilizationPct(current, limit float64) float64 {
+	if limit <= 0 {
+		return 0
+	}
+	pct := current / limit * 100
+	if pct < 0 {
+		return 0
+	}
+	if pct > 100 {
+		return 100
+	}
+	return pct
+}

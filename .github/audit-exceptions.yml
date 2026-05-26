@@ -1,0 +1,37 @@
+version: 1
+exceptions:
+  - package: xlsx
+    advisory: "GHSA-4r6h-8v6p-xvw6"
+    severity: high
+    reason: "Admin export only; switched to dynamic import to reduce exposure (CVE-2023-30533)"
+    mitigation: "Load only on export; restrict export permissions and data scope"
+    expires_on: "2026-07-06"
+    owner: "security@your-domain"
+  - package: xlsx
+    advisory: "GHSA-5pgg-2g8v-p4x9"
+    severity: high
+    reason: "Admin export only; switched to dynamic import to reduce exposure (CVE-2024-22363)"
+    mitigation: "Load only on export; restrict export permissions and data scope"
+    expires_on: "2026-07-06"
+    owner: "security@your-domain"
+  - package: lodash
+    advisory: "GHSA-r5fr-rjxr-66jc"
+    severity: high
+    reason: "lodash _.template not used with untrusted input; only internal admin UI templates"
+    mitigation: "No user-controlled template strings; plan to migrate to lodash-es tree-shaken imports"
+    expires_on: "2026-07-02"
+    owner: "security@your-domain"
+  - package: lodash-es
+    advisory: "GHSA-r5fr-rjxr-66jc"
+    severity: high
+    reason: "lodash-es _.template not used with untrusted input; only internal admin UI templates"
+    mitigation: "No user-controlled template strings; plan to migrate to native JS alternatives"
+    expires_on: "2026-07-02"
+    owner: "security@your-domain"
+  - package: axios
+    advisory: "GHSA-3p68-rc4w-qgx5"
+    severity: critical
+    reason: "NO_PROXY bypass not exploitable; all API calls go to known endpoints via server-side proxy"
+    mitigation: "Proxy configuration not user-controlled; upgrade when axios releases fix"
+    expires_on: "2026-07-10"
+    owner: "security@your-domain"

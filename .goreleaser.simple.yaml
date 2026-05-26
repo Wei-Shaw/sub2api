@@ -1,0 +1,88 @@
+# 简化版 GoReleaser 配置 - 仅发布 x86_64 GHCR 镜像
+version: 2
+
+project_name: sub2api
+
+before:
+  hooks:
+    - go mod tidy -C backend
+
+builds:
+  - id: sub2api
+    dir: backend
+    main: ./cmd/server
+    binary: sub2api
+    flags:
+      - -tags=embed
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+    ldflags:
+      - -s -w
+      - -X main.Commit={{.Commit}}
+      - -X main.Date={{.Date}}
+      - -X main.BuildType=release
+
+# 跳过 archives
+archives: []
+
+# 跳过 checksum
+checksum:
+  disable: true
+
+changelog:
+  disable: true
+
+# 仅 GHCR x86_64 镜像
+dockers:
+  - id: ghcr-amd64
+    goos: linux
+    goarch: amd64
+    image_templates:
+      - "ghcr.io/{{ .Env.GITHUB_REPO_OWNER_LOWER }}/sub2api:{{ .Version }}-amd64"
+      - "ghcr.io/{{ .Env.GITHUB_REPO_OWNER_LOWER }}/sub2api:{{ .Version }}"
+      - "ghcr.io/{{ .Env.GITHUB_REPO_OWNER_LOWER }}/sub2api:latest"
+    dockerfile: Dockerfile.goreleaser
+    use: buildx
+    extra_files:
+      - deploy/docker-entrypoint.sh
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .Commit }}"
+      - "--label=org.opencontainers.image.source=https://github.com/{{ .Env.GITHUB_REPO_OWNER }}/{{ .Env.GITHUB_REPO_NAME }}"
+
+# 跳过 manifests（单架构不需要）
+docker_manifests: []
+
+release:
+  github:
+    owner: "{{ .Env.GITHUB_REPO_OWNER }}"
+    name: "{{ .Env.GITHUB_REPO_NAME }}"
+  draft: false
+  prerelease: auto
+  name_template: "Sub2API {{.Version}} (Simple)"
+  # 跳过上传二进制包
+  skip_upload: true
+  header: |
+    > AI API Gateway Platform - 将 AI 订阅配额分发和管理
+    > ⚡ Simple Release: 仅包含 x86_64 GHCR 镜像
+
+    {{ .Env.TAG_MESSAGE }}
+
+  footer: |
+    ---
+
+    ## 📥 Installation
+
+    **Docker (x86_64 only):**
+    ```bash
+    docker pull ghcr.io/{{ .Env.GITHUB_REPO_OWNER_LOWER }}/sub2api:{{ .Version }}
+    ```
+
+    ## 📚 Documentation
+
+    - [GitHub Repository](https://github.com/{{ .Env.GITHUB_REPO_OWNER }}/{{ .Env.GITHUB_REPO_NAME }})

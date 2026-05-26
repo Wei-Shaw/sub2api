@@ -1,0 +1,39 @@
+/* CSS spec: @import 必须出现在所有其他规则之前 (除 @charset / @layer 声明).
+ * 把 base.css / components.css 的 @import 写在 @tailwind 之后会被 PostCSS 丢弃,
+ * 导致 .btn / .card / .empty-state 等 host 全局组件类完全丢失. 见 v0.1.119+ V2 改造. */
+@import '../packages/plugin-sdk/src/base.css';
+@import '../packages/plugin-sdk/src/components.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  /* 文字渐变 */
+  .text-gradient {
+    @apply bg-gradient-to-r from-primary-500 to-accent-500 bg-clip-text text-transparent;
+  }
+
+  /* 玻璃效果 */
+  .glass {
+    @apply bg-white/80 backdrop-blur-xl dark:bg-dark-800/80;
+  }
+
+  /* 隐藏滚动条 */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* 安全区域 */
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}

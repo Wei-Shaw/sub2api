@@ -1,0 +1,106 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "sub2api.io/schema/plugin-settings-v1",
+  "title": "Channel Monitor",
+  "description": "Periodic upstream-channel health checks (V5 W6).",
+  "type": "object",
+  "properties": {
+    "enabled": {
+      "type": "boolean",
+      "title": "Enable channel monitoring",
+      "description": "Master switch. When off, periodic checks halt and the user-facing /channel-status view returns an empty list.",
+      "default": true,
+      "x-i18n": {
+        "zh": {
+          "title": "启用渠道监控",
+          "description": "总开关。关闭后定期检查停止，用户端的渠道状态页返回空列表。"
+        }
+      }
+    },
+    "defaultIntervalSec": {
+      "type": "integer",
+      "title": "Default check interval (seconds)",
+      "description": "Pre-filled in the admin Create form. Per-monitor override still applies.",
+      "minimum": 15,
+      "maximum": 3600,
+      "default": 60,
+      "x-requires-reload": true,
+      "x-i18n": {
+        "zh": {
+          "title": "默认检查间隔（秒）",
+          "description": "管理端创建表单中预填的默认值。单个监控仍可覆盖此设置。"
+        }
+      }
+    },
+    "templateMaxBodyKB": {
+      "type": "integer",
+      "title": "Max template body size (KB)",
+      "description": "Upper bound for body_override JSON size on request templates.",
+      "minimum": 1,
+      "maximum": 256,
+      "default": 16,
+      "x-i18n": {
+        "zh": {
+          "title": "模板正文大小上限（KB）",
+          "description": "请求模板中 body_override JSON 的大小上限。"
+        }
+      }
+    },
+    "dailyRollupHourUTC": {
+      "type": "integer",
+      "title": "Daily rollup hour (UTC, 0-23)",
+      "description": "Informational — the host cron currently fires at 02:00 UTC. Reserved for future per-tenant overrides.",
+      "minimum": 0,
+      "maximum": 23,
+      "default": 2,
+      "x-deprecated": "Reserved for future use; current cron is hard-coded to 02:00 UTC. Will be repurposed in V7.",
+      "x-i18n": {
+        "zh": {
+          "title": "每日聚合时间（UTC, 0-23）",
+          "description": "仅供参考——宿主定时任务当前固定在 UTC 02:00 执行。保留字段，将来可用于按租户自定义。"
+        }
+      }
+    },
+    "internalUpstreamProbeKey": {
+      "type": "string",
+      "title": "Internal upstream probe key (DEMO secret)",
+      "description": "Demo of x-visibility:secret. Used only for SETTINGS-V2 smoke testing — leave empty in production.",
+      "x-visibility": "secret",
+      "x-i18n": {
+        "zh": {
+          "title": "内部上游探测密钥（演示用）",
+          "description": "x-visibility:secret 的演示字段。仅用于 SETTINGS-V2 冒烟测试——生产环境请留空。"
+        }
+      }
+    },
+    "_internalCacheTTLSec": {
+      "type": "integer",
+      "title": "Internal monitor cache TTL (seconds)",
+      "description": "Backend-only — controls in-memory monitor cache TTL. Not editable from admin UI. Demo of x-visibility:backend.",
+      "minimum": 5,
+      "maximum": 600,
+      "default": 60,
+      "x-visibility": "backend",
+      "x-i18n": {
+        "zh": {
+          "title": "内部监控缓存 TTL（秒）",
+          "description": "仅后端——控制内存中监控缓存的 TTL。无法在管理界面中编辑。x-visibility:backend 的演示字段。"
+        }
+      }
+    },
+    "availableChannelsEnabled": {
+      "type": "boolean",
+      "title": "Enable available channels view",
+      "description": "Soft switch for the user-facing /available-channels endpoint and sidebar entry. When off, the endpoint returns an empty list after auth and the sidebar entry is hidden. Defaults to false (opt-in).",
+      "default": false,
+      "x-i18n": {
+        "zh": {
+          "title": "启用可用渠道页面",
+          "description": "用户端 /available-channels 接口及侧边栏入口的软开关。关闭后接口在鉴权后返回空列表，侧边栏入口隐藏。默认关闭（需手动启用）。"
+        }
+      }
+    }
+  },
+  "required": ["enabled"],
+  "x-schema-version": "1.0.0"
+}

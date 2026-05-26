@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Payment",
+  "type": "object",
+  "properties": {
+    "enabled": {"type": "boolean", "default": false, "title": "Enable payment"},
+    "min_recharge_amount": {"type": "string", "pattern": "^$|^[0-9]+(\\.[0-9]+)?$", "default": "1", "x-visibility": "backend"},
+    "max_recharge_amount": {"type": "string", "pattern": "^$|^[0-9]+(\\.[0-9]+)?$", "default": "0", "x-visibility": "backend"},
+    "daily_recharge_limit": {"type": "string", "pattern": "^$|^[0-9]+(\\.[0-9]+)?$", "default": "0", "x-visibility": "backend"},
+    "order_timeout_minutes": {"type": "integer", "default": 5, "minimum": 1, "x-visibility": "backend"},
+    "max_pending_orders": {"type": "integer", "default": 3, "minimum": 1, "x-visibility": "backend"},
+    "enabled_payment_types": {"type": "array", "items": {"type": "string"}, "default": ["alipay", "wxpay"], "x-visibility": "backend"},
+    "load_balance_strategy": {"type": "string", "enum": ["round-robin", "least-amount"], "default": "round-robin", "x-visibility": "backend"},
+    "balance_payment_disabled": {"type": "boolean", "default": false, "x-visibility": "backend"},
+    "balance_recharge_multiplier": {"type": "string", "pattern": "^$|^[0-9]+(\\.[0-9]+)?$", "default": "1", "x-visibility": "backend"},
+    "recharge_fee_rate": {"type": "string", "pattern": "^$|^(0(\\.[0-9]+)?|1(\\.0+)?)$", "default": "0", "x-visibility": "backend"},
+    "product_name_prefix": {"type": "string", "default": "", "x-visibility": "backend"},
+    "product_name_suffix": {"type": "string", "default": "", "x-visibility": "backend"},
+    "help_image_url": {"type": "string", "default": "", "x-visibility": "backend"},
+    "help_text": {"type": "string", "default": "", "x-visibility": "backend"},
+    "cancel_rate_limit_enabled": {"type": "boolean", "default": false, "x-visibility": "backend"},
+    "cancel_rate_limit_max": {"type": "integer", "default": 5, "x-visibility": "backend"},
+    "cancel_rate_limit_window": {"type": "integer", "default": 1, "x-visibility": "backend"},
+    "cancel_rate_limit_unit": {"type": "string", "enum": ["minute", "hour", "day"], "default": "hour", "x-visibility": "backend"},
+    "cancel_rate_limit_window_mode": {"type": "string", "enum": ["rolling", "fixed"], "default": "rolling", "x-visibility": "backend"},
+    "visible_method_alipay_source": {"type": "string", "default": "official", "x-visibility": "backend"},
+    "visible_method_wxpay_source": {"type": "string", "default": "official", "x-visibility": "backend"},
+    "visible_method_alipay_enabled": {"type": "boolean", "default": true, "x-visibility": "backend"},
+    "visible_method_wxpay_enabled": {"type": "boolean", "default": true, "x-visibility": "backend"},
+    "resume_signing_key_hex": {"type": "string", "default": "", "x-visibility": "secret", "description": "HMAC signing key for payment resume tokens. Single 64-hex-char value, or a comma-separated list for rotation: the first key signs new tokens, every key verifies (so tokens minted under a previous key keep validating until they expire). Auto-backfilled from the host's PAYMENT_RESUME_SIGNING_KEY / TOTP-derived legacy key on first boot when empty."}
+  }
+}

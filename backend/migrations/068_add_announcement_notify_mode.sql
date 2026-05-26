@@ -1,0 +1,1 @@
+ALTER TABLE announcements ADD COLUMN IF NOT EXISTS notify_mode VARCHAR(20) NOT NULL DEFAULT 'silent';
