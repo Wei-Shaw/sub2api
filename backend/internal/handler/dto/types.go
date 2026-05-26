@@ -464,6 +464,8 @@ type UsageLog struct {
 	ImageSize          *string        `json:"image_size"`
 	ImageInputSize     *string        `json:"image_input_size"`
 	ImageOutputSize    *string        `json:"image_output_size"`
+	ImageOutputTokens  int            `json:"image_output_tokens"`
+	ImageOutputCost    float64        `json:"image_output_cost"`
 	ImageSizeSource    *string        `json:"image_size_source"`
 	ImageSizeBreakdown map[string]int `json:"image_size_breakdown"`
 	MediaType          *string        `json:"media_type"`
