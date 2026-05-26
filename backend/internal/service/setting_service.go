@@ -700,6 +700,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyChannelMonitorEnabled,
 		SettingKeyChannelMonitorDefaultIntervalSeconds,
 		SettingKeyAvailableChannelsEnabled,
+		SettingKeyModelMarketplacePublicEnabled,
 		SettingKeyAffiliateEnabled,
 		SettingKeyRiskControlEnabled,
 	}
@@ -809,7 +810,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		ChannelMonitorEnabled:                !isFalseSettingValue(settings[SettingKeyChannelMonitorEnabled]),
 		ChannelMonitorDefaultIntervalSeconds: parseChannelMonitorInterval(settings[SettingKeyChannelMonitorDefaultIntervalSeconds]),
 
-		AvailableChannelsEnabled: settings[SettingKeyAvailableChannelsEnabled] == "true",
+		AvailableChannelsEnabled:       settings[SettingKeyAvailableChannelsEnabled] == "true",
+		ModelMarketplacePublicEnabled: settings[SettingKeyModelMarketplacePublicEnabled] == "true",
 
 		AffiliateEnabled: settings[SettingKeyAffiliateEnabled] == "true",
 
@@ -875,19 +877,24 @@ func (s *SettingService) GetChannelMonitorRuntime(ctx context.Context) ChannelMo
 // AvailableChannelsRuntime is the lightweight view of the available-channels feature
 // switch consumed by the user-facing handler.
 type AvailableChannelsRuntime struct {
-	Enabled bool
+	Enabled                  bool
+	ModelMarketplacePublic   bool
 }
 
 // GetAvailableChannelsRuntime reads the available-channels feature switch directly
 // from the settings store. Fail-closed: on error returns Enabled=false, matching
 // the opt-in default (unknown ↔ disabled).
 func (s *SettingService) GetAvailableChannelsRuntime(ctx context.Context) AvailableChannelsRuntime {
-	vals, err := s.settingRepo.GetMultiple(ctx, []string{SettingKeyAvailableChannelsEnabled})
+	vals, err := s.settingRepo.GetMultiple(ctx, []string{
+		SettingKeyAvailableChannelsEnabled,
+		SettingKeyModelMarketplacePublicEnabled,
+	})
 	if err != nil {
 		return AvailableChannelsRuntime{Enabled: false}
 	}
 	return AvailableChannelsRuntime{
-		Enabled: vals[SettingKeyAvailableChannelsEnabled] == "true",
+		Enabled:                vals[SettingKeyAvailableChannelsEnabled] == "true",
+		ModelMarketplacePublic: vals[SettingKeyModelMarketplacePublicEnabled] == "true",
 	}
 }
 
@@ -1066,6 +1073,7 @@ type PublicSettingsInjectionPayload struct {
 	ChannelMonitorEnabled                bool `json:"channel_monitor_enabled"`
 	ChannelMonitorDefaultIntervalSeconds int  `json:"channel_monitor_default_interval_seconds"`
 	AvailableChannelsEnabled             bool `json:"available_channels_enabled"`
+	ModelMarketplacePublicEnabled        bool `json:"model_marketplace_public_enabled"`
 	AffiliateEnabled                     bool `json:"affiliate_enabled"`
 	RiskControlEnabled                   bool `json:"risk_control_enabled"`
 }
@@ -1128,6 +1136,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		ChannelMonitorEnabled:                settings.ChannelMonitorEnabled,
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
 		AvailableChannelsEnabled:             settings.AvailableChannelsEnabled,
+		ModelMarketplacePublicEnabled:        settings.ModelMarketplacePublicEnabled,
 		AffiliateEnabled:                     settings.AffiliateEnabled,
 		RiskControlEnabled:                   settings.RiskControlEnabled,
 	}, nil
@@ -1765,6 +1774,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 
 	// Available channels feature switch
 	updates[SettingKeyAvailableChannelsEnabled] = strconv.FormatBool(settings.AvailableChannelsEnabled)
+	updates[SettingKeyModelMarketplacePublicEnabled] = strconv.FormatBool(settings.ModelMarketplacePublicEnabled)
 
 	// Affiliate (邀请返利) feature switch
 	updates[SettingKeyAffiliateEnabled] = strconv.FormatBool(settings.AffiliateEnabled)
@@ -2609,8 +2619,9 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyChannelMonitorEnabled:                "true",
 		SettingKeyChannelMonitorDefaultIntervalSeconds: "60",
 
-		// Available channels feature (default disabled; opt-in)
-		SettingKeyAvailableChannelsEnabled: "false",
+		// Available channels / model marketplace feature (default disabled; opt-in)
+		SettingKeyAvailableChannelsEnabled:       "false",
+		SettingKeyModelMarketplacePublicEnabled: "false",
 
 		// Affiliate (邀请返利) feature (default disabled; opt-in)
 		SettingKeyAffiliateEnabled: "false",
@@ -3116,8 +3127,9 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		settings[SettingKeyChannelMonitorDefaultIntervalSeconds],
 	)
 
-	// Available channels feature (default: disabled; strict true)
+	// Available channels / model marketplace feature (default: disabled; strict true)
 	result.AvailableChannelsEnabled = settings[SettingKeyAvailableChannelsEnabled] == "true"
+	result.ModelMarketplacePublicEnabled = settings[SettingKeyModelMarketplacePublicEnabled] == "true"
 
 	// Affiliate (邀请返利) feature (default: disabled; strict true)
 	result.AffiliateEnabled = settings[SettingKeyAffiliateEnabled] == "true"

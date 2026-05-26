@@ -360,6 +360,7 @@ export default {
     users: 'Users',
     groups: 'Groups',
     channels: 'Channels',
+    modelMarketplace: 'Model Marketplace',
     availableChannels: 'Available Channels',
     subscriptions: 'Subscriptions',
     accounts: 'Accounts',
@@ -1022,6 +1023,54 @@ export default {
       platform: 'Platform',
       groups: 'Your Accessible Groups',
       supportedModels: 'Supported Models'
+    },
+    pricing: {
+      billingMode: 'Billing Mode',
+      billingModeToken: 'Per Token',
+      billingModePerRequest: 'Per Request',
+      billingModeImage: 'Per Image',
+      inputPrice: 'Input',
+      outputPrice: 'Output',
+      cacheWritePrice: 'Cache Write',
+      cacheReadPrice: 'Cache Read',
+      imageOutputPrice: 'Image Output',
+      perRequestPrice: 'Per Request',
+      intervals: 'Tiered Pricing',
+      unitPerMillion: '/ 1M tokens',
+      unitPerRequest: '/ request'
+    }
+  },
+
+  modelMarketplace: {
+    title: 'Model Marketplace',
+    description: 'Browse models by platform, channel, group, and subscription pricing',
+    searchPlaceholder: 'Search models, channels, groups, or plans...',
+    empty: 'No models available',
+    noPricing: 'Pricing not configured',
+    channelsCount: 'channels',
+    buyPlan: 'Buy {name}',
+    columns: {
+      model: 'Model',
+      platform: 'Platform',
+      access: 'Access',
+      channels: 'Channels',
+      groups: 'Groups',
+      pricing: 'Pricing'
+    },
+    filters: {
+      allPlatforms: 'All platforms',
+      allAccess: 'All access states',
+      allBillingModes: 'All billing modes'
+    },
+    access: {
+      available: 'Available',
+      subscribed: 'Subscribed',
+      purchasable: 'Purchasable'
+    },
+    billingMode: {
+      token: 'Per Token',
+      perRequest: 'Per Request',
+      image: 'Per Image'
     },
     pricing: {
       billingMode: 'Billing Mode',
@@ -5225,6 +5274,8 @@ export default {
           configureLink: 'Configure model pricing in Channel Management > Channel Pricing',
           enabled: 'Enable Available Channels',
           enabledHint: 'When off, the sidebar entry is hidden and the endpoint returns an empty list.',
+          marketplacePublic: 'Allow guests to view the model marketplace',
+          marketplacePublicHint: 'When enabled, anonymous visitors may browse /models with public channels, models, and sale plans only.',
         },
         riskControl: {
           title: 'Risk Control',

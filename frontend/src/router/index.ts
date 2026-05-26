@@ -12,6 +12,11 @@ import { useRoutePrefetch } from '@/composables/useRoutePrefetch'
 import { getSetupStatus } from '@/api/setup'
 import { resolveCompletedSetupRedirectPath } from './setupRedirect'
 import { resolveDocumentTitle } from './title'
+import {
+  ensureModelMarketplacePublicSettingLoaded,
+  isModelMarketplacePublicEnabled,
+  isPublicModelMarketplaceRoute,
+} from './modelMarketplaceGuard'
 
 /**
  * Route definitions with lazy loading
@@ -250,6 +255,18 @@ const routes: RouteRecordRaw[] = [
       title: 'Available Channels',
       titleKey: 'availableChannels.title',
       descriptionKey: 'availableChannels.description'
+    }
+  },
+  {
+    path: '/models',
+    name: 'ModelMarketplace',
+    component: () => import('@/views/user/ModelMarketplaceView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Model Marketplace',
+      titleKey: 'modelMarketplace.title',
+      descriptionKey: 'modelMarketplace.description'
     }
   },
   {
@@ -731,6 +748,8 @@ router.beforeEach(async (to, _from, next) => {
 
   // Set page title
   const appStore = useAppStore()
+  await ensureModelMarketplacePublicSettingLoaded(to.path, appStore)
+
   // For custom pages, use menu item label as document title
   if (to.name === 'CustomPage') {
     const id = to.params.id as string
@@ -749,8 +768,12 @@ router.beforeEach(async (to, _from, next) => {
   }
 
   // Check if route requires authentication
-  const requiresAuth = to.meta.requiresAuth !== false // Default to true
+  let requiresAuth = to.meta.requiresAuth !== false // Default to true
   const requiresAdmin = to.meta.requiresAdmin === true
+
+  if (isPublicModelMarketplaceRoute(to.path)) {
+    requiresAuth = !isModelMarketplacePublicEnabled(appStore.cachedPublicSettings)
+  }
 
   if (to.path === '/setup') {
     try {
@@ -780,7 +803,9 @@ router.beforeEach(async (to, _from, next) => {
     }
     // Backend mode: block public pages for unauthenticated users (except login, key-usage, setup)
     if (appStore.backendModeEnabled && !authStore.isAuthenticated) {
-      const isAllowed = isBackendModePublicRouteAllowed(to.path, authStore.hasPendingAuthSession)
+      const isAllowed =
+        isBackendModePublicRouteAllowed(to.path, authStore.hasPendingAuthSession) ||
+        (isPublicModelMarketplaceRoute(to.path) && isModelMarketplacePublicEnabled(appStore.cachedPublicSettings))
       if (!isAllowed) {
         next('/login')
         return

@@ -8,13 +8,20 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// RegisterUserRoutes 注册用户相关路由（需要认证）
+// RegisterUserRoutes 注册用户相关路由。模型广场支持可选认证，其余用户路由需要认证。
 func RegisterUserRoutes(
 	v1 *gin.RouterGroup,
 	h *handler.Handlers,
 	jwtAuth middleware.JWTAuthMiddleware,
+	optionalJWTAuth middleware.OptionalJWTAuthMiddleware,
 	settingService *service.SettingService,
 ) {
+	marketplace := v1.Group("/marketplace")
+	marketplace.Use(gin.HandlerFunc(optionalJWTAuth))
+	{
+		marketplace.GET("/models", h.ModelMarketplace.List)
+	}
+
 	authenticated := v1.Group("")
 	authenticated.Use(gin.HandlerFunc(jwtAuth))
 	authenticated.Use(middleware.BackendModeUserGuard(settingService))

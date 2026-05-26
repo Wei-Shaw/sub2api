@@ -15,6 +15,13 @@ func NewJWTAuthMiddleware(authService *service.AuthService, userService *service
 	return JWTAuthMiddleware(jwtAuth(authService, userService, userService))
 }
 
+// NewOptionalJWTAuthMiddleware stores an authenticated subject when a valid JWT
+// is present, but lets anonymous requests continue. It is intended for public
+// endpoints that can enrich their response for signed-in users.
+func NewOptionalJWTAuthMiddleware(authService *service.AuthService, userService *service.UserService) OptionalJWTAuthMiddleware {
+	return OptionalJWTAuthMiddleware(optionalJWTAuth(authService, userService, userService))
+}
+
 type jwtUserReader interface {
 	GetByID(ctx context.Context, id int64) (*service.User, error)
 }
@@ -86,6 +93,47 @@ func jwtAuth(authService *service.AuthService, userService jwtUserReader, activi
 			activityToucher.TouchLastActiveForUser(c.Request.Context(), user)
 		}
 
+		c.Next()
+	}
+}
+
+func optionalJWTAuth(authService *service.AuthService, userService jwtUserReader, activityToucher userActivityToucher) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			c.Next()
+			return
+		}
+		parts := strings.SplitN(authHeader, " ", 2)
+		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+			c.Next()
+			return
+		}
+		tokenString := strings.TrimSpace(parts[1])
+		if tokenString == "" {
+			c.Next()
+			return
+		}
+
+		claims, err := authService.ValidateToken(tokenString)
+		if err != nil {
+			c.Next()
+			return
+		}
+		user, err := userService.GetByID(c.Request.Context(), claims.UserID)
+		if err != nil || !user.IsActive() || claims.TokenVersion != user.TokenVersion {
+			c.Next()
+			return
+		}
+
+		c.Set(string(ContextKeyUser), AuthSubject{
+			UserID:      user.ID,
+			Concurrency: user.Concurrency,
+		})
+		c.Set(string(ContextKeyUserRole), user.Role)
+		if activityToucher != nil {
+			activityToucher.TouchLastActiveForUser(c.Request.Context(), user)
+		}
 		c.Next()
 	}
 }

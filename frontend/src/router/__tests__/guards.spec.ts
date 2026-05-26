@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
+import { ensureModelMarketplacePublicSettingLoaded } from '@/router/modelMarketplaceGuard'
 import { resolveCompletedSetupRedirectPath } from '@/router/setupRedirect'
 
 // Mock 导航加载状态
@@ -54,19 +55,34 @@ interface MockAuthState {
   isSimpleMode: boolean
   backendModeEnabled: boolean
   hasPendingAuthSession: boolean
+  modelMarketplacePublicEnabled?: boolean
   setupNeedsSetup?: boolean
 }
+
+type GuardRedirect =
+  | string
+  | {
+      path: string
+      query?: Record<string, string>
+    }
+  | null
 
 /**
  * 将 router/index.ts 中 beforeEach 守卫的核心逻辑提取为可测试的函数
  */
-function simulateGuard(
+function simulateGuardResult(
   toPath: string,
   toMeta: Record<string, any>,
-  authState: MockAuthState
-): string | null {
-  const requiresAuth = toMeta.requiresAuth !== false
+  authState: MockAuthState,
+  fullPath = toPath,
+): GuardRedirect {
+  let requiresAuth = toMeta.requiresAuth !== false
   const requiresAdmin = toMeta.requiresAdmin === true
+  const modelMarketplacePublic = authState.modelMarketplacePublicEnabled === true
+
+  if (toPath === '/models') {
+    requiresAuth = !modelMarketplacePublic
+  }
 
   if (toPath === '/setup' && authState.setupNeedsSetup === false) {
     return resolveCompletedSetupRedirectPath(authState.isAuthenticated, authState.isAdmin)
@@ -96,6 +112,7 @@ function simulateGuard(
       const isAllowed =
         allowed.some((path) => toPath === path || toPath.startsWith(path)) ||
         callbackPaths.includes(toPath) ||
+        (toPath === '/models' && modelMarketplacePublic) ||
         (authState.hasPendingAuthSession && pendingAuthPaths.includes(toPath))
       if (!isAllowed) {
         return '/login'
@@ -106,7 +123,10 @@ function simulateGuard(
 
   // 需要认证但未登录
   if (!authState.isAuthenticated) {
-    return '/login'
+    return {
+      path: '/login',
+      query: { redirect: fullPath },
+    }
   }
 
   // 需要管理员但不是管理员
@@ -154,6 +174,18 @@ function simulateGuard(
   return null // 允许通过
 }
 
+function simulateGuard(
+  toPath: string,
+  toMeta: Record<string, any>,
+  authState: MockAuthState,
+): string | null {
+  const result = simulateGuardResult(toPath, toMeta, authState)
+  if (typeof result === 'string' || result === null) {
+    return result
+  }
+  return result.path
+}
+
 describe('路由守卫逻辑', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -188,6 +220,30 @@ describe('路由守卫逻辑', () => {
     it('访问 /home 公开页面允许通过', () => {
       const redirect = simulateGuard('/home', { requiresAuth: false }, authState)
       expect(redirect).toBeNull()
+    })
+
+    it('访问公开 /models 页面允许通过', () => {
+      const redirect = simulateGuard('/models', {}, {
+        ...authState,
+        modelMarketplacePublicEnabled: true,
+      })
+      expect(redirect).toBeNull()
+    })
+
+    it('访问未公开 /models 页面重定向到 /login', () => {
+      const redirect = simulateGuard('/models', {}, {
+        ...authState,
+        modelMarketplacePublicEnabled: false,
+      })
+      expect(redirect).toBe('/login')
+    })
+
+    it('游客从模型广场点击购买后访问 /purchase?plan=8 会被拦到登录页并保留 redirect', () => {
+      const redirect = simulateGuardResult('/purchase', {}, authState, '/purchase?plan=8')
+      expect(redirect).toEqual({
+        path: '/login',
+        query: { redirect: '/purchase?plan=8' },
+      })
     })
   })
 
@@ -518,6 +574,32 @@ describe('路由守卫逻辑', () => {
       expect(redirect).toBeNull()
     })
 
+    it('unauthenticated: public /models is allowed in backend mode', () => {
+      const authState: MockAuthState = {
+        isAuthenticated: false,
+        isAdmin: false,
+        isSimpleMode: false,
+        backendModeEnabled: true,
+        hasPendingAuthSession: false,
+        modelMarketplacePublicEnabled: true,
+      }
+      const redirect = simulateGuard('/models', {}, authState)
+      expect(redirect).toBeNull()
+    })
+
+    it('unauthenticated: private /models still redirects in backend mode', () => {
+      const authState: MockAuthState = {
+        isAuthenticated: false,
+        isAdmin: false,
+        isSimpleMode: false,
+        backendModeEnabled: true,
+        hasPendingAuthSession: false,
+        modelMarketplacePublicEnabled: false,
+      }
+      const redirect = simulateGuard('/models', {}, authState)
+      expect(redirect).toBe('/login')
+    })
+
     it('unauthenticated: /email-verify is blocked without a pending auth session', () => {
       const authState: MockAuthState = {
         isAuthenticated: false,
@@ -529,5 +611,42 @@ describe('路由守卫逻辑', () => {
       const redirect = simulateGuard('/email-verify', { requiresAuth: false }, authState)
       expect(redirect).toBe('/login')
     })
+  })
+})
+
+describe('模型广场公开设置补拉', () => {
+  it('首次直达 /models 且开关未知时，会先补拉公开设置', async () => {
+    const fetchPublicSettings = vi.fn().mockResolvedValue(undefined)
+
+    await ensureModelMarketplacePublicSettingLoaded('/models', {
+      cachedPublicSettings: null,
+      fetchPublicSettings,
+    })
+
+    expect(fetchPublicSettings).toHaveBeenCalledWith(true)
+  })
+
+  it('非 /models 路由不会触发公开设置补拉', async () => {
+    const fetchPublicSettings = vi.fn().mockResolvedValue(undefined)
+
+    await ensureModelMarketplacePublicSettingLoaded('/dashboard', {
+      cachedPublicSettings: null,
+      fetchPublicSettings,
+    })
+
+    expect(fetchPublicSettings).not.toHaveBeenCalled()
+  })
+
+  it('开关已知时不会重复补拉公开设置', async () => {
+    const fetchPublicSettings = vi.fn().mockResolvedValue(undefined)
+
+    await ensureModelMarketplacePublicSettingLoaded('/models', {
+      cachedPublicSettings: {
+        model_marketplace_public_enabled: true,
+      },
+      fetchPublicSettings,
+    })
+
+    expect(fetchPublicSettings).not.toHaveBeenCalled()
   })
 })

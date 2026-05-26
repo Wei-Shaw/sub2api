@@ -5093,7 +5093,26 @@
                   {{ t('admin.settings.features.availableChannels.enabledHint') }}
                 </p>
               </div>
-              <Toggle v-model="form.available_channels_enabled" />
+              <Toggle
+                v-model="form.available_channels_enabled"
+                data-testid="settings-available-channels-enabled"
+              />
+            </div>
+
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.features.availableChannels.marketplacePublic') }}
+                </label>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.features.availableChannels.marketplacePublicHint') }}
+                </p>
+              </div>
+              <Toggle
+                v-model="form.model_marketplace_public_enabled"
+                :disabled="!form.available_channels_enabled"
+                data-testid="settings-model-marketplace-public-enabled"
+              />
             </div>
           </div>
         </div>
@@ -7041,6 +7060,7 @@ const form = reactive<SettingsForm>({
   channel_monitor_default_interval_seconds: 60,
   // Available Channels feature switch
   available_channels_enabled: false,
+  model_marketplace_public_enabled: false,
   // Affiliate (邀请返利) feature switch
   affiliate_enabled: false,
 });
@@ -8180,6 +8200,9 @@ async function saveSettings() {
         Number(form.channel_monitor_default_interval_seconds) || 60,
       // Available Channels feature switch
       available_channels_enabled: form.available_channels_enabled,
+      model_marketplace_public_enabled:
+        form.available_channels_enabled &&
+        form.model_marketplace_public_enabled,
       // Affiliate (邀请返利) feature switch
       affiliate_enabled: form.affiliate_enabled,
     };
@@ -9446,6 +9469,15 @@ async function submitAffiliateBatchModal() {
 // as enabled. The form starts disabled and is updated to the server's value
 // after the settings load — so this fires either when the saved value is
 // truthy on first paint, or when the admin manually toggles it on.
+watch(
+  () => form.available_channels_enabled,
+  (enabled) => {
+    if (!enabled && form.model_marketplace_public_enabled) {
+      form.model_marketplace_public_enabled = false;
+    }
+  },
+);
+
 watch(
   () => form.affiliate_enabled,
   (enabled, prev) => {

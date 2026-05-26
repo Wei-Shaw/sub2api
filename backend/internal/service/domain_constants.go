@@ -337,6 +337,11 @@ const (
 	// sidebar entry is hidden. Defaults to false (opt-in feature).
 	SettingKeyAvailableChannelsEnabled = "available_channels_enabled"
 
+	// SettingKeyModelMarketplacePublicEnabled controls whether the model marketplace
+	// may be viewed without authentication. The available_channels_enabled switch
+	// still acts as the overall feature gate.
+	SettingKeyModelMarketplacePublicEnabled = "model_marketplace_public_enabled"
+
 	// =========================
 	// Overload Cooldown (529)
 	// =========================

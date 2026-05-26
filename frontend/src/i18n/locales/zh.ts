@@ -360,6 +360,7 @@ export default {
     users: '用户管理',
     groups: '分组管理',
     channels: '渠道管理',
+    modelMarketplace: '模型广场',
     availableChannels: '可用渠道',
     subscriptions: '订阅管理',
     accounts: '账号管理',
@@ -1026,6 +1027,54 @@ export default {
       platform: '平台',
       groups: '我可访问的分组',
       supportedModels: '支持模型'
+    },
+    pricing: {
+      billingMode: '计费模式',
+      billingModeToken: '按 Token',
+      billingModePerRequest: '按次',
+      billingModeImage: '按图片',
+      inputPrice: '输入',
+      outputPrice: '输出',
+      cacheWritePrice: '缓存写入',
+      cacheReadPrice: '缓存读取',
+      imageOutputPrice: '图片输出',
+      perRequestPrice: '每次请求',
+      intervals: '阶梯定价',
+      unitPerMillion: '/ 1M token',
+      unitPerRequest: '/ 次'
+    }
+  },
+
+  modelMarketplace: {
+    title: '模型广场',
+    description: '按模型查看平台、渠道、分组和订阅套餐价格',
+    searchPlaceholder: '搜索模型、渠道、分组或套餐...',
+    empty: '暂无可展示的模型',
+    noPricing: '未配置定价',
+    channelsCount: '渠道',
+    buyPlan: '购买 {name}',
+    columns: {
+      model: '模型',
+      platform: '平台',
+      access: '访问状态',
+      channels: '渠道',
+      groups: '分组',
+      pricing: '定价'
+    },
+    filters: {
+      allPlatforms: '全部平台',
+      allAccess: '全部状态',
+      allBillingModes: '全部计费模式'
+    },
+    access: {
+      available: '可直接使用',
+      subscribed: '已订阅',
+      purchasable: '可购买'
+    },
+    billingMode: {
+      token: '按 Token',
+      perRequest: '按次',
+      image: '按图片'
     },
     pricing: {
       billingMode: '计费模式',
@@ -5388,6 +5437,8 @@ export default {
           configureLink: '前往 渠道管理 > 渠道定价 配置模型价格',
           enabled: '启用可用渠道',
           enabledHint: '关闭后用户端侧边栏入口隐藏，接口返回空数组。',
+          marketplacePublic: '允许游客访问模型广场',
+          marketplacePublicHint: '开启后，未登录用户也可访问 /models 查看公开模型、渠道与可售套餐。',
         },
         riskControl: {
           title: '风控中心',
