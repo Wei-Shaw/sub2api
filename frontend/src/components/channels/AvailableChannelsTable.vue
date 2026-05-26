@@ -124,19 +124,21 @@
 
           <!-- 支持模型 -->
           <td class="align-top px-4 py-3">
-            <div class="flex flex-wrap gap-1">
-              <SupportedModelChip
-                v-for="m in section.supported_models"
-                :key="`${section.platform}-${m.name}`"
-                :model="m"
-                :pricing-key-prefix="pricingKeyPrefix"
-                :no-pricing-label="noPricingLabel"
-                :show-platform="false"
-                :platform-hint="section.platform"
-              />
-              <span v-if="section.supported_models.length === 0" class="text-xs text-gray-400">
-                {{ noModelsLabel }}
-              </span>
+            <div class="max-h-40 overflow-y-auto pr-1">
+              <div class="flex flex-wrap gap-1">
+                <SupportedModelChip
+                  v-for="m in section.supported_models"
+                  :key="`${section.platform}-${m.name}`"
+                  :model="m"
+                  :pricing-key-prefix="pricingKeyPrefix"
+                  :no-pricing-label="noPricingLabel"
+                  :show-platform="false"
+                  :platform-hint="section.platform"
+                />
+                <span v-if="section.supported_models.length === 0" class="text-xs text-gray-400">
+                  {{ noModelsLabel }}
+                </span>
+              </div>
             </div>
           </td>
         </tr>
