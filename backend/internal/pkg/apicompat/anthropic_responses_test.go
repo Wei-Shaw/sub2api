@@ -517,6 +517,33 @@ REDACTED, state)
 	assert.Nil(t, FinalizeResponsesAnthropicStream(state))
 REDACTED
 
+func TestResponsesEventToAnthropicEvents_TopLevelTerminalUsage(t *testing.T) {
+	state := NewResponsesEventToAnthropicState()
+	state.Model = "gpt-4o"
+
+	events := ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type: "response.completed",
+		Response: &ResponsesResponse{
+			Status: "completed",
+	REDACTED,
+		Usage: &ResponsesUsage{
+			InputTokens:  20,
+			OutputTokens: 6,
+			InputTokensDetails: &ResponsesInputTokensDetails{
+				CachedTokens: 5,
+		REDACTED,
+	REDACTED,
+REDACTED, state)
+
+	require.Len(t, events, 2)
+	assert.Equal(t, "message_delta", events[0].Type)
+	require.NotNil(t, events[0].Usage)
+	assert.Equal(t, 15, events[0].Usage.InputTokens)
+	assert.Equal(t, 5, events[0].Usage.CacheReadInputTokens)
+	assert.Equal(t, 6, events[0].Usage.OutputTokens)
+	assert.Equal(t, "message_stop", events[1].Type)
+REDACTED
+
 func TestResponsesEventToAnthropicEvents_ResponseDoneIncomplete(t *testing.T) {
 	state := NewResponsesEventToAnthropicState()
 	state.Model = "gpt-4o"

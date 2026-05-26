@@ -328,7 +328,6 @@ REDACTED
 		"gpt-5.5",
 		"gpt-5.5",
 		"gpt-5.5",
-		false,
 		time.Now(),
 		openAISilentRefusalMinRequestBodyBytes,
 	)
