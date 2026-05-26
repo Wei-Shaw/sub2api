@@ -338,6 +338,9 @@ REDACTED
 	select {
 	case serverErr := <-serverErrCh:
 		require.Error(t, serverErr)
+		var failoverErr *UpstreamFailoverError
+		require.ErrorAs(t, serverErr, &failoverErr)
+		require.Equal(t, http.StatusTooManyRequests, failoverErr.StatusCode)
 		require.Len(t, repo.rateLimitCalls, 1)
 		require.WithinDuration(t, time.Unix(resetAt, 0), repo.rateLimitCalls[0], 2*time.Second)
 	case <-time.After(5 * time.Second):
