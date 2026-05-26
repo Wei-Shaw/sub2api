@@ -153,7 +153,7 @@ REDACTED
 
 // HandleUpstreamError 处理上游错误响应，标记账号状态
 // 返回是否应该停止该账号的调度
-func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte) (shouldDisable bool) {
+func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte, requestedModel ...string) (shouldDisable bool) {
 	customErrorCodesEnabled := account.IsCustomErrorCodesEnabled()
 
 	// 池模式默认不标记本地账号状态；仅当用户显式配置自定义错误码时按本地策略处理。
@@ -167,6 +167,10 @@ REDACTED
 	if !account.ShouldHandleErrorCode(statusCode) {
 		slog.Info("account_error_code_skipped", "account_id", account.ID, "status_code", statusCode)
 		return false
+REDACTED
+
+	if len(requestedModel) > 0 && s.HandleUpstreamModelNotFound(ctx, account, requestedModel[0], statusCode, responseBody) {
+		return true
 REDACTED
 
 	// 先尝试临时不可调度规则（401除外）
@@ -1616,8 +1620,50 @@ REDACTED
 	return s.tryTempUnschedulable(ctx, account, statusCode, responseBody)
 REDACTED
 
+const upstreamModelNotFoundCooldown = 30 * time.Minute
+const upstreamModelNotFoundReason = "upstream_404_model_not_found"
 const tempUnschedBodyMaxBytes = 64 << 10
 const tempUnschedMessageMaxBytes = 2048
+
+func (s *RateLimitService) HandleUpstreamModelNotFound(ctx context.Context, account *Account, requestedModel string, statusCode int, responseBody []byte) bool {
+	if s == nil || account == nil || s.accountRepo == nil {
+		return false
+REDACTED
+	if !account.ShouldHandleErrorCode(statusCode) {
+		return false
+REDACTED
+	if !isUpstreamModelNotFoundError(statusCode, responseBody) {
+		return false
+REDACTED
+	modelKey := modelRateLimitKeyForUpstreamModelNotFound(ctx, account, requestedModel)
+	if modelKey == "" {
+		return false
+REDACTED
+	resetAt := time.Now().Add(upstreamModelNotFoundCooldown)
+	if err := s.accountRepo.SetModelRateLimit(ctx, account.ID, modelKey, resetAt, upstreamModelNotFoundReason); err != nil {
+		slog.Warn("upstream_model_not_found_set_model_rate_limit_failed", "account_id", account.ID, "model", modelKey, "error", err)
+		return true
+REDACTED
+	slog.Info("upstream_model_not_found_model_rate_limited", "account_id", account.ID, "model", modelKey, "reset_at", resetAt)
+	return true
+REDACTED
+
+func modelRateLimitKeyForUpstreamModelNotFound(ctx context.Context, account *Account, requestedModel string) string {
+	modelKey := strings.TrimSpace(requestedModel)
+	if account == nil || modelKey == "" {
+		return modelKey
+REDACTED
+	if account.Platform == PlatformAntigravity {
+		if resolved := strings.TrimSpace(resolveFinalAntigravityModelKey(ctx, account, modelKey)); resolved != "" {
+			return resolved
+	REDACTED
+		return modelKey
+REDACTED
+	if mapped := strings.TrimSpace(account.GetMappedModel(modelKey)); mapped != "" {
+		return mapped
+REDACTED
+	return modelKey
+REDACTED
 
 func (s *RateLimitService) tryTempUnschedulable(ctx context.Context, account *Account, statusCode int, responseBody []byte) bool {
 	if account == nil {
