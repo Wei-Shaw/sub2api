@@ -13,6 +13,8 @@ import type {
   WindowStats,
   ClaudeModel,
   AccountUsageStatsResponse,
+  ModelStat,
+  TrendDataPoint,
   TempUnschedulableStatus,
   AdminDataPayload,
   AdminDataImportResult,
@@ -21,6 +23,22 @@ import type {
   CheckMixedChannelRequest,
   CheckMixedChannelResponse
 } from '@/types'
+
+export interface UsageViewerSummaryParams {
+  start_date?: string
+  end_date?: string
+  granularity?: 'day' | 'hour'
+  model_source?: 'requested' | 'upstream' | 'mapping'
+  timezone?: string
+}
+
+export interface UsageViewerSummaryResponse {
+  models: ModelStat[]
+  trend: TrendDataPoint[]
+  start_date: string
+  end_date: string
+  granularity: 'day' | 'hour'
+}
 
 /**
  * List all accounts with pagination
@@ -426,6 +444,16 @@ export async function getBatchTodayStats(accountIds: number[]): Promise<BatchTod
   return data
 }
 
+export async function getUsageViewerSummary(
+  params: UsageViewerSummaryParams
+): Promise<UsageViewerSummaryResponse> {
+  const { data } = await apiClient.get<UsageViewerSummaryResponse>(
+    '/admin/accounts/usage-viewer-summary',
+    { params }
+  )
+  return data
+}
+
 /**
  * Set account schedulable status
  * @param id - Account ID
@@ -670,6 +698,7 @@ export const accountsAPI = {
   getUsage,
   getTodayStats,
   getBatchTodayStats,
+  getUsageViewerSummary,
   clearRateLimit,
   recoverState,
   resetAccountQuota,

@@ -41,6 +41,8 @@ type UsageLogRepository interface {
 
 	GetAccountWindowStats(ctx context.Context, accountID int64, startTime time.Time) (*usagestats.AccountStats, error)
 	GetAccountTodayStats(ctx context.Context, accountID int64) (*usagestats.AccountStats, error)
+	GetUsageTrendForAccounts(ctx context.Context, accountIDs []int64, startTime, endTime time.Time, granularity string) ([]usagestats.TrendDataPoint, error)
+	GetModelStatsForAccounts(ctx context.Context, accountIDs []int64, startTime, endTime time.Time, source string) ([]usagestats.ModelStat, error)
 
 	// Admin dashboard stats
 	GetDashboardStats(ctx context.Context) (*usagestats.DashboardStats, error)

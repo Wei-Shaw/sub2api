@@ -13,6 +13,7 @@ var adminUsageViewerPathRules = []struct {
 	path   *regexp.Regexp
 }{
 	{method: http.MethodGet, path: regexp.MustCompile(`^/api/v1/admin/accounts$`)},
+	{method: http.MethodGet, path: regexp.MustCompile(`^/api/v1/admin/accounts/usage-viewer-summary$`)},
 	{method: http.MethodGet, path: regexp.MustCompile(`^/api/v1/admin/accounts/[0-9]+$`)},
 	{method: http.MethodGet, path: regexp.MustCompile(`^/api/v1/admin/accounts/[0-9]+/usage$`)},
 	{method: http.MethodGet, path: regexp.MustCompile(`^/api/v1/admin/accounts/[0-9]+/today-stats$`)},

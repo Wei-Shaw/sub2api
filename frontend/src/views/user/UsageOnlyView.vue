@@ -9,7 +9,7 @@
       </header>
 
       <UsageOnlyAccountsPanel />
-      <UsageContent without-header />
+      <UsageOnlySummaryCharts />
     </div>
   </main>
 </template>
@@ -20,8 +20,8 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import Icon from '@/components/icons/Icon.vue'
-import UsageContent from './UsageContent.vue'
 import UsageOnlyAccountsPanel from './UsageOnlyAccountsPanel.vue'
+import UsageOnlySummaryCharts from './UsageOnlySummaryCharts.vue'
 
 const router = useRouter()
 const { t } = useI18n()

@@ -24,6 +24,7 @@ func TestAdminUsageViewerScope(t *testing.T) {
 	}{
 		{name: "admin_allows_any_admin_path", role: service.RoleAdmin, method: http.MethodDelete, path: "/api/v1/admin/accounts/1", wantStatus: http.StatusOK},
 		{name: "usage_viewer_allows_account_list", role: service.RoleUsageViewer, method: http.MethodGet, path: "/api/v1/admin/accounts", wantStatus: http.StatusOK},
+		{name: "usage_viewer_allows_account_summary", role: service.RoleUsageViewer, method: http.MethodGet, path: "/api/v1/admin/accounts/usage-viewer-summary", wantStatus: http.StatusOK},
 		{name: "usage_viewer_allows_account_usage", role: service.RoleUsageViewer, method: http.MethodGet, path: "/api/v1/admin/accounts/123/usage", wantStatus: http.StatusOK},
 		{name: "usage_viewer_allows_batch_today_stats", role: service.RoleUsageViewer, method: http.MethodPost, path: "/api/v1/admin/accounts/today-stats/batch", wantStatus: http.StatusOK},
 		{name: "usage_viewer_rejects_account_update", role: service.RoleUsageViewer, method: http.MethodPut, path: "/api/v1/admin/accounts/123", wantStatus: http.StatusForbidden},
