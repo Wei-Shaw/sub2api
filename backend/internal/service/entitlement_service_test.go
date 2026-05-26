@@ -2,11 +2,13 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"testing"
 	"time"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"github.com/stretchr/testify/require"
@@ -238,30 +240,49 @@ func TestEntitlementService_GetUserEntitlements_AttachesCreditQuotaForBalanceGro
 	require.NotEmpty(t, item.CreditQuota.AccuracyNotes)
 }
 
-func TestEntitlementService_GetUserEntitlements_DoesNotAttachCreditQuotaForSubscriptionGroup(t *testing.T) {
-	now := time.Now()
-	later := now.Add(30 * 24 * time.Hour)
+func TestEntitlementService_GetUserEntitlements_AttachesSubscriptionCreditQuotaBuckets(t *testing.T) {
+	windowStart := time.Date(2026, 5, 26, 0, 0, 0, 0, time.UTC)
+	later := windowStart.Add(30 * 24 * time.Hour)
 	subscriptionGroupID := int64(8)
+	dailyLimit := 1.0
+	weeklyLimit := 7.0
+	monthlyLimit := 30.0
+	rateMultiplier := 0.5
+	tokenPricePerMillion := 2.0
 	svc := NewEntitlementService(
 		&entitlementUserRepoStub{users: map[int64]*User{42: {ID: 42, Balance: 0}}},
-		&entitlementGroupRepoStub{groups: map[int64]*Group{8: {ID: 8, Name: "OpenAI-Subscription", SubscriptionType: SubscriptionTypeSubscription, RateMultiplier: 1}}},
+		&entitlementGroupRepoStub{groups: map[int64]*Group{8: {ID: 8, Name: "OpenAI-Subscription", SubscriptionType: SubscriptionTypeSubscription, RateMultiplier: rateMultiplier, TokenPricePerMillion: &tokenPricePerMillion, DailyLimitUSD: &dailyLimit, WeeklyLimitUSD: &weeklyLimit, MonthlyLimitUSD: &monthlyLimit}}},
 		&entitlementAPIKeyUpdaterStub{},
 		&entitlementAPIKeyRepoStub{keys: []APIKey{{ID: 100, UserID: 42, Status: StatusActive, GroupID: &subscriptionGroupID}}},
-		&entitlementUserSubRepoStub{subs: []UserSubscription{{ID: 9, UserID: 42, GroupID: subscriptionGroupID, Status: StatusActive, StartsAt: now, ExpiresAt: later}}},
+		&entitlementUserSubRepoStub{subs: []UserSubscription{{ID: 9, UserID: 42, GroupID: subscriptionGroupID, Status: StatusActive, StartsAt: windowStart, ExpiresAt: later, DailyWindowStart: &windowStart, WeeklyWindowStart: &windowStart, MonthlyWindowStart: &windowStart, DailyUsageUSD: 0.25, WeeklyUsageUSD: 2, MonthlyUsageUSD: 10}}},
 	)
-	svc.SetUsageRepository(&entitlementUsageRepoStub{summary: &usagestats.CreditUsageSummary{
-		UserID:          42,
-		CreditUnitScale: 1,
-		GroupEstimates: []usagestats.CreditUsageGroupEstimate{
-			{GroupID: subscriptionGroupID, PurchasedCredits: 999, RateMultiplier: 1},
-		},
-	}})
 
 	state, err := svc.GetUserEntitlements(context.Background(), 42)
 	require.NoError(t, err)
 	require.Len(t, state.Entitlements, 1)
-	require.Equal(t, EntitlementModeSubscription, state.Entitlements[0].Mode)
-	require.Nil(t, state.Entitlements[0].CreditQuota, "subscription groups must not carry credit_quota; they use USD counters")
+	item := state.Entitlements[0]
+	require.Equal(t, EntitlementModeSubscription, item.Mode)
+	require.NotNil(t, item.CreditQuota)
+	require.NotNil(t, item.CreditQuota.Daily)
+	require.NotNil(t, item.CreditQuota.Weekly)
+	require.NotNil(t, item.CreditQuota.Monthly)
+	require.Equal(t, 250000.0, item.CreditQuota.Daily.UsedCredits)
+	require.Equal(t, 1000000.0, item.CreditQuota.Daily.TotalCredits)
+	require.Equal(t, 750000.0, item.CreditQuota.Daily.RemainingCredits)
+	require.Equal(t, windowStart.Add(24*time.Hour), *item.CreditQuota.Daily.ResetAt)
+	require.Equal(t, 2000000.0, item.CreditQuota.Weekly.UsedCredits)
+	require.Equal(t, 7000000.0, item.CreditQuota.Weekly.TotalCredits)
+	require.Equal(t, 5000000.0, item.CreditQuota.Weekly.RemainingCredits)
+	require.Equal(t, windowStart.Add(7*24*time.Hour), *item.CreditQuota.Weekly.ResetAt)
+	require.Equal(t, 10000000.0, item.CreditQuota.Monthly.UsedCredits)
+	require.Equal(t, 30000000.0, item.CreditQuota.Monthly.TotalCredits)
+	require.Equal(t, 20000000.0, item.CreditQuota.Monthly.RemainingCredits)
+	require.Equal(t, windowStart.Add(30*24*time.Hour), *item.CreditQuota.Monthly.ResetAt)
+
+	encoded, err := json.Marshal(item.CreditQuota)
+	require.NoError(t, err)
+	require.Contains(t, string(encoded), `"total_credits"`)
+	require.NotContains(t, string(encoded), `"purchased_credits"`, "subscription quota must not reuse balance purchased_credits shape")
 }
 
 func TestEntitlementService_GetUserEntitlements_UsageRepoErrorDoesNotFailResponse(t *testing.T) {
@@ -382,6 +403,34 @@ func TestEntitlementService_AutoSwitchEntitlement_CurrentKeyExhaustedUsesAlterna
 	require.Equal(t, int64(101), result.Target.APIKeyID)
 	require.Equal(t, balanceGroupID, result.Target.GroupID)
 	require.Zero(t, updater.updatedID, "alternate key is already bound to target group; no group mutation needed")
+}
+
+func TestEntitlementService_AutoSwitchEntitlement_NoBindableBalanceGroupReturnsUnassignedDiagnostics(t *testing.T) {
+	windowStart := time.Date(2026, 5, 26, 0, 0, 0, 0, time.UTC)
+	subscriptionGroupID := int64(8)
+	keyRepo := &entitlementAPIKeyRepoStub{keys: []APIKey{{ID: 100, UserID: 42, Key: "sk-sub", Status: StatusActive, GroupID: &subscriptionGroupID}}}
+	svc := NewEntitlementService(
+		&entitlementUserRepoStub{users: map[int64]*User{42: {ID: 42, Balance: 12.5}}},
+		&entitlementGroupRepoStub{groups: map[int64]*Group{8: {ID: 8, Name: "OpenAI Subscription", Platform: PlatformOpenAI, Status: StatusActive, SubscriptionType: SubscriptionTypeSubscription, SupportedModelScopes: []string{"openai"}}}},
+		&entitlementAPIKeyUpdaterStub{keys: keyRepo},
+		keyRepo,
+		&entitlementUserSubRepoStub{subs: []UserSubscription{{ID: 7, UserID: 42, GroupID: subscriptionGroupID, Status: StatusActive, StartsAt: windowStart, ExpiresAt: windowStart.Add(24 * time.Hour), DailyUsageUSD: 1.1}}},
+	)
+	svc.SetUsageRepository(&entitlementUsageRepoStub{summary: &usagestats.CreditUsageSummary{
+		UserID:                          42,
+		BalanceLedgerAmount:             12.5,
+		UnassignedPurchasedLedgerAmount: 12.5,
+		GroupEstimates:                  []usagestats.CreditUsageGroupEstimate{},
+	}})
+
+	_, err := svc.AutoSwitchEntitlement(context.Background(), 42, AutoSwitchEntitlementRequest{Reason: "subscription_limit_exceeded", ErrorCode: "USAGE_LIMIT_EXCEEDED", CurrentAPIKeyID: &[]int64{100}[0], CurrentGroupID: &[]int64{subscriptionGroupID}[0], ProviderID: "v-claw-openai", AllowAPIKeyChange: true})
+	require.ErrorIs(t, err, ErrEntitlementAutoSwitchNotAvailable)
+	require.Equal(t, "no_bindable_balance_group", AutoSwitchUnavailableReason(err))
+	appErr := infraerrors.FromError(err)
+	require.NotNil(t, appErr)
+	require.Equal(t, "true", appErr.Metadata["unassigned_balance"])
+	require.Equal(t, "12.5", appErr.Metadata["unassigned_purchased_ledger_amount"])
+	require.Equal(t, "choose_credit_package_or_contact_admin", appErr.Metadata["action"])
 }
 
 func TestEntitlementService_AutoSwitchEntitlement_NoCandidateReturnsActionableError(t *testing.T) {

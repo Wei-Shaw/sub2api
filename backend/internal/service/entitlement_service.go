@@ -2,8 +2,10 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -43,17 +45,40 @@ type EntitlementFallback struct {
 	TargetGroup *EntitlementTargetGroup `json:"target_group,omitempty"`
 }
 
+type EntitlementCreditQuotaBucket struct {
+	UsedCredits      float64    `json:"used_credits"`
+	TotalCredits     float64    `json:"total_credits"`
+	RemainingCredits float64    `json:"remaining_credits"`
+	ResetAt          *time.Time `json:"reset_at,omitempty"`
+}
+
 type EntitlementCreditQuota struct {
-	PurchasedLedgerAmount float64  `json:"purchased_ledger_amount"`
-	PurchasedCredits      float64  `json:"purchased_credits"`
-	UsedLedgerAmount      float64  `json:"used_ledger_amount"`
-	UsedCredits           float64  `json:"used_credits"`
-	RemainingCredits      float64  `json:"remaining_credits"`
-	UsedPercent           float64  `json:"used_percent"`
-	NearLimit             bool     `json:"near_limit"`
-	CreditUnitScale       float64  `json:"credit_unit_scale"`
-	Accuracy              string   `json:"accuracy,omitempty"`
-	AccuracyNotes         []string `json:"accuracy_notes,omitempty"`
+	PurchasedLedgerAmount float64                       `json:"purchased_ledger_amount"`
+	PurchasedCredits      float64                       `json:"purchased_credits"`
+	UsedLedgerAmount      float64                       `json:"used_ledger_amount"`
+	UsedCredits           float64                       `json:"used_credits"`
+	RemainingCredits      float64                       `json:"remaining_credits"`
+	UsedPercent           float64                       `json:"used_percent"`
+	NearLimit             bool                          `json:"near_limit"`
+	CreditUnitScale       float64                       `json:"credit_unit_scale"`
+	Accuracy              string                        `json:"accuracy,omitempty"`
+	AccuracyNotes         []string                      `json:"accuracy_notes,omitempty"`
+	Daily                 *EntitlementCreditQuotaBucket `json:"daily,omitempty"`
+	Weekly                *EntitlementCreditQuotaBucket `json:"weekly,omitempty"`
+	Monthly               *EntitlementCreditQuotaBucket `json:"monthly,omitempty"`
+}
+
+func (q EntitlementCreditQuota) MarshalJSON() ([]byte, error) {
+	if q.Daily != nil || q.Weekly != nil || q.Monthly != nil {
+		type subscriptionQuota struct {
+			Daily   *EntitlementCreditQuotaBucket `json:"daily,omitempty"`
+			Weekly  *EntitlementCreditQuotaBucket `json:"weekly,omitempty"`
+			Monthly *EntitlementCreditQuotaBucket `json:"monthly,omitempty"`
+		}
+		return json.Marshal(subscriptionQuota{Daily: q.Daily, Weekly: q.Weekly, Monthly: q.Monthly})
+	}
+	type balanceQuota EntitlementCreditQuota
+	return json.Marshal(balanceQuota(q))
 }
 
 type EntitlementItem struct {
@@ -428,7 +453,7 @@ func (s *EntitlementService) AutoSwitchEntitlement(ctx context.Context, userID i
 	}
 	targets := s.buildSwitchTargets(ctx, user, keys, currentKey, items, req)
 	if len(targets) == 0 {
-		return nil, autoSwitchUnavailable(autoSwitchNoCandidateReason(currentKey, user, req))
+		return nil, s.autoSwitchUnavailableForNoTarget(ctx, userID, currentKey, user, req)
 	}
 	target := targets[0]
 	action := EntitlementSwitchActionGroup
@@ -505,6 +530,61 @@ func entitlementFallbackReason(balance float64) string {
 		return "credit_balance_available"
 	}
 	return "insufficient_balance"
+}
+
+func creditsFromUSD(usd, rateMultiplier float64, tokenPricePerMillion *float64) float64 {
+	if usd <= 0 || rateMultiplier <= 0 || tokenPricePerMillion == nil || *tokenPricePerMillion <= 0 {
+		return 0
+	}
+	return usd / rateMultiplier / *tokenPricePerMillion * 1_000_000
+}
+
+func buildEntitlementCreditQuotaBucket(usedUSD float64, limitUSD *float64, rateMultiplier float64, tokenPricePerMillion *float64, resetAt *time.Time) *EntitlementCreditQuotaBucket {
+	limit := 0.0
+	if limitUSD != nil {
+		limit = *limitUSD
+	}
+	usedCredits := creditsFromUSD(usedUSD, rateMultiplier, tokenPricePerMillion)
+	totalCredits := creditsFromUSD(limit, rateMultiplier, tokenPricePerMillion)
+	remainingCredits := totalCredits - usedCredits
+	if remainingCredits < 0 {
+		remainingCredits = 0
+	}
+	return &EntitlementCreditQuotaBucket{
+		UsedCredits:      usedCredits,
+		TotalCredits:     totalCredits,
+		RemainingCredits: remainingCredits,
+		ResetAt:          resetAt,
+	}
+}
+
+func buildSubscriptionCreditQuota(sub UserSubscription, group *Group) *EntitlementCreditQuota {
+	if group == nil || !group.IsSubscriptionType() {
+		return nil
+	}
+	return &EntitlementCreditQuota{
+		Daily: buildEntitlementCreditQuotaBucket(
+			sub.DailyUsageUSD,
+			group.DailyLimitUSD,
+			group.RateMultiplier,
+			group.TokenPricePerMillion,
+			sub.DailyResetTime(),
+		),
+		Weekly: buildEntitlementCreditQuotaBucket(
+			sub.WeeklyUsageUSD,
+			group.WeeklyLimitUSD,
+			group.RateMultiplier,
+			group.TokenPricePerMillion,
+			sub.WeeklyResetTime(),
+		),
+		Monthly: buildEntitlementCreditQuotaBucket(
+			sub.MonthlyUsageUSD,
+			group.MonthlyLimitUSD,
+			group.RateMultiplier,
+			group.TokenPricePerMillion,
+			sub.MonthlyResetTime(),
+		),
+	}
 }
 
 func providerIDForPlatform(platform string) string {
@@ -624,11 +704,35 @@ func selectAutoSwitchCurrentAPIKey(keys []APIKey, requested *int64) *APIKey {
 	return selectCurrentAPIKey(keys)
 }
 
-func autoSwitchUnavailable(reason string) error {
-	return ErrEntitlementAutoSwitchNotAvailable.WithMetadata(map[string]string{
+func autoSwitchUnavailableWithMetadata(reason string, metadata map[string]string) error {
+	md := map[string]string{
 		"reason": reason,
 		"action": autoSwitchActionForReason(reason),
-	})
+	}
+	for k, v := range metadata {
+		if v != "" {
+			md[k] = v
+		}
+	}
+	return ErrEntitlementAutoSwitchNotAvailable.WithMetadata(md)
+}
+
+func (s *EntitlementService) autoSwitchUnavailableForNoTarget(ctx context.Context, userID int64, currentKey *APIKey, user *User, req AutoSwitchEntitlementRequest) error {
+	reason := autoSwitchNoCandidateReason(currentKey, user, req)
+	metadata := map[string]string(nil)
+	if user != nil && user.Balance > 0 && s != nil && s.usageRepo != nil {
+		summary, err := s.usageRepo.GetUserCreditUsageSummary(ctx, userID)
+		if err != nil {
+			logger.LegacyPrintf("service.entitlement", "credit usage summary lookup failed for auto-switch user %d: %v", userID, err)
+		} else if summary != nil && summary.UnassignedPurchasedLedgerAmount > 0 && len(summary.GroupEstimates) == 0 {
+			reason = "no_bindable_balance_group"
+			metadata = map[string]string{
+				"unassigned_balance":                 "true",
+				"unassigned_purchased_ledger_amount": strconv.FormatFloat(summary.UnassignedPurchasedLedgerAmount, 'f', -1, 64),
+			}
+		}
+	}
+	return autoSwitchUnavailableWithMetadata(reason, metadata)
 }
 
 func AutoSwitchUnavailableReason(err error) string {
@@ -653,10 +757,14 @@ func autoSwitchNoCandidateReason(currentKey *APIKey, user *User, req AutoSwitchE
 }
 
 func autoSwitchActionForReason(reason string) string {
-	if reason == "insufficient_balance" {
+	switch reason {
+	case "insufficient_balance":
 		return "buy_credit"
+	case "no_bindable_balance_group":
+		return "choose_credit_package_or_contact_admin"
+	default:
+		return "open_settings"
 	}
-	return "open_settings"
 }
 
 func selectCurrentAPIKey(keys []APIKey) *APIKey {
@@ -722,5 +830,6 @@ func entitlementItemFromSubscription(sub UserSubscription, group *Group) Entitle
 		Switchable:           sub.IsActive(),
 		SubscriptionID:       &subID,
 		FallbackGroupID:      fallbackGroupID,
+		CreditQuota:          buildSubscriptionCreditQuota(sub, group),
 	}
 }
