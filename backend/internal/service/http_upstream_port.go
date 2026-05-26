@@ -22,3 +22,18 @@ type HTTPUpstream interface {
 	// 支持按账号绑定的数据库 profile 或内置默认 profile。
 	DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile) (*http.Response, error)
 }
+
+// HTTPUpstreamOptions carries request-class hints for upstream client selection.
+// The base HTTPUpstream interface remains small so existing tests and stubs do
+// not need to implement every optional transport profile.
+type HTTPUpstreamOptions struct {
+	// CompactResponseHeaders selects the dedicated /responses/compact HTTP client.
+	CompactResponseHeaders bool
+}
+
+// HTTPUpstreamWithOptions is implemented by upstream transports that can choose
+// a dedicated client/transport profile for special request classes.
+type HTTPUpstreamWithOptions interface {
+	DoWithOptions(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, opts HTTPUpstreamOptions) (*http.Response, error)
+	DoWithTLSOptions(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile, opts HTTPUpstreamOptions) (*http.Response, error)
+}

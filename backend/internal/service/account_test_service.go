@@ -22,6 +22,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -766,7 +767,7 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 		proxyURL = account.Proxy.URL()
 	}
 
-	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	resp, err := s.doOpenAICompactProbeUpstream(req, proxyURL, account)
 	if err != nil {
 		if s.accountRepo != nil {
 			updates := buildOpenAICompactProbeExtraUpdates(nil, nil, err, time.Now())
@@ -805,6 +806,20 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 	s.sendEvent(c, TestEvent{Type: "content", Text: "Compact probe succeeded"})
 	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 	return nil
+}
+
+func (s *AccountTestService) doOpenAICompactProbeUpstream(req *http.Request, proxyURL string, account *Account) (*http.Response, error) {
+	if account == nil {
+		return nil, errors.New("openai account is nil")
+	}
+	var profile *tlsfingerprint.Profile
+	if s.tlsFPProfileService != nil {
+		profile = s.tlsFPProfileService.ResolveTLSProfile(account)
+	}
+	if upstream, ok := s.httpUpstream.(HTTPUpstreamWithOptions); ok {
+		return upstream.DoWithTLSOptions(req, proxyURL, account.ID, account.Concurrency, profile, HTTPUpstreamOptions{CompactResponseHeaders: true})
+	}
+	return s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, profile)
 }
 
 func (s *AccountTestService) reconcileOpenAI429State(ctx context.Context, account *Account, headers http.Header, body []byte) {

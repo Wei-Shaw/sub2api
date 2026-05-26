@@ -75,6 +75,72 @@ func (s *HTTPUpstreamSuite) TestCustomResponseHeaderTimeout() {
 	require.Equal(s.T(), 7*time.Second, transport.ResponseHeaderTimeout, "ResponseHeaderTimeout mismatch")
 }
 
+func (s *HTTPUpstreamSuite) TestCompactResponseHeaderTimeoutUsesDedicatedClient() {
+	s.cfg.Gateway = config.GatewayConfig{
+		ResponseHeaderTimeout:        7,
+		CompactResponseHeaderTimeout: 19,
+	}
+	svc := s.newService()
+
+	defaultEntry := mustGetOrCreateClient(s.T(), svc, "", 42, 0)
+	compactEntry, err := svc.getClientEntryWithOptions("", 42, 0, service.HTTPUpstreamProfileDefault, service.HTTPUpstreamOptions{CompactResponseHeaders: true}, false, false)
+	require.NoError(s.T(), err)
+	require.NotSame(s.T(), defaultEntry, compactEntry, "compact should use a dedicated client")
+
+	defaultTransport, ok := defaultEntry.client.Transport.(*http.Transport)
+	require.True(s.T(), ok, "expected default *http.Transport")
+	compactTransport, ok := compactEntry.client.Transport.(*http.Transport)
+	require.True(s.T(), ok, "expected compact *http.Transport")
+	require.Equal(s.T(), 7*time.Second, defaultTransport.ResponseHeaderTimeout)
+	require.Equal(s.T(), 19*time.Second, compactTransport.ResponseHeaderTimeout)
+	require.Equal(s.T(), 2, len(svc.clients), "default and compact clients should be cached separately")
+}
+
+func (s *HTTPUpstreamSuite) TestCompactResponseHeaderTimeoutFallbackStillDedicatedClient() {
+	s.cfg.Gateway = config.GatewayConfig{ResponseHeaderTimeout: 7}
+	svc := s.newService()
+
+	defaultEntry := mustGetOrCreateClient(s.T(), svc, "", 42, 0)
+	compactEntry, err := svc.getClientEntryWithOptions("", 42, 0, service.HTTPUpstreamProfileDefault, service.HTTPUpstreamOptions{CompactResponseHeaders: true}, false, false)
+	require.NoError(s.T(), err)
+	require.NotSame(s.T(), defaultEntry, compactEntry, "compact should use a dedicated client even when timeout matches")
+
+	defaultTransport, ok := defaultEntry.client.Transport.(*http.Transport)
+	require.True(s.T(), ok, "expected default *http.Transport")
+	compactTransport, ok := compactEntry.client.Transport.(*http.Transport)
+	require.True(s.T(), ok, "expected compact *http.Transport")
+	require.Equal(s.T(), 7*time.Second, defaultTransport.ResponseHeaderTimeout)
+	require.Equal(s.T(), 7*time.Second, compactTransport.ResponseHeaderTimeout)
+	require.Equal(s.T(), 2, len(svc.clients), "default and compact clients should be cached separately")
+}
+
+func (s *HTTPUpstreamSuite) TestCompactResponseHeaderTimeoutKeepsOpenAIProfileSeparate() {
+	s.cfg.Gateway = config.GatewayConfig{
+		ResponseHeaderTimeout:        600,
+		CompactResponseHeaderTimeout: 19,
+		OpenAIHTTP2: config.GatewayOpenAIHTTP2Config{
+			Enabled: true,
+		},
+	}
+	svc := s.newService()
+
+	openAIEntry, err := svc.getClientEntry("", 42, 0, service.HTTPUpstreamProfileOpenAI, false, false)
+	require.NoError(s.T(), err)
+	compactEntry, err := svc.getClientEntryWithOptions("", 42, 0, service.HTTPUpstreamProfileOpenAI, service.HTTPUpstreamOptions{CompactResponseHeaders: true}, false, false)
+	require.NoError(s.T(), err)
+	require.NotSame(s.T(), openAIEntry, compactEntry, "compact OpenAI requests should use a dedicated client")
+	require.Equal(s.T(), upstreamProtocolModeOpenAIH2, compactEntry.protocolMode)
+
+	openAITransport, ok := openAIEntry.client.Transport.(*http.Transport)
+	require.True(s.T(), ok, "expected OpenAI *http.Transport")
+	compactTransport, ok := compactEntry.client.Transport.(*http.Transport)
+	require.True(s.T(), ok, "expected compact *http.Transport")
+	require.Equal(s.T(), time.Duration(0), openAITransport.ResponseHeaderTimeout)
+	require.Equal(s.T(), 19*time.Second, compactTransport.ResponseHeaderTimeout)
+	require.True(s.T(), compactTransport.ForceAttemptHTTP2, "compact OpenAI profile should keep HTTP/2")
+	require.Equal(s.T(), 2, len(svc.clients), "OpenAI and compact clients should be cached separately")
+}
+
 // TestGetOrCreateClient_InvalidURLReturnsError 测试无效代理 URL 返回错误
 // 验证解析失败时拒绝回退到直连模式
 func (s *HTTPUpstreamSuite) TestGetOrCreateClient_InvalidURLReturnsError() {
