@@ -3229,6 +3229,7 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
+	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI))
 
 	// 透传客户端请求头（安全白名单）。
 	allowTimeoutHeaders := s.isOpenAIPassthroughTimeoutHeadersAllowed()
@@ -3951,6 +3952,7 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
+	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI))
 
 	// Set authentication header
 	req.Header.Set("authorization", "Bearer "+token)
