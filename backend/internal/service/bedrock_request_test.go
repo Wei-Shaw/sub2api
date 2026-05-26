@@ -378,6 +378,67 @@ REDACTED)
 REDACTED)
 REDACTED
 
+func TestPrepareBedrockRequestBodyWithTokens_ContextManagementRequiresSupportedBeta(t *testing.T) {
+	modelID := "us.anthropic.claude-opus-4-6-v1"
+
+	t.Run("strips context_management when final tokens omit context-management beta", func(t *testing.T) {
+		input := `{
+			"messages":[{"role":"user","content":"hi"REDACTED],
+			"max_tokens":100,
+			"context_management":{"edits":[{"type":"clear_thinking_20251015","keep":"all"REDACTED]REDACTED
+	REDACTED`
+		betaTokens := []string{"context-1m-2025-08-07"REDACTED
+		originalTokens := append([]string(nil), betaTokens...)
+
+		result, err := PrepareBedrockRequestBodyWithTokens([]byte(input), modelID, betaTokens, false)
+	REDACTED
+
+		assert.False(t, gjson.GetBytes(result, "context_management").Exists())
+		assert.Equal(t, originalTokens, betaTokens)
+		assert.Equal(t, originalTokens, bedrockAnthropicBetaNames(result))
+REDACTED)
+
+	t.Run("leaves body without context_management otherwise intact", func(t *testing.T) {
+		input := `{"messages":[{"role":"user","content":"hi"REDACTED],"max_tokens":100REDACTED`
+
+		result, err := PrepareBedrockRequestBodyWithTokens([]byte(input), modelID, nil, false)
+	REDACTED
+
+		assert.False(t, gjson.GetBytes(result, "context_management").Exists())
+		assert.False(t, gjson.GetBytes(result, "anthropic_beta").Exists())
+		assert.Equal(t, "hi", gjson.GetBytes(result, "messages.0.content").String())
+		assert.Equal(t, int64(100), gjson.GetBytes(result, "max_tokens").Int())
+REDACTED)
+
+	t.Run("filters explicit unsupported context-management beta and strips field", func(t *testing.T) {
+		input := `{
+			"messages":[{"role":"user","content":"hi"REDACTED],
+			"max_tokens":100,
+			"context_management":{"edits":[{"type":"clear_thinking_20251015","keep":"all"REDACTED]REDACTED
+	REDACTED`
+
+		result, err := PrepareBedrockRequestBodyWithTokens(
+			[]byte(input),
+			modelID,
+			[]string{bedrockContextManagementBetaToken, "context-1m-2025-08-07"REDACTED,
+			false,
+		)
+	REDACTED
+
+		assert.False(t, gjson.GetBytes(result, "context_management").Exists())
+		assert.Equal(t, []string{"context-1m-2025-08-07"REDACTED, bedrockAnthropicBetaNames(result))
+REDACTED)
+REDACTED
+
+func bedrockAnthropicBetaNames(body []byte) []string {
+	arr := gjson.GetBytes(body, "anthropic_beta").Array()
+	names := make([]string, len(arr))
+	for i, token := range arr {
+		names[i] = token.String()
+REDACTED
+	return names
+REDACTED
+
 func TestBedrockCrossRegionPrefix(t *testing.T) {
 	tests := []struct {
 		region string
