@@ -3072,6 +3072,7 @@ export default {
         usageWindows: 'Usage Windows',
         proxy: 'Proxy',
         lastUsed: 'Last Used',
+        createdAt: 'Created',
         expiresAt: 'Expires At',
         actions: 'Actions'
       REDACTED,
