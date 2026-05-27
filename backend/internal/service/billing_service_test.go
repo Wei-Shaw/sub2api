@@ -197,6 +197,55 @@ REDACTED
 	require.InDelta(t, expectedInput+expectedOutput, cost.ActualCost, 1e-10)
 REDACTED
 
+// 回归测试 #2293：长上下文计费触发时，cache_read_tokens 也应应用 LongContextInputMultiplier。
+// 修复前：CacheReadCost = tokens * 0.25e-6 （漏乘倍率，少计费用）。
+// 修复后：CacheReadCost = tokens * 0.25e-6 * LongContextInputMultiplier(=2.0)。
+func TestCalculateCost_OpenAIGPT54LongContextAppliesMultiplierToCacheRead(t *testing.T) {
+	svc := newTestBillingService()
+
+	// InputTokens + CacheReadTokens = 1000 + 300000 = 301000 > 272000 阈值
+	tokens := UsageTokens{
+		InputTokens:     1000,
+		CacheReadTokens: 300000,
+		OutputTokens:    1000,
+REDACTED
+
+	cost, err := svc.CalculateCost("gpt-5.4-2026-03-05", tokens, 1.0)
+REDACTED
+
+	expectedInput := float64(tokens.InputTokens) * 2.5e-6 * 2.0
+	expectedOutput := float64(tokens.OutputTokens) * 15e-6 * 1.5
+	expectedCacheRead := float64(tokens.CacheReadTokens) * 0.25e-6 * 2.0
+
+	require.InDelta(t, expectedInput, cost.InputCost, 1e-10)
+	require.InDelta(t, expectedOutput, cost.OutputCost, 1e-10)
+	require.InDelta(t, expectedCacheRead, cost.CacheReadCost, 1e-10,
+		"cache_read_cost should be scaled by LongContextInputMultiplier when long-context pricing applies (issue #2293)")
+
+	expectedTotal := expectedInput + expectedOutput + expectedCacheRead
+	require.InDelta(t, expectedTotal, cost.TotalCost, 1e-10)
+	require.InDelta(t, expectedTotal, cost.ActualCost, 1e-10)
+REDACTED
+
+// 阴性测试：未触发长上下文时，cache_read_price 不应被错误地乘以倍率。
+func TestCalculateCost_OpenAIGPT54NoLongContextKeepsCacheReadAtBasePrice(t *testing.T) {
+	svc := newTestBillingService()
+
+	// InputTokens + CacheReadTokens = 1000 + 100000 = 101000 < 272000 阈值，不触发长上下文
+	tokens := UsageTokens{
+		InputTokens:     1000,
+		CacheReadTokens: 100000,
+		OutputTokens:    1000,
+REDACTED
+
+	cost, err := svc.CalculateCost("gpt-5.4-2026-03-05", tokens, 1.0)
+REDACTED
+
+	expectedCacheRead := float64(tokens.CacheReadTokens) * 0.25e-6
+	require.InDelta(t, expectedCacheRead, cost.CacheReadCost, 1e-10,
+		"cache_read_cost should remain at base price when below long-context threshold")
+REDACTED
+
 func TestGetFallbackPricing_FamilyMatching(t *testing.T) {
 	svc := newTestBillingService()
 
