@@ -2,11 +2,14 @@ package handler
 
 import (
 	"context"
+	"errors"
+	"net/http"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -122,5 +125,35 @@ func TestConcurrencyHelper_TryAcquireAccountSlot_NotAcquired(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, acquired)
 	require.Nil(t, release)
+	require.Equal(t, int32(0), atomic.LoadInt32(&cache.releaseAccountCalled))
+}
+
+func TestConcurrencyHelper_OpenAIAccountWaitStopsWhenAccountBlocked(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := newHelperTestContext(http.MethodPost, "/v1/responses")
+
+	var acquireCalls int32
+	account := &service.Account{ID: 301, Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth}
+	gateway := &service.OpenAIGatewayService{}
+	cache := &concurrencyCacheMock{
+		acquireAccountSlotFn: func(ctx context.Context, accountID int64, maxConcurrency int, requestID string) (bool, error) {
+			call := atomic.AddInt32(&acquireCalls, 1)
+			if call == 1 {
+				gateway.BlockAccountScheduling(account, time.Now().Add(time.Minute), "429")
+				return false, nil
+			}
+			return true, nil
+		},
+	}
+	helper := NewConcurrencyHelper(service.NewConcurrencyService(cache), SSEPingFormatNone, time.Second)
+	streamStarted := false
+
+	release, err := helper.AcquireOpenAIAccountSlotWithWaitTimeout(c, gateway, account, 1, time.Second, false, &streamStarted)
+
+	require.Nil(t, release)
+	var concurrencyErr *ConcurrencyError
+	require.True(t, errors.As(err, &concurrencyErr), "expected concurrency error, got %T: %v", err, err)
+	require.True(t, concurrencyErr.IsBlocked)
+	require.Equal(t, int32(1), atomic.LoadInt32(&acquireCalls))
 	require.Equal(t, int32(0), atomic.LoadInt32(&cache.releaseAccountCalled))
 }
