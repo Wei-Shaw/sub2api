@@ -26,7 +26,7 @@ def decode_jwt_payload(token: str) -> dict:
         return {}
 
 
-def convert_record(record: dict) -> dict:
+def convert_record(record: dict, prefix: str = "") -> dict:
     """Convert a single card record to the target format."""
     email = record.get("email", "")
     access_token = record.get("access_token", "")
@@ -41,7 +41,7 @@ def convert_record(record: dict) -> dict:
     plan_type = auth_claim.get("chatgpt_plan_type", "free")
 
     return {
-        "name": email,
+        "name": f"[{prefix}]{email}",
         "platform": "openai",
         "type": "oauth",
         "credentials": {
@@ -89,13 +89,14 @@ def main():
     parser = argparse.ArgumentParser(description="Convert card export TXT to sub2api JSON")
     parser.add_argument("inputs", nargs="+", help="Input TXT file(s)")
     parser.add_argument("-o", "--output", default="accounts_export.json", help="Output JSON file")
+    parser.add_argument("-p", "--prefix", default="lslscz", help="Prefix to prepend to account name")
     args = parser.parse_args()
 
     all_records = []
     for fp in args.inputs:
         all_records.extend(parse_txt_file(fp))
 
-    accounts = [convert_record(r) for r in all_records]
+    accounts = [convert_record(r, args.prefix) for r in all_records]
 
     result = {
         "exported_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.") + f"{datetime.now(timezone.utc).microsecond // 1000:03d}Z",
