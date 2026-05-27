@@ -4903,20 +4903,22 @@ REDACTED
 	if isEventStreamResponse(resp.Header) {
 		return s.handleSSEToJSON(resp, c, body, originalModel, mappedModel)
 REDACTED
+	bodyLooksLikeSSE := bytes.Contains(body, []byte("data:")) || bytes.Contains(body, []byte("event:"))
+
 	// For OAuth accounts, also fall back to a body-content heuristic because
 	// the upstream may omit the Content-Type header while still sending SSE.
 	// This heuristic is NOT applied to API-key accounts to avoid false
 	// positives on JSON responses that coincidentally contain "data:" or
 	// "event:" in their text content.
-	if account.Type == AccountTypeOAuth {
-		bodyLooksLikeSSE := bytes.Contains(body, []byte("data:")) || bytes.Contains(body, []byte("event:"))
-		if bodyLooksLikeSSE {
-			return s.handleSSEToJSON(resp, c, body, originalModel, mappedModel)
-	REDACTED
+	if account.Type == AccountTypeOAuth && bodyLooksLikeSSE {
+		return s.handleSSEToJSON(resp, c, body, originalModel, mappedModel)
 REDACTED
 
 	usageValue, usageOK := extractOpenAIUsageFromJSONBytes(body)
 	if !usageOK {
+		if bodyLooksLikeSSE {
+			return s.handleSSEToJSON(resp, c, body, originalModel, mappedModel)
+	REDACTED
 		return nil, fmt.Errorf("parse response: invalid json response")
 REDACTED
 	usage := &usageValue

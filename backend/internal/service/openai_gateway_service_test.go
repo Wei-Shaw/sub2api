@@ -2281,6 +2281,35 @@ REDACTED
 	require.NotContains(t, rec.Body.String(), "data:")
 REDACTED
 
+func TestHandleNonStreamingResponse_APIKeyFallsBackToSSEBodyWhenContentTypeIsWrong(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+
+	svc := &OpenAIGatewayService{cfg: &config.Config{REDACTEDREDACTED
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			`data: {"type":"response.output_text.delta","delta":"hel"REDACTED`,
+			`data: {"type":"response.output_text.delta","delta":"lo"REDACTED`,
+			`data: {"type":"response.completed","response":{"id":"resp_api_key_sse","object":"response","model":"gpt-5.4","status":"completed","output":[],"usage":{"input_tokens":3,"output_tokens":2,"total_tokens":5REDACTEDREDACTEDREDACTED`,
+			`data: [DONE]`,
+	REDACTED, "\n"))),
+REDACTED
+	account := &Account{ID: 1, Type: AccountTypeAPIKeyREDACTED
+
+	result, err := svc.handleNonStreamingResponse(context.Background(), resp, c, account, "gpt-5.4", "gpt-5.4")
+REDACTED
+	require.NotNil(t, result)
+	require.Equal(t, 3, result.InputTokens)
+	require.Equal(t, 2, result.OutputTokens)
+	require.NotContains(t, rec.Body.String(), "data:")
+	require.Equal(t, "resp_api_key_sse", gjson.Get(rec.Body.String(), "id").String())
+	require.Equal(t, "hello", gjson.Get(rec.Body.String(), "output.0.content.0.text").String())
+REDACTED
+
 func TestHandleSSEToJSON_ReconstructsImageGenerationOutputItemDone(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
