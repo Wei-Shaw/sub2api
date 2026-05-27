@@ -19,6 +19,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
+	"github.com/Wei-Shaw/sub2api/ent/balanceoperation"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
@@ -67,6 +68,7 @@ const (
 	TypeAnnouncementRead              = "AnnouncementRead"
 	TypeAuthIdentity                  = "AuthIdentity"
 	TypeAuthIdentityChannel           = "AuthIdentityChannel"
+	TypeBalanceOperation              = "BalanceOperation"
 	TypeChannelMonitor                = "ChannelMonitor"
 	TypeChannelMonitorDailyRollup     = "ChannelMonitorDailyRollup"
 	TypeChannelMonitorHistory         = "ChannelMonitorHistory"
@@ -8742,6 +8744,1121 @@ func (m *AuthIdentityChannelMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown AuthIdentityChannel edge %s", name)
+}
+
+// BalanceOperationMutation represents an operation that mutates the BalanceOperation nodes in the graph.
+type BalanceOperationMutation struct {
+	config
+	op                Op
+	typ               string
+	id                *int64
+	created_at        *time.Time
+	updated_at        *time.Time
+	external_op_id    *string
+	user_id           *int64
+	adduser_id        *int64
+	op_type           *string
+	amount            *float64
+	addamount         *float64
+	balance_before    *float64
+	addbalance_before *float64
+	balance_after     *float64
+	addbalance_after  *float64
+	status            *string
+	failure_reason    *string
+	note              *string
+	request_payload   *map[string]interface{}
+	clearedFields     map[string]struct{}
+	done              bool
+	oldValue          func(context.Context) (*BalanceOperation, error)
+	predicates        []predicate.BalanceOperation
+}
+
+var _ ent.Mutation = (*BalanceOperationMutation)(nil)
+
+// balanceoperationOption allows management of the mutation configuration using functional options.
+type balanceoperationOption func(*BalanceOperationMutation)
+
+// newBalanceOperationMutation creates new mutation for the BalanceOperation entity.
+func newBalanceOperationMutation(c config, op Op, opts ...balanceoperationOption) *BalanceOperationMutation {
+	m := &BalanceOperationMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeBalanceOperation,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withBalanceOperationID sets the ID field of the mutation.
+func withBalanceOperationID(id int64) balanceoperationOption {
+	return func(m *BalanceOperationMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *BalanceOperation
+		)
+		m.oldValue = func(ctx context.Context) (*BalanceOperation, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().BalanceOperation.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withBalanceOperation sets the old BalanceOperation of the mutation.
+func withBalanceOperation(node *BalanceOperation) balanceoperationOption {
+	return func(m *BalanceOperationMutation) {
+		m.oldValue = func(context.Context) (*BalanceOperation, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m BalanceOperationMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m BalanceOperationMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *BalanceOperationMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *BalanceOperationMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().BalanceOperation.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *BalanceOperationMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *BalanceOperationMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the BalanceOperation entity.
+// If the BalanceOperation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BalanceOperationMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *BalanceOperationMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *BalanceOperationMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *BalanceOperationMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the BalanceOperation entity.
+// If the BalanceOperation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BalanceOperationMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *BalanceOperationMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetExternalOpID sets the "external_op_id" field.
+func (m *BalanceOperationMutation) SetExternalOpID(s string) {
+	m.external_op_id = &s
+}
+
+// ExternalOpID returns the value of the "external_op_id" field in the mutation.
+func (m *BalanceOperationMutation) ExternalOpID() (r string, exists bool) {
+	v := m.external_op_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExternalOpID returns the old "external_op_id" field's value of the BalanceOperation entity.
+// If the BalanceOperation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BalanceOperationMutation) OldExternalOpID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExternalOpID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExternalOpID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExternalOpID: %w", err)
+	}
+	return oldValue.ExternalOpID, nil
+}
+
+// ResetExternalOpID resets all changes to the "external_op_id" field.
+func (m *BalanceOperationMutation) ResetExternalOpID() {
+	m.external_op_id = nil
+}
+
+// SetUserID sets the "user_id" field.
+func (m *BalanceOperationMutation) SetUserID(i int64) {
+	m.user_id = &i
+	m.adduser_id = nil
+}
+
+// UserID returns the value of the "user_id" field in the mutation.
+func (m *BalanceOperationMutation) UserID() (r int64, exists bool) {
+	v := m.user_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserID returns the old "user_id" field's value of the BalanceOperation entity.
+// If the BalanceOperation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BalanceOperationMutation) OldUserID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserID: %w", err)
+	}
+	return oldValue.UserID, nil
+}
+
+// AddUserID adds i to the "user_id" field.
+func (m *BalanceOperationMutation) AddUserID(i int64) {
+	if m.adduser_id != nil {
+		*m.adduser_id += i
+	} else {
+		m.adduser_id = &i
+	}
+}
+
+// AddedUserID returns the value that was added to the "user_id" field in this mutation.
+func (m *BalanceOperationMutation) AddedUserID() (r int64, exists bool) {
+	v := m.adduser_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetUserID resets all changes to the "user_id" field.
+func (m *BalanceOperationMutation) ResetUserID() {
+	m.user_id = nil
+	m.adduser_id = nil
+}
+
+// SetOpType sets the "op_type" field.
+func (m *BalanceOperationMutation) SetOpType(s string) {
+	m.op_type = &s
+}
+
+// OpType returns the value of the "op_type" field in the mutation.
+func (m *BalanceOperationMutation) OpType() (r string, exists bool) {
+	v := m.op_type
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOpType returns the old "op_type" field's value of the BalanceOperation entity.
+// If the BalanceOperation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BalanceOperationMutation) OldOpType(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOpType is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOpType requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOpType: %w", err)
+	}
+	return oldValue.OpType, nil
+}
+
+// ResetOpType resets all changes to the "op_type" field.
+func (m *BalanceOperationMutation) ResetOpType() {
+	m.op_type = nil
+}
+
+// SetAmount sets the "amount" field.
+func (m *BalanceOperationMutation) SetAmount(f float64) {
+	m.amount = &f
+	m.addamount = nil
+}
+
+// Amount returns the value of the "amount" field in the mutation.
+func (m *BalanceOperationMutation) Amount() (r float64, exists bool) {
+	v := m.amount
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAmount returns the old "amount" field's value of the BalanceOperation entity.
+// If the BalanceOperation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BalanceOperationMutation) OldAmount(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAmount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAmount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAmount: %w", err)
+	}
+	return oldValue.Amount, nil
+}
+
+// AddAmount adds f to the "amount" field.
+func (m *BalanceOperationMutation) AddAmount(f float64) {
+	if m.addamount != nil {
+		*m.addamount += f
+	} else {
+		m.addamount = &f
+	}
+}
+
+// AddedAmount returns the value that was added to the "amount" field in this mutation.
+func (m *BalanceOperationMutation) AddedAmount() (r float64, exists bool) {
+	v := m.addamount
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAmount resets all changes to the "amount" field.
+func (m *BalanceOperationMutation) ResetAmount() {
+	m.amount = nil
+	m.addamount = nil
+}
+
+// SetBalanceBefore sets the "balance_before" field.
+func (m *BalanceOperationMutation) SetBalanceBefore(f float64) {
+	m.balance_before = &f
+	m.addbalance_before = nil
+}
+
+// BalanceBefore returns the value of the "balance_before" field in the mutation.
+func (m *BalanceOperationMutation) BalanceBefore() (r float64, exists bool) {
+	v := m.balance_before
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBalanceBefore returns the old "balance_before" field's value of the BalanceOperation entity.
+// If the BalanceOperation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BalanceOperationMutation) OldBalanceBefore(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBalanceBefore is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBalanceBefore requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBalanceBefore: %w", err)
+	}
+	return oldValue.BalanceBefore, nil
+}
+
+// AddBalanceBefore adds f to the "balance_before" field.
+func (m *BalanceOperationMutation) AddBalanceBefore(f float64) {
+	if m.addbalance_before != nil {
+		*m.addbalance_before += f
+	} else {
+		m.addbalance_before = &f
+	}
+}
+
+// AddedBalanceBefore returns the value that was added to the "balance_before" field in this mutation.
+func (m *BalanceOperationMutation) AddedBalanceBefore() (r float64, exists bool) {
+	v := m.addbalance_before
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetBalanceBefore resets all changes to the "balance_before" field.
+func (m *BalanceOperationMutation) ResetBalanceBefore() {
+	m.balance_before = nil
+	m.addbalance_before = nil
+}
+
+// SetBalanceAfter sets the "balance_after" field.
+func (m *BalanceOperationMutation) SetBalanceAfter(f float64) {
+	m.balance_after = &f
+	m.addbalance_after = nil
+}
+
+// BalanceAfter returns the value of the "balance_after" field in the mutation.
+func (m *BalanceOperationMutation) BalanceAfter() (r float64, exists bool) {
+	v := m.balance_after
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBalanceAfter returns the old "balance_after" field's value of the BalanceOperation entity.
+// If the BalanceOperation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BalanceOperationMutation) OldBalanceAfter(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBalanceAfter is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBalanceAfter requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBalanceAfter: %w", err)
+	}
+	return oldValue.BalanceAfter, nil
+}
+
+// AddBalanceAfter adds f to the "balance_after" field.
+func (m *BalanceOperationMutation) AddBalanceAfter(f float64) {
+	if m.addbalance_after != nil {
+		*m.addbalance_after += f
+	} else {
+		m.addbalance_after = &f
+	}
+}
+
+// AddedBalanceAfter returns the value that was added to the "balance_after" field in this mutation.
+func (m *BalanceOperationMutation) AddedBalanceAfter() (r float64, exists bool) {
+	v := m.addbalance_after
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetBalanceAfter resets all changes to the "balance_after" field.
+func (m *BalanceOperationMutation) ResetBalanceAfter() {
+	m.balance_after = nil
+	m.addbalance_after = nil
+}
+
+// SetStatus sets the "status" field.
+func (m *BalanceOperationMutation) SetStatus(s string) {
+	m.status = &s
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *BalanceOperationMutation) Status() (r string, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the BalanceOperation entity.
+// If the BalanceOperation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BalanceOperationMutation) OldStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *BalanceOperationMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetFailureReason sets the "failure_reason" field.
+func (m *BalanceOperationMutation) SetFailureReason(s string) {
+	m.failure_reason = &s
+}
+
+// FailureReason returns the value of the "failure_reason" field in the mutation.
+func (m *BalanceOperationMutation) FailureReason() (r string, exists bool) {
+	v := m.failure_reason
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFailureReason returns the old "failure_reason" field's value of the BalanceOperation entity.
+// If the BalanceOperation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BalanceOperationMutation) OldFailureReason(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFailureReason is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFailureReason requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFailureReason: %w", err)
+	}
+	return oldValue.FailureReason, nil
+}
+
+// ClearFailureReason clears the value of the "failure_reason" field.
+func (m *BalanceOperationMutation) ClearFailureReason() {
+	m.failure_reason = nil
+	m.clearedFields[balanceoperation.FieldFailureReason] = struct{}{}
+}
+
+// FailureReasonCleared returns if the "failure_reason" field was cleared in this mutation.
+func (m *BalanceOperationMutation) FailureReasonCleared() bool {
+	_, ok := m.clearedFields[balanceoperation.FieldFailureReason]
+	return ok
+}
+
+// ResetFailureReason resets all changes to the "failure_reason" field.
+func (m *BalanceOperationMutation) ResetFailureReason() {
+	m.failure_reason = nil
+	delete(m.clearedFields, balanceoperation.FieldFailureReason)
+}
+
+// SetNote sets the "note" field.
+func (m *BalanceOperationMutation) SetNote(s string) {
+	m.note = &s
+}
+
+// Note returns the value of the "note" field in the mutation.
+func (m *BalanceOperationMutation) Note() (r string, exists bool) {
+	v := m.note
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldNote returns the old "note" field's value of the BalanceOperation entity.
+// If the BalanceOperation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BalanceOperationMutation) OldNote(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldNote is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldNote requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldNote: %w", err)
+	}
+	return oldValue.Note, nil
+}
+
+// ClearNote clears the value of the "note" field.
+func (m *BalanceOperationMutation) ClearNote() {
+	m.note = nil
+	m.clearedFields[balanceoperation.FieldNote] = struct{}{}
+}
+
+// NoteCleared returns if the "note" field was cleared in this mutation.
+func (m *BalanceOperationMutation) NoteCleared() bool {
+	_, ok := m.clearedFields[balanceoperation.FieldNote]
+	return ok
+}
+
+// ResetNote resets all changes to the "note" field.
+func (m *BalanceOperationMutation) ResetNote() {
+	m.note = nil
+	delete(m.clearedFields, balanceoperation.FieldNote)
+}
+
+// SetRequestPayload sets the "request_payload" field.
+func (m *BalanceOperationMutation) SetRequestPayload(value map[string]interface{}) {
+	m.request_payload = &value
+}
+
+// RequestPayload returns the value of the "request_payload" field in the mutation.
+func (m *BalanceOperationMutation) RequestPayload() (r map[string]interface{}, exists bool) {
+	v := m.request_payload
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRequestPayload returns the old "request_payload" field's value of the BalanceOperation entity.
+// If the BalanceOperation object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *BalanceOperationMutation) OldRequestPayload(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRequestPayload is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRequestPayload requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRequestPayload: %w", err)
+	}
+	return oldValue.RequestPayload, nil
+}
+
+// ClearRequestPayload clears the value of the "request_payload" field.
+func (m *BalanceOperationMutation) ClearRequestPayload() {
+	m.request_payload = nil
+	m.clearedFields[balanceoperation.FieldRequestPayload] = struct{}{}
+}
+
+// RequestPayloadCleared returns if the "request_payload" field was cleared in this mutation.
+func (m *BalanceOperationMutation) RequestPayloadCleared() bool {
+	_, ok := m.clearedFields[balanceoperation.FieldRequestPayload]
+	return ok
+}
+
+// ResetRequestPayload resets all changes to the "request_payload" field.
+func (m *BalanceOperationMutation) ResetRequestPayload() {
+	m.request_payload = nil
+	delete(m.clearedFields, balanceoperation.FieldRequestPayload)
+}
+
+// Where appends a list predicates to the BalanceOperationMutation builder.
+func (m *BalanceOperationMutation) Where(ps ...predicate.BalanceOperation) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the BalanceOperationMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *BalanceOperationMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.BalanceOperation, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *BalanceOperationMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *BalanceOperationMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (BalanceOperation).
+func (m *BalanceOperationMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *BalanceOperationMutation) Fields() []string {
+	fields := make([]string, 0, 12)
+	if m.created_at != nil {
+		fields = append(fields, balanceoperation.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, balanceoperation.FieldUpdatedAt)
+	}
+	if m.external_op_id != nil {
+		fields = append(fields, balanceoperation.FieldExternalOpID)
+	}
+	if m.user_id != nil {
+		fields = append(fields, balanceoperation.FieldUserID)
+	}
+	if m.op_type != nil {
+		fields = append(fields, balanceoperation.FieldOpType)
+	}
+	if m.amount != nil {
+		fields = append(fields, balanceoperation.FieldAmount)
+	}
+	if m.balance_before != nil {
+		fields = append(fields, balanceoperation.FieldBalanceBefore)
+	}
+	if m.balance_after != nil {
+		fields = append(fields, balanceoperation.FieldBalanceAfter)
+	}
+	if m.status != nil {
+		fields = append(fields, balanceoperation.FieldStatus)
+	}
+	if m.failure_reason != nil {
+		fields = append(fields, balanceoperation.FieldFailureReason)
+	}
+	if m.note != nil {
+		fields = append(fields, balanceoperation.FieldNote)
+	}
+	if m.request_payload != nil {
+		fields = append(fields, balanceoperation.FieldRequestPayload)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *BalanceOperationMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case balanceoperation.FieldCreatedAt:
+		return m.CreatedAt()
+	case balanceoperation.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case balanceoperation.FieldExternalOpID:
+		return m.ExternalOpID()
+	case balanceoperation.FieldUserID:
+		return m.UserID()
+	case balanceoperation.FieldOpType:
+		return m.OpType()
+	case balanceoperation.FieldAmount:
+		return m.Amount()
+	case balanceoperation.FieldBalanceBefore:
+		return m.BalanceBefore()
+	case balanceoperation.FieldBalanceAfter:
+		return m.BalanceAfter()
+	case balanceoperation.FieldStatus:
+		return m.Status()
+	case balanceoperation.FieldFailureReason:
+		return m.FailureReason()
+	case balanceoperation.FieldNote:
+		return m.Note()
+	case balanceoperation.FieldRequestPayload:
+		return m.RequestPayload()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *BalanceOperationMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case balanceoperation.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case balanceoperation.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case balanceoperation.FieldExternalOpID:
+		return m.OldExternalOpID(ctx)
+	case balanceoperation.FieldUserID:
+		return m.OldUserID(ctx)
+	case balanceoperation.FieldOpType:
+		return m.OldOpType(ctx)
+	case balanceoperation.FieldAmount:
+		return m.OldAmount(ctx)
+	case balanceoperation.FieldBalanceBefore:
+		return m.OldBalanceBefore(ctx)
+	case balanceoperation.FieldBalanceAfter:
+		return m.OldBalanceAfter(ctx)
+	case balanceoperation.FieldStatus:
+		return m.OldStatus(ctx)
+	case balanceoperation.FieldFailureReason:
+		return m.OldFailureReason(ctx)
+	case balanceoperation.FieldNote:
+		return m.OldNote(ctx)
+	case balanceoperation.FieldRequestPayload:
+		return m.OldRequestPayload(ctx)
+	}
+	return nil, fmt.Errorf("unknown BalanceOperation field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *BalanceOperationMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case balanceoperation.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case balanceoperation.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case balanceoperation.FieldExternalOpID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExternalOpID(v)
+		return nil
+	case balanceoperation.FieldUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserID(v)
+		return nil
+	case balanceoperation.FieldOpType:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOpType(v)
+		return nil
+	case balanceoperation.FieldAmount:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAmount(v)
+		return nil
+	case balanceoperation.FieldBalanceBefore:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBalanceBefore(v)
+		return nil
+	case balanceoperation.FieldBalanceAfter:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBalanceAfter(v)
+		return nil
+	case balanceoperation.FieldStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case balanceoperation.FieldFailureReason:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFailureReason(v)
+		return nil
+	case balanceoperation.FieldNote:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetNote(v)
+		return nil
+	case balanceoperation.FieldRequestPayload:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRequestPayload(v)
+		return nil
+	}
+	return fmt.Errorf("unknown BalanceOperation field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *BalanceOperationMutation) AddedFields() []string {
+	var fields []string
+	if m.adduser_id != nil {
+		fields = append(fields, balanceoperation.FieldUserID)
+	}
+	if m.addamount != nil {
+		fields = append(fields, balanceoperation.FieldAmount)
+	}
+	if m.addbalance_before != nil {
+		fields = append(fields, balanceoperation.FieldBalanceBefore)
+	}
+	if m.addbalance_after != nil {
+		fields = append(fields, balanceoperation.FieldBalanceAfter)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *BalanceOperationMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case balanceoperation.FieldUserID:
+		return m.AddedUserID()
+	case balanceoperation.FieldAmount:
+		return m.AddedAmount()
+	case balanceoperation.FieldBalanceBefore:
+		return m.AddedBalanceBefore()
+	case balanceoperation.FieldBalanceAfter:
+		return m.AddedBalanceAfter()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *BalanceOperationMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case balanceoperation.FieldUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddUserID(v)
+		return nil
+	case balanceoperation.FieldAmount:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAmount(v)
+		return nil
+	case balanceoperation.FieldBalanceBefore:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddBalanceBefore(v)
+		return nil
+	case balanceoperation.FieldBalanceAfter:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddBalanceAfter(v)
+		return nil
+	}
+	return fmt.Errorf("unknown BalanceOperation numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *BalanceOperationMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(balanceoperation.FieldFailureReason) {
+		fields = append(fields, balanceoperation.FieldFailureReason)
+	}
+	if m.FieldCleared(balanceoperation.FieldNote) {
+		fields = append(fields, balanceoperation.FieldNote)
+	}
+	if m.FieldCleared(balanceoperation.FieldRequestPayload) {
+		fields = append(fields, balanceoperation.FieldRequestPayload)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *BalanceOperationMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *BalanceOperationMutation) ClearField(name string) error {
+	switch name {
+	case balanceoperation.FieldFailureReason:
+		m.ClearFailureReason()
+		return nil
+	case balanceoperation.FieldNote:
+		m.ClearNote()
+		return nil
+	case balanceoperation.FieldRequestPayload:
+		m.ClearRequestPayload()
+		return nil
+	}
+	return fmt.Errorf("unknown BalanceOperation nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *BalanceOperationMutation) ResetField(name string) error {
+	switch name {
+	case balanceoperation.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case balanceoperation.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case balanceoperation.FieldExternalOpID:
+		m.ResetExternalOpID()
+		return nil
+	case balanceoperation.FieldUserID:
+		m.ResetUserID()
+		return nil
+	case balanceoperation.FieldOpType:
+		m.ResetOpType()
+		return nil
+	case balanceoperation.FieldAmount:
+		m.ResetAmount()
+		return nil
+	case balanceoperation.FieldBalanceBefore:
+		m.ResetBalanceBefore()
+		return nil
+	case balanceoperation.FieldBalanceAfter:
+		m.ResetBalanceAfter()
+		return nil
+	case balanceoperation.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case balanceoperation.FieldFailureReason:
+		m.ResetFailureReason()
+		return nil
+	case balanceoperation.FieldNote:
+		m.ResetNote()
+		return nil
+	case balanceoperation.FieldRequestPayload:
+		m.ResetRequestPayload()
+		return nil
+	}
+	return fmt.Errorf("unknown BalanceOperation field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *BalanceOperationMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *BalanceOperationMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *BalanceOperationMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *BalanceOperationMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *BalanceOperationMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *BalanceOperationMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *BalanceOperationMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown BalanceOperation unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *BalanceOperationMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown BalanceOperation edge %s", name)
 }
 
 // ChannelMonitorMutation represents an operation that mutates the ChannelMonitor nodes in the graph.

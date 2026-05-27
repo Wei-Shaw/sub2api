@@ -421,6 +421,40 @@ var (
 			},
 		},
 	}
+	// BalanceOperationsColumns holds the columns for the "balance_operations" table.
+	BalanceOperationsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "external_op_id", Type: field.TypeString, Unique: true, Size: 128},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "op_type", Type: field.TypeString, Size: 8},
+		{Name: "amount", Type: field.TypeFloat64, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
+		{Name: "balance_before", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
+		{Name: "balance_after", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
+		{Name: "status", Type: field.TypeString, Size: 16, Default: "pending"},
+		{Name: "failure_reason", Type: field.TypeString, Nullable: true, Size: 255},
+		{Name: "note", Type: field.TypeString, Nullable: true, Size: 255},
+		{Name: "request_payload", Type: field.TypeJSON, Nullable: true},
+	}
+	// BalanceOperationsTable holds the schema information for the "balance_operations" table.
+	BalanceOperationsTable = &schema.Table{
+		Name:       "balance_operations",
+		Columns:    BalanceOperationsColumns,
+		PrimaryKey: []*schema.Column{BalanceOperationsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "balanceoperation_user_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{BalanceOperationsColumns[4], BalanceOperationsColumns[1]},
+			},
+			{
+				Name:    "balanceoperation_status",
+				Unique:  false,
+				Columns: []*schema.Column{BalanceOperationsColumns[9]},
+			},
+		},
+	}
 	// ChannelMonitorsColumns holds the columns for the "channel_monitors" table.
 	ChannelMonitorsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1757,6 +1791,7 @@ var (
 		AnnouncementReadsTable,
 		AuthIdentitiesTable,
 		AuthIdentityChannelsTable,
+		BalanceOperationsTable,
 		ChannelMonitorsTable,
 		ChannelMonitorDailyRollupsTable,
 		ChannelMonitorHistoriesTable,
@@ -1818,6 +1853,9 @@ func init() {
 	AuthIdentityChannelsTable.ForeignKeys[0].RefTable = AuthIdentitiesTable
 	AuthIdentityChannelsTable.Annotation = &entsql.Annotation{
 		Table: "auth_identity_channels",
+	}
+	BalanceOperationsTable.Annotation = &entsql.Annotation{
+		Table: "balance_operations",
 	}
 	ChannelMonitorsTable.ForeignKeys[0].RefTable = ChannelMonitorRequestTemplatesTable
 	ChannelMonitorsTable.Annotation = &entsql.Annotation{

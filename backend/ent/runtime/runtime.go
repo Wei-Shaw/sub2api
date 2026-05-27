@@ -12,6 +12,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
+	"github.com/Wei-Shaw/sub2api/ent/balanceoperation"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
@@ -432,6 +433,65 @@ func init() {
 	authidentitychannelDescMetadata := authidentitychannelFields[6].Descriptor()
 	// authidentitychannel.DefaultMetadata holds the default value on creation for the metadata field.
 	authidentitychannel.DefaultMetadata = authidentitychannelDescMetadata.Default.(func() map[string]interface{})
+	balanceoperationMixin := schema.BalanceOperation{}.Mixin()
+	balanceoperationMixinFields0 := balanceoperationMixin[0].Fields()
+	_ = balanceoperationMixinFields0
+	balanceoperationFields := schema.BalanceOperation{}.Fields()
+	_ = balanceoperationFields
+	// balanceoperationDescCreatedAt is the schema descriptor for created_at field.
+	balanceoperationDescCreatedAt := balanceoperationMixinFields0[0].Descriptor()
+	// balanceoperation.DefaultCreatedAt holds the default value on creation for the created_at field.
+	balanceoperation.DefaultCreatedAt = balanceoperationDescCreatedAt.Default.(func() time.Time)
+	// balanceoperationDescUpdatedAt is the schema descriptor for updated_at field.
+	balanceoperationDescUpdatedAt := balanceoperationMixinFields0[1].Descriptor()
+	// balanceoperation.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	balanceoperation.DefaultUpdatedAt = balanceoperationDescUpdatedAt.Default.(func() time.Time)
+	// balanceoperation.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	balanceoperation.UpdateDefaultUpdatedAt = balanceoperationDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// balanceoperationDescExternalOpID is the schema descriptor for external_op_id field.
+	balanceoperationDescExternalOpID := balanceoperationFields[0].Descriptor()
+	// balanceoperation.ExternalOpIDValidator is a validator for the "external_op_id" field. It is called by the builders before save.
+	balanceoperation.ExternalOpIDValidator = func() func(string) error {
+		validators := balanceoperationDescExternalOpID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(external_op_id string) error {
+			for _, fn := range fns {
+				if err := fn(external_op_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// balanceoperationDescOpType is the schema descriptor for op_type field.
+	balanceoperationDescOpType := balanceoperationFields[2].Descriptor()
+	// balanceoperation.OpTypeValidator is a validator for the "op_type" field. It is called by the builders before save.
+	balanceoperation.OpTypeValidator = balanceoperationDescOpType.Validators[0].(func(string) error)
+	// balanceoperationDescBalanceBefore is the schema descriptor for balance_before field.
+	balanceoperationDescBalanceBefore := balanceoperationFields[4].Descriptor()
+	// balanceoperation.DefaultBalanceBefore holds the default value on creation for the balance_before field.
+	balanceoperation.DefaultBalanceBefore = balanceoperationDescBalanceBefore.Default.(float64)
+	// balanceoperationDescBalanceAfter is the schema descriptor for balance_after field.
+	balanceoperationDescBalanceAfter := balanceoperationFields[5].Descriptor()
+	// balanceoperation.DefaultBalanceAfter holds the default value on creation for the balance_after field.
+	balanceoperation.DefaultBalanceAfter = balanceoperationDescBalanceAfter.Default.(float64)
+	// balanceoperationDescStatus is the schema descriptor for status field.
+	balanceoperationDescStatus := balanceoperationFields[6].Descriptor()
+	// balanceoperation.DefaultStatus holds the default value on creation for the status field.
+	balanceoperation.DefaultStatus = balanceoperationDescStatus.Default.(string)
+	// balanceoperation.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	balanceoperation.StatusValidator = balanceoperationDescStatus.Validators[0].(func(string) error)
+	// balanceoperationDescFailureReason is the schema descriptor for failure_reason field.
+	balanceoperationDescFailureReason := balanceoperationFields[7].Descriptor()
+	// balanceoperation.FailureReasonValidator is a validator for the "failure_reason" field. It is called by the builders before save.
+	balanceoperation.FailureReasonValidator = balanceoperationDescFailureReason.Validators[0].(func(string) error)
+	// balanceoperationDescNote is the schema descriptor for note field.
+	balanceoperationDescNote := balanceoperationFields[8].Descriptor()
+	// balanceoperation.NoteValidator is a validator for the "note" field. It is called by the builders before save.
+	balanceoperation.NoteValidator = balanceoperationDescNote.Validators[0].(func(string) error)
 	channelmonitorMixin := schema.ChannelMonitor{}.Mixin()
 	channelmonitorMixinFields0 := channelmonitorMixin[0].Fields()
 	_ = channelmonitorMixinFields0

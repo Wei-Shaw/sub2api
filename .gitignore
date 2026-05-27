@@ -131,8 +131,13 @@ docs/*
 !docs/PAYMENT.md
 !docs/PAYMENT_CN.md
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md
+!docs/OPENAPI_PLATFORM.md
+!docs/superpowers/
+!docs/superpowers/**
 .serena/
 .codex/
+.omc/
+.claude/
 frontend/coverage/
 aicodex
 output/
