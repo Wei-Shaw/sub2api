@@ -154,6 +154,8 @@ Community projects that extend or integrate with Sub2API:
 
 ## Deployment
 
+> **Sticky-session header note:** Clients and upstream proxies should send the canonical header names `session-id` and `thread-id`. If you are migrating from older integrations that used `session_id` or `conversation_id`, treat those as legacy names and verify compatibility with your deployed version before relying on them.
+
 ### Method 1: Script Installation (Recommended)
 
 One-click installation script that downloads pre-built binaries from GitHub Releases.
