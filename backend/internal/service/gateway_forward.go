@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 
 	"github.com/gin-gonic/gin"
@@ -257,6 +258,26 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	// 强制执行 cache_control 块数量限制（最多 4 个）
 	if err := replaceBody(enforceCacheControlLimit(body)); err != nil {
 		return nil, err
+	}
+
+	// Claude Code Auto Mode 分类器模型改写：
+	// 当请求来自 Claude Code 客户端、非流式、未开启 thinking 时，
+	// 判定为 auto mode 分类器请求，改写为分组配置的廉价模型以节省 token 费用。
+	if isClaudeCode && !reqStream && !parsed.ThinkingEnabled {
+		if group, ok := ctx.Value(ctxkey.Group).(*Group); ok && IsGroupContextValid(group) && group.AutoModeClassifierModel != "" {
+			classifierModel := group.AutoModeClassifierModel
+			if err := replaceBody(s.replaceModelInBody(body, classifierModel)); err != nil {
+				return nil, err
+			}
+			logger.LegacyPrintf("service.gateway", "Auto mode classifier model rewrite: %s -> %s (group: %s)", reqModel, classifierModel, group.Name)
+			reqModel = classifierModel
+			originalModel = classifierModel
+			parsed.Model = classifierModel
+			if c != nil && c.Request != nil {
+				newCtx := context.WithValue(c.Request.Context(), ctxkey.Model, classifierModel)
+				c.Request = c.Request.WithContext(newCtx)
+			}
+		}
 	}
 
 	// 应用模型映射：

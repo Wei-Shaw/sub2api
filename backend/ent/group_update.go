@@ -1026,6 +1026,20 @@ func (_u *GroupUpdate) SetNillableModelsListConfig(v *domain.GroupModelsListConf
 	return _u
 }
 
+// SetAutoModeClassifierModel sets the "auto_mode_classifier_model" field.
+func (_u *GroupUpdate) SetAutoModeClassifierModel(v string) *GroupUpdate {
+	_u.mutation.SetAutoModeClassifierModel(v)
+	return _u
+}
+
+// SetNillableAutoModeClassifierModel sets the "auto_mode_classifier_model" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableAutoModeClassifierModel(v *string) *GroupUpdate {
+	if v != nil {
+		_u.SetAutoModeClassifierModel(*v)
+	}
+	return _u
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (_u *GroupUpdate) SetRpmLimit(v int) *GroupUpdate {
 	_u.mutation.ResetRpmLimit()
@@ -1449,6 +1463,11 @@ func (_u *GroupUpdate) check() error {
 			return &ValidationError{Name: "default_mapped_model", err: fmt.Errorf(`ent: validator failed for field "Group.default_mapped_model": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.AutoModeClassifierModel(); ok {
+		if err := group.AutoModeClassifierModelValidator(v); err != nil {
+			return &ValidationError{Name: "auto_mode_classifier_model", err: fmt.Errorf(`ent: validator failed for field "Group.auto_mode_classifier_model": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.MaxReasoningEffort(); ok {
 		if err := group.MaxReasoningEffortValidator(v); err != nil {
 			return &ValidationError{Name: "max_reasoning_effort", err: fmt.Errorf(`ent: validator failed for field "Group.max_reasoning_effort": %w`, err)}
@@ -1764,6 +1783,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.ModelsListConfig(); ok {
 		_spec.SetField(group.FieldModelsListConfig, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AutoModeClassifierModel(); ok {
+		_spec.SetField(group.FieldAutoModeClassifierModel, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)
@@ -3101,6 +3123,20 @@ func (_u *GroupUpdateOne) SetNillableModelsListConfig(v *domain.GroupModelsListC
 	return _u
 }
 
+// SetAutoModeClassifierModel sets the "auto_mode_classifier_model" field.
+func (_u *GroupUpdateOne) SetAutoModeClassifierModel(v string) *GroupUpdateOne {
+	_u.mutation.SetAutoModeClassifierModel(v)
+	return _u
+}
+
+// SetNillableAutoModeClassifierModel sets the "auto_mode_classifier_model" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableAutoModeClassifierModel(v *string) *GroupUpdateOne {
+	if v != nil {
+		_u.SetAutoModeClassifierModel(*v)
+	}
+	return _u
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (_u *GroupUpdateOne) SetRpmLimit(v int) *GroupUpdateOne {
 	_u.mutation.ResetRpmLimit()
@@ -3537,6 +3573,11 @@ func (_u *GroupUpdateOne) check() error {
 			return &ValidationError{Name: "default_mapped_model", err: fmt.Errorf(`ent: validator failed for field "Group.default_mapped_model": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.AutoModeClassifierModel(); ok {
+		if err := group.AutoModeClassifierModelValidator(v); err != nil {
+			return &ValidationError{Name: "auto_mode_classifier_model", err: fmt.Errorf(`ent: validator failed for field "Group.auto_mode_classifier_model": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.MaxReasoningEffort(); ok {
 		if err := group.MaxReasoningEffortValidator(v); err != nil {
 			return &ValidationError{Name: "max_reasoning_effort", err: fmt.Errorf(`ent: validator failed for field "Group.max_reasoning_effort": %w`, err)}
@@ -3869,6 +3910,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.ModelsListConfig(); ok {
 		_spec.SetField(group.FieldModelsListConfig, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AutoModeClassifierModel(); ok {
+		_spec.SetField(group.FieldAutoModeClassifierModel, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)

@@ -1446,6 +1446,21 @@
               {{ t("admin.groups.claudeCode.fallbackHint") }}
             </p>
           </div>
+          <!-- Auto Mode 分类器模型 -->
+          <div class="mt-3">
+            <label class="input-label">{{
+              t("admin.groups.claudeCode.classifierModel")
+            }}</label>
+            <input
+              v-model="createForm.auto_mode_classifier_model"
+              type="text"
+              class="input"
+              :placeholder="t('admin.groups.claudeCode.classifierModelPlaceholder')"
+            />
+            <p class="input-hint">
+              {{ t("admin.groups.claudeCode.classifierModelHint") }}
+            </p>
+          </div>
         </div>
 
         <!-- Codex 网页搜索按次计费（仅 openai 平台） -->
@@ -3147,6 +3162,21 @@
             />
             <p class="input-hint">
               {{ t("admin.groups.claudeCode.fallbackHint") }}
+            </p>
+          </div>
+          <!-- Auto Mode 分类器模型 -->
+          <div class="mt-3">
+            <label class="input-label">{{
+              t("admin.groups.claudeCode.classifierModel")
+            }}</label>
+            <input
+              v-model="editForm.auto_mode_classifier_model"
+              type="text"
+              class="input"
+              :placeholder="t('admin.groups.claudeCode.classifierModelPlaceholder')"
+            />
+            <p class="input-hint">
+              {{ t("admin.groups.claudeCode.classifierModelHint") }}
             </p>
           </div>
         </div>
@@ -4949,6 +4979,7 @@ const createForm = reactive({
   claude_code_only: false,
   fallback_group_id: null as number | null,
   fallback_group_id_on_invalid_request: null as number | null,
+  auto_mode_classifier_model: '',
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   allow_messages_dispatch: false,
   allow_live: false,
@@ -5308,6 +5339,7 @@ const editForm = reactive({
   claude_code_only: false,
   fallback_group_id: null as number | null,
   fallback_group_id_on_invalid_request: null as number | null,
+  auto_mode_classifier_model: '',
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   allow_messages_dispatch: false,
   allow_live: false,
@@ -5759,6 +5791,7 @@ const closeCreateModal = () => {
   createForm.claude_code_only = false;
   createForm.fallback_group_id = null;
   createForm.fallback_group_id_on_invalid_request = null;
+  createForm.auto_mode_classifier_model = '';
   resetMessagesDispatchFormState(createForm);
   createForm.allow_live = false;
   createForm.require_oauth_only = false;
@@ -6004,6 +6037,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.fallback_group_id = group.fallback_group_id;
   editForm.fallback_group_id_on_invalid_request =
     group.fallback_group_id_on_invalid_request;
+  editForm.auto_mode_classifier_model = group.auto_mode_classifier_model || '';
   const messagesDispatchFormState = messagesDispatchConfigToFormState(
     group.messages_dispatch_model_config,
   );

@@ -1100,7 +1100,10 @@ export default {
         disabled: 'Allow All Clients',
         fallbackGroup: 'Fallback Group',
         fallbackHint: 'Non-Claude Code requests will use this group. Leave empty to reject directly.',
-        noFallback: 'No Fallback (Reject)'
+        noFallback: 'No Fallback (Reject)',
+        classifierModel: 'Auto Mode Classifier Model',
+        classifierModelPlaceholder: 'e.g. claude-haiku-4-5-20251001',
+        classifierModelHint: 'When set, Claude Code auto mode classifier requests (sync, no reasoning) will use this model instead. Leave empty to keep original model.'
       },
       openaiMessages: {
         title: 'OpenAI Messages Dispatch',

@@ -753,6 +753,20 @@ func (_c *GroupCreate) SetNillableModelsListConfig(v *domain.GroupModelsListConf
 	return _c
 }
 
+// SetAutoModeClassifierModel sets the "auto_mode_classifier_model" field.
+func (_c *GroupCreate) SetAutoModeClassifierModel(v string) *GroupCreate {
+	_c.mutation.SetAutoModeClassifierModel(v)
+	return _c
+}
+
+// SetNillableAutoModeClassifierModel sets the "auto_mode_classifier_model" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableAutoModeClassifierModel(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetAutoModeClassifierModel(*v)
+	}
+	return _c
+}
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (_c *GroupCreate) SetRpmLimit(v int) *GroupCreate {
 	_c.mutation.SetRpmLimit(v)
@@ -1090,6 +1104,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultModelsListConfig
 		_c.mutation.SetModelsListConfig(v)
 	}
+	if _, ok := _c.mutation.AutoModeClassifierModel(); !ok {
+		v := group.DefaultAutoModeClassifierModel
+		_c.mutation.SetAutoModeClassifierModel(v)
+	}
 	if _, ok := _c.mutation.RpmLimit(); !ok {
 		v := group.DefaultRpmLimit
 		_c.mutation.SetRpmLimit(v)
@@ -1277,6 +1295,14 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.ModelsListConfig(); !ok {
 		return &ValidationError{Name: "models_list_config", err: errors.New(`ent: missing required field "Group.models_list_config"`)}
+	}
+	if _, ok := _c.mutation.AutoModeClassifierModel(); !ok {
+		return &ValidationError{Name: "auto_mode_classifier_model", err: errors.New(`ent: missing required field "Group.auto_mode_classifier_model"`)}
+	}
+	if v, ok := _c.mutation.AutoModeClassifierModel(); ok {
+		if err := group.AutoModeClassifierModelValidator(v); err != nil {
+			return &ValidationError{Name: "auto_mode_classifier_model", err: fmt.Errorf(`ent: validator failed for field "Group.auto_mode_classifier_model": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.RpmLimit(); !ok {
 		return &ValidationError{Name: "rpm_limit", err: errors.New(`ent: missing required field "Group.rpm_limit"`)}
@@ -1543,6 +1569,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ModelsListConfig(); ok {
 		_spec.SetField(group.FieldModelsListConfig, field.TypeJSON, value)
 		_node.ModelsListConfig = value
+	}
+	if value, ok := _c.mutation.AutoModeClassifierModel(); ok {
+		_spec.SetField(group.FieldAutoModeClassifierModel, field.TypeString, value)
+		_node.AutoModeClassifierModel = value
 	}
 	if value, ok := _c.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)
@@ -2609,6 +2639,18 @@ func (u *GroupUpsert) SetModelsListConfig(v domain.GroupModelsListConfig) *Group
 // UpdateModelsListConfig sets the "models_list_config" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateModelsListConfig() *GroupUpsert {
 	u.SetExcluded(group.FieldModelsListConfig)
+	return u
+}
+
+// SetAutoModeClassifierModel sets the "auto_mode_classifier_model" field.
+func (u *GroupUpsert) SetAutoModeClassifierModel(v string) *GroupUpsert {
+	u.Set(group.FieldAutoModeClassifierModel, v)
+	return u
+}
+
+// UpdateAutoModeClassifierModel sets the "auto_mode_classifier_model" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateAutoModeClassifierModel() *GroupUpsert {
+	u.SetExcluded(group.FieldAutoModeClassifierModel)
 	return u
 }
 
@@ -3783,6 +3825,20 @@ func (u *GroupUpsertOne) SetModelsListConfig(v domain.GroupModelsListConfig) *Gr
 func (u *GroupUpsertOne) UpdateModelsListConfig() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateModelsListConfig()
+	})
+}
+
+// SetAutoModeClassifierModel sets the "auto_mode_classifier_model" field.
+func (u *GroupUpsertOne) SetAutoModeClassifierModel(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAutoModeClassifierModel(v)
+	})
+}
+
+// UpdateAutoModeClassifierModel sets the "auto_mode_classifier_model" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateAutoModeClassifierModel() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAutoModeClassifierModel()
 	})
 }
 
@@ -5138,6 +5194,20 @@ func (u *GroupUpsertBulk) SetModelsListConfig(v domain.GroupModelsListConfig) *G
 func (u *GroupUpsertBulk) UpdateModelsListConfig() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateModelsListConfig()
+	})
+}
+
+// SetAutoModeClassifierModel sets the "auto_mode_classifier_model" field.
+func (u *GroupUpsertBulk) SetAutoModeClassifierModel(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAutoModeClassifierModel(v)
+	})
+}
+
+// UpdateAutoModeClassifierModel sets the "auto_mode_classifier_model" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateAutoModeClassifierModel() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAutoModeClassifierModel()
 	})
 }
 

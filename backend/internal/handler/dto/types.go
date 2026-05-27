@@ -181,7 +181,11 @@ type AdminGroup struct {
 	ModelsListConfig            domain.GroupModelsListConfig             `json:"models_list_config"`
 
 	// 支持的模型系列（仅 antigravity 平台使用）
-	SupportedModelScopes    []string       `json:"supported_model_scopes"`
+	SupportedModelScopes []string `json:"supported_model_scopes"`
+
+	// Claude Code Auto Mode 分类器模型
+	AutoModeClassifierModel string `json:"auto_mode_classifier_model"`
+
 	AccountGroups           []AccountGroup `json:"account_groups,omitempty"`
 	AccountCount            int64          `json:"account_count,omitempty"`
 	ActiveAccountCount      int64          `json:"active_account_count,omitempty"`
@@ -481,7 +485,8 @@ type UsageLog struct {
 	APIKeyID  int64  `json:"api_key_id"`
 	AccountID int64  `json:"account_id"`
 	RequestID string `json:"request_id"`
-	Model     string `json:"model"`
+	Model         string  `json:"model"`
+	UpstreamModel *string `json:"upstream_model,omitempty"`
 	// ServiceTier records the OpenAI service tier used for billing, e.g. "priority" / "flex".
 	ServiceTier *string `json:"service_tier,omitempty"`
 	// ReasoningEffort is the request's reasoning effort level.
@@ -558,9 +563,6 @@ type UsageLog struct {
 type AdminUsageLog struct {
 	UsageLog
 
-	// UpstreamModel is the actual model sent to the upstream provider after mapping.
-	// Omitted when no mapping was applied (requested model was used as-is).
-	UpstreamModel *string `json:"upstream_model,omitempty"`
 	// UpstreamResponseModel is the raw model declared by the upstream response.
 	UpstreamResponseModel *string `json:"upstream_response_model,omitempty"`
 	// UpstreamModelMismatch is nil when the upstream did not declare a model.
