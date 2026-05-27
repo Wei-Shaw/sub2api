@@ -961,22 +961,14 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 
 	// Get available models from account configurations for the selected group platform.
 	availableModels := h.gatewayService.GetAvailableModels(c.Request.Context(), groupID, platform)
+	if apiKey != nil && apiKey.Group != nil && apiKey.Group.CustomModelsListEnabled() {
+		availableModels = filterModelsByCustomList(availableModels, defaultModelIDsForPlatform(platform), apiKey.Group.ModelsListConfig.Models)
+		writeCustomModelsList(c, platform, availableModels)
+		return
+	}
 
 	if len(availableModels) > 0 {
-		// Build model list from whitelist
-		models := make([]claude.Model, 0, len(availableModels))
-		for _, modelID := range availableModels {
-			models = append(models, claude.Model{
-				ID:          modelID,
-				Type:        "model",
-				DisplayName: modelID,
-				CreatedAt:   "2024-01-01T00:00:00Z",
-			})
-		}
-		c.JSON(http.StatusOK, gin.H{
-			"object": "list",
-			"data":   models,
-		})
+		writeModelsList(c, availableModels)
 		return
 	}
 
@@ -1001,6 +993,134 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		"object": "list",
 		"data":   claude.DefaultModels,
 	})
+}
+
+func writeModelsList(c *gin.Context, modelIDs []string) {
+	models := make([]claude.Model, 0, len(modelIDs))
+	for _, modelID := range modelIDs {
+		models = append(models, claude.Model{
+			ID:          modelID,
+			Type:        "model",
+			DisplayName: modelID,
+			CreatedAt:   "2024-01-01T00:00:00Z",
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"object": "list",
+		"data":   models,
+	})
+}
+
+func writeCustomModelsList(c *gin.Context, platform string, modelIDs []string) {
+	if platform == service.PlatformOpenAI {
+		writeOpenAIModelsList(c, modelIDs)
+		return
+	}
+	writeModelsList(c, modelIDs)
+}
+
+func writeOpenAIModelsList(c *gin.Context, modelIDs []string) {
+	defaultsByID := make(map[string]openai.Model, len(openai.DefaultModels))
+	for _, model := range openai.DefaultModels {
+		defaultsByID[model.ID] = model
+	}
+
+	models := make([]openai.Model, 0, len(modelIDs))
+	for _, modelID := range modelIDs {
+		if model, ok := defaultsByID[modelID]; ok {
+			models = append(models, model)
+			continue
+		}
+		models = append(models, openai.Model{
+			ID:          modelID,
+			Object:      "model",
+			Created:     1704067200,
+			OwnedBy:     "openai",
+			Type:        "model",
+			DisplayName: modelID,
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"object": "list",
+		"data":   models,
+	})
+}
+
+func filterModelsByCustomList(availableModels, fallbackModels, selectedModels []string) []string {
+	if len(selectedModels) == 0 {
+		return availableModels
+	}
+	source := availableModels
+	if len(source) == 0 {
+		source = fallbackModels
+	}
+	if len(source) == 0 {
+		return nil
+	}
+
+	allowed := make([]string, 0, len(source))
+	for _, model := range source {
+		model = strings.TrimSpace(model)
+		if model != "" {
+			allowed = append(allowed, model)
+		}
+	}
+
+	seen := make(map[string]struct{}, len(selectedModels))
+	filtered := make([]string, 0, len(selectedModels))
+	for _, model := range selectedModels {
+		model = strings.TrimSpace(model)
+		if model == "" {
+			continue
+		}
+		if !customModelsListAllowsModel(allowed, model) {
+			continue
+		}
+		if _, ok := seen[model]; ok {
+			continue
+		}
+		seen[model] = struct{}{}
+		filtered = append(filtered, model)
+	}
+	return filtered
+}
+
+func customModelsListAllowsModel(availablePatterns []string, model string) bool {
+	for _, pattern := range availablePatterns {
+		if pattern == model {
+			return true
+		}
+		if strings.HasSuffix(pattern, "*") && strings.HasPrefix(model, strings.TrimSuffix(pattern, "*")) {
+			return true
+		}
+	}
+	return false
+}
+
+func defaultModelIDsForPlatform(platform string) []string {
+	switch platform {
+	case service.PlatformOpenAI:
+		return openai.DefaultModelIDs()
+	case service.PlatformGemini:
+		ids := make([]string, 0, len(geminicli.DefaultModels))
+		for _, model := range geminicli.DefaultModels {
+			ids = append(ids, model.ID)
+		}
+		return ids
+	case service.PlatformAntigravity:
+		models := antigravity.DefaultModels()
+		ids := make([]string, 0, len(models))
+		for _, model := range models {
+			ids = append(ids, model.ID)
+		}
+		return ids
+	default:
+		ids := make([]string, 0, len(claude.DefaultModels))
+		for _, model := range claude.DefaultModels {
+			ids = append(ids, model.ID)
+		}
+		return ids
+	}
 }
 
 // AntigravityModels 返回 Antigravity 支持的全部模型

@@ -870,8 +870,12 @@ func init() {
 	groupDescMessagesDispatchModelConfig := groupFields[29].Descriptor()
 	// group.DefaultMessagesDispatchModelConfig holds the default value on creation for the messages_dispatch_model_config field.
 	group.DefaultMessagesDispatchModelConfig = groupDescMessagesDispatchModelConfig.Default.(domain.OpenAIMessagesDispatchModelConfig)
+	// groupDescModelsListConfig is the schema descriptor for models_list_config field.
+	groupDescModelsListConfig := groupFields[30].Descriptor()
+	// group.DefaultModelsListConfig holds the default value on creation for the models_list_config field.
+	group.DefaultModelsListConfig = groupDescModelsListConfig.Default.(domain.GroupModelsListConfig)
 	// groupDescRpmLimit is the schema descriptor for rpm_limit field.
-	groupDescRpmLimit := groupFields[30].Descriptor()
+	groupDescRpmLimit := groupFields[31].Descriptor()
 	// group.DefaultRpmLimit holds the default value on creation for the rpm_limit field.
 	group.DefaultRpmLimit = groupDescRpmLimit.Default.(int)
 	idempotencyrecordMixin := schema.IdempotencyRecord{}.Mixin()
