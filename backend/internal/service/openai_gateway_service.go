@@ -901,7 +901,17 @@ REDACTED
 REDACTED
 
 func (s *OpenAIGatewayService) detectCodexClientRestriction(c *gin.Context, account *Account) CodexClientRestrictionDetectionResult {
-	return s.getCodexClientRestrictionDetector().Detect(c, account)
+	var globalAllowedClients []string
+	if account != nil && account.IsCodexCLIOnlyEnabled() && s != nil && s.settingService != nil {
+		ctx := context.Background()
+		if c != nil && c.Request != nil {
+			ctx = c.Request.Context()
+	REDACTED
+		if s.settingService.IsOpenAIAllowClaudeCodeCodexPluginEnabled(ctx) {
+			globalAllowedClients = []string{openai.AllowedClientClaudeCodeREDACTED
+	REDACTED
+REDACTED
+	return s.getCodexClientRestrictionDetector().Detect(c, account, globalAllowedClients)
 REDACTED
 
 func getAPIKeyIDFromContext(c *gin.Context) int64 {
@@ -959,6 +969,7 @@ REDACTED
 REDACTED
 	log := logger.FromContext(ctx).With(fields...)
 	if result.Matched {
+		log.Info("OpenAI codex_cli_only 放行请求")
 		return
 REDACTED
 	log.Warn("OpenAI codex_cli_only 拒绝非官方客户端请求")
