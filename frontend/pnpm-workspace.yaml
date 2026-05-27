@@ -1,0 +1,10 @@
+allowBuilds:
+  esbuild: true
+  vue-demi: true
+
+onlyBuiltDependencies:
+  - esbuild
+  - vue-demi
+
+overrides:
+  js-cookie: 3.0.7

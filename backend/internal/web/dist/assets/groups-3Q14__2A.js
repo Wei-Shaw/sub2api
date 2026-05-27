@@ -1,0 +1,1 @@
+import{e as t}from"./index-COtAGnIr.js";async function e(){const{data:a}=await t.get("/groups/available");return a}async function r(){const{data:a}=await t.get("/groups/rates");return a||{}}const n={getAvailable:e,getUserGroupRates:r};export{n as u};

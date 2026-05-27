@@ -1,0 +1,1 @@
+function s(i,r={}){const t=i.trim();if(!t)return"";if(r.allowRelative&&t.startsWith("/")&&!t.startsWith("//")||r.allowDataUrl&&t.startsWith("data:image/"))return t;if(!t.match(/^https?:\/\//i))return"";try{const a=new URL(t),e=a.protocol.toLowerCase();return e!=="http:"&&e!=="https:"?"":a.toString()}catch{return""}}export{s};
