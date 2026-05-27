@@ -57,6 +57,28 @@ func TestOpenAIRuntimeBlocker_IgnoresNonOpenAIFromRateLimitService(t *testing.T)
 	require.False(t, gateway.isOpenAIAccountRuntimeBlocked(account))
 REDACTED
 
+func TestOpenAIModelNotFound_DoesNotRuntimeBlockWholeAccount(t *testing.T) {
+	repo := &modelNotFoundAccountRepoStub{REDACTED
+	svc := &OpenAIGatewayService{
+		rateLimitService: &RateLimitService{accountRepo: repoREDACTED,
+REDACTED
+	account := openAIModelNotFoundTempAccount()
+
+	shouldDisable := svc.handleOpenAIAccountUpstreamError(
+		context.Background(),
+		account,
+		http.StatusNotFound,
+		http.Header{REDACTED,
+		[]byte(`{"error":{"code":"model_not_found","message":"model not found"REDACTEDREDACTED`),
+		"gpt-5.4",
+	)
+
+	require.True(t, shouldDisable)
+	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.Zero(t, repo.tempCalls)
+	require.Len(t, repo.modelRateLimitCalls, 1)
+REDACTED
+
 func TestOpenAIRuntimeBlock_DoesNotShortenExistingBlock(t *testing.T) {
 	svc := &OpenAIGatewayService{REDACTED
 	account := &Account{ID: 46, Platform: PlatformOpenAI, Type: AccountTypeOAuthREDACTED

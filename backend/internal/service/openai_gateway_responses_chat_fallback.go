@@ -188,14 +188,14 @@ REDACTED
 				Message:            upstreamMsg,
 				Detail:             upstreamDetail,
 		REDACTED)
-			s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
+			s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, upstreamModel)
 			return nil, &UpstreamFailoverError{
 				StatusCode:             resp.StatusCode,
 				ResponseBody:           respBody,
 				RetryableOnSameAccount: account.IsPoolMode() && (isPoolModeRetryableStatus(resp.StatusCode) || isOpenAITransientProcessingError(resp.StatusCode, upstreamMsg, respBody)),
 		REDACTED
 	REDACTED
-		return s.handleErrorResponse(ctx, resp, c, account, chatBody)
+		return s.handleErrorResponse(ctx, resp, c, account, chatBody, billingModel)
 REDACTED
 
 	if clientStream {

@@ -1312,22 +1312,6 @@ REDACTED
 	return body, nil
 REDACTED
 
-// isModelNotFoundError 检测是否为模型不存在的 404 错误
-func isModelNotFoundError(statusCode int, body []byte) bool {
-	if statusCode != 404 {
-		return false
-REDACTED
-
-	bodyStr := strings.ToLower(string(body))
-	keywords := []string{"model not found", "unknown model", "not found"REDACTED
-	for _, keyword := range keywords {
-		if strings.Contains(bodyStr, keyword) {
-			return true
-	REDACTED
-REDACTED
-	return true // 404 without specific message also treated as model not found
-REDACTED
-
 // Forward 转发 Claude 协议请求（Claude → Gemini 转换）
 //
 // 限流处理流程:

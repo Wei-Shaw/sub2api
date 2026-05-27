@@ -1077,7 +1077,7 @@ REDACTED
 	return nil
 REDACTED
 
-func (r *accountRepository) SetModelRateLimit(ctx context.Context, id int64, scope string, resetAt time.Time) error {
+func (r *accountRepository) SetModelRateLimit(ctx context.Context, id int64, scope string, resetAt time.Time, reason ...string) error {
 	if scope == "" {
 		return nil
 REDACTED
@@ -1085,6 +1085,11 @@ REDACTED
 	payload := map[string]string{
 		"rate_limited_at":     now.Format(time.RFC3339),
 		"rate_limit_reset_at": resetAt.UTC().Format(time.RFC3339),
+REDACTED
+	if len(reason) > 0 {
+		if value := strings.TrimSpace(reason[0]); value != "" {
+			payload["reason"] = value
+	REDACTED
 REDACTED
 	raw, err := json.Marshal(payload)
 	if err != nil {
@@ -1121,6 +1126,7 @@ REDACTED
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue model rate limit failed: account=%d err=%v", id, err)
 REDACTED
+	r.syncSchedulerAccountSnapshot(ctx, id)
 	return nil
 REDACTED
 
