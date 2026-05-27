@@ -1,9 +1,8 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - 'v*'
+  # tag 触发已禁用：v* tag 改由 docker-publish.yml 接管（仅发 DockerHub 镜像）。
+  # 如需完整发布（多平台二进制 + GitHub Release + GHCR），在 Actions 页面手动运行本流程。
   workflow_dispatch:
     inputs:
       tag:

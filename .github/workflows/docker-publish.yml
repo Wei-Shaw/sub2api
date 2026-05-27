@@ -1,0 +1,69 @@
+name: Docker Publish
+
+# 推送 v* tag 时，构建多架构镜像并发布到 DockerHub。
+# 仅发镜像，不生成 GitHub Release / 二进制（那部分由 release.yml 手动触发）。
+#
+# 前置：在仓库 Settings → Secrets and variables → Actions 配置：
+#   - DOCKERHUB_USERNAME  (例如 bugpan)
+#   - DOCKERHUB_TOKEN     (DockerHub 访问令牌)
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '版本号 tag（例如 v0.1.132），用于镜像标签'
+        required: true
+        type: string
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: 解析版本号
+        id: meta
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          VERSION="${TAG#v}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "解析到版本号: ${VERSION}"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+            COMMIT=${{ github.sha }}
+            GOPROXY=https://proxy.golang.org,direct
+            GOSUMDB=sum.golang.org
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/sub2api:${{ steps.meta.outputs.version }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/sub2api:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
