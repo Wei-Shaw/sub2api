@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -202,6 +203,7 @@ type entitlementUserRepository interface {
 
 type entitlementGroupRepository interface {
 	GetByID(ctx context.Context, id int64) (*Group, error)
+	ListActiveByPlatform(ctx context.Context, platform string) ([]Group, error)
 }
 
 type entitlementAPIKeyUpdater interface {
@@ -348,17 +350,102 @@ func (s *EntitlementService) attachCreditUsage(ctx context.Context, state *Entit
 
 	totalPurchasedCredits := summary.TotalPurchasedCredits
 	totalUsedCredits := summary.TotalUsedCredits
+	existingBalanceItems := make(map[int64]int, len(state.Entitlements))
 	for i := range state.Entitlements {
 		item := &state.Entitlements[i]
 		if item.Mode != EntitlementModeBalance {
 			continue
 		}
+		existingBalanceItems[item.GroupID] = i
 		est, ok := estimates[item.GroupID]
 		if !ok {
 			continue
 		}
 		quota := buildEntitlementCreditQuota(est, totalPurchasedCredits, totalUsedCredits, summary.TotalUsedLedgerAmount, 1.0)
 		item.CreditQuota = quota
+	}
+
+	// Balance packages do not create user_subscriptions rows. Their entitlement comes from the
+	// purchased balance group on payment_orders plus the API key's current group binding, so synthesize
+	// a balance entitlement item here; otherwise auto-switch can assign the key successfully but return
+	// no element for the client to attach/display credit_quota.
+	for _, est := range summary.GroupEstimates {
+		if est.GroupID == 0 {
+			continue
+		}
+		if _, ok := existingBalanceItems[est.GroupID]; ok {
+			continue
+		}
+		group, err := s.groupRepo.GetByID(ctx, est.GroupID)
+		if err != nil || group == nil || group.IsSubscriptionType() {
+			continue
+		}
+		item := entitlementItemFromBalanceGroup(*group)
+		if state.Current != nil && state.Current.GroupID != nil && *state.Current.GroupID == group.ID {
+			item.Current = true
+		}
+		item.Switchable = group.IsActive() && state.Fallback.Available
+		item.CreditQuota = buildEntitlementCreditQuota(est, totalPurchasedCredits, totalUsedCredits, summary.TotalUsedLedgerAmount, 1.0)
+		state.Entitlements = append(state.Entitlements, item)
+		existingBalanceItems[est.GroupID] = len(state.Entitlements) - 1
+	}
+	s.attachCurrentBalanceCreditQuota(ctx, state, summary, existingBalanceItems)
+}
+
+func (s *EntitlementService) attachCurrentBalanceCreditQuota(ctx context.Context, state *EntitlementState, summary *usagestats.CreditUsageSummary, existingBalanceItems map[int64]int) {
+	if s == nil || state == nil || summary == nil || state.Current == nil || state.Current.GroupID == nil || state.Current.Mode != EntitlementModeBalance {
+		return
+	}
+	if summary.BalanceLedgerAmount <= 0 || summary.TotalPurchasedLedgerAmount > 0 || len(summary.GroupEstimates) > 0 {
+		return
+	}
+	groupID := *state.Current.GroupID
+	group, err := s.groupRepo.GetByID(ctx, groupID)
+	if err != nil || group == nil || group.IsSubscriptionType() {
+		return
+	}
+	quota := buildCurrentBalanceCreditQuota(summary.BalanceLedgerAmount, 1.0, group)
+	if quota == nil {
+		return
+	}
+	if idx, ok := existingBalanceItems[groupID]; ok {
+		state.Entitlements[idx].Current = true
+		state.Entitlements[idx].CreditQuota = quota
+		return
+	}
+	item := entitlementItemFromBalanceGroup(*group)
+	item.Current = true
+	item.Switchable = group.IsActive() && state.Fallback.Available
+	item.CreditQuota = quota
+	state.Entitlements = append(state.Entitlements, item)
+	existingBalanceItems[groupID] = len(state.Entitlements) - 1
+}
+
+func buildCurrentBalanceCreditQuota(balanceLedgerAmount, creditUnitScale float64, group *Group) *EntitlementCreditQuota {
+	if group == nil || group.IsSubscriptionType() || balanceLedgerAmount <= 0 || group.RateMultiplier <= 0 || group.TokenPricePerMillion == nil || *group.TokenPricePerMillion <= 0 {
+		return nil
+	}
+	credits := float64(computeActualCreditsFromRateMultiplier(balanceLedgerAmount, group.RateMultiplier, *group.TokenPricePerMillion))
+	if credits <= 0 {
+		return nil
+	}
+	if creditUnitScale <= 0 {
+		creditUnitScale = 1.0
+	}
+	return &EntitlementCreditQuota{
+		PurchasedLedgerAmount: balanceLedgerAmount,
+		PurchasedCredits:      credits,
+		UsedLedgerAmount:      0,
+		UsedCredits:           0,
+		RemainingCredits:      credits,
+		UsedPercent:           0,
+		NearLimit:             false,
+		CreditUnitScale:       creditUnitScale,
+		Accuracy:              "current_balance_estimate",
+		AccuracyNotes: []string{
+			"no completed balance package/order is linked to this credit; credits are derived from current balance and the selected balance group rate",
+			"remaining_credits = current_balance / rate_multiplier / token_price_per_million × 1,000,000",
+		},
 	}
 }
 
@@ -636,6 +723,12 @@ func (s *EntitlementService) buildSwitchTargets(ctx context.Context, user *User,
 			}
 		}
 	}
+	if len(targets) == 0 {
+		if target, ok := s.defaultBalanceGroupSwitchTarget(ctx, user, keys, currentKey, items, req); ok {
+			target.EstimatedBalanceUSD = user.Balance
+			targets = append(targets, target)
+		}
+	}
 	sort.SliceStable(targets, func(i, j int) bool {
 		if targets[i].Priority != targets[j].Priority {
 			return targets[i].Priority > targets[j].Priority
@@ -643,6 +736,72 @@ func (s *EntitlementService) buildSwitchTargets(ctx context.Context, user *User,
 		return targets[i].APIKeyID < targets[j].APIKeyID
 	})
 	return targets
+}
+
+func (s *EntitlementService) defaultBalanceGroupSwitchTarget(ctx context.Context, user *User, keys []APIKey, currentKey *APIKey, items []EntitlementItem, req AutoSwitchEntitlementRequest) (EntitlementSwitchTarget, bool) {
+	platform := s.autoSwitchTargetPlatform(ctx, currentKey, items, req)
+	if platform == "" {
+		return EntitlementSwitchTarget{}, false
+	}
+	groups, err := s.groupRepo.ListActiveByPlatform(ctx, platform)
+	if err != nil {
+		logger.LegacyPrintf("service.entitlement", "list active balance groups failed for auto-switch platform %s: %v", platform, err)
+		return EntitlementSwitchTarget{}, false
+	}
+	var selected *Group
+	for i := range groups {
+		group := groups[i]
+		if group.IsSubscriptionType() || !group.IsActive() || !user.CanBindGroup(group.ID, group.IsExclusive) {
+			continue
+		}
+		if selected == nil || isBasicBalanceGroupBetter(group, *selected) {
+			selected = &groups[i]
+		}
+	}
+	if selected == nil {
+		return EntitlementSwitchTarget{}, false
+	}
+	return s.switchTargetForGroup(ctx, user, keys, currentKey, selected.ID, req, "default_balance_group", 25)
+}
+
+func (s *EntitlementService) autoSwitchTargetPlatform(ctx context.Context, currentKey *APIKey, items []EntitlementItem, req AutoSwitchEntitlementRequest) string {
+	if providerPlatform := platformFromProviderID(req.ProviderID); providerPlatform != "" {
+		return providerPlatform
+	}
+	if req.CurrentGroupID != nil && *req.CurrentGroupID > 0 {
+		if group, err := s.groupRepo.GetByID(ctx, *req.CurrentGroupID); err == nil && group != nil && group.Platform != "" {
+			return group.Platform
+		}
+	}
+	if currentKey != nil && currentKey.GroupID != nil {
+		if group, err := s.groupRepo.GetByID(ctx, *currentKey.GroupID); err == nil && group != nil && group.Platform != "" {
+			return group.Platform
+		}
+	}
+	for _, item := range items {
+		if item.Current && item.GroupPlatform != "" {
+			return item.GroupPlatform
+		}
+	}
+	return ""
+}
+
+func platformFromProviderID(providerID string) string {
+	providerID = strings.TrimSpace(providerID)
+	if providerID == "" {
+		return ""
+	}
+	return strings.TrimPrefix(providerID, "v-claw-")
+}
+
+func isBasicBalanceGroupBetter(a, b Group) bool {
+	if a.RateMultiplier != b.RateMultiplier {
+		return a.RateMultiplier > b.RateMultiplier
+	}
+	if a.SortOrder != b.SortOrder {
+		return a.SortOrder < b.SortOrder
+	}
+	return a.ID < b.ID
 }
 
 func (s *EntitlementService) switchTargetForGroup(ctx context.Context, user *User, keys []APIKey, preferredKey *APIKey, groupID int64, req AutoSwitchEntitlementRequest, reason string, priority int) (EntitlementSwitchTarget, bool) {
@@ -782,6 +941,20 @@ func selectCurrentAPIKey(keys []APIKey) *APIKey {
 		}
 	}
 	return &keys[0]
+}
+
+func entitlementItemFromBalanceGroup(group Group) EntitlementItem {
+	return EntitlementItem{
+		GroupID:              group.ID,
+		GroupName:            group.Name,
+		GroupPlatform:        group.Platform,
+		Mode:                 EntitlementModeBalance,
+		Status:               group.Status,
+		RateMultiplier:       group.RateMultiplier,
+		TokenPricePerMillion: group.TokenPricePerMillion,
+		SupportedModelScopes: append([]string(nil), group.SupportedModelScopes...),
+		Switchable:           group.IsActive(),
+	}
 }
 
 func entitlementItemFromSubscription(sub UserSubscription, group *Group) EntitlementItem {

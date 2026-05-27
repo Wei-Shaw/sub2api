@@ -1998,7 +1998,7 @@ type stubEntitlementGroupRepo struct {
 	groups map[int64]*service.Group
 }
 
-func (r *stubEntitlementGroupRepo) GetByID(ctx context.Context, id int64) (*service.Group, error) {
+func (r *stubEntitlementGroupRepo) GetByID(_ context.Context, id int64) (*service.Group, error) {
 	group := r.groups[id]
 	if group == nil {
 		return nil, service.ErrGroupNotFound
@@ -2013,6 +2013,18 @@ func (r *stubEntitlementGroupRepo) GetByID(ctx context.Context, id int64) (*serv
 		clone.DailyLimitUSD = &dailyLimit
 	}
 	return &clone, nil
+}
+
+func (r *stubEntitlementGroupRepo) ListActiveByPlatform(_ context.Context, platform string) ([]service.Group, error) {
+	groups := make([]service.Group, 0, len(r.groups))
+	for _, group := range r.groups {
+		if group == nil || group.Platform != platform || !group.IsActive() {
+			continue
+		}
+		clone := *group
+		groups = append(groups, clone)
+	}
+	return groups, nil
 }
 
 type stubEntitlementAPIKeyUpdater struct {

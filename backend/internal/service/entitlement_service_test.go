@@ -34,6 +34,17 @@ func (s *entitlementGroupRepoStub) GetByID(_ context.Context, id int64) (*Group,
 	return group, nil
 }
 
+func (s *entitlementGroupRepoStub) ListActiveByPlatform(_ context.Context, platform string) ([]Group, error) {
+	out := make([]Group, 0, len(s.groups))
+	for _, group := range s.groups {
+		if group == nil || group.Platform != platform || !group.IsActive() {
+			continue
+		}
+		out = append(out, *group)
+	}
+	return out, nil
+}
+
 type entitlementAPIKeyRepoStub struct {
 	keys []APIKey
 }
@@ -378,6 +389,121 @@ func TestEntitlementService_AutoSwitchEntitlement_UsesFallbackBalanceGroup(t *te
 	require.NotNil(t, result.State)
 	require.NotNil(t, result.State.APIKey)
 	require.Empty(t, result.State.APIKey.Key, "auto-switch response state must not expose raw API key secrets")
+}
+
+func TestEntitlementService_AutoSwitchEntitlement_AttachesCreditQuotaForAssignedBalanceGroup(t *testing.T) {
+	now := time.Now()
+	later := now.Add(30 * 24 * time.Hour)
+	subscriptionGroupID := int64(8)
+	fallbackGroupID := int64(2)
+	dailyLimit := 1.0
+	keyRepo := &entitlementAPIKeyRepoStub{keys: []APIKey{{ID: 100, UserID: 42, Key: "sk-secret", Name: "desktop", Status: StatusActive, GroupID: &subscriptionGroupID}}}
+	updater := &entitlementAPIKeyUpdaterStub{keys: keyRepo}
+	svc := NewEntitlementService(
+		&entitlementUserRepoStub{users: map[int64]*User{42: {ID: 42, Balance: 12.5}}},
+		&entitlementGroupRepoStub{groups: map[int64]*Group{
+			8: {ID: 8, Name: "OpenAI Subscription", Platform: PlatformOpenAI, Status: StatusActive, SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &dailyLimit, FallbackGroupID: &fallbackGroupID, SupportedModelScopes: []string{"openai"}},
+			2: {ID: 2, Name: "OpenAI Credit", Platform: PlatformOpenAI, Status: StatusActive, SubscriptionType: SubscriptionTypeStandard, RateMultiplier: 0.175, SupportedModelScopes: []string{"openai"}},
+		}},
+		updater,
+		keyRepo,
+		&entitlementUserSubRepoStub{subs: []UserSubscription{{ID: 7, UserID: 42, GroupID: subscriptionGroupID, Status: StatusActive, StartsAt: now, ExpiresAt: later, DailyUsageUSD: 1.1}}},
+	)
+	svc.SetUsageRepository(&entitlementUsageRepoStub{summary: &usagestats.CreditUsageSummary{
+		UserID:                     42,
+		CreditUnitScale:            1,
+		BalanceLedgerAmount:        12.5,
+		TotalPurchasedLedgerAmount: 20,
+		TotalPurchasedCredits:      20000000,
+		TotalUsedLedgerAmount:      7.5,
+		TotalUsedCredits:           7500000,
+		GroupEstimates: []usagestats.CreditUsageGroupEstimate{
+			{
+				GroupID:               fallbackGroupID,
+				GroupName:             "OpenAI Credit",
+				RateMultiplier:        0.175,
+				PurchasedLedgerAmount: 20,
+				PurchasedCredits:      20000000,
+			},
+		},
+	}})
+
+	result, err := svc.AutoSwitchEntitlement(context.Background(), 42, AutoSwitchEntitlementRequest{Reason: "subscription_limit_exceeded", ErrorCode: "USAGE_LIMIT_EXCEEDED", CurrentAPIKeyID: &[]int64{100}[0], CurrentGroupID: &[]int64{subscriptionGroupID}[0], ProviderID: "v-claw-openai", AllowAPIKeyChange: true, AllowProviderChange: true})
+	require.NoError(t, err)
+	require.NotNil(t, result.State)
+	require.NotNil(t, result.State.Current)
+	require.Equal(t, EntitlementModeBalance, result.State.Current.Mode)
+	require.Equal(t, fallbackGroupID, *result.State.Current.GroupID)
+
+	var balanceItem *EntitlementItem
+	for i := range result.State.Entitlements {
+		if result.State.Entitlements[i].GroupID == fallbackGroupID {
+			balanceItem = &result.State.Entitlements[i]
+			break
+		}
+	}
+	require.NotNil(t, balanceItem, "auto-switch state must include the assigned balance group even when it came from a balance package, not user_subscriptions")
+	require.Equal(t, EntitlementModeBalance, balanceItem.Mode)
+	require.True(t, balanceItem.Current)
+	require.NotNil(t, balanceItem.CreditQuota, "assigned balance group must recalculate and return credit_quota")
+	require.Equal(t, 20000000.0, balanceItem.CreditQuota.PurchasedCredits)
+	require.InDelta(t, 7500000.0, balanceItem.CreditQuota.UsedCredits, 0.001)
+	require.InDelta(t, 12500000.0, balanceItem.CreditQuota.RemainingCredits, 0.001)
+}
+
+func TestEntitlementService_AutoSwitchEntitlement_AssignsBasicBalanceGroupForExistingCreditWithoutPackage(t *testing.T) {
+	now := time.Now()
+	later := now.Add(30 * 24 * time.Hour)
+	subscriptionGroupID := int64(8)
+	basicBalanceGroupID := int64(2)
+	discountBalanceGroupID := int64(3)
+	dailyLimit := 1.0
+	tokenPricePerMillion := 7.5
+	keyRepo := &entitlementAPIKeyRepoStub{keys: []APIKey{{ID: 100, UserID: 42, Key: "sk-secret", Name: "desktop", Status: StatusActive, GroupID: &subscriptionGroupID}}}
+	updater := &entitlementAPIKeyUpdaterStub{keys: keyRepo}
+	svc := NewEntitlementService(
+		&entitlementUserRepoStub{users: map[int64]*User{42: {ID: 42, Balance: 7.5}}},
+		&entitlementGroupRepoStub{groups: map[int64]*Group{
+			8: {ID: 8, Name: "OpenAI Subscription", Platform: PlatformOpenAI, Status: StatusActive, SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &dailyLimit, SupportedModelScopes: []string{"openai"}},
+			// Basic/default balance group is the largest rate_multiplier. Lower multipliers are discounted tiers.
+			2: {ID: 2, Name: "OpenAI Basic Credit", Platform: PlatformOpenAI, Status: StatusActive, SubscriptionType: SubscriptionTypeStandard, RateMultiplier: 0.036247, TokenPricePerMillion: &tokenPricePerMillion, SupportedModelScopes: []string{"openai"}},
+			3: {ID: 3, Name: "OpenAI Discount Credit", Platform: PlatformOpenAI, Status: StatusActive, SubscriptionType: SubscriptionTypeStandard, RateMultiplier: 0.027970, TokenPricePerMillion: &tokenPricePerMillion, SupportedModelScopes: []string{"openai"}},
+		}},
+		updater,
+		keyRepo,
+		&entitlementUserSubRepoStub{subs: []UserSubscription{{ID: 7, UserID: 42, GroupID: subscriptionGroupID, Status: StatusActive, StartsAt: now, ExpiresAt: later, DailyUsageUSD: 1.1}}},
+	)
+	svc.SetUsageRepository(&entitlementUsageRepoStub{summary: &usagestats.CreditUsageSummary{
+		UserID:              42,
+		CreditUnitScale:     1,
+		BalanceLedgerAmount: 7.5,
+		GroupEstimates:      []usagestats.CreditUsageGroupEstimate{},
+	}})
+
+	result, err := svc.AutoSwitchEntitlement(context.Background(), 42, AutoSwitchEntitlementRequest{Reason: "subscription_limit_exceeded", ErrorCode: "USAGE_LIMIT_EXCEEDED", CurrentAPIKeyID: &[]int64{100}[0], CurrentGroupID: &[]int64{subscriptionGroupID}[0], ProviderID: "v-claw-openai", AllowAPIKeyChange: true})
+	require.NoError(t, err)
+	require.True(t, result.Switched)
+	require.NotNil(t, result.Target)
+	require.Equal(t, basicBalanceGroupID, result.Target.GroupID)
+	require.Equal(t, basicBalanceGroupID, *updater.updatedGroup)
+	require.NotEqual(t, discountBalanceGroupID, result.Target.GroupID, "auto assign must not pick discounted/lower multiplier tiers as the basic balance group")
+	require.NotNil(t, result.State)
+	require.NotNil(t, result.State.Current)
+	require.Equal(t, EntitlementModeBalance, result.State.Current.Mode)
+	require.Equal(t, basicBalanceGroupID, *result.State.Current.GroupID)
+
+	var balanceItem *EntitlementItem
+	for i := range result.State.Entitlements {
+		if result.State.Entitlements[i].GroupID == basicBalanceGroupID {
+			balanceItem = &result.State.Entitlements[i]
+			break
+		}
+	}
+	require.NotNil(t, balanceItem, "existing account credit without a package must still create a balance entitlement element")
+	require.True(t, balanceItem.Current)
+	require.NotNil(t, balanceItem.CreditQuota, "existing account credit must be recalculated for the auto-assigned basic balance group")
+	require.InDelta(t, 27_588_490.0, balanceItem.CreditQuota.RemainingCredits, 1.0)
+	require.Equal(t, 0.0, balanceItem.CreditQuota.UsedCredits)
 }
 
 func TestEntitlementService_AutoSwitchEntitlement_CurrentKeyExhaustedUsesAlternateKey(t *testing.T) {
