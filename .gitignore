@@ -134,5 +134,6 @@ docs/*
 .serena/
 .codex/
 frontend/coverage/
+.pnpm-store/
 aicodex
 output/
