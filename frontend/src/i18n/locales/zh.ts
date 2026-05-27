@@ -2262,6 +2262,12 @@ export default {
         finalPricePreview: '最终单张价格预览',
         notConfigured: '未配置'
       },
+      modelsList: {
+        title: '自定义 /v1/models 模型列表',
+        hint: '仅影响 /v1/models 展示结果，不影响白名单模型调用和账号调度。',
+        loading: '正在加载模型列表...',
+        empty: '暂无可展示模型'
+      },
       claudeCode: {
         title: 'Claude Code 客户端限制',
         tooltip:
@@ -3110,6 +3116,7 @@ export default {
         usageWindows: '用量窗口',
         proxy: '代理',
         lastUsed: '最近使用',
+        createdAt: '创建时间',
         expiresAt: '过期时间',
         actions: '操作'
       },
@@ -3553,6 +3560,8 @@ export default {
         '启用后，上游 429/403/401 错误将自动重试而不标记账号限流或错误，适用于上游指向另一个 sub2api 实例的场景。',
       poolModeRetryCount: '同账号重试次数',
       poolModeRetryCountHint: '仅在池模式下生效。0 表示不原地重试；默认 {default}，最大 {max}。',
+      poolModeRetryStatusCodes: '同账号重试状态码',
+      poolModeRetryStatusCodesHint: '仅在池模式下生效。以英文逗号分隔的 HTTP 状态码（100-599），命中时触发同账号重试。留空使用默认值（{default}）。',
       customErrorCodes: '自定义错误码',
       customErrorCodesHint: '仅对选中的错误码停止调度',
       customErrorCodesWarning: '仅选中的错误码会停止调度，其他错误将返回 500。',

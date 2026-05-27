@@ -2179,6 +2179,12 @@ export default {
         finalPricePreview: 'Final per-image price preview',
         notConfigured: 'Not configured'
       },
+      modelsList: {
+        title: 'Custom /v1/models Model List',
+        hint: 'Only changes the /v1/models response. Whitelist model calls and account routing are unchanged.',
+        loading: 'Loading model list...',
+        empty: 'No displayable models'
+      },
       claudeCode: {
         title: 'Claude Code Client Restriction',
         tooltip: 'When enabled, this group only allows official Claude Code clients. Non-Claude Code requests will be rejected or fallback to the specified group.',
@@ -3072,6 +3078,7 @@ export default {
         usageWindows: 'Usage Windows',
         proxy: 'Proxy',
         lastUsed: 'Last Used',
+        createdAt: 'Created',
         expiresAt: 'Expires At',
         actions: 'Actions'
       },
@@ -3410,6 +3417,9 @@ export default {
       poolModeRetryCount: 'Same-Account Retries',
       poolModeRetryCountHint:
         'Only applies in pool mode. Use 0 to disable in-place retry. Default {default}, maximum {max}.',
+      poolModeRetryStatusCodes: 'Retry Status Codes',
+      poolModeRetryStatusCodesHint:
+        'Comma-separated HTTP status codes (100-599) that trigger same-account retry in pool mode. Leave blank to use defaults ({default}).',
       customErrorCodes: 'Custom Error Codes',
       customErrorCodesHint: 'Only stop scheduling for selected error codes',
       customErrorCodesWarning:
