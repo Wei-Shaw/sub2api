@@ -89,7 +89,7 @@ func responsesInputToChatMessages(instructions string, inputRaw json.RawMessage)
 			return nil, fmt.Errorf("parse responses input item: %w", err)
 		}
 
-		role := rawString(item["role"])
+		role := chatCompletionsBridgeRole(rawString(item["role"]))
 		itemType := rawString(item["type"])
 		switch itemType {
 		case "function_call":
@@ -130,9 +130,6 @@ func responsesInputToChatMessages(instructions string, inputRaw json.RawMessage)
 			continue
 		}
 
-		if role == "" {
-			role = "user"
-		}
 		content := item["content"]
 		if len(bytesTrimSpace(content)) == 0 {
 			if text := rawString(item["text"]); text != "" {
@@ -150,6 +147,17 @@ func responsesInputToChatMessages(instructions string, inputRaw json.RawMessage)
 	}
 
 	return messages, nil
+}
+
+func chatCompletionsBridgeRole(role string) string {
+	trimmed := strings.TrimSpace(role)
+	if trimmed == "" {
+		return "user"
+	}
+	if strings.EqualFold(trimmed, "developer") {
+		return "system"
+	}
+	return role
 }
 
 func responsesContentToChatContent(raw json.RawMessage, role string) (json.RawMessage, error) {

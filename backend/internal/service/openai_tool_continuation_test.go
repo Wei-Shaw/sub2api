@@ -38,41 +38,57 @@ func TestNeedsToolContinuationSignals(t *testing.T) {
 }
 
 func TestHasFunctionCallOutput(t *testing.T) {
-	// 仅当 input 中存在 function_call_output 才视为续链输出。
+	// 所有 Codex 工具输出都应视为续链输出，避免 WS 续链时丢失 previous_response_id。
 	require.False(t, HasFunctionCallOutput(nil))
-	require.True(t, HasFunctionCallOutput(map[string]any{
-		"input": []any{map[string]any{"type": "function_call_output"}},
-	}))
+	for _, typ := range []string{
+		"function_call_output",
+		"tool_search_output",
+		"custom_tool_call_output",
+		"mcp_tool_call_output",
+	} {
+		require.True(t, HasFunctionCallOutput(map[string]any{
+			"input": []any{map[string]any{"type": typ}},
+		}), typ)
+	}
 	require.False(t, HasFunctionCallOutput(map[string]any{
 		"input": "text",
 	}))
 }
 
 func TestHasToolCallContext(t *testing.T) {
-	// tool_call/function_call 必须包含 call_id，才能作为可关联上下文。
+	// 工具调用上下文必须包含 call_id，才能作为可关联上下文。
 	require.False(t, HasToolCallContext(nil))
-	require.True(t, HasToolCallContext(map[string]any{
-		"input": []any{map[string]any{"type": "tool_call", "call_id": "call_1"}},
-	}))
-	require.True(t, HasToolCallContext(map[string]any{
-		"input": []any{map[string]any{"type": "function_call", "call_id": "call_2"}},
-	}))
+	for _, typ := range []string{
+		"tool_call",
+		"function_call",
+		"local_shell_call",
+		"tool_search_call",
+		"custom_tool_call",
+		"mcp_tool_call",
+	} {
+		require.True(t, HasToolCallContext(map[string]any{
+			"input": []any{map[string]any{"type": typ, "call_id": "call_1"}},
+		}), typ)
+	}
 	require.False(t, HasToolCallContext(map[string]any{
 		"input": []any{map[string]any{"type": "tool_call"}},
 	}))
 }
 
 func TestFunctionCallOutputCallIDs(t *testing.T) {
-	// 仅提取非空 call_id，去重后返回。
+	// 仅提取工具输出的非空 call_id，去重后返回。
 	require.Empty(t, FunctionCallOutputCallIDs(nil))
 	callIDs := FunctionCallOutputCallIDs(map[string]any{
 		"input": []any{
 			map[string]any{"type": "function_call_output", "call_id": "call_1"},
+			map[string]any{"type": "tool_search_output", "call_id": "call_search"},
+			map[string]any{"type": "custom_tool_call_output", "call_id": "call_custom"},
+			map[string]any{"type": "mcp_tool_call_output", "call_id": "call_mcp"},
 			map[string]any{"type": "function_call_output", "call_id": ""},
 			map[string]any{"type": "function_call_output", "call_id": "call_1"},
 		},
 	})
-	require.ElementsMatch(t, []string{"call_1"}, callIDs)
+	require.ElementsMatch(t, []string{"call_1", "call_search", "call_custom", "call_mcp"}, callIDs)
 }
 
 func TestHasFunctionCallOutputMissingCallID(t *testing.T) {
@@ -80,8 +96,11 @@ func TestHasFunctionCallOutputMissingCallID(t *testing.T) {
 	require.True(t, HasFunctionCallOutputMissingCallID(map[string]any{
 		"input": []any{map[string]any{"type": "function_call_output"}},
 	}))
+	require.True(t, HasFunctionCallOutputMissingCallID(map[string]any{
+		"input": []any{map[string]any{"type": "tool_search_output"}},
+	}))
 	require.False(t, HasFunctionCallOutputMissingCallID(map[string]any{
-		"input": []any{map[string]any{"type": "function_call_output", "call_id": "call_1"}},
+		"input": []any{map[string]any{"type": "tool_search_output", "call_id": "call_1"}},
 	}))
 }
 

@@ -248,16 +248,14 @@ func (c *Channel) IsWebSearchEmulationEnabled(platform string) bool {
 	return ok && enabled
 }
 
-// IsBedrockCCCompatEnabled 返回该渠道是否为指定平台启用了 Bedrock CC 兼容模式。
+// IsBedrockCCCompatEnabled 返回该渠道是否启用了 Bedrock CC 兼容模式。
+// 一旦启用，该渠道下所有请求都会应用 CC 兼容转换，不区分账号 platform。
 func (c *Channel) IsBedrockCCCompatEnabled(platform string) bool {
 	if c == nil || c.FeaturesConfig == nil {
 		return false
 	}
-	bcc, ok := c.FeaturesConfig[featureKeyBedrockCCCompat].(map[string]any)
-	if !ok {
-		return false
-	}
-	enabled, ok := bcc[platform].(bool)
+	// 直接检查 bedrock_cc_compat 开关，不再检查 platform 子字段
+	enabled, ok := c.FeaturesConfig[featureKeyBedrockCCCompat].(bool)
 	return ok && enabled
 }
 

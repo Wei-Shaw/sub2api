@@ -131,8 +131,10 @@ func TestLogCodexCLIOnlyDetection_RejectedIncludesRequestDetails(t *testing.T) {
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses?trace=1", bytes.NewReader(nil))
+	c.Request.RemoteAddr = "172.18.0.1:54321"
 	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.98.0 (Windows 10.0.19045; x86_64) unknown")
 	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("X-Real-IP", "203.0.113.42")
 	c.Request.Header.Set("OpenAI-Beta", "assistants=v2")
 
 	body := []byte(`{"model":"gpt-5.2","stream":false,"prompt_cache_key":"pc-123","access_token":"secret-token","input":[{"type":"text","text":"hello"}]}`)
@@ -146,6 +148,8 @@ func TestLogCodexCLIOnlyDetection_RejectedIncludesRequestDetails(t *testing.T) {
 	require.True(t, logSink.ContainsFieldValue("request_user_agent", "codex_cli_rs/0.98.0 (Windows 10.0.19045; x86_64) unknown"))
 	require.True(t, logSink.ContainsFieldValue("request_model", "gpt-5.2"))
 	require.True(t, logSink.ContainsFieldValue("request_query", "trace=1"))
+	require.True(t, logSink.ContainsFieldValue("request_client_ip", "203.0.113.42"))
+	require.True(t, logSink.ContainsFieldValue("request_remote_addr", "172.18.0.1:54321"))
 	require.True(t, logSink.ContainsFieldValue("request_prompt_cache_key_sha256", hashSensitiveValueForLog("pc-123")))
 	require.True(t, logSink.ContainsFieldValue("request_headers", "openai-beta"))
 	require.True(t, logSink.ContainsField("request_body_size"))
