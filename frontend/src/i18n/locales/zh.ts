@@ -665,6 +665,15 @@ export default {
     platformBreakdownEmpty: '暂无平台用量',
     platformCount: '{count} 个平台',
     platformOther: '其他',
+    platformQuota: {
+      title: '配额用量',
+      daily: '日',
+      weekly: '周',
+      monthly: '月（近30天）',
+      resetsAt: '{time} 重置',
+      noLimit: '不限制',
+      disabled: '已禁用',
+    },
     tokenUsageTrend: 'Token 使用趋势',
     noDataAvailable: '暂无数据',
     model: '模型',
@@ -1846,6 +1855,7 @@ export default {
         groups: '分组',
         subscriptions: '订阅分组',
         balance: '余额',
+        balancePlatformQuota: '余额(平台配额)',
         usage: '用量',
         usageAnthropic: '用量 (Claude)',
         usageOpenAI: '用量 (OpenAI)',
@@ -2070,6 +2080,41 @@ export default {
         failedToReorder: '更新排序失败',
         keyExists: '属性键已存在',
         dragToReorder: '拖拽排序'
+      },
+      platformQuota: {
+        menuItem: '平台限额',
+        title: '平台限额',
+        subtitle: '为用户 {email} 配置各上游平台的日 / 周 / 月用量上限',
+        columns: {
+          platform: '平台',
+          daily: '日 (USD)',
+          weekly: '周 (USD)',
+          monthly: '月 (USD, 30天滚动)',
+          usage: '当前用量',
+        },
+        placeholder: '不限制',
+        save: '保存',
+        saving: '保存中...',
+        cancel: '取消',
+        clearAll: '全部清空（取消所有限额）',
+        clearAllConfirm: '确认清空全部平台的日 / 周 / 月限额？所有平台将变为"无限额"，本地无法撤销，需要在保存前手动重填。',
+        reset: {
+          button: '重置该窗口',
+          confirm: '确认重置该用户 {platform} 平台的 {window} 用量？此操作立即生效。',
+          success: '已重置 {platform} {window} 用量',
+          failed: '重置失败',
+        },
+        updateSuccess: '平台限额已更新',
+        updateFailed: '保存失败',
+        loadFailed: '加载失败',
+        hint: '留空 = 不限制该窗口。',
+        windowDaily: '日',
+        windowWeekly: '周',
+        windowMonthly: '月',
+        cellNotConfigured: '未配置',
+        cellColumnTooltip: '仅展示已设限额的平台',
+        subscriptionWarning: '此用户有活跃订阅，平台限额仅在余额（标准）模式下生效，订阅模式请求不受此限额约束。',
+        invalidNumber: '以下字段填写不是合法数字，请修正后再保存：{fields}',
       }
     },
 
@@ -2249,6 +2294,12 @@ export default {
         modeHint: '默认关闭独立倍率时，图片费用 = 图片价格 × 当前分组有效倍率；开启独立倍率后，图片费用 = 图片价格 × 生图独立倍率。',
         finalPricePreview: '最终单张价格预览',
         notConfigured: '未配置'
+      },
+      modelsList: {
+        title: '自定义 /v1/models 模型列表',
+        hint: '仅影响 /v1/models 展示结果，不影响白名单模型调用和账号调度。',
+        loading: '正在加载模型列表...',
+        empty: '暂无可展示模型'
       },
       claudeCode: {
         title: 'Claude Code 客户端限制',
@@ -2674,11 +2725,17 @@ export default {
       lastCleanup: '上次清理：{time}',
       cleanupStats: '上次清理删除命中 {hit} 条，未命中 {nonHit} 条',
       riskSwitchOff: '系统开关关闭',
+      riskThresholds: '风险阈值',
+      riskThresholdsHint: '按 OpenAI Moderations 分类调整命中阈值，分数达到或超过阈值即视为命中。',
+      riskThresholdDefault: '默认 {value}',
+      riskThresholdReset: '恢复默认阈值',
+      riskThresholdPercent: '阈值百分比',
       tabs: {
         basic: '基础',
         scope: '审计范围',
         runtime: '运行队列',
         response: '命中通知',
+        riskThresholds: '风险阈值',
         keywords: '关键词拦截',
         retention: '日志保留',
       },
@@ -3092,6 +3149,7 @@ export default {
         usageWindows: '用量窗口',
         proxy: '代理',
         lastUsed: '最近使用',
+        createdAt: '创建时间',
         expiresAt: '过期时间',
         actions: '操作'
       },
@@ -3577,6 +3635,8 @@ export default {
         '启用后，上游 429/403/401 错误将自动重试而不标记账号限流或错误，适用于上游指向另一个 sub2api 实例的场景。',
       poolModeRetryCount: '同账号重试次数',
       poolModeRetryCountHint: '仅在池模式下生效。0 表示不原地重试；默认 {default}，最大 {max}。',
+      poolModeRetryStatusCodes: '同账号重试状态码',
+      poolModeRetryStatusCodesHint: '仅在池模式下生效。以英文逗号分隔的 HTTP 状态码（100-599），命中时触发同账号重试。留空使用默认值（{default}）。',
       customErrorCodes: '自定义错误码',
       customErrorCodesHint: '仅对选中的错误码停止调度',
       customErrorCodesWarning: '仅选中的错误码会停止调度，其他错误将返回 500。',
@@ -4176,6 +4236,9 @@ export default {
       createProxy: '添加代理',
       editProxy: '编辑代理',
       deleteProxy: '删除代理',
+      ad: {
+        inline: '正在寻找合适的代理 IP？'
+      },
       deleteConfirmMessage: "确定要删除代理 '{name}' 吗？",
       testProxy: '测试代理',
       dataImport: '导入',
@@ -5702,7 +5765,17 @@ export default {
         defaultSubscriptionsEmpty: '未配置默认订阅。新用户不会自动获得订阅套餐。',
         defaultSubscriptionsDuplicate: '默认订阅存在重复分组：{groupId}。每个分组只能出现一次。',
         subscriptionGroup: '订阅分组',
-        subscriptionValidityDays: '有效期（天）'
+        subscriptionValidityDays: '有效期（天）',
+        defaultPlatformQuotas: '默认平台限额（注册时分配）',
+        defaultPlatformQuotasHint: '新用户注册时自动写入平台限额记录；已有用户不受影响。留空 = 该平台该窗口不限制。',
+        platformQuotaNotice: '月限额为 30 天滚动窗口，非自然月',
+      },
+      platformQuota: {
+        platform:    '平台',
+        daily:       '日限额 (USD)',
+        weekly:      '周限额 (USD)',
+        monthly:     '月限额 (USD, 30天滚动)',
+        placeholder: '不限',
       },
       claudeCode: {
         title: 'Claude Code 设置',
@@ -6462,7 +6535,9 @@ export default {
         grantOnFirstBindHint: '已有账号首次绑定该来源时发放默认权益。',
         defaultSubscriptionsLabel: '默认订阅',
         defaultSubscriptionsHint: '仅对当前认证来源生效，未配置时不追加来源专属订阅。',
-        noSourceSubscriptions: '当前来源未配置专属默认订阅。'
+        noSourceSubscriptions: '当前来源未配置专属默认订阅。',
+        platformQuotasOverride: '平台限额覆盖',
+        platformQuotasOverrideHint: '留空的字段继承「系统默认平台限额」；填 0 表示禁止该窗口使用。',
       },
       paymentVisibleMethods: {
         methodLabel: '{title} 可见方式',

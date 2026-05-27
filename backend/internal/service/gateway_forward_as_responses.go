@@ -170,7 +170,7 @@ func (s *GatewayService) ForwardAsResponses(
 
 		shouldFailover := s.shouldFailoverUpstreamError(resp.StatusCode)
 		if s.rateLimitService != nil {
-			if s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody) {
+			if s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, mappedModel) {
 				shouldFailover = true
 			}
 		}

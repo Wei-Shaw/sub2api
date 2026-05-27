@@ -22,6 +22,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
+	"github.com/Wei-Shaw/sub2api/ent/userplatformquota"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 )
 
@@ -517,6 +518,21 @@ func (_c *UserCreate) AddPendingAuthSessions(v ...*PendingAuthSession) *UserCrea
 		ids[i] = v[i].ID
 	}
 	return _c.AddPendingAuthSessionIDs(ids...)
+}
+
+// AddPlatformQuotaIDs adds the "platform_quotas" edge to the UserPlatformQuota entity by IDs.
+func (_c *UserCreate) AddPlatformQuotaIDs(ids ...int64) *UserCreate {
+	_c.mutation.AddPlatformQuotaIDs(ids...)
+	return _c
+}
+
+// AddPlatformQuotas adds the "platform_quotas" edges to the UserPlatformQuota entity.
+func (_c *UserCreate) AddPlatformQuotas(v ...*UserPlatformQuota) *UserCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddPlatformQuotaIDs(ids...)
 }
 
 // Mutation returns the UserMutation object of the builder.
@@ -1016,6 +1032,22 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(pendingauthsession.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.PlatformQuotasIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.PlatformQuotasTable,
+			Columns: []string{user.PlatformQuotasColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(userplatformquota.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

@@ -239,6 +239,9 @@ type SystemSettings struct {
 	CLICurrentVersion string
 	// CLIRecentVersions 最近 3 个版本（最新在前）。用于 per-account 版本扰动。
 	CLIRecentVersions []string
+
+	// 系统全局默认平台配额（key = platform，nil/缺省 = 不限制）
+	DefaultPlatformQuotas map[string]*DefaultPlatformQuotaSetting `json:"default_platform_quotas"`
 }
 
 type DefaultSubscriptionSetting struct {
