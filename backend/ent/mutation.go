@@ -14901,6 +14901,7 @@ type GroupMutation struct {
 	require_privacy_set                     *bool
 	default_mapped_model                    *string
 	messages_dispatch_model_config          *domain.OpenAIMessagesDispatchModelConfig
+	models_list_config                      *domain.GroupModelsListConfig
 	rpm_limit                               *int
 	addrpm_limit                            *int
 	clearedFields                           map[string]struct{REDACTED
@@ -16619,6 +16620,42 @@ func (m *GroupMutation) ResetMessagesDispatchModelConfig() {
 	m.messages_dispatch_model_config = nil
 REDACTED
 
+// SetModelsListConfig sets the "models_list_config" field.
+func (m *GroupMutation) SetModelsListConfig(dmlc domain.GroupModelsListConfig) {
+	m.models_list_config = &dmlc
+REDACTED
+
+// ModelsListConfig returns the value of the "models_list_config" field in the mutation.
+func (m *GroupMutation) ModelsListConfig() (r domain.GroupModelsListConfig, exists bool) {
+	v := m.models_list_config
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldModelsListConfig returns the old "models_list_config" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldModelsListConfig(ctx context.Context) (v domain.GroupModelsListConfig, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldModelsListConfig is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldModelsListConfig requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldModelsListConfig: %w", err)
+REDACTED
+	return oldValue.ModelsListConfig, nil
+REDACTED
+
+// ResetModelsListConfig resets all changes to the "models_list_config" field.
+func (m *GroupMutation) ResetModelsListConfig() {
+	m.models_list_config = nil
+REDACTED
+
 // SetRpmLimit sets the "rpm_limit" field.
 func (m *GroupMutation) SetRpmLimit(i int) {
 	m.rpm_limit = &i
@@ -17033,7 +17070,7 @@ REDACTED
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 34)
+	fields := make([]string, 0, 35)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 REDACTED
@@ -17133,6 +17170,9 @@ REDACTED
 	if m.messages_dispatch_model_config != nil {
 		fields = append(fields, group.FieldMessagesDispatchModelConfig)
 REDACTED
+	if m.models_list_config != nil {
+		fields = append(fields, group.FieldModelsListConfig)
+REDACTED
 	if m.rpm_limit != nil {
 		fields = append(fields, group.FieldRpmLimit)
 REDACTED
@@ -17210,6 +17250,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.DefaultMappedModel()
 	case group.FieldMessagesDispatchModelConfig:
 		return m.MessagesDispatchModelConfig()
+	case group.FieldModelsListConfig:
+		return m.ModelsListConfig()
 	case group.FieldRpmLimit:
 		return m.RpmLimit()
 REDACTED
@@ -17287,6 +17329,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldDefaultMappedModel(ctx)
 	case group.FieldMessagesDispatchModelConfig:
 		return m.OldMessagesDispatchModelConfig(ctx)
+	case group.FieldModelsListConfig:
+		return m.OldModelsListConfig(ctx)
 	case group.FieldRpmLimit:
 		return m.OldRpmLimit(ctx)
 REDACTED
@@ -17528,6 +17572,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 	REDACTED
 		m.SetMessagesDispatchModelConfig(v)
+		return nil
+	case group.FieldModelsListConfig:
+		v, ok := value.(domain.GroupModelsListConfig)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetModelsListConfig(v)
 		return nil
 	case group.FieldRpmLimit:
 		v, ok := value.(int)
@@ -17911,6 +17962,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldMessagesDispatchModelConfig:
 		m.ResetMessagesDispatchModelConfig()
+		return nil
+	case group.FieldModelsListConfig:
+		m.ResetModelsListConfig()
 		return nil
 	case group.FieldRpmLimit:
 		m.ResetRpmLimit()

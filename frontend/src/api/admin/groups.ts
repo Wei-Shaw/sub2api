@@ -77,6 +77,23 @@ export async function getById(id: number): Promise<AdminGroup> {
 REDACTED
 
 /**
+ * Get candidate models for custom /v1/models list.
+ * id=0 returns platform default models for create flow.
+ */
+export async function getModelsListCandidates(
+  id: number,
+  platform?: GroupPlatform
+): Promise<string[]> {
+  const { data REDACTED = await apiClient.get<{ models: string[] REDACTED>(
+    `/admin/groups/${idREDACTED/models-list-candidates`,
+    {
+      params: platform ? { platform REDACTED : undefined
+    REDACTED
+  )
+  return data.models || []
+REDACTED
+
+/**
  * Create new group
  * @param groupData - Group data
  * @returns Created group
@@ -306,6 +323,7 @@ export const groupsAPI = {
   getAll,
   getByPlatform,
   getById,
+  getModelsListCandidates,
   create,
   update,
   delete: deleteGroup,
