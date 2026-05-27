@@ -52,6 +52,10 @@ func (UserPlatformQuota) Fields() []ent.Field {
 		//   nil / not set → 无限额（完全放行）
 		//   0            → 完全禁用（任何请求都会被拒绝，因为 usage >= 0 恒成立）
 		//   > 0          → USD 限额上限
+		field.Float("five_hour_limit_usd").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
 		field.Float("daily_limit_usd").
 			Optional().
 			Nillable().
@@ -64,8 +68,20 @@ func (UserPlatformQuota) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
+		field.Int("five_hour_align_minutes").
+			Validate(func(v int) error {
+				if v < 0 || v >= 24*60 {
+					return fmt.Errorf("five_hour_align_minutes must be between 0 and 1439")
+				}
+				return nil
+			}).
+			Default(0).
+			Comment("5-hour quota alignment offset in minutes from local day start, range [0, 1439]"),
 
 		// 当前窗口已用量（USD，preflight 时与 limit 比较）
+		field.Float("five_hour_usage_usd").
+			Default(0).
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
 		field.Float("daily_usage_usd").
 			Default(0).
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
@@ -77,6 +93,10 @@ func (UserPlatformQuota) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
 
 		// 窗口起点（NULL = 首次还未初始化，由 InitWindowStarts 用 COALESCE 兜底）
+		field.Time("five_hour_window_start").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 		field.Time("daily_window_start").
 			Optional().
 			Nillable().

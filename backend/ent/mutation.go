@@ -43199,34 +43199,41 @@ func (m *UserAttributeValueMutation) ResetEdge(name string) error {
 // UserPlatformQuotaMutation represents an operation that mutates the UserPlatformQuota nodes in the graph.
 type UserPlatformQuotaMutation struct {
 	config
-	op                   Op
-	typ                  string
-	id                   *int64
-	created_at           *time.Time
-	updated_at           *time.Time
-	deleted_at           *time.Time
-	platform             *string
-	daily_limit_usd      *float64
-	adddaily_limit_usd   *float64
-	weekly_limit_usd     *float64
-	addweekly_limit_usd  *float64
-	monthly_limit_usd    *float64
-	addmonthly_limit_usd *float64
-	daily_usage_usd      *float64
-	adddaily_usage_usd   *float64
-	weekly_usage_usd     *float64
-	addweekly_usage_usd  *float64
-	monthly_usage_usd    *float64
-	addmonthly_usage_usd *float64
-	daily_window_start   *time.Time
-	weekly_window_start  *time.Time
-	monthly_window_start *time.Time
-	clearedFields        map[string]struct{}
-	user                 *int64
-	cleareduser          bool
-	done                 bool
-	oldValue             func(context.Context) (*UserPlatformQuota, error)
-	predicates           []predicate.UserPlatformQuota
+	op                         Op
+	typ                        string
+	id                         *int64
+	created_at                 *time.Time
+	updated_at                 *time.Time
+	deleted_at                 *time.Time
+	platform                   *string
+	five_hour_limit_usd        *float64
+	addfive_hour_limit_usd     *float64
+	daily_limit_usd            *float64
+	adddaily_limit_usd         *float64
+	weekly_limit_usd           *float64
+	addweekly_limit_usd        *float64
+	monthly_limit_usd          *float64
+	addmonthly_limit_usd       *float64
+	five_hour_align_minutes    *int
+	addfive_hour_align_minutes *int
+	five_hour_usage_usd        *float64
+	addfive_hour_usage_usd     *float64
+	daily_usage_usd            *float64
+	adddaily_usage_usd         *float64
+	weekly_usage_usd           *float64
+	addweekly_usage_usd        *float64
+	monthly_usage_usd          *float64
+	addmonthly_usage_usd       *float64
+	five_hour_window_start     *time.Time
+	daily_window_start         *time.Time
+	weekly_window_start        *time.Time
+	monthly_window_start       *time.Time
+	clearedFields              map[string]struct{}
+	user                       *int64
+	cleareduser                bool
+	done                       bool
+	oldValue                   func(context.Context) (*UserPlatformQuota, error)
+	predicates                 []predicate.UserPlatformQuota
 }
 
 var _ ent.Mutation = (*UserPlatformQuotaMutation)(nil)
@@ -43520,6 +43527,76 @@ func (m *UserPlatformQuotaMutation) ResetPlatform() {
 	m.platform = nil
 }
 
+// SetFiveHourLimitUsd sets the "five_hour_limit_usd" field.
+func (m *UserPlatformQuotaMutation) SetFiveHourLimitUsd(f float64) {
+	m.five_hour_limit_usd = &f
+	m.addfive_hour_limit_usd = nil
+}
+
+// FiveHourLimitUsd returns the value of the "five_hour_limit_usd" field in the mutation.
+func (m *UserPlatformQuotaMutation) FiveHourLimitUsd() (r float64, exists bool) {
+	v := m.five_hour_limit_usd
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFiveHourLimitUsd returns the old "five_hour_limit_usd" field's value of the UserPlatformQuota entity.
+// If the UserPlatformQuota object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserPlatformQuotaMutation) OldFiveHourLimitUsd(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFiveHourLimitUsd is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFiveHourLimitUsd requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFiveHourLimitUsd: %w", err)
+	}
+	return oldValue.FiveHourLimitUsd, nil
+}
+
+// AddFiveHourLimitUsd adds f to the "five_hour_limit_usd" field.
+func (m *UserPlatformQuotaMutation) AddFiveHourLimitUsd(f float64) {
+	if m.addfive_hour_limit_usd != nil {
+		*m.addfive_hour_limit_usd += f
+	} else {
+		m.addfive_hour_limit_usd = &f
+	}
+}
+
+// AddedFiveHourLimitUsd returns the value that was added to the "five_hour_limit_usd" field in this mutation.
+func (m *UserPlatformQuotaMutation) AddedFiveHourLimitUsd() (r float64, exists bool) {
+	v := m.addfive_hour_limit_usd
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearFiveHourLimitUsd clears the value of the "five_hour_limit_usd" field.
+func (m *UserPlatformQuotaMutation) ClearFiveHourLimitUsd() {
+	m.five_hour_limit_usd = nil
+	m.addfive_hour_limit_usd = nil
+	m.clearedFields[userplatformquota.FieldFiveHourLimitUsd] = struct{}{}
+}
+
+// FiveHourLimitUsdCleared returns if the "five_hour_limit_usd" field was cleared in this mutation.
+func (m *UserPlatformQuotaMutation) FiveHourLimitUsdCleared() bool {
+	_, ok := m.clearedFields[userplatformquota.FieldFiveHourLimitUsd]
+	return ok
+}
+
+// ResetFiveHourLimitUsd resets all changes to the "five_hour_limit_usd" field.
+func (m *UserPlatformQuotaMutation) ResetFiveHourLimitUsd() {
+	m.five_hour_limit_usd = nil
+	m.addfive_hour_limit_usd = nil
+	delete(m.clearedFields, userplatformquota.FieldFiveHourLimitUsd)
+}
+
 // SetDailyLimitUsd sets the "daily_limit_usd" field.
 func (m *UserPlatformQuotaMutation) SetDailyLimitUsd(f float64) {
 	m.daily_limit_usd = &f
@@ -43730,6 +43807,118 @@ func (m *UserPlatformQuotaMutation) ResetMonthlyLimitUsd() {
 	delete(m.clearedFields, userplatformquota.FieldMonthlyLimitUsd)
 }
 
+// SetFiveHourAlignMinutes sets the "five_hour_align_minutes" field.
+func (m *UserPlatformQuotaMutation) SetFiveHourAlignMinutes(i int) {
+	m.five_hour_align_minutes = &i
+	m.addfive_hour_align_minutes = nil
+}
+
+// FiveHourAlignMinutes returns the value of the "five_hour_align_minutes" field in the mutation.
+func (m *UserPlatformQuotaMutation) FiveHourAlignMinutes() (r int, exists bool) {
+	v := m.five_hour_align_minutes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFiveHourAlignMinutes returns the old "five_hour_align_minutes" field's value of the UserPlatformQuota entity.
+// If the UserPlatformQuota object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserPlatformQuotaMutation) OldFiveHourAlignMinutes(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFiveHourAlignMinutes is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFiveHourAlignMinutes requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFiveHourAlignMinutes: %w", err)
+	}
+	return oldValue.FiveHourAlignMinutes, nil
+}
+
+// AddFiveHourAlignMinutes adds i to the "five_hour_align_minutes" field.
+func (m *UserPlatformQuotaMutation) AddFiveHourAlignMinutes(i int) {
+	if m.addfive_hour_align_minutes != nil {
+		*m.addfive_hour_align_minutes += i
+	} else {
+		m.addfive_hour_align_minutes = &i
+	}
+}
+
+// AddedFiveHourAlignMinutes returns the value that was added to the "five_hour_align_minutes" field in this mutation.
+func (m *UserPlatformQuotaMutation) AddedFiveHourAlignMinutes() (r int, exists bool) {
+	v := m.addfive_hour_align_minutes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetFiveHourAlignMinutes resets all changes to the "five_hour_align_minutes" field.
+func (m *UserPlatformQuotaMutation) ResetFiveHourAlignMinutes() {
+	m.five_hour_align_minutes = nil
+	m.addfive_hour_align_minutes = nil
+}
+
+// SetFiveHourUsageUsd sets the "five_hour_usage_usd" field.
+func (m *UserPlatformQuotaMutation) SetFiveHourUsageUsd(f float64) {
+	m.five_hour_usage_usd = &f
+	m.addfive_hour_usage_usd = nil
+}
+
+// FiveHourUsageUsd returns the value of the "five_hour_usage_usd" field in the mutation.
+func (m *UserPlatformQuotaMutation) FiveHourUsageUsd() (r float64, exists bool) {
+	v := m.five_hour_usage_usd
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFiveHourUsageUsd returns the old "five_hour_usage_usd" field's value of the UserPlatformQuota entity.
+// If the UserPlatformQuota object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserPlatformQuotaMutation) OldFiveHourUsageUsd(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFiveHourUsageUsd is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFiveHourUsageUsd requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFiveHourUsageUsd: %w", err)
+	}
+	return oldValue.FiveHourUsageUsd, nil
+}
+
+// AddFiveHourUsageUsd adds f to the "five_hour_usage_usd" field.
+func (m *UserPlatformQuotaMutation) AddFiveHourUsageUsd(f float64) {
+	if m.addfive_hour_usage_usd != nil {
+		*m.addfive_hour_usage_usd += f
+	} else {
+		m.addfive_hour_usage_usd = &f
+	}
+}
+
+// AddedFiveHourUsageUsd returns the value that was added to the "five_hour_usage_usd" field in this mutation.
+func (m *UserPlatformQuotaMutation) AddedFiveHourUsageUsd() (r float64, exists bool) {
+	v := m.addfive_hour_usage_usd
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetFiveHourUsageUsd resets all changes to the "five_hour_usage_usd" field.
+func (m *UserPlatformQuotaMutation) ResetFiveHourUsageUsd() {
+	m.five_hour_usage_usd = nil
+	m.addfive_hour_usage_usd = nil
+}
+
 // SetDailyUsageUsd sets the "daily_usage_usd" field.
 func (m *UserPlatformQuotaMutation) SetDailyUsageUsd(f float64) {
 	m.daily_usage_usd = &f
@@ -43896,6 +44085,55 @@ func (m *UserPlatformQuotaMutation) AddedMonthlyUsageUsd() (r float64, exists bo
 func (m *UserPlatformQuotaMutation) ResetMonthlyUsageUsd() {
 	m.monthly_usage_usd = nil
 	m.addmonthly_usage_usd = nil
+}
+
+// SetFiveHourWindowStart sets the "five_hour_window_start" field.
+func (m *UserPlatformQuotaMutation) SetFiveHourWindowStart(t time.Time) {
+	m.five_hour_window_start = &t
+}
+
+// FiveHourWindowStart returns the value of the "five_hour_window_start" field in the mutation.
+func (m *UserPlatformQuotaMutation) FiveHourWindowStart() (r time.Time, exists bool) {
+	v := m.five_hour_window_start
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFiveHourWindowStart returns the old "five_hour_window_start" field's value of the UserPlatformQuota entity.
+// If the UserPlatformQuota object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserPlatformQuotaMutation) OldFiveHourWindowStart(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFiveHourWindowStart is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFiveHourWindowStart requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFiveHourWindowStart: %w", err)
+	}
+	return oldValue.FiveHourWindowStart, nil
+}
+
+// ClearFiveHourWindowStart clears the value of the "five_hour_window_start" field.
+func (m *UserPlatformQuotaMutation) ClearFiveHourWindowStart() {
+	m.five_hour_window_start = nil
+	m.clearedFields[userplatformquota.FieldFiveHourWindowStart] = struct{}{}
+}
+
+// FiveHourWindowStartCleared returns if the "five_hour_window_start" field was cleared in this mutation.
+func (m *UserPlatformQuotaMutation) FiveHourWindowStartCleared() bool {
+	_, ok := m.clearedFields[userplatformquota.FieldFiveHourWindowStart]
+	return ok
+}
+
+// ResetFiveHourWindowStart resets all changes to the "five_hour_window_start" field.
+func (m *UserPlatformQuotaMutation) ResetFiveHourWindowStart() {
+	m.five_hour_window_start = nil
+	delete(m.clearedFields, userplatformquota.FieldFiveHourWindowStart)
 }
 
 // SetDailyWindowStart sets the "daily_window_start" field.
@@ -44106,7 +44344,7 @@ func (m *UserPlatformQuotaMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserPlatformQuotaMutation) Fields() []string {
-	fields := make([]string, 0, 14)
+	fields := make([]string, 0, 18)
 	if m.created_at != nil {
 		fields = append(fields, userplatformquota.FieldCreatedAt)
 	}
@@ -44122,6 +44360,9 @@ func (m *UserPlatformQuotaMutation) Fields() []string {
 	if m.platform != nil {
 		fields = append(fields, userplatformquota.FieldPlatform)
 	}
+	if m.five_hour_limit_usd != nil {
+		fields = append(fields, userplatformquota.FieldFiveHourLimitUsd)
+	}
 	if m.daily_limit_usd != nil {
 		fields = append(fields, userplatformquota.FieldDailyLimitUsd)
 	}
@@ -44131,6 +44372,12 @@ func (m *UserPlatformQuotaMutation) Fields() []string {
 	if m.monthly_limit_usd != nil {
 		fields = append(fields, userplatformquota.FieldMonthlyLimitUsd)
 	}
+	if m.five_hour_align_minutes != nil {
+		fields = append(fields, userplatformquota.FieldFiveHourAlignMinutes)
+	}
+	if m.five_hour_usage_usd != nil {
+		fields = append(fields, userplatformquota.FieldFiveHourUsageUsd)
+	}
 	if m.daily_usage_usd != nil {
 		fields = append(fields, userplatformquota.FieldDailyUsageUsd)
 	}
@@ -44139,6 +44386,9 @@ func (m *UserPlatformQuotaMutation) Fields() []string {
 	}
 	if m.monthly_usage_usd != nil {
 		fields = append(fields, userplatformquota.FieldMonthlyUsageUsd)
+	}
+	if m.five_hour_window_start != nil {
+		fields = append(fields, userplatformquota.FieldFiveHourWindowStart)
 	}
 	if m.daily_window_start != nil {
 		fields = append(fields, userplatformquota.FieldDailyWindowStart)
@@ -44167,18 +44417,26 @@ func (m *UserPlatformQuotaMutation) Field(name string) (ent.Value, bool) {
 		return m.UserID()
 	case userplatformquota.FieldPlatform:
 		return m.Platform()
+	case userplatformquota.FieldFiveHourLimitUsd:
+		return m.FiveHourLimitUsd()
 	case userplatformquota.FieldDailyLimitUsd:
 		return m.DailyLimitUsd()
 	case userplatformquota.FieldWeeklyLimitUsd:
 		return m.WeeklyLimitUsd()
 	case userplatformquota.FieldMonthlyLimitUsd:
 		return m.MonthlyLimitUsd()
+	case userplatformquota.FieldFiveHourAlignMinutes:
+		return m.FiveHourAlignMinutes()
+	case userplatformquota.FieldFiveHourUsageUsd:
+		return m.FiveHourUsageUsd()
 	case userplatformquota.FieldDailyUsageUsd:
 		return m.DailyUsageUsd()
 	case userplatformquota.FieldWeeklyUsageUsd:
 		return m.WeeklyUsageUsd()
 	case userplatformquota.FieldMonthlyUsageUsd:
 		return m.MonthlyUsageUsd()
+	case userplatformquota.FieldFiveHourWindowStart:
+		return m.FiveHourWindowStart()
 	case userplatformquota.FieldDailyWindowStart:
 		return m.DailyWindowStart()
 	case userplatformquota.FieldWeeklyWindowStart:
@@ -44204,18 +44462,26 @@ func (m *UserPlatformQuotaMutation) OldField(ctx context.Context, name string) (
 		return m.OldUserID(ctx)
 	case userplatformquota.FieldPlatform:
 		return m.OldPlatform(ctx)
+	case userplatformquota.FieldFiveHourLimitUsd:
+		return m.OldFiveHourLimitUsd(ctx)
 	case userplatformquota.FieldDailyLimitUsd:
 		return m.OldDailyLimitUsd(ctx)
 	case userplatformquota.FieldWeeklyLimitUsd:
 		return m.OldWeeklyLimitUsd(ctx)
 	case userplatformquota.FieldMonthlyLimitUsd:
 		return m.OldMonthlyLimitUsd(ctx)
+	case userplatformquota.FieldFiveHourAlignMinutes:
+		return m.OldFiveHourAlignMinutes(ctx)
+	case userplatformquota.FieldFiveHourUsageUsd:
+		return m.OldFiveHourUsageUsd(ctx)
 	case userplatformquota.FieldDailyUsageUsd:
 		return m.OldDailyUsageUsd(ctx)
 	case userplatformquota.FieldWeeklyUsageUsd:
 		return m.OldWeeklyUsageUsd(ctx)
 	case userplatformquota.FieldMonthlyUsageUsd:
 		return m.OldMonthlyUsageUsd(ctx)
+	case userplatformquota.FieldFiveHourWindowStart:
+		return m.OldFiveHourWindowStart(ctx)
 	case userplatformquota.FieldDailyWindowStart:
 		return m.OldDailyWindowStart(ctx)
 	case userplatformquota.FieldWeeklyWindowStart:
@@ -44266,6 +44532,13 @@ func (m *UserPlatformQuotaMutation) SetField(name string, value ent.Value) error
 		}
 		m.SetPlatform(v)
 		return nil
+	case userplatformquota.FieldFiveHourLimitUsd:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFiveHourLimitUsd(v)
+		return nil
 	case userplatformquota.FieldDailyLimitUsd:
 		v, ok := value.(float64)
 		if !ok {
@@ -44287,6 +44560,20 @@ func (m *UserPlatformQuotaMutation) SetField(name string, value ent.Value) error
 		}
 		m.SetMonthlyLimitUsd(v)
 		return nil
+	case userplatformquota.FieldFiveHourAlignMinutes:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFiveHourAlignMinutes(v)
+		return nil
+	case userplatformquota.FieldFiveHourUsageUsd:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFiveHourUsageUsd(v)
+		return nil
 	case userplatformquota.FieldDailyUsageUsd:
 		v, ok := value.(float64)
 		if !ok {
@@ -44307,6 +44594,13 @@ func (m *UserPlatformQuotaMutation) SetField(name string, value ent.Value) error
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetMonthlyUsageUsd(v)
+		return nil
+	case userplatformquota.FieldFiveHourWindowStart:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFiveHourWindowStart(v)
 		return nil
 	case userplatformquota.FieldDailyWindowStart:
 		v, ok := value.(time.Time)
@@ -44337,6 +44631,9 @@ func (m *UserPlatformQuotaMutation) SetField(name string, value ent.Value) error
 // this mutation.
 func (m *UserPlatformQuotaMutation) AddedFields() []string {
 	var fields []string
+	if m.addfive_hour_limit_usd != nil {
+		fields = append(fields, userplatformquota.FieldFiveHourLimitUsd)
+	}
 	if m.adddaily_limit_usd != nil {
 		fields = append(fields, userplatformquota.FieldDailyLimitUsd)
 	}
@@ -44345,6 +44642,12 @@ func (m *UserPlatformQuotaMutation) AddedFields() []string {
 	}
 	if m.addmonthly_limit_usd != nil {
 		fields = append(fields, userplatformquota.FieldMonthlyLimitUsd)
+	}
+	if m.addfive_hour_align_minutes != nil {
+		fields = append(fields, userplatformquota.FieldFiveHourAlignMinutes)
+	}
+	if m.addfive_hour_usage_usd != nil {
+		fields = append(fields, userplatformquota.FieldFiveHourUsageUsd)
 	}
 	if m.adddaily_usage_usd != nil {
 		fields = append(fields, userplatformquota.FieldDailyUsageUsd)
@@ -44363,12 +44666,18 @@ func (m *UserPlatformQuotaMutation) AddedFields() []string {
 // was not set, or was not defined in the schema.
 func (m *UserPlatformQuotaMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
+	case userplatformquota.FieldFiveHourLimitUsd:
+		return m.AddedFiveHourLimitUsd()
 	case userplatformquota.FieldDailyLimitUsd:
 		return m.AddedDailyLimitUsd()
 	case userplatformquota.FieldWeeklyLimitUsd:
 		return m.AddedWeeklyLimitUsd()
 	case userplatformquota.FieldMonthlyLimitUsd:
 		return m.AddedMonthlyLimitUsd()
+	case userplatformquota.FieldFiveHourAlignMinutes:
+		return m.AddedFiveHourAlignMinutes()
+	case userplatformquota.FieldFiveHourUsageUsd:
+		return m.AddedFiveHourUsageUsd()
 	case userplatformquota.FieldDailyUsageUsd:
 		return m.AddedDailyUsageUsd()
 	case userplatformquota.FieldWeeklyUsageUsd:
@@ -44384,6 +44693,13 @@ func (m *UserPlatformQuotaMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *UserPlatformQuotaMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case userplatformquota.FieldFiveHourLimitUsd:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddFiveHourLimitUsd(v)
+		return nil
 	case userplatformquota.FieldDailyLimitUsd:
 		v, ok := value.(float64)
 		if !ok {
@@ -44404,6 +44720,20 @@ func (m *UserPlatformQuotaMutation) AddField(name string, value ent.Value) error
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddMonthlyLimitUsd(v)
+		return nil
+	case userplatformquota.FieldFiveHourAlignMinutes:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddFiveHourAlignMinutes(v)
+		return nil
+	case userplatformquota.FieldFiveHourUsageUsd:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddFiveHourUsageUsd(v)
 		return nil
 	case userplatformquota.FieldDailyUsageUsd:
 		v, ok := value.(float64)
@@ -44437,6 +44767,9 @@ func (m *UserPlatformQuotaMutation) ClearedFields() []string {
 	if m.FieldCleared(userplatformquota.FieldDeletedAt) {
 		fields = append(fields, userplatformquota.FieldDeletedAt)
 	}
+	if m.FieldCleared(userplatformquota.FieldFiveHourLimitUsd) {
+		fields = append(fields, userplatformquota.FieldFiveHourLimitUsd)
+	}
 	if m.FieldCleared(userplatformquota.FieldDailyLimitUsd) {
 		fields = append(fields, userplatformquota.FieldDailyLimitUsd)
 	}
@@ -44445,6 +44778,9 @@ func (m *UserPlatformQuotaMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(userplatformquota.FieldMonthlyLimitUsd) {
 		fields = append(fields, userplatformquota.FieldMonthlyLimitUsd)
+	}
+	if m.FieldCleared(userplatformquota.FieldFiveHourWindowStart) {
+		fields = append(fields, userplatformquota.FieldFiveHourWindowStart)
 	}
 	if m.FieldCleared(userplatformquota.FieldDailyWindowStart) {
 		fields = append(fields, userplatformquota.FieldDailyWindowStart)
@@ -44472,6 +44808,9 @@ func (m *UserPlatformQuotaMutation) ClearField(name string) error {
 	case userplatformquota.FieldDeletedAt:
 		m.ClearDeletedAt()
 		return nil
+	case userplatformquota.FieldFiveHourLimitUsd:
+		m.ClearFiveHourLimitUsd()
+		return nil
 	case userplatformquota.FieldDailyLimitUsd:
 		m.ClearDailyLimitUsd()
 		return nil
@@ -44480,6 +44819,9 @@ func (m *UserPlatformQuotaMutation) ClearField(name string) error {
 		return nil
 	case userplatformquota.FieldMonthlyLimitUsd:
 		m.ClearMonthlyLimitUsd()
+		return nil
+	case userplatformquota.FieldFiveHourWindowStart:
+		m.ClearFiveHourWindowStart()
 		return nil
 	case userplatformquota.FieldDailyWindowStart:
 		m.ClearDailyWindowStart()
@@ -44513,6 +44855,9 @@ func (m *UserPlatformQuotaMutation) ResetField(name string) error {
 	case userplatformquota.FieldPlatform:
 		m.ResetPlatform()
 		return nil
+	case userplatformquota.FieldFiveHourLimitUsd:
+		m.ResetFiveHourLimitUsd()
+		return nil
 	case userplatformquota.FieldDailyLimitUsd:
 		m.ResetDailyLimitUsd()
 		return nil
@@ -44522,6 +44867,12 @@ func (m *UserPlatformQuotaMutation) ResetField(name string) error {
 	case userplatformquota.FieldMonthlyLimitUsd:
 		m.ResetMonthlyLimitUsd()
 		return nil
+	case userplatformquota.FieldFiveHourAlignMinutes:
+		m.ResetFiveHourAlignMinutes()
+		return nil
+	case userplatformquota.FieldFiveHourUsageUsd:
+		m.ResetFiveHourUsageUsd()
+		return nil
 	case userplatformquota.FieldDailyUsageUsd:
 		m.ResetDailyUsageUsd()
 		return nil
@@ -44530,6 +44881,9 @@ func (m *UserPlatformQuotaMutation) ResetField(name string) error {
 		return nil
 	case userplatformquota.FieldMonthlyUsageUsd:
 		m.ResetMonthlyUsageUsd()
+		return nil
+	case userplatformquota.FieldFiveHourWindowStart:
+		m.ResetFiveHourWindowStart()
 		return nil
 	case userplatformquota.FieldDailyWindowStart:
 		m.ResetDailyWindowStart()

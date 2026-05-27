@@ -2036,16 +2036,26 @@ func init() {
 			return nil
 		}
 	}()
+	// userplatformquotaDescFiveHourAlignMinutes is the schema descriptor for five_hour_align_minutes field.
+	userplatformquotaDescFiveHourAlignMinutes := userplatformquotaFields[6].Descriptor()
+	// userplatformquota.DefaultFiveHourAlignMinutes holds the default value on creation for the five_hour_align_minutes field.
+	userplatformquota.DefaultFiveHourAlignMinutes = userplatformquotaDescFiveHourAlignMinutes.Default.(int)
+	// userplatformquota.FiveHourAlignMinutesValidator is a validator for the "five_hour_align_minutes" field. It is called by the builders before save.
+	userplatformquota.FiveHourAlignMinutesValidator = userplatformquotaDescFiveHourAlignMinutes.Validators[0].(func(int) error)
+	// userplatformquotaDescFiveHourUsageUsd is the schema descriptor for five_hour_usage_usd field.
+	userplatformquotaDescFiveHourUsageUsd := userplatformquotaFields[7].Descriptor()
+	// userplatformquota.DefaultFiveHourUsageUsd holds the default value on creation for the five_hour_usage_usd field.
+	userplatformquota.DefaultFiveHourUsageUsd = userplatformquotaDescFiveHourUsageUsd.Default.(float64)
 	// userplatformquotaDescDailyUsageUsd is the schema descriptor for daily_usage_usd field.
-	userplatformquotaDescDailyUsageUsd := userplatformquotaFields[5].Descriptor()
+	userplatformquotaDescDailyUsageUsd := userplatformquotaFields[8].Descriptor()
 	// userplatformquota.DefaultDailyUsageUsd holds the default value on creation for the daily_usage_usd field.
 	userplatformquota.DefaultDailyUsageUsd = userplatformquotaDescDailyUsageUsd.Default.(float64)
 	// userplatformquotaDescWeeklyUsageUsd is the schema descriptor for weekly_usage_usd field.
-	userplatformquotaDescWeeklyUsageUsd := userplatformquotaFields[6].Descriptor()
+	userplatformquotaDescWeeklyUsageUsd := userplatformquotaFields[9].Descriptor()
 	// userplatformquota.DefaultWeeklyUsageUsd holds the default value on creation for the weekly_usage_usd field.
 	userplatformquota.DefaultWeeklyUsageUsd = userplatformquotaDescWeeklyUsageUsd.Default.(float64)
 	// userplatformquotaDescMonthlyUsageUsd is the schema descriptor for monthly_usage_usd field.
-	userplatformquotaDescMonthlyUsageUsd := userplatformquotaFields[7].Descriptor()
+	userplatformquotaDescMonthlyUsageUsd := userplatformquotaFields[10].Descriptor()
 	// userplatformquota.DefaultMonthlyUsageUsd holds the default value on creation for the monthly_usage_usd field.
 	userplatformquota.DefaultMonthlyUsageUsd = userplatformquotaDescMonthlyUsageUsd.Default.(float64)
 	usersubscriptionMixin := schema.UserSubscription{}.Mixin()

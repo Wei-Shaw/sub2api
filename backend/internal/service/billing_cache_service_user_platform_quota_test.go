@@ -152,6 +152,11 @@ func currentDayStart() *time.Time {
 	return &s
 }
 
+func currentFiveHourStart(alignMinutes int) *time.Time {
+	s := fiveHourAlignedWindowStart(time.Now(), alignMinutes)
+	return &s
+}
+
 func TestCheckUserPlatformQuotaEligibility_AllowsWhenUnderLimit(t *testing.T) {
 	daily := 10.0
 	repo := &fakeQuotaRepo{rec: &UserPlatformQuotaRecord{
@@ -166,6 +171,96 @@ func TestCheckUserPlatformQuotaEligibility_AllowsWhenUnderLimit(t *testing.T) {
 	s := newServiceForPreflight(t, repo, cache)
 	if err := s.checkUserPlatformQuotaEligibility(context.Background(), 1, "anthropic"); err != nil {
 		t.Errorf("expected nil, got %v", err)
+	}
+}
+
+func TestCheckUserPlatformQuotaEligibility_FiveHourExhausted(t *testing.T) {
+	limit := 5.0
+	alignMinutes := 60
+	repo := &fakeQuotaRepo{rec: &UserPlatformQuotaRecord{
+		UserID: 1, Platform: "anthropic", FiveHourLimitUSD: &limit, FiveHourAlignMinutes: alignMinutes,
+	}}
+	cache := &fakeFullCache{entry: &UserPlatformQuotaCacheEntry{
+		FiveHourUsageUSD:     5.0,
+		FiveHourLimitUSD:     &limit,
+		FiveHourWindowStart:  currentFiveHourStart(alignMinutes),
+		FiveHourAlignMinutes: alignMinutes,
+		SchemaVersion:        UserPlatformQuotaCacheSchemaV1,
+	}}
+	s := newServiceForPreflight(t, repo, cache)
+	err := s.checkUserPlatformQuotaEligibility(context.Background(), 1, "anthropic")
+	if !errors.Is(err, ErrUserPlatformFiveHourQuotaExhausted) {
+		t.Errorf("expected ErrUserPlatformFiveHourQuotaExhausted, got %v", err)
+	}
+}
+
+func TestCheckUserPlatformQuotaEligibility_FiveHourExpiredRefreshesCache(t *testing.T) {
+	limit := 5.0
+	alignMinutes := 60
+	oldStart := fiveHourAlignedWindowStart(time.Now().Add(-5*time.Hour), alignMinutes)
+	repo := &fakeQuotaRepo{rec: &UserPlatformQuotaRecord{
+		UserID: 1, Platform: "anthropic", FiveHourLimitUSD: &limit, FiveHourAlignMinutes: alignMinutes,
+	}}
+	cache := &fakeFullCache{entry: &UserPlatformQuotaCacheEntry{
+		FiveHourUsageUSD:     10.0,
+		FiveHourLimitUSD:     &limit,
+		FiveHourWindowStart:  &oldStart,
+		FiveHourAlignMinutes: alignMinutes,
+		SchemaVersion:        UserPlatformQuotaCacheSchemaV1,
+	}}
+	s := newServiceForPreflight(t, repo, cache)
+
+	err := s.checkUserPlatformQuotaEligibility(context.Background(), 1, "anthropic")
+	if err != nil {
+		t.Errorf("过期 5 小时窗口应归零放行, got %v", err)
+	}
+
+	refreshed := cache.getEntry()
+	if refreshed == nil {
+		t.Fatal("窗口过期后 cache entry 不应为 nil")
+	}
+	if refreshed.FiveHourUsageUSD != 0 {
+		t.Errorf("刷新后 FiveHourUsageUSD = %v, want 0", refreshed.FiveHourUsageUSD)
+	}
+	if refreshed.FiveHourLimitUSD == nil || *refreshed.FiveHourLimitUSD != limit {
+		t.Errorf("刷新后 FiveHourLimitUSD = %v, want %v", refreshed.FiveHourLimitUSD, limit)
+	}
+	if refreshed.FiveHourWindowStart == nil || refreshed.FiveHourWindowStart.Equal(oldStart) {
+		t.Errorf("刷新后 FiveHourWindowStart = %v, 应更新到当前对齐窗口而非 old=%v", refreshed.FiveHourWindowStart, oldStart)
+	}
+	if refreshed.FiveHourAlignMinutes != alignMinutes {
+		t.Errorf("刷新后 FiveHourAlignMinutes = %d, want %d", refreshed.FiveHourAlignMinutes, alignMinutes)
+	}
+}
+
+func TestFiveHourAlignedWindowStart(t *testing.T) {
+	loc := timezone.Location()
+	now := time.Date(2026, 5, 1, 7, 30, 0, 0, loc)
+	got := fiveHourAlignedWindowStart(now, 60)
+	want := time.Date(2026, 5, 1, 6, 0, 0, 0, loc)
+	if !got.Equal(want) {
+		t.Errorf("fiveHourAlignedWindowStart = %v, want %v", got, want)
+	}
+}
+
+func TestFiveHourAlignedWindowStart_BeforeTodayAnchor(t *testing.T) {
+	loc := timezone.Location()
+	now := time.Date(2026, 5, 1, 0, 30, 0, 0, loc)
+	got := fiveHourAlignedWindowStart(now, 60)
+	want := time.Date(2026, 4, 30, 20, 0, 0, 0, loc)
+	if !got.Equal(want) {
+		t.Errorf("fiveHourAlignedWindowStart before anchor = %v, want %v", got, want)
+	}
+}
+
+func TestNextFiveHourResetFrom_UsesAlignedWindowWhenStartWasManualReset(t *testing.T) {
+	loc := timezone.Location()
+	now := time.Date(2026, 5, 1, 7, 30, 0, 0, loc)
+	manualResetStart := now
+	got := nextFiveHourResetFrom(&manualResetStart, now, 60)
+	want := time.Date(2026, 5, 1, 11, 0, 0, 0, loc)
+	if !got.Equal(want) {
+		t.Errorf("nextFiveHourResetFrom = %v, want aligned reset %v", got, want)
 	}
 }
 
@@ -246,6 +341,26 @@ func TestCheckUserPlatformQuotaEligibility_OldSchemaCacheMissTriggersDB(t *testi
 	err := s.checkUserPlatformQuotaEligibility(context.Background(), 1, "anthropic")
 	if !errors.Is(err, ErrUserPlatformDailyQuotaExhausted) {
 		t.Errorf("旧版 entry 应走 DB 路径并报 daily exhausted, got %v", err)
+	}
+}
+
+func TestCheckUserPlatformQuotaEligibility_SchemaV1CacheMissTriggersDBForFiveHour(t *testing.T) {
+	limit := 5.0
+	alignMinutes := 60
+	fiveHourStart := currentFiveHourStart(alignMinutes)
+	repo := &fakeQuotaRepo{rec: &UserPlatformQuotaRecord{
+		UserID: 1, Platform: "anthropic", FiveHourLimitUSD: &limit, FiveHourUsageUSD: 6.0,
+		FiveHourWindowStart: fiveHourStart, FiveHourAlignMinutes: alignMinutes,
+	}}
+	// SchemaVersion=1 是上线前的日/周/月旧缓存，不包含 5h limit，必须回源 DB。
+	cache := &fakeFullCache{entry: &UserPlatformQuotaCacheEntry{
+		DailyUsageUSD: 1.0,
+		SchemaVersion: 1,
+	}}
+	s := newServiceForPreflight(t, repo, cache)
+	err := s.checkUserPlatformQuotaEligibility(context.Background(), 1, "anthropic")
+	if !errors.Is(err, ErrUserPlatformFiveHourQuotaExhausted) {
+		t.Errorf("SchemaVersion=1 entry 应走 DB 路径并报 five-hour exhausted, got %v", err)
 	}
 }
 

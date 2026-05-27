@@ -25,26 +25,31 @@ type APIKeyRateLimitCacheData struct {
 //
 // SchemaVersion 用于向后兼容：
 //   - 0（旧 entry，无 SchemaVersion 字段）→ 视为 cache MISS，强制 refresh
-//   - 1（当前版本）→ 包含 limits 和 window_start，可免 DB 查询
+//   - 1（日/周/月旧 entry，无 5h 字段）→ 视为 cache MISS，强制 refresh
+//   - 2（当前版本）→ 包含 5h/daily/weekly/monthly limits 和 window_start，可免 DB 查询
 //
 // limit 字段为 nil 表示"无限额"（DB 中对应列为 NULL）。
-const UserPlatformQuotaCacheSchemaV1 = int64(1)
+const UserPlatformQuotaCacheSchemaV1 = int64(2)
 
 type UserPlatformQuotaCacheEntry struct {
-	DailyUsageUSD   float64
-	WeeklyUsageUSD  float64
-	MonthlyUsageUSD float64
-	Version         int64
-	SchemaVersion   int64
+	FiveHourUsageUSD     float64
+	DailyUsageUSD        float64
+	WeeklyUsageUSD       float64
+	MonthlyUsageUSD      float64
+	Version              int64
+	SchemaVersion        int64
+	FiveHourAlignMinutes int
 
 	// 以下字段仅在 SchemaVersion >= 1 时有效
-	DailyLimitUSD   *float64
-	WeeklyLimitUSD  *float64
-	MonthlyLimitUSD *float64
+	FiveHourLimitUSD *float64
+	DailyLimitUSD    *float64
+	WeeklyLimitUSD   *float64
+	MonthlyLimitUSD  *float64
 
-	DailyWindowStart   *time.Time
-	WeeklyWindowStart  *time.Time
-	MonthlyWindowStart *time.Time
+	FiveHourWindowStart *time.Time
+	DailyWindowStart    *time.Time
+	WeeklyWindowStart   *time.Time
+	MonthlyWindowStart  *time.Time
 }
 
 // BillingCache defines cache operations for billing service

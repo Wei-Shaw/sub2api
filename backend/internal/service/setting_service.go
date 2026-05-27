@@ -167,9 +167,11 @@ type SettingService struct {
 
 // DefaultPlatformQuotaSetting 单 platform 三档限额（nil = 沿用上层；0 = 显式禁用；>0 = 上限）
 type DefaultPlatformQuotaSetting struct {
-	DailyLimitUSD   *float64 `json:"daily"`
-	WeeklyLimitUSD  *float64 `json:"weekly"`
-	MonthlyLimitUSD *float64 `json:"monthly"`
+	FiveHourLimitUSD     *float64 `json:"five_hour"`
+	DailyLimitUSD        *float64 `json:"daily"`
+	WeeklyLimitUSD       *float64 `json:"weekly"`
+	MonthlyLimitUSD      *float64 `json:"monthly"`
+	FiveHourAlignMinutes *int     `json:"five_hour_align_minutes"`
 }
 
 type ProviderDefaultGrantSettings struct {
@@ -1856,10 +1858,13 @@ func validateDefaultPlatformQuotaMap(m map[string]*DefaultPlatformQuotaSetting) 
 		if pq == nil {
 			continue
 		}
-		for _, v := range []*float64{pq.DailyLimitUSD, pq.WeeklyLimitUSD, pq.MonthlyLimitUSD} {
+		for _, v := range []*float64{pq.FiveHourLimitUSD, pq.DailyLimitUSD, pq.WeeklyLimitUSD, pq.MonthlyLimitUSD} {
 			if v != nil && (*v < 0 || math.IsNaN(*v) || math.IsInf(*v, 0)) {
 				return infraerrors.BadRequest("INVALID_DEFAULT_PLATFORM_QUOTA", "platform quota limit must be a finite non-negative number")
 			}
+		}
+		if pq.FiveHourAlignMinutes != nil && (*pq.FiveHourAlignMinutes < 0 || *pq.FiveHourAlignMinutes >= 24*60) {
+			return infraerrors.BadRequest("INVALID_DEFAULT_PLATFORM_QUOTA", "five_hour_align_minutes must be between 0 and 1439")
 		}
 	}
 	return nil
@@ -4658,6 +4663,9 @@ func mergePlatformQuotaDefaults(dst, src *DefaultPlatformQuotaSetting) {
 	if src == nil || dst == nil {
 		return
 	}
+	if src.FiveHourLimitUSD != nil {
+		dst.FiveHourLimitUSD = src.FiveHourLimitUSD
+	}
 	if src.DailyLimitUSD != nil {
 		dst.DailyLimitUSD = src.DailyLimitUSD
 	}
@@ -4666,5 +4674,8 @@ func mergePlatformQuotaDefaults(dst, src *DefaultPlatformQuotaSetting) {
 	}
 	if src.MonthlyLimitUSD != nil {
 		dst.MonthlyLimitUSD = src.MonthlyLimitUSD
+	}
+	if src.FiveHourAlignMinutes != nil {
+		dst.FiveHourAlignMinutes = src.FiveHourAlignMinutes
 	}
 }

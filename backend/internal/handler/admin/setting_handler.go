@@ -3628,12 +3628,24 @@ func equalNullableFloat(a, b *float64) bool {
 	return *a == *b
 }
 
+func equalNullableInt(a, b *int) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return *a == *b
+}
+
 // slotOf returns the *float64 for the given window from a DefaultPlatformQuotaSetting.
 func slotOf(s *service.DefaultPlatformQuotaSetting, win string) *float64 {
 	if s == nil {
 		return nil
 	}
 	switch win {
+	case "five_hour":
+		return s.FiveHourLimitUSD
 	case "daily":
 		return s.DailyLimitUSD
 	case "weekly":
@@ -3644,11 +3656,14 @@ func slotOf(s *service.DefaultPlatformQuotaSetting, win string) *float64 {
 	return nil
 }
 
-// equalPlatformQuotaSettings reports whether two platform-quota maps are identical across all 12 slots.
+// equalPlatformQuotaSettings reports whether two platform-quota maps are identical across all quota slots.
 func equalPlatformQuotaSettings(before, after map[string]*service.DefaultPlatformQuotaSetting) bool {
 	for _, platform := range service.AllowedQuotaPlatforms {
 		b := before[platform]
 		a := after[platform]
+		if !equalNullableFloat(slotOf(b, "five_hour"), slotOf(a, "five_hour")) {
+			return false
+		}
 		if !equalNullableFloat(slotOf(b, "daily"), slotOf(a, "daily")) {
 			return false
 		}
@@ -3658,6 +3673,16 @@ func equalPlatformQuotaSettings(before, after map[string]*service.DefaultPlatfor
 		if !equalNullableFloat(slotOf(b, "monthly"), slotOf(a, "monthly")) {
 			return false
 		}
+		if !equalNullableInt(alignMinutesOf(b), alignMinutesOf(a)) {
+			return false
+		}
 	}
 	return true
+}
+
+func alignMinutesOf(s *service.DefaultPlatformQuotaSetting) *int {
+	if s == nil {
+		return nil
+	}
+	return s.FiveHourAlignMinutes
 }

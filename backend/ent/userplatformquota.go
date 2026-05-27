@@ -28,18 +28,26 @@ type UserPlatformQuota struct {
 	UserID int64 `json:"user_id,omitempty"`
 	// Platform holds the value of the "platform" field.
 	Platform string `json:"platform,omitempty"`
+	// FiveHourLimitUsd holds the value of the "five_hour_limit_usd" field.
+	FiveHourLimitUsd *float64 `json:"five_hour_limit_usd,omitempty"`
 	// DailyLimitUsd holds the value of the "daily_limit_usd" field.
 	DailyLimitUsd *float64 `json:"daily_limit_usd,omitempty"`
 	// WeeklyLimitUsd holds the value of the "weekly_limit_usd" field.
 	WeeklyLimitUsd *float64 `json:"weekly_limit_usd,omitempty"`
 	// MonthlyLimitUsd holds the value of the "monthly_limit_usd" field.
 	MonthlyLimitUsd *float64 `json:"monthly_limit_usd,omitempty"`
+	// 5-hour quota alignment offset in minutes from local day start, range [0, 1439]
+	FiveHourAlignMinutes int `json:"five_hour_align_minutes,omitempty"`
+	// FiveHourUsageUsd holds the value of the "five_hour_usage_usd" field.
+	FiveHourUsageUsd float64 `json:"five_hour_usage_usd,omitempty"`
 	// DailyUsageUsd holds the value of the "daily_usage_usd" field.
 	DailyUsageUsd float64 `json:"daily_usage_usd,omitempty"`
 	// WeeklyUsageUsd holds the value of the "weekly_usage_usd" field.
 	WeeklyUsageUsd float64 `json:"weekly_usage_usd,omitempty"`
 	// MonthlyUsageUsd holds the value of the "monthly_usage_usd" field.
 	MonthlyUsageUsd float64 `json:"monthly_usage_usd,omitempty"`
+	// FiveHourWindowStart holds the value of the "five_hour_window_start" field.
+	FiveHourWindowStart *time.Time `json:"five_hour_window_start,omitempty"`
 	// DailyWindowStart holds the value of the "daily_window_start" field.
 	DailyWindowStart *time.Time `json:"daily_window_start,omitempty"`
 	// WeeklyWindowStart holds the value of the "weekly_window_start" field.
@@ -77,13 +85,13 @@ func (*UserPlatformQuota) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case userplatformquota.FieldDailyLimitUsd, userplatformquota.FieldWeeklyLimitUsd, userplatformquota.FieldMonthlyLimitUsd, userplatformquota.FieldDailyUsageUsd, userplatformquota.FieldWeeklyUsageUsd, userplatformquota.FieldMonthlyUsageUsd:
+		case userplatformquota.FieldFiveHourLimitUsd, userplatformquota.FieldDailyLimitUsd, userplatformquota.FieldWeeklyLimitUsd, userplatformquota.FieldMonthlyLimitUsd, userplatformquota.FieldFiveHourUsageUsd, userplatformquota.FieldDailyUsageUsd, userplatformquota.FieldWeeklyUsageUsd, userplatformquota.FieldMonthlyUsageUsd:
 			values[i] = new(sql.NullFloat64)
-		case userplatformquota.FieldID, userplatformquota.FieldUserID:
+		case userplatformquota.FieldID, userplatformquota.FieldUserID, userplatformquota.FieldFiveHourAlignMinutes:
 			values[i] = new(sql.NullInt64)
 		case userplatformquota.FieldPlatform:
 			values[i] = new(sql.NullString)
-		case userplatformquota.FieldCreatedAt, userplatformquota.FieldUpdatedAt, userplatformquota.FieldDeletedAt, userplatformquota.FieldDailyWindowStart, userplatformquota.FieldWeeklyWindowStart, userplatformquota.FieldMonthlyWindowStart:
+		case userplatformquota.FieldCreatedAt, userplatformquota.FieldUpdatedAt, userplatformquota.FieldDeletedAt, userplatformquota.FieldFiveHourWindowStart, userplatformquota.FieldDailyWindowStart, userplatformquota.FieldWeeklyWindowStart, userplatformquota.FieldMonthlyWindowStart:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -137,6 +145,13 @@ func (_m *UserPlatformQuota) assignValues(columns []string, values []any) error 
 			} else if value.Valid {
 				_m.Platform = value.String
 			}
+		case userplatformquota.FieldFiveHourLimitUsd:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field five_hour_limit_usd", values[i])
+			} else if value.Valid {
+				_m.FiveHourLimitUsd = new(float64)
+				*_m.FiveHourLimitUsd = value.Float64
+			}
 		case userplatformquota.FieldDailyLimitUsd:
 			if value, ok := values[i].(*sql.NullFloat64); !ok {
 				return fmt.Errorf("unexpected type %T for field daily_limit_usd", values[i])
@@ -158,6 +173,18 @@ func (_m *UserPlatformQuota) assignValues(columns []string, values []any) error 
 				_m.MonthlyLimitUsd = new(float64)
 				*_m.MonthlyLimitUsd = value.Float64
 			}
+		case userplatformquota.FieldFiveHourAlignMinutes:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field five_hour_align_minutes", values[i])
+			} else if value.Valid {
+				_m.FiveHourAlignMinutes = int(value.Int64)
+			}
+		case userplatformquota.FieldFiveHourUsageUsd:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field five_hour_usage_usd", values[i])
+			} else if value.Valid {
+				_m.FiveHourUsageUsd = value.Float64
+			}
 		case userplatformquota.FieldDailyUsageUsd:
 			if value, ok := values[i].(*sql.NullFloat64); !ok {
 				return fmt.Errorf("unexpected type %T for field daily_usage_usd", values[i])
@@ -175,6 +202,13 @@ func (_m *UserPlatformQuota) assignValues(columns []string, values []any) error 
 				return fmt.Errorf("unexpected type %T for field monthly_usage_usd", values[i])
 			} else if value.Valid {
 				_m.MonthlyUsageUsd = value.Float64
+			}
+		case userplatformquota.FieldFiveHourWindowStart:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field five_hour_window_start", values[i])
+			} else if value.Valid {
+				_m.FiveHourWindowStart = new(time.Time)
+				*_m.FiveHourWindowStart = value.Time
 			}
 		case userplatformquota.FieldDailyWindowStart:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -255,6 +289,11 @@ func (_m *UserPlatformQuota) String() string {
 	builder.WriteString("platform=")
 	builder.WriteString(_m.Platform)
 	builder.WriteString(", ")
+	if v := _m.FiveHourLimitUsd; v != nil {
+		builder.WriteString("five_hour_limit_usd=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
 	if v := _m.DailyLimitUsd; v != nil {
 		builder.WriteString("daily_limit_usd=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
@@ -270,6 +309,12 @@ func (_m *UserPlatformQuota) String() string {
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")
+	builder.WriteString("five_hour_align_minutes=")
+	builder.WriteString(fmt.Sprintf("%v", _m.FiveHourAlignMinutes))
+	builder.WriteString(", ")
+	builder.WriteString("five_hour_usage_usd=")
+	builder.WriteString(fmt.Sprintf("%v", _m.FiveHourUsageUsd))
+	builder.WriteString(", ")
 	builder.WriteString("daily_usage_usd=")
 	builder.WriteString(fmt.Sprintf("%v", _m.DailyUsageUsd))
 	builder.WriteString(", ")
@@ -278,6 +323,11 @@ func (_m *UserPlatformQuota) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("monthly_usage_usd=")
 	builder.WriteString(fmt.Sprintf("%v", _m.MonthlyUsageUsd))
+	builder.WriteString(", ")
+	if v := _m.FiveHourWindowStart; v != nil {
+		builder.WriteString("five_hour_window_start=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
 	builder.WriteString(", ")
 	if v := _m.DailyWindowStart; v != nil {
 		builder.WriteString("daily_window_start=")

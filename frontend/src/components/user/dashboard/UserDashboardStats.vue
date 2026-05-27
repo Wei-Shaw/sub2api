@@ -183,7 +183,7 @@
           <p class="text-[10px] uppercase tracking-wide text-gray-400">
             {{ t('dashboard.platformQuota.title') }}
           </p>
-          <template v-for="w in (['daily', 'weekly', 'monthly'] as const)" :key="w">
+          <template v-for="w in (['five_hour', 'daily', 'weekly', 'monthly'] as const)" :key="w">
             <div v-if="quotaVal(item.quota, `${w}_limit_usd`) != null" class="space-y-0.5">
               <!-- limit=0：完全禁用 -->
               <template v-if="(quotaVal(item.quota, `${w}_limit_usd`) as number) === 0">
@@ -327,7 +327,7 @@ const platformCards = computed<FusedPlatformCard[]>(() => {
 
 // Quota helpers
 
-type QuotaWindow = 'daily' | 'weekly' | 'monthly'
+type QuotaWindow = 'five_hour' | 'daily' | 'weekly' | 'monthly'
 type QuotaField = `${QuotaWindow}_limit_usd` | `${QuotaWindow}_usage_usd` | `${QuotaWindow}_window_resets_at`
 
 function quotaVal(q: PlatformQuotaItem | undefined, key: QuotaField): PlatformQuotaItem[QuotaField] {
@@ -336,7 +336,7 @@ function quotaVal(q: PlatformQuotaItem | undefined, key: QuotaField): PlatformQu
 
 function hasAnyLimit(q: PlatformQuotaItem | undefined): boolean {
   if (!q) return false
-  return q.daily_limit_usd != null || q.weekly_limit_usd != null || q.monthly_limit_usd != null
+  return q.five_hour_limit_usd != null || q.daily_limit_usd != null || q.weekly_limit_usd != null || q.monthly_limit_usd != null
 }
 
 function calcPercent(usage: number, limit: number): number {

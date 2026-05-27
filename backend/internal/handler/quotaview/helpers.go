@@ -12,22 +12,28 @@ import (
 // LazyZeroQuotaForResponse 按 D14 规则把过期档位归零（不写 DB）。
 // includeWindowStart=true 时输出 *_window_start 字段（admin 视角调试用）
 func LazyZeroQuotaForResponse(r service.UserPlatformQuotaRecord, now time.Time, includeWindowStart bool) map[string]any {
+	fiveHour := buildWindowSlice(r.FiveHourUsageUSD, r.FiveHourLimitUSD, r.FiveHourWindowStart, NeedsFiveHourReset(r.FiveHourWindowStart, now, r.FiveHourAlignMinutes), nextFiveHourResetTime(r.FiveHourWindowStart, now, r.FiveHourAlignMinutes), includeWindowStart)
 	daily := buildWindowSlice(r.DailyUsageUSD, r.DailyLimitUSD, r.DailyWindowStart, NeedsDailyReset(r.DailyWindowStart, now), nextDailyResetTime(now), includeWindowStart)
 	weekly := buildWindowSlice(r.WeeklyUsageUSD, r.WeeklyLimitUSD, r.WeeklyWindowStart, NeedsWeeklyReset(r.WeeklyWindowStart, now), nextWeeklyResetTime(now), includeWindowStart)
 	monthly := buildWindowSlice(r.MonthlyUsageUSD, r.MonthlyLimitUSD, r.MonthlyWindowStart, NeedsMonthlyReset(r.MonthlyWindowStart, now), NextMonthlyResetTimeFrom(r.MonthlyWindowStart, now), includeWindowStart)
 	out := map[string]any{
-		"platform":                 r.Platform,
-		"daily_usage_usd":          daily.usage,
-		"daily_limit_usd":          daily.limit,
-		"daily_window_resets_at":   daily.resetsAt,
-		"weekly_usage_usd":         weekly.usage,
-		"weekly_limit_usd":         weekly.limit,
-		"weekly_window_resets_at":  weekly.resetsAt,
-		"monthly_usage_usd":        monthly.usage,
-		"monthly_limit_usd":        monthly.limit,
-		"monthly_window_resets_at": monthly.resetsAt,
+		"platform":                   r.Platform,
+		"five_hour_usage_usd":        fiveHour.usage,
+		"five_hour_limit_usd":        fiveHour.limit,
+		"five_hour_window_resets_at": fiveHour.resetsAt,
+		"five_hour_align_minutes":    r.FiveHourAlignMinutes,
+		"daily_usage_usd":            daily.usage,
+		"daily_limit_usd":            daily.limit,
+		"daily_window_resets_at":     daily.resetsAt,
+		"weekly_usage_usd":           weekly.usage,
+		"weekly_limit_usd":           weekly.limit,
+		"weekly_window_resets_at":    weekly.resetsAt,
+		"monthly_usage_usd":          monthly.usage,
+		"monthly_limit_usd":          monthly.limit,
+		"monthly_window_resets_at":   monthly.resetsAt,
 	}
 	if includeWindowStart {
+		out["five_hour_window_start"] = fiveHour.windowStart
 		out["daily_window_start"] = daily.windowStart
 		out["weekly_window_start"] = weekly.windowStart
 		out["monthly_window_start"] = monthly.windowStart
@@ -74,6 +80,13 @@ func NeedsWeeklyReset(start *time.Time, now time.Time) bool {
 	return start.Before(timezone.StartOfWeek(now))
 }
 
+func NeedsFiveHourReset(start *time.Time, now time.Time, alignMinutes int) bool {
+	if start == nil {
+		return false
+	}
+	return start.Before(fiveHourAlignedWindowStart(now, alignMinutes))
+}
+
 // NeedsMonthlyReset 30 天滚动窗口语义（与订阅模式 NeedsMonthlyReset 一致）。
 func NeedsMonthlyReset(start *time.Time, now time.Time) bool {
 	if start == nil {
@@ -88,6 +101,22 @@ func nextDailyResetTime(now time.Time) time.Time {
 
 func nextWeeklyResetTime(now time.Time) time.Time {
 	return timezone.StartOfWeek(now).AddDate(0, 0, 7)
+}
+
+func nextFiveHourResetTime(start *time.Time, now time.Time, alignMinutes int) time.Time {
+	return fiveHourAlignedWindowStart(now, alignMinutes).Add(5 * time.Hour)
+}
+
+func fiveHourAlignedWindowStart(now time.Time, alignMinutes int) time.Time {
+	if alignMinutes < 0 || alignMinutes >= 24*60 {
+		alignMinutes = 0
+	}
+	start := timezone.StartOfDay(now).Add(time.Duration(alignMinutes) * time.Minute)
+	for start.After(now) {
+		start = start.Add(-5 * time.Hour)
+	}
+	elapsed := now.Sub(start)
+	return start.Add(time.Duration(int64(elapsed/(5*time.Hour))) * 5 * time.Hour)
 }
 
 // NextMonthlyResetTimeFrom 计算 30 天滚动月度窗口的下次重置时间。

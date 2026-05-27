@@ -131,3 +131,18 @@ func TestNextWeeklyResetTime_FollowsServerTimezone(t *testing.T) {
 		t.Errorf("nextWeeklyResetTime = %v, want %v", got, want)
 	}
 }
+
+func TestNextFiveHourResetTime_UsesAlignedWindowWhenStartWasManualReset(t *testing.T) {
+	if err := timezone.Init("Asia/Shanghai"); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	t.Cleanup(func() { _ = timezone.Init("UTC") })
+
+	now := time.Date(2026, 5, 1, 7, 30, 0, 0, timezone.Location())
+	manualResetStart := now
+	want := time.Date(2026, 5, 1, 11, 0, 0, 0, timezone.Location())
+
+	if got := nextFiveHourResetTime(&manualResetStart, now, 60); !got.Equal(want) {
+		t.Errorf("nextFiveHourResetTime = %v, want aligned reset %v", got, want)
+	}
+}
