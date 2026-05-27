@@ -3116,6 +3116,7 @@ export default {
         usageWindows: '用量窗口',
         proxy: '代理',
         lastUsed: '最近使用',
+        createdAt: '创建时间',
         expiresAt: '过期时间',
         actions: '操作'
       REDACTED,
