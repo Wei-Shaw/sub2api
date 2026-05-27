@@ -3087,6 +3087,7 @@ export default {
         usageWindows: 'Usage Windows',
         proxy: 'Proxy',
         lastUsed: 'Last Used',
+        createdAt: 'Created',
         expiresAt: 'Expires At',
         actions: 'Actions'
       },
@@ -3425,6 +3426,9 @@ export default {
       poolModeRetryCount: 'Same-Account Retries',
       poolModeRetryCountHint:
         'Only applies in pool mode. Use 0 to disable in-place retry. Default {default}, maximum {max}.',
+      poolModeRetryStatusCodes: 'Retry Status Codes',
+      poolModeRetryStatusCodesHint:
+        'Comma-separated HTTP status codes (100-599) that trigger same-account retry in pool mode. Leave blank to use defaults ({default}).',
       customErrorCodes: 'Custom Error Codes',
       customErrorCodesHint: 'Only stop scheduling for selected error codes',
       customErrorCodesWarning:
