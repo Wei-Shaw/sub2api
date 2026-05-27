@@ -198,6 +198,42 @@ func TestLoadOpenAIResponseHeaderTimeoutFromEnv(t *testing.T) {
 	require.Equal(t, 1800, cfg.Gateway.OpenAIResponseHeaderTimeout)
 }
 
+func TestLoadOpenAIDefaultServiceTierFromEnv(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+		want  string
+	}{
+		{name: "empty", value: "", want: ""},
+		{name: "priority", value: "priority", want: "priority"},
+		{name: "fast alias", value: "fast", want: "priority"},
+		{name: "flex", value: "flex", want: "flex"},
+		{name: "official auto", value: "auto", want: "auto"},
+		{name: "official default", value: "default", want: "default"},
+		{name: "official scale", value: "scale", want: "scale"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resetViperWithJWTSecret(t)
+			t.Setenv("GATEWAY_OPENAI_DEFAULT_SERVICE_TIER", tt.value)
+
+			cfg, err := Load()
+			require.NoError(t, err)
+			require.Equal(t, tt.want, cfg.Gateway.OpenAIDefaultServiceTier)
+		})
+	}
+}
+
+func TestLoadOpenAIDefaultServiceTierRejectsInvalidEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("GATEWAY_OPENAI_DEFAULT_SERVICE_TIER", "proprity")
+
+	_, err := Load()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "gateway.openai_default_service_tier")
+}
+
 func TestLoadOpenAIWSStickyTTLCompatibility(t *testing.T) {
 	resetViperWithJWTSecret(t)
 	t.Setenv("GATEWAY_OPENAI_WS_STICKY_RESPONSE_ID_TTL_SECONDS", "0")

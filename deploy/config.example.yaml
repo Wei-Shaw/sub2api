@@ -242,6 +242,10 @@ gateway:
   # OpenAI 透传模式是否放行客户端超时头（如 x-stainless-timeout）
   # 默认 false：过滤超时头，降低上游提前断流风险。
   openai_passthrough_allow_timeout_headers: false
+  # OpenAI 请求缺省 service_tier 时自动补的默认 tier。
+  # 空值表示不补；priority=极速/fast；fast 在 env 中会被规范化为 priority。
+  # 也支持 flex/auto/default/scale；客户端显式传 service_tier 时优先尊重客户端值。
+  openai_default_service_tier: ""
   # OpenAI Responses WebSocket 配置（默认开启，可按需回滚到 HTTP）
   openai_ws:
     # 新版 WS mode 路由（默认关闭）。关闭时保持当前 legacy 实现行为。
