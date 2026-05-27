@@ -274,6 +274,33 @@ func TestResolveCodexImportExpiryForNoRefreshTokenRequiresExpiry(t *testing.T) {
 	}
 }
 
+func TestResolveCodexImportExpiryForWhamValidatedAccessTokenAllowsMissingExpiry(t *testing.T) {
+	item := &codexImportAccount{
+		AccessToken:  "opaque-access-token",
+		Credentials:  map[string]any{"access_token": "opaque-access-token"},
+		WarningTexts: []string{},
+	}
+	requireValidation := true
+	req := CodexSessionImportRequest{RequireWhamUsageValidation: &requireValidation}
+
+	accountExpiresAt, credentialExpiresAt, autoPause, warnings, err := resolveCodexImportExpiry(req, item)
+	if err != nil {
+		t.Fatalf("resolveCodexImportExpiry error = %v", err)
+	}
+	if accountExpiresAt != nil {
+		t.Fatalf("accountExpiresAt = %v, want nil", accountExpiresAt)
+	}
+	if credentialExpiresAt != nil {
+		t.Fatalf("credentialExpiresAt = %v, want nil", credentialExpiresAt)
+	}
+	if autoPause != nil {
+		t.Fatalf("autoPause = %v, want nil", autoPause)
+	}
+	if len(warnings) == 0 || !strings.Contains(warnings[0], "无法自动续期") {
+		t.Fatalf("warnings = %v, want auto renewal warning", warnings)
+	}
+}
+
 func TestResolveCodexImportExpiryForNoRefreshTokenUsesEarlierRequestExpiry(t *testing.T) {
 	tokenExpiresAt := time.Now().Add(2 * time.Hour).UTC()
 	requestExpiresAt := time.Now().Add(time.Hour).UTC()
@@ -295,6 +322,66 @@ func TestResolveCodexImportExpiryForNoRefreshTokenUsesEarlierRequestExpiry(t *te
 	}
 	if credentialExpiresAt == nil || credentialExpiresAt.Unix() != requestExpiresAt.Unix() {
 		t.Fatalf("credential expires_at = %v, want %s", credentialExpiresAt, requestExpiresAt)
+	}
+}
+
+func TestBuildCodexWhamValidationResultExtractsPlanAndUsageSnapshot(t *testing.T) {
+	now := time.Date(2026, 5, 22, 10, 0, 0, 0, time.UTC)
+	result := buildCodexWhamValidationResult(&codexWhamUsageResponse{
+		AccountID: "acct-wham",
+		UserID:    "user-wham",
+		Email:     "wham@example.com",
+		PlanType:  "Pro",
+		RateLimit: &codexWhamRateLimit{
+			PrimaryWindow: &codexWhamWindow{
+				UsedPercent:        12.5,
+				LimitWindowSeconds: 5 * 60 * 60,
+				ResetAfterSeconds:  600,
+			},
+			SecondaryWindow: &codexWhamWindow{
+				UsedPercent:        20,
+				LimitWindowSeconds: 7 * 24 * 60 * 60,
+				ResetAt:            now.Add(2 * time.Hour).Unix(),
+			},
+		},
+		AdditionalRateLimits: []codexWhamAdditionalRateLimit{
+			{
+				LimitName:      "Codex Spark",
+				MeteredFeature: "bengalfox",
+				RateLimit: &codexWhamRateLimit{
+					PrimaryWindow: &codexWhamWindow{
+						UsedPercent:        33,
+						LimitWindowSeconds: 5 * 60 * 60,
+						ResetAfterSeconds:  1200,
+					},
+				},
+			},
+		},
+	}, now)
+
+	if result == nil {
+		t.Fatalf("result = nil")
+	}
+	if result.PlanType != "pro" {
+		t.Fatalf("PlanType = %q, want pro", result.PlanType)
+	}
+	if result.AccountID != "acct-wham" || result.UserID != "user-wham" || result.Email != "wham@example.com" {
+		t.Fatalf("identity = %#v", result)
+	}
+	if result.Extra["codex_5h_used_percent"] != 12.5 {
+		t.Fatalf("codex_5h_used_percent = %v, want 12.5", result.Extra["codex_5h_used_percent"])
+	}
+	if result.Extra["codex_7d_used_percent"] != float64(20) {
+		t.Fatalf("codex_7d_used_percent = %v, want 20", result.Extra["codex_7d_used_percent"])
+	}
+	if result.Extra["codex_spark_5h_used_percent"] != float64(33) {
+		t.Fatalf("codex_spark_5h_used_percent = %v, want 33", result.Extra["codex_spark_5h_used_percent"])
+	}
+	if result.Extra["codex_spark_limit_name"] != "Codex Spark" {
+		t.Fatalf("codex_spark_limit_name = %v", result.Extra["codex_spark_limit_name"])
+	}
+	if result.Extra["codex_usage_updated_at"] != now.Format(time.RFC3339) {
+		t.Fatalf("codex_usage_updated_at = %v, want %s", result.Extra["codex_usage_updated_at"], now.Format(time.RFC3339))
 	}
 }
 

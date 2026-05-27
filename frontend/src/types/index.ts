@@ -1152,6 +1152,7 @@ export interface CodexSessionImportRequest {
   update_existing?: boolean
   skip_default_group_bind?: boolean
   confirm_mixed_channel_risk?: boolean
+  require_wham_usage_validation?: boolean
 }
 
 export interface CodexSessionImportMessage {
