@@ -350,6 +350,7 @@ export default {
     announcements: 'Announcements',
     apiKeys: 'API Keys',
     usage: 'Usage',
+    leaderboard: 'Leaderboard',
     redeem: 'Redeem',
     affiliate: 'Affiliate Rebates',
     affiliateManagement: 'Affiliate Rebates',
@@ -388,6 +389,19 @@ export default {
     channelMonitor: 'Channel Monitor',
     channelStatus: 'Channel Status',
     riskControl: 'Risk Control',
+  },
+
+  leaderboard: {
+    title: 'Leaderboard',
+    subtitle: "Today's top 5 token users across the site",
+    todayTop: 'Today Token Top 5',
+    rank: 'Rank',
+    user: 'User',
+    tokensToday: 'Tokens Today',
+    empty: 'No token usage today',
+    failedToLoad: 'Failed to load leaderboard',
+    refresh: 'Refresh',
+    refreshing: 'Refreshing...',
   },
 
   // Auth

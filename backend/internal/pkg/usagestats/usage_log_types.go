@@ -162,6 +162,30 @@ type UserSpendingRankingResponse struct {
 	TotalTokens     int64                     `json:"total_tokens"`
 }
 
+// DailyTokenLeaderboardSourceItem represents a raw per-user token ranking row.
+type DailyTokenLeaderboardSourceItem struct {
+	UserID      int64
+	Username    string
+	Email       string
+	TotalTokens int64
+}
+
+// DailyTokenLeaderboardItem represents a public, identity-masked token leaderboard row.
+type DailyTokenLeaderboardItem struct {
+	Rank        int    `json:"rank"`
+	DisplayName string `json:"display_name"`
+	TotalTokens int64  `json:"total_tokens"`
+}
+
+// DailyTokenLeaderboardResponse represents today's public token leaderboard.
+type DailyTokenLeaderboardResponse struct {
+	Items       []DailyTokenLeaderboardItem `json:"items"`
+	StartDate   string                      `json:"start_date"`
+	EndDate     string                      `json:"end_date"`
+	Limit       int                         `json:"limit"`
+	GeneratedAt string                      `json:"generated_at"`
+}
+
 // UserBreakdownItem represents per-user usage breakdown within a dimension (group, model, endpoint).
 type UserBreakdownItem struct {
 	UserID      int64   `json:"user_id"`

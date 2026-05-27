@@ -315,6 +315,23 @@ func (s *UsageService) GetUserModelStats(ctx context.Context, userID int64, star
 	return stats, nil
 }
 
+type dailyTokenLeaderboardRepository interface {
+	GetDailyTokenLeaderboard(ctx context.Context, startTime, endTime time.Time, limit int) ([]usagestats.DailyTokenLeaderboardSourceItem, error)
+}
+
+// GetDailyTokenLeaderboard returns today's global token leaderboard source rows.
+func (s *UsageService) GetDailyTokenLeaderboard(ctx context.Context, startTime, endTime time.Time, limit int) ([]usagestats.DailyTokenLeaderboardSourceItem, error) {
+	repo, ok := s.usageRepo.(dailyTokenLeaderboardRepository)
+	if !ok {
+		return nil, fmt.Errorf("daily token leaderboard repository unavailable")
+	}
+	items, err := repo.GetDailyTokenLeaderboard(ctx, startTime, endTime, limit)
+	if err != nil {
+		return nil, fmt.Errorf("get daily token leaderboard: %w", err)
+	}
+	return items, nil
+}
+
 // GetAPIKeyModelStats returns per-model usage stats for a specific API Key.
 func (s *UsageService) GetAPIKeyModelStats(ctx context.Context, apiKeyID int64, startTime, endTime time.Time) ([]usagestats.ModelStat, error) {
 	stats, err := s.usageRepo.GetModelStatsWithFilters(ctx, startTime, endTime, 0, apiKeyID, 0, 0, nil, nil, nil)

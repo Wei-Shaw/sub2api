@@ -537,6 +537,32 @@ func TestUsageLogRepositoryGetUserSpendingRanking(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestUsageLogRepositoryGetDailyTokenLeaderboard(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: db}
+
+	start := time.Date(2026, 5, 27, 0, 0, 0, 0, time.Local)
+	end := start.Add(24 * time.Hour)
+
+	rows := sqlmock.NewRows([]string{"user_id", "username", "email", "total_tokens"}).
+		AddRow(int64(2), "beta-user", "beta@example.com", int64(1200)).
+		AddRow(int64(1), "", "alpha@example.com", int64(1200)).
+		AddRow(int64(3), "", "", int64(50))
+
+	mock.ExpectQuery("WITH daily_tokens AS \\(").
+		WithArgs(start, end, 5).
+		WillReturnRows(rows)
+
+	got, err := repo.GetDailyTokenLeaderboard(context.Background(), start, end, 5)
+	require.NoError(t, err)
+	require.Equal(t, []usagestats.DailyTokenLeaderboardSourceItem{
+		{UserID: 2, Username: "beta-user", Email: "beta@example.com", TotalTokens: 1200},
+		{UserID: 1, Username: "", Email: "alpha@example.com", TotalTokens: 1200},
+		{UserID: 3, Username: "", Email: "", TotalTokens: 50},
+	}, got)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestBuildRequestTypeFilterConditionLegacyFallback(t *testing.T) {
 	tests := []struct {
 		name      string
