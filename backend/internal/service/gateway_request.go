@@ -737,16 +737,17 @@ func isLikelyValidSignature(s string) bool {
 }
 
 // FilterInvalidSignatureThinkingBlocks removes assistant-message content
-// blocks that would cause an upstream 400 `Invalid signature in thinking
-// block` error:
+// blocks that would cause an upstream 400 error:
 //
 //   - `type: "thinking"` with missing, empty, or malformed signature
+//   - `type: "thinking"` with empty thinking content (upstream rejects with
+//     "each thinking block must contain thinking")
 //   - `type: "redacted_thinking"` (we can't validate these — always remove)
 //
-// Valid thinking blocks are preserved verbatim. Non-thinking content and
-// non-assistant messages are untouched. Assistant messages left with no
-// content blocks after filtering are dropped entirely (Anthropic rejects
-// empty content arrays).
+// Valid thinking blocks (with both valid signature and non-empty content)
+// are preserved verbatim. Non-thinking content and non-assistant messages
+// are untouched. Assistant messages left with no content blocks after
+// filtering are dropped entirely (Anthropic rejects empty content arrays).
 //
 // Fail-safe: on any parse error, returns the original body unchanged.
 //
@@ -793,7 +794,10 @@ func FilterInvalidSignatureThinkingBlocks(body []byte) []byte {
 			switch blockType {
 			case "thinking":
 				sig := block.Get("signature").String()
-				if isLikelyValidSignature(sig) {
+				thinkingContent := block.Get("thinking").String()
+				// Drop if signature is invalid OR thinking content is empty
+				// (upstream rejects: "each thinking block must contain thinking")
+				if isLikelyValidSignature(sig) && thinkingContent != "" {
 					kept = append(kept, json.RawMessage(block.Raw))
 				} else {
 					changed = true

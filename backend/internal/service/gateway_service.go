@@ -8022,6 +8022,13 @@ func (s *GatewayService) isThinkingBlockSignatureError(respBody []byte) bool {
 		return true
 	}
 
+	// 检测 thinking block 内容为空的错误
+	// 例如: "each thinking block must contain thinking"
+	if strings.Contains(msg, "must contain thinking") {
+		logger.LegacyPrintf("service.gateway", "[SignatureCheck] Detected empty thinking content error")
+		return true
+	}
+
 	// 检测空消息内容错误（可能是过滤 thinking blocks 后导致的，或客户端发送了空 text block）
 	// 例如: "all messages must have non-empty content"
 	//       "messages: text content blocks must be non-empty"

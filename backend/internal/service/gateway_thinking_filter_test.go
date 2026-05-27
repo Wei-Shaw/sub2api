@@ -96,3 +96,19 @@ func TestFilterInvalidSignatureThinkingBlocks_FastPathNoThinking(t *testing.T) {
 		t.Fatalf("fast-path should return the same slice header")
 	}
 }
+
+func TestFilterInvalidSignatureThinkingBlocks_RemovesEmptyThinkingContentWithValidSignature(t *testing.T) {
+	// Valid-looking signature but empty thinking content should be removed.
+	// Upstream rejects: "each thinking block must contain thinking"
+	body := []byte(`{"messages":[{"role":"assistant","content":[{"type":"thinking","thinking":"","signature":"AbCdEfGhIjKlMnOpQrStUvWx"},{"type":"text","text":"answer"}]}]}`)
+	out := FilterInvalidSignatureThinkingBlocks(body)
+	if count := gjson.GetBytes(out, "messages.0.content.#").Int(); count != 1 {
+		t.Fatalf("expected 1 content block after strip, got %d: %s", count, out)
+	}
+	if got := gjson.GetBytes(out, "messages.0.content.0.type").String(); got != "text" {
+		t.Fatalf("expected text to remain, got: %s (body=%s)", got, out)
+	}
+	if txt := gjson.GetBytes(out, "messages.0.content.0.text").String(); txt != "answer" {
+		t.Fatalf("text content mismatch: %s", txt)
+	}
+}
