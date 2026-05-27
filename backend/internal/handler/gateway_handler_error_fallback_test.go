@@ -33,7 +33,9 @@ func TestGatewayEnsureForwardErrorResponse_WritesFallbackWhenNotWritten(t *testi
 	assert.Equal(t, "Upstream request failed", errorObj["message"])
 }
 
-func TestGatewayEnsureForwardErrorResponse_DoesNotOverrideWrittenResponse(t *testing.T) {
+// Writer 已写后 ensureForwardErrorResponse 必须把错误以 SSE 形式追加，
+// 而不是 silent EOF。非 /responses 路径走 legacy data:{"type":"error"} 分支。
+func TestGatewayEnsureForwardErrorResponse_AppendsSSEAfterWritten(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -43,7 +45,27 @@ func TestGatewayEnsureForwardErrorResponse_DoesNotOverrideWrittenResponse(t *tes
 	h := &GatewayHandler{}
 	wrote := h.ensureForwardErrorResponse(c, false)
 
-	require.False(t, wrote)
+	require.True(t, wrote)
 	require.Equal(t, http.StatusTeapot, w.Code)
-	assert.Equal(t, "already written", w.Body.String())
+	assert.Contains(t, w.Body.String(), "already written")
+	assert.Contains(t, w.Body.String(), `data: {"type":"error"`)
+}
+
+// case B 回归：Anthropic-backed /responses，Writer 已被写过时
+// ensureForwardErrorResponse 仍要发 response.failed。
+func TestGatewayEnsureForwardErrorResponse_ResponsesRouteAfterWrittenEmitsResponseFailed(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, EndpointResponses, nil)
+	_, _ = c.Writer.WriteString(":\n\n")
+
+	h := &GatewayHandler{}
+	wrote := h.ensureForwardErrorResponse(c, false)
+
+	require.True(t, wrote)
+	body := w.Body.String()
+	assert.Contains(t, body, ":\n\n")
+	assert.Contains(t, body, "event: response.failed\n")
+	assert.Contains(t, body, `"type":"response.failed"`)
 }

@@ -328,3 +328,174 @@ func (c *billingCache) InvalidateAPIKeyRateLimit(ctx context.Context, keyID int6
 	key := billingRateLimitKey(keyID)
 	return c.rdb.Del(ctx, key).Err()
 }
+
+// ============================================
+// user × platform quota 缓存
+// ============================================
+
+// userPlatformQuotaCacheKey 构造 Redis key
+func userPlatformQuotaCacheKey(userID int64, platform string) string {
+	return fmt.Sprintf("billing:user_platform_quota:%d:%s", userID, platform)
+}
+
+func (c *billingCache) GetUserPlatformQuotaCache(ctx context.Context, userID int64, platform string) (*service.UserPlatformQuotaCacheEntry, bool, error) {
+	key := userPlatformQuotaCacheKey(userID, platform)
+	fields := []string{
+		"daily_usage", "weekly_usage", "monthly_usage", "version", "schema_version",
+		"daily_limit", "weekly_limit", "monthly_limit",
+		"daily_window_start", "weekly_window_start", "monthly_window_start",
+	}
+	vals, err := c.rdb.HMGet(ctx, key, fields...).Result()
+	if err != nil {
+		return nil, false, err
+	}
+	// 前4个全为nil → key 不存在
+	if vals[0] == nil && vals[1] == nil && vals[2] == nil && vals[3] == nil {
+		return nil, false, nil
+	}
+	parseFloat := func(v any) float64 {
+		if v == nil {
+			return 0
+		}
+		s, ok := v.(string)
+		if !ok {
+			return 0
+		}
+		f, _ := strconv.ParseFloat(s, 64)
+		return f
+	}
+	parseFloatPtr := func(v any) *float64 {
+		if v == nil {
+			return nil
+		}
+		s, ok := v.(string)
+		if !ok || s == "" {
+			return nil
+		}
+		f, err := strconv.ParseFloat(s, 64)
+		if err != nil {
+			return nil
+		}
+		return &f
+	}
+	parseTimePtr := func(v any) *time.Time {
+		if v == nil {
+			return nil
+		}
+		s, ok := v.(string)
+		if !ok || s == "" {
+			return nil
+		}
+		n, err := strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			return nil
+		}
+		t := time.Unix(n, 0).UTC()
+		return &t
+	}
+	parseInt64 := func(v any) int64 {
+		if v == nil {
+			return 0
+		}
+		s, ok := v.(string)
+		if !ok {
+			return 0
+		}
+		n, _ := strconv.ParseInt(s, 10, 64)
+		return n
+	}
+	return &service.UserPlatformQuotaCacheEntry{
+		DailyUsageUSD:      parseFloat(vals[0]),
+		WeeklyUsageUSD:     parseFloat(vals[1]),
+		MonthlyUsageUSD:    parseFloat(vals[2]),
+		Version:            parseInt64(vals[3]),
+		SchemaVersion:      parseInt64(vals[4]),
+		DailyLimitUSD:      parseFloatPtr(vals[5]),
+		WeeklyLimitUSD:     parseFloatPtr(vals[6]),
+		MonthlyLimitUSD:    parseFloatPtr(vals[7]),
+		DailyWindowStart:   parseTimePtr(vals[8]),
+		WeeklyWindowStart:  parseTimePtr(vals[9]),
+		MonthlyWindowStart: parseTimePtr(vals[10]),
+	}, true, nil
+}
+
+func (c *billingCache) SetUserPlatformQuotaCache(ctx context.Context, userID int64, platform string, entry *service.UserPlatformQuotaCacheEntry, ttl time.Duration) error {
+	if entry == nil {
+		return nil
+	}
+	key := userPlatformQuotaCacheKey(userID, platform)
+	pipe := c.rdb.TxPipeline()
+
+	// 浮点可空字段：nil → 空字符串（读取时 parseFloatPtr 返回 nil，表示无限额）
+	fmtFloatPtr := func(p *float64) string {
+		if p == nil {
+			return ""
+		}
+		return strconv.FormatFloat(*p, 'f', -1, 64)
+	}
+	// time.Time 可空字段：nil → 空字符串；有值 → unix 秒
+	fmtTimePtr := func(p *time.Time) string {
+		if p == nil {
+			return ""
+		}
+		return strconv.FormatInt(p.Unix(), 10)
+	}
+
+	pipe.HSet(ctx, key,
+		"daily_usage", entry.DailyUsageUSD,
+		"weekly_usage", entry.WeeklyUsageUSD,
+		"monthly_usage", entry.MonthlyUsageUSD,
+		"version", entry.Version,
+		"schema_version", entry.SchemaVersion,
+		"daily_limit", fmtFloatPtr(entry.DailyLimitUSD),
+		"weekly_limit", fmtFloatPtr(entry.WeeklyLimitUSD),
+		"monthly_limit", fmtFloatPtr(entry.MonthlyLimitUSD),
+		"daily_window_start", fmtTimePtr(entry.DailyWindowStart),
+		"weekly_window_start", fmtTimePtr(entry.WeeklyWindowStart),
+		"monthly_window_start", fmtTimePtr(entry.MonthlyWindowStart),
+	)
+	pipe.Expire(ctx, key, ttl)
+	_, err := pipe.Exec(ctx)
+	return err
+}
+
+func (c *billingCache) DeleteUserPlatformQuotaCache(ctx context.Context, userID int64, platform string) error {
+	return c.rdb.Del(ctx, userPlatformQuotaCacheKey(userID, platform)).Err()
+}
+
+// updateUserPlatformQuotaUsageScript 缓存累加：EXISTS + schema_version 双重守卫。
+// 旧版 entry（schema_version != ARGV[3]，包括缺字段的 0 值）不参与累加，由上层走 DB fallback 后
+// SetCache 重建为新版 entry —— 若此处仍累加，上层覆盖时会丢失这部分增量，导致 Redis usage 比真实偏小。
+// key 不存在同样跳过（由下次 SetCache 重建）。
+// KEYS[1] = hash key
+// ARGV[1] = cost (string float)
+// ARGV[2] = ttl seconds
+// ARGV[3] = expected schema_version (Go 侧 UserPlatformQuotaCacheSchemaV1)
+const updateUserPlatformQuotaUsageScript = `
+if redis.call("EXISTS", KEYS[1]) == 0 then
+    return 0
+end
+local ver = redis.call("HGET", KEYS[1], "schema_version")
+if ver == false or tonumber(ver) ~= tonumber(ARGV[3]) then
+    return 0
+end
+redis.call("HINCRBYFLOAT", KEYS[1], "daily_usage", ARGV[1])
+redis.call("HINCRBYFLOAT", KEYS[1], "weekly_usage", ARGV[1])
+redis.call("HINCRBYFLOAT", KEYS[1], "monthly_usage", ARGV[1])
+redis.call("HINCRBY", KEYS[1], "version", 1)
+redis.call("EXPIRE", KEYS[1], ARGV[2])
+return 1
+`
+
+func (c *billingCache) IncrUserPlatformQuotaUsageCache(ctx context.Context, userID int64, platform string, cost float64, ttl time.Duration) error {
+	key := userPlatformQuotaCacheKey(userID, platform)
+	_, err := c.rdb.Eval(ctx, updateUserPlatformQuotaUsageScript, []string{key},
+		strconv.FormatFloat(cost, 'f', -1, 64),
+		int(ttl.Seconds()),
+		service.UserPlatformQuotaCacheSchemaV1,
+	).Result()
+	if err != nil && !errors.Is(err, redis.Nil) {
+		return err
+	}
+	return nil
+}
