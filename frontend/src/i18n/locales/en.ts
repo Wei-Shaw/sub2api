@@ -3416,6 +3416,9 @@ export default {
       poolModeRetryCount: 'Same-Account Retries',
       poolModeRetryCountHint:
         'Only applies in pool mode. Use 0 to disable in-place retry. Default {defaultREDACTED, maximum {maxREDACTED.',
+      poolModeRetryStatusCodes: 'Retry Status Codes',
+      poolModeRetryStatusCodesHint:
+        'Comma-separated HTTP status codes (100-599) that trigger same-account retry in pool mode. Leave blank to use defaults ({defaultREDACTED).',
       customErrorCodes: 'Custom Error Codes',
       customErrorCodesHint: 'Only stop scheduling for selected error codes',
       customErrorCodesWarning:
