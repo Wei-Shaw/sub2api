@@ -683,6 +683,70 @@ func TestRemoveThinkingDependentContextStrategies_MixedEntries(t *testing.T) {
 
 // FilterThinkingBlocksForRetry — 包含 context_management 的场景
 
+// SanitizeContextManagement — strips non-edits fields from context_management
+
+func TestSanitizeContextManagement_NoContextManagement(t *testing.T) {
+	input := []byte(`{"model":"claude-3","messages":[]}`)
+	out := SanitizeContextManagement(input)
+	require.Equal(t, input, out, "no context_management field: return unchanged")
+}
+
+func TestSanitizeContextManagement_OnlyEdits_NoChange(t *testing.T) {
+	input := []byte(`{"context_management":{"edits":[{"type":"auto"}]},"messages":[]}`)
+	out := SanitizeContextManagement(input)
+	require.Equal(t, input, out, "context_management with only edits: return unchanged")
+}
+
+func TestSanitizeContextManagement_ExtraField_Removed(t *testing.T) {
+	// "enabled" is not a valid Claude field; it should be stripped
+	input := []byte(`{"context_management":{"enabled":true,"edits":[{"type":"auto"}]},"messages":[]}`)
+	out := SanitizeContextManagement(input)
+	var req map[string]any
+	require.NoError(t, json.Unmarshal(out, &req))
+	cm, ok := req["context_management"].(map[string]any)
+	require.True(t, ok)
+	_, hasEnabled := cm["enabled"]
+	require.False(t, hasEnabled, "extra field 'enabled' should be stripped")
+	edits, ok := cm["edits"].([]any)
+	require.True(t, ok, "edits should still be present")
+	require.Len(t, edits, 1)
+}
+
+func TestSanitizeContextManagement_OnlyExtraFields_EditsDropped(t *testing.T) {
+	// context_management contains only unsupported fields, no edits
+	// After sanitization, context_management should be either empty or absent
+	input := []byte(`{"context_management":{"enabled":true},"messages":[]}`)
+	out := SanitizeContextManagement(input)
+	var req map[string]any
+	require.NoError(t, json.Unmarshal(out, &req))
+	cm, hasCM := req["context_management"]
+	if hasCM {
+		// If the key is still present, it must contain no extra fields
+		cmMap, ok := cm.(map[string]any)
+		require.True(t, ok)
+		_, hasEnabled := cmMap["enabled"]
+		require.False(t, hasEnabled, "extra field 'enabled' should be stripped")
+		_, hasEdits := cmMap["edits"]
+		require.False(t, hasEdits, "no edits were present: edits should not be added")
+	}
+	// It's also valid for the whole key to be removed
+}
+
+func TestSanitizeContextManagement_MultipleExtraFields(t *testing.T) {
+	input := []byte(`{"context_management":{"enabled":true,"type":"foo","edits":[{"type":"auto"}]},"messages":[]}`)
+	out := SanitizeContextManagement(input)
+	var req map[string]any
+	require.NoError(t, json.Unmarshal(out, &req))
+	cm, ok := req["context_management"].(map[string]any)
+	require.True(t, ok)
+	require.Len(t, cm, 1, "only edits should remain")
+	edits, ok := cm["edits"].([]any)
+	require.True(t, ok)
+	require.Len(t, edits, 1)
+}
+
+
+
 func TestFilterThinkingBlocksForRetry_RemovesClearThinkingStrategy_FastPath(t *testing.T) {
 	// 快速路径：messages 中无 thinking 块，仅有顶层 thinking 字段
 	// 这条路径曾因提前 return 跳过 removeThinkingDependentContextStrategies 而存在 bug

@@ -665,6 +665,45 @@ func removeThinkingDependentContextStrategies(body []byte) []byte {
 	return body
 }
 
+// SanitizeContextManagement removes unsupported fields from the context_management object.
+// The Claude API only accepts context_management.edits; any other top-level key inside
+// context_management (e.g. "enabled": true) causes a 400 "Extra inputs are not permitted".
+// This function retains only the edits field, dropping everything else.
+func SanitizeContextManagement(body []byte) []byte {
+	if !bytes.Contains(body, []byte(`"context_management"`)) {
+		return body
+	}
+	cm := gjson.GetBytes(body, "context_management")
+	if !cm.Exists() || !cm.IsObject() {
+		return body
+	}
+	// Check whether there are extra keys besides "edits".
+	hasExtraKeys := false
+	cm.ForEach(func(key, _ gjson.Result) bool {
+		if key.String() != "edits" {
+			hasExtraKeys = true
+			return false
+		}
+		return true
+	})
+	if !hasExtraKeys {
+		return body
+	}
+	edits := gjson.GetBytes(body, "context_management.edits")
+	// Delete the whole context_management object, then re-add only edits (if present).
+	out, err := sjson.DeleteBytes(body, "context_management")
+	if err != nil {
+		return body
+	}
+	if edits.Exists() {
+		out, err = sjson.SetRawBytes(out, "context_management.edits", []byte(edits.Raw))
+		if err != nil {
+			return body
+		}
+	}
+	return out
+}
+
 // FilterSignatureSensitiveBlocksForRetry is a stronger retry filter for cases where upstream errors indicate
 // signature/thought_signature validation issues involving tool blocks.
 //
