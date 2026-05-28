@@ -3536,6 +3536,46 @@ func openAIStreamFailedEventShouldFailover(payload []byte, message string) bool 
 	return true
 }
 
+func ensureOpenAIResponsesOutputArray(body []byte) ([]byte, bool) {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return body, false
+	}
+	output := gjson.GetBytes(body, "output")
+	if output.Exists() && output.Type != gjson.Null {
+		return body, false
+	}
+	patched, err := sjson.SetRawBytes(body, "output", []byte("[]"))
+	if err != nil {
+		return body, false
+	}
+	return patched, true
+}
+
+func ensureOpenAIResponsesTerminalSSEOutputArray(data []byte) ([]byte, bool) {
+	if len(data) == 0 || !gjson.ValidBytes(data) {
+		return data, false
+	}
+	eventType := strings.TrimSpace(gjson.GetBytes(data, "type").String())
+	switch eventType {
+	case "response.completed", "response.done", "response.incomplete", "response.cancelled", "response.canceled":
+	default:
+		return data, false
+	}
+	response := gjson.GetBytes(data, "response")
+	if !response.Exists() || !response.IsObject() {
+		return data, false
+	}
+	output := response.Get("output")
+	if output.Exists() && output.Type != gjson.Null {
+		return data, false
+	}
+	patched, err := sjson.SetRawBytes(data, "response.output", []byte("[]"))
+	if err != nil {
+		return data, false
+	}
+	return patched, true
+}
+
 func (s *OpenAIGatewayService) newOpenAIStreamFailoverError(
 	c *gin.Context,
 	account *Account,
@@ -3667,6 +3707,11 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 					dataBytes = []byte(replacedData)
 					trimmedData = strings.TrimSpace(replacedData)
 				}
+			}
+			if patchedData, patched := ensureOpenAIResponsesTerminalSSEOutputArray(dataBytes); patched {
+				dataBytes = patchedData
+				trimmedData = strings.TrimSpace(string(patchedData))
+				line = "data: " + string(patchedData)
 			}
 			eventType := strings.TrimSpace(gjson.Get(trimmedData, "type").String())
 			if eventType == "response.failed" {
@@ -3836,6 +3881,9 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 					finalResponse = patched
 				}
 			}
+		}
+		if patched, changed := ensureOpenAIResponsesOutputArray(finalResponse); changed {
+			finalResponse = patched
 		}
 		body = finalResponse
 		if originalModel != "" && mappedModel != "" && originalModel != mappedModel {
@@ -4537,9 +4585,17 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			// Fast path: most events do not contain model field values.
 			if needModelReplace && mappedModel != "" && strings.Contains(data, mappedModel) {
 				line = s.replaceModelInSSELine(line, mappedModel, originalModel)
+				if replacedData, replaced := extractOpenAISSEDataLine(line); replaced {
+					data = replacedData
+				}
 			}
 
 			dataBytes := []byte(data)
+			if patchedData, patched := ensureOpenAIResponsesTerminalSSEOutputArray(dataBytes); patched {
+				dataBytes = patchedData
+				data = string(patchedData)
+				line = "data: " + data
+			}
 			if openAIStreamEventIsTerminal(data) {
 				sawTerminalEvent = true
 			}
@@ -4989,6 +5045,9 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 					finalResponse = patched
 				}
 			}
+		}
+		if patched, changed := ensureOpenAIResponsesOutputArray(finalResponse); changed {
+			finalResponse = patched
 		}
 		body = finalResponse
 		if originalModel != mappedModel {
