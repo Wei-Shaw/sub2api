@@ -185,6 +185,7 @@ func BuildBedrockURL(region, modelID string, stream bool) string {
 //  5. 清理 cache_control 中 Bedrock 不支持的字段（scope, ttl）
 //  6. 修复 thinking 字段兼容性（Opus 4.7 仅支持 adaptive，enabled 需要 budget_tokens）
 //  7. 清理 tool_use.id / tool_use_id 中 Bedrock 不接受的字符
+//  8. 根据最终 Bedrock beta tokens 剥离不再支持的 beta 字段
 func PrepareBedrockRequestBody(body []byte, modelID string, betaHeader string) ([]byte, error) {
 	betaTokens := ResolveBedrockBetaTokens(betaHeader, body, modelID)
 	return PrepareBedrockRequestBodyWithTokens(body, modelID, betaTokens, false)
@@ -194,6 +195,9 @@ func PrepareBedrockRequestBody(body []byte, modelID string, betaHeader string) (
 // ccCompat 启用 CC 兼容模式时额外处理 thinking 类型转换和 tool_use.id 清理。
 func PrepareBedrockRequestBodyWithTokens(body []byte, modelID string, betaTokens []string, ccCompat bool) ([]byte, error) {
 	var err error
+
+	betaTokens = filterBedrockBetaTokens(betaTokens)
+	body = sanitizeBedrockFieldsForBetaTokens(body, betaTokens)
 
 	// 注入 anthropic_version（Bedrock 要求）
 	body, err = sjson.SetBytes(body, "anthropic_version", "bedrock-2023-05-31")
@@ -471,6 +475,8 @@ var bedrockSupportedBetaTokens = map[string]bool{
 	"tool-examples-2025-10-29":    true,
 }
 
+const bedrockContextManagementBetaToken = "context-management-2025-06-27"
+
 // bedrockBetaTokenTransforms 定义 Bedrock Invoke 特有的 beta 头转换规则
 // Anthropic 直接 API 使用通用头，Bedrock Invoke 需要特定的替代头
 var bedrockBetaTokenTransforms = map[string]string{
@@ -615,6 +621,22 @@ func filterBedrockBetaTokens(tokens []string) []string {
 	}
 
 	return result
+}
+
+func sanitizeBedrockFieldsForBetaTokens(body []byte, betaTokens []string) []byte {
+	if !containsBedrockBetaToken(betaTokens, bedrockContextManagementBetaToken) && gjson.GetBytes(body, "context_management").Exists() {
+		body, _ = sjson.DeleteBytes(body, "context_management")
+	}
+	return body
+}
+
+func containsBedrockBetaToken(tokens []string, target string) bool {
+	for _, token := range tokens {
+		if token == target {
+			return true
+		}
+	}
+	return false
 }
 
 // bedrockToolUseIDRe 匹配 Bedrock 允许的 tool_use ID 字符（字母、数字、下划线、连字符）

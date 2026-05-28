@@ -38,6 +38,47 @@ function mountUseKeyModal() {
 }
 
 describe('UseKeyModal', () => {
+  it('renders GPT-5.5 and goals feature in OpenAI Codex config', () => {
+    const wrapper = mountUseKeyModal()
+    const configToml = wrapper.findAll('pre code')
+      .map((code) => code.text())
+      .find((content) => content.includes('model_provider = "OpenAI"'))
+
+    expect(configToml).toBeDefined()
+    expect(configToml).toContain('model = "gpt-5.5"')
+    expect(configToml).toContain('review_model = "gpt-5.5"')
+    expect(configToml).toContain('model_reasoning_effort = "xhigh"')
+    expect(configToml).not.toContain('model = "gpt-5.4"')
+    expect(configToml).not.toContain('model_context_window')
+    expect(configToml).not.toContain('model_auto_compact_token_limit')
+    expect(configToml).toContain('[features]\ngoals = true')
+  })
+
+  it('renders GPT-5.5 and goals feature in OpenAI Codex WebSocket config', async () => {
+    const wrapper = mountUseKeyModal()
+
+    const wsTab = wrapper.findAll('button').find((button) =>
+      button.text().includes('keys.useKeyModal.cliTabs.codexCliWs')
+    )
+
+    expect(wsTab).toBeDefined()
+    await wsTab!.trigger('click')
+    await nextTick()
+
+    const configToml = wrapper.findAll('pre code')
+      .map((code) => code.text())
+      .find((content) => content.includes('supports_websockets = true'))
+
+    expect(configToml).toBeDefined()
+    expect(configToml).toContain('model = "gpt-5.5"')
+    expect(configToml).toContain('review_model = "gpt-5.5"')
+    expect(configToml).toContain('model_reasoning_effort = "xhigh"')
+    expect(configToml).not.toContain('model = "gpt-5.4"')
+    expect(configToml).not.toContain('model_context_window')
+    expect(configToml).not.toContain('model_auto_compact_token_limit')
+    expect(configToml).toContain('[features]\nresponses_websockets_v2 = true\ngoals = true')
+  })
+
   it('renders GPT-5.4 mini entry in OpenCode config', async () => {
     const wrapper = mountUseKeyModal()
 
@@ -53,27 +94,5 @@ describe('UseKeyModal', () => {
     expect(codeBlock.exists()).toBe(true)
     expect(codeBlock.text()).toContain('"name": "GPT-5.4 Mini"')
     expect(codeBlock.text()).not.toContain('"name": "GPT-5.4 Nano"')
-  })
-
-  it('uses GPT-5.5 as the default Codex CLI model', async () => {
-    const wrapper = mountUseKeyModal()
-
-    let codeBlock = wrapper.find('pre code')
-    expect(codeBlock.text()).toContain('model = "gpt-5.5"')
-    expect(codeBlock.text()).toContain('review_model = "gpt-5.5"')
-    expect(codeBlock.text()).not.toContain('model = "gpt-5.4"')
-
-    const codexWsTab = wrapper.findAll('button').find((button) =>
-      button.text().includes('keys.useKeyModal.cliTabs.codexCliWs')
-    )
-
-    expect(codexWsTab).toBeDefined()
-    await codexWsTab!.trigger('click')
-    await nextTick()
-
-    codeBlock = wrapper.find('pre code')
-    expect(codeBlock.text()).toContain('model = "gpt-5.5"')
-    expect(codeBlock.text()).toContain('review_model = "gpt-5.5"')
-    expect(codeBlock.text()).not.toContain('model = "gpt-5.4"')
   })
 })
