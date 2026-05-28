@@ -1950,6 +1950,83 @@ func TestOpenAIBuildUpstreamRequestOAuthOfficialClientOriginatorCompatibility(t 
 	}
 }
 
+func TestOpenAIBuildUpstreamRequestOAuthPriorityTierForcesCodexFastHeaders(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name           string
+		body           []byte
+		wantOriginator string
+		wantUserAgent  string
+		wantVersion    string
+	}{
+		{
+			name:           "priority tier from generic proxy",
+			body:           []byte(`{"model":"gpt-5.5","service_tier":"priority"}`),
+			wantOriginator: codexCLIOriginator,
+			wantUserAgent:  codexCLIUserAgent,
+			wantVersion:    codexCLIVersion,
+		},
+		{
+			name:           "fast alias from generic proxy",
+			body:           []byte(`{"model":"gpt-5.5","service_tier":"fast"}`),
+			wantOriginator: codexCLIOriginator,
+			wantUserAgent:  codexCLIUserAgent,
+			wantVersion:    codexCLIVersion,
+		},
+		{
+			name:           "flex tier keeps generic identity",
+			body:           []byte(`{"model":"gpt-5.5","service_tier":"flex"}`),
+			wantOriginator: "opencode",
+			wantUserAgent:  "Go-http-client/1.1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(tt.body))
+			c.Request.Header.Set("User-Agent", "Go-http-client/1.1")
+			c.Request.Header.Set("originator", "opencode")
+
+			svc := &OpenAIGatewayService{}
+			account := &Account{
+				Type:        AccountTypeOAuth,
+				Credentials: map[string]any{"chatgpt_account_id": "chatgpt-acc"},
+			}
+
+			req, err := svc.buildUpstreamRequest(c.Request.Context(), c, account, tt.body, "token", true, "", false)
+			require.NoError(t, err)
+			require.Equal(t, tt.wantOriginator, req.Header.Get("originator"))
+			require.Equal(t, tt.wantUserAgent, req.Header.Get("User-Agent"))
+			require.Equal(t, tt.wantVersion, req.Header.Get("Version"))
+		})
+	}
+}
+
+func TestOpenAIBuildUpstreamRequestOpenAIPassthroughPriorityTierOverridesGenericOriginator(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-5.5","service_tier":"priority"}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	c.Request.Header.Set("User-Agent", "Go-http-client/1.1")
+	c.Request.Header.Set("originator", "opencode")
+
+	svc := &OpenAIGatewayService{}
+	account := &Account{
+		Type:        AccountTypeOAuth,
+		Credentials: map[string]any{"chatgpt_account_id": "chatgpt-acc"},
+	}
+
+	req, err := svc.buildUpstreamRequestOpenAIPassthrough(c.Request.Context(), c, account, body, "token")
+	require.NoError(t, err)
+	require.Equal(t, codexCLIOriginator, req.Header.Get("originator"))
+	require.Equal(t, codexCLIUserAgent, req.Header.Get("User-Agent"))
+	require.Equal(t, codexCLIVersion, req.Header.Get("Version"))
+}
+
 // ==================== P1-08 修复：model 替换性能优化测试 ====================
 
 // ==================== P1-08 修复：model 替换性能优化测试 =============

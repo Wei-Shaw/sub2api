@@ -26,7 +26,7 @@ func normalizeAccountTestMode(mode string) string {
 func createOpenAICompactProbePayload(model string) map[string]any {
 	return map[string]any{
 		"model":        strings.TrimSpace(model),
-		"instructions": "You are a helpful coding assistant.",
+		"instructions": "",
 		"input": []any{
 			map[string]any{
 				"type":    "message",

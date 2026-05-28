@@ -279,6 +279,7 @@
               :today-stats="todayStatsByAccountId[String(row.id)] ?? null"
               :today-stats-loading="todayStatsLoading"
               :manual-refresh-token="usageManualRefreshToken"
+              @plan-type-updated="handleUsagePlanTypeUpdated"
             />
           </template>
           <template #cell-proxy="{ row }">
@@ -1492,6 +1493,28 @@ const patchAccountInList = (updatedAccount: Account) => {
 const handleAccountUpdated = (updatedAccount: Account) => {
   patchAccountInList(updatedAccount)
   enterAutoRefreshSilentWindow()
+}
+const handleUsagePlanTypeUpdated = ({ accountId, planType }: { accountId: number; planType: string }) => {
+  const normalizedPlanType = planType.trim().toLowerCase()
+  if (!normalizedPlanType) return
+  const index = accounts.value.findIndex(account => account.id === accountId)
+  if (index === -1) return
+
+  const current = accounts.value[index]
+  const currentPlanType = String(current.credentials?.plan_type ?? '').trim().toLowerCase()
+  if (currentPlanType === normalizedPlanType) return
+
+  const nextAccount: Account = {
+    ...current,
+    credentials: {
+      ...(current.credentials ?? {}),
+      plan_type: normalizedPlanType
+    }
+  }
+  const nextAccounts = [...accounts.value]
+  nextAccounts[index] = nextAccount
+  accounts.value = nextAccounts
+  syncAccountRefs(nextAccount)
 }
 const formatExportTimestamp = () => {
   const now = new Date()

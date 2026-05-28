@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"log/slog"
 	"math/rand/v2"
@@ -111,6 +112,7 @@ const (
 	windowStatsCacheTTL     = 1 * time.Minute
 	openAIProbeCacheTTL     = 10 * time.Minute
 	openAICodexProbeVersion = "0.125.0"
+	openAIWhamUsageURL      = "https://chatgpt.com/backend-api/wham/usage"
 )
 
 // UsageCache 封装账户使用量相关的缓存
@@ -178,17 +180,22 @@ type AICredit struct {
 
 // UsageInfo 账号使用量信息
 type UsageInfo struct {
-	Source             string         `json:"source,omitempty"`               // "passive" or "active"
-	UpdatedAt          *time.Time     `json:"updated_at,omitempty"`           // 更新时间
-	FiveHour           *UsageProgress `json:"five_hour"`                      // 5小时窗口
-	SevenDay           *UsageProgress `json:"seven_day,omitempty"`            // 7天窗口
-	SevenDaySonnet     *UsageProgress `json:"seven_day_sonnet,omitempty"`     // 7天Sonnet窗口
-	GeminiSharedDaily  *UsageProgress `json:"gemini_shared_daily,omitempty"`  // Gemini shared pool RPD (Google One / Code Assist)
-	GeminiProDaily     *UsageProgress `json:"gemini_pro_daily,omitempty"`     // Gemini Pro 日配额
-	GeminiFlashDaily   *UsageProgress `json:"gemini_flash_daily,omitempty"`   // Gemini Flash 日配额
-	GeminiSharedMinute *UsageProgress `json:"gemini_shared_minute,omitempty"` // Gemini shared pool RPM (Google One / Code Assist)
-	GeminiProMinute    *UsageProgress `json:"gemini_pro_minute,omitempty"`    // Gemini Pro RPM
-	GeminiFlashMinute  *UsageProgress `json:"gemini_flash_minute,omitempty"`  // Gemini Flash RPM
+	Source                   string         `json:"source,omitempty"`                      // "passive" or "active"
+	UpdatedAt                *time.Time     `json:"updated_at,omitempty"`                  // 更新时间
+	PlanType                 string         `json:"plan_type,omitempty"`                   // OpenAI/ChatGPT plan type
+	FiveHour                 *UsageProgress `json:"five_hour"`                             // 5小时窗口
+	SevenDay                 *UsageProgress `json:"seven_day,omitempty"`                   // 7天窗口
+	SevenDaySonnet           *UsageProgress `json:"seven_day_sonnet,omitempty"`            // 7天Sonnet窗口
+	CodexSparkFiveHour       *UsageProgress `json:"codex_spark_five_hour,omitempty"`       // Codex Spark 5小时窗口
+	CodexSparkSevenDay       *UsageProgress `json:"codex_spark_seven_day,omitempty"`       // Codex Spark 7天窗口
+	CodexSparkLimitName      string         `json:"codex_spark_limit_name,omitempty"`      // Codex Spark 限额名称
+	CodexSparkMeteredFeature string         `json:"codex_spark_metered_feature,omitempty"` // Codex Spark 计量特性
+	GeminiSharedDaily        *UsageProgress `json:"gemini_shared_daily,omitempty"`         // Gemini shared pool RPD (Google One / Code Assist)
+	GeminiProDaily           *UsageProgress `json:"gemini_pro_daily,omitempty"`            // Gemini Pro 日配额
+	GeminiFlashDaily         *UsageProgress `json:"gemini_flash_daily,omitempty"`          // Gemini Flash 日配额
+	GeminiSharedMinute       *UsageProgress `json:"gemini_shared_minute,omitempty"`        // Gemini shared pool RPM (Google One / Code Assist)
+	GeminiProMinute          *UsageProgress `json:"gemini_pro_minute,omitempty"`           // Gemini Pro RPM
+	GeminiFlashMinute        *UsageProgress `json:"gemini_flash_minute,omitempty"`         // Gemini Flash RPM
 
 	// Antigravity 多模型配额
 	AntigravityQuota map[string]*AntigravityModelQuota `json:"antigravity_quota,omitempty"`
@@ -222,6 +229,42 @@ type UsageInfo struct {
 
 	// 获取 usage 时的错误信息（降级返回，而非 500）
 	Error string `json:"error,omitempty"`
+}
+
+type openAIWhamUsageResponse struct {
+	UserID               string                          `json:"user_id"`
+	AccountID            string                          `json:"account_id"`
+	Email                string                          `json:"email"`
+	PlanType             string                          `json:"plan_type"`
+	RateLimit            *openAIWhamRateLimit            `json:"rate_limit"`
+	CodeReviewRateLimit  *openAIWhamRateLimit            `json:"code_review_rate_limit"`
+	AdditionalRateLimits []openAIWhamAdditionalRateLimit `json:"additional_rate_limits"`
+}
+
+type openAIWhamAdditionalRateLimit struct {
+	LimitName      string               `json:"limit_name"`
+	MeteredFeature string               `json:"metered_feature"`
+	RateLimit      *openAIWhamRateLimit `json:"rate_limit"`
+}
+
+type openAIWhamRateLimit struct {
+	Allowed         bool              `json:"allowed"`
+	LimitReached    bool              `json:"limit_reached"`
+	PrimaryWindow   *openAIWhamWindow `json:"primary_window"`
+	SecondaryWindow *openAIWhamWindow `json:"secondary_window"`
+}
+
+type openAIWhamWindow struct {
+	UsedPercent        float64 `json:"used_percent"`
+	LimitWindowSeconds int     `json:"limit_window_seconds"`
+	ResetAfterSeconds  int     `json:"reset_after_seconds"`
+	ResetAt            int64   `json:"reset_at"`
+}
+
+type openAIWhamUsageSnapshot struct {
+	Usage    *UsageInfo
+	Extra    map[string]any
+	PlanType string
 }
 
 // ClaudeUsageResponse Anthropic API返回的usage结构
@@ -502,24 +545,47 @@ func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Accou
 		return usage, nil
 	}
 
+	if planType := normalizeOpenAIPlanType(account.GetCredential("plan_type")); planType != "" {
+		usage.PlanType = planType
+	}
 	if progress := buildCodexUsageProgressFromExtra(account.Extra, "5h", now); progress != nil {
 		usage.FiveHour = progress
 	}
 	if progress := buildCodexUsageProgressFromExtra(account.Extra, "7d", now); progress != nil {
 		usage.SevenDay = progress
 	}
+	if progress := buildCodexUsageProgressFromExtraWithPrefix(account.Extra, "codex_spark", "5h", now); progress != nil {
+		usage.CodexSparkFiveHour = progress
+	}
+	if progress := buildCodexUsageProgressFromExtraWithPrefix(account.Extra, "codex_spark", "7d", now); progress != nil {
+		usage.CodexSparkSevenDay = progress
+	}
+	if raw, ok := account.Extra["codex_spark_limit_name"]; ok {
+		usage.CodexSparkLimitName = strings.TrimSpace(fmt.Sprint(raw))
+	}
+	if raw, ok := account.Extra["codex_spark_metered_feature"]; ok {
+		usage.CodexSparkMeteredFeature = strings.TrimSpace(fmt.Sprint(raw))
+	}
 
 	if (force || shouldRefreshOpenAICodexSnapshot(account, usage, now)) && s.shouldProbeOpenAICodexSnapshot(account.ID, now, force) {
-		if updates, err := s.probeOpenAICodexSnapshot(ctx, account); err == nil && len(updates) > 0 {
-			mergeAccountExtra(account, updates)
-			if usage.UpdatedAt == nil {
-				usage.UpdatedAt = &now
-			}
-			if progress := buildCodexUsageProgressFromExtra(account.Extra, "5h", now); progress != nil {
-				usage.FiveHour = progress
-			}
-			if progress := buildCodexUsageProgressFromExtra(account.Extra, "7d", now); progress != nil {
-				usage.SevenDay = progress
+		if snapshot, err := s.probeOpenAIWhamUsage(ctx, account); err == nil && snapshot != nil {
+			s.persistOpenAIWhamUsageSnapshot(ctx, account, snapshot)
+			applyOpenAIWhamUsageSnapshot(account, usage, snapshot)
+		} else if err != nil {
+			slog.Warn("openai_wham_usage_refresh_failed", "account_id", account.ID, "force", force, "error", err)
+			if force {
+				usage.Error = err.Error()
+			} else if updates, probeErr := s.probeOpenAICodexSnapshot(ctx, account); probeErr == nil && len(updates) > 0 {
+				mergeAccountExtra(account, updates)
+				if usage.UpdatedAt == nil {
+					usage.UpdatedAt = &now
+				}
+				if progress := buildCodexUsageProgressFromExtra(account.Extra, "5h", now); progress != nil {
+					usage.FiveHour = progress
+				}
+				if progress := buildCodexUsageProgressFromExtra(account.Extra, "7d", now); progress != nil {
+					usage.SevenDay = progress
+				}
 			}
 		}
 	}
@@ -593,6 +659,288 @@ func (s *AccountUsageService) shouldProbeOpenAICodexSnapshot(accountID int64, no
 	}
 	s.cache.openAIProbeCache.Store(accountID, now)
 	return true
+}
+
+func (s *AccountUsageService) probeOpenAIWhamUsage(ctx context.Context, account *Account) (*openAIWhamUsageSnapshot, error) {
+	if account == nil || !account.IsOpenAIOAuth() {
+		return nil, nil
+	}
+	accessToken := account.GetOpenAIAccessToken()
+	if accessToken == "" {
+		return nil, fmt.Errorf("no access token available")
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, openAIWhamUsageURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create openai wham usage request: %w", err)
+	}
+	req.Host = "chatgpt.com"
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", codexCLIUserAgent)
+	if s.identityCache != nil {
+		if fp, fpErr := s.identityCache.GetFingerprint(reqCtx, account.ID); fpErr == nil && fp != nil && strings.TrimSpace(fp.UserAgent) != "" {
+			req.Header.Set("User-Agent", strings.TrimSpace(fp.UserAgent))
+		}
+	}
+	if chatgptAccountID := account.GetChatGPTAccountID(); chatgptAccountID != "" {
+		req.Header.Set("chatgpt-account-id", chatgptAccountID)
+	}
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+	client, err := httppool.GetClient(httppool.Options{
+		ProxyURL:              proxyURL,
+		Timeout:               15 * time.Second,
+		ResponseHeaderTimeout: 10 * time.Second,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("build openai wham usage client: %w", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("openai wham usage request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, fmt.Errorf("read openai wham usage response: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("openai wham usage returned status %d: %s", resp.StatusCode, trimErrorBody(body))
+	}
+
+	var wham openAIWhamUsageResponse
+	if err := json.Unmarshal(body, &wham); err != nil {
+		return nil, fmt.Errorf("decode openai wham usage response: %w", err)
+	}
+	return buildOpenAIWhamUsageSnapshot(&wham, time.Now()), nil
+}
+
+func buildOpenAIWhamUsageSnapshot(resp *openAIWhamUsageResponse, now time.Time) *openAIWhamUsageSnapshot {
+	if resp == nil {
+		return nil
+	}
+
+	usage := &UsageInfo{
+		UpdatedAt: &now,
+		PlanType:  normalizeOpenAIPlanType(resp.PlanType),
+	}
+	extra := make(map[string]any)
+
+	fiveHour, sevenDay := buildOpenAIWhamUsageProgressPair(resp.RateLimit, now)
+	usage.FiveHour = fiveHour
+	usage.SevenDay = sevenDay
+	mergeOpenAIWhamUsageExtra(extra, buildOpenAIWhamUsageExtraUpdates("codex", resp.RateLimit, now))
+
+	if spark := findOpenAIWhamCodexSparkLimit(resp.AdditionalRateLimits); spark != nil {
+		sparkFiveHour, sparkSevenDay := buildOpenAIWhamUsageProgressPair(spark.RateLimit, now)
+		usage.CodexSparkFiveHour = sparkFiveHour
+		usage.CodexSparkSevenDay = sparkSevenDay
+		usage.CodexSparkLimitName = strings.TrimSpace(spark.LimitName)
+		usage.CodexSparkMeteredFeature = strings.TrimSpace(spark.MeteredFeature)
+
+		mergeOpenAIWhamUsageExtra(extra, buildOpenAIWhamUsageExtraUpdates("codex_spark", spark.RateLimit, now))
+		if usage.CodexSparkLimitName != "" {
+			extra["codex_spark_limit_name"] = usage.CodexSparkLimitName
+		}
+		if usage.CodexSparkMeteredFeature != "" {
+			extra["codex_spark_metered_feature"] = usage.CodexSparkMeteredFeature
+		}
+	}
+
+	return &openAIWhamUsageSnapshot{
+		Usage:    usage,
+		Extra:    extra,
+		PlanType: usage.PlanType,
+	}
+}
+
+func applyOpenAIWhamUsageSnapshot(account *Account, usage *UsageInfo, snapshot *openAIWhamUsageSnapshot) {
+	if snapshot == nil || snapshot.Usage == nil || usage == nil {
+		return
+	}
+	next := snapshot.Usage
+	usage.UpdatedAt = next.UpdatedAt
+	usage.PlanType = next.PlanType
+	usage.FiveHour = next.FiveHour
+	usage.SevenDay = next.SevenDay
+	usage.CodexSparkFiveHour = next.CodexSparkFiveHour
+	usage.CodexSparkSevenDay = next.CodexSparkSevenDay
+	usage.CodexSparkLimitName = next.CodexSparkLimitName
+	usage.CodexSparkMeteredFeature = next.CodexSparkMeteredFeature
+	mergeAccountExtra(account, snapshot.Extra)
+	if snapshot.PlanType != "" && account != nil {
+		if account.Credentials == nil {
+			account.Credentials = make(map[string]any, 1)
+		}
+		account.Credentials["plan_type"] = snapshot.PlanType
+	}
+}
+
+func (s *AccountUsageService) persistOpenAIWhamUsageSnapshot(ctx context.Context, account *Account, snapshot *openAIWhamUsageSnapshot) {
+	if s == nil || s.accountRepo == nil || account == nil || account.ID <= 0 || snapshot == nil {
+		return
+	}
+
+	credentialsUpdates := make(map[string]any)
+	if planType := normalizeOpenAIPlanType(snapshot.PlanType); planType != "" && !strings.EqualFold(account.GetCredential("plan_type"), planType) {
+		credentialsUpdates["plan_type"] = planType
+	}
+
+	if len(credentialsUpdates) > 0 {
+		_, err := s.accountRepo.BulkUpdate(ctx, []int64{account.ID}, AccountBulkUpdate{
+			Credentials: credentialsUpdates,
+			Extra:       snapshot.Extra,
+		})
+		if err != nil {
+			slog.Warn("openai_wham_usage_snapshot_persist_failed", "account_id", account.ID, "error", err)
+		}
+		return
+	}
+
+	if len(snapshot.Extra) > 0 {
+		if err := s.accountRepo.UpdateExtra(ctx, account.ID, snapshot.Extra); err != nil {
+			slog.Warn("openai_wham_usage_snapshot_extra_persist_failed", "account_id", account.ID, "error", err)
+		}
+	}
+}
+
+func buildOpenAIWhamUsageProgressPair(rateLimit *openAIWhamRateLimit, now time.Time) (*UsageProgress, *UsageProgress) {
+	var fiveHour *UsageProgress
+	var sevenDay *UsageProgress
+	for _, window := range orderedOpenAIWhamWindows(rateLimit) {
+		if window == nil {
+			continue
+		}
+		progress := buildOpenAIWhamUsageProgress(window, now)
+		if isOpenAIWhamSevenDayWindow(window) {
+			if sevenDay == nil {
+				sevenDay = progress
+			}
+			continue
+		}
+		if fiveHour == nil {
+			fiveHour = progress
+		}
+	}
+	return fiveHour, sevenDay
+}
+
+func orderedOpenAIWhamWindows(rateLimit *openAIWhamRateLimit) []*openAIWhamWindow {
+	if rateLimit == nil {
+		return nil
+	}
+	return []*openAIWhamWindow{rateLimit.PrimaryWindow, rateLimit.SecondaryWindow}
+}
+
+func buildOpenAIWhamUsageProgress(window *openAIWhamWindow, now time.Time) *UsageProgress {
+	if window == nil {
+		return nil
+	}
+	progress := &UsageProgress{Utilization: window.UsedPercent}
+	if window.ResetAt > 0 {
+		resetAt := time.Unix(window.ResetAt, 0).UTC()
+		progress.ResetsAt = &resetAt
+		progress.RemainingSeconds = int(resetAt.Sub(now).Seconds())
+	} else if window.ResetAfterSeconds > 0 {
+		resetAt := now.Add(time.Duration(window.ResetAfterSeconds) * time.Second).UTC()
+		progress.ResetsAt = &resetAt
+		progress.RemainingSeconds = window.ResetAfterSeconds
+	}
+	if progress.RemainingSeconds < 0 {
+		progress.RemainingSeconds = 0
+	}
+	if progress.ResetsAt != nil && !now.Before(*progress.ResetsAt) {
+		progress.Utilization = 0
+	}
+	return progress
+}
+
+func buildOpenAIWhamUsageExtraUpdates(prefix string, rateLimit *openAIWhamRateLimit, now time.Time) map[string]any {
+	if prefix == "" || rateLimit == nil {
+		return nil
+	}
+
+	updates := make(map[string]any)
+	updatedAtKey := prefix + "_usage_updated_at"
+	if prefix == "codex" {
+		updatedAtKey = "codex_usage_updated_at"
+	}
+	updates[updatedAtKey] = now.UTC().Format(time.RFC3339)
+
+	for _, window := range orderedOpenAIWhamWindows(rateLimit) {
+		if window == nil {
+			continue
+		}
+		windowName := "5h"
+		if isOpenAIWhamSevenDayWindow(window) {
+			windowName = "7d"
+		}
+		keyPrefix := prefix + "_" + windowName
+		updates[keyPrefix+"_used_percent"] = window.UsedPercent
+		if window.ResetAfterSeconds > 0 {
+			updates[keyPrefix+"_reset_after_seconds"] = window.ResetAfterSeconds
+		}
+		if window.ResetAt > 0 {
+			updates[keyPrefix+"_reset_at"] = time.Unix(window.ResetAt, 0).UTC().Format(time.RFC3339)
+		} else if window.ResetAfterSeconds > 0 {
+			updates[keyPrefix+"_reset_at"] = now.Add(time.Duration(window.ResetAfterSeconds) * time.Second).UTC().Format(time.RFC3339)
+		}
+		if window.LimitWindowSeconds > 0 {
+			updates[keyPrefix+"_window_minutes"] = window.LimitWindowSeconds / 60
+		}
+	}
+
+	return updates
+}
+
+func isOpenAIWhamSevenDayWindow(window *openAIWhamWindow) bool {
+	if window == nil {
+		return false
+	}
+	if window.LimitWindowSeconds <= 0 {
+		return false
+	}
+	return window.LimitWindowSeconds > 24*60*60
+}
+
+func findOpenAIWhamCodexSparkLimit(limits []openAIWhamAdditionalRateLimit) *openAIWhamAdditionalRateLimit {
+	for i := range limits {
+		limit := &limits[i]
+		key := strings.ToLower(strings.TrimSpace(limit.LimitName + " " + limit.MeteredFeature))
+		if strings.Contains(key, "spark") || strings.Contains(key, "bengalfox") {
+			return limit
+		}
+	}
+	return nil
+}
+
+func normalizeOpenAIPlanType(planType string) string {
+	return strings.ToLower(strings.TrimSpace(planType))
+}
+
+func trimErrorBody(body []byte) string {
+	const maxLen = 512
+	text := strings.TrimSpace(string(body))
+	if len(text) <= maxLen {
+		return text
+	}
+	return text[:maxLen] + "..."
+}
+
+func mergeOpenAIWhamUsageExtra(dst map[string]any, src map[string]any) {
+	if len(src) == 0 {
+		return
+	}
+	for k, v := range src {
+		dst[k] = v
+	}
 }
 
 func (s *AccountUsageService) probeOpenAICodexSnapshot(ctx context.Context, account *Account) (map[string]any, error) {
@@ -1057,7 +1405,15 @@ func windowStatsFromAccountStats(stats *usagestats.AccountStats) *WindowStats {
 }
 
 func buildCodexUsageProgressFromExtra(extra map[string]any, window string, now time.Time) *UsageProgress {
+	return buildCodexUsageProgressFromExtraWithPrefix(extra, "codex", window, now)
+}
+
+func buildCodexUsageProgressFromExtraWithPrefix(extra map[string]any, prefix, window string, now time.Time) *UsageProgress {
 	if len(extra) == 0 {
+		return nil
+	}
+	prefix = strings.TrimSpace(prefix)
+	if prefix == "" {
 		return nil
 	}
 
@@ -1069,13 +1425,13 @@ func buildCodexUsageProgressFromExtra(extra map[string]any, window string, now t
 
 	switch window {
 	case "5h":
-		usedPercentKey = "codex_5h_used_percent"
-		resetAfterKey = "codex_5h_reset_after_seconds"
-		resetAtKey = "codex_5h_reset_at"
+		usedPercentKey = prefix + "_5h_used_percent"
+		resetAfterKey = prefix + "_5h_reset_after_seconds"
+		resetAtKey = prefix + "_5h_reset_at"
 	case "7d":
-		usedPercentKey = "codex_7d_used_percent"
-		resetAfterKey = "codex_7d_reset_after_seconds"
-		resetAtKey = "codex_7d_reset_at"
+		usedPercentKey = prefix + "_7d_used_percent"
+		resetAfterKey = prefix + "_7d_reset_after_seconds"
+		resetAtKey = prefix + "_7d_reset_at"
 	default:
 		return nil
 	}
@@ -1098,7 +1454,7 @@ func buildCodexUsageProgressFromExtra(extra map[string]any, window string, now t
 	if progress.ResetsAt == nil {
 		if resetAfterSeconds := parseExtraInt(extra[resetAfterKey]); resetAfterSeconds > 0 {
 			base := now
-			if updatedAtRaw, ok := extra["codex_usage_updated_at"]; ok {
+			if updatedAtRaw, ok := extra[prefix+"_usage_updated_at"]; ok {
 				if updatedAt, err := parseTime(fmt.Sprint(updatedAtRaw)); err == nil {
 					base = updatedAt
 				}

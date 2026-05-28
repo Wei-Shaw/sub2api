@@ -258,6 +258,84 @@
           </div>
         </div>
 
+        <div v-if="inputMethod === 'access_token'" class="space-y-4">
+          <div
+            class="rounded-lg border border-blue-300 bg-white/80 p-4 dark:border-blue-600 dark:bg-gray-800/80"
+          >
+            <p class="mb-3 text-sm text-blue-700 dark:text-blue-300">
+              {{ t('admin.accounts.oauth.openai.accessTokenDesc') }}
+            </p>
+
+            <div class="mb-4">
+              <label
+                class="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300"
+              >
+                <Icon name="key" size="sm" class="text-blue-500" />
+                {{ t('admin.accounts.oauth.openai.accessTokenInputLabel') }}
+                <span
+                  v-if="parsedAccessTokenCount > 1"
+                  class="rounded-full bg-blue-500 px-2 py-0.5 text-xs text-white"
+                >
+                  {{ t('admin.accounts.oauth.keysCount', { count: parsedAccessTokenCount }) }}
+                </span>
+              </label>
+              <textarea
+                v-model="accessTokenInput"
+                rows="8"
+                class="input w-full resize-y font-mono text-sm"
+                :placeholder="t('admin.accounts.oauth.openai.accessTokenPlaceholder')"
+                spellcheck="false"
+              ></textarea>
+              <p class="mt-1 text-xs text-blue-600 dark:text-blue-400">
+                {{ t('admin.accounts.oauth.openai.accessTokenHint') }}
+              </p>
+            </div>
+
+            <div
+              v-if="error"
+              class="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-700 dark:bg-red-900/30"
+            >
+              <p class="whitespace-pre-line text-sm text-red-600 dark:text-red-400">
+                {{ error }}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              class="btn btn-primary w-full"
+              :disabled="loading || !accessTokenInput.trim()"
+              @click="handleImportAccessToken"
+            >
+              <svg
+                v-if="loading"
+                class="-ml-1 mr-2 h-4 w-4 animate-spin"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                ></circle>
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                ></path>
+              </svg>
+              <Icon v-else name="sparkles" size="sm" class="mr-2" />
+              {{
+                loading
+                  ? t('admin.accounts.oauth.openai.validating')
+                  : t('admin.accounts.oauth.openai.accessTokenImportAndCreate')
+              }}
+            </button>
+          </div>
+        </div>
+
         <!-- Cookie Auto-Auth Form -->
         <div v-if="inputMethod === 'cookie'" class="space-y-4">
           <div
@@ -723,6 +801,7 @@ const authCodeInput = ref('')
 const sessionKeyInput = ref('')
 const refreshTokenInput = ref('')
 const sessionTokenInput = ref('')
+const accessTokenInput = ref('')
 const codexSessionInput = ref('')
 const showHelpDialog = ref(false)
 const oauthState = ref('')
@@ -755,6 +834,13 @@ const parsedCodexSessionCount = computed(() => {
   if (!trimmed) return 0
   if (trimmed.startsWith('{') || trimmed.startsWith('[')) return 1
   return trimmed
+    .split('\n')
+    .map((item) => item.trim())
+    .filter((item) => item).length
+})
+
+const parsedAccessTokenCount = computed(() => {
+  return accessTokenInput.value
     .split('\n')
     .map((item) => item.trim())
     .filter((item) => item).length
@@ -837,6 +923,12 @@ const handleImportCodexSession = () => {
   }
 }
 
+const handleImportAccessToken = () => {
+  if (accessTokenInput.value.trim()) {
+    emit('import-access-token', accessTokenInput.value.trim())
+  }
+}
+
 // Expose methods and state
 defineExpose({
   authCode: authCodeInput,
@@ -845,6 +937,7 @@ defineExpose({
   sessionKey: sessionKeyInput,
   refreshToken: refreshTokenInput,
   sessionToken: sessionTokenInput,
+  accessToken: accessTokenInput,
   codexSession: codexSessionInput,
   inputMethod,
   reset: () => {
@@ -854,6 +947,7 @@ defineExpose({
     sessionKeyInput.value = ''
     refreshTokenInput.value = ''
     sessionTokenInput.value = ''
+    accessTokenInput.value = ''
     codexSessionInput.value = ''
     inputMethod.value = 'manual'
     showHelpDialog.value = false

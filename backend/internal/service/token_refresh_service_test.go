@@ -538,6 +538,33 @@ func TestIsNonRetryableRefreshError(t *testing.T) {
 		{name: "no_refresh_token", err: errors.New("no refresh token available"), expected: true},
 		{name: "invalid_grant_with_desc", err: errors.New("Error: invalid_grant - token revoked"), expected: true},
 		{name: "case_insensitive", err: errors.New("INVALID_GRANT"), expected: true},
+		{
+			name: "openai_refresh_token_reused_code_json",
+			err: errors.New(`error: code=502 reason="OPENAI_OAUTH_TOKEN_REFRESH_FAILED" message="token refresh failed: status 401, body: {
+  "error": {
+    "message": "Your refresh token has already been used to generate a new access token. Please try signing in again.",
+    "type": "invalid_request_error",
+    "param": null,
+    "code": "refresh_token_reused"
+  }
+}"`),
+			expected: true,
+		},
+		{
+			name:     "openai_refresh_token_reused_code_compact",
+			err:      errors.New(`token refresh failed: status 401, body: {"error":{"code":"refresh_token_reused","message":"try signing in again"}}`),
+			expected: true,
+		},
+		{
+			name:     "openai_refresh_token_reused_message_only",
+			err:      errors.New("token refresh failed: Your refresh token has already been used to generate a new access token."),
+			expected: true,
+		},
+		{
+			name:     "generic_refresh_token_network_error",
+			err:      errors.New("refresh token request failed: network timeout"),
+			expected: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -701,6 +728,31 @@ func TestPathA_NonRetryableError(t *testing.T) {
 	require.Equal(t, 1, repo.setErrorCalls) // 应标记 error 状态
 	require.Equal(t, 0, repo.updateCalls)   // 不应更新 credentials
 	require.Equal(t, 0, invalidator.calls)  // 不应触发缓存失效
+}
+
+func TestPathA_OpenAIRefreshTokenReusedSetsError(t *testing.T) {
+	account := &Account{
+		ID:       106,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+	}
+	repo := &tokenRefreshAccountRepo{}
+	repo.accountsByID = map[int64]*Account{account.ID: account}
+	invalidator := &tokenCacheInvalidatorStub{}
+	cache := &mockTokenCacheForRefreshAPI{lockResult: true}
+
+	service, _ := buildPathAService(repo, cache, invalidator)
+
+	refresher := &tokenRefresherStub{
+		err: errors.New(`error: code=502 reason="OPENAI_OAUTH_TOKEN_REFRESH_FAILED" message="token refresh failed: status 401, body: {"error":{"message":"Your refresh token has already been used to generate a new access token. Please try signing in again.","type":"invalid_request_error","code":"refresh_token_reused"}}"`),
+	}
+
+	err := service.refreshWithRetry(context.Background(), account, refresher, refresher, time.Hour)
+	require.Error(t, err)
+	require.Equal(t, 1, repo.setErrorCalls, "reused refresh tokens should be marked error so they leave the scheduler until reauth")
+	require.Equal(t, 0, repo.setTempUnschedCalls, "reused refresh tokens are not transient retry exhaustion")
+	require.Equal(t, 0, repo.updateCalls)
+	require.Equal(t, 0, invalidator.calls)
 }
 
 // TestPathA_RetryableErrorExhausted 统一 API 路径可重试错误耗尽 → 不标记 error

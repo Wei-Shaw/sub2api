@@ -9,10 +9,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	httppool "github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -20,25 +22,28 @@ import (
 )
 
 const codexImportClockSkewSeconds int64 = 120
+const codexWhamUsageURL = "https://chatgpt.com/backend-api/wham/usage"
+const codexWhamUserAgent = "codex_cli_rs/0.125.0"
 
 type CodexSessionImportRequest struct {
-	Content                 string         `json:"content"`
-	Contents                []string       `json:"contents"`
-	Name                    string         `json:"name"`
-	Notes                   *string        `json:"notes"`
-	GroupIDs                []int64        `json:"group_ids"`
-	ProxyID                 *int64         `json:"proxy_id"`
-	Concurrency             *int           `json:"concurrency"`
-	Priority                *int           `json:"priority"`
-	RateMultiplier          *float64       `json:"rate_multiplier"`
-	LoadFactor              *int           `json:"load_factor"`
-	ExpiresAt               *int64         `json:"expires_at"`
-	AutoPauseOnExpired      *bool          `json:"auto_pause_on_expired"`
-	CredentialExtras        map[string]any `json:"credential_extras"`
-	Extra                   map[string]any `json:"extra"`
-	UpdateExisting          *bool          `json:"update_existing"`
-	SkipDefaultGroupBind    *bool          `json:"skip_default_group_bind"`
-	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"`
+	Content                    string         `json:"content"`
+	Contents                   []string       `json:"contents"`
+	Name                       string         `json:"name"`
+	Notes                      *string        `json:"notes"`
+	GroupIDs                   []int64        `json:"group_ids"`
+	ProxyID                    *int64         `json:"proxy_id"`
+	Concurrency                *int           `json:"concurrency"`
+	Priority                   *int           `json:"priority"`
+	RateMultiplier             *float64       `json:"rate_multiplier"`
+	LoadFactor                 *int           `json:"load_factor"`
+	ExpiresAt                  *int64         `json:"expires_at"`
+	AutoPauseOnExpired         *bool          `json:"auto_pause_on_expired"`
+	CredentialExtras           map[string]any `json:"credential_extras"`
+	Extra                      map[string]any `json:"extra"`
+	UpdateExisting             *bool          `json:"update_existing"`
+	SkipDefaultGroupBind       *bool          `json:"skip_default_group_bind"`
+	ConfirmMixedChannelRisk    *bool          `json:"confirm_mixed_channel_risk"`
+	RequireWhamUsageValidation *bool          `json:"require_wham_usage_validation"`
 }
 
 type CodexSessionImportResult struct {
@@ -103,6 +108,44 @@ type codexJWTOpenAIClaims struct {
 	UserID           string                     `json:"user_id"`
 	POID             string                     `json:"poid"`
 	Organizations    []openai.OrganizationClaim `json:"organizations"`
+}
+
+type codexWhamUsageResponse struct {
+	UserID               string                         `json:"user_id"`
+	AccountID            string                         `json:"account_id"`
+	Email                string                         `json:"email"`
+	PlanType             string                         `json:"plan_type"`
+	RateLimit            *codexWhamRateLimit            `json:"rate_limit"`
+	CodeReviewRateLimit  *codexWhamRateLimit            `json:"code_review_rate_limit"`
+	AdditionalRateLimits []codexWhamAdditionalRateLimit `json:"additional_rate_limits"`
+}
+
+type codexWhamAdditionalRateLimit struct {
+	LimitName      string              `json:"limit_name"`
+	MeteredFeature string              `json:"metered_feature"`
+	RateLimit      *codexWhamRateLimit `json:"rate_limit"`
+}
+
+type codexWhamRateLimit struct {
+	Allowed         bool             `json:"allowed"`
+	LimitReached    bool             `json:"limit_reached"`
+	PrimaryWindow   *codexWhamWindow `json:"primary_window"`
+	SecondaryWindow *codexWhamWindow `json:"secondary_window"`
+}
+
+type codexWhamWindow struct {
+	UsedPercent        float64 `json:"used_percent"`
+	LimitWindowSeconds int     `json:"limit_window_seconds"`
+	ResetAfterSeconds  int     `json:"reset_after_seconds"`
+	ResetAt            int64   `json:"reset_at"`
+}
+
+type codexWhamValidationResult struct {
+	AccountID string
+	UserID    string
+	Email     string
+	PlanType  string
+	Extra     map[string]any
 }
 
 type codexAccountIndex struct {
@@ -177,6 +220,15 @@ func (h *AccountHandler) importCodexSessions(ctx context.Context, req CodexSessi
 		skipDefaultGroupBind = *req.SkipDefaultGroupBind
 	}
 	skipMixedChannelCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
+	requireWhamUsageValidation := req.RequireWhamUsageValidation != nil && *req.RequireWhamUsageValidation
+	whamProxyURL := ""
+	if requireWhamUsageValidation {
+		var proxyErr error
+		whamProxyURL, proxyErr = h.resolveCodexWhamProxyURL(ctx, req.ProxyID)
+		if proxyErr != nil {
+			return result, proxyErr
+		}
+	}
 
 	seenIdentity := map[string]int{}
 	for _, entry := range entries {
@@ -193,6 +245,26 @@ func (h *AccountHandler) importCodexSessions(ctx context.Context, req CodexSessi
 				Message: err.Error(),
 			})
 			continue
+		}
+		if requireWhamUsageValidation {
+			validation, validateErr := validateCodexWhamUsageAccessToken(ctx, item, whamProxyURL)
+			if validateErr != nil {
+				accountName := buildCodexCreateAccountName(req.Name, item, entry.Index, len(entries))
+				result.Failed++
+				result.Items = append(result.Items, CodexSessionImportItem{
+					Index:   entry.Index,
+					Name:    accountName,
+					Action:  "failed",
+					Message: validateErr.Error(),
+				})
+				result.Errors = append(result.Errors, CodexSessionImportMessage{
+					Index:   entry.Index,
+					Name:    accountName,
+					Message: validateErr.Error(),
+				})
+				continue
+			}
+			applyCodexWhamValidationResult(item, validation, entry.Index)
 		}
 		accountName := buildCodexCreateAccountName(req.Name, item, entry.Index, len(entries))
 		effectiveExpiresAt, credentialExpiresAt, autoPauseOnExpired, expiryWarnings, expiryErr := resolveCodexImportExpiry(req, item)
@@ -589,6 +661,223 @@ func normalizeCodexImportEntry(entry codexImportEntry) (*codexImportAccount, err
 	return item, nil
 }
 
+func (h *AccountHandler) resolveCodexWhamProxyURL(ctx context.Context, proxyID *int64) (string, error) {
+	if h == nil || h.adminService == nil || proxyID == nil || *proxyID <= 0 {
+		return "", nil
+	}
+	proxy, err := h.adminService.GetProxy(ctx, *proxyID)
+	if err != nil {
+		return "", err
+	}
+	if proxy == nil {
+		return "", nil
+	}
+	return proxy.URL(), nil
+}
+
+func validateCodexWhamUsageAccessToken(ctx context.Context, item *codexImportAccount, proxyURL string) (*codexWhamValidationResult, error) {
+	if item == nil || strings.TrimSpace(item.AccessToken) == "" {
+		return nil, errors.New("保存失败，at无效")
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, codexWhamUsageURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建 wham usage 请求失败: %w", err)
+	}
+	req.Host = "chatgpt.com"
+	req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(item.AccessToken))
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", codexWhamUserAgent)
+	if chatgptAccountID := strings.TrimSpace(item.AccountID); chatgptAccountID != "" {
+		req.Header.Set("chatgpt-account-id", chatgptAccountID)
+	}
+
+	client, err := httppool.GetClient(httppool.Options{
+		ProxyURL:              proxyURL,
+		Timeout:               15 * time.Second,
+		ResponseHeaderTimeout: 10 * time.Second,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("构建 wham usage 客户端失败: %w", err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("wham usage 请求失败: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, fmt.Errorf("读取 wham usage 响应失败: %w", err)
+	}
+	if resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusUnauthorized {
+		return nil, errors.New("保存失败，at无效")
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("wham usage 返回状态 %d: %s", resp.StatusCode, trimCodexErrorBody(body))
+	}
+
+	var wham codexWhamUsageResponse
+	if err := json.Unmarshal(body, &wham); err != nil {
+		return nil, fmt.Errorf("解析 wham usage 响应失败: %w", err)
+	}
+	if strings.TrimSpace(wham.PlanType) == "" || !hasCodexWhamModelQuota(&wham) {
+		return nil, errors.New("保存失败，at无效")
+	}
+
+	return buildCodexWhamValidationResult(&wham, time.Now().UTC()), nil
+}
+
+func applyCodexWhamValidationResult(item *codexImportAccount, validation *codexWhamValidationResult, index int) {
+	if item == nil || validation == nil {
+		return
+	}
+	if strings.TrimSpace(validation.AccountID) != "" {
+		item.AccountID = strings.TrimSpace(validation.AccountID)
+	}
+	if strings.TrimSpace(validation.UserID) != "" {
+		item.UserID = strings.TrimSpace(validation.UserID)
+	}
+	if strings.TrimSpace(validation.Email) != "" {
+		item.Email = strings.TrimSpace(validation.Email)
+	}
+	if strings.TrimSpace(validation.PlanType) != "" {
+		item.PlanType = strings.ToLower(strings.TrimSpace(validation.PlanType))
+	}
+	setCodexCredentialIfNotEmpty(item.Credentials, "email", item.Email)
+	setCodexCredentialIfNotEmpty(item.Credentials, "chatgpt_account_id", item.AccountID)
+	setCodexCredentialIfNotEmpty(item.Credentials, "chatgpt_user_id", item.UserID)
+	setCodexCredentialIfNotEmpty(item.Credentials, "plan_type", item.PlanType)
+	item.IdentityKeys = buildCodexIdentityKeys(item.AccountID, item.UserID, item.Email, item.AccessToken)
+	item.Name = buildCodexImportAccountName(item, index)
+	item.Extra = mergeCodexImportMap(item.Extra, validation.Extra)
+}
+
+func buildCodexWhamValidationResult(resp *codexWhamUsageResponse, now time.Time) *codexWhamValidationResult {
+	if resp == nil {
+		return nil
+	}
+	extra := make(map[string]any)
+	mergeCodexWhamUsageExtra(extra, buildCodexWhamUsageExtraUpdates("codex", resp.RateLimit, now))
+	if spark := findCodexWhamSparkLimit(resp.AdditionalRateLimits); spark != nil {
+		mergeCodexWhamUsageExtra(extra, buildCodexWhamUsageExtraUpdates("codex_spark", spark.RateLimit, now))
+		if strings.TrimSpace(spark.LimitName) != "" {
+			extra["codex_spark_limit_name"] = strings.TrimSpace(spark.LimitName)
+		}
+		if strings.TrimSpace(spark.MeteredFeature) != "" {
+			extra["codex_spark_metered_feature"] = strings.TrimSpace(spark.MeteredFeature)
+		}
+	}
+	return &codexWhamValidationResult{
+		AccountID: strings.TrimSpace(resp.AccountID),
+		UserID:    strings.TrimSpace(resp.UserID),
+		Email:     strings.TrimSpace(resp.Email),
+		PlanType:  strings.ToLower(strings.TrimSpace(resp.PlanType)),
+		Extra:     extra,
+	}
+}
+
+func hasCodexWhamModelQuota(resp *codexWhamUsageResponse) bool {
+	if resp == nil {
+		return false
+	}
+	if codexWhamRateLimitHasWindow(resp.RateLimit) {
+		return true
+	}
+	if codexWhamRateLimitHasWindow(resp.CodeReviewRateLimit) {
+		return true
+	}
+	for i := range resp.AdditionalRateLimits {
+		if codexWhamRateLimitHasWindow(resp.AdditionalRateLimits[i].RateLimit) {
+			return true
+		}
+	}
+	return false
+}
+
+func codexWhamRateLimitHasWindow(rateLimit *codexWhamRateLimit) bool {
+	return rateLimit != nil && (rateLimit.PrimaryWindow != nil || rateLimit.SecondaryWindow != nil)
+}
+
+func buildCodexWhamUsageExtraUpdates(prefix string, rateLimit *codexWhamRateLimit, now time.Time) map[string]any {
+	if prefix == "" || rateLimit == nil {
+		return nil
+	}
+	updates := make(map[string]any)
+	updatedAtKey := prefix + "_usage_updated_at"
+	if prefix == "codex" {
+		updatedAtKey = "codex_usage_updated_at"
+	}
+	updates[updatedAtKey] = now.UTC().Format(time.RFC3339)
+	for _, window := range orderedCodexWhamWindows(rateLimit) {
+		if window == nil {
+			continue
+		}
+		windowName := "5h"
+		if isCodexWhamSevenDayWindow(window) {
+			windowName = "7d"
+		}
+		keyPrefix := prefix + "_" + windowName
+		updates[keyPrefix+"_used_percent"] = window.UsedPercent
+		if window.ResetAfterSeconds > 0 {
+			updates[keyPrefix+"_reset_after_seconds"] = window.ResetAfterSeconds
+		}
+		if window.ResetAt > 0 {
+			updates[keyPrefix+"_reset_at"] = time.Unix(window.ResetAt, 0).UTC().Format(time.RFC3339)
+		} else if window.ResetAfterSeconds > 0 {
+			updates[keyPrefix+"_reset_at"] = now.Add(time.Duration(window.ResetAfterSeconds) * time.Second).UTC().Format(time.RFC3339)
+		}
+		if window.LimitWindowSeconds > 0 {
+			updates[keyPrefix+"_window_minutes"] = window.LimitWindowSeconds / 60
+		}
+	}
+	return updates
+}
+
+func orderedCodexWhamWindows(rateLimit *codexWhamRateLimit) []*codexWhamWindow {
+	if rateLimit == nil {
+		return nil
+	}
+	return []*codexWhamWindow{rateLimit.PrimaryWindow, rateLimit.SecondaryWindow}
+}
+
+func isCodexWhamSevenDayWindow(window *codexWhamWindow) bool {
+	return window != nil && window.LimitWindowSeconds > 24*60*60
+}
+
+func findCodexWhamSparkLimit(limits []codexWhamAdditionalRateLimit) *codexWhamAdditionalRateLimit {
+	for i := range limits {
+		limit := &limits[i]
+		key := strings.ToLower(strings.TrimSpace(limit.LimitName + " " + limit.MeteredFeature))
+		if strings.Contains(key, "spark") || strings.Contains(key, "bengalfox") {
+			return limit
+		}
+	}
+	return nil
+}
+
+func mergeCodexWhamUsageExtra(target map[string]any, updates map[string]any) {
+	if len(target) == 0 && target == nil {
+		return
+	}
+	for key, value := range updates {
+		target[key] = value
+	}
+}
+
+func trimCodexErrorBody(body []byte) string {
+	const maxLen = 512
+	text := strings.TrimSpace(string(body))
+	if len(text) <= maxLen {
+		return text
+	}
+	return text[:maxLen] + "..."
+}
+
 func enrichCodexImportAccountFromJWT(item *codexImportAccount, token string, validateExpiry bool, now time.Time) error {
 	claims, err := decodeCodexJWTClaims(token)
 	if err != nil {
@@ -728,6 +1017,10 @@ func resolveCodexImportExpiry(req CodexSessionImportRequest, item *codexImportAc
 			credentialExpiresAt = earlierCodexTime(credentialExpiresAt, requestExpiresAt)
 		}
 		if accountExpiresAt == nil {
+			if req.RequireWhamUsageValidation != nil && *req.RequireWhamUsageValidation {
+				warnings = append(warnings, "未包含 refresh_token，accessToken 过期后无法自动续期")
+				return nil, nil, req.AutoPauseOnExpired, warnings, nil
+			}
 			return nil, nil, nil, nil, errors.New("未包含 refresh_token，且无法解析 accessToken 过期时间；请在第一步设置过期时间后再导入")
 		}
 		if accountExpiresAt.Unix() <= time.Now().UTC().Unix()-codexImportClockSkewSeconds {

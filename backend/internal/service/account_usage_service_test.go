@@ -10,6 +10,7 @@ import (
 type accountUsageCodexProbeRepo struct {
 	stubOpenAIAccountRepo
 	updateExtraCh chan map[string]any
+	bulkUpdateCh  chan AccountBulkUpdate
 	rateLimitCh   chan time.Time
 }
 
@@ -22,6 +23,26 @@ func (r *accountUsageCodexProbeRepo) UpdateExtra(_ context.Context, _ int64, upd
 		r.updateExtraCh <- copied
 	}
 	return nil
+}
+
+func (r *accountUsageCodexProbeRepo) BulkUpdate(_ context.Context, _ []int64, updates AccountBulkUpdate) (int64, error) {
+	if r.bulkUpdateCh != nil {
+		copied := AccountBulkUpdate{}
+		if updates.Credentials != nil {
+			copied.Credentials = make(map[string]any, len(updates.Credentials))
+			for k, v := range updates.Credentials {
+				copied.Credentials[k] = v
+			}
+		}
+		if updates.Extra != nil {
+			copied.Extra = make(map[string]any, len(updates.Extra))
+			for k, v := range updates.Extra {
+				copied.Extra[k] = v
+			}
+		}
+		r.bulkUpdateCh <- copied
+	}
+	return 1, nil
 }
 
 func (r *accountUsageCodexProbeRepo) SetRateLimited(_ context.Context, _ int64, resetAt time.Time) error {
@@ -154,6 +175,120 @@ func TestAccountUsageService_GetOpenAIUsage_DoesNotPromoteCodexExtraToRateLimit(
 	case got := <-repo.rateLimitCh:
 		t.Fatalf("不应将已耗尽的 codex extra 持久化为运行时限流状态: %v", got)
 	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+func TestBuildOpenAIWhamUsageSnapshotIncludesPlanAndSparkQuota(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 5, 22, 10, 0, 0, 0, time.UTC)
+	snapshot := buildOpenAIWhamUsageSnapshot(&openAIWhamUsageResponse{
+		PlanType: "Pro",
+		RateLimit: &openAIWhamRateLimit{
+			PrimaryWindow: &openAIWhamWindow{
+				UsedPercent:        12,
+				LimitWindowSeconds: 18000,
+				ResetAfterSeconds:  300,
+				ResetAt:            now.Add(5 * time.Minute).Unix(),
+			},
+			SecondaryWindow: &openAIWhamWindow{
+				UsedPercent:        34,
+				LimitWindowSeconds: 604800,
+				ResetAfterSeconds:  600,
+				ResetAt:            now.Add(10 * time.Minute).Unix(),
+			},
+		},
+		AdditionalRateLimits: []openAIWhamAdditionalRateLimit{
+			{
+				LimitName:      "GPT-5.3-Codex-Spark",
+				MeteredFeature: "codex_bengalfox",
+				RateLimit: &openAIWhamRateLimit{
+					PrimaryWindow: &openAIWhamWindow{
+						UsedPercent:        7,
+						LimitWindowSeconds: 18000,
+						ResetAfterSeconds:  120,
+					},
+					SecondaryWindow: &openAIWhamWindow{
+						UsedPercent:        9,
+						LimitWindowSeconds: 604800,
+						ResetAfterSeconds:  240,
+					},
+				},
+			},
+		},
+	}, now)
+
+	if snapshot == nil || snapshot.Usage == nil {
+		t.Fatal("expected snapshot")
+	}
+	if snapshot.Usage.PlanType != "pro" {
+		t.Fatalf("PlanType = %q, want pro", snapshot.Usage.PlanType)
+	}
+	if snapshot.Usage.FiveHour == nil || snapshot.Usage.FiveHour.Utilization != 12 {
+		t.Fatalf("FiveHour = %#v, want utilization 12", snapshot.Usage.FiveHour)
+	}
+	if snapshot.Usage.SevenDay == nil || snapshot.Usage.SevenDay.Utilization != 34 {
+		t.Fatalf("SevenDay = %#v, want utilization 34", snapshot.Usage.SevenDay)
+	}
+	if snapshot.Usage.CodexSparkFiveHour == nil || snapshot.Usage.CodexSparkFiveHour.Utilization != 7 {
+		t.Fatalf("CodexSparkFiveHour = %#v, want utilization 7", snapshot.Usage.CodexSparkFiveHour)
+	}
+	if snapshot.Usage.CodexSparkSevenDay == nil || snapshot.Usage.CodexSparkSevenDay.Utilization != 9 {
+		t.Fatalf("CodexSparkSevenDay = %#v, want utilization 9", snapshot.Usage.CodexSparkSevenDay)
+	}
+	if got := snapshot.Extra["codex_5h_used_percent"]; got != 12.0 {
+		t.Fatalf("codex_5h_used_percent = %v, want 12", got)
+	}
+	if got := snapshot.Extra["codex_7d_used_percent"]; got != 34.0 {
+		t.Fatalf("codex_7d_used_percent = %v, want 34", got)
+	}
+	if got := snapshot.Extra["codex_spark_5h_used_percent"]; got != 7.0 {
+		t.Fatalf("codex_spark_5h_used_percent = %v, want 7", got)
+	}
+	if got := snapshot.Extra["codex_spark_7d_used_percent"]; got != 9.0 {
+		t.Fatalf("codex_spark_7d_used_percent = %v, want 9", got)
+	}
+	if got := snapshot.Extra["codex_spark_limit_name"]; got != "GPT-5.3-Codex-Spark" {
+		t.Fatalf("codex_spark_limit_name = %v", got)
+	}
+}
+
+func TestAccountUsageService_PersistOpenAIWhamUsageSnapshotUpdatesExtraAndPlan(t *testing.T) {
+	t.Parallel()
+
+	repo := &accountUsageCodexProbeRepo{
+		bulkUpdateCh: make(chan AccountBulkUpdate, 1),
+	}
+	svc := &AccountUsageService{accountRepo: repo}
+	account := &Account{
+		ID:          321,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Credentials: map[string]any{"plan_type": "free"},
+	}
+	snapshot := &openAIWhamUsageSnapshot{
+		PlanType: "pro",
+		Extra: map[string]any{
+			"codex_5h_used_percent":       12.0,
+			"codex_spark_5h_used_percent": 7.0,
+		},
+	}
+
+	svc.persistOpenAIWhamUsageSnapshot(context.Background(), account, snapshot)
+
+	select {
+	case updates := <-repo.bulkUpdateCh:
+		if got := updates.Credentials["plan_type"]; got != "pro" {
+			t.Fatalf("plan_type update = %v, want pro", got)
+		}
+		if got := updates.Extra["codex_5h_used_percent"]; got != 12.0 {
+			t.Fatalf("codex_5h_used_percent update = %v, want 12", got)
+		}
+		if got := updates.Extra["codex_spark_5h_used_percent"]; got != 7.0 {
+			t.Fatalf("codex_spark_5h_used_percent update = %v, want 7", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("等待 wham usage 快照写入超时")
 	}
 }
 

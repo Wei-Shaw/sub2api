@@ -493,6 +493,38 @@ func TestRefreshIfNeeded_InvalidGrantDBRereadFailsOnRecovery(t *testing.T) {
 	require.Nil(t, result)
 }
 
+func TestRefreshIfNeeded_OpenAIRefreshTokenReusedRaceRecovered(t *testing.T) {
+	account := &Account{
+		ID:          13,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Credentials: map[string]any{"refresh_token": "old-rt", "access_token": "old-at"},
+	}
+	racedAccount := &Account{
+		ID:          13,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Credentials: map[string]any{"refresh_token": "new-rt", "access_token": "new-at"},
+	}
+	repo := &refreshAPIAccountRepoWithRace{
+		refreshAPIAccountRepo: refreshAPIAccountRepo{account: account},
+		raceAccount:           racedAccount,
+	}
+	cache := &refreshAPICacheStub{lockResult: true}
+	executor := &refreshAPIExecutorStub{
+		needsRefresh: true,
+		err:          errors.New(`token refresh failed: status 401, body: {"error":{"code":"refresh_token_reused","message":"try signing in again"}}`),
+	}
+
+	api := NewOAuthRefreshAPI(repo, cache)
+	result, err := api.RefreshIfNeeded(context.Background(), account, executor, 3*time.Minute)
+
+	require.NoError(t, err, "refresh_token_reused with a newer DB token should be treated as refresh-race recovery")
+	require.NotNil(t, result)
+	require.Equal(t, "new-rt", result.Account.GetCredential("refresh_token"))
+	require.Equal(t, 0, repo.updateCalls)
+}
+
 func TestRefreshIfNeeded_LocalMutexSerializesConcurrent(t *testing.T) {
 	// Test that two goroutines for the same account are serialized by the local mutex.
 	// The first goroutine refreshes successfully; the second sees NeedsRefresh=false.
@@ -595,13 +627,14 @@ func TestNewOAuthRefreshAPI_ZeroTTLUsesDefault(t *testing.T) {
 	require.Equal(t, defaultRefreshLockTTL, api.lockTTL)
 }
 
-// ========== isInvalidGrantError tests ==========
+// ========== isRefreshRaceRecoverableError tests ==========
 
-func TestIsInvalidGrantError(t *testing.T) {
-	require.True(t, isInvalidGrantError(errors.New("invalid_grant: token revoked")))
-	require.True(t, isInvalidGrantError(errors.New("INVALID_GRANT")))
-	require.False(t, isInvalidGrantError(errors.New("invalid_client")))
-	require.False(t, isInvalidGrantError(nil))
+func TestIsRefreshRaceRecoverableError(t *testing.T) {
+	require.True(t, isRefreshRaceRecoverableError(errors.New("invalid_grant: token revoked")))
+	require.True(t, isRefreshRaceRecoverableError(errors.New("INVALID_GRANT")))
+	require.True(t, isRefreshRaceRecoverableError(errors.New(`{"error":{"code":"refresh_token_reused"}}`)))
+	require.False(t, isRefreshRaceRecoverableError(errors.New("invalid_client")))
+	require.False(t, isRefreshRaceRecoverableError(nil))
 }
 
 // ========== BackgroundRefreshPolicy tests ==========

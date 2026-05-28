@@ -71,10 +71,9 @@ type codexTransformResult struct {
 }
 
 type codexOAuthTransformOptions struct {
-	IsCodexCLI              bool
-	IsCompact               bool
-	SkipDefaultInstructions bool
-	PreserveToolCallIDs     bool
+	IsCodexCLI          bool
+	IsCompact           bool
+	PreserveToolCallIDs bool
 }
 
 const (
@@ -208,11 +207,10 @@ func applyCodexOAuthTransformWithOptions(reqBody map[string]any, opts codexOAuth
 	if extractSystemMessagesFromInput(reqBody) {
 		result.Modified = true
 	}
-
-	// instructions 处理逻辑：根据是否是 Codex CLI 分别调用不同方法
-	if !opts.SkipDefaultInstructions && applyInstructions(reqBody, opts.IsCodexCLI) {
+	if ensureEmptyInstructionsField(reqBody) {
 		result.Modified = true
 	}
+
 	if isCodexSparkModel(normalizedModel) && applyCodexSparkImageUnsupportedInstructions(reqBody) {
 		result.Modified = true
 	}
@@ -964,12 +962,11 @@ func extractPromptLikeInstructionsFromInput(reqBody map[string]any) string {
 	return strings.Join(texts, "\n\n")
 }
 
-// applyInstructions 处理 instructions 字段：仅在 instructions 为空时填充默认值。
-func applyInstructions(reqBody map[string]any, isCodexCLI bool) bool {
+func ensureEmptyInstructionsField(reqBody map[string]any) bool {
 	if !isInstructionsEmpty(reqBody) {
 		return false
 	}
-	reqBody["instructions"] = "You are a helpful coding assistant."
+	reqBody["instructions"] = ""
 	return true
 }
 
