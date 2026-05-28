@@ -12,6 +12,7 @@ const {
   getStatus,
   listLogs,
   getGroups,
+  getProxies,
   showError,
   showSuccess,
 } = vi.hoisted(() => ({
@@ -20,6 +21,7 @@ const {
   getStatus: vi.fn(),
   listLogs: vi.fn(),
   getGroups: vi.fn(),
+  getProxies: vi.fn(),
   showError: vi.fn(),
   showSuccess: vi.fn(),
 }))
@@ -38,6 +40,10 @@ vi.mock('@/api/admin', () => ({
     },
     groups: {
       getAll: getGroups,
+    },
+    proxies: {
+      getAll: getProxies,
+      testProxy: vi.fn(),
     },
   },
 }))
@@ -73,6 +79,7 @@ const baseConfig = (): ContentModerationConfig => ({
   mode: 'pre_block',
   base_url: 'https://api.openai.com',
   model: 'omni-moderation-latest',
+  proxy_id: null,
   api_key_configured: false,
   api_key_masked: '',
   api_key_count: 0,
@@ -175,6 +182,34 @@ const ModelWhitelistSelectorStub = defineComponent({
       })
   },
 })
+const ProxySelectorStub = defineComponent({
+  props: {
+    modelValue: {
+      type: Number,
+      default: null,
+    },
+  },
+  emits: ['update:modelValue'],
+  setup(props, { emit }) {
+    const onChange = (event: Event) => {
+      const value = Number((event.target as HTMLSelectElement).value)
+      emit('update:modelValue', value > 0 ? value : null)
+    }
+    return () =>
+      h(
+        'select',
+        {
+          'data-test': 'moderation-proxy-select',
+          value: props.modelValue ?? 0,
+          onChange,
+        },
+        [
+          h('option', { value: 0 }, 'direct'),
+          h('option', { value: 23 }, 'proxy-23'),
+        ]
+      )
+  },
+})
 
 function findButtonByText(wrapper: VueWrapper, text: string): DOMWrapper<HTMLButtonElement> {
   const button = wrapper.findAll<HTMLButtonElement>('button').find((item) => item.text().includes(text))
@@ -191,6 +226,7 @@ describe('admin RiskControlView', () => {
     getStatus.mockReset()
     listLogs.mockReset()
     getGroups.mockReset()
+    getProxies.mockReset()
     showError.mockReset()
     showSuccess.mockReset()
 
@@ -198,6 +234,7 @@ describe('admin RiskControlView', () => {
     getStatus.mockResolvedValue(runtimeStatus())
     listLogs.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20, pages: 1 })
     getGroups.mockResolvedValue([])
+    getProxies.mockResolvedValue([])
     updateConfig.mockImplementation(async (payload: UpdateContentModerationConfig) => ({
       ...baseConfig(),
       ...payload,
@@ -221,6 +258,7 @@ describe('admin RiskControlView', () => {
           Toggle: true,
           Pagination: true,
           ModelWhitelistSelector: ModelWhitelistSelectorStub,
+          ProxySelector: ProxySelectorStub,
         },
       },
     })
@@ -254,6 +292,7 @@ describe('admin RiskControlView', () => {
           Toggle: true,
           Pagination: true,
           ModelWhitelistSelector: ModelWhitelistSelectorStub,
+          ProxySelector: ProxySelectorStub,
         },
       },
     })
@@ -294,6 +333,7 @@ describe('admin RiskControlView', () => {
           Toggle: true,
           Pagination: true,
           ModelWhitelistSelector: ModelWhitelistSelectorStub,
+          ProxySelector: ProxySelectorStub,
         },
       },
     })
@@ -361,6 +401,7 @@ describe('admin RiskControlView', () => {
           Toggle: true,
           Pagination: true,
           ModelWhitelistSelector: ModelWhitelistSelectorStub,
+          ProxySelector: ProxySelectorStub,
         },
       },
     })
@@ -403,5 +444,34 @@ describe('admin RiskControlView', () => {
       'max-h-[280px]',
       'overflow-y-auto',
     ]))
+  })
+
+  it('submits selected proxy id when saving moderation config', async () => {
+    const wrapper = mount(RiskControlView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          BaseDialog: BaseDialogStub,
+          Icon: true,
+          Select: true,
+          Toggle: true,
+          Pagination: true,
+          ModelWhitelistSelector: ModelWhitelistSelectorStub,
+          ProxySelector: ProxySelectorStub,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    await findButtonByText(wrapper, 'admin.riskControl.openSettings').trigger('click')
+    await wrapper.get('[data-test="moderation-proxy-select"]').setValue('23')
+    await findButtonByText(wrapper, 'admin.riskControl.saveConfig').trigger('click')
+    await flushPromises()
+
+    expect(updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+      proxy_id: 23,
+    }))
+    expect(showError).not.toHaveBeenCalled()
   })
 })
