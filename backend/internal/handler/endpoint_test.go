@@ -24,6 +24,7 @@ REDACTED{
 		// Direct canonical paths.
 		{"/v1/messages", EndpointMessagesREDACTED,
 		{"/v1/chat/completions", EndpointChatCompletionsREDACTED,
+		{"/v1/embeddings", EndpointEmbeddingsREDACTED,
 		{"/v1/responses", EndpointResponsesREDACTED,
 		{"/v1/images/generations", EndpointImagesGenerationsREDACTED,
 		{"/v1/images/edits", EndpointImagesEditsREDACTED,
@@ -77,6 +78,7 @@ REDACTED{
 		{"openai responses nested", EndpointResponses, "/openai/v1/responses/compact/detail", service.PlatformOpenAI, "/v1/responses/compact/detail"REDACTED,
 		{"openai from messages", EndpointMessages, "/v1/messages", service.PlatformOpenAI, EndpointResponsesREDACTED,
 		{"openai from completions", EndpointChatCompletions, "/v1/chat/completions", service.PlatformOpenAI, EndpointResponsesREDACTED,
+		{"openai embeddings", EndpointEmbeddings, "/v1/embeddings", service.PlatformOpenAI, EndpointEmbeddingsREDACTED,
 		{"openai image generations", EndpointImagesGenerations, "/v1/images/generations", service.PlatformOpenAI, EndpointImagesGenerationsREDACTED,
 		{"openai image edits", EndpointImagesEdits, "/openai/v1/images/edits", service.PlatformOpenAI, EndpointImagesEditsREDACTED,
 

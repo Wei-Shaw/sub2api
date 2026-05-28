@@ -89,6 +89,19 @@ func RegisterGatewayRoutes(
 		REDACTED
 			h.Gateway.ChatCompletions(c)
 	REDACTED)
+		gateway.POST("/embeddings", func(c *gin.Context) {
+			if getGroupPlatform(c) != service.PlatformOpenAI {
+				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+				c.JSON(http.StatusNotFound, gin.H{
+					"error": gin.H{
+						"type":    "not_found_error",
+						"message": "Embeddings API is not supported for this platform",
+				REDACTED,
+			REDACTED)
+				return
+		REDACTED
+			h.OpenAIGateway.Embeddings(c)
+	REDACTED)
 		gateway.POST("/images/generations", func(c *gin.Context) {
 			if getGroupPlatform(c) != service.PlatformOpenAI {
 				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
@@ -157,6 +170,19 @@ REDACTED
 			return
 	REDACTED
 		h.Gateway.ChatCompletions(c)
+REDACTED)
+	r.POST("/embeddings", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, func(c *gin.Context) {
+		if getGroupPlatform(c) != service.PlatformOpenAI {
+			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": gin.H{
+					"type":    "not_found_error",
+					"message": "Embeddings API is not supported for this platform",
+			REDACTED,
+		REDACTED)
+			return
+	REDACTED
+		h.OpenAIGateway.Embeddings(c)
 REDACTED)
 	r.POST("/images/generations", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, func(c *gin.Context) {
 		if getGroupPlatform(c) != service.PlatformOpenAI {
