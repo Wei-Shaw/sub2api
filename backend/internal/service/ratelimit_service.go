@@ -1756,12 +1756,36 @@ func (s *RateLimitService) triggerTempUnschedulable(ctx context.Context, account
 	if account == nil {
 		return false
 	}
-	if rule.DurationMinutes <= 0 {
-		return false
-	}
 
 	now := time.Now()
-	until := now.Add(time.Duration(rule.DurationMinutes) * time.Minute)
+	var until time.Time
+
+	// 优先使用ResetAtTime（按时间点重置）
+	if rule.ResetAtTime != "" {
+		// 解析时间点（格式："HH:MM"）
+		parts := strings.Split(rule.ResetAtTime, ":")
+		if len(parts) == 2 {
+			hour, err1 := strconv.Atoi(parts[0])
+			minute, err2 := strconv.Atoi(parts[1])
+			if err1 == nil && err2 == nil && hour >= 0 && hour < 24 && minute >= 0 && minute < 60 {
+				// 计算下一个该时间点
+				nextReset := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, now.Location())
+				if !nextReset.After(now) {
+					// 如果今天的时间点已过，则设置为明天
+					nextReset = nextReset.AddDate(0, 0, 1)
+				}
+				until = nextReset
+			}
+		}
+	}
+
+	// 如果ResetAtTime未设置或解析失败，则使用DurationMinutes
+	if until.IsZero() {
+		if rule.DurationMinutes <= 0 {
+			return false
+		}
+		until = now.Add(time.Duration(rule.DurationMinutes) * time.Minute)
+	}
 
 	state := &TempUnschedState{
 		UntilUnix:       until.Unix(),

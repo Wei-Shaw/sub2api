@@ -794,6 +794,10 @@ export interface TempUnschedulableRule {
   keywords: string[]
   duration_minutes: number
   description: string
+  // 按时间点重置（格式："HH:MM"，如"00:00"表示每天凌晨0点重置）
+  // 设置后，临时不可调度状态将在下一个该时间点自动解除
+  // 如果同时设置了duration_minutes，则优先使用reset_at_time
+  reset_at_time?: string
 }
 
 export interface TempUnschedulableState {

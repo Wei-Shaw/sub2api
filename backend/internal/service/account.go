@@ -71,6 +71,10 @@ type TempUnschedulableRule struct {
 	Keywords        []string `json:"keywords"`
 	DurationMinutes int      `json:"duration_minutes"`
 	Description     string   `json:"description"`
+	// ResetAtTime 按时间点重置（格式："HH:MM"，如"00:00"表示每天凌晨0点重置）
+	// 设置后，临时不可调度状态将在下一个该时间点自动解除
+	// 如果同时设置了DurationMinutes，则优先使用ResetAtTime
+	ResetAtTime string `json:"reset_at_time,omitempty"`
 }
 
 func (a *Account) IsActive() bool {
@@ -312,9 +316,14 @@ func (a *Account) GetTempUnschedulableRules() []TempUnschedulableRule {
 			Keywords:        parseTempUnschedStrings(entry["keywords"]),
 			DurationMinutes: parseTempUnschedInt(entry["duration_minutes"]),
 			Description:     parseTempUnschedString(entry["description"]),
+			ResetAtTime:     parseTempUnschedString(entry["reset_at_time"]),
 		}
 
-		if rule.ErrorCode <= 0 || rule.DurationMinutes <= 0 || len(rule.Keywords) == 0 {
+		// 验证：必须有错误码和关键词，且至少有duration_minutes或reset_at_time之一
+		if rule.ErrorCode <= 0 || len(rule.Keywords) == 0 {
+			continue
+		}
+		if rule.DurationMinutes <= 0 && rule.ResetAtTime == "" {
 			continue
 		}
 
