@@ -336,6 +336,9 @@ REDACTED
 	for {
 		select {
 		case <-ctx.Done():
+			if parentErr := c.Request.Context().Err(); parentErr != nil {
+				return nil, parentErr
+		REDACTED
 			return nil, &ConcurrencyError{
 				SlotType:  slotType,
 				IsTimeout: true,
