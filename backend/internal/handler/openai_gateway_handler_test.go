@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -740,14 +741,29 @@ func (r *contentModerationHandlerSettingRepo) Delete(ctx context.Context, key st
 REDACTED
 
 type contentModerationHandlerTestRepo struct {
+	mu   sync.Mutex
 	logs []service.ContentModerationLog
 REDACTED
 
 func (r *contentModerationHandlerTestRepo) CreateLog(ctx context.Context, log *service.ContentModerationLog) error {
 	if log != nil {
+		r.mu.Lock()
+		defer r.mu.Unlock()
 		r.logs = append(r.logs, *log)
 REDACTED
 	return nil
+REDACTED
+
+func (r *contentModerationHandlerTestRepo) resetLogs() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.logs = nil
+REDACTED
+
+func (r *contentModerationHandlerTestRepo) logSnapshot() []service.ContentModerationLog {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]service.ContentModerationLog(nil), r.logs...)
 REDACTED
 
 func (r *contentModerationHandlerTestRepo) ListLogs(ctx context.Context, filter service.ContentModerationLogFilter) ([]service.ContentModerationLog, *pagination.PaginationResult, error) {
@@ -808,7 +824,10 @@ REDACTEDREDACTED
 REDACTED)
 REDACTED
 	require.True(t, decision.Blocked)
-	repo.logs = nil
+	require.Eventually(t, func() bool {
+		return len(repo.logSnapshot()) == 1
+REDACTED, time.Second, 10*time.Millisecond)
+	repo.resetLogs()
 	h := &OpenAIGatewayHandler{
 		gatewayService:           &service.OpenAIGatewayService{REDACTED,
 		billingCacheService:      &service.BillingCacheService{REDACTED,
@@ -848,10 +867,11 @@ REDACTED else {
 		require.Equal(t, coderws.StatusPolicyViolation, closeErr.Code)
 		require.Contains(t, closeErr.Reason, "内容审计测试阻断")
 REDACTED
-	require.Len(t, repo.logs, 1)
-	require.True(t, repo.logs[0].Flagged)
-	require.Equal(t, service.ContentModerationActionBlock, repo.logs[0].Action)
-	require.Equal(t, "bad prompt", repo.logs[0].InputExcerpt)
+	logs := repo.logSnapshot()
+	require.Len(t, logs, 1)
+	require.True(t, logs[0].Flagged)
+	require.Equal(t, service.ContentModerationActionBlock, logs[0].Action)
+	require.Equal(t, "bad prompt", logs[0].InputExcerpt)
 REDACTED
 
 func TestOpenAIResponsesWebSocket_PassthroughUsageLogPersistsUserAgentAndReasoningEffort(t *testing.T) {
