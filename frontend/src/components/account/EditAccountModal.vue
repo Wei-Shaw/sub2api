@@ -1948,6 +1948,53 @@
         </div>
       </div>
 
+      <!-- D4: Cache TTL Override — gated on supportsCachePolicy(platform,type) -->
+      <!-- 适用所有支持缓存策略的账号：Anthropic OAuth/SetupToken/APIKey/Bedrock/Vertex/ServiceAccount。 -->
+      <!-- 与下方 OAuth/SetupToken 专属的"配额控制"块（窗口费用、会话等）解耦：此处只控制 usage 归类，不依赖 OAuth 窗口语义。 -->
+      <div
+        v-if="supportsCachePolicyForAccount"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
+      >
+        <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
+          <div class="flex items-center justify-between">
+            <div>
+              <label class="input-label mb-0">{{ t('admin.accounts.quotaControl.cacheTTLOverride.label') }}</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.quotaControl.cacheTTLOverride.hint') }}
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="cacheTTLOverrideEnabled = !cacheTTLOverrideEnabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                cacheTTLOverrideEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  cacheTTLOverrideEnabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+          <div v-if="cacheTTLOverrideEnabled" class="mt-3">
+            <label class="input-label text-xs">{{ t('admin.accounts.quotaControl.cacheTTLOverride.target') }}</label>
+            <select
+              v-model="cacheTTLOverrideTarget"
+              class="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-dark-500 dark:bg-dark-700 dark:text-white"
+            >
+              <option value="5m">5m</option>
+              <option value="1h">1h</option>
+            </select>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.quotaControl.cacheTTLOverride.targetHint') }}
+            </p>
+          </div>
+        </div>
+      </div>
+
       <!-- 配额控制 (Anthropic OAuth/SetupToken: 亲和 + 窗口费用 + 会话 + RPM 等) -->
       <div
         v-if="account?.platform === 'anthropic' && (account?.type === 'oauth' || account?.type === 'setup-token')"
@@ -2258,46 +2305,6 @@
           </div>
         </div>
 
-        <!-- Cache TTL Override -->
-        <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
-          <div class="flex items-center justify-between">
-            <div>
-              <label class="input-label mb-0">{{ t('admin.accounts.quotaControl.cacheTTLOverride.label') }}</label>
-              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                {{ t('admin.accounts.quotaControl.cacheTTLOverride.hint') }}
-              </p>
-            </div>
-            <button
-              type="button"
-              @click="cacheTTLOverrideEnabled = !cacheTTLOverrideEnabled"
-              :class="[
-                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
-                cacheTTLOverrideEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
-              ]"
-            >
-              <span
-                :class="[
-                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                  cacheTTLOverrideEnabled ? 'translate-x-5' : 'translate-x-0'
-                ]"
-              />
-            </button>
-          </div>
-          <div v-if="cacheTTLOverrideEnabled" class="mt-3">
-            <label class="input-label text-xs">{{ t('admin.accounts.quotaControl.cacheTTLOverride.target') }}</label>
-            <select
-              v-model="cacheTTLOverrideTarget"
-              class="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-dark-500 dark:bg-dark-700 dark:text-white"
-            >
-              <option value="5m">5m</option>
-              <option value="1h">1h</option>
-            </select>
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.quotaControl.cacheTTLOverride.targetHint') }}
-            </p>
-          </div>
-        </div>
-
         <!-- Custom Base URL Relay -->
         <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
           <div class="flex items-center justify-between">
@@ -2488,7 +2495,7 @@ import AccountUpstreamPassthroughSection from '@/components/account/AccountUpstr
 import { applyInterceptWarmup } from '@/components/account/credentialsBuilder'
 import { formatDateTime, formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
-import { VERTEX_LOCATION_OPTIONS, isAccountQuotaEligibleType } from '@/constants/account'
+import { VERTEX_LOCATION_OPTIONS, isAccountQuotaEligibleType, supportsCachePolicy } from '@/constants/account'
 import {
   OPENAI_WS_MODE_CTX_POOL,
   OPENAI_WS_MODE_OFF,
@@ -2667,6 +2674,14 @@ const tlsFingerprintProfiles = ref<{ id: number; name: string }[]>([])
 const sessionIdMaskingEnabled = ref(false)
 const cacheTTLOverrideEnabled = ref(false)
 const cacheTTLOverrideTarget = ref<string>('5m')
+
+// D4: cache policy capability gate — must mirror backend SupportsCachePolicy()
+// so the UI never offers a control the server will silently ignore (and never
+// hides a control the server would honour). Drives both the cache TTL override
+// card visibility and the save-side merge of cache_ttl_override_* into extra.
+const supportsCachePolicyForAccount = computed(() =>
+  supportsCachePolicy(props.account?.platform, props.account?.type)
+)
 const customBaseUrlEnabled = ref(false)
 const customBaseUrl = ref('')
 
@@ -4160,15 +4175,6 @@ const handleSubmit = async () => {
         delete newExtra.session_id_masking_enabled
       }
 
-      // Cache TTL override setting
-      if (cacheTTLOverrideEnabled.value) {
-        newExtra.cache_ttl_override_enabled = true
-        newExtra.cache_ttl_override_target = cacheTTLOverrideTarget.value
-      } else {
-        delete newExtra.cache_ttl_override_enabled
-        delete newExtra.cache_ttl_override_target
-      }
-
       // Custom base URL relay setting
       if (customBaseUrlEnabled.value && customBaseUrl.value.trim()) {
         newExtra.custom_base_url_enabled = true
@@ -4178,6 +4184,23 @@ const handleSubmit = async () => {
         delete newExtra.custom_base_url
       }
 
+      updatePayload.extra = newExtra
+    }
+
+    // D4: Cache TTL override is platform-wide for SupportsCachePolicy() accounts
+    // (Anthropic OAuth/SetupToken/APIKey/Bedrock/Vertex/ServiceAccount). Runs as
+    // its own branch so it also applies to Bedrock/Vertex/APIKey/ServiceAccount,
+    // not just OAuth/SetupToken. Merges into whichever extra has been built so far.
+    if (supportsCachePolicyForAccount.value) {
+      const currentExtra = (updatePayload.extra as Record<string, unknown>) || (props.account.extra as Record<string, unknown>) || {}
+      const newExtra: Record<string, unknown> = { ...currentExtra }
+      if (cacheTTLOverrideEnabled.value) {
+        newExtra.cache_ttl_override_enabled = true
+        newExtra.cache_ttl_override_target = cacheTTLOverrideTarget.value
+      } else {
+        delete newExtra.cache_ttl_override_enabled
+        delete newExtra.cache_ttl_override_target
+      }
       updatePayload.extra = newExtra
     }
 

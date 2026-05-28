@@ -266,6 +266,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		DisableOAuthOnCCResponses:              settings.DisableOAuthOnCCResponses,
 		EnableAnthropicCacheTTL1hInjection:     settings.EnableAnthropicCacheTTL1hInjection,
 		RewriteMessageCacheControl:             settings.RewriteMessageCacheControl,
+		RewriteMessageCacheControlMode:         settings.RewriteMessageCacheControlMode,
 		AntigravityUserAgentVersion:            settings.AntigravityUserAgentVersion,
 		OpenAICodexUserAgent:                   settings.OpenAICodexUserAgent,
 		WebSearchEmulationEnabled:              settings.WebSearchEmulationEnabled,
@@ -603,6 +604,7 @@ type UpdateSettingsRequest struct {
 	DisableOAuthOnCCResponses          *bool   `json:"disable_oauth_on_cc_responses"`
 	EnableAnthropicCacheTTL1hInjection *bool   `json:"enable_anthropic_cache_ttl_1h_injection"`
 	RewriteMessageCacheControl         *bool   `json:"rewrite_message_cache_control"`
+	RewriteMessageCacheControlMode     *string `json:"rewrite_message_cache_control_mode"`
 	AntigravityUserAgentVersion        *string `json:"antigravity_user_agent_version"`
 	OpenAICodexUserAgent               *string `json:"openai_codex_user_agent"`
 
@@ -1716,6 +1718,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.RewriteMessageCacheControl
 		}(),
+		RewriteMessageCacheControlMode: func() string {
+			if req.RewriteMessageCacheControlMode != nil {
+				return *req.RewriteMessageCacheControlMode
+			}
+			return previousSettings.RewriteMessageCacheControlMode
+		}(),
 		AntigravityUserAgentVersion: func() string {
 			if req.AntigravityUserAgentVersion != nil {
 				return *req.AntigravityUserAgentVersion
@@ -2138,7 +2146,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		DisableOAuthOnCCResponses:              updatedSettings.DisableOAuthOnCCResponses,
 		EnableAnthropicCacheTTL1hInjection:     updatedSettings.EnableAnthropicCacheTTL1hInjection,
 		RewriteMessageCacheControl:             updatedSettings.RewriteMessageCacheControl,
-		AntigravityUserAgentVersion:            updatedSettings.AntigravityUserAgentVersion,
+		RewriteMessageCacheControlMode:         updatedSettings.RewriteMessageCacheControlMode,
 		OpenAICodexUserAgent:                   updatedSettings.OpenAICodexUserAgent,
 		PaymentVisibleMethodAlipaySource:       updatedSettings.PaymentVisibleMethodAlipaySource,
 		PaymentVisibleMethodWxpaySource:        updatedSettings.PaymentVisibleMethodWxpaySource,
@@ -2629,6 +2637,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.RewriteMessageCacheControl != after.RewriteMessageCacheControl {
 		changed = append(changed, "rewrite_message_cache_control")
+	}
+	if before.RewriteMessageCacheControlMode != after.RewriteMessageCacheControlMode {
+		changed = append(changed, "rewrite_message_cache_control_mode")
 	}
 	if before.AntigravityUserAgentVersion != after.AntigravityUserAgentVersion {
 		changed = append(changed, "antigravity_user_agent_version")

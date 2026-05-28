@@ -46,6 +46,13 @@
           formatCurrency(props.stats.user_cost)
         }}</span>
       </div>
+      <!-- Cache Hit Rate -->
+      <div v-if="props.stats.cache_hit_rate != null && props.stats.cache_hit_rate > 0" class="flex items-center gap-1">
+        <span class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.stats.cacheHitRate') }}:</span>
+        <span class="font-medium text-blue-600 dark:text-blue-400">{{
+          (props.stats.cache_hit_rate * 100).toFixed(1) + '%'
+        }}</span>
+      </div>
     </div>
 
     <!-- No data -->

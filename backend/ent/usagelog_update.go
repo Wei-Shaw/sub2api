@@ -825,6 +825,26 @@ func (_u *UsageLogUpdate) SetNillableCacheTTLOverridden(v *bool) *UsageLogUpdate
 	return _u
 }
 
+// SetCachePolicyTrace sets the "cache_policy_trace" field.
+func (_u *UsageLogUpdate) SetCachePolicyTrace(v string) *UsageLogUpdate {
+	_u.mutation.SetCachePolicyTrace(v)
+	return _u
+}
+
+// SetNillableCachePolicyTrace sets the "cache_policy_trace" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableCachePolicyTrace(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetCachePolicyTrace(*v)
+	}
+	return _u
+}
+
+// ClearCachePolicyTrace clears the value of the "cache_policy_trace" field.
+func (_u *UsageLogUpdate) ClearCachePolicyTrace() *UsageLogUpdate {
+	_u.mutation.ClearCachePolicyTrace()
+	return _u
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_u *UsageLogUpdate) SetUser(v *User) *UsageLogUpdate {
 	return _u.SetUserID(v.ID)
@@ -977,6 +997,11 @@ func (_u *UsageLogUpdate) check() error {
 	if v, ok := _u.mutation.ImageSizeSource(); ok {
 		if err := usagelog.ImageSizeSourceValidator(v); err != nil {
 			return &ValidationError{Name: "image_size_source", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_size_source": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.CachePolicyTrace(); ok {
+		if err := usagelog.CachePolicyTraceValidator(v); err != nil {
+			return &ValidationError{Name: "cache_policy_trace", err: fmt.Errorf(`ent: validator failed for field "UsageLog.cache_policy_trace": %w`, err)}
 		}
 	}
 	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
@@ -1212,6 +1237,12 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.CacheTTLOverridden(); ok {
 		_spec.SetField(usagelog.FieldCacheTTLOverridden, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.CachePolicyTrace(); ok {
+		_spec.SetField(usagelog.FieldCachePolicyTrace, field.TypeString, value)
+	}
+	if _u.mutation.CachePolicyTraceCleared() {
+		_spec.ClearField(usagelog.FieldCachePolicyTrace, field.TypeString)
 	}
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -2171,6 +2202,26 @@ func (_u *UsageLogUpdateOne) SetNillableCacheTTLOverridden(v *bool) *UsageLogUpd
 	return _u
 }
 
+// SetCachePolicyTrace sets the "cache_policy_trace" field.
+func (_u *UsageLogUpdateOne) SetCachePolicyTrace(v string) *UsageLogUpdateOne {
+	_u.mutation.SetCachePolicyTrace(v)
+	return _u
+}
+
+// SetNillableCachePolicyTrace sets the "cache_policy_trace" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableCachePolicyTrace(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetCachePolicyTrace(*v)
+	}
+	return _u
+}
+
+// ClearCachePolicyTrace clears the value of the "cache_policy_trace" field.
+func (_u *UsageLogUpdateOne) ClearCachePolicyTrace() *UsageLogUpdateOne {
+	_u.mutation.ClearCachePolicyTrace()
+	return _u
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_u *UsageLogUpdateOne) SetUser(v *User) *UsageLogUpdateOne {
 	return _u.SetUserID(v.ID)
@@ -2336,6 +2387,11 @@ func (_u *UsageLogUpdateOne) check() error {
 	if v, ok := _u.mutation.ImageSizeSource(); ok {
 		if err := usagelog.ImageSizeSourceValidator(v); err != nil {
 			return &ValidationError{Name: "image_size_source", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_size_source": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.CachePolicyTrace(); ok {
+		if err := usagelog.CachePolicyTraceValidator(v); err != nil {
+			return &ValidationError{Name: "cache_policy_trace", err: fmt.Errorf(`ent: validator failed for field "UsageLog.cache_policy_trace": %w`, err)}
 		}
 	}
 	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
@@ -2588,6 +2644,12 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	}
 	if value, ok := _u.mutation.CacheTTLOverridden(); ok {
 		_spec.SetField(usagelog.FieldCacheTTLOverridden, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.CachePolicyTrace(); ok {
+		_spec.SetField(usagelog.FieldCachePolicyTrace, field.TypeString, value)
+	}
+	if _u.mutation.CachePolicyTraceCleared() {
+		_spec.ClearField(usagelog.FieldCachePolicyTrace, field.TypeString)
 	}
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{

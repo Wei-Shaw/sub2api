@@ -206,6 +206,7 @@ type SystemSettings struct {
 	DisableOAuthOnCCResponses          bool   // 是否禁用 OAuth 账号服务 /v1/chat/completions 和 /v1/responses 入口（默认 false）
 	EnableAnthropicCacheTTL1hInjection bool   // 是否对 Anthropic OAuth/SetupToken 请求体注入 1h cache_control ttl（默认 false）
 	RewriteMessageCacheControl         bool   // 是否改写 messages[*].content[*].cache_control（默认 false）
+	RewriteMessageCacheControlMode     string // 注入模式："full" | "safe" | "shadow"（默认 "safe"）
 	AntigravityUserAgentVersion        string // Antigravity 上游 User-Agent 版本号；空值使用配置/默认值
 	OpenAICodexUserAgent               string // OpenAI Codex 上游完整 User-Agent；空值使用内置默认
 

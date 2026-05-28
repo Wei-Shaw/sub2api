@@ -199,6 +199,7 @@ type SystemSettings struct {
 	DisableOAuthOnCCResponses          bool   `json:"disable_oauth_on_cc_responses"`
 	EnableAnthropicCacheTTL1hInjection bool   `json:"enable_anthropic_cache_ttl_1h_injection"`
 	RewriteMessageCacheControl         bool   `json:"rewrite_message_cache_control"`
+	RewriteMessageCacheControlMode     string `json:"rewrite_message_cache_control_mode"`
 	AntigravityUserAgentVersion        string `json:"antigravity_user_agent_version"`
 	OpenAICodexUserAgent               string `json:"openai_codex_user_agent"`
 

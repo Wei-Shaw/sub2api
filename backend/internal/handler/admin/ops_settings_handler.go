@@ -271,3 +271,41 @@ func (h *OpsHandler) UpdateMetricThresholds(c *gin.Context) {
 	}
 	response.Success(c, updated)
 }
+
+// GetPerformanceSettings returns connection/latency performance tuning settings (DB-backed).
+// GET /api/v1/admin/ops/performance-settings
+func (h *OpsHandler) GetPerformanceSettings(c *gin.Context) {
+	if h.opsService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
+		return
+	}
+
+	cfg, err := h.opsService.GetPerformanceSettings(c.Request.Context())
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "Failed to get performance settings")
+		return
+	}
+	response.Success(c, cfg)
+}
+
+// UpdatePerformanceSettings updates connection/latency performance tuning settings (DB-backed).
+// PUT /api/v1/admin/ops/performance-settings
+func (h *OpsHandler) UpdatePerformanceSettings(c *gin.Context) {
+	if h.opsService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
+		return
+	}
+
+	var req service.PerformanceSettings
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request body")
+		return
+	}
+
+	updated, err := h.opsService.UpdatePerformanceSettings(c.Request.Context(), &req)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	response.Success(c, updated)
+}

@@ -767,6 +767,45 @@
           </div>
         </div>
 
+        <!-- C3/C4: Cache Strategy Selector -->
+        <div class="space-y-3">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t('keys.cacheStrategy.label') }}
+            </label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('keys.cacheStrategy.hint') }}
+            </p>
+          </div>
+          <div class="grid grid-cols-1 gap-2 md:grid-cols-3">
+            <label
+              v-for="opt in [
+                { value: 'auto', label: t('keys.cacheStrategy.auto'), desc: t('keys.cacheStrategy.autoDesc') },
+                { value: 'cost_priority', label: t('keys.cacheStrategy.costPriority'), desc: t('keys.cacheStrategy.costPriorityDesc') },
+                { value: 'latency_priority', label: t('keys.cacheStrategy.latencyPriority'), desc: t('keys.cacheStrategy.latencyPriorityDesc') }
+              ]"
+              :key="opt.value"
+              :class="[
+                'flex cursor-pointer flex-col gap-1 rounded-lg border p-3 text-sm transition',
+                formData.cache_strategy === opt.value
+                  ? 'border-primary-500 bg-primary-50 dark:border-primary-400 dark:bg-primary-900/20'
+                  : 'border-gray-200 bg-white hover:border-gray-300 dark:border-dark-600 dark:bg-dark-800 dark:hover:border-dark-500'
+              ]"
+            >
+              <div class="flex items-center gap-2">
+                <input
+                  type="radio"
+                  v-model="formData.cache_strategy"
+                  :value="opt.value"
+                  class="h-4 w-4 text-primary-600 focus:ring-primary-500"
+                />
+                <span class="font-medium text-gray-900 dark:text-gray-100">{{ opt.label }}</span>
+              </div>
+              <p class="ml-6 text-xs text-gray-500 dark:text-gray-400">{{ opt.desc }}</p>
+            </label>
+          </div>
+        </div>
+
         <!-- Expiration Section -->
         <div class="space-y-3">
           <div class="flex items-center justify-between">
@@ -1068,7 +1107,7 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 	import EndpointPopover from '@/components/keys/EndpointPopover.vue'
 	import GroupBadge from '@/components/common/GroupBadge.vue'
 	import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
-	import type { ApiKey, Group, PublicSettings, SubscriptionType, GroupPlatform } from '@/types'
+	import type { ApiKey, ApiKeyCacheStrategy, Group, PublicSettings, SubscriptionType, GroupPlatform } from '@/types'
 import type { Column } from '@/components/common/types'
 import type { BatchApiKeyUsageStats } from '@/api/usage'
 import { formatDateTime } from '@/utils/format'
@@ -1187,7 +1226,8 @@ const formData = ref({
   rate_limit_7d: null as number | null,
   enable_expiration: false,
   expiration_preset: '30' as '7' | '30' | '90' | 'custom',
-  expiration_date: ''
+  expiration_date: '',
+  cache_strategy: 'auto' as ApiKeyCacheStrategy
 })
 
 // 自定义Key验证
@@ -1408,7 +1448,8 @@ const editKey = (key: ApiKey) => {
     rate_limit_7d: key.rate_limit_7d || null,
     enable_expiration: hasExpiration,
     expiration_preset: 'custom',
-    expiration_date: key.expires_at ? formatDateTimeLocal(key.expires_at) : ''
+    expiration_date: key.expires_at ? formatDateTimeLocal(key.expires_at) : '',
+    cache_strategy: key.cache_strategy || 'auto'
   }
   showEditModal.value = true
 }
@@ -1553,6 +1594,7 @@ const handleSubmit = async () => {
         rate_limit_5h: rateLimitData.rate_limit_5h,
         rate_limit_1d: rateLimitData.rate_limit_1d,
         rate_limit_7d: rateLimitData.rate_limit_7d,
+        cache_strategy: formData.value.cache_strategy,
       })
       appStore.showSuccess(t('keys.keyUpdatedSuccess'))
     } else {
@@ -1565,7 +1607,8 @@ const handleSubmit = async () => {
         ipBlacklist,
         quota,
         expiresInDays,
-        rateLimitData
+        rateLimitData,
+        formData.value.cache_strategy
       )
       appStore.showSuccess(t('keys.keyCreatedSuccess'))
       // Only advance tour if active, on submit step, and creation succeeded
@@ -1625,7 +1668,8 @@ const closeModals = () => {
     rate_limit_7d: null,
     enable_expiration: false,
     expiration_preset: '30',
-    expiration_date: ''
+    expiration_date: '',
+    cache_strategy: 'auto'
   }
 }
 

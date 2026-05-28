@@ -139,6 +139,7 @@ type WindowStats struct {
 	Cost         float64 `json:"cost"`
 	StandardCost float64 `json:"standard_cost"`
 	UserCost     float64 `json:"user_cost"`
+	CacheHitRate float64 `json:"cache_hit_rate"` // cache_read / (input + cache_read); 0 if no data
 }
 
 // UsageProgress 使用量进度
@@ -1105,12 +1106,17 @@ func windowStatsFromAccountStats(stats *usagestats.AccountStats) *WindowStats {
 	if stats == nil {
 		return &WindowStats{}
 	}
+	cacheHitRate := 0.0
+	if denom := stats.InputTokens + stats.CacheReadTokens; denom > 0 {
+		cacheHitRate = float64(stats.CacheReadTokens) / float64(denom)
+	}
 	return &WindowStats{
 		Requests:     stats.Requests,
 		Tokens:       stats.Tokens,
 		Cost:         stats.Cost,
 		StandardCost: stats.StandardCost,
 		UserCost:     stats.UserCost,
+		CacheHitRate: cacheHitRate,
 	}
 }
 

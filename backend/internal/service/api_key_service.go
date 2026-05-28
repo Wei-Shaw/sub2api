@@ -163,6 +163,10 @@ type CreateAPIKeyRequest struct {
 	RateLimit5h float64 `json:"rate_limit_5h"`
 	RateLimit1d float64 `json:"rate_limit_1d"`
 	RateLimit7d float64 `json:"rate_limit_7d"`
+
+	// CacheStrategy 用户级缓存 TTL 偏好（auto / cost_priority / latency_priority）。
+	// 空字符串 == auto。
+	CacheStrategy string `json:"cache_strategy"`
 }
 
 // UpdateAPIKeyRequest 更新API Key请求
@@ -184,6 +188,10 @@ type UpdateAPIKeyRequest struct {
 	RateLimit1d         *float64 `json:"rate_limit_1d"`
 	RateLimit7d         *float64 `json:"rate_limit_7d"`
 	ResetRateLimitUsage *bool    `json:"reset_rate_limit_usage"` // Reset all usage counters to 0
+
+	// CacheStrategy 用户级缓存 TTL 偏好。nil = 不修改；显式字符串 = 设置为该值
+	// （未识别值会被 NormalizeCacheStrategy 兜底为 "auto"）。
+	CacheStrategy *string `json:"cache_strategy"`
 }
 
 // APIKeyService API Key服务
@@ -409,6 +417,7 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 		RateLimit5h: req.RateLimit5h,
 		RateLimit1d: req.RateLimit1d,
 		RateLimit7d: req.RateLimit7d,
+		CacheStrategy: NormalizeCacheStrategy(req.CacheStrategy),
 	}
 
 	// Set expiration time if specified
@@ -610,6 +619,9 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 	}
 	if req.RateLimit7d != nil {
 		apiKey.RateLimit7d = *req.RateLimit7d
+	}
+	if req.CacheStrategy != nil {
+		apiKey.CacheStrategy = NormalizeCacheStrategy(*req.CacheStrategy)
 	}
 	resetRateLimit := req.ResetRateLimitUsage != nil && *req.ResetRateLimitUsage
 	if resetRateLimit {

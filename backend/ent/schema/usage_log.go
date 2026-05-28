@@ -152,6 +152,14 @@ func (UsageLog) Fields() []ent.Field {
 		// Cache TTL Override 标记（管理员强制替换了缓存 TTL 计费）
 		field.Bool("cache_ttl_overridden").
 			Default(false),
+		// CachePolicyTrace 记录每次请求的缓存策略决策轨迹。
+		// 取值示例：acct_override:5m / acct_override:1h / global_inject:5m /
+		//           eligible:no_override / skip:not_supported。
+		// NULL 表示该字段引入前写入的历史行。
+		field.String("cache_policy_trace").
+			MaxLen(64).
+			Optional().
+			Nillable(),
 
 		// 时间戳（只有 created_at，日志不可修改）
 		field.Time("created_at").

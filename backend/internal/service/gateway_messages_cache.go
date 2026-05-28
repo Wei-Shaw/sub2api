@@ -86,13 +86,81 @@ func addMessageCacheBreakpoints(body []byte) []byte {
 	return body
 }
 
-// rewriteMessageCacheControlIfEnabled 按系统设置决定是否执行旧版 messages 缓存断点改写。
-func (s *GatewayService) rewriteMessageCacheControlIfEnabled(ctx context.Context, body []byte) []byte {
-	if s == nil || !s.isRewriteMessageCacheControlEnabled(ctx) {
+// hasAnyCacheControl 检查 messages 中是否存在任意 cache_control 字段。
+// 用于 safe/shadow 模式：若客户端已设置断点，则不注入。
+func hasAnyCacheControl(body []byte) bool {
+	messages := gjson.GetBytes(body, "messages")
+	if !messages.IsArray() {
+		return false
+	}
+	found := false
+	messages.ForEach(func(_, msg gjson.Result) bool {
+		content := msg.Get("content")
+		if !content.IsArray() {
+			return true
+		}
+		content.ForEach(func(_, block gjson.Result) bool {
+			if block.Get("cache_control").Exists() {
+				found = true
+				return false // stop inner loop
+			}
+			return true
+		})
+		if found {
+			return false // stop outer loop
+		}
+		return true
+	})
+	return found
+}
+
+// addMessageCacheBreakpointsSafe 仅当请求体中完全没有 cache_control 时，
+// 在最后一条 user message 上注入 1 个 5m 断点（最保守策略）。
+// 不先 strip，不改动多轮历史。
+func addMessageCacheBreakpointsSafe(body []byte) []byte {
+	messages := gjson.GetBytes(body, "messages")
+	if !messages.IsArray() {
 		return body
 	}
-	body = stripMessageCacheControl(body)
-	return addMessageCacheBreakpoints(body)
+	arr := messages.Array()
+	// 只在最后一条 user message 上注入（向后找第一个 user）
+	for i := len(arr) - 1; i >= 0; i-- {
+		if arr[i].Get("role").String() == "user" {
+			return injectCacheControlOnLastContentBlock(body, i, &arr[i])
+		}
+	}
+	return body
+}
+
+// rewriteMessageCacheControlIfEnabled 按系统设置决定是否执行 messages 缓存断点改写。
+// 返回 (改写后的 body, inject trace)。trace 为空时表示本次无需记录。
+//
+// mode="full"   (default when bool=true, legacy): 清除所有客户端断点，注入 2 个代理断点。
+// mode="safe"  : 仅当请求无 cache_control 时注入 1 个 5m 断点；否则保留客户端断点。
+// mode="shadow": dry-run，不改请求体，记录 trace 供观测。
+func (s *GatewayService) rewriteMessageCacheControlIfEnabled(ctx context.Context, body []byte) ([]byte, string) {
+	if s == nil || !s.isRewriteMessageCacheControlEnabled(ctx) {
+		return body, ""
+	}
+	mode := ""
+	if s.settingService != nil {
+		mode = s.settingService.GetRewriteMessageCacheControlMode(ctx)
+	}
+	switch mode {
+	case "safe":
+		if hasAnyCacheControl(body) {
+			return body, "skip:client_has_cc"
+		}
+		return addMessageCacheBreakpointsSafe(body), "inject:5m_safe"
+	case "shadow":
+		if hasAnyCacheControl(body) {
+			return body, "shadow:skip_client_has_cc"
+		}
+		return body, "shadow:would_inject_5m_safe"
+	default: // "full" or unrecognised — legacy behaviour
+		body = stripMessageCacheControl(body)
+		return addMessageCacheBreakpoints(body), ""
+	}
 }
 
 func (s *GatewayService) isRewriteMessageCacheControlEnabled(ctx context.Context) bool {

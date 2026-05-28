@@ -77,6 +77,10 @@ type APIKey struct {
 	Reset1dAt     *time.Time `json:"reset_1d_at,omitempty"`
 	Reset7dAt     *time.Time `json:"reset_7d_at,omitempty"`
 
+	// CacheStrategy 用户级缓存 TTL 偏好：auto / cost_priority / latency_priority。
+	// 仅在绑定账号支持缓存策略时（Account.SupportsCachePolicy）才生效。
+	CacheStrategy string `json:"cache_strategy"`
+
 	User  *User  `json:"user,omitempty"`
 	Group *Group `json:"group,omitempty"`
 }
@@ -474,6 +478,9 @@ type UsageLog struct {
 
 	// Cache TTL Override 标记
 	CacheTTLOverridden bool `json:"cache_ttl_overridden"`
+
+	// CachePolicyTrace 缓存策略决策轨迹（仅管理员接口通过 AdminUsageLog 暴露）
+	CachePolicyTrace *string `json:"cache_policy_trace,omitempty"`
 
 	// BillingMode 计费模式：token/image
 	BillingMode *string `json:"billing_mode,omitempty"`

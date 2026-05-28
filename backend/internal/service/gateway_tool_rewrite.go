@@ -16,6 +16,13 @@ import (
 // 请求阶段写入，响应阶段读取，用于 bytes 级逆向还原假名 → 真名。
 const toolNameRewriteKey = "claude_tool_name_rewrite"
 
+// cacheInjectTraceKey 是 gin.Context 上存缓存注入 trace 的 key。
+// rewriteMessageCacheControlIfEnabled 在请求阶段写入；handler 的 RecordUsage 闭包读取。
+const cacheInjectTraceKey = "cache_inject_trace"
+
+// CacheInjectTraceKey 返回 gin.Context 上缓存注入 trace 的 key（供 handler 层读取）。
+func CacheInjectTraceKey() string { return cacheInjectTraceKey }
+
 // staticToolNameRewrites 是"静态前缀映射"，与 Parrot src/transform/cc_mimicry.py
 // TOOL_NAME_REWRITES 完全一致。只有以这些前缀开头的工具会被重写。
 var staticToolNameRewrites = map[string]string{

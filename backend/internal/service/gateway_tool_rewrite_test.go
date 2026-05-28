@@ -197,8 +197,9 @@ func TestRewriteMessageCacheControlIfEnabled_DefaultKeepsClientAnchors(t *testin
 		{"role":"user","content":[{"type":"text","text":"latest","cache_control":{"type":"ephemeral","ttl":"5m"}}]}
 	]}`)
 
-	out := (&GatewayService{}).rewriteMessageCacheControlIfEnabled(context.Background(), body)
+	out, trace := (&GatewayService{}).rewriteMessageCacheControlIfEnabled(context.Background(), body)
 
+	require.Empty(t, trace)
 	require.JSONEq(t, string(body), string(out))
 	require.Equal(t, "1h", gjson.GetBytes(out, "messages.0.content.0.cache_control.ttl").String())
 	require.Equal(t, "5m", gjson.GetBytes(out, "messages.2.content.0.cache_control.ttl").String())
@@ -212,13 +213,15 @@ func TestRewriteMessageCacheControlIfEnabled_OptInPreservesLegacyRewrite(t *test
 		{"role":"assistant","content":[{"type":"text","text":"done"}]}
 	]}`)
 	repo := &gatewayTTLSettingRepo{data: map[string]string{
-		SettingKeyRewriteMessageCacheControl: "true",
+		SettingKeyRewriteMessageCacheControl:     "true",
+		SettingKeyRewriteMessageCacheControlMode: "full",
 	}}
 	gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{})
 	svc := &GatewayService{settingService: NewSettingService(repo, &config.Config{})}
 
-	out := svc.rewriteMessageCacheControlIfEnabled(context.Background(), body)
+	out, trace := svc.rewriteMessageCacheControlIfEnabled(context.Background(), body)
 
+	require.Empty(t, trace) // full mode produces no special trace
 	require.Equal(t, "5m", gjson.GetBytes(out, "messages.0.content.0.cache_control.ttl").String())
 	require.False(t, gjson.GetBytes(out, "messages.2.content.0.cache_control").Exists())
 	require.Equal(t, "5m", gjson.GetBytes(out, "messages.3.content.0.cache_control.ttl").String())

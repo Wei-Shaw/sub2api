@@ -1603,6 +1603,36 @@ func (a *Account) IsAnthropicOAuthOrSetupToken() bool {
 	return a.Platform == PlatformAnthropic && (a.Type == AccountTypeOAuth || a.Type == AccountTypeSetupToken)
 }
 
+// SupportsCachePolicy 判断账号是否可承载缓存策略设置（TTL 覆盖、用户级缓存偏好等）。
+//
+// 所有 Anthropic 平台账号（OAuth / SetupToken / APIKey / Bedrock / Vertex / ServiceAccount）
+// 都通过 Anthropic Messages API 语义传递 cache_control，因此都可有意义地暴露缓存策略控制。
+//
+// 非 Anthropic 平台（OpenAI / Gemini / Kiro / Antigravity）由上游托管缓存或不暴露
+// cache_control 概念，因此不应展示用户级缓存策略设置（前端应使用此函数做能力门控）。
+//
+// 注意：该函数仅表达"能力存在"，不表示缓存策略当前已启用——是否生效仍由
+// Extra["cache_ttl_override_enabled"]、全局注入开关、用户级偏好等决定。
+func (a *Account) SupportsCachePolicy() bool {
+	if a == nil {
+		return false
+	}
+	if a.Platform != PlatformAnthropic {
+		return false
+	}
+	switch a.Type {
+	case AccountTypeOAuth,
+		AccountTypeSetupToken,
+		AccountTypeAPIKey,
+		AccountTypeBedrock,
+		AccountTypeServiceAccount,
+		AccountTypeVertex:
+		return true
+	default:
+		return false
+	}
+}
+
 // IsTLSFingerprintEnabled 检查是否启用 TLS 指纹伪装
 // 仅适用于 Anthropic OAuth/SetupToken 类型账号
 // 启用后将模拟 Claude Code (Node.js) 客户端的 TLS 握手特征
@@ -1716,10 +1746,12 @@ func (a *Account) GetCustomBaseURL() string {
 }
 
 // IsCacheTTLOverrideEnabled 检查是否启用缓存 TTL 强制替换
-// 仅适用于 Anthropic OAuth/SetupToken 类型账号
-// 启用后将所有 cache creation tokens 归入指定的 TTL 类型（5m 或 1h）
+// 适用于所有 Anthropic 平台账号（OAuth/SetupToken/APIKey/Bedrock/Vertex/ServiceAccount）。
+// 启用后将所有 cache creation tokens 归入指定的 TTL 类型（5m 或 1h）。
+// 注意：此处仅控制 usage 归类；请求体改写另由 [Account.IsAnthropicOAuthOrSetupToken]
+// + 全局注入开关共同决定，避免在 Bedrock/Vertex 上误改请求体。
 func (a *Account) IsCacheTTLOverrideEnabled() bool {
-	if !a.IsAnthropicOAuthOrSetupToken() {
+	if !a.SupportsCachePolicy() {
 		return false
 	}
 	if a.Extra == nil {

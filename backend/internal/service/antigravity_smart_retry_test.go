@@ -92,6 +92,10 @@ func (m *mockSmartRetryUpstream) DoWithTLS(req *http.Request, proxyURL string, a
 	return m.Do(req, proxyURL, accountID, accountConcurrency)
 }
 
+func (m *mockSmartRetryUpstream) Prewarm(_ context.Context, _ string, _ string, _ int64, _ int, _ *tlsfingerprint.Profile) error {
+	return nil
+}
+
 // TestHandleSmartRetry_URLLevelRateLimit 测试 URL 级别限流切换
 func TestHandleSmartRetry_URLLevelRateLimit(t *testing.T) {
 	account := &Account{

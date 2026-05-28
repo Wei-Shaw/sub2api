@@ -138,11 +138,20 @@ func (s *GatewayService) handleBedrockStreamingResponse(
 			// 同时移除该字段避免透传给客户端
 			sseData = transformBedrockInvocationMetrics(sseData)
 
-			// 解析 SSE 事件数据提取 usage
-			s.parseSSEUsagePassthrough(string(sseData), usage)
-
 			// 确定 SSE event type
 			eventType := gjson.GetBytes(sseData, "type").String()
+
+			// D3: Cache TTL Override on Bedrock streaming wire bytes.
+			// 与 Anthropic streaming 路径对齐：在客户端可见的 SSE 数据中把 cache_creation
+			// 5m/1h 归并到目标桶；最终 usage 结构会在 recordUsageCore 阶段被再次归并，
+			// 保证客户端可见值与计费值一致。
+			if overrideTarget, ok := s.resolveCacheTTLUsageOverrideTarget(ctx, account, apiKeyFromGinContext(c)); ok {
+				sseData = applyCacheTTLOverrideToSSEBytes(sseData, eventType, overrideTarget)
+			}
+
+			// 解析 SSE 事件数据提取 usage（在 override 应用之后，以便 usage 累加器与
+			// 客户端可见值保持一致）
+			s.parseSSEUsagePassthrough(string(sseData), usage)
 
 			// 写入标准 SSE 格式
 			if !clientDisconnected {

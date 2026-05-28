@@ -101,6 +101,7 @@ func APIKeyFromService(k *service.APIKey) *APIKey {
 		Window5hStart: k.Window5hStart,
 		Window1dStart: k.Window1dStart,
 		Window7dStart: k.Window7dStart,
+		CacheStrategy: k.EffectiveCacheStrategy(),
 		User:          UserFromServiceShallow(k.User),
 		Group:         GroupFromServiceShallow(k.Group),
 	}
@@ -615,6 +616,7 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 		MediaType:             l.MediaType,
 		UserAgent:             l.UserAgent,
 		CacheTTLOverridden:    l.CacheTTLOverridden,
+		CachePolicyTrace:      l.CachePolicyTrace,
 		BillingMode:           l.BillingMode,
 		CreatedAt:             l.CreatedAt,
 		User:                  UserFromServiceShallow(l.User),

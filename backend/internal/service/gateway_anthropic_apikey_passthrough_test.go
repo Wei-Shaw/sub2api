@@ -83,6 +83,10 @@ func (u *anthropicHTTPUpstreamRecorder) DoWithTLS(req *http.Request, proxyURL st
 	return u.Do(req, proxyURL, accountID, accountConcurrency)
 }
 
+func (u *anthropicHTTPUpstreamRecorder) Prewarm(_ context.Context, _ string, _ string, _ int64, _ int, _ *tlsfingerprint.Profile) error {
+	return nil
+}
+
 func TestGatewayService_ClaudePlatformAWS_ForwardUsesNativeAnthropicEndpoint(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

@@ -289,6 +289,42 @@
             </div>
           </div>
 
+          <!-- Cache Benefit Card -->
+          <div
+            v-if="cacheHitInfo"
+            class="fade-up fade-up-delay-3 rounded-2xl border border-gray-200 bg-white/90 backdrop-blur-sm overflow-hidden dark:border-dark-700 dark:bg-dark-900/90"
+          >
+            <div class="px-8 py-5 border-b border-gray-200 dark:border-dark-700 flex items-center justify-between">
+              <h3 class="text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.cacheBenefit') }}</h3>
+              <span
+                class="text-xs font-medium px-2.5 py-1 rounded-full"
+                :class="cacheHitInfo.rate > 0
+                  ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400'
+                  : 'bg-gray-100 text-gray-500 dark:bg-dark-800 dark:text-dark-400'"
+              >
+                {{ cacheHitInfo.rate > 0 ? t('keyUsage.cacheWorking') : t('keyUsage.cacheNotHit') }}
+              </span>
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-px bg-gray-100 dark:bg-dark-800">
+              <div class="bg-white px-6 py-4 dark:bg-dark-900">
+                <div class="text-xs text-gray-500 dark:text-dark-400 mb-1">{{ t('keyUsage.todayCacheHitRate') }}</div>
+                <div class="text-sm font-semibold tabular-nums text-gray-900 dark:text-white">{{ fmtPct(cacheHitInfo.rate) }}</div>
+              </div>
+              <div class="bg-white px-6 py-4 dark:bg-dark-900">
+                <div class="text-xs text-gray-500 dark:text-dark-400 mb-1">{{ t('keyUsage.totalCacheHitRate') }}</div>
+                <div class="text-sm font-semibold tabular-nums text-gray-900 dark:text-white">{{ fmtPct(cacheHitInfo.totalRate) }}</div>
+              </div>
+              <div class="bg-white px-6 py-4 dark:bg-dark-900">
+                <div class="text-xs text-gray-500 dark:text-dark-400 mb-1">{{ t('keyUsage.todayCacheRead') }}</div>
+                <div class="text-sm font-semibold tabular-nums text-gray-900 dark:text-white">{{ fmtNum(cacheHitInfo.todayCacheRead) }}</div>
+              </div>
+              <div class="bg-white px-6 py-4 dark:bg-dark-900">
+                <div class="text-xs text-gray-500 dark:text-dark-400 mb-1">{{ t('keyUsage.totalCacheRead') }}</div>
+                <div class="text-sm font-semibold tabular-nums text-gray-900 dark:text-white">{{ fmtNum(cacheHitInfo.totalCacheRead) }}</div>
+              </div>
+            </div>
+          </div>
+
           <!-- Daily Usage Table -->
           <div
             v-if="showDailyUsage"
@@ -804,6 +840,25 @@ const usageStatCells = computed<StatCell[]>(() => {
   ]
 })
 
+const cacheHitInfo = computed(() => {
+  const usage = resultData.value?.usage
+  if (!usage) return null
+  const today = usage.today || {}
+  const total = usage.total || {}
+  const rate = today.cache_hit_rate ?? 0
+  const totalRate = total.cache_hit_rate ?? 0
+  // Only show the card if there's any cache activity at all
+  const hasCacheActivity = (today.cache_read_tokens ?? 0) + (today.cache_creation_tokens ?? 0) +
+    (total.cache_read_tokens ?? 0) + (total.cache_creation_tokens ?? 0) > 0
+  if (!hasCacheActivity) return null
+  return {
+    rate,
+    totalRate,
+    todayCacheRead: today.cache_read_tokens ?? 0,
+    totalCacheRead: total.cache_read_tokens ?? 0,
+  }
+})
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const modelStats = computed<any[]>(() => resultData.value?.model_stats || [])
 
@@ -835,6 +890,11 @@ function usd(value: number | null | undefined): string {
 function fmtNum(val: number | null | undefined): string {
   if (val == null) return '-'
   return val.toLocaleString()
+}
+
+function fmtPct(val: number | null | undefined): string {
+  if (val == null) return '-'
+  return (val * 100).toFixed(1) + '%'
 }
 
 function formatDate(iso: string | null | undefined): string {

@@ -250,6 +250,11 @@ func CacheTTLOverridden(v bool) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldCacheTTLOverridden, v))
 }
 
+// CachePolicyTrace applies equality check predicate on the "cache_policy_trace" field. It's identical to CachePolicyTraceEQ.
+func CachePolicyTrace(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldCachePolicyTrace, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldCreatedAt, v))
@@ -2158,6 +2163,81 @@ func CacheTTLOverriddenEQ(v bool) predicate.UsageLog {
 // CacheTTLOverriddenNEQ applies the NEQ predicate on the "cache_ttl_overridden" field.
 func CacheTTLOverriddenNEQ(v bool) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldNEQ(FieldCacheTTLOverridden, v))
+}
+
+// CachePolicyTraceEQ applies the EQ predicate on the "cache_policy_trace" field.
+func CachePolicyTraceEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldCachePolicyTrace, v))
+}
+
+// CachePolicyTraceNEQ applies the NEQ predicate on the "cache_policy_trace" field.
+func CachePolicyTraceNEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldCachePolicyTrace, v))
+}
+
+// CachePolicyTraceIn applies the In predicate on the "cache_policy_trace" field.
+func CachePolicyTraceIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldCachePolicyTrace, vs...))
+}
+
+// CachePolicyTraceNotIn applies the NotIn predicate on the "cache_policy_trace" field.
+func CachePolicyTraceNotIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldCachePolicyTrace, vs...))
+}
+
+// CachePolicyTraceGT applies the GT predicate on the "cache_policy_trace" field.
+func CachePolicyTraceGT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldCachePolicyTrace, v))
+}
+
+// CachePolicyTraceGTE applies the GTE predicate on the "cache_policy_trace" field.
+func CachePolicyTraceGTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldCachePolicyTrace, v))
+}
+
+// CachePolicyTraceLT applies the LT predicate on the "cache_policy_trace" field.
+func CachePolicyTraceLT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldCachePolicyTrace, v))
+}
+
+// CachePolicyTraceLTE applies the LTE predicate on the "cache_policy_trace" field.
+func CachePolicyTraceLTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldCachePolicyTrace, v))
+}
+
+// CachePolicyTraceContains applies the Contains predicate on the "cache_policy_trace" field.
+func CachePolicyTraceContains(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContains(FieldCachePolicyTrace, v))
+}
+
+// CachePolicyTraceHasPrefix applies the HasPrefix predicate on the "cache_policy_trace" field.
+func CachePolicyTraceHasPrefix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasPrefix(FieldCachePolicyTrace, v))
+}
+
+// CachePolicyTraceHasSuffix applies the HasSuffix predicate on the "cache_policy_trace" field.
+func CachePolicyTraceHasSuffix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasSuffix(FieldCachePolicyTrace, v))
+}
+
+// CachePolicyTraceIsNil applies the IsNil predicate on the "cache_policy_trace" field.
+func CachePolicyTraceIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldCachePolicyTrace))
+}
+
+// CachePolicyTraceNotNil applies the NotNil predicate on the "cache_policy_trace" field.
+func CachePolicyTraceNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldCachePolicyTrace))
+}
+
+// CachePolicyTraceEqualFold applies the EqualFold predicate on the "cache_policy_trace" field.
+func CachePolicyTraceEqualFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEqualFold(FieldCachePolicyTrace, v))
+}
+
+// CachePolicyTraceContainsFold applies the ContainsFold predicate on the "cache_policy_trace" field.
+func CachePolicyTraceContainsFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContainsFold(FieldCachePolicyTrace, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

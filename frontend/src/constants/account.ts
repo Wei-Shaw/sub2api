@@ -4,6 +4,30 @@ export function isAccountQuotaEligibleType(type: string | undefined | null): boo
   return type === 'apikey' || type === 'bedrock' || type === 'vertex' || type === 'service_account'
 }
 
+/**
+ * Whether the account can carry cache-policy settings (TTL override, user-level
+ * cache strategy preference, etc). Must mirror Account.SupportsCachePolicy() in
+ * backend/internal/service/account.go — both lists must move together to avoid
+ * "UI shows it but backend ignores it" or vice versa.
+ */
+export function supportsCachePolicy(
+  platform: string | undefined | null,
+  type: string | undefined | null
+): boolean {
+  if (platform !== 'anthropic') return false
+  switch (type) {
+    case 'oauth':
+    case 'setup-token':
+    case 'apikey':
+    case 'bedrock':
+    case 'service_account':
+    case 'vertex':
+      return true
+    default:
+      return false
+  }
+}
+
 /** WebSearch emulation mode values (must match backend WebSearchMode* constants in account.go) */
 export const WEB_SEARCH_MODE_DEFAULT = 'default' as const
 export const WEB_SEARCH_MODE_ENABLED = 'enabled' as const

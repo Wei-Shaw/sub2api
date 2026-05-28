@@ -547,6 +547,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 			// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
 			quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
+			cacheInjectTrace, _ := c.Get(service.CacheInjectTraceKey())
+			cacheInjectTraceStr, _ := cacheInjectTrace.(string)
 			h.submitUsageRecordTask(func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 					Result:             result,
@@ -562,6 +564,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					IPAddress:          clientIP,
 					RequestPayloadHash: requestPayloadHash,
 					ForceCacheBilling:  fs.ForceCacheBilling,
+					CacheInjectTrace:   cacheInjectTraceStr,
 					APIKeyService:      h.apiKeyService,
 					ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
 				}); err != nil {
@@ -983,6 +986,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 			// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
 			quotaPlatform := service.QuotaPlatform(c.Request.Context(), currentAPIKey)
+			cacheInjectTrace2, _ := c.Get(service.CacheInjectTraceKey())
+			cacheInjectTraceStr2, _ := cacheInjectTrace2.(string)
 			h.submitUsageRecordTask(func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 					Result:             result,
@@ -998,6 +1003,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					IPAddress:          clientIP,
 					RequestPayloadHash: requestPayloadHash,
 					ForceCacheBilling:  fs.ForceCacheBilling,
+					CacheInjectTrace:   cacheInjectTraceStr2,
 					APIKeyService:      h.apiKeyService,
 					ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
 				}); err != nil {
@@ -1328,6 +1334,7 @@ func (h *GatewayHandler) buildUsageData(ctx context.Context, apiKeyID int64) gin
 			"total_tokens":          dashStats.TodayTokens,
 			"cost":                  dashStats.TodayCost,
 			"actual_cost":           dashStats.TodayActualCost,
+			"cache_hit_rate":        computeCacheHitRate(dashStats.TodayCacheReadTokens, dashStats.TodayInputTokens),
 		},
 		"total": gin.H{
 			"requests":              dashStats.TotalRequests,
@@ -1338,11 +1345,22 @@ func (h *GatewayHandler) buildUsageData(ctx context.Context, apiKeyID int64) gin
 			"total_tokens":          dashStats.TotalTokens,
 			"cost":                  dashStats.TotalCost,
 			"actual_cost":           dashStats.TotalActualCost,
+			"cache_hit_rate":        computeCacheHitRate(dashStats.TotalCacheReadTokens, dashStats.TotalInputTokens),
 		},
 		"average_duration_ms": dashStats.AverageDurationMs,
 		"rpm":                 dashStats.Rpm,
 		"tpm":                 dashStats.Tpm,
 	}
+}
+
+// computeCacheHitRate 计算缓存命中率：cacheRead / (cacheRead + input)。
+// 分母为 0 时返回 0。
+func computeCacheHitRate(cacheRead, input int64) float64 {
+	denom := cacheRead + input
+	if denom == 0 {
+		return 0
+	}
+	return float64(cacheRead) / float64(denom)
 }
 
 func (h *GatewayHandler) buildAPIKeyDailyUsage(c *gin.Context, userID, apiKeyID int64, days int) any {

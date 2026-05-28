@@ -160,6 +160,11 @@ type UsageLog struct {
 
 	// Cache TTL Override 标记（管理员强制替换了缓存 TTL 计费）
 	CacheTTLOverridden bool
+	// CachePolicyTrace 缓存策略决策轨迹。
+	// 取值示例：acct_override:5m / acct_override:1h / global_inject:5m /
+	//           eligible:no_override / skip:not_supported。
+	// nil 表示该字段引入前写入的历史行。
+	CachePolicyTrace *string
 
 	// 图片生成字段
 	ImageCount         int

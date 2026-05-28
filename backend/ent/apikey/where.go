@@ -160,6 +160,11 @@ func Window7dStart(v time.Time) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldWindow7dStart, v))
 }
 
+// CacheStrategy applies equality check predicate on the "cache_strategy" field. It's identical to CacheStrategyEQ.
+func CacheStrategy(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldCacheStrategy, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldCreatedAt, v))
@@ -1123,6 +1128,71 @@ func Window7dStartIsNil() predicate.APIKey {
 // Window7dStartNotNil applies the NotNil predicate on the "window_7d_start" field.
 func Window7dStartNotNil() predicate.APIKey {
 	return predicate.APIKey(sql.FieldNotNull(FieldWindow7dStart))
+}
+
+// CacheStrategyEQ applies the EQ predicate on the "cache_strategy" field.
+func CacheStrategyEQ(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldCacheStrategy, v))
+}
+
+// CacheStrategyNEQ applies the NEQ predicate on the "cache_strategy" field.
+func CacheStrategyNEQ(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldCacheStrategy, v))
+}
+
+// CacheStrategyIn applies the In predicate on the "cache_strategy" field.
+func CacheStrategyIn(vs ...string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldIn(FieldCacheStrategy, vs...))
+}
+
+// CacheStrategyNotIn applies the NotIn predicate on the "cache_strategy" field.
+func CacheStrategyNotIn(vs ...string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotIn(FieldCacheStrategy, vs...))
+}
+
+// CacheStrategyGT applies the GT predicate on the "cache_strategy" field.
+func CacheStrategyGT(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGT(FieldCacheStrategy, v))
+}
+
+// CacheStrategyGTE applies the GTE predicate on the "cache_strategy" field.
+func CacheStrategyGTE(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGTE(FieldCacheStrategy, v))
+}
+
+// CacheStrategyLT applies the LT predicate on the "cache_strategy" field.
+func CacheStrategyLT(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLT(FieldCacheStrategy, v))
+}
+
+// CacheStrategyLTE applies the LTE predicate on the "cache_strategy" field.
+func CacheStrategyLTE(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLTE(FieldCacheStrategy, v))
+}
+
+// CacheStrategyContains applies the Contains predicate on the "cache_strategy" field.
+func CacheStrategyContains(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldContains(FieldCacheStrategy, v))
+}
+
+// CacheStrategyHasPrefix applies the HasPrefix predicate on the "cache_strategy" field.
+func CacheStrategyHasPrefix(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldHasPrefix(FieldCacheStrategy, v))
+}
+
+// CacheStrategyHasSuffix applies the HasSuffix predicate on the "cache_strategy" field.
+func CacheStrategyHasSuffix(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldHasSuffix(FieldCacheStrategy, v))
+}
+
+// CacheStrategyEqualFold applies the EqualFold predicate on the "cache_strategy" field.
+func CacheStrategyEqualFold(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEqualFold(FieldCacheStrategy, v))
+}
+
+// CacheStrategyContainsFold applies the ContainsFold predicate on the "cache_strategy" field.
+func CacheStrategyContainsFold(v string) predicate.APIKey {
+	return predicate.APIKey(sql.FieldContainsFold(FieldCacheStrategy, v))
 }
 
 // HasUser applies the HasEdge predicate on the "user" edge.

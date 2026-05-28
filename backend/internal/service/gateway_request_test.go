@@ -631,6 +631,36 @@ func TestFilterSignatureSensitiveBlocksForRetry_DowngradesTools(t *testing.T) {
 	require.Contains(t, content1["text"], "tool_result")
 }
 
+// ============ Group 6a: isModelMismatchForSignature ============
+
+func TestIsModelMismatchForSignature(t *testing.T) {
+	tests := []struct {
+		original string
+		mapped   string
+		want     bool
+	}{
+		{"", "", false},
+		{"claude-opus-4-7", "", false},
+		{"", "claude-opus-4-6", false},
+		{"claude-opus-4-7", "claude-opus-4-7", false},
+		// Date-suffix expansion — NOT a mismatch
+		{"claude-opus-4-7", "claude-opus-4-7-20250610", false},
+		{"claude-sonnet-4-5", "claude-sonnet-4-5-20250929", false},
+		// Cross-version — IS a mismatch
+		{"claude-opus-4-7", "claude-opus-4-6", true},
+		{"claude-opus-4-7", "claude-sonnet-4-5", true},
+		{"claude-opus-4-6", "claude-opus-4-7-20250610", true},
+		// Case insensitive
+		{"Claude-Opus-4-7", "claude-opus-4-7-20250610", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.original+"->"+tt.mapped, func(t *testing.T) {
+			got := isModelMismatchForSignature(tt.original, tt.mapped)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
 // ============ Group 6b: context_management.edits 清理测试 ============
 
 // removeThinkingDependentContextStrategies — 边界用例

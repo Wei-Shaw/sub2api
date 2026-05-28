@@ -60,6 +60,54 @@ type APIKey struct {
 	Window5hStart *time.Time // Start of current 5h window
 	Window1dStart *time.Time // Start of current 1d window
 	Window7dStart *time.Time // Start of current 7d window
+
+	// CacheStrategy 表达用户级缓存 TTL 偏好。仅在绑定账号 SupportsCachePolicy()
+	// 时生效；否则该值被忽略（前端也会禁用对应控件）。
+	// 合法取值：CacheStrategyAuto / CacheStrategyCostPriority / CacheStrategyLatencyPriority。
+	CacheStrategy string
+}
+
+// Cache strategy enum constants — see APIKey.CacheStrategy.
+const (
+	// CacheStrategyAuto 跟随账号/全局设置（现状行为）。
+	CacheStrategyAuto = "auto"
+	// CacheStrategyCostPriority 强制 5m TTL：把 cache_creation 归类到 5m 桶，
+	// 并在请求改写时把注入断点 TTL 设为 5m。最省钱，命中率视客户端行为而定。
+	CacheStrategyCostPriority = "cost_priority"
+	// CacheStrategyLatencyPriority 强制 1h TTL：扩大缓存窗口，适合长会话；
+	// 计费上 1h cache creation 比 5m 贵 ~2x，但跨小时仍能命中。
+	CacheStrategyLatencyPriority = "latency_priority"
+)
+
+// NormalizeCacheStrategy 将外部输入归一化到合法枚举。空值/未知值 → "auto"。
+func NormalizeCacheStrategy(s string) string {
+	switch s {
+	case CacheStrategyCostPriority, CacheStrategyLatencyPriority:
+		return s
+	default:
+		return CacheStrategyAuto
+	}
+}
+
+// EffectiveCacheStrategy 返回归一化后的偏好。空字符串（旧数据）当作 auto。
+func (k *APIKey) EffectiveCacheStrategy() string {
+	if k == nil {
+		return CacheStrategyAuto
+	}
+	return NormalizeCacheStrategy(k.CacheStrategy)
+}
+
+// CacheStrategyTTLTarget 返回此偏好对应的强制 TTL 目标，若为 auto 则返回 ("", false)。
+// 调用方应在 auto 时回落到账号/全局策略。
+func (k *APIKey) CacheStrategyTTLTarget() (string, bool) {
+	switch k.EffectiveCacheStrategy() {
+	case CacheStrategyCostPriority:
+		return "5m", true
+	case CacheStrategyLatencyPriority:
+		return "1h", true
+	default:
+		return "", false
+	}
 }
 
 func (k *APIKey) IsActive() bool {

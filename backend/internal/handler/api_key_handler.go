@@ -42,6 +42,10 @@ type CreateAPIKeyRequest struct {
 	RateLimit5h *float64 `json:"rate_limit_5h"`
 	RateLimit1d *float64 `json:"rate_limit_1d"`
 	RateLimit7d *float64 `json:"rate_limit_7d"`
+
+	// CacheStrategy: "auto" | "cost_priority" | "latency_priority". Unrecognised
+	// values are normalised to "auto" by the service layer.
+	CacheStrategy *string `json:"cache_strategy" binding:"omitempty,oneof=auto cost_priority latency_priority"`
 }
 
 // UpdateAPIKeyRequest represents the update API key request payload
@@ -60,6 +64,9 @@ type UpdateAPIKeyRequest struct {
 	RateLimit1d         *float64 `json:"rate_limit_1d"`
 	RateLimit7d         *float64 `json:"rate_limit_7d"`
 	ResetRateLimitUsage *bool    `json:"reset_rate_limit_usage"` // 重置限速用量
+
+	// CacheStrategy: pass to change; omit to leave unchanged.
+	CacheStrategy *string `json:"cache_strategy" binding:"omitempty,oneof=auto cost_priority latency_priority"`
 }
 
 // List handles listing user's API keys with pagination
@@ -173,6 +180,9 @@ func (h *APIKeyHandler) Create(c *gin.Context) {
 	if req.RateLimit7d != nil {
 		svcReq.RateLimit7d = *req.RateLimit7d
 	}
+	if req.CacheStrategy != nil {
+		svcReq.CacheStrategy = *req.CacheStrategy
+	}
 
 	executeUserIdempotentJSON(c, "user.api_keys.create", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
 		key, err := h.apiKeyService.Create(ctx, subject.UserID, svcReq)
@@ -213,6 +223,7 @@ func (h *APIKeyHandler) Update(c *gin.Context) {
 		RateLimit1d:         req.RateLimit1d,
 		RateLimit7d:         req.RateLimit7d,
 		ResetRateLimitUsage: req.ResetRateLimitUsage,
+		CacheStrategy:       req.CacheStrategy,
 	}
 	if req.Name != "" {
 		svcReq.Name = &req.Name

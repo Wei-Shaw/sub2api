@@ -4033,6 +4033,30 @@
                 <Toggle v-model="form.rewrite_message_cache_control" />
               </div>
 
+              <!-- 缓存注入模式 -->
+              <div v-if="form.rewrite_message_cache_control" class="ml-6 border-l-2 border-gray-200 pl-4 dark:border-gray-700">
+                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t("admin.settings.gatewayForwarding.rewriteMessageCacheControlMode") }}
+                </label>
+                <div class="flex flex-col gap-2">
+                  <label class="flex cursor-pointer items-start gap-2">
+                    <input type="radio" v-model="form.rewrite_message_cache_control_mode" value="safe" class="mt-0.5" />
+                    <span class="text-sm text-gray-700 dark:text-gray-300">{{ t("admin.settings.gatewayForwarding.rewriteMessageCacheControlModeSafe") }}</span>
+                  </label>
+                  <label class="flex cursor-pointer items-start gap-2">
+                    <input type="radio" v-model="form.rewrite_message_cache_control_mode" value="shadow" class="mt-0.5" />
+                    <span class="text-sm text-gray-700 dark:text-gray-300">{{ t("admin.settings.gatewayForwarding.rewriteMessageCacheControlModeShadow") }}</span>
+                  </label>
+                  <label class="flex cursor-pointer items-start gap-2">
+                    <input type="radio" v-model="form.rewrite_message_cache_control_mode" value="full" class="mt-0.5" />
+                    <span class="text-sm text-gray-700 dark:text-gray-300">{{ t("admin.settings.gatewayForwarding.rewriteMessageCacheControlModeFull") }}</span>
+                  </label>
+                </div>
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.gatewayForwarding.rewriteMessageCacheControlModeHint") }}
+                </p>
+              </div>
+
               <!-- Antigravity UA 版本 -->
               <div>
                 <label
@@ -7332,6 +7356,7 @@ const form = reactive<SettingsForm>({
   enable_cch_signing: false,
   enable_anthropic_cache_ttl_1h_injection: false,
   rewrite_message_cache_control: false,
+  rewrite_message_cache_control_mode: 'safe' as 'full' | 'safe' | 'shadow',
   antigravity_user_agent_version: "",
   openai_codex_user_agent: "",
   // Upstream passthrough policy (Phase B-2 + Phase C)
@@ -8461,6 +8486,7 @@ async function saveSettings() {
       enable_anthropic_cache_ttl_1h_injection:
         form.enable_anthropic_cache_ttl_1h_injection,
       rewrite_message_cache_control: form.rewrite_message_cache_control,
+      rewrite_message_cache_control_mode: form.rewrite_message_cache_control_mode,
       antigravity_user_agent_version:
         form.antigravity_user_agent_version?.trim() || "",
       openai_codex_user_agent:

@@ -190,7 +190,7 @@ func TestGatewayCacheTTLGlobalSetting_TargetResolution(t *testing.T) {
 	}
 	account := &Account{Platform: PlatformAnthropic, Type: AccountTypeOAuth}
 
-	target, ok := svc.resolveCacheTTLUsageOverrideTarget(context.Background(), account)
+	target, ok := svc.resolveCacheTTLUsageOverrideTarget(context.Background(), account, nil)
 	require.True(t, ok)
 	require.Equal(t, cacheTTLTarget5m, target)
 
@@ -198,7 +198,7 @@ func TestGatewayCacheTTLGlobalSetting_TargetResolution(t *testing.T) {
 		"cache_ttl_override_enabled": true,
 		"cache_ttl_override_target":  "1h",
 	}
-	target, ok = svc.resolveCacheTTLUsageOverrideTarget(context.Background(), account)
+	target, ok = svc.resolveCacheTTLUsageOverrideTarget(context.Background(), account, nil)
 	require.True(t, ok)
 	require.Equal(t, cacheTTLTarget1h, target)
 }

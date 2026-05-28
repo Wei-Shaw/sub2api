@@ -559,6 +559,8 @@ export interface ModelsListConfig {
   models: string[]
 }
 
+export type ApiKeyCacheStrategy = 'auto' | 'cost_priority' | 'latency_priority'
+
 export interface ApiKey {
   id: number
   user_id: number
@@ -587,6 +589,8 @@ export interface ApiKey {
   reset_5h_at: string | null
   reset_1d_at: string | null
   reset_7d_at: string | null
+  /** User-level cache TTL preference (C3/C4). 'auto' = inherit account/global. */
+  cache_strategy: ApiKeyCacheStrategy
 }
 
 export interface CreateApiKeyRequest {
@@ -600,6 +604,7 @@ export interface CreateApiKeyRequest {
   rate_limit_5h?: number
   rate_limit_1d?: number
   rate_limit_7d?: number
+  cache_strategy?: ApiKeyCacheStrategy
 }
 
 export interface UpdateApiKeyRequest {
@@ -615,6 +620,7 @@ export interface UpdateApiKeyRequest {
   rate_limit_1d?: number
   rate_limit_7d?: number
   reset_rate_limit_usage?: boolean
+  cache_strategy?: ApiKeyCacheStrategy
 }
 
 export interface CreateGroupRequest {
@@ -926,6 +932,7 @@ export interface WindowStats {
   cost: number // Account cost (account multiplier)
   standard_cost?: number
   user_cost?: number
+  cache_hit_rate?: number // cache_read / (input + cache_read); 0 if no data
 }
 
 export interface UsageProgress {

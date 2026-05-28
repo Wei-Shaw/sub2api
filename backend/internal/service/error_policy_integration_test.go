@@ -40,6 +40,10 @@ func (u *epFixedUpstream) DoWithTLS(req *http.Request, proxyURL string, accountI
 	return u.Do(req, proxyURL, accountID, accountConcurrency)
 }
 
+func (u *epFixedUpstream) Prewarm(_ context.Context, _ string, _ string, _ int64, _ int, _ *tlsfingerprint.Profile) error {
+	return nil
+}
+
 // epAccountRepo records SetTempUnschedulable / SetError calls.
 type epAccountRepo struct {
 	mockAccountRepoForGemini

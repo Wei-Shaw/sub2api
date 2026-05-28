@@ -45,6 +45,10 @@ func (r *recordingOKUpstream) DoWithTLS(req *http.Request, proxyURL string, acco
 	return r.Do(req, proxyURL, accountID, accountConcurrency)
 }
 
+func (r *recordingOKUpstream) Prewarm(_ context.Context, _ string, _ string, _ int64, _ int, _ *tlsfingerprint.Profile) error {
+	return nil
+}
+
 func (s *stubAntigravityUpstream) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
 	url := req.URL.String()
 	s.calls = append(s.calls, url)
@@ -64,6 +68,10 @@ func (s *stubAntigravityUpstream) Do(req *http.Request, proxyURL string, account
 
 func (s *stubAntigravityUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile) (*http.Response, error) {
 	return s.Do(req, proxyURL, accountID, accountConcurrency)
+}
+
+func (s *stubAntigravityUpstream) Prewarm(_ context.Context, _ string, _ string, _ int64, _ int, _ *tlsfingerprint.Profile) error {
+	return nil
 }
 
 type rateLimitCall struct {

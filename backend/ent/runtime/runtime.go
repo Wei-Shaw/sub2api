@@ -142,6 +142,12 @@ func init() {
 	apikeyDescUsage7d := apikeyFields[16].Descriptor()
 	// apikey.DefaultUsage7d holds the default value on creation for the usage_7d field.
 	apikey.DefaultUsage7d = apikeyDescUsage7d.Default.(float64)
+	// apikeyDescCacheStrategy is the schema descriptor for cache_strategy field.
+	apikeyDescCacheStrategy := apikeyFields[20].Descriptor()
+	// apikey.DefaultCacheStrategy holds the default value on creation for the cache_strategy field.
+	apikey.DefaultCacheStrategy = apikeyDescCacheStrategy.Default.(string)
+	// apikey.CacheStrategyValidator is a validator for the "cache_strategy" field. It is called by the builders before save.
+	apikey.CacheStrategyValidator = apikeyDescCacheStrategy.Validators[0].(func(string) error)
 	accountMixin := schema.Account{}.Mixin()
 	accountMixinHooks1 := accountMixin[1].Hooks()
 	account.Hooks[0] = accountMixinHooks1[0]
@@ -1756,8 +1762,12 @@ func init() {
 	usagelogDescCacheTTLOverridden := usagelogFields[39].Descriptor()
 	// usagelog.DefaultCacheTTLOverridden holds the default value on creation for the cache_ttl_overridden field.
 	usagelog.DefaultCacheTTLOverridden = usagelogDescCacheTTLOverridden.Default.(bool)
+	// usagelogDescCachePolicyTrace is the schema descriptor for cache_policy_trace field.
+	usagelogDescCachePolicyTrace := usagelogFields[40].Descriptor()
+	// usagelog.CachePolicyTraceValidator is a validator for the "cache_policy_trace" field. It is called by the builders before save.
+	usagelog.CachePolicyTraceValidator = usagelogDescCachePolicyTrace.Validators[0].(func(string) error)
 	// usagelogDescCreatedAt is the schema descriptor for created_at field.
-	usagelogDescCreatedAt := usagelogFields[40].Descriptor()
+	usagelogDescCreatedAt := usagelogFields[41].Descriptor()
 	// usagelog.DefaultCreatedAt holds the default value on creation for the created_at field.
 	usagelog.DefaultCreatedAt = usagelogDescCreatedAt.Default.(func() time.Time)
 	userMixin := schema.User{}.Mixin()

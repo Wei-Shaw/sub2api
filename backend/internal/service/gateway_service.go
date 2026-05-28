@@ -1861,7 +1861,10 @@ func (s *GatewayService) applyClaudeCodeOAuthMimicryToBody(
 	//   1) messages cache：仅在配置开启时清除客户端断点并注入代理断点
 	//   2) tool rewrite：最后改 tools[*].name / tool_choice.name 并在 tools[-1]
 	//      上打断点；mapping 存入 gin.Context 供响应侧 bytes.Replace 还原。
-	body = s.rewriteMessageCacheControlIfEnabled(ctx, body)
+	body, injectTrace := s.rewriteMessageCacheControlIfEnabled(ctx, body)
+	if c != nil && injectTrace != "" {
+		c.Set(cacheInjectTraceKey, injectTrace)
+	}
 
 	if rw := buildToolNameRewriteFromBody(body); rw != nil {
 		body = applyToolNameRewriteToBody(body, rw)
@@ -5218,7 +5221,11 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		// D/E/F: 可选 messages cache 策略 + 工具名混淆 + tools[-1] 断点
 		// 与 forward_as_chat_completions / forward_as_responses 路径对齐，
 		// 原生 /v1/messages 路径也走同一套可配置字段级改写。
-		body = s.rewriteMessageCacheControlIfEnabled(ctx, body)
+		var injectTrace5221 string
+		body, injectTrace5221 = s.rewriteMessageCacheControlIfEnabled(ctx, body)
+		if injectTrace5221 != "" {
+			c.Set(cacheInjectTraceKey, injectTrace5221)
+		}
 		if rw := buildToolNameRewriteFromBody(body); rw != nil {
 			body = applyToolNameRewriteToBody(body, rw)
 			c.Set(toolNameRewriteKey, rw)
@@ -5271,10 +5278,19 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		body = injectAnthropicCacheControlTTL1h(body)
 	}
 
-	// 获取凭证
-	token, tokenType, err := s.GetAccessToken(ctx, account)
-	if err != nil {
-		return nil, err
+	// 获取凭证（OAuth/ServiceAccount 类型可能涉及网络刷新，与 body 预处理并行执行）
+	type tokenResult struct {
+		token     string
+		tokenType string
+		err       error
+	}
+	tokenCh := make(chan tokenResult, 1)
+	needsAsyncToken := account.Type == AccountTypeOAuth || account.Type == AccountTypeSetupToken || account.Type == AccountTypeServiceAccount || account.Type == AccountTypeVertex
+	if needsAsyncToken {
+		go func() {
+			t, tt, e := s.GetAccessToken(ctx, account)
+			tokenCh <- tokenResult{t, tt, e}
+		}()
 	}
 
 	// 获取代理URL（自定义 base URL 模式下，proxy 通过 buildCustomRelayURL 作为查询参数传递）
@@ -5299,6 +5315,17 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	// upstream 400 "Invalid `data` in `redacted_thinking` block".
 	body = StripRedactedThinkingBlocks(body)
 
+	// Pre-filter: when the model was remapped to a different model family
+	// (e.g. opus-4-7 → opus-4-6), thinking block signatures are guaranteed
+	// to fail validation upstream. Strip them proactively to avoid a wasted
+	// 400 round-trip and subsequent retry.
+	if isModelMismatchForSignature(originalModel, reqModel) {
+		if filtered := FilterThinkingBlocksForRetry(body); !bytes.Equal(filtered, body) {
+			logger.LegacyPrintf("service.gateway", "Account %d: model remapped (%s -> %s), proactively stripped thinking blocks to avoid signature mismatch", account.ID, originalModel, reqModel)
+			body = filtered
+		}
+	}
+
 	// Preemptively strip thinking blocks that would cause upstream 400
 	// `Invalid signature in thinking block`. Gated by the same toggle that
 	// governs the retry-path rectifier.
@@ -5309,8 +5336,25 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		}
 	}
 
+	// 等待 token 获取完成（与 body 预处理并行）
+	var token, tokenType string
+	if needsAsyncToken {
+		tr := <-tokenCh
+		if tr.err != nil {
+			return nil, tr.err
+		}
+		token, tokenType = tr.token, tr.tokenType
+	} else {
+		var err error
+		token, tokenType, err = s.GetAccessToken(ctx, account)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	// 重试循环
 	var resp *http.Response
+	var err error
 	retryStart := time.Now()
 	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
 		// 构建上游请求（每次重试需要重新构建，因为请求体需要重新读取）
@@ -5814,6 +5858,14 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 	// Pre-filter: strip redacted_thinking blocks unconditionally.
 	input.Body = StripRedactedThinkingBlocks(input.Body)
 
+	// Pre-filter: model remapped to a different family → signatures will fail.
+	if isModelMismatchForSignature(input.OriginalModel, input.RequestModel) {
+		if filtered := FilterThinkingBlocksForRetry(input.Body); !bytes.Equal(filtered, input.Body) {
+			logger.LegacyPrintf("service.gateway", "[Anthropic 自动透传] Account %d: model remapped (%s -> %s), proactively stripped thinking blocks", account.ID, input.OriginalModel, input.RequestModel)
+			input.Body = filtered
+		}
+	}
+
 	var resp *http.Response
 	retryStart := time.Now()
 	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
@@ -6257,6 +6309,10 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 					lastDataAt = time.Now()
 					inPartialEvent = false
 				} else {
+					if !inPartialEvent {
+						// Eager first flush: 首个 SSE 事件的首行立即刷出，最小化 TTFT
+						flusher.Flush()
+					}
 					inPartialEvent = true
 				}
 			}
@@ -6826,6 +6882,19 @@ func (s *GatewayService) handleBedrockNonStreamingResponse(
 
 	usage := parseClaudeUsageFromResponseBody(body)
 
+	// D3: Cache TTL Override 对 Bedrock 也生效（仅 usage 归类，不改请求体）。
+	// 若 user_pref / acct_override 适用，把 cache_creation 5m/1h 分类按目标归并。
+	if overrideTarget, ok := s.resolveCacheTTLUsageOverrideTarget(ctx, account, apiKeyFromGinContext(c)); ok {
+		if applyCacheTTLOverride(usage, overrideTarget) {
+			if newBody, err := sjson.SetBytes(body, "usage.cache_creation.ephemeral_5m_input_tokens", usage.CacheCreation5mTokens); err == nil {
+				body = newBody
+			}
+			if newBody, err := sjson.SetBytes(body, "usage.cache_creation.ephemeral_1h_input_tokens", usage.CacheCreation1hTokens); err == nil {
+				body = newBody
+			}
+		}
+	}
+
 	c.Header("Content-Type", "application/json")
 	if v := resp.Header.Get("x-amzn-requestid"); v != "" {
 		c.Header("x-request-id", v)
@@ -7378,6 +7447,15 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 		if account != nil && account.ForceContext1M() {
 			current := getHeaderRaw(req.Header, "anthropic-beta")
 			setHeaderRaw(req.Header, "anthropic-beta", mergeAnthropicBetaDropping([]string{claude.BetaContext1M}, current, nil))
+		}
+
+		// Ensure context_management in body always has its matching beta token,
+		// regardless of token type or client behavior.
+		if bodyNeedsContextManagementBeta(body) {
+			current := getHeaderRaw(req.Header, "anthropic-beta")
+			if !strings.Contains(current, claude.BetaContextManagement) {
+				setHeaderRaw(req.Header, "anthropic-beta", mergeAnthropicBetaDropping([]string{claude.BetaContextManagement}, current, nil))
+			}
 		}
 	}
 
@@ -8694,7 +8772,7 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 
 		// Cache TTL Override: 重写 SSE 事件中的 cache_creation 分类。
 		// 账号级设置优先；全局 1h 请求注入开启时，默认把 usage 计费归回 5m。
-		if overrideTarget, ok := s.resolveCacheTTLUsageOverrideTarget(ctx, account); ok {
+		if overrideTarget, ok := s.resolveCacheTTLUsageOverrideTarget(ctx, account, apiKeyFromGinContext(c)); ok {
 			if eventType == "message_start" {
 				if msg, ok := event["message"].(map[string]any); ok {
 					if u, ok := msg["usage"].(map[string]any); ok {
@@ -9101,17 +9179,123 @@ func rewriteCacheCreationJSON(usageObj map[string]any, target string) bool {
 	return true
 }
 
-func (s *GatewayService) resolveCacheTTLUsageOverrideTarget(ctx context.Context, account *Account) (string, bool) {
+// applyCacheTTLOverrideToSSEBytes 直接在 SSE 事件 JSON 字节上应用 cache_creation 5m/1h
+// 归并。用于 Bedrock 等保持字节流而不解构为 map 的处理路径——避免一次 unmarshal/marshal
+// 往返。语义与 [rewriteCacheCreationJSON] 保持一致：将 5m+1h 全部归到目标桶，另一桶清零。
+//
+// 仅在 eventType ∈ {message_start, message_delta} 时处理；其它事件直接返回原 data。
+func applyCacheTTLOverrideToSSEBytes(data []byte, eventType string, target string) []byte {
+	var path string
+	switch eventType {
+	case "message_start":
+		path = "message.usage"
+	case "message_delta":
+		path = "usage"
+	default:
+		return data
+	}
+	cc5m := gjson.GetBytes(data, path+".cache_creation.ephemeral_5m_input_tokens")
+	cc1h := gjson.GetBytes(data, path+".cache_creation.ephemeral_1h_input_tokens")
+	if !cc5m.Exists() && !cc1h.Exists() {
+		return data
+	}
+	total := cc5m.Int() + cc1h.Int()
+	if total == 0 {
+		return data
+	}
+	switch target {
+	case "1h":
+		if cc1h.Int() == total {
+			return data
+		}
+		if newData, err := sjson.SetBytes(data, path+".cache_creation.ephemeral_1h_input_tokens", total); err == nil {
+			data = newData
+		}
+		if newData, err := sjson.SetBytes(data, path+".cache_creation.ephemeral_5m_input_tokens", 0); err == nil {
+			data = newData
+		}
+	default: // "5m"
+		if cc5m.Int() == total {
+			return data
+		}
+		if newData, err := sjson.SetBytes(data, path+".cache_creation.ephemeral_5m_input_tokens", total); err == nil {
+			data = newData
+		}
+		if newData, err := sjson.SetBytes(data, path+".cache_creation.ephemeral_1h_input_tokens", 0); err == nil {
+			data = newData
+		}
+	}
+	return data
+}
+
+func (s *GatewayService) resolveCacheTTLUsageOverrideTarget(ctx context.Context, account *Account, apiKey *APIKey) (string, bool) {
+	target, ok, _ := s.resolveCacheTTLUsageOverride(ctx, account, apiKey)
+	return target, ok
+}
+
+// resolveCacheTTLUsageOverride 决定本次请求的 usage 归类目标 TTL（5m/1h）。
+// 优先级链（高 → 低）：
+//  1. 用户级偏好（APIKey.CacheStrategy 非 auto）
+//  2. 账号级覆盖（Account.IsCacheTTLOverrideEnabled，D2 后已扩到所有支持平台）
+//  3. 全局 5m 注入（仅 Anthropic OAuth/SetupToken；保留与 B 安全注入路径的耦合）
+//  4. 否则：不归类
+//
+// 返回的 trace 字符串写入 usage_log.cache_policy_trace（A4 的可审计支柱）。
+// 注意：该函数只控制"usage 归类"。请求体 cache_control TTL 改写见
+// [resolveCacheTTLRequestRewriteTarget]——两者必须可独立演化以防"上游建 1h
+// 缓存但按 5m 给客户计费"这类合规问题。
+func (s *GatewayService) resolveCacheTTLUsageOverride(ctx context.Context, account *Account, apiKey *APIKey) (target string, ok bool, trace string) {
 	if account == nil {
-		return "", false
+		return "", false, "skip:no_account"
+	}
+	if apiKey != nil {
+		if t, applied := apiKey.CacheStrategyTTLTarget(); applied {
+			// 用户偏好仅在账号支持缓存策略时才生效；否则保持 trace 显式记录"被忽略"
+			// 以便运营排查"用户选了但没生效"的反馈。
+			if account.SupportsCachePolicy() {
+				return t, true, "user_pref:" + t
+			}
+			return "", false, "user_pref_ignored:account_unsupported"
+		}
 	}
 	if account.IsCacheTTLOverrideEnabled() {
-		return account.GetCacheTTLOverrideTarget(), true
+		t := account.GetCacheTTLOverrideTarget()
+		return t, true, "acct_override:" + t
 	}
-	if account.IsAnthropicOAuthOrSetupToken() && s != nil && s.settingService != nil && s.settingService.IsAnthropicCacheTTL1hInjectionEnabled(ctx) {
-		return cacheTTLTarget5m, true
+	if account.IsAnthropicOAuthOrSetupToken() {
+		if s != nil && s.settingService != nil && s.settingService.IsAnthropicCacheTTL1hInjectionEnabled(ctx) {
+			return cacheTTLTarget5m, true, "global_inject:5m"
+		}
+		return "", false, "eligible:no_override"
 	}
-	return "", false
+	return "", false, "skip:not_supported"
+}
+
+// resolveCacheTTLRequestRewriteTarget 决定请求体 cache_control TTL 的强制目标。
+// 当前与 usage 归类共用同一优先级链；保留为独立函数以便未来在需要时分化
+// （例如：允许"upstream 用 1h，billing 按 5m"被显式拒绝、或允许"upstream 用 5m
+// 但 usage 计 1h"被显式允许）。任何分化都应当在 [resolveCacheTTLUsageOverride]
+// 与本函数之间引入显式断言以保护合规。
+//
+// 调用者（如 B 的 addMessageCacheBreakpointsSafe）应据此决定注入的断点 TTL；
+// 若返回 ok=false，应使用其历史默认（通常 5m）。
+func (s *GatewayService) resolveCacheTTLRequestRewriteTarget(ctx context.Context, account *Account, apiKey *APIKey) (string, bool) {
+	target, ok, _ := s.resolveCacheTTLUsageOverride(ctx, account, apiKey)
+	return target, ok
+}
+
+// apiKeyFromGinContext 从 gin.Context 中取出 *APIKey。
+// 使用字符串常量 "api_key"（与 middleware.ContextKeyAPIKey 同值）避免循环导入。
+func apiKeyFromGinContext(c *gin.Context) *APIKey {
+	if c == nil {
+		return nil
+	}
+	v, ok := c.Get("api_key")
+	if !ok {
+		return nil
+	}
+	k, _ := v.(*APIKey)
+	return k
 }
 
 func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, originalModel, mappedModel string) (*ClaudeUsage, error) {
@@ -9152,7 +9336,7 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 
 	// Cache TTL Override: 重写 non-streaming 响应中的 cache_creation 分类。
 	// 账号级设置优先；全局 1h 请求注入开启时，默认把 usage 计费归回 5m。
-	if overrideTarget, ok := s.resolveCacheTTLUsageOverrideTarget(ctx, account); ok {
+	if overrideTarget, ok := s.resolveCacheTTLUsageOverrideTarget(ctx, account, apiKeyFromGinContext(c)); ok {
 		if applyCacheTTLOverride(&response.Usage, overrideTarget) {
 			// 同步更新 body JSON 中的嵌套 cache_creation 对象
 			if newBody, err := sjson.SetBytes(body, "usage.cache_creation.ephemeral_5m_input_tokens", response.Usage.CacheCreation5mTokens); err == nil {
@@ -9230,6 +9414,7 @@ type RecordUsageInput struct {
 	IPAddress          string             // 请求的客户端 IP 地址
 	RequestPayloadHash string             // 请求体语义哈希，用于降低 request_id 误复用时的静默误去重风险
 	ForceCacheBilling  bool               // 强制缓存计费：将 input_tokens 转为 cache_read 计费（用于粘性会话切换）
+	CacheInjectTrace   string             // 缓存注入 trace（由 rewriteMessageCacheControlIfEnabled 经 gin.Context 传入）
 	APIKeyService      APIKeyQuotaUpdater // 可选：用于更新API Key配额
 	QuotaPlatform      string             // user×platform 配额计量平台：handler 在请求 ctx 内经 QuotaPlatform() 算定后传入（后扣运行在 worker 池 background ctx 上，取不到 ForcePlatform）
 
@@ -9710,6 +9895,7 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 		IPAddress:          input.IPAddress,
 		RequestPayloadHash: input.RequestPayloadHash,
 		ForceCacheBilling:  input.ForceCacheBilling,
+		CacheInjectTrace:   input.CacheInjectTrace,
 		APIKeyService:      input.APIKeyService,
 		QuotaPlatform:      input.QuotaPlatform,
 		ChannelUsageFields: input.ChannelUsageFields,
@@ -9775,6 +9961,7 @@ type recordUsageCoreInput struct {
 	IPAddress          string
 	RequestPayloadHash string
 	ForceCacheBilling  bool
+	CacheInjectTrace   string
 	APIKeyService      APIKeyQuotaUpdater
 	QuotaPlatform      string
 	ChannelUsageFields
@@ -9804,9 +9991,21 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	// Cache TTL Override: 确保计费时 token 分类与账号设置一致。
 	// 账号级设置优先；全局 1h 请求注入开启时，默认把 usage 计费归回 5m。
 	cacheTTLOverridden := false
-	if overrideTarget, ok := s.resolveCacheTTLUsageOverrideTarget(ctx, account); ok {
+	cachePolicyTrace := ""
+	if overrideTarget, ok, trace := s.resolveCacheTTLUsageOverride(ctx, account, apiKey); ok {
 		applyCacheTTLOverride(&result.Usage, overrideTarget)
 		cacheTTLOverridden = (result.Usage.CacheCreation5mTokens + result.Usage.CacheCreation1hTokens) > 0
+		cachePolicyTrace = trace
+	} else {
+		cachePolicyTrace = trace
+	}
+	// 追加缓存注入 trace（safe/shadow 模式写入，与 TTL override trace 共存）
+	if it := strings.TrimSpace(input.CacheInjectTrace); it != "" {
+		if cachePolicyTrace != "" {
+			cachePolicyTrace = cachePolicyTrace + "|" + it
+		} else {
+			cachePolicyTrace = it
+		}
 	}
 
 	// 获取费率倍数（优先级：用户专属 > 分组默认 > 系统默认）
@@ -9848,7 +10047,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	// 创建使用日志
 	accountRateMultiplier := account.BillingRateMultiplier()
 	usageLog := s.buildRecordUsageLog(ctx, input, result, apiKey, user, account, subscription,
-		requestedModel, multiplier, imageMultiplier, accountRateMultiplier, billingType, cacheTTLOverridden, cost, opts)
+		requestedModel, multiplier, imageMultiplier, accountRateMultiplier, billingType, cacheTTLOverridden, cachePolicyTrace, cost, opts)
 
 	// 计算账号统计定价费用（使用最终上游模型匹配自定义规则）
 	if apiKey.GroupID != nil {
@@ -10047,6 +10246,7 @@ func (s *GatewayService) buildRecordUsageLog(
 	accountRateMultiplier float64,
 	billingType int8,
 	cacheTTLOverridden bool,
+	cachePolicyTrace string,
 	cost *CostBreakdown,
 	opts *recordUsageOpts,
 ) *UsageLog {
@@ -10084,6 +10284,7 @@ func (s *GatewayService) buildRecordUsageLog(
 		ImageSizeSource:       optionalTrimmedStringPtr(result.ImageSizeSource),
 		ImageSizeBreakdown:    result.ImageSizeBreakdown,
 		CacheTTLOverridden:    cacheTTLOverridden,
+		CachePolicyTrace:      optionalTrimmedStringPtr(cachePolicyTrace),
 		ChannelID:             optionalInt64Ptr(input.ChannelID),
 		ModelMappingChain:     optionalTrimmedStringPtr(input.ModelMappingChain),
 		UserAgent:             optionalTrimmedStringPtr(input.UserAgent),
@@ -10310,7 +10511,8 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 
 		// messages[*].cache_control 改写：受 SystemSettings.RewriteMessageCacheControl 控制（默认关闭）。
 		// 启用时清除客户端断点并注入代理断点；与 metadata 剥离独立运行。
-		body = s.rewriteMessageCacheControlIfEnabled(ctx, body)
+		// count_tokens 路径不记录 usage，trace 丢弃即可。
+		body, _ = s.rewriteMessageCacheControlIfEnabled(ctx, body)
 		if rw := buildToolNameRewriteFromBody(body); rw != nil {
 			body = applyToolNameRewriteToBody(body, rw)
 		} else {
@@ -10798,6 +11000,13 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 					setHeaderRaw(req.Header, "anthropic-beta", beta)
 				}
 			}
+		}
+	}
+
+	if bodyNeedsContextManagementBeta(body) {
+		current := getHeaderRaw(req.Header, "anthropic-beta")
+		if !strings.Contains(current, claude.BetaContextManagement) {
+			setHeaderRaw(req.Header, "anthropic-beta", mergeAnthropicBetaDropping([]string{claude.BetaContextManagement}, current, nil))
 		}
 	}
 

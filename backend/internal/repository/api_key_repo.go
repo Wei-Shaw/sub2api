@@ -50,7 +50,8 @@ func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) erro
 		SetNillableExpiresAt(key.ExpiresAt).
 		SetRateLimit5h(key.RateLimit5h).
 		SetRateLimit1d(key.RateLimit1d).
-		SetRateLimit7d(key.RateLimit7d)
+		SetRateLimit7d(key.RateLimit7d).
+		SetCacheStrategy(service.NormalizeCacheStrategy(key.CacheStrategy))
 
 	if len(key.IPWhitelist) > 0 {
 		builder.SetIPWhitelist(key.IPWhitelist)
@@ -217,6 +218,7 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey) erro
 		SetUsage5h(key.Usage5h).
 		SetUsage1d(key.Usage1d).
 		SetUsage7d(key.Usage7d).
+		SetCacheStrategy(service.NormalizeCacheStrategy(key.CacheStrategy)).
 		SetUpdatedAt(now)
 	if key.GroupID != nil {
 		builder.SetGroupID(*key.GroupID)
@@ -642,6 +644,7 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 		Window5hStart: m.Window5hStart,
 		Window1dStart: m.Window1dStart,
 		Window7dStart: m.Window7dStart,
+		CacheStrategy: m.CacheStrategy,
 	}
 	if m.Edges.User != nil {
 		out.User = userEntityToService(m.Edges.User)

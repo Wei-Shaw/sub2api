@@ -115,6 +115,16 @@ func (APIKey) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			Comment("Start time of the current 7d rate limit window"),
+
+		// ========== Cache policy ==========
+		// User-level preference for how cache TTL should be handled on this key's
+		// requests. Values: "auto" (inherit account/global settings), "cost_priority"
+		// (force 5m), "latency_priority" (force 1h). Only meaningful when the bound
+		// account satisfies Account.SupportsCachePolicy(); ignored otherwise.
+		field.String("cache_strategy").
+			MaxLen(32).
+			Default("auto").
+			Comment("User-level cache TTL preference: auto / cost_priority / latency_priority"),
 	}
 }
 

@@ -846,6 +846,23 @@ func FilterInvalidSignatureThinkingBlocks(body []byte) []byte {
 	return out
 }
 
+// isModelMismatchForSignature reports whether originalModel and mappedModel
+// represent genuinely different models whose thinking-block signatures are
+// incompatible. Date-suffix expansions (e.g. "claude-opus-4-7" →
+// "claude-opus-4-7-20250610") are NOT mismatches; cross-version remaps
+// (e.g. "claude-opus-4-7" → "claude-opus-4-6") are.
+func isModelMismatchForSignature(originalModel, mappedModel string) bool {
+	if originalModel == "" || mappedModel == "" || originalModel == mappedModel {
+		return false
+	}
+	a := strings.ToLower(originalModel)
+	b := strings.ToLower(mappedModel)
+	if strings.HasPrefix(b, a) || strings.HasPrefix(a, b) {
+		return false
+	}
+	return true
+}
+
 // removeThinkingDependentContextStrategies 从 context_management.edits 中移除
 // 需要 thinking 启用的策略（如 clear_thinking_20251015）。
 // 当顶层 "thinking" 字段被禁用时必须调用，否则上游会返回

@@ -136,6 +136,7 @@ type APIKeyMutation struct {
 	window_5h_start    *time.Time
 	window_1d_start    *time.Time
 	window_7d_start    *time.Time
+	cache_strategy     *string
 	clearedFields      map[string]struct{}
 	user               *int64
 	cleareduser        bool
@@ -1384,6 +1385,42 @@ func (m *APIKeyMutation) ResetWindow7dStart() {
 	delete(m.clearedFields, apikey.FieldWindow7dStart)
 }
 
+// SetCacheStrategy sets the "cache_strategy" field.
+func (m *APIKeyMutation) SetCacheStrategy(s string) {
+	m.cache_strategy = &s
+}
+
+// CacheStrategy returns the value of the "cache_strategy" field in the mutation.
+func (m *APIKeyMutation) CacheStrategy() (r string, exists bool) {
+	v := m.cache_strategy
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCacheStrategy returns the old "cache_strategy" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldCacheStrategy(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCacheStrategy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCacheStrategy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCacheStrategy: %w", err)
+	}
+	return oldValue.CacheStrategy, nil
+}
+
+// ResetCacheStrategy resets all changes to the "cache_strategy" field.
+func (m *APIKeyMutation) ResetCacheStrategy() {
+	m.cache_strategy = nil
+}
+
 // ClearUser clears the "user" edge to the User entity.
 func (m *APIKeyMutation) ClearUser() {
 	m.cleareduser = true
@@ -1526,7 +1563,7 @@ func (m *APIKeyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *APIKeyMutation) Fields() []string {
-	fields := make([]string, 0, 23)
+	fields := make([]string, 0, 24)
 	if m.created_at != nil {
 		fields = append(fields, apikey.FieldCreatedAt)
 	}
@@ -1596,6 +1633,9 @@ func (m *APIKeyMutation) Fields() []string {
 	if m.window_7d_start != nil {
 		fields = append(fields, apikey.FieldWindow7dStart)
 	}
+	if m.cache_strategy != nil {
+		fields = append(fields, apikey.FieldCacheStrategy)
+	}
 	return fields
 }
 
@@ -1650,6 +1690,8 @@ func (m *APIKeyMutation) Field(name string) (ent.Value, bool) {
 		return m.Window1dStart()
 	case apikey.FieldWindow7dStart:
 		return m.Window7dStart()
+	case apikey.FieldCacheStrategy:
+		return m.CacheStrategy()
 	}
 	return nil, false
 }
@@ -1705,6 +1747,8 @@ func (m *APIKeyMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldWindow1dStart(ctx)
 	case apikey.FieldWindow7dStart:
 		return m.OldWindow7dStart(ctx)
+	case apikey.FieldCacheStrategy:
+		return m.OldCacheStrategy(ctx)
 	}
 	return nil, fmt.Errorf("unknown APIKey field %s", name)
 }
@@ -1874,6 +1918,13 @@ func (m *APIKeyMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetWindow7dStart(v)
+		return nil
+	case apikey.FieldCacheStrategy:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCacheStrategy(v)
 		return nil
 	}
 	return fmt.Errorf("unknown APIKey field %s", name)
@@ -2148,6 +2199,9 @@ func (m *APIKeyMutation) ResetField(name string) error {
 		return nil
 	case apikey.FieldWindow7dStart:
 		m.ResetWindow7dStart()
+		return nil
+	case apikey.FieldCacheStrategy:
+		m.ResetCacheStrategy()
 		return nil
 	}
 	return fmt.Errorf("unknown APIKey field %s", name)
@@ -34684,6 +34738,7 @@ type UsageLogMutation struct {
 	image_size_source           *string
 	image_size_breakdown        *map[string]int
 	cache_ttl_overridden        *bool
+	cache_policy_trace          *string
 	created_at                  *time.Time
 	clearedFields               map[string]struct{}
 	user                        *int64
@@ -36857,6 +36912,55 @@ func (m *UsageLogMutation) ResetCacheTTLOverridden() {
 	m.cache_ttl_overridden = nil
 }
 
+// SetCachePolicyTrace sets the "cache_policy_trace" field.
+func (m *UsageLogMutation) SetCachePolicyTrace(s string) {
+	m.cache_policy_trace = &s
+}
+
+// CachePolicyTrace returns the value of the "cache_policy_trace" field in the mutation.
+func (m *UsageLogMutation) CachePolicyTrace() (r string, exists bool) {
+	v := m.cache_policy_trace
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCachePolicyTrace returns the old "cache_policy_trace" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldCachePolicyTrace(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCachePolicyTrace is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCachePolicyTrace requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCachePolicyTrace: %w", err)
+	}
+	return oldValue.CachePolicyTrace, nil
+}
+
+// ClearCachePolicyTrace clears the value of the "cache_policy_trace" field.
+func (m *UsageLogMutation) ClearCachePolicyTrace() {
+	m.cache_policy_trace = nil
+	m.clearedFields[usagelog.FieldCachePolicyTrace] = struct{}{}
+}
+
+// CachePolicyTraceCleared returns if the "cache_policy_trace" field was cleared in this mutation.
+func (m *UsageLogMutation) CachePolicyTraceCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldCachePolicyTrace]
+	return ok
+}
+
+// ResetCachePolicyTrace resets all changes to the "cache_policy_trace" field.
+func (m *UsageLogMutation) ResetCachePolicyTrace() {
+	m.cache_policy_trace = nil
+	delete(m.clearedFields, usagelog.FieldCachePolicyTrace)
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *UsageLogMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -37062,7 +37166,7 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 41)
+	fields := make([]string, 0, 42)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 	}
@@ -37183,6 +37287,9 @@ func (m *UsageLogMutation) Fields() []string {
 	if m.cache_ttl_overridden != nil {
 		fields = append(fields, usagelog.FieldCacheTTLOverridden)
 	}
+	if m.cache_policy_trace != nil {
+		fields = append(fields, usagelog.FieldCachePolicyTrace)
+	}
 	if m.created_at != nil {
 		fields = append(fields, usagelog.FieldCreatedAt)
 	}
@@ -37274,6 +37381,8 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.ImageSizeBreakdown()
 	case usagelog.FieldCacheTTLOverridden:
 		return m.CacheTTLOverridden()
+	case usagelog.FieldCachePolicyTrace:
+		return m.CachePolicyTrace()
 	case usagelog.FieldCreatedAt:
 		return m.CreatedAt()
 	}
@@ -37365,6 +37474,8 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldImageSizeBreakdown(ctx)
 	case usagelog.FieldCacheTTLOverridden:
 		return m.OldCacheTTLOverridden(ctx)
+	case usagelog.FieldCachePolicyTrace:
+		return m.OldCachePolicyTrace(ctx)
 	case usagelog.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	}
@@ -37655,6 +37766,13 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCacheTTLOverridden(v)
+		return nil
+	case usagelog.FieldCachePolicyTrace:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCachePolicyTrace(v)
 		return nil
 	case usagelog.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -37978,6 +38096,9 @@ func (m *UsageLogMutation) ClearedFields() []string {
 	if m.FieldCleared(usagelog.FieldImageSizeBreakdown) {
 		fields = append(fields, usagelog.FieldImageSizeBreakdown)
 	}
+	if m.FieldCleared(usagelog.FieldCachePolicyTrace) {
+		fields = append(fields, usagelog.FieldCachePolicyTrace)
+	}
 	return fields
 }
 
@@ -38045,6 +38166,9 @@ func (m *UsageLogMutation) ClearField(name string) error {
 		return nil
 	case usagelog.FieldImageSizeBreakdown:
 		m.ClearImageSizeBreakdown()
+		return nil
+	case usagelog.FieldCachePolicyTrace:
+		m.ClearCachePolicyTrace()
 		return nil
 	}
 	return fmt.Errorf("unknown UsageLog nullable field %s", name)
@@ -38173,6 +38297,9 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldCacheTTLOverridden:
 		m.ResetCacheTTLOverridden()
+		return nil
+	case usagelog.FieldCachePolicyTrace:
+		m.ResetCachePolicyTrace()
 		return nil
 	case usagelog.FieldCreatedAt:
 		m.ResetCreatedAt()

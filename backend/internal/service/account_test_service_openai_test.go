@@ -43,6 +43,10 @@ func (u *queuedHTTPUpstream) DoWithTLS(req *http.Request, _ string, _ int64, _ i
 	return resp, nil
 }
 
+func (u *queuedHTTPUpstream) Prewarm(_ context.Context, _ string, _ string, _ int64, _ int, _ *tlsfingerprint.Profile) error {
+	return nil
+}
+
 func newJSONResponse(status int, body string) *http.Response {
 	return &http.Response{
 		StatusCode: status,

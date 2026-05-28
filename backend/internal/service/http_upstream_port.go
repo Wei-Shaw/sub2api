@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
@@ -21,4 +22,8 @@ type HTTPUpstream interface {
 	// Profile 由调用方通过 TLSFingerprintProfileService 解析后传入，
 	// 支持按账号绑定的数据库 profile 或内置默认 profile。
 	DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile) (*http.Response, error)
+
+	// Prewarm establishes a connection to the target URL and returns it to the
+	// idle pool, keeping TCP+TLS connections warm for subsequent real requests.
+	Prewarm(ctx context.Context, targetURL string, proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile) error
 }

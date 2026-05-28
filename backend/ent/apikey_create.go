@@ -307,6 +307,20 @@ func (_c *APIKeyCreate) SetNillableWindow7dStart(v *time.Time) *APIKeyCreate {
 	return _c
 }
 
+// SetCacheStrategy sets the "cache_strategy" field.
+func (_c *APIKeyCreate) SetCacheStrategy(v string) *APIKeyCreate {
+	_c.mutation.SetCacheStrategy(v)
+	return _c
+}
+
+// SetNillableCacheStrategy sets the "cache_strategy" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableCacheStrategy(v *string) *APIKeyCreate {
+	if v != nil {
+		_c.SetCacheStrategy(*v)
+	}
+	return _c
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_c *APIKeyCreate) SetUser(v *User) *APIKeyCreate {
 	return _c.SetUserID(v.ID)
@@ -419,6 +433,10 @@ func (_c *APIKeyCreate) defaults() error {
 		v := apikey.DefaultUsage7d
 		_c.mutation.SetUsage7d(v)
 	}
+	if _, ok := _c.mutation.CacheStrategy(); !ok {
+		v := apikey.DefaultCacheStrategy
+		_c.mutation.SetCacheStrategy(v)
+	}
 	return nil
 }
 
@@ -480,6 +498,14 @@ func (_c *APIKeyCreate) check() error {
 	}
 	if _, ok := _c.mutation.Usage7d(); !ok {
 		return &ValidationError{Name: "usage_7d", err: errors.New(`ent: missing required field "APIKey.usage_7d"`)}
+	}
+	if _, ok := _c.mutation.CacheStrategy(); !ok {
+		return &ValidationError{Name: "cache_strategy", err: errors.New(`ent: missing required field "APIKey.cache_strategy"`)}
+	}
+	if v, ok := _c.mutation.CacheStrategy(); ok {
+		if err := apikey.CacheStrategyValidator(v); err != nil {
+			return &ValidationError{Name: "cache_strategy", err: fmt.Errorf(`ent: validator failed for field "APIKey.cache_strategy": %w`, err)}
+		}
 	}
 	if len(_c.mutation.UserIDs()) == 0 {
 		return &ValidationError{Name: "user", err: errors.New(`ent: missing required edge "APIKey.user"`)}
@@ -594,6 +620,10 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Window7dStart(); ok {
 		_spec.SetField(apikey.FieldWindow7dStart, field.TypeTime, value)
 		_node.Window7dStart = &value
+	}
+	if value, ok := _c.mutation.CacheStrategy(); ok {
+		_spec.SetField(apikey.FieldCacheStrategy, field.TypeString, value)
+		_node.CacheStrategy = value
 	}
 	if nodes := _c.mutation.UserIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -1060,6 +1090,18 @@ func (u *APIKeyUpsert) UpdateWindow7dStart() *APIKeyUpsert {
 // ClearWindow7dStart clears the value of the "window_7d_start" field.
 func (u *APIKeyUpsert) ClearWindow7dStart() *APIKeyUpsert {
 	u.SetNull(apikey.FieldWindow7dStart)
+	return u
+}
+
+// SetCacheStrategy sets the "cache_strategy" field.
+func (u *APIKeyUpsert) SetCacheStrategy(v string) *APIKeyUpsert {
+	u.Set(apikey.FieldCacheStrategy, v)
+	return u
+}
+
+// UpdateCacheStrategy sets the "cache_strategy" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateCacheStrategy() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldCacheStrategy)
 	return u
 }
 
@@ -1532,6 +1574,20 @@ func (u *APIKeyUpsertOne) UpdateWindow7dStart() *APIKeyUpsertOne {
 func (u *APIKeyUpsertOne) ClearWindow7dStart() *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.ClearWindow7dStart()
+	})
+}
+
+// SetCacheStrategy sets the "cache_strategy" field.
+func (u *APIKeyUpsertOne) SetCacheStrategy(v string) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetCacheStrategy(v)
+	})
+}
+
+// UpdateCacheStrategy sets the "cache_strategy" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateCacheStrategy() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateCacheStrategy()
 	})
 }
 
@@ -2170,6 +2226,20 @@ func (u *APIKeyUpsertBulk) UpdateWindow7dStart() *APIKeyUpsertBulk {
 func (u *APIKeyUpsertBulk) ClearWindow7dStart() *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.ClearWindow7dStart()
+	})
+}
+
+// SetCacheStrategy sets the "cache_strategy" field.
+func (u *APIKeyUpsertBulk) SetCacheStrategy(v string) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetCacheStrategy(v)
+	})
+}
+
+// UpdateCacheStrategy sets the "cache_strategy" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateCacheStrategy() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateCacheStrategy()
 	})
 }
 

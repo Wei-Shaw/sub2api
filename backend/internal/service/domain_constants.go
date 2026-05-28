@@ -363,6 +363,9 @@ const (
 	// SettingKeyOpsRuntimeLogConfig stores JSON config for runtime log settings.
 	SettingKeyOpsRuntimeLogConfig = "ops_runtime_log_config"
 
+	// SettingKeyPerformanceSettings stores JSON config for connection/latency performance tuning.
+	SettingKeyPerformanceSettings = "performance_settings"
+
 	// =========================
 	// Channel Monitor (渠道监控)
 	// =========================
@@ -449,6 +452,11 @@ const (
 	SettingKeyEnableAnthropicCacheTTL1hInjection = "enable_anthropic_cache_ttl_1h_injection"
 	// SettingKeyRewriteMessageCacheControl 是否改写 messages[*].content[*].cache_control（默认 false）
 	SettingKeyRewriteMessageCacheControl = "rewrite_message_cache_control"
+	// SettingKeyRewriteMessageCacheControlMode 缓存断点注入模式（默认 safe）。
+	// "full"   — 按 Claude Code 模拟注入 2 个断点（现有行为）
+	// "safe"   — 仅当请求体完全没有 cache_control 时，在最后一条 user message 上注入 1 个 5m 断点
+	// "shadow" — dry-run：不改请求体，只在 cache_policy_trace 写入 shadow:would_inject_5m_safe
+	SettingKeyRewriteMessageCacheControlMode = "rewrite_message_cache_control_mode"
 	// SettingKeyAntigravityUserAgentVersion Antigravity 上游 User-Agent 版本号（空值使用环境变量/默认值）
 	SettingKeyAntigravityUserAgentVersion = "antigravity_user_agent_version"
 	// SettingKeyOpenAICodexUserAgent OpenAI Codex 完整 User-Agent（空值使用内置默认）

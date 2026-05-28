@@ -166,6 +166,10 @@ func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		ops.GET("/advanced-settings", h.Admin.Ops.GetAdvancedSettings)
 		ops.PUT("/advanced-settings", h.Admin.Ops.UpdateAdvancedSettings)
 
+		// Performance settings (DB-backed, connection prewarm / DNS cache / dialer / SSE flush)
+		ops.GET("/performance-settings", h.Admin.Ops.GetPerformanceSettings)
+		ops.PUT("/performance-settings", h.Admin.Ops.UpdatePerformanceSettings)
+
 		// Settings group (DB-backed)
 		settings := ops.Group("/settings")
 		{
