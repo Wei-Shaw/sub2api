@@ -408,7 +408,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// 2. Re-check billing eligibility after wait
 	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
 		reqLog.Info("openai.billing_eligibility_check_failed", zap.Error(err))
-		if !streamStarted && respondBillingAsAssistantMessage(c, err, "openai") {
+		if !streamStarted && respondBillingAsAssistantMessage(c, err, billingProtocolOpenAIResponses, reqStream) {
 			return
 		}
 		status, code, message, retryAfter := billingErrorDetails(err)
@@ -975,7 +975,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 
 	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
 		reqLog.Info("openai_messages.billing_eligibility_check_failed", zap.Error(err))
-		if !streamStarted && respondBillingAsAssistantMessage(c, err, "anthropic") {
+		if !streamStarted && respondBillingAsAssistantMessage(c, err, billingProtocolAnthropic, reqStream) {
 			return
 		}
 		status, code, message, retryAfter := billingErrorDetails(err)
@@ -1664,7 +1664,12 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	}
 	if err := h.billingCacheService.CheckBillingEligibility(ctx, apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
 		reqLog.Info("openai.websocket_billing_eligibility_check_failed", zap.Error(err))
-		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "billing check failed")
+		writeOpenAIWSBillingError(ctx, wsConn, err)
+		_, code, _, _ := billingErrorDetails(err)
+		if code == "" {
+			code = "billing_error"
+		}
+		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "billing check failed: "+code)
 		return
 	}
 
@@ -2678,6 +2683,18 @@ func closeOpenAIWSFailoverExhausted(conn *coderws.Conn, failoverErr *service.Ups
 	default:
 		closeOpenAIClientWS(conn, coderws.StatusInternalError, "upstream websocket proxy failed")
 	}
+}
+
+func writeOpenAIWSBillingError(ctx context.Context, conn *coderws.Conn, err error) {
+	if conn == nil {
+		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	writeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	_ = conn.Write(writeCtx, coderws.MessageText, openAIWSBillingErrorPayload(err))
 }
 
 func writeContentModerationWSError(ctx context.Context, conn *coderws.Conn, decision *service.ContentModerationDecision) {

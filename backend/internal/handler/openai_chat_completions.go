@@ -131,7 +131,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 
 	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
 		reqLog.Info("openai_chat_completions.billing_eligibility_check_failed", zap.Error(err))
-		if !streamStarted && respondBillingAsAssistantMessage(c, err, "openai") {
+		if !streamStarted && respondBillingAsAssistantMessage(c, err, billingProtocolOpenAIChat, reqStream) {
 			return
 		}
 		status, code, message, retryAfter := billingErrorDetails(err)

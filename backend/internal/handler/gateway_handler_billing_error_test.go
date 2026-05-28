@@ -158,7 +158,7 @@ func TestRespondBillingAsAssistantMessageIncludesStructuredAutoSwitchMetadata(t 
 	rec := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(rec)
 
-	require.True(t, respondBillingAsAssistantMessage(ctx, service.ErrDailyLimitExceeded, "anthropic"))
+	require.True(t, respondBillingAsAssistantMessage(ctx, service.ErrDailyLimitExceeded, billingProtocolAnthropic, false))
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "subscription_limit_exceeded", rec.Header().Get("X-Sub2API-Billing-Code"))
 	require.Equal(t, "true", rec.Header().Get("X-Sub2API-Auto-Switchable"))
@@ -177,7 +177,7 @@ func TestRespondBillingAsAssistantMessageMarksInsufficientBalanceAsNotSwitchable
 	rec := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(rec)
 
-	require.True(t, respondBillingAsAssistantMessage(ctx, service.ErrInsufficientBalance, "openai"))
+	require.True(t, respondBillingAsAssistantMessage(ctx, service.ErrInsufficientBalance, billingProtocolOpenAIChat, false))
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "insufficient_balance", rec.Header().Get("X-Sub2API-Billing-Code"))
 	require.Equal(t, "false", rec.Header().Get("X-Sub2API-Auto-Switchable"))
@@ -188,4 +188,242 @@ func TestRespondBillingAsAssistantMessageMarksInsufficientBalanceAsNotSwitchable
 	require.True(t, ok)
 	require.Equal(t, "insufficient_balance", metadata["billing_code"])
 	require.Equal(t, false, metadata["auto_switchable"])
+}
+
+func TestRespondBillingAsAssistantMessageIncludesCodeInAssistantText(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+
+	require.True(t, respondBillingAsAssistantMessage(ctx, service.ErrAPIKeyRateLimit1dExceeded, billingProtocolOpenAIChat, false))
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "rate_limit_exceeded", rec.Header().Get("X-Sub2API-Billing-Code"))
+
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	choices, ok := body["choices"].([]any)
+	require.True(t, ok)
+	require.Len(t, choices, 1)
+	choice, ok := choices[0].(map[string]any)
+	require.True(t, ok)
+	message, ok := choice["message"].(map[string]any)
+	require.True(t, ok)
+	content, ok := message["content"].(string)
+	require.True(t, ok)
+	require.Contains(t, content, "Current API key has reached its daily usage limit")
+	require.Contains(t, content, "Code: rate_limit_exceeded")
+}
+
+func TestRespondBillingAsAssistantMessageUsesResponsesFormat(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+
+	require.True(t, respondBillingAsAssistantMessage(ctx, service.ErrDailyLimitExceeded, billingProtocolOpenAIResponses, false))
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "subscription_limit_exceeded", rec.Header().Get("X-Sub2API-Billing-Code"))
+
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Equal(t, "response", body["object"])
+	require.Equal(t, "completed", body["status"])
+	output, ok := body["output"].([]any)
+	require.True(t, ok)
+	require.Len(t, output, 1)
+	message, ok := output[0].(map[string]any)
+	require.True(t, ok)
+	content, ok := message["content"].([]any)
+	require.True(t, ok)
+	require.Len(t, content, 1)
+	part, ok := content[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "output_text", part["type"])
+	require.Contains(t, part["text"], "Code: subscription_limit_exceeded")
+}
+
+func TestRespondBillingAsAssistantMessageUsesStreamingChatProtocol(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+
+	require.True(t, respondBillingAsAssistantMessage(ctx, service.ErrUserRPMExceeded, billingProtocolOpenAIChat, true))
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "text/event-stream", rec.Header().Get("Content-Type"))
+	require.Equal(t, "rate_limit_exceeded", rec.Header().Get("X-Sub2API-Billing-Code"))
+	require.NotEmpty(t, rec.Header().Get("Retry-After"))
+	body := rec.Body.String()
+	require.Contains(t, body, "chat.completion.chunk")
+	require.Contains(t, body, "Code: rate_limit_exceeded")
+	require.Contains(t, body, "data: [DONE]")
+}
+
+func TestRespondBillingAsAssistantMessageUsesStreamingResponsesProtocol(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+
+	require.True(t, respondBillingAsAssistantMessage(ctx, service.ErrDailyLimitExceeded, billingProtocolOpenAIResponses, true))
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "text/event-stream", rec.Header().Get("Content-Type"))
+	body := rec.Body.String()
+	require.Contains(t, body, "event: response.output_text.delta")
+	require.Contains(t, body, "Code: subscription_limit_exceeded")
+	require.Contains(t, body, "event: response.completed")
+}
+
+func TestRespondBillingAsAssistantMessageUsesGeminiGenerateContentFormat(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+
+	require.True(t, respondBillingAsAssistantMessage(ctx, service.ErrInsufficientBalance, billingProtocolGemini, false))
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "insufficient_balance", rec.Header().Get("X-Sub2API-Billing-Code"))
+
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	candidates, ok := body["candidates"].([]any)
+	require.True(t, ok)
+	require.Len(t, candidates, 1)
+	candidate, ok := candidates[0].(map[string]any)
+	require.True(t, ok)
+	content, ok := candidate["content"].(map[string]any)
+	require.True(t, ok)
+	parts, ok := content["parts"].([]any)
+	require.True(t, ok)
+	require.Len(t, parts, 1)
+	part, ok := parts[0].(map[string]any)
+	require.True(t, ok)
+	text, ok := part["text"].(string)
+	require.True(t, ok)
+	require.Contains(t, text, "Code: insufficient_balance")
+	metadata, ok := body["metadata"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "insufficient_balance", metadata["billing_code"])
+}
+
+func TestRespondBillingAsAssistantMessageUsesGeminiStreamingFormat(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+
+	require.True(t, respondBillingAsAssistantMessage(ctx, service.ErrDailyLimitExceeded, billingProtocolGemini, true))
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "text/event-stream", rec.Header().Get("Content-Type"))
+	body := rec.Body.String()
+	require.Contains(t, body, "data: {")
+	require.Contains(t, body, `"candidates"`)
+	require.Contains(t, body, "Code: subscription_limit_exceeded")
+	require.Contains(t, body, `"finishReason":"STOP"`)
+}
+
+func TestRespondBillingAsAssistantMessageUsesGeminiErrorFormatForCountTokens(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+
+	require.True(t, respondBillingAsAssistantMessage(ctx, service.ErrInsufficientBalance, billingProtocolGeminiError, false))
+	require.Equal(t, http.StatusForbidden, rec.Code)
+	require.Equal(t, "insufficient_balance", rec.Header().Get("X-Sub2API-Billing-Code"))
+
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	errorBody, ok := body["error"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, float64(http.StatusForbidden), errorBody["code"])
+	require.Equal(t, "PERMISSION_DENIED", errorBody["status"])
+	message, ok := errorBody["message"].(string)
+	require.True(t, ok)
+	require.Contains(t, message, "Code: insufficient_balance")
+	metadata, ok := body["metadata"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "insufficient_balance", metadata["billing_code"])
+}
+
+func TestRespondBillingAsAssistantMessageUsesOpenAIImagesErrorFormat(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+
+	require.True(t, respondBillingAsAssistantMessage(ctx, service.ErrInsufficientBalance, billingProtocolOpenAIImages, false))
+	require.Equal(t, http.StatusForbidden, rec.Code)
+	require.Equal(t, "insufficient_balance", rec.Header().Get("X-Sub2API-Billing-Code"))
+
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	errorBody, ok := body["error"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "insufficient_balance", errorBody["code"])
+	message, ok := errorBody["message"].(string)
+	require.True(t, ok)
+	require.Contains(t, message, "Code: insufficient_balance")
+	metadata, ok := body["metadata"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "insufficient_balance", metadata["billing_code"])
+}
+
+func TestRespondBillingAsAssistantMessageUsesOpenAIImagesStreamingErrorFormat(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+
+	require.True(t, respondBillingAsAssistantMessage(ctx, service.ErrUserRPMExceeded, billingProtocolOpenAIImages, true))
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "text/event-stream", rec.Header().Get("Content-Type"))
+	require.Equal(t, "rate_limit_exceeded", rec.Header().Get("X-Sub2API-Billing-Code"))
+	require.NotEmpty(t, rec.Header().Get("Retry-After"))
+	body := rec.Body.String()
+	require.Contains(t, body, "event: error")
+	require.Contains(t, body, `"type":"error"`)
+	require.Contains(t, body, "Code: rate_limit_exceeded")
+}
+
+func TestRespondBillingAsAssistantMessageUsesAnthropicErrorFormatForCountTokens(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+
+	require.True(t, respondBillingAsAssistantMessage(ctx, service.ErrInsufficientBalance, billingProtocolAnthropicError, false))
+	require.Equal(t, http.StatusForbidden, rec.Code)
+	require.Equal(t, "insufficient_balance", rec.Header().Get("X-Sub2API-Billing-Code"))
+
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Equal(t, "error", body["type"])
+	errorBody, ok := body["error"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "insufficient_balance", errorBody["type"])
+	message, ok := errorBody["message"].(string)
+	require.True(t, ok)
+	require.Contains(t, message, "Code: insufficient_balance")
+	metadata, ok := body["metadata"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "insufficient_balance", metadata["billing_code"])
+}
+
+func TestOpenAIWSBillingErrorPayloadIncludesDebuggableBillingDetails(t *testing.T) {
+	payload := openAIWSBillingErrorPayload(service.ErrInsufficientBalance)
+
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(payload, &body))
+	require.Equal(t, "error", body["type"])
+	errorBody, ok := body["error"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "insufficient_balance", errorBody["code"])
+	message, ok := errorBody["message"].(string)
+	require.True(t, ok)
+	require.Contains(t, message, "Code: insufficient_balance")
+	metadata, ok := body["metadata"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "insufficient_balance", metadata["billing_code"])
 }
