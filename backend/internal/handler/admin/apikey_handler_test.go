@@ -16,15 +16,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type createAPIKeyService interface {
-	Create(context.Context, int64, service.CreateAPIKeyRequest) (*service.APIKey, error)
-}
-
 func setupAPIKeyHandler(adminSvc service.AdminService) *gin.Engine {
 	return setupAPIKeyHandlerWithCreate(adminSvc, nil)
 }
 
-func setupAPIKeyHandlerWithCreate(adminSvc service.AdminService, apiKeyService createAPIKeyService) *gin.Engine {
+func setupAPIKeyHandlerWithCreate(adminSvc service.AdminService, apiKeyService userAPIKeyCreator) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	h := NewAdminAPIKeyHandler(adminSvc, apiKeyService)
