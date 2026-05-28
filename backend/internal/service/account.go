@@ -52,6 +52,13 @@ type Account struct {
 	SessionWindowEnd    *time.Time
 	SessionWindowStatus string
 
+	HealthCheckEnabled    bool
+	HealthCheckProtected  bool
+	HealthCheckFailStreak int
+	LastHealthCheckAt     *time.Time
+	LastHealthCheckStatus *string
+	LastHealthCheckError  *string
+
 	Proxy         *Proxy
 	AccountGroups []AccountGroup
 	GroupIDs      []int64

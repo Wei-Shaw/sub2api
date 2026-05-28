@@ -188,6 +188,13 @@ type Account struct {
 	SessionWindowEnd    *time.Time `json:"session_window_end"`
 	SessionWindowStatus string     `json:"session_window_status"`
 
+	HealthCheckEnabled   bool       `json:"health_check_enabled"`
+	HealthCheckProtected bool       `json:"health_check_protected"`
+	HealthCheckFailStreak int        `json:"health_check_fail_streak"`
+	LastHealthCheckAt    *time.Time `json:"last_health_check_at"`
+	LastHealthCheckStatus *string    `json:"last_health_check_status"`
+	LastHealthCheckError  *string    `json:"last_health_check_error"`
+
 	// 5h窗口费用控制（仅 Anthropic OAuth/SetupToken 账号有效）
 	// 从 extra 字段提取，方便前端显示和编辑
 	WindowCostLimit         *float64 `json:"window_cost_limit,omitempty"`

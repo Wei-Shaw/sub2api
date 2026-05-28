@@ -2274,52 +2274,59 @@ func (m *APIKeyMutation) ResetEdge(name string) error {
 // AccountMutation represents an operation that mutates the Account nodes in the graph.
 type AccountMutation struct {
 	config
-	op                        Op
-	typ                       string
-	id                        *int64
-	created_at                *time.Time
-	updated_at                *time.Time
-	deleted_at                *time.Time
-	name                      *string
-	notes                     *string
-	platform                  *string
-	_type                     *string
-	credentials               *map[string]interface{}
-	extra                     *map[string]interface{}
-	concurrency               *int
-	addconcurrency            *int
-	load_factor               *int
-	addload_factor            *int
-	priority                  *int
-	addpriority               *int
-	rate_multiplier           *float64
-	addrate_multiplier        *float64
-	status                    *string
-	error_message             *string
-	last_used_at              *time.Time
-	expires_at                *time.Time
-	auto_pause_on_expired     *bool
-	schedulable               *bool
-	rate_limited_at           *time.Time
-	rate_limit_reset_at       *time.Time
-	overload_until            *time.Time
-	temp_unschedulable_until  *time.Time
-	temp_unschedulable_reason *string
-	session_window_start      *time.Time
-	session_window_end        *time.Time
-	session_window_status     *string
-	clearedFields             map[string]struct{}
-	groups                    map[int64]struct{}
-	removedgroups             map[int64]struct{}
-	clearedgroups             bool
-	proxy                     *int64
-	clearedproxy              bool
-	usage_logs                map[int64]struct{}
-	removedusage_logs         map[int64]struct{}
-	clearedusage_logs         bool
-	done                      bool
-	oldValue                  func(context.Context) (*Account, error)
-	predicates                []predicate.Account
+	op                          Op
+	typ                         string
+	id                          *int64
+	created_at                  *time.Time
+	updated_at                  *time.Time
+	deleted_at                  *time.Time
+	name                        *string
+	notes                       *string
+	platform                    *string
+	_type                       *string
+	credentials                 *map[string]interface{}
+	extra                       *map[string]interface{}
+	concurrency                 *int
+	addconcurrency              *int
+	load_factor                 *int
+	addload_factor              *int
+	priority                    *int
+	addpriority                 *int
+	rate_multiplier             *float64
+	addrate_multiplier          *float64
+	status                      *string
+	error_message               *string
+	last_used_at                *time.Time
+	expires_at                  *time.Time
+	auto_pause_on_expired       *bool
+	schedulable                 *bool
+	rate_limited_at             *time.Time
+	rate_limit_reset_at         *time.Time
+	overload_until              *time.Time
+	temp_unschedulable_until    *time.Time
+	temp_unschedulable_reason   *string
+	session_window_start        *time.Time
+	session_window_end          *time.Time
+	session_window_status       *string
+	health_check_enabled        *bool
+	health_check_protected      *bool
+	health_check_fail_streak    *int
+	addhealth_check_fail_streak *int
+	last_health_check_at        *time.Time
+	last_health_check_status    *string
+	last_health_check_error     *string
+	clearedFields               map[string]struct{}
+	groups                      map[int64]struct{}
+	removedgroups               map[int64]struct{}
+	clearedgroups               bool
+	proxy                       *int64
+	clearedproxy                bool
+	usage_logs                  map[int64]struct{}
+	removedusage_logs           map[int64]struct{}
+	clearedusage_logs           bool
+	done                        bool
+	oldValue                    func(context.Context) (*Account, error)
+	predicates                  []predicate.Account
 }
 
 var _ ent.Mutation = (*AccountMutation)(nil)
@@ -3704,6 +3711,281 @@ func (m *AccountMutation) ResetSessionWindowStatus() {
 	delete(m.clearedFields, account.FieldSessionWindowStatus)
 }
 
+// SetHealthCheckEnabled sets the "health_check_enabled" field.
+func (m *AccountMutation) SetHealthCheckEnabled(b bool) {
+	m.health_check_enabled = &b
+}
+
+// HealthCheckEnabled returns the value of the "health_check_enabled" field in the mutation.
+func (m *AccountMutation) HealthCheckEnabled() (r bool, exists bool) {
+	v := m.health_check_enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHealthCheckEnabled returns the old "health_check_enabled" field's value of the Account entity.
+// If the Account object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountMutation) OldHealthCheckEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHealthCheckEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHealthCheckEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHealthCheckEnabled: %w", err)
+	}
+	return oldValue.HealthCheckEnabled, nil
+}
+
+// ResetHealthCheckEnabled resets all changes to the "health_check_enabled" field.
+func (m *AccountMutation) ResetHealthCheckEnabled() {
+	m.health_check_enabled = nil
+}
+
+// SetHealthCheckProtected sets the "health_check_protected" field.
+func (m *AccountMutation) SetHealthCheckProtected(b bool) {
+	m.health_check_protected = &b
+}
+
+// HealthCheckProtected returns the value of the "health_check_protected" field in the mutation.
+func (m *AccountMutation) HealthCheckProtected() (r bool, exists bool) {
+	v := m.health_check_protected
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHealthCheckProtected returns the old "health_check_protected" field's value of the Account entity.
+// If the Account object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountMutation) OldHealthCheckProtected(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHealthCheckProtected is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHealthCheckProtected requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHealthCheckProtected: %w", err)
+	}
+	return oldValue.HealthCheckProtected, nil
+}
+
+// ResetHealthCheckProtected resets all changes to the "health_check_protected" field.
+func (m *AccountMutation) ResetHealthCheckProtected() {
+	m.health_check_protected = nil
+}
+
+// SetHealthCheckFailStreak sets the "health_check_fail_streak" field.
+func (m *AccountMutation) SetHealthCheckFailStreak(i int) {
+	m.health_check_fail_streak = &i
+	m.addhealth_check_fail_streak = nil
+}
+
+// HealthCheckFailStreak returns the value of the "health_check_fail_streak" field in the mutation.
+func (m *AccountMutation) HealthCheckFailStreak() (r int, exists bool) {
+	v := m.health_check_fail_streak
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHealthCheckFailStreak returns the old "health_check_fail_streak" field's value of the Account entity.
+// If the Account object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountMutation) OldHealthCheckFailStreak(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHealthCheckFailStreak is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHealthCheckFailStreak requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHealthCheckFailStreak: %w", err)
+	}
+	return oldValue.HealthCheckFailStreak, nil
+}
+
+// AddHealthCheckFailStreak adds i to the "health_check_fail_streak" field.
+func (m *AccountMutation) AddHealthCheckFailStreak(i int) {
+	if m.addhealth_check_fail_streak != nil {
+		*m.addhealth_check_fail_streak += i
+	} else {
+		m.addhealth_check_fail_streak = &i
+	}
+}
+
+// AddedHealthCheckFailStreak returns the value that was added to the "health_check_fail_streak" field in this mutation.
+func (m *AccountMutation) AddedHealthCheckFailStreak() (r int, exists bool) {
+	v := m.addhealth_check_fail_streak
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetHealthCheckFailStreak resets all changes to the "health_check_fail_streak" field.
+func (m *AccountMutation) ResetHealthCheckFailStreak() {
+	m.health_check_fail_streak = nil
+	m.addhealth_check_fail_streak = nil
+}
+
+// SetLastHealthCheckAt sets the "last_health_check_at" field.
+func (m *AccountMutation) SetLastHealthCheckAt(t time.Time) {
+	m.last_health_check_at = &t
+}
+
+// LastHealthCheckAt returns the value of the "last_health_check_at" field in the mutation.
+func (m *AccountMutation) LastHealthCheckAt() (r time.Time, exists bool) {
+	v := m.last_health_check_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastHealthCheckAt returns the old "last_health_check_at" field's value of the Account entity.
+// If the Account object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountMutation) OldLastHealthCheckAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastHealthCheckAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastHealthCheckAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastHealthCheckAt: %w", err)
+	}
+	return oldValue.LastHealthCheckAt, nil
+}
+
+// ClearLastHealthCheckAt clears the value of the "last_health_check_at" field.
+func (m *AccountMutation) ClearLastHealthCheckAt() {
+	m.last_health_check_at = nil
+	m.clearedFields[account.FieldLastHealthCheckAt] = struct{}{}
+}
+
+// LastHealthCheckAtCleared returns if the "last_health_check_at" field was cleared in this mutation.
+func (m *AccountMutation) LastHealthCheckAtCleared() bool {
+	_, ok := m.clearedFields[account.FieldLastHealthCheckAt]
+	return ok
+}
+
+// ResetLastHealthCheckAt resets all changes to the "last_health_check_at" field.
+func (m *AccountMutation) ResetLastHealthCheckAt() {
+	m.last_health_check_at = nil
+	delete(m.clearedFields, account.FieldLastHealthCheckAt)
+}
+
+// SetLastHealthCheckStatus sets the "last_health_check_status" field.
+func (m *AccountMutation) SetLastHealthCheckStatus(s string) {
+	m.last_health_check_status = &s
+}
+
+// LastHealthCheckStatus returns the value of the "last_health_check_status" field in the mutation.
+func (m *AccountMutation) LastHealthCheckStatus() (r string, exists bool) {
+	v := m.last_health_check_status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastHealthCheckStatus returns the old "last_health_check_status" field's value of the Account entity.
+// If the Account object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountMutation) OldLastHealthCheckStatus(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastHealthCheckStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastHealthCheckStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastHealthCheckStatus: %w", err)
+	}
+	return oldValue.LastHealthCheckStatus, nil
+}
+
+// ClearLastHealthCheckStatus clears the value of the "last_health_check_status" field.
+func (m *AccountMutation) ClearLastHealthCheckStatus() {
+	m.last_health_check_status = nil
+	m.clearedFields[account.FieldLastHealthCheckStatus] = struct{}{}
+}
+
+// LastHealthCheckStatusCleared returns if the "last_health_check_status" field was cleared in this mutation.
+func (m *AccountMutation) LastHealthCheckStatusCleared() bool {
+	_, ok := m.clearedFields[account.FieldLastHealthCheckStatus]
+	return ok
+}
+
+// ResetLastHealthCheckStatus resets all changes to the "last_health_check_status" field.
+func (m *AccountMutation) ResetLastHealthCheckStatus() {
+	m.last_health_check_status = nil
+	delete(m.clearedFields, account.FieldLastHealthCheckStatus)
+}
+
+// SetLastHealthCheckError sets the "last_health_check_error" field.
+func (m *AccountMutation) SetLastHealthCheckError(s string) {
+	m.last_health_check_error = &s
+}
+
+// LastHealthCheckError returns the value of the "last_health_check_error" field in the mutation.
+func (m *AccountMutation) LastHealthCheckError() (r string, exists bool) {
+	v := m.last_health_check_error
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastHealthCheckError returns the old "last_health_check_error" field's value of the Account entity.
+// If the Account object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountMutation) OldLastHealthCheckError(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastHealthCheckError is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastHealthCheckError requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastHealthCheckError: %w", err)
+	}
+	return oldValue.LastHealthCheckError, nil
+}
+
+// ClearLastHealthCheckError clears the value of the "last_health_check_error" field.
+func (m *AccountMutation) ClearLastHealthCheckError() {
+	m.last_health_check_error = nil
+	m.clearedFields[account.FieldLastHealthCheckError] = struct{}{}
+}
+
+// LastHealthCheckErrorCleared returns if the "last_health_check_error" field was cleared in this mutation.
+func (m *AccountMutation) LastHealthCheckErrorCleared() bool {
+	_, ok := m.clearedFields[account.FieldLastHealthCheckError]
+	return ok
+}
+
+// ResetLastHealthCheckError resets all changes to the "last_health_check_error" field.
+func (m *AccountMutation) ResetLastHealthCheckError() {
+	m.last_health_check_error = nil
+	delete(m.clearedFields, account.FieldLastHealthCheckError)
+}
+
 // AddGroupIDs adds the "groups" edge to the Group entity by ids.
 func (m *AccountMutation) AddGroupIDs(ids ...int64) {
 	if m.groups == nil {
@@ -3873,7 +4155,7 @@ func (m *AccountMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AccountMutation) Fields() []string {
-	fields := make([]string, 0, 28)
+	fields := make([]string, 0, 34)
 	if m.created_at != nil {
 		fields = append(fields, account.FieldCreatedAt)
 	}
@@ -3958,6 +4240,24 @@ func (m *AccountMutation) Fields() []string {
 	if m.session_window_status != nil {
 		fields = append(fields, account.FieldSessionWindowStatus)
 	}
+	if m.health_check_enabled != nil {
+		fields = append(fields, account.FieldHealthCheckEnabled)
+	}
+	if m.health_check_protected != nil {
+		fields = append(fields, account.FieldHealthCheckProtected)
+	}
+	if m.health_check_fail_streak != nil {
+		fields = append(fields, account.FieldHealthCheckFailStreak)
+	}
+	if m.last_health_check_at != nil {
+		fields = append(fields, account.FieldLastHealthCheckAt)
+	}
+	if m.last_health_check_status != nil {
+		fields = append(fields, account.FieldLastHealthCheckStatus)
+	}
+	if m.last_health_check_error != nil {
+		fields = append(fields, account.FieldLastHealthCheckError)
+	}
 	return fields
 }
 
@@ -4022,6 +4322,18 @@ func (m *AccountMutation) Field(name string) (ent.Value, bool) {
 		return m.SessionWindowEnd()
 	case account.FieldSessionWindowStatus:
 		return m.SessionWindowStatus()
+	case account.FieldHealthCheckEnabled:
+		return m.HealthCheckEnabled()
+	case account.FieldHealthCheckProtected:
+		return m.HealthCheckProtected()
+	case account.FieldHealthCheckFailStreak:
+		return m.HealthCheckFailStreak()
+	case account.FieldLastHealthCheckAt:
+		return m.LastHealthCheckAt()
+	case account.FieldLastHealthCheckStatus:
+		return m.LastHealthCheckStatus()
+	case account.FieldLastHealthCheckError:
+		return m.LastHealthCheckError()
 	}
 	return nil, false
 }
@@ -4087,6 +4399,18 @@ func (m *AccountMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldSessionWindowEnd(ctx)
 	case account.FieldSessionWindowStatus:
 		return m.OldSessionWindowStatus(ctx)
+	case account.FieldHealthCheckEnabled:
+		return m.OldHealthCheckEnabled(ctx)
+	case account.FieldHealthCheckProtected:
+		return m.OldHealthCheckProtected(ctx)
+	case account.FieldHealthCheckFailStreak:
+		return m.OldHealthCheckFailStreak(ctx)
+	case account.FieldLastHealthCheckAt:
+		return m.OldLastHealthCheckAt(ctx)
+	case account.FieldLastHealthCheckStatus:
+		return m.OldLastHealthCheckStatus(ctx)
+	case account.FieldLastHealthCheckError:
+		return m.OldLastHealthCheckError(ctx)
 	}
 	return nil, fmt.Errorf("unknown Account field %s", name)
 }
@@ -4292,6 +4616,48 @@ func (m *AccountMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetSessionWindowStatus(v)
 		return nil
+	case account.FieldHealthCheckEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHealthCheckEnabled(v)
+		return nil
+	case account.FieldHealthCheckProtected:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHealthCheckProtected(v)
+		return nil
+	case account.FieldHealthCheckFailStreak:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHealthCheckFailStreak(v)
+		return nil
+	case account.FieldLastHealthCheckAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastHealthCheckAt(v)
+		return nil
+	case account.FieldLastHealthCheckStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastHealthCheckStatus(v)
+		return nil
+	case account.FieldLastHealthCheckError:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastHealthCheckError(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Account field %s", name)
 }
@@ -4312,6 +4678,9 @@ func (m *AccountMutation) AddedFields() []string {
 	if m.addrate_multiplier != nil {
 		fields = append(fields, account.FieldRateMultiplier)
 	}
+	if m.addhealth_check_fail_streak != nil {
+		fields = append(fields, account.FieldHealthCheckFailStreak)
+	}
 	return fields
 }
 
@@ -4328,6 +4697,8 @@ func (m *AccountMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedPriority()
 	case account.FieldRateMultiplier:
 		return m.AddedRateMultiplier()
+	case account.FieldHealthCheckFailStreak:
+		return m.AddedHealthCheckFailStreak()
 	}
 	return nil, false
 }
@@ -4364,6 +4735,13 @@ func (m *AccountMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddRateMultiplier(v)
+		return nil
+	case account.FieldHealthCheckFailStreak:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddHealthCheckFailStreak(v)
 		return nil
 	}
 	return fmt.Errorf("unknown Account numeric field %s", name)
@@ -4417,6 +4795,15 @@ func (m *AccountMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(account.FieldSessionWindowStatus) {
 		fields = append(fields, account.FieldSessionWindowStatus)
+	}
+	if m.FieldCleared(account.FieldLastHealthCheckAt) {
+		fields = append(fields, account.FieldLastHealthCheckAt)
+	}
+	if m.FieldCleared(account.FieldLastHealthCheckStatus) {
+		fields = append(fields, account.FieldLastHealthCheckStatus)
+	}
+	if m.FieldCleared(account.FieldLastHealthCheckError) {
+		fields = append(fields, account.FieldLastHealthCheckError)
 	}
 	return fields
 }
@@ -4476,6 +4863,15 @@ func (m *AccountMutation) ClearField(name string) error {
 		return nil
 	case account.FieldSessionWindowStatus:
 		m.ClearSessionWindowStatus()
+		return nil
+	case account.FieldLastHealthCheckAt:
+		m.ClearLastHealthCheckAt()
+		return nil
+	case account.FieldLastHealthCheckStatus:
+		m.ClearLastHealthCheckStatus()
+		return nil
+	case account.FieldLastHealthCheckError:
+		m.ClearLastHealthCheckError()
 		return nil
 	}
 	return fmt.Errorf("unknown Account nullable field %s", name)
@@ -4568,6 +4964,24 @@ func (m *AccountMutation) ResetField(name string) error {
 		return nil
 	case account.FieldSessionWindowStatus:
 		m.ResetSessionWindowStatus()
+		return nil
+	case account.FieldHealthCheckEnabled:
+		m.ResetHealthCheckEnabled()
+		return nil
+	case account.FieldHealthCheckProtected:
+		m.ResetHealthCheckProtected()
+		return nil
+	case account.FieldHealthCheckFailStreak:
+		m.ResetHealthCheckFailStreak()
+		return nil
+	case account.FieldLastHealthCheckAt:
+		m.ResetLastHealthCheckAt()
+		return nil
+	case account.FieldLastHealthCheckStatus:
+		m.ResetLastHealthCheckStatus()
+		return nil
+	case account.FieldLastHealthCheckError:
+		m.ResetLastHealthCheckError()
 		return nil
 	}
 	return fmt.Errorf("unknown Account field %s", name)

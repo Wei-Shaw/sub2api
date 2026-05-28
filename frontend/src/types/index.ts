@@ -857,6 +857,13 @@ export interface Account {
   session_window_end: string | null
   session_window_status: 'allowed' | 'allowed_warning' | 'rejected' | null
 
+  health_check_enabled: boolean
+  health_check_protected: boolean
+  health_check_fail_streak: number
+  last_health_check_at: string | null
+  last_health_check_status: string | null
+  last_health_check_error: string | null
+
   // 5h窗口费用控制（仅 Anthropic OAuth/SetupToken 账号有效）
   window_cost_limit?: number | null
   window_cost_sticky_reserve?: number | null
@@ -909,6 +916,58 @@ export interface Account {
   current_window_cost?: number | null // 当前窗口费用
   active_sessions?: number | null // 当前活跃会话数
   current_rpm?: number | null // 当前分钟 RPM 计数
+}
+
+export interface AccountBatchTestTask {
+  id: number
+  source: 'manual' | 'scheduled' | string
+  status: 'pending' | 'running' | 'completed' | 'failed' | string
+  model_id: string
+  concurrency: number
+  auto_disable: boolean
+  total_count: number
+  completed_count: number
+  success_count: number
+  failed_count: number
+  deactivated_count: number
+  error_message: string
+  started_at: string | null
+  finished_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface AccountBatchTestResult {
+  id: number
+  task_id: number
+  account_id: number | null
+  account_name: string
+  platform: string
+  account_type: string
+  status: 'success' | 'failed' | 'skipped' | string
+  response_text: string
+  error_message: string
+  latency_ms: number
+  fail_streak: number
+  triggered_disabled: boolean
+  started_at: string
+  finished_at: string
+  created_at: string
+}
+
+export interface AccountBatchTestListResponse {
+  items: AccountBatchTestTask[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface AccountBatchTestDetailResponse {
+  task: AccountBatchTestTask
+  results: AccountBatchTestResult[]
+  results_total: number
+  limit: number
+  offset: number
 }
 
 // Account Usage types

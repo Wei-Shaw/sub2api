@@ -36,6 +36,19 @@ const (
 	chatgptCodexAPIURL = "https://chatgpt.com/backend-api/codex/responses"
 )
 
+type accountTestContextKey string
+
+const accountTestObserveOnlyKey accountTestContextKey = "account_test_observe_only"
+
+func WithAccountTestObserveOnly(ctx context.Context) context.Context {
+	return context.WithValue(ctx, accountTestObserveOnlyKey, true)
+}
+
+func accountTestObserveOnly(ctx context.Context) bool {
+	value, _ := ctx.Value(accountTestObserveOnlyKey).(bool)
+	return value
+}
+
 // TestEvent represents a SSE event for account testing
 type TestEvent struct {
 	Type     string `json:"type"`
@@ -309,7 +322,7 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 		errMsg := fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body))
 
 		// 403 表示账号被上游封禁，标记为 error 状态
-		if resp.StatusCode == http.StatusForbidden {
+		if resp.StatusCode == http.StatusForbidden && !accountTestObserveOnly(ctx) {
 			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
 		}
 
@@ -379,7 +392,7 @@ func (s *AccountTestService) testClaudeVertexServiceAccountConnection(c *gin.Con
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		errMsg := fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body))
-		if resp.StatusCode == http.StatusForbidden {
+		if resp.StatusCode == http.StatusForbidden && !accountTestObserveOnly(ctx) {
 			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
 		}
 		return s.sendErrorAndEnd(c, errMsg)
@@ -607,7 +620,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	if isOAuth && s.accountRepo != nil {
+	if isOAuth && s.accountRepo != nil && !accountTestObserveOnly(ctx) {
 		if updates, err := extractOpenAICodexProbeUpdates(resp); err == nil && len(updates) > 0 {
 			_ = s.accountRepo.UpdateExtra(ctx, account.ID, updates)
 			mergeAccountExtra(account, updates)
@@ -616,11 +629,11 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		if resp.StatusCode == http.StatusTooManyRequests {
+		if resp.StatusCode == http.StatusTooManyRequests && !accountTestObserveOnly(ctx) {
 			s.reconcileOpenAI429State(ctx, account, resp.Header, body)
 		}
 		// 401 Unauthorized: 标记账号为永久错误
-		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
+		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil && !accountTestObserveOnly(ctx) {
 			errMsg := fmt.Sprintf("Authentication failed (401): %s", string(body))
 			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
 		}
@@ -768,7 +781,7 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 
 	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
 	if err != nil {
-		if s.accountRepo != nil {
+		if s.accountRepo != nil && !accountTestObserveOnly(ctx) {
 			updates := buildOpenAICompactProbeExtraUpdates(nil, nil, err, time.Now())
 			_ = s.accountRepo.UpdateExtra(ctx, account.ID, updates)
 			mergeAccountExtra(account, updates)
@@ -779,7 +792,7 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 
-	if s.accountRepo != nil {
+	if s.accountRepo != nil && !accountTestObserveOnly(ctx) {
 		updates := buildOpenAICompactProbeExtraUpdates(resp, body, nil, time.Now())
 		if codexUpdates, err := extractOpenAICodexProbeUpdates(resp); err == nil && len(codexUpdates) > 0 {
 			updates = mergeExtraUpdates(updates, codexUpdates)
@@ -789,13 +802,13 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 			mergeAccountExtra(account, updates)
 		}
 		// 探测如返回 429,主动同步限流状态,避免后续短时间内继续选中。
-		if resp.StatusCode == http.StatusTooManyRequests {
+		if resp.StatusCode == http.StatusTooManyRequests && !accountTestObserveOnly(ctx) {
 			s.reconcileOpenAI429State(ctx, account, resp.Header, body)
 		}
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
+		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil && !accountTestObserveOnly(ctx) {
 			errMsg := fmt.Sprintf("Authentication failed (401): %s", string(body))
 			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
 		}
@@ -809,6 +822,9 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 
 func (s *AccountTestService) reconcileOpenAI429State(ctx context.Context, account *Account, headers http.Header, body []byte) {
 	if s == nil || s.accountRepo == nil || account == nil {
+		return
+	}
+	if accountTestObserveOnly(ctx) {
 		return
 	}
 
@@ -1711,6 +1727,10 @@ func (s *AccountTestService) RunTestBackground(ctx context.Context, accountID in
 		StartedAt:    startedAt,
 		FinishedAt:   finishedAt,
 	}, nil
+}
+
+func (s *AccountTestService) RunTestBackgroundObserveOnly(ctx context.Context, accountID int64, modelID string) (*ScheduledTestResult, error) {
+	return s.RunTestBackground(WithAccountTestObserveOnly(ctx), accountID, modelID)
 }
 
 // parseTestSSEOutput extracts response text and error message from captured SSE output.

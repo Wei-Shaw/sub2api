@@ -123,6 +123,12 @@ var (
 		{Name: "session_window_start", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "session_window_end", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "session_window_status", Type: field.TypeString, Nullable: true, Size: 20},
+		{Name: "health_check_enabled", Type: field.TypeBool, Default: false},
+		{Name: "health_check_protected", Type: field.TypeBool, Default: false},
+		{Name: "health_check_fail_streak", Type: field.TypeInt, Default: 0},
+		{Name: "last_health_check_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "last_health_check_status", Type: field.TypeString, Nullable: true, Size: 20},
+		{Name: "last_health_check_error", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "proxy_id", Type: field.TypeInt64, Nullable: true},
 	}
 	// AccountsTable holds the schema information for the "accounts" table.
@@ -133,7 +139,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "accounts_proxies_proxy",
-				Columns:    []*schema.Column{AccountsColumns[28]},
+				Columns:    []*schema.Column{AccountsColumns[34]},
 				RefColumns: []*schema.Column{ProxiesColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -157,7 +163,7 @@ var (
 			{
 				Name:    "account_proxy_id",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[28]},
+				Columns: []*schema.Column{AccountsColumns[34]},
 			},
 			{
 				Name:    "account_priority",
@@ -198,6 +204,16 @@ var (
 				Name:    "account_priority_status",
 				Unique:  false,
 				Columns: []*schema.Column{AccountsColumns[12], AccountsColumns[14]},
+			},
+			{
+				Name:    "account_health_check_enabled",
+				Unique:  false,
+				Columns: []*schema.Column{AccountsColumns[28]},
+			},
+			{
+				Name:    "account_health_check_protected",
+				Unique:  false,
+				Columns: []*schema.Column{AccountsColumns[29]},
 			},
 			{
 				Name:    "account_deleted_at",

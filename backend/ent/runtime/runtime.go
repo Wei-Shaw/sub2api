@@ -252,6 +252,22 @@ func init() {
 	accountDescSessionWindowStatus := accountFields[24].Descriptor()
 	// account.SessionWindowStatusValidator is a validator for the "session_window_status" field. It is called by the builders before save.
 	account.SessionWindowStatusValidator = accountDescSessionWindowStatus.Validators[0].(func(string) error)
+	// accountDescHealthCheckEnabled is the schema descriptor for health_check_enabled field.
+	accountDescHealthCheckEnabled := accountFields[25].Descriptor()
+	// account.DefaultHealthCheckEnabled holds the default value on creation for the health_check_enabled field.
+	account.DefaultHealthCheckEnabled = accountDescHealthCheckEnabled.Default.(bool)
+	// accountDescHealthCheckProtected is the schema descriptor for health_check_protected field.
+	accountDescHealthCheckProtected := accountFields[26].Descriptor()
+	// account.DefaultHealthCheckProtected holds the default value on creation for the health_check_protected field.
+	account.DefaultHealthCheckProtected = accountDescHealthCheckProtected.Default.(bool)
+	// accountDescHealthCheckFailStreak is the schema descriptor for health_check_fail_streak field.
+	accountDescHealthCheckFailStreak := accountFields[27].Descriptor()
+	// account.DefaultHealthCheckFailStreak holds the default value on creation for the health_check_fail_streak field.
+	account.DefaultHealthCheckFailStreak = accountDescHealthCheckFailStreak.Default.(int)
+	// accountDescLastHealthCheckStatus is the schema descriptor for last_health_check_status field.
+	accountDescLastHealthCheckStatus := accountFields[29].Descriptor()
+	// account.LastHealthCheckStatusValidator is a validator for the "last_health_check_status" field. It is called by the builders before save.
+	account.LastHealthCheckStatusValidator = accountDescLastHealthCheckStatus.Validators[0].(func(string) error)
 	accountgroupFields := schema.AccountGroup{}.Fields()
 	_ = accountgroupFields
 	// accountgroupDescPriority is the schema descriptor for priority field.

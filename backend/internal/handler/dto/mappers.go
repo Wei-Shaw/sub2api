@@ -230,6 +230,12 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		SessionWindowStart:      a.SessionWindowStart,
 		SessionWindowEnd:        a.SessionWindowEnd,
 		SessionWindowStatus:     a.SessionWindowStatus,
+		HealthCheckEnabled:      a.HealthCheckEnabled,
+		HealthCheckProtected:    a.HealthCheckProtected,
+		HealthCheckFailStreak:   a.HealthCheckFailStreak,
+		LastHealthCheckAt:       a.LastHealthCheckAt,
+		LastHealthCheckStatus:   a.LastHealthCheckStatus,
+		LastHealthCheckError:    a.LastHealthCheckError,
 		GroupIDs:                a.GroupIDs,
 	}
 
