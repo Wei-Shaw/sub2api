@@ -104,6 +104,11 @@ export const FeatureFlags = {
     mode: 'opt-in',
     label: 'Available Channels',
   }),
+  dailyTokenLeaderboard: defineFlag({
+    key: 'daily_token_leaderboard_enabled',
+    mode: 'opt-in',
+    label: 'Daily Token Leaderboard',
+  }),
   payment: defineFlag({
     key: 'payment_enabled',
     mode: 'opt-out',

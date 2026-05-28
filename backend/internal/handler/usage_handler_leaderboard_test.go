@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -38,10 +39,29 @@ func (s *leaderboardRepoStub) GetDailyTokenLeaderboard(
 	return s.items, nil
 }
 
+type leaderboardSettingRepoStub struct {
+	service.SettingRepository
+	leaderboardEnabled string
+}
+
+func (s *leaderboardSettingRepoStub) GetValue(ctx context.Context, key string) (string, error) {
+	if key == service.SettingKeyDailyTokenLeaderboardEnabled {
+		return s.leaderboardEnabled, nil
+	}
+	return "", service.ErrSettingNotFound
+}
+
 func newLeaderboardTestRouter(repo *leaderboardRepoStub, authenticated bool) *gin.Engine {
+	return newLeaderboardTestRouterWithFeature(repo, authenticated, true)
+}
+
+func newLeaderboardTestRouterWithFeature(repo *leaderboardRepoStub, authenticated bool, enabled bool) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	usageSvc := service.NewUsageService(repo, nil, nil, nil)
-	handler := NewUsageHandler(usageSvc, nil)
+	settingSvc := service.NewSettingService(&leaderboardSettingRepoStub{
+		leaderboardEnabled: strconv.FormatBool(enabled),
+	}, nil)
+	handler := NewUsageHandler(usageSvc, nil, settingSvc)
 	router := gin.New()
 	if authenticated {
 		router.Use(func(c *gin.Context) {
@@ -70,6 +90,18 @@ func TestDailyTokenLeaderboardRequiresAuthenticatedUser(t *testing.T) {
 	router.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
+	require.False(t, repo.called)
+}
+
+func TestDailyTokenLeaderboardReturnsNotFoundWhenFeatureDisabled(t *testing.T) {
+	repo := &leaderboardRepoStub{}
+	router := newLeaderboardTestRouterWithFeature(repo, true, false)
+
+	req := httptest.NewRequest(http.MethodGet, "/usage/leaderboard/daily", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusNotFound, rec.Code)
 	require.False(t, repo.called)
 }
 

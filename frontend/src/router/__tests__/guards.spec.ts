@@ -53,6 +53,7 @@ interface MockAuthState {
   isAdmin: boolean
   isSimpleMode: boolean
   backendModeEnabled: boolean
+  dailyTokenLeaderboardEnabled?: boolean
   hasPendingAuthSession: boolean
   setupNeedsSetup?: boolean
 }
@@ -114,6 +115,12 @@ function simulateGuard(
     return '/dashboard'
   }
 
+  if (toMeta.requiresDailyTokenLeaderboard) {
+    if (authState.dailyTokenLeaderboardEnabled !== true) {
+      return authState.isAdmin ? '/admin/dashboard' : '/dashboard'
+    }
+  }
+
   // 简易模式限制
   if (authState.isSimpleMode) {
     const restrictedPaths = [
@@ -152,6 +159,13 @@ function simulateGuard(
   }
 
   return null // 允许通过
+}
+
+function resolveDailyTokenLeaderboardEnabled(
+  cachedValue: boolean | undefined,
+  fetchedValue: boolean | null,
+): boolean {
+  return (cachedValue ?? fetchedValue) === true
 }
 
 describe('路由守卫逻辑', () => {
@@ -215,6 +229,30 @@ describe('路由守卫逻辑', () => {
     it('访问 /dashboard 允许通过', () => {
       const redirect = simulateGuard('/dashboard', {}, authState)
       expect(redirect).toBeNull()
+    })
+
+    it('排行榜未启用时访问 /leaderboard 重定向到 /dashboard', () => {
+      const redirect = simulateGuard(
+        '/leaderboard',
+        { requiresDailyTokenLeaderboard: true },
+        { ...authState, dailyTokenLeaderboardEnabled: false },
+      )
+      expect(redirect).toBe('/dashboard')
+    })
+
+    it('排行榜启用时允许访问 /leaderboard', () => {
+      const redirect = simulateGuard(
+        '/leaderboard',
+        { requiresDailyTokenLeaderboard: true },
+        { ...authState, dailyTokenLeaderboardEnabled: true },
+      )
+      expect(redirect).toBeNull()
+    })
+
+    it('排行榜守卫无缓存时使用拉取到的公共设置', () => {
+      expect(resolveDailyTokenLeaderboardEnabled(undefined, true)).toBe(true)
+      expect(resolveDailyTokenLeaderboardEnabled(undefined, false)).toBe(false)
+      expect(resolveDailyTokenLeaderboardEnabled(false, true)).toBe(false)
     })
 
     it('访问管理页面被拒绝，重定向到 /dashboard', () => {

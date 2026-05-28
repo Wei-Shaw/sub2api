@@ -361,6 +361,11 @@ const (
 	// sidebar entry is hidden. Defaults to false (opt-in feature).
 	SettingKeyAvailableChannelsEnabled = "available_channels_enabled"
 
+	// SettingKeyDailyTokenLeaderboardEnabled is a DB-backed soft switch for the daily
+	// token leaderboard. When false: the sidebar entry is hidden and the user endpoint
+	// returns 404. Defaults to false (opt-in feature).
+	SettingKeyDailyTokenLeaderboardEnabled = "daily_token_leaderboard_enabled"
+
 	// =========================
 	// Overload Cooldown (529)
 	// =========================

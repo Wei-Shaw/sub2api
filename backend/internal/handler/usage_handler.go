@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -18,17 +19,19 @@ import (
 
 // UsageHandler handles usage-related requests
 type UsageHandler struct {
-	usageService  *service.UsageService
-	apiKeyService *service.APIKeyService
+	usageService   *service.UsageService
+	apiKeyService  *service.APIKeyService
+	settingService *service.SettingService
 }
 
 const dailyTokenLeaderboardLimit = 5
 
 // NewUsageHandler creates a new UsageHandler
-func NewUsageHandler(usageService *service.UsageService, apiKeyService *service.APIKeyService) *UsageHandler {
+func NewUsageHandler(usageService *service.UsageService, apiKeyService *service.APIKeyService, settingService *service.SettingService) *UsageHandler {
 	return &UsageHandler{
-		usageService:  usageService,
-		apiKeyService: apiKeyService,
+		usageService:   usageService,
+		apiKeyService:  apiKeyService,
+		settingService: settingService,
 	}
 }
 
@@ -396,6 +399,10 @@ func (h *UsageHandler) DashboardModels(c *gin.Context) {
 func (h *UsageHandler) DailyTokenLeaderboard(c *gin.Context) {
 	if _, ok := middleware2.GetAuthSubjectFromContext(c); !ok {
 		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	if h.settingService == nil || !h.settingService.IsDailyTokenLeaderboardEnabled(c.Request.Context()) {
+		response.Error(c, http.StatusNotFound, "Daily token leaderboard is disabled")
 		return
 	}
 

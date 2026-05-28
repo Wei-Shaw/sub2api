@@ -5291,6 +5291,12 @@ export default {
           enabled: 'Enable Available Channels',
           enabledHint: 'When off, the sidebar entry is hidden and the endpoint returns an empty list.',
         },
+        dailyTokenLeaderboard: {
+          title: 'Daily Token Leaderboard',
+          description: 'Show logged-in users the top 5 site-wide token consumers for today. Disabled by default.',
+          enabled: 'Enable Daily Token Leaderboard',
+          enabledHint: 'When off, the user sidebar entry is hidden and the leaderboard endpoint is unavailable.',
+        },
         riskControl: {
           title: 'Risk Control',
           description: 'Enable the content moderation menu and gateway audit entry point. Disabled by default.',
