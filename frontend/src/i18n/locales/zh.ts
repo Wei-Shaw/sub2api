@@ -3127,6 +3127,7 @@ export default {
       privacyFailed: '关闭训练数据共享失败',
       privacyAntigravitySet: '已关闭遥测和营销邮件',
       privacyAntigravityFailed: '隐私设置失败',
+      privacySetSuccess: '隐私设置已更新',
       setPrivacy: '设置隐私',
       subscriptionAbnormal: '异常',
       subscriptionExpires: '到期',

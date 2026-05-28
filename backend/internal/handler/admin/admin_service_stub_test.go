@@ -616,8 +616,16 @@ func (s *stubAdminService) ForceOpenAIPrivacy(ctx context.Context, account *serv
 	return ""
 }
 
+func (s *stubAdminService) ForceOpenAIPrivacyDetailed(ctx context.Context, account *service.Account) service.PrivacySetResult {
+	return service.PrivacySetResult{}
+}
+
 func (s *stubAdminService) ForceAntigravityPrivacy(ctx context.Context, account *service.Account) string {
 	return ""
+}
+
+func (s *stubAdminService) ForceAntigravityPrivacyDetailed(ctx context.Context, account *service.Account) service.PrivacySetResult {
+	return service.PrivacySetResult{}
 }
 
 func (s *stubAdminService) ReplaceUserGroup(ctx context.Context, userID, oldGroupID, newGroupID int64) (*service.ReplaceUserGroupResult, error) {

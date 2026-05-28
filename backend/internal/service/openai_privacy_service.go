@@ -22,6 +22,16 @@ const (
 	PrivacyModeCFBlocked   = "training_set_cf_blocked"
 )
 
+type PrivacySetResult struct {
+	Mode       string
+	Success    bool
+	Reason     string
+	Message    string
+	StatusCode int
+	Stage      string
+	Detail     string
+}
+
 func shouldSkipOpenAIPrivacyEnsure(extra map[string]any) bool {
 	if extra == nil {
 		return false
@@ -38,8 +48,16 @@ func shouldSkipOpenAIPrivacyEnsure(extra map[string]any) bool {
 // disableOpenAITraining calls ChatGPT settings API to turn off "Improve the model for everyone".
 // Returns privacy_mode value: "training_off" on success, "cf_blocked" / "failed" on failure.
 func disableOpenAITraining(ctx context.Context, clientFactory PrivacyClientFactory, accessToken, proxyURL string) string {
+	return disableOpenAITrainingDetailed(ctx, clientFactory, accessToken, proxyURL).Mode
+}
+
+func disableOpenAITrainingDetailed(ctx context.Context, clientFactory PrivacyClientFactory, accessToken, proxyURL string) PrivacySetResult {
 	if accessToken == "" || clientFactory == nil {
-		return ""
+		return PrivacySetResult{
+			Reason:  "PRIVACY_SET_NOT_EXECUTABLE",
+			Message: "Cannot set privacy: missing access token or privacy client",
+			Stage:   "precheck",
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
@@ -48,7 +66,13 @@ func disableOpenAITraining(ctx context.Context, clientFactory PrivacyClientFacto
 	client, err := clientFactory(proxyURL)
 	if err != nil {
 		slog.Warn("openai_privacy_client_error", "error", err.Error())
-		return PrivacyModeFailed
+		return PrivacySetResult{
+			Mode:    PrivacyModeFailed,
+			Reason:  "PRIVACY_CLIENT_ERROR",
+			Message: "Failed to create privacy API client",
+			Stage:   "client",
+			Detail:  truncate(err.Error(), 300),
+		}
 	}
 
 	resp, err := client.R().
@@ -66,24 +90,50 @@ func disableOpenAITraining(ctx context.Context, clientFactory PrivacyClientFacto
 
 	if err != nil {
 		slog.Warn("openai_privacy_request_error", "error", err.Error())
-		return PrivacyModeFailed
+		return PrivacySetResult{
+			Mode:    PrivacyModeFailed,
+			Reason:  "PRIVACY_REQUEST_ERROR",
+			Message: "Privacy API request failed",
+			Stage:   "request",
+			Detail:  truncate(err.Error(), 300),
+		}
 	}
 
 	if resp.StatusCode == 403 || resp.StatusCode == 503 {
 		body := resp.String()
 		if strings.Contains(body, "cloudflare") || strings.Contains(body, "cf-") || strings.Contains(body, "Just a moment") {
 			slog.Warn("openai_privacy_cf_blocked", "status", resp.StatusCode)
-			return PrivacyModeCFBlocked
+			return PrivacySetResult{
+				Mode:       PrivacyModeCFBlocked,
+				Reason:     "PRIVACY_CLOUDFLARE_BLOCKED",
+				Message:    "Privacy API was blocked by Cloudflare",
+				StatusCode: resp.StatusCode,
+				Stage:      "upstream_response",
+				Detail:     truncate(body, 300),
+			}
 		}
 	}
 
 	if !resp.IsSuccessState() {
-		slog.Warn("openai_privacy_failed", "status", resp.StatusCode, "body", truncate(resp.String(), 200))
-		return PrivacyModeFailed
+		body := resp.String()
+		slog.Warn("openai_privacy_failed", "status", resp.StatusCode, "body", truncate(body, 200))
+		return PrivacySetResult{
+			Mode:       PrivacyModeFailed,
+			Reason:     "PRIVACY_UPSTREAM_FAILED",
+			Message:    "Privacy API returned a non-success response",
+			StatusCode: resp.StatusCode,
+			Stage:      "upstream_response",
+			Detail:     truncate(body, 300),
+		}
 	}
 
 	slog.Info("openai_privacy_training_disabled")
-	return PrivacyModeTrainingOff
+	return PrivacySetResult{
+		Mode:    PrivacyModeTrainingOff,
+		Success: true,
+		Message: "Training data sharing disabled",
+		Stage:   "upstream_response",
+	}
 }
 
 // ChatGPTAccountInfo 从 chatgpt.com/backend-api/accounts/check 获取的账号信息

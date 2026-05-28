@@ -2148,18 +2148,22 @@ func (h *AccountHandler) SetPrivacy(c *gin.Context) {
 		response.BadRequest(c, "Only OAuth accounts support privacy setting")
 		return
 	}
-	var mode string
+	var privacyResult service.PrivacySetResult
 	switch account.Platform {
 	case service.PlatformOpenAI:
-		mode = h.adminService.ForceOpenAIPrivacy(c.Request.Context(), account)
+		privacyResult = h.adminService.ForceOpenAIPrivacyDetailed(c.Request.Context(), account)
 	case service.PlatformAntigravity:
-		mode = h.adminService.ForceAntigravityPrivacy(c.Request.Context(), account)
+		privacyResult = h.adminService.ForceAntigravityPrivacyDetailed(c.Request.Context(), account)
 	default:
 		response.BadRequest(c, "Only OpenAI and Antigravity OAuth accounts support privacy setting")
 		return
 	}
-	if mode == "" {
-		response.BadRequest(c, "Cannot set privacy: missing access_token")
+	if privacyResult.Mode == "" {
+		message := privacyResult.Message
+		if message == "" {
+			message = "Cannot set privacy"
+		}
+		response.ErrorWithDetails(c, http.StatusBadRequest, message, privacyResult.Reason, privacyResultMetadata(account, privacyResult))
 		return
 	}
 	// 从 DB 重新读取以确保返回最新状态
@@ -2169,11 +2173,49 @@ func (h *AccountHandler) SetPrivacy(c *gin.Context) {
 		if account.Extra == nil {
 			account.Extra = make(map[string]any)
 		}
-		account.Extra["privacy_mode"] = mode
+		account.Extra["privacy_mode"] = privacyResult.Mode
+		if !privacyResult.Success {
+			response.ErrorWithDetails(c, http.StatusBadGateway, privacyResult.Message, privacyFailureReason(privacyResult), privacyResultMetadata(account, privacyResult))
+			return
+		}
 		response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
 		return
 	}
+	if !privacyResult.Success {
+		response.ErrorWithDetails(c, http.StatusBadGateway, privacyResult.Message, privacyFailureReason(privacyResult), privacyResultMetadata(updated, privacyResult))
+		return
+	}
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), updated))
+}
+
+func privacyFailureReason(result service.PrivacySetResult) string {
+	if strings.TrimSpace(result.Reason) != "" {
+		return result.Reason
+	}
+	return "PRIVACY_SET_FAILED"
+}
+
+func privacyResultMetadata(account *service.Account, result service.PrivacySetResult) map[string]string {
+	metadata := map[string]string{
+		"privacy_mode": result.Mode,
+		"stage":        result.Stage,
+	}
+	if account != nil {
+		metadata["account_id"] = strconv.FormatInt(account.ID, 10)
+		metadata["platform"] = account.Platform
+	}
+	if result.StatusCode != 0 {
+		metadata["status_code"] = strconv.Itoa(result.StatusCode)
+	}
+	if strings.TrimSpace(result.Detail) != "" {
+		metadata["detail"] = result.Detail
+	}
+	for key, value := range metadata {
+		if strings.TrimSpace(value) == "" {
+			delete(metadata, key)
+		}
+	}
+	return metadata
 }
 
 // RefreshTier handles refreshing Google One tier for a single account

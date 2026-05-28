@@ -90,8 +90,10 @@ type AdminService interface {
 	EnsureAntigravityPrivacy(ctx context.Context, account *Account) string
 	// ForceOpenAIPrivacy 强制重新设置 OpenAI OAuth 账号隐私，无论当前状态。
 	ForceOpenAIPrivacy(ctx context.Context, account *Account) string
+	ForceOpenAIPrivacyDetailed(ctx context.Context, account *Account) PrivacySetResult
 	// ForceAntigravityPrivacy 强制重新设置 Antigravity OAuth 账号隐私，无论当前状态。
 	ForceAntigravityPrivacy(ctx context.Context, account *Account) string
+	ForceAntigravityPrivacyDetailed(ctx context.Context, account *Account) PrivacySetResult
 	SetAccountSchedulable(ctx context.Context, id int64, schedulable bool) (*Account, error)
 	BulkUpdateAccounts(ctx context.Context, input *BulkUpdateAccountsInput) (*BulkUpdateAccountsResult, error)
 	CheckMixedChannelRisk(ctx context.Context, currentAccountID int64, currentAccountPlatform string, groupIDs []int64) error
@@ -3702,16 +3704,32 @@ func (s *adminServiceImpl) EnsureOpenAIPrivacy(ctx context.Context, account *Acc
 
 // ForceOpenAIPrivacy 强制重新设置 OpenAI OAuth 账号隐私，无论当前状态。
 func (s *adminServiceImpl) ForceOpenAIPrivacy(ctx context.Context, account *Account) string {
+	return s.ForceOpenAIPrivacyDetailed(ctx, account).Mode
+}
+
+func (s *adminServiceImpl) ForceOpenAIPrivacyDetailed(ctx context.Context, account *Account) PrivacySetResult {
 	if account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth {
-		return ""
+		return PrivacySetResult{
+			Reason:  "PRIVACY_UNSUPPORTED_ACCOUNT",
+			Message: "Only OpenAI OAuth accounts support OpenAI privacy setting",
+			Stage:   "precheck",
+		}
 	}
 	if s.privacyClientFactory == nil {
-		return ""
+		return PrivacySetResult{
+			Reason:  "PRIVACY_CLIENT_UNAVAILABLE",
+			Message: "Privacy client is not configured",
+			Stage:   "precheck",
+		}
 	}
 
 	token, _ := account.Credentials["access_token"].(string)
 	if token == "" {
-		return ""
+		return PrivacySetResult{
+			Reason:  "PRIVACY_SET_NOT_EXECUTABLE",
+			Message: "Cannot set privacy: missing access_token",
+			Stage:   "precheck",
+		}
 	}
 
 	var proxyURL string
@@ -3721,20 +3739,24 @@ func (s *adminServiceImpl) ForceOpenAIPrivacy(ctx context.Context, account *Acco
 		}
 	}
 
-	mode := disableOpenAITraining(ctx, s.privacyClientFactory, token, proxyURL)
-	if mode == "" {
-		return ""
+	result := disableOpenAITrainingDetailed(ctx, s.privacyClientFactory, token, proxyURL)
+	if result.Mode == "" {
+		return result
 	}
 
-	if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{"privacy_mode": mode}); err != nil {
+	if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{"privacy_mode": result.Mode}); err != nil {
 		logger.LegacyPrintf("service.admin", "force_update_openai_privacy_mode_failed: account_id=%d err=%v", account.ID, err)
-		return mode
+		result.Success = false
+		result.Reason = "PRIVACY_PERSIST_FAILED"
+		result.Message = "Privacy setting completed upstream but failed to persist privacy_mode"
+		result.Detail = strings.TrimSpace(result.Detail + " persist privacy_mode failed: " + err.Error())
+		return result
 	}
 	if account.Extra == nil {
 		account.Extra = make(map[string]any)
 	}
-	account.Extra["privacy_mode"] = mode
-	return mode
+	account.Extra["privacy_mode"] = result.Mode
+	return result
 }
 
 // EnsureAntigravityPrivacy 检查 Antigravity OAuth 账号隐私状态。
@@ -3779,13 +3801,25 @@ func (s *adminServiceImpl) EnsureAntigravityPrivacy(ctx context.Context, account
 
 // ForceAntigravityPrivacy 强制重新设置 Antigravity OAuth 账号隐私，无论当前状态。
 func (s *adminServiceImpl) ForceAntigravityPrivacy(ctx context.Context, account *Account) string {
+	return s.ForceAntigravityPrivacyDetailed(ctx, account).Mode
+}
+
+func (s *adminServiceImpl) ForceAntigravityPrivacyDetailed(ctx context.Context, account *Account) PrivacySetResult {
 	if account.Platform != PlatformAntigravity || account.Type != AccountTypeOAuth {
-		return ""
+		return PrivacySetResult{
+			Reason:  "PRIVACY_UNSUPPORTED_ACCOUNT",
+			Message: "Only Antigravity OAuth accounts support Antigravity privacy setting",
+			Stage:   "precheck",
+		}
 	}
 
 	token, _ := account.Credentials["access_token"].(string)
 	if token == "" {
-		return ""
+		return PrivacySetResult{
+			Reason:  "PRIVACY_SET_NOT_EXECUTABLE",
+			Message: "Cannot set privacy: missing access_token",
+			Stage:   "precheck",
+		}
 	}
 
 	projectID, _ := account.Credentials["project_id"].(string)
@@ -3797,15 +3831,19 @@ func (s *adminServiceImpl) ForceAntigravityPrivacy(ctx context.Context, account 
 		}
 	}
 
-	mode := setAntigravityPrivacy(ctx, token, projectID, proxyURL)
-	if mode == "" {
-		return ""
+	result := setAntigravityPrivacyDetailed(ctx, token, projectID, proxyURL)
+	if result.Mode == "" {
+		return result
 	}
 
-	if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{"privacy_mode": mode}); err != nil {
+	if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{"privacy_mode": result.Mode}); err != nil {
 		logger.LegacyPrintf("service.admin", "force_update_antigravity_privacy_mode_failed: account_id=%d err=%v", account.ID, err)
-		return mode
+		result.Success = false
+		result.Reason = "PRIVACY_PERSIST_FAILED"
+		result.Message = "Privacy setting completed upstream but failed to persist privacy_mode"
+		result.Detail = strings.TrimSpace(result.Detail + " persist privacy_mode failed: " + err.Error())
+		return result
 	}
-	applyAntigravityPrivacyMode(account, mode)
-	return mode
+	applyAntigravityPrivacyMode(account, result.Mode)
+	return result
 }

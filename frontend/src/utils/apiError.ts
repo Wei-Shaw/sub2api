@@ -17,6 +17,7 @@ interface ApiErrorLike {
       detail?: string
       message?: string
       code?: number | string
+      metadata?: Record<string, unknown>
     }
   }
 }
@@ -42,7 +43,7 @@ export function extractApiErrorCode(err: unknown): string | undefined {
 export function extractApiErrorMetadata(err: unknown): Record<string, unknown> | undefined {
   if (!err || typeof err !== 'object') return undefined
   const e = err as ApiErrorLike
-  return e.metadata
+  return e.metadata ?? e.response?.data?.metadata
 }
 
 type TranslateFn = (key: string, params?: Record<string, unknown>) => string

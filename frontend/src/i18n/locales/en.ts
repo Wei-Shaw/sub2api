@@ -3089,6 +3089,7 @@ export default {
       privacyFailed: 'Failed to disable training',
       privacyAntigravitySet: 'Telemetry and marketing emails disabled',
       privacyAntigravityFailed: 'Privacy setting failed',
+      privacySetSuccess: 'Privacy settings updated',
       setPrivacy: 'Set Privacy',
       subscriptionAbnormal: 'Abnormal',
       subscriptionExpires: 'Expires',

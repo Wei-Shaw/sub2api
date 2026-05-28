@@ -413,6 +413,7 @@ import Icon from '@/components/icons/Icon.vue'
 import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRulesModal.vue'
 import TLSFingerprintProfilesModal from '@/components/admin/TLSFingerprintProfilesModal.vue'
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
+import { extractApiErrorMessage, extractApiErrorMetadata } from '@/utils/apiError'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import type { Account, AccountPlatform, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel } from '@/types'
 
@@ -1584,11 +1585,48 @@ const handleSetPrivacy = async (a: Account) => {
     const updated = await adminAPI.accounts.setPrivacy(a.id)
     patchAccountInList(updated)
     enterAutoRefreshSilentWindow()
-    appStore.showSuccess(t('common.success'))
-  } catch (error: any) {
+    const privacyMode = typeof updated.extra?.privacy_mode === 'string' ? updated.extra.privacy_mode : ''
+    if (isPrivacyModeSuccess(privacyMode)) {
+      appStore.showSuccess(t('admin.accounts.privacySetSuccess'))
+    } else {
+      appStore.showError(formatPrivacyFailureMessage(t('admin.accounts.privacyFailed'), { privacy_mode: privacyMode }))
+    }
+  } catch (error: unknown) {
     console.error('Failed to set privacy:', error)
-    appStore.showError(error?.response?.data?.message || t('admin.accounts.privacyFailed'))
+    const metadata = extractApiErrorMetadata(error)
+    if (typeof metadata?.privacy_mode === 'string') {
+      patchAccountPrivacyModeInList(a.id, metadata.privacy_mode)
+    }
+    const message = extractApiErrorMessage(error, t('admin.accounts.privacyFailed'))
+    appStore.showError(formatPrivacyFailureMessage(message, metadata), 9000)
   }
+}
+
+const isPrivacyModeSuccess = (mode: string) => mode === 'training_off' || mode === 'privacy_set'
+
+const patchAccountPrivacyModeInList = (accountID: number, privacyMode: string) => {
+  const account = accounts.value.find(item => item.id === accountID)
+  if (!account) return
+  patchAccountInList({
+    ...account,
+    extra: {
+      ...(account.extra ?? {}),
+      privacy_mode: privacyMode,
+    },
+  })
+}
+
+const formatPrivacyFailureMessage = (message: string, metadata?: Record<string, unknown>) => {
+  const details: string[] = []
+  const privacyMode = typeof metadata?.privacy_mode === 'string' ? metadata.privacy_mode : ''
+  const stage = typeof metadata?.stage === 'string' ? metadata.stage : ''
+  const statusCode = typeof metadata?.status_code === 'string' ? metadata.status_code : ''
+  const detail = typeof metadata?.detail === 'string' ? metadata.detail : ''
+  if (privacyMode) details.push(`mode=${privacyMode}`)
+  if (stage) details.push(`stage=${stage}`)
+  if (statusCode) details.push(`status=${statusCode}`)
+  if (detail) details.push(detail)
+  return details.length > 0 ? `${message}: ${details.join(' | ')}` : message
 }
 const handleDelete = (a: Account) => { deletingAcc.value = a; showDeleteDialog.value = true }
 const confirmDelete = async () => { if(!deletingAcc.value) return; try { await adminAPI.accounts.delete(deletingAcc.value.id); showDeleteDialog.value = false; deletingAcc.value = null; reload() } catch (error) { console.error('Failed to delete account:', error) } }
