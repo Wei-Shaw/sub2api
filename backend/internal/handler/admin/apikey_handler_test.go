@@ -25,6 +25,7 @@ func setupAPIKeyHandlerWithCreate(adminSvc service.AdminService, apiKeyService u
 	router := gin.New()
 	h := NewAdminAPIKeyHandler(adminSvc, apiKeyService)
 	router.PUT("/api/v1/admin/api-keys/:id", h.UpdateGroup)
+	router.DELETE("/api/v1/admin/api-keys/:id", h.Delete)
 	router.POST("/api/v1/admin/users/:id/api-keys", h.CreateForUser)
 	return router
 }
@@ -110,6 +111,47 @@ func TestAdminAPIKeyHandler_CreateForUser_ServiceError(t *testing.T) {
 	router.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusInternalServerError, rec.Code)
+}
+
+func TestAdminAPIKeyHandler_Delete(t *testing.T) {
+	router := setupAPIKeyHandler(newStubAdminService())
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/admin/api-keys/10", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp struct {
+		Code int `json:"code"`
+		Data struct {
+			ID int64 `json:"id"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, 0, resp.Code)
+	require.Equal(t, int64(10), resp.Data.ID)
+}
+
+func TestAdminAPIKeyHandler_Delete_InvalidID(t *testing.T) {
+	router := setupAPIKeyHandler(newStubAdminService())
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/admin/api-keys/abc", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, rec.Body.String(), "Invalid API key ID")
+}
+
+func TestAdminAPIKeyHandler_Delete_KeyNotFound(t *testing.T) {
+	router := setupAPIKeyHandler(newStubAdminService())
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/admin/api-keys/999", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusNotFound, rec.Code)
 }
 
 func TestAdminAPIKeyHandler_UpdateGroup_InvalidID(t *testing.T) {

@@ -937,6 +937,21 @@ func (s *adminServiceImpl) AdminResetAPIKeyRateLimitUsage(ctx context.Context, k
 	return apiKey, nil
 }
 
+// AdminDeleteAPIKey deletes an API key without requiring the owner user's JWT.
+func (s *adminServiceImpl) AdminDeleteAPIKey(ctx context.Context, keyID int64) error {
+	key, _, err := s.apiKeyRepo.GetKeyAndOwnerID(ctx, keyID)
+	if err != nil {
+		return err
+	}
+	if err := s.apiKeyRepo.DeleteWithAudit(ctx, keyID); err != nil {
+		return fmt.Errorf("delete api key: %w", err)
+	}
+	if s.authCacheInvalidator != nil {
+		s.authCacheInvalidator.InvalidateAuthCacheByKey(ctx, key)
+	}
+	return nil
+}
+
 // ReplaceUserGroup 替换用户的专属分组
 func (s *adminServiceImpl) ReplaceUserGroup(ctx context.Context, userID, oldGroupID, newGroupID int64) (*ReplaceUserGroupResult, error) {
 	if oldGroupID == newGroupID {
