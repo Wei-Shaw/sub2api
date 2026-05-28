@@ -27,6 +27,7 @@ REDACTED
 export interface SimpleUser {
   id: number
   email: string
+  deleted: boolean
 REDACTED
 
 export interface SimpleApiKey {

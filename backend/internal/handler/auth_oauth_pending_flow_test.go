@@ -2914,6 +2914,10 @@ func (r *oauthPendingFlowUserRepo) DisableTotp(ctx context.Context, userID int64
 		Exec(ctx)
 REDACTED
 
+func (r *oauthPendingFlowUserRepo) GetByIDIncludeDeleted(ctx context.Context, id int64) (*service.User, error) {
+	return r.GetByID(ctx, id)
+REDACTED
+
 func oauthPendingFlowServiceUser(entity *dbent.User) *service.User {
 	if entity == nil {
 		return nil

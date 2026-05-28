@@ -100,10 +100,12 @@ REDACTED
 /**
  * Get user by ID
  * @param id - User ID
+ * @param includeDeleted - Whether to include soft-deleted users
  * @returns User details
  */
-export async function getById(id: number): Promise<AdminUser> {
-  const { data REDACTED = await apiClient.get<AdminUser>(`/admin/users/${idREDACTED`)
+export async function getById(id: number, includeDeleted = false): Promise<AdminUser> {
+  const url = includeDeleted ? `/admin/users/${idREDACTED?include_deleted=true` : `/admin/users/${idREDACTED`
+  const { data REDACTED = await apiClient.get<AdminUser>(url)
   return data
 REDACTED
 

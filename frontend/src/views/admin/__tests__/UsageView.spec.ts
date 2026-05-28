@@ -84,6 +84,10 @@ REDACTED))
 
 const AppLayoutStub = { template: '<div><slot /></div>' REDACTED
 const UsageFiltersStub = { template: '<div><slot name="after-reset" /></div>' REDACTED
+const UsageTableStub = {
+  emits: ['userClick'],
+  template: '<div data-test="usage-table"><button class="user-click" @click="$emit(\'userClick\', 2)">user</button></div>',
+REDACTED
 const ModelDistributionChartStub = {
   props: ['metric'],
   emits: ['update:metric'],
@@ -192,5 +196,61 @@ describe('admin UsageView distribution metric toggles', () => {
     expect(modelChart.find('.metric').text()).toBe('actual_cost')
     expect(groupChart.find('.metric').text()).toBe('actual_cost')
     expect(getSnapshotV2).toHaveBeenCalledTimes(1)
+  REDACTED)
+REDACTED)
+
+describe('admin UsageView handleUserClick', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    list.mockReset()
+    getStats.mockReset()
+    getSnapshotV2.mockReset()
+    getById.mockReset()
+
+    list.mockResolvedValue({ items: [], total: 0, pages: 0 REDACTED)
+    getStats.mockResolvedValue({
+      total_requests: 0, total_input_tokens: 0, total_output_tokens: 0,
+      total_cache_tokens: 0, total_tokens: 0, total_cost: 0, total_actual_cost: 0, average_duration_ms: 0,
+    REDACTED)
+    getSnapshotV2.mockResolvedValue({ trend: [], models: [], groups: [] REDACTED)
+  REDACTED)
+
+  afterEach(() => {
+    vi.useRealTimers()
+  REDACTED)
+
+  it('opens user via include_deleted when clicking a usage row user', async () => {
+    getById.mockResolvedValue({ id: 2, email: 'd@test.com', deleted_at: '2026-05-28T00:00:00Z' REDACTED)
+
+    const wrapper = mount(UsageView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          UsageStatsCards: true,
+          UsageFilters: UsageFiltersStub,
+          UsageTable: UsageTableStub,
+          UsageExportProgress: true,
+          UsageCleanupDialog: true,
+          UserBalanceHistoryModal: true,
+          AuditLogModal: true,
+          Pagination: true,
+          Select: true,
+          DateRangePicker: true,
+          Icon: true,
+          TokenUsageTrend: true,
+          ModelDistributionChart: true,
+          GroupDistributionChart: true,
+          EndpointDistributionChart: true,
+        REDACTED,
+      REDACTED,
+    REDACTED)
+
+    vi.advanceTimersByTime(120)
+    await flushPromises()
+
+    await wrapper.find('[data-test="usage-table"] .user-click').trigger('click')
+    await flushPromises()
+
+    expect(getById).toHaveBeenCalledWith(2, true)
   REDACTED)
 REDACTED)

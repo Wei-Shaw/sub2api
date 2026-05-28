@@ -35,7 +35,7 @@
               @click="selectUser(u)"
               class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700"
             >
-              <span>{{ u.email REDACTEDREDACTED</span>
+              <span>{{ u.email REDACTEDREDACTED<span v-if="u.deleted" class="ml-1 text-xs text-gray-400">（{{ t('admin.usage.userDeletedBadge') REDACTEDREDACTED）</span></span>
               <span class="ml-2 text-xs text-gray-400">#{{ u.id REDACTEDREDACTED</span>
             </button>
           </div>
@@ -255,7 +255,8 @@ const debounceUserSearch = () => {
       return
     REDACTED
     try {
-      userResults.value = await adminAPI.usage.searchUsers(userKeyword.value)
+      const results = await adminAPI.usage.searchUsers(userKeyword.value)
+      userResults.value = results.sort((a, b) => Number(a.deleted) - Number(b.deleted))
     REDACTED catch {
       userResults.value = []
     REDACTED
