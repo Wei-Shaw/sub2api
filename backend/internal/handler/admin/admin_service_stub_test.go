@@ -29,6 +29,9 @@ type stubAdminService struct {
 	updateAccountErr     error
 	bulkUpdateAccountErr error
 	checkMixedErr        error
+	getAccountValue      *service.Account
+	forceOpenAIPrivacy   service.PrivacySetResult
+	forceAGPrivacy       service.PrivacySetResult
 	lastMixedCheck       struct {
 		accountID int64
 		platform  string
@@ -324,6 +327,10 @@ func (s *stubAdminService) ListAccounts(ctx context.Context, page, pageSize int,
 }
 
 func (s *stubAdminService) GetAccount(ctx context.Context, id int64) (*service.Account, error) {
+	if s.getAccountValue != nil {
+		account := *s.getAccountValue
+		return &account, nil
+	}
 	account := service.Account{ID: id, Name: "account", Status: service.StatusActive}
 	return &account, nil
 }
@@ -617,7 +624,7 @@ func (s *stubAdminService) ForceOpenAIPrivacy(ctx context.Context, account *serv
 }
 
 func (s *stubAdminService) ForceOpenAIPrivacyDetailed(ctx context.Context, account *service.Account) service.PrivacySetResult {
-	return service.PrivacySetResult{}
+	return s.forceOpenAIPrivacy
 }
 
 func (s *stubAdminService) ForceAntigravityPrivacy(ctx context.Context, account *service.Account) string {
@@ -625,7 +632,7 @@ func (s *stubAdminService) ForceAntigravityPrivacy(ctx context.Context, account 
 }
 
 func (s *stubAdminService) ForceAntigravityPrivacyDetailed(ctx context.Context, account *service.Account) service.PrivacySetResult {
-	return service.PrivacySetResult{}
+	return s.forceAGPrivacy
 }
 
 func (s *stubAdminService) ReplaceUserGroup(ctx context.Context, userID, oldGroupID, newGroupID int64) (*service.ReplaceUserGroupResult, error) {

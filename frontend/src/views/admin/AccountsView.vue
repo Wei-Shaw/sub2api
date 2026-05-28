@@ -1585,12 +1585,7 @@ const handleSetPrivacy = async (a: Account) => {
     const updated = await adminAPI.accounts.setPrivacy(a.id)
     patchAccountInList(updated)
     enterAutoRefreshSilentWindow()
-    const privacyMode = typeof updated.extra?.privacy_mode === 'string' ? updated.extra.privacy_mode : ''
-    if (isPrivacyModeSuccess(privacyMode)) {
-      appStore.showSuccess(t('admin.accounts.privacySetSuccess'))
-    } else {
-      appStore.showError(formatPrivacyFailureMessage(t('admin.accounts.privacyFailed'), { privacy_mode: privacyMode }))
-    }
+    appStore.showSuccess(t('admin.accounts.privacySetSuccess'))
   } catch (error: unknown) {
     console.error('Failed to set privacy:', error)
     const metadata = extractApiErrorMetadata(error)
@@ -1601,8 +1596,6 @@ const handleSetPrivacy = async (a: Account) => {
     appStore.showError(formatPrivacyFailureMessage(message, metadata), 9000)
   }
 }
-
-const isPrivacyModeSuccess = (mode: string) => mode === 'training_off' || mode === 'privacy_set'
 
 const patchAccountPrivacyModeInList = (accountID: number, privacyMode: string) => {
   const account = accounts.value.find(item => item.id === accountID)

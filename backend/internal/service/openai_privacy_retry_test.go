@@ -48,6 +48,33 @@ func TestAdminService_EnsureOpenAIPrivacy_RetriesNonSuccessModes(t *testing.T) {
 	}
 }
 
+func TestAdminService_ForceAntigravityPrivacyDetailed_MissingProjectIDNotExecutable(t *testing.T) {
+	t.Parallel()
+
+	svc := &adminServiceImpl{
+		accountRepo: &mockAccountRepoForGemini{},
+	}
+	account := &Account{
+		ID:       303,
+		Platform: PlatformAntigravity,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token": "token-3",
+		},
+		Extra: map[string]any{
+			"privacy_mode": AntigravityPrivacySet,
+		},
+	}
+
+	got := svc.ForceAntigravityPrivacyDetailed(context.Background(), account)
+
+	require.Empty(t, got.Mode)
+	require.False(t, got.Success)
+	require.Equal(t, "PRIVACY_MISSING_PROJECT_ID", got.Reason)
+	require.Equal(t, "precheck", got.Stage)
+	require.Equal(t, AntigravityPrivacySet, account.Extra["privacy_mode"])
+}
+
 func TestTokenRefreshService_ensureOpenAIPrivacy_RetriesNonSuccessModes(t *testing.T) {
 	t.Parallel()
 

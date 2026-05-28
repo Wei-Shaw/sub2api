@@ -3823,6 +3823,13 @@ func (s *adminServiceImpl) ForceAntigravityPrivacyDetailed(ctx context.Context, 
 	}
 
 	projectID, _ := account.Credentials["project_id"].(string)
+	if strings.TrimSpace(projectID) == "" {
+		return PrivacySetResult{
+			Reason:  "PRIVACY_MISSING_PROJECT_ID",
+			Message: "Cannot verify privacy setting: missing project_id",
+			Stage:   "precheck",
+		}
+	}
 
 	var proxyURL string
 	if account.ProxyID != nil {

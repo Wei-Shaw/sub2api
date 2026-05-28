@@ -46,7 +46,8 @@ func shouldSkipOpenAIPrivacyEnsure(extra map[string]any) bool {
 }
 
 // disableOpenAITraining calls ChatGPT settings API to turn off "Improve the model for everyone".
-// Returns privacy_mode value: "training_off" on success, "cf_blocked" / "failed" on failure.
+// Returns privacy_mode value: PrivacyModeTrainingOff on success, PrivacyModeCFBlocked
+// or PrivacyModeFailed on failure, and an empty string when the operation cannot run.
 func disableOpenAITraining(ctx context.Context, clientFactory PrivacyClientFactory, accessToken, proxyURL string) string {
 	return disableOpenAITrainingDetailed(ctx, clientFactory, accessToken, proxyURL).Mode
 }
