@@ -40,6 +40,11 @@
             </div>
             <div class="flex items-center gap-1"><span>{{ t('admin.users.columns.created') }}: {{ formatDateTime(key.created_at) }}</span></div>
           </div>
+          <div class="mt-3 flex justify-end">
+            <button class="btn btn-secondary btn-sm" @click="openChatSessions(key)">
+              查看聊天记录
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -99,6 +104,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, type ComponentPublicInstance } from 'vue'
+import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
@@ -111,6 +117,7 @@ import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
 const props = defineProps<{ show: boolean; user: AdminUser | null }>()
 const emit = defineEmits(['close'])
 const { t } = useI18n()
+const router = useRouter()
 const appStore = useAppStore()
 
 const apiKeys = ref<ApiKey[]>([])
@@ -216,6 +223,16 @@ const changeGroup = async (key: ApiKey, newGroupId: number | null) => {
   } finally {
     updatingKeyIds.value.delete(key.id)
   }
+}
+
+const openChatSessions = (key: ApiKey) => {
+  if (!props.user) return
+  router.push({
+    name: 'KeyChatSessions',
+    params: { id: key.id },
+    query: { user_id: props.user.id }
+  })
+  handleClose()
 }
 
 const handleKeyDown = (event: KeyboardEvent) => {

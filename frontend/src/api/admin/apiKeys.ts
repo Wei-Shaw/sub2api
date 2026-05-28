@@ -4,7 +4,7 @@
  */
 
 import { apiClient } from '../client'
-import type { ApiKey } from '@/types'
+import type { ApiKey, ChatSession, ChatSessionDetail, PaginatedResponse } from '@/types'
 
 export interface UpdateApiKeyGroupResult {
   api_key: ApiKey
@@ -26,8 +26,41 @@ export async function updateApiKeyGroup(id: number, groupId: number | null): Pro
   return data
 }
 
+export async function listChatSessions(
+  id: number,
+  userId: number,
+  page: number = 1,
+  pageSize: number = 20
+): Promise<PaginatedResponse<ChatSession>> {
+  const { data } = await apiClient.get<PaginatedResponse<ChatSession>>(`/admin/api-keys/${id}/chat-sessions`, {
+    params: {
+      user_id: userId,
+      page,
+      page_size: pageSize
+    }
+  })
+  return data
+}
+
+export async function getChatSession(
+  id: number,
+  userId: number,
+  sessionId: number,
+  limit: number = 50
+): Promise<ChatSessionDetail> {
+  const { data } = await apiClient.get<ChatSessionDetail>(`/admin/api-keys/${id}/chat-sessions/${sessionId}`, {
+    params: {
+      user_id: userId,
+      limit
+    }
+  })
+  return data
+}
+
 export const apiKeysAPI = {
-  updateApiKeyGroup
+  updateApiKeyGroup,
+  listChatSessions,
+  getChatSession
 }
 
 export default apiKeysAPI

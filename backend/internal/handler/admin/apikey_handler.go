@@ -4,6 +4,7 @@ import (
 	"strconv"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -12,13 +13,15 @@ import (
 
 // AdminAPIKeyHandler handles admin API key management
 type AdminAPIKeyHandler struct {
-	adminService service.AdminService
+	adminService        service.AdminService
+	chatSessionService *service.ChatSessionService
 }
 
 // NewAdminAPIKeyHandler creates a new admin API key handler
-func NewAdminAPIKeyHandler(adminService service.AdminService) *AdminAPIKeyHandler {
+func NewAdminAPIKeyHandler(adminService service.AdminService, chatSessionService *service.ChatSessionService) *AdminAPIKeyHandler {
 	return &AdminAPIKeyHandler{
-		adminService: adminService,
+		adminService:        adminService,
+		chatSessionService: chatSessionService,
 	}
 }
 
@@ -73,4 +76,89 @@ func (h *AdminAPIKeyHandler) UpdateGroup(c *gin.Context) {
 		GrantedGroupName:       result.GrantedGroupName,
 	}
 	response.Success(c, resp)
+}
+
+// ListChatSessions handles admin listing chat sessions for an API key.
+// GET /api/v1/admin/api-keys/:id/chat-sessions?user_id=...
+func (h *AdminAPIKeyHandler) ListChatSessions(c *gin.Context) {
+	if h.chatSessionService == nil {
+		response.Success(c, response.PaginatedData{Items: []*service.ChatSession{}, Total: 0, Page: 1, PageSize: 20, Pages: 1})
+		return
+	}
+
+	keyID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid API key ID")
+		return
+	}
+	userID, err := strconv.ParseInt(c.Query("user_id"), 10, 64)
+	if err != nil || userID <= 0 {
+		response.BadRequest(c, "Invalid user ID")
+		return
+	}
+
+	page, pageSize := response.ParsePagination(c)
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	params := pagination.PaginationParams{
+		Page:      page,
+		PageSize:  pageSize,
+		SortBy:    "created_at",
+		SortOrder: "desc",
+	}
+
+	items, total, err := h.chatSessionService.ListSessionsByAPIKey(c.Request.Context(), userID, keyID, params)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Paginated(c, items, total, params.Page, params.PageSize)
+}
+
+// GetChatSession handles admin loading a single chat session.
+// GET /api/v1/admin/api-keys/:id/chat-sessions/:sessionId?user_id=...
+func (h *AdminAPIKeyHandler) GetChatSession(c *gin.Context) {
+	if h.chatSessionService == nil {
+		response.NotFound(c, "Chat session feature is not enabled")
+		return
+	}
+
+	keyID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid API key ID")
+		return
+	}
+	sessionID, err := strconv.ParseInt(c.Param("sessionId"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid session ID")
+		return
+	}
+	userID, err := strconv.ParseInt(c.Query("user_id"), 10, 64)
+	if err != nil || userID <= 0 {
+		response.BadRequest(c, "Invalid user ID")
+		return
+	}
+	limit := parsePositiveInt(c.Query("limit"), 50)
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+
+	item, err := h.chatSessionService.GetSessionDetail(c.Request.Context(), userID, keyID, sessionID, limit)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, item)
+}
+
+func parsePositiveInt(value string, fallback int) int {
+	n, err := strconv.Atoi(value)
+	if err != nil || n <= 0 {
+		return fallback
+	}
+	return n
 }

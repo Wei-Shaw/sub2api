@@ -117,6 +117,8 @@ func registerContentModerationRoutes(admin *gin.RouterGroup, h *handler.Handlers
 func registerAdminAPIKeyRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	apiKeys := admin.Group("/api-keys")
 	{
+		apiKeys.GET("/:id/chat-sessions", h.Admin.APIKey.ListChatSessions)
+		apiKeys.GET("/:id/chat-sessions/:sessionId", h.Admin.APIKey.GetChatSession)
 		apiKeys.PUT("/:id", h.Admin.APIKey.UpdateGroup)
 	}
 }
