@@ -463,10 +463,24 @@ func (h *AccountHandler) GetByID(c *gin.Context) {
 		return
 	}
 
+	// [tlsfp_debug] 诊断：观察 GET 返回时 Extra 是否仍包含相关字段
+	if account != nil && account.Extra != nil {
+		tlsFP, tlsFPOK := account.Extra["enable_tls_fingerprint"]
+		cacheTTL, cacheTTLOK := account.Extra["cache_ttl_override_enabled"]
+		slog.Info("tlsfp_debug.get_by_id",
+			"account_id", account.ID,
+			"account_type", account.Type,
+			"enable_tls_fingerprint_present", tlsFPOK,
+			"enable_tls_fingerprint_value", tlsFP,
+			"cache_ttl_override_enabled_present", cacheTTLOK,
+			"cache_ttl_override_enabled_value", cacheTTL,
+			"IsTLSFingerprintEnabled", account.IsTLSFingerprintEnabled(),
+			"IsCacheTTLOverrideEnabled", account.IsCacheTTLOverrideEnabled(),
+		)
+	}
+
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
 }
-
-// CheckMixedChannel handles checking mixed channel risk for account-group binding.
 // POST /api/v1/admin/accounts/check-mixed-channel
 func (h *AccountHandler) CheckMixedChannel(c *gin.Context) {
 	var req CheckMixedChannelRequest
@@ -625,6 +639,24 @@ func (h *AccountHandler) Update(c *gin.Context) {
 	sanitizeExtraBaseRPM(req.Extra)
 	sanitizeExtraUpstreamPassthrough(req.Extra)
 
+	// [tlsfp_debug] 诊断：观察前端实际提交的 enable_tls_fingerprint / cache_ttl_override_enabled
+	if req.Extra != nil {
+		tlsFP, tlsFPOK := req.Extra["enable_tls_fingerprint"]
+		cacheTTL, cacheTTLOK := req.Extra["cache_ttl_override_enabled"]
+		slog.Info("tlsfp_debug.handler_in",
+			"account_id", accountID,
+			"extra_keys", extraKeyList(req.Extra),
+			"enable_tls_fingerprint_present", tlsFPOK,
+			"enable_tls_fingerprint_value", tlsFP,
+			"enable_tls_fingerprint_type", fmt.Sprintf("%T", tlsFP),
+			"cache_ttl_override_enabled_present", cacheTTLOK,
+			"cache_ttl_override_enabled_value", cacheTTL,
+			"cache_ttl_override_enabled_type", fmt.Sprintf("%T", cacheTTL),
+		)
+	} else {
+		slog.Info("tlsfp_debug.handler_in", "account_id", accountID, "extra", "nil")
+	}
+
 	// 确定是否跳过混合渠道检查
 	skipCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
 
@@ -667,7 +699,33 @@ func (h *AccountHandler) Update(c *gin.Context) {
 		h.scheduleOpenAIResponsesProbe(account)
 	}
 
+	// [tlsfp_debug] 诊断：观察 UpdateAccount 返回后落库的 Extra 实际内容
+	if account != nil && account.Extra != nil {
+		tlsFP, tlsFPOK := account.Extra["enable_tls_fingerprint"]
+		cacheTTL, cacheTTLOK := account.Extra["cache_ttl_override_enabled"]
+		slog.Info("tlsfp_debug.handler_out",
+			"account_id", account.ID,
+			"account_type", account.Type,
+			"extra_keys", extraKeyList(account.Extra),
+			"enable_tls_fingerprint_present", tlsFPOK,
+			"enable_tls_fingerprint_value", tlsFP,
+			"cache_ttl_override_enabled_present", cacheTTLOK,
+			"cache_ttl_override_enabled_value", cacheTTL,
+			"IsTLSFingerprintEnabled", account.IsTLSFingerprintEnabled(),
+			"IsCacheTTLOverrideEnabled", account.IsCacheTTLOverrideEnabled(),
+		)
+	}
+
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
+}
+
+// extraKeyList 返回 extra map 的 key 列表（仅用于诊断日志）
+func extraKeyList(m map[string]any) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 // scheduleOpenAIResponsesProbe 异步触发 OpenAI APIKey 账号的 Responses API 能力探测。
