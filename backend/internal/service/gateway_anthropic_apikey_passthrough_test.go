@@ -476,6 +476,66 @@ REDACTED
 	require.Equal(t, int64(1024), gjson.GetBytes(sentBody, "max_tokens").Int(), "max_tokens 不应被修改")
 REDACTED
 
+func TestGatewayService_AnthropicAPIKeyPassthrough_CountTokensFiltersGenerationFields(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", nil)
+
+	body := []byte(`{"model":"claude-sonnet-4-20250514","system":[{"type":"text","text":"sys"REDACTED],"messages":[{"role":"user","content":"hello"REDACTED],"tools":[{"name":"tool","input_schema":{"type":"object"REDACTEDREDACTED],"temperature":0.7,"top_p":0.9,"top_k":40,"stream":true,"stop_sequences":["END"],"max_tokens":1024,"thinking":{"type":"enabled","budget_tokens":5000REDACTEDREDACTED`)
+	parsed := &ParsedRequest{
+		Body:  body,
+		Model: "claude-sonnet-4-20250514",
+REDACTED
+
+	upstreamRespBody := `{"input_tokens":42REDACTED`
+	upstream := &anthropicHTTPUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED,
+			Body:       io.NopCloser(strings.NewReader(upstreamRespBody)),
+	REDACTED,
+REDACTED
+
+	svc := &GatewayService{
+		cfg:              &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSizeREDACTEDREDACTED,
+		httpUpstream:     upstream,
+		rateLimitService: &RateLimitService{REDACTED,
+REDACTED
+
+	account := &Account{
+		ID:          302,
+		Name:        "count-token-filter-test",
+		Platform:    PlatformAnthropic,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+REDACTED
+			"api_key":  "upstream-key",
+			"base_url": "https://api.anthropic.com",
+	REDACTED,
+		Extra:       map[string]any{"anthropic_passthrough": trueREDACTED,
+		Status:      StatusActive,
+		Schedulable: true,
+REDACTED
+
+	err := svc.ForwardCountTokens(context.Background(), c, account, parsed)
+REDACTED
+
+	sentBody := upstream.lastBody
+	require.False(t, gjson.GetBytes(sentBody, "temperature").Exists())
+	require.False(t, gjson.GetBytes(sentBody, "top_p").Exists())
+	require.False(t, gjson.GetBytes(sentBody, "top_k").Exists())
+	require.False(t, gjson.GetBytes(sentBody, "stream").Exists())
+	require.False(t, gjson.GetBytes(sentBody, "stop_sequences").Exists())
+	require.Equal(t, "claude-sonnet-4-20250514", gjson.GetBytes(sentBody, "model").String())
+	require.Equal(t, "sys", gjson.GetBytes(sentBody, "system.0.text").String())
+	require.Equal(t, "hello", gjson.GetBytes(sentBody, "messages.0.content").String())
+	require.Equal(t, "tool", gjson.GetBytes(sentBody, "tools.0.name").String())
+	require.Equal(t, int64(1024), gjson.GetBytes(sentBody, "max_tokens").Int())
+	require.Equal(t, "enabled", gjson.GetBytes(sentBody, "thinking.type").String())
+REDACTED
+
 // TestGatewayService_AnthropicAPIKeyPassthrough_EmptyModelSkipsMapping
 // 确保空模型名不会触发映射逻辑
 func TestGatewayService_AnthropicAPIKeyPassthrough_EmptyModelSkipsMapping(t *testing.T) {
