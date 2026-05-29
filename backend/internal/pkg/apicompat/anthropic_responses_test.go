@@ -497,6 +497,55 @@ func TestStreamingTextOnly(t *testing.T) {
 	assert.Equal(t, "message_stop", events[1].Type)
 }
 
+func TestAnthropicToResponsesEvents_TextStreamingIncludesContentPartLifecycle(t *testing.T) {
+	state := NewAnthropicEventToResponsesState()
+
+	created := AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type: "message_start",
+		Message: &AnthropicResponse{
+			ID:    "msg_stream",
+			Model: "claude-sonnet-4-5",
+		},
+	}, state)
+	require.Len(t, created, 1)
+	assert.Equal(t, "response.created", created[0].Type)
+
+	events := AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type: "content_block_start",
+		ContentBlock: &AnthropicContentBlock{
+			Type: "text",
+		},
+	}, state)
+	require.Len(t, events, 2)
+	assert.Equal(t, "response.output_item.added", events[0].Type)
+	assert.Equal(t, "response.content_part.added", events[1].Type)
+	require.NotNil(t, events[1].Part)
+	assert.Equal(t, "output_text", events[1].Part.Type)
+	assert.Equal(t, "", events[1].Part.Text)
+
+	delta := AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type: "content_block_delta",
+		Delta: &AnthropicDelta{
+			Type: "text_delta",
+			Text: "Hello",
+		},
+	}, state)
+	require.Len(t, delta, 1)
+	assert.Equal(t, "response.output_text.delta", delta[0].Type)
+	assert.Equal(t, events[1].ItemID, delta[0].ItemID)
+
+	done := AnthropicEventToResponsesEvents(&AnthropicStreamEvent{
+		Type: "content_block_stop",
+	}, state)
+	require.Len(t, done, 2)
+	assert.Equal(t, "response.output_text.done", done[0].Type)
+	assert.Equal(t, "response.content_part.done", done[1].Type)
+	require.NotNil(t, done[1].Part)
+	assert.Equal(t, "output_text", done[1].Part.Type)
+	assert.Equal(t, "Hello", done[1].Part.Text)
+	assert.Equal(t, events[1].ItemID, done[1].ItemID)
+}
+
 func TestResponsesEventToAnthropicEvents_ResponseDone(t *testing.T) {
 	state := NewResponsesEventToAnthropicState()
 	state.Model = "gpt-4o"

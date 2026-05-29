@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -151,6 +152,8 @@ type AnthropicEventToResponsesState struct {
 
 	// For message output: accumulate text parts
 	ContentIndex int
+	TextBuffer   strings.Builder
+	TextPartOpen bool
 
 	// For function_call: track per-output info
 	CurrentCallID string
@@ -278,6 +281,8 @@ func anthToResHandleContentBlockStart(evt *AnthropicStreamEvent, state *Anthropi
 			state.CurrentItemID = generateItemID()
 			state.CurrentItemType = "message"
 			state.ContentIndex = 0
+			state.TextBuffer.Reset()
+			state.TextPartOpen = false
 
 			events = append(events, makeResponsesEvent(state, "response.output_item.added", &ResponsesStreamEvent{
 				OutputIndex: state.OutputIndex,
@@ -286,6 +291,19 @@ func anthToResHandleContentBlockStart(evt *AnthropicStreamEvent, state *Anthropi
 					ID:     state.CurrentItemID,
 					Role:   "assistant",
 					Status: "in_progress",
+				},
+			}))
+		}
+
+		if !state.TextPartOpen {
+			state.TextPartOpen = true
+			events = append(events, makeResponsesEvent(state, "response.content_part.added", &ResponsesStreamEvent{
+				OutputIndex:  state.OutputIndex,
+				ContentIndex: state.ContentIndex,
+				ItemID:       state.CurrentItemID,
+				Part: &ResponsesContentPart{
+					Type: "output_text",
+					Text: "",
 				},
 			}))
 		}
@@ -323,6 +341,9 @@ func anthToResHandleContentBlockDelta(evt *AnthropicStreamEvent, state *Anthropi
 	case "text_delta":
 		if evt.Delta.Text == "" {
 			return nil
+		}
+		if state.CurrentItemType == "message" {
+			_, _ = state.TextBuffer.WriteString(evt.Delta.Text)
 		}
 		return []ResponsesStreamEvent{makeResponsesEvent(state, "response.output_text.delta", &ResponsesStreamEvent{
 			OutputIndex:  state.OutputIndex,
@@ -391,13 +412,28 @@ func anthToResHandleContentBlockStop(evt *AnthropicStreamEvent, state *Anthropic
 
 	case "message":
 		// Emit output_text.done (text block is done, but message item stays open for potential more blocks)
-		return []ResponsesStreamEvent{
+		events := []ResponsesStreamEvent{
 			makeResponsesEvent(state, "response.output_text.done", &ResponsesStreamEvent{
 				OutputIndex:  state.OutputIndex,
 				ContentIndex: state.ContentIndex,
+				Text:         state.TextBuffer.String(),
 				ItemID:       state.CurrentItemID,
 			}),
 		}
+		if state.TextPartOpen {
+			events = append(events, makeResponsesEvent(state, "response.content_part.done", &ResponsesStreamEvent{
+				OutputIndex:  state.OutputIndex,
+				ContentIndex: state.ContentIndex,
+				ItemID:       state.CurrentItemID,
+				Part: &ResponsesContentPart{
+					Type: "output_text",
+					Text: state.TextBuffer.String(),
+				},
+			}))
+			state.TextPartOpen = false
+		}
+		state.TextBuffer.Reset()
+		return events
 	}
 
 	return nil
@@ -458,6 +494,8 @@ func closeCurrentResponsesItem(state *AnthropicEventToResponsesState) []Response
 	state.CurrentName = ""
 	state.OutputIndex++
 	state.ContentIndex = 0
+	state.TextBuffer.Reset()
+	state.TextPartOpen = false
 
 	return []ResponsesStreamEvent{makeResponsesEvent(state, "response.output_item.done", &ResponsesStreamEvent{
 		OutputIndex: state.OutputIndex - 1, // Use the index before increment

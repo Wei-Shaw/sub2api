@@ -826,6 +826,44 @@ func TestResponsesEventToChatChunks_TextDelta(t *testing.T) {
 	assert.Equal(t, "Hello", *chunks[0].Choices[0].Delta.Content)
 }
 
+func TestChatCompletionsToResponsesEvents_TextStreamingIncludesContentPartLifecycle(t *testing.T) {
+	state := NewChatCompletionsToResponsesStreamState("gpt-4o")
+	content := "Hello"
+	chunk := &ChatCompletionsChunk{
+		ID:    "chatcmpl_stream",
+		Model: "gpt-4o",
+		Choices: []ChatChunkChoice{
+			{
+				Delta: ChatDelta{Content: &content},
+			},
+		},
+	}
+
+	events := ChatCompletionsChunkToResponsesEvents(chunk, state)
+	require.Len(t, events, 4)
+	assert.Equal(t, "response.created", events[0].Type)
+	assert.Equal(t, "response.output_item.added", events[1].Type)
+	assert.Equal(t, "response.content_part.added", events[2].Type)
+	assert.Equal(t, "response.output_text.delta", events[3].Type)
+	require.NotNil(t, events[2].Part)
+	assert.Equal(t, "output_text", events[2].Part.Type)
+	assert.Equal(t, "", events[2].Part.Text)
+	assert.Equal(t, events[1].Item.ID, events[2].ItemID)
+	assert.Equal(t, events[2].ItemID, events[3].ItemID)
+	assert.Equal(t, 0, events[2].ContentIndex)
+
+	done := FinalizeChatCompletionsResponsesStream(state)
+	require.Len(t, done, 4)
+	assert.Equal(t, "response.output_text.done", done[0].Type)
+	assert.Equal(t, "response.content_part.done", done[1].Type)
+	assert.Equal(t, "response.output_item.done", done[2].Type)
+	assert.Equal(t, "response.completed", done[3].Type)
+	require.NotNil(t, done[1].Part)
+	assert.Equal(t, "output_text", done[1].Part.Type)
+	assert.Equal(t, "Hello", done[1].Part.Text)
+	assert.Equal(t, events[2].ItemID, done[1].ItemID)
+}
+
 func TestResponsesEventToChatChunks_ToolCallDelta(t *testing.T) {
 	state := NewResponsesEventToChatState()
 	state.Model = "gpt-4o"

@@ -449,6 +449,7 @@ type ChatCompletionsToResponsesStreamState struct {
 	CompletedSent  bool
 
 	MessageItemID string
+	TextPartOpen  bool
 	Text          strings.Builder
 	Reasoning     strings.Builder
 	ToolCalls     map[int]*ChatToolCall
@@ -492,6 +493,7 @@ func ChatCompletionsChunkToResponsesEvents(
 	for _, choice := range chunk.Choices {
 		if choice.Delta.Content != nil {
 			events = append(events, ensureChatToResponsesMessageItem(state)...)
+			events = append(events, ensureChatToResponsesTextPart(state)...)
 			_, _ = state.Text.WriteString(*choice.Delta.Content)
 			events = append(events, chatToResponsesEvent(state, "response.output_text.delta", &ResponsesStreamEvent{
 				OutputIndex:  0,
@@ -572,6 +574,18 @@ func FinalizeChatCompletionsResponsesStream(state *ChatCompletionsToResponsesStr
 			Text:         state.Text.String(),
 			ItemID:       state.MessageItemID,
 		}))
+		if state.TextPartOpen {
+			events = append(events, chatToResponsesEvent(state, "response.content_part.done", &ResponsesStreamEvent{
+				OutputIndex:  0,
+				ContentIndex: 0,
+				ItemID:       state.MessageItemID,
+				Part: &ResponsesContentPart{
+					Type: "output_text",
+					Text: state.Text.String(),
+				},
+			}))
+			state.TextPartOpen = false
+		}
 		events = append(events, chatToResponsesEvent(state, "response.output_item.done", &ResponsesStreamEvent{
 			OutputIndex: 0,
 			Item: &ResponsesOutput{
@@ -633,6 +647,22 @@ func ensureChatToResponsesMessageItem(state *ChatCompletionsToResponsesStreamSta
 			ID:     state.MessageItemID,
 			Role:   "assistant",
 			Status: "in_progress",
+		},
+	})}
+}
+
+func ensureChatToResponsesTextPart(state *ChatCompletionsToResponsesStreamState) []ResponsesStreamEvent {
+	if state.TextPartOpen || state.MessageItemID == "" {
+		return nil
+	}
+	state.TextPartOpen = true
+	return []ResponsesStreamEvent{chatToResponsesEvent(state, "response.content_part.added", &ResponsesStreamEvent{
+		OutputIndex:  0,
+		ContentIndex: 0,
+		ItemID:       state.MessageItemID,
+		Part: &ResponsesContentPart{
+			Type: "output_text",
+			Text: "",
 		},
 	})}
 }
