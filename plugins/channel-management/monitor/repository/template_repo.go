@@ -216,7 +216,7 @@ func (r *channelMonitorTemplateRepository) CountAssociatedMonitors(ctx context.C
 
 func (r *channelMonitorTemplateRepository) ListAssociatedMonitors(ctx context.Context, id int64) ([]*monitorservice.AssociatedMonitorBrief, error) {
 	const q = `
-		SELECT id, name, provider, enabled
+		SELECT id, name, provider, COALESCE(api_mode, ''), enabled
 		FROM channel_monitors
 		WHERE template_id = $1
 		ORDER BY name ASC
@@ -230,7 +230,7 @@ func (r *channelMonitorTemplateRepository) ListAssociatedMonitors(ctx context.Co
 	out := make([]*monitorservice.AssociatedMonitorBrief, 0)
 	for rows.Next() {
 		brief := &monitorservice.AssociatedMonitorBrief{}
-		if err := rows.Scan(&brief.ID, &brief.Name, &brief.Provider, &brief.Enabled); err != nil {
+		if err := rows.Scan(&brief.ID, &brief.Name, &brief.Provider, &brief.APIMode, &brief.Enabled); err != nil {
 			return nil, fmt.Errorf("scan associated monitor row: %w", err)
 		}
 		out = append(out, brief)
