@@ -320,6 +320,14 @@ gateway:
       queue: 0.7
       error_rate: 0.8
       ttft: 0.5
+  # OpenAI 高级调度器补充配置
+  openai_scheduler:
+    # 是否允许 session_hash sticky 在账号健康度恶化时临时逃逸；false 可一键回退旧行为
+    sticky_escape_enabled: true
+    # TTFT EWMA 超过该阈值（毫秒）时跳过 sticky，默认 15s，避免轻微抖动就逃逸
+    sticky_escape_ttft_ms: 15000
+    # 错误率 EWMA 超过该阈值时跳过 sticky，默认 0.5，仅在明显降级时触发
+    sticky_escape_error_rate: 0.5
   # OpenAI HTTP upstream protocol strategy.
   # OpenAI HTTP 上游协议策略（默认 HTTP/2；代理明确不兼容时可临时回退 HTTP/1.1）。
   openai_http2:
