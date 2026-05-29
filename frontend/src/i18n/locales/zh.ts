@@ -3613,6 +3613,9 @@ export default {
       interceptWarmupRequestsDesc: '启用后，标题生成等预热请求将返回 mock 响应，不消耗上游 token',
       autoPauseOnExpired: '过期自动暂停调度',
       autoPauseOnExpiredDesc: '启用后，账号过期将自动暂停调度',
+	  autoPause5hThreshold: '5h 用量阈值(%)',
+	  autoPause7dThreshold: '7d 用量阈值(%)',
+	  autoPauseThresholdHint: '填 0 或留空表示不启用；达到阈值后仅在调度时跳过账号，不修改 schedulable。',
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {
         title: '配额控制',

@@ -691,6 +691,117 @@ REDACTED
 	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
 REDACTED
 
+func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_AutoPauseBy5hThreshold(t *testing.T) {
+	ctx := context.Background()
+	primary := Account{
+		ID:          35001,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    0,
+		Extra: map[string]any{
+			"codex_5h_used_percent":   95.0,
+			"auto_pause_5h_threshold": 0.95,
+			"auto_pause_5h_limit":     100,
+	REDACTED,
+REDACTED
+	secondary := Account{ID: 35002, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5REDACTED
+	svc := &OpenAIGatewayService{accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{primary, secondaryREDACTEDREDACTED, cfg: &config.Config{REDACTEDREDACTED
+
+	account, err := svc.SelectAccountForModelWithExclusions(ctx, nil, "", "gpt-5.1", nil)
+REDACTED
+	require.NotNil(t, account)
+	require.Equal(t, int64(35002), account.ID)
+REDACTED
+
+func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_AllowsBelow5hThreshold(t *testing.T) {
+	ctx := context.Background()
+	primary := Account{
+		ID:          35101,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    0,
+		Extra: map[string]any{
+			"codex_5h_used_percent":   80.0,
+			"auto_pause_5h_threshold": 0.95,
+			"auto_pause_5h_limit":     100,
+	REDACTED,
+REDACTED
+	secondary := Account{ID: 35102, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5REDACTED
+	svc := &OpenAIGatewayService{accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{primary, secondaryREDACTEDREDACTED, cfg: &config.Config{REDACTEDREDACTED
+
+	account, err := svc.SelectAccountForModelWithExclusions(ctx, nil, "", "gpt-5.1", nil)
+REDACTED
+	require.NotNil(t, account)
+	require.Equal(t, int64(35101), account.ID)
+REDACTED
+
+func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_AutoPauseBy7dThreshold(t *testing.T) {
+	ctx := context.Background()
+	primary := Account{
+		ID:          35201,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    0,
+		Extra: map[string]any{
+			"codex_7d_used_percent":   95.0,
+			"auto_pause_7d_threshold": 0.95,
+			"auto_pause_7d_limit":     200,
+	REDACTED,
+REDACTED
+	secondary := Account{ID: 35202, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5REDACTED
+	svc := &OpenAIGatewayService{accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{primary, secondaryREDACTEDREDACTED, cfg: &config.Config{REDACTEDREDACTED
+
+	account, err := svc.SelectAccountForModelWithExclusions(ctx, nil, "", "gpt-5.1", nil)
+REDACTED
+	require.NotNil(t, account)
+	require.Equal(t, int64(35202), account.ID)
+REDACTED
+
+func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_UnconfiguredThresholdKeepsLegacyBehavior(t *testing.T) {
+	ctx := context.Background()
+	primary := Account{ID: 35301, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0, Extra: map[string]any{"codex_5h_used_percent": 99.0, "codex_7d_used_percent": 99.0REDACTEDREDACTED
+	secondary := Account{ID: 35302, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5REDACTED
+	svc := &OpenAIGatewayService{accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{primary, secondaryREDACTEDREDACTED, cfg: &config.Config{REDACTEDREDACTED
+
+	account, err := svc.SelectAccountForModelWithExclusions(ctx, nil, "", "gpt-5.1", nil)
+REDACTED
+	require.NotNil(t, account)
+	require.Equal(t, int64(35301), account.ID)
+REDACTED
+
+func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_UsesGlobalDefaultThreshold(t *testing.T) {
+	ctx := withOpenAIQuotaAutoPauseSettings(context.Background(), OpsOpenAIAccountQuotaAutoPauseSettings{DefaultThreshold5h: 0.95REDACTED)
+	primary := Account{
+		ID:          35401,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    0,
+		Extra: map[string]any{
+			"codex_5h_used_percent": 95.0,
+			"auto_pause_5h_limit":   100,
+	REDACTED,
+REDACTED
+	secondary := Account{ID: 35402, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5REDACTED
+	svc := &OpenAIGatewayService{accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{primary, secondaryREDACTEDREDACTED, cfg: &config.Config{REDACTEDREDACTED
+
+	account, err := svc.SelectAccountForModelWithExclusions(ctx, nil, "", "gpt-5.1", nil)
+REDACTED
+	require.NotNil(t, account)
+	require.Equal(t, int64(35402), account.ID)
+REDACTED
+
 func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_SkipsFreshlyRateLimitedSnapshotCandidate(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(10102)

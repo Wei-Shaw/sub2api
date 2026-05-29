@@ -1787,6 +1787,38 @@
         </div>
       </div>
 
+      <div
+        v-if="account?.platform === 'openai'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
+      >
+        <div>
+          <label class="input-label">{{ t('admin.accounts.autoPause5hThreshold') REDACTEDREDACTED</label>
+          <input
+            v-model.number="autoPause5hThreshold"
+            type="number"
+            min="0"
+            max="100"
+            step="0.1"
+            class="input"
+            data-testid="auto-pause-5h-threshold"
+          />
+          <p class="input-hint">{{ t('admin.accounts.autoPauseThresholdHint') REDACTEDREDACTED</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.autoPause7dThreshold') REDACTEDREDACTED</label>
+          <input
+            v-model.number="autoPause7dThreshold"
+            type="number"
+            min="0"
+            max="100"
+            step="0.1"
+            class="input"
+            data-testid="auto-pause-7d-threshold"
+          />
+          <p class="input-hint">{{ t('admin.accounts.autoPauseThresholdHint') REDACTEDREDACTED</p>
+        </div>
+      </div>
+
       <!-- 配额控制 (Anthropic OAuth/SetupToken: 亲和 + 窗口费用 + 会话 + RPM 等) -->
       <div
         v-if="account?.platform === 'anthropic' && (account?.type === 'oauth' || account?.type === 'setup-token')"
@@ -2447,6 +2479,8 @@ const selectedErrorCodes = ref<number[]>([])
 const customErrorCodeInput = ref<number | null>(null)
 const interceptWarmupRequests = ref(false)
 const autoPauseOnExpired = ref(false)
+const autoPause5hThreshold = ref<number | null>(null)
+const autoPause7dThreshold = ref<number | null>(null)
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
 const allowOverages = ref(false) // For antigravity accounts: enable AI Credits overages
 const antigravityModelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
@@ -2862,9 +2896,11 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   // Load mixed scheduling setting (only for antigravity accounts)
   mixedScheduling.value = false
   allowOverages.value = false
-  const extra = newAccount.extra as Record<string, unknown> | undefined
-  mixedScheduling.value = extra?.mixed_scheduling === true
-  allowOverages.value = extra?.allow_overages === true
+	const extra = newAccount.extra as Record<string, unknown> | undefined
+	mixedScheduling.value = extra?.mixed_scheduling === true
+	allowOverages.value = extra?.allow_overages === true
+	autoPause5hThreshold.value = typeof extra?.auto_pause_5h_threshold === 'number' ? extra.auto_pause_5h_threshold * 100 : null
+	autoPause7dThreshold.value = typeof extra?.auto_pause_7d_threshold === 'number' ? extra.auto_pause_7d_threshold * 100 : null
 
   // Load OpenAI passthrough toggle (OpenAI OAuth/API Key)
   openaiPassthroughEnabled.value = false
@@ -3987,9 +4023,9 @@ const handleSubmit = async () => {
     REDACTED
 
     // For OpenAI OAuth/API Key accounts, handle passthrough mode in extra
-    if (props.account.platform === 'openai' && (props.account.type === 'oauth' || props.account.type === 'apikey')) {
-      const currentExtra = (props.account.extra as Record<string, unknown>) || {REDACTED
-      const newExtra: Record<string, unknown> = { ...currentExtra REDACTED
+	if (props.account.platform === 'openai' && (props.account.type === 'oauth' || props.account.type === 'apikey')) {
+		const currentExtra = (props.account.extra as Record<string, unknown>) || {REDACTED
+		const newExtra: Record<string, unknown> = { ...currentExtra REDACTED
       const hadCodexCLIOnlyEnabled = currentExtra.codex_cli_only === true
       if (props.account.type === 'oauth') {
         newExtra.openai_oauth_responses_websockets_v2_mode = openaiOAuthResponsesWebSocketV2Mode.value
@@ -4011,15 +4047,25 @@ const handleSubmit = async () => {
       REDACTED else {
         newExtra.openai_compact_mode = openAICompactMode.value
       REDACTED
-      if (props.account.type === 'apikey') {
+		if (props.account.type === 'apikey') {
         if (!openAITextGenerationCapabilityEnabled.value || openAIResponsesMode.value === 'auto') {
           delete newExtra.openai_responses_mode
         REDACTED else {
           newExtra.openai_responses_mode = openAIResponsesMode.value
         REDACTED
-      REDACTED
+	REDACTED
+		if (autoPause5hThreshold.value != null && autoPause5hThreshold.value > 0) {
+			newExtra.auto_pause_5h_threshold = autoPause5hThreshold.value / 100
+	REDACTED else {
+			delete newExtra.auto_pause_5h_threshold
+	REDACTED
+		if (autoPause7dThreshold.value != null && autoPause7dThreshold.value > 0) {
+			newExtra.auto_pause_7d_threshold = autoPause7dThreshold.value / 100
+	REDACTED else {
+			delete newExtra.auto_pause_7d_threshold
+	REDACTED
 
-      delete newExtra.codex_image_generation_bridge_enabled
+		delete newExtra.codex_image_generation_bridge_enabled
       if (codexImageGenerationBridgeMode.value === 'inherit') {
         delete newExtra.codex_image_generation_bridge
       REDACTED else {

@@ -1290,7 +1290,7 @@ REDACTED
 // SelectAccountForModelWithExclusions selects an account supporting the requested model while excluding specified accounts.
 // SelectAccountForModelWithExclusions 选择支持指定模型的账号，同时排除指定的账号。
 func (s *OpenAIGatewayService) SelectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{REDACTED) (*Account, error) {
-	return s.selectAccountForModelWithExclusions(ctx, groupID, sessionHash, requestedModel, excludedIDs, false, 0, "")
+	return s.selectAccountForModelWithExclusions(s.withOpenAIQuotaAutoPauseContext(ctx), groupID, sessionHash, requestedModel, excludedIDs, false, 0, "")
 REDACTED
 
 // noAvailableOpenAISelectionError builds the standard "no account available" error
@@ -1327,6 +1327,18 @@ func isOpenAIAccountEligibleForRequest(ctx context.Context, account *Account, re
 	if account == nil || !account.IsOpenAI() || !account.IsSchedulableForModelWithContext(ctx, requestedModel) {
 		return false
 REDACTED
+	if paused, reason := shouldAutoPauseOpenAIAccountByQuota(ctx, account); paused {
+		slog.Info("account_auto_paused_by_quota",
+			"account_id", account.ID,
+			"usage_5h_percent", readOpenAIQuotaUsedPercent(account.Extra, "5h"),
+			"usage_7d_percent", readOpenAIQuotaUsedPercent(account.Extra, "7d"),
+			"threshold_type", reason.window,
+			"threshold", reason.threshold,
+			"limit", reason.limit,
+			"utilization", reason.utilization,
+		)
+		return false
+REDACTED
 	if requestedModel != "" && !account.IsModelSupported(requestedModel) {
 		return false
 REDACTED
@@ -1337,6 +1349,134 @@ REDACTED
 		return false
 REDACTED
 	return true
+REDACTED
+
+type openAIQuotaAutoPauseDecision struct {
+	window      string
+	threshold   float64
+	limit       float64
+	utilization float64
+REDACTED
+
+func shouldAutoPauseOpenAIAccountByQuota(ctx context.Context, account *Account) (bool, openAIQuotaAutoPauseDecision) {
+	if account == nil || !account.IsOpenAI() {
+		return false, openAIQuotaAutoPauseDecision{REDACTED
+REDACTED
+	threshold5h, threshold7d := resolveOpenAIQuotaAutoPauseThresholds(ctx, account)
+	if threshold5h > 0 {
+		if utilization, limit, ok := resolveOpenAIQuotaUtilization(account.Extra, "5h"); ok {
+			if utilization >= threshold5h {
+				return true, openAIQuotaAutoPauseDecision{window: "5h", threshold: threshold5h, limit: limit, utilization: utilizationREDACTED
+		REDACTED
+	REDACTED
+REDACTED
+	if threshold7d > 0 {
+		if utilization, limit, ok := resolveOpenAIQuotaUtilization(account.Extra, "7d"); ok {
+			if utilization >= threshold7d {
+				return true, openAIQuotaAutoPauseDecision{window: "7d", threshold: threshold7d, limit: limit, utilization: utilizationREDACTED
+		REDACTED
+	REDACTED
+REDACTED
+	return false, openAIQuotaAutoPauseDecision{REDACTED
+REDACTED
+
+func resolveOpenAIQuotaAutoPauseThresholds(ctx context.Context, account *Account) (float64, float64) {
+	threshold5h, _ := resolveAccountExtraNumber(account.Extra, "auto_pause_5h_threshold")
+	threshold7d, _ := resolveAccountExtraNumber(account.Extra, "auto_pause_7d_threshold")
+	threshold5h = clamp01(threshold5h)
+	threshold7d = clamp01(threshold7d)
+	if threshold5h > 0 && threshold7d > 0 {
+		return threshold5h, threshold7d
+REDACTED
+	settings := openAIQuotaAutoPauseSettingsFromContext(ctx)
+	if threshold5h <= 0 {
+		threshold5h = clamp01(settings.DefaultThreshold5h)
+REDACTED
+	if threshold7d <= 0 {
+		threshold7d = clamp01(settings.DefaultThreshold7d)
+REDACTED
+	return threshold5h, threshold7d
+REDACTED
+
+func resolveAccountExtraNumber(extra map[string]any, keys ...string) (float64, bool) {
+	if len(extra) == 0 {
+		return 0, false
+REDACTED
+	for _, key := range keys {
+		value, ok := extra[key]
+		if !ok || value == nil {
+			continue
+	REDACTED
+		switch v := value.(type) {
+		case float64:
+			return v, true
+		case float32:
+			return float64(v), true
+		case int:
+			return float64(v), true
+		case int64:
+			return float64(v), true
+		case json.Number:
+			parsed, err := v.Float64()
+			if err == nil {
+				return parsed, true
+		REDACTED
+		case string:
+			parsed, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+			if err == nil {
+				return parsed, true
+		REDACTED
+	REDACTED
+REDACTED
+	return 0, false
+REDACTED
+
+func resolveOpenAIQuotaUtilization(extra map[string]any, window string) (float64, float64, bool) {
+	limitKeys := []string{"auto_pause_" + window + "_limit", "quota_" + window + "_limit", window + "_limit"REDACTED
+	if limit, ok := resolveAccountExtraNumber(extra, limitKeys...); ok && limit > 0 {
+		if usage, ok := resolveAccountExtraNumber(extra, "usage_"+window); ok && usage >= 0 {
+			return usage / limit, limit, true
+	REDACTED
+REDACTED
+	usedPercent := readOpenAIQuotaUsedPercent(extra, window)
+	if usedPercent <= 0 {
+		return 0, 0, false
+REDACTED
+	return usedPercent / 100, 100, true
+REDACTED
+
+func readOpenAIQuotaUsedPercent(extra map[string]any, window string) float64 {
+	if len(extra) == 0 {
+		return 0
+REDACTED
+	if value, ok := resolveAccountExtraNumber(extra, "codex_"+window+"_used_percent"); ok {
+		return value
+REDACTED
+	return 0
+REDACTED
+
+type openAIQuotaAutoPauseCtxKey struct{REDACTED
+
+func withOpenAIQuotaAutoPauseSettings(ctx context.Context, settings OpsOpenAIAccountQuotaAutoPauseSettings) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+REDACTED
+	return context.WithValue(ctx, openAIQuotaAutoPauseCtxKey{REDACTED, settings)
+REDACTED
+
+func openAIQuotaAutoPauseSettingsFromContext(ctx context.Context) OpsOpenAIAccountQuotaAutoPauseSettings {
+	if ctx == nil {
+		return OpsOpenAIAccountQuotaAutoPauseSettings{REDACTED
+REDACTED
+	settings, _ := ctx.Value(openAIQuotaAutoPauseCtxKey{REDACTED).(OpsOpenAIAccountQuotaAutoPauseSettings)
+	return settings
+REDACTED
+
+func (s *OpenAIGatewayService) withOpenAIQuotaAutoPauseContext(ctx context.Context) context.Context {
+	if s == nil || s.settingService == nil {
+		return ctx
+REDACTED
+	return withOpenAIQuotaAutoPauseSettings(ctx, s.settingService.GetOpenAIQuotaAutoPauseSettings(ctx))
 REDACTED
 
 // prioritizeOpenAICompactAccounts re-orders a slice so that accounts with known
@@ -1587,7 +1727,7 @@ REDACTED
 
 // SelectAccountWithLoadAwareness selects an account with load-awareness and wait plan.
 func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{REDACTED) (*AccountSelectionResult, error) {
-	return s.selectAccountWithLoadAwareness(ctx, groupID, sessionHash, requestedModel, excludedIDs, false, "")
+	return s.selectAccountWithLoadAwareness(s.withOpenAIQuotaAutoPauseContext(ctx), groupID, sessionHash, requestedModel, excludedIDs, false, "")
 REDACTED
 
 func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{REDACTED, requireCompact bool, requiredCapability OpenAIEndpointCapability) (*AccountSelectionResult, error) {

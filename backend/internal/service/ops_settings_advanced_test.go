@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+
+	"github.com/Wei-Shaw/sub2api/internal/config"
 )
 
 func TestGetOpsAdvancedSettings_DefaultHidesOpenAITokenStats(t *testing.T) {
@@ -93,5 +95,19 @@ REDACTED
 REDACTED
 	if !cfg.DisplayAlertEvents {
 		t.Fatalf("DisplayAlertEvents = false, want true default backfill")
+REDACTED
+REDACTED
+
+func TestGetOpenAIQuotaAutoPauseSettings_ReadsDefaultsFromOpsAdvancedSettings(t *testing.T) {
+	repo := newRuntimeSettingRepoStub()
+	repo.values[SettingKeyOpsAdvancedSettings] = `{"openai_account_quota_auto_pause":{"default_threshold_5h":0.95,"default_threshold_7d":0.9REDACTEDREDACTED`
+	svc := NewSettingService(repo, &config.Config{REDACTED)
+
+	settings := svc.GetOpenAIQuotaAutoPauseSettings(context.Background())
+	if settings.DefaultThreshold5h != 0.95 {
+		t.Fatalf("DefaultThreshold5h = %v, want 0.95", settings.DefaultThreshold5h)
+REDACTED
+	if settings.DefaultThreshold7d != 0.9 {
+		t.Fatalf("DefaultThreshold7d = %v, want 0.9", settings.DefaultThreshold7d)
 REDACTED
 REDACTED

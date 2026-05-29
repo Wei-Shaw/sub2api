@@ -369,6 +369,7 @@ func defaultOpsAdvancedSettings() *OpsAdvancedSettings {
 		Aggregation: OpsAggregationSettings{
 			AggregationEnabled: false,
 	REDACTED,
+		OpenAIAccountQuotaAutoPause:     OpsOpenAIAccountQuotaAutoPauseSettings{REDACTED,
 		IgnoreCountTokensErrors:         true,  // count_tokens 404 是预期行为，默认忽略
 		IgnoreContextCanceled:           true,  // Default to true - client disconnects are not errors
 		IgnoreNoAvailableAccounts:       false, // Default to false - this is a real routing issue
@@ -384,6 +385,8 @@ func normalizeOpsAdvancedSettings(cfg *OpsAdvancedSettings) {
 	if cfg == nil {
 		return
 REDACTED
+	cfg.OpenAIAccountQuotaAutoPause.DefaultThreshold5h = clampOpsQuotaAutoPauseThreshold(cfg.OpenAIAccountQuotaAutoPause.DefaultThreshold5h)
+	cfg.OpenAIAccountQuotaAutoPause.DefaultThreshold7d = clampOpsQuotaAutoPauseThreshold(cfg.OpenAIAccountQuotaAutoPause.DefaultThreshold7d)
 	cfg.DataRetention.CleanupSchedule = strings.TrimSpace(cfg.DataRetention.CleanupSchedule)
 	if cfg.DataRetention.CleanupSchedule == "" {
 		cfg.DataRetention.CleanupSchedule = opsCleanupDefaultSchedule
@@ -403,6 +406,16 @@ REDACTED
 	if cfg.AutoRefreshIntervalSec <= 0 {
 		cfg.AutoRefreshIntervalSec = 30
 REDACTED
+REDACTED
+
+func clampOpsQuotaAutoPauseThreshold(value float64) float64 {
+	if value <= 0 {
+		return 0
+REDACTED
+	if value > 1 {
+		return 1
+REDACTED
+	return value
 REDACTED
 
 func validateOpsAdvancedSettings(cfg *OpsAdvancedSettings) error {
@@ -477,6 +490,12 @@ REDACTED
 	if err := s.settingRepo.Set(ctx, SettingKeyOpsAdvancedSettings, string(raw)); err != nil {
 		return nil, err
 REDACTED
+	cacheKey := openAIQuotaAutoPauseSettingsCacheKey(s.settingRepo)
+	openAIQuotaAutoPauseSettingsSF.Forget(cacheKey)
+	storeOpenAIQuotaAutoPauseSettingsCache(s.settingRepo, &cachedOpenAIQuotaAutoPauseSettings{
+		settings:  cfg.OpenAIAccountQuotaAutoPause,
+		expiresAt: time.Now().Add(openAIQuotaAutoPauseSettingsCacheTTL).UnixNano(),
+REDACTED)
 
 	// notify cleanup service to reload schedule/enabled.
 	if s.cleanupReloader != nil {

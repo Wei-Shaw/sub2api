@@ -3475,6 +3475,9 @@ export default {
         'When enabled, warmup requests like title generation will return mock responses without consuming upstream tokens',
       autoPauseOnExpired: 'Auto Pause On Expired',
       autoPauseOnExpiredDesc: 'When enabled, the account will auto pause scheduling after it expires',
+	  autoPause5hThreshold: '5h Usage Threshold (%)',
+	  autoPause7dThreshold: '7d Usage Threshold (%)',
+	  autoPauseThresholdHint: 'Leave empty or set 0 to disable. Reaching the threshold only skips the account during scheduling and does not modify schedulable.',
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {
         title: 'Quota Control',

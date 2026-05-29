@@ -330,6 +330,28 @@ describe('EditAccountModal', () => {
     ])
   REDACTED)
 
+	it('submits OpenAI quota auto-pause thresholds in extra', async () => {
+	  const account = buildAccount()
+	  account.extra = {
+		auto_pause_5h_threshold: 0.9,
+		auto_pause_7d_threshold: 0.8
+	  REDACTED
+	  updateAccountMock.mockReset()
+	  checkMixedChannelRiskMock.mockReset()
+	  checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false REDACTED)
+	  updateAccountMock.mockResolvedValue(account)
+
+	  const wrapper = mountModal(account)
+
+	  await wrapper.get('[data-testid="auto-pause-5h-threshold"]').setValue('95')
+	  await wrapper.get('[data-testid="auto-pause-7d-threshold"]').setValue('96')
+	  await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+	  expect(updateAccountMock).toHaveBeenCalledTimes(1)
+	  expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.auto_pause_5h_threshold).toBe(0.95)
+	  expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.auto_pause_7d_threshold).toBe(0.96)
+REDACTED)
+
   it('keeps at least one OpenAI APIKey endpoint capability selected', async () => {
     const account = buildAccount()
     updateAccountMock.mockReset()
