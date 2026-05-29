@@ -1,0 +1,14 @@
+workflow: full
+phase: build
+design_doc: docs/superpowers/specs/2026-05-29-deepseek-platform-design.md
+plan: docs/superpowers/plans/2026-05-29-deepseek-platform.md
+base_ref: c5ad56f1
+build_mode: null
+isolation: null
+verify_mode: null
+verify_result: pending
+verification_report: null
+branch_status: pending
+created_at: 2026-05-29
+verified_at: null
+archived: false
