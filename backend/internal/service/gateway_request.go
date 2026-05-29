@@ -51,6 +51,35 @@ type SessionContext struct {
 	APIKeyID  int64
 REDACTED
 
+type RequestBodyRef struct {
+	data []byte
+REDACTED
+
+func NewRequestBodyRef(data []byte) *RequestBodyRef {
+	return &RequestBodyRef{data: dataREDACTED
+REDACTED
+
+func (b *RequestBodyRef) Bytes() []byte {
+	if b == nil {
+		return nil
+REDACTED
+	return b.data
+REDACTED
+
+func (b *RequestBodyRef) Len() int {
+	if b == nil {
+		return 0
+REDACTED
+	return len(b.data)
+REDACTED
+
+func (b *RequestBodyRef) Replace(data []byte) {
+	if b == nil {
+		return
+REDACTED
+	b.data = data
+REDACTED
+
 // ParsedRequest 保存网关请求的预解析结果
 //
 // 性能优化说明：
@@ -64,7 +93,7 @@ REDACTED
 // 2. 将解析结果 ParsedRequest 传递给 Service 层
 // 3. 避免重复 json.Unmarshal，减少 CPU 和内存开销
 type ParsedRequest struct {
-	Body            []byte          // 原始请求体（保留用于转发）
+	Body            *RequestBodyRef // 原始请求体引用（保留用于转发）
 	Model           string          // 请求的模型名称
 	Stream          bool            // 是否为流式请求
 	MetadataUserID  string          // metadata.user_id（用于会话亲和）
@@ -130,17 +159,18 @@ REDACTED
 // ParseGatewayRequest 解析网关请求体并返回结构化结果。
 // protocol 指定请求协议格式（domain.PlatformAnthropic / domain.PlatformGemini），
 // 不同协议使用不同的 system/messages 字段名。
-func ParseGatewayRequest(body []byte, protocol string) (*ParsedRequest, error) {
+func ParseGatewayRequest(body *RequestBodyRef, protocol string) (*ParsedRequest, error) {
+	bodyBytes := body.Bytes()
 	// 保持与旧实现一致：请求体必须是合法 JSON。
 	// 注意：gjson.GetBytes 对非法 JSON 不会报错，因此需要显式校验。
-	if !gjson.ValidBytes(body) {
+	if !gjson.ValidBytes(bodyBytes) {
 		return nil, fmt.Errorf("invalid json")
 REDACTED
 
 	// 性能：
 	// - gjson.GetBytes 会把匹配的 Raw/Str 安全复制成 string（对于巨大 messages 会产生额外拷贝）。
 	// - 这里将 body 通过 unsafe 零拷贝视为 string，仅在本函数内使用，且 body 不会被修改。
-	jsonStr := *(*string)(unsafe.Pointer(&body))
+	jsonStr := *(*string)(unsafe.Pointer(&bodyBytes))
 
 	parsed := &ParsedRequest{
 		Body: body,
@@ -197,7 +227,7 @@ REDACTED
 		// Gemini 原生格式: systemInstruction.parts / contents
 		if sysParts := gjson.Get(jsonStr, "systemInstruction.parts"); sysParts.Exists() && sysParts.IsArray() {
 			var parts []any
-			if err := json.Unmarshal(sliceRawFromBody(body, sysParts), &parts); err != nil {
+			if err := json.Unmarshal(sliceRawFromBody(bodyBytes, sysParts), &parts); err != nil {
 				return nil, err
 		REDACTED
 			parsed.System = parts
@@ -205,7 +235,7 @@ REDACTED
 
 		if contents := gjson.Get(jsonStr, "contents"); contents.Exists() && contents.IsArray() {
 			var msgs []any
-			if err := json.Unmarshal(sliceRawFromBody(body, contents), &msgs); err != nil {
+			if err := json.Unmarshal(sliceRawFromBody(bodyBytes, contents), &msgs); err != nil {
 				return nil, err
 		REDACTED
 			parsed.Messages = msgs
@@ -224,7 +254,7 @@ REDACTED
 				parsed.System = sys.String()
 			default:
 				var system any
-				if err := json.Unmarshal(sliceRawFromBody(body, sys), &system); err != nil {
+				if err := json.Unmarshal(sliceRawFromBody(bodyBytes, sys), &system); err != nil {
 					return nil, err
 			REDACTED
 				parsed.System = system
@@ -233,7 +263,7 @@ REDACTED
 
 		if msgs := gjson.Get(jsonStr, "messages"); msgs.Exists() && msgs.IsArray() {
 			var messages []any
-			if err := json.Unmarshal(sliceRawFromBody(body, msgs), &messages); err != nil {
+			if err := json.Unmarshal(sliceRawFromBody(bodyBytes, msgs), &messages); err != nil {
 				return nil, err
 		REDACTED
 			parsed.Messages = messages

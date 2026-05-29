@@ -112,7 +112,7 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardStreamPreservesBodyAnd
 
 	body := []byte(`{"model":"claude-3-7-sonnet-20250219","stream":true,"system":[{"type":"text","text":"x-anthropic-billing-header keep"REDACTED],"messages":[{"role":"user","content":[{"type":"text","text":"hello"REDACTED]REDACTED]REDACTED`)
 	parsed := &ParsedRequest{
-		Body:   body,
+		Body:   NewRequestBodyRef(body),
 		Model:  "claude-3-7-sonnet-20250219",
 		Stream: true,
 REDACTED
@@ -202,7 +202,7 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardCountTokensPreservesBo
 
 	body := []byte(`{"model":"claude-3-5-sonnet-latest","messages":[{"role":"user","content":[{"type":"text","text":"hello"REDACTED]REDACTED],"thinking":{"type":"enabled"REDACTEDREDACTED`)
 	parsed := &ParsedRequest{
-		Body:  body,
+		Body:  NewRequestBodyRef(body),
 		Model: "claude-3-5-sonnet-latest",
 REDACTED
 
@@ -344,7 +344,7 @@ REDACTED
 
 			body := []byte(`{"model":"` + tt.model + `","messages":[{"role":"user","content":[{"type":"text","text":"hello"REDACTED]REDACTED]REDACTED`)
 			parsed := &ParsedRequest{
-				Body:  body,
+				Body:  NewRequestBodyRef(body),
 				Model: tt.model,
 		REDACTED
 
@@ -429,7 +429,7 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ModelMappingPreservesOtherFie
 	// 包含复杂字段的请求体：system、thinking、messages
 	body := []byte(`{"model":"claude-sonnet-4-20250514","system":[{"type":"text","text":"You are a helpful assistant."REDACTED],"messages":[{"role":"user","content":[{"type":"text","text":"hello world"REDACTED]REDACTED],"thinking":{"type":"enabled","budget_tokens":5000REDACTED,"max_tokens":1024REDACTED`)
 	parsed := &ParsedRequest{
-		Body:  body,
+		Body:  NewRequestBodyRef(body),
 		Model: "claude-sonnet-4-20250514",
 REDACTED
 
@@ -485,7 +485,7 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_CountTokensFiltersGenerationF
 
 	body := []byte(`{"model":"claude-sonnet-4-20250514","system":[{"type":"text","text":"sys"REDACTED],"messages":[{"role":"user","content":"hello"REDACTED],"tools":[{"name":"tool","input_schema":{"type":"object"REDACTEDREDACTED],"temperature":0.7,"top_p":0.9,"top_k":40,"stream":true,"stop_sequences":["END"],"max_tokens":1024,"thinking":{"type":"enabled","budget_tokens":5000REDACTEDREDACTED`)
 	parsed := &ParsedRequest{
-		Body:  body,
+		Body:  NewRequestBodyRef(body),
 		Model: "claude-sonnet-4-20250514",
 REDACTED
 
@@ -547,7 +547,7 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_EmptyModelSkipsMapping(t *tes
 
 	body := []byte(`{"messages":[{"role":"user","content":"hello"REDACTED]REDACTED`)
 	parsed := &ParsedRequest{
-		Body:  body,
+		Body:  NewRequestBodyRef(body),
 		Model: "", // 空模型
 REDACTED
 
@@ -636,7 +636,7 @@ REDACTED
 			c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", nil)
 
 			body := []byte(`{"model":"claude-sonnet-4-5-20250929","messages":[{"role":"user","content":"hi"REDACTED]REDACTED`)
-			parsed := &ParsedRequest{Body: body, Model: "claude-sonnet-4-5-20250929"REDACTED
+			parsed := &ParsedRequest{Body: NewRequestBodyRef(body), Model: "claude-sonnet-4-5-20250929"REDACTED
 
 			upstream := &anthropicHTTPUpstreamRecorder{
 				resp: &http.Response{
@@ -767,7 +767,7 @@ REDACTED
 			c, _ := gin.CreateTestContext(rec)
 			c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
 
-			parsed, err := ParseGatewayRequest([]byte(tt.body), PlatformAnthropic)
+			parsed, err := ParseGatewayRequest(NewRequestBodyRef([]byte(tt.body)), PlatformAnthropic)
 		REDACTED
 
 			upstream := &anthropicHTTPUpstreamRecorder{

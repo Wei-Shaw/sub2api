@@ -154,7 +154,8 @@ REDACTED
 
 	setOpsRequestContext(c, "", false)
 
-	parsedReq, err := service.ParseGatewayRequest(body, domain.PlatformAnthropic)
+	bodyRef := service.NewRequestBodyRef(body)
+	parsedReq, err := service.ParseGatewayRequest(bodyRef, domain.PlatformAnthropic)
 	if err != nil {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
@@ -746,11 +747,11 @@ REDACTED
 			// 应用渠道模型映射到请求
 			if channelMapping.Mapped {
 				parsedReq.Model = channelMapping.MappedModel
-				parsedReq.Body = h.gatewayService.ReplaceModelInBody(parsedReq.Body, channelMapping.MappedModel)
+				parsedReq.Body.Replace(h.gatewayService.ReplaceModelInBody(parsedReq.Body.Bytes(), channelMapping.MappedModel))
 		REDACTED
 			// Bedrock CC 兼容：渠道模型映射后，清理 Anthropic API 专有字段、注入 Bedrock 必需字段
-			parsedReq.Body = h.gatewayService.ApplyBedrockCCCompat(c.Request.Context(), parsedReq.Body, parsedReq.Model, account, apiKey.GroupID)
-			body = parsedReq.Body
+			parsedReq.Body.Replace(h.gatewayService.ApplyBedrockCCCompat(c.Request.Context(), parsedReq.Body.Bytes(), parsedReq.Model, account, apiKey.GroupID))
+			body = parsedReq.Body.Bytes()
 
 			// 转发请求 - 根据账号平台分流
 			c.Set("parsed_request", parsedReq)
@@ -1683,7 +1684,8 @@ REDACTED
 
 	setOpsRequestContext(c, "", false)
 
-	parsedReq, err := service.ParseGatewayRequest(body, domain.PlatformAnthropic)
+	bodyRef := service.NewRequestBodyRef(body)
+	parsedReq, err := service.ParseGatewayRequest(bodyRef, domain.PlatformAnthropic)
 	if err != nil {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return

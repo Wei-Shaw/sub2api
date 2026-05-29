@@ -14,7 +14,7 @@ func BenchmarkGenerateSessionHash_Metadata(b *testing.B) {
 
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		parsed, err := ParseGatewayRequest(body, "")
+		parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), "")
 		if err != nil {
 			b.Fatalf("解析请求失败: %v", err)
 	REDACTED
