@@ -1,8 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/api/admin/accounts', () => ({
-  getAntigravityDefaultModelMapping: vi.fn()
+  getAntigravityDefaultModelMapping: vi.fn(),
+  getKiroDefaultModelMapping: vi.fn()
 }))
+
+import { getKiroDefaultModelMapping } from '@/api/admin/accounts'
 
 import {
   buildModelMappingObject,
@@ -118,6 +121,8 @@ describe('useModelWhitelist', () => {
     const models = getModelsByPlatform('kiro')
 
     expect(models).toEqual([
+      'claude-opus-4-8',
+      'claude-opus-4-8-thinking',
       'claude-opus-4-7',
       'claude-opus-4-7-thinking',
       'claude-opus-4-6',
@@ -187,6 +192,8 @@ describe('useModelWhitelist', () => {
     const mappingTargets = mappings.map(item => item.to)
 
     expect(mappings.map(({ from, to }) => ({ from, to }))).toEqual([
+      { from: 'claude-opus-4-8', to: 'claude-opus-4.8' },
+      { from: 'claude-opus-4-8-thinking', to: 'claude-opus-4.8' },
       { from: 'claude-opus-4-7', to: 'claude-opus-4.7' },
       { from: 'claude-opus-4-7-thinking', to: 'claude-opus-4.7' },
       { from: 'claude-opus-4-6', to: 'claude-opus-4.6' },
@@ -221,10 +228,30 @@ describe('useModelWhitelist', () => {
     expect(mappingTargets).not.toContain('qwen3-coder-next')
   })
 
-  it('kiro 默认映射会在前端填充所有可精确定价模型', async () => {
+  it('kiro 默认映射会从服务端配置填充所有可精确定价模型', async () => {
+    vi.mocked(getKiroDefaultModelMapping).mockResolvedValueOnce({
+      'claude-opus-4-8': 'claude-opus-4.8',
+      'claude-opus-4-8-thinking': 'claude-opus-4.8',
+      'claude-opus-4-7': 'claude-opus-4.7',
+      'claude-opus-4-7-thinking': 'claude-opus-4.7',
+      'claude-opus-4-6': 'claude-opus-4.6',
+      'claude-opus-4-6-thinking': 'claude-opus-4.6',
+      'claude-sonnet-4-6': 'claude-sonnet-4.6',
+      'claude-sonnet-4-6-thinking': 'claude-sonnet-4.6',
+      'claude-opus-4-5-20251101': 'claude-opus-4.5',
+      'claude-opus-4-5-20251101-thinking': 'claude-opus-4.5',
+      'claude-sonnet-4-5-20250929': 'claude-sonnet-4.5',
+      'claude-sonnet-4-5-20250929-thinking': 'claude-sonnet-4.5',
+      'claude-haiku-4-5-20251001': 'claude-haiku-4.5',
+      'claude-haiku-4-5-20251001-thinking': 'claude-haiku-4.5'
+    })
+
     const mappings = await fetchKiroDefaultMappings()
 
+    expect(getKiroDefaultModelMapping).toHaveBeenCalledTimes(1)
     expect(mappings).toEqual(expect.arrayContaining([
+      { from: 'claude-opus-4-8', to: 'claude-opus-4.8' },
+      { from: 'claude-opus-4-8-thinking', to: 'claude-opus-4.8' },
       { from: 'claude-opus-4-7', to: 'claude-opus-4.7' },
       { from: 'claude-opus-4-7-thinking', to: 'claude-opus-4.7' },
       { from: 'claude-opus-4-6', to: 'claude-opus-4.6' },
@@ -238,7 +265,7 @@ describe('useModelWhitelist', () => {
       { from: 'claude-haiku-4-5-20251001', to: 'claude-haiku-4.5' },
       { from: 'claude-haiku-4-5-20251001-thinking', to: 'claude-haiku-4.5' }
     ]))
-    expect(mappings).toHaveLength(12)
+    expect(mappings).toHaveLength(14)
     expect(mappings.every(item => !item.from.startsWith('kiro-'))).toBe(true)
     expect(mappings.every(item => !item.to.startsWith('kiro-'))).toBe(true)
     expect(mappings.every(item => !item.from.endsWith('-agentic'))).toBe(true)

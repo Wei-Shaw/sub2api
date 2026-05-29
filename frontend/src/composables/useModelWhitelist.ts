@@ -97,6 +97,8 @@ const antigravityModels = [
 ]
 
 const kiroModels = [
+  'claude-opus-4-8',
+  'claude-opus-4-8-thinking',
   'claude-opus-4-7',
   'claude-opus-4-7-thinking',
   'claude-opus-4-6',
@@ -382,6 +384,8 @@ const antigravityPresetMappings = [
 ]
 
 const kiroPresetMappings = [
+  { label: 'Opus 4.8', from: 'claude-opus-4-8', to: 'claude-opus-4.8', color: 'bg-violet-100 text-violet-700 hover:bg-violet-200 dark:bg-violet-900/30 dark:text-violet-300' },
+  { label: 'Opus 4.8 Thinking', from: 'claude-opus-4-8-thinking', to: 'claude-opus-4.8', color: 'bg-violet-100 text-violet-700 hover:bg-violet-200 dark:bg-violet-900/30 dark:text-violet-300' },
   { label: 'Opus 4.7', from: 'claude-opus-4-7', to: 'claude-opus-4.7', color: 'bg-violet-100 text-violet-700 hover:bg-violet-200 dark:bg-violet-900/30 dark:text-violet-300' },
   { label: 'Opus 4.7 Thinking', from: 'claude-opus-4-7-thinking', to: 'claude-opus-4.7', color: 'bg-violet-100 text-violet-700 hover:bg-violet-200 dark:bg-violet-900/30 dark:text-violet-300' },
   { label: 'Opus 4.6', from: 'claude-opus-4-6', to: 'claude-opus-4.6', color: 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-300' },
@@ -414,7 +418,7 @@ const kiroDefaultMappings = kiroPresetMappings.map(({ from, to }) => ({ from, to
 
 // Antigravity 默认映射（从后端 API 获取，与 constants.go 保持一致）
 // 使用 fetchAntigravityDefaultMappings() 异步获取
-import { getAntigravityDefaultModelMapping } from '@/api/admin/accounts'
+import { getAntigravityDefaultModelMapping, getKiroDefaultModelMapping } from '@/api/admin/accounts'
 
 let _antigravityDefaultMappingsCache: { from: string; to: string }[] | null = null
 let _kiroDefaultMappingsCache: { from: string; to: string }[] | null = null
@@ -437,7 +441,13 @@ export async function fetchKiroDefaultMappings(): Promise<{ from: string; to: st
   if (_kiroDefaultMappingsCache !== null) {
     return _kiroDefaultMappingsCache.map(({ from, to }) => ({ from, to }))
   }
-  _kiroDefaultMappingsCache = kiroDefaultMappings.map(({ from, to }) => ({ from, to }))
+  try {
+    const mapping = await getKiroDefaultModelMapping()
+    _kiroDefaultMappingsCache = Object.entries(mapping).map(([from, to]) => ({ from, to }))
+  } catch (e) {
+    console.warn('[fetchKiroDefaultMappings] API failed, using local fallback', e)
+    _kiroDefaultMappingsCache = kiroDefaultMappings.map(({ from, to }) => ({ from, to }))
+  }
   return _kiroDefaultMappingsCache.map(({ from, to }) => ({ from, to }))
 }
 
