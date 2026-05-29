@@ -954,7 +954,7 @@ REDACTED
 		return true
 REDACTED
 
-	c.Set(service.OpenAIParsedRequestBodyKey, reqBody)
+	service.CacheOpenAIParsedRequestBody(c, body, reqBody)
 	validation := service.ValidateFunctionCallOutputContext(reqBody)
 	if !validation.HasFunctionCallOutput {
 		return true

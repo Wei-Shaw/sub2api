@@ -74,8 +74,12 @@ REDACTED
 	bodyMap := map[string]any{
 		"model": parsedReq.Model,
 REDACTED
-	if parsedReq.System != nil || parsedReq.HasSystem {
-		bodyMap["system"] = parsedReq.System
+	if parsedReq.HasSystem {
+		if system, ok := parsedReq.SystemValue(); ok {
+			bodyMap["system"] = system
+	REDACTED else {
+			bodyMap["system"] = nil
+	REDACTED
 REDACTED
 	if parsedReq.MetadataUserID != "" {
 		bodyMap["metadata"] = map[string]any{"user_id": parsedReq.MetadataUserIDREDACTED
@@ -87,10 +91,8 @@ func claudeCodeBodyMapFromContextCache(c *gin.Context) map[string]any {
 	if c == nil {
 		return nil
 REDACTED
-	if cached, ok := c.Get(service.OpenAIParsedRequestBodyKey); ok {
-		if bodyMap, ok := cached.(map[string]any); ok {
-			return bodyMap
-	REDACTED
+	if bodyMap := service.CachedOpenAIParsedRequestBody(c); bodyMap != nil {
+		return bodyMap
 REDACTED
 	if cached, ok := c.Get(claudeCodeParsedRequestContextKey); ok {
 		switch v := cached.(type) {

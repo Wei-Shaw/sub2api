@@ -185,12 +185,7 @@ func TestSetClaudeCodeClientContext_ReuseParsedRequestAndContextCache(t *testing
 		c.Request.Header.Set("anthropic-beta", "message-batches-2024-09-24")
 		c.Request.Header.Set("anthropic-version", "2023-06-01")
 
-		parsedReq := &service.ParsedRequest{
-			Model: "claude-3-5-sonnet-20241022",
-			System: []any{
-				map[string]any{"text": "You are Claude Code, Anthropic's official CLI for Claude."REDACTED,
-		REDACTED,
-			MetadataUserID: "user_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_account__session_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+		parsedReq, err := service.ParseGatewayRequest(service.NewRequestBodyRef(validClaudeCodeBodyJSON()), "")
 	REDACTED
 
 		// body 非法 JSON，如果函数复用 parsedReq 成功则仍应判定为 Claude Code。
@@ -204,7 +199,7 @@ REDACTED)
 		c.Request.Header.Set("X-App", "claude-code")
 		c.Request.Header.Set("anthropic-beta", "message-batches-2024-09-24")
 		c.Request.Header.Set("anthropic-version", "2023-06-01")
-		c.Set(service.OpenAIParsedRequestBodyKey, map[string]any{
+		service.CacheOpenAIParsedRequestBody(c, []byte(`{invalid`), map[string]any{
 			"model": "claude-3-5-sonnet-20241022",
 			"system": []any{
 				map[string]any{"text": "You are Claude Code, Anthropic's official CLI for Claude."REDACTED,

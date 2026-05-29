@@ -14,6 +14,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -99,6 +100,57 @@ REDACTED
 	require.Equal(t, "gpt6", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.NotEqual(t, "gpt-5.4", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.True(t, rec.Code >= http.StatusBadRequest)
+REDACTED
+
+func TestOpenAIGatewayService_NativeResponsesBodyModificationPreservesHTMLChars(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	payloadText := strings.Repeat(`<tag>&value</tag>`, 128)
+	originalBody := []byte(fmt.Sprintf(`{"model":"gpt-5.5","stream":false,"max_output_tokens":100,"previous_response_id":"resp_prev","input":[{"type":"message","role":"user","content":[{"type":"input_text","text":%qREDACTED]REDACTED]REDACTED`, payloadText))
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(originalBody))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Header:     http.Header{"Content-Type": []string{"application/json"REDACTED, "x-request-id": []string{"rid_native_reencode"REDACTEDREDACTED,
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"type":"invalid_request_error","message":"stop after capture"REDACTEDREDACTED`)),
+REDACTEDREDACTED
+	svc := &OpenAIGatewayService{
+		cfg: &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{
+			Enabled:           false,
+			AllowInsecureHTTP: true,
+	REDACTEDREDACTEDREDACTED,
+		httpUpstream: upstream,
+REDACTED
+	account := &Account{
+		ID:          456,
+		Name:        "openai-apikey",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+REDACTED
+			"api_key":  "sk-test",
+			"base_url": "http://upstream.example",
+	REDACTED,
+		Extra: map[string]any{
+			openai_compat.ExtraKeyResponsesMode:      string(openai_compat.ResponsesSupportModeAuto),
+			openai_compat.ExtraKeyResponsesSupported: true,
+	REDACTED,
+		Status:      StatusActive,
+		Schedulable: true,
+REDACTED
+
+	result, err := svc.Forward(context.Background(), c, account, originalBody)
+REDACTED
+	require.Nil(t, result)
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, "http://upstream.example/v1/responses", upstream.lastReq.URL.String())
+	require.Contains(t, string(upstream.lastBody), payloadText)
+	require.NotContains(t, string(upstream.lastBody), `\\u003c`)
+	require.NotContains(t, string(upstream.lastBody), `\\u003e`)
+	require.NotContains(t, string(upstream.lastBody), `\\u0026`)
 REDACTED
 
 func TestOpenAIGatewayService_OAuthMessagesBridgeDoesNotInjectDefaultInstructions(t *testing.T) {

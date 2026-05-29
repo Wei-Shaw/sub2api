@@ -2,6 +2,7 @@ package service
 
 import (
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -34,17 +35,20 @@ REDACTED
 REDACTED
 
 func buildSystemCacheableRequest(parts int) *ParsedRequest {
-	systemParts := make([]any, 0, parts)
+	var builder strings.Builder
+	builder.WriteString(`{"system":[`)
 	for i := 0; i < parts; i++ {
-		systemParts = append(systemParts, map[string]any{
-			"text": "system_part_" + strconv.Itoa(i),
-			"cache_control": map[string]any{
-				"type": "ephemeral",
-		REDACTED,
-	REDACTED)
+		if i > 0 {
+			builder.WriteByte(',')
+	REDACTED
+		builder.WriteString(`{"text":"system_part_`)
+		builder.WriteString(strconv.Itoa(i))
+		builder.WriteString(`","cache_control":{"type":"ephemeral"REDACTEDREDACTED`)
 REDACTED
-	return &ParsedRequest{
-		System:    systemParts,
-		HasSystem: true,
+	builder.WriteString(`]REDACTED`)
+	parsed, err := ParseGatewayRequest(NewRequestBodyRef([]byte(builder.String())), "")
+	if err != nil {
+		panic(err)
 REDACTED
+	return parsed
 REDACTED

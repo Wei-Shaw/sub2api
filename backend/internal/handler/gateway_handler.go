@@ -747,10 +747,10 @@ REDACTED
 			// 应用渠道模型映射到请求
 			if channelMapping.Mapped {
 				parsedReq.Model = channelMapping.MappedModel
-				parsedReq.Body.Replace(h.gatewayService.ReplaceModelInBody(parsedReq.Body.Bytes(), channelMapping.MappedModel))
+				parsedReq.ReplaceBody(h.gatewayService.ReplaceModelInBody(parsedReq.Body.Bytes(), channelMapping.MappedModel))
 		REDACTED
 			// Bedrock CC 兼容：渠道模型映射后，清理 Anthropic API 专有字段、注入 Bedrock 必需字段
-			parsedReq.Body.Replace(h.gatewayService.ApplyBedrockCCCompat(c.Request.Context(), parsedReq.Body.Bytes(), parsedReq.Model, account, apiKey.GroupID))
+			parsedReq.ReplaceBody(h.gatewayService.ApplyBedrockCCCompat(c.Request.Context(), parsedReq.Body.Bytes(), parsedReq.Model, account, apiKey.GroupID))
 			body = parsedReq.Body.Bytes()
 
 			// 转发请求 - 根据账号平台分流

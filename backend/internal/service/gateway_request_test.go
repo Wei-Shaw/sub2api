@@ -10,6 +10,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func TestParseGatewayRequest(t *testing.T) {
@@ -20,8 +21,8 @@ REDACTED
 	require.True(t, parsed.Stream)
 	require.Equal(t, "session_123e4567-e89b-12d3-a456-426614174000", parsed.MetadataUserID)
 	require.True(t, parsed.HasSystem)
-	require.NotNil(t, parsed.System)
-	require.Len(t, parsed.Messages, 1)
+	require.NotEmpty(t, parsed.SystemRaw())
+	require.NotEmpty(t, parsed.MessagesRaw())
 	require.False(t, parsed.ThinkingEnabled)
 REDACTED
 
@@ -61,7 +62,7 @@ func TestParseGatewayRequest_SystemNull(t *testing.T) {
 REDACTED
 	// 显式传入 system:null 也应视为“字段已存在”，避免默认 system 被注入。
 	require.True(t, parsed.HasSystem)
-	require.Nil(t, parsed.System)
+	require.Equal(t, []byte("null"), parsed.SystemRaw())
 REDACTED
 
 func TestParseGatewayRequest_InvalidModelType(t *testing.T) {
@@ -88,9 +89,9 @@ func TestParseGatewayRequest_GeminiContents(t *testing.T) {
 REDACTED`)
 	parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), domain.PlatformGemini)
 REDACTED
-	require.Len(t, parsed.Messages, 3, "should parse contents as Messages")
+	require.Len(t, gjson.ParseBytes(parsed.MessagesRaw()).Array(), 3, "should parse contents as Messages")
 	require.False(t, parsed.HasSystem, "Gemini format should not set HasSystem")
-	require.Nil(t, parsed.System, "no systemInstruction means nil System")
+	require.Nil(t, parsed.SystemRaw(), "no systemInstruction means nil System")
 REDACTED
 
 func TestParseGatewayRequest_GeminiSystemInstruction(t *testing.T) {
@@ -104,14 +105,11 @@ func TestParseGatewayRequest_GeminiSystemInstruction(t *testing.T) {
 REDACTED`)
 	parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), domain.PlatformGemini)
 REDACTED
-	require.NotNil(t, parsed.System, "should parse systemInstruction.parts as System")
-	parts, ok := parsed.System.([]any)
-	require.True(t, ok)
-	require.Len(t, parts, 1)
-	partMap, ok := parts[0].(map[string]any)
-	require.True(t, ok)
-	require.Equal(t, "You are a helpful assistant.", partMap["text"])
-	require.Len(t, parsed.Messages, 1)
+	system := gjson.ParseBytes(parsed.SystemRaw())
+	require.True(t, system.IsArray(), "should parse systemInstruction.parts as System")
+	require.Len(t, system.Array(), 1)
+	require.Equal(t, "You are a helpful assistant.", system.Get("0.text").String())
+	require.Len(t, gjson.ParseBytes(parsed.MessagesRaw()).Array(), 1)
 REDACTED
 
 func TestParseGatewayRequest_GeminiWithModel(t *testing.T) {
@@ -122,7 +120,7 @@ REDACTED`)
 	parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), domain.PlatformGemini)
 REDACTED
 	require.Equal(t, "gemini-2.5-pro", parsed.Model)
-	require.Len(t, parsed.Messages, 1)
+	require.Len(t, gjson.ParseBytes(parsed.MessagesRaw()).Array(), 1)
 REDACTED
 
 func TestParseGatewayRequest_GeminiIgnoresAnthropicFields(t *testing.T) {
@@ -135,22 +133,22 @@ REDACTED`)
 	parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), domain.PlatformGemini)
 REDACTED
 	require.False(t, parsed.HasSystem, "Gemini protocol should not parse Anthropic system field")
-	require.Nil(t, parsed.System, "no systemInstruction = nil System")
-	require.Len(t, parsed.Messages, 1, "should use contents, not messages")
+	require.Nil(t, parsed.SystemRaw(), "no systemInstruction = nil System")
+	require.Len(t, gjson.ParseBytes(parsed.MessagesRaw()).Array(), 1, "should use contents, not messages")
 REDACTED
 
 func TestParseGatewayRequest_GeminiEmptyContents(t *testing.T) {
 	body := []byte(`{"contents": []REDACTED`)
 	parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), domain.PlatformGemini)
 REDACTED
-	require.Empty(t, parsed.Messages)
+	require.Empty(t, gjson.ParseBytes(parsed.MessagesRaw()).Array())
 REDACTED
 
 func TestParseGatewayRequest_GeminiNoContents(t *testing.T) {
 	body := []byte(`{"model": "gemini-2.5-flash"REDACTED`)
 	parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), domain.PlatformGemini)
 REDACTED
-	require.Nil(t, parsed.Messages)
+	require.Nil(t, parsed.MessagesRaw())
 	require.Equal(t, "gemini-2.5-flash", parsed.Model)
 REDACTED
 
@@ -165,11 +163,10 @@ REDACTED`)
 	parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), domain.PlatformAnthropic)
 REDACTED
 	require.True(t, parsed.HasSystem)
-	require.Equal(t, "real system", parsed.System)
-	require.Len(t, parsed.Messages, 1)
-	msg, ok := parsed.Messages[0].(map[string]any)
-	require.True(t, ok)
-	require.Equal(t, "real content", msg["content"])
+	require.Equal(t, "real system", gjson.ParseBytes(parsed.SystemRaw()).String())
+	messages := gjson.ParseBytes(parsed.MessagesRaw()).Array()
+	require.Len(t, messages, 1)
+	require.Equal(t, "real content", messages[0].Get("content").String())
 REDACTED
 
 func TestFilterThinkingBlocks(t *testing.T) {
@@ -970,10 +967,10 @@ REDACTED
 			require.Equal(t, tt.wantMaxTokens, parsed.MaxTokens)
 
 			if tt.wantMessagesNil {
-				require.Nil(t, parsed.Messages)
+				require.Nil(t, parsed.MessagesRaw())
 		REDACTED
 			if tt.wantMessagesLen > 0 {
-				require.Len(t, parsed.Messages, tt.wantMessagesLen)
+				require.Len(t, gjson.ParseBytes(parsed.MessagesRaw()).Array(), tt.wantMessagesLen)
 		REDACTED
 	REDACTED)
 REDACTED
@@ -1087,25 +1084,8 @@ REDACTED
 	REDACTED
 REDACTED
 
-	// system / messages（按协议分支）
-	switch protocol {
-	case domain.PlatformGemini:
-		if sysInst, ok := req["systemInstruction"].(map[string]any); ok {
-			if parts, ok := sysInst["parts"].([]any); ok {
-				parsed.System = parts
-		REDACTED
-	REDACTED
-		if contents, ok := req["contents"].([]any); ok {
-			parsed.Messages = contents
-	REDACTED
-	default:
-		if system, ok := req["system"]; ok {
-			parsed.HasSystem = true
-			parsed.System = system
-	REDACTED
-		if messages, ok := req["messages"].([]any); ok {
-			parsed.Messages = messages
-	REDACTED
+	if err := refreshGatewayRequestRanges(parsed, protocol); err != nil {
+		return nil, err
 REDACTED
 
 	return parsed, nil
