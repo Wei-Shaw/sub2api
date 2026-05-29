@@ -1471,10 +1471,10 @@ REDACTED
 	return min
 REDACTED
 
-// handleConcurrencyError handles concurrency-related errors with proper 429 response
+// handleConcurrencyError handles concurrency-related acquire errors.
 func (h *GatewayHandler) handleConcurrencyError(c *gin.Context, err error, slotType string, streamStarted bool) {
-	h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error",
-		fmt.Sprintf("Concurrency limit exceeded for %s, please retry later", slotType), streamStarted)
+	status, errType, message := concurrencyErrorResponse(err, slotType)
+	h.handleStreamingAwareError(c, status, errType, message, streamStarted)
 REDACTED
 
 func (h *GatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, platform string, streamStarted bool) {
