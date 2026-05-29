@@ -7403,16 +7403,27 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 		}
 
 		// Ensure context_management in body always has its matching beta token,
-		// but only inject when forwarding to official Anthropic API (not through
-		// proxies/aggregators like Bedrock which may not support the latest betas).
-		// Skip injection for non-Anthropic accounts to maintain compatibility.
+		// but only inject for official Anthropic API (OAuth path).
 		if account != nil && account.IsOAuth() &&
 			bodyNeedsContextManagementBeta(body) &&
 			!strings.Contains(finalBetaHeader, claude.BetaContextManagement) {
-			// Only inject for OAuth (official API), not for custom/proxy accounts
 			finalBetaHeader = mergeAnthropicBetaDropping([]string{claude.BetaContextManagement}, finalBetaHeader, nil)
 			finalBetaShouldSet = true
 		}
+	}
+
+	// Non-official upstream safety: when forwarding through an API-key account
+	// with a custom base URL (aggregators like mixroute.ai that may route to
+	// Bedrock), strip ALL beta flags. Bedrock rejects unrecognized beta tokens
+	// and there's no reliable way to know which tokens a third-party aggregator
+	// supports. The body sanitizer below will strip body fields (like
+	// context_management) that require their matching beta token, ensuring
+	// body/header consistency. Features gated behind specific betas (context
+	// management, extended thinking) gracefully degrade rather than hard-fail.
+	if account != nil && !account.IsOAuth() && !account.IsBedrock() &&
+		account.GetBaseURL() != "" && finalBetaShouldSet {
+		finalBetaHeader = ""
+		finalBetaShouldSet = false
 	}
 
 	// 能力维度 body sanitize：与最终 anthropic-beta header 对称
@@ -11155,6 +11166,13 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 	finalBetaHeader, finalBetaShouldSet := s.computeFinalCountTokensAnthropicBeta(
 		tokenType, mimicClaudeCode, modelID, clientHeaders, body, ctEffectiveDropSet,
 	)
+
+	// Non-official upstream safety: same rationale as buildUpstreamRequest.
+	if account != nil && !account.IsOAuth() && !account.IsBedrock() &&
+		account.GetBaseURL() != "" && finalBetaShouldSet {
+		finalBetaHeader = ""
+		finalBetaShouldSet = false
+	}
 
 	// 能力维度 body sanitize：与最终 anthropic-beta header 对称
 	if sanitized, changed := sanitizeAnthropicBodyForBetaTokens(body, finalBetaHeader); changed {
