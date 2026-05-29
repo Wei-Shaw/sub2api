@@ -3,8 +3,10 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -30,16 +32,26 @@ import (
 type userRepository struct {
 	client *dbent.Client
 	sql    sqlExecutor
+	db     *sql.DB
 }
 
 var _ service.RedeemUserAdjustmentRepository = (*userRepository)(nil)
+
+const (
+	balanceTransferAmountScale               = 1e8
+	balanceTransferAmountComparisonTolerance = 1e-12
+)
 
 func NewUserRepository(client *dbent.Client, sqlDB *sql.DB) service.UserRepository {
 	return newUserRepositoryWithSQL(client, sqlDB)
 }
 
 func newUserRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *userRepository {
-	return &userRepository{client: client, sql: sqlq}
+	repo := &userRepository{client: client, sql: sqlq}
+	if db, ok := sqlq.(*sql.DB); ok {
+		repo.db = db
+	}
+	return repo
 }
 
 func (r *userRepository) Create(ctx context.Context, userIn *service.User) error {
@@ -801,6 +813,203 @@ func (r *userRepository) DeductBalance(ctx context.Context, id int64, amount flo
 		return service.ErrUserNotFound
 	}
 	return nil
+}
+
+func (r *userRepository) TransferBalance(ctx context.Context, input service.BalanceTransferInput) (_ *service.BalanceTransfer, err error) {
+	metadata := input.Metadata
+	if metadata == nil {
+		metadata = map[string]any{}
+	}
+	metadataJSON, err := json.Marshal(metadata)
+	if err != nil {
+		return nil, err
+	}
+
+	if r.db == nil {
+		return nil, errors.New("balance transfer requires sql DB")
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if tx != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	transfer, existed, err := insertBalanceTransferShell(ctx, tx, input, metadataJSON)
+	if err != nil {
+		return nil, err
+	}
+	if existed {
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		tx = nil
+		return transfer, nil
+	}
+
+	fromBalance, err := deductBalanceForTransfer(ctx, tx, input.FromUserID, input.Amount)
+	if err != nil {
+		return nil, err
+	}
+	toBalance, err := creditBalanceForTransfer(ctx, tx, input.ToUserID, input.Amount)
+	if err != nil {
+		return nil, err
+	}
+
+	transfer.FromBalance = fromBalance
+	transfer.ToBalance = toBalance
+	if err := updateBalanceTransferSnapshot(ctx, tx, transfer.ID, fromBalance, toBalance); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	tx = nil
+	return transfer, nil
+}
+
+func insertBalanceTransferShell(ctx context.Context, tx *sql.Tx, input service.BalanceTransferInput, metadataJSON []byte) (*service.BalanceTransfer, bool, error) {
+	var transfer service.BalanceTransfer
+	var metadataRaw []byte
+	err := tx.QueryRowContext(ctx, `
+		INSERT INTO balance_transfers (
+			external_id,
+			from_user_id,
+			to_user_id,
+			amount,
+			reason,
+			metadata,
+			from_balance_after,
+			to_balance_after
+		)
+		VALUES ($1, $2, $3, $4, $5, $6::jsonb, 0, 0)
+		ON CONFLICT (external_id) DO NOTHING
+		RETURNING id, external_id, from_user_id, to_user_id, amount, reason, metadata, from_balance_after, to_balance_after, created_at
+	`, input.ExternalID, input.FromUserID, input.ToUserID, input.Amount, input.Reason, string(metadataJSON)).Scan(
+		&transfer.ID,
+		&transfer.ExternalID,
+		&transfer.FromUserID,
+		&transfer.ToUserID,
+		&transfer.Amount,
+		&transfer.Reason,
+		&metadataRaw,
+		&transfer.FromBalance,
+		&transfer.ToBalance,
+		&transfer.CreatedAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		existing, getErr := getBalanceTransferByExternalID(ctx, tx, input.ExternalID)
+		if getErr == nil && !sameBalanceTransferInput(existing, input) {
+			getErr = service.ErrBalanceTransferConflict
+		}
+		return existing, true, getErr
+	}
+	if err != nil {
+		if pqErr, ok := err.(*pq.Error); ok && pqErr.Code == "23503" {
+			return nil, false, service.ErrUserNotFound
+		}
+		return nil, false, err
+	}
+	if err := json.Unmarshal(metadataRaw, &transfer.Metadata); err != nil {
+		return nil, false, err
+	}
+	return &transfer, false, nil
+}
+
+func getBalanceTransferByExternalID(ctx context.Context, tx *sql.Tx, externalID string) (*service.BalanceTransfer, error) {
+	var transfer service.BalanceTransfer
+	var metadataRaw []byte
+	err := tx.QueryRowContext(ctx, `
+		SELECT id, external_id, from_user_id, to_user_id, amount, reason, metadata, from_balance_after, to_balance_after, created_at
+		FROM balance_transfers
+		WHERE external_id = $1
+	`, externalID).Scan(
+		&transfer.ID,
+		&transfer.ExternalID,
+		&transfer.FromUserID,
+		&transfer.ToUserID,
+		&transfer.Amount,
+		&transfer.Reason,
+		&metadataRaw,
+		&transfer.FromBalance,
+		&transfer.ToBalance,
+		&transfer.CreatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(metadataRaw, &transfer.Metadata); err != nil {
+		return nil, err
+	}
+	return &transfer, nil
+}
+
+func sameBalanceTransferInput(transfer *service.BalanceTransfer, input service.BalanceTransferInput) bool {
+	if transfer == nil {
+		return false
+	}
+	return transfer.FromUserID == input.FromUserID &&
+		transfer.ToUserID == input.ToUserID &&
+		transfer.Reason == input.Reason &&
+		sameBalanceTransferAmount(transfer.Amount, input.Amount)
+}
+
+func sameBalanceTransferAmount(a, b float64) bool {
+	normalizedA := math.Round(a*balanceTransferAmountScale) / balanceTransferAmountScale
+	normalizedB := math.Round(b*balanceTransferAmountScale) / balanceTransferAmountScale
+	return math.Abs(normalizedA-normalizedB) < balanceTransferAmountComparisonTolerance
+}
+
+func deductBalanceForTransfer(ctx context.Context, tx *sql.Tx, userID int64, amount float64) (float64, error) {
+	var newBalance float64
+	err := tx.QueryRowContext(ctx, `
+		UPDATE users
+		SET balance = balance - $1,
+			updated_at = NOW()
+		WHERE id = $2
+			AND deleted_at IS NULL
+			AND balance >= $1
+		RETURNING balance
+	`, amount, userID).Scan(&newBalance)
+	if errors.Is(err, sql.ErrNoRows) {
+		var exists bool
+		if existsErr := tx.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM users WHERE id = $1 AND deleted_at IS NULL)", userID).Scan(&exists); existsErr != nil {
+			return 0, existsErr
+		}
+		if exists {
+			return 0, service.ErrInsufficientBalance
+		}
+		return 0, service.ErrUserNotFound
+	}
+	return newBalance, err
+}
+
+func creditBalanceForTransfer(ctx context.Context, tx *sql.Tx, userID int64, amount float64) (float64, error) {
+	var newBalance float64
+	err := tx.QueryRowContext(ctx, `
+		UPDATE users
+		SET balance = balance + $1,
+			updated_at = NOW()
+		WHERE id = $2 AND deleted_at IS NULL
+		RETURNING balance
+	`, amount, userID).Scan(&newBalance)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, service.ErrUserNotFound
+	}
+	return newBalance, err
+}
+
+func updateBalanceTransferSnapshot(ctx context.Context, tx *sql.Tx, transferID int64, fromBalance, toBalance float64) error {
+	_, err := tx.ExecContext(ctx, `
+		UPDATE balance_transfers
+		SET from_balance_after = $2,
+			to_balance_after = $3
+		WHERE id = $1
+	`, transferID, fromBalance, toBalance)
+	return err
 }
 
 func (r *userRepository) UpdateConcurrency(ctx context.Context, id int64, amount int) error {

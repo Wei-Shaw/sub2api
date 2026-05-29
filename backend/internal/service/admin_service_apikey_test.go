@@ -65,6 +65,9 @@ func (s *userRepoStubForGroupUpdate) UpdateBalance(context.Context, int64, float
 func (s *userRepoStubForGroupUpdate) DeductBalance(context.Context, int64, float64) error {
 	panic("unexpected")
 }
+func (s *userRepoStubForGroupUpdate) TransferBalance(context.Context, BalanceTransferInput) (*BalanceTransfer, error) {
+	panic("unexpected")
+}
 func (s *userRepoStubForGroupUpdate) UpdateConcurrency(context.Context, int64, int) error {
 	panic("unexpected")
 }

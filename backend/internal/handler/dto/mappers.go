@@ -75,6 +75,24 @@ func UserFromServiceAdmin(u *service.User) *AdminUser {
 	}
 }
 
+func BalanceTransferFromService(t *service.BalanceTransfer) *BalanceTransfer {
+	if t == nil {
+		return nil
+	}
+	return &BalanceTransfer{
+		ID:          t.ID,
+		ExternalID:  t.ExternalID,
+		FromUserID:  t.FromUserID,
+		ToUserID:    t.ToUserID,
+		Amount:      t.Amount,
+		Reason:      t.Reason,
+		Metadata:    t.Metadata,
+		FromBalance: t.FromBalance,
+		ToBalance:   t.ToBalance,
+		CreatedAt:   t.CreatedAt,
+	}
+}
+
 func APIKeyFromService(k *service.APIKey) *APIKey {
 	if k == nil {
 		return nil

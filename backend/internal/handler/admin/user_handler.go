@@ -85,6 +85,15 @@ type UpdateBalanceRequest struct {
 	Notes     string  `json:"notes"`
 }
 
+type CreateBalanceTransferRequest struct {
+	ExternalID string         `json:"external_id" binding:"required,max=128"`
+	FromUserID int64          `json:"from_user_id" binding:"required,gt=0"`
+	ToUserID   int64          `json:"to_user_id" binding:"required,gt=0"`
+	Amount     float64        `json:"amount" binding:"required,gt=0"`
+	Reason     string         `json:"reason" binding:"required,max=64"`
+	Metadata   map[string]any `json:"metadata"`
+}
+
 type BindUserAuthIdentityRequest struct {
 	ProviderType    string                              `json:"provider_type"`
 	ProviderKey     string                              `json:"provider_key"`
@@ -377,6 +386,31 @@ func (h *UserHandler) UpdateBalance(c *gin.Context) {
 			return nil, execErr
 		}
 		return dto.UserFromServiceAdmin(user), nil
+	})
+}
+
+// TransferBalance handles atomic balance transfer between users.
+// POST /api/v1/admin/balance-transfers
+func (h *UserHandler) TransferBalance(c *gin.Context) {
+	var req CreateBalanceTransferRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	executeAdminIdempotentJSON(c, "admin.balance_transfers.create", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		transfer, execErr := h.adminService.TransferUserBalance(ctx, service.BalanceTransferInput{
+			ExternalID: req.ExternalID,
+			FromUserID: req.FromUserID,
+			ToUserID:   req.ToUserID,
+			Amount:     req.Amount,
+			Reason:     req.Reason,
+			Metadata:   req.Metadata,
+		})
+		if execErr != nil {
+			return nil, execErr
+		}
+		return dto.BalanceTransferFromService(transfer), nil
 	})
 }
 

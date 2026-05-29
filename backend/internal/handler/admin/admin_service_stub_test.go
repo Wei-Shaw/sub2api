@@ -191,6 +191,20 @@ func (s *stubAdminService) UpdateUserBalance(ctx context.Context, userID int64, 
 	return &user, nil
 }
 
+func (s *stubAdminService) TransferUserBalance(ctx context.Context, input service.BalanceTransferInput) (*service.BalanceTransfer, error) {
+	return &service.BalanceTransfer{
+		ID:          1,
+		ExternalID:  input.ExternalID,
+		FromUserID:  input.FromUserID,
+		ToUserID:    input.ToUserID,
+		Amount:      input.Amount,
+		Reason:      input.Reason,
+		Metadata:    input.Metadata,
+		FromBalance: 10 - input.Amount,
+		ToBalance:   input.Amount,
+	}, nil
+}
+
 func (s *stubAdminService) BatchUpdateConcurrency(ctx context.Context, userIDs []int64, value int, mode string) (int, error) {
 	return len(userIDs), nil
 }

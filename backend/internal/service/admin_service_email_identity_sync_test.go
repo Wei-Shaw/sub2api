@@ -105,6 +105,10 @@ func (s *emailSyncRepoStub) UpdateBalance(context.Context, int64, float64) error
 
 func (s *emailSyncRepoStub) DeductBalance(context.Context, int64, float64) error { return nil }
 
+func (s *emailSyncRepoStub) TransferBalance(context.Context, BalanceTransferInput) (*BalanceTransfer, error) {
+	return nil, fmt.Errorf("unexpected TransferBalance call")
+}
+
 func (s *emailSyncRepoStub) UpdateConcurrency(context.Context, int64, int) error { return nil }
 
 func (s *emailSyncRepoStub) ExistsByEmail(context.Context, string) (bool, error) { return false, nil }

@@ -268,6 +268,7 @@ func registerUserManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		users.GET("/:id/attributes", h.Admin.UserAttribute.GetUserAttributes)
 		users.PUT("/:id/attributes", h.Admin.UserAttribute.UpdateUserAttributes)
 	}
+	admin.POST("/balance-transfers", h.Admin.User.TransferBalance)
 }
 
 func registerGroupRoutes(admin *gin.RouterGroup, h *handler.Handlers) {

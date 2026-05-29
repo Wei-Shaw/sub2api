@@ -524,6 +524,48 @@ func (s *adminServiceImpl) UpdateUserBalance(ctx context.Context, userID int64, 
 	return user, nil
 }
 
+func (s *adminServiceImpl) TransferUserBalance(ctx context.Context, input BalanceTransferInput) (*BalanceTransfer, error) {
+	input.ExternalID = strings.TrimSpace(input.ExternalID)
+	input.Reason = strings.TrimSpace(input.Reason)
+	if input.ExternalID == "" {
+		return nil, infraerrors.BadRequest("BALANCE_TRANSFER_EXTERNAL_ID_REQUIRED", "external_id is required")
+	}
+	if input.FromUserID <= 0 || input.ToUserID <= 0 {
+		return nil, infraerrors.BadRequest("BALANCE_TRANSFER_INVALID_USER", "from_user_id and to_user_id are required")
+	}
+	if input.FromUserID == input.ToUserID {
+		return nil, infraerrors.BadRequest("BALANCE_TRANSFER_SAME_USER", "from_user_id and to_user_id must be different")
+	}
+	if input.Amount <= 0 {
+		return nil, infraerrors.BadRequest("BALANCE_TRANSFER_INVALID_AMOUNT", "amount must be greater than 0")
+	}
+	if input.Reason == "" {
+		return nil, infraerrors.BadRequest("BALANCE_TRANSFER_REASON_REQUIRED", "reason is required")
+	}
+
+	transfer, err := s.userRepo.TransferBalance(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+	if s.authCacheInvalidator != nil {
+		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, input.FromUserID)
+		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, input.ToUserID)
+	}
+	if s.billingCacheService != nil {
+		go func() {
+			cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := s.billingCacheService.InvalidateUserBalance(cacheCtx, input.FromUserID); err != nil {
+				logger.LegacyPrintf("service.admin", "invalidate from user balance cache failed: user_id=%d err=%v", input.FromUserID, err)
+			}
+			if err := s.billingCacheService.InvalidateUserBalance(cacheCtx, input.ToUserID); err != nil {
+				logger.LegacyPrintf("service.admin", "invalidate to user balance cache failed: user_id=%d err=%v", input.ToUserID, err)
+			}
+		}()
+	}
+	return transfer, nil
+}
+
 func (s *adminServiceImpl) GetUserAPIKeys(ctx context.Context, userID int64, page, pageSize int, sortBy, sortOrder string) ([]APIKey, int64, error) {
 	params := pagination.PaginationParams{Page: page, PageSize: pageSize, SortBy: sortBy, SortOrder: sortOrder}
 	keys, result, err := s.apiKeyRepo.ListByUserID(ctx, userID, params, APIKeyListFilters{})

@@ -238,6 +238,10 @@ func (r *contentModerationTestUserRepo) DeductBalance(ctx context.Context, id in
 	panic("unexpected DeductBalance call")
 }
 
+func (r *contentModerationTestUserRepo) TransferBalance(ctx context.Context, input BalanceTransferInput) (*BalanceTransfer, error) {
+	panic("unexpected TransferBalance call")
+}
+
 func (r *contentModerationTestUserRepo) UpdateConcurrency(ctx context.Context, id int64, amount int) error {
 	panic("unexpected UpdateConcurrency call")
 }

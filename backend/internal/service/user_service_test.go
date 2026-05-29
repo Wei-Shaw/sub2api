@@ -200,6 +200,9 @@ func (m *mockUserRepo) DeductBalance(ctx context.Context, id int64, amount float
 	}
 	return nil
 }
+func (m *mockUserRepo) TransferBalance(context.Context, BalanceTransferInput) (*BalanceTransfer, error) {
+	return nil, nil
+}
 func (m *mockUserRepo) UpdateConcurrency(context.Context, int64, int) error { return nil }
 func (m *mockUserRepo) ExistsByEmail(context.Context, string) (bool, error) { return false, nil }
 func (m *mockUserRepo) RemoveGroupFromAllowedGroups(context.Context, int64) (int64, error) {

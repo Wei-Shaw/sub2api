@@ -42,6 +42,7 @@ var (
 		"IDENTITY_UNBIND_LAST_METHOD",
 		"bind another sign-in method before unbinding this provider",
 	)
+	ErrBalanceTransferConflict = infraerrors.Conflict("BALANCE_TRANSFER_CONFLICT", "balance transfer external_id conflicts with an existing transfer")
 )
 
 const (
@@ -104,6 +105,7 @@ type UserRepository interface {
 
 	UpdateBalance(ctx context.Context, id int64, amount float64) error
 	DeductBalance(ctx context.Context, id int64, amount float64) error
+	TransferBalance(ctx context.Context, input BalanceTransferInput) (*BalanceTransfer, error)
 	UpdateConcurrency(ctx context.Context, id int64, amount int) error
 	BatchSetConcurrency(ctx context.Context, userIDs []int64, value int) (int, error)
 	BatchAddConcurrency(ctx context.Context, userIDs []int64, delta int) (int, error)
@@ -139,6 +141,28 @@ type UserAuthIdentityRecord struct {
 	Metadata        map[string]any
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
+}
+
+type BalanceTransferInput struct {
+	ExternalID string
+	FromUserID int64
+	ToUserID   int64
+	Amount     float64
+	Reason     string
+	Metadata   map[string]any
+}
+
+type BalanceTransfer struct {
+	ID          int64
+	ExternalID  string
+	FromUserID  int64
+	ToUserID    int64
+	Amount      float64
+	Reason      string
+	Metadata    map[string]any
+	FromBalance float64
+	ToBalance   float64
+	CreatedAt   time.Time
 }
 
 type UserIdentitySummary struct {

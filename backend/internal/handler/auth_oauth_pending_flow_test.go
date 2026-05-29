@@ -3157,6 +3157,10 @@ func (r *oauthPendingFlowUserRepo) DeductBalance(context.Context, int64, float64
 	panic("unexpected DeductBalance call")
 }
 
+func (r *oauthPendingFlowUserRepo) TransferBalance(context.Context, service.BalanceTransferInput) (*service.BalanceTransfer, error) {
+	panic("unexpected TransferBalance call")
+}
+
 func (r *oauthPendingFlowUserRepo) UpdateConcurrency(context.Context, int64, int) error {
 	panic("unexpected UpdateConcurrency call")
 }
