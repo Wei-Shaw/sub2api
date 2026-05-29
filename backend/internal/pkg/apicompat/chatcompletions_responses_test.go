@@ -663,6 +663,115 @@ func TestResponsesToChatCompletions_CachedTokens(t *testing.T) {
 	assert.Equal(t, 80, chat.Usage.PromptTokensDetails.CachedTokens)
 }
 
+func TestResponsesToChatCompletions_ReasoningTokens(t *testing.T) {
+	resp := &ResponsesResponse{
+		ID:     "resp_reasoning",
+		Status: "completed",
+		Output: []ResponsesOutput{
+			{
+				Type:    "message",
+				Content: []ResponsesContentPart{{Type: "output_text", Text: "ping"}},
+			},
+		},
+		Usage: &ResponsesUsage{
+			InputTokens:  24,
+			OutputTokens: 33,
+			TotalTokens:  57,
+			OutputTokensDetails: &ResponsesOutputTokensDetails{
+				ReasoningTokens: 32,
+			},
+		},
+	}
+
+	chat := ResponsesToChatCompletions(resp, "gpt-5.5")
+	require.NotNil(t, chat.Usage)
+	assert.Equal(t, 33, chat.Usage.CompletionTokens)
+	require.NotNil(t, chat.Usage.CompletionTokensDetails)
+	assert.Equal(t, 32, chat.Usage.CompletionTokensDetails.ReasoningTokens)
+}
+
+func TestResponsesToChatCompletions_AllTokenDetailsPassThrough(t *testing.T) {
+	// Covers the full OpenAI CompletionUsage detail field set so future audio
+	// and prediction-outputs responses propagate without further changes.
+	resp := &ResponsesResponse{
+		ID:     "resp_full_details",
+		Status: "completed",
+		Output: []ResponsesOutput{
+			{
+				Type:    "message",
+				Content: []ResponsesContentPart{{Type: "output_text", Text: "x"}},
+			},
+		},
+		Usage: &ResponsesUsage{
+			InputTokens:  100,
+			OutputTokens: 50,
+			TotalTokens:  150,
+			InputTokensDetails: &ResponsesInputTokensDetails{
+				CachedTokens: 60,
+				AudioTokens:  4,
+			},
+			OutputTokensDetails: &ResponsesOutputTokensDetails{
+				ReasoningTokens:          30,
+				AudioTokens:              2,
+				AcceptedPredictionTokens: 10,
+				RejectedPredictionTokens: 3,
+			},
+		},
+	}
+
+	chat := ResponsesToChatCompletions(resp, "gpt-5.5")
+	require.NotNil(t, chat.Usage)
+	require.NotNil(t, chat.Usage.PromptTokensDetails)
+	assert.Equal(t, 60, chat.Usage.PromptTokensDetails.CachedTokens)
+	assert.Equal(t, 4, chat.Usage.PromptTokensDetails.AudioTokens)
+
+	require.NotNil(t, chat.Usage.CompletionTokensDetails)
+	assert.Equal(t, 30, chat.Usage.CompletionTokensDetails.ReasoningTokens)
+	assert.Equal(t, 2, chat.Usage.CompletionTokensDetails.AudioTokens)
+	assert.Equal(t, 10, chat.Usage.CompletionTokensDetails.AcceptedPredictionTokens)
+	assert.Equal(t, 3, chat.Usage.CompletionTokensDetails.RejectedPredictionTokens)
+
+	raw, err := json.Marshal(chat.Usage)
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), `"prompt_tokens_details"`)
+	assert.Contains(t, string(raw), `"completion_tokens_details"`)
+	assert.Contains(t, string(raw), `"reasoning_tokens":30`)
+	assert.Contains(t, string(raw), `"accepted_prediction_tokens":10`)
+}
+
+func TestResponsesToChatCompletions_NoReasoningTokensWhenZero(t *testing.T) {
+	// Non-reasoning models do not return reasoning_tokens. The mapping must
+	// omit completion_tokens_details entirely rather than emitting a zero-valued
+	// field, so non-reasoning responses stay clean.
+	resp := &ResponsesResponse{
+		ID:     "resp_no_reasoning",
+		Status: "completed",
+		Output: []ResponsesOutput{
+			{
+				Type:    "message",
+				Content: []ResponsesContentPart{{Type: "output_text", Text: "hi"}},
+			},
+		},
+		Usage: &ResponsesUsage{
+			InputTokens:  10,
+			OutputTokens: 5,
+			TotalTokens:  15,
+			OutputTokensDetails: &ResponsesOutputTokensDetails{
+				ReasoningTokens: 0,
+			},
+		},
+	}
+
+	chat := ResponsesToChatCompletions(resp, "gpt-4o")
+	require.NotNil(t, chat.Usage)
+	assert.Nil(t, chat.Usage.CompletionTokensDetails)
+
+	raw, err := json.Marshal(chat.Usage)
+	require.NoError(t, err)
+	assert.NotContains(t, string(raw), "completion_tokens_details")
+	assert.NotContains(t, string(raw), "reasoning_tokens")
+}
+
 func TestResponsesToChatCompletions_WebSearch(t *testing.T) {
 	resp := &ResponsesResponse{
 		ID:     "resp_ws",
@@ -823,6 +932,32 @@ func TestResponsesEventToChatChunks_Completed(t *testing.T) {
 	assert.Equal(t, 70, chunks[1].Usage.TotalTokens)
 	require.NotNil(t, chunks[1].Usage.PromptTokensDetails)
 	assert.Equal(t, 30, chunks[1].Usage.PromptTokensDetails.CachedTokens)
+}
+
+func TestResponsesEventToChatChunks_CompletedWithReasoningTokens(t *testing.T) {
+	state := NewResponsesEventToChatState()
+	state.Model = "gpt-5.5"
+	state.IncludeUsage = true
+
+	chunks := ResponsesEventToChatChunks(&ResponsesStreamEvent{
+		Type: "response.completed",
+		Response: &ResponsesResponse{
+			Status: "completed",
+			Usage: &ResponsesUsage{
+				InputTokens:  24,
+				OutputTokens: 33,
+				TotalTokens:  57,
+				OutputTokensDetails: &ResponsesOutputTokensDetails{
+					ReasoningTokens: 32,
+				},
+			},
+		},
+	}, state)
+	require.Len(t, chunks, 2)
+
+	require.NotNil(t, chunks[1].Usage)
+	require.NotNil(t, chunks[1].Usage.CompletionTokensDetails)
+	assert.Equal(t, 32, chunks[1].Usage.CompletionTokensDetails.ReasoningTokens)
 }
 
 func TestResponsesEventToChatChunks_ResponseDone(t *testing.T) {

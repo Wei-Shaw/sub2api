@@ -1630,6 +1630,12 @@ func normalizeClaudeOAuthRequestBody(body []byte, modelID string, opts claudeOAu
 	// context_management：thinking.type 为 enabled/adaptive 时，真实 CLI 会自动
 	// 附带 {"edits":[{"type":"clear_thinking_20251015","keep":"all"}]}。
 	// 客户端显式传了就透传；否则按 CLI 行为补齐。
+	//
+	// 注：本函数不按 model 名决定是否保留 context_management。“最终 beta
+	// header 不含 context-management-2025-06-27 时 strip 字段”的能力维度
+	// 对称约束由 sanitizeAnthropicBodyForBetaTokens 在 buildUpstreamRequest /
+	// buildCountTokensRequest 层统一执行，与 Bedrock 路径的
+	// sanitizeBedrockFieldsForBetaTokens 对称。
 	if !gjson.GetBytes(out, "context_management").Exists() {
 		thinkingType := gjson.GetBytes(out, "thinking.type").String()
 		if thinkingType == "enabled" || thinkingType == "adaptive" {
@@ -6125,6 +6131,17 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 		targetURL = validatedURL + "/v1/messages?beta=true"
 	}
 
+	// 能力维度 body sanitize：透传路径上 anthropic-beta header 原样透传客户端值，
+	// 依此决定是否保留 body 中的 context_management。避免“客户端 body 带字段但
+	// header 忘记带 beta token”的客户端 bug 在透传场景下让上游 400。
+	clientBeta := ""
+	if c != nil && c.Request != nil {
+		clientBeta = getHeaderRaw(c.Request.Header, "anthropic-beta")
+	}
+	if sanitized, changed := sanitizeAnthropicBodyForBetaTokens(body, clientBeta); changed {
+		body = sanitized
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -7349,6 +7366,57 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	if fingerprint != nil {
 		body = syncBillingHeaderVersion(body, fingerprint.UserAgent)
 	}
+
+	// === 计算最终 anthropic-beta header（先于 body sanitize 与 CCH 签名）===
+	//
+	// 顺序约束：
+	//   1) 算 finalBeta（纯函数，不依赖 req.Header；mimicry 路径会忽略客户端 beta，
+	//      与原“OAuth + mimicClaudeCode 跳过白名单透传”行为对齐）
+	//   2) 按 finalBeta 做能力维度 body sanitize（如 context-management beta 缺失 →
+	//      strip body.context_management，与 Bedrock 路径对称）
+	//   3) CCH 签名（必须使用 strip 后的 body，否则 hash 与最终 body 不一致 →
+	//      被 Anthropic 判 third-party）
+	//   4) NewRequest（body 至此最终敲定）
+	//   5) 透传白名单 / fingerprint / mimic header / 写入 finalBeta
+	var finalBetaHeader string
+	var finalBetaShouldSet bool
+	if ShouldForwardBetaFlags(ctx) {
+		// ForwardBetaFlags policy override (relay/Transparent): trust the
+		// client-supplied anthropic-beta header verbatim and skip every
+		// platform-decided beta merge/strip/inject path.
+		clientBeta := getHeaderRaw(clientHeaders, "anthropic-beta")
+		finalBetaHeader = clientBeta
+		finalBetaShouldSet = clientBeta != ""
+	} else {
+		policyFilterSet := s.getBetaPolicyFilterSet(ctx, c, account, modelID)
+		effectiveDropSet := mergeDropSets(policyFilterSet)
+		finalBetaHeader, finalBetaShouldSet = s.computeFinalAnthropicBeta(
+			tokenType, mimicClaudeCode, modelID, clientHeaders, body, effectiveDropSet,
+		)
+
+		// Force 1M context beta when the account is configured for it.
+		// Some upstreams (e.g. anyrouter) auto-enable 1M context and reject
+		// requests that omit `context-1m-2025-08-07`, regardless of model.
+		if account != nil && account.ForceContext1M() {
+			finalBetaHeader = mergeAnthropicBetaDropping([]string{claude.BetaContext1M}, finalBetaHeader, nil)
+			finalBetaShouldSet = true
+		}
+
+		// Ensure context_management in body always has its matching beta token,
+		// regardless of token type or client behavior. We inject beta to match
+		// the body (rather than strip body to match beta) because we want this
+		// capability to flow through whenever the body requested it.
+		if bodyNeedsContextManagementBeta(body) && !strings.Contains(finalBetaHeader, claude.BetaContextManagement) {
+			finalBetaHeader = mergeAnthropicBetaDropping([]string{claude.BetaContextManagement}, finalBetaHeader, nil)
+			finalBetaShouldSet = true
+		}
+	}
+
+	// 能力维度 body sanitize：与最终 anthropic-beta header 对称
+	if sanitized, changed := sanitizeAnthropicBodyForBetaTokens(body, finalBetaHeader); changed {
+		body = sanitized
+	}
+
 	// CCH 签名：将 cch=00000 占位符替换为 xxHash64 签名（需在所有 body 修改之后）
 	if enableCCH {
 		body = signBillingHeaderCCH(body)
@@ -7413,9 +7481,7 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	}
 
 	// OAuth + mimic: apply Claude Code mimic headers (UA, x-stainless-*, x-app, etc.)
-	// before the beta-decision block. These are independent of ForwardBetaFlags —
-	// the mimic identity scope is controlled by ForwardClientUA / ForwardClientHeaders,
-	// not by ForwardBetaFlags.
+	// (user-agent/x-stainless-*/x-app/Accept/x-stainless-helper-method/x-client-request-id)
 	if tokenType == "oauth" && mimicClaudeCode {
 		applyClaudeCodeMimicHeaders(req, reqStream)
 
@@ -7432,69 +7498,12 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 		}
 	}
 
-	// ForwardBetaFlags policy override: when the resolved policy says forward
-	// (Transparent / relay accounts), trust the client-supplied anthropic-beta
-	// header verbatim and skip every platform-decided beta merge/strip/inject
-	// path below (including force_1m_context). The client beta is already in
-	// req.Header via the upstream header-copy loop above (anthropic-beta is in
-	// the legacy whitelist and is never blacklisted).
-	if !ShouldForwardBetaFlags(ctx) {
-		// Build effective drop set: merge static defaults with dynamic beta policy filter rules
-		policyFilterSet := s.getBetaPolicyFilterSet(ctx, c, account, modelID)
-		effectiveDropSet := mergeDropSets(policyFilterSet)
-
-		// 处理 anthropic-beta header（OAuth 账号需要包含 oauth beta）
-		if tokenType == "oauth" {
-			if mimicClaudeCode {
-				incomingBeta := getHeaderRaw(req.Header, "anthropic-beta")
-				// Claude Code OAuth credentials are scoped to Claude Code.
-				// Non-haiku models MUST include claude-code beta for Anthropic to recognize
-				// this as a legitimate Claude Code request; without it, the request is
-				// rejected as third-party ("out of extra usage").
-				// Haiku models are exempt from third-party detection and don't need it.
-				requiredBetas := []string{claude.BetaOAuth, claude.BetaInterleavedThinking}
-				if !strings.Contains(strings.ToLower(modelID), "haiku") {
-					requiredBetas = claude.FullClaudeCodeMimicryBetas()
-				}
-				if bodyNeedsContextManagementBeta(body) {
-					requiredBetas = append(requiredBetas, claude.BetaContextManagement)
-				}
-				setHeaderRaw(req.Header, "anthropic-beta", mergeAnthropicBetaDropping(requiredBetas, incomingBeta, effectiveDropSet))
-			} else {
-				// Claude Code 客户端：尽量透传原始 header，仅补齐 oauth beta
-				clientBetaHeader := getHeaderRaw(req.Header, "anthropic-beta")
-				setHeaderRaw(req.Header, "anthropic-beta", stripBetaTokensWithSet(s.getBetaHeader(modelID, clientBetaHeader), effectiveDropSet))
-			}
-		} else {
-			// API-key accounts: apply beta policy filter to strip controlled tokens
-			if existingBeta := getHeaderRaw(req.Header, "anthropic-beta"); existingBeta != "" {
-				setHeaderRaw(req.Header, "anthropic-beta", stripBetaTokensWithSet(existingBeta, effectiveDropSet))
-			} else if s.cfg != nil && s.cfg.Gateway.InjectBetaForAPIKey {
-				// API-key：仅在请求显式使用 beta 特性且客户端未提供时，按需补齐（默认关闭）
-				if requestNeedsBetaFeatures(body) {
-					if beta := defaultAPIKeyBetaHeader(body); beta != "" {
-						setHeaderRaw(req.Header, "anthropic-beta", beta)
-					}
-				}
-			}
-		}
-
-		// Force 1M context beta when the account is configured for it.
-		// Some upstreams (e.g. anyrouter) auto-enable 1M context and reject
-		// requests that omit `context-1m-2025-08-07`, regardless of model.
-		if account != nil && account.ForceContext1M() {
-			current := getHeaderRaw(req.Header, "anthropic-beta")
-			setHeaderRaw(req.Header, "anthropic-beta", mergeAnthropicBetaDropping([]string{claude.BetaContext1M}, current, nil))
-		}
-
-		// Ensure context_management in body always has its matching beta token,
-		// regardless of token type or client behavior.
-		if bodyNeedsContextManagementBeta(body) {
-			current := getHeaderRaw(req.Header, "anthropic-beta")
-			if !strings.Contains(current, claude.BetaContextManagement) {
-				setHeaderRaw(req.Header, "anthropic-beta", mergeAnthropicBetaDropping([]string{claude.BetaContextManagement}, current, nil))
-			}
-		}
+	// 写入最终 anthropic-beta header
+	// 注：透传分支白名单可能写入了客户端 anthropic-beta，无条件 Del 一次再按 finalBeta
+	// 决定是否 set，确保 dropSet 过滤后的结果一定覆盖客户端原始值。
+	deleteHeaderAllForms(req.Header, "anthropic-beta")
+	if finalBetaShouldSet {
+		setHeaderRaw(req.Header, "anthropic-beta", finalBetaHeader)
 	}
 
 	// 同步 X-Claude-Code-Session-Id 头：取 body 中已处理的 metadata.user_id 的 session_id 覆盖
@@ -7540,6 +7549,16 @@ func (s *GatewayService) buildUpstreamRequestAnthropicVertex(
 	vertexBody, err := buildVertexAnthropicRequestBody(body)
 	if err != nil {
 		return nil, err
+	}
+
+	// 能力维度 sanitize：Vertex 路径上 anthropic-beta header 原样透传客户端值
+	// （下面白名单跳过 anthropic-version 但保留 anthropic-beta），依此决定是否
+	// 保留 body 中的 context_management，与 Anthropic 直连 / Bedrock 路径对称。
+	if c != nil && c.Request != nil {
+		clientBeta := getHeaderRaw(c.Request.Header, "anthropic-beta")
+		if sanitized, changed := sanitizeAnthropicBodyForBetaTokens(vertexBody, clientBeta); changed {
+			vertexBody = sanitized
+		}
 	}
 	fullURL, err := buildVertexAnthropicURL(account.VertexProjectID(), account.VertexLocation(modelID), modelID, reqStream)
 	if err != nil {
@@ -7735,6 +7754,121 @@ func mergeAnthropicBetaDropping(required []string, incoming string, drop map[str
 		out = append(out, p)
 	}
 	return strings.Join(out, ",")
+}
+
+// computeFinalAnthropicBeta 计算发往上游的最终 anthropic-beta header 值。
+//
+// 设计动机：将原本在 buildUpstreamRequest 内联在一起、依赖 req.Header 的
+// anthropic-beta 计算逻辑抽成纯函数。这样调用方可以在 NewRequest 之前
+// 就提前拿到最终 beta header，进而能按它对 body 做能力维度 sanitize 后再做
+// CCH 签名——一举修复了以下之前由顺序依赖导致的能力维度 sanitize
+// 无法部署的问题（签名与最终 body 不一致可以被判 third-party）。
+//
+// 返回 (value, shouldSet)：
+//   - shouldSet=false 意为“不主动设置 anthropic-beta header”，与原代码“
+//     API-key 账号 + 客户端未传 anthropic-beta + InjectBetaForAPIKey 未开启或
+//     requestNeedsBetaFeatures=false”的行为对齐。
+//   - shouldSet=true 时 value 可能为空字符串（例如客户端透传的 beta 被 dropSet
+//     全部过滤掉），这与原代码中 setHeaderRaw 的结果一致。
+//
+// clientHeaders 是客户端原始 HTTP header（通常为 c.Request.Header）；nil 时按“客户端
+// 未传”处理。body 是已经 metadata 重写 / billing version sync 之后但未 sanitize 上游
+// 不兼容字段之前的版本。
+func (s *GatewayService) computeFinalAnthropicBeta(
+	tokenType string,
+	mimicClaudeCode bool,
+	modelID string,
+	clientHeaders http.Header,
+	body []byte,
+	effectiveDropSet map[string]struct{},
+) (string, bool) {
+	clientBeta := ""
+	if clientHeaders != nil {
+		clientBeta = getHeaderRaw(clientHeaders, "anthropic-beta")
+	}
+
+	if tokenType == "oauth" {
+		if mimicClaudeCode {
+			// mimic 路径：原代码跳过白名单透传，incomingBeta 总是空字符串。
+			// 这里传空 string 以严格对齐原行为。
+			requiredBetas := []string{claude.BetaOAuth, claude.BetaInterleavedThinking}
+			if !strings.Contains(strings.ToLower(modelID), "haiku") {
+				requiredBetas = claude.FullClaudeCodeMimicryBetas()
+			}
+			return mergeAnthropicBetaDropping(requiredBetas, "", effectiveDropSet), true
+		}
+		// 真 Claude Code 客户端透传路径
+		return stripBetaTokensWithSet(s.getBetaHeader(modelID, clientBeta), effectiveDropSet), true
+	}
+
+	// API-key accounts
+	if clientBeta != "" {
+		return stripBetaTokensWithSet(clientBeta, effectiveDropSet), true
+	}
+	if s.cfg != nil && s.cfg.Gateway.InjectBetaForAPIKey {
+		if requestNeedsBetaFeatures(body) {
+			if beta := defaultAPIKeyBetaHeader(body); beta != "" {
+				return beta, true
+			}
+		}
+	}
+	return "", false
+}
+
+// computeFinalCountTokensAnthropicBeta 是 count_tokens 路径上 anthropic-beta header 的
+// 计算纯函数。语义与 computeFinalAnthropicBeta 对齐，但备份了 count_tokens 独有的
+// 两条特殊规则：
+//
+//   - OAuth mimic：requiredBetas 为 FullClaudeCodeMimicryBetas + BetaTokenCounting
+//     （与 messages 不同的是：不按 haiku 排除；count_tokens 始终携带 token-counting beta）
+//   - OAuth 透传 + 客户端未传 anthropic-beta：补齐 CountTokensBetaHeader
+//   - OAuth 透传 + 客户端传了：补齐 BetaTokenCounting（如果未含）
+//
+// 返回语义同 computeFinalAnthropicBeta。
+func (s *GatewayService) computeFinalCountTokensAnthropicBeta(
+	tokenType string,
+	mimicClaudeCode bool,
+	modelID string,
+	clientHeaders http.Header,
+	body []byte,
+	effectiveDropSet map[string]struct{},
+) (string, bool) {
+	clientBeta := ""
+	if clientHeaders != nil {
+		clientBeta = getHeaderRaw(clientHeaders, "anthropic-beta")
+	}
+
+	if tokenType == "oauth" {
+		if mimicClaudeCode {
+			// 与原代码严格等价：original buildCountTokensRequest 在 count_tokens mimic
+			// 分支上**不**会跳过白名单透传（与 messages mimic 路径不同），所以
+			// incomingBeta = req.Header[anthropic-beta] = 客户端透传过来的 client beta。
+			// 重构后直接从 clientHeaders 拿同一个值，保持行为一致。
+			requiredBetas := append(claude.FullClaudeCodeMimicryBetas(), claude.BetaTokenCounting)
+			return mergeAnthropicBetaDropping(requiredBetas, clientBeta, effectiveDropSet), true
+		}
+		if clientBeta == "" {
+			return claude.CountTokensBetaHeader, true
+		}
+		beta := s.getBetaHeader(modelID, clientBeta)
+		if !strings.Contains(beta, claude.BetaTokenCounting) {
+			beta = beta + "," + claude.BetaTokenCounting
+		}
+		return stripBetaTokensWithSet(beta, effectiveDropSet), true
+	}
+
+	// API-key accounts
+	if clientBeta != "" {
+		return stripBetaTokensWithSet(clientBeta, effectiveDropSet), true
+	}
+	if s.cfg != nil && s.cfg.Gateway.InjectBetaForAPIKey {
+		if requestNeedsBetaFeatures(body) {
+			if beta := defaultAPIKeyBetaHeader(body); beta != "" {
+				return beta, true
+			}
+		}
+	}
+	return "", false
 }
 
 // stripBetaTokens removes the given beta tokens from a comma-separated header value.
@@ -10896,6 +11030,15 @@ func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthrough(
 		targetURL = validatedURL + "/v1/messages/count_tokens?beta=true"
 	}
 
+	// 同 buildUpstreamRequestAnthropicAPIKeyPassthrough：能力维度 sanitize。
+	clientBeta := ""
+	if c != nil && c.Request != nil {
+		clientBeta = getHeaderRaw(c.Request.Header, "anthropic-beta")
+	}
+	if sanitized, changed := sanitizeAnthropicBodyForBetaTokens(body, clientBeta); changed {
+		body = sanitized
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -11002,6 +11145,19 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 	if ctFingerprint != nil && ctEnableFP {
 		body = syncBillingHeaderVersion(body, ctFingerprint.UserAgent)
 	}
+
+	// === 计算最终 anthropic-beta header（先于 body sanitize 与 CCH 签名）===
+	// 顺序约束同 buildUpstreamRequest。
+	ctEffectiveDropSet := mergeDropSets(s.getBetaPolicyFilterSet(ctx, c, account, modelID))
+	finalBetaHeader, finalBetaShouldSet := s.computeFinalCountTokensAnthropicBeta(
+		tokenType, mimicClaudeCode, modelID, clientHeaders, body, ctEffectiveDropSet,
+	)
+
+	// 能力维度 body sanitize：与最终 anthropic-beta header 对称
+	if sanitized, changed := sanitizeAnthropicBodyForBetaTokens(body, finalBetaHeader); changed {
+		body = sanitized
+	}
+
 	if ctEnableCCH {
 		body = signBillingHeaderCCH(body)
 	}
@@ -11045,41 +11201,15 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 		applyClaudeOAuthHeaderDefaults(req)
 	}
 
-	// Build effective drop set for count_tokens: merge static defaults with dynamic beta policy filter rules
-	ctEffectiveDropSet := mergeDropSets(s.getBetaPolicyFilterSet(ctx, c, account, modelID))
+	// OAuth + mimic Claude Code：强制注入 CLI 指纹 header
+	if tokenType == "oauth" && mimicClaudeCode {
+		applyClaudeCodeMimicHeaders(req, false)
+	}
 
-	// OAuth 账号：处理 anthropic-beta header
-	if tokenType == "oauth" {
-		if mimicClaudeCode {
-			applyClaudeCodeMimicHeaders(req, false)
-
-			incomingBeta := getHeaderRaw(req.Header, "anthropic-beta")
-			requiredBetas := append(claude.FullClaudeCodeMimicryBetas(), claude.BetaTokenCounting)
-			setHeaderRaw(req.Header, "anthropic-beta", mergeAnthropicBetaDropping(requiredBetas, incomingBeta, ctEffectiveDropSet))
-		} else {
-			clientBetaHeader := getHeaderRaw(req.Header, "anthropic-beta")
-			if clientBetaHeader == "" {
-				setHeaderRaw(req.Header, "anthropic-beta", claude.CountTokensBetaHeader)
-			} else {
-				beta := s.getBetaHeader(modelID, clientBetaHeader)
-				if !strings.Contains(beta, claude.BetaTokenCounting) {
-					beta = beta + "," + claude.BetaTokenCounting
-				}
-				setHeaderRaw(req.Header, "anthropic-beta", stripBetaTokensWithSet(beta, ctEffectiveDropSet))
-			}
-		}
-	} else {
-		// API-key accounts: apply beta policy filter to strip controlled tokens
-		if existingBeta := getHeaderRaw(req.Header, "anthropic-beta"); existingBeta != "" {
-			setHeaderRaw(req.Header, "anthropic-beta", stripBetaTokensWithSet(existingBeta, ctEffectiveDropSet))
-		} else if s.cfg != nil && s.cfg.Gateway.InjectBetaForAPIKey {
-			// API-key：与 messages 同步的按需 beta 注入（默认关闭）
-			if requestNeedsBetaFeatures(body) {
-				if beta := defaultAPIKeyBetaHeader(body); beta != "" {
-					setHeaderRaw(req.Header, "anthropic-beta", beta)
-				}
-			}
-		}
+	// 写入最终 anthropic-beta header（Del 一次避免白名单透传值残留）
+	deleteHeaderAllForms(req.Header, "anthropic-beta")
+	if finalBetaShouldSet {
+		setHeaderRaw(req.Header, "anthropic-beta", finalBetaHeader)
 	}
 
 	if bodyNeedsContextManagementBeta(body) {

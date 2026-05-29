@@ -569,6 +569,7 @@ export interface SystemSettings {
   rewrite_message_cache_control_mode: 'full' | 'safe' | 'shadow';
   antigravity_user_agent_version: string;
   openai_codex_user_agent: string;
+  openai_allow_claude_code_codex_plugin: boolean;
   web_search_emulation_enabled?: boolean;
 
   // Payment configuration
@@ -815,6 +816,7 @@ export interface UpdateSettingsRequest {
   rewrite_message_cache_control_mode?: 'full' | 'safe' | 'shadow';
   antigravity_user_agent_version?: string;
   openai_codex_user_agent?: string;
+  openai_allow_claude_code_codex_plugin?: boolean;
   // Payment configuration
   payment_enabled?: boolean;
   risk_control_enabled?: boolean;

@@ -4116,6 +4116,19 @@
                   }}
                 </p>
               </div>
+
+              <!-- 是否允许在 Claude Code 中使用 Codex 插件（全局开关） -->
+              <div class="flex items-center justify-between">
+                <div class="pr-4">
+                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t("admin.settings.gatewayForwarding.openaiAllowClaudeCodeCodexPlugin") }}
+                  </label>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.gatewayForwarding.openaiAllowClaudeCodeCodexPluginDesc") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.openai_allow_claude_code_codex_plugin" />
+              </div>
             </div>
           </div>
 
@@ -7359,6 +7372,7 @@ const form = reactive<SettingsForm>({
   rewrite_message_cache_control_mode: 'safe' as 'full' | 'safe' | 'shadow',
   antigravity_user_agent_version: "",
   openai_codex_user_agent: "",
+  openai_allow_claude_code_codex_plugin: false,
   // Upstream passthrough policy (Phase B-2 + Phase C)
   upstream_policy_v1_enabled: false,
   upstream_passthrough_global_override: "auto" as
@@ -8491,6 +8505,7 @@ async function saveSettings() {
         form.antigravity_user_agent_version?.trim() || "",
       openai_codex_user_agent:
         form.openai_codex_user_agent?.trim() || "",
+      openai_allow_claude_code_codex_plugin: form.openai_allow_claude_code_codex_plugin,
       // Upstream passthrough policy (Phase B-2 + Phase C)
       upstream_policy_v1_enabled: form.upstream_policy_v1_enabled,
       upstream_passthrough_global_override:
