@@ -1,0 +1,226 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - navigation [ref=e4]:
+      - generic [ref=e5]:
+        - img "TokenProvider logo" [ref=e6]
+        - generic [ref=e7]: TokenProvider
+      - generic [ref=e8]:
+        - link "中文" [ref=e9] [cursor=pointer]:
+          - /url: /
+        - link "Log in" [ref=e10] [cursor=pointer]:
+          - /url: /login
+        - link "Get started →" [ref=e11] [cursor=pointer]:
+          - /url: /register
+  - main [ref=e12]:
+    - generic [ref=e13]:
+      - paragraph [ref=e15]:
+        - strong [ref=e16]: "TL;DR:"
+        - text: "TokenProvider is a third-party API gateway: one OpenAI-compatible base URL gives you Claude, Claude Code, ChatGPT, and Gemini access with a single key. Tokens are metered per request; rates appear in the dashboard after sign-up. Not an official Anthropic, OpenAI, or Google product."
+      - generic [ref=e17]:
+        - heading "Cheap Claude API, ChatGPT API & Token Gateway" [level=1] [ref=e18]
+        - paragraph [ref=e19]:
+          - text: One unified API gateway for
+          - strong [ref=e20]: Claude
+          - text: ","
+          - strong [ref=e21]: Claude Code
+          - text: ","
+          - strong [ref=e22]: ChatGPT
+          - text: ", and"
+          - strong [ref=e23]: Gemini
+          - text: . Pay-as-you-go tokens, transparent per-request billing, sticky sessions, and instant setup.
+        - generic [ref=e24]:
+          - link "Get API access →" [ref=e25] [cursor=pointer]:
+            - /url: /register
+          - link "Sign in" [ref=e26] [cursor=pointer]:
+            - /url: /login
+      - generic [ref=e27]:
+        - generic [ref=e28]: ● Subscription → API
+        - generic [ref=e29]: ● Sticky session
+        - generic [ref=e30]: ● Real-time billing
+        - generic [ref=e31]: ● OpenAI-compatible
+      - generic [ref=e32]:
+        - heading "Why TokenProvider is the cheapest Claude API gateway" [level=2] [ref=e33]
+        - paragraph [ref=e34]: Built for developers who need reliable, cheap access to Claude API, ChatGPT API, and other frontier models without committing to a per-provider subscription.
+        - generic [ref=e35]:
+          - generic [ref=e36]:
+            - generic [ref=e37]: ⚡
+            - heading "Unified API Gateway" [level=3] [ref=e38]
+            - paragraph [ref=e39]: Single OpenAI-compatible endpoint routes to Claude, Claude Code, ChatGPT, and Gemini. Swap models without rewriting code.
+          - generic [ref=e40]:
+            - generic [ref=e41]: ☁
+            - heading "Shared Account Pool" [level=3] [ref=e42]
+            - paragraph [ref=e43]: Aggregate official subscriptions across multiple accounts. Higher rate limits, cheaper per-token cost, and automatic failover.
+          - generic [ref=e44]:
+            - generic [ref=e45]: 💰
+            - heading "Transparent Pay-as-you-go" [level=3] [ref=e46]
+            - paragraph [ref=e47]: Buy cheap tokens up front, see exact input/output cost per request, and export usage logs whenever you want.
+      - generic [ref=e48]:
+        - heading "Supported providers" [level=2] [ref=e49]
+        - paragraph [ref=e50]: Current model coverage — more arriving as upstream APIs open up.
+        - generic [ref=e51]:
+          - generic [ref=e52]:
+            - generic [ref=e53]: C
+            - generic [ref=e54]: Claude (Sonnet, Opus, Haiku)
+            - generic [ref=e55]: Supported
+          - generic [ref=e56]:
+            - generic [ref=e57]: C
+            - generic [ref=e58]: Claude Code
+            - generic [ref=e59]: Supported
+          - generic [ref=e60]:
+            - generic [ref=e61]: G
+            - generic [ref=e62]: ChatGPT (GPT-4o, GPT-4.1, o-series)
+            - generic [ref=e63]: Supported
+          - generic [ref=e64]:
+            - generic [ref=e65]: G
+            - generic [ref=e66]: Gemini (1.5, 2.0)
+            - generic [ref=e67]: Supported
+      - generic [ref=e68]:
+        - heading "Cheap Claude API — how it works" [level=2] [ref=e69]
+        - generic [ref=e70]:
+          - paragraph [ref=e71]:
+            - strong [ref=e72]: TokenProvider
+            - text: pools official Claude, ChatGPT, and Gemini subscriptions into a single API gateway. You buy tokens in bulk at a discount, and the gateway routes your requests across the account pool with sticky sessions so conversation context stays intact.
+          - paragraph [ref=e73]:
+            - text: Compared to paying each provider directly, you get
+            - strong [ref=e74]: cheap Claude API access
+            - text: ","
+            - strong [ref=e75]: cheap tokens
+            - text: for ChatGPT, and one dashboard for everything. No minimums, no monthly commitment — deposit what you need, use it when you need it.
+          - paragraph [ref=e76]:
+            - text: Works with any OpenAI-compatible SDK and with
+            - strong [ref=e77]: Claude Code
+            - text: out of the box. Point your client at our endpoint, use your API key, and start shipping.
+      - generic [ref=e78]:
+        - heading "Guides, comparisons & code examples" [level=2] [ref=e79]
+        - paragraph [ref=e80]: Everything you need to evaluate and integrate the gateway. Start with a comparison page to pick the right model, then jump into a setup guide for your tool of choice.
+        - generic [ref=e81]:
+          - generic [ref=e82]:
+            - heading "Compare" [level=3] [ref=e83]
+            - list [ref=e84]:
+              - listitem [ref=e85]:
+                - link "Claude API vs ChatGPT API" [ref=e86] [cursor=pointer]:
+                  - /url: /en/compare/claude-vs-chatgpt-api.html
+              - listitem [ref=e87]:
+                - 'link "Claude Code: Proxy vs Subscription" [ref=e88] [cursor=pointer]':
+                  - /url: /en/compare/claude-code-relay-vs-subscription.html
+              - listitem [ref=e89]:
+                - link "TokenProvider vs Official Claude API" [ref=e90] [cursor=pointer]:
+                  - /url: /en/compare/tokenprovider-vs-official-claude.html
+          - generic [ref=e91]:
+            - heading "Guides" [level=3] [ref=e92]
+            - list [ref=e93]:
+              - listitem [ref=e94]:
+                - link "Claude Code setup (5 min)" [ref=e95] [cursor=pointer]:
+                  - /url: /en/guides/claude-code-setup.html
+              - listitem [ref=e96]:
+                - link "Cursor + Claude proxy" [ref=e97] [cursor=pointer]:
+                  - /url: /en/guides/cursor-claude-proxy.html
+              - listitem [ref=e98]:
+                - link "Cline + cheap Claude API" [ref=e99] [cursor=pointer]:
+                  - /url: /en/guides/cline-cheap-claude.html
+          - generic [ref=e100]:
+            - heading "Code examples" [level=3] [ref=e101]
+            - list [ref=e102]:
+              - listitem [ref=e103]:
+                - link "Claude API in Python" [ref=e104] [cursor=pointer]:
+                  - /url: /en/examples/claude-api-python.html
+              - listitem [ref=e105]:
+                - link "Claude API in Node.js / TS" [ref=e106] [cursor=pointer]:
+                  - /url: /en/examples/claude-api-nodejs.html
+              - listitem [ref=e107]:
+                - link "ChatGPT API with curl" [ref=e108] [cursor=pointer]:
+                  - /url: /en/examples/chatgpt-api-curl.html
+              - listitem [ref=e109]:
+                - link "Gemini API (Python / Node / curl)" [ref=e110] [cursor=pointer]:
+                  - /url: /en/examples/gemini-api-example.html
+          - generic [ref=e111]:
+            - heading "Glossary" [level=3] [ref=e112]
+            - list [ref=e113]:
+              - listitem [ref=e114]:
+                - link "What is a Claude API proxy?" [ref=e115] [cursor=pointer]:
+                  - /url: /en/glossary/what-is-claude-relay.html
+              - listitem [ref=e116]:
+                - link "What is Claude Code?" [ref=e117] [cursor=pointer]:
+                  - /url: /en/glossary/what-is-claude-code.html
+              - listitem [ref=e118]:
+                - link "What is an AI token?" [ref=e119] [cursor=pointer]:
+                  - /url: /en/glossary/what-is-an-ai-token.html
+      - generic [ref=e120]:
+        - heading "FAQ" [level=2] [ref=e121]
+        - generic [ref=e122]:
+          - generic [ref=e123]:
+            - heading "How cheap is the Claude API here vs. direct?" [level=3] [ref=e124]
+            - paragraph [ref=e125]: Prices depend on the current pool and model. Register for a free account to see live per-token rates — typically significantly below pay-as-you-go official pricing.
+          - generic [ref=e126]:
+            - heading "Does it work with Claude Code?" [level=3] [ref=e127]
+            - paragraph [ref=e128]:
+              - text: Yes. Set
+              - code [ref=e129]: ANTHROPIC_BASE_URL
+              - text: to our gateway and use your issued API key. Sticky sessions keep long Claude Code conversations coherent.
+          - generic [ref=e130]:
+            - heading "Is it OpenAI-compatible for ChatGPT?" [level=3] [ref=e131]
+            - paragraph [ref=e132]:
+              - text: Yes. Drop-in replacement for
+              - code [ref=e133]: api.openai.com
+              - text: — change the base URL, keep your existing code.
+          - generic [ref=e134]:
+            - heading "How does billing work?" [level=3] [ref=e135]
+            - paragraph [ref=e136]: Prepaid tokens. Every request debits your balance based on input + output tokens. Full per-request logs available.
+          - generic [ref=e137]:
+            - heading "Do you support Gemini and Claude Code together?" [level=3] [ref=e138]
+            - paragraph [ref=e139]: Yes — one account, one key, access Claude Opus/Sonnet, Claude Code, GPT-4o, and Gemini 2.0 through the same endpoint.
+      - generic [ref=e140]:
+        - heading "Start in 60 seconds" [level=2] [ref=e141]
+        - paragraph [ref=e142]: Create an account, top up a few dollars, get an API key, ship.
+        - generic [ref=e143]:
+          - link "Create your account →" [ref=e144] [cursor=pointer]:
+            - /url: /register
+          - link "中文版" [ref=e145] [cursor=pointer]:
+            - /url: /
+      - region "Related reading" [ref=e146]:
+        - heading "Related reading" [level=2] [ref=e147]
+        - list [ref=e148]:
+          - listitem [ref=e149]:
+            - link "What is a Claude API proxy?" [ref=e150] [cursor=pointer]:
+              - /url: /en/glossary/what-is-claude-relay.html
+            - text: — 5-minute primer
+          - listitem [ref=e151]:
+            - link "Claude API vs ChatGPT API (2026)" [ref=e152] [cursor=pointer]:
+              - /url: /en/compare/claude-vs-chatgpt-api.html
+            - text: — pricing & coding
+          - listitem [ref=e153]:
+            - link "Claude Code setup with cheap proxy" [ref=e154] [cursor=pointer]:
+              - /url: /en/guides/claude-code-setup.html
+            - text: — 5 minutes
+          - listitem [ref=e155]:
+            - link "Claude API Python example" [ref=e156] [cursor=pointer]:
+              - /url: /en/examples/claude-api-python.html
+            - text: — copy-paste ready
+          - listitem [ref=e157]:
+            - link "Trust, billing & data" [ref=e158] [cursor=pointer]:
+              - /url: /trust.html
+            - text: — what we log and bill
+          - listitem [ref=e159]:
+            - link "中文版" [ref=e160] [cursor=pointer]:
+              - /url: /
+  - contentinfo [ref=e161]:
+    - generic [ref=e162]:
+      - paragraph [ref=e163]:
+        - link "中文" [ref=e164] [cursor=pointer]:
+          - /url: /
+        - text: ·
+        - link "English" [ref=e165] [cursor=pointer]:
+          - /url: /en.html
+        - text: ·
+        - link "Trust & billing" [ref=e166] [cursor=pointer]:
+          - /url: /trust.html
+        - text: ·
+        - link "llms.txt" [ref=e167] [cursor=pointer]:
+          - /url: /llms.txt
+        - text: ·
+        - link "Log in" [ref=e168] [cursor=pointer]:
+          - /url: /login
+        - text: ·
+        - link "Sign up" [ref=e169] [cursor=pointer]:
+          - /url: /register
+      - paragraph [ref=e170]: © TokenProvider — Cheap Claude, Claude Code, ChatGPT & Gemini API gateway.

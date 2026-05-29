@@ -1,0 +1,34 @@
+- generic [ref=e5]:
+  - generic [ref=e6]:
+    - img "Logo" [ref=e8]
+    - heading "TokenProvider" [level=1] [ref=e9]
+    - paragraph [ref=e10]: Subscription to API Conversion Platform
+  - generic [ref=e12]:
+    - generic [ref=e13]:
+      - heading "欢迎回来" [level=2] [ref=e14]
+      - paragraph [ref=e15]: 登录您的账户以继续
+    - generic [ref=e16]:
+      - generic [ref=e17]:
+        - generic [ref=e18]: 邮箱
+        - generic [ref=e19]:
+          - generic:
+            - img
+          - textbox "邮箱" [disabled] [ref=e20]:
+            - /placeholder: 请输入邮箱
+      - generic [ref=e21]:
+        - generic [ref=e22]: 密码
+        - generic [ref=e23]:
+          - generic:
+            - img
+          - textbox "密码" [disabled] [ref=e24]:
+            - /placeholder: 请输入密码
+          - button [disabled] [ref=e25]:
+            - img [ref=e26]
+      - button "登录" [disabled] [ref=e28]:
+        - img [ref=e29]
+        - text: 登录
+  - paragraph [ref=e32]:
+    - text: 还没有账户？
+    - link "注册" [ref=e33] [cursor=pointer]:
+      - /url: /register
+  - generic [ref=e34]: © 2026 TokenProvider. All rights reserved.
