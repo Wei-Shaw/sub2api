@@ -885,6 +885,22 @@ func init() {
 	groupDescRpmLimit := groupFields[31].Descriptor()
 	// group.DefaultRpmLimit holds the default value on creation for the rpm_limit field.
 	group.DefaultRpmLimit = groupDescRpmLimit.Default.(int)
+	// groupDescDefaultAccountConcurrency is the schema descriptor for default_account_concurrency field.
+	groupDescDefaultAccountConcurrency := groupFields[32].Descriptor()
+	// group.DefaultDefaultAccountConcurrency holds the default value on creation for the default_account_concurrency field.
+	group.DefaultDefaultAccountConcurrency = groupDescDefaultAccountConcurrency.Default.(int)
+	// groupDescDefaultAccountRpm is the schema descriptor for default_account_rpm field.
+	groupDescDefaultAccountRpm := groupFields[33].Descriptor()
+	// group.DefaultDefaultAccountRpm holds the default value on creation for the default_account_rpm field.
+	group.DefaultDefaultAccountRpm = groupDescDefaultAccountRpm.Default.(int)
+	// groupDescDefaultPassthroughProfile is the schema descriptor for default_passthrough_profile field.
+	groupDescDefaultPassthroughProfile := groupFields[34].Descriptor()
+	// group.DefaultDefaultPassthroughProfile holds the default value on creation for the default_passthrough_profile field.
+	group.DefaultDefaultPassthroughProfile = groupDescDefaultPassthroughProfile.Default.(string)
+	// groupDescDefault429CooldownSec is the schema descriptor for default_429_cooldown_sec field.
+	groupDescDefault429CooldownSec := groupFields[35].Descriptor()
+	// group.DefaultDefault429CooldownSec holds the default value on creation for the default_429_cooldown_sec field.
+	group.DefaultDefault429CooldownSec = groupDescDefault429CooldownSec.Default.(int)
 	idempotencyrecordMixin := schema.IdempotencyRecord{}.Mixin()
 	idempotencyrecordMixinFields0 := idempotencyrecordMixin[0].Fields()
 	_ = idempotencyrecordMixinFields0

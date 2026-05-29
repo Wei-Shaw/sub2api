@@ -116,6 +116,11 @@ type CreateGroupRequest struct {
 	ModelsListConfig            service.GroupModelsListConfig             `json:"models_list_config"`
 	// 分组 RPM 上限（0 = 不限制）
 	RPMLimit int `json:"rpm_limit"`
+	// ── M2：分组级策略默认值 ──
+	DefaultAccountConcurrency int    `json:"default_account_concurrency"`
+	DefaultAccountRPM         int    `json:"default_account_rpm"`
+	DefaultPassthroughProfile string `json:"default_passthrough_profile"`
+	Default429CooldownSec     int    `json:"default_429_cooldown_sec"`
 	// 从指定分组复制账号（创建后自动绑定）
 	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
 }
@@ -157,6 +162,11 @@ type UpdateGroupRequest struct {
 	ModelsListConfig            *service.GroupModelsListConfig             `json:"models_list_config"`
 	// 分组 RPM 上限（0 = 不限制）；nil 表示未提供不改动
 	RPMLimit *int `json:"rpm_limit"`
+	// ── M2：分组级策略默认值（nil = 未提供，不改动） ──
+	DefaultAccountConcurrency *int    `json:"default_account_concurrency"`
+	DefaultAccountRPM         *int    `json:"default_account_rpm"`
+	DefaultPassthroughProfile *string `json:"default_passthrough_profile"`
+	Default429CooldownSec     *int    `json:"default_429_cooldown_sec"`
 	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
 	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
 }
@@ -301,6 +311,10 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
 		ModelsListConfig:                req.ModelsListConfig,
 		RPMLimit:                        req.RPMLimit,
+		DefaultAccountConcurrency:       req.DefaultAccountConcurrency,
+		DefaultAccountRPM:               req.DefaultAccountRPM,
+		DefaultPassthroughProfile:       req.DefaultPassthroughProfile,
+		Default429CooldownSec:           req.Default429CooldownSec,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
 	})
 	if err != nil {
@@ -309,9 +323,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 	}
 
 	response.Success(c, dto.GroupFromServiceAdmin(group))
-}
-
-// Update handles updating a group
+}// Update handles updating a group
 // PUT /api/v1/admin/groups/:id
 func (h *GroupHandler) Update(c *gin.Context) {
 	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -357,6 +369,10 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
 		ModelsListConfig:                req.ModelsListConfig,
 		RPMLimit:                        req.RPMLimit,
+		DefaultAccountConcurrency:       req.DefaultAccountConcurrency,
+		DefaultAccountRPM:               req.DefaultAccountRPM,
+		DefaultPassthroughProfile:       req.DefaultPassthroughProfile,
+		Default429CooldownSec:           req.Default429CooldownSec,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
 	})
 	if err != nil {
@@ -365,9 +381,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 	}
 
 	response.Success(c, dto.GroupFromServiceAdmin(group))
-}
-
-// Delete handles deleting a group
+}// Delete handles deleting a group
 // DELETE /api/v1/admin/groups/:id
 func (h *GroupHandler) Delete(c *gin.Context) {
 	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)

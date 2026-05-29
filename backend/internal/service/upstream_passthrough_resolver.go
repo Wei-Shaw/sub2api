@@ -8,16 +8,28 @@ package service
 //  1. Global kill switch (defaults to auto = pass through)
 //  2. Per-account sparse toggle overrides (account.Extra.upstream_passthrough.overrides)
 //  3. Per-account profile override (account.Extra.upstream_passthrough.profile)
-//  4. Per-account category override (account.Extra.upstream_passthrough.category_override)
-//     → chooses which slot of system defaults to apply
-//  5. System defaults for the (derived or overridden) category
-//  6. Legacy fields (anthropic_passthrough / openai_passthrough) — only when nothing above set
-//  7. Code constants (DefaultUpstreamPassthroughDefaults)
+//  4. Per-group default profile (Group.DefaultPassthroughProfile) — M2 三级覆盖中间层
+//  5. Per-account category override → chooses which slot of system defaults to apply
+//  6. System defaults for the (derived or overridden) category
+//  7. Legacy fields (anthropic_passthrough / openai_passthrough) — only when nothing above set
+//  8. Code constants (DefaultUpstreamPassthroughDefaults)
 //
 // The function never returns an error. Unknown / malformed inputs degrade
 // gracefully to the safest non-Strict default (Protected).
 func ResolveUpstreamPassthroughPolicy(
 	account *Account,
+	defaults *UpstreamPassthroughDefaults,
+	globalOverride GlobalOverrideMode,
+) EffectiveUpstreamPolicy {
+	return ResolveUpstreamPassthroughPolicyWithGroup(account, nil, defaults, globalOverride)
+}
+
+// ResolveUpstreamPassthroughPolicyWithGroup is the three-level variant that
+// accepts an optional *Group to provide the group-level profile default.
+// group may be nil (equivalent to calling ResolveUpstreamPassthroughPolicy).
+func ResolveUpstreamPassthroughPolicyWithGroup(
+	account *Account,
+	group *Group,
 	defaults *UpstreamPassthroughDefaults,
 	globalOverride GlobalOverrideMode,
 ) EffectiveUpstreamPolicy {
@@ -45,12 +57,17 @@ func ResolveUpstreamPassthroughPolicy(
 	}
 	categorySlot := effDefaults.For(policy.Category)
 
-	// Step 4: account profile override (if any) replaces the category slot
+	// Step 4: account profile override beats group profile, which beats category slot.
 	acctProfile := getAccountProfile(account)
-	if acctProfile != "" {
+	groupProfile := getGroupProfile(group)
+	effectiveProfile := acctProfile
+	if effectiveProfile == "" {
+		effectiveProfile = groupProfile
+	}
+	if effectiveProfile != "" {
 		categorySlot = UpstreamPassthroughCategoryDefault{
-			Profile:   acctProfile,
-			Overrides: nil, // we don't carry system defaults' overrides through an account profile override
+			Profile:   effectiveProfile,
+			Overrides: nil,
 		}
 	}
 
@@ -85,6 +102,20 @@ func getAccountOverrides(a *Account) map[string]bool {
 		return nil
 	}
 	return a.GetUpstreamPassthroughOverrides()
+}
+
+// getGroupProfile returns the validated profile from Group.DefaultPassthroughProfile.
+// Returns "" if group is nil or the profile string is not a known value.
+func getGroupProfile(g *Group) PassthroughProfile {
+	if g == nil || g.DefaultPassthroughProfile == "" {
+		return ""
+	}
+	switch PassthroughProfile(g.DefaultPassthroughProfile) {
+	case ProfileTransparent, ProfileProtected, ProfileStrict:
+		return PassthroughProfile(g.DefaultPassthroughProfile)
+	default:
+		return ""
+	}
 }
 
 // applyLegacyFallback fills toggles from legacy fields IFF the account has no

@@ -86,6 +86,14 @@ const (
 	FieldModelsListConfig = "models_list_config"
 	// FieldRpmLimit holds the string denoting the rpm_limit field in the database.
 	FieldRpmLimit = "rpm_limit"
+	// FieldDefaultAccountConcurrency holds the string denoting the default_account_concurrency field in the database.
+	FieldDefaultAccountConcurrency = "default_account_concurrency"
+	// FieldDefaultAccountRpm holds the string denoting the default_account_rpm field in the database.
+	FieldDefaultAccountRpm = "default_account_rpm"
+	// FieldDefaultPassthroughProfile holds the string denoting the default_passthrough_profile field in the database.
+	FieldDefaultPassthroughProfile = "default_passthrough_profile"
+	// FieldDefault429CooldownSec holds the string denoting the default_429_cooldown_sec field in the database.
+	FieldDefault429CooldownSec = "default_429_cooldown_sec"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
 	EdgeAPIKeys = "api_keys"
 	// EdgeRedeemCodes holds the string denoting the redeem_codes edge name in mutations.
@@ -196,6 +204,10 @@ var Columns = []string{
 	FieldMessagesDispatchModelConfig,
 	FieldModelsListConfig,
 	FieldRpmLimit,
+	FieldDefaultAccountConcurrency,
+	FieldDefaultAccountRpm,
+	FieldDefaultPassthroughProfile,
+	FieldDefault429CooldownSec,
 }
 
 var (
@@ -283,6 +295,14 @@ var (
 	DefaultModelsListConfig domain.GroupModelsListConfig
 	// DefaultRpmLimit holds the default value on creation for the "rpm_limit" field.
 	DefaultRpmLimit int
+	// DefaultDefaultAccountConcurrency holds the default value on creation for the "default_account_concurrency" field.
+	DefaultDefaultAccountConcurrency int
+	// DefaultDefaultAccountRpm holds the default value on creation for the "default_account_rpm" field.
+	DefaultDefaultAccountRpm int
+	// DefaultDefaultPassthroughProfile holds the default value on creation for the "default_passthrough_profile" field.
+	DefaultDefaultPassthroughProfile string
+	// DefaultDefault429CooldownSec holds the default value on creation for the "default_429_cooldown_sec" field.
+	DefaultDefault429CooldownSec int
 )
 
 // OrderOption defines the ordering options for the Group queries.
@@ -446,6 +466,26 @@ func ByDefaultMappedModel(opts ...sql.OrderTermOption) OrderOption {
 // ByRpmLimit orders the results by the rpm_limit field.
 func ByRpmLimit(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRpmLimit, opts...).ToFunc()
+}
+
+// ByDefaultAccountConcurrency orders the results by the default_account_concurrency field.
+func ByDefaultAccountConcurrency(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDefaultAccountConcurrency, opts...).ToFunc()
+}
+
+// ByDefaultAccountRpm orders the results by the default_account_rpm field.
+func ByDefaultAccountRpm(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDefaultAccountRpm, opts...).ToFunc()
+}
+
+// ByDefaultPassthroughProfile orders the results by the default_passthrough_profile field.
+func ByDefaultPassthroughProfile(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDefaultPassthroughProfile, opts...).ToFunc()
+}
+
+// ByDefault429CooldownSec orders the results by the default_429_cooldown_sec field.
+func ByDefault429CooldownSec(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDefault429CooldownSec, opts...).ToFunc()
 }
 
 // ByAPIKeysCount orders the results by api_keys count.

@@ -516,6 +516,62 @@
           />
           <p class="input-hint">{{ t("admin.groups.form.rpmLimitHint") }}</p>
         </div>
+
+        <!-- ── M2：分组级策略默认值 ── -->
+        <div class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
+          <p class="mb-3 text-sm font-semibold text-gray-700 dark:text-gray-300">
+            分组策略默认值
+          </p>
+          <div class="space-y-4">
+            <div>
+              <label class="input-label">账号并发上限（0 = 继承系统默认）</label>
+              <input
+                v-model.number="createForm.default_account_concurrency"
+                type="number"
+                min="0"
+                step="1"
+                class="input"
+                placeholder="0"
+              />
+              <p class="input-hint">分组内所有账号的默认并发数，账号自身设置优先</p>
+            </div>
+            <div>
+              <label class="input-label">账号 RPM 上限（0 = 继承系统默认）</label>
+              <input
+                v-model.number="createForm.default_account_rpm"
+                type="number"
+                min="0"
+                step="1"
+                class="input"
+                placeholder="0"
+              />
+              <p class="input-hint">分组内所有账号的默认每分钟请求数，账号自身设置优先</p>
+            </div>
+            <div>
+              <label class="input-label">上游透传 Profile（留空 = 继承系统默认）</label>
+              <select v-model="createForm.default_passthrough_profile" class="input">
+                <option value="">继承系统默认</option>
+                <option value="transparent">Transparent（完全透传）</option>
+                <option value="protected">Protected（过滤保护）</option>
+                <option value="strict">Strict（严格拦截）</option>
+              </select>
+              <p class="input-hint">账号自身 profile 设置优先于此处</p>
+            </div>
+            <div>
+              <label class="input-label">429 冷却时间（秒，0 = 继承系统默认）</label>
+              <input
+                v-model.number="createForm.default_429_cooldown_sec"
+                type="number"
+                min="0"
+                step="1"
+                class="input"
+                placeholder="0"
+              />
+              <p class="input-hint">分组内账号触发 429 后的默认冷却时间</p>
+            </div>
+          </div>
+        </div>
+
         <div
           v-if="createForm.subscription_type !== 'subscription'"
           data-tour="group-form-exclusive"
@@ -1802,6 +1858,62 @@
           />
           <p class="input-hint">{{ t("admin.groups.form.rpmLimitHint") }}</p>
         </div>
+
+        <!-- ── M2：分组级策略默认值 ── -->
+        <div class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
+          <p class="mb-3 text-sm font-semibold text-gray-700 dark:text-gray-300">
+            分组策略默认值
+          </p>
+          <div class="space-y-4">
+            <div>
+              <label class="input-label">账号并发上限（0 = 继承系统默认）</label>
+              <input
+                v-model.number="editForm.default_account_concurrency"
+                type="number"
+                min="0"
+                step="1"
+                class="input"
+                placeholder="0"
+              />
+              <p class="input-hint">分组内所有账号的默认并发数，账号自身设置优先</p>
+            </div>
+            <div>
+              <label class="input-label">账号 RPM 上限（0 = 继承系统默认）</label>
+              <input
+                v-model.number="editForm.default_account_rpm"
+                type="number"
+                min="0"
+                step="1"
+                class="input"
+                placeholder="0"
+              />
+              <p class="input-hint">分组内所有账号的默认每分钟请求数，账号自身设置优先</p>
+            </div>
+            <div>
+              <label class="input-label">上游透传 Profile（留空 = 继承系统默认）</label>
+              <select v-model="editForm.default_passthrough_profile" class="input">
+                <option value="">继承系统默认</option>
+                <option value="transparent">Transparent（完全透传）</option>
+                <option value="protected">Protected（过滤保护）</option>
+                <option value="strict">Strict（严格拦截）</option>
+              </select>
+              <p class="input-hint">账号自身 profile 设置优先于此处</p>
+            </div>
+            <div>
+              <label class="input-label">429 冷却时间（秒，0 = 继承系统默认）</label>
+              <input
+                v-model.number="editForm.default_429_cooldown_sec"
+                type="number"
+                min="0"
+                step="1"
+                class="input"
+                placeholder="0"
+              />
+              <p class="input-hint">分组内账号触发 429 后的默认冷却时间</p>
+            </div>
+          </div>
+        </div>
+
         <div v-if="editForm.subscription_type !== 'subscription'">
           <div class="mb-1.5 flex items-center gap-1">
             <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -3372,6 +3484,11 @@ const createForm = reactive({
   copy_accounts_from_group_ids: [] as number[],
   // 分组级 RPM 限制（每用户每分钟最大请求数；0 = 不限制）
   rpm_limit: 0 as number,
+  // ── M2：分组级策略默认值 ──
+  default_account_concurrency: 0 as number,
+  default_account_rpm: 0 as number,
+  default_passthrough_profile: '' as string,
+  default_429_cooldown_sec: 0 as number,
 });
 
 // 简单账号类型（用于模型路由选择）
@@ -3704,6 +3821,11 @@ const editForm = reactive({
   copy_accounts_from_group_ids: [] as number[],
   // 分组级 RPM 限制（每用户每分钟最大请求数；0 = 不限制）
   rpm_limit: 0 as number,
+  // ── M2：分组级策略默认值 ──
+  default_account_concurrency: 0 as number,
+  default_account_rpm: 0 as number,
+  default_passthrough_profile: '' as string,
+  default_429_cooldown_sec: 0 as number,
 });
 
 type ImagePricingFormState = {
@@ -4083,6 +4205,10 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.mcp_xml_inject = group.mcp_xml_inject ?? true;
   editForm.copy_accounts_from_group_ids = []; // 复制账号字段每次编辑时重置为空
   editForm.rpm_limit = group.rpm_limit ?? 0;
+  editForm.default_account_concurrency = group.default_account_concurrency ?? 0;
+  editForm.default_account_rpm = group.default_account_rpm ?? 0;
+  editForm.default_passthrough_profile = group.default_passthrough_profile ?? '';
+  editForm.default_429_cooldown_sec = group.default_429_cooldown_sec ?? 0;
   resetModelsListState(editModelsListState, group.models_list_config);
   // 加载模型路由规则（异步加载账号名称）
   editModelRoutingRules.value = await convertApiFormatToRoutingRules(

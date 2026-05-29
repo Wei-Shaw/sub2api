@@ -15140,6 +15140,13 @@ type GroupMutation struct {
 	models_list_config                      *domain.GroupModelsListConfig
 	rpm_limit                               *int
 	addrpm_limit                            *int
+	default_account_concurrency             *int
+	adddefault_account_concurrency          *int
+	default_account_rpm                     *int
+	adddefault_account_rpm                  *int
+	default_passthrough_profile             *string
+	default_429_cooldown_sec                *int
+	adddefault_429_cooldown_sec             *int
 	clearedFields                           map[string]struct{}
 	api_keys                                map[int64]struct{}
 	removedapi_keys                         map[int64]struct{}
@@ -16948,6 +16955,210 @@ func (m *GroupMutation) ResetRpmLimit() {
 	m.addrpm_limit = nil
 }
 
+// SetDefaultAccountConcurrency sets the "default_account_concurrency" field.
+func (m *GroupMutation) SetDefaultAccountConcurrency(i int) {
+	m.default_account_concurrency = &i
+	m.adddefault_account_concurrency = nil
+}
+
+// DefaultAccountConcurrency returns the value of the "default_account_concurrency" field in the mutation.
+func (m *GroupMutation) DefaultAccountConcurrency() (r int, exists bool) {
+	v := m.default_account_concurrency
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDefaultAccountConcurrency returns the old "default_account_concurrency" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldDefaultAccountConcurrency(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDefaultAccountConcurrency is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDefaultAccountConcurrency requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDefaultAccountConcurrency: %w", err)
+	}
+	return oldValue.DefaultAccountConcurrency, nil
+}
+
+// AddDefaultAccountConcurrency adds i to the "default_account_concurrency" field.
+func (m *GroupMutation) AddDefaultAccountConcurrency(i int) {
+	if m.adddefault_account_concurrency != nil {
+		*m.adddefault_account_concurrency += i
+	} else {
+		m.adddefault_account_concurrency = &i
+	}
+}
+
+// AddedDefaultAccountConcurrency returns the value that was added to the "default_account_concurrency" field in this mutation.
+func (m *GroupMutation) AddedDefaultAccountConcurrency() (r int, exists bool) {
+	v := m.adddefault_account_concurrency
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetDefaultAccountConcurrency resets all changes to the "default_account_concurrency" field.
+func (m *GroupMutation) ResetDefaultAccountConcurrency() {
+	m.default_account_concurrency = nil
+	m.adddefault_account_concurrency = nil
+}
+
+// SetDefaultAccountRpm sets the "default_account_rpm" field.
+func (m *GroupMutation) SetDefaultAccountRpm(i int) {
+	m.default_account_rpm = &i
+	m.adddefault_account_rpm = nil
+}
+
+// DefaultAccountRpm returns the value of the "default_account_rpm" field in the mutation.
+func (m *GroupMutation) DefaultAccountRpm() (r int, exists bool) {
+	v := m.default_account_rpm
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDefaultAccountRpm returns the old "default_account_rpm" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldDefaultAccountRpm(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDefaultAccountRpm is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDefaultAccountRpm requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDefaultAccountRpm: %w", err)
+	}
+	return oldValue.DefaultAccountRpm, nil
+}
+
+// AddDefaultAccountRpm adds i to the "default_account_rpm" field.
+func (m *GroupMutation) AddDefaultAccountRpm(i int) {
+	if m.adddefault_account_rpm != nil {
+		*m.adddefault_account_rpm += i
+	} else {
+		m.adddefault_account_rpm = &i
+	}
+}
+
+// AddedDefaultAccountRpm returns the value that was added to the "default_account_rpm" field in this mutation.
+func (m *GroupMutation) AddedDefaultAccountRpm() (r int, exists bool) {
+	v := m.adddefault_account_rpm
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetDefaultAccountRpm resets all changes to the "default_account_rpm" field.
+func (m *GroupMutation) ResetDefaultAccountRpm() {
+	m.default_account_rpm = nil
+	m.adddefault_account_rpm = nil
+}
+
+// SetDefaultPassthroughProfile sets the "default_passthrough_profile" field.
+func (m *GroupMutation) SetDefaultPassthroughProfile(s string) {
+	m.default_passthrough_profile = &s
+}
+
+// DefaultPassthroughProfile returns the value of the "default_passthrough_profile" field in the mutation.
+func (m *GroupMutation) DefaultPassthroughProfile() (r string, exists bool) {
+	v := m.default_passthrough_profile
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDefaultPassthroughProfile returns the old "default_passthrough_profile" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldDefaultPassthroughProfile(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDefaultPassthroughProfile is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDefaultPassthroughProfile requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDefaultPassthroughProfile: %w", err)
+	}
+	return oldValue.DefaultPassthroughProfile, nil
+}
+
+// ResetDefaultPassthroughProfile resets all changes to the "default_passthrough_profile" field.
+func (m *GroupMutation) ResetDefaultPassthroughProfile() {
+	m.default_passthrough_profile = nil
+}
+
+// SetDefault429CooldownSec sets the "default_429_cooldown_sec" field.
+func (m *GroupMutation) SetDefault429CooldownSec(i int) {
+	m.default_429_cooldown_sec = &i
+	m.adddefault_429_cooldown_sec = nil
+}
+
+// Default429CooldownSec returns the value of the "default_429_cooldown_sec" field in the mutation.
+func (m *GroupMutation) Default429CooldownSec() (r int, exists bool) {
+	v := m.default_429_cooldown_sec
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDefault429CooldownSec returns the old "default_429_cooldown_sec" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldDefault429CooldownSec(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDefault429CooldownSec is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDefault429CooldownSec requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDefault429CooldownSec: %w", err)
+	}
+	return oldValue.Default429CooldownSec, nil
+}
+
+// AddDefault429CooldownSec adds i to the "default_429_cooldown_sec" field.
+func (m *GroupMutation) AddDefault429CooldownSec(i int) {
+	if m.adddefault_429_cooldown_sec != nil {
+		*m.adddefault_429_cooldown_sec += i
+	} else {
+		m.adddefault_429_cooldown_sec = &i
+	}
+}
+
+// AddedDefault429CooldownSec returns the value that was added to the "default_429_cooldown_sec" field in this mutation.
+func (m *GroupMutation) AddedDefault429CooldownSec() (r int, exists bool) {
+	v := m.adddefault_429_cooldown_sec
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetDefault429CooldownSec resets all changes to the "default_429_cooldown_sec" field.
+func (m *GroupMutation) ResetDefault429CooldownSec() {
+	m.default_429_cooldown_sec = nil
+	m.adddefault_429_cooldown_sec = nil
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by ids.
 func (m *GroupMutation) AddAPIKeyIDs(ids ...int64) {
 	if m.api_keys == nil {
@@ -17306,7 +17517,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 35)
+	fields := make([]string, 0, 39)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -17412,6 +17623,18 @@ func (m *GroupMutation) Fields() []string {
 	if m.rpm_limit != nil {
 		fields = append(fields, group.FieldRpmLimit)
 	}
+	if m.default_account_concurrency != nil {
+		fields = append(fields, group.FieldDefaultAccountConcurrency)
+	}
+	if m.default_account_rpm != nil {
+		fields = append(fields, group.FieldDefaultAccountRpm)
+	}
+	if m.default_passthrough_profile != nil {
+		fields = append(fields, group.FieldDefaultPassthroughProfile)
+	}
+	if m.default_429_cooldown_sec != nil {
+		fields = append(fields, group.FieldDefault429CooldownSec)
+	}
 	return fields
 }
 
@@ -17490,6 +17713,14 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.ModelsListConfig()
 	case group.FieldRpmLimit:
 		return m.RpmLimit()
+	case group.FieldDefaultAccountConcurrency:
+		return m.DefaultAccountConcurrency()
+	case group.FieldDefaultAccountRpm:
+		return m.DefaultAccountRpm()
+	case group.FieldDefaultPassthroughProfile:
+		return m.DefaultPassthroughProfile()
+	case group.FieldDefault429CooldownSec:
+		return m.Default429CooldownSec()
 	}
 	return nil, false
 }
@@ -17569,6 +17800,14 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldModelsListConfig(ctx)
 	case group.FieldRpmLimit:
 		return m.OldRpmLimit(ctx)
+	case group.FieldDefaultAccountConcurrency:
+		return m.OldDefaultAccountConcurrency(ctx)
+	case group.FieldDefaultAccountRpm:
+		return m.OldDefaultAccountRpm(ctx)
+	case group.FieldDefaultPassthroughProfile:
+		return m.OldDefaultPassthroughProfile(ctx)
+	case group.FieldDefault429CooldownSec:
+		return m.OldDefault429CooldownSec(ctx)
 	}
 	return nil, fmt.Errorf("unknown Group field %s", name)
 }
@@ -17823,6 +18062,34 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetRpmLimit(v)
 		return nil
+	case group.FieldDefaultAccountConcurrency:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDefaultAccountConcurrency(v)
+		return nil
+	case group.FieldDefaultAccountRpm:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDefaultAccountRpm(v)
+		return nil
+	case group.FieldDefaultPassthroughProfile:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDefaultPassthroughProfile(v)
+		return nil
+	case group.FieldDefault429CooldownSec:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDefault429CooldownSec(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Group field %s", name)
 }
@@ -17870,6 +18137,15 @@ func (m *GroupMutation) AddedFields() []string {
 	if m.addrpm_limit != nil {
 		fields = append(fields, group.FieldRpmLimit)
 	}
+	if m.adddefault_account_concurrency != nil {
+		fields = append(fields, group.FieldDefaultAccountConcurrency)
+	}
+	if m.adddefault_account_rpm != nil {
+		fields = append(fields, group.FieldDefaultAccountRpm)
+	}
+	if m.adddefault_429_cooldown_sec != nil {
+		fields = append(fields, group.FieldDefault429CooldownSec)
+	}
 	return fields
 }
 
@@ -17904,6 +18180,12 @@ func (m *GroupMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedSortOrder()
 	case group.FieldRpmLimit:
 		return m.AddedRpmLimit()
+	case group.FieldDefaultAccountConcurrency:
+		return m.AddedDefaultAccountConcurrency()
+	case group.FieldDefaultAccountRpm:
+		return m.AddedDefaultAccountRpm()
+	case group.FieldDefault429CooldownSec:
+		return m.AddedDefault429CooldownSec()
 	}
 	return nil, false
 }
@@ -18003,6 +18285,27 @@ func (m *GroupMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddRpmLimit(v)
+		return nil
+	case group.FieldDefaultAccountConcurrency:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddDefaultAccountConcurrency(v)
+		return nil
+	case group.FieldDefaultAccountRpm:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddDefaultAccountRpm(v)
+		return nil
+	case group.FieldDefault429CooldownSec:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddDefault429CooldownSec(v)
 		return nil
 	}
 	return fmt.Errorf("unknown Group numeric field %s", name)
@@ -18204,6 +18507,18 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldRpmLimit:
 		m.ResetRpmLimit()
+		return nil
+	case group.FieldDefaultAccountConcurrency:
+		m.ResetDefaultAccountConcurrency()
+		return nil
+	case group.FieldDefaultAccountRpm:
+		m.ResetDefaultAccountRpm()
+		return nil
+	case group.FieldDefaultPassthroughProfile:
+		m.ResetDefaultPassthroughProfile()
+		return nil
+	case group.FieldDefault429CooldownSec:
+		m.ResetDefault429CooldownSec()
 		return nil
 	}
 	return fmt.Errorf("unknown Group field %s", name)

@@ -3016,21 +3016,37 @@ func (s *GatewayService) tryAcquireAccountSlot(ctx context.Context, accountID in
 // WaitPlan.MaxConcurrency 或调用 tryAcquireAccountSlot 的位置都应使用它，
 // 不要再直接读取 account.Concurrency。
 func (s *GatewayService) effectiveAccountConcurrency(account *Account) int {
+	return s.effectiveAccountConcurrencyWithGroup(account, nil)
+}
+
+func (s *GatewayService) effectiveAccountConcurrencyWithGroup(account *Account, group *Group) int {
 	fleetDefault := 0
 	if s != nil && s.cfg != nil {
 		fleetDefault = s.cfg.Gateway.AccountDefaultConcurrency
 	}
-	return account.EffectiveConcurrency(fleetDefault)
+	groupDefault := 0
+	if group != nil {
+		groupDefault = group.DefaultAccountConcurrency
+	}
+	return account.EffectiveConcurrencyWithGroup(groupDefault, fleetDefault)
 }
 
 // effectiveAccountBaseRPM 返回账号实际生效的 RPM 上限（per-account 优先，
 // 全局默认 gateway.account_default_rpm 兜底）。
 func (s *GatewayService) effectiveAccountBaseRPM(account *Account) int {
+	return s.effectiveAccountBaseRPMWithGroup(account, nil)
+}
+
+func (s *GatewayService) effectiveAccountBaseRPMWithGroup(account *Account, group *Group) int {
 	fleetDefault := 0
 	if s != nil && s.cfg != nil {
 		fleetDefault = s.cfg.Gateway.AccountDefaultRPM
 	}
-	return account.EffectiveBaseRPM(fleetDefault)
+	groupDefault := 0
+	if group != nil {
+		groupDefault = group.DefaultAccountRPM
+	}
+	return account.EffectiveBaseRPMWithGroup(groupDefault, fleetDefault)
 }
 
 // EffectiveAccountConcurrency 是 effectiveAccountConcurrency 的导出版本，

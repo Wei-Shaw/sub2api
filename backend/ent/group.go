@@ -89,6 +89,14 @@ type Group struct {
 	ModelsListConfig domain.GroupModelsListConfig `json:"models_list_config,omitempty"`
 	// 分组 RPM 上限，0 表示不限制；设置后接管该分组用户的限流
 	RpmLimit int `json:"rpm_limit,omitempty"`
+	// 分组内账号并发默认值，0 表示继承系统全局默认
+	DefaultAccountConcurrency int `json:"default_account_concurrency,omitempty"`
+	// 分组内账号 RPM 默认值，0 表示继承系统全局默认
+	DefaultAccountRpm int `json:"default_account_rpm,omitempty"`
+	// 分组透传策略 profile 默认值，空字符串表示继承系统全局
+	DefaultPassthroughProfile string `json:"default_passthrough_profile,omitempty"`
+	// 分组 429 冷却时长（秒），0 表示继承系统全局默认
+	Default429CooldownSec int `json:"default_429_cooldown_sec,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the GroupQuery when eager-loading is set.
 	Edges        GroupEdges `json:"edges"`
@@ -201,9 +209,9 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case group.FieldRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k:
 			values[i] = new(sql.NullFloat64)
-		case group.FieldID, group.FieldDefaultValidityDays, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest, group.FieldSortOrder, group.FieldRpmLimit:
+		case group.FieldID, group.FieldDefaultValidityDays, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest, group.FieldSortOrder, group.FieldRpmLimit, group.FieldDefaultAccountConcurrency, group.FieldDefaultAccountRpm, group.FieldDefault429CooldownSec:
 			values[i] = new(sql.NullInt64)
-		case group.FieldName, group.FieldDescription, group.FieldStatus, group.FieldPlatform, group.FieldSubscriptionType, group.FieldDefaultMappedModel:
+		case group.FieldName, group.FieldDescription, group.FieldStatus, group.FieldPlatform, group.FieldSubscriptionType, group.FieldDefaultMappedModel, group.FieldDefaultPassthroughProfile:
 			values[i] = new(sql.NullString)
 		case group.FieldCreatedAt, group.FieldUpdatedAt, group.FieldDeletedAt:
 			values[i] = new(sql.NullTime)
@@ -456,6 +464,30 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.RpmLimit = int(value.Int64)
 			}
+		case group.FieldDefaultAccountConcurrency:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field default_account_concurrency", values[i])
+			} else if value.Valid {
+				_m.DefaultAccountConcurrency = int(value.Int64)
+			}
+		case group.FieldDefaultAccountRpm:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field default_account_rpm", values[i])
+			} else if value.Valid {
+				_m.DefaultAccountRpm = int(value.Int64)
+			}
+		case group.FieldDefaultPassthroughProfile:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field default_passthrough_profile", values[i])
+			} else if value.Valid {
+				_m.DefaultPassthroughProfile = value.String
+			}
+		case group.FieldDefault429CooldownSec:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field default_429_cooldown_sec", values[i])
+			} else if value.Valid {
+				_m.Default429CooldownSec = int(value.Int64)
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -656,6 +688,18 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("rpm_limit=")
 	builder.WriteString(fmt.Sprintf("%v", _m.RpmLimit))
+	builder.WriteString(", ")
+	builder.WriteString("default_account_concurrency=")
+	builder.WriteString(fmt.Sprintf("%v", _m.DefaultAccountConcurrency))
+	builder.WriteString(", ")
+	builder.WriteString("default_account_rpm=")
+	builder.WriteString(fmt.Sprintf("%v", _m.DefaultAccountRpm))
+	builder.WriteString(", ")
+	builder.WriteString("default_passthrough_profile=")
+	builder.WriteString(_m.DefaultPassthroughProfile)
+	builder.WriteString(", ")
+	builder.WriteString("default_429_cooldown_sec=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Default429CooldownSec))
 	builder.WriteByte(')')
 	return builder.String()
 }

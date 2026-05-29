@@ -1487,7 +1487,12 @@
 
       <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <div>
-          <label class="input-label">{{ t('admin.accounts.concurrency') }}</label>
+          <label class="input-label flex items-center gap-2">
+            {{ t('admin.accounts.concurrency') }}
+            <span :class="scopeBadgeClass(concurrencyScope.level)" class="text-xs font-normal">
+              {{ concurrencyScope.label }}
+            </span>
+          </label>
           <input v-model.number="form.concurrency" type="number" min="1" class="input"
             @input="form.concurrency = Math.max(1, form.concurrency || 1)" />
           <p
@@ -2264,7 +2269,12 @@
         <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
           <div class="mb-3 flex items-center justify-between">
             <div>
-              <label class="input-label mb-0">{{ t('admin.accounts.quotaControl.rpmLimit.label') }}</label>
+              <label class="input-label mb-0 flex items-center gap-2">
+                {{ t('admin.accounts.quotaControl.rpmLimit.label') }}
+                <span :class="scopeBadgeClass(rpmScope.level)" class="text-xs font-normal">
+                  {{ rpmScope.label }}
+                </span>
+              </label>
               <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                 {{ t('admin.accounts.quotaControl.rpmLimit.hint') }}
               </p>
@@ -2288,7 +2298,12 @@
 
           <div v-if="rpmLimitEnabled" class="space-y-4">
             <div>
-              <label class="input-label">{{ t('admin.accounts.quotaControl.rpmLimit.baseRpm') }}</label>
+              <label class="input-label flex items-center gap-2">
+                {{ t('admin.accounts.quotaControl.rpmLimit.baseRpm') }}
+                <span :class="scopeBadgeClass(rpmScope.level)" class="text-xs font-normal">
+                  {{ rpmScope.label }}
+                </span>
+              </label>
               <input
                 v-model.number="baseRpm"
                 type="number"
@@ -2817,6 +2832,36 @@ const rpmLimitEnabled = ref(false)
 const baseRpm = ref<number | null>(null)
 const rpmStrategy = ref<'tiered' | 'sticky_exempt'>('tiered')
 const rpmStickyBuffer = ref<number | null>(null)
+
+// ── 配置来源徽章（并发 / RPM）──
+// 镜像后端 ResolveInt 逻辑：账号值非零 → 账号自定义；否则找分组默认；否则系统默认
+const accountGroupObjects = computed(() =>
+  props.groups.filter(g => form.group_ids.includes(g.id))
+)
+
+type ScopeLevel = 'account' | 'group' | 'system'
+interface ScopeBadge { level: ScopeLevel; label: string }
+
+const concurrencyScope = computed<ScopeBadge>(() => {
+  if ((props.account?.concurrency ?? 0) > 0) return { level: 'account', label: '账号自定义' }
+  const g = accountGroupObjects.value.find(g => (g.default_account_concurrency ?? 0) > 0)
+  if (g) return { level: 'group', label: `来自分组「${g.name}」` }
+  return { level: 'system', label: '来自系统' }
+})
+
+const rpmScope = computed<ScopeBadge>(() => {
+  if ((props.account?.base_rpm ?? 0) > 0) return { level: 'account', label: '账号自定义' }
+  const g = accountGroupObjects.value.find(g => (g.default_account_rpm ?? 0) > 0)
+  if (g) return { level: 'group', label: `来自分组「${g.name}」` }
+  return { level: 'system', label: '来自系统' }
+})
+
+const scopeBadgeClass = (level: ScopeLevel) => {
+  if (level === 'account') return 'rounded px-1.5 py-0.5 bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+  if (level === 'group')   return 'rounded px-1.5 py-0.5 bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+  return 'rounded px-1.5 py-0.5 bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'
+}
+
 const userMsgQueueMode = ref('')
 const umqModeOptions = computed(() => [
   { value: '', label: t('admin.accounts.quotaControl.rpmLimit.umqModeOff') },

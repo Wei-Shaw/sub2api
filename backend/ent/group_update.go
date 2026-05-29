@@ -651,6 +651,83 @@ func (_u *GroupUpdate) AddRpmLimit(v int) *GroupUpdate {
 	return _u
 }
 
+// SetDefaultAccountConcurrency sets the "default_account_concurrency" field.
+func (_u *GroupUpdate) SetDefaultAccountConcurrency(v int) *GroupUpdate {
+	_u.mutation.ResetDefaultAccountConcurrency()
+	_u.mutation.SetDefaultAccountConcurrency(v)
+	return _u
+}
+
+// SetNillableDefaultAccountConcurrency sets the "default_account_concurrency" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableDefaultAccountConcurrency(v *int) *GroupUpdate {
+	if v != nil {
+		_u.SetDefaultAccountConcurrency(*v)
+	}
+	return _u
+}
+
+// AddDefaultAccountConcurrency adds value to the "default_account_concurrency" field.
+func (_u *GroupUpdate) AddDefaultAccountConcurrency(v int) *GroupUpdate {
+	_u.mutation.AddDefaultAccountConcurrency(v)
+	return _u
+}
+
+// SetDefaultAccountRpm sets the "default_account_rpm" field.
+func (_u *GroupUpdate) SetDefaultAccountRpm(v int) *GroupUpdate {
+	_u.mutation.ResetDefaultAccountRpm()
+	_u.mutation.SetDefaultAccountRpm(v)
+	return _u
+}
+
+// SetNillableDefaultAccountRpm sets the "default_account_rpm" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableDefaultAccountRpm(v *int) *GroupUpdate {
+	if v != nil {
+		_u.SetDefaultAccountRpm(*v)
+	}
+	return _u
+}
+
+// AddDefaultAccountRpm adds value to the "default_account_rpm" field.
+func (_u *GroupUpdate) AddDefaultAccountRpm(v int) *GroupUpdate {
+	_u.mutation.AddDefaultAccountRpm(v)
+	return _u
+}
+
+// SetDefaultPassthroughProfile sets the "default_passthrough_profile" field.
+func (_u *GroupUpdate) SetDefaultPassthroughProfile(v string) *GroupUpdate {
+	_u.mutation.SetDefaultPassthroughProfile(v)
+	return _u
+}
+
+// SetNillableDefaultPassthroughProfile sets the "default_passthrough_profile" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableDefaultPassthroughProfile(v *string) *GroupUpdate {
+	if v != nil {
+		_u.SetDefaultPassthroughProfile(*v)
+	}
+	return _u
+}
+
+// SetDefault429CooldownSec sets the "default_429_cooldown_sec" field.
+func (_u *GroupUpdate) SetDefault429CooldownSec(v int) *GroupUpdate {
+	_u.mutation.ResetDefault429CooldownSec()
+	_u.mutation.SetDefault429CooldownSec(v)
+	return _u
+}
+
+// SetNillableDefault429CooldownSec sets the "default_429_cooldown_sec" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableDefault429CooldownSec(v *int) *GroupUpdate {
+	if v != nil {
+		_u.SetDefault429CooldownSec(*v)
+	}
+	return _u
+}
+
+// AddDefault429CooldownSec adds value to the "default_429_cooldown_sec" field.
+func (_u *GroupUpdate) AddDefault429CooldownSec(v int) *GroupUpdate {
+	_u.mutation.AddDefault429CooldownSec(v)
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdate) AddAPIKeyIDs(ids ...int64) *GroupUpdate {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -1134,6 +1211,27 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedRpmLimit(); ok {
 		_spec.AddField(group.FieldRpmLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.DefaultAccountConcurrency(); ok {
+		_spec.SetField(group.FieldDefaultAccountConcurrency, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedDefaultAccountConcurrency(); ok {
+		_spec.AddField(group.FieldDefaultAccountConcurrency, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.DefaultAccountRpm(); ok {
+		_spec.SetField(group.FieldDefaultAccountRpm, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedDefaultAccountRpm(); ok {
+		_spec.AddField(group.FieldDefaultAccountRpm, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.DefaultPassthroughProfile(); ok {
+		_spec.SetField(group.FieldDefaultPassthroughProfile, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Default429CooldownSec(); ok {
+		_spec.SetField(group.FieldDefault429CooldownSec, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedDefault429CooldownSec(); ok {
+		_spec.AddField(group.FieldDefault429CooldownSec, field.TypeInt, value)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -2064,6 +2162,83 @@ func (_u *GroupUpdateOne) AddRpmLimit(v int) *GroupUpdateOne {
 	return _u
 }
 
+// SetDefaultAccountConcurrency sets the "default_account_concurrency" field.
+func (_u *GroupUpdateOne) SetDefaultAccountConcurrency(v int) *GroupUpdateOne {
+	_u.mutation.ResetDefaultAccountConcurrency()
+	_u.mutation.SetDefaultAccountConcurrency(v)
+	return _u
+}
+
+// SetNillableDefaultAccountConcurrency sets the "default_account_concurrency" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableDefaultAccountConcurrency(v *int) *GroupUpdateOne {
+	if v != nil {
+		_u.SetDefaultAccountConcurrency(*v)
+	}
+	return _u
+}
+
+// AddDefaultAccountConcurrency adds value to the "default_account_concurrency" field.
+func (_u *GroupUpdateOne) AddDefaultAccountConcurrency(v int) *GroupUpdateOne {
+	_u.mutation.AddDefaultAccountConcurrency(v)
+	return _u
+}
+
+// SetDefaultAccountRpm sets the "default_account_rpm" field.
+func (_u *GroupUpdateOne) SetDefaultAccountRpm(v int) *GroupUpdateOne {
+	_u.mutation.ResetDefaultAccountRpm()
+	_u.mutation.SetDefaultAccountRpm(v)
+	return _u
+}
+
+// SetNillableDefaultAccountRpm sets the "default_account_rpm" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableDefaultAccountRpm(v *int) *GroupUpdateOne {
+	if v != nil {
+		_u.SetDefaultAccountRpm(*v)
+	}
+	return _u
+}
+
+// AddDefaultAccountRpm adds value to the "default_account_rpm" field.
+func (_u *GroupUpdateOne) AddDefaultAccountRpm(v int) *GroupUpdateOne {
+	_u.mutation.AddDefaultAccountRpm(v)
+	return _u
+}
+
+// SetDefaultPassthroughProfile sets the "default_passthrough_profile" field.
+func (_u *GroupUpdateOne) SetDefaultPassthroughProfile(v string) *GroupUpdateOne {
+	_u.mutation.SetDefaultPassthroughProfile(v)
+	return _u
+}
+
+// SetNillableDefaultPassthroughProfile sets the "default_passthrough_profile" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableDefaultPassthroughProfile(v *string) *GroupUpdateOne {
+	if v != nil {
+		_u.SetDefaultPassthroughProfile(*v)
+	}
+	return _u
+}
+
+// SetDefault429CooldownSec sets the "default_429_cooldown_sec" field.
+func (_u *GroupUpdateOne) SetDefault429CooldownSec(v int) *GroupUpdateOne {
+	_u.mutation.ResetDefault429CooldownSec()
+	_u.mutation.SetDefault429CooldownSec(v)
+	return _u
+}
+
+// SetNillableDefault429CooldownSec sets the "default_429_cooldown_sec" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableDefault429CooldownSec(v *int) *GroupUpdateOne {
+	if v != nil {
+		_u.SetDefault429CooldownSec(*v)
+	}
+	return _u
+}
+
+// AddDefault429CooldownSec adds value to the "default_429_cooldown_sec" field.
+func (_u *GroupUpdateOne) AddDefault429CooldownSec(v int) *GroupUpdateOne {
+	_u.mutation.AddDefault429CooldownSec(v)
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdateOne) AddAPIKeyIDs(ids ...int64) *GroupUpdateOne {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -2577,6 +2752,27 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.AddedRpmLimit(); ok {
 		_spec.AddField(group.FieldRpmLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.DefaultAccountConcurrency(); ok {
+		_spec.SetField(group.FieldDefaultAccountConcurrency, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedDefaultAccountConcurrency(); ok {
+		_spec.AddField(group.FieldDefaultAccountConcurrency, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.DefaultAccountRpm(); ok {
+		_spec.SetField(group.FieldDefaultAccountRpm, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedDefaultAccountRpm(); ok {
+		_spec.AddField(group.FieldDefaultAccountRpm, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.DefaultPassthroughProfile(); ok {
+		_spec.SetField(group.FieldDefaultPassthroughProfile, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Default429CooldownSec(); ok {
+		_spec.SetField(group.FieldDefault429CooldownSec, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedDefault429CooldownSec(); ok {
+		_spec.AddField(group.FieldDefault429CooldownSec, field.TypeInt, value)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{

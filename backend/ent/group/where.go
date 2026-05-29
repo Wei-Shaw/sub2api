@@ -210,6 +210,26 @@ func RpmLimit(v int) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldRpmLimit, v))
 }
 
+// DefaultAccountConcurrency applies equality check predicate on the "default_account_concurrency" field. It's identical to DefaultAccountConcurrencyEQ.
+func DefaultAccountConcurrency(v int) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldDefaultAccountConcurrency, v))
+}
+
+// DefaultAccountRpm applies equality check predicate on the "default_account_rpm" field. It's identical to DefaultAccountRpmEQ.
+func DefaultAccountRpm(v int) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldDefaultAccountRpm, v))
+}
+
+// DefaultPassthroughProfile applies equality check predicate on the "default_passthrough_profile" field. It's identical to DefaultPassthroughProfileEQ.
+func DefaultPassthroughProfile(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldDefaultPassthroughProfile, v))
+}
+
+// Default429CooldownSec applies equality check predicate on the "default_429_cooldown_sec" field. It's identical to Default429CooldownSecEQ.
+func Default429CooldownSec(v int) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldDefault429CooldownSec, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldCreatedAt, v))
@@ -1438,6 +1458,191 @@ func RpmLimitLT(v int) predicate.Group {
 // RpmLimitLTE applies the LTE predicate on the "rpm_limit" field.
 func RpmLimitLTE(v int) predicate.Group {
 	return predicate.Group(sql.FieldLTE(FieldRpmLimit, v))
+}
+
+// DefaultAccountConcurrencyEQ applies the EQ predicate on the "default_account_concurrency" field.
+func DefaultAccountConcurrencyEQ(v int) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldDefaultAccountConcurrency, v))
+}
+
+// DefaultAccountConcurrencyNEQ applies the NEQ predicate on the "default_account_concurrency" field.
+func DefaultAccountConcurrencyNEQ(v int) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldDefaultAccountConcurrency, v))
+}
+
+// DefaultAccountConcurrencyIn applies the In predicate on the "default_account_concurrency" field.
+func DefaultAccountConcurrencyIn(vs ...int) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldDefaultAccountConcurrency, vs...))
+}
+
+// DefaultAccountConcurrencyNotIn applies the NotIn predicate on the "default_account_concurrency" field.
+func DefaultAccountConcurrencyNotIn(vs ...int) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldDefaultAccountConcurrency, vs...))
+}
+
+// DefaultAccountConcurrencyGT applies the GT predicate on the "default_account_concurrency" field.
+func DefaultAccountConcurrencyGT(v int) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldDefaultAccountConcurrency, v))
+}
+
+// DefaultAccountConcurrencyGTE applies the GTE predicate on the "default_account_concurrency" field.
+func DefaultAccountConcurrencyGTE(v int) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldDefaultAccountConcurrency, v))
+}
+
+// DefaultAccountConcurrencyLT applies the LT predicate on the "default_account_concurrency" field.
+func DefaultAccountConcurrencyLT(v int) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldDefaultAccountConcurrency, v))
+}
+
+// DefaultAccountConcurrencyLTE applies the LTE predicate on the "default_account_concurrency" field.
+func DefaultAccountConcurrencyLTE(v int) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldDefaultAccountConcurrency, v))
+}
+
+// DefaultAccountRpmEQ applies the EQ predicate on the "default_account_rpm" field.
+func DefaultAccountRpmEQ(v int) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldDefaultAccountRpm, v))
+}
+
+// DefaultAccountRpmNEQ applies the NEQ predicate on the "default_account_rpm" field.
+func DefaultAccountRpmNEQ(v int) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldDefaultAccountRpm, v))
+}
+
+// DefaultAccountRpmIn applies the In predicate on the "default_account_rpm" field.
+func DefaultAccountRpmIn(vs ...int) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldDefaultAccountRpm, vs...))
+}
+
+// DefaultAccountRpmNotIn applies the NotIn predicate on the "default_account_rpm" field.
+func DefaultAccountRpmNotIn(vs ...int) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldDefaultAccountRpm, vs...))
+}
+
+// DefaultAccountRpmGT applies the GT predicate on the "default_account_rpm" field.
+func DefaultAccountRpmGT(v int) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldDefaultAccountRpm, v))
+}
+
+// DefaultAccountRpmGTE applies the GTE predicate on the "default_account_rpm" field.
+func DefaultAccountRpmGTE(v int) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldDefaultAccountRpm, v))
+}
+
+// DefaultAccountRpmLT applies the LT predicate on the "default_account_rpm" field.
+func DefaultAccountRpmLT(v int) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldDefaultAccountRpm, v))
+}
+
+// DefaultAccountRpmLTE applies the LTE predicate on the "default_account_rpm" field.
+func DefaultAccountRpmLTE(v int) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldDefaultAccountRpm, v))
+}
+
+// DefaultPassthroughProfileEQ applies the EQ predicate on the "default_passthrough_profile" field.
+func DefaultPassthroughProfileEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldDefaultPassthroughProfile, v))
+}
+
+// DefaultPassthroughProfileNEQ applies the NEQ predicate on the "default_passthrough_profile" field.
+func DefaultPassthroughProfileNEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldDefaultPassthroughProfile, v))
+}
+
+// DefaultPassthroughProfileIn applies the In predicate on the "default_passthrough_profile" field.
+func DefaultPassthroughProfileIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldDefaultPassthroughProfile, vs...))
+}
+
+// DefaultPassthroughProfileNotIn applies the NotIn predicate on the "default_passthrough_profile" field.
+func DefaultPassthroughProfileNotIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldDefaultPassthroughProfile, vs...))
+}
+
+// DefaultPassthroughProfileGT applies the GT predicate on the "default_passthrough_profile" field.
+func DefaultPassthroughProfileGT(v string) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldDefaultPassthroughProfile, v))
+}
+
+// DefaultPassthroughProfileGTE applies the GTE predicate on the "default_passthrough_profile" field.
+func DefaultPassthroughProfileGTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldDefaultPassthroughProfile, v))
+}
+
+// DefaultPassthroughProfileLT applies the LT predicate on the "default_passthrough_profile" field.
+func DefaultPassthroughProfileLT(v string) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldDefaultPassthroughProfile, v))
+}
+
+// DefaultPassthroughProfileLTE applies the LTE predicate on the "default_passthrough_profile" field.
+func DefaultPassthroughProfileLTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldDefaultPassthroughProfile, v))
+}
+
+// DefaultPassthroughProfileContains applies the Contains predicate on the "default_passthrough_profile" field.
+func DefaultPassthroughProfileContains(v string) predicate.Group {
+	return predicate.Group(sql.FieldContains(FieldDefaultPassthroughProfile, v))
+}
+
+// DefaultPassthroughProfileHasPrefix applies the HasPrefix predicate on the "default_passthrough_profile" field.
+func DefaultPassthroughProfileHasPrefix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasPrefix(FieldDefaultPassthroughProfile, v))
+}
+
+// DefaultPassthroughProfileHasSuffix applies the HasSuffix predicate on the "default_passthrough_profile" field.
+func DefaultPassthroughProfileHasSuffix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasSuffix(FieldDefaultPassthroughProfile, v))
+}
+
+// DefaultPassthroughProfileEqualFold applies the EqualFold predicate on the "default_passthrough_profile" field.
+func DefaultPassthroughProfileEqualFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldEqualFold(FieldDefaultPassthroughProfile, v))
+}
+
+// DefaultPassthroughProfileContainsFold applies the ContainsFold predicate on the "default_passthrough_profile" field.
+func DefaultPassthroughProfileContainsFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldContainsFold(FieldDefaultPassthroughProfile, v))
+}
+
+// Default429CooldownSecEQ applies the EQ predicate on the "default_429_cooldown_sec" field.
+func Default429CooldownSecEQ(v int) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldDefault429CooldownSec, v))
+}
+
+// Default429CooldownSecNEQ applies the NEQ predicate on the "default_429_cooldown_sec" field.
+func Default429CooldownSecNEQ(v int) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldDefault429CooldownSec, v))
+}
+
+// Default429CooldownSecIn applies the In predicate on the "default_429_cooldown_sec" field.
+func Default429CooldownSecIn(vs ...int) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldDefault429CooldownSec, vs...))
+}
+
+// Default429CooldownSecNotIn applies the NotIn predicate on the "default_429_cooldown_sec" field.
+func Default429CooldownSecNotIn(vs ...int) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldDefault429CooldownSec, vs...))
+}
+
+// Default429CooldownSecGT applies the GT predicate on the "default_429_cooldown_sec" field.
+func Default429CooldownSecGT(v int) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldDefault429CooldownSec, v))
+}
+
+// Default429CooldownSecGTE applies the GTE predicate on the "default_429_cooldown_sec" field.
+func Default429CooldownSecGTE(v int) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldDefault429CooldownSec, v))
+}
+
+// Default429CooldownSecLT applies the LT predicate on the "default_429_cooldown_sec" field.
+func Default429CooldownSecLT(v int) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldDefault429CooldownSec, v))
+}
+
+// Default429CooldownSecLTE applies the LTE predicate on the "default_429_cooldown_sec" field.
+func Default429CooldownSecLTE(v int) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldDefault429CooldownSec, v))
 }
 
 // HasAPIKeys applies the HasEdge predicate on the "api_keys" edge.

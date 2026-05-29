@@ -128,19 +128,18 @@ func (a *Account) EffectiveLoadFactor() int {
 // 该方法只在并发槽位获取与 WaitPlan 计算路径使用；调度评分继续走
 // EffectiveLoadFactor（语义不同，不受影响）。
 func (a *Account) EffectiveConcurrency(fleetDefault int) int {
-	if a == nil {
-		if fleetDefault > 0 {
-			return fleetDefault
-		}
-		return 0
+	return a.EffectiveConcurrencyWithGroup(0, fleetDefault)
+}
+
+// EffectiveConcurrencyWithGroup 是三级覆盖版本（account > group > system）。
+// groupDefault 来自 Group.DefaultAccountConcurrency（0 = 分组未配置）。
+func (a *Account) EffectiveConcurrencyWithGroup(groupDefault, fleetDefault int) int {
+	accountVal := 0
+	if a != nil {
+		accountVal = a.Concurrency
 	}
-	if a.Concurrency > 0 {
-		return a.Concurrency
-	}
-	if fleetDefault > 0 {
-		return fleetDefault
-	}
-	return 0
+	v, _ := ResolveInt(accountVal, groupDefault, fleetDefault)
+	return v
 }
 
 // EffectiveBaseRPM 返回账号实际生效的基础 RPM 上限。
@@ -150,19 +149,18 @@ func (a *Account) EffectiveConcurrency(fleetDefault int) int {
 //   - 未设置或 ≤ 0 且 fleetDefault > 0：使用全局默认。
 //   - 两者都缺失：返回 0（不启用 RPM 限流），保持向后兼容。
 func (a *Account) EffectiveBaseRPM(fleetDefault int) int {
-	if a == nil {
-		if fleetDefault > 0 {
-			return fleetDefault
-		}
-		return 0
+	return a.EffectiveBaseRPMWithGroup(0, fleetDefault)
+}
+
+// EffectiveBaseRPMWithGroup 是三级覆盖版本（account > group > system）。
+// groupDefault 来自 Group.DefaultAccountRPM（0 = 分组未配置）。
+func (a *Account) EffectiveBaseRPMWithGroup(groupDefault, fleetDefault int) int {
+	accountVal := 0
+	if a != nil {
+		accountVal = a.GetBaseRPM()
 	}
-	if v := a.GetBaseRPM(); v > 0 {
-		return v
-	}
-	if fleetDefault > 0 {
-		return fleetDefault
-	}
-	return 0
+	v, _ := ResolveInt(accountVal, groupDefault, fleetDefault)
+	return v
 }
 
 func (a *Account) IsSchedulable() bool {

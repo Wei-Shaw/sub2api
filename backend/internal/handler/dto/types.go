@@ -123,6 +123,12 @@ type Group struct {
 	// RPMLimit 分组级每分钟请求数上限（0 = 不限制），设置后覆盖用户级 rpm_limit。
 	RPMLimit int `json:"rpm_limit"`
 
+	// ── M2：分组级策略默认值（三级覆盖链：account > group > system） ──
+	DefaultAccountConcurrency int    `json:"default_account_concurrency"`
+	DefaultAccountRPM         int    `json:"default_account_rpm"`
+	DefaultPassthroughProfile string `json:"default_passthrough_profile"`
+	Default429CooldownSec     int    `json:"default_429_cooldown_sec"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }

@@ -527,6 +527,11 @@ export interface Group {
   require_privacy_set: boolean
   created_at: string
   updated_at: string
+  // ── M2：分组级策略默认值 ──
+  default_account_concurrency?: number
+  default_account_rpm?: number
+  default_passthrough_profile?: string
+  default_429_cooldown_sec?: number
 }
 
 export interface AdminGroup extends Group {

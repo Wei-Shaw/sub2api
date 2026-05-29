@@ -203,6 +203,11 @@
 
         <!-- Tab: Gateway -->
         <div v-show="activeTab === 'gateway'" class="space-y-6">
+          <!-- ── A · 故障处置 ──────────────────────────────────── -->
+          <div class="flex items-center gap-3 pt-2">
+            <span class="whitespace-nowrap text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">A · 故障处置</span>
+            <div class="flex-1 border-t border-gray-200 dark:border-dark-600"></div>
+          </div>
           <!-- Overload Cooldown (529) Settings -->
           <div class="card">
             <div
@@ -591,6 +596,11 @@
             </div>
           </div>
 
+          <!-- ── B · 请求改写 ──────────────────────────────────── -->
+          <div class="flex items-center gap-3 pt-2">
+            <span class="whitespace-nowrap text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">B · 请求改写</span>
+            <div class="flex-1 border-t border-gray-200 dark:border-dark-600"></div>
+          </div>
           <!-- Request Rectifier Settings -->
           <div class="card">
             <div
@@ -1582,6 +1592,58 @@
                   </p>
                 </div>
                 <Toggle v-model="form.api_key_acl_trust_forwarded_ip" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Claude Code Version Gate (客户端准入) -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.claudeCode.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.claudeCode.description") }}
+              </p>
+            </div>
+            <div class="p-6">
+              <div>
+                <label
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{ t("admin.settings.claudeCode.minVersion") }}
+                </label>
+                <input
+                  v-model="form.min_claude_code_version"
+                  type="text"
+                  class="input max-w-xs font-mono text-sm"
+                  :placeholder="
+                    t('admin.settings.claudeCode.minVersionPlaceholder')
+                  "
+                />
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.claudeCode.minVersionHint") }}
+                </p>
+              </div>
+              <div class="mt-4">
+                <label
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{ t("admin.settings.claudeCode.maxVersion") }}
+                </label>
+                <input
+                  v-model="form.max_claude_code_version"
+                  type="text"
+                  class="input max-w-xs font-mono text-sm"
+                  :placeholder="
+                    t('admin.settings.claudeCode.maxVersionPlaceholder')
+                  "
+                />
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.claudeCode.maxVersionHint") }}
+                </p>
               </div>
             </div>
           </div>
@@ -3670,60 +3732,13 @@
         </div>
         <!-- /Tab: Users -->
 
-        <!-- Tab: Gateway — Claude Code, Scheduling -->
+        <!-- Tab: Gateway — Scheduling, Sharing, Forwarding, Passthrough, WebSearch -->
         <div v-show="activeTab === 'gateway'" class="space-y-6">
-          <!-- Claude Code Settings -->
-          <div class="card">
-            <div
-              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
-            >
-              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
-                {{ t("admin.settings.claudeCode.title") }}
-              </h2>
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                {{ t("admin.settings.claudeCode.description") }}
-              </p>
-            </div>
-            <div class="p-6">
-              <div>
-                <label
-                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
-                >
-                  {{ t("admin.settings.claudeCode.minVersion") }}
-                </label>
-                <input
-                  v-model="form.min_claude_code_version"
-                  type="text"
-                  class="input max-w-xs font-mono text-sm"
-                  :placeholder="
-                    t('admin.settings.claudeCode.minVersionPlaceholder')
-                  "
-                />
-                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                  {{ t("admin.settings.claudeCode.minVersionHint") }}
-                </p>
-              </div>
-              <div class="mt-4">
-                <label
-                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
-                >
-                  {{ t("admin.settings.claudeCode.maxVersion") }}
-                </label>
-                <input
-                  v-model="form.max_claude_code_version"
-                  type="text"
-                  class="input max-w-xs font-mono text-sm"
-                  :placeholder="
-                    t('admin.settings.claudeCode.maxVersionPlaceholder')
-                  "
-                />
-                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                  {{ t("admin.settings.claudeCode.maxVersionHint") }}
-                </p>
-              </div>
-            </div>
+          <!-- ── D · 调度与资源 ──────────────────────────────────── -->
+          <div class="flex items-center gap-3 pt-2">
+            <span class="whitespace-nowrap text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">D · 调度与资源</span>
+            <div class="flex-1 border-t border-gray-200 dark:border-dark-600"></div>
           </div>
-
           <!-- Gateway Scheduling Settings -->
           <div class="card">
             <div
@@ -3913,6 +3928,11 @@
             </div>
           </div>
 
+          <!-- ── C · 上游透传 ──────────────────────────────────── -->
+          <div class="flex items-center gap-3 pt-2">
+            <span class="whitespace-nowrap text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">C · 上游透传</span>
+            <div class="flex-1 border-t border-gray-200 dark:border-dark-600"></div>
+          </div>
           <!-- Gateway Forwarding Behavior -->
           <div class="card">
             <div
@@ -4139,6 +4159,11 @@
             v-model:defaults="form.upstream_passthrough_defaults"
           />
 
+          <!-- ── E · 功能模拟 ──────────────────────────────────── -->
+          <div class="flex items-center gap-3 pt-2">
+            <span class="whitespace-nowrap text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">E · 功能模拟</span>
+            <div class="flex-1 border-t border-gray-200 dark:border-dark-600"></div>
+          </div>
           <!-- Web Search Emulation -->
           <div class="card">
             <div

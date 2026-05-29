@@ -68,6 +68,18 @@ type Group struct {
 	// 一旦设置即接管该分组用户的限流（覆盖用户级 rpm_limit），可被 user-group rpm_override 进一步覆盖。
 	RPMLimit int
 
+	// ── M2：分组级策略默认值（三级覆盖链：account > group > system） ──
+
+	// DefaultAccountConcurrency 是该分组内账号的并发默认值（0 = 继承系统全局）。
+	DefaultAccountConcurrency int
+	// DefaultAccountRPM 是该分组内账号的 RPM 默认值（0 = 继承系统全局）。
+	// 与 RPMLimit 不同：RPMLimit 是整个分组的池级上限，DefaultAccountRPM 是各账号单独的默认值。
+	DefaultAccountRPM int
+	// DefaultPassthroughProfile 是该分组的透传 profile（"" = 继承系统；transparent/protected/strict）。
+	DefaultPassthroughProfile string
+	// Default429CooldownSec 是该分组的 429 冷却秒数（0 = 继承系统全局）。
+	Default429CooldownSec int
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 

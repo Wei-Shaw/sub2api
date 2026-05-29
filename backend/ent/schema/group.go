@@ -164,6 +164,29 @@ func (Group) Fields() []ent.Field {
 		field.Int("rpm_limit").
 			Default(0).
 			Comment("分组 RPM 上限，0 表示不限制；设置后接管该分组用户的限流"),
+
+		// ── M2：分组级策略默认值（三级覆盖链：account > group > system） ──
+
+		// 该分组内账号的并发上限默认值（0 = 继承系统）。
+		field.Int("default_account_concurrency").
+			Default(0).
+			Comment("分组内账号并发默认值，0 表示继承系统全局默认"),
+
+		// 该分组内账号的 RPM 默认值（0 = 继承系统）。与 rpm_limit 语义不同：
+		// rpm_limit 是分组整体上限（pool），default_account_rpm 是每个账号的默认上限。
+		field.Int("default_account_rpm").
+			Default(0).
+			Comment("分组内账号 RPM 默认值，0 表示继承系统全局默认"),
+
+		// 该分组的透传 profile 默认值（"" = 继承系统；transparent/protected/strict）。
+		field.String("default_passthrough_profile").
+			Default("").
+			Comment("分组透传策略 profile 默认值，空字符串表示继承系统全局"),
+
+		// 该分组的 429 冷却时长（秒，0 = 继承系统）。
+		field.Int("default_429_cooldown_sec").
+			Default(0).
+			Comment("分组 429 冷却时长（秒），0 表示继承系统全局默认"),
 	}
 }
 

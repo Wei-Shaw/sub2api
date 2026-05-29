@@ -495,6 +495,62 @@ func (_c *GroupCreate) SetNillableRpmLimit(v *int) *GroupCreate {
 	return _c
 }
 
+// SetDefaultAccountConcurrency sets the "default_account_concurrency" field.
+func (_c *GroupCreate) SetDefaultAccountConcurrency(v int) *GroupCreate {
+	_c.mutation.SetDefaultAccountConcurrency(v)
+	return _c
+}
+
+// SetNillableDefaultAccountConcurrency sets the "default_account_concurrency" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableDefaultAccountConcurrency(v *int) *GroupCreate {
+	if v != nil {
+		_c.SetDefaultAccountConcurrency(*v)
+	}
+	return _c
+}
+
+// SetDefaultAccountRpm sets the "default_account_rpm" field.
+func (_c *GroupCreate) SetDefaultAccountRpm(v int) *GroupCreate {
+	_c.mutation.SetDefaultAccountRpm(v)
+	return _c
+}
+
+// SetNillableDefaultAccountRpm sets the "default_account_rpm" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableDefaultAccountRpm(v *int) *GroupCreate {
+	if v != nil {
+		_c.SetDefaultAccountRpm(*v)
+	}
+	return _c
+}
+
+// SetDefaultPassthroughProfile sets the "default_passthrough_profile" field.
+func (_c *GroupCreate) SetDefaultPassthroughProfile(v string) *GroupCreate {
+	_c.mutation.SetDefaultPassthroughProfile(v)
+	return _c
+}
+
+// SetNillableDefaultPassthroughProfile sets the "default_passthrough_profile" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableDefaultPassthroughProfile(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetDefaultPassthroughProfile(*v)
+	}
+	return _c
+}
+
+// SetDefault429CooldownSec sets the "default_429_cooldown_sec" field.
+func (_c *GroupCreate) SetDefault429CooldownSec(v int) *GroupCreate {
+	_c.mutation.SetDefault429CooldownSec(v)
+	return _c
+}
+
+// SetNillableDefault429CooldownSec sets the "default_429_cooldown_sec" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableDefault429CooldownSec(v *int) *GroupCreate {
+	if v != nil {
+		_c.SetDefault429CooldownSec(*v)
+	}
+	return _c
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_c *GroupCreate) AddAPIKeyIDs(ids ...int64) *GroupCreate {
 	_c.mutation.AddAPIKeyIDs(ids...)
@@ -720,6 +776,22 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultRpmLimit
 		_c.mutation.SetRpmLimit(v)
 	}
+	if _, ok := _c.mutation.DefaultAccountConcurrency(); !ok {
+		v := group.DefaultDefaultAccountConcurrency
+		_c.mutation.SetDefaultAccountConcurrency(v)
+	}
+	if _, ok := _c.mutation.DefaultAccountRpm(); !ok {
+		v := group.DefaultDefaultAccountRpm
+		_c.mutation.SetDefaultAccountRpm(v)
+	}
+	if _, ok := _c.mutation.DefaultPassthroughProfile(); !ok {
+		v := group.DefaultDefaultPassthroughProfile
+		_c.mutation.SetDefaultPassthroughProfile(v)
+	}
+	if _, ok := _c.mutation.Default429CooldownSec(); !ok {
+		v := group.DefaultDefault429CooldownSec
+		_c.mutation.SetDefault429CooldownSec(v)
+	}
 	return nil
 }
 
@@ -821,6 +893,18 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.RpmLimit(); !ok {
 		return &ValidationError{Name: "rpm_limit", err: errors.New(`ent: missing required field "Group.rpm_limit"`)}
+	}
+	if _, ok := _c.mutation.DefaultAccountConcurrency(); !ok {
+		return &ValidationError{Name: "default_account_concurrency", err: errors.New(`ent: missing required field "Group.default_account_concurrency"`)}
+	}
+	if _, ok := _c.mutation.DefaultAccountRpm(); !ok {
+		return &ValidationError{Name: "default_account_rpm", err: errors.New(`ent: missing required field "Group.default_account_rpm"`)}
+	}
+	if _, ok := _c.mutation.DefaultPassthroughProfile(); !ok {
+		return &ValidationError{Name: "default_passthrough_profile", err: errors.New(`ent: missing required field "Group.default_passthrough_profile"`)}
+	}
+	if _, ok := _c.mutation.Default429CooldownSec(); !ok {
+		return &ValidationError{Name: "default_429_cooldown_sec", err: errors.New(`ent: missing required field "Group.default_429_cooldown_sec"`)}
 	}
 	return nil
 }
@@ -988,6 +1072,22 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)
 		_node.RpmLimit = value
+	}
+	if value, ok := _c.mutation.DefaultAccountConcurrency(); ok {
+		_spec.SetField(group.FieldDefaultAccountConcurrency, field.TypeInt, value)
+		_node.DefaultAccountConcurrency = value
+	}
+	if value, ok := _c.mutation.DefaultAccountRpm(); ok {
+		_spec.SetField(group.FieldDefaultAccountRpm, field.TypeInt, value)
+		_node.DefaultAccountRpm = value
+	}
+	if value, ok := _c.mutation.DefaultPassthroughProfile(); ok {
+		_spec.SetField(group.FieldDefaultPassthroughProfile, field.TypeString, value)
+		_node.DefaultPassthroughProfile = value
+	}
+	if value, ok := _c.mutation.Default429CooldownSec(); ok {
+		_spec.SetField(group.FieldDefault429CooldownSec, field.TypeInt, value)
+		_node.Default429CooldownSec = value
 	}
 	if nodes := _c.mutation.APIKeysIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -1697,6 +1797,72 @@ func (u *GroupUpsert) AddRpmLimit(v int) *GroupUpsert {
 	return u
 }
 
+// SetDefaultAccountConcurrency sets the "default_account_concurrency" field.
+func (u *GroupUpsert) SetDefaultAccountConcurrency(v int) *GroupUpsert {
+	u.Set(group.FieldDefaultAccountConcurrency, v)
+	return u
+}
+
+// UpdateDefaultAccountConcurrency sets the "default_account_concurrency" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateDefaultAccountConcurrency() *GroupUpsert {
+	u.SetExcluded(group.FieldDefaultAccountConcurrency)
+	return u
+}
+
+// AddDefaultAccountConcurrency adds v to the "default_account_concurrency" field.
+func (u *GroupUpsert) AddDefaultAccountConcurrency(v int) *GroupUpsert {
+	u.Add(group.FieldDefaultAccountConcurrency, v)
+	return u
+}
+
+// SetDefaultAccountRpm sets the "default_account_rpm" field.
+func (u *GroupUpsert) SetDefaultAccountRpm(v int) *GroupUpsert {
+	u.Set(group.FieldDefaultAccountRpm, v)
+	return u
+}
+
+// UpdateDefaultAccountRpm sets the "default_account_rpm" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateDefaultAccountRpm() *GroupUpsert {
+	u.SetExcluded(group.FieldDefaultAccountRpm)
+	return u
+}
+
+// AddDefaultAccountRpm adds v to the "default_account_rpm" field.
+func (u *GroupUpsert) AddDefaultAccountRpm(v int) *GroupUpsert {
+	u.Add(group.FieldDefaultAccountRpm, v)
+	return u
+}
+
+// SetDefaultPassthroughProfile sets the "default_passthrough_profile" field.
+func (u *GroupUpsert) SetDefaultPassthroughProfile(v string) *GroupUpsert {
+	u.Set(group.FieldDefaultPassthroughProfile, v)
+	return u
+}
+
+// UpdateDefaultPassthroughProfile sets the "default_passthrough_profile" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateDefaultPassthroughProfile() *GroupUpsert {
+	u.SetExcluded(group.FieldDefaultPassthroughProfile)
+	return u
+}
+
+// SetDefault429CooldownSec sets the "default_429_cooldown_sec" field.
+func (u *GroupUpsert) SetDefault429CooldownSec(v int) *GroupUpsert {
+	u.Set(group.FieldDefault429CooldownSec, v)
+	return u
+}
+
+// UpdateDefault429CooldownSec sets the "default_429_cooldown_sec" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateDefault429CooldownSec() *GroupUpsert {
+	u.SetExcluded(group.FieldDefault429CooldownSec)
+	return u
+}
+
+// AddDefault429CooldownSec adds v to the "default_429_cooldown_sec" field.
+func (u *GroupUpsert) AddDefault429CooldownSec(v int) *GroupUpsert {
+	u.Add(group.FieldDefault429CooldownSec, v)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
@@ -2383,6 +2549,83 @@ func (u *GroupUpsertOne) AddRpmLimit(v int) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateRpmLimit() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateRpmLimit()
+	})
+}
+
+// SetDefaultAccountConcurrency sets the "default_account_concurrency" field.
+func (u *GroupUpsertOne) SetDefaultAccountConcurrency(v int) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetDefaultAccountConcurrency(v)
+	})
+}
+
+// AddDefaultAccountConcurrency adds v to the "default_account_concurrency" field.
+func (u *GroupUpsertOne) AddDefaultAccountConcurrency(v int) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddDefaultAccountConcurrency(v)
+	})
+}
+
+// UpdateDefaultAccountConcurrency sets the "default_account_concurrency" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateDefaultAccountConcurrency() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateDefaultAccountConcurrency()
+	})
+}
+
+// SetDefaultAccountRpm sets the "default_account_rpm" field.
+func (u *GroupUpsertOne) SetDefaultAccountRpm(v int) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetDefaultAccountRpm(v)
+	})
+}
+
+// AddDefaultAccountRpm adds v to the "default_account_rpm" field.
+func (u *GroupUpsertOne) AddDefaultAccountRpm(v int) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddDefaultAccountRpm(v)
+	})
+}
+
+// UpdateDefaultAccountRpm sets the "default_account_rpm" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateDefaultAccountRpm() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateDefaultAccountRpm()
+	})
+}
+
+// SetDefaultPassthroughProfile sets the "default_passthrough_profile" field.
+func (u *GroupUpsertOne) SetDefaultPassthroughProfile(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetDefaultPassthroughProfile(v)
+	})
+}
+
+// UpdateDefaultPassthroughProfile sets the "default_passthrough_profile" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateDefaultPassthroughProfile() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateDefaultPassthroughProfile()
+	})
+}
+
+// SetDefault429CooldownSec sets the "default_429_cooldown_sec" field.
+func (u *GroupUpsertOne) SetDefault429CooldownSec(v int) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetDefault429CooldownSec(v)
+	})
+}
+
+// AddDefault429CooldownSec adds v to the "default_429_cooldown_sec" field.
+func (u *GroupUpsertOne) AddDefault429CooldownSec(v int) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddDefault429CooldownSec(v)
+	})
+}
+
+// UpdateDefault429CooldownSec sets the "default_429_cooldown_sec" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateDefault429CooldownSec() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateDefault429CooldownSec()
 	})
 }
 
@@ -3238,6 +3481,83 @@ func (u *GroupUpsertBulk) AddRpmLimit(v int) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateRpmLimit() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateRpmLimit()
+	})
+}
+
+// SetDefaultAccountConcurrency sets the "default_account_concurrency" field.
+func (u *GroupUpsertBulk) SetDefaultAccountConcurrency(v int) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetDefaultAccountConcurrency(v)
+	})
+}
+
+// AddDefaultAccountConcurrency adds v to the "default_account_concurrency" field.
+func (u *GroupUpsertBulk) AddDefaultAccountConcurrency(v int) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddDefaultAccountConcurrency(v)
+	})
+}
+
+// UpdateDefaultAccountConcurrency sets the "default_account_concurrency" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateDefaultAccountConcurrency() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateDefaultAccountConcurrency()
+	})
+}
+
+// SetDefaultAccountRpm sets the "default_account_rpm" field.
+func (u *GroupUpsertBulk) SetDefaultAccountRpm(v int) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetDefaultAccountRpm(v)
+	})
+}
+
+// AddDefaultAccountRpm adds v to the "default_account_rpm" field.
+func (u *GroupUpsertBulk) AddDefaultAccountRpm(v int) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddDefaultAccountRpm(v)
+	})
+}
+
+// UpdateDefaultAccountRpm sets the "default_account_rpm" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateDefaultAccountRpm() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateDefaultAccountRpm()
+	})
+}
+
+// SetDefaultPassthroughProfile sets the "default_passthrough_profile" field.
+func (u *GroupUpsertBulk) SetDefaultPassthroughProfile(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetDefaultPassthroughProfile(v)
+	})
+}
+
+// UpdateDefaultPassthroughProfile sets the "default_passthrough_profile" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateDefaultPassthroughProfile() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateDefaultPassthroughProfile()
+	})
+}
+
+// SetDefault429CooldownSec sets the "default_429_cooldown_sec" field.
+func (u *GroupUpsertBulk) SetDefault429CooldownSec(v int) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetDefault429CooldownSec(v)
+	})
+}
+
+// AddDefault429CooldownSec adds v to the "default_429_cooldown_sec" field.
+func (u *GroupUpsertBulk) AddDefault429CooldownSec(v int) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddDefault429CooldownSec(v)
+	})
+}
+
+// UpdateDefault429CooldownSec sets the "default_429_cooldown_sec" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateDefault429CooldownSec() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateDefault429CooldownSec()
 	})
 }
 
