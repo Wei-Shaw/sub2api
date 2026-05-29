@@ -107,7 +107,7 @@ REDACTED
 	routingStart := time.Now()
 
 	for {
-		selection, _, err := h.gatewayService.SelectAccountWithScheduler(
+		selection, _, err := h.gatewayService.SelectAccountWithSchedulerForCapability(
 			c.Request.Context(),
 			apiKey.GroupID,
 			"",
@@ -115,6 +115,7 @@ REDACTED
 			reqModel,
 			failedAccountIDs,
 			service.OpenAIUpstreamTransportHTTPSSE,
+			service.OpenAIEndpointCapabilityEmbeddings,
 			false,
 		)
 		if err != nil {
@@ -140,13 +141,6 @@ REDACTED
 			return
 	REDACTED
 		account := selection.Account
-		if account.Type != service.AccountTypeAPIKey {
-			if selection.ReleaseFunc != nil {
-				selection.ReleaseFunc()
-		REDACTED
-			failedAccountIDs[account.ID] = struct{REDACTED{REDACTED
-			continue
-	REDACTED
 		setOpsSelectedAccount(c, account.ID, account.Platform)
 
 		accountReleaseFunc, accountAcquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, "", selection, false, &streamStarted, reqLog)

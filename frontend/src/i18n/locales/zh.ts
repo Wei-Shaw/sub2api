@@ -3499,6 +3499,11 @@ export default {
         responsesModeAuto: '自动',
         responsesModeForceResponses: '强制 Responses',
         responsesModeForceChatCompletions: '强制 Chat Completions',
+        endpointCapabilities: '端点能力',
+        endpointCapabilitiesDesc:
+          '用于调度筛选。默认两个端点都可用；如果上游只支持其中一个，请只勾选实际支持的端点。',
+        capabilityChatCompletions: 'Chat Completions',
+        capabilityEmbeddings: 'Embeddings',
         responsesStatusAutoSupported: '自动探测：Responses',
         responsesStatusAutoUnsupported: '自动探测：Chat Completions',
         responsesStatusAutoUnknown: '自动探测：未探测',
