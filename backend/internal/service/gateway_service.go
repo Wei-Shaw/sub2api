@@ -5710,6 +5710,44 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		}
 	}
 	if resp.StatusCode >= 400 {
+		// 基础设施级 4xx（nginx HTML / 空响应 / text/html）：上游链路异常，
+		// 不是 Anthropic 真正的 API 错误。立即切号 + 临时封禁该账号，
+		// 不受 cfg.Gateway.FailoverOn400 开关影响（这是安全的：合法的 JSON
+		// 4xx 不会被误判）。
+		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+			respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+			if readErr == nil {
+				_ = resp.Body.Close()
+				resp.Body = io.NopCloser(bytes.NewReader(respBody))
+				if isInfraLevelUpstream4xxResponse(resp.Header, respBody) {
+					logger.LegacyPrintf("service.gateway",
+						"[Forward] Upstream infra-level %d (HTML/empty body, failover): Account=%d(%s) RequestID=%s CT=%q BodyHead=%s",
+						resp.StatusCode, account.ID, account.Name,
+						resp.Header.Get("x-request-id"),
+						resp.Header.Get("Content-Type"),
+						truncateString(string(respBody), 200),
+					)
+					appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+						Platform:           account.Platform,
+						AccountID:          account.ID,
+						AccountName:        account.Name,
+						UpstreamStatusCode: resp.StatusCode,
+						UpstreamRequestID:  resp.Header.Get("x-request-id"),
+						Kind:               "failover_infra_4xx",
+						Message:            "upstream returned HTML/empty body (infra-level failure)",
+						Detail:             truncateString(string(respBody), 512),
+					})
+					s.handleFailoverSideEffects(ctx, resp, account, reqModel)
+					// 立即临时封禁该账号，避免短时间内反复调度到同一个有问题的链路。
+					// 复用 google config error 的退避策略（[1,5,15,30,60]m 指数退避）。
+					tempUnscheduleGoogleConfigError(ctx, s.rateLimitService, s.accountRepo, account.ID, "[forward]")
+					return nil, &UpstreamFailoverError{
+						StatusCode:   resp.StatusCode,
+						ResponseBody: respBody,
+					}
+				}
+			}
+		}
 		// 可选：对部分 400 触发 failover（默认关闭以保持语义）
 		if resp.StatusCode == 400 && s.cfg != nil && s.cfg.Gateway.FailoverOn400 {
 			respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
@@ -8139,6 +8177,47 @@ func (s *GatewayService) isThinkingBlockSignatureError(respBody []byte) bool {
 		return true
 	}
 
+	return false
+}
+
+// isInfraLevelUpstream4xxResponse 判断 4xx 响应是否属于"基础设施级"故障：
+// 上游 nginx/CDN/代理返回了 HTML 错误页或空响应，而不是 Anthropic/OpenAI
+// 风格的 JSON 错误体。典型场景：
+//   - nginx 直接返回 "<html>...400 Bad Request..." HTML 页
+//   - Cloudflare / 中间代理在账号链路异常时返回的 HTML 拦截页
+//   - 空响应体
+//
+// 这类错误说明该账号的上游链路（不是 Anthropic 真正的 API）当前不可用，
+// 继续打到同一账号无意义；应立即切到其他账号并临时封禁该账号。
+//
+// 故意保守：只匹配明确的 HTML/空响应特征，避免把合法的 JSON 错误（例如
+// 真实的 invalid_request_error）误判为基础设施故障。
+func isInfraLevelUpstream4xxResponse(headers http.Header, body []byte) bool {
+	trimmed := bytes.TrimSpace(body)
+	// 空响应体 → 上游链路异常（合法的 4xx 一定有 JSON 错误体）
+	if len(trimmed) == 0 {
+		return true
+	}
+	// Content-Type 指明是 HTML/纯文本（合法上游错误一律是 application/json）
+	if ct := headers.Get("Content-Type"); ct != "" {
+		lower := strings.ToLower(ct)
+		if strings.HasPrefix(lower, "text/html") || strings.HasPrefix(lower, "text/plain") {
+			return true
+		}
+	}
+	// Body 以 HTML 标志开头（防御 Content-Type 缺失或被代理改写的情况）
+	if len(trimmed) > 0 && trimmed[0] == '<' {
+		head := bytes.ToLower(trimmed)
+		if len(head) > 64 {
+			head = head[:64]
+		}
+		if bytes.HasPrefix(head, []byte("<!doctype")) ||
+			bytes.HasPrefix(head, []byte("<html")) ||
+			bytes.Contains(head, []byte("<head")) ||
+			bytes.Contains(head, []byte("<body")) {
+			return true
+		}
+	}
 	return false
 }
 

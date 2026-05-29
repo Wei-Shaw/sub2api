@@ -2114,6 +2114,12 @@ func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(statusCode i
 	if s.shouldFailoverUpstreamError(statusCode) {
 		return true
 	}
+	// 基础设施级 4xx（nginx HTML / 空响应）：上游链路异常，立即切号。
+	// 与 Anthropic 路径行为一致。Headers 在此处不可用，但 body 嗅探（HTML 标志 /
+	// 空 body）足以覆盖 nginx/Cloudflare 拦截页等典型场景。
+	if statusCode >= 400 && statusCode < 500 && isInfraLevelUpstream4xxResponse(nil, upstreamBody) {
+		return true
+	}
 	return isOpenAITransientProcessingError(statusCode, upstreamMsg, upstreamBody)
 }
 
@@ -3161,8 +3167,23 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	if resp.StatusCode >= 400 {
 		// 透传模式默认保持原样代理；但 429/529 属于网关必须兜底的
 		// 上游容量类错误，应先触发多账号 failover 以维持基础 SLA。
+		// 另：基础设施级 4xx（nginx HTML / 空 body）也要立即切号，避免卡死。
 		if shouldFailoverOpenAIPassthroughResponse(resp.StatusCode) {
 			return nil, s.handleFailoverErrorResponsePassthrough(ctx, resp, c, account, body)
+		}
+		if resp.StatusCode < 500 {
+			respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+			if readErr == nil {
+				_ = resp.Body.Close()
+				resp.Body = io.NopCloser(bytes.NewReader(respBody))
+				if isInfraLevelUpstream4xxResponse(resp.Header, respBody) {
+					logger.LegacyPrintf("service.openai_gateway",
+						"[OpenAI Passthrough] Upstream infra-level %d (HTML/empty body, failover): Account=%d(%s) CT=%q",
+						resp.StatusCode, account.ID, account.Name, resp.Header.Get("Content-Type"),
+					)
+					return nil, s.handleFailoverErrorResponsePassthrough(ctx, resp, c, account, body)
+				}
+			}
 		}
 		return nil, s.handleErrorResponsePassthrough(ctx, resp, c, account, body)
 	}

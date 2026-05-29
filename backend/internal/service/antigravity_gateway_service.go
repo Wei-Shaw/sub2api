@@ -1708,6 +1708,24 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 				return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBody}
 			}
 
+			// 基础设施级 4xx（nginx HTML / 空 body）：上游链路异常，立即切号 + 临时封禁。
+			if resp.StatusCode >= 400 && resp.StatusCode < 500 && isInfraLevelUpstream4xxResponse(resp.Header, respBody) {
+				log.Printf("[Antigravity] status=%d infra_level_4xx failover=true account=%d ct=%q",
+					resp.StatusCode, account.ID, resp.Header.Get("Content-Type"))
+				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+					Platform:           account.Platform,
+					AccountID:          account.ID,
+					AccountName:        account.Name,
+					UpstreamStatusCode: resp.StatusCode,
+					UpstreamRequestID:  resp.Header.Get("x-request-id"),
+					Kind:               "failover_infra_4xx",
+					Message:            "upstream returned HTML/empty body (infra-level failure)",
+					Detail:             truncateString(string(respBody), 512),
+				})
+				tempUnscheduleGoogleConfigError(ctx, s.rateLimitService, s.accountRepo, account.ID, "[Antigravity]")
+				return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBody}
+			}
+
 			return nil, s.writeMappedClaudeError(c, account, resp.StatusCode, resp.Header.Get("x-request-id"), respBody)
 		}
 	}
@@ -2376,6 +2394,24 @@ func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Co
 				Message:            upstreamMsg,
 				Detail:             upstreamDetail,
 			})
+			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: unwrappedForOps}
+		}
+
+		// 基础设施级 4xx（nginx HTML / 空 body）：上游链路异常，立即切号 + 临时封禁。
+		if resp.StatusCode >= 400 && resp.StatusCode < 500 && isInfraLevelUpstream4xxResponse(resp.Header, unwrappedForOps) {
+			log.Printf("%s status=%d infra_level_4xx failover=true account=%d ct=%q",
+				prefix, resp.StatusCode, account.ID, resp.Header.Get("Content-Type"))
+			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+				Platform:           account.Platform,
+				AccountID:          account.ID,
+				AccountName:        account.Name,
+				UpstreamStatusCode: resp.StatusCode,
+				UpstreamRequestID:  requestID,
+				Kind:               "failover_infra_4xx",
+				Message:            "upstream returned HTML/empty body (infra-level failure)",
+				Detail:             truncateString(string(unwrappedForOps), 512),
+			})
+			tempUnscheduleGoogleConfigError(ctx, s.rateLimitService, s.accountRepo, account.ID, prefix)
 			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: unwrappedForOps}
 		}
 		if contentType == "" {
