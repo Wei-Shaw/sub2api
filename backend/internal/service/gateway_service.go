@@ -6119,7 +6119,7 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 			if err != nil {
 				return nil, err
 			}
-			targetURL = strings.TrimRight(validatedURL, "/") + "/v1/messages?beta=true"
+			targetURL = strings.TrimRight(validatedURL, "/") + "/v1/messages"
 		} else {
 			targetURL = BuildClaudePlatformAWSMessagesURL(claudePlatformAWSRegion(account))
 		}
@@ -6128,7 +6128,7 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 		if err != nil {
 			return nil, err
 		}
-		targetURL = validatedURL + "/v1/messages?beta=true"
+		targetURL = validatedURL + "/v1/messages"
 	}
 
 	// 能力维度 body sanitize：透传路径上 anthropic-beta header 原样透传客户端值，
@@ -7303,7 +7303,7 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 			if err != nil {
 				return nil, err
 			}
-			targetURL = validatedURL + "/v1/messages?beta=true"
+			targetURL = validatedURL + "/v1/messages"
 		}
 	} else if account.IsCustomBaseURLEnabled() {
 		customURL := account.GetCustomBaseURL()
@@ -11057,7 +11057,7 @@ func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthrough(
 			if err != nil {
 				return nil, err
 			}
-			targetURL = strings.TrimRight(validatedURL, "/") + "/v1/messages/count_tokens?beta=true"
+			targetURL = strings.TrimRight(validatedURL, "/") + "/v1/messages/count_tokens"
 		} else {
 			targetURL = BuildClaudePlatformAWSCountTokensURL(claudePlatformAWSRegion(account))
 		}
@@ -11066,7 +11066,7 @@ func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthrough(
 		if err != nil {
 			return nil, err
 		}
-		targetURL = validatedURL + "/v1/messages/count_tokens?beta=true"
+		targetURL = validatedURL + "/v1/messages/count_tokens"
 	}
 
 	// 同 buildUpstreamRequestAnthropicAPIKeyPassthrough：能力维度 sanitize。
@@ -11132,7 +11132,7 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 			if err != nil {
 				return nil, err
 			}
-			targetURL = validatedURL + "/v1/messages/count_tokens?beta=true"
+			targetURL = validatedURL + "/v1/messages/count_tokens"
 		}
 	} else if account.IsCustomBaseURLEnabled() {
 		customURL := account.GetCustomBaseURL()
@@ -11296,13 +11296,13 @@ func (s *GatewayService) countTokensError(c *gin.Context, status int, errType, m
 }
 
 // buildCustomRelayURL 构建自定义中继转发 URL
-// 在 path 后附加 beta=true 和可选的 proxy 查询参数
+// 在 path 后附加可选的 proxy 查询参数
 func (s *GatewayService) buildCustomRelayURL(baseURL, path string, account *Account) string {
-	u := strings.TrimRight(baseURL, "/") + path + "?beta=true"
+	u := strings.TrimRight(baseURL, "/") + path
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL := account.Proxy.URL()
 		if proxyURL != "" {
-			u += "&proxy=" + url.QueryEscape(proxyURL)
+			u += "?proxy=" + url.QueryEscape(proxyURL)
 		}
 	}
 	return u
