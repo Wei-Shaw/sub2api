@@ -369,7 +369,12 @@ REDACTED
 REDACTED
 
 func openAIWSEventShouldParseUsage(eventType string) bool {
-	return eventType == "response.completed" || strings.TrimSpace(eventType) == "response.completed"
+	switch strings.TrimSpace(eventType) {
+	case "response.completed", "response.done", "response.failed", "response.incomplete", "response.cancelled", "response.canceled":
+		return true
+	default:
+		return false
+REDACTED
 REDACTED
 
 func parseOpenAIWSEventEnvelope(message []byte) (eventType string, responseID string, response gjson.Result) {
@@ -2484,6 +2489,7 @@ REDACTED
 		imageInputSize     string
 		payloadBytes       int
 REDACTED
+	ingressSessionOriginalModel := ""
 
 	applyPayloadMutation := func(current []byte, path string, value any) ([]byte, error) {
 		next, err := sjson.SetBytes(current, path, value)
@@ -2547,12 +2553,21 @@ REDACTED
 	REDACTED
 
 		originalModel := strings.TrimSpace(values[1].String())
+		modelMissing := originalModel == ""
 		if originalModel == "" {
-			return openAIWSClientPayload{REDACTED, NewOpenAIWSClientCloseError(
-				coderws.StatusPolicyViolation,
-				"model is required in response.create payload",
-				nil,
-			)
+			// 入站 WS 长会话里，部分客户端只在第一轮 response.create 上声明
+			// model，后续 turn 复用同一 session-level model。为避免因省略
+			// model 直接断开用户连接，这里回落到上一轮已通过校验的客户端模型，
+			// 并在下方写回上游 payload，保证账号模型映射/fast policy/图片权限
+			// 仍按同一模型执行。
+			originalModel = ingressSessionOriginalModel
+			if originalModel == "" {
+				return openAIWSClientPayload{REDACTED, NewOpenAIWSClientCloseError(
+					coderws.StatusPolicyViolation,
+					"model is required in response.create payload",
+					nil,
+				)
+		REDACTED
 	REDACTED
 		promptCacheKey := strings.TrimSpace(values[2].String())
 		previousResponseID := strings.TrimSpace(values[3].String())
@@ -2572,7 +2587,7 @@ REDACTED
 			normalized = next
 	REDACTED
 		upstreamModel := normalizeOpenAIModelForUpstream(account, account.GetMappedModel(originalModel))
-		if upstreamModel != originalModel {
+		if modelMissing || upstreamModel != originalModel {
 			next, setErr := applyPayloadMutation(normalized, "model", upstreamModel)
 			if setErr != nil {
 				return openAIWSClientPayload{REDACTED, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", setErr)
@@ -2602,11 +2617,10 @@ REDACTED
 		// single integration point for all WS ingress turns (first + follow-up
 		// frames flow through here).
 		//
-		// Model fallback: parseClientPayload above rejects any frame whose
-		// "model" field is missing (line ~2493-2500), so by the time we
-		// reach this point upstreamModel is always derived from a non-empty
-		// per-frame model. The capturedSessionModel fallback used in the
-		// passthrough adapter is therefore not needed in this path.
+		// Model fallback: first turn still requires model at the handler layer；
+		// follow-up response.create frames may omit it and then reuse
+		// ingressSessionOriginalModel. We always write a concrete upstream model
+		// before evaluating policy, so whitelist / filter behavior remains stable.
 		policyApplied, blocked, policyErr := s.applyOpenAIFastPolicyToWSResponseCreate(ctx, account, upstreamModel, normalized)
 		if policyErr != nil {
 			return openAIWSClientPayload{REDACTED, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", policyErr)
@@ -2635,6 +2649,7 @@ REDACTED
 			)
 	REDACTED
 		normalized = policyApplied
+		ingressSessionOriginalModel = originalModel
 
 		return openAIWSClientPayload{
 			payloadRaw:         normalized,
