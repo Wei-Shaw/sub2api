@@ -88,7 +88,7 @@ REDACTED
 
 func TestUserPlatformQuotaCache_IncrMissIsNoop(t *testing.T) {
 	c, _ := newMiniRedisCache(t)
-	if err := c.IncrUserPlatformQuotaUsageCache(context.Background(), 1, "openai", 0.5, time.Minute); err != nil {
+	if err := c.IncrUserPlatformQuotaUsageCache(context.Background(), 1, "openai", 0.5, time.Minute, false); err != nil {
 		t.Fatal(err)
 REDACTED
 	_, ok, _ := c.GetUserPlatformQuotaCache(context.Background(), 1, "openai")
@@ -105,10 +105,10 @@ func TestUserPlatformQuotaCache_IncrHitAccumulates(t *testing.T) {
 		Version:       1,
 		SchemaVersion: service.UserPlatformQuotaCacheSchemaV1,
 REDACTED, time.Minute)
-	if err := c.IncrUserPlatformQuotaUsageCache(ctx, 1, "openai", 0.5, time.Minute); err != nil {
+	if err := c.IncrUserPlatformQuotaUsageCache(ctx, 1, "openai", 0.5, time.Minute, false); err != nil {
 		t.Fatal(err)
 REDACTED
-	if err := c.IncrUserPlatformQuotaUsageCache(ctx, 1, "openai", 0.25, time.Minute); err != nil {
+	if err := c.IncrUserPlatformQuotaUsageCache(ctx, 1, "openai", 0.25, time.Minute, false); err != nil {
 		t.Fatal(err)
 REDACTED
 	got, _, _ := c.GetUserPlatformQuotaCache(ctx, 1, "openai")
