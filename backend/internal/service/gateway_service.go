@@ -7414,16 +7414,14 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 
 	// Non-official upstream safety: when forwarding through an API-key account
 	// with a custom base URL (aggregators like mixroute.ai that may route to
-	// Bedrock), strip ALL beta flags. Bedrock rejects unrecognized beta tokens
-	// and there's no reliable way to know which tokens a third-party aggregator
-	// supports. The body sanitizer below will strip body fields (like
-	// context_management) that require their matching beta token, ensuring
-	// body/header consistency. Features gated behind specific betas (context
-	// management, extended thinking) gracefully degrade rather than hard-fail.
+	// Bedrock), only keep beta tokens known to be safe. Bedrock rejects
+	// unrecognized beta tokens and aggregators may not support all features.
+	// The body sanitizer below will strip body fields (like context_management)
+	// that require their matching beta token, ensuring body/header consistency.
 	if account != nil && !account.IsOAuth() && !account.IsBedrock() &&
 		account.GetBaseURL() != "" && finalBetaShouldSet {
-		finalBetaHeader = ""
-		finalBetaShouldSet = false
+		finalBetaHeader = filterBetaToAllowlist(finalBetaHeader, claude.NonOfficialUpstreamSafeBetaPrefixes)
+		finalBetaShouldSet = finalBetaHeader != ""
 	}
 
 	// 能力维度 body sanitize：与最终 anthropic-beta header 对称
@@ -7911,6 +7909,33 @@ func stripBetaTokensWithSet(header string, drop map[string]struct{}) string {
 	}
 	if len(out) == len(parts) {
 		return header // no change, avoid allocation
+	}
+	return strings.Join(out, ",")
+}
+
+// filterBetaToAllowlist 对 anthropic-beta header 进行白名单过滤：仅保留前缀匹配
+// allowPrefixes 的 token。用于非官方上游（聚合商 / 自定义 base URL），这些后端
+// 可能将请求路由到 Bedrock/Vertex，而 Bedrock 会拒绝不认识的 beta token。
+func filterBetaToAllowlist(header string, allowPrefixes []string) string {
+	if header == "" || len(allowPrefixes) == 0 {
+		return ""
+	}
+	parts := strings.Split(header, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		for _, prefix := range allowPrefixes {
+			if strings.HasPrefix(p, prefix) {
+				out = append(out, p)
+				break
+			}
+		}
+	}
+	if len(out) == 0 {
+		return ""
 	}
 	return strings.Join(out, ",")
 }
@@ -11170,8 +11195,8 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 	// Non-official upstream safety: same rationale as buildUpstreamRequest.
 	if account != nil && !account.IsOAuth() && !account.IsBedrock() &&
 		account.GetBaseURL() != "" && finalBetaShouldSet {
-		finalBetaHeader = ""
-		finalBetaShouldSet = false
+		finalBetaHeader = filterBetaToAllowlist(finalBetaHeader, claude.NonOfficialUpstreamSafeBetaPrefixes)
+		finalBetaShouldSet = finalBetaHeader != ""
 	}
 
 	// 能力维度 body sanitize：与最终 anthropic-beta header 对称

@@ -75,6 +75,23 @@ const (
 // 这些 token 是客户端特有的，不应透传给上游 API。
 var DroppedBetas = []string{}
 
+// NonOfficialUpstreamSafeBetaPrefixes 是对非官方上游（聚合商/自定义 base URL 账号）
+// 转发时允许保留的 beta token 前缀白名单。不在此列表中的 beta token 会被剥离，
+// 防止 Bedrock 等后端返回 "invalid beta flag" 错误。
+//
+// 使用前缀匹配：新版本号的同族 beta（如 interleaved-thinking-2025-XX-XX）
+// 无需手动更新此列表即可自动放行。
+//
+// 维护原则：只有被主流 Bedrock/Vertex 后端证实支持的 beta 才应加入。
+var NonOfficialUpstreamSafeBetaPrefixes = []string{
+	"interleaved-thinking-",
+	"token-counting-",
+	"prompt-caching-scope-",
+	"extended-cache-ttl-",
+	"effort-",
+	"redact-thinking-",
+}
+
 // DefaultBetaHeader Claude Code 客户端默认的 anthropic-beta header
 const DefaultBetaHeader = BetaClaudeCode + "," + BetaOAuth + "," + BetaInterleavedThinking + "," + BetaFineGrainedToolStreaming
 
