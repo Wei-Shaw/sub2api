@@ -10,11 +10,12 @@ import {
 } from "@/api/admin/settings";
 
 /** 全 null 的 4 平台 map，用于断言归一化默认值 */
+const nullQuota = { five_hour: null, daily: null, weekly: null, monthly: null, five_hour_align_minutes: 0 }
 const allNullQuotas: DefaultPlatformQuotasMap = {
-  anthropic: { daily: null, weekly: null, monthly: null },
-  openai:    { daily: null, weekly: null, monthly: null },
-  gemini:    { daily: null, weekly: null, monthly: null },
-  antigravity: { daily: null, weekly: null, monthly: null },
+  anthropic: { ...nullQuota },
+  openai:    { ...nullQuota },
+  gemini:    { ...nullQuota },
+  antigravity: { ...nullQuota },
 }
 
 describe("admin settings auth source defaults helpers", () => {
@@ -82,18 +83,18 @@ describe("admin settings auth source defaults helpers", () => {
   it("reads nested platform_quotas from settings into auth source state", () => {
     const state = buildAuthSourceDefaultsState({
       auth_source_default_email_platform_quotas: {
-        anthropic: { daily: 10, weekly: 50, monthly: 200 },
-        openai:    { daily: null, weekly: null, monthly: null },
+        anthropic: { five_hour: 5, daily: 10, weekly: 50, monthly: 200, five_hour_align_minutes: 60 },
+        openai:    { ...nullQuota },
       } as DefaultPlatformQuotasMap,
     });
 
     // anthropic 填写的值应被保留
-    expect(state.email.platform_quotas.anthropic).toEqual({ daily: 10, weekly: 50, monthly: 200 });
+    expect(state.email.platform_quotas.anthropic).toEqual({ five_hour: 5, daily: 10, weekly: 50, monthly: 200, five_hour_align_minutes: 60 });
     // openai 全 null 应被保留
-    expect(state.email.platform_quotas.openai).toEqual({ daily: null, weekly: null, monthly: null });
+    expect(state.email.platform_quotas.openai).toEqual(nullQuota);
     // 未出现的平台（gemini/antigravity）归一化为 null
-    expect(state.email.platform_quotas.gemini).toEqual({ daily: null, weekly: null, monthly: null });
-    expect(state.email.platform_quotas.antigravity).toEqual({ daily: null, weekly: null, monthly: null });
+    expect(state.email.platform_quotas.gemini).toEqual(nullQuota);
+    expect(state.email.platform_quotas.antigravity).toEqual(nullQuota);
   });
 
   it("appends auth source defaults back onto update payload", () => {
@@ -207,8 +208,8 @@ describe("admin settings auth source defaults helpers", () => {
         grant_on_signup: false,
         grant_on_first_bind: false,
         platform_quotas: {
-          anthropic: { daily: 10, weekly: 50, monthly: 200 },
-          openai:    { daily: 0, weekly: null, monthly: null },
+          anthropic: { five_hour: 5, daily: 10, weekly: 50, monthly: 200, five_hour_align_minutes: 60 },
+          openai:    { five_hour: null, daily: 0, weekly: null, monthly: null, five_hour_align_minutes: 0 },
         },
       },
       linuxdo: { balance: 0, concurrency: 5, subscriptions: [], grant_on_signup: false, grant_on_first_bind: false, platform_quotas: {} },
@@ -220,77 +221,85 @@ describe("admin settings auth source defaults helpers", () => {
     });
 
     const emailQuotas = (payload as Record<string, unknown>)["auth_source_default_email_platform_quotas"] as DefaultPlatformQuotasMap;
-    expect(emailQuotas.anthropic).toEqual({ daily: 10, weekly: 50, monthly: 200 });
+    expect(emailQuotas.anthropic).toEqual({ five_hour: 5, daily: 10, weekly: 50, monthly: 200, five_hour_align_minutes: 60 });
     // 0 是合法值（不限额=0 与"不设"不同，保留）
     expect(emailQuotas.openai?.daily).toBe(0);
     // 缺失平台归一化为全 null
-    expect(emailQuotas.gemini).toEqual({ daily: null, weekly: null, monthly: null });
-    expect(emailQuotas.antigravity).toEqual({ daily: null, weekly: null, monthly: null });
+    expect(emailQuotas.gemini).toEqual(nullQuota);
+    expect(emailQuotas.antigravity).toEqual(nullQuota);
   });
 });
 
 describe("normalizePlatformQuotasMap", () => {
   it("填充缺失的平台为全 null 三档", () => {
-    const result = normalizePlatformQuotasMap({ anthropic: { daily: 5, weekly: null, monthly: null } });
-    expect(result.anthropic).toEqual({ daily: 5, weekly: null, monthly: null });
-    expect(result.openai).toEqual({ daily: null, weekly: null, monthly: null });
-    expect(result.gemini).toEqual({ daily: null, weekly: null, monthly: null });
-    expect(result.antigravity).toEqual({ daily: null, weekly: null, monthly: null });
+    const result = normalizePlatformQuotasMap({ anthropic: { five_hour: 2, daily: 5, weekly: null, monthly: null, five_hour_align_minutes: 60 } });
+    expect(result.anthropic).toEqual({ five_hour: 2, daily: 5, weekly: null, monthly: null, five_hour_align_minutes: 60 });
+    expect(result.openai).toEqual(nullQuota);
+    expect(result.gemini).toEqual(nullQuota);
+    expect(result.antigravity).toEqual(nullQuota);
   });
 
   it("无参数时返回全 4 平台全 null", () => {
     const result = normalizePlatformQuotasMap();
     expect(Object.keys(result)).toHaveLength(4);
     for (const v of Object.values(result)) {
-      expect(v).toEqual({ daily: null, weekly: null, monthly: null });
+      expect(v).toEqual(nullQuota);
     }
   });
 
   it("非 number 类型的值归一化为 null", () => {
     const result = normalizePlatformQuotasMap({
-      anthropic: { daily: "50" as unknown as number, weekly: undefined as unknown as number, monthly: null },
+      anthropic: { five_hour: "5" as unknown as number, daily: "50" as unknown as number, weekly: undefined as unknown as number, monthly: null, five_hour_align_minutes: "60" as unknown as number },
     });
-    expect(result.anthropic).toEqual({ daily: null, weekly: null, monthly: null });
+    expect(result.anthropic).toEqual(nullQuota);
   });
 });
 
 describe("sanitizePlatformQuotasMap", () => {
   it("保留合法的正数和零值", () => {
     const result = sanitizePlatformQuotasMap({
-      anthropic: { daily: 10.5, weekly: 0, monthly: null },
+      anthropic: { five_hour: 5, daily: 10.5, weekly: 0, monthly: null, five_hour_align_minutes: 60 },
     });
+    expect(result.anthropic?.five_hour).toBe(5);
     expect(result.anthropic?.daily).toBe(10.5);
     expect(result.anthropic?.weekly).toBe(0);
     expect(result.anthropic?.monthly).toBe(null);
+    expect(result.anthropic?.five_hour_align_minutes).toBe(60);
   });
 
   it("空字符串（v-model.number 空输入）清洗为 null", () => {
     const result = sanitizePlatformQuotasMap({
-      anthropic: { daily: "" as unknown as number, weekly: null, monthly: null },
+      anthropic: { five_hour: "" as unknown as number, daily: "" as unknown as number, weekly: null, monthly: null, five_hour_align_minutes: "" as unknown as number },
     });
+    expect(result.anthropic?.five_hour).toBe(null);
     expect(result.anthropic?.daily).toBe(null);
+    expect(result.anthropic?.five_hour_align_minutes).toBe(0);
   });
 
   it("负数清洗为 null", () => {
     const result = sanitizePlatformQuotasMap({
-      openai: { daily: -1, weekly: null, monthly: null },
+      openai: { five_hour: -1, daily: -1, weekly: null, monthly: null, five_hour_align_minutes: -1 },
     });
+    expect(result.openai?.five_hour).toBe(null);
     expect(result.openai?.daily).toBe(null);
+    expect(result.openai?.five_hour_align_minutes).toBe(0);
   });
 
   it("NaN/Infinity 清洗为 null", () => {
     const result = sanitizePlatformQuotasMap({
-      gemini: { daily: NaN, weekly: Infinity, monthly: null },
+      gemini: { five_hour: NaN, daily: NaN, weekly: Infinity, monthly: null, five_hour_align_minutes: Infinity },
     });
+    expect(result.gemini?.five_hour).toBe(null);
     expect(result.gemini?.daily).toBe(null);
     expect(result.gemini?.weekly).toBe(null);
+    expect(result.gemini?.five_hour_align_minutes).toBe(0);
   });
 
   it("缺失平台填充为全 null", () => {
     const result = sanitizePlatformQuotasMap({});
     expect(Object.keys(result)).toHaveLength(4);
     for (const v of Object.values(result)) {
-      expect(v).toEqual({ daily: null, weekly: null, monthly: null });
+      expect(v).toEqual(nullQuota);
     }
   });
 });

@@ -25,18 +25,26 @@ const (
 	FieldUserID = "user_id"
 	// FieldPlatform holds the string denoting the platform field in the database.
 	FieldPlatform = "platform"
+	// FieldFiveHourLimitUsd holds the string denoting the five_hour_limit_usd field in the database.
+	FieldFiveHourLimitUsd = "five_hour_limit_usd"
 	// FieldDailyLimitUsd holds the string denoting the daily_limit_usd field in the database.
 	FieldDailyLimitUsd = "daily_limit_usd"
 	// FieldWeeklyLimitUsd holds the string denoting the weekly_limit_usd field in the database.
 	FieldWeeklyLimitUsd = "weekly_limit_usd"
 	// FieldMonthlyLimitUsd holds the string denoting the monthly_limit_usd field in the database.
 	FieldMonthlyLimitUsd = "monthly_limit_usd"
+	// FieldFiveHourAlignMinutes holds the string denoting the five_hour_align_minutes field in the database.
+	FieldFiveHourAlignMinutes = "five_hour_align_minutes"
+	// FieldFiveHourUsageUsd holds the string denoting the five_hour_usage_usd field in the database.
+	FieldFiveHourUsageUsd = "five_hour_usage_usd"
 	// FieldDailyUsageUsd holds the string denoting the daily_usage_usd field in the database.
 	FieldDailyUsageUsd = "daily_usage_usd"
 	// FieldWeeklyUsageUsd holds the string denoting the weekly_usage_usd field in the database.
 	FieldWeeklyUsageUsd = "weekly_usage_usd"
 	// FieldMonthlyUsageUsd holds the string denoting the monthly_usage_usd field in the database.
 	FieldMonthlyUsageUsd = "monthly_usage_usd"
+	// FieldFiveHourWindowStart holds the string denoting the five_hour_window_start field in the database.
+	FieldFiveHourWindowStart = "five_hour_window_start"
 	// FieldDailyWindowStart holds the string denoting the daily_window_start field in the database.
 	FieldDailyWindowStart = "daily_window_start"
 	// FieldWeeklyWindowStart holds the string denoting the weekly_window_start field in the database.
@@ -64,12 +72,16 @@ var Columns = []string{
 	FieldDeletedAt,
 	FieldUserID,
 	FieldPlatform,
+	FieldFiveHourLimitUsd,
 	FieldDailyLimitUsd,
 	FieldWeeklyLimitUsd,
 	FieldMonthlyLimitUsd,
+	FieldFiveHourAlignMinutes,
+	FieldFiveHourUsageUsd,
 	FieldDailyUsageUsd,
 	FieldWeeklyUsageUsd,
 	FieldMonthlyUsageUsd,
+	FieldFiveHourWindowStart,
 	FieldDailyWindowStart,
 	FieldWeeklyWindowStart,
 	FieldMonthlyWindowStart,
@@ -101,6 +113,12 @@ var (
 	UpdateDefaultUpdatedAt func() time.Time
 	// PlatformValidator is a validator for the "platform" field. It is called by the builders before save.
 	PlatformValidator func(string) error
+	// DefaultFiveHourAlignMinutes holds the default value on creation for the "five_hour_align_minutes" field.
+	DefaultFiveHourAlignMinutes int
+	// FiveHourAlignMinutesValidator is a validator for the "five_hour_align_minutes" field. It is called by the builders before save.
+	FiveHourAlignMinutesValidator func(int) error
+	// DefaultFiveHourUsageUsd holds the default value on creation for the "five_hour_usage_usd" field.
+	DefaultFiveHourUsageUsd float64
 	// DefaultDailyUsageUsd holds the default value on creation for the "daily_usage_usd" field.
 	DefaultDailyUsageUsd float64
 	// DefaultWeeklyUsageUsd holds the default value on creation for the "weekly_usage_usd" field.
@@ -142,6 +160,11 @@ func ByPlatform(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPlatform, opts...).ToFunc()
 }
 
+// ByFiveHourLimitUsd orders the results by the five_hour_limit_usd field.
+func ByFiveHourLimitUsd(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFiveHourLimitUsd, opts...).ToFunc()
+}
+
 // ByDailyLimitUsd orders the results by the daily_limit_usd field.
 func ByDailyLimitUsd(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDailyLimitUsd, opts...).ToFunc()
@@ -157,6 +180,16 @@ func ByMonthlyLimitUsd(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldMonthlyLimitUsd, opts...).ToFunc()
 }
 
+// ByFiveHourAlignMinutes orders the results by the five_hour_align_minutes field.
+func ByFiveHourAlignMinutes(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFiveHourAlignMinutes, opts...).ToFunc()
+}
+
+// ByFiveHourUsageUsd orders the results by the five_hour_usage_usd field.
+func ByFiveHourUsageUsd(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFiveHourUsageUsd, opts...).ToFunc()
+}
+
 // ByDailyUsageUsd orders the results by the daily_usage_usd field.
 func ByDailyUsageUsd(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDailyUsageUsd, opts...).ToFunc()
@@ -170,6 +203,11 @@ func ByWeeklyUsageUsd(opts ...sql.OrderTermOption) OrderOption {
 // ByMonthlyUsageUsd orders the results by the monthly_usage_usd field.
 func ByMonthlyUsageUsd(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldMonthlyUsageUsd, opts...).ToFunc()
+}
+
+// ByFiveHourWindowStart orders the results by the five_hour_window_start field.
+func ByFiveHourWindowStart(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFiveHourWindowStart, opts...).ToFunc()
 }
 
 // ByDailyWindowStart orders the results by the daily_window_start field.

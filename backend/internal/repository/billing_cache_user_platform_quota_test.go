@@ -35,15 +35,20 @@ func TestUserPlatformQuotaCache_SetThenGet(t *testing.T) {
 	c, _ := newMiniRedisCache(t)
 	ctx := context.Background()
 	dailyLimit := 20.0
+	fiveHourLimit := 5.0
 	ts := time.Date(2024, 5, 1, 0, 0, 0, 0, time.UTC)
 	in := &service.UserPlatformQuotaCacheEntry{
-		DailyUsageUSD:    1.5,
-		WeeklyUsageUSD:   3.0,
-		MonthlyUsageUSD:  10.0,
-		Version:          7,
-		SchemaVersion:    service.UserPlatformQuotaCacheSchemaV1,
-		DailyLimitUSD:    &dailyLimit,
-		DailyWindowStart: &ts,
+		FiveHourUsageUSD:     0.5,
+		DailyUsageUSD:        1.5,
+		WeeklyUsageUSD:       3.0,
+		MonthlyUsageUSD:      10.0,
+		Version:              7,
+		SchemaVersion:        service.UserPlatformQuotaCacheSchemaV1,
+		FiveHourLimitUSD:     &fiveHourLimit,
+		DailyLimitUSD:        &dailyLimit,
+		FiveHourWindowStart:  &ts,
+		DailyWindowStart:     &ts,
+		FiveHourAlignMinutes: 60,
 	}
 	if err := c.SetUserPlatformQuotaCache(ctx, 1, "openai", in, time.Minute); err != nil {
 		t.Fatal(err)
@@ -52,17 +57,26 @@ func TestUserPlatformQuotaCache_SetThenGet(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("get: ok=%v err=%v", ok, err)
 	}
-	if got.DailyUsageUSD != 1.5 || got.WeeklyUsageUSD != 3.0 || got.MonthlyUsageUSD != 10.0 || got.Version != 7 {
+	if got.FiveHourUsageUSD != 0.5 || got.DailyUsageUSD != 1.5 || got.WeeklyUsageUSD != 3.0 || got.MonthlyUsageUSD != 10.0 || got.Version != 7 {
 		t.Errorf("got = %+v, want %+v", got, in)
 	}
 	if got.SchemaVersion != service.UserPlatformQuotaCacheSchemaV1 {
 		t.Errorf("SchemaVersion = %d, want %d", got.SchemaVersion, service.UserPlatformQuotaCacheSchemaV1)
 	}
+	if got.FiveHourLimitUSD == nil || *got.FiveHourLimitUSD != fiveHourLimit {
+		t.Errorf("FiveHourLimitUSD = %v, want %v", got.FiveHourLimitUSD, fiveHourLimit)
+	}
 	if got.DailyLimitUSD == nil || *got.DailyLimitUSD != dailyLimit {
 		t.Errorf("DailyLimitUSD = %v, want %v", got.DailyLimitUSD, dailyLimit)
 	}
+	if got.FiveHourWindowStart == nil || !got.FiveHourWindowStart.Equal(ts) {
+		t.Errorf("FiveHourWindowStart = %v, want %v", got.FiveHourWindowStart, ts)
+	}
 	if got.DailyWindowStart == nil || !got.DailyWindowStart.Equal(ts) {
 		t.Errorf("DailyWindowStart = %v, want %v", got.DailyWindowStart, ts)
+	}
+	if got.FiveHourAlignMinutes != 60 {
+		t.Errorf("FiveHourAlignMinutes = %d, want 60", got.FiveHourAlignMinutes)
 	}
 }
 
@@ -112,8 +126,8 @@ func TestUserPlatformQuotaCache_IncrHitAccumulates(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, _, _ := c.GetUserPlatformQuotaCache(ctx, 1, "openai")
-	if got.DailyUsageUSD != 0.75 || got.WeeklyUsageUSD != 0.75 || got.MonthlyUsageUSD != 0.75 {
-		t.Errorf("got %+v, want daily/weekly/monthly=0.75", got)
+	if got.FiveHourUsageUSD != 0.75 || got.DailyUsageUSD != 0.75 || got.WeeklyUsageUSD != 0.75 || got.MonthlyUsageUSD != 0.75 {
+		t.Errorf("got %+v, want five-hour/daily/weekly/monthly=0.75", got)
 	}
 	if got.Version != 3 {
 		t.Errorf("version = %d, want 3 (initial 1 + 2 incr)", got.Version)

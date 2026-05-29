@@ -341,9 +341,10 @@ func userPlatformQuotaCacheKey(userID int64, platform string) string {
 func (c *billingCache) GetUserPlatformQuotaCache(ctx context.Context, userID int64, platform string) (*service.UserPlatformQuotaCacheEntry, bool, error) {
 	key := userPlatformQuotaCacheKey(userID, platform)
 	fields := []string{
-		"daily_usage", "weekly_usage", "monthly_usage", "version", "schema_version",
-		"daily_limit", "weekly_limit", "monthly_limit",
-		"daily_window_start", "weekly_window_start", "monthly_window_start",
+		"five_hour_usage", "daily_usage", "weekly_usage", "monthly_usage", "version", "schema_version",
+		"five_hour_limit", "daily_limit", "weekly_limit", "monthly_limit",
+		"five_hour_window_start", "daily_window_start", "weekly_window_start", "monthly_window_start",
+		"five_hour_align_minutes",
 	}
 	vals, err := c.rdb.HMGet(ctx, key, fields...).Result()
 	if err != nil {
@@ -405,17 +406,21 @@ func (c *billingCache) GetUserPlatformQuotaCache(ctx context.Context, userID int
 		return n
 	}
 	return &service.UserPlatformQuotaCacheEntry{
-		DailyUsageUSD:      parseFloat(vals[0]),
-		WeeklyUsageUSD:     parseFloat(vals[1]),
-		MonthlyUsageUSD:    parseFloat(vals[2]),
-		Version:            parseInt64(vals[3]),
-		SchemaVersion:      parseInt64(vals[4]),
-		DailyLimitUSD:      parseFloatPtr(vals[5]),
-		WeeklyLimitUSD:     parseFloatPtr(vals[6]),
-		MonthlyLimitUSD:    parseFloatPtr(vals[7]),
-		DailyWindowStart:   parseTimePtr(vals[8]),
-		WeeklyWindowStart:  parseTimePtr(vals[9]),
-		MonthlyWindowStart: parseTimePtr(vals[10]),
+		FiveHourUsageUSD:     parseFloat(vals[0]),
+		DailyUsageUSD:        parseFloat(vals[1]),
+		WeeklyUsageUSD:       parseFloat(vals[2]),
+		MonthlyUsageUSD:      parseFloat(vals[3]),
+		Version:              parseInt64(vals[4]),
+		SchemaVersion:        parseInt64(vals[5]),
+		FiveHourLimitUSD:     parseFloatPtr(vals[6]),
+		DailyLimitUSD:        parseFloatPtr(vals[7]),
+		WeeklyLimitUSD:       parseFloatPtr(vals[8]),
+		MonthlyLimitUSD:      parseFloatPtr(vals[9]),
+		FiveHourWindowStart:  parseTimePtr(vals[10]),
+		DailyWindowStart:     parseTimePtr(vals[11]),
+		WeeklyWindowStart:    parseTimePtr(vals[12]),
+		MonthlyWindowStart:   parseTimePtr(vals[13]),
+		FiveHourAlignMinutes: int(parseInt64(vals[14])),
 	}, true, nil
 }
 
@@ -442,17 +447,21 @@ func (c *billingCache) SetUserPlatformQuotaCache(ctx context.Context, userID int
 	}
 
 	pipe.HSet(ctx, key,
+		"five_hour_usage", entry.FiveHourUsageUSD,
 		"daily_usage", entry.DailyUsageUSD,
 		"weekly_usage", entry.WeeklyUsageUSD,
 		"monthly_usage", entry.MonthlyUsageUSD,
 		"version", entry.Version,
 		"schema_version", entry.SchemaVersion,
+		"five_hour_limit", fmtFloatPtr(entry.FiveHourLimitUSD),
 		"daily_limit", fmtFloatPtr(entry.DailyLimitUSD),
 		"weekly_limit", fmtFloatPtr(entry.WeeklyLimitUSD),
 		"monthly_limit", fmtFloatPtr(entry.MonthlyLimitUSD),
+		"five_hour_window_start", fmtTimePtr(entry.FiveHourWindowStart),
 		"daily_window_start", fmtTimePtr(entry.DailyWindowStart),
 		"weekly_window_start", fmtTimePtr(entry.WeeklyWindowStart),
 		"monthly_window_start", fmtTimePtr(entry.MonthlyWindowStart),
+		"five_hour_align_minutes", entry.FiveHourAlignMinutes,
 	)
 	pipe.Expire(ctx, key, ttl)
 	_, err := pipe.Exec(ctx)
@@ -479,6 +488,7 @@ local ver = redis.call("HGET", KEYS[1], "schema_version")
 if ver == false or tonumber(ver) ~= tonumber(ARGV[3]) then
     return 0
 end
+redis.call("HINCRBYFLOAT", KEYS[1], "five_hour_usage", ARGV[1])
 redis.call("HINCRBYFLOAT", KEYS[1], "daily_usage", ARGV[1])
 redis.call("HINCRBYFLOAT", KEYS[1], "weekly_usage", ARGV[1])
 redis.call("HINCRBYFLOAT", KEYS[1], "monthly_usage", ARGV[1])

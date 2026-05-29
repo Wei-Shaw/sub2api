@@ -15,6 +15,7 @@ import type { PlatformQuotaItem } from '@/api/admin/users'
 
 function item(over: Partial<PlatformQuotaItem> & { platform: PlatformQuotaItem['platform'] }): PlatformQuotaItem {
   return {
+    five_hour_limit_usd: null, five_hour_usage_usd: 0, five_hour_align_minutes: 0,
     daily_limit_usd: null, weekly_limit_usd: null, monthly_limit_usd: null,
     daily_usage_usd: 0, weekly_usage_usd: 0, monthly_usage_usd: 0,
     ...over,
@@ -44,7 +45,8 @@ describe('UserPlatformQuotaCell', () => {
     const w = mount(UserPlatformQuotaCell, {
       props: {
         quotas: [
-          item({ platform: 'anthropic', daily_limit_usd: 100, daily_usage_usd: 30,
+          item({ platform: 'anthropic', five_hour_limit_usd: 5, five_hour_usage_usd: 1.5,
+                 daily_limit_usd: 100, daily_usage_usd: 30,
                  weekly_limit_usd: null, weekly_usage_usd: 0,
                  monthly_limit_usd: 2000, monthly_usage_usd: 90.5 }),
         ],
@@ -52,6 +54,7 @@ describe('UserPlatformQuotaCell', () => {
     })
     const html = w.html()
     expect(html).toContain('anthropic')
+    expect(html).toContain('1.5/5')
     expect(html).toContain('30/100')
     expect(html).toContain('0/—')
     expect(html).toContain('90.5/2000')
@@ -62,7 +65,7 @@ describe('UserPlatformQuotaCell', () => {
       props: {
         quotas: [
           item({ platform: 'gemini', monthly_limit_usd: 50 }),
-          item({ platform: 'anthropic', daily_limit_usd: 10 }),
+          item({ platform: 'anthropic', five_hour_limit_usd: 10 }),
           item({ platform: 'openai', daily_usage_usd: 9 }),
         ],
       },

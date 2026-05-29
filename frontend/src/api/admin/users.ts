@@ -301,19 +301,24 @@ export async function bindUserAuthIdentity(
  * Platform quota types
  */
 export type PlatformQuotaPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity'
-export type PlatformQuotaWindow = 'daily' | 'weekly' | 'monthly'
+export type PlatformQuotaWindow = 'five_hour' | 'daily' | 'weekly' | 'monthly'
 
 export interface PlatformQuotaItem {
   platform: PlatformQuotaPlatform
+  five_hour_limit_usd: number | null
   daily_limit_usd: number | null
   weekly_limit_usd: number | null
   monthly_limit_usd: number | null
+  five_hour_usage_usd: number
   daily_usage_usd: number
   weekly_usage_usd: number
   monthly_usage_usd: number
+  five_hour_align_minutes?: number
+  five_hour_window_start?: string | null
   daily_window_start?: string | null
   weekly_window_start?: string | null
   monthly_window_start?: string | null
+  five_hour_window_resets_at?: string | null
   daily_window_resets_at?: string | null
   weekly_window_resets_at?: string | null
   monthly_window_resets_at?: string | null
@@ -321,9 +326,11 @@ export interface PlatformQuotaItem {
 
 export interface PlatformQuotaUpdateItem {
   platform: PlatformQuotaPlatform
+  five_hour_limit_usd: number | null
   daily_limit_usd: number | null
   weekly_limit_usd: number | null
   monthly_limit_usd: number | null
+  five_hour_align_minutes: number
 }
 
 export interface PlatformQuotasResponse {

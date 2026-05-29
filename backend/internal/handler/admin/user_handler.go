@@ -590,10 +590,12 @@ type UpdateUserPlatformQuotasRequest struct {
 
 // PlatformQuotaInput 单平台限额输入；limit 字段为 nil 表示不限制。
 type PlatformQuotaInput struct {
-	Platform        string   `json:"platform" binding:"required"`
-	DailyLimitUSD   *float64 `json:"daily_limit_usd"`
-	WeeklyLimitUSD  *float64 `json:"weekly_limit_usd"`
-	MonthlyLimitUSD *float64 `json:"monthly_limit_usd"`
+	Platform             string   `json:"platform" binding:"required"`
+	FiveHourLimitUSD     *float64 `json:"five_hour_limit_usd"`
+	DailyLimitUSD        *float64 `json:"daily_limit_usd"`
+	WeeklyLimitUSD       *float64 `json:"weekly_limit_usd"`
+	MonthlyLimitUSD      *float64 `json:"monthly_limit_usd"`
+	FiveHourAlignMinutes *int     `json:"five_hour_align_minutes"`
 }
 
 // platform 合法性由 service.IsAllowedQuotaPlatform / service.AllowedQuotaPlatforms 统一判断（单一源）。
@@ -643,6 +645,7 @@ func (h *UserHandler) UpdateUserPlatformQuotas(c *gin.Context) {
 			name string
 			val  *float64
 		}{
+			{"five_hour_limit_usd", q.FiveHourLimitUSD},
 			{"daily_limit_usd", q.DailyLimitUSD},
 			{"weekly_limit_usd", q.WeeklyLimitUSD},
 			{"monthly_limit_usd", q.MonthlyLimitUSD},
@@ -660,17 +663,10 @@ func (h *UserHandler) UpdateUserPlatformQuotas(c *gin.Context) {
 				return
 			}
 		}
-	}
-
-	records := make([]service.UserPlatformQuotaRecord, 0, len(req.Quotas))
-	for _, q := range req.Quotas {
-		records = append(records, service.UserPlatformQuotaRecord{
-			UserID:          userID,
-			Platform:        q.Platform,
-			DailyLimitUSD:   q.DailyLimitUSD,
-			WeeklyLimitUSD:  q.WeeklyLimitUSD,
-			MonthlyLimitUSD: q.MonthlyLimitUSD,
-		})
+		if q.FiveHourAlignMinutes != nil && (*q.FiveHourAlignMinutes < 0 || *q.FiveHourAlignMinutes >= 24*60) {
+			response.BadRequest(c, "five_hour_align_minutes must be between 0 and 1439")
+			return
+		}
 	}
 
 	ctx := c.Request.Context()
@@ -685,15 +681,36 @@ func (h *UserHandler) UpdateUserPlatformQuotas(c *gin.Context) {
 	if beforeErr != nil {
 		slog.Warn("quota audit before snapshot failed", "user_id", userID, "err", beforeErr)
 	}
-	if err := h.userPlatformQuotaRepo.UpsertForUser(ctx, userID, records); err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
 
 	beforeByPlatform := make(map[string]service.UserPlatformQuotaRecord, len(beforeRecords))
 	for _, r := range beforeRecords {
 		beforeByPlatform[r.Platform] = r
 	}
+
+	records := make([]service.UserPlatformQuotaRecord, 0, len(req.Quotas))
+	for _, q := range req.Quotas {
+		alignMinutes := 0
+		if q.FiveHourAlignMinutes != nil {
+			alignMinutes = *q.FiveHourAlignMinutes
+		} else if prev, ok := beforeByPlatform[q.Platform]; ok {
+			alignMinutes = prev.FiveHourAlignMinutes
+		}
+		records = append(records, service.UserPlatformQuotaRecord{
+			UserID:               userID,
+			Platform:             q.Platform,
+			FiveHourLimitUSD:     q.FiveHourLimitUSD,
+			DailyLimitUSD:        q.DailyLimitUSD,
+			WeeklyLimitUSD:       q.WeeklyLimitUSD,
+			MonthlyLimitUSD:      q.MonthlyLimitUSD,
+			FiveHourAlignMinutes: alignMinutes,
+		})
+	}
+
+	if err := h.userPlatformQuotaRepo.UpsertForUser(ctx, userID, records); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
 	afterPlatforms := make(map[string]struct{}, len(records))
 	for _, r := range records {
 		afterPlatforms[r.Platform] = struct{}{}
@@ -701,15 +718,19 @@ func (h *UserHandler) UpdateUserPlatformQuotas(c *gin.Context) {
 	changes := make([]map[string]any, 0, len(records))
 	for _, r := range records {
 		entry := map[string]any{
-			"platform":          r.Platform,
-			"daily_limit_usd":   r.DailyLimitUSD,
-			"weekly_limit_usd":  r.WeeklyLimitUSD,
-			"monthly_limit_usd": r.MonthlyLimitUSD,
+			"platform":                r.Platform,
+			"five_hour_limit_usd":     r.FiveHourLimitUSD,
+			"daily_limit_usd":         r.DailyLimitUSD,
+			"weekly_limit_usd":        r.WeeklyLimitUSD,
+			"monthly_limit_usd":       r.MonthlyLimitUSD,
+			"five_hour_align_minutes": r.FiveHourAlignMinutes,
 		}
 		if prev, ok := beforeByPlatform[r.Platform]; ok {
+			entry["before_five_hour_limit_usd"] = prev.FiveHourLimitUSD
 			entry["before_daily_limit_usd"] = prev.DailyLimitUSD
 			entry["before_weekly_limit_usd"] = prev.WeeklyLimitUSD
 			entry["before_monthly_limit_usd"] = prev.MonthlyLimitUSD
+			entry["before_five_hour_align_minutes"] = prev.FiveHourAlignMinutes
 		}
 		changes = append(changes, entry)
 	}
@@ -720,11 +741,13 @@ func (h *UserHandler) UpdateUserPlatformQuotas(c *gin.Context) {
 			continue
 		}
 		changes = append(changes, map[string]any{
-			"platform":                 prev.Platform,
-			"removed":                  true,
-			"before_daily_limit_usd":   prev.DailyLimitUSD,
-			"before_weekly_limit_usd":  prev.WeeklyLimitUSD,
-			"before_monthly_limit_usd": prev.MonthlyLimitUSD,
+			"platform":                       prev.Platform,
+			"removed":                        true,
+			"before_five_hour_limit_usd":     prev.FiveHourLimitUSD,
+			"before_daily_limit_usd":         prev.DailyLimitUSD,
+			"before_weekly_limit_usd":        prev.WeeklyLimitUSD,
+			"before_monthly_limit_usd":       prev.MonthlyLimitUSD,
+			"before_five_hour_align_minutes": prev.FiveHourAlignMinutes,
 		})
 	}
 	// before_snapshot_available 让审计消费方能识别 changes 中是否带 before_* 字段；
@@ -769,9 +792,10 @@ type ResetUserPlatformQuotaWindowRequest struct {
 }
 
 var allowedWindowsForQuotaReset = map[string]struct{}{
-	"daily":   {},
-	"weekly":  {},
-	"monthly": {},
+	"five_hour": {},
+	"daily":     {},
+	"weekly":    {},
+	"monthly":   {},
 }
 
 // ResetUserPlatformQuotaWindow POST /admin/users/:id/platform-quotas/reset

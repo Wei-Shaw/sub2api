@@ -636,6 +636,7 @@ export default {
     platformOther: 'Other',
     platformQuota: {
       title: 'Quota Usage',
+      five_hour: '5-hour',
       daily: 'Daily',
       weekly: 'Weekly',
       monthly: 'Monthly (30-day rolling)',
@@ -1999,9 +2000,11 @@ export default {
       platformQuota: {
         menuItem: 'Platform Quotas',
         title: 'Platform Quotas',
-        subtitle: 'Configure daily / weekly / monthly USD usage limits for each upstream platform for user {email}',
+        subtitle: 'Configure 5-hour / daily / weekly / monthly USD usage limits for each upstream platform for user {email}',
         columns: {
           platform: 'Platform',
+          fiveHour: '5-hour (USD)',
+          fiveHourAlign: '5-hour align (min)',
           daily: 'Daily (USD)',
           weekly: 'Weekly (USD)',
           monthly: 'Monthly (USD, 30-day rolling)',
@@ -2012,7 +2015,7 @@ export default {
         saving: 'Saving...',
         cancel: 'Cancel',
         clearAll: 'Clear All (remove all limits)',
-        clearAllConfirm: 'Clear daily / weekly / monthly limits for ALL platforms? All platforms will become "unlimited" with no local undo — you must manually re-enter values before saving.',
+        clearAllConfirm: 'Clear 5-hour / daily / weekly / monthly limits for ALL platforms? All platforms will become "unlimited" with no local undo — you must manually re-enter values before saving.',
         reset: {
           button: 'Reset window',
           confirm: 'Reset the {window} usage for {platform} for this user? This is effective immediately.',
@@ -2022,7 +2025,9 @@ export default {
         updateSuccess: 'Platform quotas updated',
         updateFailed: 'Save failed',
         loadFailed: 'Load failed',
-        hint: 'Empty = no limit for that window.',
+        hint: 'Empty = no limit for that window. The 5-hour alignment is minutes after local midnight, e.g. 60 means aligned at 01:00 and every 5 hours after.',
+        alignPlaceholder: '0-1439',
+        windowFiveHour: '5-hour',
         windowDaily: 'daily',
         windowWeekly: 'weekly',
         windowMonthly: 'monthly',
@@ -5568,14 +5573,17 @@ export default {
         subscriptionValidityDays: 'Validity (days)',
         defaultPlatformQuotas: 'Default Platform Quotas (on signup)',
         defaultPlatformQuotasHint: 'Automatically assigned to new users on signup; existing users are not affected. Leave blank = unlimited.',
-        platformQuotaNotice: 'Monthly quota uses a 30-day rolling window, not a calendar month.',
+        platformQuotaNotice: '5-hour quota uses aligned windows; monthly quota uses a 30-day rolling window, not a calendar month.',
       },
       platformQuota: {
         platform:    'Platform',
+        fiveHour:   '5-hour (USD)',
+        fiveHourAlign: '5-hour align (min)',
         daily:       'Daily (USD)',
         weekly:      'Weekly (USD)',
         monthly:     'Monthly (USD, 30d rolling)',
         placeholder: 'Unlimited',
+        alignPlaceholder: '0-1439',
       },
       claudeCode: {
         title: 'Claude Code Settings',
@@ -6301,7 +6309,7 @@ export default {
         defaultSubscriptionsHint: 'Applies only to this auth source. Leave empty to skip source-specific subscriptions.',
         noSourceSubscriptions: 'No source-specific default subscriptions configured.',
         platformQuotasOverride: 'Platform Quota Overrides',
-        platformQuotasOverrideHint: 'Blank fields inherit the system default. Set to 0 to fully block that window for this auth source.',
+        platformQuotasOverrideHint: 'Blank fields inherit the system default. Set to 0 to fully block that window for this auth source. 5-hour alignment range is 0-1439.',
       },
       paymentVisibleMethods: {
         methodLabel: '{title} visible method',

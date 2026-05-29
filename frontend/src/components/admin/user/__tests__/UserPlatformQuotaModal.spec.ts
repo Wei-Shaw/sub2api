@@ -32,7 +32,7 @@ vi.mock('vue-i18n', async () => {
     useI18n: () => ({
       t: (key: string, params?: Record<string, string>) => {
         if (params) {
-          return key.replace(/\{(\w+)\}/g, (_, k) => params[k] ?? '')
+          return `${key}:${JSON.stringify(params)}`
         }
         return key
       },
@@ -91,23 +91,25 @@ describe('UserPlatformQuotaModal', () => {
   it('已有数据正确填充 limit input', async () => {
     apiMocks.getPlatformQuotas.mockResolvedValueOnce({
       platform_quotas: [
-        { platform: 'anthropic', daily_limit_usd: 10, weekly_limit_usd: null, monthly_limit_usd: null,
-          daily_usage_usd: 3.2, weekly_usage_usd: 0, monthly_usage_usd: 0 },
+        { platform: 'anthropic', five_hour_limit_usd: 5, daily_limit_usd: 10, weekly_limit_usd: null, monthly_limit_usd: null,
+          five_hour_align_minutes: 60, five_hour_usage_usd: 1.2, daily_usage_usd: 3.2, weekly_usage_usd: 0, monthly_usage_usd: 0 },
       ],
     })
     const w = await mountAndOpen()
     const inputs = w.findAll('input[type=number]')
-    // 4 platforms × 3 windows = 12 inputs
-    expect(inputs.length).toBe(12)
-    // 第一个 input 是 anthropic.daily = 10
-    expect((inputs[0].element as HTMLInputElement).value).toBe('10')
+    // 4 platforms × (5h / daily / weekly / monthly / align) = 20 inputs
+    expect(inputs.length).toBe(20)
+    // 第一个 input 是 anthropic.five_hour = 5，第二个是对齐分钟 = 60，第三个是 daily = 10
+    expect((inputs[0].element as HTMLInputElement).value).toBe('5')
+    expect((inputs[1].element as HTMLInputElement).value).toBe('60')
+    expect((inputs[2].element as HTMLInputElement).value).toBe('10')
   })
 
   it('保存提交完整 4 platform payload', async () => {
     apiMocks.getPlatformQuotas.mockResolvedValueOnce({
       platform_quotas: [
-        { platform: 'openai', daily_limit_usd: null, weekly_limit_usd: 20, monthly_limit_usd: null,
-          daily_usage_usd: 0, weekly_usage_usd: 0, monthly_usage_usd: 0 },
+        { platform: 'openai', five_hour_limit_usd: 5, daily_limit_usd: null, weekly_limit_usd: 20, monthly_limit_usd: null,
+          five_hour_align_minutes: 60, five_hour_usage_usd: 0, daily_usage_usd: 0, weekly_usage_usd: 0, monthly_usage_usd: 0 },
       ],
     })
     const w = await mountAndOpen()
@@ -122,6 +124,8 @@ describe('UserPlatformQuotaModal', () => {
     expect(uid).toBe(99)
     expect(payload).toHaveLength(4) // 4 platforms always submitted
     const openai = payload.find((p: any) => p.platform === 'openai')
+    expect(openai.five_hour_limit_usd).toBe(5)
+    expect(openai.five_hour_align_minutes).toBe(60)
     expect(openai.weekly_limit_usd).toBe(20)
   })
 
@@ -129,8 +133,8 @@ describe('UserPlatformQuotaModal', () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     apiMocks.getPlatformQuotas.mockResolvedValueOnce({
       platform_quotas: [
-        { platform: 'anthropic', daily_limit_usd: 10, weekly_limit_usd: 50, monthly_limit_usd: 100,
-          daily_usage_usd: 0, weekly_usage_usd: 0, monthly_usage_usd: 0 },
+        { platform: 'anthropic', five_hour_limit_usd: 5, daily_limit_usd: 10, weekly_limit_usd: 50, monthly_limit_usd: 100,
+          five_hour_align_minutes: 60, five_hour_usage_usd: 0, daily_usage_usd: 0, weekly_usage_usd: 0, monthly_usage_usd: 0 },
       ],
     })
     const w = await mountAndOpen()
@@ -141,8 +145,13 @@ describe('UserPlatformQuotaModal', () => {
     await flushPromises()
     expect(confirmSpy).toHaveBeenCalledTimes(1)
     const inputs = w.findAll('input[type=number]')
-    for (const inp of inputs) {
-      expect((inp.element as HTMLInputElement).value).toBe('')
+    for (const [index, inp] of inputs.entries()) {
+      const value = (inp.element as HTMLInputElement).value
+      if (index % 5 === 1) {
+        expect(value).not.toBe('')
+      } else {
+        expect(value).toBe('')
+      }
     }
     confirmSpy.mockRestore()
   })
@@ -160,9 +169,9 @@ describe('UserPlatformQuotaModal', () => {
     await clearBtn!.trigger('click')
     await flushPromises()
     expect(confirmSpy).toHaveBeenCalledTimes(1)
-    // anthropic daily 应保持 10（未被清空）
+    // anthropic daily 应保持 10（未被清空）。每行顺序：5h / align / daily / weekly / monthly。
     const inputs = w.findAll('input[type=number]')
-    const dailyVal = (inputs[0].element as HTMLInputElement).value
+    const dailyVal = (inputs[2].element as HTMLInputElement).value
     expect(dailyVal).toBe('10')
     confirmSpy.mockRestore()
   })
@@ -182,9 +191,10 @@ describe('UserPlatformQuotaModal', () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     const w = await mountAndOpen()
     const resetBtns = w.findAll('button').filter((b) => b.text() === '↻')
-    await resetBtns[0].trigger('click') // 第一个是 anthropic.daily
+    await resetBtns[0].trigger('click') // 第一个是 anthropic.five_hour
     await flushPromises()
-    expect(apiMocks.resetPlatformQuotaWindow).toHaveBeenCalledWith(99, 'anthropic', 'daily')
+    expect(apiMocks.resetPlatformQuotaWindow).toHaveBeenCalledWith(99, 'anthropic', 'five_hour')
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('admin.users.platformQuota.windowFiveHour'))
     confirmSpy.mockRestore()
   })
 

@@ -635,6 +635,7 @@ export default {
     platformOther: '其他',
     platformQuota: {
       title: '配额用量',
+      five_hour: '5小时',
       daily: '日',
       weekly: '周',
       monthly: '月（近30天）',
@@ -2052,9 +2053,11 @@ export default {
       platformQuota: {
         menuItem: '平台限额',
         title: '平台限额',
-        subtitle: '为用户 {email} 配置各上游平台的日 / 周 / 月用量上限',
+        subtitle: '为用户 {email} 配置各上游平台的 5 小时 / 日 / 周 / 月用量上限',
         columns: {
           platform: '平台',
+          fiveHour: '5小时 (USD)',
+          fiveHourAlign: '5小时对齐(分钟)',
           daily: '日 (USD)',
           weekly: '周 (USD)',
           monthly: '月 (USD, 30天滚动)',
@@ -2065,7 +2068,7 @@ export default {
         saving: '保存中...',
         cancel: '取消',
         clearAll: '全部清空（取消所有限额）',
-        clearAllConfirm: '确认清空全部平台的日 / 周 / 月限额？所有平台将变为"无限额"，本地无法撤销，需要在保存前手动重填。',
+        clearAllConfirm: '确认清空全部平台的 5 小时 / 日 / 周 / 月限额？所有平台将变为"无限额"，本地无法撤销，需要在保存前手动重填。',
         reset: {
           button: '重置该窗口',
           confirm: '确认重置该用户 {platform} 平台的 {window} 用量？此操作立即生效。',
@@ -2075,7 +2078,9 @@ export default {
         updateSuccess: '平台限额已更新',
         updateFailed: '保存失败',
         loadFailed: '加载失败',
-        hint: '留空 = 不限制该窗口。',
+        hint: '留空 = 不限制该窗口；5小时对齐分钟为当天 0 点后的分钟数，例如 60 表示 01:00 起每 5 小时对齐。',
+        alignPlaceholder: '0-1439',
+        windowFiveHour: '5小时',
         windowDaily: '日',
         windowWeekly: '周',
         windowMonthly: '月',
@@ -5724,14 +5729,17 @@ export default {
         subscriptionValidityDays: '有效期（天）',
         defaultPlatformQuotas: '默认平台限额（注册时分配）',
         defaultPlatformQuotasHint: '新用户注册时自动写入平台限额记录；已有用户不受影响。留空 = 该平台该窗口不限制。',
-        platformQuotaNotice: '月限额为 30 天滚动窗口，非自然月',
+        platformQuotaNotice: '5 小时限额按对齐分钟分窗；月限额为 30 天滚动窗口，非自然月',
       },
       platformQuota: {
         platform:    '平台',
+        fiveHour: '5小时限额 (USD)',
+        fiveHourAlign: '5小时对齐(分钟)',
         daily:       '日限额 (USD)',
         weekly:      '周限额 (USD)',
         monthly:     '月限额 (USD, 30天滚动)',
         placeholder: '不限',
+        alignPlaceholder: '0-1439',
       },
       claudeCode: {
         title: 'Claude Code 设置',
@@ -6456,7 +6464,7 @@ export default {
         defaultSubscriptionsHint: '仅对当前认证来源生效，未配置时不追加来源专属订阅。',
         noSourceSubscriptions: '当前来源未配置专属默认订阅。',
         platformQuotasOverride: '平台限额覆盖',
-        platformQuotasOverrideHint: '留空的字段继承「系统默认平台限额」；填 0 表示禁止该窗口使用。',
+        platformQuotasOverrideHint: '留空的字段继承「系统默认平台限额」；填 0 表示禁止该窗口使用。5 小时对齐分钟范围 0-1439。',
       },
       paymentVisibleMethods: {
         methodLabel: '{title} 可见方式',

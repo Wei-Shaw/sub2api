@@ -33,9 +33,10 @@ var (
 	// 选用 429 而非 403：限额耗尽属于"暂时性资源用尽，重试可恢复"的场景（RFC 6585），
 	// 大量 SDK（如 OpenAI 兼容客户端）只对 429 触发自动退避并读取 Retry-After，
 	// 用 403 会被视为"权限不足，重试无意义"导致客户端直接报错且不退避。
-	ErrUserPlatformDailyQuotaExhausted   = infraerrors.TooManyRequests("USER_PLATFORM_DAILY_QUOTA_EXHAUSTED", "Daily usage quota exhausted for this platform.")
-	ErrUserPlatformWeeklyQuotaExhausted  = infraerrors.TooManyRequests("USER_PLATFORM_WEEKLY_QUOTA_EXHAUSTED", "Weekly usage quota exhausted for this platform.")
-	ErrUserPlatformMonthlyQuotaExhausted = infraerrors.TooManyRequests("USER_PLATFORM_MONTHLY_QUOTA_EXHAUSTED", "Monthly usage quota exhausted for this platform.")
+	ErrUserPlatformDailyQuotaExhausted    = infraerrors.TooManyRequests("USER_PLATFORM_DAILY_QUOTA_EXHAUSTED", "Daily usage quota exhausted for this platform.")
+	ErrUserPlatformWeeklyQuotaExhausted   = infraerrors.TooManyRequests("USER_PLATFORM_WEEKLY_QUOTA_EXHAUSTED", "Weekly usage quota exhausted for this platform.")
+	ErrUserPlatformMonthlyQuotaExhausted  = infraerrors.TooManyRequests("USER_PLATFORM_MONTHLY_QUOTA_EXHAUSTED", "Monthly usage quota exhausted for this platform.")
+	ErrUserPlatformFiveHourQuotaExhausted = infraerrors.TooManyRequests("USER_PLATFORM_FIVE_HOUR_QUOTA_EXHAUSTED", "5-hour usage quota exhausted for this platform.")
 )
 
 // subscriptionCacheData 订阅缓存数据结构（内部使用）
@@ -1060,6 +1061,7 @@ func (s *BillingCacheService) checkUserPlatformQuotaEligibility(
 	// --- cache HIT with current schema → 直接用 entry，不查 DB ---
 	if cacheErr == nil && ok && entry != nil && entry.SchemaVersion == UserPlatformQuotaCacheSchemaV1 {
 		now := time.Now()
+		fiveHourUsage := entry.FiveHourUsageUSD
 		dailyUsage := entry.DailyUsageUSD
 		weeklyUsage := entry.WeeklyUsageUSD
 		monthlyUsage := entry.MonthlyUsageUSD
@@ -1068,9 +1070,16 @@ func (s *BillingCacheService) checkUserPlatformQuotaEligibility(
 		// 本次请求用本地清零值继续判断;DB 层 IncrementUsageWithReset 已有窗口自愈能力,
 		// 持久化数据始终正确。
 		windowExpired := false
+		newFiveHourStart := entry.FiveHourWindowStart
 		newDailyStart := entry.DailyWindowStart
 		newWeeklyStart := entry.WeeklyWindowStart
 		newMonthlyStart := entry.MonthlyWindowStart
+		fiveHourStart := fiveHourAlignedWindowStart(now, entry.FiveHourAlignMinutes)
+		if quotaWindowExpired(entry.FiveHourWindowStart, fiveHourStart) {
+			fiveHourUsage = 0
+			windowExpired = true
+			newFiveHourStart = &fiveHourStart
+		}
 		if quotaWindowExpired(entry.DailyWindowStart, timezone.StartOfDay(now)) {
 			dailyUsage = 0
 			windowExpired = true
@@ -1098,16 +1107,20 @@ func (s *BillingCacheService) checkUserPlatformQuotaEligibility(
 		// 显式 setCancel()(而非 defer):缩短 context 生命周期,避免 defer 延迟到函数返回。
 		if windowExpired && s.cache != nil {
 			refreshed := &UserPlatformQuotaCacheEntry{
-				DailyUsageUSD:      dailyUsage,
-				WeeklyUsageUSD:     weeklyUsage,
-				MonthlyUsageUSD:    monthlyUsage,
-				SchemaVersion:      UserPlatformQuotaCacheSchemaV1,
-				DailyLimitUSD:      entry.DailyLimitUSD,
-				WeeklyLimitUSD:     entry.WeeklyLimitUSD,
-				MonthlyLimitUSD:    entry.MonthlyLimitUSD,
-				DailyWindowStart:   newDailyStart,
-				WeeklyWindowStart:  newWeeklyStart,
-				MonthlyWindowStart: newMonthlyStart,
+				FiveHourUsageUSD:     fiveHourUsage,
+				DailyUsageUSD:        dailyUsage,
+				WeeklyUsageUSD:       weeklyUsage,
+				MonthlyUsageUSD:      monthlyUsage,
+				SchemaVersion:        UserPlatformQuotaCacheSchemaV1,
+				FiveHourAlignMinutes: entry.FiveHourAlignMinutes,
+				FiveHourLimitUSD:     entry.FiveHourLimitUSD,
+				DailyLimitUSD:        entry.DailyLimitUSD,
+				WeeklyLimitUSD:       entry.WeeklyLimitUSD,
+				MonthlyLimitUSD:      entry.MonthlyLimitUSD,
+				FiveHourWindowStart:  newFiveHourStart,
+				DailyWindowStart:     newDailyStart,
+				WeeklyWindowStart:    newWeeklyStart,
+				MonthlyWindowStart:   newMonthlyStart,
 			}
 			ttl := time.Duration(s.cfg.Billing.UserPlatformQuotaCacheTTLSeconds) * time.Second
 			setCtx, setCancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
@@ -1117,6 +1130,9 @@ func (s *BillingCacheService) checkUserPlatformQuotaEligibility(
 					userID, platform, setErr)
 			}
 			setCancel()
+		}
+		if entry.FiveHourLimitUSD != nil && fiveHourUsage >= *entry.FiveHourLimitUSD {
+			return withWindowResetsMetadata(ErrUserPlatformFiveHourQuotaExhausted, nextFiveHourResetFrom(newFiveHourStart, now, entry.FiveHourAlignMinutes))
 		}
 		if entry.DailyLimitUSD != nil && dailyUsage >= *entry.DailyLimitUSD {
 			return withWindowResetsMetadata(ErrUserPlatformDailyQuotaExhausted, nextDailyReset(now))
@@ -1163,9 +1179,14 @@ func (s *BillingCacheService) checkUserPlatformQuotaEligibility(
 	}
 
 	now := time.Now()
+	fiveHourUsage := rec.FiveHourUsageUSD
 	dailyUsage := rec.DailyUsageUSD
 	weeklyUsage := rec.WeeklyUsageUSD
 	monthlyUsage := rec.MonthlyUsageUSD
+	fiveHourStart := fiveHourAlignedWindowStart(now, rec.FiveHourAlignMinutes)
+	if quotaWindowExpired(rec.FiveHourWindowStart, fiveHourStart) {
+		fiveHourUsage = 0
+	}
 	if quotaWindowExpired(rec.DailyWindowStart, timezone.StartOfDay(now)) {
 		dailyUsage = 0
 	}
@@ -1178,6 +1199,9 @@ func (s *BillingCacheService) checkUserPlatformQuotaEligibility(
 
 	// Redis 故障时 fail-open：不回填，直接用 DB 数据做一次性检查
 	if cacheErr != nil {
+		if rec.FiveHourLimitUSD != nil && fiveHourUsage >= *rec.FiveHourLimitUSD {
+			return withWindowResetsMetadata(ErrUserPlatformFiveHourQuotaExhausted, nextFiveHourResetFrom(rec.FiveHourWindowStart, now, rec.FiveHourAlignMinutes))
+		}
 		if rec.DailyLimitUSD != nil && dailyUsage >= *rec.DailyLimitUSD {
 			return withWindowResetsMetadata(ErrUserPlatformDailyQuotaExhausted, nextDailyReset(now))
 		}
@@ -1192,16 +1216,20 @@ func (s *BillingCacheService) checkUserPlatformQuotaEligibility(
 
 	// cache MISS 或旧版 entry → 回填完整 entry（含 limits 和 window_start）
 	newEntry := &UserPlatformQuotaCacheEntry{
-		DailyUsageUSD:      dailyUsage,
-		WeeklyUsageUSD:     weeklyUsage,
-		MonthlyUsageUSD:    monthlyUsage,
-		SchemaVersion:      UserPlatformQuotaCacheSchemaV1,
-		DailyLimitUSD:      rec.DailyLimitUSD,
-		WeeklyLimitUSD:     rec.WeeklyLimitUSD,
-		MonthlyLimitUSD:    rec.MonthlyLimitUSD,
-		DailyWindowStart:   rec.DailyWindowStart,
-		WeeklyWindowStart:  rec.WeeklyWindowStart,
-		MonthlyWindowStart: rec.MonthlyWindowStart,
+		FiveHourUsageUSD:     fiveHourUsage,
+		DailyUsageUSD:        dailyUsage,
+		WeeklyUsageUSD:       weeklyUsage,
+		MonthlyUsageUSD:      monthlyUsage,
+		SchemaVersion:        UserPlatformQuotaCacheSchemaV1,
+		FiveHourAlignMinutes: rec.FiveHourAlignMinutes,
+		FiveHourLimitUSD:     rec.FiveHourLimitUSD,
+		DailyLimitUSD:        rec.DailyLimitUSD,
+		WeeklyLimitUSD:       rec.WeeklyLimitUSD,
+		MonthlyLimitUSD:      rec.MonthlyLimitUSD,
+		FiveHourWindowStart:  rec.FiveHourWindowStart,
+		DailyWindowStart:     rec.DailyWindowStart,
+		WeeklyWindowStart:    rec.WeeklyWindowStart,
+		MonthlyWindowStart:   rec.MonthlyWindowStart,
 	}
 	if s.cache != nil {
 		ttl := time.Duration(s.cfg.Billing.UserPlatformQuotaCacheTTLSeconds) * time.Second
@@ -1215,6 +1243,9 @@ func (s *BillingCacheService) checkUserPlatformQuotaEligibility(
 		setCancel()
 	}
 
+	if rec.FiveHourLimitUSD != nil && fiveHourUsage >= *rec.FiveHourLimitUSD {
+		return withWindowResetsMetadata(ErrUserPlatformFiveHourQuotaExhausted, nextFiveHourResetFrom(rec.FiveHourWindowStart, now, rec.FiveHourAlignMinutes))
+	}
 	if rec.DailyLimitUSD != nil && dailyUsage >= *rec.DailyLimitUSD {
 		return withWindowResetsMetadata(ErrUserPlatformDailyQuotaExhausted, nextDailyReset(now))
 	}
@@ -1250,6 +1281,10 @@ func nextWeeklyReset(now time.Time) time.Time {
 	return timezone.StartOfWeek(now).AddDate(0, 0, 7)
 }
 
+func nextFiveHourResetFrom(start *time.Time, now time.Time, alignMinutes int) time.Time {
+	return fiveHourAlignedWindowStart(now, alignMinutes).Add(5 * time.Hour)
+}
+
 // nextMonthlyResetFrom 返回 30 天滚动窗口的下次重置时间（start + 30d）。
 // start 为 nil（未初始化）或已过期（now-start >= 30d，与 monthlyQuotaWindowExpired 同口径）时
 // 退化为 now+30d：过期窗口会在下次 increment 时重置为 now，下次重置即 now+30d；
@@ -1267,6 +1302,18 @@ func quotaWindowExpired(start *time.Time, currWindowStart time.Time) bool {
 		return true
 	}
 	return start.Before(currWindowStart)
+}
+
+func fiveHourAlignedWindowStart(now time.Time, alignMinutes int) time.Time {
+	if alignMinutes < 0 || alignMinutes >= 24*60 {
+		alignMinutes = 0
+	}
+	start := timezone.StartOfDay(now).Add(time.Duration(alignMinutes) * time.Minute)
+	for start.After(now) {
+		start = start.Add(-5 * time.Hour)
+	}
+	elapsed := now.Sub(start)
+	return start.Add(time.Duration(int64(elapsed/(5*time.Hour))) * 5 * time.Hour)
 }
 
 // monthlyQuotaWindowExpired 判断 30 天滚动月度窗口是否已过期。

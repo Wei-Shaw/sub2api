@@ -118,6 +118,29 @@ func TestUpdateUserPlatformQuotas_Success(t *testing.T) {
 	}
 }
 
+func TestUpdateUserPlatformQuotas_PreservesExistingFiveHourAlignWhenOmitted(t *testing.T) {
+	repo := &upsertCapturingQuotaRepo{
+		listRecords: []service.UserPlatformQuotaRecord{
+			{UserID: 42, Platform: "anthropic", FiveHourAlignMinutes: 60},
+		},
+	}
+	h := buildTestHandler(repo, &billingCacheStub{})
+
+	body := `{"quotas":[{"platform":"anthropic","five_hour_limit_usd":5}]}`
+	c, w := putReq(t, body)
+	h.UpdateUserPlatformQuotas(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if len(repo.upsertCalls) != 1 || len(repo.upsertCalls[0].records) != 1 {
+		t.Fatalf("unexpected upsert calls: %+v", repo.upsertCalls)
+	}
+	if got := repo.upsertCalls[0].records[0].FiveHourAlignMinutes; got != 60 {
+		t.Fatalf("omitted five_hour_align_minutes should preserve existing value, got %d", got)
+	}
+}
+
 func TestUpdateUserPlatformQuotas_RejectsDuplicatePlatform(t *testing.T) {
 	h := buildTestHandler(&upsertCapturingQuotaRepo{}, &billingCacheStub{})
 	body := `{"quotas":[

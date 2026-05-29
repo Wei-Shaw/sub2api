@@ -3281,6 +3281,8 @@
                     <thead>
                       <tr class="text-left text-xs text-gray-500 dark:text-gray-400">
                         <th class="pb-2 pr-4 font-medium">{{ t("admin.settings.platformQuota.platform") }}</th>
+                        <th class="pb-2 pr-4 font-medium">{{ t("admin.settings.platformQuota.fiveHour") }}</th>
+                        <th class="pb-2 pr-4 font-medium">{{ t("admin.settings.platformQuota.fiveHourAlign") }}</th>
                         <th class="pb-2 pr-4 font-medium">{{ t("admin.settings.platformQuota.daily") }}</th>
                         <th class="pb-2 pr-4 font-medium">{{ t("admin.settings.platformQuota.weekly") }}</th>
                         <th class="pb-2 font-medium">{{ t("admin.settings.platformQuota.monthly") }}</th>
@@ -3290,6 +3292,27 @@
                       <tr v-for="p in (['anthropic', 'openai', 'gemini', 'antigravity'] as const)" :key="p" class="align-top">
                         <td class="pr-4 py-1">
                           <span class="font-mono text-xs text-gray-700 dark:text-gray-300">{{ p }}</span>
+                        </td>
+                        <td class="pr-4 py-1">
+                          <input
+                            v-model.number="form.default_platform_quotas[p]!.five_hour"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            class="input h-8 w-28 text-sm"
+                            :placeholder="t('admin.settings.platformQuota.placeholder')"
+                          />
+                        </td>
+                        <td class="pr-4 py-1">
+                          <input
+                            v-model.number="form.default_platform_quotas[p]!.five_hour_align_minutes"
+                            type="number"
+                            step="1"
+                            min="0"
+                            max="1439"
+                            class="input h-8 w-28 text-sm"
+                            :placeholder="t('admin.settings.platformQuota.alignPlaceholder')"
+                          />
                         </td>
                         <td class="pr-4 py-1">
                           <input
@@ -3616,6 +3639,8 @@
                           <thead>
                             <tr class="text-left text-xs text-gray-500 dark:text-gray-400">
                               <th class="pb-2 pr-4 font-medium">{{ t("admin.settings.platformQuota.platform") }}</th>
+                              <th class="pb-2 pr-4 font-medium">{{ t("admin.settings.platformQuota.fiveHour") }}</th>
+                              <th class="pb-2 pr-4 font-medium">{{ t("admin.settings.platformQuota.fiveHourAlign") }}</th>
                               <th class="pb-2 pr-4 font-medium">{{ t("admin.settings.platformQuota.daily") }}</th>
                               <th class="pb-2 pr-4 font-medium">{{ t("admin.settings.platformQuota.weekly") }}</th>
                               <th class="pb-2 font-medium">{{ t("admin.settings.platformQuota.monthly") }}</th>
@@ -3627,6 +3652,27 @@
                                 <span class="font-mono text-xs text-gray-700 dark:text-gray-300">{{ p }}</span>
                               </td>
                               <td class="pr-4 py-1">
+                                  <input
+                                    v-model.number="authSourceDefaults[authSource.source].platform_quotas[p]!.five_hour"
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    class="input h-8 w-28 text-sm"
+                                    :placeholder="t('admin.settings.platformQuota.placeholder')"
+                                  />
+                                </td>
+                                <td class="pr-4 py-1">
+                                  <input
+                                    v-model.number="authSourceDefaults[authSource.source].platform_quotas[p]!.five_hour_align_minutes"
+                                    type="number"
+                                    step="1"
+                                    min="0"
+                                    max="1439"
+                                    class="input h-8 w-28 text-sm"
+                                    :placeholder="t('admin.settings.platformQuota.alignPlaceholder')"
+                                  />
+                                </td>
+                                <td class="pr-4 py-1">
                                 <input
                                   v-model.number="authSourceDefaults[authSource.source].platform_quotas[p]!.daily"
                                   type="number"
