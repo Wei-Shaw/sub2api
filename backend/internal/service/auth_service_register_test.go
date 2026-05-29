@@ -105,6 +105,10 @@ func (s *userPlatformQuotaRepoStub) ResetExpiredWindow(context.Context, int64, s
 	panic("unexpected ResetExpiredWindow call")
 REDACTED
 
+func (s *userPlatformQuotaRepoStub) BatchSnapshotUsage(_ context.Context, _ []UserPlatformQuotaSnapshot, _ time.Time) error {
+	return nil
+REDACTED
+
 func (s *defaultSubscriptionAssignerStub) AssignOrExtendSubscription(_ context.Context, input *AssignSubscriptionInput) (*UserSubscription, bool, error) {
 	if input != nil {
 		s.calls = append(s.calls, *input)

@@ -20,14 +20,15 @@ type fakeIncrCache struct {
 REDACTED
 
 type incrCall struct {
-	userID   int64
-	platform string
-	cost     float64
-	ttl      time.Duration
+	userID    int64
+	platform  string
+	cost      float64
+	ttl       time.Duration
+	markDirty bool
 REDACTED
 
-func (f *fakeIncrCache) IncrUserPlatformQuotaUsageCache(ctx context.Context, userID int64, platform string, cost float64, ttl time.Duration) error {
-	f.calls = append(f.calls, incrCall{userID, platform, cost, ttlREDACTED)
+func (f *fakeIncrCache) IncrUserPlatformQuotaUsageCache(ctx context.Context, userID int64, platform string, cost float64, ttl time.Duration, markDirty bool) error {
+	f.calls = append(f.calls, incrCall{userID, platform, cost, ttl, markDirtyREDACTED)
 	return nil
 REDACTED
 
@@ -49,10 +50,10 @@ REDACTED
 	if len(fake.calls) != 2 {
 		t.Fatalf("expected 2 incr calls, got %d", len(fake.calls))
 REDACTED
-	if fake.calls[0] != (incrCall{101, "anthropic", 0.25, 120 * time.SecondREDACTED) {
+	if fake.calls[0] != (incrCall{userID: 101, platform: "anthropic", cost: 0.25, ttl: 120 * time.Second, markDirty: falseREDACTED) {
 		t.Errorf("call[0] = %+v", fake.calls[0])
 REDACTED
-	if fake.calls[1] != (incrCall{101, "openai", 0.50, 120 * time.SecondREDACTED) {
+	if fake.calls[1] != (incrCall{userID: 101, platform: "openai", cost: 0.50, ttl: 120 * time.Second, markDirty: falseREDACTED) {
 		t.Errorf("call[1] = %+v", fake.calls[1])
 REDACTED
 REDACTED
@@ -88,7 +89,11 @@ func (f *fakeQuotaRepo) ResetExpiredWindow(_ context.Context, _ int64, _ string,
 	return nil
 REDACTED
 
-// fakeFullCache 同时支持 Get + Set + Incr + Delete。
+func (f *fakeQuotaRepo) BatchSnapshotUsage(_ context.Context, _ []UserPlatformQuotaSnapshot, _ time.Time) error {
+	return nil
+REDACTED
+
+// fakeFullCache 同时支持 Get + Set + Incr + Delete + Pop/Readd/BatchGet（脏集读写）。
 // mu 保护 entry 和 deleteCalls，防止异步 goroutine 与主 goroutine 之间的 data race。
 type fakeFullCache struct {
 	BillingCache
@@ -99,6 +104,8 @@ type fakeFullCache struct {
 	lastSetTTL  time.Duration // 最近一次 Set 的 ttl
 	getErr      error         // 非 nil 时 Get 先返回 (nil,false,getErr)
 	setErr      error         // 非 nil 时 Set 返回该 err(setCalls 仍+1)
+	// dirty 模拟脏集，供 flusher 测试使用。
+	dirty map[UserPlatformQuotaKey]struct{REDACTED
 REDACTED
 
 // getDeleteCalls 线程安全地读取 deleteCalls。
@@ -159,6 +166,48 @@ func (f *fakeFullCache) DeleteUserPlatformQuotaCache(_ context.Context, _ int64,
 	f.deleteCalls++
 	f.entry = nil
 	return nil
+REDACTED
+
+func (f *fakeFullCache) PopDirtyUserPlatformQuotaKeys(_ context.Context, n int) ([]UserPlatformQuotaKey, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.dirty) == 0 {
+		return nil, nil
+REDACTED
+	keys := make([]UserPlatformQuotaKey, 0, n)
+	for k := range f.dirty {
+		if len(keys) >= n {
+			break
+	REDACTED
+		keys = append(keys, k)
+		delete(f.dirty, k)
+REDACTED
+	return keys, nil
+REDACTED
+
+func (f *fakeFullCache) ReaddDirtyUserPlatformQuotaKeys(_ context.Context, keys []UserPlatformQuotaKey) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.dirty == nil {
+		f.dirty = make(map[UserPlatformQuotaKey]struct{REDACTED)
+REDACTED
+	for _, k := range keys {
+		f.dirty[k] = struct{REDACTED{REDACTED
+REDACTED
+	return nil
+REDACTED
+
+// BatchGetUserPlatformQuotaCache 对每个 key 返回 f.entry（MISS → nil），
+// 保持与输入 keys 顺序/长度对齐。注意此处所有 key 共享同一个 entry，
+// 仅用于测试场景。
+func (f *fakeFullCache) BatchGetUserPlatformQuotaCache(_ context.Context, keys []UserPlatformQuotaKey) ([]*UserPlatformQuotaCacheEntry, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	results := make([]*UserPlatformQuotaCacheEntry, len(keys))
+	for i := range keys {
+		results[i] = f.entry
+REDACTED
+	return results, nil
 REDACTED
 
 func newServiceForPreflight(t *testing.T, repo UserPlatformQuotaRepository, cache BillingCache) *BillingCacheService {
@@ -711,5 +760,73 @@ REDACTED
 REDACTED
 	if cache.getSetCalls() != 0 {
 		t.Errorf("sentinel cross-window must NOT trigger refresh SetCache, got %d calls", cache.getSetCalls())
+REDACTED
+REDACTED
+
+// ── TestHasUserPlatformQuotaLimit ────────────────────────────────────────────
+
+func TestHasUserPlatformQuotaLimit(t *testing.T) {
+	daily := 5.0
+
+	tests := []struct {
+		name    string
+		setup   func() *BillingCacheService
+		want    bool
+REDACTED{
+		{
+			name: "has_limit",
+			setup: func() *BillingCacheService {
+				entry := &UserPlatformQuotaCacheEntry{DailyLimitUSD: &dailyREDACTED
+				svc := newServiceForPreflight(t, &fakeQuotaRepo{REDACTED, &fakeFullCache{entry: entryREDACTED)
+				return svc
+		REDACTED,
+			want: true,
+	REDACTED,
+		{
+			name: "sentinel_no_limit",
+			setup: func() *BillingCacheService {
+				entry := &UserPlatformQuotaCacheEntry{REDACTED // 三个 limit 字段全 nil
+				svc := newServiceForPreflight(t, &fakeQuotaRepo{REDACTED, &fakeFullCache{entry: entryREDACTED)
+				return svc
+		REDACTED,
+			want: false,
+	REDACTED,
+		{
+			name: "cache_miss",
+			setup: func() *BillingCacheService {
+				// entry==nil → GetUserPlatformQuotaCache 返回 (nil,false,nil)
+				svc := newServiceForPreflight(t, &fakeQuotaRepo{REDACTED, &fakeFullCache{REDACTED)
+				return svc
+		REDACTED,
+			want: true, // fail-safe
+	REDACTED,
+		{
+			name: "redis_err",
+			setup: func() *BillingCacheService {
+				svc := newServiceForPreflight(t, &fakeQuotaRepo{REDACTED, &fakeFullCache{getErr: errors.New("redis down")REDACTED)
+				return svc
+		REDACTED,
+			want: true, // fail-safe
+	REDACTED,
+		{
+			name: "simple_mode",
+			setup: func() *BillingCacheService {
+				entry := &UserPlatformQuotaCacheEntry{DailyLimitUSD: &dailyREDACTED
+				svc := newServiceForPreflight(t, &fakeQuotaRepo{REDACTED, &fakeFullCache{entry: entryREDACTED)
+				svc.cfg.RunMode = config.RunModeSimple
+				return svc
+		REDACTED,
+			want: false, // simple 模式始终跳过
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := tt.setup()
+			got := svc.HasUserPlatformQuotaLimit(context.Background(), 1, "anthropic")
+			if got != tt.want {
+				t.Errorf("HasUserPlatformQuotaLimit() = %v, want %v", got, tt.want)
+		REDACTED
+	REDACTED)
 REDACTED
 REDACTED
