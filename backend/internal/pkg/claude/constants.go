@@ -90,6 +90,7 @@ var NonOfficialUpstreamSafeBetaPrefixes = []string{
 	"token-counting-",
 	"prompt-caching-scope-",
 	"effort-",
+	"context-1m-", // anyrouter.top requires; injected by ForceContext1M
 }
 
 // DefaultBetaHeader Claude Code 客户端默认的 anthropic-beta header
