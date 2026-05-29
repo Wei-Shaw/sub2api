@@ -204,6 +204,8 @@ REDACTED
 // 只有在此映射表中的模型才会注入身份提示词
 // 注意：模型映射逻辑在网关层完成；这里仅用于按模型前缀判断是否注入身份提示词。
 var modelInfoMap = map[string]modelInfo{
+	"claude-opus-4-8":   {DisplayName: "Claude Opus 4.8", CanonicalID: "claude-opus-4-8"REDACTED,
+	"claude-opus-4-7":   {DisplayName: "Claude Opus 4.7", CanonicalID: "claude-opus-4-7"REDACTED,
 	"claude-opus-4-5":   {DisplayName: "Claude Opus 4.5", CanonicalID: "claude-opus-4-5-20250929"REDACTED,
 	"claude-opus-4-6":   {DisplayName: "Claude Opus 4.6", CanonicalID: "claude-opus-4-6"REDACTED,
 	"claude-sonnet-4-6": {DisplayName: "Claude Sonnet 4.6", CanonicalID: "claude-sonnet-4-6"REDACTED,
@@ -587,7 +589,8 @@ REDACTED
 func isAntigravityOpusHighTierModel(model string) bool {
 	lower := strings.ToLower(model)
 	return strings.HasPrefix(lower, "claude-opus-4-6") ||
-		strings.HasPrefix(lower, "claude-opus-4-7")
+		strings.HasPrefix(lower, "claude-opus-4-7") ||
+		strings.HasPrefix(lower, "claude-opus-4-8")
 REDACTED
 
 func buildGenerationConfig(req *ClaudeRequest) *GeminiGenerationConfig {

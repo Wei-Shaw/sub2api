@@ -89,6 +89,18 @@ REDACTED{
 			expected:       "claude-sonnet-4-5",
 	REDACTED,
 		{
+			name:           "默认映射透传 - claude-opus-4-8",
+			requestedModel: "claude-opus-4-8",
+			accountMapping: nil,
+			expected:       "claude-opus-4-8",
+	REDACTED,
+		{
+			name:           "默认映射透传 - claude-opus-4-7",
+			requestedModel: "claude-opus-4-7",
+			accountMapping: nil,
+			expected:       "claude-opus-4-7",
+	REDACTED,
+		{
 			name:           "默认映射透传 - claude-opus-4-6-thinking",
 			requestedModel: "claude-opus-4-6-thinking",
 			accountMapping: nil,
@@ -210,6 +222,7 @@ REDACTED{
 		{"直接支持 - gemini-3-flash", "gemini-3-flash", trueREDACTED,
 
 		// 可映射（有明确前缀映射）
+		{"可映射 - claude-opus-4-8", "claude-opus-4-8", trueREDACTED,
 		{"可映射 - claude-opus-4-6", "claude-opus-4-6", trueREDACTED,
 
 		// 前缀透传（claude 和 gemini 前缀）

@@ -24,3 +24,27 @@ REDACTED
 	REDACTED
 REDACTED
 REDACTED
+
+func TestDefaultAntigravityModelMapping_ContainsOpus48(t *testing.T) {
+	t.Parallel()
+
+	got, ok := DefaultAntigravityModelMapping["claude-opus-4-8"]
+	if !ok {
+		t.Fatal("expected mapping for claude-opus-4-8 to exist")
+REDACTED
+	if got != "claude-opus-4-8" {
+		t.Fatalf("unexpected claude-opus-4-8 mapping: got %q", got)
+REDACTED
+REDACTED
+
+func TestDefaultBedrockModelMapping_ContainsOpus48(t *testing.T) {
+	t.Parallel()
+
+	got, ok := DefaultBedrockModelMapping["claude-opus-4-8"]
+	if !ok {
+		t.Fatal("expected Bedrock mapping for claude-opus-4-8 to exist")
+REDACTED
+	if got != "us.anthropic.claude-opus-4-8-v1" {
+		t.Fatalf("unexpected Bedrock claude-opus-4-8 mapping: got %q", got)
+REDACTED
+REDACTED
