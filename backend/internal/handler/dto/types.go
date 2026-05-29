@@ -106,6 +106,8 @@ type Group struct {
 	// Claude Code 客户端限制
 	ClaudeCodeOnly  bool   `json:"claude_code_only"`
 	FallbackGroupID *int64 `json:"fallback_group_id"`
+	// OpenAI Codex 官方客户端限制
+	CodexOfficialOnly bool `json:"codex_official_only"`
 	// 无效请求兜底分组
 	FallbackGroupIDOnInvalidRequest *int64 `json:"fallback_group_id_on_invalid_request"`
 

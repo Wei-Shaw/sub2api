@@ -110,6 +110,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		zap.Int64("api_key_id", apiKey.ID),
 		zap.Any("group_id", apiKey.GroupID),
 	)
+	if h.rejectOpenAINonCodexOfficialClient(c, apiKey, false) {
+		return
+	}
 	if !h.ensureResponsesDependencies(c, reqLog) {
 		return
 	}
@@ -582,6 +585,9 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	if apiKey.Group != nil && !apiKey.Group.AllowMessagesDispatch {
 		h.anthropicErrorResponse(c, http.StatusForbidden, "permission_error",
 			"This group does not allow /v1/messages dispatch")
+		return
+	}
+	if h.rejectOpenAINonCodexOfficialClient(c, apiKey, true) {
 		return
 	}
 
@@ -1123,6 +1129,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		zap.Any("group_id", apiKey.GroupID),
 		zap.Bool("openai_ws_mode", true),
 	)
+	if h.rejectOpenAINonCodexOfficialClient(c, apiKey, false) {
+		return
+	}
 	if !h.ensureResponsesDependencies(c, reqLog) {
 		return
 	}

@@ -37,6 +37,8 @@ type Group struct {
 	// Claude Code 客户端限制
 	ClaudeCodeOnly  bool
 	FallbackGroupID *int64
+	// OpenAI Codex 官方客户端限制（仅 openai 平台使用）
+	CodexOfficialOnly bool
 	// 无效请求兜底分组（仅 anthropic 平台使用）
 	FallbackGroupIDOnInvalidRequest *int64
 

@@ -110,6 +110,11 @@ func (Group) Fields() []ent.Field {
 			Nillable().
 			Comment("无效请求兜底使用的分组 ID"),
 
+		// OpenAI Codex 官方客户端限制 (added by migration 145)
+		field.Bool("codex_official_only").
+			Default(false).
+			Comment("OpenAI 分组是否仅允许 Codex 官方客户端"),
+
 		// 模型路由配置 (added by migration 040)
 		field.JSON("model_routing", map[string][]int64{}).
 			Optional().

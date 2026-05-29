@@ -481,6 +481,104 @@ func TestOpenAIResponses_MissingDependencies_ReturnsServiceUnavailable(t *testin
 	assert.Equal(t, "Service temporarily unavailable", errorObj["message"])
 }
 
+func TestOpenAIResponses_RejectsNonCodexWhenGroupRequiresOfficialClient(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5","stream":false}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("User-Agent", "curl/8.0")
+	c.Request.Header.Set("originator", "my_client")
+
+	groupID := int64(2)
+	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
+		ID:      10,
+		GroupID: &groupID,
+		User:    &service.User{ID: 1},
+		Group: &service.Group{
+			ID:                groupID,
+			Platform:          service.PlatformOpenAI,
+			CodexOfficialOnly: true,
+		},
+	})
+	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{
+		UserID:      1,
+		Concurrency: 1,
+	})
+
+	h := &OpenAIGatewayHandler{gatewayService: &service.OpenAIGatewayService{}}
+	h.Responses(c)
+
+	require.Equal(t, http.StatusForbidden, w.Code)
+	require.Contains(t, w.Body.String(), "This group only allows Codex official clients")
+}
+
+func TestOpenAIResponses_AllowsOfficialCodexPastGroupRestriction(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5","stream":false}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.99.0")
+
+	groupID := int64(2)
+	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
+		ID:      10,
+		GroupID: &groupID,
+		User:    &service.User{ID: 1},
+		Group: &service.Group{
+			ID:                groupID,
+			Platform:          service.PlatformOpenAI,
+			CodexOfficialOnly: true,
+		},
+	})
+	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{
+		UserID:      1,
+		Concurrency: 1,
+	})
+
+	h := &OpenAIGatewayHandler{gatewayService: &service.OpenAIGatewayService{}}
+	h.Responses(c)
+
+	require.NotEqual(t, http.StatusForbidden, w.Code)
+}
+
+func TestOpenAIMessages_RejectsNonCodexWhenGroupRequiresOfficialClient(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"claude-sonnet-4-5","messages":[]}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("User-Agent", "curl/8.0")
+	c.Request.Header.Set("originator", "my_client")
+
+	groupID := int64(2)
+	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
+		ID:      10,
+		GroupID: &groupID,
+		User:    &service.User{ID: 1},
+		Group: &service.Group{
+			ID:                    groupID,
+			Platform:              service.PlatformOpenAI,
+			AllowMessagesDispatch: true,
+			CodexOfficialOnly:     true,
+		},
+	})
+	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{
+		UserID:      1,
+		Concurrency: 1,
+	})
+
+	h := &OpenAIGatewayHandler{gatewayService: &service.OpenAIGatewayService{}}
+	h.Messages(c)
+
+	require.Equal(t, http.StatusForbidden, w.Code)
+	require.Contains(t, w.Body.String(), "This group only allows Codex official clients")
+}
+
 func TestOpenAIResponses_SetsClientTransportHTTP(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

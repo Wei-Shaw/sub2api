@@ -42,6 +42,9 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 		zap.Int64("api_key_id", apiKey.ID),
 		zap.Any("group_id", apiKey.GroupID),
 	)
+	if h.rejectOpenAINonCodexOfficialClient(c, apiKey, false) {
+		return
+	}
 	if !h.ensureResponsesDependencies(c, reqLog) {
 		return
 	}

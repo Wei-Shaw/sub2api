@@ -343,6 +343,20 @@ func (_c *GroupCreate) SetNillableFallbackGroupIDOnInvalidRequest(v *int64) *Gro
 	return _c
 }
 
+// SetCodexOfficialOnly sets the "codex_official_only" field.
+func (_c *GroupCreate) SetCodexOfficialOnly(v bool) *GroupCreate {
+	_c.mutation.SetCodexOfficialOnly(v)
+	return _c
+}
+
+// SetNillableCodexOfficialOnly sets the "codex_official_only" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableCodexOfficialOnly(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetCodexOfficialOnly(*v)
+	}
+	return _c
+}
+
 // SetModelRouting sets the "model_routing" field.
 func (_c *GroupCreate) SetModelRouting(v map[string][]int64) *GroupCreate {
 	_c.mutation.SetModelRouting(v)
@@ -676,6 +690,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultClaudeCodeOnly
 		_c.mutation.SetClaudeCodeOnly(v)
 	}
+	if _, ok := _c.mutation.CodexOfficialOnly(); !ok {
+		v := group.DefaultCodexOfficialOnly
+		_c.mutation.SetCodexOfficialOnly(v)
+	}
 	if _, ok := _c.mutation.ModelRoutingEnabled(); !ok {
 		v := group.DefaultModelRoutingEnabled
 		_c.mutation.SetModelRoutingEnabled(v)
@@ -783,6 +801,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.ClaudeCodeOnly(); !ok {
 		return &ValidationError{Name: "claude_code_only", err: errors.New(`ent: missing required field "Group.claude_code_only"`)}
+	}
+	if _, ok := _c.mutation.CodexOfficialOnly(); !ok {
+		return &ValidationError{Name: "codex_official_only", err: errors.New(`ent: missing required field "Group.codex_official_only"`)}
 	}
 	if _, ok := _c.mutation.ModelRoutingEnabled(); !ok {
 		return &ValidationError{Name: "model_routing_enabled", err: errors.New(`ent: missing required field "Group.model_routing_enabled"`)}
@@ -940,6 +961,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.FallbackGroupIDOnInvalidRequest(); ok {
 		_spec.SetField(group.FieldFallbackGroupIDOnInvalidRequest, field.TypeInt64, value)
 		_node.FallbackGroupIDOnInvalidRequest = &value
+	}
+	if value, ok := _c.mutation.CodexOfficialOnly(); ok {
+		_spec.SetField(group.FieldCodexOfficialOnly, field.TypeBool, value)
+		_node.CodexOfficialOnly = value
 	}
 	if value, ok := _c.mutation.ModelRouting(); ok {
 		_spec.SetField(group.FieldModelRouting, field.TypeJSON, value)
@@ -1532,6 +1557,18 @@ func (u *GroupUpsert) AddFallbackGroupIDOnInvalidRequest(v int64) *GroupUpsert {
 // ClearFallbackGroupIDOnInvalidRequest clears the value of the "fallback_group_id_on_invalid_request" field.
 func (u *GroupUpsert) ClearFallbackGroupIDOnInvalidRequest() *GroupUpsert {
 	u.SetNull(group.FieldFallbackGroupIDOnInvalidRequest)
+	return u
+}
+
+// SetCodexOfficialOnly sets the "codex_official_only" field.
+func (u *GroupUpsert) SetCodexOfficialOnly(v bool) *GroupUpsert {
+	u.Set(group.FieldCodexOfficialOnly, v)
+	return u
+}
+
+// UpdateCodexOfficialOnly sets the "codex_official_only" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateCodexOfficialOnly() *GroupUpsert {
+	u.SetExcluded(group.FieldCodexOfficialOnly)
 	return u
 }
 
@@ -2194,6 +2231,20 @@ func (u *GroupUpsertOne) UpdateFallbackGroupIDOnInvalidRequest() *GroupUpsertOne
 func (u *GroupUpsertOne) ClearFallbackGroupIDOnInvalidRequest() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearFallbackGroupIDOnInvalidRequest()
+	})
+}
+
+// SetCodexOfficialOnly sets the "codex_official_only" field.
+func (u *GroupUpsertOne) SetCodexOfficialOnly(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetCodexOfficialOnly(v)
+	})
+}
+
+// UpdateCodexOfficialOnly sets the "codex_official_only" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateCodexOfficialOnly() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateCodexOfficialOnly()
 	})
 }
 
@@ -3049,6 +3100,20 @@ func (u *GroupUpsertBulk) UpdateFallbackGroupIDOnInvalidRequest() *GroupUpsertBu
 func (u *GroupUpsertBulk) ClearFallbackGroupIDOnInvalidRequest() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearFallbackGroupIDOnInvalidRequest()
+	})
+}
+
+// SetCodexOfficialOnly sets the "codex_official_only" field.
+func (u *GroupUpsertBulk) SetCodexOfficialOnly(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetCodexOfficialOnly(v)
+	})
+}
+
+// UpdateCodexOfficialOnly sets the "codex_official_only" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateCodexOfficialOnly() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateCodexOfficialOnly()
 	})
 }
 

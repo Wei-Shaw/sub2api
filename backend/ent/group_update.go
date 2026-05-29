@@ -473,6 +473,20 @@ func (_u *GroupUpdate) ClearFallbackGroupIDOnInvalidRequest() *GroupUpdate {
 	return _u
 }
 
+// SetCodexOfficialOnly sets the "codex_official_only" field.
+func (_u *GroupUpdate) SetCodexOfficialOnly(v bool) *GroupUpdate {
+	_u.mutation.SetCodexOfficialOnly(v)
+	return _u
+}
+
+// SetNillableCodexOfficialOnly sets the "codex_official_only" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableCodexOfficialOnly(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetCodexOfficialOnly(*v)
+	}
+	return _u
+}
+
 // SetModelRouting sets the "model_routing" field.
 func (_u *GroupUpdate) SetModelRouting(v map[string][]int64) *GroupUpdate {
 	_u.mutation.SetModelRouting(v)
@@ -1084,6 +1098,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.FallbackGroupIDOnInvalidRequestCleared() {
 		_spec.ClearField(group.FieldFallbackGroupIDOnInvalidRequest, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.CodexOfficialOnly(); ok {
+		_spec.SetField(group.FieldCodexOfficialOnly, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.ModelRouting(); ok {
 		_spec.SetField(group.FieldModelRouting, field.TypeJSON, value)
@@ -1886,6 +1903,20 @@ func (_u *GroupUpdateOne) ClearFallbackGroupIDOnInvalidRequest() *GroupUpdateOne
 	return _u
 }
 
+// SetCodexOfficialOnly sets the "codex_official_only" field.
+func (_u *GroupUpdateOne) SetCodexOfficialOnly(v bool) *GroupUpdateOne {
+	_u.mutation.SetCodexOfficialOnly(v)
+	return _u
+}
+
+// SetNillableCodexOfficialOnly sets the "codex_official_only" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableCodexOfficialOnly(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetCodexOfficialOnly(*v)
+	}
+	return _u
+}
+
 // SetModelRouting sets the "model_routing" field.
 func (_u *GroupUpdateOne) SetModelRouting(v map[string][]int64) *GroupUpdateOne {
 	_u.mutation.SetModelRouting(v)
@@ -2527,6 +2558,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if _u.mutation.FallbackGroupIDOnInvalidRequestCleared() {
 		_spec.ClearField(group.FieldFallbackGroupIDOnInvalidRequest, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.CodexOfficialOnly(); ok {
+		_spec.SetField(group.FieldCodexOfficialOnly, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.ModelRouting(); ok {
 		_spec.SetField(group.FieldModelRouting, field.TypeJSON, value)

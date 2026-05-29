@@ -206,6 +206,7 @@ type CreateGroupInput struct {
 	ImagePrice4K         *float64
 	ClaudeCodeOnly       bool   // 仅允许 Claude Code 客户端
 	FallbackGroupID      *int64 // 降级分组 ID
+	CodexOfficialOnly    bool   // OpenAI 分组仅允许 Codex 官方客户端
 	// 无效请求兜底分组 ID（仅 anthropic 平台使用）
 	FallbackGroupIDOnInvalidRequest *int64
 	// 模型路由配置（仅 anthropic 平台使用）
@@ -247,6 +248,7 @@ type UpdateGroupInput struct {
 	ImagePrice4K         *float64
 	ClaudeCodeOnly       *bool  // 仅允许 Claude Code 客户端
 	FallbackGroupID      *int64 // 降级分组 ID
+	CodexOfficialOnly    *bool  // OpenAI 分组仅允许 Codex 官方客户端
 	// 无效请求兜底分组 ID（仅 anthropic 平台使用）
 	FallbackGroupIDOnInvalidRequest *int64
 	// 模型路由配置（仅 anthropic 平台使用）
@@ -1769,6 +1771,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		ImagePrice4K:                    imagePrice4K,
 		ClaudeCodeOnly:                  input.ClaudeCodeOnly,
 		FallbackGroupID:                 input.FallbackGroupID,
+		CodexOfficialOnly:               input.CodexOfficialOnly,
 		FallbackGroupIDOnInvalidRequest: fallbackOnInvalidRequest,
 		ModelRouting:                    input.ModelRouting,
 		MCPXMLInject:                    mcpXMLInject,
@@ -1782,6 +1785,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		RPMLimit:                        input.RPMLimit,
 	}
 	sanitizeGroupMessagesDispatchFields(group)
+	sanitizeGroupCodexOfficialRestrictionFields(group)
 	if err := s.groupRepo.Create(ctx, group); err != nil {
 		return nil, err
 	}
@@ -1979,6 +1983,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 			group.FallbackGroupID = nil
 		}
 	}
+	if input.CodexOfficialOnly != nil {
+		group.CodexOfficialOnly = *input.CodexOfficialOnly
+	}
 	fallbackOnInvalidRequest := group.FallbackGroupIDOnInvalidRequest
 	if input.FallbackGroupIDOnInvalidRequest != nil {
 		if *input.FallbackGroupIDOnInvalidRequest > 0 {
@@ -2033,6 +2040,7 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		group.RPMLimit = *input.RPMLimit
 	}
 	sanitizeGroupMessagesDispatchFields(group)
+	sanitizeGroupCodexOfficialRestrictionFields(group)
 
 	if err := s.groupRepo.Update(ctx, group); err != nil {
 		return nil, err
