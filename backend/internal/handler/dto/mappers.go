@@ -264,26 +264,10 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		if mode := a.GetUserMsgQueueMode(); mode != "" {
 			out.UserMsgQueueMode = &mode
 		}
-		// TLS指纹伪装开关
-		if a.IsTLSFingerprintEnabled() {
-			enabled := true
-			out.EnableTLSFingerprint = &enabled
-		}
-		// TLS指纹模板ID
-		if profileID := a.GetTLSFingerprintProfileID(); profileID > 0 {
-			out.TLSFingerprintProfileID = &profileID
-		}
 		// 会话ID伪装开关（默认启用，始终输出实际状态）
 		{
 			v := a.IsSessionIDMaskingEnabled()
 			out.EnableSessionIDMasking = &v
-		}
-		// 缓存 TTL 强制替换
-		if a.IsCacheTTLOverrideEnabled() {
-			enabled := true
-			out.CacheTTLOverrideEnabled = &enabled
-			target := a.GetCacheTTLOverrideTarget()
-			out.CacheTTLOverrideTarget = &target
 		}
 		// 自定义 Base URL 中继转发
 		if a.IsCustomBaseURLEnabled() {
@@ -293,6 +277,25 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 				out.CustomBaseURL = &customURL
 			}
 		}
+	}
+
+	// TLS指纹伪装开关 — 适用于所有 Anthropic 平台账号（OAuth/SetupToken/APIKey）
+	if a.IsAnthropic() {
+		if a.IsTLSFingerprintEnabled() {
+			enabled := true
+			out.EnableTLSFingerprint = &enabled
+		}
+		if profileID := a.GetTLSFingerprintProfileID(); profileID > 0 {
+			out.TLSFingerprintProfileID = &profileID
+		}
+	}
+
+	// 缓存 TTL 强制替换 — 适用于所有 SupportsCachePolicy() 账号（含 APIKey/Bedrock/Vertex）
+	if a.SupportsCachePolicy() && a.IsCacheTTLOverrideEnabled() {
+		enabled := true
+		out.CacheTTLOverrideEnabled = &enabled
+		target := a.GetCacheTTLOverrideTarget()
+		out.CacheTTLOverrideTarget = &target
 	}
 
 	// 提取账号配额限制（apikey / bedrock / vertex 类型有效）
