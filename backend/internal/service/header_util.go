@@ -113,11 +113,14 @@ func addHeaderRaw(h http.Header, key, value string) {
 // http.Header.Del 仅删 canonical 形式（如 "Anthropic-Beta"），无法删项目里以小写 wire casing 存储的 key
 // （如 "anthropic-beta"），单独使用会留下"幽灵 entry"。
 func delHeaderRaw(h http.Header, key string) {
+	if h == nil || key == "" {
+		return
+	}
 	h.Del(key) // canonical form
+	delete(h, key)
 	if wk := resolveWireCasing(key); wk != key {
 		delete(h, wk)
 	}
-	delete(h, key)
 }
 
 // getHeaderRaw reads a header value, trying multiple key forms to handle the mismatch

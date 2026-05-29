@@ -174,6 +174,7 @@ func TestIsBedrockClaude45OrNewer(t *testing.T) {
 		expect  bool
 	}{
 		{"us.anthropic.claude-opus-4-6-v1", true},
+		{"us.anthropic.claude-opus-4-8-v1", true},
 		{"us.anthropic.claude-sonnet-4-6", true},
 		{"us.anthropic.claude-sonnet-4-5-20250929-v1:0", true},
 		{"us.anthropic.claude-opus-4-5-20251101-v1:0", true},
@@ -511,6 +512,20 @@ func TestResolveBedrockModelID(t *testing.T) {
 		assert.Equal(t, "au.anthropic.claude-opus-4-6-v1", modelID)
 	})
 
+	t.Run("default opus 4.8 mapping uses regional Bedrock model id", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformAnthropic,
+			Type:     AccountTypeBedrock,
+			Credentials: map[string]any{
+				"aws_region": "eu-west-1",
+			},
+		}
+
+		modelID, ok := ResolveBedrockModelID(account, "claude-opus-4-8")
+		require.True(t, ok)
+		assert.Equal(t, "eu.anthropic.claude-opus-4-8-v1", modelID)
+	})
+
 	t.Run("force global rewrites anthropic regional model id", func(t *testing.T) {
 		account := &Account{
 			Platform: PlatformAnthropic,
@@ -714,6 +729,7 @@ func TestIsBedrockOpus47OrNewer(t *testing.T) {
 		modelID string
 		expect  bool
 	}{
+		{"us.anthropic.claude-opus-4-8-v1", true},
 		{"us.anthropic.claude-opus-4-7-v1", true},
 		{"us.anthropic.claude-opus-4-6-v1", false},
 		{"us.anthropic.claude-opus-4-5-20251101-v1:0", false},
@@ -886,10 +902,12 @@ func TestIsBedrockOpus47OrNewer_EdgeCases(t *testing.T) {
 		modelID string
 		expect  bool
 	}{
+		{"anthropic.claude-opus-4-8-v1", true},
 		{"anthropic.claude-opus-4-7-v1", true},
 		{"us.anthropic.claude-opus-4-7-20270101-v1:0", true},
 		{"", false},
 		// Forward() passes parsed.Model (standard names), not Bedrock IDs
+		{"claude-opus-4-8", true},
 		{"claude-opus-4-7", true},
 		{"claude-opus-4-6", false},
 		{"claude-sonnet-4-7", false},
