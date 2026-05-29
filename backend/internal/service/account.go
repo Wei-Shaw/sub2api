@@ -1045,6 +1045,34 @@ func (a *Account) IsAnthropic() bool {
 	return a.Platform == PlatformAnthropic
 }
 
+func (a *Account) IsDeepSeek() bool {
+	return a.Platform == PlatformDeepSeek
+}
+
+func (a *Account) IsDeepSeekAPIKey() bool {
+	return a.IsDeepSeek() && a.Type == AccountTypeAPIKey
+}
+
+func (a *Account) GetDeepSeekAPIKey() string {
+	if !a.IsDeepSeekAPIKey() {
+		return ""
+	}
+	return a.GetCredential("api_key")
+}
+
+func (a *Account) GetDeepSeekBaseURL() string {
+	if !a.IsDeepSeek() {
+		return ""
+	}
+	if a.Type == AccountTypeAPIKey {
+		baseURL := a.GetCredential("base_url")
+		if baseURL != "" {
+			return baseURL
+		}
+	}
+	return "https://api.deepseek.com"
+}
+
 func (a *Account) IsOpenAIOAuth() bool {
 	return a.IsOpenAI() && a.Type == AccountTypeOAuth
 }
