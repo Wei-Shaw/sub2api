@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -138,4 +139,34 @@ func TestCreateAndRedeem_BalanceIgnoresSubscriptionFields(t *testing.T) {
 
 	assert.NotEqual(t, http.StatusBadRequest, code,
 		"balance type should not require group_id or validity_days")
+}
+
+func TestResolveRedeemCodeExpiresAt_FromDays(t *testing.T) {
+	days := 3
+	expiresAt, err := resolveRedeemCodeExpiresAt(nil, &days)
+	require.NoError(t, err)
+	require.NotNil(t, expiresAt)
+	require.WithinDuration(t, time.Now().UTC().AddDate(0, 0, days), *expiresAt, 2*time.Second)
+}
+
+func TestResolveRedeemCodeExpiresAt_RejectsPastAbsoluteTime(t *testing.T) {
+	past := time.Now().UTC().Add(-time.Minute)
+	expiresAt, err := resolveRedeemCodeExpiresAt(&past, nil)
+	require.Error(t, err)
+	require.Nil(t, expiresAt)
+}
+
+func TestResolveRedeemCodeExpiresAt_RejectsNonPositiveDays(t *testing.T) {
+	days := 0
+	expiresAt, err := resolveRedeemCodeExpiresAt(nil, &days)
+	require.Error(t, err)
+	require.Nil(t, expiresAt)
+}
+
+func TestResolveRedeemCodeExpiresAt_RejectsConflictingInputs(t *testing.T) {
+	future := time.Now().UTC().Add(time.Hour)
+	days := 3
+	expiresAt, err := resolveRedeemCodeExpiresAt(&future, &days)
+	require.Error(t, err)
+	require.Nil(t, expiresAt)
 }

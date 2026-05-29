@@ -163,7 +163,7 @@ func (s *accountRepoStub) SetRateLimited(ctx context.Context, id int64, resetAt 
 	panic("unexpected SetRateLimited call")
 }
 
-func (s *accountRepoStub) SetModelRateLimit(ctx context.Context, id int64, scope string, resetAt time.Time) error {
+func (s *accountRepoStub) SetModelRateLimit(ctx context.Context, id int64, scope string, resetAt time.Time, reason ...string) error {
 	panic("unexpected SetModelRateLimit call")
 }
 

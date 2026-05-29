@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 12 // v12: added OpenAIConfigExtra/AntigravityConfigExtra for GroupExtra platform config migration
+const apiKeyAuthSnapshotVersion = 13 // v13: v12 (OpenAIConfigExtra/AntigravityConfigExtra) + v11 upstream (models_list_config)
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -280,6 +280,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			AllowMessagesDispatch:           oaiCfg.AllowMessagesDispatch,
 			DefaultMappedModel:              oaiCfg.DefaultMappedModel,
 			MessagesDispatchModelConfig:     oaiCfg.messagesDispatchModelConfigValue(),
+			ModelsListConfig:                apiKey.Group.ModelsListConfig,
 			RPMLimit:                        apiKey.Group.RPMLimit,
 		}
 	}
@@ -353,6 +354,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			MessagesDispatchModelConfig:     snapshot.Group.MessagesDispatchModelConfig,
 			RequireOAuthOnly:                snapshot.Group.requireOAuthOnlyFromPlatform(),
 			RequirePrivacySet:               snapshot.Group.requirePrivacySetFromPlatform(),
+			ModelsListConfig:                snapshot.Group.ModelsListConfig,
 			RPMLimit:                        snapshot.Group.RPMLimit,
 			GroupExtra:                      groupExtra,
 		}

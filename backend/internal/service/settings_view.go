@@ -234,6 +234,7 @@ type PublicSettings struct {
 	CustomMenuItems             string // JSON array of custom menu items
 	CustomEndpoints             string // JSON array of custom endpoints
 
+	DingTalkOAuthEnabled     bool
 	LinuxDoOAuthEnabled      bool
 	WeChatOAuthEnabled       bool
 	WeChatOAuthOpenEnabled   bool

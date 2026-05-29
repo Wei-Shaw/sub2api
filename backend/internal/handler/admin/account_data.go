@@ -43,6 +43,9 @@ type DataProxy struct {
 	Status   string `json:"status"`
 }
 
+// DataAccount 是管理员显式备份导出使用的账号结构，故意不走 dto.Account 的脱敏路径，
+// Credentials 原文返回。这是"管理员备份"这一显式行为的一部分；如未来需要导出脱敏版本，
+// 应新增独立结构而非修改这里。
 type DataAccount struct {
 	Name               string         `json:"name"`
 	Notes              *string        `json:"notes,omitempty"`

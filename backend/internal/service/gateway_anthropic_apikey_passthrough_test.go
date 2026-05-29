@@ -188,11 +188,6 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardStreamPreservesBodyAnd
 	require.NotContains(t, rec.Body.String(), `"cache_read_input_tokens":7`, "透传输出不应被网关改写")
 	require.Equal(t, 7, result.Usage.CacheReadInputTokens, "计费 usage 解析应保留 cached_tokens 兼容")
 	require.Empty(t, rec.Header().Get("Set-Cookie"), "响应头应经过安全过滤")
-	rawBody, ok := c.Get(OpsUpstreamRequestBodyKey)
-	require.True(t, ok)
-	bodyBytes, ok := rawBody.([]byte)
-	require.True(t, ok, "应以 []byte 形式缓存上游请求体，避免重复 string 拷贝")
-	require.Equal(t, "claude-3-haiku-20240307", gjson.GetBytes(bodyBytes, "model").String(), "缓存的上游请求体应包含映射后的模型")
 }
 
 func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardCountTokensPreservesBody(t *testing.T) {
@@ -938,10 +933,6 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardDirect_UpstreamRequest
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "upstream request failed")
 	require.Equal(t, http.StatusBadGateway, rec.Code)
-	rawBody, ok := c.Get(OpsUpstreamRequestBodyKey)
-	require.True(t, ok)
-	_, ok = rawBody.([]byte)
-	require.True(t, ok)
 }
 
 func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardDirect_EmptyResponseBody(t *testing.T) {
@@ -1136,6 +1127,99 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingDataIntervalTimeout(
 	require.Contains(t, err.Error(), "stream data interval timeout")
 	require.NotNil(t, result)
 	require.False(t, result.clientDisconnect)
+}
+
+func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingSendsKeepaliveDuringIdle(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	svc := &GatewayService{
+		cfg: &config.Config{
+			Gateway: config.GatewayConfig{
+				StreamKeepaliveInterval: 1,
+				MaxLineSize:             defaultMaxLineSize,
+			},
+		},
+		rateLimitService: &RateLimitService{},
+	}
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       pr,
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		time.Sleep(1200 * time.Millisecond)
+		_, _ = pw.Write([]byte(strings.Join([]string{
+			`data: {"type":"message_start","message":{"usage":{"input_tokens":3}}}`,
+			"",
+			`data: {"type":"message_delta","usage":{"output_tokens":2}}`,
+			"",
+			"data: [DONE]",
+			"",
+		}, "\n")))
+		_ = pw.Close()
+	}()
+
+	result, err := svc.handleStreamingResponseAnthropicAPIKeyPassthrough(context.Background(), resp, c, &Account{ID: 8}, time.Now(), "claude-3-7-sonnet-20250219")
+	_ = pr.Close()
+	<-done
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Contains(t, rec.Body.String(), "event: ping\ndata: {\"type\": \"ping\"}\n\n")
+	require.Contains(t, rec.Body.String(), "data: [DONE]")
+}
+
+func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingKeepaliveDoesNotInterleavePartialEvent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	svc := &GatewayService{
+		cfg: &config.Config{
+			Gateway: config.GatewayConfig{
+				StreamKeepaliveInterval: 1,
+				MaxLineSize:             defaultMaxLineSize,
+			},
+		},
+		rateLimitService: &RateLimitService{},
+	}
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       pr,
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = pw.Write([]byte(`data: {"type":"message_start","message":{"usage":{"input_tokens":4}}}` + "\n"))
+		time.Sleep(1200 * time.Millisecond)
+		_, _ = pw.Write([]byte("\n"))
+		_, _ = pw.Write([]byte("data: [DONE]\n\n"))
+		_ = pw.Close()
+	}()
+
+	result, err := svc.handleStreamingResponseAnthropicAPIKeyPassthrough(context.Background(), resp, c, &Account{ID: 9}, time.Now(), "claude-3-7-sonnet-20250219")
+	_ = pr.Close()
+	<-done
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	body := rec.Body.String()
+	require.NotContains(t, body, `data: {"type":"message_start","message":{"usage":{"input_tokens":4}}}`+"\n"+"event: ping")
+	require.NotContains(t, body, "event: ping")
+	require.Contains(t, body, "data: [DONE]")
 }
 
 func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingReadError(t *testing.T) {

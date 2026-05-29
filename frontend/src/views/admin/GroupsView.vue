@@ -69,7 +69,7 @@
               {{ t("admin.groups.sortOrder") }}
             </button>
             <button
-              @click="showCreateModal = true"
+              @click="openCreateModal"
               class="btn btn-primary"
               data-tour="groups-create-btn"
             >
@@ -195,10 +195,7 @@
                 }}</span>
                 <span
                   class="ml-1 font-medium text-emerald-600 dark:text-emerald-400"
-                  >{{
-                    (row.active_account_count || 0) -
-                    (row.rate_limited_account_count || 0)
-                  }}</span
+                  >{{ row.active_account_count || 0 }}</span
                 >
                 <span
                   class="ml-1 inline-flex items-center rounded bg-gray-100 px-1.5 py-0.5 font-medium text-gray-800 dark:bg-dark-600 dark:text-gray-300"
@@ -326,7 +323,7 @@
               :title="t('admin.groups.noGroupsYet')"
               :description="t('admin.groups.createFirstGroup')"
               :action-text="t('admin.groups.createGroup')"
-              @action="showCreateModal = true"
+              @action="openCreateModal"
             />
           </template>
         </DataTable>
@@ -622,6 +619,16 @@ import { usePlatforms } from "@/composables/usePlatforms";
 import { dynamicPlatformBadgeClass } from "@/utils/platformColors";
 import { resolveGroupConfigComponent } from "@/components/admin/group/config/groupConfigRegistry";
 import { getGroupConfigMeta } from "@/utils/platformFrontendMeta";
+import {
+  buildModelsListConfig,
+  createModelsListState as createInitialModelsListState,
+  invertModelsListSelection,
+  moveModelsListItem,
+  selectAllModelsListItems,
+  setModelsListCandidates,
+} from "./groupsModelsList";
+import { createModelsListCandidatesTracker } from "./groupsModelsListCandidates";
+import { normalizeSupportedModelScopesForPlatform } from "./groupsSupportedModelScopes";
 
 const { t } = useI18n();
 const appStore = useAppStore();
@@ -779,6 +786,17 @@ const rpmOverridesGroup = ref<AdminGroup | null>(null);
 const sortableGroups = ref<AdminGroup[]>([]);
 const createMessagesDispatchDefaults = createDefaultMessagesDispatchFormState();
 const editMessagesDispatchDefaults = createDefaultMessagesDispatchFormState();
+const createModelsListState = reactive(createInitialModelsListState());
+const editModelsListState = reactive(createInitialModelsListState());
+const createModelsListLoading = ref(false);
+const editModelsListLoading = ref(false);
+const modelsListCandidatesTracker = createModelsListCandidatesTracker();
+const createModelsListSelectedCount = computed(
+  () => createModelsListState.items.filter((item) => item.selected).length,
+);
+const editModelsListSelectedCount = computed(
+  () => editModelsListState.items.filter((item) => item.selected).length,
+);
 
 const defaultPlatform = computed<GroupPlatform>(() => {
   if (dynamicPlatformList.value.length > 0) {
@@ -828,6 +846,294 @@ const createForm = reactive({
   // 分组级 RPM 限制（每用户每分钟最大请求数；0 = 不限制）
   rpm_limit: 0 as number,
 });
+
+// 简单账号类型（用于模型路由选择）
+interface SimpleAccount {
+  id: number;
+  name: string;
+}
+
+// 模型路由规则类型
+interface ModelRoutingRule {
+  pattern: string;
+  accounts: SimpleAccount[]; // 选中的账号对象数组
+}
+
+// 创建表单的模型路由规则
+const createModelRoutingRules = ref<ModelRoutingRule[]>([]);
+
+// 编辑表单的模型路由规则
+const editModelRoutingRules = ref<ModelRoutingRule[]>([]);
+
+// 规则对象稳定 key（避免使用 index 导致状态错位）
+const resolveCreateRuleKey =
+  createStableObjectKeyResolver<ModelRoutingRule>("create-rule");
+const resolveEditRuleKey =
+  createStableObjectKeyResolver<ModelRoutingRule>("edit-rule");
+const resolveCreateMessagesDispatchRowKey =
+  createStableObjectKeyResolver<MessagesDispatchMappingRow>(
+    "create-messages-dispatch-row",
+  );
+const resolveEditMessagesDispatchRowKey =
+  createStableObjectKeyResolver<MessagesDispatchMappingRow>(
+    "edit-messages-dispatch-row",
+  );
+
+const getCreateRuleRenderKey = (rule: ModelRoutingRule) =>
+  resolveCreateRuleKey(rule);
+const getEditRuleRenderKey = (rule: ModelRoutingRule) =>
+  resolveEditRuleKey(rule);
+const getCreateMessagesDispatchRowKey = (row: MessagesDispatchMappingRow) =>
+  resolveCreateMessagesDispatchRowKey(row);
+const getEditMessagesDispatchRowKey = (row: MessagesDispatchMappingRow) =>
+  resolveEditMessagesDispatchRowKey(row);
+
+const getCreateRuleSearchKey = (rule: ModelRoutingRule) =>
+  `create-${resolveCreateRuleKey(rule)}`;
+const getEditRuleSearchKey = (rule: ModelRoutingRule) =>
+  `edit-${resolveEditRuleKey(rule)}`;
+
+const getRuleSearchKey = (rule: ModelRoutingRule, isEdit: boolean = false) => {
+  return isEdit ? getEditRuleSearchKey(rule) : getCreateRuleSearchKey(rule);
+};
+
+// 账号搜索相关状态
+const accountSearchKeyword = ref<Record<string, string>>({});
+const accountSearchResults = ref<Record<string, SimpleAccount[]>>({});
+const showAccountDropdown = ref<Record<string, boolean>>({});
+
+const clearAccountSearchStateByKey = (key: string) => {
+  delete accountSearchKeyword.value[key];
+  delete accountSearchResults.value[key];
+  delete showAccountDropdown.value[key];
+};
+
+const clearAllAccountSearchState = () => {
+  accountSearchKeyword.value = {};
+  accountSearchResults.value = {};
+  showAccountDropdown.value = {};
+};
+
+const accountSearchRunner = useKeyedDebouncedSearch<SimpleAccount[]>({
+  delay: 300,
+  search: async (keyword, { signal }) => {
+    const res = await adminAPI.accounts.list(
+      1,
+      20,
+      {
+        search: keyword,
+        platform: "anthropic",
+      },
+      { signal },
+    );
+    return res.items.map((account) => ({ id: account.id, name: account.name }));
+  },
+  onSuccess: (key, result) => {
+    accountSearchResults.value[key] = result;
+  },
+  onError: (key) => {
+    accountSearchResults.value[key] = [];
+  },
+});
+
+// 搜索账号（仅限 anthropic 平台）
+const searchAccounts = (key: string) => {
+  accountSearchRunner.trigger(key, accountSearchKeyword.value[key] || "");
+};
+
+const searchAccountsByRule = (
+  rule: ModelRoutingRule,
+  isEdit: boolean = false,
+) => {
+  searchAccounts(getRuleSearchKey(rule, isEdit));
+};
+
+// 选择账号
+const selectAccount = (
+  rule: ModelRoutingRule,
+  account: SimpleAccount,
+  isEdit: boolean = false,
+) => {
+  if (!rule) return;
+
+  // 检查是否已选择
+  if (!rule.accounts.some((a) => a.id === account.id)) {
+    rule.accounts.push(account);
+  }
+
+  // 清空搜索
+  const key = getRuleSearchKey(rule, isEdit);
+  accountSearchKeyword.value[key] = "";
+  showAccountDropdown.value[key] = false;
+};
+
+// 移除已选账号
+const removeSelectedAccount = (
+  rule: ModelRoutingRule,
+  accountId: number,
+  _isEdit: boolean = false,
+) => {
+  if (!rule) return;
+
+  rule.accounts = rule.accounts.filter((a) => a.id !== accountId);
+};
+
+// 切换创建表单的模型系列选择
+const toggleCreateScope = (scope: string) => {
+  const idx = createForm.supported_model_scopes.indexOf(scope);
+  if (idx === -1) {
+    createForm.supported_model_scopes.push(scope);
+  } else {
+    createForm.supported_model_scopes.splice(idx, 1);
+  }
+};
+
+// 切换编辑表单的模型系列选择
+const toggleEditScope = (scope: string) => {
+  const idx = editForm.supported_model_scopes.indexOf(scope);
+  if (idx === -1) {
+    editForm.supported_model_scopes.push(scope);
+  } else {
+    editForm.supported_model_scopes.splice(idx, 1);
+  }
+};
+
+// 处理账号搜索输入框聚焦
+const onAccountSearchFocus = (
+  rule: ModelRoutingRule,
+  isEdit: boolean = false,
+) => {
+  const key = getRuleSearchKey(rule, isEdit);
+  showAccountDropdown.value[key] = true;
+  // 如果没有搜索结果，触发一次搜索
+  if (!accountSearchResults.value[key]?.length) {
+    searchAccounts(key);
+  }
+};
+
+// 添加创建表单的路由规则
+const addCreateRoutingRule = () => {
+  createModelRoutingRules.value.push({ pattern: "", accounts: [] });
+};
+
+// 删除创建表单的路由规则
+const removeCreateRoutingRule = (rule: ModelRoutingRule) => {
+  const index = createModelRoutingRules.value.indexOf(rule);
+  if (index === -1) return;
+
+  const key = getCreateRuleSearchKey(rule);
+  accountSearchRunner.clearKey(key);
+  clearAccountSearchStateByKey(key);
+  createModelRoutingRules.value.splice(index, 1);
+};
+
+// 添加编辑表单的路由规则
+const addEditRoutingRule = () => {
+  editModelRoutingRules.value.push({ pattern: "", accounts: [] });
+};
+
+// 删除编辑表单的路由规则
+const removeEditRoutingRule = (rule: ModelRoutingRule) => {
+  const index = editModelRoutingRules.value.indexOf(rule);
+  if (index === -1) return;
+
+  const key = getEditRuleSearchKey(rule);
+  accountSearchRunner.clearKey(key);
+  clearAccountSearchStateByKey(key);
+  editModelRoutingRules.value.splice(index, 1);
+};
+
+const resetModelsListState = (
+  state: typeof createModelsListState,
+  config?: Parameters<typeof createInitialModelsListState>[0],
+) => {
+  const fresh = createInitialModelsListState(config);
+  state.enabled = fresh.enabled;
+  state.savedModels = fresh.savedModels;
+  state.items = fresh.items;
+};
+
+const loadModelsListCandidates = async (
+  mode: "create" | "edit",
+  groupID: number,
+  platform: GroupPlatform,
+) => {
+  const request = { mode, groupID, platform };
+  const requestID = modelsListCandidatesTracker.next(request);
+  const state = mode === "create" ? createModelsListState : editModelsListState;
+  const loadingRef = mode === "create" ? createModelsListLoading : editModelsListLoading;
+  loadingRef.value = true;
+  try {
+    const models = await adminAPI.groups.getModelsListCandidates(groupID, platform);
+    if (!modelsListCandidatesTracker.isCurrent(requestID, request)) {
+      return;
+    }
+    setModelsListCandidates(state, models);
+  } catch (error) {
+    if (!modelsListCandidatesTracker.isCurrent(requestID, request)) {
+      return;
+    }
+    console.error("Error loading group models list candidates:", error);
+  } finally {
+    if (modelsListCandidatesTracker.isCurrent(requestID, request)) {
+      loadingRef.value = false;
+    }
+  }
+};
+
+const moveCreateModelsListItem = (fromIndex: number, toIndex: number) => {
+  moveModelsListItem(createModelsListState, fromIndex, toIndex);
+};
+
+const moveEditModelsListItem = (fromIndex: number, toIndex: number) => {
+  moveModelsListItem(editModelsListState, fromIndex, toIndex);
+};
+
+// 将 UI 格式的路由规则转换为 API 格式
+const convertRoutingRulesToApiFormat = (
+  rules: ModelRoutingRule[],
+): Record<string, number[]> | null => {
+  const result: Record<string, number[]> = {};
+  let hasValidRules = false;
+
+  for (const rule of rules) {
+    const pattern = rule.pattern.trim();
+    if (!pattern) continue;
+
+    const accountIds = rule.accounts.map((a) => a.id).filter((id) => id > 0);
+
+    if (accountIds.length > 0) {
+      result[pattern] = accountIds;
+      hasValidRules = true;
+    }
+  }
+
+  return hasValidRules ? result : null;
+};
+
+// 将 API 格式的路由规则转换为 UI 格式（需要加载账号名称）
+const convertApiFormatToRoutingRules = async (
+  apiFormat: Record<string, number[]> | null,
+): Promise<ModelRoutingRule[]> => {
+  if (!apiFormat) return [];
+
+  const rules: ModelRoutingRule[] = [];
+  for (const [pattern, accountIds] of Object.entries(apiFormat)) {
+    // 加载账号信息
+    const accounts: SimpleAccount[] = [];
+    for (const id of accountIds) {
+      try {
+        const account = await adminAPI.accounts.getById(id);
+        accounts.push({ id: account.id, name: account.name });
+      } catch {
+        // 如果账号不存在，仍然显示 ID
+        accounts.push({ id, name: `#${id}` });
+      }
+    }
+    rules.push({ pattern, accounts });
+  }
+  return rules;
+};
 
 const editForm = reactive({
   name: "",
@@ -1022,6 +1328,11 @@ const handleSort = (key: string, order: 'asc' | 'desc') => {
   loadGroups();
 };
 
+const openCreateModal = () => {
+  showCreateModal.value = true;
+  loadModelsListCandidates("create", 0, createForm.platform);
+};
+
 const closeCreateModal = () => {
   showCreateModal.value = false;
   createFormFieldsRef.value?.resetRoutingRules?.();
@@ -1049,6 +1360,9 @@ const closeCreateModal = () => {
   createForm.supported_model_scopes = ["claude", "gemini_text", "gemini_image"];
   createForm.mcp_xml_inject = true;
   createForm.copy_accounts_from_group_ids = [];
+  createForm.rpm_limit = 0;
+  resetModelsListState(createModelsListState);
+  createModelRoutingRules.value = [];
 };
 
 const normalizeOptionalLimit = (
@@ -1186,6 +1500,12 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.mcp_xml_inject = group.mcp_xml_inject ?? true;
   editForm.copy_accounts_from_group_ids = []; // 复制账号字段每次编辑时重置为空
   editForm.rpm_limit = group.rpm_limit ?? 0;
+  resetModelsListState(editModelsListState, group.models_list_config);
+  // 加载模型路由规则（异步加载账号名称）
+  editModelRoutingRules.value = await convertApiFormatToRoutingRules(
+    group.model_routing,
+  );
+  loadModelsListCandidates("edit", group.id, group.platform);
   showEditModal.value = true;
   // 加载模型路由规则（异步，需等待组件挂载后）
   nextTick(() => {
@@ -1199,6 +1519,7 @@ const closeEditModal = () => {
   editingGroup.value = null;
   editForm.copy_accounts_from_group_ids = [];
   resetMessagesDispatchFormState(editForm);
+  resetModelsListState(editModelsListState);
 };
 
 const handleUpdateGroup = async () => {
@@ -1309,6 +1630,12 @@ watch(
     if (!platformSupportsMessagesDispatch(newVal)) {
       resetMessagesDispatchFormState(createForm);
     }
+    if (!["openai", "antigravity", "anthropic", "gemini"].includes(newVal)) {
+      createForm.require_oauth_only = false;
+      createForm.require_privacy_set = false;
+    }
+    resetModelsListState(createModelsListState);
+    loadModelsListCandidates("create", 0, newVal);
   },
 );
 
@@ -1322,6 +1649,10 @@ watch(
       resetMessagesDispatchFormState(editForm);
       editForm.allow_messages_dispatch = false;
       editForm.default_mapped_model = '';
+    }
+    if (editingGroup.value) {
+      resetModelsListState(editModelsListState, editForm.platform === editingGroup.value.platform ? editingGroup.value.models_list_config : undefined);
+      loadModelsListCandidates("edit", editingGroup.value.id, newVal);
     }
   },
 );
@@ -1372,8 +1703,27 @@ const saveSortOrder = async () => {
   }
 };
 
+// 点击外部关闭账号搜索下拉框
+const handleClickOutside = (event: MouseEvent) => {
+  const target = event.target as HTMLElement;
+  // 检查是否点击在下拉框或输入框内
+  if (!target.closest(".account-search-container")) {
+    Object.keys(showAccountDropdown.value).forEach((key) => {
+      showAccountDropdown.value[key] = false;
+    });
+  }
+};
+
 onMounted(() => {
   fetchPlatforms();
   loadGroups();
+  loadModelsListCandidates("create", 0, createForm.platform);
+  document.addEventListener("click", handleClickOutside);
+});
+
+onUnmounted(() => {
+  document.removeEventListener("click", handleClickOutside);
+  accountSearchRunner.clearAll();
+  clearAllAccountSearchState();
 });
 </script>

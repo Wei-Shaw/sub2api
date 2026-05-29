@@ -231,6 +231,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	if policyErr != nil {
 		var blocked *OpenAIFastBlockedError
 		if errors.As(policyErr, &blocked) {
+			MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
 			writeAnthropicError(c, http.StatusForbidden, "forbidden_error", blocked.Message)
 		}
 		return nil, policyErr
@@ -337,17 +338,15 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 				Message:            upstreamMsg,
 				Detail:             upstreamDetail,
 			})
-			if s.rateLimitService != nil {
-				s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
-			}
+			s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, upstreamModel)
 			return nil, &UpstreamFailoverError{
 				StatusCode:             resp.StatusCode,
 				ResponseBody:           respBody,
-				RetryableOnSameAccount: account.IsPoolMode() && (isPoolModeRetryableStatus(resp.StatusCode) || isOpenAITransientProcessingError(resp.StatusCode, upstreamMsg, respBody)),
+				RetryableOnSameAccount: account.IsPoolMode() && (account.IsPoolModeRetryableStatus(resp.StatusCode) || isOpenAITransientProcessingError(resp.StatusCode, upstreamMsg, respBody)),
 			}
 		}
 		// Non-failover error: return Anthropic-formatted error to client
-		return s.handleAnthropicErrorResponse(resp, c, account)
+		return s.handleAnthropicErrorResponse(resp, c, account, billingModel)
 	}
 
 	if account.Type == AccountTypeOAuth && promptCacheKey != "" {
@@ -414,8 +413,9 @@ func (s *OpenAIGatewayService) handleAnthropicErrorResponse(
 	resp *http.Response,
 	c *gin.Context,
 	account *Account,
+	requestedModel ...string,
 ) (*OpenAIForwardResult, error) {
-	return s.handleCompatErrorResponse(resp, c, account, writeAnthropicError)
+	return s.handleCompatErrorResponse(resp, c, account, writeAnthropicError, requestedModel...)
 }
 
 // handleAnthropicBufferedStreamingResponse reads all Responses SSE events from
@@ -560,10 +560,30 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 	}()
 	defer close(done)
 
+	var parser openAICompatSSEFrameParser
 	for {
 		select {
 		case ev, ok := <-events:
 			if !ok {
+				if frame, ok := parser.Finish(); ok {
+					payload := openAICompatPayloadWithEventType(frame.Data, frame.EventType)
+					var event apicompat.ResponsesStreamEvent
+					if err := json.Unmarshal([]byte(payload), &event); err == nil {
+						acc.ProcessEvent(&event)
+						if isOpenAICompatResponsesTerminalEvent(event.Type) && event.Response != nil {
+							if event.Usage != nil {
+								usage = copyOpenAIUsageFromResponsesUsage(event.Usage)
+								if event.Response.Usage == nil {
+									event.Response.Usage = event.Usage
+								}
+							}
+							if event.Response.Usage != nil {
+								usage = copyOpenAIUsageFromResponsesUsage(event.Response.Usage)
+							}
+							return event.Response, usage, acc, nil
+						}
+					}
+				}
 				return nil, usage, acc, nil
 			}
 			resetTimeout()
@@ -580,10 +600,11 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 			if isOpenAICompatDoneSentinelLine(ev.line) {
 				return nil, usage, acc, nil
 			}
-			payload, ok := extractOpenAISSEDataLine(ev.line)
-			if !ok || payload == "" {
+			frame, ok := parser.AddLine(ev.line)
+			if !ok {
 				continue
 			}
+			payload := openAICompatPayloadWithEventType(frame.Data, frame.EventType)
 
 			var event apicompat.ResponsesStreamEvent
 			if err := json.Unmarshal([]byte(payload), &event); err != nil {
@@ -597,6 +618,12 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 			acc.ProcessEvent(&event)
 
 			if isOpenAICompatResponsesTerminalEvent(event.Type) && event.Response != nil {
+				if event.Usage != nil {
+					usage = copyOpenAIUsageFromResponsesUsage(event.Usage)
+					if event.Response.Usage == nil {
+						event.Response.Usage = event.Usage
+					}
+				}
 				if event.Response.Usage != nil {
 					usage = copyOpenAIUsageFromResponsesUsage(event.Response.Usage)
 				}
@@ -699,14 +726,18 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			return false
 		}
 
-		// 仅按兼容转换器支持的终止事件提取 usage，避免无意扩大事件语义。
 		isTerminalEvent := isOpenAICompatResponsesTerminalEvent(event.Type)
-		if isTerminalEvent && event.Response != nil {
-			if id := strings.TrimSpace(event.Response.ID); id != "" {
-				responseID = id
+		if isTerminalEvent {
+			if event.Response != nil {
+				if id := strings.TrimSpace(event.Response.ID); id != "" {
+					responseID = id
+				}
+				if event.Response.Usage != nil {
+					usage = copyOpenAIUsageFromResponsesUsage(event.Response.Usage)
+				}
 			}
-			if event.Response.Usage != nil {
-				usage = copyOpenAIUsageFromResponsesUsage(event.Response.Usage)
+			if event.Usage != nil {
+				usage = copyOpenAIUsageFromResponsesUsage(event.Usage)
 			}
 		}
 
@@ -772,6 +803,10 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	missingTerminalErr := func() (*OpenAIForwardResult, error) {
 		return resultWithUsage(), fmt.Errorf("stream usage incomplete: missing terminal event")
 	}
+	processFrame := func(frame openAICompatSSEFrame) bool {
+		payload := openAICompatPayloadWithEventType(frame.Data, frame.EventType)
+		return processDataLine(payload)
+	}
 
 	// ── Determine keepalive interval ──
 	keepaliveInterval := time.Duration(0)
@@ -781,22 +816,31 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 
 	// ── No keepalive: fast synchronous path (no goroutine overhead) ──
 	if streamInterval <= 0 && keepaliveInterval <= 0 {
+		var parser openAICompatSSEFrameParser
 		for scanner.Scan() {
 			line := scanner.Text()
 			if isOpenAICompatDoneSentinelLine(line) {
 				return missingTerminalErr()
 			}
-			payload, ok := extractOpenAISSEDataLine(line)
+			frame, ok := parser.AddLine(line)
 			if !ok {
 				continue
 			}
-			if processDataLine(payload) {
+			if processFrame(frame) {
 				return finalizeStream()
 			}
 		}
 		if err := scanner.Err(); err != nil {
 			handleScanErr(err)
 			return resultWithUsage(), fmt.Errorf("stream usage incomplete: %w", err)
+		}
+		if frame, ok := parser.Finish(); ok {
+			if strings.TrimSpace(frame.Data) == "[DONE]" {
+				return missingTerminalErr()
+			}
+			if processFrame(frame) {
+				return finalizeStream()
+			}
 		}
 		return missingTerminalErr()
 	}
@@ -842,12 +886,21 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 		keepaliveCh = keepaliveTicker.C
 	}
 	lastDataAt := time.Now()
+	var parser openAICompatSSEFrameParser
 
 	for {
 		select {
 		case ev, ok := <-events:
 			if !ok {
 				// Upstream closed
+				if frame, ok := parser.Finish(); ok {
+					if strings.TrimSpace(frame.Data) == "[DONE]" {
+						return missingTerminalErr()
+					}
+					if processFrame(frame) {
+						return finalizeStream()
+					}
+				}
 				return missingTerminalErr()
 			}
 			if ev.err != nil {
@@ -859,11 +912,11 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			if isOpenAICompatDoneSentinelLine(line) {
 				return missingTerminalErr()
 			}
-			payload, ok := extractOpenAISSEDataLine(line)
+			frame, ok := parser.AddLine(line)
 			if !ok {
 				continue
 			}
-			if processDataLine(payload) {
+			if processFrame(frame) {
 				return finalizeStream()
 			}
 

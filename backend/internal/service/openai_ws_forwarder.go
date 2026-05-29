@@ -399,15 +399,9 @@ func parseOpenAIWSResponseUsageFromCompletedEvent(message []byte, usage *OpenAIU
 	if usage == nil || len(message) == 0 {
 		return
 	}
-	values := gjson.GetManyBytes(
-		message,
-		"response.usage.input_tokens",
-		"response.usage.output_tokens",
-		"response.usage.input_tokens_details.cached_tokens",
-	)
-	usage.InputTokens = int(values[0].Int())
-	usage.OutputTokens = int(values[1].Int())
-	usage.CacheReadInputTokens = int(values[2].Int())
+	if parsedUsage, ok := extractOpenAIUsageFromJSONBytes(message); ok {
+		*usage = parsedUsage
+	}
 }
 
 func parseOpenAIWSErrorEventFields(message []byte) (code string, errType string, errMessage string) {
@@ -1458,9 +1452,31 @@ func openAIWSRawItemsHasPrefix(items []json.RawMessage, prefix []json.RawMessage
 
 func openAIWSRawItemsHasFunctionCallOutput(items []json.RawMessage) bool {
 	for _, item := range items {
-		if gjson.GetBytes(item, "type").String() == "function_call_output" {
+		if isCodexToolCallOutputItemType(gjson.GetBytes(item, "type").String()) {
 			return true
 		}
+	}
+	return false
+}
+
+func openAIWSRawPayloadHasToolCallOutput(payload []byte) bool {
+	if len(payload) == 0 {
+		return false
+	}
+	input := gjson.GetBytes(payload, "input")
+	if !input.Exists() {
+		return false
+	}
+	if input.IsArray() {
+		for _, item := range input.Array() {
+			if isCodexToolCallOutputItemType(item.Get("type").String()) {
+				return true
+			}
+		}
+		return false
+	}
+	if input.Type == gjson.JSON {
+		return isCodexToolCallOutputItemType(input.Get("type").String())
 	}
 	return false
 }
@@ -2255,18 +2271,19 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	)
 
 	return &OpenAIForwardResult{
-		RequestID:       responseID,
-		Usage:           *usage,
-		Model:           originalModel,
-		UpstreamModel:   mappedModel,
-		ImageCount:      imageCounter.Count(),
-		ServiceTier:     extractOpenAIServiceTier(reqBody),
-		ReasoningEffort: extractOpenAIReasoningEffort(reqBody, originalModel),
-		Stream:          reqStream,
-		OpenAIWSMode:    true,
-		ResponseHeaders: lease.HandshakeHeaders(),
-		Duration:        time.Since(startTime),
-		FirstTokenMs:    firstTokenMs,
+		RequestID:        responseID,
+		Usage:            *usage,
+		Model:            originalModel,
+		UpstreamModel:    mappedModel,
+		ImageCount:       imageCounter.Count(),
+		ImageOutputSizes: imageCounter.Sizes(),
+		ServiceTier:      extractOpenAIServiceTier(reqBody),
+		ReasoningEffort:  extractOpenAIReasoningEffort(reqBody, originalModel),
+		Stream:           reqStream,
+		OpenAIWSMode:     true,
+		ResponseHeaders:  lease.HandshakeHeaders(),
+		Duration:         time.Since(startTime),
+		FirstTokenMs:     firstTokenMs,
 	}, nil
 }
 
@@ -2368,6 +2385,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		originalModel      string
 		imageBillingModel  string
 		imageSizeTier      string
+		imageInputSize     string
 		payloadBytes       int
 	}
 
@@ -2471,12 +2489,16 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		}
 		imageBillingModel := ""
 		imageSizeTier := ""
+		imageInputSize := ""
 		if imageIntent {
 			var imageCfgErr error
-			imageBillingModel, imageSizeTier, imageCfgErr = resolveOpenAIResponsesImageBillingConfigFromBody(normalized, originalModel)
+			imageCfg, imageCfgErr := resolveOpenAIResponsesImageBillingConfigDetailedFromBody(normalized, originalModel)
 			if imageCfgErr != nil {
 				return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, imageCfgErr.Error(), imageCfgErr)
 			}
+			imageBillingModel = imageCfg.Model
+			imageSizeTier = imageCfg.SizeTier
+			imageInputSize = imageCfg.InputSize
 		}
 
 		// Apply OpenAI Fast Policy on the response.create frame using the same
@@ -2494,6 +2516,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", policyErr)
 		}
 		if blocked != nil {
+			MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
 			// Send a Realtime-style error event to the client first, then
 			// signal the handler to close the connection with PolicyViolation.
 			// We intentionally do NOT forward this frame upstream.
@@ -2525,6 +2548,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			originalModel:      originalModel,
 			imageBillingModel:  imageBillingModel,
 			imageSizeTier:      imageSizeTier,
+			imageInputSize:     imageInputSize,
 			payloadBytes:       len(normalized),
 		}, nil
 	}
@@ -2662,6 +2686,10 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			var dialErr *openAIWSDialError
 			if errors.As(acquireErr, &dialErr) && dialErr != nil && dialErr.StatusCode == http.StatusTooManyRequests {
 				s.persistOpenAIWSRateLimitSignal(ctx, account, dialErr.ResponseHeaders, nil, "rate_limit_exceeded", "rate_limit_error", strings.TrimSpace(acquireErr.Error()))
+				return nil, &UpstreamFailoverError{
+					StatusCode:      http.StatusTooManyRequests,
+					ResponseHeaders: cloneHeader(dialErr.ResponseHeaders),
+				}
 			}
 			if errors.Is(acquireErr, errOpenAIWSPreferredConnUnavailable) {
 				return nil, NewOpenAIWSClientCloseError(
@@ -2726,7 +2754,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		return payload, nil
 	}
 
-	sendAndRelay := func(turn int, lease *openAIWSConnLease, payload []byte, payloadBytes int, originalModel string, imageBillingModel string, imageSizeTier string) (*OpenAIForwardResult, error) {
+	sendAndRelay := func(turn int, lease *openAIWSConnLease, payload []byte, payloadBytes int, originalModel string, imageBillingModel string, imageSizeTier string, imageInputSize string) (*OpenAIForwardResult, error) {
 		if lease == nil {
 			return nil, errors.New("upstream websocket lease is nil")
 		}
@@ -2758,7 +2786,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		turnPreviousResponseIDKind := ClassifyOpenAIPreviousResponseIDKind(turnPreviousResponseID)
 		turnPromptCacheKey := openAIWSPayloadStringFromRaw(payload, "prompt_cache_key")
 		turnStoreDisabled := s.isOpenAIWSStoreDisabledInRequestRaw(payload, account)
-		turnHasFunctionCallOutput := gjson.GetBytes(payload, `input.#(type=="function_call_output")`).Exists()
+		turnHasFunctionCallOutput := openAIWSRawPayloadHasToolCallOutput(payload)
 		eventCount := 0
 		tokenEventCount := 0
 		terminalEventCount := 0
@@ -2857,6 +2885,14 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 						false,
 					)
 				}
+				if !wroteDownstream && isOpenAIWSRateLimitError(errCodeRaw, errTypeRaw, errMsgRaw) {
+					lease.MarkBroken()
+					return nil, &UpstreamFailoverError{
+						StatusCode:      http.StatusTooManyRequests,
+						ResponseBody:    append([]byte(nil), upstreamMessage...),
+						ResponseHeaders: cloneHeader(lease.HandshakeHeaders()),
+					}
+				}
 			}
 			isTokenEvent := isOpenAIWSTokenEvent(eventType)
 			if isTokenEvent {
@@ -2950,6 +2986,8 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				if imageCount > 0 {
 					result.ImageCount = imageCount
 					result.ImageSize = imageSizeTier
+					result.ImageInputSize = imageInputSize
+					result.ImageOutputSizes = imageCounter.Sizes()
 					result.BillingModel = imageBillingModel
 				}
 				return result, nil
@@ -2961,6 +2999,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	currentOriginalModel := firstPayload.originalModel
 	currentImageBillingModel := firstPayload.imageBillingModel
 	currentImageSizeTier := firstPayload.imageSizeTier
+	currentImageInputSize := firstPayload.imageInputSize
 	currentPayloadBytes := firstPayload.payloadBytes
 	isStrictAffinityTurn := func(payload []byte) bool {
 		if !storeDisabled {
@@ -3031,7 +3070,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	currentTurnReplayInputExists := false
 	skipBeforeTurn := false
 	hasCurrentOrReplayFunctionCallOutput := func(payload []byte) bool {
-		if gjson.GetBytes(payload, `input.#(type=="function_call_output")`).Exists() {
+		if openAIWSRawPayloadHasToolCallOutput(payload) {
 			return true
 		}
 		return currentTurnReplayInputExists && openAIWSRawItemsHasFunctionCallOutput(currentTurnReplayInput)
@@ -3156,7 +3195,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		currentPreviousResponseID := openAIWSPayloadStringFromRaw(currentPayload, "previous_response_id")
 		expectedPrev := strings.TrimSpace(lastTurnResponseID)
 		toolSignals := ToolContinuationSignals{
-			HasFunctionCallOutput: gjson.GetBytes(currentPayload, `input.#(type=="function_call_output")`).Exists(),
+			HasFunctionCallOutput: openAIWSRawPayloadHasToolCallOutput(currentPayload),
 		}
 		if toolSignals.HasFunctionCallOutput {
 			var currentReqBody map[string]any
@@ -3438,7 +3477,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			)
 		}
 
-		result, relayErr := sendAndRelay(turn, sessionLease, currentPayload, currentPayloadBytes, currentOriginalModel, currentImageBillingModel, currentImageSizeTier)
+		result, relayErr := sendAndRelay(turn, sessionLease, currentPayload, currentPayloadBytes, currentOriginalModel, currentImageBillingModel, currentImageSizeTier, currentImageInputSize)
 		if relayErr != nil {
 			lastTurnClean = false
 			if recoverIngressPrevResponseNotFound(relayErr, turn, connID) {
@@ -3562,6 +3601,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		currentOriginalModel = nextPayload.originalModel
 		currentImageBillingModel = nextPayload.imageBillingModel
 		currentImageSizeTier = nextPayload.imageSizeTier
+		currentImageInputSize = nextPayload.imageInputSize
 		currentPayloadBytes = nextPayload.payloadBytes
 		storeDisabled = s.isOpenAIWSStoreDisabledInRequestRaw(currentPayload, account)
 		if !storeDisabled {
@@ -3986,7 +4026,7 @@ func (s *OpenAIGatewayService) persistOpenAIWSRateLimitSignal(ctx context.Contex
 	if !isOpenAIWSRateLimitError(codeRaw, errTypeRaw, msgRaw) {
 		return
 	}
-	s.rateLimitService.HandleUpstreamError(ctx, account, http.StatusTooManyRequests, headers, responseBody)
+	s.handleOpenAIAccountUpstreamError(ctx, account, http.StatusTooManyRequests, headers, responseBody)
 }
 
 func classifyOpenAIWSErrorEventFromRaw(codeRaw, errTypeRaw, msgRaw string) (string, bool) {

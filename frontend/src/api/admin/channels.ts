@@ -164,5 +164,19 @@ export async function getModelDefaultPricing(model: string): Promise<ModelDefaul
   return data
 }
 
-const channelsAPI = { list, getById, create, update, remove, getModelDefaultPricing }
+export interface SyncPricingModelsResult {
+  models: string[]
+}
+
+/**
+ * Fetch the latest model names from the LiteLLM pricing catalog for the given platform
+ */
+export async function syncPricingModels(platform: string): Promise<SyncPricingModelsResult> {
+  const { data } = await apiClient.get<SyncPricingModelsResult>('/admin/channels/pricing/sync-models', {
+    params: { platform }
+  })
+  return data
+}
+
+const channelsAPI = { list, getById, create, update, remove, getModelDefaultPricing, syncPricingModels }
 export default channelsAPI

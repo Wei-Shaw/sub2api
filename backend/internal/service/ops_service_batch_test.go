@@ -31,11 +31,10 @@ func TestOpsServiceRecordErrorBatch_SanitizesAndBatches(t *testing.T) {
 			UpstreamErrorDetail:  strPtr(detail),
 			UpstreamErrors: []*OpsUpstreamErrorEvent{
 				{
-					AccountID:           -2,
-					UpstreamStatusCode:  429,
-					Message:             " token leaked ",
-					Detail:              `{"refresh_token":"secret"}`,
-					UpstreamRequestBody: `{"api_key":"secret","messages":[{"role":"user","content":"hello"}]}`,
+					AccountID:          -2,
+					UpstreamStatusCode: 429,
+					Message:            " token leaked ",
+					Detail:             `{"refresh_token":"secret"}`,
 				},
 			},
 		},

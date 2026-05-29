@@ -22,12 +22,19 @@ func AnthropicToResponses(req *AnthropicRequest) (*ResponsesRequest, error) {
 	}
 
 	out := &ResponsesRequest{
-		Model:       req.Model,
-		Input:       inputJSON,
-		Temperature: req.Temperature,
-		TopP:        req.TopP,
-		Stream:      req.Stream,
-		Include:     []string{"reasoning.encrypted_content"},
+		Model:   req.Model,
+		Input:   inputJSON,
+		Stream:  req.Stream,
+		Include: []string{"reasoning.encrypted_content"},
+	}
+
+	// Reasoning models (gpt-5.x) served via the Responses API do not accept
+	// sampling parameters. Sending temperature or top_p causes a 400
+	// "Unsupported parameter" error, so we only forward them for non-reasoning
+	// models.
+	if !isReasoningModel(req.Model) {
+		out.Temperature = req.Temperature
+		out.TopP = req.TopP
 	}
 
 	storeFalse := false
@@ -435,6 +442,14 @@ func convertAnthropicToolsToResponses(tools []AnthropicTool) []ResponsesTool {
 
 func boolPtr(v bool) *bool {
 	return &v
+}
+
+// isReasoningModel reports whether model is a reasoning model that does not
+// support sampling parameters (temperature, top_p) via the Responses API.
+// All gpt-5.x models are reasoning-only; the Responses API returns
+// "Unsupported parameter: temperature" if these fields are present.
+func isReasoningModel(model string) bool {
+	return strings.HasPrefix(model, "gpt-5")
 }
 
 // normalizeToolParameters ensures the tool parameter schema is valid for

@@ -231,6 +231,8 @@ const formatScopeName = (scope: string): string => {
     'gemini-2.5-flash-thinking': 'G25FT',
     'gemini-2.5-pro': 'G25P',
     'gemini-2.5-flash-image': 'G25I',
+    // Gemini 3.5 系列
+    'gemini-3.5-flash': 'G35F',
     // Gemini 3 系列
     'gemini-3-flash': 'G3F',
     'gemini-3.1-pro-high': 'G3PH',

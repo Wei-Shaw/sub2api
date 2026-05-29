@@ -23,6 +23,7 @@ import { getClient } from '../client'
 export type Provider = 'openai' | 'anthropic' | 'gemini'
 export type MonitorStatus = 'operational' | 'degraded' | 'failed' | 'error'
 export type BodyOverrideMode = 'off' | 'merge' | 'replace'
+export type APIMode = 'chat_completions' | 'responses'
 
 export interface ExtraModelStatus {
   model: string
@@ -34,6 +35,7 @@ export interface ChannelMonitor {
   id: number
   name: string
   provider: Provider
+  api_mode: APIMode
   endpoint: string
   api_key_masked: string
   api_key_decrypt_failed?: boolean
@@ -75,6 +77,7 @@ export interface ListResponse {
 export interface CreateParams {
   name: string
   provider: Provider
+  api_mode?: APIMode
   endpoint: string
   api_key: string
   primary_model: string

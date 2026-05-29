@@ -635,11 +635,6 @@ urlFallbackLoop:
 				return nil, err
 			}
 
-			// Capture upstream request body for ops retry of this attempt.
-			if p.c != nil && len(p.body) > 0 {
-				p.c.Set(OpsUpstreamRequestBodyKey, string(p.body))
-			}
-
 			resp, err = p.httpUpstream.Do(upstreamReq, p.proxyURL, p.account.ID, p.account.Concurrency)
 			if err == nil && resp == nil {
 				err = errors.New("upstream returned nil response")
@@ -1327,22 +1322,6 @@ func (s *AntigravityGatewayService) unwrapV1InternalResponse(body []byte) ([]byt
 	return body, nil
 }
 
-// isModelNotFoundError 检测是否为模型不存在的 404 错误
-func isModelNotFoundError(statusCode int, body []byte) bool {
-	if statusCode != 404 {
-		return false
-	}
-
-	bodyStr := strings.ToLower(string(body))
-	keywords := []string{"model not found", "unknown model", "not found"}
-	for _, keyword := range keywords {
-		if strings.Contains(bodyStr, keyword) {
-			return true
-		}
-	}
-	return true // 404 without specific message also treated as model not found
-}
-
 // Forward 转发 Claude 协议请求（Claude → Gemini 转换）
 //
 // 限流处理流程:
@@ -1377,6 +1356,7 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 	originalModel := claudeReq.Model
 	mappedModel := s.getMappedModel(account, claudeReq.Model)
 	if mappedModel == "" {
+		MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalFeatureGate)
 		return nil, s.writeClaudeError(c, http.StatusForbidden, "permission_error", fmt.Sprintf("model %s not in whitelist", claudeReq.Model))
 	}
 	// 应用 thinking 模式自动后缀：如果 thinking 开启且目标是 claude-sonnet-4-5，自动改为 thinking 版本
@@ -2123,7 +2103,8 @@ func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Co
 	}
 
 	// 解析请求以获取 image_size（用于图片计费）
-	imageSize := s.extractImageSize(body)
+	imageInputSize := s.extractImageInputSize(body)
+	imageSize := normalizeOpenAIImageSizeTier(imageInputSize)
 
 	switch action {
 	case "generateContent", "streamGenerateContent":
@@ -2145,6 +2126,7 @@ func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Co
 
 	mappedModel := s.getMappedModel(account, originalModel)
 	if mappedModel == "" {
+		MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalFeatureGate)
 		return nil, s.writeGoogleError(c, http.StatusForbidden, fmt.Sprintf("model %s not in whitelist", originalModel))
 	}
 	billingModel := mappedModel
@@ -2494,6 +2476,7 @@ handleSuccess:
 		ClientDisconnect: clientDisconnect,
 		ImageCount:       imageCount,
 		ImageSize:        imageSize,
+		ImageInputSize:   imageInputSize,
 	}, nil
 }
 
@@ -4093,21 +4076,17 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 	}
 }
 
-// extractImageSize 从 Gemini 请求中提取 image_size 参数
-func (s *AntigravityGatewayService) extractImageSize(body []byte) string {
+func (s *AntigravityGatewayService) extractImageInputSize(body []byte) string {
 	var req antigravity.GeminiRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		return "2K" // 默认 2K
+		return ""
 	}
 
 	if req.GenerationConfig != nil && req.GenerationConfig.ImageConfig != nil {
-		size := strings.ToUpper(strings.TrimSpace(req.GenerationConfig.ImageConfig.ImageSize))
-		if size == "1K" || size == "2K" || size == "4K" {
-			return size
-		}
+		return strings.TrimSpace(req.GenerationConfig.ImageConfig.ImageSize)
 	}
 
-	return "2K" // 默认 2K
+	return ""
 }
 
 // isImageGenerationModel 判断模型是否为图片生成模型
@@ -4498,6 +4477,14 @@ func (s *AntigravityGatewayService) streamUpstreamResponse(c *gin.Context, resp 
 }
 
 // extractSSEUsage 从 SSE data 行中提取 Claude usage（用于流式透传场景）
+//
+// Anthropic streaming 的 usage 字段分布在两类事件中：
+//   - message_start：嵌套在 event.message.usage（input_tokens、cache_creation_input_tokens、
+//     cache_read_input_tokens 等输入侧字段）
+//   - message_delta：位于顶层 event.usage（流结束时的最终 output_tokens）
+//
+// 仅读取顶层 event.usage 会漏掉 message_start 的输入侧字段，导致流式透传请求落库的
+// usage_logs 记录 input_tokens=0。
 func (s *AntigravityGatewayService) extractSSEUsage(line string, usage *ClaudeUsage) {
 	if !strings.HasPrefix(line, "data: ") {
 		return
@@ -4507,8 +4494,15 @@ func (s *AntigravityGatewayService) extractSSEUsage(line string, usage *ClaudeUs
 	if json.Unmarshal([]byte(dataStr), &event) != nil {
 		return
 	}
-	u, ok := event["usage"].(map[string]any)
-	if !ok {
+	var u map[string]any
+	if eventType, _ := event["type"].(string); eventType == "message_start" {
+		if msg, ok := event["message"].(map[string]any); ok {
+			u, _ = msg["usage"].(map[string]any)
+		}
+	} else {
+		u, _ = event["usage"].(map[string]any)
+	}
+	if u == nil {
 		return
 	}
 	if v, ok := u["input_tokens"].(float64); ok && int(v) > 0 {
