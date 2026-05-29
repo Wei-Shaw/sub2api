@@ -5352,6 +5352,11 @@ export default {
         aggregation: '预聚合任务',
         enableAggregation: '启用预聚合任务',
         aggregationHint: '预聚合可提升长时间窗口查询性能',
+        openaiQuotaAutoPause: 'OpenAI 账号配额自动暂停',
+        openaiQuotaAutoPauseHint: '当 OpenAI 账号 5h / 7d 用量达到阈值时，调度会自动跳过该账号；窗口滚动后自动恢复。账号级阈值优先于此全局默认值。',
+        openaiQuotaAutoPauseDefault5h: '默认 5h 用量阈值 (%)',
+        openaiQuotaAutoPauseDefault7d: '默认 7d 用量阈值 (%)',
+        openaiQuotaAutoPauseThresholdHint: '取值 0-100，留空或 0 表示不启用全局默认阈值。',
         errorFiltering: '错误过滤',
         ignoreCountTokensErrors: '忽略 count_tokens 错误',
         ignoreCountTokensErrorsHint: '启用后，count_tokens 请求的错误将不会写入错误日志。',
@@ -5383,7 +5388,8 @@ export default {
           slaMinPercentRange: 'SLA最低百分比必须在0-100之间',
           ttftP99MaxRange: 'TTFT P99最大值必须大于等于0',
           requestErrorRateMaxRange: '请求错误率最大值必须在0-100之间',
-          upstreamErrorRateMaxRange: '上游错误率最大值必须在0-100之间'
+          upstreamErrorRateMaxRange: '上游错误率最大值必须在0-100之间',
+          openaiQuotaAutoPauseRange: 'OpenAI 配额自动暂停阈值必须在 0-100 之间'
         REDACTED
       REDACTED,
       concurrency: {

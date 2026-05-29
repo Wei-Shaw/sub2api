@@ -704,7 +704,6 @@ func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_AutoPauseBy5hT
 		Extra: map[string]any{
 			"codex_5h_used_percent":   95.0,
 			"auto_pause_5h_threshold": 0.95,
-			"auto_pause_5h_limit":     100,
 	REDACTED,
 REDACTED
 	secondary := Account{ID: 35002, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5REDACTED
@@ -729,7 +728,6 @@ func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_AllowsBelow5hT
 		Extra: map[string]any{
 			"codex_5h_used_percent":   80.0,
 			"auto_pause_5h_threshold": 0.95,
-			"auto_pause_5h_limit":     100,
 	REDACTED,
 REDACTED
 	secondary := Account{ID: 35102, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5REDACTED
@@ -754,7 +752,6 @@ func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_AutoPauseBy7dT
 		Extra: map[string]any{
 			"codex_7d_used_percent":   95.0,
 			"auto_pause_7d_threshold": 0.95,
-			"auto_pause_7d_limit":     200,
 	REDACTED,
 REDACTED
 	secondary := Account{ID: 35202, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5REDACTED
@@ -790,7 +787,6 @@ func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_UsesGlobalDefa
 		Priority:    0,
 		Extra: map[string]any{
 			"codex_5h_used_percent": 95.0,
-			"auto_pause_5h_limit":   100,
 	REDACTED,
 REDACTED
 	secondary := Account{ID: 35402, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5REDACTED
@@ -800,6 +796,60 @@ REDACTED
 REDACTED
 	require.NotNil(t, account)
 	require.Equal(t, int64(35402), account.ID)
+REDACTED
+
+func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_StaleUsageWindowResetSkipsPause(t *testing.T) {
+	ctx := context.Background()
+	// Usage is over threshold but the window's reset time has already passed, so the
+	// cached percentage is stale (the real window rolled over) and the account must NOT
+	// stay paused — otherwise it could be skipped forever with no traffic to refresh it.
+	primary := Account{
+		ID:          35501,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    0,
+		Extra: map[string]any{
+			"codex_5h_used_percent":   99.0,
+			"auto_pause_5h_threshold": 0.95,
+			"codex_5h_reset_at":       time.Now().Add(-time.Minute).Format(time.RFC3339),
+	REDACTED,
+REDACTED
+	secondary := Account{ID: 35502, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5REDACTED
+	svc := &OpenAIGatewayService{accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{primary, secondaryREDACTEDREDACTED, cfg: &config.Config{REDACTEDREDACTED
+
+	account, err := svc.SelectAccountForModelWithExclusions(ctx, nil, "", "gpt-5.1", nil)
+REDACTED
+	require.NotNil(t, account)
+	require.Equal(t, int64(35501), account.ID)
+REDACTED
+
+func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_FreshUsageWindowStillPauses(t *testing.T) {
+	ctx := context.Background()
+	// Same as above but the window has not reset yet, so the account stays paused.
+	primary := Account{
+		ID:          35601,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    0,
+		Extra: map[string]any{
+			"codex_5h_used_percent":   99.0,
+			"auto_pause_5h_threshold": 0.95,
+			"codex_5h_reset_at":       time.Now().Add(time.Hour).Format(time.RFC3339),
+	REDACTED,
+REDACTED
+	secondary := Account{ID: 35602, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5REDACTED
+	svc := &OpenAIGatewayService{accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{primary, secondaryREDACTEDREDACTED, cfg: &config.Config{REDACTEDREDACTED
+
+	account, err := svc.SelectAccountForModelWithExclusions(ctx, nil, "", "gpt-5.1", nil)
+REDACTED
+	require.NotNil(t, account)
+	require.Equal(t, int64(35602), account.ID)
 REDACTED
 
 func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_SkipsFreshlyRateLimitedSnapshotCandidate(t *testing.T) {

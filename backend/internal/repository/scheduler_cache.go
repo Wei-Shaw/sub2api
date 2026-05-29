@@ -550,10 +550,13 @@ REDACTED
 		"openai_responses_supported",
 		"codex_5h_used_percent",
 		"codex_7d_used_percent",
+		"codex_5h_reset_at",
+		"codex_7d_reset_at",
+		"codex_5h_reset_after_seconds",
+		"codex_7d_reset_after_seconds",
+		"codex_usage_updated_at",
 		"auto_pause_5h_threshold",
 		"auto_pause_7d_threshold",
-		"auto_pause_5h_limit",
-		"auto_pause_7d_limit",
 REDACTED
 	filtered := make(map[string]any)
 	for _, key := range keys {

@@ -1328,13 +1328,12 @@ func isOpenAIAccountEligibleForRequest(ctx context.Context, account *Account, re
 		return false
 REDACTED
 	if paused, reason := shouldAutoPauseOpenAIAccountByQuota(ctx, account); paused {
-		slog.Info("account_auto_paused_by_quota",
+		// Debug level: this fires per-candidate on the scheduling hot path, so Info
+		// would amplify into log spam once several accounts cross the threshold.
+		slog.Debug("account_auto_paused_by_quota",
 			"account_id", account.ID,
-			"usage_5h_percent", readOpenAIQuotaUsedPercent(account.Extra, "5h"),
-			"usage_7d_percent", readOpenAIQuotaUsedPercent(account.Extra, "7d"),
-			"threshold_type", reason.window,
+			"window", reason.window,
 			"threshold", reason.threshold,
-			"limit", reason.limit,
 			"utilization", reason.utilization,
 		)
 		return false
@@ -1354,7 +1353,6 @@ REDACTED
 type openAIQuotaAutoPauseDecision struct {
 	window      string
 	threshold   float64
-	limit       float64
 	utilization float64
 REDACTED
 
@@ -1363,18 +1361,15 @@ func shouldAutoPauseOpenAIAccountByQuota(ctx context.Context, account *Account) 
 		return false, openAIQuotaAutoPauseDecision{REDACTED
 REDACTED
 	threshold5h, threshold7d := resolveOpenAIQuotaAutoPauseThresholds(ctx, account)
+	now := time.Now()
 	if threshold5h > 0 {
-		if utilization, limit, ok := resolveOpenAIQuotaUtilization(account.Extra, "5h"); ok {
-			if utilization >= threshold5h {
-				return true, openAIQuotaAutoPauseDecision{window: "5h", threshold: threshold5h, limit: limit, utilization: utilizationREDACTED
-		REDACTED
+		if utilization, ok := resolveOpenAIQuotaUtilization(account.Extra, "5h", now); ok && utilization >= threshold5h {
+			return true, openAIQuotaAutoPauseDecision{window: "5h", threshold: threshold5h, utilization: utilizationREDACTED
 	REDACTED
 REDACTED
 	if threshold7d > 0 {
-		if utilization, limit, ok := resolveOpenAIQuotaUtilization(account.Extra, "7d"); ok {
-			if utilization >= threshold7d {
-				return true, openAIQuotaAutoPauseDecision{window: "7d", threshold: threshold7d, limit: limit, utilization: utilizationREDACTED
-		REDACTED
+		if utilization, ok := resolveOpenAIQuotaUtilization(account.Extra, "7d", now); ok && utilization >= threshold7d {
+			return true, openAIQuotaAutoPauseDecision{window: "7d", threshold: threshold7d, utilization: utilizationREDACTED
 	REDACTED
 REDACTED
 	return false, openAIQuotaAutoPauseDecision{REDACTED
@@ -1431,18 +1426,49 @@ REDACTED
 	return 0, false
 REDACTED
 
-func resolveOpenAIQuotaUtilization(extra map[string]any, window string) (float64, float64, bool) {
-	limitKeys := []string{"auto_pause_" + window + "_limit", "quota_" + window + "_limit", window + "_limit"REDACTED
-	if limit, ok := resolveAccountExtraNumber(extra, limitKeys...); ok && limit > 0 {
-		if usage, ok := resolveAccountExtraNumber(extra, "usage_"+window); ok && usage >= 0 {
-			return usage / limit, limit, true
-	REDACTED
-REDACTED
+// resolveOpenAIQuotaUtilization returns the current utilization ratio (0..1) for the
+// given Codex usage window. ok=false means there is no usable signal to pause on:
+// either no snapshot exists, or the window has already rolled over so the cached
+// percentage is stale. The stale guard matters because a paused account stops
+// receiving requests, so its snapshot is never refreshed from upstream headers —
+// without this check an old used_percent would keep the account paused forever even
+// after the real window reset.
+func resolveOpenAIQuotaUtilization(extra map[string]any, window string, now time.Time) (float64, bool) {
 	usedPercent := readOpenAIQuotaUsedPercent(extra, window)
 	if usedPercent <= 0 {
-		return 0, 0, false
+		return 0, false
 REDACTED
-	return usedPercent / 100, 100, true
+	if openAIQuotaWindowReset(extra, window, now) {
+		return 0, false
+REDACTED
+	return usedPercent / 100, true
+REDACTED
+
+// openAIQuotaWindowReset reports whether the Codex usage window's reset time has
+// already passed relative to now. It prefers the absolute codex_<window>_reset_at
+// timestamp and falls back to codex_<window>_reset_after_seconds anchored at
+// codex_usage_updated_at, mirroring AccountUsageService's window-progress logic.
+func openAIQuotaWindowReset(extra map[string]any, window string, now time.Time) bool {
+	if len(extra) == 0 {
+		return false
+REDACTED
+	if resetAtRaw, ok := extra["codex_"+window+"_reset_at"]; ok {
+		if resetAt, err := parseTime(fmt.Sprint(resetAtRaw)); err == nil {
+			return !now.Before(resetAt)
+	REDACTED
+REDACTED
+	resetAfter := parseExtraInt(extra["codex_"+window+"_reset_after_seconds"])
+	if resetAfter <= 0 {
+		return false
+REDACTED
+	base := now
+	if updatedRaw, ok := extra["codex_usage_updated_at"]; ok {
+		if updatedAt, err := parseTime(fmt.Sprint(updatedRaw)); err == nil {
+			base = updatedAt
+	REDACTED
+REDACTED
+	resetAt := base.Add(time.Duration(resetAfter) * time.Second)
+	return !now.Before(resetAt)
 REDACTED
 
 func readOpenAIQuotaUsedPercent(extra map[string]any, window string) float64 {

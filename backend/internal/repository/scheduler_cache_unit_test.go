@@ -80,10 +80,15 @@ func TestBuildSchedulerMetadataAccount_KeepsQuotaAutoPauseFields(t *testing.T) {
 	account := service.Account{
 		ID: 88,
 		Extra: map[string]any{
-			"codex_5h_used_percent":   12.34,
-			"codex_7d_used_percent":   56.78,
-			"auto_pause_5h_threshold": 0.95,
-			"auto_pause_7d_threshold": 0.96,
+			"codex_5h_used_percent":        12.34,
+			"codex_7d_used_percent":        56.78,
+			"codex_5h_reset_at":            "2026-05-29T10:00:00Z",
+			"codex_7d_reset_at":            "2026-06-01T10:00:00Z",
+			"codex_5h_reset_after_seconds": 300,
+			"codex_7d_reset_after_seconds": 600,
+			"codex_usage_updated_at":       "2026-05-29T09:00:00Z",
+			"auto_pause_5h_threshold":      0.95,
+			"auto_pause_7d_threshold":      0.96,
 	REDACTED,
 REDACTED
 
@@ -91,6 +96,11 @@ REDACTED
 
 	require.Equal(t, 12.34, got.Extra["codex_5h_used_percent"])
 	require.Equal(t, 56.78, got.Extra["codex_7d_used_percent"])
+	require.Equal(t, "2026-05-29T10:00:00Z", got.Extra["codex_5h_reset_at"])
+	require.Equal(t, "2026-06-01T10:00:00Z", got.Extra["codex_7d_reset_at"])
+	require.Equal(t, 300, got.Extra["codex_5h_reset_after_seconds"])
+	require.Equal(t, 600, got.Extra["codex_7d_reset_after_seconds"])
+	require.Equal(t, "2026-05-29T09:00:00Z", got.Extra["codex_usage_updated_at"])
 	require.Equal(t, 0.95, got.Extra["auto_pause_5h_threshold"])
 	require.Equal(t, 0.96, got.Extra["auto_pause_7d_threshold"])
 REDACTED
