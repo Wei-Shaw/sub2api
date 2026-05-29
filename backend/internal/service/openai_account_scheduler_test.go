@@ -798,6 +798,63 @@ REDACTED
 	require.Equal(t, int64(35402), account.ID)
 REDACTED
 
+// Regression: a per-account explicit-disable flag exempts the account from auto-pause
+// even when a global default threshold is set. Without this, "leave threshold blank"
+// silently falls back to global default and admins have no way to whitelist a single
+// account.
+func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_PerAccountDisableOverridesGlobalDefault(t *testing.T) {
+	ctx := withOpenAIQuotaAutoPauseSettings(context.Background(), OpsOpenAIAccountQuotaAutoPauseSettings{DefaultThreshold5h: 0.95REDACTED)
+	// Account has high usage AND no per-account threshold (would normally fall back to
+	// the global default and get paused), but the explicit disable flag is set.
+	primary := Account{
+		ID:          35701,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    0,
+		Extra: map[string]any{
+			"codex_5h_used_percent":  99.0,
+			"auto_pause_5h_disabled": true,
+	REDACTED,
+REDACTED
+	secondary := Account{ID: 35702, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5REDACTED
+	svc := &OpenAIGatewayService{accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{primary, secondaryREDACTEDREDACTED, cfg: &config.Config{REDACTEDREDACTED
+
+	account, err := svc.SelectAccountForModelWithExclusions(ctx, nil, "", "gpt-5.1", nil)
+REDACTED
+	require.NotNil(t, account)
+	require.Equal(t, int64(35701), account.ID)
+REDACTED
+
+// Disable is per-window: disabling only 5h must still allow 7d auto-pause to fire.
+func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_PerWindowDisableScoped(t *testing.T) {
+	ctx := context.Background()
+	primary := Account{
+		ID:          35801,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    0,
+		Extra: map[string]any{
+			"codex_5h_used_percent":   99.0,
+			"codex_7d_used_percent":   99.0,
+			"auto_pause_5h_disabled":  true,
+			"auto_pause_7d_threshold": 0.95,
+	REDACTED,
+REDACTED
+	secondary := Account{ID: 35802, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5REDACTED
+	svc := &OpenAIGatewayService{accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{primary, secondaryREDACTEDREDACTED, cfg: &config.Config{REDACTEDREDACTED
+
+	account, err := svc.SelectAccountForModelWithExclusions(ctx, nil, "", "gpt-5.1", nil)
+REDACTED
+	require.NotNil(t, account)
+	require.Equal(t, int64(35802), account.ID, "7d auto-pause must still fire even though 5h is disabled")
+REDACTED
+
 func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_StaleUsageWindowResetSkipsPause(t *testing.T) {
 	ctx := context.Background()
 	// Usage is over threshold but the window's reset time has already passed, so the
@@ -1394,6 +1451,85 @@ REDACTED
 	require.Equal(t, 3, decision.CandidateCount)
 	require.Equal(t, 2, decision.TopK)
 	require.Greater(t, decision.LoadSkew, 0.0)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+REDACTED
+REDACTED
+
+// Regression: TopK initial filter must drop quota-auto-paused accounts. Otherwise
+// the candidate pool is filled with paused accounts, healthy accounts fall outside
+// TopK, and the scheduler returns "no available accounts" even though healthy ones
+// exist.
+func TestOpenAIGatewayService_SelectAccountWithScheduler_LoadBalanceTopKExcludesQuotaPaused(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(110)
+	accounts := []Account{
+		{
+			ID:          37001,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Priority:    0,
+			Extra: map[string]any{
+				"codex_5h_used_percent":   96.0,
+				"auto_pause_5h_threshold": 0.95,
+		REDACTED,
+	REDACTED,
+		{
+			ID:          37002,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Priority:    5,
+	REDACTED,
+REDACTED
+
+	cfg := &config.Config{REDACTED
+	cfg.Gateway.OpenAIWS.LBTopK = 1 // TopK=1 makes the bug fatal: paused account would crowd out the healthy one entirely
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Priority = 0.4
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Load = 1.0
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Queue = 1.0
+
+	concurrencyCache := schedulerTestConcurrencyCache{
+		loadMap: map[int64]*AccountLoadInfo{
+			37001: {AccountID: 37001, LoadRate: 5, WaitingCount: 0REDACTED,
+			37002: {AccountID: 37002, LoadRate: 5, WaitingCount: 0REDACTED,
+	REDACTED,
+		acquireResults: map[int64]bool{
+			37002: true,
+	REDACTED,
+REDACTED
+
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: accountsREDACTED,
+		cache:              &schedulerTestGatewayCache{REDACTED,
+		cfg:                cfg,
+		rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true"),
+		concurrencyService: NewConcurrencyService(concurrencyCache),
+REDACTED
+
+	selection, decision, err := svc.SelectAccountWithScheduler(
+		ctx,
+		&groupID,
+		"",
+		"",
+		"gpt-5.1",
+		nil,
+		OpenAIUpstreamTransportAny,
+		false,
+	)
+REDACTED
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, int64(37002), selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+	// Only the healthy account should ever enter the candidate pool; the paused one
+	// must be filtered out at the initial-filter stage.
+	require.Equal(t, 1, decision.CandidateCount)
 	if selection.ReleaseFunc != nil {
 		selection.ReleaseFunc()
 REDACTED

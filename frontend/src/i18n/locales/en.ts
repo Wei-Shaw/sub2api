@@ -3477,7 +3477,10 @@ export default {
       autoPauseOnExpiredDesc: 'When enabled, the account will auto pause scheduling after it expires',
 	  autoPause5hThreshold: '5h Usage Threshold (%)',
 	  autoPause7dThreshold: '7d Usage Threshold (%)',
-	  autoPauseThresholdHint: 'Leave empty or set 0 to disable. Reaching the threshold only skips the account during scheduling and does not modify schedulable.',
+	  autoPauseThresholdHint: 'Leave empty or set 0 to use the global default threshold (configured in Ops settings); set a value to override the global default. Reaching the threshold only skips the account during scheduling and does not modify schedulable.',
+	  autoPause5hDisabled: 'Disable 5h auto-pause',
+	  autoPause7dDisabled: 'Disable 7d auto-pause',
+	  autoPauseDisabledHint: 'When enabled, this account is never auto-paused (even if a global default threshold is configured).',
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {
         title: 'Quota Control',

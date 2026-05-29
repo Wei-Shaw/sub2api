@@ -490,12 +490,12 @@ REDACTED
 	if err := s.settingRepo.Set(ctx, SettingKeyOpsAdvancedSettings, string(raw)); err != nil {
 		return nil, err
 REDACTED
-	cacheKey := openAIQuotaAutoPauseSettingsCacheKey(s.settingRepo)
-	openAIQuotaAutoPauseSettingsSF.Forget(cacheKey)
-	storeOpenAIQuotaAutoPauseSettingsCache(s.settingRepo, &cachedOpenAIQuotaAutoPauseSettings{
-		settings:  cfg.OpenAIAccountQuotaAutoPause,
-		expiresAt: time.Now().Add(openAIQuotaAutoPauseSettingsCacheTTL).UnixNano(),
-REDACTED)
+	// Push the new quota auto-pause settings straight into the in-memory cache that
+	// the OpenAI scheduling hot path reads, so the next request observes the new value
+	// without waiting for the background refresher's TTL.
+	if s.quotaAutoPauseSink != nil {
+		s.quotaAutoPauseSink(cfg.OpenAIAccountQuotaAutoPause)
+REDACTED
 
 	// notify cleanup service to reload schedule/enabled.
 	if s.cleanupReloader != nil {

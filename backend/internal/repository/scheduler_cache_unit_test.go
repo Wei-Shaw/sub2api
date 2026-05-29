@@ -89,6 +89,8 @@ func TestBuildSchedulerMetadataAccount_KeepsQuotaAutoPauseFields(t *testing.T) {
 			"codex_usage_updated_at":       "2026-05-29T09:00:00Z",
 			"auto_pause_5h_threshold":      0.95,
 			"auto_pause_7d_threshold":      0.96,
+			"auto_pause_5h_disabled":       true,
+			"auto_pause_7d_disabled":       false,
 	REDACTED,
 REDACTED
 
@@ -103,4 +105,6 @@ REDACTED
 	require.Equal(t, "2026-05-29T09:00:00Z", got.Extra["codex_usage_updated_at"])
 	require.Equal(t, 0.95, got.Extra["auto_pause_5h_threshold"])
 	require.Equal(t, 0.96, got.Extra["auto_pause_7d_threshold"])
+	require.Equal(t, true, got.Extra["auto_pause_5h_disabled"])
+	require.Equal(t, false, got.Extra["auto_pause_7d_disabled"])
 REDACTED

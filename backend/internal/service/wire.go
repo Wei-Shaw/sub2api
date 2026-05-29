@@ -396,6 +396,46 @@ func ProvideBackupService(
 	return svc
 REDACTED
 
+// ProvideOpsService constructs OpsService and wires the SettingService-backed quota
+// auto-pause cache sink. Mirrors the SetCleanupReloader pattern: OpsService doesn't
+// hold a *SettingService reference, but wire injects a tiny callback so writes to
+// ops_advanced_settings immediately propagate into the scheduler hot-path cache.
+func ProvideOpsService(
+	opsRepo OpsRepository,
+	settingRepo SettingRepository,
+	cfg *config.Config,
+	accountRepo AccountRepository,
+	userRepo UserRepository,
+	concurrencyService *ConcurrencyService,
+	gatewayService *GatewayService,
+	openAIGatewayService *OpenAIGatewayService,
+	geminiCompatService *GeminiMessagesCompatService,
+	antigravityGatewayService *AntigravityGatewayService,
+	systemLogSink *OpsSystemLogSink,
+	settingService *SettingService,
+) *OpsService {
+	svc := NewOpsService(
+		opsRepo,
+		settingRepo,
+		cfg,
+		accountRepo,
+		userRepo,
+		concurrencyService,
+		gatewayService,
+		openAIGatewayService,
+		geminiCompatService,
+		antigravityGatewayService,
+		systemLogSink,
+	)
+	if settingService != nil {
+		svc.SetOpenAIQuotaAutoPauseSettingsSink(settingService.SetOpenAIQuotaAutoPauseSettings)
+		// Optional warm-up so the first scheduled request after process start observes
+		// a populated cache rather than zero defaults. Best-effort, sync-bounded.
+		settingService.WarmOpenAIQuotaAutoPauseSettings(context.Background())
+REDACTED
+	return svc
+REDACTED
+
 // ProvideSettingService wires SettingService with group reader and proxy repo.
 func ProvideSettingService(settingRepo SettingRepository, groupRepo GroupRepository, proxyRepo ProxyRepository, cfg *config.Config) *SettingService {
 	svc := NewSettingService(settingRepo, cfg)
@@ -481,7 +521,7 @@ var ProviderSet = wire.NewSet(
 	NewDataManagementService,
 	ProvideBackupService,
 	ProvideOpsSystemLogSink,
-	NewOpsService,
+	ProvideOpsService,
 	ProvideOpsMetricsCollector,
 	ProvideOpsAggregationService,
 	ProvideOpsAlertEvaluatorService,

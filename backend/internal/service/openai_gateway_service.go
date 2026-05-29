@@ -1360,19 +1360,59 @@ func shouldAutoPauseOpenAIAccountByQuota(ctx context.Context, account *Account) 
 	if account == nil || !account.IsOpenAI() {
 		return false, openAIQuotaAutoPauseDecision{REDACTED
 REDACTED
+	// Per-account explicit-disable flags must take precedence over the global default.
+	// Without these, leaving the account threshold blank means "use global default",
+	// so an admin has no way to exempt a single account from auto-pause once a global
+	// default exists. The disable flag is per-window so an account can opt out of
+	// only 5h or only 7d auto-pause.
+	disabled5h := resolveAccountExtraBool(account.Extra, "auto_pause_5h_disabled")
+	disabled7d := resolveAccountExtraBool(account.Extra, "auto_pause_7d_disabled")
 	threshold5h, threshold7d := resolveOpenAIQuotaAutoPauseThresholds(ctx, account)
 	now := time.Now()
-	if threshold5h > 0 {
+	if !disabled5h && threshold5h > 0 {
 		if utilization, ok := resolveOpenAIQuotaUtilization(account.Extra, "5h", now); ok && utilization >= threshold5h {
 			return true, openAIQuotaAutoPauseDecision{window: "5h", threshold: threshold5h, utilization: utilizationREDACTED
 	REDACTED
 REDACTED
-	if threshold7d > 0 {
+	if !disabled7d && threshold7d > 0 {
 		if utilization, ok := resolveOpenAIQuotaUtilization(account.Extra, "7d", now); ok && utilization >= threshold7d {
 			return true, openAIQuotaAutoPauseDecision{window: "7d", threshold: threshold7d, utilization: utilizationREDACTED
 	REDACTED
 REDACTED
 	return false, openAIQuotaAutoPauseDecision{REDACTED
+REDACTED
+
+// resolveAccountExtraBool reads a bool-like value from account extra, tolerating
+// the few shapes JSON unmarshalling may produce (real bool, "true"/"false"
+// strings, 0/1 numbers).
+func resolveAccountExtraBool(extra map[string]any, key string) bool {
+	if len(extra) == 0 {
+		return false
+REDACTED
+	value, ok := extra[key]
+	if !ok || value == nil {
+		return false
+REDACTED
+	switch v := value.(type) {
+	case bool:
+		return v
+	case string:
+		parsed, err := strconv.ParseBool(strings.TrimSpace(v))
+		return err == nil && parsed
+	case float64:
+		return v != 0
+	case float32:
+		return v != 0
+	case int:
+		return v != 0
+	case int64:
+		return v != 0
+	case json.Number:
+		if i, err := v.Int64(); err == nil {
+			return i != 0
+	REDACTED
+REDACTED
+	return false
 REDACTED
 
 func resolveOpenAIQuotaAutoPauseThresholds(ctx context.Context, account *Account) (float64, float64) {

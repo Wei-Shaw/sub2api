@@ -3615,7 +3615,10 @@ export default {
       autoPauseOnExpiredDesc: '启用后，账号过期将自动暂停调度',
 	  autoPause5hThreshold: '5h 用量阈值(%)',
 	  autoPause7dThreshold: '7d 用量阈值(%)',
-	  autoPauseThresholdHint: '填 0 或留空表示不启用；达到阈值后仅在调度时跳过账号，不修改 schedulable。',
+	  autoPauseThresholdHint: '留空或填 0 表示使用全局默认阈值（在运维设置中配置）；填具体值则覆盖全局默认。达到阈值后仅在调度时跳过账号，不修改 schedulable。',
+	  autoPause5hDisabled: '禁用 5h 自动暂停',
+	  autoPause7dDisabled: '禁用 7d 自动暂停',
+	  autoPauseDisabledHint: '开启后该账号永不进入自动暂停（即使全局默认阈值已配置）。',
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {
         title: '配额控制',
