@@ -51,6 +51,10 @@ func (s *openAIFastPolicyRepoStub) Delete(ctx context.Context, key string) error
 }
 
 func newOpenAIGatewayServiceWithSettings(t *testing.T, settings *OpenAIFastPolicySettings) *OpenAIGatewayService {
+	return newOpenAIGatewayServiceWithSettingsAndDefaultTier(t, settings, "")
+}
+
+func newOpenAIGatewayServiceWithSettingsAndDefaultTier(t *testing.T, settings *OpenAIFastPolicySettings, defaultServiceTier string) *OpenAIGatewayService {
 	t.Helper()
 	repo := &openAIFastPolicyRepoStub{values: map[string]string{}}
 	if settings != nil {
@@ -58,8 +62,14 @@ func newOpenAIGatewayServiceWithSettings(t *testing.T, settings *OpenAIFastPolic
 		require.NoError(t, err)
 		repo.values[SettingKeyOpenAIFastPolicySettings] = string(raw)
 	}
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			OpenAIDefaultServiceTier: defaultServiceTier,
+		},
+	}
 	return &OpenAIGatewayService{
-		settingService: NewSettingService(repo, &config.Config{}),
+		cfg:            cfg,
+		settingService: NewSettingService(repo, cfg),
 	}
 }
 
@@ -157,11 +167,47 @@ func TestApplyOpenAIFastPolicyToBody_DefaultPassesPriorityAndFast(t *testing.T) 
 	require.NoError(t, err)
 	require.Equal(t, string(body), string(updated))
 
-	// No service_tier → no-op
+	// No service_tier -> no-op unless gateway.openai_default_service_tier is set.
 	body = []byte(`{"model":"gpt-5.5"}`)
 	updated, err = svc.applyOpenAIFastPolicyToBody(context.Background(), account, "gpt-5.5", body)
 	require.NoError(t, err)
 	require.Equal(t, string(body), string(updated))
+}
+
+func TestApplyOpenAIFastPolicyToBody_DefaultServiceTierConfig(t *testing.T) {
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+
+	tests := []struct {
+		name        string
+		defaultTier string
+		wantTier    string
+	}{
+		{name: "empty disabled", defaultTier: "", wantTier: ""},
+		{name: "priority", defaultTier: "priority", wantTier: "priority"},
+		{name: "fast alias", defaultTier: "fast", wantTier: "priority"},
+		{name: "flex", defaultTier: "flex", wantTier: "flex"},
+		{name: "invalid ignored", defaultTier: "proprity", wantTier: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := newOpenAIGatewayServiceWithSettingsAndDefaultTier(t, DefaultOpenAIFastPolicySettings(), tt.defaultTier)
+			body := []byte(`{"model":"gpt-5.5"}`)
+			updated, err := svc.applyOpenAIFastPolicyToBody(context.Background(), account, "gpt-5.5", body)
+			require.NoError(t, err)
+			require.Equal(t, tt.wantTier, gjson.GetBytes(updated, "service_tier").String())
+		})
+	}
+}
+
+func TestApplyOpenAIFastPolicyToBody_DefaultServiceTierRespectsClientValue(t *testing.T) {
+	svc := newOpenAIGatewayServiceWithSettingsAndDefaultTier(t, DefaultOpenAIFastPolicySettings(), OpenAIFastTierPriority)
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+
+	body := []byte(`{"model":"gpt-5.5","service_tier":"flex"}`)
+	updated, err := svc.applyOpenAIFastPolicyToBody(context.Background(), account, "gpt-5.5", body)
+	require.NoError(t, err)
+	require.Equal(t, "flex", gjson.GetBytes(updated, "service_tier").String())
 }
 
 func TestApplyOpenAIFastPolicyToBody_ExplicitFilterRemovesField(t *testing.T) {
@@ -177,6 +223,44 @@ func TestApplyOpenAIFastPolicyToBody_ExplicitFilterRemovesField(t *testing.T) {
 	updated, err = svc.applyOpenAIFastPolicyToBody(context.Background(), account, "gpt-5.5", body)
 	require.NoError(t, err)
 	require.NotContains(t, string(updated), `"service_tier"`)
+
+	body = []byte(`{"model":"gpt-5.5"}`)
+	updated, err = svc.applyOpenAIFastPolicyToBody(context.Background(), account, "gpt-5.5", body)
+	require.NoError(t, err)
+	require.Equal(t, string(body), string(updated))
+}
+
+func TestApplyOpenAIFastPolicyToBody_DefaultServiceTierStillFiltered(t *testing.T) {
+	svc := newOpenAIGatewayServiceWithSettingsAndDefaultTier(t, openAIFastFilterPriorityPolicy(), OpenAIFastTierPriority)
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+
+	body := []byte(`{"model":"gpt-5.5"}`)
+	updated, err := svc.applyOpenAIFastPolicyToBody(context.Background(), account, "gpt-5.5", body)
+	require.NoError(t, err)
+	require.NotContains(t, string(updated), `"service_tier"`)
+}
+
+func TestApplyOpenAIFastPolicyToBody_DefaultServiceTierStillBlocked(t *testing.T) {
+	settings := &OpenAIFastPolicySettings{
+		Rules: []OpenAIFastPolicyRule{{
+			ServiceTier:    OpenAIFastTierPriority,
+			Action:         BetaPolicyActionBlock,
+			Scope:          BetaPolicyScopeAll,
+			ErrorMessage:   "default fast blocked",
+			ModelWhitelist: []string{"gpt-5.5"},
+			FallbackAction: BetaPolicyActionPass,
+		}},
+	}
+	svc := newOpenAIGatewayServiceWithSettingsAndDefaultTier(t, settings, OpenAIFastTierPriority)
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+
+	body := []byte(`{"model":"gpt-5.5"}`)
+	updated, err := svc.applyOpenAIFastPolicyToBody(context.Background(), account, "gpt-5.5", body)
+	require.Error(t, err)
+	var blocked *OpenAIFastBlockedError
+	require.True(t, errors.As(err, &blocked))
+	require.Equal(t, "default fast blocked", blocked.Message)
+	require.Equal(t, "priority", gjson.GetBytes(updated, "service_tier").String())
 }
 
 // TestApplyOpenAIFastPolicyToBody_OfficialTiersBypassDefaultRule 验证默认配置

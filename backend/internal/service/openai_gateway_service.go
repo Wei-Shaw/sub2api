@@ -2686,6 +2686,14 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	//      否则 native /responses 入口透传 "fast" 给上游会被拒。chat-
 	//      completions 入口由 normalizeResponsesBodyServiceTier 完成同一
 	//      行为，这里手工实现等效逻辑。
+	if _, hasServiceTier := reqBody["service_tier"]; !hasServiceTier {
+		defaultTier := s.defaultOpenAIServiceTier()
+		if defaultTier != "" {
+			reqBody["service_tier"] = defaultTier
+			bodyModified = true
+			markPatchSet("service_tier", defaultTier)
+		}
+	}
 	if rawTier, ok := reqBody["service_tier"].(string); ok {
 		if normTier := normalizedOpenAIServiceTierValue(rawTier); normTier != "" {
 			action, errMsg := s.evaluateOpenAIFastPolicy(ctx, account, upstreamModel, normTier)
@@ -6390,6 +6398,28 @@ func normalizeOpenAIServiceTier(raw string) *string {
 	}
 }
 
+func (s *OpenAIGatewayService) defaultOpenAIServiceTier() string {
+	if s == nil || s.cfg == nil {
+		return ""
+	}
+	return normalizedOpenAIServiceTierValue(s.cfg.Gateway.OpenAIDefaultServiceTier)
+}
+
+func (s *OpenAIGatewayService) injectDefaultOpenAIServiceTier(body []byte) ([]byte, bool, error) {
+	if len(body) == 0 || !gjson.ValidBytes(body) || gjson.GetBytes(body, "service_tier").Exists() {
+		return body, false, nil
+	}
+	defaultTier := s.defaultOpenAIServiceTier()
+	if defaultTier == "" {
+		return body, false, nil
+	}
+	updated, err := sjson.SetBytes(body, "service_tier", defaultTier)
+	if err != nil {
+		return body, false, err
+	}
+	return updated, true, nil
+}
+
 // OpenAIFastBlockedError indicates a request was rejected by the OpenAI fast
 // policy (action=block). Mirrors BetaBlockedError on the Claude side.
 type OpenAIFastBlockedError struct {
@@ -6511,6 +6541,11 @@ func (s *OpenAIGatewayService) applyOpenAIFastPolicyToBody(ctx context.Context, 
 	if len(body) == 0 {
 		return body, nil
 	}
+	var err error
+	body, _, err = s.injectDefaultOpenAIServiceTier(body)
+	if err != nil {
+		return body, fmt.Errorf("inject default service_tier: %w", err)
+	}
 	rawTier := gjson.GetBytes(body, "service_tier").String()
 	if rawTier == "" {
 		return body, nil
@@ -6607,6 +6642,11 @@ func (s *OpenAIGatewayService) applyOpenAIFastPolicyToWSResponseCreate(
 	// upstream reject it rather than guessing at our layer.
 	if frameType != "response.create" {
 		return frame, nil, nil
+	}
+	var err error
+	frame, _, err = s.injectDefaultOpenAIServiceTier(frame)
+	if err != nil {
+		return frame, nil, fmt.Errorf("inject default service_tier in ws frame: %w", err)
 	}
 	rawTier := gjson.GetBytes(frame, "service_tier").String()
 	if rawTier == "" {
