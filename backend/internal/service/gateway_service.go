@@ -3748,6 +3748,10 @@ func (s *GatewayService) isModelSupportedByAccount(account *Account, requestedMo
 	if account.Platform == PlatformOpenAI && account.IsOpenAIPassthroughEnabled() {
 		return true
 	}
+	// DeepSeek 平台：API Key 模式，使用账号 model_mapping，允许所有映射后的模型
+	if account.Platform == PlatformDeepSeek && account.Type == AccountTypeAPIKey {
+		return true // 允许，由 GetMappedModel 处理
+	}
 	// OAuth/SetupToken 账号使用 Anthropic 标准映射（短ID → 长ID）
 	if account.Platform == PlatformAnthropic && account.Type != AccountTypeAPIKey {
 		if account.Type == AccountTypeServiceAccount {
