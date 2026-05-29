@@ -58,8 +58,12 @@ vi.mock('vue-i18n', async () => {
   return {
     ...actual,
     useI18n: () => ({
-      t: (key: string, params?: Record<string, string | number>) =>
-        key.replace(/\{(\w+)\}/g, (_, token) => String(params?.[token] ?? `{${token}}`)),
+      t: (key: string, params?: Record<string, string | number>) => {
+        if (key === 'admin.riskControl.preBlockAPIKeyLoadSummary') {
+          return `同步并发 ${params?.active} / 可用 Key ${params?.available}，累计 ${params?.total} 次，worker：${params?.workerActive} / ${params?.workerTotal}`
+        }
+        return key.replace(/\{(\w+)\}/g, (_, token) => String(params?.[token] ?? `{${token}}`))
+      },
     }),
   }
 })
@@ -118,6 +122,16 @@ const runtimeStatus = () => ({
   dropped: 0,
   processed: 0,
   errors: 0,
+  pre_block_active: 0,
+  pre_block_checked: 0,
+  pre_block_allowed: 0,
+  pre_block_blocked: 0,
+  pre_block_errors: 0,
+  pre_block_avg_latency_ms: 0,
+  pre_block_api_key_active: 0,
+  pre_block_api_key_available_count: 0,
+  pre_block_api_key_total_calls: 0,
+  pre_block_api_key_loads: [],
   api_key_statuses: [],
   flagged_hash_count: 0,
   last_cleanup_deleted_hit: 0,
@@ -260,5 +274,134 @@ describe('admin RiskControlView', () => {
       }),
     }))
     expect(showError).not.toHaveBeenCalled()
+  })
+
+  it('describes worker runtime as async audit and pre-block record processing', async () => {
+    getStatus.mockResolvedValue({
+      ...runtimeStatus(),
+      mode: 'observe',
+      processed: 12,
+      queue_length: 2,
+    })
+
+    const wrapper = mount(RiskControlView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          BaseDialog: BaseDialogStub,
+          Icon: true,
+          Select: true,
+          Toggle: true,
+          Pagination: true,
+          ModelWhitelistSelector: ModelWhitelistSelectorStub,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('admin.riskControl.workerStatusHint')
+    expect(wrapper.text()).not.toContain('admin.riskControl.preBlockSyncStatus')
+    expect(wrapper.text()).toContain('admin.riskControl.records')
+    expect(wrapper.text()).toContain('12')
+    expect(wrapper.text()).toContain('2 / 32,768')
+  })
+
+  it('shows pre-block synchronous moderation metrics separately from worker queue', async () => {
+    getStatus.mockResolvedValue({
+      ...runtimeStatus(),
+      pre_block_active: 2,
+      pre_block_checked: 128,
+      pre_block_allowed: 120,
+      pre_block_blocked: 8,
+      pre_block_errors: 1,
+      pre_block_avg_latency_ms: 86,
+      pre_block_api_key_active: 2,
+      pre_block_api_key_available_count: 2,
+      pre_block_api_key_total_calls: 128,
+      active_workers: 3,
+      worker_count: 7,
+      pre_block_api_key_loads: [
+        {
+          index: 0,
+          key_hash: 'hash-one',
+          masked: 'sk-...one',
+          status: 'ok',
+          active: 1,
+          total: 72,
+          success: 70,
+          errors: 2,
+          avg_latency_ms: 84,
+          last_latency_ms: 80,
+          last_http_status: 200,
+        },
+        {
+          index: 1,
+          key_hash: 'hash-two',
+          masked: 'sk-...two',
+          status: 'ok',
+          active: 1,
+          total: 56,
+          success: 56,
+          errors: 0,
+          avg_latency_ms: 90,
+          last_latency_ms: 92,
+          last_http_status: 200,
+        },
+      ],
+    })
+
+    const wrapper = mount(RiskControlView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          BaseDialog: BaseDialogStub,
+          Icon: true,
+          Select: true,
+          Toggle: true,
+          Pagination: true,
+          ModelWhitelistSelector: ModelWhitelistSelectorStub,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('admin.riskControl.preBlockSyncStatus')
+    expect(wrapper.text()).toContain('admin.riskControl.preBlockSyncHint')
+    expect(wrapper.text()).not.toContain('admin.riskControl.workerStatus')
+    expect(wrapper.text()).toContain('admin.riskControl.records')
+    expect(wrapper.text()).toContain('128')
+    expect(wrapper.text()).toContain('120')
+    expect(wrapper.text()).toContain('8')
+    expect(wrapper.text()).toContain('86 ms')
+    expect(wrapper.text()).toContain('admin.riskControl.preBlockAPIKeyLoad')
+    expect(wrapper.text()).toContain('sk-...one')
+    expect(wrapper.text()).toContain('sk-...two')
+    expect(wrapper.text()).toContain('72')
+    expect(wrapper.text()).toContain('56')
+    expect(wrapper.text()).toContain('同步并发 2 / 可用 Key 2，累计 128 次，worker：3 / 7')
+
+    const runtimeCards = wrapper.get('[data-test="pre-block-runtime-cards"]')
+    const syncCard = wrapper.get('[data-test="pre-block-sync-card"]')
+    const apiKeyLoadCard = wrapper.get('[data-test="pre-block-api-key-load-card"]')
+
+    expect(runtimeCards.classes()).toEqual(expect.arrayContaining([
+      'grid',
+      'grid-cols-1',
+      'xl:grid-cols-[minmax(0,520px)_minmax(0,1fr)]',
+    ]))
+    expect(syncCard.element.parentElement).toBe(runtimeCards.element)
+    expect(apiKeyLoadCard.element.parentElement).toBe(runtimeCards.element)
+    expect(syncCard.classes()).toContain('card')
+    expect(apiKeyLoadCard.classes()).toContain('card')
+    expect(syncCard.get('h2').text()).toBe('admin.riskControl.preBlockSyncStatus')
+    expect(syncCard.text()).toContain('admin.riskControl.preBlockSyncHint')
+    expect(apiKeyLoadCard.get('h2').text()).toBe('admin.riskControl.preBlockAPIKeyLoad')
+    expect(apiKeyLoadCard.text()).toContain('admin.riskControl.preBlockAPIKeyLoadHint')
+    expect(wrapper.get('[data-test="pre-block-api-key-load-list"]').classes()).toEqual(expect.arrayContaining([
+      'max-h-[280px]',
+      'overflow-y-auto',
+    ]))
   })
 })
