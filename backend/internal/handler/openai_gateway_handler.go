@@ -103,6 +103,11 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		h.errorResponse(c, http.StatusInternalServerError, "api_error", "User context not found")
 		return
 	}
+	if effectiveAPIKey, rejected := h.applyOpenAIGroupCodexOfficialRestriction(c, apiKey, false); rejected {
+		return
+	} else {
+		apiKey = effectiveAPIKey
+	}
 	reqLog := requestLogger(
 		c,
 		"handler.openai_gateway.responses",
@@ -110,9 +115,6 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		zap.Int64("api_key_id", apiKey.ID),
 		zap.Any("group_id", apiKey.GroupID),
 	)
-	if h.rejectOpenAINonCodexOfficialClient(c, apiKey, false) {
-		return
-	}
 	if !h.ensureResponsesDependencies(c, reqLog) {
 		return
 	}
@@ -573,6 +575,11 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		h.anthropicErrorResponse(c, http.StatusInternalServerError, "api_error", "User context not found")
 		return
 	}
+	if effectiveAPIKey, rejected := h.applyOpenAIGroupCodexOfficialRestriction(c, apiKey, true); rejected {
+		return
+	} else {
+		apiKey = effectiveAPIKey
+	}
 	reqLog := requestLogger(
 		c,
 		"handler.openai_gateway.messages",
@@ -585,9 +592,6 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	if apiKey.Group != nil && !apiKey.Group.AllowMessagesDispatch {
 		h.anthropicErrorResponse(c, http.StatusForbidden, "permission_error",
 			"This group does not allow /v1/messages dispatch")
-		return
-	}
-	if h.rejectOpenAINonCodexOfficialClient(c, apiKey, true) {
 		return
 	}
 
@@ -1120,6 +1124,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		h.errorResponse(c, http.StatusInternalServerError, "api_error", "User context not found")
 		return
 	}
+	if effectiveAPIKey, rejected := h.applyOpenAIGroupCodexOfficialRestriction(c, apiKey, false); rejected {
+		return
+	} else {
+		apiKey = effectiveAPIKey
+	}
 
 	reqLog := requestLogger(
 		c,
@@ -1129,9 +1138,6 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		zap.Any("group_id", apiKey.GroupID),
 		zap.Bool("openai_ws_mode", true),
 	)
-	if h.rejectOpenAINonCodexOfficialClient(c, apiKey, false) {
-		return
-	}
 	if !h.ensureResponsesDependencies(c, reqLog) {
 		return
 	}

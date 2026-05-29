@@ -97,14 +97,14 @@ func (Group) Fields() []ent.Field {
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
 
-		// Claude Code 客户端限制 (added by migration 029)
+		// 客户端限制降级配置 (added by migration 029, expanded by migration 146)
 		field.Bool("claude_code_only").
 			Default(false).
 			Comment("是否仅允许 Claude Code 客户端"),
 		field.Int64("fallback_group_id").
 			Optional().
 			Nillable().
-			Comment("非 Claude Code 请求降级使用的分组 ID"),
+			Comment("客户端限制未命中时降级使用的分组 ID（Claude Code / OpenAI Codex）"),
 		field.Int64("fallback_group_id_on_invalid_request").
 			Optional().
 			Nillable().

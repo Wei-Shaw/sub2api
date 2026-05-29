@@ -2196,6 +2196,12 @@ export default {
       },
       openaiCodex: {
         title: 'Codex Official Client Restriction',
+        tooltip: 'When enabled, this group only allows official Codex clients. Non-Codex official requests will be rejected or fallback to the specified OpenAI group.',
+        enabled: 'Codex Official Only',
+        disabled: 'Allow All Clients',
+        fallbackGroup: 'Fallback Group',
+        fallbackHint: 'Non-Codex official requests will use this OpenAI group. Leave empty to reject directly.',
+        noFallback: 'No Fallback (Reject)',
         hint: 'When enabled, API keys in this OpenAI group only accept official Codex clients; other clients are rejected.'
       },
       openaiMessages: {

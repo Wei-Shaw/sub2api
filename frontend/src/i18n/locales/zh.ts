@@ -2280,6 +2280,13 @@ export default {
       },
       openaiCodex: {
         title: 'Codex 官方客户端限制',
+        tooltip:
+          '启用后，此分组仅允许 Codex 官方客户端访问。非 Codex 官方客户端请求将被拒绝或降级到指定 OpenAI 分组。',
+        enabled: '仅限 Codex 官方客户端',
+        disabled: '允许所有客户端',
+        fallbackGroup: '降级分组',
+        fallbackHint: '非 Codex 官方客户端请求将使用此 OpenAI 分组，留空则直接拒绝',
+        noFallback: '不降级（直接拒绝）',
         hint: '启用后，此 OpenAI 分组的 API Key 仅允许 Codex 官方客户端访问，其他客户端将被拒绝。'
       },
       openaiMessages: {

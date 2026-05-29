@@ -103,7 +103,7 @@ type Group struct {
 	ImagePrice2K         *float64 `json:"image_price_2k"`
 	ImagePrice4K         *float64 `json:"image_price_4k"`
 
-	// Claude Code 客户端限制
+	// 客户端限制（Anthropic Claude Code / OpenAI Codex）
 	ClaudeCodeOnly  bool   `json:"claude_code_only"`
 	FallbackGroupID *int64 `json:"fallback_group_id"`
 	// OpenAI Codex 官方客户端限制

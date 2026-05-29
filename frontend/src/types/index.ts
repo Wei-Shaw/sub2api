@@ -515,7 +515,7 @@ export interface Group {
   image_price_1k: number | null
   image_price_2k: number | null
   image_price_4k: number | null
-  // Claude Code 客户端限制
+  // 客户端限制（Anthropic Claude Code / OpenAI Codex）
   claude_code_only: boolean
   fallback_group_id: number | null
   // OpenAI Codex 官方客户端限制
