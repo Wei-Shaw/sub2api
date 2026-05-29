@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -17,12 +18,18 @@ import (
 
 // SystemHandler handles system-related operations
 type SystemHandler struct {
-	updateSvc *service.UpdateService
+	updateSvc systemUpdateService
 	lockSvc   *service.SystemOperationLockService
 }
 
+type systemUpdateService interface {
+	CheckUpdate(ctx context.Context, force bool) (*service.UpdateInfo, error)
+	PerformUpdate(ctx context.Context) error
+	Rollback() error
+}
+
 // NewSystemHandler creates a new SystemHandler
-func NewSystemHandler(updateSvc *service.UpdateService, lockSvc *service.SystemOperationLockService) *SystemHandler {
+func NewSystemHandler(updateSvc systemUpdateService, lockSvc *service.SystemOperationLockService) *SystemHandler {
 	return &SystemHandler{
 		updateSvc: updateSvc,
 		lockSvc:   lockSvc,
@@ -67,6 +74,21 @@ func (h *SystemHandler) PerformUpdate(c *gin.Context) {
 		}()
 
 		if err := h.updateSvc.PerformUpdate(ctx); err != nil {
+			if errors.Is(err, service.ErrNoUpdateAvailable) {
+				info, checkErr := h.updateSvc.CheckUpdate(ctx, false)
+				if checkErr != nil {
+					releaseReason = "SYSTEM_UPDATE_FAILED"
+					return nil, checkErr
+				}
+				succeeded = true
+				return gin.H{
+					"message":            "Already up to date",
+					"already_up_to_date": true,
+					"current_version":    info.CurrentVersion,
+					"latest_version":     info.LatestVersion,
+					"operation_id":       lock.OperationID(),
+				}, nil
+			}
 			releaseReason = "SYSTEM_UPDATE_FAILED"
 			return nil, err
 		}

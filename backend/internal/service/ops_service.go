@@ -41,6 +41,11 @@ type OpsService struct {
 	// cleanupReloader 由 wire 在 OpsCleanupService 构造完成后通过 SetCleanupReloader 注入。
 	// 解耦避免 OpsService -> OpsCleanupService 的硬依赖（cleanup 也读 settings，会循环）。
 	cleanupReloader CleanupReloader
+
+	// quotaAutoPauseSink 由 wire 注入（通常是 SettingService.SetOpenAIQuotaAutoPauseSettings）。
+	// UpdateOpsAdvancedSettings 写入新配置后调用，把最新的 quota auto-pause 全局默认阈值
+	// 立即同步到调度热路径读取的内存缓存，避免下次请求才能感知新值。
+	quotaAutoPauseSink func(OpsOpenAIAccountQuotaAutoPauseSettings)
 }
 
 // CleanupReloader 由 OpsCleanupService 实现。
@@ -55,6 +60,16 @@ func (s *OpsService) SetCleanupReloader(r CleanupReloader) {
 		return
 	}
 	s.cleanupReloader = r
+}
+
+// SetOpenAIQuotaAutoPauseSettingsSink 由 wire 注入，把最新的 quota auto-pause 全局默认
+// 阈值 push 到调度热路径读取的内存缓存。同 SetCleanupReloader 的解耦目的：避免 OpsService
+// 持有 *SettingService 引入循环依赖。
+func (s *OpsService) SetOpenAIQuotaAutoPauseSettingsSink(sink func(OpsOpenAIAccountQuotaAutoPauseSettings)) {
+	if s == nil {
+		return
+	}
+	s.quotaAutoPauseSink = sink
 }
 
 func NewOpsService(

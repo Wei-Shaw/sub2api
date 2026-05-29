@@ -743,7 +743,7 @@ func (h *UserHandler) UpdateUserPlatformQuotas(c *gin.Context) {
 	if h.billingCache != nil {
 		for _, p := range service.AllowedQuotaPlatforms {
 			if err := h.billingCache.DeleteUserPlatformQuotaCache(ctx, userID, p); err != nil {
-				slog.Warn("quota cache invalidation failed", "user_id", userID, "platform", p, "err", err)
+				slog.Error("ALERT: quota cache invalidation failed after UpsertForUser; limit 生效可能延迟至 sentinel TTL(最长 1h),需人工确认或重试失效", "user_id", userID, "platform", p, "err", err)
 			}
 		}
 	}
@@ -827,7 +827,7 @@ func (h *UserHandler) ResetUserPlatformQuotaWindow(c *gin.Context) {
 
 	if h.billingCache != nil {
 		if err := h.billingCache.DeleteUserPlatformQuotaCache(ctx, userID, req.Platform); err != nil {
-			slog.Warn("quota cache invalidation failed", "user_id", userID, "platform", req.Platform, "err", err)
+			slog.Error("ALERT: quota cache invalidation failed after ResetExpiredWindow; 窗口重置可能延迟至 sentinel TTL(最长 1h)", "user_id", userID, "platform", req.Platform, "err", err)
 		}
 	}
 
