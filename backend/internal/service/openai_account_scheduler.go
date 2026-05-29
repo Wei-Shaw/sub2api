@@ -876,6 +876,10 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		})
 	}
 	if len(filtered) == 0 {
+		source := "snapshot"
+		if s.service != nil {
+			s.service.logOpenAISelectionCandidates(ctx, req.GroupID, req.RequestedModel, accounts, req.ExcludedIDs, req.RequireCompact, req.RequiredCapability, source)
+		}
 		return nil, 0, 0, 0, noAvailableOpenAISelectionError(req.RequestedModel, false)
 	}
 

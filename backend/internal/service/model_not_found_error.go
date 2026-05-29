@@ -6,16 +6,17 @@ import (
 )
 
 var upstreamModelNotFoundKeywords = []string{"model not found", "unknown model", "not found"}
+var upstreamModelUnsupportedKeywords = []string{"unsupported model", "model is unsupported", "does not support model"}
 
 func isUpstreamModelNotFoundError(statusCode int, body []byte) bool {
-	if statusCode != http.StatusNotFound {
+	if statusCode != http.StatusNotFound && statusCode != http.StatusBadRequest {
 		return false
 	}
 	normalized := normalizeModelNotFoundBody(body)
 	if normalized == "" || !strings.Contains(normalized, "model") {
 		return false
 	}
-	return containsModelNotFoundKeyword(normalized)
+	return containsModelNotFoundKeyword(normalized) || containsModelUnsupportedKeyword(normalized)
 }
 
 func isModelNotFoundError(statusCode int, body []byte) bool {
@@ -27,6 +28,18 @@ func containsModelNotFoundKeyword(normalizedBody string) bool {
 		return false
 	}
 	for _, keyword := range upstreamModelNotFoundKeywords {
+		if strings.Contains(normalizedBody, keyword) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsModelUnsupportedKeyword(normalizedBody string) bool {
+	if normalizedBody == "" {
+		return false
+	}
+	for _, keyword := range upstreamModelUnsupportedKeywords {
 		if strings.Contains(normalizedBody, keyword) {
 			return true
 		}

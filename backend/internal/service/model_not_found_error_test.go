@@ -31,6 +31,12 @@ func TestIsUpstreamModelNotFoundError(t *testing.T) {
 			want:       true,
 		},
 		{
+			name:       "400 unsupported model message",
+			statusCode: http.StatusBadRequest,
+			body:       []byte(`{"error":{"message":"unsupported model gpt-5.4"}}`),
+			want:       true,
+		},
+		{
 			name:       "404 endpoint not found is not model specific",
 			statusCode: http.StatusNotFound,
 			body:       []byte(`{"error":{"message":"endpoint not found"}}`),
@@ -43,9 +49,9 @@ func TestIsUpstreamModelNotFoundError(t *testing.T) {
 			want:       false,
 		},
 		{
-			name:       "non 404 does not match",
+			name:       "non model specific 400 does not match",
 			statusCode: http.StatusBadRequest,
-			body:       []byte(`{"error":{"message":"model not found"}}`),
+			body:       []byte(`{"error":{"message":"invalid request body"}}`),
 			want:       false,
 		},
 	}

@@ -1634,11 +1634,12 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		})
 	}
 
-	accounts, err := s.listSchedulableAccounts(ctx, groupID)
+	accounts, usedDBFallback, err := s.listSchedulableAccountsWithDBFallback(ctx, groupID, requestedModel)
 	if err != nil {
 		return nil, err
 	}
 	if len(accounts) == 0 {
+		s.logOpenAISelectionCandidates(ctx, groupID, requestedModel, accounts, excludedIDs, requireCompact, requiredCapability, "empty_pool")
 		return nil, ErrNoAvailableAccounts
 	}
 
@@ -1711,7 +1712,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		if s.isOpenAIAccountRuntimeBlocked(acc) {
 			continue
 		}
-		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, acc, requestedModel, requireCompact) {
+		if groupID != nil && needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, acc, requestedModel, requireCompact) {
 			continue
 		}
 		baseCandidateCount++
@@ -1719,6 +1720,37 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	}
 
 	if len(candidates) == 0 {
+		if refilled, ok := s.refillOpenAIAccountsFromDBOnEmptyCandidates(ctx, groupID, requestedModel, accounts); ok {
+			accounts = refilled
+			usedDBFallback = true
+			baseCandidateCount = 0
+			candidates = make([]*Account, 0, len(accounts))
+			for i := range accounts {
+				acc := &accounts[i]
+				if isExcluded(acc.ID) {
+					continue
+				}
+				if !isOpenAIAccountEligibleForRequest(ctx, acc, requestedModel, false, requiredCapability) {
+					continue
+				}
+				if s.isOpenAIAccountRuntimeBlocked(acc) {
+					continue
+				}
+				if groupID != nil && needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, acc, requestedModel, requireCompact) {
+					continue
+				}
+				baseCandidateCount++
+				candidates = append(candidates, acc)
+			}
+		}
+	}
+
+	if len(candidates) == 0 {
+		source := "snapshot"
+		if usedDBFallback {
+			source = "db_fallback"
+		}
+		s.logOpenAISelectionCandidates(ctx, groupID, requestedModel, accounts, excludedIDs, requireCompact, requiredCapability, source)
 		return nil, ErrNoAvailableAccounts
 	}
 
@@ -1899,6 +1931,10 @@ func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, grou
 		accounts, _, err := s.schedulerSnapshot.ListSchedulableAccounts(ctx, groupID, PlatformOpenAI, false)
 		return accounts, err
 	}
+	return s.listSchedulableAccountsDirect(ctx, groupID)
+}
+
+func (s *OpenAIGatewayService) listSchedulableAccountsDirect(ctx context.Context, groupID *int64) ([]Account, error) {
 	var accounts []Account
 	var err error
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
@@ -1912,6 +1948,123 @@ func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, grou
 		return nil, fmt.Errorf("query accounts failed: %w", err)
 	}
 	return accounts, nil
+}
+
+func (s *OpenAIGatewayService) listSchedulableAccountsWithDBFallback(ctx context.Context, groupID *int64, requestedModel string) ([]Account, bool, error) {
+	accounts, err := s.listSchedulableAccounts(ctx, groupID)
+	if err == nil || s.schedulerSnapshot == nil {
+		return accounts, false, err
+	}
+
+	direct, directErr := s.listSchedulableAccountsDirect(ctx, groupID)
+	if directErr != nil {
+		return nil, false, err
+	}
+
+	slog.Warn("openai.scheduler_snapshot_fallback_to_db",
+		"group_id", derefGroupID(groupID),
+		"model", requestedModel,
+		"snapshot_error", err,
+		"db_account_count", len(direct),
+	)
+	return direct, true, nil
+}
+
+func (s *OpenAIGatewayService) refillOpenAIAccountsFromDBOnEmptyCandidates(ctx context.Context, groupID *int64, requestedModel string, current []Account) ([]Account, bool) {
+	if s.schedulerSnapshot == nil {
+		return current, false
+	}
+	direct, err := s.listSchedulableAccountsDirect(ctx, groupID)
+	if err != nil {
+		slog.Warn("openai.scheduler_snapshot_direct_refill_failed",
+			"group_id", derefGroupID(groupID),
+			"model", requestedModel,
+			"error", err,
+		)
+		return current, false
+	}
+	if len(direct) <= len(current) {
+		return current, false
+	}
+	slog.Warn("openai.scheduler_snapshot_direct_refill",
+		"group_id", derefGroupID(groupID),
+		"model", requestedModel,
+		"snapshot_account_count", len(current),
+		"db_account_count", len(direct),
+	)
+	return direct, true
+}
+
+func (s *OpenAIGatewayService) logOpenAISelectionCandidates(ctx context.Context, groupID *int64, requestedModel string, accounts []Account, excludedIDs map[int64]struct{}, requireCompact bool, requiredCapability OpenAIEndpointCapability, source string) {
+	if len(accounts) == 0 {
+		slog.Warn("openai.selection_candidates_empty",
+			"group_id", derefGroupID(groupID),
+			"model", requestedModel,
+			"source", source,
+		)
+		return
+	}
+
+	total := len(accounts)
+	eligible := 0
+	excluded := 0
+	unschedulable := 0
+	modelUnsupported := 0
+	runtimeBlocked := 0
+	channelRestricted := 0
+	capabilityMismatch := 0
+	compactBlocked := 0
+	needsUpstreamCheck := s.needsUpstreamChannelRestrictionCheck(ctx, groupID)
+
+	for i := range accounts {
+		account := &accounts[i]
+		if excludedIDs != nil {
+			if _, ok := excludedIDs[account.ID]; ok {
+				excluded++
+				continue
+			}
+		}
+		if !account.IsOpenAI() || !account.IsSchedulableForModelWithContext(ctx, requestedModel) {
+			unschedulable++
+			continue
+		}
+		if requestedModel != "" && !account.IsModelSupported(requestedModel) {
+			modelUnsupported++
+			continue
+		}
+		if !account.SupportsOpenAIEndpointCapability(requiredCapability) {
+			capabilityMismatch++
+			continue
+		}
+		if s.isOpenAIAccountRuntimeBlocked(account) {
+			runtimeBlocked++
+			continue
+		}
+		if groupID != nil && needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, account, requestedModel, requireCompact) {
+			channelRestricted++
+			continue
+		}
+		if requireCompact && openAICompactSupportTier(account) == 0 {
+			compactBlocked++
+			continue
+		}
+		eligible++
+	}
+
+	slog.Warn("openai.selection_candidates_diagnosis",
+		"group_id", derefGroupID(groupID),
+		"model", requestedModel,
+		"source", source,
+		"total", total,
+		"eligible", eligible,
+		"excluded", excluded,
+		"unschedulable", unschedulable,
+		"model_unsupported", modelUnsupported,
+		"capability_mismatch", capabilityMismatch,
+		"runtime_blocked", runtimeBlocked,
+		"channel_restricted", channelRestricted,
+		"compact_blocked", compactBlocked,
+	)
 }
 
 func (s *OpenAIGatewayService) tryAcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int) (*AcquireResult, error) {
