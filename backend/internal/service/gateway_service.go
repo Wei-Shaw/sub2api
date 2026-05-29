@@ -7403,10 +7403,13 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 		}
 
 		// Ensure context_management in body always has its matching beta token,
-		// regardless of token type or client behavior. We inject beta to match
-		// the body (rather than strip body to match beta) because we want this
-		// capability to flow through whenever the body requested it.
-		if bodyNeedsContextManagementBeta(body) && !strings.Contains(finalBetaHeader, claude.BetaContextManagement) {
+		// but only inject when forwarding to official Anthropic API (not through
+		// proxies/aggregators like Bedrock which may not support the latest betas).
+		// Skip injection for non-Anthropic accounts to maintain compatibility.
+		if account != nil && account.IsOAuth() &&
+			bodyNeedsContextManagementBeta(body) &&
+			!strings.Contains(finalBetaHeader, claude.BetaContextManagement) {
+			// Only inject for OAuth (official API), not for custom/proxy accounts
 			finalBetaHeader = mergeAnthropicBetaDropping([]string{claude.BetaContextManagement}, finalBetaHeader, nil)
 			finalBetaShouldSet = true
 		}
