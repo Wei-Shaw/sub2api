@@ -132,11 +132,35 @@ export interface ContentModerationRuntimeStatus {
   dropped: number
   processed: number
   errors: number
+  pre_block_active: number
+  pre_block_checked: number
+  pre_block_allowed: number
+  pre_block_blocked: number
+  pre_block_errors: number
+  pre_block_avg_latency_ms: number
+  pre_block_api_key_active: number
+  pre_block_api_key_available_count: number
+  pre_block_api_key_total_calls: number
+  pre_block_api_key_loads: ContentModerationAPIKeyLoad[]
   api_key_statuses: ContentModerationAPIKeyStatus[]
   flagged_hash_count: number
   last_cleanup_at?: string
   last_cleanup_deleted_hit: number
   last_cleanup_deleted_non_hit: number
+}
+
+export interface ContentModerationAPIKeyLoad {
+  index: number
+  key_hash: string
+  masked: string
+  status: ContentModerationAPIKeyStatusValue
+  active: number
+  total: number
+  success: number
+  errors: number
+  avg_latency_ms: number
+  last_latency_ms: number
+  last_http_status: number
 }
 
 export interface ContentModerationLog {

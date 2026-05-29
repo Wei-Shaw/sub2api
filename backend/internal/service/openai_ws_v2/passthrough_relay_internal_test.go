@@ -300,18 +300,39 @@ func TestParseUsageAndEnrichCoverage(t *testing.T) {
 	require.Equal(t, 0, state.usage.OutputTokens)
 	require.Equal(t, 0, state.usage.CacheReadInputTokens)
 
-	parseUsageAndAccumulate(state, []byte(`{"type":"response.completed","response":{"usage":{"input_tokens":2,"output_tokens":1,"input_tokens_details":{"cached_tokens":1}}}}`), "response.completed", nil)
+	parseUsageAndAccumulate(state, []byte(`{"type":"response.completed","response":{"usage":{"input_tokens":2,"output_tokens":1,"input_tokens_details":{"cached_tokens":1},"cache_creation_input_tokens":4,"output_tokens_details":{"image_tokens":3}}}}`), "response.completed", nil)
 	require.Equal(t, 2, state.usage.InputTokens)
 	require.Equal(t, 1, state.usage.OutputTokens)
 	require.Equal(t, 1, state.usage.CacheReadInputTokens)
+	require.Equal(t, 4, state.usage.CacheCreationInputTokens)
+	require.Equal(t, 3, state.usage.ImageOutputTokens)
 
 	result := &RelayResult{}
 	enrichResult(result, state, 5*time.Millisecond)
 	require.Equal(t, state.usage.InputTokens, result.Usage.InputTokens)
+	require.Equal(t, state.usage.CacheCreationInputTokens, result.Usage.CacheCreationInputTokens)
+	require.Equal(t, state.usage.ImageOutputTokens, result.Usage.ImageOutputTokens)
 	require.Equal(t, 5*time.Millisecond, result.Duration)
 	parseUsageAndAccumulate(state, []byte(`{"type":"response.in_progress","response":{"usage":{"input_tokens":9}}}`), "response.in_progress", nil)
 	require.Equal(t, 2, state.usage.InputTokens)
 	enrichResult(nil, state, 0)
+}
+
+func TestParseUsageAndAccumulateAcceptsChatUsageAliases(t *testing.T) {
+	t.Parallel()
+
+	state := &relayState{}
+	got := parseUsageAndAccumulate(
+		state,
+		[]byte(`{"type":"response.done","response":{"usage":{"prompt_tokens":12,"completion_tokens":6,"prompt_tokens_details":{"cached_tokens":4},"completion_tokens_details":{"image_tokens":2}}}}`),
+		"response.done",
+		nil,
+	)
+	require.Equal(t, 12, got.InputTokens)
+	require.Equal(t, 6, got.OutputTokens)
+	require.Equal(t, 4, got.CacheReadInputTokens)
+	require.Equal(t, 2, got.ImageOutputTokens)
+	require.Equal(t, got, state.usage)
 }
 
 func TestEmitTurnCompleteCoverage(t *testing.T) {
@@ -375,6 +396,23 @@ func TestIsTokenEventCoverageBranches(t *testing.T) {
 	require.True(t, isTokenEvent("response.output_audio.delta"))
 	require.True(t, isTokenEvent("response.output"))
 	require.True(t, isTokenEvent("response.done"))
+}
+
+func TestShouldParseUsageTerminalEvents(t *testing.T) {
+	t.Parallel()
+
+	for _, eventType := range []string{
+		"response.completed",
+		"response.done",
+		"response.failed",
+		"response.incomplete",
+		"response.cancelled",
+		"response.canceled",
+	} {
+		require.True(t, shouldParseUsage(eventType), eventType)
+	}
+	require.False(t, shouldParseUsage("response.output_text.delta"))
+	require.False(t, shouldParseUsage(""))
 }
 
 func TestRelayTurnTimingHelpersCoverage(t *testing.T) {
