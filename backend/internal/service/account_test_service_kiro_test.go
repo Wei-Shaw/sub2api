@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func TestAccountTestService_KiroUsesKiroUpstreamInsteadOfAnthropic(t *testing.T) {
@@ -240,6 +241,44 @@ func TestAccountTestService_KiroPreferredEndpointIsIgnored(t *testing.T) {
 	require.Len(t, upstream.requests, 1)
 	require.Equal(t, "q.us-west-2.amazonaws.com", upstream.requests[0].URL.Host)
 	require.Empty(t, upstream.requests[0].Header.Get("X-Amz-Target"))
+}
+
+func TestAccountTestService_KiroOpus48ThinkingTestRequestUsesResolvedModelID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := newTestContext()
+
+	account := &Account{
+		ID:          8,
+		Name:        "kiro-opus48-test",
+		Platform:    PlatformKiro,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token": "kiro-access-token",
+			"profile_arn":  "arn:aws:codewhisperer:us-east-1:123456789012:profile/TESTOPUS48",
+		},
+	}
+	repo := &mockAccountRepoForGemini{accountsByID: map[int64]*Account{8: account}}
+	upstream := &queuedHTTPUpstream{
+		responses: []*http.Response{
+			newJSONResponse(http.StatusBadRequest, `{"message":"probe"}`),
+		},
+	}
+	svc := &AccountTestService{
+		accountRepo:         repo,
+		kiroTokenProvider:   NewKiroTokenProvider(nil, nil, nil),
+		httpUpstream:        upstream,
+		tlsFPProfileService: &TLSFingerprintProfileService{},
+	}
+
+	err := svc.TestAccountConnection(ctx, account.ID, "claude-opus-4-8-thinking", "", AccountTestModeDefault)
+	require.Error(t, err)
+	require.Len(t, upstream.requests, 1)
+
+	body, readErr := io.ReadAll(upstream.requests[0].Body)
+	require.NoError(t, readErr)
+	require.Equal(t, "claude-opus-4.8", gjson.GetBytes(body, "conversationState.currentMessage.userInputMessage.modelId").String())
+	require.NotContains(t, string(body), `"modelId":""`)
 }
 
 func TestBuildKiroPayloadForAccount_KiroBuilderIDWithoutProfileArnOmitsProfileArn(t *testing.T) {

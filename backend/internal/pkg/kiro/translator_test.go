@@ -33,6 +33,33 @@ func TestBuildRuntimeUserAgentStable(t *testing.T) {
 	require.Contains(t, amzUA, machineID)
 }
 
+func TestMapModelKiroOpus48Aliases(t *testing.T) {
+	t.Parallel()
+
+	for _, model := range []string{
+		"claude-opus-4-8",
+		"claude-opus-4-8-thinking",
+		"claude-opus-4.8",
+	} {
+		require.Equal(t, "claude-opus-4.8", MapModel(model))
+	}
+}
+
+func TestBuildKiroPayloadOpus48ThinkingUsesResolvedModelID(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"model":"claude-opus-4-8-thinking",
+		"messages":[{"role":"user","content":"hello kiro"}]
+	}`)
+	mappedModel := MapModel("claude-opus-4.8")
+	require.Equal(t, "claude-opus-4.8", mappedModel)
+
+	payload, err := BuildKiroPayload(body, mappedModel, "", "AI_EDITOR", nil)
+	require.NoError(t, err)
+	require.Equal(t, "claude-opus-4.8", gjson.GetBytes(payload, "conversationState.currentMessage.userInputMessage.modelId").String())
+}
+
 func TestBuildKiroPayloadBasic(t *testing.T) {
 	SetCachedWebSearchDescription("")
 	body := []byte(`{
@@ -1137,6 +1164,9 @@ func TestMapModel_MatchesKiroReferenceMapping(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string]string{
+		"claude-opus-4-8":                     "claude-opus-4.8",
+		"claude-opus-4-8-thinking":            "claude-opus-4.8",
+		"claude-opus-4.8":                     "claude-opus-4.8",
 		"claude-opus-4-7":                     "claude-opus-4.7",
 		"claude-opus-4-7-thinking":            "claude-opus-4.7",
 		"claude-opus-4.7":                     "claude-opus-4.7",
