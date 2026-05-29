@@ -310,6 +310,94 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_responses_supported).toBe(true)
   })
 
+  it('submits OpenAI APIKey endpoint capabilities from credentials', async () => {
+    const account = buildAccount()
+    account.credentials.openai_capabilities = ['chat_completions']
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+
+    expect(wrapper.findAll('input[type="checkbox"]').some((input) => (input.element as HTMLInputElement).checked)).toBe(true)
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.openai_capabilities).toEqual([
+      'chat_completions'
+    ])
+  })
+
+  it('keeps at least one OpenAI APIKey endpoint capability selected', async () => {
+    const account = buildAccount()
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+
+    const chatCheckbox = wrapper.get<HTMLInputElement>(
+      '[data-testid="openai-endpoint-capability-chat_completions"]'
+    )
+    const embeddingsCheckbox = wrapper.get<HTMLInputElement>(
+      '[data-testid="openai-endpoint-capability-embeddings"]'
+    )
+
+    expect(chatCheckbox.element.checked).toBe(true)
+    expect(embeddingsCheckbox.element.checked).toBe(true)
+
+    await embeddingsCheckbox.setValue(false)
+
+    expect(chatCheckbox.element.checked).toBe(true)
+    expect(embeddingsCheckbox.element.checked).toBe(false)
+
+    await chatCheckbox.setValue(false)
+
+    expect(chatCheckbox.element.checked).toBe(true)
+    expect(embeddingsCheckbox.element.checked).toBe(false)
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.openai_capabilities).toEqual([
+      'chat_completions'
+    ])
+  })
+
+  it('disables text generation protocol when only embeddings requests are accepted', async () => {
+    const account = buildAccount()
+    account.credentials.openai_capabilities = ['embeddings']
+    account.extra = {
+      openai_responses_mode: 'force_responses',
+      openai_responses_supported: true
+    }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+
+    const responsesModeSelect = wrapper.get<HTMLSelectElement>(
+      '[data-testid="openai-responses-mode-select"]'
+    )
+
+    expect(responsesModeSelect.element.disabled).toBe(true)
+    expect(wrapper.find('[data-testid="openai-responses-mode-not-applicable"]').exists()).toBe(true)
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.openai_capabilities).toEqual([
+      'embeddings'
+    ])
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('openai_responses_mode')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_responses_supported).toBe(true)
+  })
+
   it('submits account-level Codex image generation bridge override', async () => {
     const account = buildAccount()
     account.extra = {
