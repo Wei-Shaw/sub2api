@@ -84,14 +84,12 @@ var DroppedBetas = []string{}
 //
 // 维护原则：只有被主流 Bedrock/Vertex 后端证实支持的 beta 才应加入。
 var NonOfficialUpstreamSafeBetaPrefixes = []string{
-	"claude-code-",               // Bedrock accepts; aggregators may use for routing
-	"fine-grained-tool-streaming-", // Bedrock accepts; standard streaming format
+	"claude-code-",
+	"fine-grained-tool-streaming-",
 	"interleaved-thinking-",
 	"token-counting-",
 	"prompt-caching-scope-",
-	"extended-cache-ttl-",
 	"effort-",
-	"redact-thinking-",
 }
 
 // DefaultBetaHeader Claude Code 客户端默认的 anthropic-beta header
