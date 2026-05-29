@@ -1,3 +1,16 @@
+# ============================================================
+# !! 不要用这个 workflow 发版 !!
+#
+# 本 fork 的发版流程：在本机执行
+#   ./scripts/release.sh vX.Y.Z
+# 该脚本在本机交叉编译 linux/amd64 二进制，直接发布到
+# GitHub Release（qiangweihewu/sub2api），比 Actions 快且稳定。
+#
+# 这个文件是从上游 Wei-Shaw/sub2api 同步过来的，保留以备参考，
+# 但推送 tag 或手动触发 workflow_dispatch 都会导致构建冗余、
+# 资产冲突（checksums.txt already_exists 等）。
+# 如无特殊理由，请勿触发。
+# ============================================================
 name: Release
 
 on:
