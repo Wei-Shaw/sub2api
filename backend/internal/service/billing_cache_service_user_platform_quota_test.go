@@ -95,6 +95,10 @@ type fakeFullCache struct {
 	mu          sync.Mutex
 	entry       *UserPlatformQuotaCacheEntry
 	deleteCalls int
+	setCalls    int           // SetUserPlatformQuotaCache 调用次数
+	lastSetTTL  time.Duration // 最近一次 Set 的 ttl
+	getErr      error         // 非 nil 时 Get 先返回 (nil,false,getErr)
+	setErr      error         // 非 nil 时 Set 返回该 err(setCalls 仍+1)
 REDACTED
 
 // getDeleteCalls 线程安全地读取 deleteCalls。
@@ -111,19 +115,41 @@ func (f *fakeFullCache) getEntry() *UserPlatformQuotaCacheEntry {
 	return f.entry
 REDACTED
 
+// getSetCalls 线程安全地读取 setCalls。
+func (f *fakeFullCache) getSetCalls() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.setCalls
+REDACTED
+
+// getLastSetTTL 线程安全地读取 lastSetTTL。
+func (f *fakeFullCache) getLastSetTTL() time.Duration {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.lastSetTTL
+REDACTED
+
 func (f *fakeFullCache) GetUserPlatformQuotaCache(_ context.Context, _ int64, _ string) (*UserPlatformQuotaCacheEntry, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.getErr != nil {
+		return nil, false, f.getErr
+REDACTED
 	if f.entry == nil {
 		return nil, false, nil
 REDACTED
 	return f.entry, true, nil
 REDACTED
 
-func (f *fakeFullCache) SetUserPlatformQuotaCache(_ context.Context, _ int64, _ string, e *UserPlatformQuotaCacheEntry, _ time.Duration) error {
+func (f *fakeFullCache) SetUserPlatformQuotaCache(_ context.Context, _ int64, _ string, e *UserPlatformQuotaCacheEntry, ttl time.Duration) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.setCalls++
+	if f.setErr != nil {
+		return f.setErr
+REDACTED
 	f.entry = e
+	f.lastSetTTL = ttl
 	return nil
 REDACTED
 
@@ -591,5 +617,99 @@ REDACTED
 					tc.start, tc.now, got, tc.expired)
 		REDACTED
 	REDACTED)
+REDACTED
+REDACTED
+
+// TestCheckUserPlatformQuotaEligibility_NoRow_WritesSentinel 验证:
+// cache MISS + DB 无行时,回填 sentinel entry(三 limit 全 nil,三 window_start 全 non-nil),
+// TTL = UserPlatformQuotaSentinelTTLSeconds,函数返回 nil(fail-open)。
+func TestCheckUserPlatformQuotaEligibility_NoRow_WritesSentinel(t *testing.T) {
+	repo := &fakeQuotaRepo{rec: nilREDACTED // DB 无行
+	cache := &fakeFullCache{REDACTED        // entry=nil → Get 返回 MISS
+	svc := newServiceForPreflight(t, repo, cache)
+	svc.cfg.Billing.UserPlatformQuotaSentinelTTLSeconds = 3600
+
+	if err := svc.checkUserPlatformQuotaEligibility(context.Background(), 1, "anthropic"); err != nil {
+		t.Fatalf("expected nil (fail-open), got %v", err)
+REDACTED
+	if cache.getSetCalls() != 1 {
+		t.Fatalf("expected 1 SetUserPlatformQuotaCache call for sentinel, got %d", cache.getSetCalls())
+REDACTED
+	sentinel := cache.getEntry()
+	if sentinel == nil {
+		t.Fatal("expected sentinel entry backfilled")
+REDACTED
+	if sentinel.DailyLimitUSD != nil || sentinel.WeeklyLimitUSD != nil || sentinel.MonthlyLimitUSD != nil {
+		t.Errorf("sentinel must have all-nil limits")
+REDACTED
+	if sentinel.DailyWindowStart == nil || sentinel.WeeklyWindowStart == nil || sentinel.MonthlyWindowStart == nil {
+		t.Errorf("sentinel must have non-nil window_start to avoid refresh churn")
+REDACTED
+	if sentinel.SchemaVersion != UserPlatformQuotaCacheSchemaV1 {
+		t.Errorf("sentinel schema = %d, want V1", sentinel.SchemaVersion)
+REDACTED
+	if cache.getLastSetTTL() != 3600*time.Second {
+		t.Errorf("sentinel ttl = %v, want 3600s", cache.getLastSetTTL())
+REDACTED
+REDACTED
+
+// TestCheckUserPlatformQuotaEligibility_RedisGetError_NoSentinelBackfill 验证:
+// Redis GET 故障(cacheErr!=nil)+ DB 无行时,不应回填 sentinel(与 "Redis 故障时不回填" 一致),且 fail-open。
+func TestCheckUserPlatformQuotaEligibility_RedisGetError_NoSentinelBackfill(t *testing.T) {
+	repo := &fakeQuotaRepo{rec: nilREDACTED
+	cache := &fakeFullCache{getErr: errors.New("redis get down")REDACTED
+	svc := newServiceForPreflight(t, repo, cache)
+	svc.cfg.Billing.UserPlatformQuotaSentinelTTLSeconds = 3600
+
+	if err := svc.checkUserPlatformQuotaEligibility(context.Background(), 1, "anthropic"); err != nil {
+		t.Fatalf("redis 故障应 fail-open, got %v", err)
+REDACTED
+	if cache.getSetCalls() != 0 {
+		t.Errorf("redis-get-error 时不应回填 sentinel, got %d set calls", cache.getSetCalls())
+REDACTED
+REDACTED
+
+// TestCheckUserPlatformQuotaEligibility_NoRow_SentinelSetFailsFailOpen 验证:
+// sentinel SET 失败时 fail-open(返回 nil)且计 metric。
+func TestCheckUserPlatformQuotaEligibility_NoRow_SentinelSetFailsFailOpen(t *testing.T) {
+	before := userPlatformQuotaSentinelSetCacheErrorTotal.Load()
+	repo := &fakeQuotaRepo{rec: nilREDACTED
+	cache := &fakeFullCache{setErr: errors.New("redis set timeout")REDACTED
+	svc := newServiceForPreflight(t, repo, cache)
+	svc.cfg.Billing.UserPlatformQuotaSentinelTTLSeconds = 3600
+
+	if err := svc.checkUserPlatformQuotaEligibility(context.Background(), 1, "anthropic"); err != nil {
+		t.Fatalf("sentinel set 失败应 fail-open, got %v", err)
+REDACTED
+	if cache.getSetCalls() != 1 {
+		t.Errorf("应尝试 set sentinel 恰好一次, got %d", cache.getSetCalls())
+REDACTED
+	if got := userPlatformQuotaSentinelSetCacheErrorTotal.Load() - before; got != 1 {
+		t.Errorf("set 失败应使 metric +1, got delta %d", got)
+REDACTED
+REDACTED
+
+// TestCheckUserPlatformQuotaEligibility_SentinelCrossDay_NoRefresh 验证:
+// 命中 sentinel(三 limit 全 nil)且跨窗口(daily/weekly 过期)时,不应触发 refresh SetCache
+// (否则会把短 sentinel TTL 误升级为 quota cache 默认 86400s)。
+func TestCheckUserPlatformQuotaEligibility_SentinelCrossDay_NoRefresh(t *testing.T) {
+	yesterday := timezone.StartOfDay(time.Now().AddDate(0, 0, -1))
+	lastWeek := timezone.StartOfWeek(time.Now().AddDate(0, 0, -7))
+	monthAgoOK := time.Now().AddDate(0, 0, -5) // <30d, monthly 不过期
+	sentinel := &UserPlatformQuotaCacheEntry{
+		SchemaVersion:      UserPlatformQuotaCacheSchemaV1,
+		DailyWindowStart:   &yesterday, // 跨日 → daily windowExpired = true
+		WeeklyWindowStart:  &lastWeek,  // 跨周 → weekly windowExpired = true
+		MonthlyWindowStart: &monthAgoOK,
+		// limits 全 nil → sentinel
+REDACTED
+	cache := &fakeFullCache{entry: sentinelREDACTED // entry 非 nil → Get HIT
+	svc := newServiceForPreflight(t, &fakeQuotaRepo{REDACTED, cache)
+
+	if err := svc.checkUserPlatformQuotaEligibility(context.Background(), 1, "anthropic"); err != nil {
+		t.Fatalf("sentinel = no limit, expected nil, got %v", err)
+REDACTED
+	if cache.getSetCalls() != 0 {
+		t.Errorf("sentinel cross-window must NOT trigger refresh SetCache, got %d calls", cache.getSetCalls())
 REDACTED
 REDACTED

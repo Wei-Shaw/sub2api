@@ -105,6 +105,9 @@ var (
 	// （applyUsageBilling 在 repo==nil 时 fallback）路径下的失败次数；
 	// 与 DB Incr 失败分开计数，便于区分"主路径暂时故障"vs"基础设施长期未配齐"。
 	userPlatformQuotaDBIncrLegacyErrorTotal atomic.Int64
+	// userPlatformQuotaSentinelSetCacheErrorTotal 统计 checkUserPlatformQuotaEligibility
+	// 在 DB 无行时回填 sentinel cache entry 写 Redis 失败的次数（phase A）。
+	userPlatformQuotaSentinelSetCacheErrorTotal atomic.Int64
 )
 
 func GatewayWindowCostPrefetchStats() (cacheHit, cacheMiss, batchSQL, fallback, errCount int64) {
@@ -127,13 +130,15 @@ func GatewayModelsListCacheStats() (cacheHit, cacheMiss, store int64) {
 	return modelsListCacheHitTotal.Load(), modelsListCacheMissTotal.Load(), modelsListCacheStoreTotal.Load()
 REDACTED
 
-// GatewayUserPlatformQuotaIncrStats 返回 (mainPathErr, legacyPathErr)。
+// GatewayUserPlatformQuotaIncrStats 返回 (mainPathErr, legacyPathErr, sentinelSetErr)。
 // mainPathErr：finalizePostUsageBilling 异步 goroutine 写 DB 失败累计次数；
-// legacyPathErr：postUsageBilling fallback 路径写 DB 失败累计次数。
+// legacyPathErr：postUsageBilling fallback 路径写 DB 失败累计次数；
+// sentinelSetErr：DB 无行时回填 sentinel cache entry 写 Redis 失败累计次数。
 // ops 监控面板可以按"持续上升斜率"做告警阈值。
-func GatewayUserPlatformQuotaIncrStats() (mainPathErr, legacyPathErr int64) {
+func GatewayUserPlatformQuotaIncrStats() (mainPathErr, legacyPathErr, sentinelSetErr int64) {
 	return userPlatformQuotaDBIncrErrorTotal.Load(),
-		userPlatformQuotaDBIncrLegacyErrorTotal.Load()
+		userPlatformQuotaDBIncrLegacyErrorTotal.Load(),
+		userPlatformQuotaSentinelSetCacheErrorTotal.Load()
 REDACTED
 
 func openAIStreamEventIsTerminal(data string) bool {
