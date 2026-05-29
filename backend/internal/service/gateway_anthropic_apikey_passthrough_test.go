@@ -713,7 +713,7 @@ REDACTED
 	REDACTED,
 REDACTED
 
-	_, err := svc.buildUpstreamRequestAnthropicAPIKeyPassthrough(context.Background(), c, account, []byte(`{REDACTED`), "k")
+	_, _, err := svc.buildUpstreamRequestAnthropicAPIKeyPassthrough(context.Background(), c, account, []byte(`{REDACTED`), "k")
 REDACTED
 REDACTED
 
@@ -738,7 +738,7 @@ REDACTED
 
 	require.False(t, account.IsAnthropicAPIKeyPassthroughEnabled())
 
-	req, err := svc.buildUpstreamRequest(context.Background(), c, account, []byte(`{"model":"claude-3-7-sonnet-20250219"REDACTED`), "oauth-token", "oauth", "claude-3-7-sonnet-20250219", true, false)
+	req, _, err := svc.buildUpstreamRequest(context.Background(), c, account, []byte(`{"model":"claude-3-7-sonnet-20250219"REDACTED`), "oauth-token", "oauth", "claude-3-7-sonnet-20250219", true, false)
 REDACTED
 	require.Equal(t, "Bearer oauth-token", getHeaderRaw(req.Header, "authorization"))
 	require.Contains(t, getHeaderRaw(req.Header, "anthropic-beta"), claude.BetaOAuth, "OAuth 链路仍应按原逻辑补齐 oauth beta")

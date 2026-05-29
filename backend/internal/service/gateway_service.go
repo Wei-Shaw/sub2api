@@ -4440,6 +4440,7 @@ REDACTED
 	REDACTED
 		return s.forwardAnthropicAPIKeyPassthroughWithInput(ctx, c, account, anthropicPassthroughForwardInput{
 			Body:          passthroughBody,
+			Parsed:        parsed,
 			RequestModel:  passthroughModel,
 			OriginalModel: parsed.Model,
 			RequestStream: parsed.Stream,
@@ -4466,6 +4467,13 @@ REDACTED
 REDACTED
 
 	body := parsed.Body.Bytes()
+	replaceBody := func(next []byte) error {
+		if err := parsed.ReplaceBody(next); err != nil {
+			return fmt.Errorf("rewrite request body: %w", err)
+	REDACTED
+		body = parsed.Body.Bytes()
+		return nil
+REDACTED
 	reqModel := parsed.Model
 	reqStream := parsed.Stream
 	originalModel := reqModel
@@ -4499,7 +4507,9 @@ REDACTED
 		systemRewritten := false
 		if !strings.Contains(strings.ToLower(reqModel), "haiku") {
 			systemRaw, _ := parsed.SystemValue()
-			body = rewriteSystemForNonClaudeCode(body, systemRaw)
+			if err := replaceBody(rewriteSystemForNonClaudeCode(body, systemRaw)); err != nil {
+				return nil, err
+		REDACTED
 			systemRewritten = true
 	REDACTED
 
@@ -4521,22 +4531,34 @@ REDACTED
 		REDACTED
 	REDACTED
 
-		body, reqModel = normalizeClaudeOAuthRequestBody(body, reqModel, normalizeOpts)
+		var normalizedBody []byte
+		normalizedBody, reqModel = normalizeClaudeOAuthRequestBody(body, reqModel, normalizeOpts)
+		if err := replaceBody(normalizedBody); err != nil {
+			return nil, err
+	REDACTED
 
 		// D/E/F: 可选 messages cache 策略 + 工具名混淆 + tools[-1] 断点
 		// 与 forward_as_chat_completions / forward_as_responses 路径对齐，
 		// 原生 /v1/messages 路径也走同一套可配置字段级改写。
-		body = s.rewriteMessageCacheControlIfEnabled(ctx, body)
+		if err := replaceBody(s.rewriteMessageCacheControlIfEnabled(ctx, body)); err != nil {
+			return nil, err
+	REDACTED
 		if rw := buildToolNameRewriteFromBody(body); rw != nil {
-			body = applyToolNameRewriteToBody(body, rw)
+			if err := replaceBody(applyToolNameRewriteToBody(body, rw)); err != nil {
+				return nil, err
+		REDACTED
 			c.Set(toolNameRewriteKey, rw)
 	REDACTED else {
-			body = applyToolsLastCacheBreakpoint(body)
+			if err := replaceBody(applyToolsLastCacheBreakpoint(body)); err != nil {
+				return nil, err
+		REDACTED
 	REDACTED
 REDACTED
 
 	// 强制执行 cache_control 块数量限制（最多 4 个）
-	body = enforceCacheControlLimit(body)
+	if err := replaceBody(enforceCacheControlLimit(body)); err != nil {
+		return nil, err
+REDACTED
 
 	// 应用模型映射：
 	// - APIKey 账号：使用账号级别的显式映射（如果配置），否则透传原始模型名
@@ -4570,13 +4592,18 @@ REDACTED
 REDACTED
 	if mappedModel != reqModel {
 		// 替换请求体中的模型名
-		body = s.replaceModelInBody(body, mappedModel)
+		if err := replaceBody(s.replaceModelInBody(body, mappedModel)); err != nil {
+			return nil, err
+	REDACTED
 		reqModel = mappedModel
+		parsed.Model = mappedModel
 		logger.LegacyPrintf("service.gateway", "Model mapping applied: %s -> %s (account: %s, source=%s)", originalModel, mappedModel, account.Name, mappingSource)
 REDACTED
 
 	if s.shouldInjectAnthropicCacheTTL1h(ctx, account) {
-		body = injectAnthropicCacheControlTTL1h(body)
+		if err := replaceBody(injectAnthropicCacheControlTTL1h(body)); err != nil {
+			return nil, err
+	REDACTED
 REDACTED
 
 	// 获取凭证
@@ -4600,19 +4627,24 @@ REDACTED
 	logger.LegacyPrintf("service.gateway", "[Forward] Using account: ID=%d Name=%s Platform=%s Type=%s TLSFingerprint=%v Proxy=%s",
 		account.ID, account.Name, account.Platform, account.Type, tlsProfile, proxyURL)
 	// Pre-filter: strip empty text blocks (including nested in tool_result) to prevent upstream 400.
-	body = StripEmptyTextBlocks(body)
+	if err := replaceBody(StripEmptyTextBlocks(body)); err != nil {
+		return nil, err
+REDACTED
 
 	// 重试循环
 	var resp *http.Response
+	lastWireBody := body
 	retryStart := time.Now()
 	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
 		// 构建上游请求（每次重试需要重新构建，因为请求体需要重新读取）
 		upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, reqStream)
-		upstreamReq, err := s.buildUpstreamRequest(upstreamCtx, c, account, body, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
+		upstreamReq, wireBody, err := s.buildUpstreamRequest(upstreamCtx, c, account, body, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
 		releaseUpstreamCtx()
 		if err != nil {
 			return nil, err
 	REDACTED
+		// 记录本次实际发送的 wire body；只有请求成功后才写回 ParsedRequest，避免 400 retry 基于已签名 CCH 再改写。
+		lastWireBody = wireBody
 
 		// 发送请求
 		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, tlsProfile)
@@ -4690,12 +4722,17 @@ REDACTED
 
 					filteredBody := FilterThinkingBlocksForRetry(body)
 					retryCtx, releaseRetryCtx := detachStreamUpstreamContext(ctx, reqStream)
-					retryReq, buildErr := s.buildUpstreamRequest(retryCtx, c, account, filteredBody, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
+					retryReq, retryWireBody, buildErr := s.buildUpstreamRequest(retryCtx, c, account, filteredBody, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
 					releaseRetryCtx()
 					if buildErr == nil {
 						retryResp, retryErr := s.httpUpstream.DoWithTLS(retryReq, proxyURL, account.ID, account.Concurrency, tlsProfile)
 						if retryErr == nil {
 							if retryResp.StatusCode < 400 {
+								// 重试请求被上游接受后同步 ParsedRequest，保证 usage/日志看到真实请求体。
+								if err := replaceBody(retryWireBody); err != nil {
+									_ = retryResp.Body.Close()
+									return nil, err
+							REDACTED
 								logger.LegacyPrintf("service.gateway", "Account %d: thinking block retry succeeded (blocks downgraded)", account.ID)
 								resp = retryResp
 								break
@@ -4725,11 +4762,18 @@ REDACTED
 									logger.LegacyPrintf("service.gateway", "Account %d: signature retry still failing and looks tool-related, retrying with tool blocks downgraded", account.ID)
 									filteredBody2 := FilterSignatureSensitiveBlocksForRetry(body)
 									retryCtx2, releaseRetryCtx2 := detachStreamUpstreamContext(ctx, reqStream)
-									retryReq2, buildErr2 := s.buildUpstreamRequest(retryCtx2, c, account, filteredBody2, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
+									retryReq2, retryWireBody2, buildErr2 := s.buildUpstreamRequest(retryCtx2, c, account, filteredBody2, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
 									releaseRetryCtx2()
 									if buildErr2 == nil {
 										retryResp2, retryErr2 := s.httpUpstream.DoWithTLS(retryReq2, proxyURL, account.ID, account.Concurrency, tlsProfile)
 										if retryErr2 == nil {
+											if retryResp2.StatusCode < 400 {
+												// 二阶段工具块降级成功时也必须更新当前 body。
+												if err := replaceBody(retryWireBody2); err != nil {
+													_ = retryResp2.Body.Close()
+													return nil, err
+											REDACTED
+										REDACTED
 											resp = retryResp2
 											break
 									REDACTED
@@ -4796,11 +4840,18 @@ REDACTED
 					if applied && time.Since(retryStart) < maxRetryElapsed {
 						logger.LegacyPrintf("service.gateway", "Account %d: detected budget_tokens constraint error, retrying with rectified budget (budget_tokens=%d, max_tokens=%d)", account.ID, BudgetRectifyBudgetTokens, BudgetRectifyMaxTokens)
 						budgetRetryCtx, releaseBudgetRetryCtx := detachStreamUpstreamContext(ctx, reqStream)
-						budgetRetryReq, buildErr := s.buildUpstreamRequest(budgetRetryCtx, c, account, rectifiedBody, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
+						budgetRetryReq, budgetWireBody, buildErr := s.buildUpstreamRequest(budgetRetryCtx, c, account, rectifiedBody, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
 						releaseBudgetRetryCtx()
 						if buildErr == nil {
 							budgetRetryResp, retryErr := s.httpUpstream.DoWithTLS(budgetRetryReq, proxyURL, account.ID, account.Concurrency, tlsProfile)
 							if retryErr == nil {
+								if budgetRetryResp.StatusCode < 400 {
+									// budget 修正请求成功后，ParsedRequest 也要描述被接受的修正版。
+									if err := replaceBody(budgetWireBody); err != nil {
+										_ = budgetRetryResp.Body.Close()
+										return nil, err
+								REDACTED
+							REDACTED
 								resp = budgetRetryResp
 								break
 						REDACTED
@@ -4997,6 +5048,13 @@ REDACTED
 
 	// 处理正常响应
 
+	if !bytes.Equal(lastWireBody, body) {
+		// 成功后再同步最终 wire body，避免失败重试从已签名 CCH 的 body 继续派生。
+		if err := replaceBody(lastWireBody); err != nil {
+			return nil, err
+	REDACTED
+REDACTED
+
 	// 触发上游接受回调（提前释放串行锁，不等流完成）
 	if parsed.OnUpstreamAccepted != nil {
 		parsed.OnUpstreamAccepted()
@@ -5039,6 +5097,7 @@ REDACTED
 
 type anthropicPassthroughForwardInput struct {
 	Body          []byte
+	Parsed        *ParsedRequest
 	RequestModel  string
 	OriginalModel string
 	RequestStream bool
@@ -5091,15 +5150,28 @@ REDACTED
 REDACTED
 	// Pre-filter: strip empty text blocks (including nested in tool_result) to prevent upstream 400.
 	input.Body = StripEmptyTextBlocks(input.Body)
+	if input.Parsed != nil {
+		// 透传分支也会改写实际 wire body，成功 usage hash 依赖这里同步当前 body。
+		if err := input.Parsed.ReplaceBody(input.Body); err != nil {
+			return nil, err
+	REDACTED
+REDACTED
 
 	var resp *http.Response
 	retryStart := time.Now()
 	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
 		upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, input.RequestStream)
-		upstreamReq, err := s.buildUpstreamRequestAnthropicAPIKeyPassthrough(upstreamCtx, c, account, input.Body, token)
+		upstreamReq, wireBody, err := s.buildUpstreamRequestAnthropicAPIKeyPassthrough(upstreamCtx, c, account, input.Body, token)
 		releaseUpstreamCtx()
 		if err != nil {
 			return nil, err
+	REDACTED
+		if input.Parsed != nil && !bytes.Equal(wireBody, input.Body) {
+			// build 阶段会按 beta 能力清理 body，发送前同步到 ParsedRequest 当前视图。
+			if err := input.Parsed.ReplaceBody(wireBody); err != nil {
+				return nil, err
+		REDACTED
+			input.Body = input.Parsed.Body.Bytes()
 	REDACTED
 
 		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
@@ -5292,13 +5364,13 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 	account *Account,
 	body []byte,
 	token string,
-) (*http.Request, error) {
+) (*http.Request, []byte, error) {
 	targetURL := claudeAPIURL
 	baseURL := account.GetBaseURL()
 	if baseURL != "" {
 		validatedURL, err := s.validateUpstreamBaseURL(baseURL)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 	REDACTED
 		targetURL = validatedURL + "/v1/messages?beta=true"
 REDACTED
@@ -5316,7 +5388,7 @@ REDACTED
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 REDACTED
 
 	if c != nil && c.Request != nil {
@@ -5346,7 +5418,7 @@ REDACTED
 		setHeaderRaw(req.Header, "anthropic-version", "2023-06-01")
 REDACTED
 
-	return req, nil
+	return req, body, nil
 REDACTED
 
 func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
@@ -5828,6 +5900,11 @@ REDACTED
 		return s.handleBedrockUpstreamErrors(ctx, resp, c, account)
 REDACTED
 
+	// Bedrock 分支绕过通用 Forward 成功路径，这里保持上游接受回调语义一致。
+	if parsed.OnUpstreamAccepted != nil {
+		parsed.OnUpstreamAccepted()
+REDACTED
+
 	// 响应处理
 	var usage *ClaudeUsage
 	var firstTokenMs *int
@@ -6104,9 +6181,10 @@ REDACTED
 	return usage, nil
 REDACTED
 
-func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token, tokenType, modelID string, reqStream bool, mimicClaudeCode bool) (*http.Request, error) {
+func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token, tokenType, modelID string, reqStream bool, mimicClaudeCode bool) (*http.Request, []byte, error) {
 	if account.Platform == PlatformAnthropic && account.Type == AccountTypeServiceAccount {
-		return s.buildUpstreamRequestAnthropicVertex(ctx, c, account, body, token, modelID, reqStream)
+		req, err := s.buildUpstreamRequestAnthropicVertex(ctx, c, account, body, token, modelID, reqStream)
+		return req, body, err
 REDACTED
 
 	// 确定目标URL
@@ -6116,18 +6194,18 @@ REDACTED
 		if baseURL != "" {
 			validatedURL, err := s.validateUpstreamBaseURL(baseURL)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 		REDACTED
 			targetURL = validatedURL + "/v1/messages?beta=true"
 	REDACTED
 REDACTED else if account.IsCustomBaseURLEnabled() {
 		customURL := account.GetCustomBaseURL()
 		if customURL == "" {
-			return nil, fmt.Errorf("custom_base_url is enabled but not configured for account %d", account.ID)
+			return nil, nil, fmt.Errorf("custom_base_url is enabled but not configured for account %d", account.ID)
 	REDACTED
 		validatedURL, err := s.validateUpstreamBaseURL(customURL)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 	REDACTED
 		targetURL = s.buildCustomRelayURL(validatedURL, "/v1/messages", account)
 REDACTED
@@ -6202,7 +6280,7 @@ REDACTED
 
 	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 REDACTED
 
 	// 设置认证头（保持原始大小写）
@@ -6287,7 +6365,7 @@ REDACTED
 		logClaudeMimicDebug(req, body, account, tokenType, mimicClaudeCode)
 REDACTED
 
-	return req, nil
+	return req, body, nil
 REDACTED
 
 func (s *GatewayService) buildUpstreamRequestAnthropicVertex(
@@ -9214,23 +9292,42 @@ REDACTED
 REDACTED
 
 	body := parsed.Body.Bytes()
+	replaceBody := func(next []byte) error {
+		if err := parsed.ReplaceBody(next); err != nil {
+			return fmt.Errorf("rewrite count_tokens body: %w", err)
+	REDACTED
+		body = parsed.Body.Bytes()
+		return nil
+REDACTED
 	reqModel := parsed.Model
 
 	// Pre-filter: strip empty text blocks to prevent upstream 400.
-	body = StripEmptyTextBlocks(body)
+	if err := replaceBody(StripEmptyTextBlocks(body)); err != nil {
+		return err
+REDACTED
 
 	isClaudeCodeCT := IsClaudeCodeClient(ctx) || isClaudeCodeClient(c.GetHeader("User-Agent"), parsed.MetadataUserID)
 	shouldMimicClaudeCode := account.IsOAuth() && !isClaudeCodeCT
 
 	if shouldMimicClaudeCode {
 		normalizeOpts := claudeOAuthNormalizeOptions{stripSystemCacheControl: trueREDACTED
-		body, reqModel = normalizeClaudeOAuthRequestBody(body, reqModel, normalizeOpts)
+		var normalizedBody []byte
+		normalizedBody, reqModel = normalizeClaudeOAuthRequestBody(body, reqModel, normalizeOpts)
+		if err := replaceBody(normalizedBody); err != nil {
+			return err
+	REDACTED
 
-		body = s.rewriteMessageCacheControlIfEnabled(ctx, body)
+		if err := replaceBody(s.rewriteMessageCacheControlIfEnabled(ctx, body)); err != nil {
+			return err
+	REDACTED
 		if rw := buildToolNameRewriteFromBody(body); rw != nil {
-			body = applyToolNameRewriteToBody(body, rw)
+			if err := replaceBody(applyToolNameRewriteToBody(body, rw)); err != nil {
+				return err
+		REDACTED
 	REDACTED else {
-			body = applyToolsLastCacheBreakpoint(body)
+			if err := replaceBody(applyToolsLastCacheBreakpoint(body)); err != nil {
+				return err
+		REDACTED
 	REDACTED
 REDACTED
 
@@ -9261,9 +9358,13 @@ REDACTED
 		REDACTED
 	REDACTED
 		if mappedModel != reqModel {
-			body = s.replaceModelInBody(body, mappedModel)
+			originalReqModel := reqModel
+			if err := replaceBody(s.replaceModelInBody(body, mappedModel)); err != nil {
+				return err
+		REDACTED
 			reqModel = mappedModel
-			logger.LegacyPrintf("service.gateway", "CountTokens model mapping applied: %s -> %s (account: %s, source=%s)", parsed.Model, mappedModel, account.Name, mappingSource)
+			parsed.Model = mappedModel
+			logger.LegacyPrintf("service.gateway", "CountTokens model mapping applied: %s -> %s (account: %s, source=%s)", originalReqModel, mappedModel, account.Name, mappingSource)
 	REDACTED
 REDACTED
 
@@ -9275,11 +9376,13 @@ REDACTED
 REDACTED
 
 	// 构建上游请求
-	upstreamReq, err := s.buildCountTokensRequest(ctx, c, account, body, token, tokenType, reqModel, shouldMimicClaudeCode)
+	upstreamReq, wireBody, err := s.buildCountTokensRequest(ctx, c, account, body, token, tokenType, reqModel, shouldMimicClaudeCode)
 	if err != nil {
 		s.countTokensError(c, http.StatusInternalServerError, "api_error", "Failed to build request")
 		return err
 REDACTED
+	// 先记录首发 wire body；如果后面进入 400 retry，retry 会基于未签名的逻辑 body 重新构建。
+	acceptedWireBody := wireBody
 
 	// 获取代理URL（自定义 base URL 模式下，proxy 通过 buildCustomRelayURL 作为查询参数传递）
 	proxyURL := ""
@@ -9315,10 +9418,14 @@ REDACTED
 		logger.LegacyPrintf("service.gateway", "Account %d: detected thinking block signature error on count_tokens, retrying with filtered thinking blocks", account.ID)
 
 		filteredBody := FilterThinkingBlocksForRetry(body)
-		retryReq, buildErr := s.buildCountTokensRequest(ctx, c, account, filteredBody, token, tokenType, reqModel, shouldMimicClaudeCode)
+		retryReq, retryWireBody, buildErr := s.buildCountTokensRequest(ctx, c, account, filteredBody, token, tokenType, reqModel, shouldMimicClaudeCode)
 		if buildErr == nil {
 			retryResp, retryErr := s.httpUpstream.DoWithTLS(retryReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
 			if retryErr == nil {
+				if retryResp.StatusCode < 400 {
+					// count_tokens 签名重试成功后记录最终 wire body，错误响应仍保留原 body 便于后续处理。
+					acceptedWireBody = retryWireBody
+			REDACTED
 				resp = retryResp
 				respBody, err = ReadUpstreamResponseBody(resp.Body, s.cfg, c, countTokensTooLarge)
 				_ = resp.Body.Close()
@@ -9329,6 +9436,13 @@ REDACTED
 					return err
 			REDACTED
 		REDACTED
+	REDACTED
+REDACTED
+
+	if resp.StatusCode < 400 && !bytes.Equal(acceptedWireBody, body) {
+		// count_tokens 成功后再同步最终 wire body，避免 retry 从已签名 body 派生。
+		if err := replaceBody(acceptedWireBody); err != nil {
+			return err
 	REDACTED
 REDACTED
 
@@ -9558,7 +9672,7 @@ REDACTED
 REDACTED
 
 // buildCountTokensRequest 构建 count_tokens 上游请求
-func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token, tokenType, modelID string, mimicClaudeCode bool) (*http.Request, error) {
+func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token, tokenType, modelID string, mimicClaudeCode bool) (*http.Request, []byte, error) {
 	// 确定目标 URL
 	targetURL := claudeAPICountTokensURL
 	if account.Type == AccountTypeAPIKey {
@@ -9566,18 +9680,18 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 		if baseURL != "" {
 			validatedURL, err := s.validateUpstreamBaseURL(baseURL)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 		REDACTED
 			targetURL = validatedURL + "/v1/messages/count_tokens?beta=true"
 	REDACTED
 REDACTED else if account.IsCustomBaseURLEnabled() {
 		customURL := account.GetCustomBaseURL()
 		if customURL == "" {
-			return nil, fmt.Errorf("custom_base_url is enabled but not configured for account %d", account.ID)
+			return nil, nil, fmt.Errorf("custom_base_url is enabled but not configured for account %d", account.ID)
 	REDACTED
 		validatedURL, err := s.validateUpstreamBaseURL(customURL)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 	REDACTED
 		targetURL = s.buildCustomRelayURL(validatedURL, "/v1/messages/count_tokens", account)
 REDACTED
@@ -9633,7 +9747,7 @@ REDACTED
 
 	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 REDACTED
 
 	// 设置认证头（保持原始大小写）
@@ -9697,7 +9811,7 @@ REDACTED
 		logClaudeMimicDebug(req, body, account, tokenType, mimicClaudeCode)
 REDACTED
 
-	return req, nil
+	return req, body, nil
 REDACTED
 
 func sanitizeCountTokensRequestBody(body []byte) []byte {

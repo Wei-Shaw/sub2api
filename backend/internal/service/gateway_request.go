@@ -105,6 +105,22 @@ func (r jsonRange) exists() bool {
 	return r.start >= 0 && r.end >= r.start
 REDACTED
 
+// clearGatewayRequestDerivedState 清空绑定当前 body 的轻量派生字段，防止 ReplaceBody 后读到旧值。
+func clearGatewayRequestDerivedState(parsed *ParsedRequest) {
+	if parsed == nil {
+		return
+REDACTED
+	parsed.Model = ""
+	parsed.Stream = false
+	parsed.MetadataUserID = ""
+	parsed.HasSystem = false
+	parsed.ThinkingEnabled = false
+	parsed.OutputEffort = ""
+	parsed.MaxTokens = 0
+	parsed.systemRange = missingJSONRange()
+	parsed.messagesRange = missingJSONRange()
+REDACTED
+
 func clearGatewayRequestRanges(parsed *ParsedRequest) {
 	if parsed == nil {
 		return
@@ -137,12 +153,9 @@ REDACTED
 REDACTED
 REDACTED
 
-func refreshGatewayRequestRanges(parsed *ParsedRequest, protocol string) error {
-	if parsed == nil {
-		return fmt.Errorf("empty request body")
-REDACTED
-	clearGatewayRequestRanges(parsed)
-	if parsed.Body == nil {
+// parseGatewayRequestCurrentBody 只做标量和 raw range 轻量解析，不恢复 system/messages 对象图。
+func parseGatewayRequestCurrentBody(parsed *ParsedRequest, protocol string) error {
+	if parsed == nil || parsed.Body == nil {
 		return fmt.Errorf("empty request body")
 REDACTED
 
@@ -151,9 +164,49 @@ REDACTED
 		return fmt.Errorf("invalid json")
 REDACTED
 
+	// 只在当前函数内零拷贝读取 JSON 字段；ReplaceBody 后必须重新进入本函数刷新派生状态。
 	jsonStr := *(*string)(unsafe.Pointer(&bodyBytes))
+	clearGatewayRequestDerivedState(parsed)
+	parsed.protocol = protocol
+
+	modelResult := gjson.Get(jsonStr, "model")
+	if modelResult.Exists() {
+		if modelResult.Type != gjson.String {
+			return fmt.Errorf("invalid model field type")
+	REDACTED
+		parsed.Model = modelResult.String()
+REDACTED
+
+	streamResult := gjson.Get(jsonStr, "stream")
+	if streamResult.Exists() {
+		if streamResult.Type != gjson.True && streamResult.Type != gjson.False {
+			return fmt.Errorf("invalid stream field type")
+	REDACTED
+		parsed.Stream = streamResult.Bool()
+REDACTED
+
+	parsed.MetadataUserID = gjson.Get(jsonStr, "metadata.user_id").String()
+
+	thinkingType := gjson.Get(jsonStr, "thinking.type").String()
+	parsed.ThinkingEnabled = thinkingType == "enabled" || thinkingType == "adaptive"
+
+	parsed.OutputEffort = strings.TrimSpace(gjson.Get(jsonStr, "output_config.effort").String())
+
+	maxTokensResult := gjson.Get(jsonStr, "max_tokens")
+	if maxTokensResult.Exists() && maxTokensResult.Type == gjson.Number {
+		f := maxTokensResult.Float()
+		if !math.IsNaN(f) && !math.IsInf(f, 0) && f == math.Trunc(f) &&
+			f <= float64(math.MaxInt) && f >= float64(math.MinInt) {
+			parsed.MaxTokens = int(f)
+	REDACTED
+REDACTED
+
 	setGatewayRequestRanges(parsed, protocol, jsonStr)
 	return nil
+REDACTED
+
+func refreshGatewayRequestRanges(parsed *ParsedRequest, protocol string) error {
+	return parseGatewayRequestCurrentBody(parsed, protocol)
 REDACTED
 
 // ParsedRequest 保存网关请求的预解析结果
@@ -238,71 +291,10 @@ REDACTED
 // protocol 指定请求协议格式（domain.PlatformAnthropic / domain.PlatformGemini），
 // 不同协议使用不同的 system/messages 字段名。
 func ParseGatewayRequest(body *RequestBodyRef, protocol string) (*ParsedRequest, error) {
-	bodyBytes := body.Bytes()
-	// 保持与旧实现一致：请求体必须是合法 JSON。
-	// 注意：gjson.GetBytes 对非法 JSON 不会报错，因此需要显式校验。
-	if !gjson.ValidBytes(bodyBytes) {
-		return nil, fmt.Errorf("invalid json")
+	parsed := &ParsedRequest{Body: bodyREDACTED
+	if err := parseGatewayRequestCurrentBody(parsed, protocol); err != nil {
+		return nil, err
 REDACTED
-
-	// 性能：
-	// - gjson.GetBytes 会把匹配的 Raw/Str 安全复制成 string（对于巨大 messages 会产生额外拷贝）。
-	// - 这里将 body 通过 unsafe 零拷贝视为 string，仅在本函数内使用，且 body 不会被修改。
-	jsonStr := *(*string)(unsafe.Pointer(&bodyBytes))
-
-	parsed := &ParsedRequest{
-		Body:          body,
-		protocol:      protocol,
-		systemRange:   missingJSONRange(),
-		messagesRange: missingJSONRange(),
-REDACTED
-
-	// --- gjson 提取简单字段（避免完整 Unmarshal） ---
-
-	// model: 需要严格类型校验，非 string 返回错误
-	modelResult := gjson.Get(jsonStr, "model")
-	if modelResult.Exists() {
-		if modelResult.Type != gjson.String {
-			return nil, fmt.Errorf("invalid model field type")
-	REDACTED
-		parsed.Model = modelResult.String()
-REDACTED
-
-	// stream: 需要严格类型校验，非 bool 返回错误
-	streamResult := gjson.Get(jsonStr, "stream")
-	if streamResult.Exists() {
-		if streamResult.Type != gjson.True && streamResult.Type != gjson.False {
-			return nil, fmt.Errorf("invalid stream field type")
-	REDACTED
-		parsed.Stream = streamResult.Bool()
-REDACTED
-
-	// metadata.user_id: 直接路径提取，不需要严格类型校验
-	parsed.MetadataUserID = gjson.Get(jsonStr, "metadata.user_id").String()
-
-	// thinking.type: enabled/adaptive 都视为开启
-	thinkingType := gjson.Get(jsonStr, "thinking.type").String()
-	if thinkingType == "enabled" || thinkingType == "adaptive" {
-		parsed.ThinkingEnabled = true
-REDACTED
-
-	// output_config.effort: Claude API 的推理强度控制参数
-	parsed.OutputEffort = strings.TrimSpace(gjson.Get(jsonStr, "output_config.effort").String())
-
-	// max_tokens: 仅接受整数值
-	maxTokensResult := gjson.Get(jsonStr, "max_tokens")
-	if maxTokensResult.Exists() && maxTokensResult.Type == gjson.Number {
-		f := maxTokensResult.Float()
-		if !math.IsNaN(f) && !math.IsInf(f, 0) && f == math.Trunc(f) &&
-			f <= float64(math.MaxInt) && f >= float64(math.MinInt) {
-			parsed.MaxTokens = int(f)
-	REDACTED
-REDACTED
-
-	// --- system/messages 提取 ---
-	// 只保存大字段 raw range，不默认反序列化成 []any/map[string]any 对象图。
-	setGatewayRequestRanges(parsed, protocol, jsonStr)
-
 	return parsed, nil
 REDACTED
 
@@ -353,9 +345,24 @@ REDACTED
 	return system, true
 REDACTED
 
-func (p *ParsedRequest) ReplaceBody(data []byte) {
+// CloneForBody 为单次账号尝试创建独立 body 视图，避免 failover 复用已改写的 ParsedRequest。
+func (p *ParsedRequest) CloneForBody(body []byte) (*ParsedRequest, error) {
 	if p == nil {
-		return
+		return nil, fmt.Errorf("parse request: empty request")
+REDACTED
+	clone := *p
+	clone.Body = NewRequestBodyRef(body)
+	clone.OnUpstreamAccepted = nil
+	if err := refreshGatewayRequestRanges(&clone, clone.protocol); err != nil {
+		return nil, err
+REDACTED
+	return &clone, nil
+REDACTED
+
+// ReplaceBody 统一刷新当前 body 和 raw range，保证后续 helper 读取的是最新请求体。
+func (p *ParsedRequest) ReplaceBody(data []byte) error {
+	if p == nil {
+		return fmt.Errorf("parse request: empty request")
 REDACTED
 	if p.Body == nil {
 		p.Body = NewRequestBodyRef(data)
@@ -364,7 +371,9 @@ REDACTED else {
 REDACTED
 	if err := refreshGatewayRequestRanges(p, p.protocol); err != nil {
 		clearGatewayRequestRanges(p)
+		return err
 REDACTED
+	return nil
 REDACTED
 
 // sliceRawFromBody 返回 Result.Raw 对应的原始字节切片。
