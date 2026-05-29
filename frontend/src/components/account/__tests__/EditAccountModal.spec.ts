@@ -367,6 +367,37 @@ describe('EditAccountModal', () => {
     ])
   REDACTED)
 
+  it('disables text generation protocol when only embeddings requests are accepted', async () => {
+    const account = buildAccount()
+    account.credentials.openai_capabilities = ['embeddings']
+    account.extra = {
+      openai_responses_mode: 'force_responses',
+      openai_responses_supported: true
+    REDACTED
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false REDACTED)
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+
+    const responsesModeSelect = wrapper.get<HTMLSelectElement>(
+      '[data-testid="openai-responses-mode-select"]'
+    )
+
+    expect(responsesModeSelect.element.disabled).toBe(true)
+    expect(wrapper.find('[data-testid="openai-responses-mode-not-applicable"]').exists()).toBe(true)
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.openai_capabilities).toEqual([
+      'embeddings'
+    ])
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('openai_responses_mode')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_responses_supported).toBe(true)
+  REDACTED)
+
   it('submits account-level Codex image generation bridge override', async () => {
     const account = buildAccount()
     account.extra = {
