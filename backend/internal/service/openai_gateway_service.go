@@ -2671,6 +2671,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		bodyModified = true
 		disablePatch()
 	}
+	if sanitizeOpenAIResponsesInputThinkingFields(reqBody) {
+		bodyModified = true
+		disablePatch()
+	}
 
 	// Apply OpenAI fast policy (参照 Claude BetaPolicy 的 fast-mode 过滤)：
 	// 针对 body 的 service_tier 字段（"priority" 即 fast，"flex"），按策略
@@ -3199,6 +3203,13 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	}
 	if sanitized {
 		body = sanitizedBody
+	}
+	thinkingSanitizedBody, thinkingSanitized, err := sanitizeOpenAIResponsesInputThinkingFieldsInBody(body)
+	if err != nil {
+		return nil, err
+	}
+	if thinkingSanitized {
+		body = thinkingSanitizedBody
 	}
 
 	// Apply OpenAI fast policy to the passthrough body (filter/block by service_tier).
@@ -5506,6 +5517,251 @@ func trimOpenAIEncryptedReasoningItems(reqBody map[string]any) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+// sanitizeOpenAIResponsesInputThinkingFields removes Anthropic-style thinking
+// artifacts from OpenAI Responses input history before forwarding upstream.
+// OpenAI accepts reasoning items, but rejects stray fields such as
+// input[N].thinking and content blocks typed as thinking/redacted_thinking.
+func sanitizeOpenAIResponsesInputThinkingFields(reqBody map[string]any) bool {
+	if len(reqBody) == 0 {
+		return false
+	}
+	inputValue, has := reqBody["input"]
+	if !has {
+		return false
+	}
+	nextInput, changed := sanitizeOpenAIResponsesInputValue(inputValue)
+	if !changed {
+		return false
+	}
+	reqBody["input"] = nextInput
+	return true
+}
+
+func sanitizeOpenAIResponsesInputThinkingFieldsInBody(body []byte) ([]byte, bool, error) {
+	if len(body) == 0 ||
+		(!bytes.Contains(body, []byte(`"thinking"`)) &&
+			!bytes.Contains(body, []byte(`"redacted_thinking"`))) {
+		return body, false, nil
+	}
+
+	var reqBody map[string]any
+	if err := json.Unmarshal(body, &reqBody); err != nil {
+		return body, false, fmt.Errorf("parse OpenAI Responses body for thinking sanitization: %w", err)
+	}
+	if !sanitizeOpenAIResponsesInputThinkingFields(reqBody) {
+		return body, false, nil
+	}
+	normalized, err := json.Marshal(reqBody)
+	if err != nil {
+		return body, false, fmt.Errorf("serialize OpenAI Responses body after thinking sanitization: %w", err)
+	}
+	return normalized, true, nil
+}
+
+func sanitizeOpenAIResponsesInputValue(value any) (any, bool) {
+	switch input := value.(type) {
+	case []any:
+		changed := false
+		out := make([]any, 0, len(input))
+		for _, item := range input {
+			nextItem, itemChanged, keep := sanitizeOpenAIResponsesInputItem(item)
+			if itemChanged {
+				changed = true
+			}
+			if keep {
+				out = append(out, nextItem)
+			}
+		}
+		if !changed {
+			return value, false
+		}
+		return out, true
+	case []map[string]any:
+		changed := false
+		out := make([]map[string]any, 0, len(input))
+		for _, item := range input {
+			nextItem, itemChanged, keep := sanitizeOpenAIResponsesInputItem(item)
+			if itemChanged {
+				changed = true
+			}
+			if !keep {
+				continue
+			}
+			if nextMap, ok := nextItem.(map[string]any); ok {
+				out = append(out, nextMap)
+			} else {
+				out = append(out, item)
+			}
+		}
+		if !changed {
+			return value, false
+		}
+		return out, true
+	case map[string]any:
+		nextItem, changed, keep := sanitizeOpenAIResponsesInputItem(input)
+		if !changed {
+			return value, false
+		}
+		if !keep {
+			return []any{}, true
+		}
+		return nextItem, true
+	default:
+		return value, false
+	}
+}
+
+func sanitizeOpenAIResponsesInputItem(item any) (next any, changed bool, keep bool) {
+	inputItem, ok := item.(map[string]any)
+	if !ok {
+		return item, false, true
+	}
+
+	itemType, _ := inputItem["type"].(string)
+	if itemType == "redacted_thinking" {
+		return nil, true, false
+	}
+	if itemType == "thinking" {
+		if thinkingText := openAIResponsesThinkingText(inputItem); thinkingText != "" {
+			return map[string]any{
+				"type":    "message",
+				"role":    "assistant",
+				"content": []any{openAIResponsesTextBlock("assistant", thinkingText)},
+			}, true, true
+		}
+		return nil, true, false
+	}
+
+	if _, hasThinking := inputItem["thinking"]; hasThinking {
+		delete(inputItem, "thinking")
+		changed = true
+	}
+	if _, hasRedacted := inputItem["redacted_thinking"]; hasRedacted {
+		delete(inputItem, "redacted_thinking")
+		changed = true
+	}
+
+	if content, hasContent := inputItem["content"]; hasContent {
+		role, _ := inputItem["role"].(string)
+		nextContent, contentChanged := sanitizeOpenAIResponsesContentValue(content, role)
+		if contentChanged {
+			inputItem["content"] = nextContent
+			changed = true
+		}
+	}
+
+	return inputItem, changed, true
+}
+
+func sanitizeOpenAIResponsesContentValue(value any, role string) (any, bool) {
+	switch content := value.(type) {
+	case []any:
+		changed := false
+		out := make([]any, 0, len(content))
+		for _, block := range content {
+			nextBlock, blockChanged, keep := sanitizeOpenAIResponsesContentBlock(block, role)
+			if blockChanged {
+				changed = true
+			}
+			if keep {
+				out = append(out, nextBlock)
+			}
+		}
+		if !changed {
+			return value, false
+		}
+		return out, true
+	case []map[string]any:
+		changed := false
+		out := make([]map[string]any, 0, len(content))
+		for _, block := range content {
+			nextBlock, blockChanged, keep := sanitizeOpenAIResponsesContentBlock(block, role)
+			if blockChanged {
+				changed = true
+			}
+			if !keep {
+				continue
+			}
+			if nextMap, ok := nextBlock.(map[string]any); ok {
+				out = append(out, nextMap)
+			} else {
+				out = append(out, block)
+			}
+		}
+		if !changed {
+			return value, false
+		}
+		return out, true
+	case map[string]any:
+		nextBlock, changed, keep := sanitizeOpenAIResponsesContentBlock(content, role)
+		if !changed {
+			return value, false
+		}
+		if !keep {
+			return []any{}, true
+		}
+		return []any{nextBlock}, true
+	default:
+		return value, false
+	}
+}
+
+func sanitizeOpenAIResponsesContentBlock(block any, role string) (next any, changed bool, keep bool) {
+	blockMap, ok := block.(map[string]any)
+	if !ok {
+		return block, false, true
+	}
+	blockType, _ := blockMap["type"].(string)
+	switch blockType {
+	case "redacted_thinking":
+		return nil, true, false
+	case "thinking":
+		if thinkingText := openAIResponsesThinkingText(blockMap); thinkingText != "" {
+			return openAIResponsesTextBlock(role, thinkingText), true, true
+		}
+		return nil, true, false
+	}
+
+	if blockType == "" {
+		if thinkingText := openAIResponsesThinkingText(blockMap); thinkingText != "" {
+			return openAIResponsesTextBlock(role, thinkingText), true, true
+		}
+	}
+	if _, hasThinking := blockMap["thinking"]; hasThinking {
+		delete(blockMap, "thinking")
+		changed = true
+	}
+	if _, hasRedacted := blockMap["redacted_thinking"]; hasRedacted {
+		delete(blockMap, "redacted_thinking")
+		changed = true
+	}
+	return blockMap, changed, true
+}
+
+func openAIResponsesThinkingText(block map[string]any) string {
+	if block == nil {
+		return ""
+	}
+	if text, ok := block["thinking"].(string); ok {
+		if strings.TrimSpace(text) == "" {
+			return ""
+		}
+		return text
+	}
+	return ""
+}
+
+func openAIResponsesTextBlock(role, text string) map[string]any {
+	blockType := "input_text"
+	if strings.TrimSpace(role) == "assistant" {
+		blockType = "output_text"
+	}
+	return map[string]any{
+		"type": blockType,
+		"text": text,
 	}
 }
 
