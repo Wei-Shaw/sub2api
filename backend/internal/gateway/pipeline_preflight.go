@@ -42,6 +42,10 @@ func (p *GatewayPipeline) executePreFlight(
 	}
 	p.resolveSessionHash(c, req)
 	p.setOpsContext(c, req)
+	if err := p.checkContentIntercept(c, req); err != nil {
+		slotRelease()
+		return nil, nil, err
+	}
 	return req, slotRelease, nil
 }
 

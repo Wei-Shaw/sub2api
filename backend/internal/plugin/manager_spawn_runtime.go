@@ -245,3 +245,8 @@ func (m *PluginManager) spawnTryMaintenance(sc *spawnCtx) error {
 	m.tryStartMaintenanceExtension(sc.parentCtx, sc.inst)
 	return nil
 }
+
+func (m *PluginManager) spawnTryContentIntercept(sc *spawnCtx) error {
+	m.tryStartContentInterceptExtension(sc.inst)
+	return nil
+}

@@ -26,13 +26,19 @@ type RecordUsageFunc func(ctx context.Context, account *service.Account, result 
 //	session hash -> LOOP { select account -> account slot ->
 //	billing consume -> provider.Forward } -> record usage -> close
 type GatewayPipeline struct {
-	registry       *ProviderRegistry
-	gatewayService *service.GatewayService
-	billingCache   *service.BillingCacheService
-	concurrency    *service.ConcurrencyService
-	settings       *service.SettingService
+	registry           *ProviderRegistry
+	gatewayService     *service.GatewayService
+	billingCache       *service.BillingCacheService
+	concurrency        *service.ConcurrencyService
+	settings           *service.SettingService
+	contentInterceptor ContentInterceptor
 	maxFailovers       int
 	maxFailoversGemini int
+}
+
+// SetContentInterceptor wires the content interception hook (optional).
+func (p *GatewayPipeline) SetContentInterceptor(ci ContentInterceptor) {
+	p.contentInterceptor = ci
 }
 
 func NewGatewayPipeline(

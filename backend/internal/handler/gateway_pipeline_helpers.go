@@ -39,6 +39,12 @@ func classifyPipelineErrorWithContext(c *gin.Context, platform string, err error
 		}
 	}
 
+	// Content moderation blocked
+	var contentBlocked *gateway.ContentBlockedError
+	if errors.As(err, &contentBlocked) {
+		return contentBlocked.StatusCode, "content_policy_violation", contentBlocked.Message, nil
+	}
+
 	// Check for upstream failover errors (may be wrapped)
 	var failoverErr *service.UpstreamFailoverError
 	if errors.As(err, &failoverErr) {
