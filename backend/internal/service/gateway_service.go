@@ -385,6 +385,35 @@ var ErrNoAvailableAccounts = errors.New("no available accounts")
 // ErrClaudeCodeOnly 表示分组仅允许 Claude Code 客户端访问
 var ErrClaudeCodeOnly = errors.New("this group only allows Claude Code clients")
 
+// ForwardResponseFinalizedKey 是 gin.Context 上的标志位。
+// 当 gateway 内部已经把一条完整的错误/成功响应写给了客户端（例如
+// handleErrorResponse 对上游 4xx 已经发了 c.JSON 或 c.Data），就把这个 key
+// 置为 true，避免上层 handler 的 ensureForwardErrorResponse 又把
+// `data: {"type":"error",...}` 的 SSE 错误帧拼到一个已经定稿的 HTTP 响应里。
+// 该 bug 现象：客户端收到 application/json 响应体中混入 HTML 和 SSE 行。
+const ForwardResponseFinalizedKey = "forward_response_finalized"
+
+// MarkForwardResponseFinalized 标记 gin.Context 上的响应已经写完。
+func MarkForwardResponseFinalized(c *gin.Context) {
+	if c == nil {
+		return
+	}
+	c.Set(ForwardResponseFinalizedKey, true)
+}
+
+// IsForwardResponseFinalized 返回 gin.Context 上的响应是否已经写完。
+func IsForwardResponseFinalized(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	v, ok := c.Get(ForwardResponseFinalizedKey)
+	if !ok {
+		return false
+	}
+	b, ok := v.(bool)
+	return ok && b
+}
+
 // allowedHeaders 白名单headers（参考CRS项目）
 var allowedHeaders = map[string]bool{
 	"accept":                      true,
@@ -5412,6 +5441,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 					"message": "Upstream request failed",
 				},
 			})
+			MarkForwardResponseFinalized(c)
 			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
 		}
 
@@ -5960,6 +5990,7 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 					"message": "Upstream request failed",
 				},
 			})
+			MarkForwardResponseFinalized(c)
 			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
 		}
 
@@ -6769,6 +6800,7 @@ func (s *GatewayService) executeBedrockUpstream(
 					"message": "Upstream request failed",
 				},
 			})
+			MarkForwardResponseFinalized(c)
 			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
 		}
 
@@ -7126,6 +7158,7 @@ func (s *GatewayService) executeVertexUpstream(
 					"message": "Upstream request failed",
 				},
 			})
+			MarkForwardResponseFinalized(c)
 			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
 		}
 
@@ -8643,6 +8676,7 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 				"message": errMsg,
 			},
 		})
+		MarkForwardResponseFinalized(c)
 
 		summary := upstreamMsg
 		if summary == "" {
@@ -8660,7 +8694,27 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 
 	switch resp.StatusCode {
 	case 400:
-		c.Data(http.StatusBadRequest, "application/json", body)
+		// 历史实现把上游 400 的 body 原样以 application/json 回吐给客户端。
+		// 当上游（或上游前置 nginx）返回的是 HTML/空 body/截断 JSON 时，
+		// 客户端 SDK 会解析失败，并且后续 ensureForwardErrorResponse 还会
+		// 再追加一帧 SSE 错误，造成 JSON+HTML+SSE 混合体。
+		// 这里改为：仅当 body 真的是合法 JSON 时才透传，否则统一封装。
+		if isLikelyJSONContent(resp.Header.Get("Content-Type"), body) {
+			c.Data(http.StatusBadRequest, "application/json", body)
+		} else {
+			fallback := upstreamMsg
+			if fallback == "" {
+				fallback = "Upstream returned 400 with non-JSON body"
+			}
+			c.JSON(http.StatusBadRequest, gin.H{
+				"type": "error",
+				"error": gin.H{
+					"type":    "invalid_request_error",
+					"message": fallback,
+				},
+			})
+		}
+		MarkForwardResponseFinalized(c)
 		summary := upstreamMsg
 		if summary == "" {
 			summary = truncateForLog(body, 512)
@@ -8703,11 +8757,34 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 			"message": errMsg,
 		},
 	})
+	MarkForwardResponseFinalized(c)
 
 	if upstreamMsg == "" {
 		return nil, fmt.Errorf("upstream error: %d", resp.StatusCode)
 	}
 	return nil, fmt.Errorf("upstream error: %d message=%s", resp.StatusCode, upstreamMsg)
+}
+
+// isLikelyJSONContent 判断上游 body 是否可以安全地以 application/json 回吐。
+// 优先看 Content-Type，否则做一次轻量的 JSON 探嗅（首字符 + json.Valid）。
+func isLikelyJSONContent(contentType string, body []byte) bool {
+	ct := strings.ToLower(strings.TrimSpace(contentType))
+	if i := strings.IndexByte(ct, ';'); i >= 0 {
+		ct = strings.TrimSpace(ct[:i])
+	}
+	if ct == "application/json" || strings.HasSuffix(ct, "+json") {
+		return true
+	}
+	trimmed := bytes.TrimSpace(body)
+	if len(trimmed) == 0 {
+		return false
+	}
+	switch trimmed[0] {
+	case '{', '[':
+	default:
+		return false
+	}
+	return json.Valid(trimmed)
 }
 
 func (s *GatewayService) handleRetryExhaustedSideEffects(ctx context.Context, resp *http.Response, account *Account) {

@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -68,4 +70,37 @@ func TestGatewayEnsureForwardErrorResponse_ResponsesRouteAfterWrittenEmitsRespon
 	assert.Contains(t, body, ":\n\n")
 	assert.Contains(t, body, "event: response.failed\n")
 	assert.Contains(t, body, `"type":"response.failed"`)
+}
+
+// 回归：当 Forward 内部已经通过 handleErrorResponse 写完完整 JSON 错误响应
+// 并显式标记了 ForwardResponseFinalizedKey，外层 handler 的
+// ensureForwardErrorResponse 必须不再追加 SSE 错误帧。
+// 否则 client 会同时收到 application/json 响应体和 `data: {"type":"error",...}` SSE 行
+// （历史现象：HTML 400 + SSE 帧混合）。
+func TestGatewayEnsureForwardErrorResponse_SkipsWhenResponseFinalized(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	// 模拟 handleErrorResponse 已经完整写出一份 JSON 错误响应。
+	c.JSON(http.StatusBadRequest, map[string]any{
+		"type": "error",
+		"error": map[string]any{
+			"type":    "invalid_request_error",
+			"message": "Upstream returned 400 with non-JSON body",
+		},
+	})
+	service.MarkForwardResponseFinalized(c)
+	bodyBefore := w.Body.String()
+	codeBefore := w.Code
+
+	h := &GatewayHandler{}
+	wrote := h.ensureForwardErrorResponse(c, false)
+
+	require.True(t, wrote, "must report a response was already written")
+	assert.Equal(t, codeBefore, w.Code, "status code must not change")
+	assert.Equal(t, bodyBefore, w.Body.String(), "body must not be appended to")
+	assert.False(t, strings.Contains(w.Body.String(), `data: {"type":"error"`),
+		"finalized JSON response must not be followed by an SSE error frame")
 }

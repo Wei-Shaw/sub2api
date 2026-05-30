@@ -1695,9 +1695,16 @@ func (h *GatewayHandler) handleStreamingAwareError(c *gin.Context, status int, e
 // Writer 已被写过时（ping 已 flush）走 streamStarted 分支，
 // 让 handleStreamingAwareError 通过 SSE 发协议合规的终止事件，
 // 否则下游收到的就是 silent EOF。
+// 例外：若 Forward 内部已经显式标记 ForwardResponseFinalizedKey（例如
+// handleErrorResponse 对上游 4xx 已经写了完整 JSON），则直接返回 true，
+// 避免在 application/json 响应体后再追加一帧 SSE error，
+// 造成 JSON+HTML+SSE 的混合体。
 func (h *GatewayHandler) ensureForwardErrorResponse(c *gin.Context, streamStarted bool) bool {
 	if c == nil || c.Writer == nil {
 		return false
+	}
+	if service.IsForwardResponseFinalized(c) {
+		return true
 	}
 	if c.Writer.Written() {
 		streamStarted = true
