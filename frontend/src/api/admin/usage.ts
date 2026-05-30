@@ -121,6 +121,7 @@ export async function getStats(params: {
   start_date?: string
   end_date?: string
   timezone?: string
+  nocache?: number
 REDACTED): Promise<AdminUsageStatsResponse> {
   const { data REDACTED = await apiClient.get<AdminUsageStatsResponse>('/admin/usage/stats', {
     params

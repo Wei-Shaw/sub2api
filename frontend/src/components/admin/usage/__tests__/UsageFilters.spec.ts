@@ -50,6 +50,9 @@ REDACTED)
 // Mock the admin API module — we control searchUsers return value per test
 const mockSearchUsers = vi.fn()
 const mockSearchApiKeys = vi.fn().mockResolvedValue([])
+const mockGroupsList = vi.fn().mockResolvedValue({ items: [] REDACTED)
+const mockGetModelStats = vi.fn().mockResolvedValue({ models: [] REDACTED)
+const mockAccountsList = vi.fn().mockResolvedValue({ items: [] REDACTED)
 
 vi.mock('@/api/admin', () => ({
   adminAPI: {
@@ -57,15 +60,9 @@ vi.mock('@/api/admin', () => ({
       searchUsers: (...args: any[]) => mockSearchUsers(...args),
       searchApiKeys: (...args: any[]) => mockSearchApiKeys(...args),
     REDACTED,
-    groups: {
-      list: vi.fn().mockResolvedValue({ items: [] REDACTED),
-    REDACTED,
-    dashboard: {
-      getModelStats: vi.fn().mockResolvedValue({ models: [] REDACTED),
-    REDACTED,
-    accounts: {
-      list: vi.fn().mockResolvedValue({ items: [] REDACTED),
-    REDACTED,
+    groups: { list: (...args: any[]) => mockGroupsList(...args) REDACTED,
+    dashboard: { getModelStats: (...args: any[]) => mockGetModelStats(...args) REDACTED,
+    accounts: { list: (...args: any[]) => mockAccountsList(...args) REDACTED,
   REDACTED,
 REDACTED))
 
@@ -91,6 +88,7 @@ function mountFilters(filters = defaultFilters()) {
       startDate: '2026-05-01',
       endDate: '2026-05-28',
       showActions: false,
+      modelOptions: [],
     REDACTED,
     global: {
       stubs: {
@@ -164,5 +162,34 @@ describe('UsageFilters — user search dropdown', () => {
     // Also confirm user_id was set by checking the emitted change came through
     // (the component uses toRef so modelValue is mutated in place and 'change' is emitted)
     expect(wrapper.props('modelValue').user_id).toBe(1)
+  REDACTED)
+REDACTED)
+
+describe('UsageFilters — model options come from prop (no dup request)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    mockGetModelStats.mockClear()
+    mockGroupsList.mockClear()
+  REDACTED)
+  afterEach(() => { vi.useRealTimers() REDACTED)
+
+  it('does not call dashboard.getModelStats on mount and renders model options from prop', async () => {
+    const wrapper = mount(UsageFilters, {
+      props: {
+        modelValue: defaultFilters(),
+        exporting: false,
+        startDate: '2026-05-01',
+        endDate: '2026-05-28',
+        showActions: false,
+        modelOptions: ['claude-3', 'gpt-4o'],
+      REDACTED,
+      global: { stubs: { Select: true, Teleport: true REDACTED REDACTED,
+    REDACTED)
+    await flushPromises()
+
+    expect(mockGetModelStats).not.toHaveBeenCalled()
+
+    const opts = (wrapper.vm as any).modelOptions as Array<{ value: string | null; label: string REDACTED>
+    expect(opts.map((o) => o.value)).toEqual([null, 'claude-3', 'gpt-4o'])
   REDACTED)
 REDACTED)
