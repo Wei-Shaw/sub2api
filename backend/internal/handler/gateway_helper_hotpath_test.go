@@ -280,6 +280,25 @@ func TestWaitForSlotWithPingTimeout_TimeoutAndStreamPing(t *testing.T) {
 	})
 }
 
+func TestWaitForSlotWithPingTimeout_ParentContextCanceled(t *testing.T) {
+	cache := &helperConcurrencyCacheStub{
+		accountSeq: []bool{false},
+	}
+	concurrency := service.NewConcurrencyService(cache)
+	helper := NewConcurrencyHelper(concurrency, SSEPingFormatNone, 5*time.Millisecond)
+	c, _ := newHelperTestContext(http.MethodPost, "/v1/messages")
+	reqCtx, cancel := context.WithCancel(c.Request.Context())
+	c.Request = c.Request.WithContext(reqCtx)
+	cancel()
+
+	streamStarted := false
+	release, err := helper.waitForSlotWithPingTimeout(c, "account", 101, 2, time.Second, false, &streamStarted, true)
+	require.Nil(t, release)
+	require.ErrorIs(t, err, context.Canceled)
+	var cErr *ConcurrencyError
+	require.False(t, errors.As(err, &cErr))
+}
+
 func TestWaitForSlotWithPingTimeout_AcquireError(t *testing.T) {
 	errCache := &helperConcurrencyCacheStubWithError{
 		err: errors.New("redis unavailable"),

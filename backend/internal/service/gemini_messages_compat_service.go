@@ -2031,6 +2031,22 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 		parts := extractGeminiParts(geminiResp)
 		for _, part := range parts {
 			if text, ok := part["text"].(string); ok && text != "" {
+				// Close an open tool_use block before starting text, mirroring
+				// the functionCall branch (which closes open text blocks) and
+				// the chat-completions sibling's closeOpenTool(). Otherwise a
+				// tool→text sequence keeps the tool_use block open while the
+				// text block starts, emitting overlapping Anthropic content
+				// blocks that violate the SSE contract.
+				if openToolIndex >= 0 {
+					writeSSE(c.Writer, "content_block_stop", map[string]any{
+						"type":  "content_block_stop",
+						"index": openToolIndex,
+					})
+					openToolIndex = -1
+					openToolName = ""
+					seenToolJSON = ""
+				}
+
 				delta, newSeen := computeGeminiTextDelta(seenText, text)
 				seenText = newSeen
 				if delta == "" {
