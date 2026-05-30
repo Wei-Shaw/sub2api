@@ -3,6 +3,7 @@
 package service
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -205,6 +206,52 @@ func TestAccount_GetTempUnschedulableRules(t *testing.T) {
 			wantCount: 2,
 		},
 		{
+			name: "reset_at_time_only_rule",
+			account: &Account{
+				Credentials: map[string]any{
+					"temp_unschedulable_rules": []any{
+						map[string]any{
+							"error_code":    float64(503),
+							"keywords":      []any{"overloaded"},
+							"reset_at_time": "00:00",
+						},
+					},
+				},
+			},
+			wantCount: 1,
+		},
+		{
+			name: "invalid_reset_at_time_without_duration_skipped",
+			account: &Account{
+				Credentials: map[string]any{
+					"temp_unschedulable_rules": []any{
+						map[string]any{
+							"error_code":    float64(503),
+							"keywords":      []any{"overloaded"},
+							"reset_at_time": "24:00",
+						},
+					},
+				},
+			},
+			wantCount: 0,
+		},
+		{
+			name: "invalid_reset_at_time_with_duration_falls_back_to_duration_rule",
+			account: &Account{
+				Credentials: map[string]any{
+					"temp_unschedulable_rules": []any{
+						map[string]any{
+							"error_code":       float64(503),
+							"keywords":         []any{"overloaded"},
+							"duration_minutes": float64(5),
+							"reset_at_time":    "99:99",
+						},
+					},
+				},
+			},
+			wantCount: 1,
+		},
+		{
 			name: "empty_rules",
 			account: &Account{
 				Credentials: map[string]any{
@@ -256,6 +303,109 @@ func TestTempUnschedulableRule_Parse(t *testing.T) {
 	require.Equal(t, 503, rule.ErrorCode)
 	require.Equal(t, []string{"overloaded", "capacity"}, rule.Keywords)
 	require.Equal(t, 5, rule.DurationMinutes)
+}
+
+func TestTempUnschedResetAtTimeValidation(t *testing.T) {
+	valid := []string{"00:00", "09:30", "23:59"}
+	for _, value := range valid {
+		t.Run("valid_"+value, func(t *testing.T) {
+			require.True(t, isValidTempUnschedResetAtTime(value))
+		})
+	}
+
+	invalid := []string{"", "0:00", "24:00", "99:99", "12:60", "12:3", "ab:cd"}
+	for _, value := range invalid {
+		t.Run("invalid_"+value, func(t *testing.T) {
+			require.False(t, isValidTempUnschedResetAtTime(value))
+		})
+	}
+}
+
+func TestNextTempUnschedResetAt(t *testing.T) {
+	loc := time.Local
+	beforeTarget := time.Date(2026, 5, 29, 8, 30, 0, 0, loc)
+	sameDay, ok := nextTempUnschedResetAt(beforeTarget, "09:00")
+	require.True(t, ok)
+	require.Equal(t, time.Date(2026, 5, 29, 9, 0, 0, 0, loc), sameDay)
+
+	afterTarget := time.Date(2026, 5, 29, 9, 30, 0, 0, loc)
+	nextDay, ok := nextTempUnschedResetAt(afterTarget, "09:00")
+	require.True(t, ok)
+	require.Equal(t, time.Date(2026, 5, 30, 9, 0, 0, 0, loc), nextDay)
+
+	_, ok = nextTempUnschedResetAt(afterTarget, "24:00")
+	require.False(t, ok)
+}
+
+func TestValidateTempUnschedulableCredentials(t *testing.T) {
+	valid := map[string]any{
+		"temp_unschedulable_rules": []any{
+			map[string]any{
+				"error_code":       float64(503),
+				"keywords":         []any{"overloaded"},
+				"duration_minutes": float64(5),
+				"reset_at_time":    "23:59",
+			},
+		},
+	}
+	require.NoError(t, ValidateTempUnschedulableCredentials(valid))
+
+	invalid := map[string]any{
+		"temp_unschedulable_rules": []any{
+			map[string]any{
+				"error_code":       float64(503),
+				"keywords":         []any{"overloaded"},
+				"duration_minutes": float64(5),
+				"reset_at_time":    "24:00",
+			},
+		},
+	}
+	require.Error(t, ValidateTempUnschedulableCredentials(invalid))
+}
+
+type tempUnschedRecorderRepo struct {
+	mockAccountRepoForGemini
+	tempCalls int
+	until     time.Time
+}
+
+func (r *tempUnschedRecorderRepo) SetTempUnschedulable(_ context.Context, _ int64, until time.Time, _ string) error {
+	r.tempCalls++
+	r.until = until
+	return nil
+}
+
+func TestRateLimitService_TempUnschedResetAtTimeFallback(t *testing.T) {
+	repo := &tempUnschedRecorderRepo{}
+	svc := NewRateLimitService(repo, nil, nil, nil, nil)
+	account := &Account{ID: 1}
+
+	resetOnlyRule := TempUnschedulableRule{
+		ErrorCode:   503,
+		Keywords:    []string{"overloaded"},
+		ResetAtTime: time.Now().Add(time.Hour).Format("15:04"),
+	}
+	require.True(t, svc.triggerTempUnschedulable(context.Background(), account, resetOnlyRule, 0, 503, "overloaded", []byte("overloaded")))
+	require.Equal(t, 1, repo.tempCalls)
+	require.True(t, repo.until.After(time.Now()))
+
+	repo = &tempUnschedRecorderRepo{}
+	svc = NewRateLimitService(repo, nil, nil, nil, nil)
+	rule := TempUnschedulableRule{
+		ErrorCode:       503,
+		Keywords:        []string{"overloaded"},
+		DurationMinutes: 5,
+		ResetAtTime:     "99:99",
+	}
+	require.True(t, svc.triggerTempUnschedulable(context.Background(), account, rule, 0, 503, "overloaded", []byte("overloaded")))
+	require.Equal(t, 1, repo.tempCalls)
+	require.WithinDuration(t, time.Now().Add(5*time.Minute), repo.until, 2*time.Second)
+
+	repo = &tempUnschedRecorderRepo{}
+	svc = NewRateLimitService(repo, nil, nil, nil, nil)
+	rule.DurationMinutes = 0
+	require.False(t, svc.triggerTempUnschedulable(context.Background(), account, rule, 0, 503, "overloaded", []byte("overloaded")))
+	require.Equal(t, 0, repo.tempCalls)
 }
 
 // TestTruncateTempUnschedMessage 测试消息截断

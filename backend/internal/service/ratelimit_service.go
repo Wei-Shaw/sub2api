@@ -1451,6 +1451,10 @@ func (s *RateLimitService) ClearRateLimit(ctx context.Context, accountID int64) 
 	if err := s.accountRepo.ClearTempUnschedulable(ctx, accountID); err != nil {
 		return err
 	}
+	slog.Info("account_temp_unschedulable_cleared",
+		"account_id", accountID,
+		"reason", "rate_limit_cleared",
+	)
 	if s.tempUnschedCache != nil {
 		if err := s.tempUnschedCache.DeleteTempUnsched(ctx, accountID); err != nil {
 			slog.Warn("temp_unsched_cache_delete_failed", "account_id", accountID, "error", err)
@@ -1516,6 +1520,10 @@ func (s *RateLimitService) ClearTempUnschedulable(ctx context.Context, accountID
 	if err := s.accountRepo.ClearTempUnschedulable(ctx, accountID); err != nil {
 		return err
 	}
+	slog.Info("account_temp_unschedulable_cleared",
+		"account_id", accountID,
+		"reason", "explicit_clear",
+	)
 	if s.tempUnschedCache != nil {
 		if err := s.tempUnschedCache.DeleteTempUnsched(ctx, accountID); err != nil {
 			slog.Warn("temp_unsched_cache_delete_failed", "account_id", accountID, "error", err)
@@ -1758,26 +1766,21 @@ func (s *RateLimitService) triggerTempUnschedulable(ctx context.Context, account
 	now := time.Now()
 	var until time.Time
 
-	// 优先使用ResetAtTime（按时间点重置）
+	// 优先使用 ResetAtTime（按应用配置的服务器时区计算）
 	if rule.ResetAtTime != "" {
-		// 解析时间点（格式："HH:MM"）
-		parts := strings.Split(rule.ResetAtTime, ":")
-		if len(parts) == 2 {
-			hour, err1 := strconv.Atoi(parts[0])
-			minute, err2 := strconv.Atoi(parts[1])
-			if err1 == nil && err2 == nil && hour >= 0 && hour < 24 && minute >= 0 && minute < 60 {
-				// 计算下一个该时间点
-				nextReset := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, now.Location())
-				if !nextReset.After(now) {
-					// 如果今天的时间点已过，则设置为明天
-					nextReset = nextReset.AddDate(0, 0, 1)
-				}
-				until = nextReset
-			}
+		if nextReset, ok := nextTempUnschedResetAt(now, rule.ResetAtTime); ok {
+			until = nextReset
+		} else {
+			slog.Warn("temp_unsched_invalid_reset_at_time",
+				"account_id", account.ID,
+				"rule_index", ruleIndex,
+				"reset_at_time", rule.ResetAtTime,
+				"duration_minutes", rule.DurationMinutes,
+			)
 		}
 	}
 
-	// 如果ResetAtTime未设置或解析失败，则使用DurationMinutes
+	// 如果 ResetAtTime 未设置或解析失败，则使用 DurationMinutes
 	if until.IsZero() {
 		if rule.DurationMinutes <= 0 {
 			return false
@@ -1814,7 +1817,18 @@ func (s *RateLimitService) triggerTempUnschedulable(ctx context.Context, account
 		}
 	}
 
-	slog.Info("account_temp_unschedulable", "account_id", account.ID, "until", until, "rule_index", ruleIndex, "status_code", statusCode)
+	resetType := "duration_minutes"
+	if rule.ResetAtTime != "" {
+		resetType = "reset_at_time(" + rule.ResetAtTime + ")"
+	}
+	slog.Info("account_temp_unschedulable",
+		"account_id", account.ID,
+		"until", until,
+		"rule_index", ruleIndex,
+		"status_code", statusCode,
+		"matched_keyword", matchedKeyword,
+		"reset_type", resetType,
+	)
 	return true
 }
 

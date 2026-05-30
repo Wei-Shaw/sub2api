@@ -1223,7 +1223,7 @@
                       @click="rule.reset_at_time = '00:00'"
                       class="shrink-0 rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:border-dark-600 dark:text-gray-400 dark:hover:bg-dark-600 dark:hover:text-gray-200"
                     >
-                      次日0点
+                      {{ t('admin.accounts.tempUnschedulable.resetAtMidnightShortcut') }}
                     </button>
                   </div>
                   <p class="input-hint">{{ t('admin.accounts.tempUnschedulable.resetAtTimeHint') }}</p>
@@ -2418,7 +2418,11 @@ import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
-import { applyInterceptWarmup } from '@/components/account/credentialsBuilder'
+import {
+  applyInterceptWarmup,
+  buildTempUnschedRules,
+  hasInvalidTempUnschedResetAtTime
+} from '@/components/account/credentialsBuilder'
 import { formatDateTime, formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 import { VERTEX_LOCATION_OPTIONS } from '@/constants/account'
@@ -3391,58 +3395,16 @@ const moveTempUnschedRule = (index: number, direction: number) => {
   rules[target] = current
 }
 
-const buildTempUnschedRules = (rules: TempUnschedRuleForm[]) => {
-  const out: Array<{
-    error_code: number
-    keywords: string[]
-    duration_minutes: number
-    description: string
-    reset_at_time?: string
-  }> = []
-
-  for (const rule of rules) {
-    const errorCode = Number(rule.error_code)
-    const duration = Number(rule.duration_minutes)
-    const keywords = splitTempUnschedKeywords(rule.keywords)
-    const resetAtTime = rule.reset_at_time?.trim() || ''
-    if (!Number.isFinite(errorCode) || errorCode < 100 || errorCode > 599) {
-      continue
-    }
-    // 验证：duration_minutes或reset_at_time至少有一个有效
-    const hasValidDuration = Number.isFinite(duration) && duration > 0
-    const hasValidResetTime = /^\d{2}:\d{2}$/.test(resetAtTime)
-    if (!hasValidDuration && !hasValidResetTime) {
-      continue
-    }
-    if (keywords.length === 0) {
-      continue
-    }
-    const entry: {
-      error_code: number
-      keywords: string[]
-      duration_minutes: number
-      description: string
-      reset_at_time?: string
-    } = {
-      error_code: Math.trunc(errorCode),
-      keywords,
-      duration_minutes: hasValidDuration ? Math.trunc(duration) : 0,
-      description: rule.description.trim()
-    }
-    if (hasValidResetTime) {
-      entry.reset_at_time = resetAtTime
-    }
-    out.push(entry)
-  }
-
-  return out
-}
-
 const applyTempUnschedConfig = (credentials: Record<string, unknown>) => {
   if (!tempUnschedEnabled.value) {
     delete credentials.temp_unschedulable_enabled
     delete credentials.temp_unschedulable_rules
     return true
+  }
+
+  if (hasInvalidTempUnschedResetAtTime(tempUnschedRules.value)) {
+    appStore.showError(t('admin.accounts.tempUnschedulable.resetAtTimeInvalid'))
+    return false
   }
 
   const rules = buildTempUnschedRules(tempUnschedRules.value)
@@ -3568,13 +3530,6 @@ function formatTempUnschedKeywords(value: unknown) {
     return value
   }
   return ''
-}
-
-const splitTempUnschedKeywords = (value: string) => {
-  return value
-    .split(/[,;]/)
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0)
 }
 
 function toPositiveNumber(value: unknown) {
