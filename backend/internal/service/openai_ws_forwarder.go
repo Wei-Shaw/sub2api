@@ -4060,6 +4060,13 @@ func (s *OpenAIGatewayService) selectAccountByPreviousResponseIDForCapability(
 	if !account.SupportsOpenAIEndpointCapability(requiredCapability) {
 		return nil, nil
 	}
+	// Quota auto-pause must also gate the previous_response_id sticky path; otherwise an
+	// account over its 5h/7d threshold keeps serving the same response chain even though
+	// normal scheduling skips it. Pause is transient, so fall through to normal scheduling
+	// without deleting the binding (the window may reset before the next turn).
+	if paused, _ := shouldAutoPauseOpenAIAccountByQuota(ctx, account); paused {
+		return nil, nil
+	}
 	if s.schedulerSnapshot != nil && s.accountRepo != nil {
 		latest, latestErr := s.accountRepo.GetByID(ctx, account.ID)
 		if latestErr != nil || latest == nil {
@@ -4074,6 +4081,9 @@ func (s *OpenAIGatewayService) selectAccountByPreviousResponseIDForCapability(
 			return nil, nil
 		}
 		if !latest.SupportsOpenAIEndpointCapability(requiredCapability) {
+			return nil, nil
+		}
+		if paused, _ := shouldAutoPauseOpenAIAccountByQuota(ctx, latest); paused {
 			return nil, nil
 		}
 		if s.isOpenAIAccountRuntimeBlocked(latest) {

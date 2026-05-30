@@ -3475,6 +3475,12 @@ export default {
         'When enabled, warmup requests like title generation will return mock responses without consuming upstream tokens',
       autoPauseOnExpired: 'Auto Pause On Expired',
       autoPauseOnExpiredDesc: 'When enabled, the account will auto pause scheduling after it expires',
+	  autoPause5hThreshold: '5h Usage Threshold (%)',
+	  autoPause7dThreshold: '7d Usage Threshold (%)',
+	  autoPauseThresholdHint: 'Leave empty or set 0 to use the global default threshold (configured in Ops settings); set a value to override the global default. Reaching the threshold only skips the account during scheduling and does not modify schedulable.',
+	  autoPause5hDisabled: 'Disable 5h auto-pause',
+	  autoPause7dDisabled: 'Disable 7d auto-pause',
+	  autoPauseDisabledHint: 'When enabled, this account is never auto-paused (even if a global default threshold is configured).',
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {
         title: 'Quota Control',
@@ -5190,6 +5196,11 @@ export default {
         aggregation: 'Pre-aggregation Tasks',
         enableAggregation: 'Enable Pre-aggregation',
         aggregationHint: 'Pre-aggregation improves query performance for long time windows',
+        openaiQuotaAutoPause: 'OpenAI Account Quota Auto-pause',
+        openaiQuotaAutoPauseHint: 'When an OpenAI account reaches its 5h / 7d usage threshold, the scheduler skips it automatically and resumes once the window rolls over. Per-account thresholds take precedence over this global default.',
+        openaiQuotaAutoPauseDefault5h: 'Default 5h usage threshold (%)',
+        openaiQuotaAutoPauseDefault7d: 'Default 7d usage threshold (%)',
+        openaiQuotaAutoPauseThresholdHint: 'Value 0-100; leave blank or 0 to disable the global default threshold.',
         errorFiltering: 'Error Filtering',
         ignoreCountTokensErrors: 'Ignore count_tokens errors',
         ignoreCountTokensErrorsHint: 'When enabled, errors from count_tokens requests will not be written to the error log.',
@@ -5220,7 +5231,8 @@ export default {
           slaMinPercentRange: 'SLA minimum percentage must be between 0 and 100',
           ttftP99MaxRange: 'TTFT P99 maximum must be a number ≥ 0',
           requestErrorRateMaxRange: 'Request error rate maximum must be between 0 and 100',
-          upstreamErrorRateMaxRange: 'Upstream error rate maximum must be between 0 and 100'
+          upstreamErrorRateMaxRange: 'Upstream error rate maximum must be between 0 and 100',
+          openaiQuotaAutoPauseRange: 'OpenAI quota auto-pause threshold must be between 0 and 100'
         }
       },
       concurrency: {
