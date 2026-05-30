@@ -378,6 +378,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 		// alongside the three built-in adapters (Anthropic/OpenAI/Antigravity).
 		gatewayAdapter := gateway.NewPluginRegistryAdapter(providerRegistry, slog.Default())
 		pluginManager.SetGatewayProviderRegistry(gatewayAdapter)
+		pluginManager.SetPipeline(gatewayPipeline)
 	}
 	affiliateHandler := admin.NewAffiliateHandler(affiliateService, adminService)
 	uploadService := service.ProvideUploadService(configConfig)

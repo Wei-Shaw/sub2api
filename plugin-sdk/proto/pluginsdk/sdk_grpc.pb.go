@@ -2506,6 +2506,7 @@ const (
 	HostService_RevokeSubscriptionDays_FullMethodName = "/pluginsdk.HostService/RevokeSubscriptionDays"
 	HostService_AccrueRebate_FullMethodName           = "/pluginsdk.HostService/AccrueRebate"
 	HostService_GetUserByID_FullMethodName            = "/pluginsdk.HostService/GetUserByID"
+	HostService_SetUserDisabled_FullMethodName        = "/pluginsdk.HostService/SetUserDisabled"
 )
 
 // HostServiceClient is the client API for HostService service.
@@ -2569,6 +2570,10 @@ type HostServiceClient interface {
 	// for the payment plugin. Plugins with db.core.read could read users
 	// directly; this RPC exists so payment-flavored fields can evolve.
 	GetUserByID(ctx context.Context, in *GetUserByIDRequest, opts ...grpc.CallOption) (*GetUserByIDResponse, error)
+	// SetUserDisabled disables or re-enables a user account. Used by
+	// content moderation plugins to auto-ban users who violate policy.
+	// Also invalidates the user's auth cache to take effect immediately.
+	SetUserDisabled(ctx context.Context, in *SetUserDisabledRequest, opts ...grpc.CallOption) (*SetUserDisabledResponse, error)
 }
 
 type hostServiceClient struct {
@@ -2649,6 +2654,16 @@ func (c *hostServiceClient) GetUserByID(ctx context.Context, in *GetUserByIDRequ
 	return out, nil
 }
 
+func (c *hostServiceClient) SetUserDisabled(ctx context.Context, in *SetUserDisabledRequest, opts ...grpc.CallOption) (*SetUserDisabledResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetUserDisabledResponse)
+	err := c.cc.Invoke(ctx, HostService_SetUserDisabled_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // HostServiceServer is the server API for HostService service.
 // All implementations must embed UnimplementedHostServiceServer
 // for forward compatibility.
@@ -2710,6 +2725,10 @@ type HostServiceServer interface {
 	// for the payment plugin. Plugins with db.core.read could read users
 	// directly; this RPC exists so payment-flavored fields can evolve.
 	GetUserByID(context.Context, *GetUserByIDRequest) (*GetUserByIDResponse, error)
+	// SetUserDisabled disables or re-enables a user account. Used by
+	// content moderation plugins to auto-ban users who violate policy.
+	// Also invalidates the user's auth cache to take effect immediately.
+	SetUserDisabled(context.Context, *SetUserDisabledRequest) (*SetUserDisabledResponse, error)
 	mustEmbedUnimplementedHostServiceServer()
 }
 
@@ -2740,6 +2759,9 @@ func (UnimplementedHostServiceServer) AccrueRebate(context.Context, *AccrueRebat
 }
 func (UnimplementedHostServiceServer) GetUserByID(context.Context, *GetUserByIDRequest) (*GetUserByIDResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetUserByID not implemented")
+}
+func (UnimplementedHostServiceServer) SetUserDisabled(context.Context, *SetUserDisabledRequest) (*SetUserDisabledResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetUserDisabled not implemented")
 }
 func (UnimplementedHostServiceServer) mustEmbedUnimplementedHostServiceServer() {}
 func (UnimplementedHostServiceServer) testEmbeddedByValue()                     {}
@@ -2888,6 +2910,24 @@ func _HostService_GetUserByID_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _HostService_SetUserDisabled_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetUserDisabledRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HostServiceServer).SetUserDisabled(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HostService_SetUserDisabled_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HostServiceServer).SetUserDisabled(ctx, req.(*SetUserDisabledRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // HostService_ServiceDesc is the grpc.ServiceDesc for HostService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -2922,6 +2962,10 @@ var HostService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetUserByID",
 			Handler:    _HostService_GetUserByID_Handler,
+		},
+		{
+			MethodName: "SetUserDisabled",
+			Handler:    _HostService_SetUserDisabled_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
@@ -4114,6 +4158,155 @@ var GatewayHostCallback_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ReportOpsError",
 			Handler:    _GatewayHostCallback_ReportOpsError_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "sdk.proto",
+}
+
+const (
+	ContentInterceptExtension_Check_FullMethodName = "/pluginsdk.ContentInterceptExtension/Check"
+)
+
+// ContentInterceptExtensionClient is the client API for ContentInterceptExtension service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// ============================================================
+// ContentInterceptExtension — gateway request content interception
+// ============================================================
+//
+// ContentInterceptExtension allows a plugin to inspect request content
+// before the gateway forwards it upstream. The host calls Check() in
+// the pipeline preflight stage, after account selection but before
+// forwarding. The plugin evaluates the content against its moderation
+// policy and returns an action (allow / block / observe).
+//
+// Operating modes (controlled by the plugin's internal config):
+//   - off:       host never calls Check()
+//   - observe:   host calls Check() asynchronously; never blocks requests
+//   - pre_block: host calls Check() synchronously; blocks if action=BLOCK
+//
+// The host decides sync/async based on the mode reported by the plugin
+// in its manifest or via a config query. The plugin itself is stateless
+// with respect to mode — it always evaluates and returns a decision.
+//
+// Availability: probed lazily like other extensions. If the plugin does
+// not implement this service, the host skips content interception.
+type ContentInterceptExtensionClient interface {
+	// Check evaluates request content against the plugin's moderation policy.
+	Check(ctx context.Context, in *ContentCheckRequest, opts ...grpc.CallOption) (*ContentCheckResponse, error)
+}
+
+type contentInterceptExtensionClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewContentInterceptExtensionClient(cc grpc.ClientConnInterface) ContentInterceptExtensionClient {
+	return &contentInterceptExtensionClient{cc}
+}
+
+func (c *contentInterceptExtensionClient) Check(ctx context.Context, in *ContentCheckRequest, opts ...grpc.CallOption) (*ContentCheckResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ContentCheckResponse)
+	err := c.cc.Invoke(ctx, ContentInterceptExtension_Check_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// ContentInterceptExtensionServer is the server API for ContentInterceptExtension service.
+// All implementations must embed UnimplementedContentInterceptExtensionServer
+// for forward compatibility.
+//
+// ============================================================
+// ContentInterceptExtension — gateway request content interception
+// ============================================================
+//
+// ContentInterceptExtension allows a plugin to inspect request content
+// before the gateway forwards it upstream. The host calls Check() in
+// the pipeline preflight stage, after account selection but before
+// forwarding. The plugin evaluates the content against its moderation
+// policy and returns an action (allow / block / observe).
+//
+// Operating modes (controlled by the plugin's internal config):
+//   - off:       host never calls Check()
+//   - observe:   host calls Check() asynchronously; never blocks requests
+//   - pre_block: host calls Check() synchronously; blocks if action=BLOCK
+//
+// The host decides sync/async based on the mode reported by the plugin
+// in its manifest or via a config query. The plugin itself is stateless
+// with respect to mode — it always evaluates and returns a decision.
+//
+// Availability: probed lazily like other extensions. If the plugin does
+// not implement this service, the host skips content interception.
+type ContentInterceptExtensionServer interface {
+	// Check evaluates request content against the plugin's moderation policy.
+	Check(context.Context, *ContentCheckRequest) (*ContentCheckResponse, error)
+	mustEmbedUnimplementedContentInterceptExtensionServer()
+}
+
+// UnimplementedContentInterceptExtensionServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedContentInterceptExtensionServer struct{}
+
+func (UnimplementedContentInterceptExtensionServer) Check(context.Context, *ContentCheckRequest) (*ContentCheckResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Check not implemented")
+}
+func (UnimplementedContentInterceptExtensionServer) mustEmbedUnimplementedContentInterceptExtensionServer() {
+}
+func (UnimplementedContentInterceptExtensionServer) testEmbeddedByValue() {}
+
+// UnsafeContentInterceptExtensionServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to ContentInterceptExtensionServer will
+// result in compilation errors.
+type UnsafeContentInterceptExtensionServer interface {
+	mustEmbedUnimplementedContentInterceptExtensionServer()
+}
+
+func RegisterContentInterceptExtensionServer(s grpc.ServiceRegistrar, srv ContentInterceptExtensionServer) {
+	// If the following call panics, it indicates UnimplementedContentInterceptExtensionServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&ContentInterceptExtension_ServiceDesc, srv)
+}
+
+func _ContentInterceptExtension_Check_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ContentCheckRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ContentInterceptExtensionServer).Check(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ContentInterceptExtension_Check_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ContentInterceptExtensionServer).Check(ctx, req.(*ContentCheckRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// ContentInterceptExtension_ServiceDesc is the grpc.ServiceDesc for ContentInterceptExtension service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var ContentInterceptExtension_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "pluginsdk.ContentInterceptExtension",
+	HandlerType: (*ContentInterceptExtensionServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Check",
+			Handler:    _ContentInterceptExtension_Check_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
