@@ -108,6 +108,7 @@ var (
 	ErrHostSubscriptionUnavailable = errors.New("pluginsdk: host subscription assigner not registered")
 	ErrHostAffiliateUnavailable    = errors.New("pluginsdk: host affiliate accruer not registered")
 	ErrHostUserLookupUnavailable   = errors.New("pluginsdk: host user lookup not registered")
+	ErrHostUserDisableUnavailable  = errors.New("pluginsdk: host user-disable service not registered")
 )
 
 // Compile-time proof that the SDK's concrete types satisfy
@@ -125,6 +126,14 @@ type HostPaymentClient interface {
 	RevokeSubscriptionDays(ctx context.Context, in RevokeSubscriptionDaysInput) (*RevokeSubscriptionDaysResult, error)
 	AccrueRebate(ctx context.Context, in AccrueRebateInput) (*AccrueRebateResult, error)
 	GetUserByID(ctx context.Context, userID int64) (*HostUserInfo, error)
+	// SetUserDisabled bans (disabled=true) or unbans (disabled=false) a
+	// user. The host also invalidates the user's auth cache so the change
+	// takes effect on the next gateway request. reason is recorded on the
+	// user's disable_reason field for audit. Used by the content-moderation
+	// plugin for auto-ban and admin unban. Returns
+	// ErrHostUserDisableUnavailable when the host has not registered the
+	// extension.
+	SetUserDisabled(ctx context.Context, userID int64, disabled bool, reason string) error
 }
 
 func (h *hostClient) CreditBalance(ctx context.Context, in CreditBalanceInput) (*CreditBalanceResult, error) {
@@ -261,6 +270,23 @@ func (h *hostClient) GetUserByID(ctx context.Context, userID int64) (*HostUserIn
 	}, nil
 }
 
+func (h *hostClient) SetUserDisabled(ctx context.Context, userID int64, disabled bool, reason string) error {
+	rpcCtx, cancel := context.WithTimeout(ctx, hostFulfillRPCTimeout)
+	defer cancel()
+	_, err := h.grpc.SetUserDisabled(rpcCtx, &pb.SetUserDisabledRequest{
+		UserId:   userID,
+		Disabled: disabled,
+		Reason:   reason,
+	})
+	if err != nil {
+		if status.Code(err) == codes.Unimplemented {
+			return ErrHostUserDisableUnavailable
+		}
+		return err
+	}
+	return nil
+}
+
 func (nilHostClient) CreditBalance(context.Context, CreditBalanceInput) (*CreditBalanceResult, error) {
 	return nil, ErrHostBalanceUnavailable
 }
@@ -283,4 +309,8 @@ func (nilHostClient) AccrueRebate(context.Context, AccrueRebateInput) (*AccrueRe
 
 func (nilHostClient) GetUserByID(context.Context, int64) (*HostUserInfo, error) {
 	return nil, ErrHostUserLookupUnavailable
+}
+
+func (nilHostClient) SetUserDisabled(context.Context, int64, bool, string) error {
+	return ErrHostUserDisableUnavailable
 }

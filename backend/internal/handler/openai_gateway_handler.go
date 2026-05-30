@@ -32,7 +32,6 @@ type OpenAIGatewayHandler struct {
 	apiKeyService            *service.APIKeyService
 	usageRecordWorkerPool    *service.UsageRecordWorkerPool
 	errorPassthroughService  *service.ErrorPassthroughService
-	contentModerationService *service.ContentModerationService
 	concurrencyHelper        *ConcurrencyHelper
 	maxAccountSwitches       int
 	cfg                      *config.Config
@@ -71,7 +70,6 @@ func NewOpenAIGatewayHandler(
 	apiKeyService *service.APIKeyService,
 	usageRecordWorkerPool *service.UsageRecordWorkerPool,
 	errorPassthroughService *service.ErrorPassthroughService,
-	contentModerationService *service.ContentModerationService,
 	cfg *config.Config,
 ) *OpenAIGatewayHandler {
 	pingInterval := time.Duration(0)
@@ -88,7 +86,6 @@ func NewOpenAIGatewayHandler(
 		apiKeyService:            apiKeyService,
 		usageRecordWorkerPool:    usageRecordWorkerPool,
 		errorPassthroughService:  errorPassthroughService,
-		contentModerationService: contentModerationService,
 		concurrencyHelper:        NewConcurrencyHelper(concurrencyService, SSEPingFormatComment, pingInterval),
 		maxAccountSwitches:       maxAccountSwitches,
 		cfg:                      cfg,
@@ -396,12 +393,6 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	setOpsRequestContext(c, reqModel, true, firstMessage)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeWSV2))
 
-	if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, firstMessage); decision != nil && decision.Blocked {
-		writeContentModerationWSError(ctx, wsConn, decision)
-		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, decision.Message)
-		return
-	}
-
 	if h.pipeline == nil {
 		reqLog.Error("openai.websocket_pipeline_not_initialized")
 		closeOpenAIClientWS(wsConn, coderws.StatusInternalError, "gateway pipeline not initialized")
@@ -530,7 +521,7 @@ func (h *OpenAIGatewayHandler) buildOpenAIWSIngressHooks(
 			if turn == 1 {
 				return nil
 			}
-			return h.wsBeforeRequest(c, wsConn, reqModel, reqLog, apiKey, subject, payload, originalModel)
+			return h.wsBeforeRequest(payload)
 		},
 		BeforeTurn: func(turn int) error {
 			if pipelineHooks == nil || pipelineHooks.BeforeTurn == nil {
@@ -558,31 +549,12 @@ func (h *OpenAIGatewayHandler) buildOpenAIWSIngressHooks(
 	}
 }
 
-// wsBeforeRequest handles content moderation for WS turns 2+.
-func (h *OpenAIGatewayHandler) wsBeforeRequest(
-	c *gin.Context,
-	wsConn *coderws.Conn,
-	reqModel string,
-	reqLog *zap.Logger,
-	apiKey *service.APIKey,
-	subject middleware2.AuthSubject,
-	payload []byte,
-	originalModel string,
-) error {
+// wsBeforeRequest validates the per-turn WS payload for turns 2+. Content
+// interception now runs through the gateway pipeline's ContentInterceptExtension,
+// so this hook only guards against malformed JSON.
+func (h *OpenAIGatewayHandler) wsBeforeRequest(payload []byte) error {
 	if !gjson.ValidBytes(payload) {
 		return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", errors.New("invalid json"))
-	}
-	model := strings.TrimSpace(originalModel)
-	if model == "" {
-		model = strings.TrimSpace(gjson.GetBytes(payload, "model").String())
-	}
-	if model == "" {
-		model = reqModel
-	}
-	ctx := c.Request.Context()
-	if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, model, payload); decision != nil && decision.Blocked {
-		writeContentModerationWSError(ctx, wsConn, decision)
-		return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, decision.Message, nil)
 	}
 	return nil
 }
@@ -931,33 +903,6 @@ func closeOpenAIClientWS(conn *coderws.Conn, status coderws.StatusCode, reason s
 	}
 	_ = conn.Close(status, reason)
 	_ = conn.CloseNow()
-}
-func writeContentModerationWSError(ctx context.Context, conn *coderws.Conn, decision *service.ContentModerationDecision) {
-	if conn == nil || decision == nil {
-		return
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	message := strings.TrimSpace(decision.Message)
-	if message == "" {
-		message = "content moderation blocked this request"
-	}
-	payload, err := json.Marshal(gin.H{
-		"event_id": "evt_content_moderation_blocked",
-		"type":     "error",
-		"error": gin.H{
-			"type":    "invalid_request_error",
-			"code":    contentModerationErrorCode(decision),
-			"message": message,
-		},
-	})
-	if err != nil {
-		payload = []byte(`{"event_id":"evt_content_moderation_blocked","type":"error","error":{"type":"invalid_request_error","code":"content_policy_violation","message":"content moderation blocked this request"}}`)
-	}
-	writeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-	_ = conn.Write(writeCtx, coderws.MessageText, payload)
 }
 
 func summarizeWSCloseErrorForLog(err error) (string, string) {

@@ -281,10 +281,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	scheduledTestHandler := admin.NewScheduledTestHandler(scheduledTestService)
 	// channelHandler / channelMonitorHandler / channelMonitorRequestTemplateHandler: 已迁移到 plugins/channel-management/
 	// paymentHandler / paymentOrderExpiryService 已迁移到 plugins/payment/
-	contentModerationRepository := repository.NewContentModerationRepository(db)
-	contentModerationHashCache := repository.NewContentModerationHashCache(redisClient)
-	contentModerationService := service.NewContentModerationService(settingRepository, contentModerationRepository, contentModerationHashCache, groupRepository, userRepository, apiKeyAuthCacheInvalidator, emailService)
-	contentModerationHandler := admin.NewContentModerationHandler(contentModerationService)
+	// contentModerationRepository / contentModerationHashCache / contentModerationService / contentModerationHandler 已迁移到 plugins/content-moderation/
 	serviceQuotaHandler := admin.NewServiceQuotaHandler(serviceQuotaService)
 	serviceQuotaMonitorService := service.NewServiceQuotaMonitorService(serviceQuotaRuleRepository, serviceQuotaLimiter, serviceQuotaCache, settingService)
 	serviceQuotaMonitorHandler := admin.NewServiceQuotaMonitorHandler(serviceQuotaMonitorService)
@@ -384,12 +381,12 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	uploadService := service.ProvideUploadService(configConfig)
 	adminUploadHandler := admin.NewUploadHandler(uploadService)
 	platformHandler := handler.ProvidePlatformHandler(pluginManager)
-	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, adminAnnouncementHandler, dataManagementHandler, backupHandler, oAuthHandler, proxyHandler, adminRedeemHandler, promoHandler, settingHandler, opsHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler, userAttributeHandler, errorPassthroughHandler, tlsFingerprintProfileHandler, adminAPIKeyHandler, scheduledTestHandler, serviceQuotaHandler, serviceQuotaMonitorHandler, contentModerationHandler, affiliateHandler, pluginHandler, pluginSettingsHandler, adminUploadHandler, platformHandler)
+	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, adminAnnouncementHandler, dataManagementHandler, backupHandler, oAuthHandler, proxyHandler, adminRedeemHandler, promoHandler, settingHandler, opsHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler, userAttributeHandler, errorPassthroughHandler, tlsFingerprintProfileHandler, adminAPIKeyHandler, scheduledTestHandler, serviceQuotaHandler, serviceQuotaMonitorHandler, affiliateHandler, pluginHandler, pluginSettingsHandler, adminUploadHandler, platformHandler)
 	usageRecordWorkerPool := service.NewUsageRecordWorkerPool(configConfig)
 	userMsgQueueCache := repository.NewUserMsgQueueCache(redisClient)
 	userMessageQueueService := service.ProvideUserMessageQueueService(userMsgQueueCache, rpmCache, configConfig)
-	gatewayHandler := handler.NewGatewayHandler(gatewayService, handler.NewGeminiModelListingProvider(geminiMessagesCompatService), userService, concurrencyService, billingCacheService, usageService, apiKeyService, usageRecordWorkerPool, errorPassthroughService, contentModerationService, userMessageQueueService, configConfig, settingService)
-	openAIGatewayHandler := handler.NewOpenAIGatewayHandler(openAIGatewayService, concurrencyService, billingCacheService, apiKeyService, usageRecordWorkerPool, errorPassthroughService, contentModerationService, configConfig)
+	gatewayHandler := handler.NewGatewayHandler(gatewayService, handler.NewGeminiModelListingProvider(geminiMessagesCompatService), userService, concurrencyService, billingCacheService, usageService, apiKeyService, usageRecordWorkerPool, errorPassthroughService, userMessageQueueService, configConfig, settingService)
+	openAIGatewayHandler := handler.NewOpenAIGatewayHandler(openAIGatewayService, concurrencyService, billingCacheService, apiKeyService, usageRecordWorkerPool, errorPassthroughService, configConfig)
 	handlerSettingHandler := handler.ProvideSettingHandler(settingService, buildInfo)
 	totpHandler := handler.NewTotpHandler(totpService)
 	// PaymentHandler / PaymentWebhookHandler 已迁移到 plugins/payment/

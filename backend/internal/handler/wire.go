@@ -34,7 +34,6 @@ func ProvideAdminHandlers(
 	scheduledTestHandler *admin.ScheduledTestHandler,
 	serviceQuotaHandler *admin.ServiceQuotaHandler,
 	serviceQuotaMonitorHandler *admin.ServiceQuotaMonitorHandler,
-	contentModerationHandler *admin.ContentModerationHandler,
 	affiliateHandler *admin.AffiliateHandler,
 	pluginHandler *admin.PluginHandler,
 	pluginSettingsHandler *admin.PluginSettingsHandler,
@@ -63,7 +62,6 @@ func ProvideAdminHandlers(
 		TLSFingerprintProfile: tlsFingerprintProfileHandler,
 		APIKey:                apiKeyHandler,
 		ScheduledTest:         scheduledTestHandler,
-		ContentModeration:     contentModerationHandler,
 		ServiceQuota:          serviceQuotaHandler,
 		ServiceQuotaMonitor:   serviceQuotaMonitorHandler,
 		Affiliate:             affiliateHandler,
@@ -187,7 +185,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewScheduledTestHandler,
 	// admin.NewChannelHandler / NewChannelMonitorHandler / NewChannelMonitorRequestTemplateHandler 已迁移到 plugins/channel-management/
 	// admin.NewPaymentHandler 已迁移到 plugins/payment/
-	admin.NewContentModerationHandler,
+	// admin.NewContentModerationHandler 已迁移到 plugins/content-moderation/
 	admin.NewServiceQuotaHandler,
 	admin.NewServiceQuotaMonitorHandler,
 	admin.NewAffiliateHandler,
