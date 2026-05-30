@@ -273,6 +273,16 @@ export default {
         keywordBlock: '关键词拦截',
         error: '异常',
       },
+      modelSelector: {
+        modelCount: '{count} 个模型',
+        searchModels: '搜索模型...',
+        noMatchingModels: '没有匹配的模型',
+        clearAllModels: '清除所有模型',
+        customModelName: '自定义模型名称',
+        enterCustomModelName: '输入自定义模型名称',
+        addModel: '填入',
+        modelExists: '该模型已存在',
+      },
     },
   },
 }

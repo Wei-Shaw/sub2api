@@ -27,15 +27,15 @@ import (
 
 // OpenAIGatewayHandler handles OpenAI API gateway requests
 type OpenAIGatewayHandler struct {
-	gatewayService           *service.OpenAIGatewayService
-	billingCacheService      *service.BillingCacheService
-	apiKeyService            *service.APIKeyService
-	usageRecordWorkerPool    *service.UsageRecordWorkerPool
-	errorPassthroughService  *service.ErrorPassthroughService
-	concurrencyHelper        *ConcurrencyHelper
-	maxAccountSwitches       int
-	cfg                      *config.Config
-	pipeline                 *gateway.GatewayPipeline
+	gatewayService          *service.OpenAIGatewayService
+	billingCacheService     *service.BillingCacheService
+	apiKeyService           *service.APIKeyService
+	usageRecordWorkerPool   *service.UsageRecordWorkerPool
+	errorPassthroughService *service.ErrorPassthroughService
+	concurrencyHelper       *ConcurrencyHelper
+	maxAccountSwitches      int
+	cfg                     *config.Config
+	pipeline                *gateway.GatewayPipeline
 }
 
 // SetPipeline injects the GatewayPipeline for Phase 1 activation.
@@ -43,7 +43,6 @@ type OpenAIGatewayHandler struct {
 func (h *OpenAIGatewayHandler) SetPipeline(p *gateway.GatewayPipeline) {
 	h.pipeline = p
 }
-
 
 func resolveOpenAIForwardDefaultMappedModel(apiKey *service.APIKey, fallbackModel string) string {
 	if fallbackModel = strings.TrimSpace(fallbackModel); fallbackModel != "" {
@@ -81,14 +80,14 @@ func NewOpenAIGatewayHandler(
 		}
 	}
 	return &OpenAIGatewayHandler{
-		gatewayService:           gatewayService,
-		billingCacheService:      billingCacheService,
-		apiKeyService:            apiKeyService,
-		usageRecordWorkerPool:    usageRecordWorkerPool,
-		errorPassthroughService:  errorPassthroughService,
-		concurrencyHelper:        NewConcurrencyHelper(concurrencyService, SSEPingFormatComment, pingInterval),
-		maxAccountSwitches:       maxAccountSwitches,
-		cfg:                      cfg,
+		gatewayService:          gatewayService,
+		billingCacheService:     billingCacheService,
+		apiKeyService:           apiKeyService,
+		usageRecordWorkerPool:   usageRecordWorkerPool,
+		errorPassthroughService: errorPassthroughService,
+		concurrencyHelper:       NewConcurrencyHelper(concurrencyService, SSEPingFormatComment, pingInterval),
+		maxAccountSwitches:      maxAccountSwitches,
+		cfg:                     cfg,
 	}
 }
 

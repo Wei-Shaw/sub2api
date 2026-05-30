@@ -273,6 +273,16 @@ export default {
         keywordBlock: 'Keyword Blocked',
         error: 'Error',
       },
+      modelSelector: {
+        modelCount: '{count} models',
+        searchModels: 'Search models...',
+        noMatchingModels: 'No matching models',
+        clearAllModels: 'Clear all models',
+        customModelName: 'Custom model name',
+        enterCustomModelName: 'Enter custom model name',
+        addModel: 'Add',
+        modelExists: 'Model already exists',
+      },
     },
   },
 }

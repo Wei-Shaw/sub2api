@@ -35,21 +35,21 @@ var gatewayCompatibilityMetricsLogCounter atomic.Uint64
 
 // GatewayHandler handles API gateway requests
 type GatewayHandler struct {
-	gatewayService            *service.GatewayService
-	geminiModelListing        GeminiModelListingProvider
-	userService               *service.UserService
-	billingCacheService       *service.BillingCacheService
-	usageService              *service.UsageService
-	apiKeyService             *service.APIKeyService
-	usageRecordWorkerPool     *service.UsageRecordWorkerPool
-	errorPassthroughService   *service.ErrorPassthroughService
-	concurrencyHelper         *ConcurrencyHelper
-	userMsgQueueHelper        *UserMsgQueueHelper
-	maxAccountSwitches        int
-	maxAccountSwitchesGemini  int
-	cfg                       *config.Config
-	settingService            *service.SettingService
-	pipeline                  *gateway.GatewayPipeline
+	gatewayService           *service.GatewayService
+	geminiModelListing       GeminiModelListingProvider
+	userService              *service.UserService
+	billingCacheService      *service.BillingCacheService
+	usageService             *service.UsageService
+	apiKeyService            *service.APIKeyService
+	usageRecordWorkerPool    *service.UsageRecordWorkerPool
+	errorPassthroughService  *service.ErrorPassthroughService
+	concurrencyHelper        *ConcurrencyHelper
+	userMsgQueueHelper       *UserMsgQueueHelper
+	maxAccountSwitches       int
+	maxAccountSwitchesGemini int
+	cfg                      *config.Config
+	settingService           *service.SettingService
+	pipeline                 *gateway.GatewayPipeline
 }
 
 // NewGatewayHandler creates a new GatewayHandler
@@ -87,20 +87,20 @@ func NewGatewayHandler(
 	}
 
 	return &GatewayHandler{
-		gatewayService:            gatewayService,
-		geminiModelListing:        geminiModelListing,
-		userService:               userService,
-		billingCacheService:       billingCacheService,
-		usageService:              usageService,
-		apiKeyService:             apiKeyService,
-		usageRecordWorkerPool:     usageRecordWorkerPool,
-		errorPassthroughService:   errorPassthroughService,
-		concurrencyHelper:         NewConcurrencyHelper(concurrencyService, SSEPingFormatClaude, pingInterval),
-		userMsgQueueHelper:        umqHelper,
-		maxAccountSwitches:        maxAccountSwitches,
-		maxAccountSwitchesGemini:  maxAccountSwitchesGemini,
-		cfg:                       cfg,
-		settingService:            settingService,
+		gatewayService:           gatewayService,
+		geminiModelListing:       geminiModelListing,
+		userService:              userService,
+		billingCacheService:      billingCacheService,
+		usageService:             usageService,
+		apiKeyService:            apiKeyService,
+		usageRecordWorkerPool:    usageRecordWorkerPool,
+		errorPassthroughService:  errorPassthroughService,
+		concurrencyHelper:        NewConcurrencyHelper(concurrencyService, SSEPingFormatClaude, pingInterval),
+		userMsgQueueHelper:       umqHelper,
+		maxAccountSwitches:       maxAccountSwitches,
+		maxAccountSwitchesGemini: maxAccountSwitchesGemini,
+		cfg:                      cfg,
+		settingService:           settingService,
 	}
 }
 
@@ -306,7 +306,6 @@ func (h *GatewayHandler) AntigravityModels(c *gin.Context) {
 		"data":   antigravity.DefaultModels(),
 	})
 }
-
 
 // Usage handles getting account balance and usage statistics for CC Switch integration
 // GET /v1/usage
@@ -635,7 +634,6 @@ func (h *GatewayHandler) calculateSubscriptionRemaining(group *service.Group, su
 	}
 	return min
 }
-
 
 func (h *GatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, platform string, streamStarted bool) {
 	statusCode := failoverErr.StatusCode
@@ -1174,4 +1172,3 @@ func (h *GatewayHandler) submitUsageRecordTask(task service.UsageRecordTask) {
 	}()
 	task(ctx)
 }
-
