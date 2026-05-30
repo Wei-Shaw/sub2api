@@ -4729,6 +4729,7 @@ REDACTED
 						if retryErr == nil {
 							if retryResp.StatusCode < 400 {
 								// 重试请求被上游接受后同步 ParsedRequest，保证 usage/日志看到真实请求体。
+								lastWireBody = retryWireBody
 								if err := replaceBody(retryWireBody); err != nil {
 									_ = retryResp.Body.Close()
 									return nil, err
@@ -4769,6 +4770,7 @@ REDACTED
 										if retryErr2 == nil {
 											if retryResp2.StatusCode < 400 {
 												// 二阶段工具块降级成功时也必须更新当前 body。
+												lastWireBody = retryWireBody2
 												if err := replaceBody(retryWireBody2); err != nil {
 													_ = retryResp2.Body.Close()
 													return nil, err
@@ -4847,6 +4849,7 @@ REDACTED
 							if retryErr == nil {
 								if budgetRetryResp.StatusCode < 400 {
 									// budget 修正请求成功后，ParsedRequest 也要描述被接受的修正版。
+									lastWireBody = budgetWireBody
 									if err := replaceBody(budgetWireBody); err != nil {
 										_ = budgetRetryResp.Body.Close()
 										return nil, err
@@ -8228,10 +8231,10 @@ REDACTED
 	return resolver.Resolve(ctx, userID, groupID, groupDefaultMultiplier)
 REDACTED
 
-// RecordUsageInput 记录使用量的输入参数
+// RecordUsageInput 记录使用量的输入参数。
+// 异步 worker 只接收计费所需快照，不能持有 ParsedRequest/RequestBodyRef 这类大请求体引用。
 type RecordUsageInput struct {
 	Result             *ForwardResult
-	ParsedRequest      *ParsedRequest
 	APIKey             *APIKey
 	User               *User
 	Account            *Account
@@ -8709,15 +8712,8 @@ REDACTED
 REDACTED
 REDACTED
 
-// recordUsageOpts 内部选项，参数化 RecordUsage 与 RecordUsageWithLongContext 的差异点。
+// recordUsageOpts 内部选项，参数化普通计费与长上下文计费的差异点。
 type recordUsageOpts struct {
-	// Claude Max 策略所需的 ParsedRequest（可选，仅 Claude 路径传入）
-	ParsedRequest *ParsedRequest
-
-	// EnableClaudePath 启用 Claude 路径特有逻辑：
-	// - Claude Max 缓存计费策略
-	EnableClaudePath bool
-
 	// 长上下文计费（仅 Gemini 路径需要）
 	LongContextThreshold  int
 	LongContextMultiplier float64
@@ -8740,9 +8736,7 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 		APIKeyService:      input.APIKeyService,
 		QuotaPlatform:      input.QuotaPlatform,
 		ChannelUsageFields: input.ChannelUsageFields,
-REDACTED, &recordUsageOpts{
-		EnableClaudePath: true,
-REDACTED)
+REDACTED, &recordUsageOpts{REDACTED)
 REDACTED
 
 // RecordUsageLongContextInput 记录使用量的输入参数（支持长上下文双倍计费）
@@ -8808,9 +8802,7 @@ type recordUsageCoreInput struct {
 REDACTED
 
 // recordUsageCore 是 RecordUsage 和 RecordUsageWithLongContext 的统一实现。
-// opts 中的字段控制两者之间的差异行为：
-// - ParsedRequest != nil → 启用 Claude Max 缓存计费策略
-// - LongContextThreshold > 0 → Token 计费回退走 CalculateCostWithLongContext
+// LongContextThreshold > 0 时 Token 计费回退走 CalculateCostWithLongContext。
 func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsageCoreInput, opts *recordUsageOpts) error {
 	result := input.Result
 	apiKey := input.APIKey
