@@ -751,8 +751,8 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 	req.Header.Set("User-Agent", codexCLIUserAgent)
 	req.Header.Set("Version", codexCLIVersion)
 	probeSessionID := compactProbeSessionID(account.ID)
-	req.Header.Set("Session_ID", probeSessionID)
-	req.Header.Set("Conversation_ID", probeSessionID)
+	req.Header.Set("session-id", probeSessionID)
+	req.Header.Set("thread-id", probeSessionID)
 
 	if isOAuth {
 		req.Host = "chatgpt.com"

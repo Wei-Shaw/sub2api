@@ -162,26 +162,19 @@ func TestOpenAIGatewayService_GenerateSessionHash_Priority(t *testing.T) {
 
 	bodyWithKey := []byte(`{"prompt_cache_key":"ses_aaa"}`)
 
-	// 1) session_id header wins
-	c.Request.Header.Set("session_id", "sess-123")
-	c.Request.Header.Set("conversation_id", "conv-456")
+	// 1) session-id header wins over other session/thread signals.
+	c.Request.Header.Set("session-id", "sess-new")
+	c.Request.Header.Set("thread-id", "thread-new")
 	h1 := svc.GenerateSessionHash(c, bodyWithKey)
-	if h1 == "" {
-		t.Fatalf("expected non-empty hash")
-	}
+	require.Equal(t, fmt.Sprintf("%016x", xxhash.Sum64String("sess-new")), h1)
 
-	// 2) conversation_id used when session_id absent
-	c.Request.Header.Del("session_id")
+	// 2) thread-id used when session-id is absent.
+	c.Request.Header.Del("session-id")
 	h2 := svc.GenerateSessionHash(c, bodyWithKey)
-	if h2 == "" {
-		t.Fatalf("expected non-empty hash")
-	}
-	if h1 == h2 {
-		t.Fatalf("expected different hashes for different keys")
-	}
+	require.Equal(t, fmt.Sprintf("%016x", xxhash.Sum64String("thread-new")), h2)
 
-	// 3) prompt_cache_key used when both headers absent
-	c.Request.Header.Del("conversation_id")
+	// 3) prompt_cache_key used when all supported session/thread headers are absent.
+	c.Request.Header.Del("thread-id")
 	h3 := svc.GenerateSessionHash(c, bodyWithKey)
 	if h3 == "" {
 		t.Fatalf("expected non-empty hash")
@@ -190,7 +183,7 @@ func TestOpenAIGatewayService_GenerateSessionHash_Priority(t *testing.T) {
 		t.Fatalf("expected different hashes for different keys")
 	}
 
-	// 4) empty when no signals
+	// 4) empty when no signals.
 	h4 := svc.GenerateSessionHash(c, []byte(`{}`))
 	if h4 != "" {
 		t.Fatalf("expected empty hash when no signals")
@@ -203,7 +196,7 @@ func TestOpenAIGatewayService_GenerateSessionHash_UsesXXHash64(t *testing.T) {
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
 
-	c.Request.Header.Set("session_id", "sess-fixed-value")
+	c.Request.Header.Set("session-id", "sess-fixed-value")
 	svc := &OpenAIGatewayService{}
 
 	got := svc.GenerateSessionHash(c, nil)
@@ -217,7 +210,7 @@ func TestOpenAIGatewayService_GenerateSessionHash_AttachesLegacyHashToContext(t 
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
 
-	c.Request.Header.Set("session_id", "sess-legacy-check")
+	c.Request.Header.Set("session-id", "sess-check")
 	svc := &OpenAIGatewayService{}
 
 	sessionHash := svc.GenerateSessionHash(c, nil)
@@ -255,7 +248,7 @@ func TestOpenAIGatewayService_GenerateExplicitSessionHash_SkipsContentFallback(t
 		rec := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(rec)
 		c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
-		c.Request.Header.Set("session_id", "header-session")
+		c.Request.Header.Set("session-id", "header-session")
 
 		got := svc.GenerateExplicitSessionHash(c, []byte(`{"prompt_cache_key":"body-session"}`))
 		require.Equal(t, fmt.Sprintf("%016x", xxhash.Sum64String("header-session")), got)
@@ -317,10 +310,10 @@ func TestOpenAIGatewayService_GenerateSessionHash_ExplicitSignalWinsOverContent(
 	contentHash := svc.GenerateSessionHash(c, body)
 	require.NotEmpty(t, contentHash)
 
-	c.Request.Header.Set("session_id", "explicit-session")
+	c.Request.Header.Set("session-id", "explicit-session")
 	explicitHash := svc.GenerateSessionHash(c, body)
 	require.NotEmpty(t, explicitHash)
-	require.NotEqual(t, contentHash, explicitHash, "explicit session_id should override content fallback")
+	require.NotEqual(t, contentHash, explicitHash, "explicit session-id should override content fallback")
 }
 
 func TestOpenAIGatewayService_GenerateSessionHash_EmptyBodyStillEmpty(t *testing.T) {
@@ -1840,7 +1833,7 @@ func TestOpenAIBuildUpstreamRequestOpenAIPassthroughPreservesCompactPath(t *test
 	require.Equal(t, chatgptCodexURL+"/compact", req.URL.String())
 	require.Equal(t, "application/json", req.Header.Get("Accept"))
 	require.Equal(t, codexCLIVersion, req.Header.Get("Version"))
-	require.NotEmpty(t, req.Header.Get("Session_Id"))
+	require.NotEmpty(t, req.Header.Get("session-id"))
 	require.Equal(t, HTTPUpstreamProfileOpenAI, HTTPUpstreamProfileFromContext(req.Context()))
 }
 
@@ -1861,8 +1854,25 @@ func TestOpenAIBuildUpstreamRequestCompactForcesJSONAcceptForOAuth(t *testing.T)
 	require.Equal(t, chatgptCodexURL+"/compact", req.URL.String())
 	require.Equal(t, "application/json", req.Header.Get("Accept"))
 	require.Equal(t, codexCLIVersion, req.Header.Get("Version"))
-	require.NotEmpty(t, req.Header.Get("Session_Id"))
+	require.NotEmpty(t, req.Header.Get("session-id"))
 	require.Equal(t, HTTPUpstreamProfileOpenAI, HTTPUpstreamProfileFromContext(req.Context()))
+}
+
+func TestOpenAIBuildUpstreamRequestOAuthUsesHyphenSessionHeaders(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader([]byte(`{"model":"gpt-5"}`)))
+	c.Request.Header.Set("session-id", "client-session")
+	c.Request.Header.Set("thread-id", "client-thread")
+
+	svc := &OpenAIGatewayService{}
+	account := &Account{Type: AccountTypeOAuth}
+
+	req, err := svc.buildUpstreamRequest(c.Request.Context(), c, account, []byte(`{"model":"gpt-5"}`), "token", true, "", true)
+	require.NoError(t, err)
+	require.Equal(t, isolateOpenAISessionID(0, "client-session"), req.Header.Get("session-id"))
+	require.Equal(t, isolateOpenAISessionID(0, "client-thread"), req.Header.Get("thread-id"))
 }
 
 func TestOpenAIBuildUpstreamRequestOAuthMessagesBridgeUsesSessionOnly(t *testing.T) {
@@ -1882,8 +1892,8 @@ func TestOpenAIBuildUpstreamRequestOAuthMessagesBridgeUsesSessionOnly(t *testing
 
 	req, err := svc.buildUpstreamRequest(c.Request.Context(), c, account, body, "token", true, "anthropic-metadata-session-1", false)
 	require.NoError(t, err)
-	require.NotEmpty(t, req.Header.Get("Session_Id"))
-	require.Empty(t, req.Header.Get("Conversation_Id"))
+	require.NotEmpty(t, req.Header.Get("session-id"))
+	require.Empty(t, req.Header.Get("thread-id"))
 	require.Empty(t, req.Header.Get("OpenAI-Beta"))
 	require.Empty(t, req.Header.Get("originator"))
 }
