@@ -2346,7 +2346,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 REDACTED
 
 	originalBody := body
-	reqModel, reqStream, promptCacheKey := extractOpenAIRequestMetaFromBody(body)
+	requestView := newOpenAIRequestView(body)
+	reqModel, reqStream, promptCacheKey := requestView.Model, requestView.Stream, requestView.PromptCacheKey
 	originalModel := reqModel
 
 	if account.Type == AccountTypeAPIKey && !openai_compat.ShouldUseResponsesAPI(account.Extra) {
@@ -2396,7 +2397,7 @@ REDACTED
 		return s.forwardOpenAIPassthrough(ctx, c, account, originalBody, reqModel, reasoningEffort, reqStream, startTime)
 REDACTED
 
-	reqBody, err := getOpenAIRequestBodyMap(c, body)
+	reqBody, err := requestView.Decode(c)
 	if err != nil {
 		return nil, err
 REDACTED
@@ -6274,15 +6275,39 @@ REDACTED
 	return normalizeOpenAIReasoningEffort(parts[len(parts)-1])
 REDACTED
 
-func extractOpenAIRequestMetaFromBody(body []byte) (model string, stream bool, promptCacheKey string) {
-	if len(body) == 0 {
-		return "", false, ""
+type openAIRequestView struct {
+	body               []byte
+	Model              string
+	Stream             bool
+	PromptCacheKey     string
+	PreviousResponseID string
+	ServiceTier        string
+	ReasoningEffort    string
 REDACTED
 
-	model = strings.TrimSpace(gjson.GetBytes(body, "model").String())
-	stream = gjson.GetBytes(body, "stream").Bool()
-	promptCacheKey = strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String())
-	return model, stream, promptCacheKey
+func newOpenAIRequestView(body []byte) openAIRequestView {
+	if len(body) == 0 {
+		return openAIRequestView{REDACTED
+REDACTED
+	return openAIRequestView{
+		body:               body,
+		Model:              strings.TrimSpace(gjson.GetBytes(body, "model").String()),
+		Stream:             gjson.GetBytes(body, "stream").Bool(),
+		PromptCacheKey:     strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String()),
+		PreviousResponseID: strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String()),
+		ServiceTier:        strings.TrimSpace(gjson.GetBytes(body, "service_tier").String()),
+		ReasoningEffort:    strings.TrimSpace(gjson.GetBytes(body, "reasoning.effort").String()),
+REDACTED
+REDACTED
+
+// Decode 保留阶段一既有 full-map 行为；后续阶段会把调用点下沉到复杂分支。
+func (v openAIRequestView) Decode(c *gin.Context) (map[string]any, error) {
+	return getOpenAIRequestBodyMap(c, v.body)
+REDACTED
+
+func extractOpenAIRequestMetaFromBody(body []byte) (model string, stream bool, promptCacheKey string) {
+	view := newOpenAIRequestView(body)
+	return view.Model, view.Stream, view.PromptCacheKey
 REDACTED
 
 // normalizeOpenAIPassthroughOAuthBody 将透传 OAuth 请求体收敛为旧链路关键行为：

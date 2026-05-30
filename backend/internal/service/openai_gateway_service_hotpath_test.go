@@ -9,6 +9,26 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestOpenAIRequestView_ExtractsRawScalars(t *testing.T) {
+	view := newOpenAIRequestView([]byte(`{"model":" gpt-5 ","stream":true,"prompt_cache_key":" ses-1 ","previous_response_id":" resp-1 ","service_tier":" fast ","reasoning":{"effort":" medium "REDACTEDREDACTED`))
+
+	require.Equal(t, "gpt-5", view.Model)
+	require.True(t, view.Stream)
+	require.Equal(t, "ses-1", view.PromptCacheKey)
+	require.Equal(t, "resp-1", view.PreviousResponseID)
+	require.Equal(t, "fast", view.ServiceTier)
+	require.Equal(t, "medium", view.ReasoningEffort)
+REDACTED
+
+func TestOpenAIRequestView_DecodeKeepsFullMapBehavior(t *testing.T) {
+	view := newOpenAIRequestView([]byte(`{"model":"gpt-5","stream":true,"input":[{"type":"message","content":"hi"REDACTED]REDACTED`))
+
+	reqBody, err := view.Decode(nil)
+REDACTED
+	require.Equal(t, "gpt-5", reqBody["model"])
+	require.IsType(t, []any{REDACTED, reqBody["input"])
+REDACTED
+
 func TestExtractOpenAIRequestMetaFromBody(t *testing.T) {
 	tests := []struct {
 		name          string
