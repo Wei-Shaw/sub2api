@@ -157,7 +157,11 @@ REDACTED
 // ValidateFunctionCallOutputContextBytes 基于 raw JSON 校验工具输出续链，避免 handler 预校验阶段全量解码大 input。
 func ValidateFunctionCallOutputContextBytes(body []byte) FunctionCallOutputValidation {
 	result := FunctionCallOutputValidation{REDACTED
-	input := gjson.GetBytes(body, "input")
+	if len(body) == 0 {
+		return result
+REDACTED
+	// handler 热路径只读扫描 input，避免 GetBytes 为大 Responses body 复制整段 JSON。
+	input := parseRawJSONView(body).Get("input")
 	if !input.IsArray() {
 		return result
 REDACTED

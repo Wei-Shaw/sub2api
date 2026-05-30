@@ -662,7 +662,7 @@ urlFallbackLoop:
 
 			// 统一处理错误响应
 			if resp.StatusCode >= 400 {
-				respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+				respBody := s.readUpstreamErrorBody(resp)
 				_ = resp.Body.Close()
 
 				if overagesInjected && shouldMarkCreditsExhausted(resp, respBody, nil) {
@@ -873,6 +873,22 @@ type AntigravityGatewayService struct {
 	cache             GatewayCache // 用于模型级限流时清除粘性会话绑定
 	schedulerSnapshot *SchedulerSnapshotService
 	internal500Cache  Internal500CounterCache // INTERNAL 500 渐进惩罚计数器
+REDACTED
+
+func (s *AntigravityGatewayService) upstreamErrorBodyReadLimit() int64 {
+	limit := gatewayUpstreamErrorBodyReadLimit
+	if s != nil && s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.LogUpstreamErrorBody && s.settingService.cfg.Gateway.LogUpstreamErrorBodyMaxBytes > int(limit) {
+		limit = int64(s.settingService.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
+REDACTED
+	return limit
+REDACTED
+
+func (s *AntigravityGatewayService) readUpstreamErrorBody(resp *http.Response) []byte {
+	if resp == nil || resp.Body == nil {
+		return nil
+REDACTED
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, s.upstreamErrorBodyReadLimit()))
+	return body
 REDACTED
 
 func NewAntigravityGatewayService(
@@ -1090,7 +1106,7 @@ REDACTED
 REDACTED
 	defer func() { _ = result.resp.Body.Close() REDACTED()
 
-	respBody, err := io.ReadAll(io.LimitReader(result.resp.Body, 2<<20))
+	respBody, err := io.ReadAll(io.LimitReader(result.resp.Body, s.upstreamErrorBodyReadLimit()))
 	if err != nil {
 		return nil, fmt.Errorf("读取响应失败: %w", err)
 REDACTED
@@ -1427,7 +1443,7 @@ REDACTED
 	defer func() { _ = resp.Body.Close() REDACTED()
 
 	if resp.StatusCode >= 400 {
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		respBody := s.readUpstreamErrorBody(resp)
 
 		// 优先检测 thinking block 的 signature 相关错误（400）并重试一次：
 		// Antigravity /v1internal 链路在部分场景会对 thought/thinking signature 做严格校验，
@@ -1622,7 +1638,7 @@ REDACTED
 								resp = retryResp
 								respBody = nil
 						REDACTED else {
-								retryBody, _ := io.ReadAll(io.LimitReader(retryResp.Body, 2<<20))
+								retryBody := s.readUpstreamErrorBody(retryResp)
 								_ = retryResp.Body.Close()
 								respBody = retryBody
 								resp = &http.Response{
@@ -2189,7 +2205,7 @@ REDACTED()
 
 	// 处理错误响应
 	if resp.StatusCode >= 400 {
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		respBody := s.readUpstreamErrorBody(resp)
 		contentType := resp.Header.Get("Content-Type")
 		// 尽早关闭原始响应体，释放连接；后续逻辑仍可能需要读取 body，因此用内存副本重新包装。
 		_ = resp.Body.Close()
@@ -2270,7 +2286,7 @@ REDACTED()
 					if retryResp.StatusCode < 400 {
 						resp = retryResp
 				REDACTED else {
-						retryRespBody, _ := io.ReadAll(io.LimitReader(retryResp.Body, 2<<20))
+						retryRespBody := s.readUpstreamErrorBody(retryResp)
 						_ = retryResp.Body.Close()
 						retryOpsBody := retryRespBody
 						if retryUnwrapped, unwrapErr := s.unwrapV1InternalResponse(retryRespBody); unwrapErr == nil && len(retryUnwrapped) > 0 {
@@ -4252,7 +4268,7 @@ REDACTED
 
 	// 处理错误响应
 	if resp.StatusCode >= 400 {
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		respBody := s.readUpstreamErrorBody(resp)
 
 		// 429 错误时标记账号限流
 		if resp.StatusCode == http.StatusTooManyRequests {

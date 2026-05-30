@@ -49,6 +49,8 @@ const (
 	// OpenAI WS Mode 失败后的重连次数上限（不含首次尝试）。
 	// 与 Codex 客户端保持一致：失败后最多重连 5 次。
 	openAIWSReconnectRetryLimit = 5
+	// 上游错误体只需要提取错误 JSON/日志摘要，默认 512KiB 避免错误风暴叠加大请求体。
+	openAIUpstreamErrorBodyReadLimit int64 = 512 << 10
 	// OpenAI WS Mode 重连退避默认值（可由配置覆盖）。
 	openAIWSRetryBackoffInitialDefault = 120 * time.Millisecond
 	openAIWSRetryBackoffMaxDefault     = 2 * time.Second
@@ -2296,8 +2298,28 @@ REDACTED
 	return out, nil
 REDACTED
 
+func openAIUpstreamErrorBodyReadLimitForConfig(cfg *config.Config) int64 {
+	limit := openAIUpstreamErrorBodyReadLimit
+	if cfg != nil && cfg.Gateway.LogUpstreamErrorBody && cfg.Gateway.LogUpstreamErrorBodyMaxBytes > int(limit) {
+		limit = int64(cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
+REDACTED
+	return limit
+REDACTED
+
+func (s *OpenAIGatewayService) readUpstreamErrorBody(resp *http.Response) []byte {
+	if resp == nil || resp.Body == nil {
+		return nil
+REDACTED
+	cfg := (*config.Config)(nil)
+	if s != nil {
+		cfg = s.cfg
+REDACTED
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, openAIUpstreamErrorBodyReadLimitForConfig(cfg)))
+	return body
+REDACTED
+
 func (s *OpenAIGatewayService) handleFailoverSideEffects(ctx context.Context, resp *http.Response, account *Account, requestedModel ...string) {
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	body := s.readUpstreamErrorBody(resp)
 	if len(requestedModel) > 0 {
 		s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, body, requestedModel[0])
 		return
@@ -3045,7 +3067,7 @@ REDACTED
 
 		// Handle error response
 		if resp.StatusCode >= 400 {
-			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+			respBody := s.readUpstreamErrorBody(resp)
 			_ = resp.Body.Close()
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))
 
@@ -3563,7 +3585,7 @@ func (s *OpenAIGatewayService) handleFailoverErrorResponsePassthrough(
 	account *Account,
 	requestBody []byte,
 ) error {
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	body := s.readUpstreamErrorBody(resp)
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
 	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
@@ -3605,7 +3627,7 @@ func (s *OpenAIGatewayService) handleErrorResponsePassthrough(
 	account *Account,
 	requestBody []byte,
 ) error {
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	body := s.readUpstreamErrorBody(resp)
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
 	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
@@ -4298,7 +4320,7 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 	requestBody []byte,
 	requestedModel ...string,
 ) (*OpenAIForwardResult, error) {
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	body := s.readUpstreamErrorBody(resp)
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
 	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
@@ -4459,7 +4481,7 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 	writeError compatErrorWriter,
 	requestedModel ...string,
 ) (*OpenAIForwardResult, error) {
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	body := s.readUpstreamErrorBody(resp)
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
 	if upstreamMsg == "" {
