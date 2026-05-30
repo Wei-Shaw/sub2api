@@ -54,6 +54,8 @@
               <PaymentMethodSelector
                 :methods="methodOptions"
                 :selected="selectedMethod"
+                :usdt-rate="usdtRateCnyPerUsdt"
+                :usdt-implied-amount="validAmount"
                 @select="selectedMethod = $event"
               />
             </div>
@@ -245,7 +247,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
@@ -491,6 +493,20 @@ const tabs = computed(() => {
 const visibleMethods = computed(() => getVisibleMethods(checkout.value.methods))
 const enabledMethods = computed(() => Object.keys(visibleMethods.value))
 const validAmount = computed(() => amount.value ?? 0)
+
+const usdtRateCnyPerUsdt = ref<number | null>(null)
+let usdtRateTimer: ReturnType<typeof setInterval> | null = null
+
+async function refreshUsdtRate() {
+  try {
+    const resp = await paymentAPI.getUsdtRate()
+    if (resp.data && resp.data.cny_per_usdt > 0) {
+      usdtRateCnyPerUsdt.value = resp.data.cny_per_usdt
+    }
+  } catch {
+    // Soft-fail: keep last known rate; UI hides the line when null.
+  }
+}
 const balanceRechargeMultiplier = computed(() => {
   const multiplier = checkout.value.balance_recharge_multiplier
   return multiplier > 0 ? multiplier : 1
@@ -634,6 +650,7 @@ const paymentButtonClass = computed(() => {
   if (m.includes('wxpay')) return 'btn-wxpay'
   if (m === 'stripe') return 'btn-stripe'
   if (m === 'airwallex') return 'btn-airwallex'
+  if (m === 'usdt') return 'btn-usdt'
   return 'btn-primary'
 })
 
@@ -1015,6 +1032,8 @@ async function resumeWechatPaymentFromQuery() {
 }
 
 onMounted(async () => {
+  refreshUsdtRate()
+  usdtRateTimer = setInterval(refreshUsdtRate, 60_000)
   try {
     const res = await paymentAPI.getCheckoutInfo()
     checkout.value = res.data
@@ -1073,5 +1092,12 @@ onMounted(async () => {
   finally { loading.value = false }
   // Fetch active subscriptions (uses cache, non-blocking)
   subscriptionStore.fetchActiveSubscriptions().catch(() => {})
+})
+
+onUnmounted(() => {
+  if (usdtRateTimer) {
+    clearInterval(usdtRateTimer)
+    usdtRateTimer = null
+  }
 })
 </script>

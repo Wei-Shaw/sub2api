@@ -30,6 +30,7 @@ func RegisterPaymentRoutes(
 		authenticated.GET("/plans", paymentHandler.GetPlans)
 		authenticated.GET("/channels", paymentHandler.GetChannels)
 		authenticated.GET("/limits", paymentHandler.GetLimits)
+		authenticated.GET("/usdt/rate", paymentHandler.GetUSDTRate)
 
 		orders := authenticated.Group("/orders")
 		{
@@ -63,6 +64,9 @@ func RegisterPaymentRoutes(
 		webhook.POST("/wxpay", webhookHandler.WxpayNotify)
 		webhook.POST("/stripe", webhookHandler.StripeWebhook)
 		webhook.POST("/airwallex", webhookHandler.AirwallexWebhook)
+		// USDT (EasyPay-protocol crypto gateway) sends GET or POST callbacks
+		webhook.GET("/usdt", webhookHandler.UsdtNotify)
+		webhook.POST("/usdt", webhookHandler.UsdtNotify)
 	}
 
 	// --- Admin payment endpoints (admin auth) ---

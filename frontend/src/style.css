@@ -128,6 +128,13 @@
     @apply dark:hover:bg-[#62d9ad];
   }
 
+  .btn-usdt {
+    @apply bg-[#26A17B] text-white shadow-md shadow-[#26A17B]/25;
+    @apply hover:bg-[#218a69] hover:shadow-lg hover:shadow-[#26A17B]/30;
+    @apply active:bg-[#1c7457];
+    @apply dark:shadow-[#26A17B]/20;
+  }
+
   .btn-alipay {
     @apply bg-[#00AEEF] text-white shadow-md shadow-[#00AEEF]/25;
     @apply hover:bg-[#009dd6] hover:shadow-lg hover:shadow-[#00AEEF]/30;
