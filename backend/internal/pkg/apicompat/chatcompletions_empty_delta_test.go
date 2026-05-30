@@ -160,3 +160,42 @@ func TestNormalizeChatReasoningEffort(t *testing.T) {
 	assert.Equal(t, "", normalizeChatReasoningEffort(""))
 	assert.Equal(t, "", normalizeChatReasoningEffort("bogus"))
 }
+
+// mimo and other chat/completions upstreams stream tool calls; the bridge must
+// emit terminal function_call_arguments.done + output_item.done (with
+// call_id/name/arguments) at stream end, or codex receives an unterminated
+// tool call and stalls/renders blank.
+func TestChatChunkToResponses_StreamedToolCallFinalized(t *testing.T) {
+	state := NewChatCompletionsToResponsesStreamState("test-reasoning-model")
+	idx := 0
+	chunk := &ChatCompletionsChunk{
+		ID: "x",
+		Choices: []ChatChunkChoice{{Delta: ChatDelta{ToolCalls: []ChatToolCall{{
+			Index:    &idx,
+			ID:       "call_abc",
+			Type:     "function",
+			Function: ChatFunctionCall{Name: "open_browser", Arguments: `{"url":"google.com"}`},
+		}}}}},
+	}
+	ChatCompletionsChunkToResponsesEvents(chunk, state)
+	final := FinalizeChatCompletionsResponsesStream(state)
+
+	var argsDone, itemDone *ResponsesStreamEvent
+	for i := range final {
+		switch final[i].Type {
+		case "response.function_call_arguments.done":
+			argsDone = &final[i]
+		case "response.output_item.done":
+			if final[i].Item != nil && final[i].Item.Type == "function_call" {
+				itemDone = &final[i]
+			}
+		}
+	}
+	require.NotNil(t, argsDone, "must emit function_call_arguments.done")
+	assert.Equal(t, "call_abc", argsDone.CallID)
+	assert.JSONEq(t, `{"url":"google.com"}`, argsDone.Arguments)
+	require.NotNil(t, itemDone, "must emit function_call output_item.done")
+	assert.Equal(t, "call_abc", itemDone.Item.CallID)
+	assert.Equal(t, "open_browser", itemDone.Item.Name)
+	assert.JSONEq(t, `{"url":"google.com"}`, itemDone.Item.Arguments)
+}
