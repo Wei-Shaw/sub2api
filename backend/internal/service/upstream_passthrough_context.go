@@ -5,6 +5,12 @@ import (
 	"net/http"
 )
 
+// upstreamPolicyRuntimeEnabled is intentionally false. The upstream passthrough
+// policy experiment diverged from upstream/main and can change request shape for
+// Anthropic-compatible relays. Keep the types/settings for backward-compatible
+// JSON parsing, but make all gateway hooks resolve to legacy behavior.
+const upstreamPolicyRuntimeEnabled = false
+
 // upstreamPolicyContextKey is the unexported type used as the context key.
 // Using an unexported struct type as the key prevents collisions with other
 // packages' context values (the standard idiom for context keys in Go).
@@ -29,6 +35,9 @@ func SetUpstreamPolicyInContext(ctx context.Context, policy *EffectiveUpstreamPo
 // Callers that need a non-nil policy for downstream branching should use
 // RequireUpstreamPolicyFromContext instead.
 func GetUpstreamPolicyFromContext(ctx context.Context) (*EffectiveUpstreamPolicy, bool) {
+	if !upstreamPolicyRuntimeEnabled {
+		return nil, false
+	}
 	v := ctx.Value(upstreamPolicyContextKey{})
 	if v == nil {
 		return nil, false
@@ -79,6 +88,9 @@ func RequireUpstreamPolicyFromContext(ctx context.Context) EffectiveUpstreamPoli
 // dependency at call sites), and the FeatureFlag flip happens by setting the
 // SettingKey to "true" (no code change needed at the call sites).
 func ResolveAndStorePolicy(ctx context.Context, account *Account, settingService *SettingService) context.Context {
+	if !upstreamPolicyRuntimeEnabled {
+		return ctx
+	}
 	if settingService == nil || account == nil {
 		return ctx
 	}
@@ -105,6 +117,9 @@ func ResolveAndStorePolicy(ctx context.Context, account *Account, settingService
 // This is the call-site read pattern for Phase B-2: legacy-by-default,
 // policy-overrides-when-present.
 func ShouldScrubBody(ctx context.Context) bool {
+	if !upstreamPolicyRuntimeEnabled {
+		return true
+	}
 	p, ok := GetUpstreamPolicyFromContext(ctx)
 	if !ok {
 		return true
@@ -126,6 +141,9 @@ func ShouldScrubBody(ctx context.Context) bool {
 // (Transparent or Protected profiles — relay accounts or official direct accounts
 // where the client/user owns their system prompt).
 func ShouldInjectSystemPrompt(ctx context.Context) bool {
+	if !upstreamPolicyRuntimeEnabled {
+		return true
+	}
 	p, ok := GetUpstreamPolicyFromContext(ctx)
 	if !ok {
 		return true
@@ -170,6 +188,9 @@ var userNetworkInfoHeaderKeys = []string{
 // those are "Skip" toggles (legacy = do the thing); this is a "Forward" toggle
 // (legacy = don't forward).
 func ShouldForwardUserNetworkInfo(ctx context.Context) bool {
+	if !upstreamPolicyRuntimeEnabled {
+		return false
+	}
 	p, ok := GetUpstreamPolicyFromContext(ctx)
 	if !ok {
 		return false
@@ -219,6 +240,9 @@ func IsClientHeaderBlacklistedForForward(lowerKey string) bool {
 // (Transparent profile — relay accounts where every client header should reach
 // the upstream relay, except the secret blacklist).
 func ShouldForwardClientHeaders(ctx context.Context) bool {
+	if !upstreamPolicyRuntimeEnabled {
+		return false
+	}
 	p, ok := GetUpstreamPolicyFromContext(ctx)
 	if !ok {
 		return false
@@ -265,6 +289,9 @@ func ShouldCopyClientHeader(ctx context.Context, lowerKey string, legacyWhitelis
 // continue to use the mapped name so internal bookkeeping stays consistent
 // regardless of what string was sent on the wire.
 func ShouldSkipModelRewrite(ctx context.Context) bool {
+	if !upstreamPolicyRuntimeEnabled {
+		return false
+	}
 	p, ok := GetUpstreamPolicyFromContext(ctx)
 	if !ok {
 		return false
@@ -291,6 +318,9 @@ func ShouldSkipModelRewrite(ctx context.Context) bool {
 // safe because they typically don't require sub2api to inject the beta flag
 // (the upstream handles its own gating).
 func ShouldForwardBetaFlags(ctx context.Context) bool {
+	if !upstreamPolicyRuntimeEnabled {
+		return false
+	}
 	p, ok := GetUpstreamPolicyFromContext(ctx)
 	if !ok {
 		return false
@@ -316,6 +346,9 @@ func ShouldForwardBetaFlags(ctx context.Context) bool {
 // affected by this toggle. The toggle only controls the User-Agent that goes
 // on the upstream wire.
 func ShouldForwardClientUA(ctx context.Context) bool {
+	if !upstreamPolicyRuntimeEnabled {
+		return false
+	}
 	p, ok := GetUpstreamPolicyFromContext(ctx)
 	if !ok {
 		return false

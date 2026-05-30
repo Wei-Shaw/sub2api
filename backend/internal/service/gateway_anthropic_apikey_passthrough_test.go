@@ -292,96 +292,17 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardStreamPreservesBodyAnd
 	require.Empty(t, rec.Header().Get("Set-Cookie"), "响应头应经过安全过滤")
 }
 
-// TestGatewayService_AnthropicAPIKeyPassthrough_PolicyTransparentRoutesToPassthroughEvenWithoutLegacyField
-// is the B-2g integration smoke: with FeatureFlag ON and a resolved
-// Transparent policy in ctx, the request must route to the passthrough
-// builder even when the legacy Extra.anthropic_passthrough field is missing.
-// This validates the bridge from policy.ProfileApplied to the routing
-// decision at gateway_service.go:5077.
-func TestGatewayService_AnthropicAPIKeyPassthrough_PolicyTransparentRoutesToPassthroughEvenWithoutLegacyField(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
-	c.Request.Header.Set("Anthropic-Beta", "interleaved-thinking-2025-05-14")
-
-	body := []byte(`{"model":"claude-3-7-sonnet-20250219","stream":true,"messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]}`)
-	parsed := &ParsedRequest{
-		Body:   body,
-		Model:  "claude-3-7-sonnet-20250219",
-		Stream: true,
-	}
-
-	upstreamSSE := strings.Join([]string{
-		`data: {"type":"message_start","message":{"usage":{"input_tokens":9}}}`,
-		"",
-		`data: {"type":"message_delta","usage":{"output_tokens":3}}`,
-		"",
-		"data: [DONE]",
-		"",
-	}, "\n")
-	upstream := &anthropicHTTPUpstreamRecorder{
-		resp: &http.Response{
-			StatusCode: http.StatusOK,
-			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
-			Body:       io.NopCloser(strings.NewReader(upstreamSSE)),
-		},
-	}
-
-	cfg := &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}}
-	svc := &GatewayService{
-		cfg:                  cfg,
-		responseHeaderFilter: compileResponseHeaderFilter(cfg),
-		httpUpstream:         upstream,
-		rateLimitService:     &RateLimitService{},
-		deferredService:      &DeferredService{},
-	}
-
+func TestGatewayService_AnthropicAPIKeyPassthrough_PolicyTransparentDoesNotOverrideLegacyField(t *testing.T) {
 	account := &Account{
-		ID:          303,
-		Name:        "anthropic-apikey-bridge-test",
-		Platform:    PlatformAnthropic,
-		Type:        AccountTypeAPIKey,
-		Concurrency: 1,
-		Credentials: map[string]any{
-			"api_key":       "upstream-anthropic-key",
-			"base_url":      "https://api.anthropic.com",
-			"model_mapping": map[string]any{"claude-3-7-sonnet-20250219": "claude-3-haiku-20240307"},
-		},
-		// Note: NO Extra.anthropic_passthrough field — the bridge should still
-		// route to passthrough because the resolved policy says Transparent.
-		Extra:       map[string]any{},
-		Status:      StatusActive,
-		Schedulable: true,
+		Platform: PlatformAnthropic,
+		Type:     AccountTypeAPIKey,
+		Extra:    map[string]any{},
 	}
-
-	// Simulate FeatureFlag ON: resolve to Transparent and attach to ctx.
-	policy := EffectiveUpstreamPolicy{
-		Category:               CategoryRelay,
-		ProfileApplied:         ProfileTransparent,
-		ForwardClientHeaders:   true,
-		ForwardUserNetworkInfo: true,
-		SkipBodyScrub:          true,
-		SkipSystemPromptInject: true,
-		ForwardClientUA:        true,
-		ForwardBetaFlags:       true,
-		SkipModelRewrite:       false, // keep model mapping so we can observe routing-through-passthrough
-	}
+	policy := EffectiveUpstreamPolicy{ProfileApplied: ProfileTransparent}
 	ctx := SetUpstreamPolicyInContext(context.Background(), &policy)
 
-	result, err := svc.Forward(ctx, c, account, parsed)
-	require.NoError(t, err)
-	require.NotNil(t, result)
-
-	// Passthrough-builder fingerprints: api-key swapped, no OAuth fingerprint
-	// headers, model mapping applied.
-	require.Equal(t, "claude-3-haiku-20240307", gjson.GetBytes(upstream.lastBody, "model").String(),
-		"Transparent policy must still take the passthrough builder code path (model mapped in body)")
-	require.Equal(t, "upstream-anthropic-key", getHeaderRaw(upstream.lastReq.Header, "x-api-key"),
-		"upstream auth header must be the account's api_key, not the client's")
-	require.Empty(t, getHeaderRaw(upstream.lastReq.Header, "x-stainless-lang"),
-		"passthrough builder must NOT inject OAuth fingerprint headers regardless of policy")
+	require.False(t, account.IsAnthropicAPIKeyPassthroughEnabledWithContext(ctx),
+		"policy runtime is disabled; only extra.anthropic_passthrough=true may enable passthrough")
 }
 
 func TestGatewayService_AnthropicAPIKeyPassthrough_LegacyFieldBeatsPolicyProtected(t *testing.T) {

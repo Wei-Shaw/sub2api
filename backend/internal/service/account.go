@@ -1402,21 +1402,13 @@ func (a *Account) IsOpenAIPassthroughEnabled() bool {
 	return false
 }
 
-// IsOpenAIPassthroughEnabledWithContext is the ctx-aware bridge that prefers
-// the resolved upstream policy when present. When ctx carries a policy with
-// ProfileApplied == Transparent, returns true regardless of the legacy
-// Extra.openai_passthrough field (the user opted into Transparent through
-// the new system). When the policy is present with any non-Transparent
-// profile, returns false (the user explicitly chose Protected/Strict and
-// the legacy field should NOT silently route to passthrough). Falls back to
-// IsOpenAIPassthroughEnabled when no policy is in ctx (FeatureFlag OFF —
-// preserves today's behavior).
+// IsOpenAIPassthroughEnabledWithContext preserves upstream/main behavior while
+// the upstream passthrough policy runtime is disabled: only the legacy account
+// extra fields decide whether passthrough is enabled.
 func (a *Account) IsOpenAIPassthroughEnabledWithContext(ctx context.Context) bool {
+	_ = ctx
 	if a == nil || !a.IsOpenAI() {
 		return false
-	}
-	if p, ok := GetUpstreamPolicyFromContext(ctx); ok {
-		return p.ProfileApplied == ProfileTransparent
 	}
 	return a.IsOpenAIPassthroughEnabled()
 }
@@ -1603,21 +1595,15 @@ func (a *Account) IsAnthropicAPIKeyPassthroughEnabled() bool {
 	return ok && enabled
 }
 
-// IsAnthropicAPIKeyPassthroughEnabledWithContext is the ctx-aware bridge that
-// preserves the legacy per-account opt-in first. A resolved Transparent policy
-// can additionally enable passthrough, but Protected/Strict defaults must not
-// disable an account that explicitly set Extra.anthropic_passthrough=true.
+// IsAnthropicAPIKeyPassthroughEnabledWithContext preserves upstream/main
+// behavior while the upstream passthrough policy runtime is disabled: only the
+// legacy account extra.anthropic_passthrough field decides passthrough.
 func (a *Account) IsAnthropicAPIKeyPassthroughEnabledWithContext(ctx context.Context) bool {
+	_ = ctx
 	if a == nil || a.Platform != PlatformAnthropic || a.Type != AccountTypeAPIKey {
 		return false
 	}
-	if a.IsAnthropicAPIKeyPassthroughEnabled() {
-		return true
-	}
-	if p, ok := GetUpstreamPolicyFromContext(ctx); ok {
-		return p.ProfileApplied == ProfileTransparent
-	}
-	return false
+	return a.IsAnthropicAPIKeyPassthroughEnabled()
 }
 
 // WebSearch 模拟三态常量
