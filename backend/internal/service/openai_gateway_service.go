@@ -36,13 +36,6 @@ import (
 	"go.uber.org/zap"
 )
 
-// openAIParsedRequestBodyCache 绑定 body 指纹，避免 handler 预解析的旧 body 污染后续 forwardBody。
-type openAIParsedRequestBodyCache struct {
-	bodyHash uint64
-	bodyLen  int
-	reqBody  map[string]any
-REDACTED
-
 const (
 	// ChatGPT internal API for OAuth accounts
 	chatgptCodexURL = "https://chatgpt.com/backend-api/codex/responses"
@@ -53,8 +46,6 @@ const (
 	// codex_cli_only 拒绝时单个请求头日志长度上限（字符）
 	codexCLIOnlyHeaderValueMaxBytes = 256
 
-	// OpenAIParsedRequestBodyKey 缓存 handler 侧已解析的请求体，避免重复解析。
-	OpenAIParsedRequestBodyKey = "openai_parsed_request_body"
 	// OpenAI WS Mode 失败后的重连次数上限（不含首次尝试）。
 	// 与 Codex 客户端保持一致：失败后最多重连 5 次。
 	openAIWSReconnectRetryLimit = 5
@@ -3099,8 +3090,6 @@ REDACTED
 			REDACTED)
 
 				s.handleFailoverSideEffects(ctx, resp, account, upstreamModel)
-				// reqBody 会被本次账号尝试原地修改，failover 前必须释放，避免下一账号复用脏 map。
-				releaseOpenAIParsedRequestBody(c)
 				return nil, &UpstreamFailoverError{
 					StatusCode:             resp.StatusCode,
 					ResponseBody:           respBody,
@@ -3113,7 +3102,8 @@ REDACTED
 
 		reasoningEffort := extractOpenAIReasoningEffort(reqBody, originalModel)
 		serviceTier := extractOpenAIServiceTier(reqBody)
-		releaseOpenAIParsedRequestBody(c)
+		// 上游接受后只保留计费需要的标量，避免响应处理期间继续保活完整 input/tools map。
+		reqBody = nil
 
 		// Handle normal response
 		var usage *OpenAIUsage
@@ -6843,58 +6833,12 @@ REDACTED
 	return strings.TrimSpace(strings.TrimPrefix(rest, "base64,")) == ""
 REDACTED
 
-func getOpenAIRequestBodyMap(c *gin.Context, body []byte) (map[string]any, error) {
-	// 同一个 gin.Context 内 failover/渠道映射可能传入新 body，缓存必须先校验 body 指纹。
-	bodyHash := xxhash.Sum64(body)
-	bodyLen := len(body)
-	if c != nil {
-		if cached, ok := c.Get(OpenAIParsedRequestBodyKey); ok {
-			if cache, ok := cached.(openAIParsedRequestBodyCache); ok && cache.reqBody != nil && cache.bodyLen == bodyLen && cache.bodyHash == bodyHash {
-				return cache.reqBody, nil
-		REDACTED
-	REDACTED
-REDACTED
-
+func getOpenAIRequestBodyMap(_ *gin.Context, body []byte) (map[string]any, error) {
 	var reqBody map[string]any
 	if err := json.Unmarshal(body, &reqBody); err != nil {
 		return nil, fmt.Errorf("parse request: %w", err)
 REDACTED
-	if c != nil {
-		c.Set(OpenAIParsedRequestBodyKey, openAIParsedRequestBodyCache{bodyHash: bodyHash, bodyLen: bodyLen, reqBody: reqBodyREDACTED)
-REDACTED
 	return reqBody, nil
-REDACTED
-
-// CacheOpenAIParsedRequestBody 仅缓存与当前 body 绑定的解析结果。
-func CacheOpenAIParsedRequestBody(c *gin.Context, body []byte, reqBody map[string]any) {
-	if c == nil || reqBody == nil {
-		return
-REDACTED
-	c.Set(OpenAIParsedRequestBodyKey, openAIParsedRequestBodyCache{
-		bodyHash: xxhash.Sum64(body),
-		bodyLen:  len(body),
-		reqBody:  reqBody,
-REDACTED)
-REDACTED
-
-// CachedOpenAIParsedRequestBody 只给同请求内不关心 body 参数的轻量识别逻辑使用。
-func CachedOpenAIParsedRequestBody(c *gin.Context) map[string]any {
-	if c == nil {
-		return nil
-REDACTED
-	if cached, ok := c.Get(OpenAIParsedRequestBodyKey); ok {
-		if cache, ok := cached.(openAIParsedRequestBodyCache); ok {
-			return cache.reqBody
-	REDACTED
-REDACTED
-	return nil
-REDACTED
-
-func releaseOpenAIParsedRequestBody(c *gin.Context) {
-	if c == nil {
-		return
-REDACTED
-	delete(c.Keys, OpenAIParsedRequestBodyKey)
 REDACTED
 
 func extractOpenAIReasoningEffort(reqBody map[string]any, requestedModel string) *string {

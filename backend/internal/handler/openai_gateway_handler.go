@@ -948,19 +948,12 @@ func (h *OpenAIGatewayHandler) validateFunctionCallOutputRequest(c *gin.Context,
 		return true
 REDACTED
 
-	var reqBody map[string]any
-	if err := json.Unmarshal(body, &reqBody); err != nil {
-		// 保持原有容错语义：解析失败时跳过预校验，沿用后续上游校验结果。
-		return true
-REDACTED
-
-	service.CacheOpenAIParsedRequestBody(c, body, reqBody)
-	validation := service.ValidateFunctionCallOutputContext(reqBody)
+	validation := service.ValidateFunctionCallOutputContextBytes(body)
 	if !validation.HasFunctionCallOutput {
 		return true
 REDACTED
 
-	previousResponseID, _ := reqBody["previous_response_id"].(string)
+	previousResponseID := gjson.GetBytes(body, "previous_response_id").String()
 	if strings.TrimSpace(previousResponseID) != "" || validation.HasToolCallContext {
 		return true
 REDACTED

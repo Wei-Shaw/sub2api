@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -117,4 +118,69 @@ REDACTED
 	require.True(t, HasItemReferenceForCallIDs(req, []string{"call_1"REDACTED))
 	require.True(t, HasItemReferenceForCallIDs(req, []string{"call_1", "call_2"REDACTED))
 	require.False(t, HasItemReferenceForCallIDs(req, []string{"call_1", "call_3"REDACTED))
+REDACTED
+
+func TestValidateFunctionCallOutputContextBytesMatchesMapValidation(t *testing.T) {
+	// handler 预校验走 raw JSON 扫描，语义必须与 service 内部 map 校验保持一致。
+	cases := []struct {
+		name string
+		body map[string]any
+REDACTED{
+		{
+			name: "no_input",
+			body: map[string]any{"model": "gpt-5.4"REDACTED,
+	REDACTED,
+		{
+			name: "missing_call_id",
+			body: map[string]any{"input": []any{map[string]any{"type": "function_call_output"REDACTEDREDACTEDREDACTED,
+	REDACTED,
+		{
+			name: "call_id_without_reference",
+			body: map[string]any{"input": []any{map[string]any{"type": "function_call_output", "call_id": "call_1"REDACTEDREDACTEDREDACTED,
+	REDACTED,
+		{
+			name: "matching_reference",
+			body: map[string]any{"input": []any{
+				map[string]any{"type": "function_call_output", "call_id": "call_1"REDACTED,
+				map[string]any{"type": "item_reference", "id": "call_1"REDACTED,
+	REDACTED
+	REDACTED,
+		{
+			name: "partial_reference",
+			body: map[string]any{"input": []any{
+				map[string]any{"type": "function_call_output", "call_id": "call_1"REDACTED,
+				map[string]any{"type": "tool_search_output", "call_id": "call_2"REDACTED,
+				map[string]any{"type": "item_reference", "id": "call_1"REDACTED,
+	REDACTED
+	REDACTED,
+		{
+			name: "tool_context",
+			body: map[string]any{"input": []any{
+				map[string]any{"type": "function_call_output", "call_id": "call_1"REDACTED,
+				map[string]any{"type": "function_call", "call_id": "call_1"REDACTED,
+	REDACTED
+	REDACTED,
+		{
+			name: "all_codex_tool_outputs",
+			body: map[string]any{"input": []any{
+				map[string]any{"type": "function_call_output", "call_id": "call_function"REDACTED,
+				map[string]any{"type": "tool_search_output", "call_id": "call_search"REDACTED,
+				map[string]any{"type": "custom_tool_call_output", "call_id": "call_custom"REDACTED,
+				map[string]any{"type": "mcp_tool_call_output", "call_id": "call_mcp"REDACTED,
+				map[string]any{"type": "item_reference", "id": "call_function"REDACTED,
+				map[string]any{"type": "item_reference", "id": "call_search"REDACTED,
+				map[string]any{"type": "item_reference", "id": "call_custom"REDACTED,
+				map[string]any{"type": "item_reference", "id": "call_mcp"REDACTED,
+	REDACTED
+	REDACTED,
+REDACTED
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			bodyBytes, err := json.Marshal(tt.body)
+		REDACTED
+
+			require.Equal(t, ValidateFunctionCallOutputContext(tt.body), ValidateFunctionCallOutputContextBytes(bodyBytes))
+	REDACTED)
+REDACTED
 REDACTED
