@@ -29,6 +29,9 @@ func TestNormalizeInboundEndpoint(t *testing.T) {
 		{"/v1/images/generations", EndpointImagesGenerations},
 		{"/v1/images/edits", EndpointImagesEdits},
 		{"/v1beta/models", EndpointGeminiModels},
+		{"/v1beta/openai/chat/completions", EndpointChatCompletions},
+		{"/v1beta/openai/embeddings", EndpointEmbeddings},
+		{"/v1beta/openai/images/generations", EndpointImagesGenerations},
 
 		// Prefixed paths (antigravity, openai).
 		{"/antigravity/v1/messages", EndpointMessages},
@@ -71,6 +74,8 @@ func TestDeriveUpstreamEndpoint(t *testing.T) {
 
 		// Gemini.
 		{"gemini models", EndpointGeminiModels, "/v1beta/models/gemini:gen", service.PlatformGemini, EndpointGeminiModels},
+		{"gemini openai embeddings", EndpointEmbeddings, "/v1beta/openai/embeddings", service.PlatformGemini, EndpointEmbeddings},
+		{"gemini openai image generations", EndpointImagesGenerations, "/v1beta/openai/images/generations", service.PlatformGemini, EndpointImagesGenerations},
 
 		// OpenAI — always /v1/responses.
 		{"openai responses root", EndpointResponses, "/v1/responses", service.PlatformOpenAI, EndpointResponses},

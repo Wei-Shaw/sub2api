@@ -145,6 +145,25 @@ func RegisterGatewayRoutes(
 		gemini.POST("/models/*modelAction", h.Gateway.GeminiV1BetaModels)
 	}
 
+	// Gemini OpenAI-compatible API surface.
+	geminiOpenAI := r.Group("/v1beta/openai")
+	geminiOpenAI.Use(bodyLimit)
+	geminiOpenAI.Use(clientRequestID)
+	geminiOpenAI.Use(opsErrorLogger)
+	geminiOpenAI.Use(endpointNorm)
+	geminiOpenAI.Use(middleware.APIKeyAuthWithSubscriptionGoogle(apiKeyService, subscriptionService, cfg))
+	geminiOpenAI.Use(requireGroupGoogle)
+	geminiOpenAI.Use(requireGeminiOpenAICompatibleGroup)
+	{
+		geminiOpenAI.GET("/models", h.Gateway.GeminiOpenAICompatibleModels)
+		geminiOpenAI.GET("/models/:model", h.Gateway.GeminiOpenAICompatibleGetModel)
+		geminiOpenAI.POST("/chat/completions", h.Gateway.ChatCompletions)
+		geminiOpenAI.POST("/embeddings", h.Gateway.GeminiOpenAICompatibleEmbeddings)
+		geminiOpenAI.POST("/images/generations", h.Gateway.GeminiOpenAICompatibleImagesGenerations)
+		geminiOpenAI.POST("/videos", h.Gateway.GeminiOpenAICompatibleUnsupported)
+		geminiOpenAI.GET("/videos/:id", h.Gateway.GeminiOpenAICompatibleUnsupported)
+	}
+
 	// OpenAI Responses API（不带v1前缀的别名）— auto-route based on group platform
 	responsesHandler := func(c *gin.Context) {
 		if getGroupPlatform(c) == service.PlatformOpenAI {
@@ -253,4 +272,19 @@ func getGroupPlatform(c *gin.Context) string {
 		return ""
 	}
 	return apiKey.Group.Platform
+}
+
+func requireGeminiOpenAICompatibleGroup(c *gin.Context) {
+	apiKey, ok := middleware.GetAPIKeyFromContext(c)
+	if !ok || apiKey == nil || apiKey.Group == nil || apiKey.Group.Platform != service.PlatformGemini {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": gin.H{
+				"type":    "invalid_request_error",
+				"message": "The /v1beta/openai compatibility endpoint requires a Gemini group",
+			},
+		})
+		c.Abort()
+		return
+	}
+	c.Next()
 }

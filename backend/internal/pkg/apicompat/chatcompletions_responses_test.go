@@ -181,6 +181,71 @@ func TestChatCompletionsToResponses_ImageURL(t *testing.T) {
 	assert.Equal(t, "data:image/png;base64,abc123", parts[1].ImageURL)
 }
 
+func TestChatCompletionsToResponses_InputAudio(t *testing.T) {
+	content := `[{"type":"text","text":"Transcribe this"},{"type":"input_audio","input_audio":{"data":"UklGRg==","format":"wav"}}]`
+	req := &ChatCompletionsRequest{
+		Model: "gemini-3-flash-preview",
+		Messages: []ChatMessage{
+			{Role: "user", Content: json.RawMessage(content)},
+		},
+	}
+
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 1)
+
+	var parts []map[string]any
+	require.NoError(t, json.Unmarshal(items[0].Content, &parts))
+	require.Len(t, parts, 2)
+	assert.Equal(t, "input_text", parts[0]["type"])
+	assert.Equal(t, "Transcribe this", parts[0]["text"])
+	assert.Equal(t, "input_audio", parts[1]["type"])
+	inputAudio, ok := parts[1]["input_audio"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "UklGRg==", inputAudio["data"])
+	assert.Equal(t, "wav", inputAudio["format"])
+}
+
+func TestChatCompletionsToResponses_InvalidInputAudioFormat(t *testing.T) {
+	content := `[{"type":"input_audio","input_audio":{"data":"UklGRg==","format":"webm"}}]`
+	req := &ChatCompletionsRequest{
+		Model: "gemini-3-flash-preview",
+		Messages: []ChatMessage{
+			{Role: "user", Content: json.RawMessage(content)},
+		},
+	}
+
+	_, err := ChatCompletionsToResponses(req)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported input_audio format")
+}
+
+func TestChatCompletionsToResponses_EmptyInputAudioSkippedWhenTextExists(t *testing.T) {
+	content := `[{"type":"text","text":"Keep me"},{"type":"input_audio","input_audio":{"data":"","format":"wav"}}]`
+	req := &ChatCompletionsRequest{
+		Model: "gemini-3-flash-preview",
+		Messages: []ChatMessage{
+			{Role: "user", Content: json.RawMessage(content)},
+		},
+	}
+
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 1)
+
+	var parts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[0].Content, &parts))
+	require.Len(t, parts, 1)
+	assert.Equal(t, "input_text", parts[0].Type)
+	assert.Equal(t, "Keep me", parts[0].Text)
+}
+
 func TestChatCompletionsToResponses_EmptyBase64ImageURLSkipped(t *testing.T) {
 	content := `[{"type":"text","text":"Describe this"},{"type":"image_url","image_url":{"url":"data:image/png;base64,"}}]`
 	req := &ChatCompletionsRequest{

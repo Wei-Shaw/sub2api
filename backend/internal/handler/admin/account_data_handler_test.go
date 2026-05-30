@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -274,4 +275,76 @@ func TestImportDataReusesProxyAndSkipsDefaultGroup(t *testing.T) {
 	require.Len(t, adminSvc.createdProxies, 0)
 	require.Len(t, adminSvc.createdAccounts, 1)
 	require.True(t, adminSvc.createdAccounts[0].SkipDefaultGroupBind)
+}
+
+func TestImportDataAcceptsTopLevelExportPayload(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+
+	dataPayload := map[string]any{
+		"exported_at": "2026-05-29T10:09:22Z",
+		"proxies":     []map[string]any{},
+		"accounts": []map[string]any{
+			{
+				"name":                  "agora1",
+				"platform":              service.PlatformGemini,
+				"type":                  service.AccountTypeOAuth,
+				"concurrency":           0,
+				"priority":              0,
+				"auto_pause_on_expired": true,
+				"credentials": map[string]any{
+					"_token_version": 2,
+					"access_token":   "access-token",
+					"refresh_token":  "refresh-token",
+					"token_type":     "Bearer",
+					"expires_at":     float64(1790000000),
+					"oauth_type":     "gemini",
+					"scope":          "https://www.googleapis.com/auth/cloud-platform",
+					"tier_id":        "free-tier",
+					"project_id":     "gemini-project",
+				},
+			},
+		},
+	}
+
+	body, _ := json.Marshal(dataPayload)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	require.Len(t, adminSvc.createdAccounts, 1)
+	created := adminSvc.createdAccounts[0]
+	require.Equal(t, "agora1", created.Name)
+	require.Equal(t, service.PlatformGemini, created.Platform)
+	require.Equal(t, service.AccountTypeOAuth, created.Type)
+	require.True(t, created.SkipDefaultGroupBind)
+	require.Equal(t, "refresh-token", created.Credentials["refresh_token"])
+	require.Equal(t, "gemini-project", created.Credentials["project_id"])
+}
+
+func TestImportDataAcceptsLocalGeminiExportFixture(t *testing.T) {
+	fixturePath := os.Getenv("SUB2API_ACCOUNT_IMPORT_FIXTURE")
+	if fixturePath == "" {
+		t.Skip("SUB2API_ACCOUNT_IMPORT_FIXTURE is not set")
+	}
+
+	body, err := os.ReadFile(fixturePath)
+	require.NoError(t, err)
+
+	router, adminSvc := setupAccountDataRouter()
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	require.Len(t, adminSvc.createdAccounts, 10)
+	for _, created := range adminSvc.createdAccounts {
+		require.Equal(t, service.PlatformGemini, created.Platform)
+		require.Equal(t, service.AccountTypeOAuth, created.Type)
+		require.True(t, created.SkipDefaultGroupBind)
+		require.NotEmpty(t, created.Credentials["refresh_token"])
+		require.NotEmpty(t, created.Credentials["project_id"])
+	}
 }

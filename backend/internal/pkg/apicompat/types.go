@@ -241,9 +241,17 @@ type ResponsesInputItem struct {
 
 // ResponsesContentPart is a typed content part in a Responses message.
 type ResponsesContentPart struct {
-	Type     string `json:"type"` // "input_text" | "output_text" | "input_image"
-	Text     string `json:"text,omitempty"`
-	ImageURL string `json:"image_url,omitempty"` // data URI for input_image
+	Type       string               `json:"type"` // "input_text" | "output_text" | "input_image" | "input_audio"
+	Text       string               `json:"text,omitempty"`
+	ImageURL   string               `json:"image_url,omitempty"` // data URI for input_image
+	InputAudio *ResponsesInputAudio `json:"input_audio,omitempty"`
+}
+
+// ResponsesInputAudio contains base64-encoded audio data in OpenAI-compatible
+// shape. Format is the client-facing extension such as "wav" or "mp3".
+type ResponsesInputAudio struct {
+	Data   string `json:"data"`
+	Format string `json:"format"`
 }
 
 // ResponsesTool describes a tool in the Responses API.
@@ -460,15 +468,23 @@ type ChatMessage struct {
 
 // ChatContentPart is a typed content part in a multi-modal message.
 type ChatContentPart struct {
-	Type     string        `json:"type"` // "text" | "image_url"
-	Text     string        `json:"text,omitempty"`
-	ImageURL *ChatImageURL `json:"image_url,omitempty"`
+	Type       string          `json:"type"` // "text" | "image_url" | "input_audio"
+	Text       string          `json:"text,omitempty"`
+	ImageURL   *ChatImageURL   `json:"image_url,omitempty"`
+	InputAudio *ChatInputAudio `json:"input_audio,omitempty"`
 }
 
 // ChatImageURL contains the URL for an image content part.
 type ChatImageURL struct {
 	URL    string `json:"url"`
 	Detail string `json:"detail,omitempty"` // "auto" | "low" | "high"
+}
+
+// ChatInputAudio contains base64-encoded audio data in OpenAI Chat Completions
+// format.
+type ChatInputAudio struct {
+	Data   string `json:"data"`
+	Format string `json:"format"`
 }
 
 // ChatTool describes a tool available to the model.

@@ -342,7 +342,10 @@ func marshalChatInputContent(content chatMessageContent) (json.RawMessage, error
 	if content.Text != nil {
 		return json.Marshal(*content.Text)
 	}
-	parts := convertChatContentPartsToResponses(content.Parts)
+	parts, err := convertChatContentPartsToResponses(content.Parts)
+	if err != nil {
+		return nil, err
+	}
 	if len(parts) == 0 {
 		// A nil slice marshals to JSON null, which the upstream Responses API
 		// rejects ("expected an array of objects or string, but got null").
@@ -352,7 +355,7 @@ func marshalChatInputContent(content chatMessageContent) (json.RawMessage, error
 	return json.Marshal(parts)
 }
 
-func convertChatContentPartsToResponses(parts []ChatContentPart) []ResponsesContentPart {
+func convertChatContentPartsToResponses(parts []ChatContentPart) ([]ResponsesContentPart, error) {
 	var responseParts []ResponsesContentPart
 	for _, p := range parts {
 		switch p.Type {
@@ -370,9 +373,45 @@ func convertChatContentPartsToResponses(parts []ChatContentPart) []ResponsesCont
 					ImageURL: p.ImageURL.URL,
 				})
 			}
+		case "input_audio":
+			if p.InputAudio == nil || strings.TrimSpace(p.InputAudio.Data) == "" {
+				continue
+			}
+			format := strings.ToLower(strings.TrimSpace(p.InputAudio.Format))
+			if _, ok := OpenAIInputAudioFormatToMIMEType(format); !ok {
+				return nil, fmt.Errorf("unsupported input_audio format %q", p.InputAudio.Format)
+			}
+			responseParts = append(responseParts, ResponsesContentPart{
+				Type: "input_audio",
+				InputAudio: &ResponsesInputAudio{
+					Data:   p.InputAudio.Data,
+					Format: format,
+				},
+			})
 		}
 	}
-	return responseParts
+	return responseParts, nil
+}
+
+// OpenAIInputAudioFormatToMIMEType maps OpenAI-compatible input_audio format
+// values to MIME types accepted by Gemini inlineData.
+func OpenAIInputAudioFormatToMIMEType(format string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "wav":
+		return "audio/wav", true
+	case "mp3":
+		return "audio/mpeg", true
+	case "m4a":
+		return "audio/mp4", true
+	case "aac":
+		return "audio/aac", true
+	case "flac":
+		return "audio/flac", true
+	case "ogg":
+		return "audio/ogg", true
+	default:
+		return "", false
+	}
 }
 
 func isEmptyBase64DataURI(raw string) bool {

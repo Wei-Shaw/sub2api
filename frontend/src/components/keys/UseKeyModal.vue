@@ -280,6 +280,7 @@ const clientTabs = computed((): TabConfig[] => {
     case 'gemini':
       return [
         { id: 'gemini', label: t('keys.useKeyModal.cliTabs.geminiCli'), icon: SparkleIcon },
+        { id: 'openai-compatible', label: t('keys.useKeyModal.cliTabs.openaiCompatible'), icon: TerminalIcon },
         { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon }
       ]
     case 'antigravity':
@@ -378,7 +379,11 @@ const comment = (value: string) => wrapToken('text-slate-500', value)
 const currentFiles = computed((): FileConfig[] => {
   const baseUrl = props.baseUrl || window.location.origin
   const apiKey = props.apiKey
-  const baseRoot = baseUrl.replace(/\/v1\/?$/, '').replace(/\/+$/, '')
+  const baseRoot = baseUrl
+    .replace(/\/v1beta\/openai\/?$/, '')
+    .replace(/\/v1beta\/?$/, '')
+    .replace(/\/v1\/?$/, '')
+    .replace(/\/+$/, '')
   const ensureV1 = (value: string) => {
     const trimmed = value.replace(/\/+$/, '')
     return trimmed.endsWith('/v1') ? trimmed : `${trimmed}/v1`
@@ -393,6 +398,7 @@ const currentFiles = computed((): FileConfig[] => {
     const trimmed = baseRoot.replace(/\/+$/, '')
     return trimmed.endsWith('/v1beta') ? trimmed : `${trimmed}/v1beta`
   })()
+  const geminiOpenAIBase = `${baseRoot}/v1beta/openai`
 
   if (activeClientTab.value === 'opencode') {
     switch (props.platform) {
@@ -422,10 +428,13 @@ const currentFiles = computed((): FileConfig[] => {
       }
       return generateOpenAIFiles(baseUrl, apiKey)
     case 'gemini':
-      return [generateGeminiCliContent(baseUrl, apiKey)]
+      if (activeClientTab.value === 'openai-compatible') {
+        return generateGeminiOpenAICompatibleFiles(geminiOpenAIBase, apiKey)
+      }
+      return [generateGeminiCliContent(geminiBase, apiKey)]
     case 'antigravity':
       if (activeClientTab.value === 'gemini') {
-        return [generateGeminiCliContent(`${baseUrl}/antigravity`, apiKey)]
+        return [generateGeminiCliContent(antigravityGeminiBase, apiKey)]
       }
       return generateAnthropicFiles(`${baseUrl}/antigravity`, apiKey)
     default:
@@ -523,6 +532,53 @@ ${keyword('$env:')}${variable('GEMINI_MODEL')}${operator('=')}${string(`"${model
   }
 
   return { path, content, highlighted }
+}
+
+function generateGeminiOpenAICompatibleFiles(baseUrl: string, apiKey: string): FileConfig[] {
+  const model = 'gemini-3.5-flash'
+  let path: string
+  let content: string
+
+  switch (activeTab.value) {
+    case 'cmd':
+      path = 'Command Prompt'
+      content = `set OPENAI_BASE_URL=${baseUrl}
+set OPENAI_API_KEY=${apiKey}
+set OPENAI_MODEL=${model}`
+      break
+    case 'powershell':
+      path = 'PowerShell'
+      content = `$env:OPENAI_BASE_URL="${baseUrl}"
+$env:OPENAI_API_KEY="${apiKey}"
+$env:OPENAI_MODEL="${model}"`
+      break
+    case 'unix':
+    default:
+      path = 'Terminal'
+      content = `export OPENAI_BASE_URL="${baseUrl}"
+export OPENAI_API_KEY="${apiKey}"
+export OPENAI_MODEL="${model}"`
+      break
+  }
+
+  const pythonContent = `from openai import OpenAI
+
+client = OpenAI(
+    api_key="${apiKey}",
+    base_url="${baseUrl}",
+)
+
+response = client.chat.completions.create(
+    model="${model}",
+    messages=[{"role": "user", "content": "Hello"}],
+)
+
+print(response.choices[0].message.content)`
+
+  return [
+    { path, content },
+    { path: 'openai_gemini.py', content: pythonContent, hint: t('keys.useKeyModal.gemini.openaiPythonHint') }
+  ]
 }
 
 function generateOpenAIFiles(baseUrl: string, apiKey: string): FileConfig[] {

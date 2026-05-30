@@ -3212,6 +3212,21 @@ func convertClaudeMessagesToGeminiContents(messages any, toolUseIDToName map[str
 							}
 						}
 					}
+				case "input_audio", "audio":
+					if src, ok := bm["source"].(map[string]any); ok {
+						if srcType, _ := src["type"].(string); srcType == "base64" {
+							mediaType, _ := src["media_type"].(string)
+							data, _ := src["data"].(string)
+							if mediaType != "" && data != "" {
+								parts = append(parts, map[string]any{
+									"inlineData": map[string]any{
+										"mimeType": mediaType,
+										"data":     data,
+									},
+								})
+							}
+						}
+					}
 				default:
 					// best-effort: preserve unknown blocks as text
 					if b, err := json.Marshal(bm); err == nil {

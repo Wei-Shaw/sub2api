@@ -259,6 +259,22 @@ func convertResponsesUserToAnthropicContent(raw json.RawMessage) (json.RawMessag
 					Source: src,
 				})
 			}
+		case "input_audio":
+			if p.InputAudio == nil || strings.TrimSpace(p.InputAudio.Data) == "" {
+				continue
+			}
+			mediaType, ok := OpenAIInputAudioFormatToMIMEType(p.InputAudio.Format)
+			if !ok {
+				return nil, fmt.Errorf("unsupported input_audio format %q", p.InputAudio.Format)
+			}
+			blocks = append(blocks, AnthropicContentBlock{
+				Type: "input_audio",
+				Source: &AnthropicImageSource{
+					Type:      "base64",
+					MediaType: mediaType,
+					Data:      p.InputAudio.Data,
+				},
+			})
 		}
 	}
 

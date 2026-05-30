@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -64,6 +65,29 @@ type DataAccount struct {
 type DataImportRequest struct {
 	Data                 DataPayload `json:"data"`
 	SkipDefaultGroupBind *bool       `json:"skip_default_group_bind"`
+}
+
+func (r *DataImportRequest) UnmarshalJSON(data []byte) error {
+	var wrapped struct {
+		Data                 DataPayload `json:"data"`
+		SkipDefaultGroupBind *bool       `json:"skip_default_group_bind"`
+	}
+	if err := json.Unmarshal(data, &wrapped); err != nil {
+		return err
+	}
+	if wrapped.Data.Accounts != nil || wrapped.Data.Proxies != nil || wrapped.Data.ExportedAt != "" || wrapped.Data.Type != "" || wrapped.Data.Version != 0 {
+		r.Data = wrapped.Data
+		r.SkipDefaultGroupBind = wrapped.SkipDefaultGroupBind
+		return nil
+	}
+
+	var payload DataPayload
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return err
+	}
+	r.Data = payload
+	r.SkipDefaultGroupBind = wrapped.SkipDefaultGroupBind
+	return nil
 }
 
 type DataImportResult struct {

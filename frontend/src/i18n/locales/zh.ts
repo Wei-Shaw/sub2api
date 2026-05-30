@@ -750,6 +750,7 @@ export default {
       cliTabs: {
         claudeCode: 'Claude Code',
         geminiCli: 'Gemini CLI',
+        openaiCompatible: 'OpenAI 兼容',
         codexCli: 'Codex CLI',
         codexCliWs: 'Codex CLI (WebSocket)',
         opencode: 'OpenCode'
@@ -767,6 +768,7 @@ export default {
         description:
           '将以下环境变量添加到您的终端配置文件或直接在终端中运行，以配置 Gemini CLI 访问。',
         modelComment: '如果你有 Gemini 3 权限可以填：gemini-3-pro-preview',
+        openaiPythonHint: '使用 OpenAI SDK 调用 Gemini OpenAI 兼容端点的 Python 示例。',
         note: '这些环境变量将在当前终端会话中生效。如需永久配置，请将其添加到 ~/.bashrc、~/.zshrc 或相应的配置文件中。'
       },
       opencode: {

@@ -43,9 +43,9 @@ const (
 func NormalizeInboundEndpoint(path string) string {
 	path = strings.TrimSpace(path)
 	switch {
-	case strings.Contains(path, EndpointEmbeddings):
+	case strings.Contains(path, EndpointEmbeddings) || strings.Contains(path, "/embeddings"):
 		return EndpointEmbeddings
-	case strings.Contains(path, EndpointChatCompletions):
+	case strings.Contains(path, EndpointChatCompletions) || strings.Contains(path, "/chat/completions"):
 		return EndpointChatCompletions
 	case strings.Contains(path, EndpointMessages):
 		return EndpointMessages
@@ -92,6 +92,9 @@ func DeriveUpstreamEndpoint(inbound, rawRequestPath, platform string) string {
 		return EndpointMessages
 
 	case service.PlatformGemini:
+		if inbound == EndpointEmbeddings || inbound == EndpointImagesGenerations || inbound == EndpointImagesEdits {
+			return inbound
+		}
 		return EndpointGeminiModels
 
 	case service.PlatformAntigravity:

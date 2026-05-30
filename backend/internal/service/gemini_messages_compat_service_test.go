@@ -170,6 +170,97 @@ func TestGeminiForwardAsChatCompletions_StreamsOpenAIChunksFromGeminiSSE(t *test
 	require.Contains(t, out, "data: [DONE]")
 }
 
+func TestGeminiForwardAsChatCompletions_InputAudioSentAsInlineData(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	httpStub := &geminiCompatHTTPUpstreamStub{
+		response: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body: io.NopCloser(strings.NewReader(`{
+				"candidates":[{"content":{"parts":[{"text":"heard it"}]},"finishReason":"STOP"}],
+				"usageMetadata":{"promptTokenCount":4,"candidatesTokenCount":2}
+			}`)),
+		},
+	}
+	svc := &GeminiMessagesCompatService{
+		httpUpstream: httpStub,
+		cfg:          &config.Config{},
+	}
+	account := &Account{
+		ID:       103,
+		Platform: PlatformGemini,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key": "gemini-api-key",
+		},
+		Concurrency: 1,
+	}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{"model":"gemini-3-flash-preview","messages":[{"role":"user","content":[{"type":"text","text":"classify"},{"type":"input_audio","input_audio":{"data":"UklGRg==","format":"wav"}}]}]}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1beta/openai/chat/completions", bytes.NewReader(body))
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	require.NotNil(t, httpStub.lastReq)
+	sentBody, err := io.ReadAll(httpStub.lastReq.Body)
+	require.NoError(t, err)
+	var sent map[string]any
+	require.NoError(t, json.Unmarshal(sentBody, &sent))
+	contents, ok := sent["contents"].([]any)
+	require.True(t, ok)
+	require.Len(t, contents, 1)
+	firstContent, ok := contents[0].(map[string]any)
+	require.True(t, ok)
+	parts, ok := firstContent["parts"].([]any)
+	require.True(t, ok)
+	require.Len(t, parts, 2)
+	textPart, ok := parts[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "classify", textPart["text"])
+	audioPart, ok := parts[1].(map[string]any)
+	require.True(t, ok)
+	inlineData, ok := audioPart["inlineData"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "audio/wav", inlineData["mimeType"])
+	require.Equal(t, "UklGRg==", inlineData["data"])
+}
+
+func TestConvertClaudeMessagesToGeminiGenerateContent_InputAudio(t *testing.T) {
+	body := []byte(`{
+		"model":"gemini-3-flash-preview",
+		"messages":[{"role":"user","content":[
+			{"type":"text","text":"classify"},
+			{"type":"input_audio","source":{"type":"base64","media_type":"audio/wav","data":"UklGRg=="}}
+		]}]
+	}`)
+
+	got, err := convertClaudeMessagesToGeminiGenerateContent(body)
+	require.NoError(t, err)
+
+	var sent map[string]any
+	require.NoError(t, json.Unmarshal(got, &sent))
+	contents, ok := sent["contents"].([]any)
+	require.True(t, ok)
+	require.Len(t, contents, 1)
+	firstContent, ok := contents[0].(map[string]any)
+	require.True(t, ok)
+	parts, ok := firstContent["parts"].([]any)
+	require.True(t, ok)
+	require.Len(t, parts, 2)
+	audioPart, ok := parts[1].(map[string]any)
+	require.True(t, ok)
+	inlineData, ok := audioPart["inlineData"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "audio/wav", inlineData["mimeType"])
+	require.Equal(t, "UklGRg==", inlineData["data"])
+}
+
 // TestConvertClaudeToolsToGeminiTools_CustomType 测试custom类型工具转换
 func TestConvertClaudeToolsToGeminiTools_CustomType(t *testing.T) {
 	tests := []struct {

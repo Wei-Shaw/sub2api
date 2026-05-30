@@ -122,4 +122,62 @@ describe('UseKeyModal', () => {
     expect(codeBlock.text()).toContain('"name": "GPT-5.4 Mini"')
     expect(codeBlock.text()).not.toContain('"name": "GPT-5.4 Nano"')
   })
+
+  it('renders native Gemini CLI config with v1beta base URL', () => {
+    const wrapper = mount(UseKeyModal, {
+      props: {
+        show: true,
+        apiKey: 'sk-gemini',
+        baseUrl: 'https://example.com/v1',
+        platform: 'gemini'
+      },
+      global: {
+        stubs: {
+          BaseDialog: {
+            template: '<div><slot /><slot name="footer" /></div>'
+          },
+          Icon: {
+            template: '<span />'
+          }
+        }
+      }
+    })
+
+    const code = wrapper.find('pre code').text()
+    expect(code).toContain('GOOGLE_GEMINI_BASE_URL="https://example.com/v1beta"')
+    expect(code).toContain('GEMINI_API_KEY="sk-gemini"')
+  })
+
+  it('renders Gemini OpenAI-compatible config with v1beta openai base URL', async () => {
+    const wrapper = mount(UseKeyModal, {
+      props: {
+        show: true,
+        apiKey: 'sk-gemini',
+        baseUrl: 'https://example.com/v1',
+        platform: 'gemini'
+      },
+      global: {
+        stubs: {
+          BaseDialog: {
+            template: '<div><slot /><slot name="footer" /></div>'
+          },
+          Icon: {
+            template: '<span />'
+          }
+        }
+      }
+    })
+
+    const tab = wrapper.findAll('button').find((button) =>
+      button.text().includes('keys.useKeyModal.cliTabs.openaiCompatible')
+    )
+
+    expect(tab).toBeDefined()
+    await tab!.trigger('click')
+    await nextTick()
+
+    const codeBlocks = wrapper.findAll('pre code').map((code) => code.text())
+    expect(codeBlocks.join('\n')).toContain('OPENAI_BASE_URL="https://example.com/v1beta/openai"')
+    expect(codeBlocks.join('\n')).toContain('base_url="https://example.com/v1beta/openai"')
+  })
 })

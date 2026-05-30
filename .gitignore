@@ -133,6 +133,7 @@ docs/*
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md
 .serena/
 .codex/
+.worktrees/
 frontend/coverage/
 aicodex
 output/

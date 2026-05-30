@@ -1256,6 +1256,49 @@ func TestResponsesToAnthropicRequest_ToolChoiceLegacyFunctionName(t *testing.T) 
 	assert.Equal(t, "get_weather", tc["name"])
 }
 
+func TestResponsesToAnthropicRequest_UserInputAudioBlock(t *testing.T) {
+	req := &ResponsesRequest{
+		Model: "gemini-3-flash-preview",
+		Input: json.RawMessage(`[
+			{"role":"user","content":[
+				{"type":"input_text","text":"Listen to this"},
+				{"type":"input_audio","input_audio":{"data":"UklGRg==","format":"wav"}}
+			]}
+		]`),
+	}
+
+	resp, err := ResponsesToAnthropicRequest(req)
+	require.NoError(t, err)
+	require.Len(t, resp.Messages, 1)
+
+	var blocks []map[string]any
+	require.NoError(t, json.Unmarshal(resp.Messages[0].Content, &blocks))
+	require.Len(t, blocks, 2)
+	assert.Equal(t, "text", blocks[0]["type"])
+	assert.Equal(t, "Listen to this", blocks[0]["text"])
+	assert.Equal(t, "input_audio", blocks[1]["type"])
+	source, ok := blocks[1]["source"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "base64", source["type"])
+	assert.Equal(t, "audio/wav", source["media_type"])
+	assert.Equal(t, "UklGRg==", source["data"])
+}
+
+func TestResponsesToAnthropicRequest_UserInputAudioInvalidFormat(t *testing.T) {
+	req := &ResponsesRequest{
+		Model: "gemini-3-flash-preview",
+		Input: json.RawMessage(`[
+			{"role":"user","content":[
+				{"type":"input_audio","input_audio":{"data":"UklGRg==","format":"webm"}}
+			]}
+		]`),
+	}
+
+	_, err := ResponsesToAnthropicRequest(req)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported input_audio format")
+}
+
 // ---------------------------------------------------------------------------
 // Image content block conversion tests
 // ---------------------------------------------------------------------------
