@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -151,10 +152,20 @@ type AnthropicEventToResponsesState struct {
 
 	// For message output: accumulate text parts
 	ContentIndex int
+	// CurrentText accumulates the message's output_text so the terminal
+	// output_item.done can carry the full content. codex collects final text
+	// from OutputItemDone items, not from output_text.delta events, so the
+	// message item MUST include content:[{type:output_text,text:...}].
+	CurrentText string
 
 	// For function_call: track per-output info
 	CurrentCallID string
 	CurrentName   string
+	// CurrentArguments accumulates the function_call's argument JSON so the
+	// terminal output_item.done (and arguments.done) can carry the full args.
+	// codex reads the tool call from the OutputItemDone item; without
+	// call_id/name/arguments it cannot execute the tool and stalls.
+	CurrentArguments string
 
 	// Usage from message_start / message_delta. InputTokens here follows
 	// Anthropic semantics (excludes cached tokens); they are added back when
@@ -278,6 +289,7 @@ func anthToResHandleContentBlockStart(evt *AnthropicStreamEvent, state *Anthropi
 			state.CurrentItemID = generateItemID()
 			state.CurrentItemType = "message"
 			state.ContentIndex = 0
+			state.CurrentText = ""
 
 			events = append(events, makeResponsesEvent(state, "response.output_item.added", &ResponsesStreamEvent{
 				OutputIndex: state.OutputIndex,
@@ -286,6 +298,21 @@ func anthToResHandleContentBlockStart(evt *AnthropicStreamEvent, state *Anthropi
 					ID:     state.CurrentItemID,
 					Role:   "assistant",
 					Status: "in_progress",
+				},
+			}))
+
+			// Emit response.content_part.added so clients (e.g. codex) know a
+			// text content part is starting. Without it the subsequent
+			// output_text.delta events have no part to attach to and the client
+			// renders nothing. Reverse of anthToResHandleContentBlockStop's
+			// content_part.done.
+			events = append(events, makeResponsesEvent(state, "response.content_part.added", &ResponsesStreamEvent{
+				OutputIndex:  state.OutputIndex,
+				ContentIndex: state.ContentIndex,
+				ItemID:       state.CurrentItemID,
+				Part: &ResponsesContentPart{
+					Type: "output_text",
+					Text: "",
 				},
 			}))
 		}
@@ -298,6 +325,7 @@ func anthToResHandleContentBlockStart(evt *AnthropicStreamEvent, state *Anthropi
 		state.CurrentItemType = "function_call"
 		state.CurrentCallID = toResponsesCallID(evt.ContentBlock.ID)
 		state.CurrentName = evt.ContentBlock.Name
+		state.CurrentArguments = ""
 
 		events = append(events, makeResponsesEvent(state, "response.output_item.added", &ResponsesStreamEvent{
 			OutputIndex: state.OutputIndex,
@@ -324,6 +352,7 @@ func anthToResHandleContentBlockDelta(evt *AnthropicStreamEvent, state *Anthropi
 		if evt.Delta.Text == "" {
 			return nil
 		}
+		state.CurrentText += evt.Delta.Text
 		return []ResponsesStreamEvent{makeResponsesEvent(state, "response.output_text.delta", &ResponsesStreamEvent{
 			OutputIndex:  state.OutputIndex,
 			ContentIndex: state.ContentIndex,
@@ -346,6 +375,7 @@ func anthToResHandleContentBlockDelta(evt *AnthropicStreamEvent, state *Anthropi
 		if evt.Delta.PartialJSON == "" {
 			return nil
 		}
+		state.CurrentArguments += evt.Delta.PartialJSON
 		return []ResponsesStreamEvent{makeResponsesEvent(state, "response.function_call_arguments.delta", &ResponsesStreamEvent{
 			OutputIndex: state.OutputIndex,
 			Delta:       evt.Delta.PartialJSON,
@@ -384,18 +414,32 @@ func anthToResHandleContentBlockStop(evt *AnthropicStreamEvent, state *Anthropic
 				ItemID:      state.CurrentItemID,
 				CallID:      state.CurrentCallID,
 				Name:        state.CurrentName,
+				Arguments:   nonEmptyArguments(state.CurrentArguments),
 			}),
 		}
 		events = append(events, closeCurrentResponsesItem(state)...)
 		return events
 
 	case "message":
-		// Emit output_text.done (text block is done, but message item stays open for potential more blocks)
+		// Text block done: emit output_text.done then content_part.done.
+		// The message item stays open for potential more blocks; it is closed
+		// later by closeCurrentResponsesItem. content_part.done mirrors the
+		// content_part.added emitted in anthToResHandleContentBlockStart.
 		return []ResponsesStreamEvent{
 			makeResponsesEvent(state, "response.output_text.done", &ResponsesStreamEvent{
 				OutputIndex:  state.OutputIndex,
 				ContentIndex: state.ContentIndex,
 				ItemID:       state.CurrentItemID,
+				Text:         state.CurrentText,
+			}),
+			makeResponsesEvent(state, "response.content_part.done", &ResponsesStreamEvent{
+				OutputIndex:  state.OutputIndex,
+				ContentIndex: state.ContentIndex,
+				ItemID:       state.CurrentItemID,
+				Part: &ResponsesContentPart{
+					Type: "output_text",
+					Text: state.CurrentText,
+				},
 			}),
 		}
 	}
@@ -450,23 +494,55 @@ func closeCurrentResponsesItem(state *AnthropicEventToResponsesState) []Response
 
 	itemType := state.CurrentItemType
 	itemID := state.CurrentItemID
+	currentText := state.CurrentText
+	currentCallID := state.CurrentCallID
+	currentName := state.CurrentName
+	currentArgs := state.CurrentArguments
 
 	// Reset
 	state.CurrentItemType = ""
 	state.CurrentItemID = ""
 	state.CurrentCallID = ""
 	state.CurrentName = ""
+	state.CurrentText = ""
+	state.CurrentArguments = ""
 	state.OutputIndex++
 	state.ContentIndex = 0
 
+	// The terminal item carries its full content. codex collects final output
+	// from OutputItemDone items (not from the delta events), so an item missing
+	// its content/arguments renders blank or cannot be executed as a tool call.
+	doneItem := &ResponsesOutput{
+		Type:   itemType,
+		ID:     itemID,
+		Status: "completed",
+	}
+	switch itemType {
+	case "message":
+		doneItem.Role = "assistant"
+		doneItem.Content = []ResponsesContentPart{{
+			Type: "output_text",
+			Text: currentText,
+		}}
+	case "function_call":
+		doneItem.CallID = currentCallID
+		doneItem.Name = currentName
+		doneItem.Arguments = nonEmptyArguments(currentArgs)
+	}
+
 	return []ResponsesStreamEvent{makeResponsesEvent(state, "response.output_item.done", &ResponsesStreamEvent{
 		OutputIndex: state.OutputIndex - 1, // Use the index before increment
-		Item: &ResponsesOutput{
-			Type:   itemType,
-			ID:     itemID,
-			Status: "completed",
-		},
+		Item:        doneItem,
 	})}
+}
+
+// nonEmptyArguments ensures function_call arguments are valid JSON. Anthropic
+// tool_use with no input produces an empty string; codex expects at least "{}".
+func nonEmptyArguments(args string) string {
+	if strings.TrimSpace(args) == "" {
+		return "{}"
+	}
+	return args
 }
 
 func makeResponsesCreatedEvent(state *AnthropicEventToResponsesState) ResponsesStreamEvent {
