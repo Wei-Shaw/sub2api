@@ -2793,13 +2793,8 @@ REDACTED
 
 	// 命中 WS 时仅走 WebSocket Mode；不再自动回退 HTTP。
 	if wsDecision.Transport == OpenAIUpstreamTransportResponsesWebsocketV2 {
+		// WS 分支不会再回落 HTTP；重连恢复可直接更新 reqBody，避免额外保留一份完整顶层 map。
 		wsReqBody := reqBody
-		if len(reqBody) > 0 {
-			wsReqBody = make(map[string]any, len(reqBody))
-			for k, v := range reqBody {
-				wsReqBody[k] = v
-		REDACTED
-	REDACTED
 		_, hasPreviousResponseID := wsReqBody["previous_response_id"]
 		logOpenAIWSModeDebug(
 			"forward_start account_id=%d account_type=%s model=%s stream=%v has_previous_response_id=%v",
