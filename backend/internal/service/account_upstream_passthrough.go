@@ -80,3 +80,33 @@ func (a *Account) upstreamPassthroughString(key string) string {
 	raw, _ := up[key].(string)
 	return strings.ToLower(strings.TrimSpace(raw))
 }
+
+// upstreamPassthroughBool returns the bool value at
+// extra.upstream_passthrough.<key>, defaulting to false when absent/wrong type.
+func (a *Account) upstreamPassthroughBool(key string) bool {
+	if a == nil || a.Extra == nil {
+		return false
+	}
+	up, ok := a.Extra[upstreamPassthroughExtraKey].(map[string]any)
+	if !ok {
+		return false
+	}
+	b, _ := up[key].(bool)
+	return b
+}
+
+// UpstreamBedrockBackedRelay returns true when this account's custom base URL
+// is known to route to a Bedrock/Vertex backend (e.g. mixroute.ai) or sits
+// behind a CDN/WAF that rejects unknown query parameters (e.g. anyrouter.top's
+// Aliyun ESA). Such upstreams need:
+//   - the ?beta=true query parameter stripped from URLs, AND
+//   - the anthropic-beta header restricted to a Bedrock-safe allowlist.
+//
+// Default false → restores pre-v0.1.160 behavior (works for pure Anthropic-API
+// relays like tokenprovider.store, which require ?beta=true plus the full
+// Claude Code beta header). Opt-in by setting:
+//
+//	extra.upstream_passthrough.bedrock_backed_relay: true
+func (a *Account) UpstreamBedrockBackedRelay() bool {
+	return a.upstreamPassthroughBool("bedrock_backed_relay")
+}

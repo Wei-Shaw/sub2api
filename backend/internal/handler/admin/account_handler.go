@@ -2492,6 +2492,14 @@ func sanitizeExtraUpstreamPassthrough(extra map[string]any) {
 		}
 	}
 
+	// bedrock_backed_relay: per-account opt-in. When true, the gateway strips
+	// the ?beta=true query parameter and restricts the anthropic-beta header
+	// to a Bedrock-safe allowlist. Default false preserves pre-v0.1.160
+	// behavior for pure Anthropic-API compatible relays.
+	if v, ok := up["bedrock_backed_relay"].(bool); ok {
+		clean["bedrock_backed_relay"] = v
+	}
+
 	if len(clean) == 0 {
 		delete(extra, "upstream_passthrough")
 		return

@@ -6175,7 +6175,7 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 		if err != nil {
 			return nil, err
 		}
-		targetURL = validatedURL + "/v1/messages"
+		targetURL = validatedURL + "/v1/messages" + upstreamBetaQuerySuffix(account)
 	}
 
 	// 能力维度 body sanitize：透传路径上 anthropic-beta header 原样透传客户端值，
@@ -7352,7 +7352,7 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 			if err != nil {
 				return nil, err
 			}
-			targetURL = validatedURL + "/v1/messages"
+			targetURL = validatedURL + "/v1/messages" + upstreamBetaQuerySuffix(account)
 		}
 	} else if account.IsCustomBaseURLEnabled() {
 		customURL := account.GetCustomBaseURL()
@@ -7462,13 +7462,15 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	}
 
 	// Non-official upstream safety: when forwarding through an API-key account
-	// with a custom base URL (aggregators like mixroute.ai that may route to
-	// Bedrock), only keep beta tokens known to be safe. Bedrock rejects
-	// unrecognized beta tokens and aggregators may not support all features.
-	// The body sanitizer below will strip body fields (like context_management)
-	// that require their matching beta token, ensuring body/header consistency.
+	// with a custom base URL that the operator has explicitly flagged as
+	// Bedrock/Vertex-backed (extra.upstream_passthrough.bedrock_backed_relay),
+	// only keep beta tokens known to be safe. Bedrock rejects unrecognized beta
+	// tokens and aggregators may not support all features. Default off restores
+	// pre-v0.1.161 behavior so that pure Anthropic-API relays (e.g.
+	// tokenprovider.store) receive the full Claude Code beta header verbatim.
 	if account != nil && !account.IsOAuth() && !account.IsBedrock() &&
-		account.GetBaseURL() != "" && finalBetaShouldSet {
+		account.GetBaseURL() != "" && finalBetaShouldSet &&
+		account.UpstreamBedrockBackedRelay() {
 		finalBetaHeader = filterBetaToAllowlist(finalBetaHeader, claude.NonOfficialUpstreamSafeBetaPrefixes)
 		finalBetaShouldSet = finalBetaHeader != ""
 	}
@@ -7960,6 +7962,21 @@ func stripBetaTokensWithSet(header string, drop map[string]struct{}) string {
 		return header // no change, avoid allocation
 	}
 	return strings.Join(out, ",")
+}
+
+// upstreamBetaQuerySuffix returns "?beta=true" for normal Anthropic-API
+// compatible upstreams, matching the pre-v0.1.166 behavior. Bedrock-backed
+// aggregators (e.g. anyrouter.top behind Aliyun ESA WAF, mixroute.ai routed to
+// Bedrock) reject unknown query parameters, so they opt out by setting
+// extra.upstream_passthrough.bedrock_backed_relay: true on the account.
+//
+// Callers must already have appended the path (e.g. /v1/messages); this helper
+// only returns the query string suffix (with leading "?" or empty).
+func upstreamBetaQuerySuffix(account *Account) string {
+	if account == nil || account.UpstreamBedrockBackedRelay() {
+		return ""
+	}
+	return "?beta=true"
 }
 
 // filterBetaToAllowlist 对 anthropic-beta header 进行白名单过滤：仅保留前缀匹配
@@ -11159,7 +11176,7 @@ func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthrough(
 		if err != nil {
 			return nil, err
 		}
-		targetURL = validatedURL + "/v1/messages/count_tokens"
+		targetURL = validatedURL + "/v1/messages/count_tokens" + upstreamBetaQuerySuffix(account)
 	}
 	body = sanitizeCountTokensRequestBody(body)
 
@@ -11226,7 +11243,7 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 			if err != nil {
 				return nil, err
 			}
-			targetURL = validatedURL + "/v1/messages/count_tokens"
+			targetURL = validatedURL + "/v1/messages/count_tokens" + upstreamBetaQuerySuffix(account)
 		}
 	} else if account.IsCustomBaseURLEnabled() {
 		customURL := account.GetCustomBaseURL()
@@ -11287,8 +11304,10 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 	)
 
 	// Non-official upstream safety: same rationale as buildUpstreamRequest.
+	// Gated on extra.upstream_passthrough.bedrock_backed_relay (default off).
 	if account != nil && !account.IsOAuth() && !account.IsBedrock() &&
-		account.GetBaseURL() != "" && finalBetaShouldSet {
+		account.GetBaseURL() != "" && finalBetaShouldSet &&
+		account.UpstreamBedrockBackedRelay() {
 		finalBetaHeader = filterBetaToAllowlist(finalBetaHeader, claude.NonOfficialUpstreamSafeBetaPrefixes)
 		finalBetaShouldSet = finalBetaHeader != ""
 	}
@@ -11410,14 +11429,22 @@ func (s *GatewayService) countTokensError(c *gin.Context, status int, errType, m
 }
 
 // buildCustomRelayURL 构建自定义中继转发 URL
-// 在 path 后附加可选的 proxy 查询参数
+// 在 path 后附加 ?beta=true（默认，pre-v0.1.166 行为）以及可选的 proxy 查询参数。
+// 账号显式 opt-in extra.upstream_passthrough.bedrock_backed_relay 时跳过 beta=true。
 func (s *GatewayService) buildCustomRelayURL(baseURL, path string, account *Account) string {
 	u := strings.TrimRight(baseURL, "/") + path
-	if account.ProxyID != nil && account.Proxy != nil {
+	params := make([]string, 0, 2)
+	if account == nil || !account.UpstreamBedrockBackedRelay() {
+		params = append(params, "beta=true")
+	}
+	if account != nil && account.ProxyID != nil && account.Proxy != nil {
 		proxyURL := account.Proxy.URL()
 		if proxyURL != "" {
-			u += "?proxy=" + url.QueryEscape(proxyURL)
+			params = append(params, "proxy="+url.QueryEscape(proxyURL))
 		}
+	}
+	if len(params) > 0 {
+		u += "?" + strings.Join(params, "&")
 	}
 	return u
 }
