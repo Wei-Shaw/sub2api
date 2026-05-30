@@ -72,8 +72,8 @@ const CLICurrentVersion = "2.1.92"
 // 顺序与真实 CLI 抓包一致。
 //
 // 使用建议：
-//   - OAuth 账号 + 非 haiku：追加这整份列表，再按需保留 client 带来的 beta。
-//   - OAuth 账号 + haiku：Anthropic 对 haiku 不做 third-party 判定，使用 HaikuBetaHeader 即可。
+//   - OAuth 账号（所有模型，包括 haiku）：追加这整份列表，再按需保留 client 带来的 beta。
+//     haiku 之前被认为"免 third-party 判定"，但实测同样触发 extra usage 警告，故统一使用完整列表。
 //   - API-key 账号：不要使用本函数，参见 APIKeyBetaHeader。
 //   - 不默认加入 redact-thinking，避免上游抹除 thinking 内容；客户端显式传入时由合并逻辑保留。
 func FullClaudeCodeMimicryBetas() []string {
