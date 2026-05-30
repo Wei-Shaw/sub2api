@@ -1312,22 +1312,6 @@ func (s *AntigravityGatewayService) unwrapV1InternalResponse(body []byte) ([]byt
 	return body, nil
 }
 
-// isModelNotFoundError 检测是否为模型不存在的 404 错误
-func isModelNotFoundError(statusCode int, body []byte) bool {
-	if statusCode != 404 {
-		return false
-	}
-
-	bodyStr := strings.ToLower(string(body))
-	keywords := []string{"model not found", "unknown model", "not found"}
-	for _, keyword := range keywords {
-		if strings.Contains(bodyStr, keyword) {
-			return true
-		}
-	}
-	return true // 404 without specific message also treated as model not found
-}
-
 // Forward 转发 Claude 协议请求（Claude → Gemini 转换）
 //
 // 限流处理流程:
@@ -4225,6 +4209,14 @@ func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.
 	// 构建上游请求 URL
 	upstreamURL := baseURL + "/v1/messages"
 
+	// 能力维度 sanitize：Anthropic-compatible 上游透传路径也需要保证 body↔beta header
+	// 对称。客户端 anthropic-beta header 不含 context-management-2025-06-27 但 body 带
+	// context_management 时 strip，与 Anthropic 直连 / Bedrock / Vertex 路径保持一致。
+	clientBeta := c.GetHeader("anthropic-beta")
+	if sanitized, changed := sanitizeAnthropicBodyForBetaTokens(body, clientBeta); changed {
+		body = sanitized
+	}
+
 	// 创建请求
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, upstreamURL, bytes.NewReader(body))
 	if err != nil {
@@ -4240,7 +4232,7 @@ func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.
 	if v := c.GetHeader("anthropic-version"); v != "" {
 		req.Header.Set("anthropic-version", v)
 	}
-	if v := c.GetHeader("anthropic-beta"); v != "" {
+	if v := clientBeta; v != "" {
 		req.Header.Set("anthropic-beta", v)
 	}
 
@@ -4463,6 +4455,14 @@ func (s *AntigravityGatewayService) streamUpstreamResponse(c *gin.Context, resp 
 }
 
 // extractSSEUsage 从 SSE data 行中提取 Claude usage（用于流式透传场景）
+//
+// Anthropic streaming 的 usage 字段分布在两类事件中：
+//   - message_start：嵌套在 event.message.usage（input_tokens、cache_creation_input_tokens、
+//     cache_read_input_tokens 等输入侧字段）
+//   - message_delta：位于顶层 event.usage（流结束时的最终 output_tokens）
+//
+// 仅读取顶层 event.usage 会漏掉 message_start 的输入侧字段，导致流式透传请求落库的
+// usage_logs 记录 input_tokens=0。
 func (s *AntigravityGatewayService) extractSSEUsage(line string, usage *ClaudeUsage) {
 	if !strings.HasPrefix(line, "data: ") {
 		return
@@ -4472,8 +4472,15 @@ func (s *AntigravityGatewayService) extractSSEUsage(line string, usage *ClaudeUs
 	if json.Unmarshal([]byte(dataStr), &event) != nil {
 		return
 	}
-	u, ok := event["usage"].(map[string]any)
-	if !ok {
+	var u map[string]any
+	if eventType, _ := event["type"].(string); eventType == "message_start" {
+		if msg, ok := event["message"].(map[string]any); ok {
+			u, _ = msg["usage"].(map[string]any)
+		}
+	} else {
+		u, _ = event["usage"].(map[string]any)
+	}
+	if u == nil {
 		return
 	}
 	if v, ok := u["input_tokens"].(float64); ok && int(v) > 0 {

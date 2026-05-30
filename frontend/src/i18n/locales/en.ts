@@ -2179,6 +2179,12 @@ export default {
         finalPricePreview: 'Final per-image price preview',
         notConfigured: 'Not configured'
       },
+      modelsList: {
+        title: 'Custom /v1/models Model List',
+        hint: 'Only changes the /v1/models response. Whitelist model calls and account routing are unchanged.',
+        loading: 'Loading model list...',
+        empty: 'No displayable models'
+      },
       claudeCode: {
         title: 'Claude Code Client Restriction',
         tooltip: 'When enabled, this group only allows official Claude Code clients. Non-Claude Code requests will be rejected or fallback to the specified group.',
@@ -2593,14 +2599,37 @@ export default {
       modelFilterIncludeSummary: 'Applies to {count} models',
       modelFilterExcludeSummary: 'Excludes {count} models',
       emptyLogs: 'No audit records',
+      preBlockSyncStatus: 'Pre-Block Sync Status',
+      preBlockSyncHint: 'Live counters for the synchronous moderation path, excluding async record tasks.',
+      preBlockActive: 'Sync Processing',
+      preBlockActiveHint: 'Currently checking',
+      preBlockChecked: 'Checked',
+      preBlockCheckedHint: 'Entered pre-block path',
+      preBlockAllowed: 'Allowed',
+      preBlockAllowedHint: 'No block triggered',
+      preBlockBlocked: 'Blocked',
+      preBlockBlockedHint: 'Rejected after hit',
+      preBlockErrors: 'Audit Errors',
+      preBlockErrorsHint: 'Failed or no usable key',
+      preBlockAvgLatency: 'Avg Latency',
+      preBlockAvgLatencyHint: 'Synchronous path average',
+      preBlockAPIKeyLoad: 'Audit Key Load',
+      preBlockAPIKeyLoadHint: 'Synchronous pre-block checks round-robin usable audit keys directly.',
+      preBlockAPIKeyLoadSummary: 'Sync active {active} / usable keys {available}, {total} total, worker: {workerActive} / {workerTotal}',
+      preBlockAPIKeyTotals: 'Total {total}, success {success}, errors {errors}',
+      preBlockAPIKeyLoadEmpty: 'No audit key load data yet',
+      preBlockKeyActiveShort: 'Active',
+      preBlockKeyTotalShort: 'Total',
+      preBlockKeyAvgShort: 'Avg',
+      preBlockKeyLastShort: 'Last',
       workerStatus: 'Worker Runtime',
-      workerStatusHint: 'Queue and worker pool status for asynchronous observation tasks.',
+      workerStatusHint: 'Queue and worker pool status for async audit tasks and pre-block record tasks, excluding synchronous pre-block checks.',
       workerPool: 'Worker Pool',
       workerPoolMeta: '{active} processing, {idle} idle and ready, {total} total',
       queueUsage: 'Queue Usage',
       activeWorkers: 'Processing',
       idleWorkers: 'Idle Ready',
-      workerActive: 'Processing an asynchronous audit task',
+      workerActive: 'Processing an async audit or record task',
       workerIdle: 'Started, idle and ready',
       workerDisabled: 'Risk control or content audit is disabled',
       processed: 'Processed',
@@ -3072,6 +3101,7 @@ export default {
         usageWindows: 'Usage Windows',
         proxy: 'Proxy',
         lastUsed: 'Last Used',
+        createdAt: 'Created',
         expiresAt: 'Expires At',
         actions: 'Actions'
       },
@@ -3319,10 +3349,21 @@ export default {
           'Automatic passthrough is currently enabled: it only affects HTTP passthrough and does not disable WS mode.',
         responsesMode: 'Responses API support',
         responsesModeDesc:
-          'Only applies to OpenAI API Key accounts. Auto follows probe results; force modes override probing.',
+          'Only applies to the OpenAI API Key text forwarding path. Auto follows probe results; force modes override probing.',
         responsesModeAuto: 'Auto',
         responsesModeForceResponses: 'Force Responses',
         responsesModeForceChatCompletions: 'Force Chat Completions',
+        responsesModeTextDisabledHint:
+          'Not applicable when the Responses / Chat Completions endpoint is not enabled.',
+        endpointCapabilities: 'Endpoint capabilities',
+        endpointCapabilitiesDesc:
+          'Used by account routing. The text endpoint follows the Responses API support setting above and is shown as Responses, Chat Completions, or auto mode; Embeddings independently controls /v1/embeddings.',
+        capabilityResponses: 'Responses',
+        capabilityTextAuto: 'Responses / Chat Completions (Auto)',
+        capabilityResponsesAuto: 'Responses (auto probe)',
+        capabilityChatCompletions: 'Chat Completions',
+        capabilityChatCompletionsAuto: 'Chat Completions (auto probe)',
+        capabilityEmbeddings: 'Embeddings',
         responsesStatusAutoSupported: 'Auto probe: Responses',
         responsesStatusAutoUnsupported: 'Auto probe: Chat Completions',
         responsesStatusAutoUnknown: 'Auto probe: unknown',
@@ -3331,6 +3372,9 @@ export default {
         codexCLIOnly: 'Codex official clients only',
         codexCLIOnlyDesc:
           'Only applies to OpenAI OAuth. When enabled, only Codex official client families are allowed; when disabled, the gateway bypasses this restriction and keeps existing behavior.',
+        codexCLIOnlyAllowClaudeCode: "Also allow Claude Code's Codex plugin",
+        codexCLIOnlyAllowClaudeCodeDesc:
+          'Only takes effect when the switch above is on. Additionally allows requests from the Claude Code Codex plugin (exact match on originator=Claude Code) without weakening blocking of other non-official clients.',
         codexImageGenerationBridge: 'Codex image-generation bridge',
         codexImageGenerationBridgeDesc:
           'Account policy takes precedence over channel and global settings. Only controls whether Codex requests through the /responses text endpoint receive the image_generation tool; standalone image-generation endpoints are unaffected.',
@@ -3410,6 +3454,9 @@ export default {
       poolModeRetryCount: 'Same-Account Retries',
       poolModeRetryCountHint:
         'Only applies in pool mode. Use 0 to disable in-place retry. Default {default}, maximum {max}.',
+      poolModeRetryStatusCodes: 'Retry Status Codes',
+      poolModeRetryStatusCodesHint:
+        'Comma-separated HTTP status codes (100-599) that trigger same-account retry in pool mode. Leave blank to use defaults ({default}).',
       customErrorCodes: 'Custom Error Codes',
       customErrorCodesHint: 'Only stop scheduling for selected error codes',
       customErrorCodesWarning:
@@ -3428,6 +3475,12 @@ export default {
         'When enabled, warmup requests like title generation will return mock responses without consuming upstream tokens',
       autoPauseOnExpired: 'Auto Pause On Expired',
       autoPauseOnExpiredDesc: 'When enabled, the account will auto pause scheduling after it expires',
+	  autoPause5hThreshold: '5h Usage Threshold (%)',
+	  autoPause7dThreshold: '7d Usage Threshold (%)',
+	  autoPauseThresholdHint: 'Leave empty or set 0 to use the global default threshold (configured in Ops settings); set a value to override the global default. Reaching the threshold only skips the account during scheduling and does not modify schedulable.',
+	  autoPause5hDisabled: 'Disable 5h auto-pause',
+	  autoPause7dDisabled: 'Disable 7d auto-pause',
+	  autoPauseDisabledHint: 'When enabled, this account is never auto-paused (even if a global default threshold is configured).',
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {
         title: 'Quota Control',
@@ -5143,6 +5196,11 @@ export default {
         aggregation: 'Pre-aggregation Tasks',
         enableAggregation: 'Enable Pre-aggregation',
         aggregationHint: 'Pre-aggregation improves query performance for long time windows',
+        openaiQuotaAutoPause: 'OpenAI Account Quota Auto-pause',
+        openaiQuotaAutoPauseHint: 'When an OpenAI account reaches its 5h / 7d usage threshold, the scheduler skips it automatically and resumes once the window rolls over. Per-account thresholds take precedence over this global default.',
+        openaiQuotaAutoPauseDefault5h: 'Default 5h usage threshold (%)',
+        openaiQuotaAutoPauseDefault7d: 'Default 7d usage threshold (%)',
+        openaiQuotaAutoPauseThresholdHint: 'Value 0-100; leave blank or 0 to disable the global default threshold.',
         errorFiltering: 'Error Filtering',
         ignoreCountTokensErrors: 'Ignore count_tokens errors',
         ignoreCountTokensErrorsHint: 'When enabled, errors from count_tokens requests will not be written to the error log.',
@@ -5173,7 +5231,8 @@ export default {
           slaMinPercentRange: 'SLA minimum percentage must be between 0 and 100',
           ttftP99MaxRange: 'TTFT P99 maximum must be a number ≥ 0',
           requestErrorRateMaxRange: 'Request error rate maximum must be between 0 and 100',
-          upstreamErrorRateMaxRange: 'Upstream error rate maximum must be between 0 and 100'
+          upstreamErrorRateMaxRange: 'Upstream error rate maximum must be between 0 and 100',
+          openaiQuotaAutoPauseRange: 'OpenAI quota auto-pause threshold must be between 0 and 100'
         }
       },
       concurrency: {
@@ -5567,6 +5626,9 @@ export default {
         openaiCodexUserAgent: 'OpenAI Codex UA',
         openaiCodexUserAgentPlaceholder: 'codex-tui/0.125.0 (Ubuntu 22.4.0; x86_64) xterm-256color (codex-tui; 0.125.0)',
         openaiCodexUserAgentHint: 'Used to bypass Cloudflare browser-UA challenges on the OpenAI upstream. Only applies when the client User-Agent is detected as a browser (Mozilla/...). Leave empty to use the built-in default.',
+        openaiAllowClaudeCodeCodexPlugin: "Allow using the Codex plugin in Claude Code",
+        openaiAllowClaudeCodeCodexPluginDesc:
+          "Global switch; only affects OpenAI OAuth accounts that have 'Codex official clients only' enabled. When on, all such accounts additionally allow requests from the Claude Code Codex plugin (exact match on originator=Claude Code) without per-account config; upstream requests remain pass-through.",
       },
       webSearchEmulation: {
         title: 'Web Search Emulation',

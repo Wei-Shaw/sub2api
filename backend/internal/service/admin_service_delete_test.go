@@ -471,8 +471,20 @@ func (s *billingCacheStub) DeleteUserPlatformQuotaCache(ctx context.Context, use
 	panic("unexpected DeleteUserPlatformQuotaCache call")
 }
 
-func (s *billingCacheStub) IncrUserPlatformQuotaUsageCache(ctx context.Context, userID int64, platform string, cost float64, ttl time.Duration) error {
+func (s *billingCacheStub) IncrUserPlatformQuotaUsageCache(ctx context.Context, userID int64, platform string, cost float64, ttl time.Duration, markDirty bool) error {
 	panic("unexpected IncrUserPlatformQuotaUsageCache call")
+}
+
+func (s *billingCacheStub) PopDirtyUserPlatformQuotaKeys(ctx context.Context, n int) ([]UserPlatformQuotaKey, error) {
+	panic("unexpected PopDirtyUserPlatformQuotaKeys call")
+}
+
+func (s *billingCacheStub) ReaddDirtyUserPlatformQuotaKeys(ctx context.Context, keys []UserPlatformQuotaKey) error {
+	panic("unexpected ReaddDirtyUserPlatformQuotaKeys call")
+}
+
+func (s *billingCacheStub) BatchGetUserPlatformQuotaCache(ctx context.Context, keys []UserPlatformQuotaKey) ([]*UserPlatformQuotaCacheEntry, error) {
+	panic("unexpected BatchGetUserPlatformQuotaCache call")
 }
 
 func waitForInvalidations(t *testing.T, ch <-chan subscriptionInvalidateCall, expected int) []subscriptionInvalidateCall {
