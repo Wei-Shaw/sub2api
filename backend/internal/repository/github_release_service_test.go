@@ -5,6 +5,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,18 +24,27 @@ type GitHubReleaseServiceSuite struct {
 
 // testTransport redirects requests to the test server
 type testTransport struct {
-	testServerURL string
+	testServerURL *url.URL
 }
 
 func (t *testTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	// Rewrite the URL to point to our test server
-	testURL := t.testServerURL + req.URL.Path
-	newReq, err := http.NewRequestWithContext(req.Context(), req.Method, testURL, req.Body)
-	if err != nil {
-		return nil, err
-	}
-	newReq.Header = req.Header
+	// Rewrite the URL to point to our test server without constructing a URL
+	// from request-controlled input.
+	newReq := req.Clone(req.Context())
+	newReq.URL.Scheme = t.testServerURL.Scheme
+	newReq.URL.Host = t.testServerURL.Host
+	newReq.URL.Path = req.URL.Path
+	newReq.URL.RawPath = req.URL.RawPath
+	newReq.URL.RawQuery = req.URL.RawQuery
+	newReq.URL.Fragment = ""
 	return http.DefaultTransport.RoundTrip(newReq)
+}
+
+func newTestTransport(t *testing.T, testServerURL string) http.RoundTripper {
+	t.Helper()
+	parsedURL, err := url.Parse(testServerURL)
+	require.NoError(t, err)
+	return &testTransport{testServerURL: parsedURL}
 }
 
 func newTestGitHubReleaseClient() *githubReleaseClient {
@@ -232,7 +242,7 @@ func (s *GitHubReleaseServiceSuite) TestFetchLatestRelease_Success() {
 	// Use custom transport to redirect requests to test server
 	s.client = &githubReleaseClient{
 		httpClient: &http.Client{
-			Transport: &testTransport{testServerURL: s.srv.URL},
+			Transport: newTestTransport(s.T(), s.srv.URL),
 		},
 		downloadHTTPClient: &http.Client{},
 	}
@@ -252,7 +262,7 @@ func (s *GitHubReleaseServiceSuite) TestFetchLatestRelease_Non200() {
 
 	s.client = &githubReleaseClient{
 		httpClient: &http.Client{
-			Transport: &testTransport{testServerURL: s.srv.URL},
+			Transport: newTestTransport(s.T(), s.srv.URL),
 		},
 		downloadHTTPClient: &http.Client{},
 	}
@@ -270,7 +280,7 @@ func (s *GitHubReleaseServiceSuite) TestFetchLatestRelease_InvalidJSON() {
 
 	s.client = &githubReleaseClient{
 		httpClient: &http.Client{
-			Transport: &testTransport{testServerURL: s.srv.URL},
+			Transport: newTestTransport(s.T(), s.srv.URL),
 		},
 		downloadHTTPClient: &http.Client{},
 	}
@@ -286,7 +296,7 @@ func (s *GitHubReleaseServiceSuite) TestFetchLatestRelease_ContextCancel() {
 
 	s.client = &githubReleaseClient{
 		httpClient: &http.Client{
-			Transport: &testTransport{testServerURL: s.srv.URL},
+			Transport: newTestTransport(s.T(), s.srv.URL),
 		},
 		downloadHTTPClient: &http.Client{},
 	}

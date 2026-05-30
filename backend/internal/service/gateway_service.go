@@ -9864,29 +9864,50 @@ func reconcileCachedTokens(usage map[string]any) bool {
 
 const debugGatewayBodyDefaultFilename = "gateway_debug.log"
 
+func resolveDebugGatewayBodyPath(path string) (string, error) {
+	if parseDebugEnvBool(path) {
+		return debugGatewayBodyDefaultFilename, nil
+	}
+
+	cleanedPath := filepath.Clean(path)
+	if cleanedPath == "." || cleanedPath == string(filepath.Separator) {
+		return "", fmt.Errorf("invalid gateway debug log path: %q", path)
+	}
+	if !filepath.IsAbs(cleanedPath) && strings.HasPrefix(cleanedPath, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("gateway debug log path must not escape the working directory: %q", path)
+	}
+	return cleanedPath, nil
+}
+
 // initDebugGatewayBodyFile 初始化网关调试日志文件。
 //
 //   - "1"/"true" 等布尔值 → 当前目录下 gateway_debug.log
 //   - 已有目录路径        → 该目录下 gateway_debug.log
 //   - 其他               → 视为完整文件路径
 func (s *GatewayService) initDebugGatewayBodyFile(path string) {
-	if parseDebugEnvBool(path) {
-		path = debugGatewayBodyDefaultFilename
+	resolvedPath, err := resolveDebugGatewayBodyPath(path)
+	if err != nil {
+		slog.Error("invalid gateway debug log path", "path", path, "error", err)
+		return
 	}
+	path = resolvedPath
 
 	// 如果 path 指向一个已存在的目录，自动追加默认文件名
+	// #nosec G703 -- path comes from an administrator-only debug env var and is validated by resolveDebugGatewayBodyPath.
 	if info, err := os.Stat(path); err == nil && info.IsDir() {
 		path = filepath.Join(path, debugGatewayBodyDefaultFilename)
 	}
 
 	// 确保父目录存在
 	if dir := filepath.Dir(path); dir != "." {
+		// #nosec G703 -- debug log parent directory is derived from the validated administrator-configured path above.
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			slog.Error("failed to create gateway debug log directory", "dir", dir, "error", err)
 			return
 		}
 	}
 
+	// #nosec G703 -- debug log destination is explicitly configured by an administrator for troubleshooting.
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		slog.Error("failed to open gateway debug log file", "path", path, "error", err)
