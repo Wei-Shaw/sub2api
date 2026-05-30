@@ -1604,20 +1604,20 @@ func (a *Account) IsAnthropicAPIKeyPassthroughEnabled() bool {
 }
 
 // IsAnthropicAPIKeyPassthroughEnabledWithContext is the ctx-aware bridge that
-// prefers the resolved upstream policy when present. When ctx carries a policy
-// with ProfileApplied == Transparent, returns true regardless of the legacy
-// Extra.anthropic_passthrough field. When the policy is present with any
-// non-Transparent profile, returns false. Falls back to
-// IsAnthropicAPIKeyPassthroughEnabled when no policy is in ctx (FeatureFlag
-// OFF — preserves today's behavior).
+// preserves the legacy per-account opt-in first. A resolved Transparent policy
+// can additionally enable passthrough, but Protected/Strict defaults must not
+// disable an account that explicitly set Extra.anthropic_passthrough=true.
 func (a *Account) IsAnthropicAPIKeyPassthroughEnabledWithContext(ctx context.Context) bool {
 	if a == nil || a.Platform != PlatformAnthropic || a.Type != AccountTypeAPIKey {
 		return false
 	}
+	if a.IsAnthropicAPIKeyPassthroughEnabled() {
+		return true
+	}
 	if p, ok := GetUpstreamPolicyFromContext(ctx); ok {
 		return p.ProfileApplied == ProfileTransparent
 	}
-	return a.IsAnthropicAPIKeyPassthroughEnabled()
+	return false
 }
 
 // WebSearch 模拟三态常量

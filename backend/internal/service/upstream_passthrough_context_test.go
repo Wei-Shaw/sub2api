@@ -228,12 +228,12 @@ func TestShouldCopyClientHeader_NilWhitelistInLegacyReturnsFalse(t *testing.T) {
 // forward mode passes everything except the blacklist.
 func TestShouldCopyClientHeader_LoopPattern_LegacyVsForward(t *testing.T) {
 	clientHeaders := http.Header{
-		"User-Agent":    []string{"my-client/1.0"},   // whitelisted
-		"X-App":         []string{"app-x"},           // whitelisted
-		"X-Custom":      []string{"custom-value"},    // NOT whitelisted
-		"Cookie":        []string{"session=secret"},  // blacklisted
-		"Authorization": []string{"Bearer secret"},   // blacklisted
-		"X-Api-Key":     []string{"client-api-key"},  // blacklisted
+		"User-Agent":    []string{"my-client/1.0"},  // whitelisted
+		"X-App":         []string{"app-x"},          // whitelisted
+		"X-Custom":      []string{"custom-value"},   // NOT whitelisted
+		"Cookie":        []string{"session=secret"}, // blacklisted
+		"Authorization": []string{"Bearer secret"},  // blacklisted
+		"X-Api-Key":     []string{"client-api-key"}, // blacklisted
 	}
 	miniWhitelist := func(k string) bool {
 		return k == "user-agent" || k == "x-app"
@@ -298,7 +298,7 @@ func TestAccount_IsAnthropicAPIKeyPassthroughEnabledWithContext_PolicyTransparen
 		"Transparent profile → passthrough enabled regardless of legacy field")
 }
 
-func TestAccount_IsAnthropicAPIKeyPassthroughEnabledWithContext_PolicyProtectedReturnsFalse(t *testing.T) {
+func TestAccount_IsAnthropicAPIKeyPassthroughEnabledWithContext_LegacyTrueBeatsPolicyProtected(t *testing.T) {
 	a := &Account{
 		Platform: PlatformAnthropic,
 		Type:     AccountTypeAPIKey,
@@ -306,20 +306,20 @@ func TestAccount_IsAnthropicAPIKeyPassthroughEnabledWithContext_PolicyProtectedR
 	}
 	policy := EffectiveUpstreamPolicy{ProfileApplied: ProfileProtected}
 	ctx := SetUpstreamPolicyInContext(context.Background(), &policy)
-	require.False(t, a.IsAnthropicAPIKeyPassthroughEnabledWithContext(ctx),
-		"explicit Protected profile → DO NOT silently route to passthrough even though legacy field is true")
+	require.True(t, a.IsAnthropicAPIKeyPassthroughEnabledWithContext(ctx),
+		"legacy anthropic_passthrough=true must remain authoritative for v0.1.152 compatibility")
 }
 
-func TestAccount_IsAnthropicAPIKeyPassthroughEnabledWithContext_PolicyStrictReturnsFalse(t *testing.T) {
+func TestAccount_IsAnthropicAPIKeyPassthroughEnabledWithContext_LegacyFalsePolicyProtectedReturnsFalse(t *testing.T) {
 	a := &Account{
 		Platform: PlatformAnthropic,
 		Type:     AccountTypeAPIKey,
-		Extra:    map[string]any{"anthropic_passthrough": true},
+		Extra:    map[string]any{"anthropic_passthrough": false},
 	}
-	policy := EffectiveUpstreamPolicy{ProfileApplied: ProfileStrict}
+	policy := EffectiveUpstreamPolicy{ProfileApplied: ProfileProtected}
 	ctx := SetUpstreamPolicyInContext(context.Background(), &policy)
 	require.False(t, a.IsAnthropicAPIKeyPassthroughEnabledWithContext(ctx),
-		"explicit Strict profile → DO NOT route to passthrough")
+		"Protected profile does not enable passthrough when legacy opt-in is absent")
 }
 
 func TestAccount_IsAnthropicAPIKeyPassthroughEnabledWithContext_NonAnthropicAccountReturnsFalse(t *testing.T) {

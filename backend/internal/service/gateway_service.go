@@ -6166,7 +6166,7 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 			if err != nil {
 				return nil, err
 			}
-			targetURL = strings.TrimRight(validatedURL, "/") + "/v1/messages"
+			targetURL = strings.TrimRight(validatedURL, "/") + "/v1/messages" + upstreamBetaQuerySuffix(account)
 		} else {
 			targetURL = BuildClaudePlatformAWSMessagesURL(claudePlatformAWSRegion(account))
 		}
@@ -11167,7 +11167,7 @@ func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthrough(
 			if err != nil {
 				return nil, err
 			}
-			targetURL = strings.TrimRight(validatedURL, "/") + "/v1/messages/count_tokens"
+			targetURL = strings.TrimRight(validatedURL, "/") + "/v1/messages/count_tokens" + upstreamBetaQuerySuffix(account)
 		} else {
 			targetURL = BuildClaudePlatformAWSCountTokensURL(claudePlatformAWSRegion(account))
 		}

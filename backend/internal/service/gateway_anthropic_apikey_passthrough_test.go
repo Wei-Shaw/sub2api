@@ -384,12 +384,10 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_PolicyTransparentRoutesToPass
 		"passthrough builder must NOT inject OAuth fingerprint headers regardless of policy")
 }
 
-func TestGatewayService_AnthropicAPIKeyPassthrough_PolicyProtectedDoesNotRouteToPassthroughEvenWithLegacyField(t *testing.T) {
-	// Inverse: legacy field is true but resolved policy is Protected. The
-	// bridge must respect the explicit policy and NOT route to passthrough.
-	// We only check the routing decision (not the actual main-builder flow,
-	// which requires OAuth credentials) by inspecting the bridge method
-	// directly with a representative account+ctx setup.
+func TestGatewayService_AnthropicAPIKeyPassthrough_LegacyFieldBeatsPolicyProtected(t *testing.T) {
+	// Regression guard: v0.1.152 honored account extra.anthropic_passthrough=true.
+	// Policy defaults must not silently move such accounts onto the non-passthrough
+	// request builder.
 	account := &Account{
 		Platform: PlatformAnthropic,
 		Type:     AccountTypeAPIKey,
@@ -398,8 +396,8 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_PolicyProtectedDoesNotRouteTo
 	policy := EffectiveUpstreamPolicy{ProfileApplied: ProfileProtected}
 	ctx := SetUpstreamPolicyInContext(context.Background(), &policy)
 
-	require.False(t, account.IsAnthropicAPIKeyPassthroughEnabledWithContext(ctx),
-		"legacy anthropic_passthrough=true must be ignored when policy explicitly chose Protected")
+	require.True(t, account.IsAnthropicAPIKeyPassthroughEnabledWithContext(ctx),
+		"legacy anthropic_passthrough=true must keep routing to passthrough")
 }
 
 func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardCountTokensPreservesBody(t *testing.T) {
