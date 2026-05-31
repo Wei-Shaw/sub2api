@@ -108,3 +108,29 @@ REDACTED
 	require.Equal(t, true, got.Extra["auto_pause_5h_disabled"])
 	require.Equal(t, false, got.Extra["auto_pause_7d_disabled"])
 REDACTED
+
+func TestBuildSchedulerMetadataAccount_KeepsModelRateLimits(t *testing.T) {
+	account := service.Account{
+		ID:       90,
+		Platform: service.PlatformAntigravity,
+		Extra: map[string]any{
+			"model_rate_limits": map[string]any{
+				"gemini-3-flash": map[string]any{
+					"rate_limit_reset_at": "2026-05-30T10:10:00Z",
+			REDACTED,
+				"antigravity:gemini": map[string]any{
+					"rate_limit_reset_at": "2026-05-30T10:10:00Z",
+			REDACTED,
+		REDACTED,
+			"unused_large_field": "drop-me",
+	REDACTED,
+REDACTED
+
+	got := buildSchedulerMetadataAccount(account)
+
+	limits, ok := got.Extra["model_rate_limits"].(map[string]any)
+	require.True(t, ok)
+	require.Contains(t, limits, "gemini-3-flash")
+	require.Contains(t, limits, "antigravity:gemini")
+	require.Nil(t, got.Extra["unused_large_field"])
+REDACTED

@@ -6,6 +6,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/config"
 )
 
 type snapshotHydrationCache struct {
@@ -184,5 +186,91 @@ REDACTED
 REDACTED
 	if got := result.Account.GetCredential("api_key"); got != "anthropic-live-key" {
 		t.Fatalf("expected hydrated api key, got %q", got)
+REDACTED
+REDACTED
+
+func TestGatewaySelectAccountWithLoadAwareness_SkipsAntigravityGeminiFamilyRateLimitedSnapshot(t *testing.T) {
+	resetAt := time.Now().Add(10 * time.Minute).Format(time.RFC3339)
+	cache := &snapshotHydrationCache{
+		snapshot: []*Account{
+			{
+				ID:          1,
+				Platform:    PlatformAntigravity,
+				Type:        AccountTypeOAuth,
+				Status:      StatusActive,
+				Schedulable: true,
+				Concurrency: 1,
+				Priority:    1,
+				AccountGroups: []AccountGroup{
+					{AccountID: 1, GroupID: 22REDACTED,
+			REDACTED,
+				GroupIDs: []int64{22REDACTED,
+				Extra: map[string]any{
+					"mixed_scheduling": true,
+					modelRateLimitsKey: map[string]any{
+						antigravityGeminiModelRateLimitKey: map[string]any{
+							"rate_limit_reset_at": resetAt,
+					REDACTED,
+				REDACTED,
+			REDACTED,
+		REDACTED,
+			{
+				ID:          2,
+				Platform:    PlatformAntigravity,
+				Type:        AccountTypeOAuth,
+				Status:      StatusActive,
+				Schedulable: true,
+				Concurrency: 1,
+				Priority:    2,
+				AccountGroups: []AccountGroup{
+					{AccountID: 2, GroupID: 22REDACTED,
+			REDACTED,
+				GroupIDs: []int64{22REDACTED,
+				Extra: map[string]any{
+					"mixed_scheduling": true,
+			REDACTED,
+		REDACTED,
+	REDACTED,
+		accounts: map[int64]*Account{
+			1: {ID: 1, Platform: PlatformAntigravity, Type: AccountTypeOAuthREDACTED,
+			2: {ID: 2, Platform: PlatformAntigravity, Type: AccountTypeOAuthREDACTED,
+	REDACTED,
+REDACTED
+	groupID := int64(22)
+	svc := &GatewayService{
+		schedulerSnapshot: NewSchedulerSnapshotService(cache, nil, nil, nil, nil),
+		groupRepo: &mockGroupRepoForGateway{
+			groups: map[int64]*Group{
+				groupID: {
+					ID:       groupID,
+			REDACTED
+					Status:   StatusActive,
+					Hydrated: true,
+			REDACTED,
+		REDACTED,
+	REDACTED,
+		concurrencyService: NewConcurrencyService(&mockConcurrencyCache{REDACTED),
+		cfg: &config.Config{
+			Gateway: config.GatewayConfig{
+				Scheduling: config.GatewaySchedulingConfig{
+					LoadBatchEnabled:         true,
+					StickySessionMaxWaiting:  3,
+					StickySessionWaitTimeout: time.Second,
+					FallbackWaitTimeout:      time.Second,
+					FallbackMaxWaiting:       10,
+			REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	result, err := svc.SelectAccountWithLoadAwareness(context.Background(), &groupID, "", "gemini-3-flash-preview", nil, "", 0)
+	if err != nil {
+		t.Fatalf("SelectAccountWithLoadAwareness error: %v", err)
+REDACTED
+	if result == nil || result.Account == nil {
+		t.Fatalf("expected selected account")
+REDACTED
+	if result.Account.ID != 2 {
+		t.Fatalf("expected scheduler to skip Gemini-family limited antigravity account 1, got %d", result.Account.ID)
 REDACTED
 REDACTED

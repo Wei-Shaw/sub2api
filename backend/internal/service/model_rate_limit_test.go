@@ -122,6 +122,36 @@ REDACTED{
 			expected:       true,
 	REDACTED,
 		{
+			name: "antigravity platform - gemini family rate limit blocks mapped preview",
+			account: &Account{
+				Platform: PlatformAntigravity,
+				Extra: map[string]any{
+					modelRateLimitsKey: map[string]any{
+						antigravityGeminiModelRateLimitKey: map[string]any{
+							"rate_limit_reset_at": future,
+					REDACTED,
+				REDACTED,
+			REDACTED,
+		REDACTED,
+			requestedModel: "gemini-3-pro-preview",
+			expected:       true,
+	REDACTED,
+		{
+			name: "antigravity platform - gemini family rate limit does not block claude",
+			account: &Account{
+				Platform: PlatformAntigravity,
+				Extra: map[string]any{
+					modelRateLimitsKey: map[string]any{
+						antigravityGeminiModelRateLimitKey: map[string]any{
+							"rate_limit_reset_at": future,
+					REDACTED,
+				REDACTED,
+			REDACTED,
+		REDACTED,
+			requestedModel: "claude-sonnet-4-5",
+			expected:       false,
+	REDACTED,
+		{
 			name: "non-antigravity platform - gemini-3-pro-preview NOT mapped",
 			account: &Account{
 		REDACTED
@@ -305,6 +335,38 @@ REDACTED{
 			requestedModel: "claude-opus-4-5-thinking",
 			minExpected:    4 * time.Minute,
 			maxExpected:    6 * time.Minute,
+	REDACTED,
+		{
+			name: "antigravity platform - gemini family rate limit remaining",
+			account: &Account{
+				Platform: PlatformAntigravity,
+				Extra: map[string]any{
+					modelRateLimitsKey: map[string]any{
+						antigravityGeminiModelRateLimitKey: map[string]any{
+							"rate_limit_reset_at": future10m,
+					REDACTED,
+				REDACTED,
+			REDACTED,
+		REDACTED,
+			requestedModel: "gemini-3-pro-preview",
+			minExpected:    9 * time.Minute,
+			maxExpected:    11 * time.Minute,
+	REDACTED,
+		{
+			name: "antigravity platform - gemini family remaining ignored for claude",
+			account: &Account{
+				Platform: PlatformAntigravity,
+				Extra: map[string]any{
+					modelRateLimitsKey: map[string]any{
+						antigravityGeminiModelRateLimitKey: map[string]any{
+							"rate_limit_reset_at": future10m,
+					REDACTED,
+				REDACTED,
+			REDACTED,
+		REDACTED,
+			requestedModel: "claude-sonnet-4-5",
+			minExpected:    0,
+			maxExpected:    0,
 	REDACTED,
 REDACTED
 

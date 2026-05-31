@@ -6,7 +6,10 @@ import (
 	"time"
 )
 
-const modelRateLimitsKey = "model_rate_limits"
+const (
+	modelRateLimitsKey                 = "model_rate_limits"
+	antigravityGeminiModelRateLimitKey = "antigravity:gemini"
+)
 
 // isRateLimitActiveForKey 检查指定 key 的限流是否生效
 func (a *Account) isRateLimitActiveForKey(key string) bool {
@@ -35,6 +38,9 @@ REDACTED
 	modelKey := a.GetMappedModel(requestedModel)
 	if a.Platform == PlatformAntigravity {
 		modelKey = resolveFinalAntigravityModelKey(ctx, a, requestedModel)
+		if isAntigravityGeminiModel(modelKey) && a.isRateLimitActiveForKey(antigravityGeminiModelRateLimitKey) {
+			return true
+	REDACTED
 REDACTED
 	modelKey = strings.TrimSpace(modelKey)
 	if modelKey == "" {
@@ -62,7 +68,13 @@ REDACTED
 	if modelKey == "" {
 		return 0
 REDACTED
-	return a.getRateLimitRemainingForKey(modelKey)
+	remaining := a.getRateLimitRemainingForKey(modelKey)
+	if a.Platform == PlatformAntigravity && isAntigravityGeminiModel(modelKey) {
+		if familyRemaining := a.getRateLimitRemainingForKey(antigravityGeminiModelRateLimitKey); familyRemaining > remaining {
+			return familyRemaining
+	REDACTED
+REDACTED
+	return remaining
 REDACTED
 
 func resolveFinalAntigravityModelKey(ctx context.Context, account *Account, requestedModel string) string {
@@ -75,6 +87,22 @@ REDACTED
 		modelKey = applyThinkingModelSuffix(modelKey, enabled)
 REDACTED
 	return modelKey
+REDACTED
+
+func isAntigravityGeminiModel(model string) bool {
+	return strings.HasPrefix(normalizeAntigravityModelName(model), "gemini-")
+REDACTED
+
+func antigravityModelRateLimitKeys(model string) []string {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return nil
+REDACTED
+	keys := []string{modelREDACTED
+	if isAntigravityGeminiModel(model) && model != antigravityGeminiModelRateLimitKey {
+		keys = append(keys, antigravityGeminiModelRateLimitKey)
+REDACTED
+	return keys
 REDACTED
 
 func (a *Account) modelRateLimitResetAt(scope string) *time.Time {

@@ -8,7 +8,17 @@ import (
 
 func normalizeAntigravityModelName(model string) string {
 	normalized := strings.ToLower(strings.TrimSpace(model))
-	normalized = strings.TrimPrefix(normalized, "models/")
+	if idx := strings.LastIndex(normalized, "/publishers/google/models/"); idx != -1 {
+		normalized = normalized[idx+len("/publishers/google/models/"):]
+REDACTED else if idx := strings.LastIndex(normalized, "/publishers/anthropic/models/"); idx != -1 {
+		normalized = normalized[idx+len("/publishers/anthropic/models/"):]
+REDACTED else if idx := strings.LastIndex(normalized, "/models/"); idx != -1 {
+		normalized = normalized[idx+len("/models/"):]
+REDACTED else {
+		normalized = strings.TrimPrefix(normalized, "publishers/google/models/")
+		normalized = strings.TrimPrefix(normalized, "publishers/anthropic/models/")
+		normalized = strings.TrimPrefix(normalized, "models/")
+REDACTED
 	return normalized
 REDACTED
 
