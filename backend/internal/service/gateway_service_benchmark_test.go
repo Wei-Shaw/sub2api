@@ -124,6 +124,64 @@ func BenchmarkOpenAIResponses_LargeInputDecodeMap(b *testing.B) {
 REDACTED
 REDACTED
 
+func BenchmarkOpenAIResponses_LargeInputRawPatch(b *testing.B) {
+	for _, size := range benchmarkBodySizes() {
+		b.Run(size.name, func(b *testing.B) {
+			body := buildLargeOpenAIResponsesBody(size.bytes)
+
+			b.SetBytes(int64(len(body)))
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				view := newOpenAIRequestView(body)
+				view.MarkPatchSet("instructions", "You are a helpful coding assistant.")
+				view.MarkPatchSet("reasoning.effort", "none")
+				patched, err := view.ApplyPatches()
+				if err != nil {
+					b.Fatalf("应用 OpenAI raw patch 失败: %v", err)
+			REDACTED
+				benchmarkIntSink = len(patched)
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED
+
+func BenchmarkOpenAIResponses_LargeInputImageBillingRaw(b *testing.B) {
+	for _, size := range benchmarkBodySizes() {
+		b.Run(size.name, func(b *testing.B) {
+			body := buildLargeOpenAIResponsesImageToolBody(size.bytes)
+
+			b.SetBytes(int64(len(body)))
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				cfg, err := resolveOpenAIResponsesImageBillingConfigDetailedFromBody(body, "gpt-5.4")
+				if err != nil {
+					b.Fatalf("解析 OpenAI 图片计费配置失败: %v", err)
+			REDACTED
+				benchmarkStringSink = cfg.Model + cfg.SizeTier + cfg.InputSize
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED
+
+func BenchmarkOpenAIResponses_LargeInputEmptyBase64Guard(b *testing.B) {
+	for _, size := range benchmarkBodySizes() {
+		b.Run(size.name, func(b *testing.B) {
+			body := buildLargeOpenAIResponsesBody(size.bytes)
+
+			b.SetBytes(int64(len(body)))
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if openAIRequestBodyMayContainEmptyBase64InputImage(body) {
+					benchmarkIntSink++
+			REDACTED
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED
+
 func BenchmarkOpenAIResponses_LargeInputFunctionCallValidation(b *testing.B) {
 	for _, size := range benchmarkBodySizes() {
 		b.Run(size.name, func(b *testing.B) {
@@ -260,6 +318,23 @@ func buildLargeOpenAIResponsesToolContinuationBody(targetBytes int) []byte {
 		builder.WriteString(strings.Repeat("tool output payload ", 48))
 		builder.WriteString(strconv.Itoa(i))
 		builder.WriteString(`"REDACTED`)
+REDACTED
+	builder.WriteString(`]REDACTED`)
+	return []byte(builder.String())
+REDACTED
+
+func buildLargeOpenAIResponsesImageToolBody(targetBytes int) []byte {
+	var builder strings.Builder
+	builder.Grow(targetBytes + 1024)
+	builder.WriteString(`{"model":"gpt-5.4","stream":false,"tools":[{"type":"image_generation","model":"gpt-image-2","size":"2048x1152"REDACTED],"input":[`)
+	for i := 0; builder.Len() < targetBytes; i++ {
+		if i > 0 {
+			builder.WriteByte(',')
+	REDACTED
+		builder.WriteString(`{"type":"message","role":"user","content":[{"type":"input_text","text":"`)
+		builder.WriteString(strings.Repeat("openai image billing payload ", 48))
+		builder.WriteString(strconv.Itoa(i))
+		builder.WriteString(`"REDACTED]REDACTED`)
 REDACTED
 	builder.WriteString(`]REDACTED`)
 	return []byte(builder.String())
