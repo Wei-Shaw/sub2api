@@ -134,6 +134,7 @@ interface Props {
   pageSizeOptions?: number[]
   showPageSizeSelector?: boolean
   showJump?: boolean
+  storageKey?: string
 }
 
 interface Emits {
@@ -225,7 +226,7 @@ const goToPage = (newPage: number) => {
 const handlePageSizeChange = (value: string | number | boolean | null) => {
   if (value === null || typeof value === 'boolean') return
   const newPageSize = normalizeTablePageSize(typeof value === 'string' ? parseInt(value, 10) : value)
-  setPersistedPageSize(newPageSize)
+  setPersistedPageSize(newPageSize, props.storageKey)
   emit('update:pageSize', newPageSize)
 }
 
