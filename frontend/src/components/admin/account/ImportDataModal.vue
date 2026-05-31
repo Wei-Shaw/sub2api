@@ -161,6 +161,44 @@
           </div>
 
           <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+            <div class="mb-3 flex items-start justify-between gap-4">
+              <div>
+                <label class="input-label mb-0">{{ t('admin.accounts.modelRestriction') }}</label>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.accounts.dataImportModelRestrictionHint') }}
+                </p>
+              </div>
+              <button
+                type="button"
+                data-testid="auto-detect-models-toggle"
+                :class="[
+                  'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                  autoDetectModels ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+                ]"
+                @click="autoDetectModels = !autoDetectModels"
+              >
+                <span
+                  :class="[
+                    'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                    autoDetectModels ? 'translate-x-5' : 'translate-x-0'
+                  ]"
+                />
+              </button>
+            </div>
+            <div class="mb-3 rounded-lg bg-gray-50 p-3 text-xs text-gray-600 dark:bg-dark-800 dark:text-dark-300">
+              {{ autoDetectModels ? t('admin.accounts.dataImportAutoDetectModelsOnHint') : t('admin.accounts.dataImportAutoDetectModelsOffHint') }}
+            </div>
+            <ModelWhitelistSelector
+              v-model="allowedModels"
+              :platforms="importPlatforms"
+            />
+            <p class="text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
+              <span v-if="allowedModels.length === 0">{{ t('admin.accounts.supportsAllModels') }}</span>
+            </p>
+          </div>
+
+          <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
             <div class="flex items-center justify-between">
               <div>
                 <label class="input-label mb-0">{{ t('admin.accounts.interceptWarmupRequests') }}</label>
@@ -334,6 +372,9 @@
       <div class="text-sm text-gray-700 dark:text-dark-300">
         {{ t('admin.accounts.dataImportResultSummary', result) }}
       </div>
+      <div v-if="hasModelSyncResult" class="text-sm text-gray-700 dark:text-dark-300">
+        {{ t('admin.accounts.dataImportModelSyncResult', modelSyncResultParams) }}
+      </div>
       <div v-if="errorItems.length" class="mt-2">
         <div class="text-sm font-medium text-red-600 dark:text-red-400">
           {{ t('admin.accounts.dataImportErrors') }}
@@ -357,6 +398,7 @@
           v-if="!result"
           class="btn btn-primary"
           type="button"
+          data-testid="confirm-import"
           :disabled="!canProceed || importing"
           @click="handleImport"
         >
@@ -385,15 +427,17 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
+import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { adminAPI } from '@/api/admin'
 import { useAppStore } from '@/stores/app'
 import { applyInterceptWarmup } from '@/components/account/credentialsBuilder'
+import { buildModelMappingObject } from '@/composables/useModelWhitelist'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 import type {
   AdminDataImportRequest,
   AdminDataImportResult,
-  AdminDataPayload,
+  AdminDataImportPayload,
   AdminGroup,
   Proxy as AccountProxy
 } from '@/types'
@@ -429,6 +473,7 @@ const appStore = useAppStore()
 
 const importing = ref(false)
 const file = ref<File | null>(null)
+const filePayload = ref<AdminDataImportPayload | null>(null)
 const result = ref<AdminDataImportResult | null>(null)
 const selectedBatchId = ref<number | null>(null)
 const proxyId = ref<number | null>(null)
@@ -440,6 +485,8 @@ const rateMultiplier = ref(1)
 const expiresAt = ref<number | null>(null)
 const autoPauseOnExpired = ref(true)
 const schedulable = ref(true)
+const autoDetectModels = ref(false)
+const allowedModels = ref<string[]>([])
 const interceptWarmupRequests = ref(false)
 const tempUnschedEnabled = ref(false)
 const tempUnschedRules = ref<TempUnschedRuleForm[]>([])
@@ -449,10 +496,29 @@ const pendingImportPayload = ref<AdminDataImportRequest | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 const fileName = computed(() => file.value?.name || '')
 const errorItems = computed(() => result.value?.errors || [])
+const modelSyncResultParams = computed(() => ({
+  model_sync_succeeded: result.value?.model_sync_succeeded || 0,
+  model_sync_failed: result.value?.model_sync_failed || 0
+}))
+const hasModelSyncResult = computed(
+  () => modelSyncResultParams.value.model_sync_succeeded > 0 || modelSyncResultParams.value.model_sync_failed > 0
+)
 const batches = computed(() => props.batches || [])
 const groups = computed(() => props.groups || [])
 const proxies = computed(() => props.proxies || [])
 const getTempUnschedRuleKey = createStableObjectKeyResolver<TempUnschedRuleForm>('import-temp-unsched-rule')
+
+const importPlatforms = computed(() => {
+  const platforms = new Set<string>()
+  const accounts = Array.isArray(filePayload.value?.accounts) ? filePayload.value.accounts : []
+  for (const account of accounts) {
+    const platform = String(account.platform || '').trim()
+    if (platform) {
+      platforms.add(platform)
+    }
+  }
+  return Array.from(platforms)
+})
 
 const canProceed = computed(() => Boolean(file.value && selectedBatchId.value && !importing.value))
 
@@ -510,6 +576,7 @@ watch(
 
 const resetState = () => {
   file.value = null
+  filePayload.value = null
   result.value = null
   selectedBatchId.value = null
   proxyId.value = null
@@ -521,6 +588,8 @@ const resetState = () => {
   expiresAt.value = null
   autoPauseOnExpired.value = true
   schedulable.value = true
+  autoDetectModels.value = false
+  allowedModels.value = []
   interceptWarmupRequests.value = false
   tempUnschedEnabled.value = false
   tempUnschedRules.value = []
@@ -536,9 +605,18 @@ const openFilePicker = () => {
   fileInput.value?.click()
 }
 
-const handleFileChange = (event: Event) => {
+const handleFileChange = async (event: Event) => {
   const target = event.target as HTMLInputElement
   file.value = target.files?.[0] || null
+  filePayload.value = null
+  if (!file.value) return
+
+  try {
+    const text = await readFileAsText(file.value)
+    filePayload.value = JSON.parse(text) as AdminDataImportPayload
+  } catch {
+    filePayload.value = null
+  }
 }
 
 const handleClose = () => {
@@ -601,6 +679,11 @@ const buildCredentialExtras = (): Record<string, unknown> | undefined => {
   const credentials: Record<string, unknown> = {}
   applyInterceptWarmup(credentials, interceptWarmupRequests.value, 'create')
 
+  const modelMapping = buildModelMappingObject('whitelist', allowedModels.value, [])
+  if (modelMapping) {
+    credentials.model_mapping = modelMapping
+  }
+
   if (tempUnschedEnabled.value) {
     const rules = buildTempUnschedRules(tempUnschedRules.value)
     if (rules.length === 0) {
@@ -649,7 +732,8 @@ const buildImportPayload = async (): Promise<AdminDataImportRequest | null> => {
   }
 
   const text = await readFileAsText(file.value)
-  const dataPayload = JSON.parse(text) as AdminDataPayload
+  const dataPayload = JSON.parse(text) as AdminDataImportPayload
+  filePayload.value = dataPayload
 
   return {
     data: dataPayload,
@@ -664,7 +748,8 @@ const buildImportPayload = async (): Promise<AdminDataImportRequest | null> => {
     expires_at: expiresAt.value,
     auto_pause_on_expired: autoPauseOnExpired.value,
     schedulable: schedulable.value,
-    credential_extras: credentialExtras
+    credential_extras: credentialExtras,
+    auto_detect_models: autoDetectModels.value
   }
 }
 
@@ -679,9 +764,11 @@ const submitImportPayload = async (payload: AdminDataImportRequest) => {
       account_failed: res.account_failed,
       proxy_created: res.proxy_created,
       proxy_reused: res.proxy_reused,
-      proxy_failed: res.proxy_failed
+      proxy_failed: res.proxy_failed,
+      model_sync_succeeded: res.model_sync_succeeded || 0,
+      model_sync_failed: res.model_sync_failed || 0
     }
-    if (res.account_failed > 0 || res.proxy_failed > 0) {
+    if (res.account_failed > 0 || res.proxy_failed > 0 || (res.model_sync_failed || 0) > 0) {
       appStore.showError(t('admin.accounts.dataImportCompletedWithErrors', msgParams))
     } else {
       appStore.showSuccess(t('admin.accounts.dataImportSuccess', msgParams))

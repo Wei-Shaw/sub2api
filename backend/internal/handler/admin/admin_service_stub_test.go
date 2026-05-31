@@ -20,6 +20,8 @@ type stubAdminService struct {
 	boundAuthIdentity    *service.AdminBindAuthIdentityInput
 	boundAuthIdentityFor int64
 	createdAccounts      []*service.CreateAccountInput
+	updatedAccountIDs    []int64
+	updatedAccounts      []*service.UpdateAccountInput
 	createdProxies       []*service.CreateProxyInput
 	updatedProxyIDs      []int64
 	updatedProxies       []*service.UpdateProxyInput
@@ -313,6 +315,37 @@ func (s *stubAdminService) ListAccounts(ctx context.Context, page, pageSize int,
 }
 
 func (s *stubAdminService) GetAccount(ctx context.Context, id int64) (*service.Account, error) {
+	for i := range s.accounts {
+		if s.accounts[i].ID == id {
+			account := s.accounts[i]
+			return &account, nil
+		}
+	}
+	for i, input := range s.createdAccounts {
+		accountID := int64(300 + i)
+		if accountID != id {
+			continue
+		}
+		account := service.Account{
+			ID:          accountID,
+			Name:        input.Name,
+			Notes:       input.Notes,
+			Platform:    input.Platform,
+			Type:        input.Type,
+			Credentials: input.Credentials,
+			Extra:       input.Extra,
+			ProxyID:     input.ProxyID,
+			Concurrency: input.Concurrency,
+			Priority:    input.Priority,
+			Status:      service.StatusActive,
+			Schedulable: true,
+			BatchID:     input.BatchID,
+		}
+		if input.Schedulable != nil {
+			account.Schedulable = *input.Schedulable
+		}
+		return &account, nil
+	}
 	account := service.Account{ID: id, Name: "account", Status: service.StatusActive}
 	return &account, nil
 }
@@ -329,19 +362,40 @@ func (s *stubAdminService) GetAccountsByIDs(ctx context.Context, ids []int64) ([
 func (s *stubAdminService) CreateAccount(ctx context.Context, input *service.CreateAccountInput) (*service.Account, error) {
 	s.mu.Lock()
 	s.createdAccounts = append(s.createdAccounts, input)
+	accountID := int64(299 + len(s.createdAccounts))
 	s.mu.Unlock()
 	if s.createAccountErr != nil {
 		return nil, s.createAccountErr
 	}
-	account := service.Account{ID: 300, Name: input.Name, Status: service.StatusActive}
+	account := service.Account{
+		ID:          accountID,
+		Name:        input.Name,
+		Notes:       input.Notes,
+		Platform:    input.Platform,
+		Type:        input.Type,
+		Credentials: input.Credentials,
+		Extra:       input.Extra,
+		ProxyID:     input.ProxyID,
+		Concurrency: input.Concurrency,
+		Priority:    input.Priority,
+		Status:      service.StatusActive,
+		Schedulable: true,
+		BatchID:     input.BatchID,
+	}
+	if input.Schedulable != nil {
+		account.Schedulable = *input.Schedulable
+	}
 	return &account, nil
 }
 
 func (s *stubAdminService) UpdateAccount(ctx context.Context, id int64, input *service.UpdateAccountInput) (*service.Account, error) {
+	s.updatedAccountIDs = append(s.updatedAccountIDs, id)
+	s.updatedAccounts = append(s.updatedAccounts, input)
 	if s.updateAccountErr != nil {
 		return nil, s.updateAccountErr
 	}
 	account := service.Account{ID: id, Name: input.Name, Status: service.StatusActive}
+	account.Credentials = input.Credentials
 	return &account, nil
 }
 

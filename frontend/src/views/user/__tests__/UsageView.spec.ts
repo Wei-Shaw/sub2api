@@ -30,12 +30,17 @@ const messages: Record<string, string> = {
   'usage.rate': 'Rate',
   'usage.original': 'Original',
   'usage.billed': 'Billed',
+  'usage.totalTokens': 'Total Tokens',
   'usage.allApiKeys': 'All API Keys',
   'usage.apiKeyFilter': 'API Key',
   'usage.model': 'Model',
   'usage.reasoningEffort': 'Reasoning Effort',
   'usage.type': 'Type',
   'usage.tokens': 'Tokens',
+  'admin.usage.inputTokens': 'Input Tokens',
+  'admin.usage.outputTokens': 'Output Tokens',
+  'admin.usage.cacheCreationTokens': 'Cache Creation Tokens',
+  'admin.usage.cacheReadTokens': 'Cache Read Tokens',
   'usage.cost': 'Cost',
   'usage.firstToken': 'First Token',
   'usage.duration': 'Duration',
@@ -130,6 +135,59 @@ describe('user UsageView tooltip', () => {
       observe() {}
       disconnect() {}
     }
+  })
+
+  it('uses backend total_tokens for token tooltip totals', async () => {
+    query.mockResolvedValue({
+      items: [],
+      total: 0,
+      pages: 0,
+    })
+    getStatsByDateRange.mockResolvedValue({
+      total_requests: 0,
+      total_tokens: 0,
+      total_cost: 0,
+      avg_duration_ms: 0,
+    })
+    list.mockResolvedValue({ items: [] })
+
+    const wrapper = mount(UsageView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          TablePageLayout: TablePageLayoutStub,
+          Pagination: true,
+          EmptyState: true,
+          Select: true,
+          DateRangePicker: true,
+          DataTable: DataTableStub,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    const setupState = (wrapper.vm as any).$?.setupState
+    setupState.tokenTooltipData = {
+      request_id: 'req-cache-total-user',
+      input_tokens: 43,
+      output_tokens: 1,
+      cache_creation_tokens: 0,
+      cache_read_tokens: 192,
+      cache_creation_5m_tokens: 0,
+      cache_creation_1h_tokens: 0,
+      cache_ttl_overridden: false,
+      total_tokens: 236,
+    }
+    setupState.tokenTooltipVisible = true
+    await nextTick()
+
+    const text = wrapper.text()
+    expect(text).toContain('Total Tokens')
+    expect(text).toContain('236')
+    expect(text).not.toContain('428')
   })
 
   it('shows fast service tier and unit prices in user tooltip', async () => {

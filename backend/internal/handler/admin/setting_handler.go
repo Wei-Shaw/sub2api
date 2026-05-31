@@ -56,13 +56,14 @@ func firstNonEmpty(values ...string) string {
 
 // SettingHandler 系统设置处理器
 type SettingHandler struct {
-	settingService       *service.SettingService
-	emailService         *service.EmailService
-	turnstileService     *service.TurnstileService
-	opsService           *service.OpsService
-	paymentConfigService *service.PaymentConfigService
-	paymentService       *service.PaymentService
-	userAttributeService *service.UserAttributeService
+	settingService           *service.SettingService
+	emailService             *service.EmailService
+	turnstileService         *service.TurnstileService
+	opsService               *service.OpsService
+	paymentConfigService     *service.PaymentConfigService
+	paymentService           *service.PaymentService
+	userAttributeService     *service.UserAttributeService
+	notificationEmailService *service.NotificationEmailService
 }
 
 // NewSettingHandler 创建系统设置处理器
@@ -76,6 +77,12 @@ func NewSettingHandler(settingService *service.SettingService, emailService *ser
 		paymentService:       paymentService,
 		userAttributeService: userAttributeService,
 	}
+}
+
+// SetNotificationEmailService attaches the notification template service without changing
+// the constructor signature used by existing unit tests.
+func (h *SettingHandler) SetNotificationEmailService(notificationEmailService *service.NotificationEmailService) {
+	h.notificationEmailService = notificationEmailService
 }
 
 // GetSettings 获取所有系统设置
@@ -247,6 +254,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		EnableAnthropicCacheTTL1hInjection:     settings.EnableAnthropicCacheTTL1hInjection,
 		RewriteMessageCacheControl:             settings.RewriteMessageCacheControl,
 		AntigravityUserAgentVersion:            settings.AntigravityUserAgentVersion,
+		OpenAICodexUserAgent:                   settings.OpenAICodexUserAgent,
 		WebSearchEmulationEnabled:              settings.WebSearchEmulationEnabled,
 		PaymentVisibleMethodAlipaySource:       settings.PaymentVisibleMethodAlipaySource,
 		PaymentVisibleMethodWxpaySource:        settings.PaymentVisibleMethodWxpaySource,
@@ -278,6 +286,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		PaymentCancelRateLimitWindow:           paymentCfg.CancelRateLimitWindow,
 		PaymentCancelRateLimitUnit:             paymentCfg.CancelRateLimitUnit,
 		PaymentCancelRateLimitMode:             paymentCfg.CancelRateLimitMode,
+		PaymentAlipayForceQRCode:               paymentCfg.AlipayForceQRCode,
 
 		ChannelMonitorEnabled:                settings.ChannelMonitorEnabled,
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
@@ -562,6 +571,7 @@ type UpdateSettingsRequest struct {
 	EnableAnthropicCacheTTL1hInjection *bool   `json:"enable_anthropic_cache_ttl_1h_injection"`
 	RewriteMessageCacheControl         *bool   `json:"rewrite_message_cache_control"`
 	AntigravityUserAgentVersion        *string `json:"antigravity_user_agent_version"`
+	OpenAICodexUserAgent               *string `json:"openai_codex_user_agent"`
 
 	// Payment visible method routing
 	PaymentVisibleMethodAlipaySource  *string `json:"payment_visible_method_alipay_source"`
@@ -602,6 +612,9 @@ type UpdateSettingsRequest struct {
 	PaymentCancelRateLimitWindow  *int    `json:"payment_cancel_rate_limit_window"`
 	PaymentCancelRateLimitUnit    *string `json:"payment_cancel_rate_limit_unit"`
 	PaymentCancelRateLimitMode    *string `json:"payment_cancel_rate_limit_window_mode"`
+
+	// Force Alipay mobile clients to use QR code payment instead of mobile redirect
+	PaymentAlipayForceQRCode *bool `json:"payment_alipay_force_qrcode"`
 
 	// Channel Monitor feature switch
 	ChannelMonitorEnabled                *bool `json:"channel_monitor_enabled"`
@@ -1400,6 +1413,15 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			return
 		}
 	}
+	if req.OpenAICodexUserAgent != nil {
+		normalized := strings.TrimSpace(*req.OpenAICodexUserAgent)
+		req.OpenAICodexUserAgent = &normalized
+		// 仅做长度上限保护，不限制具体格式（运维需要可自由调整 codex 版本号）
+		if len(normalized) > 512 {
+			response.Error(c, http.StatusBadRequest, "openai_codex_user_agent must be at most 512 characters")
+			return
+		}
+	}
 
 	// 交叉验证：如果同时设置了最低和最高版本号，最高版本号必须 >= 最低版本号
 	if req.MinClaudeCodeVersion != "" && req.MaxClaudeCodeVersion != "" {
@@ -1593,6 +1615,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.AntigravityUserAgentVersion
 		}(),
+		OpenAICodexUserAgent: func() string {
+			if req.OpenAICodexUserAgent != nil {
+				return *req.OpenAICodexUserAgent
+			}
+			return previousSettings.OpenAICodexUserAgent
+		}(),
 		PaymentVisibleMethodAlipaySource: func() string {
 			if req.PaymentVisibleMethodAlipaySource != nil {
 				return strings.TrimSpace(*req.PaymentVisibleMethodAlipaySource)
@@ -1774,6 +1802,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			CancelRateLimitWindow:     req.PaymentCancelRateLimitWindow,
 			CancelRateLimitUnit:       req.PaymentCancelRateLimitUnit,
 			CancelRateLimitMode:       req.PaymentCancelRateLimitMode,
+			AlipayForceQRCode:         req.PaymentAlipayForceQRCode,
 		}
 		if err := h.paymentConfigService.UpdatePaymentConfig(c.Request.Context(), paymentReq); err != nil {
 			response.ErrorFrom(c, err)
@@ -1951,6 +1980,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		EnableAnthropicCacheTTL1hInjection:     updatedSettings.EnableAnthropicCacheTTL1hInjection,
 		RewriteMessageCacheControl:             updatedSettings.RewriteMessageCacheControl,
 		AntigravityUserAgentVersion:            updatedSettings.AntigravityUserAgentVersion,
+		OpenAICodexUserAgent:                   updatedSettings.OpenAICodexUserAgent,
 		PaymentVisibleMethodAlipaySource:       updatedSettings.PaymentVisibleMethodAlipaySource,
 		PaymentVisibleMethodWxpaySource:        updatedSettings.PaymentVisibleMethodWxpaySource,
 		PaymentVisibleMethodAlipayEnabled:      updatedSettings.PaymentVisibleMethodAlipayEnabled,
@@ -1981,6 +2011,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PaymentCancelRateLimitWindow:           updatedPaymentCfg.CancelRateLimitWindow,
 		PaymentCancelRateLimitUnit:             updatedPaymentCfg.CancelRateLimitUnit,
 		PaymentCancelRateLimitMode:             updatedPaymentCfg.CancelRateLimitMode,
+		PaymentAlipayForceQRCode:               updatedPaymentCfg.AlipayForceQRCode,
 
 		ChannelMonitorEnabled:                updatedSettings.ChannelMonitorEnabled,
 		ChannelMonitorDefaultIntervalSeconds: updatedSettings.ChannelMonitorDefaultIntervalSeconds,
@@ -2022,7 +2053,8 @@ func hasPaymentFields(req UpdateSettingsRequest) bool {
 		req.PaymentProductNameSuffix != nil || req.PaymentHelpImageURL != nil ||
 		req.PaymentHelpText != nil || req.PaymentCancelRateLimitEnabled != nil ||
 		req.PaymentCancelRateLimitMax != nil || req.PaymentCancelRateLimitWindow != nil ||
-		req.PaymentCancelRateLimitUnit != nil || req.PaymentCancelRateLimitMode != nil
+		req.PaymentCancelRateLimitUnit != nil || req.PaymentCancelRateLimitMode != nil ||
+		req.PaymentAlipayForceQRCode != nil
 }
 
 func (h *SettingHandler) auditSettingsUpdate(c *gin.Context, before *service.SystemSettings, after *service.SystemSettings, beforeAuthSourceDefaults *service.AuthSourceDefaultSettings, afterAuthSourceDefaults *service.AuthSourceDefaultSettings, req UpdateSettingsRequest) {
@@ -2403,6 +2435,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.AntigravityUserAgentVersion != after.AntigravityUserAgentVersion {
 		changed = append(changed, "antigravity_user_agent_version")
+	}
+	if before.OpenAICodexUserAgent != after.OpenAICodexUserAgent {
+		changed = append(changed, "openai_codex_user_agent")
 	}
 	if before.PaymentVisibleMethodAlipaySource != after.PaymentVisibleMethodAlipaySource {
 		changed = append(changed, "payment_visible_method_alipay_source")
@@ -3331,4 +3366,161 @@ func (h *SettingHandler) ensureUserAttributeDefinition(ctx context.Context, key,
 		return
 	}
 	slog.Info("dingtalk: created user attribute definition", "key", key, "name", name, "type", attrType)
+}
+
+// ListEmailTemplates returns all editable notification email templates.
+// GET /api/v1/admin/settings/email-templates
+func (h *SettingHandler) ListEmailTemplates(c *gin.Context) {
+	if h.notificationEmailService == nil {
+		response.InternalError(c, "notification email service is not configured")
+		return
+	}
+	events := h.notificationEmailService.ListEventInfos()
+	templates, err := h.notificationEmailService.ListTemplates(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, dto.EmailTemplateListResponse{
+		Events:       emailTemplateEventOptionsToDTO(events),
+		Locales:      h.notificationEmailService.SupportedLocales(),
+		Templates:    emailTemplateSummariesToDTO(templates),
+		Placeholders: emailTemplatePlaceholderUnion(events),
+	})
+}
+
+// GetEmailTemplate returns one editable notification email template.
+// GET /api/v1/admin/settings/email-templates/:event/:locale
+func (h *SettingHandler) GetEmailTemplate(c *gin.Context) {
+	if h.notificationEmailService == nil {
+		response.InternalError(c, "notification email service is not configured")
+		return
+	}
+	tmpl, err := h.notificationEmailService.GetTemplate(c.Request.Context(), c.Param("event"), c.Param("locale"))
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	response.Success(c, emailTemplateDetailToDTO(tmpl))
+}
+
+// UpdateEmailTemplate saves an override for one event/locale template.
+// PUT /api/v1/admin/settings/email-templates/:event/:locale
+func (h *SettingHandler) UpdateEmailTemplate(c *gin.Context) {
+	if h.notificationEmailService == nil {
+		response.InternalError(c, "notification email service is not configured")
+		return
+	}
+	var req dto.UpdateEmailTemplateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	tmpl, err := h.notificationEmailService.UpdateTemplate(c.Request.Context(), c.Param("event"), c.Param("locale"), req.Subject, req.HTML)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	response.Success(c, emailTemplateDetailToDTO(tmpl))
+}
+
+// RestoreOfficialEmailTemplate removes an override and returns the built-in template.
+// POST /api/v1/admin/settings/email-templates/:event/:locale/restore-official
+func (h *SettingHandler) RestoreOfficialEmailTemplate(c *gin.Context) {
+	if h.notificationEmailService == nil {
+		response.InternalError(c, "notification email service is not configured")
+		return
+	}
+	tmpl, err := h.notificationEmailService.RestoreOfficialTemplate(c.Request.Context(), c.Param("event"), c.Param("locale"))
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	response.Success(c, emailTemplateDetailToDTO(tmpl))
+}
+
+// PreviewEmailTemplate renders a template with safe sample variables without saving it.
+// POST /api/v1/admin/settings/email-templates/preview
+func (h *SettingHandler) PreviewEmailTemplate(c *gin.Context) {
+	if h.notificationEmailService == nil {
+		response.InternalError(c, "notification email service is not configured")
+		return
+	}
+	var req dto.PreviewEmailTemplateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	preview, err := h.notificationEmailService.PreviewTemplate(c.Request.Context(), service.NotificationEmailPreviewInput{
+		Event:     req.Event,
+		Locale:    req.Locale,
+		Subject:   req.Subject,
+		HTML:      req.HTML,
+		Variables: req.Variables,
+	})
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	response.Success(c, dto.EmailTemplatePreviewResponse{Subject: preview.Subject, HTML: preview.HTML})
+}
+
+func emailTemplateEventOptionsToDTO(events []service.NotificationEmailEventInfo) []dto.EmailTemplateEventOption {
+	items := make([]dto.EmailTemplateEventOption, 0, len(events))
+	for _, event := range events {
+		items = append(items, dto.EmailTemplateEventOption{
+			Value:       event.Event,
+			Label:       event.Label,
+			Description: event.Description,
+		})
+	}
+	return items
+}
+
+func emailTemplateSummariesToDTO(templates []service.NotificationEmailTemplate) []dto.EmailTemplateSummary {
+	items := make([]dto.EmailTemplateSummary, 0, len(templates))
+	for _, tmpl := range templates {
+		items = append(items, dto.EmailTemplateSummary{
+			Event:     tmpl.Event,
+			Locale:    tmpl.Locale,
+			Subject:   tmpl.Subject,
+			IsCustom:  tmpl.IsCustom,
+			UpdatedAt: emailTemplateUpdatedAt(tmpl),
+		})
+	}
+	return items
+}
+
+func emailTemplateDetailToDTO(tmpl service.NotificationEmailTemplate) dto.EmailTemplateDetail {
+	return dto.EmailTemplateDetail{
+		Event:        tmpl.Event,
+		Locale:       tmpl.Locale,
+		Subject:      tmpl.Subject,
+		HTML:         tmpl.HTML,
+		IsCustom:     tmpl.IsCustom,
+		UpdatedAt:    emailTemplateUpdatedAt(tmpl),
+		Placeholders: tmpl.Placeholders,
+	}
+}
+
+func emailTemplateUpdatedAt(tmpl service.NotificationEmailTemplate) string {
+	if tmpl.UpdatedAt == nil {
+		return ""
+	}
+	return tmpl.UpdatedAt.Format("2006-01-02T15:04:05Z07:00")
+}
+
+func emailTemplatePlaceholderUnion(events []service.NotificationEmailEventInfo) []string {
+	seen := make(map[string]struct{})
+	placeholders := make([]string, 0)
+	for _, event := range events {
+		for _, placeholder := range event.Placeholders {
+			if _, ok := seen[placeholder]; ok {
+				continue
+			}
+			seen[placeholder] = struct{}{}
+			placeholders = append(placeholders, placeholder)
+		}
+	}
+	return placeholders
 }

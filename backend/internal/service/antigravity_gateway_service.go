@@ -628,11 +628,6 @@ urlFallbackLoop:
 				return nil, err
 			}
 
-			// Capture upstream request body for ops retry of this attempt.
-			if p.c != nil && len(p.body) > 0 {
-				p.c.Set(OpsUpstreamRequestBodyKey, string(p.body))
-			}
-
 			resp, err = p.httpUpstream.Do(upstreamReq, p.proxyURL, p.account.ID, p.account.Concurrency)
 			if err == nil && resp == nil {
 				err = errors.New("upstream returned nil response")
@@ -4475,8 +4470,18 @@ func (s *AntigravityGatewayService) extractSSEUsage(line string, usage *ClaudeUs
 	if json.Unmarshal([]byte(dataStr), &event) != nil {
 		return
 	}
-	u, ok := event["usage"].(map[string]any)
-	if !ok {
+
+	if patch := (*GatewayService)(nil).extractSSEUsagePatch(event); patch != nil {
+		mergeSSEUsagePatch(usage, patch)
+	}
+
+	u, _ := event["usage"].(map[string]any)
+	if len(u) == 0 {
+		if msg, ok := event["message"].(map[string]any); ok {
+			u, _ = msg["usage"].(map[string]any)
+		}
+	}
+	if len(u) == 0 {
 		return
 	}
 	if v, ok := u["input_tokens"].(float64); ok && int(v) > 0 {
@@ -4487,6 +4492,11 @@ func (s *AntigravityGatewayService) extractSSEUsage(line string, usage *ClaudeUs
 	}
 	if v, ok := u["cache_read_input_tokens"].(float64); ok && int(v) > 0 {
 		usage.CacheReadInputTokens = int(v)
+	}
+	if usage.CacheReadInputTokens == 0 {
+		if v, ok := u["cached_tokens"].(float64); ok && int(v) > 0 {
+			usage.CacheReadInputTokens = int(v)
+		}
 	}
 	if v, ok := u["cache_creation_input_tokens"].(float64); ok && int(v) > 0 {
 		usage.CacheCreationInputTokens = int(v)

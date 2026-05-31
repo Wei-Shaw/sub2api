@@ -1079,6 +1079,8 @@ export interface AdminDataPayload {
   accounts: AdminDataAccount[]
 }
 
+export type AdminDataImportPayload = AdminDataPayload | Record<string, unknown>
+
 export interface AdminDataProxy {
   proxy_key: string
   name: string
@@ -1107,7 +1109,7 @@ export interface AdminDataAccount {
 }
 
 export interface AdminDataImportError {
-  kind: 'proxy' | 'account'
+  kind: 'proxy' | 'account' | 'model_sync'
   name?: string
   proxy_key?: string
   message: string
@@ -1119,11 +1121,13 @@ export interface AdminDataImportResult {
   proxy_failed: number
   account_created: number
   account_failed: number
+  model_sync_succeeded?: number
+  model_sync_failed?: number
   errors?: AdminDataImportError[]
 }
 
 export interface AdminDataImportRequest {
-  data: AdminDataPayload
+  data: AdminDataImportPayload
   skip_default_group_bind?: boolean
   batch_id?: number | null
   group_ids?: number[]
@@ -1137,6 +1141,7 @@ export interface AdminDataImportRequest {
   schedulable?: boolean
   credential_extras?: Record<string, unknown>
   extra?: Record<string, unknown>
+  auto_detect_models?: boolean
   confirm_mixed_channel_risk?: boolean
 }
 
@@ -1213,6 +1218,7 @@ export interface UsageLog {
   output_tokens: number
   cache_creation_tokens: number
   cache_read_tokens: number
+  total_tokens?: number
   cache_creation_5m_tokens: number
   cache_creation_1h_tokens: number
 

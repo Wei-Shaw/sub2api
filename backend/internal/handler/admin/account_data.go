@@ -2,8 +2,10 @@ package admin
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -23,6 +25,9 @@ const (
 	legacyDataType = "sub2api-bundle"
 	dataVersion    = 1
 	dataPageCap    = 1000
+
+	cockpitAccountTransferSchema = "cockpit-tools.account-transfer"
+	cockpitDataTransferSchema    = "cockpit-tools.data-transfer"
 )
 
 type DataPayload struct {
@@ -31,6 +36,25 @@ type DataPayload struct {
 	ExportedAt string        `json:"exported_at"`
 	Proxies    []DataProxy   `json:"proxies"`
 	Accounts   []DataAccount `json:"accounts"`
+}
+
+type dataImportRequestWire struct {
+	Data                    json.RawMessage `json:"data"`
+	SkipDefaultGroupBind    *bool           `json:"skip_default_group_bind"`
+	BatchID                 *int64          `json:"batch_id"`
+	GroupIDs                []int64         `json:"group_ids"`
+	ProxyID                 *int64          `json:"proxy_id"`
+	Concurrency             *int            `json:"concurrency"`
+	Priority                *int            `json:"priority"`
+	RateMultiplier          *float64        `json:"rate_multiplier"`
+	LoadFactor              *int            `json:"load_factor"`
+	ExpiresAt               *int64          `json:"expires_at"`
+	AutoPauseOnExpired      *bool           `json:"auto_pause_on_expired"`
+	Schedulable             *bool           `json:"schedulable"`
+	CredentialExtras        map[string]any  `json:"credential_extras"`
+	Extra                   map[string]any  `json:"extra"`
+	AutoDetectModels        *bool           `json:"auto_detect_models"`
+	ConfirmMixedChannelRisk *bool           `json:"confirm_mixed_channel_risk"`
 }
 
 type DataProxy struct {
@@ -64,30 +88,35 @@ type DataAccount struct {
 }
 
 type DataImportRequest struct {
-	Data                    DataPayload    `json:"data"`
-	SkipDefaultGroupBind    *bool          `json:"skip_default_group_bind"`
-	BatchID                 *int64         `json:"batch_id"`
-	GroupIDs                []int64        `json:"group_ids"`
-	ProxyID                 *int64         `json:"proxy_id"`
-	Concurrency             *int           `json:"concurrency"`
-	Priority                *int           `json:"priority"`
-	RateMultiplier          *float64       `json:"rate_multiplier"`
-	LoadFactor              *int           `json:"load_factor"`
-	ExpiresAt               *int64         `json:"expires_at"`
-	AutoPauseOnExpired      *bool          `json:"auto_pause_on_expired"`
-	Schedulable             *bool          `json:"schedulable"`
-	CredentialExtras        map[string]any `json:"credential_extras"`
-	Extra                   map[string]any `json:"extra"`
-	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"`
+	Data                    DataPayload       `json:"data"`
+	SkipDefaultGroupBind    *bool             `json:"skip_default_group_bind"`
+	BatchID                 *int64            `json:"batch_id"`
+	GroupIDs                []int64           `json:"group_ids"`
+	ProxyID                 *int64            `json:"proxy_id"`
+	Concurrency             *int              `json:"concurrency"`
+	Priority                *int              `json:"priority"`
+	RateMultiplier          *float64          `json:"rate_multiplier"`
+	LoadFactor              *int              `json:"load_factor"`
+	ExpiresAt               *int64            `json:"expires_at"`
+	AutoPauseOnExpired      *bool             `json:"auto_pause_on_expired"`
+	Schedulable             *bool             `json:"schedulable"`
+	CredentialExtras        map[string]any    `json:"credential_extras"`
+	Extra                   map[string]any    `json:"extra"`
+	AutoDetectModels        *bool             `json:"auto_detect_models"`
+	ConfirmMixedChannelRisk *bool             `json:"confirm_mixed_channel_risk"`
+	ConversionAccountFailed int               `json:"-"`
+	ConversionErrors        []DataImportError `json:"-"`
 }
 
 type DataImportResult struct {
-	ProxyCreated   int               `json:"proxy_created"`
-	ProxyReused    int               `json:"proxy_reused"`
-	ProxyFailed    int               `json:"proxy_failed"`
-	AccountCreated int               `json:"account_created"`
-	AccountFailed  int               `json:"account_failed"`
-	Errors         []DataImportError `json:"errors,omitempty"`
+	ProxyCreated       int               `json:"proxy_created"`
+	ProxyReused        int               `json:"proxy_reused"`
+	ProxyFailed        int               `json:"proxy_failed"`
+	AccountCreated     int               `json:"account_created"`
+	AccountFailed      int               `json:"account_failed"`
+	ModelSyncSucceeded int               `json:"model_sync_succeeded,omitempty"`
+	ModelSyncFailed    int               `json:"model_sync_failed,omitempty"`
+	Errors             []DataImportError `json:"errors,omitempty"`
 }
 
 type DataImportError struct {
@@ -191,8 +220,8 @@ func (h *AccountHandler) ExportData(c *gin.Context) {
 }
 
 func (h *AccountHandler) ImportData(c *gin.Context) {
-	var req DataImportRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	req, err := decodeDataImportRequest(c)
+	if err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
@@ -230,15 +259,529 @@ func (h *AccountHandler) ImportData(c *gin.Context) {
 	response.Success(c, result.Data)
 }
 
+func decodeDataImportRequest(c *gin.Context) (DataImportRequest, error) {
+	var req DataImportRequest
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		return req, err
+	}
+
+	var wire dataImportRequestWire
+	if err := json.Unmarshal(body, &wire); err != nil {
+		return req, err
+	}
+	if len(wire.Data) == 0 || string(wire.Data) == "null" {
+		return req, errors.New("data is required")
+	}
+
+	payload, conversionErrors, err := normalizeDataImportPayload(wire.Data)
+	if err != nil {
+		return req, err
+	}
+
+	req = DataImportRequest{
+		Data:                    payload,
+		SkipDefaultGroupBind:    wire.SkipDefaultGroupBind,
+		BatchID:                 wire.BatchID,
+		GroupIDs:                wire.GroupIDs,
+		ProxyID:                 wire.ProxyID,
+		Concurrency:             wire.Concurrency,
+		Priority:                wire.Priority,
+		RateMultiplier:          wire.RateMultiplier,
+		LoadFactor:              wire.LoadFactor,
+		ExpiresAt:               wire.ExpiresAt,
+		AutoPauseOnExpired:      wire.AutoPauseOnExpired,
+		Schedulable:             wire.Schedulable,
+		CredentialExtras:        wire.CredentialExtras,
+		Extra:                   wire.Extra,
+		AutoDetectModels:        wire.AutoDetectModels,
+		ConfirmMixedChannelRisk: wire.ConfirmMixedChannelRisk,
+		ConversionAccountFailed: len(conversionErrors),
+		ConversionErrors:        conversionErrors,
+	}
+	return req, nil
+}
+
+func normalizeDataImportPayload(raw json.RawMessage) (DataPayload, []DataImportError, error) {
+	var payload DataPayload
+	var envelope struct {
+		Schema string          `json:"schema"`
+		Data   json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return payload, nil, err
+	}
+	switch envelope.Schema {
+	case cockpitAccountTransferSchema:
+		return convertCockpitAccountTransferPayload(raw)
+	case cockpitDataTransferSchema:
+		if len(envelope.Data) > 0 && string(envelope.Data) != "null" {
+			return convertCockpitAccountTransferPayload(envelope.Data)
+		}
+		var bundle struct {
+			Accounts json.RawMessage `json:"accounts"`
+		}
+		if err := json.Unmarshal(raw, &bundle); err != nil {
+			return payload, nil, err
+		}
+		if len(bundle.Accounts) == 0 || string(bundle.Accounts) == "null" {
+			return payload, nil, errors.New("cockpit-tools data-transfer bundle does not include accounts")
+		}
+		return convertCockpitAccountTransferPayload(bundle.Accounts)
+	default:
+		if err := json.Unmarshal(raw, &payload); err != nil {
+			return payload, nil, err
+		}
+		return payload, nil, nil
+	}
+}
+
+func convertCockpitAccountTransferPayload(raw json.RawMessage) (DataPayload, []DataImportError, error) {
+	var bundle struct {
+		Schema     string                            `json:"schema"`
+		Version    int                               `json:"version"`
+		ExportedAt string                            `json:"exported_at"`
+		Platforms  map[string]cockpitPlatformPayload `json:"platforms"`
+	}
+	var payload DataPayload
+	if err := json.Unmarshal(raw, &bundle); err != nil {
+		return payload, nil, err
+	}
+	if bundle.Schema != cockpitAccountTransferSchema {
+		return payload, nil, fmt.Errorf("unsupported cockpit-tools schema: %s", bundle.Schema)
+	}
+	if len(bundle.Platforms) == 0 {
+		return payload, nil, errors.New("cockpit-tools account-transfer bundle has no platforms")
+	}
+
+	payload = DataPayload{
+		Type:       dataType,
+		Version:    dataVersion,
+		ExportedAt: bundle.ExportedAt,
+		Proxies:    []DataProxy{},
+		Accounts:   []DataAccount{},
+	}
+	if payload.ExportedAt == "" {
+		payload.ExportedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+
+	var conversionErrors []DataImportError
+	for platform, section := range bundle.Platforms {
+		accounts, errs := convertCockpitPlatformAccounts(platform, section.ExportedData)
+		payload.Accounts = append(payload.Accounts, accounts...)
+		conversionErrors = append(conversionErrors, errs...)
+	}
+	return payload, conversionErrors, nil
+}
+
+type cockpitPlatformPayload struct {
+	AccountCount int             `json:"account_count"`
+	ExportedData json.RawMessage `json:"exported_data"`
+	Data         json.RawMessage `json:"data"`
+	Accounts     json.RawMessage `json:"accounts"`
+}
+
+func (p *cockpitPlatformPayload) UnmarshalJSON(data []byte) error {
+	type alias cockpitPlatformPayload
+	var wrapped alias
+	if err := json.Unmarshal(data, &wrapped); err == nil && (wrapped.ExportedData != nil || wrapped.Data != nil || wrapped.Accounts != nil || wrapped.AccountCount > 0) {
+		if len(wrapped.ExportedData) == 0 {
+			if len(wrapped.Data) > 0 {
+				wrapped.ExportedData = wrapped.Data
+			} else if len(wrapped.Accounts) > 0 {
+				wrapped.ExportedData = wrapped.Accounts
+			}
+		}
+		*p = cockpitPlatformPayload(wrapped)
+		return nil
+	}
+	p.ExportedData = append(p.ExportedData[:0], data...)
+	return nil
+}
+
+func convertCockpitPlatformAccounts(platform string, raw json.RawMessage) ([]DataAccount, []DataImportError) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, nil
+	}
+
+	var values []map[string]any
+	if err := json.Unmarshal(raw, &values); err != nil {
+		var single map[string]any
+		if singleErr := json.Unmarshal(raw, &single); singleErr != nil {
+			count := cockpitRawArrayLength(raw)
+			if count == 0 {
+				return nil, nil
+			}
+			if isKnownUnsupportedCockpitPlatform(platform) {
+				return nil, []DataImportError{{
+					Kind:    "account",
+					Name:    platform,
+					Message: fmt.Sprintf("cockpit-tools platform %q is an IDE/client session format and has no matching sub2api upstream platform", platform),
+				}}
+			}
+			return nil, []DataImportError{{
+				Kind:    "account",
+				Name:    platform,
+				Message: fmt.Sprintf("cockpit-tools %s export is not a supported account array", platform),
+			}}
+		}
+		values = []map[string]any{single}
+	}
+
+	out := make([]DataAccount, 0, len(values))
+	var errs []DataImportError
+	for i, item := range values {
+		account, err := convertCockpitAccount(platform, item, i+1)
+		if err != nil {
+			errs = append(errs, DataImportError{
+				Kind:    "account",
+				Name:    cockpitAccountName(platform, item, i+1),
+				Message: err.Error(),
+			})
+			continue
+		}
+		out = append(out, account)
+	}
+	return out, errs
+}
+
+func cockpitRawArrayLength(raw json.RawMessage) int {
+	var arr []any
+	if err := json.Unmarshal(raw, &arr); err != nil {
+		return 0
+	}
+	return len(arr)
+}
+
+func isKnownUnsupportedCockpitPlatform(platform string) bool {
+	switch normalizeCockpitPlatform(platform) {
+	case "github-copilot", "windsurf", "kiro", "cursor", "zed", "codebuddy", "codebuddy_cn", "qoder", "trae", "workbuddy":
+		return true
+	default:
+		return false
+	}
+}
+
+func convertCockpitAccount(platform string, item map[string]any, index int) (DataAccount, error) {
+	switch normalizeCockpitPlatform(platform) {
+	case "antigravity", "antigravity_ide":
+		return convertCockpitAntigravityAccount(item, index)
+	case "codex":
+		return convertCockpitCodexAccount(item, index)
+	case "gemini":
+		return convertCockpitGeminiAccount(item, index)
+	case "github-copilot", "windsurf", "kiro", "cursor", "zed", "codebuddy", "codebuddy_cn", "qoder", "trae", "workbuddy":
+		return DataAccount{}, fmt.Errorf("cockpit-tools platform %q is an IDE/client session format and has no matching sub2api upstream platform", platform)
+	default:
+		return DataAccount{}, fmt.Errorf("cockpit-tools platform %q is not supported by sub2api account import", platform)
+	}
+}
+
+func convertCockpitAntigravityAccount(item map[string]any, index int) (DataAccount, error) {
+	token := cockpitMapValue(item, "token")
+	accessToken := cockpitString(token, "access_token")
+	refreshToken := cockpitString(token, "refresh_token")
+	if accessToken == "" {
+		accessToken = cockpitString(item, "access_token")
+	}
+	if refreshToken == "" {
+		refreshToken = cockpitString(item, "refresh_token")
+	}
+	if accessToken == "" && refreshToken == "" {
+		return DataAccount{}, errors.New("cockpit-tools Antigravity account missing token.access_token/token.refresh_token")
+	}
+
+	credentials := map[string]any{}
+	setImportString(credentials, "access_token", accessToken)
+	setImportString(credentials, "refresh_token", refreshToken)
+	setImportString(credentials, "token_type", firstImportString(cockpitString(token, "token_type"), cockpitString(item, "token_type")))
+	setImportString(credentials, "email", firstImportString(cockpitString(item, "email"), cockpitString(token, "email")))
+	setImportString(credentials, "project_id", firstImportString(cockpitString(token, "project_id"), cockpitString(item, "project_id")))
+	setImportString(credentials, "plan_type", cockpitString(item, "plan_type"))
+	setImportString(credentials, "expires_at", cockpitExpiresAtString(cockpitAny(token, "expiry_timestamp"), cockpitAny(token, "expires_at"), cockpitAny(item, "expires_at")))
+
+	extra := cockpitImportExtra("cockpit-tools", "antigravity", item)
+	return DataAccount{
+		Name:        cockpitAccountName("antigravity", item, index),
+		Notes:       cockpitNotes(item),
+		Platform:    service.PlatformAntigravity,
+		Type:        service.AccountTypeOAuth,
+		Credentials: credentials,
+		Extra:       extra,
+		Concurrency: 3,
+		Priority:    50,
+	}, nil
+}
+
+func convertCockpitCodexAccount(item map[string]any, index int) (DataAccount, error) {
+	authMode := strings.ToLower(firstImportString(cockpitString(item, "auth_mode"), cockpitString(item, "authMode")))
+	if authMode == service.AccountTypeAPIKey || authMode == "api-key" || authMode == "apikey" || strings.TrimSpace(cockpitString(item, "openai_api_key")) != "" {
+		apiKey := firstImportString(cockpitString(item, "openai_api_key"), cockpitString(item, "OPENAI_API_KEY"), cockpitString(item, "api_key"))
+		if apiKey == "" {
+			return DataAccount{}, errors.New("cockpit-tools Codex API key account missing openai_api_key")
+		}
+		credentials := map[string]any{
+			"api_key":  apiKey,
+			"base_url": firstImportString(cockpitString(item, "api_base_url"), "https://api.openai.com"),
+		}
+		setImportString(credentials, "provider_id", cockpitString(item, "api_provider_id"))
+		setImportString(credentials, "provider_name", cockpitString(item, "api_provider_name"))
+		return DataAccount{
+			Name:        cockpitAccountName("codex", item, index),
+			Notes:       cockpitNotes(item),
+			Platform:    service.PlatformOpenAI,
+			Type:        service.AccountTypeAPIKey,
+			Credentials: credentials,
+			Extra:       cockpitImportExtra("cockpit-tools", "codex", item),
+			Concurrency: 3,
+			Priority:    50,
+		}, nil
+	}
+
+	tokens := cockpitMapValue(item, "tokens")
+	accessToken := firstImportString(cockpitString(tokens, "access_token"), cockpitString(item, "access_token"))
+	if accessToken == "" {
+		return DataAccount{}, errors.New("cockpit-tools Codex OAuth account missing tokens.access_token")
+	}
+	credentials := map[string]any{
+		"access_token": accessToken,
+	}
+	setImportString(credentials, "refresh_token", firstImportString(cockpitString(tokens, "refresh_token"), cockpitString(item, "refresh_token")))
+	setImportString(credentials, "id_token", firstImportString(cockpitString(tokens, "id_token"), cockpitString(item, "id_token")))
+	setImportString(credentials, "email", cockpitString(item, "email"))
+	setImportString(credentials, "chatgpt_account_id", firstImportString(cockpitString(item, "account_id"), cockpitString(item, "chatgpt_account_id")))
+	setImportString(credentials, "chatgpt_user_id", firstImportString(cockpitString(item, "user_id"), cockpitString(item, "chatgpt_user_id")))
+	setImportString(credentials, "organization_id", cockpitString(item, "organization_id"))
+	setImportString(credentials, "plan_type", cockpitString(item, "plan_type"))
+	if credentials["refresh_token"] != nil {
+		credentials["client_id"] = openai.ClientID
+	}
+
+	extra := cockpitImportExtra("cockpit-tools", "codex", item)
+	setImportString(extra, "account_name", cockpitString(item, "account_name"))
+	setImportString(extra, "account_structure", cockpitString(item, "account_structure"))
+	return DataAccount{
+		Name:        cockpitAccountName("codex", item, index),
+		Notes:       cockpitNotes(item),
+		Platform:    service.PlatformOpenAI,
+		Type:        service.AccountTypeOAuth,
+		Credentials: credentials,
+		Extra:       extra,
+		Concurrency: 3,
+		Priority:    50,
+	}, nil
+}
+
+func convertCockpitGeminiAccount(item map[string]any, index int) (DataAccount, error) {
+	accessToken := cockpitString(item, "access_token")
+	refreshToken := cockpitString(item, "refresh_token")
+	if accessToken == "" && refreshToken == "" {
+		return DataAccount{}, errors.New("cockpit-tools Gemini account missing access_token/refresh_token")
+	}
+	credentials := map[string]any{}
+	setImportString(credentials, "access_token", accessToken)
+	setImportString(credentials, "refresh_token", refreshToken)
+	setImportString(credentials, "id_token", cockpitString(item, "id_token"))
+	setImportString(credentials, "token_type", cockpitString(item, "token_type"))
+	setImportString(credentials, "scope", cockpitString(item, "scope"))
+	setImportString(credentials, "email", cockpitString(item, "email"))
+	setImportString(credentials, "project_id", cockpitString(item, "project_id"))
+	setImportString(credentials, "tier_id", firstImportString(cockpitString(item, "tier_id"), cockpitString(item, "plan_name")))
+	setImportString(credentials, "oauth_type", cockpitGeminiOAuthType(item))
+	setImportString(credentials, "expires_at", cockpitExpiresAtString(cockpitAny(item, "expiry_date"), cockpitAny(item, "expires_at")))
+
+	return DataAccount{
+		Name:        cockpitAccountName("gemini", item, index),
+		Notes:       cockpitNotes(item),
+		Platform:    service.PlatformGemini,
+		Type:        service.AccountTypeOAuth,
+		Credentials: credentials,
+		Extra:       cockpitImportExtra("cockpit-tools", "gemini", item),
+		Concurrency: 3,
+		Priority:    50,
+	}, nil
+}
+
+func normalizeCockpitPlatform(platform string) string {
+	return strings.ToLower(strings.TrimSpace(platform))
+}
+
+func cockpitMapValue(item map[string]any, key string) map[string]any {
+	if item == nil {
+		return nil
+	}
+	if value, ok := item[key].(map[string]any); ok {
+		return value
+	}
+	return nil
+}
+
+func cockpitAny(item map[string]any, key string) any {
+	if item == nil {
+		return nil
+	}
+	return item[key]
+}
+
+func cockpitString(item map[string]any, key string) string {
+	if item == nil {
+		return ""
+	}
+	return importStringValue(item[key])
+}
+
+func importStringValue(value any) string {
+	switch v := value.(type) {
+	case string:
+		return strings.TrimSpace(v)
+	case json.Number:
+		return strings.TrimSpace(v.String())
+	case float64:
+		return strings.TrimSpace(strconv.FormatFloat(v, 'f', -1, 64))
+	case float32:
+		return strings.TrimSpace(strconv.FormatFloat(float64(v), 'f', -1, 32))
+	case int:
+		return strconv.Itoa(v)
+	case int64:
+		return strconv.FormatInt(v, 10)
+	case int32:
+		return strconv.FormatInt(int64(v), 10)
+	default:
+		return ""
+	}
+}
+
+func firstImportString(values ...string) string {
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func setImportString(target map[string]any, key, value string) {
+	if target == nil {
+		return
+	}
+	value = strings.TrimSpace(value)
+	if value != "" {
+		target[key] = value
+	}
+}
+
+func cockpitNotes(item map[string]any) *string {
+	note := firstImportString(cockpitString(item, "notes"), cockpitString(item, "note"), cockpitString(item, "account_note"))
+	if note == "" {
+		return nil
+	}
+	return &note
+}
+
+func cockpitAccountName(platform string, item map[string]any, index int) string {
+	for _, value := range []string{
+		cockpitString(item, "name"),
+		cockpitString(item, "email"),
+		cockpitString(item, "account_name"),
+		cockpitString(item, "github_login"),
+		cockpitString(item, "id"),
+	} {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	return fmt.Sprintf("%s imported account %d", platform, index)
+}
+
+func cockpitImportExtra(source, platform string, item map[string]any) map[string]any {
+	extra := map[string]any{
+		"import_source":   source,
+		"source_platform": platform,
+	}
+	setImportString(extra, "source_account_id", cockpitString(item, "id"))
+	if tags, ok := item["tags"]; ok {
+		extra["source_tags"] = tags
+	}
+	if disabled, ok := item["disabled"].(bool); ok && disabled {
+		extra["source_disabled"] = true
+		setImportString(extra, "source_disabled_reason", cockpitString(item, "disabled_reason"))
+	}
+	return extra
+}
+
+func cockpitExpiresAtString(values ...any) string {
+	for _, value := range values {
+		if parsed, ok := cockpitTimeValue(value); ok {
+			return parsed.Format(time.RFC3339)
+		}
+		if text := importStringValue(value); text != "" {
+			return text
+		}
+	}
+	return ""
+}
+
+func cockpitTimeValue(value any) (time.Time, bool) {
+	switch v := value.(type) {
+	case json.Number:
+		if i, err := v.Int64(); err == nil {
+			return cockpitUnixTime(i), true
+		}
+	case float64:
+		return cockpitUnixTime(int64(v)), true
+	case int64:
+		return cockpitUnixTime(v), true
+	case int:
+		return cockpitUnixTime(int64(v)), true
+	case string:
+		v = strings.TrimSpace(v)
+		if v == "" {
+			return time.Time{}, false
+		}
+		if parsed, err := time.Parse(time.RFC3339Nano, v); err == nil {
+			return parsed.UTC(), true
+		}
+		if i, err := strconv.ParseInt(v, 10, 64); err == nil {
+			return cockpitUnixTime(i), true
+		}
+	}
+	return time.Time{}, false
+}
+
+func cockpitUnixTime(value int64) time.Time {
+	if value > 1_000_000_000_000 {
+		return time.UnixMilli(value).UTC()
+	}
+	return time.Unix(value, 0).UTC()
+}
+
+func cockpitGeminiOAuthType(item map[string]any) string {
+	selected := strings.ToLower(firstImportString(cockpitString(item, "selected_auth_type"), cockpitString(item, "selectedAuthType")))
+	if strings.Contains(selected, "studio") {
+		return "ai_studio"
+	}
+	if strings.Contains(selected, "personal") || strings.Contains(selected, "google") || strings.Contains(selected, "one") {
+		return "google_one"
+	}
+	if strings.TrimSpace(cockpitString(item, "project_id")) != "" {
+		return "code_assist"
+	}
+	return "google_one"
+}
+
 func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) (DataImportResult, error) {
 	skipDefaultGroupBind := true
 	if req.SkipDefaultGroupBind != nil {
 		skipDefaultGroupBind = *req.SkipDefaultGroupBind
 	}
 	skipMixedChannelCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
+	autoDetectModels := req.AutoDetectModels != nil && *req.AutoDetectModels
 
 	dataPayload := req.Data
-	result := DataImportResult{}
+	result := DataImportResult{
+		AccountFailed: req.ConversionAccountFailed,
+		Errors:        append([]DataImportError(nil), req.ConversionErrors...),
+	}
 
 	if len(req.GroupIDs) > 0 && !skipMixedChannelCheck {
 		if err := h.checkDataImportMixedChannelRisk(ctx, dataPayload.Accounts, req.GroupIDs); err != nil {
@@ -389,6 +932,19 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 			privacyAccounts = append(privacyAccounts, created)
 		}
 		result.AccountCreated++
+
+		if autoDetectModels {
+			if err := h.syncImportedAccountModels(ctx, created); err != nil {
+				result.ModelSyncFailed++
+				result.Errors = append(result.Errors, DataImportError{
+					Kind:    "model_sync",
+					Name:    item.Name,
+					Message: err.Error(),
+				})
+			} else {
+				result.ModelSyncSucceeded++
+			}
+		}
 	}
 
 	// 异步设置 Antigravity 隐私，避免大量导入时阻塞请求
@@ -409,6 +965,61 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 	}
 
 	return result, nil
+}
+
+func (h *AccountHandler) syncImportedAccountModels(ctx context.Context, account *service.Account) error {
+	if h.accountTestService == nil {
+		return errors.New("account model detection service is not configured")
+	}
+	if account == nil {
+		return errors.New("account is required")
+	}
+
+	syncAccount := account
+	if loaded, err := h.adminService.GetAccount(ctx, account.ID); err == nil && loaded != nil {
+		if strings.TrimSpace(loaded.Platform) != "" {
+			syncAccount = loaded
+		}
+	}
+
+	models, err := h.accountTestService.FetchUpstreamSupportedModels(ctx, syncAccount)
+	if err != nil {
+		var syncErr *service.UpstreamModelSyncError
+		if errors.As(err, &syncErr) {
+			return errors.New(syncErr.SafeMessage())
+		}
+		return err
+	}
+
+	credentials := withModelMapping(syncAccount.Credentials, models)
+	if _, err := h.adminService.UpdateAccount(ctx, syncAccount.ID, &service.UpdateAccountInput{
+		Credentials: credentials,
+	}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func withModelMapping(credentials map[string]any, models []string) map[string]any {
+	out := make(map[string]any, len(credentials)+1)
+	for key, value := range credentials {
+		out[key] = value
+	}
+
+	modelMapping := make(map[string]any, len(models))
+	for _, model := range models {
+		model = strings.TrimSpace(model)
+		if model == "" {
+			continue
+		}
+		modelMapping[model] = model
+	}
+	if len(modelMapping) == 0 {
+		delete(out, "model_mapping")
+		return out
+	}
+	out["model_mapping"] = modelMapping
+	return out
 }
 
 func (h *AccountHandler) checkDataImportMixedChannelRisk(ctx context.Context, accounts []DataAccount, groupIDs []int64) error {
@@ -509,10 +1120,21 @@ func mergeImportMaps(base map[string]any, override map[string]any) map[string]an
 	}
 	merged := make(map[string]any, len(base)+len(override))
 	for key, value := range base {
-		merged[key] = value
+		trimmedKey := strings.TrimSpace(key)
+		if trimmedKey == "" || value == nil {
+			continue
+		}
+		merged[trimmedKey] = value
 	}
 	for key, value := range override {
-		merged[key] = value
+		trimmedKey := strings.TrimSpace(key)
+		if trimmedKey == "" || value == nil {
+			continue
+		}
+		merged[trimmedKey] = value
+	}
+	if len(merged) == 0 {
+		return nil
 	}
 	return merged
 }

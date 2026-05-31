@@ -207,7 +207,9 @@ func mergeAnthropicUsage(dst *ClaudeUsage, src apicompat.AnthropicUsage) {
 		return
 	}
 	if src.InputTokens > 0 {
-		dst.InputTokens = src.InputTokens
+		if dst.CacheReadInputTokens == 0 || src.CacheReadInputTokens > 0 || dst.InputTokens == 0 || src.InputTokens <= dst.InputTokens {
+			dst.InputTokens = src.InputTokens
+		}
 	}
 	if src.OutputTokens > 0 {
 		dst.OutputTokens = src.OutputTokens
@@ -381,6 +383,7 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 	var usage ClaudeUsage
 	var firstTokenMs *int
 	firstChunk := true
+	var outputText strings.Builder
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -417,6 +420,21 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 		// Also capture usage from message_start
 		if event.Type == "message_start" && event.Message != nil {
 			mergeAnthropicUsage(&usage, event.Message.Usage)
+		}
+		if event.Type == "content_block_start" && event.ContentBlock != nil {
+			outputText.WriteString(event.ContentBlock.Text)
+			outputText.WriteString(event.ContentBlock.Thinking)
+		}
+		if event.Type == "content_block_delta" && event.Delta != nil {
+			outputText.WriteString(event.Delta.Text)
+			outputText.WriteString(event.Delta.Thinking)
+			outputText.WriteString(event.Delta.PartialJSON)
+		}
+		if event.Type == "message_stop" && usage.OutputTokens == 0 {
+			usage.OutputTokens = estimateCCOutputTokensFromText(outputText.String())
+		}
+		if state.OutputTokens == 0 && usage.OutputTokens > 0 {
+			state.OutputTokens = usage.OutputTokens
 		}
 
 		// Convert to Responses events

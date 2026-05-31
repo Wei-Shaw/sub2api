@@ -273,22 +273,25 @@ func parseOpenAIImagesJSONRequest(body []byte, req *OpenAIImagesRequest) error {
 		v := int(partialImages.Int())
 		req.PartialImages = &v
 	}
-	if req.IsEdits() {
-		images := gjson.GetBytes(body, "images")
-		if images.Exists() {
-			if !images.IsArray() {
-				return fmt.Errorf("invalid images field type")
+	if imageURL := normalizeOpenAIImagesJSONInputImage(gjson.GetBytes(body, "image")); imageURL != "" {
+		req.InputImageURLs = append(req.InputImageURLs, imageURL)
+	}
+	images := gjson.GetBytes(body, "images")
+	if images.Exists() {
+		if !images.IsArray() {
+			return fmt.Errorf("invalid images field type")
+		}
+		for _, item := range images.Array() {
+			if imageURL := normalizeOpenAIImagesJSONInputImage(item); imageURL != "" {
+				req.InputImageURLs = append(req.InputImageURLs, imageURL)
+				continue
 			}
-			for _, item := range images.Array() {
-				if imageURL := strings.TrimSpace(item.Get("image_url").String()); imageURL != "" {
-					req.InputImageURLs = append(req.InputImageURLs, imageURL)
-					continue
-				}
-				if item.Get("file_id").Exists() {
-					return fmt.Errorf("images[].file_id is not supported (use images[].image_url instead)")
-				}
+			if item.Get("file_id").Exists() {
+				return fmt.Errorf("images[].file_id is not supported (use images[].image_url instead)")
 			}
 		}
+	}
+	if req.IsEdits() {
 		if maskImageURL := strings.TrimSpace(gjson.GetBytes(body, "mask.image_url").String()); maskImageURL != "" {
 			req.MaskImageURL = maskImageURL
 			req.HasMask = true
@@ -304,6 +307,37 @@ func parseOpenAIImagesJSONRequest(body []byte, req *OpenAIImagesRequest) error {
 		return gjson.GetBytes(body, path).Exists()
 	})
 	return nil
+}
+
+func normalizeOpenAIImagesJSONInputImage(item gjson.Result) string {
+	if !item.Exists() {
+		return ""
+	}
+	switch {
+	case item.IsObject():
+		for _, path := range []string{"image_url", "url", "b64_json", "base64", "image_base64"} {
+			if imageURL := normalizeOpenAIImagesInputImageString(item.Get(path).String()); imageURL != "" {
+				return imageURL
+			}
+		}
+	case item.Type == gjson.String:
+		return normalizeOpenAIImagesInputImageString(item.String())
+	}
+	return ""
+}
+
+func normalizeOpenAIImagesInputImageString(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	lower := strings.ToLower(raw)
+	if strings.HasPrefix(lower, "data:image/") ||
+		strings.HasPrefix(lower, "http://") ||
+		strings.HasPrefix(lower, "https://") {
+		return raw
+	}
+	return "data:image/png;base64," + raw
 }
 
 func parseOpenAIImagesMultipartRequest(body []byte, contentType string, req *OpenAIImagesRequest) error {
@@ -588,11 +622,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	if err != nil {
 		return nil, err
 	}
-	if !parsed.Multipart {
-		setOpsUpstreamRequestBody(c, forwardBody)
-	}
-
-	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
+	upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, parsed.Stream)
 	defer releaseUpstreamCtx()
 
 	token, _, err := s.GetAccessToken(upstreamCtx, account)

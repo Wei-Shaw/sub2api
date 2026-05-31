@@ -198,6 +198,19 @@ type APIKeyUsageTrendPoint struct {
 	Tokens   int64  `json:"tokens"`
 }
 
+// APIKeyDailyUsagePoint represents one day of usage for a single API key.
+type APIKeyDailyUsagePoint struct {
+	Date             string  `json:"date"`
+	Requests         int64   `json:"requests"`
+	InputTokens      int64   `json:"input_tokens"`
+	OutputTokens     int64   `json:"output_tokens"`
+	CacheReadTokens  int64   `json:"cache_read_tokens"`
+	CacheWriteTokens int64   `json:"cache_write_tokens"`
+	TotalTokens      int64   `json:"total_tokens"`
+	Cost             float64 `json:"cost"`        // 标准计费
+	ActualCost       float64 `json:"actual_cost"` // 实际扣除
+}
+
 // UserDashboardStats 用户仪表盘统计
 type UserDashboardStats struct {
 	// API Key 统计
