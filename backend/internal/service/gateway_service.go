@@ -1641,7 +1641,9 @@ func normalizeClaudeOAuthRequestBody(body []byte, modelID string, opts claudeOAu
 	// temperature：真实 Claude Code CLI 总是发送 temperature（默认 1，客户端可覆盖）。
 	// 之前 fork 的策略是 strip 掉，但上游 a25faeca 抓包证明 CLI 总是带这个字段。
 	// 现在策略：客户端传了什么就透传；没传则补默认 1。
-	if !gjson.GetBytes(out, "temperature").Exists() {
+	// 注意：如果客户端已经发送了 top_p，则跳过注入 temperature，因为 Anthropic
+	// 对部分模型（如 claude-opus-4-6）不允许同时指定两者。
+	if !gjson.GetBytes(out, "temperature").Exists() && !gjson.GetBytes(out, "top_p").Exists() {
 		if next, ok := setJSONValueBytes(out, "temperature", 1); ok {
 			out = next
 			modified = true
