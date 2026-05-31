@@ -6247,6 +6247,20 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 		s.rateLimitService.UpdateSessionWindow(ctx, account, resp.Header)
 	}
 
+	// 预检：流式请求理应收到 text/event-stream。如果 Content-Type 不像 SSE，
+	// 抽样 body 看是否是 HTML/空——这是上游网关把错误页吐成 200 的典型特征，
+	// 必须在写任何客户端字节之前 failover，否则客户端会收到 HTML 当 SSE 解析后报错。
+	if streamContentTypeLooksSuspicious(resp.Header) {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 256<<10))
+		_ = resp.Body.Close()
+		if isInfraLevelUnexpectedSuccessResponse(resp.Header, body) {
+			return nil, s.failoverOnInfraLevel2xx(ctx, c, account, resp, body, true, "[Anthropic Passthrough Stream]")
+		}
+		// 不是 HTML/空，但也不是标准 SSE：把读出来的字节塞回去让下游继续走
+		// 现有路径（最终大概率因为找不到 SSE 终止事件而报错），保留原有行为。
+		resp.Body = io.NopCloser(bytes.NewReader(body))
+	}
+
 	writeAnthropicPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 
 	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
@@ -6585,6 +6599,9 @@ func (s *GatewayService) handleNonStreamingResponseAnthropicAPIKeyPassthrough(
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, anthropicTooLargeError)
 	if err != nil {
 		return nil, err
+	}
+	if isInfraLevelUnexpectedSuccessResponse(resp.Header, body) {
+		return nil, s.failoverOnInfraLevel2xx(ctx, c, account, resp, body, true, "[Anthropic Passthrough Non-Stream]")
 	}
 
 	usage := parseClaudeUsageFromResponseBody(body)
@@ -8434,6 +8451,10 @@ func (s *GatewayService) isThinkingBlockSignatureError(respBody []byte) bool {
 // 故意保守：只匹配明确的 HTML/空响应特征，避免把合法的 JSON 错误（例如
 // 真实的 invalid_request_error）误判为基础设施故障。
 func isInfraLevelUpstream4xxResponse(headers http.Header, body []byte) bool {
+	return isInfraLevelUnexpectedSuccessResponse(headers, body)
+}
+
+func isInfraLevelUnexpectedSuccessResponse(headers http.Header, body []byte) bool {
 	trimmed := bytes.TrimSpace(body)
 	// 空响应体 → 上游链路异常（合法的 4xx 一定有 JSON 错误体）
 	if len(trimmed) == 0 {
@@ -8460,6 +8481,70 @@ func isInfraLevelUpstream4xxResponse(headers http.Header, body []byte) bool {
 		}
 	}
 	return false
+}
+
+// streamContentTypeLooksSuspicious 判断上游 streaming 响应的 Content-Type 是否
+// 像「不是真的 SSE」——典型场景：上游网关把 HTML 错误页/JSON 错误吐成 200，
+// Content-Type 不是 text/event-stream。返回 true 时调用方应抽样 body 决定是否失败。
+//
+// 故意保守：缺失 Content-Type 也视为可疑（合法 SSE 上游一定会显式带 Content-Type:
+// text/event-stream），但仅在 isInfraLevelUnexpectedSuccessResponse 命中时才真正
+// failover，避免误伤少数返回非标准 SSE 头的上游。
+func streamContentTypeLooksSuspicious(h http.Header) bool {
+	ct := strings.ToLower(strings.TrimSpace(h.Get("Content-Type")))
+	if ct == "" {
+		return true
+	}
+	if i := strings.IndexByte(ct, ';'); i >= 0 {
+		ct = strings.TrimSpace(ct[:i])
+	}
+	return ct != "text/event-stream"
+}
+
+// failoverOnInfraLevel2xx 在检测到上游 2xx + HTML/空 body 等"假成功"响应时调用：
+//   - 写入 ops 事件，便于运维面板看到
+//   - 触发 handleFailoverSideEffects（quota/标志位调整等）
+//   - 临时下线该账号（指数退避），防止流量持续命中
+//   - 返回 UpstreamFailoverError，让 handler 层切换到下一个账号
+//
+// 调用方必须确保此时还没有向客户端写过任何字节，否则 handler 层会因 streamStarted
+// 而走 handleFailoverExhausted，无法切换账号。
+func (s *GatewayService) failoverOnInfraLevel2xx(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	resp *http.Response,
+	body []byte,
+	passthrough bool,
+	logPrefix string,
+) *UpstreamFailoverError {
+	logger.LegacyPrintf("service.gateway",
+		"%s Upstream invalid 2xx (HTML/empty body, failing over): Account=%d(%s) Status=%d RequestID=%s CT=%q BodyHead=%s",
+		logPrefix, account.ID, account.Name, resp.StatusCode,
+		resp.Header.Get("x-request-id"),
+		resp.Header.Get("Content-Type"),
+		truncateString(string(body), 200),
+	)
+	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+		Platform:             account.Platform,
+		AccountID:            account.ID,
+		AccountName:          account.Name,
+		Passthrough:          passthrough,
+		UpstreamStatusCode:   resp.StatusCode,
+		UpstreamRequestID:    resp.Header.Get("x-request-id"),
+		UpstreamResponseBody: truncateString(string(body), 512),
+		Kind:                 "failover_infra_2xx",
+		Message:              "upstream returned HTML/empty body with 2xx",
+		Detail:               truncateString(string(body), 512),
+	})
+	s.handleFailoverSideEffects(ctx, resp, account)
+	if s.accountRepo != nil {
+		tempUnscheduleGoogleConfigError(ctx, s.rateLimitService, s.accountRepo, account.ID, "[infra-2xx]")
+	}
+	return &UpstreamFailoverError{
+		StatusCode:   http.StatusBadGateway,
+		ResponseBody: []byte(`{"type":"error","error":{"type":"upstream_invalid_response","message":"upstream returned HTML/empty body with HTTP 200"}}`),
+	}
 }
 
 func (s *GatewayService) shouldFailoverOn400(respBody []byte) bool {
@@ -8937,6 +9022,18 @@ type streamingResult struct {
 func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel string, mimicClaudeCode bool) (*streamingResult, error) {
 	// 更新5h窗口状态
 	s.rateLimitService.UpdateSessionWindow(ctx, account, resp.Header)
+
+	// 预检：流式请求理应收到 text/event-stream。若 Content-Type 不像 SSE，
+	// 抽样 body：若是 HTML/空体（上游网关把错误页当 200 返回的典型形态），
+	// 立刻 failover 到下一账号，避免把 HTML 当 SSE 喂给客户端。
+	if streamContentTypeLooksSuspicious(resp.Header) {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 256<<10))
+		_ = resp.Body.Close()
+		if isInfraLevelUnexpectedSuccessResponse(resp.Header, body) {
+			return nil, s.failoverOnInfraLevel2xx(ctx, c, account, resp, body, false, "[Anthropic OAuth Stream]")
+		}
+		resp.Body = io.NopCloser(bytes.NewReader(body))
+	}
 
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
@@ -9669,6 +9766,12 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, anthropicTooLargeError)
 	if err != nil {
 		return nil, err
+	}
+
+	// 上游网关把 HTML 错误页/空体当成 200 返回时，直接 failover 到下一账号，
+	// 避免客户端收到"API returned an empty or malformed response (HTTP 200)"。
+	if isInfraLevelUnexpectedSuccessResponse(resp.Header, body) {
+		return nil, s.failoverOnInfraLevel2xx(ctx, c, account, resp, body, false, "[Anthropic OAuth Non-Stream]")
 	}
 
 	// 解析usage

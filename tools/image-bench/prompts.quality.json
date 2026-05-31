@@ -1,0 +1,34 @@
+[
+  {
+    "id": "q1_portrait",
+    "prompt": "Photorealistic close-up portrait of an elderly fisherman with weathered skin and blue eyes, 85mm lens look, natural side lighting, ultra-detailed"
+  },
+  {
+    "id": "q2_product",
+    "prompt": "Premium product shot of a black smartwatch floating above a matte pedestal, studio lighting, sharp reflections, e-commerce style"
+  },
+  {
+    "id": "q3_text_cn",
+    "prompt": "Design a clean Chinese poster for a coffee shop grand opening. Include readable Chinese text: 新店开业, 全场8折, 周末限定. Beige and dark green color palette."
+  },
+  {
+    "id": "q4_multi_object",
+    "prompt": "A table scene with exactly 7 objects: red apple, blue mug, silver spoon, yellow notebook, black pen, green plant, white candle. Top-down photo style."
+  },
+  {
+    "id": "q5_style_3d",
+    "prompt": "Cute 3D clay style robot watering a small cactus on a wooden desk, pastel colors, soft shadows"
+  },
+  {
+    "id": "q6_complex_scene",
+    "prompt": "A busy train station at golden hour with commuters, motion blur, glass reflections, accurate perspective lines, realistic photography"
+  },
+  {
+    "id": "q7_food",
+    "prompt": "Macro food shot of a sliced strawberry tart with powdered sugar, shallow depth of field, natural window light"
+  },
+  {
+    "id": "q8_branding",
+    "prompt": "Create a modern app launch banner with the title NEXT WAVE in bold uppercase letters, blue-orange gradient background, clean geometric composition"
+  }
+]

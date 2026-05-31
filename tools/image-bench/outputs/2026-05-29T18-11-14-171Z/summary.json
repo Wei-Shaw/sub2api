@@ -1,0 +1,40 @@
+{
+  "generatedAt": "2026-05-29T18:16:32.196Z",
+  "config": {
+    "imageModel": "gpt-image-2",
+    "judgeModel": "gpt-4.1-mini",
+    "size": "1024x1024",
+    "quality": "medium",
+    "speedTotal": 12,
+    "speedConcurrency": 3,
+    "qualityRepeats": 0,
+    "timeoutMs": 240000,
+    "speedPromptsPath": "/Users/zachlai/www/coding/claude-relay/sub2api/tools/image-bench/prompts.speed.json",
+    "qualityPromptsPath": "/Users/zachlai/www/coding/claude-relay/sub2api/tools/image-bench/prompts.quality.json"
+  },
+  "speed": {
+    "total": 12,
+    "success": 12,
+    "failed": 0,
+    "successRate": 100,
+    "p50Ms": 66258,
+    "p90Ms": 85228,
+    "p95Ms": 110905,
+    "p99Ms": 110905,
+    "avgMs": 71824.42,
+    "throughputPerMin": 2.51
+  },
+  "quality": {
+    "total": 0,
+    "success": 0,
+    "failed": 0,
+    "successRate": 0,
+    "avgScores": {
+      "instruction_following": 0,
+      "aesthetics": 0,
+      "text_rendering": 0,
+      "structure_integrity": 0,
+      "overall": 0
+    }
+  }
+}

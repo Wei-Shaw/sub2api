@@ -1,0 +1,168 @@
+Model: gpt-image-2  Size: 1024x1024  Quality: medium
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+concurrency=50  total=100
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Running benchmark with imageModel=gpt-image-2, size=1024x1024, quality=medium
+Speed run: total=100, concurrency=50
+Quality run: repeats=0 per prompt
+[speed] start #1/100
+[speed] start #2/100
+[speed] start #3/100
+[speed] start #4/100
+[speed] start #5/100
+[speed] start #6/100
+[speed] start #7/100
+[speed] start #8/100
+[speed] start #9/100
+[speed] start #10/100
+[speed] start #11/100
+[speed] start #12/100
+[speed] start #13/100
+[speed] start #14/100
+[speed] start #15/100
+[speed] start #16/100
+[speed] start #17/100
+[speed] start #18/100
+[speed] start #19/100
+[speed] start #20/100
+[speed] start #21/100
+[speed] start #22/100
+[speed] start #23/100
+[speed] start #24/100
+[speed] start #25/100
+[speed] start #26/100
+[speed] start #27/100
+[speed] start #28/100
+[speed] start #29/100
+[speed] start #30/100
+[speed] start #31/100
+[speed] start #32/100
+[speed] start #33/100
+[speed] start #34/100
+[speed] start #35/100
+[speed] start #36/100
+[speed] start #37/100
+[speed] start #38/100
+[speed] start #39/100
+[speed] start #40/100
+[speed] start #41/100
+[speed] start #42/100
+[speed] start #43/100
+[speed] start #44/100
+[speed] start #45/100
+[speed] start #46/100
+[speed] start #47/100
+[speed] start #48/100
+[speed] start #49/100
+[speed] start #50/100
+[speed] fail  #7/100 1802ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #51/100
+[speed] fail  #10/100 1804ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #52/100
+[speed] fail  #35/100 1818ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #53/100
+[speed] fail  #17/100 1826ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #54/100
+[speed] fail  #32/100 1825ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #55/100
+[speed] fail  #43/100 1836ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #56/100
+[speed] fail  #48/100 1837ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #57/100
+[speed] fail  #14/100 1855ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #58/100
+[speed] fail  #27/100 1921ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #59/100
+[speed] fail  #53/100 291ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #60/100
+[speed] fail  #54/100 312ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #61/100
+[speed] fail  #52/100 343ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #62/100
+[speed] fail  #56/100 366ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #63/100
+[speed] fail  #55/100 382ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #64/100
+[speed] fail  #57/100 378ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #65/100
+[speed] fail  #62/100 293ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #66/100
+[speed] fail  #60/100 340ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #67/100
+[speed] fail  #64/100 342ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #68/100
+[speed] fail  #63/100 360ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #69/100
+[speed] fail  #61/100 443ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #70/100
+[speed] fail  #67/100 289ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #71/100
+[speed] fail  #51/100 1002ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #72/100
+[speed] fail  #66/100 379ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #73/100
+[speed] fail  #68/100 335ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #74/100
+[speed] fail  #69/100 331ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #75/100
+[speed] fail  #70/100 366ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #76/100
+[speed] fail  #71/100 298ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #77/100
+[speed] fail  #50/100 3037ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #78/100
+[speed] fail  #72/100 287ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #79/100
+[speed] fail  #58/100 1278ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #80/100
+[speed] fail  #65/100 949ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #81/100
+[speed] fail  #73/100 391ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #82/100
+[speed] fail  #74/100 327ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #83/100
+[speed] fail  #75/100 327ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #84/100
+[speed] fail  #76/100 374ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #85/100
+[speed] fail  #78/100 310ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #86/100
+[speed] fail  #77/100 369ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #87/100
+[speed] fail  #79/100 342ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #88/100
+[speed] fail  #80/100 327ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #89/100
+[speed] fail  #81/100 327ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #90/100
+[speed] fail  #84/100 335ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #91/100
+[speed] fail  #82/100 380ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #92/100
+[speed] fail  #83/100 392ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #93/100
+[speed] fail  #85/100 347ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #94/100
+[speed] fail  #87/100 297ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #95/100
+[speed] fail  #86/100 372ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #96/100
+[speed] fail  #89/100 300ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #97/100
+[speed] fail  #88/100 373ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #98/100
+[speed] fail  #90/100 324ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #99/100
+[speed] fail  #92/100 322ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] start #100/100
+[speed] fail  #91/100 361ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] fail  #93/100 384ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] fail  #96/100 300ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] fail  #94/100 364ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] fail  #95/100 335ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] fail  #98/100 305ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] fail  #97/100 375ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] fail  #99/100 330ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] fail  #100/100 309ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.
+[speed] fail  #59/100 2426ms Rate limit reached for gpt-image-2 (for limit gpt-image) in organization org-eFpeV8CHqnG6ApY8FKHGKh5Z on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.

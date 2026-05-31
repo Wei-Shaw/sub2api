@@ -1,0 +1,29 @@
+[
+  {
+    "idx": 1,
+    "success": true,
+    "latencyMs": 90063,
+    "fileName": "speed_001.png",
+    "status": 200,
+    "requestId": "req_aa1b86d83e314471bde16695d9bfc4c9",
+    "error": null
+  },
+  {
+    "idx": 2,
+    "success": true,
+    "latencyMs": 85933,
+    "fileName": "speed_002.png",
+    "status": 200,
+    "requestId": "req_461ac386031e4ec4b44c2393237d1516",
+    "error": null
+  },
+  {
+    "idx": 3,
+    "success": true,
+    "latencyMs": 55135,
+    "fileName": "speed_003.png",
+    "status": 200,
+    "requestId": "req_6053561ededa4915b23dc8efce41a42e",
+    "error": null
+  }
+]

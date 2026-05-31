@@ -1,0 +1,193 @@
+- main [ref=e3]:
+  - paragraph [ref=e5]:
+    - strong [ref=e6]: TL;DR：
+    - text: TokenProvider 是一站式 AI API 网关，使用 OpenAI 兼容的 Base URL 即可访问 Claude、Claude Code、ChatGPT、Gemini。按 token 计量扣费，注册后控制台查看实时费率。本服务为第三方网关，并非 Anthropic、OpenAI、Google 官方产品。
+  - heading "TokenProvider — Claude / Claude Code / ChatGPT 中转站" [level=1] [ref=e7]
+  - paragraph [ref=e8]: TokenProvider 提供 Claude、Claude Code、ChatGPT、Gemini 的一站式 API 中转服务， 支持按量计费、实时账单、统一密钥和稳定的开发者接入体验。
+  - heading "一句话说明" [level=2] [ref=e9]
+  - paragraph [ref=e10]:
+    - text: 面向开发者的
+    - strong [ref=e11]: 第三方 API 网关
+    - text: ：使用 OpenAI 兼容的 Base URL 与密钥， 将请求路由到上游官方模型，按
+    - strong [ref=e12]: token
+    - text: 计量扣费；适合需要多模型统一接入、按量付费的团队与个人。
+  - heading "核心能力（可引用要点）" [level=2] [ref=e13]
+  - list [ref=e14]:
+    - listitem [ref=e15]:
+      - strong [ref=e16]: 统一接入：
+      - text: 同一套密钥与端点风格对接 Claude、Claude Code、ChatGPT、Gemini 等（以实际上线模型为准）。
+    - listitem [ref=e17]:
+      - strong [ref=e18]: 按量计费：
+      - text: 预购余额，按每次请求的输入/输出 token 扣减；费率在注册登录后的控制台展示。
+    - listitem [ref=e19]:
+      - strong [ref=e20]: 长对话：
+      - text: 支持粘性会话等网关能力，便于 Claude Code 与长上下文场景（以产品文档为准）。
+    - listitem [ref=e21]:
+      - strong [ref=e22]: 静态文档：
+      - text: 对比、教程、术语与代码示例以
+      - code [ref=e23]: .html
+      - text: 静态页发布，便于检索与引用。
+  - heading "计费与账单" [level=2] [ref=e24]
+  - paragraph [ref=e25]:
+    - text: 计费单位为
+    - strong [ref=e26]: token
+    - text: （由上游模型统计）。最小充值、单价与币种以
+    - strong [ref=e27]: 控制台实时展示
+    - text: 为准。 TokenProvider
+    - strong [ref=e28]: 不是
+    - text: Anthropic、OpenAI 或 Google 的官方产品；网关仅转发与聚合接入。
+  - heading "常见问题" [level=2] [ref=e29]
+  - heading "TokenProvider 是什么？" [level=3] [ref=e30]
+  - paragraph [ref=e31]:
+    - text: 第三方 API 网关：把您的应用请求转发到官方上游 API，并提供统一鉴权、计费与路由；详见
+    - link "什么是 Claude 中转站" [ref=e32] [cursor=pointer]:
+      - /url: /glossary/what-is-claude-relay.html
+    - text: 。
+  - heading "计费方式是怎样的？" [level=3] [ref=e33]
+  - paragraph [ref=e34]: 预购余额 + 按请求扣减 token 费用；账单与用量明细在登录后的控制台查看。
+  - heading "和直接订阅官方有什么区别？" [level=3] [ref=e35]
+  - paragraph [ref=e36]:
+    - text: 官方需分别开通各厂商；网关提供统一入口与按量池化接入。合规与数据细节请参阅应用内条款；概要见
+    - link "信任与合规（中文）" [ref=e37] [cursor=pointer]:
+      - /url: /xinyong.html
+    - text: 或
+    - link "Trust (English)" [ref=e38] [cursor=pointer]:
+      - /url: /trust.html
+    - text: 。
+  - heading "高信息密度页面（英文，利于 AI 引用）" [level=2] [ref=e39]
+  - paragraph [ref=e40]: 以下页面为静态 HTML，含对比表、FAQ 与可运行示例：
+  - list [ref=e41]:
+    - listitem [ref=e42]:
+      - link "English 产品总览与 FAQ" [ref=e43] [cursor=pointer]:
+        - /url: /en.html
+    - listitem [ref=e44]:
+      - link "Claude API vs ChatGPT API" [ref=e45] [cursor=pointer]:
+        - /url: /en/compare/claude-vs-chatgpt-api.html
+    - listitem [ref=e46]:
+      - link "Claude Code：代理 vs 订阅" [ref=e47] [cursor=pointer]:
+        - /url: /en/compare/claude-code-relay-vs-subscription.html
+    - listitem [ref=e48]:
+      - link "Claude Code 5 分钟配置" [ref=e49] [cursor=pointer]:
+        - /url: /en/guides/claude-code-setup.html
+    - listitem [ref=e50]:
+      - link "What is a Claude API proxy?" [ref=e51] [cursor=pointer]:
+        - /url: /en/glossary/what-is-claude-relay.html
+  - heading "机器可读索引" [level=2] [ref=e52]
+  - paragraph [ref=e53]:
+    - link "llms.txt" [ref=e54] [cursor=pointer]:
+      - /url: /llms.txt
+    - text: — 面向 LLM 与抓取工具的核心 URL 列表与使用边界说明。
+  - navigation "SEO pages" [ref=e55]:
+    - heading "相关阅读" [level=2] [ref=e56]
+    - list [ref=e57]:
+      - listitem [ref=e58]:
+        - link "什么是 Claude 中转站？" [ref=e59] [cursor=pointer]:
+          - /url: /glossary/what-is-claude-relay.html
+        - text: — 5 分钟术语速读
+      - listitem [ref=e60]:
+        - link "Claude API vs ChatGPT API 对比" [ref=e61] [cursor=pointer]:
+          - /url: /compare/claude-vs-chatgpt-api.html
+        - text: — 价格、编码、上下文
+      - listitem [ref=e62]:
+        - link "Claude Code 5 分钟接入教程" [ref=e63] [cursor=pointer]:
+          - /url: /guides/claude-code-setup.html
+        - text: — 一行 env var 切换
+      - listitem [ref=e64]:
+        - link "Claude API Python 示例" [ref=e65] [cursor=pointer]:
+          - /url: /examples/claude-api-python.html
+        - text: — 拷贝即跑
+      - listitem [ref=e66]:
+        - link "信任与合规" [ref=e67] [cursor=pointer]:
+          - /url: /xinyong.html
+        - text: — 计费与日志边界
+      - listitem [ref=e68]:
+        - link "English version" [ref=e69] [cursor=pointer]:
+          - /url: /en.html
+  - region "English summary" [ref=e70]:
+    - paragraph [ref=e71]:
+      - strong [ref=e72]: "TL;DR (English):"
+      - text: TokenProvider is a third-party AI API gateway. Use one OpenAI-compatible Base URL and key to call Claude, Claude Code, ChatGPT, and Gemini. Pay-as-you-go per token; rates and minimum top-up are visible in the dashboard after sign-up. Not affiliated with Anthropic, OpenAI, or Google.
+    - heading "Cheap Claude API, Claude Code, ChatGPT & Gemini — one gateway" [level=2] [ref=e73]
+    - paragraph [ref=e74]:
+      - text: TokenProvider routes your requests to upstream official models through a unified
+      - strong [ref=e75]: OpenAI-compatible
+      - text: endpoint. Pay only for the tokens you use, see real-time billing in the dashboard, and switch between Claude / Claude Code / ChatGPT / Gemini without juggling multiple subscriptions.
+    - heading "Why developers pick TokenProvider" [level=2] [ref=e76]
+    - list [ref=e77]:
+      - listitem [ref=e78]:
+        - strong [ref=e79]: "One key, many models:"
+        - text: Claude, Claude Code, ChatGPT, Gemini through a single OpenAI-compatible Base URL.
+      - listitem [ref=e80]:
+        - strong [ref=e81]: "Pay-as-you-go:"
+        - text: Pre-fund a balance; per-request token billing; live rates in the dashboard.
+      - listitem [ref=e82]:
+        - strong [ref=e83]: "Sticky sessions:"
+        - text: Long-context flows (Claude Code, agentic workflows) stay on a consistent upstream account.
+      - listitem [ref=e84]:
+        - strong [ref=e85]: "Static, citation-friendly docs:"
+        - text: Comparisons, guides, and code examples published as plain HTML for easy indexing.
+    - heading "FAQ (English)" [level=2] [ref=e86]
+    - heading "Is TokenProvider an official Anthropic / OpenAI / Google product?" [level=3] [ref=e87]
+    - paragraph [ref=e88]: No. TokenProvider is an independent third-party API gateway. It forwards requests to the official upstream APIs and aggregates billing, routing, and authentication.
+    - heading "How does pricing work?" [level=3] [ref=e89]
+    - paragraph [ref=e90]: Pre-purchased balance, deducted per request based on input/output tokens reported by the upstream model. The current per-token rate, minimum top-up, and currency are shown in the dashboard after registration.
+    - heading "Does it work with Claude Code?" [level=3] [ref=e91]
+    - paragraph [ref=e92]:
+      - text: Yes. Set
+      - code [ref=e93]: ANTHROPIC_BASE_URL
+      - text: to TokenProvider and use a TokenProvider key as
+      - code [ref=e94]: ANTHROPIC_API_KEY
+      - text: . See the
+      - link "5-minute Claude Code guide" [ref=e95] [cursor=pointer]:
+        - /url: /en/guides/claude-code-setup.html
+      - text: .
+    - navigation "English deep-dive pages" [ref=e96]:
+      - heading "English deep dives" [level=2] [ref=e97]
+      - list [ref=e98]:
+        - listitem [ref=e99]:
+          - link "Full English product page" [ref=e100] [cursor=pointer]:
+            - /url: /en.html
+          - text: — landing & FAQ
+        - listitem [ref=e101]:
+          - link "Claude API vs ChatGPT API" [ref=e102] [cursor=pointer]:
+            - /url: /en/compare/claude-vs-chatgpt-api.html
+          - text: — pricing & coding
+        - listitem [ref=e103]:
+          - 'link "Claude Code: relay vs subscription" [ref=e104] [cursor=pointer]':
+            - /url: /en/compare/claude-code-relay-vs-subscription.html
+        - listitem [ref=e105]:
+          - link "TokenProvider vs official Claude API" [ref=e106] [cursor=pointer]:
+            - /url: /en/compare/tokenprovider-vs-official-claude.html
+        - listitem [ref=e107]:
+          - link "Claude Code setup (ANTHROPIC_BASE_URL)" [ref=e108] [cursor=pointer]:
+            - /url: /en/guides/claude-code-setup.html
+        - listitem [ref=e109]:
+          - link "Cursor + Claude proxy" [ref=e110] [cursor=pointer]:
+            - /url: /en/guides/cursor-claude-proxy.html
+        - listitem [ref=e111]:
+          - link "Cline with cheap Claude API" [ref=e112] [cursor=pointer]:
+            - /url: /en/guides/cline-cheap-claude.html
+        - listitem [ref=e113]:
+          - link "What is a Claude API relay?" [ref=e114] [cursor=pointer]:
+            - /url: /en/glossary/what-is-claude-relay.html
+        - listitem [ref=e115]:
+          - link "What is Claude Code?" [ref=e116] [cursor=pointer]:
+            - /url: /en/glossary/what-is-claude-code.html
+        - listitem [ref=e117]:
+          - link "What is an AI token?" [ref=e118] [cursor=pointer]:
+            - /url: /en/glossary/what-is-an-ai-token.html
+        - listitem [ref=e119]:
+          - link "Claude API in Python" [ref=e120] [cursor=pointer]:
+            - /url: /en/examples/claude-api-python.html
+        - listitem [ref=e121]:
+          - link "Claude API in Node.js" [ref=e122] [cursor=pointer]:
+            - /url: /en/examples/claude-api-nodejs.html
+        - listitem [ref=e123]:
+          - link "ChatGPT API with curl" [ref=e124] [cursor=pointer]:
+            - /url: /en/examples/chatgpt-api-curl.html
+        - listitem [ref=e125]:
+          - link "Gemini API example" [ref=e126] [cursor=pointer]:
+            - /url: /en/examples/gemini-api-example.html
+        - listitem [ref=e127]:
+          - link "Trust, logging & billing overview" [ref=e128] [cursor=pointer]:
+            - /url: /trust.html
