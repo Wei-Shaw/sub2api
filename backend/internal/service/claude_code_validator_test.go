@@ -48,6 +48,97 @@ REDACTED)
 	require.False(t, ok)
 REDACTED
 
+func TestClaudeCodeValidator_CountTokensPathUAOnly(t *testing.T) {
+	validator := NewClaudeCodeValidator()
+	req := httptest.NewRequest(http.MethodPost, "http://example.com/v1/messages/count_tokens", nil)
+	req.Header.Set("User-Agent", "claude-cli/2.1.156 (Claude Code)")
+
+	ok := validator.Validate(req, map[string]any{
+		"model": "claude-opus-4-8",
+REDACTED)
+	require.True(t, ok)
+REDACTED
+
+func TestClaudeCodeValidator_CountTokensPathRequiresUA(t *testing.T) {
+	validator := NewClaudeCodeValidator()
+	req := httptest.NewRequest(http.MethodPost, "http://example.com/v1/messages/count_tokens", nil)
+	req.Header.Set("User-Agent", "curl/8.0.0")
+
+	ok := validator.Validate(req, map[string]any{
+		"model": "claude-opus-4-8",
+REDACTED)
+	require.False(t, ok)
+REDACTED
+
+func TestClaudeCodeValidator_MessagesPathFullValid(t *testing.T) {
+	validator := NewClaudeCodeValidator()
+	req := httptest.NewRequest(http.MethodPost, "http://example.com/v1/messages", nil)
+	req.Header.Set("User-Agent", "claude-cli/2.1.156 (Claude Code)")
+	req.Header.Set("X-App", "claude-code")
+	req.Header.Set("anthropic-beta", "claude-code-20250219")
+	req.Header.Set("anthropic-version", "2023-06-01")
+
+	ok := validator.Validate(req, map[string]any{
+		"model":  "claude-opus-4-8",
+		"stream": true,
+		"system": []any{
+			map[string]any{
+				"type": "text",
+				"text": "You are Claude Code, Anthropic's official CLI for Claude.",
+		REDACTED,
+	REDACTED,
+		"metadata": map[string]any{
+			"user_id": "user_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_account__session_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+	REDACTED,
+REDACTED)
+	require.True(t, ok)
+REDACTED
+
+func TestClaudeCodeValidator_MessagesPathRejectsNonClaudeCodeUA(t *testing.T) {
+	validator := NewClaudeCodeValidator()
+	req := httptest.NewRequest(http.MethodPost, "http://example.com/v1/messages", nil)
+	req.Header.Set("User-Agent", "curl/8.0.0")
+	req.Header.Set("X-App", "claude-code")
+	req.Header.Set("anthropic-beta", "claude-code-20250219")
+	req.Header.Set("anthropic-version", "2023-06-01")
+
+	ok := validator.Validate(req, map[string]any{
+		"model":  "claude-opus-4-8",
+		"stream": true,
+		"system": []any{
+			map[string]any{
+				"type": "text",
+				"text": "You are Claude Code, Anthropic's official CLI for Claude.",
+		REDACTED,
+	REDACTED,
+		"metadata": map[string]any{
+			"user_id": "user_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_account__session_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+	REDACTED,
+REDACTED)
+	require.False(t, ok)
+REDACTED
+
+func TestClaudeCodeValidator_MessagesPathWithoutSystemPromptStillRejected(t *testing.T) {
+	validator := NewClaudeCodeValidator()
+	req := httptest.NewRequest(http.MethodPost, "http://example.com/v1/messages", nil)
+	req.Header.Set("User-Agent", "claude-cli/2.1.156 (Claude Code)")
+	req.Header.Set("X-App", "claude-code")
+	req.Header.Set("anthropic-beta", "claude-code-20250219")
+	req.Header.Set("anthropic-version", "2023-06-01")
+
+	ok := validator.Validate(req, map[string]any{
+		"model":  "claude-opus-4-8",
+		"stream": true,
+		"messages": []any{
+			map[string]any{"role": "user", "content": "hello"REDACTED,
+	REDACTED,
+		"metadata": map[string]any{
+			"user_id": "user_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_account__session_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+	REDACTED,
+REDACTED)
+	require.False(t, ok)
+REDACTED
+
 func TestClaudeCodeValidator_NonMessagesPathUAOnly(t *testing.T) {
 	validator := NewClaudeCodeValidator()
 	req := httptest.NewRequest(http.MethodPost, "http://example.com/v1/models", nil)
