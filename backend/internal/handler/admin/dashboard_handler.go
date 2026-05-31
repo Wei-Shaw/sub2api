@@ -490,6 +490,23 @@ func parseRankingLimit(raw string) int {
 	return limit
 }
 
+func parseUserBreakdownSortBy(raw string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "", "actual_cost":
+		return "actual_cost", true
+	case "tokens", "total_tokens":
+		return "tokens", true
+	case "requests":
+		return "requests", true
+	case "cost":
+		return "cost", true
+	case "account_cost":
+		return "account_cost", true
+	default:
+		return "", false
+	}
+}
+
 // GetUserSpendingRanking handles getting user spending ranking data.
 // GET /api/v1/admin/dashboard/users-ranking
 func (h *DashboardHandler) GetUserSpendingRanking(c *gin.Context) {
@@ -640,6 +657,12 @@ func (h *DashboardHandler) GetUserBreakdown(c *gin.Context) {
 	dim.ModelType = rawModelSource
 	dim.Endpoint = c.Query("endpoint")
 	dim.EndpointType = c.DefaultQuery("endpoint_type", "inbound")
+	sortBy, ok := parseUserBreakdownSortBy(c.Query("sort_by"))
+	if !ok {
+		response.BadRequest(c, "Invalid sort_by, use actual_cost/tokens/requests/cost/account_cost")
+		return
+	}
+	dim.SortBy = sortBy
 
 	// Additional filter conditions
 	if v := c.Query("user_id"); v != "" {
@@ -657,10 +680,21 @@ func (h *DashboardHandler) GetUserBreakdown(c *gin.Context) {
 			dim.AccountID = id
 		}
 	}
-	if v := c.Query("request_type"); v != "" {
-		if rt, err := strconv.ParseInt(v, 10, 16); err == nil {
-			rtVal := int16(rt)
+	if v := strings.TrimSpace(c.Query("request_type")); v != "" {
+		if parsed, err := service.ParseUsageRequestType(v); err == nil {
+			rtVal := int16(parsed)
 			dim.RequestType = &rtVal
+		} else if rt, parseErr := strconv.ParseInt(v, 10, 16); parseErr == nil {
+			requestType := service.RequestType(rt)
+			if !requestType.IsValid() {
+				response.BadRequest(c, "Invalid request_type")
+				return
+			}
+			rtVal := int16(requestType)
+			dim.RequestType = &rtVal
+		} else {
+			response.BadRequest(c, err.Error())
+			return
 		}
 	}
 	if v := c.Query("stream"); v != "" {
@@ -674,6 +708,7 @@ func (h *DashboardHandler) GetUserBreakdown(c *gin.Context) {
 			dim.BillingType = &btVal
 		}
 	}
+	dim.BillingMode = strings.TrimSpace(c.Query("billing_mode"))
 
 	limit := 50
 	if v := c.Query("limit"); v != "" {

@@ -3350,8 +3350,15 @@ func (r *usageLogRepository) GetUserBreakdownStats(ctx context.Context, startTim
 		query += fmt.Sprintf(" AND ul.billing_type = $%d", len(args)+1)
 		args = append(args, *dim.BillingType)
 	}
+	if dim.BillingMode != "" {
+		var conditions []string
+		conditions, args = appendUsageLogBillingModeWhereCondition(conditions, args, dim.BillingMode)
+		for _, condition := range conditions {
+			query += " AND " + condition
+		}
+	}
 
-	query += " GROUP BY ul.user_id, u.email ORDER BY actual_cost DESC"
+	query += " GROUP BY ul.user_id, u.email " + resolveUserBreakdownOrderBy(dim.SortBy)
 	if limit > 0 {
 		query += fmt.Sprintf(" LIMIT %d", limit)
 	}
@@ -3387,6 +3394,21 @@ func (r *usageLogRepository) GetUserBreakdownStats(ctx context.Context, startTim
 		return nil, err
 	}
 	return results, nil
+}
+
+func resolveUserBreakdownOrderBy(sortBy string) string {
+	switch sortBy {
+	case "tokens", "total_tokens":
+		return "ORDER BY total_tokens DESC, requests DESC, actual_cost DESC, user_id ASC"
+	case "requests":
+		return "ORDER BY requests DESC, total_tokens DESC, actual_cost DESC, user_id ASC"
+	case "cost":
+		return "ORDER BY cost DESC, total_tokens DESC, requests DESC, user_id ASC"
+	case "account_cost":
+		return "ORDER BY account_cost DESC, total_tokens DESC, requests DESC, user_id ASC"
+	default:
+		return "ORDER BY actual_cost DESC, total_tokens DESC, requests DESC, user_id ASC"
+	}
 }
 
 // GetAllGroupUsageSummary returns today's and cumulative actual_cost for every group.

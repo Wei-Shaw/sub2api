@@ -180,6 +180,7 @@ type UserBreakdownDimension struct {
 	ModelType    string // "requested", "upstream", or "mapping"
 	Endpoint     string // filter by endpoint value (non-empty to enable)
 	EndpointType string // "inbound", "upstream", or "path"
+	SortBy       string // "actual_cost", "tokens", "requests", "cost", or "account_cost"
 	// Additional filter conditions
 	UserID      int64  // filter by user_id (>0 to enable)
 	APIKeyID    int64  // filter by api_key_id (>0 to enable)
@@ -187,6 +188,7 @@ type UserBreakdownDimension struct {
 	RequestType *int16 // filter by request_type (non-nil to enable)
 	Stream      *bool  // filter by stream flag (non-nil to enable)
 	BillingType *int8  // filter by billing_type (non-nil to enable)
+	BillingMode string // filter by billing_mode (non-empty to enable)
 }
 
 // APIKeyUsageTrendPoint represents API key usage trend data point

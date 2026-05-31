@@ -167,13 +167,15 @@ export interface UserBreakdownParams {
   endpoint?: string
   endpoint_type?: 'inbound' | 'upstream' | 'path'
   limit?: number
+  sort_by?: 'actual_cost' | 'tokens' | 'total_tokens' | 'requests' | 'cost' | 'account_cost'
   // Additional filter conditions
   user_id?: number
   api_key_id?: number
   account_id?: number
-  request_type?: number
+  request_type?: UsageRequestType
   stream?: boolean
   billing_type?: number | null
+  billing_mode?: string | null
 }
 
 export interface UserBreakdownResponse {
@@ -329,6 +331,7 @@ export const dashboardAPI = {
   getModelStats,
   getGroupStats,
   getSnapshotV2,
+  getUserBreakdown,
   getApiKeyUsageTrend,
   getUserUsageTrend,
   getUserSpendingRanking,
