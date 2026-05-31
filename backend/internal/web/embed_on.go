@@ -7,6 +7,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"html"
 	"io"
 	"io/fs"
 	"net/http"
@@ -230,7 +231,9 @@ func injectSiteTitle(html, settingsJSON []byte) []byte {
 		return html
 	}
 
-	newTitle := []byte("<title>" + cfg.SiteName + " - AI API Gateway</title>")
+	// SECURITY: SiteName 来自管理员可写设置，未经转义直接拼进 HTML 会造成存储型 HTML 注入（S2A-019）。
+	// 用 html.EscapeString 转义，确保它只作为文本进入 <title>。
+	newTitle := []byte("<title>" + html.EscapeString(cfg.SiteName) + " - AI API Gateway</title>")
 	var buf bytes.Buffer
 	buf.Write(html[:titleStart])
 	buf.Write(newTitle)
