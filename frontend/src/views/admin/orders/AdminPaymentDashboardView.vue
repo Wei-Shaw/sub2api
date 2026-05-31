@@ -30,6 +30,8 @@
       </div>
       <template v-else-if="stats">
         <OrderStatsCards :stats="stats" />
+
+        <DepositStatsPanel :stats="stats.deposits" />
         <DailyRevenueChart :data="stats.daily_series || []" :loading="loading" />
         <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <div class="card p-4">
@@ -82,6 +84,7 @@ import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import Icon from '@/components/icons/Icon.vue'
 import OrderStatsCards from '@/components/admin/payment/OrderStatsCards.vue'
 import DailyRevenueChart from '@/components/admin/payment/DailyRevenueChart.vue'
+import DepositStatsPanel from '@/components/admin/payment/DepositStatsPanel.vue'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -90,6 +93,7 @@ const DAYS_OPTIONS = [7, 30, 90] as const
 const days = ref<number>(30)
 const loading = ref(false)
 const stats = ref<DashboardStats | null>(null)
+
 
 function methodColor(type: string): string {
   const c: Record<string, string> = {

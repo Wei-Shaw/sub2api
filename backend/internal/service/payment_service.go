@@ -176,6 +176,7 @@ type DashboardStats struct {
 	DailySeries    []DailyStats        `json:"daily_series"`
 	PaymentMethods []PaymentMethodStat `json:"payment_methods"`
 	TopUsers       TopUsersByCurrency  `json:"top_users"`
+	Deposits       DepositStats        `json:"deposits"`
 }
 
 // CurrencyAmounts holds payment amounts keyed by their ISO 4217 currency.
@@ -212,6 +213,63 @@ type TopUserStat struct {
 // TopUsersByCurrency contains an independent ranked user list for each
 // currency. A single cross-currency leaderboard would be misleading.
 type TopUsersByCurrency map[string][]TopUserStat
+
+type DepositStats struct {
+	TotalEvents             int                    `json:"total_events"`
+	TotalLedgerAmount       CurrencyAmounts        `json:"total_ledger_amount"`
+	TotalCredits            float64                `json:"total_credits"`
+	SubscriptionAssignments int                    `json:"subscription_assignments"`
+	PaidTopups              int                    `json:"paid_topups"`
+	RedeemDeposits          int                    `json:"redeem_deposits"`
+	AdminAdjustments        int                    `json:"admin_adjustments"`
+	ManualAssignments       int                    `json:"manual_assignments"`
+	AutoAssignments         int                    `json:"auto_assignments"`
+	BySource                []DepositSourceStat    `json:"by_source"`
+	TopRecipients           []DepositRecipientStat `json:"top_recipients"`
+	RecentEvents            []DepositEventStat     `json:"recent_events"`
+}
+
+type DepositSourceStat struct {
+	Source                  string          `json:"source"`
+	Count                   int             `json:"count"`
+	LedgerAmount            CurrencyAmounts `json:"ledger_amount"`
+	Credits                 float64         `json:"credits"`
+	SubscriptionAssignments int             `json:"subscription_assignments"`
+	LastDepositAt           *time.Time      `json:"last_deposit_at,omitempty"`
+}
+
+type DepositRecipientStat struct {
+	UserID                  int64           `json:"user_id"`
+	Email                   string          `json:"email"`
+	Username                string          `json:"username,omitempty"`
+	Count                   int             `json:"count"`
+	LedgerAmount            CurrencyAmounts `json:"ledger_amount"`
+	Credits                 float64         `json:"credits"`
+	SubscriptionAssignments int             `json:"subscription_assignments"`
+	LastDepositAt           *time.Time      `json:"last_deposit_at,omitempty"`
+	LastSource              string          `json:"last_source,omitempty"`
+}
+
+type DepositEventStat struct {
+	Source                  string    `json:"source"`
+	UserID                  int64     `json:"user_id"`
+	Email                   string    `json:"email"`
+	Username                string    `json:"username,omitempty"`
+	LedgerAmount            float64   `json:"ledger_amount"`
+	Credits                 float64   `json:"credits"`
+	Currency                string    `json:"currency,omitempty"`
+	SubscriptionAssignments int       `json:"subscription_assignments"`
+	ValidityDays            int       `json:"validity_days,omitempty"`
+	GroupID                 *int64    `json:"group_id,omitempty"`
+	GroupName               string    `json:"group_name,omitempty"`
+	Platform                string    `json:"platform,omitempty"`
+	OperatorID              *int64    `json:"operator_id,omitempty"`
+	OperatorEmail           string    `json:"operator_email,omitempty"`
+	PaymentType             string    `json:"payment_type,omitempty"`
+	ReferenceType           string    `json:"reference_type,omitempty"`
+	ReferenceID             string    `json:"reference_id,omitempty"`
+	OccurredAt              time.Time `json:"occurred_at"`
+}
 
 // --- Service ---
 
