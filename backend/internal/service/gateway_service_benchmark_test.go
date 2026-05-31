@@ -229,16 +229,16 @@ REDACTED
 
 func buildSystemCacheableRequest(parts int) *ParsedRequest {
 	var builder strings.Builder
-	builder.WriteString(`{"system":[`)
+	_, _ = builder.WriteString(`{"system":[`)
 	for i := 0; i < parts; i++ {
 		if i > 0 {
-			builder.WriteByte(',')
+			_ = builder.WriteByte(',')
 	REDACTED
-		builder.WriteString(`{"text":"system_part_`)
-		builder.WriteString(strconv.Itoa(i))
-		builder.WriteString(`","cache_control":{"type":"ephemeral"REDACTEDREDACTED`)
+		_, _ = builder.WriteString(`{"text":"system_part_`)
+		_, _ = builder.WriteString(strconv.Itoa(i))
+		_, _ = builder.WriteString(`","cache_control":{"type":"ephemeral"REDACTEDREDACTED`)
 REDACTED
-	builder.WriteString(`]REDACTED`)
+	_, _ = builder.WriteString(`]REDACTED`)
 	parsed, err := ParseGatewayRequest(NewRequestBodyRef([]byte(builder.String())), "")
 	if err != nil {
 		panic(err)
@@ -249,93 +249,93 @@ REDACTED
 func buildLargeAnthropicMessagesBody(targetBytes int, includeCacheControl bool) []byte {
 	var builder strings.Builder
 	builder.Grow(targetBytes + 1024)
-	builder.WriteString(`{"model":"claude-sonnet-4-5","stream":true,"system":[{"type":"text","text":"system seed"REDACTED],"messages":[`)
+	_, _ = builder.WriteString(`{"model":"claude-sonnet-4-5","stream":true,"system":[{"type":"text","text":"system seed"REDACTED],"messages":[`)
 	for i := 0; builder.Len() < targetBytes; i++ {
 		if i > 0 {
-			builder.WriteByte(',')
+			_ = builder.WriteByte(',')
 	REDACTED
-		builder.WriteString(`{"role":"user","content":[{"type":"text","text":"`)
-		builder.WriteString(strings.Repeat("anthropic payload ", 64))
-		builder.WriteString(strconv.Itoa(i))
-		builder.WriteByte('"')
+		_, _ = builder.WriteString(`{"role":"user","content":[{"type":"text","text":"`)
+		_, _ = builder.WriteString(strings.Repeat("anthropic payload ", 64))
+		_, _ = builder.WriteString(strconv.Itoa(i))
+		_ = builder.WriteByte('"')
 		if includeCacheControl && i%32 == 0 {
-			builder.WriteString(`,"cache_control":{"type":"ephemeral"REDACTED`)
+			_, _ = builder.WriteString(`,"cache_control":{"type":"ephemeral"REDACTED`)
 	REDACTED
-		builder.WriteString(`REDACTED]REDACTED`)
+		_, _ = builder.WriteString(`REDACTED]REDACTED`)
 REDACTED
-	builder.WriteString(`]REDACTED`)
+	_, _ = builder.WriteString(`]REDACTED`)
 	return []byte(builder.String())
 REDACTED
 
 func buildLargeGeminiContentsBody(targetBytes int) []byte {
 	var builder strings.Builder
 	builder.Grow(targetBytes + 1024)
-	builder.WriteString(`{"model":"gemini-2.5-pro","systemInstruction":{"parts":[{"text":"system seed"REDACTED]REDACTED,"contents":[`)
+	_, _ = builder.WriteString(`{"model":"gemini-2.5-pro","systemInstruction":{"parts":[{"text":"system seed"REDACTED]REDACTED,"contents":[`)
 	for i := 0; builder.Len() < targetBytes; i++ {
 		if i > 0 {
-			builder.WriteByte(',')
+			_ = builder.WriteByte(',')
 	REDACTED
-		builder.WriteString(`{"role":"user","parts":[{"text":"`)
-		builder.WriteString(strings.Repeat("gemini payload ", 64))
-		builder.WriteString(strconv.Itoa(i))
-		builder.WriteString(`"REDACTED]REDACTED`)
+		_, _ = builder.WriteString(`{"role":"user","parts":[{"text":"`)
+		_, _ = builder.WriteString(strings.Repeat("gemini payload ", 64))
+		_, _ = builder.WriteString(strconv.Itoa(i))
+		_, _ = builder.WriteString(`"REDACTED]REDACTED`)
 REDACTED
-	builder.WriteString(`]REDACTED`)
+	_, _ = builder.WriteString(`]REDACTED`)
 	return []byte(builder.String())
 REDACTED
 
 func buildLargeOpenAIResponsesBody(targetBytes int) []byte {
 	var builder strings.Builder
 	builder.Grow(targetBytes + 1024)
-	builder.WriteString(`{"model":"gpt-5.4","stream":true,"prompt_cache_key":"session-benchmark","input":[`)
+	_, _ = builder.WriteString(`{"model":"gpt-5.4","stream":true,"prompt_cache_key":"session-benchmark","input":[`)
 	for i := 0; builder.Len() < targetBytes; i++ {
 		if i > 0 {
-			builder.WriteByte(',')
+			_ = builder.WriteByte(',')
 	REDACTED
-		builder.WriteString(`{"type":"message","role":"user","content":[{"type":"input_text","text":"`)
-		builder.WriteString(strings.Repeat("openai responses payload ", 48))
-		builder.WriteString(strconv.Itoa(i))
-		builder.WriteString(`"REDACTED]REDACTED`)
+		_, _ = builder.WriteString(`{"type":"message","role":"user","content":[{"type":"input_text","text":"`)
+		_, _ = builder.WriteString(strings.Repeat("openai responses payload ", 48))
+		_, _ = builder.WriteString(strconv.Itoa(i))
+		_, _ = builder.WriteString(`"REDACTED]REDACTED`)
 REDACTED
-	builder.WriteString(`],"tools":[{"type":"function","name":"lookup","parameters":{"type":"object","properties":{"query":{"type":"string"REDACTEDREDACTEDREDACTEDREDACTED]REDACTED`)
+	_, _ = builder.WriteString(`],"tools":[{"type":"function","name":"lookup","parameters":{"type":"object","properties":{"query":{"type":"string"REDACTEDREDACTEDREDACTEDREDACTED]REDACTED`)
 	return []byte(builder.String())
 REDACTED
 
 func buildLargeOpenAIResponsesToolContinuationBody(targetBytes int) []byte {
 	var builder strings.Builder
 	builder.Grow(targetBytes + 1024)
-	builder.WriteString(`{"model":"gpt-5.4","stream":true,"previous_response_id":"resp_benchmark","input":[`)
+	_, _ = builder.WriteString(`{"model":"gpt-5.4","stream":true,"previous_response_id":"resp_benchmark","input":[`)
 	for i := 0; builder.Len() < targetBytes; i++ {
 		if i > 0 {
-			builder.WriteByte(',')
+			_ = builder.WriteByte(',')
 	REDACTED
 		callID := "call_" + strconv.Itoa(i)
-		builder.WriteString(`{"type":"item_reference","id":"`)
-		builder.WriteString(callID)
-		builder.WriteString(`"REDACTED,{"type":"function_call_output","call_id":"`)
-		builder.WriteString(callID)
-		builder.WriteString(`","output":"`)
-		builder.WriteString(strings.Repeat("tool output payload ", 48))
-		builder.WriteString(strconv.Itoa(i))
-		builder.WriteString(`"REDACTED`)
+		_, _ = builder.WriteString(`{"type":"item_reference","id":"`)
+		_, _ = builder.WriteString(callID)
+		_, _ = builder.WriteString(`"REDACTED,{"type":"function_call_output","call_id":"`)
+		_, _ = builder.WriteString(callID)
+		_, _ = builder.WriteString(`","output":"`)
+		_, _ = builder.WriteString(strings.Repeat("tool output payload ", 48))
+		_, _ = builder.WriteString(strconv.Itoa(i))
+		_, _ = builder.WriteString(`"REDACTED`)
 REDACTED
-	builder.WriteString(`]REDACTED`)
+	_, _ = builder.WriteString(`]REDACTED`)
 	return []byte(builder.String())
 REDACTED
 
 func buildLargeOpenAIResponsesImageToolBody(targetBytes int) []byte {
 	var builder strings.Builder
 	builder.Grow(targetBytes + 1024)
-	builder.WriteString(`{"model":"gpt-5.4","stream":false,"tools":[{"type":"image_generation","model":"gpt-image-2","size":"2048x1152"REDACTED],"input":[`)
+	_, _ = builder.WriteString(`{"model":"gpt-5.4","stream":false,"tools":[{"type":"image_generation","model":"gpt-image-2","size":"2048x1152"REDACTED],"input":[`)
 	for i := 0; builder.Len() < targetBytes; i++ {
 		if i > 0 {
-			builder.WriteByte(',')
+			_ = builder.WriteByte(',')
 	REDACTED
-		builder.WriteString(`{"type":"message","role":"user","content":[{"type":"input_text","text":"`)
-		builder.WriteString(strings.Repeat("openai image billing payload ", 48))
-		builder.WriteString(strconv.Itoa(i))
-		builder.WriteString(`"REDACTED]REDACTED`)
+		_, _ = builder.WriteString(`{"type":"message","role":"user","content":[{"type":"input_text","text":"`)
+		_, _ = builder.WriteString(strings.Repeat("openai image billing payload ", 48))
+		_, _ = builder.WriteString(strconv.Itoa(i))
+		_, _ = builder.WriteString(`"REDACTED]REDACTED`)
 REDACTED
-	builder.WriteString(`]REDACTED`)
+	_, _ = builder.WriteString(`]REDACTED`)
 	return []byte(builder.String())
 REDACTED

@@ -46,6 +46,15 @@ REDACTED
 	require.JSONEq(t, `{"model":"gpt-5.1","reasoning":{"effort":"none"REDACTED,"input":[{"type":"message","content":"hi"REDACTED]REDACTED`, string(patched))
 REDACTED
 
+func TestOpenAIRequestView_RejectsEscapedPatchPath(t *testing.T) {
+	view := newOpenAIRequestView([]byte(`{"metadata":{"user.id":"old"REDACTEDREDACTED`))
+	view.MarkPatchSet(`metadata.user\.id`, "new")
+
+	require.False(t, view.HasPatches())
+	_, err := view.ApplyPatches()
+REDACTED
+REDACTED
+
 func TestOpenAIRequestView_ApplyPatchesDisabled(t *testing.T) {
 	view := newOpenAIRequestView([]byte(`{"model":"gpt-5"REDACTED`))
 	view.MarkPatchSet("model", "gpt-5.1")
@@ -258,6 +267,42 @@ REDACTED
 	require.Equal(t, 1, result.ImageCount)
 	require.Equal(t, "2K", result.ImageSize)
 	require.Equal(t, "gpt-image-2", result.BillingModel)
+REDACTED
+
+func TestOpenAIGatewayService_Forward_ImageToolWithImageOnlyModelIsNormalized(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED,
+			Body:       io.NopCloser(strings.NewReader(`{"usage":{"input_tokens":1,"output_tokens":2REDACTEDREDACTED`)),
+	REDACTED,
+REDACTED
+	cfg := &config.Config{REDACTED
+	cfg.Security.URLAllowlist.Enabled = false
+	svc := &OpenAIGatewayService{cfg: cfg, httpUpstream: upstreamREDACTED
+	account := &Account{
+		ID:          11,
+		Name:        "openai-apikey",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+REDACTED
+			"api_key":  "sk-test",
+			"base_url": "https://example.com",
+	REDACTED,
+		Extra: map[string]any{"use_responses_api": trueREDACTED,
+REDACTED
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+	SetOpenAIClientTransport(c, OpenAIClientTransportHTTP)
+
+	body := []byte(`{"model":"gpt-image-2","stream":false,"tools":[{"type":"image_generation","model":"gpt-image-2"REDACTED],"input":"draw"REDACTED`)
+	result, err := svc.Forward(context.Background(), c, account, body)
+REDACTED
+	require.NotNil(t, result)
+	require.Equal(t, openAIImagesResponsesMainModel, gjson.GetBytes(upstream.lastBody, "model").String())
 REDACTED
 
 func TestOpenAIGatewayService_Forward_HTTPRetryRecoveryDoesNotDecodeBeforeError(t *testing.T) {

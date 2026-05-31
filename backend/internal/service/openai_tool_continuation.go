@@ -199,7 +199,7 @@ REDACTED
 		REDACTED
 			referenceIDs[idValue] = struct{REDACTED{REDACTED
 	REDACTED
-		return !(result.HasFunctionCallOutput && result.HasToolCallContext)
+		return !result.HasFunctionCallOutput || !result.HasToolCallContext
 REDACTED)
 	if !result.HasFunctionCallOutput || result.HasToolCallContext || len(callIDs) == 0 || len(referenceIDs) == 0 {
 		return result
