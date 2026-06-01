@@ -525,6 +525,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/provision',
+    name: 'AdminProvision',
+    component: () => import('@/views/admin/ProvisionView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'API Key Provisioning',
+      titleKey: 'admin.provision.title',
+      descriptionKey: 'admin.provision.description'
+    }
+  },
+  {
     path: '/admin/promo-codes',
     name: 'AdminPromoCodes',
     component: () => import('@/views/admin/PromoCodesView.vue'),

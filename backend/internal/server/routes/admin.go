@@ -97,6 +97,20 @@ func RegisterAdminRoutes(
 
 		// 邀请返利（专属用户管理）
 		registerAffiliateRoutes(admin, h)
+
+		// API Key 自动开通
+		registerProvisionRoutes(admin, h)
+	}
+}
+
+func registerProvisionRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	provision := admin.Group("/provision")
+	{
+		provision.GET("/plans", h.Admin.Provision.ListPlans)
+		provision.POST("/plans", h.Admin.Provision.CreatePlan)
+		provision.PUT("/plans/:id", h.Admin.Provision.UpdatePlan)
+		provision.DELETE("/plans/:id", h.Admin.Provision.DeletePlan)
+		provision.POST("/api-keys", h.Admin.Provision.ProvisionAPIKey)
 	}
 }
 
