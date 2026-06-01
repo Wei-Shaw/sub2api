@@ -4883,7 +4883,11 @@ export default {
         suggestRequest: 'Client request error: ask customer to fix request parameters',
         suggestAuth: 'Auth failed: verify API key/credentials',
         suggestPlatform: 'Platform error: prioritize investigation and fix',
-        suggestGeneric: 'See details for more context'
+        suggestGeneric: 'See details for more context',
+        apiKeyPrefix: 'Key Prefix',
+        attemptedKeyPrefix: 'Attempted Key Prefix',
+        deletedKeyOwner: 'Deleted Key Owner',
+        keyDeletedBadge: 'Key Deleted'
       REDACTED,
       requestDetails: {
         title: 'Request Details',

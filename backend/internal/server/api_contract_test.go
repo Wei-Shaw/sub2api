@@ -2102,6 +2102,10 @@ REDACTED
 	return nil
 REDACTED
 
+func (r *stubApiKeyRepo) DeleteWithAudit(ctx context.Context, id int64) error {
+	return r.Delete(ctx, id)
+REDACTED
+
 func (r *stubApiKeyRepo) ListByUserID(ctx context.Context, userID int64, params pagination.PaginationParams, _ service.APIKeyListFilters) ([]service.APIKey, *pagination.PaginationResult, error) {
 	ids := make([]int64, 0, len(r.byID))
 	for id := range r.byID {
