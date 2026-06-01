@@ -17,7 +17,6 @@ import (
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 )
 
-
 // ============================================================
 // Cmdable — string commands
 // ============================================================
@@ -265,4 +264,3 @@ func parseScanCmd(reply *pb.DoReply, err error, namespace string) *ScanCmd {
 	}
 	return cmd
 }
-

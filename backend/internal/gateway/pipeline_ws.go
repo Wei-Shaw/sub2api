@@ -19,6 +19,12 @@ type WSSessionHooks struct {
 	// BeforeTurn is called before each turn (turn >= 2 for re-acquisition).
 	// For turn 1, pre-flight already acquired slots.
 	BeforeTurn func(turn int) error
+	// BeforeTurnContent runs content interception against a subsequent turn's
+	// payload (turn >= 2). Turn 1 is already moderated during pre-flight, so
+	// the relay only invokes this for later turns, supplying the per-turn
+	// payload the BeforeTurn(turn int) signature cannot carry. A non-nil error
+	// (a *ContentBlockedError) aborts the turn.
+	BeforeTurnContent func(turn int, payload []byte) error
 	// AfterTurn is called after each turn completes (usage recording, slot release).
 	AfterTurn func(turn int, result *ForwardResult, turnErr error)
 }
@@ -114,7 +120,7 @@ func (p *GatewayPipeline) wsSelectAndForward(
 
 	// --- Phase 5: build session hooks ---
 	hooks := p.buildWSSessionHooks(
-		ctx, req, account, p.resolveAccountMaxConcurrency(account),
+		c, ctx, req, account, p.resolveAccountMaxConcurrency(account),
 		currentUserRelease, currentAccountRelease,
 		releaseTurnSlots, record,
 	)
@@ -158,6 +164,7 @@ func (p *GatewayPipeline) resolveAccountMaxConcurrency(account *service.Account)
 // buildWSSessionHooks creates WSSessionHooks that manage slot re-acquisition
 // and usage recording across WS turns.
 func (p *GatewayPipeline) buildWSSessionHooks(
+	c *gin.Context,
 	ctx context.Context,
 	req *ForwardRequest,
 	account *service.Account,
@@ -177,6 +184,12 @@ func (p *GatewayPipeline) buildWSSessionHooks(
 				currentUserRelease, currentAccountRelease,
 				releaseTurnSlots,
 			)
+		},
+		BeforeTurnContent: func(turn int, payload []byte) error {
+			if turn <= 1 {
+				return nil
+			}
+			return p.CheckContentForPayload(c, req, payload)
 		},
 		AfterTurn: func(turn int, result *ForwardResult, turnErr error) {
 			releaseTurnSlots()

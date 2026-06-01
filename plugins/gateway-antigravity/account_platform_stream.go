@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"bufio"
 	"encoding/json"
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"io"
 	"strings"
 

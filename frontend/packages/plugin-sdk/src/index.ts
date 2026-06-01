@@ -153,6 +153,9 @@ export { createStableObjectKeyResolver } from './utils/stableObjectKey'
 // Utilities used by account usage display
 export { formatCompactNumber } from './utils/formatCompact'
 
+// Shared formatting helpers (date/time + host locale).
+export { formatDateTime, getHostLocale } from './utils/format'
+
 export * from './host-sdk'
 
 // Plugin frontend bootstrap helpers (sdk / axios accessor factories)

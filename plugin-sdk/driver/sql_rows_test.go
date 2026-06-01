@@ -26,8 +26,8 @@ func TestGrpcRows_ColumnTypeDatabaseTypeName(t *testing.T) {
 		{1, "varchar"},
 		{2, "timestamptz"},
 		{3, "jsonb"},
-		{-1, ""},  // negative index
-		{99, ""},  // out of range
+		{-1, ""}, // negative index
+		{99, ""}, // out of range
 	}
 	for _, tt := range tests {
 		got := rows.ColumnTypeDatabaseTypeName(tt.index)

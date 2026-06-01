@@ -186,9 +186,9 @@
                   <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.activeWorkers') }}</p>
                   <p class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{{ status?.active_workers ?? 0 }}</p>
                 </div>
-                <div class="rounded-lg bg-emerald-50 p-4 dark:bg-emerald-900/10">
+                <div class="surface-success rounded-lg p-4">
                   <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.idleWorkers') }}</p>
-                  <p class="mt-2 text-2xl font-semibold text-emerald-700 dark:text-emerald-300">{{ status?.idle_workers ?? configForm.worker_count }}</p>
+                  <p class="text-semantic-success mt-2 text-2xl font-semibold">{{ status?.idle_workers ?? configForm.worker_count }}</p>
                 </div>
                 <div class="rounded-lg bg-gray-50 p-4 dark:bg-dark-700/50">
                   <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.processed') }}</p>
@@ -326,7 +326,7 @@
                       <button
                         v-if="canUnbanRow(row)"
                         type="button"
-                        class="mt-2 inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-900/60 dark:bg-emerald-900/20 dark:text-emerald-300 dark:hover:bg-emerald-900/30"
+                        class="btn-soft-outline-success mt-2 inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                         :disabled="unbanningUserID === row.user_id"
                         @click="unbanUser(row)"
                       >
@@ -508,13 +508,13 @@
                     <span v-if="configForm.api_key_configured" class="inline-flex rounded-md bg-gray-100 px-2 py-1 dark:bg-dark-700">
                       {{ t('admin.riskControl.storedApiKeyCount', { count: configForm.api_key_count }) }}
                     </span>
-                    <span v-if="configForm.clear_api_key" class="inline-flex rounded-md bg-red-50 px-2 py-1 text-red-700 dark:bg-red-900/20 dark:text-red-300">
+                    <span v-if="configForm.clear_api_key" class="badge-danger inline-flex rounded-md px-2 py-1">
                       {{ t('admin.riskControl.apiKeyWillClear') }}
                     </span>
-                    <span v-else-if="pendingDeletedApiKeyCount > 0" class="inline-flex rounded-md bg-amber-50 px-2 py-1 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
+                    <span v-else-if="pendingDeletedApiKeyCount > 0" class="badge-warning inline-flex rounded-md px-2 py-1">
                       {{ t('admin.riskControl.apiKeyPendingDeleteCount', { count: pendingDeletedApiKeyCount }) }}
                     </span>
-                    <span v-if="configForm.api_keys_mode === 'replace'" class="inline-flex rounded-md bg-amber-50 px-2 py-1 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
+                    <span v-if="configForm.api_keys_mode === 'replace'" class="badge-warning inline-flex rounded-md px-2 py-1">
                       {{ t('admin.riskControl.apiKeysReplaceWarning') }}
                     </span>
                   </div>
@@ -632,7 +632,7 @@
                             </button>
                           </div>
                         </div>
-                        <p v-if="row.last_error" class="mt-1.5 rounded-md bg-amber-50 px-2 py-1.5 text-xs leading-5 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
+                        <p v-if="row.last_error" class="badge-warning mt-1.5 rounded-md px-2 py-1.5 text-xs leading-5">
                           {{ row.last_error }}
                         </p>
                       </div>
@@ -827,7 +827,7 @@
                   </div>
                   <button
                     type="button"
-                    class="btn btn-secondary inline-flex items-center justify-center gap-2 text-red-600 hover:text-red-700 dark:text-red-300"
+                    class="text-semantic-danger btn btn-secondary inline-flex items-center justify-center gap-2"
                     :disabled="hashActionLoading || (status?.flagged_hash_count ?? 0) === 0"
                     @click="clearFlaggedHashes"
                   >
@@ -1125,7 +1125,7 @@ import riskControlAPI, {
   type UpdateContentModerationConfig,
 } from '../api/riskControl'
 import { getSdk } from '../api/sdk'
-import { formatDateTime as formatDateTimeValue } from '../utils/format'
+import { formatDateTime as formatDateTimeValue } from '@sub2api/plugin-sdk'
 
 type SettingsTab = 'basic' | 'scope' | 'runtime' | 'response' | 'riskThresholds' | 'retention' | 'keywords'
 type WorkerSlotState = 'active' | 'idle' | 'disabled'

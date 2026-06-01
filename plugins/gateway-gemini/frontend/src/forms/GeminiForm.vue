@@ -6,7 +6,7 @@
     <!-- Gemini help button -->
     <div class="flex justify-end">
       <button type="button" @click="showGeminiHelpDialog = true"
-        class="flex items-center gap-1 rounded px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20">
+        class="btn-ghost-info flex items-center gap-1 rounded px-2 py-1 text-xs">
         <Icon name="questionCircle" size="sm" />
         {{ t('admin.accounts.gemini.helpButton') }}
       </button>
@@ -18,7 +18,7 @@
       <p>{{ t('admin.accounts.gemini.accountType.apiKeyNote') }}</p>
       <div class="mt-2 flex flex-wrap gap-2">
         <a :href="geminiHelpLinks.apiKey" target="_blank" rel="noreferrer"
-          class="font-medium text-blue-600 hover:underline dark:text-blue-400">
+          class="text-semantic-info font-medium hover:underline">
           {{ t('admin.accounts.gemini.accountType.apiKeyLink') }}
         </a>
       </div>

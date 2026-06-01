@@ -1,4 +1,4 @@
-﻿package main
+package main
 
 import (
 	"encoding/json"
@@ -25,9 +25,9 @@ func buildManifest() *pluginsdk.Manifest {
 		},
 		Platforms: []pluginsdk.PlatformDecl{
 			{
-				Platform:    "anthropic",
-				DisplayName: "Anthropic",
-				IconSVG:     anthropicIconSVG,
+				Platform:           "anthropic",
+				DisplayName:        "Anthropic",
+				IconSVG:            anthropicIconSVG,
 				ThemeColor:         "#ea580c",
 				SortOrder:          1,
 				CompatibleGateways: []string{"anthropic"},
@@ -51,58 +51,58 @@ func buildManifest() *pluginsdk.Manifest {
 				}`),
 				AccountTypes: []pluginsdk.AccountTypeDecl{
 					{
-						Type:        "oauth",
-						DisplayName: "OAuth",
+						Type:              "oauth",
+						DisplayName:       "OAuth",
 						FormComponentPath: "AnthropicForm",
-						Description: "Claude Code OAuth session (full scope: profile + inference)",
-						SortOrder:   1,
-						BadgeLabel:  "OAuth",
+						Description:       "Claude Code OAuth session (full scope: profile + inference)",
+						SortOrder:         1,
+						BadgeLabel:        "OAuth",
 						FrontendMeta: json.RawMessage(`{
 							"supports_rpm_limit": true,
 							"default_usage_source": "passive"
 						}`),
 					},
 					{
-						Type:        "setup-token",
-						DisplayName: "Setup Token",
+						Type:              "setup-token",
+						DisplayName:       "Setup Token",
 						FormComponentPath: "AnthropicForm",
-						Description: "Claude Code setup token (inference only)",
-						SortOrder:   2,
-						BadgeLabel:  "Setup",
+						Description:       "Claude Code setup token (inference only)",
+						SortOrder:         2,
+						BadgeLabel:        "Setup",
 						FrontendMeta: json.RawMessage(`{
 							"supports_rpm_limit": true,
 							"default_usage_source": "passive"
 						}`),
 					},
 					{
-						Type:        "apikey",
-						DisplayName: "API Key",
+						Type:              "apikey",
+						DisplayName:       "API Key",
 						FormComponentPath: "AnthropicForm",
-						Description: "Anthropic platform API key",
-						SortOrder:   3,
-						BadgeLabel:  "Key",
+						Description:       "Anthropic platform API key",
+						SortOrder:         3,
+						BadgeLabel:        "Key",
 						FrontendMeta: json.RawMessage(`{
 							"supports_advanced_quota_control": true
 						}`),
 					},
 					{
-						Type:        "bedrock",
-						DisplayName: "AWS Bedrock",
+						Type:              "bedrock",
+						DisplayName:       "AWS Bedrock",
 						FormComponentPath: "AnthropicForm",
-						Description: "AWS Bedrock access via SigV4 or cross-region API key",
-						SortOrder:   4,
-						BadgeLabel:  "Bedrock",
+						Description:       "AWS Bedrock access via SigV4 or cross-region API key",
+						SortOrder:         4,
+						BadgeLabel:        "Bedrock",
 						FrontendMeta: json.RawMessage(`{
 							"supports_advanced_quota_control": true
 						}`),
 					},
 					{
-						Type:        "service_account",
-						DisplayName: "Vertex AI",
+						Type:              "service_account",
+						DisplayName:       "Vertex AI",
 						FormComponentPath: "AnthropicForm",
-						Description: "Vertex AI access via Google Service Account",
-						SortOrder:   5,
-						BadgeLabel:  "Vertex",
+						Description:       "Vertex AI access via Google Service Account",
+						SortOrder:         5,
+						BadgeLabel:        "Vertex",
 					},
 				},
 				CapacityDisplay: &pluginsdk.CapacityDisplayConfig{

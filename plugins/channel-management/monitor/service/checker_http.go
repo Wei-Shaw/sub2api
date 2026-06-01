@@ -202,4 +202,3 @@ func truncateForErrorBody(body string) string {
 	}
 	return body[:cutoff] + ellipsis
 }
-

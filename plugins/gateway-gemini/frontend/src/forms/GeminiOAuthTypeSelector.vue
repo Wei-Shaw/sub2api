@@ -32,7 +32,7 @@
           <span class="block text-sm font-medium text-gray-900 dark:text-white">GCP Code Assist</span>
           <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.gemini.oauthType.codeAssistDesc') || 'Enterprise, requires GCP project' }}</span>
           <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            <a :href="helpLinks.gcpProject" class="ml-1 text-blue-600 hover:underline dark:text-blue-400"
+            <a :href="helpLinks.gcpProject" class="text-semantic-info ml-1 hover:underline"
               target="_blank" rel="noreferrer">
               {{ t('admin.accounts.gemini.oauthType.gcpProjectLink') }}
             </a>
@@ -77,12 +77,12 @@
           </span>
         </div>
         <span v-if="!aiStudioEnabled"
-          class="ml-auto shrink-0 rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+          class="badge-warning ml-auto shrink-0 rounded px-2 py-0.5 text-xs">
           {{ t('admin.accounts.oauth.gemini.aiStudioNotConfiguredShort') }}
         </span>
       </button>
       <div v-if="!aiStudioEnabled"
-        class="pointer-events-none absolute right-0 top-full z-50 mt-2 w-80 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 opacity-0 shadow-lg transition-opacity group-hover:opacity-100 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-200">
+        class="surface-warning text-semantic-warning pointer-events-none absolute right-0 top-full z-50 mt-2 w-80 rounded-md px-3 py-2 text-xs opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
         {{ t('admin.accounts.oauth.gemini.aiStudioNotConfiguredTip') }}
       </div>
     </div>

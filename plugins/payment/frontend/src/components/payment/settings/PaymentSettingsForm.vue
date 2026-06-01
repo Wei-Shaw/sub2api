@@ -67,7 +67,7 @@
             </p>
           </div>
           <div>
-            <label class="input-label">{{ t('payment.adminSettings.orderTimeout') }} <span class="text-red-500">*</span></label>
+            <label class="input-label">{{ t('payment.adminSettings.orderTimeout') }} <span class="input-required">*</span></label>
             <input v-model.number="form.payment_order_timeout_minutes" type="number" min="1" class="input" required />
             <p class="mt-0.5 text-xs text-gray-400">{{ t('payment.adminSettings.orderTimeoutHint') }}</p>
           </div>

@@ -1,10 +1,10 @@
 package main
 
 import (
-	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"io"
 	"strings"
 
@@ -211,4 +211,3 @@ func sendSuccessEnd(stream grpc.ServerStreamingServer[pb.TestConnectionEvent]) e
 	_ = stream.Send(&pb.TestConnectionEvent{Type: "test_end", Success: true})
 	return nil
 }
-

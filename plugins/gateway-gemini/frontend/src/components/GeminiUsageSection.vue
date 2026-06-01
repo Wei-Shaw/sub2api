@@ -32,7 +32,7 @@
             <div><strong>{{ quotaPolicyChannel }}:</strong></div>
             <div class="pl-2">{{ quotaPolicyLimits }}</div>
             <div class="mt-2">
-              <a :href="quotaPolicyDocsUrl" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300 underline">
+              <a :href="quotaPolicyDocsUrl" target="_blank" rel="noopener noreferrer" class="text-semantic-info underline">
                 {{ t('admin.accounts.gemini.quotaPolicy.columns.docs') }} &rarr;
               </a>
             </div>
@@ -81,7 +81,7 @@
           <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
         </div>
       </div>
-      <div v-else-if="error" class="text-xs text-red-500">
+      <div v-else-if="error" class="text-semantic-danger text-xs">
         {{ error }}
       </div>
       <!-- Gemini: show daily usage bars when available -->

@@ -1,10 +1,10 @@
 package main
 
 import (
-	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"io"
 	"net"
 	"net/http"

@@ -43,7 +43,7 @@
         </div>
         <div v-if="actuallyRefunded.gt(0)" class="mt-1 flex justify-between text-sm">
           <span class="text-gray-500 dark:text-gray-400">{{ t('payment.admin.alreadyRefunded') }}</span>
-          <span class="font-medium text-red-600 dark:text-red-400">{{ order?.order_type === 'balance' ? '$' : '¥' }}{{ formatMoney(actuallyRefunded) }}</span>
+          <span class="text-semantic-danger font-medium">{{ order?.order_type === 'balance' ? '$' : '¥' }}{{ formatMoney(actuallyRefunded) }}</span>
         </div>
       </div>
 
@@ -77,7 +77,7 @@
         <!-- Insufficient balance warning -->
         <div
           v-if="form.deduct_balance && balanceInsufficient"
-          class="mt-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
+          class="surface-warning text-semantic-warning mt-2 rounded-lg p-3 text-sm"
         >
           {{ t('payment.admin.insufficientBalance') }}
         </div>
@@ -85,7 +85,7 @@
         <!-- No deduction info -->
         <div
           v-if="!form.deduct_balance"
-          class="mt-2 rounded-lg bg-blue-50 p-3 text-sm text-blue-700 dark:bg-blue-900/20 dark:text-blue-300"
+          class="surface-info text-semantic-info mt-2 rounded-lg p-3 text-sm"
         >
           {{ t('payment.admin.noDeduction') }}
         </div>
@@ -126,7 +126,7 @@
       <!-- Warning -->
       <div
         v-if="warning"
-        class="rounded-lg bg-yellow-50 p-3 text-sm text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-300"
+        class="surface-warning text-semantic-warning rounded-lg p-3 text-sm"
       >
         {{ warning }}
       </div>
@@ -137,9 +137,9 @@
           id="force-refund"
           v-model="form.force"
           type="checkbox"
-          class="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+          class="checkbox-danger h-4 w-4"
         />
-        <label for="force-refund" class="text-sm font-medium text-red-600 dark:text-red-400">
+        <label for="force-refund" class="text-semantic-danger text-sm font-medium">
           {{ t('payment.admin.forceRefund') }}
         </label>
       </div>
@@ -154,7 +154,7 @@
           type="submit"
           form="refund-form"
           :disabled="submitting || amountIsInvalid || (requireForce && !form.force)"
-          class="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:opacity-50 dark:focus:ring-offset-dark-800"
+          class="btn btn-danger btn-sm"
         >
           {{ submitting ? t('common.processing') : t('payment.admin.confirmRefund') }}
         </button>

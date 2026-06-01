@@ -1,4 +1,4 @@
-﻿package main
+package main
 
 import (
 	"bytes"
@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"strings"
 
-	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
+	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 )
 
 // errBedrockAccount is returned by resolveForwardAuth when the account is

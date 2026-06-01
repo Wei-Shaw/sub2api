@@ -3,7 +3,7 @@
   <div class="card p-5">
     <p class="text-xs font-medium text-gray-400 dark:text-gray-500">{{ t('payment.rechargeAccount') }}</p>
     <p class="mt-1 text-base font-semibold text-gray-900 dark:text-white">{{ username }}</p>
-    <p class="mt-0.5 text-sm font-medium text-green-600 dark:text-green-400">{{ t('payment.currentBalance') }}: {{ formatMoney(balance) }}</p>
+    <p class="text-semantic-success mt-0.5 text-sm font-medium">{{ t('payment.currentBalance') }}: {{ formatMoney(balance) }}</p>
   </div>
   <div v-if="enabledMethods.length === 0" class="card py-16 text-center">
     <p class="text-gray-500 dark:text-gray-400">{{ t('payment.notAvailable') }}</p>
@@ -17,7 +17,7 @@
         :max="maxAmount"
         @update:model-value="$emit('update:amount', $event)"
       />
-      <p v-if="amountError" class="mt-2 text-xs text-amber-600 dark:text-amber-300">{{ amountError }}</p>
+      <p v-if="amountError" class="text-semantic-warning mt-2 text-xs">{{ amountError }}</p>
     </div>
     <div v-if="enabledMethods.length >= 1" class="card p-6">
       <PaymentMethodSelector

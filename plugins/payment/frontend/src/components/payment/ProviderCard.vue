@@ -48,11 +48,11 @@
         <ToggleSwitch :label="t('payment.adminSettings.refundEnabled')" :checked="provider.refund_enabled" @toggle="emit('toggleField', 'refund_enabled')" />
         <ToggleSwitch v-if="provider.refund_enabled" :label="t('payment.adminSettings.allowUserRefund')" :checked="provider.allow_user_refund" @toggle="emit('toggleField', 'allow_user_refund')" />
         <div class="flex items-center gap-2 border-l border-gray-200 pl-3 dark:border-dark-600">
-          <button type="button" @click="emit('edit')" class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20 dark:hover:text-blue-400">
+          <button type="button" @click="emit('edit')" class="hover-tint-info flex flex-col items-center gap-0.5 rounded-lg p-1.5">
             <Icon name="edit" size="sm" />
             <span class="text-xs">{{ t('common.edit') }}</span>
           </button>
-          <button type="button" @click="emit('delete')" class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400">
+          <button type="button" @click="emit('delete')" class="hover-tint-danger flex flex-col items-center gap-0.5 rounded-lg p-1.5">
             <Icon name="trash" size="sm" />
             <span class="text-xs">{{ t('common.delete') }}</span>
           </button>

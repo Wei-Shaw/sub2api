@@ -1,10 +1,10 @@
 package main
 
 import (
-	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
-	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
 	"encoding/json"
 	"fmt"
+	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"net/url"
 	"regexp"
 	"strings"
@@ -13,8 +13,8 @@ import (
 // --- Vertex Anthropic constants ---
 
 const (
-	vertexDefaultLocation    = "us-central1"
-	vertexAnthropicVersion   = "vertex-2023-10-16"
+	vertexDefaultLocation     = "us-central1"
+	vertexAnthropicVersion    = "vertex-2023-10-16"
 	accountTypeServiceAccount = pluginsdk.AccountTypeServiceAccount
 )
 
@@ -28,9 +28,9 @@ var (
 
 // vertexCreds holds parsed Vertex AI credential fields.
 type vertexCreds struct {
-	serviceAccountJSON string // raw JSON of the Google service account key
-	projectID          string // GCP project ID (override or from SA key)
-	location           string // GCP region (default: us-central1)
+	serviceAccountJSON string            // raw JSON of the Google service account key
+	projectID          string            // GCP project ID (override or from SA key)
+	location           string            // GCP region (default: us-central1)
 	modelLocations     map[string]string // per-model location overrides
 }
 

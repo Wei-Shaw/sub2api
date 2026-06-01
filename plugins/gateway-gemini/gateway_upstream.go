@@ -212,7 +212,6 @@ func resolveModelMapping(
 	)
 }
 
-
 // --- client header forwarding ---
 
 // clientHeadersAllowList lists headers from the client that may be
@@ -256,11 +255,11 @@ func buildDoneChunk(
 ) *pb.GatewayForwardChunk {
 	done := &pb.GatewayResponseDone{
 		Result: &pb.GatewayForwardResult{
-			RequestId:     resp.Header.Get("x-goog-request-id"),
-			Model:         upstream.originalModel,
-			UpstreamModel: upstream.mappedModel,
-			Stream:        isStream,
-			DurationMs:    time.Since(startTime).Milliseconds(),
+			RequestId:       resp.Header.Get("x-goog-request-id"),
+			Model:           upstream.originalModel,
+			UpstreamModel:   upstream.mappedModel,
+			Stream:          isStream,
+			DurationMs:      time.Since(startTime).Milliseconds(),
 			ResponseHeaders: gatewayutil.CollectResponseHeaders(resp, nil),
 		},
 	}

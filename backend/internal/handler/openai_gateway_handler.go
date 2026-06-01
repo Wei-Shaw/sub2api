@@ -520,7 +520,7 @@ func (h *OpenAIGatewayHandler) buildOpenAIWSIngressHooks(
 			if turn == 1 {
 				return nil
 			}
-			return h.wsBeforeRequest(payload)
+			return h.wsBeforeRequest(turn, payload, pipelineHooks)
 		},
 		BeforeTurn: func(turn int) error {
 			if pipelineHooks == nil || pipelineHooks.BeforeTurn == nil {
@@ -548,12 +548,24 @@ func (h *OpenAIGatewayHandler) buildOpenAIWSIngressHooks(
 	}
 }
 
-// wsBeforeRequest validates the per-turn WS payload for turns 2+. Content
-// interception now runs through the gateway pipeline's ContentInterceptExtension,
-// so this hook only guards against malformed JSON.
-func (h *OpenAIGatewayHandler) wsBeforeRequest(payload []byte) error {
+// wsBeforeRequest validates the per-turn WS payload for turns 2+ and runs
+// content interception against that turn's payload. Turn 1 is moderated during
+// pipeline pre-flight; subsequent turns carry a fresh response.create payload
+// that pre-flight never saw, so the per-turn payload is routed through the
+// pipeline's BeforeTurnContent hook (which reuses the same ContentInterceptor).
+func (h *OpenAIGatewayHandler) wsBeforeRequest(turn int, payload []byte, pipelineHooks *gateway.WSSessionHooks) error {
 	if !gjson.ValidBytes(payload) {
 		return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", errors.New("invalid json"))
+	}
+	if pipelineHooks == nil || pipelineHooks.BeforeTurnContent == nil {
+		return nil
+	}
+	if err := pipelineHooks.BeforeTurnContent(turn, payload); err != nil {
+		var contentBlocked *gateway.ContentBlockedError
+		if errors.As(err, &contentBlocked) {
+			return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, contentBlocked.Message, contentBlocked)
+		}
+		return err
 	}
 	return nil
 }

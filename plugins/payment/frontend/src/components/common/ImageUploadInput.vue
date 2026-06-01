@@ -31,7 +31,7 @@
         <span class="truncate text-gray-500 dark:text-gray-400">{{ modelValue }}</span>
         <button
           type="button"
-          class="shrink-0 rounded px-2 py-1 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+          class="btn-ghost-danger shrink-0 rounded px-2 py-1"
           :disabled="uploading"
           @click="onClear"
         >

@@ -23,7 +23,7 @@
       </template>
       <!-- Countdown -->
       <div v-if="expired" class="text-center">
-        <p class="text-lg font-medium text-red-500">{{ t('payment.qr.expired') }}</p>
+        <p class="text-semantic-danger text-lg font-medium">{{ t('payment.qr.expired') }}</p>
       </div>
       <div v-else class="text-center">
         <p class="text-sm text-gray-500 dark:text-gray-400">{{ qrUrl ? t('payment.qr.expiresIn') : '' }}</p>
@@ -33,8 +33,8 @@
     </div>
     <!-- Success State -->
     <div v-else class="flex flex-col items-center space-y-4 py-4">
-      <div class="flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
-        <Icon name="check" size="lg" class="text-green-500" />
+      <div class="stat-icon-success flex h-16 w-16 items-center justify-center rounded-full">
+        <Icon name="check" size="lg" />
       </div>
       <p class="text-lg font-bold text-gray-900 dark:text-white">{{ t('payment.result.success') }}</p>
       <div v-if="paidOrder" class="w-full rounded-xl bg-gray-50 p-4 dark:bg-dark-800">

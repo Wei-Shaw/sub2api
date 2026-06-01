@@ -16,7 +16,7 @@
         class="group relative cursor-help"
       >
         <svg
-          class="h-3.5 w-3.5 text-red-500"
+          class="text-semantic-danger h-3.5 w-3.5"
           fill="currentColor"
           viewBox="0 0 20 20"
         >
@@ -49,7 +49,7 @@
           :href="validationURL"
           target="_blank"
           rel="noopener noreferrer"
-          class="text-[10px] text-blue-600 hover:text-blue-800 hover:underline dark:text-blue-400 dark:hover:text-blue-300"
+          class="text-semantic-info text-[10px] hover:underline"
           :title="t('admin.accounts.openVerification')"
         >
           {{ t('admin.accounts.openVerification') }}
@@ -74,7 +74,7 @@
 
     <!-- Degraded error (non-403, non-401) -->
     <div v-else-if="usageInfo?.error" class="space-y-1">
-      <span class="inline-block rounded px-1.5 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+      <span class="badge-warning inline-block rounded px-1.5 py-0.5 text-[10px] font-medium">
         {{ usageErrorLabel }}
       </span>
     </div>
@@ -89,7 +89,7 @@
     </div>
 
     <!-- Error state -->
-    <div v-else-if="error" class="text-xs text-red-500">
+    <div v-else-if="error" class="text-semantic-danger text-xs">
       {{ error }}
     </div>
 

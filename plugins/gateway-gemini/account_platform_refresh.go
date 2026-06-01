@@ -1,10 +1,10 @@
 package main
 
 import (
-	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"io"
 	"net/http"
 	"net/url"
@@ -75,7 +75,6 @@ func (s *accountPlatformServer) RefreshToken(
 	}, nil
 }
 
-
 // resolveOAuthClient determines the OAuth client_id and client_secret to use.
 // Falls back to the built-in Gemini CLI client if not configured.
 func resolveOAuthClient(creds map[string]any) (clientID, clientSecret string) {
@@ -140,7 +139,6 @@ func callGoogleTokenEndpoint(
 
 	return &tokenResp, nil
 }
-
 
 // buildUpdatedCredentials merges the refresh response into the existing
 // credential map, preserving fields that the token endpoint does not return.

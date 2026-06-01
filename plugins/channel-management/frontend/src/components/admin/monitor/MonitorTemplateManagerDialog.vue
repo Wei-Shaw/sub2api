@@ -45,7 +45,7 @@
       <div>
         <label class="input-label">
           {{ t('admin.channelMonitor.template.form.name') }}
-          <span class="text-red-500">*</span>
+          <span class="input-required">*</span>
         </label>
         <input
           v-model="form.name"
@@ -59,7 +59,7 @@
       <div v-if="editing === 'new'">
         <label class="input-label">
           {{ t('admin.channelMonitor.form.provider') }}
-          <span class="text-red-500">*</span>
+          <span class="input-required">*</span>
         </label>
         <div class="grid grid-cols-3 gap-3">
           <button

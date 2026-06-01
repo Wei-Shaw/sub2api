@@ -81,7 +81,7 @@
       <button
         type="button"
         @click="clearAll"
-        class="rounded-lg border border-red-200 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/30"
+        class="btn-soft-outline-danger rounded-lg px-3 py-1.5 text-sm"
       >
         {{ t('admin.riskControl.modelSelector.clearAllModels') }}
       </button>

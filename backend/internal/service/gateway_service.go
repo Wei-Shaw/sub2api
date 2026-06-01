@@ -415,7 +415,6 @@ func resolveModelsListCacheTTL(cfg *config.Config) time.Duration {
 	return time.Duration(cfg.Gateway.ModelsListCacheTTLSeconds) * time.Second
 }
 
-
 type AccountWaitPlan struct {
 	AccountID      int64
 	MaxConcurrency int
@@ -477,7 +476,6 @@ type UpstreamFailoverError struct {
 func (e *UpstreamFailoverError) Error() string {
 	return fmt.Sprintf("upstream error: %d (failover)", e.StatusCode)
 }
-
 
 // GatewayService handles API gateway operations
 type GatewayService struct {
@@ -545,6 +543,14 @@ type GatewayService struct {
 	// Wired via SetPluginSchedulabilityChecker. nil means default pass.
 	pluginSchedulabilityMu      sync.RWMutex
 	pluginSchedulabilityChecker PluginSchedulabilityChecker
+
+	// internal500PenaltyHook is the optional Antigravity-specific hook that
+	// applies the progressive INTERNAL 500 penalty in the plugin gateway
+	// path (the legacy in-service Forward loop is bypassed). Wired via
+	// SetInternal500PenaltyHook. nil means no-op (does not affect other
+	// platforms or the normal success path).
+	internal500PenaltyMu   sync.RWMutex
+	internal500PenaltyHook Internal500PenaltyHook
 }
 
 // NewGatewayService creates a new GatewayService
@@ -626,7 +632,6 @@ func NewGatewayService(
 	}
 	return svc
 }
-
 
 type anthropicCacheControlPayload struct {
 	Type string `json:"type"`
@@ -1061,7 +1066,6 @@ func (s *GatewayService) buildOAuthMetadataUserIDFromBody(
 	accountUUID := strings.TrimSpace(account.GetExtraString("account_uuid"))
 	return FormatMetadataUserID(userID, accountUUID, sessionID, uaVersion)
 }
-
 
 // isClaudeCodeClient 判断请求是否来自真正的 Claude Code 客户端。
 // 判定条件：
@@ -3941,7 +3945,6 @@ func applyClaudeCodeMimicHeaders(req *http.Request, isStream bool) {
 	}
 }
 
-
 // shouldRectifySignatureError 统一判断是否应触发签名整流（strip thinking blocks 并重试）。
 // 根据账号类型检查对应的开关和匹配模式。
 func (s *GatewayService) shouldRectifySignatureError(ctx context.Context, account *Account, respBody []byte) bool {
@@ -4054,7 +4057,6 @@ func (s *GatewayService) isThinkingBlockSignatureError(respBody []byte) bool {
 
 	return false
 }
-
 
 // streamingResult 流式响应结果
 type streamingResult struct {
@@ -4770,7 +4772,6 @@ func (s *GatewayService) replaceModelInResponseBody(body []byte, fromModel, toMo
 	return body
 }
 
-
 func detachStreamUpstreamContext(ctx context.Context, stream bool) (context.Context, context.CancelFunc) {
 	if ctx == nil {
 		return context.Background(), func() {}
@@ -4787,7 +4788,6 @@ func detachUpstreamContext(ctx context.Context) (context.Context, context.Cancel
 	}
 	return context.WithoutCancel(ctx), func() {}
 }
-
 
 // ForwardCountTokens 转发 count_tokens 请求到上游 API
 // 特点：不记录使用量、仅支持非流式响应
@@ -5345,7 +5345,6 @@ func (s *GatewayService) validateUpstreamBaseURL(raw string) (string, error) {
 	}
 	return normalized, nil
 }
-
 
 const debugGatewayBodyDefaultFilename = "gateway_debug.log"
 

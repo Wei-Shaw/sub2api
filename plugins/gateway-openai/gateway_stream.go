@@ -22,13 +22,13 @@ const (
 // streamResult holds accumulated usage data from a completed SSE stream
 // or non-streaming response.
 type streamResult struct {
-	inputTokens      int64
-	outputTokens     int64
-	cacheReadTokens  int64
+	inputTokens       int64
+	outputTokens      int64
+	cacheReadTokens   int64
 	imageOutputTokens int64
-	firstTokenMs     int32
-	clientDisconnect bool
-	sawTerminalEvent bool // true when response.completed / [DONE] was seen
+	firstTokenMs      int32
+	clientDisconnect  bool
+	sawTerminalEvent  bool // true when response.completed / [DONE] was seen
 }
 
 // sendResponseHeaders sends the initial GatewayResponseHeaders chunk

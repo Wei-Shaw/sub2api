@@ -92,6 +92,10 @@ func (p *GatewayPipeline) tryOneAccount(
 	if err != nil {
 		return p.handleForwardError(ctx, w, req, fs, err)
 	}
+	// Post-flight success hook: lets platform adapters reset per-account
+	// failure state (e.g. Antigravity INTERNAL 500 penalty ladder). No-op
+	// for platforms without such state.
+	p.gatewayService.HandlePipelineForwardSuccess(ctx, req.Account)
 	return result, true, nil
 }
 

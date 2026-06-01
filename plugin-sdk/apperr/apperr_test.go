@@ -1,4 +1,4 @@
-package errors
+package apperr
 
 import (
 	"errors"
@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-// TestSanitizeCauseForLog_RedactsSQLDetail 是 T14 Fix 4 的回归测试。
-// 模拟 lib/pq 风格的错误文本，验证 DETAIL/HINT/QUERY 等字段后的内容被截断。
+// TestSanitizeCauseForLog_RedactsSQLDetail 模拟 lib/pq 风格的错误文本，
+// 验证 DETAIL/HINT/QUERY 等字段后的内容被截断。
 func TestSanitizeCauseForLog_RedactsSQLDetail(t *testing.T) {
 	cases := []struct {
 		name       string

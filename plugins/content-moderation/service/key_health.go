@@ -114,7 +114,7 @@ func (s *ModerationService) markAPIKeyError(key string, errText string, latencyM
 	if contentModerationFreezeDurationForHTTPStatus(httpStatus) > 0 {
 		state.FailureCount++
 	}
-	state.LastError = trimRunes(errText, 180)
+	state.LastError = trimRunes(errText, contentModerationKeyErrorTextMaxRunes)
 	state.LastCheckedAt = time.Now()
 	state.LastLatencyMS = latencyMS
 	state.LastHTTPStatus = httpStatus
@@ -130,7 +130,7 @@ func contentModerationFreezeDurationForHTTPStatus(httpStatus int) time.Duration 
 		return 0
 	case http.StatusUnauthorized, http.StatusForbidden:
 		return contentModerationKeyAuthFreezeDuration
-	case http.StatusTooManyRequests, 529:
+	case http.StatusTooManyRequests, contentModerationHTTPStatusOverloaded:
 		return contentModerationKeyRateLimitFreezeDuration
 	default:
 		return contentModerationKeyHTTPErrorFreezeDuration

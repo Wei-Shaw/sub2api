@@ -11,9 +11,9 @@ import (
 	"regexp"
 	"strings"
 
-	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
 	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
+	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 	"google.golang.org/grpc"
 )
 
@@ -124,7 +124,6 @@ func validateCredentialsByType(accountType string, creds map[string]any) map[str
 	}
 	return errs
 }
-
 
 // TestConnection performs a connectivity test against the Anthropic Messages API.
 // It sends a minimal streaming request and relays the SSE events back through

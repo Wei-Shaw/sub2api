@@ -1,5 +1,6 @@
 //go:build unit && payment_services_wip
 // +build unit,payment_services_wip
+
 // TODO(payment-migration): copied verbatim from backend/internal/service.
 // The build tag excludes it from default builds. Adapt all host service
 // references to SDK HostPaymentClient, EventsClient.Publish, ent client,

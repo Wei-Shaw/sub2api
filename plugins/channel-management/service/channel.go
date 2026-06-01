@@ -107,8 +107,8 @@ type Channel struct {
 	Name               string
 	Description        string
 	Status             string
-	BillingModelSource string // "requested", "upstream", or "channel_mapped"
-	RestrictModels     bool   // 是否限制模型（仅允许定价列表中的模型）
+	BillingModelSource string         // "requested", "upstream", or "channel_mapped"
+	RestrictModels     bool           // 是否限制模型（仅允许定价列表中的模型）
 	Features           string         // 渠道特性描述（JSON 数组），用于支付页面展示
 	FeaturesConfig     map[string]any // 渠道功能配置（如 web search emulation）
 	// ApplyPricingToAccountStats 控制账号统计费用是否启用基于渠道定价的覆写。

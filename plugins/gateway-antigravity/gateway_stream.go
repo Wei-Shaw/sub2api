@@ -34,11 +34,11 @@ type usageExtractor interface {
 // sseTracker reads an SSE stream, forwarding raw bytes to a callback
 // while accumulating usage data.
 type sseTracker struct {
-	extractor      usageExtractor
-	accumulated    extractedUsage
-	startTime      time.Time
-	firstTokenAt   *time.Time
-	hasContent     bool
+	extractor    usageExtractor
+	accumulated  extractedUsage
+	startTime    time.Time
+	firstTokenAt *time.Time
+	hasContent   bool
 }
 
 func newSSETracker(extractor usageExtractor, startTime time.Time) *sseTracker {

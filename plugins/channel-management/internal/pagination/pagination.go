@@ -1,72 +1,25 @@
-// Package pagination is a minimal copy of backend/internal/pkg/pagination so
-// the plugin can express paginated queries without importing the core.
+// Package pagination re-exports the shared plugin-sdk/pagination helpers. The
+// implementation lives in plugin-sdk/pagination (single source of truth); this
+// file only forwards the surface so existing import paths and call sites keep
+// working. Do not add logic here — extend plugin-sdk/pagination instead.
 package pagination
 
-import "strings"
+import "github.com/Wei-Shaw/sub2api/plugin-sdk/pagination"
 
-const (
-	SortOrderAsc  = "asc"
-	SortOrderDesc = "desc"
+// Types.
+type (
+	PaginationParams = pagination.PaginationParams
+	PaginationResult = pagination.PaginationResult
 )
 
-// PaginationParams captures user-supplied paging parameters. The zero value
-// means "first page, default size, default sort".
-type PaginationParams struct {
-	Page      int
-	PageSize  int
-	SortBy    string
-	SortOrder string
-}
+// Constants.
+const (
+	SortOrderAsc  = pagination.SortOrderAsc
+	SortOrderDesc = pagination.SortOrderDesc
+)
 
-// PaginationResult is the metadata returned alongside paginated data.
-type PaginationResult struct {
-	Total    int64
-	Page     int
-	PageSize int
-	Pages    int
-}
-
-// Offset computes the SQL OFFSET that matches Page/PageSize, clamping Page to
-// at least 1 so a zero-valued struct still produces a valid offset.
-func (p PaginationParams) Offset() int {
-	if p.Page < 1 {
-		p.Page = 1
-	}
-	return (p.Page - 1) * p.PageSize
-}
-
-// Limit clamps PageSize into the supported range.
-func (p PaginationParams) Limit() int {
-	if p.PageSize < 1 {
-		return 20
-	}
-	if p.PageSize > 1000 {
-		return 1000
-	}
-	return p.PageSize
-}
-
-// NormalizeSortOrder normalises "asc"/"desc" (case-insensitive) and falls
-// back to defaultOrder for everything else.
-func NormalizeSortOrder(order string, defaultOrder string) string {
-	switch strings.ToLower(strings.TrimSpace(defaultOrder)) {
-	case SortOrderAsc:
-		defaultOrder = SortOrderAsc
-	default:
-		defaultOrder = SortOrderDesc
-	}
-	switch strings.ToLower(strings.TrimSpace(order)) {
-	case SortOrderAsc:
-		return SortOrderAsc
-	case SortOrderDesc:
-		return SortOrderDesc
-	default:
-		return defaultOrder
-	}
-}
-
-// NormalizedSortOrder returns the normalised sort order using defaultOrder
-// as the fallback.
-func (p PaginationParams) NormalizedSortOrder(defaultOrder string) string {
-	return NormalizeSortOrder(p.SortOrder, defaultOrder)
-}
+// Helpers.
+var (
+	NormalizeSortOrder = pagination.NormalizeSortOrder
+	ResultFromTotal    = pagination.ResultFromTotal
+)

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
+	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 )
 
 // Claude OAuth constants -- mirrored from backend/internal/pkg/oauth/oauth.go.

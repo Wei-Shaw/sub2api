@@ -148,7 +148,6 @@ func (s *PaymentService) validateNotificationAmount(ctx context.Context, o *plug
 	return nil
 }
 
-
 // toPaid promotes the order to PAID inside an idempotent CAS update. The
 // allowed source statuses are PENDING / CANCELLED / EXPIRED-within-grace.
 // Returns nil after starting fulfillment; alreadyProcessed handles the

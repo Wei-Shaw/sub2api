@@ -13,13 +13,47 @@ func ExtractContentModerationText(protocol string, body []byte) string {
 	return ExtractContentModerationInput(protocol, body).Text
 }
 
+// gatewayProtocolToModeration maps the raw gateway protocol string carried on
+// ContentCheckRequest.Protocol to the plugin's canonical moderation protocol.
+// Both Anthropic variants (native and via-OpenAI) extract the last Anthropic
+// user message; both OpenAI Responses variants ("responses" and "openai")
+// extract the Responses input. Entries are also keyed by the canonical values
+// themselves so callers that already pass a ContentModerationProtocol* constant
+// (e.g. tests) resolve to the same branch.
+var gatewayProtocolToModeration = map[string]string{
+	gatewayProtocolAnthropic:          ContentModerationProtocolAnthropicMessages,
+	gatewayProtocolAnthropicViaOpenAI: ContentModerationProtocolAnthropicMessages,
+	gatewayProtocolChatCompletions:    ContentModerationProtocolOpenAIChat,
+	gatewayProtocolResponses:          ContentModerationProtocolOpenAIResponses,
+	gatewayProtocolOpenAI:             ContentModerationProtocolOpenAIResponses,
+	gatewayProtocolImages:             ContentModerationProtocolOpenAIImages,
+
+	// Canonical values map to themselves so callers that already pass a
+	// ContentModerationProtocol* constant (e.g. tests) resolve identically.
+	// gatewayProtocolGemini already equals ContentModerationProtocolGemini, so
+	// a single "gemini" entry covers both.
+	ContentModerationProtocolGemini:            ContentModerationProtocolGemini,
+	ContentModerationProtocolAnthropicMessages: ContentModerationProtocolAnthropicMessages,
+	ContentModerationProtocolOpenAIChat:        ContentModerationProtocolOpenAIChat,
+	ContentModerationProtocolOpenAIResponses:   ContentModerationProtocolOpenAIResponses,
+	ContentModerationProtocolOpenAIImages:      ContentModerationProtocolOpenAIImages,
+}
+
+// resolveModerationProtocol normalizes a gateway or canonical protocol string
+// to a canonical ContentModerationProtocol* value. Unknown protocols return
+// the empty string, which routes ExtractContentModerationInput to its
+// best-effort default extraction.
+func resolveModerationProtocol(protocol string) string {
+	return gatewayProtocolToModeration[strings.ToLower(strings.TrimSpace(protocol))]
+}
+
 func ExtractContentModerationInput(protocol string, body []byte) ContentModerationInput {
 	if len(body) == 0 || !gjson.ValidBytes(body) {
 		return ContentModerationInput{}
 	}
 	var parts []string
 	var images []string
-	switch protocol {
+	switch resolveModerationProtocol(protocol) {
 	case ContentModerationProtocolAnthropicMessages:
 		collectLastAnthropicUserMessage(gjson.GetBytes(body, "messages"), &parts, &images)
 	case ContentModerationProtocolOpenAIChat:

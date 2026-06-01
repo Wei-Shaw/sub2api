@@ -1,7 +1,6 @@
 package main
 
 import (
-	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -9,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"io"
 	"net/http"
 	"net/url"

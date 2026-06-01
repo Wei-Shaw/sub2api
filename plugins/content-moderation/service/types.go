@@ -41,6 +41,20 @@ const (
 	ContentModerationProtocolGemini            = "gemini"
 	ContentModerationProtocolOpenAIImages      = "openai_images"
 
+	// Gateway protocol identifiers as set by the core GatewayPipeline
+	// (backend/internal/gateway/request.go). The host forwards these raw
+	// strings on ContentCheckRequest.Protocol; they differ from the plugin's
+	// own ContentModerationProtocol* canonical values above, so
+	// gatewayProtocolToModeration maps between them. Keep in sync with the
+	// gateway's Protocol* constants.
+	gatewayProtocolAnthropic          = "anthropic"
+	gatewayProtocolAnthropicViaOpenAI = "anthropic_via_openai"
+	gatewayProtocolChatCompletions    = "chat_completions"
+	gatewayProtocolResponses          = "responses"
+	gatewayProtocolOpenAI             = "openai"
+	gatewayProtocolGemini             = "gemini"
+	gatewayProtocolImages             = "images"
+
 	defaultContentModerationBaseURL   = "https://api.openai.com"
 	defaultContentModerationModel     = "omni-moderation-latest"
 	defaultContentModerationTimeoutMS = 3000
@@ -65,14 +79,23 @@ const (
 	contentModerationKeyRateLimitFreezeDuration  = time.Minute
 	contentModerationKeyAuthFreezeDuration       = 10 * time.Minute
 	contentModerationKeyHTTPErrorFreezeDuration  = 10 * time.Second
-	maxContentModerationInputImages              = 1
-	maxContentModerationTestImages               = maxContentModerationInputImages
-	maxContentModerationTestImageBytes           = 8 * 1024 * 1024
-	maxContentModerationTestImageDataURLBytes    = 12 * 1024 * 1024
-	maxContentModerationBlockedKeywords          = 10000
-	maxContentModerationBlockedKeywordRunes      = 200
-	maxContentModerationModelFilterModels        = 1000
-	maxContentModerationModelFilterRunes         = 200
+
+	// contentModerationHTTPStatusOverloaded is the non-standard 529 "Site is
+	// overloaded" status some upstreams return; it has no net/http constant.
+	// Treated like 429 for key-freeze purposes.
+	contentModerationHTTPStatusOverloaded = 529
+
+	// contentModerationKeyErrorTextMaxRunes caps the per-key LastError text
+	// stored in the in-memory health snapshot.
+	contentModerationKeyErrorTextMaxRunes     = 180
+	maxContentModerationInputImages           = 1
+	maxContentModerationTestImages            = maxContentModerationInputImages
+	maxContentModerationTestImageBytes        = 8 * 1024 * 1024
+	maxContentModerationTestImageDataURLBytes = 12 * 1024 * 1024
+	maxContentModerationBlockedKeywords       = 10000
+	maxContentModerationBlockedKeywordRunes   = 200
+	maxContentModerationModelFilterModels     = 1000
+	maxContentModerationModelFilterRunes      = 200
 
 	contentModerationCleanupInterval = 24 * time.Hour
 	contentModerationCleanupTimeout  = 30 * time.Minute

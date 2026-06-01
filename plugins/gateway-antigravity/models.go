@@ -1,8 +1,8 @@
 package main
 
 import (
-	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 	"context"
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/gatewayutil"
 
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 )
@@ -63,5 +63,3 @@ func (s *accountPlatformServer) GetAvailableModels(
 		Models: gatewayutil.ModelsFromMapping(mapping, defaultModelIndex),
 	}, nil
 }
-
-

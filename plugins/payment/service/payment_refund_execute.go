@@ -8,12 +8,11 @@ import (
 
 	"github.com/shopspring/decimal"
 
+	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
 	pluginent "github.com/Wei-Shaw/sub2api/plugins/payment/ent"
 	"github.com/Wei-Shaw/sub2api/plugins/payment/ent/paymentorder"
 	infraerrors "github.com/Wei-Shaw/sub2api/plugins/payment/internal/errors"
 	"github.com/Wei-Shaw/sub2api/plugins/payment/internal/payment"
-	"github.com/Wei-Shaw/sub2api/plugins/payment/internal/payment/provider"
-	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
 )
 
 const (
@@ -301,16 +300,3 @@ func (s *PaymentService) restoreStatus(ctx context.Context, p *RefundPlan) {
 	}
 	_, _ = s.entClient.PaymentOrder.UpdateOneID(int(p.OrderID)).SetStatus(rs).Save(ctx)
 }
-
-// createProviderFromInstance is shared with the lifecycle file; we
-// intentionally re-declare the receiver so the refund file is
-// self-contained when read in isolation. The actual definition lives
-// in payment_order_lifecycle.go.
-var _ = func(s *PaymentService, ctx context.Context, inst *pluginent.PaymentProviderInstance) (payment.Provider, error) {
-	return s.createProviderFromInstance(ctx, inst)
-}
-
-// shopspring/decimal import is required by the host calls above; reference
-// it here so the linter does not strip it when the host calls compile.
-var _ = decimal.Zero
-var _ = provider.CreateProvider

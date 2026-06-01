@@ -5,8 +5,8 @@
         <div class="h-8 w-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent"></div>
       </div>
       <div v-else-if="initError" class="card p-8 text-center">
-        <div class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
-          <Icon name="exclamationCircle" size="xl" class="text-red-500" />
+        <div class="stat-icon-danger mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full">
+          <Icon name="exclamationCircle" size="xl" />
         </div>
         <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('payment.stripeLoadFailed') }}</h3>
         <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">{{ initError }}</p>
@@ -26,7 +26,7 @@
           <div class="card p-6">
             <div class="flex flex-col items-center space-y-4">
               <p class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('payment.qr.scanWxpay') }}</p>
-              <div class="relative rounded-lg border-2 border-[#2BB741] bg-green-50 p-4 dark:border-[#2BB741]/70 dark:bg-green-950/20">
+              <div class="wxpay-qr-frame relative rounded-lg border-2 border-[#2BB741] p-4 dark:border-[#2BB741]/70">
                 <img :src="wechatQrUrl" alt="WeChat Pay QR" class="h-56 w-56 rounded" />
                 <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
                   <span class="rounded-full bg-[#2BB741] p-2 shadow ring-2 ring-white">
@@ -56,8 +56,8 @@
         <template v-else-if="stripeSuccess">
           <div class="card p-6 text-center">
             <div class="flex flex-col items-center gap-3 py-4">
-              <div class="flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
-                <Icon name="check" size="lg" class="text-green-500" />
+              <div class="stat-icon-success flex h-16 w-16 items-center justify-center rounded-full">
+                <Icon name="check" size="lg" />
               </div>
               <p class="text-lg font-bold text-gray-900 dark:text-white">{{ t('payment.result.success') }}</p>
               <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('payment.stripeSuccessProcessing') }}</p>
@@ -69,7 +69,7 @@
         <template v-else-if="showPaymentElement">
           <div class="card p-6">
             <div ref="stripeMountEl" class="min-h-[200px]"></div>
-            <p v-if="stripeError" class="mt-4 text-sm text-red-600 dark:text-red-400">{{ stripeError }}</p>
+            <p v-if="stripeError" class="text-semantic-danger mt-4 text-sm">{{ stripeError }}</p>
             <button class="btn btn-stripe mt-6 w-full py-3 text-base" :disabled="stripeSubmitting || !stripeReady" @click="handleGenericPay">
               <span v-if="stripeSubmitting" class="flex items-center justify-center gap-2">
                 <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
@@ -85,7 +85,7 @@
 
         <!-- Error state -->
         <div v-if="stripeError && !showPaymentElement" class="card p-4">
-          <p class="text-sm text-red-600 dark:text-red-400">{{ stripeError }}</p>
+          <p class="text-semantic-danger text-sm">{{ stripeError }}</p>
           <button class="btn btn-secondary mt-3 w-full" @click="router.push('/purchase')">{{ t('payment.result.backToRecharge') }}</button>
         </div>
       </template>
@@ -149,3 +149,11 @@ onMounted(async () => {
   }
 })
 </script>
+
+<style scoped>
+/* WeChat Pay 品牌色二维码框底 (微信绿)。品牌专属浅底, 非通用语义色,
+   故保留在组件内, 不进 SDK 通用语义类。 */
+.wxpay-qr-frame {
+  @apply bg-green-50 dark:bg-green-950/20;
+}
+</style>

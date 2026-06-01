@@ -13,6 +13,18 @@ import (
 	"time"
 )
 
+const (
+	// moderationAPIErrorBodyLimit caps how many bytes of a non-2xx moderation
+	// API response are read for the error message, preventing OOM on a hostile
+	// or misbehaving upstream.
+	moderationAPIErrorBodyLimit = 512
+
+	// moderationAPIResponseBodyLimit caps the success response body decoded
+	// from the moderation API (1 MiB). The moderation result JSON is small in
+	// practice; the limit guards against an unbounded response body.
+	moderationAPIResponseBodyLimit = 1 << 20
+)
+
 func (s *ModerationService) TestAPIKeys(ctx context.Context, input TestContentModerationAPIKeysInput) (*TestContentModerationAPIKeysResult, error) {
 	cfg, err := s.loadConfig(ctx)
 	if err != nil {
@@ -75,7 +87,7 @@ func (s *ModerationService) TestAPIKeys(ctx context.Context, input TestContentMo
 	return &TestContentModerationAPIKeysResult{Items: items, AuditResult: auditResult, ImageCount: imageCount}, nil
 }
 
-func (s *ModerationService) callModeration(ctx context.Context, cfg *ContentModerationConfig, input any, trackKeyLoad ...bool) (*moderationAPIResult, error) {
+func (s *ModerationService) callModeration(ctx context.Context, cfg *ContentModerationConfig, input any, trackKeyLoad bool) (*moderationAPIResult, error) {
 	attempts := cfg.RetryCount + 1
 	if attempts <= 0 {
 		attempts = 1
@@ -83,7 +95,7 @@ func (s *ModerationService) callModeration(ctx context.Context, cfg *ContentMode
 	if attempts > maxContentModerationRetryCount+1 {
 		attempts = maxContentModerationRetryCount + 1
 	}
-	trackLoad := len(trackKeyLoad) > 0 && trackKeyLoad[0]
+	trackLoad := trackKeyLoad
 	var lastErr error
 	for attempt := 0; attempt < attempts; attempt++ {
 		key, ok := s.nextUsableAPIKey(cfg)
@@ -165,11 +177,11 @@ func (s *ModerationService) callModerationOnceWithInput(ctx context.Context, cfg
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, moderationAPIErrorBodyLimit))
 		return nil, fmt.Errorf("moderation api status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	var out moderationAPIResponse
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, moderationAPIResponseBodyLimit)).Decode(&out); err != nil {
 		return nil, err
 	}
 	if len(out.Results) == 0 {

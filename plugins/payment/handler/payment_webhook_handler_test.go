@@ -1,5 +1,6 @@
 //go:build unit && payment_services_wip
 // +build unit,payment_services_wip
+
 // TODO(payment-migration): copied from backend/internal/handler. Adapt:
 //   - imports to plugins/payment/* paths
 //   - auth middleware: read user/admin from X-Plugin-User-* request headers

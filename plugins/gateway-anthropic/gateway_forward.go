@@ -171,11 +171,11 @@ func buildDoneChunk(
 ) *pb.GatewayForwardChunk {
 	done := &pb.GatewayResponseDone{
 		Result: &pb.GatewayForwardResult{
-			RequestId:     resp.Header.Get("x-request-id"),
-			Model:         upstream.originalModel,
-			UpstreamModel: upstream.mappedModel,
-			Stream:        isStream,
-			DurationMs:    time.Since(startTime).Milliseconds(),
+			RequestId:       resp.Header.Get("x-request-id"),
+			Model:           upstream.originalModel,
+			UpstreamModel:   upstream.mappedModel,
+			Stream:          isStream,
+			DurationMs:      time.Since(startTime).Milliseconds(),
 			ResponseHeaders: gatewayutil.CollectResponseHeaders(resp, nil),
 		},
 	}

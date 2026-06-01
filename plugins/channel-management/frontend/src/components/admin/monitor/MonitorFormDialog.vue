@@ -7,13 +7,13 @@
   >
     <form id="channel-monitor-form" @submit.prevent="handleSubmit" class="space-y-5">
       <div>
-        <label class="input-label">{{ t('admin.channelMonitor.form.name') }} <span class="text-red-500">*</span></label>
+        <label class="input-label">{{ t('admin.channelMonitor.form.name') }} <span class="input-required">*</span></label>
         <input v-model="form.name" type="text" required class="input"
           :placeholder="t('admin.channelMonitor.form.namePlaceholder')" />
       </div>
 
       <div>
-        <label class="input-label">{{ t('admin.channelMonitor.form.provider') }} <span class="text-red-500">*</span></label>
+        <label class="input-label">{{ t('admin.channelMonitor.form.provider') }} <span class="input-required">*</span></label>
         <div class="grid grid-cols-3 gap-3">
           <button
             v-for="opt in providerOptions"
@@ -31,7 +31,7 @@
       </div>
 
       <div>
-        <label class="input-label">{{ t('admin.channelMonitor.form.endpoint') }} <span class="text-red-500">*</span></label>
+        <label class="input-label">{{ t('admin.channelMonitor.form.endpoint') }} <span class="input-required">*</span></label>
         <div class="flex gap-2">
           <input v-model="form.endpoint" type="text" required class="input flex-1"
             :placeholder="t('admin.channelMonitor.form.endpointPlaceholder')" />
@@ -43,7 +43,7 @@
 
       <div>
         <label class="input-label">
-          {{ t('admin.channelMonitor.form.apiKey') }}<span v-if="!editing" class="text-red-500"> *</span>
+          {{ t('admin.channelMonitor.form.apiKey') }}<span v-if="!editing" class="input-required"> *</span>
         </label>
         <div class="flex gap-2">
           <input v-model="form.api_key" type="password" autocomplete="new-password"
@@ -60,7 +60,7 @@
       </div>
 
       <div>
-        <label class="input-label">{{ t('admin.channelMonitor.form.primaryModel') }} <span class="text-red-500">*</span></label>
+        <label class="input-label">{{ t('admin.channelMonitor.form.primaryModel') }} <span class="input-required">*</span></label>
         <input v-model="form.primary_model" type="text" required class="input font-medium"
           :class="getPlatformTextClass(form.provider)"
           :placeholder="t('admin.channelMonitor.form.primaryModelPlaceholder')" />
@@ -79,7 +79,7 @@
       </div>
 
       <div>
-        <label class="input-label">{{ t('admin.channelMonitor.form.intervalSeconds') }} <span class="text-red-500">*</span></label>
+        <label class="input-label">{{ t('admin.channelMonitor.form.intervalSeconds') }} <span class="input-required">*</span></label>
         <input v-model.number="form.interval_seconds" type="number" min="15" max="3600" required class="input" />
         <p class="mt-1 text-xs text-gray-400">{{ t('admin.channelMonitor.form.intervalSecondsHint') }}</p>
       </div>
