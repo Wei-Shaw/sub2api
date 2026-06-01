@@ -1492,6 +1492,10 @@ func (r *stubUserRepo) DisableTotp(ctx context.Context, userID int64) error {
 	return errors.New("not implemented")
 REDACTED
 
+func (r *stubUserRepo) GetByIDIncludeDeleted(ctx context.Context, id int64) (*service.User, error) {
+	panic("unexpected GetByIDIncludeDeleted call")
+REDACTED
+
 type stubApiKeyCache struct{REDACTED
 
 func (stubApiKeyCache) GetCreateAttemptCount(ctx context.Context, userID int64) (int, error) {

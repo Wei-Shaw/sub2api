@@ -277,6 +277,10 @@ func (r *contentModerationTestUserRepo) DisableTotp(ctx context.Context, userID 
 	panic("unexpected DisableTotp call")
 REDACTED
 
+func (r *contentModerationTestUserRepo) GetByIDIncludeDeleted(ctx context.Context, id int64) (*User, error) {
+	return r.GetByID(ctx, id)
+REDACTED
+
 type contentModerationTestAuthCacheInvalidator struct {
 	userIDs []int64
 REDACTED

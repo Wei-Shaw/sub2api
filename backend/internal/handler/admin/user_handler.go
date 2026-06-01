@@ -195,7 +195,12 @@ func (h *UserHandler) GetByID(c *gin.Context) {
 		return
 REDACTED
 
-	user, err := h.adminService.GetUser(c.Request.Context(), userID)
+	var user *service.User
+	if c.Query("include_deleted") == "true" {
+		user, err = h.adminService.GetUserIncludeDeleted(c.Request.Context(), userID)
+REDACTED else {
+		user, err = h.adminService.GetUser(c.Request.Context(), userID)
+REDACTED
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

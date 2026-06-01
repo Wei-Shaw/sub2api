@@ -30,6 +30,7 @@ REDACTED
 		BalanceNotifyExtraEmails:   NotifyEmailEntriesFromService(u.BalanceNotifyExtraEmails),
 		TotalRecharged:             u.TotalRecharged,
 		RPMLimit:                   u.RPMLimit,
+		DeletedAt:                  u.DeletedAt,
 REDACTED
 REDACTED
 

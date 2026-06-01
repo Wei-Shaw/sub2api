@@ -17,6 +17,7 @@ import (
 	dbaccount "github.com/Wei-Shaw/sub2api/ent/account"
 	dbapikey "github.com/Wei-Shaw/sub2api/ent/apikey"
 	dbgroup "github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	dbusersub "github.com/Wei-Shaw/sub2api/ent/usersubscription"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -26,6 +27,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
 	gocache "github.com/patrickmn/go-cache"
+	"golang.org/x/sync/errgroup"
 )
 
 const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, requested_model, upstream_model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, image_output_tokens, image_output_cost, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, account_rate_multiplier, billing_type, request_type, stream, openai_ws_mode, duration_ms, first_token_ms, user_agent, ip_address, image_count, image_size, image_input_size, image_output_size, image_size_source, image_size_breakdown, service_tier, reasoning_effort, inbound_endpoint, upstream_endpoint, cache_ttl_overridden, channel_id, model_mapping_chain, billing_tier, billing_mode, account_stats_cost, created_at"
@@ -3537,24 +3539,6 @@ REDACTED
 
 	stats := &UsageStats{REDACTED
 	var totalAccountCost float64
-	if err := scanSingleRow(
-		ctx,
-		r.sql,
-		query,
-		args,
-		&stats.TotalRequests,
-		&stats.TotalInputTokens,
-		&stats.TotalOutputTokens,
-		&stats.TotalCacheTokens,
-		&stats.TotalCost,
-		&stats.TotalActualCost,
-		&totalAccountCost,
-		&stats.AverageDurationMs,
-	); err != nil {
-		return nil, err
-REDACTED
-	stats.TotalAccountCost = &totalAccountCost
-	stats.TotalTokens = stats.TotalInputTokens + stats.TotalOutputTokens + stats.TotalCacheTokens
 
 	start := time.Unix(0, 0).UTC()
 	if filters.StartTime != nil {
@@ -3565,21 +3549,76 @@ REDACTED
 		end = *filters.EndTime
 REDACTED
 
-	endpoints, endpointErr := r.GetEndpointStatsWithFilters(ctx, start, end, filters.UserID, filters.APIKeyID, filters.AccountID, filters.GroupID, filters.Model, filters.RequestType, filters.Stream, filters.BillingType)
-	if endpointErr != nil {
-		logger.LegacyPrintf("repository.usage_log", "GetEndpointStatsWithFilters failed in GetStatsWithFilters: %v", endpointErr)
-		endpoints = []EndpointStat{REDACTED
+	var endpoints, upstreamEndpoints, endpointPaths []EndpointStat
+
+	// 汇总查询:失败即致命。
+	runSummary := func(c context.Context) error {
+		return scanSingleRow(
+			c, r.sql, query, args,
+			&stats.TotalRequests,
+			&stats.TotalInputTokens,
+			&stats.TotalOutputTokens,
+			&stats.TotalCacheTokens,
+			&stats.TotalCost,
+			&stats.TotalActualCost,
+			&totalAccountCost,
+			&stats.AverageDurationMs,
+		)
 REDACTED
-	upstreamEndpoints, upstreamEndpointErr := r.GetUpstreamEndpointStatsWithFilters(ctx, start, end, filters.UserID, filters.APIKeyID, filters.AccountID, filters.GroupID, filters.Model, filters.RequestType, filters.Stream, filters.BillingType)
-	if upstreamEndpointErr != nil {
-		logger.LegacyPrintf("repository.usage_log", "GetUpstreamEndpointStatsWithFilters failed in GetStatsWithFilters: %v", upstreamEndpointErr)
-		upstreamEndpoints = []EndpointStat{REDACTED
+	// endpoint 明细:best-effort(失败 log + 返空),不致命。
+	runEndpoints := func(c context.Context) {
+		res, err := r.GetEndpointStatsWithFilters(c, start, end, filters.UserID, filters.APIKeyID, filters.AccountID, filters.GroupID, filters.Model, filters.RequestType, filters.Stream, filters.BillingType)
+		if err != nil {
+			if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+				logger.LegacyPrintf("repository.usage_log", "GetEndpointStatsWithFilters failed in GetStatsWithFilters: %v", err)
+		REDACTED
+			res = []EndpointStat{REDACTED
+	REDACTED
+		endpoints = res
 REDACTED
-	endpointPaths, endpointPathErr := r.getEndpointPathStatsWithFilters(ctx, start, end, filters.UserID, filters.APIKeyID, filters.AccountID, filters.GroupID, filters.Model, filters.RequestType, filters.Stream, filters.BillingType)
-	if endpointPathErr != nil {
-		logger.LegacyPrintf("repository.usage_log", "getEndpointPathStatsWithFilters failed in GetStatsWithFilters: %v", endpointPathErr)
-		endpointPaths = []EndpointStat{REDACTED
+	runUpstream := func(c context.Context) {
+		res, err := r.GetUpstreamEndpointStatsWithFilters(c, start, end, filters.UserID, filters.APIKeyID, filters.AccountID, filters.GroupID, filters.Model, filters.RequestType, filters.Stream, filters.BillingType)
+		if err != nil {
+			if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+				logger.LegacyPrintf("repository.usage_log", "GetUpstreamEndpointStatsWithFilters failed in GetStatsWithFilters: %v", err)
+		REDACTED
+			res = []EndpointStat{REDACTED
+	REDACTED
+		upstreamEndpoints = res
 REDACTED
+	runPaths := func(c context.Context) {
+		res, err := r.getEndpointPathStatsWithFilters(c, start, end, filters.UserID, filters.APIKeyID, filters.AccountID, filters.GroupID, filters.Model, filters.RequestType, filters.Stream, filters.BillingType)
+		if err != nil {
+			if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+				logger.LegacyPrintf("repository.usage_log", "getEndpointPathStatsWithFilters failed in GetStatsWithFilters: %v", err)
+		REDACTED
+			res = []EndpointStat{REDACTED
+	REDACTED
+		endpointPaths = res
+REDACTED
+
+	if r.db != nil {
+		// 生产路径:r.sql 是 *sql.DB 连接池,可并发。4 条查询并行,延迟取最大值。
+		g, gctx := errgroup.WithContext(ctx)
+		g.Go(func() error { return runSummary(gctx) REDACTED)
+		g.Go(func() error { runEndpoints(gctx); return nil REDACTED)
+		g.Go(func() error { runUpstream(gctx); return nil REDACTED)
+		g.Go(func() error { runPaths(gctx); return nil REDACTED)
+		if err := g.Wait(); err != nil {
+			return nil, err
+	REDACTED
+REDACTED else {
+		// 事务路径(ent.Tx 不能并发查询):顺序执行,行为与重构前一致。
+		if err := runSummary(ctx); err != nil {
+			return nil, err
+	REDACTED
+		runEndpoints(ctx)
+		runUpstream(ctx)
+		runPaths(ctx)
+REDACTED
+
+	stats.TotalAccountCost = &totalAccountCost
+	stats.TotalTokens = stats.TotalInputTokens + stats.TotalOutputTokens + stats.TotalCacheTokens
 	stats.Endpoints = endpoints
 	stats.UpstreamEndpoints = upstreamEndpoints
 	stats.EndpointPaths = endpointPaths
@@ -4121,7 +4160,8 @@ func (r *usageLogRepository) loadUsers(ctx context.Context, ids []int64) (map[in
 	if len(ids) == 0 {
 		return out, nil
 REDACTED
-	models, err := r.client.User.Query().Where(dbuser.IDIn(ids...)).All(ctx)
+	// 无条件穿透软删除：ids 来自调用方已按 user_id 筛选的日志行；普通用户路径强制 UserID=本人（本人必为活跃用户），不会借此解析他人已删身份；仅 admin 路径可借此显示已删用户。
+	models, err := r.client.User.Query().Where(dbuser.IDIn(ids...)).All(mixins.SkipSoftDelete(ctx))
 	if err != nil {
 		return nil, err
 REDACTED

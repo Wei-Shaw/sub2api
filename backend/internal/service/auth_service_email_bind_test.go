@@ -850,6 +850,9 @@ REDACTED
 func (s *emailBindUserRepoStub) UpdateTotpSecret(context.Context, int64, *string) error { return nil REDACTED
 func (s *emailBindUserRepoStub) EnableTotp(context.Context, int64) error                { return nil REDACTED
 func (s *emailBindUserRepoStub) DisableTotp(context.Context, int64) error               { return nil REDACTED
+func (s *emailBindUserRepoStub) GetByIDIncludeDeleted(ctx context.Context, id int64) (*service.User, error) {
+	return s.GetByID(ctx, id)
+REDACTED
 
 func cloneEmailBindUser(user *service.User) *service.User {
 	if user == nil {

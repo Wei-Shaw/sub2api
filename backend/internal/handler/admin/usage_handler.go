@@ -325,10 +325,24 @@ REDACTED
 		EndTime:     &endTime,
 REDACTED
 
-	stats, err := h.usageService.GetStatsWithFilters(c.Request.Context(), filters)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
+	var stats *usagestats.UsageStats
+	// nocache: 绕过缓存直接回源,刷新者本人拿最新;不回写缓存(管理台"我刷新我自己拿最新"语义,非全局失效)。
+	if parseBoolQueryWithDefault(c.Query("nocache"), false) {
+		s, err := h.usageService.GetStatsWithFilters(c.Request.Context(), filters)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+	REDACTED
+		stats = s
+		c.Header("X-Usage-Stats-Cache", "bypass")
+REDACTED else {
+		s, hit, err := h.getStatsCached(c.Request.Context(), filters)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+	REDACTED
+		stats = s
+		c.Header("X-Usage-Stats-Cache", cacheStatusValue(hit))
 REDACTED
 
 	response.Success(c, stats)
@@ -344,23 +358,25 @@ func (h *UsageHandler) SearchUsers(c *gin.Context) {
 REDACTED
 
 	// Limit to 30 results
-	users, _, err := h.adminService.ListUsers(c.Request.Context(), 1, 30, service.UserListFilters{Search: keywordREDACTED, "email", "asc")
+	users, _, err := h.adminService.ListUsers(c.Request.Context(), 1, 30, service.UserListFilters{Search: keyword, IncludeDeleted: trueREDACTED, "email", "asc")
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 REDACTED
 
-	// Return simplified user list (only id and email)
+	// Return simplified user list (only id, email and deleted flag)
 	type SimpleUser struct {
-		ID    int64  `json:"id"`
-		Email string `json:"email"`
+		ID      int64  `json:"id"`
+		Email   string `json:"email"`
+		Deleted bool   `json:"deleted"`
 REDACTED
 
 	result := make([]SimpleUser, len(users))
 	for i, u := range users {
 		result[i] = SimpleUser{
-			ID:    u.ID,
-			Email: u.Email,
+			ID:      u.ID,
+			Email:   u.Email,
+			Deleted: u.DeletedAt != nil,
 	REDACTED
 REDACTED
 

@@ -35,7 +35,7 @@
               @click="selectUser(u)"
               class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700"
             >
-              <span>{{ u.email REDACTEDREDACTED</span>
+              <span>{{ u.email REDACTEDREDACTED<span v-if="u.deleted" class="ml-1 text-xs text-gray-400">（{{ t('admin.usage.userDeletedBadge') REDACTEDREDACTED）</span></span>
               <span class="ml-2 text-xs text-gray-400">#{{ u.id REDACTEDREDACTED</span>
             </button>
           </div>
@@ -168,7 +168,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, toRef, watch REDACTED from 'vue'
+import { ref, onMounted, onUnmounted, toRef, watch, computed REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { adminAPI REDACTED from '@/api/admin'
 import Select, { type SelectOption REDACTED from '@/components/common/Select.vue'
@@ -182,6 +182,7 @@ interface Props {
   startDate: string
   endDate: string
   showActions?: boolean
+  modelOptions?: string[]
 REDACTED
 
 const props = withDefaults(defineProps<Props>(), {
@@ -222,7 +223,10 @@ const accountResults = ref<SimpleAccount[]>([])
 const showAccountDropdown = ref(false)
 let accountSearchTimeout: ReturnType<typeof setTimeout> | null = null
 
-const modelOptions = ref<SelectOption[]>([{ value: null, label: t('admin.usage.allModels') REDACTED])
+const modelOptions = computed<SelectOption[]>(() => [
+  { value: null, label: t('admin.usage.allModels') REDACTED,
+  ...(props.modelOptions ?? []).map((m) => ({ value: m, label: m REDACTED)),
+])
 const groupOptions = ref<SelectOption[]>([{ value: null, label: t('admin.usage.allGroups') REDACTED])
 
 const requestTypeOptions = ref<SelectOption[]>([
@@ -255,7 +259,8 @@ const debounceUserSearch = () => {
       return
     REDACTED
     try {
-      userResults.value = await adminAPI.usage.searchUsers(userKeyword.value)
+      const results = await adminAPI.usage.searchUsers(userKeyword.value)
+      userResults.value = results.sort((a, b) => Number(a.deleted) - Number(b.deleted))
     REDACTED catch {
       userResults.value = []
     REDACTED
@@ -420,26 +425,9 @@ watch(
 
 onMounted(async () => {
   document.addEventListener('click', onDocumentClick)
-
   try {
-    const [gs, ms] = await Promise.all([
-      adminAPI.groups.list(1, 1000),
-      adminAPI.dashboard.getModelStats({ start_date: props.startDate, end_date: props.endDate REDACTED)
-    ])
-
+    const gs = await adminAPI.groups.list(1, 1000)
     groupOptions.value.push(...gs.items.map((g: any) => ({ value: g.id, label: g.name REDACTED)))
-
-    const uniqueModels = new Set<string>()
-    ms.models?.forEach((s: any) => {
-      if (s.model) {
-        uniqueModels.add(s.model)
-      REDACTED
-    REDACTED)
-    modelOptions.value.push(
-      ...Array.from(uniqueModels)
-        .sort()
-        .map((m) => ({ value: m, label: m REDACTED))
-    )
   REDACTED catch {
     // Ignore filter option loading errors (page still usable)
   REDACTED
