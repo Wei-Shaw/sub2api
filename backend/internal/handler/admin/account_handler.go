@@ -1259,6 +1259,11 @@ func (h *AccountHandler) BatchRefresh(c *gin.Context) {
 		}
 		g.Go(func() error {
 			_, warning, err := h.refreshSingleAccount(gctx, acc)
+			if err != nil {
+				if markErr := h.markBatchRefreshAccountError(gctx, acc.ID, err); markErr != nil {
+					err = fmt.Errorf("%w; failed to mark account error: %v", err, markErr)
+				}
+			}
 			mu.Lock()
 			if err != nil {
 				failedCount++
@@ -2275,6 +2280,38 @@ func (h *AccountHandler) RefreshTier(c *gin.Context) {
 		"drive_storage_usage": extra["drive_storage_usage"],
 		"updated_at":          extra["drive_tier_updated_at"],
 	})
+}
+
+func (h *AccountHandler) markBatchRefreshAccountError(ctx context.Context, accountID int64, err error) error {
+	if batchRefreshErrorHTTPStatus(err) != http.StatusUnauthorized {
+		return nil
+	}
+	return h.adminService.SetAccountError(ctx, accountID, err.Error())
+}
+
+func batchRefreshErrorHTTPStatus(err error) int {
+	if err == nil {
+		return 0
+	}
+	status := infraerrors.Code(err)
+	if status != infraerrors.UnknownCode {
+		return status
+	}
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "http 401"):
+		return http.StatusUnauthorized
+	case strings.Contains(msg, "http status 401"):
+		return http.StatusUnauthorized
+	case strings.Contains(msg, "status 401"):
+		return http.StatusUnauthorized
+	case strings.Contains(msg, "status=401"):
+		return http.StatusUnauthorized
+	case strings.Contains(msg, "status: 401"):
+		return http.StatusUnauthorized
+	default:
+		return 0
+	}
 }
 
 // BatchRefreshTierRequest represents batch tier refresh request

@@ -28,7 +28,9 @@ type stubAdminService struct {
 	createAccountErr     error
 	updateAccountErr     error
 	bulkUpdateAccountErr error
+	setAccountErrorErr   error
 	checkMixedErr        error
+	setAccountErrorCalls []setAccountErrorCall
 	lastMixedCheck       struct {
 		accountID int64
 		platform  string
@@ -70,6 +72,11 @@ type stubAdminService struct {
 		calls     int
 	}
 	mu sync.Mutex
+}
+
+type setAccountErrorCall struct {
+	accountID int64
+	message   string
 }
 
 func newStubAdminService() *stubAdminService {
@@ -379,6 +386,12 @@ func (s *stubAdminService) ClearAccountError(ctx context.Context, id int64) (*se
 }
 
 func (s *stubAdminService) SetAccountError(ctx context.Context, id int64, errorMsg string) error {
+	s.mu.Lock()
+	s.setAccountErrorCalls = append(s.setAccountErrorCalls, setAccountErrorCall{accountID: id, message: errorMsg})
+	s.mu.Unlock()
+	if s.setAccountErrorErr != nil {
+		return s.setAccountErrorErr
+	}
 	return nil
 }
 
