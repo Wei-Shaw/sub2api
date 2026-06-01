@@ -38,7 +38,28 @@ type SystemSettings struct {
 	TurnstileSiteKey             string
 	TurnstileSecretKey           string
 	TurnstileSecretKeyConfigured bool
-	APIKeyACLTrustForwardedIP    bool
+	CaptchaProvider              string
+	CaptchaEnabled               bool
+	CaptchaSiteKey               string
+	CaptchaSecretKey             string
+	// CaptchaSecretKeyConfigured 表示当前 provider 的"主"密钥是否已配置：
+	//   - Turnstile / hCaptcha: captcha_config["secret_key"] 非空
+	//   - Tencent: captcha_config["app_secret_key"] 非空
+	// 仅用于前端在 admin 设置页隐藏密钥真值并展示占位符；secret_id / secret_key（IAM 凭证）
+	// 单独通过 CaptchaTencentSecretIDConfigured / CaptchaTencentSecretKeyConfigured 暴露。
+	CaptchaSecretKeyConfigured bool
+	// CaptchaTencentSecretIDConfigured 仅在 provider == tencent_captcha 时有意义；
+	// 表示腾讯云 IAM SecretId（captcha_config["secret_id"]）是否已配置。
+	CaptchaTencentSecretIDConfigured bool
+	// CaptchaTencentSecretKeyConfigured 仅在 provider == tencent_captcha 时有意义；
+	// 表示腾讯云 IAM SecretKey（captcha_config["secret_key"]）是否已配置。
+	CaptchaTencentSecretKeyConfigured bool
+	// CaptchaConfig 是 provider-aware 已脱敏的 captcha_config 副本（D7）。具体可见字段集：
+	//   - Turnstile / hCaptcha: enabled, site_key（secret_key 已剥除）
+	//   - Tencent: enabled, captcha_app_id（app_secret_key / secret_id / secret_key 三项均已剥除）
+	// 前端不应依赖此 map 中的密钥真值；若需展示是否已配置，使用上面的 *Configured 字段。
+	CaptchaConfig             map[string]string
+	APIKeyACLTrustForwardedIP bool
 
 	// LinuxDo Connect OAuth 登录
 	LinuxDoConnectEnabled                bool
@@ -246,6 +267,9 @@ type PublicSettings struct {
 	LoginAgreementDocuments          []LoginAgreementDocument
 	TurnstileEnabled                 bool
 	TurnstileSiteKey                 string
+	CaptchaProvider                  string
+	CaptchaEnabled                   bool
+	CaptchaSiteKey                   string
 	SiteName                         string
 	SiteLogo                         string
 	SiteSubtitle                     string

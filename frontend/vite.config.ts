@@ -122,7 +122,10 @@ export default defineConfig(({ mode }) => {
           target: backendUrl,
           changeOrigin: true
         }
-      }
+      },
+      allowedHosts: [
+        "dev.opentk.ai"
+      ]
     }
   }
 })

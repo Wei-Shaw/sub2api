@@ -52,7 +52,27 @@ type SystemSettings struct {
 	TurnstileEnabled             bool   `json:"turnstile_enabled"`
 	TurnstileSiteKey             string `json:"turnstile_site_key"`
 	TurnstileSecretKeyConfigured bool   `json:"turnstile_secret_key_configured"`
-	APIKeyACLTrustForwardedIP    bool   `json:"api_key_acl_trust_forwarded_ip"`
+	// CaptchaProvider 取值：turnstile / hcaptcha / tencent_captcha。
+	CaptchaProvider string `json:"captcha_provider"`
+	CaptchaEnabled  bool   `json:"captcha_enabled"`
+	// CaptchaSiteKey 是当前 provider 的"前端公钥"——provider-aware：
+	//   - Turnstile / hCaptcha: site_key
+	//   - Tencent: captcha_app_id
+	CaptchaSiteKey string `json:"captcha_site_key"`
+	// CaptchaSecretKeyConfigured 表示当前 provider 的主密钥是否已配置：
+	//   - Turnstile / hCaptcha: secret_key
+	//   - Tencent: app_secret_key
+	CaptchaSecretKeyConfigured bool `json:"captcha_secret_key_configured"`
+	// CaptchaTencentSecretIDConfigured 仅在 provider = tencent_captcha 时有意义，对应腾讯云 IAM SecretId。
+	CaptchaTencentSecretIDConfigured bool `json:"captcha_tencent_secret_id_configured"`
+	// CaptchaTencentSecretKeyConfigured 仅在 provider = tencent_captcha 时有意义，对应腾讯云 IAM SecretKey。
+	CaptchaTencentSecretKeyConfigured bool `json:"captcha_tencent_secret_key_configured"`
+	// CaptchaConfig 是已脱敏的 captcha_config 副本。可见字段（D7）：
+	//   - Turnstile / hCaptcha: enabled, site_key
+	//   - Tencent: enabled, captcha_app_id
+	// 任何 *_configured: bool 字段都不会出现在该 map 中——它们走专用字段；前端不应在此读取密钥真值。
+	CaptchaConfig             map[string]string `json:"captcha_config"`
+	APIKeyACLTrustForwardedIP bool              `json:"api_key_acl_trust_forwarded_ip"`
 
 	LinuxDoConnectEnabled                bool   `json:"linuxdo_connect_enabled"`
 	LinuxDoConnectClientID               string `json:"linuxdo_connect_client_id"`
@@ -275,6 +295,9 @@ type PublicSettings struct {
 	LoginAgreementDocuments          []LoginAgreementDocument `json:"login_agreement_documents"`
 	TurnstileEnabled                 bool                     `json:"turnstile_enabled"`
 	TurnstileSiteKey                 string                   `json:"turnstile_site_key"`
+	CaptchaProvider                  string                   `json:"captcha_provider"`
+	CaptchaEnabled                   bool                     `json:"captcha_enabled"`
+	CaptchaSiteKey                   string                   `json:"captcha_site_key"`
 	SiteName                         string                   `json:"site_name"`
 	SiteLogo                         string                   `json:"site_logo"`
 	SiteSubtitle                     string                   `json:"site_subtitle"`

@@ -28,6 +28,10 @@ const (
 	AirwallexDemoStaticDomain = "https://static-demo.airwallex.com"
 	// AirwallexDemoCheckoutDomain 是 Airwallex 沙箱环境收银台元素和 iframe 域名。
 	AirwallexDemoCheckoutDomain = "https://checkout-demo.airwallex.com"
+	// TencentCaptchaDomain 是腾讯天御验证码 SDK 脚本和 iframe 域名。
+	TencentCaptchaDomain = "https://turing.captcha.qcloud.com"
+	// TencentCaptchaGtimgDomain 是腾讯天御验证码 SDK 静态资源域名。
+	TencentCaptchaGtimgDomain = "https://turing.captcha.gtimg.com"
 )
 
 var requiredCSPDirectiveValues = []struct {
@@ -47,6 +51,10 @@ var requiredCSPDirectiveValues = []struct {
 	{"style-src", AirwallexDemoStaticDomain},
 	{"style-src", AirwallexDemoCheckoutDomain},
 	{"frame-src", AirwallexDemoCheckoutDomain},
+	{"script-src", TencentCaptchaDomain},
+	{"frame-src", TencentCaptchaDomain},
+	{"script-src", TencentCaptchaGtimgDomain},
+	{"frame-src", TencentCaptchaGtimgDomain},
 }
 
 // GenerateNonce generates a cryptographically secure random nonce.

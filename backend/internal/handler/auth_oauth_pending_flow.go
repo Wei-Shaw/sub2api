@@ -74,10 +74,12 @@ type createPendingOAuthAccountRequest struct {
 }
 
 type sendPendingOAuthVerifyCodeRequest struct {
-	Email             string `json:"email" binding:"required,email"`
-	TurnstileToken    string `json:"turnstile_token,omitempty"`
-	PendingAuthToken  string `json:"pending_auth_token,omitempty"`
-	PendingOAuthToken string `json:"pending_oauth_token,omitempty"`
+	Email             string            `json:"email" binding:"required,email"`
+	CaptchaPayload    map[string]string `json:"captcha_payload"`
+	CaptchaToken      string            `json:"captcha_token,omitempty"`
+	TurnstileToken    string            `json:"turnstile_token,omitempty"`
+	PendingAuthToken  string            `json:"pending_auth_token,omitempty"`
+	PendingOAuthToken string            `json:"pending_oauth_token,omitempty"`
 }
 
 func (r bindPendingOAuthLoginRequest) adoptionDecision() oauthAdoptionDecisionRequest {
@@ -510,7 +512,11 @@ func (h *AuthHandler) SendPendingOAuthVerifyCode(c *gin.Context) {
 		return
 	}
 
-	if err := h.authService.VerifyTurnstile(c.Request.Context(), req.TurnstileToken, ip.GetClientIP(c)); err != nil {
+	if err := h.authService.VerifyCaptchaPayload(
+		c.Request.Context(),
+		extractCaptchaPayload(req.CaptchaPayload, req.CaptchaToken, req.TurnstileToken),
+		ip.GetClientIP(c),
+	); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}

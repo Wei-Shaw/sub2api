@@ -446,7 +446,10 @@ describe('EmailVerifyView', () => {
       email: 'normal@example.com',
       password: 'secret-456',
       verify_code: '654321',
-      turnstile_token: undefined,
+      // 新协议（design.md D2）：register 调用同时透传 captcha_payload / captcha_token，
+      // 测试场景未注入任何 captcha 数据，所以两个字段都是 undefined。
+      captcha_payload: undefined,
+      captcha_token: undefined,
       promo_code: 'PROMO',
       invitation_code: 'INVITE',
     })

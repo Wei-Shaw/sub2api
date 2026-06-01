@@ -16,13 +16,14 @@
       :placeholder="t('auth.passwordPlaceholder')"
       :disabled="isSubmitting"
     />
-    <div v-if="turnstileEnabled && turnstileSiteKey" class="space-y-2">
-      <TurnstileWidget
-        ref="turnstileRef"
-        :site-key="turnstileSiteKey"
-        @verify="onTurnstileVerify"
-        @expire="onTurnstileExpire"
-        @error="onTurnstileError"
+    <div v-if="captchaEnabled && captchaSiteKey" class="space-y-2">
+      <CaptchaWidget
+        ref="captchaRef"
+            :provider="captchaProvider"
+        :site-key="captchaSiteKey"
+        @verify="onCaptchaVerify"
+        @expire="onCaptchaExpire"
+        @error="onCaptchaError"
       />
     </div>
     <div class="flex gap-3">
@@ -40,7 +41,7 @@
         :data-testid="`${testIdPrefix}-create-account-send-code`"
         type="button"
         class="btn btn-secondary shrink-0"
-        :disabled="isSubmitting || isSendingCode || countdown > 0 || !email.trim() || (turnstileEnabled && !turnstileToken)"
+        :disabled="isSubmitting || isSendingCode || countdown > 0 || !email.trim() || (captchaEnabled && captchaProvider !== 'tencent_captcha' && !captchaToken)"
         @click="handleSendCode"
       >
         {{
@@ -90,7 +91,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import TurnstileWidget from '@/components/TurnstileWidget.vue'
+import CaptchaWidget from '@/components/CaptchaWidget.vue'
 import { getPublicSettings, sendPendingOAuthVerifyCode } from '@/api/auth'
 import { useAppStore } from '@/stores'
 
@@ -125,10 +126,11 @@ const sendCodeError = ref('')
 const sendCodeSuccess = ref(false)
 const countdown = ref(0)
 const invitationCodeEnabled = ref(false)
-const turnstileEnabled = ref(false)
-const turnstileSiteKey = ref('')
-const turnstileToken = ref('')
-const turnstileRef = ref<InstanceType<typeof TurnstileWidget> | null>(null)
+const captchaEnabled = ref<boolean>(false)
+const captchaProvider = ref<'turnstile' | 'hcaptcha' | 'tencent_captcha'>('turnstile')
+const captchaSiteKey = ref('')
+const captchaToken = ref('')
+const captchaRef = ref<InstanceType<typeof CaptchaWidget> | null>(null)
 
 let countdownTimer: ReturnType<typeof setInterval> | null = null
 
@@ -186,24 +188,24 @@ function getRequestErrorMessage(error: unknown, fallback: string): string {
   return err.response?.data?.detail || err.response?.data?.message || err.message || fallback
 }
 
-function resetTurnstile() {
-  turnstileToken.value = ''
-  turnstileRef.value?.reset()
+function resetCaptcha() {
+  captchaToken.value = ''
+  captchaRef.value?.reset()
 }
 
-function onTurnstileVerify(token: string) {
-  turnstileToken.value = token
+function onCaptchaVerify(token: string) {
+  captchaToken.value = token
   sendCodeError.value = ''
 }
 
-function onTurnstileExpire() {
-  turnstileToken.value = ''
-  sendCodeError.value = t('auth.turnstileExpired')
+function onCaptchaExpire() {
+  captchaToken.value = ''
+  sendCodeError.value = t('auth.captchaExpired')
 }
 
-function onTurnstileError() {
-  turnstileToken.value = ''
-  sendCodeError.value = t('auth.turnstileFailed')
+function onCaptchaError() {
+  captchaToken.value = ''
+  sendCodeError.value = t('auth.captchaFailed')
 }
 
 async function handleSendCode() {
@@ -212,9 +214,23 @@ async function handleSendCode() {
     return
   }
 
-  if (turnstileEnabled.value && !turnstileToken.value) {
-    sendCodeError.value = t('auth.completeVerification')
-    return
+  // 声明式 widget 必须先 verify；天御 popup 形态在调用 sendPendingOAuthVerifyCode 前 execute() 弹窗。
+  let captchaPayload: Record<string, string> | undefined
+  if (captchaEnabled.value) {
+    if (captchaProvider.value === 'tencent_captcha') {
+      const popupPayload = await captchaRef.value?.execute()
+      if (!popupPayload) {
+        sendCodeError.value = t('auth.captchaFailed')
+        return
+      }
+      captchaPayload = popupPayload
+    } else {
+      if (!captchaToken.value) {
+        sendCodeError.value = t('auth.completeCaptchaVerification')
+        return
+      }
+      captchaPayload = { token: captchaToken.value }
+    }
   }
 
   isSendingCode.value = true
@@ -224,12 +240,12 @@ async function handleSendCode() {
   try {
     const response = await sendPendingOAuthVerifyCode({
       email: trimmedEmail,
-      turnstile_token: turnstileEnabled.value ? turnstileToken.value : undefined
+      captcha_payload: captchaEnabled.value ? captchaPayload : undefined
     })
     sendCodeSuccess.value = true
     startCountdown(response.countdown)
-    if (turnstileEnabled.value) {
-      resetTurnstile()
+    if (captchaEnabled.value) {
+      resetCaptcha()
     }
   } catch (error: unknown) {
     sendCodeError.value = getRequestErrorMessage(error, t('auth.sendCodeFailed'))
@@ -260,12 +276,19 @@ onMounted(async () => {
   try {
     const settings = await getPublicSettings()
     invitationCodeEnabled.value = settings.invitation_code_enabled === true
-    turnstileEnabled.value = settings.turnstile_enabled === true
-    turnstileSiteKey.value = settings.turnstile_site_key || ''
+    captchaEnabled.value = settings.captcha_enabled ?? settings.turnstile_enabled
+    captchaProvider.value =
+      settings.captcha_provider === 'hcaptcha'
+        ? 'hcaptcha'
+        : settings.captcha_provider === 'tencent_captcha'
+          ? 'tencent_captcha'
+          : 'turnstile'
+    captchaSiteKey.value = settings.captcha_site_key || settings.turnstile_site_key || ''
   } catch {
     invitationCodeEnabled.value = false
-    turnstileEnabled.value = false
-    turnstileSiteKey.value = ''
+    captchaEnabled.value = false
+    captchaProvider.value = 'turnstile'
+    captchaSiteKey.value = ''
   }
 })
 

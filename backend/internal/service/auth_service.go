@@ -69,7 +69,7 @@ type AuthService struct {
 	cfg                   *config.Config
 	settingService        *SettingService
 	emailService          *EmailService
-	turnstileService      *TurnstileService
+	captchaService        *CaptchaService
 	emailQueueService     *EmailQueueService
 	promoService          *PromoService
 	affiliateService      *AffiliateService
@@ -97,7 +97,7 @@ func NewAuthService(
 	cfg *config.Config,
 	settingService *SettingService,
 	emailService *EmailService,
-	turnstileService *TurnstileService,
+	captchaService *CaptchaService,
 	emailQueueService *EmailQueueService,
 	promoService *PromoService,
 	defaultSubAssigner DefaultSubscriptionAssigner,
@@ -112,7 +112,7 @@ func NewAuthService(
 		cfg:                   cfg,
 		settingService:        settingService,
 		emailService:          emailService,
-		turnstileService:      turnstileService,
+		captchaService:        captchaService,
 		emailQueueService:     emailQueueService,
 		promoService:          promoService,
 		affiliateService:      affiliateService,
@@ -369,55 +369,80 @@ func (s *AuthService) SendVerifyCodeAsync(ctx context.Context, email string, loc
 	}, nil
 }
 
-// VerifyTurnstileForRegister 在注册场景下验证 Turnstile。
-// 当邮箱验证开启且已提交验证码时，说明验证码发送阶段已完成 Turnstile 校验，
+// VerifyCaptchaForRegister 在注册场景下验证 Captcha。
+// 当邮箱验证开启且已提交验证码时，说明验证码发送阶段已完成 Captcha 校验，
 // 此处跳过二次校验，避免一次性 token 在注册提交时重复使用导致误报失败。
-func (s *AuthService) VerifyTurnstileForRegister(ctx context.Context, token, remoteIP, verifyCode string) error {
+func (s *AuthService) VerifyCaptchaForRegister(ctx context.Context, token, remoteIP, verifyCode string) error {
 	if s.IsEmailVerifyEnabled(ctx) && strings.TrimSpace(verifyCode) != "" {
-		logger.LegacyPrintf("service.auth", "%s", "[Auth] Email verify flow detected, skip duplicate Turnstile check on register")
+		logger.LegacyPrintf("service.auth", "%s", "[Auth] Email verify flow detected, skip duplicate Captcha check on register")
 		return nil
 	}
-	return s.VerifyTurnstile(ctx, token, remoteIP)
+	return s.VerifyCaptcha(ctx, token, remoteIP)
 }
 
-// VerifyTurnstile 验证Turnstile token
-func (s *AuthService) VerifyTurnstile(ctx context.Context, token string, remoteIP string) error {
-	required := s.cfg != nil && s.cfg.Server.Mode == "release" && s.cfg.Turnstile.Required
+// VerifyCaptchaPayloadForRegister 是 captcha_payload 协议下的注册阶段入口（design.md D2）。
+//
+// 与 VerifyCaptchaForRegister 行为完全对齐，仅 payload 携带方式不同。所有 4 个 captcha-gated
+// handler 改造完成后，VerifyCaptchaForRegister 会被废弃。
+func (s *AuthService) VerifyCaptchaPayloadForRegister(ctx context.Context, payload map[string]string, remoteIP, verifyCode string) error {
+	if s.IsEmailVerifyEnabled(ctx) && strings.TrimSpace(verifyCode) != "" {
+		logger.LegacyPrintf("service.auth", "%s", "[Auth] Email verify flow detected, skip duplicate Captcha check on register")
+		return nil
+	}
+	return s.VerifyCaptchaPayload(ctx, payload, remoteIP)
+}
+
+// VerifyCaptcha 验证当前启用的人机验证 token。
+func (s *AuthService) VerifyCaptcha(ctx context.Context, token string, remoteIP string) error {
+	return s.VerifyCaptchaPayload(ctx, map[string]string{"token": token}, remoteIP)
+}
+
+// VerifyCaptchaPayload 是 captcha_payload 协议下的统一入口（design.md D2）。
+//
+// 与历史 VerifyCaptcha(ctx, token, remoteIP) 行为对齐，区别仅在于把 payload 形态从单 token 字符串
+// 拓宽为结构化 map，让 tencent_captcha 的 {ticket, randstr} 等多字段 provider 在 service 层无需特殊分支。
+func (s *AuthService) VerifyCaptchaPayload(ctx context.Context, payload map[string]string, remoteIP string) error {
+	required := s.cfg != nil && s.cfg.Server.Mode == "release" && (s.cfg.Turnstile.Required || s.cfg.Captcha.Required)
 
 	if required {
 		if s.settingService == nil {
-			logger.LegacyPrintf("service.auth", "%s", "[Auth] Turnstile required but settings service is not configured")
-			return ErrTurnstileNotConfigured
+			logger.LegacyPrintf("service.auth", "%s", "[Auth] Captcha required but settings service is not configured")
+			return ErrCaptchaNotConfigured
 		}
-		enabled := s.settingService.IsTurnstileEnabled(ctx)
-		secretConfigured := s.settingService.GetTurnstileSecretKey(ctx) != ""
-		if !enabled || !secretConfigured {
-			logger.LegacyPrintf("service.auth", "[Auth] Turnstile required but not configured (enabled=%v, secret_configured=%v)", enabled, secretConfigured)
-			return ErrTurnstileNotConfigured
+		runtime := s.settingService.GetCaptchaRuntime(ctx)
+		if !runtime.Enabled || runtime.SecretKey == "" {
+			logger.LegacyPrintf("service.auth", "[Auth] Captcha required but not configured (provider=%s enabled=%v secret_configured=%v)", runtime.Provider, runtime.Enabled, runtime.SecretKey != "")
+			if runtime.Provider == CaptchaProviderTurnstile {
+				return ErrTurnstileNotConfigured
+			}
+			return ErrCaptchaNotConfigured
 		}
 	}
 
-	if s.turnstileService == nil {
+	if s.captchaService == nil {
 		if required {
-			logger.LegacyPrintf("service.auth", "%s", "[Auth] Turnstile required but service not configured")
-			return ErrTurnstileNotConfigured
+			logger.LegacyPrintf("service.auth", "%s", "[Auth] Captcha required but service not configured")
+			return ErrCaptchaNotConfigured
 		}
 		return nil // 服务未配置则跳过验证
 	}
 
-	if !required && s.settingService != nil && s.settingService.IsTurnstileEnabled(ctx) && s.settingService.GetTurnstileSecretKey(ctx) == "" {
-		logger.LegacyPrintf("service.auth", "%s", "[Auth] Turnstile enabled but secret key not configured")
+	if !required && s.settingService != nil {
+		runtime := s.settingService.GetCaptchaRuntime(ctx)
+		if runtime.Enabled && runtime.SecretKey == "" {
+			logger.LegacyPrintf("service.auth", "[Auth] Captcha enabled but secret key not configured (provider=%s)", runtime.Provider)
+		}
 	}
 
-	return s.turnstileService.VerifyToken(ctx, token, remoteIP)
+	return s.captchaService.VerifyPayload(ctx, payload, remoteIP)
 }
 
-// IsTurnstileEnabled 检查是否启用Turnstile验证
-func (s *AuthService) IsTurnstileEnabled(ctx context.Context) bool {
-	if s.turnstileService == nil {
+// IsCaptchaEnabled 检查是否启用人机验证。
+func (s *AuthService) IsCaptchaEnabled(ctx context.Context) bool {
+	if s.captchaService == nil {
 		return false
 	}
-	return s.turnstileService.IsEnabled(ctx)
+	return s.captchaService.IsEnabled(ctx)
 }
 
 // IsRegistrationEnabled 检查是否开放注册

@@ -10,26 +10,30 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type turnstileVerifierSpy struct {
+type captchaRegisterVerifierSpy struct {
 	called    int
 	lastToken string
-	result    *TurnstileVerifyResponse
+	result    *VerifyResult
 	err       error
 }
 
-func (s *turnstileVerifierSpy) VerifyToken(_ context.Context, _ string, token, _ string) (*TurnstileVerifyResponse, error) {
+func (s *captchaRegisterVerifierSpy) Verify(_ context.Context, req VerifyRequest) (*VerifyResult, error) {
 	s.called++
-	s.lastToken = token
+	s.lastToken = req.Payload["token"]
 	if s.err != nil {
 		return nil, s.err
 	}
 	if s.result != nil {
 		return s.result, nil
 	}
-	return &TurnstileVerifyResponse{Success: true}, nil
+	return &VerifyResult{Success: true}, nil
 }
 
-func newAuthServiceForRegisterTurnstileTest(settings map[string]string, verifier TurnstileVerifier) *AuthService {
+func (s *captchaRegisterVerifierSpy) ValidateProviderConfig(_ context.Context, _ string, _ map[string]string) error {
+	return nil
+}
+
+func newAuthServiceForRegisterCaptchaTest(settings map[string]string, verifier CaptchaVerifier) *AuthService {
 	cfg := &config.Config{
 		Server: config.ServerConfig{
 			Mode: "release",
@@ -40,7 +44,7 @@ func newAuthServiceForRegisterTurnstileTest(settings map[string]string, verifier
 	}
 
 	settingService := NewSettingService(&settingRepoStub{values: settings}, cfg)
-	turnstileService := NewTurnstileService(settingService, verifier)
+	captchaService := NewCaptchaService(settingService, verifier)
 
 	return NewAuthService(
 		nil, // entClient
@@ -50,7 +54,7 @@ func newAuthServiceForRegisterTurnstileTest(settings map[string]string, verifier
 		cfg,
 		settingService,
 		nil, // emailService
-		turnstileService,
+		captchaService,
 		nil, // emailQueueService
 		nil, // promoService
 		nil, // defaultSubAssigner
@@ -59,41 +63,41 @@ func newAuthServiceForRegisterTurnstileTest(settings map[string]string, verifier
 	)
 }
 
-func TestAuthService_VerifyTurnstileForRegister_SkipWhenEmailVerifyCodeProvided(t *testing.T) {
-	verifier := &turnstileVerifierSpy{}
-	service := newAuthServiceForRegisterTurnstileTest(map[string]string{
+func TestAuthService_VerifyCaptchaForRegister_SkipWhenEmailVerifyCodeProvided(t *testing.T) {
+	verifier := &captchaRegisterVerifierSpy{}
+	service := newAuthServiceForRegisterCaptchaTest(map[string]string{
 		SettingKeyEmailVerifyEnabled:  "true",
 		SettingKeyTurnstileEnabled:    "true",
 		SettingKeyTurnstileSecretKey:  "secret",
 		SettingKeyRegistrationEnabled: "true",
 	}, verifier)
 
-	err := service.VerifyTurnstileForRegister(context.Background(), "", "127.0.0.1", "123456")
+	err := service.VerifyCaptchaForRegister(context.Background(), "", "127.0.0.1", "123456")
 	require.NoError(t, err)
 	require.Equal(t, 0, verifier.called)
 }
 
-func TestAuthService_VerifyTurnstileForRegister_RequireWhenVerifyCodeMissing(t *testing.T) {
-	verifier := &turnstileVerifierSpy{}
-	service := newAuthServiceForRegisterTurnstileTest(map[string]string{
+func TestAuthService_VerifyCaptchaForRegister_RequireWhenVerifyCodeMissing(t *testing.T) {
+	verifier := &captchaRegisterVerifierSpy{}
+	service := newAuthServiceForRegisterCaptchaTest(map[string]string{
 		SettingKeyEmailVerifyEnabled: "true",
 		SettingKeyTurnstileEnabled:   "true",
 		SettingKeyTurnstileSecretKey: "secret",
 	}, verifier)
 
-	err := service.VerifyTurnstileForRegister(context.Background(), "", "127.0.0.1", "")
+	err := service.VerifyCaptchaForRegister(context.Background(), "", "127.0.0.1", "")
 	require.ErrorIs(t, err, ErrTurnstileVerificationFailed)
 }
 
-func TestAuthService_VerifyTurnstileForRegister_NoSkipWhenEmailVerifyDisabled(t *testing.T) {
-	verifier := &turnstileVerifierSpy{}
-	service := newAuthServiceForRegisterTurnstileTest(map[string]string{
+func TestAuthService_VerifyCaptchaForRegister_NoSkipWhenEmailVerifyDisabled(t *testing.T) {
+	verifier := &captchaRegisterVerifierSpy{}
+	service := newAuthServiceForRegisterCaptchaTest(map[string]string{
 		SettingKeyEmailVerifyEnabled: "false",
 		SettingKeyTurnstileEnabled:   "true",
 		SettingKeyTurnstileSecretKey: "secret",
 	}, verifier)
 
-	err := service.VerifyTurnstileForRegister(context.Background(), "turnstile-token", "127.0.0.1", "123456")
+	err := service.VerifyCaptchaForRegister(context.Background(), "turnstile-token", "127.0.0.1", "123456")
 	require.NoError(t, err)
 	require.Equal(t, 1, verifier.called)
 	require.Equal(t, "turnstile-token", verifier.lastToken)
