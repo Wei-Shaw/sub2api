@@ -477,8 +477,19 @@ REDACTED
 		if fs.SwitchCount > 0 {
 			requestCtx = service.WithAccountSwitchCount(requestCtx, fs.SwitchCount, h.metadataBridgeEnabled())
 	REDACTED
+		sessionGroupID := derefGroupID(apiKey.GroupID)
 		if account.Platform == service.PlatformAntigravity && account.Type != service.AccountTypeAPIKey {
-			result, err = h.antigravityGatewayService.ForwardGemini(requestCtx, c, account, modelName, action, stream, body, hasBoundSession)
+			result, err = h.antigravityGatewayService.ForwardGemini(
+				requestCtx,
+				c,
+				account,
+				modelName,
+				action,
+				stream,
+				body,
+				hasBoundSession,
+				service.WithForwardGeminiSession(sessionGroupID, sessionKey),
+			)
 	REDACTED else {
 			result, err = h.geminiCompatService.ForwardNative(requestCtx, c, account, modelName, action, stream, body)
 	REDACTED

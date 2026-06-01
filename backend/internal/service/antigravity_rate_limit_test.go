@@ -821,6 +821,51 @@ func TestSetModelRateLimitByModelName_NotConvertToScope(t *testing.T) {
 	require.NotEqual(t, "claude_sonnet", call.modelKey, "should NOT be scope")
 REDACTED
 
+func TestSetAntigravityModelRateLimits_GeminiWritesFamilyScope(t *testing.T) {
+	repo := &stubAntigravityAccountRepo{REDACTED
+	svc := &AntigravityGatewayService{REDACTED
+	account := &Account{ID: 789, Platform: PlatformAntigravityREDACTED
+	resetAt := time.Now().Add(30 * time.Second)
+
+	success := svc.setAntigravityModelRateLimits(
+		context.Background(),
+		repo,
+		account,
+		"gemini-3-pro",
+		"[test]",
+		429,
+		resetAt,
+		false,
+	)
+
+	require.True(t, success)
+	require.Len(t, repo.modelRateLimitCalls, 2)
+	require.Equal(t, "gemini-3-pro", repo.modelRateLimitCalls[0].modelKey)
+	require.Equal(t, antigravityGeminiModelRateLimitKey, repo.modelRateLimitCalls[1].modelKey)
+REDACTED
+
+func TestSetAntigravityModelRateLimits_ClaudeDoesNotWriteGeminiScope(t *testing.T) {
+	repo := &stubAntigravityAccountRepo{REDACTED
+	svc := &AntigravityGatewayService{REDACTED
+	account := &Account{ID: 790, Platform: PlatformAntigravityREDACTED
+	resetAt := time.Now().Add(30 * time.Second)
+
+	success := svc.setAntigravityModelRateLimits(
+		context.Background(),
+		repo,
+		account,
+		"claude-sonnet-4-5",
+		"[test]",
+		429,
+		resetAt,
+		false,
+	)
+
+	require.True(t, success)
+	require.Len(t, repo.modelRateLimitCalls, 1)
+	require.Equal(t, "claude-sonnet-4-5", repo.modelRateLimitCalls[0].modelKey)
+REDACTED
+
 func TestAntigravityRetryLoop_PreCheck_SwitchesWhenRateLimited(t *testing.T) {
 	upstream := &recordingOKUpstream{REDACTED
 	account := &Account{
@@ -1123,4 +1168,54 @@ REDACTED)
 
 		require.ErrorIs(t, err, expectedErr)
 REDACTED)
+REDACTED
+func TestNormalizeAntigravityModelName(t *testing.T) {
+	tests := []struct {
+		name     string
+		model    string
+		expected string
+REDACTED{
+		{
+			name:     "plain model name",
+			model:    "gemini-1.5-pro",
+			expected: "gemini-1.5-pro",
+	REDACTED,
+		{
+			name:     "models/ prefix",
+			model:    "models/gemini-1.5-pro",
+			expected: "gemini-1.5-pro",
+	REDACTED,
+		{
+			name:     "publishers/google/models/ prefix",
+			model:    "publishers/google/models/gemini-1.5-pro",
+			expected: "gemini-1.5-pro",
+	REDACTED,
+		{
+			name:     "projects/.../publishers/google/models/ path",
+			model:    "projects/my-proj/locations/us-central1/publishers/google/models/gemini-2.5-flash",
+			expected: "gemini-2.5-flash",
+	REDACTED,
+		{
+			name:     "publishers/anthropic/models/ prefix",
+			model:    "publishers/anthropic/models/claude-sonnet-4-5",
+			expected: "claude-sonnet-4-5",
+	REDACTED,
+		{
+			name:     "projects/.../publishers/anthropic/models/ path",
+			model:    "projects/my-proj/locations/global/publishers/anthropic/models/claude-sonnet-4-5",
+			expected: "claude-sonnet-4-5",
+	REDACTED,
+		{
+			name:     "mixed case and spaces",
+			model:    "  Models/Gemini-1.5-Pro  ",
+			expected: "gemini-1.5-pro",
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			actual := normalizeAntigravityModelName(tt.model)
+			require.Equal(t, tt.expected, actual)
+	REDACTED)
+REDACTED
 REDACTED

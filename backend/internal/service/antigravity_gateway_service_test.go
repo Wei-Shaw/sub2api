@@ -500,6 +500,86 @@ REDACTED
 	require.True(t, failoverErr.ForceCacheBilling, "ForceCacheBilling should be true for sticky session switch")
 REDACTED
 
+func TestAntigravityGatewayService_ForwardGemini_ClearsStickySessionOnGeminiRateLimit(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	writer := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(writer)
+
+	body, err := json.Marshal(map[string]any{
+		"contents": []map[string]any{
+			{"role": "user", "parts": []map[string]any{{"text": "hi"REDACTEDREDACTEDREDACTED,
+	REDACTED,
+REDACTED)
+REDACTED
+
+	req := httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-3-flash-preview:generateContent", bytes.NewReader(body))
+	c.Request = req
+
+	respBody := []byte(`{
+		"error": {
+			"status": "RESOURCE_EXHAUSTED",
+			"details": [
+				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "gemini-3-flash"REDACTED, "reason": "RATE_LIMIT_EXCEEDED"REDACTED,
+				{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "15s"REDACTED
+			]
+	REDACTED
+REDACTED`)
+	upstream := &httpUpstreamStub{resp: &http.Response{
+		StatusCode: http.StatusTooManyRequests,
+		Header:     http.Header{REDACTED,
+		Body:       io.NopCloser(bytes.NewReader(respBody)),
+REDACTEDREDACTED
+	repo := &stubAntigravityAccountRepo{REDACTED
+	cache := &stubSmartRetryCache{REDACTED
+	svc := &AntigravityGatewayService{
+		tokenProvider: &AntigravityTokenProvider{REDACTED,
+		httpUpstream:  upstream,
+		accountRepo:   repo,
+		cache:         cache,
+REDACTED
+
+	account := &Account{
+		ID:          44,
+		Name:        "acc-gemini-runtime-rate-limited",
+		Platform:    PlatformAntigravity,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+REDACTED
+			"access_token": "token",
+			"expires_at":   time.Now().Add(time.Hour).Format(time.RFC3339),
+	REDACTED
+	REDACTED,
+		Extra: map[string]any{
+			"mixed_scheduling": true,
+	REDACTED,
+REDACTED
+
+	result, err := svc.ForwardGemini(
+		context.Background(),
+		c,
+		account,
+		"gemini-3-flash-preview",
+		"generateContent",
+		false,
+		body,
+		true,
+		WithForwardGeminiSession(77, "gemini:sticky-runtime"),
+	)
+
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusServiceUnavailable, failoverErr.StatusCode)
+	require.Len(t, repo.modelRateLimitCalls, 2)
+	require.Equal(t, "gemini-3-flash", repo.modelRateLimitCalls[0].modelKey)
+	require.Equal(t, antigravityGeminiModelRateLimitKey, repo.modelRateLimitCalls[1].modelKey)
+	require.Len(t, cache.deleteCalls, 1)
+	require.Equal(t, int64(77), cache.deleteCalls[0].groupID)
+	require.Equal(t, "gemini:sticky-runtime", cache.deleteCalls[0].sessionHash)
+REDACTED
+
 // TestAntigravityGatewayService_Forward_BillsWithMappedModel
 // 验证：Antigravity Claude 转发返回的计费模型使用映射后的模型
 func TestAntigravityGatewayService_Forward_BillsWithMappedModel(t *testing.T) {
