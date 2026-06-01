@@ -506,6 +506,18 @@ REDACTED
 		return float64(countAccountsByCondition(availability.Accounts, func(acc *AccountAvailability) bool {
 			return acc.HasError && acc.TempUnschedulableUntil == nil
 	REDACTED)), true
+	case "account_temp_unscheduled_count":
+		if s == nil || s.opsService == nil {
+			return 0, false
+	REDACTED
+		availability, err := s.opsService.GetAccountAvailability(ctx, platform, groupID)
+		if err != nil || availability == nil {
+			return 0, false
+	REDACTED
+		now := time.Now().UTC()
+		return float64(countAccountsByCondition(availability.Accounts, func(acc *AccountAvailability) bool {
+			return acc.TempUnschedulableUntil != nil && now.Before(*acc.TempUnschedulableUntil)
+	REDACTED)), true
 	case "group_rate_limit_ratio":
 		if groupID == nil || *groupID <= 0 {
 			return 0, false
